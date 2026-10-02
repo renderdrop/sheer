@@ -26,14 +26,15 @@ The Stop hook picks the first open `- [ ]` line, so order matters. Scope: `docs/
 ## Phase 3 — Design system + app shell (v0.3.0)
 
 - [x] Design spec: component specs in docs/DESIGN.md (designer), applying ADR-011
-- [ ] Tokens: src/styles/tokens.css (light/dark, glass + solid fallback, --surface-strong), Tailwind 4 theme, APP_NAME token
-- [ ] Reduced transparency/motion: CSS media queries + macOS OS flag from Rust, "Glass: Auto/Solid" setting
+- [x] Tokens: src/styles/tokens.css (light/dark, glass + solid fallback, --surface-strong), Tailwind 4 theme, APP_NAME token
+- [x] Reduced transparency/motion: CSS media queries + macOS OS flag from Rust, "Glass: Auto/Solid" setting
 - [ ] Primitives I: Button, IconButton, Toolbar (roving tabindex), Tooltip (name + shortcut), Popover
 - [ ] Primitives II: Tabs, Slider, Splitter (keyboard-resizable), Panel
 - [ ] App shell layout grid: toolbar, left panel, canvas, inspector slot, status bar, scroll-edge scrim
 - [ ] Empty state: drop zone, Open button, recents list placeholder
 - [ ] Command registry + shortcuts (platform modifiers) + native menu bar
 - [ ] i18n scaffold (en, de); all shell strings translated
+- [ ] Hardening: atomic write (create_new, 0600/0700, stale temp), settings is_file check + lock scope + patch key cap, live os:transparency event, render if load() hangs, forced-colors doc tokens, SECURITY.md T3 + settings row, ARCHITECTURE §3 call.ts
 
 ## M1 — Viewer (v0.4.0)
 

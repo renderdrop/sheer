@@ -18,7 +18,8 @@ below, with a one-line reason why it is not written in-house (ORCHESTRATOR_PROMP
 | pdfium-render | Rust | 0.9.4 | MIT OR Apache-2.0 | Safe bindings to PDFium, bound dynamically (features: `pdfium_7881` only). Writing FFI bindings for PDFium in-house is not sensible. | v0.2.0 |
 | png | Rust | 0.18.1 | MIT OR Apache-2.0 | PNG encoding of rendered pages, streamed row by row. Chosen over `image` to avoid its codec tree. | v0.2.0 |
 | serde | Rust | 1.0.229 | MIT OR Apache-2.0 | Typed IPC arguments and results (already required by Tauri). | v0.2.0 |
-| serde_json | Rust (dev) | 1.0.151 | MIT OR Apache-2.0 | Tests of the IPC JSON shape (already required by Tauri). | v0.2.0 |
+| serde_json | Rust | 1.0.151 | MIT OR Apache-2.0 | Settings file and `update_settings` patch validation (already required by Tauri). Was a dev dependency before the settings store. | v0.2.0 (dev), v0.3.0 |
+| objc2-app-kit | Rust (macOS only) | 0.3.2 | Zlib OR Apache-2.0 OR MIT | `NSWorkspace.accessibilityDisplayShouldReduceTransparency`, the macOS "Reduce transparency" flag (DESIGN 1). Already in the lockfile through Tauri/wry; now declared directly with two features (`NSWorkspace`, `NSAccessibility`). Safe bindings; writing Objective-C FFI in-house is not sensible. | v0.3.0 |
 | react | npm | 19.3.0 | MIT | UI library (ADR-001). | v0.2.0 |
 | react-dom | npm | 19.3.0 | MIT | React renderer for the DOM. | v0.2.0 |
 | @tauri-apps/api | npm | 2.12.1 | Apache-2.0 OR MIT | Typed `invoke` for the frontend. | v0.2.0 |
@@ -30,6 +31,9 @@ below, with a one-line reason why it is not written in-house (ORCHESTRATOR_PROMP
 | @types/react | npm (dev) | 19.3.0 | MIT | React type definitions. | v0.2.0 |
 | @types/react-dom | npm (dev) | 19.3.0 | MIT | React DOM type definitions. | v0.2.0 |
 | @types/node | npm (dev) | 26.6.4 | MIT | Types for `vite.config.ts` (`node` globals). | v0.2.0 |
+| zustand | npm | 5.0.15 | MIT | Frontend stores (ADR-001, ARCHITECTURE 8); the settings store applies `data-theme` and `data-transparency`. Tiny, no provider needed; a store library is not worth writing in-house. | v0.3.0 |
+| tailwindcss | npm (dev) | 4.3.3 | MIT | Utility CSS compiled at build time from the role tokens (DESIGN 1.9). Nothing of it ships at runtime except the generated CSS. | v0.3.0 |
+| @tailwindcss/vite | npm (dev) | 4.3.3 | MIT | Tailwind 4 plugin for Vite. | v0.3.0 |
 | prettier | npm (dev) | 3.9.9 | MIT | Formatter, enforced by `npm run check` (`prettier --check`). A formatter is not worth writing in-house. | v0.2.0 |
 | eslint | npm (dev, `tools/lint`) | 10.11.0 | MIT | Linter for the TypeScript/React frontend (flat config). | v0.2.0 |
 | @eslint/js | npm (dev, `tools/lint`) | 10.0.1 | MIT | ESLint core recommended rule set. | v0.2.0 |
@@ -109,6 +113,16 @@ Everything below comes in through the direct dependencies above and was read fro
 - Crates offering `Unlicense OR MIT` are used under MIT.
 - `gtk`, `webkit2gtk`, `soup3` and related crates appear in the lockfile for the Linux target only (MIT). They are not built for macOS or Windows.
 - MPL-2.0 crates (file-level copyleft) are allowed by rule 2 and are used unmodified.
+
+### Added with the tokens work (v0.3.0)
+
+No new Rust crate: `objc2-app-kit` was already in the 433 below. New npm packages from `tailwindcss`, `@tailwindcss/vite` and `zustand`, all
+dev-only except `zustand` (read from `package-lock.json`). None is GPL, AGPL or LGPL.
+
+- **MIT**: @tailwindcss/node 4.3.3, @tailwindcss/oxide 4.3.3 (and its optional per-platform binaries `@tailwindcss/oxide-*`, only the host's is installed), enhanced-resolve 5.26.0, jiti 2.7.0, magic-string 0.30.21, tapable 2.3.3, tailwindcss 4.3.3, @tailwindcss/vite 4.3.3, zustand 5.0.15
+- **MPL-2.0**: lightningcss 1.32.0 and its optional `lightningcss-*` binaries (a second copy next to 1.33.0, pinned by @tailwindcss/node; unmodified, dev-only)
+- **ISC**: graceful-fs 4.2.11
+- Not installed on macOS or Windows: `@tailwindcss/oxide-wasm32-wasi` (optional, WebAssembly hosts only) bundles @napi-rs/wasm-runtime, @emnapi/core, @emnapi/runtime, @emnapi/wasi-threads, @tybys/wasm-util (all MIT) and tslib (0BSD).
 
 ### Rust crates (433)
 

@@ -91,8 +91,8 @@ impl Display for ErrorCode {
 }
 
 /// Whitelisted context for the UI. `what` names the argument or resource in a fixed vocabulary (`"page"`, `"scale"`,
-/// `"document"`, `"documents"`, `"dimension"`, `"pixels"`, `"file_size"`). It is a `&'static str`, so request data can
-/// never end up in it. `limit` is the bound that was exceeded.
+/// `"document"`, `"documents"`, `"dimension"`, `"pixels"`, `"file_size"`, `"settings"`). It is a `&'static str`, so
+/// request data can never end up in it. `limit` is the bound that was exceeded.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 pub struct UiParams {
     pub what: &'static str,

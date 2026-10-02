@@ -191,7 +191,10 @@ fn capabilities_grant_only_the_app_commands_to_the_main_window() {
         set(&[
             "allow-open-document-dialog",
             "allow-render-page",
-            "allow-close-document"
+            "allow-close-document",
+            "allow-app-ready",
+            "allow-get-settings",
+            "allow-update-settings"
         ])
     );
 }
@@ -199,7 +202,15 @@ fn capabilities_grant_only_the_app_commands_to_the_main_window() {
 #[test]
 fn build_script_declares_exactly_the_granted_commands() {
     let build = read("build.rs");
-    for command in ["open_document_dialog", "render_page", "close_document"] {
+    let commands = [
+        "open_document_dialog",
+        "render_page",
+        "close_document",
+        "app_ready",
+        "get_settings",
+        "update_settings",
+    ];
+    for command in commands {
         assert!(build.contains(&format!("\"{command}\"")), "{command}");
         assert!(
             root()
@@ -213,7 +224,8 @@ fn build_script_declares_exactly_the_granted_commands() {
         .unwrap()
         .count();
     assert_eq!(
-        declared, 3,
+        declared,
+        commands.len(),
         "a new command needs a bounds test and a review"
     );
 }

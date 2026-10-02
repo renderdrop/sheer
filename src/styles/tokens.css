@@ -1,114 +1,545 @@
 /*
- * Design tokens. Seed values from docs/DESIGN.md; the Phase 3 design pass expands this file.
- * This is the only place raw colors and sizes may appear. Components use the role tokens (--color-*, --space-*, ...).
+ * Design tokens: docs/DESIGN.md section 1, and nothing else. This is the only file with raw colors and sizes (ADR-011);
+ * components use the role tokens through Tailwind utilities (bg-accent, p-2, rounded-panel, text-md, glass-1, ...).
+ * tokens.test.ts checks this file against the spec.
+ *
+ * How it is organised
+ *   1. Tailwind: the default theme is dropped, so only the tokens below become utilities.
+ *   2. @theme static: every token that has a Tailwind namespace (--color-*, --radius-*, --text-*, --shadow-*, --ease-*,
+ *      --spacing-*, --font-*). "static" emits them all, because plain CSS reads them through var() as well.
+ *   3. :root: tokens without a namespace (palette, glass surfaces, motion, z-layers, sizes, document layer).
+ *   4. Dark values, written twice on purpose: once for "OS is dark and no override", once for html[data-theme="dark"].
+ *      Plain CSS cannot share one declaration list between a media query and an attribute selector.
+ *   5. Solid mode (same four-times rule) and forced colors.
+ *   6. Reduced motion, base layer, glass recipes and z-layer utilities.
  */
 
+@import "tailwindcss" source("../");
+@source not "../**/*.test.ts";
+
+/* 1. No Tailwind defaults: no gray-500, no p-4 = 16px by accident. Spacing, radii and type come from DESIGN only. */
+@theme {
+  --*: initial;
+}
+
+/* 2. Namespaced tokens. Light values; the dark and solid blocks below override them on :root. */
+@theme static {
+  /* Color roles (DESIGN 1.2). --color-bg is a gradient, so it lives in :root and has the bg-bg utility below. */
+  --color-canvas: #e8e9f6;
+  --color-text: var(--ink);
+  --color-text-muted: var(--ink-60);
+  --color-text-accent: var(--iris-700);
+  --color-text-disabled: var(--ink-50);
+  --color-accent: var(--iris-500);
+  --color-accent-hover: var(--iris-600);
+  --color-accent-pressed: var(--iris-700);
+  --color-on-accent: #ffffff;
+  --color-focus: var(--iris-500);
+  --color-control-border: var(--ink-50);
+  --color-control-hover: var(--iris-100);
+  --color-control-pressed: var(--iris-200);
+  --color-selected: var(--iris-100);
+  --color-fill-disabled: rgba(28, 28, 46, 0.06);
+  --color-track: var(--iris-200);
+  --color-divider: var(--ink-30);
+  --color-tile: var(--iris-100);
+  --color-tile-icon: var(--iris-700);
+  --color-tooltip-bg: var(--ink);
+  --color-tooltip-text: #ffffff;
+  --color-tooltip-key: var(--ink-40);
+  --color-success-icon: #2e9e6b;
+  --color-warning-icon: #b5700f;
+  --color-error-icon: #d64b4b;
+  --color-success-text: #1b7049;
+  --color-warning-text: #8a5a0e;
+  --color-error-text: #b03535;
+
+  /* Glass surfaces as colors (the values live in :root, so the dark and solid blocks reach them). */
+  --color-surface: var(--surface);
+  --color-surface-strong: var(--surface-strong);
+  --color-surface-solid: var(--surface-solid);
+  --color-backdrop: rgba(15, 16, 32, 0.32);
+
+  /* Document layer: pages are white in both themes (DESIGN 1.2, last paragraph). */
+  --color-page: #ffffff;
+  --color-doc-select: var(--iris-500);
+  --color-doc-text-select: rgba(91, 91, 214, 0.3);
+  --color-doc-hit: rgba(91, 91, 214, 0.28);
+
+  /* Shadows (DESIGN 1.3). */
+  --shadow-1: 0 1px 2px rgba(28, 28, 46, 0.06), 0 8px 32px rgba(28, 28, 46, 0.08);
+  --shadow-2: 0 2px 6px rgba(28, 28, 46, 0.08), 0 12px 40px rgba(28, 28, 46, 0.16);
+  --shadow-3: 0 24px 64px rgba(28, 28, 46, 0.24);
+
+  /* Radii (DESIGN 1.4). Concentric: inner = outer - padding. */
+  --radius-xs: 4px;
+  --radius-sm: 8px;
+  --radius-button: 12px;
+  --radius-panel: 16px;
+  --radius-card: 20px;
+  --radius-pill: 999px;
+
+  /* Spacing: p-1 is --space-1 (8px), not Tailwind's 4px. 8-pt grid; 4 and 12 only inside controls (DESIGN 1.4). */
+  --spacing-0-5: var(--space-0-5);
+  --spacing-1: var(--space-1);
+  --spacing-1-5: var(--space-1-5);
+  --spacing-2: var(--space-2);
+  --spacing-3: var(--space-3);
+  --spacing-4: var(--space-4);
+  --spacing-5: var(--space-5);
+  --spacing-6: var(--space-6);
+  --spacing-8: var(--space-8);
+  /* Sizes: h-control-md, size-icon-16, min-w-target-min. */
+  --spacing-control-sm: var(--control-sm);
+  --spacing-control-md: var(--control-md);
+  --spacing-control-lg: var(--control-lg);
+  --spacing-target-min: var(--target-min);
+  --spacing-target-default: var(--target-default);
+  --spacing-hairline: var(--hairline);
+  --spacing-icon-12: var(--icon-12);
+  --spacing-icon-16: var(--icon-16);
+  --spacing-icon-20: var(--icon-20);
+  --spacing-icon-24: var(--icon-24);
+
+  /* Type (DESIGN 1.5). Size / line height, weight and tracking per step. Weights are 400 and 600 only. */
+  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+  --font-display: -apple-system, BlinkMacSystemFont, "Segoe UI Variable Display", "Segoe UI", system-ui, sans-serif;
+  --default-font-family: var(--font-sans);
+  --font-weight-normal: 400;
+  --font-weight-semibold: 600;
+  --text-xs: 11px;
+  --text-xs--line-height: 16px;
+  --text-xs--font-weight: 600;
+  --text-sm: 12px;
+  --text-sm--line-height: 16px;
+  --text-md: 14px;
+  --text-md--line-height: 20px;
+  --text-lg: 16px;
+  --text-lg--line-height: 24px;
+  --text-lg--font-weight: 600;
+  --text-xl: 20px;
+  --text-xl--line-height: 28px;
+  --text-xl--font-weight: 600;
+  --text-xl--letter-spacing: -0.01em;
+  --text-2xl: 28px;
+  --text-2xl--line-height: 36px;
+  --text-2xl--font-weight: 600;
+  --text-2xl--letter-spacing: -0.01em;
+
+  /* Easing and the default for Tailwind's transition utilities (DESIGN 1.6). */
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-in: cubic-bezier(0.4, 0, 1, 1);
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --default-transition-duration: var(--motion-fast);
+  --default-transition-timing-function: var(--ease-out);
+}
+
+/* 3. Tokens without a Tailwind namespace. */
 :root {
   color-scheme: light dark;
 
-  /* Iris: the single UI hue family. */
+  /* Palette (DESIGN 1.1). Raw values; components never use these directly, only the roles above. */
   --iris-50: #f4f5ff;
   --iris-100: #e1e2ff;
   --iris-200: #c9caff;
   --iris-300: #8e8ef2;
   --iris-400: #7b7cf0;
   --iris-500: #5b5bd6;
+  --iris-600: #4a4ac4;
   --iris-700: #3a3aab;
-
-  /* Neutrals. --ink-30 is for dividers and disabled text only, never control borders. */
   --ink: #1c1c2e;
   --ink-60: #5f6072;
-  --ink-30: #b4b5c4;
-
-  /* Semantic colors: icons, fills and banners, never small text. */
-  --success: #2e9e6b;
+  --ink-50: #7f8094;
+  --ink-40: #a3a4b8;
+  --ink-30: #b4b5c4; /* dividers only */
+  --success: #2e9e6b; /* icons and fills only */
   --warning: #d98a1f;
   --error: #d64b4b;
 
-  /* Surfaces. Glass only on the control layer; the document canvas is opaque. */
+  /* Roles that are not a plain color token: bg-bg and bg-win-close are utilities at the end of this file. */
+  --color-bg: linear-gradient(135deg, #f4f5ff, #fafaff);
+  --win-close-hover: #c42b1c;
+
+  /* Glass (DESIGN 1.3). --surface goes over --color-bg only, --surface-strong over page content. */
   --surface: rgba(255, 255, 255, 0.72);
-  --surface-strong: rgba(255, 255, 255, 0.86);
+  --surface-strong: rgba(255, 255, 255, 0.9);
   --surface-solid: #ffffff;
-  --glass-edge: rgba(255, 255, 255, 0.6);
-  --glass-shadow: 0 8px 32px rgba(28, 28, 46, 0.08);
   --glass-filter: blur(24px) saturate(140%);
-  --page-shadow: 0 1px 2px rgba(28, 28, 46, 0.12), 0 8px 32px rgba(28, 28, 46, 0.12);
-  --bg-app: linear-gradient(135deg, #f4f5ff, #fafaff);
+  --glass-edge: inset 0 0 0 1px rgba(255, 255, 255, 0.6);
+  --page-shadow: var(--shadow-1);
 
-  /* Roles (light). */
-  --color-text: var(--ink);
-  --color-text-muted: var(--ink-60);
-  --color-disabled: var(--ink-30);
-  --color-divider: var(--ink-30);
-  --color-canvas: var(--iris-100);
-  --color-accent: var(--iris-500);
-  --color-accent-hover: var(--iris-400);
-  --color-accent-pressed: var(--iris-700);
-  --color-on-accent: #ffffff;
-  --color-control-hover: var(--iris-100);
-  --color-control-pressed: var(--iris-200);
-  --color-focus: var(--iris-500);
-  --color-error: var(--error);
-  --color-error-text: var(--ink);
-
-  /* 8-pt grid. */
+  /* Spacing (DESIGN 1.4). */
   --space-0-5: 4px;
   --space-1: 8px;
+  --space-1-5: 12px;
   --space-2: 16px;
   --space-3: 24px;
   --space-4: 32px;
+  --space-5: 40px;
+  --space-6: 48px;
+  --space-8: 64px;
 
-  /* Radii: cards 20, panels 16, buttons 12, pills 999. */
-  --radius-card: 20px;
-  --radius-panel: 16px;
-  --radius-button: 12px;
-  --radius-pill: 999px;
-
-  /* Sizes. Targets are at least 24 px, 32 px by default. */
-  --control-size: 32px;
+  /* Sizes (DESIGN 1.4, 1.8). */
+  --control-sm: 24px;
+  --control-md: 32px;
+  --control-lg: 40px;
+  --target-min: 24px;
+  --target-default: var(--control-md);
   --hairline: 1px;
   --focus-width: 2px;
   --focus-offset: 2px;
-  --toolbar-gap: var(--space-1);
+  --icon-12: 12px;
+  --icon-16: 16px;
+  --icon-20: 20px;
+  --icon-24: 24px;
+  --icon-stroke: 1.5px;
+  --icon-stroke-sm: 2px; /* at 12 px */
 
-  /* Type. */
-  --font-sans: -apple-system, "SF Pro Text", "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
-  --font-size-sm: 12px;
-  --font-size-md: 14px;
-  --font-size-lg: 20px;
-  --weight-regular: 400;
-  --weight-strong: 600;
-  --tracking-large: -0.01em;
-
-  /* Motion: 150 to 250 ms, purposeful only. */
+  /* Motion (DESIGN 1.6). */
   --motion-fast: 150ms;
   --motion-base: 200ms;
-  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
-  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --motion-slow: 250ms;
+  /* Transform amounts of states and entrances (DESIGN 3.0, 3.5, 3.12). Reduced motion resets them (section 6). */
+  --scale-press: 0.97;
+  --scale-enter: 0.96;
+  --offset-enter: 8px;
+
+  /* Elevation: the only z-index values (DESIGN 1.7). 1 to 4 are local to the canvas, which isolates itself. */
+  --z-base: 0;
+  --z-canvas-page: 1;
+  --z-canvas-text: 2;
+  --z-canvas-annotations: 3;
+  --z-canvas-scrim: 4;
+  --z-popover: 100;
+  --z-toast: 200;
+  --z-modal: 300;
+  --z-tooltip: 400;
+  --z-drag: 500;
 }
 
+/* 4a. Dark: the OS is dark and html[data-theme="light"] is not set. Keep identical to 4b (tokens.test.ts checks). */
 @media (prefers-color-scheme: dark) {
-  :root {
-    --surface: rgba(28, 28, 46, 0.62);
-    --surface-strong: rgba(28, 28, 46, 0.86);
-    --surface-solid: #1c1c2e;
-    --glass-edge: rgba(255, 255, 255, 0.12);
-    --glass-shadow: 0 8px 32px rgba(0, 0, 0, 0.32);
-    --page-shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 8px 32px rgba(0, 0, 0, 0.4);
-    --bg-app: linear-gradient(135deg, #0f1020, #15162b);
-
+  :root:not([data-theme="light"]) {
+    --color-bg: linear-gradient(135deg, #0f1020, #15162b);
+    --color-canvas: #0b0c18;
     --color-text: #ffffff;
-    --color-text-muted: var(--iris-200);
-    --color-disabled: var(--ink-60);
-    --color-divider: rgba(255, 255, 255, 0.16);
-    --color-canvas: #101122;
+    --color-text-muted: var(--ink-40);
+    --color-text-accent: var(--iris-200);
+    --color-text-disabled: var(--ink-60);
     --color-accent: var(--iris-300);
     --color-accent-hover: var(--iris-200);
     --color-accent-pressed: var(--iris-400);
     --color-on-accent: var(--ink);
+    --color-focus: var(--iris-300);
     --color-control-hover: rgba(255, 255, 255, 0.08);
     --color-control-pressed: rgba(255, 255, 255, 0.14);
-    --color-focus: var(--iris-300);
-    --color-error-text: #ffffff;
+    --color-selected: rgba(142, 142, 242, 0.2);
+    --color-fill-disabled: rgba(255, 255, 255, 0.06);
+    --color-track: rgba(255, 255, 255, 0.2);
+    --color-divider: rgba(255, 255, 255, 0.12);
+    --color-tile: rgba(142, 142, 242, 0.16);
+    --color-tile-icon: var(--iris-200);
+    --color-tooltip-bg: #2b2c42;
+    --color-warning-icon: #d98a1f;
+    --color-success-text: #7fd8aa;
+    --color-warning-text: #f5c26b;
+    --color-error-text: #ff9a9a;
+    --surface: rgba(28, 28, 46, 0.62);
+    --surface-strong: rgba(28, 28, 46, 0.9);
+    --surface-solid: #1c1c2e;
+    --glass-edge: inset 0 0 0 1px rgba(255, 255, 255, 0.12);
+    --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.24), 0 8px 32px rgba(0, 0, 0, 0.32);
+    --shadow-2: 0 2px 6px rgba(0, 0, 0, 0.32), 0 12px 40px rgba(0, 0, 0, 0.48);
+    --shadow-3: 0 24px 64px rgba(0, 0, 0, 0.56);
   }
+}
+
+/* 4b. Dark by choice (Settings: Theme: Dark), whatever the OS says. */
+:root[data-theme="dark"] {
+  --color-bg: linear-gradient(135deg, #0f1020, #15162b);
+  --color-canvas: #0b0c18;
+  --color-text: #ffffff;
+  --color-text-muted: var(--ink-40);
+  --color-text-accent: var(--iris-200);
+  --color-text-disabled: var(--ink-60);
+  --color-accent: var(--iris-300);
+  --color-accent-hover: var(--iris-200);
+  --color-accent-pressed: var(--iris-400);
+  --color-on-accent: var(--ink);
+  --color-focus: var(--iris-300);
+  --color-control-hover: rgba(255, 255, 255, 0.08);
+  --color-control-pressed: rgba(255, 255, 255, 0.14);
+  --color-selected: rgba(142, 142, 242, 0.2);
+  --color-fill-disabled: rgba(255, 255, 255, 0.06);
+  --color-track: rgba(255, 255, 255, 0.2);
+  --color-divider: rgba(255, 255, 255, 0.12);
+  --color-tile: rgba(142, 142, 242, 0.16);
+  --color-tile-icon: var(--iris-200);
+  --color-tooltip-bg: #2b2c42;
+  --color-warning-icon: #d98a1f;
+  --color-success-text: #7fd8aa;
+  --color-warning-text: #f5c26b;
+  --color-error-text: #ff9a9a;
+  --surface: rgba(28, 28, 46, 0.62);
+  --surface-strong: rgba(28, 28, 46, 0.9);
+  --surface-solid: #1c1c2e;
+  --glass-edge: inset 0 0 0 1px rgba(255, 255, 255, 0.12);
+  --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.24), 0 8px 32px rgba(0, 0, 0, 0.32);
+  --shadow-2: 0 2px 6px rgba(0, 0, 0, 0.32), 0 12px 40px rgba(0, 0, 0, 0.48);
+  --shadow-3: 0 24px 64px rgba(0, 0, 0, 0.56);
+}
+
+/*
+ * The dark: variant follows the same rule as the two blocks above, so it can never disagree with the tokens. Components
+ * should not need it: the role tokens already change with the theme.
+ */
+@custom-variant dark {
+  @media (prefers-color-scheme: dark) {
+    &:where(:root:not([data-theme="light"]) *) {
+      @slot;
+    }
+  }
+
+  &:where([data-theme="dark"], [data-theme="dark"] *) {
+    @slot;
+  }
+}
+
+/* Native controls and scrollbars follow the chosen theme. */
+:root[data-theme="light"] {
+  color-scheme: light;
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+}
+
+/*
+ * 5. Solid mode (DESIGN 1.1, 1.3): --surface-solid, no filter, the edge becomes a 1 px divider; geometry unchanged.
+ * Applies when backdrop-filter is unsupported, under prefers-reduced-transparency, with
+ * html[data-transparency="reduced"] (the macOS flag from Rust, or Settings: Glass: Solid) and in forced colors.
+ * `:root:root` outranks the dark blocks above; these blocks come after them. Keep the four bodies identical.
+ */
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  :root:root {
+    --surface: var(--surface-solid);
+    --surface-strong: var(--surface-solid);
+    --glass-filter: none;
+    --glass-edge: inset 0 0 0 var(--hairline) var(--color-divider);
+  }
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  :root:root {
+    --surface: var(--surface-solid);
+    --surface-strong: var(--surface-solid);
+    --glass-filter: none;
+    --glass-edge: inset 0 0 0 var(--hairline) var(--color-divider);
+  }
+}
+
+:root[data-transparency="reduced"] {
+  --surface: var(--surface-solid);
+  --surface-strong: var(--surface-solid);
+  --glass-filter: none;
+  --glass-edge: inset 0 0 0 var(--hairline) var(--color-divider);
+}
+
+/* Forced colors: system colors throughout, focus is Highlight. State never relies on color alone (DESIGN rules). */
+@media (forced-colors: active) {
+  :root:root {
+    --surface: var(--surface-solid);
+    --surface-strong: var(--surface-solid);
+    --glass-filter: none;
+    --glass-edge: inset 0 0 0 var(--hairline) var(--color-divider);
+    --surface-solid: Canvas;
+    --color-bg: Canvas;
+    --color-canvas: Canvas;
+    --color-page: Canvas;
+    --color-text: CanvasText;
+    --color-text-muted: CanvasText;
+    --color-text-accent: LinkText;
+    --color-text-disabled: GrayText;
+    --color-accent: Highlight;
+    --color-accent-hover: Highlight;
+    --color-accent-pressed: Highlight;
+    --color-on-accent: HighlightText;
+    --color-focus: Highlight;
+    --color-control-border: ButtonBorder;
+    --color-control-hover: Canvas;
+    --color-control-pressed: Canvas;
+    --color-selected: Canvas;
+    --color-fill-disabled: Canvas;
+    --color-track: GrayText;
+    --color-divider: CanvasText;
+    --color-tile: Canvas;
+    --color-tile-icon: CanvasText;
+    --color-tooltip-bg: Canvas;
+    --color-tooltip-text: CanvasText;
+    --color-tooltip-key: CanvasText;
+    --color-success-icon: CanvasText;
+    --color-warning-icon: CanvasText;
+    --color-error-icon: CanvasText;
+    --color-success-text: CanvasText;
+    --color-warning-text: CanvasText;
+    --color-error-text: CanvasText;
+    --color-doc-select: Highlight;
+    --win-close-hover: Highlight;
+  }
+}
+
+/*
+ * 6. Reduced motion (DESIGN 1.6): no transforms, transitions opacity-only at 150 ms ease-out, smooth scroll instant.
+ * Transform amounts are tokens, so a component that uses them (active:scale-(--scale-press)) needs no extra branch.
+ */
+@media (prefers-reduced-motion: reduce) {
+  :root:root {
+    --scale-press: 1;
+    --scale-enter: 1;
+    --offset-enter: 0px;
+  }
+
+  *,
+  *::before,
+  *::after {
+    transition-property: opacity !important;
+    transition-duration: var(--motion-fast) !important;
+    transition-delay: 0s !important;
+    transition-timing-function: var(--ease-out) !important;
+    animation: none !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+@layer base {
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+
+  body {
+    margin: 0;
+    background: var(--color-bg);
+    color: var(--color-text);
+    font-family: var(--font-sans);
+    font-size: var(--text-md);
+    font-weight: var(--font-weight-normal);
+    line-height: var(--text-md--line-height);
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* DESIGN 3.0: 2 px focus outline, offset 2, follows the radius. */
+  :focus-visible {
+    outline: var(--focus-width) solid var(--color-focus);
+    outline-offset: var(--focus-offset);
+  }
+}
+
+/* The page background gradient. A color utility cannot hold a gradient, so this one is a plain background. */
+@utility bg-bg {
+  background: var(--color-bg);
+}
+
+@utility bg-win-close {
+  background-color: var(--win-close-hover);
+}
+
+/*
+ * Glass recipes (DESIGN 1.3). G1: toolbar, panels, banner, empty card. G2: popover, toast, drop overlay.
+ * Dialogs and submenus are solid with --shadow-3 (surface-dialog). Glass only on the control layer, never inside glass.
+ * Solid mode needs no variant: the tokens change underneath. The blur never animates: do not put backdrop-filter in a
+ * transition list (transition-colors and transition-opacity are fine; plain `transition` is not).
+ */
+@utility glass-1 {
+  background: var(--surface);
+  -webkit-backdrop-filter: var(--glass-filter);
+  backdrop-filter: var(--glass-filter);
+  box-shadow: var(--glass-edge), var(--shadow-1);
+
+  @media (forced-colors: active) {
+    outline: var(--hairline) solid transparent;
+    outline-offset: calc(var(--hairline) * -1);
+  }
+}
+
+@utility glass-2 {
+  background: var(--surface-strong);
+  -webkit-backdrop-filter: var(--glass-filter);
+  backdrop-filter: var(--glass-filter);
+  box-shadow: var(--glass-edge), var(--shadow-2);
+
+  @media (forced-colors: active) {
+    outline: var(--hairline) solid transparent;
+    outline-offset: calc(var(--hairline) * -1);
+  }
+}
+
+@utility surface-dialog {
+  background: var(--surface-solid);
+  box-shadow: var(--shadow-3);
+
+  @media (forced-colors: active) {
+    outline: var(--hairline) solid transparent;
+    outline-offset: calc(var(--hairline) * -1);
+  }
+}
+
+/* A page of the document: white in both themes, with the page shadow. */
+@utility shadow-page {
+  box-shadow: var(--page-shadow);
+}
+
+/* Elevation layers (DESIGN 1.7). */
+@utility z-base {
+  z-index: var(--z-base);
+}
+
+@utility z-canvas-page {
+  z-index: var(--z-canvas-page);
+}
+
+@utility z-canvas-text {
+  z-index: var(--z-canvas-text);
+}
+
+@utility z-canvas-annotations {
+  z-index: var(--z-canvas-annotations);
+}
+
+@utility z-canvas-scrim {
+  z-index: var(--z-canvas-scrim);
+}
+
+@utility z-popover {
+  z-index: var(--z-popover);
+}
+
+@utility z-toast {
+  z-index: var(--z-toast);
+}
+
+@utility z-modal {
+  z-index: var(--z-modal);
+}
+
+@utility z-tooltip {
+  z-index: var(--z-tooltip);
+}
+
+@utility z-drag {
+  z-index: var(--z-drag);
+}
+
+/* Durations (DESIGN 1.6). Easing comes from the ease-out, ease-in and ease-spring utilities. */
+@utility duration-fast {
+  transition-duration: var(--motion-fast);
+}
+
+@utility duration-base {
+  transition-duration: var(--motion-base);
+}
+
+@utility duration-slow {
+  transition-duration: var(--motion-slow);
 }

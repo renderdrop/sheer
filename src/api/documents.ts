@@ -1,6 +1,5 @@
-import { invoke } from '@tauri-apps/api/core';
-
 import { MIN_RENDER_SCALE } from '../lib/zoom';
+import { call } from './call';
 import { toAppError, type AppError } from './errors';
 import { parseFrame, type RenderFrame } from './frame';
 
@@ -22,14 +21,6 @@ export interface RenderedPage extends RenderFrame {
  */
 const MAX_LIMIT_RETRIES = 4;
 const LIMIT_RETRY_FACTOR = 0.7;
-
-async function call<T>(command: string, args?: Record<string, unknown>): Promise<T> {
-  try {
-    return await invoke<T>(command, args);
-  } catch (error) {
-    throw toAppError(error);
-  }
-}
 
 /** Shows the native open dialog. Resolves to `null` if the user cancels. */
 export function openDocumentDialog(): Promise<DocumentInfo | null> {

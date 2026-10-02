@@ -15,6 +15,9 @@ fn main() {
         "open_document_dialog",
         "render_page",
         "close_document",
+        "app_ready",
+        "get_settings",
+        "update_settings",
     ]);
     if let Err(error) =
         tauri_build::try_build(tauri_build::Attributes::new().app_manifest(manifest))

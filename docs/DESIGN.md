@@ -116,6 +116,21 @@ focus `Highlight`. Blur never animates.
 Lucide, `absoluteStrokeWidth` 1.5 px (2 px at 12), `currentColor`, `aria-hidden`. Sizes: 12 badges/status · 16 default ·
 20 toolbar tools · 24 empty-state tile.
 
+### 1.9 Implementation (Tailwind 4)
+
+`src/styles/tokens.css` holds every value of §1; `tokens.test.ts` checks it against these tables. Tailwind's default theme is dropped
+(`--*: initial`), so only role tokens exist as utilities. Names follow the token names:
+
+- Colors: `bg-accent`, `text-text-muted`, `border-divider`, `bg-surface-solid`, `bg-page` (the page gradient is `bg-bg`).
+- Spacing: `p-1` is `--space-1` (8 px), not Tailwind's 4 px; `p-0-5`, `gap-1-5`. Sizes: `h-control-md`, `size-icon-16`, `min-w-target-min`.
+- `rounded-panel`, `shadow-2`, `text-md` (size, line height and weight together), `font-display` for ≥ 20 px, `ease-spring`, `duration-fast`, `z-popover`.
+- Recipes: `glass-1` (G1), `glass-2` (G2), `surface-dialog` (solid + `--shadow-3`), `shadow-page`. Solid mode needs no variant: the tokens change underneath.
+- Beyond the tables, only values the specs imply: `--color-tooltip-text`/`-key` (§3.4), `--color-page` and `--color-doc-*` (§1.2 last paragraph),
+  `--color-backdrop` (§1.7), `--page-shadow` (§3.9, = `--shadow-1`) and `--scale-press`/`--scale-enter`/`--offset-enter`
+  (§3.0, 3.5, 3.12), which reduced motion resets to 1, 1 and 0 so a component needs no extra branch.
+- Theme: `prefers-color-scheme`, overridden by `html[data-theme]`. Solid mode: unsupported `backdrop-filter`, `prefers-reduced-transparency`,
+  `html[data-transparency="reduced"]`, `forced-colors`. The dark values and the solid values each exist twice in the file (media query and attribute); the test keeps the copies identical.
+
 ## 2. Layout grid
 
 | Row | Height |

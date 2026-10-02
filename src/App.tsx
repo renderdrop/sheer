@@ -23,6 +23,19 @@ interface PageView {
 /** Coalesces bursts of zoom changes (wheel, held key) into one render request. */
 const RENDER_DEBOUNCE_MS = 80;
 
+// Class strings of the spike UI, all from role tokens (src/styles/tokens.css). Primitives I replaces them with components.
+// Hover only where enabled (and under (hover: hover), which Tailwind adds); pressed scales through --scale-press, which
+// reduced motion turns into 1. Focus rings come from the global :focus-visible rule.
+const BUTTON =
+  'inline-flex h-control-md min-w-control-md cursor-pointer items-center justify-center rounded-button px-1-5 text-md font-semibold transition-[background-color,scale] enabled:active:scale-(--scale-press) disabled:cursor-not-allowed';
+const BUTTON_GHOST =
+  'bg-transparent text-text enabled:hover:bg-control-hover enabled:active:bg-control-pressed disabled:text-text-disabled';
+const BUTTON_PRIMARY =
+  'bg-accent text-on-accent enabled:hover:bg-accent-hover enabled:active:bg-accent-pressed disabled:bg-fill-disabled disabled:text-text-disabled';
+/** A toolbar cluster: items 4 px apart, clusters split by a 1 px divider (DESIGN 3.3). */
+const GROUP = 'flex items-center gap-0-5 not-first:border-s not-first:border-divider not-first:ps-1';
+const EMPTY_CARD = 'glass-1 m-auto flex flex-col items-center gap-2 rounded-card p-4 text-center';
+
 export function App() {
   const [doc, setDoc] = useState<DocumentInfo | null>(null);
   const [pageIndex, setPageIndex] = useState(0);
@@ -144,15 +157,21 @@ export function App() {
 
   const pageCount = doc?.pageCount ?? 0;
   const hasPages = pageCount > 0;
+  // The opaque canvas exists only while a document is open; the empty state sits on the page background (DESIGN 2).
+  const onCanvas = doc !== null && hasPages;
 
   return (
-    <div className="app">
-      <header className="chrome">
-        <div className="toolbar glass" role="toolbar" aria-label={strings.toolbarLabel}>
-          <div className="toolbar-group">
+    <div className="grid h-full grid-rows-[auto_minmax(0,1fr)]">
+      <header className="flex flex-col gap-1 px-2 py-1">
+        <div
+          className="glass-1 flex flex-wrap items-center gap-1 rounded-panel p-0-5"
+          role="toolbar"
+          aria-label={strings.toolbarLabel}
+        >
+          <div className={GROUP}>
             <button
               type="button"
-              className="btn btn-primary"
+              className={`${BUTTON} ${BUTTON_PRIMARY}`}
               onClick={() => void open()}
               disabled={opening}
               title={strings.openHint}
@@ -161,10 +180,10 @@ export function App() {
               {opening ? strings.opening : strings.open}
             </button>
           </div>
-          <div className="toolbar-group">
+          <div className={GROUP}>
             <button
               type="button"
-              className="btn"
+              className={`${BUTTON} ${BUTTON_GHOST}`}
               onClick={() => setPageIndex((current) => Math.max(0, current - 1))}
               disabled={!hasPages || pageIndex === 0}
               aria-label={strings.previousPage}
@@ -172,12 +191,12 @@ export function App() {
             >
               ‹
             </button>
-            <span className="readout" aria-live="polite">
+            <span className="min-w-6 px-1 text-center text-text-muted" aria-live="polite">
               {hasPages ? strings.page(pageIndex + 1, pageCount) : ''}
             </span>
             <button
               type="button"
-              className="btn"
+              className={`${BUTTON} ${BUTTON_GHOST}`}
               onClick={() => setPageIndex((current) => Math.min(pageCount - 1, current + 1))}
               disabled={!hasPages || pageIndex >= pageCount - 1}
               aria-label={strings.nextPage}
@@ -186,10 +205,10 @@ export function App() {
               ›
             </button>
           </div>
-          <div className="toolbar-group">
+          <div className={GROUP}>
             <button
               type="button"
-              className="btn"
+              className={`${BUTTON} ${BUTTON_GHOST}`}
               onClick={() => setZoom((current) => stepZoom(current, -1))}
               disabled={!hasPages || zoom <= MIN_ZOOM}
               aria-label={strings.zoomOut}
@@ -200,7 +219,7 @@ export function App() {
             </button>
             <button
               type="button"
-              className="btn"
+              className={`${BUTTON} ${BUTTON_GHOST}`}
               onClick={() => setZoom(DEFAULT_ZOOM)}
               disabled={!hasPages}
               aria-label={strings.zoomReset}
@@ -211,7 +230,7 @@ export function App() {
             </button>
             <button
               type="button"
-              className="btn"
+              className={`${BUTTON} ${BUTTON_GHOST}`}
               onClick={() => setZoom((current) => stepZoom(current, 1))}
               disabled={!hasPages || zoom >= MAX_ZOOM}
               aria-label={strings.zoomIn}
@@ -221,24 +240,35 @@ export function App() {
               +
             </button>
           </div>
-          <span className="toolbar-spacer" />
-          <span className="status" role="status">
+          <span className="flex-auto" />
+          <span className="px-1 text-sm text-text-muted" role="status">
             {rendering ? strings.rendering : ''}
           </span>
         </div>
         {error !== null && (
-          <div className="banner" role="alert">
-            <span className="banner-message">{strings.error(error)}</span>
-            <button type="button" className="btn" onClick={() => setError(null)}>
+          <div
+            className="glass-1 flex min-h-6 items-center gap-1 rounded-panel py-1 pe-1 ps-2 text-error-text"
+            role="alert"
+          >
+            <span aria-hidden="true" className="w-0-5 self-stretch rounded-pill bg-error-icon" />
+            <span className="flex-auto">{strings.error(error)}</span>
+            <button type="button" className={`${BUTTON} ${BUTTON_GHOST}`} onClick={() => setError(null)}>
               {strings.dismiss}
             </button>
           </div>
         )}
       </header>
-      <main className="canvas" ref={canvasRef} tabIndex={0} aria-label={strings.documentRegion} aria-busy={rendering}>
+      <main
+        className={`isolate mx-1 mb-1 flex min-h-0 overflow-auto ${onCanvas ? 'rounded-panel bg-canvas p-3' : 'p-1'}`}
+        ref={canvasRef}
+        tabIndex={0}
+        aria-label={strings.documentRegion}
+        aria-busy={rendering}
+      >
         {view !== null ? (
-          <div className="page">
+          <div className="m-auto flex-none bg-page shadow-page">
             <img
+              className="block h-auto max-w-none"
               src={view.url}
               alt={strings.pageImageAlt(pageIndex + 1, pageCount)}
               style={{ width: Math.round(view.widthPt * CSS_PX_PER_PT * zoom) }}
@@ -246,16 +276,21 @@ export function App() {
             />
           </div>
         ) : doc === null ? (
-          <div className="empty glass">
-            <h1>{strings.emptyTitle}</h1>
-            <p>{strings.emptyHint}</p>
-            <button type="button" className="btn btn-primary" onClick={() => void open()} disabled={opening}>
+          <div className={EMPTY_CARD}>
+            <h1 className="m-0 font-display text-xl">{strings.emptyTitle}</h1>
+            <p className="m-0 text-text-muted">{strings.emptyHint}</p>
+            <button
+              type="button"
+              className={`${BUTTON} ${BUTTON_PRIMARY} h-control-lg px-2`}
+              onClick={() => void open()}
+              disabled={opening}
+            >
               {strings.open}
             </button>
           </div>
         ) : !hasPages ? (
-          <div className="empty glass">
-            <p>{strings.noPages}</p>
+          <div className={EMPTY_CARD}>
+            <p className="m-0 text-text-muted">{strings.noPages}</p>
           </div>
         ) : null}
       </main>

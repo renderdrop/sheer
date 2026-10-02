@@ -26,6 +26,12 @@ pub const MAX_OPEN_DOCUMENTS: usize = 32;
 /// Largest PDF file the app opens (ARCHITECTURE §4: 2 GiB).
 pub const MAX_PDF_FILE_BYTES: u64 = 2 * 1024 * 1024 * 1024;
 
+// --- Settings ---------------------------------------------------------------------------------------------------
+
+/// Largest settings file that is read. A real one is well under 1 KiB; anything bigger is damaged or foreign and the
+/// defaults are used instead (the file is user-writable, so its size is not trusted).
+pub const MAX_SETTINGS_FILE_BYTES: u64 = 64 * 1024;
+
 // --- Engine worker ----------------------------------------------------------------------------------------------
 
 /// Deadline for loading a document (ADR-002 §8).

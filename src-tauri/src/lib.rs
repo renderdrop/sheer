@@ -7,12 +7,17 @@ pub mod documents;
 pub mod engine;
 pub mod error;
 pub mod limits;
+pub mod platform;
+pub mod storage;
+
+use std::sync::Arc;
 
 use tauri::Manager;
 
 use crate::commands::AppState;
 use crate::engine::Engine;
 use crate::error::{AppError, ErrorCode};
+use crate::storage::settings::{self, SettingsStore};
 
 /// Builds and runs the app. Returns when the last window is closed. A startup failure comes back as an [`AppError`]
 /// (the Tauri error text, which can contain paths, is only its log detail); the caller logs it with `AppError::log`.
@@ -26,12 +31,18 @@ pub fn run() -> Result<(), AppError> {
             app.manage(AppState::new(Engine::start(engine::library_path(
                 &pdfium_root,
             ))));
+            // Settings live in the app data directory; a missing or damaged file means the defaults.
+            let settings_path = app.path().app_data_dir()?.join(settings::FILE_NAME);
+            app.manage(Arc::new(SettingsStore::load(settings_path)));
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
             commands::open_document_dialog,
             commands::render_page,
             commands::close_document,
+            commands::app::app_ready,
+            commands::app::get_settings,
+            commands::app::update_settings,
         ])
         .run(tauri::generate_context!())
         .map_err(|error| AppError::logged(ErrorCode::Internal, error))

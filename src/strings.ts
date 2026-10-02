@@ -24,6 +24,7 @@ const errorDetailMessages: Readonly<Record<string, string>> = {
   'not_found.document': 'This document is no longer open.',
   'invalid_argument.page': 'This page does not exist.',
   'invalid_argument.scale': 'This zoom level is not supported.',
+  'invalid_argument.settings': 'That setting is not valid.',
   'limit_exceeded.pixels': 'This page is too large to display at this zoom level.',
   'limit_exceeded.dimension': 'This page is too large to display at this zoom level.',
   'limit_exceeded.documents': 'Too many documents are open. Close one and try again.',

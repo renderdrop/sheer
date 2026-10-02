@@ -91,9 +91,9 @@ All commands are `async` and return `Result<T, UiError>`. Bounds come from `limi
 
 ```rust
 // app
-app_ready() -> AppBootstrap                          // pending opens, platform, reducedTransparency, version
-get_settings() -> Settings
-update_settings(patch: SettingsPatch) -> Settings    // enums and ranges validated
+app_ready() -> AppBootstrap                          // platform, reducedTransparency, version (pending opens join in M1)
+get_settings() -> Settings                           // { glass: "auto" | "solid", theme: "system" | "light" | "dark" }
+update_settings(patch: SettingsPatch) -> Settings    // patch { glass?, theme? }; unknown key or enum value → invalid_argument (what: "settings")
 // documents
 open_document_dialog() -> Vec<OpenResult>            // ≤ 32 files
 open_recent(recent_id: u32) -> OpenResult
@@ -137,7 +137,17 @@ struct OpenResult    { doc_id: DocId, status: OpenStatus /* Ready | NeedsPasswor
 struct DocumentInfo  { doc_id: DocId, display_name: String, pages: Vec<PageSlotInfo>, rev: u32, flags: DocFlags, history: HistoryState }
 struct PageSlotInfo  { id: PageId, width: f32, height: f32 /* pt, unrotated CropBox */, rotation: u16, rev: u32, label: Option<String> }
 struct SaveResult    { rev: u32, mode: SaveMode /* Incremental | Full */, backup_created: bool }
+struct AppBootstrap  { platform: Platform /* macos | windows | linux */, reduced_transparency: bool, version: &'static str }
+struct Settings      { glass: GlassMode /* Auto | Solid */, theme: ThemeMode /* System | Light | Dark */ }   // serde lowercase values
 ```
+
+**Settings.** `storage::settings` keeps the settings in memory and in `<app data dir>/settings.json`. A missing, oversized (> 64 KiB), damaged
+or hand-edited file never blocks start: each field that is invalid falls back to its default. `update_settings` takes the patch as raw JSON,
+validates all of it first (object, known keys, known enum values) and writes it atomically (temp file in the same directory, fsync,
+rename). Only after the write succeeds does the in-memory copy change, so a failed write leaves memory and disk in agreement.
+`reducedTransparency` is the macOS "Reduce transparency" flag (`NSWorkspace.accessibilityDisplayShouldReduceTransparency`, `platform::macos`);
+elsewhere it is `false` and CSS `prefers-reduced-transparency` covers the platform. The frontend turns settings and flag into
+`html[data-theme]` and `html[data-transparency="reduced"]` (`src/stores/settings.ts`, DESIGN §1). A live `os:transparency` event (§6) is not wired yet.
 
 Launch, GoToR and JavaScript actions map to `Blocked`. The UI's confirm dialog shows the URL, and `open_link` re-reads the URL from the
 document. The frontend therefore cannot make Rust open an arbitrary URL.
