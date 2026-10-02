@@ -1,9 +1,16 @@
 import { useEffect } from 'react';
 import { create } from 'zustand';
 
-import { closeDocument, openDocumentDialog, renderPage, type DocumentInfo } from '../../api/documents';
-import { toAppError } from '../../api/errors';
+import {
+  closeDocument,
+  openDocumentDialog,
+  renderPage,
+  type DocumentInfo,
+  type OpenOutcome,
+} from '../../api/documents';
+import { toAppError, type AppError } from '../../api/errors';
 import { DEFAULT_ZOOM, fitPageZoom, fitWidthZoom, scaleForZoom, stepZoom, wheelZoom } from '../../lib/zoom';
+import { selectActiveId, useDocuments } from '../../stores/documents';
 import { useUi } from '../../stores/ui';
 import { useDocView, useView } from '../../stores/view';
 
@@ -24,17 +31,16 @@ export interface Viewport {
 const RENDER_DEBOUNCE_MS = 80;
 
 export interface ViewerState {
-  /** The open document, `null` while there is none. */
-  doc: DocumentInfo | null;
+  /** The active document's page image, `null` until it has rendered and while there is no document. */
   image: PageImage | null;
   opening: boolean;
   rendering: boolean;
   /** The canvas's size as it last reported it, `null` until it has (and in tests that render no canvas). */
   viewport: Viewport | null;
 
-  /** Shows the open dialog; a document that is chosen replaces (and closes) the one that is open. Never rejects. */
+  /** Shows the open dialog; every document that is chosen is opened and the last one becomes the active one. Never rejects. */
   open: () => Promise<void>;
-  /** Closes the open document: its view and image go, and the backend is told to release it. Nothing without one. */
+  /** Closes the active document: its view and image go, and the backend is told to release it. Nothing without one. */
   close: () => void;
   /** One preset step in or out. */
   zoomStep: (direction: 1 | -1) => void;
@@ -58,8 +64,9 @@ export interface ViewerState {
 }
 
 /**
- * The open document and what the canvas shows of it: the spike's open, render and zoom logic, moved out of the shell so
- * the layout does not depend on it. Zoom and page live in the `view` store, a failed action in the `ui` store's banner.
+ * The viewer's actions and what the canvas shows of the active document: the spike's open, render and zoom logic, moved out of
+ * the shell so the layout does not depend on it. Which documents are open is the `documents` store, how each is shown (zoom,
+ * page) the `view` store, a failed action the `ui` store's banner.
  *
  * It is a store, not a hook with local state, so each part of the window subscribes to the one field it shows (the canvas
  * to the image, the status bar to the name, the toolbar to whether there is a document) and a zoom step or a new page does
@@ -69,24 +76,23 @@ export interface ViewerState {
  * Until pages can be reordered (M3) a page id is its position, and until the viewer scrolls (M1) one page is shown.
  */
 export const useViewer = create<ViewerState>()((set, get) => {
-  /** Applies `change` to the view of the open document; nothing when there is none. */
+  /** Applies `change` to the view of the active document; nothing when there is none. */
   const changeView = (change: (docId: number, zoom: number) => void) => {
-    const doc = get().doc;
-    if (doc === null) return;
-    const view = useView.getState().byDoc[doc.id];
-    change(doc.id, view?.zoom ?? DEFAULT_ZOOM);
+    const docId = useDocuments.getState().activeId;
+    if (docId === null) return;
+    const view = useView.getState().byDoc[docId];
+    change(docId, view?.zoom ?? DEFAULT_ZOOM);
   };
 
   /** Moves the shown page by `delta`; the view store keeps it inside the document. */
   const changePage = (delta: number) => {
-    const doc = get().doc;
-    if (doc === null) return;
-    const view = useView.getState().byDoc[doc.id];
-    if (view !== undefined) useView.getState().setPage(doc.id, view.pageIndex + delta);
+    const docId = useDocuments.getState().activeId;
+    if (docId === null) return;
+    const view = useView.getState().byDoc[docId];
+    if (view !== undefined) useView.getState().setPage(docId, view.pageIndex + delta);
   };
 
   return {
-    doc: null,
     image: null,
     opening: false,
     rendering: false,
@@ -97,15 +103,7 @@ export const useViewer = create<ViewerState>()((set, get) => {
       set({ opening: true });
       useUi.getState().dismissBanner();
       try {
-        const info = await openDocumentDialog();
-        if (info === null) return;
-        const previous = get().doc;
-        useView.getState().open(info.id, info.pageCount);
-        set({ doc: info, image: null });
-        if (previous !== null) {
-          useView.getState().close(previous.id);
-          closeDocument(previous.id).catch(() => undefined);
-        }
+        adoptOpenOutcomes(await openDocumentDialog());
       } catch (caught) {
         useUi.getState().showBanner(toAppError(caught));
       } finally {
@@ -113,11 +111,13 @@ export const useViewer = create<ViewerState>()((set, get) => {
       }
     },
     close: () => {
-      const doc = get().doc;
-      if (doc === null) return;
-      useView.getState().close(doc.id);
-      set({ doc: null, image: null, rendering: false });
-      closeDocument(doc.id).catch(() => undefined);
+      const docId = useDocuments.getState().activeId;
+      if (docId === null) return;
+      useView.getState().close(docId);
+      useDocuments.getState().remove(docId);
+      // The neighbour that becomes active (if any) renders afresh; the closed document's image is not its.
+      set({ image: null, rendering: false });
+      closeDocument(docId).catch(() => undefined);
     },
     zoomStep: (direction) => changeView((id, zoom) => useView.getState().setZoom(id, stepZoom(zoom, direction))),
     setZoom: (zoom) => changeView((id) => useView.getState().setZoom(id, zoom)),
@@ -138,8 +138,8 @@ export const useViewer = create<ViewerState>()((set, get) => {
     zoomByWheel: (deltaY, deltaMode) =>
       changeView((id, zoom) => useView.getState().setZoom(id, wheelZoom(zoom, deltaY, deltaMode))),
     goToPage: (pageIndex) => {
-      const doc = get().doc;
-      if (doc !== null) useView.getState().setPage(doc.id, pageIndex);
+      const docId = useDocuments.getState().activeId;
+      if (docId !== null) useView.getState().setPage(docId, pageIndex);
     },
     nextPage: () => changePage(1),
     previousPage: () => changePage(-1),
@@ -150,8 +150,33 @@ export const useViewer = create<ViewerState>()((set, get) => {
   };
 });
 
-/** The open document's id, or `null`. A selector, so a component re-renders when the document changes and not before. */
-export const selectDocId = (state: ViewerState): number | null => state.doc?.id ?? null;
+/**
+ * Takes a document the backend opened into the window and makes it the active one. One that is open already (the backend
+ * answers a file that is opened again with the id it has) keeps its view (zoom, page) and is only brought forward.
+ */
+function showDocument(info: DocumentInfo): void {
+  const documents = useDocuments.getState();
+  if (documents.byId[info.id] === undefined) useView.getState().open(info.id, info.pageCount);
+  const changes = documents.activeId !== info.id;
+  documents.add(info);
+  // The image on screen is the previous document's.
+  if (changes) useViewer.setState({ image: null });
+}
+
+/**
+ * Takes the results of opening files into the window, from every source: the dialog's answer and what the backend pushes for
+ * files dropped on the window or opened by the OS. Each opened document is added, and the last one shown. Of the failures the
+ * first is shown in the banner (one banner for a drop of many files, not a stack of them); it stays until dismissed, and a
+ * page that renders meanwhile does not clear it.
+ */
+export function adoptOpenOutcomes(outcomes: readonly OpenOutcome[]): void {
+  let failure: AppError | null = null;
+  for (const outcome of outcomes) {
+    if (outcome.type === 'opened') showDocument(outcome.document);
+    else failure ??= outcome.error;
+  }
+  if (failure !== null) useUi.getState().showBanner(failure);
+}
 
 /** Clears `rendering` (only when it is set, so a store that is idle does not notify anyone). */
 function stopRendering(): void {
@@ -159,12 +184,23 @@ function stopRendering(): void {
 }
 
 /**
- * The work that goes with the open document and has no UI of its own: it renders the current page whenever document, page
+ * The error that a failed render put in the banner. A page that renders later clears that banner, and only that one: an error
+ * about opening a file (a drop with a file that is not a PDF) must not vanish because the page of another document came in.
+ */
+let renderFailure: AppError | null = null;
+
+function clearRenderFailure(): void {
+  if (renderFailure !== null && useUi.getState().banner === renderFailure) useUi.getState().dismissBanner();
+  renderFailure = null;
+}
+
+/**
+ * The work that goes with the active document and has no UI of its own: it renders the current page whenever document, page
  * or zoom changes and frees the page image once it has been replaced. The keys belong to the command registry
  * (`src/actions`), not to the viewer. Mount it once (`ViewerEffects`).
  */
 export function useViewerEffects(): void {
-  const docId = useViewer(selectDocId);
+  const docId = useDocuments(selectActiveId);
   const { zoom, pageIndex, pageCount } = useDocView(docId);
   const imageUrl = useViewer((state) => state.image?.url);
 
@@ -187,10 +223,12 @@ export function useViewerEffects(): void {
           const url = URL.createObjectURL(new Blob([page.data], { type: 'image/png' }));
           // `page.scale` is lower than `scale` only if the backend refused the full-size frame.
           useViewer.setState({ image: { url, widthPt: page.width / page.scale, heightPt: page.height / page.scale } });
-          useUi.getState().dismissBanner();
+          clearRenderFailure();
         })
         .catch((caught: unknown) => {
-          if (!cancelled) useUi.getState().showBanner(toAppError(caught));
+          if (cancelled) return;
+          renderFailure = toAppError(caught);
+          useUi.getState().showBanner(renderFailure);
         })
         .finally(() => {
           if (!cancelled) useViewer.setState({ rendering: false });

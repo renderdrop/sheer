@@ -2,6 +2,7 @@ import { Channel } from '@tauri-apps/api/core';
 
 import { LANGUAGES, type Language } from '../i18n/locale';
 import { call } from './call';
+import { parseOpenOutcome, type OpenOutcome } from './documents';
 import { toAppError } from './errors';
 
 /** Wire names of the backend's `Platform` (src-tauri/src/platform/mod.rs). */
@@ -158,4 +159,34 @@ export async function subscribeMenu(onAction: (id: string) => void, systemLangua
     if (id !== null) onAction(id);
   });
   await call<void>('subscribe_menu', { onAction: channel, systemLanguage });
+}
+
+/**
+ * What the backend pushes to the UI on the channel of `subscribeApp` (src-tauri/src/events.rs, `AppEvent`): whether files are
+ * being dragged over the window, and how opening a file went when the UI did not ask for it (a file dropped on the window or
+ * opened by the OS: file association, a second launch). The messages carry no path, only what the UI may know about a file.
+ */
+export type AppEvent = { type: 'dropHover'; active: boolean } | OpenOutcome;
+
+/** A pushed event from a channel message; `null` if the message is not one. */
+export function parseAppEvent(message: unknown): AppEvent | null {
+  if (typeof message !== 'object' || message === null) return null;
+  const { type, active } = message as { type?: unknown; active?: unknown };
+  if (type === 'dropHover') return typeof active === 'boolean' ? { type, active } : null;
+  return parseOpenOutcome(message);
+}
+
+/**
+ * Starts receiving the backend's pushes: `onEvent` gets each `AppEvent`, first those that happened before this call (a file
+ * the app was started with is opened while the window loads, and its result waits for the UI), in order, each once. Like
+ * `watchTransparency` this is a `Channel` passed to a command, not an event: the window has no event permission, so it cannot
+ * hear the `tauri://drag-drop` event whose payload is the dropped paths (SECURITY T3, T9). Calling it again replaces the earlier
+ * channel. Rejects like any command. A message that is not an `AppEvent` is dropped.
+ */
+export async function subscribeApp(onEvent: (event: AppEvent) => void): Promise<void> {
+  const channel = new Channel<unknown>((message) => {
+    const event = parseAppEvent(message);
+    if (event !== null) onEvent(event);
+  });
+  await call<void>('subscribe_app', { onEvent: channel });
 }

@@ -1,9 +1,10 @@
 import type { CSSProperties } from 'react';
 
+import { selectActiveId, useDocuments } from '../../stores/documents';
 import { useUi } from '../../stores/ui';
 import { useDocView } from '../../stores/view';
 import { Canvas } from './Canvas';
-import { selectDocId, useViewer } from './useViewer';
+import { useViewer } from './useViewer';
 
 /**
  * The canvas with the open document's state: the page image, its zoom and page, whether a render is in flight, and the
@@ -14,7 +15,7 @@ export function ViewerCanvas({ style }: { style?: CSSProperties }) {
   const busy = useViewer((state) => state.rendering);
   const zoomByWheel = useViewer((state) => state.zoomByWheel);
   const setViewport = useViewer((state) => state.setViewport);
-  const { zoom, pageIndex, pageCount } = useDocView(useViewer(selectDocId));
+  const { zoom, pageIndex, pageCount } = useDocView(useDocuments(selectActiveId));
   const dropActive = useUi((state) => state.dropHover);
   return (
     <Canvas

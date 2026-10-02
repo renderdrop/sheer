@@ -6,6 +6,7 @@ import type { DocumentInfo } from '../api/documents';
 import { Shell } from '../features/shell/Shell';
 import { useViewer } from '../features/viewer/useViewer';
 import { useSettings } from '../stores/settings';
+import { opened, resetDocuments } from '../stores/documents.testutil';
 import { useUi } from '../stores/ui';
 import { useView } from '../stores/view';
 import { setup } from '../test/render';
@@ -46,9 +47,10 @@ function chooseLanguage(language: 'system' | 'en' | 'de'): void {
 beforeEach(() => {
   useUi.setState({ ...uiInitial }, true);
   useViewer.setState({ ...viewerInitial }, true);
+  resetDocuments();
   useView.setState({ byDoc: {} });
   useSettings.setState({ ...settingsInitial, platform: 'windows' }, true);
-  documentsApi.openDocumentDialog.mockReset().mockResolvedValue(REPORT);
+  documentsApi.openDocumentDialog.mockReset().mockResolvedValue([opened(REPORT)]);
   documentsApi.renderPage
     .mockReset()
     .mockResolvedValue({ data: new Uint8Array([1]), width: 816, height: 1056, scale: 4 / 3 });
@@ -66,6 +68,7 @@ afterEach(() => {
   vi.restoreAllMocks();
   useUi.setState({ ...uiInitial }, true);
   useViewer.setState({ ...viewerInitial }, true);
+  resetDocuments();
   useView.setState({ byDoc: {} });
   useSettings.setState(settingsInitial, true);
 });
@@ -189,7 +192,7 @@ describe('the language setting', () => {
   });
 
   it('page numbers are written in the language of the UI', async () => {
-    documentsApi.openDocumentDialog.mockResolvedValue({ id: 1, pageCount: 12000, displayName: 'Big.pdf' });
+    documentsApi.openDocumentDialog.mockResolvedValue([opened({ id: 1, pageCount: 12000, displayName: 'Big.pdf' })]);
     const { user } = setup(<Shell />);
     await user.click(screen.getByRole('button', { name: 'Open…' }));
     await screen.findByRole('img', { name: /^Page 1 of/ });

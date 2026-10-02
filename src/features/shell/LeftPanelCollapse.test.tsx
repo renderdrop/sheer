@@ -7,6 +7,7 @@ import type { DocumentInfo } from '../../api/documents';
 import { PANEL } from '../../components/tokens';
 import { setup } from '../../test/render';
 import { useSettings } from '../../stores/settings';
+import { opened, resetDocuments } from '../../stores/documents.testutil';
 import { useUi } from '../../stores/ui';
 import { useView } from '../../stores/view';
 import { useViewer } from '../viewer/useViewer';
@@ -46,9 +47,10 @@ function resizeTo(width: number) {
 beforeEach(() => {
   useUi.setState({ ...uiInitial }, true);
   useViewer.setState({ ...viewerInitial }, true);
+  resetDocuments();
   useView.setState({ byDoc: {} });
   useSettings.setState({ ...settingsInitial, platform: null }, true);
-  documentsApi.openDocumentDialog.mockReset().mockResolvedValue(REPORT);
+  documentsApi.openDocumentDialog.mockReset().mockResolvedValue([opened(REPORT)]);
   documentsApi.renderPage
     .mockReset()
     .mockResolvedValue({ data: new Uint8Array([1]), width: 816, height: 1056, scale: 4 / 3 });
@@ -63,6 +65,7 @@ afterEach(() => {
   vi.useRealTimers();
   useUi.setState({ ...uiInitial }, true);
   useViewer.setState({ ...viewerInitial }, true);
+  resetDocuments();
   useView.setState({ byDoc: {} });
   useSettings.setState(settingsInitial, true);
 });

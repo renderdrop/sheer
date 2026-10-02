@@ -1,14 +1,14 @@
 import { useCallback, useRef, useSyncExternalStore } from 'react';
 
 import { shellStructure, type ShellStructure } from '../../lib/layout';
+import { useDocuments } from '../../stores/documents';
 import { useUi } from '../../stores/ui';
-import { useViewer } from '../viewer/useViewer';
 
 /** The structure of the shell as the stores and the window say it now (see `shellStructure`, src/lib/layout.ts). */
 export function readShellStructure(): ShellStructure {
   const ui = useUi.getState();
   return shellStructure({
-    hasDocument: useViewer.getState().doc !== null,
+    hasDocument: useDocuments.getState().activeId !== null,
     windowWidth: window.innerWidth,
     panelWidth: ui.leftPanelWidth,
     panelCollapsed: ui.leftPanelCollapsed,
@@ -21,11 +21,11 @@ export function readShellStructure(): ShellStructure {
 function subscribe(notify: () => void): () => void {
   window.addEventListener('resize', notify);
   const stopUi = useUi.subscribe(notify);
-  const stopViewer = useViewer.subscribe(notify);
+  const stopDocuments = useDocuments.subscribe(notify);
   return () => {
     window.removeEventListener('resize', notify);
     stopUi();
-    stopViewer();
+    stopDocuments();
   };
 }
 

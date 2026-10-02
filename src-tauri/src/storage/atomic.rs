@@ -606,17 +606,18 @@ mod tests {
             .into_iter()
             .filter(|name| !removed.contains(name))
             .collect();
-        assert_eq!(
-            listed,
-            [
-                ".hidden.tmp".to_owned(),
-                ".settings.json.12.x.tmp".to_owned(),
-                temp_name(&dir.path().join("settings.json"), 4),
-                "notes.tmp".to_owned(),
-                "settings.json".to_owned(),
-                "settings.json.12.3.tmp".to_owned(),
-            ]
-        );
+        // Sorted like `entries`: where the fresh temp name falls among the others depends on the process id in it, so a
+        // fixed order would only hold for some ids ("10392" sorts before "12").
+        let mut expected = vec![
+            ".hidden.tmp".to_owned(),
+            ".settings.json.12.x.tmp".to_owned(),
+            temp_name(&dir.path().join("settings.json"), 4),
+            "notes.tmp".to_owned(),
+            "settings.json".to_owned(),
+            "settings.json.12.3.tmp".to_owned(),
+        ];
+        expected.sort();
+        assert_eq!(listed, expected);
     }
 
     #[test]

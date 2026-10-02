@@ -27,6 +27,12 @@ png = "0.18.1"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 
+# Windows only: opening another PDF from the file manager starts another process; this hands its command line to the running
+# window and ends it (src/sources.rs). Local only (a named mutex and a window message): no network. macOS routes files to the
+# running app by itself, so it is not built there.
+[target.'cfg(windows)'.dependencies]
+tauri-plugin-single-instance = "2.5.2"
+
 # macOS only: the "Reduce transparency" accessibility flag (src/platform/macos.rs). Already part of the build through
 # Tauri/wry; only the two features used are enabled here.
 [target.'cfg(target_os = "macos")'.dependencies]

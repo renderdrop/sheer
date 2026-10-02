@@ -6,9 +6,11 @@ pub mod commands;
 pub mod documents;
 pub mod engine;
 pub mod error;
+pub mod events;
 pub mod limits;
 pub mod menu;
 pub mod platform;
+pub mod sources;
 pub mod storage;
 
 use std::sync::Arc;
@@ -18,6 +20,7 @@ use tauri::Manager;
 use crate::commands::AppState;
 use crate::engine::Engine;
 use crate::error::{AppError, ErrorCode};
+use crate::events::AppEvents;
 use crate::menu::MenuBridge;
 use crate::platform::TransparencyWatch;
 use crate::storage::settings::{self, SettingsStore};
@@ -25,7 +28,16 @@ use crate::storage::settings::{self, SettingsStore};
 /// Builds and runs the app. Returns when the last window is closed. A startup failure comes back as an [`AppError`]
 /// (the Tauri error text, which can contain paths, is only its log detail); the caller logs it with `AppError::log`.
 pub fn run() -> Result<(), AppError> {
-    tauri::Builder::default()
+    let builder = tauri::Builder::default();
+    // Windows starts a new process for every file the user opens from the file manager. The first instance keeps the
+    // window: the new process hands its command line over and exits (`sources::on_second_instance`). It has to be the first
+    // plugin, so a second instance is turned away before anything else is set up. macOS routes the files to the running app
+    // itself (`RunEvent::Opened`), so it does not need it.
+    #[cfg(windows)]
+    let builder = builder.plugin(tauri_plugin_single_instance::init(
+        sources::on_second_instance,
+    ));
+    let app = builder
         // The menu bar is ours (src-tauri/src/menu): macOS gets the layout of src/actions/menu.json, Windows has none.
         .enable_macos_default_menu(false)
         // Registered for Rust-side use only: no capability grants the dialog commands to the webview.
@@ -36,6 +48,9 @@ pub fn run() -> Result<(), AppError> {
             app.manage(AppState::new(Engine::start(engine::library_path(
                 &pdfium_root,
             ))));
+            // What the backend pushes to the UI (drag over the window, files opened by the OS) reaches it on the channel
+            // the UI opens with `subscribe_app`; what happens before that waits here.
+            app.manage(Arc::new(AppEvents::new()));
             // Settings live in the app data directory; a missing or damaged file means the defaults. A crash in the middle
             // of a write leaves a hidden temp file there: the ones older than an hour are removed (SECURITY D1, D7).
             let data_dir = app.path().app_data_dir()?;
@@ -52,11 +67,18 @@ pub fn run() -> Result<(), AppError> {
             // with `subscribe_menu`. Nothing is installed on Windows.
             app.manage(Arc::new(MenuBridge::new()));
             menu::install(app.handle());
+            // A file the app was started with (Windows: the double-clicked file is on the command line) opens now, while
+            // the window loads; its result waits for the UI.
+            sources::open_startup_arguments(app.handle());
             Ok(())
         })
         .on_menu_event(menu::on_menu_event)
-        // Re-reads that flag when the window gains focus (see `platform::on_window_event`).
-        .on_window_event(platform::on_window_event)
+        // Re-reads that flag when the window gains focus (see `platform::on_window_event`), and takes files dropped on the
+        // window (see `sources::on_window_event`).
+        .on_window_event(|window, event| {
+            platform::on_window_event(window, event);
+            sources::on_window_event(window, event);
+        })
         .invoke_handler(tauri::generate_handler![
             commands::open_document_dialog,
             commands::render_page,
@@ -66,7 +88,11 @@ pub fn run() -> Result<(), AppError> {
             commands::app::update_settings,
             commands::app::watch_transparency,
             commands::app::subscribe_menu,
+            commands::app::subscribe_app,
         ])
-        .run(tauri::generate_context!())
-        .map_err(|error| AppError::logged(ErrorCode::Internal, error))
+        .build(tauri::generate_context!())
+        .map_err(|error| AppError::logged(ErrorCode::Internal, error))?;
+    // macOS hands the files it is asked to open to the running app as `RunEvent::Opened`.
+    app.run(|app, event| sources::on_run_event(app, &event));
+    Ok(())
 }

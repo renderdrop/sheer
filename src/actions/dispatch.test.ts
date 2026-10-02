@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { DocumentInfo } from '../api/documents';
 import { useViewer } from '../features/viewer/useViewer';
 import { MAX_ZOOM, MIN_ZOOM } from '../lib/zoom';
+import { activeDocument, opened, resetDocuments } from '../stores/documents.testutil';
 import { useUi } from '../stores/ui';
 import { useView } from '../stores/view';
 import { useAboutDialog } from '../features/about/state';
@@ -30,12 +31,13 @@ function reset() {
   useAboutDialog.setState({ open: false });
   useUi.setState({ ...uiInitial }, true);
   useViewer.setState({ ...viewerInitial }, true);
+  resetDocuments();
   useView.setState({ byDoc: {} });
 }
 
 beforeEach(() => {
   reset();
-  documentsApi.openDocumentDialog.mockReset().mockResolvedValue(REPORT);
+  documentsApi.openDocumentDialog.mockReset().mockResolvedValue([opened(REPORT)]);
   documentsApi.closeDocument.mockReset().mockResolvedValue(undefined);
   Object.defineProperty(window, 'innerWidth', { value: 1400, configurable: true, writable: true });
 });
@@ -64,13 +66,13 @@ describe('runAction', () => {
   it('opens a document, which is what every Open (toolbar, More, menu bar, key) does', async () => {
     await act(async () => void runAction('open'));
     expect(documentsApi.openDocumentDialog).toHaveBeenCalledTimes(1);
-    expect(useViewer.getState().doc).toEqual(REPORT);
+    expect(activeDocument()).toEqual(REPORT);
   });
 
   it('closes the document', async () => {
     await open();
     expect(runAction('close-document')).toBe(true);
-    expect(useViewer.getState().doc).toBeNull();
+    expect(activeDocument()).toBeNull();
     expect(documentsApi.closeDocument).toHaveBeenCalledWith(1);
   });
 

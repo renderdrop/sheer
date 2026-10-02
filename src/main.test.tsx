@@ -2,7 +2,7 @@
 import { act } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import type { AppBootstrap, Settings } from './api/app';
+import type { AppBootstrap, AppEvent, Settings } from './api/app';
 import { APP_NAME } from './config/app';
 
 /**
@@ -15,6 +15,7 @@ const backend = vi.hoisted(() => ({
   updateSettings: vi.fn(),
   watchTransparency: vi.fn(),
   subscribeMenu: vi.fn(),
+  subscribeApp: vi.fn(),
 }));
 
 vi.mock('./api/app', async (importOriginal) => ({
@@ -24,6 +25,7 @@ vi.mock('./api/app', async (importOriginal) => ({
   updateSettings: backend.updateSettings,
   watchTransparency: backend.watchTransparency,
   subscribeMenu: backend.subscribeMenu,
+  subscribeApp: backend.subscribeApp,
 }));
 vi.mock('./App', async () => {
   const { createElement } = await import('react');
@@ -69,6 +71,7 @@ beforeEach(() => {
   backend.updateSettings.mockReset().mockReturnValue(new Promise(() => undefined));
   backend.watchTransparency.mockReset().mockReturnValue(new Promise(() => undefined));
   backend.subscribeMenu.mockReset().mockReturnValue(new Promise(() => undefined));
+  backend.subscribeApp.mockReset().mockReturnValue(new Promise(() => undefined));
 });
 
 afterEach(() => {
@@ -201,6 +204,34 @@ describe('main.tsx while the settings load hangs', () => {
 
   it('keeps the window when the native menu cannot be subscribed to', async () => {
     backend.subscribeMenu.mockRejectedValue(new Error('no backend'));
+    await start();
+    expect(root()?.textContent).toBe('App is on screen');
+  });
+
+  it('subscribes to what the backend pushes without waiting for the channel, and acts on it', async () => {
+    let push: ((event: AppEvent) => void) | undefined;
+    backend.subscribeApp.mockImplementation((onEvent: (event: AppEvent) => void) => {
+      push = onEvent;
+      return new Promise(() => undefined);
+    });
+    await start();
+    expect(backend.subscribeApp).toHaveBeenCalledTimes(1);
+    expect(backend.subscribeApp).toHaveBeenCalledWith(expect.any(Function));
+    expect(root()?.textContent).toBe('App is on screen');
+
+    // A drag over the window, and a file opened by the OS: the first result may even have come before the window listened.
+    const { useUi } = await import('./stores/ui');
+    const { useDocuments } = await import('./stores/documents');
+    act(() => push?.({ type: 'dropHover', active: true }));
+    expect(useUi.getState().dropHover).toBe(true);
+    act(() => push?.({ type: 'dropHover', active: false }));
+    expect(useUi.getState().dropHover).toBe(false);
+    act(() => push?.({ type: 'opened', document: { id: 7, pageCount: 2, displayName: 'Started with.pdf' } }));
+    expect(useDocuments.getState().activeId).toBe(7);
+  });
+
+  it('keeps the window when what the backend pushes cannot be subscribed to', async () => {
+    backend.subscribeApp.mockRejectedValue(new Error('no backend'));
     await start();
     expect(root()?.textContent).toBe('App is on screen');
   });

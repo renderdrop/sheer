@@ -353,6 +353,7 @@ fn capabilities_grant_only_the_app_commands_and_the_window_chrome_to_the_main_wi
         "allow-update-settings",
         "allow-watch-transparency",
         "allow-subscribe-menu",
+        "allow-subscribe-app",
     ]);
     expected.extend(
         WINDOW_PERMISSIONS
@@ -435,6 +436,144 @@ fn menu_commands_reach_the_webview_only_through_the_channel() {
     );
 }
 
+/// What the backend pushes to the UI (a drag over the window, a file the OS asked the app to open) reaches the webview only as
+/// a message on the channel of `subscribe_app`, and carries no path (SECURITY T3, T9, I2, I3). The modules that make and send
+/// the pushes therefore never emit an event or run a script: that would need the webview to `listen` (it cannot, ADR-013).
+#[test]
+fn app_pushes_reach_the_webview_only_through_the_channel() {
+    let mut sources = String::new();
+    for file in ["src/events.rs", "src/sources.rs", "src/commands/app.rs"] {
+        // The tests of a file name the forbidden calls; production code is what comes before them.
+        sources.push_str(read(file).split("#[cfg(test)]").next().unwrap());
+    }
+    for forbidden in [
+        ".emit(",
+        ".emit_to(",
+        ".emit_filter(",
+        "Emitter",
+        "Listener",
+        "evaluate_script",
+        ".eval(",
+    ] {
+        assert!(
+            !sources.contains(forbidden),
+            "{forbidden} in the app events: pushes go through the Channel only (ADR-013)"
+        );
+    }
+    let app = read("src/commands/app.rs");
+    assert!(
+        app.contains("on_event: Channel<AppEvent>"),
+        "subscribe_app takes the channel the pushes are sent on"
+    );
+    // A message is a type and the fields of that type; none has a place for a path.
+    let events = read("src/events.rs");
+    let events = events.split("#[cfg(test)]").next().unwrap();
+    assert!(
+        !events.contains("PathBuf") && !events.contains("Path"),
+        "an AppEvent must not be able to carry a path (SECURITY I2)"
+    );
+}
+
+/// SECURITY I3: a document is opened by one door. `documents::intake` canonicalizes the path, opens it once and judges the open
+/// handle; the engine is handed that handle. Nothing else in the command layer, the sources or the engine opens a file by
+/// path, and PDFium is never given a path to open (which would be the check-then-open gap again).
+#[test]
+fn a_document_is_opened_through_intake_and_pdfium_gets_the_handle() {
+    for file in [
+        "src/commands/mod.rs",
+        "src/commands/app.rs",
+        "src/sources.rs",
+        "src/engine/mod.rs",
+        "src/engine/worker.rs",
+    ] {
+        let source = read(file);
+        let production = source.split("#[cfg(test)]").next().unwrap();
+        for forbidden in [
+            "load_pdf_from_file",
+            "File::open(",
+            "fs::canonicalize",
+            "fs::metadata",
+            "OpenOptions",
+            "open_without_blocking",
+        ] {
+            assert!(
+                !production.contains(forbidden),
+                "{file} uses {forbidden}: a document is opened by `documents::intake::admit` only (SECURITY I3)"
+            );
+        }
+    }
+    let engine = read("src/engine/mod.rs");
+    assert!(
+        engine.contains("file: File,"),
+        "Job::Open carries the open handle, not a path"
+    );
+    assert!(
+        read("src/engine/worker.rs").contains("load_pdf_from_reader(file"),
+        "PDFium reads the handle intake judged"
+    );
+    let intake = read("src/documents/intake.rs");
+    for rule in [
+        "fs::canonicalize",
+        "open_without_blocking",
+        "metadata.is_file()",
+        "PDF_SIGNATURE",
+        "MAX_PDF_FILE_BYTES",
+    ] {
+        assert!(intake.contains(rule), "intake must apply {rule}");
+    }
+}
+
+/// The app registers as a viewer for `.pdf` and nothing else (SECURITY I3): a double click in the file manager opens it, and
+/// the file arrives through the same intake as a drop.
+#[test]
+fn the_file_association_is_pdf_only_and_viewer_only() {
+    let config = config();
+    let associations = config["bundle"]["fileAssociations"].as_array().unwrap();
+    assert_eq!(associations.len(), 1);
+    let pdf = &associations[0];
+    assert_eq!(pdf["ext"], serde_json::json!(["pdf"]));
+    assert_eq!(pdf["mimeType"], "application/pdf");
+    // macOS: a viewer today (an editor once M2 saves annotations into the file), and an alternate, so the user's choice of
+    // default application is not taken over.
+    assert!(
+        matches!(pdf["role"].as_str(), Some("Viewer" | "Editor")),
+        "{}",
+        pdf["role"]
+    );
+    assert_eq!(pdf["rank"], "Alternate");
+    // No platform file changes it.
+    for platform in platform_names() {
+        assert_eq!(
+            platform_config(&platform)["bundle"]["fileAssociations"],
+            config["bundle"]["fileAssociations"],
+            "{platform}"
+        );
+    }
+}
+
+/// A second instance is forwarded to the running one by a plugin that only talks locally (a named mutex and a window message on
+/// Windows). It is built on Windows alone: macOS opens files in the running app by itself (`RunEvent::Opened`), and the
+/// plugin's socket in `/tmp` is not needed there. It is the first plugin, so a second process is turned away before any setup.
+#[test]
+fn second_instance_forwarding_is_windows_only_and_registered_first() {
+    let manifest = read("Cargo.toml");
+    assert!(section(&manifest, "dependencies")
+        .iter()
+        .all(|line| !line.contains("single-instance")));
+    assert!(section(&manifest, "target.'cfg(windows)'.dependencies")
+        .iter()
+        .any(|line| line.starts_with("tauri-plugin-single-instance")));
+    let lib = read("src/lib.rs");
+    let single_instance = lib.find("tauri_plugin_single_instance::init(").unwrap();
+    let dialog = lib.find("tauri_plugin_dialog::init()").unwrap();
+    assert!(
+        single_instance < dialog,
+        "the single-instance plugin has to be the first plugin"
+    );
+    assert!(lib.contains("#[cfg(windows)]"));
+    // It adds no command and no permission: the capability stays as it is.
+    assert!(!read("capabilities/default.json").contains("single-instance"));
+}
 #[test]
 fn build_script_declares_exactly_the_granted_commands() {
     let build = read("build.rs");
@@ -447,6 +586,7 @@ fn build_script_declares_exactly_the_granted_commands() {
         "update_settings",
         "watch_transparency",
         "subscribe_menu",
+        "subscribe_app",
     ];
     let handlers = read("src/lib.rs");
     for command in commands {

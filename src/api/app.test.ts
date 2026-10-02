@@ -14,10 +14,12 @@ import {
   THEME_MODES,
   appReady,
   getSettings,
+  parseAppEvent,
   parseBootstrap,
   parseMenuMessage,
   parseSettings,
   parseTransparencyMessage,
+  subscribeApp,
   subscribeMenu,
   updateSettings,
   watchTransparency,
@@ -307,6 +309,150 @@ describe('subscribeMenu', () => {
     for (const bad of [null, undefined, 7, '', '-', 'open-', '-open', 'Open', 'zoom_in', 'zoom in', 'a'.repeat(65)]) {
       expect(parseMenuMessage(bad), String(bad)).toBeNull();
     }
+  });
+});
+
+describe('subscribeApp', () => {
+  /** The channel the command was given: what the backend would send on. */
+  const channelOf = (): { onmessage: (message: unknown) => void } => {
+    const args = invokeMock.mock.calls.at(-1)?.[1] as { onEvent: { onmessage: (message: unknown) => void } };
+    return args.onEvent;
+  };
+
+  const REPORT = { id: 3, pageCount: 12, displayName: 'Report.pdf' };
+
+  it('hands the backend one channel and nothing else, and passes on every event it sends', async () => {
+    invokeMock.mockResolvedValueOnce(undefined);
+    const onEvent = vi.fn();
+    await subscribeApp(onEvent);
+    expect(invokeMock).toHaveBeenCalledTimes(1);
+    expect(invokeMock.mock.calls[0]?.[0]).toBe('subscribe_app');
+    expect(Object.keys(invokeMock.mock.calls[0]?.[1] ?? {})).toEqual(['onEvent']);
+
+    channelOf().onmessage({ type: 'dropHover', active: true });
+    channelOf().onmessage({ type: 'opened', document: REPORT });
+    channelOf().onmessage({ type: 'dropHover', active: false });
+    channelOf().onmessage({ type: 'openFailed', code: 'not_a_pdf', key: 'error.not_a_pdf', retryable: false });
+    expect(onEvent.mock.calls).toEqual([
+      [{ type: 'dropHover', active: true }],
+      [{ type: 'opened', document: REPORT }],
+      [{ type: 'dropHover', active: false }],
+      [{ type: 'openFailed', error: { code: 'not_a_pdf', key: 'error.not_a_pdf', retryable: false } }],
+    ]);
+  });
+
+  it('ignores anything that is not an event: the message is data from outside', async () => {
+    invokeMock.mockResolvedValueOnce(undefined);
+    const onEvent = vi.fn();
+    await subscribeApp(onEvent);
+    for (const bad of [
+      null,
+      undefined,
+      1,
+      'opened',
+      true,
+      [],
+      {},
+      { type: 'dropHover' },
+      { type: 'dropHover', active: 'yes' },
+      { type: 'opened' },
+      { type: 'opened', document: { id: -1, pageCount: 1, displayName: 'a.pdf' } },
+      { type: 'navigate', url: 'https://example.com' },
+      { active: true },
+    ]) {
+      channelOf().onmessage(bad);
+    }
+    expect(onEvent).not.toHaveBeenCalled();
+  });
+
+  it('never lets a path through: an event holds only the fields it is documented to have', async () => {
+    invokeMock.mockResolvedValueOnce(undefined);
+    const onEvent = vi.fn();
+    await subscribeApp(onEvent);
+    channelOf().onmessage({
+      type: 'opened',
+      document: { ...REPORT, path: 'C:\\Users\\user\\Report.pdf' },
+      paths: ['x'],
+    });
+    channelOf().onmessage({ type: 'dropHover', active: true, paths: ['C:\\Users\\user\\Report.pdf'] });
+    expect(onEvent.mock.calls).toStrictEqual([
+      [{ type: 'opened', document: REPORT }],
+      [{ type: 'dropHover', active: true }],
+    ]);
+  });
+
+  it('keeps a failed open to its code, key, retryable and whitelisted params: a path or a message in it is dropped', async () => {
+    invokeMock.mockResolvedValueOnce(undefined);
+    const onEvent = vi.fn();
+    await subscribeApp(onEvent);
+    channelOf().onmessage({
+      type: 'openFailed',
+      code: 'io_not_found',
+      key: 'error.io_not_found',
+      retryable: false,
+      path: 'C:\\Users\\user\\Report.pdf',
+      message: 'The system cannot find the file specified. (os error 2)',
+    });
+    channelOf().onmessage({
+      type: 'openFailed',
+      code: 'limit_exceeded',
+      key: 'error.limit_exceeded',
+      retryable: false,
+      params: { what: 'C:\\Users\\user', limit: 32 },
+    });
+    expect(onEvent.mock.calls).toStrictEqual([
+      [{ type: 'openFailed', error: { code: 'io_not_found', key: 'error.io_not_found', retryable: false } }],
+      [{ type: 'openFailed', error: { code: 'limit_exceeded', key: 'error.limit_exceeded', retryable: false } }],
+    ]);
+  });
+
+  it('hands the backend a new channel on every call, so a second subscription can replace the first there', async () => {
+    invokeMock.mockResolvedValue(undefined);
+    const first = vi.fn();
+    const second = vi.fn();
+    await subscribeApp(first);
+    const firstChannel = channelOf();
+    await subscribeApp(second);
+    const secondChannel = channelOf();
+    expect(invokeMock.mock.calls.map(([name]) => name)).toEqual(['subscribe_app', 'subscribe_app']);
+    expect(secondChannel).not.toBe(firstChannel);
+    secondChannel.onmessage({ type: 'dropHover', active: true });
+    expect(second).toHaveBeenCalledTimes(1);
+    expect(first).not.toHaveBeenCalled();
+  });
+
+  it('rejects with an AppError when the backend refuses', async () => {
+    invokeMock.mockRejectedValueOnce(new Error('command subscribe_app not allowed'));
+    await expect(subscribeApp(vi.fn())).rejects.toMatchObject({ code: 'internal' });
+  });
+});
+
+describe('parseAppEvent', () => {
+  it('reads the three events and nothing else', () => {
+    expect(parseAppEvent({ type: 'dropHover', active: false })).toEqual({ type: 'dropHover', active: false });
+    expect(parseAppEvent({ type: 'opened', document: { id: 0, pageCount: 1, displayName: '' } })).toEqual({
+      type: 'opened',
+      document: { id: 0, pageCount: 1, displayName: '' },
+    });
+    expect(
+      parseAppEvent({
+        type: 'openFailed',
+        code: 'limit_exceeded',
+        key: 'error.limit_exceeded',
+        retryable: false,
+        params: { what: 'documents', limit: 32 },
+      }),
+    ).toEqual({
+      type: 'openFailed',
+      error: {
+        code: 'limit_exceeded',
+        key: 'error.limit_exceeded',
+        retryable: false,
+        params: { what: 'documents', limit: 32 },
+      },
+    });
+    expect(parseAppEvent(null)).toBeNull();
+    expect(parseAppEvent({ type: 'other' })).toBeNull();
   });
 });
 

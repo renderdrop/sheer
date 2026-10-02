@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { invoke } from '@tauri-apps/api/core';
 
-import { closeDocument, openDocumentDialog, parseDocumentInfo, renderPage } from './documents';
+import { closeDocument, openDocumentDialog, parseDocumentInfo, parseOpenOutcome, renderPage } from './documents';
 import { makeFrame } from './frame.testutil';
 
 vi.mock('@tauri-apps/api/core', () => ({ invoke: vi.fn() }));
@@ -89,46 +89,100 @@ describe('renderPage', () => {
 });
 
 describe('document commands', () => {
-  it('opens through the dialog command, which takes no arguments', async () => {
-    invokeMock.mockResolvedValueOnce({ id: 4, pageCount: 2, displayName: 'a.pdf' });
-    await expect(openDocumentDialog()).resolves.toEqual({ id: 4, pageCount: 2, displayName: 'a.pdf' });
+  const REPORT = { id: 4, pageCount: 2, displayName: 'a.pdf' };
+  const opened = (document: unknown) => ({ type: 'opened', document });
+  const NOT_A_PDF = { type: 'openFailed', code: 'not_a_pdf', key: 'error.not_a_pdf', retryable: false };
+
+  it('opens through the dialog command, which takes no arguments, and answers with how each file went', async () => {
+    invokeMock.mockResolvedValueOnce([opened(REPORT)]);
+    await expect(openDocumentDialog()).resolves.toEqual([{ type: 'opened', document: REPORT }]);
     expect(invokeMock).toHaveBeenCalledWith('open_document_dialog', undefined);
-    invokeMock.mockResolvedValueOnce(null);
-    await expect(openDocumentDialog()).resolves.toBeNull();
+  });
+
+  it('answers with an empty list when the dialog is cancelled', async () => {
+    invokeMock.mockResolvedValueOnce([]);
+    await expect(openDocumentDialog()).resolves.toEqual([]);
+  });
+
+  it('keeps the order of the files and tells a failure from a document', async () => {
+    invokeMock.mockResolvedValueOnce([
+      opened(REPORT),
+      NOT_A_PDF,
+      opened({ id: 5, pageCount: 1, displayName: 'b.pdf' }),
+    ]);
+    await expect(openDocumentDialog()).resolves.toEqual([
+      { type: 'opened', document: REPORT },
+      { type: 'openFailed', error: { code: 'not_a_pdf', key: 'error.not_a_pdf', retryable: false } },
+      { type: 'opened', document: { id: 5, pageCount: 1, displayName: 'b.pdf' } },
+    ]);
   });
 
   it('accepts a document without pages and a name that is empty', async () => {
-    invokeMock.mockResolvedValueOnce({ id: 0, pageCount: 0, displayName: '' });
-    await expect(openDocumentDialog()).resolves.toEqual({ id: 0, pageCount: 0, displayName: '' });
+    invokeMock.mockResolvedValueOnce([opened({ id: 0, pageCount: 0, displayName: '' })]);
+    await expect(openDocumentDialog()).resolves.toEqual([
+      { type: 'opened', document: { id: 0, pageCount: 0, displayName: '' } },
+    ]);
   });
 
-  it('returns only the three known fields', async () => {
-    invokeMock.mockResolvedValueOnce({ id: 1, pageCount: 3, displayName: 'a.pdf', path: '/home/user/secret/a.pdf' });
-    await expect(openDocumentDialog()).resolves.toStrictEqual({ id: 1, pageCount: 3, displayName: 'a.pdf' });
+  it('returns only the three known fields of a document', async () => {
+    invokeMock.mockResolvedValueOnce([opened({ ...REPORT, path: '/home/user/secret/a.pdf' })]);
+    await expect(openDocumentDialog()).resolves.toStrictEqual([{ type: 'opened', document: REPORT }]);
   });
 
-  it('turns an answer that is not a DocumentInfo into the generic error', async () => {
+  it('carries the error of a failed open the way a rejected command does: code, key, retryable and the whitelisted params', async () => {
+    invokeMock.mockResolvedValueOnce([
+      {
+        type: 'openFailed',
+        code: 'limit_exceeded',
+        key: 'error.limit_exceeded',
+        retryable: false,
+        params: { what: 'documents', limit: 32 },
+        path: 'C:\\Users\\user\\secret.pdf',
+      },
+    ]);
+    await expect(openDocumentDialog()).resolves.toStrictEqual([
+      {
+        type: 'openFailed',
+        error: {
+          code: 'limit_exceeded',
+          key: 'error.limit_exceeded',
+          retryable: false,
+          params: { what: 'documents', limit: 32 },
+        },
+      },
+    ]);
+  });
+
+  it('turns an answer that is not a list of open outcomes into the generic error', async () => {
     const bad: unknown[] = [
       undefined,
+      null,
       'a.pdf',
       42,
-      [],
       {},
-      { id: 4, pageCount: 2 },
-      { id: 4, pageCount: 2, displayName: null },
-      { id: 4, pageCount: 2, displayName: 7 },
-      { id: 4, pageCount: 2, displayName: ['a.pdf'] },
-      { id: 4, displayName: 'a.pdf' },
-      { pageCount: 2, displayName: 'a.pdf' },
-      { id: '4', pageCount: 2, displayName: 'a.pdf' },
-      { id: -1, pageCount: 2, displayName: 'a.pdf' },
-      { id: 1.5, pageCount: 2, displayName: 'a.pdf' },
-      { id: 4, pageCount: -1, displayName: 'a.pdf' },
-      { id: 4, pageCount: 2.5, displayName: 'a.pdf' },
-      { id: 4, pageCount: '2', displayName: 'a.pdf' },
-      { id: 4, pageCount: Number.NaN, displayName: 'a.pdf' },
-      { id: 4, pageCount: Number.POSITIVE_INFINITY, displayName: 'a.pdf' },
-      { id: 4, pageCount: Number.NEGATIVE_INFINITY, displayName: 'a.pdf' },
+      REPORT,
+      [REPORT],
+      [{ type: 'opened' }],
+      [{ type: 'opened', document: null }],
+      [{ type: 'dropHover', active: true }],
+      [{ type: 'unknown' }],
+      ['opened'],
+      [null],
+      [opened({ id: 4, pageCount: 2 })],
+      [opened({ id: 4, pageCount: 2, displayName: null })],
+      [opened({ id: 4, pageCount: 2, displayName: 7 })],
+      [opened({ id: 4, pageCount: 2, displayName: ['a.pdf'] })],
+      [opened({ id: 4, displayName: 'a.pdf' })],
+      [opened({ pageCount: 2, displayName: 'a.pdf' })],
+      [opened({ id: '4', pageCount: 2, displayName: 'a.pdf' })],
+      [opened({ id: -1, pageCount: 2, displayName: 'a.pdf' })],
+      [opened({ id: 1.5, pageCount: 2, displayName: 'a.pdf' })],
+      [opened({ id: 4, pageCount: -1, displayName: 'a.pdf' })],
+      [opened({ id: 4, pageCount: 2.5, displayName: 'a.pdf' })],
+      [opened({ id: 4, pageCount: '2', displayName: 'a.pdf' })],
+      [opened({ id: 4, pageCount: Number.NaN, displayName: 'a.pdf' })],
+      [opened({ id: 4, pageCount: Number.POSITIVE_INFINITY, displayName: 'a.pdf' })],
+      [opened(REPORT), 'junk'],
     ];
     for (const answer of bad) {
       invokeMock.mockResolvedValueOnce(answer);
@@ -138,6 +192,13 @@ describe('document commands', () => {
         retryable: false,
       });
     }
+  });
+
+  it('refuses a list longer than the backend ever sends: 32 files and one entry for the rest', async () => {
+    invokeMock.mockResolvedValueOnce(Array.from({ length: 33 }, (_, id) => opened({ ...REPORT, id })));
+    await expect(openDocumentDialog()).resolves.toHaveLength(33);
+    invokeMock.mockResolvedValueOnce(Array.from({ length: 34 }, (_, id) => opened({ ...REPORT, id })));
+    await expect(openDocumentDialog()).rejects.toMatchObject({ code: 'internal' });
   });
 
   it('closes by document id', async () => {
@@ -162,5 +223,30 @@ describe('parseDocumentInfo', () => {
     expect(parseDocumentInfo(null)).toBeNull();
     expect(parseDocumentInfo({ id: 2, pageCount: 9 })).toBeNull();
     expect(parseDocumentInfo({ id: 2, pageCount: 9.5, displayName: '' })).toBeNull();
+  });
+});
+
+describe('parseOpenOutcome', () => {
+  it('reads an opened document and a failed open, and nothing else', () => {
+    expect(parseOpenOutcome({ type: 'opened', document: { id: 2, pageCount: 9, displayName: 'Q3.pdf' } })).toEqual({
+      type: 'opened',
+      document: { id: 2, pageCount: 9, displayName: 'Q3.pdf' },
+    });
+    expect(
+      parseOpenOutcome({ type: 'openFailed', code: 'too_large', key: 'error.too_large', retryable: false }),
+    ).toEqual({
+      type: 'openFailed',
+      error: { code: 'too_large', key: 'error.too_large', retryable: false },
+    });
+    for (const other of [null, undefined, 'opened', 7, [], {}, { type: 'dropHover', active: true }, { type: 'x' }]) {
+      expect(parseOpenOutcome(other), JSON.stringify(other)).toBeNull();
+    }
+  });
+
+  it('turns a failed open with a code it does not know into the generic error, never into a different text', () => {
+    expect(parseOpenOutcome({ type: 'openFailed', code: 'C:\\Users\\secret.pdf', key: 'x' })).toEqual({
+      type: 'openFailed',
+      error: { code: 'internal', key: 'error.internal', retryable: false },
+    });
   });
 });

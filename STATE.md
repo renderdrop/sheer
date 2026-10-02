@@ -1,9 +1,9 @@
 # STATE
 phase: M1
 version: 0.3.0
-current_item: Document registry with IDs; open via dialog, native drag and drop, file association; open-by-handle …
-last_completed: Phase 3 — design system + app shell (tag v0.3.0)
-loop_count_this_session: 9
+current_item: Render pipeline + zoom/fit/scroll modes (M1 items 2+3)
+last_completed: M1 item 1 — document registry and open paths (see git log)
+loop_count_this_session: 10
 open_blockers: 1 (B-001 macOS/CI unverified — needs a GitHub remote or a Mac)
 notes: Run `npm run check` / `npm run fetch-pdfium` from Git Bash (in PowerShell `bash` may resolve to WSL). Rust in ~/.cargo/bin.
   Custom agent types need a session restart; until then general-purpose + ROLE block (ADR-000 §8).

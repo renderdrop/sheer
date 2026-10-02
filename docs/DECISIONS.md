@@ -505,3 +505,39 @@ backend (MIT or Apache-2.0, already in the build through Tauri, no default featu
 > **ADR-016 amendment (2026-10-02):** next/previous page use the primary modifier with ↓/↑ (⌘↓/⌘↑, Ctrl+↓/↑) instead of
 > Alt/Option+↓/↑, which is reserved for "move thumbnail up/down" (WCAG 2.5.7 alternative to dragging). Settings and About
 > are no longer placeholders: they open the settings popover and the About dialog.
+
+---
+
+## ADR-017 — Document intake: open once, judge the handle; one app channel for every source
+
+**Status:** accepted (2026-10-03)
+
+**Context.** M1 opens documents from the dialog, a drop on the window, the OS (file association) and a second launch. The spike checked the path and
+then let PDFium open it by path in the worker: a gap in which something else could be put at that path (SECURITY I3). A timed-out open could also finish
+later and leave a document in the engine that no registry entry names, so nothing could close it, and a close sent after the timeout is refused while the
+engine is still stuck.
+
+**Decision.**
+1. **One door.** `documents::intake::admit` canonicalizes the path, opens the file once (`O_NONBLOCK` on Unix, backup semantics on Windows, so a FIFO or a
+   directory is turned down on the handle and never waited on), and judges that handle: regular file, at most 2 GiB, `%PDF-` in the first 1024 bytes. The
+   handle goes to the engine as it is (`Job::Open { file }`, `load_pdf_from_reader`); no code outside `intake` opens a document by path
+   (`security_baseline.rs::a_document_is_opened_through_intake_and_pdfium_gets_the_handle`). `Registry::claim` dedupes by the canonical path in one step with
+   the registration, so two opens of one file are one document, also while the first still loads.
+2. **No orphan.** The engine asks the job's `confirm` callback once the document is loaded; it records the page count in the registry in one step and fails
+   if the entry is gone. A caller that gave up takes the entry back with `Registry::abandon`. Under the registry's lock the confirmation is first (the open
+   succeeded after all) or the abandonment is first (the worker drops the document and its handle). The earlier "send a `close` after a failed open" is gone:
+   it cannot reach a stuck engine.
+3. **One app channel.** `subscribe_app(on_event: Channel<AppEvent>)` carries `dropHover { active }`, `opened { document }` and `openFailed { error }` (the
+   error flattened, no file named), and the open dialog answers with the same `opened`/`openFailed` list, so the UI has one parser. Open results that come
+   before the UI subscribes (a file the app was started with) wait in `AppEvents` and are sent first, in order, once, on subscribing. Rejected: handing them
+   over in `app_ready`, which the settings store calls on its own schedule, so a result between that read and the subscription would belong to neither.
+4. **Sources** (`sources.rs`): `WindowEvent::DragDrop` (with `dragDropEnabled: true`, ADR-013), `RunEvent::Opened` (macOS), the command line at startup and
+   `tauri-plugin-single-instance` for a second launch (Windows only, first plugin, local only). The bundle registers `.pdf` as an alternate viewer. At most 32
+   files are taken from one source, the rest being one `limit_exceeded`; each file of a batch succeeds or fails alone.
+5. **Frontend.** The `documents` store (`byId`, `order`, `activeId`) holds every open document, so a multi-select, a multi-file drop or a second launch no longer
+   closes what was open; the last one opened (or the existing one that was asked for again) is shown, and closing the active one shows its neighbour, until
+   the tabs of M1 bring a way to switch. One banner for the first failure of a batch. A render that succeeds clears only the banner a render put there.
+
+**Consequences.** `Cargo.lock` gains the Linux-only stack of the plugin (zbus and its async crates); `cargo deny` runs per desktop target and does not build
+them. The macOS side (`RunEvent::Opened`, the file association, the unconfirmed `Alternate` rank) is written and its data is tested on Windows, but it has not run
+on a Mac (B-001). A document opened while another request is still loading the same file answers nothing for that request: the first request reports it.

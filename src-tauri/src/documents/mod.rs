@@ -1,7 +1,10 @@
 //! Document registry: opaque document id → file path.
 //!
-//! Paths only ever enter through the native file dialog (backend) and never leave the backend. The frontend works
-//! with [`DocumentId`] and [`PageId`] values alone.
+//! Paths enter the backend only from the Rust side (the native open dialog, a file dropped on the window, the OS asking the
+//! app to open a file, see `documents::intake` and `sources`) and never leave it. The frontend works with [`DocumentId`] and
+//! [`PageId`] values alone.
+
+pub mod intake;
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -105,9 +108,12 @@ fn is_unsafe_in_display_name(c: char) -> bool {
                 .any(|&(first, last)| (first..=last).contains(&c)))
         || matches!(c, '\u{2028}' | '\u{2029}' | '\u{FFFC}')
 }
+
 #[derive(Debug)]
 struct Entry {
     path: PathBuf,
+    /// What the UI is told about the file, see [`display_name`].
+    display_name: String,
     /// `None` until the engine has loaded the document.
     page_count: Option<u32>,
 }
@@ -116,6 +122,56 @@ struct Entry {
 struct Inner {
     next_id: u32,
     entries: HashMap<DocumentId, Entry>,
+}
+
+impl Inner {
+    /// Adds an entry under a fresh id, within the limit on open documents.
+    fn insert(&mut self, path: PathBuf) -> Result<DocumentId, AppError> {
+        if self.entries.len() >= limits::MAX_OPEN_DOCUMENTS {
+            return Err(AppError::limit(
+                "documents",
+                limits::MAX_OPEN_DOCUMENTS as u64,
+            ));
+        }
+        let id = DocumentId(self.next_id);
+        self.next_id = self
+            .next_id
+            .checked_add(1)
+            .ok_or(AppError::new(ErrorCode::Internal))?;
+        let display_name = display_name(&path);
+        self.entries.insert(
+            id,
+            Entry {
+                path,
+                display_name,
+                page_count: None,
+            },
+        );
+        Ok(id)
+    }
+}
+
+/// The answer to [`Registry::claim`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Claim {
+    /// The path was not registered: this is its new id, and the caller has to load the document (or give the id back with
+    /// [`Registry::abandon`]).
+    New(DocumentId),
+    /// The path is registered already, loaded or still loading: nothing to load, the document keeps its id.
+    Existing(DocumentId),
+}
+
+/// What [`Registry::abandon`] found.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Abandoned {
+    /// The engine had loaded the document and reported it here before the caller gave up: the open succeeded after all, and
+    /// the entry stays.
+    Loaded(u32),
+    /// The document was not reported loaded; its entry is gone now, so a load that finishes later is refused
+    /// ([`Registry::set_page_count`] fails) and the engine releases the document.
+    Removed,
+    /// There was no such entry.
+    Gone,
 }
 
 /// Thread-safe registry. Ids are never reused within a session.
@@ -134,31 +190,37 @@ impl Registry {
         self.inner.lock().unwrap_or_else(PoisonError::into_inner)
     }
 
-    /// Registers a path and returns its new id.
+    /// Registers a path and returns its new id, without looking whether the path is registered already (the intake uses
+    /// [`Registry::claim`], which does).
     pub fn register(&self, path: PathBuf) -> Result<DocumentId, AppError> {
-        let mut inner = self.lock();
-        if inner.entries.len() >= limits::MAX_OPEN_DOCUMENTS {
-            return Err(AppError::limit(
-                "documents",
-                limits::MAX_OPEN_DOCUMENTS as u64,
-            ));
-        }
-        let id = DocumentId(inner.next_id);
-        inner.next_id = inner
-            .next_id
-            .checked_add(1)
-            .ok_or(AppError::new(ErrorCode::Internal))?;
-        inner.entries.insert(
-            id,
-            Entry {
-                path,
-                page_count: None,
-            },
-        );
-        Ok(id)
+        self.lock().insert(path)
     }
 
-    /// Records the page count once the engine has loaded the document.
+    /// Registers `path`, which must be canonical (`std::fs::canonicalize`, so two names of one file are one path), unless it
+    /// is registered already: a file is open once. Looking and registering are one step under one lock, so two opens of the
+    /// same file at the same time cannot both get a new id. The limit on open documents applies to new ids only: a document
+    /// that is open can always be "opened" again.
+    pub fn claim(&self, path: PathBuf) -> Result<Claim, AppError> {
+        let mut inner = self.lock();
+        if let Some((&id, _)) = inner.entries.iter().find(|(_, entry)| entry.path == path) {
+            return Ok(Claim::Existing(id));
+        }
+        inner.insert(path).map(Claim::New)
+    }
+
+    /// What the UI is told about a document that is loaded; `None` for an unknown one or one still loading.
+    pub fn info(&self, id: DocumentId) -> Option<DocumentInfo> {
+        let inner = self.lock();
+        let entry = inner.entries.get(&id)?;
+        Some(DocumentInfo {
+            id,
+            page_count: entry.page_count?,
+            display_name: entry.display_name.clone(),
+        })
+    }
+
+    /// Records the page count once the engine has loaded the document. Fails with `not_found` if the entry is gone, which is
+    /// how the engine learns that nobody waits for the document any more (see [`Registry::abandon`]).
     pub fn set_page_count(&self, id: DocumentId, page_count: u32) -> Result<(), AppError> {
         match self.lock().entries.get_mut(&id) {
             Some(entry) => {
@@ -166,6 +228,23 @@ impl Registry {
                 Ok(())
             }
             None => Err(AppError::not_found("document")),
+        }
+    }
+
+    /// The caller of an open that failed (or stopped waiting) takes the entry back, unless the engine reported the document
+    /// loaded in the meantime. This is the arbiter between the two ends of an open that outlives its deadline: either the
+    /// engine's [`Registry::set_page_count`] comes first and the document is open (`Loaded`), or this comes first and the
+    /// engine's later call fails, so it drops the document instead of leaving it behind without an entry (`Removed`). Both
+    /// happen under the one lock, so there is no third outcome.
+    pub fn abandon(&self, id: DocumentId) -> Abandoned {
+        let mut inner = self.lock();
+        match inner.entries.get(&id).map(|entry| entry.page_count) {
+            None => Abandoned::Gone,
+            Some(Some(page_count)) => Abandoned::Loaded(page_count),
+            Some(None) => {
+                inner.entries.remove(&id);
+                Abandoned::Removed
+            }
         }
     }
 
@@ -308,6 +387,116 @@ mod tests {
         );
     }
 
+    // --- claim, info, abandon ---
+
+    #[test]
+    fn a_path_is_registered_once_and_claiming_it_again_returns_its_id() {
+        let registry = Registry::new();
+        let a = match registry.claim(path("a.pdf")).unwrap() {
+            Claim::New(id) => id,
+            other => panic!("expected a new id, got {other:?}"),
+        };
+        // Still loading or loaded, the answer is the same.
+        assert_eq!(registry.claim(path("a.pdf")).unwrap(), Claim::Existing(a));
+        registry.set_page_count(a, 2).unwrap();
+        assert_eq!(registry.claim(path("a.pdf")).unwrap(), Claim::Existing(a));
+        // Another path is another document.
+        assert!(matches!(
+            registry.claim(path("b.pdf")).unwrap(),
+            Claim::New(b) if b != a
+        ));
+        assert_eq!(registry.len(), 2);
+    }
+
+    #[test]
+    fn a_closed_path_gets_a_new_id_when_it_is_opened_again() {
+        let registry = Registry::new();
+        let Claim::New(first) = registry.claim(path("a.pdf")).unwrap() else {
+            panic!("new");
+        };
+        assert!(registry.remove(first));
+        let Claim::New(second) = registry.claim(path("a.pdf")).unwrap() else {
+            panic!("new");
+        };
+        assert_ne!(first, second);
+    }
+
+    #[test]
+    fn claiming_stops_at_the_limit_for_new_paths_but_not_for_open_ones() {
+        let registry = Registry::new();
+        for i in 0..limits::MAX_OPEN_DOCUMENTS {
+            registry.claim(path(&format!("{i}.pdf"))).unwrap();
+        }
+        let error = registry.claim(path("extra.pdf")).unwrap_err();
+        assert_eq!(error.code(), ErrorCode::LimitExceeded);
+        assert!(matches!(
+            registry.claim(path("0.pdf")).unwrap(),
+            Claim::Existing(_)
+        ));
+        assert_eq!(registry.len(), limits::MAX_OPEN_DOCUMENTS);
+    }
+
+    #[test]
+    fn two_threads_claiming_one_path_get_one_new_id_between_them() {
+        let registry = std::sync::Arc::new(Registry::new());
+        let claims: Vec<Claim> = (0..8)
+            .map(|_| {
+                let registry = std::sync::Arc::clone(&registry);
+                std::thread::spawn(move || registry.claim(path("same.pdf")).unwrap())
+            })
+            .collect::<Vec<_>>()
+            .into_iter()
+            .map(|thread| thread.join().unwrap())
+            .collect();
+        let new = claims.iter().filter(|c| matches!(c, Claim::New(_))).count();
+        assert_eq!(new, 1);
+        assert_eq!(registry.len(), 1);
+    }
+
+    #[test]
+    fn info_is_there_once_the_document_is_loaded() {
+        let registry = Registry::new();
+        let id = registry
+            .register(PathBuf::from("dir").join("a.pdf"))
+            .unwrap();
+        assert_eq!(registry.info(id), None, "still loading");
+        registry.set_page_count(id, 4).unwrap();
+        assert_eq!(
+            registry.info(id),
+            Some(DocumentInfo {
+                id,
+                page_count: 4,
+                display_name: "a.pdf".to_owned()
+            })
+        );
+        registry.remove(id);
+        assert_eq!(registry.info(id), None);
+    }
+
+    #[test]
+    fn abandoning_an_open_that_was_not_reported_loaded_removes_it_and_refuses_a_late_report() {
+        let registry = Registry::new();
+        let id = registry.register(path("a.pdf")).unwrap();
+        assert_eq!(registry.abandon(id), Abandoned::Removed);
+        assert!(registry.is_empty());
+        // The engine finishing later is told nobody wants the document (it releases it).
+        assert_eq!(
+            registry.set_page_count(id, 3).unwrap_err().code(),
+            ErrorCode::NotFound
+        );
+        assert!(registry.is_empty());
+        assert_eq!(registry.abandon(id), Abandoned::Gone);
+    }
+
+    #[test]
+    fn abandoning_an_open_that_was_reported_loaded_keeps_it() {
+        let registry = Registry::new();
+        let id = registry.register(path("a.pdf")).unwrap();
+        registry.set_page_count(id, 3).unwrap();
+        assert_eq!(registry.abandon(id), Abandoned::Loaded(3));
+        assert_eq!(registry.len(), 1, "the document is open and can be closed");
+        assert_eq!(registry.page_count(id).unwrap(), 3);
+    }
     // --- display names ---
 
     #[test]

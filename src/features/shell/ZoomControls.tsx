@@ -2,14 +2,15 @@ import { useMemo } from 'react';
 
 import type { MenuEntry } from '../../components';
 import { useLocale } from '../../i18n';
+import { selectActiveId, useDocuments } from '../../stores/documents';
 import { useDocViewValue } from '../../stores/view';
-import { selectDocId, useViewer } from '../viewer/useViewer';
+import { useViewer } from '../viewer/useViewer';
 import { formatZoomStatus } from './status';
 import { zoomMenuEntries } from './toolbarEntries';
 
 /** The open document's zoom (1 without one). Only a change of the zoom re-renders what calls this, not a change of page. */
 function useZoom(): number {
-  const docId = useViewer(selectDocId);
+  const docId = useDocuments(selectActiveId);
   return useDocViewValue(docId, (view) => view.zoom);
 }
 

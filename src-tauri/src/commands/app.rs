@@ -7,6 +7,7 @@
 //! | `update_settings` | `patch: { glass?, theme?, language?, leftPanelWidth? }` | the settings after the update |
 //! | `watch_transparency` | `onChange: Channel<boolean>` | nothing; the channel then carries each change of the OS "Reduce transparency" flag |
 //! | `subscribe_menu` | `onAction: Channel<string>`, `systemLanguage?: string` | nothing; the channel then carries the id of each command chosen in the macOS menu bar |
+//! | `subscribe_app` | `onEvent: Channel<AppEvent>` | nothing; the channel then carries the backend's pushes (`dropHover`, `opened`, `openFailed`, see `events::AppEvent`), first those that waited for it |
 //!
 //! `update_settings` takes the patch as raw JSON on purpose: a bad value is then a normal `invalid_argument` with
 //! `what: "settings"` (see `storage::settings`), not a deserialization failure that bypasses the error model.
@@ -20,6 +21,7 @@ use tauri::{AppHandle, State};
 
 use super::blocking;
 use crate::error::UiError;
+use crate::events::{AppEvent, AppEvents};
 use crate::menu::{self, MenuBridge};
 use crate::platform::{self, Platform, TransparencyWatch};
 use crate::storage::settings::{Settings, SettingsPatch, SettingsStore};
@@ -109,6 +111,22 @@ pub async fn subscribe_menu(
 ) -> Result<(), UiError> {
     bridge.subscribe(on_action, system_language.as_deref());
     menu::refresh(&app);
+    Ok(())
+}
+
+/// Starts sending the backend's pushes to `on_event`: whether files are being dragged over the window (`dropHover`), and the
+/// result of every open that did not start with the UI's own request, a file dropped on the window or opened by the OS
+/// (`opened`, `openFailed`). What happened before the UI subscribed (a file the app was started with) is sent first, in order,
+/// exactly once. A second call replaces the first channel.
+///
+/// This is how the backend reaches the UI without any event permission: the channel is an argument the UI hands over, and
+/// a message carries no path (see [`AppEvent`]).
+#[tauri::command]
+pub async fn subscribe_app(
+    events: State<'_, Arc<AppEvents>>,
+    on_event: Channel<AppEvent>,
+) -> Result<(), UiError> {
+    events.subscribe(on_event);
     Ok(())
 }
 

@@ -12,6 +12,7 @@
     "allow-update-settings",
     "allow-watch-transparency",
     "allow-subscribe-menu",
+    "allow-subscribe-app",
     "core:window:allow-minimize",
     "core:window:allow-toggle-maximize",
     "core:window:allow-close",

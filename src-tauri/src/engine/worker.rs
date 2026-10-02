@@ -1,13 +1,14 @@
 //! The worker thread. The only code that touches PDFium.
 
 use std::collections::{HashMap, HashSet};
+use std::fs::File;
 use std::path::Path;
 use std::sync::mpsc::Receiver;
 
 use pdfium_render::prelude::*;
 
 use super::guard::{guarded, Health};
-use super::{encode, Job, Reply, Request};
+use super::{encode, Confirm, Job, Reply, Request};
 use crate::documents::DocumentId;
 use crate::error::{AppError, ErrorCode};
 use crate::limits;
@@ -64,8 +65,13 @@ fn serve<'a>(
     job: Job,
 ) {
     match job {
-        Job::Open { id, path, reply } => {
-            let result = guarded(|| open(pdfium, documents, id, &path));
+        Job::Open {
+            id,
+            file,
+            confirm,
+            reply,
+        } => {
+            let result = guarded(|| open(pdfium, documents, id, file, confirm));
             answer(reply, result, None, documents, crashed);
         }
         Job::Render {
@@ -126,13 +132,25 @@ fn open<'a>(
     pdfium: &'a Pdfium,
     documents: &mut Documents<'a>,
     id: DocumentId,
-    path: &Path,
+    file: File,
+    confirm: Confirm,
 ) -> Result<u32, AppError> {
+    // PDFium reads the handle intake judged; the file is not opened again by path (SECURITY I3). It owns the handle from
+    // here on and closes it with the document, or at once if loading fails.
     let document = pdfium
-        .load_pdf_from_file(path, None)
+        .load_pdf_from_reader(file, None)
         .map_err(map_load_error)?;
     let page_count = u32::try_from(document.pages().len())
         .map_err(|_| AppError::logged(ErrorCode::DamagedFile, "negative page count"))?;
+    // The caller may have stopped waiting while the document loaded (the open deadline passed) and taken the registry entry
+    // back. Nobody could ever close a document without an entry, so it is released here, with its handle.
+    if !confirm(page_count) {
+        drop(document);
+        return Err(AppError::logged(
+            ErrorCode::EngineTimeout,
+            "the document finished loading after its caller gave up; released",
+        ));
+    }
     documents.insert(id, document);
     Ok(page_count)
 }

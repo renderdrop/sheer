@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { actionOf } from '../../actions/registry';
 import type { DocumentInfo } from '../../api/documents';
+import { activeDocument, opened, resetDocuments } from '../../stores/documents.testutil';
 import { useUi } from '../../stores/ui';
 import { useView } from '../../stores/view';
 import { setup } from '../../test/render';
@@ -25,12 +26,13 @@ const REPORT: DocumentInfo = { id: 1, pageCount: 10, displayName: 'Report.pdf' }
 function reset() {
   useUi.setState({ ...uiInitial }, true);
   useViewer.setState({ ...viewerInitial }, true);
+  resetDocuments();
   useView.setState({ byDoc: {} });
 }
 
 beforeEach(() => {
   reset();
-  documentsApi.openDocumentDialog.mockReset().mockResolvedValue(REPORT);
+  documentsApi.openDocumentDialog.mockReset().mockResolvedValue([opened(REPORT)]);
   documentsApi.closeDocument.mockReset().mockResolvedValue(undefined);
 });
 
@@ -54,7 +56,7 @@ describe('the empty state in its slot', () => {
     await user.click(openButton());
     expect(run).toHaveBeenCalledTimes(1);
     expect(documentsApi.openDocumentDialog).toHaveBeenCalledTimes(1);
-    expect(useViewer.getState().doc).toEqual(REPORT);
+    expect(activeDocument()).toEqual(REPORT);
   });
 
   it('asks the registry first: a disabled Open action does not open anything', async () => {
@@ -62,7 +64,7 @@ describe('the empty state in its slot', () => {
     vi.spyOn(actionOf('open'), 'enabled').mockReturnValue(false);
     await user.click(openButton());
     expect(documentsApi.openDocumentDialog).not.toHaveBeenCalled();
-    expect(useViewer.getState().doc).toBeNull();
+    expect(activeDocument()).toBeNull();
   });
 
   it('Enter and Space on the focused button open it too, once each', async () => {

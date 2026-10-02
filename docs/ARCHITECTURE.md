@@ -20,13 +20,15 @@ menu item or shortcut.
 
 ```
 main.rs          sheer_lib::run()
-lib.rs           builder: plugins, manage(AppState), invoke_handler, DragDrop/Opened hooks, menu bar (macOS)
+lib.rs           builder: plugins (single-instance first, Windows only), manage(AppState, AppEvents), invoke_handler, DragDrop/Opened hooks, startup arguments, menu bar (macOS)
+events.rs        AppEvent (dropHover | opened | openFailed: the typed pushes) · AppEvents (the receiver of subscribe_app, and the open results that came before it)
+sources.rs       every way a path enters besides the dialog: WindowEvent::DragDrop, RunEvent::Opened (macOS), the command line and a second instance (Windows); each ends in documents::intake
 state.rs         AppState { registry, engine, settings, recents }
 error.rs         AppError (internal) → UiError (IPC)
 limits.rs        every numeric bound as a const
 commands/        thin: validate → registry/engine → UiError
                  app · documents · render · text · links · edit · pages (M3) · forms (M4) · export (M6) · recovery (M7)
-documents/       registry (DocumentRegistry, DocumentEntry) · intake (path checks, Rust-side dialogs) · recents
+documents/       registry (the table of open documents: claim = dedupe by canonical path, abandon = the arbiter of an open that outlives its deadline) · intake (admit: canonicalize, open once, judge the handle; command-line and URL parsing; the dialog is in commands/) · recents
 engine/          the only PDFium user (ADR-002)
                  mod (EngineHandle, EngineRequest/Response) · worker · queue · guard (catch_unwind, watchdog)
                  render · text · search · links · import (annotations → model) · forms (M4) · transport (M7)
@@ -53,7 +55,7 @@ api/          call.ts (the one `invoke` caller) · app.ts, documents.ts, … (on
 engine/       renderCache.ts (Blob LRU) · renderScheduler.ts (dedupe, generations, set_viewport) · textCache.ts
 stores/       documents · view · annotations · tools · search · ui · settings · recents
 features/     shell (Shell, CaptionBar, ToolbarSlot, ToolbarRow, LeftPanel, MainGrid, Inspector, StatusBar, EmptyState, BannerRow: the app shell of DESIGN 2; grid rules in lib/layout.ts)
-              viewer (Canvas, ViewerCanvas, useViewer (store: open document, page image, render loop), PageView, layout.ts, TextLayer, LinkLayer, zoom.ts)
+              viewer (Canvas, ViewerCanvas, useViewer (store: the actions, the page image, the render loop; the open documents are the `documents` store), appEvents (what the backend pushes), PageView, layout.ts, TextLayer, LinkLayer, zoom.ts)
               annotations (Overlay SVG, tools/, Inspector, geometry.ts, ink.ts, textWrap.ts)
               thumbnails · outline · search · comments · pages (M3) · forms, signatures (M4)
 actions/      the one command registry (ADR-016): registry.ts (every action: id, labelKey, icon, per-platform shortcut, enabled(state), run()) · shortcut.ts (bindings: platform modifier, key matching, chips, aria, native accelerator) · keys.ts (the global key handler) · dispatch.ts (runAction) · state.ts (what enabled looks at) · menuBridge.ts (macOS menu commands in) · menu.json (layout of the macOS menu bar, read by Rust too)
@@ -62,7 +64,7 @@ i18n/         locales/en.json + de.json (flat dotted keys, pure JSON, identical 
 styles/tokens.css
 ```
 
-Only `src/api/call.ts` calls `invoke`: it turns every rejection into an `AppError`, and the typed wrappers (`src/api/app.ts`, `documents.ts`, …) go through it. Everything else imports the wrappers. The window has no event permission (SECURITY T3), so the frontend never calls `listen` or `emit`, and `src/api/app.test.ts` fails on any import of `@tauri-apps/api/event`. Backend pushes (§6) reach it through a `Channel` that a wrapper in `src/api/` passes to a command (`watchTransparency` → `watch_transparency`; the settings store consumes it. `subscribeMenu` → `subscribe_menu`; `src/actions/menuBridge.ts` consumes it).
+Only `src/api/call.ts` calls `invoke`: it turns every rejection into an `AppError`, and the typed wrappers (`src/api/app.ts`, `documents.ts`, …) go through it. Everything else imports the wrappers. The window has no event permission (SECURITY T3), so the frontend never calls `listen` or `emit`, and `src/api/app.test.ts` fails on any import of `@tauri-apps/api/event`. Backend pushes (§6) reach it through a `Channel` that a wrapper in `src/api/` passes to a command (`watchTransparency` → `watch_transparency`; the settings store consumes it. `subscribeMenu` → `subscribe_menu`; `src/actions/menuBridge.ts` consumes it. `subscribeApp` → `subscribe_app`; `src/features/viewer/appEvents.ts` consumes it: the drop overlay follows `dropHover`, `opened` and `openFailed` go to `adoptOpenOutcomes`, the same function that takes the answer of the open dialog).
 
 **Commands and keys.** A command is an action of `src/actions/registry.ts` and nothing else defines one. The toolbar's items (name, icon, shortcut chip, `aria-keyshortcuts`, enabled), the More menu, the global key handler and the macOS menu bar's commands are all derived from it or run through `runAction(id)`, which refuses an unknown id and a disabled action: there is no second shortcut table. A shortcut is a canonical binding (`{ key, mods }`, `primary` = Cmd on macOS and Ctrl elsewhere, a different one on macOS where research says so), resolved per platform. The key handler (`keys.ts`) takes no key from a text field or an event that is already handled, runs a bare printable key (the tool letters) only while focus is inside the canvas (`data-action-scope="canvas"`), and takes the browser's meaning away from every key it binds. `enabled` reads flags (`hasDocument`, the two zoom limits), not the zoom or the page, so the toolbar keeps its render isolation (ADR-015).
 
@@ -81,12 +83,25 @@ pub struct DocumentEntry {
 }
 ```
 
-A path enters the backend only from the Rust-side dialog, `WindowEvent::DragDrop`, `RunEvent::Opened` (macOS), argv or a second instance
-(Windows), or a recents entry. `documents::intake` then: canonicalizes → requires a regular file ≤ 2 GiB with `%PDF-` in its first 1024
-bytes → dedupes by canonical path (returns the existing id) → sends `Open` to the engine. At most 32 documents are open; ids are never reused
-in a session.
+Today the registry (`documents::Registry`) holds, per id, the canonical path, the display name and the page count (`None` while the engine is still loading); the other fields arrive with the features that need them.
 
-The frontend never uses `onDragDropEvent` and cannot receive the `tauri://drag-drop` event that carries the paths: `dragDropEnabled` is `true` on purpose (explicit in `tauri.conf.json`, pinned by `security_baseline.rs`), so Tauri takes the OS drop itself and hands the paths only to Rust's `WindowEvent::DragDrop` handler, and the window has no event permission (SECURITY T3, T9). Rust re-sends `drop:hover` without paths.
+A path enters the backend only from the Rust-side dialog, `WindowEvent::DragDrop`, `RunEvent::Opened` (macOS), argv or a second instance
+(Windows), or a recents entry (`sources.rs` and `commands::open_document_dialog`). `documents::intake::admit` then: canonicalizes → **opens the
+file once** → judges that handle: a regular file ≤ 2 GiB with `%PDF-` in its first 1024 bytes (not a directory, device or FIFO; the open never
+waits on a pipe) → `Registry::claim` dedupes by canonical path (a file that is open already answers with its existing document; one that is still
+loading is not started a second time) → the engine receives the **same handle** (`Engine::open(id, file, confirm)`, PDFium `load_pdf_from_reader`).
+No path is opened twice, so there is no gap between the check and the use in which another file could be put at the path. At most 32 documents are
+open (new ids only: an open document can always be asked for again) and at most 32 files are taken from one source at a time, the rest being one
+`limit_exceeded`; ids are never reused in a session. Every file of a batch is judged on its own: a bad one is an `openFailed`, the others still open.
+
+**An open that outlives its deadline.** The worker cannot be interrupted, so an open can finish after its caller gave up (`engine_timeout`). The
+caller then takes its registry entry back with `Registry::abandon`; the worker, once the document is loaded, asks the job's `confirm` callback, which
+records the page count in the registry in one step (`set_page_count`) and fails if the entry is gone. Under the registry's one lock either the
+confirmation comes first and the open succeeded after all (`Abandoned::Loaded`: the caller reports the document), or the abandonment comes first and
+the worker drops the document and its handle (`Removed`). No document is ever left in the engine without a registry entry; a late `close` could not
+reach it, because a stuck engine refuses new jobs.
+
+The frontend never uses `onDragDropEvent` and cannot receive the `tauri://drag-drop` event that carries the paths: `dragDropEnabled` is `true` on purpose (explicit in `tauri.conf.json`, pinned by `security_baseline.rs`), so Tauri takes the OS drop itself and hands the paths only to Rust's `WindowEvent::DragDrop` handler, and the window has no event permission (SECURITY T3, T9). Rust tells the page `dropHover { active }` over the app channel (§6), without paths; what the drop opens arrives as `opened` or `openFailed`.
 Recents store paths in app data. The UI sees only `RecentEntry { id, displayName, lastOpened, missing }`.
 
 ## 5. Tauri commands
@@ -96,14 +111,16 @@ All commands are `async` and return `Result<T, UiError>`. Bounds come from `limi
 
 ```rust
 // app
-app_ready() -> AppBootstrap                          // platform, reducedTransparency, version (pending opens join in M1)
+app_ready() -> AppBootstrap                          // platform, reducedTransparency, version
 get_settings() -> Settings                           // { glass: "auto" | "solid", theme: "system" | "light" | "dark", language: "system" | "en" | "de", leftPanelWidth: 192..=400 }
 update_settings(patch: SettingsPatch) -> Settings    // patch { glass?, theme?, language?, leftPanelWidth? }; unknown key, enum value or width outside the range → invalid_argument (what: "settings")
 watch_transparency(on_change: Channel<bool>) -> ()   // each change of the OS "Reduce transparency" flag, as a bare bool; one receiver, a new call replaces it
 subscribe_menu(on_action: Channel<String>, system_language: Option<String>) -> ()
                                                      // each command chosen in the macOS menu bar, as the bare id of the item (kebab-case, `menu::spec::ACTION_IDS` only: system items and any other id are dropped in Rust); one receiver, a new call replaces it; system_language = navigator.language, for the menu's labels while language is "system" (a malformed tag counts as unknown); a no-op listener on Windows, which has no menu bar
+subscribe_app(on_event: Channel<AppEvent>) -> ()
+                                                     // the backend's pushes, as typed `AppEvent`s without paths: `dropHover { active }` while files are dragged over the window, `opened { document: DocumentInfo }` and `openFailed { code, key, retryable, params? }` for a file opened by a drop, the OS (file association) or a second launch; open results that came before the UI subscribed (a file the app was started with is opened while the window loads) are sent first, in order, once; one receiver, a new call replaces it
 // documents
-open_document_dialog() -> Vec<OpenResult>            // ≤ 32 files
+open_document_dialog() -> Vec<AppEvent>             // multi-select, ≤ 32 files, in the dialog's order: `opened { document }` or `openFailed { .. }` each (one more `openFailed` limit_exceeded `documents` if more were chosen); empty = cancelled. `OpenResult { status: NeedsPassword }` comes with passwords
 open_recent(recent_id: u32) -> OpenResult
 list_recents() -> Vec<RecentEntry>                   // ≤ 50
 remove_recent(recent_id: u32) -> ()
@@ -142,10 +159,11 @@ struct SaveAck       { break_signature: bool, file_changed: bool, rewrite_encryp
 struct TextLayer     { text: String, boxes: Vec<f32> /* x, y, w, h per char, page space */, truncated: bool }
 struct LinkInfo      { index: u32, rect: Rect, target: LinkTarget /* Page { page_id, y } | Url { url ≤ 2048 } | Blocked */ }
 struct OpenResult    { doc_id: DocId, status: OpenStatus /* Ready | NeedsPassword */, info: Option<DocumentInfo> }
-struct DocumentInfo  { doc_id: DocId, display_name: String, pages: Vec<PageSlotInfo>, rev: u32, flags: DocFlags, history: HistoryState }
+struct DocumentInfo  { doc_id: DocId, display_name: String, pages: Vec<PageSlotInfo>, rev: u32, flags: DocFlags, history: HistoryState }  // planned; today `{ id, pageCount, displayName }`, the three fields every open document has
 struct PageSlotInfo  { id: PageId, width: f32, height: f32 /* pt, unrotated CropBox */, rotation: u16, rev: u32, label: Option<String> }
 struct SaveResult    { rev: u32, mode: SaveMode /* Incremental | Full */, backup_created: bool }
 struct AppBootstrap  { platform: Platform /* macos | windows | linux */, reduced_transparency: bool, version: &'static str }
+enum   AppEvent      { DropHover { active: bool }, Opened { document: DocumentInfo }, OpenFailed { code, key, retryable, params? } }  // wire: `{ "type": "dropHover" | "opened" | "openFailed", ..fields }`, camelCase; OpenFailed carries the error of §7 flat and names no file; no variant has room for a path
 struct Settings      { glass: GlassMode /* Auto | Solid */, theme: ThemeMode /* System | Light | Dark */, language: Language /* System | En | De */, left_panel_width: PanelWidth }   // serde lowercase values
 ```
 
@@ -187,11 +205,16 @@ M6: `export_images`, `print_document`, `reveal_in_folder`. M7: `list_recoverable
 ## 6. Pushes (Rust → UI, never with paths)
 
 The webview has no event permission (SECURITY T3): it cannot `listen` to or `emit` events. A push reaches it as a message on a `tauri::ipc::Channel` that the
-UI passes to a command, like `search(.., on_event: Channel<SearchEvent>)`. Two are implemented: `watch_transparency(on_change: Channel<bool>)` sends
+UI passes to a command, like `search(.., on_event: Channel<SearchEvent>)`. Three are implemented: `watch_transparency(on_change: Channel<bool>)` sends
 each change of the macOS "Reduce transparency" flag (checked when the window gains focus) as a bare bool; a value that already differs from what `app_ready`
-reported is sent on subscribing. `subscribe_menu(on_action: Channel<String>, ..)` sends the id of each macOS menu command (`menu:action {id}` below, as a bare string) from the allowlist. The planned notifications are delivered the same way (a channel opened by a command, typed messages, no paths), unless an ADR grants
-`listen` for a named event: `doc:opened {docId}` (drop, file association, second instance) · `doc:reloaded {docId, rev}` · `doc:annotations-imported {docId, pageIds}` ·
-`drop:hover {active, count}` · `engine:status {state: ok | wedged}`.
+reported is sent on subscribing. `subscribe_menu(on_action: Channel<String>, ..)` sends the id of each macOS menu command (`menu:action {id}` below, as a bare string) from the allowlist.
+`subscribe_app(on_event: Channel<AppEvent>)` sends the typed `AppEvent`s of `events.rs` (`dropHover { active }`, `opened { document }`, `openFailed { code, .. }`; shapes in §5). They are the events
+`drop:hover` and `doc:opened` of the original plan, as channel messages: `dropHover` while files are dragged over the window (`WindowEvent::DragDrop`: enter shows, leave or drop hides; moving over it does nothing), and
+`opened` or `openFailed` for each file a drop, the OS (file association) or a second launch asked the app to open, sent as soon as that file is open. The open dialog's answer has the same two shapes, so the UI has one parser.
+A file the app was started with is opened while the window is still loading, so its result waits in `AppEvents` and is the first thing the channel carries when the UI subscribes: never lost, never twice. (It is `subscribe_app` that hands them over and not `app_ready`, as the first plan had it: `app_ready` is a plain read that the settings store makes on its own schedule, and a result that arrived between that read and the subscription would belong to neither; the subscription is the one hand-off, under one lock.) A hover is
+not kept (it is stale at once), and so few failures that a window that never listens cannot grow the queue (`MAX_PENDING_FAILURES`); an `opened` is never dropped, each stands for an open document. A message that cannot be sent (the webview is
+gone) is kept for the next subscription. The planned notifications are delivered the same way (a channel opened by a command, typed messages, no paths), unless an ADR grants
+`listen` for a named event: `doc:reloaded {docId, rev}` · `doc:annotations-imported {docId, pageIds}` · `engine:status {state: ok | wedged}`.
 
 ## 7. Error model
 
@@ -217,7 +240,7 @@ Codes: `invalid_argument`, `limit_exceeded`, `not_found`, `not_a_pdf`, `damaged_
 
 | Store | Holds | Changed by |
 |---|---|---|
-| `documents` | `byId: Record<DocId, DocMeta>` (displayName, pages, rev, flags, history), `order`, `activeId` | open/close, events, ChangeSet |
+| `documents` | `byId: Record<DocId, DocMeta>` (today the `DocumentInfo` of the backend: displayName, pageCount; later pages, rev, flags, history), `order` (opening order), `activeId` (the last one opened or brought forward; the one closed is replaced by its next neighbour, else the previous) | `add` for each `opened` (dialog answer, app channel), `remove` on close, ChangeSet |
 | `view` | per doc: zoom, fit, scrollMode, viewRotation, anchor `{ pageId, offset }`, currentPage (today: zoom, pageIndex, pageCount) | canvas, toolbar, status bar |
 | `annotations` | per doc: `byId`, `byPage`, `selection`, `editing` (transient draft) | ChangeSet; `editing` locally |
 | `tools` | active tool, locked, presets per tool | toolbar, actions |
@@ -233,8 +256,9 @@ Rules:
 
 ## 9. Data flows
 
-- **Open.** Action → `open_document_dialog` (Rust dialog) → `intake` → engine `Open` (Control: page sizes, flags) → registry →
-  `OpenResult` → `documents` store → `layout.ts` offsets → visible pages render. Annotation import runs Interactive for visible pages and
+- **Open.** Action → `open_document_dialog` (Rust dialog, several files) → `intake::admit` (canonicalize, open once, judge the handle) → `Registry::claim` (dedupe) → engine `Open` with that handle (Control: page sizes, flags) →
+  `opened`/`openFailed` per file → `adoptOpenOutcomes` → `documents` store (+ a `view` entry), banner for the first failure → `layout.ts` offsets → visible pages render. A file dropped on the window, opened by the OS or given at startup takes
+  the same way from `intake` on and arrives as the same two messages on the app channel (§6), so there is one UI path for every source. Annotation import runs Interactive for visible pages and
   Background for the rest; `doc:annotations-imported` triggers `list_annotations`.
 - **Render.** Scroll → visible range → mount ≤ 24 pages. A cache hit shows `<img src=blob:>`. A miss calls `render_page` (Visible) → the
   worker renders and encodes → frame → Blob → cache → `img.decode()` → swap. When scrolling settles, `set_viewport` cancels stale jobs.

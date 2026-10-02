@@ -3,6 +3,8 @@ import { act, renderHook } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { PANEL } from '../../components/tokens';
+import { useDocuments } from '../../stores/documents';
+import { resetDocuments } from '../../stores/documents.testutil';
 import { useUi } from '../../stores/ui';
 import { useViewer } from '../viewer/useViewer';
 import { readShellStructure, useShellStructure } from './useShellStructure';
@@ -17,17 +19,19 @@ function resizeTo(width: number) {
   });
 }
 
-const openDocument = () => act(() => useViewer.setState({ doc: { id: 1, pageCount: 3, displayName: 'a.pdf' } }));
+const openDocument = () => act(() => useDocuments.getState().add({ id: 1, pageCount: 3, displayName: 'a.pdf' }));
 
 beforeEach(() => {
   useUi.setState({ ...uiInitial }, true);
   useViewer.setState({ ...viewerInitial }, true);
+  resetDocuments();
   resizeTo(1100);
 });
 
 afterEach(() => {
   useUi.setState({ ...uiInitial }, true);
   useViewer.setState({ ...viewerInitial }, true);
+  resetDocuments();
 });
 
 /** The structure and how many times the component that asked for it rendered. */

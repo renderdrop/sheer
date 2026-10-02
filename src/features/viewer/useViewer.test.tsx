@@ -4,9 +4,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { DocumentInfo } from '../../api/documents';
 import { DEFAULT_ZOOM, MAX_ZOOM, MIN_ZOOM } from '../../lib/zoom';
+import { selectActiveId, useDocuments } from '../../stores/documents';
+import { activeDocument, openFailed, opened, resetDocuments } from '../../stores/documents.testutil';
 import { useUi } from '../../stores/ui';
 import { useView } from '../../stores/view';
-import { selectDocId, useViewer, useViewerEffects } from './useViewer';
+import { useViewer, useViewerEffects } from './useViewer';
 
 const documentsApi = vi.hoisted(() => ({
   openDocumentDialog: vi.fn(),
@@ -27,12 +29,13 @@ const page = (scale = 4 / 3) => ({ data: new Uint8Array([1, 2, 3]), width: 816, 
 function reset() {
   useUi.setState({ ...uiInitial }, true);
   useViewer.setState({ ...viewerInitial }, true);
+  resetDocuments();
   useView.setState({ byDoc: {} });
 }
 
 beforeEach(() => {
   reset();
-  documentsApi.openDocumentDialog.mockReset().mockResolvedValue(REPORT);
+  documentsApi.openDocumentDialog.mockReset().mockResolvedValue([opened(REPORT)]);
   documentsApi.renderPage.mockReset().mockResolvedValue(page());
   documentsApi.closeDocument.mockReset().mockResolvedValue(undefined);
   let urls = 0;
@@ -51,7 +54,7 @@ const zoomOf = (id = REPORT.id) => useView.getState().byDoc[id]?.zoom;
 describe('opening a document', () => {
   it('registers it with a view at 100 % on the first page, and shows no image yet', async () => {
     await act(() => viewer().open());
-    expect(viewer().doc).toEqual(REPORT);
+    expect(activeDocument()).toEqual(REPORT);
     expect(useView.getState().byDoc[1]).toEqual({ zoom: DEFAULT_ZOOM, pageIndex: 0, pageCount: 10 });
     expect(viewer().image).toBeNull();
     expect(viewer().opening).toBe(false);
@@ -80,9 +83,9 @@ describe('opening a document', () => {
 
   it('a cancelled dialog changes nothing and clears the error that was there', async () => {
     useUi.getState().showBanner({ code: 'internal', key: 'error.internal', retryable: false });
-    documentsApi.openDocumentDialog.mockResolvedValue(null);
+    documentsApi.openDocumentDialog.mockResolvedValue([]);
     await act(() => viewer().open());
-    expect(viewer().doc).toBeNull();
+    expect(activeDocument()).toBeNull();
     expect(useUi.getState().banner).toBeNull();
     expect(useView.getState().byDoc).toEqual({});
   });
@@ -96,29 +99,91 @@ describe('opening a document', () => {
     });
     await act(() => viewer().open());
     expect(useUi.getState().banner).toMatchObject({ code: 'damaged_file' });
-    expect(viewer().doc).toEqual(REPORT);
+    expect(activeDocument()).toEqual(REPORT);
     expect(viewer().opening).toBe(false);
     expect(documentsApi.closeDocument).not.toHaveBeenCalled();
   });
 
-  it('a second document replaces the first: its view is dropped and the backend is told to close it', async () => {
+  it('a second document is added beside the first and shown; the first stays open and keeps its view', async () => {
     await act(() => viewer().open());
+    act(() => viewer().zoomStep(1));
     useViewer.setState({ image: { url: 'blob:old', widthPt: 612, heightPt: 792 } });
-    documentsApi.openDocumentDialog.mockResolvedValue(OTHER);
+    documentsApi.openDocumentDialog.mockResolvedValue([opened(OTHER)]);
     await act(() => viewer().open());
-    expect(viewer().doc).toEqual(OTHER);
+    expect(activeDocument()).toEqual(OTHER);
     expect(viewer().image).toBeNull();
-    expect(Object.keys(useView.getState().byDoc)).toEqual(['2']);
-    expect(documentsApi.closeDocument).toHaveBeenCalledWith(1);
+    expect(useDocuments.getState().order).toEqual([1, 2]);
+    expect(Object.keys(useView.getState().byDoc)).toEqual(['1', '2']);
+    expect(zoomOf(1)).toBe(1.1);
+    expect(documentsApi.closeDocument).not.toHaveBeenCalled();
+  });
+
+  it('several documents from one dialog are all opened and the last one is shown', async () => {
+    documentsApi.openDocumentDialog.mockResolvedValue([opened(REPORT), opened(OTHER)]);
+    await act(() => viewer().open());
+    expect(useDocuments.getState().order).toEqual([1, 2]);
+    expect(activeDocument()).toEqual(OTHER);
+    expect(useView.getState().byDoc[1]).toEqual({ zoom: DEFAULT_ZOOM, pageIndex: 0, pageCount: 10 });
+    expect(useView.getState().byDoc[2]).toEqual({ zoom: DEFAULT_ZOOM, pageIndex: 0, pageCount: 3 });
+  });
+
+  it('a document that is open already (the backend answers with the id it has) is brought forward, not added twice', async () => {
+    documentsApi.openDocumentDialog.mockResolvedValue([opened(REPORT), opened(OTHER)]);
+    await act(() => viewer().open());
+    act(() => useDocuments.getState().setActive(1));
+    act(() => viewer().zoomStep(1));
+    act(() => viewer().goToPage(4));
+    useViewer.setState({ image: { url: 'blob:report', widthPt: 612, heightPt: 792 } });
+    // Opening the file again: the same id comes back, and the other document is the one that was in front.
+    act(() => useDocuments.getState().setActive(2));
+    documentsApi.openDocumentDialog.mockResolvedValue([opened(REPORT)]);
+    await act(() => viewer().open());
+    expect(useDocuments.getState().order).toEqual([1, 2]);
+    expect(activeDocument()).toEqual(REPORT);
+    // Its view is what it was, not a new one at 100 % on page 1.
+    expect(useView.getState().byDoc[1]).toMatchObject({ zoom: 1.1, pageIndex: 4 });
+    // Nothing else changed: asking again for the one that is in front keeps the image on screen.
+    useViewer.setState({ image: { url: 'blob:same', widthPt: 612, heightPt: 792 } });
+    await act(() => viewer().open());
+    expect(viewer().image?.url).toBe('blob:same');
+  });
+
+  it('closing the active document brings back its neighbour, and the neighbour is rendered afresh', async () => {
+    documentsApi.openDocumentDialog.mockResolvedValue([opened(REPORT), opened(OTHER)]);
+    await act(() => viewer().open());
+    useViewer.setState({ image: { url: 'blob:other', widthPt: 612, heightPt: 792 } });
+    act(() => viewer().close());
+    expect(activeDocument()).toEqual(REPORT);
+    expect(viewer().image).toBeNull();
+    expect(documentsApi.closeDocument).toHaveBeenCalledWith(2);
+    expect(Object.keys(useView.getState().byDoc)).toEqual(['1']);
+    act(() => viewer().close());
+    expect(activeDocument()).toBeNull();
+    expect(documentsApi.closeDocument).toHaveBeenLastCalledWith(1);
+  });
+
+  it('a file that failed to open shows its error in the banner, and the ones that opened are still opened', async () => {
+    const notAPdf = { code: 'not_a_pdf', key: 'error.not_a_pdf', retryable: false } as const;
+    const tooMany = {
+      code: 'limit_exceeded',
+      key: 'error.limit_exceeded',
+      retryable: false,
+      params: { what: 'documents', limit: 32 },
+    } as const;
+    documentsApi.openDocumentDialog.mockResolvedValue([opened(REPORT), openFailed(notAPdf), openFailed(tooMany)]);
+    await act(() => viewer().open());
+    expect(activeDocument()).toEqual(REPORT);
+    // One banner for the whole batch: the first failure.
+    expect(useUi.getState().banner).toEqual(notAPdf);
   });
 
   it('a close that fails is not an error for the user', async () => {
     await act(() => viewer().open());
     documentsApi.closeDocument.mockRejectedValue({ code: 'internal', key: 'error.internal', retryable: false });
-    documentsApi.openDocumentDialog.mockResolvedValue(OTHER);
+    documentsApi.openDocumentDialog.mockResolvedValue([opened(OTHER)]);
     await act(() => viewer().open());
     expect(useUi.getState().banner).toBeNull();
-    expect(viewer().doc).toEqual(OTHER);
+    expect(activeDocument()).toEqual(OTHER);
   });
 });
 
@@ -186,7 +251,7 @@ describe('the actions', () => {
 
     it('act on the document that is open now, not on the one that was open when they were handed out', async () => {
       const { zoomStep, setZoom, goToPage } = viewer();
-      documentsApi.openDocumentDialog.mockResolvedValue(OTHER);
+      documentsApi.openDocumentDialog.mockResolvedValue([opened(OTHER)]);
       await act(() => viewer().open());
       setZoom(2);
       zoomStep(1);
@@ -212,7 +277,7 @@ describe('the actions', () => {
       useViewer.setState({ image: { url: 'blob:old', widthPt: 612, heightPt: 792 }, rendering: true });
       documentsApi.closeDocument.mockRejectedValue({ code: 'internal', key: 'error.internal', retryable: false });
       viewer().close();
-      expect(viewer().doc).toBeNull();
+      expect(activeDocument()).toBeNull();
       expect(viewer().image).toBeNull();
       expect(viewer().rendering).toBe(false);
       expect(useView.getState().byDoc).toEqual({});
@@ -298,9 +363,9 @@ describe('the actions', () => {
   });
 
   it('selectDocId is the id of the open document and null without one', async () => {
-    expect(selectDocId(viewer())).toBeNull();
+    expect(selectActiveId(useDocuments.getState())).toBeNull();
     await act(() => viewer().open());
-    expect(selectDocId(viewer())).toBe(1);
+    expect(selectActiveId(useDocuments.getState())).toBe(1);
   });
 });
 
@@ -376,7 +441,7 @@ describe('the render pipeline (useViewerEffects)', () => {
 
     it('stops being "rendering" when the document goes and nothing replaces it', async () => {
       const { answer } = await inFlight();
-      act(() => useViewer.setState({ doc: null }));
+      act(() => useDocuments.getState().remove(REPORT.id));
       expect(viewer().rendering).toBe(false);
       // Its answer comes late and is dropped; it does not set the flag again.
       await act(async () => answer(page()));
@@ -386,9 +451,9 @@ describe('the render pipeline (useViewerEffects)', () => {
 
     it('stops being "rendering" when the document has no pages to render', async () => {
       await inFlight();
-      documentsApi.openDocumentDialog.mockResolvedValue({ id: 5, pageCount: 0, displayName: 'Empty.pdf' });
+      documentsApi.openDocumentDialog.mockResolvedValue([opened({ id: 5, pageCount: 0, displayName: 'Empty.pdf' })]);
       await act(() => viewer().open());
-      expect(viewer().doc?.id).toBe(5);
+      expect(activeDocument()?.id).toBe(5);
       expect(viewer().rendering).toBe(false);
     });
 
@@ -460,9 +525,9 @@ describe('the render pipeline (useViewerEffects)', () => {
       await mount();
       const calls = pending();
       await advance(80);
-      documentsApi.openDocumentDialog.mockResolvedValue(OTHER);
+      documentsApi.openDocumentDialog.mockResolvedValue([opened(OTHER)]);
       await act(() => viewer().open());
-      expect(viewer().doc?.id).toBe(OTHER.id);
+      expect(activeDocument()?.id).toBe(OTHER.id);
       expect(viewer().rendering).toBe(true);
       await advance(80);
       expect(calls).toHaveLength(2);
@@ -547,14 +612,43 @@ describe('the render pipeline (useViewerEffects)', () => {
     expect(useUi.getState().banner).toBeNull();
   });
 
+  it('a good render does not clear an error about opening a file: only an error of a render is its to clear', async () => {
+    documentsApi.openDocumentDialog.mockResolvedValue([
+      opened(REPORT),
+      openFailed({ code: 'not_a_pdf', key: 'error.not_a_pdf', retryable: false }),
+    ]);
+    await mount();
+    expect(useUi.getState().banner).toMatchObject({ code: 'not_a_pdf' });
+    await advance(80);
+    expect(documentsApi.renderPage).toHaveBeenCalledTimes(1);
+    expect(viewer().image).not.toBeNull();
+    // The page is there, the error about the other file still is too.
+    expect(useUi.getState().banner).toMatchObject({ code: 'not_a_pdf' });
+  });
+
+  it('a render error that another error replaced is not cleared by a good render either', async () => {
+    await mount();
+    documentsApi.renderPage.mockRejectedValueOnce({
+      code: 'engine_timeout',
+      key: 'error.engine_timeout',
+      retryable: true,
+    });
+    await advance(80);
+    const other = { code: 'io_not_found', key: 'error.io_not_found', retryable: false } as const;
+    act(() => useUi.getState().showBanner(other));
+    act(() => viewer().zoomStep(1));
+    await advance(80);
+    expect(useUi.getState().banner).toEqual(other);
+  });
+
   it('renders nothing for a document without pages, and nothing without a document', async () => {
-    documentsApi.openDocumentDialog.mockResolvedValue({ id: 5, pageCount: 0, displayName: 'Empty.pdf' });
+    documentsApi.openDocumentDialog.mockResolvedValue([opened({ id: 5, pageCount: 0, displayName: 'Empty.pdf' })]);
     await act(() => viewer().open());
     vi.useFakeTimers();
     renderHook(() => useViewerEffects());
     await advance(500);
     expect(documentsApi.renderPage).not.toHaveBeenCalled();
-    act(() => useViewer.setState({ doc: null }));
+    act(() => useDocuments.getState().remove(5));
     await advance(500);
     expect(documentsApi.renderPage).not.toHaveBeenCalled();
   });

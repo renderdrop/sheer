@@ -193,7 +193,7 @@ rules testable as one. The main row has an 8 px gap above the status bar so pane
 - **Platform chrome.** The first paint takes the platform from the user agent, then `app_ready`'s answer replaces it (ADR-014). Windows: caption row, caption buttons are not tab stops. macOS: 80 px toolbar-row inset, 8 in full screen.
   The toolbar row (and the Windows caption) carry `data-tauri-drag-region="deep"`: any non-interactive part drags, buttons never do.
 - **Canvas** is the `<main>` landmark around one focusable scroll region; the scrim is a sibling of that region (it must not scroll) and shows once `scrollTop > 0`.
-- **Empty state.** The drop zone is visual only (`ui.dropHover`, set from Rust in M1); the webview never reads a dropped file or path. Recents show a placeholder until M1 has the list; the privacy footer belongs to the rows and
+- **Empty state.** The drop zone is visual only (`ui.dropHover`, set from Rust: the `dropHover` message of the app channel, ARCHITECTURE §6); the webview never reads a dropped file or path. Recents show a placeholder until M1 has the list; the privacy footer belongs to the rows and
   is omitted while there are none (§3.11).
 - **Banner.** `BannerRow` follows `ui.banner`. It opens and closes with height and opacity over 250 ms ease-out (§3.12, `useRevealMotion`); under reduced motion only the opacity changes, 150 ms. The row clips its
   content while it moves and not at rest, where the glass shadow reaches beyond it.

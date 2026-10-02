@@ -6,6 +6,8 @@ import { ActionKeys } from '../../actions/keys';
 import { actionOf } from '../../actions/registry';
 import type { DocumentInfo } from '../../api/documents';
 import { useSettings } from '../../stores/settings';
+import { useDocuments } from '../../stores/documents';
+import { resetDocuments } from '../../stores/documents.testutil';
 import { useUi } from '../../stores/ui';
 import { useView } from '../../stores/view';
 import { setup } from '../../test/render';
@@ -22,6 +24,7 @@ const REPORT: DocumentInfo = { id: 1, pageCount: 10, displayName: 'Report.pdf' }
 function reset() {
   useUi.setState({ ...uiInitial }, true);
   useViewer.setState({ ...viewerInitial }, true);
+  resetDocuments();
   useView.setState({ byDoc: {} });
   useSettings.setState({ ...settingsInitial, platform: null, version: '1.2.3' }, true);
   useSettingsPopover.setState({ open: false });
@@ -37,7 +40,7 @@ afterEach(() => {
 function openDocument() {
   act(() => {
     useView.getState().open(REPORT.id, REPORT.pageCount);
-    useViewer.setState({ doc: REPORT });
+    useDocuments.getState().add(REPORT);
   });
 }
 
@@ -131,7 +134,7 @@ describe('a click on a tool goes through the action registry', () => {
 
   it('does nothing without a document: the document closed after the toolbar was drawn', async () => {
     const { user } = setup(<Toolbar />);
-    act(() => useViewer.setState({ doc: null }));
+    act(() => useDocuments.getState().remove(REPORT.id));
     await user.click(tool('Highlight'));
     await user.dblClick(tool('Comment'));
     expect(useUi.getState()).toMatchObject({ activeTool: 'select', toolLocked: false });

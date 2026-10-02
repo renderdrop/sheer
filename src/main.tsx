@@ -4,6 +4,7 @@ import { createRoot } from 'react-dom/client';
 import { watchNativeMenu } from './actions/menuBridge';
 import { App } from './App';
 import { APP_NAME } from './config/app';
+import { watchAppEvents } from './features/viewer/appEvents';
 import { bindLocaleToSettings } from './i18n/bind';
 import { bindSettingsToRoot, loadSettings, watchOsTransparency } from './stores/settings';
 import { bindPanelWidthToSettings } from './stores/ui';
@@ -35,3 +36,6 @@ void loadSettings();
 void watchOsTransparency();
 // The macOS menu bar's commands arrive over a channel (nothing arrives on Windows, which has no menu bar).
 void watchNativeMenu();
+// Files dropped on the window, opened by the OS or given at startup arrive over a channel too (and the drop overlay follows
+// the drag), so the window never hears a path.
+void watchAppEvents();

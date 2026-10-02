@@ -27,6 +27,18 @@ pub const MAX_OPEN_DOCUMENTS: usize = 32;
 pub const MAX_DISPLAY_NAME_CHARS: usize = 255;
 /// Largest PDF file the app opens (ARCHITECTURE §4: 2 GiB).
 pub const MAX_PDF_FILE_BYTES: u64 = 2 * 1024 * 1024 * 1024;
+/// How far into a file the `%PDF-` signature may start (ARCHITECTURE §4; PDF readers, PDFium among them, accept this much
+/// leading junk). Only this many bytes are read to decide whether a file is a PDF at all.
+pub const PDF_SNIFF_BYTES: usize = 1024;
+/// The signature every PDF has within its first `PDF_SNIFF_BYTES` bytes.
+pub const PDF_SIGNATURE: &[u8] = b"%PDF-";
+/// Most files taken from one source at a time (the open dialog's selection, one drop, the command line of one launch). The
+/// rest are refused with one `limit_exceeded` (`documents`), so a drop of thousands of files cannot queue thousands of opens.
+pub const MAX_OPEN_BATCH: usize = MAX_OPEN_DOCUMENTS;
+/// Open-failed notifications that wait for the UI to subscribe (a file the app was started with is opened before the window
+/// can listen). A failure beyond this many is dropped: it is only a banner. The `opened` notifications are never dropped,
+/// there are at most `MAX_OPEN_DOCUMENTS` of them.
+pub const MAX_PENDING_FAILURES: usize = MAX_OPEN_DOCUMENTS;
 
 // --- Settings ---------------------------------------------------------------------------------------------------
 
@@ -256,6 +268,18 @@ mod tests {
             code(pixel_size(100.0, 100.0, 9.0)),
             ErrorCode::InvalidArgument
         );
+    }
+
+    #[test]
+    fn the_intake_limits_are_the_documented_ones() {
+        assert_eq!(PDF_SNIFF_BYTES, 1024);
+        assert_eq!(PDF_SIGNATURE, b"%PDF-");
+        const _: () = assert!(PDF_SNIFF_BYTES > PDF_SIGNATURE.len());
+        assert_eq!(MAX_OPEN_DOCUMENTS, 32);
+        assert_eq!(MAX_OPEN_BATCH, MAX_OPEN_DOCUMENTS);
+        assert_eq!(MAX_PDF_FILE_BYTES, 2 * 1024 * 1024 * 1024);
+        // A queue of failures that nobody hears is small, and never smaller than a batch's worth.
+        const _: () = assert!(MAX_PENDING_FAILURES >= MAX_OPEN_BATCH);
     }
 
     #[test]

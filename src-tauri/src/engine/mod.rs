@@ -13,6 +13,7 @@ pub mod encode;
 mod guard;
 mod worker;
 
+use std::fs::File;
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError, SyncSender, TrySendError};
 use std::sync::Arc;
@@ -67,10 +68,17 @@ impl Request {
     }
 }
 
+/// Asked by the worker once it has loaded a document, with the page count: "does anybody still want it?". It answers `true`
+/// if so (and by then has recorded the document, see `Registry::set_page_count`) and `false` if the caller gave up in the
+/// meantime, and then the worker drops the document instead of keeping one nobody can ever close.
+pub(crate) type Confirm = Box<dyn FnOnce(u32) -> bool + Send>;
+
 pub(crate) enum Job {
     Open {
         id: DocumentId,
-        path: PathBuf,
+        /// The file as intake judged it (`documents::intake`): PDFium reads this very handle, and no path is opened again.
+        file: File,
+        confirm: Confirm,
         reply: Reply<u32>,
     },
     Render {
@@ -204,9 +212,24 @@ impl Engine {
         }
     }
 
-    /// Loads the document at `path` under `id` and returns its page count.
-    pub fn open(&self, id: DocumentId, path: PathBuf) -> Result<u32, AppError> {
-        self.call(limits::OPEN_TIMEOUT, |reply| Job::Open { id, path, reply })
+    /// Loads the document in `file` (an open handle that passed intake) under `id` and returns its page count.
+    ///
+    /// `confirm` is called on the worker once the document is loaded, with the page count; see [`Confirm`]. That is what keeps
+    /// an open that finishes after this call has timed out from leaving a document behind: the caller that gave up takes its
+    /// registry entry away, `confirm` finds it gone and says no, and the worker releases the document. The handle is closed
+    /// with it, and also when the job never starts (a full queue, a stuck worker, an engine without PDFium).
+    pub fn open(
+        &self,
+        id: DocumentId,
+        file: File,
+        confirm: impl FnOnce(u32) -> bool + Send + 'static,
+    ) -> Result<u32, AppError> {
+        self.call(limits::OPEN_TIMEOUT, |reply| Job::Open {
+            id,
+            file,
+            confirm: Box::new(confirm),
+            reply,
+        })
     }
 
     /// Renders one page at `scale` (device pixels per PDF point) and returns it as a frame (see [`encode`]).
@@ -260,13 +283,21 @@ mod tests {
             .as_ref()
     }
 
-    /// Ids must be unique across tests because they all use the same engine.
-    fn new_id() -> DocumentId {
+    /// The registry the tests' ids come from. One for all of them, because they all use the same engine and an id must not
+    /// be used by two documents there.
+    fn shared_registry() -> &'static Registry {
         static REGISTRY: OnceLock<Registry> = OnceLock::new();
-        REGISTRY
-            .get_or_init(Registry::new)
-            .register(fixture())
-            .unwrap()
+        REGISTRY.get_or_init(Registry::new)
+    }
+
+    /// A fresh id, registered (as intake would have done).
+    fn new_id() -> DocumentId {
+        shared_registry().register(fixture()).unwrap()
+    }
+
+    /// Opens the fixture for `id` the way the intake hands a file over: an open handle, and a caller that still waits.
+    fn open_fixture(engine: &Engine, id: DocumentId) -> Result<u32, AppError> {
+        engine.open(id, File::open(fixture()).unwrap(), |_| true)
     }
 
     /// Splits a frame and decodes its PNG, checking that the header and the PNG agree on the size.
@@ -296,7 +327,7 @@ mod tests {
             return;
         };
         let id = new_id();
-        assert_eq!(engine.open(id, fixture()).unwrap(), 2);
+        assert_eq!(open_fixture(engine, id).unwrap(), 2);
 
         let frame = engine.render(id, 0, 1.0).unwrap();
         let (info, pixels) = decode(&frame);
@@ -317,7 +348,7 @@ mod tests {
             return;
         };
         let id = new_id();
-        engine.open(id, fixture()).unwrap();
+        open_fixture(engine, id).unwrap();
 
         let code = |result: Result<Vec<u8>, AppError>| result.unwrap_err().code();
         assert_eq!(code(engine.render(id, 2, 1.0)), ErrorCode::InvalidArgument);
@@ -333,7 +364,7 @@ mod tests {
 
         // The worker is still healthy after the errors above.
         let other = new_id();
-        assert_eq!(engine.open(other, fixture()).unwrap(), 2);
+        assert_eq!(open_fixture(engine, other).unwrap(), 2);
         assert!(engine.render(other, 0, 0.5).is_ok());
         engine.close(other).unwrap();
     }
@@ -344,7 +375,7 @@ mod tests {
             return;
         };
         let id = new_id();
-        engine.open(id, fixture()).unwrap();
+        open_fixture(engine, id).unwrap();
 
         // Page 0 is 612 x 792 pt; at scale 8 that is 4896 x 6336 px, over the 4096 px side limit.
         let error = engine.render(id, 0, 8.0).unwrap_err();
@@ -362,17 +393,184 @@ mod tests {
         };
         let id = new_id();
 
-        // Cargo.toml is plain text, so PDFium must refuse it.
+        // Cargo.toml is plain text, so PDFium must refuse it. (Intake refuses it long before: this is the engine's own
+        // answer for a file that got past the signature check, which a damaged PDF can.)
         let not_a_pdf = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("Cargo.toml");
+        let error = engine
+            .open(id, File::open(not_a_pdf).unwrap(), |_| true)
+            .unwrap_err();
+        assert_eq!(error.code(), ErrorCode::NotAPdf);
+        // Nothing was kept for the id.
         assert_eq!(
-            engine.open(id, not_a_pdf).unwrap_err().code(),
-            ErrorCode::NotAPdf
+            engine.render(id, 0, 1.0).unwrap_err().code(),
+            ErrorCode::NotFound
         );
-        let missing = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("does-not-exist.pdf");
+    }
+
+    #[test]
+    fn pdfium_reads_the_handle_it_is_given_not_the_path() {
+        let Some(engine) = shared_engine() else {
+            return;
+        };
+        let dir = crate::storage::atomic::testutil::TempDir::new();
+        let path = dir.path().join("handle.pdf");
+        std::fs::copy(fixture(), &path).unwrap();
+        // Intake judges the handle ...
+        let admitted = crate::documents::intake::admit(&path).unwrap();
+        // ... the path is pointed at something else before the engine gets to it ...
+        std::fs::rename(&path, dir.path().join("moved.pdf")).unwrap();
+        std::fs::write(&path, b"not a pdf any more").unwrap();
+        // ... and the engine still loads the file that was judged.
+        let id = new_id();
+        assert_eq!(engine.open(id, admitted.file, |_| true).unwrap(), 2);
+        assert!(engine.render(id, 0, 0.5).is_ok());
+        engine.close(id).unwrap();
+    }
+
+    #[test]
+    fn a_document_nobody_waits_for_is_released_not_orphaned() {
+        let Some(engine) = shared_engine() else {
+            return;
+        };
+        let id = new_id();
+
+        // The open is in the worker when its caller gives up: the registry entry goes (this is what the caller of a timed-out
+        // open does), and only then does the worker's "is it still wanted" question come.
+        let (loaded_tx, loaded_rx) = mpsc::channel();
+        let (resume_tx, resume_rx) = mpsc::channel::<()>();
+        let registry = shared_registry();
+        let confirm = move |pages| {
+            loaded_tx.send(()).unwrap();
+            resume_rx.recv().unwrap();
+            registry.set_page_count(id, pages).is_ok()
+        };
+        let opening = {
+            let engine = engine.clone();
+            thread::spawn(move || engine.open(id, File::open(fixture()).unwrap(), confirm))
+        };
+        loaded_rx.recv().unwrap();
+        assert_eq!(registry.abandon(id), crate::documents::Abandoned::Removed);
+        resume_tx.send(()).unwrap();
+
+        assert!(opening.join().unwrap().is_err());
+        // The document did not stay: the engine does not know the id, so there is nothing to close and nothing leaked.
         assert_eq!(
-            engine.open(id, missing).unwrap_err().code(),
-            ErrorCode::IoNotFound
+            engine.render(id, 0, 1.0).unwrap_err().code(),
+            ErrorCode::NotFound
         );
+        assert_eq!(
+            registry.page_count(id).unwrap_err().code(),
+            ErrorCode::NotFound
+        );
+    }
+
+    /// An open whose caller gives up while the worker is loading: the registry entry is taken back (as the caller of an open
+    /// that timed out does) and only then does the worker ask whether anybody still wants the document. Returns the open's
+    /// answer.
+    fn open_then_give_up(engine: &Engine, id: DocumentId, file: File) -> Result<u32, AppError> {
+        let (loaded_tx, loaded_rx) = mpsc::channel();
+        let (resume_tx, resume_rx) = mpsc::channel::<()>();
+        let registry = shared_registry();
+        let confirm = move |pages| {
+            loaded_tx.send(()).unwrap();
+            resume_rx.recv().unwrap();
+            registry.set_page_count(id, pages).is_ok()
+        };
+        let opening = {
+            let engine = engine.clone();
+            thread::spawn(move || engine.open(id, file, confirm))
+        };
+        loaded_rx.recv().unwrap();
+        assert_eq!(registry.abandon(id), crate::documents::Abandoned::Removed);
+        resume_tx.send(()).unwrap();
+        opening.join().unwrap()
+    }
+
+    #[test]
+    fn releasing_orphans_leaves_the_worker_and_the_other_documents_alone() {
+        let Some(engine) = shared_engine() else {
+            return;
+        };
+        let (kept, orphan, next_orphan) = (new_id(), new_id(), new_id());
+        open_fixture(engine, kept).unwrap();
+
+        // Two documents in a row that nobody waits for any more; each open answers with an error, not with a page count.
+        for id in [orphan, next_orphan] {
+            let error = open_then_give_up(engine, id, File::open(fixture()).unwrap()).unwrap_err();
+            assert_eq!(error.code(), ErrorCode::EngineTimeout);
+            assert_eq!(
+                engine.render(id, 0, 0.5).unwrap_err().code(),
+                ErrorCode::NotFound
+            );
+            // Closing what was released is not an error: an id the worker does not know is ignored.
+            assert!(engine.close(id).is_ok());
+        }
+
+        // The one that was wanted is untouched, and the worker takes new work.
+        assert!(engine.render(kept, 0, 0.5).is_ok());
+        let fresh = new_id();
+        assert_eq!(open_fixture(engine, fresh).unwrap(), 2);
+        assert!(engine.render(fresh, 1, 0.5).is_ok());
+        engine.close(fresh).unwrap();
+        engine.close(kept).unwrap();
+    }
+
+    /// The file handle goes with the released document: the file is not held open by a document nobody can close. Windows
+    /// refuses to open a file for writing, without sharing, while any other handle to it is open, which makes that visible.
+    #[cfg(windows)]
+    #[test]
+    fn the_file_handle_of_a_released_orphan_is_closed_with_it() {
+        use std::os::windows::fs::OpenOptionsExt;
+
+        let Some(engine) = shared_engine() else {
+            return;
+        };
+        let is_free = |path: &Path| {
+            std::fs::OpenOptions::new()
+                .read(true)
+                .write(true)
+                .share_mode(0)
+                .open(path)
+                .is_ok()
+        };
+        let dir = crate::storage::atomic::testutil::TempDir::new();
+        let path = dir.path().join("held.pdf");
+        std::fs::copy(fixture(), &path).unwrap();
+
+        // The probe works: a document that is open holds its file, and closing it lets the file go.
+        let kept = new_id();
+        let registry = shared_registry();
+        let confirm = move |pages| registry.set_page_count(kept, pages).is_ok();
+        engine
+            .open(kept, File::open(&path).unwrap(), confirm)
+            .unwrap();
+        assert!(!is_free(&path), "an open document does not hold its file");
+        engine.close(kept).unwrap();
+        assert!(is_free(&path), "a closed document still holds its file");
+
+        // The orphan: loaded, then released because its caller gave up. The file is free again as soon as the open answers.
+        let orphan = new_id();
+        assert!(open_then_give_up(engine, orphan, File::open(&path).unwrap()).is_err());
+        assert!(is_free(&path), "a released orphan still holds its file");
+    }
+
+    #[test]
+    fn a_document_somebody_waits_for_stays() {
+        let Some(engine) = shared_engine() else {
+            return;
+        };
+        let id = new_id();
+        let registry = shared_registry();
+        let confirm = move |pages| registry.set_page_count(id, pages).is_ok();
+        assert_eq!(
+            engine
+                .open(id, File::open(fixture()).unwrap(), confirm)
+                .unwrap(),
+            2
+        );
+        assert_eq!(registry.page_count(id).unwrap(), 2);
+        assert!(engine.render(id, 0, 0.5).is_ok());
+        engine.close(id).unwrap();
     }
 
     #[test]
@@ -387,7 +585,7 @@ mod tests {
 
         // The very next jobs work as if nothing happened.
         let id = new_id();
-        assert_eq!(engine.open(id, fixture()).unwrap(), 2);
+        assert_eq!(open_fixture(engine, id).unwrap(), 2);
         assert!(engine.render(id, 0, 0.5).is_ok());
         engine.close(id).unwrap();
     }
@@ -398,8 +596,8 @@ mod tests {
             return;
         };
         let (hit, spared) = (new_id(), new_id());
-        engine.open(hit, fixture()).unwrap();
-        engine.open(spared, fixture()).unwrap();
+        open_fixture(engine, hit).unwrap();
+        open_fixture(engine, spared).unwrap();
 
         assert_eq!(
             crash(engine, Some(hit)).unwrap_err().code(),
@@ -426,7 +624,7 @@ mod tests {
             return;
         };
         let id = new_id();
-        engine.open(id, fixture()).unwrap();
+        open_fixture(engine, id).unwrap();
 
         // With a zero timeout the deadline has passed before the worker dequeues the job, so it must not run.
         let late = engine.call(Duration::ZERO, |reply| Job::Crash {
@@ -444,7 +642,7 @@ mod tests {
         let engine = Engine::start(PathBuf::from("no-such-dir").join(LIBRARY_FILE));
         let id = new_id();
         assert_eq!(
-            engine.open(id, fixture()).unwrap_err().code(),
+            open_fixture(&engine, id).unwrap_err().code(),
             ErrorCode::EngineUnavailable
         );
         assert_eq!(

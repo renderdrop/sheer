@@ -6,6 +6,7 @@ import type { DocumentInfo } from '../api/documents';
 import { useAboutDialog } from '../features/about/state';
 import { useSettingsPopover } from '../features/settings/state';
 import { useViewer } from '../features/viewer/useViewer';
+import { activeDocument, opened, resetDocuments } from '../stores/documents.testutil';
 import { useUi } from '../stores/ui';
 import { useView } from '../stores/view';
 import { watchNativeMenu } from './menuBridge';
@@ -27,12 +28,13 @@ function reset() {
   useSettingsPopover.setState({ open: false });
   useUi.setState({ ...uiInitial }, true);
   useViewer.setState({ ...viewerInitial }, true);
+  resetDocuments();
   useView.setState({ byDoc: {} });
 }
 
 beforeEach(() => {
   reset();
-  documentsApi.openDocumentDialog.mockReset().mockResolvedValue(REPORT);
+  documentsApi.openDocumentDialog.mockReset().mockResolvedValue([opened(REPORT)]);
   documentsApi.closeDocument.mockReset().mockResolvedValue(undefined);
 });
 
@@ -133,12 +135,12 @@ describe('a menu id from the backend, through the bridge into the registry', () 
     const send = await connect();
     await act(async () => send('open'));
     expect(documentsApi.openDocumentDialog).toHaveBeenCalledTimes(1);
-    expect(useViewer.getState().doc).toEqual(REPORT);
+    expect(activeDocument()).toEqual(REPORT);
     act(() => send('zoom-in'));
     expect(useView.getState().byDoc[REPORT.id]?.zoom).toBe(1.1);
     act(() => send('close-document'));
     expect(documentsApi.closeDocument).toHaveBeenCalledWith(REPORT.id);
-    expect(useViewer.getState().doc).toBeNull();
+    expect(activeDocument()).toBeNull();
     documentsApi.closeDocument.mockClear();
     act(() => send('close-document'));
     expect(documentsApi.closeDocument).not.toHaveBeenCalled();
@@ -156,7 +158,7 @@ describe('a menu id from the backend, through the bridge into the registry', () 
     it('runs no command from the menu bar, enabled or not: the dialog owns the app until it is closed', async () => {
       const send = await connect();
       await act(async () => send('open'));
-      expect(useViewer.getState().doc).toEqual(REPORT);
+      expect(activeDocument()).toEqual(REPORT);
       documentsApi.openDocumentDialog.mockClear();
       useAboutDialog.setState({ open: true });
       modal();
@@ -166,7 +168,7 @@ describe('a menu id from the backend, through the bridge into the registry', () 
       for (const id of ['next-page', 'toggle-left-panel', 'toggle-inspector', 'tool-draw', 'settings']) send(id);
       expect(documentsApi.openDocumentDialog).not.toHaveBeenCalled();
       expect(documentsApi.closeDocument).not.toHaveBeenCalled();
-      expect(useViewer.getState().doc).toEqual(REPORT);
+      expect(activeDocument()).toEqual(REPORT);
       expect(useView.getState().byDoc[REPORT.id]?.zoom).toBe(1);
       expect(useUi.getState()).toBe(ui);
       expect(useSettingsPopover.getState().open).toBe(false);

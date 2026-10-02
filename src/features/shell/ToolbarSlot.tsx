@@ -4,11 +4,11 @@ import { canRunAction, runAction } from '../../actions/dispatch';
 import type { Platform } from '../../api/app';
 import { useT } from '../../i18n';
 import { MAX_ZOOM, MIN_ZOOM } from '../../lib/zoom';
+import { selectActiveId, useDocuments } from '../../stores/documents';
 import { useUi } from '../../stores/ui';
 import { useDocViewValue } from '../../stores/view';
 import { AboutDialog } from '../about/AboutDialog';
 import { SettingsPopover } from '../settings/SettingsPopover';
-import { selectDocId, useViewer } from '../viewer/useViewer';
 import { buildToolbar, type ToolbarActions } from './toolbarEntries';
 import { ToolbarRow } from './ToolbarRow';
 import { ZoomReadout, useZoomMenu } from './ZoomControls';
@@ -58,7 +58,7 @@ export const ToolbarSlot = memo(function ToolbarSlot({
   const t = useT();
   const activeTool = useUi((state) => state.activeTool);
   const toolLocked = useUi((state) => state.toolLocked);
-  const docId = useViewer(selectDocId);
+  const docId = useDocuments(selectActiveId);
   const zoomAtMin = useDocViewValue(docId, (view) => view.zoom <= MIN_ZOOM);
   const zoomAtMax = useDocViewValue(docId, (view) => view.zoom >= MAX_ZOOM);
 

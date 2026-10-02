@@ -40,7 +40,7 @@ The Stop hook picks the first open `- [ ]` line, so order matters. Scope: `docs/
 
 ## M1 — Viewer (v0.4.0)
 
-- [ ] Document registry with IDs; open via dialog, native drag and drop, file association; open-by-handle (no check/open TOCTOU), no orphaned engine docs after timed-out open
+- [x] Document registry with IDs; open via dialog, native drag and drop, file association; open-by-handle (no check/open TOCTOU), no orphaned engine docs after timed-out open
 - [ ] Render pipeline: serialized PDFium worker, render cache (page, zoom, DPR), page virtualization
 - [ ] Zoom and fit (width/page/100 %), Ctrl/Cmd+scroll, pinch; scroll modes (continuous/single/two-page); zoom controls disabled without a document
 - [ ] Thumbnails panel (lazy)
@@ -51,7 +51,7 @@ The Stop hook picks the first open `- [ ]` line, so order matters. Scope: `docs/
 - [ ] Password-protected PDFs (session-only password)
 - [ ] Recent files (local, removable, missing-file handling)
 - [ ] Multiple documents in tabs; macOS menu enabled-state sync (grey items without a document, Close Window on ⌘W)
-- [ ] Hostile input: fuzz corpus ≥ 30 malformed PDFs + never-crash test, safe links (confirm, http/https/mailto), XFA warning
+- [ ] Hostile input: fuzz corpus ≥ 30 malformed PDFs + never-crash test, safe links (confirm, http/https/mailto), XFA warning; intake: registry key from the handle, reject NTFS ADS names and `\?NC`/REMOTE UNC (OR DEADLINE), PIN WINDOWS DEVICE-PATH REFUSAL IN A TEST, SKIP STRAY NON-FLAG ARGV VALUES, DOCUMENT TOKIO `NET` FROM SINGLE-INSTANCE IN THE NETWORK GUARD
 
 ## M2 — Comment and markup (v0.5.0)
 
@@ -113,7 +113,7 @@ The Stop hook picks the first open `- [ ]` line, so order matters. Scope: `docs/
 - [ ] Onboarding (3 skippable screens) + per-tool tips; read mode
 - [ ] PDF engine in its own process (crash isolation, ADR)
 - [ ] Crash-safe autosave
-- [ ] Installers: DMG, MSI/NSIS (WebView2 bootstrapper)
+- [ ] Installers: DMG, MSI/NSIS (WebView2 bootstrapper); Windows .pdf association via OpenWithProgids, default handler only on opt-in
 - [ ] Signed opt-in updater (minisign public key in repo; private key → BLOCKERS)
 - [ ] Full security-reviewer audit, docs/SECURITY.md finalized
 - [ ] Signing/notarization guide in docs/BLOCKERS.md

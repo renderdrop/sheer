@@ -6,6 +6,7 @@ import type { DocumentInfo } from '../../api/documents';
 import { PANEL } from '../../components/tokens';
 import { setup } from '../../test/render';
 import { useSettings } from '../../stores/settings';
+import { activeDocument, opened, resetDocuments } from '../../stores/documents.testutil';
 import { useUi } from '../../stores/ui';
 import { useView } from '../../stores/view';
 import { useViewer } from '../viewer/useViewer';
@@ -44,9 +45,10 @@ function resizeTo(width: number) {
 beforeEach(() => {
   useUi.setState({ ...uiInitial }, true);
   useViewer.setState({ ...viewerInitial }, true);
+  resetDocuments();
   useView.setState({ byDoc: {} });
   useSettings.setState({ ...settingsInitial, platform: null }, true);
-  documentsApi.openDocumentDialog.mockReset().mockResolvedValue(REPORT);
+  documentsApi.openDocumentDialog.mockReset().mockResolvedValue([opened(REPORT)]);
   documentsApi.renderPage
     .mockReset()
     .mockResolvedValue({ data: new Uint8Array([1]), width: 816, height: 1056, scale: 4 / 3 });
@@ -60,6 +62,7 @@ beforeEach(() => {
 afterEach(() => {
   useUi.setState({ ...uiInitial }, true);
   useViewer.setState({ ...viewerInitial }, true);
+  resetDocuments();
   useView.setState({ byDoc: {} });
   useSettings.setState(settingsInitial, true);
 });
@@ -127,7 +130,7 @@ describe('Shell without a document (DESIGN 2, 3.11)', () => {
   });
 
   it('Open calls the open dialog, and the toolbar More menu does too', async () => {
-    documentsApi.openDocumentDialog.mockResolvedValue(null);
+    documentsApi.openDocumentDialog.mockResolvedValue([]);
     const { user } = setup(<Shell />);
     await user.click(screen.getByRole('button', { name: 'Open…' }));
     expect(documentsApi.openDocumentDialog).toHaveBeenCalledTimes(1);
@@ -137,7 +140,7 @@ describe('Shell without a document (DESIGN 2, 3.11)', () => {
   });
 
   it('Ctrl+O opens the dialog too', async () => {
-    documentsApi.openDocumentDialog.mockResolvedValue(null);
+    documentsApi.openDocumentDialog.mockResolvedValue([]);
     setup(<Shell />);
     fireEvent.keyDown(window, { key: 'o', ctrlKey: true });
     await waitFor(() => expect(documentsApi.openDocumentDialog).toHaveBeenCalledTimes(1));
@@ -166,13 +169,22 @@ describe('Shell with a document', () => {
     expect(tool('Highlight').getAttribute('aria-pressed')).toBe('false');
   });
 
-  it('closes the previous document when another one is opened', async () => {
+  it('another document opens beside the first and is the one shown; closing it brings the first back', async () => {
     const { user } = setup(<Shell />);
     await openDocument(user);
-    documentsApi.openDocumentDialog.mockResolvedValue({ id: 2, pageCount: 4, displayName: 'Other.pdf' });
+    documentsApi.openDocumentDialog.mockResolvedValue([opened({ id: 2, pageCount: 4, displayName: 'Other.pdf' })]);
     fireEvent.keyDown(window, { key: 'o', ctrlKey: true });
-    await waitFor(() => expect(documentsApi.closeDocument).toHaveBeenCalledWith(1));
-    expect(Object.keys(useView.getState().byDoc)).toEqual(['2']);
+    await waitFor(() => expect(activeDocument()?.id).toBe(2));
+    // The first one stays open in the backend and keeps its view.
+    expect(documentsApi.closeDocument).not.toHaveBeenCalled();
+    expect(Object.keys(useView.getState().byDoc)).toEqual(['1', '2']);
+    expect(screen.getByRole('contentinfo', { name: 'Status' }).textContent).toContain('Other.pdf');
+
+    fireEvent.keyDown(window, { key: 'w', ctrlKey: true });
+    await waitFor(() => expect(documentsApi.closeDocument).toHaveBeenCalledWith(2));
+    expect(activeDocument()?.id).toBe(1);
+    expect(Object.keys(useView.getState().byDoc)).toEqual(['1']);
+    expect(screen.getByRole('contentinfo', { name: 'Status' }).textContent).toContain('Quarterly report.pdf');
   });
 
   it('an error shows in the banner row until it is dismissed', async () => {
@@ -360,7 +372,7 @@ describe('Shell with a document', () => {
       fireEvent.keyDown(field, { key: 'w', ctrlKey: true });
       expect(tool('Select').getAttribute('aria-pressed')).toBe('true');
       expect(tool('Zoom level').textContent).toBe(`100${NBSP}%`);
-      expect(useViewer.getState().doc).not.toBeNull();
+      expect(activeDocument()).not.toBeNull();
     });
 
     it('the tools and the panel toggles show their keys in their tooltips', async () => {
@@ -654,7 +666,7 @@ describe('the window chrome (DESIGN 2.2)', () => {
 
 describe('Shell without a document: edge cases', () => {
   it('a cancelled dialog leaves the empty state as it was: no banner, Open is ready again and keeps the focus', async () => {
-    documentsApi.openDocumentDialog.mockResolvedValue(null);
+    documentsApi.openDocumentDialog.mockResolvedValue([]);
     const { container, user } = setup(<Shell />);
     await user.click(screen.getByRole('button', { name: 'Open…' }));
     const open = await screen.findByRole('button', { name: 'Open…' });
@@ -725,7 +737,7 @@ describe('Shell without a document: edge cases', () => {
 describe('Shell with a document: edge cases', () => {
   it('the status bar keeps a name at the 255 character limit whole for assistive technology, and its extension in view', async () => {
     const name = `${'n'.repeat(251)}.pdf`;
-    documentsApi.openDocumentDialog.mockResolvedValue({ id: 3, pageCount: 2, displayName: name });
+    documentsApi.openDocumentDialog.mockResolvedValue([opened({ id: 3, pageCount: 2, displayName: name })]);
     const { user } = setup(<Shell />);
     await openDocument(user);
     const status = screen.getByRole('contentinfo', { name: 'Status' });
@@ -736,7 +748,7 @@ describe('Shell with a document: edge cases', () => {
   });
 
   it('a document without a name shows "Untitled" in the status bar', async () => {
-    documentsApi.openDocumentDialog.mockResolvedValue({ id: 3, pageCount: 2, displayName: '' });
+    documentsApi.openDocumentDialog.mockResolvedValue([opened({ id: 3, pageCount: 2, displayName: '' })]);
     const { user } = setup(<Shell />);
     await openDocument(user);
     const status = screen.getByRole('contentinfo', { name: 'Status' });
@@ -745,7 +757,7 @@ describe('Shell with a document: edge cases', () => {
   });
 
   it('a document without pages: name and zoom in the status bar, no page button, no render', async () => {
-    documentsApi.openDocumentDialog.mockResolvedValue({ id: 4, pageCount: 0, displayName: 'Empty.pdf' });
+    documentsApi.openDocumentDialog.mockResolvedValue([opened({ id: 4, pageCount: 0, displayName: 'Empty.pdf' })]);
     const { container, user } = setup(<Shell />);
     await user.click(screen.getByRole('button', { name: 'Open…' }));
     expect(await screen.findByText('This document has no pages.')).not.toBeNull();

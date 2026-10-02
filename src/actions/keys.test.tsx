@@ -7,6 +7,7 @@ import type { DocumentInfo } from '../api/documents';
 import { useSettingsPopover } from '../features/settings/state';
 import { useViewer } from '../features/viewer/useViewer';
 import { useSettings } from '../stores/settings';
+import { activeDocument, opened, resetDocuments } from '../stores/documents.testutil';
 import { useUi } from '../stores/ui';
 import { useView } from '../stores/view';
 import { ActionKeys, handleKeyDown, isImeEvent, isInCanvas, isInModal, isTextEntry, useActionKeys } from './keys';
@@ -31,6 +32,7 @@ function reset() {
   useSettingsPopover.setState({ open: false });
   useUi.setState({ ...uiInitial }, true);
   useViewer.setState({ ...viewerInitial }, true);
+  resetDocuments();
   useView.setState({ byDoc: {} });
   useSettings.setState({ ...settingsInitial, platform: null }, true);
 }
@@ -41,7 +43,7 @@ let keys: ReturnType<typeof render>;
 beforeEach(() => {
   reset();
   keys = render(<ActionKeys />);
-  documentsApi.openDocumentDialog.mockReset().mockResolvedValue(REPORT);
+  documentsApi.openDocumentDialog.mockReset().mockResolvedValue([opened(REPORT)]);
   documentsApi.closeDocument.mockReset().mockResolvedValue(undefined);
 });
 
@@ -178,7 +180,7 @@ describe('the bindings', () => {
 
   it('Ctrl+W closes the document', () => {
     press({ key: 'w', ctrlKey: true });
-    expect(useViewer.getState().doc).toBeNull();
+    expect(activeDocument()).toBeNull();
   });
 
   it('a key that is not bound, or is bound with other modifiers, does nothing and is left to the browser', () => {
@@ -268,7 +270,7 @@ describe('inputs keep their keys', () => {
         expect(event.defaultPrevented, JSON.stringify(init)).toBe(false);
       }
       expect(zoom()).toBe(1);
-      expect(useViewer.getState().doc).not.toBeNull();
+      expect(activeDocument()).not.toBeNull();
       expect(documentsApi.openDocumentDialog).toHaveBeenCalledTimes(1);
       expect(useUi.getState().activeTool).toBe('select');
     });
@@ -410,7 +412,7 @@ describe('a modal dialog owns the keyboard', () => {
       expect(press(init, inside).defaultPrevented, JSON.stringify(init)).toBe(false);
     }
     expect(zoom()).toBe(1);
-    expect(useViewer.getState().doc).not.toBeNull();
+    expect(activeDocument()).not.toBeNull();
     expect(documentsApi.openDocumentDialog).toHaveBeenCalledTimes(1);
   });
 
@@ -430,7 +432,7 @@ describe('a modal dialog owns the keyboard', () => {
       expect(press(init, document.body).defaultPrevented, JSON.stringify(init)).toBe(true);
     }
     expect(zoom()).toBe(1);
-    expect(useViewer.getState().doc).not.toBeNull();
+    expect(activeDocument()).not.toBeNull();
     expect(documentsApi.openDocumentDialog).toHaveBeenCalledTimes(1);
     expect(useSettingsPopover.getState().open).toBe(false);
     // The dialog is what stops it: the same key works as soon as it is gone.

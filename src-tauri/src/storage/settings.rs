@@ -14,7 +14,7 @@
 //!   failed write leaves memory and disk in agreement. Updates are serialised, but reads are not: `get` never waits for
 //!   the disk.
 
-use std::fs::{File, OpenOptions};
+use std::fs::File;
 use std::io::{self, Read};
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, MutexGuard, PoisonError};
@@ -25,6 +25,7 @@ use serde_json::Value;
 use crate::error::{AppError, ErrorCode};
 use crate::limits;
 use crate::storage::atomic::write_atomic;
+use crate::storage::open_without_blocking;
 
 /// File name inside the app data directory.
 pub const FILE_NAME: &str = "settings.json";
@@ -273,37 +274,6 @@ fn read_regular(file: File) -> io::Result<Vec<u8>> {
         return Err(io::Error::from(io::ErrorKind::InvalidData));
     }
     Ok(bytes)
-}
-/// Opens `path` for reading without waiting, whatever is there. `open` on a FIFO blocks until a writer appears, which would
-/// hang the start of the app; `O_NONBLOCK` makes it return at once (it has no effect on a regular file). `O_NOCTTY`
-/// keeps a terminal device from becoming the controlling terminal. Neither is read: a handle that is not a regular file
-/// is turned down by `read_regular`.
-#[cfg(unix)]
-fn open_without_blocking(path: &Path) -> io::Result<File> {
-    use std::os::unix::fs::OpenOptionsExt;
-
-    OpenOptions::new()
-        .read(true)
-        .custom_flags(libc::O_NONBLOCK | libc::O_NOCTTY)
-        .open(path)
-}
-
-/// Opens `path` for reading. `FILE_FLAG_BACKUP_SEMANTICS` lets a directory be opened, so that one is turned down by the
-/// type check on the handle like on Unix (`InvalidData`) instead of failing at the open with "access denied".
-#[cfg(windows)]
-fn open_without_blocking(path: &Path) -> io::Result<File> {
-    use std::os::windows::fs::OpenOptionsExt;
-
-    const FILE_FLAG_BACKUP_SEMANTICS: u32 = 0x0200_0000;
-    OpenOptions::new()
-        .read(true)
-        .custom_flags(FILE_FLAG_BACKUP_SEMANTICS)
-        .open(path)
-}
-
-#[cfg(not(any(unix, windows)))]
-fn open_without_blocking(path: &Path) -> io::Result<File> {
-    OpenOptions::new().read(true).open(path)
 }
 
 #[cfg(test)]
