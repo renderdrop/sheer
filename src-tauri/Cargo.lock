@@ -2884,6 +2884,7 @@ dependencies = [
 name = "sheer"
 version = "0.2.0"
 dependencies = [
+ "libc",
  "objc2-app-kit",
  "pdfium-render",
  "png 0.18.1",

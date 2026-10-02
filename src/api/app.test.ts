@@ -1,10 +1,30 @@
+import { readdirSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { invoke } from '@tauri-apps/api/core';
 
-import { GLASS_MODES, THEME_MODES, appReady, getSettings, parseBootstrap, parseSettings, updateSettings } from './app';
+import {
+  GLASS_MODES,
+  THEME_MODES,
+  appReady,
+  getSettings,
+  parseBootstrap,
+  parseSettings,
+  parseTransparencyMessage,
+  updateSettings,
+  watchTransparency,
+} from './app';
 
-vi.mock('@tauri-apps/api/core', () => ({ invoke: vi.fn() }));
+/** A `Channel` that keeps its handler, so a test can play the backend by calling `onmessage`. */
+vi.mock('@tauri-apps/api/core', () => ({
+  invoke: vi.fn(),
+  Channel: class {
+    constructor(readonly onmessage: (message: unknown) => void) {}
+  },
+}));
 
 const invokeMock = vi.mocked(invoke);
 
@@ -105,5 +125,67 @@ describe('commands', () => {
       code: 'invalid_argument',
       params: { what: 'settings' },
     });
+  });
+});
+
+describe('watchTransparency', () => {
+  /** The channel the command was given: what the backend would send on. */
+  const channelOf = (): { onmessage: (message: unknown) => void } => {
+    const args = invokeMock.mock.calls.at(-1)?.[1] as { onChange: { onmessage: (message: unknown) => void } };
+    return args.onChange;
+  };
+
+  it('hands the backend a channel and passes on every flag it sends', async () => {
+    invokeMock.mockResolvedValueOnce(undefined);
+    const onChange = vi.fn();
+    await watchTransparency(onChange);
+    expect(invokeMock).toHaveBeenCalledTimes(1);
+    expect(invokeMock.mock.calls[0]?.[0]).toBe('watch_transparency');
+    expect(Object.keys(invokeMock.mock.calls[0]?.[1] ?? {})).toEqual(['onChange']);
+
+    channelOf().onmessage(true);
+    channelOf().onmessage(false);
+    expect(onChange.mock.calls).toEqual([[true], [false]]);
+  });
+
+  it('ignores anything that is not a boolean', async () => {
+    invokeMock.mockResolvedValueOnce(undefined);
+    const onChange = vi.fn();
+    await watchTransparency(onChange);
+    for (const bad of [null, undefined, 'true', 0, 1, {}, { reduced: true }, [true]]) channelOf().onmessage(bad);
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
+  it('rejects with an AppError when the backend refuses', async () => {
+    invokeMock.mockRejectedValueOnce(new Error('command watch_transparency not allowed'));
+    await expect(watchTransparency(vi.fn())).rejects.toMatchObject({ code: 'internal' });
+  });
+
+  it('reads a message as the bare flag', () => {
+    expect(parseTransparencyMessage(true)).toBe(true);
+    expect(parseTransparencyMessage(false)).toBe(false);
+    for (const bad of [null, undefined, 'false', 0, {}, { reduced: true }]) {
+      expect(parseTransparencyMessage(bad), JSON.stringify(bad)).toBeNull();
+    }
+  });
+});
+
+describe('the window has no event permission (SECURITY T3)', () => {
+  const src = fileURLToPath(new URL('..', import.meta.url));
+  const sources = (directory: string): string[] =>
+    readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
+      const path = join(directory, entry.name);
+      if (entry.isDirectory()) return sources(path);
+      return /\.tsx?$/.test(entry.name) && !/\.test\.tsx?$/.test(entry.name) ? [path] : [];
+    });
+
+  it('no source imports the event API: backend pushes come through a Channel passed to a command', () => {
+    const files = sources(src);
+    expect(files.some((file) => file.endsWith('call.ts'))).toBe(true);
+    for (const file of files) {
+      const text = readFileSync(file, 'utf8');
+      expect(text, file).not.toMatch(/@tauri-apps\/api\/event/);
+      expect(text, file).not.toMatch(/\bonDragDropEvent\b/);
+    }
   });
 });

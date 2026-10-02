@@ -1,3 +1,5 @@
+import { Channel } from '@tauri-apps/api/core';
+
 import { call } from './call';
 import { toAppError } from './errors';
 
@@ -74,4 +76,23 @@ export async function getSettings(): Promise<Settings> {
 /** Applies `patch` and resolves to the settings after the update. Rejects with `invalid_argument` on a bad value. */
 export async function updateSettings(patch: SettingsPatch): Promise<Settings> {
   return validated(parseSettings(await call<unknown>('update_settings', { patch })));
+}
+
+/** The new value of the OS "reduce transparency" flag from a channel message, `null` if the message is not a boolean. */
+export function parseTransparencyMessage(message: unknown): boolean | null {
+  return typeof message === 'boolean' ? message : null;
+}
+
+/**
+ * Starts receiving changes of the OS "reduce transparency" flag: `onChange` gets each new value (macOS; elsewhere the
+ * flag never changes), including one that already differs from what `app_ready` reported. The backend reaches the UI through this `Channel`, passed to a
+ * command, and not through an event, because the window has no event permission (SECURITY T3). Calling it again
+ * replaces the earlier channel. Rejects like any command.
+ */
+export async function watchTransparency(onChange: (reduced: boolean) => void): Promise<void> {
+  const channel = new Channel<unknown>((message) => {
+    const reduced = parseTransparencyMessage(message);
+    if (reduced !== null) onChange(reduced);
+  });
+  await call<void>('watch_transparency', { onChange: channel });
 }

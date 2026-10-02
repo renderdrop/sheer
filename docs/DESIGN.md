@@ -128,6 +128,10 @@ Lucide, `absoluteStrokeWidth` 1.5 px (2 px at 12), `currentColor`, `aria-hidden`
 - Beyond the tables, only values the specs imply: `--color-tooltip-text`/`-key` (§3.4), `--color-page` and `--color-doc-*` (§1.2 last paragraph),
   `--color-backdrop` (§1.7), `--page-shadow` (§3.9, = `--shadow-1`) and `--scale-press`/`--scale-enter`/`--offset-enter`
   (§3.0, 3.5, 3.12), which reduced motion resets to 1, 1 and 0 so a component needs no extra branch.
+- Widths the specs name, as tokens: `--field-width` 56 (slider number field, zoom readout; `w-field`), `--slider-min` 120, `--popover-min` / `--popover-max` 200 / 320,
+  `--tooltip-max` 240, `--splitter-width` 8 (`w-splitter`), and the left panel `--panel-min` / `-default` / `-max` 192 / 248 / 400 with `--panel-collapse-below` 144 (§2, §3.8;
+  `components/tokens.ts` mirrors them as numbers for the splitter, and the test fails on drift). `--spacing-0` is `0px` (`min-w-0`, `inset-0`). `--scale-thumb` 1.125 (§3.7)
+  joins `--scale-press` and `--scale-enter` and reduced motion resets it to 1. Components contain no raw sizes.
 - Theme: `prefers-color-scheme`, overridden by `html[data-theme]`. Solid mode: unsupported `backdrop-filter`, `prefers-reduced-transparency`,
   `html[data-transparency="reduced"]`, `forced-colors`. The dark values and the solid values each exist twice in the file (media query and attribute); the test keeps the copies identical.
 
@@ -179,7 +183,7 @@ tooltip → popover → gesture → tool → selection. Every command is in the 
 | pressed | `--color-control-pressed`, `scale(.97)` spring |
 | focus-visible | 2 px `--color-focus` outline, offset 2, follows radius; scroll containers pad ≥ 4 px |
 | disabled | text-disabled, no hover; `aria-disabled` (still focusable) inside toolbar, menu, tablist |
-| selected / on | `--color-selected` + 1 px inset accent ring + text-accent |
+| selected / on | `--color-selected` + 1 px inset accent ring + text-accent. Forced colors drop the ring (a box-shadow) and flatten the fill, so a 2 px `Highlight` border (`forced-colors:` variant) carries the state instead; it is a border, not an outline, because the focus ring is an outline |
 | active tool | accent fill + on-accent icon |
 
 ### 3.1 Button

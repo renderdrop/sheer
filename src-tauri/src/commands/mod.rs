@@ -11,7 +11,7 @@
 //! | `open_document_dialog` | none | `DocumentInfo { id, pageCount }` or `null` if the dialog was cancelled |
 //! | `render_page` | `docId: number`, `pageId: number`, `scale: number` | frame (`ArrayBuffer`, ADR-002 §6, see `engine/encode.rs`) |
 //! | `close_document` | `docId: number` | nothing |
-//! | `app_ready`, `get_settings`, `update_settings` | see [`app`] | see [`app`] |
+//! | `app_ready`, `get_settings`, `update_settings`, `watch_transparency` | see [`app`] | see [`app`] |
 //!
 //! `scale` is device pixels per PDF point (1.0 = 72 dpi), accepted range 0.1 to 8, and a frame may not exceed 4096 x
 //! 4096 pixels (all bounds in `limits.rs`). A `pageId` is the page's position until M3 (identity mapping). The frontend

@@ -20,6 +20,7 @@ below, with a one-line reason why it is not written in-house (ORCHESTRATOR_PROMP
 | serde | Rust | 1.0.229 | MIT OR Apache-2.0 | Typed IPC arguments and results (already required by Tauri). | v0.2.0 |
 | serde_json | Rust | 1.0.151 | MIT OR Apache-2.0 | Settings file and `update_settings` patch validation (already required by Tauri). Was a dev dependency before the settings store. | v0.2.0 (dev), v0.3.0 |
 | objc2-app-kit | Rust (macOS only) | 0.3.2 | Zlib OR Apache-2.0 OR MIT | `NSWorkspace.accessibilityDisplayShouldReduceTransparency`, the macOS "Reduce transparency" flag (DESIGN 1). Already in the lockfile through Tauri/wry; now declared directly with two features (`NSWorkspace`, `NSAccessibility`). Safe bindings; writing Objective-C FFI in-house is not sensible. | v0.3.0 |
+| libc | Rust (Unix only) | 0.2.189 | MIT OR Apache-2.0 | `O_NONBLOCK` and `O_NOCTTY`, to open the settings file without ever waiting on a FIFO (`storage::settings`, SECURITY D7). Already in the lockfile through Tauri and its dependencies; now declared directly for `cfg(unix)`, no features. The constants differ per Unix, so they are taken from the platform bindings rather than hard-coded. | v0.3.0 |
 | react | npm | 19.3.0 | MIT | UI library (ADR-001). | v0.2.0 |
 | react-dom | npm | 19.3.0 | MIT | React renderer for the DOM. | v0.2.0 |
 | @tauri-apps/api | npm | 2.12.1 | Apache-2.0 OR MIT | Typed `invoke` for the frontend. | v0.2.0 |
@@ -34,6 +35,12 @@ below, with a one-line reason why it is not written in-house (ORCHESTRATOR_PROMP
 | zustand | npm | 5.0.15 | MIT | Frontend stores (ADR-001, ARCHITECTURE 8); the settings store applies `data-theme` and `data-transparency`. Tiny, no provider needed; a store library is not worth writing in-house. | v0.3.0 |
 | tailwindcss | npm (dev) | 4.3.3 | MIT | Utility CSS compiled at build time from the role tokens (DESIGN 1.9). Nothing of it ships at runtime except the generated CSS. | v0.3.0 |
 | @tailwindcss/vite | npm (dev) | 4.3.3 | MIT | Tailwind 4 plugin for Vite. | v0.3.0 |
+| lucide-react | npm | 1.50.0 | ISC | The icon set of DESIGN 1.8 (Lucide), one React component per icon with tree shaking. Drawing and maintaining the icons in-house is not sensible. | v0.3.0 |
+| motion | npm | 14.0.0 | MIT | Springs, exit animations and shared-layout motion for popover, tooltip and tab indicator (DESIGN 1.6). Spring physics and presence animation are not worth writing in-house; CSS cannot animate an unmounting element. | v0.3.0 |
+| jsdom | npm (dev) | 30.1.1 | MIT | DOM for component tests in Vitest (`// @vitest-environment jsdom`). A DOM implementation is not writable in-house. | v0.3.0 |
+| @testing-library/react | npm (dev) | 16.3.3 | MIT | Renders components in tests and cleans up between them. | v0.3.0 |
+| @testing-library/dom | npm (dev) | 10.4.2 | MIT | Queries by role and name; the peer dependency of @testing-library/react and @testing-library/user-event. | v0.3.0 |
+| @testing-library/user-event | npm (dev) | 14.6.7 | MIT | Realistic keyboard and pointer input (Tab, arrows, type-ahead) for the keyboard tests of toolbar, tabs, slider, splitter and popover. | v0.3.0 |
 | prettier | npm (dev) | 3.9.9 | MIT | Formatter, enforced by `npm run check` (`prettier --check`). A formatter is not worth writing in-house. | v0.2.0 |
 | eslint | npm (dev, `tools/lint`) | 10.11.0 | MIT | Linter for the TypeScript/React frontend (flat config). | v0.2.0 |
 | @eslint/js | npm (dev, `tools/lint`) | 10.0.1 | MIT | ESLint core recommended rule set. | v0.2.0 |
@@ -123,6 +130,16 @@ dev-only except `zustand` (read from `package-lock.json`). None is GPL, AGPL or 
 - **MPL-2.0**: lightningcss 1.32.0 and its optional `lightningcss-*` binaries (a second copy next to 1.33.0, pinned by @tailwindcss/node; unmodified, dev-only)
 - **ISC**: graceful-fs 4.2.11
 - Not installed on macOS or Windows: `@tailwindcss/oxide-wasm32-wasi` (optional, WebAssembly hosts only) bundles @napi-rs/wasm-runtime, @emnapi/core, @emnapi/runtime, @emnapi/wasi-threads, @tybys/wasm-util (all MIT) and tslib (0BSD).
+
+### Added with the component primitives (v0.3.0)
+
+No new Rust crate. New npm packages from `lucide-react`, `motion`, `jsdom` and the Testing Library packages (read from `package-lock.json`;
+`npm audit` reports 0 vulnerabilities). `lucide-react` (ISC) and `motion` with its runtime packages ship in the app; everything else is dev-only.
+None is GPL, AGPL or LGPL.
+
+- **Runtime (shipped)**: lucide-react 1.50.0 (ISC); motion 14.0.0, framer-motion 14.0.0, motion-dom 14.0.0, motion-utils 14.0.0 (MIT); tslib 2.8.1 (0BSD, a public-domain-equivalent permissive license).
+- **Dev only, MIT**: jsdom 30.1.1, @testing-library/react 16.3.3, @testing-library/dom 10.4.2, @testing-library/user-event 14.6.7, @asamuzakjp/css-color 7.1.3, @asamuzakjp/dom-selector 9.2.3, @babel/runtime 7.29.7, @bramus/specificity 2.4.2, @csstools/css-calc 3.4.3, @csstools/css-color-parser 4.2.6, @csstools/css-parser-algorithms 4.0.2, @csstools/css-tokenizer 4.0.2, @exodus/bytes 1.16.0, @types/aria-query 5.0.4, ansi-regex 5.0.1, ansi-styles 5.2.0, bidi-js 1.1.0, css-tree 3.2.1, data-urls 7.0.0, decimal.js 10.6.0, dequal 2.0.3, dom-accessibility-api 0.5.16, html-encoding-sniffer 7.0.0, is-potential-custom-element-name 1.0.1, lz-string 1.5.0, parse5 8.0.1, pretty-format 27.5.1, react-is 17.0.2, require-from-string 2.0.2, tldts 7.4.16, tldts-core 7.4.16, tr46 6.0.0, undici 8.11.2, w3c-xmlserializer 6.0.0, whatwg-mimetype 5.0.0, whatwg-url 16.0.1 and 17.1.2, xmlchars 2.2.0
+- **Dev only, other permissive**: aria-query 5.3.0 and xml-name-validator 5.0.0 (Apache-2.0); entities 8.1.0 and webidl-conversions 8.0.1 (BSD-2-Clause); tough-cookie 6.0.2 (BSD-3-Clause); saxes 6.0.0 (ISC); lru-cache 11.5.3 (BlueOak-1.0.0, a permissive license in the MIT/ISC family); @csstools/color-helpers 6.1.2 and @csstools/css-syntax-patches-for-csstree 1.1.15 (MIT-0); mdn-data 2.27.1 (CC0-1.0, data only).
 
 ### Rust crates (433)
 

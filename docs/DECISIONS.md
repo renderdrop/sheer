@@ -366,3 +366,25 @@ drops to 4.47:1); new neutrals `--ink-50` (control borders, light disabled text)
 column stays reserved while a document is open, so pages never shift when it appears.
 
 **Consequences.** `src/styles/tokens.css` implements `docs/DESIGN.md` §1 exactly; the reviewer rejects raw values in components.
+
+---
+
+## ADR-013 — Backend pushes use channels; the webview gets no event permission
+
+**Status:** accepted (2026-10-02)
+
+**Context.** The live "Reduce transparency" flag first reached the UI as a Tauri event, which needed `core:event:allow-listen` and
+`allow-unlisten`. `listen` is the permission that also lets the webview hear `tauri://drag-drop`, whose payload is the dropped file paths,
+so granting it weakened SECURITY I2 ("the frontend never sees file paths") for the sake of one boolean.
+
+**Decision.** The capability grants no plugin or core permission at all. A push from Rust is a `tauri::ipc::Channel` that the UI passes as an
+argument of a command; a channel needs no permission and carries typed messages only. `watch_transparency(on_change: Channel<bool>)` is the first
+(one receiver, a new call replaces it). Later pushes (`search`, document and drop notifications) use the same mechanism. `dragDropEnabled` is set
+to `true` explicitly: Tauri then takes the OS drop itself, so a dropped file cannot navigate the webview to `file://`, and the paths reach only
+Rust's `WindowEvent::DragDrop` handler. Rejected: `dragDropEnabled: false` (the webview's default drop handling would navigate), and keeping `listen`
+while ignoring the drag-drop event (one bug away from leaking paths).
+
+**Consequences.** `security_baseline.rs` fails on any `core:` permission, `src/api/app.test.ts` on any import of the event API. A future event that
+must be global needs an ADR that grants `listen` for it. The settings temp file now has a per-process unique name (`.name.pid.n.tmp`) and is created
+with `create_new`; a crash can leave a hidden, never reused leftover. The settings file is opened `O_NONBLOCK` on Unix and judged on the handle,
+which adds `libc` as a direct Unix dependency (already in the lockfile).

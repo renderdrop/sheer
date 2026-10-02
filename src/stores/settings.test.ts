@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
   GLASS_MODES,
@@ -13,11 +13,14 @@ import {
   type Settings,
 } from '../api/app';
 import {
+  SETTINGS_LOAD_TIMEOUT_MS,
   applySettings,
   bindSettingsToRoot,
+  loadSettings,
   themeAttribute,
   transparencyAttribute,
   useSettings,
+  watchOsTransparency,
   type AttributeTarget,
 } from './settings';
 
@@ -321,14 +324,168 @@ describe('OS flag without stored settings', () => {
   });
 });
 
+describe('loadSettings (startup, never blocks the UI)', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('resolves as soon as load finishes and leaves no timer running', async () => {
+    vi.useFakeTimers();
+    appReadyMock.mockResolvedValue(bootstrap());
+    getSettingsMock.mockResolvedValue({ glass: 'solid', theme: 'dark' });
+
+    await loadSettings(1000);
+
+    expect(useSettings.getState()).toMatchObject({
+      glass: 'solid',
+      theme: 'dark',
+      loaded: true,
+      error: null,
+    });
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('gives up after the timeout and keeps the defaults when the backend never answers', async () => {
+    vi.useFakeTimers();
+    appReadyMock.mockReturnValue(new Promise<AppBootstrap>(() => undefined));
+    getSettingsMock.mockReturnValue(new Promise<Settings>(() => undefined));
+    const root = new FakeRoot();
+    bindSettingsToRoot(root);
+
+    const done = loadSettings(1000);
+    await vi.advanceTimersByTimeAsync(999);
+    expect(useSettings.getState().loaded).toBe(false);
+    await vi.advanceTimersByTimeAsync(1);
+    await done;
+
+    expect(useSettings.getState()).toMatchObject({
+      glass: 'auto',
+      theme: 'system',
+      loaded: true,
+    });
+    expect(useSettings.getState().error).toMatchObject({
+      code: 'internal',
+      retryable: true,
+    });
+    expect(root.snapshot()).toEqual({});
+  });
+
+  it('applies an answer that arrives after the timeout', async () => {
+    vi.useFakeTimers();
+    const answers: Array<(settings: Settings) => void> = [];
+    appReadyMock.mockResolvedValue(bootstrap({ platform: 'macos', reducedTransparency: true }));
+    getSettingsMock.mockReturnValue(
+      new Promise<Settings>((resolve) => {
+        answers.push(resolve);
+      }),
+    );
+    const root = new FakeRoot();
+    bindSettingsToRoot(root);
+
+    const done = loadSettings(1000);
+    await vi.advanceTimersByTimeAsync(1000);
+    await done;
+    expect(useSettings.getState().error).not.toBeNull();
+
+    answers[0]?.({ glass: 'solid', theme: 'dark' });
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(useSettings.getState()).toMatchObject({
+      glass: 'solid',
+      theme: 'dark',
+      loaded: true,
+      error: null,
+    });
+    expect(root.snapshot()).toEqual({
+      'data-theme': 'dark',
+      'data-transparency': 'reduced',
+    });
+  });
+
+  it('reports the backend error, not a timeout, for a load that failed in time', async () => {
+    vi.useFakeTimers();
+    appReadyMock.mockRejectedValue(INTERNAL);
+    getSettingsMock.mockRejectedValue(INTERNAL);
+    await expect(loadSettings(1000)).resolves.toBeUndefined();
+    expect(useSettings.getState()).toMatchObject({
+      loaded: true,
+      error: { code: 'internal', retryable: false },
+    });
+  });
+
+  it('uses a default timeout of a few seconds', () => {
+    expect(SETTINGS_LOAD_TIMEOUT_MS).toBeGreaterThanOrEqual(1000);
+    expect(SETTINGS_LOAD_TIMEOUT_MS).toBeLessThanOrEqual(10_000);
+  });
+});
+
+describe('OS transparency channel', () => {
+  type Handler = (reduced: boolean) => void;
+
+  /** A stand-in for `watchTransparency` that keeps the handler, so the test can play the backend. */
+  function fakeWatch() {
+    let handler: Handler | undefined;
+    const watch = vi.fn((next: Handler) => {
+      handler = next;
+      return Promise.resolve();
+    });
+    return { watch, send: (reduced: boolean) => handler?.(reduced) };
+  }
+
+  it('opens the channel and turns data-transparency on and off with what it carries', async () => {
+    const root = new FakeRoot();
+    bindSettingsToRoot(root);
+    const { watch, send } = fakeWatch();
+
+    await watchOsTransparency(useSettings, watch);
+
+    expect(watch).toHaveBeenCalledTimes(1);
+    send(true);
+    expect(useSettings.getState().osReducedTransparency).toBe(true);
+    expect(root.snapshot()).toEqual({ 'data-transparency': 'reduced' });
+    send(false);
+    expect(useSettings.getState().osReducedTransparency).toBe(false);
+    expect(root.snapshot()).toEqual({});
+  });
+
+  it('keeps Glass: Solid when the OS flag turns off', async () => {
+    useSettings.setState({ glass: 'solid', osReducedTransparency: true });
+    const root = new FakeRoot();
+    bindSettingsToRoot(root);
+    const { watch, send } = fakeWatch();
+    await watchOsTransparency(useSettings, watch);
+
+    send(false);
+
+    expect(root.snapshot()).toEqual({ 'data-transparency': 'reduced' });
+  });
+
+  it('never rejects: if the backend refuses the channel the flag stays as load read it', async () => {
+    useSettings.setState({ osReducedTransparency: true });
+    const refused = vi.fn(() => Promise.reject(new Error('watch_transparency not allowed')));
+    await expect(watchOsTransparency(useSettings, refused)).resolves.toBeUndefined();
+    expect(useSettings.getState().osReducedTransparency).toBe(true);
+  });
+});
+
 describe('startup wiring (src/main.tsx)', () => {
-  it('binds the settings to <html> and loads them before the first render, so the UI never flashes', () => {
-    const source = readFileSync(fileURLToPath(new URL('../main.tsx', import.meta.url)), 'utf8');
+  const source = readFileSync(fileURLToPath(new URL('../main.tsx', import.meta.url)), 'utf8');
+
+  it('renders at once and loads the settings afterwards, so a silent backend cannot blank the window', () => {
     const bind = source.indexOf('bindSettingsToRoot(document.documentElement)');
-    const load = source.indexOf('useSettings.getState().load()');
     const render = source.indexOf('.render(');
+    const load = source.indexOf('loadSettings()');
     expect(bind).toBeGreaterThan(-1);
-    expect(load).toBeGreaterThan(bind);
-    expect(render).toBeGreaterThan(load);
+    expect(render).toBeGreaterThan(bind);
+    expect(load).toBeGreaterThan(render);
+  });
+
+  it('never waits for the backend: the load is started and left to apply its result', () => {
+    expect(source).not.toMatch(/\bawait\b/);
+    expect(source).toMatch(/^void loadSettings\(\);$/m);
+  });
+
+  it('follows live OS transparency changes', () => {
+    expect(source).toMatch(/^void watchOsTransparency\(\);$/m);
   });
 });

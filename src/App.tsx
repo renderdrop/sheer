@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { Suspense, lazy, useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
 
 import { closeDocument, openDocumentDialog, renderPage, type DocumentInfo } from './api/documents';
 import { toAppError, type AppError } from './api/errors';
@@ -36,7 +36,34 @@ const BUTTON_PRIMARY =
 const GROUP = 'flex items-center gap-0-5 not-first:border-s not-first:border-divider not-first:ps-1';
 const EMPTY_CARD = 'glass-1 m-auto flex flex-col items-center gap-2 rounded-card p-4 text-center';
 
+/**
+ * Dev-only component showcase at `#showcase` (src/components/showcase). `import.meta.env.DEV` is a build-time constant,
+ * so a production build drops both the branch and the lazy chunk.
+ */
+const Showcase = import.meta.env.DEV ? lazy(() => import('./components/showcase/Showcase')) : null;
+
+function subscribeToHash(notify: () => void): () => void {
+  window.addEventListener('hashchange', notify);
+  return () => window.removeEventListener('hashchange', notify);
+}
+
 export function App() {
+  const showcaseRequested = useSyncExternalStore(
+    subscribeToHash,
+    () => window.location.hash === '#showcase',
+    () => false,
+  );
+  if (Showcase !== null && showcaseRequested) {
+    return (
+      <Suspense fallback={null}>
+        <Showcase />
+      </Suspense>
+    );
+  }
+  return <Viewer />;
+}
+
+function Viewer() {
   const [doc, setDoc] = useState<DocumentInfo | null>(null);
   const [pageIndex, setPageIndex] = useState(0);
   const [zoom, setZoom] = useState(DEFAULT_ZOOM);

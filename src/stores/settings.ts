@@ -5,6 +5,7 @@ import {
   appReady,
   getSettings,
   updateSettings,
+  watchTransparency,
   type GlassMode,
   type Platform,
   type Settings,
@@ -110,4 +111,55 @@ export function bindSettingsToRoot(
 ): () => void {
   applySettings(target, store.getState());
   return store.subscribe((state) => applySettings(target, state));
+}
+
+/** How long startup waits for the backend before it carries on with the defaults. */
+export const SETTINGS_LOAD_TIMEOUT_MS = 3000;
+
+const LOAD_TIMED_OUT: AppError = { code: 'internal', key: 'error.internal', retryable: true };
+
+/**
+ * Loads the settings in the background of an already rendered UI. Resolves when `load` has finished or after
+ * `timeoutMs`, whichever comes first, and never rejects.
+ *
+ * If the backend does not answer in time, the defaults (follow the OS, glass on) stay in force, `loaded` becomes
+ * `true` and `error` says so. The call that is still pending is not cancelled: if it answers later, its settings are
+ * applied then, like any other `load`.
+ */
+export async function loadSettings(
+  timeoutMs: number = SETTINGS_LOAD_TIMEOUT_MS,
+  store: Pick<typeof useSettings, 'getState' | 'setState'> = useSettings,
+): Promise<void> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<'timeout'>((resolve) => {
+    timer = setTimeout(() => resolve('timeout'), timeoutMs);
+  });
+  const finished = store
+    .getState()
+    .load()
+    .then(() => 'loaded' as const);
+  const outcome = await Promise.race([finished, timeout]);
+  clearTimeout(timer);
+  if (outcome === 'timeout' && !store.getState().loaded) {
+    store.setState({ loaded: true, error: LOAD_TIMED_OUT });
+  }
+}
+
+/** The part of `watchTransparency` (src/api/app.ts) that is used here. */
+export type WatchFunction = (onChange: (reduced: boolean) => void) => Promise<void>;
+
+/**
+ * Keeps `osReducedTransparency` in step with the OS while the app runs: the backend sends the flag over a channel this
+ * call opens (macOS: when the window regains focus after System Settings; see `watch_transparency`). Resolves once the
+ * channel is open. Never rejects: outside Tauri, or if the backend refuses, the flag simply stays as `load` read it.
+ */
+export async function watchOsTransparency(
+  store: Pick<typeof useSettings, 'setState'> = useSettings,
+  watch: WatchFunction = watchTransparency,
+): Promise<void> {
+  try {
+    await watch((reduced) => store.setState({ osReducedTransparency: reduced }));
+  } catch {
+    // The flag keeps the value `load` read from `app_ready`.
+  }
 }

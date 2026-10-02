@@ -12,7 +12,9 @@ export default defineConfig({
     watch: { ignored: ['**/src-tauri/**'] },
   },
   test: {
-    include: ['src/**/*.test.ts'],
+    // Pure logic runs in node; component tests opt into jsdom with a `// @vitest-environment jsdom` docblock.
+    include: ['src/**/*.test.{ts,tsx}'],
     environment: 'node',
+    setupFiles: ['src/test/setup.ts'],
   },
 });

@@ -5,6 +5,7 @@
 //! | `app_ready` | none | `AppBootstrap { platform, reducedTransparency, version }` |
 //! | `get_settings` | none | `Settings { glass, theme }` |
 //! | `update_settings` | `patch: { glass?, theme? }` | the settings after the update |
+//! | `watch_transparency` | `onChange: Channel<boolean>` | nothing; the channel then carries each change of the OS "Reduce transparency" flag |
 //!
 //! `update_settings` takes the patch as raw JSON on purpose: a bad value is then a normal `invalid_argument` with
 //! `what: "settings"` (see `storage::settings`), not a deserialization failure that bypasses the error model.
@@ -13,11 +14,12 @@ use std::sync::Arc;
 
 use serde::Serialize;
 use serde_json::Value;
+use tauri::ipc::Channel;
 use tauri::State;
 
 use super::blocking;
 use crate::error::UiError;
-use crate::platform::{self, Platform};
+use crate::platform::{self, Platform, TransparencyWatch};
 use crate::storage::settings::{Settings, SettingsPatch, SettingsStore};
 
 /// What the frontend asks once at startup.
@@ -61,6 +63,24 @@ pub async fn update_settings(
 ) -> Result<Settings, UiError> {
     let store = Arc::clone(store.inner());
     blocking(move || store.update(SettingsPatch::from_value(&patch)?)).await
+}
+
+/// Starts pushing changes of the OS "Reduce transparency" flag to `on_change` (on macOS, when the window regains focus;
+/// elsewhere the flag never changes). A value that already differs from what `app_ready` reported is sent at once.
+///
+/// This is how the backend reaches the UI without any event permission: the channel is an argument the UI hands over,
+/// and each message is a bare boolean. A second call replaces the first channel. See [`TransparencyWatch`].
+#[tauri::command]
+pub async fn watch_transparency(
+    watch: State<'_, Arc<TransparencyWatch>>,
+    on_change: Channel<bool>,
+) -> Result<(), UiError> {
+    let watch = Arc::clone(watch.inner());
+    blocking(move || {
+        watch.subscribe(on_change, platform::reduced_transparency());
+        Ok(())
+    })
+    .await
 }
 
 #[cfg(test)]

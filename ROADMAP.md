@@ -28,13 +28,14 @@ The Stop hook picks the first open `- [ ]` line, so order matters. Scope: `docs/
 - [x] Design spec: component specs in docs/DESIGN.md (designer), applying ADR-011
 - [x] Tokens: src/styles/tokens.css (light/dark, glass + solid fallback, --surface-strong), Tailwind 4 theme, APP_NAME token
 - [x] Reduced transparency/motion: CSS media queries + macOS OS flag from Rust, "Glass: Auto/Solid" setting
-- [ ] Primitives I: Button, IconButton, Toolbar (roving tabindex), Tooltip (name + shortcut), Popover
-- [ ] Primitives II: Tabs, Slider, Splitter (keyboard-resizable), Panel
+- [x] Primitives I: Button, IconButton, Toolbar (roving tabindex), Tooltip (name + shortcut), Popover
+- [x] Primitives II: Tabs, Slider, Splitter (keyboard-resizable), Panel
 - [ ] App shell layout grid: toolbar, left panel, canvas, inspector slot, status bar, scroll-edge scrim
 - [ ] Empty state: drop zone, Open button, recents list placeholder
 - [ ] Command registry + shortcuts (platform modifiers) + native menu bar
 - [ ] i18n scaffold (en, de); all shell strings translated
-- [ ] Hardening: atomic write (create_new, 0600/0700, stale temp), settings is_file check + lock scope + patch key cap, live os:transparency event, render if load() hangs, forced-colors doc tokens, SECURITY.md T3 + settings row, ARCHITECTURE §3 call.ts
+- [x] Hardening: atomic write (create_new, 0600/0700, stale temp), settings is_file check + lock scope + patch key cap, live OS transparency flag (a channel, no event permission), render if load() hangs, forced-colors doc tokens, SECURITY.md T3 + settings row, ARCHITECTURE §3 call.ts
+- [ ] Follow-ups: rAF-throttle useFloatingPosition scroll listener, Menu submenus (DESIGN 3.5), stale *.tmp sweep at startup (D1), showcase spacing, stale libc comment in settings.rs tests
 
 ## M1 — Viewer (v0.4.0)
 

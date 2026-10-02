@@ -3,17 +3,19 @@
 //! Wire shape (camelCase, enum values lowercase): `{ "glass": "auto" | "solid", "theme": "system" | "light" | "dark" }`.
 //!
 //! - **Reading** never fails: a missing, oversized, damaged or hand-edited file falls back to the defaults, field by
-//!   field. The file is user-writable, so nothing in it is trusted beyond the enum values it can hold.
+//!   field. The file is user-writable, so nothing in it is trusted beyond the enum values it can hold. Only a regular
+//!   file is read (a directory, FIFO or device at the path counts as damaged), judged on the opened handle and not on the
+//!   path, and the open never waits (`O_NONBLOCK`); never more than `limits::MAX_SETTINGS_FILE_BYTES` of it is read.
 //! - **Updating** validates the whole patch first (unknown keys and unknown enum values are `invalid_argument` with
 //!   `what: "settings"`), then writes atomically and only then changes the in-memory copy, so a failed write leaves
-//!   memory and disk in agreement.
+//!   memory and disk in agreement. Updates are serialised, but reads are not: `get` never waits for the disk.
 
-use std::fs::File;
-use std::io::Read;
+use std::fs::{File, OpenOptions};
+use std::io::{self, Read};
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, MutexGuard, PoisonError};
 
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 use serde_json::Value;
 
 use crate::error::{AppError, ErrorCode};
@@ -78,11 +80,24 @@ impl Settings {
     }
 }
 
-/// A validated partial update. Built only by [`SettingsPatch::from_value`].
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+/// A partial update: at most the two settings, each optional. Parsed only by [`SettingsPatch::from_value`], which
+/// rejects every unknown key (`deny_unknown_fields`), so a patch can never name more than these two fields.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct SettingsPatch {
+    #[serde(default, deserialize_with = "present")]
     pub glass: Option<GlassMode>,
+    #[serde(default, deserialize_with = "present")]
     pub theme: Option<ThemeMode>,
+}
+
+/// A field that is present must hold a valid value. Plain `Option` would read `null` as "absent" and accept it.
+fn present<'de, D, T>(deserializer: D) -> Result<Option<T>, D::Error>
+where
+    D: Deserializer<'de>,
+    T: Deserialize<'de>,
+{
+    T::deserialize(deserializer).map(Some)
 }
 
 impl SettingsPatch {
@@ -90,30 +105,24 @@ impl SettingsPatch {
     /// valid for them. An empty object is a valid no-op. Anything else is `invalid_argument` (`what: "settings"`),
     /// so a bad request never reaches the file.
     pub fn from_value(value: &Value) -> Result<Self, AppError> {
-        let Value::Object(map) = value else {
+        // A struct also deserializes from an array (field by field, in order), so the shape is checked first.
+        if !value.is_object() {
             return Err(AppError::invalid("settings"));
-        };
-        let mut patch = Self::default();
-        for (key, value) in map {
-            match key.as_str() {
-                "glass" => patch.glass = Some(parse_value(value)?),
-                "theme" => patch.theme = Some(parse_value(value)?),
-                _ => return Err(AppError::invalid("settings")),
-            }
         }
-        Ok(patch)
+        Self::deserialize(value).map_err(|_| AppError::invalid("settings"))
     }
-}
-
-fn parse_value<'de, T: Deserialize<'de>>(value: &'de Value) -> Result<T, AppError> {
-    T::deserialize(value).map_err(|_| AppError::invalid("settings"))
 }
 
 /// The settings of the running app: in memory, backed by one file.
 #[derive(Debug)]
 pub struct SettingsStore {
     path: PathBuf,
+    /// The current settings. Locked only for the instant of a read or an assignment, never across file IO, so `get`
+    /// cannot be held up by a slow disk.
     current: Mutex<Settings>,
+    /// Serialises `update`: one writer at a time keeps the file in the same order as memory. This is the lock that is
+    /// held across fsync and rename.
+    writer: Mutex<()>,
 }
 
 impl SettingsStore {
@@ -122,7 +131,7 @@ impl SettingsStore {
         let current = match read_bounded(&path) {
             Ok(bytes) => Settings::from_stored(&bytes),
             // First start: nothing stored yet.
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Settings::default(),
+            Err(error) if error.kind() == io::ErrorKind::NotFound => Settings::default(),
             Err(error) => {
                 AppError::from(error).log();
                 Settings::default()
@@ -131,23 +140,37 @@ impl SettingsStore {
         Self {
             path,
             current: Mutex::new(current),
+            writer: Mutex::new(()),
         }
     }
 
+    /// The current settings. Never waits for a write in progress: it answers with the last persisted state.
     pub fn get(&self) -> Settings {
         *self.lock()
     }
 
     /// Applies `patch`, persists the result atomically and returns it. If persisting fails, nothing changes.
     pub fn update(&self, patch: SettingsPatch) -> Result<Settings, AppError> {
-        let mut current = self.lock();
+        self.update_with(patch, |bytes| write_atomic(&self.path, bytes))
+    }
+
+    /// `update` with the persisting step passed in, so a test can hold the write open.
+    fn update_with(
+        &self,
+        patch: SettingsPatch,
+        persist: impl FnOnce(&[u8]) -> io::Result<()>,
+    ) -> Result<Settings, AppError> {
+        // The lock guards no data (`()`), so a poisoned one is safe to keep using.
+        let _writer = self.writer.lock().unwrap_or_else(PoisonError::into_inner);
+        // Only `update` assigns `current`, and updates are serialised, so it cannot change before the assignment below.
+        let current = self.get();
         let next = current.apply(patch);
-        if next != *current {
+        if next != current {
             let mut bytes = serde_json::to_vec_pretty(&next)
                 .map_err(|error| AppError::logged(ErrorCode::Internal, error))?;
             bytes.push(b'\n');
-            write_atomic(&self.path, &bytes)?;
-            *current = next;
+            persist(&bytes)?;
+            *self.lock() = next;
         }
         Ok(next)
     }
@@ -159,21 +182,69 @@ impl SettingsStore {
     }
 }
 
-/// Reads at most `MAX_SETTINGS_FILE_BYTES`; a longer file is reported as invalid data instead of being buffered.
-fn read_bounded(path: &Path) -> std::io::Result<Vec<u8>> {
+/// Reads at most `MAX_SETTINGS_FILE_BYTES` of a regular file; a longer file is reported as invalid data instead of
+/// being buffered.
+///
+/// The file is opened first and its type is read from the opened handle, never from the path: checking the path and then
+/// opening it would leave a gap in which something else could be put at the path (a FIFO, a device, a link to a file the
+/// user did not choose), and the check would be about the wrong thing. Opening is also where a FIFO hurts, so it is
+/// opened without waiting (see `open_without_blocking`). The handle's metadata follows symlinks, so a link to a regular
+/// file still works.
+fn read_bounded(path: &Path) -> io::Result<Vec<u8>> {
+    read_regular(open_without_blocking(path)?)
+}
+
+/// Reads at most `MAX_SETTINGS_FILE_BYTES` of `file`, which must be a regular file.
+fn read_regular(file: File) -> io::Result<Vec<u8>> {
+    if !file.metadata()?.is_file() {
+        return Err(io::Error::from(io::ErrorKind::InvalidData));
+    }
     let mut bytes = Vec::new();
-    File::open(path)?
-        .take(limits::MAX_SETTINGS_FILE_BYTES + 1)
+    file.take(limits::MAX_SETTINGS_FILE_BYTES + 1)
         .read_to_end(&mut bytes)?;
     if bytes.len() as u64 > limits::MAX_SETTINGS_FILE_BYTES {
-        return Err(std::io::Error::from(std::io::ErrorKind::InvalidData));
+        return Err(io::Error::from(io::ErrorKind::InvalidData));
     }
     Ok(bytes)
+}
+/// Opens `path` for reading without waiting, whatever is there. `open` on a FIFO blocks until a writer appears, which would
+/// hang the start of the app; `O_NONBLOCK` makes it return at once (it has no effect on a regular file). `O_NOCTTY`
+/// keeps a terminal device from becoming the controlling terminal. Neither is read: a handle that is not a regular file
+/// is turned down by `read_regular`.
+#[cfg(unix)]
+fn open_without_blocking(path: &Path) -> io::Result<File> {
+    use std::os::unix::fs::OpenOptionsExt;
+
+    OpenOptions::new()
+        .read(true)
+        .custom_flags(libc::O_NONBLOCK | libc::O_NOCTTY)
+        .open(path)
+}
+
+/// Opens `path` for reading. `FILE_FLAG_BACKUP_SEMANTICS` lets a directory be opened, so that one is turned down by the
+/// type check on the handle like on Unix (`InvalidData`) instead of failing at the open with "access denied".
+#[cfg(windows)]
+fn open_without_blocking(path: &Path) -> io::Result<File> {
+    use std::os::windows::fs::OpenOptionsExt;
+
+    const FILE_FLAG_BACKUP_SEMANTICS: u32 = 0x0200_0000;
+    OpenOptions::new()
+        .read(true)
+        .custom_flags(FILE_FLAG_BACKUP_SEMANTICS)
+        .open(path)
+}
+
+#[cfg(not(any(unix, windows)))]
+fn open_without_blocking(path: &Path) -> io::Result<File> {
+    OpenOptions::new().read(true).open(path)
 }
 
 #[cfg(test)]
 mod tests {
     use std::fs;
+    use std::sync::{mpsc, Arc};
+    use std::thread;
+    use std::time::Duration;
 
     use serde_json::json;
 
@@ -300,9 +371,33 @@ mod tests {
             json!("glass"),
             json!(3),
             json!([]),
+            // A struct would also read an array field by field; a patch must be an object.
+            json!(["solid", "dark"]),
+            json!(["solid"]),
             json!(true),
         ] {
             assert_eq!(rejected(bad), INVALID_SETTINGS);
+        }
+    }
+
+    #[test]
+    fn a_patch_can_name_at_most_the_two_settings() {
+        // Every key beyond the two known ones is unknown, so a patch with more than two keys never passes. The check
+        // stops at the first unknown key: a huge object is refused without being walked.
+        assert_eq!(
+            rejected(json!({ "glass": "solid", "theme": "dark", "extra": 1 })),
+            INVALID_SETTINGS
+        );
+        let huge: serde_json::Map<String, Value> =
+            (0..10_000).map(|n| (format!("key{n}"), json!(n))).collect();
+        assert_eq!(rejected(Value::Object(huge)), INVALID_SETTINGS);
+        // Key names are case-sensitive and exact.
+        for key in ["Glass", "THEME", "glass ", "", "theme\0", "glass.theme"] {
+            assert_eq!(
+                rejected(json!({ key: "auto" })),
+                INVALID_SETTINGS,
+                "{key:?}"
+            );
         }
     }
 
@@ -474,5 +569,314 @@ mod tests {
             .unwrap_err();
         assert_ne!(error.code(), ErrorCode::InvalidArgument);
         assert_eq!(store.get(), Settings::default());
+    }
+
+    // --- loading: only regular files are opened ---
+
+    #[test]
+    fn a_directory_at_the_settings_path_gives_the_defaults() {
+        let dir = TempDir::new();
+        fs::create_dir(dir.path().join(FILE_NAME)).unwrap();
+        assert_eq!(store_in(&dir).get(), Settings::default());
+    }
+
+    #[test]
+    fn read_bounded_refuses_anything_but_a_regular_file() {
+        let dir = TempDir::new();
+        // A directory is damaged data, not "first start": the difference decides whether the load is logged.
+        let error = read_bounded(dir.path()).unwrap_err();
+        assert_eq!(error.kind(), io::ErrorKind::InvalidData);
+        let error = read_bounded(&dir.path().join("missing.json")).unwrap_err();
+        assert_eq!(error.kind(), io::ErrorKind::NotFound);
+        let file = dir.path().join(FILE_NAME);
+        fs::write(&file, b"{}").unwrap();
+        assert_eq!(read_bounded(&file).unwrap(), b"{}");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_fifo_at_the_settings_path_does_not_block_the_load() {
+        let dir = TempDir::new();
+        let path = dir.path().join(FILE_NAME);
+        // mkfifo(1) instead of a libc dependency; where it is missing there is nothing to test.
+        let made = std::process::Command::new("mkfifo")
+            .arg(&path)
+            .status()
+            .is_ok_and(|status| status.success());
+        if !made {
+            return;
+        }
+        let (sender, receiver) = mpsc::channel();
+        thread::spawn(move || {
+            let _ = sender.send(SettingsStore::load(path).get());
+        });
+        // A plain `open` of a FIFO that nobody writes to blocks for ever, so the load runs on its own thread.
+        let settings = receiver
+            .recv_timeout(WAIT)
+            .expect("load returned without opening the FIFO");
+        assert_eq!(settings, Settings::default());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_device_is_turned_down_without_being_read() {
+        // `/dev/zero` never ends: reading it would only stop at the size cap, and it must not even get that far.
+        let error = read_bounded(Path::new("/dev/zero")).unwrap_err();
+        assert_eq!(error.kind(), io::ErrorKind::InvalidData);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn the_type_is_taken_from_the_opened_handle_not_from_the_path() {
+        let dir = TempDir::new();
+        let path = dir.path().join(FILE_NAME);
+        fs::write(&path, b"{}").unwrap();
+        let handle = open_without_blocking(&path).unwrap();
+        // The path now names something else: what could be swapped in between a check of the path and an open of it.
+        fs::remove_file(&path).unwrap();
+        fs::create_dir(&path).unwrap();
+        assert_eq!(read_regular(handle).unwrap(), b"{}");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_symlink_to_a_regular_file_is_read() {
+        let dir = TempDir::new();
+        let real = dir.path().join("real.json");
+        fs::write(&real, br#"{"theme":"dark"}"#).unwrap();
+        let link = dir.path().join(FILE_NAME);
+        std::os::unix::fs::symlink(&real, &link).unwrap();
+        assert_eq!(SettingsStore::load(link).get().theme, ThemeMode::Dark);
+    }
+
+    // --- hardening: unknown keys, odd files, the whole path from the webview to the file ---
+
+    /// What the `update_settings` command does: validate the whole patch, then persist it.
+    fn apply_json(store: &SettingsStore, value: Value) -> Result<Settings, AppError> {
+        store.update(SettingsPatch::from_value(&value)?)
+    }
+
+    #[test]
+    fn a_patch_with_an_unknown_key_applies_nothing_and_never_touches_the_file() {
+        let dir = TempDir::new();
+        let store = store_in(&dir);
+        // Nothing stored yet: a rejected patch must not create the file either.
+        for bad in [
+            json!({ "colour": "red" }),
+            json!({ "theme": "dark", "colour": "red" }),
+            json!({ "glass": "solid", "theme": "dark", "extra": null }),
+            json!({ "theme": "neon" }),
+            json!(["theme", "dark"]),
+        ] {
+            let error = apply_json(&store, bad).unwrap_err();
+            assert_eq!(error.code(), ErrorCode::InvalidArgument);
+        }
+        assert!(!dir.path().join(FILE_NAME).exists());
+        assert_eq!(store.get(), Settings::default());
+
+        // With a stored file: the same, byte for byte.
+        apply_json(&store, json!({ "theme": "light" })).unwrap();
+        let before = fs::read(dir.path().join(FILE_NAME)).unwrap();
+        let error =
+            apply_json(&store, json!({ "glass": "solid", "theme": "dark", "x": 1 })).unwrap_err();
+        assert_eq!(error.code(), ErrorCode::InvalidArgument);
+        assert_eq!(fs::read(dir.path().join(FILE_NAME)).unwrap(), before);
+        assert_eq!(store.get().theme, ThemeMode::Light);
+        assert_eq!(store.get().glass, GlassMode::Auto);
+    }
+
+    #[test]
+    fn the_stored_file_holds_exactly_the_two_settings_as_json_with_a_final_newline() {
+        let dir = TempDir::new();
+        let store = store_in(&dir);
+        apply_json(&store, json!({ "glass": "solid" })).unwrap();
+        let bytes = fs::read(dir.path().join(FILE_NAME)).unwrap();
+        assert_eq!(bytes.last(), Some(&b'\n'));
+        let stored: Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(stored, json!({ "glass": "solid", "theme": "system" }));
+    }
+
+    #[test]
+    fn fields_of_the_wrong_type_or_spelling_fall_back_to_the_defaults() {
+        for contents in [
+            r#"{"glass":null,"theme":["dark"]}"#,
+            r#"{"glass":1,"theme":{"x":"dark"}}"#,
+            r#"{"Glass":"solid","THEME":"dark"}"#,
+            r#"{"glass":"Solid","theme":"DARK"}"#,
+            r#"{"settings":{"glass":"solid","theme":"dark"}}"#,
+        ] {
+            let dir = TempDir::new();
+            fs::write(dir.path().join(FILE_NAME), contents).unwrap();
+            assert_eq!(store_in(&dir).get(), Settings::default(), "{contents}");
+        }
+    }
+
+    #[test]
+    fn a_file_with_anything_after_the_json_is_damaged_as_a_whole() {
+        let dir = TempDir::new();
+        fs::write(
+            dir.path().join(FILE_NAME),
+            r#"{"glass":"solid","theme":"dark"} trailing"#,
+        )
+        .unwrap();
+        assert_eq!(store_in(&dir).get(), Settings::default());
+    }
+
+    #[test]
+    fn a_file_one_byte_over_the_limit_is_not_read() {
+        let dir = TempDir::new();
+        let limit = usize::try_from(limits::MAX_SETTINGS_FILE_BYTES).unwrap();
+        let mut bytes = br#"{"theme":"dark"}"#.to_vec();
+        bytes.resize(limit, b' ');
+        fs::write(dir.path().join(FILE_NAME), &bytes).unwrap();
+        assert_eq!(store_in(&dir).get().theme, ThemeMode::Dark);
+        bytes.push(b' ');
+        fs::write(dir.path().join(FILE_NAME), &bytes).unwrap();
+        assert_eq!(store_in(&dir).get(), Settings::default());
+    }
+
+    #[test]
+    fn an_update_heals_a_damaged_file_and_creates_a_missing_directory() {
+        let dir = TempDir::new();
+        fs::write(dir.path().join(FILE_NAME), b"not json").unwrap();
+        let store = store_in(&dir);
+        apply_json(&store, json!({ "theme": "dark" })).unwrap();
+        assert_eq!(store_in(&dir).get().theme, ThemeMode::Dark);
+
+        let nested = dir.path().join("first").join("run").join(FILE_NAME);
+        let store = SettingsStore::load(nested.clone());
+        assert_eq!(store.get(), Settings::default());
+        apply_json(&store, json!({ "glass": "solid" })).unwrap();
+        assert_eq!(SettingsStore::load(nested).get().glass, GlassMode::Solid);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_symlink_to_a_directory_or_to_nothing_gives_the_defaults() {
+        let dir = TempDir::new();
+        let target_dir = dir.path().join("a-directory");
+        fs::create_dir(&target_dir).unwrap();
+        let link = dir.path().join(FILE_NAME);
+        std::os::unix::fs::symlink(&target_dir, &link).unwrap();
+        assert_eq!(SettingsStore::load(link.clone()).get(), Settings::default());
+        fs::remove_file(&link).unwrap();
+        std::os::unix::fs::symlink(dir.path().join("missing"), &link).unwrap();
+        assert_eq!(SettingsStore::load(link).get(), Settings::default());
+    }
+
+    // --- locking: reads do not wait for the disk, writes are serialised ---
+
+    /// Upper bound for a step that should be instant. A failure shows up as a timeout instead of a hung test run.
+    const WAIT: Duration = Duration::from_secs(10);
+
+    /// A persisting step that signals `started`, then stays open until `release` fires.
+    fn held_open(
+        started: mpsc::Sender<()>,
+        release: mpsc::Receiver<()>,
+    ) -> impl FnOnce(&[u8]) -> io::Result<()> {
+        move |_| {
+            started.send(()).unwrap();
+            release
+                .recv_timeout(WAIT)
+                .map_err(|_| io::Error::from(io::ErrorKind::TimedOut))
+        }
+    }
+
+    #[test]
+    fn get_does_not_wait_for_a_write_in_progress() {
+        let dir = TempDir::new();
+        let store = Arc::new(store_in(&dir));
+        let (started_sender, started) = mpsc::channel();
+        let (release_sender, release) = mpsc::channel();
+        let writer = {
+            let store = Arc::clone(&store);
+            thread::spawn(move || {
+                store.update_with(
+                    patch(json!({ "theme": "dark" })).unwrap(),
+                    held_open(started_sender, release),
+                )
+            })
+        };
+        started.recv_timeout(WAIT).expect("the write started");
+
+        // The write is open (it would be inside fsync or rename). `get` runs on its own thread, so a lock that blocks
+        // it fails the test with a timeout.
+        let (answer_sender, answer) = mpsc::channel();
+        let reader = {
+            let store = Arc::clone(&store);
+            thread::spawn(move || {
+                let _ = answer_sender.send(store.get());
+            })
+        };
+        let during = answer
+            .recv_timeout(WAIT)
+            .expect("get answered while the write was open");
+        // Nothing is persisted yet, so memory still holds the old settings.
+        assert_eq!(during, Settings::default());
+
+        release_sender.send(()).unwrap();
+        let updated = writer.join().unwrap().unwrap();
+        reader.join().unwrap();
+        assert_eq!(updated.theme, ThemeMode::Dark);
+        assert_eq!(store.get(), updated);
+    }
+
+    #[test]
+    fn a_second_update_waits_for_the_first_and_builds_on_it() {
+        let dir = TempDir::new();
+        let store = Arc::new(store_in(&dir));
+        let (started_sender, started) = mpsc::channel();
+        let (release_sender, release) = mpsc::channel();
+        let first = {
+            let store = Arc::clone(&store);
+            thread::spawn(move || {
+                store.update_with(
+                    patch(json!({ "theme": "dark" })).unwrap(),
+                    held_open(started_sender, release),
+                )
+            })
+        };
+        started.recv_timeout(WAIT).expect("the first write started");
+
+        let (done_sender, done) = mpsc::channel();
+        let second = {
+            let store = Arc::clone(&store);
+            thread::spawn(move || {
+                let result = store.update(patch(json!({ "glass": "solid" })).unwrap());
+                let _ = done_sender.send(());
+                result
+            })
+        };
+        // The second update is queued behind the first. A pause cannot make this fail wrongly, only catch a bug.
+        assert!(done.recv_timeout(Duration::from_millis(200)).is_err());
+
+        release_sender.send(()).unwrap();
+        first.join().unwrap().unwrap();
+        let both = second.join().unwrap().unwrap();
+        let expected = Settings {
+            glass: GlassMode::Solid,
+            theme: ThemeMode::Dark,
+        };
+        assert_eq!(both, expected);
+        assert_eq!(store.get(), expected);
+        assert_eq!(store_in(&dir).get(), expected);
+    }
+
+    #[test]
+    fn a_failed_persist_leaves_memory_alone_and_the_next_update_works() {
+        let dir = TempDir::new();
+        let store = store_in(&dir);
+        let error = store
+            .update_with(patch(json!({ "theme": "dark" })).unwrap(), |_| {
+                Err(io::Error::from(io::ErrorKind::PermissionDenied))
+            })
+            .unwrap_err();
+        assert_eq!(error.code(), ErrorCode::IoPermissionDenied);
+        assert_eq!(store.get(), Settings::default());
+        // The writer lock was released: a later update goes through.
+        let updated = store
+            .update(patch(json!({ "theme": "light" })).unwrap())
+            .unwrap();
+        assert_eq!(updated.theme, ThemeMode::Light);
     }
 }

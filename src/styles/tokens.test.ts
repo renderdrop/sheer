@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 
 import { GLASS_MODES, THEME_MODES } from '../api/app';
+import { PANEL } from '../components/tokens';
 import { themeAttribute, transparencyAttribute } from '../stores/settings';
 
 /**
@@ -229,6 +230,10 @@ describe('solid mode (DESIGN 1.1, 1.3)', () => {
     expect(body.get('--color-text')).toBe('canvastext');
     expect(body.get('--color-bg')).toBe('canvas');
     expect(body.get('--surface-solid')).toBe('canvas');
+    // The document layer's translucent iris fills would be replaced or dropped: selection and search hits are Highlight.
+    expect(body.get('--color-doc-select')).toBe('highlight');
+    expect(body.get('--color-doc-text-select')).toBe('highlight');
+    expect(body.get('--color-doc-hit')).toBe('highlight');
     // A glass surface keeps a visible edge when box-shadow is dropped.
     expect(blockBody('@utility glass-1')).toMatch(
       /forced-colors: active[\s\S]*outline: var\(--hairline\) solid transparent/,
@@ -273,6 +278,60 @@ describe('radii, spacing, sizes (DESIGN 1.4, 1.8)', () => {
     expect(css).toMatch(
       /:focus-visible\s*\{\s*outline: var\(--focus-width\) solid var\(--color-focus\);\s*outline-offset: var\(--focus-offset\);/,
     );
+  });
+});
+
+describe('widths and the left panel (DESIGN 2, 3.3 to 3.8)', () => {
+  const widths: Record<string, string> = {
+    '--field-width': '56px', // slider number field and zoom readout (3.3, 3.7)
+    '--slider-min': '120px', // slider track (3.7)
+    '--popover-min': '200px', // 3.5
+    '--popover-max': '320px',
+    '--tooltip-max': '240px', // 3.4
+    '--panel-min': '192px', // left panel range, default and collapse threshold (2, 3.8)
+    '--panel-default': '248px',
+    '--panel-max': '400px',
+    '--panel-collapse-below': '144px',
+    '--splitter-width': '8px',
+  };
+
+  it.each(Object.entries(widths))('%s is %s', (name, value) => {
+    expect(root.get(name)).toBe(value);
+  });
+
+  it('Tailwind reaches them as w-field, min-w-slider-min, min-w-popover-min, max-w-popover-max, max-w-tooltip-max, w-splitter', () => {
+    const mapped = {
+      field: '--field-width',
+      'slider-min': '--slider-min',
+      'popover-min': '--popover-min',
+      'popover-max': '--popover-max',
+      'tooltip-max': '--tooltip-max',
+      splitter: '--splitter-width',
+    };
+    for (const [name, token] of Object.entries(mapped)) {
+      expect(themeStatic.get(`--spacing-${name}`), name).toBe(`var(${token})`);
+    }
+  });
+
+  it('zero is a spacing token, so components never write min-w-[0]', () => {
+    expect(themeStatic.get('--spacing-0')).toBe('0px');
+  });
+
+  it('PANEL, the numbers the splitter calculates with, matches the tokens', () => {
+    expect(`${PANEL.min}px`).toBe(root.get('--panel-min'));
+    expect(`${PANEL.default}px`).toBe(root.get('--panel-default'));
+    expect(`${PANEL.max}px`).toBe(root.get('--panel-max'));
+    expect(`${PANEL.collapseBelow}px`).toBe(root.get('--panel-collapse-below'));
+    // The arrow keys move by a spacing step (8) and Shift by five of them (40).
+    expect(`${PANEL.step}px`).toBe(root.get('--space-1'));
+    expect(`${PANEL.largeStep}px`).toBe(root.get('--space-5'));
+    expect(`${PANEL.step}px`).toBe(root.get('--splitter-width'));
+  });
+
+  it('the panel range is ordered: collapse threshold, minimum, default, maximum', () => {
+    expect(PANEL.collapseBelow).toBeLessThan(PANEL.min);
+    expect(PANEL.min).toBeLessThan(PANEL.default);
+    expect(PANEL.default).toBeLessThan(PANEL.max);
   });
 });
 
@@ -336,6 +395,7 @@ describe('motion (DESIGN 1.6)', () => {
     const tokens = declarations(block.slice(0, block.indexOf('*,')));
     expect(tokens.get('--scale-press')).toBe('1');
     expect(tokens.get('--scale-enter')).toBe('1');
+    expect(tokens.get('--scale-thumb')).toBe('1');
     expect(tokens.get('--offset-enter')).toBe('0px');
     expect(block).toMatch(/transition-property: opacity !important;/);
     expect(block).toMatch(/transition-duration: var\(--motion-fast\) !important;/);
@@ -347,6 +407,7 @@ describe('motion (DESIGN 1.6)', () => {
   it('outside reduced motion the transform amounts are the spec ones', () => {
     expect(root.get('--scale-press')).toBe('0.97');
     expect(root.get('--scale-enter')).toBe('0.96');
+    expect(root.get('--scale-thumb')).toBe('1.125');
     expect(root.get('--offset-enter')).toBe('8px');
   });
 });
@@ -384,8 +445,10 @@ describe('Tailwind theme', () => {
     expect(blockBody('@theme')).toMatch(/--\*: initial;/);
   });
 
-  it('does not scan test files for classes', () => {
-    expect(css).toContain('@source not "../**/*.test.ts";');
+  it('does not scan test files or the dev-only showcase for classes, so none of them can become CSS of the app', () => {
+    for (const excluded of ['../**/*.test.ts', '../**/*.test.tsx', '../components/showcase']) {
+      expect(css, excluded).toContain(`@source not "${excluded}";`);
+    }
   });
 
   it('every namespaced token that Tailwind turns into a utility is a spec token', () => {
@@ -421,6 +484,12 @@ describe('the rest of src/ uses tokens only', () => {
         .replace(/\/\*[\s\S]*?\*\//g, '');
       expect(text, file).not.toMatch(/#[0-9a-fA-F]{3,8}\b/);
       expect(text, file).not.toMatch(/\b(rgba?|hsla?|oklch|oklab|lab|lch|color-mix)\(/);
+    }
+  });
+
+  it('has no bare arbitrary numbers in class names: zero is --spacing-0, a scale is a token', () => {
+    for (const file of files.filter((candidate) => candidate.endsWith('.tsx'))) {
+      expect(readFileSync(file, 'utf8'), file).not.toMatch(/[a-z]-\[-?[\d.]+\]/);
     }
   });
 

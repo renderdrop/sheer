@@ -1,0 +1,62 @@
+/*
+ * Layout of the dev-only showcase page. Plain CSS on the tokens, not Tailwind classes: tokens.css leaves this folder out
+ * of its class scan, so the page's one-off utilities cannot end up in the stylesheet of the app.
+ */
+.showcase-section {
+  margin-bottom: var(--space-4);
+}
+
+.showcase-hint {
+  margin-top: var(--space-0-5);
+}
+
+.showcase-rows {
+  margin-top: var(--space-1-5);
+}
+
+.showcase-label {
+  width: var(--space-8);
+}
+
+.showcase-header {
+  margin-bottom: var(--space-3);
+  justify-content: space-between;
+}
+
+.showcase-title {
+  font-size: var(--text-2xl);
+  line-height: var(--text-2xl--line-height);
+  font-weight: var(--text-2xl--font-weight);
+  letter-spacing: var(--text-2xl--letter-spacing);
+}
+
+/* A slider row: 384 px, or 448 px for the toolbar-width control. */
+.showcase-slider {
+  max-width: calc(var(--space-8) * 6);
+}
+
+.showcase-slider-wide {
+  max-width: calc(var(--space-8) * 7);
+}
+
+.showcase-fit {
+  max-width: 100%;
+}
+
+.showcase-end {
+  justify-content: flex-end;
+}
+
+.showcase-icon-gap {
+  margin-inline-end: var(--space-1);
+}
+
+/* The left-panel demo: panel, splitter, canvas and inspector in one grid row. */
+.showcase-stage {
+  height: calc(var(--space-8) * 6);
+  transition: grid-template-columns var(--motion-slow) var(--ease-out);
+}
+
+.showcase-inspector {
+  width: calc(var(--space-8) * 4 + var(--space-4));
+}

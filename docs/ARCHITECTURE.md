@@ -48,7 +48,7 @@ Import rules, checked by a CI grep:
 ## 3. Frontend modules (`src/`)
 
 ```
-ipc/          commands.ts (one typed wrapper per command) · types.gen.ts (ts-rs, generated) · errors.ts · events.ts · frame.ts
+api/          call.ts (the one `invoke` caller) · app.ts, documents.ts, … (one typed wrapper per command) · errors.ts · frame.ts · types.gen.ts (ts-rs, generated)
 engine/       renderCache.ts (Blob LRU) · renderScheduler.ts (dedupe, generations, set_viewport) · textCache.ts
 stores/       documents · view · annotations · tools · search · ui · settings · recents
 features/     viewer (Canvas, PageView, layout.ts, TextLayer, LinkLayer, zoom.ts)
@@ -59,7 +59,7 @@ components/   design-system primitives (Phase 3)
 i18n/ · styles/tokens.css
 ```
 
-Only `ipc/commands.ts` calls `invoke`. Everything else imports the typed wrappers.
+Only `src/api/call.ts` calls `invoke`: it turns every rejection into an `AppError`, and the typed wrappers (`src/api/app.ts`, `documents.ts`, …) go through it. Everything else imports the wrappers. The window has no event permission (SECURITY T3), so the frontend never calls `listen` or `emit`, and `src/api/app.test.ts` fails on any import of `@tauri-apps/api/event`. Backend pushes (§6) reach it through a `Channel` that a wrapper in `src/api/` passes to a command (`watchTransparency` → `watch_transparency`; the settings store consumes it).
 
 ## 4. Document registry
 
@@ -81,7 +81,7 @@ A path enters the backend only from the Rust-side dialog, `WindowEvent::DragDrop
 bytes → dedupes by canonical path (returns the existing id) → sends `Open` to the engine. At most 32 documents are open; ids are never reused
 in a session.
 
-The frontend never uses `onDragDropEvent`; ESLint `no-restricted-imports` enforces this. Rust re-emits `drop:hover` without paths.
+The frontend never uses `onDragDropEvent` and cannot receive the `tauri://drag-drop` event that carries the paths: `dragDropEnabled` is `true` on purpose (explicit in `tauri.conf.json`, pinned by `security_baseline.rs`), so Tauri takes the OS drop itself and hands the paths only to Rust's `WindowEvent::DragDrop` handler, and the window has no event permission (SECURITY T3, T9). Rust re-sends `drop:hover` without paths.
 Recents store paths in app data. The UI sees only `RecentEntry { id, displayName, lastOpened, missing }`.
 
 ## 5. Tauri commands
@@ -94,6 +94,7 @@ All commands are `async` and return `Result<T, UiError>`. Bounds come from `limi
 app_ready() -> AppBootstrap                          // platform, reducedTransparency, version (pending opens join in M1)
 get_settings() -> Settings                           // { glass: "auto" | "solid", theme: "system" | "light" | "dark" }
 update_settings(patch: SettingsPatch) -> Settings    // patch { glass?, theme? }; unknown key or enum value → invalid_argument (what: "settings")
+watch_transparency(on_change: Channel<bool>) -> ()   // each change of the OS "Reduce transparency" flag, as a bare bool; one receiver, a new call replaces it
 // documents
 open_document_dialog() -> Vec<OpenResult>            // ≤ 32 files
 open_recent(recent_id: u32) -> OpenResult
@@ -142,12 +143,20 @@ struct Settings      { glass: GlassMode /* Auto | Solid */, theme: ThemeMode /* 
 ```
 
 **Settings.** `storage::settings` keeps the settings in memory and in `<app data dir>/settings.json`. A missing, oversized (> 64 KiB), damaged
-or hand-edited file never blocks start: each field that is invalid falls back to its default. `update_settings` takes the patch as raw JSON,
-validates all of it first (object, known keys, known enum values) and writes it atomically (temp file in the same directory, fsync,
-rename). Only after the write succeeds does the in-memory copy change, so a failed write leaves memory and disk in agreement.
+or hand-edited file never blocks start: only a regular file is read (its type is taken from the opened handle, not from the path, and on Unix it is opened
+`O_NONBLOCK` so a FIFO cannot hang the start), and each field that is invalid falls back to its default. `update_settings`
+takes the patch as raw JSON, validates all of it first (an object that passes a `deny_unknown_fields` struct, so at most `glass` and `theme`, with
+known enum values) and writes it with `storage::atomic::write_atomic`: a temp file `.settings.json.<pid>.<n>.tmp` (process id and a per-process counter, so no two
+writers share one) is created with `create_new` (a name that is taken is skipped, never written through; mode `0600` on Unix, directories `0700`), fsynced,
+renamed over the file, and the directory is fsynced on Unix. Only after the write succeeds does the
+in-memory copy change, so a failed write leaves memory and disk in agreement. Updates are serialised by a writer lock that is held across the
+write; the lock that guards the in-memory copy is not, so `get_settings` never waits for the disk.
 `reducedTransparency` is the macOS "Reduce transparency" flag (`NSWorkspace.accessibilityDisplayShouldReduceTransparency`, `platform::macos`);
 elsewhere it is `false` and CSS `prefers-reduced-transparency` covers the platform. The frontend turns settings and flag into
-`html[data-theme]` and `html[data-transparency="reduced"]` (`src/stores/settings.ts`, DESIGN §1). A live `os:transparency` event (§6) is not wired yet.
+`html[data-theme]` and `html[data-transparency="reduced"]` (`src/stores/settings.ts`, DESIGN §1). On macOS the flag is live: when the window gains
+focus (the setting is changed in System Settings, so the app was in the background) `platform::on_window_event` re-reads it and, if it changed,
+sends the new value over the channel the UI opened with `watch_transparency` (§5, §6), which the settings store mirrors. Startup does not wait for the backend: `src/main.tsx` renders with the defaults at
+once and `loadSettings` applies the stored settings when they arrive (after 3 s without an answer the defaults stay and a late answer still applies).
 
 Launch, GoToR and JavaScript actions map to `Blocked`. The UI's confirm dialog shows the URL, and `open_link` re-reads the URL from the
 document. The frontend therefore cannot make Rust open an arbitrary URL.
@@ -166,10 +175,14 @@ M3: `extract_pages`, `split_document`, `merge_documents`, `insert_pages_from_fil
 `list_signatures`, `save_signature`, `delete_signature`. M5: `set_protection`, `remove_protection`, `get_metadata`, `set_metadata`.
 M6: `export_images`, `print_document`, `reveal_in_folder`. M7: `list_recoverable`, `restore_autosave`, `discard_autosave`.
 
-## 6. Events (Rust → UI, never with paths)
+## 6. Pushes (Rust → UI, never with paths)
 
-`doc:opened {docId}` (drop, file association, second instance) · `doc:reloaded {docId, rev}` · `doc:annotations-imported {docId, pageIds}` ·
-`drop:hover {active, count}` · `engine:status {state: ok | wedged}` · `menu:action {id}` · `os:transparency {reduced}`.
+The webview has no event permission (SECURITY T3): it cannot `listen` to or `emit` events. A push reaches it as a message on a `tauri::ipc::Channel` that the
+UI passes to a command, like `search(.., on_event: Channel<SearchEvent>)`. The first one is implemented: `watch_transparency(on_change: Channel<bool>)` sends
+each change of the macOS "Reduce transparency" flag (checked when the window gains focus) as a bare bool; a value that already differs from what `app_ready`
+reported is sent on subscribing. The planned notifications are delivered the same way (a channel opened by a command, typed messages, no paths), unless an ADR grants
+`listen` for a named event: `doc:opened {docId}` (drop, file association, second instance) · `doc:reloaded {docId, rev}` · `doc:annotations-imported {docId, pageIds}` ·
+`drop:hover {active, count}` · `engine:status {state: ok | wedged}` · `menu:action {id}`.
 
 ## 7. Error model
 

@@ -90,10 +90,19 @@ fn a_rejected_patch_never_reaches_the_file() {
 // --- criterion 2: atomic write, damaged or missing file ----------------------------------------------------------
 
 #[test]
-fn a_leftover_temp_file_from_a_crash_is_replaced_and_removed() {
+fn a_leftover_temp_file_from_a_crash_is_never_written_through_or_reused() {
     let dir = TempDir::new();
-    let leftover = dir.path().join(format!(".{FILE_NAME}.tmp"));
-    fs::write(&leftover, b"half a wri").unwrap();
+    // Leftovers under the old fixed name and under the pid-and-counter names a crashed run may have left. A write picks
+    // a temp name of its own and never touches them, whichever of those names it meets.
+    let pid = std::process::id();
+    let leftovers = [
+        format!(".{FILE_NAME}.tmp"),
+        format!(".{FILE_NAME}.{pid}.0.tmp"),
+        format!(".{FILE_NAME}.{pid}.1.tmp"),
+    ];
+    for name in &leftovers {
+        fs::write(dir.path().join(name), b"half a wri").unwrap();
+    }
 
     write_atomic(&dir.settings_file(), b"{\"theme\":\"dark\"}\n").unwrap();
 
@@ -101,7 +110,13 @@ fn a_leftover_temp_file_from_a_crash_is_replaced_and_removed() {
         fs::read(dir.settings_file()).unwrap(),
         b"{\"theme\":\"dark\"}\n"
     );
-    assert_eq!(names(dir.path()), [FILE_NAME]);
+    for name in &leftovers {
+        assert_eq!(fs::read(dir.path().join(name)).unwrap(), b"half a wri");
+    }
+    let mut expected: Vec<String> = leftovers.to_vec();
+    expected.push(FILE_NAME.to_owned());
+    expected.sort();
+    assert_eq!(names(dir.path()), expected);
 }
 
 #[test]
@@ -124,22 +139,24 @@ fn a_leftover_temp_file_does_not_stop_the_app_from_starting() {
 }
 
 #[test]
-fn a_write_that_cannot_start_leaves_the_stored_file_and_memory_untouched() {
+fn a_write_that_fails_leaves_memory_untouched_and_no_temp_file_behind() {
     let dir = TempDir::new();
-    let original = br#"{"glass":"auto","theme":"dark"}"#;
-    fs::write(dir.settings_file(), original).unwrap();
+    fs::write(dir.settings_file(), br#"{"glass":"auto","theme":"dark"}"#).unwrap();
     let store = SettingsStore::load(dir.settings_file());
     assert_eq!(store.get().theme, ThemeMode::Dark);
 
-    // A directory where the temp file belongs: creating the temp file fails before the settings file is touched.
-    fs::create_dir(dir.path().join(format!(".{FILE_NAME}.tmp"))).unwrap();
+    // A non-empty directory has taken the place of the file: the temp file is written, then the rename fails.
+    fs::remove_file(dir.settings_file()).unwrap();
+    fs::create_dir(dir.settings_file()).unwrap();
+    fs::write(dir.settings_file().join("child"), b"x").unwrap();
     let error = store
         .update(patch(json!({ "theme": "light" })))
         .unwrap_err();
 
     assert_ne!(error.code(), ErrorCode::InvalidArgument);
-    assert_eq!(fs::read(dir.settings_file()).unwrap(), original);
     assert_eq!(store.get().theme, ThemeMode::Dark);
+    assert_eq!(names(dir.path()), [FILE_NAME]);
+    assert_eq!(fs::read(dir.settings_file().join("child")).unwrap(), b"x");
 }
 
 #[test]
@@ -238,4 +255,45 @@ fn concurrent_updates_always_leave_a_complete_file_that_matches_memory() {
     assert_eq!(stored, serde_json::to_value(store.get()).unwrap());
     assert_eq!(SettingsStore::load(dir.settings_file()).get(), store.get());
     assert_eq!(names(dir.path()), [FILE_NAME]);
+}
+
+// --- hardening: what the file system can hand us --------------------------------------------------------------
+
+#[test]
+fn a_directory_at_the_settings_path_is_damaged_data_not_a_crash() {
+    let dir = TempDir::new();
+    fs::create_dir(dir.settings_file()).unwrap();
+    let store = SettingsStore::load(dir.settings_file());
+    assert_eq!(store.get(), Settings::default());
+    // Writing cannot succeed either (the directory is in the way), and says so instead of changing memory.
+    assert!(store.update(patch(json!({ "theme": "dark" }))).is_err());
+    assert_eq!(store.get(), Settings::default());
+}
+
+#[test]
+fn a_null_value_is_not_the_same_as_leaving_a_key_out() {
+    // `{"theme": null}` must not pass as "no change": a present key holds a valid value or the patch is refused.
+    for bad in [
+        json!({ "theme": null }),
+        json!({ "glass": null, "theme": "dark" }),
+    ] {
+        let error = SettingsPatch::from_value(&bad).unwrap_err();
+        assert_eq!(error.code(), ErrorCode::InvalidArgument, "{bad}");
+    }
+}
+
+#[cfg(unix)]
+#[test]
+fn the_settings_file_and_a_new_data_directory_are_private_to_the_user() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let dir = TempDir::new();
+    let data_dir = dir.path().join("app-data");
+    let path = data_dir.join(FILE_NAME);
+    let store = SettingsStore::load(path.clone());
+    store.update(patch(json!({ "glass": "solid" }))).unwrap();
+
+    let mode = |path: &Path| fs::metadata(path).unwrap().permissions().mode() & 0o777;
+    assert_eq!(mode(&data_dir), 0o700);
+    assert_eq!(mode(&path), 0o600);
 }

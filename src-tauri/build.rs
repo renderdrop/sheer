@@ -18,6 +18,7 @@ fn main() {
         "app_ready",
         "get_settings",
         "update_settings",
+        "watch_transparency",
     ]);
     if let Err(error) =
         tauri_build::try_build(tauri_build::Attributes::new().app_manifest(manifest))

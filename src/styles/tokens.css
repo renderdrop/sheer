@@ -15,7 +15,10 @@
  */
 
 @import "tailwindcss" source("../");
+/* Class names in tests and in the dev-only showcase must not become CSS of the shipped app. */
 @source not "../**/*.test.ts";
+@source not "../**/*.test.tsx";
+@source not "../components/showcase";
 
 /* 1. No Tailwind defaults: no gray-500, no p-4 = 16px by accident. Spacing, radii and type come from DESIGN only. */
 @theme {
@@ -80,6 +83,7 @@
   --radius-pill: 999px;
 
   /* Spacing: p-1 is --space-1 (8px), not Tailwind's 4px. 8-pt grid; 4 and 12 only inside controls (DESIGN 1.4). */
+  --spacing-0: 0px;
   --spacing-0-5: var(--space-0-5);
   --spacing-1: var(--space-1);
   --spacing-1-5: var(--space-1-5);
@@ -100,6 +104,14 @@
   --spacing-icon-16: var(--icon-16);
   --spacing-icon-20: var(--icon-20);
   --spacing-icon-24: var(--icon-24);
+  /* Widths of the specs: w-field (slider number field, zoom readout), min-w-slider-min, min-w-popover-min, max-w-popover-max,
+     max-w-tooltip-max, and w-splitter (the gutter beside the left panel). */
+  --spacing-field: var(--field-width);
+  --spacing-slider-min: var(--slider-min);
+  --spacing-popover-min: var(--popover-min);
+  --spacing-popover-max: var(--popover-max);
+  --spacing-tooltip-max: var(--tooltip-max);
+  --spacing-splitter: var(--splitter-width);
 
   /* Type (DESIGN 1.5). Size / line height, weight and tracking per step. Weights are 400 and 600 only. */
   --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
@@ -195,6 +207,18 @@
   --icon-stroke: 1.5px;
   --icon-stroke-sm: 2px; /* at 12 px */
 
+  /* Widths (DESIGN 2, 3.3 to 3.8). The panel values are mirrored as numbers in components/tokens.ts (PANEL). */
+  --field-width: 56px; /* slider number field and zoom readout */
+  --slider-min: 120px;
+  --popover-min: 200px;
+  --popover-max: 320px;
+  --tooltip-max: 240px;
+  --panel-min: 192px; /* left panel range, default and collapse threshold */
+  --panel-default: 248px;
+  --panel-max: 400px;
+  --panel-collapse-below: 144px;
+  --splitter-width: 8px;
+
   /* Motion (DESIGN 1.6). */
   --motion-fast: 150ms;
   --motion-base: 200ms;
@@ -202,6 +226,7 @@
   /* Transform amounts of states and entrances (DESIGN 3.0, 3.5, 3.12). Reduced motion resets them (section 6). */
   --scale-press: 0.97;
   --scale-enter: 0.96;
+  --scale-thumb: 1.125; /* slider thumb on hover and drag (DESIGN 3.7) */
   --offset-enter: 8px;
 
   /* Elevation: the only z-index values (DESIGN 1.7). 1 to 4 are local to the canvas, which isolates itself. */
@@ -383,7 +408,11 @@
     --color-success-text: CanvasText;
     --color-warning-text: CanvasText;
     --color-error-text: CanvasText;
+    /* Document layer: the translucent iris fills would be replaced or dropped, so selection and search hits become the
+       system Highlight. It is opaque, so a box in this color needs an outline or a text color of its own (HighlightText). */
     --color-doc-select: Highlight;
+    --color-doc-text-select: Highlight;
+    --color-doc-hit: Highlight;
     --win-close-hover: Highlight;
   }
 }
@@ -396,6 +425,7 @@
   :root:root {
     --scale-press: 1;
     --scale-enter: 1;
+    --scale-thumb: 1;
     --offset-enter: 0px;
   }
 
