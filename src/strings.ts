@@ -35,24 +35,78 @@ function errorMessage(error: AppError): string {
   return (what !== undefined ? errorDetailMessages[`${error.code}.${what}`] : undefined) ?? errorMessages[error.code];
 }
 
-/** All user-visible strings in one place until the i18n scaffold (en, de) lands in Phase 3. */
+/** All user-visible strings in one place until the i18n scaffold (en, de) lands in Phase 3. Shortcuts are not part of them: see src/lib/shortcuts.ts. */
 export const strings = {
-  toolbarLabel: 'Document controls',
-  open: 'Open',
-  openHint: 'Open a PDF (Ctrl+O)',
+  // Toolbar (DESIGN 3.3)
+  toolbarLabel: 'Tools',
+  groupPanels: 'Panels',
+  groupSelect: 'Select',
+  groupMarkup: 'Markup',
+  groupFillAndSign: 'Fill and sign',
+  groupPages: 'Pages',
+  groupZoom: 'Zoom',
+  groupInspector: 'Inspector',
+  toolSelect: 'Select',
+  toolHighlight: 'Highlight',
+  toolComment: 'Comment',
+  toolDraw: 'Draw',
+  toolForm: 'Form',
+  toolSignature: 'Signature',
+  toolPages: 'Pages',
+  leftPanelToggle: 'Left panel',
+  inspectorToggle: 'Inspector',
+  zoomOut: 'Zoom out',
+  zoomIn: 'Zoom in',
+  zoomLevel: 'Zoom level',
+  zoomMenu: 'Zoom',
+  zoomActualSize: 'Actual size',
+  open: 'Open…',
   opening: 'Opening…',
   rendering: 'Rendering…',
-  previousPage: 'Previous page',
-  nextPage: 'Next page',
-  zoomOut: 'Zoom out (Ctrl+−)',
-  zoomIn: 'Zoom in (Ctrl++)',
-  zoomReset: 'Reset zoom to 100% (Ctrl+0)',
+
+  // Left panel and inspector (DESIGN 3.6, 3.9)
+  leftPanel: 'Left panel',
+  leftPanelViews: 'Left panel views',
+  resizeLeftPanel: 'Resize left panel',
+  tabThumbnails: 'Thumbnails',
+  tabOutline: 'Outline',
+  tabComments: 'Comments',
+  tabSearch: 'Search',
+  tabThumbnailsEmpty: 'Page thumbnails appear here.',
+  tabOutlineEmpty: 'The document outline appears here.',
+  tabCommentsEmpty: 'Comments appear here.',
+  tabSearchEmpty: 'Search results appear here.',
+  inspector: 'Inspector',
+  inspectorTitle: 'Tool options',
+  inspectorEmpty: 'Select an object or choose a tool to see its options.',
+
+  // Canvas and status bar (DESIGN 2, 3.10)
   documentRegion: 'Document',
-  emptyTitle: 'No document open',
-  emptyHint: 'Open a PDF to start. Nothing leaves your computer.',
-  dismiss: 'Dismiss',
+  status: 'Status',
+  noPages: 'This document has no pages.',
+  untitled: 'Untitled',
+  goToPage: 'Go to page',
+  pageNumber: 'Page number',
+  goToPageSubmit: 'Go',
+  dropToOpen: 'Drop to open',
   page: (page: number, total: number) => `Page ${page} of ${total}`,
   pageImageAlt: (page: number, total: number) => `Page ${page} of ${total}`,
-  noPages: 'This document has no pages.',
+
+  // Empty state (DESIGN 3.11)
+  emptyTitle: 'Open a PDF',
+  emptyHint: 'Drop a file anywhere in this window or choose one.',
+  recentHeading: 'Recent',
+  recentPlaceholder: 'Files you open appear here.',
+  recentPrivacy: 'Recent files are stored only on this device.',
+
+  // Window chrome (DESIGN 2.2)
+  windowControls: 'Window controls',
+  minimize: 'Minimize',
+  maximize: 'Maximize',
+  restore: 'Restore',
+  close: 'Close',
+
+  // Banner (DESIGN 3.12)
+  dismiss: 'Dismiss',
   error: errorMessage,
 } as const;

@@ -22,3 +22,20 @@ export const PANEL = { min: 192, default: 248, max: 400, collapseBelow: 144, ste
 export function overlayOffset(): number {
   return tokenPx('--space-1', 8);
 }
+
+/**
+ * Widths of the layout grid in px (DESIGN 2) for the collapse rules, which are arithmetic in JavaScript (src/lib/layout.ts).
+ * They mirror `--space-1` (the 8 px gutters and the gap before the inspector), `--splitter-width`, `--canvas-min` and
+ * `--inspector-width` of tokens.css, and tokens.test.ts fails when they drift apart. `inspectorReserveFrom` is the window
+ * width from which the inspector track stays reserved while a document is open, `minWindow*` the smallest window; both are
+ * breakpoints of the spec (2) with no CSS counterpart, and `tauri.conf.json` has the window minimum (tested).
+ */
+export const LAYOUT = {
+  gutter: 8,
+  splitter: 8,
+  canvasMin: 360,
+  inspector: 288,
+  inspectorReserveFrom: 1280,
+  minWindowWidth: 960,
+  minWindowHeight: 640,
+} as const;

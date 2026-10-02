@@ -17,8 +17,8 @@
         "title": "Sheer",
         "width": 1100,
         "height": 800,
-        "minWidth": 640,
-        "minHeight": 480,
+        "minWidth": 960,
+        "minHeight": 640,
         "dragDropEnabled": true
       }
     ],

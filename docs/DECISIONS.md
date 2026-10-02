@@ -388,3 +388,68 @@ while ignoring the drag-drop event (one bug away from leaking paths).
 must be global needs an ADR that grants `listen` for it. The settings temp file now has a per-process unique name (`.name.pid.n.tmp`) and is created
 with `create_new`; a crash can leave a hidden, never reused leftover. The settings file is opened `O_NONBLOCK` on Unix and judged on the handle,
 which adds `libc` as a direct Unix dependency (already in the lockfile).
+
+---
+
+## ADR-014 — Window chrome: platform window configs and seven window permissions
+
+**Status:** accepted (2026-10-02)
+
+**Context.** DESIGN 2.2 asks for an overlay title bar with the native traffic lights on macOS and, on Windows, no native decorations and our
+own caption buttons (minimize, maximize or restore, close) with a drag region. `decorations` is one flag for all platforms (`false` would
+also remove the macOS traffic lights), and Tauri's window commands each need their own permission. ADR-013 granted no `core:` permission at all.
+
+**Decision.**
+1. **Config.** `tauri.conf.json` keeps the one window for every platform (minimum size 960 x 640). `tauri.macos.conf.json` adds
+   `titleBarStyle: Overlay`, `hiddenTitle` and `trafficLightPosition {16, 22}`; `tauri.windows.conf.json` adds `decorations: false`. Tauri merges
+   a platform file into the base file as a JSON merge patch, which replaces arrays whole, so each platform file repeats the complete window entry.
+   `security_baseline.rs` merges the same way and runs the window checks (one window `main`, no `url`, `dragDropEnabled: true`, no `danger*` key)
+   on the base file and on both results.
+2. **Permissions.** The capability grants, by their own names, `core:window:allow-minimize`, `-toggle-maximize`, `-close`, `-is-maximized`,
+   `-is-fullscreen`, `-start-dragging` and `-internal-toggle-maximize`, and nothing else from `core:`. The caption buttons need the first three;
+   the maximize or restore icon and the macOS traffic-light inset read the next two; Tauri's `data-tauri-drag-region` script calls the last two
+   (dragging, and the double click on the drag region). `src/api/window.ts` is the only module that imports the window API.
+3. **No window events.** The window API's `onResized` and `onFocusChanged` would need `core:event:allow-listen`, which ADR-013 refuses. The shell
+   reads the DOM's `resize` event and asks `is_maximized` or `is_fullscreen` again, and takes focus from the DOM's `focus` and `blur`.
+4. **Platform for the first paint.** The Windows caption row and the macOS inset exist before `app_ready` has answered, so the first render takes
+   the platform from the user agent (`src/lib/platform.ts`) and the backend's answer replaces it.
+
+**Consequences.** ADR-013's "no core permission at all" becomes "no core permission except these seven". `security_baseline.rs` accepts exactly this
+list (any other `core:` entry, `core:default` included, fails it) and `src/api/window.test.ts` ties the list to the wrappers. Not done: Windows 11
+Snap Layouts on hover over the maximize button need native non-client hit testing, which an undecorated window with web caption buttons does not
+get (dragging to a screen edge and the Win+arrow keys still snap the window); revisit with a native caption hit-test
+if users miss it. Closing is a request (`close`, not `destroy`), so a later "unsaved changes" veto still works.
+
+---
+
+## ADR-015 — App shell render isolation, and the display-name filter
+
+**Status:** accepted (2026-10-02)
+
+**Context.** The first shell kept the open document, page, zoom, image and render flag in a hook inside `Shell`, and read the window width and the whole `ui`
+store there. Every wheel-zoom step, page change, finished render, drag-over and step of the splitter re-rendered the shell, rebuilt the toolbar's entries
+and re-rendered the toolbar and the left panel. The review found that `display_name` still let format characters through (soft hyphen, tag characters, the
+interlinear marks) and that the platform configs were not all covered by the CSP test.
+
+**Decision.**
+1. **The viewer is a store** (`useViewer`: document, image, `opening`, `rendering`, and the actions `open`, `zoomStep`, `setZoom`, `resetZoom`,
+   `zoomByWheel`, `goToPage`). Actions read the current state when called, so they never change. The render loop and the shell's keys live in
+   `ViewerEffects` (renders nothing). Zoom and page stay in the `view` store.
+2. **The shell follows the structure, not the pixels.** `shellStructure` (`lib/layout.ts`) reduces window width, panel width, panel choices, tool and
+   document to booleans; `useShellStructure` returns the same object until one flips. `shellTracks` turns a structure and a panel width into the grid.
+   `computeShellLayout` is both together and keeps its tests.
+3. **Each part follows what it shows** (per-field selectors): `ToolbarSlot`, `ViewerCanvas`, `ViewerStatusBar`, `MainGrid`, `LeftPanelSplitter`,
+   `BannerRow`, `EmptyStateSlot`; `LeftPanel` and `Inspector` are memoized with stable props (`placement()` returns the same style object for a column).
+4. **Two small primitive extensions** so the toolbar need not render per zoom step: `ToolbarItem.text` may be a `ReactNode` (the zoom readout is an
+   element that follows the zoom), and `Menu` / `ToolbarItem.menu` accept a function that makes the entries while the open menu renders and may use hooks
+   (`useZoomMenu`). A list still works as before.
+5. **`Field`** is the shared number field (Slider, Go to page). `--status-name-max` (40 %) is a token. `useRevealMotion` is the banner's height and
+   opacity motion (250 ms; opacity only under reduced motion); the row clips only while it moves (Motion's `transitionEnd` does not reach `overflow`).
+6. **`display_name`** removes Unicode categories Cc and Cf except U+200C and U+200D (scripts and emoji need them), plus U+2028, U+2029 and U+FFFC. The
+   Cf table is written out (Unicode 17, 21 ranges) because the standard library has none and one table is not worth a dependency; `tests/display_name.rs`
+   compares it with an independent copy over every scalar value. `security_baseline.rs` finds `tauri.<platform>.conf.json` by glob and fails when a
+   platform file sets `app.security`, so the CSP exists in the base file only.
+
+**Consequences.** Render counts are tested (`Shell.renders.test.tsx`); a new always-changing field must be followed by the part that shows it, never by
+`Shell`. A newer Unicode version can add a Cf character; the table then needs the new range (the sweep test compares against the copy in the test, which
+is updated by hand too). No new dependency.

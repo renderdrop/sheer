@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { invoke } from '@tauri-apps/api/core';
 
-import { closeDocument, openDocumentDialog, renderPage } from './documents';
+import { closeDocument, openDocumentDialog, parseDocumentInfo, renderPage } from './documents';
 import { makeFrame } from './frame.testutil';
 
 vi.mock('@tauri-apps/api/core', () => ({ invoke: vi.fn() }));
@@ -90,11 +90,54 @@ describe('renderPage', () => {
 
 describe('document commands', () => {
   it('opens through the dialog command, which takes no arguments', async () => {
-    invokeMock.mockResolvedValueOnce({ id: 4, pageCount: 2 });
-    await expect(openDocumentDialog()).resolves.toEqual({ id: 4, pageCount: 2 });
+    invokeMock.mockResolvedValueOnce({ id: 4, pageCount: 2, displayName: 'a.pdf' });
+    await expect(openDocumentDialog()).resolves.toEqual({ id: 4, pageCount: 2, displayName: 'a.pdf' });
     expect(invokeMock).toHaveBeenCalledWith('open_document_dialog', undefined);
     invokeMock.mockResolvedValueOnce(null);
     await expect(openDocumentDialog()).resolves.toBeNull();
+  });
+
+  it('accepts a document without pages and a name that is empty', async () => {
+    invokeMock.mockResolvedValueOnce({ id: 0, pageCount: 0, displayName: '' });
+    await expect(openDocumentDialog()).resolves.toEqual({ id: 0, pageCount: 0, displayName: '' });
+  });
+
+  it('returns only the three known fields', async () => {
+    invokeMock.mockResolvedValueOnce({ id: 1, pageCount: 3, displayName: 'a.pdf', path: '/home/user/secret/a.pdf' });
+    await expect(openDocumentDialog()).resolves.toStrictEqual({ id: 1, pageCount: 3, displayName: 'a.pdf' });
+  });
+
+  it('turns an answer that is not a DocumentInfo into the generic error', async () => {
+    const bad: unknown[] = [
+      undefined,
+      'a.pdf',
+      42,
+      [],
+      {},
+      { id: 4, pageCount: 2 },
+      { id: 4, pageCount: 2, displayName: null },
+      { id: 4, pageCount: 2, displayName: 7 },
+      { id: 4, pageCount: 2, displayName: ['a.pdf'] },
+      { id: 4, displayName: 'a.pdf' },
+      { pageCount: 2, displayName: 'a.pdf' },
+      { id: '4', pageCount: 2, displayName: 'a.pdf' },
+      { id: -1, pageCount: 2, displayName: 'a.pdf' },
+      { id: 1.5, pageCount: 2, displayName: 'a.pdf' },
+      { id: 4, pageCount: -1, displayName: 'a.pdf' },
+      { id: 4, pageCount: 2.5, displayName: 'a.pdf' },
+      { id: 4, pageCount: '2', displayName: 'a.pdf' },
+      { id: 4, pageCount: Number.NaN, displayName: 'a.pdf' },
+      { id: 4, pageCount: Number.POSITIVE_INFINITY, displayName: 'a.pdf' },
+      { id: 4, pageCount: Number.NEGATIVE_INFINITY, displayName: 'a.pdf' },
+    ];
+    for (const answer of bad) {
+      invokeMock.mockResolvedValueOnce(answer);
+      await expect(openDocumentDialog(), JSON.stringify(answer)).rejects.toEqual({
+        code: 'internal',
+        key: 'error.internal',
+        retryable: false,
+      });
+    }
   });
 
   it('closes by document id', async () => {
@@ -106,5 +149,18 @@ describe('document commands', () => {
   it('rejects with an AppError', async () => {
     invokeMock.mockRejectedValueOnce({ code: 'too_large', key: 'error.too_large', retryable: false });
     await expect(openDocumentDialog()).rejects.toMatchObject({ code: 'too_large', key: 'error.too_large' });
+  });
+});
+
+describe('parseDocumentInfo', () => {
+  it('reads the documented shape and nothing else', () => {
+    expect(parseDocumentInfo({ id: 2, pageCount: 9, displayName: 'Q3.pdf' })).toEqual({
+      id: 2,
+      pageCount: 9,
+      displayName: 'Q3.pdf',
+    });
+    expect(parseDocumentInfo(null)).toBeNull();
+    expect(parseDocumentInfo({ id: 2, pageCount: 9 })).toBeNull();
+    expect(parseDocumentInfo({ id: 2, pageCount: 9.5, displayName: '' })).toBeNull();
   });
 });

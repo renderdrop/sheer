@@ -6,8 +6,10 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { invoke } from '@tauri-apps/api/core';
 
+import { PANEL } from '../components/tokens';
 import {
   GLASS_MODES,
+  LEFT_PANEL_WIDTH,
   THEME_MODES,
   appReady,
   getSettings,
@@ -36,9 +38,35 @@ describe('parseSettings', () => {
   it('accepts every combination of known values', () => {
     for (const glass of GLASS_MODES) {
       for (const theme of THEME_MODES) {
-        expect(parseSettings({ glass, theme })).toEqual({ glass, theme });
+        expect(parseSettings({ glass, theme, leftPanelWidth: 248 })).toEqual({ glass, theme, leftPanelWidth: 248 });
       }
     }
+  });
+
+  it('accepts the whole range of the left panel width and nothing outside it', () => {
+    for (const leftPanelWidth of [LEFT_PANEL_WIDTH.min, 193, 320, LEFT_PANEL_WIDTH.max]) {
+      expect(parseSettings({ glass: 'auto', theme: 'system', leftPanelWidth })).toMatchObject({ leftPanelWidth });
+    }
+    for (const bad of [
+      191,
+      401,
+      0,
+      -248,
+      248.5,
+      Number.NaN,
+      Number.POSITIVE_INFINITY,
+      '248',
+      null,
+      undefined,
+      true,
+      [248],
+    ]) {
+      expect(parseSettings({ glass: 'auto', theme: 'system', leftPanelWidth: bad }), String(bad)).toBeNull();
+    }
+  });
+
+  it('mirrors the left panel range of the splitter (PANEL) and of the backend (limits.rs)', () => {
+    expect(LEFT_PANEL_WIDTH).toEqual({ min: PANEL.min, max: PANEL.max, default: PANEL.default });
   });
 
   it('rejects anything else', () => {
@@ -52,17 +80,20 @@ describe('parseSettings', () => {
       { glass: 'auto' },
       { theme: 'system' },
       { glass: 'Auto', theme: 'system' },
-      { glass: 'auto', theme: 'dim' },
-      { glass: 1, theme: 'system' },
+      { glass: 'auto', theme: 'dim', leftPanelWidth: 248 },
+      { glass: 1, theme: 'system', leftPanelWidth: 248 },
+      // Without the width, or with the width of an older shape of the settings.
+      { glass: 'auto', theme: 'system' },
     ]) {
       expect(parseSettings(bad)).toBeNull();
     }
   });
 
   it('drops unknown keys', () => {
-    expect(parseSettings({ glass: 'solid', theme: 'light', extra: '<img src=x>' })).toEqual({
+    expect(parseSettings({ glass: 'solid', theme: 'light', leftPanelWidth: 300, extra: '<img src=x>' })).toEqual({
       glass: 'solid',
       theme: 'light',
+      leftPanelWidth: 300,
     });
   });
 });
@@ -96,14 +127,18 @@ describe('commands', () => {
     await expect(appReady()).resolves.toMatchObject({ platform: 'windows' });
     expect(invokeMock).toHaveBeenLastCalledWith('app_ready', undefined);
 
-    invokeMock.mockResolvedValueOnce({ glass: 'auto', theme: 'system' });
-    await expect(getSettings()).resolves.toEqual({ glass: 'auto', theme: 'system' });
+    invokeMock.mockResolvedValueOnce({ glass: 'auto', theme: 'system', leftPanelWidth: 248 });
+    await expect(getSettings()).resolves.toEqual({ glass: 'auto', theme: 'system', leftPanelWidth: 248 });
     expect(invokeMock).toHaveBeenLastCalledWith('get_settings', undefined);
   });
 
   it('update_settings sends only the patch and returns the settings after the update', async () => {
-    invokeMock.mockResolvedValueOnce({ glass: 'solid', theme: 'system' });
-    await expect(updateSettings({ glass: 'solid' })).resolves.toEqual({ glass: 'solid', theme: 'system' });
+    invokeMock.mockResolvedValueOnce({ glass: 'solid', theme: 'system', leftPanelWidth: 248 });
+    await expect(updateSettings({ glass: 'solid' })).resolves.toEqual({
+      glass: 'solid',
+      theme: 'system',
+      leftPanelWidth: 248,
+    });
     expect(invokeMock).toHaveBeenCalledWith('update_settings', { patch: { glass: 'solid' } });
   });
 

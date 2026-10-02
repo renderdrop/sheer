@@ -7,6 +7,11 @@ import { parseFrame, type RenderFrame } from './frame';
 export interface DocumentInfo {
   id: number;
   pageCount: number;
+  /**
+   * The file's name for display (the status bar), made safe by the backend: no directory, no control or direction
+   * characters, at most 255 characters. May be empty. Render it as text only.
+   */
+  displayName: string;
 }
 
 /** A rendered page: PNG bytes, their size and the scale they were actually rendered at (see `renderPage`). */
@@ -22,9 +27,29 @@ export interface RenderedPage extends RenderFrame {
 const MAX_LIMIT_RETRIES = 4;
 const LIMIT_RETRY_FACTOR = 0.7;
 
-/** Shows the native open dialog. Resolves to `null` if the user cancels. */
-export function openDocumentDialog(): Promise<DocumentInfo | null> {
-  return call<DocumentInfo | null>('open_document_dialog');
+/** A whole number from 0 up: the id and the page count are `u32` in the backend. */
+function isCount(value: unknown): value is number {
+  return typeof value === 'number' && Number.isInteger(value) && value >= 0;
+}
+
+/** Validates the backend's answer to opening a document. `null` if it is not a `DocumentInfo`; extra keys are dropped. */
+export function parseDocumentInfo(value: unknown): DocumentInfo | null {
+  if (typeof value !== 'object' || value === null) return null;
+  const { id, pageCount, displayName } = value as { id?: unknown; pageCount?: unknown; displayName?: unknown };
+  if (!isCount(id) || !isCount(pageCount) || typeof displayName !== 'string') return null;
+  return { id, pageCount, displayName };
+}
+
+/**
+ * Shows the native open dialog. Resolves to `null` if the user cancels. An answer that does not have the documented shape
+ * is an internal error, like a malformed frame: the viewer and the status bar rely on a name and a page count.
+ */
+export async function openDocumentDialog(): Promise<DocumentInfo | null> {
+  const info = await call<unknown>('open_document_dialog');
+  if (info === null) return null;
+  const parsed = parseDocumentInfo(info);
+  if (parsed === null) throw toAppError(null);
+  return parsed;
 }
 
 function isFrameTooLarge(error: AppError): boolean {

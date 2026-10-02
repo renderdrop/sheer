@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 
 import { GLASS_MODES, THEME_MODES } from '../api/app';
-import { PANEL } from '../components/tokens';
+import { LAYOUT, PANEL } from '../components/tokens';
 import { themeAttribute, transparencyAttribute } from '../stores/settings';
 
 /**
@@ -335,6 +335,69 @@ describe('widths and the left panel (DESIGN 2, 3.3 to 3.8)', () => {
   });
 });
 
+describe('layout slots (DESIGN 2, 2.2, 3.11)', () => {
+  const slots: Record<string, string> = {
+    '--caption-height': '32px', // Windows caption row
+    '--toolbar-row-height': '56px', // toolbar 40 + 8 above and below
+    '--banner-min-height': '48px',
+    '--status-height': '32px',
+    '--status-name-max': '40%', // the file name's share of the status bar (3.10)
+    '--caption-button-width': '46px',
+    '--chrome-inset-mac': '80px', // traffic lights
+    '--inspector-width': '288px',
+    '--canvas-min': '360px',
+    '--empty-max-width': '560px',
+    '--scrim-height': '24px', // scroll-edge scrim: 8 solid + 16 fade
+    '--scrim-solid': '8px',
+  };
+
+  it.each(Object.entries(slots))('%s is %s', (name, value) => {
+    expect(root.get(name)).toBe(value);
+  });
+
+  it('Tailwind reaches them as h-caption, h-toolbar-row, min-h-banner-min, h-status, max-w-status-name, w-caption-button, ps-chrome-inset, w-inspector, min-w-canvas-min, max-w-empty-max, h-scrim', () => {
+    const mapped = {
+      caption: '--caption-height',
+      'toolbar-row': '--toolbar-row-height',
+      'banner-min': '--banner-min-height',
+      status: '--status-height',
+      'status-name': '--status-name-max',
+      'caption-button': '--caption-button-width',
+      'chrome-inset': '--chrome-inset-mac',
+      inspector: '--inspector-width',
+      'canvas-min': '--canvas-min',
+      'empty-max': '--empty-max-width',
+      scrim: '--scrim-height',
+    };
+    for (const [name, token] of Object.entries(mapped)) {
+      expect(themeStatic.get(`--spacing-${name}`), name).toBe(`var(${token})`);
+    }
+  });
+
+  it('the toolbar row is the toolbar plus 8 above and below, and the scrim is 8 solid plus 16 fade', () => {
+    expect(root.get('--toolbar-row-height')).toBe(`${40 + 2 * 8}px`);
+    expect(parseInt(root.get('--scrim-height') ?? '', 10) - parseInt(root.get('--scrim-solid') ?? '', 10)).toBe(16);
+  });
+
+  it('the scroll-edge scrim fades from the solid canvas color to transparent over the scrim height', () => {
+    const scrim = blockBody('@utility canvas-scrim');
+    expect(scrim).toContain('height: var(--scrim-height);');
+    expect(scrim).toContain('linear-gradient(to bottom, var(--color-canvas) var(--scrim-solid), transparent)');
+  });
+
+  it('the glyph on the Windows close button is white, and system HighlightText in forced colors', () => {
+    expect(themeStatic.get('--color-on-close')).toBe('#ffffff');
+    expect(css).toMatch(/--color-on-close: HighlightText;/);
+  });
+
+  it('LAYOUT, the numbers the collapse rules calculate with, matches the tokens', () => {
+    expect(`${LAYOUT.gutter}px`).toBe(root.get('--space-1'));
+    expect(`${LAYOUT.splitter}px`).toBe(root.get('--splitter-width'));
+    expect(`${LAYOUT.canvasMin}px`).toBe(root.get('--canvas-min'));
+    expect(`${LAYOUT.inspector}px`).toBe(root.get('--inspector-width'));
+  });
+});
+
 describe('type (DESIGN 1.5)', () => {
   it('font stacks', () => {
     expect(themeStatic.get('--font-sans')).toBe(
@@ -497,6 +560,8 @@ describe('the rest of src/ uses tokens only', () => {
     for (const file of files.filter((candidate) => candidate.endsWith('.tsx'))) {
       const text = readFileSync(file, 'utf8');
       expect(text, file).not.toMatch(/-\[[^\]]*\d(px|rem|em)\b[^\]]*\]/);
+      // A share of a parent is a token too (max-w-status-name), not max-w-[40%].
+      expect(text, file).not.toMatch(/-\[[^\]]*\d%[^\]]*\]/);
       expect(text, file).not.toMatch(/-\[#/);
     }
   });

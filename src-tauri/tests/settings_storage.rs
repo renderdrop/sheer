@@ -133,7 +133,8 @@ fn a_leftover_temp_file_does_not_stop_the_app_from_starting() {
         SettingsStore::load(dir.settings_file()).get(),
         Settings {
             glass: GlassMode::Solid,
-            theme: ThemeMode::Light
+            theme: ThemeMode::Light,
+            ..Settings::default()
         }
     );
 }
@@ -167,6 +168,7 @@ fn stored_values_of_the_wrong_type_fall_back_field_by_field() {
             Settings {
                 glass: GlassMode::Auto,
                 theme: ThemeMode::Light,
+                ..Settings::default()
             },
         ),
         (
@@ -174,6 +176,7 @@ fn stored_values_of_the_wrong_type_fall_back_field_by_field() {
             Settings {
                 glass: GlassMode::Solid,
                 theme: ThemeMode::System,
+                ..Settings::default()
             },
         ),
         (
@@ -186,6 +189,7 @@ fn stored_values_of_the_wrong_type_fall_back_field_by_field() {
             Settings {
                 glass: GlassMode::Auto,
                 theme: ThemeMode::Dark,
+                ..Settings::default()
             },
         ),
     ];
@@ -223,7 +227,10 @@ fn the_next_update_repairs_a_damaged_file() {
     store.update(patch(json!({ "theme": "dark" }))).unwrap();
 
     let stored: Value = serde_json::from_slice(&fs::read(dir.settings_file()).unwrap()).unwrap();
-    assert_eq!(stored, json!({ "glass": "auto", "theme": "dark" }));
+    assert_eq!(
+        stored,
+        json!({ "glass": "auto", "theme": "dark", "leftPanelWidth": 248 })
+    );
     assert_eq!(names(dir.path()), [FILE_NAME]);
 }
 
@@ -296,4 +303,40 @@ fn the_settings_file_and_a_new_data_directory_are_private_to_the_user() {
     let mode = |path: &Path| fs::metadata(path).unwrap().permissions().mode() & 0o777;
     assert_eq!(mode(&data_dir), 0o700);
     assert_eq!(mode(&path), 0o600);
+}
+
+// --- the left panel width (DESIGN 2, 3.8) ----------------------------------------------------------------------
+
+#[test]
+fn the_panel_width_survives_a_restart_and_a_bad_width_changes_nothing() {
+    let dir = TempDir::new();
+    let store = SettingsStore::load(dir.settings_file());
+    assert_eq!(store.get().left_panel_width.get(), 248);
+
+    store
+        .update(patch(json!({ "leftPanelWidth": 320 })))
+        .unwrap();
+    assert_eq!(
+        SettingsStore::load(dir.settings_file())
+            .get()
+            .left_panel_width
+            .get(),
+        320
+    );
+
+    // Out of range, wrongly typed or in company of an invalid field: the patch is refused whole, so neither the file nor
+    // memory moves.
+    let before = fs::read(dir.settings_file()).unwrap();
+    for bad in [
+        json!({ "leftPanelWidth": 100 }),
+        json!({ "leftPanelWidth": 4000 }),
+        json!({ "leftPanelWidth": "wide" }),
+        json!({ "leftPanelWidth": 300.5 }),
+        json!({ "leftPanelWidth": 300, "theme": "neon" }),
+    ] {
+        let error = SettingsPatch::from_value(&bad).unwrap_err();
+        assert_eq!(error.code(), ErrorCode::InvalidArgument, "{bad}");
+    }
+    assert_eq!(fs::read(dir.settings_file()).unwrap(), before);
+    assert_eq!(store.get().left_panel_width.get(), 320);
 }

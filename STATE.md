@@ -1,9 +1,9 @@
 # STATE
 phase: 3
 version: 0.2.0
-current_item: App shell layout grid: toolbar, left panel, canvas, inspector slot, status bar, scroll-edge scrim
-last_completed: Primitives I + II and Hardening (see git log)
-loop_count_this_session: 4
+current_item: Command registry + shortcuts (platform modifiers) + native menu bar
+last_completed: App shell layout grid + Empty state (see git log)
+loop_count_this_session: 5
 open_blockers: 1 (B-001 macOS/CI unverified — needs a GitHub remote or a Mac)
 notes: Run `npm run check` / `npm run fetch-pdfium` from Git Bash (in PowerShell `bash` may resolve to WSL). Rust in ~/.cargo/bin.
   Custom agent types need a session restart; until then general-purpose + ROLE block (ADR-000 §8).

@@ -4,7 +4,7 @@
 //! with [`DocumentId`] and [`PageId`] values alone.
 
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::{Mutex, MutexGuard, PoisonError};
 
 use serde::{Deserialize, Serialize};
@@ -33,13 +33,77 @@ impl PageId {
 }
 
 /// What the frontend learns about a document it just opened.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DocumentInfo {
     pub id: DocumentId,
     pub page_count: u32,
+    /// The file's name for the status bar, see [`display_name`]. Never contains a directory.
+    pub display_name: String,
 }
 
+/// The name of the file at `path` as the UI may show it: the last path component only (the frontend never learns
+/// directories, SECURITY I2), without the characters that can reorder or hide the text around them or break the layout
+/// (see `is_unsafe_in_display_name`), at most `limits::MAX_DISPLAY_NAME_CHARS` characters. Empty when the path has no
+/// file name; the UI then shows a neutral placeholder. Invalid UTF-8 in the name becomes U+FFFD.
+pub fn display_name(path: &Path) -> String {
+    let Some(name) = path.file_name() else {
+        return String::new();
+    };
+    name.to_string_lossy()
+        .chars()
+        .filter(|&c| !is_unsafe_in_display_name(c))
+        .take(limits::MAX_DISPLAY_NAME_CHARS)
+        .collect()
+}
+
+/// Zero width non-joiner and joiner. Format characters (Cf), but scripts need them (Persian, the Indic scripts) and
+/// emoji sequences are built with them (family and profession sequences), so a name keeps them. They neither reorder
+/// text nor hide anything but themselves.
+const KEPT_FORMAT_CHARS: [char; 2] = ['\u{200C}', '\u{200D}'];
+
+/// Every character of the Unicode general category Cf (format) as of Unicode 17, as inclusive ranges in order.
+/// The standard library has `char::is_control` (Cc) but no table for Cf, and one table is not worth a dependency.
+/// `tests/display_name.rs` holds an independent copy and compares both over every scalar value. Cf has the direction
+/// marks, embeddings, overrides and isolates (the "gpj.exe" trick), the zero-width and invisible-operator characters, the
+/// soft hyphen, the byte order mark, the interlinear annotation marks, the Arabic number signs and the tag characters
+/// (invisible text that survives copy and paste).
+const FORMAT_CHARS: [(char, char); 21] = [
+    ('\u{00AD}', '\u{00AD}'),
+    ('\u{0600}', '\u{0605}'),
+    ('\u{061C}', '\u{061C}'),
+    ('\u{06DD}', '\u{06DD}'),
+    ('\u{070F}', '\u{070F}'),
+    ('\u{0890}', '\u{0891}'),
+    ('\u{08E2}', '\u{08E2}'),
+    ('\u{180E}', '\u{180E}'),
+    ('\u{200B}', '\u{200F}'),
+    ('\u{202A}', '\u{202E}'),
+    ('\u{2060}', '\u{2064}'),
+    ('\u{2066}', '\u{206F}'),
+    ('\u{FEFF}', '\u{FEFF}'),
+    ('\u{FFF9}', '\u{FFFB}'),
+    ('\u{110BD}', '\u{110BD}'),
+    ('\u{110CD}', '\u{110CD}'),
+    ('\u{13430}', '\u{1343F}'),
+    ('\u{1BCA0}', '\u{1BCA3}'),
+    ('\u{1D173}', '\u{1D17A}'),
+    ('\u{E0001}', '\u{E0001}'),
+    ('\u{E0020}', '\u{E007F}'),
+];
+
+/// What a display name never shows: the general categories Cc (C0 and C1 controls, DEL) and Cf (format characters, see
+/// [`FORMAT_CHARS`]) except U+200C and U+200D; the line and paragraph separators (U+2028 and U+2029, categories Zl and
+/// Zp, which break a line like a newline does); and the object replacement character (U+FFFC, a placeholder for
+/// something that is not there).
+fn is_unsafe_in_display_name(c: char) -> bool {
+    c.is_control()
+        || (!KEPT_FORMAT_CHARS.contains(&c)
+            && FORMAT_CHARS
+                .iter()
+                .any(|&(first, last)| (first..=last).contains(&c)))
+        || matches!(c, '\u{2028}' | '\u{2029}' | '\u{FFFC}')
+}
 #[derive(Debug)]
 struct Entry {
     path: PathBuf,
@@ -232,10 +296,105 @@ mod tests {
     fn document_info_serializes_camel_case() {
         let registry = Registry::new();
         let id = registry.register(path("a.pdf")).unwrap();
-        let info = DocumentInfo { id, page_count: 3 };
+        let info = DocumentInfo {
+            id,
+            page_count: 3,
+            display_name: "a.pdf".to_owned(),
+        };
         assert_eq!(
             serde_json::to_string(&info).unwrap(),
-            r#"{"id":0,"pageCount":3}"#
+            r#"{"id":0,"pageCount":3,"displayName":"a.pdf"}"#
+        );
+    }
+
+    // --- display names ---
+
+    #[test]
+    fn a_display_name_is_the_file_name_without_any_directory() {
+        assert_eq!(display_name(&path("report.pdf")), "report.pdf");
+        assert_eq!(
+            display_name(&PathBuf::from("some").join("dir").join("Q3 report.pdf")),
+            "Q3 report.pdf"
+        );
+        // Windows drive and verbatim prefixes (what `canonicalize` returns) are directory, not name.
+        #[cfg(windows)]
+        {
+            assert_eq!(
+                display_name(Path::new(r"C:\Users\user\secret\a.pdf")),
+                "a.pdf"
+            );
+            assert_eq!(display_name(Path::new(r"\\?\C:\Users\user\a.pdf")), "a.pdf");
+        }
+        for name in ["日本語.pdf", "Überschrift – final.pdf", "emoji 📄.pdf"] {
+            assert_eq!(display_name(&path(name)), name);
+        }
+    }
+
+    #[test]
+    fn a_path_without_a_file_name_has_an_empty_display_name() {
+        assert_eq!(display_name(Path::new("")), "");
+        assert_eq!(display_name(Path::new("..")), "");
+        assert_eq!(display_name(Path::new("/")), "");
+    }
+
+    #[test]
+    fn control_and_direction_characters_are_removed_from_a_display_name() {
+        // Right-to-left override: "gpj.exe" would show as "exe.jpg"; a newline or NUL would break the layout.
+        for (raw, shown) in [
+            ("a\u{202E}fdp.exe", "afdp.exe"),
+            ("a\u{2066}b\u{2069}.pdf", "ab.pdf"),
+            ("line\nbreak\r.pdf", "linebreak.pdf"),
+            ("nul\0.pdf", "nul.pdf"),
+            ("tab\there.pdf", "tabhere.pdf"),
+            ("zero\u{200B}width\u{FEFF}.pdf", "zerowidth.pdf"),
+            ("sep\u{2028}\u{2029}.pdf", "sep.pdf"),
+            ("esc\u{1B}[31m.pdf", "esc[31m.pdf"),
+            ("c1\u{85}.pdf", "c1.pdf"),
+            ("\u{061C}x.pdf", "x.pdf"),
+            // The rest of the format characters (category Cf), block by block: soft hyphen, Arabic number sign,
+            // interlinear annotation marks, tag characters (the invisible letters of a subdivision flag); and the object
+            // replacement character, a placeholder of category So.
+            ("soft\u{AD}hyphen.pdf", "softhyphen.pdf"),
+            ("\u{0600}1.pdf", "1.pdf"),
+            ("a\u{FFF9}b\u{FFFA}c\u{FFFB}.pdf", "abc.pdf"),
+            ("flag\u{E0067}\u{E0062}\u{E007F}.pdf", "flag.pdf"),
+            ("\u{E0001}tagged.pdf", "tagged.pdf"),
+            ("obj\u{FFFC}.pdf", "obj.pdf"),
+        ] {
+            assert_eq!(display_name(&path(raw)), shown, "{raw:?}");
+        }
+    }
+
+    #[test]
+    fn the_joiners_stay_because_scripts_and_emoji_need_them() {
+        for name in [
+            // Persian: the zero width non-joiner keeps letters apart that would otherwise join.
+            "می\u{200C}خواهم.pdf",
+            // Devanagari conjunct with a zero width joiner.
+            "क्\u{200D}ष.pdf",
+            // Emoji sequences are glued with the zero width joiner.
+            "family 👨\u{200D}👩\u{200D}👧.pdf",
+            "\u{1F469}\u{200D}\u{1F4BB} work.pdf",
+        ] {
+            assert_eq!(display_name(&path(name)), name, "{name:?}");
+        }
+        // The other zero-width characters between them still go.
+        assert_eq!(
+            display_name(&path("a\u{200B}\u{200C}\u{200D}\u{200E}b.pdf")),
+            "a\u{200C}\u{200D}b.pdf"
+        );
+    }
+
+    #[test]
+    fn a_display_name_is_capped() {
+        let long = "x".repeat(limits::MAX_DISPLAY_NAME_CHARS + 50);
+        let shown = display_name(&path(&long));
+        assert_eq!(shown.chars().count(), limits::MAX_DISPLAY_NAME_CHARS);
+        // Counted in characters, not bytes: a multi-byte name is cut on a character boundary.
+        let wide = "é".repeat(limits::MAX_DISPLAY_NAME_CHARS + 1);
+        assert_eq!(
+            display_name(&path(&wide)).chars().count(),
+            limits::MAX_DISPLAY_NAME_CHARS
         );
     }
 }

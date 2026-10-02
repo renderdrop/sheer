@@ -4,7 +4,7 @@ import { Fragment, useEffect, useLayoutEffect, useRef, useState, type KeyboardEv
 import { cx } from './cx';
 import { IconButton, type IconButtonProps } from './IconButton';
 import type { IconButtonVariant } from './controlStyles';
-import { Menu, type MenuEntry } from './Menu';
+import { Menu, type MenuEntries, type MenuEntry } from './Menu';
 import { isOwnEvent, itemsOf, rovingTarget } from './roving';
 import { componentStrings } from './strings';
 
@@ -14,8 +14,11 @@ export interface ToolbarItem {
   /** Accessible name and tooltip text. */
   label: string;
   icon?: LucideIcon;
-  /** Text instead of an icon, in a 56 px wide button (the zoom readout). */
-  text?: string;
+  /**
+   * Text instead of an icon, in a 56 px wide button (the zoom readout). An element that follows some state by itself
+   * (the zoom readout) keeps the toolbar from re-rendering when that state changes.
+   */
+  text?: ReactNode;
   /**
    * `action` runs and is done; `toggle` shows a panel on or off (selected look); `tool` is the active tool (accent
    * fill). Toggles and tools set `aria-pressed`. Default `action`.
@@ -29,8 +32,8 @@ export interface ToolbarItem {
   shortcut?: string;
   /** `aria-keyshortcuts` value. */
   keyShortcuts?: string;
-  /** Opens this menu instead of running `onActivate` (ArrowDown opens it too). */
-  menu?: readonly MenuEntry[];
+  /** Opens this menu instead of running `onActivate` (ArrowDown opens it too). A function makes the entries while the menu renders. */
+  menu?: MenuEntries;
   /** 1 = the first item to move into More when the toolbar is too narrow, 2 the next. Omit: never moves. */
   collapse?: number;
   /** Click, Enter or Space. A double click only calls `onLock`. */

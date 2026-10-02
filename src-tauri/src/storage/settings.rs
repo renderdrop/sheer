@@ -1,14 +1,17 @@
 //! User settings: a small JSON file in the app data directory, mirrored in memory.
 //!
-//! Wire shape (camelCase, enum values lowercase): `{ "glass": "auto" | "solid", "theme": "system" | "light" | "dark" }`.
+//! Wire shape (camelCase, enum values lowercase):
+//! `{ "glass": "auto" | "solid", "theme": "system" | "light" | "dark", "leftPanelWidth": 192..=400 }`.
 //!
 //! - **Reading** never fails: a missing, oversized, damaged or hand-edited file falls back to the defaults, field by
-//!   field. The file is user-writable, so nothing in it is trusted beyond the enum values it can hold. Only a regular
-//!   file is read (a directory, FIFO or device at the path counts as damaged), judged on the opened handle and not on the
-//!   path, and the open never waits (`O_NONBLOCK`); never more than `limits::MAX_SETTINGS_FILE_BYTES` of it is read.
-//! - **Updating** validates the whole patch first (unknown keys and unknown enum values are `invalid_argument` with
-//!   `what: "settings"`), then writes atomically and only then changes the in-memory copy, so a failed write leaves
-//!   memory and disk in agreement. Updates are serialised, but reads are not: `get` never waits for the disk.
+//!   field. The file is user-writable, so nothing in it is trusted beyond the enum values and the width range it can
+//!   hold. Only a regular file is read (a directory, FIFO or device at the path counts as damaged), judged on the opened
+//!   handle and not on the path, and the open never waits (`O_NONBLOCK`); never more than
+//!   `limits::MAX_SETTINGS_FILE_BYTES` of it is read.
+//! - **Updating** validates the whole patch first (unknown keys, unknown enum values and a width outside the range are
+//!   `invalid_argument` with `what: "settings"`), then writes atomically and only then changes the in-memory copy, so a
+//!   failed write leaves memory and disk in agreement. Updates are serialised, but reads are not: `get` never waits for
+//!   the disk.
 
 use std::fs::{File, OpenOptions};
 use std::io::{self, Read};
@@ -44,12 +47,49 @@ pub enum ThemeMode {
     Dark,
 }
 
+/// Width of the left panel in px (DESIGN 2, 3.8). Always within `limits::LEFT_PANEL_MIN_WIDTH..=LEFT_PANEL_MAX_WIDTH`:
+/// the only ways in are [`PanelWidth::new`] and `Deserialize`, and both check the range. It is a plain number on the wire.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(transparent)]
+pub struct PanelWidth(u16);
+
+impl PanelWidth {
+    /// `None` outside the allowed range.
+    pub const fn new(pixels: u16) -> Option<Self> {
+        if pixels >= limits::LEFT_PANEL_MIN_WIDTH && pixels <= limits::LEFT_PANEL_MAX_WIDTH {
+            Some(Self(pixels))
+        } else {
+            None
+        }
+    }
+
+    pub const fn get(self) -> u16 {
+        self.0
+    }
+}
+
+impl Default for PanelWidth {
+    fn default() -> Self {
+        Self(limits::LEFT_PANEL_DEFAULT_WIDTH)
+    }
+}
+
+impl<'de> Deserialize<'de> for PanelWidth {
+    /// An integer in range. A float, a string, a negative or an oversized number is an error, never clamped: a value that
+    /// is not valid is a bad request (patch) or a damaged field (file), and the callers handle both.
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let pixels = u16::deserialize(deserializer)?;
+        Self::new(pixels).ok_or_else(|| serde::de::Error::custom("panel width out of range"))
+    }
+}
+
 /// Every persisted setting. Add a field here, to [`SettingsPatch`] and to `src/api/app.ts` together.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Settings {
     pub glass: GlassMode,
     pub theme: ThemeMode,
+    pub left_panel_width: PanelWidth,
 }
 
 impl Settings {
@@ -68,6 +108,10 @@ impl Settings {
                 .get("theme")
                 .and_then(|value| ThemeMode::deserialize(value).ok())
                 .unwrap_or_default(),
+            left_panel_width: map
+                .get("leftPanelWidth")
+                .and_then(|value| PanelWidth::deserialize(value).ok())
+                .unwrap_or_default(),
         }
     }
 
@@ -76,19 +120,22 @@ impl Settings {
         Self {
             glass: patch.glass.unwrap_or(self.glass),
             theme: patch.theme.unwrap_or(self.theme),
+            left_panel_width: patch.left_panel_width.unwrap_or(self.left_panel_width),
         }
     }
 }
 
-/// A partial update: at most the two settings, each optional. Parsed only by [`SettingsPatch::from_value`], which
-/// rejects every unknown key (`deny_unknown_fields`), so a patch can never name more than these two fields.
+/// A partial update: at most the three settings, each optional. Parsed only by [`SettingsPatch::from_value`], which
+/// rejects every unknown key (`deny_unknown_fields`), so a patch can never name more than these three fields.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize)]
-#[serde(deny_unknown_fields)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
 pub struct SettingsPatch {
     #[serde(default, deserialize_with = "present")]
     pub glass: Option<GlassMode>,
     #[serde(default, deserialize_with = "present")]
     pub theme: Option<ThemeMode>,
+    #[serde(default, deserialize_with = "present")]
+    pub left_panel_width: Option<PanelWidth>,
 }
 
 /// A field that is present must hold a valid value. Plain `Option` would read `null` as "absent" and accept it.
@@ -272,15 +319,16 @@ mod tests {
     fn settings_serialize_with_lowercase_enum_values() {
         assert_eq!(
             serde_json::to_value(Settings::default()).unwrap(),
-            json!({ "glass": "auto", "theme": "system" })
+            json!({ "glass": "auto", "theme": "system", "leftPanelWidth": 248 })
         );
         let settings = Settings {
             glass: GlassMode::Solid,
             theme: ThemeMode::Dark,
+            left_panel_width: PanelWidth::new(320).unwrap(),
         };
         assert_eq!(
             serde_json::to_value(settings).unwrap(),
-            json!({ "glass": "solid", "theme": "dark" })
+            json!({ "glass": "solid", "theme": "dark", "leftPanelWidth": 320 })
         );
     }
 
@@ -293,7 +341,7 @@ mod tests {
                 patch(json!({ "glass": name })).unwrap(),
                 SettingsPatch {
                     glass: Some(glass),
-                    theme: None
+                    ..SettingsPatch::default()
                 }
             );
         }
@@ -305,18 +353,73 @@ mod tests {
             assert_eq!(
                 patch(json!({ "theme": name })).unwrap(),
                 SettingsPatch {
-                    glass: None,
-                    theme: Some(theme)
+                    theme: Some(theme),
+                    ..SettingsPatch::default()
                 }
             );
         }
         assert_eq!(
-            patch(json!({ "glass": "solid", "theme": "light" })).unwrap(),
+            patch(json!({ "glass": "solid", "theme": "light", "leftPanelWidth": 296 })).unwrap(),
             SettingsPatch {
                 glass: Some(GlassMode::Solid),
-                theme: Some(ThemeMode::Light)
+                theme: Some(ThemeMode::Light),
+                left_panel_width: PanelWidth::new(296)
             }
         );
+    }
+
+    #[test]
+    fn a_panel_width_patch_accepts_exactly_the_design_range() {
+        for pixels in [192, 193, 248, 399, 400] {
+            assert_eq!(
+                patch(json!({ "leftPanelWidth": pixels })).unwrap(),
+                SettingsPatch {
+                    left_panel_width: PanelWidth::new(pixels),
+                    ..SettingsPatch::default()
+                },
+                "{pixels}"
+            );
+        }
+        for bad in [
+            json!(0),
+            json!(191),
+            json!(401),
+            json!(65_535),
+            json!(65_536),
+            json!(-248),
+            json!(248.5),
+            json!(248.0),
+            json!("248"),
+            json!(null),
+            json!(true),
+            json!([248]),
+            json!({ "px": 248 }),
+        ] {
+            assert_eq!(
+                rejected(json!({ "leftPanelWidth": bad.clone() })),
+                INVALID_SETTINGS,
+                "{bad}"
+            );
+        }
+        // The wire name is exact: the Rust field name is not accepted.
+        assert_eq!(
+            rejected(json!({ "left_panel_width": 248 })),
+            INVALID_SETTINGS
+        );
+    }
+
+    #[test]
+    fn the_panel_width_range_is_the_one_in_limits() {
+        assert_eq!(
+            PanelWidth::default().get(),
+            limits::LEFT_PANEL_DEFAULT_WIDTH
+        );
+        assert!(PanelWidth::new(limits::LEFT_PANEL_MIN_WIDTH).is_some());
+        assert!(PanelWidth::new(limits::LEFT_PANEL_MAX_WIDTH).is_some());
+        assert!(PanelWidth::new(limits::LEFT_PANEL_MIN_WIDTH - 1).is_none());
+        assert!(PanelWidth::new(limits::LEFT_PANEL_MAX_WIDTH + 1).is_none());
+        // The default is inside the range (the order of the three is checked at compile time in `limits`).
+        assert!(PanelWidth::new(limits::LEFT_PANEL_DEFAULT_WIDTH).is_some());
     }
 
     #[test]
@@ -381,18 +484,28 @@ mod tests {
     }
 
     #[test]
-    fn a_patch_can_name_at_most_the_two_settings() {
-        // Every key beyond the two known ones is unknown, so a patch with more than two keys never passes. The check
+    fn a_patch_can_name_at_most_the_three_settings() {
+        // Every key beyond the three known ones is unknown, so a patch with more than three keys never passes. The check
         // stops at the first unknown key: a huge object is refused without being walked.
         assert_eq!(
-            rejected(json!({ "glass": "solid", "theme": "dark", "extra": 1 })),
+            rejected(
+                json!({ "glass": "solid", "theme": "dark", "leftPanelWidth": 248, "extra": 1 })
+            ),
             INVALID_SETTINGS
         );
         let huge: serde_json::Map<String, Value> =
             (0..10_000).map(|n| (format!("key{n}"), json!(n))).collect();
         assert_eq!(rejected(Value::Object(huge)), INVALID_SETTINGS);
         // Key names are case-sensitive and exact.
-        for key in ["Glass", "THEME", "glass ", "", "theme\0", "glass.theme"] {
+        for key in [
+            "Glass",
+            "THEME",
+            "glass ",
+            "",
+            "theme\0",
+            "glass.theme",
+            "LeftPanelWidth",
+        ] {
             assert_eq!(
                 rejected(json!({ key: "auto" })),
                 INVALID_SETTINGS,
@@ -414,13 +527,23 @@ mod tests {
         let base = Settings {
             glass: GlassMode::Solid,
             theme: ThemeMode::Dark,
+            ..Settings::default()
         };
         let only_theme = patch(json!({ "theme": "light" })).unwrap();
         assert_eq!(
             base.apply(only_theme),
             Settings {
                 glass: GlassMode::Solid,
-                theme: ThemeMode::Light
+                theme: ThemeMode::Light,
+                ..Settings::default()
+            }
+        );
+        let only_width = patch(json!({ "leftPanelWidth": 304 })).unwrap();
+        assert_eq!(
+            base.apply(only_width),
+            Settings {
+                left_panel_width: PanelWidth::new(304).unwrap(),
+                ..base
             }
         );
         assert_eq!(base.apply(SettingsPatch::default()), base);
@@ -455,16 +578,42 @@ mod tests {
         let dir = TempDir::new();
         fs::write(
             dir.path().join(FILE_NAME),
-            r#"{"glass":"frosted","theme":"dark","future":{"x":1}}"#,
+            r#"{"glass":"frosted","theme":"dark","leftPanelWidth":9999,"future":{"x":1}}"#,
         )
         .unwrap();
         assert_eq!(
             store_in(&dir).get(),
             Settings {
-                glass: GlassMode::Auto,
-                theme: ThemeMode::Dark
+                theme: ThemeMode::Dark,
+                ..Settings::default()
             }
         );
+    }
+
+    #[test]
+    fn a_stored_panel_width_is_read_only_inside_the_range() {
+        for (contents, expected) in [
+            (r#"{"leftPanelWidth":192}"#, 192),
+            (r#"{"leftPanelWidth":400}"#, 400),
+            (r#"{"leftPanelWidth":320}"#, 320),
+            // Out of range, wrong type or missing: the default, never a clamped guess.
+            (r#"{"leftPanelWidth":191}"#, 248),
+            (r#"{"leftPanelWidth":401}"#, 248),
+            (r#"{"leftPanelWidth":-1}"#, 248),
+            (r#"{"leftPanelWidth":300.5}"#, 248),
+            (r#"{"leftPanelWidth":"300"}"#, 248),
+            (r#"{"leftPanelWidth":null}"#, 248),
+            (r#"{"left_panel_width":300}"#, 248),
+            (r#"{}"#, 248),
+        ] {
+            let dir = TempDir::new();
+            fs::write(dir.path().join(FILE_NAME), contents).unwrap();
+            assert_eq!(
+                store_in(&dir).get().left_panel_width.get(),
+                expected,
+                "{contents}"
+            );
+        }
     }
 
     #[test]
@@ -494,13 +643,16 @@ mod tests {
         let dir = TempDir::new();
         let store = store_in(&dir);
         let updated = store
-            .update(patch(json!({ "glass": "solid", "theme": "dark" })).unwrap())
+            .update(
+                patch(json!({ "glass": "solid", "theme": "dark", "leftPanelWidth": 280 })).unwrap(),
+            )
             .unwrap();
         assert_eq!(
             updated,
             Settings {
                 glass: GlassMode::Solid,
-                theme: ThemeMode::Dark
+                theme: ThemeMode::Dark,
+                left_panel_width: PanelWidth::new(280).unwrap()
             }
         );
         assert_eq!(store.get(), updated);
@@ -508,7 +660,10 @@ mod tests {
 
         let stored: Value =
             serde_json::from_slice(&fs::read(dir.path().join(FILE_NAME)).unwrap()).unwrap();
-        assert_eq!(stored, json!({ "glass": "solid", "theme": "dark" }));
+        assert_eq!(
+            stored,
+            json!({ "glass": "solid", "theme": "dark", "leftPanelWidth": 280 })
+        );
     }
 
     #[test]
@@ -525,7 +680,8 @@ mod tests {
             updated,
             Settings {
                 glass: GlassMode::Solid,
-                theme: ThemeMode::Light
+                theme: ThemeMode::Light,
+                ..Settings::default()
             }
         );
         assert_eq!(store_in(&dir).get(), updated);
@@ -686,14 +842,17 @@ mod tests {
     }
 
     #[test]
-    fn the_stored_file_holds_exactly_the_two_settings_as_json_with_a_final_newline() {
+    fn the_stored_file_holds_exactly_the_three_settings_as_json_with_a_final_newline() {
         let dir = TempDir::new();
         let store = store_in(&dir);
         apply_json(&store, json!({ "glass": "solid" })).unwrap();
         let bytes = fs::read(dir.path().join(FILE_NAME)).unwrap();
         assert_eq!(bytes.last(), Some(&b'\n'));
         let stored: Value = serde_json::from_slice(&bytes).unwrap();
-        assert_eq!(stored, json!({ "glass": "solid", "theme": "system" }));
+        assert_eq!(
+            stored,
+            json!({ "glass": "solid", "theme": "system", "leftPanelWidth": 248 })
+        );
     }
 
     #[test]
@@ -704,6 +863,7 @@ mod tests {
             r#"{"Glass":"solid","THEME":"dark"}"#,
             r#"{"glass":"Solid","theme":"DARK"}"#,
             r#"{"settings":{"glass":"solid","theme":"dark"}}"#,
+            r#"{"LeftPanelWidth":300}"#,
         ] {
             let dir = TempDir::new();
             fs::write(dir.path().join(FILE_NAME), contents).unwrap();
@@ -856,6 +1016,7 @@ mod tests {
         let expected = Settings {
             glass: GlassMode::Solid,
             theme: ThemeMode::Dark,
+            ..Settings::default()
         };
         assert_eq!(both, expected);
         assert_eq!(store.get(), expected);

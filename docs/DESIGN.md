@@ -132,6 +132,10 @@ Lucide, `absoluteStrokeWidth` 1.5 px (2 px at 12), `currentColor`, `aria-hidden`
   `--tooltip-max` 240, `--splitter-width` 8 (`w-splitter`), and the left panel `--panel-min` / `-default` / `-max` 192 / 248 / 400 with `--panel-collapse-below` 144 (§2, §3.8;
   `components/tokens.ts` mirrors them as numbers for the splitter, and the test fails on drift). `--spacing-0` is `0px` (`min-w-0`, `inset-0`). `--scale-thumb` 1.125 (§3.7)
   joins `--scale-press` and `--scale-enter` and reduced motion resets it to 1. Components contain no raw sizes.
+- Layout slots (§2, 2.2, 3.11), as tokens with Tailwind names: `--caption-height` 32 (`h-caption`), `--toolbar-row-height` 56 (`h-toolbar-row`), `--banner-min-height` 48 (`min-h-banner-min`), `--status-height` 32 (`h-status`), `--status-name-max` 40 % (`max-w-status-name`),
+  `--caption-button-width` 46 (`w-caption-button`), `--chrome-inset-mac` 80 (`ps-chrome-inset`), `--inspector-width` 288 (`w-inspector`), `--canvas-min` 360 (`min-w-canvas-min`), `--empty-max-width` 560 (`max-w-empty-max`) and the
+  scroll-edge scrim `--scrim-height` 24 + `--scrim-solid` 8 (`canvas-scrim` utility, `h-scrim`). `--color-on-close` is the white glyph on the Windows close hover (`text-on-close`; `HighlightText` in forced colors).
+  `LAYOUT` in `components/tokens.ts` mirrors the four widths the collapse rules calculate with, and the test fails on drift.
 - Theme: `prefers-color-scheme`, overridden by `html[data-theme]`. Solid mode: unsupported `backdrop-filter`, `prefers-reduced-transparency`,
   `html[data-transparency="reduced"]`, `forced-colors`. The dark values and the solid values each exist twice in the file (media query and attribute); the test keeps the copies identical.
 
@@ -170,6 +174,32 @@ Main columns: `8 | left 192–400 (default 248) | splitter 8 | canvas minmax(360
 Tab and F6/Shift+F6: toolbar → banner → left panel → splitter → canvas → inspector → status bar; F6 restores each region's
 last focus. Closing a panel, popover or dialog refocuses its trigger. Esc order:
 tooltip → popover → gesture → tool → selection. Every command is in the native menu; no Ctrl+Alt on Windows (AltGr).
+
+### 2.4 Implementation (app shell)
+
+`features/shell/Shell.tsx` composes the rows: caption (Windows), toolbar row, banner, main, status. The main row is a grid whose `grid-template-columns` is the track list of
+`computeShellLayout` (`lib/layout.ts`, pure, tested): left panel, splitter, canvas and inspector tracks appear and disappear by the rules above, and each child is placed by
+`grid-column`. The main row has an 8 px gap above the status bar so panels and canvas do not touch its text.
+
+- **Inspector modes.** `ui.inspector` is `auto`, `open` or `closed`. `auto` lets a selection or a non-Select tool fade the panel in, but only from 1280 px (where the track is reserved anyway); `open` shows it and gives it a
+  track at any width; `closed` hides the panel and, below 1280, the track. The toolbar toggle is pressed while the panel is visible and sets `open` or `closed`.
+- **Left panel collapse** is derived, not stored twice: the user's choice (`ui.leftPanelCollapsed`, set by the splitter's Enter, a release below 144 or the toolbar toggle) or the layout's own (canvas under 360).
+  The latter returns when the window grows. The width is `ui.leftPanelWidth` while dragging and is saved to settings (`leftPanelWidth`, 192 to 400) 300 ms after it settles.
+- **Platform chrome.** The first paint takes the platform from the user agent, then `app_ready`'s answer replaces it (ADR-014). Windows: caption row, caption buttons are not tab stops. macOS: 80 px toolbar-row inset, 8 in full screen.
+  The toolbar row (and the Windows caption) carry `data-tauri-drag-region="deep"`: any non-interactive part drags, buttons never do.
+- **Canvas** is the `<main>` landmark around one focusable scroll region; the scrim is a sibling of that region (it must not scroll) and shows once `scrollTop > 0`.
+- **Empty state.** The drop zone is visual only (`ui.dropHover`, set from Rust in M1); the webview never reads a dropped file or path. Recents show a placeholder until M1 has the list; the privacy footer belongs to the rows and
+  is omitted while there are none (§3.11).
+- **Banner.** `BannerRow` follows `ui.banner`. It opens and closes with height and opacity over 250 ms ease-out (§3.12, `useRevealMotion`); under reduced motion only the opacity changes, 150 ms. The row clips its
+  content while it moves and not at rest, where the glass shadow reaches beyond it.
+- **Render isolation.** The shell must not re-render for what changes often. `Shell` follows only the *structure* (`shellStructure` in `lib/layout.ts`: booleans that flip at the thresholds of the collapse rules, read through
+  `useShellStructure`), the platform and the window chrome. Each part follows what it shows: `ToolbarSlot` the active tool and whether the zoom is at a limit (the readout and the zoom menu follow the zoom themselves,
+  `ZoomReadout`, `useZoomMenu`), `ViewerCanvas` and `ViewerStatusBar` the open document's image, page and zoom, `MainGrid` and `LeftPanelSplitter` the panel width, `BannerRow` the error. The viewer's state is the
+  `useViewer` store (`features/viewer/useViewer.ts`): its actions never change, they read the state when called. A page, a zoom step, a render, a drag over the window or a step of the splitter therefore renders those parts and
+  not the shell, the toolbar or the left panel (`Shell.renders.test.tsx` counts renders). The window's maximized and full-screen state is read once when a resize has settled (150 ms), not per frame.
+
+Differences from the spec, all temporary: the left panel collapses without the 250 ms animation (the track count changes, which CSS cannot animate); the file name is cut at its head and keeps its last 8 characters (a CSS-only
+middle truncation); the tabs are placeholders; More carries "Open…" until the native menu bar has it; tools only change the active tool until M2.
 
 ## 3. Components
 
@@ -260,6 +290,10 @@ Always paired with a 56 × 24 numeric field (precision, WCAG 2.5.7). Track 4 h p
 fill accent, rest `--color-track`; thumb 16 white disc, 1 px control-border, `--shadow-1`; hit area 24 h. Hover/drag:
 thumb `scale(1.125)`; focus ring on thumb; disabled: text-disabled. Keys (native range): arrows step, Shift × 10,
 PageUp/Down 10 %, Home/End; field Enter commits, Esc reverts. `<label>`, `aria-valuetext` with unit.
+
+The numeric field is the shared **Field** primitive (`components/Field.tsx`, styles in `controlStyles.ts`): a plain `<input>`, 56 wide (`w-field`), `sm` 24 or `md` 32 high
+(the Go to page form uses `md`), radius 8, 1 px `--color-control-border` on `--surface-solid`; disabled takes the divider border and `text-disabled`, `aria-invalid` the error-icon border, focus is the
+global 2 px ring. It has no label of its own.
 
 ### 3.8 Splitter
 

@@ -46,3 +46,21 @@ export function usePopoverMotion(): EnterExit {
     exit: { opacity: 0, transition: { duration: DURATION.fast, ease: EASE_IN } },
   };
 }
+
+/**
+ * A row that opens and closes in the flow of the page and pushes what is below it (the error banner, DESIGN 3.12): height and
+ * opacity over 250 ms, ease-out, in and out. Reduced motion changes it to opacity only, 150 ms ease-out: the row is then
+ * there or gone at once and only fades. The row has to clip its content while its height moves (and so should be `overflow:
+ * hidden` then and `visible` at rest, so the shadow and the focus ring of what is inside are not cut); Motion cannot switch
+ * that for us (`transitionEnd` does not reach `overflow`), so the component does, from the animation's start and end events.
+ */
+export function useRevealMotion(): EnterExit {
+  const reduce = useReducedMotion() === true;
+  if (reduce) return fade(DURATION.fast, DURATION.fast, EASE_OUT);
+  const transition = { duration: DURATION.slow, ease: EASE_OUT };
+  return {
+    initial: { height: 0, opacity: 0 },
+    animate: { height: 'auto', opacity: 1, transition },
+    exit: { height: 0, opacity: 0, transition },
+  };
+}

@@ -123,15 +123,27 @@ export function MenuList({ entries, onActivate }: MenuListProps) {
   );
 }
 
+/**
+ * The entries of a menu: a list, or a function that makes the list while the menu renders. The function runs only while the
+ * menu is open and may use hooks, so the menu follows state of its own (the zoom menu's checked preset) without the parent
+ * having to re-render to hand over a new list. It must call the same hooks on every call.
+ */
+export type MenuEntries = readonly MenuEntry[] | (() => readonly MenuEntry[]);
+
 export interface MenuProps extends Omit<PopoverProps, 'role' | 'children'> {
-  entries: readonly MenuEntry[];
+  entries: MenuEntries;
+}
+
+/** Resolves `MenuEntries`, so a hook inside the function belongs to this component and not to the popover around it. */
+function MenuBody({ entries, onActivate }: { entries: MenuEntries; onActivate: () => void }) {
+  return <MenuList entries={typeof entries === 'function' ? entries() : entries} onActivate={onActivate} />;
 }
 
 /** A Popover with role `menu` and a list of commands (DESIGN 3.5). */
 export function Menu({ entries, ...popover }: MenuProps) {
   return (
     <Popover {...popover} role="menu">
-      {({ close }) => <MenuList entries={entries} onActivate={() => close('select')} />}
+      {({ close }) => <MenuBody entries={entries} onActivate={() => close('select')} />}
     </Popover>
   );
 }

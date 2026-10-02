@@ -80,3 +80,20 @@ export const ICON_BUTTON_VARIANTS: Record<IconButtonVariant, { off: string; on: 
       'disabled:bg-fill-disabled disabled:text-text-disabled aria-disabled:bg-fill-disabled aria-disabled:text-text-disabled',
   },
 };
+
+export type FieldSize = 'sm' | 'md';
+
+/**
+ * The number field (DESIGN 3.7): 56 wide (`--field-width`), radius 8, a hairline control border on the solid surface,
+ * numbers tabular. Disabled takes the divider border and the disabled text color. An invalid value (`aria-invalid`) takes the
+ * error icon's color for the border. The focus ring is the global `:focus-visible` outline.
+ */
+export const FIELD_BASE =
+  'w-field shrink-0 rounded-sm border border-control-border bg-surface-solid px-1 text-text tabular-nums ' +
+  'disabled:border-divider disabled:text-text-disabled aria-invalid:border-error-icon';
+
+/** `sm` 24 high in the slider's row, `md` 32 high in a form (a popover). */
+export const FIELD_SIZES: Record<FieldSize, string> = {
+  sm: 'h-control-sm text-sm',
+  md: 'h-control-md text-md',
+};

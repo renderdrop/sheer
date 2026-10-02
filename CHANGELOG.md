@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
+- File names shown in the UI lose every Unicode control (Cc) and format (Cf) character except the two joiners, plus U+2028, U+2029 and U+FFFC (ADR-015). The CSP test covers every `tauri.<platform>.conf.json` and fails when one sets `app.security`.
 - The window has no event permission any more (`core:event:allow-listen`/`allow-unlisten` dropped): the macOS "Reduce transparency" flag reaches the UI
   through a `Channel` passed to the new `watch_transparency` command (ADR-013). `dragDropEnabled` is set explicitly.
 - Settings file: opened first and judged on the handle (`O_NONBLOCK` on Unix); atomic writes use a per-process unique temp name.

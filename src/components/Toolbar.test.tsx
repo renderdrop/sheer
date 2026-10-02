@@ -11,6 +11,7 @@ import {
   ZoomIn,
   ZoomOut,
 } from 'lucide-react';
+import { useSyncExternalStore } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { setup } from '../test/render';
@@ -603,4 +604,49 @@ describe('Toolbar disabled items', () => {
       expect(readout.getAttribute('aria-expanded')).toBe('false');
     },
   );
+});
+
+describe('Toolbar items that follow state by themselves', () => {
+  it('shows an element as the readout text and a function as the menu, which the toolbar does not have to re-render for', async () => {
+    // Spies, because a render must not write to variables outside of it.
+    const onToolbar = vi.fn();
+    const onReadout = vi.fn();
+    const store = { value: '125 %', listeners: new Set<() => void>() };
+    const subscribe = (listener: () => void) => {
+      store.listeners.add(listener);
+      return () => store.listeners.delete(listener);
+    };
+    function Readout() {
+      onReadout();
+      return <>{useSyncExternalStore(subscribe, () => store.value)}</>;
+    }
+    const useMenu = () => {
+      const value = useSyncExternalStore(subscribe, () => store.value);
+      return [{ id: 'now', label: value, checked: true, onSelect: () => undefined }];
+    };
+    const entries: ToolbarEntry[] = [
+      { id: 'zoom', label: 'Zoom', items: [{ id: 'readout', label: 'Zoom level', text: <Readout />, menu: useMenu }] },
+    ];
+    // The parent that makes the toolbar is the one a render count would reach; the entries never change.
+    function Host() {
+      onToolbar();
+      return <Toolbar label="Tools" entries={entries} />;
+    }
+    const { user, getByRole } = setup(<Host />);
+    const readout = getByRole('button', { name: 'Zoom level' });
+    expect(readout.textContent).toBe('125 %');
+    expect(readout.className).toContain('w-field');
+
+    const before = { toolbar: onToolbar.mock.calls.length, readout: onReadout.mock.calls.length };
+    act(() => {
+      store.value = '150 %';
+      store.listeners.forEach((listener) => listener());
+    });
+    expect(readout.textContent).toBe('150 %');
+    expect(onToolbar).toHaveBeenCalledTimes(before.toolbar);
+    expect(onReadout.mock.calls.length).toBeGreaterThan(before.readout);
+
+    await user.click(readout);
+    expect(within(getByRole('menu')).getByRole('menuitemcheckbox', { name: '150 %' })).not.toBeNull();
+  });
 });

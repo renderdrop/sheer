@@ -1,6 +1,7 @@
 import { useId, useRef, useState, type KeyboardEvent, type PointerEvent } from 'react';
 
 import { cx } from './cx';
+import { Field } from './Field';
 
 /** Number of decimals in the decimal notation of `value` (0.25 has 2). */
 function decimalsOf(value: number): number {
@@ -44,8 +45,7 @@ const defaultParse = (text: string): number | null => {
   return Number.isFinite(value) ? value : null;
 };
 
-// Sizes of DESIGN 3.7: the number field is 56 wide (`--field-width`), the track at least 120 (`--slider-min`).
-const FIELD_WIDTH = 'w-field';
+// Size of DESIGN 3.7: the track is at least 120 wide (`--slider-min`); the number field is `Field`, 56 wide.
 const TRACK_MIN = 'min-w-slider-min';
 
 /**
@@ -209,7 +209,9 @@ export function Slider({
           />
         </div>
       </div>
-      <input
+      <Field
+        size="sm"
+        align="end"
         id={fieldId}
         type="text"
         inputMode="decimal"
@@ -230,7 +232,6 @@ export function Slider({
             setDraft(null);
           }
         }}
-        className={`h-control-sm ${FIELD_WIDTH} shrink-0 rounded-sm border border-control-border bg-surface-solid px-1 text-end text-sm text-text disabled:border-divider disabled:text-text-disabled`}
       />
     </div>
   );

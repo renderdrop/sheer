@@ -5,7 +5,7 @@ import { useState } from 'react';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { openTooltip, setup } from '../test/render';
-import { DURATION, ENTER_SCALE, EASE_OUT, useFade, usePopoverMotion } from './motion';
+import { DURATION, ENTER_SCALE, EASE_OUT, useFade, usePopoverMotion, useRevealMotion } from './motion';
 import { Popover } from './Popover';
 import { Tab, TabList, Tabs } from './Tabs';
 import { Tooltip } from './Tooltip';
@@ -89,6 +89,25 @@ describe('motion presets under reduced motion', () => {
     expect(transformKeys(result.current.initial)).toEqual([]);
     expect(result.current.animate.transition).toEqual({ duration: DURATION.fast, ease: EASE_OUT });
     expect(result.current.exit.transition).toEqual({ duration: DURATION.fast, ease: EASE_OUT });
+  });
+
+  it('the banner row only fades: no height, 150 ms ease-out both ways', () => {
+    const { result } = renderHook(() => useRevealMotion());
+    expect(result.current.initial).toEqual({ opacity: 0 });
+    expect(transformKeys(result.current.animate)).toEqual([]);
+    expect(transformKeys(result.current.exit)).toEqual([]);
+    expect(result.current.animate.transition).toEqual({ duration: DURATION.fast, ease: EASE_OUT });
+    expect(result.current.exit.transition).toEqual({ duration: DURATION.fast, ease: EASE_OUT });
+  });
+
+  it('control: without the preference the banner row moves its height with its opacity, 250 ms ease-out both ways', () => {
+    setReducedMotion(false);
+    const { result } = renderHook(() => useRevealMotion());
+    expect(result.current.initial).toEqual({ height: 0, opacity: 0 });
+    expect(result.current.animate).toMatchObject({ height: 'auto', opacity: 1 });
+    expect(result.current.exit).toMatchObject({ height: 0, opacity: 0 });
+    expect(result.current.animate.transition).toEqual({ duration: DURATION.slow, ease: EASE_OUT });
+    expect(result.current.exit.transition).toEqual({ duration: DURATION.slow, ease: EASE_OUT });
   });
 
   it('control: without the preference the popover does scale in from the entrance scale', () => {

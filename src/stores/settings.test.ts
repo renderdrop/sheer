@@ -104,7 +104,7 @@ describe('store to <html> attributes', () => {
     const root = new FakeRoot();
     bindSettingsToRoot(root);
     for (const theme of ['dark', 'light', 'system'] as const) {
-      updateSettingsMock.mockResolvedValueOnce({ glass: 'auto', theme });
+      updateSettingsMock.mockResolvedValueOnce({ glass: 'auto', theme, leftPanelWidth: 248 });
       await useSettings.getState().setTheme(theme);
       expect(root.attributes.get('data-theme')).toBe(theme === 'system' ? undefined : theme);
     }
@@ -114,24 +114,24 @@ describe('store to <html> attributes', () => {
   it('follows the glass setting: Solid reduces transparency, Auto clears it', async () => {
     const root = new FakeRoot();
     bindSettingsToRoot(root);
-    updateSettingsMock.mockResolvedValueOnce({ glass: 'solid', theme: 'system' });
+    updateSettingsMock.mockResolvedValueOnce({ glass: 'solid', theme: 'system', leftPanelWidth: 248 });
     await useSettings.getState().setGlass('solid');
     expect(root.snapshot()).toEqual({ 'data-transparency': 'reduced' });
-    updateSettingsMock.mockResolvedValueOnce({ glass: 'auto', theme: 'system' });
+    updateSettingsMock.mockResolvedValueOnce({ glass: 'auto', theme: 'system', leftPanelWidth: 248 });
     await useSettings.getState().setGlass('auto');
     expect(root.snapshot()).toEqual({});
   });
 
   it('keeps data-transparency while the OS flag is on, even with Glass: Auto', async () => {
     appReadyMock.mockResolvedValue(bootstrap({ platform: 'macos', reducedTransparency: true }));
-    getSettingsMock.mockResolvedValue({ glass: 'auto', theme: 'system' });
+    getSettingsMock.mockResolvedValue({ glass: 'auto', theme: 'system', leftPanelWidth: 248 });
     const root = new FakeRoot();
     bindSettingsToRoot(root);
     await useSettings.getState().load();
     expect(root.snapshot()).toEqual({ 'data-transparency': 'reduced' });
-    updateSettingsMock.mockResolvedValueOnce({ glass: 'solid', theme: 'system' });
+    updateSettingsMock.mockResolvedValueOnce({ glass: 'solid', theme: 'system', leftPanelWidth: 248 });
     await useSettings.getState().setGlass('solid');
-    updateSettingsMock.mockResolvedValueOnce({ glass: 'auto', theme: 'system' });
+    updateSettingsMock.mockResolvedValueOnce({ glass: 'auto', theme: 'system', leftPanelWidth: 248 });
     await useSettings.getState().setGlass('auto');
     expect(root.snapshot()).toEqual({ 'data-transparency': 'reduced' });
   });
@@ -140,7 +140,7 @@ describe('store to <html> attributes', () => {
     const root = new FakeRoot();
     const unbind = bindSettingsToRoot(root);
     unbind();
-    updateSettingsMock.mockResolvedValueOnce({ glass: 'auto', theme: 'dark' });
+    updateSettingsMock.mockResolvedValueOnce({ glass: 'auto', theme: 'dark', leftPanelWidth: 248 });
     await useSettings.getState().setTheme('dark');
     expect(root.snapshot()).toEqual({});
   });
@@ -149,7 +149,7 @@ describe('store to <html> attributes', () => {
 describe('load', () => {
   it('mirrors the stored settings and the bootstrap report, and applies them', async () => {
     appReadyMock.mockResolvedValue(bootstrap({ platform: 'macos', reducedTransparency: true, version: '1.2.3' }));
-    getSettingsMock.mockResolvedValue({ glass: 'solid', theme: 'dark' });
+    getSettingsMock.mockResolvedValue({ glass: 'solid', theme: 'dark', leftPanelWidth: 248 });
     const root = new FakeRoot();
     bindSettingsToRoot(root);
 
@@ -182,7 +182,7 @@ describe('load', () => {
 
   it('uses what did arrive when only one of the two calls fails', async () => {
     appReadyMock.mockRejectedValue(INTERNAL);
-    getSettingsMock.mockResolvedValue({ glass: 'auto', theme: 'light' });
+    getSettingsMock.mockResolvedValue({ glass: 'auto', theme: 'light', leftPanelWidth: 248 });
     await useSettings.getState().load();
     expect(useSettings.getState()).toMatchObject({ theme: 'light', platform: null, loaded: true });
     expect(useSettings.getState().error).not.toBeNull();
@@ -210,15 +210,15 @@ describe('update', () => {
 
   it('clears the error after the next success', async () => {
     useSettings.setState({ error: { code: 'internal', key: 'error.internal', retryable: false } });
-    updateSettingsMock.mockResolvedValueOnce({ glass: 'auto', theme: 'light' });
+    updateSettingsMock.mockResolvedValueOnce({ glass: 'auto', theme: 'light', leftPanelWidth: 248 });
     await useSettings.getState().setTheme('light');
     expect(useSettings.getState().error).toBeNull();
   });
 
   it('applies what the backend answers, not what was asked', async () => {
-    updateSettingsMock.mockResolvedValueOnce({ glass: 'solid', theme: 'dark' });
+    updateSettingsMock.mockResolvedValueOnce({ glass: 'solid', theme: 'dark', leftPanelWidth: 248 });
     await useSettings.getState().setTheme('dark');
-    expect(useSettings.getState()).toMatchObject({ glass: 'solid', theme: 'dark' });
+    expect(useSettings.getState()).toMatchObject({ glass: 'solid', theme: 'dark', leftPanelWidth: 248 });
   });
 
   it('ignores a slow answer that arrives after a newer one', async () => {
@@ -234,9 +234,9 @@ describe('update', () => {
 
     const first = useSettings.getState().setTheme('dark');
     const second = useSettings.getState().setTheme('light');
-    resolvers[1]?.({ glass: 'auto', theme: 'light' });
+    resolvers[1]?.({ glass: 'auto', theme: 'light', leftPanelWidth: 248 });
     await second;
-    resolvers[0]?.({ glass: 'auto', theme: 'dark' });
+    resolvers[0]?.({ glass: 'auto', theme: 'dark', leftPanelWidth: 248 });
     await first;
 
     expect(useSettings.getState().theme).toBe('light');
@@ -312,12 +312,12 @@ describe('OS flag without stored settings', () => {
 
   it('keeps the OS flag when a later update answers with Glass: Auto and another theme', async () => {
     appReadyMock.mockResolvedValue(bootstrap({ platform: 'macos', reducedTransparency: true }));
-    getSettingsMock.mockResolvedValue({ glass: 'auto', theme: 'system' });
+    getSettingsMock.mockResolvedValue({ glass: 'auto', theme: 'system', leftPanelWidth: 248 });
     const root = new FakeRoot();
     bindSettingsToRoot(root);
     await useSettings.getState().load();
 
-    updateSettingsMock.mockResolvedValueOnce({ glass: 'auto', theme: 'light' });
+    updateSettingsMock.mockResolvedValueOnce({ glass: 'auto', theme: 'light', leftPanelWidth: 248 });
     await useSettings.getState().setTheme('light');
 
     expect(root.snapshot()).toEqual({ 'data-theme': 'light', 'data-transparency': 'reduced' });
@@ -332,7 +332,7 @@ describe('loadSettings (startup, never blocks the UI)', () => {
   it('resolves as soon as load finishes and leaves no timer running', async () => {
     vi.useFakeTimers();
     appReadyMock.mockResolvedValue(bootstrap());
-    getSettingsMock.mockResolvedValue({ glass: 'solid', theme: 'dark' });
+    getSettingsMock.mockResolvedValue({ glass: 'solid', theme: 'dark', leftPanelWidth: 248 });
 
     await loadSettings(1000);
 
@@ -387,7 +387,7 @@ describe('loadSettings (startup, never blocks the UI)', () => {
     await done;
     expect(useSettings.getState().error).not.toBeNull();
 
-    answers[0]?.({ glass: 'solid', theme: 'dark' });
+    answers[0]?.({ glass: 'solid', theme: 'dark', leftPanelWidth: 248 });
     await vi.advanceTimersByTimeAsync(0);
 
     expect(useSettings.getState()).toMatchObject({

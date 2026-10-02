@@ -23,6 +23,8 @@ pub const MAX_RENDER_PIXELS: u64 = 4096 * 4096;
 
 /// Upper bound for simultaneously open documents (bounds memory held by the engine).
 pub const MAX_OPEN_DOCUMENTS: usize = 32;
+/// Longest file name (in characters) that is reported to the frontend for display; longer ones are cut.
+pub const MAX_DISPLAY_NAME_CHARS: usize = 255;
 /// Largest PDF file the app opens (ARCHITECTURE §4: 2 GiB).
 pub const MAX_PDF_FILE_BYTES: u64 = 2 * 1024 * 1024 * 1024;
 
@@ -31,6 +33,17 @@ pub const MAX_PDF_FILE_BYTES: u64 = 2 * 1024 * 1024 * 1024;
 /// Largest settings file that is read. A real one is well under 1 KiB; anything bigger is damaged or foreign and the
 /// defaults are used instead (the file is user-writable, so its size is not trusted).
 pub const MAX_SETTINGS_FILE_BYTES: u64 = 64 * 1024;
+
+/// Range and default of the left panel's width in px (DESIGN 2, 3.8: 192 to 400, default 248). The frontend mirrors them as
+/// `LEFT_PANEL_WIDTH` in `src/api/app.ts` and `PANEL` in `src/components/tokens.ts`; a test there fails on drift.
+pub const LEFT_PANEL_MIN_WIDTH: u16 = 192;
+pub const LEFT_PANEL_MAX_WIDTH: u16 = 400;
+pub const LEFT_PANEL_DEFAULT_WIDTH: u16 = 248;
+const _: () = assert!(
+    LEFT_PANEL_MIN_WIDTH < LEFT_PANEL_DEFAULT_WIDTH
+        && LEFT_PANEL_DEFAULT_WIDTH < LEFT_PANEL_MAX_WIDTH,
+    "the left panel range must be ordered: minimum, default, maximum"
+);
 
 // --- Engine worker ----------------------------------------------------------------------------------------------
 

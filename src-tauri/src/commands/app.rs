@@ -3,8 +3,8 @@
 //! | Command | Arguments | Returns |
 //! |---|---|---|
 //! | `app_ready` | none | `AppBootstrap { platform, reducedTransparency, version }` |
-//! | `get_settings` | none | `Settings { glass, theme }` |
-//! | `update_settings` | `patch: { glass?, theme? }` | the settings after the update |
+//! | `get_settings` | none | `Settings { glass, theme, leftPanelWidth }` |
+//! | `update_settings` | `patch: { glass?, theme?, leftPanelWidth? }` | the settings after the update |
 //! | `watch_transparency` | `onChange: Channel<boolean>` | nothing; the channel then carries each change of the OS "Reduce transparency" flag |
 //!
 //! `update_settings` takes the patch as raw JSON on purpose: a bad value is then a normal `invalid_argument` with

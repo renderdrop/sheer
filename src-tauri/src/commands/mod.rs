@@ -8,7 +8,7 @@
 //!
 //! | Command | Arguments | Returns |
 //! |---|---|---|
-//! | `open_document_dialog` | none | `DocumentInfo { id, pageCount }` or `null` if the dialog was cancelled |
+//! | `open_document_dialog` | none | `DocumentInfo { id, pageCount, displayName }` or `null` if the dialog was cancelled |
 //! | `render_page` | `docId: number`, `pageId: number`, `scale: number` | frame (`ArrayBuffer`, ADR-002 §6, see `engine/encode.rs`) |
 //! | `close_document` | `docId: number` | nothing |
 //! | `app_ready`, `get_settings`, `update_settings`, `watch_transparency` | see [`app`] | see [`app`] |
@@ -26,7 +26,7 @@ use tauri::ipc::Response;
 use tauri::{State, WebviewWindow};
 use tauri_plugin_dialog::DialogExt;
 
-use crate::documents::{DocumentId, DocumentInfo, PageId, Registry};
+use crate::documents::{display_name, DocumentId, DocumentInfo, PageId, Registry};
 use crate::engine::Engine;
 use crate::error::{AppError, ErrorCode, UiError};
 use crate::limits;
@@ -58,11 +58,16 @@ impl AppState {
         }
         limits::validate_file_size(metadata.len())?;
 
+        let display_name = display_name(&path);
         let id = self.registry.register(path.clone())?;
         match self.engine.open(id, path) {
             Ok(page_count) => {
                 self.registry.set_page_count(id, page_count)?;
-                Ok(DocumentInfo { id, page_count })
+                Ok(DocumentInfo {
+                    id,
+                    page_count,
+                    display_name,
+                })
             }
             Err(error) => {
                 self.registry.remove(id);

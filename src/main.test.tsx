@@ -9,12 +9,18 @@ import { APP_NAME } from './config/app';
  * The window entry point, run for real: `main.tsx` is imported into a page that has a `#root`, with the backend calls
  * stubbed. What matters is that the window never depends on the backend answering (ORCHESTRATOR_PROMPT 8.3).
  */
-const backend = vi.hoisted(() => ({ appReady: vi.fn(), getSettings: vi.fn(), watchTransparency: vi.fn() }));
+const backend = vi.hoisted(() => ({
+  appReady: vi.fn(),
+  getSettings: vi.fn(),
+  updateSettings: vi.fn(),
+  watchTransparency: vi.fn(),
+}));
 
 vi.mock('./api/app', async (importOriginal) => ({
   ...(await importOriginal<typeof import('./api/app')>()),
   appReady: backend.appReady,
   getSettings: backend.getSettings,
+  updateSettings: backend.updateSettings,
   watchTransparency: backend.watchTransparency,
 }));
 vi.mock('./App', async () => {
@@ -58,6 +64,7 @@ beforeEach(() => {
   // Every backend call hangs until a test says otherwise.
   backend.appReady.mockReset().mockReturnValue(new Promise(() => undefined));
   backend.getSettings.mockReset().mockReturnValue(new Promise(() => undefined));
+  backend.updateSettings.mockReset().mockReturnValue(new Promise(() => undefined));
   backend.watchTransparency.mockReset().mockReturnValue(new Promise(() => undefined));
 });
 
@@ -103,7 +110,7 @@ describe('main.tsx while the settings load hangs', () => {
     expect(html.hasAttribute('data-theme')).toBe(false);
     await act(async () => {
       boot.resolve(bootstrap);
-      saved.resolve({ glass: 'solid', theme: 'dark' });
+      saved.resolve({ glass: 'solid', theme: 'dark', leftPanelWidth: 248 });
     });
     expect(html.getAttribute('data-theme')).toBe('dark');
     expect(html.getAttribute('data-transparency')).toBe('reduced');
@@ -113,7 +120,7 @@ describe('main.tsx while the settings load hangs', () => {
 
   it('applies the saved settings at once when the backend answers in time, without an error', async () => {
     backend.appReady.mockResolvedValue(bootstrap);
-    backend.getSettings.mockResolvedValue({ glass: 'auto', theme: 'light' });
+    backend.getSettings.mockResolvedValue({ glass: 'auto', theme: 'light', leftPanelWidth: 248 });
     await start();
     expect(html.getAttribute('data-theme')).toBe('light');
     expect(html.hasAttribute('data-transparency')).toBe(false);
@@ -121,6 +128,21 @@ describe('main.tsx while the settings load hangs', () => {
     expect(store.getState()).toMatchObject({ loaded: true, error: null, platform: 'macos' });
     await wait(10_000);
     expect(store.getState().error).toBeNull();
+  });
+
+  it('gives the left panel the saved width, and saves a width the user chooses', async () => {
+    backend.appReady.mockResolvedValue(bootstrap);
+    backend.getSettings.mockResolvedValue({ glass: 'auto', theme: 'system', leftPanelWidth: 320 });
+    backend.updateSettings.mockImplementation((patch: object) =>
+      Promise.resolve({ glass: 'auto', theme: 'system', leftPanelWidth: 320, ...patch }),
+    );
+    await start();
+    const { useUi } = await import('./stores/ui');
+    expect(useUi.getState().leftPanelWidth).toBe(320);
+    act(() => useUi.getState().setLeftPanelWidth(352));
+    await wait(1000);
+    expect(backend.updateSettings).toHaveBeenCalledTimes(1);
+    expect(backend.updateSettings).toHaveBeenCalledWith({ leftPanelWidth: 352 });
   });
 
   it('keeps the window and the defaults when the backend refuses', async () => {
@@ -142,7 +164,7 @@ describe('main.tsx while the settings load hangs', () => {
 
   it('applies what the OS transparency channel carries to <html>', async () => {
     backend.appReady.mockResolvedValue(bootstrap);
-    backend.getSettings.mockResolvedValue({ glass: 'auto', theme: 'system' });
+    backend.getSettings.mockResolvedValue({ glass: 'auto', theme: 'system', leftPanelWidth: 248 });
     let send: ((reduced: boolean) => void) | undefined;
     backend.watchTransparency.mockImplementation((onChange: (reduced: boolean) => void) => {
       send = onChange;

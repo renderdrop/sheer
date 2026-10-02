@@ -51,7 +51,8 @@ Import rules, checked by a CI grep:
 api/          call.ts (the one `invoke` caller) · app.ts, documents.ts, … (one typed wrapper per command) · errors.ts · frame.ts · types.gen.ts (ts-rs, generated)
 engine/       renderCache.ts (Blob LRU) · renderScheduler.ts (dedupe, generations, set_viewport) · textCache.ts
 stores/       documents · view · annotations · tools · search · ui · settings · recents
-features/     viewer (Canvas, PageView, layout.ts, TextLayer, LinkLayer, zoom.ts)
+features/     shell (Shell, CaptionBar, ToolbarSlot, ToolbarRow, LeftPanel, MainGrid, Inspector, StatusBar, EmptyState, BannerRow: the app shell of DESIGN 2; grid rules in lib/layout.ts)
+              viewer (Canvas, ViewerCanvas, useViewer (store: open document, page image, render loop), PageView, layout.ts, TextLayer, LinkLayer, zoom.ts)
               annotations (Overlay SVG, tools/, Inspector, geometry.ts, ink.ts, textWrap.ts)
               thumbnails · outline · search · comments · pages (M3) · forms, signatures (M4)
 actions/      action registry: shortcuts, menu ids
@@ -92,8 +93,8 @@ All commands are `async` and return `Result<T, UiError>`. Bounds come from `limi
 ```rust
 // app
 app_ready() -> AppBootstrap                          // platform, reducedTransparency, version (pending opens join in M1)
-get_settings() -> Settings                           // { glass: "auto" | "solid", theme: "system" | "light" | "dark" }
-update_settings(patch: SettingsPatch) -> Settings    // patch { glass?, theme? }; unknown key or enum value → invalid_argument (what: "settings")
+get_settings() -> Settings                           // { glass: "auto" | "solid", theme: "system" | "light" | "dark", leftPanelWidth: 192..=400 }
+update_settings(patch: SettingsPatch) -> Settings    // patch { glass?, theme?, leftPanelWidth? }; unknown key, enum value or width outside the range → invalid_argument (what: "settings")
 watch_transparency(on_change: Channel<bool>) -> ()   // each change of the OS "Reduce transparency" flag, as a bare bool; one receiver, a new call replaces it
 // documents
 open_document_dialog() -> Vec<OpenResult>            // ≤ 32 files
@@ -209,11 +210,11 @@ Codes: `invalid_argument`, `limit_exceeded`, `not_found`, `not_a_pdf`, `damaged_
 | Store | Holds | Changed by |
 |---|---|---|
 | `documents` | `byId: Record<DocId, DocMeta>` (displayName, pages, rev, flags, history), `order`, `activeId` | open/close, events, ChangeSet |
-| `view` | per doc: zoom, fit, scrollMode, viewRotation, anchor `{ pageId, offset }`, currentPage | canvas, toolbar |
+| `view` | per doc: zoom, fit, scrollMode, viewRotation, anchor `{ pageId, offset }`, currentPage (today: zoom, pageIndex, pageCount) | canvas, toolbar, status bar |
 | `annotations` | per doc: `byId`, `byPage`, `selection`, `editing` (transient draft) | ChangeSet; `editing` locally |
 | `tools` | active tool, locked, presets per tool | toolbar, actions |
 | `search` | per doc: query, hits by page, active hit, status | search Channel |
-| `ui` | left panel tab/collapsed, inspector, dialogs, toasts, engine status | UI, events |
+| `ui` | left panel tab/width/collapsed, inspector mode, active tool (moves to `tools` in M2), drop-hover flag, error banner, dialogs, toasts, engine status | UI, events |
 | `settings` | mirror of Rust settings | `get_settings`/`update_settings` |
 | `recents` | `RecentEntry[]` | `list_recents`/`remove_recent` |
 

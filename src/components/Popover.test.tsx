@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
-import { fireEvent, waitFor } from '@testing-library/react';
+import { act, fireEvent, waitFor } from '@testing-library/react';
 import { Plus } from 'lucide-react';
-import { useState } from 'react';
+import { useState, useSyncExternalStore } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 
 import { openTooltip, setup } from '../test/render';
@@ -324,6 +324,69 @@ describe('Menu', () => {
     expect(getByRole('menu')).not.toBeNull();
     await user.keyboard('{Escape}');
     await closed(() => queryByRole('menu'));
+  });
+});
+
+describe('Menu with entries that are made while it renders', () => {
+  it('calls the function only while the menu is open, and may use hooks to follow state of its own', async () => {
+    // Spies, because a render must not write to variables outside of it.
+    const onEntries = vi.fn();
+    const onParent = vi.fn();
+    const store = { value: 'Alpha', listeners: new Set<() => void>() };
+    const subscribe = (listener: () => void) => {
+      store.listeners.add(listener);
+      return () => store.listeners.delete(listener);
+    };
+    // A hook, as the toolbar's zoom menu is: the entries follow the store without the parent rendering again.
+    const useEntries = (): MenuEntry[] => {
+      onEntries();
+      const value = useSyncExternalStore(subscribe, () => store.value);
+      return [
+        { id: 'a', label: 'Alpha', checked: value === 'Alpha', onSelect: () => undefined },
+        { id: 'b', label: 'Beta', checked: value === 'Beta', onSelect: () => undefined },
+      ];
+    };
+    function Parent() {
+      onParent();
+      return <Menu label="Actions" entries={useEntries} trigger={(trigger) => <button {...trigger}>Menu</button>} />;
+    }
+    const { user, getByRole, queryByRole } = setup(<Parent />);
+    expect(onEntries).not.toHaveBeenCalled();
+    await user.click(getByRole('button', { name: 'Menu' }));
+    expect(onEntries).toHaveBeenCalled();
+    expect(getByRole('menuitemcheckbox', { name: 'Alpha' }).getAttribute('aria-checked')).toBe('true');
+
+    const rendersOfParent = onParent.mock.calls.length;
+    act(() => {
+      store.value = 'Beta';
+      store.listeners.forEach((listener) => listener());
+    });
+    expect(getByRole('menuitemcheckbox', { name: 'Beta' }).getAttribute('aria-checked')).toBe('true');
+    expect(getByRole('menuitemcheckbox', { name: 'Alpha' }).getAttribute('aria-checked')).toBe('false');
+    expect(onParent).toHaveBeenCalledTimes(rendersOfParent);
+
+    await user.keyboard('{Escape}');
+    await closed(() => queryByRole('menu'));
+    const callsWhenClosed = onEntries.mock.calls.length;
+    act(() => {
+      store.value = 'Alpha';
+      store.listeners.forEach((listener) => listener());
+    });
+    expect(onEntries).toHaveBeenCalledTimes(callsWhenClosed);
+  });
+
+  it('a plain list works as before', async () => {
+    const onSelect = vi.fn();
+    const { user, getByRole } = setup(
+      <Menu
+        label="Actions"
+        entries={[{ id: 'a', label: 'Alpha', onSelect }]}
+        trigger={(trigger) => <button {...trigger}>Menu</button>}
+      />,
+    );
+    await user.click(getByRole('button', { name: 'Menu' }));
+    await user.click(getByRole('menuitem', { name: 'Alpha' }));
+    expect(onSelect).toHaveBeenCalledTimes(1);
   });
 });
 

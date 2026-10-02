@@ -14,13 +14,25 @@ export type GlassMode = (typeof GLASS_MODES)[number];
 export const THEME_MODES = ['system', 'light', 'dark'] as const;
 export type ThemeMode = (typeof THEME_MODES)[number];
 
+/**
+ * Range and default of the left panel's width in px (src-tauri/src/limits.rs, DESIGN 2 and 3.8). A test checks these
+ * against `PANEL` in src/components/tokens.ts, which the splitter uses.
+ */
+export const LEFT_PANEL_WIDTH = { min: 192, max: 400, default: 248 } as const;
+
 /** The persisted settings. "Glass: Solid" forces opaque surfaces; the theme overrides the OS. */
 export interface Settings {
   glass: GlassMode;
   theme: ThemeMode;
+  /** Width of the left panel in px, an integer from `LEFT_PANEL_WIDTH.min` to `.max`. */
+  leftPanelWidth: number;
 }
 
-export const DEFAULT_SETTINGS: Readonly<Settings> = { glass: 'auto', theme: 'system' };
+export const DEFAULT_SETTINGS: Readonly<Settings> = {
+  glass: 'auto',
+  theme: 'system',
+  leftPanelWidth: LEFT_PANEL_WIDTH.default,
+};
 
 /** A partial update. The backend rejects unknown keys and values with `invalid_argument`. */
 export type SettingsPatch = Partial<Settings>;
@@ -33,6 +45,15 @@ export interface AppBootstrap {
   version: string;
 }
 
+function isPanelWidth(value: unknown): value is number {
+  return (
+    typeof value === 'number' &&
+    Number.isInteger(value) &&
+    value >= LEFT_PANEL_WIDTH.min &&
+    value <= LEFT_PANEL_WIDTH.max
+  );
+}
+
 function oneOf<T extends string>(values: readonly T[], value: unknown): T | null {
   return values.find((candidate) => candidate === value) ?? null;
 }
@@ -40,10 +61,11 @@ function oneOf<T extends string>(values: readonly T[], value: unknown): T | null
 /** Validates a settings object from the backend. `null` if it is not one. */
 export function parseSettings(value: unknown): Settings | null {
   if (typeof value !== 'object' || value === null) return null;
-  const { glass, theme } = value as { glass?: unknown; theme?: unknown };
+  const { glass, theme, leftPanelWidth } = value as { glass?: unknown; theme?: unknown; leftPanelWidth?: unknown };
   const parsedGlass = oneOf(GLASS_MODES, glass);
   const parsedTheme = oneOf(THEME_MODES, theme);
-  return parsedGlass !== null && parsedTheme !== null ? { glass: parsedGlass, theme: parsedTheme } : null;
+  if (parsedGlass === null || parsedTheme === null || !isPanelWidth(leftPanelWidth)) return null;
+  return { glass: parsedGlass, theme: parsedTheme, leftPanelWidth };
 }
 
 /** Validates the startup report from the backend. `null` if it is not one. */

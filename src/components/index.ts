@@ -1,9 +1,18 @@
 // Design-system primitives (DESIGN.md section 3). Import from here, not from the single files.
 export { Button, type ButtonProps } from './Button';
-export type { ButtonSize, ButtonVariant, IconButtonSize, IconButtonVariant } from './controlStyles';
+export type { ButtonSize, ButtonVariant, FieldSize, IconButtonSize, IconButtonVariant } from './controlStyles';
+export { Field, type FieldProps } from './Field';
 export { Icon, type IconProps, type IconSize } from './Icon';
 export { IconButton, type IconButtonProps } from './IconButton';
-export { Menu, MenuList, type MenuEntry, type MenuItemSpec, type MenuProps, type MenuSeparatorSpec } from './Menu';
+export {
+  Menu,
+  MenuList,
+  type MenuEntries,
+  type MenuEntry,
+  type MenuItemSpec,
+  type MenuProps,
+  type MenuSeparatorSpec,
+} from './Menu';
 export { Panel, PanelSection, type PanelProps, type PanelSectionProps } from './Panel';
 export {
   Popover,

@@ -24,6 +24,7 @@ import { useEffect, useState, type ReactNode } from 'react';
 
 import {
   Button,
+  Field,
   IconButton,
   Menu,
   Panel,
@@ -522,6 +523,32 @@ function Sliders() {
   );
 }
 
+function Fields() {
+  return (
+    <Section
+      title="Field"
+      hint="The number field of the slider and of the forms in popovers: 56 wide, 24 or 32 high. Focus it with Tab; the invalid one has the error border."
+    >
+      <label className="flex items-center gap-1-5 text-sm font-semibold">
+        md (32)
+        <Field type="number" min={1} max={120} defaultValue={3} />
+      </label>
+      <label className="flex items-center gap-1-5 text-sm font-semibold">
+        sm (24), text at the end
+        <Field size="sm" align="end" defaultValue="125 %" />
+      </label>
+      <label className="flex items-center gap-1-5 text-sm font-semibold">
+        Disabled
+        <Field disabled defaultValue="42" />
+      </label>
+      <label className="flex items-center gap-1-5 text-sm font-semibold">
+        Invalid
+        <Field aria-invalid="true" defaultValue="999" />
+      </label>
+    </Section>
+  );
+}
+
 export default function Showcase() {
   return (
     <div className="h-full overflow-auto p-3">
@@ -541,6 +568,7 @@ export default function Showcase() {
       <Popovers />
       <LeftPanelDemo />
       <Sliders />
+      <Fields />
     </div>
   );
 }

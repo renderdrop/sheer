@@ -30,12 +30,12 @@ The Stop hook picks the first open `- [ ]` line, so order matters. Scope: `docs/
 - [x] Reduced transparency/motion: CSS media queries + macOS OS flag from Rust, "Glass: Auto/Solid" setting
 - [x] Primitives I: Button, IconButton, Toolbar (roving tabindex), Tooltip (name + shortcut), Popover
 - [x] Primitives II: Tabs, Slider, Splitter (keyboard-resizable), Panel
-- [ ] App shell layout grid: toolbar, left panel, canvas, inspector slot, status bar, scroll-edge scrim
-- [ ] Empty state: drop zone, Open button, recents list placeholder
+- [x] App shell layout grid: toolbar, left panel, canvas, inspector slot, status bar, scroll-edge scrim
+- [x] Empty state: drop zone, Open button, recents list placeholder
 - [ ] Command registry + shortcuts (platform modifiers) + native menu bar
 - [ ] i18n scaffold (en, de); all shell strings translated
 - [x] Hardening: atomic write (create_new, 0600/0700, stale temp), settings is_file check + lock scope + patch key cap, live OS transparency flag (a channel, no event permission), render if load() hangs, forced-colors doc tokens, SECURITY.md T3 + settings row, ARCHITECTURE §3 call.ts
-- [ ] Follow-ups: rAF-throttle useFloatingPosition scroll listener, Menu submenus (DESIGN 3.5), stale *.tmp sweep at startup (D1), showcase spacing, stale libc comment in settings.rs tests
+- [ ] Follow-ups: rAF-throttle useFloatingPosition scroll listener, Menu submenus (DESIGN 3.5), stale *.tmp sweep at startup (D1), showcase spacing, stale libc comment in settings.rs tests, Banner pb-1 jump, DESIGN §2.4 computeShellLayout bullet, auto-collapsed panel toggle no-op, cancelled render leaves "Rendering…", panel collapse animation + middle-cut file name, independent Cf oracle in display_name test
 
 ## M1 — Viewer (v0.4.0)
 

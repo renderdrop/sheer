@@ -1,7 +1,8 @@
 //! Pins the security-relevant configuration (docs/SECURITY.md T1, T3, T4, T5, I2, P5; ADR-005).
 //!
-//! These tests read `tauri.conf.json`, `capabilities/*.json`, `Cargo.toml` and the command sources as plain files, so a
-//! change that weakens the baseline fails here and has to be argued in an ADR and reviewed by the security-reviewer.
+//! These tests read `tauri.conf.json`, every `tauri.<platform>.conf.json`, `capabilities/*.json`, `Cargo.toml` and the
+//! command sources as plain files, so a change that weakens the baseline fails here and has to be argued in an ADR and
+//! reviewed by the security-reviewer.
 
 // Test code: panicking on a broken fixture is the point (clippy.toml only exempts `#[test]` functions, not helpers).
 #![allow(clippy::unwrap_used, clippy::expect_used)]
@@ -23,6 +24,57 @@ fn read(relative: &str) -> String {
 
 fn config() -> Value {
     serde_json::from_str(&read("tauri.conf.json")).unwrap()
+}
+
+/// RFC 7396 JSON Merge Patch, the way Tauri merges `tauri.<platform>.conf.json` into `tauri.conf.json`: objects merge
+/// key by key, a `null` removes a key, anything else (an array too) replaces the value.
+fn merge_patch(target: &mut Value, patch: &Value) {
+    let Value::Object(patch) = patch else {
+        *target = patch.clone();
+        return;
+    };
+    if !target.is_object() {
+        *target = Value::Object(serde_json::Map::new());
+    }
+    let Value::Object(target) = target else {
+        return;
+    };
+    for (key, value) in patch {
+        if value.is_null() {
+            target.remove(key);
+        } else {
+            merge_patch(target.entry(key.clone()).or_insert(Value::Null), value);
+        }
+    }
+}
+
+/// The platform names of every `tauri.<platform>.conf.json` next to `tauri.conf.json`, sorted. Found by glob, not listed by
+/// hand: a platform file that someone adds later (`tauri.linux.conf.json`) is merged over the base by Tauri on that
+/// platform, so every test that walks the platform configs has to see it without being edited.
+fn platform_names() -> Vec<String> {
+    let mut names: Vec<String> = fs::read_dir(root())
+        .unwrap()
+        .filter_map(|entry| {
+            let file = entry.unwrap().file_name().into_string().ok()?;
+            let platform = file.strip_prefix("tauri.")?.strip_suffix(".conf.json")?;
+            // `tauri.conf.json` itself leaves nothing between the two affixes.
+            (!platform.is_empty() && !platform.contains('.')).then(|| platform.to_owned())
+        })
+        .collect();
+    names.sort();
+    names
+}
+
+/// The patch file of `platform`, as it is on disk.
+fn platform_patch(platform: &str) -> Value {
+    serde_json::from_str(&read(&format!("tauri.{platform}.conf.json"))).unwrap()
+}
+
+/// The configuration a build for `platform` sees: the base file with its platform file merged over it.
+fn platform_config(platform: &str) -> Value {
+    let mut merged = config();
+    merge_patch(&mut merged, &platform_patch(platform));
+    merged
 }
 
 /// Splits a CSP into directive name -> source tokens.
@@ -92,6 +144,39 @@ fn csp_never_allows_remote_hosts_or_eval() {
 
 // --- T5: webview and config flags ------------------------------------------------------------------------------
 
+/// The glob finds the platform files that exist today, and only those: `tauri.conf.json` is the base, not a platform.
+#[test]
+fn platform_config_discovery_finds_the_platform_files() {
+    let names = platform_names();
+    for expected in ["macos", "windows"] {
+        assert!(
+            names.iter().any(|name| name == expected),
+            "tauri.{expected}.conf.json is not found: {names:?}"
+        );
+    }
+    assert!(!names.iter().any(|name| name.is_empty() || name == "conf"));
+}
+
+/// The CSP and the asset protocol come from the base file alone (`csp()` reads only that one, and the tests above pin it).
+/// A platform file merges over the base on its platform, so if it had an `app.security` of its own, that platform would
+/// ship a policy the CSP tests never looked at. `null` counts too: it deletes the key from the merged result.
+#[test]
+fn platform_patches_never_touch_app_security() {
+    for platform in platform_names() {
+        let patch = platform_patch(&platform);
+        assert!(
+            patch["app"].get("security").is_none(),
+            "tauri.{platform}.conf.json sets app.security: the CSP is defined in tauri.conf.json only"
+        );
+        // The merged result carries the base policy unchanged, key for key.
+        assert_eq!(
+            platform_config(&platform)["app"]["security"],
+            config()["app"]["security"],
+            "{platform}"
+        );
+    }
+}
+
 /// Every object key in `value`, at any depth.
 fn collect_keys(value: &Value, out: &mut Vec<String>) {
     match value {
@@ -108,39 +193,90 @@ fn collect_keys(value: &Value, out: &mut Vec<String>) {
 
 #[test]
 fn webview_flags_are_locked_down() {
-    let config = config();
-    assert_eq!(config["app"]["withGlobalTauri"], Value::Bool(false));
-    // Every Tauri option that weakens the security model is spelled `dangerous...` (remote-domain IPC access, switching
-    // off the CSP hashing, ...). None may appear anywhere in the config.
-    let mut keys = Vec::new();
-    collect_keys(&config, &mut keys);
-    let dangerous: Vec<&String> = keys
-        .iter()
-        .filter(|key| key.starts_with("danger"))
-        .collect();
-    assert!(
-        dangerous.is_empty(),
-        "weakening options are set: {dangerous:?}"
+    // The base file and each platform's merged result: the window of every build is checked, not just the base one.
+    let mut configs = vec![("base".to_owned(), config())];
+    configs.extend(
+        platform_names()
+            .into_iter()
+            .map(|platform| (platform.clone(), platform_config(&platform))),
     );
-    // The asset protocol (file:// access from the webview) stays off; the page gets pixels as blob: URLs from IPC bytes.
+    for (name, config) in &configs {
+        assert_eq!(
+            config["app"]["withGlobalTauri"],
+            Value::Bool(false),
+            "{name}"
+        );
+        // Every Tauri option that weakens the security model is spelled `dangerous...` (remote-domain IPC access, switching
+        // off the CSP hashing, ...). None may appear anywhere in the config.
+        let mut keys = Vec::new();
+        collect_keys(config, &mut keys);
+        let dangerous: Vec<&String> = keys
+            .iter()
+            .filter(|key| key.starts_with("danger"))
+            .collect();
+        assert!(
+            dangerous.is_empty(),
+            "{name}: weakening options are set: {dangerous:?}"
+        );
+        // The asset protocol (file:// access from the webview) stays off; the page gets pixels as blob: URLs from IPC bytes.
+        assert_eq!(
+            config["app"]["security"]["assetProtocol"]["enable"],
+            Value::Bool(false),
+            "{name}"
+        );
+        // Exactly one window, loaded from the bundled frontend (no `url` pointing anywhere else).
+        let windows = config["app"]["windows"].as_array().unwrap();
+        assert_eq!(windows.len(), 1, "{name}");
+        assert_eq!(windows[0]["label"], "main", "{name}");
+        assert!(windows[0].get("url").is_none(), "{name}");
+        // Drag and drop is set on purpose, not left to the default (SECURITY T5, ARCHITECTURE §4). `true`: Tauri takes the OS
+        // drop itself, so a dropped file cannot navigate the webview to file://, and the dropped paths reach only Rust's
+        // `WindowEvent::DragDrop` handler. The webview cannot hear the `tauri://drag-drop` event that carries them, because
+        // it has no event permission (`the_webview_has_no_event_permissions`).
+        assert_eq!(windows[0]["dragDropEnabled"], Value::Bool(true), "{name}");
+        // No updater and no remote config in the baseline (T6 arrives in M7 with its own ADR).
+        assert!(
+            config
+                .get("plugins")
+                .is_none_or(|plugins| plugins.get("updater").is_none()),
+            "{name}"
+        );
+    }
+}
+
+/// DESIGN 2: the window never gets smaller than 960 x 640, and 2.2: the chrome differs per platform. macOS keeps the
+/// native traffic lights over an overlay title bar; Windows draws its own caption buttons, so it has no native decorations.
+#[test]
+fn window_chrome_follows_the_design_per_platform() {
+    for (name, config) in [
+        ("base", config()),
+        ("windows", platform_config("windows")),
+        ("macos", platform_config("macos")),
+    ] {
+        let window = &config["app"]["windows"][0];
+        assert_eq!(window["minWidth"], 960, "{name}");
+        assert_eq!(window["minHeight"], 640, "{name}");
+    }
+
+    let windows = platform_config("windows");
+    assert_eq!(windows["app"]["windows"][0]["decorations"], false);
+    assert!(windows["app"]["windows"][0].get("titleBarStyle").is_none());
+
+    let macos = platform_config("macos");
+    let window = &macos["app"]["windows"][0];
+    assert_eq!(window["titleBarStyle"], "Overlay");
+    assert_eq!(window["hiddenTitle"], true);
     assert_eq!(
-        config["app"]["security"]["assetProtocol"]["enable"],
-        Value::Bool(false)
+        window["trafficLightPosition"],
+        serde_json::json!({ "x": 16, "y": 22 })
     );
-    // Exactly one window, loaded from the bundled frontend (no `url` pointing anywhere else).
-    let windows = config["app"]["windows"].as_array().unwrap();
-    assert_eq!(windows.len(), 1);
-    assert_eq!(windows[0]["label"], "main");
-    assert!(windows[0].get("url").is_none());
-    // Drag and drop is set on purpose, not left to the default (SECURITY T5, ARCHITECTURE §4). `true`: Tauri takes the OS
-    // drop itself, so a dropped file cannot navigate the webview to file://, and the dropped paths reach only Rust's
-    // `WindowEvent::DragDrop` handler. The webview cannot hear the `tauri://drag-drop` event that carries them, because
-    // it has no event permission (`the_webview_has_no_event_permissions`).
-    assert_eq!(windows[0]["dragDropEnabled"], Value::Bool(true));
-    // No updater and no remote config in the baseline (T6 arrives in M7 with its own ADR).
-    assert!(config
-        .get("plugins")
-        .is_none_or(|plugins| plugins.get("updater").is_none()));
+    // Not decorations: false (that would remove the traffic lights).
+    assert!(window.get("decorations").is_none());
+
+    // The base file is what Linux builds use: native decorations, nothing platform-specific.
+    let base = &config()["app"]["windows"][0];
+    assert!(base.get("decorations").is_none());
+    assert!(base.get("titleBarStyle").is_none());
 }
 
 #[test]
@@ -154,8 +290,22 @@ fn dev_url_is_only_a_dev_setting() {
 
 // --- T3 / I2: capabilities -------------------------------------------------------------------------------------
 
+/// The window-chrome permissions of the custom title bar (DESIGN 2.2, SECURITY T3, ADR-014): the only `core:` permissions the
+/// webview gets. Minimize, maximize and close are the caption buttons; `internal-toggle-maximize` and `start-dragging` are
+/// what Tauri's `data-tauri-drag-region` script calls (double click, drag); `is-maximized` and `is-fullscreen` are read-only
+/// state for the maximize/restore icon and the macOS traffic-light inset.
+const WINDOW_PERMISSIONS: [&str; 7] = [
+    "core:window:allow-minimize",
+    "core:window:allow-toggle-maximize",
+    "core:window:allow-close",
+    "core:window:allow-is-maximized",
+    "core:window:allow-is-fullscreen",
+    "core:window:allow-start-dragging",
+    "core:window:allow-internal-toggle-maximize",
+];
+
 #[test]
-fn capabilities_grant_only_the_app_commands_to_the_main_window() {
+fn capabilities_grant_only_the_app_commands_and_the_window_chrome_to_the_main_window() {
     let mut files: Vec<PathBuf> = fs::read_dir(root().join("capabilities"))
         .unwrap()
         .map(|entry| entry.unwrap().path())
@@ -182,27 +332,33 @@ fn capabilities_grant_only_the_app_commands_to_the_main_window() {
             let permission = permission
                 .as_str()
                 .expect("object permissions are not used");
-            // App commands only: plugin permissions (`dialog:`, `fs:`, `shell:`, `core:` ...) always contain a colon.
+            // App commands (`allow-...`, no colon) or exactly one of the listed window-chrome permissions. Every other
+            // plugin or core permission (`dialog:`, `fs:`, `shell:`, `core:default`, `core:event:`, ...) is refused, and so
+            // is any other `core:window:` one.
             assert!(
-                permission.starts_with("allow-") && !permission.contains(':'),
+                (permission.starts_with("allow-") && !permission.contains(':'))
+                    || WINDOW_PERMISSIONS.contains(&permission),
                 "unexpected permission {permission} in {}",
                 file.display()
             );
             granted.insert(permission.to_owned());
         }
     }
-    assert_eq!(
-        granted,
-        set(&[
-            "allow-open-document-dialog",
-            "allow-render-page",
-            "allow-close-document",
-            "allow-app-ready",
-            "allow-get-settings",
-            "allow-update-settings",
-            "allow-watch-transparency"
-        ])
+    let mut expected = set(&[
+        "allow-open-document-dialog",
+        "allow-render-page",
+        "allow-close-document",
+        "allow-app-ready",
+        "allow-get-settings",
+        "allow-update-settings",
+        "allow-watch-transparency",
+    ]);
+    expected.extend(
+        WINDOW_PERMISSIONS
+            .iter()
+            .map(|permission| (*permission).to_owned()),
     );
+    assert_eq!(granted, expected);
 }
 
 /// The webview can neither listen to events nor emit them. `listen` would let it hear `tauri://drag-drop`, whose payload
