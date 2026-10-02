@@ -17,11 +17,11 @@ The Stop hook picks the first open `- [ ]` line, so order matters. Scope: `docs/
 
 ## Phase 2 — Architecture + Spike (v0.2.0)
 
-- [ ] Architecture: ADR-001..004 + docs/ARCHITECTURE.md
-- [ ] Spike: Tauri 2 + bundled PDFium, open_document + render_page, React page view with zoom
-- [ ] Security baseline: strict CSP, minimal capabilities, fetch-pdfium.sh with SHA256, docs/SECURITY.md threat model
-- [ ] First security-reviewer run
-- [ ] Tooling: scripts/check.sh, scripts/bump-version.sh, CI (macOS + Windows), Dependabot
+- [x] Architecture: ADR-001..004 + docs/ARCHITECTURE.md
+- [x] Spike: Tauri 2 + bundled PDFium, open_document + render_page, React page view with zoom
+- [x] Security baseline: strict CSP, minimal capabilities, fetch-pdfium.sh with SHA256, docs/SECURITY.md threat model
+- [x] First security-reviewer run (PASS, 7 low findings: 6 fixed, 1 moved to M1)
+- [x] Tooling: scripts/check.sh, scripts/bump-version.sh, CI (macOS + Windows), Dependabot
 
 ## Phase 3 — Design system + app shell (v0.3.0)
 
@@ -37,7 +37,7 @@ The Stop hook picks the first open `- [ ]` line, so order matters. Scope: `docs/
 
 ## M1 — Viewer (v0.4.0)
 
-- [ ] Document registry with IDs; open via dialog, native drag and drop, file association
+- [ ] Document registry with IDs; open via dialog, native drag and drop, file association; open-by-handle (no check/open TOCTOU), no orphaned engine docs after timed-out open
 - [ ] Render pipeline: serialized PDFium worker, render cache (page, zoom, DPR), page virtualization
 - [ ] Zoom and fit (width/page/100 %), Ctrl/Cmd+scroll, pinch; scroll modes (continuous/single/two-page)
 - [ ] Thumbnails panel (lazy)

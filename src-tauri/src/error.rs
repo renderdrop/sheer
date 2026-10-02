@@ -177,7 +177,7 @@ impl AppError {
     }
 
     /// Writes the error to the local log: the code always, the detail only when debug logging is on.
-    pub(crate) fn log(&self) {
+    pub fn log(&self) {
         match (&self.detail, detail_logging_enabled()) {
             (Some(detail), true) => eprintln!("sheer: {}: {detail}", self.code),
             _ => eprintln!("sheer: {}", self.code),

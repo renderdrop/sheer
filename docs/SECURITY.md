@@ -79,6 +79,6 @@ content; tampering with updates or dependencies.
 | # | Measure | Status | Evidence |
 |---|---|---|---|
 | C1 | No `unsafe` without comment + reviewer approval (`unsafe_code = "deny"`); clippy -D warnings; no `unwrap()`/`expect()` in prod paths | done | `src-tauri/Cargo.toml` `[lints]`; `security_baseline.rs::lints_forbid_unsafe_and_unwrap_in_production_code`; `cargo clippy --all-targets -- -D warnings` |
-| C2 | No eval, new Function, dynamic script loading, innerHTML (guard hook blocks) | done | `.claude/hooks/guard-secrets.sh` |
-| C3 | No secrets, tokens or private keys in the repo, not even for tests | done | `.claude/hooks/guard-secrets.sh` |
+| C2 | No eval, new Function, dynamic script loading, innerHTML (guard hook blocks) | done | ESLint rules in `tools/lint/config.js` (`no-eval`, `no-implied-eval`, `no-new-func`, restricted `innerHTML`/`dangerouslySetInnerHTML`/`document.write`) in `npm run check`; `.claude/hooks/guard-secrets.sh` |
+| C3 | No secrets, tokens or private keys in the repo, not even for tests | done | secret scan over tracked files in `scripts/check.sh` (`guard_secrets`); `.claude/hooks/guard-secrets.sh` |
 | C4 | `security-reviewer` before every milestone tag and on config/capability/IPC/file/link/parsing changes | open | `STATE.md` log |

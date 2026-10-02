@@ -6,6 +6,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-10-02
+
+### Added
+
+- Architecture: ADR-001 (stack), ADR-002 (PDFium worker, render cache), ADR-003 (annotation model, undo/redo),
+  ADR-004 (file strategy), ADR-005 (CSP for Tauri IPC); `docs/ARCHITECTURE.md` with module map and IPC commands.
+- Tauri 2 + React 19 app that opens a PDF through a native dialog and renders pages via bundled PDFium (plain build,
+  pinned `chromium/7881`, SHA256-verified by `scripts/fetch-pdfium.sh`), with zoom and Ctrl+wheel.
+- Security baseline: strict CSP, three-command capability, async commands, UI-safe errors, central limits,
+  panic and timeout guard around PDFium jobs, binary render frames.
+- Tooling: `npm run check` (15 steps incl. clippy, cargo-deny, cargo-audit, npm audit, import/network/secret guards),
+  `scripts/bump-version.sh`, CI for macOS + Windows, Dependabot.
+
+### Security
+
+- First security review: PASS. Low findings fixed (orphaned document on failed open, raw startup error output,
+  unpinned CI tools, debug artifact naming, missing secret scan, unverified cached PDFium library).
+
 ## [0.1.0] - 2026-10-02
 
 ### Added

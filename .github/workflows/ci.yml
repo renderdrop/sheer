@@ -51,9 +51,11 @@ jobs:
       - name: Install Rust toolchain
         run: rustup toolchain install
 
+      # Exact versions (the ones `npm run check` is developed against), so a new release cannot change the gate
+      # between two CI runs. Bump together with the local install.
       - uses: taiki-e/install-action@83ac0ad63c0167e6f06796fab0fce28db1bf3db0 # v2.87.22
         with:
-          tool: cargo-deny,cargo-audit
+          tool: cargo-deny@0.20.2,cargo-audit@0.22.2
 
       - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
@@ -79,10 +81,13 @@ jobs:
       - name: Build debug bundles (unsigned)
         run: npm run tauri -- build --debug
 
+      # The name says it on purpose: these are unsigned debug builds (devtools on, no notarization, no code signing) for
+      # looking at a pull request. They are not releases and must never be handed to users. Releases are signed in a
+      # separate, manual process.
       - name: Upload bundles
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: sheer-debug-${{ runner.os }}-${{ runner.arch }}
+          name: sheer-${{ runner.os }}-${{ runner.arch }}-debug-not-for-distribution
           path: |
             src-tauri/target/debug/bundle/dmg/*.dmg
             src-tauri/target/debug/bundle/msi/*.msi

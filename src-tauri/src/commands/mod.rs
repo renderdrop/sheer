@@ -63,6 +63,11 @@ impl AppState {
             }
             Err(error) => {
                 self.registry.remove(id);
+                // A timeout does not tell whether the worker went on to load the document after the caller stopped
+                // waiting. Release the id in the engine too, so no orphaned document stays behind without a registry
+                // entry. Best effort: if the engine is unavailable there is nothing loaded to release, and the open
+                // error is the one the caller needs to see.
+                let _ = self.engine.close(id);
                 Err(error)
             }
         }
@@ -226,6 +231,46 @@ mod tests {
             ErrorCode::IoNotFound
         );
         assert!(state.registry.is_empty());
+    }
+
+    #[test]
+    fn a_failed_open_also_closes_the_document_in_the_engine() {
+        use std::sync::Mutex;
+
+        use crate::engine::Job;
+
+        #[derive(Debug, PartialEq)]
+        enum Seen {
+            Open(DocumentId),
+            Close(DocumentId),
+        }
+        let seen = Arc::new(Mutex::new(Vec::new()));
+        let log = Arc::clone(&seen);
+        // The engine "times out" on open; the close job is answered normally.
+        let engine = Engine::with_handler(move |job| match job {
+            Job::Open { id, reply, .. } => {
+                log.lock().unwrap().push(Seen::Open(id));
+                let _ = reply.send(Err(AppError::new(ErrorCode::EngineTimeout)));
+            }
+            Job::Close { id, reply } => {
+                log.lock().unwrap().push(Seen::Close(id));
+                let _ = reply.send(Ok(()));
+            }
+            _ => {}
+        });
+        let state = AppState::new(engine);
+
+        assert_eq!(
+            state.open_path(manifest()).unwrap_err().code(),
+            ErrorCode::EngineTimeout
+        );
+        assert!(state.registry.is_empty());
+        // `close` waits for its answer, so both jobs are logged by the time `open_path` has returned.
+        let seen = seen.lock().unwrap();
+        match seen.as_slice() {
+            [Seen::Open(opened), Seen::Close(closed)] => assert_eq!(opened, closed),
+            other => panic!("expected open then close of the same id, got {other:?}"),
+        }
     }
 
     #[test]

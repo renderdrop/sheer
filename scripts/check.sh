@@ -5,7 +5,7 @@
 # The full output of a failed step is kept under the directory printed at the end.
 #
 # Steps: PDFium fetch, version sync, tsc, eslint, prettier, vitest, cargo fmt, clippy -D warnings, cargo test,
-#        cargo deny, cargo audit, npm audit, network-crate guard, PDF-library import guard.
+#        cargo deny, cargo audit, npm audit, network-crate guard, PDF-library import guard, secret scan.
 set -uo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -145,6 +145,31 @@ guard_pdf_imports() {
   fi
 }
 
+# SECURITY C3: no secrets, tokens or private keys in the repo. Same patterns as .claude/hooks/guard-secrets.sh, which
+# checks every edit; this scans everything that is committed (git grep: tracked files only, binary files skipped).
+# Excluded like in the hook: docs/ and *.md (they quote the patterns), tests/fixtures/ (deliberately odd files) and
+# .claude/hooks/ (the hook itself). The patterns do not match their own source text, so this script needs no exclusion.
+# Only file:line is printed, never the matching line, so a hit does not copy the secret into logs.
+SECRET_PATTERN='BEGIN (RSA|EC|OPENSSH|PGP) PRIVATE|AKIA[0-9A-Z]{16}|sk-[A-Za-z0-9]{20,}|ghp_[A-Za-z0-9]{30,}'
+
+guard_secrets() {
+  local hits rc=0
+  hits="$(git grep -nIE "$SECRET_PATTERN" -- . ':(exclude)docs' ':(exclude)*.md' ':(exclude)tests/fixtures' \
+    ':(exclude).claude/hooks' 2>&1)" || rc=$?
+  case "$rc" in
+    0)
+      printf '%s\n' "$hits" | cut -d: -f1,2 | sed 's|^|error: possible secret or private key at |'
+      return 1
+      ;;
+    1) return 0 ;;
+    *)
+      echo "error: git grep failed (is this a git checkout?):"
+      printf '%s\n' "$hits"
+      return 1
+      ;;
+  esac
+}
+
 # --- run -------------------------------------------------------------------------------------------------------
 
 # PDFium must be unpacked before any cargo step: tauri-build checks the bundled resources. The script is a no-op
@@ -166,6 +191,7 @@ step "npm audit" npm audit --audit-level=high
 
 step "guard: network crates" guard_network_crates
 step "guard: pdf imports" guard_pdf_imports
+step "guard: secrets" guard_secrets
 
 if [ "${#FAILED[@]}" -eq 0 ]; then
   rm -rf "$LOG_DIR"

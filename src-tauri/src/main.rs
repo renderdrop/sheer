@@ -3,7 +3,8 @@
 
 fn main() {
     if let Err(error) = sheer_lib::run() {
-        eprintln!("sheer: {error}");
+        // Through the AppError log: the code always, the detail (which can hold paths) only when opted into.
+        error.log();
         std::process::exit(1);
     }
 }

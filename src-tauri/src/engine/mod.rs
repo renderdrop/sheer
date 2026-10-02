@@ -152,6 +152,17 @@ impl Engine {
         Self { tx, health }
     }
 
+    /// Test double for other modules: a worker that hands every job to `handler`, which must answer it. Needs no PDFium.
+    #[cfg(test)]
+    pub(crate) fn with_handler(mut handler: impl FnMut(Job) + Send + 'static) -> Self {
+        Self::spawn(limits::ENGINE_QUEUE_DEPTH, move |requests, health| {
+            for request in requests {
+                let _busy = health.begin(request.deadline);
+                handler(request.job);
+            }
+        })
+    }
+
     /// Sends one job and waits for its answer for at most `timeout`.
     fn call<T>(
         &self,

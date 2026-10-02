@@ -12,9 +12,11 @@ use tauri::Manager;
 
 use crate::commands::AppState;
 use crate::engine::Engine;
+use crate::error::{AppError, ErrorCode};
 
-/// Builds and runs the app. Returns when the last window is closed.
-pub fn run() -> tauri::Result<()> {
+/// Builds and runs the app. Returns when the last window is closed. A startup failure comes back as an [`AppError`]
+/// (the Tauri error text, which can contain paths, is only its log detail); the caller logs it with `AppError::log`.
+pub fn run() -> Result<(), AppError> {
     tauri::Builder::default()
         // Registered for Rust-side use only: no capability grants the dialog commands to the webview.
         .plugin(tauri_plugin_dialog::init())
@@ -32,4 +34,5 @@ pub fn run() -> tauri::Result<()> {
             commands::close_document,
         ])
         .run(tauri::generate_context!())
+        .map_err(|error| AppError::logged(ErrorCode::Internal, error))
 }

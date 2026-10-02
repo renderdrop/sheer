@@ -77,10 +77,22 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 DEST_PARENT="$ROOT/src-tauri/pdfium"
 DEST="$DEST_PARENT/$PLATFORM"
 STAMP="$PDFIUM_TAG $EXPECTED"
+LIB_NAME="$(basename "$LIB_IN_ARCHIVE")"
 
-if [ -f "$DEST/.pin" ] && [ "$(cat "$DEST/.pin")" = "$STAMP" ] && [ -f "$DEST/$(basename "$LIB_IN_ARCHIVE")" ]; then
-  echo "fetch-pdfium: $PLATFORM already at $PDFIUM_TAG"
-  exit 0
+# The `.pin` stamp is "<tag> <archive sha256> <sha256 of the unpacked library>". The short path below re-hashes the
+# library, so a library that was swapped, truncated or corrupted after unpacking is fetched again instead of being
+# trusted because the stamp is still there. A stamp without the library hash (written by an older version of this
+# script) counts as a mismatch. This guards against damage and accidental edits; someone who can rewrite the
+# directory can rewrite the stamp as well.
+if [ -f "$DEST/.pin" ] && [ -f "$DEST/$LIB_NAME" ]; then
+  read -r PIN_TAG PIN_ARCHIVE PIN_LIB_SHA256 <"$DEST/.pin" || true
+  if [ "${PIN_TAG:-} ${PIN_ARCHIVE:-}" = "$STAMP" ] && [ -n "${PIN_LIB_SHA256:-}" ]; then
+    if [ "$(sha256_of "$DEST/$LIB_NAME")" = "$PIN_LIB_SHA256" ]; then
+      echo "fetch-pdfium: $PLATFORM already at $PDFIUM_TAG (library SHA256 verified)"
+      exit 0
+    fi
+    echo "fetch-pdfium: $LIB_NAME does not match its pinned SHA256; fetching it again" >&2
+  fi
 fi
 
 STAGE="$DEST_PARENT/.stage-$PLATFORM"
@@ -118,7 +130,7 @@ mkdir -p "$STAGE"
 cp "$TMP/extract/$LIB_IN_ARCHIVE" "$STAGE/"
 cp "$TMP/extract/LICENSE" "$TMP/extract/VERSION" "$TMP/extract/args.gn" "$STAGE/"
 cp -R "$TMP/extract/licenses" "$STAGE/licenses"
-printf '%s' "$STAMP" > "$STAGE/.pin"
+printf '%s %s\n' "$STAMP" "$(sha256_of "$STAGE/$LIB_NAME")" > "$STAGE/.pin"
 
 rm -rf "$DEST"
 mv "$STAGE" "$DEST"
