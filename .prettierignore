@@ -1,0 +1,12 @@
+# Prettier covers source and config only. Prose, generated and vendored files stay as written.
+node_modules/
+dist/
+coverage/
+src-tauri/
+assets/
+docs/
+tests/
+.claude/
+*.md
+*.html
+package-lock.json

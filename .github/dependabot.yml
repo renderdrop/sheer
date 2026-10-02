@@ -1,0 +1,44 @@
+# Weekly dependency updates (ORCHESTRATOR_PROMPT 13.5). Every bump still has to pass `npm run check`
+# (licenses, advisories, sources) in CI before it can merge.
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: 'chore(deps)'
+    labels: [dependencies]
+    open-pull-requests-limit: 5
+
+  # The ESLint workspace keeps its own TypeScript 6 for typescript-eslint (see tools/lint/config.js);
+  # the root TypeScript 7 compiler is updated by the entry above.
+  - package-ecosystem: npm
+    directory: /tools/lint
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: 'chore(deps)'
+    labels: [dependencies]
+    open-pull-requests-limit: 5
+    ignore:
+      - dependency-name: typescript
+        update-types: ['version-update:semver-major']
+
+  - package-ecosystem: cargo
+    directory: /src-tauri
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: 'chore(deps)'
+    labels: [dependencies]
+    open-pull-requests-limit: 5
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: 'chore(ci)'
+    labels: [dependencies]
+    open-pull-requests-limit: 5

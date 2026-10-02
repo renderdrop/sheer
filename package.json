@@ -7,12 +7,25 @@
   "engines": {
     "node": ">=22.12.0"
   },
+  "workspaces": [
+    "tools/lint"
+  ],
+  "overrides": {
+    "ts-api-utils": {
+      "typescript": "~6.0.3"
+    }
+  },
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
     "test": "vitest run",
+    "check": "bash scripts/check.sh",
+    "bump-version": "bash scripts/bump-version.sh",
     "fetch-pdfium": "bash scripts/fetch-pdfium.sh",
     "tauri": "tauri"
   },
@@ -27,6 +40,7 @@
     "@types/react": "19.3.0",
     "@types/react-dom": "19.3.0",
     "@vitejs/plugin-react": "6.1.1",
+    "prettier": "3.9.9",
     "typescript": "7.0.2",
     "vite": "8.3.2",
     "vitest": "5.0.3"

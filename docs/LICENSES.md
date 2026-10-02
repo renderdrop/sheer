@@ -30,6 +30,28 @@ below, with a one-line reason why it is not written in-house (ORCHESTRATOR_PROMP
 | @types/react | npm (dev) | 19.3.0 | MIT | React type definitions. | v0.2.0 |
 | @types/react-dom | npm (dev) | 19.3.0 | MIT | React DOM type definitions. | v0.2.0 |
 | @types/node | npm (dev) | 26.6.4 | MIT | Types for `vite.config.ts` (`node` globals). | v0.2.0 |
+| prettier | npm (dev) | 3.9.9 | MIT | Formatter, enforced by `npm run check` (`prettier --check`). A formatter is not worth writing in-house. | v0.2.0 |
+| eslint | npm (dev, `tools/lint`) | 10.11.0 | MIT | Linter for the TypeScript/React frontend (flat config). | v0.2.0 |
+| @eslint/js | npm (dev, `tools/lint`) | 10.0.1 | MIT | ESLint core recommended rule set. | v0.2.0 |
+| typescript-eslint | npm (dev, `tools/lint`) | 8.71.0 | MIT | TypeScript parser and rules for ESLint. Its peer range stops at TypeScript 6.0, so the ESLint workspace carries its own TypeScript 6. | v0.2.0 |
+| eslint-plugin-react-hooks | npm (dev, `tools/lint`) | 7.1.1 | MIT | Rules of Hooks and exhaustive-deps checks for React 19. | v0.2.0 |
+| typescript (lint only) | npm (dev, `tools/lint`) | 6.0.3 | Apache-2.0 | Classic TypeScript JS API for typescript-eslint, which cannot use the TypeScript 7 compiler at the root. Not used for type checking. | v0.2.0 |
+
+## Build and CI tooling
+
+Run on developer machines and in CI only. Not part of the app and not linked into it.
+
+| Name | Kind | Version | SPDX license | Purpose |
+|---|---|---|---|---|
+| cargo-deny | cargo tool | 0.20.2 | MIT OR Apache-2.0 | `cargo deny check` in `npm run check`: licenses, advisories, bans, sources (`deny.toml`). |
+| cargo-audit | cargo tool | 0.22.2 | Apache-2.0 OR MIT | `cargo audit` in `npm run check`: RustSec advisories for `Cargo.lock`. |
+| actions/checkout | GitHub Action | v7.0.1 | MIT | CI: fetch the repository. Pinned by commit SHA. |
+| actions/setup-node | GitHub Action | v7.0.0 | MIT | CI: Node from `.nvmrc`, npm cache. Pinned by commit SHA. |
+| actions/cache | GitHub Action | v6.1.0 | MIT | CI: cargo registry and `target/` cache. Pinned by commit SHA. |
+| actions/upload-artifact | GitHub Action | v7.0.1 | MIT | CI: unsigned debug bundles. Pinned by commit SHA. |
+| taiki-e/install-action | GitHub Action | v2.87.22 | Apache-2.0 OR MIT | CI: prebuilt, checksum-verified cargo-deny and cargo-audit. Pinned by commit SHA. |
+
+Dependabot (`.github/dependabot.yml`) bumps these weekly together with the npm and cargo dependencies.
 
 ## Bundled binaries
 
@@ -144,21 +166,30 @@ Everything below comes in through the direct dependencies above and was read fro
 
 **(MIT OR Apache-2.0) AND Unicode-3.0** (1): unicode-ident 1.0.26
 
-### npm packages (92)
+### npm packages (218)
 
 Only `react`, `react-dom`, `scheduler` and `@tauri-apps/api` end up in the shipped frontend bundle. Everything else is
-build or test tooling. The per-platform native packages (`@rolldown/binding-*`, `@tauri-apps/cli-*`,
+build, lint or test tooling. The per-platform native packages (`@rolldown/binding-*`, `@tauri-apps/cli-*`,
 `@typescript/typescript-*`, `lightningcss-*`) are optional and only the one for the host platform is installed.
 
-**MIT** (45): @jridgewell/resolve-uri 3.1.2, @jridgewell/sourcemap-codec 1.6.0, @jridgewell/trace-mapping 0.3.31, @oxc-project/types 0.152.0, @rolldown/binding-android-arm-eabi 1.2.12, @rolldown/binding-android-arm64 1.2.12, @rolldown/binding-darwin-arm64 1.2.12, @rolldown/binding-darwin-x64 1.2.12, @rolldown/binding-freebsd-x64 1.2.12, @rolldown/binding-linux-arm-gnueabihf 1.2.12, @rolldown/binding-linux-arm64-gnu 1.2.12, @rolldown/binding-linux-arm64-musl 1.2.12, @rolldown/binding-linux-ppc64-gnu 1.2.12, @rolldown/binding-linux-s390x-gnu 1.2.12, @rolldown/binding-linux-x64-gnu 1.2.12, @rolldown/binding-linux-x64-musl 1.2.12, @rolldown/binding-openharmony-arm64 1.2.12, @rolldown/binding-win32-arm64-msvc 1.2.12, @rolldown/binding-win32-x64-msvc 1.2.12, @rolldown/pluginutils 1.0.1, @types/chai 5.2.3, @types/deep-eql 4.0.2, @types/estree 1.0.9, @vitest/mocker 5.0.3, @vitest/spy 5.0.3, assertion-error 2.0.1, chai 6.3.0, csstype 3.2.3, es-module-lexer 2.3.2, estree-walker 3.0.3, fdir 6.5.0, fsevents 2.3.3, magic-string 1.4.2, nanoid 3.3.19, obug 2.2.1, picomatch 4.0.7, postcss 8.5.28, rolldown 1.2.12, scheduler 0.28.0, std-env 4.3.0, tinybench 6.2.0, tinyexec 1.3.1, tinyglobby 0.2.17, undici-types 8.9.0, why-is-node-running 3.2.1
+Two licenses outside the usual list appear, both dev-only and never shipped: `BlueOak-1.0.0` (`minimatch`; a permissive
+license in the MIT/ISC family) and `CC-BY-4.0` (`caniuse-lite`, browser-support data pulled in by `@babel/core` through
+eslint-plugin-react-hooks; attribution only, no copyleft). Neither is a GPL/AGPL/LGPL license.
 
-**Apache-2.0** (22): @typescript/typescript-aix-ppc64 7.0.2, @typescript/typescript-darwin-arm64 7.0.2, @typescript/typescript-darwin-x64 7.0.2, @typescript/typescript-freebsd-arm64 7.0.2, @typescript/typescript-freebsd-x64 7.0.2, @typescript/typescript-linux-arm 7.0.2, @typescript/typescript-linux-arm64 7.0.2, @typescript/typescript-linux-loong64 7.0.2, @typescript/typescript-linux-mips64el 7.0.2, @typescript/typescript-linux-ppc64 7.0.2, @typescript/typescript-linux-riscv64 7.0.2, @typescript/typescript-linux-s390x 7.0.2, @typescript/typescript-linux-x64 7.0.2, @typescript/typescript-netbsd-arm64 7.0.2, @typescript/typescript-netbsd-x64 7.0.2, @typescript/typescript-openbsd-arm64 7.0.2, @typescript/typescript-openbsd-x64 7.0.2, @typescript/typescript-sunos-x64 7.0.2, @typescript/typescript-win32-arm64 7.0.2, @typescript/typescript-win32-x64 7.0.2, detect-libc 2.1.2, expect-type 1.4.0
+**MIT** (140): @babel/code-frame 7.29.7, @babel/compat-data 7.29.7, @babel/core 7.29.7, @babel/generator 7.29.8, @babel/helper-compilation-targets 7.29.7, @babel/helper-globals 7.29.7, @babel/helper-module-imports 7.29.7, @babel/helper-module-transforms 7.29.7, @babel/helper-string-parser 7.29.7, @babel/helper-validator-identifier 7.29.7, @babel/helper-validator-option 7.29.7, @babel/helpers 7.29.7, @babel/parser 7.29.9, @babel/template 7.29.7, @babel/traverse 7.29.8, @babel/types 7.29.8, @cacheable/memory 2.2.0, @cacheable/utils 2.5.0, @eslint-community/eslint-utils 4.10.1, @eslint-community/regexpp 4.12.2, @jridgewell/gen-mapping 0.3.13, @jridgewell/remapping 2.3.5, @jridgewell/resolve-uri 3.1.2, @jridgewell/sourcemap-codec 1.6.0, @jridgewell/trace-mapping 0.3.31, @keyv/bigmap 1.3.1, @keyv/serialize 1.1.1, @oxc-project/types 0.152.0, @rolldown/binding-android-arm-eabi 1.2.12, @rolldown/binding-android-arm64 1.2.12, @rolldown/binding-darwin-arm64 1.2.12, @rolldown/binding-darwin-x64 1.2.12, @rolldown/binding-freebsd-x64 1.2.12, @rolldown/binding-linux-arm-gnueabihf 1.2.12, @rolldown/binding-linux-arm64-gnu 1.2.12, @rolldown/binding-linux-arm64-musl 1.2.12, @rolldown/binding-linux-ppc64-gnu 1.2.12, @rolldown/binding-linux-s390x-gnu 1.2.12, @rolldown/binding-linux-x64-gnu 1.2.12, @rolldown/binding-linux-x64-musl 1.2.12, @rolldown/binding-openharmony-arm64 1.2.12, @rolldown/binding-win32-arm64-msvc 1.2.12, @rolldown/binding-win32-x64-msvc 1.2.12, @rolldown/pluginutils 1.0.1, @types/chai 5.2.3, @types/deep-eql 4.0.2, @types/esrecurse 4.3.1, @types/estree 1.0.9, @types/json-schema 7.0.15, @typescript-eslint/eslint-plugin 8.71.0, @typescript-eslint/parser 8.71.0, @typescript-eslint/project-service 8.71.0, @typescript-eslint/scope-manager 8.71.0, @typescript-eslint/tsconfig-utils 8.71.0, @typescript-eslint/type-utils 8.71.0, @typescript-eslint/types 8.71.0, @typescript-eslint/typescript-estree 8.71.0, @typescript-eslint/utils 8.71.0, @typescript-eslint/visitor-keys 8.71.0, @vitest/mocker 5.0.3, @vitest/spy 5.0.3, acorn 8.18.0, acorn-jsx 5.3.2, ajv 6.15.0, assertion-error 2.0.1, balanced-match 4.0.4, brace-expansion 5.0.12, browserslist 4.29.3, cacheable 2.5.0, chai 6.3.0, convert-source-map 2.0.0, cross-spawn 7.0.6, csstype 3.2.3, debug 4.4.3, deep-is 0.1.4, es-module-lexer 2.3.2, escalade 3.2.0, escape-string-regexp 4.0.0, estree-walker 3.0.3, fast-deep-equal 3.1.3, fast-json-stable-stringify 2.1.0, fast-levenshtein 2.0.6, fdir 6.5.0, file-entry-cache 11.1.5, find-up 5.0.0, flat-cache 6.1.23, fsevents 2.3.3, gensync 1.0.0-beta.2, hashery 1.5.1, hermes-estree 0.25.1, hermes-parser 0.25.1, hookified 1.15.1, hookified 2.2.0, ignore 5.3.2, ignore 7.0.12, imurmurhash 0.1.4, is-extglob 2.1.1, is-glob 4.0.3, js-tokens 4.0.0, jsesc 3.1.0, json-schema-traverse 0.4.1, json-stable-stringify-without-jsonify 1.0.1, json5 2.2.3, keyv 5.6.0, levn 0.4.1, locate-path 6.0.0, magic-string 1.4.2, ms 2.1.3, nanoid 3.3.19, natural-compare 1.4.0, node-releases 2.0.57, obug 2.2.1, optionator 0.9.4, p-limit 3.1.0, p-locate 5.0.0, path-exists 4.0.0, path-key 3.1.1, picomatch 4.0.7, postcss 8.5.28, prelude-ls 1.2.1, punycode 2.3.1, qified 0.10.1, rolldown 1.2.12, scheduler 0.28.0, shebang-command 2.0.0, shebang-regex 3.0.0, std-env 4.3.0, tinybench 6.2.0, tinyexec 1.3.1, tinyglobby 0.2.17, ts-api-utils 2.5.0, type-check 0.4.0, typescript-eslint 8.71.0, undici-types 8.9.0, update-browserslist-db 1.3.3, why-is-node-running 3.2.1, word-wrap 1.2.5, yocto-queue 0.1.0, zod 4.6.5, zod-validation-error 4.0.2
+
+**Apache-2.0** (35): @eslint/config-array 0.23.5, @eslint/config-helpers 0.7.0, @eslint/core 1.2.1, @eslint/object-schema 3.0.5, @eslint/plugin-kit 0.7.3, @humanfs/core 0.19.2, @humanfs/node 0.16.8, @humanfs/types 0.15.0, @humanwhocodes/module-importer 1.0.1, @humanwhocodes/retry 0.4.3, @typescript/typescript-aix-ppc64 7.0.2, @typescript/typescript-darwin-arm64 7.0.2, @typescript/typescript-darwin-x64 7.0.2, @typescript/typescript-freebsd-arm64 7.0.2, @typescript/typescript-freebsd-x64 7.0.2, @typescript/typescript-linux-arm 7.0.2, @typescript/typescript-linux-arm64 7.0.2, @typescript/typescript-linux-loong64 7.0.2, @typescript/typescript-linux-mips64el 7.0.2, @typescript/typescript-linux-ppc64 7.0.2, @typescript/typescript-linux-riscv64 7.0.2, @typescript/typescript-linux-s390x 7.0.2, @typescript/typescript-linux-x64 7.0.2, @typescript/typescript-netbsd-arm64 7.0.2, @typescript/typescript-netbsd-x64 7.0.2, @typescript/typescript-openbsd-arm64 7.0.2, @typescript/typescript-openbsd-x64 7.0.2, @typescript/typescript-sunos-x64 7.0.2, @typescript/typescript-win32-arm64 7.0.2, @typescript/typescript-win32-x64 7.0.2, baseline-browser-mapping 2.11.27, detect-libc 2.1.2, eslint-visitor-keys 3.4.3, eslint-visitor-keys 5.0.1, expect-type 1.4.0
 
 **MPL-2.0** (12): lightningcss 1.33.0, lightningcss-android-arm64 1.33.0, lightningcss-darwin-arm64 1.33.0, lightningcss-darwin-x64 1.33.0, lightningcss-freebsd-x64 1.33.0, lightningcss-linux-arm-gnueabihf 1.33.0, lightningcss-linux-arm64-gnu 1.33.0, lightningcss-linux-arm64-musl 1.33.0, lightningcss-linux-x64-gnu 1.33.0, lightningcss-linux-x64-musl 1.33.0, lightningcss-win32-arm64-msvc 1.33.0, lightningcss-win32-x64-msvc 1.33.0
 
 **Apache-2.0 OR MIT** (11): @tauri-apps/cli-darwin-arm64 2.12.1, @tauri-apps/cli-darwin-x64 2.12.1, @tauri-apps/cli-linux-arm-gnueabihf 2.12.1, @tauri-apps/cli-linux-arm64-gnu 2.12.1, @tauri-apps/cli-linux-arm64-musl 2.12.1, @tauri-apps/cli-linux-riscv64-gnu 2.12.1, @tauri-apps/cli-linux-x64-gnu 2.12.1, @tauri-apps/cli-linux-x64-musl 2.12.1, @tauri-apps/cli-win32-arm64-msvc 2.12.1, @tauri-apps/cli-win32-ia32-msvc 2.12.1, @tauri-apps/cli-win32-x64-msvc 2.12.1
 
-**ISC** (1): picocolors 1.1.1
+**ISC** (10): electron-to-chromium 1.5.444, flatted 3.4.4, glob-parent 6.0.2, isexe 2.0.0, lru-cache 5.1.1, picocolors 1.1.1, semver 6.3.1, semver 7.8.5, which 2.0.2, yallist 3.1.1
 
-**BSD-3-Clause** (1): source-map-js 1.2.2
+**BSD-2-Clause** (6): eslint-scope 9.1.2, espree 11.2.0, esrecurse 4.3.0, estraverse 5.3.0, esutils 2.0.3, uri-js 4.4.1
 
+**BSD-3-Clause** (2): esquery 1.7.0, source-map-js 1.2.2
+
+**BlueOak-1.0.0** (1): minimatch 10.2.6
+
+**CC-BY-4.0** (1): caniuse-lite 1.0.30001814
