@@ -1,0 +1,20 @@
+/** All user-visible strings in one place until the i18n scaffold (en, de) lands in Phase 3. */
+export const strings = {
+  toolbarLabel: 'Document controls',
+  open: 'Open',
+  openHint: 'Open a PDF (Ctrl+O)',
+  opening: 'Opening…',
+  rendering: 'Rendering…',
+  previousPage: 'Previous page',
+  nextPage: 'Next page',
+  zoomOut: 'Zoom out (Ctrl+−)',
+  zoomIn: 'Zoom in (Ctrl++)',
+  zoomReset: 'Reset zoom to 100% (Ctrl+0)',
+  documentRegion: 'Document',
+  emptyTitle: 'No document open',
+  emptyHint: 'Open a PDF to start. Nothing leaves your computer.',
+  dismiss: 'Dismiss',
+  page: (page: number, total: number) => `Page ${page} of ${total}`,
+  pageImageAlt: (page: number, total: number) => `Page ${page} of ${total}`,
+  noPages: 'This document has no pages.',
+} as const;

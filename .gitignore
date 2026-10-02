@@ -11,6 +11,8 @@ npm-debug.log*
 target/
 src-tauri/target/
 src-tauri/gen/schemas/
+# Fetched by scripts/fetch-pdfium.sh (pinned release, SHA256-verified)
+src-tauri/pdfium/
 
 # Local-only files
 *.local

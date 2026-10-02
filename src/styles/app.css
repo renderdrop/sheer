@@ -1,0 +1,238 @@
+/* App shell for the Phase 2 spike. Tokens only (src/styles/tokens.css). */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  font-family: var(--font-sans);
+  font-size: var(--font-size-md);
+  font-weight: var(--weight-regular);
+  color: var(--color-text);
+  background: var(--bg-app);
+}
+
+/* One grid: chrome (toolbar and messages) above, canvas below. Nothing overlaps. */
+.app {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  height: 100%;
+}
+
+.chrome {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: var(--space-1) var(--space-2);
+}
+
+/* Glass with a solid fallback: no backdrop-filter support, reduced transparency (CSS or OS flag via data attribute). */
+.glass {
+  background: var(--surface);
+  -webkit-backdrop-filter: var(--glass-filter);
+  backdrop-filter: var(--glass-filter);
+  border: var(--hairline) solid var(--glass-edge);
+  box-shadow: var(--glass-shadow);
+}
+
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .glass {
+    background: var(--surface-solid);
+  }
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .glass {
+    background: var(--surface-solid);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+}
+
+:root[data-transparency="reduced"] .glass {
+  background: var(--surface-solid);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--toolbar-gap);
+  padding: var(--space-1);
+  border-radius: var(--radius-card);
+}
+
+.toolbar-group {
+  display: flex;
+  align-items: center;
+  gap: var(--space-0-5);
+}
+
+/* Thin divider between groups instead of a border. */
+.toolbar-group + .toolbar-group {
+  padding-inline-start: var(--toolbar-gap);
+  border-inline-start: var(--hairline) solid var(--color-divider);
+}
+
+.toolbar-spacer {
+  flex: 1 1 auto;
+}
+
+.readout {
+  min-width: calc(var(--control-size) * 2);
+  padding-inline: var(--space-1);
+  text-align: center;
+  color: var(--color-text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.status {
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+}
+
+/* Buttons: default, hover, active, focus-visible, disabled. */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: var(--control-size);
+  height: var(--control-size);
+  padding-inline: var(--space-1);
+  border: 0;
+  border-radius: var(--radius-button);
+  background: transparent;
+  color: var(--color-text);
+  font: inherit;
+  font-weight: var(--weight-strong);
+  cursor: pointer;
+  transition: background-color var(--motion-fast) var(--ease-out);
+}
+
+.btn:hover:not(:disabled) {
+  background: var(--color-control-hover);
+}
+
+.btn:active:not(:disabled) {
+  background: var(--color-control-pressed);
+}
+
+.btn:disabled {
+  color: var(--color-disabled);
+  cursor: not-allowed;
+}
+
+.btn-primary {
+  padding-inline: var(--space-2);
+  background: var(--color-accent);
+  color: var(--color-on-accent);
+}
+
+.btn-primary:hover:not(:disabled) {
+  background: var(--color-accent-hover);
+}
+
+.btn-primary:active:not(:disabled) {
+  background: var(--color-accent-pressed);
+}
+
+.btn-primary:disabled {
+  background: var(--color-control-hover);
+  color: var(--color-disabled);
+}
+
+.btn:focus-visible,
+.canvas:focus-visible {
+  outline: var(--focus-width) solid var(--color-focus);
+  outline-offset: var(--focus-offset);
+}
+
+.banner {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-panel);
+  background: var(--surface-strong);
+  border-inline-start: var(--space-0-5) solid var(--color-error);
+  color: var(--color-error-text);
+}
+
+.banner-message {
+  flex: 1 1 auto;
+}
+
+/* The document canvas is opaque: no glass over page content. */
+.canvas {
+  display: flex;
+  min-height: 0;
+  overflow: auto;
+  padding: var(--space-3);
+  background: var(--color-canvas);
+}
+
+.page {
+  margin: auto;
+  flex: none;
+  background: var(--surface-solid);
+  box-shadow: var(--page-shadow);
+}
+
+.page img {
+  display: block;
+  height: auto;
+  max-width: none;
+}
+
+.empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-2);
+  margin: auto;
+  padding: var(--space-4);
+  border-radius: var(--radius-card);
+  text-align: center;
+}
+
+.empty h1 {
+  margin: 0;
+  font-size: var(--font-size-lg);
+  font-weight: var(--weight-strong);
+  letter-spacing: var(--tracking-large);
+}
+
+.empty p {
+  margin: 0;
+  color: var(--color-text-muted);
+}
+
+.visually-hidden {
+  position: absolute;
+  width: var(--hairline);
+  height: var(--hairline);
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition: none !important;
+    animation: none !important;
+    scroll-behavior: auto !important;
+  }
+}

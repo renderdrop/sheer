@@ -1,0 +1,114 @@
+/*
+ * Design tokens. Seed values from docs/DESIGN.md; the Phase 3 design pass expands this file.
+ * This is the only place raw colors and sizes may appear. Components use the role tokens (--color-*, --space-*, ...).
+ */
+
+:root {
+  color-scheme: light dark;
+
+  /* Iris: the single UI hue family. */
+  --iris-50: #f4f5ff;
+  --iris-100: #e1e2ff;
+  --iris-200: #c9caff;
+  --iris-300: #8e8ef2;
+  --iris-400: #7b7cf0;
+  --iris-500: #5b5bd6;
+  --iris-700: #3a3aab;
+
+  /* Neutrals. --ink-30 is for dividers and disabled text only, never control borders. */
+  --ink: #1c1c2e;
+  --ink-60: #5f6072;
+  --ink-30: #b4b5c4;
+
+  /* Semantic colors: icons, fills and banners, never small text. */
+  --success: #2e9e6b;
+  --warning: #d98a1f;
+  --error: #d64b4b;
+
+  /* Surfaces. Glass only on the control layer; the document canvas is opaque. */
+  --surface: rgba(255, 255, 255, 0.72);
+  --surface-strong: rgba(255, 255, 255, 0.86);
+  --surface-solid: #ffffff;
+  --glass-edge: rgba(255, 255, 255, 0.6);
+  --glass-shadow: 0 8px 32px rgba(28, 28, 46, 0.08);
+  --glass-filter: blur(24px) saturate(140%);
+  --page-shadow: 0 1px 2px rgba(28, 28, 46, 0.12), 0 8px 32px rgba(28, 28, 46, 0.12);
+  --bg-app: linear-gradient(135deg, #f4f5ff, #fafaff);
+
+  /* Roles (light). */
+  --color-text: var(--ink);
+  --color-text-muted: var(--ink-60);
+  --color-disabled: var(--ink-30);
+  --color-divider: var(--ink-30);
+  --color-canvas: var(--iris-100);
+  --color-accent: var(--iris-500);
+  --color-accent-hover: var(--iris-400);
+  --color-accent-pressed: var(--iris-700);
+  --color-on-accent: #ffffff;
+  --color-control-hover: var(--iris-100);
+  --color-control-pressed: var(--iris-200);
+  --color-focus: var(--iris-500);
+  --color-error: var(--error);
+  --color-error-text: var(--ink);
+
+  /* 8-pt grid. */
+  --space-0-5: 4px;
+  --space-1: 8px;
+  --space-2: 16px;
+  --space-3: 24px;
+  --space-4: 32px;
+
+  /* Radii: cards 20, panels 16, buttons 12, pills 999. */
+  --radius-card: 20px;
+  --radius-panel: 16px;
+  --radius-button: 12px;
+  --radius-pill: 999px;
+
+  /* Sizes. Targets are at least 24 px, 32 px by default. */
+  --control-size: 32px;
+  --hairline: 1px;
+  --focus-width: 2px;
+  --focus-offset: 2px;
+  --toolbar-gap: var(--space-1);
+
+  /* Type. */
+  --font-sans: -apple-system, "SF Pro Text", "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+  --font-size-sm: 12px;
+  --font-size-md: 14px;
+  --font-size-lg: 20px;
+  --weight-regular: 400;
+  --weight-strong: 600;
+  --tracking-large: -0.01em;
+
+  /* Motion: 150 to 250 ms, purposeful only. */
+  --motion-fast: 150ms;
+  --motion-base: 200ms;
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --surface: rgba(28, 28, 46, 0.62);
+    --surface-strong: rgba(28, 28, 46, 0.86);
+    --surface-solid: #1c1c2e;
+    --glass-edge: rgba(255, 255, 255, 0.12);
+    --glass-shadow: 0 8px 32px rgba(0, 0, 0, 0.32);
+    --page-shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 8px 32px rgba(0, 0, 0, 0.4);
+    --bg-app: linear-gradient(135deg, #0f1020, #15162b);
+
+    --color-text: #ffffff;
+    --color-text-muted: var(--iris-200);
+    --color-disabled: var(--ink-60);
+    --color-divider: rgba(255, 255, 255, 0.16);
+    --color-canvas: #101122;
+    --color-accent: var(--iris-300);
+    --color-accent-hover: var(--iris-200);
+    --color-accent-pressed: var(--iris-400);
+    --color-on-accent: var(--ink);
+    --color-control-hover: rgba(255, 255, 255, 0.08);
+    --color-control-pressed: rgba(255, 255, 255, 0.14);
+    --color-focus: var(--iris-300);
+    --color-error-text: #ffffff;
+  }
+}
