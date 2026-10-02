@@ -38,6 +38,9 @@ design language, tech stack, repo layout, subagents, hooks, phases, versioning a
 
 > ADR-001 … ADR-009 are reserved for Phase 2 (architecture, spike, security baseline) so the numbering in
 > `ORCHESTRATOR_PROMPT.md` §8.3 stays valid. Phase 1 decisions therefore start at ADR-010.
+> **Update (Phase 2):** ADR-001 … ADR-004 are now used. They are appended after ADR-011 because this file is
+> append-only, so the order below is chronological, not numeric. ADR-005 … ADR-009 stay reserved for Phase 2
+> (e.g. the spike fallback in §8.3).
 
 ---
 
@@ -105,3 +108,194 @@ seed tokens fail WCAG contrast in some pairings.
    palette uses six colorblind-safe swatches with text names.
 
 **Consequences.** The designer applies these rules in `docs/DESIGN.md` (Phase 3). The `reviewer` checks them.
+
+---
+
+## ADR-001 — Stack confirmation
+
+**Status:** accepted (2026-10-02)
+
+**Context.** ORCHESTRATOR_PROMPT §4 fixes the stack and requires Phase 2 to verify it. Phase 1 found one gap: PDFium has no
+incremental save. lopdf fills it (ADR-010).
+
+**Options.** (a) As specified, plus lopdf. (b) Electron: bundles Chromium. (c) PDF.js engine: no structural writes; the frontend would
+hold PDF bytes (I2).
+
+**Decision.** (a), all MIT, Apache-2.0 or BSD: Tauri 2 (plugins `dialog`, `opener`, `log`; `single-instance` in M1); React 19, TS
+strict, Vite, Tailwind 4, Motion, Zustand; PDFium plain build `chromium/7881` via `pdfium-render` 0.9.x (dynamic binding); lopdf 0.45;
+`image` 0.25, `thiserror`, `zeroize`; `ts-rs` as a dev-dependency that generates `src/ipc/types.gen.ts`; Vitest, `cargo test`, WebDriver E2E (M7).
+Rules: PDFium is bound only by absolute path from the resource dir (no DLL hijacking); `dialog` and `opener` have no JS permissions
+(Rust calls them); engine and disk commands are `async`.
+
+**Consequences.** CI fails when `types.gen.ts` is stale. Each dependency enters `docs/LICENSES.md` in the commit that adds it.
+
+---
+
+## ADR-002 — PDF engine integration
+
+**Status:** accepted (2026-10-02)
+
+**Context.** PDFium is not thread-safe. Targets: 500 pages open in < 1 s, 60 fps scrolling. Every PDF is hostile input (P5).
+
+**Options.** (a) `Mutex<Pdfium>` in command tasks: no priorities, and a long job blocks everything. (b) One worker thread with a
+priority queue. (c) An engine process now: too costly before M1.
+
+**Decision.** (b). Messages are shaped so that (c) is a transport swap in M7.
+
+1. **Worker.** The thread `sheer-pdfium` (16 MB stack) owns `Pdfium` and every `PdfDocument`. Callers use a cloneable `EngineHandle`.
+   Requests and responses are owned serde enums, answered via `oneshot`.
+2. **Queue.** A `BinaryHeap` + `Condvar`, ordered by priority, then newest viewport generation, then FIFO. Priorities: `Control` (open,
+   close, hide annotation, replace file) > `Visible` > `Interactive` (text layer, links, annotation import of visible pages) > `Near` >
+   `Thumbnail` > `Background` (search, other imports, export). Long work runs as one job per page.
+3. **Cancellation.** `set_viewport` increments the generation and lists the visible and near pages. Queued renders for other pages fail
+   with `cancelled`, which the UI ignores. Search checks an `AtomicBool` after each page. A running PDFium call is never interrupted;
+   the pixel cap bounds it. Identical in-flight keys are deduplicated.
+4. **Render cache** (frontend, `renderCache.ts`). An LRU of PNG Blobs, 256 MB by default (range 128–1024), with mounted pages pinned.
+   Key: `doc:page:pageRev:bucket[:tile]`. Zoom and DPR fold into one bucket `b = ceil(4·log2(zoom·dpr))`, rendered at `2^(b/4)`.
+   Display then downscales by at most 19 %. The backend increments `pageRev` when page pixels change, so stale entries age out.
+   Rust caches no pixels.
+5. **Virtualization.** Open returns every page size (`FPDF_GetPageSizeByIndexF`). Only pages within the viewport ± one viewport height
+   are mounted (max 24); a spacer holds the rest. A page shows the best cached bucket CSS-scaled, then requests its exact bucket. Above
+   4096 px per side or 8 MP, pages render as 1024 px tiles over a low-bucket underlay. `set_viewport` fires 150 ms after scrolling settles.
+6. **Transport.** `render_page` returns a `tauri::ipc::Response` (ArrayBuffer). Frame: `"SHR1"`, `u8` format (1 = PNG RGB, 2 = raw
+   RGBA8), 3 reserved bytes, `u32` LE width, `u32` LE height, payload. Default: PNG with fast compression, at most 4096×4096 px. Spike gate:
+   if PNG-encoding an A4 page at 2× takes more than 30 ms on Windows, the default becomes format 2.
+7. **Ownership.** PDFium renders, extracts text, searches, reads links and forms, and imports annotations. It **never saves**, so its
+   in-memory document may be mutated (ADR-003 §4). lopdf writes, off the worker (ADR-004). Afterwards the worker runs `ReplaceFile`:
+   close → rename → reopen → re-hide → increment `rev`/`pageRev` → emit `doc:reloaded`.
+8. **Guards.** Each job runs in `catch_unwind`, and a panic poisons only that document (`engine_crashed`). The thread `sheer-watchdog`
+   enforces deadlines: render 10 s, text 10 s, open 20 s. After a timeout the engine is `Wedged`: jobs fail with `engine_unavailable`, and
+   the UI offers save (lopdf needs no PDFium) and restart. Limits: `limits.rs`. Segfaults inside PDFium stay uncatchable in-process.
+9. **M7.** The worker loop moves to `src/bin/sheer-engine.rs`. Rust starts it via `std::process::Command`, and the two exchange
+   length-prefixed frames over stdio. Only `engine::transport` changes. Paths, passwords, page maps and hidden sets stay in the main
+   process, so a dead engine is respawned and its state replayed.
+
+**Consequences.** One render at a time; responsiveness comes from priorities. The frontend owns pixel memory.
+
+---
+
+## ADR-003 — Annotation domain model and undo/redo command stack
+
+**Status:** accepted (2026-10-02)
+
+**Context.** Annotations must not depend on PDFium, which writes weak appearance streams (APs) and only saves by full rewrite. Undo must
+be exact.
+
+**Options.** (a) Edit in PDFium and save with it: breaks incremental save. (b) TS owns the model: Rust needs a copy anyway (autosave,
+page maps). (c) Rust owns model and history in `model/` (no PDFium/lopdf imports); the frontend keeps a replica updated by change sets.
+
+**Decision.** (c).
+
+1. **Coordinates.** Page space is in points, origin at the CropBox's top-left, y pointing down, before `/Rotate` is applied. Only
+   `pdfwrite::coords` converts.
+2. **Types.** The Rust structs are the source; ts-rs generates:
+
+```ts
+type DocId = number; type PageId = number; type AnnotId = number;   // session-scoped u32
+type Point = { x: number; y: number }; type Rect = { x: number; y: number; w: number; h: number };
+type Quad = [Point, Point, Point, Point];   // TL, TR, BL, BR
+type Rgb = [number, number, number];        // 0–255
+type LineEnd = 'none' | 'openArrow' | 'closedArrow';
+interface AnnotationCommon {
+  id: AnnotId; pageId: PageId; rect: Rect;  // rect computed by Rust
+  color: Rgb; opacity: number; contents: string; author: string | null;
+  modified: string | null; inReplyTo: AnnotId | null; locked: boolean;
+  sync: 'new' | 'clean' | 'modified';
+}
+type AnnotationBody =
+  | { kind: 'highlight' | 'underline' | 'strikeout' | 'squiggly'; quads: Quad[] }
+  | { kind: 'note'; at: Point; icon: 'comment' | 'note' | 'help' }
+  | { kind: 'freeText'; box: Rect; lines: string[]; fontSize: number; fill: Rgb | null; borderWidth: number }
+  | { kind: 'ink'; strokes: { points: Point[]; outline: Point[] }[]; width: number }
+  | { kind: 'rect' | 'ellipse'; box: Rect; width: number; fill: Rgb | null; dashed: boolean }
+  | { kind: 'line'; from: Point; to: Point; width: number; head: LineEnd; tail: LineEnd }
+  | { kind: 'stamp'; box: Rect; assetId: number };   // M4
+type Annotation = AnnotationCommon & AnnotationBody;
+```
+
+   `AnnotationDraft` is `Annotation` without `id`, `rect` and `sync`. `AnnotationPatch` makes non-identity fields optional and rejects
+   fields that do not belong to the kind. Rust-only fields: `persisted: Option<PdfOrigin>` (page, `/Annots` index, `/NM`) and `tombstone`.
+3. **Geometry is final at commit.** Ink smoothing and pressure produce `outline` (perfect-freehand, MIT, M2). Free text is wrapped into
+   `lines` with Helvetica/Arial metrics, which are metric-compatible. Rust draws only the given geometry, so the overlay matches the AP.
+   Free text v1 is Helvetica with WinAnsi characters only (en/de).
+4. **Rendering split.** PDFium renders persisted, clean annotations from their original AP. The SVG overlay draws every annotation with
+   `sync ≠ clean`, plus the one being edited. When a persisted annotation changes, a `Control` job calls `delete_annotation` on PDFium's
+   in-memory page (load-time index mapped to the current index) and increments `pageRev`. Unsupported subtypes (widget, link, popup, polygon,
+   caret, attachment) stay PDFium-only.
+5. **PDF mapping.** Common keys: `/Subtype /Rect /P /NM /M /T /Contents /C /CA /F 4 /IRT /AP`. `/NM` (random 128-bit hex) goes on every
+   annotation we write and is its identity across reloads. The AP is a Form XObject with an ExtGState for opacity. Imported APs are kept until
+   the annotation is modified. Per kind: highlight → Highlight + QuadPoints, `/BM /Multiply` · underline/strikeout/squiggly → same keys, line or zigzag ·
+   note → Text + `/Name`, NoZoom|NoRotate · freeText → FreeText + `/DA (/Helv n Tf)` · ink → Ink + `/InkList`, AP fills outlines ·
+   rect/ellipse → Square/Circle · line → Line + `/L /LE` · stamp → Stamp + image XObject (M4).
+6. **Commands** (`model::command`):
+
+```rust
+#[serde(tag = "type", rename_all = "camelCase")]
+pub enum DocCommand {
+    CreateAnnotation { draft: AnnotationDraft },
+    UpdateAnnotation { id: AnnotId, patch: AnnotationPatch },
+    DeleteAnnotations { ids: Vec<AnnotId> },
+    RotatePages { pages: Vec<PageId>, quarter_turns: i8 },   // M3
+    DeletePages { pages: Vec<PageId> },                      // M3
+    MovePages { pages: Vec<PageId>, to_index: u32 },         // M3
+    InsertBlankPage { at: u32, width: f32, height: f32 },    // M3
+    SetFieldValue { field: FieldId, value: FieldValue },     // M4
+    Batch { label: String, commands: Vec<DocCommand> },
+}
+fn apply(&self, s: &mut DocState) -> Result<(DocCommand /* inverse */, ChangeSet), AppError>;
+```
+
+   Every apply returns its exact inverse. A deletion is undone by an internal `Restore` that carries snapshots. Moving an annotation to another
+   page is a `Batch` of Delete + Create. Until save, page commands only edit `DocState.pages: Vec<PageSlot { id, source, rotation, rev }>`.
+7. **History.** Undo and redo stacks of `Entry { label, forward, inverse, coalesce }`, at most 500 entries. Updates with the same
+   `coalesce_key` on the same id within 1.5 s merge. A gesture commits once; transient state stays in the frontend. A clean marker records
+   the depth at the last save. History survives save and is dropped on close.
+8. **Change sets.** apply, undo and redo return
+   `ChangeSet { rev, upserted, removed, pages | null, history: { canUndo, canRedo, undoLabel, redoLabel, dirty } }`.
+
+**Consequences.** Each gesture costs one IPC round trip (~1 ms). The overlay and the AP generator must agree. In M2 an interop test diffs PDFium
+renders of saved files against the overlay.
+
+---
+
+## ADR-004 — File strategy
+
+**Status:** accepted (2026-10-02)
+
+**Context.** PDFium only saves by full rewrite, which breaks signatures. SECURITY D1/D3/D5 require an atomic save, a backup, session-only
+passwords and minimal autosave data.
+
+**Options.** (a) Full save with PDFium. (b) lopdf incremental save by default, full rewrite only where required. (c) A qpdf sidecar: needs a
+C++ build, and incremental writing is undocumented.
+
+**Decision.** (b).
+
+1. **Save** (`pdfwrite::save`; blocking thread, 64 MB stack, `catch_unwind`, 60 s):
+   1. Snapshot non-clean annotations, tombstones and the page map.
+   2. Read the target; if size or mtime differ from the open fingerprint → `needs_confirmation{fileChangedOnDisk}`.
+   3. `Document::load_mem` (session password), then `IncrementalDocument::create_from`.
+   4. Append annotation dicts, AP XObjects, `/Annots` arrays (tombstones and their popups removed) and the changed page tree.
+   5. Write temp `.<stem>.sheer-<random>.tmp` in the target directory (`create_new`, mode 0600), `fsync`.
+   6. Validate: lopdf re-parse plus a PDFium test open.
+   7. Back up the original (§3).
+   8. Worker `ReplaceFile`: close, rename (Windows: 3 retries, 100 ms apart), `fsync` the directory (Unix), reopen, re-hide. The model records
+      new origins and the clean marker.
+   9. On failure: reopen the original, delete the temp file, return `io_in_use` or `save_failed`.
+2. **Full rewrite** (lopdf, unreferenced objects pruned) for Save As "Clean copy", compress, redaction, encryption changes, metadata removal
+   and new-file outputs. Incremental saves keep old revisions recoverable, so redaction and metadata removal never use them (D4/D5).
+3. **Backup.** The first save over an original in a session copies it to
+   `$APPDATA/<id>/backups/<timestamp>-<sanitized stem>-<hash8>.pdf`. Backups are kept for 30 days or up to 2 GB. A setting can turn them off.
+4. **Signed files.** `signed` means PDFium's signature count is > 0; `certified` means `/Perms /DocMDP` is present. A banner explains that
+   changes are saved as additions. Every full-rewrite path returns `needs_confirmation{breaksSignature}`, and the UI defaults to Save As. A
+   DocMDP "no changes" document needs this confirmation for every save.
+5. **Passwords.** `password_required` leads to `unlock_document` (≤ 1024 bytes). The password is held as `Zeroizing<String>` with a
+   redacting `Debug`, zeroized on close, and never logged, persisted, or put in recents or autosave. Encrypted saves stay incremental if lopdf
+   encrypts the appended objects (spike check). Otherwise the save is a full rewrite after `needs_confirmation{rewriteEncrypted}`.
+6. **Autosave (M7).** 30 s after the last change and on window blur, an atomic write of `$APPDATA/<id>/autosave/<uuid>.json` =
+   `{ v, source: { path, len, mtime }, state }` (non-clean model plus page map). Encrypted documents are never autosaved. The file is
+   deleted on save or close. Restore checks the fingerprint, then applies `state` as one undoable `Batch`. How D5 is read: the file holds
+   the edits plus a source reference, nothing else.
+7. **Temp files** are tracked and deleted on failure and on exit.
+
+**Consequences.** A save parses the whole file; benchmark this on the 500-page fixture in M2. Files grow with each incremental save until a
+clean copy is made.
