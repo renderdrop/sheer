@@ -1,0 +1,7 @@
+# Normalize to LF everywhere (shell scripts break with CRLF in Git Bash/macOS).
+* text=auto eol=lf
+*.sh text eol=lf
+*.png binary
+*.ico binary
+*.icns binary
+*.pdf binary

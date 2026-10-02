@@ -1,0 +1,32 @@
+# Node
+node_modules/
+dist/
+dist-ssr/
+coverage/
+.vite/
+*.tsbuildinfo
+npm-debug.log*
+
+# Rust / Tauri
+target/
+src-tauri/target/
+src-tauri/gen/schemas/
+
+# Local-only files
+*.local
+*.local.*
+.env
+.env.*
+!.env.example
+
+# Claude Code runtime state
+.claude/state/
+.claude/settings.local.json
+
+# OS / editors
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/extensions.json
+*.log
