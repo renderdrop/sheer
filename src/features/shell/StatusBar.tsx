@@ -1,7 +1,7 @@
 import { useRef, type FormEvent } from 'react';
 
 import { Button, Field, Menu, Popover } from '../../components';
-import { strings } from '../../strings';
+import { useT } from '../../i18n';
 import { useSettledValue } from './hooks';
 import { formatPageStatus, formatZoomStatus, splitForMiddleTruncation } from './status';
 import { zoomMenuEntries } from './toolbarEntries';
@@ -48,15 +48,16 @@ function GoToPage({
   pageCount: number;
   onGo: (pageIndex: number) => void;
 }) {
-  const label = formatPageStatus(pageIndex, pageCount);
+  const t = useT();
+  const label = formatPageStatus(pageIndex, pageCount, t.locale);
   return (
     <Popover
-      label={strings.goToPage}
+      label={t('status.goToPage')}
       side="top"
       align="end"
       trigger={(trigger) => (
         // The visible text is part of the name (WCAG 2.5.3); the rest says what the button does.
-        <Button {...trigger} variant="ghost" size="sm" aria-label={`${label} · ${strings.goToPage}`}>
+        <Button {...trigger} variant="ghost" size="sm" aria-label={`${label} · ${t('status.goToPage')}`}>
           {label}
         </Button>
       )}
@@ -79,6 +80,7 @@ function GoToPageForm({
   onGo: (pageIndex: number) => void;
   done: () => void;
 }) {
+  const t = useT();
   const input = useRef<HTMLInputElement>(null);
   const submit = (event: FormEvent) => {
     event.preventDefault();
@@ -89,7 +91,7 @@ function GoToPageForm({
   return (
     <form onSubmit={submit} className="flex items-end gap-1 p-1">
       <label className="flex flex-col gap-0-5 text-sm text-text-muted">
-        {strings.pageNumber}
+        {t('status.pageNumber')}
         <Field
           ref={input}
           type="number"
@@ -101,7 +103,7 @@ function GoToPageForm({
         />
       </label>
       <Button type="submit" variant="primary" size="md">
-        {strings.goToPageSubmit}
+        {t('status.go')}
       </Button>
     </form>
   );
@@ -114,41 +116,42 @@ function GoToPageForm({
  * It is a `<footer>`; a window without a document leaves it empty.
  */
 export function StatusBar({ fileName, pageIndex, pageCount, zoom, rendering, onGoToPage, onZoom }: StatusBarProps) {
+  const t = useT();
   const hasDocument = fileName !== null;
   const settledPage = useSettledValue(pageIndex, ANNOUNCE_DELAY_MS);
 
   return (
     <footer
-      aria-label={strings.status}
+      aria-label={t('status.label')}
       className="flex h-status shrink-0 items-center gap-2 px-2 text-sm text-text-muted"
     >
-      {hasDocument && <FileName name={fileName === '' ? strings.untitled : fileName} />}
+      {hasDocument && <FileName name={fileName === '' ? t('status.untitled') : fileName} />}
       <span className="flex-auto" />
       <span role="status" className="shrink-0">
-        {rendering ? strings.rendering : ''}
+        {rendering ? t('status.rendering') : ''}
       </span>
       {hasDocument && pageCount > 0 && <GoToPage pageIndex={pageIndex} pageCount={pageCount} onGo={onGoToPage} />}
       {hasDocument && (
         <Menu
-          label={strings.zoomMenu}
+          label={t('status.zoomMenu')}
           side="top"
           align="end"
-          entries={zoomMenuEntries(zoom, onZoom)}
+          entries={zoomMenuEntries(zoom, onZoom, t.locale)}
           trigger={(trigger) => (
             <Button
               {...trigger}
               variant="ghost"
               size="sm"
-              aria-label={`${formatZoomStatus(zoom)} · ${strings.zoomLevel}`}
+              aria-label={`${formatZoomStatus(zoom, t.locale)} · ${t('toolbar.zoomLevel')}`}
             >
-              {formatZoomStatus(zoom)}
+              {formatZoomStatus(zoom, t.locale)}
             </Button>
           )}
         />
       )}
       {/* The settled page, for screen readers only (the visible page number changes at once). */}
       <span role="status" className="sr-only">
-        {hasDocument && pageCount > 0 ? strings.page(settledPage + 1, pageCount) : ''}
+        {hasDocument && pageCount > 0 ? t('status.page', { page: settledPage + 1, total: pageCount }) : ''}
       </span>
     </footer>
   );

@@ -2,7 +2,7 @@ import { memo, type CSSProperties, type ReactNode } from 'react';
 
 import { Splitter } from '../../components';
 import { clampPanelWidth, shellTracks, type ShellStructure } from '../../lib/layout';
-import { strings } from '../../strings';
+import { useT } from '../../i18n';
 import { useUi } from '../../stores/ui';
 
 export interface MainGridProps {
@@ -46,11 +46,12 @@ export const LeftPanelSplitter = memo(function LeftPanelSplitter({
   collapsed,
   style,
 }: LeftPanelSplitterProps) {
+  const t = useT();
   const width = useUi((state) => clampPanelWidth(state.leftPanelWidth));
   return (
     <div style={style} className="flex min-h-0">
       <Splitter
-        label={strings.resizeLeftPanel}
+        label={t('leftPanel.resize')}
         controls={controls}
         value={width}
         collapsed={collapsed}

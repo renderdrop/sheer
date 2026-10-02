@@ -57,7 +57,8 @@ features/     shell (Shell, CaptionBar, ToolbarSlot, ToolbarRow, LeftPanel, Main
               thumbnails · outline · search · comments · pages (M3) · forms, signatures (M4)
 actions/      action registry: shortcuts, menu ids
 components/   design-system primitives (Phase 3)
-i18n/ · styles/tokens.css
+i18n/         locales/en.json + de.json (flat dotted keys, pure JSON, identical key sets; the one source of UI text, later also read by Rust for native menu labels) · catalog.ts (key types from en.json: an unknown key fails tsc) · translate.ts (typed t(key, params), {name} placeholders, plurals via Intl.PluralRules: base key + .one/.other, needs count) · format.ts (Intl numbers, percent) · store.ts, bind.ts (UI locale follows settings.language; "system" = navigator.language, de* is German; sets <html lang>) · errors.ts (error.<code>[.<what>])
+styles/tokens.css
 ```
 
 Only `src/api/call.ts` calls `invoke`: it turns every rejection into an `AppError`, and the typed wrappers (`src/api/app.ts`, `documents.ts`, …) go through it. Everything else imports the wrappers. The window has no event permission (SECURITY T3), so the frontend never calls `listen` or `emit`, and `src/api/app.test.ts` fails on any import of `@tauri-apps/api/event`. Backend pushes (§6) reach it through a `Channel` that a wrapper in `src/api/` passes to a command (`watchTransparency` → `watch_transparency`; the settings store consumes it).
@@ -93,8 +94,8 @@ All commands are `async` and return `Result<T, UiError>`. Bounds come from `limi
 ```rust
 // app
 app_ready() -> AppBootstrap                          // platform, reducedTransparency, version (pending opens join in M1)
-get_settings() -> Settings                           // { glass: "auto" | "solid", theme: "system" | "light" | "dark", leftPanelWidth: 192..=400 }
-update_settings(patch: SettingsPatch) -> Settings    // patch { glass?, theme?, leftPanelWidth? }; unknown key, enum value or width outside the range → invalid_argument (what: "settings")
+get_settings() -> Settings                           // { glass: "auto" | "solid", theme: "system" | "light" | "dark", language: "system" | "en" | "de", leftPanelWidth: 192..=400 }
+update_settings(patch: SettingsPatch) -> Settings    // patch { glass?, theme?, language?, leftPanelWidth? }; unknown key, enum value or width outside the range → invalid_argument (what: "settings")
 watch_transparency(on_change: Channel<bool>) -> ()   // each change of the OS "Reduce transparency" flag, as a bare bool; one receiver, a new call replaces it
 // documents
 open_document_dialog() -> Vec<OpenResult>            // ≤ 32 files
@@ -140,13 +141,13 @@ struct DocumentInfo  { doc_id: DocId, display_name: String, pages: Vec<PageSlotI
 struct PageSlotInfo  { id: PageId, width: f32, height: f32 /* pt, unrotated CropBox */, rotation: u16, rev: u32, label: Option<String> }
 struct SaveResult    { rev: u32, mode: SaveMode /* Incremental | Full */, backup_created: bool }
 struct AppBootstrap  { platform: Platform /* macos | windows | linux */, reduced_transparency: bool, version: &'static str }
-struct Settings      { glass: GlassMode /* Auto | Solid */, theme: ThemeMode /* System | Light | Dark */ }   // serde lowercase values
+struct Settings      { glass: GlassMode /* Auto | Solid */, theme: ThemeMode /* System | Light | Dark */, language: Language /* System | En | De */, left_panel_width: PanelWidth }   // serde lowercase values
 ```
 
 **Settings.** `storage::settings` keeps the settings in memory and in `<app data dir>/settings.json`. A missing, oversized (> 64 KiB), damaged
 or hand-edited file never blocks start: only a regular file is read (its type is taken from the opened handle, not from the path, and on Unix it is opened
 `O_NONBLOCK` so a FIFO cannot hang the start), and each field that is invalid falls back to its default. `update_settings`
-takes the patch as raw JSON, validates all of it first (an object that passes a `deny_unknown_fields` struct, so at most `glass` and `theme`, with
+takes the patch as raw JSON, validates all of it first (an object that passes a `deny_unknown_fields` struct, so at most `glass`, `theme`, `language` and `leftPanelWidth`, with
 known enum values) and writes it with `storage::atomic::write_atomic`: a temp file `.settings.json.<pid>.<n>.tmp` (process id and a per-process counter, so no two
 writers share one) is created with `create_new` (a name that is taken is skipped, never written through; mode `0600` on Unix, directories `0700`), fsynced,
 renamed over the file, and the directory is fsynced on Unix. Only after the write succeeds does the

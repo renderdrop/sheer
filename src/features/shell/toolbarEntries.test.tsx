@@ -1,12 +1,14 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import type { ToolbarEntry, ToolbarGroup, ToolbarItem } from '../../components';
+import { translators } from '../../i18n';
 import { ZOOM_STEPS } from '../../lib/zoom';
 import { buildToolbar, zoomMenuEntries, type ToolbarActions, type ToolbarState } from './toolbarEntries';
 
 const NBSP = String.fromCharCode(0xa0);
 
 const state = (overrides: Partial<ToolbarState> = {}): ToolbarState => ({
+  t: translators.en,
   platform: 'windows',
   hasDocument: true,
   activeTool: 'select',
@@ -16,7 +18,7 @@ const state = (overrides: Partial<ToolbarState> = {}): ToolbarState => ({
   zoomAtMin: false,
   zoomAtMax: false,
   zoomText: `100${NBSP}%`,
-  zoomMenu: zoomMenuEntries(1, vi.fn()),
+  zoomMenu: zoomMenuEntries(1, vi.fn(), 'en'),
   ...overrides,
 });
 
@@ -164,7 +166,7 @@ describe('the toolbar of DESIGN 3.3 and ADR-011 section 6', () => {
 
   describe('zoom', () => {
     it('the readout shows what it is given (text, or an element that follows the zoom) and opens the preset menu it is given', () => {
-      const menu = zoomMenuEntries(1.25, vi.fn());
+      const menu = zoomMenuEntries(1.25, vi.fn(), 'en');
       const { entries } = buildToolbar(state({ zoomText: `125${NBSP}%`, zoomMenu: menu }), actions());
       const readout = item(entries, 'zoom-level');
       expect(readout.text).toBe(`125${NBSP}%`);
@@ -190,9 +192,27 @@ describe('the toolbar of DESIGN 3.3 and ADR-011 section 6', () => {
       expect(item(entries, 'zoom-in')).toMatchObject({ shortcut: 'Ctrl++', keyShortcuts: 'Control+Plus Meta+Plus' });
     });
 
+    it('the chips are written in the language of the toolbar on Windows and Linux; the announced shortcuts stay canonical', () => {
+      for (const platform of ['windows', 'linux'] as const) {
+        const { entries, moreItems } = buildToolbar(state({ platform, t: translators.de }), actions());
+        expect(item(entries, 'zoom-out')).toMatchObject({
+          shortcut: 'Strg+−',
+          keyShortcuts: 'Control+Minus Meta+Minus',
+        });
+        expect(item(entries, 'zoom-in')).toMatchObject({ shortcut: 'Strg++', keyShortcuts: 'Control+Plus Meta+Plus' });
+        expect(moreItems[0]).toMatchObject({ id: 'open', label: 'Öffnen…', shortcut: 'Strg+O' });
+      }
+    });
+
+    it('the chips keep the macOS symbols in German', () => {
+      const { entries, moreItems } = buildToolbar(state({ platform: 'macos', t: translators.de }), actions());
+      expect(item(entries, 'zoom-out')).toMatchObject({ shortcut: '⌘−', keyShortcuts: 'Control+Minus Meta+Minus' });
+      expect(moreItems[0]).toMatchObject({ shortcut: '⌘O' });
+    });
+
     it('menu entries are the zoom steps; the current one is checked, and choosing one sets it', () => {
       const setZoom = vi.fn();
-      const entries = zoomMenuEntries(0.67, setZoom);
+      const entries = zoomMenuEntries(0.67, setZoom, 'en');
       const checked = entries.filter((entry) => entry.type !== 'separator' && entry.checked === true);
       expect(checked).toHaveLength(1);
       expect(checked[0]).toMatchObject({ label: `67${String.fromCharCode(0xa0)}%` });
@@ -203,7 +223,7 @@ describe('the toolbar of DESIGN 3.3 and ADR-011 section 6', () => {
 
     it('a zoom between two steps checks none', () => {
       expect(
-        zoomMenuEntries(1.05, vi.fn()).filter((entry) => entry.type !== 'separator' && entry.checked === true),
+        zoomMenuEntries(1.05, vi.fn(), 'en').filter((entry) => entry.type !== 'separator' && entry.checked === true),
       ).toEqual([]);
     });
   });

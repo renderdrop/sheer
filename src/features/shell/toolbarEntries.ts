@@ -16,10 +16,10 @@ import {
 import type { ReactNode } from 'react';
 
 import type { MenuEntries, MenuEntry, ToolbarEntry, ToolbarItem } from '../../components';
+import type { Locale, Translate } from '../../i18n';
 import { shellShortcuts } from '../../lib/shortcuts';
 import type { Platform } from '../../api/app';
 import { ZOOM_STEPS } from '../../lib/zoom';
-import { strings } from '../../strings';
 import type { ToolId } from '../../stores/ui';
 import { formatZoomStatus } from './status';
 
@@ -27,6 +27,8 @@ import { formatZoomStatus } from './status';
 const SAME_ZOOM = 0.005;
 
 export interface ToolbarState {
+  /** Translates the labels. The entries are rebuilt when it changes, which is when the language does. */
+  t: Translate;
   platform: Platform | null;
   hasDocument: boolean;
   activeTool: ToolId;
@@ -53,10 +55,10 @@ export interface ToolbarActions {
 }
 
 /** The zoom presets as menu entries (the toolbar readout and the status bar's zoom button open the same menu). */
-export function zoomMenuEntries(zoom: number, setZoom: (zoom: number) => void): MenuEntry[] {
+export function zoomMenuEntries(zoom: number, setZoom: (zoom: number) => void, locale: Locale): MenuEntry[] {
   return ZOOM_STEPS.map((step) => ({
     id: `zoom-${step}`,
-    label: formatZoomStatus(step),
+    label: formatZoomStatus(step, locale),
     checked: Math.abs(step - zoom) < SAME_ZOOM,
     onSelect: () => setZoom(step),
   }));
@@ -74,8 +76,8 @@ export function buildToolbar(
   state: ToolbarState,
   actions: ToolbarActions,
 ): { entries: ToolbarEntry[]; moreItems: MenuEntry[] } {
-  const { hasDocument } = state;
-  const keys = shellShortcuts(state.platform);
+  const { hasDocument, t } = state;
+  const keys = shellShortcuts(state.platform, t);
 
   const tool = (id: ToolId, label: string, icon: LucideIcon, collapse?: number): ToolbarItem => ({
     id,
@@ -93,11 +95,11 @@ export function buildToolbar(
   const entries: ToolbarEntry[] = [
     {
       id: 'panels',
-      label: strings.groupPanels,
+      label: t('toolbar.group.panels'),
       items: [
         {
           id: 'left-panel',
-          label: strings.leftPanelToggle,
+          label: t('toolbar.leftPanel'),
           icon: PanelLeft,
           kind: 'toggle',
           pressed: state.leftPanelVisible,
@@ -106,34 +108,38 @@ export function buildToolbar(
         },
       ],
     },
-    { id: 'select', label: strings.groupSelect, items: [tool('select', strings.toolSelect, MousePointer2)] },
+    {
+      id: 'select',
+      label: t('toolbar.group.select'),
+      items: [tool('select', t('toolbar.tool.select'), MousePointer2)],
+    },
     {
       id: 'markup',
-      label: strings.groupMarkup,
+      label: t('toolbar.group.markup'),
       items: [
-        tool('highlight', strings.toolHighlight, Highlighter),
-        tool('comment', strings.toolComment, MessageSquare),
-        tool('draw', strings.toolDraw, PenLine),
+        tool('highlight', t('toolbar.tool.highlight'), Highlighter),
+        tool('comment', t('toolbar.tool.comment'), MessageSquare),
+        tool('draw', t('toolbar.tool.draw'), PenLine),
       ],
     },
     {
       id: 'fill-and-sign',
-      label: strings.groupFillAndSign,
+      label: t('toolbar.group.fillAndSign'),
       items: [
-        tool('form', strings.toolForm, TextCursorInput, 2),
-        tool('signature', strings.toolSignature, Signature, 3),
+        tool('form', t('toolbar.tool.form'), TextCursorInput, 2),
+        tool('signature', t('toolbar.tool.signature'), Signature, 3),
       ],
     },
-    { id: 'pages', label: strings.groupPages, items: [tool('pages', strings.toolPages, LayoutGrid, 1)] },
+    { id: 'pages', label: t('toolbar.group.pages'), items: [tool('pages', t('toolbar.tool.pages'), LayoutGrid, 1)] },
     { type: 'more', id: 'more' },
     { type: 'spacer', id: 'spacer' },
     {
       id: 'zoom',
-      label: strings.groupZoom,
+      label: t('toolbar.group.zoom'),
       items: [
         {
           id: 'zoom-out',
-          label: strings.zoomOut,
+          label: t('toolbar.zoomOut'),
           icon: ZoomOut,
           disabled: !hasDocument || state.zoomAtMin,
           shortcut: keys.zoomOut.label,
@@ -143,14 +149,14 @@ export function buildToolbar(
         },
         {
           id: 'zoom-level',
-          label: strings.zoomLevel,
+          label: t('toolbar.zoomLevel'),
           text: state.zoomText,
           disabled: !hasDocument,
           menu: state.zoomMenu,
         },
         {
           id: 'zoom-in',
-          label: strings.zoomIn,
+          label: t('toolbar.zoomIn'),
           icon: ZoomIn,
           disabled: !hasDocument || state.zoomAtMax,
           shortcut: keys.zoomIn.label,
@@ -162,11 +168,11 @@ export function buildToolbar(
     },
     {
       id: 'inspector',
-      label: strings.groupInspector,
+      label: t('toolbar.group.inspector'),
       items: [
         {
           id: 'inspector-toggle',
-          label: strings.inspectorToggle,
+          label: t('toolbar.inspector'),
           icon: PanelRight,
           kind: 'toggle',
           pressed: state.inspectorVisible,
@@ -179,7 +185,7 @@ export function buildToolbar(
 
   // Open is not a toolbar item in the spec; until the native menu bar has it, More carries it, so a mouse user can open a file.
   const moreItems: MenuEntry[] = [
-    { id: 'open', label: strings.open, icon: FolderOpen, shortcut: keys.open.label, onSelect: actions.open },
+    { id: 'open', label: t('action.open'), icon: FolderOpen, shortcut: keys.open.label, onSelect: actions.open },
   ];
 
   return { entries, moreItems };

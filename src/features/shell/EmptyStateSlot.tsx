@@ -1,6 +1,7 @@
 import type { CSSProperties } from 'react';
 
 import type { Platform } from '../../api/app';
+import { useT } from '../../i18n';
 import { shellShortcuts } from '../../lib/shortcuts';
 import { useUi } from '../../stores/ui';
 import { useViewer } from '../viewer/useViewer';
@@ -14,7 +15,8 @@ export function EmptyStateSlot({ platform, style }: { platform: Platform | null;
   const opening = useViewer((state) => state.opening);
   const open = useViewer((state) => state.open);
   const dropActive = useUi((state) => state.dropHover);
-  const { open: openKey } = shellShortcuts(platform);
+  const t = useT();
+  const { open: openKey } = shellShortcuts(platform, t);
   return (
     <div style={style} className="flex min-h-0 min-w-0 overflow-auto p-1">
       <EmptyState

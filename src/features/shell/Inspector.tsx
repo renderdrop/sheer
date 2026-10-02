@@ -1,7 +1,7 @@
 import { memo, type CSSProperties } from 'react';
 
 import { Panel, PanelSection } from '../../components';
-import { strings } from '../../strings';
+import { useT } from '../../i18n';
 
 export interface InspectorProps {
   /** Faded in: there is a selection, a tool other than Select, or the user opened it. Hidden, it is inert. */
@@ -16,10 +16,11 @@ export interface InspectorProps {
  * the annotation tools (M2) put their properties here.
  */
 export const Inspector = memo(function Inspector({ visible, style }: InspectorProps) {
+  const t = useT();
   return (
-    <Panel label={strings.inspector} title={strings.inspectorTitle} visible={visible} style={style}>
+    <Panel label={t('inspector.label')} title={t('inspector.title')} visible={visible} style={style}>
       <PanelSection>
-        <p className="m-0 text-sm text-text-muted">{strings.inspectorEmpty}</p>
+        <p className="m-0 text-sm text-text-muted">{t('inspector.empty')}</p>
       </PanelSection>
     </Panel>
   );

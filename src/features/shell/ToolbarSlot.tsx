@@ -1,6 +1,7 @@
 import { memo, useMemo } from 'react';
 
 import type { Platform } from '../../api/app';
+import { useT } from '../../i18n';
 import { MAX_ZOOM, MIN_ZOOM } from '../../lib/zoom';
 import { useUi } from '../../stores/ui';
 import { useDocViewValue } from '../../stores/view';
@@ -48,6 +49,7 @@ export const ToolbarSlot = memo(function ToolbarSlot({
   inspectorVisible,
   trafficLightInset,
 }: ToolbarSlotProps) {
+  const t = useT();
   const activeTool = useUi((state) => state.activeTool);
   const toolLocked = useUi((state) => state.toolLocked);
   const docId = useViewer(selectDocId);
@@ -58,6 +60,7 @@ export const ToolbarSlot = memo(function ToolbarSlot({
     () =>
       buildToolbar(
         {
+          t,
           platform,
           hasDocument,
           activeTool,
@@ -71,7 +74,7 @@ export const ToolbarSlot = memo(function ToolbarSlot({
         },
         ACTIONS,
       ),
-    [platform, hasDocument, activeTool, toolLocked, leftPanelVisible, inspectorVisible, zoomAtMin, zoomAtMax],
+    [t, platform, hasDocument, activeTool, toolLocked, leftPanelVisible, inspectorVisible, zoomAtMin, zoomAtMax],
   );
 
   return <ToolbarRow entries={entries} moreItems={moreItems} trafficLightInset={trafficLightInset} />;

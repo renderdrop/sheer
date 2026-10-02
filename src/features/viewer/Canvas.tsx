@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type CSSProperties } from 'react';
 
 import { cx } from '../../components/cx';
 import { CSS_PX_PER_PT } from '../../lib/zoom';
-import { strings } from '../../strings';
+import { useT } from '../../i18n';
 import type { PageImage } from './useViewer';
 
 export interface CanvasProps {
@@ -40,6 +40,7 @@ export function Canvas({
   className,
   style,
 }: CanvasProps) {
+  const t = useT();
   const scrollRef = useRef<HTMLDivElement>(null);
   const [scrolled, setScrolled] = useState(false);
 
@@ -63,20 +64,20 @@ export function Canvas({
       <div
         ref={scrollRef}
         role="region"
-        aria-label={strings.documentRegion}
+        aria-label={t('canvas.region')}
         aria-busy={busy}
         tabIndex={0}
         onScroll={(event) => setScrolled(event.currentTarget.scrollTop > 0)}
         className="flex size-full scroll-pt-3 overflow-auto p-3"
       >
         {pageCount === 0 ? (
-          <p className="m-auto text-text-muted">{strings.noPages}</p>
+          <p className="m-auto text-text-muted">{t('canvas.noPages')}</p>
         ) : image !== null ? (
           <div className="z-canvas-page m-auto flex-none bg-page shadow-page">
             <img
               className="block h-auto max-w-none"
               src={image.url}
-              alt={strings.pageImageAlt(pageIndex + 1, pageCount)}
+              alt={t('canvas.pageImage', { page: pageIndex + 1, total: pageCount })}
               style={{ width: Math.round(image.widthPt * CSS_PX_PER_PT * zoom) }}
               draggable={false}
             />
@@ -97,7 +98,7 @@ export function Canvas({
           data-drop-overlay=""
           className="glass-2 pointer-events-none absolute inset-1 z-drag grid place-items-center rounded-panel"
         >
-          <p className="m-0 font-display text-xl">{strings.dropToOpen}</p>
+          <p className="m-0 font-display text-xl">{t('canvas.dropToOpen')}</p>
         </div>
       )}
     </main>

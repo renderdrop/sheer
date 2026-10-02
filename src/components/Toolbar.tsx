@@ -1,12 +1,12 @@
 import { Ellipsis, type LucideIcon } from 'lucide-react';
 import { Fragment, useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
 
+import { useT } from '../i18n';
 import { cx } from './cx';
 import { IconButton, type IconButtonProps } from './IconButton';
 import type { IconButtonVariant } from './controlStyles';
 import { Menu, type MenuEntries, type MenuEntry } from './Menu';
 import { isOwnEvent, itemsOf, rovingTarget } from './roving';
-import { componentStrings } from './strings';
 
 export interface ToolbarItem {
   /** Stable id: the roving tab stop and the overflow menu use it. */
@@ -100,11 +100,13 @@ export function Toolbar({
   label,
   entries,
   moreItems = [],
-  moreLabel = componentStrings.more,
+  moreLabel,
   lockedDescription,
   lockedNote,
   className,
 }: ToolbarProps) {
+  const t = useT();
+  const moreText = moreLabel ?? t('component.more');
   const rootRef = useRef<HTMLDivElement>(null);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [collapsedCount, setCollapsedCount] = useState(0);
@@ -260,13 +262,13 @@ export function Toolbar({
         <Fragment key={entry.id}>
           {divider}
           <Menu
-            label={moreLabel}
+            label={moreText}
             entries={moreEntries}
             trigger={(trigger) => (
               <IconButton
                 {...itemProps(entry.id)}
                 {...trigger}
-                label={moreLabel}
+                label={moreText}
                 icon={Ellipsis}
                 iconSize={20}
                 variant="tool"

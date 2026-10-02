@@ -1,7 +1,8 @@
 //! User settings: a small JSON file in the app data directory, mirrored in memory.
 //!
 //! Wire shape (camelCase, enum values lowercase):
-//! `{ "glass": "auto" | "solid", "theme": "system" | "light" | "dark", "leftPanelWidth": 192..=400 }`.
+//! `{ "glass": "auto" | "solid", "theme": "system" | "light" | "dark", "language": "system" | "en" | "de",
+//! "leftPanelWidth": 192..=400 }`.
 //!
 //! - **Reading** never fails: a missing, oversized, damaged or hand-edited file falls back to the defaults, field by
 //!   field. The file is user-writable, so nothing in it is trusted beyond the enum values and the width range it can
@@ -47,6 +48,17 @@ pub enum ThemeMode {
     Dark,
 }
 
+/// Interface language. `System` follows the OS language (the frontend resolves it: `de*` is German, everything else English);
+/// `En` and `De` are the two shipped translations (`src/i18n/locales`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Language {
+    #[default]
+    System,
+    En,
+    De,
+}
+
 /// Width of the left panel in px (DESIGN 2, 3.8). Always within `limits::LEFT_PANEL_MIN_WIDTH..=LEFT_PANEL_MAX_WIDTH`:
 /// the only ways in are [`PanelWidth::new`] and `Deserialize`, and both check the range. It is a plain number on the wire.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -89,6 +101,7 @@ impl<'de> Deserialize<'de> for PanelWidth {
 pub struct Settings {
     pub glass: GlassMode,
     pub theme: ThemeMode,
+    pub language: Language,
     pub left_panel_width: PanelWidth,
 }
 
@@ -108,6 +121,10 @@ impl Settings {
                 .get("theme")
                 .and_then(|value| ThemeMode::deserialize(value).ok())
                 .unwrap_or_default(),
+            language: map
+                .get("language")
+                .and_then(|value| Language::deserialize(value).ok())
+                .unwrap_or_default(),
             left_panel_width: map
                 .get("leftPanelWidth")
                 .and_then(|value| PanelWidth::deserialize(value).ok())
@@ -120,13 +137,14 @@ impl Settings {
         Self {
             glass: patch.glass.unwrap_or(self.glass),
             theme: patch.theme.unwrap_or(self.theme),
+            language: patch.language.unwrap_or(self.language),
             left_panel_width: patch.left_panel_width.unwrap_or(self.left_panel_width),
         }
     }
 }
 
-/// A partial update: at most the three settings, each optional. Parsed only by [`SettingsPatch::from_value`], which
-/// rejects every unknown key (`deny_unknown_fields`), so a patch can never name more than these three fields.
+/// A partial update: at most the four settings, each optional. Parsed only by [`SettingsPatch::from_value`], which
+/// rejects every unknown key (`deny_unknown_fields`), so a patch can never name more than these four fields.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
 pub struct SettingsPatch {
@@ -134,6 +152,8 @@ pub struct SettingsPatch {
     pub glass: Option<GlassMode>,
     #[serde(default, deserialize_with = "present")]
     pub theme: Option<ThemeMode>,
+    #[serde(default, deserialize_with = "present")]
+    pub language: Option<Language>,
     #[serde(default, deserialize_with = "present")]
     pub left_panel_width: Option<PanelWidth>,
 }
@@ -319,16 +339,17 @@ mod tests {
     fn settings_serialize_with_lowercase_enum_values() {
         assert_eq!(
             serde_json::to_value(Settings::default()).unwrap(),
-            json!({ "glass": "auto", "theme": "system", "leftPanelWidth": 248 })
+            json!({ "glass": "auto", "theme": "system", "language": "system", "leftPanelWidth": 248 })
         );
         let settings = Settings {
             glass: GlassMode::Solid,
             theme: ThemeMode::Dark,
+            language: Language::De,
             left_panel_width: PanelWidth::new(320).unwrap(),
         };
         assert_eq!(
             serde_json::to_value(settings).unwrap(),
-            json!({ "glass": "solid", "theme": "dark", "leftPanelWidth": 320 })
+            json!({ "glass": "solid", "theme": "dark", "language": "de", "leftPanelWidth": 320 })
         );
     }
 
@@ -358,11 +379,26 @@ mod tests {
                 }
             );
         }
+        for (name, language) in [
+            ("system", Language::System),
+            ("en", Language::En),
+            ("de", Language::De),
+        ] {
+            assert_eq!(
+                patch(json!({ "language": name })).unwrap(),
+                SettingsPatch {
+                    language: Some(language),
+                    ..SettingsPatch::default()
+                }
+            );
+        }
         assert_eq!(
-            patch(json!({ "glass": "solid", "theme": "light", "leftPanelWidth": 296 })).unwrap(),
+            patch(json!({ "glass": "solid", "theme": "light", "language": "en", "leftPanelWidth": 296 }))
+                .unwrap(),
             SettingsPatch {
                 glass: Some(GlassMode::Solid),
                 theme: Some(ThemeMode::Light),
+                language: Some(Language::En),
                 left_panel_width: PanelWidth::new(296)
             }
         );
@@ -443,9 +479,21 @@ mod tests {
                 "{bad:?}"
             );
         }
+        // Language tags are not accepted: only the three wire names, in lowercase.
+        for bad in [
+            "De", "EN", "de-DE", "en_US", "fr", "german", "", " de", "en ", "de\0", "auto",
+        ] {
+            assert_eq!(
+                rejected(json!({ "language": bad })),
+                INVALID_SETTINGS,
+                "{bad:?}"
+            );
+        }
         // Values of the other setting are not valid either.
         assert_eq!(rejected(json!({ "glass": "dark" })), INVALID_SETTINGS);
         assert_eq!(rejected(json!({ "theme": "solid" })), INVALID_SETTINGS);
+        assert_eq!(rejected(json!({ "language": "dark" })), INVALID_SETTINGS);
+        assert_eq!(rejected(json!({ "theme": "de" })), INVALID_SETTINGS);
     }
 
     #[test]
@@ -458,7 +506,8 @@ mod tests {
             json!({ "auto": 1 }),
         ] {
             assert_eq!(rejected(json!({ "glass": bad.clone() })), INVALID_SETTINGS);
-            assert_eq!(rejected(json!({ "theme": bad })), INVALID_SETTINGS);
+            assert_eq!(rejected(json!({ "theme": bad.clone() })), INVALID_SETTINGS);
+            assert_eq!(rejected(json!({ "language": bad })), INVALID_SETTINGS);
         }
     }
 
@@ -484,12 +533,12 @@ mod tests {
     }
 
     #[test]
-    fn a_patch_can_name_at_most_the_three_settings() {
-        // Every key beyond the three known ones is unknown, so a patch with more than three keys never passes. The check
+    fn a_patch_can_name_at_most_the_four_settings() {
+        // Every key beyond the four known ones is unknown, so a patch with more than four keys never passes. The check
         // stops at the first unknown key: a huge object is refused without being walked.
         assert_eq!(
             rejected(
-                json!({ "glass": "solid", "theme": "dark", "leftPanelWidth": 248, "extra": 1 })
+                json!({ "glass": "solid", "theme": "dark", "language": "de", "leftPanelWidth": 248, "extra": 1 })
             ),
             INVALID_SETTINGS
         );
@@ -505,6 +554,7 @@ mod tests {
             "theme\0",
             "glass.theme",
             "LeftPanelWidth",
+            "Language",
         ] {
             assert_eq!(
                 rejected(json!({ key: "auto" })),
@@ -644,7 +694,8 @@ mod tests {
         let store = store_in(&dir);
         let updated = store
             .update(
-                patch(json!({ "glass": "solid", "theme": "dark", "leftPanelWidth": 280 })).unwrap(),
+                patch(json!({ "glass": "solid", "theme": "dark", "language": "de", "leftPanelWidth": 280 }))
+                    .unwrap(),
             )
             .unwrap();
         assert_eq!(
@@ -652,6 +703,7 @@ mod tests {
             Settings {
                 glass: GlassMode::Solid,
                 theme: ThemeMode::Dark,
+                language: Language::De,
                 left_panel_width: PanelWidth::new(280).unwrap()
             }
         );
@@ -662,7 +714,7 @@ mod tests {
             serde_json::from_slice(&fs::read(dir.path().join(FILE_NAME)).unwrap()).unwrap();
         assert_eq!(
             stored,
-            json!({ "glass": "solid", "theme": "dark", "leftPanelWidth": 280 })
+            json!({ "glass": "solid", "theme": "dark", "language": "de", "leftPanelWidth": 280 })
         );
     }
 
@@ -842,7 +894,7 @@ mod tests {
     }
 
     #[test]
-    fn the_stored_file_holds_exactly_the_three_settings_as_json_with_a_final_newline() {
+    fn the_stored_file_holds_exactly_the_four_settings_as_json_with_a_final_newline() {
         let dir = TempDir::new();
         let store = store_in(&dir);
         apply_json(&store, json!({ "glass": "solid" })).unwrap();
@@ -851,8 +903,37 @@ mod tests {
         let stored: Value = serde_json::from_slice(&bytes).unwrap();
         assert_eq!(
             stored,
-            json!({ "glass": "solid", "theme": "system", "leftPanelWidth": 248 })
+            json!({ "glass": "solid", "theme": "system", "language": "system", "leftPanelWidth": 248 })
         );
+    }
+
+    #[test]
+    fn the_language_is_persisted_and_read_back_field_by_field() {
+        let dir = TempDir::new();
+        let store = store_in(&dir);
+        assert_eq!(store.get().language, Language::System);
+        apply_json(&store, json!({ "language": "de" })).unwrap();
+        assert_eq!(store_in(&dir).get().language, Language::De);
+        // A partial update of another field keeps the language.
+        apply_json(&store, json!({ "glass": "solid" })).unwrap();
+        assert_eq!(store_in(&dir).get().language, Language::De);
+
+        for (contents, expected) in [
+            (r#"{"language":"en"}"#, Language::En),
+            (r#"{"language":"system"}"#, Language::System),
+            // Invalid, mistyped or missing: the default, never a guess.
+            (r#"{"language":"De"}"#, Language::System),
+            (r#"{"language":"de-DE"}"#, Language::System),
+            (r#"{"language":"fr"}"#, Language::System),
+            (r#"{"language":null}"#, Language::System),
+            (r#"{"language":["de"]}"#, Language::System),
+            (r#"{"Language":"de"}"#, Language::System),
+            (r#"{"theme":"dark"}"#, Language::System),
+        ] {
+            let dir = TempDir::new();
+            fs::write(dir.path().join(FILE_NAME), contents).unwrap();
+            assert_eq!(store_in(&dir).get().language, expected, "{contents}");
+        }
     }
 
     #[test]

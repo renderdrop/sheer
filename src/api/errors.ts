@@ -1,6 +1,6 @@
 /**
- * Wire names of the backend's `ErrorCode` (src-tauri/src/error.rs). Keep in sync; `errors.test.ts` and the
- * exhaustive `Record<ErrorCode, string>` in `strings.ts` fail when a code is added on one side only.
+ * Wire names of the backend's `ErrorCode` (src-tauri/src/error.rs). Keep in sync; `errors.test.ts` fails when a code is added on
+ * one side only, and `tsc` fails when a code has no `error.<code>` text in src/i18n/locales/en.json (src/i18n/errors.ts).
  */
 export const ERROR_CODES = [
   'invalid_argument',

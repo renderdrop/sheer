@@ -1,7 +1,7 @@
 import { useRef, useState, type KeyboardEvent, type PointerEvent } from 'react';
 
+import { useT } from '../i18n';
 import { cx } from './cx';
-import { componentStrings } from './strings';
 import { PANEL } from './tokens';
 
 export interface SplitterProps {
@@ -39,9 +39,6 @@ interface Drag {
 
 const clamp = (value: number, low: number, high: number) => Math.min(high, Math.max(low, value));
 
-const defaultValueText = (value: number, collapsed: boolean) =>
-  collapsed ? componentStrings.collapsed : componentStrings.splitterValue(value);
-
 /**
  * Window splitter (DESIGN 3.8, WAI-ARIA window splitter pattern): the 8 px gutter beside a panel. `role=separator`, one
  * tab stop. Left and Right resize by `step` (Shift: `largeStep`), Home and End jump to the ends of the range, Enter
@@ -63,9 +60,10 @@ export function Splitter({
   defaultValue = PANEL.default,
   collapseBelow = PANEL.collapseBelow,
   pane = 'before',
-  valueText = defaultValueText,
+  valueText,
   className,
 }: SplitterProps) {
+  const t = useT();
   const drag = useRef<Drag | null>(null);
   const [dragging, setDragging] = useState(false);
   // Which arrow widens the pane follows the side it is on.
@@ -153,7 +151,13 @@ export function Splitter({
       aria-valuemin={0}
       aria-valuemax={max}
       aria-valuenow={collapsed ? 0 : value}
-      aria-valuetext={valueText(value, collapsed)}
+      aria-valuetext={
+        valueText !== undefined
+          ? valueText(value, collapsed)
+          : collapsed
+            ? t('component.collapsed')
+            : t('component.splitterValue', { count: value })
+      }
       tabIndex={0}
       data-dragging={dragging ? 'true' : undefined}
       onKeyDown={onKeyDown}

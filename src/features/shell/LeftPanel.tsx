@@ -2,20 +2,20 @@ import { GalleryVertical, ListTree, MessagesSquare, Search, type LucideIcon } fr
 import { memo, type CSSProperties } from 'react';
 
 import { Panel, Tab, TabList, TabPanel, Tabs } from '../../components';
-import { strings } from '../../strings';
+import { useT, type PlainKey } from '../../i18n';
 import { LEFT_PANEL_TABS, useUi, type LeftPanelTab } from '../../stores/ui';
 
 interface TabSpec {
-  label: string;
+  label: PlainKey;
   icon: LucideIcon;
-  empty: string;
+  empty: PlainKey;
 }
 
 const TABS: Record<LeftPanelTab, TabSpec> = {
-  thumbnails: { label: strings.tabThumbnails, icon: GalleryVertical, empty: strings.tabThumbnailsEmpty },
-  outline: { label: strings.tabOutline, icon: ListTree, empty: strings.tabOutlineEmpty },
-  comments: { label: strings.tabComments, icon: MessagesSquare, empty: strings.tabCommentsEmpty },
-  search: { label: strings.tabSearch, icon: Search, empty: strings.tabSearchEmpty },
+  thumbnails: { label: 'leftPanel.tab.thumbnails', icon: GalleryVertical, empty: 'leftPanel.empty.thumbnails' },
+  outline: { label: 'leftPanel.tab.outline', icon: ListTree, empty: 'leftPanel.empty.outline' },
+  comments: { label: 'leftPanel.tab.comments', icon: MessagesSquare, empty: 'leftPanel.empty.comments' },
+  search: { label: 'leftPanel.tab.search', icon: Search, empty: 'leftPanel.empty.search' },
 };
 
 function isLeftPanelTab(value: string): value is LeftPanelTab {
@@ -42,18 +42,19 @@ export interface LeftPanelProps {
  * not for a page, a zoom step or a drag of the splitter next to it.
  */
 export const LeftPanel = memo(function LeftPanel({ id, style }: LeftPanelProps) {
+  const t = useT();
   const tab = useUi((state) => state.leftPanelTab);
   return (
     // The wrapper of Tabs is `display: contents`, so the panel itself is the grid item.
     <Tabs value={tab} onValueChange={selectTab} className="contents">
       <Panel
         id={id}
-        label={strings.leftPanel}
+        label={t('leftPanel.label')}
         style={style}
         header={
-          <TabList label={strings.leftPanelViews}>
+          <TabList label={t('leftPanel.views')}>
             {LEFT_PANEL_TABS.map((value) => (
-              <Tab key={value} value={value} label={TABS[value].label} icon={TABS[value].icon} />
+              <Tab key={value} value={value} label={t(TABS[value].label)} icon={TABS[value].icon} />
             ))}
           </TabList>
         }
@@ -61,9 +62,9 @@ export const LeftPanel = memo(function LeftPanel({ id, style }: LeftPanelProps) 
         {LEFT_PANEL_TABS.map((value) => (
           <TabPanel key={value} value={value}>
             <div className="flex h-control-md items-center">
-              <h2 className="m-0 truncate text-md font-semibold">{TABS[value].label}</h2>
+              <h2 className="m-0 truncate text-md font-semibold">{t(TABS[value].label)}</h2>
             </div>
-            <p className="m-0 text-sm text-text-muted">{TABS[value].empty}</p>
+            <p className="m-0 text-sm text-text-muted">{t(TABS[value].empty)}</p>
           </TabPanel>
         ))}
       </Panel>

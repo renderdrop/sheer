@@ -110,7 +110,7 @@ describe('main.tsx while the settings load hangs', () => {
     expect(html.hasAttribute('data-theme')).toBe(false);
     await act(async () => {
       boot.resolve(bootstrap);
-      saved.resolve({ glass: 'solid', theme: 'dark', leftPanelWidth: 248 });
+      saved.resolve({ glass: 'solid', theme: 'dark', language: 'system', leftPanelWidth: 248 });
     });
     expect(html.getAttribute('data-theme')).toBe('dark');
     expect(html.getAttribute('data-transparency')).toBe('reduced');
@@ -120,7 +120,7 @@ describe('main.tsx while the settings load hangs', () => {
 
   it('applies the saved settings at once when the backend answers in time, without an error', async () => {
     backend.appReady.mockResolvedValue(bootstrap);
-    backend.getSettings.mockResolvedValue({ glass: 'auto', theme: 'light', leftPanelWidth: 248 });
+    backend.getSettings.mockResolvedValue({ glass: 'auto', theme: 'light', language: 'system', leftPanelWidth: 248 });
     await start();
     expect(html.getAttribute('data-theme')).toBe('light');
     expect(html.hasAttribute('data-transparency')).toBe(false);
@@ -132,9 +132,9 @@ describe('main.tsx while the settings load hangs', () => {
 
   it('gives the left panel the saved width, and saves a width the user chooses', async () => {
     backend.appReady.mockResolvedValue(bootstrap);
-    backend.getSettings.mockResolvedValue({ glass: 'auto', theme: 'system', leftPanelWidth: 320 });
+    backend.getSettings.mockResolvedValue({ glass: 'auto', theme: 'system', language: 'system', leftPanelWidth: 320 });
     backend.updateSettings.mockImplementation((patch: object) =>
-      Promise.resolve({ glass: 'auto', theme: 'system', leftPanelWidth: 320, ...patch }),
+      Promise.resolve({ glass: 'auto', theme: 'system', language: 'system', leftPanelWidth: 320, ...patch }),
     );
     await start();
     const { useUi } = await import('./stores/ui');
@@ -164,7 +164,7 @@ describe('main.tsx while the settings load hangs', () => {
 
   it('applies what the OS transparency channel carries to <html>', async () => {
     backend.appReady.mockResolvedValue(bootstrap);
-    backend.getSettings.mockResolvedValue({ glass: 'auto', theme: 'system', leftPanelWidth: 248 });
+    backend.getSettings.mockResolvedValue({ glass: 'auto', theme: 'system', language: 'system', leftPanelWidth: 248 });
     let send: ((reduced: boolean) => void) | undefined;
     backend.watchTransparency.mockImplementation((onChange: (reduced: boolean) => void) => {
       send = onChange;

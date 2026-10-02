@@ -2,8 +2,8 @@
 phase: 3
 version: 0.2.0
 current_item: Command registry + shortcuts (platform modifiers) + native menu bar
-last_completed: App shell layout grid + Empty state (see git log)
-loop_count_this_session: 5
+last_completed: i18n scaffold (en, de) (see git log)
+loop_count_this_session: 6
 open_blockers: 1 (B-001 macOS/CI unverified — needs a GitHub remote or a Mac)
 notes: Run `npm run check` / `npm run fetch-pdfium` from Git Bash (in PowerShell `bash` may resolve to WSL). Rust in ~/.cargo/bin.
   Custom agent types need a session restart; until then general-purpose + ROLE block (ADR-000 §8).

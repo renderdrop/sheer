@@ -4,7 +4,7 @@ import { closeWindow, minimizeWindow, toggleMaximizeWindow } from '../../api/win
 import { cx } from '../../components/cx';
 import { Icon } from '../../components/Icon';
 import { APP_NAME } from '../../config/app';
-import { strings } from '../../strings';
+import { useT } from '../../i18n';
 import logoUrl from '../../../assets/brand/logo.svg';
 import { useWindowFocused } from './hooks';
 
@@ -56,6 +56,7 @@ export interface CaptionBarProps {
  * script, which needs `core:window:allow-start-dragging` and `-internal-toggle-maximize`). An inactive window dims the title and the glyphs.
  */
 export function CaptionBar({ maximized, onChanged }: CaptionBarProps) {
+  const t = useT();
   const focused = useWindowFocused();
   const act = (action: () => Promise<void>) => () => {
     action()
@@ -72,14 +73,14 @@ export function CaptionBar({ maximized, onChanged }: CaptionBarProps) {
         <img src={logoUrl} alt="" className="size-icon-16 shrink-0" draggable={false} />
         <span className={cx('truncate', focused ? 'text-text-muted' : 'text-text-disabled')}>{APP_NAME}</span>
       </div>
-      <div role="group" aria-label={strings.windowControls} className="flex h-full shrink-0">
-        <CaptionButton label={strings.minimize} icon={Minus} onClick={act(minimizeWindow)} />
+      <div role="group" aria-label={t('window.controls')} className="flex h-full shrink-0">
+        <CaptionButton label={t('window.minimize')} icon={Minus} onClick={act(minimizeWindow)} />
         <CaptionButton
-          label={maximized ? strings.restore : strings.maximize}
+          label={maximized ? t('window.restore') : t('window.maximize')}
           icon={maximized ? Copy : Square}
           onClick={act(toggleMaximizeWindow)}
         />
-        <CaptionButton label={strings.close} icon={X} onClick={act(closeWindow)} danger />
+        <CaptionButton label={t('window.close')} icon={X} onClick={act(closeWindow)} danger />
       </div>
     </div>
   );

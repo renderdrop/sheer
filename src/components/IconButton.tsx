@@ -1,6 +1,7 @@
 import { Lock, type LucideIcon } from 'lucide-react';
 import type { ComponentProps, ReactNode } from 'react';
 
+import { useT } from '../i18n';
 import {
   CONTROL_BASE,
   ICON_BUTTON_SIZES,
@@ -12,7 +13,6 @@ import { cx } from './cx';
 import { Icon, type IconSize } from './Icon';
 import type { Side } from './position';
 import { cancelClick, withoutActions } from './softDisabled';
-import { componentStrings } from './strings';
 import { Tooltip } from './Tooltip';
 
 type Managed = 'children' | 'aria-label' | 'aria-pressed' | 'aria-keyshortcuts' | 'aria-description';
@@ -67,8 +67,8 @@ export function IconButton({
   shortcut,
   keyShortcuts,
   tooltipSide,
-  lockedDescription = componentStrings.locked,
-  lockedNote = componentStrings.lockedNote,
+  lockedDescription,
+  lockedNote,
   disabled = false,
   focusableWhenDisabled = false,
   className,
@@ -76,6 +76,7 @@ export function IconButton({
   type = 'button',
   ...rest
 }: IconButtonProps) {
+  const t = useT();
   const soft = disabled && focusableWhenDisabled;
   const on = pressed === true || active || locked;
   const looks = ICON_BUTTON_VARIANTS[variant];
@@ -88,7 +89,7 @@ export function IconButton({
       aria-label={label}
       aria-pressed={pressed}
       aria-keyshortcuts={keyShortcuts}
-      aria-description={locked ? lockedDescription : undefined}
+      aria-description={locked ? (lockedDescription ?? t('component.locked')) : undefined}
       aria-disabled={soft ? true : undefined}
       disabled={disabled && !soft}
       onClick={soft ? cancelClick : onClick}
@@ -114,7 +115,12 @@ export function IconButton({
   );
 
   return (
-    <Tooltip label={label} shortcut={shortcut} note={locked ? lockedNote : undefined} side={tooltipSide}>
+    <Tooltip
+      label={label}
+      shortcut={shortcut}
+      note={locked ? (lockedNote ?? t('component.lockedNote')) : undefined}
+      side={tooltipSide}
+    >
       {button}
     </Tooltip>
   );

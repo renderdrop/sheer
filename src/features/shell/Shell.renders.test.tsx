@@ -5,6 +5,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { DocumentInfo } from '../../api/documents';
 import { PANEL } from '../../components/tokens';
+import { bindLocaleToSettings } from '../../i18n/bind';
+import { useLocaleStore } from '../../i18n/store';
 import { MAX_ZOOM } from '../../lib/zoom';
 import { setup } from '../../test/render';
 import { useSettings } from '../../stores/settings';
@@ -76,6 +78,7 @@ vi.mock('../../api/window', () => windowApi);
 const uiInitial = useUi.getState();
 const settingsInitial = useSettings.getState();
 const viewerInitial = useViewer.getState();
+const localeInitial = useLocaleStore.getState().locale;
 
 const REPORT: DocumentInfo = { id: 1, pageCount: 120, displayName: 'Quarterly report.pdf' };
 const NBSP = String.fromCharCode(0xa0);
@@ -92,6 +95,7 @@ function reset() {
   useViewer.setState({ ...viewerInitial }, true);
   useView.setState({ byDoc: {} });
   useSettings.setState({ ...settingsInitial, platform: null }, true);
+  useLocaleStore.setState({ locale: localeInitial });
 }
 
 beforeEach(() => {
@@ -331,6 +335,51 @@ describe('what changes often does not render the shell, the toolbar or the left 
     expect(renders.shell).toBe(before.shell + 1);
     expect(renders.toolbar).toBeGreaterThan(before.toolbar);
     expect(renders.leftPanel).toBe(before.leftPanel);
+  });
+});
+
+describe('a language switch', () => {
+  /** The language setting drives the locale through `bindLocaleToSettings`, as in the app. */
+  function chooseLanguage(language: 'en' | 'de') {
+    act(() => useSettings.setState({ language }));
+  }
+
+  it('re-renders the parts that show text and never the shell, with a document open', async () => {
+    const { user } = setup(<Shell />);
+    await openAndSettle(user);
+    const unbind = bindLocaleToSettings(document.documentElement);
+    try {
+      const before = counts();
+      chooseLanguage('de');
+      // The switch took effect: the toolbar renders again, with German text.
+      expect(screen.getByRole('toolbar', { name: 'Werkzeuge' })).not.toBeNull();
+      expect(renders.toolbar).toBeGreaterThan(before.toolbar);
+      expect(renders.shell).toBe(before.shell);
+
+      const german = counts();
+      chooseLanguage('en');
+      expect(screen.getByRole('toolbar', { name: 'Tools' })).not.toBeNull();
+      expect(renders.toolbar).toBeGreaterThan(german.toolbar);
+      expect(renders.shell).toBe(before.shell);
+    } finally {
+      unbind();
+    }
+  });
+
+  it('does not render the shell in the empty state either', () => {
+    setup(<Shell />);
+    const unbind = bindLocaleToSettings(document.documentElement);
+    try {
+      const before = counts();
+      chooseLanguage('de');
+      expect(screen.getByRole('heading', { level: 1, name: 'PDF öffnen' })).not.toBeNull();
+      expect(renders.shell).toBe(before.shell);
+      chooseLanguage('en');
+      expect(screen.getByRole('heading', { level: 1, name: 'Open a PDF' })).not.toBeNull();
+      expect(renders.shell).toBe(before.shell);
+    } finally {
+      unbind();
+    }
   });
 });
 

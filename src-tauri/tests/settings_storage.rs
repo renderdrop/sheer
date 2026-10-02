@@ -17,7 +17,7 @@ use serde_json::{json, Value};
 use sheer_lib::error::ErrorCode;
 use sheer_lib::storage::atomic::write_atomic;
 use sheer_lib::storage::settings::{
-    GlassMode, Settings, SettingsPatch, SettingsStore, ThemeMode, FILE_NAME,
+    GlassMode, Language, Settings, SettingsPatch, SettingsStore, ThemeMode, FILE_NAME,
 };
 
 /// A scratch directory under the system temp dir, removed on drop.
@@ -85,6 +85,35 @@ fn a_rejected_patch_never_reaches_the_file() {
     assert!(SettingsPatch::from_value(&json!({ "glass": "solid", "theme": "neon" })).is_err());
     assert_eq!(store.get(), Settings::default());
     assert!(!dir.settings_file().exists());
+}
+
+#[test]
+fn an_unknown_language_is_rejected_whole_and_the_saved_language_stays() {
+    let dir = TempDir::new();
+    let store = SettingsStore::load(dir.settings_file());
+    store.update(patch(json!({ "language": "de" }))).unwrap();
+    let before = fs::read(dir.settings_file()).unwrap();
+
+    for bad in [
+        json!({ "language": "fr" }),
+        json!({ "theme": "dark", "language": "de-DE" }),
+        json!({ "glass": "solid", "language": "DE" }),
+        json!({ "language": null }),
+        json!({ "language": ["de"] }),
+        json!({ "language": "" }),
+    ] {
+        let error = SettingsPatch::from_value(&bad).unwrap_err();
+        assert_eq!(error.code(), ErrorCode::InvalidArgument, "{bad}");
+    }
+
+    // A rejected patch changed neither the memory nor the file.
+    assert_eq!(store.get().language, Language::De);
+    assert_eq!(store.get().theme, ThemeMode::System);
+    assert_eq!(fs::read(dir.settings_file()).unwrap(), before);
+    assert_eq!(
+        SettingsStore::load(dir.settings_file()).get().language,
+        Language::De
+    );
 }
 
 // --- criterion 2: atomic write, damaged or missing file ----------------------------------------------------------
@@ -229,7 +258,7 @@ fn the_next_update_repairs_a_damaged_file() {
     let stored: Value = serde_json::from_slice(&fs::read(dir.settings_file()).unwrap()).unwrap();
     assert_eq!(
         stored,
-        json!({ "glass": "auto", "theme": "dark", "leftPanelWidth": 248 })
+        json!({ "glass": "auto", "theme": "dark", "language": "system", "leftPanelWidth": 248 })
     );
     assert_eq!(names(dir.path()), [FILE_NAME]);
 }

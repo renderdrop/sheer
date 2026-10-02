@@ -1,15 +1,15 @@
+import { formatNumber, formatPercent, type Locale } from '../../i18n';
+
 /** Text of the status bar (DESIGN 3.10). Pure functions, so the formats are tested without a DOM. */
 
-const NO_BREAK_SPACE = String.fromCharCode(0xa0);
-
-/** "3 / 120": the page button. `pageIndex` is zero-based. */
-export function formatPageStatus(pageIndex: number, pageCount: number): string {
-  return `${pageIndex + 1} / ${pageCount}`;
+/** "3 / 120" ("1.234 / 12.000" in German): the page button. `pageIndex` is zero-based. */
+export function formatPageStatus(pageIndex: number, pageCount: number, locale: Locale): string {
+  return `${formatNumber(pageIndex + 1, locale)} / ${formatNumber(pageCount, locale)}`;
 }
 
 /** "125 %": the zoom readout of the status bar and the toolbar. A no-break space keeps the number and the sign together. */
-export function formatZoomStatus(zoom: number): string {
-  return `${Math.round(zoom * 100)}${NO_BREAK_SPACE}%`;
+export function formatZoomStatus(zoom: number, locale: Locale): string {
+  return formatPercent(zoom, locale);
 }
 
 /** The last characters of a file name that stay visible when the name does not fit (the extension and a bit before it). */

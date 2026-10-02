@@ -6,7 +6,7 @@ import { IconButton } from '../../components';
 import { cx } from '../../components/cx';
 import { Icon } from '../../components/Icon';
 import { useRevealMotion } from '../../components/motion';
-import { strings } from '../../strings';
+import { errorText, useT } from '../../i18n';
 import { useUi } from '../../stores/ui';
 import type { AppError } from '../../api/errors';
 
@@ -24,6 +24,7 @@ export interface BannerProps {
  * moves, and not at rest, where the shadow of the glass reaches beyond the row.
  */
 export function Banner({ error, onDismiss }: BannerProps) {
+  const t = useT();
   const motionProps = useRevealMotion();
   const present = useIsPresent();
   const [moving, setMoving] = useState(false);
@@ -38,8 +39,8 @@ export function Banner({ error, onDismiss }: BannerProps) {
         <span className="shrink-0 text-error-icon">
           <Icon icon={CircleAlert} />
         </span>
-        <span className="min-w-0 flex-auto text-error-text">{strings.error(error)}</span>
-        <IconButton label={strings.dismiss} icon={X} size="sm" onClick={onDismiss} />
+        <span className="min-w-0 flex-auto text-error-text">{errorText(t, error)}</span>
+        <IconButton label={t('action.dismiss')} icon={X} size="sm" onClick={onDismiss} />
       </div>
     </motion.div>
   );

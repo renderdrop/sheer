@@ -7,6 +7,7 @@ import {
   updateSettings,
   watchTransparency,
   type GlassMode,
+  type Language,
   type Platform,
   type Settings,
   type SettingsPatch,
@@ -30,6 +31,8 @@ export interface SettingsState extends Settings {
   update: (patch: SettingsPatch) => Promise<void>;
   setGlass: (glass: GlassMode) => Promise<void>;
   setTheme: (theme: ThemeMode) => Promise<void>;
+  /** "system", "en" or "de". `bindLocaleToSettings` (src/i18n/bind.ts) turns it into the UI's locale. */
+  setLanguage: (language: Language) => Promise<void>;
 }
 
 /** Number of the newest `update` call. A slower, older answer must not overwrite a newer one. */
@@ -72,6 +75,7 @@ export const useSettings = create<SettingsState>()((set, get) => ({
 
   setGlass: (glass) => get().update({ glass }),
   setTheme: (theme) => get().update({ theme }),
+  setLanguage: (language) => get().update({ language }),
 }));
 
 /** `html[data-theme]`: absent for "system" so the OS decides. */

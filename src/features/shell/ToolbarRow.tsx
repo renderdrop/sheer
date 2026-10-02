@@ -1,6 +1,6 @@
 import { Toolbar, type MenuEntry, type ToolbarEntry } from '../../components';
 import { cx } from '../../components/cx';
-import { strings } from '../../strings';
+import { useT } from '../../i18n';
 
 export interface ToolbarRowProps {
   entries: readonly ToolbarEntry[];
@@ -18,6 +18,7 @@ export interface ToolbarRowProps {
  * buttons, which never drag). That is what lets macOS do without a title bar (`titleBarStyle: Overlay`).
  */
 export function ToolbarRow({ entries, moreItems, trafficLightInset }: ToolbarRowProps) {
+  const t = useT();
   return (
     <div
       data-tauri-drag-region="deep"
@@ -26,7 +27,7 @@ export function ToolbarRow({ entries, moreItems, trafficLightInset }: ToolbarRow
         trafficLightInset ? 'ps-chrome-inset' : 'ps-1',
       )}
     >
-      <Toolbar label={strings.toolbarLabel} entries={entries} moreItems={moreItems} className="min-w-0 flex-auto" />
+      <Toolbar label={t('toolbar.label')} entries={entries} moreItems={moreItems} className="min-w-0 flex-auto" />
     </div>
   );
 }

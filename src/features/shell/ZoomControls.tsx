@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 
 import type { MenuEntry } from '../../components';
+import { useLocale } from '../../i18n';
 import { useDocViewValue } from '../../stores/view';
 import { selectDocId, useViewer } from '../viewer/useViewer';
 import { formatZoomStatus } from './status';
@@ -17,12 +18,13 @@ function useZoom(): number {
  * not once per zoom step (a wheel zoom makes dozens of steps a second).
  */
 export function ZoomReadout() {
-  return <>{formatZoomStatus(useZoom())}</>;
+  return <>{formatZoomStatus(useZoom(), useLocale())}</>;
 }
 
 /** The zoom presets with the current one checked, for the toolbar's zoom menu. A hook: the menu calls it while it is open. */
 export function useZoomMenu(): readonly MenuEntry[] {
   const zoom = useZoom();
+  const locale = useLocale();
   const setZoom = useViewer((state) => state.setZoom);
-  return useMemo(() => zoomMenuEntries(zoom, setZoom), [zoom, setZoom]);
+  return useMemo(() => zoomMenuEntries(zoom, setZoom, locale), [zoom, setZoom, locale]);
 }

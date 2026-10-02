@@ -6,20 +6,31 @@ const NBSP = String.fromCharCode(0xa0);
 
 describe('formatPageStatus', () => {
   it('shows the one-based page and the count', () => {
-    expect(formatPageStatus(0, 1)).toBe('1 / 1');
-    expect(formatPageStatus(2, 120)).toBe('3 / 120');
-    expect(formatPageStatus(499, 500)).toBe('500 / 500');
+    expect(formatPageStatus(0, 1, 'en')).toBe('1 / 1');
+    expect(formatPageStatus(2, 120, 'en')).toBe('3 / 120');
+    expect(formatPageStatus(499, 500, 'en')).toBe('500 / 500');
+  });
+
+  it('writes the numbers the way the language does', () => {
+    expect(formatPageStatus(1233, 12000, 'en')).toBe('1,234 / 12,000');
+    expect(formatPageStatus(1233, 12000, 'de')).toBe('1.234 / 12.000');
+    expect(formatPageStatus(2, 120, 'de')).toBe('3 / 120');
   });
 });
 
 describe('formatZoomStatus', () => {
   it('rounds to whole percent with a no-break space before the sign', () => {
-    expect(formatZoomStatus(1)).toBe(`100${NBSP}%`);
-    expect(formatZoomStatus(1.25)).toBe(`125${NBSP}%`);
-    expect(formatZoomStatus(0.67)).toBe(`67${NBSP}%`);
-    expect(formatZoomStatus(0.333)).toBe(`33${NBSP}%`);
-    expect(formatZoomStatus(4)).toBe(`400${NBSP}%`);
-    expect(formatZoomStatus(0.25)).toBe(`25${NBSP}%`);
+    expect(formatZoomStatus(1, 'en')).toBe(`100${NBSP}%`);
+    expect(formatZoomStatus(1.25, 'en')).toBe(`125${NBSP}%`);
+    expect(formatZoomStatus(0.67, 'en')).toBe(`67${NBSP}%`);
+    expect(formatZoomStatus(0.333, 'en')).toBe(`33${NBSP}%`);
+    expect(formatZoomStatus(4, 'en')).toBe(`400${NBSP}%`);
+    expect(formatZoomStatus(0.25, 'en')).toBe(`25${NBSP}%`);
+  });
+
+  it('reads the same in German', () => {
+    expect(formatZoomStatus(1.25, 'de')).toBe(`125${NBSP}%`);
+    expect(formatZoomStatus(0.67, 'de')).toBe(`67${NBSP}%`);
   });
 });
 

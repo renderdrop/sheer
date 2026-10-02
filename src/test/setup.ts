@@ -1,9 +1,16 @@
-import { afterEach } from 'vitest';
+import { afterEach, beforeEach } from 'vitest';
+
+import { useLocaleStore } from '../i18n/store';
 
 /**
  * Runs before every test file. Node tests (stores, api, tokens) need nothing. Component tests run in jsdom (docblock
  * `// @vitest-environment jsdom`), which lacks a few browser APIs the components use; they are stubbed here.
  */
+// The UI renders in English unless a test switches it: `navigator.language` is the machine's language under node.
+beforeEach(() => {
+  useLocaleStore.setState({ locale: 'en' });
+});
+
 if (typeof document !== 'undefined') {
   const { cleanup } = await import('@testing-library/react');
   const { MotionGlobalConfig } = await import('motion/react');

@@ -5,7 +5,7 @@ import { Button } from '../../components';
 import { SELECTED_FORCED_COLORS } from '../../components/controlStyles';
 import { cx } from '../../components/cx';
 import { Icon } from '../../components/Icon';
-import { strings } from '../../strings';
+import { useT } from '../../i18n';
 
 /** One row of the recent files list (M1 brings the row itself: thumbnail, name, folder and age, remove). */
 export interface RecentRow {
@@ -48,6 +48,7 @@ export function EmptyState({
   dropActive = false,
   recents = [],
 }: EmptyStateProps) {
+  const t = useT();
   return (
     <main className="m-auto flex w-full max-w-empty-max flex-col">
       <section
@@ -68,8 +69,10 @@ export function EmptyState({
         <div className="relative grid size-6 place-items-center rounded-button bg-tile text-tile-icon">
           <Icon icon={FileUp} size={24} />
         </div>
-        <h1 className="relative m-0 font-display text-xl">{dropActive ? strings.dropToOpen : strings.emptyTitle}</h1>
-        <p className="relative m-0 text-text-muted">{strings.emptyHint}</p>
+        <h1 className="relative m-0 font-display text-xl">
+          {dropActive ? t('canvas.dropToOpen') : t('emptyState.title')}
+        </h1>
+        <p className="relative m-0 text-text-muted">{t('emptyState.hint')}</p>
         <div className="relative flex items-center gap-1-5">
           <Button
             variant="primary"
@@ -80,17 +83,17 @@ export function EmptyState({
             aria-keyshortcuts={openKeyShortcuts}
             onClick={onOpen}
           >
-            {opening ? strings.opening : strings.open}
+            {opening ? t('action.opening') : t('action.open')}
           </Button>
           <span className="text-sm text-text-muted">{openShortcut}</span>
         </div>
       </section>
       <section aria-labelledby="recent-heading" className="mt-4 flex flex-col gap-1">
         <h2 id="recent-heading" className="m-0 text-sm font-semibold text-text-muted">
-          {strings.recentHeading}
+          {t('emptyState.recent')}
         </h2>
         {recents.length === 0 ? (
-          <p className="m-0 rounded-button p-1 text-sm text-text-muted">{strings.recentPlaceholder}</p>
+          <p className="m-0 rounded-button p-1 text-sm text-text-muted">{t('emptyState.recentPlaceholder')}</p>
         ) : (
           <>
             <ul className="m-0 flex list-none flex-col gap-0-5 p-0">
@@ -98,7 +101,7 @@ export function EmptyState({
                 <li key={row.id}>{row.content}</li>
               ))}
             </ul>
-            <p className="m-0 text-sm text-text-muted">{strings.recentPrivacy}</p>
+            <p className="m-0 text-sm text-text-muted">{t('emptyState.recentPrivacy')}</p>
           </>
         )}
       </section>

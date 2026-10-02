@@ -1,5 +1,6 @@
 import { Channel } from '@tauri-apps/api/core';
 
+import { LANGUAGES, type Language } from '../i18n/locale';
 import { call } from './call';
 import { toAppError } from './errors';
 
@@ -7,12 +8,14 @@ import { toAppError } from './errors';
 export const PLATFORMS = ['macos', 'windows', 'linux'] as const;
 export type Platform = (typeof PLATFORMS)[number];
 
-/** Wire names of the backend's `GlassMode` and `ThemeMode` (src-tauri/src/storage/settings.rs). Keep in sync. */
+/** Wire names of the backend's `GlassMode`, `ThemeMode` and `Language` (storage/settings.rs). Keep in sync. */
 export const GLASS_MODES = ['auto', 'solid'] as const;
 export type GlassMode = (typeof GLASS_MODES)[number];
 
 export const THEME_MODES = ['system', 'light', 'dark'] as const;
 export type ThemeMode = (typeof THEME_MODES)[number];
+
+export { LANGUAGES, type Language };
 
 /**
  * Range and default of the left panel's width in px (src-tauri/src/limits.rs, DESIGN 2 and 3.8). A test checks these
@@ -20,10 +23,12 @@ export type ThemeMode = (typeof THEME_MODES)[number];
  */
 export const LEFT_PANEL_WIDTH = { min: 192, max: 400, default: 248 } as const;
 
-/** The persisted settings. "Glass: Solid" forces opaque surfaces; the theme overrides the OS. */
+/** The persisted settings. "Glass: Solid" forces opaque surfaces; the theme and the language override the OS. */
 export interface Settings {
   glass: GlassMode;
   theme: ThemeMode;
+  /** "system" follows the OS language (German for `de*`, English otherwise). */
+  language: Language;
   /** Width of the left panel in px, an integer from `LEFT_PANEL_WIDTH.min` to `.max`. */
   leftPanelWidth: number;
 }
@@ -31,6 +36,7 @@ export interface Settings {
 export const DEFAULT_SETTINGS: Readonly<Settings> = {
   glass: 'auto',
   theme: 'system',
+  language: 'system',
   leftPanelWidth: LEFT_PANEL_WIDTH.default,
 };
 
@@ -61,11 +67,19 @@ function oneOf<T extends string>(values: readonly T[], value: unknown): T | null
 /** Validates a settings object from the backend. `null` if it is not one. */
 export function parseSettings(value: unknown): Settings | null {
   if (typeof value !== 'object' || value === null) return null;
-  const { glass, theme, leftPanelWidth } = value as { glass?: unknown; theme?: unknown; leftPanelWidth?: unknown };
+  const { glass, theme, language, leftPanelWidth } = value as {
+    glass?: unknown;
+    theme?: unknown;
+    language?: unknown;
+    leftPanelWidth?: unknown;
+  };
   const parsedGlass = oneOf(GLASS_MODES, glass);
   const parsedTheme = oneOf(THEME_MODES, theme);
-  if (parsedGlass === null || parsedTheme === null || !isPanelWidth(leftPanelWidth)) return null;
-  return { glass: parsedGlass, theme: parsedTheme, leftPanelWidth };
+  const parsedLanguage = oneOf(LANGUAGES, language);
+  if (parsedGlass === null || parsedTheme === null || parsedLanguage === null || !isPanelWidth(leftPanelWidth)) {
+    return null;
+  }
+  return { glass: parsedGlass, theme: parsedTheme, language: parsedLanguage, leftPanelWidth };
 }
 
 /** Validates the startup report from the backend. `null` if it is not one. */
