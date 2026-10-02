@@ -299,3 +299,53 @@ C++ build, and incremental writing is undocumented.
 
 **Consequences.** A save parses the whole file; benchmark this on the 500-page fixture in M2. Files grow with each incremental save until a
 clean copy is made.
+
+---
+
+## ADR-005 — Security baseline: CSP `connect-src`, config hardening, error and engine guards
+
+**Status:** accepted (2026-10-02)
+
+**Context.** ORCHESTRATOR_PROMPT §13.1 fixes the CSP at `connect-src 'none'` and `img-src 'self' asset: data: blob:`. The spike ships
+`connect-src ipc: http://ipc.localhost` and no `asset:`. Aligning the spike with ARCHITECTURE §10 (Phase 2, security baseline) needs these
+deviations on record, next to the other baseline decisions.
+
+**Options for `connect-src`.** (a) `'none'` as written. Tauri 2 sends every `invoke` as a `fetch` to its custom protocol: `ipc://localhost`, or
+`http://ipc.localhost` on Windows/WebView2. `'none'` blocks it. Tauri's own `ipc-protocol.js` then logs a warning and falls back to the
+postMessage interface, which answers by evaluating script in the page: a slower path that is not meant for multi-MB render frames (ADR-002 §6),
+and one CSP violation per session. (b) Serve frames from our own `sheer:` scheme: the page would then need that scheme in `img-src`/`connect-src`
+anyway, and commands still use the IPC protocol. (c) Keep the two IPC sources and nothing else.
+
+**Decision.** (c).
+1. **CSP (production):** `default-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; font-src 'self'; connect-src ipc:
+   http://ipc.localhost; object-src 'none'; base-uri 'none'; frame-src 'none'; form-action 'none'`. Scripts fall back to `default-src 'self'`:
+   no inline, no eval. `ipc:` and `http://ipc.localhost` are handlers inside the app (the webview intercepts the virtual host and Rust answers), not
+   network hosts. `http:`, `https:`, `ws:` and `*` stay blocked, so a page cannot send data to a server. `asset:` is dropped from `img-src` because the
+   asset protocol is off (`app.security.assetProtocol.enable = false`, no `protocol-asset` feature): pages arrive as bytes over IPC and become `blob:`
+   URLs. `devCsp` adds only `localhost:1420` for Vite and applies to `tauri dev`.
+2. **No DevTools in release.** Tauri enables the inspector only when `debug_assertions` or the `devtools` cargo feature is on (`webview/mod.rs`).
+   The `tauri` dependency keeps `features = []`, and the app crate defines no `[features]`.
+3. **Capabilities.** One file, window `main`, the three app commands only. No plugin permission (`core:`, `dialog:`, `fs:` …) is granted, so the
+   dialog plugin, which Rust calls, has no JS surface. No `remote` section, so no remote origin reaches IPC.
+4. **Panics unwind.** `[profile.release] panic = "unwind"`: the engine guard (3) relies on `catch_unwind`.
+5. **Pinned.** `src-tauri/tests/security_baseline.rs` asserts items 1–4, the absence of `dangerous*` options, `withGlobalTauri: false`, no shell/http/
+   websocket/process/global-shortcut plugins, and that no command takes a path or URL. Changing any of it needs a new ADR and a security-reviewer pass.
+
+**Errors (I4).** `AppError` is internal and not `Serialize`. `UiError { code, key, retryable, params? }` is the only type that reaches IPC, built by
+`From<AppError>`. `key` is `error.<code>`: ARCHITECTURE §7 lets the TS side derive it, the spike sends it so the contract is explicit, and the frontend
+checks it. `params` holds `what` (a fixed word such as `page`, `pixels`) and `limit`; they are `&'static str`/numbers, so request data cannot reach them.
+The detail goes to stderr only in debug builds or with `SHEER_LOG=debug`. Codes follow ARCHITECTURE §7; the spike's older names are mapped
+(`unknown_document` → `not_found`, `page_out_of_range`/`scale_out_of_range` → `invalid_argument`, `render_too_large` → `limit_exceeded`, …).
+
+**Engine guards (P5).** Each job runs in `catch_unwind`; a panic becomes `engine_crashed`, the affected document is dropped and refuses further work until
+closed, the worker and other documents carry on. Deadlines per job: open 20 s, render 10 s, close 5 s (ADR-002 §8). There is no `sheer-watchdog`
+thread yet: callers wait with `recv_timeout`, and a shared `Health` mark tells later callers that the running job is past its deadline, so they fail with
+`engine_unavailable` at once instead of queueing behind it. Deviation from ADR-002 §8: that state ends when the slow job ends (no restart UI exists yet, and
+one slow page must not brick the session). A job whose caller has given up is skipped. The queue refuses new jobs when full (`try_send`).
+A segfault or a true hang inside PDFium stays uncatchable in-process; M7's engine process (P6) is the fix. Frames are capped at 4096 px per side and
+4096² pixels (ADR-002 §6), checked against the real page size before the bitmap is allocated; opened files must be regular and ≤ 2 GiB.
+Until M1 tiles large pages, the frontend answers `limit_exceeded` for a frame by retrying `render_page` at 0.7× scale (at most 4 times).
+
+**Consequences.** `connect-src` is the one place the CSP is looser than §13.1; revisit if Tauri offers IPC that needs no CSP source. The IPC errors
+are stable now, so changing a code name is a breaking change for `src/api/errors.ts`. Commands take `pageId` (identity mapping until M3) so the wire
+format survives page reordering.

@@ -1,11 +1,12 @@
 //! Sheer backend: Tauri shell, document registry and the PDFium engine worker.
 //!
-//! All PDF work happens here. The frontend only ever holds document ids and rendered PNG bytes.
+//! All PDF work happens here. The frontend only ever holds document ids, page ids and rendered frames (PNG bytes).
 
 pub mod commands;
 pub mod documents;
 pub mod engine;
 pub mod error;
+pub mod limits;
 
 use tauri::Manager;
 

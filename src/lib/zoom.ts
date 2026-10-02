@@ -8,7 +8,7 @@ export const ZOOM_STEPS: readonly number[] = [0.25, 0.33, 0.5, 0.67, 0.75, 0.9, 
 /** CSS pixels per PDF point (1 pt = 1/72 in, 1 CSS px = 1/96 in). */
 export const CSS_PX_PER_PT = 96 / 72;
 
-/** Backend render-scale limits (device px per pt). Keep in sync with src-tauri/src/engine/limits.rs. */
+/** Backend render-scale limits (device px per pt). Keep in sync with src-tauri/src/limits.rs. */
 export const MIN_RENDER_SCALE = 0.1;
 export const MAX_RENDER_SCALE = 8;
 

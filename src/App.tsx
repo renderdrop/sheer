@@ -2,7 +2,6 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { closeDocument, openDocumentDialog, renderPage, type DocumentInfo } from './api/documents';
 import { toAppError, type AppError } from './api/errors';
-import { readPngSize } from './lib/png';
 import {
   CSS_PX_PER_PT,
   DEFAULT_ZOOM,
@@ -68,16 +67,13 @@ export function App() {
     const timer = window.setTimeout(() => {
       const scale = scaleForZoom(zoom, window.devicePixelRatio);
       setRendering(true);
+      // Until pages can be reordered (M3) a page id is its position.
       renderPage(doc.id, pageIndex, scale)
-        .then((png) => {
+        .then((page) => {
           if (cancelled) return;
-          const size = readPngSize(png);
-          if (size === null) {
-            setError(toAppError(null));
-            return;
-          }
-          const url = URL.createObjectURL(new Blob([png], { type: 'image/png' }));
-          setView({ url, widthPt: size.width / scale });
+          const url = URL.createObjectURL(new Blob([page.data], { type: 'image/png' }));
+          // `page.scale` is lower than `scale` only if the backend refused the full-size frame.
+          setView({ url, widthPt: page.width / page.scale });
           setError(null);
         })
         .catch((caught: unknown) => {
@@ -232,20 +228,14 @@ export function App() {
         </div>
         {error !== null && (
           <div className="banner" role="alert">
-            <span className="banner-message">{error.message}</span>
+            <span className="banner-message">{strings.error(error)}</span>
             <button type="button" className="btn" onClick={() => setError(null)}>
               {strings.dismiss}
             </button>
           </div>
         )}
       </header>
-      <main
-        className="canvas"
-        ref={canvasRef}
-        tabIndex={0}
-        aria-label={strings.documentRegion}
-        aria-busy={rendering}
-      >
+      <main className="canvas" ref={canvasRef} tabIndex={0} aria-label={strings.documentRegion} aria-busy={rendering}>
         {view !== null ? (
           <div className="page">
             <img

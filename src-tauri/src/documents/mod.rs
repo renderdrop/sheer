@@ -1,7 +1,7 @@
 //! Document registry: opaque document id → file path.
 //!
 //! Paths only ever enter through the native file dialog (backend) and never leave the backend. The frontend works
-//! with [`DocumentId`] values alone.
+//! with [`DocumentId`] and [`PageId`] values alone.
 
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -10,14 +10,27 @@ use std::sync::{Mutex, MutexGuard, PoisonError};
 use serde::{Deserialize, Serialize};
 
 use crate::error::{AppError, ErrorCode};
-
-/// Upper bound for simultaneously open documents (bounds memory held by the engine).
-pub const MAX_OPEN_DOCUMENTS: usize = 32;
+use crate::limits;
 
 /// Opaque handle for an open document. Serialized as a plain number.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct DocumentId(u32);
+
+/// Opaque handle for a page of an open document. Serialized as a plain number.
+///
+/// Until pages can be reordered, inserted or deleted (M3) the id of a page is its position, so the registry maps ids
+/// to indices with the identity function ([`Registry::page_index`]). Commands already take a `PageId` so that
+/// nothing on the wire changes when the mapping becomes real.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct PageId(u32);
+
+impl PageId {
+    pub const fn new(value: u32) -> Self {
+        Self(value)
+    }
+}
 
 /// What the frontend learns about a document it just opened.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -59,8 +72,11 @@ impl Registry {
     /// Registers a path and returns its new id.
     pub fn register(&self, path: PathBuf) -> Result<DocumentId, AppError> {
         let mut inner = self.lock();
-        if inner.entries.len() >= MAX_OPEN_DOCUMENTS {
-            return Err(ErrorCode::TooManyDocuments.into());
+        if inner.entries.len() >= limits::MAX_OPEN_DOCUMENTS {
+            return Err(AppError::limit(
+                "documents",
+                limits::MAX_OPEN_DOCUMENTS as u64,
+            ));
         }
         let id = DocumentId(inner.next_id);
         inner.next_id = inner
@@ -84,17 +100,23 @@ impl Registry {
                 entry.page_count = Some(page_count);
                 Ok(())
             }
-            None => Err(ErrorCode::UnknownDocument.into()),
+            None => Err(AppError::not_found("document")),
         }
     }
 
-    /// Page count of a loaded document. Unknown or not yet loaded ids are `UnknownDocument`.
+    /// Page count of a loaded document. Unknown or not yet loaded ids are `not_found`.
     pub fn page_count(&self, id: DocumentId) -> Result<u32, AppError> {
         self.lock()
             .entries
             .get(&id)
             .and_then(|entry| entry.page_count)
-            .ok_or(AppError::new(ErrorCode::UnknownDocument))
+            .ok_or(AppError::not_found("document"))
+    }
+
+    /// Position of `page` in the loaded document `id`. Identity mapping until M3 (see [`PageId`]); fails with
+    /// `invalid_argument` if the page does not exist and with `not_found` if the document is unknown.
+    pub fn page_index(&self, id: DocumentId, page: PageId) -> Result<u32, AppError> {
+        limits::validate_page_index(page.0, self.page_count(id)?)
     }
 
     /// Path of a registered document (for reload and save in later milestones).
@@ -142,7 +164,7 @@ mod tests {
         let id = registry.register(path("a.pdf")).unwrap();
         assert_eq!(
             registry.page_count(id).unwrap_err().code(),
-            ErrorCode::UnknownDocument
+            ErrorCode::NotFound
         );
         registry.set_page_count(id, 7).unwrap();
         assert_eq!(registry.page_count(id).unwrap(), 7);
@@ -157,7 +179,7 @@ mod tests {
         assert!(!registry.remove(id));
         assert_eq!(
             registry.set_page_count(id, 1).unwrap_err().code(),
-            ErrorCode::UnknownDocument
+            ErrorCode::NotFound
         );
         assert_eq!(registry.path(id), None);
     }
@@ -165,14 +187,45 @@ mod tests {
     #[test]
     fn open_documents_are_capped() {
         let registry = Registry::new();
-        for i in 0..MAX_OPEN_DOCUMENTS {
+        for i in 0..limits::MAX_OPEN_DOCUMENTS {
             registry.register(path(&format!("{i}.pdf"))).unwrap();
         }
         assert_eq!(
             registry.register(path("extra.pdf")).unwrap_err().code(),
-            ErrorCode::TooManyDocuments
+            ErrorCode::LimitExceeded
         );
-        assert_eq!(registry.len(), MAX_OPEN_DOCUMENTS);
+        assert_eq!(registry.len(), limits::MAX_OPEN_DOCUMENTS);
+    }
+
+    #[test]
+    fn page_ids_resolve_by_identity_within_the_page_count() {
+        let registry = Registry::new();
+        let id = registry.register(path("a.pdf")).unwrap();
+        // Not loaded yet: the document is unknown to callers.
+        assert_eq!(
+            registry.page_index(id, PageId::new(0)).unwrap_err().code(),
+            ErrorCode::NotFound
+        );
+        registry.set_page_count(id, 3).unwrap();
+        assert_eq!(registry.page_index(id, PageId::new(0)).unwrap(), 0);
+        assert_eq!(registry.page_index(id, PageId::new(2)).unwrap(), 2);
+        for out_of_range in [3, 4, u32::MAX] {
+            assert_eq!(
+                registry
+                    .page_index(id, PageId::new(out_of_range))
+                    .unwrap_err()
+                    .code(),
+                ErrorCode::InvalidArgument
+            );
+        }
+    }
+
+    #[test]
+    fn page_ids_deserialize_from_plain_numbers() {
+        let page: PageId = serde_json::from_str("7").unwrap();
+        assert_eq!(page, PageId::new(7));
+        assert!(serde_json::from_str::<PageId>("-1").is_err());
+        assert!(serde_json::from_str::<PageId>("\"7\"").is_err());
     }
 
     #[test]

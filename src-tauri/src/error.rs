@@ -1,88 +1,197 @@
-//! UI-safe error type for IPC commands.
+//! Error model of the backend (ARCHITECTURE §7).
 //!
-//! An [`AppError`] carries only an [`ErrorCode`]. The message shown to the UI is a fixed string per code, so an error
-//! can never leak a file path, a stack trace or an internal id. Detail for debugging goes to the local log through
-//! [`AppError::logged`], at the place where the failure happens.
+//! [`AppError`] is the internal error. It carries a stable [`ErrorCode`], optional whitelisted [`UiParams`] and a
+//! free-text detail for the local log. It is deliberately **not** `Serialize`: the only way an error reaches the
+//! webview is `impl From<AppError> for UiError`. A [`UiError`] holds a stable code, the i18n key `error.<code>`, a
+//! retry hint and the whitelisted params. It never holds a path, a stack trace, a PDF string or an internal id, because
+//! none of those have a field to live in (SECURITY I4). The detail is written to the local log by that conversion,
+//! and only when debug logging is opted into (`SHEER_LOG=debug`, or a debug build).
 
 use std::fmt::{self, Display};
+use std::io;
+use std::sync::OnceLock;
 
 use serde::Serialize;
 
-/// Stable, machine-readable error identifiers. The frontend maps them to translated strings.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
-#[serde(rename_all = "snake_case")]
-pub enum ErrorCode {
-    /// The document id is not registered (never opened, or already closed).
-    UnknownDocument,
-    /// The page index is outside `0..page_count`.
-    PageOutOfRange,
-    /// The render scale is not a finite number in the allowed range.
-    ScaleOutOfRange,
-    /// The requested bitmap would exceed the pixel budget.
-    RenderTooLarge,
-    /// The file could not be opened or read.
-    FileUnreadable,
-    /// The file is not a PDF PDFium can parse.
-    InvalidPdf,
-    /// The PDF needs a password (handled in a later milestone).
-    PasswordRequired,
-    /// The PDF uses a security handler or feature the engine does not support.
-    Unsupported,
-    /// The limit of simultaneously open documents is reached.
-    TooManyDocuments,
-    /// The PDF engine could not be started (for example, the bundled PDFium library is missing).
-    EngineUnavailable,
-    /// The engine did not answer in time.
-    EngineTimeout,
-    /// Anything else. Details are in the local log.
-    Internal,
-}
-
-impl ErrorCode {
-    /// Fixed English message for this code. Never contains dynamic data.
-    pub const fn message(self) -> &'static str {
-        match self {
-            ErrorCode::UnknownDocument => "This document is no longer open.",
-            ErrorCode::PageOutOfRange => "This page does not exist.",
-            ErrorCode::ScaleOutOfRange => "This zoom level is not supported.",
-            ErrorCode::RenderTooLarge => "This page is too large to display at this zoom level.",
-            ErrorCode::FileUnreadable => "The file could not be opened.",
-            ErrorCode::InvalidPdf => "This file is not a valid PDF.",
-            ErrorCode::PasswordRequired => "This PDF is password protected.",
-            ErrorCode::Unsupported => "This PDF is not supported.",
-            ErrorCode::TooManyDocuments => "Too many documents are open. Close one and try again.",
-            ErrorCode::EngineUnavailable => "The PDF engine is not available.",
-            ErrorCode::EngineTimeout => "The PDF engine took too long to respond.",
-            ErrorCode::Internal => "Something went wrong.",
+/// Defines [`ErrorCode`] together with its wire name, i18n key and retry hint, so the three can never drift apart.
+macro_rules! error_codes {
+    ($($(#[$meta:meta])* $variant:ident => $name:literal, retryable: $retryable:literal;)+) => {
+        /// Stable, machine-readable error identifiers. The frontend mirrors this list in `src/api/errors.ts`
+        /// and maps each code to the translated string `error.<code>`.
+        #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+        pub enum ErrorCode {
+            $($(#[$meta])* #[serde(rename = $name)] $variant,)+
         }
+
+        impl ErrorCode {
+            /// Every code, for exhaustive tests.
+            pub const ALL: &'static [ErrorCode] = &[$(ErrorCode::$variant),+];
+
+            /// The wire name, for example `"not_a_pdf"`.
+            pub const fn as_str(self) -> &'static str {
+                match self {
+                    $(ErrorCode::$variant => $name),+
+                }
+            }
+
+            /// The i18n key the frontend translates, for example `"error.not_a_pdf"`.
+            pub const fn i18n_key(self) -> &'static str {
+                match self {
+                    $(ErrorCode::$variant => concat!("error.", $name)),+
+                }
+            }
+
+            /// Whether trying the same request again may succeed.
+            pub const fn retryable(self) -> bool {
+                match self {
+                    $(ErrorCode::$variant => $retryable),+
+                }
+            }
+        }
+    };
+}
+
+error_codes! {
+    /// A request argument is malformed or out of range (page, scale).
+    InvalidArgument => "invalid_argument", retryable: false;
+    /// A size or count limit would be exceeded (render pixels, open documents).
+    LimitExceeded => "limit_exceeded", retryable: false;
+    /// The document id is not registered (never opened, or already closed).
+    NotFound => "not_found", retryable: false;
+    /// The file is not a PDF.
+    NotAPdf => "not_a_pdf", retryable: false;
+    /// The file is a PDF that PDFium cannot read or render.
+    DamagedFile => "damaged_file", retryable: false;
+    /// The file is larger than the app opens.
+    TooLarge => "too_large", retryable: false;
+    /// The PDF uses a security handler or feature the engine does not support.
+    UnsupportedFeature => "unsupported_feature", retryable: false;
+    /// The PDF needs a password (handled in a later milestone).
+    PasswordRequired => "password_required", retryable: false;
+    /// The OS refused access to the file.
+    IoPermissionDenied => "io_permission_denied", retryable: false;
+    /// The file does not exist (any more).
+    IoNotFound => "io_not_found", retryable: false;
+    /// Another program holds the file open exclusively.
+    IoInUse => "io_in_use", retryable: true;
+    /// The engine did not answer within the deadline of its job.
+    EngineTimeout => "engine_timeout", retryable: true;
+    /// A PDF job panicked. The worker survives, the affected document is dropped.
+    EngineCrashed => "engine_crashed", retryable: false;
+    /// The engine cannot work: the bundled PDFium is missing, or a job is stuck past its deadline.
+    EngineUnavailable => "engine_unavailable", retryable: false;
+    /// Anything else. Details are in the local log.
+    Internal => "internal", retryable: false;
+}
+
+impl Display for ErrorCode {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.as_str())
     }
 }
 
-/// Error returned by every IPC command. Serializes to `{ "code": "...", "message": "..." }`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct AppError {
+/// Whitelisted context for the UI. `what` names the argument or resource in a fixed vocabulary (`"page"`, `"scale"`,
+/// `"document"`, `"documents"`, `"dimension"`, `"pixels"`, `"file_size"`). It is a `&'static str`, so request data can
+/// never end up in it. `limit` is the bound that was exceeded.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+pub struct UiParams {
+    pub what: &'static str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub limit: Option<u64>,
+}
+
+/// The only error type that crosses the IPC boundary. Serializes to
+/// `{ "code", "key", "retryable", "params"? }`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct UiError {
     code: ErrorCode,
+    key: &'static str,
+    retryable: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    params: Option<UiParams>,
 }
 
-impl AppError {
-    pub const fn new(code: ErrorCode) -> Self {
-        Self { code }
-    }
-
-    /// Builds an error and writes `detail` to the local log (stderr). `detail` must not contain document content.
-    pub fn logged(code: ErrorCode, detail: impl Display) -> Self {
-        eprintln!("sheer: {code:?}: {detail}");
-        Self { code }
-    }
-
+impl UiError {
     pub const fn code(&self) -> ErrorCode {
         self.code
     }
 }
 
+/// Internal error of the backend. Convert with `UiError::from` at the command boundary.
+#[derive(Debug)]
+pub struct AppError {
+    code: ErrorCode,
+    params: Option<UiParams>,
+    /// Free text for the local log only. May contain paths, so it never leaves the process through IPC.
+    detail: Option<String>,
+}
+
+impl AppError {
+    pub const fn new(code: ErrorCode) -> Self {
+        Self {
+            code,
+            params: None,
+            detail: None,
+        }
+    }
+
+    /// An error with `detail` for the local log. `detail` must not contain document content.
+    pub fn logged(code: ErrorCode, detail: impl Display) -> Self {
+        Self {
+            code,
+            params: None,
+            detail: Some(detail.to_string()),
+        }
+    }
+
+    /// `invalid_argument` for the argument called `what`.
+    pub const fn invalid(what: &'static str) -> Self {
+        Self::with_params(ErrorCode::InvalidArgument, what, None)
+    }
+
+    /// `not_found` for the resource called `what`.
+    pub const fn not_found(what: &'static str) -> Self {
+        Self::with_params(ErrorCode::NotFound, what, None)
+    }
+
+    /// `limit_exceeded`: `what` would go past `max`.
+    pub const fn limit(what: &'static str, max: u64) -> Self {
+        Self::with_params(ErrorCode::LimitExceeded, what, Some(max))
+    }
+
+    /// `too_large`: `what` is bigger than `max`.
+    pub const fn too_large(what: &'static str, max: u64) -> Self {
+        Self::with_params(ErrorCode::TooLarge, what, Some(max))
+    }
+
+    const fn with_params(code: ErrorCode, what: &'static str, limit: Option<u64>) -> Self {
+        Self {
+            code,
+            params: Some(UiParams { what, limit }),
+            detail: None,
+        }
+    }
+
+    pub const fn code(&self) -> ErrorCode {
+        self.code
+    }
+
+    /// Writes the error to the local log: the code always, the detail only when debug logging is on.
+    pub(crate) fn log(&self) {
+        match (&self.detail, detail_logging_enabled()) {
+            (Some(detail), true) => eprintln!("sheer: {}: {detail}", self.code),
+            _ => eprintln!("sheer: {}", self.code),
+        }
+    }
+}
+
 impl Display for AppError {
+    /// For the local log and tests only. Never shown in the UI: it can contain the detail.
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(self.code.message())
+        match &self.detail {
+            Some(detail) => write!(f, "{}: {detail}", self.code),
+            None => write!(f, "{}", self.code),
+        }
     }
 }
 
@@ -94,33 +203,190 @@ impl From<ErrorCode> for AppError {
     }
 }
 
-impl Serialize for AppError {
-    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        use serde::ser::SerializeStruct;
-        let mut state = serializer.serialize_struct("AppError", 2)?;
-        state.serialize_field("code", &self.code)?;
-        state.serialize_field("message", self.code.message())?;
-        state.end()
+impl From<io::Error> for AppError {
+    /// Maps the error kind to a specific code. The OS message, which usually contains the path, goes to the log only.
+    fn from(error: io::Error) -> Self {
+        Self::logged(io_code(&error), error)
     }
+}
+
+impl From<AppError> for UiError {
+    /// The only way an error reaches IPC. Logs the full error locally, then keeps code, key, hint and params.
+    fn from(error: AppError) -> Self {
+        error.log();
+        Self {
+            code: error.code,
+            key: error.code.i18n_key(),
+            retryable: error.code.retryable(),
+            params: error.params,
+        }
+    }
+}
+
+fn io_code(error: &io::Error) -> ErrorCode {
+    // Windows ERROR_SHARING_VIOLATION (32) and ERROR_LOCK_VIOLATION (33): another program holds the file.
+    let sharing_violation = cfg!(windows) && matches!(error.raw_os_error(), Some(32 | 33));
+    match error.kind() {
+        io::ErrorKind::NotFound => ErrorCode::IoNotFound,
+        io::ErrorKind::PermissionDenied => ErrorCode::IoPermissionDenied,
+        io::ErrorKind::ResourceBusy => ErrorCode::IoInUse,
+        _ if sharing_violation => ErrorCode::IoInUse,
+        _ => ErrorCode::Internal,
+    }
+}
+
+/// Details (paths, OS messages) are logged only in debug builds or with `SHEER_LOG=debug` (SECURITY I4, D6).
+fn detail_logging_enabled() -> bool {
+    static ENABLED: OnceLock<bool> = OnceLock::new();
+    *ENABLED.get_or_init(|| {
+        detail_logging_for(
+            cfg!(debug_assertions),
+            std::env::var("SHEER_LOG").ok().as_deref(),
+        )
+    })
+}
+
+fn detail_logging_for(debug_build: bool, env_level: Option<&str>) -> bool {
+    debug_build || env_level == Some("debug")
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
+    fn json(error: AppError) -> String {
+        serde_json::to_string(&UiError::from(error)).unwrap()
+    }
+
     #[test]
-    fn serializes_code_and_fixed_message() {
-        let json = serde_json::to_string(&AppError::new(ErrorCode::PageOutOfRange)).unwrap();
+    fn serializes_code_key_and_params() {
         assert_eq!(
-            json,
-            r#"{"code":"page_out_of_range","message":"This page does not exist."}"#
+            json(AppError::invalid("page")),
+            r#"{"code":"invalid_argument","key":"error.invalid_argument","retryable":false,"params":{"what":"page"}}"#
+        );
+        assert_eq!(
+            json(AppError::limit("pixels", 16_777_216)),
+            r#"{"code":"limit_exceeded","key":"error.limit_exceeded","retryable":false,"params":{"what":"pixels","limit":16777216}}"#
+        );
+        assert_eq!(
+            json(AppError::new(ErrorCode::EngineTimeout)),
+            r#"{"code":"engine_timeout","key":"error.engine_timeout","retryable":true}"#
         );
     }
 
     #[test]
-    fn logged_error_keeps_detail_out_of_the_message() {
-        let error = AppError::logged(ErrorCode::FileUnreadable, "C:/secret/path.pdf");
-        assert!(!error.to_string().contains("secret"));
-        assert_eq!(error.code(), ErrorCode::FileUnreadable);
+    fn every_code_has_a_stable_wire_name_and_key() {
+        let mut seen = std::collections::HashSet::new();
+        for &code in ErrorCode::ALL {
+            let name = code.as_str();
+            assert!(seen.insert(name), "duplicate code {name}");
+            assert!(
+                !name.is_empty() && name.bytes().all(|b| b.is_ascii_lowercase() || b == b'_'),
+                "{name} is not snake_case"
+            );
+            assert_eq!(code.i18n_key(), format!("error.{name}"));
+            assert_eq!(serde_json::to_value(code).unwrap(), name);
+            assert_eq!(code.to_string(), name);
+        }
+    }
+
+    #[test]
+    fn ui_errors_never_leak_paths_or_debug_text() {
+        let hostile = [
+            r"C:\Users\user\Documents\secret-plan.pdf",
+            "/home/user/secret-plan.pdf",
+            r"\\?\C:\Users\user\secret-plan.pdf",
+            "thread 'sheer-pdfium' panicked at src/engine/worker.rs:12:5",
+            r#"Os { code: 2, kind: NotFound, message: "secret-plan.pdf" }"#,
+        ];
+        for &code in ErrorCode::ALL {
+            for detail in hostile {
+                let ui = UiError::from(AppError::logged(code, detail));
+                let text = serde_json::to_string(&ui).unwrap();
+                for forbidden in [
+                    "secret",
+                    "Users",
+                    "home",
+                    "panicked",
+                    "Os {",
+                    "worker.rs",
+                    "\\",
+                    "/",
+                    ":\\",
+                ] {
+                    assert!(
+                        !text.contains(forbidden),
+                        "{code}: {forbidden:?} leaked into {text}"
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn io_errors_keep_their_path_out_of_the_ui() {
+        let os_message = io::Error::new(
+            io::ErrorKind::NotFound,
+            r"C:\Users\user\Documents\secret-plan.pdf not found",
+        );
+        let ui = UiError::from(AppError::from(os_message));
+        assert_eq!(ui.code(), ErrorCode::IoNotFound);
+        assert!(!serde_json::to_string(&ui).unwrap().contains("secret"));
+    }
+
+    #[test]
+    fn io_errors_map_to_specific_codes() {
+        let code = |kind| AppError::from(io::Error::from(kind)).code();
+        assert_eq!(code(io::ErrorKind::NotFound), ErrorCode::IoNotFound);
+        assert_eq!(
+            code(io::ErrorKind::PermissionDenied),
+            ErrorCode::IoPermissionDenied
+        );
+        assert_eq!(code(io::ErrorKind::ResourceBusy), ErrorCode::IoInUse);
+        assert_eq!(code(io::ErrorKind::UnexpectedEof), ErrorCode::Internal);
+        #[cfg(windows)]
+        assert_eq!(
+            AppError::from(io::Error::from_raw_os_error(32)).code(),
+            ErrorCode::IoInUse
+        );
+    }
+
+    #[test]
+    fn params_only_carry_the_fixed_vocabulary() {
+        let samples = [
+            AppError::invalid("page"),
+            AppError::invalid("scale"),
+            AppError::not_found("document"),
+            AppError::limit("documents", 32),
+            AppError::limit("dimension", 4096),
+            AppError::limit("pixels", 16_777_216),
+            AppError::too_large("file_size", 2_147_483_648),
+        ];
+        for error in samples {
+            let params = error.params.unwrap();
+            assert!(
+                params
+                    .what
+                    .bytes()
+                    .all(|b| b.is_ascii_lowercase() || b == b'_'),
+                "{}",
+                params.what
+            );
+        }
+    }
+
+    #[test]
+    fn detail_logging_is_opt_in_for_release_builds() {
+        assert!(!detail_logging_for(false, None));
+        assert!(!detail_logging_for(false, Some("warn")));
+        assert!(detail_logging_for(false, Some("debug")));
+        assert!(detail_logging_for(true, None));
+    }
+
+    #[test]
+    fn app_error_display_is_for_logs_and_keeps_the_detail() {
+        let error = AppError::logged(ErrorCode::Internal, "step 3 failed");
+        assert_eq!(error.to_string(), "internal: step 3 failed");
+        assert_eq!(AppError::new(ErrorCode::NotFound).to_string(), "not_found");
     }
 }

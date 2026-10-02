@@ -1,26 +1,37 @@
 //! The worker thread. The only code that touches PDFium.
 
-use std::collections::HashMap;
-use std::panic::{catch_unwind, AssertUnwindSafe};
+use std::collections::{HashMap, HashSet};
 use std::path::Path;
 use std::sync::mpsc::Receiver;
 
 use pdfium_render::prelude::*;
 
-use super::{encode, limits, Request};
+use super::guard::{guarded, Health};
+use super::{encode, Job, Reply, Request};
 use crate::documents::DocumentId;
 use crate::error::{AppError, ErrorCode};
+use crate::limits;
 
 type Documents<'a> = HashMap<DocumentId, PdfDocument<'a>>;
 
-/// Worker entry point: binds PDFium, then serves requests until every `Engine` handle is gone.
-pub(super) fn run(library: &Path, requests: Receiver<Request>) {
-    let bindings = match Pdfium::bind_to_library(library) {
+/// Worker entry point: binds PDFium, then serves jobs until every `Engine` handle is gone.
+pub(super) fn run(library: &Path, requests: Receiver<Request>, health: &Health) {
+    let bound = guarded(|| {
+        Pdfium::bind_to_library(library).map_err(|error| {
+            AppError::logged(
+                ErrorCode::EngineUnavailable,
+                format!("could not load the PDFium library: {error}"),
+            )
+        })
+    });
+    let bindings = match bound {
         Ok(bindings) => bindings,
         Err(error) => {
-            eprintln!("sheer: could not load the PDFium library: {error}");
+            error.log();
             for request in requests {
-                request.fail(AppError::new(ErrorCode::EngineUnavailable));
+                request
+                    .job
+                    .fail(AppError::new(ErrorCode::EngineUnavailable));
             }
             return;
         }
@@ -28,38 +39,87 @@ pub(super) fn run(library: &Path, requests: Receiver<Request>) {
     // `documents` borrows `pdfium`, so it must be declared after it (drop order: documents first).
     let pdfium = Pdfium::new(bindings);
     let mut documents: Documents<'_> = HashMap::new();
+    // Documents whose job panicked. They are dropped from `documents` and refuse further work until closed.
+    let mut crashed: HashSet<DocumentId> = HashSet::new();
 
     for request in requests {
-        match request {
-            Request::Open { id, path, reply } => {
-                let result = guarded(|| open(&pdfium, &mut documents, id, &path));
-                // The caller may have timed out and dropped its receiver.
-                let _ = reply.send(result);
-            }
-            Request::Render {
-                id,
-                page_index,
-                scale,
-                reply,
-            } => {
-                let result = guarded(|| match documents.get(&id) {
+        // The caller already gave up (an earlier job ran long): skip the stale work.
+        if request.expired() {
+            request.job.fail(AppError::logged(
+                ErrorCode::EngineTimeout,
+                "job expired in the queue",
+            ));
+            continue;
+        }
+        let _busy = health.begin(request.deadline);
+        serve(&pdfium, &mut documents, &mut crashed, request.job);
+    }
+}
+
+/// Runs one job inside the panic guard and sends the answer.
+fn serve<'a>(
+    pdfium: &'a Pdfium,
+    documents: &mut Documents<'a>,
+    crashed: &mut HashSet<DocumentId>,
+    job: Job,
+) {
+    match job {
+        Job::Open { id, path, reply } => {
+            let result = guarded(|| open(pdfium, documents, id, &path));
+            answer(reply, result, None, documents, crashed);
+        }
+        Job::Render {
+            id,
+            page_index,
+            scale,
+            reply,
+        } => {
+            let result = if crashed.contains(&id) {
+                Err(AppError::new(ErrorCode::EngineCrashed))
+            } else {
+                guarded(|| match documents.get(&id) {
                     Some(document) => render(document, page_index, scale),
-                    None => Err(ErrorCode::UnknownDocument.into()),
-                });
-                let _ = reply.send(result);
-            }
-            Request::Close { id, reply } => {
+                    None => Err(AppError::not_found("document")),
+                })
+            };
+            answer(reply, result, Some(id), documents, crashed);
+        }
+        Job::Close { id, reply } => {
+            let result = guarded(|| {
+                crashed.remove(&id);
                 documents.remove(&id);
-                let _ = reply.send(Ok(()));
-            }
+                Ok(())
+            });
+            answer(reply, result, Some(id), documents, crashed);
+        }
+        #[cfg(test)]
+        Job::Crash { id, reply } => {
+            let result: Result<(), AppError> = guarded(|| panic!("test panic in a PDF job"));
+            answer(reply, result, id, documents, crashed);
         }
     }
 }
 
-/// Runs one request body and turns a panic into an error so the worker survives it.
-fn guarded<T>(body: impl FnOnce() -> Result<T, AppError>) -> Result<T, AppError> {
-    catch_unwind(AssertUnwindSafe(body))
-        .unwrap_or_else(|_| Err(AppError::logged(ErrorCode::Internal, "panic in PDF engine")))
+/// Sends `result`. If the job panicked while working on document `id`, that document is dropped and quarantined first:
+/// PDFium state after a panic is not trusted, but other documents and the worker carry on.
+fn answer<T>(
+    reply: Reply<T>,
+    result: Result<T, AppError>,
+    id: Option<DocumentId>,
+    documents: &mut Documents<'_>,
+    crashed: &mut HashSet<DocumentId>,
+) {
+    if let (Err(error), Some(id)) = (&result, id) {
+        if error.code() == ErrorCode::EngineCrashed && crashed.insert(id) {
+            // Dropping a document calls into PDFium, so it is guarded like any other job.
+            let _ = guarded(|| {
+                documents.remove(&id);
+                Ok(())
+            });
+        }
+    }
+    // The caller may have timed out and dropped its receiver.
+    let _ = reply.send(result);
 }
 
 fn open<'a>(
@@ -72,7 +132,7 @@ fn open<'a>(
         .load_pdf_from_file(path, None)
         .map_err(map_load_error)?;
     let page_count = u32::try_from(document.pages().len())
-        .map_err(|_| AppError::logged(ErrorCode::InvalidPdf, "negative page count"))?;
+        .map_err(|_| AppError::logged(ErrorCode::DamagedFile, "negative page count"))?;
     documents.insert(id, document);
     Ok(page_count)
 }
@@ -81,31 +141,32 @@ fn map_load_error(error: PdfiumError) -> AppError {
     use PdfiumInternalError as Internal;
     match error {
         PdfiumError::PdfiumLibraryInternalError(Internal::FormatError) => {
-            AppError::new(ErrorCode::InvalidPdf)
+            AppError::new(ErrorCode::NotAPdf)
         }
         PdfiumError::PdfiumLibraryInternalError(Internal::PasswordError) => {
             AppError::new(ErrorCode::PasswordRequired)
         }
         PdfiumError::PdfiumLibraryInternalError(Internal::SecurityError) => {
-            AppError::new(ErrorCode::Unsupported)
+            AppError::new(ErrorCode::UnsupportedFeature)
         }
-        PdfiumError::PdfiumLibraryInternalError(Internal::FileError) | PdfiumError::IoError(_) => {
-            AppError::logged(ErrorCode::FileUnreadable, format!("{error:?}"))
+        PdfiumError::PdfiumLibraryInternalError(Internal::FileError) => {
+            AppError::logged(ErrorCode::IoNotFound, "PDFium could not open the file")
         }
+        PdfiumError::IoError(error) => AppError::from(error),
         other => AppError::logged(ErrorCode::Internal, format!("{other:?}")),
     }
 }
 
-/// Renders one page to PNG. Validates against the real page size before allocating the bitmap.
+/// Renders one page to a frame. Validates against the real page size before allocating the bitmap.
 fn render(document: &PdfDocument<'_>, page_index: u32, scale: f32) -> Result<Vec<u8>, AppError> {
     let scale = limits::validate_scale(scale)?;
     let page_count = u32::try_from(document.pages().len())
-        .map_err(|_| AppError::logged(ErrorCode::InvalidPdf, "negative page count"))?;
+        .map_err(|_| AppError::logged(ErrorCode::DamagedFile, "negative page count"))?;
     let index = limits::validate_page_index(page_index, page_count)?;
     let page = document
         .pages()
         .get(to_i32(index)?)
-        .map_err(|error| AppError::logged(ErrorCode::InvalidPdf, format!("{error:?}")))?;
+        .map_err(|error| AppError::logged(ErrorCode::DamagedFile, format!("{error:?}")))?;
 
     let (width, height) = limits::pixel_size(page.width().value, page.height().value, scale)?;
     // BGR with PDFium's reverse-byte-order flag yields RGB rows, which PNG takes as they are.
@@ -129,9 +190,11 @@ fn render(document: &PdfDocument<'_>, page_index: u32, scale: f32) -> Result<Vec
     drop(page);
 
     let stride = raw.len() / height as usize;
-    encode::encode_rgb(width, height, stride, &raw)
+    encode::encode_frame(width, height, stride, &raw)
 }
 
 fn to_i32(value: u32) -> Result<i32, AppError> {
-    i32::try_from(value).map_err(|_| AppError::new(ErrorCode::RenderTooLarge))
+    // Sizes are bounded by `limits` long before this; only a corrupt page count could get here.
+    i32::try_from(value)
+        .map_err(|_| AppError::logged(ErrorCode::Internal, "value does not fit a PDFium int"))
 }

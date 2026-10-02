@@ -16,6 +16,8 @@ crate-type = ["rlib"]
 tauri-build = { version = "2.7.1", features = [] }
 
 [dependencies]
+# No cargo features on purpose (SECURITY T4/T5): `devtools` would enable the web inspector in release builds,
+# `protocol-asset` the asset protocol. `tests/security_baseline.rs` fails if either appears.
 tauri = { version = "2.12.1", features = [] }
 tauri-plugin-dialog = "2.8.1"
 # Dynamic binding only (PDFium is bundled as a resource and bound at runtime). `image_api` and `thread_safe`
@@ -26,6 +28,11 @@ serde = { version = "1", features = ["derive"] }
 
 [dev-dependencies]
 serde_json = "1"
+
+# The engine contains panics with `catch_unwind` (SECURITY P5), which only works when panics unwind.
+# `panic = "abort"` is therefore forbidden; `tests/security_baseline.rs` checks this.
+[profile.release]
+panic = "unwind"
 
 [lints.rust]
 unsafe_code = "deny"
