@@ -1,25 +1,33 @@
 import { memo, useMemo } from 'react';
 
-import { runAction } from '../../actions/dispatch';
+import { canRunAction, runAction } from '../../actions/dispatch';
 import type { Platform } from '../../api/app';
 import { useT } from '../../i18n';
 import { MAX_ZOOM, MIN_ZOOM } from '../../lib/zoom';
 import { useUi } from '../../stores/ui';
 import { useDocViewValue } from '../../stores/view';
+import { AboutDialog } from '../about/AboutDialog';
+import { SettingsPopover } from '../settings/SettingsPopover';
 import { selectDocId, useViewer } from '../viewer/useViewer';
 import { buildToolbar, type ToolbarActions } from './toolbarEntries';
 import { ToolbarRow } from './ToolbarRow';
 import { ZoomReadout, useZoomMenu } from './ZoomControls';
 
 /**
- * What the toolbar's items do. Commands go through the registry (`runAction`), which reads the current state when it runs; a
- * click on a tool is the toolbar's own. So the object never changes and the toolbar's entries (and with them the whole
- * toolbar) are rebuilt only when something they show changes.
+ * What the toolbar's items do. Commands go through the registry (`runAction`), which reads the current state when it runs.
+ * A click on a tool is a variant of the tool's action: it also releases the active tool (DESIGN 3.3), which its key does
+ * not. So a click on a tool other than the active one runs the tool's action, and a click on the active one runs Select's;
+ * locking (double click, Shift+Enter) has no action of its own and asks the registry whether the tool can be used. Either
+ * way a tool that the registry says cannot run now (no document) does nothing, whatever the button looked like when it
+ * was clicked. The object never changes, so the toolbar's entries (and with them the whole toolbar) are rebuilt only when
+ * something they show changes.
  */
 const ACTIONS: ToolbarActions = {
   run: runAction,
-  selectTool: (tool) => useUi.getState().selectTool(tool),
-  lockTool: (tool) => useUi.getState().lockTool(tool),
+  selectTool: (tool) => void runAction(useUi.getState().activeTool === tool ? 'tool-select' : `tool-${tool}`),
+  lockTool: (tool) => {
+    if (canRunAction(`tool-${tool}`)) useUi.getState().lockTool(tool);
+  },
 };
 
 /** The readout and the preset menu follow the zoom themselves (see `ZoomControls`). */
@@ -73,5 +81,12 @@ export const ToolbarSlot = memo(function ToolbarSlot({
     [t, platform, hasDocument, activeTool, toolLocked, leftPanelVisible, inspectorVisible, zoomAtMin, zoomAtMax],
   );
 
-  return <ToolbarRow entries={entries} moreItems={moreItems} trafficLightInset={trafficLightInset} />;
+  return (
+    <>
+      <ToolbarRow entries={entries} moreItems={moreItems} trafficLightInset={trafficLightInset} />
+      {/* Portals, so they take no room in the shell: the settings popover hangs from the toolbar (it opens from More or its key), the About dialog is a modal. */}
+      <SettingsPopover />
+      <AboutDialog />
+    </>
+  );
 });

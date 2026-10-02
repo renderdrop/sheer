@@ -60,3 +60,12 @@
 .showcase-inspector {
   width: calc(var(--space-8) * 4 + var(--space-4));
 }
+
+/* The 8 px gap before the inspector is padding of its slot and goes with the inspector, so no gutter is left behind. */
+.showcase-inspector-slot {
+  padding-inline-start: var(--space-1);
+}
+
+.showcase-inspector-slot-hidden {
+  padding-inline-start: 0;
+}

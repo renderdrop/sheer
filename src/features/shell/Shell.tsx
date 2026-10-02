@@ -13,7 +13,7 @@ import { CaptionBar } from './CaptionBar';
 import { EmptyStateSlot } from './EmptyStateSlot';
 import { useWindowState } from './hooks';
 import { Inspector } from './Inspector';
-import { LeftPanel } from './LeftPanel';
+import { LeftPanelSlot } from './LeftPanel';
 import { LeftPanelSplitter, MainGrid } from './MainGrid';
 import { ToolbarSlot } from './ToolbarSlot';
 import { useShellStructure } from './useShellStructure';
@@ -97,7 +97,7 @@ export function Shell() {
       <MainGrid structure={structure}>
         {hasDocument ? (
           <>
-            {!structure.leftCollapsed && <LeftPanel id={leftPanelId} style={slots.left} />}
+            <LeftPanelSlot present={!structure.leftCollapsed} id={leftPanelId} style={slots.left} />
             <LeftPanelSplitter controls={leftPanelId} collapsed={structure.leftCollapsed} style={slots.splitter} />
             <ViewerCanvas style={slots.canvas} />
             {structure.inspectorReserved && <Inspector visible={structure.inspectorVisible} style={slots.inspector} />}

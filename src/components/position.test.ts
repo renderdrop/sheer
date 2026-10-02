@@ -74,6 +74,35 @@ describe('computePosition', () => {
     expect(result.y).toBeGreaterThanOrEqual(300 + 32);
   });
 
+  it('shifts along the cross axis by the cross offset, on either axis', () => {
+    expect(computePosition({ ...base, crossOffset: -8 })).toEqual({ x: 92, y: 140, side: 'bottom' });
+    // A submenu: to the right of the item with no gap, its first item level with the one that opened it (panel padding 8).
+    const submenu = computePosition({
+      ...base,
+      side: 'right',
+      offset: 0,
+      crossOffset: -8,
+      floating: { width: 200, height: 100 },
+      anchor: { left: 100, top: 300, width: 200, height: 32 },
+    });
+    expect(submenu).toEqual({ x: 300, y: 292, side: 'right' });
+  });
+
+  it('keeps a shifted element inside the window margin and flips a submenu to the left when the right side is too narrow', () => {
+    expect(computePosition({ ...base, anchor: { left: 4, top: 100, width: 40, height: 32 }, crossOffset: -8 }).x).toBe(
+      8,
+    );
+    const flipped = computePosition({
+      ...base,
+      side: 'right',
+      offset: 0,
+      crossOffset: -8,
+      floating: { width: 200, height: 100 },
+      anchor: { left: 700, top: 300, width: 200, height: 32 },
+    });
+    expect(flipped).toEqual({ x: 500, y: 292, side: 'left' });
+  });
+
   it('starts at the margin when the element is larger than the window', () => {
     const result = computePosition({ ...base, floating: { width: 2000, height: 2000 } });
     expect(result.x).toBe(8);

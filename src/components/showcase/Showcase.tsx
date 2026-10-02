@@ -368,12 +368,18 @@ function Popovers() {
     ...colors.map((name) => ({ id: name, label: name, checked: color === name, onSelect: () => setColor(name) })),
     { type: 'separator', id: 'sep' },
     { id: 'more', label: 'More colors…', icon: Check, shortcut: 'Ctrl+K', onSelect: () => undefined },
+    {
+      id: 'recent',
+      label: 'Recent colors',
+      onSelect: () => undefined,
+      submenu: colors.map((name) => ({ id: `recent-${name}`, label: name, onSelect: () => setColor(name) })),
+    },
     { id: 'off', label: 'Not available', disabled: true, onSelect: () => undefined },
   ];
   return (
     <Section
       title="Popover and Menu"
-      hint="G2 surface. Esc or an outside click closes it and returns focus. Menus: arrows, type-ahead, Enter. Place one near an edge to see it flip."
+      hint="G2 surface. Esc or an outside click closes it and returns focus. Menus: arrows, type-ahead, Enter, Right and Left for the solid submenu (or rest the pointer on its item). Place one near an edge to see it flip."
     >
       <Row label="dialog">
         <Popover label="Highlight options" trigger={(trigger) => <Button {...trigger}>Options…</Button>}>
@@ -462,7 +468,9 @@ function LeftPanelDemo() {
           <FileText aria-hidden="true" className="showcase-icon-gap size-icon-24" />
           Canvas
         </div>
-        <div className={`grid transition-opacity duration-slow ease-out ${inspector ? 'ps-1' : 'ps-0'}`}>
+        <div
+          className={`showcase-inspector-slot grid transition-opacity duration-slow ease-out ${inspector ? '' : 'showcase-inspector-slot-hidden'}`}
+        >
           <Panel
             label="Inspector"
             title="Highlight"

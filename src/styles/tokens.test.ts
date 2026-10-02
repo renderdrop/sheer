@@ -467,6 +467,19 @@ describe('motion (DESIGN 1.6)', () => {
     expect(block).toMatch(/animation: none !important;/);
   });
 
+  it('reduced motion: the left panel collapse takes its tracks away in one step after the panel has faded, and a restore at once', () => {
+    const start = css.indexOf('@media (prefers-reduced-motion: reduce)');
+    const block = css.slice(start, css.indexOf('@layer base'));
+    // The rule applies while the grid animates and has been collapsed: a transition of no duration that starts when the 150 ms
+    // fade of the panel is over. A grid that was restored matches nothing here, so the global rule leaves it no transition
+    // of its columns: they change at once and the panel fades in on them.
+    const rule = /\[data-layout\]\[data-animating\]\[data-left="collapsed"\]\s*\{([^}]*)\}/.exec(block)?.[1] ?? '';
+    expect(rule).toMatch(/transition-property: grid-template-columns !important;/);
+    expect(rule).toMatch(/transition-duration: 0s !important;/);
+    expect(rule).toMatch(/transition-delay: var\(--motion-fast\) !important;/);
+    expect(block).not.toMatch(/data-left="open"/);
+  });
+
   it('outside reduced motion the transform amounts are the spec ones', () => {
     expect(root.get('--scale-press')).toBe('0.97');
     expect(root.get('--scale-enter')).toBe('0.96');

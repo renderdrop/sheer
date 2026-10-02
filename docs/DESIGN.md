@@ -151,7 +151,7 @@ Lucide, `absoluteStrokeWidth` 1.5 px (2 px at 12), `currentColor`, `aria-hidden`
 
 Main columns: `8 | left 192–400 (default 248) | splitter 8 | canvas minmax(360px,1fr) | 8 | inspector 288 | 8`.
 
-- Collapsed left: track and outer gutter go; the splitter becomes the leading gutter. Hidden inspector: track and gap go.
+- Collapsed left: track and outer gutter go (they shrink to 0, animated, see 2.4 and 3.8); the splitter becomes the leading gutter. Hidden inspector: track and gap go.
 - Canvas: `--color-canvas`, radius 16, padding 24, page gap 16, `scroll-padding-top: 24px`.
 - **Scroll-edge scrim:** top 24 px inside the canvas (8 solid canvas color, 16 fade), layer 4, `pointer-events: none`,
   shown when `scrollTop > 0`. The toolbar never covers pages.
@@ -173,18 +173,22 @@ Main columns: `8 | left 192–400 (default 248) | splitter 8 | canvas minmax(360
 
 Tab and F6/Shift+F6: toolbar → banner → left panel → splitter → canvas → inspector → status bar; F6 restores each region's
 last focus. Closing a panel, popover or dialog refocuses its trigger. Esc order:
-tooltip → popover → gesture → tool → selection. Every command is in the native menu on macOS; Windows has none (ADR-016), so there every command is on the toolbar, in More or on the keyboard; no Ctrl+Alt on Windows (AltGr).
+tooltip → dialog → popover → gesture → tool → selection (the stacking order of 1.7, topmost first; `DISMISS_PRIORITY`). Every command is in the native menu on macOS; Windows has none (ADR-016), so there every command is on the toolbar, in More or on the keyboard; no Ctrl+Alt on Windows (AltGr).
 
 ### 2.4 Implementation (app shell)
 
-`features/shell/Shell.tsx` composes the rows: caption (Windows), toolbar row, banner, main, status. The main row is a grid whose `grid-template-columns` is the track list of
-`computeShellLayout` (`lib/layout.ts`, pure, tested): left panel, splitter, canvas and inspector tracks appear and disappear by the rules above, and each child is placed by
-`grid-column`. The main row has an 8 px gap above the status bar so panels and canvas do not touch its text.
+`features/shell/Shell.tsx` composes the rows: caption (Windows), toolbar row, banner, main, status. The main row is a grid whose `grid-template-columns` comes from `shellTracks`
+(`lib/layout.ts`, pure, tested) for the *structure* `shellStructure` derives from the window and the stores (see Render isolation below): left panel, splitter, canvas and inspector tracks
+appear and disappear by the rules above, and each child is placed by `grid-column`. `computeShellLayout` is the two together, with the canvas width; the components do not call it (ADR-015), it keeps the
+rules testable as one. The main row has an 8 px gap above the status bar so panels and canvas do not touch its text.
 
 - **Inspector modes.** `ui.inspector` is `auto`, `open` or `closed`. `auto` lets a selection or a non-Select tool fade the panel in, but only from 1280 px (where the track is reserved anyway); `open` shows it and gives it a
   track at any width; `closed` hides the panel and, below 1280, the track. The toolbar toggle is pressed while the panel is visible and sets `open` or `closed`.
 - **Left panel collapse** is derived, not stored twice: the user's choice (`ui.leftPanelCollapsed`, set by the splitter's Enter, a release below 144 or the toolbar toggle) or the layout's own (canvas under 360).
-  The latter returns when the window grows. The width is `ui.leftPanelWidth` while dragging and is saved to settings (`leftPanelWidth`, 192 to 400) 300 ms after it settles.
+  The latter returns when the window grows. Collapsing or restoring animates over 250 ms `--ease-out`: the two tracks of the panel (outer gutter and panel) stay in the track list at size 0 when it is collapsed, so the list keeps its shape and `MainGrid` lets the browser
+  transition `grid-template-columns` (the class is on the grid for 300 ms after the change only: a splitter drag must follow the pointer). The panel fades in step (`LeftPanelSlot`, `AnimatePresence`, `usePanelFade`) and is inert while it goes;
+  once faded it leaves the page. Under reduced motion only opacity moves (150 ms): a restore gives the tracks at once and the panel fades in on them, a collapse takes them away in one step after the fade (`tokens.css`). The shell renders once for the change and never for a frame
+  or the end of the animation (`Shell.renders.test.tsx`). The width is `ui.leftPanelWidth` while dragging and is saved to settings (`leftPanelWidth`, 192 to 400) 300 ms after it settles.
 - **Commands and keys.** Every command is an action of `src/actions/registry.ts` (ADR-016): the toolbar items, the More menu, the key handler and the macOS menu bar derive from it, so a tooltip's key chip, `aria-keyshortcuts` and the real binding cannot differ. The platform's primary key is Cmd on macOS and Ctrl elsewhere. A bare letter (the tool keys) works only while the canvas has focus, and no key is ever taken from a text field.
 - **Platform chrome.** The first paint takes the platform from the user agent, then `app_ready`'s answer replaces it (ADR-014). Windows: caption row, caption buttons are not tab stops. macOS: 80 px toolbar-row inset, 8 in full screen.
   The toolbar row (and the Windows caption) carry `data-tauri-drag-region="deep"`: any non-interactive part drags, buttons never do.
@@ -199,8 +203,8 @@ tooltip → popover → gesture → tool → selection. Every command is in the 
   `useViewer` store (`features/viewer/useViewer.ts`): its actions never change, they read the state when called. A page, a zoom step, a render, a drag over the window or a step of the splitter therefore renders those parts and
   not the shell, the toolbar or the left panel (`Shell.renders.test.tsx` counts renders). The window's maximized and full-screen state is read once when a resize has settled (150 ms), not per frame.
 
-Differences from the spec, all temporary: the left panel collapses without the 250 ms animation (the track count changes, which CSS cannot animate); the file name is cut at its head and keeps its last 8 characters (a CSS-only
-middle truncation); the tabs are placeholders; More carries the commands that have no toolbar button (Open, Close document, Actual size, Fit width, Fit page, Next and Previous page, Settings, About), which is the only way to them with a mouse on Windows (ADR-016), and Settings and About do nothing yet; tools only change the active tool until M2.
+Differences from the spec, all temporary: the file name is cut at its head and keeps its last 8 characters (a CSS-only
+middle truncation); the tabs are placeholders; More carries the commands that have no toolbar button (Open, Close document, Actual size, Fit width, Fit page, Next and Previous page, Settings, About), which is the only way to them with a mouse on Windows (ADR-016), and Settings and About open the popover and the dialog of 3.13; tools only change the active tool until M2.
 
 ## 3. Components
 
@@ -277,6 +281,14 @@ Keys: trigger `aria-haspopup` `aria-expanded`; Enter/Space/ArrowDown focus the f
 Up/Down wrap, type-ahead, Enter activates and closes, Right/Left submenu, Tab closes. `role=dialog` popovers cycle Tab
 inside. Esc or outside click closes and refocuses the trigger. One open at a time; submenus solid.
 
+Submenus (`MenuItemSpec.submenu`): an item shows a chevron (mirrored in right-to-left) and `aria-haspopup="menu"` / `aria-expanded`. The submenu is a `role=menu` named after its item, a solid
+surface (`surface-dialog`, shadow 3; glass is never nested), same width as a popover, in the popover layer. It opens to the right of the item (left in right-to-left, and flipped when it does not fit), overlapping the
+parent panel with no gap, its first item level with the parent item. It opens on Right, Enter, Space or a click and then focuses its first item; Left closes it and refocuses the item; Esc closes only the innermost
+submenu (second Esc: the menu); Tab closes the whole menu; choosing an item closes every level and refocuses the trigger. Up/Down/Home/End/type-ahead move inside the open level, and moving to another item of the
+parent closes the submenu. A disabled item stays focusable and opens nothing. **Hover intent:** the pointer must rest 200 ms on an item before its submenu opens (it takes no focus), and an open submenu stays 300 ms
+after the pointer left its item, so a path across a neighbour does not close it; entering the submenu or returning to the item cancels the closing. Touch has no hover: the tap opens it. A submenu closing while it holds
+focus returns focus to its item. Motion as the popover (opacity + scale, opacity only under reduced motion). A click inside a submenu is not an outside click. Submenus nest.
+
 ### 3.6 Tabs
 
 Left-panel views: Thumbnails `gallery-vertical`, Outline `list-tree`, Comments `messages-square`, Search `search`.
@@ -346,6 +358,25 @@ Shift+F10 menu; removals and Clear give an Undo toast. Drop is pointer-only; Ope
 | Keys / A11y | never takes focus; action duplicates a command; `role=status` | F6 region; Esc does not dismiss; error `role=alert`, else `status` |
 
 Errors never toast.
+
+### 3.13 Settings popover and About dialog
+
+**Settings** is a G2 popover (3.5), bottom-start under the toolbar's More button, where the command is listed. The `settings` action opens it from
+anywhere (Ctrl or Cmd and comma, More, the macOS menu bar); a second press leaves it open. Three rows, each a label (meta, 600) over a
+**segmented control** with the value chosen: **Theme** System · Light · Dark, **Glass** Auto · Solid (a meta hint says what Solid does), **Language**
+System · English · Deutsch (the language names are not translated). The control is a `radiogroup`: a 40 high track (`--radius-button`, 1 px
+`--color-divider` border, 4 padding) of equal segments (`--radius-sm`, concentric) in the selected state of 3.0; hover, pressed and focus as for every
+control. Keys: the chosen segment is the only tab stop; Left, Right, Up and Down move to the next segment and choose it (wrapping), Home and End
+jump; Tab cycles inside the popover; Esc closes and refocuses More. A choice is saved at once (`update_settings`) and applies at once (theme and glass
+on `<html>`, language to the UI); a change the backend refuses shows its error under the rows (`role=alert`, `--color-error-text`).
+
+**About** is a dialog (`role=dialog`, `aria-modal`): solid `--surface-solid` with `--shadow-3`, `--radius-card`, 320 wide, centred over the
+`--color-backdrop` at `--z-modal`. Column, centred, 16 apart: the logo (64), the name (`--text-xl`) over "Version x.y.z" (meta, from `app_ready`; omitted
+until known), "Open source under AGPL-3.0-or-later", the privacy line (meta: offline, no telemetry), then a secondary "Third-party licenses" button
+(a placeholder until the notices ship, ADR-010 item 8: `aria-disabled`, still focusable, tooltip and `aria-description` "Coming soon") and the primary
+"Close", which has the initial focus. Esc (after a tooltip), Close and a press on the backdrop close it; Tab and Shift+Tab cycle inside; the app behind
+is `inert` and no command runs while it is open, whichever way it comes (key, native menu, toolbar; one guard in `runAction`), except About, which closes it; focus returns to where it was. In: opacity + scale .96 → 1 as a popover, out: opacity
+150; reduced motion: opacity only. Solid mode and forced colors change nothing, the surface is already solid.
 
 ## 4. Contrast verification
 

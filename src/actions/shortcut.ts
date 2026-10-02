@@ -54,14 +54,15 @@ const SYMBOL_KEYS: Readonly<Record<string, string>> = { '+': 'Plus', '=': 'Plus'
  * The canonical name of the key an event is for (see `Binding.key`), independent of the modifiers and mostly of the layout:
  * - A letter is its lowercase Latin letter by the layout (Dvorak, QWERTZ), or by its position when the layout's letter is
  *   not Latin (Cyrillic, Greek) or macOS Option has turned it into something else.
- * - A digit is the digit key, by position, on the digit row and the numpad (on AZERTY the digit row needs Shift).
+ * - A digit is the digit key, by position, on the digit row (on AZERTY it needs Shift), and on the numpad only while it types
+ *   digits: with NumLock off the numpad keys are End, the arrows, Home, Insert and so on, which must stay what they are.
  * - `+` and `=` are `Plus`, `-` and `_` are `Minus`: they share a key, and the layout decides which needs Shift.
  * - Anything else is the event's own key value.
  */
 export function canonicalKey(event: Pick<KeyboardEvent, 'key' | 'code'>): string {
   const { key, code } = event;
-  const digit = /^(?:Digit|Numpad)([0-9])$/.exec(code);
-  if (digit?.[1] !== undefined) return digit[1];
+  const digit = /^(Digit|Numpad)([0-9])$/.exec(code);
+  if (digit?.[2] !== undefined && (digit[1] === 'Digit' || /^[0-9]$/.test(key))) return digit[2];
   if (key.length === 1) {
     const lower = key.toLowerCase();
     if (/^[a-z]$/.test(lower)) return lower;

@@ -21,7 +21,9 @@ export interface BannerProps {
  *
  * It opens and closes with height and opacity over 250 ms (opacity only under reduced motion). The closing needs an
  * `AnimatePresence` around it, which keeps it on screen until it has faded (`BannerRow`). It clips its content while it
- * moves, and not at rest, where the shadow of the glass reaches beyond the row.
+ * moves, and not at rest, where the shadow of the glass reaches beyond the row. The row that animates has no padding of its
+ * own: with `box-sizing: border-box` a padded row cannot be shorter than its padding, so its first frame would be 8 px
+ * high instead of 0 and the content below would jump. The gutters (8 px at the sides and below) belong to an element inside it.
  */
 export function Banner({ error, onDismiss }: BannerProps) {
   const t = useT();
@@ -33,14 +35,16 @@ export function Banner({ error, onDismiss }: BannerProps) {
       {...motionProps}
       onAnimationStart={() => setMoving(true)}
       onAnimationComplete={() => setMoving(false)}
-      className={cx('shrink-0 px-1 pb-1', moving || !present ? 'overflow-hidden' : 'overflow-visible')}
+      className={cx('shrink-0', moving || !present ? 'overflow-hidden' : 'overflow-visible')}
     >
-      <div role="alert" className="glass-1 flex min-h-banner-min items-center gap-1 rounded-panel py-1 pe-1 ps-2">
-        <span className="shrink-0 text-error-icon">
-          <Icon icon={CircleAlert} />
-        </span>
-        <span className="min-w-0 flex-auto text-error-text">{errorText(t, error)}</span>
-        <IconButton label={t('action.dismiss')} icon={X} size="sm" onClick={onDismiss} />
+      <div className="px-1 pb-1">
+        <div role="alert" className="glass-1 flex min-h-banner-min items-center gap-1 rounded-panel py-1 pe-1 ps-2">
+          <span className="shrink-0 text-error-icon">
+            <Icon icon={CircleAlert} />
+          </span>
+          <span className="min-w-0 flex-auto text-error-text">{errorText(t, error)}</span>
+          <IconButton label={t('action.dismiss')} icon={X} size="sm" onClick={onDismiss} />
+        </div>
       </div>
     </motion.div>
   );

@@ -1,0 +1,175 @@
+// @vitest-environment jsdom
+import { fireEvent, render } from '@testing-library/react';
+import { useRef } from 'react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+
+import { useFloatingPosition } from './useFloatingPosition';
+
+/** A rect the way `getBoundingClientRect` reports it. */
+function rect(left: number, top: number, width: number, height: number): DOMRect {
+  return { left, top, width, height, right: left + width, bottom: top + height, x: left, y: top, toJSON: () => ({}) };
+}
+
+/** The animation frames the hook asks for, run by hand so a test decides when a frame happens. */
+let frames: Map<number, FrameRequestCallback>;
+let nextFrame: number;
+const requestFrame = vi.fn((callback: FrameRequestCallback) => {
+  nextFrame += 1;
+  frames.set(nextFrame, callback);
+  return nextFrame;
+});
+const cancelFrame = vi.fn((handle: number) => {
+  frames.delete(handle);
+});
+
+function runFrame(): void {
+  const pending = [...frames.values()];
+  frames.clear();
+  for (const callback of pending) callback(0);
+}
+
+/** Where the mocked anchor is. A test moves it between frames. */
+let anchorRect: DOMRect;
+let rectReads: number;
+
+beforeEach(() => {
+  frames = new Map();
+  nextFrame = 0;
+  requestFrame.mockClear();
+  cancelFrame.mockClear();
+  vi.stubGlobal('requestAnimationFrame', requestFrame);
+  vi.stubGlobal('cancelAnimationFrame', cancelFrame);
+  anchorRect = rect(100, 100, 40, 32);
+  rectReads = 0;
+  vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: HTMLElement) {
+    rectReads += 1;
+    return this.tagName === 'BUTTON' ? anchorRect : rect(0, 0, 200, 100);
+  });
+});
+
+afterEach(() => {
+  vi.restoreAllMocks();
+  vi.unstubAllGlobals();
+});
+
+function Harness({ active = true }: { active?: boolean }) {
+  const anchor = useRef<HTMLButtonElement>(null);
+  const floating = useRef<HTMLDivElement>(null);
+  useFloatingPosition({ anchor, floatingRef: floating, active, side: 'bottom', align: 'start' });
+  return (
+    <>
+      <button ref={anchor} type="button">
+        anchor
+      </button>
+      <div ref={floating} data-testid="floating">
+        <div data-testid="inner" />
+      </div>
+    </>
+  );
+}
+
+describe('useFloatingPosition', () => {
+  it('places the element before anything else happens, at the anchor with the 8 px offset', () => {
+    const { getByTestId } = render(<Harness />);
+    const floating = getByTestId('floating');
+    expect(floating.style.left).toBe('100px');
+    expect(floating.style.top).toBe('140px');
+    expect(floating.dataset.side).toBe('bottom');
+    // DESIGN 3.5: the window height minus the margin on both sides (jsdom's window is 768 px high).
+    expect(floating.style.maxHeight).toBe(`${window.innerHeight - 16}px`);
+    expect(requestFrame).not.toHaveBeenCalled();
+  });
+
+  it('does nothing while it is not active', () => {
+    const { getByTestId } = render(<Harness active={false} />);
+    expect(getByTestId('floating').style.left).toBe('');
+    fireEvent.scroll(window);
+    expect(requestFrame).not.toHaveBeenCalled();
+  });
+
+  it('places once per animation frame however many scroll events arrive', () => {
+    const { getByTestId } = render(<Harness />);
+    const floating = getByTestId('floating');
+    anchorRect = rect(100, 300, 40, 32);
+    const readsAfterMount = rectReads;
+
+    // A wheel gesture over a scrolling list fires scroll events at the rate of the input, on the window and on elements.
+    for (let index = 0; index < 50; index += 1) {
+      fireEvent.scroll(window);
+      fireEvent.scroll(document.body);
+    }
+    expect(requestFrame).toHaveBeenCalledTimes(1);
+    expect(rectReads).toBe(readsAfterMount);
+    expect(floating.style.top).toBe('140px');
+
+    runFrame();
+    expect(rectReads).toBe(readsAfterMount + 2);
+    expect(floating.style.top).toBe('340px');
+
+    // The next burst asks for the next frame.
+    fireEvent.scroll(window);
+    fireEvent.scroll(window);
+    expect(requestFrame).toHaveBeenCalledTimes(2);
+  });
+
+  it('follows a resize of the window on the next frame', () => {
+    const { getByTestId } = render(<Harness />);
+    anchorRect = rect(250, 100, 40, 32);
+    fireEvent(window, new Event('resize'));
+    fireEvent(window, new Event('resize'));
+    expect(requestFrame).toHaveBeenCalledTimes(1);
+    runFrame();
+    expect(getByTestId('floating').style.left).toBe('250px');
+  });
+
+  it('ignores a scroll inside the floating element, which cannot move it', () => {
+    const { getByTestId } = render(<Harness />);
+    fireEvent.scroll(getByTestId('inner'));
+    fireEvent.scroll(getByTestId('floating'));
+    expect(requestFrame).not.toHaveBeenCalled();
+  });
+
+  it('cancels the frame it asked for when it stops, and places nothing afterwards', () => {
+    const { unmount } = render(<Harness />);
+    fireEvent.scroll(window);
+    expect(requestFrame).toHaveBeenCalledTimes(1);
+    const readsBefore = rectReads;
+    unmount();
+    expect(cancelFrame).toHaveBeenCalledWith(1);
+    runFrame();
+    expect(rectReads).toBe(readsBefore);
+    // Its listeners are gone with it.
+    fireEvent.scroll(window);
+    expect(requestFrame).toHaveBeenCalledTimes(1);
+  });
+
+  it('reads the offset token once, not on every placement', () => {
+    const computed = vi.spyOn(window, 'getComputedStyle');
+    render(<Harness />);
+    const reads = () => computed.mock.calls.filter(([element]) => element === document.documentElement).length;
+    expect(reads()).toBe(1);
+    for (let index = 0; index < 5; index += 1) {
+      fireEvent.scroll(window);
+      runFrame();
+    }
+    expect(reads()).toBe(1);
+  });
+
+  it('writes a style only when its value changed', () => {
+    const { getByTestId } = render(<Harness />);
+    const floating = getByTestId('floating');
+    const observer = new MutationObserver(() => undefined);
+    observer.observe(floating, { attributes: true });
+
+    fireEvent.scroll(window);
+    runFrame();
+    expect(observer.takeRecords()).toHaveLength(0);
+
+    anchorRect = rect(100, 200, 40, 32);
+    fireEvent.scroll(window);
+    runFrame();
+    expect(observer.takeRecords().length).toBeGreaterThan(0);
+    expect(floating.style.top).toBe('240px');
+    observer.disconnect();
+  });
+});

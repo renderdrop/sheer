@@ -3,6 +3,8 @@ import { act } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { DocumentInfo } from '../api/documents';
+import { useAboutDialog } from '../features/about/state';
+import { useSettingsPopover } from '../features/settings/state';
 import { useViewer } from '../features/viewer/useViewer';
 import { useUi } from '../stores/ui';
 import { useView } from '../stores/view';
@@ -21,6 +23,8 @@ const viewerInitial = useViewer.getState();
 const REPORT: DocumentInfo = { id: 1, pageCount: 10, displayName: 'Report.pdf' };
 
 function reset() {
+  useAboutDialog.setState({ open: false });
+  useSettingsPopover.setState({ open: false });
   useUi.setState({ ...uiInitial }, true);
   useViewer.setState({ ...viewerInitial }, true);
   useView.setState({ byDoc: {} });
@@ -138,5 +142,53 @@ describe('a menu id from the backend, through the bridge into the registry', () 
     documentsApi.closeDocument.mockClear();
     act(() => send('close-document'));
     expect(documentsApi.closeDocument).not.toHaveBeenCalled();
+  });
+
+  describe('while a modal dialog is open (the About dialog)', () => {
+    /** The dialog as it is in the page: the menu bar is the OS's, so it keeps sending ids while the dialog is up. */
+    const modal = () => {
+      const element = document.body.appendChild(document.createElement('div'));
+      element.setAttribute('role', 'dialog');
+      element.setAttribute('aria-modal', 'true');
+      return element;
+    };
+
+    it('runs no command from the menu bar, enabled or not: the dialog owns the app until it is closed', async () => {
+      const send = await connect();
+      await act(async () => send('open'));
+      expect(useViewer.getState().doc).toEqual(REPORT);
+      documentsApi.openDocumentDialog.mockClear();
+      useAboutDialog.setState({ open: true });
+      modal();
+      const ui = useUi.getState();
+      for (const id of ['open', 'close-document', 'zoom-in', 'zoom-out', 'actual-size', 'fit-width', 'fit-page'])
+        send(id);
+      for (const id of ['next-page', 'toggle-left-panel', 'toggle-inspector', 'tool-draw', 'settings']) send(id);
+      expect(documentsApi.openDocumentDialog).not.toHaveBeenCalled();
+      expect(documentsApi.closeDocument).not.toHaveBeenCalled();
+      expect(useViewer.getState().doc).toEqual(REPORT);
+      expect(useView.getState().byDoc[REPORT.id]?.zoom).toBe(1);
+      expect(useUi.getState()).toBe(ui);
+      expect(useSettingsPopover.getState().open).toBe(false);
+    });
+
+    it('runs them again when the dialog is gone', async () => {
+      const send = await connect();
+      await act(async () => send('open'));
+      const element = modal();
+      act(() => send('zoom-in'));
+      expect(useView.getState().byDoc[REPORT.id]?.zoom).toBe(1);
+      element.remove();
+      act(() => send('zoom-in'));
+      expect(useView.getState().byDoc[REPORT.id]?.zoom).toBe(1.1);
+    });
+
+    it('still takes About, which closes the dialog', async () => {
+      const send = await connect();
+      useAboutDialog.setState({ open: true });
+      modal();
+      act(() => send('about'));
+      expect(useAboutDialog.getState().open).toBe(false);
+    });
   });
 });

@@ -71,6 +71,21 @@ describe('canonicalKey', () => {
     expect(canonicalKey({ key: '2', code: '' })).toBe('2');
   });
 
+  it('takes a numpad key as a digit only when NumLock made it one: with NumLock off it is End, an arrow, Home, Insert...', () => {
+    expect(canonicalKey({ key: '1', code: 'Numpad1' })).toBe('1');
+    expect(canonicalKey({ key: '0', code: 'Numpad0' })).toBe('0');
+    expect(canonicalKey({ key: 'End', code: 'Numpad1' })).toBe('End');
+    expect(canonicalKey({ key: 'ArrowDown', code: 'Numpad2' })).toBe('ArrowDown');
+    expect(canonicalKey({ key: 'PageDown', code: 'Numpad3' })).toBe('PageDown');
+    expect(canonicalKey({ key: 'ArrowLeft', code: 'Numpad4' })).toBe('ArrowLeft');
+    expect(canonicalKey({ key: 'Clear', code: 'Numpad5' })).toBe('Clear');
+    expect(canonicalKey({ key: 'Home', code: 'Numpad7' })).toBe('Home');
+    expect(canonicalKey({ key: 'Insert', code: 'Numpad0' })).toBe('Insert');
+    // The digit row is by position whatever the layout types there, the numpad is not.
+    expect(canonicalKey({ key: '&', code: 'Digit1' })).toBe('1');
+    expect(canonicalKey({ key: '&', code: 'Numpad1' })).toBe('&');
+  });
+
   it('puts the plus and equals keys together as Plus, and the minus and underscore keys as Minus', () => {
     for (const key of ['+', '=']) expect(canonicalKey({ key, code: '' }), key).toBe('Plus');
     for (const key of ['-', '_']) expect(canonicalKey({ key, code: '' }), key).toBe('Minus');
@@ -130,6 +145,12 @@ describe('matchesBinding', () => {
       true,
     );
     expect(matchesBinding(event({ key: '1', code: 'Digit1', metaKey: true }), toggle, 'macos')).toBe(false);
+  });
+
+  it('does not take Ctrl and a numpad key with NumLock off for Ctrl and a digit', () => {
+    const actualSize: Binding = { key: '1', mods: ['primary'] };
+    expect(matchesBinding(event({ key: '1', code: 'Numpad1', ctrlKey: true }), actualSize, 'windows')).toBe(true);
+    expect(matchesBinding(event({ key: 'End', code: 'Numpad1', ctrlKey: true }), actualSize, 'windows')).toBe(false);
   });
 
   it('matches a bare key only without any modifier', () => {

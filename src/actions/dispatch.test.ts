@@ -7,7 +7,9 @@ import { useViewer } from '../features/viewer/useViewer';
 import { MAX_ZOOM, MIN_ZOOM } from '../lib/zoom';
 import { useUi } from '../stores/ui';
 import { useView } from '../stores/view';
-import { runAction } from './dispatch';
+import { useAboutDialog } from '../features/about/state';
+import { useSettingsPopover } from '../features/settings/state';
+import { canRunAction, isModalOpen, runAction } from './dispatch';
 import { ACTION_IDS } from './registry';
 import { readActionState } from './state';
 
@@ -24,6 +26,8 @@ const viewerInitial = useViewer.getState();
 const REPORT: DocumentInfo = { id: 1, pageCount: 10, displayName: 'Report.pdf' };
 
 function reset() {
+  useSettingsPopover.setState({ open: false });
+  useAboutDialog.setState({ open: false });
   useUi.setState({ ...uiInitial }, true);
   useViewer.setState({ ...viewerInitial }, true);
   useView.setState({ byDoc: {} });
@@ -130,15 +134,125 @@ describe('runAction', () => {
     expect(useUi.getState().activeTool).toBe('select');
   });
 
-  it('runs Settings and About, which are placeholders and change nothing', () => {
-    const ui = useUi.getState();
+  it('opens the settings popover with Settings, with or without a document, and leaves it open when run again', async () => {
     expect(runAction('settings')).toBe(true);
+    expect(useSettingsPopover.getState().open).toBe(true);
+    expect(runAction('settings')).toBe(true);
+    expect(useSettingsPopover.getState().open).toBe(true);
+    useSettingsPopover.setState({ open: false });
+    await open();
+    expect(runAction('settings')).toBe(true);
+    expect(useSettingsPopover.getState().open).toBe(true);
+    expect(useAboutDialog.getState().open).toBe(false);
+  });
+
+  it('opens the About dialog with About, and closes the settings popover so the dialog is the topmost layer', () => {
+    runAction('settings');
     expect(runAction('about')).toBe(true);
-    expect(useUi.getState()).toBe(ui);
+    expect(useAboutDialog.getState().open).toBe(true);
+    expect(useSettingsPopover.getState().open).toBe(false);
   });
 
   it('knows an action for every id of the registry', () => {
     for (const id of ACTION_IDS) expect(typeof runAction(id), id).toBe('boolean');
+  });
+});
+
+/** A modal dialog as the About dialog renders it: `aria-modal="true"`, in the body, outside the app's root. */
+function openModal(modal: 'true' | null = 'true'): HTMLElement {
+  const element = document.body.appendChild(document.createElement('div'));
+  element.setAttribute('role', 'dialog');
+  if (modal !== null) element.setAttribute('aria-modal', modal);
+  return element;
+}
+
+describe('while a modal dialog is open', () => {
+  it('knows whether one is: only an element with aria-modal="true" counts, not a popover (role dialog alone)', () => {
+    expect(isModalOpen()).toBe(false);
+    openModal(null);
+    expect(isModalOpen()).toBe(false);
+    const modal = openModal();
+    expect(isModalOpen()).toBe(true);
+    modal.removeAttribute('aria-modal');
+    expect(isModalOpen()).toBe(false);
+  });
+
+  it('no action runs, however it would be enabled: not Open, not the commands of a document, not Settings, not a tool', async () => {
+    await open();
+    openModal();
+    const ui = useUi.getState();
+    const viewer = useViewer.getState();
+    for (const id of ACTION_IDS.filter((id) => id !== 'about')) {
+      expect(runAction(id), id).toBe(false);
+      expect(canRunAction(id), id).toBe(false);
+    }
+    expect(documentsApi.openDocumentDialog).toHaveBeenCalledTimes(1);
+    expect(documentsApi.closeDocument).not.toHaveBeenCalled();
+    expect(useViewer.getState()).toBe(viewer);
+    expect(useUi.getState()).toBe(ui);
+    expect(view()?.zoom).toBe(1);
+    expect(view()?.pageIndex).toBe(0);
+    expect(useSettingsPopover.getState().open).toBe(false);
+  });
+
+  it('runs nothing even with no document: Open does not reach the file dialog behind the dialog', () => {
+    openModal();
+    expect(runAction('open')).toBe(false);
+    expect(documentsApi.openDocumentDialog).not.toHaveBeenCalled();
+  });
+
+  it('lets About through, which closes the dialog: running it again closes the dialog', () => {
+    expect(runAction('about')).toBe(true);
+    expect(useAboutDialog.getState().open).toBe(true);
+    openModal();
+    expect(canRunAction('about')).toBe(true);
+    expect(runAction('about')).toBe(true);
+    expect(useAboutDialog.getState().open).toBe(false);
+  });
+
+  it('runs again once the dialog is gone, and also while it is closing (it drops aria-modal when its exit starts)', async () => {
+    await open();
+    const modal = openModal();
+    expect(runAction('zoom-in')).toBe(false);
+    modal.setAttribute('aria-modal', 'false');
+    expect(runAction('zoom-in')).toBe(true);
+    expect(view()?.zoom).toBe(1.1);
+    modal.setAttribute('aria-modal', 'true');
+    expect(runAction('zoom-in')).toBe(false);
+    modal.remove();
+    expect(runAction('zoom-in')).toBe(true);
+    expect(view()?.zoom).toBe(1.25);
+  });
+
+  it('keeps the rest of the rules: an unknown id and a disabled action still do nothing, and still say so', () => {
+    expect(runAction('quit')).toBe(false);
+    openModal();
+    expect(runAction('quit')).toBe(false);
+    expect(runAction('about')).toBe(true);
+  });
+});
+
+describe('canRunAction', () => {
+  it('is the enabled check of runAction: no for an unknown id and for an action that cannot run now, yes otherwise', async () => {
+    for (const id of ['', 'quit', '__proto__', 'tool-draw', 'close-document', 'zoom-in']) {
+      expect(canRunAction(id), id).toBe(false);
+    }
+    expect(canRunAction('open')).toBe(true);
+    expect(canRunAction('settings')).toBe(true);
+    expect(canRunAction('about')).toBe(true);
+    await open();
+    for (const id of ['tool-draw', 'close-document', 'zoom-in']) expect(canRunAction(id), id).toBe(true);
+    act(() => useView.getState().setZoom(REPORT.id, MAX_ZOOM));
+    expect(canRunAction('zoom-in')).toBe(false);
+  });
+
+  it('runs nothing: asking changes no state', () => {
+    canRunAction('settings');
+    canRunAction('about');
+    canRunAction('open');
+    expect(useSettingsPopover.getState().open).toBe(false);
+    expect(useAboutDialog.getState().open).toBe(false);
+    expect(documentsApi.openDocumentDialog).not.toHaveBeenCalled();
   });
 });
 

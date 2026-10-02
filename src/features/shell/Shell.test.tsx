@@ -245,8 +245,8 @@ describe('Shell with a document', () => {
         'Actual sizeCtrl+1',
         'Fit widthCtrl+2',
         'Fit pageCtrl+0',
-        'Next pageAlt+↓',
-        'Previous pageAlt+↑',
+        'Next pageCtrl+↓',
+        'Previous pageCtrl+↑',
         'Settings…Ctrl+,',
         'About',
       ]);
@@ -284,13 +284,15 @@ describe('Shell with a document', () => {
       expect(documentsApi.closeDocument).toHaveBeenCalledTimes(1);
     });
 
-    it('Alt+Down and Alt+Up turn the page, and the status bar follows', async () => {
+    it('Ctrl+Down and Ctrl+Up turn the page, and the status bar follows; Alt+Down is the thumbnails and does not', async () => {
       const { user } = setup(<Shell />);
       await openDocument(user);
-      fireEvent.keyDown(window, { key: 'ArrowDown', altKey: true });
-      fireEvent.keyDown(window, { key: 'ArrowDown', altKey: true });
+      fireEvent.keyDown(window, { key: 'ArrowDown', ctrlKey: true });
+      fireEvent.keyDown(window, { key: 'ArrowDown', ctrlKey: true });
       expect(pageText()).toBe('3 / 120');
-      fireEvent.keyDown(window, { key: 'ArrowUp', altKey: true });
+      fireEvent.keyDown(window, { key: 'ArrowUp', ctrlKey: true });
+      expect(pageText()).toBe('2 / 120');
+      fireEvent.keyDown(window, { key: 'ArrowDown', altKey: true });
       expect(pageText()).toBe('2 / 120');
     });
 
@@ -300,9 +302,11 @@ describe('Shell with a document', () => {
       expect(tool('Left panel').getAttribute('aria-pressed')).toBe('true');
       fireEvent.keyDown(window, { key: 'F4' });
       expect(tool('Left panel').getAttribute('aria-pressed')).toBe('false');
-      expect(screen.queryByRole('complementary', { name: 'Left panel' })).toBeNull();
+      // The panel fades out first and is gone once it has.
+      await waitFor(() => expect(screen.queryByRole('complementary', { name: 'Left panel' })).toBeNull());
       fireEvent.keyDown(window, { key: 'F4' });
       expect(tool('Left panel').getAttribute('aria-pressed')).toBe('true');
+      expect(screen.getByRole('complementary', { name: 'Left panel' })).not.toBeNull();
     });
 
     it('Shift+F4 shows and hides the inspector, and the toolbar toggle follows', async () => {
@@ -415,7 +419,7 @@ describe('Shell with a document', () => {
       const splitter = screen.getByRole('separator', { name: 'Resize left panel' });
       splitter.focus();
       await user.keyboard('{Enter}');
-      expect(screen.queryByRole('complementary', { name: 'Left panel' })).toBeNull();
+      await waitFor(() => expect(screen.queryByRole('complementary', { name: 'Left panel' })).toBeNull());
       expect(splitter.getAttribute('aria-valuenow')).toBe('0');
       expect(tool('Left panel').getAttribute('aria-pressed')).toBe('false');
       await user.keyboard('{Enter}');
@@ -428,7 +432,7 @@ describe('Shell with a document', () => {
       expect(tool('Left panel').getAttribute('aria-pressed')).toBe('true');
       await user.click(tool('Left panel'));
       expect(useUi.getState().leftPanelCollapsed).toBe(true);
-      expect(screen.queryByRole('complementary', { name: 'Left panel' })).toBeNull();
+      await waitFor(() => expect(screen.queryByRole('complementary', { name: 'Left panel' })).toBeNull());
       await user.click(tool('Left panel'));
       expect(screen.getByRole('complementary', { name: 'Left panel' })).not.toBeNull();
     });
@@ -491,7 +495,7 @@ describe('Shell with a document', () => {
       await openDocument(user);
       expect(screen.getByRole('complementary', { name: 'Left panel' })).not.toBeNull();
       await user.click(tool('Inspector'));
-      expect(screen.queryByRole('complementary', { name: 'Left panel' })).toBeNull();
+      await waitFor(() => expect(screen.queryByRole('complementary', { name: 'Left panel' })).toBeNull());
       expect(tool('Left panel').getAttribute('aria-pressed')).toBe('false');
       // The user did not collapse it: the layout did, so growing the window brings it back.
       expect(useUi.getState().leftPanelCollapsed).toBe(false);
@@ -853,7 +857,7 @@ describe('Shell with a document: edge cases', () => {
       await openDocument(user);
       expect(screen.getByRole('complementary', { name: 'Left panel' })).not.toBeNull();
       resizeTo(960);
-      expect(screen.queryByRole('complementary', { name: 'Left panel' })).toBeNull();
+      await waitFor(() => expect(screen.queryByRole('complementary', { name: 'Left panel' })).toBeNull());
       expect(screen.getByRole('complementary', { name: 'Inspector' })).not.toBeNull();
       resizeTo(1300);
       expect(screen.getByRole('complementary', { name: 'Left panel' })).not.toBeNull();
@@ -867,7 +871,7 @@ describe('Shell with a document: edge cases', () => {
       await user.click(tool('Left panel'));
       expect(useUi.getState().leftPanelCollapsed).toBe(true);
       resizeTo(1500);
-      expect(screen.queryByRole('complementary', { name: 'Left panel' })).toBeNull();
+      await waitFor(() => expect(screen.queryByRole('complementary', { name: 'Left panel' })).toBeNull());
     });
   });
 });

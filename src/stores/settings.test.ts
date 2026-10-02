@@ -277,6 +277,65 @@ describe('update', () => {
     expect(useSettings.getState().theme).toBe('light');
     expect(root.snapshot()).toEqual({ 'data-theme': 'light' });
   });
+
+  it('ignores a slow refusal that arrives after a newer success: no error is shown for a change that was replaced', async () => {
+    let refuseFirst: (reason: unknown) => void = () => undefined;
+    updateSettingsMock.mockImplementationOnce(
+      () =>
+        new Promise<Settings>((_resolve, reject) => {
+          refuseFirst = reject;
+        }),
+    );
+    updateSettingsMock.mockResolvedValueOnce({
+      glass: 'auto',
+      theme: 'light',
+      language: 'system',
+      leftPanelWidth: 248,
+    });
+
+    const first = useSettings.getState().setTheme('dark');
+    await useSettings.getState().setTheme('light');
+    refuseFirst(INTERNAL);
+    await first;
+
+    expect(useSettings.getState().theme).toBe('light');
+    expect(useSettings.getState().error).toBeNull();
+  });
+
+  it('ignores a slow answer that arrives after a newer refusal: the error stays and the old change is not applied', async () => {
+    let answerFirst: (settings: Settings) => void = () => undefined;
+    updateSettingsMock.mockImplementationOnce(
+      () =>
+        new Promise<Settings>((resolve) => {
+          answerFirst = resolve;
+        }),
+    );
+    updateSettingsMock.mockRejectedValueOnce(INTERNAL);
+    const root = new FakeRoot();
+    bindSettingsToRoot(root);
+
+    const first = useSettings.getState().setTheme('dark');
+    await useSettings.getState().setTheme('light');
+    answerFirst({ glass: 'auto', theme: 'dark', language: 'system', leftPanelWidth: 248 });
+    await first;
+
+    expect(useSettings.getState().theme).toBe('system');
+    expect(useSettings.getState().error).toMatchObject({ code: 'internal' });
+    expect(root.snapshot()).toEqual({});
+  });
+
+  it('keeps going after a refusal: the next change goes through and nothing stays pending', async () => {
+    updateSettingsMock.mockRejectedValueOnce(INTERNAL);
+    updateSettingsMock.mockResolvedValueOnce({ glass: 'solid', theme: 'system', language: 'de', leftPanelWidth: 248 });
+
+    await useSettings.getState().setGlass('solid');
+    expect(useSettings.getState().glass).toBe('auto');
+    await useSettings.getState().setGlass('solid');
+
+    expect(updateSettingsMock).toHaveBeenNthCalledWith(1, { glass: 'solid' });
+    expect(updateSettingsMock).toHaveBeenNthCalledWith(2, { glass: 'solid' });
+    expect(useSettings.getState()).toMatchObject({ glass: 'solid', language: 'de', error: null });
+  });
 });
 
 describe('attribute truth table', () => {

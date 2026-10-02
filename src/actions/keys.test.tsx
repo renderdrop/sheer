@@ -4,11 +4,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { Platform } from '../api/app';
 import type { DocumentInfo } from '../api/documents';
+import { useSettingsPopover } from '../features/settings/state';
 import { useViewer } from '../features/viewer/useViewer';
 import { useSettings } from '../stores/settings';
 import { useUi } from '../stores/ui';
 import { useView } from '../stores/view';
-import { ActionKeys, handleKeyDown, isInCanvas, isTextEntry, useActionKeys } from './keys';
+import { ActionKeys, handleKeyDown, isImeEvent, isInCanvas, isInModal, isTextEntry, useActionKeys } from './keys';
 import { ACTIONS } from './registry';
 import { resolveBinding, type Binding } from './shortcut';
 import { NO_DOCUMENT } from './state';
@@ -27,6 +28,7 @@ const settingsInitial = useSettings.getState();
 const REPORT: DocumentInfo = { id: 1, pageCount: 10, displayName: 'Report.pdf' };
 
 function reset() {
+  useSettingsPopover.setState({ open: false });
   useUi.setState({ ...uiInitial }, true);
   useViewer.setState({ ...viewerInitial }, true);
   useView.setState({ byDoc: {} });
@@ -56,9 +58,13 @@ function press(init: KeyboardEventInit, target: EventTarget = window) {
   return event;
 }
 
-/** The elements the handler reasons about, in a document body that goes away after the test. */
+/**
+ * The elements the handler reasons about, in a document body that goes away after the test. The markup is a literal of the test,
+ * never data, which is why this one helper may parse it (the lint rule against DOMParser is for strings from outside).
+ */
 function build(html: string): HTMLElement {
   const host = document.createElement('div');
+  // eslint-disable-next-line no-restricted-syntax -- fixture markup written in this file, not an untrusted string
   host.append(...new DOMParser().parseFromString(html, 'text/html').body.childNodes);
   document.body.append(host);
   return host;
@@ -126,11 +132,11 @@ describe('the bindings', () => {
     expect(zoom()).toBe(1);
   });
 
-  it('Alt+Down and Alt+Up turn pages, F4 and Shift+F4 toggle the panels on Windows', () => {
-    press({ key: 'ArrowDown', altKey: true });
-    press({ key: 'ArrowDown', altKey: true });
+  it('Ctrl+Down and Ctrl+Up turn pages, F4 and Shift+F4 toggle the panels on Windows', () => {
+    press({ key: 'ArrowDown', ctrlKey: true });
+    press({ key: 'ArrowDown', ctrlKey: true });
     expect(useView.getState().byDoc[1]?.pageIndex).toBe(2);
-    press({ key: 'ArrowUp', altKey: true });
+    press({ key: 'ArrowUp', ctrlKey: true });
     expect(useView.getState().byDoc[1]?.pageIndex).toBe(1);
     press({ key: 'F4' });
     expect(useUi.getState().leftPanelCollapsed).toBe(true);
@@ -149,6 +155,27 @@ describe('the bindings', () => {
     expect(useUi.getState().leftPanelCollapsed).toBe(true);
   });
 
+  it('Cmd+Down and Cmd+Up turn pages on macOS, where Control with the arrows does nothing', () => {
+    setPlatform('macos');
+    press({ key: 'ArrowDown', metaKey: true });
+    press({ key: 'ArrowDown', metaKey: true });
+    expect(useView.getState().byDoc[1]?.pageIndex).toBe(2);
+    press({ key: 'ArrowUp', metaKey: true });
+    expect(useView.getState().byDoc[1]?.pageIndex).toBe(1);
+    expect(press({ key: 'ArrowDown', ctrlKey: true }).defaultPrevented).toBe(false);
+    expect(useView.getState().byDoc[1]?.pageIndex).toBe(1);
+  });
+
+  it('Alt+Down and Alt+Up are not page keys (they move a thumbnail), so the browser keeps them', () => {
+    for (const platform of ['windows', 'macos'] as const) {
+      setPlatform(platform);
+      for (const key of ['ArrowDown', 'ArrowUp']) {
+        expect(press({ key, altKey: true }).defaultPrevented, `${platform} ${key}`).toBe(false);
+      }
+    }
+    expect(useView.getState().byDoc[1]?.pageIndex).toBe(0);
+  });
+
   it('Ctrl+W closes the document', () => {
     press({ key: 'w', ctrlKey: true });
     expect(useViewer.getState().doc).toBeNull();
@@ -163,7 +190,8 @@ describe('the bindings', () => {
       { key: 'F5' },
       { key: 'Escape' },
       { key: 'ArrowDown' },
-      { key: 'ArrowDown', ctrlKey: true },
+      { key: 'ArrowDown', ctrlKey: true, shiftKey: true },
+      { key: 'ArrowDown', altKey: true },
     ]) {
       const event = press(init);
       expect(event.defaultPrevented, JSON.stringify(init)).toBe(false);
@@ -193,7 +221,7 @@ describe('repeating keys', () => {
     press({ key: '+', ctrlKey: true, repeat: true });
     press({ key: '+', ctrlKey: true, repeat: true });
     expect(zoom()).toBe(1.25);
-    press({ key: 'ArrowDown', altKey: true, repeat: true });
+    press({ key: 'ArrowDown', ctrlKey: true, repeat: true });
     expect(useView.getState().byDoc[1]?.pageIndex).toBe(1);
     documentsApi.openDocumentDialog.mockClear();
     const held = press({ key: 'o', ctrlKey: true, repeat: true });
@@ -234,7 +262,7 @@ describe('inputs keep their keys', () => {
         { key: 'w', ctrlKey: true },
         { key: 'v' },
         { key: 'F4' },
-        { key: 'ArrowDown', altKey: true },
+        { key: 'ArrowDown', ctrlKey: true },
       ]) {
         const event = press(init, target);
         expect(event.defaultPrevented, JSON.stringify(init)).toBe(false);
@@ -342,6 +370,115 @@ describe('events somebody else has handled', () => {
     const event = new KeyboardEvent('keydown', { key: '+', ctrlKey: true, cancelable: true, isComposing: true });
     expect(handleKeyDown(event, 'windows')).toBe(false);
     expect(zoom()).toBe(1);
+  });
+
+  it('nor is the keydown that ends one in WebKit, which reports key code 229 and isComposing false', async () => {
+    await openDocument();
+    const event = new KeyboardEvent('keydown', { key: '+', ctrlKey: true, cancelable: true, keyCode: 229 });
+    expect(event.isComposing).toBe(false);
+    expect(handleKeyDown(event, 'windows')).toBe(false);
+    expect(event.defaultPrevented).toBe(false);
+    expect(zoom()).toBe(1);
+    // Any other key code is an ordinary key.
+    const ordinary = new KeyboardEvent('keydown', { key: '+', ctrlKey: true, keyCode: 187 });
+    expect(handleKeyDown(ordinary, 'windows')).toBe(true);
+    expect(zoom()).toBe(1.1);
+  });
+
+  it('tells an input method key from any other', () => {
+    expect(isImeEvent({ isComposing: true, keyCode: 65 })).toBe(true);
+    expect(isImeEvent({ isComposing: false, keyCode: 229 })).toBe(true);
+    expect(isImeEvent({ isComposing: false, keyCode: 65 })).toBe(false);
+  });
+});
+
+describe('a modal dialog owns the keyboard', () => {
+  beforeEach(async () => {
+    await openDocument();
+  });
+
+  it('leaves Open, zoom and the other shortcuts alone while a key is pressed inside the dialog', () => {
+    const host = build(
+      '<div role="dialog" aria-modal="true"><button id="inside">x</button></div><button id="outside">y</button>',
+    );
+    const inside = host.querySelector<HTMLElement>('#inside') as HTMLElement;
+    for (const init of [
+      { key: '+', ctrlKey: true },
+      { key: 'o', ctrlKey: true },
+      { key: 'w', ctrlKey: true },
+    ]) {
+      expect(press(init, inside).defaultPrevented, JSON.stringify(init)).toBe(false);
+    }
+    expect(zoom()).toBe(1);
+    expect(useViewer.getState().doc).not.toBeNull();
+    expect(documentsApi.openDocumentDialog).toHaveBeenCalledTimes(1);
+  });
+
+  it('runs nothing for a key pressed outside the dialog either (focus on the body, behind an inert app) until it is gone', () => {
+    const host = build(
+      '<div role="dialog" aria-modal="true" id="dialog"><button id="inside">x</button></div><button id="outside">y</button>',
+    );
+    const outside = host.querySelector<HTMLElement>('#outside') as HTMLElement;
+    for (const init of [
+      { key: '+', ctrlKey: true },
+      { key: 'o', ctrlKey: true },
+      { key: 'w', ctrlKey: true },
+      { key: ',', ctrlKey: true },
+    ]) {
+      // The key is still taken from the browser (Ctrl and plus would zoom the whole window), but no command runs.
+      expect(press(init, outside).defaultPrevented, JSON.stringify(init)).toBe(true);
+      expect(press(init, document.body).defaultPrevented, JSON.stringify(init)).toBe(true);
+    }
+    expect(zoom()).toBe(1);
+    expect(useViewer.getState().doc).not.toBeNull();
+    expect(documentsApi.openDocumentDialog).toHaveBeenCalledTimes(1);
+    expect(useSettingsPopover.getState().open).toBe(false);
+    // The dialog is what stops it: the same key works as soon as it is gone.
+    host.querySelector('#dialog')?.remove();
+    press({ key: '+', ctrlKey: true }, outside);
+    expect(zoom()).toBe(1.1);
+  });
+
+  it('is not a popover: a role dialog without aria-modal keeps the shortcuts (the settings popover)', () => {
+    const host = build('<div role="dialog"><button id="inside">x</button></div>');
+    press({ key: '+', ctrlKey: true }, host.querySelector('#inside') as HTMLElement);
+    expect(zoom()).toBe(1.1);
+  });
+
+  it('tells a modal from the rest', () => {
+    const host = build('<div aria-modal="true"><span id="in"></span></div><span id="out"></span>');
+    expect(isInModal(host.querySelector('#in'))).toBe(true);
+    expect(isInModal(host.querySelector('#out'))).toBe(false);
+    expect(isInModal(window)).toBe(false);
+    expect(isInModal(null)).toBe(false);
+  });
+});
+
+describe('the numpad', () => {
+  beforeEach(async () => {
+    await openDocument();
+    useView.getState().setZoom(REPORT.id, 2);
+  });
+
+  it('is Actual Size with Ctrl and 1 while NumLock makes it type digits', () => {
+    press({ key: '1', code: 'Numpad1', ctrlKey: true });
+    expect(zoom()).toBe(1);
+  });
+
+  it('is End, the arrows and so on with NumLock off, which are not digit shortcuts', () => {
+    for (const init of [
+      { key: 'End', code: 'Numpad1' },
+      { key: 'Home', code: 'Numpad7' },
+      { key: 'Insert', code: 'Numpad0' },
+    ]) {
+      const event = press({ ...init, ctrlKey: true });
+      expect(event.defaultPrevented, init.key).toBe(false);
+    }
+    expect(zoom()).toBe(2);
+    // Ctrl and the numpad's 2 with NumLock off is Ctrl and Down: the next page, not Fit Width.
+    press({ key: 'ArrowDown', code: 'Numpad2', ctrlKey: true });
+    expect(useView.getState().byDoc[REPORT.id]?.pageIndex).toBe(1);
+    expect(zoom()).toBe(2);
   });
 });
 

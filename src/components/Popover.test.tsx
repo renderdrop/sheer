@@ -97,6 +97,70 @@ describe('Popover (dialog)', () => {
     expect(document.activeElement).toBe(apply);
   });
 
+  describe('with a roving group inside (one tab stop, the other members at tabindex -1)', () => {
+    /** The group is last in the DOM and its last member is no tab stop, the way the settings popover ends. */
+    function WithGroup({ checked = 1 }: { checked?: number }) {
+      return (
+        <>
+          <Popover label="Zoom" trigger={(trigger) => <button {...trigger}>Open</button>}>
+            <button type="button">Reset</button>
+            <div role="radiogroup" aria-label="Mode">
+              {['a', 'b', 'c'].map((name, index) => (
+                <button
+                  key={name}
+                  type="button"
+                  role="radio"
+                  aria-checked={index === checked}
+                  tabIndex={index === checked ? 0 : -1}
+                >
+                  {name}
+                </button>
+              ))}
+            </div>
+          </Popover>
+          <button type="button">after</button>
+        </>
+      );
+    }
+
+    it('wraps Tab from the last tab stop to the first, though the last button in the DOM is no tab stop', async () => {
+      const { user, getByRole } = setup(<WithGroup />);
+      await user.click(getByRole('button', { name: 'Open' }));
+      expect(document.activeElement).toBe(getByRole('button', { name: 'Reset' }));
+      await user.tab();
+      expect(document.activeElement).toBe(getByRole('radio', { name: 'b' }));
+      // The last button in the DOM is "c" (tabindex -1): the browser would leave the popover from "b", the trap keeps it in.
+      await user.tab();
+      expect(document.activeElement).toBe(getByRole('button', { name: 'Reset' }));
+    });
+
+    it('wraps Shift+Tab from the first tab stop to the last one, not to a member at tabindex -1', async () => {
+      const { user, getByRole } = setup(<WithGroup checked={0} />);
+      await user.click(getByRole('button', { name: 'Open' }));
+      await user.tab({ shift: true });
+      expect(document.activeElement).toBe(getByRole('radio', { name: 'a' }));
+      await user.tab({ shift: true });
+      expect(document.activeElement).toBe(getByRole('button', { name: 'Reset' }));
+    });
+
+    it('starts on the first tab stop: the chosen member of a group that comes first, not its first button', async () => {
+      const { user, getByRole } = setup(
+        <Popover label="Mode" trigger={(trigger) => <button {...trigger}>Open</button>}>
+          <div role="radiogroup" aria-label="Mode">
+            <button type="button" role="radio" aria-checked="false" tabIndex={-1}>
+              a
+            </button>
+            <button type="button" role="radio" aria-checked="true" tabIndex={0}>
+              b
+            </button>
+          </div>
+        </Popover>,
+      );
+      await user.click(getByRole('button', { name: 'Open' }));
+      expect(document.activeElement).toBe(getByRole('radio', { name: 'b' }));
+    });
+  });
+
   it('can be controlled: reports the wish to close and waits for the parent', async () => {
     const onOpenChange = vi.fn();
     const { user, getByRole } = setup(<Demo open onOpenChange={onOpenChange} />);

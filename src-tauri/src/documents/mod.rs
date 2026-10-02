@@ -64,7 +64,8 @@ const KEPT_FORMAT_CHARS: [char; 2] = ['\u{200C}', '\u{200D}'];
 
 /// Every character of the Unicode general category Cf (format) as of Unicode 17, as inclusive ranges in order.
 /// The standard library has `char::is_control` (Cc) but no table for Cf, and one table is not worth a dependency.
-/// `tests/display_name.rs` holds an independent copy and compares both over every scalar value. Cf has the direction
+/// `tests/display_name.rs` checks it over every scalar value against an oracle that is not a copy of it (the standard
+/// library's table of printable characters, known Cf characters by name, and the size of the category: 170). Cf has the direction
 /// marks, embeddings, overrides and isolates (the "gpj.exe" trick), the zero-width and invisible-operator characters, the
 /// soft hyphen, the byte order mark, the interlinear annotation marks, the Arabic number signs and the tag characters
 /// (invisible text that survives copy and paste).

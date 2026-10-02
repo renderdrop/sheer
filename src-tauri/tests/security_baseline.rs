@@ -387,8 +387,24 @@ fn the_webview_has_no_event_permissions() {
 /// to `listen`, which it cannot (ADR-013), and would bypass the allowlist.
 #[test]
 fn menu_commands_reach_the_webview_only_through_the_channel() {
+    // Every file of the menu module, found by glob: a file someone adds to `src/menu` later (a submodule for the menu bar of
+    // another platform) is scanned without this test being edited. `src/commands/app.rs` is where the channel is taken.
+    let mut files: Vec<String> = fs::read_dir(root().join("src/menu"))
+        .unwrap()
+        .map(|entry| entry.unwrap().file_name().into_string().unwrap())
+        .filter(|name| name.ends_with(".rs"))
+        .map(|name| format!("src/menu/{name}"))
+        .collect();
+    files.sort();
+    assert!(
+        ["src/menu/mod.rs", "src/menu/spec.rs"]
+            .iter()
+            .all(|expected| files.iter().any(|file| file == expected)),
+        "the glob finds the menu module's files: {files:?}"
+    );
+    files.push("src/commands/app.rs".to_owned());
     let mut sources = String::new();
-    for file in ["src/menu/mod.rs", "src/menu/spec.rs", "src/commands/app.rs"] {
+    for file in &files {
         // The tests of a file name the forbidden calls; production code is what comes before them.
         let source = read(file);
         sources.push_str(source.split("#[cfg(test)]").next().unwrap());
@@ -613,7 +629,7 @@ fn panics_unwind_so_the_engine_guard_works() {
 #[test]
 fn lints_forbid_unsafe_and_unwrap_in_production_code() {
     let manifest = read("Cargo.toml");
-    assert!(section(&manifest, "lints.rust").contains(&"unsafe_code = \"deny\"".to_owned()));
+    assert!(section(&manifest, "lints.rust").contains(&"unsafe_code = \"forbid\"".to_owned()));
     let clippy = section(&manifest, "lints.clippy");
     assert!(clippy.contains(&"unwrap_used = \"deny\"".to_owned()));
     assert!(clippy.contains(&"expect_used = \"deny\"".to_owned()));

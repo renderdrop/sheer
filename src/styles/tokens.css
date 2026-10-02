@@ -472,6 +472,17 @@
     animation: none !important;
     scroll-behavior: auto !important;
   }
+
+  /*
+   * The left panel's collapse (DESIGN 3.8) is opacity-only. The panel fades in 150 ms (it is a Motion element) and a collapse
+   * then takes its tracks away in one step, after that fade (a transition of no duration that starts 150 ms late), where
+   * the 250 ms slide of the tracks is off. Restoring the panel gives it its tracks at once and it fades in on them.
+   */
+  [data-layout][data-animating][data-left="collapsed"] {
+    transition-property: grid-template-columns !important;
+    transition-duration: 0s !important;
+    transition-delay: var(--motion-fast) !important;
+  }
 }
 
 @layer base {

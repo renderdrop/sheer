@@ -24,6 +24,11 @@ export interface PositionInput {
   offset: number;
   /** Minimum distance to the window edge. */
   margin: number;
+  /**
+   * Shift along the other axis, in px, applied before the element is kept inside the window. A submenu lines its first
+   * item up with the item that opened it with the negative padding of its panel. Default 0.
+   */
+  crossOffset?: number;
 }
 
 export interface PositionResult {
@@ -74,7 +79,7 @@ function crossStart(align: Align, anchorStart: number, anchorSize: number, float
  * `margin` inside the window. The gap to the anchor is kept, so the anchor is never covered while there is room.
  */
 export function computePosition(input: PositionInput): PositionResult {
-  const { anchor, floating, viewport, align, offset, margin } = input;
+  const { anchor, floating, viewport, align, offset, margin, crossOffset = 0 } = input;
   let side = input.side;
   const need = (candidate: Side) => (isVertical(candidate) ? floating.height : floating.width) + offset;
 
@@ -86,10 +91,10 @@ export function computePosition(input: PositionInput): PositionResult {
   let x: number;
   let y: number;
   if (isVertical(side)) {
-    x = crossStart(align, anchor.left, anchor.width, floating.width);
+    x = crossStart(align, anchor.left, anchor.width, floating.width) + crossOffset;
     y = side === 'bottom' ? anchor.top + anchor.height + offset : anchor.top - offset - floating.height;
   } else {
-    y = crossStart(align, anchor.top, anchor.height, floating.height);
+    y = crossStart(align, anchor.top, anchor.height, floating.height) + crossOffset;
     x = side === 'right' ? anchor.left + anchor.width + offset : anchor.left - offset - floating.width;
   }
 

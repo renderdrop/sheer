@@ -179,16 +179,21 @@ pub fn layout() -> Option<&'static Layout> {
 
 type Catalog = HashMap<String, String>;
 
-fn parse_catalog(json: &str) -> Catalog {
-    serde_json::from_str(json).unwrap_or_default()
+/// The catalog of `name` (the file it came from) as a map. A damaged file gives an empty catalog, so the texts fall back to
+/// English and then to the key itself, and the damage is logged like that of the layout in [`layout`] (a test fails first).
+fn parse_catalog(json: &str, name: &str) -> Catalog {
+    serde_json::from_str(json).unwrap_or_else(|error| {
+        AppError::logged(ErrorCode::Internal, format!("menu catalog {name}: {error}")).log();
+        Catalog::new()
+    })
 }
 
 fn catalog(locale: MenuLocale) -> &'static Catalog {
     static EN: OnceLock<Catalog> = OnceLock::new();
     static DE: OnceLock<Catalog> = OnceLock::new();
     match locale {
-        MenuLocale::En => EN.get_or_init(|| parse_catalog(EN_JSON)),
-        MenuLocale::De => DE.get_or_init(|| parse_catalog(DE_JSON)),
+        MenuLocale::En => EN.get_or_init(|| parse_catalog(EN_JSON, "en")),
+        MenuLocale::De => DE.get_or_init(|| parse_catalog(DE_JSON, "de")),
     }
 }
 
@@ -460,6 +465,16 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[test]
+    fn a_damaged_catalog_is_an_empty_one_and_not_a_panic() {
+        // Not valid JSON, and valid JSON of the wrong shape (a value that is not a string): both are logged and empty.
+        assert!(parse_catalog("{ not json", "test").is_empty());
+        assert!(parse_catalog(r#"{ "menu.file": 1 }"#, "test").is_empty());
+        assert!(parse_catalog("", "test").is_empty());
+        let parsed = parse_catalog(r#"{ "menu.file": "File" }"#, "test");
+        assert_eq!(parsed.get("menu.file").map(String::as_str), Some("File"));
     }
 
     #[test]

@@ -1,7 +1,9 @@
 import { GalleryVertical, ListTree, MessagesSquare, Search, type LucideIcon } from 'lucide-react';
+import { AnimatePresence, motion, useIsPresent } from 'motion/react';
 import { memo, type CSSProperties } from 'react';
 
 import { Panel, Tab, TabList, TabPanel, Tabs } from '../../components';
+import { usePanelFade } from '../../components/motion';
 import { useT, type PlainKey } from '../../i18n';
 import { LEFT_PANEL_TABS, useUi, type LeftPanelTab } from '../../stores/ui';
 
@@ -29,8 +31,6 @@ const selectTab = (tab: string) => {
 export interface LeftPanelProps {
   /** The id the splitter points to with `aria-controls`. */
   id: string;
-  /** Keep it the same object between renders: the panel is memoized, and a new style object would defeat that. */
-  style?: CSSProperties;
 }
 
 /**
@@ -41,7 +41,7 @@ export interface LeftPanelProps {
  * It follows the selected tab (`ui.leftPanelTab`) itself and is memoized, so it renders when the tab or its slot changes and
  * not for a page, a zoom step or a drag of the splitter next to it.
  */
-export const LeftPanel = memo(function LeftPanel({ id, style }: LeftPanelProps) {
+export const LeftPanel = memo(function LeftPanel({ id }: LeftPanelProps) {
   const t = useT();
   const tab = useUi((state) => state.leftPanelTab);
   return (
@@ -50,7 +50,6 @@ export const LeftPanel = memo(function LeftPanel({ id, style }: LeftPanelProps) 
       <Panel
         id={id}
         label={t('leftPanel.label')}
-        style={style}
         header={
           <TabList label={t('leftPanel.views')}>
             {LEFT_PANEL_TABS.map((value) => (
@@ -71,3 +70,41 @@ export const LeftPanel = memo(function LeftPanel({ id, style }: LeftPanelProps) 
     </Tabs>
   );
 });
+
+export interface LeftPanelSlotProps {
+  /** The panel is shown (not collapsed). A change fades it in or out; it is gone from the page once it has faded. */
+  present: boolean;
+  id: string;
+  /** `grid-column` of the slot. */
+  style: CSSProperties;
+}
+
+/**
+ * The left panel's slot of the main grid, which is there with or without the panel (its tracks only shrink to nothing when it
+ * is collapsed, `shellTracks`). The panel fades over 250 ms in step with its track (opacity only under reduced motion, where the
+ * track changes in one step, tokens.css), and a collapsed one is removed once it has faded, so it is neither in the page nor
+ * in the tab order. The fading is this component's own state: the shell renders once for the change, and not again when the
+ * panel has gone or for any frame of the track, and the memoized panel inside does not render at all.
+ */
+export function LeftPanelSlot({ present, id, style }: LeftPanelSlotProps) {
+  return (
+    // The panel is there from the first paint; only a change animates.
+    <AnimatePresence initial={false}>{present && <LeftPanelFrame key="left" id={id} style={style} />}</AnimatePresence>
+  );
+}
+
+function LeftPanelFrame({ id, style }: Omit<LeftPanelSlotProps, 'present'>) {
+  const motionProps = usePanelFade();
+  // While it fades out the panel is on its way out: nothing in it takes focus or a click any more.
+  const present = useIsPresent();
+  return (
+    <motion.div
+      {...motionProps}
+      inert={!present}
+      style={style}
+      className="grid min-h-0 min-w-0 grid-cols-[minmax(0,1fr)] grid-rows-[minmax(0,1fr)]"
+    >
+      <LeftPanel id={id} />
+    </motion.div>
+  );
+}

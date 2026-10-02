@@ -71,10 +71,42 @@ describe('the left panel', () => {
     const collapsed = layout({ panelCollapsed: true });
     expect(collapsed.leftCollapsed).toBe(true);
     expect(collapsed.leftAutoCollapsed).toBe(false);
-    expect(collapsed.tracks.map((track) => track.slot)).toEqual(['splitter', 'canvas', 'gutter-end']);
-    expect(collapsed.column).toEqual({ splitter: 1, canvas: 2, 'gutter-end': 3 });
+    // They go by taking no room, and stay in the list (see the next test).
+    expect(collapsed.tracks.slice(0, 3)).toEqual([
+      { slot: 'gutter-start', size: 'var(--spacing-0)' },
+      { slot: 'left', size: 'var(--spacing-0)' },
+      { slot: 'splitter', size: 'var(--splitter-width)' },
+    ]);
     // 1100 - 8 (splitter) - 8 (outer gutter)
     expect(collapsed.canvasWidth).toBe(1084);
+  });
+
+  it('collapsed or not, the list has the same tracks in the same places, so the browser can animate between the two', () => {
+    for (const windowWidth of [960, 1100, 1280, 1600]) {
+      for (const inspector of ['auto', 'open', 'closed'] as const) {
+        const open = layout({ windowWidth, inspector, panelCollapsed: false, panelWidth: PANEL.min });
+        const shut = layout({ windowWidth, inspector, panelCollapsed: true, panelWidth: PANEL.min });
+        const label = `${windowWidth} ${inspector}`;
+        expect(
+          shut.tracks.map((track) => track.slot),
+          label,
+        ).toEqual(open.tracks.map((track) => track.slot));
+        expect(shut.column, label).toEqual(open.column);
+        // Only the sizes of the left panel's two tracks differ.
+        const differing = open.tracks.filter((track, index) => track.size !== shut.tracks[index]?.size);
+        expect(
+          differing.map((track) => track.slot),
+          label,
+        ).toEqual(['gutter-start', 'left']);
+      }
+    }
+    expect(layout({ panelCollapsed: true }).column).toEqual({
+      'gutter-start': 1,
+      left: 2,
+      splitter: 3,
+      canvas: 4,
+      'gutter-end': 5,
+    });
   });
 
   it('is clamped to the range of the spec, and a bad width gives the default', () => {

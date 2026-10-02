@@ -806,7 +806,8 @@ mod tests {
     fn a_fifo_at_the_settings_path_does_not_block_the_load() {
         let dir = TempDir::new();
         let path = dir.path().join(FILE_NAME);
-        // mkfifo(1) instead of a libc dependency; where it is missing there is nothing to test.
+        // mkfifo(1) instead of `libc::mkfifo`, which is an unsafe call and `unsafe_code` is forbidden (the open flags above
+        // come from libc as plain constants). Where mkfifo is missing there is nothing to test.
         let made = std::process::Command::new("mkfifo")
             .arg(&path)
             .status()

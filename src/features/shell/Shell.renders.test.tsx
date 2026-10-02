@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { act, fireEvent, screen, waitFor, within } from '@testing-library/react';
+import { MotionGlobalConfig } from 'motion/react';
 import type { ComponentProps } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -331,10 +332,126 @@ describe('what changes often does not render the shell, the toolbar or the left 
     const before = counts();
     await user.click(tool('Left panel'));
     expect(tool('Left panel').getAttribute('aria-pressed')).toBe('false');
-    expect(screen.queryByRole('complementary', { name: 'Left panel' })).toBeNull();
+    await waitFor(() => expect(screen.queryByRole('complementary', { name: 'Left panel' })).toBeNull());
     expect(renders.shell).toBe(before.shell + 1);
     expect(renders.toolbar).toBeGreaterThan(before.toolbar);
     expect(renders.leftPanel).toBe(before.leftPanel);
+  });
+});
+
+describe('the animation of the left panel (250 ms) renders nothing', () => {
+  /** Longer than the slide of the columns (250 ms) and the timer that ends it (300 ms). */
+  const pastTheAnimation = () => new Promise<void>((resolve) => window.setTimeout(resolve, 450));
+
+  it('collapsing: the shell renders once for the change, not for the fade, the slide or the end of either', async () => {
+    const { container, user } = setup(<Shell />);
+    await openAndSettle(user);
+    const before = counts();
+    const grid = container.querySelector<HTMLElement>('[data-layout]');
+
+    await user.click(tool('Left panel'));
+    expect(grid?.hasAttribute('data-animating')).toBe(true);
+    await waitFor(() => expect(screen.queryByRole('complementary', { name: 'Left panel' })).toBeNull());
+    await pastTheAnimation();
+    expect(grid?.hasAttribute('data-animating')).toBe(false);
+
+    expect(renders.shell).toBe(before.shell + 1);
+    expect(renders.leftPanel).toBe(before.leftPanel);
+    const afterCollapse = counts();
+    // Nothing is left to render: the page, a zoom step and the splitter still do not reach the shell.
+    act(() => useViewer.getState().goToPage(3));
+    act(() => useUi.getState().setLeftPanelWidth(300));
+    expect(counts()).toEqual(afterCollapse);
+  });
+
+  it('restoring: the shell renders once, the panel is made once, and nothing renders when the animation ends', async () => {
+    const { container, user } = setup(<Shell />);
+    await openAndSettle(user);
+    await user.click(tool('Left panel'));
+    await waitFor(() => expect(screen.queryByRole('complementary', { name: 'Left panel' })).toBeNull());
+    await pastTheAnimation();
+    const before = counts();
+    const grid = container.querySelector<HTMLElement>('[data-layout]');
+
+    await user.click(tool('Left panel'));
+    expect(grid?.hasAttribute('data-animating')).toBe(true);
+    expect(screen.getByRole('complementary', { name: 'Left panel' })).not.toBeNull();
+    await pastTheAnimation();
+    expect(grid?.hasAttribute('data-animating')).toBe(false);
+
+    expect(renders.shell).toBe(before.shell + 1);
+    expect(renders.leftPanel).toBe(before.leftPanel + 1);
+    const afterRestore = counts();
+    await pastTheAnimation();
+    expect(counts()).toEqual(afterRestore);
+  });
+});
+
+describe('the animation of the left panel renders nothing with the animations really running', () => {
+  // The setup of the tests skips every animation; here the fade and the slide are drawn frame by frame, as in the app.
+  beforeEach(() => {
+    MotionGlobalConfig.skipAnimations = false;
+  });
+  afterEach(() => {
+    MotionGlobalConfig.skipAnimations = true;
+  });
+
+  /** Longer than the slide of the columns (250 ms) and the timer that ends it (300 ms). */
+  const pastTheAnimation = () => new Promise<void>((resolve) => window.setTimeout(resolve, 450));
+  const gone = () =>
+    waitFor(() => expect(screen.queryByRole('complementary', { name: 'Left panel' })).toBeNull(), { timeout: 2000 });
+
+  it('collapsing and restoring: one render of the shell for each, however many frames the fade has', async () => {
+    const { user } = setup(<Shell />);
+    await openAndSettle(user);
+    const before = counts();
+
+    await user.click(tool('Left panel'));
+    await gone();
+    await pastTheAnimation();
+    expect(renders.shell).toBe(before.shell + 1);
+    expect(renders.leftPanel).toBe(before.leftPanel);
+
+    await user.click(tool('Left panel'));
+    await waitFor(() => expect(useUi.getState().leftPanelCollapsed).toBe(false));
+    await pastTheAnimation();
+    expect(screen.getByRole('complementary', { name: 'Left panel' })).not.toBeNull();
+    expect(renders.shell).toBe(before.shell + 2);
+    const after = counts();
+    await pastTheAnimation();
+    expect(counts()).toEqual(after);
+  });
+
+  it('restoring in the middle of the fade out: still one render for each toggle, and one panel', async () => {
+    const { user } = setup(<Shell />);
+    await openAndSettle(user);
+    const before = counts();
+
+    await user.click(tool('Left panel'));
+    await user.click(tool('Left panel'));
+    await pastTheAnimation();
+
+    expect(renders.shell).toBe(before.shell + 2);
+    expect(screen.getAllByRole('complementary', { name: 'Left panel' })).toHaveLength(1);
+    expect(useUi.getState().leftPanelCollapsed).toBe(false);
+    const after = counts();
+    await pastTheAnimation();
+    expect(counts()).toEqual(after);
+  });
+
+  it('the shortcut collapses and restores it the same way: one render of the shell each', async () => {
+    const { user } = setup(<Shell />);
+    await openAndSettle(user);
+    const before = counts();
+
+    fireEvent.keyDown(window, { key: 'F4' });
+    await gone();
+    await pastTheAnimation();
+    expect(renders.shell).toBe(before.shell + 1);
+    fireEvent.keyDown(window, { key: 'F4' });
+    await pastTheAnimation();
+    expect(renders.shell).toBe(before.shell + 2);
+    expect(screen.getByRole('complementary', { name: 'Left panel' })).not.toBeNull();
   });
 });
 

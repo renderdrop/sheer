@@ -187,7 +187,7 @@ describe('the toolbar of DESIGN 3.3 and ADR-011 section 6', () => {
       open.onSelect();
       expect(calls.run).toHaveBeenCalledWith('open');
       expect(entryOf(moreItems, 'fit-width')).toMatchObject({ label: 'Fit width', shortcut: '⌘2' });
-      expect(entryOf(moreItems, 'next-page')).toMatchObject({ shortcut: '⌥↓' });
+      expect(entryOf(moreItems, 'next-page')).toMatchObject({ shortcut: '⌘↓' });
       expect(entryOf(moreItems, 'about').shortcut).toBeUndefined();
     });
 

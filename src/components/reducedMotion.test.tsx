@@ -5,7 +5,7 @@ import { useState } from 'react';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { openTooltip, setup } from '../test/render';
-import { DURATION, ENTER_SCALE, EASE_OUT, useFade, usePopoverMotion, useRevealMotion } from './motion';
+import { DURATION, ENTER_SCALE, EASE_OUT, useFade, usePanelFade, usePopoverMotion, useRevealMotion } from './motion';
 import { Popover } from './Popover';
 import { Tab, TabList, Tabs } from './Tabs';
 import { Tooltip } from './Tooltip';
@@ -98,6 +98,24 @@ describe('motion presets under reduced motion', () => {
     expect(transformKeys(result.current.exit)).toEqual([]);
     expect(result.current.animate.transition).toEqual({ duration: DURATION.fast, ease: EASE_OUT });
     expect(result.current.exit.transition).toEqual({ duration: DURATION.fast, ease: EASE_OUT });
+  });
+
+  it('the left panel only fades: 150 ms ease-out both ways, with nothing but its opacity in the target', () => {
+    const { result } = renderHook(() => usePanelFade());
+    expect(result.current.initial).toEqual({ opacity: 0 });
+    expect(transformKeys(result.current.animate)).toEqual([]);
+    expect(transformKeys(result.current.exit)).toEqual([]);
+    expect(result.current.animate.transition).toEqual({ duration: DURATION.fast, ease: EASE_OUT });
+    expect(result.current.exit.transition).toEqual({ duration: DURATION.fast, ease: EASE_OUT });
+  });
+
+  it('control: without the preference the left panel fades over 250 ms ease-out, in step with its grid track', () => {
+    setReducedMotion(false);
+    const { result } = renderHook(() => usePanelFade());
+    expect(result.current.initial).toEqual({ opacity: 0 });
+    expect(transformKeys(result.current.animate)).toEqual([]);
+    expect(result.current.animate.transition).toEqual({ duration: DURATION.slow, ease: EASE_OUT });
+    expect(result.current.exit.transition).toEqual({ duration: DURATION.slow, ease: EASE_OUT });
   });
 
   it('control: without the preference the banner row moves its height with its opacity, 250 ms ease-out both ways', () => {

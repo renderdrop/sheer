@@ -64,3 +64,14 @@ export function useRevealMotion(): EnterExit {
     exit: { height: 0, opacity: 0, transition },
   };
 }
+
+/**
+ * A panel that comes and goes with its grid track (the left panel, DESIGN 3.8): opacity over 250 ms ease-out both ways, in
+ * step with the track, which the browser animates (`grid-template-columns`, set up by `MainGrid`). Reduced motion: 150 ms,
+ * and the track changes in one step beside it (tokens.css), so only the opacity moves.
+ */
+export function usePanelFade(): EnterExit {
+  const reduce = useReducedMotion() === true;
+  const seconds = reduce ? DURATION.fast : DURATION.slow;
+  return fade(seconds, seconds, EASE_OUT);
+}

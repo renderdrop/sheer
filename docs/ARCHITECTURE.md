@@ -157,7 +157,7 @@ or hand-edited file never blocks start: only a regular file is read (its type is
 takes the patch as raw JSON, validates all of it first (an object that passes a `deny_unknown_fields` struct, so at most `glass`, `theme`, `language` and `leftPanelWidth`, with
 known enum values) and writes it with `storage::atomic::write_atomic`: a temp file `.settings.json.<pid>.<n>.tmp` (process id and a per-process counter, so no two
 writers share one) is created with `create_new` (a name that is taken is skipped, never written through; mode `0600` on Unix, directories `0700`), fsynced,
-renamed over the file, and the directory is fsynced on Unix. Only after the write succeeds does the
+renamed over the file, and the directory is fsynced on Unix. At startup `sweep_stale_temp_files` removes the temp files of that exact name pattern that a crash left in the data directory and that are older than an hour. Only after the write succeeds does the
 in-memory copy change, so a failed write leaves memory and disk in agreement. Updates are serialised by a writer lock that is held across the
 write; the lock that guards the in-memory copy is not, so `get_settings` never waits for the disk.
 `reducedTransparency` is the macOS "Reduce transparency" flag (`NSWorkspace.accessibilityDisplayShouldReduceTransparency`, `platform::macos`);

@@ -36,9 +36,13 @@ pub fn run() -> Result<(), AppError> {
             app.manage(AppState::new(Engine::start(engine::library_path(
                 &pdfium_root,
             ))));
-            // Settings live in the app data directory; a missing or damaged file means the defaults.
-            let settings_path = app.path().app_data_dir()?.join(settings::FILE_NAME);
-            app.manage(Arc::new(SettingsStore::load(settings_path)));
+            // Settings live in the app data directory; a missing or damaged file means the defaults. A crash in the middle
+            // of a write leaves a hidden temp file there: the ones older than an hour are removed (SECURITY D1, D7).
+            let data_dir = app.path().app_data_dir()?;
+            storage::atomic::sweep_stale_temp_files(&data_dir);
+            app.manage(Arc::new(SettingsStore::load(
+                data_dir.join(settings::FILE_NAME),
+            )));
             // The OS "Reduce transparency" flag as the UI first sees it; later changes go to the channel the UI opens with
             // `watch_transparency`.
             app.manage(Arc::new(TransparencyWatch::new(

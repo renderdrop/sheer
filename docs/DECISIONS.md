@@ -447,12 +447,13 @@ interlinear marks) and that the platform configs were not all covered by the CSP
    opacity motion (250 ms; opacity only under reduced motion); the row clips only while it moves (Motion's `transitionEnd` does not reach `overflow`).
 6. **`display_name`** removes Unicode categories Cc and Cf except U+200C and U+200D (scripts and emoji need them), plus U+2028, U+2029 and U+FFFC. The
    Cf table is written out (Unicode 17, 21 ranges) because the standard library has none and one table is not worth a dependency; `tests/display_name.rs`
-   compares it with an independent copy over every scalar value. `security_baseline.rs` finds `tauri.<platform>.conf.json` by glob and fails when a
+   checks it over every scalar value against an oracle that is not a copy of it (the standard library's printable-character table, known Cf characters by
+   name, the category size of 170). `security_baseline.rs` finds `tauri.<platform>.conf.json` by glob and fails when a
    platform file sets `app.security`, so the CSP exists in the base file only.
 
 **Consequences.** Render counts are tested (`Shell.renders.test.tsx`); a new always-changing field must be followed by the part that shows it, never by
-`Shell`. A newer Unicode version can add a Cf character; the table then needs the new range (the sweep test compares against the copy in the test, which
-is updated by hand too). No new dependency.
+`Shell`. A newer Unicode version can add a Cf character; the table then needs the new range, and the sweep test (which has no copy of the table: the standard
+library's printable-character table, a list of known Cf characters and the category size of 170) needs the new count. No new dependency.
 
 ---
 
@@ -500,3 +501,7 @@ The macOS menu is not synchronised with the UI's state: its items are not greyed
 item, so Cmd+W without a document does nothing. Settings and About are placeholders until the settings popover item: they are in the registry, More and the menu bar, and run
 nothing (macOS has the system About panel). The macOS side is built and tested for its data on Windows, but the menu itself has not run on a Mac (B-001). `muda` is a dev-dependency of the
 backend (MIT or Apache-2.0, already in the build through Tauri, no default features) for the accelerator test.
+
+> **ADR-016 amendment (2026-10-02):** next/previous page use the primary modifier with ↓/↑ (⌘↓/⌘↑, Ctrl+↓/↑) instead of
+> Alt/Option+↓/↑, which is reserved for "move thumbnail up/down" (WCAG 2.5.7 alternative to dragging). Settings and About
+> are no longer placeholders: they open the settings popover and the About dialog.

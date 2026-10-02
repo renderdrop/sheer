@@ -1,6 +1,6 @@
 [package]
 name = "sheer"
-version = "0.2.0"
+version = "0.3.0"
 description = "Sheer, a local-only desktop PDF app"
 authors = ["Sheer contributors"]
 license = "AGPL-3.0-or-later"
@@ -48,7 +48,7 @@ muda = { version = "0.20.0", default-features = false }
 panic = "unwind"
 
 [lints.rust]
-unsafe_code = "deny"
+unsafe_code = "forbid"
 
 [lints.clippy]
 unwrap_used = "deny"

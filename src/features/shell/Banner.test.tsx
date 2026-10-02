@@ -99,7 +99,7 @@ describe('the banner row (DESIGN 3.12)', () => {
     expect(screen.getByRole('alert').textContent).not.toContain('damaged');
   });
 
-  it('is in the flow of the page, at least 48 high, with its padding on the element that animates the height', () => {
+  it('is in the flow of the page, at least 48 high, with its gutters inside the element that animates the height', () => {
     const { container } = setup(<BannerRow />);
     act(() => useUi.getState().showBanner(DAMAGED));
     const alert = screen.getByRole('alert');
@@ -109,6 +109,12 @@ describe('the banner row (DESIGN 3.12)', () => {
     expect(row?.className).toContain('shrink-0');
     expect(row?.contains(alert)).toBe(true);
     expect(row?.className).not.toMatch(/absolute|fixed|sticky/);
+    // The row that grows from height 0 has no padding of its own (it could not be shorter than that: an 8 px jump); the 8 px
+    // gutters at the sides and below are padding of the element between it and the alert.
+    expect(row?.className).not.toMatch(/(^|\s)-?(p|px|py|pt|pb|ps|pe|pl|pr)-/);
+    expect(alert.parentElement?.parentElement).toBe(row);
+    expect(alert.parentElement?.className).toContain('px-1');
+    expect(alert.parentElement?.className).toContain('pb-1');
   });
 
   describe('motion (DESIGN 3.12: height and opacity, 250 ms; reduced: opacity only)', () => {

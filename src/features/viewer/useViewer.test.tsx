@@ -358,6 +358,140 @@ describe('the render pipeline (useViewerEffects)', () => {
     expect(viewer().image).not.toBeNull();
   });
 
+  describe('a cancelled render', () => {
+    /** A render that is in flight and never answers on its own. */
+    async function inFlight() {
+      const mounted = await mount();
+      let answer: (value: ReturnType<typeof page>) => void = () => undefined;
+      documentsApi.renderPage.mockImplementation(
+        () =>
+          new Promise((resolve) => {
+            answer = resolve;
+          }),
+      );
+      await advance(80);
+      expect(viewer().rendering).toBe(true);
+      return { ...mounted, answer: (value: ReturnType<typeof page>) => answer(value) };
+    }
+
+    it('stops being "rendering" when the document goes and nothing replaces it', async () => {
+      const { answer } = await inFlight();
+      act(() => useViewer.setState({ doc: null }));
+      expect(viewer().rendering).toBe(false);
+      // Its answer comes late and is dropped; it does not set the flag again.
+      await act(async () => answer(page()));
+      expect(viewer().rendering).toBe(false);
+      expect(viewer().image).toBeNull();
+    });
+
+    it('stops being "rendering" when the document has no pages to render', async () => {
+      await inFlight();
+      documentsApi.openDocumentDialog.mockResolvedValue({ id: 5, pageCount: 0, displayName: 'Empty.pdf' });
+      await act(() => viewer().open());
+      expect(viewer().doc?.id).toBe(5);
+      expect(viewer().rendering).toBe(false);
+    });
+
+    it('stops being "rendering" when the hook goes', async () => {
+      const { unmount } = await inFlight();
+      unmount();
+      expect(viewer().rendering).toBe(false);
+    });
+
+    it('stays "rendering" while a newer render has been asked for, until that one answers', async () => {
+      const { answer } = await inFlight();
+      const seen: boolean[] = [];
+      const stop = useViewer.subscribe((state) => seen.push(state.rendering));
+      act(() => viewer().goToPage(5));
+      expect(viewer().rendering).toBe(true);
+      await advance(79);
+      expect(viewer().rendering).toBe(true);
+      // The cancelled one answers: no effect on the flag, the newer render is still in flight.
+      await act(async () => answer(page()));
+      expect(viewer().rendering).toBe(true);
+      await advance(1);
+      await act(async () => answer(page()));
+      expect(viewer().rendering).toBe(false);
+      stop();
+      // No blink in between: the flag was never cleared before the end of the newer render.
+      expect(seen.indexOf(false)).toBe(seen.length - 1);
+    });
+
+    /** `renderPage` calls that stay open until the test answers or refuses them, one entry per call. */
+    function pending() {
+      const calls: Array<{ resolve: (value: ReturnType<typeof page>) => void; reject: (reason: unknown) => void }> = [];
+      documentsApi.renderPage.mockImplementation(
+        () =>
+          new Promise((resolve, reject) => {
+            calls.push({ resolve, reject });
+          }),
+      );
+      return calls;
+    }
+
+    it('shows no error and does not touch the flag when the cancelled render fails late', async () => {
+      await mount();
+      const calls = pending();
+      await advance(80);
+      expect(viewer().rendering).toBe(true);
+      act(() => viewer().close());
+      expect(viewer().rendering).toBe(false);
+
+      await act(async () => calls[0]?.reject({ code: 'engine_timeout', key: 'error.engine_timeout', retryable: true }));
+
+      expect(useUi.getState().banner).toBeNull();
+      expect(viewer().rendering).toBe(false);
+    });
+
+    it('never starts, and never shows "rendering", when the document is closed within the 80 ms before it', async () => {
+      await mount();
+      const seen: boolean[] = [];
+      const stop = useViewer.subscribe((state) => seen.push(state.rendering));
+      await advance(79);
+      act(() => viewer().close());
+      await advance(500);
+      stop();
+      expect(documentsApi.renderPage).not.toHaveBeenCalled();
+      expect(seen).not.toContain(true);
+      expect(viewer().rendering).toBe(false);
+    });
+
+    it('drops the answer of the document that was replaced, and stays "rendering" for the new one', async () => {
+      await mount();
+      const calls = pending();
+      await advance(80);
+      documentsApi.openDocumentDialog.mockResolvedValue(OTHER);
+      await act(() => viewer().open());
+      expect(viewer().doc?.id).toBe(OTHER.id);
+      expect(viewer().rendering).toBe(true);
+      await advance(80);
+      expect(calls).toHaveLength(2);
+      expect(documentsApi.renderPage).toHaveBeenLastCalledWith(OTHER.id, 0, expect.any(Number));
+
+      await act(async () => calls[0]?.resolve(page()));
+      expect(viewer().image).toBeNull();
+      expect(viewer().rendering).toBe(true);
+      expect(URL.createObjectURL).not.toHaveBeenCalled();
+
+      await act(async () => calls[1]?.resolve(page()));
+      expect(viewer().image).not.toBeNull();
+      expect(viewer().rendering).toBe(false);
+    });
+
+    it('makes no image when its answer comes after the hook has gone', async () => {
+      const { unmount } = await mount();
+      const calls = pending();
+      await advance(80);
+      unmount();
+
+      await act(async () => calls[0]?.resolve(page()));
+
+      expect(URL.createObjectURL).not.toHaveBeenCalled();
+      expect(viewer().image).toBeNull();
+      expect(viewer().rendering).toBe(false);
+    });
+  });
+
   it('drops an answer that arrives after the page or zoom has changed again', async () => {
     const answers: Array<(value: ReturnType<typeof page>) => void> = [];
     await mount();

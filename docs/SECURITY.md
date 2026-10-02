@@ -3,7 +3,7 @@
 Living document. Every measure has a status (`done` / `open`) and a reference to the test or file that proves it.
 The `security-reviewer` audits against this checklist before every milestone tag.
 
-Status as of the Phase 2 security baseline (ADR-005). `done` means the measure holds for the code that exists today; a new
+Status as of v0.3.0, on the Phase 2 security baseline (ADR-005). The settings popover, the About dialog and the menu submenus of v0.3.0 add no IPC command and no permission (T3 and I1 are unchanged). `done` means the measure holds for the code that exists today; a new
 command, plugin or capability must add its own test, and measures that only apply to later milestones stay `open`.
 Config and capability rows are pinned by `src-tauri/tests/security_baseline.rs`.
 
@@ -57,7 +57,7 @@ content; tampering with updates or dependencies.
 
 | # | Measure | Status | Evidence |
 |---|---|---|---|
-| D1 | Atomic save (temp file in target dir + rename); backup of original on first write; restrictive temp permissions; cleanup on exit. The atomic write with restrictive permissions exists in `storage::atomic` (see D7); backup and cleanup on exit are still to do | open | Rust tests |
+| D1 | Atomic save (temp file in target dir + rename); backup of original on first write; restrictive temp permissions; cleanup on exit. The atomic write with restrictive permissions exists in `storage::atomic` (see D7), and so does the startup sweep of the app data directory: `sweep_stale_temp_files` removes regular files of exactly the pattern `.<name>.<pid>.<n>.tmp` older than an hour, never links, directories or anything else (`storage::atomic::tests`); backup of the original and cleanup on exit are still to do | open | Rust tests |
 | D2 | Saved signatures/stamps encrypted in app data dir; key in OS keychain (`keyring`, ADR) | open | M4 |
 | D3 | PDF passwords never stored; session memory only | open | code review |
 | D4 | Redaction removes content from streams, images, text layer, annotations and metadata; test: redacted text not extractable after save | open | M5 |
@@ -80,8 +80,8 @@ content; tampering with updates or dependencies.
 
 | # | Measure | Status | Evidence |
 |---|---|---|---|
-| C1 | No `unsafe` without comment + reviewer approval (`unsafe_code = "deny"`); clippy -D warnings; no `unwrap()`/`expect()` in prod paths | done | `src-tauri/Cargo.toml` `[lints]`; `security_baseline.rs::lints_forbid_unsafe_and_unwrap_in_production_code`; `cargo clippy --all-targets -- -D warnings` |
-| C2 | No eval, new Function, dynamic script loading, innerHTML (guard hook blocks) | done | ESLint rules in `tools/lint/config.js` (`no-eval`, `no-implied-eval`, `no-new-func`, restricted `innerHTML`/`dangerouslySetInnerHTML`/`document.write`) in `npm run check`; `.claude/hooks/guard-secrets.sh` |
+| C1 | No `unsafe` in the app's own code: `unsafe_code = "forbid"`, which no `#[allow]` can lift (a use needs an ADR that changes the lint first); clippy -D warnings; no `unwrap()`/`expect()` in prod paths | done | `src-tauri/Cargo.toml` `[lints]`; `security_baseline.rs::lints_forbid_unsafe_and_unwrap_in_production_code`; `cargo clippy --all-targets -- -D warnings` |
+| C2 | No eval, new Function, dynamic script loading, and no way to turn a string into markup (guard hook blocks the common spelling) | done | ESLint rules in `tools/lint/config.js` (`no-eval`, `no-implied-eval`, `no-new-func`; `no-restricted-syntax` for `dangerouslySetInnerHTML`, assignment to `innerHTML`/`outerHTML` in the dot, string and template-literal spelling, `insertAdjacentHTML`, `setHTMLUnsafe`, `parseHTMLUnsafe`, `createContextualFragment`, `DOMParser` and `document.write`/`writeln` on a document) in `npm run check`; `tools/lint/config.test.ts` lints a snippet of every spelling; `.claude/hooks/guard-secrets.sh` |
 | C3 | No secrets, tokens or private keys in the repo, not even for tests | done | secret scan over tracked files in `scripts/check.sh` (`guard_secrets`); `.claude/hooks/guard-secrets.sh` |
 | C4 | `security-reviewer` before every milestone tag and on config/capability/IPC/file/link/parsing changes | open | `STATE.md` log |
 | C5 | UI texts (i18n) are data, never code or markup: the catalogs `src/i18n/locales/{en,de}.json` are bundled into the app at build time (pure JSON, no run-time loading, no network, no user-supplied catalogs); keys and placeholder names are looked up with `Object.hasOwn`, so `constructor` or `__proto__` find nothing on the prototype and the key itself is shown; interpolation inserts text only (a function replacer, so `$&` and `{name}` in a value stay literal; only strings and numbers count, `null` and `undefined` leave the placeholder) and the result goes to React text and attributes, never to `innerHTML` (C2); a backend error's `what` reaches the catalog only through `isPlainKey` (`errorText`), so the backend cannot pick any other key; the `language` setting is one of three fixed wire names (D7) | done | `src/i18n/i18n.test.ts` (catalog shape, `inserts a value as it is, whatever characters it holds`, `shows the key when no catalog has it, and never throws`, `isPlainKey says no to what is not a message of its own`, interpolation with missing and `null` parameters), `src/api/errors.test.ts` (`errorText`), `src-tauri/tests/i18n_catalogs.rs` (flat JSON, no duplicate keys, same keys in en and de) |

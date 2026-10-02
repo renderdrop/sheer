@@ -63,8 +63,8 @@ describe('shortcuts per platform', () => {
     'actual-size': { macos: '⌘1', windows: 'Ctrl+1' },
     'fit-width': { macos: '⌘2', windows: 'Ctrl+2' },
     'fit-page': { macos: '⌘0', windows: 'Ctrl+0' },
-    'next-page': { macos: '⌥↓', windows: 'Alt+↓' },
-    'previous-page': { macos: '⌥↑', windows: 'Alt+↑' },
+    'next-page': { macos: '⌘↓', windows: 'Ctrl+↓' },
+    'previous-page': { macos: '⌘↑', windows: 'Ctrl+↑' },
     'toggle-left-panel': { macos: '⌥⌘1', windows: 'F4' },
     'toggle-inspector': { macos: '⌥⌘I', windows: 'Shift+F4' },
     settings: { macos: '⌘,', windows: 'Ctrl+,' },
@@ -116,6 +116,25 @@ describe('shortcuts per platform', () => {
           `${platform}: ${action.id} and ${seen.get(combination)} share ${combination}`,
         ).toBe(undefined);
         seen.set(combination, action.id);
+      }
+    }
+  });
+
+  it('turn pages with the primary modifier and the arrows, and never with Option or Alt: that is the thumbnails Move up and Move down (DESIGN 3.9)', () => {
+    for (const platform of PLATFORMS) {
+      for (const [id, key] of [
+        ['next-page', 'ArrowDown'],
+        ['previous-page', 'ArrowUp'],
+      ] as const) {
+        expect(resolveBinding(actionOf(id).shortcut, platform), `${platform} ${id}`).toEqual({
+          key,
+          mods: ['primary'],
+        });
+      }
+      for (const action of ACTIONS) {
+        const binding = resolveBinding(action.shortcut, platform);
+        const arrow = binding?.key === 'ArrowUp' || binding?.key === 'ArrowDown';
+        expect(arrow && binding.mods?.includes('alt') === true, `${platform} ${action.id}`).toBe(false);
       }
     }
   });

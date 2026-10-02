@@ -35,14 +35,14 @@ The Stop hook picks the first open `- [ ]` line, so order matters. Scope: `docs/
 - [x] Command registry + shortcuts (platform modifiers) + native menu bar
 - [x] i18n scaffold (en, de); all shell strings translated
 - [x] Hardening: atomic write (create_new, 0600/0700, stale temp), settings is_file check + lock scope + patch key cap, live OS transparency flag (a channel, no event permission), render if load() hangs, forced-colors doc tokens, SECURITY.md T3 + settings row, ARCHITECTURE §3 call.ts
-- [ ] Settings popover (theme, glass, language) + About dialog (version, licenses entry); wire settings/about actions; EmptyState + toolbar clicks via runAction; keyCode 229 IME guard; numpad canonicalKey; next/prev page accelerators without Option+arrows (collides with reorder)
-- [ ] Follow-ups: rAF-throttle useFloatingPosition scroll listener, Menu submenus (DESIGN 3.5), stale *.tmp sweep at startup (D1), showcase spacing, stale libc comment in settings.rs tests, Banner pb-1 jump, DESIGN §2.4 computeShellLayout bullet, auto-collapsed panel toggle no-op, cancelled render leaves "Rendering…", panel collapse animation + middle-cut file name, independent Cf oracle in display_name test, macOS menu enabled-state sync (grey items without a document, Close Window on ⌘W), log malformed menu catalog, glob src/menu/*.rs in baseline scan
+- [x] Settings popover (theme, glass, language) + About dialog (version, licenses entry); wire settings/about actions; EmptyState + toolbar clicks via runAction; keyCode 229 IME guard; numpad canonicalKey; next/prev page accelerators without Option+arrows (collides with reorder)
+- [x] Follow-ups: rAF-throttle useFloatingPosition scroll listener, Menu submenus (DESIGN 3.5), stale *.tmp sweep at startup (D1), showcase spacing, stale libc comment in settings.rs tests, Banner pb-1 jump, DESIGN §2.4 computeShellLayout bullet, auto-collapsed panel toggle no-op, cancelled render leaves "Rendering…", panel collapse animation + middle-cut file name, independent Cf oracle in display_name test, log malformed menu catalog, glob src/menu/*.rs in baseline scan
 
 ## M1 — Viewer (v0.4.0)
 
 - [ ] Document registry with IDs; open via dialog, native drag and drop, file association; open-by-handle (no check/open TOCTOU), no orphaned engine docs after timed-out open
 - [ ] Render pipeline: serialized PDFium worker, render cache (page, zoom, DPR), page virtualization
-- [ ] Zoom and fit (width/page/100 %), Ctrl/Cmd+scroll, pinch; scroll modes (continuous/single/two-page)
+- [ ] Zoom and fit (width/page/100 %), Ctrl/Cmd+scroll, pinch; scroll modes (continuous/single/two-page); zoom controls disabled without a document
 - [ ] Thumbnails panel (lazy)
 - [ ] Outline (bookmarks) panel
 - [ ] Full-text search with hit highlight and next/previous
@@ -50,7 +50,7 @@ The Stop hook picks the first open `- [ ]` line, so order matters. Scope: `docs/
 - [ ] View rotation, go to page, status bar page x/y + zoom
 - [ ] Password-protected PDFs (session-only password)
 - [ ] Recent files (local, removable, missing-file handling)
-- [ ] Multiple documents in tabs
+- [ ] Multiple documents in tabs; macOS menu enabled-state sync (grey items without a document, Close Window on ⌘W)
 - [ ] Hostile input: fuzz corpus ≥ 30 malformed PDFs + never-crash test, safe links (confirm, http/https/mailto), XFA warning
 
 ## M2 — Comment and markup (v0.5.0)

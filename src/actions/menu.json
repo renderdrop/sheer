@@ -50,8 +50,8 @@
         { "action": "fit-width", "label": "menu.view.fitWidth", "accelerator": "CmdOrCtrl+2" },
         { "action": "fit-page", "label": "menu.view.fitPage", "accelerator": "CmdOrCtrl+0" },
         { "separator": true },
-        { "action": "next-page", "label": "menu.view.nextPage", "accelerator": "Alt+ArrowDown" },
-        { "action": "previous-page", "label": "menu.view.previousPage", "accelerator": "Alt+ArrowUp" },
+        { "action": "next-page", "label": "menu.view.nextPage", "accelerator": "CmdOrCtrl+ArrowDown" },
+        { "action": "previous-page", "label": "menu.view.previousPage", "accelerator": "CmdOrCtrl+ArrowUp" },
         { "separator": true },
         { "predefined": "fullscreen", "label": "menu.view.fullscreen" }
       ]

@@ -4,6 +4,11 @@
 //! (Unicode categories Cc and Cf, except the two joiners) and the cap. These tests add the edges around them: the cap at exactly 255, the cap counting only what survives the
 //! filter, names that filter down to nothing, both path separators, a trailing separator, bytes that are not UTF-8, and
 //! a sweep over every Unicode scalar value for the characters the spec says must never reach the UI.
+//!
+//! The sweep does not hold a second copy of the table in `documents`: a copy shares its mistakes (a wrong source, a missed
+//! range) and so proves little. Its oracle is made of three things that do not come from that table. The standard library
+//! says which characters are printable text (and so must stay), a list of known Cf characters by name says which must go,
+//! and the size of the category (170, from the Unicode database) catches a range that is missing or too wide.
 
 use std::path::Path;
 
@@ -14,31 +19,65 @@ fn shown(name: &str) -> String {
     display_name(Path::new(name))
 }
 
-/// Every character of the Unicode general category Cf (format) as of Unicode 17, as `(first, last)` code points. An
-/// independent copy of the list in `documents`, taken from the Unicode Character Database (`\p{Cf}`), so that the sweep
-/// below fails when the implementation's table has a gap or an extra entry.
-const GENERAL_CATEGORY_CF: [(u32, u32); 21] = [
-    (0x00AD, 0x00AD),
-    (0x0600, 0x0605),
-    (0x061C, 0x061C),
-    (0x06DD, 0x06DD),
-    (0x070F, 0x070F),
-    (0x0890, 0x0891),
-    (0x08E2, 0x08E2),
-    (0x180E, 0x180E),
-    (0x200B, 0x200F),
-    (0x202A, 0x202E),
-    (0x2060, 0x2064),
-    (0x2066, 0x206F),
-    (0xFEFF, 0xFEFF),
-    (0xFFF9, 0xFFFB),
-    (0x110BD, 0x110BD),
-    (0x110CD, 0x110CD),
-    (0x13430, 0x1343F),
-    (0x1BCA0, 0x1BCA3),
-    (0x1D173, 0x1D17A),
-    (0xE0001, 0xE0001),
-    (0xE0020, 0xE007F),
+/// How many characters the Unicode general category Cf (format) has: 170 from Unicode 15.0 to 17.0
+/// (`DerivedGeneralCategory.txt`). Two of them, the joiners, stay in a name; `display_name` removes all the others.
+const FORMAT_CHARACTERS: usize = 170;
+const KEPT_JOINERS: usize = 2;
+
+/// Known Cf characters with their Unicode names: the first and the last of every block of the category, and the ones a name
+/// is most likely to be attacked with (direction controls, zero-width and invisible characters, tags). Not a copy of the
+/// table of `documents`; it only has to be right about characters one can look up. The count above covers the rest.
+const KNOWN_FORMAT_CHARACTERS: [(char, &str); 50] = [
+    ('\u{00AD}', "SOFT HYPHEN"),
+    ('\u{0600}', "ARABIC NUMBER SIGN"),
+    ('\u{0605}', "ARABIC NUMBER MARK ABOVE"),
+    ('\u{061C}', "ARABIC LETTER MARK"),
+    ('\u{06DD}', "ARABIC END OF AYAH"),
+    ('\u{070F}', "SYRIAC ABBREVIATION MARK"),
+    ('\u{0890}', "ARABIC POUND MARK ABOVE"),
+    ('\u{0891}', "ARABIC PIASTRE MARK ABOVE"),
+    ('\u{08E2}', "ARABIC DISPUTED END OF AYAH"),
+    ('\u{180E}', "MONGOLIAN VOWEL SEPARATOR"),
+    ('\u{200B}', "ZERO WIDTH SPACE"),
+    ('\u{200E}', "LEFT-TO-RIGHT MARK"),
+    ('\u{200F}', "RIGHT-TO-LEFT MARK"),
+    ('\u{202A}', "LEFT-TO-RIGHT EMBEDDING"),
+    ('\u{202B}', "RIGHT-TO-LEFT EMBEDDING"),
+    ('\u{202C}', "POP DIRECTIONAL FORMATTING"),
+    ('\u{202D}', "LEFT-TO-RIGHT OVERRIDE"),
+    ('\u{202E}', "RIGHT-TO-LEFT OVERRIDE"),
+    ('\u{2060}', "WORD JOINER"),
+    ('\u{2061}', "FUNCTION APPLICATION"),
+    ('\u{2064}', "INVISIBLE PLUS"),
+    ('\u{2066}', "LEFT-TO-RIGHT ISOLATE"),
+    ('\u{2067}', "RIGHT-TO-LEFT ISOLATE"),
+    ('\u{2068}', "FIRST STRONG ISOLATE"),
+    ('\u{2069}', "POP DIRECTIONAL ISOLATE"),
+    ('\u{206A}', "INHIBIT SYMMETRIC SWAPPING"),
+    ('\u{206F}', "NOMINAL DIGIT SHAPES"),
+    ('\u{FEFF}', "ZERO WIDTH NO-BREAK SPACE"),
+    ('\u{FFF9}', "INTERLINEAR ANNOTATION ANCHOR"),
+    ('\u{FFFA}', "INTERLINEAR ANNOTATION SEPARATOR"),
+    ('\u{FFFB}', "INTERLINEAR ANNOTATION TERMINATOR"),
+    ('\u{110BD}', "KAITHI NUMBER SIGN"),
+    ('\u{110CD}', "KAITHI NUMBER SIGN ABOVE"),
+    ('\u{13430}', "EGYPTIAN HIEROGLYPH VERTICAL JOINER"),
+    ('\u{13431}', "EGYPTIAN HIEROGLYPH HORIZONTAL JOINER"),
+    ('\u{1343F}', "EGYPTIAN HIEROGLYPH END WALLED ENCLOSURE"),
+    ('\u{1BCA0}', "SHORTHAND FORMAT LETTER OVERLAP"),
+    ('\u{1BCA1}', "SHORTHAND FORMAT CONTINUING OVERLAP"),
+    ('\u{1BCA2}', "SHORTHAND FORMAT DOWN STEP"),
+    ('\u{1BCA3}', "SHORTHAND FORMAT UP STEP"),
+    ('\u{1D173}', "MUSICAL SYMBOL BEGIN BEAM"),
+    ('\u{1D174}', "MUSICAL SYMBOL END BEAM"),
+    ('\u{1D17A}', "MUSICAL SYMBOL END PHRASE"),
+    ('\u{E0001}', "LANGUAGE TAG"),
+    ('\u{E0020}', "TAG SPACE"),
+    ('\u{E0041}', "TAG LATIN CAPITAL LETTER A"),
+    ('\u{E0061}', "TAG LATIN SMALL LETTER A"),
+    ('\u{E0067}', "TAG LATIN SMALL LETTER G"),
+    ('\u{E007E}', "TAG TILDE"),
+    ('\u{E007F}', "CANCEL TAG"),
 ];
 
 /// Zero width non-joiner and joiner: Cf, but kept (scripts and emoji sequences need them).
@@ -46,18 +85,27 @@ fn is_kept_joiner(c: char) -> bool {
     c == '\u{200C}' || c == '\u{200D}'
 }
 
-/// Characters that can hide or reorder text, or break the layout: the general categories Cc (C0 and C1 controls, DEL) and
-/// Cf (direction marks, embeddings, overrides and isolates, zero-width characters, invisible operators, the soft hyphen,
-/// the byte order mark, tag characters ...) except the two joiners, the line and paragraph separators, and the object
-/// replacement character.
-fn must_never_be_shown(c: char) -> bool {
+/// Whether the standard library shows `c` as an escape (`\u{ad}`) when it is printed with `{:?}`. Its table of printable
+/// characters comes from the Unicode database and leaves out the general categories Cc, Cf, Cs, Co, Cn, Zl, Zp and Zs (but
+/// not the plain space), and `escape_debug` escapes the grapheme extenders (most combining marks) as well. So every Cf
+/// character is escaped and no letter, digit, punctuation mark, symbol or plain space is: a name must keep all of the
+/// latter, and may lose characters of the former only.
+fn escaped_by_std(c: char) -> bool {
+    let mut escape = c.escape_debug();
+    escape.next() == Some('\\') && escape.next() == Some('u')
+}
+
+/// What a name never shows although it is not a format character: Cc (C0 and C1 controls, DEL), the line and paragraph
+/// separators (Zl, Zp) and the object replacement character (a symbol, So).
+fn is_hidden_without_being_format(c: char) -> bool {
+    c.is_control() || matches!(c, '\u{2028}' | '\u{2029}' | '\u{FFFC}')
+}
+
+/// Private use (Co) and noncharacters (Cn): no Cf, so a name keeps them, although the standard library cannot print them.
+fn is_private_use_or_noncharacter(c: char) -> bool {
     let code = u32::from(c);
-    let format = GENERAL_CATEGORY_CF
-        .iter()
-        .any(|&(first, last)| (first..=last).contains(&code));
-    c.is_control()
-        || (format && !is_kept_joiner(c))
-        || matches!(c, '\u{2028}' | '\u{2029}' | '\u{FFFC}')
+    matches!(code, 0xE000..=0xF8FF | 0xF_0000..=0xF_FFFD | 0x10_0000..=0x10_FFFD | 0xFDD0..=0xFDEF)
+        || code & 0xFFFE == 0xFFFE
 }
 
 #[test]
@@ -118,17 +166,28 @@ fn a_name_made_only_of_unsafe_characters_is_empty() {
 }
 
 #[test]
-fn the_two_joiners_are_the_only_format_characters_that_stay() {
+fn the_two_joiners_stay() {
     assert_eq!(shown("a\u{200C}b\u{200D}c.pdf"), "a\u{200C}b\u{200D}c.pdf");
-    // Of every Cf character, as `display_name` really answers for it, exactly the two joiners come through.
-    let kept: Vec<u32> = GENERAL_CATEGORY_CF
-        .iter()
-        .flat_map(|&(first, last)| first..=last)
-        .filter(|&code| {
-            char::from_u32(code).is_some_and(|c| shown(&format!("ab{c}b.pdf")).chars().count() == 8)
-        })
-        .collect();
-    assert_eq!(kept, [0x200C, 0x200D]);
+    assert_eq!(shown("\u{200D}"), "\u{200D}");
+    assert_eq!(shown("\u{200C}"), "\u{200C}");
+}
+
+#[test]
+fn every_known_format_character_is_removed() {
+    for (c, name) in KNOWN_FORMAT_CHARACTERS {
+        assert!(
+            escaped_by_std(c),
+            "{name} (U+{:04X}) is not Cf",
+            u32::from(c)
+        );
+        assert!(!is_kept_joiner(c), "{name}");
+        assert_eq!(
+            shown(&format!("ab{c}b.pdf")),
+            "abb.pdf",
+            "{name} (U+{:04X})",
+            u32::from(c)
+        );
+    }
 }
 
 #[test]
@@ -196,6 +255,7 @@ fn on_unix_a_name_that_is_not_valid_utf8_shows_the_replacement_character() {
 fn no_scalar_value_the_spec_forbids_ever_reaches_the_ui() {
     // Every Unicode scalar value, placed between letters (two before it, so a colon is no drive prefix). The two
     // separators are skipped: they split a path, which the tests above cover.
+    let mut removed_format_characters = Vec::new();
     for code in 0..=0x0010_FFFF_u32 {
         let Some(c) = char::from_u32(code) else {
             continue;
@@ -204,11 +264,42 @@ fn no_scalar_value_the_spec_forbids_ever_reaches_the_ui() {
             continue;
         }
         let result = shown(&format!("ab{c}b.pdf"));
-        if must_never_be_shown(c) {
-            assert_eq!(result, "abb.pdf", "U+{code:04X}");
-        } else {
-            assert_eq!(result.chars().count(), 8, "U+{code:04X}");
+        let removed = result == "abb.pdf";
+        assert!(
+            removed || result.chars().count() == 8,
+            "U+{code:04X} changed more than itself: {result:?}"
+        );
+
+        if is_hidden_without_being_format(c) {
+            assert!(removed, "U+{code:04X} (Cc, Zl, Zp or U+FFFC) is shown");
+        } else if is_kept_joiner(c) || is_private_use_or_noncharacter(c) {
+            assert!(!removed, "U+{code:04X} must be kept");
+        } else if !escaped_by_std(c) {
+            // Letters, digits, punctuation, symbols and the plain space: printable text is never touched.
+            assert!(!removed, "U+{code:04X} is printable text and was removed");
+        } else if removed {
+            // Not printable, not a control, not a joiner: this can only be a format character. It must not be a
+            // space-like or combining character the name needs, which `escaped_by_std` also catches.
+            assert!(
+                !c.is_whitespace(),
+                "U+{code:04X} is white space and was removed"
+            );
+            removed_format_characters.push(code);
         }
-        assert!(!result.chars().any(must_never_be_shown), "U+{code:04X}");
+    }
+
+    // The size of the category: a range that is missing (a Cf character is shown) or too wide (something else is lost, an
+    // unassigned code point or a combining mark) changes the count.
+    assert_eq!(
+        removed_format_characters.len(),
+        FORMAT_CHARACTERS - KEPT_JOINERS,
+        "display_name removes {} characters that are no control; Cf has {FORMAT_CHARACTERS} and two stay",
+        removed_format_characters.len()
+    );
+    for (c, name) in KNOWN_FORMAT_CHARACTERS {
+        assert!(
+            removed_format_characters.contains(&u32::from(c)),
+            "{name} is not among the removed format characters"
+        );
     }
 }

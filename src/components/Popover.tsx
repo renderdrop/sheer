@@ -15,8 +15,10 @@ import {
 import { createPortal } from 'react-dom';
 
 import { DISMISS_PRIORITY, registerDismissLayer } from './dismiss';
+import { cycleTab, TAB_STOPS } from './focusTrap';
 import { useControllableState } from './hooks';
 import { usePopoverMotion } from './motion';
+import { isInsideOwned, PopoverScope } from './popoverScope';
 import type { Align, Side } from './position';
 import { isOwnEvent, itemsOf } from './roving';
 import { useFloatingPosition } from './useFloatingPosition';
@@ -63,9 +65,6 @@ type FocusRequest = 'first' | 'last' | 'auto';
 
 /** The one open popover (DESIGN 3.5: one open at a time). Opening another closes it without moving focus. */
 const group: { current: { id: string; close: (reason: PopoverCloseReason) => void } | null } = { current: null };
-
-const TABBABLE =
-  'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
 /**
  * G2 popover (DESIGN 3.5): opens from a trigger, takes focus, closes on Esc and outside click, and returns focus to
@@ -189,8 +188,8 @@ interface SurfaceProps {
   children: ReactNode;
 }
 
-// 200 to 320 px wide (DESIGN 3.5): `--popover-min` and `--popover-max`.
-const WIDTHS = 'min-w-popover-min max-w-popover-max';
+// 200 to 320 px wide (DESIGN 3.5): `--popover-min` and `--popover-max`. A submenu has the same width.
+export const POPOVER_WIDTHS = 'min-w-popover-min max-w-popover-max';
 
 /** Where the entrance scales from: the corner nearest the trigger. */
 function originOf(side: Side, align: Align): string {
@@ -224,7 +223,7 @@ function Surface({ id, label, role, anchor, side, align, focusRequest, onClose, 
       const items = itemsOf(element, '[role^="menuitem"]');
       target = focusRequest === 'last' ? items.at(-1) : items[0];
     } else {
-      target = element.querySelector<HTMLElement>('[data-autofocus]') ?? itemsOf(element, TABBABLE)[0];
+      target = element.querySelector<HTMLElement>('[data-autofocus]') ?? itemsOf(element, TAB_STOPS)[0];
     }
     (target ?? element).focus({ preventScroll: true });
   }, [role, focusRequest]);
@@ -239,12 +238,13 @@ function Surface({ id, label, role, anchor, side, align, focusRequest, onClose, 
     const onPointerDown = (event: PointerEvent) => {
       const target = event.target;
       if (!(target instanceof Node)) return;
-      if (surface.current?.contains(target) || anchor?.contains(target)) return;
+      // A submenu is part of the popover although its DOM is elsewhere.
+      if (surface.current?.contains(target) || anchor?.contains(target) || isInsideOwned(target, id)) return;
       onClose('outside');
     };
     document.addEventListener('pointerdown', onPointerDown, true);
     return () => document.removeEventListener('pointerdown', onPointerDown, true);
-  }, [present, onClose, anchor]);
+  }, [present, onClose, anchor, id]);
 
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     if (event.key !== 'Tab' || !isOwnEvent(event.currentTarget, event)) return;
@@ -253,21 +253,7 @@ function Surface({ id, label, role, anchor, side, align, focusRequest, onClose, 
       onClose('tab');
       return;
     }
-    const tabbable = itemsOf(event.currentTarget, TABBABLE);
-    const first = tabbable[0];
-    const last = tabbable[tabbable.length - 1];
-    if (first === undefined || last === undefined) {
-      event.preventDefault();
-      return;
-    }
-    const active = document.activeElement;
-    if (event.shiftKey && (active === first || active === event.currentTarget)) {
-      event.preventDefault();
-      last.focus();
-    } else if (!event.shiftKey && active === last) {
-      event.preventDefault();
-      first.focus();
-    }
+    cycleTab(event, event.currentTarget);
   };
 
   return (
@@ -284,9 +270,9 @@ function Surface({ id, label, role, anchor, side, align, focusRequest, onClose, 
         tabIndex={-1}
         onKeyDown={onKeyDown}
         style={{ transformOrigin: originOf(side, align) }}
-        className={`glass-2 min-h-0 overflow-auto rounded-panel p-1 text-md text-text outline-none ${WIDTHS}`}
+        className={`glass-2 min-h-0 overflow-auto rounded-panel p-1 text-md text-text outline-none ${POPOVER_WIDTHS}`}
       >
-        {children}
+        <PopoverScope.Provider value={id}>{children}</PopoverScope.Provider>
       </motion.div>
     </div>
   );

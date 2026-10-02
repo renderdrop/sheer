@@ -23,6 +23,8 @@ import {
 } from 'lucide-react';
 
 import type { Platform } from '../api/app';
+import { toggleAbout } from '../features/about/state';
+import { openSettings } from '../features/settings/state';
 import { readShellStructure } from '../features/shell/useShellStructure';
 import { useViewer } from '../features/viewer/useViewer';
 import type { PlainKey, Translate } from '../i18n';
@@ -110,8 +112,12 @@ const TOOL_ACTIONS: readonly ActionDef[] = (
  * Where the shortcuts come from (docs/research/ux-patterns.md section 5). macOS: Command is primary, avoid Control. Windows:
  * Ctrl accelerators, no Ctrl+Alt (AltGr). Cmd or Ctrl with 0, 1, 2 are Acrobat's fit page, 100 % and fit width; they are the same
  * on macOS, where the research found Preview's keys unverified. The panel toggles (Option+Cmd+1 on macOS, F4 and Shift+F4
- * on Windows), the inspector's Option+Cmd+I and the page keys are not in the research: Option or Alt with the arrows are
- * chosen because they do not scroll the canvas. The tool letters are DESIGN 3.3's; they work only with the canvas focused.
+ * on Windows), the inspector's Option+Cmd+I and the page keys are not in the research, so they are chosen here. Next and
+ * previous page are Cmd (macOS) or Ctrl (Windows) with the Down and Up arrows: Option or Alt with the arrows is the left
+ * panel's Move up and Move down for a thumbnail (DESIGN 3.9), and the native menu's key equivalent would take it from that
+ * list; PageDown and PageUp stay with the canvas and the panels' scrolling (a zoomed page is taller than the window). The
+ * arrows alone and Shift with them are the browser's (scrolling, selecting). The tool letters are DESIGN 3.3's; they work
+ * only with the canvas focused.
  */
 export const ACTIONS: readonly ActionDef[] = [
   {
@@ -195,7 +201,7 @@ export const ACTIONS: readonly ActionDef[] = [
     id: 'next-page',
     labelKey: 'action.nextPage',
     icon: ChevronDown,
-    shortcut: { default: { key: 'ArrowDown', mods: ['alt'] } },
+    shortcut: { default: primary('ArrowDown') },
     group: 'page',
     more: true,
     menuBar: true,
@@ -207,7 +213,7 @@ export const ACTIONS: readonly ActionDef[] = [
     id: 'previous-page',
     labelKey: 'action.previousPage',
     icon: ChevronUp,
-    shortcut: { default: { key: 'ArrowUp', mods: ['alt'] } },
+    shortcut: { default: primary('ArrowUp') },
     group: 'page',
     more: true,
     menuBar: true,
@@ -245,9 +251,8 @@ export const ACTIONS: readonly ActionDef[] = [
     more: true,
     menuBar: true,
     enabled: () => true,
-    // A placeholder until the settings popover lands (ROADMAP, Phase 3): the command, its shortcut and its menu entries
-    // exist, so that item only has to replace this function.
-    run: () => undefined,
+    // The popover under the toolbar (src/features/settings), wherever the command came from.
+    run: openSettings,
   },
   {
     id: 'about',
@@ -256,8 +261,9 @@ export const ACTIONS: readonly ActionDef[] = [
     group: 'app',
     more: true,
     enabled: () => true,
-    // A placeholder like `settings`. The macOS menu bar has the system's own About panel (menu.json), so no `menuBar` here.
-    run: () => undefined,
+    // The dialog (src/features/about): opens it, and closes it when it is open (the one command that runs while a modal is open).
+    // The macOS menu bar has the system's own About panel (menu.json), so no `menuBar` here.
+    run: toggleAbout,
   },
 ];
 

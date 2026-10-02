@@ -4,7 +4,9 @@
  * `grid-template-columns` and the effective state of the left panel and the inspector.
  *
  * Columns with a document: `8 | left 192-400 | splitter 8 | canvas minmax(360, 1fr) | 8 | inspector 288 | 8`.
- * - Collapsed left panel: the track and the outer gutter go, the splitter becomes the leading gutter.
+ * - Collapsed left panel: the track and the outer gutter go, the splitter becomes the leading gutter. They stay in the list at
+ *   size 0 (`var(--spacing-0)`), so the list has the same tracks in the same places whether the panel is there or not: the
+ *   browser can animate the change (a transition needs lists of equal length, DESIGN 3.8) and no slot moves to another column.
  * - No inspector track: the track and the gap go.
  * - No document: `8 | empty state | 8`.
  */
@@ -71,6 +73,8 @@ export interface ShellLayout extends ShellStructure, ShellTracks {
 }
 
 const GUTTER = 'var(--space-1)';
+/** A track that is there but takes no room: the collapsed left panel's tracks. */
+const NO_ROOM = 'var(--spacing-0)';
 
 const EMPTY_STRUCTURE: ShellStructure = {
   mode: 'empty',
@@ -127,9 +131,11 @@ export function shellTracks(structure: ShellStructure, panelWidth: number): Shel
       { slot: 'gutter-end', size: GUTTER },
     );
   } else {
-    if (!structure.leftCollapsed) {
-      tracks.push({ slot: 'gutter-start', size: GUTTER }, { slot: 'left', size: `${width}px` });
-    }
+    // Collapsed or not, the left panel's tracks are in the list (see the module comment); only their size differs.
+    tracks.push(
+      { slot: 'gutter-start', size: structure.leftCollapsed ? NO_ROOM : GUTTER },
+      { slot: 'left', size: structure.leftCollapsed ? NO_ROOM : `${width}px` },
+    );
     tracks.push(
       { slot: 'splitter', size: 'var(--splitter-width)' },
       { slot: 'canvas', size: 'minmax(var(--canvas-min), 1fr)' },

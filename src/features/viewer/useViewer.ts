@@ -153,6 +153,11 @@ export const useViewer = create<ViewerState>()((set, get) => {
 /** The open document's id, or `null`. A selector, so a component re-renders when the document changes and not before. */
 export const selectDocId = (state: ViewerState): number | null => state.doc?.id ?? null;
 
+/** Clears `rendering` (only when it is set, so a store that is idle does not notify anyone). */
+function stopRendering(): void {
+  if (useViewer.getState().rendering) useViewer.setState({ rendering: false });
+}
+
 /**
  * The work that goes with the open document and has no UI of its own: it renders the current page whenever document, page
  * or zoom changes and frees the page image once it has been replaced. The keys belong to the command registry
@@ -165,7 +170,13 @@ export function useViewerEffects(): void {
 
   // Render the current page whenever document, page or zoom changes. Stale results are dropped.
   useEffect(() => {
-    if (docId === null || pageCount === 0) return;
+    if (docId === null || pageCount === 0) {
+      // Nothing to render any more, and the render that this change cancelled does not report back: it is not "rendering"
+      // for ever. (A change that is followed by another render leaves the flag alone: it is still busy, and the new
+      // render ends it, so the status bar does not blink in between.)
+      stopRendering();
+      return;
+    }
     let cancelled = false;
     const timer = window.setTimeout(() => {
       const scale = scaleForZoom(zoom, window.devicePixelRatio);
@@ -190,6 +201,9 @@ export function useViewerEffects(): void {
       window.clearTimeout(timer);
     };
   }, [docId, pageIndex, pageCount, zoom]);
+
+  // The hook going away cancels a render in flight the same way.
+  useEffect(() => stopRendering, []);
 
   // Free the previous page image once it has been replaced.
   useEffect(() => {

@@ -15,12 +15,15 @@
 //!   private from the first byte. The replaced file therefore ends up `0o600`: a caller that replaces a file the user
 //!   owns (a document) has to restore the original mode itself. Existing directories are never touched.
 //! - The file is fsynced before the rename and, on Unix, the directory after it, so the rename survives power loss.
+//! - A crash between create and rename leaves the temp file behind. `sweep_stale_temp_files` removes such leftovers at
+//!   startup, but only files of exactly this naming pattern and only when they are older than an hour.
 
 use std::ffi::{OsStr, OsString};
 use std::fs::{self, DirBuilder, File, OpenOptions};
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU32, Ordering};
+use std::time::{Duration, SystemTime};
 
 #[cfg(unix)]
 use std::os::unix::fs::{DirBuilderExt, OpenOptionsExt};
@@ -38,6 +41,10 @@ const TEMP_ATTEMPTS: u32 = 16;
 
 /// The counter in the next temp name of this process.
 static NEXT_TEMP: AtomicU32 = AtomicU32::new(0);
+
+/// How old a temp file must be before [`sweep_stale_temp_files`] counts it as a leftover. A write takes milliseconds, so
+/// an hour is far beyond any write still in progress (this process or another instance of the app).
+pub const STALE_TEMP_AGE: Duration = Duration::from_secs(60 * 60);
 
 /// Replaces the file at `path` with `bytes`. Creates missing parent directories.
 pub fn write_atomic(path: &Path, bytes: &[u8]) -> io::Result<()> {
@@ -83,6 +90,63 @@ fn temp_path(directory: &Path, name: &OsStr, sequence: u32) -> PathBuf {
     temp_name.push(name);
     temp_name.push(format!(".{}.{sequence}.tmp", std::process::id()));
     directory.join(temp_name)
+}
+
+/// Whether `name` has the shape [`temp_path`] gives: `.<name>.<pid>.<sequence>.tmp`, with a non-empty target name and two
+/// plain decimal numbers (each fitting the `u32` they came from). Nothing else in the directory is ever ours to remove.
+fn is_temp_name(name: &OsStr) -> bool {
+    let Some(body) = name
+        .to_str()
+        .and_then(|name| name.strip_prefix('.'))
+        .and_then(|name| name.strip_suffix(".tmp"))
+    else {
+        return false;
+    };
+    let mut parts = body.rsplitn(3, '.');
+    let (Some(sequence), Some(pid), Some(target)) = (parts.next(), parts.next(), parts.next())
+    else {
+        return false;
+    };
+    let is_number =
+        |text: &str| text.bytes().all(|byte| byte.is_ascii_digit()) && text.parse::<u32>().is_ok();
+    !target.is_empty() && is_number(pid) && is_number(sequence)
+}
+
+/// Removes the temp files a crash left in `directory` (not its subdirectories): regular files named `.<name>.<pid>.<n>.tmp`
+/// that were last modified more than [`STALE_TEMP_AGE`] ago. Returns how many were removed.
+///
+/// Best effort, for the start of the app: a missing directory, an entry that cannot be read or a file that cannot be removed
+/// (read-only, in use) is skipped, never an error. Only the pattern of this module is touched, so a user's file that ends in
+/// `.tmp` stays. Directories and links are left alone (a link is judged as itself, never followed), and so is a file dated
+/// in the future (a wrong clock must not make a fresh file look old).
+pub fn sweep_stale_temp_files(directory: &Path) -> usize {
+    sweep_older_than(directory, SystemTime::now(), STALE_TEMP_AGE)
+}
+
+/// `sweep_stale_temp_files` with the clock and the age passed in, so a test needs no file that is really an hour old.
+fn sweep_older_than(directory: &Path, now: SystemTime, max_age: Duration) -> usize {
+    let Ok(entries) = fs::read_dir(directory) else {
+        return 0;
+    };
+    let mut removed = 0;
+    for entry in entries.flatten() {
+        if !is_temp_name(&entry.file_name()) {
+            continue;
+        }
+        // `DirEntry::metadata` does not follow a symlink, so a link at a temp name is not a regular file here.
+        let stale = entry.metadata().is_ok_and(|metadata| {
+            metadata.is_file()
+                && metadata
+                    .modified()
+                    .ok()
+                    .and_then(|modified| now.duration_since(modified).ok())
+                    .is_some_and(|age| age > max_age)
+        });
+        if stale && fs::remove_file(entry.path()).is_ok() {
+            removed += 1;
+        }
+    }
+    removed
 }
 
 /// Creates directory `directory` and its missing parents; owner-only on Unix. Directories that already exist are left
@@ -454,6 +518,209 @@ mod tests {
         assert!(entries(dir.path()).is_empty());
     }
 
+    // --- the sweep of leftover temp files ---
+
+    /// A regular file at `path` last modified `age` ago.
+    fn file_aged(path: &Path, age: Duration) {
+        let file = File::create(path).unwrap();
+        file.set_modified(SystemTime::now() - age).unwrap();
+    }
+
+    const HOUR: Duration = STALE_TEMP_AGE;
+
+    #[test]
+    fn every_name_the_writer_makes_is_recognised_as_a_temp_name() {
+        for name in ["settings.json", "a", "two words.pdf", "x.y.z", "ünï.json"] {
+            for sequence in [0, 7, u32::MAX] {
+                let temp = temp_path(Path::new("dir"), OsStr::new(name), sequence);
+                assert!(is_temp_name(temp.file_name().unwrap()), "{temp:?}");
+            }
+        }
+    }
+
+    #[test]
+    fn names_that_are_not_the_pattern_are_not_temp_names() {
+        for name in [
+            "settings.json",
+            "notes.tmp",
+            ".hidden.tmp",
+            ".settings.json.tmp",
+            ".settings.json.12.tmp",
+            ".settings.json.12.x.tmp",
+            ".settings.json.x.3.tmp",
+            ".settings.json..3.tmp",
+            ".settings.json.12..tmp",
+            ".settings.json.-1.3.tmp",
+            ".settings.json.+1.3.tmp",
+            ".settings.json.12.3.TMP",
+            ".settings.json.12.3.tmp.bak",
+            "settings.json.12.3.tmp",
+            "..12.3.tmp",
+            ".settings.json.99999999999.3.tmp",
+            ".settings.json.1.99999999999.tmp",
+            "",
+            ".tmp",
+        ] {
+            assert!(!is_temp_name(OsStr::new(name)), "{name:?}");
+        }
+    }
+
+    #[test]
+    fn the_sweep_removes_old_temp_files_and_nothing_else() {
+        let dir = TempDir::new();
+        let stale = temp_of(&dir.path().join("settings.json"), 3);
+        let stale_other = temp_of(&dir.path().join("recent.json"), 0);
+        let fresh = temp_of(&dir.path().join("settings.json"), 4);
+        file_aged(&stale, HOUR + Duration::from_secs(60));
+        file_aged(&stale_other, 24 * HOUR);
+        file_aged(&fresh, Duration::from_secs(60));
+        // Old, but not the pattern: the user's files and the app's own data stay.
+        let kept = [
+            "settings.json",
+            "notes.tmp",
+            ".hidden.tmp",
+            ".settings.json.12.x.tmp",
+            "settings.json.12.3.tmp",
+        ];
+        for name in kept {
+            file_aged(&dir.path().join(name), 24 * HOUR);
+        }
+
+        assert_eq!(sweep_stale_temp_files(dir.path()), 2);
+
+        // Each file is judged on its own by `exists()`. A listing of the directory is not a reliable witness for the ones that
+        // went: Windows keeps listing a file whose delete is pending (a virus scanner or the indexer still has it open) until
+        // the last handle closes, although every other call already says it is gone. So the listing is compared without the
+        // two removed names, which still shows that nothing else was taken and nothing unexpected is there.
+        assert!(!stale.exists());
+        assert!(!stale_other.exists());
+        assert!(fresh.exists());
+        for name in kept {
+            assert!(dir.path().join(name).exists(), "{name} was removed");
+        }
+        let removed = [
+            temp_name(&dir.path().join("settings.json"), 3),
+            temp_name(&dir.path().join("recent.json"), 0),
+        ];
+        let listed: Vec<String> = entries(dir.path())
+            .into_iter()
+            .filter(|name| !removed.contains(name))
+            .collect();
+        assert_eq!(
+            listed,
+            [
+                ".hidden.tmp".to_owned(),
+                ".settings.json.12.x.tmp".to_owned(),
+                temp_name(&dir.path().join("settings.json"), 4),
+                "notes.tmp".to_owned(),
+                "settings.json".to_owned(),
+                "settings.json.12.3.tmp".to_owned(),
+            ]
+        );
+    }
+
+    #[test]
+    fn a_file_is_stale_only_when_it_is_older_than_the_age() {
+        let dir = TempDir::new();
+        let target = dir.path().join("settings.json");
+        let just_under = temp_of(&target, 0);
+        let just_over = temp_of(&target, 1);
+        let now = SystemTime::now();
+        file_aged(&just_under, HOUR - Duration::from_secs(30));
+        file_aged(&just_over, HOUR + Duration::from_secs(30));
+
+        assert_eq!(sweep_older_than(dir.path(), now, HOUR), 1);
+
+        assert!(just_under.exists());
+        assert!(!just_over.exists());
+        // Later the same file qualifies too.
+        assert_eq!(sweep_older_than(dir.path(), now + HOUR, HOUR), 1);
+        assert!(entries(dir.path()).is_empty());
+    }
+
+    #[test]
+    fn a_file_dated_in_the_future_is_left_alone() {
+        let dir = TempDir::new();
+        let leftover = temp_of(&dir.path().join("settings.json"), 0);
+        let file = File::create(&leftover).unwrap();
+        file.set_modified(SystemTime::now() + 24 * HOUR).unwrap();
+        drop(file);
+
+        assert_eq!(sweep_stale_temp_files(dir.path()), 0);
+
+        assert!(leftover.exists());
+    }
+
+    #[test]
+    fn a_directory_at_a_temp_name_and_what_is_in_subdirectories_stay() {
+        let dir = TempDir::new();
+        let target = dir.path().join("settings.json");
+        let blocker = temp_of(&target, 0);
+        fs::create_dir(&blocker).unwrap();
+        let nested = blocker.join(temp_name(&target, 1));
+        file_aged(&nested, 24 * HOUR);
+        let sub = dir.path().join("sub");
+        fs::create_dir(&sub).unwrap();
+        let deep = temp_of(&sub.join("settings.json"), 2);
+        file_aged(&deep, 24 * HOUR);
+
+        assert_eq!(sweep_stale_temp_files(dir.path()), 0);
+
+        assert!(blocker.is_dir());
+        assert!(nested.exists());
+        assert!(deep.exists());
+    }
+
+    #[test]
+    fn a_missing_directory_or_a_file_in_its_place_sweeps_nothing() {
+        let dir = TempDir::new();
+        assert_eq!(sweep_stale_temp_files(&dir.path().join("missing")), 0);
+        let file = dir.path().join("a-file");
+        fs::write(&file, b"x").unwrap();
+        assert_eq!(sweep_stale_temp_files(&file), 0);
+        assert_eq!(fs::read(&file).unwrap(), b"x");
+    }
+
+    #[test]
+    fn a_leftover_that_cannot_be_removed_does_not_stop_the_sweep() {
+        let dir = TempDir::new();
+        let target = dir.path().join("settings.json");
+        let read_only = temp_of(&target, 0);
+        let plain = temp_of(&target, 1);
+        file_aged(&read_only, 24 * HOUR);
+        file_aged(&plain, 24 * HOUR);
+        let mut permissions = fs::metadata(&read_only).unwrap().permissions();
+        permissions.set_readonly(true);
+        fs::set_permissions(&read_only, permissions).unwrap();
+
+        let removed = sweep_stale_temp_files(dir.path());
+
+        // Windows refuses to delete a read-only file, Unix does not care; either way the other one goes.
+        assert!(!plain.exists());
+        assert_eq!(removed, if read_only.exists() { 1 } else { 2 });
+        // Let the scratch directory be removed again.
+        if let Ok(metadata) = fs::metadata(&read_only) {
+            let mut permissions = metadata.permissions();
+            #[allow(clippy::permissions_set_readonly_false)]
+            permissions.set_readonly(false);
+            let _ = fs::set_permissions(&read_only, permissions);
+        }
+    }
+
+    #[test]
+    fn the_sweep_does_not_touch_a_temp_file_a_write_is_still_using() {
+        let dir = TempDir::new();
+        let target = dir.path().join("settings.json");
+        // The state `write_atomic` is in between create and rename: a brand-new, empty temp file.
+        let (file, temp) =
+            create_temp(dir.path(), target.file_name().unwrap(), &mut counting()).unwrap();
+
+        assert_eq!(sweep_stale_temp_files(dir.path()), 0);
+
+        drop(file);
+        assert!(temp.exists());
+    }
+
     #[cfg(unix)]
     mod unix {
         use std::os::unix::fs::{symlink, PermissionsExt};
@@ -520,6 +787,24 @@ mod tests {
 
             assert!(!destination.exists());
             assert_eq!(fs::read(&target).unwrap(), b"new");
+        }
+
+        #[test]
+        fn the_sweep_leaves_a_symlink_at_a_temp_name_alone_even_when_it_points_to_an_old_file() {
+            let dir = TempDir::new();
+            let target = dir.path().join("settings.json");
+            let old = dir.path().join("old.txt");
+            file_aged(&old, 24 * HOUR);
+            let link = temp_of(&target, 0);
+            symlink(&old, &link).unwrap();
+            let dangling = temp_of(&target, 1);
+            symlink(dir.path().join("missing.txt"), &dangling).unwrap();
+
+            assert_eq!(sweep_stale_temp_files(dir.path()), 0);
+
+            assert!(fs::symlink_metadata(&link).is_ok());
+            assert!(fs::symlink_metadata(&dangling).is_ok());
+            assert!(old.exists());
         }
 
         #[test]

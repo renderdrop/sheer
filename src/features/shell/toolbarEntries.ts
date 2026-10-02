@@ -32,7 +32,10 @@ export interface ToolbarState {
 export interface ToolbarActions {
   /** Runs an action of the registry (`runAction`): the toolbar's buttons and the More menu all go through it. */
   run: (id: ActionId) => void;
-  /** A click on a tool toggles it (it releases the active one), which is not what its key does, so these two are the toolbar's own. */
+  /**
+   * A click on a tool toggles it (it releases the active one), which is not what its key does, so these two are the toolbar's
+   * own variants of the tool's action. They still obey the registry's `enabled` at the moment of the click (`ToolbarSlot`).
+   */
   selectTool: (tool: ToolId) => void;
   lockTool: (tool: ToolId) => void;
 }
