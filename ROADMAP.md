@@ -25,7 +25,7 @@ The Stop hook picks the first open `- [ ]` line, so order matters. Scope: `docs/
 
 ## Phase 3 — Design system + app shell (v0.3.0)
 
-- [ ] Design spec: component specs in docs/DESIGN.md (designer), applying ADR-011
+- [x] Design spec: component specs in docs/DESIGN.md (designer), applying ADR-011
 - [ ] Tokens: src/styles/tokens.css (light/dark, glass + solid fallback, --surface-strong), Tailwind 4 theme, APP_NAME token
 - [ ] Reduced transparency/motion: CSS media queries + macOS OS flag from Rust, "Glass: Auto/Solid" setting
 - [ ] Primitives I: Button, IconButton, Toolbar (roving tabindex), Tooltip (name + shortcut), Popover

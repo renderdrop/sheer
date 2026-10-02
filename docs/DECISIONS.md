@@ -349,3 +349,20 @@ Until M1 tiles large pages, the frontend answers `limit_exceeded` for a frame by
 **Consequences.** `connect-src` is the one place the CSP is looser than §13.1; revisit if Tauri offers IPC that needs no CSP source. The IPC errors
 are stable now, so changing a code name is a breaking change for `src/api/errors.ts`. Commands take `pageId` (identity mapping until M3) so the wire
 format survives page reordering.
+
+---
+
+## ADR-012 — Design token amendments (Phase 3 spec)
+
+**Status:** accepted (2026-10-02)
+
+**Context.** While writing the component spec (`docs/DESIGN.md`), the designer computed contrast ratios for every pairing.
+Several ADR-011 values were too weak.
+
+**Decision.** Adopt the spec's amendments: `--surface-strong` alpha .90 (at .86 worst-case muted text over page content
+drops to 4.47:1); new neutrals `--ink-50` (control borders, light disabled text) and `--ink-40` (dark muted text);
+`--iris-600` as accent hover; links use `--iris-700` (iris-500 is 4.45:1 on the canvas); semantic text variants that pass
+4.5:1; Windows close-button hover red as the only non-Iris chrome color (platform convention). At ≥ 1280 px the inspector
+column stays reserved while a document is open, so pages never shift when it appears.
+
+**Consequences.** `src/styles/tokens.css` implements `docs/DESIGN.md` §1 exactly; the reviewer rejects raw values in components.
