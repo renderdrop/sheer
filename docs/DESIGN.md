@@ -173,7 +173,7 @@ Main columns: `8 | left 192–400 (default 248) | splitter 8 | canvas minmax(360
 
 Tab and F6/Shift+F6: toolbar → banner → left panel → splitter → canvas → inspector → status bar; F6 restores each region's
 last focus. Closing a panel, popover or dialog refocuses its trigger. Esc order:
-tooltip → popover → gesture → tool → selection. Every command is in the native menu; no Ctrl+Alt on Windows (AltGr).
+tooltip → popover → gesture → tool → selection. Every command is in the native menu on macOS; Windows has none (ADR-016), so there every command is on the toolbar, in More or on the keyboard; no Ctrl+Alt on Windows (AltGr).
 
 ### 2.4 Implementation (app shell)
 
@@ -185,6 +185,7 @@ tooltip → popover → gesture → tool → selection. Every command is in the 
   track at any width; `closed` hides the panel and, below 1280, the track. The toolbar toggle is pressed while the panel is visible and sets `open` or `closed`.
 - **Left panel collapse** is derived, not stored twice: the user's choice (`ui.leftPanelCollapsed`, set by the splitter's Enter, a release below 144 or the toolbar toggle) or the layout's own (canvas under 360).
   The latter returns when the window grows. The width is `ui.leftPanelWidth` while dragging and is saved to settings (`leftPanelWidth`, 192 to 400) 300 ms after it settles.
+- **Commands and keys.** Every command is an action of `src/actions/registry.ts` (ADR-016): the toolbar items, the More menu, the key handler and the macOS menu bar derive from it, so a tooltip's key chip, `aria-keyshortcuts` and the real binding cannot differ. The platform's primary key is Cmd on macOS and Ctrl elsewhere. A bare letter (the tool keys) works only while the canvas has focus, and no key is ever taken from a text field.
 - **Platform chrome.** The first paint takes the platform from the user agent, then `app_ready`'s answer replaces it (ADR-014). Windows: caption row, caption buttons are not tab stops. macOS: 80 px toolbar-row inset, 8 in full screen.
   The toolbar row (and the Windows caption) carry `data-tauri-drag-region="deep"`: any non-interactive part drags, buttons never do.
 - **Canvas** is the `<main>` landmark around one focusable scroll region; the scrim is a sibling of that region (it must not scroll) and shows once `scrollTop > 0`.
@@ -199,7 +200,7 @@ tooltip → popover → gesture → tool → selection. Every command is in the 
   not the shell, the toolbar or the left panel (`Shell.renders.test.tsx` counts renders). The window's maximized and full-screen state is read once when a resize has settled (150 ms), not per frame.
 
 Differences from the spec, all temporary: the left panel collapses without the 250 ms animation (the track count changes, which CSS cannot animate); the file name is cut at its head and keeps its last 8 characters (a CSS-only
-middle truncation); the tabs are placeholders; More carries "Open…" until the native menu bar has it; tools only change the active tool until M2.
+middle truncation); the tabs are placeholders; More carries the commands that have no toolbar button (Open, Close document, Actual size, Fit width, Fit page, Next and Previous page, Settings, About), which is the only way to them with a mouse on Windows (ADR-016), and Settings and About do nothing yet; tools only change the active tool until M2.
 
 ## 3. Components
 

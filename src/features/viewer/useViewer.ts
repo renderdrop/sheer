@@ -3,7 +3,7 @@ import { create } from 'zustand';
 
 import { closeDocument, openDocumentDialog, renderPage, type DocumentInfo } from '../../api/documents';
 import { toAppError } from '../../api/errors';
-import { DEFAULT_ZOOM, scaleForZoom, stepZoom, wheelZoom } from '../../lib/zoom';
+import { DEFAULT_ZOOM, fitPageZoom, fitWidthZoom, scaleForZoom, stepZoom, wheelZoom } from '../../lib/zoom';
 import { useUi } from '../../stores/ui';
 import { useDocView, useView } from '../../stores/view';
 
@@ -11,6 +11,13 @@ import { useDocView, useView } from '../../stores/view';
 export interface PageImage {
   url: string;
   widthPt: number;
+  heightPt: number;
+}
+
+/** The canvas's content box in CSS px (its scroll region without the padding), which the fit actions fill. */
+export interface Viewport {
+  width: number;
+  height: number;
 }
 
 /** Coalesces bursts of zoom changes (wheel, held key) into one render request. */
@@ -22,17 +29,32 @@ export interface ViewerState {
   image: PageImage | null;
   opening: boolean;
   rendering: boolean;
+  /** The canvas's size as it last reported it, `null` until it has (and in tests that render no canvas). */
+  viewport: Viewport | null;
 
   /** Shows the open dialog; a document that is chosen replaces (and closes) the one that is open. Never rejects. */
   open: () => Promise<void>;
+  /** Closes the open document: its view and image go, and the backend is told to release it. Nothing without one. */
+  close: () => void;
   /** One preset step in or out. */
   zoomStep: (direction: 1 | -1) => void;
   /** An exact zoom (the zoom menu); clamped to the zoom range. */
   setZoom: (zoom: number) => void;
   resetZoom: () => void;
+  /**
+   * Zoom so the page fills the canvas's width (`fitWidth`) or fits in it whole (`fitPage`). One-shot, not a mode: a later
+   * resize or page change keeps the zoom it gave. Nothing until the canvas has been measured and a page has been shown.
+   */
+  fitWidth: () => void;
+  fitPage: () => void;
   /** Ctrl/Cmd+wheel and pinch: continuous zoom. */
   zoomByWheel: (deltaY: number, deltaMode: number) => void;
   goToPage: (pageIndex: number) => void;
+  /** One page on or back; stops at the first and the last. */
+  nextPage: () => void;
+  previousPage: () => void;
+  /** The canvas reports its size here (it observes itself). */
+  setViewport: (viewport: Viewport) => void;
 }
 
 /**
@@ -55,11 +77,20 @@ export const useViewer = create<ViewerState>()((set, get) => {
     change(doc.id, view?.zoom ?? DEFAULT_ZOOM);
   };
 
+  /** Moves the shown page by `delta`; the view store keeps it inside the document. */
+  const changePage = (delta: number) => {
+    const doc = get().doc;
+    if (doc === null) return;
+    const view = useView.getState().byDoc[doc.id];
+    if (view !== undefined) useView.getState().setPage(doc.id, view.pageIndex + delta);
+  };
+
   return {
     doc: null,
     image: null,
     opening: false,
     rendering: false,
+    viewport: null,
 
     open: async () => {
       if (get().opening) return;
@@ -81,14 +112,40 @@ export const useViewer = create<ViewerState>()((set, get) => {
         set({ opening: false });
       }
     },
+    close: () => {
+      const doc = get().doc;
+      if (doc === null) return;
+      useView.getState().close(doc.id);
+      set({ doc: null, image: null, rendering: false });
+      closeDocument(doc.id).catch(() => undefined);
+    },
     zoomStep: (direction) => changeView((id, zoom) => useView.getState().setZoom(id, stepZoom(zoom, direction))),
     setZoom: (zoom) => changeView((id) => useView.getState().setZoom(id, zoom)),
     resetZoom: () => changeView((id) => useView.getState().setZoom(id, DEFAULT_ZOOM)),
+    fitWidth: () => {
+      const { viewport, image } = get();
+      const zoom = viewport === null || image === null ? null : fitWidthZoom(viewport.width, image.widthPt);
+      if (zoom !== null) changeView((id) => useView.getState().setZoom(id, zoom));
+    },
+    fitPage: () => {
+      const { viewport, image } = get();
+      const zoom =
+        viewport === null || image === null
+          ? null
+          : fitPageZoom(viewport.width, viewport.height, image.widthPt, image.heightPt);
+      if (zoom !== null) changeView((id) => useView.getState().setZoom(id, zoom));
+    },
     zoomByWheel: (deltaY, deltaMode) =>
       changeView((id, zoom) => useView.getState().setZoom(id, wheelZoom(zoom, deltaY, deltaMode))),
     goToPage: (pageIndex) => {
       const doc = get().doc;
       if (doc !== null) useView.getState().setPage(doc.id, pageIndex);
+    },
+    nextPage: () => changePage(1),
+    previousPage: () => changePage(-1),
+    setViewport: (viewport) => {
+      const previous = get().viewport;
+      if (previous?.width !== viewport.width || previous.height !== viewport.height) set({ viewport });
     },
   };
 });
@@ -98,8 +155,8 @@ export const selectDocId = (state: ViewerState): number | null => state.doc?.id 
 
 /**
  * The work that goes with the open document and has no UI of its own: it renders the current page whenever document, page
- * or zoom changes, frees the page image once it has been replaced, and binds the shell's keys (Ctrl or Cmd with O, plus,
- * minus, 0) until the command registry takes that over. Mount it once (`ViewerEffects`).
+ * or zoom changes and frees the page image once it has been replaced. The keys belong to the command registry
+ * (`src/actions`), not to the viewer. Mount it once (`ViewerEffects`).
  */
 export function useViewerEffects(): void {
   const docId = useViewer(selectDocId);
@@ -118,7 +175,7 @@ export function useViewerEffects(): void {
           if (cancelled) return;
           const url = URL.createObjectURL(new Blob([page.data], { type: 'image/png' }));
           // `page.scale` is lower than `scale` only if the backend refused the full-size frame.
-          useViewer.setState({ image: { url, widthPt: page.width / page.scale } });
+          useViewer.setState({ image: { url, widthPt: page.width / page.scale, heightPt: page.height / page.scale } });
           useUi.getState().dismissBanner();
         })
         .catch((caught: unknown) => {
@@ -140,39 +197,6 @@ export function useViewerEffects(): void {
       if (imageUrl !== undefined) URL.revokeObjectURL(imageUrl);
     };
   }, [imageUrl]);
-
-  // Keyboard: Ctrl/Cmd + O, +, -, 0. The actions never change, so the listener is bound once.
-  useEffect(() => {
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (!event.ctrlKey && !event.metaKey) return;
-      const viewer = useViewer.getState();
-      switch (event.key) {
-        case 'o':
-        case 'O':
-          event.preventDefault();
-          void viewer.open();
-          break;
-        case '+':
-        case '=':
-          event.preventDefault();
-          viewer.zoomStep(1);
-          break;
-        case '-':
-        case '_':
-          event.preventDefault();
-          viewer.zoomStep(-1);
-          break;
-        case '0':
-          event.preventDefault();
-          viewer.resetZoom();
-          break;
-        default:
-          break;
-      }
-    };
-    window.addEventListener('keydown', onKeyDown);
-    return () => window.removeEventListener('keydown', onKeyDown);
-  }, []);
 }
 
 /** Renders nothing: it hosts `useViewerEffects` in a component of its own, so the zoom and page it follows re-render only this. */

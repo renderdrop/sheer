@@ -1,0 +1,75 @@
+{
+  "menus": [
+    {
+      "id": "app",
+      "items": [
+        { "predefined": "about", "label": "menu.app.about" },
+        { "separator": true },
+        { "action": "settings", "label": "menu.app.settings", "accelerator": "CmdOrCtrl+," },
+        { "separator": true },
+        { "predefined": "services", "label": "menu.app.services" },
+        { "separator": true },
+        { "predefined": "hide", "label": "menu.app.hide" },
+        { "predefined": "hide_others", "label": "menu.app.hideOthers" },
+        { "predefined": "show_all", "label": "menu.app.showAll" },
+        { "separator": true },
+        { "predefined": "quit", "label": "menu.app.quit" }
+      ]
+    },
+    {
+      "id": "file",
+      "label": "menu.file",
+      "items": [
+        { "action": "open", "label": "menu.file.open", "accelerator": "CmdOrCtrl+O" },
+        { "action": "close-document", "label": "menu.file.closeDocument", "accelerator": "CmdOrCtrl+W" }
+      ]
+    },
+    {
+      "id": "edit",
+      "label": "menu.edit",
+      "items": [
+        { "predefined": "undo", "label": "menu.edit.undo" },
+        { "predefined": "redo", "label": "menu.edit.redo" },
+        { "separator": true },
+        { "predefined": "cut", "label": "menu.edit.cut" },
+        { "predefined": "copy", "label": "menu.edit.copy" },
+        { "predefined": "paste", "label": "menu.edit.paste" },
+        { "predefined": "select_all", "label": "menu.edit.selectAll" }
+      ]
+    },
+    {
+      "id": "view",
+      "label": "menu.view",
+      "items": [
+        { "action": "toggle-left-panel", "label": "menu.view.toggleLeftPanel", "accelerator": "CmdOrCtrl+Alt+1" },
+        { "action": "toggle-inspector", "label": "menu.view.toggleInspector", "accelerator": "CmdOrCtrl+Alt+I" },
+        { "separator": true },
+        { "action": "zoom-in", "label": "menu.view.zoomIn", "accelerator": "CmdOrCtrl+Equal" },
+        { "action": "zoom-out", "label": "menu.view.zoomOut", "accelerator": "CmdOrCtrl+Minus" },
+        { "action": "actual-size", "label": "menu.view.actualSize", "accelerator": "CmdOrCtrl+1" },
+        { "action": "fit-width", "label": "menu.view.fitWidth", "accelerator": "CmdOrCtrl+2" },
+        { "action": "fit-page", "label": "menu.view.fitPage", "accelerator": "CmdOrCtrl+0" },
+        { "separator": true },
+        { "action": "next-page", "label": "menu.view.nextPage", "accelerator": "Alt+ArrowDown" },
+        { "action": "previous-page", "label": "menu.view.previousPage", "accelerator": "Alt+ArrowUp" },
+        { "separator": true },
+        { "predefined": "fullscreen", "label": "menu.view.fullscreen" }
+      ]
+    },
+    {
+      "id": "window",
+      "label": "menu.window",
+      "items": [
+        { "predefined": "minimize", "label": "menu.window.minimize" },
+        { "predefined": "maximize", "label": "menu.window.zoom" },
+        { "separator": true },
+        { "predefined": "bring_all_to_front", "label": "menu.window.bringAllToFront" }
+      ]
+    },
+    {
+      "id": "help",
+      "label": "menu.help",
+      "items": []
+    }
+  ]
+}

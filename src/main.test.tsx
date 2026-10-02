@@ -14,6 +14,7 @@ const backend = vi.hoisted(() => ({
   getSettings: vi.fn(),
   updateSettings: vi.fn(),
   watchTransparency: vi.fn(),
+  subscribeMenu: vi.fn(),
 }));
 
 vi.mock('./api/app', async (importOriginal) => ({
@@ -22,6 +23,7 @@ vi.mock('./api/app', async (importOriginal) => ({
   getSettings: backend.getSettings,
   updateSettings: backend.updateSettings,
   watchTransparency: backend.watchTransparency,
+  subscribeMenu: backend.subscribeMenu,
 }));
 vi.mock('./App', async () => {
   const { createElement } = await import('react');
@@ -66,6 +68,7 @@ beforeEach(() => {
   backend.getSettings.mockReset().mockReturnValue(new Promise(() => undefined));
   backend.updateSettings.mockReset().mockReturnValue(new Promise(() => undefined));
   backend.watchTransparency.mockReset().mockReturnValue(new Promise(() => undefined));
+  backend.subscribeMenu.mockReset().mockReturnValue(new Promise(() => undefined));
 });
 
 afterEach(() => {
@@ -176,6 +179,30 @@ describe('main.tsx while the settings load hangs', () => {
     expect(html.getAttribute('data-transparency')).toBe('reduced');
     act(() => send?.(false));
     expect(html.hasAttribute('data-transparency')).toBe(false);
+  });
+
+  it('subscribes to the native menu without waiting for the channel, and runs the actions it names', async () => {
+    let choose: ((id: string) => void) | undefined;
+    backend.subscribeMenu.mockImplementation((onAction: (id: string) => void) => {
+      choose = onAction;
+      return new Promise(() => undefined);
+    });
+    await start();
+    expect(backend.subscribeMenu).toHaveBeenCalledTimes(1);
+    expect(backend.subscribeMenu).toHaveBeenCalledWith(expect.any(Function), expect.any(String));
+    expect(root()?.textContent).toBe('App is on screen');
+    // A menu command goes through the registry: with no document open, "Close Document" does nothing, and an unknown id too.
+    const { useViewer } = await import('./features/viewer/useViewer');
+    const before = useViewer.getState();
+    act(() => choose?.('close-document'));
+    act(() => choose?.('not-an-action'));
+    expect(useViewer.getState()).toBe(before);
+  });
+
+  it('keeps the window when the native menu cannot be subscribed to', async () => {
+    backend.subscribeMenu.mockRejectedValue(new Error('no backend'));
+    await start();
+    expect(root()?.textContent).toBe('App is on screen');
   });
 
   it('fails loudly, and does not start loading, when the page has no #root', async () => {

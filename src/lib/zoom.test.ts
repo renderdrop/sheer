@@ -4,11 +4,14 @@ import { readPngSize } from './png';
 import {
   CSS_PX_PER_PT,
   DEFAULT_ZOOM,
+  FIT_SCROLLBAR_PX,
   MAX_RENDER_SCALE,
   MAX_ZOOM,
   MIN_RENDER_SCALE,
   MIN_ZOOM,
   clampZoom,
+  fitPageZoom,
+  fitWidthZoom,
   formatZoom,
   scaleForZoom,
   stepZoom,
@@ -37,6 +40,42 @@ describe('zoom steps', () => {
   it('formats percentages', () => {
     expect(formatZoom(1)).toBe('100%');
     expect(formatZoom(0.67)).toBe('67%');
+  });
+});
+
+describe('fit zoom', () => {
+  // A US Letter page (612 x 792 pt) is 816 x 1056 CSS px at 100 %.
+  it('fit width fills the width less the scrollbar allowance', () => {
+    expect(fitWidthZoom(816 + FIT_SCROLLBAR_PX, 612)).toBeCloseTo(1);
+    expect(fitWidthZoom(1632 + FIT_SCROLLBAR_PX, 612)).toBeCloseTo(2);
+    expect(fitWidthZoom(408 + FIT_SCROLLBAR_PX, 612)).toBeCloseTo(0.5);
+  });
+
+  it('fit page takes the smaller of the width fit and the height fit', () => {
+    // Plenty of height: the width decides. Plenty of width: the height decides.
+    expect(fitPageZoom(816, 5000, 612, 792)).toBeCloseTo(1);
+    expect(fitPageZoom(5000, 528, 612, 792)).toBeCloseTo(0.5);
+    // A landscape page in a portrait canvas.
+    expect(fitPageZoom(816, 1056, 792, 612)).toBeCloseTo(816 / (792 * CSS_PX_PER_PT));
+  });
+
+  it('stays inside the zoom range', () => {
+    expect(fitWidthZoom(100_000, 100)).toBe(MAX_ZOOM);
+    expect(fitWidthZoom(FIT_SCROLLBAR_PX + 1, 612)).toBe(MIN_ZOOM);
+    expect(fitWidthZoom(FIT_SCROLLBAR_PX, 612)).toBe(MIN_ZOOM);
+    expect(fitPageZoom(100_000, 100_000, 100, 100)).toBe(MAX_ZOOM);
+    expect(fitPageZoom(10, 10, 612, 792)).toBe(MIN_ZOOM);
+  });
+
+  it('is null until the canvas is measured and the page has a size', () => {
+    for (const bad of [0, -1, Number.NaN, Number.POSITIVE_INFINITY]) {
+      expect(fitWidthZoom(bad, 612), `viewport ${bad}`).toBeNull();
+      expect(fitWidthZoom(800, bad), `page ${bad}`).toBeNull();
+      expect(fitPageZoom(bad, 600, 612, 792), `viewport width ${bad}`).toBeNull();
+      expect(fitPageZoom(800, bad, 612, 792), `viewport height ${bad}`).toBeNull();
+      expect(fitPageZoom(800, 600, bad, 792), `page width ${bad}`).toBeNull();
+      expect(fitPageZoom(800, 600, 612, bad), `page height ${bad}`).toBeNull();
+    }
   });
 });
 

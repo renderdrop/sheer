@@ -38,6 +38,43 @@ export function stepZoom(zoom: number, direction: 1 | -1): number {
   return MIN_ZOOM;
 }
 
+/**
+ * Width kept free when a page is fitted to the canvas's width: a page that exactly fills the canvas is taller than it, so a
+ * classic vertical scrollbar appears and would push a horizontal one in. Overlay scrollbars (macOS) simply leave a little
+ * more margin.
+ */
+export const FIT_SCROLLBAR_PX = 16;
+
+function isPositive(value: number): boolean {
+  return Number.isFinite(value) && value > 0;
+}
+
+/**
+ * The zoom at which a page of `pageWidthPt` fills `viewportWidthPx` (the canvas's content width, padding excluded) less
+ * `FIT_SCROLLBAR_PX`, clamped to the zoom range. `null` when a size is not a positive number (nothing measured yet).
+ */
+export function fitWidthZoom(viewportWidthPx: number, pageWidthPt: number): number | null {
+  if (!isPositive(viewportWidthPx) || !isPositive(pageWidthPt)) return null;
+  return clampZoom(Math.max(0, viewportWidthPx - FIT_SCROLLBAR_PX) / (pageWidthPt * CSS_PX_PER_PT));
+}
+
+/**
+ * The zoom at which the whole page fits in the canvas's content box: the smaller of the width fit and the height fit,
+ * clamped to the zoom range. No scrollbar allowance: a page that fits needs no scrollbar. `null` when a size is not a
+ * positive number.
+ */
+export function fitPageZoom(
+  viewportWidthPx: number,
+  viewportHeightPx: number,
+  pageWidthPt: number,
+  pageHeightPt: number,
+): number | null {
+  if (![viewportWidthPx, viewportHeightPx, pageWidthPt, pageHeightPt].every(isPositive)) return null;
+  return clampZoom(
+    Math.min(viewportWidthPx / (pageWidthPt * CSS_PX_PER_PT), viewportHeightPx / (pageHeightPt * CSS_PX_PER_PT)),
+  );
+}
+
 /** Continuous zoom for Ctrl/Cmd+wheel and trackpad pinch. Scrolling up (negative delta) zooms in. */
 export function wheelZoom(zoom: number, deltaY: number, deltaMode = 0): number {
   const unit = deltaMode === 1 ? PIXELS_PER_LINE : deltaMode === 2 ? PIXELS_PER_PAGE : 1;

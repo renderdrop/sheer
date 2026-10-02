@@ -190,7 +190,7 @@ describe('Shell with a document', () => {
   });
 
   describe('zoom', () => {
-    it('Ctrl+plus and Ctrl+minus step the zoom, Ctrl+0 resets it, and the status bar and toolbar follow', async () => {
+    it('Ctrl+plus and Ctrl+minus step the zoom, Ctrl+1 resets it, and the status bar and toolbar follow', async () => {
       const { user } = setup(<Shell />);
       await openDocument(user);
       const readout = () => within(toolbar()).getByRole('button', { name: 'Zoom level' }).textContent;
@@ -202,7 +202,7 @@ describe('Shell with a document', () => {
       fireEvent.keyDown(window, { key: '-', ctrlKey: true });
       fireEvent.keyDown(window, { key: '-', ctrlKey: true });
       expect(readout()).toBe(`90${NBSP}%`);
-      fireEvent.keyDown(window, { key: '0', ctrlKey: true });
+      fireEvent.keyDown(window, { key: '1', ctrlKey: true });
       expect(readout()).toBe(`100${NBSP}%`);
     });
 
@@ -221,6 +221,150 @@ describe('Shell with a document', () => {
       await openDocument(user);
       fireEvent.keyDown(window, { key: '+', ctrlKey: true });
       expect(useView.getState().byDoc[1]?.zoom).toBe(1.1);
+    });
+  });
+
+  describe('commands (the action registry)', () => {
+    const more = async (user: ReturnType<typeof setup>['user']) => {
+      await user.click(tool('More'));
+      return screen.getByRole('menu');
+    };
+    const pageText = () =>
+      within(screen.getByRole('contentinfo')).getByRole('button', { name: /Go to page/ }).textContent;
+
+    it('More lists every command that has no toolbar button, with its shortcut, on the platform without a menu bar', async () => {
+      const { user } = setup(<Shell />);
+      await openDocument(user);
+      const menu = await more(user);
+      const items = within(menu)
+        .getAllByRole('menuitem')
+        .map((item) => item.textContent);
+      expect(items).toEqual([
+        'Open…Ctrl+O',
+        'Close documentCtrl+W',
+        'Actual sizeCtrl+1',
+        'Fit widthCtrl+2',
+        'Fit pageCtrl+0',
+        'Next pageAlt+↓',
+        'Previous pageAlt+↑',
+        'Settings…Ctrl+,',
+        'About',
+      ]);
+    });
+
+    it('More runs them: Next page and Previous page turn the page, Close document returns to the empty state', async () => {
+      const { user } = setup(<Shell />);
+      await openDocument(user);
+      await user.click(within(await more(user)).getByRole('menuitem', { name: /^Next page/ }));
+      expect(pageText()).toBe('2 / 120');
+      await user.click(within(await more(user)).getByRole('menuitem', { name: /^Previous page/ }));
+      expect(pageText()).toBe('1 / 120');
+      await user.click(within(await more(user)).getByRole('menuitem', { name: /^Close document/ }));
+      expect(screen.getByRole('heading', { level: 1, name: 'Open a PDF' })).not.toBeNull();
+      expect(documentsApi.closeDocument).toHaveBeenCalledWith(1);
+    });
+
+    it('without a document More has only Open, Settings and About enabled, and the others are aria-disabled', async () => {
+      const { user } = setup(<Shell />);
+      const menu = await more(user);
+      const enabled = within(menu)
+        .getAllByRole('menuitem')
+        .filter((item) => item.getAttribute('aria-disabled') !== 'true')
+        .map((item) => item.textContent);
+      expect(enabled).toEqual(['Open…Ctrl+O', 'Settings…Ctrl+,', 'About']);
+    });
+
+    it('Ctrl+W closes the document and the empty state comes back; Ctrl+W without one does nothing', async () => {
+      const { user } = setup(<Shell />);
+      await openDocument(user);
+      fireEvent.keyDown(window, { key: 'w', ctrlKey: true });
+      expect(await screen.findByRole('heading', { level: 1, name: 'Open a PDF' })).not.toBeNull();
+      expect(documentsApi.closeDocument).toHaveBeenCalledTimes(1);
+      fireEvent.keyDown(window, { key: 'w', ctrlKey: true });
+      expect(documentsApi.closeDocument).toHaveBeenCalledTimes(1);
+    });
+
+    it('Alt+Down and Alt+Up turn the page, and the status bar follows', async () => {
+      const { user } = setup(<Shell />);
+      await openDocument(user);
+      fireEvent.keyDown(window, { key: 'ArrowDown', altKey: true });
+      fireEvent.keyDown(window, { key: 'ArrowDown', altKey: true });
+      expect(pageText()).toBe('3 / 120');
+      fireEvent.keyDown(window, { key: 'ArrowUp', altKey: true });
+      expect(pageText()).toBe('2 / 120');
+    });
+
+    it('F4 hides and shows the left panel, and the toolbar toggle follows', async () => {
+      const { user } = setup(<Shell />);
+      await openDocument(user);
+      expect(tool('Left panel').getAttribute('aria-pressed')).toBe('true');
+      fireEvent.keyDown(window, { key: 'F4' });
+      expect(tool('Left panel').getAttribute('aria-pressed')).toBe('false');
+      expect(screen.queryByRole('complementary', { name: 'Left panel' })).toBeNull();
+      fireEvent.keyDown(window, { key: 'F4' });
+      expect(tool('Left panel').getAttribute('aria-pressed')).toBe('true');
+    });
+
+    it('Shift+F4 shows and hides the inspector, and the toolbar toggle follows', async () => {
+      const { user } = setup(<Shell />);
+      await openDocument(user);
+      expect(tool('Inspector').getAttribute('aria-pressed')).toBe('false');
+      fireEvent.keyDown(window, { key: 'F4', shiftKey: true });
+      expect(tool('Inspector').getAttribute('aria-pressed')).toBe('true');
+      fireEvent.keyDown(window, { key: 'F4', shiftKey: true });
+      expect(tool('Inspector').getAttribute('aria-pressed')).toBe('false');
+    });
+
+    it('Ctrl+2 and Ctrl+0 fit the page to the canvas once it is measured, and the readout follows', async () => {
+      const { user } = setup(<Shell />);
+      await openDocument(user);
+      // jsdom has no layout: the canvas reports its size here, as the ResizeObserver does in the app. The rendered page is 612 x 792 pt.
+      act(() => useViewer.getState().setViewport({ width: 816 + 16, height: 528 }));
+      fireEvent.keyDown(window, { key: '2', code: 'Digit2', ctrlKey: true });
+      expect(tool('Zoom level').textContent).toBe(`100${NBSP}%`);
+      fireEvent.keyDown(window, { key: '0', code: 'Digit0', ctrlKey: true });
+      expect(tool('Zoom level').textContent).toBe(`50${NBSP}%`);
+      fireEvent.keyDown(window, { key: '1', code: 'Digit1', ctrlKey: true });
+      expect(tool('Zoom level').textContent).toBe(`100${NBSP}%`);
+    });
+
+    it('a tool letter selects the tool only while the canvas has the focus', async () => {
+      const { user } = setup(<Shell />);
+      await openDocument(user);
+      expect(tool('Select').getAttribute('aria-pressed')).toBe('true');
+      fireEvent.keyDown(window, { key: 'h' });
+      fireEvent.keyDown(tool('Zoom in'), { key: 'h' });
+      expect(tool('Select').getAttribute('aria-pressed')).toBe('true');
+      const canvas = screen.getByRole('region', { name: 'Document' });
+      canvas.focus();
+      await user.keyboard('h');
+      expect(tool('Highlight').getAttribute('aria-pressed')).toBe('true');
+      await user.keyboard('d');
+      expect(tool('Draw').getAttribute('aria-pressed')).toBe('true');
+      expect(tool('Highlight').getAttribute('aria-pressed')).toBe('false');
+      await user.keyboard('v');
+      expect(tool('Select').getAttribute('aria-pressed')).toBe('true');
+    });
+
+    it('typing in the Go to page field never takes a shortcut: letters and Ctrl+plus stay with the field', async () => {
+      const { user } = setup(<Shell />);
+      await openDocument(user);
+      await user.click(within(screen.getByRole('contentinfo')).getByRole('button', { name: /Go to page/ }));
+      const field = screen.getByLabelText('Page number');
+      await user.keyboard('h');
+      fireEvent.keyDown(field, { key: '+', ctrlKey: true });
+      fireEvent.keyDown(field, { key: 'w', ctrlKey: true });
+      expect(tool('Select').getAttribute('aria-pressed')).toBe('true');
+      expect(tool('Zoom level').textContent).toBe(`100${NBSP}%`);
+      expect(useViewer.getState().doc).not.toBeNull();
+    });
+
+    it('the tools and the panel toggles show their keys in their tooltips', async () => {
+      const { user } = setup(<Shell />);
+      await openDocument(user);
+      expect(tool('Highlight').getAttribute('aria-keyshortcuts')).toBe('H');
+      expect(tool('Left panel').getAttribute('aria-keyshortcuts')).toBe('F4');
+      expect(tool('Zoom in').getAttribute('aria-keyshortcuts')).toBe('Control+Plus');
     });
   });
 

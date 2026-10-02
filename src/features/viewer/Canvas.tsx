@@ -3,7 +3,7 @@ import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import { cx } from '../../components/cx';
 import { CSS_PX_PER_PT } from '../../lib/zoom';
 import { useT } from '../../i18n';
-import type { PageImage } from './useViewer';
+import type { PageImage, Viewport } from './useViewer';
 
 export interface CanvasProps {
   /** The rendered page, or `null` while there is none yet. */
@@ -16,6 +16,11 @@ export interface CanvasProps {
   busy: boolean;
   /** Ctrl/Cmd+wheel and pinch (browsers report a pinch as ctrl+wheel). Needs a non-passive listener, so it is attached here. */
   onWheelZoom: (deltaY: number, deltaMode: number) => void;
+  /**
+   * The size of the region the page sits in (its content box, padding excluded) in CSS px, reported when the canvas mounts
+   * and each time it changes: what "fit width" and "fit page" fill.
+   */
+  onViewport?: (viewport: Viewport) => void;
   /** A file is dragged over the window (visual only). */
   dropActive?: boolean;
   className?: string;
@@ -36,6 +41,7 @@ export function Canvas({
   pageCount,
   busy,
   onWheelZoom,
+  onViewport,
   dropActive = false,
   className,
   style,
@@ -56,8 +62,20 @@ export function Canvas({
     return () => region.removeEventListener('wheel', onWheel);
   }, [onWheelZoom]);
 
+  useEffect(() => {
+    const region = scrollRef.current;
+    if (region === null || onViewport === undefined) return;
+    const observer = new ResizeObserver((entries) => {
+      const box = entries.at(-1)?.contentRect;
+      if (box !== undefined) onViewport({ width: Math.floor(box.width), height: Math.floor(box.height) });
+    });
+    observer.observe(region);
+    return () => observer.disconnect();
+  }, [onViewport]);
+
   return (
     <main
+      data-action-scope="canvas"
       style={style}
       className={cx('relative isolate min-h-0 min-w-0 overflow-hidden rounded-panel bg-canvas', className)}
     >

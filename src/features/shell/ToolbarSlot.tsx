@@ -1,27 +1,25 @@
 import { memo, useMemo } from 'react';
 
+import { runAction } from '../../actions/dispatch';
 import type { Platform } from '../../api/app';
 import { useT } from '../../i18n';
 import { MAX_ZOOM, MIN_ZOOM } from '../../lib/zoom';
 import { useUi } from '../../stores/ui';
 import { useDocViewValue } from '../../stores/view';
 import { selectDocId, useViewer } from '../viewer/useViewer';
-import { readShellStructure } from './useShellStructure';
 import { buildToolbar, type ToolbarActions } from './toolbarEntries';
 import { ToolbarRow } from './ToolbarRow';
 import { ZoomReadout, useZoomMenu } from './ZoomControls';
 
 /**
- * What the toolbar's items do. Each reads the current state when it runs, so the object never changes and the toolbar's
- * entries (and with them the whole toolbar) are rebuilt only when something they show changes.
+ * What the toolbar's items do. Commands go through the registry (`runAction`), which reads the current state when it runs; a
+ * click on a tool is the toolbar's own. So the object never changes and the toolbar's entries (and with them the whole
+ * toolbar) are rebuilt only when something they show changes.
  */
 const ACTIONS: ToolbarActions = {
-  open: () => void useViewer.getState().open(),
+  run: runAction,
   selectTool: (tool) => useUi.getState().selectTool(tool),
   lockTool: (tool) => useUi.getState().lockTool(tool),
-  toggleLeftPanel: () => useUi.getState().setLeftPanelCollapsed(!readShellStructure().leftCollapsed),
-  toggleInspector: () => useUi.getState().setInspector(readShellStructure().inspectorVisible ? 'closed' : 'open'),
-  zoomStep: (direction) => useViewer.getState().zoomStep(direction),
 };
 
 /** The readout and the preset menu follow the zoom themselves (see `ZoomControls`). */
@@ -62,13 +60,11 @@ export const ToolbarSlot = memo(function ToolbarSlot({
         {
           t,
           platform,
-          hasDocument,
+          action: { hasDocument, zoomAtMin, zoomAtMax },
           activeTool,
           toolLocked,
           leftPanelVisible,
           inspectorVisible,
-          zoomAtMin,
-          zoomAtMax,
           zoomText: ZOOM_TEXT,
           zoomMenu: useZoomMenu,
         },

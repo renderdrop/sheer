@@ -132,3 +132,30 @@ export async function watchTransparency(onChange: (reduced: boolean) => void): P
   });
   await call<void>('watch_transparency', { onChange: channel });
 }
+
+/** The longest menu id the UI accepts from the backend; ids are short kebab-case names (`src/actions/menu.json`). */
+const MAX_MENU_ID_LENGTH = 64;
+
+/** The id of the menu item that was chosen, from a channel message; `null` if the message is not a plausible id (a string of lowercase letters, digits and dashes). */
+export function parseMenuMessage(message: unknown): string | null {
+  return typeof message === 'string' &&
+    message.length <= MAX_MENU_ID_LENGTH &&
+    /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(message)
+    ? message
+    : null;
+}
+
+/**
+ * Starts receiving the native menu bar's commands (macOS): `onAction` gets the id of each item the user chooses. Like
+ * `watchTransparency` this is a `Channel` passed to a command, not an event (no event permission, SECURITY T3, ADR-016); the backend
+ * only sends ids from its allowlist and the UI only runs ids it has an action for. `systemLanguage` (`navigator.language`) lets
+ * the backend label the menu when the language setting is "system". Calling it again replaces the earlier channel. Rejects like
+ * any command.
+ */
+export async function subscribeMenu(onAction: (id: string) => void, systemLanguage: string): Promise<void> {
+  const channel = new Channel<unknown>((message) => {
+    const id = parseMenuMessage(message);
+    if (id !== null) onAction(id);
+  });
+  await call<void>('subscribe_menu', { onAction: channel, systemLanguage });
+}

@@ -6,6 +6,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- One command registry (`src/actions`, ADR-016): the toolbar, the More menu, the keyboard and the macOS menu bar all derive from it. Shortcuts follow the platform
+  (Cmd on macOS, Ctrl elsewhere): Open, Close (new), zoom, Actual size, Fit width and Fit page (new), previous and next page (new), the panel toggles, Settings (placeholder) and
+  the tool letters, which work only while the canvas has focus. The key handler never takes a key from a text field.
+- The macOS menu bar (App, File, Edit, View, Window, Help), labelled from the UI catalogs in English and German and rebuilt when the language changes. Menu clicks reach the UI
+  through a `Channel` passed to the new `subscribe_menu` command, with an allowlist of ids in Rust. Windows has no menu bar (ADR-016).
+
+### Changed
+
+- Ctrl+0 is Fit page and Ctrl+1 is Actual size (it was 100 %). Ctrl on macOS and Cmd on Windows no longer trigger shortcuts.
+
 ### Security
 
 - File names shown in the UI lose every Unicode control (Cc) and format (Cf) character except the two joiners, plus U+2028, U+2029 and U+FFFC (ADR-015). The CSP test covers every `tauri.<platform>.conf.json` and fails when one sets `app.security`.

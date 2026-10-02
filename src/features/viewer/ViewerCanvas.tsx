@@ -13,6 +13,7 @@ export function ViewerCanvas({ style }: { style?: CSSProperties }) {
   const image = useViewer((state) => state.image);
   const busy = useViewer((state) => state.rendering);
   const zoomByWheel = useViewer((state) => state.zoomByWheel);
+  const setViewport = useViewer((state) => state.setViewport);
   const { zoom, pageIndex, pageCount } = useDocView(useViewer(selectDocId));
   const dropActive = useUi((state) => state.dropHover);
   return (
@@ -24,6 +25,7 @@ export function ViewerCanvas({ style }: { style?: CSSProperties }) {
       pageCount={pageCount}
       busy={busy}
       onWheelZoom={zoomByWheel}
+      onViewport={setViewport}
       dropActive={dropActive}
     />
   );

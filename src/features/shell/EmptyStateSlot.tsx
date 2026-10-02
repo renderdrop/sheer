@@ -1,8 +1,8 @@
 import type { CSSProperties } from 'react';
 
+import { shortcutFor } from '../../actions/registry';
 import type { Platform } from '../../api/app';
 import { useT } from '../../i18n';
-import { shellShortcuts } from '../../lib/shortcuts';
 import { useUi } from '../../stores/ui';
 import { useViewer } from '../viewer/useViewer';
 import { EmptyState } from './EmptyState';
@@ -16,12 +16,12 @@ export function EmptyStateSlot({ platform, style }: { platform: Platform | null;
   const open = useViewer((state) => state.open);
   const dropActive = useUi((state) => state.dropHover);
   const t = useT();
-  const { open: openKey } = shellShortcuts(platform, t);
+  const openKey = shortcutFor('open', platform, t);
   return (
     <div style={style} className="flex min-h-0 min-w-0 overflow-auto p-1">
       <EmptyState
-        openShortcut={openKey.label}
-        openKeyShortcuts={openKey.aria}
+        openShortcut={openKey?.label ?? ''}
+        openKeyShortcuts={openKey?.aria ?? ''}
         opening={opening}
         onOpen={() => void open()}
         dropActive={dropActive}

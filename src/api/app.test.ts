@@ -15,8 +15,10 @@ import {
   appReady,
   getSettings,
   parseBootstrap,
+  parseMenuMessage,
   parseSettings,
   parseTransparencyMessage,
+  subscribeMenu,
   updateSettings,
   watchTransparency,
 } from './app';
@@ -228,6 +230,82 @@ describe('watchTransparency', () => {
     expect(parseTransparencyMessage(false)).toBe(false);
     for (const bad of [null, undefined, 'false', 0, {}, { reduced: true }]) {
       expect(parseTransparencyMessage(bad), JSON.stringify(bad)).toBeNull();
+    }
+  });
+});
+
+describe('subscribeMenu', () => {
+  /** The channel the command was given: what the backend would send on. */
+  const channelOf = (): { onmessage: (message: unknown) => void } => {
+    const args = invokeMock.mock.calls.at(-1)?.[1] as { onAction: { onmessage: (message: unknown) => void } };
+    return args.onAction;
+  };
+
+  it('hands the backend a channel and the OS language, and passes on every id it sends', async () => {
+    invokeMock.mockResolvedValueOnce(undefined);
+    const onAction = vi.fn();
+    await subscribeMenu(onAction, 'de-AT');
+    expect(invokeMock).toHaveBeenCalledTimes(1);
+    expect(invokeMock.mock.calls[0]?.[0]).toBe('subscribe_menu');
+    expect(Object.keys(invokeMock.mock.calls[0]?.[1] ?? {}).sort()).toEqual(['onAction', 'systemLanguage']);
+    expect(invokeMock.mock.calls[0]?.[1]).toMatchObject({ systemLanguage: 'de-AT' });
+
+    channelOf().onmessage('open');
+    channelOf().onmessage('toggle-left-panel');
+    expect(onAction.mock.calls).toEqual([['open'], ['toggle-left-panel']]);
+  });
+
+  it('ignores anything that is not an id: the message is data from outside', async () => {
+    invokeMock.mockResolvedValueOnce(undefined);
+    const onAction = vi.fn();
+    await subscribeMenu(onAction, 'en');
+    for (const bad of [
+      null,
+      undefined,
+      1,
+      true,
+      {},
+      ['open'],
+      { id: 'open' },
+      '',
+      'Open',
+      'open now',
+      '<script>',
+      'a'.repeat(65),
+    ]) {
+      channelOf().onmessage(bad);
+    }
+    expect(onAction).not.toHaveBeenCalled();
+  });
+
+  it('hands the backend a new channel on every call, so a second subscription can replace the first there', async () => {
+    invokeMock.mockResolvedValue(undefined);
+    const first = vi.fn();
+    const second = vi.fn();
+    await subscribeMenu(first, 'en');
+    const firstChannel = channelOf();
+    await subscribeMenu(second, 'de');
+    const secondChannel = channelOf();
+    expect(invokeMock).toHaveBeenCalledTimes(2);
+    expect(invokeMock.mock.calls.map(([name]) => name)).toEqual(['subscribe_menu', 'subscribe_menu']);
+    expect(secondChannel).not.toBe(firstChannel);
+    // Each channel feeds only its own handler; what the backend sends after the replacement arrives on the second.
+    secondChannel.onmessage('zoom-in');
+    expect(second.mock.calls).toEqual([['zoom-in']]);
+    expect(first).not.toHaveBeenCalled();
+  });
+
+  it('rejects with an AppError when the backend refuses', async () => {
+    invokeMock.mockRejectedValueOnce(new Error('command subscribe_menu not allowed'));
+    await expect(subscribeMenu(vi.fn(), 'en')).rejects.toMatchObject({ code: 'internal' });
+  });
+
+  it('reads a message as the bare id of a menu item', () => {
+    for (const good of ['open', 'close-document', 'zoom-in', 'toggle-left-panel', 'a1', 'a'.repeat(64)]) {
+      expect(parseMenuMessage(good), good).toBe(good);
+    }
+    for (const bad of [null, undefined, 7, '', '-', 'open-', '-open', 'Open', 'zoom_in', 'zoom in', 'a'.repeat(65)]) {
+      expect(parseMenuMessage(bad), String(bad)).toBeNull();
     }
   });
 });

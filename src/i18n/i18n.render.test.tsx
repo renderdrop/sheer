@@ -116,7 +116,7 @@ describe('the language setting', () => {
     chooseLanguage('de');
     expect(screen.getByText('Strg+O')).not.toBeNull();
     expect(screen.queryByText('Ctrl+O')).toBeNull();
-    expect(open().getAttribute('aria-keyshortcuts')).toBe('Control+O Meta+O');
+    expect(open().getAttribute('aria-keyshortcuts')).toBe('Control+O');
 
     await user.click(within(screen.getByRole('toolbar', { name: 'Werkzeuge' })).getByRole('button', { name: 'Mehr' }));
     const item = within(screen.getByRole('menu')).getByRole('menuitem', { name: /Öffnen…/ });
@@ -244,7 +244,8 @@ describe('the language setting', () => {
       if (element.children.length === 0 && element.textContent) shown.add(element.textContent.trim());
     }
     const english = Object.entries(catalogs.en)
-      .filter(([key, message]) => message !== catalogs.de[key] && !message.includes('{'))
+      // The menu.* texts are for the macOS menu bar, which Rust labels; the webview never shows them ("Zoom" is also a toolbar label).
+      .filter(([key, message]) => !key.startsWith('menu.') && message !== catalogs.de[key] && !message.includes('{'))
       .map(([, message]) => message);
     expect(english.filter((message) => shown.has(message))).toEqual([]);
     // The check can see text at all.

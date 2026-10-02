@@ -352,6 +352,7 @@ fn capabilities_grant_only_the_app_commands_and_the_window_chrome_to_the_main_wi
         "allow-get-settings",
         "allow-update-settings",
         "allow-watch-transparency",
+        "allow-subscribe-menu",
     ]);
     expected.extend(
         WINDOW_PERMISSIONS
@@ -363,7 +364,7 @@ fn capabilities_grant_only_the_app_commands_and_the_window_chrome_to_the_main_wi
 
 /// The webview can neither listen to events nor emit them. `listen` would let it hear `tauri://drag-drop`, whose payload
 /// is the dropped file paths (SECURITY I2), and `emit` would let it speak as the backend. Backend-to-UI pushes use a
-/// `Channel` argument of a command instead (`watch_transparency`), which needs no permission.
+/// `Channel` argument of a command instead (`watch_transparency`, `subscribe_menu`), which needs no permission.
 #[test]
 fn the_webview_has_no_event_permissions() {
     let default = read("capabilities/default.json");
@@ -381,6 +382,43 @@ fn the_webview_has_no_event_permissions() {
     }
 }
 
+/// A click in the native menu reaches the webview only as a message on the channel of `subscribe_menu`, and only with an id of
+/// the allowlist (`menu::spec::ACTION_IDS`, ADR-016). The menu module therefore never emits an event: that would need the webview
+/// to `listen`, which it cannot (ADR-013), and would bypass the allowlist.
+#[test]
+fn menu_commands_reach_the_webview_only_through_the_channel() {
+    let mut sources = String::new();
+    for file in ["src/menu/mod.rs", "src/menu/spec.rs", "src/commands/app.rs"] {
+        // The tests of a file name the forbidden calls; production code is what comes before them.
+        let source = read(file);
+        sources.push_str(source.split("#[cfg(test)]").next().unwrap());
+    }
+    for forbidden in [
+        ".emit(",
+        ".emit_to(",
+        ".emit_filter(",
+        "Emitter",
+        "Listener",
+        "evaluate_script",
+        ".eval(",
+    ] {
+        assert!(
+            !sources.contains(forbidden),
+            "{forbidden} in the menu or the app commands: menu commands go through the Channel only (ADR-013, ADR-016)"
+        );
+    }
+    let app = read("src/commands/app.rs");
+    assert!(
+        app.contains("on_action: Channel<String>"),
+        "subscribe_menu takes the channel the commands are sent on"
+    );
+    let menu = read("src/menu/mod.rs");
+    assert!(
+        menu.contains("spec::is_action_id(id)"),
+        "MenuBridge::forward must check the allowlist before it sends"
+    );
+}
+
 #[test]
 fn build_script_declares_exactly_the_granted_commands() {
     let build = read("build.rs");
@@ -392,6 +430,7 @@ fn build_script_declares_exactly_the_granted_commands() {
         "get_settings",
         "update_settings",
         "watch_transparency",
+        "subscribe_menu",
     ];
     let handlers = read("src/lib.rs");
     for command in commands {

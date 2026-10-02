@@ -37,6 +37,11 @@ objc2-app-kit = { version = "0.3.2", default-features = false, features = ["std"
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"
 
+# Tests only: the macOS menu's accelerators (src/actions/menu.json) are parsed by muda, the crate under Tauri's menus, and a
+# string it cannot read is dropped without an error; a test parses each one. Already in the build through Tauri (same version).
+[dev-dependencies]
+muda = { version = "0.20.0", default-features = false }
+
 # The engine contains panics with `catch_unwind` (SECURITY P5), which only works when panics unwind.
 # `panic = "abort"` is therefore forbidden; `tests/security_baseline.rs` checks this.
 [profile.release]

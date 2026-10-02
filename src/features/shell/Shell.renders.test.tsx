@@ -254,7 +254,7 @@ describe('what changes often does not render the shell, the toolbar or the left 
     const before = counts();
     act(() => useViewer.setState({ rendering: true }));
     expect(within(screen.getByRole('contentinfo', { name: 'Status' })).getByText('Rendering…')).not.toBeNull();
-    act(() => useViewer.setState({ rendering: false, image: { url: 'blob:other', widthPt: 612 } }));
+    act(() => useViewer.setState({ rendering: false, image: { url: 'blob:other', widthPt: 612, heightPt: 792 } }));
     expect(counts()).toEqual(before);
   });
 

@@ -1,5 +1,6 @@
 import { useEffect, useId, useMemo, type CSSProperties } from 'react';
 
+import { ActionKeys } from '../../actions/keys';
 import { PANEL } from '../../components/tokens';
 import { shellTracks } from '../../lib/layout';
 import { chromeFor, detectPlatform } from '../../lib/platform';
@@ -83,6 +84,7 @@ export function Shell() {
   return (
     <div className="flex h-full min-h-0 flex-col">
       <ViewerEffects />
+      <ActionKeys />
       {chrome.caption && <CaptionBar maximized={windowState.maximized} onChanged={windowState.refresh} />}
       <ToolbarSlot
         platform={platform}

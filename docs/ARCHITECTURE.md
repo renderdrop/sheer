@@ -20,7 +20,7 @@ menu item or shortcut.
 
 ```
 main.rs          sheer_lib::run()
-lib.rs           builder: plugins, manage(AppState), invoke_handler, DragDrop/Opened hooks, menu
+lib.rs           builder: plugins, manage(AppState), invoke_handler, DragDrop/Opened hooks, menu bar (macOS)
 state.rs         AppState { registry, engine, settings, recents }
 error.rs         AppError (internal) → UiError (IPC)
 limits.rs        every numeric bound as a const
@@ -36,6 +36,7 @@ pdfwrite/        the only lopdf user (ADR-004)
                  save · annots · appearance · coords · pagetree (M3) · crypt (M5)
 storage/         atomic (temp + fsync + rename) · backup · settings · app_dirs · autosave (M7)
 security/        links (http/https/mailto allowlist) · names (display-name sanitizer)
+menu/            macOS menu bar (ADR-016): mod (MenuBridge: the channel to the UI, the id allowlist, build + rebuild on a language change) · spec (layout of src/actions/menu.json, texts of the UI catalogs, ACTION_IDS)
 platform/        macos (reduced transparency flag) · windows
 ```
 
@@ -55,13 +56,15 @@ features/     shell (Shell, CaptionBar, ToolbarSlot, ToolbarRow, LeftPanel, Main
               viewer (Canvas, ViewerCanvas, useViewer (store: open document, page image, render loop), PageView, layout.ts, TextLayer, LinkLayer, zoom.ts)
               annotations (Overlay SVG, tools/, Inspector, geometry.ts, ink.ts, textWrap.ts)
               thumbnails · outline · search · comments · pages (M3) · forms, signatures (M4)
-actions/      action registry: shortcuts, menu ids
+actions/      the one command registry (ADR-016): registry.ts (every action: id, labelKey, icon, per-platform shortcut, enabled(state), run()) · shortcut.ts (bindings: platform modifier, key matching, chips, aria, native accelerator) · keys.ts (the global key handler) · dispatch.ts (runAction) · state.ts (what enabled looks at) · menuBridge.ts (macOS menu commands in) · menu.json (layout of the macOS menu bar, read by Rust too)
 components/   design-system primitives (Phase 3)
 i18n/         locales/en.json + de.json (flat dotted keys, pure JSON, identical key sets; the one source of UI text, later also read by Rust for native menu labels) · catalog.ts (key types from en.json: an unknown key fails tsc) · translate.ts (typed t(key, params), {name} placeholders, plurals via Intl.PluralRules: base key + .one/.other, needs count) · format.ts (Intl numbers, percent) · store.ts, bind.ts (UI locale follows settings.language; "system" = navigator.language, de* is German; sets <html lang>) · errors.ts (error.<code>[.<what>])
 styles/tokens.css
 ```
 
-Only `src/api/call.ts` calls `invoke`: it turns every rejection into an `AppError`, and the typed wrappers (`src/api/app.ts`, `documents.ts`, …) go through it. Everything else imports the wrappers. The window has no event permission (SECURITY T3), so the frontend never calls `listen` or `emit`, and `src/api/app.test.ts` fails on any import of `@tauri-apps/api/event`. Backend pushes (§6) reach it through a `Channel` that a wrapper in `src/api/` passes to a command (`watchTransparency` → `watch_transparency`; the settings store consumes it).
+Only `src/api/call.ts` calls `invoke`: it turns every rejection into an `AppError`, and the typed wrappers (`src/api/app.ts`, `documents.ts`, …) go through it. Everything else imports the wrappers. The window has no event permission (SECURITY T3), so the frontend never calls `listen` or `emit`, and `src/api/app.test.ts` fails on any import of `@tauri-apps/api/event`. Backend pushes (§6) reach it through a `Channel` that a wrapper in `src/api/` passes to a command (`watchTransparency` → `watch_transparency`; the settings store consumes it. `subscribeMenu` → `subscribe_menu`; `src/actions/menuBridge.ts` consumes it).
+
+**Commands and keys.** A command is an action of `src/actions/registry.ts` and nothing else defines one. The toolbar's items (name, icon, shortcut chip, `aria-keyshortcuts`, enabled), the More menu, the global key handler and the macOS menu bar's commands are all derived from it or run through `runAction(id)`, which refuses an unknown id and a disabled action: there is no second shortcut table. A shortcut is a canonical binding (`{ key, mods }`, `primary` = Cmd on macOS and Ctrl elsewhere, a different one on macOS where research says so), resolved per platform. The key handler (`keys.ts`) takes no key from a text field or an event that is already handled, runs a bare printable key (the tool letters) only while focus is inside the canvas (`data-action-scope="canvas"`), and takes the browser's meaning away from every key it binds. `enabled` reads flags (`hasDocument`, the two zoom limits), not the zoom or the page, so the toolbar keeps its render isolation (ADR-015).
 
 ## 4. Document registry
 
@@ -97,6 +100,8 @@ app_ready() -> AppBootstrap                          // platform, reducedTranspa
 get_settings() -> Settings                           // { glass: "auto" | "solid", theme: "system" | "light" | "dark", language: "system" | "en" | "de", leftPanelWidth: 192..=400 }
 update_settings(patch: SettingsPatch) -> Settings    // patch { glass?, theme?, language?, leftPanelWidth? }; unknown key, enum value or width outside the range → invalid_argument (what: "settings")
 watch_transparency(on_change: Channel<bool>) -> ()   // each change of the OS "Reduce transparency" flag, as a bare bool; one receiver, a new call replaces it
+subscribe_menu(on_action: Channel<String>, system_language: Option<String>) -> ()
+                                                     // each command chosen in the macOS menu bar, as the bare id of the item (kebab-case, `menu::spec::ACTION_IDS` only: system items and any other id are dropped in Rust); one receiver, a new call replaces it; system_language = navigator.language, for the menu's labels while language is "system" (a malformed tag counts as unknown); a no-op listener on Windows, which has no menu bar
 // documents
 open_document_dialog() -> Vec<OpenResult>            // ≤ 32 files
 open_recent(recent_id: u32) -> OpenResult
@@ -144,6 +149,8 @@ struct AppBootstrap  { platform: Platform /* macos | windows | linux */, reduced
 struct Settings      { glass: GlassMode /* Auto | Solid */, theme: ThemeMode /* System | Light | Dark */, language: Language /* System | En | De */, left_panel_width: PanelWidth }   // serde lowercase values
 ```
 
+**Menu bar.** On macOS `menu::install` builds the menu bar at startup from `src/actions/menu.json` (App, File, Edit with the system items, View, Window, Help; the labels are the `menu.*` keys of `src/i18n/locales/*.json`, compiled in with `include_str!`) and `.on_menu_event` hands each chosen item to `MenuBridge::forward`, which sends it on the channel of `subscribe_menu` if `menu::spec::is_action_id` allows it. `update_settings` rebuilds the menu when `language` changes (`menu::refresh`, on the main thread); "system" uses the language `subscribe_menu` reported. Windows has no menu bar (ADR-016): nothing is installed there. Open runs like every other command: the menu sends `open`, the UI calls `open_document_dialog`. The menu is not synchronised with the UI's state (items are not greyed without a document): `runAction` refuses a command that cannot run, which is all the menu needs.
+
 **Settings.** `storage::settings` keeps the settings in memory and in `<app data dir>/settings.json`. A missing, oversized (> 64 KiB), damaged
 or hand-edited file never blocks start: only a regular file is read (its type is taken from the opened handle, not from the path, and on Unix it is opened
 `O_NONBLOCK` so a FIFO cannot hang the start), and each field that is invalid falls back to its default. `update_settings`
@@ -180,11 +187,11 @@ M6: `export_images`, `print_document`, `reveal_in_folder`. M7: `list_recoverable
 ## 6. Pushes (Rust → UI, never with paths)
 
 The webview has no event permission (SECURITY T3): it cannot `listen` to or `emit` events. A push reaches it as a message on a `tauri::ipc::Channel` that the
-UI passes to a command, like `search(.., on_event: Channel<SearchEvent>)`. The first one is implemented: `watch_transparency(on_change: Channel<bool>)` sends
+UI passes to a command, like `search(.., on_event: Channel<SearchEvent>)`. Two are implemented: `watch_transparency(on_change: Channel<bool>)` sends
 each change of the macOS "Reduce transparency" flag (checked when the window gains focus) as a bare bool; a value that already differs from what `app_ready`
-reported is sent on subscribing. The planned notifications are delivered the same way (a channel opened by a command, typed messages, no paths), unless an ADR grants
+reported is sent on subscribing. `subscribe_menu(on_action: Channel<String>, ..)` sends the id of each macOS menu command (`menu:action {id}` below, as a bare string) from the allowlist. The planned notifications are delivered the same way (a channel opened by a command, typed messages, no paths), unless an ADR grants
 `listen` for a named event: `doc:opened {docId}` (drop, file association, second instance) · `doc:reloaded {docId, rev}` · `doc:annotations-imported {docId, pageIds}` ·
-`drop:hover {active, count}` · `engine:status {state: ok | wedged}` · `menu:action {id}`.
+`drop:hover {active, count}` · `engine:status {state: ok | wedged}`.
 
 ## 7. Error model
 
@@ -234,6 +241,7 @@ Rules:
 - **Annotate.** A pointer gesture builds a draft in `annotations.editing`. On pointerup, `apply_command(CreateAnnotation)` → validate,
   apply, push history → ChangeSet → store → overlay. A persisted annotation that becomes non-clean is hidden in PDFium, `pageRev`
   increments, and the page re-renders.
+- **Command.** Key press → `handleKeyDown` (not from a text field; a bare key only in the canvas) → `runAction(id)`. Toolbar and More clicks call `runAction` too. A macOS menu choice → `on_menu_event` → allowlist → channel → `runAction`. `runAction` looks the id up, asks `enabled(readActionState())` and calls `run()`.
 - **Undo.** Ctrl/⌘+Z → `undo` → inverse applied → ChangeSet (same path).
 - **Save.** Ctrl/⌘+S → `save_document` (no ack). On `needs_confirmation` the UI shows a dialog and retries with `ack` → ADR-004 pipeline →
   `SaveResult` + `doc:reloaded` → store marked clean; the new `pageRev` keys refresh the images.

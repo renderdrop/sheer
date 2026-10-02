@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { act, fireEvent, renderHook } from '@testing-library/react';
+import { act, renderHook } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { DocumentInfo } from '../../api/documents';
@@ -103,7 +103,7 @@ describe('opening a document', () => {
 
   it('a second document replaces the first: its view is dropped and the backend is told to close it', async () => {
     await act(() => viewer().open());
-    useViewer.setState({ image: { url: 'blob:old', widthPt: 612 } });
+    useViewer.setState({ image: { url: 'blob:old', widthPt: 612, heightPt: 792 } });
     documentsApi.openDocumentDialog.mockResolvedValue(OTHER);
     await act(() => viewer().open());
     expect(viewer().doc).toEqual(OTHER);
@@ -129,7 +129,11 @@ describe('the actions', () => {
     viewer().resetZoom();
     viewer().zoomByWheel(-100, 0);
     viewer().goToPage(3);
+    viewer().nextPage();
+    viewer().previousPage();
+    viewer().close();
     expect(useView.getState().byDoc).toEqual({});
+    expect(documentsApi.closeDocument).not.toHaveBeenCalled();
   });
 
   describe('with a document', () => {
@@ -190,13 +194,104 @@ describe('the actions', () => {
       expect(useView.getState().byDoc[2]).toEqual({ zoom: 2.5, pageIndex: 2, pageCount: 3 });
     });
 
+    it('nextPage and previousPage turn one page and stop at the first and the last', () => {
+      viewer().nextPage();
+      viewer().nextPage();
+      expect(useView.getState().byDoc[1]?.pageIndex).toBe(2);
+      viewer().previousPage();
+      expect(useView.getState().byDoc[1]?.pageIndex).toBe(1);
+      viewer().previousPage();
+      viewer().previousPage();
+      expect(useView.getState().byDoc[1]?.pageIndex).toBe(0);
+      viewer().goToPage(9);
+      viewer().nextPage();
+      expect(useView.getState().byDoc[1]?.pageIndex).toBe(9);
+    });
+
+    it('close forgets the document and its page, and tells the backend; a failing close is no error for the user', async () => {
+      useViewer.setState({ image: { url: 'blob:old', widthPt: 612, heightPt: 792 }, rendering: true });
+      documentsApi.closeDocument.mockRejectedValue({ code: 'internal', key: 'error.internal', retryable: false });
+      viewer().close();
+      expect(viewer().doc).toBeNull();
+      expect(viewer().image).toBeNull();
+      expect(viewer().rendering).toBe(false);
+      expect(useView.getState().byDoc).toEqual({});
+      expect(documentsApi.closeDocument).toHaveBeenCalledWith(1);
+      await act(async () => undefined);
+      expect(useUi.getState().banner).toBeNull();
+      // Nothing is open any more: a second close does nothing, and does not tell the backend again.
+      viewer().close();
+      expect(documentsApi.closeDocument).toHaveBeenCalledTimes(1);
+    });
+
+    describe('fitting the page to the canvas', () => {
+      // A US Letter page, 612 x 792 pt, which is 816 x 1056 CSS px at 100 %.
+      const LETTER = { url: 'blob:page', widthPt: 612, heightPt: 792 };
+
+      it('fitWidth fills the canvas width less the scrollbar allowance, fitPage fits the whole page', () => {
+        useViewer.setState({ image: LETTER });
+        viewer().setViewport({ width: 816 + 16, height: 5000 });
+        viewer().fitWidth();
+        expect(zoomOf()).toBeCloseTo(1);
+        viewer().setViewport({ width: 5000, height: 528 });
+        viewer().fitPage();
+        expect(zoomOf()).toBeCloseTo(0.5);
+        viewer().setViewport({ width: 1632 + 16, height: 5000 });
+        viewer().fitWidth();
+        expect(zoomOf()).toBeCloseTo(2);
+      });
+
+      it('does nothing until the canvas has reported its size and a page has been shown', () => {
+        viewer().setZoom(2);
+        viewer().fitWidth();
+        viewer().fitPage();
+        expect(zoomOf()).toBe(2);
+        viewer().setViewport({ width: 800, height: 600 });
+        viewer().fitWidth();
+        viewer().fitPage();
+        expect(zoomOf()).toBe(2);
+      });
+
+      it('does nothing without a document', async () => {
+        useViewer.setState({ image: LETTER });
+        viewer().setViewport({ width: 800, height: 600 });
+        viewer().close();
+        useViewer.setState({ image: LETTER });
+        viewer().fitWidth();
+        viewer().fitPage();
+        expect(useView.getState().byDoc).toEqual({});
+      });
+
+      it('setViewport keeps the same object while the size is the same, so nothing wakes for it', () => {
+        viewer().setViewport({ width: 800, height: 600 });
+        const first = viewer().viewport;
+        viewer().setViewport({ width: 800, height: 600 });
+        expect(viewer().viewport).toBe(first);
+        viewer().setViewport({ width: 801, height: 600 });
+        expect(viewer().viewport).toEqual({ width: 801, height: 600 });
+      });
+    });
+
     it('are the same functions after every change of state, so memoized children can hold them', () => {
       const before = viewer();
       viewer().zoomStep(1);
       viewer().goToPage(3);
-      useViewer.setState({ rendering: true, image: { url: 'blob:x', widthPt: 1 } });
+      useViewer.setState({ rendering: true, image: { url: 'blob:x', widthPt: 1, heightPt: 1 } });
       const after = viewer();
-      for (const name of ['open', 'zoomStep', 'setZoom', 'resetZoom', 'zoomByWheel', 'goToPage'] as const) {
+      for (const name of [
+        'open',
+        'close',
+        'zoomStep',
+        'setZoom',
+        'resetZoom',
+        'fitWidth',
+        'fitPage',
+        'zoomByWheel',
+        'goToPage',
+        'nextPage',
+        'previousPage',
+        'setViewport',
+      ] as const) {
         expect(after[name], name).toBe(before[name]);
       }
     });
@@ -230,7 +325,7 @@ describe('the render pipeline (useViewerEffects)', () => {
     expect(documentsApi.renderPage).toHaveBeenCalledTimes(1);
     // 100 % is 96 CSS px per inch, 4/3 device px per point, at a device pixel ratio of 1.
     expect(documentsApi.renderPage).toHaveBeenLastCalledWith(1, 0, expect.closeTo(4 / 3, 5));
-    expect(viewer().image).toEqual({ url: 'blob:page-1', widthPt: 816 / (4 / 3) });
+    expect(viewer().image).toEqual({ url: 'blob:page-1', widthPt: 816 / (4 / 3), heightPt: 1056 / (4 / 3) });
     expect(viewer().rendering).toBe(false);
   });
 
@@ -280,7 +375,7 @@ describe('the render pipeline (useViewerEffects)', () => {
     await act(async () => answers[0]?.(page()));
     expect(viewer().image).toBeNull();
     await act(async () => answers[1]?.(page()));
-    expect(viewer().image).toEqual({ url: 'blob:page-1', widthPt: 816 / (4 / 3) });
+    expect(viewer().image).toEqual({ url: 'blob:page-1', widthPt: 816 / (4 / 3), heightPt: 1056 / (4 / 3) });
     expect(URL.createObjectURL).toHaveBeenCalledTimes(1);
   });
 
@@ -289,7 +384,7 @@ describe('the render pipeline (useViewerEffects)', () => {
     documentsApi.renderPage.mockResolvedValue(page(2));
     act(() => viewer().setZoom(4));
     await advance(80);
-    expect(viewer().image?.widthPt).toBe(816 / 2);
+    expect(viewer().image).toMatchObject({ widthPt: 816 / 2, heightPt: 1056 / 2 });
   });
 
   it('frees the page image when the next one has replaced it, and when the hook goes', async () => {
@@ -330,52 +425,10 @@ describe('the render pipeline (useViewerEffects)', () => {
     expect(documentsApi.renderPage).not.toHaveBeenCalled();
   });
 
-  describe('the keys', () => {
-    it('Ctrl or Cmd with O, plus, equals, minus, underscore and 0 are bound, and nothing else is', async () => {
-      await mount();
-      const key = (init: KeyboardEventInit) => fireEvent.keyDown(window, init);
-      key({ key: '+', ctrlKey: true });
-      expect(zoomOf()).toBe(1.1);
-      key({ key: '=', metaKey: true });
-      expect(zoomOf()).toBe(1.25);
-      key({ key: '-', ctrlKey: true });
-      key({ key: '_', ctrlKey: true });
-      expect(zoomOf()).toBe(1);
-      key({ key: '0', ctrlKey: true });
-      expect(zoomOf()).toBe(1);
-      viewer().setZoom(3);
-      key({ key: '0', metaKey: true });
-      expect(zoomOf()).toBe(1);
-      // Without the modifier, or with another key: nothing.
-      key({ key: '+' });
-      key({ key: 'z', ctrlKey: true });
-      expect(zoomOf()).toBe(1);
-      documentsApi.openDocumentDialog.mockClear();
-      key({ key: 'o', ctrlKey: true });
-      key({ key: 'O', metaKey: true });
-      key({ key: 'o' });
-      expect(documentsApi.openDocumentDialog).toHaveBeenCalledTimes(1);
-    });
-
-    it('the shortcut is taken from the browser (preventDefault), and the listener goes with the hook', async () => {
-      const { unmount } = await mount();
-      const event = new KeyboardEvent('keydown', { key: '+', ctrlKey: true, cancelable: true });
-      window.dispatchEvent(event);
-      expect(event.defaultPrevented).toBe(true);
-      unmount();
-      const later = new KeyboardEvent('keydown', { key: '+', ctrlKey: true, cancelable: true });
-      window.dispatchEvent(later);
-      expect(later.defaultPrevented).toBe(false);
-    });
-
-    it('binds once: a zoom step does not add a listener', async () => {
-      const add = vi.spyOn(window, 'addEventListener');
-      await mount();
-      const bound = add.mock.calls.filter(([type]) => type === 'keydown').length;
-      act(() => viewer().zoomStep(1));
-      act(() => viewer().goToPage(2));
-      expect(add.mock.calls.filter(([type]) => type === 'keydown')).toHaveLength(bound);
-      add.mockRestore();
-    });
+  it('binds no keys of its own: they belong to the command registry (src/actions)', async () => {
+    const add = vi.spyOn(window, 'addEventListener');
+    await mount();
+    expect(add.mock.calls.filter(([type]) => type === 'keydown')).toEqual([]);
+    add.mockRestore();
   });
 });

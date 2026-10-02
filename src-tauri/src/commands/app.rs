@@ -6,6 +6,7 @@
 //! | `get_settings` | none | `Settings { glass, theme, language, leftPanelWidth }` |
 //! | `update_settings` | `patch: { glass?, theme?, language?, leftPanelWidth? }` | the settings after the update |
 //! | `watch_transparency` | `onChange: Channel<boolean>` | nothing; the channel then carries each change of the OS "Reduce transparency" flag |
+//! | `subscribe_menu` | `onAction: Channel<string>`, `systemLanguage?: string` | nothing; the channel then carries the id of each command chosen in the macOS menu bar |
 //!
 //! `update_settings` takes the patch as raw JSON on purpose: a bad value is then a normal `invalid_argument` with
 //! `what: "settings"` (see `storage::settings`), not a deserialization failure that bypasses the error model.
@@ -15,10 +16,11 @@ use std::sync::Arc;
 use serde::Serialize;
 use serde_json::Value;
 use tauri::ipc::Channel;
-use tauri::State;
+use tauri::{AppHandle, State};
 
 use super::blocking;
 use crate::error::UiError;
+use crate::menu::{self, MenuBridge};
 use crate::platform::{self, Platform, TransparencyWatch};
 use crate::storage::settings::{Settings, SettingsPatch, SettingsStore};
 
@@ -55,14 +57,21 @@ pub async fn get_settings(store: State<'_, Arc<SettingsStore>>) -> Result<Settin
     Ok(store.get())
 }
 
-/// Validates `patch`, persists it atomically and returns the resulting settings.
+/// Validates `patch`, persists it atomically and returns the resulting settings. A change of the language also relabels the
+/// native menu bar (macOS).
 #[tauri::command]
 pub async fn update_settings(
+    app: AppHandle,
     store: State<'_, Arc<SettingsStore>>,
     patch: Value,
 ) -> Result<Settings, UiError> {
     let store = Arc::clone(store.inner());
-    blocking(move || store.update(SettingsPatch::from_value(&patch)?)).await
+    let before = store.get().language;
+    let settings = blocking(move || store.update(SettingsPatch::from_value(&patch)?)).await?;
+    if settings.language != before {
+        menu::refresh(&app);
+    }
+    Ok(settings)
 }
 
 /// Starts pushing changes of the OS "Reduce transparency" flag to `on_change` (on macOS, when the window regains focus;
@@ -81,6 +90,26 @@ pub async fn watch_transparency(
         Ok(())
     })
     .await
+}
+
+/// Starts sending the commands chosen in the macOS menu bar to `on_action`, each as the bare id of the item (`open`,
+/// `zoom-in`, ...). Only ids of the backend's allowlist (`menu::spec::ACTION_IDS`) are ever sent, never a system item or
+/// anything else. `system_language` is the OS language (`navigator.language`), which labels the menu while the language
+/// setting is "system"; a value that is not a plain language tag counts as unknown (English). Where there is no menu bar
+/// (Windows) the channel is kept and nothing ever arrives.
+///
+/// This is how a menu click reaches the UI without any event permission: the channel is an argument the UI hands over. A
+/// second call replaces the first channel. See [`MenuBridge`].
+#[tauri::command]
+pub async fn subscribe_menu(
+    app: AppHandle,
+    bridge: State<'_, Arc<MenuBridge>>,
+    on_action: Channel<String>,
+    system_language: Option<String>,
+) -> Result<(), UiError> {
+    bridge.subscribe(on_action, system_language.as_deref());
+    menu::refresh(&app);
+    Ok(())
 }
 
 #[cfg(test)]

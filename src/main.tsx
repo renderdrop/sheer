@@ -1,6 +1,7 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 
+import { watchNativeMenu } from './actions/menuBridge';
 import { App } from './App';
 import { APP_NAME } from './config/app';
 import { bindLocaleToSettings } from './i18n/bind';
@@ -32,3 +33,5 @@ createRoot(container).render(
 
 void loadSettings();
 void watchOsTransparency();
+// The macOS menu bar's commands arrive over a channel (nothing arrives on Windows, which has no menu bar).
+void watchNativeMenu();

@@ -453,3 +453,50 @@ interlinear marks) and that the platform configs were not all covered by the CSP
 **Consequences.** Render counts are tested (`Shell.renders.test.tsx`); a new always-changing field must be followed by the part that shows it, never by
 `Shell`. A newer Unicode version can add a Cf character; the table then needs the new range (the sweep test compares against the copy in the test, which
 is updated by hand too). No new dependency.
+
+---
+
+## ADR-016 — One command registry, platform shortcuts, and a macOS-only native menu bar
+
+**Status:** accepted (2026-10-02)
+
+**Context.** The toolbar, the More menu and the keyboard each had their own idea of a command: the spike bound Ctrl or Cmd with O, plus,
+minus and 0 in the viewer, the toolbar had its own shortcut chips, and the empty state a third copy. macOS needs a menu bar with every command (HIG;
+without an Edit menu the webview's Cmd+C and Cmd+V do not work), while the Windows window has custom chrome with no native decorations (ADR-014).
+The webview has no event permission (ADR-013), so a menu click cannot arrive as an event.
+
+**Decision.**
+1. **One registry.** `src/actions/registry.ts` lists every action: `id`, `labelKey`, `icon`, `shortcut`, `enabled(state)`, `run()`, and where it is listed.
+   The toolbar's items (name, icon, chip, `aria-keyshortcuts`, enabled state), the More menu, the key handler and the macOS commands all derive from it or
+   go through `runAction(id)`, which refuses an unknown id and a disabled action. There is no other shortcut table. `enabled` reads flags
+   (`hasDocument`, the two zoom limits), not the zoom or the page, so ADR-015's render isolation holds. Tools are actions too (`tool-select` ... `tool-pages`).
+2. **Shortcuts.** A binding is `{ key, mods }` with a canonical key name and `primary` as the modifier: Cmd on macOS, Ctrl elsewhere. It is exact: Ctrl is not
+   Cmd on macOS, the Windows key never counts, Ctrl+Alt is never bound on Windows (AltGr), and Shift is ignored only for plus and minus. Keys are matched
+   by layout for Latin letters and by position for digits and non-Latin layouts. The table follows `docs/research/ux-patterns.md` section 5: Open, Close
+   (Cmd/Ctrl+W), zoom (Cmd/Ctrl with plus and minus), Fit page, Actual size and Fit width on Cmd/Ctrl with 0, 1 and 2 (Acrobat's; the same on macOS, where
+   the research's Preview keys were unverified), Settings on Cmd/Ctrl+comma, the tool letters V H C D F S P. The research has no key for the rest, so they are
+   chosen here and can be changed in one place: Option+Cmd+1 and Option+Cmd+I on macOS and F4 and Shift+F4 on Windows for the left panel and the inspector, and
+   Alt+Down and Alt+Up for the next and previous page (they do not scroll the canvas). The handler (`src/actions/keys.ts`) never takes a key from a text
+   field, a select or an editable element, nor from an event something else has handled or an IME composition. A bare printable key works only while focus is inside the canvas
+   (`data-action-scope="canvas"`). A key it binds loses the browser's meaning (Ctrl and plus would zoom the whole window) even when the action is disabled.
+3. **macOS menu bar.** `src-tauri/src/menu` builds App, File, Edit (system items, which is what makes copy and paste work), View, Window and Help from
+   `src/actions/menu.json`. The labels are the `menu.*` keys of `src/i18n/locales/*.json`, compiled in with `include_str!`, so there is one catalog. The menu is
+   rebuilt when the language setting changes (`update_settings` calls `menu::refresh`), and "system" uses the language the UI reports with `subscribe_menu`
+   (`navigator.language`; a malformed tag counts as unknown). Tauri reads accelerator strings as physical key names, which have no plus: Zoom In is Cmd and the
+   Equal key (the key handler also takes Cmd+Shift+Equal). Tauri drops an accelerator it cannot parse without a word, so a test parses every one with muda.
+4. **Windows has no native menu bar.** The window has no native decorations and a native menu would need them; a custom menu bar in the caption row would be a second menu that
+   duplicates More. Every command is reachable from the toolbar, More and the keyboard, with its shortcut shown in tooltips and menu items. If users miss a menu bar, a
+   custom one in the caption row is the next step; the layout file would then drive it too.
+5. **Menu clicks reach the UI through a channel.** `subscribe_menu(on_action: Channel<String>, system_language: Option<String>)` keeps the channel; `Builder::on_menu_event`
+   hands each chosen item to `MenuBridge::forward`, which sends its id only if it is in `menu::spec::ACTION_IDS`: the system items and any other id are dropped in Rust. The UI
+   runs only ids it has an action for (`parseMenuMessage`, `getAction`) and applies the action's own `enabled`. The capability gets `allow-subscribe-menu` and nothing else.
+   `security_baseline.rs` pins the command, the capability and that the menu code never emits an event. Open is a command like the others: the menu sends `open` and the UI calls
+   `open_document_dialog`, so there is one path (and one "opening" guard); the Rust dialog is not called from the menu.
+
+**Consequences.** Ctrl+0 is now Fit page and Ctrl+1 is Actual size (the spike had Ctrl+0 as 100 %); Ctrl on macOS and Cmd on Windows no longer trigger shortcuts, and
+`aria-keyshortcuts` lists the one modifier of the platform. The layout file, the registry and the Rust allowlist are tied together by tests on both sides
+(`src/actions/menu.test.ts`, `menu::spec::tests`), not by one source: a new menu command needs the registry entry, the layout item, the id in `ACTION_IDS` and the `menu.*` keys.
+The macOS menu is not synchronised with the UI's state: its items are not greyed without a document (the UI refuses a command that cannot run), and there is no Close Window
+item, so Cmd+W without a document does nothing. Settings and About are placeholders until the settings popover item: they are in the registry, More and the menu bar, and run
+nothing (macOS has the system About panel). The macOS side is built and tested for its data on Windows, but the menu itself has not run on a Mac (B-001). `muda` is a dev-dependency of the
+backend (MIT or Apache-2.0, already in the build through Tauri, no default features) for the accelerator test.

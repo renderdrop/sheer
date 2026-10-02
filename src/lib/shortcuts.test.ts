@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { translators } from '../i18n';
-import { modifierLabel, primaryShortcut, shellShortcuts, shortcutLabel } from './shortcuts';
+import { modifierLabel, shortcutLabel } from './shortcuts';
 
 const en = translators.en;
 const de = translators.de;
@@ -42,82 +42,5 @@ describe('shortcutLabel', () => {
   it('a key without modifiers is the key', () => {
     expect(shortcutLabel('windows', en, [], 'F1')).toBe('F1');
     expect(shortcutLabel('macos', de, [], 'F1')).toBe('F1');
-  });
-});
-
-describe('primaryShortcut', () => {
-  it('shows ⌘ on macOS and Ctrl+ elsewhere', () => {
-    expect(primaryShortcut('macos', en, 'O').label).toBe('⌘O');
-    expect(primaryShortcut('windows', en, 'O').label).toBe('Ctrl+O');
-    expect(primaryShortcut('linux', en, 'O').label).toBe('Ctrl+O');
-    expect(primaryShortcut(null, en, 'O').label).toBe('Ctrl+O');
-  });
-
-  it('shows Strg+ in German on Windows and Linux, and still ⌘ on macOS', () => {
-    expect(primaryShortcut('windows', de, 'O').label).toBe('Strg+O');
-    expect(primaryShortcut('linux', de, 'O').label).toBe('Strg+O');
-    expect(primaryShortcut(null, de, 'O').label).toBe('Strg+O');
-    expect(primaryShortcut('macos', de, 'O').label).toBe('⌘O');
-  });
-
-  it('announces both modifiers with the key name', () => {
-    expect(primaryShortcut('windows', en, 'O').aria).toBe('Control+O Meta+O');
-    expect(primaryShortcut('windows', en, '−', 'Minus').aria).toBe('Control+Minus Meta+Minus');
-  });
-
-  it('keeps the announced value the same on every platform and in every language', () => {
-    for (const platform of ['macos', 'windows', 'linux', null] as const) {
-      for (const t of [en, de]) {
-        expect(primaryShortcut(platform, t, 'O').aria, `${platform} ${t.locale}`).toBe('Control+O Meta+O');
-        expect(primaryShortcut(platform, t, '+', 'Plus').aria, `${platform} ${t.locale}`).toBe(
-          'Control+Plus Meta+Plus',
-        );
-      }
-    }
-  });
-});
-
-describe('shellShortcuts', () => {
-  it('lists the keys the shell binds', () => {
-    const shortcuts = shellShortcuts('windows', en);
-    expect(Object.values(shortcuts).map((shortcut) => shortcut.label)).toEqual([
-      'Ctrl+O',
-      'Ctrl+−',
-      'Ctrl++',
-      'Ctrl+0',
-    ]);
-  });
-
-  it('follows the language on Windows and Linux', () => {
-    for (const platform of ['windows', 'linux'] as const) {
-      expect(Object.values(shellShortcuts(platform, de)).map((shortcut) => shortcut.label)).toEqual([
-        'Strg+O',
-        'Strg+−',
-        'Strg++',
-        'Strg+0',
-      ]);
-    }
-  });
-
-  it('uses the symbol on macOS in both languages', () => {
-    for (const t of [en, de]) {
-      expect(Object.values(shellShortcuts('macos', t)).map((shortcut) => shortcut.label)).toEqual([
-        '⌘O',
-        '⌘−',
-        '⌘+',
-        '⌘0',
-      ]);
-    }
-  });
-
-  it('announces canonical key names in both languages', () => {
-    for (const t of [en, de]) {
-      expect(Object.values(shellShortcuts('windows', t)).map((shortcut) => shortcut.aria)).toEqual([
-        'Control+O Meta+O',
-        'Control+Minus Meta+Minus',
-        'Control+Plus Meta+Plus',
-        'Control+0 Meta+0',
-      ]);
-    }
   });
 });

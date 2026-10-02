@@ -45,6 +45,12 @@ const _: () = assert!(
     "the left panel range must be ordered: minimum, default, maximum"
 );
 
+// --- Menu bar ---------------------------------------------------------------------------------------------------
+
+/// Longest language tag taken from the UI for the menu bar's language (`subscribe_menu`'s `system_language`, the browser's
+/// `navigator.language`). BCP 47 tags are far shorter; a longer string is not one, and counts as unknown (English).
+pub const MAX_LANGUAGE_TAG_LEN: usize = 35;
+
 // --- Engine worker ----------------------------------------------------------------------------------------------
 
 /// Deadline for loading a document (ADR-002 §8).

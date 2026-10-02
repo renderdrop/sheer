@@ -1,23 +1,9 @@
-import {
-  FolderOpen,
-  Highlighter,
-  LayoutGrid,
-  MessageSquare,
-  MousePointer2,
-  PanelLeft,
-  PanelRight,
-  PenLine,
-  Signature,
-  TextCursorInput,
-  ZoomIn,
-  ZoomOut,
-  type LucideIcon,
-} from 'lucide-react';
 import type { ReactNode } from 'react';
 
+import { actionOf, actionShortcut, ACTIONS, type ActionDef, type ActionId } from '../../actions/registry';
+import type { ActionState } from '../../actions/state';
 import type { MenuEntries, MenuEntry, ToolbarEntry, ToolbarItem } from '../../components';
 import type { Locale, Translate } from '../../i18n';
-import { shellShortcuts } from '../../lib/shortcuts';
 import type { Platform } from '../../api/app';
 import { ZOOM_STEPS } from '../../lib/zoom';
 import type { ToolId } from '../../stores/ui';
@@ -30,15 +16,13 @@ export interface ToolbarState {
   /** Translates the labels. The entries are rebuilt when it changes, which is when the language does. */
   t: Translate;
   platform: Platform | null;
-  hasDocument: boolean;
+  /** What the actions' `enabled` looks at: whether a document is open, and the two zoom limits. */
+  action: ActionState;
   activeTool: ToolId;
   toolLocked: boolean;
   /** The left panel is shown (not collapsed by the user or by the layout). */
   leftPanelVisible: boolean;
   inspectorVisible: boolean;
-  /** The zoom is at its minimum or maximum, which disables the zoom button that cannot go further. Two flags and not the zoom, so they flip only at the limits. */
-  zoomAtMin: boolean;
-  zoomAtMax: boolean;
   /** The readout's content: text, or an element that follows the zoom by itself so the toolbar need not re-render per step (`ZoomReadout`). */
   zoomText: ReactNode;
   /** The preset menu: a list, or a function that follows the zoom by itself (`useZoomMenu`). */
@@ -46,12 +30,11 @@ export interface ToolbarState {
 }
 
 export interface ToolbarActions {
-  open: () => void;
+  /** Runs an action of the registry (`runAction`): the toolbar's buttons and the More menu all go through it. */
+  run: (id: ActionId) => void;
+  /** A click on a tool toggles it (it releases the active one), which is not what its key does, so these two are the toolbar's own. */
   selectTool: (tool: ToolId) => void;
   lockTool: (tool: ToolId) => void;
-  toggleLeftPanel: () => void;
-  toggleInspector: () => void;
-  zoomStep: (direction: 1 | -1) => void;
 }
 
 /** The zoom presets as menu entries (the toolbar readout and the status bar's zoom button open the same menu). */
@@ -64,10 +47,45 @@ export function zoomMenuEntries(zoom: number, setZoom: (zoom: number) => void, l
   }));
 }
 
+/** What an action contributes to a toolbar item or menu entry: its name and icon, its shortcut on this platform, and whether it can run. */
+function describe(action: ActionDef, state: Pick<ToolbarState, 't' | 'platform' | 'action'>) {
+  const shortcut = actionShortcut(action, state.platform, state.t);
+  return {
+    label: state.t(action.labelKey),
+    icon: action.icon,
+    shortcut: shortcut?.label,
+    keyShortcuts: shortcut?.aria,
+    disabled: !action.enabled(state.action),
+  };
+}
+
+/**
+ * The More menu's fixed entries: every action of the registry that is marked `more`, grouped (file, view, page, app) with a
+ * separator between groups. On Windows, which has no menu bar, this and the toolbar are how a mouse user reaches every command;
+ * the keyboard has them all too. The items that overflow out of the toolbar are appended after these (the Toolbar primitive does that).
+ */
+export function buildMoreItems(
+  state: Pick<ToolbarState, 't' | 'platform' | 'action'>,
+  run: (id: ActionId) => void,
+): MenuEntry[] {
+  const items: MenuEntry[] = [];
+  let group: string | null = null;
+  for (const action of ACTIONS) {
+    if (action.more !== true) continue;
+    if (group !== null && group !== action.group) items.push({ type: 'separator', id: `${action.group}:before` });
+    group = action.group;
+    const { label, icon, shortcut, disabled } = describe(action, state);
+    items.push({ id: action.id, label, icon, shortcut, disabled, onSelect: () => run(action.id) });
+  }
+  return items;
+}
+
 /**
  * The toolbar of DESIGN 3.3 and ADR-011 section 6 as data for the Toolbar primitive: the panel toggle, then the four tool
- * clusters (Select, Markup, Fill and sign, Pages), More, a spacer, the zoom cluster and the inspector toggle. Without a
- * document every item is disabled, which the primitive renders as `aria-disabled` (still focusable, does nothing).
+ * clusters (Select, Markup, Fill and sign, Pages), More, a spacer, the zoom cluster and the inspector toggle. Names, icons,
+ * shortcuts and the enabled state of every item come from the action registry (`src/actions`), and so does the More menu
+ * (`buildMoreItems`). Without a document every item is disabled, which the primitive renders as `aria-disabled` (still
+ * focusable, does nothing).
  *
  * When the toolbar is too narrow, items move into More in this order: Pages, Form, Signature, zoom out, zoom in. Select, the
  * Markup tools, the zoom readout and the two toggles stay.
@@ -76,77 +94,68 @@ export function buildToolbar(
   state: ToolbarState,
   actions: ToolbarActions,
 ): { entries: ToolbarEntry[]; moreItems: MenuEntry[] } {
-  const { hasDocument, t } = state;
-  const keys = shellShortcuts(state.platform, t);
+  const { t } = state;
+  const hasDocument = state.action.hasDocument;
+  const described = (id: ActionId) => describe(actionOf(id), state);
 
-  const tool = (id: ToolId, label: string, icon: LucideIcon, collapse?: number): ToolbarItem => ({
+  const tool = (id: ToolId, collapse?: number): ToolbarItem => {
+    const { label, icon, shortcut, keyShortcuts, disabled } = described(`tool-${id}`);
+    return {
+      id,
+      label,
+      icon,
+      shortcut,
+      keyShortcuts,
+      kind: 'tool',
+      pressed: state.activeTool === id,
+      locked: state.activeTool === id && state.toolLocked,
+      disabled,
+      collapse,
+      onActivate: () => actions.selectTool(id),
+      onLock: id === 'select' ? undefined : () => actions.lockTool(id),
+    };
+  };
+
+  const zoom = (id: 'zoom-in' | 'zoom-out', collapse: number): ToolbarItem => ({
     id,
-    label,
-    icon,
-    kind: 'tool',
-    pressed: state.activeTool === id,
-    locked: state.activeTool === id && state.toolLocked,
-    disabled: !hasDocument,
+    ...described(id),
     collapse,
-    onActivate: () => actions.selectTool(id),
-    onLock: id === 'select' ? undefined : () => actions.lockTool(id),
+    onActivate: () => actions.run(id),
+  });
+
+  const toggle = (id: 'toggle-left-panel' | 'toggle-inspector', itemId: string, pressed: boolean): ToolbarItem => ({
+    id: itemId,
+    ...described(id),
+    kind: 'toggle',
+    pressed,
+    onActivate: () => actions.run(id),
   });
 
   const entries: ToolbarEntry[] = [
     {
       id: 'panels',
       label: t('toolbar.group.panels'),
-      items: [
-        {
-          id: 'left-panel',
-          label: t('toolbar.leftPanel'),
-          icon: PanelLeft,
-          kind: 'toggle',
-          pressed: state.leftPanelVisible,
-          disabled: !hasDocument,
-          onActivate: actions.toggleLeftPanel,
-        },
-      ],
+      items: [toggle('toggle-left-panel', 'left-panel', state.leftPanelVisible)],
     },
-    {
-      id: 'select',
-      label: t('toolbar.group.select'),
-      items: [tool('select', t('toolbar.tool.select'), MousePointer2)],
-    },
+    { id: 'select', label: t('toolbar.group.select'), items: [tool('select')] },
     {
       id: 'markup',
       label: t('toolbar.group.markup'),
-      items: [
-        tool('highlight', t('toolbar.tool.highlight'), Highlighter),
-        tool('comment', t('toolbar.tool.comment'), MessageSquare),
-        tool('draw', t('toolbar.tool.draw'), PenLine),
-      ],
+      items: [tool('highlight'), tool('comment'), tool('draw')],
     },
     {
       id: 'fill-and-sign',
       label: t('toolbar.group.fillAndSign'),
-      items: [
-        tool('form', t('toolbar.tool.form'), TextCursorInput, 2),
-        tool('signature', t('toolbar.tool.signature'), Signature, 3),
-      ],
+      items: [tool('form', 2), tool('signature', 3)],
     },
-    { id: 'pages', label: t('toolbar.group.pages'), items: [tool('pages', t('toolbar.tool.pages'), LayoutGrid, 1)] },
+    { id: 'pages', label: t('toolbar.group.pages'), items: [tool('pages', 1)] },
     { type: 'more', id: 'more' },
     { type: 'spacer', id: 'spacer' },
     {
       id: 'zoom',
       label: t('toolbar.group.zoom'),
       items: [
-        {
-          id: 'zoom-out',
-          label: t('toolbar.zoomOut'),
-          icon: ZoomOut,
-          disabled: !hasDocument || state.zoomAtMin,
-          shortcut: keys.zoomOut.label,
-          keyShortcuts: keys.zoomOut.aria,
-          collapse: 4,
-          onActivate: () => actions.zoomStep(-1),
-        },
+        zoom('zoom-out', 4),
         {
           id: 'zoom-level',
           label: t('toolbar.zoomLevel'),
@@ -154,39 +163,15 @@ export function buildToolbar(
           disabled: !hasDocument,
           menu: state.zoomMenu,
         },
-        {
-          id: 'zoom-in',
-          label: t('toolbar.zoomIn'),
-          icon: ZoomIn,
-          disabled: !hasDocument || state.zoomAtMax,
-          shortcut: keys.zoomIn.label,
-          keyShortcuts: keys.zoomIn.aria,
-          collapse: 5,
-          onActivate: () => actions.zoomStep(1),
-        },
+        zoom('zoom-in', 5),
       ],
     },
     {
       id: 'inspector',
       label: t('toolbar.group.inspector'),
-      items: [
-        {
-          id: 'inspector-toggle',
-          label: t('toolbar.inspector'),
-          icon: PanelRight,
-          kind: 'toggle',
-          pressed: state.inspectorVisible,
-          disabled: !hasDocument,
-          onActivate: actions.toggleInspector,
-        },
-      ],
+      items: [toggle('toggle-inspector', 'inspector-toggle', state.inspectorVisible)],
     },
   ];
 
-  // Open is not a toolbar item in the spec; until the native menu bar has it, More carries it, so a mouse user can open a file.
-  const moreItems: MenuEntry[] = [
-    { id: 'open', label: t('action.open'), icon: FolderOpen, shortcut: keys.open.label, onSelect: actions.open },
-  ];
-
-  return { entries, moreItems };
+  return { entries, moreItems: buildMoreItems(state, actions.run) };
 }

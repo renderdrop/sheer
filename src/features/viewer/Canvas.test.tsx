@@ -1,13 +1,13 @@
 // @vitest-environment jsdom
 import { fireEvent, screen } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { CSS_PX_PER_PT } from '../../lib/zoom';
 import { setup } from '../../test/render';
 import { Canvas, type CanvasProps } from './Canvas';
 
 const props = (overrides: Partial<CanvasProps> = {}): CanvasProps => ({
-  image: { url: 'blob:page', widthPt: 612 },
+  image: { url: 'blob:page', widthPt: 612, heightPt: 792 },
   zoom: 1,
   pageIndex: 0,
   pageCount: 3,
@@ -128,6 +128,61 @@ describe('Canvas (DESIGN 2)', () => {
       unmount();
       scroller.dispatchEvent(new WheelEvent('wheel', { deltaY: 100, ctrlKey: true, bubbles: true, cancelable: true }));
       expect(onWheelZoom).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('its size, for fit width and fit page', () => {
+    /** A ResizeObserver that a test can fire, in place of jsdom's, which never reports anything. */
+    function fakeObserver() {
+      const observers: Array<{ callback: ResizeObserverCallback; observed: Element[]; disconnected: boolean }> = [];
+      vi.stubGlobal(
+        'ResizeObserver',
+        class {
+          readonly record: (typeof observers)[number];
+          constructor(callback: ResizeObserverCallback) {
+            this.record = { callback, observed: [], disconnected: false };
+            observers.push(this.record);
+          }
+          observe(target: Element) {
+            this.record.observed.push(target);
+          }
+          unobserve() {}
+          disconnect() {
+            this.record.disconnected = true;
+          }
+        },
+      );
+      const report = (width: number, height: number) =>
+        observers.at(-1)?.callback([{ contentRect: { width, height } } as ResizeObserverEntry], {} as ResizeObserver);
+      return { observers, report };
+    }
+
+    afterEach(() => vi.unstubAllGlobals());
+
+    it('reports the size of the scroll region as its content box, and again whenever it changes, in whole pixels', () => {
+      const { observers, report } = fakeObserver();
+      const onViewport = vi.fn();
+      setup(<Canvas {...props({ onViewport })} />);
+      expect(observers).toHaveLength(1);
+      expect(observers[0]?.observed).toEqual([region()]);
+      report(816.7, 528.2);
+      report(1000, 600);
+      expect(onViewport.mock.calls).toEqual([[{ width: 816, height: 528 }], [{ width: 1000, height: 600 }]]);
+    });
+
+    it('stops observing when it goes away, and observes nothing when nobody asks', () => {
+      const { observers } = fakeObserver();
+      const { unmount } = setup(<Canvas {...props({ onViewport: vi.fn() })} />);
+      unmount();
+      expect(observers[0]?.disconnected).toBe(true);
+      setup(<Canvas {...props()} />);
+      expect(observers).toHaveLength(1);
+    });
+
+    it('is the canvas scope of the key handler: single-key shortcuts work with the focus inside it', () => {
+      const { container } = setup(<Canvas {...props()} />);
+      expect(container.querySelector('main')?.getAttribute('data-action-scope')).toBe('canvas');
+      expect(region().closest('[data-action-scope="canvas"]')).not.toBeNull();
     });
   });
 

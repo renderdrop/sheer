@@ -1,11 +1,11 @@
 import type { Platform } from '../api/app';
 import type { Translate } from '../i18n';
 
-/** A shortcut as the UI shows and announces it. */
+/** A shortcut as the UI shows and announces it. The command registry (`src/actions`) builds one from a binding. */
 export interface Shortcut {
   /** The key chip of a tooltip or menu item, in the platform's style and the UI's language: "Ctrl+O", "Strg+O" or "⌘O". */
   label: string;
-  /** The `aria-keyshortcuts` value. Canonical (W3C key names, never translated). Both modifiers are listed: the handlers accept Ctrl and Cmd on every platform. */
+  /** The `aria-keyshortcuts` value. Canonical (W3C key names, never translated), with the modifier of the platform: Meta on macOS, Control elsewhere. */
   aria: string;
 }
 
@@ -42,25 +42,4 @@ export function shortcutLabel(
 ): string {
   const names = modifiers.map((modifier) => modifierLabel(platform, modifier, t));
   return platform === 'macos' ? `${names.join('')}${key}` : [...names, key].join('+');
-}
-
-/**
- * The shortcut "primary modifier + key". `key` is what the chip shows ("O", "−", "+", "0"); `ariaKey` is the key's name
- * for `aria-keyshortcuts` ("O", "Minus", "Plus", "0"). The command registry (ROADMAP Phase 3) takes over the binding itself.
- */
-export function primaryShortcut(platform: Platform | null, t: Translate, key: string, ariaKey: string = key): Shortcut {
-  return {
-    label: shortcutLabel(platform, t, ['primary'], key),
-    aria: `Control+${ariaKey} Meta+${ariaKey}`,
-  };
-}
-
-/** The shortcuts the shell binds today (Ctrl or Cmd with O, plus, minus and 0). */
-export function shellShortcuts(platform: Platform | null, t: Translate) {
-  return {
-    open: primaryShortcut(platform, t, 'O'),
-    zoomOut: primaryShortcut(platform, t, '−', 'Minus'),
-    zoomIn: primaryShortcut(platform, t, '+', 'Plus'),
-    actualSize: primaryShortcut(platform, t, '0'),
-  } as const;
 }

@@ -1,5 +1,5 @@
 //! The UI catalogs `src/i18n/locales/{en,de}.json` are the one source of the interface texts. The frontend imports them
-//! directly; Rust will read the same files for the native menu labels. That only works while they stay pure JSON (no
+//! directly; Rust reads the same files for the native menu labels (src-tauri/src/menu/spec.rs). That only works while they stay pure JSON (no
 //! comments), flat (dotted keys, string values) and in step with each other, which these tests check.
 
 // Test code: panicking on a broken fixture is the point (clippy.toml only exempts `#[test]` functions, not helpers).

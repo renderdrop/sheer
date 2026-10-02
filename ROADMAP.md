@@ -32,11 +32,11 @@ The Stop hook picks the first open `- [ ]` line, so order matters. Scope: `docs/
 - [x] Primitives II: Tabs, Slider, Splitter (keyboard-resizable), Panel
 - [x] App shell layout grid: toolbar, left panel, canvas, inspector slot, status bar, scroll-edge scrim
 - [x] Empty state: drop zone, Open button, recents list placeholder
-- [ ] Command registry + shortcuts (platform modifiers) + native menu bar
+- [x] Command registry + shortcuts (platform modifiers) + native menu bar
 - [x] i18n scaffold (en, de); all shell strings translated
 - [x] Hardening: atomic write (create_new, 0600/0700, stale temp), settings is_file check + lock scope + patch key cap, live OS transparency flag (a channel, no event permission), render if load() hangs, forced-colors doc tokens, SECURITY.md T3 + settings row, ARCHITECTURE §3 call.ts
-- [ ] Settings popover: theme (system/light/dark), glass (auto/solid), language (system/en/de), reachable from toolbar overflow + menu
-- [ ] Follow-ups: rAF-throttle useFloatingPosition scroll listener, Menu submenus (DESIGN 3.5), stale *.tmp sweep at startup (D1), showcase spacing, stale libc comment in settings.rs tests, Banner pb-1 jump, DESIGN §2.4 computeShellLayout bullet, auto-collapsed panel toggle no-op, cancelled render leaves "Rendering…", panel collapse animation + middle-cut file name, independent Cf oracle in display_name test
+- [ ] Settings popover (theme, glass, language) + About dialog (version, licenses entry); wire settings/about actions; EmptyState + toolbar clicks via runAction; keyCode 229 IME guard; numpad canonicalKey; next/prev page accelerators without Option+arrows (collides with reorder)
+- [ ] Follow-ups: rAF-throttle useFloatingPosition scroll listener, Menu submenus (DESIGN 3.5), stale *.tmp sweep at startup (D1), showcase spacing, stale libc comment in settings.rs tests, Banner pb-1 jump, DESIGN §2.4 computeShellLayout bullet, auto-collapsed panel toggle no-op, cancelled render leaves "Rendering…", panel collapse animation + middle-cut file name, independent Cf oracle in display_name test, macOS menu enabled-state sync (grey items without a document, Close Window on ⌘W), log malformed menu catalog, glob src/menu/*.rs in baseline scan
 
 ## M1 — Viewer (v0.4.0)
 
