@@ -66,3 +66,17 @@ CI green on Windows and macOS (run 37120538629). Dependabot PRs #1/#2 closed. Op
 
 F7 result: release.yml (ADR-031) built v0.4.0 via workflow_dispatch (run 37124250480): GitHub pre-release "Sheer 0.4.0" with
 Sheer_0.4.0_x64-setup.exe, Sheer_0.4.0_aarch64.dmg and SHA256SUMS.txt (unsigned, B-002).
+
+## F9 — Annotation tools dead in v0.8.0 (blocker, before M6)
+
+Product-owner test of the installed v0.8.0 build (2026-10-04).
+
+- [ ] Reproduce in the real Tauri window (installed v0.8.0 build), on a normal PDF and on the welcome document: Highlight, Note, Text,
+      Draw and Rectangle — clicking the tool and dragging on the page does nothing
+- [ ] Find and fix the cause: does the M5 edit layer (insert/crop/redact) swallow the annotation layer's pointer events? Does the
+      read-only welcome document silently block annotations? The welcome document must allow them (the tour needs them); other
+      read-only cases show a visible notice instead of failing silently
+- [ ] Window test: in the Tauri window, every annotation tool creates an annotation; part of the milestone DoD (ORCHESTRATOR §8.6)
+- [ ] Naming: annotation tool → "Textkommentar" / "Text comment" (tooltip: floating note, stays a comment); edit tool → "Text einfügen" /
+      "Insert text" (tooltip: becomes a permanent part of the page). The toolbar groups "Markieren" and "Bearbeiten" are visibly separated
+- [ ] Tag v0.8.1 for the owner's re-test
