@@ -1,7 +1,7 @@
 # STATE
 phase: M5
 version: 0.7.0
-current_item: M5 — cut packages, backend wave first (ADR-038); Politur M5 includes the M4 design/polish leftovers
+current_item: M5 backend wave running (ADR-047 §6): A content objects | B crop | C redaction | D protect+metadata; W0 seams 5eaa7a8, Politur UI half ad9081a. Then frontend wave per DESIGN §3.36–§3.40, then Politur M5 Rust half (import_warnings IPC; page gutter + dark top band at window review)
 last_completed: M4 Forms and signature released as v0.7.0 (tag v0.7.0); repository public, CI on both platforms per push (ADR-046)
 loop_count_this_session: 0
 open_blockers: 2 (B-001 UI never seen on a Mac, macOS keychain untested; B-002 code signing)
