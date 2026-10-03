@@ -6,7 +6,7 @@ last_completed: M4 Forms and signature released as v0.7.0 (tag v0.7.0)
 loop_count_this_session: 0
 open_blockers: 2 (B-001 UI never seen on a Mac, macOS keychain untested; B-002 code signing)
 notes: CI at tag time: the manual release-candidate run 37145839479 (Windows + macOS, ADR-043) was still running — read it once next session; the tag push runs both platforms again. Manual runs now have their own concurrency group (ADR-045).
-  Pre-publication check done (docs/PUBLISH_CHECK.md): not cleared until the owner decides P-1 (personal e-mail in commit history); repo stays private.
+  History rewritten locally (no-reply e-mail, neutral test user name; ADR-045). Not pushed: the owner publishes into a NEW repository (docs/PUBLISH_CHECK.md P-2); the old renderdrop/sheer stays private.
   FEEDBACK (product owner) before ROADMAP (§14). Push after every commit; CI checked once per milestone, never wait (ADR-030/043).
   Designer review: one round, only blockers → fix. fps + onboarding steps in M7. Should/Could → v1.1 backlog ([~]).
   If the `backend-implementer` agent type is not available, brief `implementer` and continue it at its turn limit.

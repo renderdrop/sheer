@@ -27,8 +27,8 @@ design language, tech stack, repo layout, subagents, hooks, phases, versioning a
 5. **Scripts and CI.** `scripts/*.sh` and `.github/workflows/ci.yml` are created in Phase 2 as section 8.3 specifies,
    not as empty stubs in Phase 0.
 6. **Toolchain pins.** Node `22.23.1` (`.nvmrc`, matches the dev machine), Rust `1.99.0` (`rust-toolchain.toml`).
-7. **Brand reference.** The provided design file `Sheer — Logo & Farbe.html` stays in the repo root as the human-supplied
-   brand reference. `assets/brand/logo.svg` (Appendix A) remains the single logo source.
+7. **Brand reference.** The provided design file `Sheer — Logo & Farbe.html` is the human-supplied brand reference
+   (moved from the repo root to `assets/brand/` before publication, ADR-045). `assets/brand/logo.svg` (Appendix A) remains the single logo source.
 
 **Consequences.** Everything below builds on these constraints. Any further deviation needs its own ADR.
 
@@ -1259,3 +1259,6 @@ other, pushes and pull requests only with each other; `cancel-in-progress` stays
 reports go through GitHub private vulnerability reporting (no project mailbox, no personal address in the repo); it has to be switched
 on in the repository settings once the repository is public. (3) Trademark questions go through a repository issue. (4) README carries a
 "pre-release, unsigned, not for productive use" notice and a feature table by milestone. History is not rewritten.
+(5) Amendment, same day: the owner chose to rewrite history locally with `git filter-repo` (personal e-mail → GitHub no-reply address
+in identities, tags and `Signed-off-by`; Windows user name in test paths → `user`). Because GitHub keeps the old history of the
+existing repository (Actions run metadata, pull-request refs), the rewritten history goes into a new repository (PUBLISH_CHECK P-2).
