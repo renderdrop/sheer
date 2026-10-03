@@ -14,6 +14,17 @@ export interface TextPoint {
   index: number;
 }
 
+/**
+ * How page ids sit in the document (ADR-036): the text layers are named by page id, but a selection runs through the pages in their
+ * current order. The identity until pages are moved or deleted.
+ */
+export interface PageOrder {
+  position: (id: number) => number | null;
+  id: (position: number) => number | null;
+}
+
+const IDENTITY_ORDER: PageOrder = { position: (id) => id, id: (position) => position };
+
 /** Most pages a selection joins (a drag across a whole book is a select all by another name; the first pages are enough). */
 const MAX_PAGES_JOINED = 200;
 
@@ -26,17 +37,28 @@ export function normalizeBreaks(text: string): string {
  * The text between two places, in content order. `textOf` gives the text of a page (`undefined` if it is not known: the page is
  * skipped). Pages are joined by a line break. The places may be given in either order.
  */
-export function textBetween(from: TextPoint, to: TextPoint, textOf: (page: number) => string | undefined): string {
-  const backwards = from.page > to.page || (from.page === to.page && from.index > to.index);
+export function textBetween(
+  from: TextPoint,
+  to: TextPoint,
+  textOf: (page: number) => string | undefined,
+  order: PageOrder = IDENTITY_ORDER,
+): string {
+  const fromPosition = order.position(from.page);
+  const toPosition = order.position(to.page);
+  if (fromPosition === null || toPosition === null) return '';
+  const backwards = fromPosition > toPosition || (fromPosition === toPosition && from.index > to.index);
   const start = backwards ? to : from;
   const end = backwards ? from : to;
+  const startPosition = backwards ? toPosition : fromPosition;
+  const endPosition = backwards ? fromPosition : toPosition;
   if (start.page === end.page) return normalizeBreaks(textOf(start.page)?.slice(start.index, end.index) ?? '');
   const parts: string[] = [];
   const first = textOf(start.page);
   if (first !== undefined) parts.push(first.slice(start.index));
-  const last = Math.min(end.page - 1, start.page + MAX_PAGES_JOINED);
-  for (let page = start.page + 1; page <= last; page += 1) {
-    const text = textOf(page);
+  const last = Math.min(endPosition - 1, startPosition + MAX_PAGES_JOINED);
+  for (let position = startPosition + 1; position <= last; position += 1) {
+    const id = order.id(position);
+    const text = id === null ? undefined : textOf(id);
     if (text !== undefined) parts.push(text);
   }
   const final = textOf(end.page);
@@ -87,6 +109,7 @@ export function resolveBoundary(node: Node, offset: number): TextPoint | null {
 export function selectionText(
   selection: Pick<Selection, 'rangeCount' | 'isCollapsed' | 'getRangeAt' | 'toString'>,
   textOf: (page: number) => string | undefined,
+  order: PageOrder = IDENTITY_ORDER,
 ): string | null {
   if (selection.rangeCount === 0 || selection.isCollapsed) return null;
   const range = selection.getRangeAt(0);
@@ -94,7 +117,7 @@ export function selectionText(
   const start = resolveBoundary(range.startContainer, range.startOffset);
   const end = resolveBoundary(range.endContainer, range.endOffset);
   if (start === null || end === null) return normalizeBreaks(selection.toString());
-  return textBetween(start, end, textOf);
+  return textBetween(start, end, textOf, order);
 }
 
 /** Selects all the text of a page's layer; `false` when the page has none mounted. */

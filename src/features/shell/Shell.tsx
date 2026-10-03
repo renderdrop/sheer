@@ -8,10 +8,11 @@ import { chromeFor, detectPlatform } from '../../lib/platform';
 import { useSettings } from '../../stores/settings';
 import { useUi } from '../../stores/ui';
 import { setMenuState } from '../../api/recents';
+import { DropBannerRow, JobsHost } from '../jobs/JobsHost';
 import { PasswordDialog } from '../password/PasswordDialog';
 import { UnsavedDialog } from '../save/UnsavedDialog';
 import { TabStrip } from '../tabs/TabStrip';
-import { ViewerCanvas } from '../viewer/ViewerCanvas';
+import { CanvasSlot } from '../organize/CanvasSlot';
 import { TourEffects } from '../tour/TourEffects';
 import { ViewerEffects } from '../viewer/useViewer';
 import { BannerRow, XfaBannerRow } from './Banner';
@@ -108,9 +109,11 @@ export function Shell() {
       />
       <TabStrip />
       <PasswordDialog />
+      <JobsHost />
       <UnsavedDialog />
       <BannerRow />
       <XfaBannerRow />
+      <DropBannerRow />
       <MainGrid structure={structure}>
         {/* The empty state fades out on its own (it stays in its slot, inert, until it is gone) while the document comes in. */}
         <AnimatePresence initial={false}>
@@ -120,7 +123,7 @@ export function Shell() {
           <>
             <LeftPanelSlot present={!structure.leftCollapsed} id={leftPanelId} style={slots.left} />
             <LeftPanelSplitter controls={leftPanelId} collapsed={structure.leftCollapsed} style={slots.splitter} />
-            <ViewerCanvas style={slots.canvas} />
+            <CanvasSlot style={slots.canvas} />
             <InspectorSlot present={structure.inspectorReserved} style={slots.inspector} />
           </>
         )}

@@ -7,6 +7,7 @@ import { cx } from '../../components/cx';
 import { tokenPx } from '../../components/tokens';
 import { useT } from '../../i18n';
 import { selectActiveId, useDocuments } from '../../stores/documents';
+import { pageIdAt, pageNumberOf } from '../../stores/pages';
 import { useDocViewValue } from '../../stores/view';
 import { loadLayer } from '../textlayer/cache';
 import { f3FindsNext } from './commands';
@@ -44,7 +45,7 @@ interface HitRowProps {
 /** A hit: the text around it, the match in bold on a `--color-selected` fill. Snippets are text nodes only. */
 const HitRow = memo(function HitRow({ hit, top, row, snippet, active, tabStop, onActivate }: HitRowProps) {
   const t = useT();
-  const page = t('search.page', { n: hit.page + 1 });
+  const page = t('search.page', { n: pageNumberOf(useDocuments.getState().activeId, hit.page) });
   const name = snippet ? `${page}, ${snippet.before}${snippet.match}${snippet.after}` : page;
   return (
     <div
@@ -285,7 +286,7 @@ function HitList({ docId, entry, onFocusField }: { docId: number; entry: SearchE
                 className="absolute inset-x-0 flex h-control-sm items-center px-1 text-sm font-semibold text-text-muted"
                 style={{ top }}
               >
-                {t('search.page', { n: item.page + 1 })}
+                {t('search.page', { n: pageNumberOf(useDocuments.getState().activeId, item.page) })}
               </div>
             );
           }
@@ -319,10 +320,12 @@ function useHasNoText(docId: number, pageCount: number, entry: SearchEntry): boo
     const step = Math.max(1, Math.floor(pageCount / NO_TEXT_SAMPLE_PAGES));
     const pages: number[] = [];
     for (let page = 0; page < pageCount && pages.length < NO_TEXT_SAMPLE_PAGES; page += step) pages.push(page);
-    void Promise.all(pages.map((page) => loadLayer(docId, page))).then((layers) => {
-      if (current)
-        setState({ run: entry.runId, none: layers.every((layer) => layer !== null && layer.text.trim() === '') });
-    });
+    void Promise.all(pages.map((position) => loadLayer(docId, pageIdAt(docId, position) ?? position))).then(
+      (layers) => {
+        if (current)
+          setState({ run: entry.runId, none: layers.every((layer) => layer !== null && layer.text.trim() === '') });
+      },
+    );
     return () => {
       current = false;
     };
@@ -387,7 +390,7 @@ function SearchView({ docId }: { docId: number }) {
         ? t('search.position', {
             i: entry.active + 1,
             n: entry.hits.length,
-            p: (entry.hits[entry.active]?.page ?? 0) + 1,
+            p: pageNumberOf(useDocuments.getState().activeId, entry.hits[entry.active]?.page ?? 0),
           })
         : statusText(t, entry)
       : '';

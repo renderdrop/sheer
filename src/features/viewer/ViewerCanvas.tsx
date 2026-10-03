@@ -9,7 +9,8 @@ import { JUMP_ANIMATE_MAX_VIEWPORTS, SPRING } from '../../lib/motion';
 import { clampZoom } from '../../lib/zoom';
 import { pageRevOf, useAnnotations } from '../../stores/annotations';
 import { selectActiveId, useDocuments } from '../../stores/documents';
-import { DEFAULT_PAGE_SIZE, sizesFor, usePages } from '../../stores/pages';
+import type { PageSlotInfo } from '../../api/pages';
+import { DEFAULT_PAGE_SIZE, readSlots, sizesFor, useSlots, usePages } from '../../stores/pages';
 import { useUi } from '../../stores/ui';
 import { useDocView, useView } from '../../stores/view';
 import { OpenClone } from './OpenClone';
@@ -64,10 +65,26 @@ interface Pin {
  * It follows the zoom, the mode and the current page of the open document, and the display's pixel ratio; the scroll position it
  * keeps to itself, and re-renders only when the set of mounted pages changes, not for every scroll event.
  */
+/** The page at `position`; before the page list is known, the file's page of that number. */
+function slotAt(slots: readonly PageSlotInfo[], position: number): { id: number; rev: number } | undefined {
+  return slots.length === 0 ? { id: position, rev: 0 } : slots[position];
+}
+
+/** The ids of the pages at `positions` of a document, in that order (a position past the end is left out). */
+function idsOf(docId: number, positions: readonly number[]): number[] {
+  const slots = readSlots(docId);
+  return positions.flatMap((position) => {
+    const slot = slotAt(slots, position);
+    return slot === undefined ? [] : [slot.id];
+  });
+}
+
 export function ViewerCanvas({ style }: { style?: CSSProperties }) {
   const docId = useDocuments(selectActiveId);
   const view = useDocView(docId);
   const drawnSizes = usePages((state) => sizesFor(state, docId, view.pageCount));
+  // Position i shows the page with id slots[i].id (ADR-036): the backend, the cache and the overlays name pages by id.
+  const slots = useSlots(docId);
   // The view rotation turns every page: the layout is made from the sizes as they are shown, the renderer and the overlays from the drawn ones.
   const sizes = useMemo(() => rotatedSizes(drawnSizes, view.rotation), [drawnSizes, view.rotation]);
   const viewport = useViewer((state) => state.viewport);
@@ -202,7 +219,8 @@ export function ViewerCanvas({ style }: { style?: CSSProperties }) {
         setMounted(next);
         // The scheduler hears of it now, before the new pages mount and ask for their images: those renders then carry this
         // generation, and a hint that was made for the old window can never cancel them. Nothing on screen is nothing to tell.
-        if (next.visible.length > 0) renderScheduler.updateViewport(docId, next.visible, [...next.near, ...ahead]);
+        if (next.visible.length > 0)
+          renderScheduler.updateViewport(docId, idsOf(docId, next.visible), idsOf(docId, [...next.near, ...ahead]));
       }
       // Passing pages during an animated jump are not the page the user went to.
       if (paged || scrollAnim.current !== null) return;
@@ -314,10 +332,12 @@ export function ViewerCanvas({ style }: { style?: CSSProperties }) {
       for (const page of ahead) {
         const size = drawnSizes[page] ?? DEFAULT_PAGE_SIZE;
         const plan = planPage(size[0], size[1], bucket);
+        const slot = slotAt(slots, page);
+        if (slot === undefined) continue;
         const id = {
           docId,
-          page,
-          rev: pageRevOf(useAnnotations.getState(), docId, page),
+          page: slot.id,
+          rev: pageRevOf(useAnnotations.getState(), docId, slot.id) + slot.rev,
           bucket: plan.tiled ? plan.underlayBucket : plan.bucket,
         };
         if (renderScheduler.cache.has(imageKey(id))) continue;
@@ -325,7 +345,14 @@ export function ViewerCanvas({ style }: { style?: CSSProperties }) {
       }
     }, BUCKET_SETTLE_MS);
     return () => window.clearTimeout(timer);
-  }, [docId, ahead, drawnSizes, bucket]);
+  }, [docId, ahead, drawnSizes, bucket, slots]);
+
+  // A move or a delete changes which page sits at a position without a scroll: the backend hears of the new ids (the same lists
+  // change nothing).
+  useEffect(() => {
+    if (docId === null || mounted.visible.length === 0) return;
+    renderScheduler.updateViewport(docId, idsOf(docId, mounted.visible), idsOf(docId, [...mounted.near, ...ahead]));
+  }, [docId, slots, mounted, ahead]);
 
   const turn = useCallback(
     (direction: 1 | -1) => (direction === 1 ? nextPage() : previousPage()),
@@ -359,15 +386,18 @@ export function ViewerCanvas({ style }: { style?: CSSProperties }) {
         docId !== null &&
         pages.map(({ page, priority }) => {
           const box = layout.box(page);
-          if (box === null) return null;
+          const slot = slotAt(slots, page);
+          if (box === null || slot === undefined) return null;
           const [widthPt, heightPt]: PageSize = drawnSizes[page] ?? DEFAULT_PAGE_SIZE;
           // The box is a new object whenever the canvas renders: it is handed over as numbers, so that a page whose box did not
           // change is not rendered again (`PageView` is memoized).
           return (
             <PageView
-              key={`${docId}:${page}`}
+              key={`${docId}:${slot.id}`}
               docId={docId}
               pageIndex={page}
+              pageId={slot.id}
+              slotRev={slot.rev}
               pageCount={pageCount}
               left={box.left}
               top={box.top}

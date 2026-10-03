@@ -5,7 +5,7 @@ import { tokenPx } from '../../components/tokens';
 import type { RenderScheduler } from '../../engine/renderScheduler';
 import { useT } from '../../i18n';
 import { selectActiveId, useDocuments } from '../../stores/documents';
-import { DEFAULT_PAGE_SIZE, sizesFor, usePages } from '../../stores/pages';
+import { DEFAULT_PAGE_SIZE, sizesFor, usePages, useSlots } from '../../stores/pages';
 import { useDocViewValue, useView } from '../../stores/view';
 import { useDevicePixelRatio } from '../viewer/useDevicePixelRatio';
 import { useViewer } from '../viewer/useViewer';
@@ -100,6 +100,8 @@ export interface ThumbnailListProps {
 export function ThumbnailList({ docId, pageCount, scheduler }: ThumbnailListProps) {
   const t = useT();
   const sizes = usePages((state) => sizesFor(state, docId, pageCount));
+  // Cell i shows the page with id slots[i].id (ADR-036).
+  const slots = useSlots(docId);
   const pixelRatio = useDevicePixelRatio();
   const [spacing] = useState(readSpacing);
   // The scroll region's padding: room for the focus ring of a cell at its edge (outline 2 px + offset 2 px).
@@ -322,6 +324,8 @@ export function ThumbnailList({ docId, pageCount, scheduler }: ThumbnailListProp
               key={index}
               docId={docId}
               index={index}
+              pageId={slots[index]?.id ?? index}
+              pageRev={slots[index]?.rev ?? 0}
               pageCount={pageCount}
               top={layout.top(index)}
               height={layout.cellHeight(index)}

@@ -2,6 +2,10 @@ import {
   BookOpen,
   ChevronDown,
   ChevronUp,
+  Combine,
+  FileArchive,
+  FileOutput,
+  Scissors,
   File,
   FileX,
   Save,
@@ -38,10 +42,12 @@ import {
 import type { Platform } from '../api/app';
 import { toggleAbout } from '../features/about/state';
 import { stepHit } from '../features/search/jump';
+import { organizeActive, rotateOrganized } from '../features/organize/actions';
 import { openSearch } from '../features/search/commands';
 import { openSettings } from '../features/settings/state';
 import { useGoToPage } from '../features/shell/goToState';
 import { readShellStructure } from '../features/shell/useShellStructure';
+import { runCompress, runExtract, runMerge, runSplit } from '../features/jobs/actions';
 import { saveActive } from '../features/save/commands';
 import { closeTab, cycleTab } from '../features/tabs/nav';
 import { useDocuments } from '../stores/documents';
@@ -63,6 +69,10 @@ export type ActionId =
   | 'close-document'
   | 'save'
   | 'save-as'
+  | 'merge-files'
+  | 'split-document'
+  | 'extract-pages'
+  | 'compress-document'
   | 'undo'
   | 'redo'
   | 'zoom-in'
@@ -207,6 +217,46 @@ export const ACTIONS: readonly ActionDef[] = [
     menuBar: true,
     enabled: needsDocument,
     run: () => saveActive(true),
+  },
+  {
+    id: 'merge-files',
+    labelKey: 'action.merge',
+    icon: Combine,
+    group: 'file',
+    more: true,
+    menuBar: true,
+    enabled: needsDocument,
+    run: runMerge,
+  },
+  {
+    id: 'split-document',
+    labelKey: 'action.split',
+    icon: Scissors,
+    group: 'file',
+    more: true,
+    menuBar: true,
+    enabled: needsDocument,
+    run: runSplit,
+  },
+  {
+    id: 'extract-pages',
+    labelKey: 'action.extractPages',
+    icon: FileOutput,
+    group: 'file',
+    more: true,
+    menuBar: true,
+    enabled: needsDocument,
+    run: runExtract,
+  },
+  {
+    id: 'compress-document',
+    labelKey: 'action.compress',
+    icon: FileArchive,
+    group: 'file',
+    more: true,
+    menuBar: true,
+    enabled: needsDocument,
+    run: runCompress,
   },
   {
     id: 'undo',
@@ -422,7 +472,9 @@ export const ACTIONS: readonly ActionDef[] = [
     more: true,
     menuBar: true,
     enabled: needsDocument,
-    run: () => useViewer.getState().rotateView(90),
+    run: () => {
+      if (!rotateOrganized(1)) useViewer.getState().rotateView(90);
+    },
   },
   {
     id: 'rotate-view-left',
@@ -433,7 +485,9 @@ export const ACTIONS: readonly ActionDef[] = [
     more: true,
     menuBar: true,
     enabled: needsDocument,
-    run: () => useViewer.getState().rotateView(-90),
+    run: () => {
+      if (!rotateOrganized(-1)) useViewer.getState().rotateView(-90);
+    },
   },
   {
     id: 'rotate-view-reset',
@@ -441,7 +495,8 @@ export const ACTIONS: readonly ActionDef[] = [
     group: 'view',
     more: true,
     menuBar: true,
-    enabled: needsDocument,
+    // The view rotation is off in the page grid (DESIGN 3.28).
+    enabled: (state) => state.hasDocument && !organizeActive(),
     run: () => useViewer.getState().resetRotation(),
   },
   {

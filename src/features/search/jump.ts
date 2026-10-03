@@ -1,5 +1,5 @@
 import { selectActiveId, useDocuments } from '../../stores/documents';
-import { DEFAULT_PAGE_SIZE, sizesFor, usePages } from '../../stores/pages';
+import { DEFAULT_PAGE_SIZE, positionOf, sizesFor, usePages } from '../../stores/pages';
 import { useView } from '../../stores/view';
 import { quadBox, boxToView, totalRotation, unrotatedSize } from '../viewer/transform';
 import { loadLayer } from '../textlayer/cache';
@@ -13,7 +13,8 @@ export function hitTopInView(docId: number, hit: Hit): number {
   const first = hit.quads[0];
   if (view === undefined || first === undefined) return 0;
   const sizes = sizesFor(usePages.getState(), docId, view.pageCount);
-  const drawn = sizes[hit.page] ?? DEFAULT_PAGE_SIZE;
+  // A hit names its page by id; the sizes are in the order of the pages.
+  const drawn = sizes[positionOf(docId, hit.page) ?? hit.page] ?? DEFAULT_PAGE_SIZE;
   const file = fileRotationOf(docId, hit.page);
   const page = unrotatedSize(drawn, file);
   return boxToView(quadBox(first), page, totalRotation(file, view.rotation)).y;
@@ -23,7 +24,10 @@ export function hitTopInView(docId: number, hit: Hit): number {
 export function jumpToHit(docId: number, hit: Hit): void {
   jumpToken += 1;
   const token = jumpToken;
-  const go = () => useViewer.getState().goToPoint(hit.page, hitTopInView(docId, hit));
+  const go = () => {
+    const position = positionOf(docId, hit.page);
+    if (position !== null) useViewer.getState().goToPoint(position, hitTopInView(docId, hit));
+  };
   if (hasFileRotation(docId, hit.page)) {
     go();
     return;

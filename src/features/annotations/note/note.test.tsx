@@ -14,10 +14,10 @@ import { NotePopover } from './NotePopover';
 
 vi.mock('../../../api/annotations', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../../api/annotations')>()),
-  applyAnnotationCommand: vi.fn(),
+  applyCommand: vi.fn(),
   undo: vi.fn(),
 }));
-const applyMock = vi.mocked(api.applyAnnotationCommand);
+const applyMock = vi.mocked(api.applyCommand);
 const undoMock = vi.mocked(api.undo);
 
 const annotationsInitial = useAnnotations.getState();

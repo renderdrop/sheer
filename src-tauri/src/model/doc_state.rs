@@ -12,6 +12,7 @@ use super::annotation::{Annotation, AnnotationBody, Imported, PdfOrigin, Sync};
 use super::command::DocCommand;
 use super::history::{History, HistoryState};
 use super::ids::AnnotId;
+use super::page::{PageSlot, PageSlotInfo, PageSource};
 use crate::documents::PageId;
 use crate::error::AppError;
 use crate::limits;
@@ -43,6 +44,10 @@ pub type Slot = (AnnotId, Option<Entry>);
 pub struct Delta {
     pub upserted: BTreeMap<AnnotId, Annotation>,
     pub removed: BTreeSet<AnnotId>,
+    /// The list of pages changed (order, members or a page's look).
+    pub pages: bool,
+    /// Engine pages that must be turned to this rotation (`(engine index, degrees)`) for the engine's copy to match.
+    pub engine_rotations: Vec<(u32, u16)>,
 }
 
 impl Delta {
@@ -57,6 +62,8 @@ impl Delta {
     }
 
     pub fn merge(&mut self, other: Delta) {
+        self.pages |= other.pages;
+        self.engine_rotations.extend(other.engine_rotations);
         for annotation in other.upserted.into_values() {
             self.upsert(annotation);
         }
@@ -74,20 +81,28 @@ pub struct ChangeSet {
     pub rev: u64,
     pub upserted: Vec<Annotation>,
     pub removed: Vec<AnnotId>,
-    /// The page list, once page commands exist (M3); `null` until then.
-    pub pages: Option<Vec<PageId>>,
+    /// The full page list, only when it changed (ADR-036 §7); `null` otherwise.
+    pub pages: Option<Vec<PageSlotInfo>>,
+    /// Not sent: the rotations the engine's copy has to be given (`commands` does it before it answers).
+    #[serde(skip)]
+    pub engine_rotations: Vec<(u32, u16)>,
     pub history: HistoryState,
 }
 
 #[derive(Debug)]
 pub struct DocState {
-    page_count: u32,
-    entries: BTreeMap<AnnotId, Entry>,
+    /// The pages in their order (ADR-036 §1).
+    pub(super) pages: Vec<PageSlot>,
+    /// The id the next new page gets; never goes back.
+    pub(super) next_page_id: u32,
+    /// How many pages the file has now (set when the document is opened and by every save).
+    pub(super) file_pages: u32,
+    pub(super) entries: BTreeMap<AnnotId, Entry>,
     next_id: u32,
-    rev: u64,
-    history: History,
+    pub(super) rev: u64,
+    pub(super) history: History,
     /// The pages whose annotations were read from the file.
-    imported: HashSet<u32>,
+    pub(super) imported: HashSet<u32>,
     /// Bytes of strings taken from the file so far (`limits::MAX_IMPORT_BYTES_PER_DOC`).
     imported_bytes: usize,
     /// Live (not deleted) entries in all and per page, kept by [`DocState::track`]; the limits are checked against these.
@@ -111,9 +126,34 @@ fn import_bytes(item: &Imported) -> usize {
 }
 
 impl DocState {
+    /// A state for a document of `page_count` pages whose size is not known (US Letter): tests, and documents the engine has no sizes for.
     pub fn new(page_count: u32) -> Self {
+        Self::from_file(
+            (0..page_count)
+                .map(|_| (crate::limits::DEFAULT_PAGE_SIZE_PT, 0))
+                .collect(),
+        )
+    }
+
+    /// A state for a document just opened: one `(size before rotation, rotation)` per page of the file, in order. Page *i* gets id *i*.
+    pub fn from_file(pages: Vec<([f32; 2], u16)>) -> Self {
+        let count = u32::try_from(pages.len()).unwrap_or(u32::MAX);
+        let slots = (0..count)
+            .zip(pages)
+            .map(|(index, (size, rotation))| PageSlot {
+                id: PageId::new(index),
+                source: PageSource::File { index },
+                engine_index: index,
+                rotation,
+                saved_rotation: rotation,
+                rev: 0,
+                size,
+            })
+            .collect();
         Self {
-            page_count,
+            pages: slots,
+            next_page_id: count,
+            file_pages: count,
             entries: BTreeMap::new(),
             next_id: 1,
             rev: 0,
@@ -188,6 +228,30 @@ impl DocState {
     pub fn finish_save(&mut self, origins: &HashMap<AnnotId, PdfOrigin>) -> ChangeSet {
         let mut delta = Delta::default();
         self.entries.retain(|_, entry| !entry.tombstone);
+        // The pages are the file's pages now, in this order: page *i* of the list is page *i* of the file. Where an annotation that
+        // was not written is in the file moves with its page.
+        let mut moved: HashMap<u32, u32> = HashMap::new();
+        for (position, slot) in self.pages.iter_mut().enumerate() {
+            let position = u32::try_from(position).unwrap_or(u32::MAX);
+            if matches!(slot.source, PageSource::File { .. }) {
+                moved.insert(slot.engine_index, position);
+            } else {
+                // A page of the file now: its annotations are read from the file like those of any page.
+                self.imported.remove(&slot.id.get());
+            }
+            slot.source = PageSource::File { index: position };
+            slot.engine_index = position;
+            slot.saved_rotation = slot.rotation;
+        }
+        self.file_pages = self.page_count();
+        for entry in self.entries.values_mut() {
+            if let Some(origin) = &mut entry.persisted {
+                if let Some(position) = moved.get(&origin.page_index) {
+                    origin.page_index = *position;
+                }
+            }
+        }
+        delta.pages = true;
         for (id, entry) in &mut self.entries {
             if let Some(origin) = origins.get(id) {
                 entry.persisted = Some(origin.clone());
@@ -202,8 +266,9 @@ impl DocState {
         self.change_set(delta)
     }
 
+    /// How many pages the document has now.
     pub(crate) fn page_count(&self) -> u32 {
-        self.page_count
+        u32::try_from(self.pages.len()).unwrap_or(u32::MAX)
     }
 
     pub(crate) fn alloc_id(&mut self) -> Result<AnnotId, AppError> {
@@ -313,7 +378,10 @@ impl DocState {
     /// was read twice (two requests at the same time) is not doubled. What does not pass the checks, and what does not fit under the
     /// limits, is left out. Returns how many were added. Not a change: the revision and the history stay as they are.
     pub fn import_page(&mut self, page: PageId, items: &[Imported]) -> usize {
-        if page.get() >= self.page_count || !self.imported.insert(page.get()) {
+        let Some(engine_index) = self.slot(page).map(|slot| slot.engine_index) else {
+            return 0;
+        };
+        if !self.imported.insert(page.get()) {
             return 0;
         }
         let mut added = 0;
@@ -323,7 +391,7 @@ impl DocState {
             .entries
             .values()
             .filter_map(|entry| entry.persisted.as_ref())
-            .filter(|origin| origin.page_index == page.get())
+            .filter(|origin| origin.page_index == engine_index)
             .map(|origin| origin.annot_index)
             .collect();
         for item in items
@@ -363,7 +431,8 @@ impl DocState {
             rev: self.rev,
             upserted: delta.upserted.into_values().collect(),
             removed: delta.removed.into_iter().collect(),
-            pages: None,
+            pages: delta.pages.then(|| self.page_infos()),
+            engine_rotations: delta.engine_rotations,
             history: self.history.state(),
         }
     }
@@ -376,7 +445,7 @@ impl DocState {
         self.rev += 1;
         self.history.record(
             command.label(),
-            DocCommand::Restore { slots: inverse },
+            inverse,
             command.coalesce_key(),
             stamp.now_ms,
         );
@@ -391,8 +460,7 @@ impl DocState {
         match entry.command.clone().run(self, stamp) {
             Ok((inverse, delta)) => {
                 self.rev += 1;
-                self.history
-                    .push_redo(entry, DocCommand::Restore { slots: inverse });
+                self.history.push_redo(entry, inverse);
                 Ok(self.change_set(delta))
             }
             Err(error) => {
@@ -410,8 +478,7 @@ impl DocState {
         match entry.command.clone().run(self, stamp) {
             Ok((inverse, delta)) => {
                 self.rev += 1;
-                self.history
-                    .push_undo(entry, DocCommand::Restore { slots: inverse });
+                self.history.push_undo(entry, inverse);
                 Ok(self.change_set(delta))
             }
             Err(error) => {

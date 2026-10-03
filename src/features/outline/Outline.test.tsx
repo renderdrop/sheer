@@ -3,6 +3,7 @@ import { act, fireEvent, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { OutlineNode } from '../../api/outline';
+import { usePages } from '../../stores/pages';
 import { useView } from '../../stores/view';
 import { setup } from '../../test/render';
 import { publishViewRect } from '../viewer/scrollBridge';
@@ -167,6 +168,35 @@ describe('Outline tree', () => {
     expect(goToPoint).toHaveBeenCalledWith(0, 0);
     expect(intro.getAttribute('aria-selected')).toBe('true');
     expect(document.activeElement).toBe(intro);
+  });
+
+  it('jumps to where the page sits after the pages were reordered, and to nothing once it was deleted', async () => {
+    const goToPoint = vi.fn();
+    useViewer.setState({ goToPoint });
+    const { user } = await shown();
+    const slots = (ids: number[]) =>
+      ids.map((id) => ({
+        id,
+        width: 100,
+        height: 100,
+        rotation: 0 as const,
+        rev: 0,
+        label: null,
+        origin: 'file' as const,
+      }));
+    const all = Array.from({ length: 20 }, (_, id) => id);
+    // The file's page 0 (Intro's target) moved to position 5.
+    act(() => usePages.getState().setSlots(1, slots([1, 2, 3, 4, 5, 0, ...all.slice(6)])));
+    const intro = screen.getByRole('treeitem', { name: /Intro/ });
+    intro.focus();
+    await user.keyboard('{Enter}');
+    expect(goToPoint).toHaveBeenLastCalledWith(5, 0);
+    // Deleted: the node has no target, so Enter does not jump.
+    goToPoint.mockClear();
+    act(() => usePages.getState().setSlots(1, slots(all.slice(1))));
+    screen.getByRole('treeitem', { name: /Intro/ }).focus();
+    await user.keyboard('{Enter}');
+    expect(goToPoint).not.toHaveBeenCalled();
   });
 
   it('toggles a row without a target on Enter and does not jump', async () => {

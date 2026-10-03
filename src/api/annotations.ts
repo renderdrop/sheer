@@ -1,5 +1,6 @@
 import { call } from './call';
 import { toAppError } from './errors';
+import { parseSlots, type PageCommand, type PageSlotInfo } from './pages';
 import {
   isCoordinate,
   isRecord,
@@ -125,7 +126,8 @@ export type DocCommand =
   | { type: 'updateAnnotation'; id: number; patch: AnnotationPatch; coalesce?: string }
   | { type: 'deleteAnnotations'; ids: readonly number[] }
   | { type: 'moveAnnotations'; ids: readonly number[]; dx: number; dy: number }
-  | { type: 'batch'; label: string; commands: readonly DocCommand[] };
+  | { type: 'batch'; label: string; commands: readonly DocCommand[] }
+  | PageCommand;
 
 /** What the UI needs for its Undo and Redo commands. */
 export interface HistoryState {
@@ -144,8 +146,8 @@ export interface ChangeSet {
   rev: number;
   upserted: readonly Annotation[];
   removed: readonly number[];
-  /** The page list once pages can change (M3); `null` until then. */
-  pages: readonly number[] | null;
+  /** The full page list, only when it changed (ADR-036); `null` otherwise. */
+  pages: readonly PageSlotInfo[] | null;
   history: HistoryState;
 }
 
@@ -332,11 +334,12 @@ export function parseHistoryState(value: unknown): HistoryState | null {
   return { canUndo, canRedo, undoLabel, redoLabel, dirty };
 }
 
-/** Validates the answer of `apply_annotation_command`, `undo` and `redo`; `null` if it is not a change set. */
+/** Validates the answer of `apply_command`, `undo` and `redo`; `null` if it is not a change set. */
 export function parseChangeSet(value: unknown): ChangeSet | null {
   if (!isRecord(value)) return null;
   const { rev, upserted, removed, pages } = value;
   const history = parseHistoryState(value.history);
+  const parsedPages = pages === null || pages === undefined ? null : parseSlots(pages);
   if (
     !isUint(rev, Number.MAX_SAFE_INTEGER) ||
     history === null ||
@@ -345,7 +348,7 @@ export function parseChangeSet(value: unknown): ChangeSet | null {
     !Array.isArray(removed) ||
     removed.length > MAX_ANNOTATIONS_PER_DOC ||
     !(removed as unknown[]).every((id) => isUint(id)) ||
-    !(pages === null || (Array.isArray(pages) && (pages as unknown[]).every((id) => isUint(id))))
+    (pages !== null && pages !== undefined && parsedPages === null)
   )
     return null;
   const parsed: Annotation[] = [];
@@ -354,7 +357,7 @@ export function parseChangeSet(value: unknown): ChangeSet | null {
     if (annotation === null) return null;
     parsed.push(annotation);
   }
-  return { rev, upserted: parsed, removed: removed as number[], pages: pages as number[] | null, history };
+  return { rev, upserted: parsed, removed: removed as number[], pages: parsedPages, history };
 }
 
 // --- Commands --------------------------------------------------------------------------------------------------------
@@ -374,8 +377,8 @@ export async function listAnnotations(docId: number, pageId: number): Promise<An
  * Runs a command on the document's annotations. Resolves with the change set; rejects, with nothing changed, with
  * `invalid_argument` (`what` names the field), `not_found` (`annotation`), or `limit_exceeded`.
  */
-export async function applyAnnotationCommand(docId: number, command: DocCommand): Promise<ChangeSet> {
-  const changes = parseChangeSet(await call<unknown>('apply_annotation_command', { docId, command }));
+export async function applyCommand(docId: number, command: DocCommand): Promise<ChangeSet> {
+  const changes = parseChangeSet(await call<unknown>('apply_command', { docId, command }));
   if (changes === null) throw toAppError(null);
   return changes;
 }

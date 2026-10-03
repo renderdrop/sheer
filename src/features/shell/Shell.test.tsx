@@ -256,6 +256,10 @@ describe('Shell with a document', () => {
         'Close documentCtrl+W',
         'SaveCtrl+S',
         'Save As…Ctrl+Shift+S',
+        'Merge files…',
+        'Split…',
+        'Extract pages…',
+        'Compress…',
         'UndoCtrl+Z',
         'RedoCtrl+Y',
         'Actual sizeCtrl+1',
@@ -956,3 +960,8 @@ describe('Shell with a document: edge cases', () => {
     });
   });
 });
+
+vi.mock('../../api/pages', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../api/pages')>()),
+  getPages: vi.fn().mockResolvedValue([]),
+}));

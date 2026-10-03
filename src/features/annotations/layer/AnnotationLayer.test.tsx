@@ -82,7 +82,7 @@ const selected = () => useAnnotations.getState().selectedIds[1] ?? [];
 
 beforeEach(() => {
   vi.resetAllMocks();
-  mocked.applyAnnotationCommand.mockResolvedValue(empty);
+  mocked.applyCommand.mockResolvedValue(empty);
   mocked.listAnnotations.mockResolvedValue([]);
   useUi.setState({ activeTool: 'select', toolLocked: false, toast: null, banner: null });
   setFileRotation(1, 0, 0);
@@ -230,8 +230,8 @@ describe('moving', () => {
     expect(frame(1).style.left).toBe('20px');
     fireEvent.pointerUp(window);
     await act(async () => undefined);
-    expect(mocked.applyAnnotationCommand).toHaveBeenCalledTimes(1);
-    expect(mocked.applyAnnotationCommand).toHaveBeenCalledWith(1, {
+    expect(mocked.applyCommand).toHaveBeenCalledTimes(1);
+    expect(mocked.applyCommand).toHaveBeenCalledWith(1, {
       type: 'moveAnnotations',
       ids: [1, 3],
       dx: 10,
@@ -246,7 +246,7 @@ describe('moving', () => {
     fireEvent.pointerMove(window, { clientX: 2, clientY: 1 });
     fireEvent.pointerUp(window);
     await act(async () => undefined);
-    expect(mocked.applyAnnotationCommand).not.toHaveBeenCalled();
+    expect(mocked.applyCommand).not.toHaveBeenCalled();
     expect(selected()).toEqual([1]);
   });
 
@@ -257,7 +257,7 @@ describe('moving', () => {
     fireEvent.pointerMove(window, { clientX: -400, clientY: 0 });
     fireEvent.pointerUp(window);
     await act(async () => undefined);
-    expect(mocked.applyAnnotationCommand).toHaveBeenCalledWith(1, {
+    expect(mocked.applyCommand).toHaveBeenCalledWith(1, {
       type: 'moveAnnotations',
       ids: [1],
       dx: -10,
@@ -273,7 +273,7 @@ describe('moving', () => {
     fireEvent.keyDown(window, { key: 'Escape' });
     fireEvent.pointerUp(window);
     await act(async () => undefined);
-    expect(mocked.applyAnnotationCommand).not.toHaveBeenCalled();
+    expect(mocked.applyCommand).not.toHaveBeenCalled();
     expect(frame(1).style.left).toBe('10px');
   });
 
@@ -285,7 +285,7 @@ describe('moving', () => {
     fireEvent.pointerMove(window, { clientX: 20, clientY: 0 });
     fireEvent.pointerUp(window);
     await act(async () => undefined);
-    expect(mocked.applyAnnotationCommand).not.toHaveBeenCalled();
+    expect(mocked.applyCommand).not.toHaveBeenCalled();
   });
 });
 
@@ -298,7 +298,7 @@ describe('resizing', () => {
     fireEvent.pointerMove(window, { clientX: 20, clientY: 20 });
     fireEvent.pointerUp(window);
     await act(async () => undefined);
-    expect(mocked.applyAnnotationCommand).toHaveBeenCalledWith(1, {
+    expect(mocked.applyCommand).toHaveBeenCalledWith(1, {
       type: 'updateAnnotation',
       id: 1,
       patch: { box: { x: 10, y: 10, w: 50, h: 30 } },
@@ -316,13 +316,13 @@ describe('keyboard', () => {
     fireEvent.keyDown(frame(1), { key: 'ArrowRight' });
     fireEvent.keyDown(frame(1), { key: 'ArrowRight' });
     fireEvent.keyDown(frame(1), { key: 'ArrowDown', shiftKey: true });
-    expect(mocked.applyAnnotationCommand).not.toHaveBeenCalled();
+    expect(mocked.applyCommand).not.toHaveBeenCalled();
     expect(frame(1).style.left).toBe('12px');
     await act(async () => {
       await vi.advanceTimersByTimeAsync(500);
     });
-    expect(mocked.applyAnnotationCommand).toHaveBeenCalledTimes(1);
-    expect(mocked.applyAnnotationCommand).toHaveBeenCalledWith(1, { type: 'moveAnnotations', ids: [1], dx: 2, dy: 10 });
+    expect(mocked.applyCommand).toHaveBeenCalledTimes(1);
+    expect(mocked.applyCommand).toHaveBeenCalledWith(1, { type: 'moveAnnotations', ids: [1], dx: 2, dy: 10 });
   });
 
   it('turns the arrows with the view rotation: a quarter turn makes right point up the page space', async () => {
@@ -332,7 +332,7 @@ describe('keyboard', () => {
     await act(async () => {
       await vi.advanceTimersByTimeAsync(500);
     });
-    expect(mocked.applyAnnotationCommand).toHaveBeenCalledWith(1, { type: 'moveAnnotations', ids: [1], dx: 0, dy: -1 });
+    expect(mocked.applyCommand).toHaveBeenCalledWith(1, { type: 'moveAnnotations', ids: [1], dx: 0, dy: -1 });
   });
 
   it('leaving the annotation sends the waiting nudge at once', async () => {
@@ -341,7 +341,7 @@ describe('keyboard', () => {
     fireEvent.keyDown(frame(1), { key: 'ArrowLeft' });
     fireEvent.blur(frame(1));
     await act(async () => undefined);
-    expect(mocked.applyAnnotationCommand).toHaveBeenCalledWith(1, { type: 'moveAnnotations', ids: [1], dx: -1, dy: 0 });
+    expect(mocked.applyCommand).toHaveBeenCalledWith(1, { type: 'moveAnnotations', ids: [1], dx: -1, dy: 0 });
   });
 
   it('Alt with the arrows resizes the trailing and bottom edges', async () => {
@@ -352,7 +352,7 @@ describe('keyboard', () => {
     await act(async () => {
       await vi.advanceTimersByTimeAsync(500);
     });
-    expect(mocked.applyAnnotationCommand).toHaveBeenCalledWith(1, {
+    expect(mocked.applyCommand).toHaveBeenCalledWith(1, {
       type: 'updateAnnotation',
       id: 1,
       patch: { box: { x: 10, y: 10, w: 41, h: 21 } },
@@ -371,7 +371,7 @@ describe('keyboard', () => {
     await act(async () => {
       await vi.advanceTimersByTimeAsync(1000);
     });
-    expect(mocked.applyAnnotationCommand).not.toHaveBeenCalled();
+    expect(mocked.applyCommand).not.toHaveBeenCalled();
     fireEvent.keyDown(frame(1), { key: 'Escape' });
     expect(selected()).toEqual([]);
   });
@@ -392,16 +392,16 @@ describe('keyboard', () => {
       fireEvent.keyDown(frame(1), { key: 'ArrowRight', altKey: true });
     });
     expect(screen.getByTestId('said').textContent).toContain('can’t be resized');
-    expect(mocked.applyAnnotationCommand).not.toHaveBeenCalled();
+    expect(mocked.applyCommand).not.toHaveBeenCalled();
   });
 
   it('Delete removes the selection and offers Undo', async () => {
-    mocked.applyAnnotationCommand.mockResolvedValue({ ...empty, removed: [1] });
+    mocked.applyCommand.mockResolvedValue({ ...empty, removed: [1] });
     render(<AnnotationLayer {...props()} />);
     act(() => frame(1).focus());
     fireEvent.keyDown(frame(1), { key: 'Delete' });
     await act(async () => undefined);
-    expect(mocked.applyAnnotationCommand).toHaveBeenCalledWith(1, { type: 'deleteAnnotations', ids: [1] });
+    expect(mocked.applyCommand).toHaveBeenCalledWith(1, { type: 'deleteAnnotations', ids: [1] });
     expect(useUi.getState().toast?.message).toBe('Rectangle deleted');
     expect(selected()).toEqual([]);
   });
@@ -414,7 +414,7 @@ describe('keyboard', () => {
   });
 
   it('a failed command is reported in the banner, not thrown', async () => {
-    mocked.applyAnnotationCommand.mockRejectedValue({ code: 'read_only' });
+    mocked.applyCommand.mockRejectedValue({ code: 'read_only' });
     render(<AnnotationLayer {...props()} />);
     act(() => frame(1).focus());
     fireEvent.keyDown(frame(1), { key: 'Delete' });

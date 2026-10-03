@@ -3,7 +3,9 @@ import { create } from 'zustand';
 import { getOutline } from '../../api/outline';
 import { toAppError, type AppError } from '../../api/errors';
 import { useDocuments } from '../../stores/documents';
-import { currentNode, expandSiblings, initialExpansion, buildIndex, type OutlineIndex } from './tree';
+import { usePages, positionsOf, readSlots } from '../../stores/pages';
+import type { OutlineNode } from '../../api/outline';
+import { currentNode, expandSiblings, initialExpansion, buildIndex, retarget, type OutlineIndex } from './tree';
 import { readingPosition } from './reading';
 
 /** What the outline of one document is: being fetched, there, or failed. */
@@ -13,6 +15,9 @@ export type OutlineEntry =
   | {
       status: 'ready';
       token: number;
+      /** The outline as the file has it: targets are page ids. */
+      nodes: readonly OutlineNode[];
+      /** `nodes` with targets as the positions the pages sit at now; rebuilt when the pages move (ADR-036). */
       index: OutlineIndex;
       /** Expanded parents, per document and in memory: kept across tab switches. */
       expanded: ReadonlySet<number>;
@@ -49,10 +54,10 @@ export const useOutline = create<OutlineState>()((set, get) => {
       (nodes) => {
         // Dropped (closed) or asked again while the answer was on its way.
         if (get().byDoc[docId]?.token !== token) return;
-        const index = buildIndex(nodes);
+        const index = buildIndex(retarget(nodes, positionsOf(readSlots(docId))));
         const expanded = initialExpansion(index, currentNode(index, readingPosition(docId)));
         set((state) => ({
-          byDoc: { ...state.byDoc, [docId]: { status: 'ready', token, index, expanded, selected: -1 } },
+          byDoc: { ...state.byDoc, [docId]: { status: 'ready', token, nodes, index, expanded, selected: -1 } },
         }));
       },
       (caught: unknown) => {
@@ -93,5 +98,18 @@ export const useOutline = create<OutlineState>()((set, get) => {
 useDocuments.subscribe((state) => {
   for (const key of Object.keys(useOutline.getState().byDoc)) {
     if (state.byId[Number(key)] === undefined) useOutline.getState().drop(Number(key));
+  }
+});
+
+// A move or a delete changes where the targets are: the index is made again from the file's outline (the tree keeps its shape, so
+// the expansion and the selection stay).
+usePages.subscribe((state, previous) => {
+  for (const [key, slots] of Object.entries(state.slotsByDoc)) {
+    if (previous.slotsByDoc[Number(key)] === slots) continue;
+    const docId = Number(key);
+    const entry = useOutline.getState().byDoc[docId];
+    if (entry?.status !== 'ready') continue;
+    const index = buildIndex(retarget(entry.nodes, positionsOf(slots)));
+    useOutline.setState((current) => ({ byDoc: { ...current.byDoc, [docId]: { ...entry, index } } }));
   }
 });

@@ -806,3 +806,8 @@ describe('a zoom in flight when the document changes', () => {
     expect(document.querySelector<HTMLElement>('[data-canvas-content]')?.style.transform ?? '').toBe('');
   });
 });
+
+vi.mock('../../api/pages', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../api/pages')>()),
+  getPages: vi.fn().mockResolvedValue([]),
+}));

@@ -1,8 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
-import { DEFAULT_PAGE_SIZE, placeholderSizes, sizesFor, usePages } from './pages';
+import { DEFAULT_PAGE_SIZE, placeholderSizes, readSlots, sizesFor, usePages } from './pages';
 
-const reset = () => usePages.setState({ byDoc: {} });
+const reset = () => usePages.setState({ byDoc: {}, slotsByDoc: {} });
 
 beforeEach(reset);
 afterEach(reset);
@@ -71,5 +71,33 @@ describe('sizesFor', () => {
     expect(sizesFor(state({ 1: [[1, 1]] }), null, 1)).toBe(placeholderSizes(1));
     expect(sizesFor(state({ 1: [[1, 1]] }), 1, 3)).toBe(placeholderSizes(3));
     expect(sizesFor(state({ 1: [[1, 1]] }), 2, 1)).toBe(placeholderSizes(1));
+  });
+});
+
+describe('the page list', () => {
+  const slot = (id: number, rotation: 0 | 90 | 180 | 270, origin: 'file' | 'blank' = 'file') => ({
+    id,
+    width: 200,
+    height: 100,
+    rotation,
+    rev: 0,
+    label: null,
+    origin,
+  });
+
+  it('keeps the slots in order and lays the canvas out from the drawn sizes', () => {
+    usePages.getState().setSlots(1, [slot(2, 90), slot(0, 0)]);
+    expect(usePages.getState().slotsByDoc[1]?.map((s) => s.id)).toEqual([2, 0]);
+    expect(usePages.getState().byDoc[1]).toEqual([
+      [100, 200],
+      [200, 100],
+    ]);
+    usePages.getState().remove(1);
+    expect(usePages.getState().slotsByDoc).toEqual({});
+  });
+
+  it('reads slots from plain sizes when no list was stored', () => {
+    usePages.getState().set(3, [[612, 792]]);
+    expect(readSlots(3)).toMatchObject([{ id: 0, width: 612, height: 792, rotation: 0, origin: 'file' }]);
   });
 });

@@ -109,3 +109,8 @@ describe('the zoom readout of a freshly opened document', () => {
     expect(readout()).toBe(`93${NBSP}%`);
   });
 });
+
+vi.mock('../../api/pages', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../api/pages')>()),
+  getPages: vi.fn().mockResolvedValue([]),
+}));

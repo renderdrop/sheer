@@ -36,7 +36,12 @@
           "label": "menu.file.saveAs",
           "accelerator": "CmdOrCtrl+Shift+S",
           "requiresDocument": true
-        }
+        },
+        { "separator": true },
+        { "action": "merge-files", "label": "menu.file.merge", "requiresDocument": true },
+        { "action": "split-document", "label": "menu.file.split", "requiresDocument": true },
+        { "action": "extract-pages", "label": "menu.file.extractPages", "requiresDocument": true },
+        { "action": "compress-document", "label": "menu.file.compress", "requiresDocument": true }
       ]
     },
     {

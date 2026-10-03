@@ -150,7 +150,7 @@ open_link(doc_id: DocId, page_id: PageId, link_index: u32) -> ()    // URL re-re
 // edit (ADR-003)
 list_annotations(doc_id: DocId, page_id: PageId) -> Vec<Annotation>   // by id, ≤ 2 000; the first call for a page reads it from the file (`Interactive`), later calls answer from the model
 list_document_annotations(doc_id: DocId) -> Vec<AnnotationSummary>   // {id, pageId, kind, color, contents (≤ 240 chars), author, modified, inReplyTo}, ≤ 20 000, by page then id; reads unread pages at `Background`; for the comments panel (`features/comments`)
-apply_annotation_command(doc_id: DocId, command: DocCommand) -> ChangeSet   // one undo step; all or nothing; the coalesce key is part of `UpdateAnnotation` (≤ 64 chars of [A-Za-z0-9._-])
+apply_command(doc_id: DocId, command: DocCommand) -> ChangeSet   // M3: was apply_annotation_command; annotation and page variants (see "Pages")
 undo(doc_id: DocId) -> ChangeSet          // nothing to undo: an empty ChangeSet with the current rev
 redo(doc_id: DocId) -> ChangeSet
 ```
@@ -267,8 +267,9 @@ pick_pdf_sources(multiple: bool) -> Vec<SourceResult>            // Rust open di
 release_source(source_id: SourceId) -> ()                        // unknown id is not an error; pinned bytes live on in documents
 extract_pages(doc_id: DocId, pages: Vec<PageId>, on_event: Channel<JobEvent>) -> Option<JobId>          // None = save dialog cancelled
 split_document(doc_id: DocId, plan: SplitPlan, on_event: Channel<JobEvent>) -> Option<JobId>            // folder dialog
-merge_documents(inputs: Vec<MergeInput>, on_event: Channel<JobEvent>) -> Option<JobId>                  // 2..=64 inputs
-compress_document(doc_id: DocId, preset: CompressPreset, on_event: Channel<JobEvent>) -> Option<JobId>
+merge_documents(inputs: Vec<MergeInput>, on_event: Channel<JobEvent>) -> Option<JobId>   // 2..=64 inputs; works with sources only (no document open); Save As dialog, result opens as a document
+compress_document(doc_id: DocId, preset: CompressPreset, save_as?: bool /* ignored: the result is always a new file */, on_event: Channel<JobEvent>) -> Option<JobId>
+estimate_compression(doc_id: DocId) -> CompressEstimate        // sample-based (<= ~1.5 s): { current, presets: { lossless, print, ebook, screen } } in bytes
 cancel_job(job_id: JobId) -> ()                                  // unknown or finished id is not an error
 ```
 
@@ -284,9 +285,10 @@ type PageCommand =   // members of DocCommand, wire `{ type, ..fields }`
   | { type: 'insertPages'; source: SourceId; pages: number[] /* source indices, ≤ 5 000 */; at: number };
 type SourceResult = { type: 'ready'; sourceId: SourceId; displayName: string; pageCount: number }
                   | { type: 'failed'; code: ErrorCode; key: string; params?: UiParams };
-type SplitPlan = { type: 'everyN'; n: number /* 1..=10 000 */ } | { type: 'before'; pages: PageId[] };   // ≤ 1 000 outputs
+type SplitPlan = ( { type: 'everyN'; n: number /* 1..=10 000 */ } | { type: 'before'; pages: PageId[] } | { type: 'ranges'; text: string /* "1-3, 5, 8-", may skip pages and overlap */ } )
+  & { pattern?: string /* file names, tokens {name} {n} {pages}, default {name}-{n} */ };   // <= 1 000 outputs
 type MergeInput = { type: 'document'; docId: DocId } | { type: 'source'; sourceId: SourceId };
-type CompressPreset = 'lossless' | 'print' | 'ebook' | 'screen';
+type CompressPreset = 'lossless' | 'print' | 'ebook' | 'screen';   // print 220 dpi q85, ebook 150 q70, screen 96 q55; a result that is not smaller is not written (done.outputs = 0)
 type JobEvent =
   | { type: 'progress'; phase: 'read' | 'images' | 'write' | 'validate'; done: number; total: number }
   | { type: 'done'; outputs: number; bytesBefore: number; bytesAfter: number;

@@ -10,7 +10,7 @@ import {
   MAX_HISTORY_ENTRIES,
   MAX_INK_POINTS_PER_STROKE,
   MAX_INK_STROKES,
-  applyAnnotationCommand,
+  applyCommand,
   listAnnotations,
   listDocumentAnnotations,
   parseAnnotation,
@@ -135,7 +135,8 @@ describe('parseChangeSet', () => {
 
   it('reads the revision, the delta and the history', () => {
     expect(parseChangeSet(wire())).toStrictEqual(wire());
-    expect(parseChangeSet(wire({ pages: [0, 1] }))?.pages).toEqual([0, 1]);
+    const slot = { id: 3, width: 612, height: 792, rotation: 90, rev: 1, label: null, origin: 'file' };
+    expect(parseChangeSet(wire({ pages: [slot] }))?.pages).toEqual([slot]);
   });
 
   it.each([
@@ -172,7 +173,7 @@ describe('the commands', () => {
     await expect(listAnnotations(0, 0)).rejects.toMatchObject({ code: 'internal' });
   });
 
-  it('apply_annotation_command sends the command as it is and returns the change set', async () => {
+  it('apply_command sends the command as it is and returns the change set', async () => {
     const command: DocCommand = {
       type: 'batch',
       label: 'annotation.paste',
@@ -185,8 +186,8 @@ describe('the commands', () => {
     };
     const changes = { rev: 1, upserted: [], removed: [], pages: null, history: HISTORY };
     invokeMock.mockResolvedValueOnce(changes);
-    await expect(applyAnnotationCommand(2, command)).resolves.toStrictEqual(changes);
-    expect(invokeMock).toHaveBeenCalledWith('apply_annotation_command', { docId: 2, command });
+    await expect(applyCommand(2, command)).resolves.toStrictEqual(changes);
+    expect(invokeMock).toHaveBeenCalledWith('apply_command', { docId: 2, command });
   });
 
   it('undo and redo take the document and return the change set', async () => {
@@ -205,7 +206,7 @@ describe('the commands', () => {
       retryable: false,
       params: { what: 'annotation' },
     });
-    await expect(applyAnnotationCommand(0, { type: 'deleteAnnotations', ids: [1] })).rejects.toMatchObject({
+    await expect(applyCommand(0, { type: 'deleteAnnotations', ids: [1] })).rejects.toMatchObject({
       code: 'not_found',
       params: { what: 'annotation' },
     });

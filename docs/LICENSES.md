@@ -235,3 +235,8 @@ eslint-plugin-react-hooks; attribution only, no copyleft). Neither is a GPL/AGPL
 **BlueOak-1.0.0** (1): minimatch 10.2.6
 
 **CC-BY-4.0** (1): caniuse-lite 1.0.30001814
+
+## M3 package R3 (new-file jobs, ADR-036 §6)
+
+- `image` 0.25.10 (MIT OR Apache-2.0), `default-features = false, features = ["jpeg"]`: JPEG decode/encode and resize for compress. Pulls `zune-jpeg` 0.5.15 and `zune-core` 0.5.3 (MIT OR Apache-2.0 OR Zlib), `moxcms` 0.8.1 and `pxfm` 0.1.30 (BSD-3-Clause OR Apache-2.0), `byteorder-lite` 0.1.0 (Unlicense OR MIT), `bytemuck` (MIT OR Apache-2.0 OR Zlib).
+- `flate2` 1.1 (MIT OR Apache-2.0): direct dependency now (already in the build via `png` and `lopdf`), used for the bounded Flate decode.

@@ -22,11 +22,18 @@ const documentsApi = vi.hoisted(() => ({
 const renderApi = vi.hoisted(() => ({
   renderPage: vi.fn(),
   setViewport: vi.fn(),
-  getPageSizes: vi.fn(),
 }));
 
 vi.mock('../../api/documents', () => documentsApi);
 vi.mock('../../api/render', () => renderApi);
+const pagesApi = vi.hoisted(() => ({ getPages: vi.fn() }));
+vi.mock('../../api/pages', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../api/pages')>()),
+  ...pagesApi,
+}));
+
+const slotsOf = (list: readonly (readonly [number, number])[]) =>
+  list.map(([width, height], id) => ({ id, width, height, rotation: 0, rev: 0, label: null, origin: 'file' }));
 
 const uiInitial = useUi.getState();
 
@@ -44,10 +51,10 @@ beforeEach(() => {
   documentsApi.closeDocument.mockReset().mockResolvedValue(undefined);
   renderApi.renderPage.mockReset().mockImplementation(() => new Promise(() => undefined));
   renderApi.setViewport.mockReset().mockResolvedValue(undefined);
-  renderApi.getPageSizes
+  pagesApi.getPages
     .mockReset()
     .mockImplementation((docId: number) =>
-      Promise.resolve(sizes(docId === OTHER.id ? OTHER.pageCount : REPORT.pageCount)),
+      Promise.resolve(slotsOf(sizes(docId === OTHER.id ? OTHER.pageCount : REPORT.pageCount))),
     );
   URL.createObjectURL = vi.fn(() => 'blob:page');
   URL.revokeObjectURL = vi.fn();
@@ -77,7 +84,7 @@ describe('opening a document', () => {
       opening: true,
     });
     expect(viewer().opening).toBe(false);
-    expect(renderApi.getPageSizes).toHaveBeenCalledWith(1);
+    expect(pagesApi.getPages).toHaveBeenCalledWith(1);
     expect(usePages.getState().byDoc[1]).toEqual(sizes(10));
   });
 
@@ -155,14 +162,14 @@ describe('opening a document', () => {
     act(() => viewer().goToPage(4));
     // Opening the file again: the same id comes back, and the other document is the one that was in front.
     act(() => useDocuments.getState().setActive(2));
-    renderApi.getPageSizes.mockClear();
+    pagesApi.getPages.mockClear();
     documentsApi.openDocumentDialog.mockResolvedValue([opened(REPORT)]);
     await act(() => viewer().open());
     expect(useDocuments.getState().order).toEqual([1, 2]);
     expect(activeDocument()).toEqual(REPORT);
     // Its view is what it was, not a new one at 100 % on page 1, and its pages are not measured again.
     expect(viewOf(1)).toMatchObject({ zoom: 1.1, pageIndex: 4 });
-    expect(renderApi.getPageSizes).not.toHaveBeenCalled();
+    expect(pagesApi.getPages).not.toHaveBeenCalled();
   });
 
   it('closing the active document brings back its neighbour', async () => {
@@ -204,7 +211,7 @@ describe('opening a document', () => {
   });
 
   it('shows the error when the sizes of the pages cannot be had, and keeps the document', async () => {
-    renderApi.getPageSizes.mockRejectedValue({ code: 'engine_timeout', key: 'error.engine_timeout', retryable: true });
+    pagesApi.getPages.mockRejectedValue({ code: 'engine_timeout', key: 'error.engine_timeout', retryable: true });
     await act(() => viewer().open());
     expect(useUi.getState().banner).toMatchObject({ code: 'engine_timeout' });
     expect(activeDocument()).toEqual(REPORT);
@@ -215,18 +222,18 @@ describe('opening a document', () => {
 
   it('forgets the sizes that arrive after the document was closed', async () => {
     let answer: (value: unknown) => void = () => undefined;
-    renderApi.getPageSizes.mockReturnValue(
+    pagesApi.getPages.mockReturnValue(
       new Promise((resolve) => {
         answer = resolve;
       }),
     );
     await act(() => viewer().open());
     act(() => viewer().close());
-    await act(async () => answer(sizes(10)));
+    await act(async () => answer(slotsOf(sizes(10))));
     expect(usePages.getState().byDoc).toEqual({});
     // And an error that arrives late is not shown either.
     let fail: (reason: unknown) => void = () => undefined;
-    renderApi.getPageSizes.mockReturnValue(
+    pagesApi.getPages.mockReturnValue(
       new Promise((_, reject) => {
         fail = reject;
       }),

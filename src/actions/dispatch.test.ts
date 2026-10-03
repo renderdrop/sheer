@@ -295,3 +295,8 @@ describe('readActionState', () => {
     });
   });
 });
+
+vi.mock('../api/pages', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../api/pages')>()),
+  getPages: vi.fn().mockResolvedValue([]),
+}));

@@ -96,14 +96,19 @@ The Stop hook picks the first open `- [ ]` line, so order matters. Scope: `docs/
 
 ## M3 — Organize pages (v0.6.0)
 
-- [ ] Page grid (organize mode) with pointer-event reorder + keyboard move
-- [ ] Rotate and delete pages (undoable)
-- [ ] Insert blank page / pages from file
-- [ ] Extract pages to new file
-- [ ] Merge files (multi-drop suggests merge)
-- [ ] Split (every N pages, ranges)
-- [ ] Compress: three named presets with estimated size
+- [x] Page grid (organize mode) with pointer-event reorder + keyboard move
+- [x] Rotate and delete pages (undoable)
+- [x] Insert blank page / pages from file
+- [x] Extract pages to new file
+- [x] Merge files (multi-drop suggests merge)
+- [x] Split (every N pages, ranges)
+- [x] Compress: three named presets with estimated size
 - [ ] Politur M3
+  - (from M3 fix review) render cache revision as a tuple (annotation rev, slot rev) instead of a sum; drop the duplicated updateViewport effect; a save-level test that forces a write failure / reopen mismatch and checks the restore
+  - (from M3 security, medium) jobs: reject Windows reserved device names (CON, NUL, AUX, COM1… before any dot, case-insensitive) in split/extract file stems → prefix "_"; lopdf `load_mem` on hostile inputs: cap total decoded bytes (pre-scan object streams / implausible /Length or /N)
+  - (from M3 security/review, low) jobs: decide cleanup from the replace result instead of exists() (TOCTOU); `admit_folder` helper instead of the dummy split.pdf; merge sources as Arc<[u8]> with a total in-memory cap; drop `_ids` in target_is_open; widgets on imported pages dropped silently → warning
+  - (from M3 review) pages: engine/model drift when the model refuses an insert after the engine appended pages; InsertBlankPage double lock; count_pages Arc::try_unwrap; organize grid: drag card + marquee in rAF/ref (no per-move grid render), boolean `dragging` dep, cache --scale-lift; tests for size slider, exit to focused page, reduced motion, announcements; read-only aria-disabled for Pages; dropBatch module state (single drops delayed 120 ms)
+  - (known M3 limits) annotations of imported pages editable only after save; unsaved annotations on blank/imported pages not carried into extract/split/merge outputs
   - (from M2 design review, major) Undo/Redo buttons in the toolbar (§3.27); "Bearbeitet"/"Edited" badge in the status bar (§3.10/§3.27); comments row excerpt shows free-text contents, not the kind label (§3.26)
   - (from M2 design review, minor) note anchor glyph (§3.25); highlight blended (multiply) instead of painted over text; 1 px ring on colour dots in both themes; comment root rows aligned with the group header (§3.15); tools/zoom visibly disabled without a document (§3.22); no vertical scrollbar on the empty state when content fits
   - (from M2 reviews) author prompt: feedback when a confirmed name is invalid; own placeholder; focus return on close; end-to-end test that an empty author saves without /T

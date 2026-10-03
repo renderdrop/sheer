@@ -14,6 +14,8 @@ use serde::Deserialize;
 use super::annotation::{Annotation, AnnotationDraft, AnnotationPatch};
 use super::doc_state::{Delta, DocState, Entry, Slot, Stamp};
 use super::ids::AnnotId;
+use super::page::{NewPage, PageSlot, SourceId};
+use crate::documents::PageId;
 use crate::error::AppError;
 use crate::limits;
 
@@ -43,9 +45,54 @@ pub enum DocCommand {
         label: String,
         commands: Vec<DocCommand>,
     },
+    /// Turns pages by `quarter_turns` quarter turns clockwise (-1, 1 or 2); the page's `/Rotate` changes (ADR-036).
+    RotatePages {
+        pages: Vec<PageId>,
+        quarter_turns: i8,
+    },
+    /// Deletes pages, and their annotations; never every page.
+    DeletePages { pages: Vec<PageId> },
+    /// Moves pages, in their current relative order, to `to_index` of the list without them.
+    MovePages { pages: Vec<PageId>, to_index: u32 },
+    /// Adds a blank page at position `at`; without a size, the size of the page before it (else after it, else A4).
+    InsertBlankPage {
+        at: u32,
+        #[serde(default)]
+        width: Option<f32>,
+        #[serde(default)]
+        height: Option<f32>,
+    },
+    /// Adds pages of an import source (`pages` are indices in the source) at position `at`.
+    InsertPages {
+        source: SourceId,
+        pages: Vec<u32>,
+        at: u32,
+    },
     /// Puts the given content back into the given ids. The inverse of every command; not accepted from the UI.
     #[serde(skip_deserializing)]
     Restore { slots: Vec<Slot> },
+    /// Sets the rotation of pages. Internal: the inverse of a rotation.
+    #[serde(skip_deserializing)]
+    SetRotations { rotations: Vec<(PageId, u16)> },
+    /// Puts the pages in this order. Internal: the inverse of a move.
+    #[serde(skip_deserializing)]
+    ReorderPages { order: Vec<PageId> },
+    /// Takes pages out of the list (with their annotations). Internal: the inverse of an insert.
+    #[serde(skip_deserializing)]
+    RemovePages { pages: Vec<PageId> },
+    /// Puts pages back at the given positions together with the annotations they had. Internal: the inverse of a delete.
+    #[serde(skip_deserializing)]
+    RestorePages {
+        slots: Vec<(u32, PageSlot)>,
+        annotations: Vec<Slot>,
+    },
+    /// Adds pages that the engine's copy already holds. Internal: what an insert becomes once the engine has made the pages.
+    #[serde(skip_deserializing)]
+    AddPages {
+        label: String,
+        at: u32,
+        pages: Vec<NewPage>,
+    },
 }
 
 /// Label of the undo step of a command that is not a batch (keys of the UI catalogs).
@@ -54,6 +101,12 @@ pub const LABEL_UPDATE: &str = "annotation.update";
 pub const LABEL_DELETE: &str = "annotation.delete";
 pub const LABEL_MOVE: &str = "annotation.move";
 const LABEL_RESTORE: &str = "annotation.restore";
+pub const LABEL_ROTATE_PAGES: &str = "page.rotate";
+pub const LABEL_DELETE_PAGES: &str = "page.delete";
+pub const LABEL_MOVE_PAGES: &str = "page.move";
+pub const LABEL_INSERT_BLANK: &str = "page.insertBlank";
+pub const LABEL_INSERT_PAGES: &str = "page.insert";
+const LABEL_RESTORE_PAGES: &str = "page.restore";
 
 fn is_key(text: &str) -> bool {
     !text.is_empty()
@@ -73,7 +126,34 @@ impl DocCommand {
             Self::MoveAnnotations { .. } => LABEL_MOVE.to_owned(),
             Self::Batch { label, .. } => label.clone(),
             Self::Restore { .. } => LABEL_RESTORE.to_owned(),
+            Self::RotatePages { .. } => LABEL_ROTATE_PAGES.to_owned(),
+            Self::DeletePages { .. } => LABEL_DELETE_PAGES.to_owned(),
+            Self::MovePages { .. } => LABEL_MOVE_PAGES.to_owned(),
+            Self::InsertBlankPage { .. } => LABEL_INSERT_BLANK.to_owned(),
+            Self::InsertPages { .. } => LABEL_INSERT_PAGES.to_owned(),
+            Self::AddPages { label, .. } => label.clone(),
+            Self::SetRotations { .. }
+            | Self::ReorderPages { .. }
+            | Self::RemovePages { .. }
+            | Self::RestorePages { .. } => LABEL_RESTORE_PAGES.to_owned(),
         }
+    }
+
+    /// Whether this is a command on pages (not on annotations). Page commands are not part of a batch.
+    pub fn is_page_command(&self) -> bool {
+        matches!(
+            self,
+            Self::RotatePages { .. }
+                | Self::DeletePages { .. }
+                | Self::MovePages { .. }
+                | Self::InsertBlankPage { .. }
+                | Self::InsertPages { .. }
+                | Self::SetRotations { .. }
+                | Self::ReorderPages { .. }
+                | Self::RemovePages { .. }
+                | Self::RestorePages { .. }
+                | Self::AddPages { .. }
+        )
     }
 
     /// The annotation and the key that let this step merge with the one before it.
@@ -105,6 +185,45 @@ impl DocCommand {
         }
         match self {
             Self::CreateAnnotation { .. } | Self::Restore { .. } => Ok(()),
+            Self::RotatePages { pages, .. }
+            | Self::DeletePages { pages }
+            | Self::MovePages { pages, .. } => {
+                if pages.is_empty() {
+                    Err(AppError::invalid("pages"))
+                } else if pages.len() > limits::MAX_PAGES as usize {
+                    Err(AppError::limit("pages", u64::from(limits::MAX_PAGES)))
+                } else {
+                    Ok(())
+                }
+            }
+            Self::InsertBlankPage { width, height, .. } => {
+                let fits = |side: &Option<f32>| {
+                    side.is_none_or(|side| {
+                        side.is_finite()
+                            && (limits::MIN_NEW_PAGE_SIDE_PT..=limits::MAX_PAGE_SIDE_PT)
+                                .contains(&side)
+                    })
+                };
+                if fits(width) && fits(height) {
+                    Ok(())
+                } else {
+                    Err(AppError::invalid("size"))
+                }
+            }
+            Self::InsertPages { pages, .. } => {
+                if pages.is_empty() {
+                    Err(AppError::invalid("pages"))
+                } else if pages.len() > limits::MAX_INSERT_PAGES {
+                    Err(AppError::limit("pages", limits::MAX_INSERT_PAGES as u64))
+                } else {
+                    Ok(())
+                }
+            }
+            Self::SetRotations { .. }
+            | Self::ReorderPages { .. }
+            | Self::RemovePages { .. }
+            | Self::RestorePages { .. }
+            | Self::AddPages { .. } => Ok(()),
             Self::UpdateAnnotation { coalesce, .. } => match coalesce {
                 Some(key) if !is_key(key) => Err(AppError::invalid("coalesce")),
                 _ => Ok(()),
@@ -122,7 +241,10 @@ impl DocCommand {
                 if depth > limits::MAX_BATCH_DEPTH {
                     return Err(AppError::limit("depth", limits::MAX_BATCH_DEPTH as u64));
                 }
-                if !is_key(label) || commands.is_empty() {
+                if !is_key(label)
+                    || commands.is_empty()
+                    || commands.iter().any(DocCommand::is_page_command)
+                {
                     return Err(AppError::invalid("batch"));
                 }
                 commands
@@ -132,8 +254,8 @@ impl DocCommand {
         }
     }
 
-    /// Runs the command on `state`. Returns the slots that undo it and what changed. On an error nothing has changed.
-    pub(crate) fn run(
+    /// Runs an annotation command on `state`. Returns the slots that undo it and what changed. On an error nothing has changed.
+    fn run_slots(
         &self,
         state: &mut DocState,
         stamp: &Stamp,
@@ -179,7 +301,7 @@ impl DocCommand {
             Self::Batch { commands, .. } => {
                 let mut inverses: Vec<Vec<Slot>> = Vec::with_capacity(commands.len());
                 for command in commands {
-                    match command.run(state, stamp) {
+                    match command.run_slots(state, stamp) {
                         Ok((inverse, step)) => {
                             inverses.push(inverse);
                             delta.merge(step);
@@ -195,6 +317,44 @@ impl DocCommand {
                 inverses.into_iter().rev().flatten().collect()
             }
             Self::Restore { slots } => state.set_slots(slots.clone(), &mut delta),
+            // Page commands are steps of their own (and the inserts need the engine first).
+            _ => return Err(AppError::invalid("batch")),
+        };
+        Ok((inverse, delta))
+    }
+
+    /// Runs the command on `state`. Returns the command that undoes it and what changed. On an error nothing has changed.
+    pub(crate) fn run(
+        &self,
+        state: &mut DocState,
+        stamp: &Stamp,
+    ) -> Result<(DocCommand, Delta), AppError> {
+        let mut delta = Delta::default();
+        let inverse = match self {
+            Self::RotatePages {
+                pages,
+                quarter_turns,
+            } => state.rotate_pages(pages, *quarter_turns, &mut delta)?,
+            Self::DeletePages { pages } => state.remove_pages(pages, true, &mut delta)?,
+            Self::MovePages { pages, to_index } => {
+                state.move_pages(pages, *to_index, &mut delta)?
+            }
+            Self::SetRotations { rotations } => state.set_rotations(rotations, &mut delta)?,
+            Self::ReorderPages { order } => state.reorder_pages(order, &mut delta)?,
+            Self::RemovePages { pages } => state.remove_pages(pages, false, &mut delta)?,
+            Self::RestorePages { slots, annotations } => {
+                state.restore_pages(slots, annotations, &mut delta)?
+            }
+            Self::AddPages { at, pages, .. } => state.insert_pages(*at, pages, &mut delta)?,
+            // The engine makes the pages first (`commands::pages`); the model alone cannot.
+            Self::InsertBlankPage { .. } | Self::InsertPages { .. } => {
+                return Err(AppError::invalid("command"))
+            }
+            _ => {
+                let (slots, step) = self.run_slots(state, stamp)?;
+                delta = step;
+                Self::Restore { slots }
+            }
         };
         Ok((inverse, delta))
     }
@@ -225,7 +385,7 @@ fn create(
     stamp: &Stamp,
     delta: &mut Delta,
 ) -> Result<Vec<Slot>, AppError> {
-    if draft.page_id.get() >= state.page_count() {
+    if state.slot(draft.page_id).is_none() {
         return Err(AppError::invalid("page"));
     }
     state.check_room(draft.page_id)?;

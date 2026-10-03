@@ -278,3 +278,18 @@ export function windowRange(
   const last = Math.min(count - 1, Math.max(first, Math.ceil((scrollTop + viewHeight) / rowHeight) + overscan - 1));
   return { first, last };
 }
+
+/**
+ * The outline with its targets turned from page ids into positions (where the page sits now): the canvas, the reading position
+ * and the order of sections all speak positions. A target whose page was deleted is no target. The tree's shape is unchanged.
+ */
+export function retarget(roots: readonly OutlineNode[], positions: ReadonlyMap<number, number>): OutlineNode[] {
+  return roots.map((node) => {
+    const position = node.target === null ? undefined : positions.get(node.target.pageId);
+    return {
+      title: node.title,
+      target: node.target === null || position === undefined ? null : { pageId: position, y: node.target.y },
+      children: retarget(node.children, positions),
+    };
+  });
+}

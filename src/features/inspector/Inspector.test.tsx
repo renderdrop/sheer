@@ -14,9 +14,9 @@ import { useStyleStore } from './style';
 
 vi.mock('../../api/annotations', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../api/annotations')>()),
-  applyAnnotationCommand: vi.fn(),
+  applyCommand: vi.fn(),
 }));
-const applyMock = vi.mocked(api.applyAnnotationCommand);
+const applyMock = vi.mocked(api.applyCommand);
 
 const uiInitial = useUi.getState();
 const annotationsInitial = useAnnotations.getState();

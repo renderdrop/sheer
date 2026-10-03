@@ -158,7 +158,6 @@ pub(super) struct SearchRun<'a> {
     pub engine: &'a Engine,
     pub registry: &'a Registry,
     pub id: DocumentId,
-    pub page_count: u32,
     pub spec: &'a Arc<SearchSpec>,
     pub max_hits: u32,
     pub ticket: &'a SearchTicket,
@@ -208,7 +207,12 @@ impl SearchRun<'_> {
     pub fn run(&self, mut send: impl FnMut(SearchEvent) -> bool) {
         let mut sent_hits = 0u32;
         let mut last_progress: Option<Instant> = None;
-        for index in 0..self.page_count {
+        // The order the pages have now (a snapshot: a page moved or deleted meanwhile does not change this search).
+        let Ok(order) = self.registry.page_order(self.id) else {
+            return;
+        };
+        let total = u32::try_from(order.len()).unwrap_or(u32::MAX);
+        for (position, (page_id, index)) in order.into_iter().enumerate() {
             if self.ticket.is_cancelled() {
                 return;
             }
@@ -234,9 +238,6 @@ impl SearchRun<'_> {
             let truncated = hits.len() > remaining;
             let hits: Vec<_> = hits.into_iter().take(remaining).collect();
             if !hits.is_empty() {
-                let Ok(page_id) = self.registry.page_id(self.id, index) else {
-                    return;
-                };
                 sent_hits += hits.len() as u32;
                 if !send(SearchEvent::Hits { page_id, hits }) {
                     return;
@@ -246,12 +247,13 @@ impl SearchRun<'_> {
             if self.ticket.is_cancelled() {
                 return;
             }
-            let done = index + 1;
-            let progress_due = done == self.page_count
+            let done = u32::try_from(position)
+                .unwrap_or(u32::MAX)
+                .saturating_add(1);
+            let progress_due = done == total
                 || last_progress.is_none_or(|at| at.elapsed() >= limits::SEARCH_PROGRESS_INTERVAL);
             if truncated || progress_due {
                 last_progress = Some(Instant::now());
-                let total = self.page_count;
                 if !send(SearchEvent::Progress { done, total }) {
                     return;
                 }
@@ -278,7 +280,7 @@ impl AppState {
     ) -> Result<u32, AppError> {
         limits::validate_search_text(&query.text)?;
         let max_hits = limits::validate_search_hits(query.max_hits)?;
-        let page_count = self.registry.page_count(doc_id)?;
+        self.registry.page_count(doc_id)?;
         let ticket = self.searches.begin(doc_id)?;
         let id = ticket.id();
         let spec = Arc::new(SearchSpec {
@@ -293,7 +295,6 @@ impl AppState {
                 engine: &engine,
                 registry: &registry,
                 id: doc_id,
-                page_count,
                 spec: &spec,
                 max_hits,
                 ticket: &ticket,
@@ -392,7 +393,7 @@ mod tests {
     fn run(
         state: &AppState,
         id: DocumentId,
-        pages: u32,
+        _pages: u32,
         max_hits: u32,
         mut on_event: impl FnMut(&SearchTicket, &SearchEvent) -> bool,
     ) -> Vec<SearchEvent> {
@@ -403,7 +404,6 @@ mod tests {
             engine: &state.engine,
             registry: &state.registry,
             id,
-            page_count: pages,
             spec: &spec,
             max_hits,
             ticket: &ticket,
@@ -531,7 +531,6 @@ mod tests {
             engine: &state.engine,
             registry: &state.registry,
             id,
-            page_count: 3,
             spec: &spec,
             max_hits: 10,
             ticket: &ticket,

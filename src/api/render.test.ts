@@ -2,7 +2,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { makeFrame } from './frame.testutil';
-import { MAX_PAGES, MAX_PAGE_SIDE_PT, getPageSizes, renderPage, setViewport } from './render';
+import { renderPage, setViewport } from './render';
 
 vi.mock('@tauri-apps/api/core', () => ({ invoke: vi.fn() }));
 
@@ -92,60 +92,5 @@ describe('setViewport', () => {
   it('rejects with an AppError', async () => {
     invokeMock.mockRejectedValueOnce({ code: 'not_found', key: 'error.not_found', params: { what: 'document' } });
     await expect(setViewport(2, { generation: 1, visible: [], near: [] })).rejects.toMatchObject({ code: 'not_found' });
-  });
-});
-
-describe('getPageSizes', () => {
-  it('returns one [width, height] per page, in order', async () => {
-    invokeMock.mockResolvedValueOnce([
-      [612, 792],
-      [200, 100.5],
-    ]);
-    expect(await getPageSizes(4)).toEqual([
-      [612, 792],
-      [200, 100.5],
-    ]);
-    expect(invokeMock).toHaveBeenCalledWith('get_page_sizes', { docId: 4 });
-  });
-
-  it('accepts a document without pages', async () => {
-    invokeMock.mockResolvedValueOnce([]);
-    expect(await getPageSizes(4)).toEqual([]);
-  });
-
-  it('turns an answer that is not a list of sizes into the generic error', async () => {
-    const bad: unknown[] = [
-      null,
-      'sizes',
-      { 0: [1, 1] },
-      [[612]],
-      [[612, 792, 1]],
-      [['612', 792]],
-      [[0, 792]],
-      [[612, -1]],
-      [[Number.NaN, 792]],
-      [[612, Number.POSITIVE_INFINITY]],
-      [[612, MAX_PAGE_SIDE_PT + 1]],
-      [null],
-      [[612, 792], 'x'],
-    ];
-    for (const answer of bad) {
-      invokeMock.mockResolvedValueOnce(answer);
-      await expect(getPageSizes(1), JSON.stringify(answer)).rejects.toMatchObject({ code: 'internal' });
-    }
-  });
-
-  it('refuses a list longer than the backend ever opens', async () => {
-    invokeMock.mockResolvedValueOnce(Array.from({ length: MAX_PAGES + 1 }, () => [612, 792]));
-    await expect(getPageSizes(1)).rejects.toMatchObject({ code: 'internal' });
-    invokeMock.mockResolvedValueOnce(Array.from({ length: MAX_PAGES }, () => [612, 792]));
-    expect(await getPageSizes(1)).toHaveLength(MAX_PAGES);
-  });
-
-  it('copies the sizes: nothing else of the answer is kept', async () => {
-    const answer = [[612, 792]];
-    invokeMock.mockResolvedValueOnce(answer);
-    const sizes = await getPageSizes(1);
-    expect(sizes[0]).not.toBe(answer[0]);
   });
 });

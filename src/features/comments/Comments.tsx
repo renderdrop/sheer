@@ -36,6 +36,7 @@ import { tokenPx } from '../../components/tokens';
 import { useT, type PlainKey, type Translate } from '../../i18n';
 import { useAnnotations } from '../../stores/annotations';
 import { selectActiveId, useDocuments } from '../../stores/documents';
+import { pageNumberOf, positionOf } from '../../stores/pages';
 import { rgbToCss } from '../inspector/palette';
 import { useViewer } from '../viewer/useViewer';
 import {
@@ -144,7 +145,7 @@ const CommentRow = memo(function CommentRow({
         className="absolute inset-x-0 flex items-center px-1 text-sm font-semibold text-text-muted"
         style={{ top, height }}
       >
-        {t('search.page', { n: row.pageId + 1 })}
+        {t('search.page', { n: pageNumberOf(useDocuments.getState().activeId, row.pageId) })}
       </div>
     );
   }
@@ -358,7 +359,7 @@ export function CommentsTree({ docId, entry }: { docId: number; entry: Ready }) 
     (summary: AnnotationSummary) => {
       setFocusKey(`a${summary.id}`);
       // Focus stays where it is: in the tree. The page loads first, so the selection has its annotation.
-      useViewer.getState().goToPage(summary.pageId);
+      useViewer.getState().goToPage(positionOf(docId, summary.pageId) ?? summary.pageId);
       const store = useAnnotations.getState();
       void store
         .loadPage(docId, summary.pageId)

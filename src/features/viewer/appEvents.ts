@@ -1,8 +1,12 @@
 import { subscribeApp, type AppEvent } from '../../api/app';
+import type { DocumentInfo } from '../../api/documents';
+import { intakeOpened } from '../jobs/dropBatch';
 import { requestQuit } from '../save/quit';
 import { useUi } from '../../stores/ui';
 import { noteHoverEnded, noteOpenedFromApp } from './openTransition';
 import { adoptOpenOutcomes } from './useViewer';
+
+const showOpened = (document: DocumentInfo): void => adoptOpenOutcomes([{ type: 'opened', document }]);
 
 /** What the UI does with one push from the backend (see `AppEvent`, src/api/app.ts). */
 export function handleAppEvent(event: AppEvent): void {
@@ -13,8 +17,13 @@ export function handleAppEvent(event: AppEvent): void {
     void requestQuit();
   } else {
     // A document that opens right after the drag left the window was dropped: the preview card falls and becomes its page (MOTION 4.5).
-    if (event.type === 'opened') noteOpenedFromApp();
-    adoptOpenOutcomes([event]);
+    if (event.type === 'opened') {
+      noteOpenedFromApp();
+      // Two or more within a moment are a multi-file drop: the merge banner instead of several tabs (DESIGN 3.29).
+      intakeOpened(event.document, showOpened);
+    } else {
+      adoptOpenOutcomes([event]);
+    }
   }
 }
 

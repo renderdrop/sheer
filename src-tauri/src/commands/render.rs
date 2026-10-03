@@ -1,4 +1,4 @@
-//! The commands of the viewer's render pipeline (ADR-002): `render_page`, `set_viewport` and `get_page_sizes`.
+//! The commands of the viewer's render pipeline (ADR-002): `render_page` and `set_viewport` (the page list is `get_pages`, see `pages`).
 //!
 //! The UI lays a document out from the size of every page (`get_page_sizes`), mounts only the pages near the viewport, and for
 //! each asks `render_page` for the frame at the page's zoom bucket, the whole page or one 1024 px tile of it. Requests wait in
@@ -299,17 +299,6 @@ pub async fn set_viewport(
 ) -> Result<(), UiError> {
     let state = state.inner().clone();
     blocking(move || state.set_viewport(doc_id, &hint)).await
-}
-
-/// The size of every page in points (width, height), for the layout of the scrolling canvas. A lookup of what was read when the
-/// document was loaded, so it returns at once however often it is asked and never waits for the worker.
-#[tauri::command]
-pub async fn get_page_sizes(
-    state: State<'_, AppState>,
-    doc_id: DocumentId,
-) -> Result<Vec<[f32; 2]>, UiError> {
-    let state = state.inner().clone();
-    blocking(move || state.page_sizes(doc_id).map(|sizes| sizes.to_vec())).await
 }
 
 #[cfg(test)]

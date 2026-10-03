@@ -161,7 +161,7 @@ fn commands_work_on_what_was_read_and_opaque_annotations_stay_read_only() {
 
     let id = listed[0].id;
     let moved = state
-        .apply_annotation_command(
+        .apply_command(
             info.id,
             command(
                 serde_json::json!({"type": "moveAnnotations", "ids": [id], "dx": 10.0, "dy": 5.0}),
@@ -176,7 +176,7 @@ fn commands_work_on_what_was_read_and_opaque_annotations_stay_read_only() {
     assert!(!undone.history.dirty);
 
     let opaque = listed[7].id;
-    let refused = state.apply_annotation_command(
+    let refused = state.apply_command(
         info.id,
         command(serde_json::json!({"type": "deleteAnnotations", "ids": [opaque]})),
     );
@@ -267,7 +267,7 @@ fn the_original_of_a_changed_or_deleted_annotation_leaves_the_render_and_comes_b
 
     // Moved: the original no longer shows at its place (the overlay draws the moved one).
     state
-        .apply_annotation_command(
+        .apply_command(
             info.id,
             command(
                 serde_json::json!({"type": "moveAnnotations", "ids": [id], "dx": 100.0, "dy": 0.0}),
@@ -284,7 +284,7 @@ fn the_original_of_a_changed_or_deleted_annotation_leaves_the_render_and_comes_b
 
     // Deleted: gone from the render; undo brings it back.
     state
-        .apply_annotation_command(
+        .apply_command(
             info.id,
             command(serde_json::json!({"type": "deleteAnnotations", "ids": [id]})),
         )

@@ -5,6 +5,7 @@
 //! [`PageId`] values alone.
 
 pub mod intake;
+pub mod sources;
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -176,8 +177,20 @@ struct PasswordTries {
     last_wrong: Option<Instant>,
 }
 
+/// Which engine page each live page of a document is (ADR-036 §1). The model decides the order; this is the copy of it that the commands
+/// translate ids with, set by `AppState` after every change of the page list. A document without one (never changed) has the identity.
+#[derive(Debug, Clone, Default)]
+struct PageMap {
+    /// The pages in order: (id, engine index).
+    order: Vec<(u32, u32)>,
+    to_engine: HashMap<u32, u32>,
+    to_page: HashMap<u32, u32>,
+}
+
 #[derive(Debug)]
 struct Entry {
+    /// The page list once it was changed (`None`: page *i* is id *i* is engine page *i*).
+    pages: Option<PageMap>,
     path: PathBuf,
     /// What the UI is told about the file, see [`display_name`].
     display_name: String,
@@ -230,6 +243,7 @@ impl Inner {
         self.entries.insert(
             id,
             Entry {
+                pages: None,
                 path,
                 display_name,
                 kind,
@@ -360,6 +374,8 @@ impl Registry {
         match self.lock().entries.get_mut(&id) {
             Some(entry) => {
                 entry.page_count = Some(page_count);
+                // The pages of the file are the pages of the document (a save does this too): identity again.
+                entry.pages = None;
                 entry.locked = None;
                 Ok(())
             }
@@ -490,26 +506,103 @@ impl Registry {
         ids
     }
 
-    /// Page count of a loaded document. Unknown, not yet loaded and closing ids are `not_found`.
+    /// Number of pages a loaded document has now (deleted pages are not counted, inserted ones are). Unknown, not yet loaded and
+    /// closing ids are `not_found`.
     pub fn page_count(&self, id: DocumentId) -> Result<u32, AppError> {
         self.lock()
             .entries
             .get(&id)
             .filter(|entry| !entry.closing)
-            .and_then(|entry| entry.page_count)
+            .and_then(|entry| match &entry.pages {
+                Some(map) => u32::try_from(map.order.len()).ok(),
+                None => entry.page_count,
+            })
             .ok_or(AppError::not_found("document"))
     }
 
-    /// Position of `page` in the loaded document `id`. Identity mapping until M3 (see [`PageId`]); fails with
+    /// The engine's page index for `page` of the loaded document `id` (ADR-036 §1; the identity until the page list is changed). Fails with
     /// `invalid_argument` if the page does not exist and with `not_found` if the document is unknown.
     pub fn page_index(&self, id: DocumentId, page: PageId) -> Result<u32, AppError> {
-        limits::validate_page_index(page.0, self.page_count(id)?)
+        let inner = self.lock();
+        let entry = inner
+            .entries
+            .get(&id)
+            .filter(|entry| !entry.closing)
+            .ok_or(AppError::not_found("document"))?;
+        match &entry.pages {
+            Some(map) => map
+                .to_engine
+                .get(&page.0)
+                .copied()
+                .ok_or(AppError::invalid("page")),
+            None => limits::validate_page_index(
+                page.0,
+                entry.page_count.ok_or(AppError::not_found("document"))?,
+            ),
+        }
     }
 
-    /// The id of the page at position `index` of the loaded document `id`: the inverse of [`Registry::page_index`], identity until
-    /// M3. Fails with `invalid_argument` if the document has no such position and with `not_found` if the document is unknown.
+    /// The id of the page at engine index `index` of the loaded document `id`: the inverse of [`Registry::page_index`]. Fails with
+    /// `invalid_argument` if the engine page is not a page of the document (deleted or unknown) and with `not_found` if the document
+    /// is unknown.
     pub fn page_id(&self, id: DocumentId, index: u32) -> Result<PageId, AppError> {
-        limits::validate_page_index(index, self.page_count(id)?).map(PageId)
+        let inner = self.lock();
+        let entry = inner
+            .entries
+            .get(&id)
+            .filter(|entry| !entry.closing)
+            .ok_or(AppError::not_found("document"))?;
+        match &entry.pages {
+            Some(map) => map
+                .to_page
+                .get(&index)
+                .copied()
+                .map(PageId)
+                .ok_or(AppError::invalid("page")),
+            None => limits::validate_page_index(
+                index,
+                entry.page_count.ok_or(AppError::not_found("document"))?,
+            )
+            .map(PageId),
+        }
+    }
+
+    /// The pages of the loaded document `id` in their order, each as (id, engine index).
+    pub fn page_order(&self, id: DocumentId) -> Result<Vec<(PageId, u32)>, AppError> {
+        let inner = self.lock();
+        let entry = inner
+            .entries
+            .get(&id)
+            .filter(|entry| !entry.closing)
+            .ok_or(AppError::not_found("document"))?;
+        match &entry.pages {
+            Some(map) => Ok(map
+                .order
+                .iter()
+                .map(|&(page, engine)| (PageId(page), engine))
+                .collect()),
+            None => Ok(
+                (0..entry.page_count.ok_or(AppError::not_found("document"))?)
+                    .map(|index| (PageId(index), index))
+                    .collect(),
+            ),
+        }
+    }
+
+    /// Records the page list of `id` as the model has it now: each page's id and engine index, in order. A no-op for an unknown id.
+    pub fn set_pages(&self, id: DocumentId, pages: impl IntoIterator<Item = (PageId, u32)>) {
+        let order: Vec<(u32, u32)> = pages
+            .into_iter()
+            .map(|(page, engine)| (page.0, engine))
+            .collect();
+        let map = PageMap {
+            to_engine: order.iter().copied().collect(),
+            to_page: order.iter().map(|&(page, engine)| (engine, page)).collect(),
+            order,
+        };
+        if let Some(entry) = self.lock().entries.get_mut(&id) {
+            entry.pages = Some(map);
+        }
     }
 
     /// Path of a registered document that is not being closed (for reload and save in later milestones).
@@ -545,6 +638,14 @@ impl Registry {
         if let Some(entry) = self.lock().entries.get_mut(&id) {
             entry.backed_up = done;
         }
+    }
+
+    /// Whether any open document is the file at `path`.
+    pub fn is_open_path(&self, path: &Path) -> bool {
+        self.lock()
+            .entries
+            .values()
+            .any(|entry| !entry.closing && entry.path == path)
     }
 
     /// Whether another open document (not `id`) is the file at `path`.

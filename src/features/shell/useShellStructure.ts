@@ -13,11 +13,12 @@ export function readShellStructure(): ShellStructure {
     hasDocument: activeId !== null,
     windowWidth: window.innerWidth,
     panelWidth: ui.leftPanelWidth,
-    panelCollapsed: ui.leftPanelCollapsed,
+    // The page grid takes the room of the left panel (DESIGN 3.28); it returns when the mode ends.
+    panelCollapsed: ui.leftPanelCollapsed || ui.activeTool === 'pages',
     inspector: ui.inspector,
-    // A tool other than Select has options to show, and so has a selection.
+    // A tool other than Select has options to show, and so has a selection; the Pages tool has none (the grid is its own view).
     inspectorContent:
-      ui.activeTool !== 'select' ||
+      (ui.activeTool !== 'select' && ui.activeTool !== 'pages') ||
       (activeId !== null && (useAnnotations.getState().selectedIds[activeId]?.length ?? 0) > 0),
   });
 }

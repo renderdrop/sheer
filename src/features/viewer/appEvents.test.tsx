@@ -10,6 +10,7 @@ import { useUi } from '../../stores/ui';
 import { useView } from '../../stores/view';
 import { setup } from '../../test/render';
 import { Shell } from '../shell/Shell';
+import { setDropWindow } from '../jobs/dropBatch';
 import { handleAppEvent, watchAppEvents } from './appEvents';
 import { useViewer } from './useViewer';
 
@@ -42,6 +43,8 @@ function reset() {
 }
 
 beforeEach(() => {
+  // Every opened document shows at once; the multi-file drop has its own tests (jobs/dropBatch.test.ts).
+  setDropWindow(0);
   reset();
   documentsApi.closeDocument.mockReset().mockResolvedValue(undefined);
   URL.createObjectURL = vi.fn(() => 'blob:page');
@@ -173,3 +176,8 @@ describe('in the window', () => {
     expect(screen.getByRole('contentinfo', { name: 'Status' }).textContent).toContain('Report.pdf');
   });
 });
+
+vi.mock('../../api/pages', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../api/pages')>()),
+  getPages: vi.fn().mockResolvedValue([]),
+}));

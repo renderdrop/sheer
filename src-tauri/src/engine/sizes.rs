@@ -18,6 +18,8 @@ pub type PageSizes = Arc<[[f32; 2]]>;
 #[derive(Debug, Clone)]
 struct Loaded {
     sizes: PageSizes,
+    /// The `/Rotate` of each page when the document was loaded; empty where it was not read (a test double).
+    rotations: Arc<[u16]>,
     flags: DocFlags,
 }
 
@@ -47,7 +49,28 @@ impl SizeCache {
 
     /// Records the sizes and flags of a document that was just loaded and is wanted.
     pub(super) fn insert(&self, id: DocumentId, sizes: PageSizes, flags: DocFlags) {
-        self.lock().insert(id, Loaded { sizes, flags });
+        self.lock().insert(
+            id,
+            Loaded {
+                sizes,
+                rotations: Arc::from(Vec::new()),
+                flags,
+            },
+        );
+    }
+
+    /// Records the rotations of a document that has sizes here.
+    pub(super) fn set_rotations(&self, id: DocumentId, rotations: Arc<[u16]>) {
+        if let Some(loaded) = self.lock().get_mut(&id) {
+            loaded.rotations = rotations;
+        }
+    }
+
+    /// The rotations of a loaded document; `None` for one the engine does not hold. Empty where none were read.
+    pub(super) fn rotations(&self, id: DocumentId) -> Option<Arc<[u16]>> {
+        self.lock()
+            .get(&id)
+            .map(|loaded| Arc::clone(&loaded.rotations))
     }
 
     /// Forgets a document that was released.

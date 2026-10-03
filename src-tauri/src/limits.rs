@@ -125,6 +125,16 @@ pub const MAX_FONT_SIZE_PT: f32 = 400.0;
 pub const MAX_BATCH_COMMANDS: usize = 5_000;
 pub const MAX_BATCH_DEPTH: usize = 2;
 pub const MAX_COMMAND_IDS: usize = 5_000;
+/// Pages one insert brings (ADR-036 §7).
+pub const MAX_INSERT_PAGES: usize = 5_000;
+/// Pages the engine's copy of a document may hold, deleted and moved ones included (ADR-036 §3).
+pub const MAX_ENGINE_PAGES: u32 = 60_000;
+/// Import sources: each, all together, and how many (ADR-036 §4).
+pub const MAX_SOURCE_BYTES: u64 = 512 * 1024 * 1024;
+pub const MAX_SOURCES_BYTES: u64 = 1024 * 1024 * 1024;
+pub const MAX_SOURCES: usize = 32;
+/// Sides of a page the user may ask for, in points.
+pub const MIN_NEW_PAGE_SIDE_PT: f32 = 1.0;
 pub const MAX_LABEL_CHARS: usize = 64;
 /// Entries of one document's undo stack (the redo stack never grows past it either).
 pub const MAX_HISTORY_ENTRIES: usize = 500;
@@ -232,6 +242,45 @@ pub const CONTROL_TIMEOUT: Duration = Duration::from_secs(5);
 pub const ENGINE_QUEUE_DEPTH: usize = 64;
 /// PDFium recurses on nested structures; give the worker more stack than the 2 MiB default (ADR-002 §1).
 pub const ENGINE_STACK_BYTES: usize = 16 * 1024 * 1024;
+
+// --- New-file jobs (ADR-036 §6: extract, split, merge, compress) -------------------------------------------------
+
+/// Jobs that run at once (each holds a thread with a big stack); another is `limit_exceeded` (`jobs`).
+pub const MAX_JOBS: usize = 2;
+/// A job gives up after this long (checked between objects, pages and images).
+pub const JOB_TIMEOUT: Duration = Duration::from_secs(10 * 60);
+/// Stack of a job's thread: lopdf recurses into the file's structures.
+pub const JOB_STACK_BYTES: usize = 64 * 1024 * 1024;
+/// Least time between two `progress` messages of a job (the last one of a phase always goes out).
+pub const JOB_PROGRESS_INTERVAL: Duration = Duration::from_millis(100);
+/// Outputs of one split, inputs of one merge.
+pub const MAX_SPLIT_OUTPUTS: usize = 1_000;
+pub const MAX_MERGE_INPUTS: usize = 64;
+/// Largest `n` of "every n pages".
+pub const MAX_SPLIT_EVERY_N: u32 = 10_000;
+/// Input bytes of one merge in all.
+pub const MAX_MERGE_BYTES: u64 = 2 * 1024 * 1024 * 1024;
+/// Objects one deep copy of pages may bring over (a hostile file can make the closure of a page the whole file).
+pub const MAX_COPY_OBJECTS: usize = 1_000_000;
+/// Nesting of arrays and dictionaries that a copy follows; deeper is cut (`null`).
+pub const MAX_COPY_NESTING: usize = 64;
+/// Kids of a flat page tree, and of a node in a two-level tree.
+pub const FLAT_KIDS_MAX: usize = 512;
+pub const TREE_KIDS_PER_NODE: usize = 256;
+/// Longest chain of `/Parent` links followed when inherited page attributes are collected.
+pub const MAX_PARENT_CHAIN: usize = 64;
+/// Output of one decoded Flate stream (bomb guard), and the limits of a decoded JPEG (`image::Limits`).
+pub const MAX_FLATE_OUTPUT_BYTES: usize = 256 * 1024 * 1024;
+pub const MAX_IMAGE_SIDE_PX: u32 = 10_000;
+pub const MAX_IMAGE_PIXELS: u64 = 50_000_000;
+pub const MAX_IMAGE_ALLOC_BYTES: u64 = 256 * 1024 * 1024;
+/// Images the estimate recodes, and the time it may take.
+pub const ESTIMATE_SAMPLE_IMAGES: usize = 6;
+pub const ESTIMATE_BUDGET: Duration = Duration::from_millis(1_500);
+/// Longest name part (characters) a split takes from the document's name.
+pub const MAX_SPLIT_STEM_CHARS: usize = 100;
+/// Tries at a free name ("name (2).pdf" ...) before a split gives up.
+pub const MAX_NAME_ATTEMPTS: u32 = 1_000;
 
 // --- Validation -------------------------------------------------------------------------------------------------
 

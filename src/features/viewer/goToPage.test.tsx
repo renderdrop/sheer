@@ -40,3 +40,8 @@ describe('go to page', () => {
     expect(page()).toBe(1);
   });
 });
+
+vi.mock('../../api/pages', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../api/pages')>()),
+  getPages: vi.fn().mockResolvedValue([]),
+}));

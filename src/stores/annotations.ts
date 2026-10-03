@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 
 import {
-  applyAnnotationCommand,
+  applyCommand,
   listAnnotations,
   redo as redoStep,
   undo as undoStep,
@@ -10,6 +10,7 @@ import {
   type DocCommand,
   type HistoryState,
 } from '../api/annotations';
+import { usePages } from './pages';
 
 /**
  * The UI's replica of each open document's annotations (ARCHITECTURE section 8, `annotations`). The backend owns the model and the
@@ -139,7 +140,7 @@ export const useAnnotations = create<AnnotationsState>()((set, get) => ({
   },
 
   apply: async (docId, command) => {
-    const changes = await applyAnnotationCommand(docId, command);
+    const changes = await applyCommand(docId, command);
     get().applyChanges(docId, changes);
     return changes;
   },
@@ -156,7 +157,9 @@ export const useAnnotations = create<AnnotationsState>()((set, get) => ({
     return changes;
   },
 
-  applyChanges: (docId, changes) =>
+  applyChanges: (docId, changes) => {
+    if (changes.pages !== null && changes.rev >= (get().byDoc[docId]?.rev ?? 0))
+      usePages.getState().setSlots(docId, changes.pages);
     set((state) => {
       const doc = state.byDoc[docId] ?? EMPTY_DOC;
       // Older than what the replica has (answers crossed): nothing in it is news.
@@ -208,7 +211,8 @@ export const useAnnotations = create<AnnotationsState>()((set, get) => ({
           ? { selectedIds: { ...state.selectedIds, [docId]: kept } }
           : {}),
       };
-    }),
+    });
+  },
 
   remove: (docId) =>
     set((state) => {

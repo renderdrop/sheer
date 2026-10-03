@@ -4,7 +4,7 @@
 //! |---|---|---|
 //! | `list_annotations` | `docId: number`, `pageId: number` | `Annotation[]` of the page, by id. The first call for a page reads its annotations from the file (an `Interactive` engine job) |
 //! | `list_document_annotations` | `docId: number` | `AnnotationSummary[]` of every page (at most 20 000) by page then id, for the comments panel. Pages not read yet are read at `Background` priority |
-//! | `apply_annotation_command` | `docId: number`, `command: DocCommand` | the `ChangeSet` `{ rev, upserted, removed, pages, history }`; the whole command happened or nothing did |
+//! | `apply_command` | `docId: number`, `command: DocCommand` | moved to `pages`: the `ChangeSet` of an annotation or page command; the whole command happened or nothing did |
 //! | `undo`, `redo` | `docId: number` | the `ChangeSet` of the step taken back or done again; empty (same `rev`) if there is none |
 //!
 //! There is no event channel: every change of the model is the answer to a command of the UI, which applies the delta to its replica
@@ -26,9 +26,9 @@ use crate::documents::{DocumentId, PageId};
 use crate::error::{AppError, UiError};
 use crate::limits;
 use crate::model::annotation::{Annotation, AnnotationBody, Rgb};
-use crate::model::command::DocCommand;
 use crate::model::doc_state::{ChangeSet, DocState, Stamp};
 use crate::model::ids::AnnotId;
+use crate::model::page::unrotated;
 
 /// Longest excerpt of an annotation's contents in a summary, in characters.
 pub const SUMMARY_EXCERPT_CHARS: usize = 240;
@@ -129,14 +129,21 @@ impl AnnotationStore {
         page_count: u32,
         f: impl FnOnce(&mut DocState) -> Result<T, AppError>,
     ) -> Result<T, AppError> {
+        self.with_init(id, || DocState::new(page_count), f)
+    }
+
+    /// [`AnnotationStore::with`] where a document that has no model yet gets the one `init` makes (the sizes and rotations of its pages).
+    pub(super) fn with_init<T>(
+        &self,
+        id: DocumentId,
+        init: impl FnOnce() -> DocState,
+        f: impl FnOnce(&mut DocState) -> Result<T, AppError>,
+    ) -> Result<T, AppError> {
         let mut models = self.lock();
         if models.closed.contains(&id) {
             return Err(AppError::not_found("document"));
         }
-        f(models
-            .docs
-            .entry(id)
-            .or_insert_with(|| DocState::new(page_count)))
+        f(models.docs.entry(id).or_insert_with(init))
     }
 
     /// Forgets the model of a document that is closed, and refuses it from now on.
@@ -200,7 +207,49 @@ pub fn iso8601_utc(secs: u64) -> String {
     )
 }
 
+/// How to take a step back when the engine could not follow it (see `AppState::change_and_sync`).
+#[derive(Debug, Clone, Copy)]
+pub(super) enum Revert {
+    /// The step was a new command or a redo: undo it.
+    Undo,
+    /// The step was an undo: redo it.
+    Redo,
+}
+
 impl AppState {
+    /// Runs `f` on the model of document `id`, which is made from the pages the engine read if it has none yet.
+    pub(super) fn model<T>(
+        &self,
+        id: DocumentId,
+        f: impl FnOnce(&mut DocState) -> Result<T, AppError>,
+    ) -> Result<T, AppError> {
+        let count = self.registry.page_count(id)?;
+        self.annotations
+            .with_init(id, || self.initial_model(id, count), f)
+    }
+
+    /// The model of a document that was just opened: the size and rotation the engine read for each of its `count` pages.
+    fn initial_model(&self, id: DocumentId, count: u32) -> DocState {
+        let sizes = self.engine.page_sizes(id).ok();
+        let rotations = self.engine.page_rotations(id).ok();
+        let pages = (0..usize::try_from(count).unwrap_or(0))
+            .map(|index| {
+                let rotation = rotations
+                    .as_ref()
+                    .and_then(|rotations| rotations.get(index))
+                    .copied()
+                    .unwrap_or(0);
+                let drawn = sizes
+                    .as_ref()
+                    .and_then(|sizes| sizes.get(index))
+                    .copied()
+                    .unwrap_or(limits::DEFAULT_PAGE_SIZE_PT);
+                (unrotated(drawn, rotation), rotation)
+            })
+            .collect();
+        DocState::from_file(pages)
+    }
+
     /// The annotations of a page, by id. The first call for a page reads them from the file; later calls answer from the model, which
     /// by then is the truth (it has the session's changes). `invalid_argument` (`page`) for a page the document does not have,
     /// `not_found` for a document that is not open.
@@ -210,21 +259,16 @@ impl AppState {
         page: PageId,
     ) -> Result<Vec<Annotation>, AppError> {
         let page_index = self.registry.page_index(id, page)?;
-        let count = self.registry.page_count(id)?;
-        if !self
-            .annotations
-            .with(id, count, |state| Ok(state.is_imported(page)))?
-        {
+        if !self.model(id, |state| Ok(state.is_imported(page)))? {
             // Not under the lock: a read of a page takes the worker's time, and the model must stay available meanwhile. Two
             // requests at once read twice; the model keeps the first answer (`DocState::import_page`).
             let items = self.engine.import_annotations(id, page_index)?;
-            self.annotations.with(id, count, |state| {
+            self.model(id, |state| {
                 state.import_page(page, &items);
                 Ok(())
             })?;
         }
-        self.annotations
-            .with(id, count, |state| Ok(state.list(page)))
+        self.model(id, |state| Ok(state.list(page)))
     }
 
     /// The annotations of every page as summaries, by page and id (at most `MAX_ANNOTATIONS_PER_DOC`). Pages not read yet are read
@@ -234,45 +278,70 @@ impl AppState {
         &self,
         id: DocumentId,
     ) -> Result<Vec<AnnotationSummary>, AppError> {
-        let count = self.registry.page_count(id)?;
         let mut summaries = Vec::new();
-        for index in 0..count {
-            let page = self.registry.page_id(id, index)?;
-            if !self
-                .annotations
-                .with(id, count, |state| Ok(state.is_imported(page)))?
-            {
+        for (page, index) in self.registry.page_order(id)? {
+            if !self.model(id, |state| Ok(state.is_imported(page)))? {
                 let items = self.engine.import_annotations_background(id, index)?;
-                self.annotations.with(id, count, |state| {
+                self.model(id, |state| {
                     state.import_page(page, &items);
                     Ok(())
                 })?;
             }
-            let listed = self
-                .annotations
-                .with(id, count, |state| Ok(state.list(page)))?;
+            let listed = self.model(id, |state| Ok(state.list(page)))?;
             let room = limits::MAX_ANNOTATIONS_PER_DOC.saturating_sub(summaries.len());
             summaries.extend(listed.iter().take(room).map(AnnotationSummary::of));
         }
         Ok(summaries)
     }
 
-    /// Runs `step` on the model of `id`, then makes PDFium's render match: the originals the model changed or deleted are hidden in the
-    /// engine's copy, the ones that are `Clean` again (undo) shown. The frontend re-renders the page on the change set (`pageRev`).
-    /// The model has changed whatever the engine answers, so a failure there is not the command's: the page then keeps showing the
-    /// original under the overlay until the next change.
-    fn change_and_sync(
+    /// Runs `step` on the model of `id`, then makes PDFium's copy match: the originals the model changed or deleted are hidden in the
+    /// engine's copy, the ones that are `Clean` again (undo) shown, and the pages that were turned get their new rotation. The
+    /// frontend re-renders the page on the change set (`pageRev`). A failure to hide or show is not the command's (the page then keeps
+    /// showing the original under the overlay until the next change); a failure to turn a page is: the step is taken back (`revert`)
+    /// and the error is the answer.
+    pub(super) fn change_and_sync(
         &self,
         id: DocumentId,
+        revert: Revert,
         step: impl FnOnce(&mut DocState, &Stamp) -> Result<ChangeSet, AppError>,
     ) -> Result<ChangeSet, AppError> {
-        let count = self.registry.page_count(id)?;
         let stamp = self.annotations.stamp();
-        let (changes, before, after) = self.annotations.with(id, count, |state| {
+        let (changes, before, after) = self.model(id, |state| {
             let before = state.hidden_origins();
             let changes = step(state, &stamp)?;
+            if changes.pages.is_some() {
+                self.registry.set_pages(
+                    id,
+                    state
+                        .pages()
+                        .iter()
+                        .map(|slot| (slot.id, slot.engine_index)),
+                );
+            }
             Ok((changes, before, state.hidden_origins()))
         })?;
+        if !changes.engine_rotations.is_empty() {
+            if let Err(error) = self
+                .engine
+                .set_page_rotations(id, changes.engine_rotations.clone())
+            {
+                self.model(id, |state| {
+                    let _ = match revert {
+                        Revert::Undo => state.undo(&stamp),
+                        Revert::Redo => state.redo(&stamp),
+                    };
+                    self.registry.set_pages(
+                        id,
+                        state
+                            .pages()
+                            .iter()
+                            .map(|slot| (slot.id, slot.engine_index)),
+                    );
+                    Ok(())
+                })?;
+                return Err(error);
+            }
+        }
         let hide: Vec<(u32, u32)> = after.difference(&before).copied().collect();
         let show: Vec<(u32, u32)> = before.difference(&after).copied().collect();
         if !hide.is_empty() || !show.is_empty() {
@@ -281,24 +350,14 @@ impl AppState {
         Ok(changes)
     }
 
-    /// Runs a command on the model of a document as one undo step (ADR-003 §6). `not_found` for an unknown document, annotation or reply
-    /// target, `invalid_argument` for a page, a value or a field that does not fit, `limit_exceeded` for a count that is too large.
-    pub fn apply_annotation_command(
-        &self,
-        id: DocumentId,
-        command: DocCommand,
-    ) -> Result<ChangeSet, AppError> {
-        self.change_and_sync(id, |state, stamp| state.execute(command, stamp))
-    }
-
     /// Takes back the last step; an empty change set if there is none.
     pub fn undo(&self, id: DocumentId) -> Result<ChangeSet, AppError> {
-        self.change_and_sync(id, DocState::undo)
+        self.change_and_sync(id, Revert::Redo, DocState::undo)
     }
 
     /// Does the last undone step again; an empty change set if there is none.
     pub fn redo(&self, id: DocumentId) -> Result<ChangeSet, AppError> {
-        self.change_and_sync(id, DocState::redo)
+        self.change_and_sync(id, Revert::Undo, DocState::redo)
     }
 }
 
@@ -321,17 +380,6 @@ pub async fn list_document_annotations(
 ) -> Result<Vec<AnnotationSummary>, UiError> {
     let state = state.inner().clone();
     blocking(move || state.list_document_annotations(doc_id)).await
-}
-
-/// Runs a command on the annotations of a document as one undo step and answers with what changed.
-#[tauri::command]
-pub async fn apply_annotation_command(
-    state: State<'_, AppState>,
-    doc_id: DocumentId,
-    command: DocCommand,
-) -> Result<ChangeSet, UiError> {
-    let state = state.inner().clone();
-    blocking(move || state.apply_annotation_command(doc_id, command)).await
 }
 
 /// Takes back the last step of a document's history.
@@ -359,6 +407,7 @@ mod tests {
     use crate::engine::Job;
     use crate::error::ErrorCode;
     use crate::model::annotation::{AnnotationBody, Imported, PdfOrigin, Rgb, Sync};
+    use crate::model::command::DocCommand;
     use crate::model::geometry::Rect;
 
     fn imported(subtype: &str) -> Imported {
@@ -487,10 +536,7 @@ mod tests {
             ErrorCode::NotFound
         );
         assert_eq!(
-            state
-                .apply_annotation_command(unknown, create(0))
-                .unwrap_err()
-                .code(),
+            state.apply_command(unknown, create(0)).unwrap_err().code(),
             ErrorCode::NotFound
         );
         assert_eq!(state.undo(unknown).unwrap_err().code(), ErrorCode::NotFound);
@@ -529,7 +575,7 @@ mod tests {
     #[test]
     fn commands_undo_and_redo_go_through_the_model_and_a_list_shows_the_result() {
         let (state, id, _) = state_with_import(2, vec![]);
-        let created = state.apply_annotation_command(id, create(1)).unwrap();
+        let created = state.apply_command(id, create(1)).unwrap();
         assert_eq!(created.rev, 1);
         let note = created.upserted[0].clone();
         assert_eq!(note.page_id, PageId::new(1));
@@ -562,10 +608,7 @@ mod tests {
     fn a_command_for_a_page_the_document_does_not_have_changes_nothing() {
         let (state, id, _) = state_with_import(2, vec![]);
         assert_eq!(
-            state
-                .apply_annotation_command(id, create(2))
-                .unwrap_err()
-                .code(),
+            state.apply_command(id, create(2)).unwrap_err().code(),
             ErrorCode::InvalidArgument
         );
         assert_eq!(state.undo(id).unwrap().rev, 0);
@@ -581,7 +624,7 @@ mod tests {
         let (state, id, _) = state_with_import(1, vec![deletable, imported("Ink")]);
         let listed = state.list_annotations(id, PageId::new(0)).unwrap();
         let removed = state
-            .apply_annotation_command(
+            .apply_command(
                 id,
                 command(json!({"type": "deleteAnnotations", "ids": [listed[0].id]})),
             )
@@ -589,7 +632,7 @@ mod tests {
         assert_eq!(removed.removed, [listed[0].id]);
         assert!(removed.history.dirty);
         // The opaque one cannot be touched.
-        let refused = state.apply_annotation_command(
+        let refused = state.apply_command(
             id,
             command(json!({"type": "deleteAnnotations", "ids": [listed[1].id]})),
         );
@@ -599,7 +642,7 @@ mod tests {
     #[test]
     fn closing_a_document_drops_its_model() {
         let (state, id, _) = state_with_import(1, vec![]);
-        state.apply_annotation_command(id, create(0)).unwrap();
+        state.apply_command(id, create(0)).unwrap();
         assert_eq!(state.annotations.len(), 1);
         state.close_document(id).unwrap();
         assert!(state.annotations.is_empty());
@@ -617,7 +660,7 @@ mod tests {
     #[test]
     fn the_wire_shape_of_the_commands_and_the_answer_is_what_the_frontend_parses() {
         let (state, id, _) = state_with_import(1, vec![]);
-        let changes = state.apply_annotation_command(id, create(0)).unwrap();
+        let changes = state.apply_command(id, create(0)).unwrap();
         let value = serde_json::to_value(&changes).unwrap();
         assert_eq!(value["rev"], 1);
         assert_eq!(value["pages"], serde_json::Value::Null);

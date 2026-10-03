@@ -4,6 +4,7 @@ import { announce } from '../../components';
 import { translators } from '../../i18n';
 import { useLocaleStore } from '../../i18n/store';
 import { useDocuments } from '../../stores/documents';
+import { pageIdAt, positionOf } from '../../stores/pages';
 import { useUi } from '../../stores/ui';
 import { useView } from '../../stores/view';
 import { peekLayer } from './cache';
@@ -19,7 +20,10 @@ export function copySelection(event: Pick<ClipboardEvent, 'clipboardData' | 'pre
   if (selection === null || !hasTextSelection(selection)) return false;
   const docId = useDocuments.getState().activeId;
   if (docId === null || event.clipboardData === null) return false;
-  const text = selectionText(selection, (page) => peekLayer(docId, page)?.text);
+  const text = selectionText(selection, (page) => peekLayer(docId, page)?.text, {
+    position: (id) => positionOf(docId, id),
+    id: (position) => pageIdAt(docId, position),
+  });
   if (text === null) return false;
   // A page whose layer has left the cache: what the browser would copy is the next best.
   event.clipboardData.setData('text/plain', text === '' ? selection.toString() : text);
@@ -48,7 +52,7 @@ export function useTextKeys(region: RefObject<HTMLElement | null>, docId: number
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.defaultPrevented) return;
       if ((event.ctrlKey || event.metaKey) && !event.altKey && !event.shiftKey && event.key.toLowerCase() === 'a') {
-        const page = useView.getState().byDoc[docId]?.pageIndex ?? 0;
+        const page = pageIdAt(docId, useView.getState().byDoc[docId]?.pageIndex ?? 0) ?? 0;
         if (selectPageText(element, page, window.getSelection())) event.preventDefault();
         return;
       }

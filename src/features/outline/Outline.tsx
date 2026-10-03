@@ -253,7 +253,7 @@ export function OutlineTree({ docId, entry }: { docId: number; entry: Ready }) {
       setFocusNode(node);
       if (target !== null) {
         state.select(docId, node);
-        // A page id is its position until pages can be reordered (M3). Focus stays where it is: in the tree.
+        // Targets are positions here (`retarget`: the page ids of the file mapped to where the pages sit now). Focus stays where it is: in the tree.
         useViewer.getState().goToPoint(target.pageId, target.y);
       } else if ((index.childCount[node] ?? 0) > 0) {
         state.toggle(docId, node);

@@ -1,6 +1,6 @@
 import { call } from './call';
-import { toAppError } from './errors';
 import { parseFrame, type RenderFrame } from './frame';
+import { toAppError } from './errors';
 
 /**
  * The render pipeline's commands (ARCHITECTURE section 5, ADR-002): one frame of a page, the pages the canvas shows, and the size
@@ -61,33 +61,5 @@ export function setViewport(docId: number, hint: ViewportHint): Promise<void> {
 /** The size of a page in PDF points. */
 export type PageSize = readonly [width: number, height: number];
 
-/** The most pages the backend opens (`MAX_PAGES`); a longer answer is not one of its. */
-export const MAX_PAGES = 50_000;
-
-/** The largest page side the backend reports, in points (`MAX_PAGE_SIDE_PT`). */
-export const MAX_PAGE_SIDE_PT = 14_400;
-
-function isPageSize(value: unknown): value is PageSize {
-  return (
-    Array.isArray(value) &&
-    value.length === 2 &&
-    value.every(
-      (side: unknown) => typeof side === 'number' && Number.isFinite(side) && side > 0 && side <= MAX_PAGE_SIDE_PT,
-    )
-  );
-}
-
-/**
- * The size in points of every page of an open document, in page order. An answer that is not a list of sizes is an internal
- * error, like a malformed frame: the layout needs a usable size for every page.
- */
-export async function getPageSizes(docId: number): Promise<PageSize[]> {
-  const answer = await call<unknown>('get_page_sizes', { docId });
-  if (!Array.isArray(answer) || answer.length > MAX_PAGES) throw toAppError(null);
-  const sizes: PageSize[] = [];
-  for (const item of answer as unknown[]) {
-    if (!isPageSize(item)) throw toAppError(null);
-    sizes.push([item[0], item[1]]);
-  }
-  return sizes;
-}
+/** The most pages the backend opens and the largest page side it reports; defined with the page list (`api/pages`). */
+export { MAX_PAGES, MAX_PAGE_SIDE_PT } from './pages';

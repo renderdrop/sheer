@@ -26,13 +26,16 @@ use tauri_plugin_dialog::DialogExt;
 use super::annotations::iso8601_utc;
 use super::{blocking, AppState};
 use crate::documents::intake::{self, Admitted};
+use crate::documents::sources::SourceBytes;
 use crate::documents::{DocKind, DocumentId, DocumentInfo, Fingerprint};
 use crate::error::{AppError, ErrorCode, UiError};
 use crate::limits;
 use crate::model::annotation::PdfOrigin;
 use crate::model::doc_state::{ChangeSet, DocState};
 use crate::model::ids::AnnotId;
-use crate::pdfwrite::{self, Built, Change, Plan};
+use crate::model::page::SourceId;
+use crate::model::page_ops::PagePlan;
+use crate::pdfwrite::{self, pagetree, Built, Change, Plan};
 use crate::storage::{atomic, backup};
 
 /// What the user agreed to when a save asked (ARCHITECTURE §5). Only `file_changed` can be asked for today; `break_signature` is for the full
@@ -44,10 +47,12 @@ pub struct SaveAck {
     pub file_changed: bool,
 }
 
-/// Options of Save As. None yet: the "clean copy" and "compress" outputs are full rewrites of M3.
+/// Options of Save As: `clean_copy` writes the whole file again without the pages that were deleted (ADR-036 §5).
 #[derive(Debug, Clone, Copy, Default, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct SaveAsOptions {}
+#[serde(rename_all = "camelCase", default, deny_unknown_fields)]
+pub struct SaveAsOptions {
+    pub clean_copy: bool,
+}
 
 /// How the file was written.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -128,24 +133,36 @@ pub struct SaveResult {
 }
 
 /// What a save has to write, from the model. Annotations on pages the registry does not know are left out.
-fn plan_of(
+pub(super) fn plan_of(
     state: &DocState,
     page_index: impl Fn(&crate::model::annotation::Annotation) -> Option<u32>,
+) -> Plan {
+    plan_with_origins(state, page_index, |origin| Some(origin.clone()))
+}
+
+/// [`plan_of`] for a file whose pages are not where the annotations were read (a save that moves, drops or adds pages): `page_index`
+/// is the page's position in the file being written, and `origin_of` says where the annotation that is in the file now will be (`None`:
+/// its page is not in the file any more, so there is nothing to write or delete).
+pub(super) fn plan_with_origins(
+    state: &DocState,
+    page_index: impl Fn(&crate::model::annotation::Annotation) -> Option<u32>,
+    origin_of: impl Fn(&PdfOrigin) -> Option<PdfOrigin>,
 ) -> Plan {
     use crate::model::annotation::Sync;
     let mut plan = Plan::default();
     for entry in state.entries() {
         let annotation = &entry.annotation;
+        let origin = entry.persisted.as_ref().and_then(&origin_of);
         if entry.tombstone {
-            if let Some(origin) = &entry.persisted {
+            if let Some(origin) = origin {
                 plan.changes.push(Change::Delete {
                     id: annotation.id,
-                    origin: origin.clone(),
+                    origin,
                 });
             }
             continue;
         }
-        if let Some(origin) = &entry.persisted {
+        if let Some(origin) = &origin {
             plan.known.push((annotation.id, origin.clone()));
         }
         let to_write = !annotation.is_opaque() && annotation.sync != Sync::Clean;
@@ -153,22 +170,54 @@ fn plan_of(
             plan.changes.push(Change::Write {
                 page_index,
                 annotation: Box::new(annotation.clone()),
-                origin: entry.persisted.clone(),
+                origin,
             });
         }
     }
     plan
 }
 
-/// Builds the update on a thread of its own (a big stack: lopdf recurses into the file's structures), contained and with a deadline
-/// (ADR-004 §1). A panic is `internal`; running past the deadline is `engine_timeout`, and then the thread's result is discarded.
-fn build(owner: Owner, id: DocumentId, original: Vec<u8>, plan: Plan) -> Result<Built, AppError> {
+/// What `build_pages` writes: the annotations, the pages, the bytes of the import sources the pages come from, and whether the result is
+/// a full rewrite ("clean copy").
+struct BuildPlan {
+    plan: Plan,
+    pages: PagePlan,
+    sources: std::collections::HashMap<SourceId, Arc<SourceBytes>>,
+    clean_copy: bool,
+}
+
+/// [`build`] for a document whose pages may have changed: the page tree is written first (`pdfwrite::pagetree`), the annotations on the
+/// result (their positions are those of the new file), and a clean copy is then made of what is reachable.
+fn build_pages(
+    owner: Owner,
+    id: DocumentId,
+    original: Vec<u8>,
+    work: BuildPlan,
+) -> Result<Built, AppError> {
     let slot = BuildSlot::take(owner, id)?;
     build_with(slot, limits::SAVE_TIMEOUT, move || {
-        let built = pdfwrite::append_annotations(original, &plan)?;
-        if !plan.changes.is_empty() {
-            pdfwrite::validate(&built.bytes, built.pages)?;
+        let BuildPlan {
+            plan,
+            pages,
+            sources,
+            clean_copy,
+        } = work;
+        let expected = u32::try_from(pages.pages.len())
+            .map_err(|_| AppError::logged(ErrorCode::SaveFailed, "page count"))?;
+        let (bytes, deleted) = if pages.changed() {
+            let rewritten = pagetree::rewrite_pages(original, &pages, &sources)?;
+            (rewritten.bytes, rewritten.deleted_pages)
+        } else {
+            (original, Vec::new())
+        };
+        let mut built = pdfwrite::append_annotations(bytes, &plan)?;
+        if clean_copy {
+            built.bytes = pagetree::compact(built.bytes, &deleted)?;
         }
+        if !plan.changes.is_empty() || pages.changed() || clean_copy {
+            pdfwrite::validate(&built.bytes, expected)?;
+        }
+        built.pages = expected;
         Ok(built)
     })
 }
@@ -220,7 +269,7 @@ fn compact_stamp() -> String {
 
 /// Whether a file is not what it was when `opened` was taken. A fingerprint that is missing on either side counts as changed: what cannot be
 /// compared is not known to be the same (fail closed).
-fn fingerprint_changed(opened: Option<Fingerprint>, now: Option<Fingerprint>) -> bool {
+pub(super) fn fingerprint_changed(opened: Option<Fingerprint>, now: Option<Fingerprint>) -> bool {
     match (opened, now) {
         (Some(opened), Some(now)) => opened != now,
         _ => true,
@@ -228,7 +277,7 @@ fn fingerprint_changed(opened: Option<Fingerprint>, now: Option<Fingerprint>) ->
 }
 
 /// Reads the whole file behind an admitted handle.
-fn read_all(admitted: Admitted) -> Result<(Vec<u8>, Option<Fingerprint>), AppError> {
+pub(super) fn read_all(admitted: Admitted) -> Result<(Vec<u8>, Option<Fingerprint>), AppError> {
     let Admitted { mut file, .. } = admitted;
     let fingerprint = Fingerprint::of(&file);
     let mut bytes = Vec::with_capacity(
@@ -252,7 +301,7 @@ impl AppState {
         {
             return Err(AppError::new(ErrorCode::ReadOnly));
         }
-        self.save(id, None, ack)
+        self.save(id, None, ack, false)
     }
 
     /// Saves document `id` into `target`, a path the user chose in the dialog (Save As). The path is judged by
@@ -264,8 +313,19 @@ impl AppState {
         target: &Path,
         ack: SaveAck,
     ) -> Result<SaveResult, AppError> {
+        self.save_as_with(id, target, ack, SaveAsOptions::default())
+    }
+
+    /// [`AppState::save_as`] with the options of the dialog: `clean_copy` writes the whole file again, without the pages that were deleted.
+    pub fn save_as_with(
+        &self,
+        id: DocumentId,
+        target: &Path,
+        ack: SaveAck,
+        options: SaveAsOptions,
+    ) -> Result<SaveResult, AppError> {
         let target = intake::admit_target(target)?;
-        self.save(id, Some(target), ack)
+        self.save(id, Some(target), ack, options.clean_copy)
     }
 
     fn save(
@@ -273,13 +333,13 @@ impl AppState {
         id: DocumentId,
         target: Option<PathBuf>,
         ack: SaveAck,
+        clean_copy: bool,
     ) -> Result<SaveResult, AppError> {
         let info = self.info(id).ok_or(AppError::not_found("document"))?;
         let source = self
             .registry
             .path(id)
             .ok_or(AppError::not_found("document"))?;
-        let count = self.registry.page_count(id)?;
         // The file Save As means may be the one that is open: that is a plain save.
         let target = match target {
             Some(target) => {
@@ -294,12 +354,33 @@ impl AppState {
             }
         }
 
-        let plan = self.annotations.with(id, count, |state| {
-            Ok(plan_of(state, |annotation| {
-                self.registry.page_index(id, annotation.page_id).ok()
-            }))
+        // What the file has to become: the pages in their order (ADR-036 §5) and the annotations on them, at the positions they will have.
+        let (pages, plan) = self.model(id, |state| {
+            let pages = state.page_plan();
+            let position: std::collections::HashMap<u32, u32> = pages
+                .pages
+                .iter()
+                .zip(0u32..)
+                .map(|(page, position)| (page.id.get(), position))
+                .collect();
+            let plan = plan_with_origins(
+                state,
+                |annotation| position.get(&annotation.page_id.get()).copied(),
+                |origin| {
+                    pages
+                        .file_position(origin.page_index)
+                        .map(|page_index| PdfOrigin {
+                            page_index,
+                            ..origin.clone()
+                        })
+                },
+            );
+            Ok((pages, plan))
         })?;
-        let writes = !plan.changes.is_empty();
+        let expected =
+            u32::try_from(pages.pages.len()).map_err(|_| AppError::new(ErrorCode::Internal))?;
+        let page_changes = pages.changed();
+        let writes = !plan.changes.is_empty() || page_changes || clean_copy;
         if writes && info.flags.encrypted {
             // lopdf would have to encrypt what it appends (ADR-004 §5); until that is settled an encrypted file is not changed.
             return Err(AppError::logged(
@@ -307,12 +388,29 @@ impl AppState {
                 "saving annotations into an encrypted file",
             ));
         }
+        // Changes to the pages are not among the changes a signature allows (ADR-036 §5), and a new file is not the signed one.
+        if (page_changes || clean_copy) && info.flags.signed && !ack.break_signature {
+            return Err(AppError::needs_confirmation("breaksSignature"));
+        }
         if !writes && target.is_none() {
             // Nothing to put in the file: it is saved as it is.
-            return self.annotations.with(id, count, |state| {
+            return self.model(id, |state| {
                 state.mark_clean();
-                Ok(self.result(id, state.current(), false, Vec::new()))
+                Ok(self.result(
+                    id,
+                    state.current(),
+                    false,
+                    Vec::new(),
+                    SaveMode::Incremental,
+                ))
             });
+        }
+        let mut sources = std::collections::HashMap::new();
+        for source_id in pages.sources() {
+            let bytes = self.sources.pinned(id, source_id).ok_or_else(|| {
+                AppError::logged(ErrorCode::SaveFailed, "an import source is gone")
+            })?;
+            sources.insert(source_id, bytes);
         }
 
         // The file as it is on disk now, and whether it is the one that was opened.
@@ -322,15 +420,36 @@ impl AppState {
             return Err(AppError::needs_confirmation("fileChangedOnDisk"));
         }
         let original_len = original.len();
-        let built = build(Arc::as_ptr(&self.registry) as usize, id, original, plan)?;
+        // A full rewrite shares nothing with the original, so what the backup and a rollback need is kept apart.
+        let original_copy = clean_copy.then(|| original.clone());
+        let built = build_pages(
+            Arc::as_ptr(&self.registry) as usize,
+            id,
+            original,
+            BuildPlan {
+                plan,
+                pages,
+                sources,
+                clean_copy,
+            },
+        )?;
+        let original_bytes = |built: &Built| -> Vec<u8> {
+            original_copy
+                .clone()
+                .unwrap_or_else(|| built.bytes[..original_len].to_vec())
+        };
+        let mode = if clean_copy {
+            SaveMode::Full
+        } else {
+            SaveMode::Incremental
+        };
         let origins: std::collections::HashMap<AnnotId, PdfOrigin> =
             built.origins.iter().cloned().collect();
-        debug_assert!(built.bytes.len() >= original_len);
 
         let in_place = target.is_none();
         let destination = target.clone().unwrap_or_else(|| source.clone());
         let backup = if in_place && writes {
-            self.back_up(id, &source, &built.bytes[..original_len])
+            self.back_up(id, &source, &original_bytes(&built))
         } else {
             BackupOutcome::NotNeeded
         };
@@ -346,12 +465,21 @@ impl AppState {
         }
 
         // Close, rename, reopen. PDFium lets go of the file the rename replaces.
-        if in_place {
-            self.engine.release(id)?;
-        }
-        if let Err(error) = atomic::replace_atomic(&destination, &built.bytes) {
+        // A save that fails puts the engine's copy back as it was: with the pages of this session and their rotations, which the
+        // original file does not have and the model's page list points at (engine indices). The copy is taken only when the session
+        // changed the pages; a Save As without such changes leaves the engine's copy loaded.
+        let snapshot = if page_changes {
+            Some(self.engine.release_with_snapshot(id)?)
+        } else {
             if in_place {
-                self.reopen_from(id, &source);
+                self.engine.release(id)?;
+            }
+            None
+        };
+        let released = in_place || snapshot.is_some();
+        if let Err(error) = atomic::replace_atomic(&destination, &built.bytes) {
+            if released {
+                self.put_back(id, &source, snapshot);
             }
             return Err(write_error(error));
         }
@@ -361,14 +489,14 @@ impl AppState {
             Ok((pages, fingerprint))
         });
         let fingerprint = match reopened {
-            Ok((pages, fingerprint)) if pages == count => fingerprint,
+            Ok((pages, fingerprint)) if pages == expected => fingerprint,
             other => {
                 if let Err(error) = &other {
                     error.log();
                 }
                 // What was written does not load as the document: the original is put back (ADR-004 §1 step 9).
                 let rollback = if in_place {
-                    atomic::replace_atomic(&destination, &built.bytes[..original_len])
+                    atomic::replace_atomic(&destination, &original_bytes(&built))
                 } else {
                     std::fs::remove_file(&destination)
                 };
@@ -376,7 +504,7 @@ impl AppState {
                     // The user's file may now be the update that does not load: this must be findable in the log.
                     AppError::logged(ErrorCode::SaveFailed, error).log();
                 }
-                self.reopen_from(id, &source);
+                self.put_back(id, &source, snapshot);
                 return Err(AppError::logged(
                     ErrorCode::SaveFailed,
                     "the saved file did not load again",
@@ -389,10 +517,18 @@ impl AppState {
             self.note_recent(DocKind::User, &destination);
         }
         self.registry.set_fingerprint(id, fingerprint);
-        let changes = self
-            .annotations
-            .with(id, count, |state| Ok(state.finish_save(&origins)))?;
-        Ok(self.result(id, changes, backup == BackupOutcome::Created, warnings))
+        let changes = self.model(id, |state| Ok(state.finish_save(&origins)))?;
+        // The pages of the file are the pages of the document now, in this order: engine page i is page i, and what was held for the
+        // inserts is in the file.
+        self.registry.set_page_count(id, expected)?;
+        self.sources.unpin_all(id);
+        Ok(self.result(
+            id,
+            changes,
+            backup == BackupOutcome::Created,
+            warnings,
+            mode,
+        ))
     }
 
     /// Whether the file `id` was opened from is no longer what it was (or cannot be looked at: not knowing counts as changed).
@@ -407,10 +543,11 @@ impl AppState {
         changes: ChangeSet,
         backup_created: bool,
         warnings: Vec<SaveWarning>,
+        mode: SaveMode,
     ) -> SaveResult {
         SaveResult {
             rev: changes.rev,
-            mode: SaveMode::Incremental,
+            mode,
             backup_created,
             warnings,
             document: self.info(id).unwrap_or_else(|| DocumentInfo {
@@ -422,6 +559,18 @@ impl AppState {
             }),
             changes,
         }
+    }
+
+    /// Puts the engine's copy of `id` back after a save that did not work: from the snapshot taken before it was released if there is
+    /// one (it has the pages added and the rotations set in this session), else from the original file. Best effort: logged.
+    fn put_back(&self, id: DocumentId, path: &Path, snapshot: Option<Vec<u8>>) {
+        if let Some(bytes) = snapshot {
+            match self.engine.restore(id, bytes) {
+                Ok(_) => return,
+                Err(error) => error.log(),
+            }
+        }
+        self.reopen_from(id, path);
     }
 
     /// Puts the engine's copy of `id` back from the file at `path` after a save that did not work. Best effort: logged.

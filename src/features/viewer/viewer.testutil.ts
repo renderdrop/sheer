@@ -39,7 +39,7 @@ export function resetViewer(): void {
   useViewer.setState({ ...viewerInitial }, true);
   resetDocuments();
   useView.setState({ byDoc: {} });
-  usePages.setState({ byDoc: {} });
+  usePages.setState({ byDoc: {}, slotsByDoc: {} });
   renderCache.clear();
   for (const docId of [1, 2, 3]) renderScheduler.dropDocument(docId);
   publishViewRect({ left: 0, top: 0, right: 0, bottom: 0 });

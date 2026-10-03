@@ -106,7 +106,7 @@ fn command(value: serde_json::Value) -> DocCommand {
 
 fn create(state: &AppState, id: DocumentId, draft: serde_json::Value) -> Annotation {
     let changes = state
-        .apply_annotation_command(
+        .apply_command(
             id,
             command(json!({"type": "createAnnotation", "draft": draft})),
         )
@@ -379,13 +379,13 @@ fn a_changed_and_a_deleted_annotation_of_the_file_are_updated_in_place_and_posit
         .unwrap()
         .id;
     state
-        .apply_annotation_command(
+        .apply_command(
             id,
             command(json!({"type": "updateAnnotation", "id": highlight, "patch": {"color": [0, 200, 0], "contents": "Changed"}})),
         )
         .unwrap();
     state
-        .apply_annotation_command(
+        .apply_command(
             id,
             command(json!({"type": "deleteAnnotations", "ids": [square]})),
         )
@@ -413,13 +413,13 @@ fn a_changed_and_a_deleted_annotation_of_the_file_are_updated_in_place_and_posit
 
     // The model knows where everything is now: change the highlight again and the file still has one of it.
     state
-        .apply_annotation_command(
+        .apply_command(
             id,
             command(json!({"type": "updateAnnotation", "id": highlight, "patch": {"contents": "Twice"}})),
         )
         .unwrap();
     state
-        .apply_annotation_command(
+        .apply_command(
             id,
             command(json!({"type": "updateAnnotation", "id": new.id, "patch": {"contents": "edited reply"}})),
         )
@@ -646,7 +646,7 @@ fn saving_what_the_hostile_corpus_lets_open_never_panics_and_leaves_the_engine_a
                     .map_err(|e| e.code())?
                     .ok_or(ErrorCode::Internal)?;
                 let draft = json!({"pageId": 0, "kind": "note", "color": [255, 235, 0], "at": {"x": 10.0, "y": 10.0}, "icon": "note"});
-                let created = worker.apply_annotation_command(
+                let created = worker.apply_command(
                     info.id,
                     command(json!({"type": "createAnnotation", "draft": draft})),
                 );

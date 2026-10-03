@@ -1,5 +1,6 @@
 import type { AnnotationDraft, DocCommand } from '../../../api/annotations';
 import { useAnnotations } from '../../../stores/annotations';
+import { pageIdAt, positionOf } from '../../../stores/pages';
 import { peekLayer } from '../../textlayer/cache';
 import { resolveBoundary } from '../../textlayer/selection';
 import { styleFor } from '../../inspector/style';
@@ -19,10 +20,18 @@ export async function markSelection(docId: number, kind: 'highlight' | 'underlin
   const a = resolveBoundary(range.startContainer, range.startOffset);
   const b = resolveBoundary(range.endContainer, range.endOffset);
   if (a === null || b === null) return false;
-  const [start, end] = a.page < b.page || (a.page === b.page && a.index <= b.index) ? [a, b] : [b, a];
+  // The selection runs through the pages in their current order; the boundaries name them by id.
+  const aPosition = positionOf(docId, a.page);
+  const bPosition = positionOf(docId, b.page);
+  if (aPosition === null || bPosition === null) return false;
+  const forward = aPosition < bPosition || (aPosition === bPosition && a.index <= b.index);
+  const [start, end] = forward ? [a, b] : [b, a];
+  const [startPosition, endPosition] = forward ? [aPosition, bPosition] : [bPosition, aPosition];
   const style = { ...defaultStyle(kind), ...styleFor(kind) };
   const drafts: AnnotationDraft[] = [];
-  for (let page = start.page; page <= end.page && page <= start.page + 50; page += 1) {
+  for (let position = startPosition; position <= endPosition && position <= startPosition + 50; position += 1) {
+    const page = pageIdAt(docId, position);
+    if (page === null) continue;
     const layer = peekLayer(docId, page);
     if (layer === undefined) continue;
     const from = page === start.page ? start.index : 0;

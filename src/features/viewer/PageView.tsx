@@ -40,6 +40,13 @@ export interface PageViewProps {
   docId: number;
   /** Zero-based. */
   pageIndex: number;
+  /**
+   * The page's id (ADR-036): what the backend, the render cache, the overlays and their stores call it. It stays the same page
+   * through moves; `pageIndex` is only where it sits now. The position by default (a document whose pages were never changed).
+   */
+  pageId?: number;
+  /** The page's own revision (`PageSlotInfo.rev`: a rotation raises it); part of the cache key, so a rotated page renders anew. */
+  slotRev?: number;
   pageCount: number;
   /** Where the page sits in the content, and how large it is shown, in px (the page's `PageBox`). */
   left: number;
@@ -180,6 +187,8 @@ function FadeImage({ src, style, instant, over, onShown }: FadeImageProps) {
 export const PageView = memo(function PageView({
   docId,
   pageIndex,
+  pageId = pageIndex,
+  slotRev = 0,
   pageCount,
   left,
   top,
@@ -204,12 +213,12 @@ export const PageView = memo(function PageView({
 
   // The cache changes without React knowing: the version of this page's entries is what tells the page to look again.
   const subscribeToPage = useCallback(
-    (notify: () => void) => cache.subscribe(docId, pageIndex, notify),
-    [cache, docId, pageIndex],
+    (notify: () => void) => cache.subscribe(docId, pageId, notify),
+    [cache, docId, pageId],
   );
   useSyncExternalStore(
     subscribeToPage,
-    () => cache.version(docId, pageIndex),
+    () => cache.version(docId, pageId),
     () => 0,
   );
   const tilesKey = useSyncExternalStore(
@@ -221,15 +230,15 @@ export const PageView = memo(function PageView({
 
   // An annotation of the file that was changed makes the page's pixels stale: the images of the new revision are asked for, and the
   // old ones stand in until they arrive.
-  const rev = useAnnotations((state) => pageRevOf(state, docId, pageIndex));
+  const rev = useAnnotations((state) => pageRevOf(state, docId, pageId) + slotRev);
   const standInFor = (bucket: number, except?: string): CacheEntry | undefined => {
     for (let r = rev; r >= Math.max(0, rev - STAND_IN_REVS); r -= 1) {
-      const found = cache.best(docId, pageIndex, r, bucket, except);
+      const found = cache.best(docId, pageId, r, bucket, except);
       if (found !== undefined) return found;
     }
     return undefined;
   };
-  const wholeId: ImageId = { docId, page: pageIndex, rev, bucket: wholeBucket };
+  const wholeId: ImageId = { docId, page: pageId, rev, bucket: wholeBucket };
   const exact = cache.get(imageKey(wholeId));
   // What the cache had when the page mounted shows without a fade; what arrives later fades in (MOTION 4.3).
   const [atMount] = useState(() => new Set<string>(exact === undefined ? [] : [exact.key]));
@@ -253,7 +262,7 @@ export const PageView = memo(function PageView({
 
   // Ask for what is missing: the page, or the underlay and the tiles near the viewport.
   useEffect(() => {
-    const whole: ImageId = { docId, page: pageIndex, rev, bucket: wholeBucket };
+    const whole: ImageId = { docId, page: pageId, rev, bucket: wholeBucket };
     const wanted: ImageId[] = [whole];
     for (const tile of tiles) wanted.push({ ...whole, bucket: tiledBucket, tile });
     const missing = wanted.filter((id) => !cache.has(imageKey(id)));
@@ -274,7 +283,7 @@ export const PageView = memo(function PageView({
     // Something to show meanwhile makes the wait cheap; without it the page is blank until the image arrives.
     let hasSomething = false;
     for (let r = rev; r >= Math.max(0, rev - STAND_IN_REVS) && !hasSomething; r -= 1) {
-      hasSomething = cache.best(docId, pageIndex, r, wholeBucket) !== undefined;
+      hasSomething = cache.best(docId, pageId, r, wholeBucket) !== undefined;
     }
     const timer = hasSomething ? window.setTimeout(ask, BUCKET_SETTLE_MS) : undefined;
     if (timer === undefined) ask();
@@ -282,7 +291,7 @@ export const PageView = memo(function PageView({
       current = false;
       window.clearTimeout(timer);
     };
-  }, [scheduler, cache, docId, pageIndex, rev, wholeBucket, tiledBucket, tiles, priority]);
+  }, [scheduler, cache, docId, pageId, rev, wholeBucket, tiledBucket, tiles, priority]);
 
   // A stand-in is under the image that arrives: that one fades fast; over the bare placeholder it fades at base.
   const image = (
@@ -316,7 +325,7 @@ export const PageView = memo(function PageView({
         };
 
   // The text of the page (DESIGN 3.17), fetched once the page is on screen. A page with text is a group, one without stays an image.
-  const text = usePageText(docId, pageIndex, priority === 'visible');
+  const text = usePageText(docId, pageId, priority === 'visible');
   const hasText = text.status === 'ready' && runsOf(text.layer).length > 0;
   const noText = text.status === 'ready' && !hasText;
   const interactive = useUi((state) => state.activeTool === 'select');
@@ -376,7 +385,7 @@ export const PageView = memo(function PageView({
       </div>
       <PageOverlay
         docId={docId}
-        pageIndex={pageIndex}
+        pageIndex={pageId}
         boxWidth={width}
         boxHeight={height}
         widthPt={widthPt}
@@ -387,14 +396,14 @@ export const PageView = memo(function PageView({
       />
       <AnnotationLayer
         docId={docId}
-        pageIndex={pageIndex}
+        pageIndex={pageId}
         boxWidth={width}
         boxHeight={height}
         widthPt={widthPt}
         heightPt={heightPt}
         rotation={rotation}
         visible={priority === 'visible'}
-        ready={text.layer !== null || hasFileRotation(docId, pageIndex)}
+        ready={text.layer !== null || hasFileRotation(docId, pageId)}
       />
     </div>
   );

@@ -157,6 +157,10 @@
   --spacing-tab-min: var(--tab-min);
   --spacing-tab-max: var(--tab-max);
   --spacing-dialog: var(--dialog-width);
+  /* The new-file jobs (DESIGN 3.29-3.31): w-sheet (merge), w-dialog-md (split, compress). */
+  --spacing-sheet: var(--sheet-width);
+  --spacing-dialog-md: var(--dialog-width-md);
+  --spacing-insert-marker: var(--insert-marker);
   --spacing-toast: var(--toast-height);
   --spacing-toast-min: var(--toast-min);
   --spacing-toast-max: var(--toast-max);
@@ -330,6 +334,8 @@
   --tab-min: 120px;
   --tab-max: 240px;
   --dialog-width: 400px; /* the password prompt (DESIGN 3.19) */
+  --sheet-width: 560px; /* the merge sheet (DESIGN 3.29) */
+  --dialog-width-md: 480px; /* split and compress (DESIGN 3.30, 3.31) */
   --toast-height: 40px; /* toast (DESIGN 3.12): 40 high, 240 to 400 wide */
   --toast-min: 240px;
   --toast-max: 400px;
@@ -361,6 +367,8 @@
   --pulse-opacity: 0.6;
   --drag-card-width: 160px;
   --drag-card-height: 208px;
+  --grid-thumb: 160px; /* organize grid: the thumbnail box, 96 to 256 in steps of 32 (DESIGN 3.28); the user's choice is set inline */
+  --insert-marker: 2px; /* organize grid: the insertion marker's width */
 
   /* Elevation: the only z-index values (DESIGN 1.7). 1 to 4 are local to the canvas, which isolates itself. */
   --z-base: 0;

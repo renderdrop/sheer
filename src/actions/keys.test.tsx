@@ -712,3 +712,8 @@ describe('single keys inside the canvas', () => {
     expect(useUi.getState().activeTool).toBe('highlight');
   });
 });
+
+vi.mock('../api/pages', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../api/pages')>()),
+  getPages: vi.fn().mockResolvedValue([]),
+}));

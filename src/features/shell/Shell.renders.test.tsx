@@ -520,3 +520,8 @@ describe('the empty state', () => {
     expect(renders.leftPanel).toBe(0);
   });
 });
+
+vi.mock('../../api/pages', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../api/pages')>()),
+  getPages: vi.fn().mockResolvedValue([]),
+}));

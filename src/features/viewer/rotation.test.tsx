@@ -95,3 +95,8 @@ describe('view rotation (DESIGN 3.20)', () => {
     expect(after).toBeCloseTo(((upright ?? 0) * 600) / 800, 2);
   });
 });
+
+vi.mock('../../api/pages', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../api/pages')>()),
+  getPages: vi.fn().mockResolvedValue([]),
+}));

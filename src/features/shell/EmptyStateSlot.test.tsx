@@ -114,3 +114,8 @@ describe('the drop target (MOTION 4.5)', () => {
     await waitFor(() => expect(card()).toBeNull());
   });
 });
+
+vi.mock('../../api/pages', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../api/pages')>()),
+  getPages: vi.fn().mockResolvedValue([]),
+}));

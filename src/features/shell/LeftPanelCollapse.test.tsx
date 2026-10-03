@@ -263,3 +263,8 @@ describe('the panel fades while it goes (animations run here)', () => {
     expect(useUi.getState().leftPanelCollapsed).toBe(false);
   });
 });
+
+vi.mock('../../api/pages', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../api/pages')>()),
+  getPages: vi.fn().mockResolvedValue([]),
+}));

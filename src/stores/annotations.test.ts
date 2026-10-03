@@ -146,9 +146,9 @@ describe('apply, undo and redo', () => {
   const command = { type: 'deleteAnnotations', ids: [1] } as const;
 
   it('run the backend command and apply what it answers', async () => {
-    mocked.applyAnnotationCommand.mockResolvedValue(changes(1, [note(1)], [], history({ canUndo: true, dirty: true })));
+    mocked.applyCommand.mockResolvedValue(changes(1, [note(1)], [], history({ canUndo: true, dirty: true })));
     const answer = await useAnnotations.getState().apply(4, command);
-    expect(mocked.applyAnnotationCommand).toHaveBeenCalledWith(4, command);
+    expect(mocked.applyCommand).toHaveBeenCalledWith(4, command);
     expect(answer.rev).toBe(1);
     expect(docState(4)?.byId[1]).toBeDefined();
 
@@ -166,10 +166,10 @@ describe('apply, undo and redo', () => {
   });
 
   it('leave the replica as it was when the backend refuses, and pass the error on', async () => {
-    mocked.applyAnnotationCommand.mockResolvedValueOnce(changes(1, [note(1)]));
+    mocked.applyCommand.mockResolvedValueOnce(changes(1, [note(1)]));
     await useAnnotations.getState().apply(4, command);
     const before = docState(4);
-    mocked.applyAnnotationCommand.mockRejectedValueOnce({ code: 'invalid_argument', params: { what: 'patch' } });
+    mocked.applyCommand.mockRejectedValueOnce({ code: 'invalid_argument', params: { what: 'patch' } });
     await expect(useAnnotations.getState().apply(4, command)).rejects.toMatchObject({ code: 'invalid_argument' });
     mocked.undo.mockRejectedValueOnce({ code: 'engine_unavailable' });
     await expect(useAnnotations.getState().undo(4)).rejects.toMatchObject({ code: 'engine_unavailable' });

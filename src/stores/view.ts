@@ -50,6 +50,8 @@ export interface ViewState {
   byDoc: Readonly<Record<number, DocView>>;
   /** Registers a document that was just opened: 100 %, continuous scrolling, first page. */
   open: (docId: number, pageCount: number, opening?: boolean) => void;
+  /** The document has `pageCount` pages now (pages were added or deleted); the current page is kept within them. */
+  setPageCount: (docId: number, pageCount: number) => void;
   /** The opening zoom of the document is committed: the readouts may show it. */
   settleOpening: (docId: number) => void;
   /** Forgets a closed document. */
@@ -109,6 +111,13 @@ export const useView = create<ViewState>()((set) => ({
     set((state) => ({
       byDoc: { ...state.byDoc, [docId]: { ...NO_VIEW, pageCount: Math.max(0, Math.trunc(pageCount)), opening } },
     })),
+  setPageCount: (docId, pageCount) =>
+    set((state) =>
+      update(state, docId, (view) => {
+        const count = Math.max(0, Math.trunc(pageCount));
+        return { ...view, pageCount: count, pageIndex: Math.min(view.pageIndex, Math.max(0, count - 1)) };
+      }),
+    ),
   settleOpening: (docId) => set((state) => update(state, docId, (view) => ({ ...view, opening: false }))),
   close: (docId) =>
     set((state) => {

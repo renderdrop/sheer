@@ -69,6 +69,21 @@ fn command_bytes(command: &DocCommand) -> usize {
                 total.saturating_add(counter.0)
             })
         }
+        DocCommand::RestorePages {
+            slots, annotations, ..
+        } => annotations.iter().fold(
+            STEP_OVERHEAD_BYTES + slots.len().saturating_mul(64),
+            |total, (_, slot)| {
+                let mut counter = Counter(0);
+                if let Some(entry) = slot {
+                    let _ = serde_json::to_writer(&mut counter, &entry.annotation);
+                }
+                total.saturating_add(counter.0.saturating_add(STEP_OVERHEAD_BYTES))
+            },
+        ),
+        DocCommand::ReorderPages { order } => {
+            STEP_OVERHEAD_BYTES.saturating_add(order.len().saturating_mul(4))
+        }
         DocCommand::Batch { commands, .. } => {
             commands.iter().fold(STEP_OVERHEAD_BYTES, |total, inner| {
                 total.saturating_add(command_bytes(inner))

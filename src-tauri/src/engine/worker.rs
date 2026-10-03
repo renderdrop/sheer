@@ -1,7 +1,6 @@
 //! The worker thread. The only code that touches PDFium.
 
 use std::collections::{HashMap, HashSet};
-use std::fs::File;
 use std::path::Path;
 use std::sync::Arc;
 
@@ -11,7 +10,9 @@ use super::guard::{guarded, Health};
 use super::queue::{RenderKey, Requests};
 use super::sizes::{PageSizes, SizeCache};
 use super::space::page_count;
-use super::{encode, import, links, outline, search, text, Confirm, Job, Reply};
+use super::{
+    encode, import, links, outline, pages, search, text, Confirm, Job, ReopenSource, Reply,
+};
 use crate::documents::{DocFlags, DocumentId};
 use crate::error::{AppError, ErrorCode};
 use crate::limits;
@@ -194,6 +195,41 @@ fn serve<'a>(
             });
             answer(reply, result, Some(id), documents, crashed);
         }
+        Job::SetPageRotations { id, items, reply } => {
+            let result = read_job(documents, crashed, id, |document| {
+                pages::set_rotations(document, &items)
+            });
+            answer(reply, result, Some(id), documents, crashed);
+        }
+        Job::AppendBlankPage { id, size, reply } => {
+            let result = if crashed.contains(&id) {
+                Err(AppError::new(ErrorCode::EngineCrashed))
+            } else {
+                guarded(|| match documents.get_mut(&id) {
+                    Some(document) => pages::append_blank(document, size),
+                    None => Err(AppError::not_found("document")),
+                })
+            };
+            answer(reply, result, Some(id), documents, crashed);
+        }
+        Job::AppendPages {
+            id,
+            source,
+            pages: indices,
+            reply,
+        } => {
+            let result = if crashed.contains(&id) {
+                Err(AppError::new(ErrorCode::EngineCrashed))
+            } else {
+                guarded(|| match documents.get_mut(&id) {
+                    Some(document) => {
+                        pages::append_pages(pdfium, document, &source.bytes, &indices)
+                    }
+                    None => Err(AppError::not_found("document")),
+                })
+            };
+            answer(reply, result, Some(id), documents, crashed);
+        }
         Job::Close { id, reply } => {
             let result = guarded(|| {
                 crashed.remove(&id);
@@ -206,17 +242,42 @@ fn serve<'a>(
             requests.cancel_document(id);
             answer(reply, result, Some(id), documents, crashed);
         }
-        Job::Release { id, reply } => {
+        Job::Release {
+            id,
+            snapshot,
+            reply,
+        } => {
             // The sizes stay: the UI keeps laying the document out while its file is replaced.
             let result = guarded(|| {
+                // The copy with the session's pages and rotations, for a save that fails and has to put it back.
+                let bytes = match documents.get(&id) {
+                    Some(document) if snapshot => {
+                        Some(document.save_to_bytes().map_err(|error| {
+                            AppError::logged(ErrorCode::Internal, format!("{error:?}"))
+                        })?)
+                    }
+                    _ => None,
+                };
                 documents.remove(&id);
-                Ok(())
+                Ok(bytes)
             });
             answer(reply, result, None, documents, crashed);
         }
-        Job::Reopen { id, file, reply } => {
-            let result =
-                guarded(|| open(pdfium, documents, sizes, id, file, None, Box::new(|_| true)));
+        Job::Reopen { id, source, reply } => {
+            let result = guarded(|| match source {
+                ReopenSource::File(file) => {
+                    open(pdfium, documents, sizes, id, file, None, Box::new(|_| true))
+                }
+                ReopenSource::Bytes(bytes) => open(
+                    pdfium,
+                    documents,
+                    sizes,
+                    id,
+                    std::io::Cursor::new(bytes),
+                    None,
+                    Box::new(|_| true),
+                ),
+            });
             if result.is_ok() {
                 crashed.remove(&id);
             }
@@ -274,12 +335,12 @@ fn answer<T>(
     let _ = reply.send(result);
 }
 
-fn open<'a>(
+fn open<'a, R: std::io::Read + std::io::Seek + Send + 'static>(
     pdfium: &'a Pdfium,
     documents: &mut Documents<'a>,
     sizes: &SizeCache,
     id: DocumentId,
-    file: File,
+    file: R,
     password: Option<&str>,
     confirm: Confirm,
 ) -> Result<u32, AppError> {
@@ -295,6 +356,7 @@ fn open<'a>(
     limits::validate_page_count(page_count)?;
     // The sizes are read once, here, and are there before anybody can know the document is: `confirm` makes it known.
     sizes.insert(id, read_page_sizes(&document), read_flags(&document));
+    sizes.set_rotations(id, pages::read_rotations(&document));
     // The caller may have stopped waiting while the document loaded (the open deadline passed) and taken the registry entry
     // back. Nobody could ever close a document without an entry, so it is released here, with its handle.
     if !confirm(page_count) {

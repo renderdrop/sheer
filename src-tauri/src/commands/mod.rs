@@ -12,12 +12,12 @@
 //! | `open_welcome_document` | none | the open event of the bundled welcome document (ADR-023): `{ type: "opened", document: { .., kind: "welcome" } }` or `openFailed`; the file is found by Rust, nothing path-like comes from the webview |
 //! | `render_page` | `req: { docId, pageId, bucket, tile?, priority, generation }` | frame (`ArrayBuffer`, ADR-002 §6, see `engine/encode.rs`), see [`render`] |
 //! | `set_viewport` | `docId: number`, `hint: { generation, visible: number[], near: number[] }` | nothing; cancels queued renders of pages that left the viewport, see [`render`] |
-//! | `get_page_sizes` | `docId: number` | `[width, height][]` in points, one per page, see [`render`] |
+//! | `get_pages` | `docId: number` | `PageSlotInfo[]` in the current order, see [`pages`] |
 //! | `get_outline` | `docId: number` | the bookmarks as a tree, see [`outline`] |
 //! | `get_text_layer` | `docId: number`, `pageId: number` | the text of a page and the box of each character, see [`text`] |
 //! | `search`, `cancel_search` | `docId`, `query: { text, matchCase, wholeWord, maxHits }`, `onEvent: Channel<SearchEvent>`; `searchId` | the id of the search; the hits arrive on the channel, see [`search`] |
 //! | `get_page_links`, `open_link` | `docId`, `pageId` (and `linkIndex`) | the links of a page; opening one asks the user in a native dialog first, see [`links`] |
-//! | `list_annotations`, `list_document_annotations`, `apply_annotation_command`, `undo`, `redo` | `docId`, and `pageId` or `command` | the annotations of a page; the `ChangeSet` of a command, an undo or a redo, see [`annotations`] |
+//! | `list_annotations`, `list_document_annotations`, `apply_command` (see [`pages`]), `undo`, `redo` | `docId`, and `pageId` or `command` | the annotations of a page; the `ChangeSet` of a command, an undo or a redo, see [`annotations`] |
 //! | `close_document` | `docId: number`, `discard?: boolean` | nothing; unsaved changes without `discard` are `unsaved_changes`, see [`save`] |
 //! | `save_document`, `save_document_as` | `docId`, `ack?` (and `opts?`) | the `SaveResult` (`null` if the Save As dialog was cancelled), see [`save`] |
 //! | `unlock_document` | `docId`, `password: string` (1 to 1024 bytes) | the `DocumentInfo` once the encrypted file is open; a wrong password is `password_required` (retry waits 1 s after the third, in Rust) |
@@ -32,8 +32,10 @@
 
 pub mod annotations;
 pub mod app;
+pub mod jobs;
 pub mod links;
 pub mod outline;
+pub mod pages;
 pub mod recent_actions;
 pub mod render;
 pub mod save;
@@ -143,6 +145,8 @@ pub struct AppState {
     unlocks: Arc<UnlockGate>,
     /// The annotation models of the open documents (see [`annotations::AnnotationStore`]).
     annotations: Arc<annotations::AnnotationStore>,
+    /// The import sources: PDFs the user chose to take pages from, held in memory (`documents::sources`, ADR-036 §4).
+    sources: Arc<crate::documents::sources::SourceRegistry>,
     /// The recent files (`storage::recents`); `None` where there is no app data directory (most tests).
     recents: Option<Arc<RecentsStore>>,
     /// The app data directory, where the backups of the originals go (`commands::save`); `None` where there is none (most tests).
@@ -158,6 +162,7 @@ impl AppState {
             searches: Arc::new(search::SearchRegistry::default()),
             unlocks: Arc::new(UnlockGate::default()),
             annotations: Arc::new(annotations::AnnotationStore::default()),
+            sources: Arc::new(crate::documents::sources::SourceRegistry::new()),
             recents: None,
             data_dir: None,
         }
@@ -450,6 +455,8 @@ impl AppState {
         self.searches.cancel_document(id);
         // Its annotations and undo history go with it (a save has to come first; the UI asks before closing a document with changes).
         self.annotations.remove(id);
+        // The bytes of the sources it took pages from are not needed any more.
+        self.sources.unpin_all(id);
         // A document that still waits for its password was never loaded: cancelling its prompt forgets it.
         self.registry.remove_locked(id);
         self.registry.begin_close(id);

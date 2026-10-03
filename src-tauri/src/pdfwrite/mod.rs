@@ -4,8 +4,11 @@
 
 pub mod annots;
 pub mod appearance;
+pub mod compress;
 pub mod coords;
 pub mod inspect;
+pub mod pagetree;
+pub mod produce;
 pub mod save;
 
 pub use save::{append_annotations, validate, Built, Change, Plan};

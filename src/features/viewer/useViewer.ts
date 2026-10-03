@@ -3,7 +3,7 @@ import { create } from 'zustand';
 
 import { closeDocument, openDocumentDialog, type DocumentInfo, type OpenOutcome } from '../../api/documents';
 import { toAppError, type AppError } from '../../api/errors';
-import { getPageSizes } from '../../api/render';
+import { getPages } from '../../api/pages';
 import { announce } from '../../components';
 import { tokenPx } from '../../components/tokens';
 import { renderScheduler } from '../../engine/renderScheduler';
@@ -375,10 +375,10 @@ export const useViewer = create<ViewerState>()((set, get) => {
 
 /** Fetches the sizes of a document's pages for the layout. A failure is shown; the canvas keeps laying out placeholders. */
 function loadPageSizes(docId: number): void {
-  getPageSizes(docId).then(
+  getPages(docId).then(
     (sizes) => {
       // The document may have been closed while the answer was on its way.
-      if (useDocuments.getState().byId[docId] !== undefined) usePages.getState().set(docId, sizes);
+      if (useDocuments.getState().byId[docId] !== undefined) usePages.getState().setSlots(docId, sizes);
     },
     (caught: unknown) => {
       if (useDocuments.getState().byId[docId] === undefined) return;

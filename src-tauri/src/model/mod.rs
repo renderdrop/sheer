@@ -13,4 +13,6 @@ pub mod find;
 pub mod geometry;
 pub mod history;
 pub mod ids;
+pub mod page;
+pub mod page_ops;
 pub mod reading;

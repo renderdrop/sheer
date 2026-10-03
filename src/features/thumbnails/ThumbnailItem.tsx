@@ -15,9 +15,6 @@ import { useView } from '../../stores/view';
  */
 export const THUMBNAIL_ASK_DELAY_MS = 80;
 
-/** The revision of a page's pixels (the backend's `pageRev`); pages cannot change until M2, so it is always 0. */
-const PAGE_REV = 0;
-
 /** Images that were shown before are kept decoded, bounded, oldest first. */
 const MAX_WARM_IMAGES = 128;
 const warm = new Map<string, HTMLImageElement>();
@@ -69,6 +66,9 @@ export interface ThumbnailItemProps {
   docId: number;
   /** Zero-based. */
   index: number;
+  /** The page's id and its revision (`PageSlotInfo`): the cell shows the page that sits at `index`, whichever it is. Default: the file's page. */
+  pageId?: number;
+  pageRev?: number;
   pageCount: number;
   /** Where the cell sits in the list and how tall it is, in px. */
   top: number;
@@ -106,6 +106,8 @@ export interface ThumbnailItemProps {
 export const ThumbnailItem = memo(function ThumbnailItem({
   docId,
   index,
+  pageId = index,
+  pageRev = 0,
   pageCount,
   top,
   height,
@@ -127,18 +129,18 @@ export const ThumbnailItem = memo(function ThumbnailItem({
 
   // The cache changes without React knowing: the version of this page's entries is what tells the cell to look again.
   const subscribeToPage = useCallback(
-    (notify: () => void) => cache.subscribe(docId, index, notify),
-    [cache, docId, index],
+    (notify: () => void) => cache.subscribe(docId, pageId, notify),
+    [cache, docId, pageId],
   );
   const version = useSyncExternalStore(
     subscribeToPage,
-    () => cache.version(docId, index),
+    () => cache.version(docId, pageId),
     () => 0,
   );
 
-  const exact = cache.get(imageKey({ docId, page: index, rev: PAGE_REV, bucket }));
+  const exact = cache.get(imageKey({ docId, page: pageId, rev: pageRev, bucket }));
   // Until the right size is there, any image of the page does: the canvas's, or a thumbnail of another size.
-  const shown = exact ?? cache.best(docId, index, PAGE_REV, bucket);
+  const shown = exact ?? cache.best(docId, pageId, pageRev, bucket);
   const shownKey = shown?.key ?? '';
 
   // The image this cell shows is not evicted while it does. (An effect: the cache is outside React, and pins are its state.)
@@ -151,14 +153,14 @@ export const ThumbnailItem = memo(function ThumbnailItem({
   // thumbnail that cannot be rendered stays a blank page, and the page's own render reports what is wrong.
   useEffect(() => {
     if (!active) return;
-    const id: ImageId = { docId, page: index, rev: PAGE_REV, bucket };
+    const id: ImageId = { docId, page: pageId, rev: pageRev, bucket };
     if (cache.has(imageKey(id))) return;
     const timer = window.setTimeout(() => {
       scheduler.request(id, 'thumbnail').catch(() => undefined);
     }, THUMBNAIL_ASK_DELAY_MS);
     return () => window.clearTimeout(timer);
     // `version` re-checks after the cache changed (an entry was evicted, or a render of this page arrived).
-  }, [active, scheduler, cache, docId, index, bucket, version]);
+  }, [active, scheduler, cache, docId, pageId, pageRev, bucket, version]);
 
   const tabStop = focusStop ?? selected;
 

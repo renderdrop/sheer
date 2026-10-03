@@ -22,6 +22,7 @@ mod guard;
 mod import;
 mod links;
 mod outline;
+mod pages;
 pub mod queue;
 mod search;
 mod sizes;
@@ -39,6 +40,7 @@ use std::time::{Duration, Instant};
 
 use zeroize::Zeroizing;
 
+use crate::documents::sources::SourceBytes;
 use crate::documents::{DocFlags, DocumentId};
 use crate::error::{AppError, ErrorCode};
 use crate::limits;
@@ -48,6 +50,7 @@ use crate::model::geometry::Quad;
 use self::guard::Health;
 pub use self::links::{LinkTarget, PageLink};
 pub use self::outline::OutlineItem;
+pub use self::pages::Appended;
 pub use self::queue::{Priority, Rank, RenderKey};
 use self::queue::{Queue, Refused, Requests};
 pub use self::search::SearchSpec;
@@ -127,6 +130,12 @@ impl Request {
 /// meantime, and then the worker drops the document instead of keeping one nobody can ever close.
 pub(crate) type Confirm = Box<dyn FnOnce(u32) -> bool + Send>;
 
+/// What a document is loaded again from.
+pub(crate) enum ReopenSource {
+    File(File),
+    Bytes(Vec<u8>),
+}
+
 pub(crate) enum Job {
     Open {
         id: DocumentId,
@@ -179,14 +188,38 @@ pub(crate) enum Job {
         limit: usize,
         reply: Reply<Vec<Vec<Quad>>>,
     },
+    /// Sets the `/Rotate` of pages of PDFium's copy, by `(engine index, degrees)` (`pages`).
+    SetPageRotations {
+        id: DocumentId,
+        items: Vec<(u32, u16)>,
+        reply: Reply<()>,
+    },
+    /// Adds an empty page of `size` points to the end of PDFium's copy (`pages`).
+    AppendBlankPage {
+        id: DocumentId,
+        size: [f32; 2],
+        reply: Reply<Appended>,
+    },
+    /// Copies pages of an import source to the end of PDFium's copy (`pages`).
+    AppendPages {
+        id: DocumentId,
+        source: Arc<SourceBytes>,
+        pages: Vec<u32>,
+        reply: Reply<Vec<Appended>>,
+    },
     /// Lets go of PDFium's copy of the document but keeps what the UI knows of it (its page sizes), so that the file can be replaced
     /// (ADR-002 §7, ADR-004 §1 step 8). Followed by a `Reopen`.
-    Release { id: DocumentId, reply: Reply<()> },
+    Release {
+        id: DocumentId,
+        /// Answer with the copy as it is (pages added, rotations set), to put back if the file cannot be replaced.
+        snapshot: bool,
+        reply: Reply<Option<Vec<u8>>>,
+    },
     /// Loads the document again from `file`, which replaced the one that was released, under the same id; the page sizes and flags are
     /// read afresh. A document that had crashed is healthy again.
     Reopen {
         id: DocumentId,
-        file: File,
+        source: ReopenSource,
         reply: Reply<u32>,
     },
     /// Releases the document, and the sizes of its pages. Not skipped when its caller gave up (`Request::expired`).
@@ -232,6 +265,15 @@ impl Job {
                 let _ = reply.send(Err(error));
             }
             Job::SearchPage { reply, .. } => {
+                let _ = reply.send(Err(error));
+            }
+            Job::SetPageRotations { reply, .. } => {
+                let _ = reply.send(Err(error));
+            }
+            Job::AppendBlankPage { reply, .. } => {
+                let _ = reply.send(Err(error));
+            }
+            Job::AppendPages { reply, .. } => {
                 let _ = reply.send(Err(error));
             }
             Job::Release { reply, .. } => {
@@ -691,6 +733,50 @@ impl Engine {
         })
     }
 
+    /// The `/Rotate` of every page as the file had it when the document was loaded, by engine index. A lookup like
+    /// [`Engine::page_sizes`]; `not_found` for a document the engine does not hold, or a double that read none.
+    pub fn page_rotations(&self, id: DocumentId) -> Result<Arc<[u16]>, AppError> {
+        self.inner
+            .sizes
+            .rotations(id)
+            .ok_or_else(|| AppError::not_found("document"))
+    }
+
+    /// Sets the rotation of pages in PDFium's copy: `(engine index, degrees)` (ADR-036 §3, `Control` priority).
+    pub fn set_page_rotations(
+        &self,
+        id: DocumentId,
+        items: Vec<(u32, u16)>,
+    ) -> Result<(), AppError> {
+        self.call(limits::CONTROL_TIMEOUT, Rank::CONTROL, |reply| {
+            Job::SetPageRotations { id, items, reply }
+        })
+    }
+
+    /// Adds an empty page of `size` points at the end of PDFium's copy; its engine index and size come back.
+    pub fn append_blank_page(&self, id: DocumentId, size: [f32; 2]) -> Result<Appended, AppError> {
+        self.call(limits::CONTROL_TIMEOUT, Rank::CONTROL, |reply| {
+            Job::AppendBlankPage { id, size, reply }
+        })
+    }
+
+    /// Copies pages `pages` (indices in the source) of an import source to the end of PDFium's copy, in that order.
+    pub fn append_pages(
+        &self,
+        id: DocumentId,
+        source: Arc<SourceBytes>,
+        pages: Vec<u32>,
+    ) -> Result<Vec<Appended>, AppError> {
+        self.call(limits::OPEN_TIMEOUT, Rank::CONTROL, |reply| {
+            Job::AppendPages {
+                id,
+                source,
+                pages,
+                reply,
+            }
+        })
+    }
+
     /// Records page sizes for a document of a test double, as the worker does when it loads one.
     #[cfg(test)]
     pub(crate) fn seed_page_sizes(&self, id: DocumentId, sizes: Vec<[f32; 2]>) {
@@ -713,7 +799,32 @@ impl Engine {
     /// Lets go of the engine's copy of document `id`, so that its file can be replaced; see [`Engine::reopen`]. Its page sizes stay.
     pub fn release(&self, id: DocumentId) -> Result<(), AppError> {
         self.call(limits::CONTROL_TIMEOUT, Rank::CONTROL, |reply| {
-            Job::Release { id, reply }
+            Job::Release {
+                id,
+                snapshot: false,
+                reply,
+            }
+        })
+        .map(|_| ())
+    }
+
+    /// [`Engine::release`], answering with the copy as it is now: pages added in this session and rotations set are in it. A save that
+    /// fails puts it back with [`Engine::restore`], so the model's page list still matches the engine's indices.
+    pub fn release_with_snapshot(&self, id: DocumentId) -> Result<Vec<u8>, AppError> {
+        self.call(limits::OPEN_TIMEOUT, Rank::CONTROL, |reply| Job::Release {
+            id,
+            snapshot: true,
+            reply,
+        })?
+        .ok_or_else(|| AppError::logged(ErrorCode::Internal, "no snapshot of the document"))
+    }
+
+    /// Loads document `id` again from a snapshot of [`Engine::release_with_snapshot`].
+    pub fn restore(&self, id: DocumentId, snapshot: Vec<u8>) -> Result<u32, AppError> {
+        self.call(limits::OPEN_TIMEOUT, Rank::CONTROL, |reply| Job::Reopen {
+            id,
+            source: ReopenSource::Bytes(snapshot),
+            reply,
         })
     }
 
@@ -722,7 +833,7 @@ impl Engine {
     pub fn reopen(&self, id: DocumentId, file: File) -> Result<u32, AppError> {
         self.call(limits::OPEN_TIMEOUT, Rank::CONTROL, |reply| Job::Reopen {
             id,
-            file,
+            source: ReopenSource::File(file),
             reply,
         })
     }
@@ -1684,6 +1795,29 @@ mod tests {
         // A close that runs late is not "stuck" at once: it is given the time a close may take.
         assert!(close.run_deadline() > Instant::now() + limits::CONTROL_TIMEOUT / 2);
         assert_eq!(render.run_deadline(), past);
+    }
+
+    #[test]
+    fn a_snapshot_put_back_keeps_the_pages_added_in_the_session() {
+        let Some(engine) = shared_engine() else {
+            return;
+        };
+        let id = new_id();
+        let file_pages = open_fixture(engine, id).unwrap();
+        // The session adds a page at the end (engine index = the file's page count) and turns page 0.
+        let added = engine.append_blank_page(id, [100.0, 50.0]).unwrap();
+        assert_eq!(added.engine_index, file_pages);
+        engine.set_page_rotations(id, vec![(0, 90)]).unwrap();
+
+        // A save that fails: the copy is released with a snapshot, and put back from it.
+        let snapshot = engine.release_with_snapshot(id).unwrap();
+        assert_eq!(engine.restore(id, snapshot).unwrap(), file_pages + 1);
+        assert!(render(engine, id, added.engine_index, 0).is_ok());
+        assert_eq!(
+            engine.page_sizes(id).unwrap().len(),
+            (file_pages + 1) as usize
+        );
+        engine.close(id).unwrap();
     }
 
     #[test]
