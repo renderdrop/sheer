@@ -1059,3 +1059,13 @@ the viewer at the focused page. (2) In Organize, primary+L/R rotate the selected
 chosen in Rust's native dialog; the UI never sees a path; Rust never overwrites (" (2)" suffix). (7) Compress presets at 96 / 150 / 220 dpi;
 if the result is not smaller, nothing opens and the UI says so. (8) One shared progress bar (§3.30) for all new-file jobs.
 New tokens: `--grid-thumb` 160 (96–256), `--insert-marker` 2, `--sheet-width` 560, `--dialog-width-md` 480.
+
+## ADR-038 — Backend first, no placeholder APIs (from M4)
+
+**Context.** Product-owner decision (2026-10-03). In M3 the frontend packages ran beside the backend ones and coded against stubs
+(`organize/source.ts`, a stub `src/api/jobs.ts`), and two backend packages ran out of turns; integration cost an extra round.
+
+**Decision.** From M4: (1) Rust backend packages run as the **first wave** with `maxTurns` 160 (agent `backend-implementer`).
+(2) Frontend packages start only when the command signatures **exist in code** (registered commands + typed `src/api/*` wrappers
+committed), not just in ARCHITECTURE. (3) **No placeholder APIs**: a frontend package never writes a stub for a backend call.
+Amends ADR-025 / ADR-030 §5: the four parallel implementers apply per wave (backend wave, then frontend wave).

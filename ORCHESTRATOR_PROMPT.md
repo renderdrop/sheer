@@ -226,6 +226,9 @@ Rules:
 End with a report of max 150 words: files changed, tests run + result, new deps + license, open issues.
 ```
 
+### `.claude/agents/backend-implementer.md` (ADR-038)
+Wie `implementer.md`, aber `name: backend-implementer`, `maxTurns: 160`, Beschreibung: Rust-Backend-Paket (Engine, Modell, IPC, pdfwrite); erste Welle jedes Milestones ab M4.
+
 ### `.claude/agents/reviewer.md`
 ```markdown
 ---
@@ -438,7 +441,7 @@ Synthese (du, Opus): `docs/FEATURES.md` — Tabelle: Feature | Nutzer-Nutzen | M
 5. `scripts/check.sh` (`npm run check` = typecheck + lint + vitest + `cargo clippy -D warnings` + `cargo test` + `cargo deny check` + `npm audit --audit-level=high`), `scripts/bump-version.sh` (synchronisiert `package.json`, `src-tauri/Cargo.toml`, `src-tauri/tauri.conf.json`), CI-Workflow (macOS + Windows, inkl. Dependabot-Konfiguration). Commit, Tag `v0.2.0`.
 
 ### 8.4 Der Feature-Loop (paketweise, ab Phase 3)
-1. **Pakete schneiden (Milestone-Start):** Du schneidest die offenen Punkte des Milestones in **vier** disjunkte Arbeitspakete (ADR-030; bei Abhängigkeiten in Wellen zu je vier) (disjunkt = keine gemeinsamen Dateien). Die Paketliste mit Punkten und Dateibereichen steht in `STATE.md`. Braucht ein Paket eine neue UI-Oberfläche, die `docs/DESIGN.md` nicht abdeckt, holst du vorher eine `designer`-Spec.
+1. **Pakete schneiden (Milestone-Start):** Du schneidest die offenen Punkte des Milestones in **vier** disjunkte Arbeitspakete (ADR-030; bei Abhängigkeiten in Wellen zu je vier) (disjunkt = keine gemeinsamen Dateien). Die Paketliste mit Punkten und Dateibereichen steht in `STATE.md`. Braucht ein Paket eine neue UI-Oberfläche, die `docs/DESIGN.md` nicht abdeckt, holst du vorher eine `designer`-Spec. **Ab M4 (ADR-038):** zuerst eine Welle Rust-Backend-Pakete (`backend-implementer`, maxTurns 160); Frontend-Pakete starten erst, wenn die Command-Signaturen im Code liegen (registrierte Commands + typisierte `src/api/*`-Wrapper committet). Keine Platzhalter-APIs.
 2. **Brief pro Paket** (≤ 300 Wörter): Punkte, Dateibereich, Akzeptanzkriterien, Verbote.
 3. **Parallel bauen:** je Paket ein `implementer`, immer vier gleichzeitig, im gemeinsamen Arbeitsbaum, nur in den eigenen Dateien. Er baut, schreibt Unit-Tests und führt `npm run check` selbst aus.
 4. **Ein Loop = ein Paket.** Ist ein Paket fertig: einmal `reviewer` auf `git diff -- <Dateibereich>` → PASS/FIX.
