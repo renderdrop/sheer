@@ -65,6 +65,8 @@ fn margin_crop(media: [f32; 4], margins: [f32; 4]) -> Result<Option<[f32; 4]>, A
         media[2] - right,
         media[3] - top,
     ];
+    // 0.001 pt of slack: margins that add up to exactly the largest allowed crop (a page 72 pt wide) are sums of f32 and can land a
+    // rounding error below 72; that is not a refusal worth making. Anything visibly smaller still is.
     let slack = 0.001;
     if crop[2] - crop[0] < limits::MIN_CROP_SIDE_PT - slack
         || crop[3] - crop[1] < limits::MIN_CROP_SIDE_PT - slack
@@ -918,5 +920,28 @@ mod tests {
             state.page_plan().crop_changed,
             "the file has a crop this no longer has"
         );
+    }
+    #[test]
+    fn text_boxes_move_with_the_crop_and_come_back_exactly() {
+        use crate::model::annotation::AnnotationBody;
+        let mut state = DocState::new(1);
+        run(
+            &mut state,
+            json!({"type": "createAnnotation", "draft": {
+                "pageId": 0, "kind": "textBox", "color": [20, 40, 160], "opacity": 1.0,
+                "box": {"x": 72.0, "y": 100.0, "w": 150.0, "h": 0.0},
+                "text": "hello", "font": "serif", "fontSize": 14.0, "align": "left"
+            }}),
+        )
+        .unwrap();
+        let at = |state: &DocState| match &state.list(PageId::new(0))[0].body {
+            AnnotationBody::TextBox { bounds, .. } => (bounds.x, bounds.y),
+            other => panic!("not a text box: {other:?}"),
+        };
+        assert!(state.list(PageId::new(0))[0].body.is_content());
+        run(&mut state, crop_json(0, 30.0, 0.0, 0.0, 50.0)).unwrap();
+        assert_eq!(at(&state), (22.0, 70.0));
+        state.undo(&stamp()).unwrap();
+        assert_eq!(at(&state), (72.0, 100.0));
     }
 }

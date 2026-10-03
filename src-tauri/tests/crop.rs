@@ -340,3 +340,102 @@ fn extract_keeps_the_crop_of_the_session() {
         Some(vec![0.0, 0.0, 612.0, 792.0])
     );
 }
+
+fn run_job(receiver: &mpsc::Receiver<JobEvent>) {
+    loop {
+        match receiver.recv_timeout(Duration::from_secs(60)).unwrap() {
+            JobEvent::Progress { .. } => {}
+            JobEvent::Done { .. } => break,
+            other => panic!("expected done, got {other:?}"),
+        }
+    }
+}
+
+fn sink() -> (Arc<dyn EventSink>, mpsc::Receiver<JobEvent>) {
+    let (sender, receiver) = mpsc::channel();
+    (Arc::new(Collect(Mutex::new(sender))), receiver)
+}
+
+#[test]
+fn split_merge_and_flatten_keep_the_crop_of_the_session() {
+    use sheer_lib::commands::jobs::{MergeInput, SplitPlan};
+    use sheer_lib::pdfwrite::flatten::{FlattenOptions, FlattenScope};
+    let Some(state) = state() else { return };
+    let scratch = Scratch::new("jobs");
+    let id = open(state, &scratch, "a.pdf", &fixture());
+    let plain = open(state, &scratch, "p.pdf", &fixture());
+    state
+        .apply_command(id, margins(0, 50.0, 20.0, 10.0, 30.0))
+        .unwrap();
+    state.apply_command(id, reset(2)).unwrap();
+    let jobs = Arc::new(JobRegistry::new());
+    let cropped = vec![30.0, 10.0, 592.0, 742.0];
+    let media = vec![0.0, 0.0, 612.0, 792.0];
+
+    let folder = scratch.file("parts");
+    std::fs::create_dir_all(&folder).unwrap();
+    let (s, r) = sink();
+    let plan = SplitPlan::EveryN {
+        n: 1,
+        pattern: None,
+    };
+    state.start_split(&jobs, id, &plan, &folder, s).unwrap();
+    run_job(&r);
+    let part = |n: u32| std::fs::read(folder.join(format!("a-0{n}.pdf"))).unwrap();
+    assert_eq!(page_box(&part(1), 0, b"CropBox"), Some(cropped.clone()));
+    assert_eq!(page_box(&part(3), 0, b"CropBox"), Some(media.clone()));
+
+    let (s, r) = sink();
+    let target = scratch.file("merged.pdf");
+    let inputs = [
+        MergeInput::Document { doc_id: plain },
+        MergeInput::Document { doc_id: id },
+    ];
+    state.start_merge(&jobs, &inputs, &target, s).unwrap();
+    run_job(&r);
+    let merged = std::fs::read(&target).unwrap();
+    assert_eq!(page_box(&merged, 0, b"CropBox"), None);
+    assert_eq!(page_box(&merged, 3, b"CropBox"), Some(cropped.clone()));
+    assert_eq!(page_box(&merged, 5, b"CropBox"), Some(media.clone()));
+
+    let (s, r) = sink();
+    let target = scratch.file("flat.pdf");
+    let options = FlattenOptions {
+        scope: FlattenScope::Forms,
+    };
+    state.start_flatten(&jobs, id, options, &target, s).unwrap();
+    run_job(&r);
+    let flat = std::fs::read(&target).unwrap();
+    assert_eq!(page_box(&flat, 0, b"CropBox"), Some(cropped));
+    assert_eq!(page_box(&flat, 2, b"CropBox"), Some(media));
+}
+
+fn widget_rect(state: &AppState, id: DocumentId) -> (f32, f32) {
+    let info = state.get_form_fields(id).unwrap();
+    let rect = info.fields[0].widgets[0].rect;
+    (rect.x, rect.y)
+}
+
+#[test]
+fn form_widgets_shift_with_the_crop_and_back_on_undo() {
+    let Some(state) = state() else { return };
+    let scratch = Scratch::new("widgets");
+    let bytes = support::fixtures::form();
+    let id = open(state, &scratch, "f.pdf", &bytes);
+    let (x0, y0) = widget_rect(state, id);
+    state
+        .apply_command(id, margins(0, 30.0, 0.0, 0.0, 50.0))
+        .unwrap();
+    assert_eq!(widget_rect(state, id), (x0 - 50.0, y0 - 30.0));
+    state.undo(id).unwrap();
+    assert_eq!(widget_rect(state, id), (x0, y0));
+    state.redo(id).unwrap();
+    assert_eq!(widget_rect(state, id), (x0 - 50.0, y0 - 30.0));
+
+    // A form read for the first time after the crop is moved into the cropped space as well.
+    let late = open(state, &scratch, "g.pdf", &bytes);
+    state
+        .apply_command(late, margins(0, 30.0, 0.0, 0.0, 50.0))
+        .unwrap();
+    assert_eq!(widget_rect(state, late), (x0 - 50.0, y0 - 30.0));
+}
