@@ -1,3 +1,13 @@
+import {
+  Circle,
+  Highlighter,
+  Minus,
+  MoveUpRight,
+  Square,
+  Strikethrough,
+  Underline,
+  type LucideIcon,
+} from 'lucide-react';
 import type { ReactNode } from 'react';
 
 import { actionOf, actionShortcut, ACTIONS, type ActionDef, type ActionId } from '../../actions/registry';
@@ -7,6 +17,7 @@ import type { Locale, Translate } from '../../i18n';
 import type { Platform } from '../../api/app';
 import { ZOOM_STEPS } from '../../lib/zoom';
 import type { ScrollMode } from '../viewer/layout';
+import { toolNameKey, type MarkupVariant, type ShapeVariant } from '../../stores/tools';
 import type { ToolId } from '../../stores/ui';
 import { formatZoomStatus } from './status';
 
@@ -23,6 +34,9 @@ export interface ToolbarState {
   scrollMode: ScrollMode;
   activeTool: ToolId;
   toolLocked: boolean;
+  /** The remembered variants of Markup and Shapes (DESIGN 3.22): they name the tool and choose its icon. Highlight and Rectangle by default. */
+  markupVariant?: MarkupVariant;
+  shapeVariant?: ShapeVariant;
   /** The left panel is shown (not collapsed by the user or by the layout). */
   leftPanelVisible: boolean;
   inspectorVisible: boolean;
@@ -52,6 +66,18 @@ export function zoomMenuEntries(zoom: number, setZoom: (zoom: number) => void, l
     onSelect: () => setZoom(step),
   }));
 }
+
+const MARKUP_ICONS: Readonly<Record<MarkupVariant, LucideIcon>> = {
+  highlight: Highlighter,
+  underline: Underline,
+  strikeout: Strikethrough,
+};
+const SHAPE_ICONS: Readonly<Record<ShapeVariant, LucideIcon>> = {
+  rect: Square,
+  ellipse: Circle,
+  line: Minus,
+  arrow: MoveUpRight,
+};
 
 /** The scroll mode that each of the three layout actions chooses. */
 const SCROLL_MODE_OF: Partial<Record<ActionId, ScrollMode>> = {
@@ -115,7 +141,13 @@ export function buildToolbar(
   const described = (id: ActionId) => describe(actionOf(id), state);
 
   const tool = (id: ToolId, collapse?: number): ToolbarItem => {
-    const { label, icon, shortcut, keyShortcuts, disabled } = described(`tool-${id}`);
+    const { label: baseLabel, icon: baseIcon, shortcut, keyShortcuts, disabled } = described(`tool-${id}`);
+    // Markup and Shapes are named, and drawn, as the variant they are on now.
+    const markup = state.markupVariant ?? 'highlight';
+    const shapes = state.shapeVariant ?? 'rect';
+    const nameKey = toolNameKey(id, { markup, shapes });
+    const label = nameKey === null ? baseLabel : t(nameKey);
+    const icon = id === 'highlight' ? MARKUP_ICONS[markup] : id === 'shapes' ? SHAPE_ICONS[shapes] : baseIcon;
     return {
       id,
       label,
@@ -157,7 +189,7 @@ export function buildToolbar(
     {
       id: 'markup',
       label: t('toolbar.group.markup'),
-      items: [tool('highlight'), tool('comment'), tool('draw')],
+      items: [tool('highlight'), tool('note'), tool('text'), tool('draw'), tool('shapes')],
     },
     {
       id: 'fill-and-sign',

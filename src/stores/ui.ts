@@ -17,10 +17,10 @@ export const LEFT_PANEL_TABS = ['thumbnails', 'outline', 'comments', 'search'] a
 export type LeftPanelTab = (typeof LEFT_PANEL_TABS)[number];
 
 /**
- * The tools of the toolbar (DESIGN 3.3). They have no behaviour yet: choosing one only changes which one is active, so the
- * toolbar and the inspector can be exercised. The `tools` store of ARCHITECTURE section 8 takes this over with M2.
+ * The tools of the toolbar (DESIGN 3.3). Choosing one changes which one is active (the creation tools of M2 read it, DESIGN 3.22); the variants of Markup
+ * and Shapes live in the `tools` store (src/stores/tools.ts).
  */
-export const TOOLS = ['select', 'highlight', 'comment', 'draw', 'form', 'signature', 'pages'] as const;
+export const TOOLS = ['select', 'highlight', 'note', 'text', 'draw', 'shapes', 'form', 'signature', 'pages'] as const;
 export type ToolId = (typeof TOOLS)[number];
 
 /** Interface state that is not about a document (ARCHITECTURE section 8, `ui`). Nothing here is persisted except the panel width. */

@@ -73,10 +73,10 @@ describe('a click on a tool goes through the action registry', () => {
     await user.click(tool('Highlight'));
     expect(useUi.getState().activeTool).toBe('highlight');
     expect(pressed('Highlight')).toBe('true');
-    await user.click(tool('Comment'));
-    expect(useUi.getState().activeTool).toBe('comment');
+    await user.click(tool('Note'));
+    expect(useUi.getState().activeTool).toBe('note');
     expect(pressed('Highlight')).toBe('false');
-    await user.click(tool('Comment'));
+    await user.click(tool('Note'));
     expect(useUi.getState().activeTool).toBe('select');
     expect(pressed('Select')).toBe('true');
   });
@@ -136,7 +136,7 @@ describe('a click on a tool goes through the action registry', () => {
     const { user } = setup(<Toolbar />);
     act(() => useDocuments.getState().remove(REPORT.id));
     await user.click(tool('Highlight'));
-    await user.dblClick(tool('Comment'));
+    await user.dblClick(tool('Note'));
     expect(useUi.getState()).toMatchObject({ activeTool: 'select', toolLocked: false });
   });
 });

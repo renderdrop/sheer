@@ -6,9 +6,11 @@ import { useT } from '../../i18n';
 import { MAX_ZOOM, MIN_ZOOM } from '../../lib/zoom';
 import { historyOf, useAnnotations } from '../../stores/annotations';
 import { selectActiveId, useDocuments } from '../../stores/documents';
+import { useTools } from '../../stores/tools';
 import { useUi } from '../../stores/ui';
 import { useDocViewValue } from '../../stores/view';
 import { AboutDialog } from '../about/AboutDialog';
+import { ToolAnnouncer } from '../annotations/layer/ToolAnnouncer';
 import { SettingsPopover } from '../settings/SettingsPopover';
 import { buildToolbar, type ToolbarActions } from './toolbarEntries';
 import { ToolbarRow } from './ToolbarRow';
@@ -59,6 +61,8 @@ export const ToolbarSlot = memo(function ToolbarSlot({
   const t = useT();
   const activeTool = useUi((state) => state.activeTool);
   const toolLocked = useUi((state) => state.toolLocked);
+  const markupVariant = useTools((state) => state.markup);
+  const shapeVariant = useTools((state) => state.shapes);
   const docId = useDocuments(selectActiveId);
   const zoomAtMin = useDocViewValue(docId, (view) => view.zoom <= MIN_ZOOM);
   const zoomAtMax = useDocViewValue(docId, (view) => view.zoom >= MAX_ZOOM);
@@ -76,6 +80,8 @@ export const ToolbarSlot = memo(function ToolbarSlot({
           scrollMode,
           activeTool,
           toolLocked,
+          markupVariant,
+          shapeVariant,
           leftPanelVisible,
           inspectorVisible,
           zoomText: ZOOM_TEXT,
@@ -89,6 +95,8 @@ export const ToolbarSlot = memo(function ToolbarSlot({
       hasDocument,
       activeTool,
       toolLocked,
+      markupVariant,
+      shapeVariant,
       leftPanelVisible,
       inspectorVisible,
       zoomAtMin,
@@ -103,6 +111,7 @@ export const ToolbarSlot = memo(function ToolbarSlot({
     <>
       <ToolbarRow entries={entries} moreItems={moreItems} trafficLightInset={trafficLightInset} />
       {/* Portals, so they take no room in the shell: the settings popover hangs from the toolbar (it opens from More or its key), the About dialog is a modal. */}
+      <ToolAnnouncer />
       <SettingsPopover />
       <AboutDialog />
     </>

@@ -73,6 +73,9 @@
   --color-doc-select: var(--iris-500);
   --color-doc-text-select: rgba(91, 91, 214, 0.3);
   --color-doc-hit: rgba(91, 91, 214, 0.28);
+  /* Annotations on the canvas (DESIGN 3.23): the hover outline, and the size of a resize handle in px. */
+  --color-doc-hover: rgba(91, 91, 214, 0.5);
+  --handle-size: 8px;
 
   /* Shadows (DESIGN 1.3). */
   --shadow-1: 0 1px 2px rgba(58, 58, 171, 0.06), 0 8px 32px rgba(91, 91, 214, 0.12);
@@ -113,6 +116,18 @@
      max-w-tooltip-max, and w-splitter (the gutter beside the left panel). */
   --spacing-field: var(--field-width);
   --spacing-slider-min: var(--slider-min);
+  /* Inspector swatches and the note popover (DESIGN 3.24, 3.25): size-swatch, w-note. */
+  --spacing-swatch: var(--swatch-size);
+  --spacing-note: var(--note-width);
+  /* Annotation colours are document content (ADR-029): the eight Okabe-Ito colours, the same in both themes. bg-annot-yellow, ... */
+  --color-annot-yellow: var(--annot-yellow);
+  --color-annot-orange: var(--annot-orange);
+  --color-annot-vermillion: var(--annot-vermillion);
+  --color-annot-purple: var(--annot-purple);
+  --color-annot-blue: var(--annot-blue);
+  --color-annot-sky: var(--annot-sky);
+  --color-annot-green: var(--annot-green);
+  --color-annot-black: var(--annot-black);
   --spacing-popover-min: var(--popover-min);
   --spacing-popover-max: var(--popover-max);
   --spacing-tooltip-max: var(--tooltip-max);
@@ -266,6 +281,17 @@
   /* Widths (DESIGN 2, 3.3 to 3.8). The panel values are mirrored as numbers in components/tokens.ts (PANEL). */
   --field-width: 56px; /* slider number field and zoom readout */
   --slider-min: 120px;
+  --swatch-size: 24px;
+  --note-icon: 24px;
+  --note-width: 280px;
+  --annot-yellow: #f0e442;
+  --annot-orange: #e69f00;
+  --annot-vermillion: #d55e00;
+  --annot-purple: #cc79a7;
+  --annot-blue: #0072b2;
+  --annot-sky: #56b4e9;
+  --annot-green: #009e73;
+  --annot-black: #000000;
   --popover-min: 200px;
   --popover-max: 320px;
   --tooltip-max: 240px;
@@ -545,6 +571,7 @@
     --color-doc-select: Highlight;
     --color-doc-text-select: Highlight;
     --color-doc-hit: Highlight;
+    --color-doc-hover: Highlight;
     --win-close-hover: Highlight;
   }
 }
@@ -923,5 +950,93 @@
 @media (forced-colors: active) {
   [data-search-hit="active"] {
     outline-color: CanvasText;
+  }
+}
+
+/* Annotations on the canvas (DESIGN 3.23). The layer is in page space and scaled by --page-scale (px per point), so a px size is divided by it. */
+[data-annot-frame] {
+  position: absolute;
+  outline: none;
+  pointer-events: none;
+}
+
+[data-annot-box],
+[data-annot-ring] {
+  position: absolute;
+  display: none;
+  box-sizing: border-box;
+  pointer-events: none;
+  border-radius: calc(2px / var(--page-scale, 1));
+}
+
+[data-annot-box] {
+  inset: calc(-2px / var(--page-scale, 1));
+  border: calc(2px / var(--page-scale, 1)) solid var(--color-doc-select);
+}
+
+[data-annot-frame][data-state="selected"] > [data-annot-box],
+[data-annot-frame][data-state="hover"] > [data-annot-box] {
+  display: block;
+}
+
+[data-annot-frame][data-state="hover"] > [data-annot-box] {
+  border-width: calc(1px / var(--page-scale, 1));
+  border-color: var(--color-doc-hover);
+}
+
+/* The focus ring sits further out than the selection box (DESIGN 3.0: offset 2). */
+[data-annot-ring] {
+  inset: calc((-4px - var(--focus-offset)) / var(--page-scale, 1));
+  border: calc(var(--focus-width) / var(--page-scale, 1)) solid var(--color-focus);
+}
+
+[data-annot-frame]:focus-visible > [data-annot-ring] {
+  display: block;
+}
+
+/* A handle: a 24 px hit area with the 8 px square drawn at its centre. */
+[data-annot-handle] {
+  position: absolute;
+  width: calc(24px / var(--page-scale, 1));
+  height: calc(24px / var(--page-scale, 1));
+  margin: calc(-12px / var(--page-scale, 1)) 0 0 calc(-12px / var(--page-scale, 1));
+  pointer-events: auto;
+  touch-action: none;
+}
+
+[data-annot-handle]::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  box-sizing: border-box;
+  width: calc(var(--handle-size) / var(--page-scale, 1));
+  height: calc(var(--handle-size) / var(--page-scale, 1));
+  transform: translate(-50%, -50%);
+  background: var(--color-page);
+  border: calc(1px / var(--page-scale, 1)) solid var(--color-doc-select);
+}
+
+@media (forced-colors: active) {
+  [data-annot-handle]::after {
+    background: Canvas;
+  }
+}
+
+/* The chosen swatch: a 2 px focus-colour ring, offset 2, besides the check (never colour alone). */
+[data-swatch][aria-checked="true"] {
+  outline: var(--focus-width) solid var(--color-focus);
+  outline-offset: var(--focus-offset);
+}
+
+/* Inspector swatches (DESIGN 3.24): they keep their colour under forced colors, with a CanvasText ring; the selected one adds Highlight. */
+@media (forced-colors: active) {
+  [data-swatch] {
+    forced-color-adjust: none;
+    outline: 1px solid CanvasText;
+  }
+
+  [data-swatch][aria-checked="true"] {
+    outline: 2px solid Highlight;
   }
 }

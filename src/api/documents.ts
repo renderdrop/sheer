@@ -153,8 +153,9 @@ export async function openWelcomeDocument(): Promise<OpenOutcome> {
   return parsed;
 }
 
-export function closeDocument(docId: number): Promise<void> {
-  return call<void>('close_document', { docId });
+/** Releases a document. With changes that are not saved the backend rejects with `unsaved_changes` unless `discard` is true. */
+export function closeDocument(docId: number, discard = false): Promise<void> {
+  return call<void>('close_document', discard ? { docId, discard } : { docId });
 }
 
 /** The longest password the backend takes, in bytes (`limits::MAX_PASSWORD_BYTES`). */

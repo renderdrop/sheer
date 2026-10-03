@@ -1,22 +1,21 @@
 import { AnimatePresence, motion, useIsPresent } from 'motion/react';
 import { memo, type CSSProperties } from 'react';
 
-import { Panel, PanelSection } from '../../components';
+import { Panel } from '../../components';
 import { LAYOUT } from '../../components/tokens';
 import { useT } from '../../i18n';
+import { useInspector } from '../inspector/InspectorBody';
 import { usePanelSlide } from './usePanelSlide';
 
 /**
- * The inspector slot (DESIGN 3.9): a 288 px G1 `<aside>` that slides in (MOTION 4.2) and never takes focus by itself. Its header names the selection, or says "Tool options"; the body is a placeholder until
- * the annotation tools (M2) put their properties here.
+ * The inspector slot (DESIGN 3.9): a 288 px G1 `<aside>` that slides in (MOTION 4.2) and never takes focus by itself. Its header names the selection, or says "Tool options"; the body is the properties inspector (DESIGN 3.24).
  */
 export const Inspector = memo(function Inspector() {
   const t = useT();
+  const { title, body } = useInspector();
   return (
-    <Panel label={t('inspector.label')} title={t('inspector.title')}>
-      <PanelSection>
-        <p className="m-0 text-sm text-text-muted">{t('inspector.empty')}</p>
-      </PanelSection>
+    <Panel label={t('inspector.label')} title={title}>
+      {body}
     </Panel>
   );
 });

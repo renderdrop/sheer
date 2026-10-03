@@ -18,7 +18,8 @@
 //! | `search`, `cancel_search` | `docId`, `query: { text, matchCase, wholeWord, maxHits }`, `onEvent: Channel<SearchEvent>`; `searchId` | the id of the search; the hits arrive on the channel, see [`search`] |
 //! | `get_page_links`, `open_link` | `docId`, `pageId` (and `linkIndex`) | the links of a page; opening one asks the user in a native dialog first, see [`links`] |
 //! | `list_annotations`, `apply_annotation_command`, `undo`, `redo` | `docId`, and `pageId` or `command` | the annotations of a page; the `ChangeSet` of a command, an undo or a redo, see [`annotations`] |
-//! | `close_document` | `docId: number` | nothing |
+//! | `close_document` | `docId: number`, `discard?: boolean` | nothing; unsaved changes without `discard` are `unsaved_changes`, see [`save`] |
+//! | `save_document`, `save_document_as` | `docId`, `ack?` (and `opts?`) | the `SaveResult` (`null` if the Save As dialog was cancelled), see [`save`] |
 //! | `unlock_document` | `docId`, `password: string` (1 to 1024 bytes) | the `DocumentInfo` once the encrypted file is open; a wrong password is `password_required` (retry waits 1 s after the third, in Rust) |
 //! | `list_recents`, `remove_recent`, `open_recent` | none; `recentId`; `recentId` | `{ id, displayName, folder, lastOpened, missing }[]` (at most 50, no paths; `folder` is the parent folder's name); nothing; the open event of the file (`opened`, `needsPassword` or `openFailed`) |
 //! | `set_menu_state` | `hasDocument: boolean` | nothing; the macOS menu bar greys the commands that need a document |
@@ -35,6 +36,7 @@ pub mod links;
 pub mod outline;
 pub mod recent_actions;
 pub mod render;
+pub mod save;
 pub mod search;
 pub mod text;
 
@@ -49,7 +51,9 @@ use tauri_plugin_dialog::DialogExt;
 use zeroize::Zeroizing;
 
 use crate::documents::intake::{self, Admitted};
-use crate::documents::{Abandoned, Claim, DocKind, DocumentId, DocumentInfo, Registry};
+use crate::documents::{
+    Abandoned, Claim, DocKind, DocumentId, DocumentInfo, Fingerprint, Registry,
+};
 use crate::engine::Engine;
 use crate::error::{AppError, ErrorCode, UiError};
 use crate::events::AppEvent;
@@ -141,6 +145,8 @@ pub struct AppState {
     annotations: Arc<annotations::AnnotationStore>,
     /// The recent files (`storage::recents`); `None` where there is no app data directory (most tests).
     recents: Option<Arc<RecentsStore>>,
+    /// The app data directory, where the backups of the originals go (`commands::save`); `None` where there is none (most tests).
+    data_dir: Option<Arc<PathBuf>>,
 }
 
 impl AppState {
@@ -153,6 +159,7 @@ impl AppState {
             unlocks: Arc::new(UnlockGate::default()),
             annotations: Arc::new(annotations::AnnotationStore::default()),
             recents: None,
+            data_dir: None,
         }
     }
 
@@ -160,6 +167,13 @@ impl AppState {
     #[must_use]
     pub fn with_recents(mut self, recents: Arc<RecentsStore>) -> Self {
         self.recents = Some(recents);
+        self
+    }
+
+    /// This state with `directory` as the app data directory: the first save over a file puts a copy of the original in its `backups` folder.
+    #[must_use]
+    pub fn with_data_dir(mut self, directory: PathBuf) -> Self {
+        self.data_dir = Some(Arc::new(directory));
         self
     }
 
@@ -235,6 +249,7 @@ impl AppState {
         // The engine asks this once the document is loaded. It records the page count in the same step, so the entry either
         // gets it before the caller gives up (below) or is already gone and the engine drops the document.
         let registry = Arc::clone(&self.registry);
+        self.registry.set_fingerprint(id, Fingerprint::of(&file));
         let confirm = move |page_count| registry.set_page_count(id, page_count).is_ok();
         match self.engine.open(id, file, confirm) {
             Ok(page_count) => {
@@ -305,6 +320,7 @@ impl AppState {
             }
         };
         let registry = Arc::clone(&self.registry);
+        self.registry.set_fingerprint(id, Fingerprint::of(&file));
         let confirm = move |page_count| registry.set_page_count(id, page_count).is_ok();
         match self
             .engine
@@ -545,11 +561,16 @@ pub async fn open_welcome_document(
     .await
 }
 
-/// Releases a document that was opened (dialog, drop, file association).
+/// Releases a document that was opened (dialog, drop, file association). A document with changes that are not saved is
+/// `unsaved_changes` unless the user chose to `discard` them (ADR-004, DESIGN 3.27).
 #[tauri::command]
-pub async fn close_document(state: State<'_, AppState>, doc_id: DocumentId) -> Result<(), UiError> {
+pub async fn close_document(
+    state: State<'_, AppState>,
+    doc_id: DocumentId,
+    discard: Option<bool>,
+) -> Result<(), UiError> {
     let state = state.inner().clone();
-    blocking(move || state.close_document(doc_id)).await
+    blocking(move || state.close_document_checked(doc_id, discard.unwrap_or(false))).await
 }
 
 /// Gives the password the user typed for a document that waits for it (`needsPassword`) and answers with the document once it

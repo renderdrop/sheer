@@ -66,7 +66,7 @@ describe('the toolbar of DESIGN 3.3 and ADR-011 section 6', () => {
     expect(groups(entries).map((group) => group.items.map((entry) => entry.id))).toEqual([
       ['left-panel'],
       ['select'],
-      ['highlight', 'comment', 'draw'],
+      ['highlight', 'note', 'text', 'draw', 'shapes'],
       ['form', 'signature'],
       ['pages'],
       ['zoom-out', 'zoom-level', 'zoom-in'],
@@ -115,7 +115,7 @@ describe('the toolbar of DESIGN 3.3 and ADR-011 section 6', () => {
   describe('tools', () => {
     it('are tools, and only the active one is pressed', () => {
       const { entries } = buildToolbar(state({ activeTool: 'draw' }), actions());
-      const tools = ['select', 'highlight', 'comment', 'draw', 'form', 'signature', 'pages'].map((id) =>
+      const tools = ['select', 'highlight', 'note', 'text', 'draw', 'shapes', 'form', 'signature', 'pages'].map((id) =>
         item(entries, id),
       );
       for (const tool of tools) {
@@ -126,8 +126,8 @@ describe('the toolbar of DESIGN 3.3 and ADR-011 section 6', () => {
     });
 
     it('a locked tool shows the lock, the others do not', () => {
-      const { entries } = buildToolbar(state({ activeTool: 'comment', toolLocked: true }), actions());
-      expect(item(entries, 'comment').locked).toBe(true);
+      const { entries } = buildToolbar(state({ activeTool: 'note', toolLocked: true }), actions());
+      expect(item(entries, 'note').locked).toBe(true);
       expect(item(entries, 'highlight').locked).toBe(false);
     });
 
@@ -150,7 +150,17 @@ describe('the toolbar of DESIGN 3.3 and ADR-011 section 6', () => {
         .sort((a, b) => (a.collapse ?? 0) - (b.collapse ?? 0))
         .map((entry) => entry.id);
       expect(collapsing).toEqual(['pages', 'form', 'signature', 'zoom-out', 'zoom-in']);
-      for (const id of ['left-panel', 'select', 'highlight', 'comment', 'draw', 'zoom-level', 'inspector-toggle']) {
+      for (const id of [
+        'left-panel',
+        'select',
+        'highlight',
+        'note',
+        'text',
+        'draw',
+        'shapes',
+        'zoom-level',
+        'inspector-toggle',
+      ]) {
         expect(item(entries, id).collapse, id).toBeUndefined();
       }
     });
@@ -160,6 +170,8 @@ describe('the toolbar of DESIGN 3.3 and ADR-011 section 6', () => {
       expect(moreItems.map((entry) => entry.id)).toEqual([
         'open',
         'close-document',
+        'save',
+        'save-as',
         'edit:before',
         'undo',
         'redo',
@@ -286,15 +298,16 @@ describe('the toolbar of DESIGN 3.3 and ADR-011 section 6', () => {
 
     it('the tools show their letter, which works with the canvas focused', () => {
       const { entries } = buildToolbar(state({ platform: 'windows' }), actions());
-      const letters = ['select', 'highlight', 'comment', 'draw', 'form', 'signature', 'pages'].map((id) => [
-        id,
-        item(entries, id).shortcut,
-      ]);
+      const letters = ['select', 'highlight', 'note', 'text', 'draw', 'shapes', 'form', 'signature', 'pages'].map(
+        (id) => [id, item(entries, id).shortcut],
+      );
       expect(letters).toEqual([
         ['select', 'V'],
         ['highlight', 'H'],
-        ['comment', 'C'],
+        ['note', 'N'],
+        ['text', 'T'],
         ['draw', 'D'],
+        ['shapes', 'R'],
         ['form', 'F'],
         ['signature', 'S'],
         ['pages', 'P'],
@@ -351,8 +364,10 @@ describe('the toolbar and the More menu are the registry (no orphan shortcuts)',
     'left-panel': 'toggle-left-panel',
     select: 'tool-select',
     highlight: 'tool-highlight',
-    comment: 'tool-comment',
+    note: 'tool-note',
+    text: 'tool-text',
     draw: 'tool-draw',
+    shapes: 'tool-shapes',
     form: 'tool-form',
     signature: 'tool-signature',
     pages: 'tool-pages',

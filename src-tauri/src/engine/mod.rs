@@ -171,6 +171,16 @@ pub(crate) enum Job {
         limit: usize,
         reply: Reply<Vec<Vec<Quad>>>,
     },
+    /// Lets go of PDFium's copy of the document but keeps what the UI knows of it (its page sizes), so that the file can be replaced
+    /// (ADR-002 §7, ADR-004 §1 step 8). Followed by a `Reopen`.
+    Release { id: DocumentId, reply: Reply<()> },
+    /// Loads the document again from `file`, which replaced the one that was released, under the same id; the page sizes and flags are
+    /// read afresh. A document that had crashed is healthy again.
+    Reopen {
+        id: DocumentId,
+        file: File,
+        reply: Reply<u32>,
+    },
     /// Releases the document, and the sizes of its pages. Not skipped when its caller gave up (`Request::expired`).
     Close { id: DocumentId, reply: Reply<()> },
     /// Makes the worker panic inside the job guard, to test panic containment. `id` is the document it "works on".
@@ -211,6 +221,12 @@ impl Job {
                 let _ = reply.send(Err(error));
             }
             Job::SearchPage { reply, .. } => {
+                let _ = reply.send(Err(error));
+            }
+            Job::Release { reply, .. } => {
+                let _ = reply.send(Err(error));
+            }
+            Job::Reopen { reply, .. } => {
                 let _ = reply.send(Err(error));
             }
             Job::Close { reply, .. } => {
@@ -645,6 +661,23 @@ impl Engine {
     pub fn close(&self, id: DocumentId) -> Result<(), AppError> {
         self.call(limits::CONTROL_TIMEOUT, Rank::CONTROL, |reply| Job::Close {
             id,
+            reply,
+        })
+    }
+
+    /// Lets go of the engine's copy of document `id`, so that its file can be replaced; see [`Engine::reopen`]. Its page sizes stay.
+    pub fn release(&self, id: DocumentId) -> Result<(), AppError> {
+        self.call(limits::CONTROL_TIMEOUT, Rank::CONTROL, |reply| {
+            Job::Release { id, reply }
+        })
+    }
+
+    /// Loads document `id` again from `file` (an open handle that passed intake), after [`Engine::release`]: the page count of the
+    /// file as it is now. The page sizes and the flags are read afresh; a failure leaves the document without a copy in the engine.
+    pub fn reopen(&self, id: DocumentId, file: File) -> Result<u32, AppError> {
+        self.call(limits::OPEN_TIMEOUT, Rank::CONTROL, |reply| Job::Reopen {
+            id,
+            file,
             reply,
         })
     }

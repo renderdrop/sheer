@@ -383,6 +383,8 @@ fn capabilities_grant_only_the_app_commands_and_the_window_chrome_to_the_main_wi
         "allow-apply-annotation-command",
         "allow-undo",
         "allow-redo",
+        "allow-save-document",
+        "allow-save-document-as",
         "allow-close-document",
         "allow-app-ready",
         "allow-get-settings",
@@ -636,6 +638,8 @@ fn build_script_declares_exactly_the_granted_commands() {
         "apply_annotation_command",
         "undo",
         "redo",
+        "save_document",
+        "save_document_as",
         "close_document",
         "app_ready",
         "get_settings",
@@ -940,4 +944,21 @@ fn open_welcome_document_takes_nothing_from_the_webview_and_opens_through_intake
             "{edition}"
         );
     }
+}
+
+/// The welcome document is a bundled resource and is never written in place (ADR-004, DESIGN 3.27): `save_in_place` answers `read_only`
+/// before it reads, backs up or writes anything, and the in-place path is the only caller of the common save. The behaviour is tested
+/// with the real engine in `tests/save_annotations.rs`; this pins the shape of the code.
+#[test]
+fn saving_in_place_refuses_the_welcome_document_before_anything_else() {
+    let source = read("src/commands/save.rs");
+    let start = source.find("pub fn save_in_place").expect("save_in_place");
+    let body = &source[start..];
+    let refusal = body.find("DocKind::Welcome").expect("the welcome check");
+    let read_only = body.find("ErrorCode::ReadOnly").expect("read_only");
+    let common = body.find("self.save(id, None").expect("the common save");
+    assert!(refusal < read_only && read_only < common);
+    // Only the dialog's path (through `intake::admit_target`) and the in-place save call the common save.
+    assert_eq!(source.matches("self.save(id,").count(), 2);
+    assert!(source.contains("intake::admit_target(target)"));
 }

@@ -922,3 +922,18 @@ replies via /IRT stay in the model) but loses the comments panel.
 itself uses the tag's sources, so a tag older than this workflow still builds; the publish job uses the workflow commit's `changelog-section.sh` on the tag's `CHANGELOG.md`).
 
 **Consequences.** Users get a SmartScreen/Gatekeeper warning until B-002 is resolved.
+
+---
+
+## ADR-033 — Saving annotations (M2 P8)
+
+**Status:** accepted (2026-10-03). Implements ADR-004 §1 for annotations; where it differs, this entry says so.
+
+1. **Incremental only.** `pdfwrite` (lopdf 0.45, MIT, `default-features = false`) appends dictionaries, appearance streams, the changed `/Annots` arrays and an xref section to the original bytes. A positional `/Annots` index counts dictionary entries that are not `/Subtype /Popup` (what PDFium lists); `PdfOrigin.annot_index` is that, and a save returns the new position of every annotation of a touched page.
+2. **History is dropped on a successful save** (deviation from ADR-003 §7 "survives save"). Snapshots in the steps carry `sync` and file positions from before the save; undoing one would mark a file annotation clean with other content. `DocState::finish_save` clears the stacks. Keeping them needs a rebase of every slot; later.
+3. **Encrypted files** are not changed (`unsupported_feature`) until ADR-004 §5's spike is done; no password is kept after open.
+4. **Temp file names** stay those of `storage::atomic` (`.<name>.<pid>.<n>.tmp`, swept at start) instead of `.sheer-<random>`. Validation is lopdf (re-parse, page count) plus PDFium's reopen; if the reopen fails the original bytes (the prefix of the new file) are written back. Backups: `<app data>/backups`, once per document per session, 30 days / 2 GB; failure to back up is logged and does not stop the save. No setting to turn them off yet.
+5. **Save As** is `save_document_as` with a Rust-side dialog; the path goes through `intake::admit_target`. The document is rebound to the new file (user kind). The welcome document answers `read_only` to `save_document`; `tests/security_baseline.rs` pins the order of the checks.
+6. **Line ends:** `/LE` is `[tail (at from), head (at to)]`. A free text's `/Contents` is its lines joined by LF; its `/C` is its fill and its colour is only in `/DA` (the import reads the colour back as black until it parses `/DA`).
+7. **Import fix.** pdfium-render's `stroke_color()`/`fill_color()` crash PDFium for any annotation with an appearance stream (the fallback treats the annotation handle as a page object). `engine::import` reads colours from the paths of the appearance and calls the two only when the annotation has no objects. An appearance stream without objects can still crash; remove this when pdfium-render is fixed or the engine runs out of process (M7).
+8. **Not done:** quit with unsaved documents (needs a close-request hook), "Saved" pulse and "Saving…" in the status bar, a confirmation dialog for `needs_confirmation` (shown as the banner), macOS menu entries for Save/Save As, a live refresh of the overlay by `pageRev` (the render cache of the document is dropped after a save).

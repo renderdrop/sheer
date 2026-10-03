@@ -73,12 +73,12 @@ describe('the ui store', () => {
 
     it('a double click locks the tool; clicking the locked tool, or Esc, releases it', () => {
       const { selectTool, lockTool, releaseTool } = useUi.getState();
-      lockTool('comment');
-      expect(useUi.getState()).toMatchObject({ activeTool: 'comment', toolLocked: true });
-      selectTool('comment');
+      lockTool('note');
+      expect(useUi.getState()).toMatchObject({ activeTool: 'note', toolLocked: true });
+      selectTool('note');
       expect(useUi.getState()).toMatchObject({ activeTool: 'select', toolLocked: false });
 
-      lockTool('comment');
+      lockTool('note');
       releaseTool();
       expect(useUi.getState()).toMatchObject({ activeTool: 'select', toolLocked: false });
     });

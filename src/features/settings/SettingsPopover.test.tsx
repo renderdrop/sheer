@@ -22,8 +22,8 @@ const settingsInitial = useSettings.getState();
 /** The backend's answer: the settings with the patch applied (what `update_settings` returns). */
 function answerWithPatch() {
   updateSettingsMock.mockImplementation((patch) => {
-    const { glass, theme, language, leftPanelWidth } = useSettings.getState();
-    const current: Settings = { glass, theme, language, leftPanelWidth, welcomeTour: 'pending' };
+    const { glass, theme, language, leftPanelWidth, authorName } = useSettings.getState();
+    const current: Settings = { glass, theme, language, leftPanelWidth, authorName, welcomeTour: 'pending' };
     return Promise.resolve({ ...current, ...patch });
   });
 }
@@ -210,7 +210,9 @@ describe('the settings popover', () => {
     expect(updateSettingsMock).toHaveBeenLastCalledWith({ language: 'de' });
     // Tab at the last control wraps to the first: the popover keeps focus inside.
     await waitFor(() => expect(checked('Language')).toBe('Deutsch'));
-    // The Welcome tour row's button is the fourth stop and the last one.
+    // The author name field is the fourth stop, the Welcome tour row's button the fifth and the last one.
+    await user.tab();
+    expect(document.activeElement).toBe(within(popover()).getByRole('textbox', { name: 'Author name' }));
     await user.tab();
     expect(document.activeElement).toBe(within(popover()).getByRole('button', { name: 'Start tour' }));
     await user.tab();

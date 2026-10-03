@@ -44,7 +44,14 @@ describe('parseSettings', () => {
     for (const glass of GLASS_MODES) {
       for (const theme of THEME_MODES) {
         for (const language of LANGUAGES) {
-          const settings = { glass, theme, language, leftPanelWidth: 248, welcomeTour: 'pending' };
+          const settings = {
+            glass,
+            theme,
+            language,
+            leftPanelWidth: 248,
+            welcomeTour: 'pending',
+            authorName: 'Author',
+          };
           expect(parseSettings(settings)).toEqual(settings);
         }
       }
@@ -54,7 +61,14 @@ describe('parseSettings', () => {
   it('accepts the whole range of the left panel width and nothing outside it', () => {
     for (const leftPanelWidth of [LEFT_PANEL_WIDTH.min, 193, 320, LEFT_PANEL_WIDTH.max]) {
       expect(
-        parseSettings({ glass: 'auto', theme: 'system', language: 'system', leftPanelWidth, welcomeTour: 'shown' }),
+        parseSettings({
+          glass: 'auto',
+          theme: 'system',
+          language: 'system',
+          leftPanelWidth,
+          welcomeTour: 'shown',
+          authorName: 'Author',
+        }),
       ).toMatchObject({
         leftPanelWidth,
       });
@@ -80,6 +94,7 @@ describe('parseSettings', () => {
           language: 'system',
           leftPanelWidth: bad,
           welcomeTour: 'pending',
+          authorName: 'Author',
         }),
         String(bad),
       ).toBeNull();
@@ -101,9 +116,30 @@ describe('parseSettings', () => {
       { glass: 'auto' },
       { theme: 'system' },
       { glass: 'Auto', theme: 'system' },
-      { glass: 'auto', theme: 'dim', language: 'system', leftPanelWidth: 248, welcomeTour: 'pending' },
-      { glass: 1, theme: 'system', language: 'system', leftPanelWidth: 248, welcomeTour: 'pending' },
-      { glass: 'auto', theme: 'system', language: 'system', leftPanelWidth: 248, welcomeTour: 'done' },
+      {
+        glass: 'auto',
+        theme: 'dim',
+        language: 'system',
+        leftPanelWidth: 248,
+        welcomeTour: 'pending',
+        authorName: 'Author',
+      },
+      {
+        glass: 1,
+        theme: 'system',
+        language: 'system',
+        leftPanelWidth: 248,
+        welcomeTour: 'pending',
+        authorName: 'Author',
+      },
+      {
+        glass: 'auto',
+        theme: 'system',
+        language: 'system',
+        leftPanelWidth: 248,
+        welcomeTour: 'done',
+        authorName: 'Author',
+      },
       { glass: 'auto', theme: 'system', language: 'system', leftPanelWidth: 248 },
       // A language that is not one of the three wire names: a tag, another case, another language.
       ...['de-DE', 'DE', 'fr', '', null, 1].map((language) => ({
@@ -129,6 +165,7 @@ describe('parseSettings', () => {
         language: 'de',
         leftPanelWidth: 300,
         welcomeTour: 'shown',
+        authorName: 'Author',
         extra: '<img src=x>',
       }),
     ).toEqual({
@@ -137,6 +174,7 @@ describe('parseSettings', () => {
       language: 'de',
       leftPanelWidth: 300,
       welcomeTour: 'shown',
+      authorName: 'Author',
     });
   });
 });
@@ -176,6 +214,7 @@ describe('commands', () => {
       language: 'system',
       leftPanelWidth: 248,
       welcomeTour: 'pending',
+      authorName: 'Author',
     });
     await expect(getSettings()).resolves.toEqual({
       glass: 'auto',
@@ -183,6 +222,7 @@ describe('commands', () => {
       language: 'system',
       leftPanelWidth: 248,
       welcomeTour: 'pending',
+      authorName: 'Author',
     });
     expect(invokeMock).toHaveBeenLastCalledWith('get_settings', undefined);
   });
@@ -194,6 +234,7 @@ describe('commands', () => {
       language: 'system',
       leftPanelWidth: 248,
       welcomeTour: 'pending',
+      authorName: 'Author',
     });
     await expect(updateSettings({ glass: 'solid' })).resolves.toEqual({
       glass: 'solid',
@@ -201,6 +242,7 @@ describe('commands', () => {
       language: 'system',
       leftPanelWidth: 248,
       welcomeTour: 'pending',
+      authorName: 'Author',
     });
     expect(invokeMock).toHaveBeenCalledWith('update_settings', { patch: { glass: 'solid' } });
   });

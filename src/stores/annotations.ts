@@ -45,7 +45,13 @@ const EMPTY_DOC: Readonly<DocAnnotations> = { rev: 0, byId: {}, loaded: {}, remo
 
 export interface AnnotationsState {
   byDoc: Readonly<Record<number, DocAnnotations>>;
+  /** The selected annotations of each document, in the order they were selected (UI state, not part of the model). */
+  selectedIds: Readonly<Record<number, readonly number[]>>;
 
+  /** Replaces the selection of a document; an empty list clears it. The same ids in the same order change nothing. */
+  select: (docId: number, ids: readonly number[]) => void;
+  /** Empties the selection of a document (nothing changes if it is empty already). */
+  clearSelection: (docId: number) => void;
   /**
    * Loads the annotations of a page, once: a page that is loaded or being loaded is not asked for again. Resolves when they are in
    * the store; a failure leaves the page unloaded (a later call tries again) and rejects with the backend's error.
@@ -67,6 +73,16 @@ const loading = new Map<string, Promise<void>>();
 
 export const useAnnotations = create<AnnotationsState>()((set, get) => ({
   byDoc: {},
+  selectedIds: {},
+
+  select: (docId, ids) =>
+    set((state) => {
+      const current = state.selectedIds[docId] ?? [];
+      if (current.length === ids.length && current.every((id, i) => id === ids[i])) return state;
+      return { selectedIds: { ...state.selectedIds, [docId]: ids } };
+    }),
+
+  clearSelection: (docId) => get().select(docId, []),
 
   loadPage: (docId, pageId) => {
     if (get().byDoc[docId]?.loaded[pageId] === true) return Promise.resolve();
@@ -125,24 +141,32 @@ export const useAnnotations = create<AnnotationsState>()((set, get) => ({
       const byId = { ...doc.byId } as Record<number, Annotation>;
       const removed = { ...doc.removed } as Record<number, true>;
       for (const id of changes.removed) {
-        // eslint-disable-next-line @typescript-eslint/no-dynamic-delete -- a record keyed by annotation id
         delete byId[id];
         removed[id] = true;
       }
       for (const annotation of changes.upserted) {
         byId[annotation.id] = annotation;
-        // eslint-disable-next-line @typescript-eslint/no-dynamic-delete -- a record keyed by annotation id
+
         delete removed[annotation.id];
       }
+      // What was removed cannot stay selected.
+      const selected = state.selectedIds[docId];
+      const kept = selected?.filter((id) => byId[id] !== undefined);
       return {
         byDoc: { ...state.byDoc, [docId]: { ...doc, rev: changes.rev, byId, removed, history: changes.history } },
+        ...(selected !== undefined && kept !== undefined && kept.length !== selected.length
+          ? { selectedIds: { ...state.selectedIds, [docId]: kept } }
+          : {}),
       };
     }),
 
   remove: (docId) =>
     set((state) => {
       if (state.byDoc[docId] === undefined) return state;
-      return { byDoc: Object.fromEntries(Object.entries(state.byDoc).filter(([id]) => Number(id) !== docId)) };
+      return {
+        byDoc: Object.fromEntries(Object.entries(state.byDoc).filter(([id]) => Number(id) !== docId)),
+        selectedIds: Object.fromEntries(Object.entries(state.selectedIds).filter(([id]) => Number(id) !== docId)),
+      };
     }),
 }));
 

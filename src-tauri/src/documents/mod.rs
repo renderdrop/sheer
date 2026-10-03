@@ -9,7 +9,7 @@ pub mod intake;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, MutexGuard, PoisonError};
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime};
 
 use serde::{Deserialize, Serialize};
 
@@ -150,6 +150,25 @@ fn is_unsafe_in_display_name(c: char) -> bool {
         || matches!(c, '\u{2028}' | '\u{2029}' | '\u{FFFC}')
 }
 
+/// What a file looked like when it was opened or last saved: its size and the time it was last changed. A save that finds another
+/// file at the path asks the user first (ADR-004 §1 step 2). Size and time are a hint for the user, not a security measure.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Fingerprint {
+    pub len: u64,
+    pub modified: Option<SystemTime>,
+}
+
+impl Fingerprint {
+    /// The fingerprint of an open file.
+    pub fn of(file: &std::fs::File) -> Option<Self> {
+        let metadata = file.metadata().ok()?;
+        Some(Self {
+            len: metadata.len(),
+            modified: metadata.modified().ok(),
+        })
+    }
+}
+
 /// How often a password was wrong for a locked document, and when last (ADR-026). Never the passwords themselves.
 #[derive(Debug, Default, Clone, Copy)]
 struct PasswordTries {
@@ -173,6 +192,10 @@ struct Entry {
     /// The file needs a password and has not been unlocked: the entry waits for `unlock_document` (it has no page count yet), and
     /// counts the wrong tries. Cleared when the document is loaded.
     locked: Option<PasswordTries>,
+    /// The file as it was when it was opened or last saved (`set_fingerprint`), `None` when unknown.
+    fingerprint: Option<Fingerprint>,
+    /// The original was copied to the backup folder in this session (ADR-004 §3: only the first save does it).
+    backed_up: bool,
 }
 
 #[derive(Debug, Default)]
@@ -214,6 +237,8 @@ impl Inner {
                 flags: DocFlags::default(),
                 closing: false,
                 locked: None,
+                fingerprint: None,
+                backed_up: false,
             },
         );
         Ok(id)
@@ -486,6 +511,63 @@ impl Registry {
             .get(&id)
             .filter(|entry| !entry.closing)
             .map(|entry| entry.path.clone())
+    }
+
+    /// Remembers what the file of `id` looks like now. A no-op for an unknown id.
+    pub fn set_fingerprint(&self, id: DocumentId, fingerprint: Option<Fingerprint>) {
+        if let Some(entry) = self.lock().entries.get_mut(&id) {
+            entry.fingerprint = fingerprint;
+        }
+    }
+
+    /// What the file of `id` looked like when it was opened or last saved.
+    pub fn fingerprint(&self, id: DocumentId) -> Option<Fingerprint> {
+        self.lock().entries.get(&id)?.fingerprint
+    }
+
+    /// Whether the original of `id` was backed up in this session.
+    pub fn backed_up(&self, id: DocumentId) -> bool {
+        self.lock()
+            .entries
+            .get(&id)
+            .is_some_and(|entry| entry.backed_up)
+    }
+
+    pub fn set_backed_up(&self, id: DocumentId, done: bool) {
+        if let Some(entry) = self.lock().entries.get_mut(&id) {
+            entry.backed_up = done;
+        }
+    }
+
+    /// Whether another open document (not `id`) is the file at `path`.
+    pub fn is_open_elsewhere(&self, id: DocumentId, path: &Path) -> bool {
+        self.lock()
+            .entries
+            .iter()
+            .any(|(&other, entry)| other != id && !entry.closing && entry.path == path)
+    }
+
+    /// The document `id` now lives in the file at `path` (Save As): it is a document of the user's from here on, shown under the name of
+    /// the file, and can be saved in place. `io_in_use` if another open document has that path; `not_found` for an unknown id.
+    pub fn rebind(&self, id: DocumentId, path: PathBuf) -> Result<(), AppError> {
+        let mut inner = self.lock();
+        if inner
+            .entries
+            .iter()
+            .any(|(&other, entry)| other != id && !entry.closing && entry.path == path)
+        {
+            return Err(AppError::new(ErrorCode::IoInUse));
+        }
+        let entry = inner
+            .entries
+            .get_mut(&id)
+            .filter(|entry| !entry.closing)
+            .ok_or(AppError::not_found("document"))?;
+        entry.display_name = display_name(&path);
+        entry.path = path;
+        entry.kind = DocKind::User;
+        entry.backed_up = false;
+        Ok(())
     }
 
     /// Removes a document. Returns `true` if it was registered.

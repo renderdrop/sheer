@@ -9,9 +9,11 @@ import { renderScheduler, type RenderScheduler } from '../../engine/renderSchedu
 import { useT } from '../../i18n';
 import { DURATION, ENTER_SCALE, FADE_END_SLACK_MS, SPRING } from '../../lib/motion';
 import { useUi } from '../../stores/ui';
+import { AnnotationLayer } from '../annotations/layer/AnnotationLayer';
 import { usePageText } from '../textlayer/cache';
 import { PageOverlay } from '../textlayer/PageOverlay';
 import { runsOf } from '../textlayer/runs';
+import { hasFileRotation } from './fileRotation';
 import { clearRenderFailure, showRenderFailure } from './renderFailure';
 import { readViewRect, subscribeViewRect } from './scrollBridge';
 import { boxToPage, normalizeRotation, swapsSides, type Rotation } from './transform';
@@ -371,6 +373,17 @@ export const PageView = memo(function PageView({
         rotation={rotation}
         layer={text.layer}
         interactive={interactive}
+      />
+      <AnnotationLayer
+        docId={docId}
+        pageIndex={pageIndex}
+        boxWidth={width}
+        boxHeight={height}
+        widthPt={widthPt}
+        heightPt={heightPt}
+        rotation={rotation}
+        visible={priority === 'visible'}
+        ready={text.layer !== null || hasFileRotation(docId, pageIndex)}
       />
     </div>
   );

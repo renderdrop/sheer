@@ -38,6 +38,44 @@ fn rgb(color: &PdfColor) -> Rgb {
     Rgb([color.red(), color.green(), color.blue()])
 }
 
+/// The stroke and the fill colour of an annotation, read from the paths of its appearance. pdfium-render's `stroke_color()` and
+/// `fill_color()` fall back, for an annotation that has an appearance stream, to a call that treats the annotation handle as a page
+/// object and crashes PDFium, so they are never called. PDFium makes an appearance for the kinds it can (highlight, square, ...) when
+/// it lists the annotations, so this finds the colours of those too.
+fn path_colors(annotation: &PdfPageAnnotation<'_>) -> (Option<Rgb>, Option<Rgb>) {
+    let (mut stroke, mut fill) = (None, None);
+    for object in annotation.objects().iter().take(64) {
+        let Some(path) = object.as_path_object() else {
+            continue;
+        };
+        if stroke.is_none() && path.is_stroked().unwrap_or(false) {
+            stroke = path.stroke_color().ok().map(|color| rgb(&color));
+        }
+        if fill.is_none()
+            && path
+                .fill_mode()
+                .is_ok_and(|mode| mode != PdfPathFillMode::None)
+        {
+            fill = path
+                .fill_color()
+                .ok()
+                .filter(|color| color.alpha() > 0)
+                .map(|color| rgb(&color));
+        }
+    }
+    // No objects: no appearance was drawn, and the annotation's own colours are the answer (`FPDFAnnot_GetColor` works then). An
+    // appearance stream without any object would still take the crashing way; that is the one case left, and a rare one.
+    if annotation.objects().len() == 0 {
+        stroke = annotation.stroke_color().ok().map(|color| rgb(&color));
+        fill = annotation
+            .fill_color()
+            .ok()
+            .filter(|color| color.alpha() > 0)
+            .map(|color| rgb(&color));
+    }
+    (stroke, fill)
+}
+
 /// The quads of a text markup, in page space. A markup without usable quads covers its rectangle.
 fn quads_of(annotation: &PdfPageAnnotation<'_>, page_box: PageBox, rect: Rect) -> Vec<Quad> {
     let mut quads = Vec::new();
@@ -100,12 +138,7 @@ fn read_one(
         bounds.right().value,
         bounds.top().value,
     )?;
-    let stroke = annotation.stroke_color().ok().map(|color| rgb(&color));
-    let fill = annotation
-        .fill_color()
-        .ok()
-        .filter(|color| color.alpha() > 0)
-        .map(|color| rgb(&color));
+    let (stroke, fill) = path_colors(annotation);
     let contents = annotation
         .contents()
         .map(|text| clean(&text, limits::MAX_ANNOT_CONTENTS_CHARS))
@@ -116,7 +149,7 @@ fn read_one(
             AnnotationBody::Highlight {
                 quads: quads_of(annotation, page_box, rect),
             },
-            stroke.unwrap_or(DEFAULT_MARKUP),
+            stroke.or(fill).unwrap_or(DEFAULT_MARKUP),
         ),
         PdfPageAnnotationType::Underline => (
             AnnotationBody::Underline {
@@ -138,7 +171,7 @@ fn read_one(
                 },
                 icon: NoteIcon::Note,
             },
-            stroke.unwrap_or(DEFAULT_MARKUP),
+            stroke.or(fill).unwrap_or(DEFAULT_MARKUP),
         ),
         PdfPageAnnotationType::FreeText => (
             AnnotationBody::FreeText {

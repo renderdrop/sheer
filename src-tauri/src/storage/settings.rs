@@ -2,7 +2,7 @@
 //!
 //! Wire shape (camelCase, enum values lowercase):
 //! `{ "glass": "auto" | "solid", "theme": "system" | "light" | "dark", "language": "system" | "en" | "de",
-//! "leftPanelWidth": 192..=400, "welcomeTour": "pending" | "shown" }`.
+//! "leftPanelWidth": 192..=400, "welcomeTour": "pending" | "shown", "authorName": 1..=128 chars without control characters }`.
 //!
 //! - **Reading** never fails: a missing, oversized, damaged or hand-edited file falls back to the defaults, field by
 //!   field. The file is user-writable, so nothing in it is trusted beyond the enum values and the width range it can
@@ -106,8 +106,63 @@ impl<'de> Deserialize<'de> for PanelWidth {
     }
 }
 
+/// The name put on annotations the user creates (ADR-029, DESIGN 3.25). Always 1 to `limits::MAX_AUTHOR_NAME_CHARS` characters
+/// without control characters: the only ways in are [`AuthorName::new`] and `Deserialize`, and both check. It is a plain string on the wire.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(transparent)]
+pub struct AuthorName(String);
+
+impl AuthorName {
+    /// `None` for an empty name, a name over the limit, or one with a control character.
+    pub fn new(name: &str) -> Option<Self> {
+        let length = name.chars().count();
+        if length == 0
+            || length > limits::MAX_AUTHOR_NAME_CHARS
+            || name.chars().any(char::is_control)
+        {
+            None
+        } else {
+            Some(Self(name.to_owned()))
+        }
+    }
+
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+
+    /// The OS account's name, from the environment (`USERNAME` on Windows, `USER` or `LOGNAME` elsewhere): cleaned to be valid, or
+    /// "Author" when there is none. No call into the OS and no new dependency; it is only a default the user can change.
+    pub fn os_default() -> Self {
+        ["USERNAME", "USER", "LOGNAME"]
+            .iter()
+            .filter_map(|key| std::env::var(key).ok())
+            .map(|raw| {
+                raw.chars()
+                    .filter(|c| !c.is_control())
+                    .take(limits::MAX_AUTHOR_NAME_CHARS)
+                    .collect::<String>()
+            })
+            .find_map(|clean| Self::new(clean.trim()))
+            .unwrap_or_else(|| Self("Author".to_owned()))
+    }
+}
+
+impl Default for AuthorName {
+    fn default() -> Self {
+        Self::os_default()
+    }
+}
+
+impl<'de> Deserialize<'de> for AuthorName {
+    /// A string that passes [`AuthorName::new`]; anything else is an error, never trimmed or cut.
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let name = String::deserialize(deserializer)?;
+        Self::new(&name).ok_or_else(|| serde::de::Error::custom("author name not valid"))
+    }
+}
+
 /// Every persisted setting. Add a field here, to [`SettingsPatch`] and to `src/api/app.ts` together.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Settings {
     pub glass: GlassMode,
@@ -115,6 +170,7 @@ pub struct Settings {
     pub language: Language,
     pub left_panel_width: PanelWidth,
     pub welcome_tour: WelcomeTour,
+    pub author_name: AuthorName,
 }
 
 impl Settings {
@@ -145,6 +201,10 @@ impl Settings {
                 .get("welcomeTour")
                 .and_then(|value| WelcomeTour::deserialize(value).ok())
                 .unwrap_or_default(),
+            author_name: map
+                .get("authorName")
+                .and_then(|value| AuthorName::deserialize(value).ok())
+                .unwrap_or_default(),
         }
     }
 
@@ -156,13 +216,14 @@ impl Settings {
             language: patch.language.unwrap_or(self.language),
             left_panel_width: patch.left_panel_width.unwrap_or(self.left_panel_width),
             welcome_tour: patch.welcome_tour.unwrap_or(self.welcome_tour),
+            author_name: patch.author_name.unwrap_or(self.author_name),
         }
     }
 }
 
-/// A partial update: at most the five settings, each optional. Parsed only by [`SettingsPatch::from_value`], which
-/// rejects every unknown key (`deny_unknown_fields`), so a patch can never name more than these five fields.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize)]
+/// A partial update: at most the six settings, each optional. Parsed only by [`SettingsPatch::from_value`], which
+/// rejects every unknown key (`deny_unknown_fields`), so a patch can never name more than these six fields.
+#[derive(Debug, Clone, PartialEq, Eq, Default, Deserialize)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
 pub struct SettingsPatch {
     #[serde(default, deserialize_with = "present")]
@@ -175,6 +236,8 @@ pub struct SettingsPatch {
     pub left_panel_width: Option<PanelWidth>,
     #[serde(default, deserialize_with = "present")]
     pub welcome_tour: Option<WelcomeTour>,
+    #[serde(default, deserialize_with = "present")]
+    pub author_name: Option<AuthorName>,
 }
 
 /// A field that is present must hold a valid value. Plain `Option` would read `null` as "absent" and accept it.
@@ -232,7 +295,7 @@ impl SettingsStore {
 
     /// The current settings. Never waits for a write in progress: it answers with the last persisted state.
     pub fn get(&self) -> Settings {
-        *self.lock()
+        self.lock().clone()
     }
 
     /// Applies `patch`, persists the result atomically and returns it. If persisting fails, nothing changes.
@@ -250,18 +313,18 @@ impl SettingsStore {
         let _writer = self.writer.lock().unwrap_or_else(PoisonError::into_inner);
         // Only `update` assigns `current`, and updates are serialised, so it cannot change before the assignment below.
         let current = self.get();
-        let next = current.apply(patch);
+        let next = current.clone().apply(patch);
         if next != current {
             let mut bytes = serde_json::to_vec_pretty(&next)
                 .map_err(|error| AppError::logged(ErrorCode::Internal, error))?;
             bytes.push(b'\n');
             persist(&bytes)?;
-            *self.lock() = next;
+            *self.lock() = next.clone();
         }
         Ok(next)
     }
 
-    /// The settings are plain `Copy` data, so a panic elsewhere cannot leave them half-updated: a poisoned lock is safe
+    /// The settings are plain data, so a panic elsewhere cannot leave them half-updated: a poisoned lock is safe
     /// to keep using.
     fn lock(&self) -> MutexGuard<'_, Settings> {
         self.current.lock().unwrap_or_else(PoisonError::into_inner)
@@ -325,9 +388,10 @@ mod tests {
 
     #[test]
     fn settings_serialize_with_lowercase_enum_values() {
+        let author = AuthorName::default();
         assert_eq!(
             serde_json::to_value(Settings::default()).unwrap(),
-            json!({ "glass": "auto", "theme": "system", "language": "system", "leftPanelWidth": 248, "welcomeTour": "pending" })
+            json!({ "glass": "auto", "theme": "system", "language": "system", "leftPanelWidth": 248, "welcomeTour": "pending", "authorName": author.as_str() })
         );
         let settings = Settings {
             glass: GlassMode::Solid,
@@ -335,10 +399,11 @@ mod tests {
             language: Language::De,
             left_panel_width: PanelWidth::new(320).unwrap(),
             welcome_tour: WelcomeTour::Shown,
+            author_name: AuthorName::new("Ada Lovelace").unwrap(),
         };
         assert_eq!(
             serde_json::to_value(settings).unwrap(),
-            json!({ "glass": "solid", "theme": "dark", "language": "de", "leftPanelWidth": 320, "welcomeTour": "shown" })
+            json!({ "glass": "solid", "theme": "dark", "language": "de", "leftPanelWidth": 320, "welcomeTour": "shown", "authorName": "Ada Lovelace" })
         );
     }
 
@@ -384,6 +449,59 @@ mod tests {
                 WelcomeTour::Pending,
                 "{stored}"
             );
+        }
+    }
+
+    // --- the author name (ADR-029) ---
+
+    #[test]
+    fn an_author_name_is_one_to_128_characters_without_control_characters() {
+        let longest = "ä".repeat(limits::MAX_AUTHOR_NAME_CHARS);
+        for ok in ["A", "Ada Lovelace", "李雷", longest.as_str()] {
+            assert_eq!(
+                patch(json!({ "authorName": ok })).unwrap().author_name,
+                AuthorName::new(ok),
+                "{ok}"
+            );
+        }
+        let too_long = "a".repeat(limits::MAX_AUTHOR_NAME_CHARS + 1);
+        for bad in [
+            json!(""),
+            json!(too_long),
+            json!(
+                "a
+b"
+            ),
+            json!("a "),
+            json!(""),
+            json!(null),
+            json!(3),
+            json!(["Ada"]),
+        ] {
+            assert_eq!(
+                rejected(json!({ "authorName": bad.clone() })),
+                INVALID_SETTINGS,
+                "{bad}"
+            );
+        }
+    }
+
+    #[test]
+    fn the_author_name_defaults_to_a_valid_name_and_is_stored_and_read_back() {
+        assert!(AuthorName::new(AuthorName::default().as_str()).is_some());
+        let dir = TempDir::new();
+        let store = store_in(&dir);
+        apply_json(&store, json!({ "authorName": "Ada" })).unwrap();
+        assert_eq!(store_in(&dir).get().author_name.as_str(), "Ada");
+        // A damaged stored name falls back to the default.
+        for contents in [
+            r#"{"authorName":""}"#,
+            r#"{"authorName":"a "}"#,
+            r#"{"authorName":5}"#,
+        ] {
+            let dir = TempDir::new();
+            fs::write(dir.path().join(FILE_NAME), contents).unwrap();
+            assert_eq!(store_in(&dir).get().author_name, AuthorName::default());
         }
     }
 
@@ -435,6 +553,7 @@ mod tests {
                 language: Some(Language::En),
                 left_panel_width: PanelWidth::new(296),
                 welcome_tour: None,
+                author_name: None,
             }
         );
     }
@@ -616,7 +735,7 @@ mod tests {
         };
         let only_theme = patch(json!({ "theme": "light" })).unwrap();
         assert_eq!(
-            base.apply(only_theme),
+            base.clone().apply(only_theme),
             Settings {
                 glass: GlassMode::Solid,
                 theme: ThemeMode::Light,
@@ -625,13 +744,13 @@ mod tests {
         );
         let only_width = patch(json!({ "leftPanelWidth": 304 })).unwrap();
         assert_eq!(
-            base.apply(only_width),
+            base.clone().apply(only_width),
             Settings {
                 left_panel_width: PanelWidth::new(304).unwrap(),
-                ..base
+                ..base.clone()
             }
         );
-        assert_eq!(base.apply(SettingsPatch::default()), base);
+        assert_eq!(base.clone().apply(SettingsPatch::default()), base);
     }
 
     // --- loading ---
@@ -741,6 +860,7 @@ mod tests {
                 language: Language::De,
                 left_panel_width: PanelWidth::new(280).unwrap(),
                 welcome_tour: WelcomeTour::Pending,
+                author_name: AuthorName::default(),
             }
         );
         assert_eq!(store.get(), updated);
@@ -750,7 +870,7 @@ mod tests {
             serde_json::from_slice(&fs::read(dir.path().join(FILE_NAME)).unwrap()).unwrap();
         assert_eq!(
             stored,
-            json!({ "glass": "solid", "theme": "dark", "language": "de", "leftPanelWidth": 280, "welcomeTour": "pending" })
+            json!({ "glass": "solid", "theme": "dark", "language": "de", "leftPanelWidth": 280, "welcomeTour": "pending", "authorName": AuthorName::default().as_str() })
         );
     }
 
@@ -940,7 +1060,7 @@ mod tests {
         let stored: Value = serde_json::from_slice(&bytes).unwrap();
         assert_eq!(
             stored,
-            json!({ "glass": "solid", "theme": "system", "language": "system", "leftPanelWidth": 248, "welcomeTour": "pending" })
+            json!({ "glass": "solid", "theme": "system", "language": "system", "leftPanelWidth": 248, "welcomeTour": "pending", "authorName": AuthorName::default().as_str() })
         );
     }
 

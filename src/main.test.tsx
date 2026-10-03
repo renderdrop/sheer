@@ -116,7 +116,14 @@ describe('main.tsx while the settings load hangs', () => {
     expect(html.hasAttribute('data-theme')).toBe(false);
     await act(async () => {
       boot.resolve(bootstrap);
-      saved.resolve({ glass: 'solid', theme: 'dark', language: 'system', leftPanelWidth: 248, welcomeTour: 'pending' });
+      saved.resolve({
+        glass: 'solid',
+        theme: 'dark',
+        language: 'system',
+        leftPanelWidth: 248,
+        welcomeTour: 'pending',
+        authorName: 'Author',
+      });
     });
     expect(html.getAttribute('data-theme')).toBe('dark');
     expect(html.getAttribute('data-transparency')).toBe('reduced');

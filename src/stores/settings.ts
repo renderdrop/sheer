@@ -33,6 +33,8 @@ export interface SettingsState extends Settings {
   setTheme: (theme: ThemeMode) => Promise<void>;
   /** "system", "en" or "de". `bindLocaleToSettings` (src/i18n/bind.ts) turns it into the UI's locale. */
   setLanguage: (language: Language) => Promise<void>;
+  /** The name put on new annotations (DESIGN 3.25); the backend refuses an empty or over-long one. */
+  setAuthorName: (authorName: string) => Promise<void>;
 }
 
 /** Number of the newest `update` call. A slower, older answer must not overwrite a newer one. */
@@ -76,6 +78,7 @@ export const useSettings = create<SettingsState>()((set, get) => ({
   setGlass: (glass) => get().update({ glass }),
   setTheme: (theme) => get().update({ theme }),
   setLanguage: (language) => get().update({ language }),
+  setAuthorName: (authorName) => get().update({ authorName }),
 }));
 
 /** `html[data-theme]`: absent for "system" so the OS decides. */

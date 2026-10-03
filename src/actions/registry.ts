@@ -4,6 +4,8 @@ import {
   ChevronUp,
   File,
   FileX,
+  Save,
+  SaveAll,
   FolderOpen,
   GalleryVertical,
   Highlighter,
@@ -16,6 +18,7 @@ import {
   ListOrdered,
   Percent,
   PenLine,
+  Square,
   Redo2,
   RotateCcw,
   RotateCw,
@@ -25,6 +28,7 @@ import {
   Signature,
   StretchHorizontal,
   TextCursorInput,
+  Type,
   Undo2,
   ZoomIn,
   ZoomOut,
@@ -38,10 +42,13 @@ import { openSearch } from '../features/search/commands';
 import { openSettings } from '../features/settings/state';
 import { useGoToPage } from '../features/shell/goToState';
 import { readShellStructure } from '../features/shell/useShellStructure';
-import { cycleTab } from '../features/tabs/nav';
+import { saveActive } from '../features/save/commands';
+import { closeTab, cycleTab } from '../features/tabs/nav';
+import { useDocuments } from '../stores/documents';
 import { useViewer } from '../features/viewer/useViewer';
 import type { PlainKey, Translate } from '../i18n';
 import type { Shortcut } from '../lib/shortcuts';
+import { useTools } from '../stores/tools';
 import { useUi, type ToolId } from '../stores/ui';
 import { runHistoryStep } from './history';
 import { formatBinding, resolveBinding, type Binding, type Shortcuts } from './shortcut';
@@ -54,6 +61,8 @@ export type ToolActionId = `tool-${ToolId}`;
 export type ActionId =
   | 'open'
   | 'close-document'
+  | 'save'
+  | 'save-as'
   | 'undo'
   | 'redo'
   | 'zoom-in'
@@ -116,8 +125,10 @@ const TOOL_ACTIONS: readonly ActionDef[] = (
   [
     ['select', 'v', MousePointer2],
     ['highlight', 'h', Highlighter],
-    ['comment', 'c', MessageSquare],
+    ['note', 'n', MessageSquare],
+    ['text', 't', Type],
     ['draw', 'd', PenLine],
+    ['shapes', 'r', Square],
     ['form', 'f', TextCursorInput],
     ['signature', 's', Signature],
     ['pages', 'p', LayoutGrid],
@@ -133,6 +144,8 @@ const TOOL_ACTIONS: readonly ActionDef[] = (
   run: () => {
     const ui = useUi.getState();
     if (ui.activeTool !== tool) ui.selectTool(tool);
+    // Markup and Shapes: the key of the active tool goes on to its next variant (DESIGN 3.22).
+    else if (tool === 'highlight' || tool === 'shapes') useTools.getState().cycle(tool);
   },
 }));
 
@@ -168,7 +181,30 @@ export const ACTIONS: readonly ActionDef[] = [
     more: true,
     menuBar: true,
     enabled: needsDocument,
-    run: () => useViewer.getState().close(),
+    run: () => {
+      const id = useDocuments.getState().activeId;
+      if (id !== null) closeTab(id);
+    },
+  },
+  {
+    id: 'save',
+    labelKey: 'save.save',
+    icon: Save,
+    shortcut: { default: primary('s') },
+    group: 'file',
+    more: true,
+    enabled: needsDocument,
+    run: () => saveActive(false),
+  },
+  {
+    id: 'save-as',
+    labelKey: 'save.saveAs',
+    icon: SaveAll,
+    shortcut: { default: { key: 's', mods: ['primary', 'shift'] } },
+    group: 'file',
+    more: true,
+    enabled: needsDocument,
+    run: () => saveActive(true),
   },
   {
     id: 'undo',

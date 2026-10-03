@@ -1,7 +1,7 @@
-import { useId, useLayoutEffect, type ReactNode } from 'react';
+import { useId, useLayoutEffect, useState, type ReactNode } from 'react';
 
-import { Button, Popover } from '../../components';
-import type { GlassMode, ThemeMode } from '../../api/app';
+import { Button, Field, Popover } from '../../components';
+import { AUTHOR_NAME_MAX, isAuthorName, type GlassMode, type ThemeMode } from '../../api/app';
 import { errorText, useT, type Language, type PlainKey } from '../../i18n';
 import { useSettings } from '../../stores/settings';
 import { SegmentedControl, type SegmentOption } from './SegmentedControl';
@@ -85,7 +85,51 @@ function TourRow() {
   );
 }
 
-/** The three settings as segmented controls; each choice is saved and applied at once (the store answers `update_settings`). */
+/**
+ * The author name row (DESIGN 3.25): the name put on the notes and markup the user adds. Saved when the field is left or Enter is
+ * pressed; an empty or invalid text is not saved and the field goes back to the saved name. Esc reverts the typing.
+ */
+function AuthorRow() {
+  const t = useT();
+  const saved = useSettings((state) => state.authorName);
+  const setAuthorName = useSettings((state) => state.setAuthorName);
+  const [text, setText] = useState<string | null>(null);
+
+  const commit = () => {
+    if (text === null) return;
+    const next = text.trim();
+    setText(null);
+    if (next !== saved && isAuthorName(next)) void setAuthorName(next);
+  };
+  return (
+    <Setting label={t('settings.author')} hint={t('settings.author.hint')}>
+      {(labelId) => (
+        <Field
+          aria-labelledby={labelId}
+          autoComplete="off"
+          spellCheck={false}
+          maxLength={AUTHOR_NAME_MAX}
+          style={{ width: '100%' }}
+          // While there is typing to cancel, the first Esc is the field's (it reverts); the next one closes the popover.
+          data-keep-escape={text !== null ? '' : undefined}
+          value={text ?? saved}
+          onChange={(event) => setText(event.target.value)}
+          onBlur={commit}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter') {
+              event.preventDefault();
+              commit();
+            } else if (event.key === 'Escape' && text !== null) {
+              setText(null);
+            }
+          }}
+        />
+      )}
+    </Setting>
+  );
+}
+
+/** The settings as segmented controls and the author field; each choice is saved and applied at once (the store answers `update_settings`). */
 function SettingsForm() {
   const t = useT();
   const theme = useSettings((state) => state.theme);
@@ -132,6 +176,7 @@ function SettingsForm() {
           />
         )}
       </Setting>
+      <AuthorRow />
       <TourRow />
       {error !== null && (
         <p role="alert" className="m-0 text-sm text-error-text">

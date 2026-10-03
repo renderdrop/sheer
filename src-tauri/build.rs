@@ -34,6 +34,8 @@ fn main() {
         "apply_annotation_command",
         "undo",
         "redo",
+        "save_document",
+        "save_document_as",
         "close_document",
         "app_ready",
         "get_settings",

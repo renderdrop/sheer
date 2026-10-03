@@ -170,12 +170,12 @@ describe('opening a document', () => {
     await act(() => viewer().open());
     act(() => viewer().close());
     expect(activeDocument()).toEqual(REPORT);
-    expect(documentsApi.closeDocument).toHaveBeenCalledWith(2);
+    expect(documentsApi.closeDocument).toHaveBeenCalledWith(2, true);
     expect(Object.keys(useView.getState().byDoc)).toEqual(['1']);
     expect(Object.keys(usePages.getState().byDoc)).toEqual(['1']);
     act(() => viewer().close());
     expect(activeDocument()).toBeNull();
-    expect(documentsApi.closeDocument).toHaveBeenLastCalledWith(1);
+    expect(documentsApi.closeDocument).toHaveBeenLastCalledWith(1, true);
   });
 
   it('a file that failed to open shows its error in the banner, and the ones that opened are still opened', async () => {
@@ -393,7 +393,7 @@ describe('the actions', () => {
       expect(activeDocument()).toBeNull();
       expect(useView.getState().byDoc).toEqual({});
       expect(usePages.getState().byDoc).toEqual({});
-      expect(documentsApi.closeDocument).toHaveBeenCalledWith(1);
+      expect(documentsApi.closeDocument).toHaveBeenCalledWith(1, true);
       await act(async () => undefined);
       expect(useUi.getState().banner).toBeNull();
       // Nothing is open any more: a second close does nothing, and does not tell the backend again.

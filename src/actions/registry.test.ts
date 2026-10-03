@@ -8,7 +8,8 @@ import { ACTIONS, ACTION_IDS, actionOf, actionShortcut, getAction, shortcutFor, 
 import { isBareKey, resolveBinding } from './shortcut';
 import { NO_DOCUMENT, type ActionState } from './state';
 
-const NOT_IN_MENU_BAR: ReadonlySet<string> = new Set();
+// Save and Save As join the menu bar with the Rust allowlist (src-tauri/src/menu/spec.rs); until then they are keyboard and More commands.
+const NOT_IN_MENU_BAR: ReadonlySet<string> = new Set(['save', 'save-as']);
 const PLATFORMS: readonly (Platform | null)[] = ['macos', 'windows', 'linux', null];
 const WITH_DOCUMENT: ActionState = {
   hasDocument: true,
@@ -24,6 +25,8 @@ describe('the registry', () => {
     const expected: ActionId[] = [
       'open',
       'close-document',
+      'save',
+      'save-as',
       'undo',
       'redo',
       'zoom-in',
@@ -79,6 +82,8 @@ describe('shortcuts per platform', () => {
   const LABELS: Readonly<Record<ActionId, { macos: string | null; windows: string | null }>> = {
     open: { macos: '⌘O', windows: 'Ctrl+O' },
     'close-document': { macos: '⌘W', windows: 'Ctrl+W' },
+    save: { macos: '⌘S', windows: 'Ctrl+S' },
+    'save-as': { macos: '⇧⌘S', windows: 'Ctrl+Shift+S' },
     undo: { macos: '⌘Z', windows: 'Ctrl+Z' },
     redo: { macos: '⇧⌘Z', windows: 'Ctrl+Y' },
     'zoom-in': { macos: '⌘+', windows: 'Ctrl++' },
@@ -106,8 +111,10 @@ describe('shortcuts per platform', () => {
     about: { macos: null, windows: null },
     'tool-select': { macos: 'V', windows: 'V' },
     'tool-highlight': { macos: 'H', windows: 'H' },
-    'tool-comment': { macos: 'C', windows: 'C' },
+    'tool-note': { macos: 'N', windows: 'N' },
+    'tool-text': { macos: 'T', windows: 'T' },
     'tool-draw': { macos: 'D', windows: 'D' },
+    'tool-shapes': { macos: 'R', windows: 'R' },
     'tool-form': { macos: 'F', windows: 'F' },
     'tool-signature': { macos: 'S', windows: 'S' },
     'tool-pages': { macos: 'P', windows: 'P' },
@@ -237,6 +244,8 @@ describe('where an action is listed', () => {
     expect(more).toEqual([
       'file:open',
       'file:close-document',
+      'file:save',
+      'file:save-as',
       'edit:undo',
       'edit:redo',
       'view:actual-size',

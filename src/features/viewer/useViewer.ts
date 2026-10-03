@@ -284,7 +284,8 @@ export const useViewer = create<ViewerState>()((set, get) => {
       usePages.getState().remove(docId);
       // Its images go, and what is still on its way is dropped when it arrives.
       renderScheduler.dropDocument(docId);
-      closeDocument(docId).catch(() => undefined);
+      // The UI decided (it asked about unsaved changes before): the backend need not.
+      closeDocument(docId, true).catch(() => undefined);
     },
     zoomStep: (direction) => {
       if (active() !== null) motion.step(direction);

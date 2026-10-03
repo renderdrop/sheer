@@ -74,6 +74,16 @@ error_codes! {
     IoNotFound => "io_not_found", retryable: false;
     /// Another program holds the file open exclusively.
     IoInUse => "io_in_use", retryable: true;
+    /// There is no room left for the file: the disk is full.
+    IoDiskFull => "io_disk_full", retryable: false;
+    /// The document cannot be saved in place (the bundled welcome document): the UI offers Save As (ADR-004, DESIGN 3.27).
+    ReadOnly => "read_only", retryable: false;
+    /// The document has changes that are not saved and was closed without `discard`.
+    UnsavedChanges => "unsaved_changes", retryable: false;
+    /// Saving needs the user's say first; `params.what` is the reason (`fileChangedOnDisk`), the UI retries with `ack`.
+    NeedsConfirmation => "needs_confirmation", retryable: false;
+    /// The file could not be written; the original is untouched.
+    SaveFailed => "save_failed", retryable: true;
     /// The engine did not answer within the deadline of its job.
     EngineTimeout => "engine_timeout", retryable: true;
     /// A PDF job panicked. The worker survives, the affected document is dropped.
@@ -167,6 +177,11 @@ impl AppError {
         Self::with_params(ErrorCode::TooLarge, what, Some(max))
     }
 
+    /// `needs_confirmation`: saving would do `reason` (a fixed word such as `fileChangedOnDisk`) and the user decides first.
+    pub const fn needs_confirmation(reason: &'static str) -> Self {
+        Self::with_params(ErrorCode::NeedsConfirmation, reason, None)
+    }
+
     const fn with_params(code: ErrorCode, what: &'static str, limit: Option<u64>) -> Self {
         Self {
             code,
@@ -233,6 +248,7 @@ fn io_code(error: &io::Error) -> ErrorCode {
         io::ErrorKind::NotFound => ErrorCode::IoNotFound,
         io::ErrorKind::PermissionDenied => ErrorCode::IoPermissionDenied,
         io::ErrorKind::ResourceBusy => ErrorCode::IoInUse,
+        io::ErrorKind::StorageFull => ErrorCode::IoDiskFull,
         _ if sharing_violation => ErrorCode::IoInUse,
         _ => ErrorCode::Internal,
     }

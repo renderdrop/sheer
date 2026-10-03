@@ -1,20 +1,24 @@
 import { useCallback, useRef, useSyncExternalStore } from 'react';
 
 import { shellStructure, type ShellStructure } from '../../lib/layout';
+import { useAnnotations } from '../../stores/annotations';
 import { useDocuments } from '../../stores/documents';
 import { useUi } from '../../stores/ui';
 
 /** The structure of the shell as the stores and the window say it now (see `shellStructure`, src/lib/layout.ts). */
 export function readShellStructure(): ShellStructure {
   const ui = useUi.getState();
+  const activeId = useDocuments.getState().activeId;
   return shellStructure({
-    hasDocument: useDocuments.getState().activeId !== null,
+    hasDocument: activeId !== null,
     windowWidth: window.innerWidth,
     panelWidth: ui.leftPanelWidth,
     panelCollapsed: ui.leftPanelCollapsed,
     inspector: ui.inspector,
-    // A tool other than Select has options to show; a selection will too (M2).
-    inspectorContent: ui.activeTool !== 'select',
+    // A tool other than Select has options to show, and so has a selection.
+    inspectorContent:
+      ui.activeTool !== 'select' ||
+      (activeId !== null && (useAnnotations.getState().selectedIds[activeId]?.length ?? 0) > 0),
   });
 }
 
@@ -22,7 +26,11 @@ function subscribe(notify: () => void): () => void {
   window.addEventListener('resize', notify);
   const stopUi = useUi.subscribe(notify);
   const stopDocuments = useDocuments.subscribe(notify);
+  const stopSelection = useAnnotations.subscribe((state, previous) => {
+    if (state.selectedIds !== previous.selectedIds) notify();
+  });
   return () => {
+    stopSelection();
     window.removeEventListener('resize', notify);
     stopUi();
     stopDocuments();

@@ -1,10 +1,16 @@
 # STATE
 phase: M2
 version: 0.4.0
-current_item: M2 wave 1 — designer DESIGN §3.22–3.27 + P4 annotation model/undo (running); then wave 2: P5 markup+notes+free text, P6 ink+shapes+inspector, P7 save+AP+interop; then P8 comments panel+onboarding+Politur M2
-last_completed: M1 Viewer released as v0.4.0 (tag v0.4.0); FEEDBACK F1–F6 done
+current_item: M2 wave (ADR-030: four implementers) P5–P8 running + FEEDBACK F7 release workflow; then Politur M2 + milestone end
+last_completed: M2 P4 annotation model + undo (7ef660d); ADR-030 tempo level 2 (4e589db)
 loop_count_this_session: 0
 open_blockers: 1 (B-001: macOS CI green; the UI has never been seen running on a Mac)
-notes: docs/FEEDBACK.md (product owner) has priority over ROADMAP.md (§14). After every commit: git push origin main --tags, then check CI (§9); CI green on Windows + macOS is in the DoD (§8.6).
-  Open for the product owner: repo setting "Dependabot security updates" is off (F6 note).
-  Known: PDFium wedge cases until M7 (respawn ≤3); recents thumbnail deferred to M7. Run `npm run check` from Git Bash. Rust in ~/.cargo/bin.
+packages:
+  P5 layer: src/features/annotations/{layer,selection}/, src/stores/tools.ts, toolbar entries, PageView mount
+  P6 create: src/features/annotations/create/ (CreationLayer contract)
+  P7 inspector: src/features/inspector/, src/features/annotations/note/, selection slice in src/stores/annotations.ts, settings authorName
+  P8 save: Rust writer + save commands, src/features/save/, src/api/save.ts, interop tests
+  F7: .github/workflows/release.yml, scripts/changelog-section.sh; then `gh workflow run` for v0.4.0
+notes: FEEDBACK (product owner) before ROADMAP (§14). Push after every commit; CI checked once per milestone, never wait (ADR-030).
+  Designer review: one round, only blockers → fix. fps + onboarding steps in M7. Should/Could → v1.1 backlog ([~]).
+  Run `npm run check` from Git Bash. Rust in ~/.cargo/bin.

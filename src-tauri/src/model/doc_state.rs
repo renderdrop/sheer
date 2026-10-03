@@ -4,11 +4,11 @@
 //! [`DocState::import_page`] when a page is first looked at). Each returns a [`ChangeSet`], the delta the UI applies to its replica.
 //! The state is plain data: no PDFium, no lopdf, no clock (the caller passes a [`Stamp`]), so all of it is tested without a PDF.
 
-use std::collections::{BTreeMap, BTreeSet, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
 use serde::Serialize;
 
-use super::annotation::{Annotation, Imported, PdfOrigin};
+use super::annotation::{Annotation, Imported, PdfOrigin, Sync};
 use super::command::DocCommand;
 use super::history::{History, HistoryState};
 use super::ids::AnnotId;
@@ -118,6 +118,32 @@ impl DocState {
     /// The document was saved: what it holds now is the clean state.
     pub fn mark_clean(&mut self) {
         self.history.mark_clean();
+    }
+
+    /// The state as a change set that changes nothing: the revision and the history now.
+    pub fn current(&self) -> ChangeSet {
+        self.change_set(Delta::default())
+    }
+
+    /// The document was written to a file (ADR-004 §1 step 8): `origins` says where each annotation that is in the file now is. What
+    /// was deleted is gone for good, every annotation that was written is `clean`, and the history is dropped (see
+    /// `History::clear`; ADR-033). The answer is the delta for the UI replica: the annotations whose `sync` changed, and a history that
+    /// is empty and clean.
+    pub fn finish_save(&mut self, origins: &HashMap<AnnotId, PdfOrigin>) -> ChangeSet {
+        let mut delta = Delta::default();
+        self.entries.retain(|_, entry| !entry.tombstone);
+        for (id, entry) in &mut self.entries {
+            if let Some(origin) = origins.get(id) {
+                entry.persisted = Some(origin.clone());
+                if entry.annotation.sync != Sync::Clean {
+                    entry.annotation.sync = Sync::Clean;
+                    delta.upsert(entry.annotation.clone());
+                }
+            }
+        }
+        self.history.clear();
+        self.rev += 1;
+        self.change_set(delta)
     }
 
     pub(crate) fn page_count(&self) -> u32 {

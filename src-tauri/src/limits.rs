@@ -95,6 +95,15 @@ pub const MAX_ANNOTATIONS_PER_PAGE: usize = 2_000;
 pub const MAX_IMPORT_PER_PAGE: usize = 2_000;
 /// Rectangles (quads) of one highlight, underline or strikeout.
 pub const MAX_ANNOT_QUADS: usize = 512;
+/// Entries of the `/Annots` array of one page that a save works on; a longer array is damaged or hostile (ADR-004).
+pub const MAX_ANNOTS_ARRAY: usize = 100_000;
+/// A save (read, rewrite, write, reopen) gives up waiting after this long (ADR-004 §1).
+pub const SAVE_TIMEOUT: Duration = Duration::from_secs(60);
+/// Stack of the thread that builds the update: lopdf recurses into the file's structures (ADR-004 §1).
+pub const SAVE_STACK_BYTES: usize = 64 * 1024 * 1024;
+/// Backups of originals are kept this long, and up to this many bytes in all (ADR-004 §3).
+pub const BACKUP_KEEP: Duration = Duration::from_secs(30 * 24 * 60 * 60);
+pub const BACKUP_MAX_BYTES: u64 = 2 * 1024 * 1024 * 1024;
 /// Strokes of one ink annotation, points of one stroke, and points of one annotation in all (path and outline together).
 pub const MAX_INK_STROKES: usize = 256;
 pub const MAX_INK_POINTS_PER_STROKE: usize = 10_000;
@@ -162,6 +171,9 @@ pub const MAX_PENDING_FAILURES: usize = MAX_OPEN_DOCUMENTS;
 /// Largest settings file that is read. A real one is well under 1 KiB; anything bigger is damaged or foreign and the
 /// defaults are used instead (the file is user-writable, so its size is not trusted).
 pub const MAX_SETTINGS_FILE_BYTES: u64 = 64 * 1024;
+
+/// Longest "Author name" setting in characters (ADR-029).
+pub const MAX_AUTHOR_NAME_CHARS: usize = 128;
 
 /// Longest password that `unlock_document` takes, in bytes (ARCHITECTURE section 5). PDF passwords are far shorter; the bound keeps
 /// a hostile caller from handing the engine a megabyte to hash.

@@ -96,8 +96,10 @@ describe('Shell without a document (DESIGN 2, 3.11)', () => {
       'Left panel',
       'Select',
       'Highlight',
-      'Comment',
+      'Note',
+      'Text',
       'Draw',
+      'Rectangle',
       'Form',
       'Signature',
       'Pages',
@@ -179,7 +181,7 @@ describe('Shell with a document', () => {
     expect(screen.getByRole('contentinfo', { name: 'Status' }).textContent).toContain('Other.pdf');
 
     fireEvent.keyDown(window, { key: 'w', ctrlKey: true });
-    await waitFor(() => expect(documentsApi.closeDocument).toHaveBeenCalledWith(2));
+    await waitFor(() => expect(documentsApi.closeDocument).toHaveBeenCalledWith(2, true));
     expect(activeDocument()?.id).toBe(1);
     expect(Object.keys(useView.getState().byDoc)).toEqual(['1']);
     expect(screen.getByRole('contentinfo', { name: 'Status' }).textContent).toContain('Quarterly report.pdf');
@@ -252,6 +254,8 @@ describe('Shell with a document', () => {
       expect(items).toEqual([
         'Open…Ctrl+O',
         'Close documentCtrl+W',
+        'SaveCtrl+S',
+        'Save As…Ctrl+Shift+S',
         'UndoCtrl+Z',
         'RedoCtrl+Y',
         'Actual sizeCtrl+1',
@@ -282,7 +286,7 @@ describe('Shell with a document', () => {
       expect(pageText()).toBe('1 / 120');
       await user.click(within(await more(user)).getByRole('menuitem', { name: /^Close document/ }));
       expect(screen.getByRole('heading', { level: 1, name: 'Open a PDF' })).not.toBeNull();
-      expect(documentsApi.closeDocument).toHaveBeenCalledWith(1);
+      expect(documentsApi.closeDocument).toHaveBeenCalledWith(1, true);
     });
 
     it('More offers the three ways to lay out pages as a choice of one: the current one is checked, and choosing one changes the canvas', async () => {
@@ -545,7 +549,7 @@ describe('Shell with a document', () => {
       await user.click(tool('Highlight'));
       const inspector = screen.getByRole('complementary', { name: 'Inspector' });
       expect(inspector.hasAttribute('inert')).toBe(false);
-      expect(within(inspector).getByRole('heading', { name: 'Tool options' })).not.toBeNull();
+      expect(within(inspector).getByRole('heading', { name: 'Tool options: Highlight' })).not.toBeNull();
       // Back to Select: the panel fades out and its track goes.
       await user.click(tool('Highlight'));
       await waitFor(() => expect(screen.queryByRole('complementary', { name: 'Inspector', hidden: true })).toBeNull());
@@ -603,9 +607,9 @@ describe('Shell with a document', () => {
     it('a double click locks a tool and Esc releases it back to Select', async () => {
       const { user } = setup(<Shell />);
       await openDocument(user);
-      await user.dblClick(tool('Comment'));
-      expect(useUi.getState()).toMatchObject({ activeTool: 'comment', toolLocked: true });
-      expect(tool('Comment').getAttribute('aria-description')).toBe('Locked');
+      await user.dblClick(tool('Note'));
+      expect(useUi.getState()).toMatchObject({ activeTool: 'note', toolLocked: true });
+      expect(tool('Note').getAttribute('aria-description')).toBe('Locked');
       await user.keyboard('{Escape}');
       expect(useUi.getState()).toMatchObject({ activeTool: 'select', toolLocked: false });
     });

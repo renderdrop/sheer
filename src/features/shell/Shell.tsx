@@ -8,6 +8,7 @@ import { useSettings } from '../../stores/settings';
 import { useUi } from '../../stores/ui';
 import { setMenuState } from '../../api/recents';
 import { PasswordDialog } from '../password/PasswordDialog';
+import { UnsavedDialog } from '../save/UnsavedDialog';
 import { TabStrip } from '../tabs/TabStrip';
 import { ViewerCanvas } from '../viewer/ViewerCanvas';
 import { TourEffects } from '../tour/TourEffects';
@@ -106,6 +107,7 @@ export function Shell() {
       />
       <TabStrip />
       <PasswordDialog />
+      <UnsavedDialog />
       <BannerRow />
       <XfaBannerRow />
       <MainGrid structure={structure}>

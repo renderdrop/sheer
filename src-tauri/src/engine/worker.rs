@@ -195,6 +195,22 @@ fn serve<'a>(
             requests.cancel_document(id);
             answer(reply, result, Some(id), documents, crashed);
         }
+        Job::Release { id, reply } => {
+            // The sizes stay: the UI keeps laying the document out while its file is replaced.
+            let result = guarded(|| {
+                documents.remove(&id);
+                Ok(())
+            });
+            answer(reply, result, None, documents, crashed);
+        }
+        Job::Reopen { id, file, reply } => {
+            let result =
+                guarded(|| open(pdfium, documents, sizes, id, file, None, Box::new(|_| true)));
+            if result.is_ok() {
+                crashed.remove(&id);
+            }
+            answer(reply, result, None, documents, crashed);
+        }
         #[cfg(test)]
         Job::Crash { id, reply } => {
             let result: Result<(), AppError> = guarded(|| panic!("test panic in a PDF job"));

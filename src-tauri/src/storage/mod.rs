@@ -2,6 +2,7 @@
 //! is trusted when read back (the files are user-writable).
 
 pub mod atomic;
+pub mod backup;
 mod open;
 pub mod recents;
 pub mod settings;

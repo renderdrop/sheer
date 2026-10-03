@@ -3,7 +3,7 @@
 //! | Command | Arguments | Returns |
 //! |---|---|---|
 //! | `app_ready` | none | `AppBootstrap { platform, reducedTransparency, version }` |
-//! | `get_settings` | none | `Settings { glass, theme, language, leftPanelWidth, welcomeTour }` |
+//! | `get_settings` | none | `Settings { glass, theme, language, leftPanelWidth, welcomeTour, authorName }` |
 //! | `update_settings` | `patch: { glass?, theme?, language?, leftPanelWidth?, welcomeTour? }` | the settings after the update |
 //! | `watch_transparency` | `onChange: Channel<boolean>` | nothing; the channel then carries each change of the OS "Reduce transparency" flag |
 //! | `subscribe_menu` | `onAction: Channel<string>`, `systemLanguage?: string` | nothing; the channel then carries the id of each command chosen in the macOS menu bar |

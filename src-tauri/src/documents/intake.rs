@@ -101,6 +101,42 @@ fn refuse_unsafe_spelling(path: &Path) -> Result<(), AppError> {
     Ok(())
 }
 
+/// The path a Save As writes to, judged like an opened one (SECURITY I3, ADR-004): the spelling is plain, the folder exists and is
+/// resolved (so `..` and links in the folder are gone), the name ends in `.pdf` (added if the dialog left it out), and what is there
+/// already, if anything, is a regular file that is not a link: a folder, a device or a link is never written to. Nothing is created.
+pub fn admit_target(path: &Path) -> Result<PathBuf, AppError> {
+    refuse_unsafe_spelling(path)?;
+    let Some(name) = path.file_name() else {
+        return Err(AppError::invalid("path"));
+    };
+    let folder = match path.parent() {
+        Some(parent) if !parent.as_os_str().is_empty() => parent,
+        _ => Path::new("."),
+    };
+    let folder = std::fs::canonicalize(folder)?;
+    refuse_unsafe_spelling(&folder)?;
+    let mut file_name = OsString::from(name);
+    let is_pdf = Path::new(name)
+        .extension()
+        .is_some_and(|extension| extension.eq_ignore_ascii_case("pdf"));
+    if !is_pdf {
+        file_name.push(".pdf");
+    }
+    let target = folder.join(file_name);
+    match std::fs::symlink_metadata(&target) {
+        Ok(metadata) if metadata.is_file() => {}
+        Ok(_) => {
+            return Err(AppError::logged(
+                ErrorCode::InvalidArgument,
+                "the save target is a folder, a link or a device",
+            ))
+        }
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+        Err(error) => return Err(error.into()),
+    }
+    Ok(target)
+}
+
 /// Whether the spelling of `path` is one the file system may be asked about: on Windows not a network, device or stream path (see
 /// [`refuse_unsafe_spelling`]), elsewhere always. Shared with the recent files, which must never stat such a path (an SMB
 /// connection leaks the user's NTLM hash).

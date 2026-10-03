@@ -46,8 +46,8 @@ beforeEach(() => {
   useTour.setState({ ...tourInitial }, true);
   updateSettingsMock.mockReset();
   updateSettingsMock.mockImplementation((patch) => {
-    const { glass, theme, language, leftPanelWidth, welcomeTour } = useSettings.getState();
-    const current: Settings = { glass, theme, language, leftPanelWidth, welcomeTour };
+    const { glass, theme, language, leftPanelWidth, welcomeTour, authorName } = useSettings.getState();
+    const current: Settings = { glass, theme, language, leftPanelWidth, welcomeTour, authorName };
     return Promise.resolve({ ...current, ...patch });
   });
   openWelcomeMock.mockReset();
@@ -81,7 +81,7 @@ describe('starting', () => {
   });
 
   it('does not write the setting again on a restart when it is shown already', () => {
-    useSettings.setState({ welcomeTour: 'shown' });
+    useSettings.setState({ welcomeTour: 'shown', authorName: 'Author' });
     show(WELCOME);
     expect(tour().docId).toBe(1);
     expect(updateSettingsMock).not.toHaveBeenCalled();
@@ -169,7 +169,7 @@ describe('ending', () => {
 
 describe('first launch', () => {
   it('writes shown first, then opens the welcome document, and only once', async () => {
-    useSettings.setState({ welcomeTour: 'pending' });
+    useSettings.setState({ welcomeTour: 'pending', authorName: 'Author' });
     const order: string[] = [];
     updateSettingsMock.mockImplementationOnce((patch) => {
       order.push('settings');
@@ -190,9 +190,9 @@ describe('first launch', () => {
   });
 
   it('does nothing once the tour was shown or before the settings are loaded', async () => {
-    useSettings.setState({ welcomeTour: 'shown' });
+    useSettings.setState({ welcomeTour: 'shown', authorName: 'Author' });
     const a = maybeFirstLaunch();
-    useSettings.setState({ welcomeTour: 'pending', loaded: false });
+    useSettings.setState({ welcomeTour: 'pending', authorName: 'Author', loaded: false });
     const b = maybeFirstLaunch();
     await vi.advanceTimersByTimeAsync(LAUNCH_SETTLE_MS);
     await Promise.all([a, b]);
@@ -201,7 +201,7 @@ describe('first launch', () => {
   });
 
   it('writes shown but opens no welcome document when a document came with the launch', async () => {
-    useSettings.setState({ welcomeTour: 'pending' });
+    useSettings.setState({ welcomeTour: 'pending', authorName: 'Author' });
     useDocuments.getState().add(USER);
     const run = maybeFirstLaunch();
     await vi.advanceTimersByTimeAsync(LAUNCH_SETTLE_MS);
@@ -212,7 +212,7 @@ describe('first launch', () => {
   });
 
   it('waits for a launch document that arrives late before deciding', async () => {
-    useSettings.setState({ welcomeTour: 'pending' });
+    useSettings.setState({ welcomeTour: 'pending', authorName: 'Author' });
     const run = maybeFirstLaunch();
     await vi.advanceTimersByTimeAsync(LAUNCH_SETTLE_MS - 100);
     show(USER);

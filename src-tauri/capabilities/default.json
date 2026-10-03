@@ -26,6 +26,8 @@
     "allow-apply-annotation-command",
     "allow-undo",
     "allow-redo",
+    "allow-save-document",
+    "allow-save-document-as",
     "allow-close-document",
     "allow-app-ready",
     "allow-get-settings",

@@ -110,6 +110,7 @@ describe('store to <html> attributes', () => {
         language: 'system',
         leftPanelWidth: 248,
         welcomeTour: 'pending',
+        authorName: 'Author',
       });
       await useSettings.getState().setTheme(theme);
       expect(root.attributes.get('data-theme')).toBe(theme === 'system' ? undefined : theme);
@@ -126,6 +127,7 @@ describe('store to <html> attributes', () => {
       language: 'system',
       leftPanelWidth: 248,
       welcomeTour: 'pending',
+      authorName: 'Author',
     });
     await useSettings.getState().setGlass('solid');
     expect(root.snapshot()).toEqual({ 'data-transparency': 'reduced' });
@@ -135,6 +137,7 @@ describe('store to <html> attributes', () => {
       language: 'system',
       leftPanelWidth: 248,
       welcomeTour: 'pending',
+      authorName: 'Author',
     });
     await useSettings.getState().setGlass('auto');
     expect(root.snapshot()).toEqual({});
@@ -148,6 +151,7 @@ describe('store to <html> attributes', () => {
       language: 'system',
       leftPanelWidth: 248,
       welcomeTour: 'pending',
+      authorName: 'Author',
     });
     const root = new FakeRoot();
     bindSettingsToRoot(root);
@@ -159,6 +163,7 @@ describe('store to <html> attributes', () => {
       language: 'system',
       leftPanelWidth: 248,
       welcomeTour: 'pending',
+      authorName: 'Author',
     });
     await useSettings.getState().setGlass('solid');
     updateSettingsMock.mockResolvedValueOnce({
@@ -167,6 +172,7 @@ describe('store to <html> attributes', () => {
       language: 'system',
       leftPanelWidth: 248,
       welcomeTour: 'pending',
+      authorName: 'Author',
     });
     await useSettings.getState().setGlass('auto');
     expect(root.snapshot()).toEqual({ 'data-transparency': 'reduced' });
@@ -182,6 +188,7 @@ describe('store to <html> attributes', () => {
       language: 'system',
       leftPanelWidth: 248,
       welcomeTour: 'pending',
+      authorName: 'Author',
     });
     await useSettings.getState().setTheme('dark');
     expect(root.snapshot()).toEqual({});
@@ -197,6 +204,7 @@ describe('load', () => {
       language: 'system',
       leftPanelWidth: 248,
       welcomeTour: 'pending',
+      authorName: 'Author',
     });
     const root = new FakeRoot();
     bindSettingsToRoot(root);
@@ -236,6 +244,7 @@ describe('load', () => {
       language: 'system',
       leftPanelWidth: 248,
       welcomeTour: 'pending',
+      authorName: 'Author',
     });
     await useSettings.getState().load();
     expect(useSettings.getState()).toMatchObject({ theme: 'light', platform: null, loaded: true });
@@ -270,6 +279,7 @@ describe('update', () => {
       language: 'system',
       leftPanelWidth: 248,
       welcomeTour: 'pending',
+      authorName: 'Author',
     });
     await useSettings.getState().setTheme('light');
     expect(useSettings.getState().error).toBeNull();
@@ -282,6 +292,7 @@ describe('update', () => {
       language: 'system',
       leftPanelWidth: 248,
       welcomeTour: 'pending',
+      authorName: 'Author',
     });
     await useSettings.getState().setTheme('dark');
     expect(useSettings.getState()).toMatchObject({
@@ -305,9 +316,23 @@ describe('update', () => {
 
     const first = useSettings.getState().setTheme('dark');
     const second = useSettings.getState().setTheme('light');
-    resolvers[1]?.({ glass: 'auto', theme: 'light', language: 'system', leftPanelWidth: 248, welcomeTour: 'pending' });
+    resolvers[1]?.({
+      glass: 'auto',
+      theme: 'light',
+      language: 'system',
+      leftPanelWidth: 248,
+      welcomeTour: 'pending',
+      authorName: 'Author',
+    });
     await second;
-    resolvers[0]?.({ glass: 'auto', theme: 'dark', language: 'system', leftPanelWidth: 248, welcomeTour: 'pending' });
+    resolvers[0]?.({
+      glass: 'auto',
+      theme: 'dark',
+      language: 'system',
+      leftPanelWidth: 248,
+      welcomeTour: 'pending',
+      authorName: 'Author',
+    });
     await first;
 
     expect(useSettings.getState().theme).toBe('light');
@@ -328,6 +353,7 @@ describe('update', () => {
       language: 'system',
       leftPanelWidth: 248,
       welcomeTour: 'pending',
+      authorName: 'Author',
     });
 
     const first = useSettings.getState().setTheme('dark');
@@ -353,7 +379,14 @@ describe('update', () => {
 
     const first = useSettings.getState().setTheme('dark');
     await useSettings.getState().setTheme('light');
-    answerFirst({ glass: 'auto', theme: 'dark', language: 'system', leftPanelWidth: 248, welcomeTour: 'pending' });
+    answerFirst({
+      glass: 'auto',
+      theme: 'dark',
+      language: 'system',
+      leftPanelWidth: 248,
+      welcomeTour: 'pending',
+      authorName: 'Author',
+    });
     await first;
 
     expect(useSettings.getState().theme).toBe('system');
@@ -369,6 +402,7 @@ describe('update', () => {
       language: 'de',
       leftPanelWidth: 248,
       welcomeTour: 'pending',
+      authorName: 'Author',
     });
 
     await useSettings.getState().setGlass('solid');
@@ -455,6 +489,7 @@ describe('OS flag without stored settings', () => {
       language: 'system',
       leftPanelWidth: 248,
       welcomeTour: 'pending',
+      authorName: 'Author',
     });
     const root = new FakeRoot();
     bindSettingsToRoot(root);
@@ -466,6 +501,7 @@ describe('OS flag without stored settings', () => {
       language: 'system',
       leftPanelWidth: 248,
       welcomeTour: 'pending',
+      authorName: 'Author',
     });
     await useSettings.getState().setTheme('light');
 
@@ -487,6 +523,7 @@ describe('loadSettings (startup, never blocks the UI)', () => {
       language: 'system',
       leftPanelWidth: 248,
       welcomeTour: 'pending',
+      authorName: 'Author',
     });
 
     await loadSettings(1000);
@@ -542,7 +579,14 @@ describe('loadSettings (startup, never blocks the UI)', () => {
     await done;
     expect(useSettings.getState().error).not.toBeNull();
 
-    answers[0]?.({ glass: 'solid', theme: 'dark', language: 'system', leftPanelWidth: 248, welcomeTour: 'pending' });
+    answers[0]?.({
+      glass: 'solid',
+      theme: 'dark',
+      language: 'system',
+      leftPanelWidth: 248,
+      welcomeTour: 'pending',
+      authorName: 'Author',
+    });
     await vi.advanceTimersByTimeAsync(0);
 
     expect(useSettings.getState()).toMatchObject({

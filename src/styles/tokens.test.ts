@@ -120,6 +120,7 @@ describe('color roles (DESIGN 1.2)', () => {
     '--color-doc-select': ['var(--iris-500)', 'var(--iris-500)'],
     '--color-doc-text-select': ['rgba(91,91,214,0.3)', 'rgba(91,91,214,0.3)'],
     '--color-doc-hit': ['rgba(91,91,214,0.28)', 'rgba(91,91,214,0.28)'],
+    '--color-doc-hover': ['rgba(91,91,214,0.5)', 'rgba(91,91,214,0.5)'],
     // F2 review (DESIGN 1.2, 1.11).
     '--canvas-edge': [
       'inset 0 1px 0 rgba(255,255,255,0.7),inset 0 0 0 1px rgba(91,91,214,0.08)',

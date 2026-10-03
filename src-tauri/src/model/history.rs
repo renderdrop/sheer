@@ -145,6 +145,15 @@ impl History {
     pub fn mark_clean(&mut self) {
         self.clean = Some(self.top_serial());
     }
+
+    /// Forgets every step. After a save the snapshots in the steps describe annotations as they were before the file had them (their
+    /// `sync` and positions in the file), so a step taken back later would put wrong state; the document is clean with nothing on
+    /// the stacks.
+    pub fn clear(&mut self) {
+        self.undo.clear();
+        self.redo.clear();
+        self.clean = Some(0);
+    }
 }
 
 #[cfg(test)]

@@ -1,3 +1,5 @@
+import { needsSavePrompt } from '../save/commands';
+import { useSave } from '../save/state';
 import { useDocuments } from '../../stores/documents';
 import { useViewer } from '../viewer/useViewer';
 
@@ -11,14 +13,26 @@ export function cycleTab(step: 1 | -1): void {
 }
 
 /**
- * Closes the tab of document `id` through the viewer close (which releases everything of the document). Closing the active tab
+ * Closes the tab of document `id` without asking, through the viewer close (which releases everything of the document). Closing the active tab
  * selects its right neighbour, else its left one (the store rule); closing another tab leaves the active one as it is.
  */
-export function closeTab(id: number): void {
+export function forceCloseTab(id: number): void {
   const documents = useDocuments.getState();
   if (documents.byId[id] === undefined) return;
   const previous = documents.activeId;
   documents.setActive(id);
   useViewer.getState().close();
   if (previous !== null && previous !== id) useDocuments.getState().setActive(previous);
+}
+
+/**
+ * Closes the tab of document `id` after asking about its changes (DESIGN 3.27): a document with changes that are not saved opens the
+ * dialog (`features/save/UnsavedDialog`), which closes it with `forceCloseTab` when the user chooses to; any other closes now.
+ */
+export function closeTab(id: number): void {
+  if (needsSavePrompt(id)) {
+    useSave.getState().setPrompt(id);
+    return;
+  }
+  forceCloseTab(id);
 }

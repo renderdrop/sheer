@@ -9,6 +9,7 @@ import { cx } from '../../components/cx';
 import { SPRING } from '../../components/motion';
 import { isOwnEvent, itemsOf, rovingTarget } from '../../components/roving';
 import { useT } from '../../i18n';
+import { isDirty, useAnnotations } from '../../stores/annotations';
 import { useDocuments } from '../../stores/documents';
 import { closeTab, cycleTab } from './nav';
 
@@ -65,6 +66,7 @@ export function TabStrip() {
   const order = useDocuments((state) => state.order);
   const byId = useDocuments((state) => state.byId);
   const activeId = useDocuments((state) => state.activeId);
+  const annotationsByDoc = useAnnotations((state) => state.byDoc);
   const strip = useRef<HTMLDivElement>(null);
   const overflowing = useOverflow(strip, order.length);
   useTabCycleKeys();
@@ -123,6 +125,7 @@ export function TabStrip() {
       >
         {names.map(({ id, name }) => {
           const selected = id === activeId;
+          const edited = byId[id]?.kind !== 'welcome' && isDirty({ byDoc: annotationsByDoc }, id);
           return (
             <motion.div
               key={id}
@@ -145,6 +148,7 @@ export function TabStrip() {
                   type="button"
                   role="tab"
                   aria-selected={selected}
+                  aria-description={edited ? t('tabs.edited') : undefined}
                   tabIndex={selected ? 0 : -1}
                   data-id={id}
                   onClick={() => useDocuments.getState().setActive(id)}
@@ -152,6 +156,9 @@ export function TabStrip() {
                 >
                   <Icon icon={FileText} className="text-text-muted" />
                   <span className="min-w-0 flex-1 truncate">{middleTruncate(name)}</span>
+                  {edited && (
+                    <span aria-hidden="true" data-edited="" className="size-1 shrink-0 rounded-pill bg-accent" />
+                  )}
                 </button>
               </Tooltip>
               <IconButton

@@ -43,7 +43,7 @@ impl Default for AnnotationStore {
 
 impl AnnotationStore {
     /// Runs `f` on the model of document `id` (of `page_count` pages), which is created if the document has none yet.
-    fn with<T>(
+    pub(super) fn with<T>(
         &self,
         id: DocumentId,
         page_count: u32,
@@ -61,6 +61,15 @@ impl AnnotationStore {
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
             .remove(&id);
+    }
+
+    /// Whether document `id` has changes that are not saved. A document without a model has none.
+    pub fn is_dirty(&self, id: DocumentId) -> bool {
+        self.docs
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .get(&id)
+            .is_some_and(DocState::is_dirty)
     }
 
     /// How many documents have a model.

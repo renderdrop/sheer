@@ -77,7 +77,7 @@ describe('runAction', () => {
     await open();
     expect(runAction('close-document')).toBe(true);
     expect(activeDocument()).toBeNull();
-    expect(documentsApi.closeDocument).toHaveBeenCalledWith(1);
+    expect(documentsApi.closeDocument).toHaveBeenCalledWith(1, true);
   });
 
   it('zooms in and out by presets, and stops at the limits where it is disabled', async () => {

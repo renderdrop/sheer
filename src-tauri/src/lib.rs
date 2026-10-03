@@ -10,6 +10,7 @@ pub mod events;
 pub mod limits;
 pub mod menu;
 pub mod model;
+pub mod pdfwrite;
 pub mod platform;
 pub mod security;
 pub mod sources;
@@ -59,7 +60,8 @@ pub fn run() -> Result<(), AppError> {
             let recents = Arc::new(RecentsStore::load(data_dir.join(recents::FILE_NAME)));
             app.manage(
                 AppState::new(Engine::start(engine::library_path(&pdfium_root)))
-                    .with_recents(recents),
+                    .with_recents(recents)
+                    .with_data_dir(data_dir.clone()),
             );
             app.manage(Arc::new(SettingsStore::load(
                 data_dir.join(settings::FILE_NAME),
@@ -108,6 +110,8 @@ pub fn run() -> Result<(), AppError> {
             commands::annotations::apply_annotation_command,
             commands::annotations::undo,
             commands::annotations::redo,
+            commands::save::save_document,
+            commands::save::save_document_as,
             commands::close_document,
             commands::app::app_ready,
             commands::app::get_settings,

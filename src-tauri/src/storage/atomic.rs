@@ -51,6 +51,43 @@ pub fn write_atomic(path: &Path, bytes: &[u8]) -> io::Result<()> {
     write_atomic_with(path, bytes, || NEXT_TEMP.fetch_add(1, Ordering::Relaxed))
 }
 
+/// How often [`replace_atomic`] tries again when the OS says the file is busy, and how long it waits between tries (ADR-004 §1 step 8:
+/// a virus scanner or an indexer may hold a file for a moment after another program let go of it).
+const REPLACE_RETRIES: u32 = 3;
+const REPLACE_PAUSE: Duration = Duration::from_millis(100);
+
+/// Whether a failed rename is worth another try: another program has the file open for a moment (Windows reports that as access
+/// denied, or as a sharing violation).
+fn is_busy(error: &io::Error) -> bool {
+    let sharing_violation = cfg!(windows) && matches!(error.raw_os_error(), Some(5 | 32 | 33));
+    sharing_violation || error.kind() == io::ErrorKind::ResourceBusy
+}
+
+/// [`write_atomic`] for a document of the user's: the file that is replaced keeps its permissions (the temp file is private, `0o600`), and
+/// a rename that fails because the file is busy is tried again up to three times, 100 ms apart. Nothing of the old file is touched
+/// until the new one is complete and on disk.
+pub fn replace_atomic(path: &Path, bytes: &[u8]) -> io::Result<()> {
+    let permissions = fs::metadata(path)
+        .ok()
+        .map(|metadata| metadata.permissions());
+    let mut attempt = 0;
+    loop {
+        match write_atomic(path, bytes) {
+            Ok(()) => break,
+            Err(error) if is_busy(&error) && attempt < REPLACE_RETRIES => {
+                attempt += 1;
+                std::thread::sleep(REPLACE_PAUSE);
+            }
+            Err(error) => return Err(error),
+        }
+    }
+    if let Some(permissions) = permissions {
+        // Best effort: the content is in place; losing the mode of a file is not a reason to fail the save.
+        let _ = fs::set_permissions(path, permissions);
+    }
+    Ok(())
+}
+
 /// `write_atomic` with the temp file counter passed in, so a test can know which names will be tried.
 fn write_atomic_with(
     path: &Path,

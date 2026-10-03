@@ -143,7 +143,7 @@ describe('a menu id from the backend, through the bridge into the registry', () 
     act(() => send('zoom-in'));
     expect(useView.getState().byDoc[REPORT.id]?.zoom).toBe(1.1);
     act(() => send('close-document'));
-    expect(documentsApi.closeDocument).toHaveBeenCalledWith(REPORT.id);
+    expect(documentsApi.closeDocument).toHaveBeenCalledWith(REPORT.id, true);
     expect(activeDocument()).toBeNull();
     documentsApi.closeDocument.mockClear();
     act(() => send('close-document'));
