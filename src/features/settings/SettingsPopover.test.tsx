@@ -210,10 +210,13 @@ describe('the settings popover', () => {
     expect(updateSettingsMock).toHaveBeenLastCalledWith({ language: 'de' });
     // Tab at the last control wraps to the first: the popover keeps focus inside.
     await waitFor(() => expect(checked('Language')).toBe('Deutsch'));
+    // The Welcome tour row's button is the fourth stop and the last one.
+    await user.tab();
+    expect(document.activeElement).toBe(within(popover()).getByRole('button', { name: 'Start tour' }));
     await user.tab();
     expect(document.activeElement).toBe(choose('Theme', 'Light'));
     await user.tab({ shift: true });
-    expect(document.activeElement).toBe(choose('Language', 'Deutsch'));
+    expect(document.activeElement).toBe(within(popover()).getByRole('button', { name: 'Start tour' }));
   });
 
   it('shows the error when the backend refuses a change, and no error while all is well', async () => {

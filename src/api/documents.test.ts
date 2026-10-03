@@ -2,7 +2,14 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { invoke } from '@tauri-apps/api/core';
 
-import { closeDocument, openDocumentDialog, parseDocFlags, parseDocumentInfo, parseOpenOutcome } from './documents';
+import {
+  closeDocument,
+  openDocumentDialog,
+  openWelcomeDocument,
+  parseDocFlags,
+  parseDocumentInfo,
+  parseOpenOutcome,
+} from './documents';
 
 vi.mock('@tauri-apps/api/core', () => ({ invoke: vi.fn() }));
 
@@ -227,5 +234,25 @@ describe('parseOpenOutcome', () => {
       type: 'openFailed',
       error: { code: 'internal', key: 'error.internal', retryable: false },
     });
+  });
+});
+
+describe('document kind and the welcome command', () => {
+  const BASE = { id: 4, pageCount: 2, displayName: 'Welcome' };
+
+  it('reads a valid kind, keeps a missing one missing, and refuses an unknown one', () => {
+    expect(parseDocumentInfo({ ...BASE, kind: 'welcome' })).toEqual({ ...BASE, kind: 'welcome' });
+    expect(parseDocumentInfo({ ...BASE, kind: 'user' })).toEqual({ ...BASE, kind: 'user' });
+    expect(parseDocumentInfo(BASE)).toEqual(BASE);
+    expect(parseDocumentInfo({ ...BASE, kind: 'sample' })).toBeNull();
+    expect(parseDocumentInfo({ ...BASE, kind: 3 })).toBeNull();
+  });
+
+  it('opens the welcome document without arguments and validates the answer', async () => {
+    invokeMock.mockResolvedValueOnce({ type: 'opened', document: { ...BASE, kind: 'welcome' } });
+    await expect(openWelcomeDocument()).resolves.toEqual({ type: 'opened', document: { ...BASE, kind: 'welcome' } });
+    expect(invokeMock).toHaveBeenCalledWith('open_welcome_document', undefined);
+    invokeMock.mockResolvedValueOnce({ type: 'opened', document: { ...BASE, kind: 'bogus' } });
+    await expect(openWelcomeDocument()).rejects.toMatchObject({ code: 'internal' });
   });
 });

@@ -47,6 +47,7 @@ type Rgb = [u8; 3];
 const IRIS_50: Rgb = [0xF4, 0xF5, 0xFF];
 const IRIS_100: Rgb = [0xE1, 0xE2, 0xFF];
 const IRIS_200: Rgb = [0xC9, 0xCA, 0xFF];
+const IRIS_300: Rgb = [0x8E, 0x8E, 0xF2];
 const IRIS_500: Rgb = [0x5B, 0x5B, 0xD6];
 const IRIS_700: Rgb = [0x3A, 0x3A, 0xAB];
 const INK: Rgb = [0x1C, 0x1C, 0x2E];
@@ -575,7 +576,14 @@ impl Doc<'_> {
             IRIS_200,
         );
         for (index, line) in lines.iter().enumerate() {
-            canvas.text(1, 12.0, 72.0, 248.0 + 40.0 + 24.0 * index as f64, INK, line);
+            canvas.text(
+                1,
+                12.0,
+                72.0,
+                248.0 + 40.0 + 24.0 * index as f64,
+                INK_60,
+                line,
+            );
         }
         let below = 248.0 + h + 40.0;
         canvas.chevron_down(300.0, below);
@@ -607,12 +615,28 @@ impl Doc<'_> {
         // Three lines of 5 pt: unreadable at 100 %.
         let lines = wrap(&s.t("welcomePdf.p2.small"), 32);
         assert!(lines.len() <= 3, "{lines:?}");
+        // The dashed target frame, 176 x 48, centred in the block (centre 300, 328).
+        let (cx, cy) = (target.x + target.w / 2.0, target.y + target.h / 2.0);
+        canvas.raw(&format!("{} RG 1 w [4 4] 0 d", rgb(IRIS_300)));
+        canvas.rounded_rect(
+            Rect {
+                x: cx - 88.0,
+                y: cy - 24.0,
+                w: 176.0,
+                h: 48.0,
+            },
+            8.0,
+        );
+        canvas.raw("S [] 0 d");
+        // Each line centred (average advance 0.5 em), the lines centred on cy.
+        let first = cy - 8.0 * (lines.len() as f64 - 1.0) / 2.0 + 1.75;
         for (index, line) in lines.iter().enumerate() {
+            let width = 0.5 * 5.0 * line.chars().count() as f64;
             canvas.text(
                 1,
                 5.0,
-                72.0,
-                target.y + 32.0 + 8.0 * index as f64,
+                cx - width / 2.0,
+                first + 8.0 * index as f64,
                 INK,
                 line,
             );

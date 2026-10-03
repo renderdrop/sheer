@@ -4,6 +4,7 @@ import { Button, Field, Menu, Popover, usePulseMessage } from '../../components'
 import { useT } from '../../i18n';
 import { useSettledValue } from './hooks';
 import { formatPageStatus, formatZoomStatus, splitForMiddleTruncation } from './status';
+import { TourPill } from '../tour/TourPill';
 import { zoomMenuEntries } from './toolbarEntries';
 
 /** The page announcement waits this long after the page last changed (DESIGN 3.10). */
@@ -26,7 +27,7 @@ export interface StatusBarProps {
 function FileName({ name }: { name: string }) {
   const { head, tail } = splitForMiddleTruncation(name);
   return (
-    <span className="flex min-w-0 max-w-status-name items-center">
+    <span data-tour-anchor="status-file-name" className="flex min-w-0 max-w-status-name items-center">
       <span className="sr-only">{name}</span>
       <span aria-hidden="true" className="min-w-0 truncate">
         {head}
@@ -57,7 +58,13 @@ function GoToPage({
       align="end"
       trigger={(trigger) => (
         // The visible text is part of the name (WCAG 2.5.3); the rest says what the button does.
-        <Button {...trigger} variant="ghost" size="sm" aria-label={`${label} · ${t('status.goToPage')}`}>
+        <Button
+          {...trigger}
+          data-tour-anchor="status-page-button"
+          variant="ghost"
+          size="sm"
+          aria-label={`${label} · ${t('status.goToPage')}`}
+        >
           {label}
         </Button>
       )}
@@ -127,6 +134,7 @@ export function StatusBar({ fileName, pageIndex, pageCount, zoom, rendering, onG
       className="flex h-status shrink-0 items-center gap-2 px-2 text-sm text-text-muted"
     >
       {hasDocument && <FileName name={fileName === '' ? t('status.untitled') : fileName} />}
+      <TourPill />
       <span className="flex-auto" />
       <span role="status" className="shrink-0">
         {rendering ? t('status.rendering') : ''}
@@ -143,7 +151,11 @@ export function StatusBar({ fileName, pageIndex, pageCount, zoom, rendering, onG
               {...trigger}
               variant="ghost"
               size="sm"
-              aria-label={`${formatZoomStatus(zoom, t.locale)} · ${t('toolbar.zoomLevel')}`}
+              aria-label={
+                Number.isFinite(zoom)
+                  ? `${formatZoomStatus(zoom, t.locale)} · ${t('toolbar.zoomLevel')}`
+                  : t('toolbar.zoomLevel')
+              }
             >
               {formatZoomStatus(zoom, t.locale)}
             </Button>

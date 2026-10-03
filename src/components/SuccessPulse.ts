@@ -59,7 +59,15 @@ export function pulse(target: HTMLElement, text: string): void {
   const fallback = setTimeout(cleanup, MESSAGE_MS);
   pending.set(target, detach);
 
-  // The same text again must be announced again: clear first, then alternate a zero-width mark so the region's text changes.
+  announce(text);
+}
+
+/**
+ * Hands `text` to the status bar's polite live region without a ring (a message that has no target: the welcome tour's step
+ * announcements and its "skipped"). The same text again is announced again.
+ */
+export function announce(text: string): void {
+  // Clear first, then alternate a zero-width mark so the region's text changes.
   nonce = !nonce;
   setMessage('');
   setMessage(nonce ? text : text + '​');

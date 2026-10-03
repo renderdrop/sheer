@@ -44,4 +44,4 @@ export {
 } from './Toolbar';
 export { Tooltip, type TooltipProps } from './Tooltip';
 export type { Align, Side } from './position';
-export { pulse, usePulseMessage } from './SuccessPulse';
+export { announce, pulse, usePulseMessage } from './SuccessPulse';

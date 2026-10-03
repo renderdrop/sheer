@@ -32,6 +32,9 @@ describe('the catalogs', () => {
     ).toEqual([]);
   });
 
+  // Messages that are a word and two numbers, the same in both languages (DESIGN 3.14 `tour.pill`).
+  const SAME_IN_BOTH = new Set(['tour.pill']);
+
   it('every message is a non-empty string, and no German text is left as the English one by accident', () => {
     for (const locale of LOCALES) {
       for (const [key, message] of Object.entries(catalogs[locale])) {
@@ -41,7 +44,7 @@ describe('the catalogs', () => {
     }
     // Shared words are fine ("Zoom", "Status"); a whole sentence that is identical was not translated.
     const untranslated = Object.entries(catalogs.en).filter(
-      ([key, message]) => message === catalogs.de[key] && message.split(/\s+/).length > 2,
+      ([key, message]) => message === catalogs.de[key] && message.split(/\s+/).length > 2 && !SAME_IN_BOTH.has(key),
     );
     expect(untranslated).toEqual([]);
   });

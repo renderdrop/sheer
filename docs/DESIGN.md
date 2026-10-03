@@ -512,8 +512,8 @@ Rounded rects are four Béziers (k = .5523). The file has no images, annotations
 
 **Page** 600 × 800 pt (3:4, on the 8 grid), white in both themes. Coordinates here run top-left with y down; the generator
 flips them (y_pdf = 800 − y). Margins 48, content 504 = 6 columns of 64 with 24 gutters, baselines on 8. All text is left-aligned
-except the badge digit (Helvetica digits are 556/1000 em), so no width table is needed. Line breaks are fixed in the strings
-(≤ 64 chars at 12 pt, ≤ 56 at 16 pt, test-checked).
+except the badge digit (Helvetica digits are 556/1000 em) and the zoom target text (centred by an average advance of 0.5 em). Strings keep their explicit `\n`;
+over-long ones are wrapped greedily at spaces (≤ 64 chars at 12 pt, ≤ 56 at 16 pt). Chip text: `welcomePdf.chip.step` / `welcomePdf.chip.steps`.
 
 | Element | Geometry | Paint | Type |
 |---|---|---|---|
@@ -531,11 +531,11 @@ except the badge digit (Helvetica digits are 556/1000 em), so no width table is 
 | Kind | Chip · title · instruction | Task target / content |
 |---|---|---|
 | W Welcome (steps 1–2) | Steps 1–2 · `p1.title` · `p1.text` | Block "1 Open a PDF" with a done disc (iris-500 r 12, white 2 pt check). Block "2 Go to page 2" with a chevron-down 24 iris-500, centre x 300 |
-| N Navigate (no task) | Step 2 · `nav.title` · `nav.text` | Block with three lines `nav.ways` (page number in the status bar, keys, thumbnails), then a chevron-down and `nav.next` |
-| Z Zoom (3) | Step 3 · Zoom in · `p2.text` | A 504 × 160 block with three lines of F1 5 pt ink (`p2.small`), unreadable at 100 % |
+| N Navigate (no task) | Step 2 · `nav.title` · `nav.text` | Block with three lines `nav.ways` (page number in the status bar, keys, thumbnails; F1 12 ink-60), then a chevron-down and `nav.next` |
+| Z Zoom (3) | Step 3 · Zoom in · `p2.text` | A 504 × 160 block with three lines of F1 5 pt ink (`p2.small`), centred (centre 300, 328) inside a dashed target frame of about 176 × 48, unreadable at 100 % |
 | M Markup (4–5) | Steps 4–5 · `p3.title` · `p3.text` | Sentence frame y 248, 504 × 56; `p3.sentence` F1 16 ink, x 72, baseline 282. Comment spot: ring (480, 392) r 12, 2 pt iris-500, dot r 4. With S present: `order` note (F1 12 ink-60) in the last block |
 | S Sign and sort (6–7) | Steps 6–7 (or the one shipped) · `sign.title` (else `tour.step.reorder.title`) · `sign.text` (else `tour.step.reorder.text`) | Signature frame x 48 y 248, 288 × 96; rule ink-30 y 320, x 72–312; `sign.label` F1 9 ink-60, baseline 336. Reorder block: `tour.step.reorder.text` |
-| E Closing (always last) | `chip.done` · `end.title` · `end.text` | Block `end.nextTitle`: `end.next.open`, then one line per shipped cluster (`end.next.markup` M2, `.organize` M3, `.sign` M4). Block `end.restart`. Block `end.keysTitle`: rows 24 apart, key at x 72 (F2 12 ink), action at x 240 (F1 12 ink-60), from `steps.json` `closingShortcuts` (open, zoom in/out, next/previous page, settings, plus the letters of shipped tools). Key labels are `welcomePdf.key.*`, and a vitest checks them against `formatBinding` for Windows and macOS |
+| E Closing (always last) | `chip.done` · `end.title` · `end.text` | Block `end.nextTitle`: `end.next.open`, then one line per shipped cluster (`end.next.markup` M2, `.organize` M3, `.sign` M4). Block `end.restart`. Block `end.keysTitle`: rows 24 apart, key at x 72 (F2 12 ink), action at x 344 (F1 12 ink-60; 240 collides with the German keys), from `steps.json` `closingShortcuts` (open, zoom in/out, next/previous page, settings, plus the letters of shipped tools). Key labels are `welcomePdf.key.*`, and a vitest checks them against `formatBinding` for Windows and macOS |
 
 **Editions** (page order; the printed number is in brackets where it differs from the position):
 
@@ -646,7 +646,7 @@ UI (`tour.*`, `settings.tour*`, `doc.*`); the PDF reuses `tour.step.*` for block
 | `settings.tour` / `.start` / `.restart` | Welcome tour / Start tour / Restart tour | Willkommenstour / Tour starten / Tour neu starten |
 | `settings.tour.hint` | Opens the welcome document. | Öffnet das Willkommensdokument. |
 | `doc.welcomeName` | Welcome to {app}.pdf | Willkommen bei {app}.pdf |
-| `welcomePdf.chip.one` / `.range` / `.done` | Step {n} / Steps {a}–{b} / Done | Schritt {n} / Schritte {a}–{b} / Fertig |
+| `welcomePdf.chip.step` / `.steps` / `.done` | Step {n} / Steps {a}–{b} / Done | Schritt {n} / Schritte {a}–{b} / Fertig |
 | `welcomePdf.footer` | Page {n} of {total} · Welcome to {app} | Seite {n} von {total} · Willkommen bei {app} |
 | `welcomePdf.p1.title` / `.text` | Welcome to {app} / Each page is one small task. | Willkommen bei {app} / Jede Seite ist eine kleine Aufgabe. |
 | `welcomePdf.p2.text` | Make the small print below easy to read. | Machen Sie die kleine Schrift unten lesbar. |

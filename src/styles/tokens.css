@@ -859,6 +859,11 @@
   }
 }
 
+/* The welcome tour's anchor ring (DESIGN 3.14) is the pulse ring held at --pulse-opacity; a pulse's animation takes over while it runs. */
+[data-tour-ring]::after {
+  opacity: var(--pulse-opacity);
+}
+
 @utility pulse-target {
   position: relative;
 

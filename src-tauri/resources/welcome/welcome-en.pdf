@@ -100,9 +100,9 @@ BT /F1 9 Tf 0.3725 0.3765 0.4471 rg 48 28 Td (Page 2 of 4 \267 Welcome to Sheer)
 0.9569 0.9608 1 rg 0.7882 0.7922 1 RG 1 w
 64 552 m 536 552 l 544.8368 552 552 544.8368 552 536 c 552 448 l 552 439.1632 544.8368 432 536 432 c 64 432 l 55.1632 432 48 439.1632 48 448 c 48 536 l 48 544.8368 55.1632 552 64 552 c h
 B
-BT /F1 12 Tf 0.1098 0.1098 0.1804 rg 72 512 Td (Click the page number below to jump.) Tj ET
-BT /F1 12 Tf 0.1098 0.1098 0.1804 rg 72 488 Td (Ctrl or Cmd + Down goes to the next page.) Tj ET
-BT /F1 12 Tf 0.1098 0.1098 0.1804 rg 72 464 Td (Thumbnails show every page.) Tj ET
+BT /F1 12 Tf 0.3725 0.3765 0.4471 rg 72 512 Td (Click the page number below to jump.) Tj ET
+BT /F1 12 Tf 0.3725 0.3765 0.4471 rg 72 488 Td (Ctrl or Cmd + Down goes to the next page.) Tj ET
+BT /F1 12 Tf 0.3725 0.3765 0.4471 rg 72 464 Td (Thumbnails show every page.) Tj ET
 0.3569 0.3569 0.8392 RG 2.5 w 1 J 1 j
 288 398 m 300 386 l 312 398 l S
 BT /F1 12 Tf 0.3725 0.3765 0.4471 rg 48 352 Td (Zoom waits on the next page.) Tj ET
@@ -113,7 +113,7 @@ endobj
 << /Type /Page /Parent 2 0 R /MediaBox [0 0 600 800] /Contents 25 0 R /Resources << /Font << /F1 3 0 R /F2 4 0 R >> /Shading << /Sh1 5 0 R >> >> >>
 endobj
 25 0 obj
-<<  /Length 1480 >>
+<<  /Length 1737 >>
 stream
 q
 72 752 m 528 752 l 541.2552 752 552 741.2552 552 728 c 552 648 l 552 634.7448 541.2552 624 528 624 c 72 624 l 58.7448 624 48 634.7448 48 648 c 48 728 l 48 741.2552 58.7448 752 72 752 c h
@@ -134,9 +134,12 @@ BT /F1 9 Tf 0.3725 0.3765 0.4471 rg 48 28 Td (Page 3 of 4 \267 Welcome to Sheer)
 0.9569 0.9608 1 rg 0.7882 0.7922 1 RG 1 w
 64 552 m 536 552 l 544.8368 552 552 544.8368 552 536 c 552 408 l 552 399.1632 544.8368 392 536 392 c 64 392 l 55.1632 392 48 399.1632 48 408 c 48 536 l 48 544.8368 55.1632 552 64 552 c h
 B
-BT /F1 5 Tf 0.1098 0.1098 0.1804 rg 72 520 Td (You found it. Pinch, Ctrl or Cmd) Tj ET
-BT /F1 5 Tf 0.1098 0.1098 0.1804 rg 72 512 Td (+ wheel, or the + button all) Tj ET
-BT /F1 5 Tf 0.1098 0.1098 0.1804 rg 72 504 Td (zoom.) Tj ET
+0.5569 0.5569 0.949 RG 1 w [4 4] 0 d
+220 496 m 380 496 l 384.4184 496 388 492.4184 388 488 c 388 456 l 388 451.5816 384.4184 448 380 448 c 220 448 l 215.5816 448 212 451.5816 212 456 c 212 488 l 212 492.4184 215.5816 496 220 496 c h
+S [] 0 d
+BT /F1 5 Tf 0.1098 0.1098 0.1804 rg 260 478.25 Td (You found it. Pinch, Ctrl or Cmd) Tj ET
+BT /F1 5 Tf 0.1098 0.1098 0.1804 rg 265 470.25 Td (+ wheel, or the + button all) Tj ET
+BT /F1 5 Tf 0.1098 0.1098 0.1804 rg 293.75 462.25 Td (zoom.) Tj ET
 
 endstream
 endobj
@@ -214,10 +217,10 @@ xref
 0000003909 00000 n 
 0000005646 00000 n 
 0000005810 00000 n 
-0000007344 00000 n 
-0000007508 00000 n 
+0000007601 00000 n 
+0000007765 00000 n 
 trailer
 << /Size 28 /Root 1 0 R /Info 6 0 R >>
 startxref
-10234
+10491
 %%EOF

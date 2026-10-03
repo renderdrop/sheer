@@ -17,6 +17,10 @@ export interface DocFlags {
   signed: boolean;
 }
 
+/** Where a document comes from (src-tauri/src/documents/mod.rs, `DocKind`): `welcome` is the bundled tour sample (ADR-023), `user` is every file the user opened. */
+export const DOC_KINDS = ['user', 'welcome'] as const;
+export type DocKind = (typeof DOC_KINDS)[number];
+
 /** Result of opening a document. `id` is opaque; the frontend never sees file paths. */
 export interface DocumentInfo {
   id: number;
@@ -31,6 +35,8 @@ export interface DocumentInfo {
    * a document value built without it (a test, a stub) is still a `DocumentInfo`, and a `DocumentInfo` that has it is complete.
    */
   flags?: DocFlags;
+  /** `welcome` for the tour's sample, which is read-only. Optional in the type like `flags`; the backend always sends it. */
+  kind?: DocKind;
 }
 
 /** A whole number from 0 up to `max`: the id and the page count are `u32` in the backend. */
@@ -59,16 +65,25 @@ export function parseDocFlags(value: unknown): DocFlags | null {
  */
 export function parseDocumentInfo(value: unknown): DocumentInfo | null {
   if (typeof value !== 'object' || value === null) return null;
-  const { id, pageCount, displayName, flags } = value as {
+  const { id, pageCount, displayName, flags, kind } = value as {
     id?: unknown;
     pageCount?: unknown;
     displayName?: unknown;
     flags?: unknown;
+    kind?: unknown;
   };
   if (!isCount(id) || !isCount(pageCount, MAX_PAGES) || typeof displayName !== 'string') return null;
-  if (flags === undefined) return { id, pageCount, displayName };
+  const info: DocumentInfo = { id, pageCount, displayName };
+  if (kind !== undefined) {
+    // A kind that is there and unknown is not a document of ours.
+    if (!DOC_KINDS.includes(kind as DocKind)) return null;
+    info.kind = kind as DocKind;
+  }
+  if (flags === undefined) return info;
   const parsed = parseDocFlags(flags);
-  return parsed === null ? null : { id, pageCount, displayName, flags: parsed };
+  if (parsed === null) return null;
+  info.flags = parsed;
+  return info;
 }
 
 /**
@@ -113,6 +128,17 @@ export async function openDocumentDialog(): Promise<OpenOutcome[]> {
     outcomes.push(parsed);
   }
   return outcomes;
+}
+
+/**
+ * Opens the bundled welcome document (ADR-023) in the language of the interface: the backend finds the file, nothing path-like
+ * crosses. Resolves to how it went (`opened` with `kind: "welcome"`, or `openFailed`); an answer that is not an open outcome is an
+ * internal error. A welcome document that is open already is closed by the backend first.
+ */
+export async function openWelcomeDocument(): Promise<OpenOutcome> {
+  const parsed = parseOpenOutcome(await call<unknown>('open_welcome_document'));
+  if (parsed === null) throw toAppError(null);
+  return parsed;
 }
 
 export function closeDocument(docId: number): Promise<void> {

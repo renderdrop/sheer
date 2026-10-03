@@ -1,10 +1,12 @@
 import { useId, useLayoutEffect, type ReactNode } from 'react';
 
-import { Popover } from '../../components';
+import { Button, Popover } from '../../components';
 import type { GlassMode, ThemeMode } from '../../api/app';
 import { errorText, useT, type Language, type PlainKey } from '../../i18n';
 import { useSettings } from '../../stores/settings';
 import { SegmentedControl, type SegmentOption } from './SegmentedControl';
+import { restartTour } from '../tour/runtime';
+import { useTour } from '../tour/store';
 import { useSettingsPopover } from './state';
 
 /** The values of each setting with the catalog key of their text, in the order the segments show them. */
@@ -68,6 +70,21 @@ function Setting({
   );
 }
 
+/** The welcome tour row (DESIGN 3.14): starts it, or restarts it while it runs; the popover closes and the welcome document opens fresh. */
+function TourRow() {
+  const t = useT();
+  const running = useTour((state) => state.docId !== null);
+  return (
+    <Setting label={t('settings.tour')} hint={t('settings.tour.hint')}>
+      {(labelId) => (
+        <Button variant="secondary" size="sm" aria-describedby={labelId} onClick={() => void restartTour()}>
+          {running ? t('settings.tour.restart') : t('settings.tour.start')}
+        </Button>
+      )}
+    </Setting>
+  );
+}
+
 /** The three settings as segmented controls; each choice is saved and applied at once (the store answers `update_settings`). */
 function SettingsForm() {
   const t = useT();
@@ -115,6 +132,7 @@ function SettingsForm() {
           />
         )}
       </Setting>
+      <TourRow />
       {error !== null && (
         <p role="alert" className="m-0 text-sm text-error-text">
           {errorText(t, error)}

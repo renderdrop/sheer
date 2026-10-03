@@ -7,6 +7,7 @@ import { chromeFor, detectPlatform } from '../../lib/platform';
 import { useSettings } from '../../stores/settings';
 import { useUi } from '../../stores/ui';
 import { ViewerCanvas } from '../viewer/ViewerCanvas';
+import { TourEffects } from '../tour/TourEffects';
 import { ViewerEffects } from '../viewer/useViewer';
 import { BannerRow } from './Banner';
 import { CaptionBar } from './CaptionBar';
@@ -84,6 +85,7 @@ export function Shell() {
   return (
     <div className="flex h-full min-h-0 flex-col">
       <ViewerEffects />
+      <TourEffects />
       <ActionKeys />
       {chrome.caption && <CaptionBar maximized={windowState.maximized} onChanged={windowState.refresh} />}
       <ToolbarSlot
