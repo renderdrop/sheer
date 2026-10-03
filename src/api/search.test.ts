@@ -1,7 +1,15 @@
 import { invoke } from '@tauri-apps/api/core';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { MAX_QUADS_PER_HIT, MAX_SEARCH_HITS, cancelSearch, parseSearchEvent, search, type SearchEvent } from './search';
+import {
+  MAX_QUADS_PER_HIT,
+  MAX_SEARCH_HITS,
+  cancelSearch,
+  parseSearchEvent,
+  search,
+  trackedSearchCount,
+  type SearchEvent,
+} from './search';
 
 /** A `Channel` that keeps its handler, so a test can play the backend by calling `onmessage`. */
 vi.mock('@tauri-apps/api/core', () => ({
@@ -107,7 +115,6 @@ describe('search', () => {
       { type: 'hits', pageId: -1, hits: [] },
       { type: 'hits', pageId: 1, hits: [[[point(1, 2)]]] },
       { type: 'progress', done: 5, total: 3 },
-      { type: 'done', truncated: 'yes' },
     ]) {
       channel.onmessage(bad);
     }
@@ -127,6 +134,74 @@ describe('search', () => {
     });
     invokeMock.mockResolvedValueOnce('7');
     await expect(search(0, { text: 'a' }, vi.fn())).rejects.toMatchObject({ code: 'internal' });
+  });
+});
+
+describe('search state', () => {
+  it('closes the previous search of the same document: its messages in flight are not delivered', async () => {
+    invokeMock.mockResolvedValueOnce(1);
+    const first = vi.fn();
+    await search(3, { text: 'a' }, first);
+    const oldChannel = channelOf();
+    invokeMock.mockResolvedValueOnce(2);
+    const second = vi.fn();
+    await search(3, { text: 'b' }, second);
+    const newChannel = channelOf();
+    oldChannel.onmessage({ type: 'progress', done: 1, total: 2 });
+    newChannel.onmessage({ type: 'progress', done: 1, total: 2 });
+    expect(first).not.toHaveBeenCalled();
+    expect(second).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not close the search of another document', async () => {
+    invokeMock.mockResolvedValueOnce(1);
+    const first = vi.fn();
+    await search(3, { text: 'a' }, first);
+    const channel = channelOf();
+    invokeMock.mockResolvedValueOnce(2);
+    await search(4, { text: 'a' }, vi.fn());
+    channel.onmessage({ type: 'progress', done: 1, total: 2 });
+    expect(first).toHaveBeenCalledTimes(1);
+  });
+
+  it('forgets a search when done or failed arrives: the bookkeeping does not grow per search', async () => {
+    const before = trackedSearchCount();
+    for (let n = 0; n < 5; n += 1) {
+      invokeMock.mockResolvedValueOnce(100 + n);
+      await search(900 + n, { text: 'a' }, vi.fn());
+      expect(trackedSearchCount()).toBe(before + 2);
+      channelOf().onmessage(n % 2 === 0 ? { type: 'done', truncated: false } : { type: 'failed', code: 'internal' });
+      expect(trackedSearchCount()).toBe(before);
+    }
+  });
+
+  it('delivers failed (internal) for a done message that cannot be read, and then nothing more', async () => {
+    invokeMock.mockResolvedValueOnce(7777);
+    const events: SearchEvent[] = [];
+    const before = trackedSearchCount();
+    await search(950, { text: 'a' }, (event) => events.push(event));
+    const channel = channelOf();
+    channel.onmessage({ type: 'done', truncated: 'yes' });
+    channel.onmessage({ type: 'progress', done: 1, total: 2 });
+    expect(events).toHaveLength(1);
+    expect(events[0]).toMatchObject({ type: 'failed', error: { code: 'internal' } });
+    expect(trackedSearchCount()).toBe(before);
+  });
+
+  it('caps the hits over all messages at MAX_SEARCH_HITS and ends as done and truncated', async () => {
+    invokeMock.mockResolvedValueOnce(6);
+    const events: SearchEvent[] = [];
+    await search(0, { text: 'a' }, (event) => events.push(event));
+    const channel = channelOf();
+    const hits = (count: number) => Array.from({ length: count }, () => [QUAD]);
+    channel.onmessage({ type: 'hits', pageId: 0, hits: hits(MAX_SEARCH_HITS - 1) });
+    invokeMock.mockResolvedValueOnce(undefined);
+    channel.onmessage({ type: 'hits', pageId: 1, hits: hits(5) });
+    channel.onmessage({ type: 'hits', pageId: 2, hits: hits(5) });
+    expect(events.map((event) => event.type)).toEqual(['hits', 'hits', 'done']);
+    expect((events[1] as { hits: unknown[] }).hits).toHaveLength(1);
+    expect(events[2]).toStrictEqual({ type: 'done', truncated: true });
+    expect(invokeMock).toHaveBeenCalledWith('cancel_search', { searchId: 6 });
   });
 });
 

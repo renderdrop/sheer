@@ -2,6 +2,7 @@ import { Channel } from '@tauri-apps/api/core';
 
 import { call } from './call';
 import { toAppError, type AppError } from './errors';
+import { MAX_PAGES } from './render';
 import { isRecord, isUint, parseQuad, type Quad } from './wire';
 
 /**
@@ -16,9 +17,6 @@ export const MAX_SEARCH_QUERY_CHARS = 512;
 export const MAX_SEARCH_HITS = 50_000;
 /** Most rectangles in one hit (`MAX_QUADS_PER_HIT`). */
 export const MAX_QUADS_PER_HIT = 512;
-/** Most pages of a document (`MAX_PAGES`). */
-const MAX_PAGES = 50_000;
-
 /** What to search for. The text is 1 to 512 characters and is not only white space. */
 export interface SearchQuery {
   text: string;
@@ -80,7 +78,24 @@ export function parseSearchEvent(message: unknown): SearchEvent | null {
 }
 
 /** The searches that are running, by the id the backend gave: `cancelSearch` closes them, so a message in flight is not delivered. */
-const running = new Map<number, { closed: boolean }>();
+const running = new Map<number, SearchState>();
+/** The current search of each document: a new one closes it. */
+const current = new Map<number, SearchState>();
+
+interface SearchState {
+  closed: boolean;
+  id: number | null;
+  docId: number;
+  /** Hits delivered so far, over all messages. */
+  hits: number;
+}
+
+/** Closes a search for good: nothing more is delivered, and it is not remembered. */
+function close(state: SearchState): void {
+  state.closed = true;
+  if (state.id !== null && running.get(state.id) === state) running.delete(state.id);
+  if (current.get(state.docId) === state) current.delete(state.docId);
+}
 
 /**
  * Starts a search of an open document and resolves to its id at once; `onEvent` then gets the messages as the pages are searched,
@@ -93,26 +108,62 @@ export async function search(
   query: SearchQuery,
   onEvent: (event: SearchEvent) => void,
 ): Promise<number> {
-  const state = { closed: false };
+  // A new search of the document closes the one before it: what that has in flight is never delivered.
+  const previous = current.get(docId);
+  if (previous !== undefined) close(previous);
+  const state: SearchState = { closed: false, id: null, docId, hits: 0 };
+  current.set(docId, state);
+  const finish = (event: SearchEvent) => {
+    close(state);
+    onEvent(event);
+  };
   const channel = new Channel<unknown>((message) => {
     if (state.closed) return;
     const event = parseSearchEvent(message);
-    if (event === null) return;
+    if (event === null) {
+      // A last message that cannot be read must not leave the caller waiting for ever.
+      if (isRecord(message) && (message.type === 'done' || message.type === 'failed')) {
+        finish({ type: 'failed', error: toAppError(null) });
+      }
+      return;
+    }
+    if (event.type === 'hits') {
+      const room = MAX_SEARCH_HITS - state.hits;
+      if (event.hits.length > room) {
+        // More hits than one search reports: what fits is delivered, then the search ends as truncated.
+        const id = state.id;
+        if (room > 0) onEvent({ ...event, hits: event.hits.slice(0, room) });
+        finish({ type: 'done', truncated: true });
+        if (id !== null) call<void>('cancel_search', { searchId: id }).catch(() => undefined);
+        return;
+      }
+      state.hits += event.hits.length;
+    }
     // The last message of a search: nothing follows it.
-    if (event.type === 'done' || event.type === 'failed') state.closed = true;
-    onEvent(event);
+    if (event.type === 'done' || event.type === 'failed') finish(event);
+    else onEvent(event);
   });
-  const id = await call<unknown>('search', {
-    docId,
-    query: {
-      text: query.text,
-      matchCase: query.matchCase ?? false,
-      wholeWord: query.wholeWord ?? false,
-      maxHits: query.maxHits ?? MAX_SEARCH_HITS,
-    },
-    onEvent: channel,
-  });
-  if (!isUint(id)) throw toAppError(null);
+  let id: unknown;
+  try {
+    id = await call<unknown>('search', {
+      docId,
+      query: {
+        text: query.text,
+        matchCase: query.matchCase ?? false,
+        wholeWord: query.wholeWord ?? false,
+        maxHits: query.maxHits ?? MAX_SEARCH_HITS,
+      },
+      onEvent: channel,
+    });
+  } catch (error) {
+    close(state);
+    throw error;
+  }
+  if (!isUint(id)) {
+    close(state);
+    throw toAppError(null);
+  }
+  state.id = id;
   if (!state.closed) running.set(id, state);
   return id;
 }
@@ -123,7 +174,11 @@ export async function search(
  */
 export async function cancelSearch(searchId: number): Promise<void> {
   const state = running.get(searchId);
-  if (state !== undefined) state.closed = true;
-  running.delete(searchId);
+  if (state !== undefined) close(state);
   await call<void>('cancel_search', { searchId });
+}
+
+/** How many searches are remembered (for tests: it must not grow with the number of searches). */
+export function trackedSearchCount(): number {
+  return running.size + current.size;
 }

@@ -284,6 +284,22 @@ describe('the cache', () => {
     expect(cache.has(shown?.key ?? '')).toBe(false);
   });
 
+  it('withdraws its pin when it is scrolled away with a request in flight, and a late frame holds nothing', async () => {
+    const { scheduler, cache, pending } = fixture();
+    const shown = put(cache, BUCKET + 1, 5 * MIB);
+    const { unmount } = setup(item(scheduler));
+    act(() => void vi.advanceTimersByTime(THUMBNAIL_ASK_DELAY_MS));
+    expect(pending).toHaveLength(1);
+    unmount();
+    // Nothing pins the image any more: another one that fills the budget evicts it.
+    put(cache, BUCKET + 3, MIN_BUDGET_BYTES, 9);
+    expect(cache.has(shown?.key ?? '')).toBe(false);
+    await act(async () => pending[0]?.resolve(frame()));
+    // The late frame is only a cache entry now; no pin of the gone cell keeps it.
+    put(cache, BUCKET + 4, MIN_BUDGET_BYTES, 10);
+    expect(cache.has(`1:2:0:${BUCKET}`)).toBe(false);
+  });
+
   it('looks again when the page is rendered by someone else: the version of the page decides', () => {
     const { scheduler, cache } = fixture();
     setup(item(scheduler));

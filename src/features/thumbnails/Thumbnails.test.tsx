@@ -15,7 +15,7 @@ import { useViewer } from '../viewer/useViewer';
 import { resetViewer, showDocument, sizes } from '../viewer/viewer.testutil';
 import { ThumbnailLayout, thumbnailMetricsFor, type ThumbnailSpacing } from './layout';
 import { THUMBNAIL_ASK_DELAY_MS } from './ThumbnailItem';
-import { MAX_MOUNTED_THUMBNAILS, ThumbnailList, Thumbnails, USER_SCROLL_GRACE_MS } from './Thumbnails';
+import { MAX_MOUNTED_THUMBNAILS, ThumbnailList, capRange, Thumbnails, USER_SCROLL_GRACE_MS } from './Thumbnails';
 
 /**
  * How often components render, counted at the one call every cell and the list make on each render: the translator. Each
@@ -182,12 +182,28 @@ describe('virtualization', () => {
     expect(mounted()[0]).toBe(0);
   });
 
-  it('mounts at most as many cells as the limit, however many fit', () => {
+  it('mounts at most as many cells as the limit, but never fewer than are in view', () => {
     resizeRegion({ height: 100_000 });
     const { scheduler } = fixture();
     setup(list(scheduler));
-    expect(mounted().length).toBeLessThanOrEqual(MAX_MOUNTED_THUMBNAILS + 2);
-    expect(mounted().length).toBeGreaterThan(40);
+    const inView = layoutOf(sizes(500)).itemsIn(0, 100_000);
+    expect(inView).not.toBeNull();
+    expect(mounted().length).toBeGreaterThan(MAX_MOUNTED_THUMBNAILS);
+    for (let index = inView?.first ?? 0; index <= (inView?.last ?? -1); index += 1) expect(mounted()).toContain(index);
+  });
+
+  it('trims the overscan first when over the limit, and keeps every cell in view', () => {
+    const cap = MAX_MOUNTED_THUMBNAILS;
+    // 40 in view with 40 of overscan on each side: 120 cells, the 40 in view stay and the overscan shares the other 24.
+    const trimmed = capRange({ first: 100, last: 219 }, { first: 140, last: 179 });
+    expect(trimmed).toEqual({ first: 128, last: 191 });
+    // At the start of the list the overscan is all below.
+    expect(capRange({ first: 0, last: 119 }, { first: 0, last: 39 })).toEqual({ first: 0, last: cap - 1 });
+    // More cells in view than the limit: none of them is cut.
+    expect(capRange({ first: 0, last: 199 }, { first: 20, last: 169 })).toEqual({ first: 20, last: 169 });
+    // Within the limit nothing changes.
+    expect(capRange({ first: 3, last: 20 }, { first: 5, last: 10 })).toEqual({ first: 3, last: 20 });
+    expect(capRange(null, null)).toBeNull();
   });
 
   it('keeps the cells in page order, and puts each where the layout says', () => {

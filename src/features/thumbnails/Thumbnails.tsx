@@ -50,6 +50,20 @@ function sameRange(a: IndexRange | null, b: IndexRange | null): boolean {
   return a === b || (a !== null && b !== null && a.first === b.first && a.last === b.last);
 }
 
+/**
+ * `found` (the cells in view and the overscan around them) cut to at most `MAX_MOUNTED_THUMBNAILS`: the overscan goes first, and
+ * the cells that are in view (`visible`) are never cut, even if there are more of them than the cap.
+ */
+export function capRange(found: IndexRange | null, visible: IndexRange | null): IndexRange | null {
+  if (found === null || found.last - found.first + 1 <= MAX_MOUNTED_THUMBNAILS) return found;
+  if (visible === null) return { first: found.first, last: found.first + MAX_MOUNTED_THUMBNAILS - 1 };
+  const spare = Math.max(0, MAX_MOUNTED_THUMBNAILS - (visible.last - visible.first + 1));
+  const after = Math.min(found.last - visible.last, Math.ceil(spare / 2));
+  const before = Math.min(visible.first - found.first, spare - after);
+  const more = Math.min(found.last - visible.last - after, spare - after - before);
+  return { first: visible.first - before, last: visible.last + after + more };
+}
+
 /** The option an event came from, and its page. */
 function optionOf(target: EventTarget): { element: HTMLElement; index: number } | null {
   if (!(target instanceof Element)) return null;
@@ -137,11 +151,9 @@ export function ThumbnailList({ docId, pageCount, scheduler }: ThumbnailListProp
     const viewTop = region.scrollTop - inset;
     const viewHeight = region.clientHeight;
     const reach = viewHeight * OVERSCAN_VIEWPORTS;
+    const visible = layout.itemsIn(viewTop, viewTop + viewHeight);
     const found = layout.itemsIn(viewTop - reach, viewTop + viewHeight + reach);
-    const next =
-      found !== null && found.last - found.first + 1 > MAX_MOUNTED_THUMBNAILS
-        ? { first: found.first, last: found.first + MAX_MOUNTED_THUMBNAILS - 1 }
-        : found;
+    const next = capRange(found, visible);
     if (!sameRange(rangeSet.current, next)) {
       rangeSet.current = next;
       setRange(next);

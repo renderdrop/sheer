@@ -1,5 +1,6 @@
 import { call } from './call';
 import { toAppError, type AppError } from './errors';
+import { MAX_PAGES } from './render';
 
 /**
  * What PDFium says about a document, as far as it can tell (src-tauri/src/documents/mod.rs, `DocFlags`): best effort, nothing here
@@ -32,9 +33,9 @@ export interface DocumentInfo {
   flags?: DocFlags;
 }
 
-/** A whole number from 0 up: the id and the page count are `u32` in the backend. */
-function isCount(value: unknown): value is number {
-  return typeof value === 'number' && Number.isInteger(value) && value >= 0;
+/** A whole number from 0 up to `max`: the id and the page count are `u32` in the backend. */
+function isCount(value: unknown, max = Number.MAX_SAFE_INTEGER): value is number {
+  return typeof value === 'number' && Number.isInteger(value) && value >= 0 && value <= max;
 }
 
 /** Validates document flags; `null` if they are not four booleans. Extra keys are dropped. */
@@ -64,7 +65,7 @@ export function parseDocumentInfo(value: unknown): DocumentInfo | null {
     displayName?: unknown;
     flags?: unknown;
   };
-  if (!isCount(id) || !isCount(pageCount) || typeof displayName !== 'string') return null;
+  if (!isCount(id) || !isCount(pageCount, MAX_PAGES) || typeof displayName !== 'string') return null;
   if (flags === undefined) return { id, pageCount, displayName };
   const parsed = parseDocFlags(flags);
   return parsed === null ? null : { id, pageCount, displayName, flags: parsed };

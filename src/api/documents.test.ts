@@ -103,6 +103,7 @@ describe('document commands', () => {
       [opened({ id: 1.5, pageCount: 2, displayName: 'a.pdf' })],
       [opened({ id: 4, pageCount: -1, displayName: 'a.pdf' })],
       [opened({ id: 4, pageCount: 2.5, displayName: 'a.pdf' })],
+      [opened({ id: 4, pageCount: 50_001, displayName: 'a.pdf' })],
       [opened({ id: 4, pageCount: '2', displayName: 'a.pdf' })],
       [opened({ id: 4, pageCount: Number.NaN, displayName: 'a.pdf' })],
       [opened({ id: 4, pageCount: Number.POSITIVE_INFINITY, displayName: 'a.pdf' })],
