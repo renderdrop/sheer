@@ -452,7 +452,7 @@ Synthese (du, Opus): `docs/FEATURES.md` — Tabelle: Feature | Nutzer-Nutzen | M
 - **M7 / v1.0.0 — Polish & Ship:** Performance-Budget (500-Seiten-PDF öffnet < 1 s, Scrollen 60 fps), Barrierefreiheit, i18n de/en komplett, Onboarding (3 Screens), Installer (DMG, MSI/NSIS), signierter opt-in Updater (minisign-Schlüsselpaar: Public Key im Repo, Private Key = Blocker), PDF-Engine in eigenem Prozess (Crash-Isolation, ADR), vollständiger `security-reviewer`-Audit, Crash-sicheres Autosave, `docs/SECURITY.md` finalisiert, Signing-/Notarization-Anleitung in `docs/BLOCKERS.md` (Zertifikate kann nur ein Mensch beschaffen).
 
 ### 8.6 Definition of Done (pro Milestone)
-Alle Checkboxen `[x]` · `npm run check` grün · `npm run tauri build --debug` erfolgreich · keine `blocker`/`major` Reviewer-Issues offen · `security-reviewer` = PASS · Fuzz-Korpus-Test grün (kein Crash bei allen Dateien in `tests/fixtures/malformed/`) · neue Dependencies in `docs/LICENSES.md` · `CHANGELOG.md` Release-Abschnitt · Version in allen drei Manifesten identisch · Tag gesetzt · `STATE.md` zeigt auf den nächsten Milestone.
+Alle Checkboxen `[x]` · `npm run check` grün · `npm run tauri build --debug` erfolgreich · keine `blocker`/`major` Reviewer-Issues offen · `security-reviewer` = PASS · Visueller Review durch den `designer` anhand von Screenshots aus dem Tauri-Fenster, Light und Dark, Leerzustand und Dokument, Verdict PASS/FIX · Fuzz-Korpus-Test grün (kein Crash bei allen Dateien in `tests/fixtures/malformed/`) · neue Dependencies in `docs/LICENSES.md` · `CHANGELOG.md` Release-Abschnitt · Version in allen drei Manifesten identisch · Tag gesetzt · `STATE.md` zeigt auf den nächsten Milestone.
 
 ---
 
@@ -549,6 +549,8 @@ Niemals stoppen, um eine Frage zu stellen. Niemals stoppen wegen Unsicherheit.
 ## 14. Start
 
 Beginne jetzt. Prüfe, ob `STATE.md` existiert. Wenn nein: Phase 0. Wenn ja: lies `STATE.md`, die nächsten fünf offenen Punkte in `ROADMAP.md` und die letzten drei Einträge in `docs/DECISIONS.md`, dann setze den Feature-Loop beim `current_item` fort. Keine Zusammenfassung an den Nutzer, keine Rückfrage — arbeiten.
+
+Existiert `docs/FEEDBACK.md` mit offenen Punkten, haben diese Vorrang vor der Roadmap; erledigte Punkte als [x] markieren.
 
 ---
 

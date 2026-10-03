@@ -51,6 +51,7 @@ The Stop hook picks the first open `- [ ]` line, so order matters. Scope: `docs/
 - [ ] Password-protected PDFs (session-only password)
 - [ ] Recent files (local, removable, missing-file handling)
 - [ ] Multiple documents in tabs; macOS menu enabled-state sync (grey items without a document, Close Window on ⌘W)
+- [ ] Onboarding scaffold (FEEDBACK F4): bundled "Welcome to Sheer.pdf" opened on first launch, coach-mark component, step engine, steps Open / Navigate / Zoom, progress in the status bar, skippable, restart in Settings, never automatic twice
 - [ ] Hostile input: fuzz corpus ≥ 30 malformed PDFs + never-crash test, safe links (confirm, http/https/mailto), XFA warning; intake: registry key from the handle, reject NTFS ADS names and `\?NC`/REMOTE UNC (OR DEADLINE), PIN WINDOWS DEVICE-PATH REFUSAL IN A TEST, SKIP STRAY NON-FLAG ARGV VALUES, DOCUMENT TOKIO `NET` FROM SINGLE-INSTANCE IN THE NETWORK GUARD
 
 ## M2 — Comment and markup (v0.5.0)
@@ -64,6 +65,7 @@ The Stop hook picks the first open `- [ ]` line, so order matters. Scope: `docs/
 - [ ] Comments panel: threads (/IRT), filter, sort, jump
 - [ ] Save annotations: appearance streams via lopdf, incremental + atomic save, backup of original
 - [ ] Interop test: saved annotations re-open correctly (PDFium + AP present for every type)
+- [ ] Onboarding steps (F4): "Highlight" and "Comment" pages of the welcome document with coach marks + success moment
 
 ## M3 — Organize pages (v0.6.0)
 
@@ -74,6 +76,7 @@ The Stop hook picks the first open `- [ ]` line, so order matters. Scope: `docs/
 - [ ] Merge files (multi-drop suggests merge)
 - [ ] Split (every N pages, ranges)
 - [ ] Compress: three named presets with estimated size
+- [ ] Onboarding step (F4): "Reorder pages" page of the welcome document with coach mark + success moment
 
 ## M4 — Forms and signature (v0.7.0)
 
@@ -84,6 +87,7 @@ The Stop hook picks the first open `- [ ]` line, so order matters. Scope: `docs/
 - [ ] Fill & Sign for flat forms (text, check, cross, dot)
 - [ ] Stamps (Approved, Draft, …)
 - [ ] Signature library encrypted at rest, key in OS keychain (keyring ADR)
+- [ ] Onboarding step (F4): "Drag a signature" page of the welcome document with coach mark + success moment
 
 ## M5 — Edit and protect (v0.8.0)
 
@@ -110,10 +114,11 @@ The Stop hook picks the first open `- [ ]` line, so order matters. Scope: `docs/
 - [ ] Performance budget: 500-page PDF opens < 1 s, 60 fps scrolling (benchmark); scroll-height compression beyond the browser element limit (≈ 8k pages at 400 %), memory-aware cache budget
 - [ ] Accessibility pass (WCAG 2.2 AA analog, screen reader labels, focus order)
 - [ ] i18n de/en complete
-- [ ] Onboarding (3 skippable screens) + per-tool tips; read mode
+- [ ] Per-tool tips; read mode (onboarding = welcome-document tour, FEEDBACK F4)
 - [ ] PDF engine in its own process (crash isolation, ADR)
 - [ ] Crash-safe autosave
-- [ ] Installers: DMG, MSI/NSIS (WebView2 bootstrapper); Windows .pdf association via OpenWithProgids, default handler only on opt-in
+- [ ] Windows installer (FEEDBACK F5): NSIS target (no MSI/WiX default dialog) with own header and sidebar images in Iris and the Sheer icon
+- [ ] Installers: DMG, NSIS (WebView2 bootstrapper); Windows .pdf association via OpenWithProgids, default handler only on opt-in
 - [ ] Signed opt-in updater (minisign public key in repo; private key → BLOCKERS)
 - [ ] Full security-reviewer audit, docs/SECURITY.md finalized
 - [ ] Signing/notarization guide in docs/BLOCKERS.md
