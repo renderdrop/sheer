@@ -6,6 +6,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-10-03
+
+M4 — Forms and signature.
+
+### Added
+
+- Form filling: text, checkbox, radio and choice fields drawn on the page, Tab order across pages, required and read-only states, a field highlight toggle, the Form tool (F) and a "Formular" pill; every edit is undoable; values are saved into the file with regenerated appearances (no scripts are ever run; a hybrid XFA layer is removed with a warning).
+- Flatten: burns filled fields into the pages of a new file (with confirm and progress).
+- Signatures: draw (pressure), type (bundled Homemade Apple font, Apache-2.0, as outlines) or import an image (PNG/JPEG, re-encoded without metadata); initials; place, move and aspect-locked scale; Fill & Sign marks (check, cross, dot), date and text.
+- Signature library: up to 8 entries per kind, encrypted on this device (XChaCha20-Poly1305) with the key in the OS keychain; rename, delete with undo, forget all; session-only when no keychain is available.
+- CI: Windows-only on pushes to main with docs changes skipped, macOS on tags and manual runs, caches (ADR-043).
+
+### Security
+
+- Pre-scan judges /Length only for object and xref streams and refuses conflicting length objects (ADR-044); keychain calls time out after 60 s; an unreadable library is quarantined, never overwritten.
+- New dependencies: chacha20poly1305, getrandom, keyring-core with the Apple and Windows stores, skrifa (all MIT OR Apache-2.0).
 ## [0.6.0] - 2026-10-03
 
 M3 — Organize pages.

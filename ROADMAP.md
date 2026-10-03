@@ -125,7 +125,7 @@ The Stop hook picks the first open `- [ ]` line, so order matters. Scope: `docs/
 - [x] Place, move, scale signatures; initials and date
 - [x] Fill & Sign for flat forms (text, check, cross, dot)
 - [x] Signature library encrypted at rest, key in OS keychain (keyring ADR)
-- [ ] Politur M4
+- [x] Politur M4
   - (from M4 frontend reviews) DrawPad: rAF/ref-driven path instead of setDrawing(buffer.slice()) per pointermove; forms: rotation 90/180/270 tests for FormLayer/FormHost, control radii/insets as classes, `1px` border literal → token, record the localStorage highlight toggle in DECISIONS; PlacementLayer: Enter effect deps, centre from the scroll surface's visible rect; OrganizeBar icon size token; guard the `useSignMenuEntries` hook-in-data with a comment/test; sign-menu rows with thumbnails
   - (from M4 backend reviews) flatten: NoRotate annots kept upright (or note in ADR-041); explicit tests for /AS states, /Perms removal, object pruning and a hostile /Resources merge (many colliding /SheerFl names, huge /XObject dict); forms: radio-group + comb/MaxLen AP tests, negative MaxLen clamp; library: keychain read error vs corrupt key distinguished, 60 s keychain deadline, raster list preview, Art::check without re-serializing, tamper → quarantine test; macOS keychain untested (B-001)
   - (from M3 final security, medium — do first) prescan: resolve /Length only for /ObjStm and /XRef streams, charge nothing for others (false refusals of real files with lengths like 120.0 or in object streams); a repeated object id with differing values → refuse or keep the maximum (incremental updates can hide a bomb behind the last definition)
@@ -143,6 +143,12 @@ The Stop hook picks the first open `- [ ]` line, so order matters. Scope: `docs/
 - [ ] True redaction (flatten affected pages, strip text/annots/metadata) + not-extractable test
 - [ ] Password protection and permissions (AES-256), remove password
 - [ ] Metadata view/edit/remove
+- [ ] Politur M5
+  - (flaky) Comments.test.tsx "shows the contents as the excerpt, and a muted No text…" failed once under the full suite (passes alone 3/3): make it deterministic
+  - (from M4 design review, major) empty state must fit an 800 px window (content 832 px in a 702 px scroller): smaller logo (≈96–112 px), tighter gaps, or at most 3 recents when the window is short
+  - (from M4 design review, minor) light-theme "Formular" status pill without background; Flatten label "Formular fixieren…" vs §3.32 `form.flatten` "Formular reduzieren…" (fix string or ADR + DESIGN); same width rule for the Tool-options toggle and button; page gutter at 100 % (page flush to canvas edges, horizontal bar) and near-black top band in dark; check the field focus ring
+  - (from M4 polish review) OrganizeBar icon size literal → token; comments delete-focus test must prove focus by key; Enter-to-place test for more than one rect layout; `import_warnings` (PageTruncated) IPC + UI; discard drawn/image drafts too; macOS keychain untested (B-001)
+  - (from M4 security, low) style-src 'unsafe-inline' (nonces/classes); devCsp never in release (pinned)
 
 ## M6 — Convert and output (v0.9.0)
 
