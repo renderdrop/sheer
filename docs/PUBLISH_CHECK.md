@@ -83,4 +83,7 @@ no longer cancels a running manual release-candidate run and the other way round
 - **H-4** `docs/research/*.md` name Adobe/Acrobat often (feature research, paraphrased, no logos or screenshots). Fine as nominative use;
   a one-line note "Adobe and Acrobat are trademarks of Adobe Inc." at the top would be cleaner.
 - **H-5** No copyright line besides the license text. If wanted: "Copyright (C) 2026 The Sheer contributors" in the README, no real name.
+- **H-7** Dependabot alert #1 is open: `glib` 0.18.5 (GHSA-wrw7-89jp-8q8g, moderate, unsound `VariantStrIter`, fixed in 0.20). It
+  comes in through Tauri's Linux GTK stack, which is not compiled for the macOS and Windows targets, and it cannot be bumped before
+  Tauri moves to gtk-rs 0.20. Dismiss it as "vulnerable code is not actually used" with that reason (alerts are visible to maintainers only).
 - **H-6** Open blockers B-001 (UI never seen on a Mac, keychain untested) and B-002 (code signing) remain; the README notice covers them.
