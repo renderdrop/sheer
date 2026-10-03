@@ -78,6 +78,8 @@ The Stop hook picks the first open `- [ ]` line, so order matters. Scope: `docs/
 - [x] Palette, stroke presets, properties inspector; one-shot/locked tool modes
 - [x] Save annotations: appearance streams via lopdf, incremental + atomic save, backup of original; save refuses an in-place write to the welcome document (`DocKind::Welcome`, Save acts as Save As) with a security_baseline pin
 - [x] Interop test: saved annotations re-open correctly (PDFium + AP present for every type)
+- [ ] Comments panel (DESIGN §3.26, ADR-034): threads via /IRT, filter (type, author), sort (page, date), jump, empty state
+- [ ] Author name (ADR-034): default empty; one-time inline toolbar field at the first annotation save (OS name as suggestion, stored after confirm); empty → no /T; strip invisible/bidi characters on save
 - [ ] Politur M2
   - (from M1 review) recents clone: fix the zoom before the FLIP measures the target rect (one frame of "–" and a moving target); counter-scale the clone radius or fade it earlier; make the empty-state fade-out visible
   - (from M1 security) `style-src 'unsafe-inline'`: move to hashed/nonce styles or record the reason in DECISIONS; confirm the release build never uses devCsp; prune 3 unused license allowances in deny.toml
@@ -86,7 +88,7 @@ The Stop hook picks the first open `- [ ]` line, so order matters. Scope: `docs/
   - (from P4 security, low) `with()` must not re-create a DocState for a closed document; strip Cf (bidi/format) characters from imported author/contents; per-page counters + reply index instead of O(n) scans; clear the model on a poisoned lock
   - (from P4 review) annotations store: cache per page so one change does not re-render every page; prune `removed`; wire `mark_clean` from save
   - (from M2 security, medium) save: re-take the fingerprint right before `replace_atomic` and answer needs_confirmation if it changed; treat a missing fingerprint as changed (fail closed)
-  - (from M2 security, medium) AuthorName: reject Unicode Cf/bidi/zero-width characters in `new` and `os_default`; show the default author name in the UI before the first annotation is written (privacy)
+  - (from M2 security, medium) AuthorName: covered by the "Author name" item (ADR-034)
   - (from M2 security, low) import.rs: skip PDFium stroke/fill colour calls when an /AP has zero objects (crashes the worker on a crafted file); backup dir 0700 on unix; Save As over a different file: record the dialog's overwrite prompt in ADR-033; single-flight guard per document for timed-out save builds
   - (from M2 reviews) save: test on a /Rotate page and read /CA back; log a failed rollback; signal a skipped backup; drop or settle `ack.rewrite_encrypted`; record loss of undo across save (ADR-033) in the user docs
   - (from M2 reviews) quit with unsaved documents; "Saving…/Saved" status hints; file-changed-on-disk dialog instead of the banner; macOS menu Save/Save As; overlay refresh on pageRev after move/modify (stale bitmap)
@@ -150,7 +152,6 @@ See `docs/FEATURES.md` → "Later".
 ## v1.1 backlog (ADR-030)
 
 - [~] v1.1-Backlog — Should/Could items moved out of M2–M7 (Tempo level 2); not part of v1.0, not picked by the loop
-  - Comments panel: threads (/IRT), filter, sort, jump (Should, was M2)
   - Stamps (Approved, Draft, …) (Should, was M4)
   - Edit existing text objects (single line/paragraph, same font) (Should, was M5)
   - Replace image (Should, was M5)

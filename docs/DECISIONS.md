@@ -937,3 +937,18 @@ itself uses the tag's sources, so a tag older than this workflow still builds; t
 6. **Line ends:** `/LE` is `[tail (at from), head (at to)]`. A free text's `/Contents` is its lines joined by LF; its `/C` is its fill and its colour is only in `/DA` (the import reads the colour back as black until it parses `/DA`).
 7. **Import fix.** pdfium-render's `stroke_color()`/`fill_color()` crash PDFium for any annotation with an appearance stream (the fallback treats the annotation handle as a page object). `engine::import` reads colours from the paths of the appearance and calls the two only when the annotation has no objects. An appearance stream without objects can still crash; remove this when pdfium-render is fixed or the engine runs out of process (M7).
 8. **Not done:** quit with unsaved documents (needs a close-request hook), "Saved" pulse and "Saving…" in the status bar, a confirmation dialog for `needs_confirmation` (shown as the banner), macOS menu entries for Save/Save As, a live refresh of the overlay by `pageRev` (the render cache of the document is dropped after a save).
+
+## ADR-034 — Author name: empty by default, confirmed once; comments panel back in M2
+
+**Context.** Product-owner decision (2026-10-03). The OS account name may be a real name and would leak into every shared PDF (/T).
+
+**Decision.**
+1. `authorName` defaults to **empty**. Supersedes ADR-029 §6 (default = OS display name).
+2. On the **first save of a document with annotations** while `authorName` is unset, a small **inline field in the toolbar** appears once:
+   pre-filled with the OS name only as a suggestion, stored only after the user confirms. Dismissing or confirming empty keeps it empty;
+   the prompt is never shown again (setting `authorPrompt: pending | done`).
+3. Empty author → **no /T entry** is written. Replies and notes still work; the UI shows "No author".
+4. On save (and when storing the setting), **invisible and bidirectional Unicode characters are removed** from the name (Cf, bidi
+   controls U+202A–U+202E, U+2066–U+2069, zero-width U+200B–U+200F, U+FEFF); control characters stay rejected.
+5. The **comments panel** (threads via /IRT, filter, sort, jump; DESIGN §3.26) returns to M2 as its own package; it leaves the v1.1 backlog.
+   This amends ADR-030 §4.
