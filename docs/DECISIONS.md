@@ -1262,3 +1262,18 @@ on in the repository settings once the repository is public. (3) Trademark quest
 (5) Amendment, same day: the owner chose to rewrite history locally with `git filter-repo` (personal e-mail → GitHub no-reply address
 in identities, tags and `Signed-off-by`; Windows user name in test paths → `user`). Because GitHub keeps the old history of the
 existing repository (Actions run metadata, pull-request refs), the rewritten history goes into a new repository (PUBLISH_CHECK P-2).
+
+## ADR-046 — Public repository: CI on both platforms for every push, tags run only the release
+
+**Context.** Product-owner decision (2026-10-03): the rewritten history is published, `renderdrop/sheer` is public. Standard GitHub
+runners are free for public repositories, so the macOS budget of ADR-043 no longer applies. Commit hashes in the docs that named the
+pre-rewrite history were mapped to the new history with `.git/filter-repo/commit-map` (FEEDBACK, BLOCKERS; STATE and DECISIONS held
+none). Actions run IDs quoted before the rewrite belong to the old, private repository.
+
+**Decision.** `ci.yml`: every push to `main` and every pull request runs `npm run check` on **Windows and macOS**; `paths-ignore` for
+`**/*.md` and `docs/**` stays. A **tag push** no longer triggers CI; it runs only `release.yml` (which builds the installers on both
+platforms). The unsigned debug bundles are built only on a manual start (`workflow_dispatch`). Concurrency groups as in ADR-045.
+
+**Consequences.** ORCHESTRATOR §8.6 "CI green on Windows and macOS" = the last finished CI run on `main` (both jobs), read once at
+milestone end, never waited on (ADR-030). The manual release-candidate run of ADR-043 is dropped. Supersedes ADR-043 (1)–(2); the caches
+of ADR-043 (3) stay.

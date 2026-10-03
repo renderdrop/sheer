@@ -5,10 +5,10 @@ Work them in order; tick `[x]` when done. The Stop hook reads the first open `- 
 
 ## F1 — Catch up on reviews
 
-- [x] tester, reviewer and security-reviewer on `b72fbf9..HEAD` (engine read APIs + thumbnails): tester PASS (no gaps); reviewer
+- [x] tester, reviewer and security-reviewer on `a1efc46..HEAD` (engine read APIs + thumbnails): tester PASS (no gaps); reviewer
       PASS, then a deeper frontend pass FIX (2 major in `src/api/search.ts`); security FAIL only on `cargo deny` run without
       `--target` (Linux-only GTK advisories; `check.sh` checks the shipped targets, ADR-017) + 2 low
-- [x] Fix the findings (blocker/major, critical/high); tick "Thumbnails panel (lazy)" in ROADMAP.md (cbb7a98, 1bc4854)
+- [x] Fix the findings (blocker/major, critical/high); tick "Thumbnails panel (lazy)" in ROADMAP.md (32e41b9, 4b1f703)
 
 ## F2 — Mood: the app looks grey, empty and lifeless
 
@@ -27,8 +27,8 @@ The §3 rule "gradient barely visible" is overruled (ADR). Target: the mood of t
       load with a fade instead of a jump; zoom with inertia and snap to fit steps; drag and drop with a preview card that drops into the
       window; opening fades from thumbnail to page; success moments as a subtle Iris pulse instead of a dialog. Budget: 60 fps in the Tauri
       window, blur only on toolbar and panels, never on the document canvas; reduced motion switches to fades
-- [x] implementer applies the motion system (9834c69, 97ebe64, 931d017)
-- [x] Acceptance by screen recording from the Tauri window; 60 fps measured (designer PASS round 3; 7a02c1a)
+- [x] implementer applies the motion system (3e2c971, e959fcd, a1d0ae5)
+- [x] Acceptance by screen recording from the Tauri window; 60 fps measured (designer PASS round 3; a707243)
 
 ## F4 — Onboarding
 
@@ -36,7 +36,7 @@ On first launch a bundled "Welcome to Sheer.pdf" opens (own template, Iris desig
 highlight, comment, drag a signature, reorder pages. Coach marks point at the tool; when the user completes the task, a short success
 moment follows, then the next step. Progress in the status bar, skippable, restartable in Settings, never shown automatically twice.
 
-- [x] Scaffold in M1: welcome document, coach-mark component, step engine, steps Open / Navigate / Zoom (designer PASS round 3; 7ea748c, 9044be8, 5cc78fd)
+- [x] Scaffold in M1: welcome document, coach-mark component, step engine, steps Open / Navigate / Zoom (designer PASS round 3; 8bba314, b3ceb2f, b8ec27f)
 - [x] Tickets for the remaining steps: highlight + comment (M2), reorder pages (M3), drag a signature (M4)
 
 ## F5 — Installer
