@@ -666,6 +666,78 @@ UI (`tour.*`, `settings.tour*`, `doc.*`); the PDF reuses `tour.step.*` for block
 | `welcomePdf.keyAction.open` / `.zoom` / `.page` / `.settings` | Open a file · Zoom in and out · Next and previous page · Settings | Datei öffnen · Vergrößern und verkleinern · Nächste und vorige Seite · Einstellungen |
 | `welcomePdf.sign.title` / `.text` / `.label` | Sign and sort / Sign in the frame, then move this page up. / Signature | Unterschreiben und ordnen / Im Rahmen unterschreiben, dann Seite nach oben schieben. / Unterschrift |
 
+### 3.15 Outline panel (M1)
+
+**Purpose:** the file's bookmarks as a tree in the left panel's Outline tab (`list-tree`, §3.6); a row jumps to its place.
+Code `src/features/outline/`; data `getOutline` (`src/api/outline.ts`): ≤ 10 000 nodes, depth ≤ 32, titles ≤ 512 chars, target page id + y or `null`.
+
+**Data.** Fetched when the tab is first shown, kept until close or revert. Titles are untrusted: a text node only, never markup or a
+link; an empty title shows `outline.untitled` (muted). One flat index per load (parent, depth, `posinset`/`setsize`) plus targets
+sorted by (page index, y) for the current-section lookup (binary search).
+
+**Anatomy.** Header per §3.6: title row "Outline" + sm IconButton `chevrons-down-up` (`outline.collapseAll`). Body: `role=tree`,
+padding 8, rows per §3.9 (32 h, radius 8, padding 0 8 0 4):
+- Indent `--outline-indent` 16 × (level − 1), capped at `--outline-indent-max` 64 (level 5); deeper levels share it, `aria-level` stays exact.
+- Disclosure slot 24: `chevron-right` 16, rotates 90° when expanded (mirrored in RTL); leaves keep the empty slot so titles align.
+  The chevron is not a separate tab stop; clicking it toggles without jumping.
+- Title `--text-md`, one line, end ellipsis, gap 4. When truncated, the tooltip (§3.4, right of the panel) shows the full title,
+  wrapped, at most 8 lines.
+- Current marker: a 2 × 16 `--color-accent` pill, inset 2 on the leading edge, inside the row.
+
+**States**
+
+| State | Treatment |
+|---|---|
+| default | `--color-text` on G1 |
+| hover / pressed | §3.0 fill; no scale (full-width row) |
+| focus-visible | §3.0 ring, radius 8 |
+| selected | §3.0 selected (last activated row, `aria-selected`); one at a time |
+| current | marker + `aria-current="location"`: the last node in document order whose target is at or before the reading position (current page §3.10, viewport top y); inside a collapsed branch, its nearest visible ancestor. Recomputed 150 ms after scrolling settles; the tree never expands or scrolls by itself while reading |
+| no target | title `--color-text-muted`, `aria-description` `outline.noTarget`; a parent still expands; a leaf has `aria-disabled` (focusable) |
+
+**Initial expansion.** Top level shown; the ancestors of the current node expanded; a single top-level parent expanded too. The total
+revealed is capped at 200 rows (the current branch wins, then document order). Expansion is per document, in memory, kept across
+tab switches. On first show the current row is scrolled into view (nearest, at once).
+
+**Keyboard** (WAI-ARIA tree, one tab stop, roving): Up/Down previous/next visible row, no wrap · Right: collapsed → expand,
+expanded → first child · Left: expanded → collapse, else → parent · Home/End first/last visible row · `*` expands the siblings
+(within the 200-row cap) · type-ahead: printable keys build a 500 ms buffer, focus moves to the next visible row whose title
+starts with it (case-insensitive, locale compare, wraps) · Enter/Space: target → jump and select; no target → toggle. Focus stays
+in the tree after a jump; F6 reaches the canvas.
+
+**Virtualization.** Visible rows = a flat list from the index and the expanded set (memoized). Fixed 32 px rows: only the viewport ± 8
+rows are mounted between two spacers; the focused row stays mounted off-screen. Treeitems carry `aria-level`, `aria-setsize`,
+`aria-posinset`, and `aria-expanded` on parents. A 10 000-node outline keeps the MOTION §5 budget.
+
+**Jump.** The target y lands at the canvas `scroll-padding-top` (24), per MOTION §4.8 (≤ 2 viewports spring slow, farther at once +
+§4.3 fades; paged modes crossfade). The status bar announces the page as usual.
+
+**Empty, loading, error** (centred column at body top, padding 24, gap 8):
+- Empty: `list-tree` 16 in a 32 tile (radius 8), `outline.empty` (`--text-md` 600), `outline.emptyHint` meta.
+- Loading: nothing for 300 ms, then a 16 spinner + `outline.loading` meta (`role=status`); no skeleton, no shimmer.
+- Error: bare `circle-alert` in `--color-error-text`, `outline.error`, secondary sm `outline.retry`; `role=alert`.
+
+**Motion.** Chevron rotate fast; revealed rows fade in (opacity, fast); collapse in one step. Layout never animates (MOTION §3).
+**Reduced motion:** chevron and rows at once; jumps at once.
+
+**Mood (§1.10).** Rows sit on the panel's G1 tint; no per-row glass. Accent only for the marker, the selected ring and focus; the
+empty tile uses tile colours. Solid mode changes nothing beyond the panel surface.
+
+**Forced colors.** Selected: 2 px `Highlight` border (§3.0); the marker is a 2 px `Highlight` inline-start border; chevrons
+`CanvasText`; no-target leaves `GrayText`.
+
+**Tokens (new, §1.9 test):** `--outline-indent` 16, `--outline-indent-max` 64.
+
+| Key | en | de |
+|---|---|---|
+| `outline.label` | Outline | Gliederung |
+| `outline.collapseAll` | Collapse all | Alle einklappen |
+| `outline.untitled` | Untitled | Ohne Titel |
+| `outline.noTarget` | No destination in this document | Kein Ziel in diesem Dokument |
+| `outline.empty` / `.emptyHint` | This document has no outline / Bookmarks saved in the file appear here. | Dieses Dokument hat keine Gliederung / Lesezeichen aus der Datei erscheinen hier. |
+| `outline.loading` | Loading outline… | Gliederung wird geladen… |
+| `outline.error` / `.retry` | Couldn't read the outline. / Try again | Gliederung konnte nicht gelesen werden. / Erneut versuchen |
+
 ## 4. Contrast verification
 
 Worst points (ADR-020): `--surface` over the darkest field point (light `#C6C7FB` → glass `rgb(229,229,254)`; dark
