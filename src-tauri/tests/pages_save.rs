@@ -394,3 +394,62 @@ fn an_annotation_without_a_name_is_found_again_behind_a_dropped_widget() {
         "and the other one is the one left"
     );
 }
+
+#[test]
+fn a_page_change_in_a_signed_file_asks_first_and_writes_nothing_until_agreed() {
+    let Some(state) = state() else { return };
+    let scratch = Scratch::new("signed");
+    let id = open(state, &scratch, "s.pdf", &support::fixtures::signed());
+    state
+        .apply_command(
+            id,
+            cmd(json!({"type": "rotatePages", "pages": [0], "quarterTurns": 1})),
+        )
+        .unwrap();
+    let before = std::fs::read(scratch.file("s.pdf")).unwrap();
+    let error = state.save_in_place(id, SaveAck::default()).unwrap_err();
+    assert_eq!(error.code(), ErrorCode::NeedsConfirmation);
+    assert_eq!(std::fs::read(scratch.file("s.pdf")).unwrap(), before);
+    let ack = SaveAck {
+        break_signature: true,
+        ..SaveAck::default()
+    };
+    state.save_in_place(id, ack).unwrap();
+    assert!(std::fs::read(scratch.file("s.pdf")).unwrap().len() > before.len());
+}
+
+#[test]
+fn a_clean_copy_of_a_signed_file_asks_first_and_an_unchanged_signed_file_saves_without_asking() {
+    let Some(state) = state() else { return };
+    let scratch = Scratch::new("signed-copy");
+    let id = open(state, &scratch, "s.pdf", &support::fixtures::signed());
+    let error = state
+        .save_as_with(
+            id,
+            &scratch.file("c.pdf"),
+            SaveAck::default(),
+            SaveAsOptions { clean_copy: true },
+        )
+        .unwrap_err();
+    assert_eq!(error.code(), ErrorCode::NeedsConfirmation);
+    assert!(!scratch.file("c.pdf").exists());
+    state.save_in_place(id, SaveAck::default()).unwrap();
+}
+
+#[test]
+fn the_last_page_is_never_deleted_and_the_refusal_changes_nothing() {
+    let Some(state) = state() else { return };
+    let scratch = Scratch::new("last");
+    let id = open(state, &scratch, "a.pdf", &base(2));
+    state
+        .apply_command(id, cmd(json!({"type": "deletePages", "pages": [0]})))
+        .unwrap();
+    assert!(state
+        .apply_command(id, cmd(json!({"type": "deletePages", "pages": [1]})))
+        .is_err());
+    assert_eq!(ids(state, id), [1]);
+    assert_eq!(state.list_annotations(id, PageId::new(1)).unwrap().len(), 1);
+    state.undo(id).unwrap();
+    assert_eq!(ids(state, id), [0, 1]);
+    assert_eq!(state.list_annotations(id, PageId::new(0)).unwrap().len(), 1);
+}

@@ -744,11 +744,9 @@ fn a_page_with_rotate_is_saved_in_page_space_and_the_opacity_reads_back_as_ca() 
 
 #[test]
 fn a_save_without_a_data_folder_says_that_no_backup_was_made() {
-    if state().is_none() {
-        return;
-    }
-    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("pdfium");
-    let state = AppState::new(Engine::start(engine::library_path(&root)));
+    // The shared engine: a second PDFium in the same process, bound while the first is at work, is what failed on the CI runners.
+    let Some(shared) = state() else { return };
+    let state = shared.without_data_dir();
     let scratch = Scratch::new("no-backup");
     let (id, path) = open(&state, &scratch, "doc.pdf", &base());
     create(

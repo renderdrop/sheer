@@ -182,6 +182,14 @@ impl AppState {
         self
     }
 
+    /// This state (same engine and documents) without an app data directory: a save makes no backup. For tests that share one engine.
+    #[must_use]
+    pub fn without_data_dir(&self) -> Self {
+        let mut state = self.clone();
+        state.data_dir = None;
+        state
+    }
+
     /// Notes a file the user opened as a recent one. The welcome document is not a file of the user and is never noted.
     fn note_recent(&self, kind: DocKind, path: &std::path::Path) {
         if kind == DocKind::User {

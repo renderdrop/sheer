@@ -23,7 +23,7 @@ use crate::limits;
 /// Most objects an object stream may claim (`/N`).
 const MAX_OBJSTM_OBJECTS: u64 = 200_000;
 /// How far before `stream` the start of its dictionary is looked for.
-const DICT_WINDOW: usize = 4096;
+const DICT_WINDOW: usize = 16 * 1024;
 /// Worst case growth of a filter chain that is not just Flate (deflate's best ratio is about 1032:1).
 const WORST_RATIO: u64 = 1032;
 
@@ -69,6 +69,95 @@ fn unescape_names(dict: &[u8]) -> Vec<u8> {
         at += 1;
     }
     out
+}
+
+/// Whether the text before `keyword` ends in `>>`, skipping white space and comments.
+fn follows_dictionary_end(bytes: &[u8], keyword: usize) -> bool {
+    let mut end = keyword;
+    for _ in 0..64 {
+        let head = bytes.get(..end).unwrap_or_default();
+        end = head
+            .iter()
+            .rposition(|b| !b.is_ascii_whitespace())
+            .map_or(0, |p| p + 1);
+        let head = bytes.get(..end).unwrap_or_default();
+        let line_start = head
+            .iter()
+            .rposition(|b| matches!(b, 0x0A | 0x0D))
+            .map_or(0, |p| p + 1);
+        match head
+            .get(line_start..)
+            .and_then(|line| line.iter().position(|b| *b == b'%'))
+        {
+            Some(comment) => end = line_start + comment,
+            None => return head.ends_with(b">>"),
+        }
+    }
+    false
+}
+
+/// `text` without comments (`%` to the end of the line).
+fn strip_comments(text: &[u8]) -> Vec<u8> {
+    let mut out = Vec::with_capacity(text.len());
+    let mut in_comment = false;
+    for &byte in text {
+        match byte {
+            b'%' => in_comment = true,
+            0x0A | 0x0D => {
+                in_comment = false;
+                out.push(byte);
+            }
+            _ if !in_comment => out.push(byte),
+            _ => {}
+        }
+    }
+    out
+}
+
+/// The end of the nearest object header (`12 0 obj`, as a token of its own: not `/Xobj`, not `endobj`) before `keyword`, within
+/// `DICT_WINDOW` bytes.
+fn header_before(bytes: &[u8], keyword: usize) -> Option<usize> {
+    let low = keyword.saturating_sub(DICT_WINDOW);
+    let mut to = keyword;
+    while let Some(at) = rfind(bytes, b"obj", to) {
+        if at < low {
+            return None;
+        }
+        to = at + 2;
+        let after = bytes.get(at + 3).copied();
+        if !after.is_some_and(|b| b.is_ascii_whitespace() || b == b'<' || b == b'[') {
+            continue;
+        }
+        let before = bytes.get(..at).unwrap_or_default();
+        let digits = |text: &[u8]| text.iter().rev().take_while(|b| b.is_ascii_digit()).count();
+        let blanks = |text: &[u8]| {
+            text.iter()
+                .rev()
+                .take_while(|b| b.is_ascii_whitespace())
+                .count()
+        };
+        let mut end = before.len();
+        let gap = blanks(before);
+        if gap == 0 {
+            continue;
+        }
+        end -= gap;
+        let generation = digits(&before[..end]);
+        if generation == 0 {
+            continue;
+        }
+        end -= generation;
+        let gap = blanks(&before[..end]);
+        if gap == 0 {
+            continue;
+        }
+        end -= gap;
+        if digits(&before[..end]) == 0 {
+            continue;
+        }
+        return Some(at + 3);
+    }
+    None
 }
 
 /// The integer written right after `key` in `dict` (`/Length 123`); `None` if there is none or it is an indirect reference.
@@ -187,21 +276,23 @@ fn check_with(bytes: &[u8], decoded_budget: u64) -> Result<(), AppError> {
     let mut from = 0;
     while let Some(keyword) = find(bytes, b"stream", from) {
         from = keyword + b"stream".len();
-        // The keyword follows the dictionary's `>>`; `endstream` does not.
-        let before = bytes.get(..keyword).unwrap_or_default();
-        let trimmed = before
-            .iter()
-            .rposition(|b| !b.is_ascii_whitespace())
-            .map_or(0, |p| p + 1);
-        if !before
-            .get(..trimmed)
-            .is_some_and(|text| text.ends_with(b">>"))
-        {
+        // The keyword follows the dictionary's `>>` (comments and white space between are skipped); `endstream` and the word inside
+        // other data do not.
+        if !follows_dictionary_end(bytes, keyword) {
             continue;
         }
-        let window_start = keyword.saturating_sub(DICT_WINDOW);
-        let start = rfind(bytes, b"obj", keyword).map_or(window_start, |s| s.max(window_start));
-        let dict = unescape_names(bytes.get(start..keyword).unwrap_or_default());
+        // From here it is a stream: its dictionary has to be found, or the file is refused (a stream the scan cannot read is not
+        // taken for an ordinary one).
+        let start = header_before(bytes, keyword).ok_or_else(|| {
+            refused("the dictionary of a stream is too far from its object header")
+        })?;
+        let raw = bytes.get(start..keyword).unwrap_or_default();
+        let raw = strip_comments(raw);
+        let body = raw.trim_ascii();
+        if !(body.starts_with(b"<<") && body.ends_with(b">>")) {
+            return Err(refused("the dictionary of a stream cannot be located"));
+        }
+        let dict = unescape_names(body);
         let length = int_after(&dict, b"/Length");
         if length.is_some_and(|length| length > size) {
             return Err(refused("stream longer than the file"));
@@ -376,6 +467,36 @@ mod tests {
     }
 
     #[test]
+    fn an_xobj_key_does_not_hide_the_stream_dictionary() {
+        let zeros = vec![0u8; 3 * 1024 * 1024];
+        let packed = deflate(&zeros);
+        let bomb = objstm(1, &packed, packed.len() as u64);
+        // `/Xobj` is the last key, right before `>>`: a search for the text `obj` would start the dictionary after `/Type /ObjStm`.
+        let file = rewrite_dict(&bomb, " >>", " /Xobj 1 >>");
+        assert!(check_with(&file, 1024 * 1024).is_err());
+    }
+
+    #[test]
+    fn a_comment_before_stream_or_a_long_dictionary_does_not_dodge_the_scan() {
+        let zeros = vec![0u8; 3 * 1024 * 1024];
+        let packed = deflate(&zeros);
+        let bomb = objstm(1, &packed, packed.len() as u64);
+        let commented = rewrite_dict(
+            &bomb,
+            ">>
+stream",
+            ">> % hello
+% more
+stream",
+        );
+        assert!(check_with(&commented, 1024 * 1024).is_err());
+        // A dictionary longer than the window cannot be located: refused, whatever it holds.
+        let filler = format!(" /Pad ({}) >>", "x".repeat(DICT_WINDOW + 10));
+        let long = rewrite_dict(&bomb, " >>", &filler);
+        assert!(check_with(&long, 1024 * 1024 * 1024).is_err());
+    }
+
+    #[test]
     fn no_other_code_calls_load_mem() {
         fn walk(dir: &std::path::Path, hits: &mut Vec<String>) {
             for entry in std::fs::read_dir(dir).unwrap() {
@@ -386,7 +507,22 @@ mod tests {
                     && path.file_name().is_some_and(|n| n != "prescan.rs")
                 {
                     let text = std::fs::read_to_string(&path).unwrap();
-                    if text.contains("load_mem(") || text.contains("Document::load(") {
+                    let aliased = text.contains("lopdf::Document as")
+                        || text.contains("Document as ")
+                        || (text.contains("lopdf")
+                            && text.contains("Reader::")
+                            && !text.contains("ImageReader::"));
+                    if aliased
+                        || [
+                            "load_mem(",
+                            "load_from(",
+                            "load_filtered(",
+                            "load_metadata",
+                            "Document::load(",
+                        ]
+                        .iter()
+                        .any(|call| text.contains(call))
+                    {
                         hits.push(path.display().to_string());
                     }
                 }

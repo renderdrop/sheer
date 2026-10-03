@@ -126,6 +126,9 @@ The Stop hook picks the first open `- [ ]` line, so order matters. Scope: `docs/
 - [ ] Fill & Sign for flat forms (text, check, cross, dot)
 - [ ] Signature library encrypted at rest, key in OS keychain (keyring ADR)
 - [ ] Politur M4
+  - (from M3 design review, major) organize grid default thumbnail size 160 (`--grid-thumb`), not 96 (or reset a persisted value); organize bar: Insert with label "Einfügen" + menu affordance like Extract/Split
+  - (from M3 design review, minor) grid left gutter = padding 24; size field and Done button same sm height/baseline; empty state still shows a vertical scrollbar; page pills low contrast in dark mode (§4)
+  - (from M3 security, low) style-src unsafe-inline (re-evaluate nonces/hashes)
   - (from M3 polish review) organize read-only: per-cell aria-disabled and no marquee when read-only; comments delete focus fallback clamp (`Math.min(fallback, index)`); toolbar collapse-order and slotRev constants named; imported annotations over MAX_ANNOTATIONS_PER_DOC leave pages unread (soft cap); single-file drop delay (backend drop count)
   - (deferred) F6 skips annotation tab stops (no F6 handler yet); link overlay with file /Rotate test; user docs: undo history ends at save (ADR-033)
 

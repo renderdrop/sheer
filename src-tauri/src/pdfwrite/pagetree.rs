@@ -320,6 +320,8 @@ fn clean_annotation(src: &Document, annot: &Dictionary) -> Option<Dictionary> {
     // Actions of a document that came from elsewhere: only a link the app would itself offer to open (`security::links::classify`).
     // Launch, JavaScript, GoToR, SubmitForm, ImportData and the rest are dropped, and so are the additional actions and a chain (`Next`).
     cleaned.remove(b"AA");
+    // A link's previous-action entry (`PA`) is an action too.
+    cleaned.remove(b"PA");
     if let Some(action) = annot.get(b"A").ok().and_then(|a| resolve_dict(src, a)) {
         match safe_uri_action(action) {
             Some(safe) => cleaned.set("A", Object::Dictionary(safe)),
@@ -360,6 +362,8 @@ fn import_page(
         .ok_or_else(|| failed("a page the source does not have"))?;
     let mut dict = src.get_dictionary(page_id).map_err(lopdf_error)?.clone();
     materialize_inherited(src, &mut dict);
+    // Actions that run when the page opens or closes come from a file that is not the user's: none is carried.
+    dict.remove(b"AA");
     // Annotations: which are kept, as direct dictionaries or as objects with a cleaned dictionary.
     let mut overrides: HashMap<ObjectId, Object> = HashMap::new();
     let mut dropped: HashSet<ObjectId> = HashSet::new();
@@ -845,10 +849,31 @@ mod tests {
             &[("URI", Object::string_literal("https://example.org/a"))],
         );
         good.set("Next", Object::Dictionary(action("Launch", &[])));
-        let cleaned = clean_annotation(&doc, &link_with(good)).unwrap();
+        let mut with_pa = link_with(good);
+        with_pa.set("PA", Object::Dictionary(action("Launch", &[])));
+        let cleaned = clean_annotation(&doc, &with_pa).unwrap();
+        assert!(cleaned.get(b"PA").is_err());
         let kept = cleaned.get(b"A").unwrap().as_dict().unwrap();
         assert!(name_is(kept, b"S", b"URI"));
         assert!(kept.get(b"Next").is_err(), "a chain is not carried");
         assert!(cleaned.get(b"AA").is_err());
+    }
+
+    #[test]
+    fn an_imported_page_loses_its_additional_actions() {
+        let mut src = Document::new();
+        let mut page = Dictionary::new();
+        page.set("Type", Object::Name(b"Page".to_vec()));
+        page.set("MediaBox", vec![0.into(), 0.into(), 100.into(), 100.into()]);
+        let mut open = Dictionary::new();
+        open.set("O", Object::Dictionary(action("JavaScript", &[])));
+        page.set("AA", Object::Dictionary(open));
+        let id = src.add_object(Object::Dictionary(page));
+        let mut target = Document::new();
+        let mut budget = 0usize;
+        let made = import_page(&src, &[id], 0, 0, &mut target, &mut budget).unwrap();
+        let dict = target.get_dictionary(made).unwrap();
+        assert!(dict.get(b"AA").is_err());
+        assert!(dict.get(b"MediaBox").is_ok());
     }
 }
