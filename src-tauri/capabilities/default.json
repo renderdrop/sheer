@@ -61,6 +61,7 @@
     "allow-create-drawn-signature",
     "allow-insert-image-dialog",
     "allow-get-asset-preview",
+    "allow-import-warnings",
     "allow-apply-redactions",
     "allow-get-protection",
     "allow-stage-protection",
