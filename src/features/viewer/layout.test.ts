@@ -82,6 +82,13 @@ describe('metrics', () => {
 });
 
 describe('the layout of continuous scrolling', () => {
+  it('a page less than a pixel wider than the viewport fits it (no horizontal scrollbar), a wider one overflows', () => {
+    const fits = layoutOf([LETTER], 'continuous', { viewport: { width: px(612) - 0.5, height: 700 } });
+    expect(fits.width).toBe(fits.viewport.width);
+    const wider = layoutOf([LETTER], 'continuous', { viewport: { width: px(612) - 3, height: 700 } });
+    expect(wider.width).toBeCloseTo(px(612));
+  });
+
   it('stacks the pages with a gap between them and centers them in the content', () => {
     const layout = layoutOf([LETTER, LANDSCAPE, A5], 'continuous', { viewport: { width: 1200, height: 300 } });
     const [first, second, third] = [0, 1, 2].map((page) => layout.box(page));

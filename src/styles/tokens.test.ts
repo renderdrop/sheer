@@ -86,7 +86,7 @@ describe('color roles (DESIGN 1.2)', () => {
   /** [light, dark]. A dark value equal to the light one is not repeated in the dark blocks. */
   const roles: Record<string, [string, string]> = {
     '--color-bg': ['var(--bg-fields),var(--bg-gradient)', 'var(--bg-fields),var(--bg-gradient)'],
-    '--color-canvas': ['#ecedfc', '#111226'],
+    '--color-canvas': ['#ecedfc', '#181936'],
     '--color-text': ['var(--ink)', '#ffffff'],
     '--color-text-muted': ['var(--ink-60)', 'var(--ink-40)'],
     '--color-text-accent': ['var(--iris-700)', 'var(--iris-200)'],

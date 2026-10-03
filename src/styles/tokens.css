@@ -157,6 +157,7 @@
   --spacing-chrome-inset: var(--chrome-inset-mac);
   --spacing-inspector: var(--inspector-width);
   --spacing-canvas-min: var(--canvas-min);
+  --spacing-canvas-gutter: var(--canvas-gutter);
   --spacing-empty-max: var(--empty-max-width);
   --spacing-scrim: var(--scrim-height);
   /* Empty-state logo (DESIGN 3.11): size-logo-hero and h-logo-slot (the ground shadow is the logo-ground utility). */
@@ -348,6 +349,8 @@
   --free-text-line-height: 1.2; /* the line height of a free text, in times its font size: the editor matches the written file */
   --inspector-width: 288px;
   --canvas-min: 360px;
+  /* The canvas gutter (DESIGN 3 canvas): room between the page and the canvas edge, and the end padding of the scroll region. */
+  --canvas-gutter: var(--space-3);
   --scrollbar-size: 8px;
   --scrollbar-inset: 2px;
   --empty-max-width: 560px; /* the empty state's column */
@@ -419,7 +422,7 @@
     --bg-field-b: radial-gradient(ellipse 560px 200px at 72% 0%, rgba(142, 142, 242, 0.1), transparent);
     --bg-field-c: radial-gradient(ellipse 480px 360px at 0% 100%, rgba(58, 58, 171, 0.3), transparent);
     --ground-shadow: radial-gradient(closest-side, rgba(0, 0, 0, 0.48), transparent);
-    --color-canvas: #111226;
+    --color-canvas: #181936;
     --canvas-edge: inset 0 0 0 1px rgba(255, 255, 255, 0.06);
     --color-scrollbar: rgba(201, 202, 255, 0.24);
     --color-scrollbar-hover: rgba(201, 202, 255, 0.4);
@@ -464,7 +467,7 @@
   --bg-field-b: radial-gradient(ellipse 560px 200px at 72% 0%, rgba(142, 142, 242, 0.1), transparent);
   --bg-field-c: radial-gradient(ellipse 480px 360px at 0% 100%, rgba(58, 58, 171, 0.3), transparent);
   --ground-shadow: radial-gradient(closest-side, rgba(0, 0, 0, 0.48), transparent);
-  --color-canvas: #111226;
+  --color-canvas: #181936;
   --canvas-edge: inset 0 0 0 1px rgba(255, 255, 255, 0.06);
   --color-scrollbar: rgba(201, 202, 255, 0.24);
   --color-scrollbar-hover: rgba(201, 202, 255, 0.4);

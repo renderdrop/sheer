@@ -193,7 +193,8 @@ export class PageLayout {
         contentHeight = (metrics.rowTopPt[rows] ?? 0) * this.scale + (rows - 1) * this.gap;
       }
     }
-    this.width = Math.max(contentWidth, this.viewport.width);
+    // A page less than a pixel wider than the viewport fits it: the viewport is floored, a fraction must not make a bar.
+    this.width = contentWidth - this.viewport.width <= 1 ? this.viewport.width : contentWidth;
     this.height = Math.max(contentHeight, this.viewport.height);
     this.offsetY = (this.height - contentHeight) / 2;
   }

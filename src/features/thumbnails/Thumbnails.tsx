@@ -315,7 +315,7 @@ export function ThumbnailList({ docId, pageCount, scheduler }: ThumbnailListProp
           }
         }}
         className="relative"
-        style={{ height: layout.height }}
+        style={{ height: layout.height + inset }}
       >
         {mounted.map((index) => {
           const size = layout.thumbnailSize(index);

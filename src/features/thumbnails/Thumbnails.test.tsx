@@ -163,7 +163,7 @@ describe('virtualization', () => {
     expect(reach).not.toBeNull();
     expect(mounted()).toEqual(Array.from({ length: (reach?.last ?? 0) + 1 }, (_, index) => index));
     expect(mounted().length).toBeLessThan(10);
-    expect(Number.parseFloat(listbox().style.height)).toBeCloseTo(layout.height, 3);
+    expect(Number.parseFloat(listbox().style.height)).toBeCloseTo(layout.height + INSET, 3);
   });
 
   it('mounts the cells around the viewport when the list is scrolled, and lets the ones it left go', () => {

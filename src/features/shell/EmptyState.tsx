@@ -83,7 +83,7 @@ function LogoSlot() {
 /**
  * The empty state (DESIGN 3.11), shown while no document is open: a centred column, at most 560 wide.
  *
- * 1. The logo slot (ADR-020): the full logo at 160 px floating in a 184 px row of its own, decorative.
+ * 1. The logo slot (ADR-020): the full logo floating in a row of its own (`size-logo-hero` in `h-logo-slot`), decorative.
  * 2. The drop card, 24 below: G1, radius 24, padding 40, "Open a PDF", the hint, and the primary large "Open…" button
  *    with the shortcut as a pill badge (no icon tile: the logo replaces it). Initial focus is on that button, the keyboard path (dropping is
  *    pointer-only).
@@ -101,7 +101,7 @@ export function EmptyState({
 }: EmptyStateProps) {
   const t = useT();
   return (
-    <main className="m-auto flex w-full max-w-empty-max flex-col py-1">
+    <main className="my-auto mx-auto flex w-full max-w-empty-max flex-col py-2">
       <LogoSlot />
       <section
         data-drop-zone=""

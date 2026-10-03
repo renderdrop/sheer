@@ -17,7 +17,7 @@ export function pageGap(): number {
   return read;
 }
 
-/** The padding of the scroll region around the content: `--space-3`, 24 px (DESIGN 2), which is `p-3` on the region. */
+/** The padding of the scroll region around the content: `--canvas-gutter` (24 px), which is `p-canvas-gutter` on the region. */
 const CANVAS_PADDING_FALLBACK = 24;
 let padding: number | null = null;
 
@@ -25,7 +25,7 @@ let padding: number | null = null;
 export function canvasPadding(): number {
   if (padding !== null) return padding;
   if (typeof document === 'undefined') return CANVAS_PADDING_FALLBACK;
-  const read = tokenPx('--space-3', CANVAS_PADDING_FALLBACK);
+  const read = tokenPx('--canvas-gutter', CANVAS_PADDING_FALLBACK);
   padding = read;
   return read;
 }

@@ -52,8 +52,8 @@ describe('Canvas (DESIGN 2)', () => {
     expect(slot?.className).toContain('rounded-panel');
     expect(slot?.className).toContain('isolate');
     expect(slot?.className).not.toContain('glass');
-    expect(region().className).toContain('p-3');
-    expect(region().className).toContain('scroll-pt-3');
+    expect(region().className).toContain('p-canvas-gutter');
+    expect(region().className).toContain('scroll-pt-canvas-gutter');
     // The viewer places the scroll position itself, so the browser does not try to keep it too.
     expect(region().className).toContain('overflow-anchor:none');
   });
