@@ -122,6 +122,7 @@ subscribe_app(on_event: Channel<AppEvent>) -> ()
 // documents
 open_document_dialog() -> Vec<AppEvent>             // multi-select, ≤ 32 files, in the dialog's order: `opened { document }` or `openFailed { .. }` each (one more `openFailed` limit_exceeded `documents` if more were chosen); empty = cancelled. `OpenResult { status: NeedsPassword }` comes with passwords
 open_recent(recent_id: u32) -> OpenResult
+open_welcome_document() -> AppEvent                 // ADR-023, DESIGN §3.14: opens the bundled `resources/welcome/welcome-{en,de}.pdf` for the resolved UI language (settings language, "system" = the language `subscribe_menu`/`app_ready` reported, else en) through `intake::admit` like any file; the path is resolved in Rust from the resource dir and never crosses IPC; `opened { document }` with `kind: Welcome` and `display_name` "Welcome to {app}.pdf" (localized), or `openFailed`; a welcome document already open is closed with discard first (restart). Not added to recents
 list_recents() -> Vec<RecentEntry>                   // ≤ 50
 remove_recent(recent_id: u32) -> ()
 unlock_document(doc_id: DocId, password: String) -> DocumentInfo        // 1..=1024 bytes
@@ -163,12 +164,13 @@ struct OutlineNode   { title: String, target: Option<PageTarget { page_id, y }>,
 struct LinkInfo      { index: u32 /* position among the page's links */, rect: Rect, target: LinkTarget /* Page { page_id, y } | Url { url ≤ 2048 } | Blocked; wire: `{ "type": "page" | "url" | "blocked", ..fields }` */ }
 struct DocFlags      { encrypted: bool, xfa: bool, has_forms: bool, signed: bool }   // best effort, from PDFium, read when the document is loaded; part of `DocumentInfo` as `flags` (`signed` only for a document that has a form)
 struct OpenResult    { doc_id: DocId, status: OpenStatus /* Ready | NeedsPassword */, info: Option<DocumentInfo> }
-struct DocumentInfo  { doc_id: DocId, display_name: String, pages: Vec<PageSlotInfo>, rev: u32, flags: DocFlags, history: HistoryState }  // planned; today `{ id, pageCount, displayName, flags }`, the four fields every open document has
+struct DocumentInfo  { doc_id: DocId, display_name: String, kind: DocKind, pages: Vec<PageSlotInfo>, rev: u32, flags: DocFlags, history: HistoryState }  // planned; today `{ id, pageCount, displayName, flags }` + `kind`, the fields every open document has
+enum   DocKind       { User, Welcome }   // serde lowercase; Welcome = the bundled tour sample (ADR-023): read-only, `save_document` answers `read_only` (the UI offers Save As), `close_document` discards without `unsaved_changes`, never a recent
 struct PageSlotInfo  { id: PageId, width: f32, height: f32 /* pt, unrotated CropBox */, rotation: u16, rev: u32, label: Option<String> }
 struct SaveResult    { rev: u32, mode: SaveMode /* Incremental | Full */, backup_created: bool }
 struct AppBootstrap  { platform: Platform /* macos | windows | linux */, reduced_transparency: bool, version: &'static str }
 enum   AppEvent      { DropHover { active: bool }, Opened { document: DocumentInfo }, OpenFailed { code, key, retryable, params? } }  // wire: `{ "type": "dropHover" | "opened" | "openFailed", ..fields }`, camelCase; OpenFailed carries the error of §7 flat and names no file; no variant has room for a path
-struct Settings      { glass: GlassMode /* Auto | Solid */, theme: ThemeMode /* System | Light | Dark */, language: Language /* System | En | De */, left_panel_width: PanelWidth }   // serde lowercase values
+struct Settings      { glass: GlassMode /* Auto | Solid */, theme: ThemeMode /* System | Light | Dark */, language: Language /* System | En | De */, left_panel_width: PanelWidth, welcome_tour: WelcomeTour /* Pending | Shown */ }   // serde lowercase values; `welcomeTour` default pending (missing or invalid → pending), the UI writes `shown` before it calls `open_welcome_document` on first launch (ADR-023)
 ```
 
 **Menu bar.** On macOS `menu::install` builds the menu bar at startup from `src/actions/menu.json` (App, File, Edit with the system items, View, Window, Help; the labels are the `menu.*` keys of `src/i18n/locales/*.json`, compiled in with `include_str!`) and `.on_menu_event` hands each chosen item to `MenuBridge::forward`, which sends it on the channel of `subscribe_menu` if `menu::spec::is_action_id` allows it. `update_settings` rebuilds the menu when `language` changes (`menu::refresh`, on the main thread); "system" uses the language `subscribe_menu` reported. Windows has no menu bar (ADR-016): nothing is installed there. Open runs like every other command: the menu sends `open`, the UI calls `open_document_dialog`. The menu is not synchronised with the UI's state (items are not greyed without a document): `runAction` refuses a command that cannot run, which is all the menu needs.
@@ -176,7 +178,7 @@ struct Settings      { glass: GlassMode /* Auto | Solid */, theme: ThemeMode /* 
 **Settings.** `storage::settings` keeps the settings in memory and in `<app data dir>/settings.json`. A missing, oversized (> 64 KiB), damaged
 or hand-edited file never blocks start: only a regular file is read (its type is taken from the opened handle, not from the path, and on Unix it is opened
 `O_NONBLOCK` so a FIFO cannot hang the start), and each field that is invalid falls back to its default. `update_settings`
-takes the patch as raw JSON, validates all of it first (an object that passes a `deny_unknown_fields` struct, so at most `glass`, `theme`, `language` and `leftPanelWidth`, with
+takes the patch as raw JSON, validates all of it first (an object that passes a `deny_unknown_fields` struct, so at most `glass`, `theme`, `language`, `leftPanelWidth` and `welcomeTour`, with
 known enum values) and writes it with `storage::atomic::write_atomic`: a temp file `.settings.json.<pid>.<n>.tmp` (process id and a per-process counter, so no two
 writers share one) is created with `create_new` (a name that is taken is skipped, never written through; mode `0600` on Unix, directories `0700`), fsynced,
 renamed over the file, and the directory is fsynced on Unix. At startup `sweep_stale_temp_files` removes the temp files of that exact name pattern that a crash left in the data directory and that are older than an hour. Only after the write succeeds does the

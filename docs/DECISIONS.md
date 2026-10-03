@@ -744,14 +744,18 @@ exist in M1. Highlight and comment (M2), reorder (M3) and signature (M4) follow.
    Helvetica and Helvetica-Bold (Standard 14, WinAnsi, not embedded), and no images, annotations, links, actions or JavaScript. Page size 600 × 800 pt
    keeps the 8 grid. One edition each for en and de, with strings from the locale files (one source with the UI).
 2. **One manifest.** `src/features/tour/steps.json` holds ids, pages, target rects and `shipped`. Both the engine and the generator read
-   it, so the coach mark's canvas target and the drawn frame cannot drift. Unshipped steps are absent from the app *and* the PDF
-   (M1: 3 pages, 3 steps), so the tour never asks for a missing tool.
+   it, so the coach mark's canvas target and the drawn frame cannot drift. Unshipped steps are absent from the app *and* the PDF,
+   so the tour never asks for a missing tool.
+2a. **4–5 pages.** A closing page ("You're all set": what to try next, restart via Settings, shortcuts) is always last. Tasks share
+   pages: Welcome (open + navigate), Zoom, Markup (highlight + comment), Sign and sort (sign + reorder). An untasked Navigate page exists
+   only to keep an edition at 4 pages (M1: Welcome, Navigate, Zoom, Closing). From M3 on, Markup and Sign and sort are printed swapped
+   ([4] before [3]), and the reorder task moves page 3 above page 4. Five pages in total, and the closing page never moves.
 3. **Coach mark at `--z-popover`**, clamped to the canvas slot, never over chrome, its anchor or its target. It is non-modal, never takes
    focus, sits in the F6 cycle, and is not in `DISMISS_PRIORITY` (Esc releases tools as before). The anchor's tooltip is suppressed, the card yields to popovers, and toasts move above it.
 4. **Once only.** Setting `welcomeTour: pending | shown`, written `shown` *before* the document opens. It does not start when a file
    came with the launch. Restart lives in the Settings popover. Close or Skip ends the tour, with no resume.
 5. **Sample semantics.** `open_welcome_document()` opens the resource through the normal intake (hostile input as always) as
-   `kind: "welcome"`. It is read-only, Save acts as Save As, and closing discards edits without a prompt.
+   `kind: "welcome"`. It is read-only, Save acts as Save As, and closing discards edits without a prompt (confirmed by the product owner).
 6. **Success** is the shared `pulse()`, with no dialog or toast. Announcements go through the status bar's polite live region.
 
 **Consequences.** `Settings`, `update_settings` validation, `DocumentInfo` (`kind`) and the IPC surface (`open_welcome_document`) change

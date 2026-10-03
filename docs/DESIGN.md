@@ -485,11 +485,11 @@ target rects in pt, `shipped`). The PR that ships a step's tool flips `shipped`.
 |---|---|---|---|---|---|
 | 1 | open | 1 | status bar file name | the welcome document's `opened` event, after its first frame has faded in (§4.6) | M1 |
 | 2 | navigate | 1 | status bar page button | current page (§3.10) ≥ 2 once scrolling settles (500 ms), by any input | M1 |
-| 3 | zoom | 2 | toolbar zoom in | a zoom commits at rest at ≥ 1.2 × the zoom at step start (button, keys, wheel, pinch, menu) | M1 |
-| 4 | highlight | 3 | Highlight tool → sentence box | a highlight covers ≥ 50 % of the sentence quad | M2 |
-| 5 | comment | 3 | Comment tool → comment spot | a comment anchored ≤ 24 pt from the spot centre | M2 |
-| 6 | sign | sign page | Signature tool → signature box | a signature's centre lies in the box | M4 |
-| 7 | reorder | sign page | thumbnails toggle → the page's thumbnail | the sign page precedes the end page | M3 |
+| 3 | zoom | Z | toolbar zoom in | a zoom commits at rest at ≥ 1.2 × the zoom at step start (button, keys, wheel, pinch, menu) | M1 |
+| 4 | highlight | M | Highlight tool → sentence box | a highlight covers ≥ 50 % of the sentence quad | M2 |
+| 5 | comment | M | Comment tool → comment spot | a comment anchored ≤ 24 pt from the spot centre | M2 |
+| 6 | sign | S | Signature tool → signature box | a signature's centre lies in the box | M4 |
+| 7 | reorder | S | thumbnails toggle → page S's thumbnail | page S precedes page M | M3 |
 
 Unshipped steps do not exist at runtime, and their blocks are not generated, so no page asks for a missing tool. Numbers
 count shipped steps only (M1: 1–3). A step completes on its first qualifying event. A state that is already true at the step's start completes it
@@ -498,7 +498,7 @@ target. Releasing the tool returns to phase a. A step marked `detect: "manual"` 
 
 **Success moment.** `pulse(anchor, t("tour.done"))`: the anchor ring grows and fades (slow), and the card's chip crossfades to
 `check` (fast). Hold 1.2 s, then the card exits (fast) and the next card enters at its anchor (base). After the last step the pill
-pulses, shows `check` + `tour.complete` for 1.2 s and exits. Reduced motion and forced colors follow §4.7.
+pulses, shows `check` + `tour.complete` for 1.2 s and exits. The last done message appends `tour.toClosing`. Reduced motion and forced colors follow §4.7.
 
 #### Document
 
@@ -526,16 +526,28 @@ except the badge digit (Helvetica digits are 556/1000 em), so no width table is 
 | Target frame | r 8, 1 pt iris-300, dash [4 4] | — | — |
 | Footer | rule y 752, 1 pt ink-30; text x 48, baseline 772 | ink-60 | F1 9, `welcomePdf.footer` |
 
-| Page (printed) | Chip · title · instruction | Task target |
-|---|---|---|
-| 1 (1) | Steps 1–2 · `p1.title` · `p1.text` | Block "1 Open a PDF" with a done disc (iris-500 r 12, white 2 pt check). Block "2 Go to page 2" with a chevron-down 24 iris-500, centre x 300 |
-| 2 (2) | Step 3 · Zoom in · `p2.text` | 504 × 160 block, three lines of F1 5 pt ink (`p2.small`), unreadable at 100 % |
-| 3 (3) | Steps 4–5 · `p3.title` · `p3.text` | Sentence frame y 248, 504 × 56; `p3.sentence` F1 16 ink, x 72, baseline 282. Comment spot: ring (480, 392) r 12, 2 pt iris-500, dot r 4 |
-| 4 (5) | Done · `end.title` · `end.text` | Block `end.restart`; `end.order` only when reorder has shipped |
-| 5 (4) | Steps 6–7 · `sign.title` · `sign.text` | Signature frame x 48 y 248, 288 × 96; rule ink-30 y 320, x 72–312; `sign.label` F1 9 ink-60, baseline 336. Block "Drag page 4 above page 5" |
+**Page kinds:**
 
-Pages with no shipped block are left out, and the order is otherwise kept. The end page is swapped before the sign page only once
-reorder has shipped; until then badges print the real page number. M1 edition: Welcome, Zoom, End (3 pages).
+| Kind | Chip · title · instruction | Task target / content |
+|---|---|---|
+| W Welcome (steps 1–2) | Steps 1–2 · `p1.title` · `p1.text` | Block "1 Open a PDF" with a done disc (iris-500 r 12, white 2 pt check). Block "2 Go to page 2" with a chevron-down 24 iris-500, centre x 300 |
+| N Navigate (no task) | Step 2 · `nav.title` · `nav.text` | Block with three lines `nav.ways` (page number in the status bar, keys, thumbnails), then a chevron-down and `nav.next` |
+| Z Zoom (3) | Step 3 · Zoom in · `p2.text` | A 504 × 160 block with three lines of F1 5 pt ink (`p2.small`), unreadable at 100 % |
+| M Markup (4–5) | Steps 4–5 · `p3.title` · `p3.text` | Sentence frame y 248, 504 × 56; `p3.sentence` F1 16 ink, x 72, baseline 282. Comment spot: ring (480, 392) r 12, 2 pt iris-500, dot r 4. With S present: `order` note (F1 12 ink-60) in the last block |
+| S Sign and sort (6–7) | Steps 6–7 (or the one shipped) · `sign.title` (else `tour.step.reorder.title`) · `sign.text` (else `tour.step.reorder.text`) | Signature frame x 48 y 248, 288 × 96; rule ink-30 y 320, x 72–312; `sign.label` F1 9 ink-60, baseline 336. Reorder block: `tour.step.reorder.text` |
+| E Closing (always last) | `chip.done` · `end.title` · `end.text` | Block `end.nextTitle`: `end.next.open`, then one line per shipped cluster (`end.next.markup` M2, `.organize` M3, `.sign` M4). Block `end.restart`. Block `end.keysTitle`: rows 24 apart, key at x 72 (F2 12 ink), action at x 240 (F1 12 ink-60), from `steps.json` `closingShortcuts` (open, zoom in/out, next/previous page, settings, plus the letters of shipped tools). Key labels are `welcomePdf.key.*`, and a vitest checks them against `formatBinding` for Windows and macOS |
+
+**Editions** (page order; the printed number is in brackets where it differs from the position):
+
+| Shipped | Pages |
+|---|---|
+| M1 | W · N · Z · E (4) |
+| M2 | W · Z · M · E (4) |
+| M3, M4 | W · Z · M [4] · S [3] · E (5) |
+
+N exists only to keep an edition at 4 pages. Kinds with no shipped step are left out. Once reorder ships, M and S
+swap places, and their badges and footers print the intended numbers. The task "drag page 3 above page 4" moves S above M, so the
+steps still run in order (M, then S), and after the task the printed numbers ascend. E is never involved in the swap.
 
 #### Lifecycle
 
@@ -620,6 +632,7 @@ UI (`tour.*`, `settings.tour*`, `doc.*`); the PDF reuses `tour.step.*` for block
 | `tour.hide` / `.skip` / `.next` / `.showMe` | Hide hint / Skip tour / Next / Show me | Hinweis ausblenden / Tour überspringen / Weiter / Zeigen |
 | `tour.done` | Done: {title} | Erledigt: {title} |
 | `tour.complete` | Tour complete | Tour abgeschlossen |
+| `tour.toClosing` | The last page has tips and shortcuts. | Die letzte Seite zeigt Tipps und Tastenkürzel. |
 | `tour.inMore` | You find it under More. | Sie finden es unter Mehr. |
 | `tour.skipped` | Tour skipped. Start it again in Settings. | Tour übersprungen. Neustart in den Einstellungen. |
 | `tour.closed` | Tour ended. Start it again in Settings. | Tour beendet. Neustart in den Einstellungen. |
@@ -640,8 +653,17 @@ UI (`tour.*`, `settings.tour*`, `doc.*`); the PDF reuses `tour.step.*` for block
 | `welcomePdf.p2.small` | You found it. Pinch, Ctrl or Cmd + wheel, or the + button all zoom. | Gefunden. Zoomen geht mit zwei Fingern, Strg oder Cmd + Mausrad oder der Taste +. |
 | `welcomePdf.p3.title` / `.text` | Mark it up / Highlight the sentence, then comment on the dot. | Markieren / Satz hervorheben, dann den Punkt kommentieren. |
 | `welcomePdf.p3.sentence` | Good documents are short, clear and kind. | Gute Dokumente sind kurz, klar und freundlich. |
-| `welcomePdf.end.title` / `.text` | You're all set / Close this file or open one of your own. | Alles erledigt / Schließen Sie diese Datei oder öffnen Sie eine eigene. |
-| `welcomePdf.end.restart` / `.order` | Restart the tour any time in Settings. / Pages out of order? Page 4 shows the fix. | Die Tour startet jederzeit neu in den Einstellungen. / Seiten durcheinander? Seite 4 zeigt, wie es geht. |
+| `welcomePdf.nav.title` / `.text` | You turned the page / There are more ways to move around. | Seite gewechselt / Es gibt weitere Wege durch ein Dokument. |
+| `welcomePdf.nav.ways` | Click the page number below to jump. · Ctrl or Cmd + Down goes to the next page. · Thumbnails show every page. | Klicken Sie unten auf die Seitenzahl, um zu springen. · Strg oder Cmd + Ab führt zur nächsten Seite. · Miniaturen zeigen jede Seite. |
+| `welcomePdf.nav.next` | Zoom waits on the next page. | Auf der nächsten Seite geht es ums Zoomen. |
+| `welcomePdf.order` | Page numbers out of order? Step {n} fixes that. | Seitenzahlen durcheinander? Schritt {n} behebt das. |
+| `welcomePdf.end.title` / `.text` | You're all set / Here is what to try next. | Alles erledigt / Das können Sie als Nächstes tun. |
+| `welcomePdf.end.nextTitle` / `.keysTitle` | What next / Shortcuts | Wie weiter / Tastenkürzel |
+| `welcomePdf.end.next.open` | Open your own PDF: Open… or drop a file on the window. | Eigene PDF öffnen: Öffnen… oder Datei auf das Fenster ziehen. |
+| `welcomePdf.end.next.markup` / `.organize` / `.sign` | Highlight, comment and draw on any PDF. / Sort, rotate and delete pages. / Sign with a drawn, typed or image signature. | Markieren, kommentieren und zeichnen. / Seiten ordnen, drehen und löschen. / Unterschreiben: gezeichnet, getippt oder als Bild. |
+| `welcomePdf.end.restart` | Restart this tour any time: Settings, then Welcome tour. | Tour jederzeit neu starten: Einstellungen, dann Willkommenstour. |
+| `welcomePdf.key.open` / `.zoom` / `.page` / `.settings` | Ctrl+O / Cmd+O · Ctrl+Plus / Ctrl+Minus (Cmd on Mac) · Ctrl+Down / Ctrl+Up (Cmd on Mac) · Ctrl+Comma / Cmd+Comma | Strg+O / Cmd+O · Strg+Plus / Strg+Minus (Cmd am Mac) · Strg+Ab / Strg+Auf (Cmd am Mac) · Strg+Komma / Cmd+Komma |
+| `welcomePdf.keyAction.open` / `.zoom` / `.page` / `.settings` | Open a file · Zoom in and out · Next and previous page · Settings | Datei öffnen · Vergrößern und verkleinern · Nächste und vorige Seite · Einstellungen |
 | `welcomePdf.sign.title` / `.text` / `.label` | Sign and sort / Sign in the frame, then move this page up. / Signature | Unterschreiben und ordnen / Im Rahmen unterschreiben, dann Seite nach oben schieben. / Unterschrift |
 
 ## 4. Contrast verification
