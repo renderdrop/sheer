@@ -71,7 +71,7 @@ Sheer_0.4.0_x64-setup.exe, Sheer_0.4.0_aarch64.dmg and SHA256SUMS.txt (unsigned,
 
 Product-owner test of the installed v0.8.0 build (2026-10-04).
 
-- [ ] Reproduce in the real Tauri window (installed v0.8.0 build), on a normal PDF and on the welcome document: Highlight, Note, Text,
+- [x] Reproduce in the real Tauri window (installed v0.8.0 build), on a normal PDF and on the welcome document: Highlight, Note, Text,
       Draw and Rectangle — clicking the tool and dragging on the page does nothing
 - [ ] Find and fix the cause: does the M5 edit layer (insert/crop/redact) swallow the annotation layer's pointer events? Does the
       read-only welcome document silently block annotations? The welcome document must allow them (the tour needs them); other
@@ -80,3 +80,7 @@ Product-owner test of the installed v0.8.0 build (2026-10-04).
 - [ ] Naming: annotation tool → "Textkommentar" / "Text comment" (tooltip: floating note, stays a comment); edit tool → "Text einfügen" /
       "Insert text" (tooltip: becomes a permanent part of the page). The toolbar groups "Markieren" and "Bearbeiten" are visibly separated
 - [ ] Tag v0.8.1 for the owner's re-test
+
+F9 finding: reproduced with the installed v0.8.0 via CDP. Not the M5 layers: since M4 (b0487ee) the annotation creation layer sits inside
+`[data-annot-layer]`, which is `pointer-events: none`, and inherited it, so no tool got pointer input (already broken in v0.7.0).
+jsdom ignores `pointer-events` when dispatching, so the unit tests passed. Fix: `pointer-events-auto` on the creation layer.
