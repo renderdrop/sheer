@@ -9,8 +9,8 @@
     },
     {
       "name": "sheer-tauri",
-      "runtimeExecutable": "bash",
-      "runtimeArgs": ["scripts/ui/dev.sh"],
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["scripts/ui/dev.mjs"],
       "port": 1420
     }
   ]

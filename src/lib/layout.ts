@@ -7,7 +7,8 @@
  * - Collapsed left panel: the track and the outer gutter go, the splitter becomes the leading gutter. They stay in the list at
  *   size 0 (`var(--spacing-0)`), so the list has the same tracks in the same places whether the panel is there or not: the
  *   browser can animate the change (a transition needs lists of equal length, DESIGN 3.8) and no slot moves to another column.
- * - No inspector track: the track and the gap go.
+ * - No inspector (F2 review): nothing is reserved for it while it is not shown, so the canvas reaches the trailing gutter. Its gap and
+ *   track stay in the list at size 0, like the left panel's, so the browser can animate it opening and closing.
  * - No document: `8 | empty state | 8`.
  */
 import { LAYOUT, PANEL } from '../components/tokens';
@@ -50,7 +51,7 @@ export interface ShellStructure {
   leftCollapsed: boolean;
   /** Collapsed by the layout alone (the user did not ask for it). It returns when the window grows. */
   leftAutoCollapsed: boolean;
-  /** The inspector's track is there: always from 1280 px with a document open, otherwise only when it is toggled open. */
+  /** The inspector's track has room: it is shown (opened by the user, or in `auto` by a selection or tool from 1280 px). */
   inspectorReserved: boolean;
   /** The inspector panel is faded in (it has a track, and the user or a selection or tool asked for it). */
   inspectorVisible: boolean;
@@ -73,7 +74,7 @@ export interface ShellLayout extends ShellStructure, ShellTracks {
 }
 
 const GUTTER = 'var(--space-1)';
-/** A track that is there but takes no room: the collapsed left panel's tracks. */
+/** A track that is there but takes no room: the collapsed left panel's and the hidden inspector's tracks. */
 const NO_ROOM = 'var(--spacing-0)';
 
 const EMPTY_STRUCTURE: ShellStructure = {
@@ -106,8 +107,8 @@ export function shellStructure(input: LayoutInput): ShellStructure {
   const width = widthOf(input);
 
   const wide = width >= LAYOUT.inspectorReserveFrom;
-  const inspectorReserved = wide || input.inspector === 'open';
   const inspectorVisible = input.inspector === 'open' || (input.inspector === 'auto' && input.inspectorContent && wide);
+  const inspectorReserved = inspectorVisible;
 
   const canvasWithLeft = width - LAYOUT.gutter - panelWidth - LAYOUT.splitter - trailingWidth(inspectorReserved);
   const leftAutoCollapsed = !input.panelCollapsed && canvasWithLeft < LAYOUT.canvasMin;
@@ -140,9 +141,10 @@ export function shellTracks(structure: ShellStructure, panelWidth: number): Shel
       { slot: 'splitter', size: 'var(--splitter-width)' },
       { slot: 'canvas', size: 'minmax(var(--canvas-min), 1fr)' },
     );
-    if (structure.inspectorReserved) {
-      tracks.push({ slot: 'gap', size: GUTTER }, { slot: 'inspector', size: 'var(--inspector-width)' });
-    }
+    tracks.push(
+      { slot: 'gap', size: structure.inspectorReserved ? GUTTER : NO_ROOM },
+      { slot: 'inspector', size: structure.inspectorReserved ? 'var(--inspector-width)' : NO_ROOM },
+    );
     tracks.push({ slot: 'gutter-end', size: GUTTER });
   }
   const column: Partial<Record<SlotName, number>> = {};

@@ -140,6 +140,25 @@ describe('the columns', () => {
     expect(grid.className).not.toContain(TRANSITION);
   });
 
+  it('slide the inspector track in and out the same way, and stay in step with it', async () => {
+    resizeTo(1400);
+    const { container, user } = setup(<Shell />);
+    await openDocument(user);
+    const grid = gridOf(container);
+    // Hidden: the gap and the track take no room, so the canvas reaches the trailing gutter.
+    expect(tracks(grid).slice(-3)).toEqual(['var(--spacing-0)', 'var(--spacing-0)', 'var(--space-1)']);
+    expect(grid.getAttribute('data-inspector')).toBe('closed');
+
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    fireEvent.click(tool('Highlight'));
+    expect(grid.getAttribute('data-inspector')).toBe('open');
+    expect(grid.getAttribute('data-animating')).toBe('inspector');
+    expect(grid.className).toContain(TRANSITION);
+    expect(tracks(grid).slice(-3)).toEqual(['var(--space-1)', 'var(--inspector-width)', 'var(--space-1)']);
+    advance(300);
+    expect(grid.hasAttribute('data-animating')).toBe(false);
+  });
+
   it('start another slide when the panel is toggled again before the first is over', async () => {
     const { container, user } = setup(<Shell />);
     await openDocument(user);

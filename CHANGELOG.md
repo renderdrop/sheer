@@ -26,6 +26,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Test PDFs generated in code (`src-tauri/tests/support`), with the committed ones under `tests/fixtures/` checked against their generator: outlines (also a cycle), links of every kind,
   text with non-ASCII letters, a hyphenated line end and an emoji, a form, an XFA form, a signed and an encrypted document.
 
+### Changed
+
+- Mood (ADR-020, FEEDBACK F2): a clearly visible Iris background gradient with three soft light fields, so the glass of the toolbar and
+  panels shows what is behind it; Iris-tinted glass with a light top edge; soft Iris shadows; a large, gently floating logo on the empty
+  state (still under reduced motion, paused while the window is hidden); thin Iris scrollbars; a tinted canvas with an edge in both themes and
+  a visible page edge in dark. The inspector column is no longer reserved while nothing is selected: it slides open like the left panel.
+
 ### Security
 
 - Links in a PDF are read as data and nothing they ask for is done: a jump in the document is a page, a URL that is plain `http`, `https` or `mailto` (at most 2048 bytes, only RFC 3986

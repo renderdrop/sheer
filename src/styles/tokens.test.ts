@@ -85,8 +85,8 @@ describe('palette (DESIGN 1.1)', () => {
 describe('color roles (DESIGN 1.2)', () => {
   /** [light, dark]. A dark value equal to the light one is not repeated in the dark blocks. */
   const roles: Record<string, [string, string]> = {
-    '--color-bg': ['linear-gradient(135deg,#f4f5ff,#fafaff)', 'linear-gradient(135deg,#0f1020,#15162b)'],
-    '--color-canvas': ['#e8e9f6', '#0b0c18'],
+    '--color-bg': ['var(--bg-fields),var(--bg-gradient)', 'var(--bg-fields),var(--bg-gradient)'],
+    '--color-canvas': ['#ecedfc', '#111226'],
     '--color-text': ['var(--ink)', '#ffffff'],
     '--color-text-muted': ['var(--ink-60)', 'var(--ink-40)'],
     '--color-text-accent': ['var(--iris-700)', 'var(--iris-200)'],
@@ -120,6 +120,14 @@ describe('color roles (DESIGN 1.2)', () => {
     '--color-doc-select': ['var(--iris-500)', 'var(--iris-500)'],
     '--color-doc-text-select': ['rgba(91,91,214,0.3)', 'rgba(91,91,214,0.3)'],
     '--color-doc-hit': ['rgba(91,91,214,0.28)', 'rgba(91,91,214,0.28)'],
+    // F2 review (DESIGN 1.2, 1.11).
+    '--canvas-edge': [
+      'inset 0 1px 0 rgba(255,255,255,0.7),inset 0 0 0 1px rgba(91,91,214,0.08)',
+      'inset 0 0 0 1px rgba(255,255,255,0.06)',
+    ],
+    '--color-scrollbar': ['rgba(58,58,171,0.28)', 'rgba(201,202,255,0.24)'],
+    '--color-scrollbar-hover': ['rgba(58,58,171,0.44)', 'rgba(201,202,255,0.4)'],
+    '--page-shadow': ['var(--shadow-1)', '0 0 0 1px rgba(255,255,255,0.08),0 8px 24px rgba(0,0,0,0.56)'],
   };
 
   it.each(Object.entries(roles))('%s', (name, [lightValue, darkValue]) => {
@@ -149,20 +157,24 @@ describe('color roles (DESIGN 1.2)', () => {
 
 describe('glass (DESIGN 1.3)', () => {
   const glass: Record<string, [string, string]> = {
-    '--surface': ['rgba(255,255,255,0.72)', 'rgba(28,28,46,0.62)'],
+    '--surface': ['rgba(244,245,255,0.66)', 'rgba(30,30,58,0.6)'],
+    '--surface-fallback': ['#f8f8ff', '#1e1e3a'],
     '--surface-strong': ['rgba(255,255,255,0.9)', 'rgba(28,28,46,0.9)'],
     '--surface-solid': ['#ffffff', '#1c1c2e'],
-    '--glass-filter': ['blur(24px) saturate(140%)', 'blur(24px) saturate(140%)'],
-    '--glass-edge': ['inset 0 0 0 1px rgba(255,255,255,0.6)', 'inset 0 0 0 1px rgba(255,255,255,0.12)'],
+    '--glass-filter': ['blur(24px) saturate(160%)', 'blur(24px) saturate(160%)'],
+    '--glass-edge': [
+      'inset 0 1px 0 rgba(255,255,255,0.9),inset 0 0 0 1px rgba(255,255,255,0.55)',
+      'inset 0 1px 0 rgba(255,255,255,0.14),inset 0 0 0 1px rgba(255,255,255,0.1)',
+    ],
     '--shadow-1': [
-      '0 1px 2px rgba(28,28,46,0.06),0 8px 32px rgba(28,28,46,0.08)',
+      '0 1px 2px rgba(58,58,171,0.06),0 8px 32px rgba(91,91,214,0.12)',
       '0 1px 2px rgba(0,0,0,0.24),0 8px 32px rgba(0,0,0,0.32)',
     ],
     '--shadow-2': [
-      '0 2px 6px rgba(28,28,46,0.08),0 12px 40px rgba(28,28,46,0.16)',
+      '0 2px 6px rgba(58,58,171,0.08),0 12px 40px rgba(91,91,214,0.16)',
       '0 2px 6px rgba(0,0,0,0.32),0 12px 40px rgba(0,0,0,0.48)',
     ],
-    '--shadow-3': ['0 24px 64px rgba(28,28,46,0.24)', '0 24px 64px rgba(0,0,0,0.56)'],
+    '--shadow-3': ['0 24px 64px rgba(58,58,171,0.24)', '0 24px 64px rgba(0,0,0,0.56)'],
   };
 
   it.each(Object.entries(glass))('%s', (name, [lightValue, darkValue]) => {
@@ -186,8 +198,9 @@ describe('glass (DESIGN 1.3)', () => {
 
 describe('solid mode (DESIGN 1.1, 1.3)', () => {
   const expected = [
-    ['--surface', 'var(--surface-solid)'],
+    ['--surface', 'var(--surface-fallback)'],
     ['--surface-strong', 'var(--surface-solid)'],
+    ['--bg-fields', 'none'],
     ['--glass-filter', 'none'],
     ['--glass-edge', 'inset 0 0 0 var(--hairline) var(--color-divider)'],
   ] as const;
@@ -243,7 +256,7 @@ describe('solid mode (DESIGN 1.1, 1.3)', () => {
 
 describe('radii, spacing, sizes (DESIGN 1.4, 1.8)', () => {
   it('radii', () => {
-    const radii = { xs: '4px', sm: '8px', button: '12px', panel: '16px', card: '20px', pill: '999px' };
+    const radii = { xs: '4px', sm: '8px', button: '12px', panel: '16px', card: '24px', pill: '999px' };
     for (const [name, value] of Object.entries(radii)) {
       expect(themeStatic.get(`--radius-${name}`), name).toBe(value);
     }
@@ -473,11 +486,36 @@ describe('motion (DESIGN 1.6)', () => {
     // The rule applies while the grid animates and has been collapsed: a transition of no duration that starts when the 150 ms
     // fade of the panel is over. A grid that was restored matches nothing here, so the global rule leaves it no transition
     // of its columns: they change at once and the panel fades in on them.
-    const rule = /\[data-layout\]\[data-animating\]\[data-left="collapsed"\]\s*\{([^}]*)\}/.exec(block)?.[1] ?? '';
+    const rule =
+      /\[data-layout\]\[data-animating="left"\]\[data-left="collapsed"\],\s*\[data-layout\]\[data-animating="inspector"\]\[data-inspector="closed"\]\s*\{([^}]*)\}/.exec(
+        block,
+      )?.[1] ?? '';
     expect(rule).toMatch(/transition-property: grid-template-columns !important;/);
     expect(rule).toMatch(/transition-duration: 0s !important;/);
     expect(rule).toMatch(/transition-delay: var\(--motion-fast\) !important;/);
     expect(block).not.toMatch(/data-left="open"/);
+  });
+
+  it('scrollbars are thin and token-coloured on a transparent track, with a WebKit fallback; forced colors keeps the native ones (DESIGN 1.11)', () => {
+    const start = css.indexOf('@layer base');
+    const block = css.slice(start, css.indexOf('/* The page background gradient'));
+    expect(block).toMatch(/@media not \(forced-colors: active\)/);
+    expect(block).toMatch(/scrollbar-width: thin;/);
+    expect(block).toMatch(/scrollbar-color: var\(--color-scrollbar\) transparent;/);
+    expect(block).toMatch(/::-webkit-scrollbar-thumb \{[^}]*var\(--color-scrollbar\)[^}]*background-clip: padding-box/);
+    expect(block).toMatch(/::-webkit-scrollbar-thumb:hover \{[^}]*var\(--color-scrollbar-hover\)/);
+    expect(block).toMatch(/::-webkit-scrollbar-track,\s*::-webkit-scrollbar-corner \{\s*background: transparent;/);
+    expect(root.get('--scrollbar-size')).toBe('8px');
+  });
+
+  it('the canvas utility carries its colour and inset edge, and forced colors drop the edge and the page shadow', () => {
+    const body = blockBody('@utility surface-canvas');
+    expect(body).toMatch(/background: var\(--color-canvas\);/);
+    expect(body).toMatch(/box-shadow: var\(--canvas-edge\);/);
+    const start = css.indexOf('@media (forced-colors: active) {\n  :root:root');
+    const forced = declarations(css.slice(start, css.indexOf('\n}\n', start)));
+    expect(forced.get('--canvas-edge')).toBe('inset 0 0 transparent');
+    expect(forced.get('--page-shadow')).toBe('0 0 transparent');
   });
 
   it('outside reduced motion the transform amounts are the spec ones', () => {
@@ -656,7 +694,7 @@ describe('the spec tables themselves (docs/DESIGN.md 1.2, 1.3)', () => {
   });
 
   it('every role whose light and dark columns differ is overridden in both dark blocks', () => {
-    const differing = [...roleRows, ...glassRows].filter((row) => row.light !== row.dark);
+    const differing = [...roleRows, ...glassRows].filter((row) => row.light !== row.dark && row.dark !== 'same');
     expect(differing.length).toBeGreaterThan(10);
     for (const row of differing) {
       for (const [label, block] of [
@@ -669,6 +707,41 @@ describe('the spec tables themselves (docs/DESIGN.md 1.2, 1.3)', () => {
         ).toBe(true);
       }
     }
+  });
+});
+
+describe('mood (DESIGN 1.10, ADR-020)', () => {
+  it('the background is the fields over the gradient, in both themes', () => {
+    expect(light('--bg-gradient')).toBe('linear-gradient(135deg,#e1e2ff,#f4f5ff)');
+    expect(dark('--bg-gradient')).toBe('linear-gradient(135deg,#1c1d40,#0f1020)');
+    expect(light('--bg-fields')).toBe('var(--bg-field-a),var(--bg-field-b),var(--bg-field-c)');
+    for (const field of ['a', 'b', 'c']) {
+      expect(dark(`--bg-field-${field}`), field).toBeDefined();
+      expect(dark(`--bg-field-${field}`)).not.toBe(light(`--bg-field-${field}`));
+    }
+  });
+
+  it('field a ends 240 px below the window top, so text on the background sits below that band', () => {
+    expect(light('--bg-field-a')).toContain('ellipse 720px 240px at 8% 0%');
+  });
+
+  it('the empty-state logo and float tokens are the spec ones, and reduced motion removes the float', () => {
+    expect(root.get('--logo-hero')).toBe('160px');
+    expect(root.get('--logo-slot')).toBe('184px');
+    expect(root.get('--float-distance')).toBe('8px');
+    expect(root.get('--float-duration')).toBe('3000ms');
+    expect(themeStatic.get('--ease-float')).toBe('cubic-bezier(0.37,0,0.63,1)');
+    const start = css.indexOf('@media (prefers-reduced-motion: reduce)');
+    expect(css.slice(start, css.indexOf('@layer base'))).toMatch(/--float-distance: 0px;/);
+  });
+
+  it('forced colors drop the shadows and hide the ground shadow', () => {
+    const start = css.indexOf('@media (forced-colors: active) {\n  :root:root');
+    const forced = declarations(css.slice(start, css.indexOf('\n}\n', start)));
+    for (const name of ['--shadow-1', '--shadow-2', '--shadow-3']) {
+      expect(forced.get(name), name).toBe('0 0 transparent');
+    }
+    expect(blockBody('@utility logo-ground')).toMatch(/forced-colors: active[\s\S]*display: none/);
   });
 });
 
@@ -686,8 +759,14 @@ describe('solid mode overrides are the same in every trigger (DESIGN 1.1)', () =
   const media = bodyAfter('@media \\(prefers-reduced-transparency: reduce\\)\\s*\\{\\s*:root:root');
   const attribute = bodyAfter(':root\\[data-transparency="reduced"\\]');
 
-  it('the two media triggers and the attribute set the same four tokens to the same values', () => {
-    expect([...attribute.keys()].sort()).toEqual(['--glass-edge', '--glass-filter', '--surface', '--surface-strong']);
+  it('the two media triggers and the attribute set the same five tokens to the same values', () => {
+    expect([...attribute.keys()].sort()).toEqual([
+      '--bg-fields',
+      '--glass-edge',
+      '--glass-filter',
+      '--surface',
+      '--surface-strong',
+    ]);
     expect([...supports]).toEqual([...attribute]);
     expect([...media]).toEqual([...attribute]);
   });

@@ -46,7 +46,7 @@ describe('Canvas (DESIGN 2)', () => {
   it('is opaque canvas with radius 16 and padding 24 through tokens, and isolates its own layers', () => {
     const { container } = setup(<Canvas {...props()} />);
     const slot = container.querySelector('main');
-    expect(slot?.className).toContain('bg-canvas');
+    expect(slot?.className).toContain('surface-canvas');
     expect(slot?.className).toContain('rounded-panel');
     expect(slot?.className).toContain('isolate');
     expect(slot?.className).not.toContain('glass');

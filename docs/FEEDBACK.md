@@ -14,11 +14,11 @@ Work them in order; tick `[x]` when done. The Stop hook reads the first open `- 
 
 The §3 rule "gradient barely visible" is overruled (ADR). Target: the mood of the reference image, with one hue.
 
-- [ ] designer (Opus) writes a mood spec with concrete token changes: background gradient clearly visible (iris-100 → iris-50, 135°), glass
+- [x] designer (Opus) writes a mood spec with concrete token changes: background gradient clearly visible (iris-100 → iris-50, 135°), glass
       surfaces slightly iris-tinted instead of pure white, icon tiles on iris-100, soft coloured shadows (Iris 12 %), empty state with a large,
       gently floating logo sheet as the focal point, toolbar with visible translucency over the gradient; ADR
-- [ ] implementer applies the spec (light + dark, glass fallback, reduced motion)
-- [ ] Acceptance by screenshots from the Tauri window (not the browser): light + dark, empty state + document; designer verdict PASS
+- [x] implementer applies the spec (light + dark, glass fallback, reduced motion)
+- [x] Acceptance by screenshots from the Tauri window (not the browser): light + dark, empty state + document; designer verdict PASS (2nd round)
 
 ## F3 — Motion system
 

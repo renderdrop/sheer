@@ -39,7 +39,7 @@ export function Banner({ error, onDismiss }: BannerProps) {
     >
       <div className="px-1 pb-1">
         <div role="alert" className="glass-1 flex min-h-banner-min items-center gap-1 rounded-panel py-1 pe-1 ps-2">
-          <span className="shrink-0 text-error-icon">
+          <span className="shrink-0 text-error-text">
             <Icon icon={CircleAlert} />
           </span>
           <span className="min-w-0 flex-auto text-error-text">{errorText(t, error)}</span>

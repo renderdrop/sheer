@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { fireEvent, screen } from '@testing-library/react';
+import { act, fireEvent, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
 import { setup } from '../../test/render';
@@ -25,6 +25,29 @@ describe('EmptyState (DESIGN 3.11)', () => {
     expect(screen.getByText('Drop a file anywhere in this window or choose one.')).not.toBeNull();
     expect(screen.getByText('⌘O')).not.toBeNull();
     expect(screen.getByRole('button', { name: 'Open…' }).getAttribute('aria-keyshortcuts')).toBe('Control+O Meta+O');
+  });
+
+  it('has a decorative floating logo in its own slot, and no icon tile in the card', () => {
+    const { container } = setup(<EmptyState {...props()} />);
+    const slot = container.querySelector('[data-logo-slot]');
+    expect(slot?.getAttribute('aria-hidden')).toBe('true');
+    const logo = slot?.querySelector('img');
+    expect(logo?.getAttribute('alt')).toBe('');
+    expect(logo?.className).toContain('logo-float');
+    expect(container.querySelector('[data-drop-zone] svg')).toBeNull();
+    expect(slot?.contains(document.activeElement)).toBe(false);
+  });
+
+  it('pauses the float while the page is hidden', () => {
+    const { container } = setup(<EmptyState {...props()} />);
+    const logo = container.querySelector('[data-logo-slot] img');
+    expect(logo?.hasAttribute('data-paused')).toBe(false);
+    const hidden = vi.spyOn(document, 'hidden', 'get').mockReturnValue(true);
+    act(() => {
+      document.dispatchEvent(new Event('visibilitychange'));
+    });
+    expect(logo?.hasAttribute('data-paused')).toBe(true);
+    hidden.mockRestore();
   });
 
   it('Open calls the open handler: with the mouse, Enter and Space', async () => {

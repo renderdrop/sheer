@@ -526,32 +526,31 @@ describe('Shell with a document', () => {
       expect(screen.queryByRole('complementary', { name: 'Inspector', hidden: true })).toBeNull();
     });
 
-    it('from 1280 the inspector track is reserved: the panel is there but inert until a tool or selection wants it', async () => {
+    it('from 1280 nothing is reserved for the inspector until a tool or selection wants it, and it leaves again with them', async () => {
       resizeTo(1280);
       const { user } = setup(<Shell />);
       await openDocument(user);
-      const inspector = screen.getByRole('complementary', { name: 'Inspector', hidden: true });
-      expect(inspector.hasAttribute('inert')).toBe(true);
+      expect(screen.queryByRole('complementary', { name: 'Inspector', hidden: true })).toBeNull();
       await user.click(tool('Highlight'));
+      const inspector = screen.getByRole('complementary', { name: 'Inspector' });
       expect(inspector.hasAttribute('inert')).toBe(false);
       expect(within(inspector).getByRole('heading', { name: 'Tool options' })).not.toBeNull();
-      // Back to Select: it fades out again, and the same element stays (the canvas never shifts).
+      // Back to Select: the panel fades out and its track goes.
       await user.click(tool('Highlight'));
-      expect(inspector.hasAttribute('inert')).toBe(true);
+      await waitFor(() => expect(screen.queryByRole('complementary', { name: 'Inspector', hidden: true })).toBeNull());
     });
 
-    it('the inspector toggle can hide it at 1280 and more, and show it without a tool', async () => {
+    it('the inspector toggle can show it at 1280 and more without a tool, and hide it again', async () => {
       resizeTo(1400);
       const { user } = setup(<Shell />);
       await openDocument(user);
-      const inspector = screen.getByRole('complementary', { name: 'Inspector', hidden: true });
       await user.click(tool('Inspector'));
-      expect(inspector.hasAttribute('inert')).toBe(false);
+      expect(screen.getByRole('complementary', { name: 'Inspector' }).hasAttribute('inert')).toBe(false);
       await user.click(tool('Inspector'));
-      expect(inspector.hasAttribute('inert')).toBe(true);
+      await waitFor(() => expect(screen.queryByRole('complementary', { name: 'Inspector', hidden: true })).toBeNull());
       await user.click(tool('Highlight'));
       // The user closed it: a tool does not override that.
-      expect(inspector.hasAttribute('inert')).toBe(true);
+      expect(screen.queryByRole('complementary', { name: 'Inspector', hidden: true })).toBeNull();
     });
 
     it('at 960 the left panel collapses by itself when the inspector leaves the canvas under 360, and returns with room', async () => {
@@ -896,15 +895,16 @@ describe('Shell with a document: edge cases', () => {
   });
 
   describe('collapse rules (DESIGN 2): boundaries', () => {
-    it('the inspector track appears at exactly 1280, not at 1279', async () => {
+    it('a tool opens the inspector track from exactly 1280, not at 1279', async () => {
       resizeTo(1279);
       const { user } = setup(<Shell />);
       await openDocument(user);
+      await user.click(tool('Highlight'));
       expect(screen.queryByRole('complementary', { name: 'Inspector', hidden: true })).toBeNull();
       resizeTo(1280);
-      expect(screen.getByRole('complementary', { name: 'Inspector', hidden: true })).not.toBeNull();
+      expect(screen.getByRole('complementary', { name: 'Inspector' })).not.toBeNull();
       resizeTo(1279);
-      expect(screen.queryByRole('complementary', { name: 'Inspector', hidden: true })).toBeNull();
+      await waitFor(() => expect(screen.queryByRole('complementary', { name: 'Inspector', hidden: true })).toBeNull());
     });
 
     it('at 960 with the inspector open the default panel stays: the canvas keeps 392', async () => {

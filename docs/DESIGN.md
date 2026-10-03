@@ -24,8 +24,10 @@ Theme follows the OS; `html[data-theme]` overrides. **Solid mode** applies when 
 
 | Role | Light | Dark |
 |---|---|---|
-| `--color-bg` | 135° `#F4F5FF→#FAFAFF` | 135° `#0F1020→#15162B` |
-| `--color-canvas` | `#E8E9F6` | `#0B0C18` |
+| `--color-bg` (= `--bg-fields` over `--bg-gradient`, §1.10) | fields over 135° iris-100 → iris-50 | fields over 135° `#1C1D40→#0F1020` |
+| `--color-canvas` (F2 review: a tray, not a slab) | `#ECEDFC` | `#111226` |
+| `--canvas-edge` (inset, canvas only) | `inset 0 1px 0 rgba(255,255,255,.70), inset 0 0 0 1px rgba(91,91,214,.08)` | `inset 0 0 0 1px rgba(255,255,255,.06)` |
+| `--color-scrollbar / -hover` (thumb; track transparent, §1.11) | `rgba(58,58,171,.28)` / `.44` | `rgba(201,202,255,.24)` / `.40` |
 | `--color-text` | ink | `#FFFFFF` |
 | `--color-text-muted` | ink-60 | ink-40 |
 | `--color-text-accent` (links) | iris-700 | iris-200 |
@@ -47,29 +49,39 @@ Theme follows the OS; `html[data-theme]` overrides. **Solid mode** applies when 
 | `--win-close-hover` | `#C42B1C` | `#C42B1C` |
 
 "White 8 %" = `rgba(255,255,255,.08)`; "ink 6 %" = `rgba(28,28,46,.06)`. Semantic icons only on G1/solid surfaces;
-toasts use accent icons. **Document layer** (white pages, both themes): selection and current search hit 2 px iris-500,
+on glass (G1, G2) they take the `-text` color of their role, since `-icon` (success 2.73) fails over the tinted glass (§4).
+Icons in a tile always use `--color-tile-icon`; toasts use accent icons in a tile. **Document layer** (white pages, both themes): selection and current search hit 2 px iris-500,
 handles 8 px; text selection `rgba(91,91,214,.30)`, hits `.28`.
 
 ### 1.3 Glass
 
 | Token | Light | Dark |
 |---|---|---|
-| `--surface` (over `--color-bg` only) | `rgba(255,255,255,.72)` | `rgba(28,28,46,.62)` |
-| `--surface-strong` (over page content) | `rgba(255,255,255,.90)` | `rgba(28,28,46,.90)` |
-| `--surface-solid` | `#FFFFFF` | `#1C1C2E` |
-| `--glass-filter` / `--glass-edge` | `blur(24px) saturate(140%)` / `inset 0 0 0 1px` white 60 % | same / white 12 % |
-| `--shadow-1` / `-2` / `-3` | ink: `0 1px 2px` .06 + `0 8px 32px` .08 / `0 2px 6px` .08 + `0 12px 40px` .16 / `0 24px 64px` .24 | black: .24+.32 / .32+.48 / .56 |
+| `--surface` (over `--color-bg` only; iris-50 tint) | `rgba(244,245,255,.66)` | `rgba(30,30,58,.60)` |
+| `--surface-strong` (over page content; untinted, ADR-020) | `rgba(255,255,255,.90)` | `rgba(28,28,46,.90)` |
+| `--surface-solid` (dialogs, submenus, fields, G2 in solid mode) | `#FFFFFF` | `#1C1C2E` |
+| `--surface-fallback` (G1 in solid mode) | `#F8F8FF` | `#1E1E3A` |
+| `--glass-filter` | `blur(24px) saturate(160%)` | same |
+| `--glass-edge` (thin light inner edge, lit from above) | `inset 0 1px 0 rgba(255,255,255,.90), inset 0 0 0 1px rgba(255,255,255,.55)` | `inset 0 1px 0 rgba(255,255,255,.14), inset 0 0 0 1px rgba(255,255,255,.10)` |
+| `--shadow-1` | `0 1px 2px rgba(58,58,171,.06), 0 8px 32px rgba(91,91,214,.12)` | black `0 1px 2px` .24 + `0 8px 32px` .32 |
+| `--shadow-2` | `0 2px 6px rgba(58,58,171,.08), 0 12px 40px rgba(91,91,214,.16)` | black .32 + .48 |
+| `--shadow-3` | `0 24px 64px rgba(58,58,171,.24)` | black .56 |
 
-Recipes: **G1** = `--surface` + filter + edge + `--shadow-1` (toolbar, panels, banner, empty card). **G2** =
-`--surface-strong` + filter + edge + `--shadow-2` (popover, toast, drop overlay). Dialogs, submenus: solid + `--shadow-3`.
+Light shadows are Iris (iris-500 at 12 % for the main shadow of G1, iris-700 for the contact shadow); dark keeps black,
+where a coloured shadow does not read. Recipes: **G1** = `--surface` + filter + edge + `--shadow-1` (toolbar, panels,
+banner, empty card). **G2** = `--surface-strong` + filter + edge + `--shadow-2` (popover, toast, drop overlay).
+Dialogs, submenus: solid + `--shadow-3`.
 
-`--surface-strong` is .90, not ADR-011's ≈ .86: worst-case muted text drops to 4.47 at .86.
-Solid mode: `--surface-solid`, no filter, edge → 1 px divider; geometry unchanged. `forced-colors`: system colors,
-focus `Highlight`. Blur never animates.
+`--surface-strong` is .90, not ADR-011's ≈ .86: worst-case muted text drops to 4.47 at .86. It stays untinted: over
+pages a tint does not show and costs the control border its 3:1 (2.93 at an `#F8F8FF` base, less at iris-50).
+**Solid mode:** G1 → `--surface-fallback`, G2 → `--surface-solid`, no filter, edge → 1 px `--color-divider`,
+`--bg-fields: none` (the gradient stays: it is paint, not transparency); shadows and geometry unchanged.
+**Forced colors:** `--color-bg` → `Canvas` (gradient and fields none), surfaces `Canvas` + 1 px `CanvasText` border,
+shadows none, focus `Highlight`. Blur never animates.
 
 ### 1.4 Radii, spacing, sizes
 
-- Radii: `--radius-xs 4` · `-sm 8` · `-button 12` · `-panel 16` (toolbar, panels, canvas, overlays) · `-card 20` (empty card, dialog) ·
+- Radii: `--radius-xs 4` · `-sm 8` · `-button 12` · `-panel 16` (toolbar, panels, canvas, overlays) · `-card 24` (empty card, dialog; was 20, ADR-020) ·
   `-pill 999`. Concentric: inner = outer − padding.
 - Spacing (8-pt; 4 and 12 only inside controls): `--space-0-5 4 · 1 8 · 1-5 12 · 2 16 · 3 24 · 4 32 · 5 40 · 6 48 · 8 64`.
 - Sizes: controls `sm 24 · md 32 · lg 40`; `--target-min 24`, default 32; hairline 1; focus width 2, offset 2.
@@ -98,6 +110,7 @@ focus `Highlight`. Blur never animates.
   `--ease-spring cubic-bezier(.34,1.56,.64,1)` transforms only (Motion: `spring`, `visualDuration .2`, `bounce .15`).
 - Tooltip delay 500 ms (keyboard 300, 0 if another closed < 300 ms ago).
 - Reduced motion: no transforms; transitions opacity-only, 150 ms `--ease-out`; smooth scroll → instant.
+- One ambient exception: the empty-state logo float (§1.10), 3 s per direction; off under reduced motion.
 
 ### 1.7 Elevation (only these z-index values)
 
@@ -139,6 +152,73 @@ Lucide, `absoluteStrokeWidth` 1.5 px (2 px at 12), `currentColor`, `aria-hidden`
 - Theme: `prefers-color-scheme`, overridden by `html[data-theme]`. Solid mode: unsupported `backdrop-filter`, `prefers-reduced-transparency`,
   `html[data-transparency="reduced"]`, `forced-colors`. The dark values and the solid values each exist twice in the file (media query and attribute); the test keeps the copies identical.
 
+### 1.10 Mood (ADR-020)
+
+Target: soft light, translucent cards with large radii and a light inner edge, icons in small rounded tiles, pill
+badges, generous white space. One hue: everything below is Iris, ink or white.
+
+**Background layer.** `--color-bg` paints the window root (the shell element, `--z-base`, behind every slot; it is the
+window, not a surface, so it overlaps nothing). Two tokens, layered fields over gradient:
+
+| Token | Light | Dark |
+|---|---|---|
+| `--bg-gradient` | `linear-gradient(135deg, #E1E2FF, #F4F5FF)` (iris-100 → iris-50) | `linear-gradient(135deg, #1C1D40, #0F1020)` |
+| `--bg-field-a` (Iris field, top left) | `radial-gradient(ellipse 720px 240px at 8% 0%, rgba(142,142,242,.32), transparent)` | same shape, `rgba(91,91,214,.28)` |
+| `--bg-field-b` (light field, top right) | `radial-gradient(ellipse 560px 200px at 72% 0%, rgba(255,255,255,.85), transparent)` | same shape, `rgba(142,142,242,.10)` |
+| `--bg-field-c` (Iris field, bottom left) | `radial-gradient(ellipse 480px 360px at 0% 100%, rgba(201,202,255,.40), transparent)` | same shape, `rgba(58,58,171,.30)` |
+| `--bg-fields` | `field-a, field-b, field-c` | same |
+
+**Why fields.** Blur over a smooth gradient shows nothing. Fields a and b give the toolbar row a strong change of
+hue and lightness along its length (Iris-deep at the leading end, near-white at ~72 %), field a also sits behind the
+top of the left panel, field c behind its foot. Through `--surface` at .66 that variation reads as frosted glass;
+over the canvas there is nothing to see because the canvas is opaque and never blurred. Fields are static (no motion,
+no parallax), sized in px and anchored in %, so they keep their shape from 960 × 640 up.
+
+**Placement rule.** Field a ends 240 px below the window top. Text that sits directly on `--color-bg` (status bar,
+recents header and rows, §3.10–3.11) must lie below that band; there the darkest light background is
+`rgb(220,221,255)` (muted 4.67). Glass is computed over the darkest field point (`#C6C7FB` light, `#2E2E6A` dark).
+
+**Tinted glass.** `--surface` is iris-50-based at .66 (light) and `#1E1E3A`-based at .60 (dark), §1.3; edge and Iris
+shadows per §1.3. `--surface-strong` and dialogs stay neutral.
+
+**Tiles and pills.** Tile = `--color-tile` fill, `--color-tile-icon` glyph, radius concentric with its container.
+Used for: the toast icon (32, radius 12), the info banner icon (32, radius 8), the empty card's shortcut hint (pill).
+Semantic banner icons (warning, error) stay bare (tile contrast fails in dark). Pill badge = `--radius-pill`,
+`--text-xs`, 20 h, padding 0 8, tile colors: the page pill (§3.9) and the status bar "Edited" badge (§3.10).
+
+**Changed components.** Shell root (background), toolbar, panels, banner, empty state (card + logo, §3.11), toast,
+popover edge and shadow, dialog radius and shadow, status bar "Edited", thumbnails' page shadow (coloured via
+`--page-shadow` = `--shadow-1`; dark per §1.11), canvas colour and edge, scrollbars (§1.11). Unchanged: document layer, tooltips, fields, segmented control.
+
+**Float animation** (empty-state logo only; the one ambient motion in the app, an exception to §1.6 durations):
+
+| Token | Value |
+|---|---|
+| `--float-distance` | 8px (reduced motion: 0) |
+| `--float-duration` | 3000ms per direction (6 s cycle) |
+| `--ease-float` | `cubic-bezier(.37,0,.63,1)` (sine in-out) |
+
+Keyframes `float`: sheet `translateY(0)` → `translateY(calc(-1 * var(--float-distance)))`, `alternate infinite`; the
+ground shadow runs the same timing, `scale(1)` → `scale(.88)` and opacity 1 → .7. Transform and opacity only
+(compositor), `will-change: transform` on the sheet only. Paused (`animation-play-state`) while `document.hidden`;
+unmounted with the empty state. Entry: opacity 0 → 1 + `scale(--scale-enter)` → 1, 250 spring; the float starts after.
+**Reduced motion:** no float, no scale; the sheet rests at 0 with a static ground shadow; entry is opacity, 150
+`--ease-out`. **Forced colors:** the logo stays (an image), the ground shadow is hidden.
+
+### 1.11 Scrollbars (F2 review)
+
+Never the native grey bar. Every scroll region (canvas, panel bodies, popover lists, empty state) uses
+`scrollbar-width: thin; scrollbar-color: var(--color-scrollbar) transparent` (WebView2/Chromium; no arrow buttons).
+WKWebView fallback: `::-webkit-scrollbar` 8 px, track transparent, thumb `--color-scrollbar`, radius pill, 2 px
+transparent border with `background-clip: padding-box`; hover thumb `--color-scrollbar-hover`. The bar sits inside
+the slot's padding, never in a separate white band. **Forced colors:** rules removed (`scrollbar-color: auto`), native bars.
+**Page shadow, dark:** `--page-shadow` is `0 0 0 1px rgba(255,255,255,.08), 0 8px 24px rgba(0,0,0,.56)` (black alone
+vanishes on the canvas); light stays `--shadow-1`. The canvas carries `--canvas-edge`; it is paint, so solid mode keeps it.
+
+New tokens join §1.9's test: `--canvas-edge`, `--color-scrollbar`, `--color-scrollbar-hover`, `--bg-gradient`, `--bg-field-a/b/c`, `--bg-fields`, `--surface-fallback`, `--float-*`,
+`--ease-float`, `--logo-hero` 160, `--logo-slot` 184, `--ground-shadow` (`radial-gradient(closest-side,
+rgba(91,91,214,.24), transparent)` light, `rgba(0,0,0,.48)` dark).
+
 ## 2. Layout grid
 
 | Row | Height |
@@ -157,8 +237,11 @@ Main columns: `8 | left 192–400 (default 248) | splitter 8 | canvas minmax(360
   shown when `scrollTop > 0`. The toolbar never covers pages.
 - Window minimum 960 × 640.
 - No document: main = `8 | empty state | 8` on `--color-bg`; toolbar keeps its slot, tools `aria-disabled`.
-- ≥ 1280 px: inspector track reserved while a document is open; the panel fades in with a selection or non-Select tool,
-  so the canvas never shifts. 960–1279: track only via toggle; left panel auto-collapses if the canvas would be < 360.
+- ≥ 1280 px (`auto`): no empty reservation (F2 review: a blank 288 column reads as broken). The canvas spans to the
+  trailing gutter; a selection or non-Select tool opens the inspector track with the same grid-track transition as the
+  left panel (F3: 250 ms, panel fades in on the track, canvas keeps the page under its centre anchored); it closes
+  when selection and tool return to none/Select. Reduced motion: track at once, opacity 150.
+  960–1279: track only via toggle; left panel auto-collapses if the canvas would be < 360.
 
 ### 2.2 Window chrome
 
@@ -182,7 +265,7 @@ tooltip → dialog → popover → gesture → tool → selection (the stacking 
 appear and disappear by the rules above, and each child is placed by `grid-column`. `computeShellLayout` is the two together, with the canvas width; the components do not call it (ADR-015), it keeps the
 rules testable as one. The main row has an 8 px gap above the status bar so panels and canvas do not touch its text.
 
-- **Inspector modes.** `ui.inspector` is `auto`, `open` or `closed`. `auto` lets a selection or a non-Select tool fade the panel in, but only from 1280 px (where the track is reserved anyway); `open` shows it and gives it a
+- **Inspector modes.** `ui.inspector` is `auto`, `open` or `closed`. `auto` lets a selection or a non-Select tool fade the panel in, but only from 1280 px (the track then opens animated, §2); `open` shows it and gives it a
   track at any width; `closed` hides the panel and, below 1280, the track. The toolbar toggle is pressed while the panel is visible and sets `open` or `closed`.
 - **Left panel collapse** is derived, not stored twice: the user's choice (`ui.leftPanelCollapsed`, set by the splitter's Enter, a release below 144 or the toolbar toggle) or the layout's own (canvas under 360).
   The latter returns when the window grows. Collapsing or restoring animates over 250 ms `--ease-out`: the two tracks of the panel (outer gutter and panel) stay in the track list at size 0 when it is collapsed, so the list keeps its shape and `MainGrid` lets the browser
@@ -327,17 +410,23 @@ landmarks, F6 stops; lists roving Up/Down, Enter.
 ### 3.10 Status bar
 
 32 h on `--color-bg`, no surface, padding 0 16, meta, gap 16. Leading: file name (middle-truncated, ≤ 40 %),
-"Edited", signed/encrypted icon 12 with tooltip. Trailing: activity ("Saving…" + spinner), page "3 / 120" and zoom
+"Edited" as a pill badge (§1.10), signed/encrypted icon 12 with tooltip. Trailing: activity ("Saving…" + spinner), page "3 / 120" and zoom
 "125 %" as sm ghost buttons opening Go to page and the zoom menu. `<footer>`, F6 stop. The page is the one most of the viewport is on while scrolling, and the page shown in the paged modes. A polite live region announces
 "Page 3 of 120" 500 ms after scrolling settles.
 
 ### 3.11 Empty state
 
-Centred column, max 560 w.
+Centred column, max 560 w, padding 40 top and bottom; it scrolls when the window is short (at 640 × 960 logo and card
+fit, recents scroll).
 
-1. **Drop card:** G1, radius 20, padding 32; tile 48 (radius 12, tile colors, `file-up` 24); "Open a PDF"
-   `--text-xl`; "Drop a file anywhere in this window or choose one." muted; primary lg "Open…" + meta "⌘O"/"Ctrl+O".
-2. **Recents**, 32 below: header "Recent" (meta 600) + ghost sm "Clear"; ≤ 8 rows, 56 h, radius 12, padding 8:
+1. **Logo slot** (focal point, ADR-020): 184 h (`--logo-slot`), full column width, own grid row; nothing else sits in
+   it. `assets/brand/logo.svg` at 160 (`--logo-hero`), centred, top inset 8 at rest, so the float (§1.10) stays inside
+   the slot; ground shadow 96 × 8 (`--ground-shadow`), centred, bottom inset 4. Decorative: `alt=""`, `aria-hidden`,
+   `pointer-events: none`; never a tab stop. Always the full-colour logo (Iris tile + sheet), both themes.
+2. **Drop card**, 24 below: G1, radius 24, padding 40, content centred; no icon tile (the logo above replaces it);
+   "Open a PDF" `--text-xl`; 8 below, "Drop a file anywhere in this window or choose one." muted; 24 below, primary lg
+   "Open…" and, 8 right, the shortcut as a pill badge ("⌘O"/"Ctrl+O", §1.10).
+3. **Recents**, 32 below: header "Recent" (meta 600) + ghost sm "Clear"; ≤ 8 rows, 56 h, radius 12, padding 8:
    thumbnail 32 × 40 | name over meta "Folder · 2 h ago" | sm `x` (on hover/focus, `tabindex=-1`). Missing file:
    `file-x` in warning-icon, "File not found"; activation offers Locate… / Remove. Footer meta: "Recent files are
    stored only on this device." Omitted when empty.
@@ -352,7 +441,7 @@ Shift+F10 menu; removals and Clear give an Undo toast. Drop is pointer-only; Ope
 |---|---|---|
 | Use | confirmation, optional Undo | persistent: signed file, XFA, engine stopped, save failed |
 | Slot | canvas bottom centre, 16 above edge, `--z-toast` | banner row; pushes content |
-| Anatomy | G2, 40 h, radius 16, padding 4 4 4 12, 240–400 w; accent icon 16, `--text-md`, optional ghost action | G1, ≥ 48 h, radius 16, padding 8 8 8 16; icon 16 (`info` accent, `triangle-alert` warning, `circle-alert` error), text color message, ≤ 2 buttons, optional `x` |
+| Anatomy | G2, 40 h, radius 16, padding 4 12 4 4, 240–400 w; icon 16 in a 32 tile (radius 12), gap 8, `--text-md`, optional ghost action | G1, ≥ 48 h, radius 16, padding 8 8 8 8; `info` 16 in a 32 tile (radius 8), or bare `triangle-alert` / `circle-alert` 16 in `--color-{warning,error}-text` (on glass, §1.2) centred in 32; gap 8, text color message, ≤ 2 buttons, optional `x` |
 | Lifetime | 4 s, 8 s with action; pauses on hover, focus, blur; one at a time | until resolved; one shown, error > warning > info |
 | Motion | translateY 8 → 0 + opacity, 200 spring; out 150 | height + opacity 250; reduced: instant |
 | Keys / A11y | never takes focus; action duplicates a command; `role=status` | F6 region; Esc does not dismiss; error `role=alert`, else `status` |
@@ -380,30 +469,33 @@ is `inert` and no command runs while it is open, whichever way it comes (key, na
 
 ## 4. Contrast verification
 
-Worst points: `--surface` over `--color-bg` (light `#FCFCFF`; dark bounded by `#1C1C2E`); `--surface-strong` over
-black (light) or white (dark) content. Text needs 4.5, non-text 3.
+Worst points (ADR-020): `--surface` over the darkest field point (light `#C6C7FB` → glass `rgb(229,229,254)`; dark
+`#2E2E6A` → glass `rgb(36,37,77)`); text directly on `--color-bg` below the 240 px band (light `rgb(220,221,255)`, dark
+`rgb(33,33,85)`); `--surface-strong` over black (light) or white (dark) content. Text needs 4.5, non-text 3.
 
 | Pairing | Light | Dark |
 |---|---|---|
-| text on solid / glass / strong / canvas / bg | 16.73 / 16.34 / 13.35 / 13.88 / 15.42 | 16.73 / ≥ 16.73 / 12.39 / 19.44 / 17.77 |
+| text on solid / glass / strong / canvas / bg | 16.73 / 13.55 / 13.35 / 13.88 / 12.66 | 16.73 / 14.55 / 12.39 / 19.44 / 14.86 |
+| text / muted / text-accent on fallback (solid-mode G1) | 15.82 / 5.84 / 8.37 | 16.13 / 6.58 / 10.27 |
 | text on control-hover / pressed / selected | 13.17 / 10.66 / 13.17 | 13.30 / 10.82 / 12.03 |
-| muted on solid / glass / strong / canvas / bg / selected | 6.17 / 6.03 / 4.92 / 5.12 / 5.69 / 4.86 | 6.82 / ≥ 6.82 / 5.05 / 7.93 / 7.24 / 4.90 |
-| text-accent on solid / strong / selected / canvas | 8.85 / 7.06 / 6.96 / 7.34 | 10.66 / 7.89 / 7.66 / 12.39 |
-| tile icon on tile | 6.96 | 8.29 |
+| muted on solid / glass / strong / canvas / bg / selected | 6.17 / 4.99 / 4.92 / 5.12 / 4.67 / 4.86 | 6.82 / 5.93 / 5.05 / 7.93 / 6.06 / 4.90 |
+| text-accent on solid / glass / strong / selected / canvas | 8.85 / 7.16 / 7.06 / 6.96 / 7.34 | 10.66 / 9.27 / 7.89 / 7.66 / 12.39 |
+| tile icon on tile (tiles, pill badges) | 6.96 | 8.29 |
 | on-accent on accent / hover / pressed | 5.37 / 6.85 / 8.85 | 5.82 / 10.66 / 4.77 |
-| control border on solid / glass / strong / hover | 3.88 / 3.79 / 3.09 / 3.05 | 4.32 / ≥ 4.32 / 3.20 / 3.43 |
-| focus, active fill, ring on solid / glass / canvas / strong / selected | 5.37 / 5.24 / 4.45 / 4.28 / 4.22 | 5.82 / ≥ 5.82 / 6.76 / 4.31 / 4.18 |
+| control border on solid / glass / strong / hover / fallback | 3.88 / 3.14 / 3.09 / 3.05 / 3.67 | 4.32 / 3.75 / 3.20 / 3.43 / 4.16 |
+| focus, active fill, ring on solid / glass / canvas / strong / selected / bg | 5.37 / 4.35 / 4.45 / 4.28 / 4.22 / 4.06 | 5.82 / 5.06 / 6.76 / 4.31 / 4.18 / 5.17 |
 | lock disc on accent / glyph on disc | 5.37 / 5.37 | 5.82 / 5.82 |
-| success / warning / error text on solid / glass | 6.07 / 5.92 / 6.16 · 5.93 / 5.78 / 6.02 | 9.81 / 10.21 / 8.24 · ≥ solid |
+| success / warning / error text on solid / glass | 6.07 / 5.92 / 6.16 · 4.91 / 4.79 / 4.99 | 9.81 / 10.21 / 8.24 · 8.53 / 8.88 / 7.16 |
 | same on strong | 4.84 / 4.72 / 4.92 | 7.26 / 7.56 / 6.10 |
-| success / warning / error icon on solid / glass | 3.38 / 3.97 / 4.23 · 3.30 / 3.88 / 4.13 | 4.96 / 6.06 / 3.96 · ≥ solid |
-| accent toast icon on strong | 4.28 | 4.31 |
+| success / warning / error icon on solid (on glass: `-text`, row above) | 3.38 / 3.97 / 4.23 | 4.96 / 6.06 / 3.96 |
+| accent icon (unboxed) on strong | 4.28 | 4.31 |
 | tooltip text / keys | 16.73 / 6.82 | 13.62 / 5.55 |
 | white glyph on close hover | 5.66 | 5.66 |
 | disabled on solid (exempt) | 3.88 | 2.71 |
 
 Document layer: iris-500 on white page 5.37. **Fails, never use:** white on iris-400 3.51, `#D98A1F` text 2.76, ink-60
-on iris-200 3.93, iris-500 text on canvas 4.45, iris-300 text in light 2.88.
+on iris-200 3.93, iris-500 text on canvas 4.45, iris-300 text in light 2.88, success-icon on light glass 2.73,
+muted on light field a (`#C6C7FB`) 3.81 (hence the 240 px band), control border on a tinted `--surface-strong` < 3 (2.93 already at `#F8F8FF` base).
 
 ## 5. Brand
 

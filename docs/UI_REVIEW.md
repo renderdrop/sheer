@@ -7,7 +7,7 @@ no dependencies, no change to `tauri.conf.json` or capabilities. Output goes to 
 ## Start / stop
 
 ```
-bash scripts/ui/dev.sh        # npm run tauri dev with WebView2 DevTools on 127.0.0.1:9222
+node scripts/ui/dev.mjs       # or bash scripts/ui/dev.sh: npm run tauri dev with WebView2 DevTools on 127.0.0.1:9222
 ```
 Stop with Ctrl+C, or `taskkill /F /IM sheer.exe` and then end the vite/tauri processes when run in the background.
 

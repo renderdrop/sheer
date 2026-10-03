@@ -28,7 +28,10 @@
 /* 2. Namespaced tokens. Light values; the dark and solid blocks below override them on :root. */
 @theme static {
   /* Color roles (DESIGN 1.2). --color-bg is a gradient, so it lives in :root and has the bg-bg utility below. */
-  --color-canvas: #e8e9f6;
+  --color-canvas: #ecedfc;
+  /* Scrollbar thumb on a transparent track (DESIGN 1.11). */
+  --color-scrollbar: rgba(58, 58, 171, 0.28);
+  --color-scrollbar-hover: rgba(58, 58, 171, 0.44);
   --color-text: var(--ink);
   --color-text-muted: var(--ink-60);
   --color-text-accent: var(--iris-700);
@@ -72,16 +75,16 @@
   --color-doc-hit: rgba(91, 91, 214, 0.28);
 
   /* Shadows (DESIGN 1.3). */
-  --shadow-1: 0 1px 2px rgba(28, 28, 46, 0.06), 0 8px 32px rgba(28, 28, 46, 0.08);
-  --shadow-2: 0 2px 6px rgba(28, 28, 46, 0.08), 0 12px 40px rgba(28, 28, 46, 0.16);
-  --shadow-3: 0 24px 64px rgba(28, 28, 46, 0.24);
+  --shadow-1: 0 1px 2px rgba(58, 58, 171, 0.06), 0 8px 32px rgba(91, 91, 214, 0.12);
+  --shadow-2: 0 2px 6px rgba(58, 58, 171, 0.08), 0 12px 40px rgba(91, 91, 214, 0.16);
+  --shadow-3: 0 24px 64px rgba(58, 58, 171, 0.24);
 
   /* Radii (DESIGN 1.4). Concentric: inner = outer - padding. */
   --radius-xs: 4px;
   --radius-sm: 8px;
   --radius-button: 12px;
   --radius-panel: 16px;
-  --radius-card: 20px;
+  --radius-card: 24px;
   --radius-pill: 999px;
 
   /* Spacing: p-1 is --space-1 (8px), not Tailwind's 4px. 8-pt grid; 4 and 12 only inside controls (DESIGN 1.4). */
@@ -127,6 +130,10 @@
   --spacing-canvas-min: var(--canvas-min);
   --spacing-empty-max: var(--empty-max-width);
   --spacing-scrim: var(--scrim-height);
+  /* Empty-state logo (DESIGN 3.11): size-logo-hero and h-logo-slot (the ground shadow is the logo-ground utility). */
+  --spacing-logo-hero: var(--logo-hero);
+  --spacing-logo-slot: var(--logo-slot);
+  --spacing-pill: var(--pill-height);
 
   /* Type (DESIGN 1.5). Size / line height, weight and tracking per step. Weights are 400 and 600 only. */
   --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
@@ -157,6 +164,7 @@
   --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
   --ease-in: cubic-bezier(0.4, 0, 1, 1);
   --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --ease-float: cubic-bezier(0.37, 0, 0.63, 1); /* sine in-out: the empty-state float only (DESIGN 1.10) */
   --default-transition-duration: var(--motion-fast);
   --default-transition-timing-function: var(--ease-out);
 }
@@ -184,16 +192,25 @@
   --error: #d64b4b;
 
   /* Roles that are not a plain color token: bg-bg and bg-win-close are utilities at the end of this file. */
-  --color-bg: linear-gradient(135deg, #f4f5ff, #fafaff);
+  --color-bg: var(--bg-fields), var(--bg-gradient);
+  --bg-gradient: linear-gradient(135deg, #e1e2ff, #f4f5ff);
+  /* Three static light fields (DESIGN 1.10): they give the glass something to frost. Field a ends 240 px below the top. */
+  --bg-field-a: radial-gradient(ellipse 720px 240px at 8% 0%, rgba(142, 142, 242, 0.32), transparent);
+  --bg-field-b: radial-gradient(ellipse 560px 200px at 72% 0%, rgba(255, 255, 255, 0.85), transparent);
+  --bg-field-c: radial-gradient(ellipse 480px 360px at 0% 100%, rgba(201, 202, 255, 0.4), transparent);
+  --bg-fields: var(--bg-field-a), var(--bg-field-b), var(--bg-field-c);
   --win-close-hover: #c42b1c;
 
   /* Glass (DESIGN 1.3). --surface goes over --color-bg only, --surface-strong over page content. */
-  --surface: rgba(255, 255, 255, 0.72);
+  --surface: rgba(244, 245, 255, 0.66);
   --surface-strong: rgba(255, 255, 255, 0.9);
   --surface-solid: #ffffff;
-  --glass-filter: blur(24px) saturate(140%);
-  --glass-edge: inset 0 0 0 1px rgba(255, 255, 255, 0.6);
+  --surface-fallback: #f8f8ff; /* G1 in solid mode */
+  --glass-filter: blur(24px) saturate(160%);
+  --glass-edge: inset 0 1px 0 rgba(255, 255, 255, 0.9), inset 0 0 0 1px rgba(255, 255, 255, 0.55);
   --page-shadow: var(--shadow-1);
+  /* The canvas's own inset edge (DESIGN 1.2, 1.11); paint, so solid mode keeps it. */
+  --canvas-edge: inset 0 1px 0 rgba(255, 255, 255, 0.7), inset 0 0 0 1px rgba(91, 91, 214, 0.08);
 
   /* Spacing (DESIGN 1.4). */
   --space-0-5: 4px;
@@ -246,15 +263,27 @@
   --chrome-inset-mac: 80px; /* leading inset of the toolbar row for the macOS traffic lights; 8 in full screen */
   --inspector-width: 288px;
   --canvas-min: 360px;
+  --scrollbar-size: 8px;
+  --scrollbar-inset: 2px;
   --empty-max-width: 560px; /* the empty state's column */
   /* Scroll-edge scrim (DESIGN 2): 24 px in all, the first 8 solid canvas color, the rest a fade. */
   --scrim-height: 24px;
   --scrim-solid: 8px;
+  /* Empty-state logo (DESIGN 3.11): 160 in a 184 slot, so the float stays inside it. Ground shadow 96 x 8. */
+  --pill-height: 20px; /* pill badges (DESIGN 1.10) */
+  --logo-hero: 160px;
+  --logo-slot: 184px;
+  --logo-ground-width: 96px;
+  --logo-ground-height: 8px;
+  --ground-shadow: radial-gradient(closest-side, rgba(91, 91, 214, 0.24), transparent);
 
   /* Motion (DESIGN 1.6). */
   --motion-fast: 150ms;
   --motion-base: 200ms;
   --motion-slow: 250ms;
+  /* The empty-state logo's float, the one ambient motion of the app (DESIGN 1.10). Reduced motion: distance 0. */
+  --float-distance: 8px;
+  --float-duration: 3000ms; /* per direction: a 6 s cycle */
   /* Transform amounts of states and entrances (DESIGN 3.0, 3.5, 3.12). Reduced motion resets them (section 6). */
   --scale-press: 0.97;
   --scale-enter: 0.96;
@@ -277,8 +306,16 @@
 /* 4a. Dark: the OS is dark and html[data-theme="light"] is not set. Keep identical to 4b (tokens.test.ts checks). */
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
-    --color-bg: linear-gradient(135deg, #0f1020, #15162b);
-    --color-canvas: #0b0c18;
+    --bg-gradient: linear-gradient(135deg, #1c1d40, #0f1020);
+    --bg-field-a: radial-gradient(ellipse 720px 240px at 8% 0%, rgba(91, 91, 214, 0.28), transparent);
+    --bg-field-b: radial-gradient(ellipse 560px 200px at 72% 0%, rgba(142, 142, 242, 0.1), transparent);
+    --bg-field-c: radial-gradient(ellipse 480px 360px at 0% 100%, rgba(58, 58, 171, 0.3), transparent);
+    --ground-shadow: radial-gradient(closest-side, rgba(0, 0, 0, 0.48), transparent);
+    --color-canvas: #111226;
+    --canvas-edge: inset 0 0 0 1px rgba(255, 255, 255, 0.06);
+    --color-scrollbar: rgba(201, 202, 255, 0.24);
+    --color-scrollbar-hover: rgba(201, 202, 255, 0.4);
+    --page-shadow: 0 0 0 1px rgba(255, 255, 255, 0.08), 0 8px 24px rgba(0, 0, 0, 0.56);
     --color-text: #ffffff;
     --color-text-muted: var(--ink-40);
     --color-text-accent: var(--iris-200);
@@ -301,10 +338,11 @@
     --color-success-text: #7fd8aa;
     --color-warning-text: #f5c26b;
     --color-error-text: #ff9a9a;
-    --surface: rgba(28, 28, 46, 0.62);
+    --surface: rgba(30, 30, 58, 0.6);
+    --surface-fallback: #1e1e3a;
     --surface-strong: rgba(28, 28, 46, 0.9);
     --surface-solid: #1c1c2e;
-    --glass-edge: inset 0 0 0 1px rgba(255, 255, 255, 0.12);
+    --glass-edge: inset 0 1px 0 rgba(255, 255, 255, 0.14), inset 0 0 0 1px rgba(255, 255, 255, 0.1);
     --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.24), 0 8px 32px rgba(0, 0, 0, 0.32);
     --shadow-2: 0 2px 6px rgba(0, 0, 0, 0.32), 0 12px 40px rgba(0, 0, 0, 0.48);
     --shadow-3: 0 24px 64px rgba(0, 0, 0, 0.56);
@@ -313,8 +351,16 @@
 
 /* 4b. Dark by choice (Settings: Theme: Dark), whatever the OS says. */
 :root[data-theme="dark"] {
-  --color-bg: linear-gradient(135deg, #0f1020, #15162b);
-  --color-canvas: #0b0c18;
+  --bg-gradient: linear-gradient(135deg, #1c1d40, #0f1020);
+  --bg-field-a: radial-gradient(ellipse 720px 240px at 8% 0%, rgba(91, 91, 214, 0.28), transparent);
+  --bg-field-b: radial-gradient(ellipse 560px 200px at 72% 0%, rgba(142, 142, 242, 0.1), transparent);
+  --bg-field-c: radial-gradient(ellipse 480px 360px at 0% 100%, rgba(58, 58, 171, 0.3), transparent);
+  --ground-shadow: radial-gradient(closest-side, rgba(0, 0, 0, 0.48), transparent);
+  --color-canvas: #111226;
+  --canvas-edge: inset 0 0 0 1px rgba(255, 255, 255, 0.06);
+  --color-scrollbar: rgba(201, 202, 255, 0.24);
+  --color-scrollbar-hover: rgba(201, 202, 255, 0.4);
+  --page-shadow: 0 0 0 1px rgba(255, 255, 255, 0.08), 0 8px 24px rgba(0, 0, 0, 0.56);
   --color-text: #ffffff;
   --color-text-muted: var(--ink-40);
   --color-text-accent: var(--iris-200);
@@ -337,10 +383,11 @@
   --color-success-text: #7fd8aa;
   --color-warning-text: #f5c26b;
   --color-error-text: #ff9a9a;
-  --surface: rgba(28, 28, 46, 0.62);
+  --surface: rgba(30, 30, 58, 0.6);
+  --surface-fallback: #1e1e3a;
   --surface-strong: rgba(28, 28, 46, 0.9);
   --surface-solid: #1c1c2e;
-  --glass-edge: inset 0 0 0 1px rgba(255, 255, 255, 0.12);
+  --glass-edge: inset 0 1px 0 rgba(255, 255, 255, 0.14), inset 0 0 0 1px rgba(255, 255, 255, 0.1);
   --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.24), 0 8px 32px rgba(0, 0, 0, 0.32);
   --shadow-2: 0 2px 6px rgba(0, 0, 0, 0.32), 0 12px 40px rgba(0, 0, 0, 0.48);
   --shadow-3: 0 24px 64px rgba(0, 0, 0, 0.56);
@@ -379,8 +426,9 @@
  */
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
   :root:root {
-    --surface: var(--surface-solid);
+    --surface: var(--surface-fallback);
     --surface-strong: var(--surface-solid);
+    --bg-fields: none;
     --glass-filter: none;
     --glass-edge: inset 0 0 0 var(--hairline) var(--color-divider);
   }
@@ -388,16 +436,18 @@
 
 @media (prefers-reduced-transparency: reduce) {
   :root:root {
-    --surface: var(--surface-solid);
+    --surface: var(--surface-fallback);
     --surface-strong: var(--surface-solid);
+    --bg-fields: none;
     --glass-filter: none;
     --glass-edge: inset 0 0 0 var(--hairline) var(--color-divider);
   }
 }
 
 :root[data-transparency="reduced"] {
-  --surface: var(--surface-solid);
+  --surface: var(--surface-fallback);
   --surface-strong: var(--surface-solid);
+  --bg-fields: none;
   --glass-filter: none;
   --glass-edge: inset 0 0 0 var(--hairline) var(--color-divider);
 }
@@ -405,13 +455,22 @@
 /* Forced colors: system colors throughout, focus is Highlight. State never relies on color alone (DESIGN rules). */
 @media (forced-colors: active) {
   :root:root {
-    --surface: var(--surface-solid);
+    --surface: var(--surface-fallback);
     --surface-strong: var(--surface-solid);
+    --bg-fields: none;
     --glass-filter: none;
     --glass-edge: inset 0 0 0 var(--hairline) var(--color-divider);
     --surface-solid: Canvas;
     --color-bg: Canvas;
+    --surface-fallback: Canvas;
+    /* No shadows (DESIGN 1.3): a transparent one keeps the box-shadow lists of the glass recipes valid. */
+    --shadow-1: 0 0 transparent;
+    --shadow-2: 0 0 transparent;
+    --shadow-3: 0 0 transparent;
+    --ground-shadow: none;
     --color-canvas: Canvas;
+    --canvas-edge: inset 0 0 transparent;
+    --page-shadow: 0 0 transparent;
     --color-page: Canvas;
     --color-text: CanvasText;
     --color-text-muted: CanvasText;
@@ -460,6 +519,7 @@
     --scale-enter: 1;
     --scale-thumb: 1;
     --offset-enter: 0px;
+    --float-distance: 0px;
   }
 
   *,
@@ -478,7 +538,8 @@
    * then takes its tracks away in one step, after that fade (a transition of no duration that starts 150 ms late), where
    * the 250 ms slide of the tracks is off. Restoring the panel gives it its tracks at once and it fades in on them.
    */
-  [data-layout][data-animating][data-left="collapsed"] {
+  [data-layout][data-animating="left"][data-left="collapsed"],
+  [data-layout][data-animating="inspector"][data-inspector="closed"] {
     transition-property: grid-template-columns !important;
     transition-duration: 0s !important;
     transition-delay: var(--motion-fast) !important;
@@ -501,6 +562,37 @@
     font-weight: var(--font-weight-normal);
     line-height: var(--text-md--line-height);
     font-variant-numeric: tabular-nums;
+  }
+
+  /* DESIGN 1.11: thin token-coloured thumbs on a transparent track, everywhere. Forced colors keeps native bars. */
+  @media not (forced-colors: active) {
+    * {
+      scrollbar-width: thin;
+      scrollbar-color: var(--color-scrollbar) transparent;
+    }
+
+    /* WKWebView fallback. */
+    ::-webkit-scrollbar {
+      width: var(--scrollbar-size);
+      height: var(--scrollbar-size);
+      background: transparent;
+    }
+
+    ::-webkit-scrollbar-track,
+    ::-webkit-scrollbar-corner {
+      background: transparent;
+    }
+
+    ::-webkit-scrollbar-thumb {
+      background-color: var(--color-scrollbar);
+      background-clip: padding-box;
+      border: var(--scrollbar-inset) solid transparent;
+      border-radius: var(--radius-pill);
+    }
+
+    ::-webkit-scrollbar-thumb:hover {
+      background-color: var(--color-scrollbar-hover);
+    }
   }
 
   /* DESIGN 3.0: 2 px focus outline, offset 2, follows the radius. */
@@ -565,9 +657,84 @@
   background: linear-gradient(to bottom, var(--color-canvas) var(--scrim-solid), transparent);
 }
 
+/* The canvas: its colour and inset edge (DESIGN 1.2). */
+@utility surface-canvas {
+  background: var(--color-canvas);
+  box-shadow: var(--canvas-edge);
+}
+
 /* A page of the document: white in both themes, with the page shadow. */
 @utility shadow-page {
   box-shadow: var(--page-shadow);
+}
+
+/*
+ * The empty-state logo (DESIGN 1.10, 3.11). Transform and opacity only. The float starts after the 250 ms entry and runs on
+ * the sheet and its ground shadow with the same timing. Reduced motion removes every animation (section 6), so the sheet
+ * rests at 0 with the static ground shadow. The component sets data-paused while the document is hidden.
+ */
+@keyframes logo-enter {
+  from {
+    opacity: 0;
+    transform: scale(var(--scale-enter));
+  }
+
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes float {
+  from {
+    transform: translateY(0);
+  }
+
+  to {
+    transform: translateY(calc(-1 * var(--float-distance)));
+  }
+}
+
+@keyframes float-shadow {
+  from {
+    transform: scale(1);
+    opacity: 1;
+  }
+
+  to {
+    transform: scale(0.88);
+    opacity: 0.7;
+  }
+}
+
+@utility logo-float {
+  will-change: transform;
+  animation:
+    logo-enter var(--motion-slow) var(--ease-spring) both,
+    float var(--float-duration) var(--ease-float) var(--motion-slow) infinite alternate;
+
+  &[data-paused] {
+    animation-play-state: paused;
+  }
+
+  @media (forced-colors: active) {
+    forced-color-adjust: none;
+  }
+}
+
+@utility logo-ground {
+  width: var(--logo-ground-width);
+  height: var(--logo-ground-height);
+  background: var(--ground-shadow);
+  animation: float-shadow var(--float-duration) var(--ease-float) var(--motion-slow) infinite alternate;
+
+  &[data-paused] {
+    animation-play-state: paused;
+  }
+
+  @media (forced-colors: active) {
+    display: none;
+  }
 }
 
 /* Elevation layers (DESIGN 1.7). */

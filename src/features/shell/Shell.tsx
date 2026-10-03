@@ -12,7 +12,7 @@ import { BannerRow } from './Banner';
 import { CaptionBar } from './CaptionBar';
 import { EmptyStateSlot } from './EmptyStateSlot';
 import { useWindowState } from './hooks';
-import { Inspector } from './Inspector';
+import { InspectorSlot } from './Inspector';
 import { LeftPanelSlot } from './LeftPanel';
 import { LeftPanelSplitter, MainGrid } from './MainGrid';
 import { ToolbarSlot } from './ToolbarSlot';
@@ -100,7 +100,7 @@ export function Shell() {
             <LeftPanelSlot present={!structure.leftCollapsed} id={leftPanelId} style={slots.left} />
             <LeftPanelSplitter controls={leftPanelId} collapsed={structure.leftCollapsed} style={slots.splitter} />
             <ViewerCanvas style={slots.canvas} />
-            {structure.inspectorReserved && <Inspector visible={structure.inspectorVisible} style={slots.inspector} />}
+            <InspectorSlot present={structure.inspectorReserved} style={slots.inspector} />
           </>
         ) : (
           <EmptyStateSlot platform={platform} style={slots.canvas} />

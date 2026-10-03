@@ -76,14 +76,14 @@ describe('useShellStructure', () => {
     expect(renders()).toBe(first);
     expect(result.current).toBe(rest);
 
+    // Nothing is reserved for a hidden inspector, so even 1280 is no change.
     resizeTo(1280);
-    expect(renders()).toBe(first + 1);
-    expect(result.current.inspectorReserved).toBe(true);
     for (const width of [1300, 1800, 2400]) resizeTo(width);
-    expect(renders()).toBe(first + 1);
+    expect(renders()).toBe(first);
+    expect(result.current.inspectorReserved).toBe(false);
 
     act(() => useUi.getState().setLeftPanelCollapsed(true));
-    expect(renders()).toBe(first + 2);
+    expect(renders()).toBe(first + 1);
     expect(result.current.leftCollapsed).toBe(true);
     act(() => useUi.getState().setLeftPanelCollapsed(false));
 
@@ -92,6 +92,7 @@ describe('useShellStructure', () => {
     act(() => useUi.getState().selectTool('highlight'));
     expect(renders()).toBe(before + 1);
     expect(result.current.inspectorVisible).toBe(true);
+    expect(result.current.inspectorReserved).toBe(true);
     // Another tool changes nothing in the structure.
     act(() => useUi.getState().selectTool('draw'));
     expect(renders()).toBe(before + 1);
@@ -116,6 +117,8 @@ describe('useShellStructure', () => {
     expect(readShellStructure().mode).toBe('document');
     expect(readShellStructure().inspectorReserved).toBe(false);
     resizeTo(1400);
+    expect(readShellStructure().inspectorReserved).toBe(false);
+    useUi.setState({ inspector: 'open' });
     expect(readShellStructure().inspectorReserved).toBe(true);
     useUi.setState({ leftPanelCollapsed: true });
     expect(readShellStructure().leftCollapsed).toBe(true);

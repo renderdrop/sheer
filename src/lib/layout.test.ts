@@ -17,11 +17,10 @@ const base: LayoutInput = {
 };
 
 const layout = (overrides: Partial<LayoutInput> = {}) => computeShellLayout({ ...base, ...overrides });
-const slots = (overrides: Partial<LayoutInput> = {}) => layout(overrides).tracks.map((track) => track.slot);
 
 describe('the columns of DESIGN 2', () => {
   it('with a document: 8 | left | splitter 8 | canvas | 8 | inspector 288 | 8, as tracks of tokens', () => {
-    const wide = layout({ windowWidth: 1280 });
+    const wide = layout({ windowWidth: 1280, inspector: 'open' });
     expect(wide.mode).toBe('document');
     expect(wide.tracks).toEqual([
       { slot: 'gutter-start', size: 'var(--space-1)' },
@@ -47,9 +46,10 @@ describe('the columns of DESIGN 2', () => {
   });
 
   it('the canvas width is what is left of the window after the other tracks', () => {
-    // 1280 - 8 - 248 - 8 - 8 - 288 - 8
-    expect(layout({ windowWidth: 1280 }).canvasWidth).toBe(712);
-    // No inspector track below 1280: 1100 - 8 - 248 - 8 - 8
+    // 1280 - 8 - 248 - 8 - 8 - 288 - 8, the inspector open
+    expect(layout({ windowWidth: 1280, inspector: 'open' }).canvasWidth).toBe(712);
+    // Nothing is reserved for a hidden inspector (F2 review): 1280 - 8 - 248 - 8 - 8
+    expect(layout({ windowWidth: 1280 }).canvasWidth).toBe(1008);
     expect(layout().canvasWidth).toBe(828);
     // The minimum window, default panel, no inspector: 960 - 8 - 248 - 8 - 8
     expect(layout({ windowWidth: 960 }).canvasWidth).toBe(688);
@@ -105,7 +105,9 @@ describe('the left panel', () => {
       left: 2,
       splitter: 3,
       canvas: 4,
-      'gutter-end': 5,
+      gap: 5,
+      inspector: 6,
+      'gutter-end': 7,
     });
   });
 
@@ -159,43 +161,56 @@ describe('the left panel', () => {
 });
 
 describe('the inspector', () => {
-  it('from 1280 px its track is reserved while a document is open, so the canvas never shifts', () => {
-    const quiet = layout({ windowWidth: 1280 });
-    const withTool = layout({ windowWidth: 1280, inspectorContent: true });
-    expect(quiet.inspectorReserved).toBe(true);
-    expect(quiet.inspectorVisible).toBe(false);
-    expect(withTool.inspectorVisible).toBe(true);
-    // Appearing changes neither the tracks nor the canvas.
-    expect(withTool.columns).toBe(quiet.columns);
-    expect(withTool.canvasWidth).toBe(quiet.canvasWidth);
-    // 1279 is the last width without a reserved track.
-    expect(layout({ windowWidth: 1279 }).inspectorReserved).toBe(false);
-    expect(layout({ windowWidth: LAYOUT.inspectorReserveFrom }).inspectorReserved).toBe(true);
+  it('in auto mode nothing is reserved while nothing is selected and Select is active: the canvas reaches the trailing gutter', () => {
+    for (const windowWidth of [960, 1279, 1280, 1600]) {
+      const quiet = layout({ windowWidth });
+      expect(quiet.inspectorReserved, String(windowWidth)).toBe(false);
+      expect(quiet.inspectorVisible, String(windowWidth)).toBe(false);
+      // The gap and the track stay in the list at size 0, so the browser can animate them.
+      expect(quiet.tracks.slice(-3).map((track) => track.size)).toEqual([
+        'var(--spacing-0)',
+        'var(--spacing-0)',
+        'var(--space-1)',
+      ]);
+    }
+    // 1280 - 8 - 248 - 8 - 8
+    expect(layout({ windowWidth: 1280 }).canvasWidth).toBe(1008);
   });
 
-  it('between 960 and 1279 the track exists only through the toggle, and a selection or tool does not open it', () => {
+  it('from 1280 px a selection or tool opens the track; the canvas gives its width to it', () => {
+    const quiet = layout({ windowWidth: 1280 });
+    const withTool = layout({ windowWidth: 1280, inspectorContent: true });
+    expect(withTool.inspectorReserved).toBe(true);
+    expect(withTool.inspectorVisible).toBe(true);
+    // The list keeps its shape: the same slots in the same columns, so the browser can slide between the two.
+    expect(withTool.column).toEqual(quiet.column);
+    expect(withTool.tracks.map((track) => track.slot)).toEqual(quiet.tracks.map((track) => track.slot));
+    expect(withTool.canvasWidth).toBe(quiet.canvasWidth - LAYOUT.gutter - LAYOUT.inspector);
+  });
+
+  it('below 1280 the track exists only through the toggle, and a selection or tool does not open it', () => {
     for (const windowWidth of [960, 1100, 1279]) {
       const auto = layout({ windowWidth, inspectorContent: true });
       expect(auto.inspectorReserved, String(windowWidth)).toBe(false);
       expect(auto.inspectorVisible, String(windowWidth)).toBe(false);
-      expect(slots({ windowWidth, inspectorContent: true })).not.toContain('inspector');
 
       const open = layout({ windowWidth, inspector: 'open' });
       expect(open.inspectorReserved, String(windowWidth)).toBe(true);
       expect(open.inspectorVisible, String(windowWidth)).toBe(true);
-      expect(slots({ windowWidth, inspector: 'open' })).toContain('inspector');
+      expect(open.tracks.find((track) => track.slot === 'inspector')?.size).toBe('var(--inspector-width)');
     }
   });
 
-  it('hidden: the track and the gap go', () => {
-    expect(slots({ windowWidth: 1100 })).toEqual(['gutter-start', 'left', 'splitter', 'canvas', 'gutter-end']);
+  it('hidden: the gap and the track take no room', () => {
+    expect(layout({ windowWidth: 1100 }).columns).toBe(
+      'var(--space-1) 248px var(--splitter-width) minmax(var(--canvas-min), 1fr) var(--spacing-0) var(--spacing-0) var(--space-1)',
+    );
   });
 
-  it('"closed" at 1280 and more keeps the track (the canvas does not shift) but hides the panel', () => {
+  it('"closed" hides the panel and reserves nothing, at any width', () => {
     const closed = layout({ windowWidth: 1400, inspector: 'closed', inspectorContent: true });
-    expect(closed.inspectorReserved).toBe(true);
+    expect(closed.inspectorReserved).toBe(false);
     expect(closed.inspectorVisible).toBe(false);
-    // Below 1280 "closed" has no track at all.
     expect(layout({ windowWidth: 1100, inspector: 'closed' }).inspectorReserved).toBe(false);
   });
 
@@ -296,7 +311,9 @@ describe('the structure and the tracks, which the shell follows separately', () 
     const at = (windowWidth: number) => shellStructure({ ...base, windowWidth });
     expect(at(1000)).toEqual(at(1279));
     expect(at(1280)).toEqual(at(2400));
-    expect(at(1279)).not.toEqual(at(1280));
+    expect(shellStructure({ ...base, windowWidth: 1279, inspectorContent: true })).not.toEqual(
+      shellStructure({ ...base, windowWidth: 1280, inspectorContent: true }),
+    );
     for (const value of Object.values(at(1100))) expect(['string', 'boolean']).toContain(typeof value);
   });
 
@@ -309,7 +326,7 @@ describe('the structure and the tracks, which the shell follows separately', () 
   });
 
   it('the tracks follow the panel width and the structure, and the slots sit where they sat for any width', () => {
-    const structure = shellStructure({ ...base, windowWidth: 1280 });
+    const structure = shellStructure({ ...base, windowWidth: 1280, inspector: 'open' });
     const narrow = shellTracks(structure, PANEL.min);
     const wide = shellTracks(structure, PANEL.max);
     expect(narrow.columns).toContain(`${PANEL.min}px`);

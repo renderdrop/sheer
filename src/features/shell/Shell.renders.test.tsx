@@ -323,13 +323,10 @@ describe('what changes often does not render the shell, the toolbar or the left 
     for (const width of [1110, 1150, 1200, 1279]) resizeTo(width);
     expect(counts()).toEqual(before);
 
-    // From 1280 the inspector's track is reserved: the structure of the shell changes, so the shell renders. What the
-    // toolbar shows and what the left panel is have not changed, so neither renders.
+    // The inspector reserves nothing without a selection or tool, so crossing 1280 changes nothing either.
     resizeTo(1280);
-    expect(renders.shell).toBeGreaterThan(before.shell);
-    expect(screen.getByRole('complementary', { name: 'Inspector', hidden: true })).not.toBeNull();
-    expect(renders.toolbar).toBe(before.toolbar);
-    expect(renders.leftPanel).toBe(before.leftPanel);
+    expect(counts()).toEqual(before);
+    expect(screen.queryByRole('complementary', { name: 'Inspector', hidden: true })).toBeNull();
 
     const wide = counts();
     for (const width of [1300, 1500, 1920, 2400]) resizeTo(width);

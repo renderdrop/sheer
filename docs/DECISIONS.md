@@ -634,3 +634,64 @@ hostile (SECURITY P2, P3, P5, P7): a bookmark tree that is a cycle, a million si
 **Consequences.** A page that is rotated by an angle that is not a multiple of 180° in its text (not its `/Rotate`) gets one rectangle per character for a hit. Text in right-to-left order is
 searched in PDFium's logical order. A page with more than 1 000 000 characters is searched only in its first million. `FPDF_GetSignatureCount` is not called for a document without a form, so
 a signature in a document with no AcroForm (malformed) is not reported. The UI's selection of text, the search panel, the outline panel and the link layer are separate items (M1 items 4–6).
+
+---
+
+## ADR-020 — Mood: visible gradient, tinted glass
+
+**Status:** accepted (2026-10-03). Product-owner feedback F2 (`docs/FEEDBACK.md`). Overrules ORCHESTRATOR_PROMPT §3 "gradient barely visible";
+amends ADR-011 and ADR-012 where named. Spec: `docs/DESIGN.md` §1.2, §1.3, §1.10, §3.10–3.12, §4.
+
+**Context.** The product owner finds the app "grey, empty and lifeless". The background gradient (`#F4F5FF → #FAFAFF`) is invisible,
+the glass is near-white over near-white, so translucency never reads, shadows are grey, and the empty state is a lone card.
+The target mood: soft light gradient, translucent cards with large radii and a thin light inner edge, icons in small
+rounded tiles, pill badges, white space, in one hue (Iris). Blur over a smooth gradient shows nothing, so a visible
+gradient alone does not make glass visible.
+
+**Decision.**
+
+1. **Background:** 135° iris-100 → iris-50 (dark `#1C1D40 → #0F1020`), plus three static light fields in the background
+   layer (Iris top left, white top right, pale Iris bottom left) that give the toolbar row and the panels something to
+   frost. Fields end 240 px below the window top; text placed directly on the background stays below that band.
+2. **Tinted glass:** `--surface` iris-50-based at .66 (dark `#1E1E3A` at .60), `saturate(160%)`, a top-lit two-part inner
+   edge. `--surface-strong` and solid dialogs stay neutral (a tint over pages is invisible and breaks the 3:1 border).
+3. **Iris shadows** in light (iris-500 at 12 % for G1's main shadow); dark keeps black.
+4. **Tiles and pills:** accent icons in iris-100 tiles (toast, info banner); "Edited" and the Open shortcut as pill badges.
+   Semantic icons on glass use their `-text` colors.
+5. **Empty state:** the full logo at 160 px in its own 184 px slot as the focal point, floating 8 px on a 6 s sine cycle;
+   the card loses its icon tile, gains radius 24 (`--radius-card`) and padding 40.
+6. **Fallbacks:** solid mode → `--surface-fallback` (`#F8F8FF` / `#1E1E3A`), fields off, gradient kept; forced colors →
+   system colors, no gradient, no shadows; reduced motion → no float.
+
+**Consequences.** Worst-case contrast drops but stays AA: muted text on light glass 4.99 (was 6.03), on the background
+4.67; control border on light glass 3.14; all recomputed in DESIGN §4. Blur now costs a visible effect on the toolbar and
+panels; it stays off the canvas and never animates. The float is the only infinite animation; it runs only on the
+empty state, compositor-only, paused when the window is hidden. `tokens.css` and `tokens.test.ts` gain the tokens listed
+in DESIGN §1.10. Acceptance per F2: Tauri-window screenshots, light and dark, empty state and document, designer PASS.
+
+
+**Addendum (2026-10-03, designer review of Tauri-window screenshots).** The document view kept the grey look the empty state lost:
+native scrollbars, a flat canvas, a dark canvas like a hole, no page edge in dark, and an empty inspector column at ≥ 1280 px. Hence:
+thin token-coloured scrollbars everywhere (native under forced colors; DESIGN §1.11), `--color-canvas` #ECEDFC / #111226 with a
+`--canvas-edge` inset, a dark `--page-shadow` with a 1 px light ring, and the inspector track is no longer reserved in `auto` mode:
+it opens (and closes) with the left panel's grid-track transition when there is a selection or a tool other than Select (DESIGN §2.4).
+---
+
+## ADR-021 — Visual review from the real Tauri window (dev tooling)
+
+**Status:** accepted (2026-10-03)
+
+**Context.** The product owner judges the look in the app, not in a browser tab: F2 and F3 are accepted by screenshots and a
+screen recording of the Tauri window, and every milestone now needs a designer verdict on such screenshots (ORCHESTRATOR §8.6).
+A browser preview misses WebView2's rendering, the native caption, the backend (no documents) and the real frame pacing.
+
+**Decision.** `scripts/ui/` (Windows; macOS waits for B-001), dev only, no dependencies, nothing shipped (`docs/UI_REVIEW.md`):
+`dev.sh` runs `tauri dev` with `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS=--remote-debugging-port=9222` (loopback, this process only,
+never in `tauri.conf.json` or a release build); `cdp.mjs` drives the window over that port (evaluate, theme, frame-time
+statistics from `requestAnimationFrame`); `shot.ps1`/`record.ps1` capture the window itself with `PrintWindow`
+(`PW_RENDERFULLCONTENT`), at a fixed ~1280×800 client size, into the git-ignored `review/`. A document is opened as the OS does
+it: a second launch of the debug binary with the path, which single-instance forwards. Verdicts are PASS/FIX by the `designer`,
+who reads the PNGs. Frame pacing is measured in the page (`cdp.mjs fps`), because `PrintWindow` caps a recording at ~10–20 fps.
+
+**Consequences.** The `fetch(`/`WebSocket` hits in `scripts/ui/cdp.mjs` are loopback CDP in a dev script, not app networking
+(rule 4 concerns the product). Captures show the window content, not OS material behind it.
