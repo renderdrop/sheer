@@ -22,7 +22,7 @@ It is open source and runs **entirely on your device**: no account, no login, no
 | M2 Comment and markup | 0.5.0 | done | Highlight, underline, strikethrough, sticky notes, free text, freehand ink, shapes, comments panel with threads, undo/redo, save with a backup of the original |
 | M3 Organize pages | 0.6.0 | done | Page grid with drag and keyboard reorder, rotate, delete, insert, extract, merge, split, compress |
 | M4 Forms and signature | 0.7.0 | done | Fill AcroForms, flatten, signatures (draw, type, image) with initials and date, Fill & Sign for flat forms, signature library encrypted at rest |
-| M5 Edit and protect | 0.8.0 | planned | Text boxes and images, crop, true redaction, password protection (AES-256), metadata |
+| M5 Edit and protect | 0.8.0 | done | Text boxes and images, crop, true redaction, password protection (AES-256), metadata |
 | M6 Convert and output | 0.9.0 | planned | PDF to PNG/JPG, images to PDF, print, export with or without annotations |
 | M7 Polish and ship | 1.0.0 | planned | Performance, accessibility, crash-safe autosave, signed installers, opt-in signed updater |
 

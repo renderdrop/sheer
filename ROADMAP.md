@@ -159,6 +159,11 @@ The Stop hook picks the first open `- [ ]` line, so order matters. Scope: `docs/
 - [ ] Images → PDF
 - [ ] Print via native dialog
 - [ ] Export with/without annotations, optional metadata removal
+- [ ] Politur M6
+  - (from M5 design review, major) page gutter at 100 %: the horizontal scrollbar sits right under the page
+  - (from M5 design review, minor) DESIGN §1.11/§3.11 still say logo 160 in a 184 slot (tokens: 104/128 on short windows); empty state top-heavy at 800 px (equal top/bottom padding); dark canvas around the page near-black vs window background (§1.10); thumbnail panel bottom padding
+  - (from M4 security, low) style-src unsafe-inline (nonces/classes)
+  - (v1.1) crop units from the OS measurement system
 
 ## M7 — Polish and ship (v1.0.0)
 

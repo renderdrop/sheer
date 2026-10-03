@@ -6,6 +6,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-10-04
+
+M5 — Edit and protect.
+
+### Added
+
+- Text boxes and images (Edit cluster: Add text E, Add image I): place, move, resize, align, multi-select; text laid out in Rust with the standard Helvetica/Times/Courier fonts (WinAnsi), images re-encoded without metadata; both stay editable until save and are then written into the page content, text stays selectable.
+- Crop (K): crop rectangle with handles and numeric margins for the current page, all pages or a range; reset; one undo step; crop hides content, it does not remove it.
+- True redaction: mark areas, text or all search results, review the marks, apply: affected pages are rasterised at 200 dpi with the marks burnt in, and their text, annotations, links and form widgets are removed; the save is a full rewrite without backups (older backups of the file are deleted). Optional removal of metadata, XMP, bookmarks, attachments, page labels and scripts.
+- Password protection: AES-256 (R6) with an open password and permissions (print, copy, edit) behind a separate permissions password; remove protection with owner rights; saving an encrypted file keeps its encryption after a confirmation.
+- Document properties: view and edit title, author, subject and keywords; remove all metadata.
+- A note when pages imported from another file had annotations that were skipped.
+- CI: Windows and macOS on every push to main (docs-only changes skipped); tag pushes run only the release workflow (ADR-046).
+
+### Changed
+
+- The empty state fits an 800 px window; shared status pill style; German "Formular reduzieren…" for flattening.
+
+### Security
+
+- Passwords are never stored, logged, serialised to the UI or kept in the undo history; they are zeroized and dropped on save and close. SASLprep for R5/R6 passwords.
+- Image intake checks size, magic bytes and header dimensions before decoding.
+- A test proves redacted text is not extractable after save (page text, streams, strings, metadata, XMP, structure tree, form values, links, bookmarks, attachments).
+- Every declared IPC command must also be granted in the capability file (baseline test).
+- New direct dependency: stringprep (MIT OR Apache-2.0), already in the build through lopdf.
+
 ## [0.7.0] - 2026-10-03
 
 M4 — Forms and signature.
