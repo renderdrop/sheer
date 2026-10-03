@@ -122,7 +122,7 @@ shadows none, focus `Highlight`. Blur never animates.
 |---|---|---|
 | `--z-base` | 0 | grid slots |
 | canvas-local | 1–4 | `isolation: isolate`: page, text layer, annotation overlay, scroll-edge scrim |
-| `--z-popover` | 100 | popovers, menus |
+| `--z-popover` | 100 | popovers, menus, tour coach mark (§3.14) |
 | `--z-toast` | 200 | toast |
 | `--z-modal` | 300 | dialog, backdrop `rgba(15,16,32,.32)` |
 | `--z-tooltip` | 400 | tooltips |
@@ -472,6 +472,177 @@ until known), "Open source under AGPL-3.0-or-later", the privacy line (meta: off
 "Close", which has the initial focus. Esc (after a tooltip), Close and a press on the backdrop close it; Tab and Shift+Tab cycle inside; the app behind
 is `inert` and no command runs while it is open, whichever way it comes (key, native menu, toolbar; one guard in `runAction`), except About, which closes it; focus returns to where it was. In: opacity + scale .96 → 1 as a popover, out: opacity
 150; reduced motion: opacity only. Solid mode and forced colors change nothing, the surface is already solid.
+
+### 3.14 Welcome tour (F4, ADR-023)
+
+On first launch a bundled sample, "Welcome to {app}.pdf", opens. Each page holds one task. A coach mark points at the tool,
+and a success pulse (MOTION §4.7) ends each step. Code lives in `src/features/tour/` (`steps.json`, the `useTour` engine, `CoachMark`, `TourPill`).
+
+**Steps.** `steps.json` is the single source. The engine imports it, and the generator reads it with `include_str!` (ids, pages,
+target rects in pt, `shipped`). The PR that ships a step's tool flips `shipped`.
+
+| # | id | Page | Anchor (phase a → b) | Complete when | Ships |
+|---|---|---|---|---|---|
+| 1 | open | 1 | status bar file name | the welcome document's `opened` event, after its first frame has faded in (§4.6) | M1 |
+| 2 | navigate | 1 | status bar page button | current page (§3.10) ≥ 2 once scrolling settles (500 ms), by any input | M1 |
+| 3 | zoom | 2 | toolbar zoom in | a zoom commits at rest at ≥ 1.2 × the zoom at step start (button, keys, wheel, pinch, menu) | M1 |
+| 4 | highlight | 3 | Highlight tool → sentence box | a highlight covers ≥ 50 % of the sentence quad | M2 |
+| 5 | comment | 3 | Comment tool → comment spot | a comment anchored ≤ 24 pt from the spot centre | M2 |
+| 6 | sign | sign page | Signature tool → signature box | a signature's centre lies in the box | M4 |
+| 7 | reorder | sign page | thumbnails toggle → the page's thumbnail | the sign page precedes the end page | M3 |
+
+Unshipped steps do not exist at runtime, and their blocks are not generated, so no page asks for a missing tool. Numbers
+count shipped steps only (M1: 1–3). A step completes on its first qualifying event. A state that is already true at the step's start completes it
+at once. Phase a anchors the tool (in overflow: More, plus `tour.inMore`). While the tool is active, phase b anchors the canvas
+target. Releasing the tool returns to phase a. A step marked `detect: "manual"` shows Next (none through M4).
+
+**Success moment.** `pulse(anchor, t("tour.done"))`: the anchor ring grows and fades (slow), and the card's chip crossfades to
+`check` (fast). Hold 1.2 s, then the card exits (fast) and the next card enters at its anchor (base). After the last step the pill
+pulses, shows `check` + `tour.complete` for 1.2 s and exits. Reduced motion and forced colors follow §4.7.
+
+#### Document
+
+Generator: `src-tauri/tests/welcome_document.rs` with `PdfBuilder` (`tests/support/`) writes
+`src-tauri/resources/welcome/welcome-{en,de}.pdf` (Tauri resources). The test fails if the committed files differ, and
+`UPDATE_WELCOME=1` rewrites them. Strings come from the `welcomePdf.*` and `tour.step.*` keys of the locale files, and `{app}` from `APP_NAME`.
+Fonts: `/F1` Helvetica and `/F2` Helvetica-Bold, Type1 Standard 14, WinAnsiEncoding, not embedded. `win_ansi` gains „ “ ” …
+(0x84 0x93 0x94 0x85), and any other non-WinAnsi character fails the test. Colours: DeviceRGB from §1.1 only. One axial (Type 2) shading.
+Rounded rects are four Béziers (k = .5523). The file has no images, annotations, links, actions or JavaScript. It has `/Info /Title`, catalog
+`/Lang` en-US / de-DE, and one outline entry per page.
+
+**Page** 600 × 800 pt (3:4, on the 8 grid), white in both themes. Coordinates here run top-left with y down; the generator
+flips them (y_pdf = 800 − y). Margins 48, content 504 = 6 columns of 64 with 24 gutters, baselines on 8. All text is left-aligned
+except the badge digit (Helvetica digits are 556/1000 em), so no width table is needed. Line breaks are fixed in the strings
+(≤ 64 chars at 12 pt, ≤ 56 at 16 pt, test-checked).
+
+| Element | Geometry | Paint | Type |
+|---|---|---|---|
+| Header band | x 48 y 48, 504 × 128, r 24 | axial iris-500 (48,48) → iris-700 (552,176), clipped | — |
+| Step chip | x 72 y 72, 120 × 24, r 12 | iris-100 | F2 10 iris-700, x 84, baseline 88 |
+| Page badge | circle (512, 84) r 20 | white | printed number, F2 20 iris-700, centred, baseline 91 |
+| Title | x 72, baseline 152 | white (5.37 / 8.85 on the band ends) | F2 28 |
+| Instruction | x 48, baseline 216 | ink | F1 16 |
+| Task block | x 48, w 504, r 16, from y 248, 24 apart | iris-50, 1 pt iris-200 stroke | label F2 14 ink (top + 32), body F1 12/16 ink-60 |
+| Target frame | r 8, 1 pt iris-300, dash [4 4] | — | — |
+| Footer | rule y 752, 1 pt ink-30; text x 48, baseline 772 | ink-60 | F1 9, `welcomePdf.footer` |
+
+| Page (printed) | Chip · title · instruction | Task target |
+|---|---|---|
+| 1 (1) | Steps 1–2 · `p1.title` · `p1.text` | Block "1 Open a PDF" with a done disc (iris-500 r 12, white 2 pt check). Block "2 Go to page 2" with a chevron-down 24 iris-500, centre x 300 |
+| 2 (2) | Step 3 · Zoom in · `p2.text` | 504 × 160 block, three lines of F1 5 pt ink (`p2.small`), unreadable at 100 % |
+| 3 (3) | Steps 4–5 · `p3.title` · `p3.text` | Sentence frame y 248, 504 × 56; `p3.sentence` F1 16 ink, x 72, baseline 282. Comment spot: ring (480, 392) r 12, 2 pt iris-500, dot r 4 |
+| 4 (5) | Done · `end.title` · `end.text` | Block `end.restart`; `end.order` only when reorder has shipped |
+| 5 (4) | Steps 6–7 · `sign.title` · `sign.text` | Signature frame x 48 y 248, 288 × 96; rule ink-30 y 320, x 72–312; `sign.label` F1 9 ink-60, baseline 336. Block "Drag page 4 above page 5" |
+
+Pages with no shipped block are left out, and the order is otherwise kept. The end page is swapped before the sign page only once
+reorder has shipped; until then badges print the real page number. M1 edition: Welcome, Zoom, End (3 pages).
+
+#### Lifecycle
+
+- **Setting** `welcomeTour: "pending" | "shown"` (default pending; `update_settings` accepts it).
+- **First launch:** after `app_ready` and the settings arrive, if the value is pending and no document came with the launch (argv, OS open,
+  second instance), the UI writes `shown` *first*, then calls `open_welcome_document()`. That call picks the edition by the
+  resolved UI language and opens the resource through the normal intake (hostile-input rules unchanged). It returns
+  `DocumentInfo.kind = "welcome"` and the display name `doc.welcomeName`. The document is read-only: Save acts as Save As, and closing discards tour edits without a prompt.
+- **Close mid-tour** (Close, or another document opened over it): the tour ends, card and pill exit (fast), and toast
+  `tour.closed` shows. Nothing resumes.
+- **Skip:** the card's Skip ends the tour, the document stays open, and toast `tour.skipped` shows.
+- **Restart:** Settings (§3.13) gains a fourth row: label `settings.tour` (meta 600) over a secondary sm button
+  (`settings.tour.start`, or `.restart` while running) and the meta hint. Pressing it closes the popover (focus → More) and closes the open document through
+  the normal close flow (cancel = nothing happens). The welcome document then opens fresh at step 1.
+
+**Progress pill** (status bar leading, after the file-name group, gap 16): a sm ghost button, 24 h, radius pill, padding 0 8,
+tile colours, `compass` 12 + `tour.pill` in `--text-xs` tabular. Hover, pressed and focus follow §3.0. There is no disabled state: the pill exists only while a tour runs.
+Click, Enter or Space toggles the card (`aria-expanded`, `aria-controls`). Name: `tour.pillLabel`. It enters with the document
+(base, opacity + translateY 8), and its number crossfades (fast).
+
+#### Coach mark
+
+**Purpose:** one non-modal hint at a time, pointing where the step happens.
+
+**Anatomy:** a G2 card (`--surface-strong`, edge, `--shadow-2`; solid mode `--surface-solid`), radius 16, width 304 (256 when the
+canvas is narrower), padding 16, gap 8.
+- Header (24): chip `tour.stepOf` (pill, tile colours), spacer, sm IconButton `x` "`tour.hide`".
+- Title `--text-md` 600, then the instruction `--text-md`.
+- Footer (24, only with actions): ghost sm Skip on the leading side; secondary sm "Show me" or primary sm Next on the trailing side.
+
+The beak is a 16 × 8 triangle of the card's surface and edge, centred on the anchor and ≥ 16 from the corners. The **anchor ring** is the §4.7 ring layer held
+at `--pulse-opacity`. On controls it sits at radius + 2, and it gives way to the focus outline while the anchor has focus. On canvas targets it is the target rect + 4, in canvas-local layer 3, `aria-hidden`.
+
+**Slot and layer:** `--z-popover`. The card is clamped to the canvas slot inset 8, so it covers page content only, never the toolbar,
+panels, inspector, status bar, its anchor or its target.
+- Toolbar anchor: below the toolbar, 8 gap, beak up, centred on the anchor.
+- Status anchor: card bottom on the canvas slot's bottom edge, beak down across the 8 gap. It aligns to the anchor's leading
+  edge (file name) or trailing edge (page, zoom).
+- Canvas target: below the target + 8, else above, else on the trailing side. It follows scroll, zoom and panel slides each frame (transform,
+  in a layout effect, MOTION §3). When the target is out of view, the card docks at the canvas top centre without a beak, and "Show me" scrolls to the target (§4.8).
+- Coexistence: the anchor's tooltip is suppressed. While a popover, menu or dialog is open the card fades out (fast) and the ring
+  stays; it returns afterwards (base). If a toast would meet the card, the toast moves 8 above the card.
+
+**States:**
+
+| State | Treatment |
+|---|---|
+| entering | opacity + scale .96 from the beak side, base |
+| waiting | default |
+| done | chip → `check` tile, title `tour.done`, footer hidden, 1.2 s |
+| hidden | after Esc, `x` or an open popover; the pill remains |
+| docked | target off-screen |
+| exiting | opacity, fast |
+
+The card itself has no hover or focus ring; its controls follow §3.0. Buttons are never disabled: an action that does not apply is not offered.
+
+**Keyboard:**
+- The card never takes focus on appearing.
+- While visible it is an F6 stop right after the toolbar (§2.3). Tab is not trapped; DOM order is hide, Skip, action.
+- Esc with focus inside the card hides it and restores the region's last focus. Elsewhere, Esc keeps the §2.3 order (the card is not in
+  `DISMISS_PRIORITY`), so releasing a tool never hides a hint.
+- The pill's Enter shows the card and focuses its first control.
+
+**Accessibility:**
+- `role="region"`, `aria-labelledby` the title. Not a dialog, no `aria-live`.
+- Step starts (`tour.announce`) and completions (pulse message) go to the status bar's polite live region.
+- While active, the anchor gets `aria-describedby` → the instruction.
+- Text on strong: 13.35 / 12.39 (§4). Forced colors: Canvas + 1 px CanvasText, bordered beak, ring and chip `Highlight`.
+- Reduced motion: RM fade; the card follows scroll at once.
+
+#### Strings
+
+UI (`tour.*`, `settings.tour*`, `doc.*`); the PDF reuses `tour.step.*` for block labels and bodies.
+
+| Key | en | de |
+|---|---|---|
+| `tour.region` | Welcome tour | Willkommenstour |
+| `tour.pill` | Tour {step} / {total} | Tour {step} / {total} |
+| `tour.pillLabel` | Welcome tour, step {step} of {total}. Show hint | Willkommenstour, Schritt {step} von {total}. Hinweis anzeigen |
+| `tour.stepOf` | Step {step} of {total} | Schritt {step} von {total} |
+| `tour.announce` | Step {step} of {total}: {title}. {text} | Schritt {step} von {total}: {title}. {text} |
+| `tour.hide` / `.skip` / `.next` / `.showMe` | Hide hint / Skip tour / Next / Show me | Hinweis ausblenden / Tour überspringen / Weiter / Zeigen |
+| `tour.done` | Done: {title} | Erledigt: {title} |
+| `tour.complete` | Tour complete | Tour abgeschlossen |
+| `tour.inMore` | You find it under More. | Sie finden es unter Mehr. |
+| `tour.skipped` | Tour skipped. Start it again in Settings. | Tour übersprungen. Neustart in den Einstellungen. |
+| `tour.closed` | Tour ended. Start it again in Settings. | Tour beendet. Neustart in den Einstellungen. |
+| `tour.step.open.title` / `.text` | Open a PDF / This file opened by itself. Next time: Open… or drop a file. | PDF öffnen / Diese Datei hat sich selbst geöffnet. Künftig: Öffnen… oder Datei ablegen. |
+| `tour.step.navigate.*` | Go to page 2 / Scroll down or press Page Down. | Zu Seite 2 / Scrollen Sie nach unten oder drücken Sie Bild ab. |
+| `tour.step.zoom.*` | Zoom in / Click + until the small print is easy to read. | Vergrößern / Klicken Sie auf +, bis die kleine Schrift gut lesbar ist. |
+| `tour.step.highlight.*` | Highlight a sentence / Choose Highlight, then drag across the sentence in the frame. | Satz hervorheben / Wählen Sie Hervorheben und ziehen Sie über den Satz im Rahmen. |
+| `tour.step.comment.*` | Add a comment / Choose Comment, then click the dot. | Kommentar hinzufügen / Wählen Sie Kommentar und klicken Sie auf den Punkt. |
+| `tour.step.sign.*` | Sign / Choose Signature, then drag it into the frame. | Unterschreiben / Wählen Sie Unterschrift und ziehen Sie sie in den Rahmen. |
+| `tour.step.reorder.*` | Put pages in order / Open Thumbnails and drag page 4 above page 5. | Seiten ordnen / Öffnen Sie Miniaturen und ziehen Sie Seite 4 über Seite 5. |
+| `settings.tour` / `.start` / `.restart` | Welcome tour / Start tour / Restart tour | Willkommenstour / Tour starten / Tour neu starten |
+| `settings.tour.hint` | Opens the welcome document. | Öffnet das Willkommensdokument. |
+| `doc.welcomeName` | Welcome to {app}.pdf | Willkommen bei {app}.pdf |
+| `welcomePdf.chip.one` / `.range` / `.done` | Step {n} / Steps {a}–{b} / Done | Schritt {n} / Schritte {a}–{b} / Fertig |
+| `welcomePdf.footer` | Page {n} of {total} · Welcome to {app} | Seite {n} von {total} · Willkommen bei {app} |
+| `welcomePdf.p1.title` / `.text` | Welcome to {app} / Each page is one small task. | Willkommen bei {app} / Jede Seite ist eine kleine Aufgabe. |
+| `welcomePdf.p2.text` | Make the small print below easy to read. | Machen Sie die kleine Schrift unten lesbar. |
+| `welcomePdf.p2.small` | You found it. Pinch, Ctrl or Cmd + wheel, or the + button all zoom. | Gefunden. Zoomen geht mit zwei Fingern, Strg oder Cmd + Mausrad oder der Taste +. |
+| `welcomePdf.p3.title` / `.text` | Mark it up / Highlight the sentence, then comment on the dot. | Markieren / Satz hervorheben, dann den Punkt kommentieren. |
+| `welcomePdf.p3.sentence` | Good documents are short, clear and kind. | Gute Dokumente sind kurz, klar und freundlich. |
+| `welcomePdf.end.title` / `.text` | You're all set / Close this file or open one of your own. | Alles erledigt / Schließen Sie diese Datei oder öffnen Sie eine eigene. |
+| `welcomePdf.end.restart` / `.order` | Restart the tour any time in Settings. / Pages out of order? Page 4 shows the fix. | Die Tour startet jederzeit neu in den Einstellungen. / Seiten durcheinander? Seite 4 zeigt, wie es geht. |
+| `welcomePdf.sign.title` / `.text` / `.label` | Sign and sort / Sign in the frame, then move this page up. / Signature | Unterschreiben und ordnen / Im Rahmen unterschreiben, dann Seite nach oben schieben. / Unterschrift |
 
 ## 4. Contrast verification
 

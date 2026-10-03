@@ -727,3 +727,33 @@ fit width re-fits at the end (a second jump).
 **Consequences.** `tokens.css`, `tokens.test.ts` and a new `src/lib/motion.ts` (parity-tested) change; every component that
 named `ease-out`/`ease-in` moves to `ease-spring`. The canvas gains a per-frame anchor during track animations and a transform
 layer for zoom. Acceptance: Tauri-window screen recording plus `cdp.mjs fps` per MOTION §5 (avg ≥ 58, p95 ≤ 18 ms).
+
+---
+
+## ADR-023 — Welcome tour: a generated sample PDF, coach marks, one step manifest
+
+**Status:** accepted (2026-10-03). Product-owner feedback F4 (`docs/FEEDBACK.md`). Spec: `docs/DESIGN.md` §3.14; motion: MOTION §4.7.
+
+**Context.** First launch should teach by doing: a bundled PDF where every page is a task, coach marks at the tools, a short
+success moment, progress in the status bar, skippable, restartable, and never shown automatically twice. Only Open, Navigate and Zoom
+exist in M1. Highlight and comment (M2), reorder (M3) and signature (M4) follow.
+
+**Decision.**
+1. **Generated, not drawn.** The test-side `PdfBuilder` generates the document (`tests/welcome_document.rs`), and the result is committed
+   under `src-tauri/resources/welcome/` with an up-to-date test. No production code gains a PDF writer or `expect()` paths. It uses vector paths, one axial shading,
+   Helvetica and Helvetica-Bold (Standard 14, WinAnsi, not embedded), and no images, annotations, links, actions or JavaScript. Page size 600 × 800 pt
+   keeps the 8 grid. One edition each for en and de, with strings from the locale files (one source with the UI).
+2. **One manifest.** `src/features/tour/steps.json` holds ids, pages, target rects and `shipped`. Both the engine and the generator read
+   it, so the coach mark's canvas target and the drawn frame cannot drift. Unshipped steps are absent from the app *and* the PDF
+   (M1: 3 pages, 3 steps), so the tour never asks for a missing tool.
+3. **Coach mark at `--z-popover`**, clamped to the canvas slot, never over chrome, its anchor or its target. It is non-modal, never takes
+   focus, sits in the F6 cycle, and is not in `DISMISS_PRIORITY` (Esc releases tools as before). The anchor's tooltip is suppressed, the card yields to popovers, and toasts move above it.
+4. **Once only.** Setting `welcomeTour: pending | shown`, written `shown` *before* the document opens. It does not start when a file
+   came with the launch. Restart lives in the Settings popover. Close or Skip ends the tour, with no resume.
+5. **Sample semantics.** `open_welcome_document()` opens the resource through the normal intake (hostile input as always) as
+   `kind: "welcome"`. It is read-only, Save acts as Save As, and closing discards edits without a prompt.
+6. **Success** is the shared `pulse()`, with no dialog or toast. Announcements go through the status bar's polite live region.
+
+**Consequences.** `Settings`, `update_settings` validation, `DocumentInfo` (`kind`) and the IPC surface (`open_welcome_document`) change
+in ARCHITECTURE. `win_ansi` learns „ “ ” …. Each tool PR (M2–M4) flips `shipped`, adds its detector and regenerates both PDFs.
+The security review covers the new command (no path crosses IPC; the resource path is resolved in Rust only).
