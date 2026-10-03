@@ -79,7 +79,7 @@ endobj
 << /Type /Page /Parent 2 0 R /MediaBox [0 0 600 800] /Contents 23 0 R /Resources << /Font << /F1 3 0 R /F2 4 0 R >> /Shading << /Sh1 5 0 R >> >> >>
 endobj
 23 0 obj
-<<  /Length 1683 >>
+<<  /Length 1669 >>
 stream
 q
 72 752 m 528 752 l 541.2552 752 552 741.2552 552 728 c 552 648 l 552 634.7448 541.2552 624 528 624 c 72 624 l 58.7448 624 48 634.7448 48 648 c 48 728 l 48 741.2552 58.7448 752 72 752 c h
@@ -105,7 +105,7 @@ BT /F1 12 Tf 0.3725 0.3765 0.4471 rg 72 488 Td (Ctrl or Cmd + Down goes to the n
 BT /F1 12 Tf 0.3725 0.3765 0.4471 rg 72 464 Td (Thumbnails show every page.) Tj ET
 0.3569 0.3569 0.8392 RG 2.5 w 1 J 1 j
 288 398 m 300 386 l 312 398 l S
-BT /F1 12 Tf 0.3725 0.3765 0.4471 rg 48 352 Td (Zoom waits on the next page.) Tj ET
+BT /F1 12 Tf 0.3725 0.3765 0.4471 rg 48 352 Td (Next up: zoom.) Tj ET
 
 endstream
 endobj
@@ -215,12 +215,12 @@ xref
 0000001516 00000 n 
 0000003745 00000 n 
 0000003909 00000 n 
-0000005646 00000 n 
-0000005810 00000 n 
-0000007601 00000 n 
-0000007765 00000 n 
+0000005632 00000 n 
+0000005796 00000 n 
+0000007587 00000 n 
+0000007751 00000 n 
 trailer
 << /Size 28 /Root 1 0 R /Info 6 0 R >>
 startxref
-10491
+10477
 %%EOF

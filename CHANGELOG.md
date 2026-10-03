@@ -23,6 +23,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `open_link`. A document tells whether it is encrypted, has an XFA or an AcroForm, or is signed (`flags` of `DocumentInfo`).
 - Thumbnails panel in the left panel: virtualized for any page count, rendered lazily at thumbnail priority from the shared render cache, the current
   page highlighted and kept in view, one Tab stop with arrow keys, Home and End, click or Enter to jump.
+- Welcome tour (ADR-023, FEEDBACK F4): on the first launch without a file, a bundled "Welcome to Sheer" document (English or German, 4 pages
+  in the Iris design, drawn in code) opens once; coach marks point at the control for each task (open, go to page 2, zoom in), a short success
+  moment follows each one, progress shows in the status bar, the tour can be skipped and restarted from Settings. More steps (highlight,
+  comment, signature, page order) come with their tools in M2–M4.
 - Test PDFs generated in code (`src-tauri/tests/support`), with the committed ones under `tests/fixtures/` checked against their generator: outlines (also a cycle), links of every kind,
   text with non-ASCII letters, a hyphenated line end and an emoji, a form, an XFA form, a signed and an encrypted document.
 

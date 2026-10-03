@@ -638,7 +638,7 @@ UI (`tour.*`, `settings.tour*`, `doc.*`); the PDF reuses `tour.step.*` for block
 | `tour.closed` | Tour ended. Start it again in Settings. | Tour beendet. Neustart in den Einstellungen. |
 | `tour.step.open.title` / `.text` | Open a PDF / This file opened by itself. Next time: Open… or drop a file. | PDF öffnen / Diese Datei hat sich selbst geöffnet. Künftig: Öffnen… oder Datei ablegen. |
 | `tour.step.navigate.*` | Go to page 2 / Scroll down or press Page Down. | Zu Seite 2 / Scrollen Sie nach unten oder drücken Sie Bild ab. |
-| `tour.step.zoom.*` | Zoom in / Click + until the small print is easy to read. | Vergrößern / Klicken Sie auf +, bis die kleine Schrift gut lesbar ist. |
+| `tour.step.zoom.*` | Zoom in / Click + to zoom in. | Vergrößern / Klicken Sie auf +, um zu vergrößern. |
 | `tour.step.highlight.*` | Highlight a sentence / Choose Highlight, then drag across the sentence in the frame. | Satz hervorheben / Wählen Sie Hervorheben und ziehen Sie über den Satz im Rahmen. |
 | `tour.step.comment.*` | Add a comment / Choose Comment, then click the dot. | Kommentar hinzufügen / Wählen Sie Kommentar und klicken Sie auf den Punkt. |
 | `tour.step.sign.*` | Sign / Choose Signature, then drag it into the frame. | Unterschreiben / Wählen Sie Unterschrift und ziehen Sie sie in den Rahmen. |
@@ -655,7 +655,7 @@ UI (`tour.*`, `settings.tour*`, `doc.*`); the PDF reuses `tour.step.*` for block
 | `welcomePdf.p3.sentence` | Good documents are short, clear and kind. | Gute Dokumente sind kurz, klar und freundlich. |
 | `welcomePdf.nav.title` / `.text` | You turned the page / There are more ways to move around. | Seite gewechselt / Es gibt weitere Wege durch ein Dokument. |
 | `welcomePdf.nav.ways` | Click the page number below to jump. · Ctrl or Cmd + Down goes to the next page. · Thumbnails show every page. | Klicken Sie unten auf die Seitenzahl, um zu springen. · Strg oder Cmd + Ab führt zur nächsten Seite. · Miniaturen zeigen jede Seite. |
-| `welcomePdf.nav.next` | Zoom waits on the next page. | Auf der nächsten Seite geht es ums Zoomen. |
+| `welcomePdf.nav.next` | Next up: zoom. | Als Nächstes: Zoomen. |
 | `welcomePdf.order` | Page numbers out of order? Step {n} fixes that. | Seitenzahlen durcheinander? Schritt {n} behebt das. |
 | `welcomePdf.end.title` / `.text` | You're all set / Here is what to try next. | Alles erledigt / Das können Sie als Nächstes tun. |
 | `welcomePdf.end.nextTitle` / `.keysTitle` | What next / Shortcuts | Wie weiter / Tastenkürzel |

@@ -22,13 +22,13 @@ The §3 rule "gradient barely visible" is overruled (ADR). Target: the mood of t
 
 ## F3 — Motion system
 
-- [ ] designer (Opus) writes `docs/MOTION.md`: one spring curve for everything, three durations (120/200/320 ms), rules for enter, exit and
+- [x] designer (Opus) writes `docs/MOTION.md`: one spring curve for everything, three durations (120/200/320 ms), rules for enter, exit and
       layout change, and a catalogue of micro-interactions: buttons with press and hover response; panels slide instead of appearing; pages
       load with a fade instead of a jump; zoom with inertia and snap to fit steps; drag and drop with a preview card that drops into the
       window; opening fades from thumbnail to page; success moments as a subtle Iris pulse instead of a dialog. Budget: 60 fps in the Tauri
       window, blur only on toolbar and panels, never on the document canvas; reduced motion switches to fades
-- [ ] implementer applies the motion system
-- [ ] Acceptance by screen recording from the Tauri window; 60 fps measured
+- [x] implementer applies the motion system (9834c69, 97ebe64, 931d017)
+- [x] Acceptance by screen recording from the Tauri window; 60 fps measured (designer PASS round 3; 7a02c1a)
 
 ## F4 — Onboarding
 
@@ -36,7 +36,7 @@ On first launch a bundled "Welcome to Sheer.pdf" opens (own template, Iris desig
 highlight, comment, drag a signature, reorder pages. Coach marks point at the tool; when the user completes the task, a short success
 moment follows, then the next step. Progress in the status bar, skippable, restartable in Settings, never shown automatically twice.
 
-- [ ] Scaffold in M1: welcome document, coach-mark component, step engine, steps Open / Navigate / Zoom
+- [x] Scaffold in M1: welcome document, coach-mark component, step engine, steps Open / Navigate / Zoom (designer PASS round 3; 7ea748c, 9044be8, 5cc78fd)
 - [x] Tickets for the remaining steps: highlight + comment (M2), reorder pages (M3), drag a signature (M4)
 
 ## F5 — Installer

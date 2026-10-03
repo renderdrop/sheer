@@ -1,8 +1,8 @@
 # STATE
 phase: M1
 version: 0.3.0
-current_item: docs/FEEDBACK.md F1 (fix review findings of b72fbf9..HEAD), then F2 mood, F3 motion, F4 onboarding scaffold; then ROADMAP
-last_completed: M1 items 2+3 — render pipeline, zoom/fit, scroll modes (b72fbf9); wip(m1) commit reviewed 2026-10-03
+current_item: ROADMAP M1 "Outline (bookmarks) panel" (docs/FEEDBACK.md F1-F5 all done)
+last_completed: FEEDBACK F1-F5 - reviews+fixes, mood (8f0781f), motion (931d017, 7a02c1a), welcome tour scaffold (5cc78fd); all designer PASS from Tauri-window captures
 loop_count_this_session: 0
 open_blockers: 1 (B-001 macOS/CI unverified — needs a GitHub remote or a Mac)
 notes: docs/FEEDBACK.md (product owner) has priority over ROADMAP.md (ORCHESTRATOR_PROMPT §14); the Stop hook reads it first.
