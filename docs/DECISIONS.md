@@ -903,3 +903,22 @@ bounded variants (`XStep 2`, one call per level). A real fix is the engine proce
 
 **Consequences.** ORCHESTRATOR_PROMPT §7.6, §8.4 (steps 1, 3, 8), §8.6 and §9 changed. M2 keeps the comments needed for notes (sticky-note popover,
 replies via /IRT stay in the model) but loses the comments panel.
+
+## ADR-031 — Release workflow (unsigned)
+
+**Context.** FEEDBACK F7: tagged versions need downloadable installers; there are no signing certificates or secrets (BLOCKERS B-002).
+
+**Decision.**
+1. `.github/workflows/release.yml` triggers on `push` of `v*` tags and on `workflow_dispatch` with input `tag`; it checks out
+   `refs/tags/<tag>` and never creates, moves or pushes tags (`gh release create --verify-tag`).
+2. Matrix `windows-latest` (`--bundles nsis`) and `macos-latest` (`--bundles dmg`). macOS builds for the runner architecture (arm64),
+   not universal, because the pinned PDFium binary is fetched per runner architecture; Intel Macs are not covered until that changes.
+3. Installers are unsigned; no signing secrets or updater keys. The release body says so and links B-002.
+4. Least privilege: workflow-level `contents: read`; only the `publish` job has `contents: write`. Concurrency group per tag, no cancel.
+5. Release notes = `scripts/changelog-section.sh <version>` (tested in `scripts/changelog-section.test.ts`). Versions `0.x` are pre-releases.
+   Assets: `.exe`, `.dmg`, `SHA256SUMS.txt`. An existing release for the tag is edited and its assets replaced.
+
+**Building an old tag.** `gh workflow run release.yml -f tag=v0.4.0` (the workflow file must exist on the default branch; the build
+itself uses the tag's sources, so a tag older than this workflow still builds; the publish job uses the workflow commit's `changelog-section.sh` on the tag's `CHANGELOG.md`).
+
+**Consequences.** Users get a SmartScreen/Gatekeeper warning until B-002 is resolved.

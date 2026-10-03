@@ -60,6 +60,6 @@ CI green on Windows and macOS (run 37120538629). Dependabot PRs #1/#2 closed. Op
 
 ## F7 — Release workflow
 
-- [ ] `.github/workflows/release.yml`: on every tag push `v*`, build the installers on Windows and macOS (NSIS setup and DMG, unsigned) and attach them
+- [x] `.github/workflows/release.yml`: on every tag push `v*`, build the installers on Windows and macOS (NSIS setup and DMG, unsigned) and attach them
       to a GitHub Release whose body is the tag's section from CHANGELOG.md
 - [ ] Build the existing tag v0.4.0 with it after the fact (workflow_dispatch with a tag input; never move or re-push a tag)

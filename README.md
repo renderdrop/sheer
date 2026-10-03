@@ -42,3 +42,10 @@ The name "Sheer" and the Sheer logo are trademarks and are **not** covered by th
 Contributions require a [DCO](https://developercertificate.org/) sign-off (`git commit -s`).
 
 Security issues: please follow [SECURITY.md](SECURITY.md).
+
+## Releases
+
+Pushing a `v*` tag runs `.github/workflows/release.yml`: it builds an unsigned Windows installer (NSIS `.exe`) and a macOS DMG
+(arm64, the runner architecture) and attaches them, plus `SHA256SUMS.txt`, to a GitHub Release whose notes are that version's
+`CHANGELOG.md` section. Versions before 1.0 are marked pre-release. To build an existing tag later (the workflow never creates or
+moves tags): `gh workflow run release.yml -f tag=v0.4.0`. See ADR-031 in `docs/DECISIONS.md`.

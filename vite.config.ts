@@ -14,7 +14,7 @@ export default defineConfig({
   test: {
     // Pure logic runs in node; component tests opt into jsdom with a `// @vitest-environment jsdom` docblock.
     // `tools/lint` tests the lint rules against the real config.
-    include: ['src/**/*.test.{ts,tsx}', 'tools/lint/**/*.test.ts'],
+    include: ['src/**/*.test.{ts,tsx}', 'tools/lint/**/*.test.ts', 'scripts/**/*.test.ts'],
     environment: 'node',
     setupFiles: ['src/test/setup.ts'],
   },
