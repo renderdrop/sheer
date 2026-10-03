@@ -16,11 +16,15 @@ import { readActionState } from './state';
 
 const documentsApi = vi.hoisted(() => ({
   openDocumentDialog: vi.fn(),
-  renderPage: vi.fn(),
   closeDocument: vi.fn(),
 }));
 
 vi.mock('../api/documents', () => documentsApi);
+vi.mock('../api/render', () => ({
+  renderPage: vi.fn(),
+  setViewport: vi.fn().mockResolvedValue(undefined),
+  getPageSizes: vi.fn().mockResolvedValue([]),
+}));
 
 const uiInitial = useUi.getState();
 const viewerInitial = useViewer.getState();
@@ -93,7 +97,6 @@ describe('runAction', () => {
 
   it('goes to 100 % with Actual Size, to the canvas width with Fit Width and to the whole page with Fit Page', async () => {
     await open();
-    act(() => useViewer.setState({ image: { url: 'blob:p', widthPt: 612, heightPt: 792 } }));
     act(() => useViewer.getState().setViewport({ width: 816 + 16, height: 528 }));
     act(() => useView.getState().setZoom(REPORT.id, 2));
     runAction('actual-size');
@@ -102,6 +105,18 @@ describe('runAction', () => {
     expect(view()?.zoom).toBeCloseTo(1);
     runAction('fit-page');
     expect(view()?.zoom).toBeCloseTo(0.5);
+  });
+
+  it('lays the pages out in the mode of Continuous scrolling, Single page and Two pages, and only with a document', async () => {
+    expect(runAction('scroll-single')).toBe(false);
+    await open();
+    expect(view()?.scrollMode).toBe('continuous');
+    runAction('scroll-single');
+    expect(view()?.scrollMode).toBe('single');
+    runAction('scroll-spread');
+    expect(view()?.scrollMode).toBe('spread');
+    runAction('scroll-continuous');
+    expect(view()?.scrollMode).toBe('continuous');
   });
 
   it('turns pages', async () => {

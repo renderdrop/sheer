@@ -1,8 +1,11 @@
 import {
+  BookOpen,
   ChevronDown,
   ChevronUp,
+  File,
   FileX,
   FolderOpen,
+  GalleryVertical,
   Highlighter,
   Info,
   LayoutGrid,
@@ -45,6 +48,9 @@ export type ActionId =
   | 'actual-size'
   | 'fit-width'
   | 'fit-page'
+  | 'scroll-continuous'
+  | 'scroll-single'
+  | 'scroll-spread'
   | 'next-page'
   | 'previous-page'
   | 'toggle-left-panel'
@@ -196,6 +202,36 @@ export const ACTIONS: readonly ActionDef[] = [
     menuBar: true,
     enabled: needsDocument,
     run: () => useViewer.getState().fitPage(),
+  },
+  {
+    id: 'scroll-continuous',
+    labelKey: 'action.scrollContinuous',
+    icon: GalleryVertical,
+    group: 'view',
+    more: true,
+    menuBar: true,
+    enabled: needsDocument,
+    run: () => useViewer.getState().setScrollMode('continuous'),
+  },
+  {
+    id: 'scroll-single',
+    labelKey: 'action.scrollSingle',
+    icon: File,
+    group: 'view',
+    more: true,
+    menuBar: true,
+    enabled: needsDocument,
+    run: () => useViewer.getState().setScrollMode('single'),
+  },
+  {
+    id: 'scroll-spread',
+    labelKey: 'action.scrollSpread',
+    icon: BookOpen,
+    group: 'view',
+    more: true,
+    menuBar: true,
+    enabled: needsDocument,
+    run: () => useViewer.getState().setScrollMode('spread'),
   },
   {
     id: 'next-page',

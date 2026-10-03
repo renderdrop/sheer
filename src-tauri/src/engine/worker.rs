@@ -3,12 +3,14 @@
 use std::collections::{HashMap, HashSet};
 use std::fs::File;
 use std::path::Path;
-use std::sync::mpsc::Receiver;
+use std::sync::Arc;
 
 use pdfium_render::prelude::*;
 
 use super::guard::{guarded, Health};
-use super::{encode, Confirm, Job, Reply, Request};
+use super::queue::{RenderKey, Requests};
+use super::sizes::{PageSizes, SizeCache};
+use super::{encode, Confirm, Job, Reply};
 use crate::documents::DocumentId;
 use crate::error::{AppError, ErrorCode};
 use crate::limits;
@@ -16,7 +18,7 @@ use crate::limits;
 type Documents<'a> = HashMap<DocumentId, PdfDocument<'a>>;
 
 /// Worker entry point: binds PDFium, then serves jobs until every `Engine` handle is gone.
-pub(super) fn run(library: &Path, requests: Receiver<Request>, health: &Health) {
+pub(super) fn run(library: &Path, mut requests: Requests, health: &Health, sizes: &SizeCache) {
     let bound = guarded(|| {
         Pdfium::bind_to_library(library).map_err(|error| {
             AppError::logged(
@@ -29,10 +31,8 @@ pub(super) fn run(library: &Path, requests: Receiver<Request>, health: &Health) 
         Ok(bindings) => bindings,
         Err(error) => {
             error.log();
-            for request in requests {
-                request
-                    .job
-                    .fail(AppError::new(ErrorCode::EngineUnavailable));
+            while let Some(request) = requests.next() {
+                requests.fail(request, &AppError::new(ErrorCode::EngineUnavailable));
             }
             return;
         }
@@ -43,25 +43,34 @@ pub(super) fn run(library: &Path, requests: Receiver<Request>, health: &Health) 
     // Documents whose job panicked. They are dropped from `documents` and refuse further work until closed.
     let mut crashed: HashSet<DocumentId> = HashSet::new();
 
-    for request in requests {
+    while let Some(request) = requests.next() {
         // The caller already gave up (an earlier job ran long): skip the stale work.
         if request.expired() {
-            request.job.fail(AppError::logged(
-                ErrorCode::EngineTimeout,
-                "job expired in the queue",
-            ));
+            requests.fail(
+                request,
+                &AppError::logged(ErrorCode::EngineTimeout, "job expired in the queue"),
+            );
             continue;
         }
-        let _busy = health.begin(request.deadline);
-        serve(&pdfium, &mut documents, &mut crashed, request.job);
+        let _busy = health.begin(request.run_deadline());
+        serve(
+            &pdfium,
+            &requests,
+            &mut documents,
+            &mut crashed,
+            sizes,
+            request.job,
+        );
     }
 }
 
 /// Runs one job inside the panic guard and sends the answer.
 fn serve<'a>(
     pdfium: &'a Pdfium,
+    requests: &Requests,
     documents: &mut Documents<'a>,
     crashed: &mut HashSet<DocumentId>,
+    sizes: &SizeCache,
     job: Job,
 ) {
     match job {
@@ -71,24 +80,24 @@ fn serve<'a>(
             confirm,
             reply,
         } => {
-            let result = guarded(|| open(pdfium, documents, id, file, confirm));
+            let result = guarded(|| open(pdfium, documents, sizes, id, file, confirm));
             answer(reply, result, None, documents, crashed);
         }
-        Job::Render {
-            id,
-            page_index,
-            scale,
-            reply,
-        } => {
-            let result = if crashed.contains(&id) {
+        Job::Render { key, reply } => {
+            let result = if crashed.contains(&key.id) {
                 Err(AppError::new(ErrorCode::EngineCrashed))
             } else {
-                guarded(|| match documents.get(&id) {
-                    Some(document) => render(document, page_index, scale),
+                guarded(|| match documents.get(&key.id) {
+                    Some(document) => render(document, key),
                     None => Err(AppError::not_found("document")),
                 })
-            };
-            answer(reply, result, Some(id), documents, crashed);
+            }
+            .map(Arc::new);
+            // Callers that asked for this very frame while it was queued or running get the same answer.
+            for waiter in requests.finish_render(&key) {
+                let _ = waiter.send(result.clone());
+            }
+            answer(reply, result, Some(key.id), documents, crashed);
         }
         Job::Close { id, reply } => {
             let result = guarded(|| {
@@ -96,12 +105,21 @@ fn serve<'a>(
                 documents.remove(&id);
                 Ok(())
             });
+            // Whatever became of the document, its sizes go: nobody can ask for a document that was closed.
+            sizes.remove(id);
+            // Nothing queued for a closed document is worth drawing: its callers hear `cancelled`.
+            requests.cancel_document(id);
             answer(reply, result, Some(id), documents, crashed);
         }
         #[cfg(test)]
         Job::Crash { id, reply } => {
             let result: Result<(), AppError> = guarded(|| panic!("test panic in a PDF job"));
             answer(reply, result, id, documents, crashed);
+        }
+        #[cfg(test)]
+        Job::Hold { gate, reply } => {
+            let _ = gate.recv();
+            answer(reply, Ok(()), None, documents, crashed);
         }
     }
 }
@@ -131,6 +149,7 @@ fn answer<T>(
 fn open<'a>(
     pdfium: &'a Pdfium,
     documents: &mut Documents<'a>,
+    sizes: &SizeCache,
     id: DocumentId,
     file: File,
     confirm: Confirm,
@@ -142,9 +161,15 @@ fn open<'a>(
         .map_err(map_load_error)?;
     let page_count = u32::try_from(document.pages().len())
         .map_err(|_| AppError::logged(ErrorCode::DamagedFile, "negative page count"))?;
+    // The layout holds a size per page and the scroll height grows with the count: a document beyond the limit is refused
+    // here, the one place that sees the count first. The document is dropped with its handle.
+    limits::validate_page_count(page_count)?;
+    // The sizes are read once, here, and are there before anybody can know the document is: `confirm` makes it known.
+    sizes.insert(id, read_page_sizes(&document));
     // The caller may have stopped waiting while the document loaded (the open deadline passed) and taken the registry entry
     // back. Nobody could ever close a document without an entry, so it is released here, with its handle.
     if !confirm(page_count) {
+        sizes.remove(id);
         drop(document);
         return Err(AppError::logged(
             ErrorCode::EngineTimeout,
@@ -175,40 +200,70 @@ fn map_load_error(error: PdfiumError) -> AppError {
     }
 }
 
-/// Renders one page to a frame. Validates against the real page size before allocating the bitmap.
-fn render(document: &PdfDocument<'_>, page_index: u32, scale: f32) -> Result<Vec<u8>, AppError> {
-    let scale = limits::validate_scale(scale)?;
+/// The size of every page in points, as the pages are drawn (rotation applied), read once when the document is loaded (`open`;
+/// the page count is within `limits::MAX_PAGES` by then). `FPDF_GetPageSizeByIndexF` does not load a page, so this is quick even
+/// for a long document. A page whose size PDFium cannot read, or reads as nonsense, is shown as US Letter
+/// (`limits::sanitize_page_size`): the layout needs a size for every page, and a damaged page does not spoil the others.
+fn read_page_sizes(document: &PdfDocument<'_>) -> PageSizes {
+    let pages = document.pages();
+    (0..pages.len())
+        .map(|index| match pages.page_size(index) {
+            Ok(rect) => limits::sanitize_page_size(rect.width().value, rect.height().value),
+            Err(_) => limits::DEFAULT_PAGE_SIZE_PT,
+        })
+        .collect()
+}
+
+/// Renders one frame: the whole page, or one tile of it, at the scale of the bucket. Validates against the real page size
+/// before allocating the bitmap, which is only as large as the frame (a tile is at most 1024 x 1024 pixels however large the
+/// page is at this scale).
+fn render(document: &PdfDocument<'_>, key: RenderKey) -> Result<Vec<u8>, AppError> {
+    let scale = limits::bucket_scale(key.bucket)?;
     let page_count = u32::try_from(document.pages().len())
         .map_err(|_| AppError::logged(ErrorCode::DamagedFile, "negative page count"))?;
-    let index = limits::validate_page_index(page_index, page_count)?;
+    let index = limits::validate_page_index(key.page_index, page_count)?;
     let page = document
         .pages()
         .get(to_i32(index)?)
         .map_err(|error| AppError::logged(ErrorCode::DamagedFile, format!("{error:?}")))?;
 
-    let (width, height) = limits::pixel_size(page.width().value, page.height().value, scale)?;
-    // BGR with PDFium's reverse-byte-order flag yields RGB rows, which PNG takes as they are.
+    let (page_width, page_height) =
+        limits::page_pixel_size(page.width().value, page.height().value, scale)?;
+    let region = limits::render_region((page_width, page_height), key.tile)?;
+
+    // The page is laid out at its full size, shifted so that the region's top left corner is the bitmap's; the bitmap is the
+    // region and PDFium draws nothing outside it. BGR with PDFium's reverse-byte-order flag yields RGB rows, which PNG takes
+    // as they are.
     let config = PdfRenderConfig::new()
-        .set_target_size(to_i32(width)?, to_i32(height)?)
+        .set_target_size(to_i32(page_width)?, to_i32(page_height)?)
+        .set_origin(-to_i32(region.x)?, -to_i32(region.y)?)
         .set_format(PdfBitmapFormat::BGR)
         .set_reverse_byte_order(true);
-    let bitmap = page
-        .render_with_config(&config)
+    let mut bitmap = PdfBitmap::empty(
+        to_i32(region.width)?,
+        to_i32(region.height)?,
+        PdfBitmapFormat::BGR,
+    )
+    .map_err(|error| AppError::logged(ErrorCode::Internal, format!("{error:?}")))?;
+    page.render_into_bitmap_with_config(&mut bitmap, &config)
         .map_err(|error| AppError::logged(ErrorCode::Internal, format!("{error:?}")))?;
 
     let (rendered_w, rendered_h) = (bitmap.width(), bitmap.height());
-    if (rendered_w, rendered_h) != (to_i32(width)?, to_i32(height)?) {
+    if (rendered_w, rendered_h) != (to_i32(region.width)?, to_i32(region.height)?) {
         return Err(AppError::logged(
             ErrorCode::Internal,
-            format!("bitmap is {rendered_w}x{rendered_h}, expected {width}x{height}"),
+            format!(
+                "bitmap is {rendered_w}x{rendered_h}, expected {}x{}",
+                region.width, region.height
+            ),
         ));
     }
     let raw = bitmap.as_raw_bytes();
     drop(bitmap);
     drop(page);
 
-    let stride = raw.len() / height as usize;
-    encode::encode_frame(width, height, stride, &raw)
+    let stride = raw.len() / region.height as usize;
+    encode::encode_frame(region.width, region.height, stride, &raw)
 }
 
 fn to_i32(value: u32) -> Result<i32, AppError> {

@@ -80,6 +80,8 @@ error_codes! {
     EngineCrashed => "engine_crashed", retryable: false;
     /// The engine cannot work: the bundled PDFium is missing, or a job is stuck past its deadline.
     EngineUnavailable => "engine_unavailable", retryable: false;
+    /// The request was withdrawn before it ran (a queued render whose page left the viewport, ADR-002 §3). The UI stays silent.
+    Cancelled => "cancelled", retryable: false;
     /// Anything else. Details are in the local log.
     Internal => "internal", retryable: false;
 }
@@ -91,7 +93,7 @@ impl Display for ErrorCode {
 }
 
 /// Whitelisted context for the UI. `what` names the argument or resource in a fixed vocabulary (`"page"`, `"scale"`,
-/// `"document"`, `"documents"`, `"dimension"`, `"pixels"`, `"file_size"`, `"settings"`). It is a `&'static str`, so
+/// `"document"`, `"documents"`, `"dimension"`, `"pixels"`, `"file_size"`, `"settings"`, `"bucket"`, `"tile"`, `"pages"`, `"requests"`). It is a `&'static str`, so
 /// request data can never end up in it. `limit` is the bound that was exceeded.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 pub struct UiParams {
@@ -117,8 +119,9 @@ impl UiError {
     }
 }
 
-/// Internal error of the backend. Convert with `UiError::from` at the command boundary.
-#[derive(Debug)]
+/// Internal error of the backend. Convert with `UiError::from` at the command boundary. `Clone` so that one failure can answer
+/// every caller that waited for the same job (the render queue's deduplication, `engine::queue`).
+#[derive(Debug, Clone)]
 pub struct AppError {
     code: ErrorCode,
     params: Option<UiParams>,
@@ -360,6 +363,10 @@ mod tests {
             AppError::limit("documents", 32),
             AppError::limit("dimension", 4096),
             AppError::limit("pixels", 16_777_216),
+            AppError::limit("pages", 50_000),
+            AppError::limit("requests", 8),
+            AppError::invalid("bucket"),
+            AppError::invalid("tile"),
             AppError::too_large("file_size", 2_147_483_648),
         ];
         for error in samples {

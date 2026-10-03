@@ -17,11 +17,15 @@ import { NO_DOCUMENT } from './state';
 
 const documentsApi = vi.hoisted(() => ({
   openDocumentDialog: vi.fn(),
-  renderPage: vi.fn(),
   closeDocument: vi.fn(),
 }));
 
 vi.mock('../api/documents', () => documentsApi);
+vi.mock('../api/render', () => ({
+  renderPage: vi.fn(),
+  setViewport: vi.fn().mockResolvedValue(undefined),
+  getPageSizes: vi.fn().mockResolvedValue([]),
+}));
 
 const uiInitial = useUi.getState();
 const viewerInitial = useViewer.getState();
@@ -115,7 +119,6 @@ describe('the bindings', () => {
   });
 
   it('zoom with plus, equals, minus and underscore, and Ctrl+1, Ctrl+2 and Ctrl+0 are Actual Size, Fit Width and Fit Page', () => {
-    act(() => useViewer.setState({ image: { url: 'blob:p', widthPt: 612, heightPt: 792 } }));
     act(() => useViewer.getState().setViewport({ width: 816 + 16, height: 528 }));
     press({ key: '+', ctrlKey: true });
     press({ key: '=', ctrlKey: true });

@@ -30,8 +30,8 @@ commands/        thin: validate → registry/engine → UiError
                  app · documents · render · text · links · edit · pages (M3) · forms (M4) · export (M6) · recovery (M7)
 documents/       registry (the table of open documents: claim = dedupe by canonical path, abandon = the arbiter of an open that outlives its deadline) · intake (admit: canonicalize, open once, judge the handle; command-line and URL parsing; the dialog is in commands/) · recents
 engine/          the only PDFium user (ADR-002)
-                 mod (EngineHandle, EngineRequest/Response) · worker · queue · guard (catch_unwind, watchdog)
-                 render · text · search · links · import (annotations → model) · forms (M4) · transport (M7)
+                 mod (Engine, Job) · worker (open, frames and tiles, page sizes) · queue (priority, cancellation by viewport, dedupe: ADR-018) · guard (catch_unwind, deadlines) · encode (frames)
+                 text · search · links · import (annotations → model) · forms (M4) · transport (M7)
 model/           engine-free domain (ADR-003)
                  ids · geometry · annotation · page · command · history · doc_state · validate
 pdfwrite/        the only lopdf user (ADR-004)
@@ -51,11 +51,11 @@ Import rules, checked by a CI grep:
 ## 3. Frontend modules (`src/`)
 
 ```
-api/          call.ts (the one `invoke` caller) · app.ts, documents.ts, … (one typed wrapper per command) · errors.ts · frame.ts · types.gen.ts (ts-rs, generated)
-engine/       renderCache.ts (Blob LRU) · renderScheduler.ts (dedupe, generations, set_viewport) · textCache.ts
-stores/       documents · view · annotations · tools · search · ui · settings · recents
+api/          call.ts (the one `invoke` caller) · app.ts, documents.ts, render.ts (render_page, set_viewport, get_page_sizes), … (one typed wrapper per command) · errors.ts · frame.ts · types.gen.ts (ts-rs, generated)
+engine/       buckets.ts (zoom buckets, tiles: pure) · renderCache.ts (Blob LRU, pins, in-flight dedupe, object URLs) · renderScheduler.ts (generations, set_viewport, quiet cancels) · textCache.ts
+stores/       documents · view · pages · annotations · tools · search · ui · settings · recents
 features/     shell (Shell, CaptionBar, ToolbarSlot, ToolbarRow, LeftPanel, MainGrid, Inspector, StatusBar, EmptyState, BannerRow: the app shell of DESIGN 2; grid rules in lib/layout.ts)
-              viewer (Canvas, ViewerCanvas, useViewer (store: the actions, the page image, the render loop; the open documents are the `documents` store), appEvents (what the backend pushes), PageView, layout.ts, TextLayer, LinkLayer, zoom.ts)
+              viewer (Canvas (the DOM: scroll region, wheel, pinch), ViewerCanvas (layout, the mounted pages, anchors), PageView (placeholder, cached image, tiles), layout.ts (pure: rows, boxes, virtual window, anchors, fits), model.ts, scrollBridge.ts, useDevicePixelRatio, useViewer (store: the actions, the canvas's size, whether a render runs; the open documents are the `documents` store), appEvents (what the backend pushes), TextLayer, LinkLayer; zoom steps and limits are `lib/zoom.ts`)
               annotations (Overlay SVG, tools/, Inspector, geometry.ts, ink.ts, textWrap.ts)
               thumbnails · outline · search · comments · pages (M3) · forms, signatures (M4)
 actions/      the one command registry (ADR-016): registry.ts (every action: id, labelKey, icon, per-platform shortcut, enabled(state), run()) · shortcut.ts (bindings: platform modifier, key matching, chips, aria, native accelerator) · keys.ts (the global key handler) · dispatch.ts (runAction) · state.ts (what enabled looks at) · menuBridge.ts (macOS menu commands in) · menu.json (layout of the macOS menu bar, read by Rust too)
@@ -132,8 +132,9 @@ save_document_as(doc_id: DocId, opts: SaveAsOptions, ack: SaveAck) -> Option<Sav
 revert_document(doc_id: DocId) -> DocumentInfo
 get_outline(doc_id: DocId) -> Vec<OutlineNode>       // ≤ 10 000 nodes, depth ≤ 32, title ≤ 512 chars
 // render
-render_page(req: RenderRequest) -> tauri::ipc::Response   // frame, ADR-002 §6
-set_viewport(doc_id: DocId, hint: ViewportHint) -> ()
+render_page(req: RenderRequest) -> tauri::ipc::Response   // frame, ADR-002 §6: the whole page or one 1024 px tile; `cancelled` if withdrawn while queued
+set_viewport(doc_id: DocId, hint: ViewportHint) -> ()      // cancels queued renders of pages that left the viewport, re-ranks the rest (ADR-018)
+get_page_sizes(doc_id: DocId) -> Vec<[f32; 2]>             // [width, height] in points per page, rotation applied, 1..=14 400 pt; ≤ 50 000 pages; read once at load, a lookup
 // text, search, links
 get_text_layer(doc_id: DocId, page_id: PageId) -> TextLayer   // ≤ 200 000 chars
 search(doc_id: DocId, query: SearchQuery, on_event: Channel<SearchEvent>) -> u32
@@ -151,7 +152,7 @@ Key types (serde `camelCase`; ts-rs generates the TS):
 
 ```rust
 struct RenderRequest { doc_id: DocId, page_id: PageId, bucket: i16 /* -17..=24 */, tile: Option<(u16, u16)> /* ≤ 63 */,
-                       priority: Priority /* Visible | Near | Thumbnail */, generation: u32, forms: bool }
+                       priority: Priority /* Visible | Near | Thumbnail */, generation: u32 }   // `forms: bool` joins with M4
 struct ViewportHint  { generation: u32, visible: Vec<PageId> /* ≤ 64 */, near: Vec<PageId> /* ≤ 64 */ }
 struct SearchQuery   { text: String /* 1..=512 chars */, match_case: bool, whole_word: bool, max_hits: u32 /* ≤ 50 000 */ }
 enum   SearchEvent   { Hits { page_id: PageId, hits: Vec<Vec<Quad>> }, Progress { done: u32, total: u32 }, Done { truncated: bool } }
@@ -195,7 +196,7 @@ document. The frontend therefore cannot make Rust open an arbitrary URL.
 - Font size 4–144. Widths 0.25–72 pt. Opacity 0.05–1.
 - Batch ≤ 1 000 commands. Page lists are unique and existing.
 
-A render frame is at most 4096×4096 px, checked after the bucket and tile are resolved.
+A render frame is at most 4096×4096 px (16 Mpx), checked after the bucket and tile are resolved against the page's real size: a whole page above that is `limit_exceeded` and the UI asks for tiles; a page more than 64 tiles wide or high is refused. `get_page_sizes` and a viewport hint are bounded the same way (≤ 50 000 pages, ≤ 64 pages per list, refused while the hint is read). A tile column or row of 64 or more is refused at the command; at most 8 callers join one queued or running frame; at most 96 `render_page` calls per document and 128 in all are in flight (`limit_exceeded`, `requests`).
 
 **Planned commands.** The milestone ADR fixes the exact signatures; the same rules apply, and output paths come from a Rust-side save dialog.
 M3: `extract_pages`, `split_document`, `merge_documents`, `insert_pages_from_file`, `compress_document`. M4: `get_form_fields`,
@@ -241,7 +242,8 @@ Codes: `invalid_argument`, `limit_exceeded`, `not_found`, `not_a_pdf`, `damaged_
 | Store | Holds | Changed by |
 |---|---|---|
 | `documents` | `byId: Record<DocId, DocMeta>` (today the `DocumentInfo` of the backend: displayName, pageCount; later pages, rev, flags, history), `order` (opening order), `activeId` (the last one opened or brought forward; the one closed is replaced by its next neighbour, else the previous) | `add` for each `opened` (dialog answer, app channel), `remove` on close, ChangeSet |
-| `view` | per doc: zoom, fit, scrollMode, viewRotation, anchor `{ pageId, offset }`, currentPage (today: zoom, pageIndex, pageCount) | canvas, toolbar, status bar |
+| `view` | per doc: zoom, fit (`none` / `width` / `page`, a mode that follows the window), scrollMode (`continuous` / `single` / `spread`), pageIndex (the current page: follows the scroll position in continuous mode), pageCount, anchor (`{ page, xPt, yPt, viewX, viewY }`: where the canvas puts the document next, consumed by it); viewRotation joins later | canvas, toolbar, status bar |
+| `pages` | per doc: the size of every page in points (`get_page_sizes`), replaced as a whole; placeholders of US Letter until it arrives | `showDocument` |
 | `annotations` | per doc: `byId`, `byPage`, `selection`, `editing` (transient draft) | ChangeSet; `editing` locally |
 | `tools` | active tool, locked, presets per tool | toolbar, actions |
 | `search` | per doc: query, hits by page, active hit, status | search Channel |
@@ -250,7 +252,7 @@ Codes: `invalid_argument`, `limit_exceeded`, `not_found`, `not_a_pdf`, `damaged_
 | `recents` | `RecentEntry[]` | `list_recents`/`remove_recent` |
 
 Rules:
-- Stores hold no pixels. The render cache and text cache are module singletons.
+- Stores hold no pixels. The render cache (`renderCache`, with its scheduler) and the text cache are module singletons.
 - Document and annotation data change only through ChangeSets and events, never optimistically.
 - Page components subscribe through per-page selectors, so re-renders stay local.
 
@@ -260,8 +262,8 @@ Rules:
   `opened`/`openFailed` per file → `adoptOpenOutcomes` → `documents` store (+ a `view` entry), banner for the first failure → `layout.ts` offsets → visible pages render. A file dropped on the window, opened by the OS or given at startup takes
   the same way from `intake` on and arrives as the same two messages on the app channel (§6), so there is one UI path for every source. Annotation import runs Interactive for visible pages and
   Background for the rest; `doc:annotations-imported` triggers `list_annotations`.
-- **Render.** Scroll → visible range → mount ≤ 24 pages. A cache hit shows `<img src=blob:>`. A miss calls `render_page` (Visible) → the
-  worker renders and encodes → frame → Blob → cache → `img.decode()` → swap. When scrolling settles, `set_viewport` cancels stale jobs.
+- **Render.** Scroll → `layout.ts` (visible range, ± one viewport height, ≤ 24 pages) → `PageView`s mount, sized from `get_page_sizes`. A page shows the best cached bucket as an `<img src=blob:>` scaled by CSS and asks the scheduler
+  for its exact bucket (`bucketFor(zoom, dpr)`; tiles over a low underlay above 4096 px or 8 Mpx) → `render_page` (Visible or Near, stamped with the viewport generation) → the worker renders and encodes → frame → Blob → cache → the exact `<img>` covers the stand-in when decoded. 150 ms after the viewport settles, `set_viewport` cancels the stale jobs and re-ranks the rest. A zoom, a change of scroll mode and a jump to a page set a `ScrollAnchor` that the canvas scrolls to once it has laid out; a change of the display's pixel ratio changes the bucket and renders again.
 - **Annotate.** A pointer gesture builds a draft in `annotations.editing`. On pointerup, `apply_command(CreateAnnotation)` → validate,
   apply, push history → ChangeSet → store → overlay. A persisted annotation that becomes non-clean is hidden in PDFium, `pageRev`
   increments, and the page re-renders.

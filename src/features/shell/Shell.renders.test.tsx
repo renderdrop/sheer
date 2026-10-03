@@ -11,10 +11,11 @@ import { useLocaleStore } from '../../i18n/store';
 import { MAX_ZOOM } from '../../lib/zoom';
 import { setup } from '../../test/render';
 import { useSettings } from '../../stores/settings';
-import { opened, resetDocuments } from '../../stores/documents.testutil';
+import { opened } from '../../stores/documents.testutil';
 import { useUi } from '../../stores/ui';
 import { useView } from '../../stores/view';
 import { useViewer } from '../viewer/useViewer';
+import { resetViewer } from '../viewer/viewer.testutil';
 import { Shell } from './Shell';
 
 /**
@@ -63,9 +64,9 @@ vi.mock('../../components/Panel', async (importOriginal) => {
 
 const documentsApi = vi.hoisted(() => ({
   openDocumentDialog: vi.fn(),
-  renderPage: vi.fn(),
   closeDocument: vi.fn(),
 }));
+const renderApi = vi.hoisted(() => ({ renderPage: vi.fn(), setViewport: vi.fn(), getPageSizes: vi.fn() }));
 const windowApi = vi.hoisted(() => ({
   minimizeWindow: vi.fn(),
   toggleMaximizeWindow: vi.fn(),
@@ -75,11 +76,11 @@ const windowApi = vi.hoisted(() => ({
 }));
 
 vi.mock('../../api/documents', () => documentsApi);
+vi.mock('../../api/render', () => renderApi);
 vi.mock('../../api/window', () => windowApi);
 
 const uiInitial = useUi.getState();
 const settingsInitial = useSettings.getState();
-const viewerInitial = useViewer.getState();
 const localeInitial = useLocaleStore.getState().locale;
 
 const REPORT: DocumentInfo = { id: 1, pageCount: 120, displayName: 'Quarterly report.pdf' };
@@ -94,9 +95,8 @@ function resizeTo(width: number) {
 
 function reset() {
   useUi.setState({ ...uiInitial }, true);
-  useViewer.setState({ ...viewerInitial }, true);
-  resetDocuments();
-  useView.setState({ byDoc: {} });
+  resetViewer();
+  useViewer.setState({ viewport: { width: 900, height: 700 } });
   useSettings.setState({ ...settingsInitial, platform: null }, true);
   useLocaleStore.setState({ locale: localeInitial });
 }
@@ -104,9 +104,9 @@ function reset() {
 beforeEach(() => {
   reset();
   documentsApi.openDocumentDialog.mockReset().mockResolvedValue([opened(REPORT)]);
-  documentsApi.renderPage
-    .mockReset()
-    .mockResolvedValue({ data: new Uint8Array([1]), width: 816, height: 1056, scale: 4 / 3 });
+  renderApi.renderPage.mockReset().mockResolvedValue({ data: new Uint8Array([1]), width: 816, height: 1056 });
+  renderApi.setViewport.mockReset().mockResolvedValue(undefined);
+  renderApi.getPageSizes.mockReset().mockResolvedValue([]);
   documentsApi.closeDocument.mockReset().mockResolvedValue(undefined);
   for (const mock of Object.values(windowApi)) mock.mockReset().mockResolvedValue(false);
   URL.createObjectURL = vi.fn(() => 'blob:page');
@@ -132,10 +132,17 @@ async function openAndSettle(user: ReturnType<typeof setup>['user']) {
   await waitFor(() => expect(useViewer.getState().rendering).toBe(false));
 }
 
-/** Waits for the render that a change of page or zoom starts (debounced, then async) to be over. */
+/** Lets the renders that a change of page started (the new pages ask as they mount, and the mock answers at once) finish. */
+async function flushRenders() {
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  });
+}
+
+/** Waits for the render that a change of zoom starts (the pages ask for the sharper image after a moment) to be over. */
 async function settleRender() {
-  const calls = documentsApi.renderPage.mock.calls.length;
-  await waitFor(() => expect(documentsApi.renderPage.mock.calls.length).toBeGreaterThan(calls));
+  const calls = renderApi.renderPage.mock.calls.length;
+  await waitFor(() => expect(renderApi.renderPage.mock.calls.length).toBeGreaterThan(calls));
   await waitFor(() => expect(useViewer.getState().rendering).toBe(false));
 }
 
@@ -243,21 +250,22 @@ describe('what changes often does not render the shell, the toolbar or the left 
     await user.type(field, '42');
     await user.keyboard('{Enter}');
     expect(pageButton().textContent).toBe('42 / 120');
-    expect(screen.getByRole('img', { name: /^Page \d+ of 120$/ })).not.toBeNull();
+    // The canvas is virtualized: the pages around the one that was gone to are mounted, not one.
+    expect(screen.getAllByRole('img', { name: /^Page \d+ of 120$/ }).length).toBeGreaterThan(0);
 
     expect(counts()).toEqual(before);
-    await settleRender();
+    await flushRenders();
     expect(screen.getByRole('img', { name: 'Page 42 of 120' })).not.toBeNull();
     expect(counts()).toEqual(before);
   });
 
-  it('a render that starts and ends (the "rendering" flag and the new image)', async () => {
+  it('a render that starts and ends (the "rendering" flag)', async () => {
     const { user } = setup(<Shell />);
     await openAndSettle(user);
     const before = counts();
     act(() => useViewer.setState({ rendering: true }));
     expect(within(screen.getByRole('contentinfo', { name: 'Status' })).getByText('Rendering…')).not.toBeNull();
-    act(() => useViewer.setState({ rendering: false, image: { url: 'blob:other', widthPt: 612, heightPt: 792 } }));
+    act(() => useViewer.setState({ rendering: false }));
     expect(counts()).toEqual(before);
   });
 

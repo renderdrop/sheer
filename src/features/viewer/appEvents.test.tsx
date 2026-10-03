@@ -15,11 +15,15 @@ import { useViewer } from './useViewer';
 
 const documentsApi = vi.hoisted(() => ({
   openDocumentDialog: vi.fn(),
-  renderPage: vi.fn(),
   closeDocument: vi.fn(),
 }));
 
 vi.mock('../../api/documents', () => documentsApi);
+vi.mock('../../api/render', () => ({
+  renderPage: vi.fn(),
+  setViewport: vi.fn().mockResolvedValue(undefined),
+  getPageSizes: vi.fn().mockResolvedValue([]),
+}));
 
 const uiInitial = useUi.getState();
 const viewerInitial = useViewer.getState();
@@ -39,9 +43,6 @@ function reset() {
 
 beforeEach(() => {
   reset();
-  documentsApi.renderPage
-    .mockReset()
-    .mockResolvedValue({ data: new Uint8Array([1]), width: 816, height: 1056, scale: 4 / 3 });
   documentsApi.closeDocument.mockReset().mockResolvedValue(undefined);
   URL.createObjectURL = vi.fn(() => 'blob:page');
   URL.revokeObjectURL = vi.fn();

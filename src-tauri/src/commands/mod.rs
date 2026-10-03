@@ -9,26 +9,28 @@
 //! | Command | Arguments | Returns |
 //! |---|---|---|
 //! | `open_document_dialog` | none | the open events of the chosen files (at most 32, in order): `{ type: "opened", document: { id, pageCount, displayName } }` or `{ type: "openFailed", code, key, retryable, params? }` each; empty if the dialog was cancelled |
-//! | `render_page` | `docId: number`, `pageId: number`, `scale: number` | frame (`ArrayBuffer`, ADR-002 §6, see `engine/encode.rs`) |
+//! | `render_page` | `req: { docId, pageId, bucket, tile?, priority, generation }` | frame (`ArrayBuffer`, ADR-002 §6, see `engine/encode.rs`), see [`render`] |
+//! | `set_viewport` | `docId: number`, `hint: { generation, visible: number[], near: number[] }` | nothing; cancels queued renders of pages that left the viewport, see [`render`] |
+//! | `get_page_sizes` | `docId: number` | `[width, height][]` in points, one per page, see [`render`] |
 //! | `close_document` | `docId: number` | nothing |
 //! | `app_ready`, `get_settings`, `update_settings`, `watch_transparency`, `subscribe_menu`, `subscribe_app` | see [`app`] | see [`app`] |
 //!
-//! `scale` is device pixels per PDF point (1.0 = 72 dpi), accepted range 0.1 to 8, and a frame may not exceed 4096 x
-//! 4096 pixels (all bounds in `limits.rs`). A `pageId` is the page's position until M3 (identity mapping). The frontend
-//! never sees file paths: a path comes from the dialog (here), a drop, the OS or the command line (`sources`), is judged by
-//! `documents::intake` and stays in the registry.
+//! A frame is at most 4096 x 4096 pixels (all bounds in `limits.rs`); a page that is larger at its zoom bucket is asked for
+//! as 1024 px tiles. A `pageId` is the page's position until M3 (identity mapping). The frontend never sees file paths: a
+//! path comes from the dialog (here), a drop, the OS or the command line (`sources`), is judged by `documents::intake` and
+//! stays in the registry.
 
 pub mod app;
+pub mod render;
 
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use tauri::ipc::Response;
 use tauri::{State, WebviewWindow};
 use tauri_plugin_dialog::DialogExt;
 
 use crate::documents::intake::{self, Admitted};
-use crate::documents::{Abandoned, Claim, DocumentId, DocumentInfo, PageId, Registry};
+use crate::documents::{Abandoned, Claim, DocumentId, DocumentInfo, Registry};
 use crate::engine::Engine;
 use crate::error::{AppError, ErrorCode, UiError};
 use crate::events::AppEvent;
@@ -40,6 +42,8 @@ use crate::limits;
 pub struct AppState {
     engine: Engine,
     registry: Arc<Registry>,
+    /// The `render_page` calls in flight, capped per document and in all (see [`render::RenderGate`]).
+    renders: Arc<render::RenderGate>,
 }
 
 impl AppState {
@@ -47,6 +51,7 @@ impl AppState {
         Self {
             engine,
             registry: Arc::new(Registry::new()),
+            renders: Arc::new(render::RenderGate::default()),
         }
     }
 
@@ -56,6 +61,8 @@ impl AppState {
     /// (a file that is open already answers with its existing document, and a file that another request is still loading
     /// answers `None`: that request reports it), and the engine loads the same handle. Errors leave nothing registered.
     pub fn open_path(&self, path: PathBuf) -> Result<Option<DocumentInfo>, AppError> {
+        // Documents that were closed but could not be released then count against the limit: try again before looking at it.
+        self.release_closing();
         let Admitted { path, file } = intake::admit(&path)?;
         let id = match self.registry.claim(path)? {
             Claim::New(id) => id,
@@ -112,24 +119,43 @@ impl AppState {
         events
     }
 
-    /// Validates the request against the registered page count, then renders. Returns a frame.
-    pub fn render_page(
-        &self,
-        id: DocumentId,
-        page: PageId,
-        scale: f32,
-    ) -> Result<Vec<u8>, AppError> {
-        let scale = limits::validate_scale(scale)?;
-        let page_index = self.registry.page_index(id, page)?;
-        self.engine.render(id, page_index, scale)
+    /// Closes a document. Closing an unknown id is not an error.
+    ///
+    /// The document is gone for the UI at once (`Registry::begin_close`: `not_found` everywhere, its path can be opened anew),
+    /// but its registry entry stays until the engine has released it. If the engine does not answer (a busy or stuck worker, a
+    /// full queue) that is the error returned, the entry stays marked as closing, and the release is tried again by the next
+    /// close or open: the engine's copy of the document is never left without an entry that could name it. The same goes for
+    /// documents left over from an earlier failure, oldest first.
+    pub fn close_document(&self, id: DocumentId) -> Result<(), AppError> {
+        self.registry.begin_close(id);
+        match self.release_closing_checked() {
+            // This document is still waiting for its release: that is the answer.
+            Err(error) if self.registry.closing().contains(&id) => Err(error),
+            // An older one could not be released; it is none of this call's business, and is tried again later.
+            Err(error) => {
+                error.log();
+                Ok(())
+            }
+            Ok(()) => Ok(()),
+        }
     }
 
-    /// Closes a document. Closing an unknown id is not an error.
-    pub fn close_document(&self, id: DocumentId) -> Result<(), AppError> {
-        if self.registry.remove(id) {
+    /// Asks the engine to release every document marked as closing, oldest first, and forgets each one the engine confirms.
+    /// Stops at the first the engine does not answer (the others would not be answered either) and returns its error.
+    fn release_closing_checked(&self) -> Result<(), AppError> {
+        for id in self.registry.closing() {
             self.engine.close(id)?;
+            self.registry.remove(id);
         }
         Ok(())
+    }
+
+    /// [`AppState::release_closing_checked`] for the caller that has no use for the answer: a failure leaves the documents
+    /// marked as closing for the next try.
+    fn release_closing(&self) {
+        if let Err(error) = self.release_closing_checked() {
+            error.log();
+        }
     }
 }
 
@@ -184,20 +210,6 @@ pub async fn open_document_dialog(
         Ok(state.open_paths(paths))
     })
     .await
-}
-
-/// Renders one page to a frame. Returned as raw bytes, not JSON, to avoid inflating large images.
-#[tauri::command]
-pub async fn render_page(
-    state: State<'_, AppState>,
-    doc_id: DocumentId,
-    page_id: PageId,
-    scale: f32,
-) -> Result<Response, UiError> {
-    let state = state.inner().clone();
-    blocking(move || state.render_page(doc_id, page_id, scale))
-        .await
-        .map(Response::new)
 }
 
 /// Releases a document that was opened (dialog, drop, file association).
@@ -293,51 +305,6 @@ mod tests {
                 _ => None,
             })
             .collect()
-    }
-
-    #[test]
-    fn render_rejects_unknown_documents_and_bad_scales_before_the_engine() {
-        let state = state_without_engine();
-        // A registered but never loaded document is indistinguishable from an unknown one.
-        let id = state.registry.register(manifest()).unwrap();
-        let code = |result: Result<Vec<u8>, AppError>| result.unwrap_err().code();
-        assert_eq!(
-            code(state.render_page(id, PageId::new(0), 1.0)),
-            ErrorCode::NotFound
-        );
-        for bad_scale in [0.0, 99.0, f32::NAN, f32::INFINITY, -1.0] {
-            assert_eq!(
-                code(state.render_page(id, PageId::new(0), bad_scale)),
-                ErrorCode::InvalidArgument,
-                "{bad_scale}"
-            );
-        }
-    }
-
-    #[test]
-    fn render_checks_the_page_id_against_the_registry() {
-        let state = state_without_engine();
-        let id = state.registry.register(manifest()).unwrap();
-        state.registry.set_page_count(id, 3).unwrap();
-        // Pages 3 and up are out of range; this is rejected before the (unavailable) engine is asked.
-        for page in [3, 4, u32::MAX] {
-            assert_eq!(
-                state
-                    .render_page(id, PageId::new(page), 1.0)
-                    .unwrap_err()
-                    .code(),
-                ErrorCode::InvalidArgument,
-                "page {page}"
-            );
-        }
-        // A valid request reaches the engine, which here has no library.
-        assert_eq!(
-            state
-                .render_page(id, PageId::new(2), 1.0)
-                .unwrap_err()
-                .code(),
-            ErrorCode::EngineUnavailable
-        );
     }
 
     #[test]
@@ -886,6 +853,219 @@ mod tests {
         let id = state.registry.register(manifest()).unwrap();
         state.registry.remove(id);
         assert!(state.close_document(id).is_ok());
+    }
+
+    // --- a close the engine could not take ---
+
+    /// An engine that "loads" every document as one of `pages` pages and refuses the first `failures` closes with `error`, as a
+    /// busy, stuck or full engine does; the closes after that work. Needs no PDFium.
+    fn engine_refusing_closes(
+        pages: u32,
+        failures: usize,
+        error: ErrorCode,
+    ) -> (Engine, Arc<Mutex<Vec<Seen>>>) {
+        let seen = Arc::new(Mutex::new(Vec::new()));
+        let log = Arc::clone(&seen);
+        let refused = Arc::new(Mutex::new(0usize));
+        let engine = Engine::with_handler(move |job| match job {
+            Job::Open {
+                id, confirm, reply, ..
+            } => {
+                log.lock().unwrap().push(Seen::Open(id));
+                let wanted = confirm(pages);
+                let _ = reply.send(if wanted {
+                    Ok(pages)
+                } else {
+                    Err(AppError::new(ErrorCode::EngineTimeout))
+                });
+            }
+            Job::Close { id, reply } => {
+                log.lock().unwrap().push(Seen::Close(id));
+                let mut refused = refused.lock().unwrap();
+                let _ = reply.send(if *refused < failures {
+                    *refused += 1;
+                    Err(AppError::new(error))
+                } else {
+                    Ok(())
+                });
+            }
+            _ => {}
+        });
+        (engine, seen)
+    }
+
+    fn closes(seen: &Mutex<Vec<Seen>>) -> Vec<Seen> {
+        seen.lock()
+            .unwrap()
+            .iter()
+            .filter(|entry| matches!(entry, Seen::Close(_)))
+            .cloned()
+            .collect()
+    }
+
+    #[test]
+    fn a_close_the_engine_does_not_take_keeps_the_entry_so_the_document_is_not_lost() {
+        let dir = TempDir::new();
+        for error in [
+            ErrorCode::EngineUnavailable,
+            ErrorCode::EngineTimeout,
+            ErrorCode::EngineCrashed,
+        ] {
+            let (engine, seen) = engine_refusing_closes(3, 1, error);
+            let state = AppState::new(engine);
+            let path = pdf(&dir, "a.pdf");
+            let opened = state.open_path(path).unwrap().unwrap();
+
+            // The engine does not take the close: the caller hears why ...
+            assert_eq!(
+                state.close_document(opened.id).unwrap_err().code(),
+                error,
+                "{error:?}"
+            );
+            // ... the document is closed as far as the UI is concerned ...
+            assert_eq!(state.registry.info(opened.id), None);
+            assert_eq!(
+                state.page_sizes(opened.id).unwrap_err().code(),
+                ErrorCode::NotFound
+            );
+            assert_eq!(
+                state
+                    .render_page(render::RenderRequest {
+                        doc_id: opened.id,
+                        page_id: crate::documents::PageId::new(0),
+                        bucket: 0,
+                        tile: None,
+                        priority: render::RenderPriority::Visible,
+                        generation: 1,
+                    })
+                    .unwrap_err()
+                    .code(),
+                ErrorCode::NotFound
+            );
+            // ... but its entry is kept, so that the engine's copy has a name to be released by.
+            assert_eq!(state.registry.closing(), [opened.id]);
+            assert_eq!(state.registry.len(), 1);
+            assert_eq!(
+                *seen.lock().unwrap(),
+                [Seen::Open(opened.id), Seen::Close(opened.id)]
+            );
+
+            // Closing it again (the UI may) is another try, and it goes through now.
+            assert!(state.close_document(opened.id).is_ok());
+            assert!(state.registry.is_empty());
+            assert_eq!(
+                closes(&seen),
+                [Seen::Close(opened.id), Seen::Close(opened.id)]
+            );
+        }
+    }
+
+    #[test]
+    fn the_next_open_or_close_tries_again_to_release_what_could_not_be_released() {
+        let dir = TempDir::new();
+        let (engine, seen) = engine_refusing_closes(2, 1, ErrorCode::EngineUnavailable);
+        let state = AppState::new(engine);
+        let first = state.open_path(pdf(&dir, "a.pdf")).unwrap().unwrap();
+        assert!(state.close_document(first.id).is_err());
+        assert_eq!(state.registry.closing(), [first.id]);
+
+        // Opening the same file again is a new document with a new id: the closed one is not offered back. The open also
+        // retried the release, which went through.
+        let again = state.open_path(dir.path().join("a.pdf")).unwrap().unwrap();
+        assert_ne!(again.id, first.id);
+        assert!(state.registry.closing().is_empty());
+        assert_eq!(state.registry.len(), 1);
+        assert_eq!(
+            closes(&seen),
+            [Seen::Close(first.id), Seen::Close(first.id)]
+        );
+
+        // Another document's close does the same for an older one that is still waiting.
+        let (engine, seen) = engine_refusing_closes(2, 1, ErrorCode::EngineTimeout);
+        let state = AppState::new(engine);
+        let a = state.open_path(pdf(&dir, "b.pdf")).unwrap().unwrap();
+        let b = state.open_path(pdf(&dir, "c.pdf")).unwrap().unwrap();
+        assert!(state.close_document(a.id).is_err());
+        assert!(state.close_document(b.id).is_ok());
+        assert!(state.registry.is_empty());
+        // The older one first: it was retried before the newer one was asked for.
+        assert_eq!(
+            closes(&seen),
+            [Seen::Close(a.id), Seen::Close(a.id), Seen::Close(b.id)]
+        );
+    }
+
+    #[test]
+    fn a_closing_document_still_counts_against_the_limit_until_the_engine_has_released_it() {
+        let dir = TempDir::new();
+        // Every close fails for a while: the engine holds what it was not asked to release.
+        let healthy = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let up = Arc::clone(&healthy);
+        let engine = Engine::with_handler(move |job| match job {
+            Job::Open { confirm, reply, .. } => {
+                let _ = confirm(1);
+                let _ = reply.send(Ok(1));
+            }
+            Job::Close { reply, .. } => {
+                let _ = reply.send(if up.load(std::sync::atomic::Ordering::SeqCst) {
+                    Ok(())
+                } else {
+                    Err(AppError::new(ErrorCode::EngineUnavailable))
+                });
+            }
+            _ => {}
+        });
+        let state = AppState::new(engine);
+        let paths: Vec<PathBuf> = (0..=limits::MAX_OPEN_DOCUMENTS)
+            .map(|i| pdf(&dir, &format!("{i}.pdf")))
+            .collect();
+        let mut ids = Vec::new();
+        for path in &paths[..limits::MAX_OPEN_DOCUMENTS] {
+            ids.push(state.open_path(path.clone()).unwrap().unwrap().id);
+        }
+        assert!(state.close_document(ids[0]).is_err());
+
+        // Room is not made by a close that did not happen.
+        let error = state.open_path(paths[limits::MAX_OPEN_DOCUMENTS].clone());
+        assert_eq!(error.unwrap_err().code(), ErrorCode::LimitExceeded);
+        // The engine recovers: the next open releases the old document first, and then there is room.
+        healthy.store(true, std::sync::atomic::Ordering::SeqCst);
+        assert!(state
+            .open_path(paths[limits::MAX_OPEN_DOCUMENTS].clone())
+            .unwrap()
+            .is_some());
+        assert!(state.registry.closing().is_empty());
+        assert_eq!(state.registry.len(), limits::MAX_OPEN_DOCUMENTS);
+    }
+
+    #[test]
+    fn a_close_that_fails_for_an_older_document_is_not_this_documents_error() {
+        let dir = TempDir::new();
+        let engine_up = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let up = Arc::clone(&engine_up);
+        let engine = Engine::with_handler(move |job| match job {
+            Job::Open { confirm, reply, .. } => {
+                let _ = confirm(1);
+                let _ = reply.send(Ok(1));
+            }
+            Job::Close { reply, .. } => {
+                let _ = reply.send(if up.load(std::sync::atomic::Ordering::SeqCst) {
+                    Ok(())
+                } else {
+                    Err(AppError::new(ErrorCode::EngineUnavailable))
+                });
+            }
+            _ => {}
+        });
+        let state = AppState::new(engine);
+        let a = state.open_path(pdf(&dir, "a.pdf")).unwrap().unwrap();
+        assert!(state.close_document(a.id).is_err());
+        // An id that is not open is not an error even while another document waits to be released ...
+        let unknown = state.registry.register(manifest()).unwrap();
+        state.registry.remove(unknown);
+        assert!(state.close_document(unknown).is_ok());
+        // ... and the one that waits is still there for the next try.
+        assert_eq!(state.registry.closing(), [a.id]);
     }
 
     #[test]

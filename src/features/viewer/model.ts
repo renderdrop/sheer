@@ -1,0 +1,65 @@
+import { tokenPx } from '../../components/tokens';
+import { sizesFor, usePages } from '../../stores/pages';
+import { useView } from '../../stores/view';
+import { PageLayout, metricsFor, type Metrics, type ScrollMode, type Viewport } from './layout';
+
+/** The space between pages: `--space-2`, 16 px (DESIGN 2). */
+const PAGE_GAP_FALLBACK = 16;
+let gap: number | null = null;
+
+/** The space between pages in px, read from the design token once. */
+export function pageGap(): number {
+  if (gap !== null) return gap;
+  if (typeof document === 'undefined') return PAGE_GAP_FALLBACK;
+  const read = tokenPx('--space-2', PAGE_GAP_FALLBACK);
+  gap = read;
+  return read;
+}
+
+/** The padding of the scroll region around the content: `--space-3`, 24 px (DESIGN 2), which is `p-3` on the region. */
+const CANVAS_PADDING_FALLBACK = 24;
+let padding: number | null = null;
+
+/** The padding around the content in px, read from the design token once. */
+export function canvasPadding(): number {
+  if (padding !== null) return padding;
+  if (typeof document === 'undefined') return CANVAS_PADDING_FALLBACK;
+  const read = tokenPx('--space-3', CANVAS_PADDING_FALLBACK);
+  padding = read;
+  return read;
+}
+
+/** What differs from the document's own view when a layout is asked for (a zoom or a mode that is about to be set). */
+export interface LayoutOverrides {
+  zoom?: number;
+  mode?: ScrollMode;
+  current?: number;
+}
+
+/**
+ * The layout of an open document as the stores have it now, in `viewport`; `null` while the canvas has not measured itself
+ * (`viewport` is `null`) and for a document that is not open. The canvas builds its own from the same inputs.
+ */
+export function layoutFor(
+  docId: number,
+  viewport: Viewport | null,
+  overrides: LayoutOverrides = {},
+): PageLayout | null {
+  const view = useView.getState().byDoc[docId];
+  if (view === undefined || viewport === null) return null;
+  const sizes = sizesFor(usePages.getState(), docId, view.pageCount);
+  const mode = overrides.mode ?? view.scrollMode;
+  return new PageLayout(metricsFor(sizes, mode), {
+    zoom: overrides.zoom ?? view.zoom,
+    gap: pageGap(),
+    viewport,
+    current: overrides.current ?? view.pageIndex,
+  });
+}
+
+/** What the page sizes of an open document say about its layout in `mode` (the document's own by default); `null` if it is not open. */
+export function metricsOfDocument(docId: number, mode?: ScrollMode): Metrics | null {
+  const view = useView.getState().byDoc[docId];
+  if (view === undefined) return null;
+  return metricsFor(sizesFor(usePages.getState(), docId, view.pageCount), mode ?? view.scrollMode);
+}

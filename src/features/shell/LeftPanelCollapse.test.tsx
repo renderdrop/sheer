@@ -7,19 +7,19 @@ import type { DocumentInfo } from '../../api/documents';
 import { PANEL } from '../../components/tokens';
 import { setup } from '../../test/render';
 import { useSettings } from '../../stores/settings';
-import { opened, resetDocuments } from '../../stores/documents.testutil';
+import { opened } from '../../stores/documents.testutil';
 import { useUi } from '../../stores/ui';
-import { useView } from '../../stores/view';
 import { useViewer } from '../viewer/useViewer';
+import { resetViewer } from '../viewer/viewer.testutil';
 import { Shell } from './Shell';
 
 /** Collapsing and restoring the left panel (DESIGN 3.8): the columns slide for 250 ms and the panel fades, without the shell rendering for it. */
 
 const documentsApi = vi.hoisted(() => ({
   openDocumentDialog: vi.fn(),
-  renderPage: vi.fn(),
   closeDocument: vi.fn(),
 }));
+const renderApi = vi.hoisted(() => ({ renderPage: vi.fn(), setViewport: vi.fn(), getPageSizes: vi.fn() }));
 const windowApi = vi.hoisted(() => ({
   minimizeWindow: vi.fn(),
   toggleMaximizeWindow: vi.fn(),
@@ -29,11 +29,11 @@ const windowApi = vi.hoisted(() => ({
 }));
 
 vi.mock('../../api/documents', () => documentsApi);
+vi.mock('../../api/render', () => renderApi);
 vi.mock('../../api/window', () => windowApi);
 
 const uiInitial = useUi.getState();
 const settingsInitial = useSettings.getState();
-const viewerInitial = useViewer.getState();
 
 const REPORT: DocumentInfo = { id: 1, pageCount: 120, displayName: 'Quarterly report.pdf' };
 
@@ -46,14 +46,13 @@ function resizeTo(width: number) {
 
 beforeEach(() => {
   useUi.setState({ ...uiInitial }, true);
-  useViewer.setState({ ...viewerInitial }, true);
-  resetDocuments();
-  useView.setState({ byDoc: {} });
+  resetViewer();
+  useViewer.setState({ viewport: { width: 900, height: 700 } });
   useSettings.setState({ ...settingsInitial, platform: null }, true);
   documentsApi.openDocumentDialog.mockReset().mockResolvedValue([opened(REPORT)]);
-  documentsApi.renderPage
-    .mockReset()
-    .mockResolvedValue({ data: new Uint8Array([1]), width: 816, height: 1056, scale: 4 / 3 });
+  renderApi.renderPage.mockReset().mockResolvedValue({ data: new Uint8Array([1]), width: 816, height: 1056 });
+  renderApi.setViewport.mockReset().mockResolvedValue(undefined);
+  renderApi.getPageSizes.mockReset().mockResolvedValue([]);
   documentsApi.closeDocument.mockReset().mockResolvedValue(undefined);
   for (const mock of Object.values(windowApi)) mock.mockReset().mockResolvedValue(false);
   URL.createObjectURL = vi.fn(() => 'blob:page');
@@ -64,9 +63,7 @@ beforeEach(() => {
 afterEach(() => {
   vi.useRealTimers();
   useUi.setState({ ...uiInitial }, true);
-  useViewer.setState({ ...viewerInitial }, true);
-  resetDocuments();
-  useView.setState({ byDoc: {} });
+  resetViewer();
   useSettings.setState(settingsInitial, true);
 });
 

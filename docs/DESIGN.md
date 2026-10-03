@@ -192,7 +192,7 @@ rules testable as one. The main row has an 8 px gap above the status bar so pane
 - **Commands and keys.** Every command is an action of `src/actions/registry.ts` (ADR-016): the toolbar items, the More menu, the key handler and the macOS menu bar derive from it, so a tooltip's key chip, `aria-keyshortcuts` and the real binding cannot differ. The platform's primary key is Cmd on macOS and Ctrl elsewhere. A bare letter (the tool keys) works only while the canvas has focus, and no key is ever taken from a text field.
 - **Platform chrome.** The first paint takes the platform from the user agent, then `app_ready`'s answer replaces it (ADR-014). Windows: caption row, caption buttons are not tab stops. macOS: 80 px toolbar-row inset, 8 in full screen.
   The toolbar row (and the Windows caption) carry `data-tauri-drag-region="deep"`: any non-interactive part drags, buttons never do.
-- **Canvas** is the `<main>` landmark around one focusable scroll region; the scrim is a sibling of that region (it must not scroll) and shows once `scrollTop > 0`.
+- **Canvas** is the `<main>` landmark around one focusable scroll region; the scrim is a sibling of that region (it must not scroll) and shows once `scrollTop > 0`. The region holds one content box as large as the layout (24 px padding around it, page gap 16 = `--space-2`, read from the token), and only the pages within a viewport height of the viewport are mounted in it (at most 24), each a white placeholder of its real size with `role="img"`, named "Page n of m". Nothing animates: a zoom or a jump scrolls at once, so reduced motion changes nothing here. Ctrl/Cmd+wheel and the pinch zoom around the pointer, the buttons and keys around the middle of the viewport; Single page and Two pages turn with Next/Previous page and with the wheel at the end of the page.
 - **Empty state.** The drop zone is visual only (`ui.dropHover`, set from Rust: the `dropHover` message of the app channel, ARCHITECTURE §6); the webview never reads a dropped file or path. Recents show a placeholder until M1 has the list; the privacy footer belongs to the rows and
   is omitted while there are none (§3.11).
 - **Banner.** `BannerRow` follows `ui.banner`. It opens and closes with height and opacity over 250 ms ease-out (§3.12, `useRevealMotion`); under reduced motion only the opacity changes, 150 ms. The row clips its
@@ -204,7 +204,7 @@ rules testable as one. The main row has an 8 px gap above the status bar so pane
   not the shell, the toolbar or the left panel (`Shell.renders.test.tsx` counts renders). The window's maximized and full-screen state is read once when a resize has settled (150 ms), not per frame.
 
 Differences from the spec, all temporary: the file name is cut at its head and keeps its last 8 characters (a CSS-only
-middle truncation); the tabs are placeholders; More carries the commands that have no toolbar button (Open, Close document, Actual size, Fit width, Fit page, Next and Previous page, Settings, About), which is the only way to them with a mouse on Windows (ADR-016), and Settings and About open the popover and the dialog of 3.13; tools only change the active tool until M2.
+middle truncation); the tabs are placeholders; More carries the commands that have no toolbar button (Open, Close document, Actual size, Fit width, Fit page, the three scroll modes as a checked choice of one — Continuous scrolling, Single page, Two pages —, Next and Previous page, Settings, About), which is the only way to them with a mouse on Windows (ADR-016), and Settings and About open the popover and the dialog of 3.13; tools only change the active tool until M2.
 
 ## 3. Components
 
@@ -328,7 +328,7 @@ landmarks, F6 stops; lists roving Up/Down, Enter.
 
 32 h on `--color-bg`, no surface, padding 0 16, meta, gap 16. Leading: file name (middle-truncated, ≤ 40 %),
 "Edited", signed/encrypted icon 12 with tooltip. Trailing: activity ("Saving…" + spinner), page "3 / 120" and zoom
-"125 %" as sm ghost buttons opening Go to page and the zoom menu. `<footer>`, F6 stop. A polite live region announces
+"125 %" as sm ghost buttons opening Go to page and the zoom menu. `<footer>`, F6 stop. The page is the one most of the viewport is on while scrolling, and the page shown in the paged modes. A polite live region announces
 "Page 3 of 120" 500 ms after scrolling settles.
 
 ### 3.11 Empty state

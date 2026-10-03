@@ -8,10 +8,6 @@ export const ZOOM_STEPS: readonly number[] = [0.25, 0.33, 0.5, 0.67, 0.75, 0.9, 
 /** CSS pixels per PDF point (1 pt = 1/72 in, 1 CSS px = 1/96 in). */
 export const CSS_PX_PER_PT = 96 / 72;
 
-/** Backend render-scale limits (device px per pt). Keep in sync with src-tauri/src/limits.rs. */
-export const MIN_RENDER_SCALE = 0.1;
-export const MAX_RENDER_SCALE = 8;
-
 /** Ctrl+wheel sensitivity: zoom factor per CSS pixel of wheel delta. */
 const WHEEL_ZOOM_RATE = 0.0015;
 const PIXELS_PER_LINE = 16;
@@ -75,17 +71,16 @@ export function fitPageZoom(
   );
 }
 
-/** Continuous zoom for Ctrl/Cmd+wheel and trackpad pinch. Scrolling up (negative delta) zooms in. */
-export function wheelZoom(zoom: number, deltaY: number, deltaMode = 0): number {
+/** The factor a Ctrl/Cmd+wheel step zooms by (a trackpad pinch arrives as ctrl+wheel). Scrolling up (negative delta) zooms in. */
+export function wheelFactor(deltaY: number, deltaMode = 0): number {
   const unit = deltaMode === 1 ? PIXELS_PER_LINE : deltaMode === 2 ? PIXELS_PER_PAGE : 1;
-  return clampZoom(zoom * Math.exp(-deltaY * unit * WHEEL_ZOOM_RATE));
+  const factor = Math.exp(-deltaY * unit * WHEEL_ZOOM_RATE);
+  return Number.isFinite(factor) ? factor : 1;
 }
 
-/** Backend render scale for a zoom level on a display with the given pixel ratio, clamped to what the backend accepts. */
-export function scaleForZoom(zoom: number, devicePixelRatio: number): number {
-  const ratio = Number.isFinite(devicePixelRatio) && devicePixelRatio > 0 ? devicePixelRatio : 1;
-  const scale = clampZoom(zoom) * CSS_PX_PER_PT * ratio;
-  return Math.min(MAX_RENDER_SCALE, Math.max(MIN_RENDER_SCALE, scale));
+/** Continuous zoom for Ctrl/Cmd+wheel and trackpad pinch. Scrolling up (negative delta) zooms in. */
+export function wheelZoom(zoom: number, deltaY: number, deltaMode = 0): number {
+  return clampZoom(zoom * wheelFactor(deltaY, deltaMode));
 }
 
 export function formatZoom(zoom: number): string {

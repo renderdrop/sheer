@@ -6,17 +6,18 @@ import type { DocumentInfo } from '../../api/documents';
 import { PANEL } from '../../components/tokens';
 import { setup } from '../../test/render';
 import { useSettings } from '../../stores/settings';
-import { activeDocument, opened, resetDocuments } from '../../stores/documents.testutil';
+import { activeDocument, opened } from '../../stores/documents.testutil';
 import { useUi } from '../../stores/ui';
 import { useView } from '../../stores/view';
 import { useViewer } from '../viewer/useViewer';
+import { resetViewer } from '../viewer/viewer.testutil';
 import { Shell } from './Shell';
 
 const documentsApi = vi.hoisted(() => ({
   openDocumentDialog: vi.fn(),
-  renderPage: vi.fn(),
   closeDocument: vi.fn(),
 }));
+const renderApi = vi.hoisted(() => ({ renderPage: vi.fn(), setViewport: vi.fn(), getPageSizes: vi.fn() }));
 const windowApi = vi.hoisted(() => ({
   minimizeWindow: vi.fn(),
   toggleMaximizeWindow: vi.fn(),
@@ -26,11 +27,11 @@ const windowApi = vi.hoisted(() => ({
 }));
 
 vi.mock('../../api/documents', () => documentsApi);
+vi.mock('../../api/render', () => renderApi);
 vi.mock('../../api/window', () => windowApi);
 
 const uiInitial = useUi.getState();
 const settingsInitial = useSettings.getState();
-const viewerInitial = useViewer.getState();
 
 const REPORT: DocumentInfo = { id: 1, pageCount: 120, displayName: 'Quarterly report.pdf' };
 const NBSP = String.fromCharCode(0xa0);
@@ -44,14 +45,13 @@ function resizeTo(width: number) {
 
 beforeEach(() => {
   useUi.setState({ ...uiInitial }, true);
-  useViewer.setState({ ...viewerInitial }, true);
-  resetDocuments();
-  useView.setState({ byDoc: {} });
+  resetViewer();
+  useViewer.setState({ viewport: { width: 900, height: 700 } });
   useSettings.setState({ ...settingsInitial, platform: null }, true);
   documentsApi.openDocumentDialog.mockReset().mockResolvedValue([opened(REPORT)]);
-  documentsApi.renderPage
-    .mockReset()
-    .mockResolvedValue({ data: new Uint8Array([1]), width: 816, height: 1056, scale: 4 / 3 });
+  renderApi.renderPage.mockReset().mockResolvedValue({ data: new Uint8Array([1]), width: 816, height: 1056 });
+  renderApi.setViewport.mockReset().mockResolvedValue(undefined);
+  renderApi.getPageSizes.mockReset().mockResolvedValue([]);
   documentsApi.closeDocument.mockReset().mockResolvedValue(undefined);
   for (const mock of Object.values(windowApi)) mock.mockReset().mockResolvedValue(false);
   URL.createObjectURL = vi.fn(() => 'blob:page');
@@ -61,9 +61,7 @@ beforeEach(() => {
 
 afterEach(() => {
   useUi.setState({ ...uiInitial }, true);
-  useViewer.setState({ ...viewerInitial }, true);
-  resetDocuments();
-  useView.setState({ byDoc: {} });
+  resetViewer();
   useSettings.setState(settingsInitial, true);
 });
 
@@ -274,6 +272,62 @@ describe('Shell with a document', () => {
       await user.click(within(await more(user)).getByRole('menuitem', { name: /^Close document/ }));
       expect(screen.getByRole('heading', { level: 1, name: 'Open a PDF' })).not.toBeNull();
       expect(documentsApi.closeDocument).toHaveBeenCalledWith(1);
+    });
+
+    it('More offers the three ways to lay out pages as a choice of one: the current one is checked, and choosing one changes the canvas', async () => {
+      const { user } = setup(<Shell />);
+      await openDocument(user);
+      const modes = () =>
+        within(screen.getByRole('menu'))
+          .getAllByRole('menuitemcheckbox')
+          .map((item) => [item.textContent, item.getAttribute('aria-checked')]);
+      await more(user);
+      expect(modes()).toEqual([
+        ['Continuous scrolling', 'true'],
+        ['Single page', 'false'],
+        ['Two pages', 'false'],
+      ]);
+      const mounted = () => document.querySelectorAll('[data-page]').length;
+      expect(mounted()).toBeGreaterThan(1);
+
+      await user.click(within(screen.getByRole('menu')).getByRole('menuitemcheckbox', { name: 'Single page' }));
+      expect(useView.getState().byDoc[1]?.scrollMode).toBe('single');
+      expect(mounted()).toBe(1);
+      await more(user);
+      expect(modes()).toEqual([
+        ['Continuous scrolling', 'false'],
+        ['Single page', 'true'],
+        ['Two pages', 'false'],
+      ]);
+
+      await user.click(within(screen.getByRole('menu')).getByRole('menuitemcheckbox', { name: 'Two pages' }));
+      expect(mounted()).toBe(2);
+      // The next page turns a spread, and the status bar follows.
+      fireEvent.keyDown(window, { key: 'ArrowDown', ctrlKey: true });
+      expect(pageText()).toBe('3 / 120');
+    });
+
+    it('the three ways to lay out pages are aria-disabled without a document', async () => {
+      const { user } = setup(<Shell />);
+      await more(user);
+      for (const name of ['Continuous scrolling', 'Single page', 'Two pages']) {
+        const item = within(screen.getByRole('menu')).getByRole('menuitemcheckbox', { name });
+        expect(item.getAttribute('aria-disabled'), name).toBe('true');
+      }
+    });
+
+    it('the status bar shows the page the scroll position is on', async () => {
+      const { user } = setup(<Shell />);
+      await openDocument(user);
+      expect(pageText()).toBe('1 / 120');
+      const region = screen.getByRole('region', { name: 'Document' });
+      // A page and its gap are 1056 + 16 px at 100 %.
+      region.scrollTop = 30 * 1072;
+      fireEvent.scroll(region);
+      expect(pageText()).toBe('31 / 120');
+      region.scrollTop = 0;
+      fireEvent.scroll(region);
+      expect(pageText()).toBe('1 / 120');
     });
 
     it('without a document More has only Open, Settings and About enabled, and the others are aria-disabled', async () => {
@@ -674,7 +728,7 @@ describe('Shell without a document: edge cases', () => {
     expect(layout(container)).toBe('empty');
     expect(screen.queryByRole('alert')).toBeNull();
     expect(document.activeElement).toBe(open);
-    expect(documentsApi.renderPage).not.toHaveBeenCalled();
+    expect(renderApi.renderPage).not.toHaveBeenCalled();
   });
 
   it('Open does not start a second dialog while the first one is still open, by mouse, Enter or Ctrl+O', async () => {
@@ -769,7 +823,7 @@ describe('Shell with a document: edge cases', () => {
     await act(async () => {
       await new Promise((resolve) => setTimeout(resolve, 150));
     });
-    expect(documentsApi.renderPage).not.toHaveBeenCalled();
+    expect(renderApi.renderPage).not.toHaveBeenCalled();
   });
 
   it('Go to page takes the first and the last page, and a number outside the document is refused by the field', async () => {

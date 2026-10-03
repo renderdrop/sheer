@@ -541,3 +541,47 @@ engine is still stuck.
 **Consequences.** `Cargo.lock` gains the Linux-only stack of the plugin (zbus and its async crates); `cargo deny` runs per desktop target and does not build
 them. The macOS side (`RunEvent::Opened`, the file association, the unconfirmed `Alternate` rank) is written and its data is tested on Windows, but it has not run
 on a Mac (B-001). A document opened while another request is still loading the same file answers nothing for that request: the first request reports it.
+
+---
+
+## ADR-018 — Render pipeline as built (M1: queue, buckets, tiles, virtual canvas, zoom and scroll modes)
+
+**Status:** accepted (2026-10-03). Implements ADR-002 §2–§6; where it differs, this entry says so.
+
+**Context.** M1 turns the spike's one-page viewer into a scrolling canvas: 500 pages, 60 fps, any zoom on any display, hostile page sizes.
+
+**Decision.**
+1. **Queue** (`engine/queue.rs`). A `BinaryHeap` behind a `Mutex` + `Condvar`, ordered priority, then newest generation, then arrival (`Control > Visible > Interactive > Near >
+   Thumbnail > Background`). `set_viewport` cancels queued `Visible`/`Near` renders of that document that were asked at its generation or before and are in neither list
+   (`cancelled`), and re-ranks the ones it keeps (visible or near, at the hint's generation); an older hint is ignored. Closing a document cancels everything queued for it. A
+   full queue (64) refuses a job unless it outranks the lowest queued one, which is cancelled in its place; jobs whose caller gave up are dropped first. Identical frames
+   (`doc, page, bucket, tile`) are one job, queued or running: later callers wait for the same answer (`finish_render` hands the waiters over under the queue's lock). At most 8
+   callers join one job (the rest get `limit_exceeded`, `requests`: the UI asks for a frame once, so a crowd is not the UI), and the frame is an `Arc` that all of them share, so
+   the worker never copies a multi-megabyte image once per caller; the IPC response copies it once, on the caller's own thread, only if it is shared. A close is the one job
+   that is never skipped for an expired caller: it releases a document, so a timeout must not leave it in the worker.
+2. **Bucket** `b = ceil(4·log2(ratio))` with `ratio = zoom · 96/72 · devicePixelRatio` (device px per point; ADR-002 §4's "zoom" is this product), rendered at `2^(b/4)` px per
+   point, `b` in −17..=24. 100 % at DPR 1 is bucket 2. The cache key is `doc:page:rev:bucket[:col,row]`: the DPR is inside the bucket, so it is not a key part of its own.
+3. **Tiles.** A page is one frame up to 4096 px a side and 8 Mpx (the backend allows 16 Mpx), otherwise 1024 px tiles from a grid of at most 64 × 64 over a whole-page
+   underlay at the largest bucket that fits 4 Mpx. The worker renders a tile into a 1024² bitmap with the page laid out at full size and shifted (`set_origin`); a test proves a
+   tile is pixel-identical to that part of the whole page. This replaces the 0.7× retry. A tile the backend's grid lacks (a pixel of rounding) is ignored by the scheduler.
+4. **Page sizes** are their own command, `get_page_sizes(doc_id) -> [[w, h]]` in points (rotation applied, sanitized to 1..14 400 pt, US Letter for nonsense), not part of
+   the `opened` event (ADR-002 §5): the event stays three fields and the registry independent of PDFium. A document with more than 50 000 pages is refused at open
+   (`limit_exceeded`, `pages`), which bounds the answer and the scroll height. The worker reads the sizes once, when it loads the document, and keeps them (`engine/sizes.rs`)
+   until the document is released; `get_page_sizes` is a lookup of that list, so it takes no queue slot and cannot be made to repeat the work, however often it is asked.
+   (This replaces a `PageSizes` job per call.)
+   **Bounds on the render commands.** A tile column or row of 64 or more is refused at the command (`invalid_argument`, `tile`); a viewport hint's lists are `PageList`s, which
+   refuse the 65th page while the list is read; `render_page` calls in flight are capped per document (96) and in all (128) by `RenderGate`, above what the UI can have pending
+   (every distinct frame needs one of the queue's 64 places), so a flood cannot park the blocking pool. `close_document` marks the registry entry as closing (gone for the UI:
+   `not_found`, its path can be opened anew) and removes it only when the engine confirms the release; a close the engine could not take is retried by the next open or close.
+5. **Frontend.** `engine/renderCache.ts` (Blob LRU, 256 MiB default, 128–1024, pins per mounted page, lazy object URLs revoked on eviction, in-flight dedupe, best
+   cached bucket as a stand-in) and `engine/renderScheduler.ts` (generation per document, `set_viewport` 150 ms after the viewport settles, quiet `cancelled`). The canvas
+   (`features/viewer`) lays out from the sizes (`layout.ts`, pure), mounts the visible pages and one viewport height around them (≤ 24), and keeps the point under the pointer or
+   at the middle of the viewport when the zoom or the mode changes: a zoom, a jump and a mode change leave a `ScrollAnchor` in the view store that the canvas applies in a
+   layout effect and consumes. The DPR is followed through a `resolution` media query. Pinch is `ctrl+wheel` (WebView2) or WebKit's `gesture*` events (WKWebView).
+6. **Zoom and scroll modes.** Fit width and fit page are modes (`view.fit`) that follow the window until the next zoom of another kind. Scroll modes are `continuous`, `single`
+   and `spread` (a pair, 2·k and 2·k+1, side by side); the two paged ones show one row, turn with next/previous page (a spread turns two) and with the wheel at the end of the page
+   (400 ms between turns), and render the neighbouring rows ahead, after the same 80 ms settle time a page waits for after its bucket changed (so a held zoom key renders
+   only the bucket it stops at). They are three registry actions, in More (checked) and the macOS View menu.
+
+**Consequences.** `RenderRequest.forms` waits for M4. The cache budget is a constant until a setting exists. A document of ≥ ~8 000 pages at a high zoom exceeds the browser's
+maximum element height (≈ 33 M px); the scroll height is not compressed. A hint is a generation behind a render that the UI asked just after it, so it never cancels it.

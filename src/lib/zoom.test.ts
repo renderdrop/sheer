@@ -5,16 +5,14 @@ import {
   CSS_PX_PER_PT,
   DEFAULT_ZOOM,
   FIT_SCROLLBAR_PX,
-  MAX_RENDER_SCALE,
   MAX_ZOOM,
-  MIN_RENDER_SCALE,
   MIN_ZOOM,
   clampZoom,
   fitPageZoom,
   fitWidthZoom,
   formatZoom,
-  scaleForZoom,
   stepZoom,
+  wheelFactor,
   wheelZoom,
 } from './zoom';
 
@@ -95,25 +93,14 @@ describe('wheel zoom', () => {
     expect(wheelZoom(MAX_ZOOM, -10_000)).toBe(MAX_ZOOM);
     expect(wheelZoom(MIN_ZOOM, 10_000)).toBe(MIN_ZOOM);
   });
-});
 
-describe('render scale', () => {
-  it('maps 100 % on a 1x display to 96 dpi', () => {
-    expect(scaleForZoom(1, 1)).toBeCloseTo(CSS_PX_PER_PT);
-  });
-
-  it('scales with the device pixel ratio', () => {
-    expect(scaleForZoom(1, 2)).toBeCloseTo(2 * CSS_PX_PER_PT);
-  });
-
-  it('stays inside the backend limits', () => {
-    expect(scaleForZoom(MAX_ZOOM, 3)).toBe(MAX_RENDER_SCALE);
-    expect(scaleForZoom(MIN_ZOOM, 0.1)).toBe(MIN_RENDER_SCALE);
-  });
-
-  it('falls back to a ratio of 1 for bad pixel ratios', () => {
-    expect(scaleForZoom(1, 0)).toBeCloseTo(CSS_PX_PER_PT);
-    expect(scaleForZoom(1, Number.NaN)).toBeCloseTo(CSS_PX_PER_PT);
+  it('is a factor, so a gesture can zoom around a point: the product of two steps is the step of the sum', () => {
+    expect(wheelFactor(0)).toBe(1);
+    expect(wheelFactor(-100)).toBeGreaterThan(1);
+    expect(wheelFactor(100)).toBeLessThan(1);
+    expect(wheelFactor(-60) * wheelFactor(-40)).toBeCloseTo(wheelFactor(-100));
+    expect(wheelFactor(-3, 1)).toBeCloseTo(wheelFactor(-48, 0));
+    expect(wheelFactor(Number.NaN)).toBe(1);
   });
 });
 

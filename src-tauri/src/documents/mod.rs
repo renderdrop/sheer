@@ -116,6 +116,9 @@ struct Entry {
     display_name: String,
     /// `None` until the engine has loaded the document.
     page_count: Option<u32>,
+    /// The UI closed the document, but the engine has not confirmed that it released it (`Registry::begin_close`). The entry stays
+    /// so that the release is tried again and the engine's copy is never lost; to everybody else the document is gone.
+    closing: bool,
 }
 
 #[derive(Debug, Default)]
@@ -145,6 +148,7 @@ impl Inner {
                 path,
                 display_name,
                 page_count: None,
+                closing: false,
             },
         );
         Ok(id)
@@ -200,18 +204,25 @@ impl Registry {
     /// is registered already: a file is open once. Looking and registering are one step under one lock, so two opens of the
     /// same file at the same time cannot both get a new id. The limit on open documents applies to new ids only: a document
     /// that is open can always be "opened" again.
+    ///
+    /// A document that is being closed (see [`Registry::begin_close`]) is not open any more: its path is claimed anew and gets
+    /// a new id, but the entry still counts against the limit, because the engine still holds the document.
     pub fn claim(&self, path: PathBuf) -> Result<Claim, AppError> {
         let mut inner = self.lock();
-        if let Some((&id, _)) = inner.entries.iter().find(|(_, entry)| entry.path == path) {
+        if let Some((&id, _)) = inner
+            .entries
+            .iter()
+            .find(|(_, entry)| !entry.closing && entry.path == path)
+        {
             return Ok(Claim::Existing(id));
         }
         inner.insert(path).map(Claim::New)
     }
 
-    /// What the UI is told about a document that is loaded; `None` for an unknown one or one still loading.
+    /// What the UI is told about a document that is loaded; `None` for an unknown one, one still loading, or one being closed.
     pub fn info(&self, id: DocumentId) -> Option<DocumentInfo> {
         let inner = self.lock();
-        let entry = inner.entries.get(&id)?;
+        let entry = inner.entries.get(&id).filter(|entry| !entry.closing)?;
         Some(DocumentInfo {
             id,
             page_count: entry.page_count?,
@@ -248,11 +259,41 @@ impl Registry {
         }
     }
 
-    /// Page count of a loaded document. Unknown or not yet loaded ids are `not_found`.
+    /// Marks a loaded document as being closed, which is the moment the UI is done with it: from now on it is `not_found`
+    /// everywhere (`info`, `page_count`, `path`) and its path is free to be opened again. The entry itself stays until the engine
+    /// has released the document and the caller says so with [`Registry::remove`], so a release that failed can be tried again
+    /// ([`Registry::closing`]) instead of the engine holding a document nobody can name. Returns `true` if there was a loaded
+    /// document to close, `false` for an unknown id, one that is still loading (its opener owns it, see [`Registry::abandon`]),
+    /// or one that is being closed already.
+    pub fn begin_close(&self, id: DocumentId) -> bool {
+        match self.lock().entries.get_mut(&id) {
+            Some(entry) if entry.page_count.is_some() && !entry.closing => {
+                entry.closing = true;
+                true
+            }
+            _ => false,
+        }
+    }
+
+    /// The documents that are being closed and have not been released yet, oldest first.
+    pub fn closing(&self) -> Vec<DocumentId> {
+        let mut ids: Vec<DocumentId> = self
+            .lock()
+            .entries
+            .iter()
+            .filter(|(_, entry)| entry.closing)
+            .map(|(&id, _)| id)
+            .collect();
+        ids.sort_by_key(|id| id.0);
+        ids
+    }
+
+    /// Page count of a loaded document. Unknown, not yet loaded and closing ids are `not_found`.
     pub fn page_count(&self, id: DocumentId) -> Result<u32, AppError> {
         self.lock()
             .entries
             .get(&id)
+            .filter(|entry| !entry.closing)
             .and_then(|entry| entry.page_count)
             .ok_or(AppError::not_found("document"))
     }
@@ -263,9 +304,13 @@ impl Registry {
         limits::validate_page_index(page.0, self.page_count(id)?)
     }
 
-    /// Path of a registered document (for reload and save in later milestones).
+    /// Path of a registered document that is not being closed (for reload and save in later milestones).
     pub fn path(&self, id: DocumentId) -> Option<PathBuf> {
-        self.lock().entries.get(&id).map(|entry| entry.path.clone())
+        self.lock()
+            .entries
+            .get(&id)
+            .filter(|entry| !entry.closing)
+            .map(|entry| entry.path.clone())
     }
 
     /// Removes a document. Returns `true` if it was registered.
@@ -496,6 +541,85 @@ mod tests {
         assert_eq!(registry.abandon(id), Abandoned::Loaded(3));
         assert_eq!(registry.len(), 1, "the document is open and can be closed");
         assert_eq!(registry.page_count(id).unwrap(), 3);
+    }
+
+    // --- closing ---
+
+    #[test]
+    fn a_document_being_closed_is_gone_to_everybody_but_stays_until_it_is_released() {
+        let registry = Registry::new();
+        let id = registry.register(path("a.pdf")).unwrap();
+        registry.set_page_count(id, 3).unwrap();
+        assert!(registry.closing().is_empty());
+
+        assert!(registry.begin_close(id));
+        // Not found for the UI's calls, and not offered again by opening the same path ...
+        assert_eq!(registry.info(id), None);
+        assert_eq!(
+            registry.page_count(id).unwrap_err().code(),
+            ErrorCode::NotFound
+        );
+        assert_eq!(
+            registry.page_index(id, PageId::new(0)).unwrap_err().code(),
+            ErrorCode::NotFound
+        );
+        assert_eq!(registry.path(id), None);
+        let Claim::New(again) = registry.claim(path("a.pdf")).unwrap() else {
+            panic!("a closed path is a new document");
+        };
+        assert_ne!(again, id);
+        // ... but it is still known, so the release can be tried again, and it still counts against the limit.
+        assert_eq!(registry.closing(), [id]);
+        assert_eq!(registry.len(), 2);
+        // Closing it twice is nothing; the second call finds it closing already.
+        assert!(!registry.begin_close(id));
+
+        assert!(registry.remove(id));
+        assert!(registry.closing().is_empty());
+        assert_eq!(registry.len(), 1);
+    }
+
+    #[test]
+    fn only_a_loaded_document_can_be_closed_and_the_documents_that_wait_for_release_come_oldest_first(
+    ) {
+        let registry = Registry::new();
+        let unknown = registry.register(path("x.pdf")).unwrap();
+        registry.remove(unknown);
+        let loading = registry.register(path("loading.pdf")).unwrap();
+        assert!(!registry.begin_close(unknown));
+        // Whoever is loading a document owns it: nobody else can close it before it is loaded.
+        assert!(!registry.begin_close(loading));
+        assert_eq!(registry.abandon(loading), Abandoned::Removed);
+
+        let ids: Vec<DocumentId> = (0..3)
+            .map(|i| {
+                let id = registry.register(path(&format!("{i}.pdf"))).unwrap();
+                registry.set_page_count(id, 1).unwrap();
+                id
+            })
+            .collect();
+        for &id in ids.iter().rev() {
+            assert!(registry.begin_close(id));
+        }
+        assert_eq!(registry.closing(), ids);
+    }
+
+    #[test]
+    fn documents_being_closed_count_against_the_limit_on_open_documents() {
+        let registry = Registry::new();
+        let first = registry.register(path("0.pdf")).unwrap();
+        registry.set_page_count(first, 1).unwrap();
+        for i in 1..limits::MAX_OPEN_DOCUMENTS {
+            registry.register(path(&format!("{i}.pdf"))).unwrap();
+        }
+        assert!(registry.begin_close(first));
+        // The engine may still hold it: no room is made until it is released.
+        assert_eq!(
+            registry.claim(path("extra.pdf")).unwrap_err().code(),
+            ErrorCode::LimitExceeded
+        );
+        registry.remove(first);
+        assert!(registry.claim(path("extra.pdf")).is_ok());
     }
     // --- display names ---
 

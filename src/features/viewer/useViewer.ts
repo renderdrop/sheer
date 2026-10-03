@@ -1,99 +1,163 @@
 import { useEffect } from 'react';
 import { create } from 'zustand';
 
-import {
-  closeDocument,
-  openDocumentDialog,
-  renderPage,
-  type DocumentInfo,
-  type OpenOutcome,
-} from '../../api/documents';
+import { closeDocument, openDocumentDialog, type DocumentInfo, type OpenOutcome } from '../../api/documents';
 import { toAppError, type AppError } from '../../api/errors';
-import { DEFAULT_ZOOM, fitPageZoom, fitWidthZoom, scaleForZoom, stepZoom, wheelZoom } from '../../lib/zoom';
-import { selectActiveId, useDocuments } from '../../stores/documents';
+import { getPageSizes } from '../../api/render';
+import { renderScheduler } from '../../engine/renderScheduler';
+import { DEFAULT_ZOOM, clampZoom, stepZoom, wheelFactor } from '../../lib/zoom';
+import { useDocuments } from '../../stores/documents';
+import { usePages } from '../../stores/pages';
 import { useUi } from '../../stores/ui';
-import { useDocView, useView } from '../../stores/view';
+import { useView, type DocView } from '../../stores/view';
+import {
+  anchorAt,
+  centeredScroll,
+  fitZoomFor,
+  pageStep,
+  pageTopAnchor,
+  scrollFor,
+  type ScrollAnchor,
+  type ScrollMode,
+  type Viewport,
+} from './layout';
+import { layoutFor, metricsOfDocument, pageGap } from './model';
+import { readScroll } from './scrollBridge';
 
-/** A rendered page and its size in PDF points, so it can be shown at any zoom while a sharper render is in flight. */
-export interface PageImage {
-  url: string;
-  widthPt: number;
-  heightPt: number;
+export type { Viewport } from './layout';
+
+/**
+ * Where a zoom gesture is centred: a position in the viewport in px (the scroll region's content box), the pointer for a wheel or a
+ * pinch. Without one the middle of the viewport is the centre (the zoom buttons, the keys, the zoom menu).
+ */
+export interface ZoomFocus {
+  x: number;
+  y: number;
 }
 
-/** The canvas's content box in CSS px (its scroll region without the padding), which the fit actions fill. */
-export interface Viewport {
-  width: number;
-  height: number;
-}
-
-/** Coalesces bursts of zoom changes (wheel, held key) into one render request. */
-const RENDER_DEBOUNCE_MS = 80;
+/** A render has to last this long to be shown as activity: most are over in a few milliseconds and would only make the status bar blink. */
+const RENDERING_SHOWN_AFTER_MS = 250;
 
 export interface ViewerState {
-  /** The active document's page image, `null` until it has rendered and while there is no document. */
-  image: PageImage | null;
   opening: boolean;
+  /** A render is in flight (and has been for a moment): the status bar says so. */
   rendering: boolean;
   /** The canvas's size as it last reported it, `null` until it has (and in tests that render no canvas). */
   viewport: Viewport | null;
 
   /** Shows the open dialog; every document that is chosen is opened and the last one becomes the active one. Never rejects. */
   open: () => Promise<void>;
-  /** Closes the active document: its view and image go, and the backend is told to release it. Nothing without one. */
+  /** Closes the active document: its view, pages and images go, and the backend is told to release it. Nothing without one. */
   close: () => void;
   /** One preset step in or out. */
   zoomStep: (direction: 1 | -1) => void;
-  /** An exact zoom (the zoom menu); clamped to the zoom range. */
+  /** An exact zoom (the zoom menu); clamped to the zoom range. Ends a fit. */
   setZoom: (zoom: number) => void;
+  /** 100 %. */
   resetZoom: () => void;
   /**
-   * Zoom so the page fills the canvas's width (`fitWidth`) or fits in it whole (`fitPage`). One-shot, not a mode: a later
-   * resize or page change keeps the zoom it gave. Nothing until the canvas has been measured and a page has been shown.
+   * Zoom so the current page fills the canvas's width (`fitWidth`) or fits in it whole (`fitPage`; a spread fits both pages). It
+   * stays fitted as the window is resized until the next zoom of any other kind. Nothing until the canvas has been measured.
    */
   fitWidth: () => void;
   fitPage: () => void;
-  /** Ctrl/Cmd+wheel and pinch: continuous zoom. */
-  zoomByWheel: (deltaY: number, deltaMode: number) => void;
+  /** Ctrl/Cmd+wheel: continuous zoom around the pointer (`focus`). */
+  zoomByWheel: (deltaY: number, deltaMode: number, focus?: ZoomFocus) => void;
+  /** Multiplies the zoom by `factor`, around `focus`: a trackpad pinch that arrives as gesture events. */
+  zoomBy: (factor: number, focus?: ZoomFocus) => void;
+  /** Continuous scrolling, one page at a time, or two pages side by side; the current page stays in view. */
+  setScrollMode: (mode: ScrollMode) => void;
   goToPage: (pageIndex: number) => void;
-  /** One page on or back; stops at the first and the last. */
+  /** One page on (a spread on, in the two-page mode) or back; stops at the first and the last. */
   nextPage: () => void;
   previousPage: () => void;
-  /** The canvas reports its size here (it observes itself). */
+  /** The canvas reports its size here (it observes itself). A fit follows it. */
   setViewport: (viewport: Viewport) => void;
 }
 
 /**
- * The viewer's actions and what the canvas shows of the active document: the spike's open, render and zoom logic, moved out of
- * the shell so the layout does not depend on it. Which documents are open is the `documents` store, how each is shown (zoom,
- * page) the `view` store, a failed action the `ui` store's banner.
+ * The viewer's actions and what the canvas needs of the active document that is not in another store: whether a render is in
+ * flight and how big the canvas is. Which documents are open is the `documents` store, how each is shown (zoom, fit, mode, page)
+ * the `view` store, the page sizes the `pages` store, the pixels the render cache (`src/engine`), a failed action the `ui`
+ * store's banner.
  *
- * It is a store, not a hook with local state, so each part of the window subscribes to the one field it shows (the canvas
- * to the image, the status bar to the name, the toolbar to whether there is a document) and a zoom step or a new page does
- * not re-render the shell around them. Every action reads the current state when it is called, so the functions are the same
- * for the life of the app and can be handed to memoized children.
+ * It is a store, not a hook with local state, so each part of the window subscribes to the one field it shows (the canvas to its
+ * size, the status bar to whether a render runs, the toolbar to whether there is a document) and a zoom step or a new page does
+ * not re-render the shell around them. Every action reads the current state when it is called, so the functions are the same for
+ * the life of the app and can be handed to memoized children.
  *
- * Until pages can be reordered (M3) a page id is its position, and until the viewer scrolls (M1) one page is shown.
+ * Until pages can be reordered (M3) a page id is its position.
  */
 export const useViewer = create<ViewerState>()((set, get) => {
-  /** Applies `change` to the view of the active document; nothing when there is none. */
-  const changeView = (change: (docId: number, zoom: number) => void) => {
+  /** The active document and its view; `null` while none is open. */
+  const active = (): { docId: number; view: DocView } | null => {
     const docId = useDocuments.getState().activeId;
-    if (docId === null) return;
+    if (docId === null) return null;
     const view = useView.getState().byDoc[docId];
-    change(docId, view?.zoom ?? DEFAULT_ZOOM);
+    return view === undefined ? null : { docId, view };
   };
 
-  /** Moves the shown page by `delta`; the view store keeps it inside the document. */
-  const changePage = (delta: number) => {
-    const docId = useDocuments.getState().activeId;
-    if (docId === null) return;
-    const view = useView.getState().byDoc[docId];
-    if (view !== undefined) useView.getState().setPage(docId, view.pageIndex + delta);
+  /**
+   * The anchor that keeps the document point at `focus` (the middle of the viewport by default) where it is while the layout
+   * changes. The scroll position is the canvas's, unless a request to scroll is still waiting there (two zoom steps before the
+   * canvas laid itself out for the first): then it is where that one will put it.
+   */
+  const anchorFor = (docId: number, focus?: ZoomFocus): ScrollAnchor | null => {
+    const { viewport } = get();
+    const layout = layoutFor(docId, viewport);
+    if (layout === null || viewport === null) return null;
+    const pending = useView.getState().byDoc[docId]?.anchor ?? null;
+    const scroll = pending === null ? readScroll() : scrollFor(layout, pending);
+    return anchorAt(layout, scroll, focus?.x ?? viewport.width / 2, focus?.y ?? viewport.height / 2);
+  };
+
+  const zoomTo = (zoom: number, focus?: ZoomFocus) => {
+    const current = active();
+    if (current === null) return;
+    const next = clampZoom(zoom);
+    if (next === current.view.zoom && current.view.fit === 'none') return;
+    useView.getState().setZoom(current.docId, next, anchorFor(current.docId, focus));
+  };
+
+  const fitTo = (fit: 'width' | 'page') => {
+    const current = active();
+    const { viewport } = get();
+    if (current === null || viewport === null) return;
+    const metrics = metricsOfDocument(current.docId);
+    const zoom = metrics === null ? null : fitZoomFor(fit, metrics, current.view.pageIndex, viewport, pageGap());
+    if (zoom === null) return;
+    // Fitting the page shows it from its top; fitting the width keeps what is in the middle of the viewport.
+    const layout = layoutFor(current.docId, viewport, { zoom: clampZoom(zoom) });
+    const anchor =
+      fit === 'page' && layout !== null
+        ? pageTopAnchor(layout, current.view.pageIndex, centeredScroll(layout))
+        : anchorFor(current.docId);
+    useView.getState().setFit(current.docId, fit, zoom, anchor);
+  };
+
+  /** Shows `pageIndex` (clamped) at the top of the viewport. Does nothing for a number that is not one. */
+  const goTo = (pageIndex: number) => {
+    const current = active();
+    if (current === null || !Number.isFinite(pageIndex)) return;
+    const target = Math.min(Math.max(0, current.view.pageCount - 1), Math.max(0, Math.trunc(pageIndex)));
+    const layout = layoutFor(current.docId, get().viewport, { current: target });
+    const anchor = layout === null ? null : pageTopAnchor(layout, target, readScroll());
+    useView.getState().setPage(current.docId, target, anchor);
+  };
+
+  const turn = (direction: 1 | -1) => {
+    const current = active();
+    if (current === null) return;
+    const step = pageStep(current.view.scrollMode);
+    const target = Math.min(
+      Math.max(0, current.view.pageCount - 1),
+      Math.max(0, current.view.pageIndex + direction * step),
+    );
+    // At the first or the last page there is nowhere to turn to: the page is not snapped back to its top.
+    if (target !== current.view.pageIndex) goTo(target);
   };
 
   return {
-    image: null,
     opening: false,
     rendering: false,
     viewport: null,
@@ -115,40 +179,79 @@ export const useViewer = create<ViewerState>()((set, get) => {
       if (docId === null) return;
       useView.getState().close(docId);
       useDocuments.getState().remove(docId);
-      // The neighbour that becomes active (if any) renders afresh; the closed document's image is not its.
-      set({ image: null, rendering: false });
+      usePages.getState().remove(docId);
+      // Its images go, and what is still on its way is dropped when it arrives.
+      renderScheduler.dropDocument(docId);
       closeDocument(docId).catch(() => undefined);
     },
-    zoomStep: (direction) => changeView((id, zoom) => useView.getState().setZoom(id, stepZoom(zoom, direction))),
-    setZoom: (zoom) => changeView((id) => useView.getState().setZoom(id, zoom)),
-    resetZoom: () => changeView((id) => useView.getState().setZoom(id, DEFAULT_ZOOM)),
-    fitWidth: () => {
-      const { viewport, image } = get();
-      const zoom = viewport === null || image === null ? null : fitWidthZoom(viewport.width, image.widthPt);
-      if (zoom !== null) changeView((id) => useView.getState().setZoom(id, zoom));
+    zoomStep: (direction) => {
+      const current = active();
+      if (current !== null) zoomTo(stepZoom(current.view.zoom, direction));
     },
-    fitPage: () => {
-      const { viewport, image } = get();
-      const zoom =
-        viewport === null || image === null
+    setZoom: (zoom) => zoomTo(zoom),
+    resetZoom: () => zoomTo(DEFAULT_ZOOM),
+    fitWidth: () => fitTo('width'),
+    fitPage: () => fitTo('page'),
+    zoomByWheel: (deltaY, deltaMode, focus) => get().zoomBy(wheelFactor(deltaY, deltaMode), focus),
+    zoomBy: (factor, focus) => {
+      const current = active();
+      if (current !== null && Number.isFinite(factor) && factor > 0) zoomTo(current.view.zoom * factor, focus);
+    },
+    setScrollMode: (mode) => {
+      const current = active();
+      if (current === null || current.view.scrollMode === mode) return;
+      const { viewport } = get();
+      // A fit depends on the mode (a spread is two pages wide), so it is made again for the new one.
+      const metrics = metricsOfDocument(current.docId, mode);
+      const refit =
+        current.view.fit === 'none' || metrics === null || viewport === null
           ? null
-          : fitPageZoom(viewport.width, viewport.height, image.widthPt, image.heightPt);
-      if (zoom !== null) changeView((id) => useView.getState().setZoom(id, zoom));
+          : fitZoomFor(current.view.fit, metrics, current.view.pageIndex, viewport, pageGap());
+      const layout = layoutFor(current.docId, viewport, { mode, zoom: refit === null ? undefined : clampZoom(refit) });
+      const anchor = layout === null ? null : pageTopAnchor(layout, current.view.pageIndex, centeredScroll(layout));
+      useView.getState().setScrollMode(current.docId, mode, anchor, refit ?? undefined);
     },
-    zoomByWheel: (deltaY, deltaMode) =>
-      changeView((id, zoom) => useView.getState().setZoom(id, wheelZoom(zoom, deltaY, deltaMode))),
-    goToPage: (pageIndex) => {
-      const docId = useDocuments.getState().activeId;
-      if (docId !== null) useView.getState().setPage(docId, pageIndex);
-    },
-    nextPage: () => changePage(1),
-    previousPage: () => changePage(-1),
+    goToPage: goTo,
+    nextPage: () => turn(1),
+    previousPage: () => turn(-1),
     setViewport: (viewport) => {
       const previous = get().viewport;
-      if (previous?.width !== viewport.width || previous.height !== viewport.height) set({ viewport });
+      if (previous?.width === viewport.width && previous.height === viewport.height) return;
+      // A fit follows the window: the zoom is computed for the new size, around what is at the top left of the viewport now.
+      const current = active();
+      let refit: { fit: 'width' | 'page'; zoom: number; anchor: ScrollAnchor | null } | null = null;
+      if (current !== null && current.view.fit !== 'none') {
+        const metrics = metricsOfDocument(current.docId);
+        const zoom =
+          metrics === null ? null : fitZoomFor(current.view.fit, metrics, current.view.pageIndex, viewport, pageGap());
+        if (zoom !== null && Math.abs(zoom - current.view.zoom) > 1e-9) {
+          const before = layoutFor(current.docId, previous);
+          refit = {
+            fit: current.view.fit,
+            zoom,
+            anchor: before === null ? null : anchorAt(before, readScroll(), 0, 0),
+          };
+        }
+      }
+      set({ viewport });
+      if (current !== null && refit !== null)
+        useView.getState().setFit(current.docId, refit.fit, refit.zoom, refit.anchor);
     },
   };
 });
+
+/** Fetches the sizes of a document's pages for the layout. A failure is shown; the canvas keeps laying out placeholders. */
+function loadPageSizes(docId: number): void {
+  getPageSizes(docId).then(
+    (sizes) => {
+      // The document may have been closed while the answer was on its way.
+      if (useDocuments.getState().byId[docId] !== undefined) usePages.getState().set(docId, sizes);
+    },
+    (caught: unknown) => {
+      if (useDocuments.getState().byId[docId] !== undefined) useUi.getState().showBanner(toAppError(caught));
+    },
+  );
+}
 
 /**
  * Takes a document the backend opened into the window and makes it the active one. One that is open already (the backend
@@ -156,11 +259,13 @@ export const useViewer = create<ViewerState>()((set, get) => {
  */
 function showDocument(info: DocumentInfo): void {
   const documents = useDocuments.getState();
-  if (documents.byId[info.id] === undefined) useView.getState().open(info.id, info.pageCount);
-  const changes = documents.activeId !== info.id;
+  const isNew = documents.byId[info.id] === undefined;
+  if (isNew) {
+    useView.getState().open(info.id, info.pageCount);
+    renderScheduler.cache.admit(info.id);
+  }
   documents.add(info);
-  // The image on screen is the previous document's.
-  if (changes) useViewer.setState({ image: null });
+  if (isNew) loadPageSizes(info.id);
 }
 
 /**
@@ -184,74 +289,34 @@ function stopRendering(): void {
 }
 
 /**
- * The error that a failed render put in the banner. A page that renders later clears that banner, and only that one: an error
- * about opening a file (a drop with a file that is not a PDF) must not vanish because the page of another document came in.
- */
-let renderFailure: AppError | null = null;
-
-function clearRenderFailure(): void {
-  if (renderFailure !== null && useUi.getState().banner === renderFailure) useUi.getState().dismissBanner();
-  renderFailure = null;
-}
-
-/**
- * The work that goes with the active document and has no UI of its own: it renders the current page whenever document, page
- * or zoom changes and frees the page image once it has been replaced. The keys belong to the command registry
- * (`src/actions`), not to the viewer. Mount it once (`ViewerEffects`).
+ * The work that goes with the viewer and has no UI of its own: it mirrors "the render scheduler has requests in flight" into
+ * `rendering`, which the status bar shows. The keys belong to the command registry (`src/actions`), not to the viewer, and the
+ * pages ask for their own images (`PageView`). Mount it once (`ViewerEffects`).
  */
 export function useViewerEffects(): void {
-  const docId = useDocuments(selectActiveId);
-  const { zoom, pageIndex, pageCount } = useDocView(docId);
-  const imageUrl = useViewer((state) => state.image?.url);
-
-  // Render the current page whenever document, page or zoom changes. Stale results are dropped.
   useEffect(() => {
-    if (docId === null || pageCount === 0) {
-      // Nothing to render any more, and the render that this change cancelled does not report back: it is not "rendering"
-      // for ever. (A change that is followed by another render leaves the flag alone: it is still busy, and the new
-      // render ends it, so the status bar does not blink in between.)
-      stopRendering();
-      return;
-    }
-    let cancelled = false;
-    const timer = window.setTimeout(() => {
-      const scale = scaleForZoom(zoom, window.devicePixelRatio);
-      useViewer.setState({ rendering: true });
-      renderPage(docId, pageIndex, scale)
-        .then((page) => {
-          if (cancelled) return;
-          const url = URL.createObjectURL(new Blob([page.data], { type: 'image/png' }));
-          // `page.scale` is lower than `scale` only if the backend refused the full-size frame.
-          useViewer.setState({ image: { url, widthPt: page.width / page.scale, heightPt: page.height / page.scale } });
-          clearRenderFailure();
-        })
-        .catch((caught: unknown) => {
-          if (cancelled) return;
-          renderFailure = toAppError(caught);
-          useUi.getState().showBanner(renderFailure);
-        })
-        .finally(() => {
-          if (!cancelled) useViewer.setState({ rendering: false });
-        });
-    }, RENDER_DEBOUNCE_MS);
-    return () => {
-      cancelled = true;
+    let timer: number | undefined;
+    const follow = (busy: boolean) => {
       window.clearTimeout(timer);
+      if (busy) {
+        timer = window.setTimeout(() => {
+          if (renderScheduler.busy) useViewer.setState({ rendering: true });
+        }, RENDERING_SHOWN_AFTER_MS);
+      } else {
+        stopRendering();
+      }
     };
-  }, [docId, pageIndex, pageCount, zoom]);
-
-  // The hook going away cancels a render in flight the same way.
-  useEffect(() => stopRendering, []);
-
-  // Free the previous page image once it has been replaced.
-  useEffect(() => {
+    follow(renderScheduler.busy);
+    const stop = renderScheduler.onBusy(follow);
     return () => {
-      if (imageUrl !== undefined) URL.revokeObjectURL(imageUrl);
+      stop();
+      window.clearTimeout(timer);
+      stopRendering();
     };
-  }, [imageUrl]);
+  }, []);
 }
 
-/** Renders nothing: it hosts `useViewerEffects` in a component of its own, so the zoom and page it follows re-render only this. */
+/** Renders nothing: it hosts `useViewerEffects` in a component of its own. */
 export function ViewerEffects(): null {
   useViewerEffects();
   return null;

@@ -41,8 +41,8 @@ The Stop hook picks the first open `- [ ]` line, so order matters. Scope: `docs/
 ## M1 — Viewer (v0.4.0)
 
 - [x] Document registry with IDs; open via dialog, native drag and drop, file association; open-by-handle (no check/open TOCTOU), no orphaned engine docs after timed-out open
-- [ ] Render pipeline: serialized PDFium worker, render cache (page, zoom, DPR), page virtualization
-- [ ] Zoom and fit (width/page/100 %), Ctrl/Cmd+scroll, pinch; scroll modes (continuous/single/two-page); zoom controls disabled without a document
+- [x] Render pipeline: serialized PDFium worker, render cache (page, zoom, DPR), page virtualization
+- [x] Zoom and fit (width/page/100 %), Ctrl/Cmd+scroll, pinch; scroll modes (continuous/single/two-page); zoom controls disabled without a document
 - [ ] Thumbnails panel (lazy)
 - [ ] Outline (bookmarks) panel
 - [ ] Full-text search with hit highlight and next/previous
@@ -107,7 +107,7 @@ The Stop hook picks the first open `- [ ]` line, so order matters. Scope: `docs/
 
 ## M7 — Polish and ship (v1.0.0)
 
-- [ ] Performance budget: 500-page PDF opens < 1 s, 60 fps scrolling (benchmark)
+- [ ] Performance budget: 500-page PDF opens < 1 s, 60 fps scrolling (benchmark); scroll-height compression beyond the browser element limit (≈ 8k pages at 400 %), memory-aware cache budget
 - [ ] Accessibility pass (WCAG 2.2 AA analog, screen reader labels, focus order)
 - [ ] i18n de/en complete
 - [ ] Onboarding (3 skippable screens) + per-tool tips; read mode

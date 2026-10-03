@@ -1,32 +1,76 @@
 import { create } from 'zustand';
 
+import { DEFAULT_SCROLL_MODE, type ScrollAnchor, type ScrollMode } from '../features/viewer/layout';
 import { DEFAULT_ZOOM, clampZoom } from '../lib/zoom';
 
 /**
- * How one open document is shown (ARCHITECTURE section 8, `view`). Fit mode, scroll mode, rotation and the scroll anchor
- * join with M1; today it is the zoom and the page the canvas shows.
+ * What stays fitted as the window changes: `width` fills the canvas's width, `page` shows the whole page, `none` is a zoom the
+ * user chose. A fit is a mode, not a one-time zoom: it follows a resize of the window (the viewer recomputes the zoom) until the
+ * user zooms by hand.
  */
+export type FitMode = 'none' | 'width' | 'page';
+
+/** How one open document is shown (ARCHITECTURE section 8, `view`). Rotation joins with M1's view rotation. */
 export interface DocView {
   /** 1 = 100 %. Always within `MIN_ZOOM..MAX_ZOOM`. */
   zoom: number;
-  /** Zero-based position of the page that is shown. Always inside the document. */
+  fit: FitMode;
+  scrollMode: ScrollMode;
+  /**
+   * Zero-based position of the current page, always inside the document. In continuous mode it follows the scroll position (the
+   * page most of the viewport is on); in the paged modes it is the page that is shown (the first of a spread).
+   */
   pageIndex: number;
   pageCount: number;
+  /**
+   * Where the canvas is to put the document next time it lays itself out: set by a zoom, a change of mode and a jump to a page,
+   * and cleared by the canvas once it has scrolled there (`consumeAnchor`). Never read by anything else.
+   */
+  anchor: ScrollAnchor | null;
 }
 
 /** What the shell shows while no document is open. */
-export const NO_VIEW: DocView = { zoom: DEFAULT_ZOOM, pageIndex: 0, pageCount: 0 };
+export const NO_VIEW: DocView = {
+  zoom: DEFAULT_ZOOM,
+  fit: 'none',
+  scrollMode: DEFAULT_SCROLL_MODE,
+  pageIndex: 0,
+  pageCount: 0,
+  anchor: null,
+};
 
 export interface ViewState {
   byDoc: Readonly<Record<number, DocView>>;
-  /** Registers a document that was just opened: 100 %, first page. */
+  /** Registers a document that was just opened: 100 %, continuous scrolling, first page. */
   open: (docId: number, pageCount: number) => void;
   /** Forgets a closed document. */
   close: (docId: number) => void;
-  /** Clamps to the zoom range; ignored for an unknown document. */
-  setZoom: (docId: number, zoom: number) => void;
-  /** Clamps to the document's pages; ignored for an unknown document. */
-  setPage: (docId: number, pageIndex: number) => void;
+  /**
+   * A zoom the user chose: clamped to the zoom range, it ends a fit. `anchor` is the document point the canvas keeps where it is
+   * (the pointer for a wheel or pinch, the middle of the viewport otherwise). Ignored for an unknown document.
+   */
+  setZoom: (docId: number, zoom: number, anchor?: ScrollAnchor | null) => void;
+  /** Zooms to `zoom` as a fit of the page's width or of the whole page: the mode stays until the next `setZoom`. */
+  setFit: (docId: number, fit: 'width' | 'page', zoom: number, anchor?: ScrollAnchor | null) => void;
+  /** Goes to a page (clamped to the document's pages). `anchor` puts it at the top of the viewport. */
+  setPage: (docId: number, pageIndex: number, anchor?: ScrollAnchor | null) => void;
+  /** The canvas says which page the scroll position is on. Not a request to scroll. */
+  reportPage: (docId: number, pageIndex: number) => void;
+  /** Changes how pages are laid out. `zoom` is the new zoom of a fit that has to be made again for the new mode. */
+  setScrollMode: (docId: number, mode: ScrollMode, anchor?: ScrollAnchor | null, zoom?: number) => void;
+  /** The canvas has scrolled to the anchor. */
+  consumeAnchor: (docId: number) => void;
+}
+
+function sameView(a: DocView, b: DocView): boolean {
+  return (
+    a.zoom === b.zoom &&
+    a.fit === b.fit &&
+    a.scrollMode === b.scrollMode &&
+    a.pageIndex === b.pageIndex &&
+    a.pageCount === b.pageCount &&
+    a.anchor === b.anchor
+  );
 }
 
 function update(
@@ -37,35 +81,44 @@ function update(
   const view = state.byDoc[docId];
   if (view === undefined) return state;
   const next = change(view);
-  return next.zoom === view.zoom && next.pageIndex === view.pageIndex
-    ? state
-    : { byDoc: { ...state.byDoc, [docId]: next } };
+  return sameView(next, view) ? state : { byDoc: { ...state.byDoc, [docId]: next } };
+}
+
+function clampPage(view: DocView, pageIndex: number): number {
+  return Number.isFinite(pageIndex)
+    ? Math.min(Math.max(0, view.pageCount - 1), Math.max(0, Math.trunc(pageIndex)))
+    : view.pageIndex;
 }
 
 export const useView = create<ViewState>()((set) => ({
   byDoc: {},
   open: (docId, pageCount) =>
     set((state) => ({
-      byDoc: {
-        ...state.byDoc,
-        [docId]: { zoom: DEFAULT_ZOOM, pageIndex: 0, pageCount: Math.max(0, Math.trunc(pageCount)) },
-      },
+      byDoc: { ...state.byDoc, [docId]: { ...NO_VIEW, pageCount: Math.max(0, Math.trunc(pageCount)) } },
     })),
   close: (docId) =>
     set((state) => {
       if (state.byDoc[docId] === undefined) return state;
       return { byDoc: Object.fromEntries(Object.entries(state.byDoc).filter(([id]) => Number(id) !== docId)) };
     }),
-  setZoom: (docId, zoom) => set((state) => update(state, docId, (view) => ({ ...view, zoom: clampZoom(zoom) }))),
-  setPage: (docId, pageIndex) =>
+  setZoom: (docId, zoom, anchor = null) =>
+    set((state) => update(state, docId, (view) => ({ ...view, zoom: clampZoom(zoom), fit: 'none', anchor }))),
+  setFit: (docId, fit, zoom, anchor = null) =>
+    set((state) => update(state, docId, (view) => ({ ...view, zoom: clampZoom(zoom), fit, anchor }))),
+  setPage: (docId, pageIndex, anchor = null) =>
+    set((state) => update(state, docId, (view) => ({ ...view, pageIndex: clampPage(view, pageIndex), anchor }))),
+  reportPage: (docId, pageIndex) =>
+    set((state) => update(state, docId, (view) => ({ ...view, pageIndex: clampPage(view, pageIndex) }))),
+  setScrollMode: (docId, mode, anchor = null, zoom) =>
     set((state) =>
       update(state, docId, (view) => ({
         ...view,
-        pageIndex: Number.isFinite(pageIndex)
-          ? Math.min(Math.max(0, view.pageCount - 1), Math.max(0, Math.trunc(pageIndex)))
-          : view.pageIndex,
+        scrollMode: mode,
+        zoom: zoom === undefined ? view.zoom : clampZoom(zoom),
+        anchor,
       })),
     ),
+  consumeAnchor: (docId) => set((state) => update(state, docId, (view) => ({ ...view, anchor: null }))),
 }));
 
 /** The view of `docId`, or `NO_VIEW` for `null` and for a document that is not registered. */

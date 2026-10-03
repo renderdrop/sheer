@@ -17,6 +17,7 @@ export const ERROR_CODES = [
   'engine_timeout',
   'engine_crashed',
   'engine_unavailable',
+  'cancelled',
   'internal',
 ] as const;
 

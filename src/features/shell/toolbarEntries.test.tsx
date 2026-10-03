@@ -19,6 +19,7 @@ const state = (overrides: Partial<ToolbarState> = {}): ToolbarState => ({
   t: translators.en,
   platform: 'windows',
   action: { hasDocument: true, zoomAtMin: false, zoomAtMax: false },
+  scrollMode: 'continuous',
   activeTool: 'select',
   toolLocked: false,
   leftPanelVisible: true,
@@ -163,6 +164,9 @@ describe('the toolbar of DESIGN 3.3 and ADR-011 section 6', () => {
         'actual-size',
         'fit-width',
         'fit-page',
+        'scroll-continuous',
+        'scroll-single',
+        'scroll-spread',
         'page:before',
         'next-page',
         'previous-page',
@@ -175,6 +179,25 @@ describe('the toolbar of DESIGN 3.3 and ADR-011 section 6', () => {
         'page:before',
         'app:before',
       ]);
+    });
+
+    it('checks the scroll mode that is on among the three ways to lay out pages, and no other entry', () => {
+      for (const mode of ['continuous', 'single', 'spread'] as const) {
+        const { moreItems } = buildToolbar(state({ scrollMode: mode }), actions());
+        const checked = (id: string) => entryOf(moreItems, id).checked;
+        expect(checked('scroll-continuous')).toBe(mode === 'continuous');
+        expect(checked('scroll-single')).toBe(mode === 'single');
+        expect(checked('scroll-spread')).toBe(mode === 'spread');
+        expect(checked('fit-width')).toBeUndefined();
+        expect(checked('open')).toBeUndefined();
+      }
+    });
+
+    it('disables the three ways to lay out pages without a document, like every other command', () => {
+      const { moreItems } = buildToolbar(state({ action: NO_DOCUMENT }), actions());
+      for (const id of ['scroll-continuous', 'scroll-single', 'scroll-spread']) {
+        expect(entryOf(moreItems, id).disabled, id).toBe(true);
+      }
     });
 
     it('every action marked for More is in it, with its shortcut chip, and runs through the registry', () => {

@@ -6,6 +6,7 @@ import type { MenuEntries, MenuEntry, ToolbarEntry, ToolbarItem } from '../../co
 import type { Locale, Translate } from '../../i18n';
 import type { Platform } from '../../api/app';
 import { ZOOM_STEPS } from '../../lib/zoom';
+import type { ScrollMode } from '../viewer/layout';
 import type { ToolId } from '../../stores/ui';
 import { formatZoomStatus } from './status';
 
@@ -18,6 +19,8 @@ export interface ToolbarState {
   platform: Platform | null;
   /** What the actions' `enabled` looks at: whether a document is open, and the two zoom limits. */
   action: ActionState;
+  /** How the open document's pages are laid out: the More menu checks the matching entry. */
+  scrollMode: ScrollMode;
   activeTool: ToolId;
   toolLocked: boolean;
   /** The left panel is shown (not collapsed by the user or by the layout). */
@@ -50,6 +53,13 @@ export function zoomMenuEntries(zoom: number, setZoom: (zoom: number) => void, l
   }));
 }
 
+/** The scroll mode that each of the three layout actions chooses. */
+const SCROLL_MODE_OF: Partial<Record<ActionId, ScrollMode>> = {
+  'scroll-continuous': 'continuous',
+  'scroll-single': 'single',
+  'scroll-spread': 'spread',
+};
+
 /** What an action contributes to a toolbar item or menu entry: its name and icon, its shortcut on this platform, and whether it can run. */
 function describe(action: ActionDef, state: Pick<ToolbarState, 't' | 'platform' | 'action'>) {
   const shortcut = actionShortcut(action, state.platform, state.t);
@@ -68,7 +78,7 @@ function describe(action: ActionDef, state: Pick<ToolbarState, 't' | 'platform' 
  * the keyboard has them all too. The items that overflow out of the toolbar are appended after these (the Toolbar primitive does that).
  */
 export function buildMoreItems(
-  state: Pick<ToolbarState, 't' | 'platform' | 'action'>,
+  state: Pick<ToolbarState, 't' | 'platform' | 'action'> & Partial<Pick<ToolbarState, 'scrollMode'>>,
   run: (id: ActionId) => void,
 ): MenuEntry[] {
   const items: MenuEntry[] = [];
@@ -78,7 +88,10 @@ export function buildMoreItems(
     if (group !== null && group !== action.group) items.push({ type: 'separator', id: `${action.group}:before` });
     group = action.group;
     const { label, icon, shortcut, disabled } = describe(action, state);
-    items.push({ id: action.id, label, icon, shortcut, disabled, onSelect: () => run(action.id) });
+    // The three ways to lay pages out are a choice of one: the current one is checked.
+    const mode = SCROLL_MODE_OF[action.id];
+    const checked = mode === undefined || state.scrollMode === undefined ? undefined : state.scrollMode === mode;
+    items.push({ id: action.id, label, icon, shortcut, disabled, checked, onSelect: () => run(action.id) });
   }
   return items;
 }

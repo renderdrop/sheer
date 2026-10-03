@@ -5,19 +5,19 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { DocumentInfo } from '../api/documents';
 import { Shell } from '../features/shell/Shell';
 import { useViewer } from '../features/viewer/useViewer';
+import { resetViewer } from '../features/viewer/viewer.testutil';
 import { useSettings } from '../stores/settings';
-import { opened, resetDocuments } from '../stores/documents.testutil';
+import { opened } from '../stores/documents.testutil';
 import { useUi } from '../stores/ui';
-import { useView } from '../stores/view';
 import { setup } from '../test/render';
 import { bindLocaleToSettings } from './bind';
 import { catalogs } from './catalog';
 
 const documentsApi = vi.hoisted(() => ({
   openDocumentDialog: vi.fn(),
-  renderPage: vi.fn(),
   closeDocument: vi.fn(),
 }));
+const renderApi = vi.hoisted(() => ({ renderPage: vi.fn(), setViewport: vi.fn(), getPageSizes: vi.fn() }));
 const windowApi = vi.hoisted(() => ({
   minimizeWindow: vi.fn(),
   toggleMaximizeWindow: vi.fn(),
@@ -27,11 +27,11 @@ const windowApi = vi.hoisted(() => ({
 }));
 
 vi.mock('../api/documents', () => documentsApi);
+vi.mock('../api/render', () => renderApi);
 vi.mock('../api/window', () => windowApi);
 
 const uiInitial = useUi.getState();
 const settingsInitial = useSettings.getState();
-const viewerInitial = useViewer.getState();
 
 const REPORT: DocumentInfo = { id: 1, pageCount: 120, displayName: 'Quarterly report.pdf' };
 const NBSP = String.fromCharCode(0xa0);
@@ -46,14 +46,13 @@ function chooseLanguage(language: 'system' | 'en' | 'de'): void {
 
 beforeEach(() => {
   useUi.setState({ ...uiInitial }, true);
-  useViewer.setState({ ...viewerInitial }, true);
-  resetDocuments();
-  useView.setState({ byDoc: {} });
+  resetViewer();
+  useViewer.setState({ viewport: { width: 900, height: 700 } });
   useSettings.setState({ ...settingsInitial, platform: 'windows' }, true);
   documentsApi.openDocumentDialog.mockReset().mockResolvedValue([opened(REPORT)]);
-  documentsApi.renderPage
-    .mockReset()
-    .mockResolvedValue({ data: new Uint8Array([1]), width: 816, height: 1056, scale: 4 / 3 });
+  renderApi.renderPage.mockReset().mockResolvedValue({ data: new Uint8Array([1]), width: 816, height: 1056 });
+  renderApi.setViewport.mockReset().mockResolvedValue(undefined);
+  renderApi.getPageSizes.mockReset().mockResolvedValue([]);
   documentsApi.closeDocument.mockReset().mockResolvedValue(undefined);
   for (const mock of Object.values(windowApi)) mock.mockReset().mockResolvedValue(false);
   URL.createObjectURL = vi.fn(() => 'blob:page');
@@ -67,9 +66,7 @@ afterEach(() => {
   unbind = null;
   vi.restoreAllMocks();
   useUi.setState({ ...uiInitial }, true);
-  useViewer.setState({ ...viewerInitial }, true);
-  resetDocuments();
-  useView.setState({ byDoc: {} });
+  resetViewer();
   useSettings.setState(settingsInitial, true);
 });
 

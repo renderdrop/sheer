@@ -61,6 +61,7 @@ export const ToolbarSlot = memo(function ToolbarSlot({
   const docId = useDocuments(selectActiveId);
   const zoomAtMin = useDocViewValue(docId, (view) => view.zoom <= MIN_ZOOM);
   const zoomAtMax = useDocViewValue(docId, (view) => view.zoom >= MAX_ZOOM);
+  const scrollMode = useDocViewValue(docId, (view) => view.scrollMode);
 
   const { entries, moreItems } = useMemo(
     () =>
@@ -69,6 +70,7 @@ export const ToolbarSlot = memo(function ToolbarSlot({
           t,
           platform,
           action: { hasDocument, zoomAtMin, zoomAtMax },
+          scrollMode,
           activeTool,
           toolLocked,
           leftPanelVisible,
@@ -78,7 +80,18 @@ export const ToolbarSlot = memo(function ToolbarSlot({
         },
         ACTIONS,
       ),
-    [t, platform, hasDocument, activeTool, toolLocked, leftPanelVisible, inspectorVisible, zoomAtMin, zoomAtMax],
+    [
+      t,
+      platform,
+      hasDocument,
+      activeTool,
+      toolLocked,
+      leftPanelVisible,
+      inspectorVisible,
+      zoomAtMin,
+      zoomAtMax,
+      scrollMode,
+    ],
   );
 
   return (

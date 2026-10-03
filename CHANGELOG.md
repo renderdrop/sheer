@@ -6,6 +6,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- A scrolling, virtualized canvas (ADR-018): every page has a placeholder of its real size, and only the pages within a viewport height of the viewport are mounted (at most 24).
+  The render queue has priorities (visible, near, thumbnails), cancels the renders of pages that scrolled away (`set_viewport`) and draws one frame once however many pages ask for it;
+  a render cache of up to 256 MiB keeps the images, and a page shows the best one it has while the sharp one is on its way.
+- Zoom buckets (a quarter octave, display pixel ratio included) and 1024 px tiles for pages that are too large for one frame, which replace the retry at a smaller scale.
+- Zoom around the pointer (Ctrl/Cmd+wheel, trackpad pinch in WebView2 and WKWebView) and around the middle of the viewport (buttons, keys); the point you look at stays where it is.
+  Fit width and Fit page stay fitted as the window is resized.
+- Scroll modes: Continuous scrolling, Single page and Two pages (More menu, macOS View menu); the status bar shows the page the scroll position is on.
+- `get_page_sizes` and `set_viewport` commands; the error code `cancelled` (the UI stays silent about it); a document of more than 50 000 pages is refused.
+- A 500-page synthetic PDF test that logs how long opening it and its first visible page take.
+
+### Security
+
+- A flood of `render_page` calls cannot park the blocking pool: a tile column or row of 64 or more is refused at the command, at most 8 callers join one frame that is being
+  drawn (the frame is shared, not copied for each), at most 96 calls per document and 128 in all are in flight, and a viewport hint with more than 64 pages in a list is refused
+  while it is read. `get_page_sizes` is answered from the sizes read once when the document was loaded.
+- A document whose close the engine could not take is no longer lost: it is hidden from the UI, kept marked as closing, and released by the next open or close; a close that
+  timed out still runs.
+- The capability file lists each permission once, and a test keeps it so.
+
+### Fixed
+
+- Page views are memoized for real: the canvas hands them numbers instead of a layout object that is new on every render. Neighbours rendered ahead in a paged mode wait for the
+  zoom to settle like a page does. The render cache forgets what it kept about a closed document (page versions, and all but the last 256 closed ids). A rectangle that starts at
+  or after a tiled page's edge no longer asks for a tile.
+
 ## [0.3.0] - 2026-10-02
 
 ### Added

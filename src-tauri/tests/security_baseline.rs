@@ -316,6 +316,22 @@ fn capabilities_grant_only_the_app_commands_and_the_window_chrome_to_the_main_wi
 
     let mut granted = BTreeSet::new();
     for file in &files {
+        // A permission is listed once: a second entry is noise that hides what the file grants (and a copy that was meant to be
+        // another permission).
+        let listed: Vec<String> = serde_json::from_str::<Value>(&fs::read_to_string(file).unwrap())
+            .unwrap()["permissions"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|permission| permission.as_str().unwrap().to_owned())
+            .collect();
+        let unique: BTreeSet<&String> = listed.iter().collect();
+        assert_eq!(
+            unique.len(),
+            listed.len(),
+            "a permission is listed twice in {}: {listed:?}",
+            file.display()
+        );
         let capability: Value = serde_json::from_str(&fs::read_to_string(file).unwrap()).unwrap();
         assert_eq!(
             capability["windows"],
@@ -347,6 +363,8 @@ fn capabilities_grant_only_the_app_commands_and_the_window_chrome_to_the_main_wi
     let mut expected = set(&[
         "allow-open-document-dialog",
         "allow-render-page",
+        "allow-set-viewport",
+        "allow-get-page-sizes",
         "allow-close-document",
         "allow-app-ready",
         "allow-get-settings",
@@ -580,6 +598,8 @@ fn build_script_declares_exactly_the_granted_commands() {
     let commands = [
         "open_document_dialog",
         "render_page",
+        "set_viewport",
+        "get_page_sizes",
         "close_document",
         "app_ready",
         "get_settings",

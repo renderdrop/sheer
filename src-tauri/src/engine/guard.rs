@@ -62,6 +62,12 @@ impl Health {
     fn is_wedged_at(&self, now: Instant) -> bool {
         self.lock().is_some_and(|deadline| now >= deadline)
     }
+
+    /// Whether the worker is running a job.
+    #[cfg(test)]
+    pub(super) fn is_busy(&self) -> bool {
+        self.lock().is_some()
+    }
 }
 
 /// Clears the running mark of a [`Health`] when dropped.

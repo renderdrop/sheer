@@ -6,6 +6,8 @@
   "permissions": [
     "allow-open-document-dialog",
     "allow-render-page",
+    "allow-set-viewport",
+    "allow-get-page-sizes",
     "allow-close-document",
     "allow-app-ready",
     "allow-get-settings",

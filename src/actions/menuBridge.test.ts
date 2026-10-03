@@ -13,11 +13,15 @@ import { watchNativeMenu } from './menuBridge';
 
 const documentsApi = vi.hoisted(() => ({
   openDocumentDialog: vi.fn(),
-  renderPage: vi.fn(),
   closeDocument: vi.fn(),
 }));
 
 vi.mock('../api/documents', () => documentsApi);
+vi.mock('../api/render', () => ({
+  renderPage: vi.fn(),
+  setViewport: vi.fn().mockResolvedValue(undefined),
+  getPageSizes: vi.fn().mockResolvedValue([]),
+}));
 
 const uiInitial = useUi.getState();
 const viewerInitial = useViewer.getState();
