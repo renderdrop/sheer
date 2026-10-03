@@ -1075,3 +1075,20 @@ Amends ADR-025 / ADR-030 §5: the four parallel implementers apply per wave (bac
 **Context.** Findings of the M3 reviews. **Decision.** (1) `pdfwrite::prescan` runs before every lopdf `load_mem` of foreign bytes (P12). (2) A page insert that the model refuses after the engine appended pages takes them off again (`Job::TruncatePages`, only if the copy has not grown since); a copy that fails half way does the same inside the worker. (3) Annotations the file marks Hidden stay in `DocState::hidden_origins`, so undo never shows them (the `Imported.hidden` flag; cleared at save, where positions move). (4) `AnnotationStore` remembers at most 4 096 closed ids; a poisoned lock answers `not_found` with `what: annotation_state` (`error.not_found.annotation_state`, en/de). (5) Imported pages that lose form widgets add `Warning::WidgetsDropped` (wire `widgetsDropped`). (6) `bundle.targets` is `["nsis","dmg","app"]`; `release.yml` still selects one with `--bundles`. (7) A save that cannot write is tested end to end (`tests/save_restore.rs`); the reopen-mismatch branch shares the same `put_back`.
 
 **Addendum (security review).** The pre-scan (`pdfwrite::prescan`) is **defence in depth**, a heuristic on raw bytes that normalizes `#xx` name escapes, covers object and xref streams, cuts data by a direct `/Length`, and counts filter chains it cannot evaluate at their worst case. It can still be fooled; the real bound is the M7 engine process with an address-space limit. Every lopdf load of foreign bytes goes through `pdfwrite::load_untrusted` (a test fails on any other `load_mem`). Annotations copied from an import source keep only a URI action that passes `security::links::classify` (rebuilt, no `Next`); `AA` is dropped. A failed take-back of engine pages answers `engine_crashed` (the worker drops the document; the UI reopens it).
+
+## ADR-040 — Pre-scan by a PDF tokenizer, not by byte search (two-attempts rule)
+
+**Context.** The decode-budget pre-scan (ADR-039) searched raw bytes for `obj`, `/Length`, `/ObjStm`. Two security rounds found bypasses
+(a `/Xobj` key; a fake `N G obj` inside a string or comment; a nested `/Length` in `/DecodeParms` before an indirect top-level `/Length`).
+§7.6: an approach that fails twice is replaced.
+
+**Decision.** The pre-scan becomes a small **PDF lexer + object-level parser** (no decoding): it tokenizes the whole file (literal strings
+with escapes and nesting, hex strings, comments, names with `#xx`, numbers, `<<`/`>>`/`[`/`]` with depth), recognizes `N G obj … endobj`
+at top level, reads only **top-level** keys of a stream dictionary, and charges the budget per stream: object/xref streams with an
+evaluable Flate chain are inflated with a cap; anything ambiguous — duplicate top-level keys, indirect `/Length` (charge up to the next
+`endstream` token found by the lexer), unevaluable filter chains, unterminated strings/dicts, nesting deeper than 64, a header the lexer
+cannot place — is charged conservatively or **refused**. The lexer is bounded (single pass, no recursion, input ≤ the intake cap).
+It remains defence in depth; the hard bound is the M7 engine process with an address-space limit (ADR-039).
+
+**Consequences.** `prescan.rs` is rewritten around the lexer; the bypass inputs from both reviews become regression tests; a property
+test (random bytes / mutated corpus) asserts the lexer never panics and terminates.
