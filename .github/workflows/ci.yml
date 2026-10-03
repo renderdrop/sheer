@@ -19,8 +19,9 @@ on:
 permissions:
   contents: read
 
+# ADR-045: a manual start has its own group, so a push to the same ref no longer cancels it (and it no longer cancels the push run).
 concurrency:
-  group: ci-${{ github.workflow }}-${{ github.ref }}
+  group: ci-${{ github.workflow }}-${{ github.event_name == 'workflow_dispatch' && 'manual' || 'auto' }}-${{ github.ref }}
   cancel-in-progress: true
 
 env:

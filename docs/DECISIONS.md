@@ -1247,3 +1247,15 @@ pinned PDFium download (re-verified against its SHA256 pin by `fetch-pdfium.sh`)
 **Consequences.** ORCHESTRATOR §8.6: "CI green on Windows and macOS" is met by the last finished Windows run on `main` plus **one manual
 `workflow_dispatch` run on the release candidate** at milestone end (before the tag), read once and not waited on (ADR-030); the tag push
 runs both platforms again. Amends ADR-030 §2 and FEEDBACK F6.
+
+## ADR-045 — Pre-publication: CI concurrency for manual runs, disclosure and trademark contact
+
+**Context.** Product-owner request (2026-10-03) before the repository goes public: a publish check (`docs/PUBLISH_CHECK.md`), and manual
+CI runs must no longer cancel push runs or be cancelled by them (seen at the v0.7.0 tag, STATE notes). `SECURITY.md` and `TRADEMARK.md`
+still named `*.invalid` placeholder addresses.
+
+**Decision.** (1) `ci.yml` concurrency group: `ci-<workflow>-<manual|auto>-<ref>`; `workflow_dispatch` runs share a group only with each
+other, pushes and pull requests only with each other; `cancel-in-progress` stays on within each group. Amends ADR-043. (2) Vulnerability
+reports go through GitHub private vulnerability reporting (no project mailbox, no personal address in the repo); it has to be switched
+on in the repository settings once the repository is public. (3) Trademark questions go through a repository issue. (4) README carries a
+"pre-release, unsigned, not for productive use" notice and a feature table by milestone. History is not rewritten.

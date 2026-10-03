@@ -21,4 +21,5 @@ The product name is defined in one central `APP_NAME` token; replace it together
 
 ## Questions
 
-Contact: trademark@sheer.invalid (placeholder, to be replaced before release).
+Please open an issue in this repository with "Trademark" in the title. For anything you do not want to discuss in public,
+ask in that issue for a private channel.

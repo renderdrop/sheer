@@ -1,12 +1,17 @@
 # Security Policy
 
+## Status
+
+Sheer is **pre-release software** (versions 0.x). Builds are unsigned and not meant for productive use. Security fixes go into the
+latest version only.
+
 ## Reporting a vulnerability
 
-Please report security issues privately to **security@sheer.invalid** (placeholder address, replaced before the first release).
-Do not open public issues for vulnerabilities.
+Please report security issues privately through GitHub's **private vulnerability reporting**: open the repository's
+**Security** tab and choose **Report a vulnerability**. Do not open public issues for vulnerabilities.
 
 Please include: affected version, platform, a description of the issue, and, if possible, a proof-of-concept file.
-Malicious PDF samples are welcome; please send them as a password-protected archive.
+Malicious PDF samples are welcome; attach them as a password-protected archive and put the password in the report.
 
 ## Our commitment
 
