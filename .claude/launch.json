@@ -6,6 +6,12 @@
       "runtimeExecutable": "npm",
       "runtimeArgs": ["run", "dev"],
       "port": 1420
+    },
+    {
+      "name": "sheer-tauri",
+      "runtimeExecutable": "bash",
+      "runtimeArgs": ["scripts/ui/dev.sh"],
+      "port": 1420
     }
   ]
 }

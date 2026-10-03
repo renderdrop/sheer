@@ -8,7 +8,7 @@ Work them in order; tick `[x]` when done. The Stop hook reads the first open `- 
 - [x] tester, reviewer and security-reviewer on `b72fbf9..HEAD` (engine read APIs + thumbnails): tester PASS (no gaps); reviewer
       PASS, then a deeper frontend pass FIX (2 major in `src/api/search.ts`); security FAIL only on `cargo deny` run without
       `--target` (Linux-only GTK advisories; `check.sh` checks the shipped targets, ADR-017) + 2 low
-- [ ] Fix the findings (blocker/major, critical/high); tick "Thumbnails panel (lazy)" in ROADMAP.md
+- [x] Fix the findings (blocker/major, critical/high); tick "Thumbnails panel (lazy)" in ROADMAP.md (cbb7a98, 1bc4854)
 
 ## F2 — Mood: the app looks grey, empty and lifeless
 

@@ -43,7 +43,7 @@ The Stop hook picks the first open `- [ ]` line, so order matters. Scope: `docs/
 - [x] Document registry with IDs; open via dialog, native drag and drop, file association; open-by-handle (no check/open TOCTOU), no orphaned engine docs after timed-out open
 - [x] Render pipeline: serialized PDFium worker, render cache (page, zoom, DPR), page virtualization
 - [x] Zoom and fit (width/page/100 %), Ctrl/Cmd+scroll, pinch; scroll modes (continuous/single/two-page); zoom controls disabled without a document
-- [ ] Thumbnails panel (lazy)
+- [x] Thumbnails panel (lazy)
 - [ ] Outline (bookmarks) panel
 - [ ] Full-text search with hit highlight and next/previous
 - [ ] Text selection and copy (char-box text layer)

@@ -21,6 +21,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `get_text_layer` (the text of a page and a box for every character, in page space), `search` and `cancel_search` (page by page at the lowest priority, so renders go first; hits as
   one rectangle per line, progress, done; Unicode case, hyphenated words and phrases across a line break are found, which PDFium's own search does not do), `get_page_links` and
   `open_link`. A document tells whether it is encrypted, has an XFA or an AcroForm, or is signed (`flags` of `DocumentInfo`).
+- Thumbnails panel in the left panel: virtualized for any page count, rendered lazily at thumbnail priority from the shared render cache, the current
+  page highlighted and kept in view, one Tab stop with arrow keys, Home and End, click or Enter to jump.
 - Test PDFs generated in code (`src-tauri/tests/support`), with the committed ones under `tests/fixtures/` checked against their generator: outlines (also a cycle), links of every kind,
   text with non-ASCII letters, a hyphenated line end and an emoji, a form, an XFA form, a signed and an encrypted document.
 
@@ -36,6 +38,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   while it is read. `get_page_sizes` is answered from the sizes read once when the document was loaded.
 - A document whose close the engine could not take is no longer lost: it is hidden from the UI, kept marked as closing, and released by the next open or close; a close that
   timed out still runs.
+- A web link needs a real host (DNS labels or a bracketed IPv6 address, a port of at most 65535, no percent-encoding in the host).
 - The capability file lists each permission once, and a test keeps it so.
 
 ### Fixed
