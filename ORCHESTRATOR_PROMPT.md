@@ -5,7 +5,7 @@
 > 2. Claude Code im Repo starten, Hauptmodell Opus 5.5, Permission-Modus auf vollautomatisch (z. B. `claude --model claude-opus-5-5 --effort high --dangerously-skip-permissions`; Flags ggf. gegen deine Version prüfen).
 > 3. Einzige Eingabe: `Lies ORCHESTRATOR_PROMPT.md vollständig und führe sie aus.`
 > 4. Jede weitere Session: dieselbe Eingabe. Die Datei ist idempotent — sie liest `STATE.md` und macht dort weiter, wo sie aufgehört hat.
-> 5. Not-Aus: Datei `.claude/state/STOP` anlegen. Loop-Obergrenze pro Session: Umgebungsvariable `CC_MAX_LOOPS` (Default 25).
+> 5. Not-Aus: Datei `.claude/state/STOP` anlegen. Loop-Obergrenze pro Session: Umgebungsvariable `CC_MAX_LOOPS` (Default 60).
 
 ---
 
@@ -376,7 +376,7 @@ ROOT="$CLAUDE_PROJECT_DIR"; STATE="$ROOT/.claude/state"; mkdir -p "$STATE"
 [ -f "$STATE/STOP" ] && exit 0                      # manueller Not-Aus
 [ -f "$STATE/DONE" ] && exit 0                      # Ziel erreicht
 [ -f "$ROOT/ROADMAP.md" ] || exit 0                 # noch kein Bootstrap: normales Verhalten
-MAX="${CC_MAX_LOOPS:-25}"
+MAX="${CC_MAX_LOOPS:-60}"
 COUNT=$(cat "$STATE/loop_count" 2>/dev/null || echo 0)
 NEXT=$(grep -m1 -E '^- \[ \]' "$ROOT/ROADMAP.md" || true)
 [ -z "$NEXT" ] && exit 0                            # nichts offen → stoppen erlaubt
@@ -399,6 +399,8 @@ Alle Skripte: `chmod +x`. `.claude/state/` in `.gitignore`.
 - **Kein Log-Spam:** Testausgaben nur als „erste 3 Fehler“. Keine Build-Logs in deinen Kontext.
 - **Reports statt Diffs:** Du liest Subagent-Reports, nicht ihre Diffs. Der `reviewer` liest Diffs.
 - **Kleine Commits, oft:** Nach jedem Feature-Loop ein Commit. Großer Kontextverlust durch Auto-Compact ist dann harmlos, weil Git + `STATE.md` den Zustand halten.
+- **Warten auf Agents:** Vor jedem Turn-Ende, das nur dem Warten auf laufende Subagents dient, legst du `.claude/state/WAITING` an. Der Stop-Hook zählt diesen Loop dann nicht, löscht die Datei und lässt dich weitermachen.
+- **Stuck-Erkennung:** Zehn gezählte Loops ohne neuen Commit auf `main` → der Stop-Hook lässt das Stoppen zu. Vorher den Blocker in `STATE.md` festhalten.
 
 ---
 

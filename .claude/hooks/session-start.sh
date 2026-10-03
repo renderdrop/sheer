@@ -7,6 +7,7 @@ STATE="$ROOT/.claude/state"
 mkdir -p "$STATE"
 if echo "$INPUT" | grep -q '"source" *: *"startup"'; then
   echo 0 > "$STATE/loop_count"
+  echo 0 > "$STATE/stall_count"; rm -f "$STATE/WAITING"
 fi
 # stdout wird als Kontext injiziert — bewusst kurz halten
 if [ -f "$ROOT/STATE.md" ]; then

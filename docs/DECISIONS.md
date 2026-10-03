@@ -762,3 +762,12 @@ exist in M1. Highlight and comment (M2), reorder (M3) and signature (M4) follow.
 **Consequences.** `Settings`, `update_settings` validation, `DocumentInfo` (`kind`) and the IPC surface (`open_welcome_document`) change
 in ARCHITECTURE. `win_ansi` learns „ “ ” …. Each tool PR (M2–M4) flips `shipped`, adds its detector and regenerates both PDFs.
 The security review covers the new command (no path crosses IPC; the resource path is resolved in Rust only).
+
+## ADR-024 — Stop hook: WAITING turns, stuck detection, cap 60
+
+**Context.** Turns that end only to wait for subagents burned loop budget, and a session could spin without progress until the cap.
+
+**Decision.** `.claude/hooks/continue-loop.sh`: if `.claude/state/WAITING` exists, the hook deletes it and blocks without counting the
+loop. Each counted loop compares `refs/heads/main` with the last seen value; ten loops in a row without a new commit allow the stop.
+`CC_MAX_LOOPS` defaults to 60. `session-start.sh` resets the stall counter and a stale WAITING file on a real start.
+ORCHESTRATOR_PROMPT §7.6 tells the orchestrator to create WAITING before every turn end that only waits for agents.
