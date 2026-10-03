@@ -56,7 +56,7 @@ function chunk(type, data) {
 
 function parsePng(buf) {
   const out = { ihdr: null, idat: [] };
-  for (let o = 8; o < buf.length; ) {
+  for (let o = 8; o < buf.length;) {
     const len = buf.readUInt32BE(o);
     const type = buf.toString('latin1', o + 4, o + 8);
     const data = buf.subarray(o + 8, o + 8 + len);
@@ -76,7 +76,11 @@ function buildApng(frames) {
   const ok = parsed.filter((p) => p.ihdr.equals(ihdr));
   const actl = Buffer.alloc(8);
   actl.writeUInt32BE(ok.length);
-  const parts = [Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), chunk('IHDR', ihdr), chunk('acTL', actl)];
+  const parts = [
+    Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+    chunk('IHDR', ihdr),
+    chunk('acTL', actl),
+  ];
   let seq = 0;
   ok.forEach((p, i) => {
     const f = Buffer.alloc(26);
@@ -126,7 +130,9 @@ async function record(cdp, rest) {
     maxHeight: Math.round(dims.h * scale),
   });
   const run = during
-    ? new Promise((r) => setTimeout(r, delay)).then(() => cdp.evaluate(`(async()=>{ ${during} })()`)).catch((e) => console.error(String(e.message ?? e)))
+    ? new Promise((r) => setTimeout(r, delay))
+        .then(() => cdp.evaluate(`(async()=>{ ${during} })()`))
+        .catch((e) => console.error(String(e.message ?? e)))
     : null;
   await new Promise((r) => setTimeout(r, ms));
   await cdp.send('Page.stopScreencast');
@@ -190,7 +196,9 @@ try {
   } else if (cmd === 'record') {
     await record(cdp, rest);
   } else {
-    throw new Error('commands: eval <js> | theme light|dark|system | fps <ms> [--during <js>] | record <ms> --out <png> [--during <js>] [--delay <ms>] [--scale 0.5]');
+    throw new Error(
+      'commands: eval <js> | theme light|dark|system | fps <ms> [--during <js>] | record <ms> --out <png> [--during <js>] [--delay <ms>] [--scale 0.5]',
+    );
   }
 } catch (e) {
   console.error(String(e.message ?? e));
