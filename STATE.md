@@ -1,8 +1,8 @@
 # STATE
 phase: M3
 version: 0.5.0
-current_item: M3 wave 1 (four implementers): R1 page model backend, R2 organize UI, R3 new-file jobs backend, R4 jobs UI; then Politur M3 wave; then milestone end
-last_completed: M2 Comment and markup released as v0.5.0 (tag v0.5.0; release workflow builds installers)
+current_item: Politur M3 (four packages: A Rust robustness, B M2 UI leftovers, C M3 UI leftovers, D imported-page annotations); then M3 milestone end
+last_completed: M3 wave 1 organize, page ops, jobs (aa66cf0); ADR-038 backend-first from M4
 loop_count_this_session: 0
 open_blockers: 2 (B-001 UI never seen on a Mac; B-002 code signing)
 notes: FEEDBACK (product owner) before ROADMAP (§14). Push after every commit; CI checked once per milestone, never wait (ADR-030).
