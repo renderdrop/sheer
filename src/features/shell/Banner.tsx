@@ -1,4 +1,4 @@
-import { CircleAlert, X } from 'lucide-react';
+import { CircleAlert, TriangleAlert, X } from 'lucide-react';
 import { AnimatePresence, motion, useIsPresent } from 'motion/react';
 import { useState } from 'react';
 
@@ -7,6 +7,8 @@ import { cx } from '../../components/cx';
 import { Icon } from '../../components/Icon';
 import { useRevealMotion } from '../../components/motion';
 import { errorText, useT } from '../../i18n';
+import { APP_NAME } from '../../config/app';
+import { selectActiveDocument, useDocuments } from '../../stores/documents';
 import { useUi } from '../../stores/ui';
 import type { AppError } from '../../api/errors';
 
@@ -66,4 +68,42 @@ export function BannerRow() {
 
 function dismissBanner(): void {
   useUi.getState().dismissBanner();
+}
+
+/**
+ * The XFA warning (DESIGN 3.21, banner 3.12): shown while the active document is an XFA form, which PDFium here cannot show.
+ * `role=status` (a notice, not an alert). The dismissal is per document and lasts for the session, so another tab has its own.
+ */
+export function XfaBannerRow() {
+  const t = useT();
+  const motionProps = useRevealMotion();
+  const xfa = useDocuments((state) => selectActiveDocument(state)?.flags?.xfa === true);
+  const activeId = useDocuments((state) => state.activeId);
+  const [dismissed, setDismissed] = useState<ReadonlySet<number>>(new Set());
+  const show = xfa && activeId !== null && !dismissed.has(activeId);
+  return (
+    <AnimatePresence initial={false}>
+      {show && (
+        <motion.div key="xfa" {...motionProps} className="shrink-0">
+          <div className="px-1 pb-1">
+            <div
+              role="status"
+              className="glass-1 flex min-h-banner-min items-center gap-1 rounded-panel py-1 pe-1 ps-2"
+            >
+              <span className="shrink-0 text-warning-text">
+                <Icon icon={TriangleAlert} />
+              </span>
+              <span className="min-w-0 flex-auto text-warning-text">{t('xfa.message', { app: APP_NAME })}</span>
+              <IconButton
+                label={t('xfa.dismiss')}
+                icon={X}
+                size="sm"
+                onClick={() => setDismissed((previous) => new Set(previous).add(activeId))}
+              />
+            </div>
+          </div>
+        </motion.div>
+      )}
+    </AnimatePresence>
+  );
 }

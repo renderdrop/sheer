@@ -36,11 +36,77 @@ pub fn admit(path: &Path) -> Result<Admitted, AppError> {
 
 /// [`admit`] with another size limit, so a test can cross it without a file of 2 GiB.
 fn admit_within(path: &Path, max_bytes: u64) -> Result<Admitted, AppError> {
-    // Symlinks and `..` are resolved here, so two names of one file are one path and a link to a directory is a directory.
-    let path = std::fs::canonicalize(path)?;
-    let mut file = open_without_blocking(&path)?;
+    // Before the file system is touched at all: a remote or device path would make the open wait on a network or a driver.
+    refuse_unsafe_spelling(path)?;
+    // The handle comes first and is judged; the registry key is derived afterwards and must name the very file the handle is
+    // (below), so the key is the handle's and not whatever the path pointed at a moment earlier.
+    let mut file = open_without_blocking(path)?;
     check_handle(&mut file, max_bytes)?;
-    Ok(Admitted { path, file })
+    // Symlinks and `..` are resolved here, so two names of one file are one path and a link to a directory is a directory.
+    let canonical = std::fs::canonicalize(path)?;
+    refuse_unsafe_spelling(&canonical)?;
+    let other = open_without_blocking(&canonical)?;
+    if !same_file(&file.metadata()?, &other.metadata()?) {
+        return Err(AppError::logged(
+            ErrorCode::IoInUse,
+            "the path changed while it was being opened",
+        ));
+    }
+    Ok(Admitted {
+        path: canonical,
+        file,
+    })
+}
+
+/// Whether two open handles are one file. Where the OS gives a file identity (Unix: device and inode) that is compared; elsewhere
+/// the size and the times of last write and of creation, which differ for a file that was swapped for another.
+fn same_file(a: &std::fs::Metadata, b: &std::fs::Metadata) -> bool {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::MetadataExt;
+        a.dev() == b.dev() && a.ino() == b.ino()
+    }
+    #[cfg(not(unix))]
+    {
+        a.len() == b.len()
+            && a.modified().ok() == b.modified().ok()
+            && a.created().ok() == b.created().ok()
+    }
+}
+
+/// Windows only: refuses a path that is not a plain local file name before anything is opened. That is a path that begins with two
+/// separators other than the verbatim drive form `\\?\C:\` (a network share, `\\?\UNC\`, a device such as `\\.\COM1` or
+/// `\\.\pipe\x`), and a name with a colon after the drive (an NTFS alternate data stream, `file.pdf:stream`, which is data
+/// hidden in a file, not a document). Everywhere else every path passes.
+fn refuse_unsafe_spelling(path: &Path) -> Result<(), AppError> {
+    if cfg!(windows) && !windows_spelling_is_plain(&path.to_string_lossy()) {
+        return Err(AppError::logged(
+            ErrorCode::NotAPdf,
+            "a network, device or stream path",
+        ));
+    }
+    Ok(())
+}
+
+/// The rule of [`refuse_unsafe_spelling`] on the text of a path (apart from the platform, so that it is tested everywhere).
+fn windows_spelling_is_plain(text: &str) -> bool {
+    let text = text.replace('/', "\\");
+    let rest = match text.strip_prefix(r"\\?\") {
+        Some(verbatim) if has_drive(verbatim) => verbatim,
+        Some(_) => return false,
+        None => text.as_str(),
+    };
+    if rest.starts_with(r"\\") {
+        return false;
+    }
+    let after_drive = if has_drive(rest) { &rest[2..] } else { rest };
+    !after_drive.contains(':')
+}
+
+/// Whether `text` begins with a drive letter and a colon.
+fn has_drive(text: &str) -> bool {
+    let bytes = text.as_bytes();
+    bytes.len() >= 2 && bytes[0].is_ascii_alphabetic() && bytes[1] == b':'
 }
 
 /// Judges an open handle and leaves it at the start. Everything is read from the handle, nothing from the path.
@@ -76,16 +142,28 @@ fn has_signature(head: &[u8]) -> bool {
         .any(|window| window == limits::PDF_SIGNATURE)
 }
 
-/// The files named on a command line: `args` without the program name. Flags (a leading `-`) and empty arguments are not
-/// files and are skipped; the OS and the shell put nothing else there. A relative path is relative to `cwd`, the working
+/// The files named on a command line: `args` without the program name. Flags (a leading `-`), empty arguments and the bare word
+/// (no dot, no separator) right after a `--option` (its value) are not files and are skipped; the OS
+/// and the shell put nothing else there. A relative path is relative to `cwd`, the working
 /// directory of the process that was started (the second instance's, for one forwarded to the running app). At most
 /// `MAX_OPEN_BATCH + 1` are returned, one more than may be opened, so the caller can tell that there were too many.
 pub fn paths_from_args(
     args: impl IntoIterator<Item = OsString>,
     cwd: Option<&Path>,
 ) -> Vec<PathBuf> {
+    let mut after_option = false;
     args.into_iter()
-        .filter(|arg| !arg.is_empty() && !arg.to_string_lossy().starts_with('-'))
+        .filter(|arg| {
+            let text = arg.to_string_lossy();
+            if text.starts_with('-') {
+                // `--name value`: the bare word after a long option is its value, not a file.
+                after_option = text.starts_with("--") && !text.contains('=');
+                return false;
+            }
+            let stray = after_option && !text.contains(['.', '/', '\\']);
+            after_option = false;
+            !arg.is_empty() && !stray
+        })
         .map(|arg| match cwd {
             // `join` keeps an absolute path as it is.
             Some(cwd) => cwd.join(arg),
@@ -415,6 +493,76 @@ mod tests {
     fn flags_and_empty_arguments_are_not_files() {
         let paths = paths_from_args(os(&["--flag", "", "-x", "a.pdf", "b.pdf"]), None);
         assert_eq!(paths, [PathBuf::from("a.pdf"), PathBuf::from("b.pdf")]);
+    }
+
+    #[test]
+    fn a_bare_value_after_a_long_option_is_not_a_file() {
+        let paths = paths_from_args(
+            os(&["--mode", "dark", "a.pdf", "--x=1", "b", "--y", "c.pdf"]),
+            None,
+        );
+        assert_eq!(
+            paths,
+            [
+                PathBuf::from("a.pdf"),
+                PathBuf::from("b"),
+                PathBuf::from("c.pdf")
+            ]
+        );
+    }
+
+    #[test]
+    fn network_device_and_stream_spellings_are_not_plain_on_windows() {
+        for bad in [
+            r"\\server\share\a.pdf",
+            r"\\?\UNC\server\share\a.pdf",
+            r"\\localhost\c$\a.pdf",
+            "//server/share/a.pdf",
+            r"\\.\COM1",
+            r"\\.\NUL",
+            r"\\.\pipe\x",
+            r"\\?\GLOBALROOT\Device\x",
+            r"C:\dir\a.pdf:stream",
+            r"C:\dir\a.pdf::$DATA",
+            r"\\?\C:\dir\a.pdf:s",
+            "a.pdf:s",
+        ] {
+            assert!(!windows_spelling_is_plain(bad), "{bad}");
+        }
+        for good in [
+            r"C:\dir\a.pdf",
+            r"\\?\C:\dir\a.pdf",
+            "C:/dir/a.pdf",
+            r"rel\a.pdf",
+            "a.pdf",
+        ] {
+            assert!(windows_spelling_is_plain(good), "{good}");
+        }
+    }
+
+    /// Device paths never become documents: on Windows by the spelling or by the check of the handle.
+    #[cfg(windows)]
+    #[test]
+    fn windows_device_paths_are_refused() {
+        for device in [
+            r"\\.\NUL",
+            r"\\.\COM1",
+            r"\\.\pipe\sheer-test",
+            "NUL",
+            "CON",
+            r"\\?\UNC\localhost\c$\x.pdf",
+        ] {
+            assert!(admit(Path::new(device)).is_err(), "{device}");
+        }
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn an_alternate_data_stream_is_refused_even_when_it_holds_a_pdf() {
+        let dir = TempDir::new();
+        let path = write(&dir, "host.pdf", MINIMAL);
+        let stream = PathBuf::from(format!("{}:hidden", path.display()));
+        assert!(admit(&stream).is_err());
     }
 
     #[test]

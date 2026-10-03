@@ -10,6 +10,7 @@
 #![allow(dead_code)]
 
 pub mod fixtures;
+pub mod malformed;
 
 use std::collections::BTreeMap;
 use std::path::PathBuf;

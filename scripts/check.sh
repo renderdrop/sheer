@@ -84,6 +84,9 @@ step() {
 # therefore resolves the real dependency graph of the shipped targets and fails when a network crate is in it.
 # The only permitted exception is the opt-in updater module: crates listed in NETWORK_ALLOWED_PARENTS may depend on
 # them. Add the updater plugin there when it lands (and nothing else).
+# tokio is not listed: it is the async runtime Tauri needs, and tauri-plugin-single-instance (Windows) enables its `net` feature for
+# the named pipe / local socket it forwards a second launch over. That is local IPC, not HTTP or WebSocket (SECURITY T10); the
+# crates below are the ones that would reach the network.
 NETWORK_CRATES=(reqwest hyper ureq tauri-plugin-http tauri-plugin-websocket tungstenite)
 NETWORK_ALLOWED_PARENTS=(tauri-plugin-updater)
 DESKTOP_TARGETS=(x86_64-pc-windows-msvc aarch64-apple-darwin x86_64-apple-darwin)
