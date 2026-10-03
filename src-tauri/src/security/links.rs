@@ -116,6 +116,57 @@ fn mailto_attaches(query: &str) -> bool {
     })
 }
 
+/// Whether `host` is DNS-style (ASCII letters, digits and hyphens in dot-separated labels, no empty label, no hyphen at either end
+/// of a label, at most 253 bytes) or a bracketed IPv6 literal.
+fn is_valid_host(host: &str) -> bool {
+    if let Some(inner) = host.strip_prefix('[').and_then(|h| h.strip_suffix(']')) {
+        return !inner.is_empty()
+            && inner
+                .bytes()
+                .all(|b| b.is_ascii_hexdigit() || b == b':' || b == b'.');
+    }
+    host.len() <= 253
+        && host.split('.').all(|label| {
+            !label.is_empty()
+                && label.len() <= 63
+                && !label.starts_with('-')
+                && !label.ends_with('-')
+                && label
+                    .bytes()
+                    .all(|b| b.is_ascii_alphanumeric() || b == b'-')
+        })
+}
+
+/// Whether `authority` is a real host, optionally followed by `:port` (1 to 5 digits, at most 65535), and has no credentials.
+fn is_valid_authority(authority: &str) -> bool {
+    let (host, port) = if authority.starts_with('[') {
+        match authority.rfind(']') {
+            Some(end) => {
+                let (host, tail) = authority.split_at(end + 1);
+                match tail {
+                    "" => (host, None),
+                    _ => match tail.strip_prefix(':') {
+                        Some(port) => (host, Some(port)),
+                        None => return false,
+                    },
+                }
+            }
+            None => return false,
+        }
+    } else {
+        match authority.split_once(':') {
+            Some((host, port)) => (host, Some(port)),
+            None => (authority, None),
+        }
+    };
+    let port_ok = port.is_none_or(|p| {
+        (1..=5).contains(&p.len())
+            && p.bytes().all(|b| b.is_ascii_digit())
+            && p.parse::<u32>().is_ok_and(|n| n <= 65535)
+    });
+    port_ok && is_valid_host(host)
+}
+
 /// The URL of a link as the opener may take it, or `None` if the link may not be opened (see the module documentation).
 pub fn classify(raw: &str) -> Option<SafeUrl> {
     let bytes = raw.as_bytes();
@@ -135,7 +186,7 @@ pub fn classify(raw: &str) -> Option<SafeUrl> {
         "http" | "https" => {
             let authority = rest.strip_prefix("//")?;
             let authority = authority.split(['/', '?', '#']).next().unwrap_or_default();
-            !authority.is_empty() && !authority.contains('@')
+            is_valid_authority(authority)
         }
         _ => {
             // mailto: an address, then maybe `?parameters`; a `//` after the scheme is not a mail address.
@@ -268,6 +319,38 @@ mod tests {
         // An `@` after the host is part of a path or a query and harmless.
         assert!(accepted("https://example.com/@user"));
         assert!(accepted("https://example.com/?email=a@b.c"));
+    }
+
+    #[test]
+    fn a_web_url_needs_a_real_host() {
+        for url in [
+            "https://%00",
+            "https://.",
+            "http://:80",
+            "https://a..b",
+            "https://-a.com",
+            "https://a-.com",
+            "https://a.com.:80x",
+            "https://a.com:99999",
+            "https://a.com:123456",
+            "https://a.com:",
+            "https://[zz]",
+            "https://[::1",
+            "https://[::1]x",
+            "https://ex%61mple.com",
+        ] {
+            assert!(!accepted(url), "{url:?} was accepted");
+        }
+        for url in [
+            "https://example.com:8443/x",
+            "https://xn--bcher-kva.de",
+            "https://[::1]/",
+            "https://[::1]:8080/",
+            "http://127.0.0.1",
+            "https://a.com:65535",
+        ] {
+            assert!(accepted(url), "{url:?} was refused");
+        }
     }
 
     #[test]
