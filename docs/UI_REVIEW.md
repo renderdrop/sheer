@@ -43,3 +43,13 @@ Wait about 1.5 s before capturing.
 
 - PrintWindow captures the window content, not OS effects behind it (acrylic/mica).
 - Recording speed is bound by PrintWindow (about 10-20 fps); use `cdp.mjs fps` for real frame pacing.
+
+## Smooth recording (CDP screencast)
+
+```
+node scripts/ui/cdp.mjs record 1500 --out review/x.png --delay 200 --scale 0.5 --during "<js>"
+```
+
+- Uses `Page.startScreencast`: the WebView content of the Tauri window only (no OS caption), smooth (about 60 fps).
+- Writes an APNG with real frame delays plus `x-f01..f06.png` stills; prints frame count and capture fps.
+- `record.ps1` (PrintWindow) captures the whole window incl. caption but is slow (about 11 fps); use it for static shots.
