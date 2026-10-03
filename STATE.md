@@ -1,7 +1,7 @@
 # STATE
 phase: M6
 version: 0.8.0
-current_item: M6 Convert and output — cut packages (backend first, ADR-038); Politur M6 holds the M5 design-review majors/minors
+current_item: M6 W0 seams (backend-implementer, ADR-049 §6) + Politur M6 UI running. Next: backend wave A images out | B images in | C snapshot + export copy | D print, then UI seams + UI wave per DESIGN §3.41–§3.45
 last_completed: M5 Edit and protect released as v0.8.0 (tag v0.8.0)
 loop_count_this_session: 0
 open_blockers: 2 (B-001 UI never seen on a Mac, macOS keychain untested; B-002 code signing)
