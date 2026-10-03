@@ -8,6 +8,7 @@ import { ACTIONS, ACTION_IDS, actionOf, actionShortcut, getAction, shortcutFor, 
 import { isBareKey, resolveBinding } from './shortcut';
 import { NO_DOCUMENT, type ActionState } from './state';
 
+const NOT_IN_MENU_BAR: ReadonlySet<string> = new Set();
 const PLATFORMS: readonly (Platform | null)[] = ['macos', 'windows', 'linux', null];
 const WITH_DOCUMENT: ActionState = { hasDocument: true, zoomAtMin: false, zoomAtMax: false };
 
@@ -27,6 +28,15 @@ describe('the registry', () => {
       'scroll-spread',
       'next-page',
       'previous-page',
+      'next-tab',
+      'previous-tab',
+      'go-to-page',
+      'find',
+      'find-next',
+      'find-previous',
+      'rotate-view-right',
+      'rotate-view-left',
+      'rotate-view-reset',
       'toggle-left-panel',
       'toggle-inspector',
       'settings',
@@ -71,6 +81,15 @@ describe('shortcuts per platform', () => {
     'scroll-spread': { macos: null, windows: null },
     'next-page': { macos: '⌘↓', windows: 'Ctrl+↓' },
     'previous-page': { macos: '⌘↑', windows: 'Ctrl+↑' },
+    'next-tab': { macos: '⇧⌘]', windows: 'Ctrl+PageDown' },
+    'previous-tab': { macos: '⇧⌘[', windows: 'Ctrl+PageUp' },
+    'go-to-page': { macos: '⇧⌘N', windows: 'Ctrl+Shift+N' },
+    find: { macos: '⌘F', windows: 'Ctrl+F' },
+    'find-next': { macos: '⌘G', windows: 'Ctrl+G' },
+    'find-previous': { macos: '⇧⌘G', windows: 'Ctrl+Shift+G' },
+    'rotate-view-right': { macos: '⌘R', windows: 'Ctrl+R' },
+    'rotate-view-left': { macos: '⌘L', windows: 'Ctrl+L' },
+    'rotate-view-reset': { macos: null, windows: null },
     'toggle-left-panel': { macos: '⌥⌘1', windows: 'F4' },
     'toggle-inspector': { macos: '⌥⌘I', windows: 'Shift+F4' },
     settings: { macos: '⌘,', windows: 'Ctrl+,' },
@@ -214,6 +233,15 @@ describe('where an action is listed', () => {
       'view:scroll-spread',
       'page:next-page',
       'page:previous-page',
+      'page:next-tab',
+      'page:previous-tab',
+      'page:go-to-page',
+      'page:find',
+      'page:find-next',
+      'page:find-previous',
+      'view:rotate-view-right',
+      'view:rotate-view-left',
+      'view:rotate-view-reset',
       'app:settings',
       'app:about',
     ]);
@@ -221,7 +249,11 @@ describe('where an action is listed', () => {
 
   it('puts every action but the tools and About in the macOS menu bar (About is the system panel there)', () => {
     const inMenu = ACTIONS.filter((action) => action.menuBar === true).map((action) => action.id);
-    expect(inMenu).toEqual(ACTION_IDS.filter((id) => !id.startsWith('tool-') && id !== 'about'));
+    // Find, Go to page and the view rotation join the menu bar with the Rust allowlist (src-tauri/src/menu/spec.rs); until then
+    // they are keyboard and More commands.
+    expect(inMenu).toEqual(
+      ACTION_IDS.filter((id) => !id.startsWith('tool-') && id !== 'about' && !NOT_IN_MENU_BAR.has(id)),
+    );
   });
 
   it('lets a held key repeat the zoom and page steps and nothing else', () => {
@@ -230,6 +262,8 @@ describe('where an action is listed', () => {
       'zoom-out',
       'next-page',
       'previous-page',
+      'find-next',
+      'find-previous',
     ]);
   });
 });

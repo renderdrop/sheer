@@ -7,6 +7,7 @@ import { useT, type PlainKey } from '../../i18n';
 import { clampPanelWidth } from '../../lib/layout';
 import { LEFT_PANEL_TABS, useUi, type LeftPanelTab } from '../../stores/ui';
 import { Outline, OutlineActions } from '../outline/Outline';
+import { SearchPanel } from '../search/Search';
 import { Thumbnails } from '../thumbnails/Thumbnails';
 import { usePanelSlide } from './usePanelSlide';
 
@@ -73,6 +74,8 @@ export const LeftPanel = memo(function LeftPanel({ id }: LeftPanelProps) {
                 <Thumbnails />
               ) : value === 'outline' ? (
                 <Outline />
+              ) : value === 'search' ? (
+                <SearchPanel />
               ) : (
                 <p className="m-0 text-sm text-text-muted">{t(TABS[value].empty)}</p>
               )}

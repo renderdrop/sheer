@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { catalogs } from '../i18n/catalog';
 import layout from './menu.json';
 import { ACTIONS, getAction } from './registry';
+import { NO_DOCUMENT } from './state';
 import { resolveBinding, toAccelerator } from './shortcut';
 
 /**
@@ -14,6 +15,9 @@ interface ActionItem {
   action: string;
   label: string;
   accelerator?: string;
+  requiresDocument?: boolean;
+  withoutDocument?: string;
+  withoutDocumentLabel?: string;
 }
 interface PredefinedItem {
   predefined: string;
@@ -117,6 +121,13 @@ describe('the commands in the menu bar', () => {
     for (const accelerator of accelerators) expect(accelerator, accelerator).toMatch(/^(CmdOrCtrl|Alt|Shift)\+/);
   });
 
+  it('are greyed in the menu bar without a document exactly when the action is disabled then (requiresDocument)', () => {
+    for (const item of actionItems) {
+      const enabled = getAction(item.action)?.enabled(NO_DOCUMENT) === true;
+      expect(item.requiresDocument === true, item.action).toBe(!enabled);
+    }
+  });
+
   it('use kebab-case ids, which is what the allowlist in Rust and the UI both expect', () => {
     for (const item of actionItems) expect(item.action).toMatch(/^[a-z0-9]+(?:-[a-z0-9]+)*$/);
   });
@@ -126,6 +137,7 @@ describe('the labels of the menu bar', () => {
   const labels = [
     ...menus.flatMap((menu) => (menu.label === undefined ? [] : [menu.label])),
     ...items.flatMap((item) => ('label' in item ? [item.label] : [])),
+    ...actionItems.flatMap((item) => (item.withoutDocumentLabel === undefined ? [] : [item.withoutDocumentLabel])),
   ];
   const menuKeys = (locale: 'en' | 'de') => Object.keys(catalogs[locale]).filter((key) => key.startsWith('menu.'));
 

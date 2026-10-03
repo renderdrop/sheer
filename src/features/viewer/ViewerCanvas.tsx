@@ -30,6 +30,9 @@ import {
   type Viewport,
 } from './layout';
 import { canvasPadding, pageGap } from './model';
+import { rotatedSizes } from './transform';
+import { useFindKeys } from '../search/commands';
+import { useTextCopy, useTextKeys } from '../textlayer/useTextSelection';
 import { BUCKET_SETTLE_MS, PageView } from './PageView';
 import { consumeJump, publishViewRect, registerScrollSource } from './scrollBridge';
 import { useDevicePixelRatio } from './useDevicePixelRatio';
@@ -62,7 +65,9 @@ interface Pin {
 export function ViewerCanvas({ style }: { style?: CSSProperties }) {
   const docId = useDocuments(selectActiveId);
   const view = useDocView(docId);
-  const sizes = usePages((state) => sizesFor(state, docId, view.pageCount));
+  const drawnSizes = usePages((state) => sizesFor(state, docId, view.pageCount));
+  // The view rotation turns every page: the layout is made from the sizes as they are shown, the renderer and the overlays from the drawn ones.
+  const sizes = useMemo(() => rotatedSizes(drawnSizes, view.rotation), [drawnSizes, view.rotation]);
   const viewport = useViewer((state) => state.viewport);
   const busy = useViewer((state) => state.rendering);
   const setViewport = useViewer((state) => state.setViewport);
@@ -83,6 +88,9 @@ export function ViewerCanvas({ style }: { style?: CSSProperties }) {
   const [scrolling, setScrolling] = useState(false);
   const pagesLoaded = usePages((state) => docId !== null && state.byDoc[docId] !== undefined);
   const transition = useTransition((state) => state.active);
+  useTextCopy();
+  useFindKeys();
+  useTextKeys(scrollerRef, docId);
 
   const { zoom, scrollMode, pageIndex, pageCount, anchor } = view;
   const paged = isPaged(scrollMode);
@@ -106,6 +114,24 @@ export function ViewerCanvas({ style }: { style?: CSSProperties }) {
     },
     [fit, metrics, pageIndex, gap, zoom],
   );
+
+  // A turn of the view crossfades the canvas (base); pages never spin. Reduced motion: at once. Another document is not a turn.
+  const shownRotation = useRef({ docId, rotation: view.rotation });
+  useLayoutEffect(() => {
+    const before = shownRotation.current;
+    shownRotation.current = { docId, rotation: view.rotation };
+    if (before.docId !== docId || before.rotation === view.rotation || reduce) return;
+    const content = scrollerRef.current?.querySelector<HTMLElement>('[data-canvas-content]');
+    if (content === null || content === undefined) return;
+    const controls = animate(content, { opacity: [0, 1] }, SPRING.base);
+    controls.then(
+      () => {
+        content.style.opacity = '';
+      },
+      () => undefined,
+    );
+    return () => controls.stop();
+  }, [docId, view.rotation, reduce]);
 
   // The zoom's motion scales the canvas content (MOTION 4.4): this is how it finds it.
   useEffect(
@@ -270,7 +296,7 @@ export function ViewerCanvas({ style }: { style?: CSSProperties }) {
     if (docId === null) return;
     const timer = window.setTimeout(() => {
       for (const page of ahead) {
-        const size = sizes[page] ?? DEFAULT_PAGE_SIZE;
+        const size = drawnSizes[page] ?? DEFAULT_PAGE_SIZE;
         const plan = planPage(size[0], size[1], bucket);
         const id = { docId, page, rev: 0, bucket: plan.tiled ? plan.underlayBucket : plan.bucket };
         if (renderScheduler.cache.has(imageKey(id))) continue;
@@ -278,7 +304,7 @@ export function ViewerCanvas({ style }: { style?: CSSProperties }) {
       }
     }, BUCKET_SETTLE_MS);
     return () => window.clearTimeout(timer);
-  }, [docId, ahead, sizes, bucket]);
+  }, [docId, ahead, drawnSizes, bucket]);
 
   const turn = useCallback(
     (direction: 1 | -1) => (direction === 1 ? nextPage() : previousPage()),
@@ -286,10 +312,11 @@ export function ViewerCanvas({ style }: { style?: CSSProperties }) {
   );
 
   const clone = transition !== null && transition.docId === docId ? transition : null;
+  // In page order, so the DOM is too: a selection that runs over several pages follows the document, not the order of mounting.
   const pages = [
     ...mounted.visible.map((page) => ({ page, priority: 'visible' as const })),
     ...mounted.near.map((page) => ({ page, priority: 'near' as const })),
-  ];
+  ].sort((a, b) => a.page - b.page);
 
   return (
     <Canvas
@@ -312,7 +339,7 @@ export function ViewerCanvas({ style }: { style?: CSSProperties }) {
         pages.map(({ page, priority }) => {
           const box = layout.box(page);
           if (box === null) return null;
-          const [widthPt, heightPt]: PageSize = sizes[page] ?? DEFAULT_PAGE_SIZE;
+          const [widthPt, heightPt]: PageSize = drawnSizes[page] ?? DEFAULT_PAGE_SIZE;
           // The box is a new object whenever the canvas renders: it is handed over as numbers, so that a page whose box did not
           // change is not rendered again (`PageView` is memoized).
           return (
@@ -330,6 +357,7 @@ export function ViewerCanvas({ style }: { style?: CSSProperties }) {
               bucket={bucket}
               priority={priority}
               entrance={page === 0 ? entranceFor(docId) : undefined}
+              rotation={view.rotation}
             />
           );
         })}

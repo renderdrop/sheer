@@ -8,8 +8,13 @@ import { imageKey, type CacheEntry, type ImageId } from '../../engine/renderCach
 import { renderScheduler, type RenderScheduler } from '../../engine/renderScheduler';
 import { useT } from '../../i18n';
 import { DURATION, ENTER_SCALE, FADE_END_SLACK_MS, SPRING } from '../../lib/motion';
+import { useUi } from '../../stores/ui';
+import { usePageText } from '../textlayer/cache';
+import { PageOverlay } from '../textlayer/PageOverlay';
+import { runsOf } from '../textlayer/runs';
 import { clearRenderFailure, showRenderFailure } from './renderFailure';
 import { readViewRect, subscribeViewRect } from './scrollBridge';
+import { boxToPage, normalizeRotation, swapsSides, type Rotation } from './transform';
 
 /**
  * How long a page that already shows a lower resolution image of itself waits, after its zoom bucket changed, before it asks for
@@ -52,6 +57,11 @@ export interface PageViewProps {
    * from (opacity and scale .96 to 1, slow); `fade` is the first page under a clone (opacity, slow). Read once, at mount.
    */
   entrance?: 'scale' | 'fade';
+  /**
+   * The view rotation in degrees (DESIGN 3.20). `width` and `height` are the box as it is shown, so with a quarter turn they are
+   * the page's sides swapped; `widthPt` and `heightPt` stay the page as it is drawn (the file's rotation applied).
+   */
+  rotation?: number;
 }
 
 const tileKeyOf = (tile: TileIndex) => `${tile[0]},${tile[1]}`;
@@ -61,17 +71,31 @@ const tileKeyOf = (tile: TileIndex) => `${tile[0]},${tile[1]}`;
  * when the page is not tiled. A string, so `useSyncExternalStore` can tell whether it changed. The page's box is where it sits
  * in the content, in px.
  */
-function visibleTilesKey(plan: PagePlan, left: number, top: number, width: number, height: number): string {
+function visibleTilesKey(
+  plan: PagePlan,
+  left: number,
+  top: number,
+  width: number,
+  height: number,
+  rotation: Rotation,
+): string {
   if (!plan.tiled || width <= 0 || height <= 0) return '';
   const view = readViewRect();
   // The viewport in the page's own pixels: its position relative to the page's box, scaled from CSS px to pixels of the bucket.
-  const toX = plan.width / width;
-  const toY = plan.height / height;
+  // A view rotation turns the page inside its box, so the viewport is turned back into the unrotated image first.
+  const [innerW, innerH] = swapsSides(rotation) ? [height, width] : [width, height];
+  const seen = boxToPage(
+    { x: view.left - left, y: view.top - top, w: view.right - view.left, h: view.bottom - view.top },
+    [innerW, innerH],
+    rotation,
+  );
+  const toX = plan.width / innerW;
+  const toY = plan.height / innerH;
   const tiles = tilesIn(plan, {
-    x0: (view.left - left) * toX - TILE_LOOKAHEAD_PX,
-    y0: (view.top - top) * toY - TILE_LOOKAHEAD_PX,
-    x1: (view.right - left) * toX + TILE_LOOKAHEAD_PX,
-    y1: (view.bottom - top) * toY + TILE_LOOKAHEAD_PX,
+    x0: seen.x * toX - TILE_LOOKAHEAD_PX,
+    y0: seen.y * toY - TILE_LOOKAHEAD_PX,
+    x1: (seen.x + seen.w) * toX + TILE_LOOKAHEAD_PX,
+    y1: (seen.y + seen.h) * toY + TILE_LOOKAHEAD_PX,
   });
   return tiles.map(tileKeyOf).join(';');
 }
@@ -164,8 +188,10 @@ export const PageView = memo(function PageView({
   priority,
   scheduler = renderScheduler,
   entrance,
+  rotation: rotationProp = 0,
 }: PageViewProps) {
   const t = useT();
+  const rotation = normalizeRotation(rotationProp);
   const { cache } = scheduler;
   // What this page pins in the cache: its own object, so it does not release what another page holds.
   const [owner] = useState(() => ({}));
@@ -185,7 +211,7 @@ export const PageView = memo(function PageView({
   );
   const tilesKey = useSyncExternalStore(
     subscribeViewRect,
-    () => visibleTilesKey(plan, left, top, width, height),
+    () => visibleTilesKey(plan, left, top, width, height, rotation),
     () => '',
   );
   const tiles = useMemo(() => parseTiles(tilesKey), [tilesKey]);
@@ -263,6 +289,24 @@ export const PageView = memo(function PageView({
     />
   );
   const whole = { inset: 0, width: '100%', height: '100%' };
+  // The images sit in a surface that is turned by the view rotation (the box is as large as the turned page).
+  const [surfaceW, surfaceH] = swapsSides(rotation) ? [height, width] : [width, height];
+  const surface =
+    rotation === 0
+      ? { left: 0, top: 0, width: '100%', height: '100%' }
+      : {
+          left: (width - surfaceW) / 2,
+          top: (height - surfaceH) / 2,
+          width: surfaceW,
+          height: surfaceH,
+          transform: `rotate(${rotation}deg)`,
+        };
+
+  // The text of the page (DESIGN 3.17), fetched once the page is on screen. A page with text is a group, one without stays an image.
+  const text = usePageText(docId, pageIndex, priority === 'visible');
+  const hasText = text.status === 'ready' && runsOf(text.layer).length > 0;
+  const noText = text.status === 'ready' && !hasText;
+  const interactive = useUi((state) => state.activeTool === 'select');
 
   const pageRef = useRef<HTMLDivElement | null>(null);
   const reduce = useReducedMotion() === true;
@@ -292,28 +336,42 @@ export const PageView = memo(function PageView({
   return (
     <div
       ref={pageRef}
-      role="img"
+      role={hasText ? 'group' : 'img'}
       aria-label={t('canvas.pageImage', { page: pageIndex + 1, total: pageCount })}
+      aria-description={noText ? t('text.noText') : undefined}
       data-page={pageIndex + 1}
       className="absolute z-canvas-page bg-page shadow-page"
       style={{ left, top, width, height }}
     >
-      {standIn !== undefined && image(standIn, whole, 'first', undefined, true)}
-      {exact !== undefined &&
-        image(exact, whole, standIn === undefined ? 'first' : 'sharp', () => setCovered(exact.key))}
-      {tileEntries.map(({ tile, entry }) => {
-        const rect = tileRect(plan, tile);
-        return image(
-          entry,
-          {
-            left: `${(rect.x0 / plan.width) * 100}%`,
-            top: `${(rect.y0 / plan.height) * 100}%`,
-            width: `${((rect.x1 - rect.x0) / plan.width) * 100}%`,
-            height: `${((rect.y1 - rect.y0) / plan.height) * 100}%`,
-          },
-          'sharp',
-        );
-      })}
+      <div className="absolute" style={surface}>
+        {standIn !== undefined && image(standIn, whole, 'first', undefined, true)}
+        {exact !== undefined &&
+          image(exact, whole, standIn === undefined ? 'first' : 'sharp', () => setCovered(exact.key))}
+        {tileEntries.map(({ tile, entry }) => {
+          const rect = tileRect(plan, tile);
+          return image(
+            entry,
+            {
+              left: `${(rect.x0 / plan.width) * 100}%`,
+              top: `${(rect.y0 / plan.height) * 100}%`,
+              width: `${((rect.x1 - rect.x0) / plan.width) * 100}%`,
+              height: `${((rect.y1 - rect.y0) / plan.height) * 100}%`,
+            },
+            'sharp',
+          );
+        })}
+      </div>
+      <PageOverlay
+        docId={docId}
+        pageIndex={pageIndex}
+        boxWidth={width}
+        boxHeight={height}
+        widthPt={widthPt}
+        heightPt={heightPt}
+        rotation={rotation}
+        layer={text.layer}
+        interactive={interactive}
+      />
     </div>
   );
 });

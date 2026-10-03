@@ -257,6 +257,15 @@ describe('Shell with a document', () => {
         'Fit pageCtrl+0',
         'Next pageCtrl+↓',
         'Previous pageCtrl+↑',
+        'Next tabCtrl+PageDown',
+        'Previous tabCtrl+PageUp',
+        'Go to page…Ctrl+Shift+N',
+        'FindCtrl+F',
+        'Find nextCtrl+G',
+        'Find previousCtrl+Shift+G',
+        'Rotate rightCtrl+R',
+        'Rotate leftCtrl+L',
+        'Reset rotation',
         'Settings…Ctrl+,',
         'About',
       ]);
@@ -455,7 +464,7 @@ describe('Shell with a document', () => {
     it('arrow keys move through the tabs and select them, and the ui store remembers the tab', async () => {
       const { user } = setup(<Shell />);
       await openDocument(user);
-      const [thumbnails] = screen.getAllByRole('tab');
+      const [thumbnails] = within(screen.getByRole('tablist', { name: 'Left panel views' })).getAllByRole('tab');
       thumbnails?.focus();
       await user.keyboard('{ArrowRight}');
       expect(useUi.getState().leftPanelTab).toBe('outline');

@@ -1,6 +1,7 @@
 import { selectActiveDocument, selectActiveId, useDocuments } from '../../stores/documents';
 import { useDocView } from '../../stores/view';
 import { useViewer } from '../viewer/useViewer';
+import { useGoToPage } from './goToState';
 import { StatusBar } from './StatusBar';
 
 /**
@@ -12,7 +13,10 @@ export function ViewerStatusBar() {
   const rendering = useViewer((state) => state.rendering);
   const goToPage = useViewer((state) => state.goToPage);
   const setZoom = useViewer((state) => state.setZoom);
-  const { zoom, pageIndex, pageCount, opening } = useDocView(useDocuments(selectActiveId));
+  const resetRotation = useViewer((state) => state.resetRotation);
+  const goToOpen = useGoToPage((state) => state.open);
+  const setGoToOpen = useGoToPage((state) => state.setOpen);
+  const { zoom, pageIndex, pageCount, opening, rotation } = useDocView(useDocuments(selectActiveId));
   return (
     <StatusBar
       fileName={fileName}
@@ -22,6 +26,10 @@ export function ViewerStatusBar() {
       rendering={rendering}
       onGoToPage={goToPage}
       onZoom={setZoom}
+      rotation={rotation}
+      onResetRotation={resetRotation}
+      goToOpen={goToOpen}
+      onGoToOpenChange={setGoToOpen}
     />
   );
 }

@@ -21,7 +21,7 @@ menu item or shortcut.
 ```
 main.rs          sheer_lib::run()
 lib.rs           builder: plugins (single-instance first, Windows only), manage(AppState, AppEvents), invoke_handler, DragDrop/Opened hooks, startup arguments, menu bar (macOS)
-events.rs        AppEvent (dropHover | opened | openFailed: the typed pushes) · AppEvents (the receiver of subscribe_app, and the open results that came before it)
+events.rs        AppEvent (dropHover | opened | needsPassword | openFailed: the typed pushes) · AppEvents (the receiver of subscribe_app, and the open results that came before it)
 sources.rs       every way a path enters besides the dialog: WindowEvent::DragDrop, RunEvent::Opened (macOS), the command line and a second instance (Windows); each ends in documents::intake
 state.rs         AppState { registry, engine, settings, recents }
 error.rs         AppError (internal) → UiError (IPC)
@@ -121,11 +121,12 @@ subscribe_app(on_event: Channel<AppEvent>) -> ()
                                                      // the backend's pushes, as typed `AppEvent`s without paths: `dropHover { active }` while files are dragged over the window, `opened { document: DocumentInfo }` and `openFailed { code, key, retryable, params? }` for a file opened by a drop, the OS (file association) or a second launch; open results that came before the UI subscribed (a file the app was started with is opened while the window loads) are sent first, in order, once; one receiver, a new call replaces it
 // documents
 open_document_dialog() -> Vec<AppEvent>             // multi-select, ≤ 32 files, in the dialog's order: `opened { document }` or `openFailed { .. }` each (one more `openFailed` limit_exceeded `documents` if more were chosen); empty = cancelled. `OpenResult { status: NeedsPassword }` comes with passwords
-open_recent(recent_id: u32) -> OpenResult
+open_recent(recent_id: u32) -> AppEvent             // ADR-026: like a file from the dialog, `opened { document }`, `needsPassword { id, displayName }` or `openFailed { .. }` (a file that is gone: io_not_found, and the entry stays listed as `missing`); an id that is not listed → not_found. Recents are recorded when a document the user opened (never the welcome document) is loaded, and at most 50 are kept
 open_welcome_document() -> AppEvent                 // ADR-023, DESIGN §3.14: opens the bundled `resources/welcome/welcome-{en,de}.pdf` for the resolved UI language (settings language, "system" = the language `subscribe_menu`/`app_ready` reported, else en) through `intake::admit` like any file; the path is resolved in Rust from the resource dir and never crosses IPC; `opened { document }` with `kind: Welcome` and `display_name` "Welcome to {app}.pdf" (localized), or `openFailed`; a welcome document already open is closed with discard first (restart). Not added to recents
-list_recents() -> Vec<RecentEntry>                   // ≤ 50
-remove_recent(recent_id: u32) -> ()
-unlock_document(doc_id: DocId, password: String) -> DocumentInfo        // 1..=1024 bytes
+list_recents() -> Vec<RecentEntry>                   // ≤ 50, newest first; `RecentEntry { id, displayName, lastOpened (s since 1970), missing }`, ids are per run, stored in `recents.json` (app data dir, atomic, hostile-input tolerant)
+remove_recent(recent_id: u32) -> ()                 // an unlisted id is not an error; the file is untouched
+unlock_document(doc_id: DocId, password: String) -> DocumentInfo        // 1..=1024 bytes, no NUL (invalid_argument); for a document that waited as `needsPassword` (else not_found); held as `Zeroizing<String>`, never stored or logged; wrong → password_required, and after the 3rd wrong one each try waits 1 s in Rust (ADR-026); any other failure forgets the document. `close_document` on a waiting id cancels it
+set_menu_state(has_document: bool) -> ()            // macOS menu bar: commands that need a document are greyed without one and Cmd+W closes the window; a no-op on Windows
 get_document_info(doc_id: DocId) -> DocumentInfo
 close_document(doc_id: DocId, discard: bool) -> ()                      // dirty && !discard → unsaved_changes
 save_document(doc_id: DocId, ack: SaveAck) -> SaveResult
@@ -274,11 +275,11 @@ Codes: `invalid_argument`, `limit_exceeded`, `not_found`, `not_a_pdf`, `damaged_
 | Store | Holds | Changed by |
 |---|---|---|
 | `documents` | `byId: Record<DocId, DocMeta>` (today the `DocumentInfo` of the backend: displayName, pageCount; later pages, rev, flags, history), `order` (opening order), `activeId` (the last one opened or brought forward; the one closed is replaced by its next neighbour, else the previous) | `add` for each `opened` (dialog answer, app channel), `remove` on close, ChangeSet |
-| `view` | per doc: zoom, fit (`none` / `width` / `page`, a mode that follows the window), scrollMode (`continuous` / `single` / `spread`), pageIndex (the current page: follows the scroll position in continuous mode), pageCount, anchor (`{ page, xPt, yPt, viewX, viewY }`: where the canvas puts the document next, consumed by it); viewRotation joins later | canvas, toolbar, status bar |
+| `view` | per doc: zoom, fit (`none` / `width` / `page`, a mode that follows the window), scrollMode (`continuous` / `single` / `spread`), pageIndex (the current page: follows the scroll position in continuous mode), pageCount, anchor (`{ page, xPt, yPt, viewX, viewY }`: where the canvas puts the document next, consumed by it), rotation (view rotation 0/90/180/270, viewing only, in memory; the layout is made from the rotated page sizes, `viewer/transform.ts`) | canvas, toolbar, status bar |
 | `pages` | per doc: the size of every page in points (`get_page_sizes`), replaced as a whole; placeholders of US Letter until it arrives | `showDocument` |
 | `annotations` | per doc: `byId`, `byPage`, `selection`, `editing` (transient draft) | ChangeSet; `editing` locally |
 | `tools` | active tool, locked, presets per tool | toolbar, actions |
-| `search` | per doc: query, hits by page, active hit, status | search Channel |
+| `search` | per doc (`features/search/store.ts`): query, options, status, `runId`, hits in document order and by page (a page's array is replaced only when that page gets hits), active hit, progress; the pages draw their own hits (`SearchHits`), so a hit or an active hit wakes the pages it concerns, not the document. The UI asks for ≤ 10 000 hits (ADR-026). Text layers are not a store: `features/textlayer/cache.ts` keeps the fetched ones in an LRU bounded by 2 M code units | search Channel |
 | `ui` | left panel tab/width/collapsed, inspector mode, active tool (moves to `tools` in M2), drop-hover flag, error banner, dialogs, toasts, engine status | UI, events |
 | `settings` | mirror of Rust settings | `get_settings`/`update_settings` |
 | `recents` | `RecentEntry[]` | `list_recents`/`remove_recent` |
@@ -299,6 +300,9 @@ Rules:
 - **Search.** The search box → `search(doc, query, channel)` → validate, register (one search per document: an earlier one is cancelled) → returns the id; a blocking-pool thread asks the
   engine for page 0, 1, 2, … as `Background` jobs → `hits` per page with quads in page space (the UI draws them over the page and keeps the active hit) · `progress` · `done`.
   Typing again, closing the panel or the document cancels (`cancel_search`, a new `search`, `close_document`); a render on screen is always taken before the next page.
+  A hit has quads and no character range, so the list's snippet is found in the page's text layer: the characters whose box centre is inside a quad (`search/snippet.ts`), fetched lazily for the rows on screen.
+- **Page overlays and rotation.** Text, hit and link coordinates are page space (unrotated, before `/Rotate`). Everything over a page is one wrapper per page (`PageOverlay`) that is the unrotated page in points, scaled to the zoom and turned by file `/Rotate` + view rotation about its centre (`viewer/transform.ts` `overlayBox`; `pageToView` for single points such as a hit's y when scrolling). Children are placed with the plain numbers Rust sends. The bitmap sits in a surface turned by the view rotation only (the renderer applies `/Rotate`). The file's `/Rotate` is not reported to the UI yet (`viewer/fileRotation.ts` is the seam: 0 until `DocumentInfo.pages` carries it).
+- **Text selection and copy.** `get_text_layer` boxes (one per UTF-16 unit) become runs (`textlayer/runs.ts`, one transparent span per line fragment, stretched to the glyph width); spans carry their char range. The browser selects; the `copy` event (primary+C, Edit menu) is answered from the page text between the two boundaries (`textlayer/selection.ts`), as `text/plain`. There is no `get_text` command: the frontend already holds the text, so ligature and hyphen handling stays in Rust's layer reading.
 - **Open a link.** `get_page_links` when a page is shown (the UI draws a hit area per link: a `page` target scrolls, a `url` target is a link, `blocked` does nothing) → a click on a `url`
   link → `open_link(doc, page, index)` → Rust re-reads the link, shows the URL in a native dialog, and opens it with the system's handler if the user agrees.
 - **Annotate.** A pointer gesture builds a draft in `annotations.editing`. On pointerup, `apply_command(CreateAnnotation)` → validate,

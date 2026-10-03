@@ -183,7 +183,7 @@ describe('the language setting', () => {
 
     // The "Go to page" popover.
     await user.click(within(status).getByRole('button', { name: /Zu Seite springen/ }));
-    expect(screen.getByRole('dialog', { name: 'Zu Seite springen' })).not.toBeNull();
+    expect(screen.getByRole('dialog', { name: 'Gehe zu Seite' })).not.toBeNull();
     expect(screen.getByLabelText('Seitennummer')).not.toBeNull();
     expect(screen.getByRole('button', { name: 'Los' })).not.toBeNull();
   });

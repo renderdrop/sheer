@@ -8,6 +8,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Search panel: live search after two characters, hits grouped by page with context, highlights on the canvas, next/previous (Enter, Shift+Enter, Ctrl/Cmd+G, F3).
+- Text selection on a lazy per-page text layer; copy with Ctrl/Cmd+C, select all on a page.
+- View rotation (Ctrl/Cmd+R / L, view-only, per document) and Go to page (Ctrl/Cmd+Shift+N) from the status bar.
+- Password-protected PDFs: an unlock prompt; the password stays in memory for the session only, with a growing wait after wrong attempts.
+- Recent files on the empty state: open, remove, missing files marked; ids only cross to the UI, never paths.
+- Document tabs (Ctrl+Tab / Ctrl+Shift+Tab, Ctrl/Cmd+W); the macOS menu greys document commands without a document.
+- Hostile-input corpus of 61 generated malformed PDFs with a never-crash test; XFA warning banner; intake refuses UNC, device-path and NTFS stream spellings.
+
 - A scrolling, virtualized canvas (ADR-018): every page has a placeholder of its real size, and only the pages within a viewport height of the viewport are mounted (at most 24).
   The render queue has priorities (visible, near, thumbnails), cancels the renders of pages that scrolled away (`set_viewport`) and draws one frame once however many pages ask for it;
   a render cache of up to 256 MiB keeps the images, and a page shows the best one it has while the sharp one is on its way.

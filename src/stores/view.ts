@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 
 import { DEFAULT_SCROLL_MODE, type ScrollAnchor, type ScrollMode } from '../features/viewer/layout';
+import { normalizeRotation, type Rotation } from '../features/viewer/transform';
 import { DEFAULT_ZOOM, clampZoom } from '../lib/zoom';
 
 /**
@@ -10,12 +11,14 @@ import { DEFAULT_ZOOM, clampZoom } from '../lib/zoom';
  */
 export type FitMode = 'none' | 'width' | 'page';
 
-/** How one open document is shown (ARCHITECTURE section 8, `view`). Rotation joins with M1's view rotation. */
+/** How one open document is shown (ARCHITECTURE section 8, `view`). */
 export interface DocView {
   /** 1 = 100 %. Always within `MIN_ZOOM..MAX_ZOOM`. */
   zoom: number;
   fit: FitMode;
   scrollMode: ScrollMode;
+  /** The view rotation in degrees, clockwise (DESIGN 3.20): for viewing only, per document, in memory. */
+  rotation: Rotation;
   /**
    * Zero-based position of the current page, always inside the document. In continuous mode it follows the scroll position (the
    * page most of the viewport is on); in the paged modes it is the page that is shown (the first of a spread).
@@ -36,6 +39,7 @@ export const NO_VIEW: DocView = {
   zoom: DEFAULT_ZOOM,
   fit: 'none',
   scrollMode: DEFAULT_SCROLL_MODE,
+  rotation: 0,
   pageIndex: 0,
   pageCount: 0,
   anchor: null,
@@ -63,6 +67,8 @@ export interface ViewState {
   reportPage: (docId: number, pageIndex: number) => void;
   /** Changes how pages are laid out. `zoom` is the new zoom of a fit that has to be made again for the new mode. */
   setScrollMode: (docId: number, mode: ScrollMode, anchor?: ScrollAnchor | null, zoom?: number) => void;
+  /** Turns the view to `rotation` (normalized to a quarter turn). `zoom` is the new zoom of a fit that has to be made again. */
+  setRotation: (docId: number, rotation: number, anchor?: ScrollAnchor | null, zoom?: number) => void;
   /** The canvas has scrolled to the anchor. */
   consumeAnchor: (docId: number) => void;
 }
@@ -72,6 +78,7 @@ function sameView(a: DocView, b: DocView): boolean {
     a.zoom === b.zoom &&
     a.fit === b.fit &&
     a.scrollMode === b.scrollMode &&
+    a.rotation === b.rotation &&
     a.pageIndex === b.pageIndex &&
     a.pageCount === b.pageCount &&
     a.anchor === b.anchor &&
@@ -123,6 +130,15 @@ export const useView = create<ViewState>()((set) => ({
       update(state, docId, (view) => ({
         ...view,
         scrollMode: mode,
+        zoom: zoom === undefined ? view.zoom : clampZoom(zoom),
+        anchor,
+      })),
+    ),
+  setRotation: (docId, rotation, anchor = null, zoom) =>
+    set((state) =>
+      update(state, docId, (view) => ({
+        ...view,
+        rotation: normalizeRotation(rotation),
         zoom: zoom === undefined ? view.zoom : clampZoom(zoom),
         anchor,
       })),

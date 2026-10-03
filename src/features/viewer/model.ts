@@ -2,6 +2,7 @@ import { tokenPx } from '../../components/tokens';
 import { sizesFor, usePages } from '../../stores/pages';
 import { useView } from '../../stores/view';
 import { PageLayout, metricsFor, type Metrics, type ScrollMode, type Viewport } from './layout';
+import { rotatedSizes, type Rotation } from './transform';
 
 /** The space between pages: `--space-2`, 16 px (DESIGN 2). */
 const PAGE_GAP_FALLBACK = 16;
@@ -33,6 +34,8 @@ export function canvasPadding(): number {
 export interface LayoutOverrides {
   zoom?: number;
   mode?: ScrollMode;
+  /** A view rotation that is about to be set. */
+  rotation?: Rotation;
   current?: number;
 }
 
@@ -47,7 +50,8 @@ export function layoutFor(
 ): PageLayout | null {
   const view = useView.getState().byDoc[docId];
   if (view === undefined || viewport === null) return null;
-  const sizes = sizesFor(usePages.getState(), docId, view.pageCount);
+  // The view rotation turns every page, so the layout is made from the sizes as they are shown.
+  const sizes = rotatedSizes(sizesFor(usePages.getState(), docId, view.pageCount), overrides.rotation ?? view.rotation);
   const mode = overrides.mode ?? view.scrollMode;
   return new PageLayout(metricsFor(sizes, mode), {
     zoom: overrides.zoom ?? view.zoom,
@@ -58,8 +62,9 @@ export function layoutFor(
 }
 
 /** What the page sizes of an open document say about its layout in `mode` (the document's own by default); `null` if it is not open. */
-export function metricsOfDocument(docId: number, mode?: ScrollMode): Metrics | null {
+export function metricsOfDocument(docId: number, mode?: ScrollMode, rotation?: Rotation): Metrics | null {
   const view = useView.getState().byDoc[docId];
   if (view === undefined) return null;
-  return metricsFor(sizesFor(usePages.getState(), docId, view.pageCount), mode ?? view.scrollMode);
+  const sizes = rotatedSizes(sizesFor(usePages.getState(), docId, view.pageCount), rotation ?? view.rotation);
+  return metricsFor(sizes, mode ?? view.scrollMode);
 }

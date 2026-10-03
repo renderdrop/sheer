@@ -808,3 +808,31 @@ needed specs before the M1 work packages start.
 6. **Password prompt:** after the third wrong attempt each retry waits 1 s, enforced in Rust; the password lives only in memory.
 
 **Consequences.** New tokens `--tabs-row-height`, `--tab-min`, `--tab-max`, `--dialog-width` (tokens.css, tokens.test.ts, §1.9).
+
+## ADR-027 — Link confirmation stays native; intake hardening; hostile corpus (M1 P3)
+
+**Context.** DESIGN §3.21 and ADR-026 §5 describe an in-app link dialog (focus on Cancel, punycode host). The shipped flow is a native
+message box from Rust (`commands::links::DesktopLinkUi`) that shows the URL in full with "Open link" / "Cancel".
+
+**Decision.**
+1. **Keep the native dialog for M1.** The safety content of §3.21 is met in Rust, where it cannot be bypassed: only `http`, `https` and
+   `mailto` pass `security::links::classify`, at most 2048 bytes, ASCII only (so a host is punycode by construction; a non-ASCII
+   host is refused, never shown as Unicode), no `user@`, `mailto:` without `attach`; the URL the user sees is the one that is opened;
+   nothing opens without a click and the webview cannot open anything. What the native box cannot do is the default focus (the OS picks it)
+   and a "Copy link" button; both move to the in-app dialog if it is built later (M2 polish). A blocked link is not clickable, so the
+   "blocked" variant of §3.21 is not needed.
+2. **XFA banner** is a second banner row (`XfaBannerRow`, `role=status`) driven by `flags.xfa` of the active document, dismissal per
+   document for the session. It is separate from the error banner so an error and the XFA notice can show together.
+3. **Intake:** the file is opened first and judged; the registry key (canonical path) is derived afterwards and accepted only if a second
+   open of that path is the same file (device and inode on Unix; size, write and creation time on Windows, where `unsafe` is forbidden
+   and a handle-to-path call is not available). A change in between is `io_in_use`. On Windows, paths beginning with two separators other
+   than `\?\C:\` (network shares, `\?\UNC\`, `\.\` devices) and names with a colon after the drive (NTFS alternate streams) are refused
+   before the file system is touched, so no open waits on a network. A bare word right after a `--long-option` on a command line is that
+   option's value and is skipped.
+4. **Corpus:** 50-odd generated files in `tests/fixtures/malformed/` (`tests/support/malformed.rs`), checked for drift like the other
+   fixtures, and `tests/fuzz_corpus.rs` opens each one with a per-file timeout. An `internal` error counts as a failure.
+
+**Consequences.** The corpus found two ways to keep PDFium busy past the render deadline, both left out of it because the engine is
+then `engine_unavailable` for the rest of the process (P5, P6; the app stays up and every call answers with a typed error): a tiling
+pattern with a tiny `/XStep` filling a large area, and a Form XObject that calls itself twice per level. The corpus holds the
+bounded variants (`XStep 2`, one call per level). A real fix is the engine process of M7.

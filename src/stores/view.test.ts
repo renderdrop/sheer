@@ -12,12 +12,23 @@ beforeEach(reset);
 afterEach(reset);
 
 describe('the view store', () => {
+  it('rotates a document by quarter turns and clamps nothing else', () => {
+    useView.getState().open(3, 5);
+    useView.getState().setRotation(3, 450);
+    expect(useView.getState().byDoc[3]?.rotation).toBe(90);
+    useView.getState().setRotation(3, -90, null, 1.5);
+    expect(useView.getState().byDoc[3]).toMatchObject({ rotation: 270, zoom: 1.5 });
+    useView.getState().setRotation(99, 90);
+    expect(useView.getState().byDoc[99]).toBeUndefined();
+  });
+
   it('a new document starts at 100 % on its first page, scrolling continuously, with nothing to scroll to', () => {
     useView.getState().open(7, 12);
     expect(useView.getState().byDoc[7]).toEqual({
       zoom: DEFAULT_ZOOM,
       fit: 'none',
       scrollMode: 'continuous',
+      rotation: 0,
       pageIndex: 0,
       pageCount: 12,
       anchor: null,
@@ -43,6 +54,7 @@ describe('the view store', () => {
       zoom: DEFAULT_ZOOM,
       fit: 'none',
       scrollMode: 'continuous',
+      rotation: 0,
       pageIndex: 0,
       pageCount: 10,
       anchor: null,

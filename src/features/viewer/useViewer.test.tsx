@@ -70,6 +70,7 @@ describe('opening a document', () => {
       zoom: DEFAULT_ZOOM,
       fit: 'none',
       scrollMode: 'continuous',
+      rotation: 0,
       pageIndex: 0,
       pageCount: 10,
       anchor: null,

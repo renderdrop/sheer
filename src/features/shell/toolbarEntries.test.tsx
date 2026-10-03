@@ -170,6 +170,16 @@ describe('the toolbar of DESIGN 3.3 and ADR-011 section 6', () => {
         'page:before',
         'next-page',
         'previous-page',
+        'next-tab',
+        'previous-tab',
+        'go-to-page',
+        'find',
+        'find-next',
+        'find-previous',
+        'view:before',
+        'rotate-view-right',
+        'rotate-view-left',
+        'rotate-view-reset',
         'app:before',
         'settings',
         'about',
@@ -177,6 +187,7 @@ describe('the toolbar of DESIGN 3.3 and ADR-011 section 6', () => {
       expect(moreItems.filter((entry) => entry.type === 'separator').map((entry) => entry.id)).toEqual([
         'view:before',
         'page:before',
+        'view:before',
         'app:before',
       ]);
     });

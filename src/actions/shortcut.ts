@@ -48,7 +48,15 @@ export function isBareKey(binding: Binding): boolean {
 /** The part of a keyboard event the matching reads (a real `KeyboardEvent` has it all). */
 export type KeyEventLike = Pick<KeyboardEvent, 'key' | 'code' | 'ctrlKey' | 'metaKey' | 'altKey' | 'shiftKey'>;
 
-const SYMBOL_KEYS: Readonly<Record<string, string>> = { '+': 'Plus', '=': 'Plus', '-': 'Minus', _: 'Minus' };
+const SYMBOL_KEYS: Readonly<Record<string, string>> = {
+  '+': 'Plus',
+  '=': 'Plus',
+  '-': 'Minus',
+  _: 'Minus',
+  // Shift turns the bracket keys into braces (US layout); the tab shortcuts are Cmd+Shift+[ and ].
+  '{': '[',
+  '}': ']',
+};
 
 /**
  * The canonical name of the key an event is for (see `Binding.key`), independent of the modifiers and mostly of the layout:
@@ -102,6 +110,8 @@ const KEY_LABELS: Readonly<Record<string, string>> = {
   ArrowUp: '↑',
   ArrowLeft: '←',
   ArrowRight: '→',
+  PageDown: 'PageDown',
+  PageUp: 'PageUp',
 };
 
 const KEY_ARIA: Readonly<Record<string, string>> = { Plus: 'Plus', Minus: 'Minus' };

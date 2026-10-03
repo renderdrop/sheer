@@ -21,7 +21,14 @@
       "label": "menu.file",
       "items": [
         { "action": "open", "label": "menu.file.open", "accelerator": "CmdOrCtrl+O" },
-        { "action": "close-document", "label": "menu.file.closeDocument", "accelerator": "CmdOrCtrl+W" }
+        {
+          "action": "close-document",
+          "label": "menu.file.closeDocument",
+          "accelerator": "CmdOrCtrl+W",
+          "requiresDocument": true,
+          "withoutDocument": "close_window",
+          "withoutDocumentLabel": "menu.file.closeWindow"
+        }
       ]
     },
     {
@@ -34,28 +41,103 @@
         { "predefined": "cut", "label": "menu.edit.cut" },
         { "predefined": "copy", "label": "menu.edit.copy" },
         { "predefined": "paste", "label": "menu.edit.paste" },
-        { "predefined": "select_all", "label": "menu.edit.selectAll" }
+        { "predefined": "select_all", "label": "menu.edit.selectAll" },
+        { "separator": true },
+        { "action": "find", "label": "menu.edit.find", "accelerator": "CmdOrCtrl+F", "requiresDocument": true },
+        {
+          "action": "find-next",
+          "label": "menu.edit.findNext",
+          "accelerator": "CmdOrCtrl+G",
+          "requiresDocument": true
+        },
+        {
+          "action": "find-previous",
+          "label": "menu.edit.findPrevious",
+          "accelerator": "CmdOrCtrl+Shift+G",
+          "requiresDocument": true
+        }
       ]
     },
     {
       "id": "view",
       "label": "menu.view",
       "items": [
-        { "action": "toggle-left-panel", "label": "menu.view.toggleLeftPanel", "accelerator": "CmdOrCtrl+Alt+1" },
-        { "action": "toggle-inspector", "label": "menu.view.toggleInspector", "accelerator": "CmdOrCtrl+Alt+I" },
+        {
+          "action": "toggle-left-panel",
+          "label": "menu.view.toggleLeftPanel",
+          "accelerator": "CmdOrCtrl+Alt+1",
+          "requiresDocument": true
+        },
+        {
+          "action": "toggle-inspector",
+          "label": "menu.view.toggleInspector",
+          "accelerator": "CmdOrCtrl+Alt+I",
+          "requiresDocument": true
+        },
         { "separator": true },
-        { "action": "zoom-in", "label": "menu.view.zoomIn", "accelerator": "CmdOrCtrl+Equal" },
-        { "action": "zoom-out", "label": "menu.view.zoomOut", "accelerator": "CmdOrCtrl+Minus" },
-        { "action": "actual-size", "label": "menu.view.actualSize", "accelerator": "CmdOrCtrl+1" },
-        { "action": "fit-width", "label": "menu.view.fitWidth", "accelerator": "CmdOrCtrl+2" },
-        { "action": "fit-page", "label": "menu.view.fitPage", "accelerator": "CmdOrCtrl+0" },
+        {
+          "action": "zoom-in",
+          "label": "menu.view.zoomIn",
+          "accelerator": "CmdOrCtrl+Equal",
+          "requiresDocument": true
+        },
+        {
+          "action": "zoom-out",
+          "label": "menu.view.zoomOut",
+          "accelerator": "CmdOrCtrl+Minus",
+          "requiresDocument": true
+        },
+        {
+          "action": "actual-size",
+          "label": "menu.view.actualSize",
+          "accelerator": "CmdOrCtrl+1",
+          "requiresDocument": true
+        },
+        {
+          "action": "fit-width",
+          "label": "menu.view.fitWidth",
+          "accelerator": "CmdOrCtrl+2",
+          "requiresDocument": true
+        },
+        { "action": "fit-page", "label": "menu.view.fitPage", "accelerator": "CmdOrCtrl+0", "requiresDocument": true },
         { "separator": true },
-        { "action": "scroll-continuous", "label": "menu.view.scrollContinuous" },
-        { "action": "scroll-single", "label": "menu.view.scrollSingle" },
-        { "action": "scroll-spread", "label": "menu.view.scrollSpread" },
+        { "action": "scroll-continuous", "label": "menu.view.scrollContinuous", "requiresDocument": true },
+        { "action": "scroll-single", "label": "menu.view.scrollSingle", "requiresDocument": true },
+        { "action": "scroll-spread", "label": "menu.view.scrollSpread", "requiresDocument": true },
         { "separator": true },
-        { "action": "next-page", "label": "menu.view.nextPage", "accelerator": "CmdOrCtrl+ArrowDown" },
-        { "action": "previous-page", "label": "menu.view.previousPage", "accelerator": "CmdOrCtrl+ArrowUp" },
+        {
+          "action": "next-page",
+          "label": "menu.view.nextPage",
+          "accelerator": "CmdOrCtrl+ArrowDown",
+          "requiresDocument": true
+        },
+        {
+          "action": "previous-page",
+          "label": "menu.view.previousPage",
+          "accelerator": "CmdOrCtrl+ArrowUp",
+          "requiresDocument": true
+        },
+        { "separator": true },
+        {
+          "action": "go-to-page",
+          "label": "menu.view.goToPage",
+          "accelerator": "CmdOrCtrl+Shift+N",
+          "requiresDocument": true
+        },
+        { "separator": true },
+        {
+          "action": "rotate-view-right",
+          "label": "menu.view.rotateRight",
+          "accelerator": "CmdOrCtrl+R",
+          "requiresDocument": true
+        },
+        {
+          "action": "rotate-view-left",
+          "label": "menu.view.rotateLeft",
+          "accelerator": "CmdOrCtrl+L",
+          "requiresDocument": true
+        },
+        { "action": "rotate-view-reset", "label": "menu.view.rotateReset", "requiresDocument": true },
         { "separator": true },
         { "predefined": "fullscreen", "label": "menu.view.fullscreen" }
       ]
@@ -66,6 +148,19 @@
       "items": [
         { "predefined": "minimize", "label": "menu.window.minimize" },
         { "predefined": "maximize", "label": "menu.window.zoom" },
+        { "separator": true },
+        {
+          "action": "next-tab",
+          "label": "menu.window.nextTab",
+          "accelerator": "CmdOrCtrl+Shift+]",
+          "requiresDocument": true
+        },
+        {
+          "action": "previous-tab",
+          "label": "menu.window.previousTab",
+          "accelerator": "CmdOrCtrl+Shift+[",
+          "requiresDocument": true
+        },
         { "separator": true },
         { "predefined": "bring_all_to_front", "label": "menu.window.bringAllToFront" }
       ]

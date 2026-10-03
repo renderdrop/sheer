@@ -22,7 +22,7 @@ const DE_JSON: &str = include_str!("../../../src/i18n/locales/de.json");
 /// [`is_action_id`] is the only gate between a menu event and the channel, so an id that is not listed here (a system item,
 /// something a future layout names by mistake) never reaches the webview. A test keeps it equal to the layout, and the
 /// frontend's `src/actions/menu.test.ts` keeps the layout equal to its registry.
-pub const ACTION_IDS: [&str; 15] = [
+pub const ACTION_IDS: [&str; 24] = [
     "settings",
     "open",
     "close-document",
@@ -38,6 +38,15 @@ pub const ACTION_IDS: [&str; 15] = [
     "scroll-spread",
     "next-page",
     "previous-page",
+    "next-tab",
+    "previous-tab",
+    "find",
+    "find-next",
+    "find-previous",
+    "go-to-page",
+    "rotate-view-right",
+    "rotate-view-left",
+    "rotate-view-reset",
 ];
 
 /// Whether `id` is a command the menu bar may send to the UI.
@@ -103,6 +112,7 @@ pub enum Predefined {
     Maximize,
     Fullscreen,
     BringAllToFront,
+    CloseWindow,
 }
 
 /// The six menus of the macOS menu bar, in HIG order. Window and Help are told apart because AppKit has a role for them.
@@ -150,6 +160,14 @@ pub struct ActionItem {
     /// In Tauri's syntax (`CmdOrCtrl+O`), which names physical keys.
     #[serde(default)]
     pub accelerator: Option<String>,
+    /// The command needs a document: the item is greyed while none is open (`set_menu_state`).
+    #[serde(default, rename = "requiresDocument")]
+    pub requires_document: bool,
+    /// What stands in the item's place while no document is open (macOS: Cmd+W closes the window then), with its own label.
+    #[serde(default, rename = "withoutDocument")]
+    pub without_document: Option<Predefined>,
+    #[serde(default, rename = "withoutDocumentLabel")]
+    pub without_document_label: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -244,7 +262,10 @@ mod tests {
             ItemSpec::Predefined(predefined) => Some(predefined.label.as_str()),
             ItemSpec::Separator(_) => None,
         });
-        titles.chain(labels).collect()
+        let fallbacks = actions()
+            .into_iter()
+            .filter_map(|action| action.without_document_label.as_deref());
+        titles.chain(labels).chain(fallbacks).collect()
     }
 
     // --- the allowlist ------------------------------------------------------------------------------------------
@@ -410,14 +431,58 @@ mod tests {
             "maximize",
             "fullscreen",
             "bring_all_to_front",
+            "close_window",
         ];
         for name in names {
             let parsed: Result<Predefined, _> = serde_json::from_value(serde_json::json!(name));
             assert!(parsed.is_ok(), "{name}");
         }
         let unknown: Result<Predefined, _> =
-            serde_json::from_value(serde_json::json!("close_window"));
+            serde_json::from_value(serde_json::json!("frobnicate"));
         assert!(unknown.is_err());
+    }
+
+    // --- which commands need a document ------------------------------------------------------------------------
+
+    #[test]
+    fn close_document_becomes_close_window_while_no_document_is_open() {
+        let close = actions()
+            .into_iter()
+            .find(|action| action.action == "close-document")
+            .expect("the File menu closes a document");
+        assert!(close.requires_document);
+        assert_eq!(close.without_document, Some(Predefined::CloseWindow));
+        assert_eq!(
+            close.without_document_label.as_deref(),
+            Some("menu.file.closeWindow")
+        );
+        // Both are one key: Cmd+W (AppKit's own close-window item has it, so the action item hands it over).
+        assert_eq!(close.accelerator.as_deref(), Some("CmdOrCtrl+W"));
+    }
+
+    #[test]
+    fn a_fallback_has_its_label_and_only_a_command_needing_a_document_has_one() {
+        for action in actions() {
+            assert_eq!(
+                action.without_document.is_some(),
+                action.without_document_label.is_some(),
+                "{}",
+                action.action
+            );
+            if action.without_document.is_some() {
+                assert!(action.requires_document, "{}", action.action);
+            }
+        }
+    }
+
+    #[test]
+    fn the_commands_that_work_without_a_document_are_open_and_settings_only() {
+        let free: BTreeSet<&str> = actions()
+            .into_iter()
+            .filter(|action| !action.requires_document)
+            .map(|action| action.action.as_str())
+            .collect();
+        assert_eq!(free, BTreeSet::from(["open", "settings"]));
     }
 
     // --- the accelerators ---------------------------------------------------------------------------------------

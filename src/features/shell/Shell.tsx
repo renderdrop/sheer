@@ -6,10 +6,13 @@ import { shellTracks } from '../../lib/layout';
 import { chromeFor, detectPlatform } from '../../lib/platform';
 import { useSettings } from '../../stores/settings';
 import { useUi } from '../../stores/ui';
+import { setMenuState } from '../../api/recents';
+import { PasswordDialog } from '../password/PasswordDialog';
+import { TabStrip } from '../tabs/TabStrip';
 import { ViewerCanvas } from '../viewer/ViewerCanvas';
 import { TourEffects } from '../tour/TourEffects';
 import { ViewerEffects } from '../viewer/useViewer';
-import { BannerRow } from './Banner';
+import { BannerRow, XfaBannerRow } from './Banner';
 import { CaptionBar } from './CaptionBar';
 import { EmptyStateSlot } from './EmptyStateSlot';
 import { useWindowState } from './hooks';
@@ -82,6 +85,11 @@ export function Shell() {
 
   const hasDocument = structure.mode === 'document';
 
+  // The macOS menu bar greys the commands that need a document, and Cmd+W closes the window without one. No menu bar elsewhere.
+  useEffect(() => {
+    setMenuState(hasDocument).catch(() => undefined);
+  }, [hasDocument]);
+
   return (
     <div className="flex h-full min-h-0 flex-col">
       <ViewerEffects />
@@ -95,7 +103,10 @@ export function Shell() {
         inspectorVisible={structure.inspectorVisible}
         trafficLightInset={chrome.trafficLights && !windowState.fullscreen}
       />
+      <TabStrip />
+      <PasswordDialog />
       <BannerRow />
+      <XfaBannerRow />
       <MainGrid structure={structure}>
         {hasDocument ? (
           <>

@@ -4,8 +4,11 @@ import { create } from 'zustand';
 import { closeDocument, openDocumentDialog, type DocumentInfo, type OpenOutcome } from '../../api/documents';
 import { toAppError, type AppError } from '../../api/errors';
 import { getPageSizes } from '../../api/render';
+import { announce } from '../../components';
 import { tokenPx } from '../../components/tokens';
 import { renderScheduler } from '../../engine/renderScheduler';
+import { translators } from '../../i18n';
+import { useLocaleStore } from '../../i18n/store';
 import { DEFAULT_ZOOM, clampZoom, wheelFactor } from '../../lib/zoom';
 import { useDocuments } from '../../stores/documents';
 import { usePages } from '../../stores/pages';
@@ -22,10 +25,12 @@ import {
   type ScrollMode,
   type Viewport,
 } from './layout';
+import { requestPassword } from '../password/state';
 import { layoutFor, metricsOfDocument, pageGap } from './model';
 import type { ViewportAnchor } from './Canvas';
 import { beginOpening, forgetOpening } from './openTransition';
 import { markJump, readScroll } from './scrollBridge';
+import { addRotation, type Rotation } from './transform';
 import { animationsOff, createZoomMotion, zoomContent, type ZoomMotion, type ZoomPoint } from './zoomMotion';
 
 export type { Viewport } from './layout';
@@ -84,6 +89,10 @@ export interface ViewerState {
   /** Continuous scrolling, one page at a time, or two pages side by side; the current page stays in view. */
   setScrollMode: (mode: ScrollMode) => void;
   goToPage: (pageIndex: number) => void;
+  /** Turns every page of the active document by `degrees` (a multiple of 90; view only, DESIGN 3.20), keeping the reading position. */
+  rotateView: (degrees: number) => void;
+  /** Back to the file's own orientation. */
+  resetRotation: () => void;
   /** Shows the point `yPt` (points from the top of the page's box) of a page at the canvas's top padding; the outline's jump. */
   goToPoint: (pageIndex: number, yPt: number) => void;
   /** One page on (a spread on, in the two-page mode) or back; stops at the first and the last. */
@@ -223,6 +232,25 @@ export const useViewer = create<ViewerState>()((set, get) => {
     if (target !== current.view.pageIndex) goTo(target);
   };
 
+  /** Rotates the view and keeps the page the reader is on at the top; a fit is made again for the turned pages. */
+  const turnTo = (rotation: Rotation) => {
+    const current = active();
+    if (current === null || current.view.rotation === rotation) return;
+    const { viewport } = get();
+    const metrics = metricsOfDocument(current.docId, undefined, rotation);
+    const refit =
+      current.view.fit === 'none' || metrics === null || viewport === null
+        ? null
+        : fitZoomFor(current.view.fit, metrics, current.view.pageIndex, viewport, pageGap());
+    const layout = layoutFor(current.docId, viewport, {
+      rotation,
+      zoom: refit === null ? undefined : clampZoom(refit),
+    });
+    const anchor = layout === null ? null : pageTopAnchor(layout, current.view.pageIndex, centeredScroll(layout));
+    useView.getState().setRotation(current.docId, rotation, anchor, refit ?? undefined);
+    announce(translators[useLocaleStore.getState().locale]('rotate.announce', { deg: rotation }));
+  };
+
   const motionCenter = (): ZoomFocus => {
     const { viewport } = get();
     return { x: (viewport?.width ?? 0) / 2, y: (viewport?.height ?? 0) / 2 };
@@ -293,6 +321,12 @@ export const useViewer = create<ViewerState>()((set, get) => {
       useView.getState().setScrollMode(current.docId, mode, anchor, refit ?? undefined);
     },
     goToPage: goTo,
+    rotateView: (degrees) => {
+      const current = active();
+      if (current === null || !Number.isFinite(degrees)) return;
+      turnTo(addRotation(current.view.rotation, degrees));
+    },
+    resetRotation: () => turnTo(0),
     goToPoint,
     nextPage: () => turn(1),
     previousPage: () => turn(-1),
@@ -380,6 +414,7 @@ export function adoptOpenOutcomes(outcomes: readonly OpenOutcome[]): void {
   let failure: AppError | null = null;
   for (const outcome of outcomes) {
     if (outcome.type === 'opened') showDocument(outcome.document);
+    else if (outcome.type === 'needsPassword') requestPassword(outcome.id, outcome.displayName);
     else failure ??= outcome.error;
   }
   if (failure !== null) useUi.getState().showBanner(failure);

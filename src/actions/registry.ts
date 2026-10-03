@@ -13,8 +13,12 @@ import {
   MousePointer2,
   PanelLeft,
   PanelRight,
+  ListOrdered,
   Percent,
   PenLine,
+  RotateCcw,
+  RotateCw,
+  Search,
   Maximize2,
   Settings,
   Signature,
@@ -27,8 +31,12 @@ import {
 
 import type { Platform } from '../api/app';
 import { toggleAbout } from '../features/about/state';
+import { stepHit } from '../features/search/jump';
+import { openSearch } from '../features/search/commands';
 import { openSettings } from '../features/settings/state';
+import { useGoToPage } from '../features/shell/goToState';
 import { readShellStructure } from '../features/shell/useShellStructure';
+import { cycleTab } from '../features/tabs/nav';
 import { useViewer } from '../features/viewer/useViewer';
 import type { PlainKey, Translate } from '../i18n';
 import type { Shortcut } from '../lib/shortcuts';
@@ -53,6 +61,15 @@ export type ActionId =
   | 'scroll-spread'
   | 'next-page'
   | 'previous-page'
+  | 'go-to-page'
+  | 'find'
+  | 'find-next'
+  | 'find-previous'
+  | 'rotate-view-right'
+  | 'rotate-view-left'
+  | 'rotate-view-reset'
+  | 'next-tab'
+  | 'previous-tab'
   | 'toggle-left-panel'
   | 'toggle-inspector'
   | 'settings'
@@ -256,6 +273,106 @@ export const ACTIONS: readonly ActionDef[] = [
     repeat: true,
     enabled: needsDocument,
     run: () => useViewer.getState().previousPage(),
+  },
+  {
+    id: 'next-tab',
+    labelKey: 'action.nextTab',
+    // Ctrl+Tab on both platforms is the tab strip's own handler (it needs the Control key on macOS, which a binding never has);
+    // these are the others: Ctrl+PageDown on Windows, Cmd+Shift+] on macOS, where the menu bar shows it (DESIGN 3.18).
+    shortcut: { default: primary('PageDown'), macos: { key: ']', mods: ['primary', 'shift'] } },
+    group: 'page',
+    more: true,
+    menuBar: true,
+    enabled: needsDocument,
+    run: () => cycleTab(1),
+  },
+  {
+    id: 'previous-tab',
+    labelKey: 'action.previousTab',
+    shortcut: { default: primary('PageUp'), macos: { key: '[', mods: ['primary', 'shift'] } },
+    group: 'page',
+    more: true,
+    menuBar: true,
+    enabled: needsDocument,
+    run: () => cycleTab(-1),
+  },
+  {
+    id: 'go-to-page',
+    labelKey: 'action.goToPage',
+    icon: ListOrdered,
+    shortcut: { default: { key: 'n', mods: ['primary', 'shift'] } },
+    group: 'page',
+    more: true,
+    menuBar: true,
+    enabled: needsDocument,
+    // The status bar's popover opens with the page field selected (src/features/shell/StatusBar).
+    run: () => useGoToPage.getState().setOpen(true),
+  },
+  {
+    id: 'find',
+    labelKey: 'action.find',
+    icon: Search,
+    shortcut: { default: primary('f') },
+    group: 'page',
+    more: true,
+    menuBar: true,
+    enabled: needsDocument,
+    run: openSearch,
+  },
+  {
+    id: 'find-next',
+    labelKey: 'action.findNext',
+    icon: ChevronDown,
+    shortcut: { default: primary('g') },
+    group: 'page',
+    more: true,
+    menuBar: true,
+    repeat: true,
+    enabled: needsDocument,
+    run: () => stepHit(1),
+  },
+  {
+    id: 'find-previous',
+    labelKey: 'action.findPrevious',
+    icon: ChevronUp,
+    shortcut: { default: { key: 'g', mods: ['primary', 'shift'] } },
+    group: 'page',
+    more: true,
+    menuBar: true,
+    repeat: true,
+    enabled: needsDocument,
+    run: () => stepHit(-1),
+  },
+  {
+    id: 'rotate-view-right',
+    labelKey: 'rotate.right',
+    icon: RotateCw,
+    shortcut: { default: primary('r') },
+    group: 'view',
+    more: true,
+    menuBar: true,
+    enabled: needsDocument,
+    run: () => useViewer.getState().rotateView(90),
+  },
+  {
+    id: 'rotate-view-left',
+    labelKey: 'rotate.left',
+    icon: RotateCcw,
+    shortcut: { default: primary('l') },
+    group: 'view',
+    more: true,
+    menuBar: true,
+    enabled: needsDocument,
+    run: () => useViewer.getState().rotateView(-90),
+  },
+  {
+    id: 'rotate-view-reset',
+    labelKey: 'rotate.reset',
+    group: 'view',
+    more: true,
+    menuBar: true,
+    enabled: needsDocument,
+    run: () => useViewer.getState().resetRotation(),
   },
   {
     id: 'toggle-left-panel',

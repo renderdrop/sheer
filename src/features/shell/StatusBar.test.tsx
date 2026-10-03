@@ -192,3 +192,51 @@ describe('the zoom menu', () => {
     expect(onZoom).toHaveBeenCalledWith(2);
   });
 });
+
+describe('Go to page: input outside the document and the rotation chip (DESIGN 3.20)', () => {
+  it('shows "of n" and keeps the popover open with a message for a number outside 1 to n', async () => {
+    const onGoToPage = vi.fn();
+    const { user } = setup(<StatusBar {...props({ onGoToPage })} />);
+    await user.click(screen.getByRole('button', { name: /Go to page/ }));
+    const dialog = screen.getByRole('dialog', { name: 'Go to page' });
+    expect(within(dialog).getByText('of 120')).not.toBeNull();
+    const field = within(dialog).getByLabelText('Page number');
+    for (const typed of ['0', '121', 'abc', '']) {
+      await user.clear(field);
+      if (typed !== '') await user.type(field, typed);
+      await user.keyboard('{Enter}');
+      expect(field.getAttribute('aria-invalid'), typed).toBe('true');
+      expect(within(dialog).getByRole('alert').textContent).toBe('Enter a number from 1 to 120.');
+    }
+    expect(onGoToPage).not.toHaveBeenCalled();
+    // Typing again clears the message; a good number goes there and closes.
+    await user.clear(field);
+    await user.type(field, '120');
+    expect(field.getAttribute('aria-invalid')).toBeNull();
+    await user.click(within(dialog).getByRole('button', { name: 'Go' }));
+    expect(onGoToPage).toHaveBeenCalledWith(119);
+    expect(screen.queryByRole('dialog')).toBeNull();
+  });
+
+  it('can be opened from outside (the go-to-page action) and tells the owner when it closes', async () => {
+    const onGoToOpenChange = vi.fn();
+    const { rerender, user } = setup(<StatusBar {...props({ goToOpen: false, onGoToOpenChange })} />);
+    expect(screen.queryByRole('dialog')).toBeNull();
+    rerender(<StatusBar {...props({ goToOpen: true, onGoToOpenChange })} />);
+    const field = within(screen.getByRole('dialog', { name: 'Go to page' })).getByLabelText('Page number');
+    expect((field as HTMLInputElement).value).toBe('3');
+    await user.keyboard('{Escape}');
+    expect(onGoToOpenChange).toHaveBeenCalledWith(false);
+  });
+
+  it('shows a reset button with the angle only while the view is turned', async () => {
+    const onResetRotation = vi.fn();
+    const { rerender, user } = setup(<StatusBar {...props({ rotation: 0, onResetRotation })} />);
+    expect(screen.queryByRole('button', { name: 'Reset rotation' })).toBeNull();
+    rerender(<StatusBar {...props({ rotation: 90, onResetRotation })} />);
+    const reset = screen.getByRole('button', { name: 'Reset rotation' });
+    expect(reset.textContent).toBe('90°');
+    await user.click(reset);
+    expect(onResetRotation).toHaveBeenCalledTimes(1);
+  });
+});

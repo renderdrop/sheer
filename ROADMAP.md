@@ -45,14 +45,28 @@ The Stop hook picks the first open `- [ ]` line, so order matters. Scope: `docs/
 - [x] Zoom and fit (width/page/100 %), Ctrl/Cmd+scroll, pinch; scroll modes (continuous/single/two-page); zoom controls disabled without a document
 - [x] Thumbnails panel (lazy)
 - [x] Outline (bookmarks) panel
-- [ ] Full-text search with hit highlight and next/previous
-- [ ] Text selection and copy (char-box text layer)
-- [ ] View rotation, go to page, status bar page x/y + zoom
-- [ ] Password-protected PDFs (session-only password)
-- [ ] Recent files (local, removable, missing-file handling); record the open-from-recents clone (MOTION §4.6) as F3 evidence
-- [ ] Multiple documents in tabs; macOS menu enabled-state sync (grey items without a document, Close Window on ⌘W)
+- [x] Full-text search with hit highlight and next/previous
+- [x] Text selection and copy (char-box text layer)
+- [x] View rotation, go to page, status bar page x/y + zoom
+- [x] Password-protected PDFs (session-only password)
+- [x] Recent files (local, removable, missing-file handling); record the open-from-recents clone (MOTION §4.6) as F3 evidence
+- [x] Multiple documents in tabs; macOS menu enabled-state sync (grey items without a document, Close Window on ⌘W)
 - [x] Onboarding scaffold (FEEDBACK F4): bundled "Welcome to Sheer.pdf" opened on first launch, coach-mark component, step engine, steps Open / Navigate / Zoom, progress in the status bar, skippable, restart in Settings, never automatic twice
-- [ ] Hostile input: fuzz corpus ≥ 30 malformed PDFs + never-crash test, safe links (confirm, http/https/mailto), XFA warning; intake: registry key from the handle, reject NTFS ADS names and `\?NC`/REMOTE UNC (OR DEADLINE), PIN WINDOWS DEVICE-PATH REFUSAL IN A TEST, SKIP STRAY NON-FLAG ARGV VALUES, DOCUMENT TOKIO `NET` FROM SINGLE-INSTANCE IN THE NETWORK GUARD
+- [x] Hostile input: fuzz corpus ≥ 30 malformed PDFs + never-crash test, safe links (confirm, http/https/mailto), XFA warning; intake: registry key from the handle, reject NTFS ADS names and `\?NC`/REMOTE UNC (OR DEADLINE), PIN WINDOWS DEVICE-PATH REFUSAL IN A TEST, SKIP STRAY NON-FLAG ARGV VALUES, DOCUMENT TOKIO `NET` FROM SINGLE-INSTANCE IN THE NETWORK GUARD
+- [ ] Politur M1
+  - intake: Windows `same_file` compares size/mtime/ctime only; use the handle's file ID (e.g. `same-file` crate, MIT/Unlicense) and key the registry on it (security medium)
+  - engine: respawn the PDFium worker after `engine_unavailable` until M7's engine process (tiny `/XStep`, self-calling Form XObject wedge it; security medium); add both as `#[ignore]`d corpus cases for M7
+  - intake: refuse mapped network drives before the first open (drive type), or document the wait
+  - links dialog: truncate the displayed URL, show the host prominently, decode punycode for display alongside `xn--`
+  - fuzz_corpus.rs: lower the 60 s per-file timeout; document that a dotless file after a bare `--flag` is skipped
+  - XFA banner: keep the dismissal in a store so a remount does not show it again
+  - recents: Undo toast after remove, "Locate…" for a missing file
+  - unlock: serialise unlocks per document (in-flight flag) so parallel calls cannot skip the 1 s wait; bound simultaneous unlock sleeps (security medium)
+  - recents: on Windows refuse `\\`/`//` paths in `storable()` and skip `try_exists` for network paths (NTLM leak from a tampered recents.json)
+  - unlock: record the residual risk of the IPC-deserialised `String` password (not zeroized) in DECISIONS, or a Zeroizing deserialiser
+  - viewer: expose each page's `/Rotate` to the UI (`PageSlotInfo.rotation`) and wire `fileRotation.ts`; overlays assume 0 today
+  - search: gate F3/Shift+F3 to Windows (DESIGN 3.16) and let F3 work from the page field; bound the text cache `failed` set and listeners
+  - milestone end: record the open-from-recents clone (MOTION §4.6) as F3 evidence with scripts/ui/
 
 ## M2 — Comment and markup (v0.5.0)
 

@@ -1,6 +1,8 @@
-import { useRef, type FormEvent } from 'react';
+import { RotateCw } from 'lucide-react';
+import { useId, useState, type FormEvent } from 'react';
 
 import { Button, Field, Menu, Popover, usePulseMessage } from '../../components';
+import { Icon } from '../../components/Icon';
 import { useT } from '../../i18n';
 import { useSettledValue } from './hooks';
 import { formatPageStatus, formatZoomStatus, splitForMiddleTruncation } from './status';
@@ -21,6 +23,12 @@ export interface StatusBarProps {
   rendering: boolean;
   onGoToPage: (pageIndex: number) => void;
   onZoom: (zoom: number) => void;
+  /** The view rotation in degrees (DESIGN 3.20); a button that resets it is shown while it is not 0. */
+  rotation?: number;
+  onResetRotation?: () => void;
+  /** The Go to page popover is open (controlled, so the `go-to-page` action can open it); uncontrolled without these. */
+  goToOpen?: boolean;
+  onGoToOpenChange?: (open: boolean) => void;
 }
 
 /** The name, cut in the middle when it does not fit: the end with the extension always stays (DESIGN 3.10: at most 40 % of the bar). */
@@ -39,23 +47,29 @@ function FileName({ name }: { name: string }) {
   );
 }
 
-/** The "Go to page" popover behind the page button: one number field and a Go button. */
+/** The "Go to page" popover behind the page button (DESIGN 3.20): a number field, "of n" and a Go button. */
 function GoToPage({
   pageIndex,
   pageCount,
   onGo,
+  open,
+  onOpenChange,
 }: {
   pageIndex: number;
   pageCount: number;
   onGo: (pageIndex: number) => void;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
 }) {
   const t = useT();
   const label = formatPageStatus(pageIndex, pageCount, t.locale);
   return (
     <Popover
-      label={t('status.goToPage')}
+      label={t('goto.label')}
       side="top"
       align="end"
+      open={open}
+      onOpenChange={onOpenChange}
       trigger={(trigger) => (
         // The visible text is part of the name (WCAG 2.5.3); the rest says what the button does.
         <Button
@@ -88,30 +102,50 @@ function GoToPageForm({
   done: () => void;
 }) {
   const t = useT();
-  const input = useRef<HTMLInputElement>(null);
+  const errorId = useId();
+  const [value, setValue] = useState(String(pageIndex + 1));
+  const [invalid, setInvalid] = useState(false);
   const submit = (event: FormEvent) => {
     event.preventDefault();
-    const page = Number.parseInt(input.current?.value ?? '', 10);
-    if (Number.isFinite(page)) onGo(page - 1);
+    const text = value.trim();
+    const page = /^[0-9]{1,6}$/.test(text) ? Number.parseInt(text, 10) : Number.NaN;
+    if (!(page >= 1 && page <= pageCount)) {
+      // The popover stays: the field says what is wrong.
+      setInvalid(true);
+      return;
+    }
+    onGo(page - 1);
     done();
   };
   return (
-    <form onSubmit={submit} className="flex items-end gap-1 p-1">
-      <label className="flex flex-col gap-0-5 text-sm text-text-muted">
-        {t('status.pageNumber')}
+    <form onSubmit={submit} className="flex flex-col gap-1 p-1">
+      <span className="text-sm font-semibold text-text-muted">{t('goto.label')}</span>
+      <div className="flex items-center gap-1">
         <Field
-          ref={input}
-          type="number"
+          type="text"
           inputMode="numeric"
-          min={1}
-          max={pageCount}
-          defaultValue={pageIndex + 1}
+          autoComplete="off"
+          spellCheck={false}
+          aria-label={t('status.pageNumber')}
+          aria-invalid={invalid || undefined}
+          aria-describedby={invalid ? errorId : undefined}
+          value={value}
+          onChange={(event) => {
+            setValue(event.target.value);
+            setInvalid(false);
+          }}
           onFocus={(event) => event.currentTarget.select()}
         />
-      </label>
-      <Button type="submit" variant="primary" size="md">
-        {t('status.go')}
-      </Button>
+        <span className="text-sm text-text-muted">{t('goto.of', { n: pageCount })}</span>
+        <Button type="submit" variant="primary" size="sm">
+          {t('goto.go')}
+        </Button>
+      </div>
+      {invalid && (
+        <span id={errorId} role="alert" className="text-sm text-error-text">
+          {t('goto.invalid', { n: pageCount })}
+        </span>
+      )}
     </form>
   );
 }
@@ -122,7 +156,19 @@ function GoToPageForm({
  * zoom menu) as small ghost buttons. A polite live region says "Page 3 of 120" 500 ms after the page stopped changing.
  * It is a `<footer>`; a window without a document leaves it empty.
  */
-export function StatusBar({ fileName, pageIndex, pageCount, zoom, rendering, onGoToPage, onZoom }: StatusBarProps) {
+export function StatusBar({
+  fileName,
+  pageIndex,
+  pageCount,
+  zoom,
+  rendering,
+  onGoToPage,
+  onZoom,
+  rotation = 0,
+  onResetRotation,
+  goToOpen,
+  onGoToOpenChange,
+}: StatusBarProps) {
   const t = useT();
   const hasDocument = fileName !== null;
   const settledPage = useSettledValue(pageIndex, ANNOUNCE_DELAY_MS);
@@ -139,7 +185,21 @@ export function StatusBar({ fileName, pageIndex, pageCount, zoom, rendering, onG
       <span role="status" className="shrink-0">
         {rendering ? t('status.rendering') : ''}
       </span>
-      {hasDocument && pageCount > 0 && <GoToPage pageIndex={pageIndex} pageCount={pageCount} onGo={onGoToPage} />}
+      {hasDocument && rotation !== 0 && (
+        <Button variant="ghost" size="sm" aria-label={t('rotate.reset')} onClick={() => onResetRotation?.()}>
+          <Icon icon={RotateCw} size={12} />
+          {rotation}°
+        </Button>
+      )}
+      {hasDocument && pageCount > 0 && (
+        <GoToPage
+          pageIndex={pageIndex}
+          pageCount={pageCount}
+          onGo={onGoToPage}
+          open={goToOpen}
+          onOpenChange={onGoToOpenChange}
+        />
+      )}
       {hasDocument && (
         <Menu
           label={t('status.zoomMenu')}
