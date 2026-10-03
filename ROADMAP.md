@@ -127,6 +127,7 @@ The Stop hook picks the first open `- [ ]` line, so order matters. Scope: `docs/
 
 - [ ] Performance budget: 500-page PDF opens < 1 s, 60 fps scrolling (benchmark); thumbnail list fast scroll (one 34 ms frame at 120 px/frame, F3); scroll-height compression beyond the browser element limit (≈ 8k pages at 400 %), memory-aware cache budget
 - [ ] Accessibility pass (WCAG 2.2 AA analog, screen reader labels, focus order)
+- [ ] Recents rows with a 32 × 40 first-page thumbnail (DESIGN §3.11), cached locally at close, no paths to the UI (M1 review minor, deferred)
 - [ ] i18n de/en complete
 - [ ] Per-tool tips; read mode (onboarding = welcome-document tour, FEEDBACK F4)
 - [ ] PDF engine in its own process (crash isolation, ADR)

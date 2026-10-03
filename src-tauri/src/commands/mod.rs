@@ -19,7 +19,7 @@
 //! | `get_page_links`, `open_link` | `docId`, `pageId` (and `linkIndex`) | the links of a page; opening one asks the user in a native dialog first, see [`links`] |
 //! | `close_document` | `docId: number` | nothing |
 //! | `unlock_document` | `docId`, `password: string` (1 to 1024 bytes) | the `DocumentInfo` once the encrypted file is open; a wrong password is `password_required` (retry waits 1 s after the third, in Rust) |
-//! | `list_recents`, `remove_recent`, `open_recent` | none; `recentId`; `recentId` | `{ id, displayName, lastOpened, missing }[]` (at most 50, no paths); nothing; the open event of the file (`opened`, `needsPassword` or `openFailed`) |
+//! | `list_recents`, `remove_recent`, `open_recent` | none; `recentId`; `recentId` | `{ id, displayName, folder, lastOpened, missing }[]` (at most 50, no paths; `folder` is the parent folder's name); nothing; the open event of the file (`opened`, `needsPassword` or `openFailed`) |
 //! | `set_menu_state` | `hasDocument: boolean` | nothing; the macOS menu bar greys the commands that need a document |
 //! | `app_ready`, `get_settings`, `update_settings`, `watch_transparency`, `subscribe_menu`, `subscribe_app` | see [`app`] | see [`app`] |
 //!
@@ -1044,7 +1044,15 @@ mod tests {
         assert_eq!(names, ["b.pdf", "a.pdf"]);
         assert!(list.iter().all(|entry| !entry.missing));
         let json = serde_json::to_string(&list).unwrap();
-        assert!(!json.contains("sheer-test"), "{json}");
+        // Only the parent folder's name, never the path to it.
+        assert!(list
+            .iter()
+            .all(|entry| entry.folder.starts_with("sheer-test")));
+        assert!(
+            !json.contains(std::env::temp_dir().to_string_lossy().as_ref()),
+            "{json}"
+        );
+        assert!(!json.contains('/') && !json.contains("\\\\"), "{json}");
     }
 
     #[test]

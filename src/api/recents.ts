@@ -9,11 +9,13 @@ function isCount(value: unknown, max = Number.MAX_SAFE_INTEGER): value is number
 
 /**
  * A recent file as the UI may know it (src-tauri/src/storage/recents.rs): the id is good for this run only, and there is no path
- * and no folder. `lastOpened` is in seconds since 1970 (0 when unknown); `missing` is true when the file is not there now.
+ * and only the name of the parent folder. `lastOpened` is in seconds since 1970 (0 when unknown); `missing` is true when the file is not there now.
  */
 export interface RecentEntry {
   id: number;
   displayName: string;
+  /** The parent folder's name (its last segment), never a path; empty when there is none. */
+  folder: string;
   lastOpened: number;
   missing: boolean;
 }
@@ -24,16 +26,17 @@ export const MAX_RECENTS = 50;
 /** Validates one recent entry; `null` if it is not one. Extra keys are dropped. */
 export function parseRecentEntry(value: unknown): RecentEntry | null {
   if (typeof value !== 'object' || value === null) return null;
-  const { id, displayName, lastOpened, missing } = value as Record<string, unknown>;
+  const { id, displayName, folder, lastOpened, missing } = value as Record<string, unknown>;
   if (
     !isCount(id, 0xffffffff) ||
     typeof displayName !== 'string' ||
+    typeof folder !== 'string' ||
     !isCount(lastOpened) ||
     typeof missing !== 'boolean'
   ) {
     return null;
   }
-  return { id, displayName, lastOpened, missing };
+  return { id, displayName, folder, lastOpened, missing };
 }
 
 /** The recent files, newest first. An answer that is not a list of at most 50 entries is an internal error. */

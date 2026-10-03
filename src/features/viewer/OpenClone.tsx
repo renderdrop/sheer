@@ -79,12 +79,12 @@ export function OpenClone({ source, target, onDone }: OpenCloneProps) {
       ref={ref}
       aria-hidden="true"
       data-open-clone=""
-      className="pointer-events-none fixed z-drag origin-top-left overflow-hidden rounded-sm bg-surface-solid"
+      className={`pointer-events-none fixed z-drag origin-top-left overflow-hidden rounded-sm ${source.kind === 'tile' ? 'bg-tile' : 'bg-surface-solid'}`}
       style={{ left: rect.left, top: rect.top, width: rect.width, height: rect.height }}
     >
       {source.kind === 'image' && source.src !== undefined ? (
         <img src={source.src} alt="" draggable={false} className="size-full object-cover" />
-      ) : (
+      ) : source.kind === 'tile' ? null : (
         <DropCardFace />
       )}
     </div>,

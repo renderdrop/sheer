@@ -129,7 +129,6 @@
   "emptyState.title": "PDF öffnen",
   "emptyState.hint": "Datei hier im Fenster ablegen oder eine auswählen.",
   "emptyState.recent": "Zuletzt geöffnet",
-  "emptyState.recentPlaceholder": "Geöffnete Dateien erscheinen hier.",
   "emptyState.recentPrivacy": "Zuletzt geöffnete Dateien werden nur auf diesem Gerät gespeichert.",
   "emptyState.recentClear": "Leeren",
   "emptyState.recentRemove": "{name} aus den zuletzt geöffneten Dateien entfernen",

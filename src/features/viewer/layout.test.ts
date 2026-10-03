@@ -9,6 +9,7 @@ import {
   adjacentPages,
   anchorAt,
   buildMetrics,
+  centeredScroll,
   fitZoomFor,
   isPaged,
   metricsFor,
@@ -145,6 +146,18 @@ describe('the layout of continuous scrolling', () => {
     });
     expect(Number.isFinite(layout.width) && Number.isFinite(layout.height)).toBe(true);
     expect(layout.box(1)?.top).toBeCloseTo(px(792));
+  });
+});
+
+describe('a page that fits the canvas', () => {
+  it('is centred in it and needs no horizontal scrolling (page plus 2 x 24 padding fits)', () => {
+    const viewport = { width: 1005, height: 700 };
+    const layout = layoutOf(pages(3), 'continuous', { viewport });
+    const box = layout.box(0);
+    expect(layout.width).toBe(viewport.width);
+    expect(box?.left).toBeCloseTo((viewport.width - px(612)) / 2, 6);
+    expect(scrollFor(layout, { page: 0, xPt: 0, yPt: 0, viewX: 0, viewY: 0 }).left).toBe(0);
+    expect(centeredScroll(layout).left).toBe(0);
   });
 });
 

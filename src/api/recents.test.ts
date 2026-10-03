@@ -16,7 +16,7 @@ vi.mock('@tauri-apps/api/core', () => ({ invoke }));
 
 beforeEach(() => invoke.mockReset());
 
-const entry = { id: 3, displayName: 'a.pdf', lastOpened: 1700000000, missing: false };
+const entry = { id: 3, displayName: 'a.pdf', folder: 'Docs', lastOpened: 1700000000, missing: false };
 
 describe('the needsPassword outcome', () => {
   it('is an id and a name, nothing else', () => {
@@ -50,6 +50,7 @@ describe('recent files', () => {
     expect(parseRecentEntry({ ...entry, path: 'C:/x' })).toEqual(entry);
     expect(parseRecentEntry({ ...entry, missing: 'no' })).toBeNull();
     expect(parseRecentEntry({ ...entry, id: -1 })).toBeNull();
+    expect(parseRecentEntry({ ...entry, folder: 3 })).toBeNull();
     expect(parseRecentEntry(null)).toBeNull();
   });
 

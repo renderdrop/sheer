@@ -16,8 +16,8 @@ export interface SourceRect {
 
 export interface OpenSource {
   rect: SourceRect;
-  /** The preview card of a drop, or an image (a thumbnail). */
-  kind: 'card' | 'image';
+  /** The preview card of a drop, an image (a thumbnail) or the file tile of a recents row. */
+  kind: 'card' | 'image' | 'tile';
   /** The image's URL for `kind: 'image'`. */
   src?: string;
 }

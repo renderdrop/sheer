@@ -83,8 +83,7 @@ function LogoSlot() {
  * 2. The drop card, 24 below: G1, radius 24, padding 40, "Open a PDF", the hint, and the primary large "Open…" button
  *    with the shortcut as a pill badge (no icon tile: the logo replaces it). Initial focus is on that button, the keyboard path (dropping is
  *    pointer-only).
- * 3. Recent files, 32 px below: a heading, then the rows, or a placeholder while there are none (until the recents list
- *    lands, M1). The footer "Recent files are stored only on this device." belongs to the rows and is left out with
+ * 3. Recent files, 32 px below: a heading, then the rows; the whole section is omitted while there are none (DESIGN 3.11). The footer "Recent files are stored only on this device." belongs to the rows and is left out with
  *    them: a note about a list that is not there would only say that something is stored.
  */
 export function EmptyState({
@@ -138,34 +137,30 @@ export function EmptyState({
           )}
         </div>
       </section>
-      <section aria-labelledby="recent-heading" className="mt-4 flex flex-col gap-1">
-        <div className="flex items-center justify-between">
-          <h2 id="recent-heading" className="m-0 text-sm font-semibold text-text-muted">
-            {t('emptyState.recent')}
-          </h2>
-          {recents.length > 0 && onClearRecents !== undefined && (
-            <Button variant="ghost" size="sm" onClick={onClearRecents}>
-              {t('emptyState.recentClear')}
-            </Button>
-          )}
-        </div>
-        {recents.length === 0 ? (
-          <p className="m-0 rounded-button p-1 text-sm text-text-muted">{t('emptyState.recentPlaceholder')}</p>
-        ) : (
-          <>
-            <ul
-              aria-label={t('emptyState.recentList')}
-              onKeyDown={onRecentsKeyDown}
-              className="m-0 flex list-none flex-col gap-0-5 p-0"
-            >
-              {recents.map((row) => (
-                <li key={row.id}>{row.content}</li>
-              ))}
-            </ul>
-            <p className="m-0 text-sm text-text-muted">{t('emptyState.recentPrivacy')}</p>
-          </>
-        )}
-      </section>
+      {recents.length > 0 && (
+        <section aria-labelledby="recent-heading" className="mt-4 flex flex-col gap-1">
+          <div className="flex items-center justify-between">
+            <h2 id="recent-heading" className="m-0 text-sm font-semibold text-text-muted">
+              {t('emptyState.recent')}
+            </h2>
+            {onClearRecents !== undefined && (
+              <Button variant="ghost" size="sm" onClick={onClearRecents}>
+                {t('emptyState.recentClear')}
+              </Button>
+            )}
+          </div>
+          <ul
+            aria-label={t('emptyState.recentList')}
+            onKeyDown={onRecentsKeyDown}
+            className="m-0 flex list-none flex-col gap-0-5 p-0"
+          >
+            {recents.map((row) => (
+              <li key={row.id}>{row.content}</li>
+            ))}
+          </ul>
+          <p className="m-0 text-sm text-text-muted">{t('emptyState.recentPrivacy')}</p>
+        </section>
+      )}
     </main>
   );
 }

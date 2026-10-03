@@ -71,10 +71,9 @@ describe('EmptyState (DESIGN 3.11)', () => {
     expect(onOpen).not.toHaveBeenCalled();
   });
 
-  it('has the recents placeholder and no recent rows yet', () => {
+  it('omits the recents section entirely while there are none', () => {
     setup(<EmptyState {...props()} />);
-    expect(screen.getByRole('heading', { level: 2, name: 'Recent' })).not.toBeNull();
-    expect(screen.getByText('Files you open appear here.')).not.toBeNull();
+    expect(screen.queryByRole('heading', { level: 2, name: 'Recent' })).toBeNull();
     expect(screen.getAllByRole('button')).toHaveLength(1);
   });
 
@@ -86,10 +85,9 @@ describe('EmptyState (DESIGN 3.11)', () => {
       expect(screen.queryByText(FOOTER)).toBeNull();
       rerender(<EmptyState {...props({ recents: [] })} />);
       expect(screen.queryByText(FOOTER)).toBeNull();
-      expect(screen.getByText('Files you open appear here.')).not.toBeNull();
     });
 
-    it('comes with the first recent file, and then the placeholder is gone', () => {
+    it('comes with the first recent file, and then the section is there', () => {
       setup(
         <EmptyState
           {...props({

@@ -104,7 +104,7 @@ the worker drops the document and its handle (`Removed`). No document is ever le
 reach it, because a stuck engine refuses new jobs.
 
 The frontend never uses `onDragDropEvent` and cannot receive the `tauri://drag-drop` event that carries the paths: `dragDropEnabled` is `true` on purpose (explicit in `tauri.conf.json`, pinned by `security_baseline.rs`), so Tauri takes the OS drop itself and hands the paths only to Rust's `WindowEvent::DragDrop` handler, and the window has no event permission (SECURITY T3, T9). Rust tells the page `dropHover { active }` over the app channel (§6), without paths; what the drop opens arrives as `opened` or `openFailed`.
-Recents store paths in app data. The UI sees only `RecentEntry { id, displayName, lastOpened, missing }`.
+Recents store paths in app data. The UI sees only `RecentEntry { id, displayName, folder (parent folder's name only, never a path), lastOpened, missing }`.
 
 ## 5. Tauri commands
 
@@ -127,7 +127,7 @@ open_recent(recent_id: u32) -> AppEvent             // ADR-026: like a file from
 restore_recent(recent_id: u32) -> bool           // Undo of a removal (DESIGN 3.11/3.12): puts the entry back where it was; false if it was not removed in this run or is listed again
 locate_recent(recent_id: u32) -> bool            // "Locate…" for a missing file: Rust shows the file dialog and replaces the entry's path in storage (the path never reaches the UI); false on cancel; unknown id → not_found
 open_welcome_document() -> AppEvent                 // ADR-023, DESIGN §3.14: opens the bundled `resources/welcome/welcome-{en,de}.pdf` for the resolved UI language (settings language, "system" = the language `subscribe_menu`/`app_ready` reported, else en) through `intake::admit` like any file; the path is resolved in Rust from the resource dir and never crosses IPC; `opened { document }` with `kind: Welcome` and `display_name` "Welcome to {app}.pdf" (localized), or `openFailed`; a welcome document already open is closed with discard first (restart). Not added to recents
-list_recents() -> Vec<RecentEntry>                   // ≤ 50, newest first; `RecentEntry { id, displayName, lastOpened (s since 1970), missing }`, ids are per run, stored in `recents.json` (app data dir, atomic, hostile-input tolerant)
+list_recents() -> Vec<RecentEntry>                   // ≤ 50, newest first; `RecentEntry { id, displayName, folder (parent folder's name only), lastOpened (s since 1970), missing }`, ids are per run, stored in `recents.json` (app data dir, atomic, hostile-input tolerant)
 remove_recent(recent_id: u32) -> ()                 // an unlisted id is not an error; the file is untouched
 unlock_document(doc_id: DocId, password: String) -> DocumentInfo        // 1..=1024 bytes, no NUL (invalid_argument); one attempt per document at a time and 4 in all, else limit_exceeded (ADR-028); for a document that waited as `needsPassword` (else not_found); held as `Zeroizing<String>`, never stored or logged; wrong → password_required, and after the 3rd wrong one each try waits 1 s in Rust (ADR-026); any other failure forgets the document. `close_document` on a waiting id cancels it
 set_menu_state(has_document: bool) -> ()            // macOS menu bar: commands that need a document are greyed without one and Cmd+W closes the window; a no-op on Windows

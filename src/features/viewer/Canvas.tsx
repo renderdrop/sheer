@@ -118,6 +118,7 @@ export function Canvas({
   const t = useT();
   const regionRef = useRef<HTMLDivElement | null>(null);
   const contentRef = useRef<HTMLDivElement | null>(null);
+  const syncRef = useRef<(() => void) | null>(null);
   const [scrolled, setScrolled] = useState(false);
   // The listeners are attached once and read the latest props from here, so a new callback does not detach and attach them.
   const latest = useRef({ onWheelZoom, onPinch, paged, onPageTurn, fitScale });
@@ -261,6 +262,17 @@ export function Canvas({
       onViewport(current);
     });
     observer.observe(region);
+    // The size the region really has (its content box, padding and scrollbar excluded) against the one last handed on: a report
+    // that was held back or missed would leave the layout wider than the region (a horizontal bar, a page off centre).
+    syncRef.current = () => {
+      if (isLayoutAnimating() || freeze !== null || reported === null) return;
+      const width = Math.floor(region.clientWidth - 2 * pad);
+      const height = Math.floor(region.clientHeight - 2 * pad);
+      if (width <= 0 || height <= 0 || (width === reported.width && height === reported.height)) return;
+      current = { width, height };
+      reported = current;
+      onViewport(current);
+    };
     const stop = subscribeLayoutAnimating(() => {
       if (isLayoutAnimating()) begin();
       // Ended: commit in the next frame, unless another animation has started by then (a reversal).
@@ -269,6 +281,7 @@ export function Canvas({
     if (isLayoutAnimating()) begin();
     return () => {
       stop();
+      syncRef.current = null;
       window.cancelAnimationFrame(release);
       observer.disconnect();
       const content = contentRef.current;
@@ -278,6 +291,11 @@ export function Canvas({
       }
     };
   }, [onViewport]);
+
+  // After every layout of the content: is the size the layout was made for still the region's?
+  useEffect(() => {
+    syncRef.current?.();
+  });
 
   const setRegion = useCallback(
     (element: HTMLDivElement | null) => {

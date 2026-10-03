@@ -15,11 +15,15 @@ import { cx } from '../../components/cx';
 import { useLocale, useT } from '../../i18n';
 import type { Locale } from '../../i18n';
 import { useUi } from '../../stores/ui';
+import { setPendingSource } from '../viewer/openTransition';
 import { adoptOpenOutcomes } from '../viewer/useViewer';
 import type { RecentRow } from './EmptyState';
 
 /** The most rows the empty state shows (DESIGN 3.11); the backend keeps up to 50. */
 export const MAX_RECENT_ROWS = 8;
+
+/** Between the folder and the age on a row's meta line (punctuation, the same in every language). */
+const META_SEPARATOR = ' · ';
 
 const UNITS: readonly (readonly [Intl.RelativeTimeFormatUnit, number])[] = [
   ['year', 31_536_000],
@@ -106,11 +110,21 @@ export function useRecents(): Recents {
   );
 
   const open = useCallback(
-    (entry: RecentEntry) => {
+    (entry: RecentEntry, tile?: Element | null) => {
       // A file that is gone cannot be opened: activating its row offers to find it (DESIGN 3.11).
       if (entry.missing) {
         locate(entry);
         return;
+      }
+      // The row's tile becomes the page (MOTION 4.6): its rect is the clone's source.
+      if (tile !== null && tile !== undefined) {
+        const box = tile.getBoundingClientRect();
+        if (box.width > 0 && box.height > 0) {
+          setPendingSource({
+            kind: 'tile',
+            rect: { left: box.left, top: box.top, width: box.width, height: box.height },
+          });
+        }
       }
       openRecent(entry.id).then(
         (outcome) => {
@@ -132,6 +146,7 @@ export function useRecents(): Recents {
   const rows = entries.slice(0, MAX_RECENT_ROWS).map((entry): RecentRow => {
     const name = entry.displayName === '' ? t('status.untitled') : entry.displayName;
     const age = entry.missing ? t('emptyState.recentMissing') : formatAge(entry.lastOpened, now, locale);
+    const meta = [entry.folder, age].filter((part) => part !== '').join(META_SEPARATOR);
     const onKeyDown = (event: KeyboardEvent<HTMLButtonElement>) => {
       if (event.key === 'Delete') {
         event.preventDefault();
@@ -145,16 +160,19 @@ export function useRecents(): Recents {
           <button
             type="button"
             data-recent-open=""
-            onClick={() => open(entry)}
+            onClick={(event) => open(entry, event.currentTarget.querySelector('[data-recent-tile]'))}
             onKeyDown={onKeyDown}
             className="flex h-full min-w-0 flex-1 cursor-pointer items-center gap-1 rounded-sm text-start"
           >
-            <span className="flex h-5 w-4 shrink-0 items-center justify-center rounded-xs bg-tile text-tile-icon">
+            <span
+              data-recent-tile=""
+              className="flex h-5 w-4 shrink-0 items-center justify-center rounded-xs bg-tile text-tile-icon"
+            >
               <Icon icon={entry.missing ? FileX : FileText} className={cx(entry.missing && 'text-warning-icon')} />
             </span>
             <span className="flex min-w-0 flex-1 flex-col">
               <span className="truncate text-md">{name}</span>
-              {age !== '' && <span className="truncate text-sm text-text-muted">{age}</span>}
+              {meta !== '' && <span className="truncate text-sm text-text-muted">{meta}</span>}
             </span>
           </button>
           {entry.missing && (

@@ -2,7 +2,7 @@
 //!
 //! Stored shape: `{ "version": 1, "files": [{ "path": "...", "lastOpened": 1700000000 }] }`, newest first, at most
 //! `limits::MAX_RECENTS` entries. The paths are the only place where the app keeps the location of a file the user opened; they
-//! never leave Rust. The UI sees a [`RecentEntry`] (`id`, `displayName`, `lastOpened`, `missing`) and names an entry by its `id`,
+//! never leave Rust. The UI sees a [`RecentEntry`] (`id`, `displayName`, `folder`, `lastOpened`, `missing`) and names an entry by its `id`,
 //! a number that is handed out when the entry is read or added and is only good for this run.
 //!
 //! - **Reading** never fails: a missing, oversized, damaged or hand-edited file means an empty list, entry by entry (the file is
@@ -37,12 +37,13 @@ const MAX_EXISTENCE_CHECKS: usize = 16;
 /// File name inside the app data directory.
 pub const FILE_NAME: &str = "recents.json";
 
-/// What the UI is told about a recent file: no path, no folder. `last_opened` is in seconds since 1970 (0 = unknown).
+/// What the UI is told about a recent file: no path; only the display name of the parent folder (its last segment). `last_opened` is in seconds since 1970 (0 = unknown).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RecentEntry {
     pub id: u32,
     pub display_name: String,
+    pub folder: String,
     pub last_opened: u64,
     pub missing: bool,
 }
@@ -117,6 +118,7 @@ impl RecentsStore {
             .map(|(position, item)| RecentEntry {
                 id: item.id,
                 display_name: display_name(&item.path),
+                folder: item.path.parent().map(display_name).unwrap_or_default(),
                 last_opened: item.last_opened,
                 // A file that cannot be examined (permissions) is not reported gone: opening it says what is wrong.
                 missing: position < MAX_EXISTENCE_CHECKS
@@ -515,9 +517,9 @@ mod tests {
         let json = serde_json::to_string(&store.list()).unwrap();
         assert_eq!(
             json,
-            r#"[{"id":0,"displayName":"report.pdf","lastOpened":7,"missing":true}]"#
+            r#"[{"id":0,"displayName":"report.pdf","folder":"sheer-recents-test","lastOpened":7,"missing":true}]"#
         );
-        assert!(!json.contains("sheer-recents-test"));
+        assert!(!json.contains(std::env::temp_dir().to_string_lossy().as_ref()));
     }
 
     #[test]

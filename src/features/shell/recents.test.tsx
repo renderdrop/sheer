@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { useUi } from '../../stores/ui';
 import { setup } from '../../test/render';
 import { EmptyState } from './EmptyState';
+import { beginOpening, resetTransition, useTransition } from '../viewer/openTransition';
 import { formatAge, useRecents } from './recents';
 
 const api = vi.hoisted(() => ({
@@ -20,8 +21,8 @@ vi.mock('../viewer/useViewer', () => ({ adoptOpenOutcomes: adopt }));
 
 const NOW = 1_700_000_000;
 const entries = [
-  { id: 1, displayName: 'First.pdf', lastOpened: NOW - 7200, missing: false },
-  { id: 2, displayName: 'Gone.pdf', lastOpened: NOW - 100, missing: true },
+  { id: 1, displayName: 'First.pdf', folder: 'Reports', lastOpened: NOW - 7200, missing: false },
+  { id: 2, displayName: 'Gone.pdf', folder: '', lastOpened: NOW - 100, missing: true },
 ];
 
 beforeEach(() => {
@@ -32,6 +33,7 @@ beforeEach(() => {
   api.locateRecent.mockReset().mockResolvedValue(true);
   useUi.setState({ toast: null, banner: null });
   adopt.mockReset();
+  resetTransition();
 });
 
 function Host() {
@@ -67,11 +69,32 @@ describe('the recent files of the empty state', () => {
     expect(screen.getByRole('list', { name: 'Recent files' })).not.toBeNull();
   });
 
-  it('shows the placeholder when the list is empty or cannot be read', async () => {
+  it('names the parent folder and the age on the meta line, never a path', async () => {
+    setup(<Host />);
+    expect(await screen.findByText(/^Reports · /)).not.toBeNull();
+  });
+
+  it('omits the whole section when the list is empty or cannot be read', async () => {
     api.listRecents.mockRejectedValue({ code: 'internal' });
     setup(<Host />);
     await waitFor(() => expect(api.listRecents).toHaveBeenCalled());
-    expect(screen.getByText('Files you open appear here.')).not.toBeNull();
+    expect(screen.queryByRole('heading', { name: 'Recent' })).toBeNull();
+    expect(screen.queryByRole('list', { name: 'Recent files' })).toBeNull();
+  });
+
+  it('flies the row tile to the page: its rect is the clone source of the opening', async () => {
+    api.openRecent.mockResolvedValue({ type: 'opened', document: { id: 5, pageCount: 1, displayName: 'First.pdf' } });
+    const rect = vi
+      .spyOn(HTMLElement.prototype, 'getBoundingClientRect')
+      .mockReturnValue({ left: 10, top: 20, width: 16, height: 20 } as DOMRect);
+    const { user } = setup(<Host />);
+    await user.click(await screen.findByRole('button', { name: /^First[.]pdf/ }));
+    rect.mockRestore();
+    beginOpening(5);
+    expect(useTransition.getState().active?.source).toEqual({
+      kind: 'tile',
+      rect: { left: 10, top: 20, width: 16, height: 20 },
+    });
   });
 
   it('opens a row by id and hands the outcome to the viewer', async () => {
@@ -92,7 +115,7 @@ describe('the recent files of the empty state', () => {
     expect(screen.queryByText('First.pdf')).toBeNull();
     await user.click(screen.getByRole('button', { name: 'Remove Gone.pdf from recent files' }));
     expect(api.removeRecent).toHaveBeenCalledWith(2);
-    expect(screen.getByText('Files you open appear here.')).not.toBeNull();
+    expect(screen.queryByRole('list', { name: 'Recent files' })).toBeNull();
   });
 
   it('Clear empties the list', async () => {
