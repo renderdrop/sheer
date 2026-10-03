@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-use-signature"
+description = "Enables the use_signature command without any pre-configured scope."
+commands.allow = ["use_signature"]
+
+[[permission]]
+identifier = "deny-use-signature"
+description = "Denies the use_signature command without any pre-configured scope."
+commands.deny = ["use_signature"]

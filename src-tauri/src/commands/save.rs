@@ -70,6 +70,8 @@ pub enum SaveMode {
 pub enum SaveWarning {
     /// The original could not be copied to the backup folder (no data folder, or the copy failed); the file was saved anyway.
     BackupSkipped,
+    /// A hybrid form was filled: its XFA data was removed so that other viewers do not show stale values (ADR-041 §3).
+    XfaRemoved,
 }
 
 /// How a backup attempt went.
@@ -140,7 +142,10 @@ pub(super) fn plan_with_origins(
     origin_of: impl Fn(&PdfOrigin) -> Option<PdfOrigin>,
 ) -> Plan {
     use crate::model::annotation::Sync;
-    let mut plan = Plan::default();
+    let mut plan = Plan {
+        assets: state.assets().snapshot(),
+        ..Plan::default()
+    };
     for entry in state.entries() {
         let annotation = &entry.annotation;
         let origin = entry.persisted.as_ref().and_then(&origin_of);
@@ -172,6 +177,9 @@ pub(super) fn plan_with_origins(
 /// a full rewrite ("clean copy").
 struct BuildPlan {
     plan: Plan,
+    /// The form fields whose value changed, and whether the form is a hybrid one (its `/XFA` goes).
+    form: Vec<crate::model::form::FormField>,
+    strip_xfa: bool,
     pages: PagePlan,
     sources: std::collections::HashMap<SourceId, Arc<SourceBytes>>,
     clean_copy: bool,
@@ -184,11 +192,13 @@ fn build_pages(
     id: DocumentId,
     original: Vec<u8>,
     work: BuildPlan,
-) -> Result<Built, AppError> {
+) -> Result<(Built, bool), AppError> {
     let slot = BuildSlot::take(owner, id)?;
     build_with(slot, limits::SAVE_TIMEOUT, move || {
         let BuildPlan {
             plan,
+            form,
+            strip_xfa,
             pages,
             sources,
             clean_copy,
@@ -202,14 +212,21 @@ fn build_pages(
             (original, Vec::new())
         };
         let mut built = pdfwrite::append_annotations(bytes, &plan)?;
+        // The form values follow the annotations: a second update on top of the first (the `/Annots` positions do not change).
+        let mut xfa_removed = false;
+        if !form.is_empty() {
+            let written = pdfwrite::forms::write_values(built.bytes, &form, strip_xfa)?;
+            built.bytes = written.bytes;
+            xfa_removed = written.xfa_removed;
+        }
         if clean_copy {
             built.bytes = pagetree::compact(built.bytes, &deleted)?;
         }
-        if !plan.changes.is_empty() || pages.changed() || clean_copy {
+        if !plan.changes.is_empty() || pages.changed() || clean_copy || !form.is_empty() {
             pdfwrite::validate(&built.bytes, expected)?;
         }
         built.pages = expected;
-        Ok(built)
+        Ok((built, xfa_removed))
     })
 }
 
@@ -346,7 +363,7 @@ impl AppState {
         }
 
         // What the file has to become: the pages in their order (ADR-036 §5) and the annotations on them, at the positions they will have.
-        let (pages, plan) = self.model(id, |state| {
+        let (pages, plan, form, strip_xfa) = self.model(id, |state| {
             let pages = state.page_plan();
             let position: std::collections::HashMap<u32, u32> = pages
                 .pages
@@ -369,12 +386,20 @@ impl AppState {
                     })
                 },
             );
-            Ok((pages, plan))
+            // The form fields whose value is not the file's (ADR-041 §3).
+            let form: Vec<crate::model::form::FormField> = state
+                .form()
+                .map(|form| form.changed().into_iter().cloned().collect())
+                .unwrap_or_default();
+            let strip_xfa = state
+                .form()
+                .is_some_and(|form| form.xfa() == crate::model::form::Xfa::Hybrid);
+            Ok((pages, plan, form, strip_xfa))
         })?;
         let expected =
             u32::try_from(pages.pages.len()).map_err(|_| AppError::new(ErrorCode::Internal))?;
         let page_changes = pages.changed();
-        let writes = !plan.changes.is_empty() || page_changes || clean_copy;
+        let writes = !plan.changes.is_empty() || page_changes || clean_copy || !form.is_empty();
         if writes && info.flags.encrypted {
             // lopdf would have to encrypt what it appends (ADR-004 §5); until that is settled an encrypted file is not changed.
             return Err(AppError::logged(
@@ -416,12 +441,14 @@ impl AppState {
         let original_len = original.len();
         // A full rewrite shares nothing with the original, so what the backup and a rollback need is kept apart.
         let original_copy = clean_copy.then(|| original.clone());
-        let built = build_pages(
+        let (built, xfa_removed) = build_pages(
             Arc::as_ptr(&self.registry) as usize,
             id,
             original,
             BuildPlan {
                 plan,
+                form,
+                strip_xfa,
                 pages,
                 sources,
                 clean_copy,
@@ -450,6 +477,9 @@ impl AppState {
         let mut warnings = Vec::new();
         if backup == BackupOutcome::Skipped {
             warnings.push(SaveWarning::BackupSkipped);
+        }
+        if xfa_removed {
+            warnings.push(SaveWarning::XfaRemoved);
         }
 
         // The build and the backup took time: look at the file again right before it is replaced, so that a change made by another

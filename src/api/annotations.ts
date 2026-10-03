@@ -1,5 +1,7 @@
 import { call } from './call';
 import { toAppError } from './errors';
+import { parseFieldStates, type FieldState, type SetFieldValueCommand } from './forms';
+import type { SignatureRole } from './library';
 import { parseSlots, type PageCommand, type PageSlotInfo } from './pages';
 import {
   isCoordinate,
@@ -37,6 +39,13 @@ export const MAX_HISTORY_ENTRIES = 500;
 export type Rgb = readonly [number, number, number];
 export type LineEnd = 'none' | 'openArrow' | 'closedArrow';
 export type NoteIcon = 'comment' | 'note' | 'help';
+export type MarkGlyph = 'check' | 'cross' | 'dot';
+/** Where a signature's picture comes from: an asset of the document (`useSignature`), or the file. Aspect is width over height. */
+export type SignatureArtRef = { type: 'asset'; assetId: number; aspect: number } | { type: 'file' };
+/** Smallest side of a signature or mark in points, and the range of a signature's aspect (the backend refuses beyond them). */
+export const MIN_SIGNATURE_SIDE_PT = 4;
+export const MIN_SIGNATURE_ASPECT = 0.01;
+export const MAX_SIGNATURE_ASPECT = 100;
 /** Whether the annotation is in the file as it is: `new` (this session), `clean`, or `modified` (in the file, changed since). */
 export type SyncState = 'new' | 'clean' | 'modified';
 
@@ -69,6 +78,10 @@ export type AnnotationBody =
   | { kind: 'ink'; strokes: readonly Stroke[]; width: number }
   | { kind: 'rect' | 'ellipse'; box: Rect; width: number; fill: Rgb | null; dashed: boolean }
   | { kind: 'line'; from: Point; to: Point; width: number; head: LineEnd; tail: LineEnd }
+  /** A signature or initials (ADR-041 section 5). `art.type = 'file'` is what a reloaded file has: the picture is in the file and is kept. */
+  | { kind: 'signature'; box: Rect; role: SignatureRole; art: SignatureArtRef }
+  /** A check, a cross or a dot of Fill & Sign, drawn in the annotation's colour. */
+  | { kind: 'mark'; box: Rect; glyph: MarkGlyph }
   /** An annotation of a kind the app does not edit: shown and selectable, never changed. */
   | { kind: 'opaque'; subtype: string };
 
@@ -76,7 +89,10 @@ export type Annotation = AnnotationCommon & AnnotationBody;
 export type AnnotationKind = Annotation['kind'];
 
 /** The kinds the user can create (everything but `opaque`). */
-export type DraftBody = Exclude<AnnotationBody, { kind: 'opaque' }>;
+export type DraftBody =
+  | Exclude<AnnotationBody, { kind: 'opaque' } | { kind: 'signature' }>
+  /** A new signature always brings its own art; art that is "in the file" only comes from a reload. */
+  | { kind: 'signature'; box: Rect; role: SignatureRole; art: Extract<SignatureArtRef, { type: 'asset' }> };
 
 /** An annotation to create: the backend assigns `id`, `rect`, `sync` and `modified`. */
 export type AnnotationDraft = {
@@ -127,6 +143,7 @@ export type DocCommand =
   | { type: 'deleteAnnotations'; ids: readonly number[] }
   | { type: 'moveAnnotations'; ids: readonly number[]; dx: number; dy: number }
   | { type: 'batch'; label: string; commands: readonly DocCommand[] }
+  | SetFieldValueCommand
   | PageCommand;
 
 /** What the UI needs for its Undo and Redo commands. */
@@ -148,6 +165,8 @@ export interface ChangeSet {
   removed: readonly number[];
   /** The full page list, only when it changed (ADR-036); `null` otherwise. */
   pages: readonly PageSlotInfo[] | null;
+  /** The form fields whose value changed (ADR-041); empty when none did. */
+  fields?: readonly FieldState[];
   history: HistoryState;
 }
 
@@ -204,6 +223,19 @@ function parseQuads(value: unknown): Quad[] | null {
 
 const isWidth = (value: unknown): value is number => isCoordinate(value) && value >= 0;
 
+function parseSignatureArt(value: unknown): SignatureArtRef | null {
+  if (!isRecord(value)) return null;
+  if (value.type === 'file') return { type: 'file' };
+  const { assetId, aspect } = value;
+  return value.type === 'asset' &&
+    isUint(assetId) &&
+    typeof aspect === 'number' &&
+    aspect >= MIN_SIGNATURE_ASPECT &&
+    aspect <= MAX_SIGNATURE_ASPECT
+    ? { type: 'asset', assetId, aspect }
+    : null;
+}
+
 function parseBody(value: Record<string, unknown>): AnnotationBody | null {
   const { kind } = value;
   switch (kind) {
@@ -252,6 +284,19 @@ function parseBody(value: Record<string, unknown>): AnnotationBody | null {
       const { width, head, tail } = value;
       return from !== null && to !== null && isWidth(width) && LINE_ENDS.has(head) && LINE_ENDS.has(tail)
         ? { kind, from, to, width, head: head as LineEnd, tail: tail as LineEnd }
+        : null;
+    }
+    case 'signature': {
+      const box = parseRect(value.box);
+      const art = parseSignatureArt(value.art);
+      return box !== null && art !== null && (value.role === 'signature' || value.role === 'initials')
+        ? { kind, box, role: value.role, art }
+        : null;
+    }
+    case 'mark': {
+      const box = parseRect(value.box);
+      return box !== null && (value.glyph === 'check' || value.glyph === 'cross' || value.glyph === 'dot')
+        ? { kind, box, glyph: value.glyph }
         : null;
     }
     case 'opaque':
@@ -340,9 +385,11 @@ export function parseChangeSet(value: unknown): ChangeSet | null {
   const { rev, upserted, removed, pages } = value;
   const history = parseHistoryState(value.history);
   const parsedPages = pages === null || pages === undefined ? null : parseSlots(pages);
+  const fields = parseFieldStates(value.fields);
   if (
     !isUint(rev, Number.MAX_SAFE_INTEGER) ||
     history === null ||
+    fields === null ||
     !Array.isArray(upserted) ||
     upserted.length > MAX_ANNOTATIONS_PER_DOC ||
     !Array.isArray(removed) ||
@@ -357,7 +404,7 @@ export function parseChangeSet(value: unknown): ChangeSet | null {
     if (annotation === null) return null;
     parsed.push(annotation);
   }
-  return { rev, upserted: parsed, removed: removed as number[], pages: parsedPages, history };
+  return { rev, upserted: parsed, removed: removed as number[], pages: parsedPages, fields, history };
 }
 
 // --- Commands --------------------------------------------------------------------------------------------------------

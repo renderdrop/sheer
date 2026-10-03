@@ -7,6 +7,7 @@
 //! overwritten); it only stops being listed.
 
 use std::collections::{BTreeMap, HashMap, HashSet};
+use std::sync::Arc;
 
 use lopdf::{Dictionary, Document, IncrementalDocument, Object, ObjectId};
 
@@ -15,7 +16,8 @@ use super::coords::page_mapper;
 use crate::error::{AppError, ErrorCode};
 use crate::limits;
 use crate::model::annotation::{Annotation, PdfOrigin};
-use crate::model::ids::AnnotId;
+use crate::model::ids::{AnnotId, AssetId};
+use crate::signatures::Art;
 
 /// One thing to do to the file.
 #[derive(Debug, Clone)]
@@ -36,6 +38,8 @@ pub enum Change {
 pub struct Plan {
     pub changes: Vec<Change>,
     pub known: Vec<(AnnotId, PdfOrigin)>,
+    /// The art the signatures of the changes refer to (`DocState.assets`).
+    pub assets: HashMap<AssetId, Arc<Art>>,
 }
 
 /// The saved file, and where every annotation of the plan is in it.
@@ -207,6 +211,8 @@ pub fn append_annotations(original: Vec<u8>, plan: &Plan) -> Result<Built, AppEr
     let page_count = u32::try_from(pages.len()).map_err(|_| failed("page count"))?;
     let mut inc = IncrementalDocument::create_from(original, doc);
     let mut origins: Vec<(AnnotId, PdfOrigin)> = Vec::new();
+    // One image XObject per raster asset per save.
+    let mut images: HashMap<AssetId, lopdf::ObjectId> = HashMap::new();
     let known: HashMap<AnnotId, &PdfOrigin> = plan.known.iter().map(|(id, o)| (*id, o)).collect();
     let mut known_by_page: HashMap<u32, Vec<(AnnotId, &PdfOrigin)>> = HashMap::new();
     for (id, origin) in &plan.known {
@@ -309,7 +315,7 @@ pub fn append_annotations(original: Vec<u8>, plan: &Plan) -> Result<Built, AppEr
                 .as_ref()
                 .filter(|_| target.entry.is_some())
                 .and_then(|origin| origin.name.clone())
-                .unwrap_or_else(annots::random_name);
+                .unwrap_or_else(|| annots::new_name(annotation));
             let reply_to = annotation.in_reply_to.and_then(|parent| {
                 targets.get(&parent).map(|t| t.id).or_else(|| {
                     let prev = inc.get_prev_documents();
@@ -326,8 +332,13 @@ pub fn append_annotations(original: Vec<u8>, plan: &Plan) -> Result<Built, AppEr
             else {
                 continue;
             };
-            if let Some(stream) = annots::build_stream(annotation, mapper) {
-                let ap = inc.new_document.add_object(stream);
+            if let Some(ap) = annots::write_appearance(
+                annotation,
+                mapper,
+                &plan.assets,
+                &mut inc.new_document,
+                &mut images,
+            ) {
                 let mut normal = Dictionary::new();
                 normal.set("N", Object::Reference(ap));
                 dict.set("AP", Object::Dictionary(normal));

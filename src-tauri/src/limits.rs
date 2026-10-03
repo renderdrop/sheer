@@ -136,6 +136,19 @@ pub const MAX_SOURCES: usize = 32;
 /// Sides of a page the user may ask for, in points.
 pub const MIN_NEW_PAGE_SIDE_PT: f32 = 1.0;
 pub const MAX_LABEL_CHARS: usize = 64;
+// --- Forms (ADR-041) ---
+/// Nodes of the field tree that are looked at, terminal fields, widgets, and the depth of the tree (a deeper one is damaged).
+pub const MAX_FORM_NODES: usize = 100_000;
+pub const MAX_FORM_FIELDS: usize = 10_000;
+pub const MAX_FORM_WIDGETS: usize = 20_000;
+pub const MAX_FORM_DEPTH: usize = 32;
+/// Options of a choice field and on-states of a radio group that are read.
+pub const MAX_FIELD_OPTIONS: usize = 1_000;
+/// Characters of a text value (ADR-041 §2) and of a fully qualified field name, a tooltip and an option label.
+pub const MAX_FIELD_TEXT_CHARS: usize = 32_768;
+pub const MAX_FIELD_NAME_CHARS: usize = 512;
+/// Deadline of reading the field tree.
+pub const FORM_READ_TIMEOUT: Duration = Duration::from_secs(30);
 /// Entries of one document's undo stack (the redo stack never grows past it either).
 pub const MAX_HISTORY_ENTRIES: usize = 500;
 /// Bytes of the undo stack (what its steps hold, estimated); the oldest steps are dropped past it.

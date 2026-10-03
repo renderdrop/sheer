@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-clear-signature-library"
+description = "Enables the clear_signature_library command without any pre-configured scope."
+commands.allow = ["clear_signature_library"]
+
+[[permission]]
+identifier = "deny-clear-signature-library"
+description = "Denies the clear_signature_library command without any pre-configured scope."
+commands.deny = ["clear_signature_library"]

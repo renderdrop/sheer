@@ -3,15 +3,22 @@
 //! wrong, and a text with a line break stays as it is.
 
 use std::collections::hash_map::RandomState;
+use std::collections::HashMap;
 use std::hash::{BuildHasher, Hasher};
+use std::io::Write as _;
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use lopdf::{Dictionary, Object, ObjectId, Stream, StringFormat};
 
-use super::appearance::{self, num, Appearance, FONT_NAME, GS_NAME};
+use super::appearance::{self, num, Appearance, FONT_NAME, GS_NAME, IMAGE_NAME};
 use super::coords::Mapper;
-use crate::model::annotation::{Annotation, AnnotationBody, LineEnd, NoteIcon, Rgb};
+use crate::model::annotation::{
+    Annotation, AnnotationBody, LineEnd, NoteIcon, Rgb, SignatureArtRef, SignatureRole,
+};
+use crate::model::ids::AssetId;
+use crate::signatures::{marks, raster, Art};
 
 /// Annotation flags (ISO 32000-1, table 165).
 const FLAG_PRINT: i64 = 4;
@@ -172,6 +179,18 @@ pub fn annotation_dict(
     base: Option<Dictionary>,
 ) -> Option<Dictionary> {
     let mut dict = base.unwrap_or_default();
+    // The appearance of a signature read from the file is the file's: a move or a scale changes only its `/Rect`.
+    let kept_ap = if matches!(
+        annotation.body,
+        AnnotationBody::Signature {
+            art: SignatureArtRef::File,
+            ..
+        }
+    ) {
+        dict.get(b"AP").ok().cloned()
+    } else {
+        None
+    };
     // What the model sets afresh every time; what it does not know about the annotation stays.
     for key in [
         &b"AP"[..],
@@ -322,7 +341,15 @@ pub fn annotation_dict(
             dict.set("BS", border_style(*width, false));
             dict.set("C", color(annotation.color));
         }
+        AnnotationBody::Signature { .. } | AnnotationBody::Mark { .. } => {
+            dict.set("Subtype", name("Stamp"));
+            // The colour only matters to vector art; `/C` keeps it for the reader that looks at the annotation, not the picture.
+            dict.set("C", color(annotation.color));
+        }
         AnnotationBody::Opaque { .. } => return None,
+    }
+    if let Some(ap) = kept_ap {
+        dict.set("AP", ap);
     }
     dict.set("F", flags);
     dict.set("Rect", numbers(&rect));
@@ -360,8 +387,31 @@ pub fn annotation_dict(
     Some(dict)
 }
 
+/// A fresh `/NM` for `annotation`: the 128 random bits of [`random_name`], behind the prefix our own stamps carry so that a reload
+/// reads them as signatures and marks again (`signatures::marks::parse_name`).
+pub fn new_name(annotation: &Annotation) -> String {
+    match &annotation.body {
+        AnnotationBody::Signature { role, .. } => {
+            let prefix = match role {
+                SignatureRole::Signature => "sheer-sig-",
+                SignatureRole::Initials => "sheer-ini-",
+            };
+            format!("{prefix}{}", random_name())
+        }
+        AnnotationBody::Mark { glyph, .. } => {
+            format!("sheer-mark-{}-{}", marks::word(*glyph), random_name())
+        }
+        _ => random_name(),
+    }
+}
+
 /// The Form XObject of an appearance: the rectangle as `/BBox`, an identity matrix, and the resources the content names.
 pub fn appearance_stream(ap: &Appearance, opacity: f32) -> Stream {
+    appearance_stream_with(ap, opacity, None)
+}
+
+/// [`appearance_stream`] with the image XObject a raster signature draws.
+pub fn appearance_stream_with(ap: &Appearance, opacity: f32, image: Option<ObjectId>) -> Stream {
     let mut dict = Dictionary::new();
     dict.set("Type", name("XObject"));
     dict.set("Subtype", name("Form"));
@@ -387,6 +437,11 @@ pub fn appearance_stream(ap: &Appearance, opacity: f32) -> Stream {
         fonts.set(FONT_NAME, Object::Dictionary(font));
         resources.set("Font", Object::Dictionary(fonts));
     }
+    if let Some(image) = image {
+        let mut images = Dictionary::new();
+        images.set(IMAGE_NAME, Object::Reference(image));
+        resources.set("XObject", Object::Dictionary(images));
+    }
     dict.set("Resources", Object::Dictionary(resources));
     Stream::new(dict, ap.content.clone().into_bytes())
 }
@@ -394,6 +449,85 @@ pub fn appearance_stream(ap: &Appearance, opacity: f32) -> Stream {
 /// The appearance of `annotation` as a stream, mapped by `m`.
 pub fn build_stream(annotation: &Annotation, m: Mapper) -> Option<Stream> {
     appearance::build(annotation, m).map(|ap| appearance_stream(&ap, annotation.opacity))
+}
+
+/// A deflated stream: `bytes` as they are, `/Filter /FlateDecode`.
+fn flate_stream(mut dict: Dictionary, bytes: &[u8]) -> Option<Stream> {
+    let mut encoder = flate2::write::ZlibEncoder::new(Vec::new(), flate2::Compression::default());
+    encoder.write_all(bytes).ok()?;
+    let packed = encoder.finish().ok()?;
+    dict.set("Filter", name("FlateDecode"));
+    Some(Stream::new(dict, packed))
+}
+
+/// The image XObject of raster art: DeviceRGB, 8 bits, Flate, with the alpha channel as a DeviceGray `/SMask` when any pixel is not
+/// opaque (ADR-041 §5). `None` if the PNG does not decode (it is our own output, so that does not happen).
+fn image_objects(art: &Art, doc: &mut lopdf::Document) -> Option<ObjectId> {
+    let Art::Raster { png, .. } = art else {
+        return None;
+    };
+    let picture = raster::decode_art(png).ok()?;
+    let (width, height) = picture.dimensions();
+    let pixels = picture.pixels().len();
+    let mut rgb = Vec::with_capacity(pixels * 3);
+    let mut alpha = Vec::with_capacity(pixels);
+    for pixel in picture.pixels() {
+        rgb.extend_from_slice(&pixel.0[..3]);
+        alpha.push(pixel.0[3]);
+    }
+    let image_dict = |space: &str| {
+        let mut dict = Dictionary::new();
+        dict.set("Type", name("XObject"));
+        dict.set("Subtype", name("Image"));
+        dict.set("Width", i64::from(width));
+        dict.set("Height", i64::from(height));
+        dict.set("ColorSpace", name(space));
+        dict.set("BitsPerComponent", 8);
+        dict
+    };
+    let mut dict = image_dict("DeviceRGB");
+    if alpha.iter().any(|a| *a != 255) {
+        let mask = flate_stream(image_dict("DeviceGray"), &alpha)?;
+        let mask = doc.add_object(mask);
+        dict.set("SMask", Object::Reference(mask));
+    }
+    let stream = flate_stream(dict, &rgb)?;
+    Some(doc.add_object(stream))
+}
+
+/// Writes the appearance of `annotation` as an object of `doc` and returns it: the stream of [`build_stream`] for the kinds that have
+/// one, with the art of a signature taken from `assets`; the image of a raster asset is written once per save (`images`). `None` for
+/// an annotation without an appearance to write (art that is in the file already, or an asset that is gone).
+pub fn write_appearance(
+    annotation: &Annotation,
+    m: Mapper,
+    assets: &HashMap<AssetId, Arc<Art>>,
+    doc: &mut lopdf::Document,
+    images: &mut HashMap<AssetId, ObjectId>,
+) -> Option<ObjectId> {
+    let AnnotationBody::Signature { art: reference, .. } = &annotation.body else {
+        let stream = build_stream(annotation, m)?;
+        return Some(doc.add_object(stream));
+    };
+    let SignatureArtRef::Asset { asset_id, .. } = reference else {
+        return None;
+    };
+    let art = assets.get(asset_id)?;
+    let (ap, uses_image) = appearance::build_with(annotation, m, Some(art))?;
+    let image = if uses_image {
+        match images.get(asset_id) {
+            Some(id) => Some(*id),
+            None => {
+                let id = image_objects(art, doc)?;
+                images.insert(*asset_id, id);
+                Some(id)
+            }
+        }
+    } else {
+        None
+    };
+    let stream = appearance_stream_with(&ap, annotation.opacity, image);
+    Some(doc.add_object(stream))
 }
 
 /// The /T text for an annotation's author (ADR-034): sanitized, and `None` (no /T) when nothing is left.

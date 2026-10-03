@@ -17,6 +17,9 @@ below, with a one-line reason why it is not written in-house (ORCHESTRATOR_PROMP
 | tauri-plugin-dialog | Rust | 2.8.1 | Apache-2.0 OR MIT | Native open dialog, called from Rust only; no capability grants it to the webview. Native dialogs are not writable in-house across two OSes. | v0.2.0 |
 | tauri-plugin-opener | Rust | 2.7.0 | Apache-2.0 OR MIT | Opens the one link in a PDF that the user confirmed (`commands/links.rs`), with the system's handler for `http`, `https` and `mailto`. Only its `open_url` function is called, from Rust, with a URL that `security::links` classified; the plugin is not registered with the builder and no capability names it, so the webview has no opener command (SECURITY P3). Starting the default handler is `ShellExecuteExW` on Windows and Launch Services on macOS: Win32 and Objective-C FFI, which our own code forbids (`unsafe_code = "forbid"`) and which is not sensible in-house. Brings one new crate into the Windows and macOS builds, `open` 5 (MIT; with `dunce` and `glob`, which are in the build already), beside the `windows` and `objc2` crates that are there too. Its Linux-only crates (`is-docker`, `is-wsl`, `zbus`) are in `Cargo.lock` but not built for Windows or macOS. | v0.4.0 (M1) |
 | zeroize | Rust | 1.9.0 | Apache-2.0 OR MIT | Wipes the password of an encrypted PDF from memory when it is dropped (`Zeroizing<String>`, SECURITY D3). Needs volatile writes, which our own code forbids (`unsafe_code = "forbid"`). No further dependencies. | v0.4.0 (M1) |
+| skrifa | Rust | 0.48.0 | MIT OR Apache-2.0 | Glyph outlines of the bundled signature font, flattened to polygons (`signatures/typed.rs` only, ADR-041 section 6). googlefonts/fontations, `forbid(unsafe_code)`, active; brings `read-fonts` 0.45 and `font-types` 0.12 (same license). `ttf-parser` was rejected as unmaintained. | v0.7.0 (M4) |
+| image (feature `png`) | Rust | 0.25.10 | MIT OR Apache-2.0 | PNG decoder for signature pictures (`signatures/raster.rs`), next to the `jpeg` feature; decodes with `Limits`. The `png` crate is already a dependency. | v0.7.0 (M4) |
+| Homemade Apple (font) | Asset | Regular | Apache-2.0 | Typed signatures (ADR-042). Font Diner; `src-tauri/resources/fonts/HomemadeApple-Regular.ttf` with `LICENSE-HomemadeApple.txt` beside it. Compiled into the binary (`include_bytes!`), never embedded in a PDF. | v0.7.0 (M4) |
 | same-file | Rust (Windows) | 1.0.6 | Unlicense OR MIT | The identity of an open file (volume serial number and file index) for intake's "is this still the file I opened" check (`documents/intake.rs`, ADR-028); `std` offers it on Unix only and our code forbids `unsafe`. Already in the build through walkdir. | v0.3.0 |
 | pdfium-render | Rust | 0.9.4 | MIT OR Apache-2.0 | Safe bindings to PDFium, bound dynamically (features: `pdfium_7881` only). Writing FFI bindings for PDFium in-house is not sensible. | v0.2.0 |
 | png | Rust | 0.18.1 | MIT OR Apache-2.0 | PNG encoding of rendered pages, streamed row by row. Chosen over `image` to avoid its codec tree. | v0.2.0 |
@@ -240,3 +243,13 @@ eslint-plugin-react-hooks; attribution only, no copyleft). Neither is a GPL/AGPL
 
 - `image` 0.25.10 (MIT OR Apache-2.0), `default-features = false, features = ["jpeg"]`: JPEG decode/encode and resize for compress. Pulls `zune-jpeg` 0.5.15 and `zune-core` 0.5.3 (MIT OR Apache-2.0 OR Zlib), `moxcms` 0.8.1 and `pxfm` 0.1.30 (BSD-3-Clause OR Apache-2.0), `byteorder-lite` 0.1.0 (Unlicense OR MIT), `bytemuck` (MIT OR Apache-2.0 OR Zlib).
 - `flate2` 1.1 (MIT OR Apache-2.0): direct dependency now (already in the build via `png` and `lopdf`), used for the bounded Flate decode.
+
+## M4 package S4 (signature library, ADR-041 §7)
+
+All checked with `cargo deny` per shipped target (x86_64-pc-windows-msvc, aarch64-apple-darwin, x86_64-apple-darwin): advisories, bans, licenses and sources ok.
+
+- `chacha20poly1305` 0.11.0 (Apache-2.0 OR MIT, RustCrypto, NCC-audited), `default-features = false, features = ["alloc", "zeroize"]`: XChaCha20-Poly1305 for the library file. Pulls `aead` 0.6.1, `poly1305` 0.9.1, `universal-hash` 0.6.1 (MIT OR Apache-2.0), `cmov` 0.5.4 and `ctutils` 0.4.2 (Apache-2.0 OR MIT); `chacha20` 0.10.2 was already in the build.
+- `getrandom` 0.3 (MIT OR Apache-2.0): the key, the nonces and the entry ids (already in the build at 0.3.4).
+- `keyring-core` 1.0.0 (MIT OR Apache-2.0, open-source-cooperative/keyring-rs): the credential-store API; used per store, never through its global default store.
+- `apple-native-keyring-store` 1.0.2 (MIT OR Apache-2.0), macOS only, feature `keychain`: the login keychain. Pulls `security-framework` 3.7.0 and `security-framework-sys` 2.17.0 (MIT OR Apache-2.0).
+- `windows-native-keyring-store` 1.1.0 (MIT OR Apache-2.0), Windows only: Credential Manager.

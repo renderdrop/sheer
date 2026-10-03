@@ -1,0 +1,1066 @@
+//! The signature library: saved signatures and initials, encrypted at rest (ADR-041 section 7, ADR-042 section 5, SECURITY D2).
+//!
+//! One file, `<app data>/signatures/library.bin`:
+//!
+//! ```text
+//! "SHLB" | u8 version = 1 | 24-byte nonce | XChaCha20-Poly1305(JSON)     AAD = the first 5 bytes
+//! ```
+//!
+//! A new random nonce per write. The plaintext is `{ "v": 1, "items": [..] }`. The key comes from the OS credential store
+//! (`storage::keychain`). Rules:
+//!
+//! - **At most [`MAX_PER_ROLE`] entries per role** (signature, initials) and [`MAX_ART_BYTES`] of art per entry; the file is
+//!   at most [`MAX_FILE_BYTES`], checked before decrypting. Names are 1 to [`MAX_NAME_CHARS`] characters.
+//! - **Never plaintext.** Without a usable keychain nothing is written: entries live in memory for the session
+//!   ([`Status::Unavailable`]). A file that does not open (key gone, wrong key, tampered, damaged, from a newer version) makes
+//!   the library [`Status::Locked`]: it is never read as anything else, never overwritten, and only
+//!   [`Library::forget_all`] (file and key) gets out.
+//! - Deleting an entry rewrites the file without it (the old ciphertext is unreadable without the key; no secure wipe is claimed).
+//! - Key material and art are never logged and appear in no error.
+
+use std::fs::File;
+use std::io::{self, Read};
+use std::path::{Path, PathBuf};
+use std::sync::{Mutex, MutexGuard, PoisonError};
+use std::time::{SystemTime, UNIX_EPOCH};
+
+use chacha20poly1305::aead::{Aead, Payload};
+use chacha20poly1305::{Key as CipherKey, KeyInit, XChaCha20Poly1305, XNonce};
+use serde::{Deserialize, Serialize};
+use zeroize::Zeroizing;
+
+use crate::error::{AppError, ErrorCode};
+use crate::storage::atomic::write_atomic;
+use crate::storage::keychain::{Key, KeyError, Keychain};
+use crate::storage::open_without_blocking;
+
+/// File name inside `<app data>/signatures/`.
+pub const FILE_NAME: &str = "library.bin";
+/// Directory inside the app data directory.
+pub const DIRECTORY: &str = "signatures";
+
+const MAGIC: &[u8; 4] = b"SHLB";
+const VERSION: u8 = 1;
+const HEADER_LEN: usize = 5;
+const NONCE_LEN: usize = 24;
+const TAG_LEN: usize = 16;
+
+/// Most entries of one role.
+pub const MAX_PER_ROLE: usize = 8;
+/// Most bytes of art (its JSON) in one entry.
+pub const MAX_ART_BYTES: usize = 512 * 1024;
+/// Largest library file that is read at all.
+pub const MAX_FILE_BYTES: usize = 16 * 1024 * 1024;
+/// Longest name of an entry, in characters.
+pub const MAX_NAME_CHARS: usize = 64;
+/// Largest side of the art's box, in its own units.
+const MAX_ART_UNITS: u32 = 1_000_000;
+/// Points in a preview of vector art (the list never carries more of an entry).
+const PREVIEW_POINTS: usize = 400;
+
+/// What an entry is for.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum Role {
+    Signature,
+    Initials,
+}
+
+/// The art of an entry (ADR-041 section 7). Vector: polygons in a box of `w` x `h` units. Raster: a PNG as standard base64.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub enum Art {
+    Vector {
+        w: u32,
+        h: u32,
+        paths: Vec<Vec<[f32; 2]>>,
+    },
+    Raster {
+        w: u32,
+        h: u32,
+        png: String,
+    },
+}
+
+impl Art {
+    /// `invalid_argument` words: what is wrong with the art.
+    fn check(&self) -> Result<(), LibraryError> {
+        let (w, h) = match self {
+            Art::Vector { w, h, paths } => {
+                let finite = paths
+                    .iter()
+                    .flatten()
+                    .all(|[x, y]| x.is_finite() && y.is_finite());
+                if paths.is_empty() || paths.iter().any(|path| path.len() < 3) || !finite {
+                    return Err(LibraryError::Invalid("art"));
+                }
+                (*w, *h)
+            }
+            Art::Raster { w, h, png } => {
+                let alphabet = png
+                    .bytes()
+                    .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'+' | b'/' | b'='));
+                if png.is_empty() || !alphabet {
+                    return Err(LibraryError::Invalid("art"));
+                }
+                (*w, *h)
+            }
+        };
+        if w == 0 || h == 0 || w > MAX_ART_UNITS || h > MAX_ART_UNITS {
+            return Err(LibraryError::Invalid("art"));
+        }
+        let size = serde_json::to_vec(self)
+            .map_err(|_| LibraryError::Invalid("art"))?
+            .len();
+        if size > MAX_ART_BYTES {
+            return Err(LibraryError::TooLarge);
+        }
+        Ok(())
+    }
+
+    fn aspect(&self) -> f32 {
+        let (Art::Vector { w, h, .. } | Art::Raster { w, h, .. }) = self;
+        *w as f32 / (*h).max(1) as f32
+    }
+
+    /// The art cut down to a few hundred points, for the list. Raster art has no preview here (the UI asks for a frame).
+    fn preview(&self) -> Option<Art> {
+        let Art::Vector { w, h, paths } = self else {
+            return None;
+        };
+        let total: usize = paths.iter().map(Vec::len).sum();
+        let step = total.div_ceil(PREVIEW_POINTS).max(1);
+        let paths = paths
+            .iter()
+            .map(|path| {
+                let mut kept: Vec<[f32; 2]> = path.iter().step_by(step).copied().collect();
+                // A polygon keeps at least a triangle.
+                for point in path.iter().rev() {
+                    if kept.len() >= 3 {
+                        break;
+                    }
+                    kept.push(*point);
+                }
+                kept
+            })
+            .collect();
+        Some(Art::Vector {
+            w: *w,
+            h: *h,
+            paths,
+        })
+    }
+}
+
+/// An entry as it is stored.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct Item {
+    /// 32 lowercase hex characters; random, never an index.
+    pub id: String,
+    pub role: Role,
+    pub name: String,
+    /// Seconds since 1970.
+    pub created: u64,
+    pub art: Art,
+}
+
+/// An entry as the list shows it: metadata and a small preview, never the art itself.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ItemInfo {
+    pub id: String,
+    pub role: Role,
+    pub name: String,
+    pub created: u64,
+    /// Width over height of the art.
+    pub aspect: f32,
+    /// `vector` or `raster`.
+    pub kind: &'static str,
+    /// Vector art cut down to at most about 400 points; `None` for raster art.
+    pub preview: Option<Art>,
+}
+
+impl From<&Item> for ItemInfo {
+    fn from(item: &Item) -> Self {
+        Self {
+            id: item.id.clone(),
+            role: item.role,
+            name: item.name.clone(),
+            created: item.created,
+            aspect: item.art.aspect(),
+            kind: match item.art {
+                Art::Vector { .. } => "vector",
+                Art::Raster { .. } => "raster",
+            },
+            preview: item.art.preview(),
+        }
+    }
+}
+
+/// The state of the library as the UI is told.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum Status {
+    /// Stored encrypted; the key is in the keychain.
+    Ready,
+    /// No keychain: nothing is stored, entries live for this session.
+    Unavailable,
+    /// The file does not open (key gone or wrong, file damaged or changed). Only `forget_all` gets out.
+    Locked,
+}
+
+/// What `list` answers.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Listing {
+    pub status: Status,
+    pub items: Vec<ItemInfo>,
+}
+
+/// An entry chosen for placing: what the model takes as a signature source.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Source {
+    pub id: String,
+    pub role: Role,
+    pub art: Art,
+}
+
+/// Why the file or its plaintext was refused. Says nothing about content.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SealError {
+    /// Not a library file: too short, too long or the wrong magic.
+    Format,
+    /// A version this build does not know.
+    Version,
+    /// The tag did not verify: wrong key, or the file was changed.
+    Decrypt,
+    /// The plaintext is not what the library writes.
+    Content,
+    /// No randomness for the nonce.
+    Random,
+    /// The cipher refused (input too long).
+    Encrypt,
+}
+
+/// What a library call can fail with.
+#[derive(Debug)]
+pub enum LibraryError {
+    /// The library is locked.
+    Locked,
+    /// An argument is not acceptable (`what` names it).
+    Invalid(&'static str),
+    /// The art is bigger than [`MAX_ART_BYTES`].
+    TooLarge,
+    /// The role already has [`MAX_PER_ROLE`] entries.
+    Full,
+    /// No such entry.
+    NotFound,
+    /// The key store gave something unusable, or the system has no randomness.
+    Key,
+    /// The file could not be read or written.
+    Io(io::Error),
+}
+
+impl From<LibraryError> for AppError {
+    fn from(error: LibraryError) -> Self {
+        match error {
+            LibraryError::Locked => AppError::invalid("library"),
+            LibraryError::Invalid(what) => AppError::invalid(what),
+            LibraryError::TooLarge => AppError::too_large("art", MAX_ART_BYTES as u64),
+            LibraryError::Full => AppError::limit("signatures", MAX_PER_ROLE as u64),
+            LibraryError::NotFound => AppError::not_found("signature"),
+            LibraryError::Key => AppError::new(ErrorCode::Internal),
+            LibraryError::Io(error) => AppError::from(error),
+        }
+    }
+}
+
+impl From<io::Error> for LibraryError {
+    fn from(error: io::Error) -> Self {
+        LibraryError::Io(error)
+    }
+}
+
+#[derive(Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Plain {
+    v: u8,
+    items: Vec<Item>,
+}
+
+fn header() -> [u8; HEADER_LEN] {
+    let mut header = [0; HEADER_LEN];
+    header[..4].copy_from_slice(MAGIC);
+    header[4] = VERSION;
+    header
+}
+
+/// Encrypts `items` under `key`: header, a fresh random nonce, ciphertext with the header as associated data.
+pub fn seal(key: &Key, items: &[Item]) -> Result<Vec<u8>, SealError> {
+    let plain = Zeroizing::new(
+        serde_json::to_vec(&PlainRef { v: VERSION, items }).map_err(|_| SealError::Content)?,
+    );
+    let mut nonce = [0u8; NONCE_LEN];
+    getrandom::fill(&mut nonce).map_err(|_| SealError::Random)?;
+    let header = header();
+    let cipher = XChaCha20Poly1305::new(&CipherKey::from(**key));
+    let sealed = cipher
+        .encrypt(
+            &XNonce::from(nonce),
+            Payload {
+                msg: &plain,
+                aad: &header,
+            },
+        )
+        .map_err(|_| SealError::Encrypt)?;
+    let mut file = Vec::with_capacity(HEADER_LEN + NONCE_LEN + sealed.len());
+    file.extend_from_slice(&header);
+    file.extend_from_slice(&nonce);
+    file.extend_from_slice(&sealed);
+    if file.len() > MAX_FILE_BYTES {
+        return Err(SealError::Format);
+    }
+    Ok(file)
+}
+
+#[derive(Serialize)]
+struct PlainRef<'a> {
+    v: u8,
+    items: &'a [Item],
+}
+
+/// Decrypts a library file with `key`. Every failure is a [`SealError`]; there is no plaintext fallback.
+pub fn open(key: &Key, file: &[u8]) -> Result<Vec<Item>, SealError> {
+    if file.len() > MAX_FILE_BYTES || file.len() < HEADER_LEN + NONCE_LEN + TAG_LEN {
+        return Err(SealError::Format);
+    }
+    let (header, rest) = file.split_at(HEADER_LEN);
+    if &header[..4] != MAGIC {
+        return Err(SealError::Format);
+    }
+    if header[4] != VERSION {
+        return Err(SealError::Version);
+    }
+    let (nonce, sealed) = rest.split_at(NONCE_LEN);
+    let nonce: [u8; NONCE_LEN] = nonce.try_into().map_err(|_| SealError::Format)?;
+    let cipher = XChaCha20Poly1305::new(&CipherKey::from(**key));
+    let plain = Zeroizing::new(
+        cipher
+            .decrypt(
+                &XNonce::from(nonce),
+                Payload {
+                    msg: sealed,
+                    aad: header,
+                },
+            )
+            .map_err(|_| SealError::Decrypt)?,
+    );
+    let plain: Plain = serde_json::from_slice(&plain).map_err(|_| SealError::Content)?;
+    if plain.v != VERSION || !items_acceptable(&plain.items) {
+        return Err(SealError::Content);
+    }
+    Ok(plain.items)
+}
+
+/// What a file that decrypted must still satisfy: ids, names and art are as the library writes them, within the caps.
+fn items_acceptable(items: &[Item]) -> bool {
+    let count = |role| items.iter().filter(|item| item.role == role).count();
+    count(Role::Signature) <= MAX_PER_ROLE
+        && count(Role::Initials) <= MAX_PER_ROLE
+        && items.iter().all(|item| {
+            is_id(&item.id) && clean_name(&item.name).is_some() && item.art.check().is_ok()
+        })
+}
+
+fn is_id(id: &str) -> bool {
+    id.len() == 32 && id.bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f'))
+}
+
+/// The name trimmed, or `None` if it is empty, too long or has control characters.
+fn clean_name(name: &str) -> Option<String> {
+    let name = name.trim();
+    let chars = name.chars().count();
+    ((1..=MAX_NAME_CHARS).contains(&chars) && !name.chars().any(char::is_control))
+        .then(|| name.to_owned())
+}
+
+fn new_id() -> Result<String, LibraryError> {
+    let mut bytes = [0u8; 16];
+    getrandom::fill(&mut bytes).map_err(|_| LibraryError::Key)?;
+    Ok(bytes.iter().map(|b| format!("{b:02x}")).collect())
+}
+
+fn now() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_or(0, |elapsed| elapsed.as_secs())
+}
+
+/// Reads the library file: at most [`MAX_FILE_BYTES`], a regular file. `Ok(None)` if there is none; a file that is not a regular
+/// file or is too large is `InvalidData`.
+fn read_file(path: &Path) -> io::Result<Option<Vec<u8>>> {
+    let file = match open_without_blocking(path) {
+        Ok(file) => file,
+        Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(None),
+        Err(error) => return Err(error),
+    };
+    read_regular(file).map(Some)
+}
+
+fn read_regular(file: File) -> io::Result<Vec<u8>> {
+    if !file.metadata()?.is_file() {
+        return Err(io::Error::from(io::ErrorKind::InvalidData));
+    }
+    let mut bytes = Vec::new();
+    file.take(MAX_FILE_BYTES as u64 + 1)
+        .read_to_end(&mut bytes)?;
+    if bytes.len() > MAX_FILE_BYTES {
+        return Err(io::Error::from(io::ErrorKind::InvalidData));
+    }
+    Ok(bytes)
+}
+
+/// Where the entries are right now.
+enum Loaded {
+    /// In the file, opened with `key`.
+    Stored {
+        key: Key,
+        items: Vec<Item>,
+    },
+    /// There is no file and no key yet: an empty library the first save creates.
+    Fresh,
+    /// No keychain: the session's entries.
+    Session,
+    Locked,
+}
+
+/// The signature library: a file, a keychain, and the entries of the session when the keychain is not there.
+pub struct Library {
+    path: PathBuf,
+    keychain: Keychain,
+    /// Entries kept in memory while there is no keychain. Also what serialises every call.
+    session: Mutex<Vec<Item>>,
+}
+
+impl Library {
+    /// A library in `path` (the file) with its key in `keychain`.
+    pub fn new(path: PathBuf, keychain: Keychain) -> Self {
+        Self {
+            path,
+            keychain,
+            session: Mutex::new(Vec::new()),
+        }
+    }
+
+    /// The library under the app data directory, with the key in the OS keychain.
+    pub fn in_data_dir(data_dir: &Path) -> Self {
+        Self::new(
+            data_dir.join(DIRECTORY).join(FILE_NAME),
+            Keychain::platform(),
+        )
+    }
+
+    fn lock(&self) -> MutexGuard<'_, Vec<Item>> {
+        self.session.lock().unwrap_or_else(PoisonError::into_inner)
+    }
+
+    fn load(&self) -> Result<Loaded, LibraryError> {
+        let key = match self.keychain.existing_key() {
+            Ok(key) => key,
+            Err(KeyError::Unavailable) => return Ok(Loaded::Session),
+            // A stored secret that is not a key: the file (if any) cannot be opened with it.
+            Err(KeyError::Invalid) => return Ok(Loaded::Locked),
+        };
+        let file = match read_file(&self.path) {
+            Ok(file) => file,
+            Err(error) if error.kind() == io::ErrorKind::InvalidData => return Ok(Loaded::Locked),
+            Err(error) => return Err(error.into()),
+        };
+        match (key, file) {
+            (None, None) => Ok(Loaded::Fresh),
+            // The key is gone and the file is not: it can never be opened again.
+            (None, Some(_)) => Ok(Loaded::Locked),
+            // A key without a file: a library that was emptied, or never written.
+            (Some(key), None) => Ok(Loaded::Stored {
+                key,
+                items: Vec::new(),
+            }),
+            (Some(key), Some(bytes)) => match open(&key, &bytes) {
+                Ok(items) => Ok(Loaded::Stored { key, items }),
+                Err(_) => Ok(Loaded::Locked),
+            },
+        }
+    }
+
+    /// The status and the entries (metadata and previews only).
+    pub fn list(&self) -> Result<Listing, LibraryError> {
+        let session = self.lock();
+        Ok(match self.load()? {
+            Loaded::Stored { items, .. } => listing(Status::Ready, &items),
+            Loaded::Fresh => listing(Status::Ready, &[]),
+            Loaded::Session => listing(Status::Unavailable, &session),
+            Loaded::Locked => listing(Status::Locked, &[]),
+        })
+    }
+
+    /// Saves a new entry. Without a keychain it lives for the session only. `Locked` if the file does not open; `Full` at
+    /// [`MAX_PER_ROLE`] entries of the role.
+    pub fn save(&self, role: Role, name: &str, art: Art) -> Result<ItemInfo, LibraryError> {
+        let name = clean_name(name).ok_or(LibraryError::Invalid("name"))?;
+        art.check()?;
+        let item = Item {
+            id: new_id()?,
+            role,
+            name,
+            created: now(),
+            art,
+        };
+        let info = ItemInfo::from(&item);
+        self.change(|items| {
+            if items.iter().filter(|other| other.role == role).count() >= MAX_PER_ROLE {
+                return Err(LibraryError::Full);
+            }
+            items.push(item);
+            Ok(())
+        })?;
+        Ok(info)
+    }
+
+    /// Renames an entry.
+    pub fn rename(&self, id: &str, name: &str) -> Result<(), LibraryError> {
+        let name = clean_name(name).ok_or(LibraryError::Invalid("name"))?;
+        self.change(|items| {
+            let item = find_mut(items, id)?;
+            item.name = name;
+            Ok(())
+        })
+    }
+
+    /// Removes an entry.
+    pub fn delete(&self, id: &str) -> Result<(), LibraryError> {
+        self.change(|items| {
+            let at = items
+                .iter()
+                .position(|item| item.id == id)
+                .ok_or(LibraryError::NotFound)?;
+            items.remove(at);
+            Ok(())
+        })
+    }
+
+    /// The entry `id` as a source for the model to place (its full art). Never changes anything.
+    pub fn source(&self, id: &str) -> Result<Source, LibraryError> {
+        let session = self.lock();
+        let found = |items: &[Item]| {
+            items
+                .iter()
+                .find(|item| item.id == id)
+                .map(|item| Source {
+                    id: item.id.clone(),
+                    role: item.role,
+                    art: item.art.clone(),
+                })
+                .ok_or(LibraryError::NotFound)
+        };
+        match self.load()? {
+            Loaded::Stored { items, .. } => found(&items),
+            Loaded::Fresh => Err(LibraryError::NotFound),
+            Loaded::Session => found(&session),
+            Loaded::Locked => Err(LibraryError::Locked),
+        }
+    }
+
+    /// Deletes the file, the key and the entries of the session: the way out of `Locked`, and "forget all".
+    pub fn forget_all(&self) -> Result<(), LibraryError> {
+        let mut session = self.lock();
+        session.clear();
+        match std::fs::remove_file(&self.path) {
+            Ok(()) => {}
+            Err(error) if error.kind() == io::ErrorKind::NotFound => {}
+            Err(error) => return Err(error.into()),
+        }
+        match self.keychain.forget() {
+            // No keychain: there was no key to delete.
+            Ok(()) | Err(KeyError::Unavailable) => Ok(()),
+            Err(KeyError::Invalid) => Err(LibraryError::Key),
+        }
+    }
+
+    /// Applies `edit` to the entries wherever they are, and stores the result: encrypted into the file, or in the session.
+    fn change(
+        &self,
+        edit: impl FnOnce(&mut Vec<Item>) -> Result<(), LibraryError>,
+    ) -> Result<(), LibraryError> {
+        let mut session = self.lock();
+        match self.load()? {
+            Loaded::Locked => Err(LibraryError::Locked),
+            Loaded::Session => edit(&mut session),
+            Loaded::Stored { key, mut items } => {
+                edit(&mut items)?;
+                self.write(&key, &items)
+            }
+            Loaded::Fresh => {
+                let mut items = Vec::new();
+                edit(&mut items)?;
+                // The key is created only now that there is something to protect.
+                match self.keychain.key_or_create() {
+                    Ok(key) => self.write(&key, &items),
+                    Err(KeyError::Unavailable) => {
+                        *session = items;
+                        Ok(())
+                    }
+                    Err(KeyError::Invalid) => Err(LibraryError::Key),
+                }
+            }
+        }
+    }
+
+    fn write(&self, key: &Key, items: &[Item]) -> Result<(), LibraryError> {
+        let bytes = seal(key, items).map_err(|_| LibraryError::Key)?;
+        write_atomic(&self.path, &bytes)?;
+        Ok(())
+    }
+}
+
+fn listing(status: Status, items: &[Item]) -> Listing {
+    Listing {
+        status,
+        items: items.iter().map(ItemInfo::from).collect(),
+    }
+}
+
+fn find_mut<'a>(items: &'a mut [Item], id: &str) -> Result<&'a mut Item, LibraryError> {
+    items
+        .iter_mut()
+        .find(|item| item.id == id)
+        .ok_or(LibraryError::NotFound)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::storage::atomic::testutil::TempDir;
+    use crate::storage::keychain::testutil::MemoryStore;
+
+    fn art() -> Art {
+        Art::Vector {
+            w: 3000,
+            h: 1000,
+            paths: vec![vec![[0.0, 0.0], [10.0, 0.0], [10.0, 10.0], [0.0, 10.0]]],
+        }
+    }
+
+    fn key(byte: u8) -> Key {
+        Zeroizing::new([byte; 32])
+    }
+
+    fn item(n: u32, role: Role) -> Item {
+        Item {
+            id: format!("{n:032x}"),
+            role,
+            name: format!("Name {n}"),
+            created: 1,
+            art: art(),
+        }
+    }
+
+    fn library(dir: &TempDir, store: &MemoryStore) -> Library {
+        Library::new(dir.path().join(DIRECTORY).join(FILE_NAME), store.keychain())
+    }
+
+    // --- crypto ---
+
+    #[test]
+    fn what_is_sealed_opens_again() {
+        let items = vec![item(1, Role::Signature), item(2, Role::Initials)];
+        let file = seal(&key(7), &items).unwrap();
+        assert_eq!(&file[..5], b"SHLB\x01");
+        assert_eq!(open(&key(7), &file).unwrap(), items);
+        assert_eq!(open(&key(7), &seal(&key(7), &[]).unwrap()).unwrap(), []);
+    }
+
+    #[test]
+    fn the_file_holds_no_plaintext_and_every_write_has_a_new_nonce() {
+        let items = vec![item(1, Role::Signature)];
+        let a = seal(&key(7), &items).unwrap();
+        let b = seal(&key(7), &items).unwrap();
+        assert_ne!(a[5..29], b[5..29], "nonce");
+        assert_ne!(a, b);
+        let text = String::from_utf8_lossy(&a);
+        assert!(!text.contains("Name 1") && !text.contains("vector"));
+    }
+
+    #[test]
+    fn a_wrong_key_is_an_error_not_garbage() {
+        let file = seal(&key(7), &[item(1, Role::Signature)]).unwrap();
+        assert_eq!(open(&key(8), &file).unwrap_err(), SealError::Decrypt);
+    }
+
+    #[test]
+    fn flipping_any_byte_is_detected() {
+        let file = seal(&key(7), &[item(1, Role::Signature)]).unwrap();
+        for at in 0..file.len() {
+            let mut bad = file.clone();
+            bad[at] ^= 0x01;
+            assert!(open(&key(7), &bad).is_err(), "byte {at}");
+        }
+    }
+
+    #[test]
+    fn a_header_change_fails_even_with_the_ciphertext_intact() {
+        let file = seal(&key(7), &[]).unwrap();
+        let mut newer = file.clone();
+        newer[4] = 2;
+        assert_eq!(open(&key(7), &newer).unwrap_err(), SealError::Version);
+        let mut other = file;
+        other[0] = b'X';
+        assert_eq!(open(&key(7), &other).unwrap_err(), SealError::Format);
+    }
+
+    #[test]
+    fn truncated_empty_and_oversized_files_are_refused() {
+        let file = seal(&key(7), &[item(1, Role::Signature)]).unwrap();
+        for cut in [0, 4, 5, 28, 44, file.len() - 1] {
+            assert!(open(&key(7), &file[..cut]).is_err(), "{cut}");
+        }
+        assert_eq!(
+            open(&key(7), &vec![0; MAX_FILE_BYTES + 1]).unwrap_err(),
+            SealError::Format
+        );
+    }
+
+    #[test]
+    fn a_file_that_decrypts_but_breaks_the_rules_is_refused() {
+        // Sealed by this key, so the tag is fine: the content is judged on its own.
+        let too_many: Vec<Item> = (0..=MAX_PER_ROLE as u32)
+            .map(|n| item(n, Role::Signature))
+            .collect();
+        let file = seal(&key(7), &too_many).unwrap();
+        assert_eq!(open(&key(7), &file).unwrap_err(), SealError::Content);
+        let mut bad = item(1, Role::Signature);
+        bad.id = "../../etc/passwd".into();
+        let file = seal(&key(7), &[bad]).unwrap();
+        assert_eq!(open(&key(7), &file).unwrap_err(), SealError::Content);
+    }
+
+    // --- the library ---
+
+    #[test]
+    fn save_list_rename_delete_and_source() {
+        let dir = TempDir::new();
+        let store = MemoryStore::default();
+        let lib = library(&dir, &store);
+        assert_eq!(lib.list().unwrap().status, Status::Ready);
+        assert_eq!(store.peek(), None, "no key before the first save");
+
+        let saved = lib.save(Role::Signature, "  Work ", art()).unwrap();
+        assert_eq!(saved.name, "Work");
+        assert_eq!(saved.kind, "vector");
+        assert!((saved.aspect - 3.0).abs() < 1e-6);
+        assert_eq!(store.peek().unwrap().len(), 32);
+        let listing = lib.list().unwrap();
+        assert_eq!(listing.status, Status::Ready);
+        assert_eq!(listing.items, vec![saved.clone()]);
+
+        lib.rename(&saved.id, "Home").unwrap();
+        assert_eq!(lib.list().unwrap().items[0].name, "Home");
+        let source = lib.source(&saved.id).unwrap();
+        assert_eq!(source.role, Role::Signature);
+        assert_eq!(source.art, art());
+
+        // A second library over the same file and key sees the same entries.
+        assert_eq!(library(&dir, &store).list().unwrap().items.len(), 1);
+
+        lib.delete(&saved.id).unwrap();
+        assert!(lib.list().unwrap().items.is_empty());
+        assert!(matches!(lib.delete(&saved.id), Err(LibraryError::NotFound)));
+        assert!(matches!(
+            lib.rename("nope", "x"),
+            Err(LibraryError::NotFound)
+        ));
+        assert!(matches!(lib.source(&saved.id), Err(LibraryError::NotFound)));
+    }
+
+    #[test]
+    fn the_stored_file_is_ciphertext() {
+        let dir = TempDir::new();
+        let store = MemoryStore::default();
+        let lib = library(&dir, &store);
+        lib.save(Role::Signature, "Secret name", art()).unwrap();
+        let bytes = std::fs::read(dir.path().join(DIRECTORY).join(FILE_NAME)).unwrap();
+        assert_eq!(&bytes[..4], b"SHLB");
+        assert!(!String::from_utf8_lossy(&bytes).contains("Secret name"));
+    }
+
+    #[test]
+    fn at_most_eight_per_role_and_the_roles_count_apart() {
+        let dir = TempDir::new();
+        let store = MemoryStore::default();
+        let lib = library(&dir, &store);
+        for n in 0..MAX_PER_ROLE {
+            lib.save(Role::Signature, &format!("s{n}"), art()).unwrap();
+        }
+        assert!(matches!(
+            lib.save(Role::Signature, "one more", art()),
+            Err(LibraryError::Full)
+        ));
+        for n in 0..MAX_PER_ROLE {
+            lib.save(Role::Initials, &format!("i{n}"), art()).unwrap();
+        }
+        assert!(matches!(
+            lib.save(Role::Initials, "one more", art()),
+            Err(LibraryError::Full)
+        ));
+        assert_eq!(lib.list().unwrap().items.len(), 16);
+        // Deleting makes room again.
+        let first = lib.list().unwrap().items[0].id.clone();
+        lib.delete(&first).unwrap();
+        lib.save(Role::Signature, "again", art()).unwrap();
+    }
+
+    #[test]
+    fn entry_sizes_names_and_art_are_bounded() {
+        let dir = TempDir::new();
+        let lib = library(&dir, &MemoryStore::default());
+        let big = Art::Vector {
+            w: 10,
+            h: 10,
+            paths: vec![vec![[0.123_456, 0.654_321]; MAX_ART_BYTES / 8]],
+        };
+        assert!(matches!(
+            lib.save(Role::Signature, "x", big),
+            Err(LibraryError::TooLarge)
+        ));
+        let bad_arts = [
+            Art::Vector {
+                w: 0,
+                h: 10,
+                paths: vec![vec![[0.0, 0.0]; 3]],
+            },
+            Art::Vector {
+                w: 10,
+                h: 10,
+                paths: vec![],
+            },
+            Art::Vector {
+                w: 10,
+                h: 10,
+                paths: vec![vec![[0.0, 0.0]; 2]],
+            },
+            Art::Vector {
+                w: 10,
+                h: 10,
+                paths: vec![vec![[f32::NAN, 0.0]; 3]],
+            },
+            Art::Raster {
+                w: 10,
+                h: 10,
+                png: "not base64!".into(),
+            },
+            Art::Raster {
+                w: 10,
+                h: 10,
+                png: String::new(),
+            },
+        ];
+        for bad in bad_arts {
+            assert!(matches!(
+                lib.save(Role::Signature, "x", bad),
+                Err(LibraryError::Invalid("art"))
+            ));
+        }
+        for name in ["", "   ", "a\nb", &"x".repeat(MAX_NAME_CHARS + 1)] {
+            assert!(matches!(
+                lib.save(Role::Signature, name, art()),
+                Err(LibraryError::Invalid("name"))
+            ));
+        }
+        lib.save(Role::Signature, &"x".repeat(MAX_NAME_CHARS), art())
+            .unwrap();
+        let raster = Art::Raster {
+            w: 300,
+            h: 100,
+            png: "iVBORw0KGgo=".into(),
+        };
+        let saved = lib.save(Role::Initials, "r", raster).unwrap();
+        assert_eq!(saved.kind, "raster");
+        assert!(saved.preview.is_none());
+    }
+
+    #[test]
+    fn the_list_carries_a_small_preview_never_the_whole_art() {
+        let dir = TempDir::new();
+        let lib = library(&dir, &MemoryStore::default());
+        let dense = Art::Vector {
+            w: 10,
+            h: 10,
+            paths: vec![vec![[1.0, 1.0]; 5000], vec![[2.0, 2.0]; 5000]],
+        };
+        let saved = lib.save(Role::Signature, "dense", dense).unwrap();
+        let Some(Art::Vector { paths, .. }) = saved.preview else {
+            panic!("vector preview");
+        };
+        let points: usize = paths.iter().map(Vec::len).sum();
+        assert!(points <= PREVIEW_POINTS + 6, "{points}");
+        assert!(paths.iter().all(|path| path.len() >= 3));
+        // The full art is still what places.
+        let Art::Vector { paths, .. } = lib.source(&saved.id).unwrap().art else {
+            panic!("vector");
+        };
+        assert_eq!(paths[0].len(), 5000);
+    }
+
+    #[test]
+    fn a_missing_keychain_keeps_entries_for_the_session_and_writes_nothing() {
+        let dir = TempDir::new();
+        let lib = Library::new(
+            dir.path().join(DIRECTORY).join(FILE_NAME),
+            Keychain::unavailable(),
+        );
+        assert_eq!(lib.list().unwrap().status, Status::Unavailable);
+        let saved = lib.save(Role::Signature, "tmp", art()).unwrap();
+        let listing = lib.list().unwrap();
+        assert_eq!(listing.status, Status::Unavailable);
+        assert_eq!(listing.items, vec![saved.clone()]);
+        lib.rename(&saved.id, "renamed").unwrap();
+        assert_eq!(lib.source(&saved.id).unwrap().id, saved.id);
+        // Caps hold in the session too.
+        for n in 1..MAX_PER_ROLE {
+            lib.save(Role::Signature, &format!("s{n}"), art()).unwrap();
+        }
+        assert!(matches!(
+            lib.save(Role::Signature, "x", art()),
+            Err(LibraryError::Full)
+        ));
+        lib.delete(&saved.id).unwrap();
+        assert!(!dir.path().join(DIRECTORY).exists(), "nothing on disk");
+        lib.forget_all().unwrap();
+        assert!(lib.list().unwrap().items.is_empty());
+    }
+
+    #[test]
+    fn a_missing_keychain_never_touches_an_existing_file() {
+        let dir = TempDir::new();
+        let store = MemoryStore::default();
+        library(&dir, &store)
+            .save(Role::Signature, "kept", art())
+            .unwrap();
+        let path = dir.path().join(DIRECTORY).join(FILE_NAME);
+        let before = std::fs::read(&path).unwrap();
+        let lib = Library::new(path.clone(), Keychain::unavailable());
+        lib.save(Role::Signature, "session", art()).unwrap();
+        assert_eq!(std::fs::read(&path).unwrap(), before);
+    }
+
+    #[test]
+    fn a_lost_or_wrong_key_locks_the_library_and_nothing_is_overwritten() {
+        let dir = TempDir::new();
+        let store = MemoryStore::default();
+        let lib = library(&dir, &store);
+        let saved = lib.save(Role::Signature, "a", art()).unwrap();
+        let path = dir.path().join(DIRECTORY).join(FILE_NAME);
+        let before = std::fs::read(&path).unwrap();
+
+        for replace in [None, Some(vec![9u8; 32]), Some(vec![9u8; 5])] {
+            let original = store.peek();
+            store.put(replace.clone());
+            assert_eq!(lib.list().unwrap().status, Status::Locked);
+            assert!(lib.list().unwrap().items.is_empty());
+            assert!(matches!(
+                lib.save(Role::Signature, "b", art()),
+                Err(LibraryError::Locked)
+            ));
+            assert!(matches!(lib.delete(&saved.id), Err(LibraryError::Locked)));
+            assert!(matches!(
+                lib.rename(&saved.id, "z"),
+                Err(LibraryError::Locked)
+            ));
+            assert!(matches!(lib.source(&saved.id), Err(LibraryError::Locked)));
+            assert_eq!(std::fs::read(&path).unwrap(), before);
+            assert_eq!(store.peek(), replace, "the key is not replaced either");
+            store.put(original);
+        }
+        assert_eq!(lib.list().unwrap().status, Status::Ready);
+    }
+
+    #[test]
+    fn a_tampered_or_garbage_file_locks_the_library() {
+        let dir = TempDir::new();
+        let store = MemoryStore::default();
+        let lib = library(&dir, &store);
+        lib.save(Role::Signature, "a", art()).unwrap();
+        let path = dir.path().join(DIRECTORY).join(FILE_NAME);
+        let mut bytes = std::fs::read(&path).unwrap();
+        let last = bytes.len() - 1;
+        bytes[last] ^= 0xff;
+        std::fs::write(&path, &bytes).unwrap();
+        assert_eq!(lib.list().unwrap().status, Status::Locked);
+        std::fs::write(&path, b"{\"v\":1,\"items\":[]}").unwrap();
+        assert_eq!(
+            lib.list().unwrap().status,
+            Status::Locked,
+            "plaintext is not read"
+        );
+        std::fs::remove_file(&path).unwrap();
+        std::fs::create_dir(&path).unwrap();
+        assert_eq!(lib.list().unwrap().status, Status::Locked);
+    }
+
+    #[test]
+    fn forget_all_deletes_file_and_key_and_ends_the_lock() {
+        let dir = TempDir::new();
+        let store = MemoryStore::default();
+        let lib = library(&dir, &store);
+        lib.save(Role::Signature, "a", art()).unwrap();
+        store.put(Some(vec![1; 32]));
+        assert_eq!(lib.list().unwrap().status, Status::Locked);
+
+        lib.forget_all().unwrap();
+        assert!(!dir.path().join(DIRECTORY).join(FILE_NAME).exists());
+        assert_eq!(store.peek(), None);
+        assert_eq!(lib.list().unwrap().status, Status::Ready);
+        // A new key on the next save.
+        lib.save(Role::Signature, "new", art()).unwrap();
+        assert_eq!(lib.list().unwrap().items.len(), 1);
+        lib.forget_all().unwrap();
+        lib.forget_all().unwrap();
+    }
+
+    #[test]
+    fn writes_are_atomic_and_leave_no_temp_file() {
+        let dir = TempDir::new();
+        let lib = library(&dir, &MemoryStore::default());
+        for n in 0..4 {
+            lib.save(Role::Signature, &format!("s{n}"), art()).unwrap();
+        }
+        let names: Vec<String> = std::fs::read_dir(dir.path().join(DIRECTORY))
+            .unwrap()
+            .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+            .collect();
+        assert_eq!(names, [FILE_NAME]);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn the_file_and_its_directory_are_private() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = TempDir::new();
+        let lib = library(&dir, &MemoryStore::default());
+        lib.save(Role::Signature, "a", art()).unwrap();
+        let mode = |p: PathBuf| std::fs::metadata(p).unwrap().permissions().mode() & 0o777;
+        assert_eq!(mode(dir.path().join(DIRECTORY).join(FILE_NAME)), 0o600);
+        assert_eq!(mode(dir.path().join(DIRECTORY)), 0o700);
+    }
+
+    #[test]
+    fn errors_map_to_the_fixed_vocabulary_without_content() {
+        let code = |error: LibraryError| AppError::from(error).code();
+        assert_eq!(code(LibraryError::Locked), ErrorCode::InvalidArgument);
+        assert_eq!(code(LibraryError::Full), ErrorCode::LimitExceeded);
+        assert_eq!(code(LibraryError::NotFound), ErrorCode::NotFound);
+        assert_eq!(code(LibraryError::TooLarge), ErrorCode::TooLarge);
+        assert_eq!(code(LibraryError::Key), ErrorCode::Internal);
+    }
+}

@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-flatten-document"
+description = "Enables the flatten_document command without any pre-configured scope."
+commands.allow = ["flatten_document"]
+
+[[permission]]
+identifier = "deny-flatten-document"
+description = "Denies the flatten_document command without any pre-configured scope."
+commands.deny = ["flatten_document"]

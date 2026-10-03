@@ -8,7 +8,7 @@
 use serde::{Deserialize, Deserializer, Serialize};
 
 use super::geometry::{Point, Quad, Rect};
-use super::ids::AnnotId;
+use super::ids::{AnnotId, AssetId};
 use crate::documents::PageId;
 use crate::error::AppError;
 use crate::limits;
@@ -56,6 +56,43 @@ pub enum Sync {
 pub struct Stroke {
     pub points: Vec<Point>,
     pub outline: Vec<Point>,
+}
+
+/// The smallest side of a signature or a mark, in points (ADR-041 §5).
+pub const MIN_SIGNATURE_SIDE_PT: f32 = 4.0;
+/// The range of a signature's aspect ratio (width over height).
+pub const SIGNATURE_ASPECT_RANGE: std::ops::RangeInclusive<f32> = 0.01..=100.0;
+
+/// What a signature is for: a full signature or initials.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum SignatureRole {
+    Signature,
+    Initials,
+}
+
+/// The three marks of Fill & Sign for flat forms.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum MarkGlyph {
+    Check,
+    Cross,
+    Dot,
+}
+
+/// Where the picture of a signature comes from.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[serde(
+    tag = "type",
+    rename_all = "camelCase",
+    rename_all_fields = "camelCase"
+)]
+pub enum SignatureArtRef {
+    /// Art of the document's asset store (`signatures::AssetStore`); the aspect ratio is width over height.
+    Asset { asset_id: AssetId, aspect: f32 },
+    /// The appearance that is in the file already: kept as it is. Only an import makes one.
+    #[serde(skip_deserializing)]
+    File,
 }
 
 /// What kind of annotation it is and the geometry that belongs to the kind.
@@ -111,6 +148,19 @@ pub enum AnnotationBody {
         width: f32,
         head: LineEnd,
         tail: LineEnd,
+    },
+    /// A signature or initials (ADR-041 §5): a `/Stamp` named `sheer-sig-` or `sheer-ini-`.
+    Signature {
+        #[serde(rename = "box")]
+        bounds: Rect,
+        role: SignatureRole,
+        art: SignatureArtRef,
+    },
+    /// A check, a cross or a dot of Fill & Sign: a `/Stamp` named `sheer-mark-<glyph>-`, drawn in the annotation's colour.
+    Mark {
+        #[serde(rename = "box")]
+        bounds: Rect,
+        glyph: MarkGlyph,
     },
     /// An annotation of a kind the model does not edit (ink and lines from other programs, stamps, squiggly, ...): listed so it can be
     /// shown and selected, never changed or deleted. Only an import makes one.
@@ -279,6 +329,15 @@ fn check_text(text: &str, max: usize, multiline: bool, what: &'static str) -> Re
         if count > max || !allowed {
             return Err(AppError::invalid(what));
         }
+    }
+    Ok(())
+}
+
+/// The box of a signature or a mark: in range and at least [`MIN_SIGNATURE_SIDE_PT`] on each side.
+fn check_stamp_box(bounds: Rect) -> Result<(), AppError> {
+    check_rect(bounds, "box")?;
+    if bounds.w < MIN_SIGNATURE_SIDE_PT || bounds.h < MIN_SIGNATURE_SIDE_PT {
+        return Err(AppError::invalid("box"));
     }
     Ok(())
 }
@@ -460,6 +519,19 @@ impl AnnotationBody {
                 };
                 Ok(extent.rect(width / 2.0 + arrow))
             }
+            Self::Signature { bounds, art, .. } => {
+                check_stamp_box(*bounds)?;
+                if let SignatureArtRef::Asset { aspect, .. } = art {
+                    if !aspect.is_finite() || !SIGNATURE_ASPECT_RANGE.contains(aspect) {
+                        return Err(AppError::invalid("art"));
+                    }
+                }
+                Ok(*bounds)
+            }
+            Self::Mark { bounds, .. } => {
+                check_stamp_box(*bounds)?;
+                Ok(*bounds)
+            }
             Self::Opaque { subtype } => {
                 check_text(subtype, limits::MAX_ANNOT_AUTHOR_CHARS, false, "subtype")?;
                 check_rect(rect, "rect")?;
@@ -481,7 +553,9 @@ impl AnnotationBody {
             Self::Note { at, .. } => shift(at),
             Self::FreeText { bounds, .. }
             | Self::Rect { bounds, .. }
-            | Self::Ellipse { bounds, .. } => {
+            | Self::Ellipse { bounds, .. }
+            | Self::Signature { bounds, .. }
+            | Self::Mark { bounds, .. } => {
                 bounds.x += dx;
                 bounds.y += dy;
             }
@@ -532,6 +606,16 @@ impl Annotation {
     pub fn from_draft(id: AnnotId, draft: &AnnotationDraft, now: &str) -> Result<Self, AppError> {
         if draft.body.is_opaque() {
             return Err(AppError::invalid("kind"));
+        }
+        // Art that is "in the file" is the import's: a new signature always brings its own.
+        if matches!(
+            draft.body,
+            AnnotationBody::Signature {
+                art: SignatureArtRef::File,
+                ..
+            }
+        ) {
+            return Err(AppError::invalid("art"));
         }
         let mut annotation = Self {
             id,
@@ -688,6 +772,10 @@ impl Annotation {
                 set(w, width, &mut used);
                 set(h, head, &mut used);
                 set(tl, tail, &mut used);
+            }
+            AnnotationBody::Signature { bounds: b, .. }
+            | AnnotationBody::Mark { bounds: b, .. } => {
+                set(b, bounds, &mut used);
             }
             AnnotationBody::Opaque { .. } => {}
         }
@@ -1205,5 +1293,115 @@ mod tests {
         let mut bad = good;
         bad.rect.w = f32::NAN;
         assert!(Annotation::from_import(AnnotId::new(1), PageId::new(0), &bad).is_none());
+    }
+
+    fn signature(asset: u32, w: f32, h: f32) -> AnnotationDraft {
+        let mut draft: AnnotationDraft = serde_json::from_value(json!({
+            "pageId": 0, "kind": "signature", "color": [0, 0, 0], "role": "initials",
+            "box": {"x": 10.0, "y": 20.0, "w": 80.0, "h": 40.0},
+            "art": {"type": "asset", "assetId": asset, "aspect": 2.0}
+        }))
+        .unwrap();
+        // Set after parsing: JSON has no NaN.
+        if let AnnotationBody::Signature { bounds, .. } = &mut draft.body {
+            bounds.w = w;
+            bounds.h = h;
+        }
+        draft
+    }
+
+    #[test]
+    fn signatures_and_marks_parse_and_get_their_rect_from_the_box() {
+        let annotation =
+            Annotation::from_draft(AnnotId::new(1), &signature(3, 80.0, 40.0), "t").unwrap();
+        assert_eq!(
+            annotation.rect,
+            Rect {
+                x: 10.0,
+                y: 20.0,
+                w: 80.0,
+                h: 40.0
+            }
+        );
+        let wire = serde_json::to_value(&annotation).unwrap();
+        assert_eq!(wire["kind"], "signature");
+        assert_eq!(wire["role"], "initials");
+        assert_eq!(
+            wire["art"],
+            json!({"type": "asset", "assetId": 3, "aspect": 2.0})
+        );
+        let mark: AnnotationDraft = serde_json::from_value(json!({
+            "pageId": 0, "kind": "mark", "color": [0, 0, 0], "glyph": "cross",
+            "box": {"x": 1.0, "y": 2.0, "w": 10.0, "h": 10.0}
+        }))
+        .unwrap();
+        let mark = Annotation::from_draft(AnnotId::new(2), &mark, "t").unwrap();
+        assert!(matches!(
+            mark.body,
+            AnnotationBody::Mark {
+                glyph: MarkGlyph::Cross,
+                ..
+            }
+        ));
+    }
+
+    #[test]
+    fn signature_boxes_and_art_are_checked() {
+        for (w, h) in [
+            (3.9, 40.0),
+            (40.0, 3.9),
+            (f32::NAN, 40.0),
+            (-5.0, 40.0),
+            (1e9, 40.0),
+        ] {
+            assert_eq!(
+                code(Annotation::from_draft(
+                    AnnotId::new(1),
+                    &signature(1, w, h),
+                    "t"
+                )),
+                ErrorCode::InvalidArgument,
+                "{w} x {h}"
+            );
+        }
+        let mut bad_aspect = signature(1, 80.0, 40.0);
+        if let AnnotationBody::Signature { art, .. } = &mut bad_aspect.body {
+            *art = SignatureArtRef::Asset {
+                asset_id: AssetId::new(1),
+                aspect: 0.0,
+            };
+        }
+        assert_eq!(
+            code(Annotation::from_draft(AnnotId::new(1), &bad_aspect, "t")),
+            ErrorCode::InvalidArgument
+        );
+        // Art "in the file" is not accepted from the UI, in a draft or at all.
+        let mut from_file = signature(1, 80.0, 40.0);
+        if let AnnotationBody::Signature { art, .. } = &mut from_file.body {
+            *art = SignatureArtRef::File;
+        }
+        assert_eq!(
+            code(Annotation::from_draft(AnnotId::new(1), &from_file, "t")),
+            ErrorCode::InvalidArgument
+        );
+        assert!(serde_json::from_value::<AnnotationDraft>(json!({
+            "pageId": 0, "kind": "signature", "color": [0, 0, 0], "role": "signature",
+            "box": {"x": 1.0, "y": 1.0, "w": 10.0, "h": 10.0}, "art": {"type": "file"}
+        }))
+        .is_err());
+    }
+
+    #[test]
+    fn a_signature_patch_moves_the_box_and_nothing_else() {
+        let base = Annotation::from_draft(AnnotId::new(1), &signature(1, 80.0, 40.0), "t").unwrap();
+        let patch: AnnotationPatch =
+            serde_json::from_value(json!({"box": {"x": 0.0, "y": 0.0, "w": 40.0, "h": 20.0}}))
+                .unwrap();
+        let next = base.patched(&patch, "t2").unwrap();
+        assert_eq!(next.rect.w, 40.0);
+        let wrong: AnnotationPatch = serde_json::from_value(json!({"lines": ["x"]})).unwrap();
+        assert_eq!(code(base.patched(&wrong, "t2")), ErrorCode::InvalidArgument);
+        let moved = base.moved(5.0, -5.0, "t3").unwrap();
+        assert_eq!((moved.rect.x, moved.rect.y), (15.0, 15.0));
     }
 }

@@ -13,6 +13,7 @@ pub mod model;
 pub mod pdfwrite;
 pub mod platform;
 pub mod security;
+pub mod signatures;
 pub mod sources;
 pub mod storage;
 
@@ -66,6 +67,11 @@ pub fn run() -> Result<(), AppError> {
             app.manage(Arc::new(SettingsStore::load(
                 data_dir.join(settings::FILE_NAME),
             )));
+            // The signature library: encrypted in the app data directory, its key in the OS keychain (SECURITY D2). Nothing is
+            // read or written until the UI asks.
+            app.manage(commands::library::LibraryState::new(
+                storage::signatures::Library::in_data_dir(&data_dir),
+            ));
             // The OS "Reduce transparency" flag as the UI first sees it; later changes go to the channel the UI opens with
             // `watch_transparency`.
             app.manage(Arc::new(TransparencyWatch::new(
@@ -109,6 +115,7 @@ pub fn run() -> Result<(), AppError> {
             commands::annotations::list_annotations,
             commands::annotations::list_document_annotations,
             commands::pages::apply_command,
+            commands::forms::get_form_fields,
             commands::pages::pick_pdf_sources,
             commands::pages::release_source,
             commands::annotations::undo,
@@ -119,6 +126,7 @@ pub fn run() -> Result<(), AppError> {
             commands::jobs::split_document,
             commands::jobs::merge_documents,
             commands::jobs::compress_document,
+            commands::jobs::flatten_document,
             commands::jobs::estimate_compression,
             commands::jobs::cancel_job,
             commands::close_document,
@@ -128,6 +136,18 @@ pub fn run() -> Result<(), AppError> {
             commands::app::watch_transparency,
             commands::app::subscribe_menu,
             commands::app::subscribe_app,
+            commands::library::clear_signature_library,
+            commands::library::get_library_signature,
+            commands::library::delete_signature,
+            commands::library::rename_signature,
+            commands::library::save_library_signature,
+            commands::library::list_signatures,
+            commands::signatures::use_signature,
+            commands::signatures::get_signature_preview,
+            commands::signatures::save_draft_signature,
+            commands::signatures::import_signature_image,
+            commands::signatures::create_typed_signature,
+            commands::signatures::create_drawn_signature,
         ])
         .build(tauri::generate_context!())
         .map_err(|error| AppError::logged(ErrorCode::Internal, error))?;

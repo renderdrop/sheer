@@ -32,7 +32,9 @@
 
 pub mod annotations;
 pub mod app;
+pub mod forms;
 pub mod jobs;
+pub mod library;
 pub mod links;
 pub mod outline;
 pub mod pages;
@@ -40,6 +42,7 @@ pub mod recent_actions;
 pub mod render;
 pub mod save;
 pub mod search;
+pub mod signatures;
 pub mod text;
 
 use std::collections::HashSet;
@@ -147,6 +150,8 @@ pub struct AppState {
     annotations: Arc<annotations::AnnotationStore>,
     /// The import sources: PDFs the user chose to take pages from, held in memory (`documents::sources`, ADR-036 §4).
     sources: Arc<crate::documents::sources::SourceRegistry>,
+    /// The signatures made and not placed or saved yet (see [`signatures`]).
+    drafts: Arc<crate::signatures::DraftStore>,
     /// The recent files (`storage::recents`); `None` where there is no app data directory (most tests).
     recents: Option<Arc<RecentsStore>>,
     /// The app data directory, where the backups of the originals go (`commands::save`); `None` where there is none (most tests).
@@ -163,6 +168,7 @@ impl AppState {
             unlocks: Arc::new(UnlockGate::default()),
             annotations: Arc::new(annotations::AnnotationStore::default()),
             sources: Arc::new(crate::documents::sources::SourceRegistry::new()),
+            drafts: Arc::new(crate::signatures::DraftStore::default()),
             recents: None,
             data_dir: None,
         }

@@ -459,6 +459,8 @@
   "annot.type.rect": "Rechteck",
   "annot.type.ellipse": "Ellipse",
   "annot.type.line": "Linie",
+  "annot.type.signature": "Unterschrift",
+  "annot.type.mark": "Markierung",
   "annot.type.opaque": "Anmerkung",
   "annot.deleted": "{type} gelöscht",
   "annot.resizeUnavailable": "Diese Anmerkung lässt sich nicht in der Größe ändern.",

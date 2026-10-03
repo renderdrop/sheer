@@ -10,6 +10,7 @@ use serde::Serialize;
 
 use super::annotation::{Annotation, AnnotationBody, Imported, PdfOrigin, Sync};
 use super::command::DocCommand;
+use super::form::{FieldId, FieldState, FieldUndo, FieldValue, FormInfo, FormModel, ReadForm};
 use super::history::{History, HistoryState};
 use super::ids::AnnotId;
 use super::page::{PageSlot, PageSlotInfo, PageSource};
@@ -48,6 +49,8 @@ pub struct Delta {
     pub pages: bool,
     /// Engine pages that must be turned to this rotation (`(engine index, degrees)`) for the engine's copy to match.
     pub engine_rotations: Vec<(u32, u16)>,
+    /// Form fields whose value changed.
+    pub fields: BTreeSet<FieldId>,
 }
 
 impl Delta {
@@ -64,6 +67,7 @@ impl Delta {
     pub fn merge(&mut self, other: Delta) {
         self.pages |= other.pages;
         self.engine_rotations.extend(other.engine_rotations);
+        self.fields.extend(other.fields);
         for annotation in other.upserted.into_values() {
             self.upsert(annotation);
         }
@@ -86,6 +90,8 @@ pub struct ChangeSet {
     /// Not sent: the rotations the engine's copy has to be given (`commands` does it before it answers).
     #[serde(skip)]
     pub engine_rotations: Vec<(u32, u16)>,
+    /// The form fields whose value changed (empty when none did), ADR-041.
+    pub fields: Vec<FieldState>,
     pub history: HistoryState,
 }
 
@@ -112,6 +118,10 @@ pub struct DocState {
     pub(super) live_per_page: HashMap<u32, usize>,
     /// Live replies by the annotation they reply to.
     pub(super) replies: HashMap<AnnotId, BTreeSet<AnnotId>>,
+    /// The form fields, once read from the file (`get_form_fields`, ADR-041).
+    form: Option<FormModel>,
+    /// The signature art the document uses (ADR-041 §5, `use_signature`); dropped with the document.
+    assets: crate::signatures::AssetStore,
 }
 
 /// Bytes of the strings an imported annotation brings.
@@ -166,6 +176,8 @@ impl DocState {
             live_total: 0,
             live_per_page: HashMap::new(),
             replies: HashMap::new(),
+            form: None,
+            assets: crate::signatures::AssetStore::default(),
         }
     }
 
@@ -283,9 +295,85 @@ impl DocState {
                 }
             }
         }
+        if let Some(form) = &mut self.form {
+            delta
+                .fields
+                .extend(form.changed().into_iter().map(|field| field.id));
+            form.finish_save();
+        }
         self.history.clear();
         self.rev += 1;
         self.change_set(delta)
+    }
+
+    // --- Signature assets (ADR-041 §5) ---
+
+    /// The art of the document's signatures.
+    pub fn assets(&self) -> &crate::signatures::AssetStore {
+        &self.assets
+    }
+
+    pub fn assets_mut(&mut self) -> &mut crate::signatures::AssetStore {
+        &mut self.assets
+    }
+
+    // --- The form (ADR-041) ---
+
+    /// The form has not been read from the file yet, or has to be read again (after a save).
+    pub fn form_needs_read(&self) -> bool {
+        self.form.as_ref().is_none_or(FormModel::needs_reread)
+    }
+
+    /// Takes what was read from the file: the first time the whole model, later the file side of every field (ids stay).
+    pub fn install_form(&mut self, read: ReadForm) {
+        match &mut self.form {
+            Some(form) => form.refresh(read),
+            None => self.form = Some(FormModel::from_read(read)),
+        }
+    }
+
+    /// The form as the UI sees it, with the widgets on the pages the document has now.
+    pub fn form_info(&self) -> FormInfo {
+        let Some(form) = &self.form else {
+            return FormInfo::empty();
+        };
+        form.info(|file_page| {
+            self.pages.iter().find_map(|slot| match slot.source {
+                PageSource::File { index } if index == file_page => Some(slot.id),
+                _ => None,
+            })
+        })
+    }
+
+    pub fn form(&self) -> Option<&FormModel> {
+        self.form.as_ref()
+    }
+
+    /// Sets a form value (checked), returning what it replaces. Nothing changes if it is refused.
+    pub(crate) fn set_field_value(
+        &mut self,
+        field: FieldId,
+        value: &FieldValue,
+        delta: &mut Delta,
+    ) -> Result<FieldUndo, AppError> {
+        let form = self.form.as_mut().ok_or(AppError::not_found("field"))?;
+        let old = form.set_value(field, value)?;
+        delta.fields.insert(field);
+        Ok(vec![(field, old)])
+    }
+
+    /// Puts form values back (the inverse of a change) and returns what they replace.
+    pub(crate) fn restore_fields(
+        &mut self,
+        values: &[(FieldId, FieldValue)],
+        delta: &mut Delta,
+    ) -> FieldUndo {
+        let Some(form) = self.form.as_mut() else {
+            return Vec::new();
+        };
+        let inverse = form.restore(values);
+        delta.fields.extend(inverse.iter().map(|(id, _)| *id));
+        inverse
     }
 
     /// How many pages the document has now.
@@ -464,6 +552,11 @@ impl DocState {
             removed: delta.removed.into_iter().collect(),
             pages: delta.pages.then(|| self.page_infos()),
             engine_rotations: delta.engine_rotations,
+            fields: delta
+                .fields
+                .iter()
+                .filter_map(|id| self.form.as_ref().and_then(|form| form.state(*id)))
+                .collect(),
             history: self.history.state(),
         }
     }

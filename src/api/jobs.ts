@@ -112,6 +112,21 @@ export async function compressDocument(
   return parseJobId(await call<unknown>('compress_document', { docId, preset, saveAs, onEvent: newChannel(onEvent) }));
 }
 
+/** What a flatten burns into the page content: the form only, or the other annotations too. */
+export type FlattenScope = 'forms' | 'formsAndAnnotations';
+export interface FlattenOptions {
+  scope: FlattenScope;
+}
+
+/** Flattens the form into a new document (Rust Save As dialog, full rewrite); the result arrives as `done.opened`. `null`: cancelled. */
+export async function flattenDocument(
+  docId: number,
+  opts: FlattenOptions,
+  onEvent: (e: JobEvent) => void,
+): Promise<JobId | null> {
+  return parseJobId(await call<unknown>('flatten_document', { docId, opts, onEvent: newChannel(onEvent) }));
+}
+
 export async function cancelJob(jobId: JobId): Promise<void> {
   await call<void>('cancel_job', { jobId });
 }

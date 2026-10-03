@@ -10,11 +10,14 @@ use std::fmt::Write as _;
 use super::coords::Mapper;
 use crate::model::annotation::{Annotation, AnnotationBody, LineEnd, NoteIcon, Rgb, Stroke};
 use crate::model::geometry::{Point, Quad};
+use crate::signatures::{marks, Art};
 
 /// The name the opacity graphics state has in the form's resources.
 pub const GS_NAME: &str = "GS";
 /// The name of the font in the form's resources and in a free text's `/DA`.
 pub const FONT_NAME: &str = "Helv";
+/// The name of the image of a signature in the form's resources.
+pub const IMAGE_NAME: &str = "Im0";
 
 /// A circle drawn with four Bézier curves: the distance of the control points from the ends, as a part of the radius.
 const KAPPA: f32 = 0.552_284_8;
@@ -246,6 +249,18 @@ fn stroke_polyline(out: &mut String, m: Mapper, stroke: &Stroke) {
 
 /// The appearance of `annotation`, with its geometry mapped by `m`. `None` for an annotation the model does not write.
 pub fn build(annotation: &Annotation, m: Mapper) -> Option<Appearance> {
+    build_with(annotation, m, None).map(|(ap, _)| ap)
+}
+
+/// [`build`] for an annotation that has art (a signature): `art` is what its asset holds. A signature without art has no appearance
+/// to write (its file one stays). The flag says whether the content draws `/Im0`, the image of raster art, which the caller adds to
+/// the resources.
+pub fn build_with(
+    annotation: &Annotation,
+    m: Mapper,
+    art: Option<&Art>,
+) -> Option<(Appearance, bool)> {
+    let mut uses_image = false;
     let bbox = m.rect(annotation.rect);
     let mut c = String::new();
     let mut multiply = false;
@@ -452,6 +467,64 @@ pub fn build(annotation: &Annotation, m: Mapper) -> Option<Appearance> {
             arrow(&mut c, m, *to, *from, *head, *width);
             arrow(&mut c, m, *from, *to, *tail, *width);
         }
+        AnnotationBody::Signature { bounds, .. } => match art {
+            Some(Art::Vector { w, h, paths }) => {
+                fill_color(&mut c, annotation.color);
+                for path in paths {
+                    let mut points = path.iter().map(|p| Point {
+                        x: bounds.x + p.x / w * bounds.w,
+                        y: bounds.y + p.y / h * bounds.h,
+                    });
+                    if let Some(first) = points.next() {
+                        move_to(&mut c, m, first);
+                    }
+                    for point in points {
+                        line_to(&mut c, m, point);
+                    }
+                    c.push_str("h\n");
+                }
+                c.push_str("f\n");
+            }
+            Some(Art::Raster { .. }) => {
+                let [x0, y0, x1, y1] = bbox;
+                uses_image = true;
+                let _ = writeln!(
+                    c,
+                    "{} 0 0 {} {} {} cm\n/{IMAGE_NAME} Do",
+                    num(x1 - x0),
+                    num(y1 - y0),
+                    num(x0),
+                    num(y0)
+                );
+            }
+            // The art of an annotation read from the file is in the file: nothing is written.
+            None => return None,
+        },
+        AnnotationBody::Mark { bounds, glyph } => {
+            fill_color(&mut c, annotation.color);
+            let at = |u: f32, v: f32| Point {
+                x: bounds.x + u * bounds.w,
+                y: bounds.y + v * bounds.h,
+            };
+            match marks::shape(*glyph) {
+                marks::Shape::Polygon(points) => {
+                    for (index, [u, v]) in points.iter().enumerate() {
+                        if index == 0 {
+                            move_to(&mut c, m, at(*u, *v));
+                        } else {
+                            line_to(&mut c, m, at(*u, *v));
+                        }
+                    }
+                    c.push_str("h\nf\n");
+                }
+                marks::Shape::Disc { inset } => {
+                    let [x0, y0, x1, y1] = bbox;
+                    let (dx, dy) = ((x1 - x0) * inset, (y1 - y0) * inset);
+                    ellipse_path(&mut c, [x0 + dx, y0 + dy, x1 - dx, y1 - dy]);
+                    c.push_str("f\n");
+                }
+            }
+        }
         AnnotationBody::Opaque { .. } => return None,
     }
     c.push_str("Q\n");
@@ -459,13 +532,14 @@ pub fn build(annotation: &Annotation, m: Mapper) -> Option<Appearance> {
     if uses_state {
         c.insert_str(0, &format!("/{GS_NAME} gs\n"));
     }
-    Some(Appearance {
+    let ap = Appearance {
         bbox,
         content: c,
         uses_state,
         multiply,
         uses_font,
-    })
+    };
+    Some((ap, uses_image))
 }
 
 #[cfg(test)]

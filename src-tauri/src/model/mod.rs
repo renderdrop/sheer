@@ -10,6 +10,7 @@ pub mod annotation;
 pub mod command;
 pub mod doc_state;
 pub mod find;
+pub mod form;
 pub mod geometry;
 pub mod history;
 pub mod ids;

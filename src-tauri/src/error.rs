@@ -177,6 +177,11 @@ impl AppError {
         Self::with_params(ErrorCode::TooLarge, what, Some(max))
     }
 
+    /// `unsupported_feature` for the feature called `what` (`"xfa"`).
+    pub const fn unsupported(what: &'static str) -> Self {
+        Self::with_params(ErrorCode::UnsupportedFeature, what, None)
+    }
+
     /// `needs_confirmation`: saving would do `reason` (a fixed word such as `fileChangedOnDisk`) and the user decides first.
     pub const fn needs_confirmation(reason: &'static str) -> Self {
         Self::with_params(ErrorCode::NeedsConfirmation, reason, None)

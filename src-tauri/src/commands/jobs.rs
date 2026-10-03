@@ -41,6 +41,8 @@ use crate::limits;
 use crate::model::annotation::PdfOrigin;
 use crate::model::page::{PageSource, SourceId};
 use crate::pdfwrite::compress::{self, Preset};
+use crate::pdfwrite::flatten::{self, FlattenOptions};
+use crate::pdfwrite::forms;
 use crate::pdfwrite::produce::{self, Control, PageKind, PageSel, Parsed, Part, Phase, Warning};
 use crate::pdfwrite::{append_annotations, Plan};
 use crate::storage::atomic;
@@ -361,6 +363,9 @@ struct DocInput {
     sources: Vec<Arc<SourceBytes>>,
     /// The pages differ from the file (see `PagePlan::changed`).
     pages_changed: bool,
+    /// The form fields whose value is not the file's, and whether the form is a hybrid one (`forms::write_values`); only a flatten uses them.
+    form: Vec<crate::model::form::FormField>,
+    strip_xfa: bool,
 }
 
 impl DocInput {
@@ -554,7 +559,7 @@ impl AppState {
             .path(id)
             .ok_or(AppError::not_found("document"))?;
         let count = self.registry.page_count(id)?;
-        let (plan, foreign, order, imported, pages_changed) =
+        let (plan, foreign, order, imported, pages_changed, form, strip_xfa) =
             self.annotations.with(id, count, |state| {
                 // The annotations of pages of the file are written into the file's bytes first; those of the other pages cannot be (the
                 // file has no such page) and are kept apart.
@@ -620,7 +625,23 @@ impl AppState {
                     ));
                 }
                 let pages_changed = state.page_plan().changed();
-                Ok((plan, foreign, order, imported, pages_changed))
+                // The form values that are not the file's: written into the bytes of a flatten (ADR-041 §4).
+                let form: Vec<crate::model::form::FormField> = state
+                    .form()
+                    .map(|form| form.changed().into_iter().cloned().collect())
+                    .unwrap_or_default();
+                let strip_xfa = state
+                    .form()
+                    .is_some_and(|form| form.xfa() == crate::model::form::Xfa::Hybrid);
+                Ok((
+                    plan,
+                    foreign,
+                    order,
+                    imported,
+                    pages_changed,
+                    form,
+                    strip_xfa,
+                ))
             })?;
         // The bytes of the sources pages were taken from: pinned by the document, or still held by the registry.
         let sources = imported
@@ -641,20 +662,33 @@ impl AppState {
             order,
             sources,
             pages_changed,
+            form,
+            strip_xfa,
         })
     }
 
     /// The bytes of the document as the model has them now: the file as it is on disk, with the annotations that are not saved appended.
     /// A file that changed on disk since it was opened is `needs_confirmation` (the annotations' positions in it are no longer known).
     fn job_bytes(&self, input: &DocInput) -> Result<Vec<u8>, AppError> {
+        self.job_bytes_with(input, false)
+    }
+
+    /// [`AppState::job_bytes`]; with `values` the unsaved form values are written into the file as well (the appearances of the changed
+    /// fields, so that a flatten burns what the user sees).
+    fn job_bytes_with(&self, input: &DocInput, values: bool) -> Result<Vec<u8>, AppError> {
         let (original, fingerprint) = read_all(intake::admit(&input.source)?)?;
         if fingerprint_changed(self.registry.fingerprint(input.id), fingerprint) {
             return Err(AppError::needs_confirmation("fileChangedOnDisk"));
         }
-        if input.plan.changes.is_empty() {
-            return Ok(original);
+        let mut bytes = if input.plan.changes.is_empty() {
+            original
+        } else {
+            append_annotations(original, &input.plan)?.bytes
+        };
+        if values && !input.form.is_empty() {
+            bytes = forms::write_values(bytes, &input.form, input.strip_xfa)?.bytes;
         }
-        Ok(append_annotations(original, &input.plan)?.bytes)
+        Ok(bytes)
     }
 
     /// [`AppState::job_bytes`], and when the pages differ from the file (deleted, moved, rotated, blank or imported ones) the
@@ -664,7 +698,17 @@ impl AppState {
         input: &DocInput,
         control: &dyn Control,
     ) -> Result<Vec<u8>, AppError> {
-        let bytes = self.job_bytes(input)?;
+        self.job_bytes_current_with(input, control, false)
+    }
+
+    /// [`AppState::job_bytes_current`] with the unsaved form values (see [`AppState::job_bytes_with`]).
+    fn job_bytes_current_with(
+        &self,
+        input: &DocInput,
+        control: &dyn Control,
+        values: bool,
+    ) -> Result<Vec<u8>, AppError> {
+        let bytes = self.job_bytes_with(input, values)?;
         if !input.pages_changed {
             return Ok(bytes);
         }
@@ -1062,6 +1106,39 @@ impl AppState {
         })
     }
 
+    /// Flatten: document `id` as the model has it (pages, annotations) with the widgets burned into the page content, into a new file at
+    /// `target`, which is then opened (ADR-041 §4). The original is never replaced.
+    pub fn start_flatten(
+        &self,
+        jobs: &Arc<JobRegistry>,
+        id: DocumentId,
+        options: FlattenOptions,
+        target: &Path,
+        sink: Arc<dyn EventSink>,
+    ) -> Result<JobId, AppError> {
+        let input = self.job_input(id)?;
+        let target = intake::admit_target(target)?;
+        if self.target_is_open(&target) {
+            return Err(AppError::new(ErrorCode::IoInUse));
+        }
+        let state = self.clone();
+        jobs.start(sink, move |ctx| {
+            let bytes = read_phase(ctx, || state.job_bytes_current_with(&input, ctx, true))?;
+            let before = bytes.len() as u64;
+            let output = flatten::flatten(&bytes, options.scope, ctx)?;
+            ctx.check()?;
+            let after = output.bytes.len() as u64;
+            let opened = state.publish(&target, &output.bytes)?;
+            Ok(JobDone {
+                outputs: 1,
+                bytes_before: before,
+                bytes_after: after,
+                warnings: output.warnings,
+                opened,
+            })
+        })
+    }
+
     /// What compressing document `id` would give, from a sample: quick (a second and a half at most), not a promise.
     pub fn estimate_compression(&self, id: DocumentId) -> Result<CompressEstimate, AppError> {
         let input = self.job_input(id)?;
@@ -1219,6 +1296,30 @@ pub async fn compress_document(
         };
         state
             .start_compress(jobs(), doc_id, preset, &path, channel_sink(on_event))
+            .map(Some)
+    })
+    .await
+}
+
+/// Flattens the form (and optionally the annotations) of a document into a new file chosen in Save As, and opens it.
+#[tauri::command]
+pub async fn flatten_document(
+    window: WebviewWindow,
+    state: State<'_, AppState>,
+    doc_id: DocumentId,
+    opts: FlattenOptions,
+    on_event: Channel<JobEvent>,
+) -> Result<Option<JobId>, UiError> {
+    let state = state.inner().clone();
+    blocking(move || {
+        let info = state.info(doc_id).ok_or(AppError::not_found("document"))?;
+        state.job_input(doc_id)?;
+        let name = format!("{}-flattened.pdf", file_stem(&info.display_name));
+        let Some(path) = pick_save_path(&window, &name)? else {
+            return Ok(None);
+        };
+        state
+            .start_flatten(jobs(), doc_id, opts, &path, channel_sink(on_event))
             .map(Some)
     })
     .await

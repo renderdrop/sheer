@@ -129,6 +129,7 @@ describe('parseChangeSet', () => {
     upserted: [common(NOTE)],
     removed: [4, 5],
     pages: null,
+    fields: [],
     history: HISTORY,
     ...extra,
   });
@@ -147,6 +148,7 @@ describe('parseChangeSet', () => {
     ['a history label that is a number', wire({ history: { ...HISTORY, undoLabel: 1 } })],
     ['no history', wire({ history: undefined })],
     ['pages that are not ids', wire({ pages: ['x'] })],
+    ['fields that are not field states', wire({ fields: [{ id: 1 }] })],
     ['nothing', null],
   ])('rejects %s', (_name, value) => {
     expect(parseChangeSet(value)).toBeNull();
@@ -184,14 +186,21 @@ describe('the commands', () => {
         { type: 'deleteAnnotations', ids: [9] },
       ],
     };
-    const changes = { rev: 1, upserted: [], removed: [], pages: null, history: HISTORY };
+    const changes = { rev: 1, upserted: [], removed: [], pages: null, fields: [], history: HISTORY };
     invokeMock.mockResolvedValueOnce(changes);
     await expect(applyCommand(2, command)).resolves.toStrictEqual(changes);
     expect(invokeMock).toHaveBeenCalledWith('apply_command', { docId: 2, command });
   });
 
   it('undo and redo take the document and return the change set', async () => {
-    const changes = { rev: 2, upserted: [], removed: [1], pages: null, history: { ...HISTORY, canRedo: true } };
+    const changes = {
+      rev: 2,
+      upserted: [],
+      removed: [1],
+      pages: null,
+      fields: [],
+      history: { ...HISTORY, canRedo: true },
+    };
     invokeMock.mockResolvedValue(changes);
     await expect(undo(7)).resolves.toStrictEqual(changes);
     expect(invokeMock).toHaveBeenLastCalledWith('undo', { docId: 7 });

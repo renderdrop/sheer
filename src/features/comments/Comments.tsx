@@ -3,11 +3,13 @@ import {
   ChevronRight,
   Circle,
   CircleAlert,
+  Check,
   Highlighter,
   ListFilter,
   LoaderCircle,
   MessagesSquare,
   PenLine,
+  Signature,
   Slash,
   Square,
   StickyNote,
@@ -74,6 +76,8 @@ const KIND_ICONS: Record<AnnotationKind, LucideIcon> = {
   rect: Square,
   ellipse: Circle,
   line: Slash,
+  signature: Signature,
+  mark: Check,
   opaque: MessagesSquare,
 };
 

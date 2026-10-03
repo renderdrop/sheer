@@ -32,8 +32,15 @@ serde_json = "1"
 # Wipes the password of an encrypted PDF from memory when it is dropped (SECURITY D3). MIT OR Apache-2.0; no further dependencies.
 zeroize = "1"
 lopdf = { version = "0.45.0", default-features = false }
-image = { version = "0.25", default-features = false, features = ["jpeg"] }
+image = { version = "0.25", default-features = false, features = ["jpeg", "png"] }
+# Glyph outlines of the bundled signature font (signatures/typed.rs only). MIT OR Apache-2.0, googlefonts/fontations, forbid(unsafe_code).
+skrifa = "0.48"
 flate2 = "1"
+# Signature library (ADR-041 section 7, storage/{keychain,signatures}.rs). XChaCha20-Poly1305 (Apache-2.0 OR MIT, RustCrypto); random key
+# and nonces from getrandom (MIT OR Apache-2.0); the OS credential store sits behind keyring-core (MIT OR Apache-2.0).
+chacha20poly1305 = { version = "0.11", default-features = false, features = ["alloc", "zeroize"] }
+getrandom = "0.3"
+keyring-core = "1.0"
 
 # Windows only: opening another PDF from the file manager starts another process; this hands its command line to the running
 # window and ends it (src/sources.rs). Local only (a named mutex and a window message): no network. macOS routes files to the
@@ -42,12 +49,16 @@ flate2 = "1"
 # The identity of an open file (volume serial number + file index) for intake's "is the canonical path still the file I opened"
 # check, which `std` offers on Unix only (`MetadataExt::ino`) without `unsafe`. Unlicense OR MIT; already in the build via walkdir.
 same-file = "1.0.6"
+# Credential Manager store for keyring-core (MIT OR Apache-2.0); holds the signature library key (storage/keychain.rs).
+windows-native-keyring-store = "1.1"
 tauri-plugin-single-instance = "2.5.2"
 
 # macOS only: the "Reduce transparency" accessibility flag (src/platform/macos.rs). Already part of the build through
 # Tauri/wry; only the two features used are enabled here.
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2-app-kit = { version = "0.3.2", default-features = false, features = ["std", "NSWorkspace", "NSAccessibility"] }
+# Keychain store for keyring-core (MIT OR Apache-2.0); holds the signature library key (storage/keychain.rs).
+apple-native-keyring-store = { version = "1.0", default-features = false, features = ["keychain"] }
 
 # Unix only: `O_NONBLOCK` and `O_NOCTTY` for opening the settings file without waiting on a FIFO (src/storage/settings.rs).
 # Already part of the build through Tauri; no features.

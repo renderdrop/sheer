@@ -16,8 +16,12 @@ use pdfium_render::prelude::*;
 use super::space::{load_page, page_box};
 use crate::error::AppError;
 use crate::limits;
-use crate::model::annotation::{AnnotationBody, Imported, NoteIcon, PdfOrigin, Rgb};
+use crate::model::annotation::{
+    AnnotationBody, Imported, NoteIcon, PdfOrigin, Rgb, SignatureArtRef, SignatureRole,
+    MIN_SIGNATURE_SIDE_PT,
+};
 use crate::model::geometry::{PageBox, Point, Quad, Rect};
+use crate::signatures::marks::{parse_name, Named};
 
 /// Colour of a highlight that has none; any other annotation without a colour is black.
 const DEFAULT_MARKUP: Rgb = Rgb([255, 235, 0]);
@@ -121,6 +125,11 @@ fn quads_of(annotation: &PdfPageAnnotation<'_>, page_box: PageBox, rect: Rect) -
     quads
 }
 
+/// What the `/NM` of a stamp says about it, if it is one of ours.
+fn stamp_kind(annotation: &PdfPageAnnotation<'_>) -> Option<Named> {
+    parse_name(&annotation.name()?)
+}
+
 /// The annotation at `position` of the page as an [`Imported`]; `None` for the kinds the model leaves to PDFium, and for an annotation
 /// whose rectangle is not a number.
 fn read_one(
@@ -217,6 +226,30 @@ fn read_one(
             },
             stroke.unwrap_or(BLACK),
         ),
+        // Our own stamps (`sheer-sig-`, `sheer-ini-`, `sheer-mark-<glyph>-`, ADR-041 §5) come back as signatures and marks, so they can
+        // be moved and scaled; any other stamp stays opaque. A stamp too small for the model to hold stays opaque too.
+        PdfPageAnnotationType::Stamp
+            if stamp_kind(annotation).is_some()
+                && rect.w >= MIN_SIGNATURE_SIDE_PT
+                && rect.h >= MIN_SIGNATURE_SIDE_PT =>
+        {
+            let body = match stamp_kind(annotation) {
+                Some(Named::Mark(glyph)) => AnnotationBody::Mark {
+                    bounds: rect,
+                    glyph,
+                },
+                other => AnnotationBody::Signature {
+                    bounds: rect,
+                    role: if other == Some(Named::Initials) {
+                        SignatureRole::Initials
+                    } else {
+                        SignatureRole::Signature
+                    },
+                    art: SignatureArtRef::File,
+                },
+            };
+            (body, fill.or(stroke).unwrap_or(BLACK))
+        }
         other => (
             AnnotationBody::Opaque {
                 subtype: format!("{other:?}"),

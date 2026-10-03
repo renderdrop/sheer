@@ -872,7 +872,10 @@ pub fn plan_for_output(plan: &Plan, documents: &[u32], base: u32) -> Vec<Plan> {
                     ..origin.clone()
                 })
             };
-            let mut out = Plan::default();
+            let mut out = Plan {
+                assets: plan.assets.clone(),
+                ..Plan::default()
+            };
             for change in &plan.changes {
                 match change {
                     Change::Write {

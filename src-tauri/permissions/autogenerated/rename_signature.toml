@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-rename-signature"
+description = "Enables the rename_signature command without any pre-configured scope."
+commands.allow = ["rename_signature"]
+
+[[permission]]
+identifier = "deny-rename-signature"
+description = "Denies the rename_signature command without any pre-configured scope."
+commands.deny = ["rename_signature"]

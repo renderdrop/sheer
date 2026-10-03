@@ -17,6 +17,8 @@ const KIND_KEYS: Readonly<Record<AnnotationKind, PlainKey>> = {
   rect: 'annot.type.rect',
   ellipse: 'annot.type.ellipse',
   line: 'annot.type.line',
+  signature: 'annot.type.signature',
+  mark: 'annot.type.mark',
   opaque: 'annot.type.opaque',
 };
 

@@ -5,6 +5,7 @@ import {
   cancelJob,
   compressDocument,
   estimateCompression,
+  flattenDocument,
   extractPages,
   mergeDocuments,
   parseJobEvent,
@@ -143,6 +144,19 @@ describe('the job commands', () => {
     ]);
     await compressDocument(1, 'ebook', vi.fn());
     expect(invokeMock.mock.calls.at(-1)).toMatchObject(['compress_document', { docId: 1, preset: 'ebook' }]);
+  });
+
+  it('flatten sends its scope and reads the job id or a cancelled dialog', async () => {
+    invokeMock.mockResolvedValueOnce(3);
+    expect(await flattenDocument(1, { scope: 'formsAndAnnotations' }, vi.fn())).toBe(3);
+    expect(invokeMock.mock.calls.at(-1)).toMatchObject([
+      'flatten_document',
+      { docId: 1, opts: { scope: 'formsAndAnnotations' } },
+    ]);
+    invokeMock.mockResolvedValueOnce(null);
+    expect(await flattenDocument(1, { scope: 'forms' }, vi.fn())).toBeNull();
+    invokeMock.mockResolvedValueOnce('three');
+    await expect(flattenDocument(1, { scope: 'forms' }, vi.fn())).rejects.toMatchObject({ code: 'internal' });
   });
 
   it('rejects when the backend answers with something that is not a job id', async () => {

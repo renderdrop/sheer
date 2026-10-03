@@ -3,8 +3,10 @@
 
 pub mod atomic;
 pub mod backup;
+pub mod keychain;
 mod open;
 pub mod recents;
 pub mod settings;
+pub mod signatures;
 
 pub(crate) use open::open_without_blocking;

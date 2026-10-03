@@ -11,8 +11,11 @@ use std::collections::BTreeSet;
 
 use serde::Deserialize;
 
-use super::annotation::{Annotation, AnnotationDraft, AnnotationPatch};
+use super::annotation::{
+    Annotation, AnnotationBody, AnnotationDraft, AnnotationPatch, SignatureArtRef,
+};
 use super::doc_state::{Delta, DocState, Entry, Slot, Stamp};
+use super::form::{FieldId, FieldUndo, FieldValue};
 use super::ids::AnnotId;
 use super::page::{NewPage, PageSlot, SourceId};
 use crate::documents::PageId;
@@ -40,6 +43,17 @@ pub enum DocCommand {
     DeleteAnnotations { ids: Vec<AnnotId> },
     /// Moves annotations by (`dx`, `dy`) points.
     MoveAnnotations { ids: Vec<AnnotId>, dx: f32, dy: f32 },
+    /// Sets the value of a form field (ADR-041). Edits of one field with the same `coalesce` key (`field:<id>`) within 1.5 s of each
+    /// other are one undo step.
+    SetFieldValue {
+        field: FieldId,
+        value: FieldValue,
+        #[serde(default)]
+        coalesce: Option<String>,
+    },
+    /// Puts form values back. Internal: the inverse of a field change; not accepted from the UI.
+    #[serde(skip_deserializing)]
+    RestoreFields { values: Vec<(FieldId, FieldValue)> },
     /// Several commands as one undo step. `label` is a key of the UI catalogs (`[A-Za-z0-9._-]`).
     Batch {
         label: String,
@@ -101,6 +115,7 @@ pub const LABEL_UPDATE: &str = "annotation.update";
 pub const LABEL_DELETE: &str = "annotation.delete";
 pub const LABEL_MOVE: &str = "annotation.move";
 const LABEL_RESTORE: &str = "annotation.restore";
+pub const LABEL_FIELD_SET: &str = "field.set";
 pub const LABEL_ROTATE_PAGES: &str = "page.rotate";
 pub const LABEL_DELETE_PAGES: &str = "page.delete";
 pub const LABEL_MOVE_PAGES: &str = "page.move";
@@ -125,7 +140,8 @@ impl DocCommand {
             Self::DeleteAnnotations { .. } => LABEL_DELETE.to_owned(),
             Self::MoveAnnotations { .. } => LABEL_MOVE.to_owned(),
             Self::Batch { label, .. } => label.clone(),
-            Self::Restore { .. } => LABEL_RESTORE.to_owned(),
+            Self::Restore { .. } | Self::RestoreFields { .. } => LABEL_RESTORE.to_owned(),
+            Self::SetFieldValue { .. } => LABEL_FIELD_SET.to_owned(),
             Self::RotatePages { .. } => LABEL_ROTATE_PAGES.to_owned(),
             Self::DeletePages { .. } => LABEL_DELETE_PAGES.to_owned(),
             Self::MovePages { .. } => LABEL_MOVE_PAGES.to_owned(),
@@ -164,6 +180,12 @@ impl DocCommand {
                 coalesce: Some(key),
                 ..
             } => Some((*id, key.clone())),
+            // A field has its own ids; the key text keeps them apart from the annotations'.
+            Self::SetFieldValue {
+                field,
+                coalesce: Some(key),
+                ..
+            } => Some((AnnotId::new(field.get()), key.clone())),
             _ => None,
         }
     }
@@ -184,7 +206,13 @@ impl DocCommand {
             ));
         }
         match self {
-            Self::CreateAnnotation { .. } | Self::Restore { .. } => Ok(()),
+            Self::CreateAnnotation { .. } | Self::Restore { .. } | Self::RestoreFields { .. } => {
+                Ok(())
+            }
+            Self::SetFieldValue { coalesce, .. } => match coalesce {
+                Some(key) if !is_key(&key.replace(':', ".")) => Err(AppError::invalid("coalesce")),
+                _ => Ok(()),
+            },
             Self::RotatePages { pages, .. }
             | Self::DeletePages { pages }
             | Self::MovePages { pages, .. } => {
@@ -254,13 +282,15 @@ impl DocCommand {
         }
     }
 
-    /// Runs an annotation command on `state`. Returns the slots that undo it and what changed. On an error nothing has changed.
+    /// Runs an annotation or form command on `state`. Returns the slots (and, for form values, the values) that undo it and what
+    /// changed. On an error nothing has changed.
     fn run_slots(
         &self,
         state: &mut DocState,
         stamp: &Stamp,
-    ) -> Result<(Vec<Slot>, Delta), AppError> {
+    ) -> Result<(Vec<Slot>, FieldUndo, Delta), AppError> {
         let mut delta = Delta::default();
+        let mut field_inverse: FieldUndo = Vec::new();
         let inverse = match self {
             Self::CreateAnnotation { draft } => create(state, draft, stamp, &mut delta)?,
             Self::UpdateAnnotation { id, patch, .. } => {
@@ -298,29 +328,44 @@ impl DocCommand {
                 }
                 state.set_slots(slots, &mut delta)
             }
+            Self::SetFieldValue { field, value, .. } => {
+                field_inverse = state.set_field_value(*field, value, &mut delta)?;
+                Vec::new()
+            }
+            Self::RestoreFields { values } => {
+                field_inverse = state.restore_fields(values, &mut delta);
+                Vec::new()
+            }
             Self::Batch { commands, .. } => {
-                let mut inverses: Vec<Vec<Slot>> = Vec::with_capacity(commands.len());
+                let mut inverses: Vec<(Vec<Slot>, FieldUndo)> = Vec::with_capacity(commands.len());
                 for command in commands {
                     match command.run_slots(state, stamp) {
-                        Ok((inverse, step)) => {
-                            inverses.push(inverse);
+                        Ok((inverse, fields, step)) => {
+                            inverses.push((inverse, fields));
                             delta.merge(step);
                         }
                         Err(error) => {
                             // The ones before it are taken back, last first.
-                            let undo = inverses.into_iter().rev().flatten().collect();
-                            state.set_slots(undo, &mut Delta::default());
+                            for (slots, fields) in inverses.into_iter().rev() {
+                                state.set_slots(slots, &mut Delta::default());
+                                state.restore_fields(&fields, &mut Delta::default());
+                            }
                             return Err(error);
                         }
                     }
                 }
-                inverses.into_iter().rev().flatten().collect()
+                let mut slots = Vec::new();
+                for (undo, fields) in inverses.into_iter().rev() {
+                    slots.extend(undo);
+                    field_inverse.extend(fields);
+                }
+                slots
             }
             Self::Restore { slots } => state.set_slots(slots.clone(), &mut delta),
             // Page commands are steps of their own (and the inserts need the engine first).
             _ => return Err(AppError::invalid("batch")),
         };
-        Ok((inverse, delta))
+        Ok((inverse, field_inverse, delta))
     }
 
     /// Runs the command on `state`. Returns the command that undoes it and what changed. On an error nothing has changed.
@@ -351,9 +396,19 @@ impl DocCommand {
                 return Err(AppError::invalid("command"))
             }
             _ => {
-                let (slots, step) = self.run_slots(state, stamp)?;
+                let (slots, fields, step) = self.run_slots(state, stamp)?;
                 delta = step;
-                Self::Restore { slots }
+                match (slots.is_empty(), fields.is_empty()) {
+                    (_, true) => Self::Restore { slots },
+                    (true, false) => Self::RestoreFields { values: fields },
+                    (false, false) => Self::Batch {
+                        label: LABEL_RESTORE.to_owned(),
+                        commands: vec![
+                            Self::Restore { slots },
+                            Self::RestoreFields { values: fields },
+                        ],
+                    },
+                }
             }
         };
         Ok((inverse, delta))
@@ -391,6 +446,17 @@ fn create(
     state.check_room(draft.page_id)?;
     // Validated under a placeholder id; the real one is taken only once the draft is known to be good.
     Annotation::from_draft(AnnotId::new(0), draft, &stamp.modified)?;
+    // A signature's art is an asset of this document (ADR-041 §5).
+    if let AnnotationBody::Signature {
+        art: SignatureArtRef::Asset { asset_id, aspect },
+        ..
+    } = &draft.body
+    {
+        match state.assets().get(*asset_id) {
+            Some(art) if (art.aspect() - aspect).abs() <= 0.01 * aspect.max(1.0) => {}
+            _ => return Err(AppError::invalid("art")),
+        }
+    }
     if let Some(parent) = draft.in_reply_to {
         let parent = state.live(parent)?;
         if parent.annotation.page_id != draft.page_id {
@@ -1124,5 +1190,126 @@ mod tests {
             1
         );
         assert_eq!(state.list(PageId::new(0)).len(), 2);
+    }
+    // --- Form fields (ADR-041) ---
+
+    fn form_state() -> DocState {
+        use crate::model::form::{
+            Align, FieldId, FieldKind, FieldSync, FieldValue, FormField, ObjRef, ReadForm,
+        };
+        let text_field = |name: &str, max_len| FormField {
+            id: FieldId::new(0),
+            name: name.into(),
+            tooltip: None,
+            kind: FieldKind::Text {
+                multiline: false,
+                max_len,
+                comb: false,
+                password: false,
+                align: Align::Left,
+                font_size: 0.0,
+            },
+            read_only: false,
+            required: false,
+            value: FieldValue::Text {
+                text: String::new(),
+            },
+            default_value: None,
+            widgets: Vec::new(),
+            sync: FieldSync::Clean,
+            obj: ObjRef::default(),
+            saved: None,
+            top_index: 0,
+        };
+        let mut state = state();
+        state.install_form(ReadForm {
+            fields: vec![text_field("a", None), text_field("b", Some(2))],
+            ..ReadForm::default()
+        });
+        state
+    }
+
+    fn set_field(field: u32, text: &str, coalesce: Option<&str>) -> DocCommand {
+        cmd(json!({"type": "setFieldValue", "field": field,
+            "value": {"type": "text", "text": text}, "coalesce": coalesce}))
+    }
+
+    #[test]
+    fn a_field_value_is_one_undo_step_with_the_field_as_the_changed_state() {
+        let mut state = form_state();
+        let changes = state.execute(set_field(1, "x", None), &stamp(0)).unwrap();
+        assert_eq!(changes.fields.len(), 1);
+        assert!(changes.history.dirty);
+        assert_eq!(changes.history.undo_label.as_deref(), Some(LABEL_FIELD_SET));
+        let undone = state.undo(&stamp(1)).unwrap();
+        assert_eq!(undone.fields[0].sync, crate::model::form::FieldSync::Clean);
+        assert!(!undone.history.dirty);
+        let redone = state.redo(&stamp(2)).unwrap();
+        assert_eq!(
+            redone.fields[0].sync,
+            crate::model::form::FieldSync::Modified
+        );
+    }
+
+    #[test]
+    fn edits_of_one_field_with_one_key_within_the_window_are_one_step_and_other_fields_are_not() {
+        let mut state = form_state();
+        state
+            .execute(set_field(1, "x", Some("field:1")), &stamp(0))
+            .unwrap();
+        state
+            .execute(set_field(1, "xy", Some("field:1")), &stamp(100))
+            .unwrap();
+        state
+            .execute(set_field(2, "z", Some("field:2")), &stamp(200))
+            .unwrap();
+        state.undo(&stamp(300)).unwrap();
+        let undone = state.undo(&stamp(301)).unwrap();
+        // The two edits of field 1 went back together, to the value the file has.
+        assert_eq!(
+            undone.fields[0].value,
+            crate::model::form::FieldValue::Text {
+                text: String::new()
+            }
+        );
+        assert!(!state.undo(&stamp(302)).unwrap().history.can_undo);
+    }
+
+    #[test]
+    fn a_batch_of_field_values_is_undone_together_and_a_refusal_changes_nothing() {
+        let mut state = form_state();
+        let bad = cmd(json!({"type": "batch", "label": "form.reset", "commands": [
+            {"type": "setFieldValue", "field": 1, "value": {"type": "text", "text": "ok"}},
+            {"type": "setFieldValue", "field": 2, "value": {"type": "text", "text": "toolong"}},
+        ]}));
+        assert_eq!(
+            code(state.execute(bad, &stamp(0))),
+            ErrorCode::InvalidArgument
+        );
+        assert!(state.form().unwrap().changed().is_empty());
+        let good = cmd(json!({"type": "batch", "label": "form.reset", "commands": [
+            {"type": "setFieldValue", "field": 1, "value": {"type": "text", "text": "ok"}},
+            {"type": "setFieldValue", "field": 2, "value": {"type": "text", "text": "ab"}},
+        ]}));
+        assert_eq!(state.execute(good, &stamp(1)).unwrap().fields.len(), 2);
+        assert_eq!(state.undo(&stamp(2)).unwrap().fields.len(), 2);
+        assert!(state.form().unwrap().changed().is_empty());
+        assert_eq!(
+            code(state.execute(set_field(9, "x", None), &stamp(3))),
+            ErrorCode::NotFound
+        );
+        let key = cmd(json!({"type": "setFieldValue", "field": 1,
+            "value": {"type": "text", "text": "x"}, "coalesce": "bad key!"}));
+        assert_eq!(
+            code(state.execute(key, &stamp(4))),
+            ErrorCode::InvalidArgument
+        );
+    }
+
+    #[test]
+    fn the_ui_cannot_send_the_internal_restore_of_fields() {
+        let sent =
+            serde_json::from_value::<DocCommand>(json!({"type": "restoreFields", "values": []}));
+        assert!(sent.is_err());
     }
 }

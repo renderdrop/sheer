@@ -126,6 +126,7 @@ The Stop hook picks the first open `- [ ]` line, so order matters. Scope: `docs/
 - [ ] Fill & Sign for flat forms (text, check, cross, dot)
 - [ ] Signature library encrypted at rest, key in OS keychain (keyring ADR)
 - [ ] Politur M4
+  - (from M4 backend reviews) flatten: NoRotate annots kept upright (or note in ADR-041); explicit tests for /AS states, /Perms removal, object pruning and a hostile /Resources merge (many colliding /SheerFl names, huge /XObject dict); forms: radio-group + comb/MaxLen AP tests, negative MaxLen clamp; library: keychain read error vs corrupt key distinguished, 60 s keychain deadline, raster list preview, Art::check without re-serializing, tamper → quarantine test; macOS keychain untested (B-001)
   - (from M3 final security, medium — do first) prescan: resolve /Length only for /ObjStm and /XRef streams, charge nothing for others (false refusals of real files with lengths like 120.0 or in object streams); a repeated object id with differing values → refuse or keep the maximum (incremental updates can hide a bomb behind the last definition)
   - (from M3 final security, low) duplicate/non-name keys in any top-level dict refuse the file (stricter than lopdf)
   - (from M3 design review, major) organize grid default thumbnail size 160 (`--grid-thumb`), not 96 (or reset a persisted value); organize bar: Insert with label "Einfügen" + menu affordance like Extract/Split

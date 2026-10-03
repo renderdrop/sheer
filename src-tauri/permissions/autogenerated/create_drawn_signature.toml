@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-create-drawn-signature"
+description = "Enables the create_drawn_signature command without any pre-configured scope."
+commands.allow = ["create_drawn_signature"]
+
+[[permission]]
+identifier = "deny-create-drawn-signature"
+description = "Denies the create_drawn_signature command without any pre-configured scope."
+commands.deny = ["create_drawn_signature"]

@@ -459,6 +459,8 @@
   "annot.type.rect": "Rectangle",
   "annot.type.ellipse": "Ellipse",
   "annot.type.line": "Line",
+  "annot.type.signature": "Signature",
+  "annot.type.mark": "Mark",
   "annot.type.opaque": "Annotation",
   "annot.deleted": "{type} deleted",
   "annot.resizeUnavailable": "This annotation can’t be resized.",
