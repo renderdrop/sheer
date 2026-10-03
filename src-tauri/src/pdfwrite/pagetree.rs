@@ -178,6 +178,59 @@ fn rotate_object(degrees: u16) -> Object {
     Object::Integer(i64::from(degrees))
 }
 
+fn rect_object(rect: [f32; 4]) -> Object {
+    Object::Array(rect.iter().map(|v| Object::Real(*v)).collect())
+}
+
+/// The four numbers of a box entry (an array or a reference to one), normalized to `[x0, y0, x1, y1]`.
+fn read_box(doc: &Document, dict: &Dictionary, key: &[u8]) -> Option<[f32; 4]> {
+    let array = resolve(doc, dict.get(key).ok()?)?.as_array().ok()?;
+    let mut numbers = [0.0f32; 4];
+    if array.len() != 4 {
+        return None;
+    }
+    for (slot, item) in numbers.iter_mut().zip(array) {
+        let value = resolve(doc, item)?.as_float().ok()?;
+        if !value.is_finite() {
+            return None;
+        }
+        *slot = value;
+    }
+    Some([
+        numbers[0].min(numbers[2]),
+        numbers[1].min(numbers[3]),
+        numbers[0].max(numbers[2]),
+        numbers[1].max(numbers[3]),
+    ])
+}
+
+/// Writes `/CropBox` (user space `[x0, y0, x1, y1]`) into a page dictionary and clips `/TrimBox`, `/BleedBox` and `/ArtBox` to it, so no
+/// viewer shows what the crop hides through another box (ADR-047 §2). A box nothing is left of is removed. `doc` resolves references in
+/// the dictionary.
+pub fn write_crop(doc: &Document, dict: &mut Dictionary, crop: [f32; 4]) {
+    dict.set("CropBox", rect_object(crop));
+    for key in [&b"TrimBox"[..], b"BleedBox", b"ArtBox"] {
+        if !dict.has(key) {
+            continue;
+        }
+        let clipped = read_box(doc, dict, key).and_then(|b| {
+            let clipped = [
+                b[0].max(crop[0]),
+                b[1].max(crop[1]),
+                b[2].min(crop[2]),
+                b[3].min(crop[3]),
+            ];
+            (clipped[2] > clipped[0] && clipped[3] > clipped[1]).then_some(clipped)
+        });
+        match clipped {
+            Some(clipped) => dict.set(key, rect_object(clipped)),
+            None => {
+                dict.remove(key);
+            }
+        }
+    }
+}
+
 /// A page dictionary for a blank page of `size` points.
 fn blank_page(size: [f32; 2], rotation: u16) -> Dictionary {
     let mut dict = Dictionary::new();
@@ -553,7 +606,8 @@ pub fn rewrite_pages(
             let PageSource::File { index } = page.source else {
                 continue;
             };
-            if page.rotation == page.saved_rotation {
+            let crop_changed = page.crop != page.saved_crop;
+            if page.rotation == page.saved_rotation && !crop_changed {
                 continue;
             }
             let id = file_pages[usize::try_from(index).map_err(|_| failed("page index"))?];
@@ -563,6 +617,13 @@ pub fn rewrite_pages(
                 .map_err(lopdf_error)?
                 .clone();
             dict.set("Rotate", rotate_object(page.rotation));
+            if crop_changed {
+                write_crop(
+                    inc.get_prev_documents(),
+                    &mut dict,
+                    page.crop.unwrap_or(page.media),
+                );
+            }
             inc.new_document.set_object(id, Object::Dictionary(dict));
         }
         return finish(inc, deleted_pages);
@@ -600,16 +661,40 @@ pub fn rewrite_pages(
                 let mut dict = prev.get_dictionary(id).map_err(lopdf_error)?.clone();
                 materialize_inherited(prev, &mut dict);
                 dict.set("Rotate", rotate_object(page.rotation));
+                if page.crop != page.saved_crop {
+                    write_crop(prev, &mut dict, page.crop.unwrap_or(page.media));
+                }
                 dicts.push((id, dict));
                 page_ids.push(id);
             }
             PageSource::Blank => {
                 let id = inc.new_document.new_object_id();
-                dicts.push((id, blank_page(page.size, page.rotation)));
+                // A blank page is made as its MediaBox (it starts at the origin); the crop is a CropBox inside it.
+                let mut dict = blank_page(
+                    [page.media[2] - page.media[0], page.media[3] - page.media[1]],
+                    page.rotation,
+                );
+                if let Some(crop) = page.crop {
+                    write_crop(&inc.new_document, &mut dict, crop);
+                }
+                dicts.push((id, dict));
                 page_ids.push(id);
             }
-            // Package C: the one-page PDF of a redacted slot is appended here (`copy_pages_from_document`).
-            PageSource::Redacted { .. } => return Err(AppError::not_yet()),
+            // The one-page PDF of a redacted slot (`redact::raster_page`) is copied in like a page of an import source; the original
+            // page is not in the list, so a Full save leaves it out.
+            PageSource::Redacted { bytes } => {
+                let src = super::prescan::load_untrusted(bytes)?;
+                let pages: Vec<ObjectId> = src.get_pages().into_values().collect();
+                let id = import_page(
+                    &src,
+                    &pages,
+                    0,
+                    page.rotation,
+                    &mut inc.new_document,
+                    &mut budget,
+                )?;
+                page_ids.push(id);
+            }
             PageSource::Imported { source, index } => {
                 let (source, index) = (*source, *index);
                 if let std::collections::hash_map::Entry::Vacant(vacant) = loaded.entry(source) {
@@ -634,6 +719,15 @@ pub fn rewrite_pages(
                     &mut inc.new_document,
                     &mut budget,
                 )?;
+                if let Some(crop) = page.crop {
+                    let mut dict = inc
+                        .new_document
+                        .get_dictionary(id)
+                        .map_err(lopdf_error)?
+                        .clone();
+                    write_crop(&inc.new_document, &mut dict, crop);
+                    inc.new_document.set_object(id, Object::Dictionary(dict));
+                }
                 page_ids.push(id);
             }
         }

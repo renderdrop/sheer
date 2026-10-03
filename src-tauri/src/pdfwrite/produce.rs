@@ -89,6 +89,8 @@ pub struct PageSel {
     pub kind: PageKind,
     /// Degrees (0, 90, 180, 270) written as `/Rotate`; `None` keeps the page's own.
     pub rotation: Option<u16>,
+    /// The CropBox in user space written to the page (`None` keeps the page's own); the crops the model has and the file does not.
+    pub crop: Option<[f32; 4]>,
 }
 
 impl PageSel {
@@ -101,6 +103,7 @@ impl PageSel {
         Self {
             kind: PageKind::File { index },
             rotation,
+            crop: None,
         }
     }
 }
@@ -629,12 +632,12 @@ pub fn build(parts: &[Part<'_>], outline: bool, control: &dyn Control) -> Result
                     }
                 }
             };
-            planned.push((plan, new, selection.rotation));
+            planned.push((plan, new, selection.rotation, selection.crop));
         }
-        if let Some(&(_, first, _)) = planned.first() {
+        if let Some(&(_, first, _, _)) = planned.first() {
             first_pages.push(first);
         }
-        for (plan, new, rotation) in planned {
+        for (plan, new, rotation, crop) in planned {
             control.check()?;
             let mut dict = match plan {
                 Planned::Blank(size) => {
@@ -675,6 +678,9 @@ pub fn build(parts: &[Part<'_>], outline: bool, control: &dyn Control) -> Result
             dict.set("Type", Object::Name(b"Page".to_vec()));
             if let Some(degrees) = rotation {
                 dict.set("Rotate", i64::from(degrees));
+            }
+            if let Some(crop) = crop {
+                super::pagetree::write_crop(&dst, &mut dict, crop);
             }
             dst.objects.insert(new, Object::Dictionary(dict));
             page_ids.push(new);
@@ -1496,6 +1502,7 @@ mod tests {
                     height: 50.0,
                 },
                 rotation: Some(90),
+                crop: None,
             },
             PageSel {
                 kind: PageKind::Imported {
@@ -1503,6 +1510,7 @@ mod tests {
                     index: 2,
                 },
                 rotation: None,
+                crop: None,
             },
             // The same source page again: it brings its own copy.
             PageSel {
@@ -1511,6 +1519,7 @@ mod tests {
                     index: 2,
                 },
                 rotation: None,
+                crop: None,
             },
             PageSel::plain(0),
         ];
@@ -1557,6 +1566,7 @@ mod tests {
                     index: 0,
                 },
                 rotation: None,
+                crop: None,
             }],
             title: "x",
         };

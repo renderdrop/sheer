@@ -36,9 +36,10 @@ use crate::model::doc_state::{ChangeSet, DocState};
 use crate::model::ids::AnnotId;
 use crate::model::page::SourceId;
 use crate::model::page_ops::PagePlan;
-use crate::pdfwrite::{self, pagetree, Built, Change, Plan, SavePlan};
+use crate::pdfwrite::{self, crypt, pagetree, Built, Change, Plan, SavePlan};
 use crate::security::secret::PendingProtection;
 use crate::storage::{atomic, backup};
+use zeroize::Zeroizing;
 
 /// What the user agreed to when a save asked (ARCHITECTURE §5): `file_changed` (the file changed on disk), `break_signature` (the save
 /// rewrites a signed file) and `rewrite_encrypted` (the save rewrites an encrypted file, ADR-047 §4; asked for once package D lets such a
@@ -189,8 +190,21 @@ pub(super) fn save_plan_of(state: &DocState, pages: &PagePlan, keep_encryption: 
         if entry.tombstone || !entry.annotation.body.is_content() {
             continue;
         }
+        let page_id = entry.annotation.page_id;
         let object = ContentObject {
             annotation: entry.annotation.clone(),
+            index: pages
+                .pages
+                .iter()
+                .position(|page| page.id == page_id)
+                .and_then(|position| u32::try_from(position).ok())
+                .unwrap_or(u32::MAX),
+            image: match &entry.annotation.body {
+                crate::model::annotation::AnnotationBody::Image { asset_id, .. } => {
+                    state.assets().image(*asset_id).cloned()
+                }
+                _ => None,
+            },
         };
         match content
             .iter_mut()
@@ -202,12 +216,8 @@ pub(super) fn save_plan_of(state: &DocState, pages: &PagePlan, keep_encryption: 
     }
     SavePlan {
         content,
-        crops: pages
-            .pages
-            .iter()
-            .filter(|page| page.crop != page.saved_crop)
-            .map(|page| page.id)
-            .collect(),
+        // Crops are written with the page list (`pagetree::rewrite_pages`), not by `apply_extras`.
+        crops: Vec::new(),
         redacted: pages.redacted,
         protection: state
             .pending_protection()
@@ -229,6 +239,8 @@ struct BuildPlan {
     pages: PagePlan,
     sources: std::collections::HashMap<SourceId, Arc<SourceBytes>>,
     clean_copy: bool,
+    /// The password the document was opened with, to decrypt a protected file for the rewrite (ADR-047 §4).
+    session: Option<Zeroizing<String>>,
 }
 
 /// [`build`] for a document whose pages may have changed: the page tree is written first (`pdfwrite::pagetree`), the annotations on the
@@ -249,9 +261,18 @@ fn build_pages(
             pages,
             sources,
             clean_copy,
+            session,
         } = work;
         let expected = u32::try_from(pages.pages.len())
             .map_err(|_| AppError::logged(ErrorCode::SaveFailed, "page count"))?;
+        // A protected file goes through the save as a plain one and is encrypted again at the end (ADR-047 §4): with the state it had
+        // (same file key and passwords), or as the staged protection says. A removal ends here.
+        let removes = matches!(extras.protection, Some(PendingProtection::Remove));
+        let (original, kept) = if extras.keep_encryption || removes {
+            crypt::decrypt_for_rewrite(&original, session.as_ref().map(|s| s.as_str()))?
+        } else {
+            (original, None)
+        };
         let (bytes, deleted) = if pages.changed() {
             let rewritten = pagetree::rewrite_pages(original, &pages, &sources)?;
             (rewritten.bytes, rewritten.deleted_pages)
@@ -281,6 +302,14 @@ fn build_pages(
             || !extras.is_empty()
         {
             pdfwrite::validate(&built.bytes, expected)?;
+        }
+        match (&extras.protection, &kept) {
+            (Some(protect @ PendingProtection::Protect { .. }), _) => {
+                built.bytes = crypt::encrypt_bytes(&built.bytes, protect)?;
+            }
+            (Some(PendingProtection::Remove), _) => {}
+            (None, Some(state)) => built.bytes = crypt::encrypt_again(&built.bytes, state)?,
+            (None, None) => {}
         }
         built.pages = expected;
         Ok((built, xfa_removed))
@@ -451,29 +480,43 @@ impl AppState {
             let strip_xfa = state
                 .form()
                 .is_some_and(|form| form.xfa() == crate::model::form::Xfa::Hybrid);
-            // An encrypted document stays encrypted unless the save removes the protection (package D, ADR-047 §4; today the
-            // `unsupported_feature` below stops such a save first).
-            let mut extras = save_plan_of(state, &pages, false);
-            extras.keep_encryption = info.flags.encrypted
-                && !matches!(extras.protection, Some(PendingProtection::Remove));
+            let extras = save_plan_of(state, &pages, false);
             Ok((pages, plan, extras, form, strip_xfa))
         })?;
         let expected =
             u32::try_from(pages.pages.len()).map_err(|_| AppError::new(ErrorCode::Internal))?;
         let page_changes = pages.changed();
+        // An encrypted document stays encrypted unless the save removes the protection (ADR-047 §4): a save that has something to
+        // write is a full rewrite with the file's own `/Encrypt` and key. One that has nothing to write leaves the file alone.
+        let mut extras = extras;
+        let would_write = clean_copy
+            || page_changes
+            || !plan.changes.is_empty()
+            || !form.is_empty()
+            || !extras.is_empty();
+        extras.keep_encryption = info.flags.encrypted
+            && would_write
+            && !matches!(extras.protection, Some(PendingProtection::Remove));
         let full = clean_copy || extras.requires_full();
         let writes = !plan.changes.is_empty()
             || page_changes
             || full
             || !form.is_empty()
             || !extras.is_empty();
-        if writes && info.flags.encrypted {
-            // lopdf would have to encrypt what it appends (ADR-004 §5); until that is settled an encrypted file is not changed.
-            return Err(AppError::logged(
-                ErrorCode::UnsupportedFeature,
-                "saving annotations into an encrypted file",
-            ));
+        // A protected file is written again as a whole (ADR-004 §5, ADR-047 §4): the user says yes first, unless the save is the very
+        // change of its protection.
+        if writes && info.flags.encrypted && extras.protection.is_none() && !ack.rewrite_encrypted {
+            return Err(AppError::needs_confirmation("rewriteEncrypted"));
         }
+        let session = self.session_password(id);
+        // What the reopen after the save opens with: the staged open password, none after a removal, else the one it was opened with.
+        let reopen_password = match &extras.protection {
+            Some(PendingProtection::Protect { open, .. }) => open
+                .as_ref()
+                .map(|open| Zeroizing::new(open.expose().to_owned())),
+            Some(PendingProtection::Remove) => None,
+            None => session.clone(),
+        };
         // Changes to the pages are not among the changes a signature allows (ADR-036 §5), and a new file is not the signed one.
         if (page_changes || full) && info.flags.signed && !ack.break_signature {
             return Err(AppError::needs_confirmation("breaksSignature"));
@@ -520,6 +563,7 @@ impl AppState {
                 pages,
                 sources,
                 clean_copy,
+                session: session.clone(),
             },
         )?;
         let original_bytes = |built: &Built| -> Vec<u8> {
@@ -577,7 +621,9 @@ impl AppState {
         }
         let reopened = intake::admit(&destination).and_then(|admitted| {
             let fingerprint = Fingerprint::of(&admitted.file);
-            let pages = self.engine.reopen(id, admitted.file)?;
+            let pages =
+                self.engine
+                    .reopen_with_password(id, admitted.file, reopen_password.clone())?;
             Ok((pages, fingerprint))
         });
         let fingerprint = match reopened {
@@ -609,7 +655,16 @@ impl AppState {
             self.note_recent(DocKind::User, &destination);
         }
         self.registry.set_fingerprint(id, fingerprint);
+        // What a redaction (or a removal of the metadata) took out must not stay in a copy of ours (ADR-047 §3).
+        if extras.never_backed_up() {
+            if let Some(data_dir) = &self.data_dir {
+                backup::forget_target(&data_dir.join("backups"), &destination);
+            }
+        }
         let changes = self.model(id, |state| Ok(state.finish_save(&origins)))?;
+        // The file the document is now opens with the new password, if the save changed it (the reopen above used it).
+        self.note_session_password(id, reopen_password);
+        self.refresh_permissions(id);
         // The pages of the file are the pages of the document now, in this order: engine page i is page i, and what was held for the
         // inserts is in the file.
         self.registry.set_page_count(id, expected)?;
@@ -667,8 +722,11 @@ impl AppState {
 
     /// Puts the engine's copy of `id` back from the file at `path` after a save that did not work. Best effort: logged.
     fn reopen_from(&self, id: DocumentId, path: &Path) {
-        let reopened =
-            intake::admit(path).and_then(|admitted| self.engine.reopen(id, admitted.file));
+        let session = self.session_password(id);
+        let reopened = intake::admit(path).and_then(|admitted| {
+            self.engine
+                .reopen_with_password(id, admitted.file, session.clone())
+        });
         if let Err(error) = reopened {
             error.log();
         }

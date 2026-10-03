@@ -26,6 +26,15 @@ fn path_hash(path: &Path) -> String {
 
 /// `<stamp>-<stem>-<hash>.pdf` for the file at `source`; `stamp` is the time as digits and `T`/`Z` only.
 pub fn backup_name(stamp: &str, source: &Path) -> String {
+    let stamp: String = stamp
+        .chars()
+        .filter(|c| c.is_ascii_alphanumeric())
+        .collect();
+    format!("{stamp}-{}", name_tail(source))
+}
+
+/// `<stem>-<hash>.pdf`: the part of a backup's name that belongs to the file and not to the time.
+fn name_tail(source: &Path) -> String {
     let stem: String = source
         .file_stem()
         .map(|stem| stem.to_string_lossy().into_owned())
@@ -40,11 +49,30 @@ pub fn backup_name(stamp: &str, source: &Path) -> String {
         })
         .take(MAX_STEM_CHARS)
         .collect();
-    let stamp: String = stamp
-        .chars()
-        .filter(|c| c.is_ascii_alphanumeric())
-        .collect();
-    format!("{stamp}-{stem}-{}.pdf", path_hash(source))
+    format!("{stem}-{}.pdf", path_hash(source))
+}
+
+/// Deletes every backup of the file at `source` in `directory`: what a true redaction took out of the file must not stay in a copy of ours
+/// (ADR-047 §3). A backup is a regular file named `<stamp>-<stem>-<hash>.pdf` for this very path; nothing else is touched. Best effort:
+/// what cannot be removed is left. Returns how many were removed.
+pub fn forget_target(directory: &Path, source: &Path) -> usize {
+    let Ok(listing) = fs::read_dir(directory) else {
+        return 0;
+    };
+    let tail = format!("-{}", name_tail(source));
+    let mut removed = 0;
+    for entry in listing.filter_map(Result::ok) {
+        let name = entry.file_name();
+        let Some(stamp) = name.to_str().and_then(|name| name.strip_suffix(&tail)) else {
+            continue;
+        };
+        let is_stamp = !stamp.is_empty() && stamp.chars().all(|c| c.is_ascii_alphanumeric());
+        let is_file = entry.metadata().is_ok_and(|metadata| metadata.is_file());
+        if is_stamp && is_file && fs::remove_file(entry.path()).is_ok() {
+            removed += 1;
+        }
+    }
+    removed
 }
 
 /// Makes `directory` (and its parents) if it is missing; on Unix it is for its owner alone (0700): a backup is a copy of a user's document.
@@ -172,6 +200,32 @@ mod tests {
         let folder = dir.path().join("a").join("backups");
         let written = write_backup(&folder, "x", Path::new("/d/a.pdf"), &[7]).unwrap();
         assert_eq!(fs::read(written).unwrap(), vec![7]);
+    }
+
+    #[test]
+    fn forgetting_a_target_removes_its_backups_and_nothing_else() {
+        let dir = TempDir::new();
+        let source = Path::new("/docs/a.pdf");
+        write_backup(dir.path(), "20261003T120000Z", source, &[1]).unwrap();
+        write_backup(dir.path(), "20261004T120000Z", source, &[2]).unwrap();
+        // Another folder's a.pdf, another name, a stem that merely ends like ours, and a file that is no backup.
+        let other =
+            write_backup(dir.path(), "20261003T120000Z", Path::new("/x/a.pdf"), &[3]).unwrap();
+        let named = write_backup(
+            dir.path(),
+            "20261003T120000Z",
+            Path::new("/docs/b.pdf"),
+            &[4],
+        )
+        .unwrap();
+        let tail = format!("20261003T120000Z-x-{}", name_tail(source));
+        fs::write(dir.path().join(tail), b"x").unwrap();
+        fs::write(dir.path().join("notes.txt"), b"keep me").unwrap();
+        assert_eq!(forget_target(dir.path(), source), 2);
+        assert!(other.exists() && named.exists() && dir.path().join("notes.txt").exists());
+        assert_eq!(fs::read_dir(dir.path()).unwrap().count(), 4);
+        assert_eq!(forget_target(dir.path(), source), 0);
+        assert_eq!(forget_target(&dir.path().join("missing"), source), 0);
     }
 
     #[test]

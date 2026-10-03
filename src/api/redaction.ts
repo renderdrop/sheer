@@ -1,5 +1,6 @@
 import { applyCommand, type ChangeSet, type RedactSource } from './annotations';
 import { call } from './call';
+import { toAppError } from './errors';
 import { newChannel, requireJobId, type JobEvent, type JobId } from './jobs';
 import type { Quad } from './wire';
 
@@ -28,6 +29,14 @@ export interface RedactOptions {
 
 /** Marks areas as one undo step. Rejects with `limit_exceeded` (`marks`), `invalid_argument`, or `read_only` (`permission`). */
 export function markRedactions(docId: number, marks: readonly RedactMarkSpec[]): Promise<ChangeSet> {
+  // The backend checks all of this again; refusing here saves sending 10 000 marks that cannot be taken.
+  if (marks.length === 0) return Promise.reject(toAppError({ code: 'invalid_argument', params: { what: 'marks' } }));
+  if (marks.length > MAX_REDACT_MARKS_PER_COMMAND)
+    return Promise.reject(
+      toAppError({ code: 'limit_exceeded', params: { what: 'marks', limit: MAX_REDACT_MARKS_PER_COMMAND } }),
+    );
+  if (marks.some((mark) => mark.quads.length === 0 || mark.quads.length > MAX_REDACT_QUADS_PER_MARK))
+    return Promise.reject(toAppError({ code: 'invalid_argument', params: { what: 'quads' } }));
   return applyCommand(docId, { type: 'markRedactions', marks });
 }
 

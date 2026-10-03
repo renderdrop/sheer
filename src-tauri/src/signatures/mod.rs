@@ -165,6 +165,9 @@ pub struct AssetStore {
     next: u32,
     items: BTreeMap<AssetId, Arc<Art>>,
     bytes: usize,
+    /// Images of text-and-image content (ADR-047 §1), with their own budget; the ids come from the same counter.
+    images: BTreeMap<AssetId, Arc<crate::content::image::ImageAsset>>,
+    image_bytes: usize,
 }
 
 impl AssetStore {
@@ -196,6 +199,42 @@ impl AssetStore {
 
     pub fn contains(&self, id: AssetId) -> bool {
         self.items.contains_key(&id)
+    }
+
+    /// Adds an image asset. `limit_exceeded` (`assets`) at 128 images or 256 MiB of them.
+    pub fn add_image(
+        &mut self,
+        image: Arc<crate::content::image::ImageAsset>,
+    ) -> Result<AssetId, AppError> {
+        if self.images.len() >= crate::limits::MAX_IMAGE_ASSETS {
+            return Err(AppError::limit(
+                "assets",
+                crate::limits::MAX_IMAGE_ASSETS as u64,
+            ));
+        }
+        let size = image.byte_size();
+        if (self.image_bytes.saturating_add(size) as u64)
+            > crate::limits::MAX_IMAGE_ASSET_BYTES_PER_DOC
+        {
+            return Err(AppError::limit(
+                "assets",
+                crate::limits::MAX_IMAGE_ASSET_BYTES_PER_DOC,
+            ));
+        }
+        self.next += 1;
+        let id = AssetId::new(self.next);
+        self.image_bytes += size;
+        self.images.insert(id, image);
+        Ok(id)
+    }
+
+    pub fn image(&self, id: AssetId) -> Option<&Arc<crate::content::image::ImageAsset>> {
+        self.images.get(&id)
+    }
+
+    /// Whether `id` is an image asset.
+    pub fn has_image(&self, id: AssetId) -> bool {
+        self.images.contains_key(&id)
     }
 
     /// Cheap copies of every asset, for a save.

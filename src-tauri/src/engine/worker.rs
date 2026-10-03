@@ -307,6 +307,15 @@ fn serve<'a>(
                 ReopenSource::File(file) => {
                     open(pdfium, documents, sizes, id, file, None, Box::new(|_| true))
                 }
+                ReopenSource::FileWithPassword(file, password) => open(
+                    pdfium,
+                    documents,
+                    sizes,
+                    id,
+                    file,
+                    Some(password.as_str()),
+                    Box::new(|_| true),
+                ),
                 ReopenSource::Bytes(bytes) => open(
                     pdfium,
                     documents,
@@ -395,7 +404,9 @@ fn open<'a, R: std::io::Read + std::io::Seek + Send + 'static>(
     limits::validate_page_count(page_count)?;
     // The sizes are read once, here, and are there before anybody can know the document is: `confirm` makes it known.
     sizes.insert(id, read_page_sizes(&document), read_flags(&document));
-    sizes.set_rotations(id, pages::read_rotations(&document));
+    let (rotations, boxes) = pages::read_rotations_and_boxes(&document);
+    sizes.set_rotations(id, rotations);
+    sizes.set_boxes(id, boxes);
     // The caller may have stopped waiting while the document loaded (the open deadline passed) and taken the registry entry
     // back. Nobody could ever close a document without an entry, so it is released here, with its handle.
     if !confirm(page_count) {
@@ -434,9 +445,10 @@ fn map_load_error(error: PdfiumError) -> AppError {
 /// An answer PDFium cannot give counts as no. The signatures are only counted for a document that has a form: a signature field is
 /// a form field, and counting them goes through the annotations of every page.
 fn read_flags(document: &PdfDocument<'_>) -> DocFlags {
+    // A revision PDFium-render does not know (5 and 6, AES-256) is an error here, and an encrypted file all the same.
     let encrypted = !matches!(
         document.permissions().security_handler_revision(),
-        Ok(PdfSecurityHandlerRevision::Unprotected) | Err(_)
+        Ok(PdfSecurityHandlerRevision::Unprotected)
     );
     let form_type = document.form().map(PdfForm::form_type);
     let xfa = matches!(
@@ -449,7 +461,7 @@ fn read_flags(document: &PdfDocument<'_>) -> DocFlags {
         xfa,
         has_forms,
         signed: has_forms && !document.signatures().is_empty(),
-        // Package D: the permission bits PDFium reports for a file opened with its open password (ADR-047 §4).
+        // The caller sets them after the open (`AppState::refresh_permissions`): PDFium-render cannot read them for R5 and R6.
         permissions: None,
     }
 }

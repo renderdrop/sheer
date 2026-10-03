@@ -10,11 +10,12 @@
 
 use tauri::ipc::Response;
 use tauri::{State, WebviewWindow};
+use tauri_plugin_dialog::DialogExt;
 
 use super::{blocking, AppState};
 use crate::content::image::{self, ImageAssetInfo};
 use crate::documents::DocumentId;
-use crate::error::{AppError, UiError};
+use crate::error::{AppError, ErrorCode, UiError};
 use crate::limits;
 use crate::model::ids::AssetId;
 
@@ -24,11 +25,34 @@ impl AppState {
     pub fn insert_image_dialog(
         &self,
         id: DocumentId,
-        _window: &WebviewWindow,
+        window: &WebviewWindow,
     ) -> Result<Option<ImageAssetInfo>, AppError> {
         self.info(id).ok_or(AppError::not_found("document"))?;
         self.check_may_edit(id)?;
-        Err(AppError::not_yet())
+        let picked = window
+            .dialog()
+            .file()
+            .set_parent(window)
+            .add_filter("Image", &["png", "jpg", "jpeg"])
+            .blocking_pick_file();
+        let Some(file) = picked else {
+            return Ok(None);
+        };
+        let path = file
+            .into_path()
+            .map_err(|error| AppError::logged(ErrorCode::Internal, error))?;
+        self.import_image_file(id, &path).map(Some)
+    }
+
+    /// Imports the picture at `path` (as the dialog gave it) into the assets of document `id`. The file is judged on its handle and
+    /// decoded outside the document lock.
+    pub fn import_image_file(
+        &self,
+        id: DocumentId,
+        path: &std::path::Path,
+    ) -> Result<ImageAssetInfo, AppError> {
+        let asset = image::prepare(image::open_picked(path)?)?;
+        self.model(id, |state| image::store(state, asset))
     }
 
     /// The `SHR1` frame of image asset `asset` of document `id`, at most `max_px` on the long side.

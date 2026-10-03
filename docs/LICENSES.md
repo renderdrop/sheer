@@ -253,3 +253,8 @@ All checked with `cargo deny` per shipped target (x86_64-pc-windows-msvc, aarch6
 - `keyring-core` 1.0.0 (MIT OR Apache-2.0, open-source-cooperative/keyring-rs): the credential-store API; used per store, never through its global default store.
 - `apple-native-keyring-store` 1.0.2 (MIT OR Apache-2.0), macOS only, feature `keychain`: the login keychain. Pulls `security-framework` 3.7.0 and `security-framework-sys` 2.17.0 (MIT OR Apache-2.0).
 - `windows-native-keyring-store` 1.1.0 (MIT OR Apache-2.0), Windows only: Credential Manager.
+
+## M5 package D (protection, ADR-047 §4)
+
+- `stringprep` 0.1.5 (MIT OR Apache-2.0): direct dependency now (already in the build through `lopdf`, same version): SASLprep (RFC 4013) of the passwords of AES-256 R6, in `security/secret.rs`.
+- lopdf's own crypto dependencies, in the build already with `default-features = false`: `aes`, `cbc`, `ecb` (MIT OR Apache-2.0, RustCrypto), `sha2` (MIT OR Apache-2.0), `md-5` (MIT OR Apache-2.0), `rand` (MIT OR Apache-2.0). `cargo deny` covers them; no new crate.

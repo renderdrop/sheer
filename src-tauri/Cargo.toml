@@ -40,6 +40,8 @@ flate2 = "1"
 # and nonces from getrandom (MIT OR Apache-2.0); the OS credential store sits behind keyring-core (MIT OR Apache-2.0).
 chacha20poly1305 = { version = "0.11", default-features = false, features = ["alloc", "zeroize"] }
 getrandom = "0.3"
+# SASLprep (RFC 4013) for the passwords of AES-256 R6 (security/secret.rs); the same crate and version lopdf uses. MIT OR Apache-2.0.
+stringprep = "0.1"
 keyring-core = "1.0"
 
 # Windows only: opening another PDF from the file manager starts another process; this hands its command line to the running

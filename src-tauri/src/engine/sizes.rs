@@ -10,6 +10,7 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
 use crate::documents::{DocFlags, DocumentId};
+use crate::model::page::BoxesRead;
 
 /// The size in points of every page of a document, in page order, shared by everyone who asks.
 pub type PageSizes = Arc<[[f32; 2]]>;
@@ -20,6 +21,8 @@ struct Loaded {
     sizes: PageSizes,
     /// The `/Rotate` of each page when the document was loaded; empty where it was not read (a test double).
     rotations: Arc<[u16]>,
+    /// The MediaBox and CropBox of each page when the document was loaded (ADR-047 §2); empty where not read.
+    boxes: Arc<[Option<BoxesRead>]>,
     flags: DocFlags,
 }
 
@@ -54,9 +57,25 @@ impl SizeCache {
             Loaded {
                 sizes,
                 rotations: Arc::from(Vec::new()),
+                boxes: Arc::from(Vec::new()),
                 flags,
             },
         );
+    }
+
+    /// Records what the permissions of the file allow (`DocFlags.permissions`), read from the file by the caller.
+    pub(super) fn set_permissions(
+        &self,
+        id: DocumentId,
+        permissions: Option<crate::model::protection::PermissionSet>,
+    ) -> bool {
+        match self.lock().get_mut(&id) {
+            Some(loaded) => {
+                loaded.flags.permissions = permissions;
+                true
+            }
+            None => false,
+        }
     }
 
     /// Records the rotations of a document that has sizes here.
@@ -71,6 +90,18 @@ impl SizeCache {
         self.lock()
             .get(&id)
             .map(|loaded| Arc::clone(&loaded.rotations))
+    }
+
+    /// Records the page boxes of a document that has sizes here.
+    pub(super) fn set_boxes(&self, id: DocumentId, boxes: Arc<[Option<BoxesRead>]>) {
+        if let Some(loaded) = self.lock().get_mut(&id) {
+            loaded.boxes = boxes;
+        }
+    }
+
+    /// The page boxes of a loaded document; `None` for one the engine does not hold. Empty where none were read.
+    pub(super) fn boxes(&self, id: DocumentId) -> Option<Arc<[Option<BoxesRead>]>> {
+        self.lock().get(&id).map(|loaded| Arc::clone(&loaded.boxes))
     }
 
     /// Forgets a document that was released.

@@ -350,6 +350,19 @@ impl FormModel {
         self.reread
     }
 
+    /// Moves the rects of the widgets on page `file_page` of the file by (`dx`, `dy`): the page's origin moved (a crop, ADR-047 §2).
+    pub fn shift_widgets(&mut self, file_page: u32, dx: f32, dy: f32) {
+        for widget in self
+            .fields
+            .iter_mut()
+            .flat_map(|field| field.widgets.iter_mut())
+            .filter(|widget| widget.pdf.file_page == file_page)
+        {
+            widget.rect.x += dx;
+            widget.rect.y += dy;
+        }
+    }
+
     /// Takes the file side of `read` (positions, object numbers, widgets) and keeps the ids by fully qualified name. Values are the
     /// file's: the model is clean after a save.
     pub fn refresh(&mut self, read: ReadForm) {

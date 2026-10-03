@@ -6,8 +6,10 @@
 use serde::{Deserialize, Serialize};
 
 use super::command::DocCommand;
-use super::doc_state::{Delta, DocState};
+use super::doc_state::{Delta, DocPart, DocState};
+use crate::documents::sanitize_text;
 use crate::error::AppError;
+use crate::limits;
 
 /// `Some(None)` for an explicit `null` (clear the field), `None` for a missing key (leave it).
 fn nullable<'de, D: serde::Deserializer<'de>>(
@@ -50,6 +52,19 @@ pub struct MetadataState {
     pub strip: bool,
     /// The file has an XMP packet (a save regenerates it from the values).
     pub had_xmp: bool,
+    /// What `get_metadata` shows besides the values; `None` until the file is read.
+    pub file: Option<FileMeta>,
+}
+
+/// What the file says about itself besides the editable values (read once with them).
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct FileMeta {
+    pub created: Option<String>,
+    pub modified: Option<String>,
+    pub pdf_version: String,
+    pub file_bytes: u64,
+    pub xmp_bytes: u64,
+    pub truncated: bool,
 }
 
 impl MetadataState {
@@ -120,19 +135,118 @@ pub struct DocMetadata {
     pub pending: MetadataPending,
 }
 
-/// Runs [`DocCommand::SetMetadata`]: applies `patch` to the session's values and returns the command that puts the old ones back.
-/// Package D.
-pub(crate) fn set(
-    _state: &mut DocState,
-    _patch: &MetadataPatch,
-    _delta: &mut Delta,
-) -> Result<DocCommand, AppError> {
-    Err(AppError::not_yet())
+impl MetadataPatch {
+    fn is_empty(&self) -> bool {
+        self.title.is_none()
+            && self.author.is_none()
+            && self.subject.is_none()
+            && self.keywords.is_none()
+    }
+
+    /// The patch that sets exactly the editable fields of `values`: the inverse of whatever changed them.
+    fn restoring(values: &MetadataValues) -> Self {
+        Self {
+            title: Some(values.title.clone()),
+            author: Some(values.author.clone()),
+            subject: Some(values.subject.clone()),
+            keywords: Some(values.keywords.clone()),
+        }
+    }
+
+    /// Checks the sizes the UI sent (`invalid_argument` for a control or format character, `limit_exceeded` for more than
+    /// `MAX_METADATA_FIELD_CHARS` characters), before anything runs.
+    pub fn check(&self) -> Result<(), AppError> {
+        for text in [&self.title, &self.author, &self.subject, &self.keywords]
+            .into_iter()
+            .flatten()
+            .flatten()
+        {
+            if text.chars().count() > limits::MAX_METADATA_FIELD_CHARS {
+                return Err(AppError::limit(
+                    "metadata",
+                    limits::MAX_METADATA_FIELD_CHARS as u64,
+                ));
+            }
+            if sanitize_text(text, usize::MAX) != *text {
+                return Err(AppError::invalid("metadata"));
+            }
+        }
+        Ok(())
+    }
 }
 
-/// Runs [`DocCommand::RemoveMetadata`]: stages the removal and returns its inverse. Package D.
-pub(crate) fn remove(_state: &mut DocState, _delta: &mut Delta) -> Result<DocCommand, AppError> {
-    Err(AppError::not_yet())
+/// An empty text is no text.
+fn some_or_none(text: &Option<String>) -> Option<String> {
+    text.clone().filter(|text| !text.is_empty())
+}
+
+/// Runs [`DocCommand::SetMetadata`]: applies `patch` to the session's values and returns the command that puts the old ones back. A set
+/// ends a staged removal (the removal blanked the values; undoing this step stages it again). The values must have been read
+/// (`get_metadata`) unless the patch is empty.
+pub(crate) fn set(
+    state: &mut DocState,
+    patch: &MetadataPatch,
+    delta: &mut Delta,
+) -> Result<DocCommand, AppError> {
+    patch.check()?;
+    let meta = state.metadata_mut();
+    let inverse = if meta.strip {
+        DocCommand::RemoveMetadata
+    } else {
+        match &meta.current {
+            Some(current) => DocCommand::SetMetadata {
+                patch: MetadataPatch::restoring(current),
+            },
+            None => DocCommand::SetMetadata {
+                patch: MetadataPatch::default(),
+            },
+        }
+    };
+    if !patch.is_empty() && meta.current.is_none() {
+        return Err(AppError::invalid("metadata"));
+    }
+    meta.strip = false;
+    if let Some(current) = &mut meta.current {
+        if let Some(value) = &patch.title {
+            current.title = some_or_none(value);
+        }
+        if let Some(value) = &patch.author {
+            current.author = some_or_none(value);
+        }
+        if let Some(value) = &patch.subject {
+            current.subject = some_or_none(value);
+        }
+        if let Some(value) = &patch.keywords {
+            current.keywords = some_or_none(value);
+        }
+    }
+    delta.doc.insert(DocPart::Metadata);
+    Ok(inverse)
+}
+
+/// Runs [`DocCommand::RemoveMetadata`]: stages the removal (the editable values are blank from now on) and returns its inverse.
+pub(crate) fn remove(state: &mut DocState, delta: &mut Delta) -> Result<DocCommand, AppError> {
+    let meta = state.metadata_mut();
+    let inverse = if meta.strip {
+        DocCommand::RemoveMetadata
+    } else {
+        DocCommand::SetMetadata {
+            patch: meta
+                .current
+                .as_ref()
+                .map(MetadataPatch::restoring)
+                .unwrap_or_default(),
+        }
+    };
+    meta.strip = true;
+    if let Some(current) = &mut meta.current {
+        current.title = None;
+        current.author = None;
+        current.subject = None;
+        current.keywords = None;
+    }
+    delta.doc.insert(DocPart::Metadata);
+    Ok(inverse)
 }
 
 #[cfg(test)]

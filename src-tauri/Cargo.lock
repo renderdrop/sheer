@@ -3645,6 +3645,7 @@ dependencies = [
  "serde",
  "serde_json",
  "skrifa",
+ "stringprep",
  "tauri",
  "tauri-build",
  "tauri-plugin-dialog",

@@ -12,7 +12,7 @@ use super::import::read_annotations;
 use crate::error::{AppError, ErrorCode};
 use crate::limits;
 use crate::model::annotation::Imported;
-use crate::model::page::unrotated;
+use crate::model::page::{unrotated, BoxesRead};
 
 /// A page the engine's copy gained: where it is, its size before rotation and the rotation it came with.
 #[derive(Debug, Clone, PartialEq)]
@@ -20,6 +20,8 @@ pub struct Appended {
     pub engine_index: u32,
     pub size: [f32; 2],
     pub rotation: u16,
+    /// The box the page shows, in user space `[x0, y0, x1, y1]` (its CropBox inside its MediaBox): what a later crop is measured from.
+    pub media: [f32; 4],
     /// The annotations the page came with, read from the engine's copy (as `import::read_annotations` does for a page of the file).
     /// `None`: not read (a blank page, or the read failed or went over the budget), so the model reads the page later like any other.
     pub annotations: Option<Vec<Imported>>,
@@ -47,12 +49,27 @@ fn render_rotation(degrees: u16) -> PdfPageRenderRotation {
     }
 }
 
-/// The `/Rotate` of every page, read when the document is loaded. A page PDFium cannot load counts as 0.
-pub(super) fn read_rotations(document: &PdfDocument<'_>) -> Arc<[u16]> {
+/// The `/Rotate` and the boxes of every page, read when the document is loaded (one load of each page). A page PDFium cannot load
+/// counts as rotation 0 and as having no boxes (the model then takes its size as the MediaBox).
+pub(super) fn read_rotations_and_boxes(
+    document: &PdfDocument<'_>,
+) -> (Arc<[u16]>, Arc<[Option<BoxesRead>]>) {
     let pages = document.pages();
-    (0..pages.len())
-        .map(|index| pages.get(index).map_or(0, |page| degrees(&page)))
-        .collect()
+    let mut rotations = Vec::new();
+    let mut boxes = Vec::new();
+    for index in 0..pages.len() {
+        match pages.get(index) {
+            Ok(page) => {
+                rotations.push(degrees(&page));
+                boxes.push(read_page_boxes(&page));
+            }
+            Err(_) => {
+                rotations.push(0);
+                boxes.push(None);
+            }
+        }
+    }
+    (Arc::from(rotations), Arc::from(boxes))
 }
 
 /// Sets the rotation of the given engine pages (`(engine index, degrees)`); nothing is set if one of them does not exist.
@@ -97,10 +114,24 @@ fn appended(document: &PdfDocument<'_>, index: u32) -> Result<Appended, AppError
     let page = document.pages().get(index16).map_err(internal)?;
     let rotation = degrees(&page);
     let drawn = limits::sanitize_page_size(page.width().value, page.height().value);
+    let size = unrotated(drawn, rotation);
+    // The shown box as PDFium has it; a page whose box it cannot say is taken to start at the origin.
+    let media = page
+        .boundaries()
+        .bounding()
+        .ok()
+        .map(|bounds| rect_of(bounds.bounds))
+        .filter(|b| {
+            b.iter().all(|v| v.is_finite())
+                && (b[2] - b[0] - size[0]).abs() < 1.0
+                && (b[3] - b[1] - size[1]).abs() < 1.0
+        })
+        .unwrap_or([0.0, 0.0, size[0], size[1]]);
     Ok(Appended {
         engine_index: index,
-        size: unrotated(drawn, rotation),
+        size,
         rotation,
+        media,
         annotations: None,
     })
 }
@@ -217,11 +248,38 @@ fn copy_pages(
 }
 
 /// Sets the CropBox of engine page `engine_index` (`crop` in user space `[x0, y0, x1, y1]`) in PDFium's copy, so that renders, the text
-/// layer and the page size follow (ADR-047 §2). Package B.
+/// layer and the page size follow (ADR-047 §2). A page is loaded again by every `pages().get`, so the next render sees the new box.
 pub(super) fn set_crop_box(
-    _document: &PdfDocument<'_>,
-    _engine_index: u32,
-    _crop: [f32; 4],
+    document: &PdfDocument<'_>,
+    engine_index: u32,
+    crop: [f32; 4],
 ) -> Result<(), AppError> {
-    Err(AppError::not_yet())
+    let pages = document.pages();
+    if engine_index >= u32::try_from(pages.len()).unwrap_or(0)
+        || crop.iter().any(|v| !v.is_finite())
+    {
+        return Err(AppError::invalid("page"));
+    }
+    let index = i32::try_from(engine_index).map_err(|_| AppError::invalid("page"))?;
+    let mut page = pages.get(index).map_err(internal)?;
+    page.boundaries_mut()
+        .set_crop(PdfRect::new_from_values(crop[1], crop[0], crop[3], crop[2]))
+        .map_err(internal)
+}
+
+fn rect_of(rect: PdfRect) -> [f32; 4] {
+    [
+        rect.left().value,
+        rect.bottom().value,
+        rect.right().value,
+        rect.top().value,
+    ]
+}
+
+/// What PDFium says about the boxes of a loaded page: its MediaBox, and the CropBox when it has one.
+fn read_page_boxes(page: &PdfPage<'_>) -> Option<BoxesRead> {
+    let boundaries = page.boundaries();
+    let media = rect_of(boundaries.media().ok()?.bounds);
+    let crop = boundaries.crop().ok().map(|boxed| rect_of(boxed.bounds));
+    Some(BoxesRead { media, crop })
 }

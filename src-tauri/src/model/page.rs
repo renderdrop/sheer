@@ -108,6 +108,11 @@ pub struct CropInfo {
 }
 
 impl PageSlot {
+    /// The box the page shows, in user space: the crop, else the MediaBox.
+    pub fn shown_box(&self) -> [f32; 4] {
+        self.crop.unwrap_or(self.media)
+    }
+
     pub fn info(&self) -> PageSlotInfo {
         PageSlotInfo {
             id: self.id,
@@ -131,6 +136,39 @@ impl PageSlot {
     }
 }
 
+/// What PDFium reports about a page's boxes when the document is loaded: the MediaBox and the CropBox if the page has one.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct BoxesRead {
+    pub media: [f32; 4],
+    pub crop: Option<[f32; 4]>,
+}
+
+fn usable_box(b: [f32; 4]) -> bool {
+    b.iter().all(|v| v.is_finite()) && b[2] > b[0] && b[3] > b[1]
+}
+
+impl BoxesRead {
+    /// The boxes as the model keeps them: a MediaBox that is not a usable rectangle becomes `fallback`; a CropBox is clipped to the
+    /// MediaBox and is `None` when it leaves nothing or is the MediaBox itself.
+    pub fn sanitized(self, fallback: [f32; 4]) -> ([f32; 4], Option<[f32; 4]>) {
+        let media = if usable_box(self.media) {
+            self.media
+        } else {
+            fallback
+        };
+        let crop = self.crop.and_then(|c| {
+            let clipped = [
+                c[0].max(media[0]),
+                c[1].max(media[1]),
+                c[2].min(media[2]),
+                c[3].min(media[3]),
+            ];
+            (usable_box(c) && usable_box(clipped) && clipped != media).then_some(clipped)
+        });
+        (media, crop)
+    }
+}
+
 /// A page that was added to the engine's copy and now joins the model.
 #[derive(Debug, Clone, PartialEq)]
 pub struct NewPage {
@@ -138,6 +176,8 @@ pub struct NewPage {
     pub engine_index: u32,
     pub rotation: u16,
     pub size: [f32; 2],
+    /// The box the page shows in user space `[x0, y0, x1, y1]`: what a crop of the new page is measured from (ADR-047 §2).
+    pub media: [f32; 4],
     /// The annotations a page of an import source came with, as the engine read them from its copy. `None`: not read (a blank page
     /// has none; for an imported page the model reads them later like those of any page).
     pub annotations: Option<Vec<super::annotation::Imported>>,

@@ -47,6 +47,7 @@ use crate::error::{AppError, ErrorCode};
 use crate::limits;
 use crate::model::annotation::Imported;
 use crate::model::geometry::{Quad, Rect};
+use crate::model::page::BoxesRead;
 use crate::pdfwrite::redact::RasterPage;
 
 use self::guard::Health;
@@ -135,6 +136,8 @@ pub(crate) type Confirm = Box<dyn FnOnce(u32) -> bool + Send>;
 /// What a document is loaded again from.
 pub(crate) enum ReopenSource {
     File(File),
+    /// An encrypted file, with the password it opens with.
+    FileWithPassword(File, Zeroizing<String>),
     Bytes(Vec<u8>),
 }
 
@@ -653,6 +656,20 @@ impl Engine {
             .ok_or_else(|| AppError::not_found("document"))
     }
 
+    /// Records what the file's permissions allow an honest reader (`DocFlags.permissions`; `None`: everything). `not_found` for a
+    /// document the engine does not hold.
+    pub fn set_permissions(
+        &self,
+        id: DocumentId,
+        permissions: Option<crate::model::protection::PermissionSet>,
+    ) -> Result<(), AppError> {
+        if self.inner.sizes.set_permissions(id, permissions) {
+            Ok(())
+        } else {
+            Err(AppError::not_found("document"))
+        }
+    }
+
     /// What PDFium said about the document when it was loaded (`DocFlags`). A lookup like [`Engine::page_sizes`]: it takes no
     /// place in the queue and never waits for the worker. `not_found` for a document the engine does not hold.
     pub fn doc_flags(&self, id: DocumentId) -> Result<DocFlags, AppError> {
@@ -773,6 +790,15 @@ impl Engine {
         self.inner
             .sizes
             .rotations(id)
+            .ok_or_else(|| AppError::not_found("document"))
+    }
+
+    /// The boxes of every page as the file had them when the document was loaded, by engine index (`None`: not read). A lookup like
+    /// [`Engine::page_rotations`].
+    pub fn page_boxes(&self, id: DocumentId) -> Result<Arc<[Option<BoxesRead>]>, AppError> {
+        self.inner
+            .sizes
+            .boxes(id)
             .ok_or_else(|| AppError::not_found("document"))
     }
 
@@ -914,6 +940,23 @@ impl Engine {
 
     /// Loads document `id` again from `file` (an open handle that passed intake), after [`Engine::release`]: the page count of the
     /// file as it is now. The page sizes and the flags are read afresh; a failure leaves the document without a copy in the engine.
+    /// [`Engine::reopen`] for an encrypted file, with the password it opens with.
+    pub fn reopen_with_password(
+        &self,
+        id: DocumentId,
+        file: File,
+        password: Option<Zeroizing<String>>,
+    ) -> Result<u32, AppError> {
+        let Some(password) = password else {
+            return self.reopen(id, file);
+        };
+        self.call(limits::OPEN_TIMEOUT, Rank::CONTROL, |reply| Job::Reopen {
+            id,
+            source: ReopenSource::FileWithPassword(file, password),
+            reply,
+        })
+    }
+
     pub fn reopen(&self, id: DocumentId, file: File) -> Result<u32, AppError> {
         self.call(limits::OPEN_TIMEOUT, Rank::CONTROL, |reply| Job::Reopen {
             id,

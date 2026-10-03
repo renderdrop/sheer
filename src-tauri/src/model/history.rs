@@ -81,6 +81,23 @@ fn command_bytes(command: &DocCommand) -> usize {
                 total.saturating_add(counter.0.saturating_add(STEP_OVERHEAD_BYTES))
             },
         ),
+        // The raster pages a redaction holds (megabytes each) and the annotations it took away.
+        DocCommand::RestoreRedaction { slots, entries, .. } => {
+            let pages = slots.iter().fold(STEP_OVERHEAD_BYTES, |total, slot| {
+                let raster = match &slot.source {
+                    crate::model::page::PageSource::Redacted { bytes } => bytes.len(),
+                    _ => 0,
+                };
+                total.saturating_add(raster)
+            });
+            entries.iter().fold(pages, |total, (_, slot)| {
+                let mut counter = Counter(0);
+                if let Some(entry) = slot {
+                    let _ = serde_json::to_writer(&mut counter, &entry.annotation);
+                }
+                total.saturating_add(counter.0.saturating_add(STEP_OVERHEAD_BYTES))
+            })
+        }
         DocCommand::ReorderPages { order } => {
             STEP_OVERHEAD_BYTES.saturating_add(order.len().saturating_mul(4))
         }
@@ -206,6 +223,19 @@ impl History {
 
     pub fn restore_redo(&mut self, entry: HistoryEntry) {
         self.redo.push(entry);
+    }
+
+    /// The tickets of the protection steps the stacks hold (the secrets of every other ticket can go).
+    pub fn protection_tickets(&self) -> Vec<crate::security::secret::Ticket> {
+        self.undo
+            .iter()
+            .map(|entry| &entry.command)
+            .chain(self.redo.iter().map(|entry| &entry.command))
+            .filter_map(|command| match command {
+                DocCommand::SetProtection { ticket } => Some(*ticket),
+                _ => None,
+            })
+            .collect()
     }
 
     /// The document is saved: what is on the stacks now is the clean state.

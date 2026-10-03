@@ -9,10 +9,11 @@ use std::collections::{HashMap, HashSet};
 
 use serde::Deserialize;
 
+use super::annotation::AnnotationBody;
 use super::command::DocCommand;
-use super::doc_state::{Delta, DocState, Slot};
+use super::doc_state::{Delta, DocState, Entry, Slot};
 use super::page::{
-    normalize_rotation, NewPage, PageSlot, PageSlotInfo, PageSource, SourceId, A4_PT,
+    normalize_rotation, BoxesRead, NewPage, PageSlot, PageSlotInfo, PageSource, SourceId, A4_PT,
 };
 use crate::documents::PageId;
 use crate::error::AppError;
@@ -20,7 +21,7 @@ use crate::limits;
 
 /// How `CropPages` crops (ADR-047 §2): margins in points, in page space before `/Rotate`, measured from each page's MediaBox, or back to
 /// the MediaBox.
-#[derive(Debug, Clone, Copy, PartialEq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(
     tag = "type",
     rename_all = "camelCase",
@@ -35,6 +36,42 @@ pub enum CropSpec {
         left: f32,
     },
     Reset,
+    /// Puts these crops back (`None`: no crop). Internal: the inverse of a crop; not accepted from the UI.
+    #[serde(skip_deserializing)]
+    Restore {
+        crops: Vec<(PageId, Option<[f32; 4]>)>,
+    },
+}
+
+/// What a point of page space moves by when a page's box (user space `[x0, y0, x1, y1]`) goes from `from` to `to`: page space has its
+/// origin at the top left corner of the box and y pointing down.
+fn origin_shift(from: [f32; 4], to: [f32; 4]) -> (f32, f32) {
+    (from[0] - to[0], to[3] - from[3])
+}
+
+/// The crop that leaves `margins` (`[top, right, bottom, left]`) of `media` out: `None` for margins that leave the MediaBox whole.
+/// `invalid_argument` (`crop`) for a margin that is not a number or is negative (outside the MediaBox) and for less than 72 x 72 pt left.
+fn margin_crop(media: [f32; 4], margins: [f32; 4]) -> Result<Option<[f32; 4]>, AppError> {
+    let [top, right, bottom, left] = margins;
+    if margins
+        .iter()
+        .any(|m| !m.is_finite() || *m < 0.0 || *m > limits::MAX_PAGE_SIDE_PT)
+    {
+        return Err(AppError::invalid("crop"));
+    }
+    let crop = [
+        media[0] + left,
+        media[1] + bottom,
+        media[2] - right,
+        media[3] - top,
+    ];
+    let slack = 0.001;
+    if crop[2] - crop[0] < limits::MIN_CROP_SIDE_PT - slack
+        || crop[3] - crop[1] < limits::MIN_CROP_SIDE_PT - slack
+    {
+        return Err(AppError::invalid("crop"));
+    }
+    Ok((crop != media).then_some(crop))
 }
 
 /// One page of the list a save has to write.
@@ -262,14 +299,143 @@ impl DocState {
 
     /// Crops pages (ADR-047 §2): validates every page first (at least 72 x 72 pt left, inside the MediaBox), sets the crops, shifts the
     /// annotations, content objects and form widget rects of those pages by the origin change in the same step, and returns the inverse
-    /// (the old crops and the reverse shift). The engine mirrors it afterwards (`Job::SetCropBox`, `commands::pages`). Package B.
+    /// (the old crops; applying them shifts everything back). The engine mirrors it afterwards (`Delta::engine_crops`, `Job::SetCropBox`).
     pub(super) fn crop_pages(
         &mut self,
-        _pages: &[PageId],
-        _spec: &CropSpec,
-        _delta: &mut Delta,
+        pages: &[PageId],
+        spec: &CropSpec,
+        delta: &mut Delta,
     ) -> Result<DocCommand, AppError> {
-        Err(AppError::not_yet())
+        let positions = self.positions(pages)?;
+        let restore: HashMap<u32, Option<[f32; 4]>> = match spec {
+            CropSpec::Restore { crops } => {
+                crops.iter().map(|(id, crop)| (id.get(), *crop)).collect()
+            }
+            _ => HashMap::new(),
+        };
+        // Everything is checked and made before the first change, so a refused page changes nothing.
+        let mut steps: Vec<(usize, Option<[f32; 4]>)> = Vec::with_capacity(positions.len());
+        for &position in &positions {
+            let slot = &self.pages[position];
+            let crop = match spec {
+                CropSpec::Reset => None,
+                CropSpec::Margins {
+                    top,
+                    right,
+                    bottom,
+                    left,
+                } => margin_crop(slot.media, [*top, *right, *bottom, *left])?,
+                CropSpec::Restore { .. } => *restore
+                    .get(&slot.id.get())
+                    .ok_or(AppError::invalid("crop"))?,
+            };
+            steps.push((position, crop));
+        }
+        let mut shifts: HashMap<u32, (f32, f32)> = HashMap::new();
+        for (position, crop) in &steps {
+            let slot = &self.pages[*position];
+            let shift = origin_shift(slot.shown_box(), crop.unwrap_or(slot.media));
+            if shift != (0.0, 0.0) {
+                shifts.insert(slot.id.get(), shift);
+            }
+        }
+        let mut moved: Vec<Slot> = Vec::new();
+        for (id, entry) in &self.entries {
+            let Some(&(dx, dy)) = shifts.get(&entry.annotation.page_id.get()) else {
+                continue;
+            };
+            if entry.tombstone {
+                continue;
+            }
+            let old = &entry.annotation;
+            let mut next = old.moved(dx, dy, "")?;
+            next.modified.clone_from(&old.modified);
+            next.sync = old.sync;
+            if matches!(next.body, AnnotationBody::Opaque { .. }) {
+                next.rect.x += dx;
+                next.rect.y += dy;
+            }
+            moved.push((
+                *id,
+                Some(Entry {
+                    annotation: next,
+                    ..entry.clone()
+                }),
+            ));
+        }
+
+        self.set_slots(moved, delta);
+        let mut before = Vec::with_capacity(steps.len());
+        for (position, crop) in steps {
+            let slot = &mut self.pages[position];
+            before.push((slot.id, slot.crop));
+            if let (Some(&(dx, dy)), PageSource::File { index }) =
+                (shifts.get(&slot.id.get()), &slot.source)
+            {
+                if let Some(form) = &mut self.form {
+                    form.shift_widgets(*index, dx, dy);
+                }
+            }
+            slot.crop = crop;
+            let shown = slot.shown_box();
+            slot.size = limits::sanitize_page_size(shown[2] - shown[0], shown[3] - shown[1]);
+            slot.rev = slot.rev.wrapping_add(1);
+            delta.engine_crops.push((slot.engine_index, shown));
+        }
+        delta.pages = true;
+        Ok(DocCommand::CropPages {
+            pages: before.iter().map(|(id, _)| *id).collect(),
+            spec: CropSpec::Restore { crops: before },
+        })
+    }
+
+    /// The box each of the engine pages `engine_indices` shows in the model now (`(engine index, [x0, y0, x1, y1])`): what the engine's copy
+    /// is set back to when it could not follow a crop.
+    pub fn crop_mirror(&self, engine_indices: impl Iterator<Item = u32>) -> Vec<(u32, [f32; 4])> {
+        let by_engine: HashMap<u32, [f32; 4]> = self
+            .pages
+            .iter()
+            .map(|slot| (slot.engine_index, slot.shown_box()))
+            .collect();
+        engine_indices
+            .filter_map(|index| by_engine.get(&index).map(|shown| (index, *shown)))
+            .collect()
+    }
+
+    /// Takes what the engine read about the boxes of the pages of the file when the document was loaded (by file page): the MediaBox,
+    /// and the CropBox the file has, which is the crop the file has. Only used while the model is made.
+    pub fn set_boxes(&mut self, boxes: &[Option<BoxesRead>]) {
+        for slot in &mut self.pages {
+            let PageSource::File { index } = slot.source else {
+                continue;
+            };
+            let Some(read) = usize::try_from(index)
+                .ok()
+                .and_then(|at| boxes.get(at).copied().flatten())
+            else {
+                continue;
+            };
+            let (media, crop) = read.sanitized(slot.media);
+            slot.media = media;
+            slot.crop = crop;
+            slot.saved_crop = crop;
+        }
+    }
+
+    /// The form was read from the file, whose widgets are in the page space of the file's crops: moves them to the space of the crops
+    /// the session has now.
+    pub(super) fn align_widgets_to_crops(&mut self) {
+        let Some(form) = &mut self.form else { return };
+        for slot in &self.pages {
+            let PageSource::File { index } = slot.source else {
+                continue;
+            };
+            if slot.crop != slot.saved_crop {
+                let from = slot.saved_crop.unwrap_or(slot.media);
+                let (dx, dy) = origin_shift(from, slot.shown_box());
+                form.shift_widgets(index, dx, dy);
+            }
+        }
     }
 
     /// Sets the rotation of each page to the given value.
@@ -418,7 +584,7 @@ impl DocState {
                         saved_rotation: page.rotation,
                         rev: 0,
                         size: page.size,
-                        media: [0.0, 0.0, page.size[0], page.size[1]],
+                        media: page.media,
                         crop: None,
                         saved_crop: None,
                     },
@@ -512,6 +678,7 @@ mod tests {
     use super::*;
     use crate::error::ErrorCode;
     use crate::model::doc_state::Stamp;
+    use crate::model::page::BoxesRead;
 
     fn stamp() -> Stamp {
         Stamp {
@@ -616,5 +783,140 @@ mod tests {
         .unwrap();
         assert!(state.page_plan().structure_changed);
         assert_eq!(state.page_plan().file_position(0), Some(2));
+    }
+    fn crop_json(page: u32, top: f32, right: f32, bottom: f32, left: f32) -> serde_json::Value {
+        json!({"type": "cropPages", "pages": [page], "spec": {
+            "type": "margins", "top": top, "right": right, "bottom": bottom, "left": left
+        }})
+    }
+
+    fn note_at(state: &DocState, page: u32) -> (f32, f32) {
+        let list = state.list(PageId::new(page));
+        match &list[0].body {
+            crate::model::annotation::AnnotationBody::Note { at, .. } => (at.x, at.y),
+            other => panic!("not a note: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn a_crop_is_one_undo_step_that_moves_the_page_origin_and_everything_on_it() {
+        let mut state = DocState::new(2);
+        let [w, h] = state.pages()[0].size;
+        run(
+            &mut state,
+            json!({"type": "createAnnotation", "draft": {
+                "pageId": 0, "kind": "note", "color": [1, 2, 3],
+                "at": {"x": 100.0, "y": 100.0}, "icon": "note", "contents": "x"
+            }}),
+        )
+        .unwrap();
+        run(&mut state, crop_json(0, 30.0, 20.0, 10.0, 50.0)).unwrap();
+        assert_eq!(
+            state.history_state().undo_label.as_deref(),
+            Some("page.crop")
+        );
+        let slot = state.slot(PageId::new(0)).unwrap();
+        assert_eq!(slot.crop, Some([50.0, 10.0, w - 20.0, h - 30.0]));
+        assert_eq!(slot.size, [w - 70.0, h - 40.0]);
+        assert_eq!(slot.rev, 1);
+        assert_eq!(note_at(&state, 0), (50.0, 70.0));
+        assert_eq!(
+            state.slot(PageId::new(1)).unwrap().crop,
+            None,
+            "other pages stay"
+        );
+        assert!(state.page_plan().crop_changed);
+        // Margins are measured from the MediaBox, not from the crop before.
+        run(&mut state, crop_json(0, 0.0, 0.0, 0.0, 10.0)).unwrap();
+        assert_eq!(
+            state.slot(PageId::new(0)).unwrap().crop,
+            Some([10.0, 0.0, w, h])
+        );
+        assert_eq!(note_at(&state, 0), (90.0, 100.0));
+        state.undo(&stamp()).unwrap();
+        assert_eq!(note_at(&state, 0), (50.0, 70.0));
+        state.undo(&stamp()).unwrap();
+        let slot = state.slot(PageId::new(0)).unwrap();
+        assert_eq!((slot.crop, slot.size), (None, [w, h]));
+        assert_eq!(note_at(&state, 0), (100.0, 100.0));
+        assert!(!state.page_plan().crop_changed);
+        let redone = state.redo(&stamp()).unwrap();
+        assert_eq!(redone.engine_crops.len(), 1);
+        assert_eq!(note_at(&state, 0), (50.0, 70.0));
+        assert_eq!(
+            state.list(PageId::new(0))[0].sync,
+            crate::model::annotation::Sync::New
+        );
+    }
+
+    #[test]
+    fn reset_takes_the_crop_off_and_margins_of_zero_are_no_crop() {
+        let mut state = DocState::new(1);
+        run(&mut state, crop_json(0, 5.0, 5.0, 5.0, 5.0)).unwrap();
+        run(
+            &mut state,
+            json!({"type": "cropPages", "pages": [0], "spec": {"type": "reset"}}),
+        )
+        .unwrap();
+        assert_eq!(state.slot(PageId::new(0)).unwrap().crop, None);
+        run(&mut state, crop_json(0, 0.0, 0.0, 0.0, 0.0)).unwrap();
+        assert_eq!(state.slot(PageId::new(0)).unwrap().crop, None);
+    }
+
+    #[test]
+    fn a_crop_that_leaves_too_little_or_lies_outside_is_refused_and_changes_nothing() {
+        let mut state = DocState::new(2);
+        let rev = state.rev();
+        for bad in [
+            crop_json(0, 400.0, 0.0, 400.0, 0.0),
+            crop_json(0, 0.0, 300.0, 0.0, 300.0),
+            crop_json(0, -1.0, 0.0, 0.0, 0.0),
+            crop_json(0, 0.0, 0.0, 0.0, 1e9),
+            // The second page is the one that fails: the first is not cropped either.
+            json!({"type": "cropPages", "pages": [0, 9], "spec": {"type": "reset"}}),
+            // The inverse is internal.
+            json!({"type": "cropPages", "pages": [0], "spec": {"type": "restore", "crops": []}}),
+        ] {
+            assert!(
+                serde_json::from_value::<DocCommand>(bad.clone()).map_or(true, |command| {
+                    state.execute(command, &stamp()).is_err()
+                })
+            );
+        }
+        assert_eq!(state.rev(), rev);
+        assert!(state.pages().iter().all(|slot| slot.crop.is_none()));
+        // 72 x 72 is the least that is allowed.
+        let [w, h] = state.pages()[0].size;
+        run(&mut state, crop_json(0, h - 72.0, w - 72.0, 0.0, 0.0)).unwrap();
+        assert_eq!(state.slot(PageId::new(0)).unwrap().size, [72.0, 72.0]);
+    }
+
+    #[test]
+    fn the_boxes_read_at_load_become_media_and_the_files_crop() {
+        let mut state = DocState::new(1);
+        state.set_boxes(&[Some(BoxesRead {
+            media: [10.0, 20.0, 510.0, 720.0],
+            crop: Some([60.0, 20.0, 600.0, 700.0]),
+        })]);
+        let slot = state.slot(PageId::new(0)).unwrap();
+        assert_eq!(slot.media, [10.0, 20.0, 510.0, 720.0]);
+        assert_eq!(
+            slot.crop,
+            Some([60.0, 20.0, 510.0, 700.0]),
+            "clipped to the MediaBox"
+        );
+        assert_eq!(slot.crop, slot.saved_crop);
+        let info = slot.info();
+        assert_eq!(
+            info.crop.map(|c| (c.left, c.right, c.top, c.bottom)),
+            Some((50.0, 0.0, 20.0, 0.0))
+        );
+        // Margins count from the MediaBox of the file.
+        run(&mut state, crop_json(0, 0.0, 0.0, 0.0, 0.0)).unwrap();
+        assert_eq!(state.slot(PageId::new(0)).unwrap().crop, None);
+        assert!(
+            state.page_plan().crop_changed,
+            "the file has a crop this no longer has"
+        );
     }
 }

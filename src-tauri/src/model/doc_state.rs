@@ -69,6 +69,8 @@ pub struct Delta {
     pub pages: bool,
     /// Engine pages that must be turned to this rotation (`(engine index, degrees)`) for the engine's copy to match.
     pub engine_rotations: Vec<(u32, u16)>,
+    /// Engine pages whose CropBox must be set (`(engine index, [x0, y0, x1, y1])`) for the engine's copy to match.
+    pub engine_crops: Vec<(u32, [f32; 4])>,
     /// Form fields whose value changed.
     pub fields: BTreeSet<FieldId>,
     /// Metadata or protection changed.
@@ -89,6 +91,7 @@ impl Delta {
     pub fn merge(&mut self, other: Delta) {
         self.pages |= other.pages;
         self.engine_rotations.extend(other.engine_rotations);
+        self.engine_crops.extend(other.engine_crops);
         self.fields.extend(other.fields);
         self.doc.extend(other.doc);
         for annotation in other.upserted.into_values() {
@@ -113,6 +116,9 @@ pub struct ChangeSet {
     /// Not sent: the rotations the engine's copy has to be given (`commands` does it before it answers).
     #[serde(skip)]
     pub engine_rotations: Vec<(u32, u16)>,
+    /// Not sent: the CropBoxes the engine's copy has to be given, `(engine index, [x0, y0, x1, y1])` (ADR-047 §2).
+    #[serde(skip)]
+    pub engine_crops: Vec<(u32, [f32; 4])>,
     /// The form fields whose value changed (empty when none did), ADR-041.
     pub fields: Vec<FieldState>,
     /// What else changed: the UI re-reads `get_metadata` and `get_protection` (ADR-047).
@@ -146,7 +152,7 @@ pub struct DocState {
     /// Live replies by the annotation they reply to.
     pub(super) replies: HashMap<AnnotId, BTreeSet<AnnotId>>,
     /// The form fields, once read from the file (`get_form_fields`, ADR-041).
-    form: Option<FormModel>,
+    pub(super) form: Option<FormModel>,
     /// The signature art the document uses (ADR-041 §5, `use_signature`); dropped with the document.
     assets: crate::signatures::AssetStore,
     /// The passwords of staged protection changes, by ticket (ADR-047 §4); cleared on save and close, and when a step leaves the history.
@@ -413,7 +419,11 @@ impl DocState {
     pub fn install_form(&mut self, read: ReadForm) {
         match &mut self.form {
             Some(form) => form.refresh(read),
-            None => self.form = Some(FormModel::from_read(read)),
+            None => {
+                self.form = Some(FormModel::from_read(read));
+                // The widgets were read from the file, in the space of its crops; the session may have other ones.
+                self.align_widgets_to_crops();
+            }
         }
     }
 
@@ -666,6 +676,7 @@ impl DocState {
             removed: delta.removed.into_iter().collect(),
             pages: delta.pages.then(|| self.page_infos()),
             engine_rotations: delta.engine_rotations,
+            engine_crops: delta.engine_crops,
             fields: delta
                 .fields
                 .iter()

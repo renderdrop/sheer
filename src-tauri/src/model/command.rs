@@ -102,6 +102,14 @@ pub enum DocCommand {
     /// Puts the given content back into the given ids. The inverse of every command; not accepted from the UI.
     #[serde(skip_deserializing)]
     Restore { slots: Vec<Slot> },
+    /// Puts redacted page slots, annotation entries and the staged metadata removal in place (ADR-047 §3). Internal: what the redaction job
+    /// makes of its result (`redaction::plan`), and its own inverse.
+    #[serde(skip_deserializing)]
+    RestoreRedaction {
+        slots: Vec<PageSlot>,
+        entries: Vec<Slot>,
+        strip: Option<bool>,
+    },
     /// Sets the rotation of pages. Internal: the inverse of a rotation.
     #[serde(skip_deserializing)]
     SetRotations { rotations: Vec<(PageId, u16)> },
@@ -141,6 +149,7 @@ pub const LABEL_INSERT_PAGES: &str = "page.insert";
 const LABEL_RESTORE_PAGES: &str = "page.restore";
 pub const LABEL_CROP_PAGES: &str = "page.crop";
 pub const LABEL_MARK_REDACTIONS: &str = "redact.mark";
+pub const LABEL_REDACT_APPLY: &str = "redact.apply";
 pub const LABEL_PROTECT_SET: &str = "protect.set";
 pub const LABEL_PROTECT_REMOVE: &str = "protect.remove";
 pub const LABEL_METADATA_SET: &str = "metadata.set";
@@ -173,6 +182,7 @@ impl DocCommand {
             Self::AddPages { label, .. } => label.clone(),
             Self::CropPages { .. } => LABEL_CROP_PAGES.to_owned(),
             Self::MarkRedactions { .. } => LABEL_MARK_REDACTIONS.to_owned(),
+            Self::RestoreRedaction { .. } => LABEL_REDACT_APPLY.to_owned(),
             // `DocState::execute` says `protect.remove` when the ticket is a removal.
             Self::SetProtection { .. } => LABEL_PROTECT_SET.to_owned(),
             Self::SetMetadata { .. } => LABEL_METADATA_SET.to_owned(),
@@ -191,6 +201,7 @@ impl DocCommand {
             Self::RotatePages { .. }
                 | Self::CropPages { .. }
                 | Self::MarkRedactions { .. }
+                | Self::RestoreRedaction { .. }
                 | Self::SetProtection { .. }
                 | Self::SetMetadata { .. }
                 | Self::RemoveMetadata
@@ -286,7 +297,8 @@ impl DocCommand {
             | Self::ReorderPages { .. }
             | Self::RemovePages { .. }
             | Self::RestorePages { .. }
-            | Self::AddPages { .. } => Ok(()),
+            | Self::AddPages { .. }
+            | Self::RestoreRedaction { .. } => Ok(()),
             Self::MarkRedactions { marks } => {
                 if marks.is_empty() {
                     Err(AppError::invalid("marks"))
@@ -299,7 +311,8 @@ impl DocCommand {
                     Ok(())
                 }
             }
-            Self::SetProtection { .. } | Self::SetMetadata { .. } | Self::RemoveMetadata => Ok(()),
+            Self::SetProtection { .. } | Self::RemoveMetadata => Ok(()),
+            Self::SetMetadata { patch } => patch.check(),
             Self::UpdateAnnotation { coalesce, .. } => match coalesce {
                 Some(key) if !is_key(key) => Err(AppError::invalid("coalesce")),
                 _ => Ok(()),
@@ -441,6 +454,11 @@ impl DocCommand {
             Self::AddPages { at, pages, .. } => state.insert_pages(*at, pages, &mut delta)?,
             Self::CropPages { pages, spec } => state.crop_pages(pages, spec, &mut delta)?,
             Self::MarkRedactions { marks } => redaction::mark(state, marks, &mut delta)?,
+            Self::RestoreRedaction {
+                slots,
+                entries,
+                strip,
+            } => redaction::restore(state, slots, entries, *strip, &mut delta)?,
             Self::SetProtection { ticket } => {
                 protection::run_set_protection(state, *ticket, &mut delta)?
             }
@@ -1395,25 +1413,26 @@ mod tests {
     }
 
     #[test]
-    fn the_edit_and_protect_commands_parse_and_stop_at_their_stubs() {
+    fn the_edit_and_protect_commands_parse_and_refuse_bad_arguments() {
         let quad = json!([{"x":0.0,"y":0.0},{"x":9.0,"y":0.0},{"x":0.0,"y":9.0},{"x":9.0,"y":9.0}]);
+        // The well-formed ones parse (what they do is tested with their packages).
+        for command in [
+            json!({"type": "cropPages", "pages": [0], "spec": {"type": "reset"}}),
+            json!({"type": "markRedactions", "marks": [{"pageId": 0, "quads": [quad], "source": "text"}]}),
+            json!({"type": "setMetadata", "patch": {"title": "t"}}),
+        ] {
+            assert!(serde_json::from_value::<DocCommand>(command).is_ok());
+        }
         let mut state = state();
         for (command, expected) in [
-            (
-                json!({"type": "cropPages", "pages": [0], "spec": {"type": "reset"}}),
-                ErrorCode::UnsupportedFeature,
-            ),
-            (
-                json!({"type": "markRedactions", "marks": [{"pageId": 0, "quads": [quad], "source": "text"}]}),
-                ErrorCode::UnsupportedFeature,
-            ),
+            // Metadata that was not read cannot be edited; a control character is refused before anything runs.
             (
                 json!({"type": "setMetadata", "patch": {"title": null}}),
-                ErrorCode::UnsupportedFeature,
+                ErrorCode::InvalidArgument,
             ),
             (
-                json!({"type": "removeMetadata"}),
-                ErrorCode::UnsupportedFeature,
+                json!({"type": "setMetadata", "patch": {"title": "a\u{7}"}}),
+                ErrorCode::InvalidArgument,
             ),
             // Shape checks come first.
             (
@@ -1461,14 +1480,13 @@ mod tests {
         let mark = &changes.upserted[0];
         assert!(mark.body.is_redact_mark());
         assert!(!mark.body.is_written_as_annotation());
-        // A text box is refused until package A has its layout.
+        // A text box is laid out by Rust: its lines and a box as tall as they are.
         let text_box = cmd(json!({"type": "createAnnotation", "draft": {
             "pageId": 0, "kind": "textBox", "color": [0, 0, 0], "box": {"x":1.0,"y":1.0,"w":80.0,"h":0.0},
             "text": "hi", "font": "sans", "fontSize": 12.0, "align": "left"
         }}));
-        assert_eq!(
-            code(state.execute(text_box, &stamp(1))),
-            ErrorCode::UnsupportedFeature
-        );
+        let made = state.execute(text_box, &stamp(1)).unwrap();
+        assert!(made.upserted[0].body.is_content());
+        assert!(made.upserted[0].rect.h > 12.0);
     }
 }

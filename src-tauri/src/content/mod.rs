@@ -15,4 +15,8 @@ use crate::model::annotation::Annotation;
 #[derive(Debug, Clone, PartialEq)]
 pub struct ContentObject {
     pub annotation: Annotation,
+    /// The zero-based position of the page in the saved file.
+    pub index: u32,
+    /// The pixels of an image object (`None` for a text box).
+    pub image: Option<std::sync::Arc<image::ImageAsset>>,
 }

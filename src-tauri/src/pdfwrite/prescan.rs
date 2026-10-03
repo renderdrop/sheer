@@ -40,6 +40,21 @@ pub fn load_untrusted(bytes: &[u8]) -> Result<Document, AppError> {
         .map_err(|error| AppError::logged(ErrorCode::DamagedFile, format!("lopdf: {error}")))
 }
 
+/// [`load_untrusted`] for a file that may be encrypted: `password` decrypts it (the empty password is tried first). The error is the
+/// loader's own, for the caller to tell a wrong password from a damaged file.
+pub fn load_with_password(
+    bytes: &[u8],
+    password: Option<&str>,
+) -> Result<Result<Document, lopdf::Error>, AppError> {
+    check(bytes)?;
+    Ok(match password {
+        Some(password) => {
+            Document::load_mem_with_options(bytes, lopdf::LoadOptions::with_password(password))
+        }
+        None => Document::load_mem(bytes),
+    })
+}
+
 fn refused(detail: &str) -> AppError {
     AppError::logged(ErrorCode::DamagedFile, format!("pre-scan: {detail}"))
 }

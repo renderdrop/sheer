@@ -565,6 +565,7 @@ impl AppState {
             .path(id)
             .ok_or(AppError::not_found("document"))?;
         let count = self.registry.page_count(id)?;
+        let mut rasters: Vec<Arc<SourceBytes>> = Vec::new();
         let (plan, foreign, order, imported, pages_changed, form, strip_xfa) =
             self.annotations.with(id, count, |state| {
                 // The annotations of pages of the file are written into the file's bytes first; those of the other pages cannot be (the
@@ -603,13 +604,21 @@ impl AppState {
                     },
                 );
                 let mut imported: Vec<SourceId> = Vec::new();
+                for slot in state.pages() {
+                    if let PageSource::Imported { source, .. } = &slot.source {
+                        if !imported.contains(source) {
+                            imported.push(*source);
+                        }
+                    }
+                }
                 let mut order = Vec::with_capacity(state.pages().len());
                 for slot in state.pages() {
                     let kind = match &slot.source {
                         PageSource::File { index } => PageKind::File { index: *index },
                         PageSource::Blank => PageKind::Blank {
-                            width: slot.size[0],
-                            height: slot.size[1],
+                            // The MediaBox; a crop of the page is a CropBox inside it (ADR-047 §2).
+                            width: slot.media[2] - slot.media[0],
+                            height: slot.media[3] - slot.media[1],
                         },
                         PageSource::Imported { source, index } => {
                             let at = imported
@@ -624,14 +633,34 @@ impl AppState {
                                 index: *index,
                             }
                         }
-                        // Package C: the raster page of a redacted slot is what these jobs take.
-                        PageSource::Redacted { .. } => return Err(AppError::not_yet()),
+                        // The raster page of a redacted slot is what these jobs take: a source of its own after the imported ones.
+                        PageSource::Redacted { bytes } => {
+                            let at = imported.len() + rasters.len();
+                            rasters.push(Arc::new(SourceBytes {
+                                bytes: bytes.clone(),
+                                page_count: 1,
+                                display_name: String::new(),
+                            }));
+                            PageKind::Imported {
+                                source: at,
+                                index: 0,
+                            }
+                        }
+                    };
+                    // A page of the file gets the crop the session has when it is not the file's (a reset writes the MediaBox); the
+                    // other pages carry theirs, which no file has yet.
+                    let crop = match slot.source {
+                        PageSource::File { .. } => {
+                            (slot.crop != slot.saved_crop).then(|| slot.crop.unwrap_or(slot.media))
+                        }
+                        _ => slot.crop,
                     };
                     order.push((
                         slot.id,
                         PageSel {
                             kind,
                             rotation: Some(slot.rotation),
+                            crop,
                         },
                     ));
                 }
@@ -655,7 +684,7 @@ impl AppState {
                 ))
             })?;
         // The bytes of the sources pages were taken from: pinned by the document, or still held by the registry.
-        let sources = imported
+        let mut sources = imported
             .iter()
             .map(|&source| {
                 self.sources
@@ -664,6 +693,7 @@ impl AppState {
                     .ok_or(AppError::not_found("source"))
             })
             .collect::<Result<Vec<_>, _>>()?;
+        sources.extend(rasters);
         Ok(DocInput {
             id,
             name: info.display_name,

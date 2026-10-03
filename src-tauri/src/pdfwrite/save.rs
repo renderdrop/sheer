@@ -99,7 +99,22 @@ pub fn apply_extras(bytes: Vec<u8>, plan: &SavePlan) -> Result<Vec<u8>, AppError
     if plan.is_empty() {
         return Ok(bytes);
     }
-    Err(AppError::not_yet())
+    // Package A: text boxes and images.
+    let bytes = super::content::burn_all(bytes, &plan.content)?;
+    // Package C: what still holds content of a redacted page (structure tree, orphan fields, `/ID`); before any encryption.
+    let bytes = if plan.redacted {
+        super::redact::finish(bytes, plan.keep_encryption)?
+    } else {
+        bytes
+    };
+    // Package D: the metadata. Encryption is not here: it is the last step of the save (`commands::save::build_pages`), after the
+    // compaction, and the file this function sees is a plain one (a protected file was decrypted first).
+    let bytes = match &plan.metadata {
+        Some(change) => super::metadata::apply(bytes, change)?,
+        None => bytes,
+    };
+    // Crops are written with the page list (`pagetree::rewrite_pages`), so `plan.crops` needs nothing here.
+    Ok(bytes)
 }
 
 /// The saved file, and where every annotation of the plan is in it.
@@ -263,7 +278,7 @@ pub fn append_annotations(original: Vec<u8>, plan: &Plan) -> Result<Built, AppEr
             pages: 0,
         });
     }
-    let doc = super::prescan::load_untrusted(&original)?;
+    let doc = crate::pdfwrite::prescan::load_untrusted(&original)?;
     if doc.is_encrypted() {
         return Err(AppError::new(ErrorCode::UnsupportedFeature));
     }
@@ -489,7 +504,7 @@ pub fn append_annotations(original: Vec<u8>, plan: &Plan) -> Result<Built, AppEr
 
 /// Reads `bytes` again as a PDF with `pages` pages (ADR-004 §1 step 6, the lopdf half of the check).
 pub fn validate(bytes: &[u8], pages: u32) -> Result<(), AppError> {
-    let doc = super::prescan::load_untrusted(bytes)?;
+    let doc = crate::pdfwrite::prescan::load_untrusted(bytes)?;
     if u32::try_from(doc.get_pages().len()).ok() == Some(pages) {
         Ok(())
     } else {
@@ -559,14 +574,29 @@ mod tests {
     }
 
     #[test]
-    fn a_plan_with_work_stops_at_the_stub() {
+    fn a_plan_with_work_runs_and_a_file_that_is_not_one_is_refused() {
         let plan = SavePlan {
             redacted: true,
             ..SavePlan::default()
         };
         assert_eq!(
-            apply_extras(Vec::new(), &plan).unwrap_err().code(),
-            ErrorCode::UnsupportedFeature
+            apply_extras(b"not a pdf".to_vec(), &plan)
+                .unwrap_err()
+                .code(),
+            ErrorCode::DamagedFile
         );
+        let bytes = std::fs::read(
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../tests/fixtures/minimal.pdf"),
+        )
+        .unwrap();
+        let pages = u32::try_from(
+            crate::pdfwrite::prescan::load_untrusted(&bytes)
+                .unwrap()
+                .get_pages()
+                .len(),
+        )
+        .unwrap();
+        let out = apply_extras(bytes, &plan).unwrap();
+        assert!(validate(&out, pages).is_ok());
     }
 }

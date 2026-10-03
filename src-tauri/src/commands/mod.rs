@@ -305,6 +305,7 @@ impl AppState {
                 };
             }
         }
+        self.refresh_permissions(id);
         self.note_recent(kind, &canonical);
         Ok(self.info(id).map_or(Opened::Pending, Opened::Ready))
     }
@@ -347,6 +348,7 @@ impl AppState {
                 return Err(error);
             }
         };
+        let session = password.clone();
         let registry = Arc::clone(&self.registry);
         self.registry.set_fingerprint(id, Fingerprint::of(&file));
         let confirm = move |page_count| registry.set_page_count(id, page_count).is_ok();
@@ -354,7 +356,11 @@ impl AppState {
             .engine
             .open_with_password(id, file, Some(password), confirm)
         {
-            Ok(page_count) => self.registry.set_page_count(id, page_count)?,
+            Ok(page_count) => {
+                self.registry.set_page_count(id, page_count)?;
+                // The file may be saved again, and a save needs the password to read it (ADR-047 §4).
+                self.note_session_password(id, Some(session));
+            }
             Err(error) if error.code() == ErrorCode::PasswordRequired => {
                 self.registry.note_wrong_password(id, Instant::now());
                 return Err(error);
@@ -375,6 +381,7 @@ impl AppState {
         kind: DocKind,
         path: &std::path::Path,
     ) -> Result<DocumentInfo, AppError> {
+        self.refresh_permissions(id);
         self.note_recent(kind, path);
         self.info(id).ok_or(AppError::not_found("document"))
     }

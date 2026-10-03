@@ -292,7 +292,11 @@ impl AppState {
                 (unrotated(drawn, rotation), rotation)
             })
             .collect();
-        DocState::from_file(pages)
+        let mut state = DocState::from_file(pages);
+        if let Ok(boxes) = self.engine.page_boxes(id) {
+            state.set_boxes(&boxes);
+        }
+        state
     }
 
     /// The annotations of a page, by id. The first call for a page reads them from the file; later calls answer from the model, which
@@ -374,27 +378,39 @@ impl AppState {
             }
             Ok((changes, before, state.hidden_origins()))
         })?;
-        if !changes.engine_rotations.is_empty() {
-            if let Err(error) = self
-                .engine
+        // The rotations and crops are mirrored in the engine's copy; a failure of either takes the step back.
+        let mirrored = if changes.engine_rotations.is_empty() {
+            Ok(())
+        } else {
+            self.engine
                 .set_page_rotations(id, changes.engine_rotations.clone())
-            {
-                self.model(id, |state| {
-                    let _ = match revert {
-                        Revert::Undo => state.undo(&stamp),
-                        Revert::Redo => state.redo(&stamp),
-                    };
-                    self.registry.set_pages(
-                        id,
-                        state
-                            .pages()
-                            .iter()
-                            .map(|slot| (slot.id, slot.engine_index)),
-                    );
-                    Ok(())
-                })?;
-                return Err(error);
+        }
+        .and_then(|()| {
+            changes
+                .engine_crops
+                .iter()
+                .try_for_each(|(index, crop)| self.engine.set_crop_box(id, *index, *crop))
+        });
+        if let Err(error) = mirrored {
+            let boxes = self.model(id, |state| {
+                let _ = match revert {
+                    Revert::Undo => state.undo(&stamp),
+                    Revert::Redo => state.redo(&stamp),
+                };
+                self.registry.set_pages(
+                    id,
+                    state
+                        .pages()
+                        .iter()
+                        .map(|slot| (slot.id, slot.engine_index)),
+                );
+                Ok(state.crop_mirror(changes.engine_crops.iter().map(|(index, _)| *index)))
+            })?;
+            // Best effort: the engine's copy goes back to the boxes of the model.
+            for (index, crop) in boxes {
+                let _ = self.engine.set_crop_box(id, index, crop);
             }
+            return Err(error);
         }
         let hide: Vec<(u32, u32)> = after.difference(&before).copied().collect();
         let show: Vec<(u32, u32)> = before.difference(&after).copied().collect();

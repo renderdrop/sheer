@@ -100,6 +100,7 @@ impl AppState {
                         engine_index: page.engine_index,
                         rotation: page.rotation,
                         size: page.size,
+                        media: page.media,
                         annotations: None,
                     }],
                 };
@@ -144,6 +145,7 @@ impl AppState {
                             engine_index: page.engine_index,
                             rotation: page.rotation,
                             size: page.size,
+                            media: page.media,
                             annotations,
                         }
                     })
