@@ -73,6 +73,7 @@ describe('opening a document', () => {
       pageIndex: 0,
       pageCount: 10,
       anchor: null,
+      opening: true,
     });
     expect(viewer().opening).toBe(false);
     expect(renderApi.getPageSizes).toHaveBeenCalledWith(1);
@@ -207,6 +208,8 @@ describe('opening a document', () => {
     expect(useUi.getState().banner).toMatchObject({ code: 'engine_timeout' });
     expect(activeDocument()).toEqual(REPORT);
     expect(usePages.getState().byDoc).toEqual({});
+    // The opening zoom is never decided without sizes: the readouts must not stay on the dash.
+    expect(viewOf(1)?.opening).toBe(false);
   });
 
   it('forgets the sizes that arrive after the document was closed', async () => {

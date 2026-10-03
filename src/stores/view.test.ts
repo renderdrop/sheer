@@ -21,6 +21,7 @@ describe('the view store', () => {
       pageIndex: 0,
       pageCount: 12,
       anchor: null,
+      opening: false,
     });
   });
 
@@ -45,6 +46,7 @@ describe('the view store', () => {
       pageIndex: 0,
       pageCount: 10,
       anchor: null,
+      opening: false,
     });
   });
 

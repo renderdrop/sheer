@@ -11,7 +11,8 @@ import { zoomMenuEntries } from './toolbarEntries';
 /** The open document's zoom (1 without one). Only a change of the zoom re-renders what calls this, not a change of page. */
 function useZoom(): number {
   const docId = useDocuments(selectActiveId);
-  return useDocViewValue(docId, (view) => view.zoom);
+  // NaN while the opening zoom is not known: the readouts show a dash, never a zoom the document is not at.
+  return useDocViewValue(docId, (view) => (view.opening ? Number.NaN : view.zoom));
 }
 
 /**

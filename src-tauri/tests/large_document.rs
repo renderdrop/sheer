@@ -129,6 +129,17 @@ impl Drop for TempFile {
     }
 }
 
+/// Writes the 500-page document to `review/large-500.pdf` for frame-rate checks in the real window (docs/UI_REVIEW.md, MOTION §5).
+#[test]
+#[ignore = "writes a file for manual review"]
+fn write_the_500_page_document_for_the_ui_review() {
+    let dir = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("..")
+        .join("review");
+    fs::create_dir_all(&dir).unwrap();
+    fs::write(dir.join("large-500.pdf"), synthetic_pdf(PAGES)).unwrap();
+}
+
 #[test]
 fn the_generated_pdf_has_a_consistent_cross_reference_table() {
     let bytes = synthetic_pdf(PAGES);

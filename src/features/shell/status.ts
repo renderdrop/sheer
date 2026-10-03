@@ -9,7 +9,7 @@ export function formatPageStatus(pageIndex: number, pageCount: number, locale: L
 
 /** "125 %": the zoom readout of the status bar and the toolbar. A no-break space keeps the number and the sign together. */
 export function formatZoomStatus(zoom: number, locale: Locale): string {
-  return formatPercent(zoom, locale);
+  return Number.isFinite(zoom) ? formatPercent(zoom, locale) : '–';
 }
 
 /** The last characters of a file name that stay visible when the name does not fit (the extension and a bit before it). */

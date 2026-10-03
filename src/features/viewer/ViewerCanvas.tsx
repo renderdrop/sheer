@@ -240,6 +240,7 @@ export function ViewerCanvas({ style }: { style?: CSSProperties }) {
     resolveFresh(docId);
     const fitted = fitZoomFor('width', metrics, 0, viewport, gap);
     if (fitted !== null && fitted < 1 - 1e-9) useView.getState().setFit(docId, 'width', fitted, null);
+    useView.getState().settleOpening(docId);
   }, [docId, viewport, pagesLoaded, metrics, gap]);
 
   // The clone of a drop or of a thumbnail (MOTION 4.6) flies to its page once that is laid out (and, for a jump, scrolled to).

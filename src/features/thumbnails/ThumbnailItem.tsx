@@ -18,6 +18,49 @@ export const THUMBNAIL_ASK_DELAY_MS = 80;
 /** The revision of a page's pixels (the backend's `pageRev`); pages cannot change until M2, so it is always 0. */
 const PAGE_REV = 0;
 
+/** Images that were shown before are kept decoded, bounded, oldest first. */
+const MAX_WARM_IMAGES = 128;
+const warm = new Map<string, HTMLImageElement>();
+
+/** Keeps a decoded copy of `src` around, so a cell that mounts again (the panel reopened) paints it on its first frame. */
+function keepWarm(src: string): void {
+  warm.delete(src);
+  if (typeof Image === 'undefined') return;
+  const image = new Image();
+  image.src = src;
+  // `decode` is missing in some embedders (jsdom): the image then just stays loaded.
+  if (typeof image.decode === 'function') image.decode().catch(() => undefined);
+  warm.set(src, image);
+  while (warm.size > MAX_WARM_IMAGES) {
+    const oldest = warm.keys().next();
+    if (oldest.done === true) break;
+    warm.delete(oldest.value);
+  }
+}
+
+/** The thumbnail's picture: a frame shown before appears at once, one that never was fades in when it has loaded. */
+function ThumbnailImage({ src }: { src: string }) {
+  const [fresh] = useState(() => !warm.has(src));
+  const [ready, setReady] = useState(!fresh);
+  return (
+    <img
+      src={src}
+      alt=""
+      draggable={false}
+      decoding="sync"
+      onLoad={() => {
+        if (!warm.has(src)) keepWarm(src);
+        setReady(true);
+      }}
+      className={cx(
+        'absolute inset-0 size-full max-w-none select-none',
+        fresh && 'transition-opacity duration-base',
+        !ready && 'opacity-0',
+      )}
+    />
+  );
+}
+
 /**
  * Everything is a number, a string or a flag, never an object: the list builds its layout anew whenever its width changes, and a
  * prop that is a new object each time would make the memoization below worthless.
@@ -146,16 +189,7 @@ export const ThumbnailItem = memo(function ThumbnailItem({
         )}
         style={{ width: thumbWidth, height: thumbHeight }}
       >
-        {shown !== undefined && (
-          <img
-            key={shown.key}
-            src={cache.urlOf(shown)}
-            alt=""
-            draggable={false}
-            decoding="async"
-            className="absolute inset-0 size-full max-w-none select-none"
-          />
-        )}
+        {shown !== undefined && <ThumbnailImage key={shown.key} src={cache.urlOf(shown)} />}
       </div>
       <span
         aria-hidden="true"

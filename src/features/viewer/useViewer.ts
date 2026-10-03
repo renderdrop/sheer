@@ -321,7 +321,10 @@ function loadPageSizes(docId: number): void {
       if (useDocuments.getState().byId[docId] !== undefined) usePages.getState().set(docId, sizes);
     },
     (caught: unknown) => {
-      if (useDocuments.getState().byId[docId] !== undefined) useUi.getState().showBanner(toAppError(caught));
+      if (useDocuments.getState().byId[docId] === undefined) return;
+      // Without sizes the canvas never decides the opening zoom: the readouts show the zoom the view has.
+      useView.getState().settleOpening(docId);
+      useUi.getState().showBanner(toAppError(caught));
     },
   );
 }
@@ -334,7 +337,7 @@ function showDocument(info: DocumentInfo): void {
   const documents = useDocuments.getState();
   const isNew = documents.byId[info.id] === undefined;
   if (isNew) {
-    useView.getState().open(info.id, info.pageCount);
+    useView.getState().open(info.id, info.pageCount, true);
     renderScheduler.cache.admit(info.id);
   }
   documents.add(info);

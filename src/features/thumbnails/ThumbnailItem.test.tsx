@@ -308,3 +308,20 @@ describe('the cache', () => {
     expect(images()).toHaveLength(1);
   });
 });
+
+describe('a cell that mounts again (the panel reopened)', () => {
+  it('fades in a frame that was never shown, and shows a shown one at once on its first render', () => {
+    const { cache, scheduler } = fixture();
+    put(cache, BUCKET);
+    const first = setup(item(scheduler));
+    expect(images()[0]?.className).toContain('opacity-0');
+    fireEvent.load(images()[0] as HTMLImageElement);
+    expect(images()[0]?.className).not.toContain('opacity-0');
+    // Unmounted with the panel, mounted again on reopen: the cached frame is in the first render, with no fade.
+    first.unmount();
+    setup(item(scheduler));
+    expect(images()).toHaveLength(1);
+    expect(images()[0]?.className).not.toContain('opacity-0');
+    expect(images()[0]?.className).not.toContain('transition-opacity');
+  });
+});

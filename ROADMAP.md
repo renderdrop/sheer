@@ -49,7 +49,7 @@ The Stop hook picks the first open `- [ ]` line, so order matters. Scope: `docs/
 - [ ] Text selection and copy (char-box text layer)
 - [ ] View rotation, go to page, status bar page x/y + zoom
 - [ ] Password-protected PDFs (session-only password)
-- [ ] Recent files (local, removable, missing-file handling)
+- [ ] Recent files (local, removable, missing-file handling); record the open-from-recents clone (MOTION §4.6) as F3 evidence
 - [ ] Multiple documents in tabs; macOS menu enabled-state sync (grey items without a document, Close Window on ⌘W)
 - [ ] Onboarding scaffold (FEEDBACK F4): bundled "Welcome to Sheer.pdf" opened on first launch, coach-mark component, step engine, steps Open / Navigate / Zoom, progress in the status bar, skippable, restart in Settings, never automatic twice
 - [ ] Hostile input: fuzz corpus ≥ 30 malformed PDFs + never-crash test, safe links (confirm, http/https/mailto), XFA warning; intake: registry key from the handle, reject NTFS ADS names and `\?NC`/REMOTE UNC (OR DEADLINE), PIN WINDOWS DEVICE-PATH REFUSAL IN A TEST, SKIP STRAY NON-FLAG ARGV VALUES, DOCUMENT TOKIO `NET` FROM SINGLE-INSTANCE IN THE NETWORK GUARD
@@ -111,7 +111,7 @@ The Stop hook picks the first open `- [ ]` line, so order matters. Scope: `docs/
 
 ## M7 — Polish and ship (v1.0.0)
 
-- [ ] Performance budget: 500-page PDF opens < 1 s, 60 fps scrolling (benchmark); scroll-height compression beyond the browser element limit (≈ 8k pages at 400 %), memory-aware cache budget
+- [ ] Performance budget: 500-page PDF opens < 1 s, 60 fps scrolling (benchmark); thumbnail list fast scroll (one 34 ms frame at 120 px/frame, F3); scroll-height compression beyond the browser element limit (≈ 8k pages at 400 %), memory-aware cache budget
 - [ ] Accessibility pass (WCAG 2.2 AA analog, screen reader labels, focus order)
 - [ ] i18n de/en complete
 - [ ] Per-tool tips; read mode (onboarding = welcome-document tour, FEEDBACK F4)

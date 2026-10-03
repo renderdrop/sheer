@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { CSS_PX_PER_PT } from '../../lib/zoom';
 import { setup } from '../../test/render';
+import { useView } from '../../stores/view';
 import { useViewer } from '../viewer/useViewer';
 import { ViewerCanvas } from '../viewer/ViewerCanvas';
 import { resetViewer, showDocument } from '../viewer/viewer.testutil';
@@ -92,5 +93,19 @@ describe('the page in the status bar follows the scroll position of the canvas',
     expect(pageButton()).toBe('5 / 5');
     act(() => useViewer.getState().nextPage());
     expect(pageButton()).toBe('5 / 5');
+  });
+});
+
+describe('the zoom readout of a freshly opened document', () => {
+  it('shows no zoom until the opening zoom is committed, then exactly the committed zoom', () => {
+    // Fit width of a 900 px viewport is below 100 %, so the committed zoom differs from the default.
+    const readout = () => screen.getByRole('button', { name: /Zoom level/ }).textContent;
+    mount(3);
+    act(() => useView.getState().open(1, 3, true));
+    expect(readout()).toBe('–');
+    act(() => useView.getState().setFit(1, 'width', 0.93));
+    expect(readout()).toBe(`93${NBSP}%`);
+    act(() => useView.getState().settleOpening(1));
+    expect(readout()).toBe(`93${NBSP}%`);
   });
 });

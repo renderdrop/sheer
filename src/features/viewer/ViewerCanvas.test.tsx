@@ -729,6 +729,36 @@ describe('the opening zoom (MOTION 4.4)', () => {
     expect(useView.getState().byDoc[1]?.zoom).toBe(1);
   });
 
+  it('settles the opening only after the fit decision, so the readout never shows the pre-fit zoom', () => {
+    beginOpening(1);
+    showDocument(BOOK, { viewport: { width: 500, height: 700 } });
+    useView.getState().open(1, BOOK.pageCount, true);
+    const seen: { fit: string; zoom: number; opening: boolean }[] = [];
+    const stop = useView.subscribe((state) => {
+      const view = state.byDoc[1];
+      if (view !== undefined) seen.push({ fit: view.fit, zoom: view.zoom, opening: view.opening });
+    });
+    setup(<ViewerCanvas />);
+    stop();
+    // No state is ever settled while it still has the unfitted zoom.
+    expect(seen.filter((view) => !view.opening).every((view) => view.fit === 'width')).toBe(true);
+    expect(useView.getState().byDoc[1]?.opening).toBe(false);
+  });
+
+  it('keeps a background document of a multi-file drop opening until it is activated, then settles it', () => {
+    beginOpening(1);
+    beginOpening(2);
+    showDocument(BOOK, { viewport: { width: 500, height: 700 } });
+    showDocument({ id: 2, pageCount: 3, displayName: 'b.pdf' });
+    useView.getState().open(1, BOOK.pageCount, true);
+    useView.getState().open(2, 3, true);
+    setup(<ViewerCanvas />);
+    expect(useView.getState().byDoc[2]?.opening).toBe(false);
+    expect(useView.getState().byDoc[1]?.opening).toBe(true);
+    act(() => useDocuments.getState().setActive(1));
+    expect(useView.getState().byDoc[1]?.opening).toBe(false);
+  });
+
   it('is applied only at the opening: a canvas that is resized later does not fit again', () => {
     beginOpening(1);
     showDocument(BOOK, { viewport: { width: 1600, height: 700 } });

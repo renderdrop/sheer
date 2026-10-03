@@ -27,6 +27,8 @@ export interface DocView {
    * and cleared by the canvas once it has scrolled there (`consumeAnchor`). Never read by anything else.
    */
   anchor: ScrollAnchor | null;
+  /** True from the opening of a document until its opening zoom is known: the readouts show no zoom meanwhile. */
+  opening: boolean;
 }
 
 /** What the shell shows while no document is open. */
@@ -37,12 +39,15 @@ export const NO_VIEW: DocView = {
   pageIndex: 0,
   pageCount: 0,
   anchor: null,
+  opening: false,
 };
 
 export interface ViewState {
   byDoc: Readonly<Record<number, DocView>>;
   /** Registers a document that was just opened: 100 %, continuous scrolling, first page. */
-  open: (docId: number, pageCount: number) => void;
+  open: (docId: number, pageCount: number, opening?: boolean) => void;
+  /** The opening zoom of the document is committed: the readouts may show it. */
+  settleOpening: (docId: number) => void;
   /** Forgets a closed document. */
   close: (docId: number) => void;
   /**
@@ -69,7 +74,8 @@ function sameView(a: DocView, b: DocView): boolean {
     a.scrollMode === b.scrollMode &&
     a.pageIndex === b.pageIndex &&
     a.pageCount === b.pageCount &&
-    a.anchor === b.anchor
+    a.anchor === b.anchor &&
+    a.opening === b.opening
   );
 }
 
@@ -92,19 +98,22 @@ function clampPage(view: DocView, pageIndex: number): number {
 
 export const useView = create<ViewState>()((set) => ({
   byDoc: {},
-  open: (docId, pageCount) =>
+  open: (docId, pageCount, opening = false) =>
     set((state) => ({
-      byDoc: { ...state.byDoc, [docId]: { ...NO_VIEW, pageCount: Math.max(0, Math.trunc(pageCount)) } },
+      byDoc: { ...state.byDoc, [docId]: { ...NO_VIEW, pageCount: Math.max(0, Math.trunc(pageCount)), opening } },
     })),
+  settleOpening: (docId) => set((state) => update(state, docId, (view) => ({ ...view, opening: false }))),
   close: (docId) =>
     set((state) => {
       if (state.byDoc[docId] === undefined) return state;
       return { byDoc: Object.fromEntries(Object.entries(state.byDoc).filter(([id]) => Number(id) !== docId)) };
     }),
   setZoom: (docId, zoom, anchor = null) =>
-    set((state) => update(state, docId, (view) => ({ ...view, zoom: clampZoom(zoom), fit: 'none', anchor }))),
+    set((state) =>
+      update(state, docId, (view) => ({ ...view, zoom: clampZoom(zoom), fit: 'none', anchor, opening: false })),
+    ),
   setFit: (docId, fit, zoom, anchor = null) =>
-    set((state) => update(state, docId, (view) => ({ ...view, zoom: clampZoom(zoom), fit, anchor }))),
+    set((state) => update(state, docId, (view) => ({ ...view, zoom: clampZoom(zoom), fit, anchor, opening: false }))),
   setPage: (docId, pageIndex, anchor = null) =>
     set((state) => update(state, docId, (view) => ({ ...view, pageIndex: clampPage(view, pageIndex), anchor }))),
   reportPage: (docId, pageIndex) =>

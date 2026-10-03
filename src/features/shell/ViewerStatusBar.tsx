@@ -12,13 +12,13 @@ export function ViewerStatusBar() {
   const rendering = useViewer((state) => state.rendering);
   const goToPage = useViewer((state) => state.goToPage);
   const setZoom = useViewer((state) => state.setZoom);
-  const { zoom, pageIndex, pageCount } = useDocView(useDocuments(selectActiveId));
+  const { zoom, pageIndex, pageCount, opening } = useDocView(useDocuments(selectActiveId));
   return (
     <StatusBar
       fileName={fileName}
       pageIndex={pageIndex}
       pageCount={pageCount}
-      zoom={zoom}
+      zoom={opening ? Number.NaN : zoom}
       rendering={rendering}
       onGoToPage={goToPage}
       onZoom={setZoom}
