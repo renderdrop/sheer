@@ -50,13 +50,14 @@ const item = (entries: ToolbarEntry[], id: string): ToolbarItem => {
 };
 
 describe('the toolbar of DESIGN 3.3 and ADR-011 section 6', () => {
-  it('has the order panel toggle | Select | Markup | Fill and sign | Pages | History | More | spacer | zoom | inspector toggle', () => {
+  it('has the order panel toggle | Select | Markup | Fill and sign | Edit | Pages | History | More | spacer | zoom | inspector toggle', () => {
     const { entries } = buildToolbar(state(), actions());
     expect(entries.map((entry) => ('type' in entry && entry.type !== undefined ? entry.type : entry.id))).toEqual([
       'panels',
       'select',
       'markup',
       'fill-and-sign',
+      'edit',
       'pages',
       'history',
       'more',
@@ -69,6 +70,7 @@ describe('the toolbar of DESIGN 3.3 and ADR-011 section 6', () => {
       ['select'],
       ['highlight', 'note', 'text', 'draw', 'shapes'],
       ['form', 'signature'],
+      ['textBox', 'image', 'crop'],
       ['pages'],
       ['undo', 'redo'],
       ['zoom-out', 'zoom-level', 'zoom-in'],
@@ -83,6 +85,7 @@ describe('the toolbar of DESIGN 3.3 and ADR-011 section 6', () => {
       'Select',
       'Markup',
       'Fill and sign',
+      'Edit',
       'Pages',
       'History',
       'Zoom',
@@ -126,9 +129,20 @@ describe('the toolbar of DESIGN 3.3 and ADR-011 section 6', () => {
   describe('tools', () => {
     it('are tools, and only the active one is pressed', () => {
       const { entries } = buildToolbar(state({ activeTool: 'draw' }), actions());
-      const tools = ['select', 'highlight', 'note', 'text', 'draw', 'shapes', 'form', 'signature', 'pages'].map((id) =>
-        item(entries, id),
-      );
+      const tools = [
+        'select',
+        'highlight',
+        'note',
+        'text',
+        'draw',
+        'shapes',
+        'form',
+        'signature',
+        'pages',
+        'textBox',
+        'image',
+        'crop',
+      ].map((id) => item(entries, id));
       for (const tool of tools) {
         expect(tool.kind, tool.id).toBe('tool');
         expect(tool.pressed, tool.id).toBe(tool.id === 'draw');
@@ -154,13 +168,24 @@ describe('the toolbar of DESIGN 3.3 and ADR-011 section 6', () => {
   });
 
   describe('overflow', () => {
-    it('moves Redo first, then Undo, Pages, Form, Signature, zoom out and zoom in into More; the rest never moves', () => {
+    it('moves Redo first, then Undo, Pages, Edit tools, Form, Signature, zoom out and zoom in into More; the rest never moves', () => {
       const { entries } = buildToolbar(state(), actions());
       const collapsing = items(entries)
         .filter((entry) => entry.collapse !== undefined)
         .sort((a, b) => (a.collapse ?? 0) - (b.collapse ?? 0))
         .map((entry) => entry.id);
-      expect(collapsing).toEqual(['redo', 'undo', 'pages', 'form', 'signature', 'zoom-out', 'zoom-in']);
+      expect(collapsing).toEqual([
+        'redo',
+        'undo',
+        'pages',
+        'textBox',
+        'image',
+        'crop',
+        'form',
+        'signature',
+        'zoom-out',
+        'zoom-in',
+      ]);
       for (const id of [
         'left-panel',
         'select',
@@ -189,6 +214,9 @@ describe('the toolbar of DESIGN 3.3 and ADR-011 section 6', () => {
         'compress-document',
         'edit:before',
         'flatten-form',
+        'redact',
+        'protect',
+        'document-properties',
         'view:before',
         'actual-size',
         'fit-width',
@@ -312,9 +340,20 @@ describe('the toolbar of DESIGN 3.3 and ADR-011 section 6', () => {
 
     it('the tools show their letter, which works with the canvas focused', () => {
       const { entries } = buildToolbar(state({ platform: 'windows' }), actions());
-      const letters = ['select', 'highlight', 'note', 'text', 'draw', 'shapes', 'form', 'signature', 'pages'].map(
-        (id) => [id, item(entries, id).shortcut],
-      );
+      const letters = [
+        'select',
+        'highlight',
+        'note',
+        'text',
+        'draw',
+        'shapes',
+        'form',
+        'signature',
+        'pages',
+        'textBox',
+        'image',
+        'crop',
+      ].map((id) => [id, item(entries, id).shortcut]);
       expect(letters).toEqual([
         ['select', 'V'],
         ['highlight', 'H'],
@@ -325,6 +364,9 @@ describe('the toolbar of DESIGN 3.3 and ADR-011 section 6', () => {
         ['form', 'F'],
         ['signature', 'S'],
         ['pages', 'P'],
+        ['textBox', 'E'],
+        ['image', 'I'],
+        ['crop', 'K'],
       ]);
       expect(item(entries, 'highlight').keyShortcuts).toBe('H');
     });
@@ -384,6 +426,9 @@ describe('the toolbar and the More menu are the registry (no orphan shortcuts)',
     shapes: 'tool-shapes',
     form: 'tool-form',
     signature: 'tool-signature',
+    textBox: 'tool-textBox',
+    image: 'tool-image',
+    crop: 'tool-crop',
     pages: 'tool-pages',
     undo: 'undo',
     redo: 'redo',

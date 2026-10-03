@@ -11,8 +11,12 @@ import { DURATION, ENTER_SCALE, FADE_END_SLACK_MS, SPRING } from '../../lib/moti
 import { pageRevOf, useAnnotations } from '../../stores/annotations';
 import { useUi } from '../../stores/ui';
 import { AnnotationLayer } from '../annotations/layer/AnnotationLayer';
+import { CropLayer } from '../crop/CropLayer';
 import { FormLayer } from '../forms/FormLayer';
+import { InsertLayer } from '../insert/InsertLayer';
+import { RedactLayer } from '../redact/RedactLayer';
 import { usePageText } from '../textlayer/cache';
+import type { PageLayerProps } from './pageLayer';
 import { PageOverlay } from '../textlayer/PageOverlay';
 import { runsOf } from '../textlayer/runs';
 import { hasFileRotation } from './fileRotation';
@@ -360,6 +364,17 @@ export const PageView = memo(function PageView({
     return () => controls.stop();
   }, [entering, reduce]);
 
+  const layer: PageLayerProps = {
+    docId,
+    pageIndex: pageId,
+    boxWidth: width,
+    boxHeight: height,
+    widthPt,
+    heightPt,
+    rotation,
+    ready: text.layer !== null || hasFileRotation(docId, pageId),
+  };
+
   return (
     <div
       ref={pageRef}
@@ -421,6 +436,10 @@ export const PageView = memo(function PageView({
         rotation={rotation}
         ready={text.layer !== null || hasFileRotation(docId, pageId)}
       />
+      {/* M5 layers (layer 3, DESIGN 3.36 to 3.38); each renders nothing outside its tool or mode. */}
+      <InsertLayer {...layer} />
+      <RedactLayer {...layer} />
+      <CropLayer {...layer} />
     </div>
   );
 });

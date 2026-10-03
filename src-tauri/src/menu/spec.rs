@@ -22,7 +22,7 @@ const DE_JSON: &str = include_str!("../../../src/i18n/locales/de.json");
 /// [`is_action_id`] is the only gate between a menu event and the channel, so an id that is not listed here (a system item,
 /// something a future layout names by mistake) never reaches the webview. A test keeps it equal to the layout, and the
 /// frontend's `src/actions/menu.test.ts` keeps the layout equal to its registry.
-pub const ACTION_IDS: [&str; 33] = [
+pub const ACTION_IDS: [&str; 36] = [
     "settings",
     "open",
     "close-document",
@@ -56,6 +56,9 @@ pub const ACTION_IDS: [&str; 33] = [
     "rotate-view-left",
     "rotate-view-reset",
     "flatten-form",
+    "protect",
+    "document-properties",
+    "redact",
 ];
 
 /// Whether `id` is a command the menu bar may send to the UI.

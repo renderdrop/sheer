@@ -11,6 +11,10 @@ import { setMenuState } from '../../api/recents';
 import { FormHost } from '../forms/FormHost';
 import { DropBannerRow, JobsHost } from '../jobs/JobsHost';
 import { PasswordDialog } from '../password/PasswordDialog';
+import { ProtectSheet } from '../protect/ProtectSheet';
+import { PropertiesDialog } from '../properties/PropertiesDialog';
+import { RedactApplyDialog } from '../redact/RedactApplyDialog';
+import { RedactBanner } from '../redact/RedactBanner';
 import { UnsavedDialog } from '../save/UnsavedDialog';
 import { TabStrip } from '../tabs/TabStrip';
 import { CanvasSlot } from '../organize/CanvasSlot';
@@ -112,8 +116,12 @@ export function Shell() {
       <PasswordDialog />
       <JobsHost />
       <UnsavedDialog />
+      <ProtectSheet />
+      <PropertiesDialog />
+      <RedactApplyDialog />
       <BannerRow />
       <XfaBannerRow />
+      <RedactBanner />
       <FormHost />
       <DropBannerRow />
       <MainGrid structure={structure}>

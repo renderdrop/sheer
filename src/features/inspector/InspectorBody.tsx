@@ -5,7 +5,10 @@ import { useT, type PlainKey } from '../../i18n';
 import type { AnnotationKind } from '../../api/annotations';
 import type { CreationKind } from '../../stores/tools';
 import { useUi } from '../../stores/ui';
+import { useCropInspector } from '../crop/useCropInspector';
 import { FormOptions } from '../forms/FormOptions';
+import { useInsertInspector } from '../insert/useInsertInspector';
+import { useRedactInspector } from '../redact/useRedactInspector';
 import { ColourSection, FontSizeSection, LineEndSection, OpacitySection, StrokeSection } from './Sections';
 import { useInspectorModel, type InspectorModel } from './useInspectorModel';
 
@@ -115,7 +118,10 @@ export function useInspector(): { title: string; body: React.ReactNode } {
   const t = useT();
   const model = useInspectorModel();
   const title = useInspectorTitle(model);
+  // The M5 modes and tools bring their own inspector (DESIGN 3.36 to 3.38); each is `null` while it is not active.
+  const own = [useCropInspector(), useRedactInspector(), useInsertInspector()].find((entry) => entry !== null);
   const formTool = useUi((state) => state.activeTool === 'form');
+  if (own !== undefined) return own;
   // The Form tool has options of its own (DESIGN 3.32): the highlight toggle and Flatten.
   if (model.mode === 'empty' && formTool) {
     return { title: t('inspector.toolOptions', { tool: t('toolbar.tool.form') }), body: <FormOptions /> };

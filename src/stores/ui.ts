@@ -20,7 +20,21 @@ export type LeftPanelTab = (typeof LEFT_PANEL_TABS)[number];
  * The tools of the toolbar (DESIGN 3.3). Choosing one changes which one is active (the creation tools of M2 read it, DESIGN 3.22); the variants of Markup
  * and Shapes live in the `tools` store (src/stores/tools.ts).
  */
-export const TOOLS = ['select', 'highlight', 'note', 'text', 'draw', 'shapes', 'form', 'signature', 'pages'] as const;
+export const TOOLS = [
+  'select',
+  'highlight',
+  'note',
+  'text',
+  'draw',
+  'shapes',
+  'form',
+  'signature',
+  'pages',
+  // M5 (DESIGN 3.36, 3.37): Add text, Add image and the Crop mode.
+  'textBox',
+  'image',
+  'crop',
+] as const;
 export type ToolId = (typeof TOOLS)[number];
 
 /** Interface state that is not about a document (ARCHITECTURE section 8, `ui`). Nothing here is persisted except the panel width. */
@@ -33,6 +47,11 @@ export interface UiState {
   activeTool: ToolId;
   /** The active tool stays active after use (double click or Shift+Enter, DESIGN 3.3). */
   toolLocked: boolean;
+  /** Redact mode is on (DESIGN 3.38): a mode beside the tools, ended with Esc at tool level or Done. */
+  redactMode: boolean;
+  /** The Protect sheet (DESIGN 3.39) and the Document properties dialog (DESIGN 3.40) are open. */
+  protectOpen: boolean;
+  propsOpen: boolean;
   /** The pointer drags a file over the window (set from Rust later, M1). Only the look of the drop zone follows it. */
   dropHover: boolean;
   /** A failed action that needs the user's attention: the banner row shows it until it is dismissed. */
@@ -52,6 +71,9 @@ export interface UiState {
   lockTool: (tool: ToolId) => void;
   /** Esc: back to Select. */
   releaseTool: () => void;
+  setRedactMode: (on: boolean) => void;
+  setProtectOpen: (open: boolean) => void;
+  setPropsOpen: (open: boolean) => void;
   setDropHover: (active: boolean) => void;
   showBanner: (error: AppError) => void;
   dismissBanner: () => void;
@@ -73,6 +95,9 @@ export const useUi = create<UiState>()((set, get) => ({
   inspector: 'auto',
   activeTool: 'select',
   toolLocked: false,
+  redactMode: false,
+  protectOpen: false,
+  propsOpen: false,
   dropHover: false,
   banner: null,
   xfaDismissed: [],
@@ -87,6 +112,9 @@ export const useUi = create<UiState>()((set, get) => ({
   lockTool: (tool) => set(tool === 'select' ? SELECT : { activeTool: tool, toolLocked: true }),
   // Esc is pressed all the time; with Select already active it must not wake the subscribers.
   releaseTool: () => set((state) => (state.activeTool === 'select' && !state.toolLocked ? state : SELECT)),
+  setRedactMode: (redactMode) => set({ redactMode }),
+  setProtectOpen: (protectOpen) => set({ protectOpen }),
+  setPropsOpen: (propsOpen) => set({ propsOpen }),
   setDropHover: (dropHover) => set({ dropHover }),
   showBanner: (banner) => set({ banner }),
   dismissBanner: () => set({ banner: null }),

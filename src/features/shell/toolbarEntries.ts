@@ -82,6 +82,9 @@ const SHAPE_ICONS: Readonly<Record<ShapeVariant, LucideIcon>> = {
   arrow: MoveUpRight,
 };
 
+/** The tools that change the document: aria-disabled with `tool.readOnly` in a read-only one (DESIGN 3.36). */
+const WRITE_TOOLS: ReadonlySet<ToolId> = new Set<ToolId>(['pages', 'signature', 'textBox', 'image', 'crop']);
+
 /** The scroll mode that each of the three layout actions chooses. */
 const SCROLL_MODE_OF: Partial<Record<ActionId, ScrollMode>> = {
   'scroll-continuous': 'continuous',
@@ -126,10 +129,10 @@ export function buildMoreItems(
 }
 
 /**
- * The order in which items move into More when the toolbar is too narrow: the lowest number goes first (Redo, Undo, Pages, Form,
+ * The order in which items move into More when the toolbar is too narrow: the lowest number goes first (Redo, Undo, Pages, Edit tools, Form,
  * Signature, zoom out, zoom in).
  */
-const COLLAPSE_ORDER = { redo: 1, undo: 2, pages: 3, form: 4, signature: 5, zoomOut: 6, zoomIn: 7 } as const;
+const COLLAPSE_ORDER = { redo: 1, undo: 2, pages: 3, edit: 4, form: 5, signature: 6, zoomOut: 7, zoomIn: 8 } as const;
 
 /**
  * The toolbar of DESIGN 3.3 and ADR-011 section 6 as data for the Toolbar primitive: the panel toggle, then the four tool
@@ -138,7 +141,7 @@ const COLLAPSE_ORDER = { redo: 1, undo: 2, pages: 3, form: 4, signature: 5, zoom
  * (`buildMoreItems`). Without a document every item is disabled, which the primitive renders as `aria-disabled` (still
  * focusable, does nothing).
  *
- * When the toolbar is too narrow, items move into More in this order: Redo, Undo, Pages, Form, Signature, zoom out, zoom in. Select, the
+ * When the toolbar is too narrow, items move into More in this order: Redo, Undo, Pages, Edit tools, Form, Signature, zoom out, zoom in. Select, the
  * Markup tools, the zoom readout and the two toggles stay.
  */
 export function buildToolbar(
@@ -166,7 +169,7 @@ export function buildToolbar(
       kind: 'tool',
       pressed: state.activeTool === id,
       locked: state.activeTool === id && state.toolLocked,
-      disabled: disabled || ((id === 'pages' || id === 'signature') && state.readOnly === true),
+      disabled: disabled || (WRITE_TOOLS.has(id) && state.readOnly === true),
       collapse,
       // The Sign tool opens a menu of what to place (DESIGN 3.34) instead of toggling.
       menu: id === 'signature' ? useSignMenuEntries : undefined,
@@ -213,6 +216,15 @@ export function buildToolbar(
       id: 'fill-and-sign',
       label: t('toolbar.group.fillAndSign'),
       items: [tool('form', COLLAPSE_ORDER.form), tool('signature', COLLAPSE_ORDER.signature)],
+    },
+    {
+      id: 'edit',
+      label: t('toolbar.group.edit'),
+      items: [
+        tool('textBox', COLLAPSE_ORDER.edit),
+        tool('image', COLLAPSE_ORDER.edit),
+        tool('crop', COLLAPSE_ORDER.edit),
+      ],
     },
     { id: 'pages', label: t('toolbar.group.pages'), items: [tool('pages', COLLAPSE_ORDER.pages)] },
     {

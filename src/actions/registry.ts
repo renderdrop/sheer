@@ -3,19 +3,23 @@ import {
   ChevronDown,
   ChevronUp,
   Combine,
+  Crop,
   Stamp,
   FileArchive,
   FileOutput,
   Scissors,
   File,
+  FileText,
   FileX,
   Save,
   SaveAll,
   FolderOpen,
   GalleryVertical,
   Highlighter,
+  ImagePlus,
   Info,
   LayoutGrid,
+  Lock,
   MessageSquare,
   MousePointer2,
   PanelLeft,
@@ -24,6 +28,8 @@ import {
   Percent,
   PenLine,
   Square,
+  SquareSlash,
+  TextCursor,
   Redo2,
   RotateCcw,
   RotateCw,
@@ -101,6 +107,9 @@ export type ActionId =
   | 'toggle-inspector'
   | 'settings'
   | 'about'
+  | 'redact'
+  | 'protect'
+  | 'document-properties'
   | ToolActionId;
 
 /** Actions of one group sit together in the More menu, with a separator between groups. */
@@ -136,19 +145,23 @@ const needsDocument = (state: ActionState): boolean => state.hasDocument;
 /** The tools' actions, one per tool of the toolbar. */
 const TOOL_ACTIONS: readonly ActionDef[] = (
   [
-    ['select', 'v', MousePointer2],
-    ['highlight', 'h', Highlighter],
-    ['note', 'n', MessageSquare],
-    ['text', 't', Type],
-    ['draw', 'd', PenLine],
-    ['shapes', 'r', Square],
-    ['form', 'f', TextCursorInput],
-    ['signature', 's', Signature],
-    ['pages', 'p', LayoutGrid],
-  ] as const satisfies readonly (readonly [ToolId, string, LucideIcon])[]
-).map(([tool, key, icon]): ActionDef => ({
+    ['select', 'v', MousePointer2, 'toolbar.tool.select'],
+    ['highlight', 'h', Highlighter, 'toolbar.tool.highlight'],
+    ['note', 'n', MessageSquare, 'toolbar.tool.note'],
+    ['text', 't', Type, 'toolbar.tool.text'],
+    ['draw', 'd', PenLine, 'toolbar.tool.draw'],
+    ['shapes', 'r', Square, 'toolbar.tool.shapes'],
+    ['form', 'f', TextCursorInput, 'toolbar.tool.form'],
+    ['signature', 's', Signature, 'toolbar.tool.signature'],
+    ['pages', 'p', LayoutGrid, 'toolbar.tool.pages'],
+    // M5 Edit cluster (DESIGN 3.36, 3.37).
+    ['textBox', 'e', TextCursor, 'insert.text'],
+    ['image', 'i', ImagePlus, 'insert.image'],
+    ['crop', 'k', Crop, 'crop.tool'],
+  ] as const satisfies readonly (readonly [ToolId, string, LucideIcon, PlainKey])[]
+).map(([tool, key, icon, labelKey]): ActionDef => ({
   id: `tool-${tool}`,
-  labelKey: `toolbar.tool.${tool}`,
+  labelKey,
   icon,
   shortcut: { default: { key } },
   group: 'tools',
@@ -301,6 +314,37 @@ export const ACTIONS: readonly ActionDef[] = [
     enabled: needsDocument,
     // The confirm dialog (src/features/forms), which runs the flatten job.
     run: runFlatten,
+  },
+  {
+    id: 'redact',
+    labelKey: 'redact.tool',
+    icon: SquareSlash,
+    group: 'edit',
+    more: true,
+    menuBar: true,
+    enabled: needsDocument,
+    // A mode (DESIGN 3.38): the canvas and inspector slots of src/features/redact read it.
+    run: () => useUi.getState().setRedactMode(true),
+  },
+  {
+    id: 'protect',
+    labelKey: 'protect.menu',
+    icon: Lock,
+    group: 'edit',
+    more: true,
+    menuBar: true,
+    enabled: needsDocument,
+    run: () => useUi.getState().setProtectOpen(true),
+  },
+  {
+    id: 'document-properties',
+    labelKey: 'props.menu',
+    icon: FileText,
+    group: 'edit',
+    more: true,
+    menuBar: true,
+    enabled: needsDocument,
+    run: () => useUi.getState().setPropsOpen(true),
   },
   {
     id: 'zoom-in',

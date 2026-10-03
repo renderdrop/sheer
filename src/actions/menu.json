@@ -41,7 +41,10 @@
         { "action": "merge-files", "label": "menu.file.merge", "requiresDocument": true },
         { "action": "split-document", "label": "menu.file.split", "requiresDocument": true },
         { "action": "extract-pages", "label": "menu.file.extractPages", "requiresDocument": true },
-        { "action": "compress-document", "label": "menu.file.compress", "requiresDocument": true }
+        { "action": "compress-document", "label": "menu.file.compress", "requiresDocument": true },
+        { "separator": true },
+        { "action": "protect", "label": "menu.file.protect", "requiresDocument": true },
+        { "action": "document-properties", "label": "menu.file.props", "requiresDocument": true }
       ]
     },
     {
@@ -70,7 +73,8 @@
           "requiresDocument": true
         },
         { "separator": true },
-        { "action": "flatten-form", "label": "menu.edit.flattenForm", "requiresDocument": true }
+        { "action": "flatten-form", "label": "menu.edit.flattenForm", "requiresDocument": true },
+        { "action": "redact", "label": "menu.edit.redact", "requiresDocument": true }
       ]
     },
     {
