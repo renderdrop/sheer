@@ -1189,7 +1189,8 @@ mod tests {
 
     #[test]
     fn a_double_without_a_runner_is_not_respawned() {
-        let engine = Engine::spawn(8, slow_worker(Duration::from_millis(300)));
+        // 2 s: the job must still be running at the second call even on a slow CI runner (300 ms flaked on macOS).
+        let engine = Engine::spawn(8, slow_worker(Duration::from_secs(2)));
         let id = Registry::new().register(fixture()).unwrap();
         assert!(close(&engine, id, Duration::from_millis(30)).is_err());
         thread::sleep(Duration::from_millis(50));
