@@ -13,6 +13,7 @@ import { ViewerCanvas } from '../viewer/ViewerCanvas';
 import { TourEffects } from '../tour/TourEffects';
 import { ViewerEffects } from '../viewer/useViewer';
 import { BannerRow, XfaBannerRow } from './Banner';
+import { ToastLayer } from './Toast';
 import { CaptionBar } from './CaptionBar';
 import { EmptyStateSlot } from './EmptyStateSlot';
 import { useWindowState } from './hooks';
@@ -120,6 +121,7 @@ export function Shell() {
         )}
       </MainGrid>
       <ViewerStatusBar />
+      <ToastLayer />
     </div>
   );
 }

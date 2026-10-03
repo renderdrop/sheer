@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-restore-recent"
+description = "Enables the restore_recent command without any pre-configured scope."
+commands.allow = ["restore_recent"]
+
+[[permission]]
+identifier = "deny-restore-recent"
+description = "Denies the restore_recent command without any pre-configured scope."
+commands.deny = ["restore_recent"]

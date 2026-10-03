@@ -10,6 +10,8 @@
     "allow-list-recents",
     "allow-remove-recent",
     "allow-open-recent",
+    "allow-restore-recent",
+    "allow-locate-recent",
     "allow-set-menu-state",
     "allow-render-page",
     "allow-set-viewport",

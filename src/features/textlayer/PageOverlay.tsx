@@ -2,7 +2,7 @@ import { memo, useMemo, type CSSProperties } from 'react';
 
 import type { TextLayer } from '../../api/text';
 import { SearchHits } from '../search/SearchHits';
-import { fileRotationOf } from '../viewer/fileRotation';
+import { fileRotationOf, hasFileRotation } from '../viewer/fileRotation';
 import { normalizeRotation, overlayBox, swapsSides, totalRotation, unrotatedSize } from '../viewer/transform';
 import { measureTextWidth } from './measure';
 import { runsOf, type Run } from './runs';
@@ -125,7 +125,8 @@ export const PageOverlay = memo(function PageOverlay({
       className="pointer-events-none absolute z-canvas-text"
       style={style}
     >
-      <SearchHits docId={docId} pageIndex={pageIndex} />
+      {/* The hits wait for the page's own rotation, which arrives with its text: placed before that they would be off by it. */}
+      {(layer !== null || hasFileRotation(docId, pageIndex)) && <SearchHits docId={docId} pageIndex={pageIndex} />}
       {layer !== null && <TextRuns page={pageIndex} layer={layer} interactive={interactive} />}
     </div>
   );

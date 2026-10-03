@@ -4,6 +4,14 @@ import type { AppError } from '../api/errors';
 import { clampPanelWidth, type InspectorMode } from '../lib/layout';
 import { useSettings } from './settings';
 
+/** A toast (DESIGN 3.12): a confirmation with, at most, one action. Errors never toast. */
+export interface Toast {
+  /** Changes with every toast, so one that replaces another starts its lifetime over. */
+  id: number;
+  message: string;
+  action?: { label: string; run: () => void };
+}
+
 /** The four views of the left panel (DESIGN 3.6), in tab order. */
 export const LEFT_PANEL_TABS = ['thumbnails', 'outline', 'comments', 'search'] as const;
 export type LeftPanelTab = (typeof LEFT_PANEL_TABS)[number];
@@ -29,6 +37,10 @@ export interface UiState {
   dropHover: boolean;
   /** A failed action that needs the user's attention: the banner row shows it until it is dismissed. */
   banner: AppError | null;
+  /** The documents whose XFA warning the user dismissed (DESIGN 3.21): it lasts for the session, so a remount does not show it again. */
+  xfaDismissed: readonly number[];
+  /** The one toast on screen, if any. */
+  toast: Toast | null;
 
   setLeftPanelTab: (tab: LeftPanelTab) => void;
   setLeftPanelWidth: (width: number) => void;
@@ -43,7 +55,14 @@ export interface UiState {
   setDropHover: (active: boolean) => void;
   showBanner: (error: AppError) => void;
   dismissBanner: () => void;
+  dismissXfa: (docId: number) => void;
+  /** Shows a toast in place of the one on screen. */
+  showToast: (toast: Omit<Toast, 'id'>) => void;
+  /** Hides the toast `id`, or any toast without it. A newer toast is left alone when `id` is given. */
+  dismissToast: (id?: number) => void;
 }
+
+let toastCounter = 0;
 
 const SELECT = { activeTool: 'select', toolLocked: false } as const;
 
@@ -56,6 +75,8 @@ export const useUi = create<UiState>()((set, get) => ({
   toolLocked: false,
   dropHover: false,
   banner: null,
+  xfaDismissed: [],
+  toast: null,
 
   setLeftPanelTab: (leftPanelTab) => set({ leftPanelTab }),
   setLeftPanelWidth: (width) => set({ leftPanelWidth: clampPanelWidth(width) }),
@@ -69,6 +90,11 @@ export const useUi = create<UiState>()((set, get) => ({
   setDropHover: (dropHover) => set({ dropHover }),
   showBanner: (banner) => set({ banner }),
   dismissBanner: () => set({ banner: null }),
+  showToast: (toast) => set({ toast: { ...toast, id: ++toastCounter } }),
+  dismissToast: (id) =>
+    set((state) => (state.toast === null || (id !== undefined && state.toast.id !== id) ? state : { toast: null })),
+  dismissXfa: (docId) =>
+    set((state) => (state.xfaDismissed.includes(docId) ? state : { xfaDismissed: [...state.xfaDismissed, docId] })),
 }));
 
 /** The part of the settings store the panel width needs; `useSettings` satisfies it. */

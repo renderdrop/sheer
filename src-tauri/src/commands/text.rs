@@ -2,7 +2,7 @@
 //!
 //! | Command | Arguments | Returns |
 //! |---|---|---|
-//! | `get_text_layer` | `docId: number`, `pageId: number` | `{ text, boxes, truncated }`: at most 200 000 UTF-16 code units, and four numbers (x, y, width, height in page space) per code unit |
+//! | `get_text_layer` | `docId: number`, `pageId: number` | `{ text, boxes, truncated, rotation }`: at most 200 000 UTF-16 code units, and four numbers (x, y, width, height in page space) per code unit; `rotation` is the page's own `/Rotate` in degrees, which the boxes are before |
 //!
 //! The engine reads the page at `Interactive` priority, after the pages on screen and before anything that is not asked for
 //! (ADR-002 §2). The layer is a lookup of what the page says: it is not kept (the UI's `textCache` is).
@@ -32,6 +32,7 @@ impl AppState {
             text: layer.text,
             boxes: layer.boxes,
             truncated: layer.truncated,
+            rotation: layer.rotation,
         })
     }
 }
@@ -81,6 +82,7 @@ mod tests {
             text: text.to_owned(),
             boxes: (0..units * 4).map(|n| n as f32).collect(),
             truncated,
+            rotation: 0,
         }
     }
 

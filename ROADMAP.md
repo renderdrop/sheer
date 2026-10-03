@@ -53,7 +53,7 @@ The Stop hook picks the first open `- [ ]` line, so order matters. Scope: `docs/
 - [x] Multiple documents in tabs; macOS menu enabled-state sync (grey items without a document, Close Window on ⌘W)
 - [x] Onboarding scaffold (FEEDBACK F4): bundled "Welcome to Sheer.pdf" opened on first launch, coach-mark component, step engine, steps Open / Navigate / Zoom, progress in the status bar, skippable, restart in Settings, never automatic twice
 - [x] Hostile input: fuzz corpus ≥ 30 malformed PDFs + never-crash test, safe links (confirm, http/https/mailto), XFA warning; intake: registry key from the handle, reject NTFS ADS names and `\?NC`/REMOTE UNC (OR DEADLINE), PIN WINDOWS DEVICE-PATH REFUSAL IN A TEST, SKIP STRAY NON-FLAG ARGV VALUES, DOCUMENT TOKIO `NET` FROM SINGLE-INSTANCE IN THE NETWORK GUARD
-- [ ] Politur M1
+- [x] Politur M1
   - intake: Windows `same_file` compares size/mtime/ctime only; use the handle's file ID (e.g. `same-file` crate, MIT/Unlicense) and key the registry on it (security medium)
   - engine: respawn the PDFium worker after `engine_unavailable` until M7's engine process (tiny `/XStep`, self-calling Form XObject wedge it; security medium); add both as `#[ignore]`d corpus cases for M7
   - intake: refuse mapped network drives before the first open (drive type), or document the wait

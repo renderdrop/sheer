@@ -2,11 +2,18 @@
 import { act, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { useUi } from '../../stores/ui';
 import { setup } from '../../test/render';
 import { EmptyState } from './EmptyState';
 import { formatAge, useRecents } from './recents';
 
-const api = vi.hoisted(() => ({ listRecents: vi.fn(), removeRecent: vi.fn(), openRecent: vi.fn() }));
+const api = vi.hoisted(() => ({
+  listRecents: vi.fn(),
+  removeRecent: vi.fn(),
+  openRecent: vi.fn(),
+  restoreRecent: vi.fn(),
+  locateRecent: vi.fn(),
+}));
 const adopt = vi.hoisted(() => vi.fn());
 vi.mock('../../api/recents', () => api);
 vi.mock('../viewer/useViewer', () => ({ adoptOpenOutcomes: adopt }));
@@ -21,6 +28,9 @@ beforeEach(() => {
   api.listRecents.mockReset().mockResolvedValue(entries);
   api.removeRecent.mockReset().mockResolvedValue(undefined);
   api.openRecent.mockReset();
+  api.restoreRecent.mockReset().mockResolvedValue(true);
+  api.locateRecent.mockReset().mockResolvedValue(true);
+  useUi.setState({ toast: null, banner: null });
   adopt.mockReset();
 });
 
@@ -89,8 +99,49 @@ describe('the recent files of the empty state', () => {
     const { user } = setup(<Host />);
     await screen.findByText('First.pdf');
     await user.click(screen.getByRole('button', { name: 'Clear' }));
-    expect(api.removeRecent).toHaveBeenCalledTimes(2);
+    await waitFor(() => expect(api.removeRecent).toHaveBeenCalledTimes(2));
     expect(screen.queryByText('First.pdf')).toBeNull();
+  });
+
+  it('a removal gives an Undo toast that restores the entry and reads the list again', async () => {
+    const { user } = setup(<Host />);
+    await screen.findByText('First.pdf');
+    await user.click(screen.getByRole('button', { name: 'Remove First.pdf from recent files' }));
+    await waitFor(() => expect(useUi.getState().toast?.message).toBe('Removed First.pdf from recent files'));
+    expect(screen.queryByText('First.pdf')).toBeNull();
+    const toast = useUi.getState().toast;
+    act(() => toast?.action?.run());
+    await waitFor(() => expect(api.restoreRecent).toHaveBeenCalledWith(1));
+    await waitFor(() => expect(api.listRecents).toHaveBeenCalledTimes(2));
+  });
+
+  it('Clear gives one Undo toast that restores in the reverse order', async () => {
+    const { user } = setup(<Host />);
+    await screen.findByText('First.pdf');
+    await user.click(screen.getByRole('button', { name: 'Clear' }));
+    await waitFor(() => expect(useUi.getState().toast?.message).toBe('Recent files cleared'));
+    act(() => useUi.getState().toast?.action?.run());
+    await waitFor(() => expect(api.restoreRecent).toHaveBeenCalledTimes(2));
+    expect(api.restoreRecent.mock.calls.map(([id]) => id)).toEqual([2, 1]);
+  });
+
+  it('a missing file offers Locate, from its button and by activating the row; an intact file does not', async () => {
+    const { user } = setup(<Host />);
+    await screen.findByText('Gone.pdf');
+    expect(screen.queryByRole('button', { name: 'Locate First.pdf' })).toBeNull();
+    await user.click(screen.getByRole('button', { name: 'Locate Gone.pdf' }));
+    expect(api.locateRecent).toHaveBeenCalledWith(2);
+    await waitFor(() => expect(api.listRecents).toHaveBeenCalledTimes(2));
+    await user.click(await screen.findByRole('button', { name: /^Gone[.]pdf/ }));
+    expect(api.locateRecent).toHaveBeenCalledTimes(2);
+    expect(api.openRecent).not.toHaveBeenCalled();
+  });
+
+  it('a Locate that fails says why in the banner', async () => {
+    api.locateRecent.mockRejectedValue({ code: 'not_found' });
+    const { user } = setup(<Host />);
+    await user.click(await screen.findByRole('button', { name: 'Locate Gone.pdf' }));
+    await waitFor(() => expect(useUi.getState().banner).not.toBeNull());
   });
 
   it('Up and Down move between the rows', async () => {

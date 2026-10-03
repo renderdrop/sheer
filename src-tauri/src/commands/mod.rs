@@ -31,12 +31,14 @@
 pub mod app;
 pub mod links;
 pub mod outline;
+pub mod recent_actions;
 pub mod render;
 pub mod search;
 pub mod text;
 
+use std::collections::HashSet;
 use std::path::PathBuf;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex, PoisonError};
 use std::time::Instant;
 
 use tauri::path::BaseDirectory;
@@ -78,6 +80,49 @@ impl Opened {
     }
 }
 
+/// Most `unlock_document` calls that run at once, in all documents. An attempt after the free ones sleeps on a thread of the blocking
+/// pool for up to `PASSWORD_RETRY_DELAY`; without a bound a script in the webview could park the pool with sleeping unlocks.
+const MAX_CONCURRENT_UNLOCKS: usize = 4;
+
+/// The `unlock_document` calls in flight (SECURITY D3). One per document: a second call for a document that is being tried would
+/// read the wrong-password count before the first has written it and skip the wait, so it is refused instead; and
+/// [`MAX_CONCURRENT_UNLOCKS`] in all.
+#[derive(Default)]
+struct UnlockGate {
+    busy: Mutex<HashSet<DocumentId>>,
+}
+
+impl UnlockGate {
+    /// Reserves the attempt for `id` until the returned slot is dropped. `limit_exceeded` (`what: "unlocks"`) if one is running for
+    /// it or too many run.
+    fn enter(self: &Arc<Self>, id: DocumentId) -> Result<UnlockSlot, AppError> {
+        let mut busy = self.busy.lock().unwrap_or_else(PoisonError::into_inner);
+        if busy.len() >= MAX_CONCURRENT_UNLOCKS || !busy.insert(id) {
+            return Err(AppError::limit("unlocks", MAX_CONCURRENT_UNLOCKS as u64));
+        }
+        Ok(UnlockSlot {
+            gate: Arc::clone(self),
+            id,
+        })
+    }
+}
+
+/// An attempt that may run; frees its place when dropped, also when the attempt fails or panics.
+struct UnlockSlot {
+    gate: Arc<UnlockGate>,
+    id: DocumentId,
+}
+
+impl Drop for UnlockSlot {
+    fn drop(&mut self) {
+        self.gate
+            .busy
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .remove(&self.id);
+    }
+}
+
 /// Everything the commands share. Managed by Tauri, created in `lib.rs`. Cloning is cheap (shared handles), which is
 /// how a command moves it onto the blocking pool.
 #[derive(Clone)]
@@ -88,6 +133,8 @@ pub struct AppState {
     renders: Arc<render::RenderGate>,
     /// The searches that run (see [`search::SearchRegistry`]).
     searches: Arc<search::SearchRegistry>,
+    /// The unlock attempts in flight (see [`UnlockGate`]).
+    unlocks: Arc<UnlockGate>,
     /// The recent files (`storage::recents`); `None` where there is no app data directory (most tests).
     recents: Option<Arc<RecentsStore>>,
 }
@@ -99,6 +146,7 @@ impl AppState {
             registry: Arc::new(Registry::new()),
             renders: Arc::new(render::RenderGate::default()),
             searches: Arc::new(search::SearchRegistry::default()),
+            unlocks: Arc::new(UnlockGate::default()),
             recents: None,
         }
     }
@@ -220,7 +268,8 @@ impl AppState {
     /// [`Zeroizing`] string, goes to PDFium and is never stored or logged. A wrong one is `password_required` and is counted: after
     /// `FREE_PASSWORD_ATTEMPTS` wrong ones every attempt first waits until `PASSWORD_RETRY_DELAY` has passed since the last wrong
     /// one, here, so the webview cannot skip it. Any other failure (the file changed, is damaged or uses an unsupported
-    /// handler) forgets the document and is the error; an id that does not wait for a password is `not_found`.
+    /// handler) forgets the document and is the error; an id that does not wait for a password is `not_found`. Attempts are serialised
+    /// per document and bounded in all (`UnlockGate`): one that comes while another runs is `limit_exceeded`, `what: "unlocks"`.
     pub fn unlock(
         &self,
         id: DocumentId,
@@ -235,6 +284,9 @@ impl AppState {
         let Some((path, kind)) = self.registry.locked_path(id) else {
             return Err(AppError::not_found("document"));
         };
+        // One attempt per document at a time, and a few in all: the count of wrong passwords is read below and written after the
+        // engine has answered, so two attempts in parallel would both see "no wait". Held until this call returns.
+        let _slot = self.unlocks.enter(id)?;
         let wait = self.registry.password_wait(id, Instant::now());
         if !wait.is_zero() {
             std::thread::sleep(wait);
@@ -896,6 +948,52 @@ mod tests {
         let fifth = std::time::Instant::now();
         assert!(state.unlock(id, secret()).is_ok());
         assert!(fifth.elapsed() >= limits::PASSWORD_RETRY_DELAY);
+    }
+
+    #[test]
+    fn a_second_unlock_of_a_document_is_refused_while_one_runs_so_the_wait_cannot_be_skipped() {
+        let dir = TempDir::new();
+        let (engine, jobs) = locked_engine(1);
+        let state = AppState::new(engine);
+        let id = locked_id(&state.open_paths(vec![pdf(&dir, "a.pdf")])[0]);
+        let slot = state.unlocks.enter(id).unwrap();
+        let error = state.unlock(id, secret()).unwrap_err();
+        assert_eq!(error.code(), ErrorCode::LimitExceeded);
+        assert_eq!(
+            *jobs.lock().unwrap(),
+            1,
+            "the refused attempt never reached the engine"
+        );
+        drop(slot);
+        // The place is free again, also after an attempt that failed.
+        assert_eq!(
+            state.unlock(id, wrong()).unwrap_err().code(),
+            ErrorCode::PasswordRequired
+        );
+        assert!(state.unlock(id, secret()).is_ok());
+    }
+
+    #[test]
+    fn only_a_few_unlocks_run_at_once_in_all() {
+        let gate = Arc::new(UnlockGate::default());
+        let registry = Registry::new();
+        let slots: Vec<UnlockSlot> = (0..MAX_CONCURRENT_UNLOCKS)
+            .map(|i| {
+                let id = registry
+                    .register(std::path::PathBuf::from(format!("{i}.pdf")))
+                    .unwrap();
+                gate.enter(id).unwrap()
+            })
+            .collect();
+        let extra = registry
+            .register(std::path::PathBuf::from("x.pdf"))
+            .unwrap();
+        assert_eq!(
+            gate.enter(extra).err().map(|e| e.code()),
+            Some(ErrorCode::LimitExceeded)
+        );
+        drop(slots);
+        assert!(gate.enter(extra).is_ok());
     }
 
     #[test]

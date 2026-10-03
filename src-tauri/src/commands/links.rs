@@ -26,7 +26,7 @@ use crate::error::{AppError, ErrorCode, UiError};
 use crate::limits;
 use crate::menu;
 use crate::model::reading::{LinkInfo, LinkTarget};
-use crate::security::links::SafeUrl;
+use crate::security::links::{summarize, SafeUrl};
 
 /// What `open_link` needs from the desktop: the question to the user, and the opener. A trait so the logic is tested without a window.
 pub trait LinkUi {
@@ -109,7 +109,7 @@ impl LinkUi for DesktopLinkUi {
         let name = menu::app_name(app);
         let text = |key: &str| menu::spec::text(locale, key, &name);
         // `{url}` is filled in last, so that a URL that contains `{app}` stays what it is.
-        let message = text("link.confirm.message").replace("{url}", url.as_str());
+        let message = text("link.confirm.message").replace("{url}", &summarize(url).dialog_text());
         self.window
             .dialog()
             .message(message)

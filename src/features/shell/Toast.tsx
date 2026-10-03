@@ -1,0 +1,77 @@
+import { Check } from 'lucide-react';
+import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
+import { useCallback, useEffect, useRef } from 'react';
+
+import { Button } from '../../components';
+import { Icon } from '../../components/Icon';
+import { SPRING } from '../../components/motion';
+import { tokenPx } from '../../components/tokens';
+import { useUi, type Toast } from '../../stores/ui';
+
+/** How long a toast stays (DESIGN 3.12): 4 s, 8 s when it has an action. Hover, focus inside and blur pause and restart it. */
+export const TOAST_MS = 4000;
+export const TOAST_ACTION_MS = 8000;
+
+/** The toast (DESIGN 3.12): G2, 40 high, 240 to 400 wide; an accent icon in a 32 tile, the message, an optional ghost action. */
+function ToastView({ toast }: { toast: Toast }) {
+  const { action } = toast;
+  const reduce = useReducedMotion() === true;
+  const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const lifetime = action === undefined ? TOAST_MS : TOAST_ACTION_MS;
+  const arm = useCallback(() => {
+    clearTimeout(timer.current);
+    timer.current = setTimeout(() => useUi.getState().dismissToast(toast.id), lifetime);
+  }, [toast.id, lifetime]);
+  const hold = useCallback(() => clearTimeout(timer.current), []);
+  useEffect(() => {
+    arm();
+    return hold;
+  }, [arm, hold]);
+  return (
+    <motion.div
+      // The toast never takes focus; the persistent live region of the layer says it (a region added with its text is often missed).
+      data-toast=""
+      initial={{ opacity: 0, y: reduce ? 0 : tokenPx('--offset-enter', 8) }}
+      animate={{ opacity: 1, y: 0, transition: SPRING.base }}
+      exit={{ opacity: 0, transition: SPRING.fast }}
+      onMouseEnter={hold}
+      onMouseLeave={arm}
+      onFocus={hold}
+      onBlur={arm}
+      className="glass-2 pointer-events-auto flex h-toast min-w-toast-min max-w-toast-max items-center gap-1 rounded-panel py-0-5 pe-1-5 ps-0-5"
+    >
+      <span className="flex size-control-md shrink-0 items-center justify-center rounded-button bg-tile text-tile-icon">
+        <Icon icon={Check} />
+      </span>
+      <span className="min-w-0 flex-auto truncate text-md">{toast.message}</span>
+      {action !== undefined && (
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => {
+            useUi.getState().dismissToast(toast.id);
+            action.run();
+          }}
+        >
+          {action.label}
+        </Button>
+      )}
+    </motion.div>
+  );
+}
+
+/**
+ * The toast slot: the bottom centre of the window, 16 above the status bar, at `--z-toast`. The layer takes no pointer itself, so
+ * it never covers what is under it; one toast at a time.
+ */
+export function ToastLayer() {
+  const toast = useUi((state) => state.toast);
+  return (
+    <div className="pointer-events-none fixed inset-x-0 bottom-[calc(var(--status-height)+var(--space-2))] z-toast flex justify-center">
+      <div role="status" className="sr-only">
+        {toast?.message}
+      </div>
+      <AnimatePresence initial={false}>{toast !== null && <ToastView key={toast.id} toast={toast} />}</AnimatePresence>
+    </div>
+  );
+}

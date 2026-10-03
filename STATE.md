@@ -1,7 +1,7 @@
 # STATE
 phase: M1
 version: 0.3.0
-current_item: ROADMAP M1 "Politur M1" (last package), then milestone end (§8.4 step 8)
+current_item: M1 milestone end (§8.4 step 8): tester, full security-reviewer, fps + Tauri window acceptance, designer review
 last_completed: M1 packages P1 viewer, P2 documents, P3 hostile input (e01288b, cec536e, + P1 commit)
 loop_count_this_session: 0
 open_blockers: 1 (B-001 macOS run; origin exists and CI runs on push — check a finished main run at milestone end)

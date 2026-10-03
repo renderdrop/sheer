@@ -1,7 +1,15 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { parseOpenOutcome, unlockDocument } from './documents';
-import { listRecents, openRecent, parseRecentEntry, removeRecent, setMenuState } from './recents';
+import {
+  listRecents,
+  locateRecent,
+  openRecent,
+  parseRecentEntry,
+  removeRecent,
+  restoreRecent,
+  setMenuState,
+} from './recents';
 
 const invoke = vi.hoisted(() => vi.fn());
 vi.mock('@tauri-apps/api/core', () => ({ invoke }));
@@ -55,6 +63,17 @@ describe('recent files', () => {
     invoke.mockResolvedValueOnce({ type: 'needsPassword', id: 9, displayName: 'a.pdf' });
     await expect(openRecent(3)).resolves.toMatchObject({ type: 'needsPassword', id: 9 });
     expect(invoke).toHaveBeenLastCalledWith('open_recent', { recentId: 3 });
+  });
+
+  it('restores a removed entry and lets the user locate a moved file, by id only', async () => {
+    invoke.mockResolvedValueOnce(true);
+    await expect(restoreRecent(4)).resolves.toBe(true);
+    expect(invoke).toHaveBeenLastCalledWith('restore_recent', { recentId: 4 });
+    invoke.mockResolvedValueOnce(false);
+    await expect(locateRecent(4)).resolves.toBe(false);
+    expect(invoke).toHaveBeenLastCalledWith('locate_recent', { recentId: 4 });
+    invoke.mockResolvedValueOnce('yes');
+    await expect(locateRecent(4)).resolves.toBe(false);
   });
 
   it('refuses a list that is too long or malformed', async () => {

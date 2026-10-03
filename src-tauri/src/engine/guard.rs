@@ -6,6 +6,7 @@
 
 use std::any::Any;
 use std::panic::{catch_unwind, AssertUnwindSafe};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Mutex, MutexGuard, PoisonError};
 use std::time::Instant;
 
@@ -37,6 +38,8 @@ fn panic_message(payload: &(dyn Any + Send)) -> &str {
 #[derive(Debug, Default)]
 pub(super) struct Health {
     running_until: Mutex<Option<Instant>>,
+    /// Set when the engine gave up on this worker and started another (`Engine::recover`).
+    retired: AtomicBool,
 }
 
 impl Health {
@@ -61,6 +64,16 @@ impl Health {
 
     fn is_wedged_at(&self, now: Instant) -> bool {
         self.lock().is_some_and(|deadline| now >= deadline)
+    }
+
+    /// The engine replaced this worker: it must not serve another job, or two threads would be inside PDFium at once.
+    pub(super) fn retire(&self) {
+        self.retired.store(true, Ordering::SeqCst);
+    }
+
+    /// Whether [`Health::retire`] was called.
+    pub(super) fn is_retired(&self) -> bool {
+        self.retired.load(Ordering::SeqCst)
     }
 
     /// Whether the worker is running a job.

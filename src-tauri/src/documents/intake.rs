@@ -37,6 +37,9 @@ pub fn admit(path: &Path) -> Result<Admitted, AppError> {
 /// [`admit`] with another size limit, so a test can cross it without a file of 2 GiB.
 fn admit_within(path: &Path, max_bytes: u64) -> Result<Admitted, AppError> {
     // Before the file system is touched at all: a remote or device path would make the open wait on a network or a driver.
+    // A mapped drive (`Z:\` for a share) cannot be told from a local one by its spelling, and the drive type needs `unsafe` or a
+    // dependency; so the first open may wait on the network, and the canonical path (a `\\?\UNC\` one) refuses it afterwards
+    // (ADR-027).
     refuse_unsafe_spelling(path)?;
     // The handle comes first and is judged; the registry key is derived afterwards and must name the very file the handle is
     // (below), so the key is the handle's and not whatever the path pointed at a moment earlier.
@@ -46,7 +49,7 @@ fn admit_within(path: &Path, max_bytes: u64) -> Result<Admitted, AppError> {
     let canonical = std::fs::canonicalize(path)?;
     refuse_unsafe_spelling(&canonical)?;
     let other = open_without_blocking(&canonical)?;
-    if !same_file(&file.metadata()?, &other.metadata()?) {
+    if !same_file(&file, &other)? {
         return Err(AppError::logged(
             ErrorCode::IoInUse,
             "the path changed while it was being opened",
@@ -58,19 +61,29 @@ fn admit_within(path: &Path, max_bytes: u64) -> Result<Admitted, AppError> {
     })
 }
 
-/// Whether two open handles are one file. Where the OS gives a file identity (Unix: device and inode) that is compared; elsewhere
-/// the size and the times of last write and of creation, which differ for a file that was swapped for another.
-fn same_file(a: &std::fs::Metadata, b: &std::fs::Metadata) -> bool {
+/// Whether two open handles are one file: the file's identity from the OS, never its size or times (a file swapped for one of the
+/// same size and times would pass those). Unix: device and inode. Windows: volume serial number and file index, read from the
+/// handles by the `same-file` crate (which keeps the `unsafe` that `std` does not offer; this crate forbids it). Elsewhere, where
+/// neither exists, size and times of last write and of creation.
+fn same_file(a: &File, b: &File) -> std::io::Result<bool> {
     #[cfg(unix)]
     {
         use std::os::unix::fs::MetadataExt;
-        a.dev() == b.dev() && a.ino() == b.ino()
+        let (a, b) = (a.metadata()?, b.metadata()?);
+        Ok(a.dev() == b.dev() && a.ino() == b.ino())
     }
-    #[cfg(not(unix))]
+    #[cfg(windows)]
     {
-        a.len() == b.len()
+        // `Handle::from_file` takes the file: clones are used so that the judged handle stays ours.
+        Ok(same_file::Handle::from_file(a.try_clone()?)?
+            == same_file::Handle::from_file(b.try_clone()?)?)
+    }
+    #[cfg(not(any(unix, windows)))]
+    {
+        let (a, b) = (a.metadata()?, b.metadata()?);
+        Ok(a.len() == b.len()
             && a.modified().ok() == b.modified().ok()
-            && a.created().ok() == b.created().ok()
+            && a.created().ok() == b.created().ok())
     }
 }
 
@@ -79,13 +92,20 @@ fn same_file(a: &std::fs::Metadata, b: &std::fs::Metadata) -> bool {
 /// `\\.\pipe\x`), and a name with a colon after the drive (an NTFS alternate data stream, `file.pdf:stream`, which is data
 /// hidden in a file, not a document). Everywhere else every path passes.
 fn refuse_unsafe_spelling(path: &Path) -> Result<(), AppError> {
-    if cfg!(windows) && !windows_spelling_is_plain(&path.to_string_lossy()) {
+    if !spelling_is_plain(path) {
         return Err(AppError::logged(
             ErrorCode::NotAPdf,
             "a network, device or stream path",
         ));
     }
     Ok(())
+}
+
+/// Whether the spelling of `path` is one the file system may be asked about: on Windows not a network, device or stream path (see
+/// [`refuse_unsafe_spelling`]), elsewhere always. Shared with the recent files, which must never stat such a path (an SMB
+/// connection leaks the user's NTLM hash).
+pub fn spelling_is_plain(path: &Path) -> bool {
+    !cfg!(windows) || windows_spelling_is_plain(&path.to_string_lossy())
 }
 
 /// The rule of [`refuse_unsafe_spelling`] on the text of a path (apart from the platform, so that it is tested everywhere).
@@ -481,6 +501,32 @@ mod tests {
         if symlink(&folder, &to_folder).is_some() && symlink(&to_folder, &to_link).is_some() {
             assert_eq!(code(admit(&to_link)), ErrorCode::NotAPdf);
         }
+    }
+
+    /// The identity is the file's, not its look: two files of one size and one modification time are two files, and two names of
+    /// one file (a hard link) are one.
+    #[test]
+    fn file_identity_is_not_size_and_times() {
+        let dir = TempDir::new();
+        let a = write(&dir, "a.pdf", MINIMAL);
+        let b = write(&dir, "b.pdf", MINIMAL);
+        let (fa, fb) = (File::open(&a).unwrap(), File::open(&b).unwrap());
+        // Same size; give both the same times as far as the platform lets us.
+        if let Ok(modified) = fa.metadata().and_then(|m| m.modified()) {
+            let _ = fb.set_modified(modified);
+        }
+        assert!(!same_file(&fa, &fb).unwrap(), "two files of one look");
+        assert!(same_file(&fa, &File::open(&a).unwrap()).unwrap());
+        let link = dir.path().join("hard.pdf");
+        if fs::hard_link(&a, &link).is_ok() {
+            assert!(same_file(&fa, &File::open(&link).unwrap()).unwrap());
+        }
+    }
+
+    /// A mapped network drive canonicalizes to `\\?\UNC\...`; that is refused (after the open, see ADR-027).
+    #[test]
+    fn a_canonical_unc_path_is_refused() {
+        assert!(!windows_spelling_is_plain(r"\\?\UNC\nas\share\a.pdf"));
     }
 
     // --- command line and URLs ---

@@ -824,8 +824,8 @@ message box from Rust (`commands::links::DesktopLinkUi`) that shows the URL in f
 2. **XFA banner** is a second banner row (`XfaBannerRow`, `role=status`) driven by `flags.xfa` of the active document, dismissal per
    document for the session. It is separate from the error banner so an error and the XFA notice can show together.
 3. **Intake:** the file is opened first and judged; the registry key (canonical path) is derived afterwards and accepted only if a second
-   open of that path is the same file (device and inode on Unix; size, write and creation time on Windows, where `unsafe` is forbidden
-   and a handle-to-path call is not available). A change in between is `io_in_use`. On Windows, paths beginning with two separators other
+   open of that path is the same file (device and inode on Unix; volume serial and file index on Windows, ADR-028; was size and times).
+   A change in between is `io_in_use`. On Windows, paths beginning with two separators other
    than `\?\C:\` (network shares, `\?\UNC\`, `\.\` devices) and names with a colon after the drive (NTFS alternate streams) are refused
    before the file system is touched, so no open waits on a network. A bare word right after a `--long-option` on a command line is that
    option's value and is skipped.
@@ -836,3 +836,35 @@ message box from Rust (`commands::links::DesktopLinkUi`) that shows the URL in f
 then `engine_unavailable` for the rest of the process (P5, P6; the app stays up and every call answers with a typed error): a tiling
 pattern with a tiny `/XStep` filling a large area, and a Form XObject that calls itself twice per level. The corpus holds the
 bounded variants (`XStep 2`, one call per level). A real fix is the engine process of M7.
+
+## ADR-028 — Politur M1: file identity, worker respawn, unlock serialisation, link summary
+
+**Context.** The M1 security review left five open points (ROADMAP "Politur M1"). `unsafe` stays forbidden in our code.
+
+**Decision.**
+1. **File identity on Windows.** `documents::intake::same_file` compared size and times; it now compares the handles' identity (volume
+   serial number and file index) through the `same-file` crate (Unlicense OR MIT, already in the build through walkdir; listed in
+   LICENSES.md as a direct, Windows-only dependency). Unix keeps device and inode from `std`. The registry stays keyed by the canonical
+   path (hard links to one file remain two documents; accepted, a second document of one file is harmless and read-only).
+2. **Mapped network drives.** A drive letter that maps to a share cannot be told from a local one by its spelling, and the drive type
+   needs `GetDriveTypeW` (`unsafe`) or a dependency for one call. So the **first open of a path on a mapped drive may wait on the
+   network** (SMB timeouts, up to tens of seconds, on the blocking pool, not on the UI). Afterwards the canonical path is a
+   `\?\UNC\...` one and is refused, so a share is never loaded. Revisit with the engine process (M7), which can be killed on a timeout.
+3. **Engine respawn.** When a caller meets a worker stuck past its deadline (`engine_unavailable`), the engine retires that worker and
+   starts a new one on a new queue (`Engine::recover`). The stuck thread cannot be stopped: if it ever returns it serves nothing more
+   (`Health::retire`) and leaks its PDFium state instead of dropping it (dropping would run `FPDF_DestroyLibrary` under the new
+   worker). At most 3 respawns per process (`engine::MAX_RESPAWNS`), each leaking a thread and its PDFium state; after that the engine
+   stays `engine_unavailable` until restart. Documents of the old worker are gone: they answer `engine_crashed` until closed (same path as a quarantined document), the UI
+   must reopen them. Page sizes stay readable until close. Two PDFium instances can exist in one process for as long as the old
+   thread is stuck, but only one is ever called. Leaks: one stuck thread and its memory per wedge until restart. The wedge cases
+   (tiny `/XStep`, self-calling Form XObject) are `#[ignore]`d tests in `fuzz_corpus.rs`; the per-file timeout is 15 s. A dotless file
+   name after a bare `--flag` on a command line is skipped as that flag's value (documented in `fuzz_corpus.rs` and ADR-027).
+4. **Unlock.** `AppState::unlock` reserves an `UnlockGate` slot per document before it reads the wrong-password count, and at most 4
+   run at once; the others get `limit_exceeded` (`what: "unlocks"`). Parallel calls can no longer skip the 1 s wait, and sleeping
+   unlocks cannot park the blocking pool. **Residual risk:** the password arrives as an ordinary `String` deserialised by Tauri's IPC
+   (JSON), then moved into `Zeroizing`; the deserialised copy, the webview's JS string and the WebView2/WKWebView IPC buffers are not
+   wiped and may linger in memory. Not fixable without leaving JSON IPC; the threat model (SECURITY D3) is a local, same-user attacker
+   who can read process memory anyway.
+5. **Link dialog.** The native box shows the host on its own line, then the URL cut to 120 characters with `…`. A host with `xn--`
+   labels is shown as `xn--... (decoded)` using a small in-house RFC 3492 decoder (no dependency); the decoded form appears only
+   if every character is a letter or digit, and the `xn--` form is always shown with it.

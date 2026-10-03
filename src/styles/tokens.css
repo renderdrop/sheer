@@ -141,6 +141,9 @@
   --spacing-tab-min: var(--tab-min);
   --spacing-tab-max: var(--tab-max);
   --spacing-dialog: var(--dialog-width);
+  --spacing-toast: var(--toast-height);
+  --spacing-toast-min: var(--toast-min);
+  --spacing-toast-max: var(--toast-max);
 
   /* Type (DESIGN 1.5). Size / line height, weight and tracking per step. Weights are 400 and 600 only. */
   --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
@@ -295,6 +298,9 @@
   --tab-min: 120px;
   --tab-max: 240px;
   --dialog-width: 400px; /* the password prompt (DESIGN 3.19) */
+  --toast-height: 40px; /* toast (DESIGN 3.12): 40 high, 240 to 400 wide */
+  --toast-min: 240px;
+  --toast-max: 400px;
   /* Scroll-edge scrim (DESIGN 2): 24 px in all, the first 8 solid canvas color, the rest a fade. */
   --scrim-height: 24px;
   --scrim-solid: 8px;

@@ -36,6 +36,9 @@ zeroize = "1"
 # window and ends it (src/sources.rs). Local only (a named mutex and a window message): no network. macOS routes files to the
 # running app by itself, so it is not built there.
 [target.'cfg(windows)'.dependencies]
+# The identity of an open file (volume serial number + file index) for intake's "is the canonical path still the file I opened"
+# check, which `std` offers on Unix only (`MetadataExt::ino`) without `unsafe`. Unlicense OR MIT; already in the build via walkdir.
+same-file = "1.0.6"
 tauri-plugin-single-instance = "2.5.2"
 
 # macOS only: the "Reduce transparency" accessibility flag (src/platform/macos.rs). Already part of the build through

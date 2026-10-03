@@ -72,15 +72,16 @@ function dismissBanner(): void {
 
 /**
  * The XFA warning (DESIGN 3.21, banner 3.12): shown while the active document is an XFA form, which PDFium here cannot show.
- * `role=status` (a notice, not an alert). The dismissal is per document and lasts for the session, so another tab has its own.
+ * `role=status` (a notice, not an alert). The dismissal is per document and lasts for the session (the `ui` store, so a remount
+ * keeps it); another tab has its own.
  */
 export function XfaBannerRow() {
   const t = useT();
   const motionProps = useRevealMotion();
   const xfa = useDocuments((state) => selectActiveDocument(state)?.flags?.xfa === true);
   const activeId = useDocuments((state) => state.activeId);
-  const [dismissed, setDismissed] = useState<ReadonlySet<number>>(new Set());
-  const show = xfa && activeId !== null && !dismissed.has(activeId);
+  const dismissed = useUi((state) => activeId !== null && state.xfaDismissed.includes(activeId));
+  const show = xfa && activeId !== null && !dismissed;
   return (
     <AnimatePresence initial={false}>
       {show && (
@@ -98,7 +99,7 @@ export function XfaBannerRow() {
                 label={t('xfa.dismiss')}
                 icon={X}
                 size="sm"
-                onClick={() => setDismissed((previous) => new Set(previous).add(activeId))}
+                onClick={() => useUi.getState().dismissXfa(activeId)}
               />
             </div>
           </div>

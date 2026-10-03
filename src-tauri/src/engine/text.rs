@@ -25,6 +25,8 @@ pub struct TextPage {
     pub boxes: Vec<f32>,
     /// The page has more text than `limits::MAX_TEXT_CHARS`; what is here is the beginning.
     pub truncated: bool,
+    /// The page's own `/Rotate` in degrees (0, 90, 180, 270); the boxes are before it.
+    pub rotation: u16,
 }
 
 /// Whether a character is left out of the text: what is not text, and the controls other than the line breaks and the tab. PDFium
@@ -157,7 +159,18 @@ pub(super) fn read_text(document: &PdfDocument<'_>, index: u32) -> Result<TextPa
         text,
         boxes,
         truncated,
+        rotation: page_rotation(&page),
     })
+}
+
+/// The page's `/Rotate` as 0, 90, 180 or 270; 0 when PDFium cannot say.
+fn page_rotation(page: &PdfPage<'_>) -> u16 {
+    match page.rotation() {
+        Ok(PdfPageRenderRotation::Degrees90) => 90,
+        Ok(PdfPageRenderRotation::Degrees180) => 180,
+        Ok(PdfPageRenderRotation::Degrees270) => 270,
+        _ => 0,
+    }
 }
 
 #[cfg(test)]

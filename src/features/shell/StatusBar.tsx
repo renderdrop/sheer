@@ -1,6 +1,7 @@
 import { RotateCw } from 'lucide-react';
 import { useId, useState, type FormEvent } from 'react';
 
+import { FIND_KEYS_ATTRIBUTE } from '../search/commands';
 import { Button, Field, Menu, Popover, usePulseMessage } from '../../components';
 import { Icon } from '../../components/Icon';
 import { useT } from '../../i18n';
@@ -126,6 +127,7 @@ function GoToPageForm({
           inputMode="numeric"
           autoComplete="off"
           spellCheck={false}
+          {...{ [FIND_KEYS_ATTRIBUTE]: '' }}
           aria-label={t('status.pageNumber')}
           aria-invalid={invalid || undefined}
           aria-describedby={invalid ? errorId : undefined}

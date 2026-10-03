@@ -188,9 +188,11 @@ describe('virtualization', () => {
     setup(list(scheduler));
     const inView = layoutOf(sizes(500)).itemsIn(0, 100_000);
     expect(inView).not.toBeNull();
-    expect(mounted().length).toBeGreaterThan(MAX_MOUNTED_THUMBNAILS);
-    for (let index = inView?.first ?? 0; index <= (inView?.last ?? -1); index += 1) expect(mounted()).toContain(index);
-  });
+    // One DOM query: re-querying per index made this O(n²) and it timed out under a loaded full suite.
+    const cells = new Set(mounted());
+    expect(cells.size).toBeGreaterThan(MAX_MOUNTED_THUMBNAILS);
+    for (let index = inView?.first ?? 0; index <= (inView?.last ?? -1); index += 1) expect(cells.has(index)).toBe(true);
+  }, 15_000);
 
   it('trims the overscan first when over the limit, and keeps every cell in view', () => {
     const cap = MAX_MOUNTED_THUMBNAILS;

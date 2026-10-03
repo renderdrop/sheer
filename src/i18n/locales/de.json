@@ -134,6 +134,11 @@
   "emptyState.recentClear": "Leeren",
   "emptyState.recentRemove": "{name} aus den zuletzt geöffneten Dateien entfernen",
   "emptyState.recentMissing": "Datei nicht gefunden",
+  "emptyState.recentLocate": "Suchen…",
+  "emptyState.recentLocateLabel": "{name} suchen",
+  "emptyState.recentRemoved": "{name} aus den zuletzt geöffneten Dateien entfernt",
+  "emptyState.recentCleared": "Zuletzt geöffnete Dateien gelöscht",
+  "toast.undo": "Rückgängig",
   "emptyState.recentList": "Zuletzt geöffnete Dateien",
 
   "tabs.label": "Geöffnete Dokumente",

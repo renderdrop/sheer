@@ -26,10 +26,11 @@ use sheer_lib::commands::AppState;
 use sheer_lib::documents::PageId;
 use sheer_lib::engine::{self, Engine};
 use sheer_lib::error::ErrorCode;
-use support::{fixtures, malformed, TempFile};
+use support::{fixtures, malformed, PdfBuilder, TempFile};
 
-/// How long one file may take for everything. A parser that loops on a cycle takes longer than this by far.
-const PER_FILE: Duration = Duration::from_secs(60);
+/// How long one file may take for everything. A parser that loops on a cycle takes longer than this by far; a healthy file needs
+/// well under a second. (A render that outlives its own 10 s deadline is a wedge, and then the engine replaces its worker.)
+const PER_FILE: Duration = Duration::from_secs(15);
 
 fn corpus_dir() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -149,4 +150,79 @@ fn every_malformed_file_ends_in_a_document_or_a_typed_error_never_a_panic_or_a_h
     let good = fixtures::outline();
     let codes = exercise(&state, "after-the-corpus.pdf", &good);
     assert!(codes.is_empty(), "{codes:?}");
+}
+
+// --- known wedges (SECURITY P5, ROADMAP "Politur M1") ---
+//
+// Two files make PDFium work for a very long time inside one call, which nothing in-process can interrupt. They are not in
+// `malformed::all()` (that would hang the suite until PDFium is fixed or the engine process of M7 can kill the call), only here, and
+// ignored. Run them by hand with `cargo test --test fuzz_corpus -- --ignored`. What they pin down is the part that is ours: the
+// caller gets a typed error at its deadline, the engine replaces the stuck worker, and a good file opens afterwards.
+//
+// Note on the command line (`documents::intake::paths_from_args`): a dotless file name that follows a bare `--flag` is taken for
+// the flag's value and skipped; give such a file with a path separator or an extension.
+
+/// A tiling pattern whose step is a ten-thousandth of a point, painted over most of the page: billions of tiles.
+fn tiny_xstep_tiling() -> Vec<u8> {
+    let mut builder = PdfBuilder::new();
+    builder.object(1, "<< /Type /Catalog /Pages 2 0 R >>");
+    builder.object(2, "<< /Type /Pages /Kids [10 0 R] /Count 1 >>");
+    builder.object(
+        10,
+        "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 11 0 R \
+         /Resources << /Pattern << /P0 20 0 R >> /ColorSpace << /Cs0 [/Pattern] >> >> >>",
+    );
+    builder.stream(11, "", b"/Cs0 cs /P0 scn 0 0 600 780 re f");
+    builder.stream(
+        20,
+        "/Type /Pattern /PatternType 1 /PaintType 1 /TilingType 1 /BBox [0 0 10 10] /XStep 0.0001 /YStep 0.0001",
+        b"0 0 5 5 re f",
+    );
+    builder.finish(1)
+}
+
+/// A Form XObject that draws itself twice: the number of draws doubles with every level it is allowed to go down.
+fn self_calling_form() -> Vec<u8> {
+    let mut builder = PdfBuilder::new();
+    builder.object(1, "<< /Type /Catalog /Pages 2 0 R >>");
+    builder.object(2, "<< /Type /Pages /Kids [10 0 R] /Count 1 >>");
+    builder.object(
+        10,
+        "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 11 0 R \
+         /Resources << /XObject << /Fm0 20 0 R >> >> >>",
+    );
+    builder.stream(11, "", b"/Fm0 Do");
+    builder.stream(
+        20,
+        "/Type /XObject /Subtype /Form /BBox [0 0 612 792] /Resources << /XObject << /Fm0 20 0 R >> >>",
+        b"0 0 5 5 re f /Fm0 Do /Fm0 Do",
+    );
+    builder.finish(1)
+}
+
+/// One wedge file, then a good one on the same engine: the wedge ends in typed errors within the render deadline plus the time the
+/// engine needs to notice, and the engine is usable again without a restart.
+fn wedge_then_recovery(name: &'static str, bytes: Vec<u8>) {
+    let Some(state) = state() else { return };
+    let codes = exercise(&state, name, &bytes);
+    eprintln!("{name}: {codes:?}");
+    assert!(!codes.contains(&ErrorCode::Internal), "{name}: {codes:?}");
+    let good = fixtures::outline();
+    let after = exercise(&state, "after-the-wedge.pdf", &good);
+    assert!(
+        after.is_empty(),
+        "the engine did not recover after {name}: {after:?}"
+    );
+}
+
+#[test]
+#[ignore = "wedges PDFium for minutes: an in-process engine cannot interrupt it (M7)"]
+fn a_tiny_xstep_tiling_pattern_ends_in_a_typed_error_and_the_engine_recovers() {
+    wedge_then_recovery("tiny-xstep-tiling.pdf", tiny_xstep_tiling());
+}
+
+#[test]
+#[ignore = "wedges PDFium for minutes: an in-process engine cannot interrupt it (M7)"]
+fn a_self_calling_form_xobject_ends_in_a_typed_error_and_the_engine_recovers() {
+    wedge_then_recovery("self-calling-form.pdf", self_calling_form());
 }

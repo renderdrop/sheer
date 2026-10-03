@@ -92,6 +92,8 @@ pub fn run() -> Result<(), AppError> {
             commands::list_recents,
             commands::remove_recent,
             commands::open_recent,
+            commands::recent_actions::restore_recent,
+            commands::recent_actions::locate_recent,
             commands::set_menu_state,
             commands::render::render_page,
             commands::render::set_viewport,

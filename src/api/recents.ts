@@ -62,6 +62,19 @@ export async function openRecent(recentId: number): Promise<OpenOutcome> {
   return parsed;
 }
 
+/** Puts a removed entry back in its place; resolves to whether it was (false: it was not removed in this run, or is listed again). */
+export function restoreRecent(recentId: number): Promise<boolean> {
+  return call<boolean>('restore_recent', { recentId }).then((done) => done === true);
+}
+
+/**
+ * Lets the user find a recent file that moved: the backend shows the file dialog and points the entry to the file chosen (the path
+ * never reaches the UI). Resolves to whether the entry was changed (false: cancelled); rejects with `not_found` for an id that is not listed.
+ */
+export function locateRecent(recentId: number): Promise<boolean> {
+  return call<boolean>('locate_recent', { recentId }).then((done) => done === true);
+}
+
 /** Tells the macOS menu bar whether a document is open, so it greys the commands that need one. Rejects like any command. */
 export function setMenuState(hasDocument: boolean): Promise<void> {
   return call<void>('set_menu_state', { hasDocument });

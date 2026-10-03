@@ -28,10 +28,11 @@ mod space;
 mod text;
 mod worker;
 
+use std::collections::HashSet;
 use std::fs::File;
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::{self, RecvTimeoutError, SyncSender};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -227,18 +228,73 @@ pub struct RenderSpec {
     pub generation: u32,
 }
 
-/// Shared by every clone of an [`Engine`]. When the last one is dropped the queue is closed and the worker ends.
-struct Inner {
+/// The worker thread's side of an engine as the engine knows it: replaced as a whole by [`Engine::recover`].
+struct Live {
     queue: Arc<Queue>,
     health: Arc<Health>,
-    /// The sizes of the pages of every loaded document: written by the worker, read by every handle (see [`sizes`]).
+}
+
+/// Most times per process that a stuck worker is replaced (`Engine::recover`, ADR-028).
+pub const MAX_RESPAWNS: usize = 3;
+
+/// What a worker thread runs: its queue, its health mark, the shared sizes, and the documents of an earlier worker that are gone.
+type Runner = dyn Fn(Requests, Arc<Health>, Arc<SizeCache>, HashSet<DocumentId>) + Send + Sync;
+
+/// Shared by every clone of an [`Engine`]. When the last one is dropped the queue is closed and the worker ends.
+struct Inner {
+    live: Mutex<Live>,
+    /// The sizes of the pages of every loaded document: written by the worker, read by every handle (see [`sizes`]). They outlive
+    /// a respawned worker, which is how the documents it does not hold are found (`Engine::recover`).
     sizes: Arc<SizeCache>,
+    queue_depth: usize,
+    /// How to start a worker again once one is stuck past its deadline; `None` for the test doubles.
+    runner: Option<Arc<Runner>>,
+    /// How many times a stuck worker was replaced; at most [`MAX_RESPAWNS`] (each leaves a thread and its PDFium state behind).
+    respawns: std::sync::atomic::AtomicUsize,
+}
+
+impl Inner {
+    fn live(&self) -> MutexGuard<'_, Live> {
+        // A poisoned lock only means a holder panicked; two `Arc`s cannot be left inconsistent.
+        self.live.lock().unwrap_or_else(PoisonError::into_inner)
+    }
+
+    fn queue(&self) -> Arc<Queue> {
+        Arc::clone(&self.live().queue)
+    }
+
+    #[cfg(test)]
+    fn health(&self) -> Arc<Health> {
+        Arc::clone(&self.live().health)
+    }
 }
 
 impl Drop for Inner {
     fn drop(&mut self) {
-        self.queue.close();
+        self.live().queue.close();
     }
+}
+
+/// Starts a worker thread on a new queue. A thread that cannot be started leaves the queue without a consumer, so every job
+/// fails fast with `engine_unavailable`.
+fn launch(queue_depth: usize, run: impl FnOnce(Requests, Arc<Health>) + Send + 'static) -> Live {
+    let queue = Queue::new(queue_depth);
+    let health = Arc::new(Health::default());
+    let requests = Requests::new(Arc::clone(&queue));
+    let worker_health = Arc::clone(&health);
+    let spawned = thread::Builder::new()
+        .name("sheer-pdfium".into())
+        .stack_size(limits::ENGINE_STACK_BYTES)
+        .spawn(move || run(requests, worker_health));
+    if let Err(error) = spawned {
+        // `requests` was dropped with the closure.
+        AppError::logged(
+            ErrorCode::EngineUnavailable,
+            format!("could not start the PDFium worker thread: {error}"),
+        )
+        .log();
+    }
+    Live { queue, health }
 }
 
 /// Handle to the worker thread. Cheap to clone; every method blocks until the worker answers or the job's deadline
@@ -250,45 +306,87 @@ pub struct Engine {
 
 impl Engine {
     /// Starts the worker thread. Binding PDFium happens on that thread; a failure there is logged and surfaces as
-    /// `engine_unavailable` on every later job.
+    /// `engine_unavailable` on every later job. A worker that gets stuck past a deadline is replaced (`Engine::recover`).
     pub fn start(library: PathBuf) -> Self {
-        Self::spawn(
-            limits::ENGINE_QUEUE_DEPTH,
-            move |requests, health, sizes| {
-                worker::run(&library, requests, &health, &sizes);
-            },
-        )
+        let runner: Arc<Runner> = Arc::new(move |requests, health, sizes, stale| {
+            worker::run(&library, requests, &health, &sizes, stale);
+        });
+        let sizes = Arc::new(SizeCache::default());
+        let live = {
+            let (runner, sizes) = (Arc::clone(&runner), Arc::clone(&sizes));
+            launch(limits::ENGINE_QUEUE_DEPTH, move |requests, health| {
+                runner(requests, health, sizes, HashSet::new());
+            })
+        };
+        Self::assemble(live, sizes, limits::ENGINE_QUEUE_DEPTH, Some(runner))
     }
 
+    #[cfg(test)]
     fn spawn(
         queue_depth: usize,
         run: impl FnOnce(Requests, Arc<Health>, Arc<SizeCache>) + Send + 'static,
     ) -> Self {
-        let queue = Queue::new(queue_depth);
-        let health = Arc::new(Health::default());
         let sizes = Arc::new(SizeCache::default());
-        let requests = Requests::new(Arc::clone(&queue));
-        let worker_health = Arc::clone(&health);
         let worker_sizes = Arc::clone(&sizes);
-        let spawned = thread::Builder::new()
-            .name("sheer-pdfium".into())
-            .stack_size(limits::ENGINE_STACK_BYTES)
-            .spawn(move || run(requests, worker_health, worker_sizes));
-        if let Err(error) = spawned {
-            // `requests` was dropped with the closure, so every job fails fast with `engine_unavailable`.
-            AppError::logged(
-                ErrorCode::EngineUnavailable,
-                format!("could not start the PDFium worker thread: {error}"),
-            )
-            .log();
-        }
+        let live = launch(queue_depth, move |requests, health| {
+            run(requests, health, worker_sizes);
+        });
+        Self::assemble(live, sizes, queue_depth, None)
+    }
+
+    fn assemble(
+        live: Live,
+        sizes: Arc<SizeCache>,
+        queue_depth: usize,
+        runner: Option<Arc<Runner>>,
+    ) -> Self {
         Self {
             inner: Arc::new(Inner {
-                queue,
-                health,
+                live: Mutex::new(live),
                 sizes,
+                queue_depth,
+                runner,
+                respawns: std::sync::atomic::AtomicUsize::new(0),
             }),
         }
+    }
+
+    /// Replaces a worker that is stuck past its deadline (`wedged`, as seen by the caller) with a new one, so that the app works
+    /// again without a restart. A PDFium call cannot be interrupted: the old thread is left to finish, or not (a retired
+    /// worker serves nothing more and leaks its PDFium state rather than tear down the library under its successor). The
+    /// documents it held are gone: they answer `engine_crashed` until closed, and the UI has to open them again. Until the
+    /// engine process of M7 (SECURITY P6) this is the best an in-process engine can do. Several callers may see the same stuck
+    /// worker; only the first replaces it.
+    fn recover(&self, wedged: &Arc<Health>) {
+        let Some(runner) = &self.inner.runner else {
+            return;
+        };
+        let mut live = self.inner.live();
+        if !Arc::ptr_eq(&live.health, wedged) {
+            return;
+        }
+        // Each respawn leaks a thread and its PDFium state: after the cap the engine stays `engine_unavailable` (until the stuck job
+        // returns, if it ever does) and only a restart helps.
+        if self
+            .inner
+            .respawns
+            .fetch_add(1, std::sync::atomic::Ordering::SeqCst)
+            >= MAX_RESPAWNS
+        {
+            return;
+        }
+        let stale: HashSet<DocumentId> = self.inner.sizes.ids().into_iter().collect();
+        live.health.retire();
+        live.queue.close();
+        let (runner, sizes) = (Arc::clone(runner), Arc::clone(&self.inner.sizes));
+        *live = launch(self.inner.queue_depth, move |requests, health| {
+            runner(requests, health, sizes, stale);
+        });
+        AppError::logged(
+            ErrorCode::EngineUnavailable,
+            "a PDF job ran past its deadline: the worker was replaced and open documents must be reopened",
+        )
+        .log();
     }
 
     /// Test double for other modules: a worker that hands every job to `handler`, which must answer it. Needs no PDFium. It
@@ -328,7 +426,13 @@ impl Engine {
         rank: Rank,
         build: impl FnOnce(Reply<T>) -> Job,
     ) -> Result<T, AppError> {
-        if self.inner.health.is_wedged() {
+        let (queue, health) = {
+            let live = self.inner.live();
+            (Arc::clone(&live.queue), Arc::clone(&live.health))
+        };
+        if health.is_wedged() {
+            // The stuck job cannot be interrupted: start another worker for what comes next, and tell this caller now.
+            self.recover(&health);
             return Err(AppError::logged(
                 ErrorCode::EngineUnavailable,
                 "a PDF job is still running past its deadline",
@@ -339,7 +443,7 @@ impl Engine {
             deadline: Instant::now() + timeout,
             job: build(reply_tx),
         };
-        match self.inner.queue.push(request, rank) {
+        match queue.push(request, rank) {
             Ok(()) => {}
             // Back-pressure: never block the caller on a full queue.
             Err(Refused::Full) => {
@@ -420,7 +524,9 @@ impl Engine {
     /// `generation`: queued renders for other pages are cancelled, the rest re-ranked (see [`queue::Queue::set_viewport`]).
     /// Never waits for the worker: it only reorders the queue, so it works while a render is running.
     pub fn set_viewport(&self, id: DocumentId, generation: u32, visible: &[u32], near: &[u32]) {
-        self.inner.queue.set_viewport(id, generation, visible, near);
+        self.inner
+            .queue()
+            .set_viewport(id, generation, visible, near);
     }
 
     /// The size in points of every page of the document, in page order (`limits::sanitize_page_size`: always usable). The sizes
@@ -980,6 +1086,117 @@ mod tests {
         }
     }
 
+    /// An engine with a respawnable runner and no PDFium: the first worker sleeps `first_delay` per job, later ones answer at
+    /// once. Every job is answered with `Ok` for a close and `engine_crashed` for a document in `stale`, as the real worker does.
+    fn respawning_engine(first_delay: Duration) -> (Engine, Arc<std::sync::atomic::AtomicUsize>) {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        let starts = Arc::new(AtomicUsize::new(0));
+        let counted = Arc::clone(&starts);
+        let runner: Arc<Runner> = Arc::new(move |requests, health, _sizes, stale| {
+            let delay = if counted.fetch_add(1, Ordering::SeqCst) == 0 {
+                first_delay
+            } else {
+                Duration::ZERO
+            };
+            for request in requests {
+                if health.is_retired() {
+                    request
+                        .job
+                        .fail(AppError::new(ErrorCode::EngineUnavailable));
+                    continue;
+                }
+                let _busy = health.begin(request.run_deadline());
+                thread::sleep(delay);
+                match request.job {
+                    Job::Outline { id, reply } if stale.contains(&id) => {
+                        let _ = reply.send(Err(AppError::new(ErrorCode::EngineCrashed)));
+                    }
+                    Job::Outline { reply, .. } => {
+                        let _ = reply.send(Ok(Vec::new()));
+                    }
+                    job => job.fail(AppError::new(ErrorCode::Internal)),
+                }
+            }
+        });
+        let sizes = Arc::new(SizeCache::default());
+        let live = {
+            let (runner, sizes) = (Arc::clone(&runner), Arc::clone(&sizes));
+            launch(8, move |requests, health| {
+                runner(requests, health, sizes, HashSet::new());
+            })
+        };
+        (Engine::assemble(live, sizes, 8, Some(runner)), starts)
+    }
+
+    #[test]
+    fn a_worker_stuck_past_its_deadline_is_replaced_and_its_documents_are_stale() {
+        use std::sync::atomic::Ordering;
+        let (engine, starts) = respawning_engine(Duration::from_millis(600));
+        let registry = Registry::new();
+        let id = registry.register(fixture()).unwrap();
+        engine.seed_page_sizes(id, vec![[1.0, 1.0]]);
+        let outline =
+            |timeout| engine.call(timeout, Rank::CONTROL, |reply| Job::Outline { id, reply });
+
+        // The first worker needs 600 ms, its caller waits 50 ms.
+        assert_eq!(
+            outline(Duration::from_millis(50)).unwrap_err().code(),
+            ErrorCode::EngineTimeout
+        );
+        thread::sleep(Duration::from_millis(80));
+        // The next call sees the stuck worker, is refused, and replaces it.
+        assert_eq!(
+            outline(Duration::from_secs(5)).unwrap_err().code(),
+            ErrorCode::EngineUnavailable
+        );
+        let waited = Instant::now();
+        while starts.load(Ordering::SeqCst) < 2 && waited.elapsed() < Duration::from_secs(5) {
+            thread::sleep(Duration::from_millis(5));
+        }
+        assert_eq!(starts.load(Ordering::SeqCst), 2);
+        // The new worker answers at once, and knows the old document only as stale.
+        assert_eq!(
+            outline(Duration::from_secs(5)).unwrap_err().code(),
+            ErrorCode::EngineCrashed
+        );
+        let fresh = registry.register(fixture()).unwrap();
+        assert!(engine
+            .call(Duration::from_secs(5), Rank::CONTROL, |reply| {
+                Job::Outline { id: fresh, reply }
+            })
+            .is_ok());
+        assert_eq!(starts.load(Ordering::SeqCst), 2, "no further respawn");
+    }
+
+    #[test]
+    fn the_worker_is_replaced_at_most_max_respawns_times() {
+        use std::sync::atomic::Ordering;
+        let (engine, starts) = respawning_engine(Duration::from_millis(400));
+        engine.inner.respawns.store(MAX_RESPAWNS, Ordering::SeqCst);
+        let registry = Registry::new();
+        let id = registry.register(fixture()).unwrap();
+        let outline =
+            |timeout| engine.call(timeout, Rank::CONTROL, |reply| Job::Outline { id, reply });
+        assert!(outline(Duration::from_millis(30)).is_err());
+        thread::sleep(Duration::from_millis(60));
+        assert_eq!(
+            outline(Duration::from_secs(1)).unwrap_err().code(),
+            ErrorCode::EngineUnavailable
+        );
+        thread::sleep(Duration::from_millis(50));
+        assert_eq!(starts.load(Ordering::SeqCst), 1, "no worker after the cap");
+    }
+
+    #[test]
+    fn a_double_without_a_runner_is_not_respawned() {
+        let engine = Engine::spawn(8, slow_worker(Duration::from_millis(300)));
+        let id = Registry::new().register(fixture()).unwrap();
+        assert!(close(&engine, id, Duration::from_millis(30)).is_err());
+        thread::sleep(Duration::from_millis(50));
+        assert!(close(&engine, id, Duration::from_secs(5)).is_err());
+        assert!(!engine.inner.health().is_retired());
+    }
+
     fn close(engine: &Engine, id: DocumentId, timeout: Duration) -> Result<(), AppError> {
         engine.call(timeout, Rank::CONTROL, |reply| Job::Close { id, reply })
     }
@@ -1066,7 +1283,7 @@ mod tests {
             ErrorCode::EngineTimeout
         );
         assert!(started.elapsed() >= Duration::from_millis(150));
-        assert_eq!(engine.inner.queue.len(), 1);
+        assert_eq!(engine.inner.queue().len(), 1);
     }
 
     #[test]
@@ -1094,7 +1311,7 @@ mod tests {
             started.elapsed() < Duration::from_secs(1),
             "it was refused, not waited for"
         );
-        assert_eq!(engine.inner.queue.len(), 1);
+        assert_eq!(engine.inner.queue().len(), 1);
     }
 
     #[test]
@@ -1253,7 +1470,7 @@ mod tests {
             assert_eq!(engine.page_sizes(id).unwrap().len(), 2);
         }
         assert!(started.elapsed() < Duration::from_secs(1));
-        assert_eq!(engine.inner.queue.len(), 1, "a lookup is not a job");
+        assert_eq!(engine.inner.queue().len(), 1, "a lookup is not a job");
         assert_eq!(
             engine.page_sizes(new_id()).unwrap_err().code(),
             ErrorCode::NotFound
@@ -1368,7 +1585,7 @@ mod tests {
         assert_eq!(error.code(), ErrorCode::LimitExceeded);
         assert!(started.elapsed() < Duration::from_secs(1));
         assert_eq!(
-            engine.inner.queue.waiters(&frame.key),
+            engine.inner.queue().waiters(&frame.key),
             Some(limits::MAX_RENDER_WAITERS)
         );
 
@@ -1386,7 +1603,7 @@ mod tests {
     /// Waits until `count` jobs are queued (the worker is busy, so they stay there).
     fn wait_for_queued(engine: &Engine, count: usize) {
         let until = Instant::now() + Duration::from_secs(5);
-        while engine.inner.queue.len() < count {
+        while engine.inner.queue().len() < count {
             assert!(Instant::now() < until, "the jobs never reached the queue");
             thread::sleep(Duration::from_millis(2));
         }
@@ -1558,6 +1775,7 @@ mod tests {
                         text: String::new(),
                         boxes: Vec::new(),
                         truncated: false,
+                        rotation: 0,
                     }));
                 }
                 Job::PageLinks { reply, .. } => {
@@ -1619,7 +1837,7 @@ mod tests {
     /// Waits until `count` callers have joined the render of `key`.
     fn wait_for_waiters(engine: &Engine, key: RenderKey, count: usize) {
         let until = Instant::now() + Duration::from_secs(5);
-        while engine.inner.queue.waiters(&key) != Some(count) {
+        while engine.inner.queue().waiters(&key) != Some(count) {
             assert!(Instant::now() < until, "the callers never joined the job");
             thread::sleep(Duration::from_millis(2));
         }
@@ -1628,7 +1846,7 @@ mod tests {
     /// Waits until the worker has taken a job (the queue is empty and the worker is not idle).
     fn wait_for_busy(engine: &Engine) {
         let until = Instant::now() + Duration::from_secs(5);
-        while !engine.inner.health.is_busy() {
+        while !engine.inner.health().is_busy() {
             assert!(Instant::now() < until, "the worker never started the job");
             thread::sleep(Duration::from_millis(2));
         }

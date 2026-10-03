@@ -15,7 +15,8 @@
 //! - `mailto` needs an address, and may not carry `attach`, `attachment` or `attachments` as a parameter: some mail programs read
 //!   them as a file to attach.
 //!
-//! Everything else is refused. The confirmation dialog shows the URL as it is opened (it is ASCII, so nothing in it can reorder or
+//! Everything else is refused. The confirmation dialog shows the host on a line of its own (with `xn--` labels decoded beside the
+//! `xn--` form, [`summarize`]) and the URL cut to a readable length, as it is opened (it is ASCII, so nothing in it can reorder or
 //! hide text).
 
 use crate::limits;
@@ -196,6 +197,161 @@ pub fn classify(raw: &str) -> Option<SafeUrl> {
         }
     };
     allowed.then(|| SafeUrl(raw.to_owned()))
+}
+/// How much of a URL the confirmation dialog shows: a link in a document can be thousands of bytes long, and a dialog that scrolls
+/// hides the part the user should read (the host), so the rest is cut with `…`. The host is shown by itself above it.
+pub const MAX_SHOWN_URL_CHARS: usize = 120;
+
+/// The text of a [`SafeUrl`] for the confirmation dialog (SECURITY P3).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct UrlSummary {
+    /// Where the link goes, as the URL spells it (lowercased, with the port): `xn--` labels stay as they are. For `mailto:` the
+    /// domain of the address. Empty if there is none.
+    pub host: String,
+    /// The host with its `xn--` labels decoded, when it has any and every decoded character is a letter or digit (a name that
+    /// decodes to a control or direction character is shown as `xn--` only). It is shown beside the `xn--` form, never instead
+    /// of it: a decoded name can be a look-alike of another.
+    pub host_decoded: Option<String>,
+    /// The URL, cut to [`MAX_SHOWN_URL_CHARS`] characters (it is ASCII, so a cut cannot split a character) with `…` at the cut.
+    pub shown: String,
+    pub truncated: bool,
+}
+
+impl UrlSummary {
+    /// The block that replaces `{url}` in the dialog text: the host on a line of its own, then the URL.
+    pub fn dialog_text(&self) -> String {
+        let host = match &self.host_decoded {
+            Some(decoded) => format!("{} ({decoded})", self.host),
+            None => self.host.clone(),
+        };
+        if host.is_empty() {
+            self.shown.clone()
+        } else {
+            format!("{host}\n\n{}", self.shown)
+        }
+    }
+}
+
+/// Describes `url` for the dialog: its host, the host with punycode decoded, and the URL shortened.
+pub fn summarize(url: &SafeUrl) -> UrlSummary {
+    let text = url.as_str();
+    let (scheme, rest) = text.split_once(':').unwrap_or(("", text));
+    let host_part = if scheme.eq_ignore_ascii_case("mailto") {
+        let address = rest.split(['?', '#']).next().unwrap_or_default();
+        address.rsplit_once('@').map_or("", |(_, domain)| domain)
+    } else {
+        let authority = rest.strip_prefix("//").unwrap_or_default();
+        authority.split(['/', '?', '#']).next().unwrap_or_default()
+    };
+    let host = host_part.to_ascii_lowercase();
+    let host_decoded = decode_host(&host);
+    let (shown, truncated) = if text.chars().count() > MAX_SHOWN_URL_CHARS {
+        let cut: String = text.chars().take(MAX_SHOWN_URL_CHARS).collect();
+        (format!("{cut}…"), true)
+    } else {
+        (text.to_owned(), false)
+    };
+    UrlSummary {
+        host,
+        host_decoded,
+        shown,
+        truncated,
+    }
+}
+
+/// `host` with every `xn--` label decoded, or `None` if it has none, one does not decode, or the result has anything but letters,
+/// digits, dots and hyphens in it. A port after the host is kept.
+fn decode_host(host: &str) -> Option<String> {
+    let (name, port) = match host.rsplit_once(':') {
+        Some((name, port)) if !port.contains(']') => (name, Some(port)),
+        _ => (host, None),
+    };
+    if !name.split('.').any(|label| label.starts_with("xn--")) {
+        return None;
+    }
+    let labels: Option<Vec<String>> = name
+        .split('.')
+        .map(|label| match label.strip_prefix("xn--") {
+            Some(encoded) => punycode_decode(encoded),
+            None => Some(label.to_owned()),
+        })
+        .collect();
+    let decoded = labels?.join(".");
+    if !decoded
+        .chars()
+        .all(|c| c.is_alphanumeric() || c == '.' || c == '-')
+    {
+        return None;
+    }
+    Some(match port {
+        Some(port) => format!("{decoded}:{port}"),
+        None => decoded,
+    })
+}
+
+/// Decodes one punycode label without its `xn--` prefix (RFC 3492). `None` for anything malformed or too big.
+fn punycode_decode(input: &str) -> Option<String> {
+    const BASE: u32 = 36;
+    const T_MIN: u32 = 1;
+    const T_MAX: u32 = 26;
+    const MAX_CHARS: usize = 63;
+    if !input.is_ascii() || input.len() > MAX_CHARS {
+        return None;
+    }
+    let (basic, encoded) = match input.rfind('-') {
+        Some(at) => (&input[..at], &input[at + 1..]),
+        None => ("", input),
+    };
+    let mut output: Vec<char> = basic.chars().collect();
+    let (mut n, mut i, mut bias) = (128u32, 0u32, 72u32);
+    let mut digits = encoded.bytes().peekable();
+    while digits.peek().is_some() {
+        let old_i = i;
+        let (mut weight, mut k) = (1u32, BASE);
+        loop {
+            let digit = match digits.next()? {
+                c @ b'a'..=b'z' => u32::from(c - b'a'),
+                c @ b'A'..=b'Z' => u32::from(c - b'A'),
+                c @ b'0'..=b'9' => u32::from(c - b'0') + 26,
+                _ => return None,
+            };
+            i = i.checked_add(digit.checked_mul(weight)?)?;
+            let threshold = if k <= bias {
+                T_MIN
+            } else if k >= bias + T_MAX {
+                T_MAX
+            } else {
+                k - bias
+            };
+            if digit < threshold {
+                break;
+            }
+            weight = weight.checked_mul(BASE - threshold)?;
+            k += BASE;
+        }
+        let count = u32::try_from(output.len() + 1).ok()?;
+        bias = adapt(i - old_i, count, old_i == 0);
+        n = n.checked_add(i / count)?;
+        i %= count;
+        output.insert(usize::try_from(i).ok()?, char::from_u32(n)?);
+        if output.len() > MAX_CHARS {
+            return None;
+        }
+        i += 1;
+    }
+    Some(output.into_iter().collect())
+}
+
+/// The bias adaptation of RFC 3492 section 6.1.
+fn adapt(delta: u32, count: u32, first: bool) -> u32 {
+    let mut delta = if first { delta / 700 } else { delta / 2 };
+    delta += delta / count;
+    let mut k = 0;
+    while delta > 455 {
+        delta /= 35;
+        k += 36;
+    }
+    k + 36 * delta / (delta + 38)
 }
 
 #[cfg(test)]
@@ -383,6 +539,85 @@ mod tests {
         assert!(!accepted(&"a".repeat(1_000_000)));
     }
 
+    fn summary(url: &str) -> UrlSummary {
+        summarize(&classify(url).expect("a URL the allowlist takes"))
+    }
+
+    #[test]
+    fn the_host_is_shown_by_itself_and_punycode_is_decoded_beside_the_xn_form() {
+        let plain = summary("https://Example.com:8443/a?b=c");
+        assert_eq!(plain.host, "example.com:8443");
+        assert_eq!(plain.host_decoded, None);
+        assert_eq!(
+            plain.dialog_text(),
+            "example.com:8443\n\nhttps://Example.com:8443/a?b=c"
+        );
+
+        let idn = summary("https://xn--bcher-kva.example/");
+        assert_eq!(idn.host, "xn--bcher-kva.example");
+        assert_eq!(idn.host_decoded.as_deref(), Some("bücher.example"));
+        assert_eq!(
+            idn.dialog_text(),
+            "xn--bcher-kva.example (bücher.example)\n\nhttps://xn--bcher-kva.example/"
+        );
+        // A look-alike of a Latin name (Cyrillic letters), with a port.
+        assert_eq!(punycode_decode("80ak6aa92e").as_deref(), Some("аррӏе"));
+        assert_eq!(
+            summary("https://xn--80ak6aa92e.com:81/")
+                .host_decoded
+                .as_deref(),
+            Some("аррӏе.com:81")
+        );
+    }
+
+    #[test]
+    fn broken_or_unfit_punycode_is_shown_as_xn_only() {
+        for label in [
+            "",
+            "-",
+            "a-",
+            "zzzzzzzzzzzzzzzzzzzzzzzzzzzz",
+            "ab!c",
+            "99999999999999",
+        ] {
+            // Whatever it is, it neither panics nor decodes to something with a control character.
+            if let Some(decoded) = punycode_decode(label) {
+                assert!(decoded.chars().all(|c| !c.is_control()));
+            }
+        }
+        assert_eq!(summary("https://xn--zzzzzzzzzzzz.com/").host_decoded, None);
+        assert_eq!(
+            summary("https://example.com/xn--bcher-kva").host_decoded,
+            None
+        );
+    }
+
+    #[test]
+    fn a_long_url_is_cut_and_the_cut_is_marked() {
+        let long = format!("https://example.com/{}", "a".repeat(2000));
+        let shown = summary(&long);
+        assert!(shown.truncated);
+        assert_eq!(shown.shown.chars().count(), MAX_SHOWN_URL_CHARS + 1);
+        assert!(shown.shown.ends_with('…'));
+        assert!(shown
+            .dialog_text()
+            .starts_with("example.com\n\nhttps://example.com/"));
+        let exact = format!(
+            "https://example.com/{}",
+            "a".repeat(MAX_SHOWN_URL_CHARS - "https://example.com/".len())
+        );
+        assert_eq!(exact.len(), MAX_SHOWN_URL_CHARS);
+        assert!(!summary(&exact).truncated);
+    }
+
+    #[test]
+    fn a_mail_link_shows_the_domain_of_its_address() {
+        let mail = summary("mailto:someone@Example.com?subject=hi");
+        assert_eq!(mail.host, "example.com");
+        assert_eq!(summary("mailto:someone").host, "");
+        assert_eq!(summary("mailto:someone").dialog_text(), "mailto:someone");
+        assert_eq!(summary("https://[::1]:8080/").host, "[::1]:8080");
+    }
     #[test]
     fn the_allowlist_is_exactly_the_three_schemes() {
         assert_eq!(ALLOWED_SCHEMES, ["http", "https", "mailto"]);

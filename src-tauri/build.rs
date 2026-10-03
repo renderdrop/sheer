@@ -18,6 +18,8 @@ fn main() {
         "list_recents",
         "remove_recent",
         "open_recent",
+        "restore_recent",
+        "locate_recent",
         "set_menu_state",
         "render_page",
         "set_viewport",

@@ -55,6 +55,11 @@ impl SizeCache {
         self.lock().remove(&id);
     }
 
+    /// The documents that are loaded (the ones a respawned worker no longer holds, `Engine::recover`).
+    pub(super) fn ids(&self) -> Vec<DocumentId> {
+        self.lock().keys().copied().collect()
+    }
+
     /// How many documents have sizes here.
     #[cfg(test)]
     pub(super) fn len(&self) -> usize {

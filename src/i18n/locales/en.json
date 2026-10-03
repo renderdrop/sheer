@@ -135,6 +135,11 @@
   "emptyState.recentRemove": "Remove {name} from recent files",
   "emptyState.recentMissing": "File not found",
   "emptyState.recentList": "Recent files",
+  "emptyState.recentLocate": "Locate…",
+  "emptyState.recentLocateLabel": "Locate {name}",
+  "emptyState.recentRemoved": "Removed {name} from recent files",
+  "emptyState.recentCleared": "Recent files cleared",
+  "toast.undo": "Undo",
 
   "tabs.label": "Open documents",
   "tabs.close": "Close {name}",

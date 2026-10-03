@@ -2,7 +2,8 @@ import { selectActiveId, useDocuments } from '../../stores/documents';
 import { DEFAULT_PAGE_SIZE, sizesFor, usePages } from '../../stores/pages';
 import { useView } from '../../stores/view';
 import { quadBox, boxToView, totalRotation, unrotatedSize } from '../viewer/transform';
-import { fileRotationOf } from '../viewer/fileRotation';
+import { loadLayer } from '../textlayer/cache';
+import { fileRotationOf, hasFileRotation } from '../viewer/fileRotation';
 import { useViewer } from '../viewer/useViewer';
 import { useSearch, type Hit } from './store';
 
@@ -20,8 +21,20 @@ export function hitTopInView(docId: number, hit: Hit): number {
 
 /** Scrolls the canvas to a hit: the hit's line lands at the canvas's top padding (MOTION 4.8). Focus stays where it is. */
 export function jumpToHit(docId: number, hit: Hit): void {
-  useViewer.getState().goToPoint(hit.page, hitTopInView(docId, hit));
+  jumpToken += 1;
+  const token = jumpToken;
+  const go = () => useViewer.getState().goToPoint(hit.page, hitTopInView(docId, hit));
+  if (hasFileRotation(docId, hit.page)) {
+    go();
+    return;
+  }
+  // The page's own rotation arrives with its text; the line is not placed before it is known. A newer jump replaces this one.
+  void loadLayer(docId, hit.page).then(() => {
+    if (token === jumpToken) go();
+  });
 }
+
+let jumpToken = 0;
 
 /** Moves to the next or the previous hit of the active document, wrapping, and shows it. */
 export function stepHit(direction: 1 | -1): void {

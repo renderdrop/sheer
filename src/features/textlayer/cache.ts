@@ -2,6 +2,7 @@ import { useCallback, useEffect, useSyncExternalStore } from 'react';
 
 import { getTextLayer, type TextLayer } from '../../api/text';
 import { useDocuments } from '../../stores/documents';
+import { forgetFileRotations, setFileRotation } from '../viewer/fileRotation';
 
 /**
  * The text layers the window has fetched, per document and page. A layer is read once per page (lazily, when the page is on
@@ -14,9 +15,13 @@ export const CACHE_BUDGET_UNITS = 2_000_000;
 
 const layers = new Map<string, TextLayer>();
 const inflight = new Map<string, Promise<TextLayer | null>>();
-/** Pages whose layer could not be read; asked again only after `clearTextCache`. */
+/** Pages whose layer could not be read; asked again only after `clearTextCache`, or once the oldest of them is forgotten. */
 const failed = new Set<string>();
+/** Most failed pages remembered; a hostile document with thousands of unreadable pages cannot make the set grow without end. */
+export const MAX_FAILED_PAGES = 1024;
 const listeners = new Map<string, Set<() => void>>();
+/** The documents whose pages' rotations were recorded here. */
+const knownDocs = new Set<number>();
 let units = 0;
 let watching = false;
 
@@ -39,8 +44,16 @@ function watchDocuments(): void {
   if (watching) return;
   watching = true;
   useDocuments.subscribe((state) => {
-    for (const key of [...layers.keys()]) {
-      if (state.byId[Number(key.split(':')[0])] === undefined) drop(key);
+    const closed = (key: string) => state.byId[Number(key.split(':')[0])] === undefined;
+    for (const key of [...layers.keys()]) if (closed(key)) drop(key);
+    // What is kept about the pages of a closed document goes too: failures, listeners that were never removed, rotations.
+    for (const key of [...failed]) if (closed(key)) failed.delete(key);
+    for (const key of [...listeners.keys()]) if (closed(key)) listeners.delete(key);
+    for (const docId of knownDocs) {
+      if (state.byId[docId] === undefined) {
+        forgetFileRotations(docId);
+        knownDocs.delete(docId);
+      }
     }
   });
 }
@@ -56,7 +69,10 @@ export function peekLayer(docId: number, page: number): TextLayer | undefined {
   return layer;
 }
 
-function remember(key: string, layer: TextLayer): void {
+function remember(key: string, layer: TextLayer, docId: number, page: number): void {
+  // The rotation outlives the layer in the cache: it is a few bytes, and the overlays need it after the text was evicted.
+  setFileRotation(docId, page, layer.rotation ?? 0);
+  knownDocs.add(docId);
   drop(key);
   layers.set(key, layer);
   units += layer.text.length;
@@ -80,12 +96,16 @@ export function loadLayer(docId: number, page: number): Promise<TextLayer | null
     (layer) => {
       inflight.delete(key);
       // The document may have been closed meanwhile.
-      if (useDocuments.getState().byId[docId] !== undefined) remember(key, layer);
+      if (useDocuments.getState().byId[docId] !== undefined) remember(key, layer, docId, page);
       return layer;
     },
     () => {
       inflight.delete(key);
       failed.add(key);
+      for (const oldest of failed) {
+        if (failed.size <= MAX_FAILED_PAGES) break;
+        failed.delete(oldest);
+      }
       notify(key);
       return null;
     },
@@ -99,6 +119,9 @@ export function clearTextCache(): void {
   layers.clear();
   inflight.clear();
   failed.clear();
+  listeners.clear();
+  for (const docId of knownDocs) forgetFileRotations(docId);
+  knownDocs.clear();
   units = 0;
 }
 

@@ -37,6 +37,8 @@ pub struct TextLayer {
     pub text: String,
     pub boxes: Vec<f32>,
     pub truncated: bool,
+    /// The page's own `/Rotate` in degrees (0, 90, 180 or 270): the boxes are in page space, before it.
+    pub rotation: u16,
 }
 
 /// Where a link goes. On the wire an object with a `type`: `page` (with `pageId`, `y`), `url` (with the `url`, plain `http`, `https`
@@ -153,10 +155,11 @@ mod tests {
             text: "ab".to_owned(),
             boxes: vec![1.0, 2.0, 3.0, 4.0, 5.0, 2.0, 3.0, 4.0],
             truncated: false,
+            rotation: 90,
         };
         assert_eq!(
             wire(&layer),
-            json!({ "text": "ab", "boxes": [1.0, 2.0, 3.0, 4.0, 5.0, 2.0, 3.0, 4.0], "truncated": false })
+            json!({ "text": "ab", "boxes": [1.0, 2.0, 3.0, 4.0, 5.0, 2.0, 3.0, 4.0], "truncated": false, "rotation": 90 })
         );
         let rect = Rect {
             x: 1.0,

@@ -312,6 +312,9 @@ describe('widths and the left panel (DESIGN 2, 3.3 to 3.8)', () => {
     '--tab-min': '120px',
     '--tab-max': '240px',
     '--dialog-width': '400px', // password prompt (3.19)
+    '--toast-height': '40px', // toast (3.12)
+    '--toast-min': '240px',
+    '--toast-max': '400px',
   };
 
   it.each(Object.entries(widths))('%s is %s', (name, value) => {
@@ -330,6 +333,9 @@ describe('widths and the left panel (DESIGN 2, 3.3 to 3.8)', () => {
       'tab-min': '--tab-min',
       'tab-max': '--tab-max',
       dialog: '--dialog-width',
+      toast: '--toast-height',
+      'toast-min': '--toast-min',
+      'toast-max': '--toast-max',
     };
     for (const [name, token] of Object.entries(mapped)) {
       expect(themeStatic.get(`--spacing-${name}`), name).toBe(`var(${token})`);

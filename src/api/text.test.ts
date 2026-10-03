@@ -58,7 +58,15 @@ describe('getTextLayer', () => {
   it('drops keys that are not part of a layer', async () => {
     invokeMock.mockResolvedValueOnce({ ...layerOf('a'), path: 'C:\\secret.pdf' });
     const layer = await getTextLayer(0, 0);
-    expect(Object.keys(layer).sort()).toEqual(['boxes', 'text', 'truncated']);
+    expect(Object.keys(layer).sort()).toEqual(['boxes', 'rotation', 'text', 'truncated']);
+  });
+
+  it('carries the page rotation, 0 when the answer has none, and refuses an angle that is not a quarter turn', async () => {
+    expect(parseTextLayer({ ...layerOf('a'), rotation: 270 })?.rotation).toBe(270);
+    expect(parseTextLayer(layerOf('a'))?.rotation).toBe(0);
+    for (const rotation of [45, -90, 360, '90', null, Number.NaN]) {
+      expect(parseTextLayer({ ...layerOf('a'), rotation }), String(rotation)).toBeNull();
+    }
   });
 
   it('rejects with the backend error', async () => {

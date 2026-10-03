@@ -4,7 +4,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { useDocuments } from '../../stores/documents';
 import { resetDocuments } from '../../stores/documents.testutil';
-import { CACHE_BUDGET_UNITS, clearTextCache, loadLayer, peekLayer, usePageText } from './cache';
+import { fileRotationOf, hasFileRotation } from '../viewer/fileRotation';
+import { CACHE_BUDGET_UNITS, MAX_FAILED_PAGES, clearTextCache, loadLayer, peekLayer, usePageText } from './cache';
 
 const textApi = vi.hoisted(() => ({ getTextLayer: vi.fn() }));
 vi.mock('../../api/text', () => textApi);
@@ -54,6 +55,40 @@ describe('the text layer cache', () => {
     expect(peekLayer(1, 0)).toBeUndefined();
     await loadLayer(1, 1);
     expect(peekLayer(1, 1)).toBeUndefined();
+  });
+});
+
+describe('what is kept besides the layers', () => {
+  it('records the rotation of a page when its layer arrives, and forgets it with the document', async () => {
+    textApi.getTextLayer.mockResolvedValueOnce({ ...layerOf('turned'), rotation: 270 });
+    expect(hasFileRotation(1, 0)).toBe(false);
+    await loadLayer(1, 0);
+    expect(hasFileRotation(1, 0)).toBe(true);
+    expect(fileRotationOf(1, 0)).toBe(270);
+    act(() => useDocuments.getState().remove(1));
+    expect(hasFileRotation(1, 0)).toBe(false);
+  });
+
+  it('remembers at most MAX_FAILED_PAGES failed pages: the oldest is asked again', async () => {
+    useDocuments.getState().add({ id: 2, pageCount: 5000, displayName: 'b.pdf' });
+    textApi.getTextLayer.mockRejectedValue(new Error('no'));
+    for (let page = 0; page < MAX_FAILED_PAGES + 3; page += 1) await loadLayer(2, page);
+    const { result: oldest } = renderHook(() => usePageText(2, 0, false));
+    const { result: newest } = renderHook(() => usePageText(2, MAX_FAILED_PAGES + 2, false));
+    expect(oldest.current.status).toBe('idle');
+    expect(newest.current.status).toBe('failed');
+  });
+
+  it('drops the failures and listeners of a closed document', async () => {
+    textApi.getTextLayer.mockRejectedValue(new Error('no'));
+    await loadLayer(1, 0);
+    const { result, unmount } = renderHook(() => usePageText(1, 0, false));
+    expect(result.current.status).toBe('failed');
+    act(() => useDocuments.getState().remove(1));
+    unmount();
+    useDocuments.getState().add({ id: 1, pageCount: 5, displayName: 'a.pdf' });
+    const again = renderHook(() => usePageText(1, 0, false));
+    expect(again.result.current.status).toBe('idle');
   });
 });
 

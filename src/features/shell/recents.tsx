@@ -1,9 +1,16 @@
 import { FileText, FileX, X } from 'lucide-react';
 import { useCallback, useEffect, useState, type KeyboardEvent } from 'react';
 
-import { listRecents, openRecent, removeRecent, type RecentEntry } from '../../api/recents';
+import {
+  listRecents,
+  locateRecent,
+  openRecent,
+  removeRecent,
+  restoreRecent,
+  type RecentEntry,
+} from '../../api/recents';
 import { toAppError } from '../../api/errors';
-import { Icon, IconButton } from '../../components';
+import { Button, Icon, IconButton } from '../../components';
 import { cx } from '../../components/cx';
 import { useLocale, useT } from '../../i18n';
 import type { Locale } from '../../i18n';
@@ -49,13 +56,62 @@ export function useRecents(): Recents {
   }, []);
   useEffect(refresh, [refresh]);
 
-  const remove = useCallback((id: number) => {
-    setEntries((current) => current.filter((entry) => entry.id !== id));
-    removeRecent(id).catch(() => undefined);
-  }, []);
+  const toast = useCallback(
+    (message: string, ids: readonly number[]) => {
+      useUi.getState().showToast({
+        message,
+        action: {
+          label: t('toast.undo'),
+          // Put back in the reverse of the order they went, so every one lands where it was.
+          run: () => {
+            let chain: Promise<unknown> = Promise.resolve();
+            for (const id of [...ids].reverse()) chain = chain.then(() => restoreRecent(id)).catch(() => undefined);
+            void chain.then(refresh);
+          },
+        },
+      });
+    },
+    [refresh, t],
+  );
+
+  const remove = useCallback(
+    (entry: RecentEntry) => {
+      setEntries((current) => current.filter((other) => other.id !== entry.id));
+      removeRecent(entry.id).then(
+        () =>
+          toast(
+            t('emptyState.recentRemoved', {
+              name: entry.displayName === '' ? t('status.untitled') : entry.displayName,
+            }),
+            [entry.id],
+          ),
+        () => refresh(),
+      );
+    },
+    [refresh, t, toast],
+  );
+
+  /** Lets the user find a file that moved; the entry then points to it, and the list is read again. */
+  const locate = useCallback(
+    (entry: RecentEntry) => {
+      locateRecent(entry.id).then(
+        () => refresh(),
+        (caught: unknown) => {
+          useUi.getState().showBanner(toAppError(caught));
+          refresh();
+        },
+      );
+    },
+    [refresh],
+  );
 
   const open = useCallback(
     (entry: RecentEntry) => {
+      // A file that is gone cannot be opened: activating its row offers to find it (DESIGN 3.11).
+      if (entry.missing) {
+        locate(entry);
+        return;
+      }
       openRecent(entry.id).then(
         (outcome) => {
           adoptOpenOutcomes([outcome]);
@@ -68,7 +124,7 @@ export function useRecents(): Recents {
         },
       );
     },
-    [refresh],
+    [refresh, locate],
   );
 
   // The age is read when the list is shown, not on every render.
@@ -79,7 +135,7 @@ export function useRecents(): Recents {
     const onKeyDown = (event: KeyboardEvent<HTMLButtonElement>) => {
       if (event.key === 'Delete') {
         event.preventDefault();
-        remove(entry.id);
+        remove(entry);
       }
     };
     return {
@@ -101,13 +157,23 @@ export function useRecents(): Recents {
               {age !== '' && <span className="truncate text-sm text-text-muted">{age}</span>}
             </span>
           </button>
+          {entry.missing && (
+            <Button
+              variant="ghost"
+              size="sm"
+              aria-label={t('emptyState.recentLocateLabel', { name })}
+              onClick={() => locate(entry)}
+            >
+              {t('emptyState.recentLocate')}
+            </Button>
+          )}
           <span className="opacity-0 group-focus-within/recent:opacity-100 group-hover/recent:opacity-100">
             <IconButton
               size="sm"
               icon={X}
               label={t('emptyState.recentRemove', { name })}
               tabIndex={-1}
-              onClick={() => remove(entry.id)}
+              onClick={() => remove(entry)}
             />
           </span>
         </div>
@@ -118,8 +184,17 @@ export function useRecents(): Recents {
   const clear = useCallback(() => {
     const all = entries;
     setEntries([]);
-    for (const entry of all) removeRecent(entry.id).catch(() => undefined);
-  }, [entries]);
+    // One after the other, so the order they went is the order Undo reverses.
+    let chain: Promise<unknown> = Promise.resolve();
+    for (const entry of all) chain = chain.then(() => removeRecent(entry.id)).catch(() => undefined);
+    void chain.then(() => {
+      if (all.length > 0)
+        toast(
+          t('emptyState.recentCleared'),
+          all.map((entry) => entry.id),
+        );
+    });
+  }, [entries, t, toast]);
 
   return { rows, clear };
 }

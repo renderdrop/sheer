@@ -94,6 +94,8 @@ No path is opened twice, so there is no gap between the check and the use in whi
 open (new ids only: an open document can always be asked for again) and at most 32 files are taken from one source at a time, the rest being one
 `limit_exceeded`; ids are never reused in a session. Every file of a batch is judged on its own: a bad one is an `openFailed`, the others still open.
 
+**A worker stuck past its deadline.** A running PDFium call cannot be interrupted. The first caller that finds the worker past its deadline gets `engine_unavailable` and replaces it (`Engine::recover`, ADR-028): a new worker on a new queue; the old one serves nothing more and leaks its PDFium state if it ever returns. Documents of the old worker answer `engine_crashed` until closed and must be reopened; their page sizes stay readable until then. The engine process of M7 replaces this.
+
 **An open that outlives its deadline.** The worker cannot be interrupted, so an open can finish after its caller gave up (`engine_timeout`). The
 caller then takes its registry entry back with `Registry::abandon`; the worker, once the document is loaded, asks the job's `confirm` callback, which
 records the page count in the registry in one step (`set_page_count`) and fails if the entry is gone. Under the registry's one lock either the
@@ -122,10 +124,12 @@ subscribe_app(on_event: Channel<AppEvent>) -> ()
 // documents
 open_document_dialog() -> Vec<AppEvent>             // multi-select, ≤ 32 files, in the dialog's order: `opened { document }` or `openFailed { .. }` each (one more `openFailed` limit_exceeded `documents` if more were chosen); empty = cancelled. `OpenResult { status: NeedsPassword }` comes with passwords
 open_recent(recent_id: u32) -> AppEvent             // ADR-026: like a file from the dialog, `opened { document }`, `needsPassword { id, displayName }` or `openFailed { .. }` (a file that is gone: io_not_found, and the entry stays listed as `missing`); an id that is not listed → not_found. Recents are recorded when a document the user opened (never the welcome document) is loaded, and at most 50 are kept
+restore_recent(recent_id: u32) -> bool           // Undo of a removal (DESIGN 3.11/3.12): puts the entry back where it was; false if it was not removed in this run or is listed again
+locate_recent(recent_id: u32) -> bool            // "Locate…" for a missing file: Rust shows the file dialog and replaces the entry's path in storage (the path never reaches the UI); false on cancel; unknown id → not_found
 open_welcome_document() -> AppEvent                 // ADR-023, DESIGN §3.14: opens the bundled `resources/welcome/welcome-{en,de}.pdf` for the resolved UI language (settings language, "system" = the language `subscribe_menu`/`app_ready` reported, else en) through `intake::admit` like any file; the path is resolved in Rust from the resource dir and never crosses IPC; `opened { document }` with `kind: Welcome` and `display_name` "Welcome to {app}.pdf" (localized), or `openFailed`; a welcome document already open is closed with discard first (restart). Not added to recents
 list_recents() -> Vec<RecentEntry>                   // ≤ 50, newest first; `RecentEntry { id, displayName, lastOpened (s since 1970), missing }`, ids are per run, stored in `recents.json` (app data dir, atomic, hostile-input tolerant)
 remove_recent(recent_id: u32) -> ()                 // an unlisted id is not an error; the file is untouched
-unlock_document(doc_id: DocId, password: String) -> DocumentInfo        // 1..=1024 bytes, no NUL (invalid_argument); for a document that waited as `needsPassword` (else not_found); held as `Zeroizing<String>`, never stored or logged; wrong → password_required, and after the 3rd wrong one each try waits 1 s in Rust (ADR-026); any other failure forgets the document. `close_document` on a waiting id cancels it
+unlock_document(doc_id: DocId, password: String) -> DocumentInfo        // 1..=1024 bytes, no NUL (invalid_argument); one attempt per document at a time and 4 in all, else limit_exceeded (ADR-028); for a document that waited as `needsPassword` (else not_found); held as `Zeroizing<String>`, never stored or logged; wrong → password_required, and after the 3rd wrong one each try waits 1 s in Rust (ADR-026); any other failure forgets the document. `close_document` on a waiting id cancels it
 set_menu_state(has_document: bool) -> ()            // macOS menu bar: commands that need a document are greyed without one and Cmd+W closes the window; a no-op on Windows
 get_document_info(doc_id: DocId) -> DocumentInfo
 close_document(doc_id: DocId, discard: bool) -> ()                      // dirty && !discard → unsaved_changes
@@ -138,7 +142,7 @@ render_page(req: RenderRequest) -> tauri::ipc::Response   // frame, ADR-002 §6:
 set_viewport(doc_id: DocId, hint: ViewportHint) -> ()      // cancels queued renders of pages that left the viewport, re-ranks the rest (ADR-018)
 get_page_sizes(doc_id: DocId) -> Vec<[f32; 2]>             // [width, height] in points per page, rotation applied, 1..=14 400 pt; ≤ 50 000 pages; read once at load, a lookup
 // text, search, links
-get_text_layer(doc_id: DocId, page_id: PageId) -> TextLayer   // ≤ 200 000 UTF-16 code units, four boxes per unit; `Interactive` priority
+get_text_layer(doc_id: DocId, page_id: PageId) -> TextLayer   // ≤ 200 000 UTF-16 code units, four boxes per unit; `Interactive` priority  // + `rotation` (the page's `/Rotate`, 0/90/180/270; the boxes are before it). Until the page list of `DocumentInfo` carries `PageSlotInfo.rotation`, this is how the UI learns it (`viewer/fileRotation.ts`, filled by the text cache)
 search(doc_id: DocId, query: SearchQuery, on_event: Channel<SearchEvent>) -> u32   // returns at once; one page per `Background` job; ≤ 50 000 hits, ≤ 64 searches at once
 cancel_search(search_id: u32) -> ()                                  // an unknown or finished id is not an error
 get_page_links(doc_id: DocId, page_id: PageId) -> Vec<LinkInfo>     // ≤ 1 000, `Interactive` priority

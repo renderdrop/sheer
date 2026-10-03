@@ -9,6 +9,7 @@ import { useT } from '../../i18n';
 import { selectActiveId, useDocuments } from '../../stores/documents';
 import { useDocViewValue } from '../../stores/view';
 import { loadLayer } from '../textlayer/cache';
+import { f3FindsNext } from './commands';
 import { jumpToHit, stepHit } from './jump';
 import { buildRows, rowRange } from './rows';
 import { snippetFor, type Snippet } from './snippet';
@@ -373,7 +374,7 @@ function SearchView({ docId }: { docId: number }) {
       event.preventDefault();
       event.stopPropagation();
       store.clear(docId);
-    } else if ((isPrimary(event) && event.key.toLowerCase() === 'g') || event.key === 'F3') {
+    } else if ((isPrimary(event) && event.key.toLowerCase() === 'g') || (event.key === 'F3' && f3FindsNext())) {
       event.preventDefault();
       stepHit(event.shiftKey ? -1 : 1);
     }

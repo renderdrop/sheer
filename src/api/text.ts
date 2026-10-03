@@ -21,7 +21,11 @@ export interface TextLayer {
   text: string;
   boxes: Float32Array;
   truncated: boolean;
+  /** The page's own `/Rotate` in degrees (0, 90, 180 or 270): the boxes are before it. */
+  rotation?: number;
 }
+
+const FILE_ROTATIONS: readonly unknown[] = [0, 90, 180, 270];
 
 /**
  * Validates the answer of `get_text_layer`: a text of at most 200 000 code units, four finite numbers in page space for every one
@@ -29,7 +33,8 @@ export interface TextLayer {
  */
 export function parseTextLayer(value: unknown): TextLayer | null {
   if (!isRecord(value)) return null;
-  const { text, boxes, truncated } = value;
+  const { text, boxes, truncated, rotation = 0 } = value;
+  if (!FILE_ROTATIONS.includes(rotation)) return null;
   if (typeof text !== 'string' || text.length > MAX_TEXT_CHARS || typeof truncated !== 'boolean') return null;
   if (!Array.isArray(boxes) || boxes.length !== 4 * text.length) return null;
   const numbers = new Float32Array(boxes.length);
@@ -40,7 +45,7 @@ export function parseTextLayer(value: unknown): TextLayer | null {
     if (i % 4 >= 2 && number < 0) return null;
     numbers[i] = number;
   }
-  return { text, boxes: numbers, truncated };
+  return { text, boxes: numbers, truncated, rotation: rotation as number };
 }
 
 /**

@@ -31,6 +31,9 @@ use crate::limits;
 use crate::storage::atomic::write_atomic;
 use crate::storage::open_without_blocking;
 
+/// Most entries per `list` whose file is looked at (the UI shows 8): a slow or dead drive cannot hold a call for 50 timeouts.
+const MAX_EXISTENCE_CHECKS: usize = 16;
+
 /// File name inside the app data directory.
 pub const FILE_NAME: &str = "recents.json";
 
@@ -56,6 +59,8 @@ struct State {
     /// Newest first.
     items: Vec<Recent>,
     next_id: u32,
+    /// Entries taken off the list in this run with the position they had, newest removal last, for "Undo". At most `MAX_RECENTS`.
+    removed: Vec<(usize, Recent)>,
 }
 
 impl State {
@@ -102,17 +107,21 @@ impl RecentsStore {
     }
 
     /// The list for the UI, newest first, with `missing` set for the files that are not there now. The check touches the file
-    /// system (a file on a network drive can be slow): call it from the blocking pool, never from an async worker.
+    /// system (a file on a network drive can be slow): call it from the blocking pool, never from an async worker. At most
+    /// `MAX_EXISTENCE_CHECKS` entries (the newest) are asked about per call; the others are reported as present.
     pub fn list(&self) -> Vec<RecentEntry> {
         let items = self.lock().items.clone();
         items
             .into_iter()
-            .map(|item| RecentEntry {
+            .enumerate()
+            .map(|(position, item)| RecentEntry {
                 id: item.id,
                 display_name: display_name(&item.path),
                 last_opened: item.last_opened,
                 // A file that cannot be examined (permissions) is not reported gone: opening it says what is wrong.
-                missing: matches!(item.path.try_exists(), Ok(false)),
+                missing: position < MAX_EXISTENCE_CHECKS
+                    && storable(&item.path)
+                    && matches!(item.path.try_exists(), Ok(false)),
             })
             .collect()
     }
@@ -157,9 +166,55 @@ impl RecentsStore {
     /// Removes entry `id`; `false` if there was none. The file itself is not touched.
     pub fn remove(&self, id: u32) -> bool {
         self.change(|state| {
-            let before = state.items.len();
-            state.items.retain(|item| item.id != id);
-            state.items.len() != before
+            let Some(index) = state.items.iter().position(|item| item.id == id) else {
+                return false;
+            };
+            let item = state.items.remove(index);
+            state.removed.push((index, item));
+            if state.removed.len() > limits::MAX_RECENTS {
+                state.removed.remove(0);
+            }
+            true
+        })
+    }
+
+    /// Puts a removed entry (by its id) back where it was; `false` if it was not removed in this run, or its file was recorded
+    /// again meanwhile.
+    pub fn restore(&self, id: u32) -> bool {
+        self.change(|state| {
+            let Some(at) = state.removed.iter().position(|(_, item)| item.id == id) else {
+                return false;
+            };
+            let (index, item) = state.removed.remove(at);
+            if state.items.iter().any(|other| other.path == item.path) {
+                return false;
+            }
+            let index = index.min(state.items.len());
+            state.items.insert(index, item);
+            state.items.truncate(limits::MAX_RECENTS);
+            true
+        })
+    }
+
+    /// Points entry `id` at another file (the user located it): the entry keeps its place and id and gets the new path and
+    /// the time it is found. Another entry for the same file is dropped. `false` for an unknown id or a path that cannot be kept.
+    pub fn relocate(&self, id: u32, path: &Path) -> bool {
+        if !storable(path) {
+            return false;
+        }
+        let opened = now();
+        self.change(|state| {
+            if !state.items.iter().any(|item| item.id == id) {
+                return false;
+            }
+            state
+                .items
+                .retain(|item| item.id == id || item.path != path);
+            if let Some(item) = state.items.iter_mut().find(|item| item.id == id) {
+                item.path = path.to_path_buf();
+                item.last_opened = opened;
+            }
+            true
         })
     }
 
@@ -216,6 +271,8 @@ fn storable(path: &Path) -> bool {
         return false;
     };
     path.is_absolute()
+        // A network, device or stream spelling is never kept, so it is never asked about: that would reach out to the network.
+        && crate::documents::intake::spelling_is_plain(path)
         && !text.contains('\0')
         && !text.is_empty()
         && text.chars().count() <= limits::MAX_RECENT_PATH_CHARS
@@ -334,6 +391,91 @@ mod tests {
         assert!(!store.remove(9999));
         assert_eq!(names(&store), ["a.pdf"]);
         assert_eq!(store.path_of(b), None);
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn network_device_and_stream_paths_are_dropped_on_load_and_never_recorded() {
+        let dir = TempDir::new();
+        let bad = [
+            r"\\host\share\x.pdf",
+            r"\\?\UNC\host\share\x.pdf",
+            "//host/share/x.pdf",
+            r"\\.\NUL",
+            r"C:\dir\a.pdf:stream",
+        ];
+        let mut files =
+            vec![serde_json::json!({ "path": abs("ok.pdf").to_str().unwrap(), "lastOpened": 1 })];
+        files.extend(
+            bad.iter()
+                .map(|p| serde_json::json!({ "path": p, "lastOpened": 2 })),
+        );
+        let text = serde_json::json!({ "version": 1, "files": files }).to_string();
+        fs::write(dir.path().join(FILE_NAME), text).unwrap();
+        let store = store(&dir);
+        assert_eq!(names(&store), ["ok.pdf"]);
+        for p in bad {
+            store.record_at(Path::new(p), 3);
+            assert!(!store.relocate(store.list()[0].id, Path::new(p)), "{p}");
+        }
+        assert_eq!(names(&store), ["ok.pdf"]);
+    }
+
+    #[test]
+    fn only_the_newest_entries_are_looked_at() {
+        let dir = TempDir::new();
+        let store = store(&dir);
+        for n in 0..=MAX_EXISTENCE_CHECKS {
+            store.record_at(&abs(&format!("gone-{n}.pdf")), n as u64 + 1);
+        }
+        let list = store.list();
+        assert!(list[..MAX_EXISTENCE_CHECKS].iter().all(|e| e.missing));
+        assert!(!list[MAX_EXISTENCE_CHECKS].missing);
+    }
+
+    #[test]
+    fn a_removed_entry_comes_back_in_its_place_once() {
+        let dir = TempDir::new();
+        let store = store(&dir);
+        for (n, name) in ["a.pdf", "b.pdf", "c.pdf"].iter().enumerate() {
+            store.record_at(&abs(name), n as u64 + 1);
+        }
+        let b = store.list()[1].id;
+        assert!(store.remove(b));
+        assert_eq!(names(&store), ["c.pdf", "a.pdf"]);
+        assert!(store.restore(b));
+        assert_eq!(names(&store), ["c.pdf", "b.pdf", "a.pdf"]);
+        assert_eq!(store.path_of(b), Some(abs("b.pdf")));
+        assert!(!store.restore(b), "not removed any more");
+        assert!(!store.restore(9999));
+        // It was recorded again meanwhile: nothing is doubled.
+        assert!(store.remove(b));
+        store.record_at(&abs("b.pdf"), 9);
+        assert!(!store.restore(b));
+        assert_eq!(names(&store), ["b.pdf", "c.pdf", "a.pdf"]);
+    }
+
+    #[test]
+    fn a_located_file_replaces_the_path_of_its_entry_and_survives_a_restart() {
+        let dir = TempDir::new();
+        let store = store(&dir);
+        store.record_at(&abs("a.pdf"), 1);
+        store.record_at(&abs("b.pdf"), 2);
+        let a = store.list()[1].id;
+        assert!(store.relocate(a, &abs("moved/a2.pdf")));
+        assert_eq!(names(&store), ["b.pdf", "a2.pdf"]);
+        assert_eq!(store.list()[1].id, a);
+        // Another entry for the same file goes; a path that cannot be kept and an unknown id change nothing.
+        let b = store.list()[0].id;
+        assert!(store.relocate(b, &abs("moved/a2.pdf")));
+        assert_eq!(names(&store), ["a2.pdf"]);
+        assert!(!store.relocate(9999, &abs("x.pdf")));
+        assert!(!store.relocate(a, Path::new("relative.pdf")));
+        assert_eq!(names(&store), ["a2.pdf"]);
+        assert_eq!(
+            RecentsStore::load(dir.path().join(FILE_NAME)).list().len(),
+            1
+        );
     }
 
     #[test]

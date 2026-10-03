@@ -475,6 +475,9 @@ fn text_of_a_rotated_page_is_in_unrotated_page_space() {
     let at = 4 * (units(&layer.text) - "Turned page".len());
     assert_near(layer.boxes[at], 72.0, "x of the T");
     assert_near(layer.boxes[at + 1], 792.0 - 712.67, "y of the T");
+    // The page's own turn is reported next to the boxes, so the UI can place them; an upright page reports 0.
+    assert_eq!(layer.rotation, 90);
+    assert_eq!(state.text_layer(id, page(0)).unwrap().rotation, 0);
 }
 
 #[test]

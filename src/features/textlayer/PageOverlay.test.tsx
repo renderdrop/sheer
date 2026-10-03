@@ -4,7 +4,8 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import type { TextLayer } from '../../api/text';
 import type { Quad } from '../../api/wire';
-import { useSearch } from '../search/store';
+import { useSearch, type Hit } from '../search/store';
+import { forgetFileRotations, setFileRotation } from '../viewer/fileRotation';
 import { PageOverlay, type PageOverlayProps } from './PageOverlay';
 
 const TEXT = 'Hello world';
@@ -39,6 +40,7 @@ beforeEach(() => {
 });
 afterEach(() => {
   useSearch.setState({ byDoc: {}, focusRequest: 0 });
+  forgetFileRotations(1);
 });
 
 const wrapper = (container: HTMLElement) => container.firstElementChild as HTMLElement;
@@ -69,6 +71,51 @@ describe('PageOverlay', () => {
     expect(box.style.top).toBe('0px');
     // Spans stay in page space: the same numbers as upright.
     expect(container.querySelector<HTMLElement>('[data-run-start="0"]')?.style.left).toBe('10px');
+  });
+
+  it('turns by the page own /Rotate: a /Rotate 90 page drawn 200 x 100 pt is a 100 x 200 pt layer rotated a quarter', () => {
+    setFileRotation(1, 0, 90);
+    const { container } = render(
+      <PageOverlay {...props({ widthPt: 200, heightPt: 100, boxWidth: 400, boxHeight: 200 })} />,
+    );
+    const box = wrapper(container);
+    expect(box.style.width).toBe('100px');
+    expect(box.style.height).toBe('200px');
+    expect(box.style.transform).toBe('rotate(90deg) scale(2)');
+    // Together with the view: 90 + 180 is 270.
+    const turned = render(
+      <PageOverlay {...props({ widthPt: 200, heightPt: 100, rotation: 180, boxWidth: 400, boxHeight: 200 })} />,
+    );
+    expect(wrapper(turned.container).style.transform).toBe('rotate(270deg) scale(2)');
+  });
+
+  it('draws the hits of a page only once its own rotation is known: before that they would be off by it', () => {
+    const hit: Hit = { index: 0, page: 0, quads: [quad(10)] };
+    useSearch.setState({
+      byDoc: {
+        1: {
+          text: 'x',
+          matchCase: false,
+          wholeWord: false,
+          status: 'done',
+          runId: 1,
+          ran: 'x',
+          hits: [hit],
+          pageHits: { 0: [hit] },
+          pageCount: 1,
+          truncated: false,
+          progress: null,
+          active: -1,
+          stepped: false,
+          error: null,
+        },
+      },
+    });
+    const { container, rerender } = render(<PageOverlay {...props({ layer: null })} />);
+    expect(container.querySelector('[data-search-hit]')).toBeNull();
+    setFileRotation(1, 0, 0);
+    rerender(<PageOverlay {...props({ layer: null, interactive: false })} />);
+    expect(container.querySelector('[data-search-hit]')).not.toBeNull();
   });
 
   it('takes the pointer only while the Select tool is active', () => {

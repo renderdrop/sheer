@@ -19,7 +19,16 @@ use crate::limits;
 type Documents<'a> = HashMap<DocumentId, PdfDocument<'a>>;
 
 /// Worker entry point: binds PDFium, then serves jobs until every `Engine` handle is gone.
-pub(super) fn run(library: &Path, mut requests: Requests, health: &Health, sizes: &SizeCache) {
+///
+/// `stale` are documents of an earlier worker that was given up on (`Engine::recover`): they are not loaded here and answer
+/// `engine_crashed` until closed, so the UI learns that they must be reopened.
+pub(super) fn run(
+    library: &Path,
+    mut requests: Requests,
+    health: &Health,
+    sizes: &SizeCache,
+    stale: HashSet<DocumentId>,
+) {
     let bound = guarded(|| {
         Pdfium::bind_to_library(library).map_err(|error| {
             AppError::logged(
@@ -42,9 +51,14 @@ pub(super) fn run(library: &Path, mut requests: Requests, health: &Health, sizes
     let pdfium = Pdfium::new(bindings);
     let mut documents: Documents<'_> = HashMap::new();
     // Documents whose job panicked. They are dropped from `documents` and refuse further work until closed.
-    let mut crashed: HashSet<DocumentId> = HashSet::new();
+    let mut crashed: HashSet<DocumentId> = stale;
 
     while let Some(request) = requests.next() {
+        // Replaced while it was stuck: another worker owns PDFium now, so nothing more is served from here.
+        if health.is_retired() {
+            requests.fail(request, &AppError::new(ErrorCode::EngineUnavailable));
+            continue;
+        }
         // The caller already gave up (an earlier job ran long): skip the stale work.
         if request.expired() {
             requests.fail(
@@ -62,6 +76,11 @@ pub(super) fn run(library: &Path, mut requests: Requests, health: &Health, sizes
             sizes,
             request.job,
         );
+    }
+    if health.is_retired() {
+        // Dropping the documents and `pdfium` would call `FPDF_DestroyLibrary` under the worker that replaced this one.
+        std::mem::forget(documents);
+        std::mem::forget(pdfium);
     }
 }
 
