@@ -1092,3 +1092,123 @@ It remains defence in depth; the hard bound is the M7 engine process with an add
 
 **Consequences.** `prescan.rs` is rewritten around the lexer; the bypass inputs from both reviews become regression tests; a property
 test (random bytes / mutated corpus) asserts the lexer never panics and terminates.
+
+## ADR-041 — Forms and signatures (M4)
+
+**Status:** accepted (2026-10-03). Amends ADR-002 §7 (forms are read by lopdf), ADR-003 §2/§5 (the planned `stamp { assetId }` kind is
+replaced by `signature` and `mark`), SECURITY D2. Signatures and types: ARCHITECTURE §5 "Forms and signatures".
+
+**Context.** M4: fill AcroForms (text, checkbox, radio, choice) with the keyboard, save them incrementally with appearances, flatten;
+create signatures (draw, type, image), place/move/scale them, initials and date; Fill & Sign on flat forms (text, check, cross, dot);
+a signature library encrypted at rest with its key in the OS keychain. Every PDF and every image is hostile input.
+
+**Options.**
+- Form model: (a) PDFium's form API (pdfium-render `PdfFormField`) read and mutated in the engine — no object ids, no `/MaxLen`,
+  `/Q`, `/DA`, `/MK`, on-state names, `/Tabs`; PDFium would hold edits it can never save (ADR-002 §7). (b) **lopdf reads the field tree
+  once** into a Rust model; values are `DocState`; lopdf writes `/V` + `/AP` at save. (c) A JS form engine in the webview: the
+  webview never holds PDF bytes.
+- Signatures: (a) the generic `stamp { assetId }` of ADR-003; (b) **a typed `signature` kind plus a `mark` kind**; (c) a separate
+  "signature layer" outside the annotation model: a second undo stack.
+- Library crypto: AES-GCM vs **XChaCha20-Poly1305** (random 192-bit nonces need no counter; pure Rust, constant time without AES-NI).
+
+**Decision.**
+
+1. **Form model (b).** `pdfwrite::forms::read_fields` runs once per document on the first `get_form_fields` (blocking pool,
+   `load_untrusted` with the ADR-040 pre-scan, 30 s deadline, only if `DocFlags.has_forms`). It walks `/AcroForm /Fields` iteratively
+   (visited set, depth ≤ 32), inherits `/FT /Ff /V /DV /DA /Q /Opt /MaxLen`, and returns per terminal field: fully qualified name,
+   `/TU`, kind, flags, value, default, options, and per widget the object id, file page index, `/Rect` (converted by `pdfwrite::coords`
+   to page space), on-state, `/MK` colours, `/DA` size and colour, and its position in the page's tab order (`/Tabs /R` and `/S` = rows
+   top-to-bottom then left-to-right, `/C` = columns, none = `/Annots` order). Kinds: `text`, `checkbox`, `radio` (also a checkbox whose
+   widgets have different on-states), `choice` (combo/list, editable, multi-select), `signature` and `button` (listed, never filled),
+   `unsupported`. Object ids stay in Rust (`FormModel`); the UI sees `FieldId` (session `u32`, never reused). PDFium keeps rendering
+   widgets from their file appearance; it is never told about values.
+2. **Values are model state.** `DocCommand::SetFieldValue { field, value, coalesce }` (label `field.set`) validates against the
+   field (read-only refused; `MaxLen`; option membership unless editable; text ≤ 32 768 chars, WinAnsi only, LF only if multiline) and
+   returns the old value as its inverse. Text fields commit on blur, Enter, Tab and after 500 ms idle with `coalesce = "field:<id>"`
+   (one undo step per editing session, ADR-003 §7). Reset = a `Batch` of `SetFieldValue` to the defaults (`form.reset`).
+   `ChangeSet.fields` carries every changed `FieldState`. A field whose value is not clean is drawn by the overlay control on an
+   opaque `--field-fill`; a clean, unfocused field's control is transparent (PDFium's render shows the file appearance). Same rule
+   as ADR-003 §4, no PDFium mutation, no `pageRev` bump while typing.
+3. **Save (incremental, `pdfwrite::forms::write_values`).** Per changed field: re-append the field dict with `/V` (text string:
+   PDFDocEncoding if representable, else UTF-16BE; buttons: the on-state name or `/Off` on the field that carries `/V`; multi-select:
+   array + `/I`), without `/RV`. Per widget: buttons get `/AS` and keep their file `/AP` if it has the on-state, else a generated one
+   (check, circle); text and choice get a new `/AP /N` stream built by `pdfwrite::appearance`: `/MK /BG` fill, `/MK /BC` border,
+   `/Tx BMC … EMC`, Helvetica (WinAnsiEncoding, `/Helv` in the stream's own `/Resources`) at the `/DA` size and colour (size 0 =
+   auto: fit the height, ≤ 12 pt), `/Q` alignment, comb cells, multiline wrap with Helvetica metrics, list boxes from `/TI` with the
+   selection highlighted. `/NeedAppearances` is **never set**; an existing `true` is left (other viewers regenerate the fields we did
+   not touch). **Calculation, format, validation and keystroke scripts are not run** (no JS engine; `/AA` and `/CO` untouched);
+   `FormInfo.hasScripts` lets the UI say so once. **XFA**: full XFA has no AcroForm fields and stays warn-only; a hybrid form is
+   filled through its AcroForm and the save removes `/XFA` from a re-appended `/AcroForm` (`warnings: ["xfaRemoved"]`), so other
+   viewers do not show stale XFA data. A signed document: field values are an incremental change, so the existing DocMDP rule of
+   ADR-004 §4 decides whether `needs_confirmation{breaksSignature}` is asked. After a Full save the form is re-read and `FieldId`s are
+   kept by fully qualified name.
+4. **Flatten is a new-file job** (ADR-036 §6, full rewrite, Save As dialog, the result opens): first every changed field gets its
+   appearance (step 3); then per page, for each widget that is not Hidden/NoView and has `/AP /N` (the `/AS` state for buttons), the
+   appearance becomes a Form XObject `/SheerFlN` in the page's `/Resources /XObject`, the page content is wrapped `q … Q` and
+   `q <a b c d e f> cm /SheerFlN Do Q` is appended (the matrix maps `/BBox` through `/Matrix` onto `/Rect`, PDF 32000 §12.5.5); the
+   widgets leave `/Annots`; `/AcroForm` is removed when no field is left (signature values with it: `signaturesRemoved`).
+   `scope: "formsAndAnnotations"` burns every annotation with an appearance the same way (Links and Popups excepted).
+5. **Signatures and Fill & Sign are annotation kinds (b)**, so placement, move, scale, delete and undo reuse `CreateAnnotation`,
+   `MoveAnnotations`, `UpdateAnnotation { box }` and the overlay:
+   - `signature { box, role: signature | initials, art: { type: "asset", assetId, aspect } | { type: "file" } }`. PDF: `/Stamp` with
+     `/NM (sheer-sig-<32 hex>)` or `sheer-ini-…`, `/F 4`, `/AP /N` = filled vector paths in `color`, or an image XObject (DeviceRGB,
+     8 bpc, Flate, `/SMask` from alpha; one XObject per asset per save). On reopen PDFium imports it as `art: file`: movable and
+     scalable (a `Control` job mirrors `set_bounds` into PDFium, `pageRev += 1`; save writes only `/Rect`, the AP is kept by
+     reference), never re-coloured.
+   - `mark { box, glyph: check | cross | dot }`: `/Stamp`, `/NM (sheer-mark-<glyph>-<hex>)`, a vector AP from fixed geometry, so it
+     imports back as a typed `mark`.
+   - Text and date are `freeText` presets (no border, no fill); the date is text the UI formats with `Intl` in the UI language and
+     the user may edit. Initials are `signature` with `role: initials`.
+   - `color` applies to vector art and marks; raster art ignores it. Aspect is kept by the UI when scaling; Rust bounds the box only.
+6. **Creation.** Drawn: the UI sends perfect-freehand outline polygons; Rust trims, normalises (height 1 000 units) and simplifies
+   them. Typed: Rust lays out the text with the bundled **Homemade Apple** font (Apache-2.0, Font Diner; `resources/fonts/`, read only
+   by Rust, so no webfont and no CSP change) via **skrifa** outlines, flattened to polygons (tolerance 0.5 unit); a missing glyph is
+   `invalid_argument` (`glyph`). Image: `import_signature_image` opens the **native dialog in Rust** (PNG, JPEG), judges the opened
+   handle like intake (regular file ≤ 10 MiB), sniffs the format from magic bytes, decodes with `image` (features `jpeg` + `png`;
+   `Limits` 4 000 px per side, 16 MP, 128 MiB), converts to RGBA8, optionally makes near-white transparent (luminance ≥ 235),
+   trims to content, downsizes to ≤ 1 600 px on the long side and re-encodes as PNG — metadata (EXIF, ICC, text chunks) never
+   survives. All three produce a **draft** (app-level, in memory, ≤ 16, oldest dropped) that can be placed and/or saved.
+7. **Library (`storage::signatures`, `storage::keychain`).** One file `<app data>/signatures/library.bin` (dir `0700`, file `0600`
+   on Unix, written by `storage::atomic`): `"SHLB" | u8 version=1 | 24-byte nonce | XChaCha20-Poly1305(JSON)` with the 5-byte header
+   as AAD; a new random nonce per write. Plaintext JSON: `{ v: 1, items: [{ id: <32 hex>, role, created, art }] }`, art =
+   `{ vector: { w, h, paths } }` or `{ raster: { png: base64 } }`. Limits: ≤ 32 items, ≤ 512 KiB of art per item, file ≤ 16 MiB,
+   checked before decrypt and after. The key is 32 bytes from `getrandom`, created on the first save, kept as `Zeroizing<[u8; 32]>`
+   only while a call runs, stored as a binary secret under service `app.sheer.desktop`, user `signature-library-key-v1`.
+   **No keychain → no library**: `status: "unavailable"`, `save_signature` answers `unsupported_feature` (`keychain`); signatures can
+   still be created and placed for the session; nothing is ever written in plaintext. A file that does not decrypt (key gone, tampered)
+   is `status: "locked"`; the only way on is `clear_signature_library` (deletes file and key; a new key on the next save). Deletion
+   rewrites the file without the item (no secure-wipe claim: the old ciphertext is unreadable without the key). Keychain calls run on
+   the blocking pool with a 60 s deadline (macOS may show its access prompt). Residual: Windows Credential Manager and an unsigned
+   macOS build do not bind the secret to this app — another process of the same user can read it; the encryption protects copies
+   of the data folder (backups, sync, a lost disk), not a compromised account. Unsigned macOS updates may re-prompt for access.
+8. **IPC rules.** No path crosses IPC (image import and flatten output use Rust dialogs); art reaches the UI as vector paths or as
+   an `SHR1` PNG frame (`get_signature_preview`), never as file bytes; library item ids are random, not indices; assets of a document
+   (≤ 64, ≤ 32 MiB) live in `DocState` and are dropped on close.
+
+**Crates** (each logged in `docs/LICENSES.md`, `cargo deny` clean):
+- `chacha20poly1305` 0.11 — Apache-2.0 OR MIT, RustCrypto, NCC-audited, released 2026-06.
+- `getrandom` 0.3 — MIT OR Apache-2.0, rust-random; key and nonces.
+- `keyring-core` 1.0 (2026-04), `apple-native-keyring-store` 1.0 (macOS only, 2026-07), `windows-native-keyring-store` 1.1
+  (Windows only, 2026-05) — all MIT OR Apache-2.0, open-source-cooperative/keyring-rs (successor of `keyring` 3; the `keyring` 4.2
+  umbrella is not used). Edition 2024, fine with rust-version 1.90. The API churned before 1.0, so the versions are pinned to the
+  minor and wrapped behind `storage::keychain::SecretStore` (one file to swap; an in-memory store for tests). Linux dev builds have
+  no store: `unavailable`.
+- `skrifa` 0.x — MIT OR Apache-2.0, googlefonts/fontations, `forbid(unsafe_code)`, active. `ttf-parser` rejected: marked unmaintained.
+- `image` gains feature `png` (decoder via `png`, MIT OR Apache-2.0, already a dependency).
+- Font: Homemade Apple, Apache-2.0 (license file shipped next to it).
+
+**Consequences.** One lopdf parse per form document (on demand) plus the save parse. Field appearances use Helvetica only, so
+non-WinAnsi values are refused in v1. Forms that rely on scripts keep stale calculated fields (the UI says so). Signatures from a
+previous session can be moved and scaled, not re-coloured. The library is as safe as the OS account. Not in M4: digital (PKCS#7)
+signatures, rich-text fields, field creation, form merge on insert/merge (ADR-036), XFDF.
+
+## ADR-042 — M4 UI decisions (DESIGN §3.32–§3.35) and the typed-signature font
+
+**Decision.** (1) **Typed signatures use one bundled font, Homemade Apple (Apache-2.0, ADR-041)**, converted to outlines via `skrifa`;
+no system fonts (no per-platform allowlist, no fsType checks), no font embedded in the PDF. This overrides the designer's
+"system fonts only" note in §3.33, which assumed no permissive font was available. (2) Fields are fillable under Select and the Form
+tool (F); F jumps to the first empty field and offers the highlight toggle and Flatten; field scripts never run. (3) Flatten lives in
+Form tool options, More and the macOS Edit menu; its confirm focuses Cancel; undoable until save (ADR-041: flatten writes a new file
+on save). (4) The Sign tool opens a menu popover; signatures are always aspect-locked; the date follows the OS region and is fixed text.
+(5) Library: at most 8 entries per kind; key in the OS keychain; when the keychain is unavailable, entries live for the session only
+(nothing written, ADR-041 §4); Undo after delete stays inline in the row (toasts sit under the modal layer).

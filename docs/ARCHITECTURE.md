@@ -27,16 +27,17 @@ state.rs         AppState { registry, engine, settings, recents }
 error.rs         AppError (internal) → UiError (IPC)
 limits.rs        every numeric bound as a const
 commands/        thin: validate → registry/engine → UiError
-                 app · documents · render · outline · text · search · links · edit · pages (M3) · forms (M4) · export (M6) · recovery (M7)
+                 app · documents · render · outline · text · search · links · edit · pages (M3) · forms, signatures (M4) · export (M6) · recovery (M7)
 documents/       sources (M3: `SourceRegistry`, import bytes in memory, ADR-036 §4) · registry (the table of open documents: claim = dedupe by canonical path, abandon = the arbiter of an open that outlives its deadline) · intake (admit: canonicalize, open once, judge the handle; command-line and URL parsing; the dialog is in commands/) · recents
 engine/          the only PDFium user (ADR-002)
                  mod (Engine, Job) · worker (open, frames and tiles, page sizes) · queue (priority, cancellation by viewport, dedupe: ADR-018) · guard (catch_unwind, deadlines) · encode (frames)
-                 pages (M3: rotate, append blank, import pages; append-only) · text (the layer, and the one reading of a page's characters) · search (one page: the page's text, found by `model::find`) · links · outline · space (pages and destinations in page space) · import (annotations → model) · forms (M4) · transport (M7)
+                 pages (M3: rotate, append blank, import pages; append-only) · text (the layer, and the one reading of a page's characters) · search (one page: the page's text, found by `model::find`) · links · outline · space (pages and destinations in page space) · import (annotations → model; M4: `sheer-*` `/NM` → signature, mark) · transport (M7). Forms are not read here (ADR-041); widgets render from their file appearance
 model/           engine-free domain (ADR-003)
                  geometry (Point, Rect, Quad, PageBox) · find (text search) · reading (what the UI is told about content) · ids · annotation · page · command · history · doc_state · validate (the first three exist)
 pdfwrite/        the only lopdf user (ADR-004)
-                 save · annots · appearance · coords · pagetree (M3: tree rewrite, page deep copy) · produce (M3: extract, split, merge) · compress (M3: `image`, jpeg only) · crypt (M5)
-storage/         atomic (temp + fsync + rename) · backup · settings · app_dirs · autosave (M7)
+                 save · annots · appearance · coords · pagetree (M3: tree rewrite, page deep copy) · produce (M3: extract, split, merge) · compress (M3: `image`, jpeg only) · forms (M4: read_fields, write_values, field appearances) · flatten (M4) · crypt (M5)
+signatures/      M4, engine-free and lopdf-free: art (normalise, simplify, bounds) · typed (skrifa + bundled font → polygons) · image (dialog handle → `image` decode → RGBA → PNG) · drafts (DraftStore, ≤ 16)
+storage/         atomic (temp + fsync + rename) · backup · settings · app_dirs · signatures (M4: library.bin, XChaCha20-Poly1305) · keychain (M4: `SecretStore` over keyring-core) · autosave (M7)
 security/        links (http/https/mailto allowlist, `SafeUrl`) · names (display-name sanitizer; today `documents::sanitize_text`)
 menu/            macOS menu bar (ADR-016): mod (MenuBridge: the channel to the UI, the id allowlist, build + rebuild on a language change) · spec (layout of src/actions/menu.json, texts of the UI catalogs, ACTION_IDS)
 platform/        macos (reduced transparency flag) · windows
@@ -241,8 +242,8 @@ document. The frontend therefore cannot make Rust open an arbitrary URL.
 A render frame is at most 4096×4096 px (16 Mpx), checked after the bucket and tile are resolved against the page's real size: a whole page above that is `limit_exceeded` and the UI asks for tiles; a page more than 64 tiles wide or high is refused. `get_page_sizes` and a viewport hint are bounded the same way (≤ 50 000 pages, ≤ 64 pages per list, refused while the hint is read). A tile column or row of 64 or more is refused at the command; at most 8 callers join one queued or running frame; at most 96 `render_page` calls per document and 128 in all are in flight (`limit_exceeded`, `requests`).
 
 **Planned commands.** The milestone ADR fixes the exact signatures; the same rules apply, and output paths come from a Rust-side save dialog.
-M3: see "Pages" below (ADR-036; `insert_pages_from_file` became `pick_pdf_sources` + `InsertPages`). M4: `get_form_fields`,
-`list_signatures`, `save_signature`, `delete_signature`. M5: `set_protection`, `remove_protection`, `get_metadata`, `set_metadata`.
+M3: see "Pages" below (ADR-036; `insert_pages_from_file` became `pick_pdf_sources` + `InsertPages`). M4: see "Forms and
+signatures" below (ADR-041). M5: `set_protection`, `remove_protection`, `get_metadata`, `set_metadata`.
 M6: `export_images`, `print_document`, `reveal_in_folder`. M7: `list_recoverable`, `restore_autosave`, `discard_autosave`.
 
 ### Annotations (ADR-003; `model/{annotation,command,history,doc_state,ids}.rs`, `engine/import.rs`, `commands/annotations.rs`)
@@ -301,6 +302,92 @@ type JobEvent =
 - *Frontend.* `stores/pages` holds the `PageSlotInfo[]` per document from `DocumentInfo`/ChangeSet; `layout.ts` builds rows from it, so a move relayouts without renders. `features/pages`: the organizer grid (virtualized thumbnails, multi-select, drag to `movePages`), insert/extract/split/merge/compress dialogs, one progress row per job in the status bar.
 - *Save.* Incremental page-tree rewrite or Full per ADR-036 §5; `SaveAsOptions.cleanCopy: boolean` selects Full. Signed or certified + any page change → `needs_confirmation{breaksSignature}`.
 - *Limits.* 50 000 live pages, 60 000 engine pages, ≤ 50 000 ids per page list (unique, existing), 5 000 pages per insert, sources ≤ 512 MiB each and 1 GiB in all, ≤ 2 jobs at once, 10 min per job; `image::Limits` 10 000 px per side, 50 MP, 256 MiB; Flate output ≤ 256 MiB per stream; deep copy ≤ 1 000 000 objects.
+
+### Forms and signatures (ADR-041; `pdfwrite/{forms,flatten,appearance}.rs`, `model/{form,annotation,command,doc_state}.rs`, `signatures/`, `storage/{signatures,keychain}.rs`, `commands/{forms,signatures}.rs`)
+
+```rust
+// commands/forms.rs (M4)
+get_form_fields(doc_id: DocId) -> FormInfo            // first call reads the field tree (blocking pool, load_untrusted, 30 s); later calls answer from DocState.form.
+                                                      // no form → FormInfo { fields: [], .. }; full XFA → unsupported_feature (what: "xfa")
+apply_command(doc_id: DocId, command: DocCommand) -> ChangeSet   // + SetFieldValue
+flatten_document(doc_id: DocId, opts: FlattenOptions, on_event: Channel<JobEvent>) -> Option<JobId>   // Save As dialog (None = cancelled); full rewrite; result opens
+// commands/signatures.rs (M4); library calls run on the blocking pool, keychain deadline 60 s
+create_drawn_signature(role: SignatureRole, outlines: Vec<Vec<Point>>) -> SignatureDraft   // perfect-freehand outline polygons in pad pixels
+create_typed_signature(role: SignatureRole, text: String, font: TypedFont) -> SignatureDraft  // 1..=64 chars, no control chars
+import_signature_image(role: SignatureRole, remove_background: bool) -> Option<SignatureDraft> // Rust open dialog (PNG, JPEG); None = cancelled
+list_signatures() -> SignatureLibrary
+save_signature(draft_id: DraftId) -> SignatureItem    // keychain missing → unsupported_feature (what: "keychain"); locked → invalid_argument (what: "library"); 32 items → limit_exceeded
+delete_signature(item_id: String) -> ()               // 32 lowercase hex; unknown → not_found
+clear_signature_library() -> ()                       // deletes library.bin and the keychain entry; the way out of `locked`
+get_signature_preview(art: SignatureRef, max_px: u16 /* 16..=1024 */) -> tauri::ipc::Response   // SHR1 PNG frame of raster art
+use_signature(doc_id: DocId, art: SignatureRef) -> AssetInfo   // copies the art into the document's assets; then CreateAnnotation { kind: "signature" }
+```
+
+```ts
+type FieldId = number; type AssetId = number; type DraftId = number;
+type FieldValue =   // wire `{ type, ..fields }`
+  | { type: 'text'; text: string }
+  | { type: 'checked'; on: boolean }
+  | { type: 'radio'; selected: number | null }          // index into the field's `states`
+  | { type: 'choice'; selected: string[]; custom: string | null };   // export values; custom only if editable
+type FieldKind =
+  | { type: 'text'; multiline: boolean; maxLen: number | null; comb: boolean; password: boolean; align: 'left' | 'center' | 'right'; fontSize: number /* 0 = auto */ }
+  | { type: 'checkbox' }
+  | { type: 'radio'; states: string[] /* on-state names, sanitized, display only */; noToggleOff: boolean }
+  | { type: 'choice'; combo: boolean; editable: boolean; multiSelect: boolean; options: { export: string; label: string }[] }
+  | { type: 'signature' } | { type: 'button' } | { type: 'unsupported' };
+interface Widget { pageId: PageId; rect: Rect /* page space */; tabOrder: number /* within its page */; state: number | null /* radio: index into states */;
+  fill: Rgb | null; border: Rgb | null; textColor: Rgb }
+interface FormField { id: FieldId; name: string /* fully qualified, ≤ 512 */; tooltip: string | null; kind: FieldKind; readOnly: boolean; required: boolean;
+  value: FieldValue; defaultValue: FieldValue | null; widgets: Widget[]; sync: 'clean' | 'modified' }
+interface FormInfo { fields: FormField[]; hasScripts: boolean; xfa: 'none' | 'hybrid' | 'full'; needAppearances: boolean }
+interface FieldState { id: FieldId; value: FieldValue; sync: 'clean' | 'modified' }
+// DocCommand member:  { type: 'setFieldValue'; field: FieldId; value: FieldValue; coalesce?: string /* "field:<id>" */ }
+// ChangeSet gains:    fields: FieldState[]   (empty when no field changed)
+type FlattenOptions = { scope: 'forms' | 'formsAndAnnotations' };
+// JobEvent.done.warnings gains 'xfaRemoved'; SaveResult.warnings too
+
+type SignatureRole = 'signature' | 'initials';
+type TypedFont = 'homemadeApple';
+type SignatureArt = { type: 'vector'; w: number; h: number; paths: Point[][] /* filled polygons, nonzero, y down */ }
+                  | { type: 'raster'; w: number; h: number /* px; pixels via get_signature_preview */ };
+type SignatureRef = { type: 'draft'; id: DraftId } | { type: 'library'; id: string };
+interface SignatureDraft { id: DraftId; role: SignatureRole; art: SignatureArt }
+interface SignatureItem { id: string /* 32 hex */; role: SignatureRole; created: string /* ISO 8601 */; art: SignatureArt }
+interface SignatureLibrary { status: 'ready' | 'empty' | 'unavailable' | 'locked'; items: SignatureItem[] }
+interface AssetInfo { assetId: AssetId; aspect: number /* w / h */; art: SignatureArt }
+// AnnotationBody gains (replaces the planned `stamp`):
+//   | { kind: 'signature'; box: Rect; role: SignatureRole; art: { type: 'asset'; assetId: AssetId; aspect: number } | { type: 'file' } }
+//   | { kind: 'mark'; box: Rect; glyph: 'check' | 'cross' | 'dot' }
+```
+
+- *Ownership.* `DocState.form: Option<FormModel>` (fields, object ids, widget refs, values, clean values) and `DocState.assets: AssetStore`
+  (`Arc<Art>` by `AssetId`). Only `pdfwrite::forms` sees object ids. Widget pages map `File { index } → PageId` through the slots; a widget on
+  a deleted page drops out of the tab order. `signatures::DraftStore` and the library are app-level (`AppState`). Import rules: `keyring_core`
+  and the store crates only in `storage/keychain.rs`, `chacha20poly1305` only in `storage/signatures.rs`, `skrifa` only in `signatures/typed.rs`.
+- *Validation* (`model::validate`, before anything changes): read-only, signature, button and unsupported fields refuse values
+  (`invalid_argument`, `field`); value type must match the kind; text ≤ 32 768 chars, ≤ `maxLen`, WinAnsi only, LF only if multiline, no other
+  control chars; radio index < `states.len()`, `null` only without `noToggleOff`; choice values ∈ options unless editable, one value unless
+  multi-select, custom ≤ 512 chars. Signature `box` ≥ 4 pt per side; `assetId` alive in this document; `file` art only from import.
+- *Rendering.* PDFium renders widgets and clean signature/mark stamps. `features/forms` puts one control per fillable widget in `PageOverlay`
+  (`input`, `textarea`, `select`, `role="checkbox"`/`"radio"`): transparent while clean and unfocused, opaque `--field-fill` when focused or
+  modified. Signatures and marks with `sync ≠ clean` are drawn by the annotation overlay (vector paths as SVG, raster via
+  `get_signature_preview` as a Blob URL). Moving or scaling an `art: file` signature runs a `Control` job (`set_bounds`) and bumps `pageRev`.
+- *Keyboard.* Tab / Shift+Tab walk the widgets by (page position in the current order, `tabOrder`), skipping read-only; Space toggles a
+  checkbox; arrows move within a radio group; Alt+Down opens a combo; Enter commits a single-line field and moves on; Escape reverts the
+  uncommitted text and returns focus to the canvas. Text commits with `coalesce: "field:<id>"` on blur, Enter, Tab and 500 ms idle.
+- *Save.* `pdfwrite::forms::write_values` joins the incremental save of ADR-033/036 (field dicts with `/V`, widget `/AS` and `/AP`, `/AcroForm`
+  only when `/XFA` is removed). Signatures: `/Stamp` with `sheer-sig-` / `sheer-ini-` `/NM` and an image or path AP; marks `sheer-mark-<glyph>-`;
+  one image XObject per asset per save. `art: file` writes `/Rect` only.
+- *Library file.* `<app data>/signatures/library.bin` = `"SHLB" | 0x01 | nonce[24] | ciphertext+tag`, AAD = the first 5 bytes. Key: 32 bytes,
+  service `app.sheer.desktop`, user `signature-library-key-v1`. `SecretStore { get() -> Result<Option<Zeroizing<[u8;32]>>>, set(&[u8;32]), delete() }`.
+  Status: no file → `empty`; no store or store error → `unavailable`; size, header, decrypt or JSON fails → `locked`. Never written in plaintext.
+- *Limits* (`limits.rs`): form read 30 s, ≤ 10 000 fields, ≤ 20 000 widgets, depth ≤ 32, ≤ 2 000 options of ≤ 512 chars per field, names ≤ 512
+  and tooltips ≤ 1 024 chars (Cf stripped, ADR-035 §2). Drawn: ≤ 256 outlines, ≤ 50 000 points, finite, pad ≤ 4 096 px. Art: ≤ 2 000 paths,
+  ≤ 100 000 points after simplification. Image file ≤ 10 MiB; decode ≤ 4 000 px per side, 16 MP, 128 MiB; stored PNG ≤ 1 600 px long side,
+  ≤ 512 KiB. Drafts ≤ 16 (oldest dropped). Assets ≤ 64 and ≤ 32 MiB per document. Library ≤ 32 items, file ≤ 16 MiB.
+- *Errors.* New `what` values: `field`, `fieldText`, `glyph`, `keychain`, `library`, `xfa`, `signatureImage` (decode or limit failure), each with
+  `error.<code>.<what>` in en and de.
 
 ## 6. Pushes (Rust → UI, never with paths)
 

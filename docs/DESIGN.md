@@ -1259,6 +1259,155 @@ not smaller: nothing opens, meta `compress.noGain` in place, Close. Errors: bann
 
 **Tokens (new, §3.28–§3.31):** `--grid-thumb` 160 (96–256), `--insert-marker` 2, `--sheet-width` 560, `--dialog-width-md` 480.
 
+### 3.32 Form filling (M4)
+
+**Purpose:** fill AcroForm fields in place under Select and Form (F). Form also focuses the first empty field and shows the form's Tool
+options (highlight toggle, Flatten). XFA stays §3.21. Field scripts and format actions never run (SECURITY); values are stored as typed.
+
+**Slot.** One HTML control per widget in layer 3 (§3.23), exactly over its rect; font = the field's size × zoom (auto size fits the
+height), Helvetica fallback. Rust regenerates appearances on commit. A document with fields shows the status bar pill `form.badge`
+(§3.10) and, once per session, an info banner (§3.12) `form.banner` with secondary sm toggle `form.highlight` (`aria-pressed`) + `x`.
+
+**Highlight.** `--color-doc-field` over fillable widgets (setting `formHighlight`, default on; banner, Tool options, More). Required:
+plus 1 px `--color-doc-required` border (shape, not colour alone), `aria-required`, tooltip `form.required`. Read-only: no tint, a
+text node with `aria-readonly`, cursor `default`.
+
+| State | Treatment |
+|---|---|
+| hover | `--color-doc-field-hover` |
+| focus | 2 px `--color-doc-select` ring, offset 2 (document layer, both themes) |
+| read-only document | every field as read-only; Form `aria-disabled` |
+
+**Controls.** Text: single-line `<input>`, multi-line `<textarea>` scrolling inside its rect; `/MaxLen` → `maxlength` (`form.maxLength`
+announced once); comb fields one character per cell; password flag → `type=password`. Checkbox/radio: the file's on/off appearance;
+Space toggles; a radio group is one `radiogroup`, arrows move and select. Combo: `chevron-down` trigger opening a §3.5 menu (current
+checked); editable combos keep a text input. List: inline `listbox` (multi when flagged) if rows reach 24 px at zoom, else the menu.
+
+**Order.** Tab/Shift+Tab follow the page's `/Tabs` (else rows, top-left first), pages in order, fields before annotations. Rust
+supplies the order, so an unmounted page scrolls into view (nearest, at once). Past the last field, Tab leaves the canvas.
+
+**Commit.** Text on blur or Enter (single line); toggles and choices at once; one undo step per field.
+
+**Flatten.** Form Tool options and More `form.flatten` (macOS Edit menu). Dialog §3.19: `stamp` tile | `form.flattenTitle`;
+`form.flattenBody` muted; secondary Cancel (initial focus), primary `form.flattenGo`. Undoable until saved.
+
+**Motion:** none on the canvas. **Forced colors:** tint none, 1 px `CanvasText` border, required 2 px, focus `Highlight`.
+
+| Key | en | de |
+|---|---|---|
+| `form.badge` / `.banner` | Form / This document has fields you can fill in. | Formular / Dieses Dokument enthält ausfüllbare Felder. |
+| `form.highlight` / `.required` | Highlight fields / Required | Felder hervorheben / Pflichtfeld |
+| `form.maxLength` | Maximum {n} characters | Höchstens {n} Zeichen |
+| `form.flatten` / `.flattenGo` | Flatten form… / Flatten | Formular reduzieren… / Reduzieren |
+| `form.flattenTitle` / `.flattenBody` | Flatten form? / Fields become fixed page content. You can undo until you save; after saving it is permanent. | Formular reduzieren? / Felder werden fester Seiteninhalt. Bis zum Speichern rückgängig zu machen, danach endgültig. |
+
+### 3.33 Signature creation sheet (M4)
+
+**Entry.** Sign popover (§3.34), library (§3.35). Dialog as §3.29, 560 w, padding 24: `signature` tile | `sign.createTitle` or
+`sign.createInitials`. 16 below, a segmented tablist (§3.6, 32 h): Draw `pen-line` · Type `type` · Image `image` (last persisted).
+Every panel fills the same 192 h slot (`--sig-pad-height`), so switching never resizes.
+
+**Draw.** Pad: white in both themes (document surface), 1 px `--color-divider`, radius 12, 512 w (`--sig-pad-width`; initials 192,
+centred). Baseline 1 px `--ink-30` at 72 % height; meta `sign.here` centred until the first stroke. Width 1–4 px from pointer
+`pressure` (mouse: constant 2), smoothed; Rust stores vector paths. Below: colour radiogroup of two §3.24 swatches (`--annot-black`
+default, `--annot-blue`) | spacer | ghost sm `eraser` `sign.clear`. Primary+Z removes the last stroke. Pad `role=img`
+`sign.padLabel`; meta `sign.keyboardHint`.
+
+**Type.** md Field, full width, prefilled with the author name (§3.13), ≤ 64 chars. Below: radiogroup of up to four 248 × 64 cards
+(2 × 2, gap 16) rendering the text per font, §3.0 selected; same swatches. **Fonts: system only, none bundled** (OFL is outside rule 2).
+Rust offers installed fonts from an allowlist (macOS Snell Roundhand, Bradley Hand, Apple Chancery, Noteworthy; Windows Segoe Script,
+Ink Free, Segoe Print, Lucida Handwriting), skipping any whose OS/2 `fsType` is restricted; none → UI font italic. Text becomes
+outlines; no font is embedded.
+
+**Image.** secondary `sign.choose` → Rust Open dialog (PNG, JPEG). Rust decodes as hostile input (≤ 10 MB, ≤ 4096 px), trims
+margins, scales to ≤ 1024 px; the UI gets a preview, never a path. Error in a reserved 16 px slot (`sign.badImage`). No background removal.
+
+**Footer.** Leading checkbox `sign.save` (default on; `aria-disabled` + `lib.noKeychain` when §3.35 says so); trailing secondary
+Cancel, primary `sign.create` (`aria-disabled` while empty). From the popover, Create arms placement (§3.34).
+
+**Keyboard.** Initial focus: tablist; Tab cycles; Esc cancels. Motion as About; reduced motion opacity only. **Forced colors:** pad
+`Canvas` + `CanvasText` border; ink keeps its colour.
+
+| Key | en | de |
+|---|---|---|
+| `sign.createTitle` / `.createInitials` | Create signature / Create initials | Unterschrift erstellen / Initialen erstellen |
+| `sign.draw` / `.type` / `.image` | Draw / Type / Image | Zeichnen / Tippen / Bild |
+| `sign.here` / `.clear` / `.padLabel` | Sign here / Clear / Signature pad | Hier unterschreiben / Löschen / Unterschriftenfeld |
+| `sign.keyboardHint` | Can't draw? Use Type. | Zeichnen nicht möglich? Nutzen Sie Tippen. |
+| `sign.choose` / `.badImage` | Choose image… / Use a PNG or JPEG under 10 MB. | Bild auswählen… / PNG oder JPEG unter 10 MB verwenden. |
+| `sign.save` / `.create` | Save to library / Create | In Bibliothek speichern / Erstellen |
+
+### 3.34 Placing signatures and Fill & Sign (M4)
+
+**Popover.** Signature (S, §3.3) opens a `role=menu` popover (§3.5, 280 w):
+1. Signatures, then Initials: rows 48, thumbnail 96 × 32 (`--sig-thumb`) on a white chip, radius 4, + name; session-only entries add
+   meta `sign.session`. A kind without entries shows `sign.add` / `sign.addInitials` (opens §3.33).
+2. Divider; rows 32: `calendar` `sign.date` · `type` `sign.text` · `check` `sign.check` · `x` `sign.cross` · `dot` `sign.dot`.
+3. Divider; `sign.manage` (§3.35).
+
+**Placing.** An item arms the tool (§3.3 one-shot/lock). Over a page a ghost at default size follows the pointer at .5 opacity in
+layer 3, cursor `copy`; a click places it centred on the pointer, clamped to the page. Enter on the focused canvas places at the
+viewport centre (§3.22); Esc disarms. Defaults: signature 36 pt high, initials 24 pt, text/date 12 pt Helvetica, marks 12 × 12 pt.
+
+**Editing.** Placed items are selected (§3.23). Signatures, initials, marks: 4 corner handles, aspect always locked. Text, Date: 2 side
+handles (width); editing as §3.25 free text. Move, nudge, delete, undo per §3.23. Stored as annotations; Flatten (§3.32) bakes them.
+
+**Inspector.** Colour (§3.24): drawn/typed ink black or blue; image none; marks and text the full palette. Date: segmented
+`sign.short` · `sign.medium` · `sign.long`, `Intl.DateTimeFormat` with the OS region (from Rust), not the UI language; today's
+date at placement, then static text. Font size (Text, Date) per §3.24.
+
+**States.** No document or read-only: S `aria-disabled` (§3.22). A signature field (`/FT /Sig`) shows `signature` 16 centred in its
+tint; a click places the default signature fitted into its rect (visual only; no digital signature in M4).
+
+**A11y.** Items named `sign.item`; placed items `aria-roledescription` = kind, announced `sign.placed`. **Motion:** popover §3.5;
+canvas none.
+
+| Key | en | de |
+|---|---|---|
+| `sign.add` / `.addInitials` / `.manage` | Add signature… / Add initials… / Manage signatures… | Unterschrift hinzufügen… / Initialen hinzufügen… / Unterschriften verwalten… |
+| `sign.date` / `.text` / `.check` / `.cross` / `.dot` | Date / Text / Check mark / Cross / Dot | Datum / Text / Häkchen / Kreuz / Punkt |
+| `sign.short` / `.medium` / `.long` | Short / Medium / Long | Kurz / Mittel / Lang |
+| `sign.item` / `.placed` | {kind}: {name} / {kind} placed on page {n} | {kind}: {name} / {kind} auf Seite {n} platziert |
+| `sign.session` | This session only | Nur diese Sitzung |
+
+### 3.35 Signature library (M4)
+
+**Entry.** Sign popover `sign.manage`, More "Signatures…". Dialog as §3.19, 480 w: `signature` tile | `lib.title`.
+
+**List.** Groups `lib.signatures`, `lib.initials` (header rows 24, meta 600). Rows 56, radius 12, padding 8 (§3.11): thumbnail
+120 × 40 (`--sig-thumb-lg`) white chip | name 600 over meta `lib.meta` | sm `pencil` `lib.rename` | sm `trash-2` `lib.delete`.
+≤ 8 per kind (then Add `aria-disabled`, `lib.full`). Below: secondary sm `sign.add`, `sign.addInitials`. Scrolls after 6 rows.
+
+**Rename.** The name becomes an sm Field in place, selected; Enter or blur commits (1–40 chars), Esc reverts. Defaults "Signature 1".
+
+**Delete.** No confirm: the row turns into meta `lib.deleted` + ghost sm `lib.undo` for 8 s (`role=status`); toasts sit below the
+modal layer, so Undo stays in the row. Closing commits.
+
+**Empty.** Centred per §3.15: `signature` tile, `lib.empty` + `lib.emptyHint`, primary `sign.add`.
+
+**Storage note.** Footer meta with `lock` 12: `lib.encrypted`. Entries are encrypted at rest in app data; the key lives in the OS
+keychain (macOS Keychain, Windows Credential Manager). Never in settings, logs or recents; nothing leaves the device.
+
+**Keychain unavailable.** A warning group in its own slot above the list (bare `triangle-alert` in `--color-warning-text`,
+`lib.noKeychain`, `role=status`); `sign.save` off and `aria-disabled`; new entries are session-only (`sign.session`). Stored entries
+that can't be decrypted are hidden; `lib.locked` + ghost `lib.reset` (deletes them after a §3.19 confirm).
+
+**Keyboard.** Initial focus first row; roving Up/Down, Home/End; Enter places (closes, arms §3.34); F2 renames; Delete deletes; Tab
+reaches row buttons and footer. Motion as About; reduced motion opacity only. **Forced colors:** chips `Canvas` + `CanvasText` border.
+
+| Key | en | de |
+|---|---|---|
+| `lib.title` / `.signatures` / `.initials` | Signatures / Signatures / Initials | Unterschriften / Unterschriften / Initialen |
+| `lib.meta` / `.rename` / `.delete` | {source} · added {date} / Rename / Delete | {source} · hinzugefügt {date} / Umbenennen / Löschen |
+| `lib.deleted` / `.undo` / `.full` | {name} deleted / Undo / Library full (8) | {name} gelöscht / Rückgängig / Bibliothek voll (8) |
+| `lib.empty` / `.emptyHint` | No saved signatures / Create one to sign documents faster. | Keine gespeicherten Unterschriften / Erstellen Sie eine, um schneller zu unterschreiben. |
+| `lib.encrypted` | Stored encrypted on this device. | Verschlüsselt auf diesem Gerät gespeichert. |
+| `lib.noKeychain` | The system keychain isn't available, so signatures can't be saved. They're forgotten when {app} closes. | Der Systemschlüsselbund ist nicht verfügbar; Unterschriften können nicht gespeichert werden und gehen beim Beenden von {app} verloren. |
+| `lib.locked` / `.reset` | Some saved signatures can't be unlocked. / Remove them | Einige Unterschriften lassen sich nicht entsperren. / Entfernen |
+
+**Tokens (new, §3.32–§3.35):** `--color-doc-field` `rgba(91,91,214,.10)`, `--color-doc-field-hover` `.18`, `--color-doc-required`
+`#D64B4B` (both themes, ≥ 3:1 on white), `--sig-pad-height` 192, `--sig-pad-width` 512, `--sig-thumb` 96 × 32, `--sig-thumb-lg` 120 × 40.
+
 ## 4. Contrast verification
 
 Worst points (ADR-020): `--surface` over the darkest field point (light `#C6C7FB` → glass `rgb(229,229,254)`; dark
