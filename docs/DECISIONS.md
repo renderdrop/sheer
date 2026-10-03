@@ -1521,6 +1521,8 @@ metadata removal. Rules that bind: the UI never holds paths or bytes, every outp
 `Win32_Globalization`), the exact versions wry already pulls in (no new code in the tree); `objc2-foundation` likewise on macOS. Logged in
 `docs/LICENSES.md` by packages B/D; `cargo deny` duplicate check pins them to wry's versions.
 
+**Amendment (2026-10-04, package D).** `unsafe_code = "forbid"` stays (SECURITY hygiene, pinned by `tests/security_baseline.rs`), and `ShowPrintUI` is a COM call that needs `unsafe`. So both platforms use `Webview::print()`: on Windows the WebView2 print preview (local, with its own link to the system dialog), on macOS the WKWebView print panel. No `webview2-com`/`windows` dependencies. The System route returns only if a safe wrapper appears (v1.1).
+
 **Consequences.** Printing is raster (150/300 dpi): fine text is slightly softer than vector printing, and very long jobs are capped
 (2 000 pages); vector print via native APIs is v1.1. Output reflects unsaved edits without saving. Images → PDF re-encodes (no JPEG
 pass-through, v1.1). Exported image names never carry document metadata. Not in M6: reveal in folder (v1.1), OCR, Office formats.

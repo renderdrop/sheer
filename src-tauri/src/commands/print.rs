@@ -1,4 +1,3 @@
-// owned by package D
 //! Print (ARCHITECTURE §5 "Convert and output", ADR-049 §4).
 //!
 //! | Command | Arguments | Returns |
@@ -13,9 +12,22 @@ use tauri::{State, WebviewWindow};
 
 use super::jobs::{channel_sink, JobEvent, JobId};
 use super::{blocking, AppState};
-use crate::documents::DocumentId;
-use crate::error::UiError;
+use crate::documents::{DocumentId, PageId};
+use crate::error::{AppError, UiError};
 use crate::print::{self, PrintOptions, PrintRoute};
+
+impl AppState {
+    /// `read_only` (`permission`) when the document's permissions forbid printing it (`DocFlags.permissions`).
+    pub(crate) fn check_may_print(&self, id: DocumentId) -> Result<(), AppError> {
+        let info = self.info(id).ok_or(AppError::not_found("document"))?;
+        print::check_print_permission(info.flags.permissions)
+    }
+
+    /// The pages of a loaded document in their order, each as (id, engine index).
+    pub(crate) fn print_page_order(&self, id: DocumentId) -> Result<Vec<(PageId, u32)>, AppError> {
+        self.registry.page_order(id)
+    }
+}
 
 /// Renders the pages to be printed into a print set.
 #[tauri::command]

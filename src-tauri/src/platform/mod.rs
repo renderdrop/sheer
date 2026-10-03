@@ -34,14 +34,38 @@ pub const fn current() -> Platform {
 #[serde(rename_all = "lowercase")]
 pub enum Paper {
     A4,
-    #[allow(dead_code)] // package B returns it from `paper_default` (ADR-049 §6)
     Letter,
 }
 
-/// Letter in the US and Canada, A4 elsewhere (Windows `GetLocaleInfoEx` with `LOCALE_IPAPERSIZE`, macOS `NSLocale`). Always A4 until
-/// package B (ADR-049 §6) reads the OS region; never fails.
-pub const fn paper_default() -> Paper {
-    Paper::A4
+/// Regions whose usual office paper is Letter (the others use A4).
+const LETTER_REGIONS: [&str; 16] = [
+    "US", "CA", "MX", "CL", "CO", "CR", "DO", "GT", "PA", "PH", "PR", "VE", "BO", "SV", "HN", "NI",
+];
+
+/// The paper of a BCP 47 locale name such as `en-US` or `en_US.UTF-8`: Letter for the regions in [`LETTER_REGIONS`], A4 for every other
+/// region and for a name without one.
+pub fn paper_for_locale(name: &str) -> Paper {
+    let tag = name.split(['.', '@']).next().unwrap_or_default();
+    let region = tag
+        .split(['-', '_'])
+        .skip(1)
+        .find(|part| part.len() == 2 && part.chars().all(|c| c.is_ascii_alphabetic()));
+    match region {
+        Some(region)
+            if LETTER_REGIONS
+                .iter()
+                .any(|r| r.eq_ignore_ascii_case(region)) =>
+        {
+            Paper::Letter
+        }
+        _ => Paper::A4,
+    }
+}
+
+/// Letter in the US, Canada and a few more regions, A4 elsewhere, from the OS locale (`sys-locale`: Windows `GetUserDefaultLocaleName`,
+/// macOS `CFLocale`; our own code forbids the `unsafe` the direct calls need). A4 when the OS names no locale; never fails.
+pub fn paper_default() -> Paper {
+    sys_locale::get_locale().map_or(Paper::A4, |name| paper_for_locale(&name))
 }
 
 /// Whether the OS asks apps to avoid translucent surfaces (macOS: "Reduce transparency").
@@ -241,6 +265,24 @@ mod tests {
         channel.send(true).unwrap();
         channel.send(false).unwrap();
         assert_eq!(seen(&log), ["true", "false"]);
+    }
+
+    #[test]
+    fn the_paper_follows_the_region_of_the_locale() {
+        for (name, paper) in [
+            ("en-US", Paper::Letter),
+            ("en_CA", Paper::Letter),
+            ("es-MX", Paper::Letter),
+            ("en_US.UTF-8", Paper::Letter),
+            ("zh-Hans-US", Paper::Letter),
+            ("de-DE", Paper::A4),
+            ("en-GB", Paper::A4),
+            ("de", Paper::A4),
+            ("", Paper::A4),
+            ("C", Paper::A4),
+        ] {
+            assert_eq!(paper_for_locale(name), paper, "{name}");
+        }
     }
 
     #[test]

@@ -1,4 +1,3 @@
-// owned by package B
 //! Images to PDF (ARCHITECTURE §5 "Convert and output", ADR-049 §3).
 //!
 //! | Command | Arguments | Returns |

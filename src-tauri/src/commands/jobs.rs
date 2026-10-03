@@ -808,12 +808,16 @@ impl AppState {
     }
 
     /// Whether `target` is the file of an open document.
-    fn target_is_open(&self, target: &Path) -> bool {
+    pub(crate) fn target_is_open(&self, target: &Path) -> bool {
         self.registry.is_open_path(target)
     }
 
     /// Writes `bytes` to `target` (which the user chose; the file there is replaced whole or not at all) and opens it as a document.
-    fn publish(&self, target: &Path, bytes: &[u8]) -> Result<Option<DocumentInfo>, AppError> {
+    pub(crate) fn publish(
+        &self,
+        target: &Path,
+        bytes: &[u8],
+    ) -> Result<Option<DocumentInfo>, AppError> {
         // The name is claimed first: whether this job made the file is the answer of `create_new`, not a look at the path that something
         // else may change before the replace.
         let made = match OpenOptions::new().write(true).create_new(true).open(target) {

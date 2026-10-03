@@ -227,6 +227,15 @@ pub(super) fn save_plan_of(state: &DocState, pages: &PagePlan, keep_encryption: 
     }
 }
 
+/// What [`AppState::stage`] reads from the model: pages, annotation plan, extras, changed form fields, XFA to strip.
+type Staged = (
+    PagePlan,
+    Plan,
+    SavePlan,
+    Vec<crate::model::form::FormField>,
+    bool,
+);
+
 /// What `build_pages` writes: the annotations, the pages, the bytes of the import sources the pages come from, and whether the result is
 /// a full rewrite ("clean copy").
 struct BuildPlan {
@@ -422,34 +431,10 @@ impl AppState {
         self.save(id, Some(target), ack, options.clean_copy)
     }
 
-    fn save(
-        &self,
-        id: DocumentId,
-        target: Option<PathBuf>,
-        ack: SaveAck,
-        clean_copy: bool,
-    ) -> Result<SaveResult, AppError> {
-        let info = self.info(id).ok_or(AppError::not_found("document"))?;
-        let source = self
-            .registry
-            .path(id)
-            .ok_or(AppError::not_found("document"))?;
-        // The file Save As means may be the one that is open: that is a plain save.
-        let target = match target {
-            Some(target) => {
-                let target = std::fs::canonicalize(&target).unwrap_or(target);
-                (target != source).then_some(target)
-            }
-            None => None,
-        };
-        if let Some(target) = &target {
-            if self.registry.is_open_elsewhere(id, target) {
-                return Err(AppError::new(ErrorCode::IoInUse));
-            }
-        }
-
-        // What the file has to become: the pages in their order (ADR-036 §5) and the annotations on them, at the positions they will have.
-        let (pages, plan, extras, form, strip_xfa) = self.model(id, |state| {
+    /// What the file has to become, from the model: the pages in their order (ADR-036 §5), the annotations on them, the extras, the form
+    /// fields that changed and whether the form is a hybrid one.
+    fn stage(&self, id: DocumentId) -> Result<Staged, AppError> {
+        self.model(id, |state| {
             let pages = state.page_plan();
             let position: std::collections::HashMap<u32, u32> = pages
                 .pages
@@ -482,7 +467,80 @@ impl AppState {
                 .is_some_and(|form| form.xfa() == crate::model::form::Xfa::Hybrid);
             let extras = save_plan_of(state, &pages, false);
             Ok((pages, plan, extras, form, strip_xfa))
-        })?;
+        })
+    }
+
+    /// The current state of document `id` as a Full, plain PDF in memory (ADR-049 §1): what a save would write (content objects burned
+    /// in, crops, redacted pages as rasters, form values), but unencrypted, never on disk, no backup, and without a staged protection
+    /// change. Redaction marks are not part of it. Blocking; the caller checks the size.
+    pub(crate) fn snapshot_bytes(&self, id: DocumentId) -> Result<Vec<u8>, AppError> {
+        let info = self.info(id).ok_or(AppError::not_found("document"))?;
+        let source = self
+            .registry
+            .path(id)
+            .ok_or(AppError::not_found("document"))?;
+        let (pages, plan, mut extras, form, strip_xfa) = self.stage(id)?;
+        // A plain file: the build decrypts an encrypted original the way it does for a staged removal, so that is how the snapshot asks
+        // for it. A staged protection is not part of what the user sees.
+        extras.protection = info.flags.encrypted.then_some(PendingProtection::Remove);
+        extras.keep_encryption = false;
+        let mut sources = std::collections::HashMap::new();
+        for source_id in pages.sources() {
+            let bytes = self.sources.pinned(id, source_id).ok_or_else(|| {
+                AppError::logged(ErrorCode::SaveFailed, "an import source is gone")
+            })?;
+            sources.insert(source_id, bytes);
+        }
+        let (original, fingerprint) = read_all(intake::admit(&source)?)?;
+        if fingerprint_changed(self.registry.fingerprint(id), fingerprint) {
+            return Err(AppError::needs_confirmation("fileChangedOnDisk"));
+        }
+        let session = self.session_password(id);
+        let (built, _) = build_pages(
+            Arc::as_ptr(&self.registry) as usize,
+            id,
+            original,
+            BuildPlan {
+                plan,
+                extras,
+                form,
+                strip_xfa,
+                pages,
+                sources,
+                clean_copy: true,
+                session,
+            },
+        )?;
+        Ok(built.bytes)
+    }
+
+    fn save(
+        &self,
+        id: DocumentId,
+        target: Option<PathBuf>,
+        ack: SaveAck,
+        clean_copy: bool,
+    ) -> Result<SaveResult, AppError> {
+        let info = self.info(id).ok_or(AppError::not_found("document"))?;
+        let source = self
+            .registry
+            .path(id)
+            .ok_or(AppError::not_found("document"))?;
+        // The file Save As means may be the one that is open: that is a plain save.
+        let target = match target {
+            Some(target) => {
+                let target = std::fs::canonicalize(&target).unwrap_or(target);
+                (target != source).then_some(target)
+            }
+            None => None,
+        };
+        if let Some(target) = &target {
+            if self.registry.is_open_elsewhere(id, target) {
+                return Err(AppError::new(ErrorCode::IoInUse));
+            }
+        }
+
+        let (pages, plan, extras, form, strip_xfa) = self.stage(id)?;
         let expected =
             u32::try_from(pages.pages.len()).map_err(|_| AppError::new(ErrorCode::Internal))?;
         let page_changes = pages.changed();

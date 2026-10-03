@@ -486,6 +486,8 @@ impl AppState {
         self.annotations.remove(id);
         // The bytes of the sources it took pages from are not needed any more.
         self.sources.unpin_all(id);
+        // Its print sets (rendered pages held in memory) go too.
+        crate::print::sets().release_doc(id);
         // A document that still waits for its password was never loaded: cancelling its prompt forgets it.
         self.registry.remove_locked(id);
         self.registry.begin_close(id);

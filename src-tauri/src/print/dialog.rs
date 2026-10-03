@@ -1,13 +1,20 @@
-// owned by package D
-//! Opens the print dialog of the webview (ADR-049 §4). Windows: `with_webview` and `ICoreWebView2_16::ShowPrintUI(System)`; if the
-//! interface is missing, `Webview::print()`. macOS: `Webview::print()`.
+//! Opens the print dialog of the webview (ADR-049 §4): the one thin function that needs a window, so nothing else in `print` does.
+//!
+//! The crate forbids `unsafe` (`Cargo.toml` lints, checked by `tests/security_baseline.rs`), and `ICoreWebView2_16::ShowPrintUI(System)`
+//! is a COM call that needs it. Both platforms therefore take `Webview::print()` (WebView2 print preview on Windows, `NSPrintPanel`
+//! on macOS) and answer the `webview` route. The `system` route stays in the contract for the day `unsafe` is allowed for this one
+//! call (see BLOCKERS / ADR-049 §4).
 
 use tauri::WebviewWindow;
 
 use super::PrintRoute;
-use crate::error::AppError;
+use crate::error::{AppError, ErrorCode};
 
-/// Opens the dialog and answers the route taken. Stub (package D): `not_yet`.
-pub fn open(_window: &WebviewWindow) -> Result<PrintRoute, AppError> {
-    Err(AppError::not_yet())
+/// Opens the dialog and answers the route taken.
+pub fn open(window: &WebviewWindow) -> Result<PrintRoute, AppError> {
+    window.print().map_err(|error| {
+        AppError::logged(ErrorCode::Internal, error).log();
+        AppError::unsupported("printDialog")
+    })?;
+    Ok(PrintRoute::Webview)
 }

@@ -23,7 +23,7 @@ use std::sync::Arc;
 use tauri::{AppHandle, DragDropEvent, Manager, RunEvent, Runtime, Window, WindowEvent};
 
 use crate::commands::AppState;
-use crate::documents::intake;
+use crate::documents::{image_batch, intake};
 use crate::error::{AppError, ErrorCode};
 use crate::events::{AppEvent, AppEvents};
 
@@ -66,7 +66,7 @@ pub fn on_window_event<R: Runtime>(window: &Window<R>, event: &WindowEvent) {
         Drag::Hover(active) => publish(app, AppEvent::DropHover { active }),
         Drag::Drop(paths) => {
             publish(app, AppEvent::DropHover { active: false });
-            open_in_background(app, paths);
+            spawn_open(app, paths, deliver_drop);
         }
         Drag::Ignore => {}
     }
@@ -153,6 +153,15 @@ fn publish<R: Runtime>(app: &AppHandle<R>, event: AppEvent) {
 
 /// Opens `paths` on the blocking pool and publishes how each went. Nothing for an empty list.
 pub fn open_in_background<R: Runtime>(app: &AppHandle<R>, paths: Vec<PathBuf>) {
+    spawn_open(app, paths, deliver);
+}
+
+/// [`open_in_background`] with the way the files are delivered chosen by the caller (a drop also takes images).
+fn spawn_open<R: Runtime>(
+    app: &AppHandle<R>,
+    paths: Vec<PathBuf>,
+    run: fn(&AppState, &AppEvents, Vec<PathBuf>),
+) {
     if paths.is_empty() {
         return;
     }
@@ -171,13 +180,29 @@ pub fn open_in_background<R: Runtime>(app: &AppHandle<R>, paths: Vec<PathBuf>) {
     let events = Arc::clone(events.inner());
     // The handle is not needed: the task reports through `events`, and a panic in it is logged by the runtime.
     drop(tauri::async_runtime::spawn_blocking(move || {
-        deliver(&state, &events, paths);
+        run(&state, &events, paths);
     }));
 }
 
 /// Opens `paths` and publishes the outcome of each file the moment it is known. Blocks until all are done.
 fn deliver(state: &AppState, events: &AppEvents, paths: Vec<PathBuf>) {
     state.open_each(paths, |event| events.publish(event));
+}
+
+/// A drop: PNG and JPEG files wait as an image batch for Create PDF from images (`ImagesDropped`), the PDFs open as always. A drop
+/// without images is opened whole, so every file keeps its own result (ADR-049 §3).
+fn deliver_drop(state: &AppState, events: &AppEvents, paths: Vec<PathBuf>) {
+    let sorted = image_batch::sort_drop(paths);
+    if !sorted.images.is_empty() {
+        let count = u32::try_from(sorted.images.len()).unwrap_or(u32::MAX);
+        let batch = image_batch::batches().add(image_batch::ImageBatch {
+            images: sorted.images,
+        });
+        events.publish(AppEvent::images_dropped(batch, count, sorted.skipped));
+    }
+    if !sorted.pdfs.is_empty() {
+        state.open_each(sorted.pdfs, |event| events.publish(event));
+    }
 }
 
 #[cfg(test)]
@@ -451,5 +476,97 @@ mod tests {
             Some(cwd.as_path()),
         );
         assert_eq!(paths, [cwd.join("rel.pdf")]);
+    }
+}
+
+#[cfg(test)]
+mod drop_tests {
+    use std::fs;
+    use std::sync::Mutex;
+
+    use tauri::ipc::{Channel, InvokeResponseBody};
+
+    use super::*;
+    use crate::engine::{Engine, Job};
+    use crate::storage::atomic::testutil::TempDir;
+
+    fn recording() -> (Channel<AppEvent>, Arc<Mutex<Vec<serde_json::Value>>>) {
+        let log = Arc::new(Mutex::new(Vec::new()));
+        let sink = Arc::clone(&log);
+        let channel = Channel::new(move |body| {
+            if let InvokeResponseBody::Json(json) = body {
+                sink.lock()
+                    .unwrap()
+                    .push(serde_json::from_str(&json).unwrap());
+            }
+            Ok(())
+        });
+        (channel, log)
+    }
+
+    fn state() -> AppState {
+        AppState::new(Engine::with_handler(|job| match job {
+            Job::Open { confirm, reply, .. } => {
+                let _ = confirm(2);
+                let _ = reply.send(Ok(2));
+            }
+            Job::Close { reply, .. } => {
+                let _ = reply.send(Ok(()));
+            }
+            _ => {}
+        }))
+    }
+
+    #[test]
+    fn a_mixed_drop_opens_the_pdfs_and_batches_the_images_without_paths() {
+        let dir = TempDir::new();
+        let write = |name: &str, bytes: &[u8]| {
+            let path = dir.path().join(name);
+            fs::write(&path, bytes).unwrap();
+            path
+        };
+        let (state, events) = (state(), AppEvents::new());
+        let (channel, log) = recording();
+        events.subscribe(channel);
+        deliver_drop(
+            &state,
+            &events,
+            vec![
+                write("b.png", b"\x89PNG\r\n\x1a\n.."),
+                write("doc.pdf", b"%PDF-1.4\n%%EOF\n"),
+                write("a.jpg", &[0xFF, 0xD8, 0xFF, 0xE0, 0, 0]),
+                write("notes.txt", b"text"),
+            ],
+        );
+        let log = log.lock().unwrap();
+        assert_eq!(log.len(), 2);
+        assert_eq!(log[0]["type"], "imagesDropped");
+        assert_eq!(log[0]["count"], 2);
+        assert_eq!(log[0]["skipped"], 1);
+        assert_eq!(log[1]["type"], "opened");
+        assert!(!log[0].to_string().contains("a.jpg"));
+        let batch = u32::try_from(log[0]["batch"].as_u64().unwrap()).unwrap();
+        let held = image_batch::batches().get(batch).unwrap();
+        // Natural name order: a before b.
+        assert_eq!(held.images[0].stem, "a");
+        image_batch::batches().release(batch);
+    }
+
+    #[test]
+    fn a_drop_of_images_only_makes_no_open_result_and_a_pdf_only_drop_no_batch() {
+        let dir = TempDir::new();
+        let (state, events) = (state(), AppEvents::new());
+        let (channel, log) = recording();
+        events.subscribe(channel);
+        let png = dir.path().join("only.png");
+        fs::write(&png, b"\x89PNG\r\n\x1a\n..").unwrap();
+        deliver_drop(&state, &events, vec![png]);
+        let pdf = dir.path().join("only.pdf");
+        fs::write(&pdf, b"%PDF-1.4\n%%EOF\n").unwrap();
+        deliver_drop(&state, &events, vec![pdf]);
+        let log = log.lock().unwrap();
+        let types: Vec<&str> = log.iter().map(|m| m["type"].as_str().unwrap()).collect();
+        assert_eq!(types, ["imagesDropped", "opened"]);
+        image_batch::batches().release(u32::try_from(log[0]["batch"].as_u64().unwrap()).unwrap());
     }
 }

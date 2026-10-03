@@ -506,11 +506,23 @@ pub fn append_annotations(original: Vec<u8>, plan: &Plan) -> Result<Built, AppEr
     })
 }
 
-// owned by package C
 /// The current state of a document as a Full, unencrypted PDF in memory, no backup, never on disk (ADR-049 §1): the snapshot an export
-/// or a print renders. Stub (package C): `not_yet`.
-pub fn write_to_memory(_plan: &SavePlan, _input: &[u8]) -> Result<Vec<u8>, AppError> {
-    Err(AppError::not_yet())
+/// or a print renders. `input` is the plain file after the page list, the annotations and the form values (what `build_pages` of
+/// `commands::save` has made); this burns in what `plan` holds (content objects, redaction scrub), leaves out any protection
+/// (a staged one is not applied), and writes the whole file again without an earlier revision. The result has to load.
+pub fn write_to_memory(plan: &SavePlan, input: &[u8]) -> Result<Vec<u8>, AppError> {
+    let plain = SavePlan {
+        protection: None,
+        keep_encryption: false,
+        ..plan.clone()
+    };
+    let bytes = apply_extras(input.to_vec(), &plain)?;
+    let bytes = super::pagetree::compact(bytes, &[])?;
+    if u64::try_from(bytes.len()).map_or(true, |len| len > limits::MAX_SNAPSHOT_BYTES) {
+        return Err(AppError::limit("snapshot", limits::MAX_SNAPSHOT_BYTES));
+    }
+    crate::pdfwrite::prescan::load_untrusted(&bytes)?;
+    Ok(bytes)
 }
 
 /// Reads `bytes` again as a PDF with `pages` pages (ADR-004 §1 step 6, the lopdf half of the check).

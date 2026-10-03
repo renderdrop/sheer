@@ -14,8 +14,11 @@ use tauri::{State, WebviewWindow};
 use super::jobs::{channel_sink, JobEvent, JobId};
 use super::{blocking, AppState};
 use crate::documents::DocumentId;
-use crate::error::UiError;
-use crate::export::images::{self, ConflictChoice, ExportStart, ImageExportOptions};
+use crate::error::{AppError, UiError};
+use crate::export::images::{
+    self, ConflictChoice, ExportFacts, ExportStart, ImageExportOptions, PageFact,
+};
+use crate::model::protection::Permission;
 
 /// Validates, asks for a folder and renders the pages to image files.
 #[tauri::command]
@@ -40,4 +43,37 @@ pub async fn resolve_export_conflicts(
 ) -> Result<Option<JobId>, UiError> {
     let state = state.inner().clone();
     blocking(move || images::resolve(&state, ticket, choice, channel_sink(on_event))).await
+}
+
+impl AppState {
+    /// What an image export needs to know about document `id`: its display name and its pages as the model has them now (id, place in
+    /// PDFium's live copy, drawn size). A restricted document that does not allow copying is `read_only` (`permission`).
+    pub fn export_facts(&self, id: DocumentId) -> Result<ExportFacts, AppError> {
+        let info = self.info(id).ok_or(AppError::not_found("document"))?;
+        if let Some(allowed) = info.flags.permissions {
+            if !allowed.contains(Permission::Copy) {
+                return Err(AppError::read_only("permission"));
+            }
+        }
+        let pages = self.model(id, |state| {
+            Ok(state
+                .pages()
+                .iter()
+                .map(|slot| PageFact {
+                    id: slot.id,
+                    engine_index: slot.engine_index,
+                    drawn: if slot.rotation % 180 == 90 {
+                        [slot.size[1], slot.size[0]]
+                    } else {
+                        slot.size
+                    },
+                })
+                .collect())
+        })?;
+        Ok(ExportFacts {
+            doc: id,
+            display_name: info.display_name,
+            pages,
+        })
+    }
 }

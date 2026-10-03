@@ -14,7 +14,7 @@ export interface PdfExportOptions {
 
 /**
  * Starts the export; progress and the result come on `onEvent` (`done.warnings` may hold `signaturesRemoved`). Resolves to `null` when
- * the Save As dialog was cancelled. Rejects with `needs_confirmation` (`breaksSignature`, `rewriteEncrypted`: retry with `ack`),
+ * the Save As dialog was cancelled. Rejects with `needs_confirmation` (`rewriteEncrypted`: retry with `ack`; a signed document is copied with the warning `signaturesRemoved`),
  * `read_only` `permission` or `invalid_argument` `exportTarget` (the target is the open document).
  */
 export async function exportPdf(

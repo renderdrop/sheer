@@ -1,16 +1,29 @@
 // owned by package A
 //! PDF to PNG/JPEG (ADR-049 §2): options, the folder dialog, conflicts and the render job.
 
-use std::sync::Arc;
+use std::collections::HashMap;
+use std::io::Write;
+use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::{Arc, Mutex, OnceLock, PoisonError};
+use std::time::Instant;
 
+use image::{codecs::jpeg::JpegEncoder, ExtendedColorType};
 use serde::{Deserialize, Serialize};
 use tauri::WebviewWindow;
+use tauri_plugin_dialog::DialogExt;
 
-use crate::commands::jobs::{EventSink, JobId};
+use super::names::{export_stem, image_names, image_stems, ImageExt};
+use super::snapshot::{self, EngineDocRef};
+use crate::commands::jobs::{create_unique, jobs, EventSink, JobDone, JobId, JobRegistry};
 use crate::commands::AppState;
-use crate::documents::DocumentId;
-use crate::error::AppError;
-use crate::model::ranges::PageSelection;
+use crate::documents::{intake, DocumentId, PageId};
+use crate::error::{AppError, ErrorCode};
+use crate::limits;
+use crate::model::ranges::{parse_ranges, PageSelection};
+use crate::pdfwrite::produce::{Control, Phase, Warning};
+use crate::pdfwrite::redact::{RasterPage, RasterPixels};
+use crate::storage::atomic;
 
 /// The file format of an image export.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
@@ -61,29 +74,525 @@ pub enum ConflictChoice {
     Cancel,
 }
 
-/// Validates, asks for the folder and starts the job. Stub (package A): `not_yet`.
-pub fn start(
-    _state: &AppState,
-    _window: &WebviewWindow,
-    _doc: DocumentId,
-    _opts: &ImageExportOptions,
-    _sink: Arc<dyn EventSink>,
-) -> Result<ExportStart, AppError> {
-    Err(AppError::not_yet())
+// --- Planning -----------------------------------------------------------------------------------------------------
+
+/// One page of the document as the model has it now.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct PageFact {
+    pub id: PageId,
+    /// Where PDFium's live copy has the page.
+    pub engine_index: u32,
+    /// Width and height in points as the page is shown (rotation applied).
+    pub drawn: [f32; 2],
 }
 
-/// Carries out the choice for the held ticket; `None` for `cancel` or an expired ticket. Stub (package A): `not_yet`.
-pub fn resolve(
-    _state: &AppState,
-    _ticket: u32,
-    _choice: ConflictChoice,
-    _sink: Arc<dyn EventSink>,
+/// What an export needs to know about a document (`AppState::export_facts`).
+#[derive(Debug, Clone, PartialEq)]
+pub struct ExportFacts {
+    pub doc: DocumentId,
+    pub display_name: String,
+    pub pages: Vec<PageFact>,
+}
+
+/// The bitmap an export draws for a page: its size in pixels and the dpi that gives it.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Fit {
+    pub width: u32,
+    pub height: u32,
+    pub dpi: f32,
+    /// The asked dpi did not fit the bitmap limits.
+    pub lowered: bool,
+}
+
+/// The bitmap of a page of `width_pt` x `height_pt` points drawn at `dpi`: lowered to the highest dpi that stays within
+/// `MAX_EXPORT_SIDE_PX` per side and `MAX_EXPORT_PIXELS`. `None` when that is below `MIN_EXPORT_DPI` (or the size is not a number).
+pub fn fit(width_pt: f32, height_pt: f32, dpi: f32) -> Option<Fit> {
+    if !(width_pt.is_finite() && height_pt.is_finite() && width_pt > 0.0 && height_pt > 0.0)
+        || !dpi.is_finite()
+    {
+        return None;
+    }
+    let (w, h) = (f64::from(width_pt), f64::from(height_pt));
+    let side = f64::from(limits::MAX_EXPORT_SIDE_PX);
+    #[allow(clippy::cast_precision_loss)] // 64 million is exact in an f64
+    let area = limits::MAX_EXPORT_PIXELS as f64;
+    let wanted = f64::from(dpi) / 72.0;
+    let scale = wanted.min(side / w.max(h)).min((area / (w * h)).sqrt());
+    if scale * 72.0 < f64::from(limits::MIN_EXPORT_DPI) - 1e-6 {
+        return None;
+    }
+    // Rounded down, so that the caps hold.
+    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+    // 1..=10 000 by the caps above
+    let pixels =
+        |points: f64| ((points * scale).floor() as u32).clamp(1, limits::MAX_EXPORT_SIDE_PX);
+    #[allow(clippy::cast_possible_truncation)] // 36..=600
+    let effective = (scale * 72.0) as f32;
+    Some(Fit {
+        width: pixels(w),
+        height: pixels(h),
+        dpi: effective,
+        lowered: scale < wanted - 1e-9,
+    })
+}
+
+#[derive(Debug, Clone, PartialEq)]
+struct PagePlan {
+    /// 1-based position in the current order.
+    position: u32,
+    engine_index: u32,
+    fit: Fit,
+}
+
+/// A validated export: which pages, how, and the names of the files.
+#[derive(Debug, Clone)]
+pub struct Plan {
+    doc: DocumentId,
+    stem: String,
+    format: ImageFormat,
+    quality: u8,
+    annotations: bool,
+    pages: Vec<PagePlan>,
+    total: u32,
+}
+
+impl Plan {
+    fn ext(&self) -> ImageExt {
+        match self.format {
+            ImageFormat::Png => ImageExt::Png,
+            ImageFormat::Jpeg => ImageExt::Jpeg,
+        }
+    }
+
+    fn positions(&self) -> Vec<u32> {
+        self.pages.iter().map(|page| page.position).collect()
+    }
+
+    /// The file names of the export, one per page.
+    pub fn names(&self) -> Vec<String> {
+        image_names(&self.stem, &self.positions(), self.total, self.ext())
+    }
+
+    /// Whether any page is drawn at a lower dpi than asked.
+    pub fn lowered(&self) -> bool {
+        self.pages.iter().any(|page| page.fit.lowered)
+    }
+}
+
+/// The 0-based positions a selection names, in document order, each once. At most `MAX_EXPORT_PAGES`.
+fn select(facts: &ExportFacts, selection: &PageSelection) -> Result<Vec<usize>, AppError> {
+    let invalid = || AppError::invalid("pageSelection");
+    let too_many = || AppError::limit("pages", limits::MAX_EXPORT_PAGES as u64);
+    let count = facts.pages.len();
+    let position_of = |id: PageId| facts.pages.iter().position(|page| page.id == id);
+    let mut positions: Vec<usize> = match selection {
+        PageSelection::All => (0..count).collect(),
+        PageSelection::Current { page_id } => vec![position_of(*page_id).ok_or_else(invalid)?],
+        PageSelection::Pages { pages } => {
+            if pages.len() > limits::MAX_EXPORT_PAGES {
+                return Err(too_many());
+            }
+            pages
+                .iter()
+                .map(|id| position_of(*id).ok_or_else(invalid))
+                .collect::<Result<_, _>>()?
+        }
+        PageSelection::Ranges { text } => {
+            let count = u32::try_from(count).map_err(|_| invalid())?;
+            let ranges = parse_ranges(text, count).map_err(|error| {
+                if error.code() == ErrorCode::InvalidArgument {
+                    invalid()
+                } else {
+                    error
+                }
+            })?;
+            let mut all: Vec<usize> = Vec::new();
+            for (start, end) in ranges {
+                if all.len() + (end - start + 1) as usize > limits::MAX_EXPORT_PAGES {
+                    return Err(too_many());
+                }
+                all.extend((start - 1..end).map(|position| position as usize));
+            }
+            all
+        }
+    };
+    positions.sort_unstable();
+    positions.dedup();
+    if positions.is_empty() {
+        return Err(invalid());
+    }
+    if positions.len() > limits::MAX_EXPORT_PAGES {
+        return Err(too_many());
+    }
+    Ok(positions)
+}
+
+/// Checks the options against the document: dpi, quality, the pages and that every page fits the bitmap limits at 36 dpi
+/// (`limit_exceeded` `exportPixels` with the page).
+pub fn prepare(facts: &ExportFacts, opts: &ImageExportOptions) -> Result<Plan, AppError> {
+    if !opts.dpi.is_finite()
+        || opts.dpi < limits::MIN_EXPORT_DPI
+        || opts.dpi > limits::MAX_EXPORT_DPI
+    {
+        return Err(AppError::invalid("dpi"));
+    }
+    if opts.format == ImageFormat::Jpeg && !(1..=100).contains(&opts.jpeg_quality) {
+        return Err(AppError::invalid("jpegQuality"));
+    }
+    let mut pages = Vec::new();
+    for at in select(facts, &opts.pages)? {
+        let (Some(page), Ok(position)) = (facts.pages.get(at), u32::try_from(at + 1)) else {
+            return Err(AppError::invalid("pageSelection"));
+        };
+        let fit = fit(page.drawn[0], page.drawn[1], opts.dpi)
+            .ok_or_else(|| AppError::export_pixels(position))?;
+        pages.push(PagePlan {
+            position,
+            engine_index: page.engine_index,
+            fit,
+        });
+    }
+    Ok(Plan {
+        doc: facts.doc,
+        stem: export_stem(&facts.display_name),
+        format: opts.format,
+        quality: opts.jpeg_quality,
+        annotations: opts.annotations,
+        pages,
+        total: u32::try_from(facts.pages.len()).unwrap_or(u32::MAX),
+    })
+}
+
+// --- Conflict tickets ---------------------------------------------------------------------------------------------
+
+struct Held {
+    plan: Plan,
+    folder: PathBuf,
+    at: Instant,
+}
+
+static NEXT_TICKET: AtomicU32 = AtomicU32::new(1);
+
+fn held() -> &'static Mutex<HashMap<u32, Held>> {
+    static HELD: OnceLock<Mutex<HashMap<u32, Held>>> = OnceLock::new();
+    HELD.get_or_init(Mutex::default)
+}
+
+/// Holds the folder of `plan` for five minutes, one ticket per document (a newer one replaces the older).
+fn hold(plan: Plan, folder: PathBuf) -> u32 {
+    let ticket = NEXT_TICKET.fetch_add(1, Ordering::Relaxed);
+    let mut map = held().lock().unwrap_or_else(PoisonError::into_inner);
+    map.retain(|_, entry| {
+        entry.at.elapsed() < limits::EXPORT_TICKET_TTL && entry.plan.doc != plan.doc
+    });
+    map.insert(
+        ticket,
+        Held {
+            plan,
+            folder,
+            at: Instant::now(),
+        },
+    );
+    ticket
+}
+
+/// Takes the ticket out; `None` if it is unknown, used or expired.
+fn take(ticket: u32) -> Option<(Plan, PathBuf)> {
+    let entry = held()
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+        .remove(&ticket)?;
+    (entry.at.elapsed() < limits::EXPORT_TICKET_TTL).then_some((entry.plan, entry.folder))
+}
+
+// --- Writing ------------------------------------------------------------------------------------------------------
+
+/// What happens to a file that exists already.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Policy {
+    /// Every file is claimed with `create_new`; a taken name becomes `name (2)`.
+    KeepBoth,
+    /// The file is replaced atomically, never through a link.
+    Replace,
+}
+
+fn write_error(error: std::io::Error) -> AppError {
+    let error = AppError::from(error);
+    match error.code() {
+        ErrorCode::IoInUse
+        | ErrorCode::IoPermissionDenied
+        | ErrorCode::IoNotFound
+        | ErrorCode::IoDiskFull => error,
+        _ => AppError::logged(ErrorCode::SaveFailed, error),
+    }
+}
+
+/// Whether something (even a dangling link) is at `path`; never follows a link.
+fn exists(path: &Path) -> bool {
+    std::fs::symlink_metadata(path).is_ok()
+}
+
+fn write_file(
+    folder: &Path,
+    stem: &str,
+    ext: ImageExt,
+    bytes: &[u8],
+    policy: Policy,
+) -> Result<(), AppError> {
+    match policy {
+        Policy::KeepBoth => {
+            let (mut file, path) = create_unique(folder, stem, ext.extension())?;
+            let written = file.write_all(bytes).and_then(|()| file.flush());
+            drop(file);
+            if let Err(error) = written {
+                let _ = std::fs::remove_file(&path);
+                return Err(write_error(error));
+            }
+            Ok(())
+        }
+        Policy::Replace => {
+            let path = folder.join(format!("{stem}.{}", ext.extension()));
+            match std::fs::symlink_metadata(&path) {
+                Ok(meta) if meta.is_file() => {}
+                Ok(_) => return Err(AppError::invalid("path")),
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+                Err(error) => return Err(write_error(error)),
+            }
+            atomic::write_atomic(&path, bytes).map_err(write_error)
+        }
+    }
+}
+
+/// Encodes a rendered page (already on white) as PNG, or as JPEG of `quality` 1..=100.
+pub fn encode(page: &RasterPage, format: ImageFormat, quality: u8) -> Result<Vec<u8>, AppError> {
+    fn failed(error: impl std::fmt::Display) -> AppError {
+        AppError::logged(ErrorCode::Internal, error)
+    }
+    let (data, grey) = match &page.pixels {
+        RasterPixels::Rgb8(data) => (data, false),
+        RasterPixels::Gray8(data) => (data, true),
+    };
+    let mut out = Vec::new();
+    match format {
+        ImageFormat::Png => {
+            let mut encoder = png::Encoder::new(&mut out, page.width, page.height);
+            encoder.set_color(if grey {
+                png::ColorType::Grayscale
+            } else {
+                png::ColorType::Rgb
+            });
+            encoder.set_depth(png::BitDepth::Eight);
+            let mut writer = encoder.write_header().map_err(failed)?;
+            writer.write_image_data(data).map_err(failed)?;
+            writer.finish().map_err(failed)?;
+        }
+        ImageFormat::Jpeg => {
+            let color = if grey {
+                ExtendedColorType::L8
+            } else {
+                ExtendedColorType::Rgb8
+            };
+            JpegEncoder::new_with_quality(&mut out, quality.clamp(1, 100))
+                .encode(data, page.width, page.height, color)
+                .map_err(failed)?;
+        }
+    }
+    Ok(out)
+}
+
+// --- The job ------------------------------------------------------------------------------------------------------
+
+fn run(
+    state: &AppState,
+    plan: &Plan,
+    folder: &Path,
+    policy: Policy,
+    ctx: &dyn Control,
+) -> Result<JobDone, AppError> {
+    let snapshot = snapshot::current(state, plan.doc)?;
+    let (doc, opened) = match snapshot.bytes {
+        Some(bytes) => {
+            let id = state.engine().open_snapshot(bytes)?;
+            (EngineDocRef::Snapshot(id), Some(id))
+        }
+        None => (snapshot.engine, None),
+    };
+    let result = render_all(state, plan, doc, folder, policy, ctx);
+    if let Some(id) = opened {
+        let _ = state.engine().close_snapshot(id);
+    }
+    let (outputs, bytes) = result?;
+    Ok(JobDone {
+        outputs,
+        bytes_before: 0,
+        bytes_after: bytes,
+        warnings: if plan.lowered() {
+            vec![Warning::DpiLowered]
+        } else {
+            Vec::new()
+        },
+        opened: None,
+        changes: None,
+        skipped: 0,
+        print: None,
+    })
+}
+
+/// Renders, encodes and writes every page in turn; a cancel keeps the files already written.
+fn render_all(
+    state: &AppState,
+    plan: &Plan,
+    doc: EngineDocRef,
+    folder: &Path,
+    policy: Policy,
+    ctx: &dyn Control,
+) -> Result<(u32, u64), AppError> {
+    let total = u32::try_from(plan.pages.len()).unwrap_or(u32::MAX);
+    let stems = image_stems(&plan.stem, &plan.positions(), plan.total);
+    let (mut written, mut bytes) = (0u32, 0u64);
+    for (at, (page, stem)) in plan.pages.iter().zip(&stems).enumerate() {
+        ctx.check()?;
+        // A snapshot is written in the current order; the live document has its pages where the model says.
+        let engine_index = match doc {
+            EngineDocRef::Live(_) => page.engine_index,
+            EngineDocRef::Snapshot(_) => page.position - 1,
+        };
+        let raster =
+            state
+                .engine()
+                .render_export(doc, engine_index, page.fit.dpi, plan.annotations, 0)?;
+        let done = u32::try_from(at + 1).unwrap_or(total);
+        ctx.progress(Phase::Render, done, total);
+        ctx.check()?;
+        let encoded = encode(&raster, plan.format, plan.quality)?;
+        drop(raster);
+        ctx.progress(Phase::Encode, done, total);
+        ctx.check()?;
+        write_file(folder, stem, plan.ext(), &encoded, policy)?;
+        written += 1;
+        bytes += encoded.len() as u64;
+    }
+    Ok((written, bytes))
+}
+
+fn launch(
+    state: &AppState,
+    registry: &Arc<JobRegistry>,
+    plan: Plan,
+    folder: PathBuf,
+    policy: Policy,
+    sink: Arc<dyn EventSink>,
+) -> Result<JobId, AppError> {
+    let state = state.clone();
+    registry.start(sink, move |ctx| run(&state, &plan, &folder, policy, ctx))
+}
+
+/// The conflict check, then the job on `registry`.
+fn start_planned(
+    state: &AppState,
+    registry: &Arc<JobRegistry>,
+    plan: Plan,
+    folder: &Path,
+    sink: Arc<dyn EventSink>,
+) -> Result<ExportStart, AppError> {
+    let taken: Vec<String> = plan
+        .names()
+        .into_iter()
+        .filter(|name| exists(&folder.join(name)))
+        .collect();
+    if !taken.is_empty() {
+        let count = u32::try_from(taken.len()).unwrap_or(u32::MAX);
+        let names = taken.into_iter().take(limits::MAX_CONFLICT_NAMES).collect();
+        let ticket = hold(plan, folder.to_path_buf());
+        return Ok(ExportStart::Conflicts {
+            ticket,
+            count,
+            names,
+        });
+    }
+    let job_id = launch(
+        state,
+        registry,
+        plan,
+        folder.to_path_buf(),
+        Policy::KeepBoth,
+        sink,
+    )?;
+    Ok(ExportStart::Started { job_id })
+}
+
+/// [`start`] with the folder known (already admitted, see `intake::admit_folder`) and the job registry given.
+pub fn start_in_folder(
+    state: &AppState,
+    registry: &Arc<JobRegistry>,
+    doc: DocumentId,
+    opts: &ImageExportOptions,
+    folder: &Path,
+    sink: Arc<dyn EventSink>,
+) -> Result<ExportStart, AppError> {
+    let plan = prepare(&state.export_facts(doc)?, opts)?;
+    start_planned(state, registry, plan, folder, sink)
+}
+
+/// Validates, asks for the folder and starts the job.
+pub fn start(
+    state: &AppState,
+    window: &WebviewWindow,
+    doc: DocumentId,
+    opts: &ImageExportOptions,
+    sink: Arc<dyn EventSink>,
+) -> Result<ExportStart, AppError> {
+    // Before the dialog: a request that cannot run does not ask for a folder.
+    let plan = prepare(&state.export_facts(doc)?, opts)?;
+    let Some(chosen) = window
+        .dialog()
+        .file()
+        .set_parent(window)
+        .blocking_pick_folder()
+    else {
+        return Ok(ExportStart::Cancelled);
+    };
+    let folder = chosen
+        .into_path()
+        .map_err(|error| AppError::logged(ErrorCode::Internal, error))?;
+    let folder = intake::admit_folder(&folder)?;
+    start_planned(state, jobs(), plan, &folder, sink)
+}
+
+/// [`resolve`] on the given registry.
+pub fn resolve_on(
+    state: &AppState,
+    registry: &Arc<JobRegistry>,
+    ticket: u32,
+    choice: ConflictChoice,
+    sink: Arc<dyn EventSink>,
 ) -> Result<Option<JobId>, AppError> {
-    Err(AppError::not_yet())
+    let Some((plan, folder)) = take(ticket) else {
+        return Ok(None);
+    };
+    let policy = match choice {
+        ConflictChoice::Cancel => return Ok(None),
+        ConflictChoice::KeepBoth => Policy::KeepBoth,
+        ConflictChoice::Replace => Policy::Replace,
+    };
+    launch(state, registry, plan, folder, policy, sink).map(Some)
+}
+
+/// Carries out the choice for the held ticket; `None` for `cancel` or an expired ticket.
+pub fn resolve(
+    state: &AppState,
+    ticket: u32,
+    choice: ConflictChoice,
+    sink: Arc<dyn EventSink>,
+) -> Result<Option<JobId>, AppError> {
+    resolve_on(state, jobs(), ticket, choice, sink)
 }
 
 #[cfg(test)]
 mod tests {
+    // Test code: a broken fixture should panic.
+    #![allow(clippy::unwrap_used, clippy::cast_possible_truncation)]
+
     use super::*;
 
     #[test]
@@ -114,5 +623,149 @@ mod tests {
             }),
             serde_json::json!({"type": "conflicts", "ticket": 2, "count": 3, "names": ["a.png"]})
         );
+    }
+
+    fn facts(sizes: &[[f32; 2]]) -> ExportFacts {
+        ExportFacts {
+            doc: serde_json::from_str("1").unwrap(),
+            display_name: "My: Doc.pdf".to_owned(),
+            pages: sizes
+                .iter()
+                .enumerate()
+                .map(|(at, drawn)| PageFact {
+                    id: PageId::new(at as u32 + 10),
+                    engine_index: at as u32,
+                    drawn: *drawn,
+                })
+                .collect(),
+        }
+    }
+
+    fn opts(pages: PageSelection, dpi: f32) -> ImageExportOptions {
+        ImageExportOptions {
+            pages,
+            dpi,
+            format: ImageFormat::Png,
+            jpeg_quality: 85,
+            annotations: true,
+        }
+    }
+
+    #[test]
+    fn a_letter_page_at_150_dpi_is_not_lowered() {
+        let f = fit(612.0, 792.0, 150.0).unwrap();
+        assert_eq!((f.width, f.height, f.lowered), (1275, 1650, false));
+    }
+
+    #[test]
+    fn big_pages_are_lowered_to_the_limits_and_hopeless_ones_refused() {
+        // A0 at 600 dpi would be 19 856 x 28 066 px.
+        let f = fit(2384.0, 3370.0, 600.0).unwrap();
+        assert!(f.lowered);
+        assert!(f.width.max(f.height) <= limits::MAX_EXPORT_SIDE_PX);
+        assert!(u64::from(f.width) * u64::from(f.height) <= limits::MAX_EXPORT_PIXELS);
+        assert!(f.dpi >= limits::MIN_EXPORT_DPI);
+        // 14 400 pt (200 in) square: 10 000 px is 50 dpi, which is allowed.
+        assert!(fit(14_400.0, 14_400.0, 600.0).is_some());
+        // 30 000 pt square would need about 24 dpi.
+        assert!(fit(30_000.0, 30_000.0, 600.0).is_none());
+        assert!(fit(f32::NAN, 10.0, 100.0).is_none());
+        assert!(fit(0.0, 10.0, 100.0).is_none());
+    }
+
+    #[test]
+    fn prepare_checks_dpi_quality_pages_and_pixels() {
+        let docs = facts(&[[612.0, 792.0], [612.0, 792.0], [612.0, 792.0]]);
+        let bad = |pages, dpi| prepare(&docs, &opts(pages, dpi)).unwrap_err().code();
+        for dpi in [35.0, 601.0, f32::NAN] {
+            assert_eq!(bad(PageSelection::All, dpi), ErrorCode::InvalidArgument);
+        }
+        assert!(prepare(&docs, &opts(PageSelection::All, 36.0)).is_ok());
+        assert!(prepare(&docs, &opts(PageSelection::All, 600.0)).is_ok());
+        let mut jpeg = opts(PageSelection::All, 100.0);
+        jpeg.format = ImageFormat::Jpeg;
+        for (quality, ok) in [(0, false), (101, false), (1, true), (100, true)] {
+            jpeg.jpeg_quality = quality;
+            assert_eq!(prepare(&docs, &jpeg).is_ok(), ok, "quality {quality}");
+        }
+        let ranges = PageSelection::Ranges { text: "4".into() };
+        let unknown = PageSelection::Current {
+            page_id: PageId::new(99),
+        };
+        let none = PageSelection::Pages { pages: vec![] };
+        for selection in [ranges, unknown, none] {
+            assert_eq!(bad(selection, 100.0), ErrorCode::InvalidArgument);
+        }
+        let huge = facts(&[[612.0, 792.0], [30_000.0, 30_000.0]]);
+        let error = prepare(&huge, &opts(PageSelection::All, 100.0)).unwrap_err();
+        assert_eq!(error.code(), ErrorCode::LimitExceeded);
+        let ui = serde_json::to_value(crate::error::UiError::from(error)).unwrap();
+        assert_eq!(ui["params"]["page"], 2);
+        assert_eq!(ui["params"]["what"], "exportPixels");
+    }
+
+    #[test]
+    fn selections_resolve_in_document_order_without_repeats() {
+        let docs = facts(&[[100.0, 100.0]; 12]);
+        let names = |pages| prepare(&docs, &opts(pages, 72.0)).unwrap().names();
+        assert_eq!(names(PageSelection::All).len(), 12);
+        assert_eq!(names(PageSelection::All)[0], "My_ Doc-p01.png");
+        assert_eq!(
+            names(PageSelection::Current {
+                page_id: PageId::new(12)
+            }),
+            ["My_ Doc-p03.png"]
+        );
+        assert_eq!(
+            names(PageSelection::Ranges {
+                text: "11-, 2, 2-3".into()
+            }),
+            [
+                "My_ Doc-p02.png",
+                "My_ Doc-p03.png",
+                "My_ Doc-p11.png",
+                "My_ Doc-p12.png"
+            ]
+        );
+        assert_eq!(
+            names(PageSelection::Pages {
+                pages: vec![PageId::new(15), PageId::new(10)]
+            }),
+            ["My_ Doc-p01.png", "My_ Doc-p06.png"]
+        );
+    }
+
+    #[test]
+    fn more_than_5000_pages_are_refused() {
+        let docs = facts(&vec![[10.0, 10.0]; 5_001]);
+        let error = prepare(&docs, &opts(PageSelection::All, 36.0)).unwrap_err();
+        assert_eq!(error.code(), ErrorCode::LimitExceeded);
+        let first_5000 = PageSelection::Ranges {
+            text: "1-5000".into(),
+        };
+        assert!(prepare(&docs, &opts(first_5000, 36.0)).is_ok());
+    }
+
+    #[test]
+    fn png_and_jpeg_encode_grey_and_colour() {
+        let colour = RasterPage::from_rgb(vec![255, 0, 0, 0, 255, 0], 2, 1);
+        let grey = RasterPage::from_rgb(vec![9, 9, 9, 200, 200, 200], 2, 1);
+        for page in [&colour, &grey] {
+            let png = encode(page, ImageFormat::Png, 85).unwrap();
+            assert!(png.starts_with(b"\x89PNG"));
+            let jpeg = encode(page, ImageFormat::Jpeg, 85).unwrap();
+            assert!(jpeg.starts_with(&[0xff, 0xd8]));
+        }
+    }
+
+    #[test]
+    fn conflict_tickets_are_single_use_and_one_per_document() {
+        let docs = facts(&[[100.0, 100.0]]);
+        let plan = prepare(&docs, &opts(PageSelection::All, 72.0)).unwrap();
+        let first = hold(plan.clone(), PathBuf::from("a"));
+        let second = hold(plan, PathBuf::from("b"));
+        assert!(take(first).is_none(), "replaced by the newer ticket");
+        assert!(take(second).is_some());
+        assert!(take(second).is_none());
     }
 }
