@@ -360,10 +360,10 @@
   /* Scroll-edge scrim (DESIGN 2): 24 px in all, the first 8 solid canvas color, the rest a fade. */
   --scrim-height: 24px;
   --scrim-solid: 8px;
-  /* Empty-state logo (DESIGN 3.11): 160 in a 184 slot, so the float stays inside it. Ground shadow 96 x 8. */
+  /* Empty-state logo (DESIGN 3.11, 800 px windows): 104 in a 128 slot, so the float stays inside it. Ground shadow 96 x 8. */
   --pill-height: 20px; /* pill badges (DESIGN 1.10) */
-  --logo-hero: 160px;
-  --logo-slot: 184px;
+  --logo-hero: 104px;
+  --logo-slot: 128px;
   --logo-ground-width: 96px;
   --logo-ground-height: 8px;
   --ground-shadow: radial-gradient(closest-side, rgba(91, 91, 214, 0.24), transparent);
@@ -1170,5 +1170,15 @@
 
   [data-form-control]:focus-visible {
     outline-color: Highlight;
+  }
+}
+
+/* The recent files of the empty state: three rows are enough in a short window. 860 px is the viewport height at which an 800 px
+   high window (caption, toolbar and status bar taken off, about 700 px of scroller) stops fitting the full list: ROADMAP Politur M5. */
+@utility empty-recents {
+  @media (max-height: 860px) {
+    & > li:nth-child(n + 4) {
+      display: none;
+    }
   }
 }

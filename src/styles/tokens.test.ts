@@ -782,8 +782,8 @@ describe('mood (DESIGN 1.10, ADR-020)', () => {
   });
 
   it('the empty-state logo and float tokens are the spec ones, and reduced motion removes the float', () => {
-    expect(root.get('--logo-hero')).toBe('160px');
-    expect(root.get('--logo-slot')).toBe('184px');
+    expect(root.get('--logo-hero')).toBe('104px');
+    expect(root.get('--logo-slot')).toBe('128px');
     expect(root.get('--float-distance')).toBe('8px');
     expect(root.get('--float-duration')).toBe('3000ms');
     expect(themeStatic.get('--ease-float')).toBe('cubic-bezier(0.37,0,0.63,1)');

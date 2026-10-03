@@ -106,3 +106,7 @@ export const FIELD_SIZES: Record<FieldSize, string> = {
   sm: 'h-control-sm text-sm',
   md: 'h-control-md text-md',
 };
+
+/** The pill badge (DESIGN 1.10): "Edited", "Form" and the shortcut chip share it, so none can lose its fill. */
+export const PILL =
+  'inline-flex h-pill shrink-0 items-center rounded-pill bg-tile px-1 text-xs text-tile-icon inset-ring-1 inset-ring-control-border';

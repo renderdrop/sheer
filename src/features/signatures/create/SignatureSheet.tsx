@@ -134,6 +134,18 @@ function SheetBody({ id, kind }: { id: number; kind: SignatureRole }) {
   const body = useRef<HTMLDivElement>(null);
   const kept = useRef<number | null>(null);
   const typed = useTypedDraft(kind, text, tab === 'type', kept);
+  // The imported picture is a backend draft like the typed one: a replaced one, and the one left at close (unless handed out), is discarded.
+  const imageRef = useRef<SignatureDraft | null>(null);
+  useEffect(() => {
+    imageRef.current = image;
+  }, [image]);
+  useEffect(
+    () => () => {
+      const held = imageRef.current;
+      if (held !== null && held.id !== kept.current) discard(held.id);
+    },
+    [],
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -169,9 +181,10 @@ function SheetBody({ id, kind }: { id: number; kind: SignatureRole }) {
     if (!ready) return;
     setBusy(true);
     setFailure(null);
+    let drawn: SignatureDraft | null = null;
     try {
       let draft: SignatureDraft | null;
-      if (tab === 'draw') draft = await createDrawnSignature(kind, strokesToOutlines(strokes));
+      if (tab === 'draw') draft = drawn = await createDrawnSignature(kind, strokesToOutlines(strokes));
       else draft = tab === 'type' ? typed.draft : image;
       if (draft === null) {
         setBusy(false);
@@ -191,6 +204,8 @@ function SheetBody({ id, kind }: { id: number; kind: SignatureRole }) {
       if (ref.type === 'draft') kept.current = draft.id;
       settleSignatureSheet(id, ref);
     } catch (caught) {
+      // A drawn draft whose saving failed is of no use: the next try makes a new one.
+      if (drawn !== null && kept.current !== drawn.id) discard(drawn.id);
       setFailure(toAppError(caught));
       setBusy(false);
     }
@@ -201,7 +216,11 @@ function SheetBody({ id, kind }: { id: number; kind: SignatureRole }) {
     setImageError(false);
     try {
       const picked = await importSignatureImage(kind, false);
-      if (picked !== null) setImage(picked);
+      if (picked !== null) {
+        const previous = imageRef.current;
+        if (previous !== null) discard(previous.id);
+        setImage(picked);
+      }
     } catch {
       setImageError(true);
     } finally {

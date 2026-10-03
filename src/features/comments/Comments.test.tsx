@@ -105,7 +105,8 @@ describe('Comments tree', () => {
         <Comments />
       </>,
     );
-    await screen.findAllByRole('treeitem');
+    // A cold first render can take longer than the 1 s default under a full suite: wait for the whole list.
+    await vi.waitFor(() => expect(items()).toHaveLength(2), { timeout: 8000 });
     return view;
   }
 
@@ -219,7 +220,8 @@ describe('Comments tree', () => {
       (items()[0] as HTMLElement).focus();
       await user.keyboard('{Delete}');
       expect(apply).toHaveBeenCalledWith(1, { type: 'deleteAnnotations', ids: [1] });
-      await vi.waitFor(() => expect(document.activeElement?.getAttribute('aria-posinset')).toBe('2'));
+      await vi.waitFor(() => expect(document.activeElement?.getAttribute('aria-label')).toBe('Highlight, page 3'));
+      expect(document.activeElement).toBe(items()[1]);
     });
 
     it('puts the focus on the row after a deleted thread once the rows have really shrunk (no index clamp needed: it goes by key)', async () => {
@@ -242,7 +244,7 @@ describe('Comments tree', () => {
       (items()[1] as HTMLElement).focus();
       await user.keyboard('{Backspace}');
       expect(apply).toHaveBeenCalledWith(1, { type: 'deleteAnnotations', ids: [3] });
-      await vi.waitFor(() => expect(document.activeElement?.getAttribute('aria-posinset')).toBe('1'));
+      await vi.waitFor(() => expect(document.activeElement?.getAttribute('aria-label')).toContain('1 reply'));
     });
 
     it('never delete an opaque annotation (it is not ours to edit)', async () => {

@@ -3,6 +3,7 @@ import { useId, useState, type FormEvent } from 'react';
 
 import { FIND_KEYS_ATTRIBUTE } from '../search/commands';
 import { Button, Field, Menu, Popover, usePulseMessage } from '../../components';
+import { PILL } from '../../components/controlStyles';
 import { Icon } from '../../components/Icon';
 import { useT } from '../../i18n';
 import { useSettledValue } from './hooks';
@@ -190,10 +191,7 @@ export function StatusBar({
     >
       {hasDocument && <FileName name={fileName === '' ? t('status.untitled') : fileName} />}
       {hasDocument && edited && (
-        <span
-          data-edited=""
-          className="inline-flex h-pill shrink-0 items-center rounded-pill bg-tile px-1 text-xs text-tile-icon"
-        >
+        <span data-edited="" className={PILL}>
           {t('status.edited')}
         </span>
       )}

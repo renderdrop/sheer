@@ -21,7 +21,7 @@ export function FormOptions() {
             variant="secondary"
             size="sm"
             aria-pressed={highlight}
-            className="aria-pressed:bg-selected"
+            className="w-full aria-pressed:bg-selected"
             onClick={() => setHighlight(!highlight)}
           >
             {t('form.highlight')}
@@ -34,6 +34,7 @@ export function FormOptions() {
           variant="secondary"
           size="sm"
           icon={Stamp}
+          className="w-full"
           disabled={count === 0}
           focusableWhenDisabled
           onClick={runFlatten}

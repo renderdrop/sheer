@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { act, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, screen, waitFor } from '@testing-library/react';
 import { MotionGlobalConfig } from 'motion/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -165,5 +165,48 @@ describe('signature sheet', () => {
     await user.click(await screen.findByRole('button', { name: 'Choose image…' }));
     expect(await screen.findByText('Use a PNG or JPEG under 10 MB.')).toBeTruthy();
     expect(sig.importSignatureImage).toHaveBeenCalledWith('signature', false);
+  });
+
+  it('an imported picture that is replaced, and the one left at close, are discarded', async () => {
+    window.localStorage.setItem('sheer.signatureTab', 'image');
+    sig.importSignatureImage
+      .mockResolvedValueOnce({ id: 11, role: 'signature', art })
+      .mockResolvedValueOnce({ id: 12, role: 'signature', art });
+    const { user } = setup(<SignatureSheetHost />);
+    act(() => {
+      void openSignatureSheet('signature');
+    });
+    const choose = await screen.findByRole('button', { name: 'Choose image…' });
+    await user.click(choose);
+    await waitFor(() => expect(sig.importSignatureImage).toHaveBeenCalledTimes(1));
+    await user.click(choose);
+    await waitFor(() => expect(sig.discardSignatureDraft).toHaveBeenCalledWith(11));
+    expect(sig.discardSignatureDraft).not.toHaveBeenCalledWith(12);
+    await user.click(screen.getByRole('button', { name: 'Cancel' }));
+    await waitFor(() => expect(sig.discardSignatureDraft).toHaveBeenCalledWith(12));
+  });
+
+  it('a drawn draft whose saving failed is discarded', async () => {
+    window.localStorage.setItem('sheer.signatureTab', 'draw');
+    sig.createDrawnSignature.mockResolvedValue({ id: 21, role: 'signature', art });
+    sig.saveDraftSignature.mockRejectedValue(new Error('x'));
+    const { user } = setup(<SignatureSheetHost />);
+    act(() => {
+      void openSignatureSheet('signature');
+    });
+    const pad = await screen.findByRole('img', { name: 'Signature pad' });
+    for (const [x, y] of [
+      [10, 10],
+      [40, 60],
+      [90, 20],
+    ] as const) {
+      fireEvent.pointerMove(pad, { pointerId: 1, clientX: x, clientY: y });
+      if (x === 10) fireEvent.pointerDown(pad, { pointerId: 1, button: 0, clientX: x, clientY: y });
+    }
+    fireEvent.pointerUp(pad, { pointerId: 1, clientX: 90, clientY: 20 });
+    const create = screen.getByRole('button', { name: 'Create' });
+    await waitFor(() => expect(create.getAttribute('aria-disabled')).toBeNull());
+    await user.click(create);
+    await waitFor(() => expect(sig.discardSignatureDraft).toHaveBeenCalledWith(21));
   });
 });

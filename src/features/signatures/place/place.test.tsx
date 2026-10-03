@@ -193,38 +193,49 @@ describe('PlacementLayer', () => {
     expect(useUi.getState().activeTool).toBe('select');
   });
 
-  it('places on Enter at the centre of the scroll surface, with the item armed at that time', async () => {
-    usePlacement.getState().arm({ type: 'mark', glyph: 'check' });
-    const rect = (left: number, top: number, width: number, height: number) =>
-      ({
-        left,
-        top,
-        width,
-        height,
-        right: left + width,
-        bottom: top + height,
-        x: left,
-        y: top,
-        toJSON: () => '',
-      }) as DOMRect;
-    const region = document.createElement('div');
-    region.setAttribute('role', 'region');
-    region.getBoundingClientRect = () => rect(0, 0, 200, 200);
-    document.body.append(region);
-    const view = render(<PlacementLayer {...props} />, {
-      container: region.appendChild(document.createElement('div')),
-    });
-    const surface = view.container.querySelector<HTMLElement>('[data-placement-layer]');
-    if (surface === null) throw new Error('no layer');
-    surface.getBoundingClientRect = () => rect(0, -300, 600, 800);
-    // The window centre (jsdom 1024x768 -> 512, 384) is on the page too, but the visible rect of the scroller wins: (100, 100).
-    await act(async () => {
-      fireEvent.keyDown(window, { key: 'Enter' });
-    });
-    expect(apply).toHaveBeenCalledTimes(1);
-    expect(apply.mock.calls[0]?.[1]).toMatchObject({ draft: { kind: 'mark', box: { x: 94, y: 394 } } });
-    region.remove();
-  });
+  it.each([
+    { name: 'a scrolled page', region: [0, 0, 200, 200], surface: [0, -300, 600, 800], box: { x: 94, y: 394 } },
+    {
+      name: 'an offset scroller and page',
+      region: [100, 50, 300, 200],
+      surface: [50, 20, 600, 800],
+      box: { x: 194, y: 124 },
+    },
+  ])(
+    'places on Enter at the centre of the visible scroller ($name), with the item armed at that time',
+    async ({ region: r, surface: p, box }) => {
+      usePlacement.getState().arm({ type: 'mark', glyph: 'check' });
+      const rect = (left: number, top: number, width: number, height: number) =>
+        ({
+          left,
+          top,
+          width,
+          height,
+          right: left + width,
+          bottom: top + height,
+          x: left,
+          y: top,
+          toJSON: () => '',
+        }) as DOMRect;
+      const region = document.createElement('div');
+      region.setAttribute('role', 'region');
+      region.getBoundingClientRect = () => rect(r[0] ?? 0, r[1] ?? 0, r[2] ?? 0, r[3] ?? 0);
+      document.body.append(region);
+      const view = render(<PlacementLayer {...props} />, {
+        container: region.appendChild(document.createElement('div')),
+      });
+      const surface = view.container.querySelector<HTMLElement>('[data-placement-layer]');
+      if (surface === null) throw new Error('no layer');
+      surface.getBoundingClientRect = () => rect(p[0] ?? 0, p[1] ?? 0, p[2] ?? 0, p[3] ?? 0);
+      // The window centre (jsdom 1024x768 -> 512, 384) is on the page too, but the visible rect of the scroller wins: its own centre, mapped into the page (see the box of each case).
+      await act(async () => {
+        fireEvent.keyDown(window, { key: 'Enter' });
+      });
+      expect(apply).toHaveBeenCalledTimes(1);
+      expect(apply.mock.calls[0]?.[1]).toMatchObject({ draft: { kind: 'mark', box } });
+      region.remove();
+    },
+  );
 
   it('drops the item when another tool is chosen', () => {
     usePlacement.getState().arm({ type: 'text' });

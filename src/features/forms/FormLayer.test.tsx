@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { readFileSync } from 'node:fs';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -95,6 +96,21 @@ beforeEach(() => {
 afterEach(() => useForms.setState({ byDoc: {} }));
 
 describe('the form layer', () => {
+  it('a field focused by keyboard keeps the focus and the stylesheet rings it in the document selection colour', () => {
+    seed([field(1, [widget(0, 0)]), field(2, [widget(0, 1, 30)])]);
+    render(<FormLayer {...props} />);
+    const [one, two] = screen.getAllByRole('textbox');
+    (one as HTMLElement).focus();
+    fireEvent.keyDown(one as HTMLElement, { key: 'Tab' });
+    expect(document.activeElement).toBe(two);
+    expect((two as HTMLElement).hasAttribute('data-form-control')).toBe(true);
+    // jsdom has no :focus-visible styling: the rule itself is pinned (iris-500 on the white page in both themes, 2 px, offset).
+    const css = readFileSync('src/styles/tokens.css', 'utf8');
+    const rule = /\[data-form-control\]:focus-visible \{([^}]*)\}/.exec(css)?.[1] ?? '';
+    expect(rule).toMatch(/outline: calc\(var\(--form-inset\)[^;]*solid var\(--color-doc-select\)/);
+    expect(rule).toMatch(/outline-offset:/);
+  });
+
   it('shows a labelled control for each field, named by its tooltip or name', () => {
     seed([field(1, [widget(0, 0)], { tooltip: 'Full name' }), field(2, [widget(0, 1, 30)])]);
     render(<FormLayer {...props} />);

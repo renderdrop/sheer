@@ -1,3 +1,4 @@
+import { PILL } from '../../components/controlStyles';
 import { selectActiveId, useDocuments } from '../../stores/documents';
 import { useT } from '../../i18n';
 import { useForms } from './store';
@@ -9,10 +10,7 @@ export function FormPill() {
   const has = useForms((state) => docId !== null && (state.byDoc[docId]?.fields.length ?? 0) > 0);
   if (!has) return null;
   return (
-    <span
-      data-form-pill=""
-      className="inline-flex h-pill shrink-0 items-center rounded-pill bg-tile px-1 text-xs text-tile-icon"
-    >
+    <span data-form-pill="" className={PILL}>
       {t('form.badge')}
     </span>
   );

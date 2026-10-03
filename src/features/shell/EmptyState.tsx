@@ -2,7 +2,7 @@ import { useEffect, useState, type KeyboardEvent, type ReactNode } from 'react';
 
 import logoUrl from '../../../assets/brand/logo.svg';
 import { Button } from '../../components';
-import { SELECTED_FORCED_COLORS } from '../../components/controlStyles';
+import { PILL, SELECTED_FORCED_COLORS } from '../../components/controlStyles';
 import { cx } from '../../components/cx';
 import { isOwnEvent, itemsOf, rovingTarget } from '../../components/roving';
 import { useT } from '../../i18n';
@@ -101,12 +101,12 @@ export function EmptyState({
 }: EmptyStateProps) {
   const t = useT();
   return (
-    <main className="m-auto flex w-full max-w-empty-max flex-col py-2">
+    <main className="m-auto flex w-full max-w-empty-max flex-col py-1">
       <LogoSlot />
       <section
         data-drop-zone=""
         data-drop-active={dropActive ? 'true' : undefined}
-        className="glass-1 relative mt-3 flex flex-col items-center gap-1 rounded-card p-5 text-center"
+        className="glass-1 relative mt-2 flex flex-col items-center gap-1 rounded-card p-4 text-center"
       >
         {dropActive && (
           // The drag-over look: the selected fill and a 2 px inset accent ring over the glass (DESIGN 3.0, 3.11).
@@ -134,15 +134,11 @@ export function EmptyState({
           >
             {opening ? t('action.opening') : t('action.open')}
           </Button>
-          {openShortcut !== '' && (
-            <span className="inline-flex h-pill items-center rounded-pill bg-tile px-1 text-xs text-tile-icon">
-              {openShortcut}
-            </span>
-          )}
+          {openShortcut !== '' && <span className={PILL}>{openShortcut}</span>}
         </div>
       </section>
       {recents.length > 0 && (
-        <section aria-labelledby="recent-heading" className="mt-4 flex flex-col gap-1">
+        <section aria-labelledby="recent-heading" className="mt-3 flex flex-col gap-1">
           <div className="flex items-center justify-between">
             <h2 id="recent-heading" className="m-0 text-sm font-semibold text-text-muted">
               {t('emptyState.recent')}
@@ -156,7 +152,7 @@ export function EmptyState({
           <ul
             aria-label={t('emptyState.recentList')}
             onKeyDown={onRecentsKeyDown}
-            className="m-0 flex list-none flex-col gap-0-5 p-0"
+            className="empty-recents m-0 flex list-none flex-col gap-0-5 p-0"
           >
             {recents.map((row) => (
               <li key={row.id}>{row.content}</li>
