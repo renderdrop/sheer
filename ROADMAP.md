@@ -63,7 +63,7 @@ The Stop hook picks the first open `- [ ]` line, so order matters. Scope: `docs/
 - [ ] Shapes: rectangle, ellipse, line, arrow
 - [ ] Palette, stroke presets, properties inspector; one-shot/locked tool modes
 - [ ] Comments panel: threads (/IRT), filter, sort, jump
-- [ ] Save annotations: appearance streams via lopdf, incremental + atomic save, backup of original
+- [ ] Save annotations: appearance streams via lopdf, incremental + atomic save, backup of original; save refuses an in-place write to the welcome document (`DocKind::Welcome`, Save acts as Save As) with a security_baseline pin
 - [ ] Interop test: saved annotations re-open correctly (PDFium + AP present for every type)
 - [ ] Onboarding steps (F4): "Highlight" and "Comment" pages of the welcome document with coach marks + success moment
 
