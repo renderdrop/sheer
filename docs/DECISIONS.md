@@ -868,3 +868,20 @@ bounded variants (`XStep 2`, one call per level). A real fix is the engine proce
 5. **Link dialog.** The native box shows the host on its own line, then the URL cut to 120 characters with `…`. A host with `xn--`
    labels is shown as `xn--... (decoded)` using a small in-house RFC 3492 decoder (no dependency); the decoded form appears only
    if every character is a letter or digit, and the `xn--` form is always shown with it.
+
+## ADR-029 — M2 annotation UI (DESIGN §3.22–§3.27)
+
+**Context.** M2 adds annotation tools, an inspector, a comments panel and save/undo affordances; the designer's spec needed a few calls.
+
+**Decision.**
+1. **Tools:** no split buttons. Each tool remembers its last variant; pressing the tool key again cycles variants; the inspector holds a
+   segmented chooser. Markup (H), Text (T), Shapes (R) get letters; when space runs out, Pages moves into More first, then Undo/Redo.
+2. **Ink:** strokes ≤ 1000 ms apart join one Ink annotation.
+3. **Keyboard:** each annotation is a Tab stop after the canvas; F6 skips them; arrows nudge, Alt+arrows resize.
+4. **Palette:** the eight Okabe-Ito colours (colour-blind safe), identical in light and dark (annotation colours are document content).
+   This **supersedes ADR-011 §9** (six swatches). "Recent" lists colours found in the file that are not in the palette.
+5. **Free text:** Helvetica (Standard 14) only in M2; no font embedding.
+6. **Author:** new setting "Author name", default the OS display name, stored locally only.
+7. **Quit with several edited documents:** asks one document at a time.
+
+**Consequences.** New tokens per DESIGN §3.22–§3.27; `Settings` gains `authorName` (validated, ≤ 128 chars).

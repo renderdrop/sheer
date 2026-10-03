@@ -926,6 +926,208 @@ optional `x` (`xfa.dismiss`, hides it for this document's session). `role=status
 
 **Tokens (new):** `--dialog-width` 400 (§3.19, §3.21).
 
+### 3.22 Annotation tools (M2)
+
+**Purpose:** the Markup cluster of §3.3 grows to five tools; variants stay out of split buttons (§3.3).
+
+| Tool | Lucide (follows variant) | Key | Variants (inspector, remembered) | Cursor |
+|---|---|---|---|---|
+| Highlight | `highlighter` · `underline` · `strikethrough` | H | Highlight, Underline, Strikethrough | `text` over runs, else `crosshair` (drag a rect) |
+| Note | `message-square` | C | — | `crosshair` |
+| Text | `type` | T | — | `crosshair` |
+| Draw | `pen-line` | D | — | `crosshair` |
+| Shapes | `square` · `circle` · `minus` · `move-up-right` | R | Rectangle, Ellipse, Line, Arrow | `crosshair` |
+
+**Variant.** The last variant per family is stored in the `tools` store presets (persisted). Pressing the tool's key while it is active
+cycles its variants; the toolbar icon, tooltip and `aria-label` name the current variant ("Underline (H)"). The inspector shows the
+variant as a segmented control (§3.13) atop Tool options.
+
+**Modes** per §3.3: click = one-shot, double-click or Shift+Enter locks, Esc or a click on the locked tool → Select. One-shot ends
+after one commit; Draw groups strokes that start ≤ 1000 ms apart into one Ink annotation (one `coalesce_key`), then returns.
+
+**States.** §3.0 plus active and locked (§3.3). No document or a read-only document: tools `aria-disabled`, tooltip says why.
+Overflow: Markup never collapses (§3.3); the toolbar adds 80 px, so Pages collapses first.
+
+**Keyboard.** Letters work only while the canvas has focus and never in a text field (§2.4); every tool is a registry action
+(`tool-highlight` …), so the tooltip chip, `aria-keyshortcuts` and the macOS Tools menu agree. With a tool active, Enter on the
+focused canvas places a default-size annotation at the viewport centre (keyboard path for Note, Text, Shapes; Highlight uses the
+text selection, §3.17: H with selected text marks it at once).
+
+**A11y.** Polite live `tool.announce` on change. **Motion:** §4.1 tool on; reduced motion unchanged (no transform).
+
+| Key | en | de |
+|---|---|---|
+| `tool.highlight` / `.underline` / `.strike` | Highlight / Underline / Strikethrough | Hervorheben / Unterstreichen / Durchstreichen |
+| `tool.note` / `.text` / `.draw` | Note / Text / Draw | Notiz / Text / Zeichnen |
+| `tool.shapes` / `.rect` / `.ellipse` / `.line` / `.arrow` | Shapes / Rectangle / Ellipse / Line / Arrow | Formen / Rechteck / Ellipse / Linie / Pfeil |
+| `tool.announce` | {tool} tool{locked, select, true { , locked} other {}} | Werkzeug {tool}{locked, select, true { , fixiert} other {}} |
+| `tool.readOnly` | This document can't be edited. | Dieses Dokument kann nicht bearbeitet werden. |
+
+### 3.23 Annotations on the canvas (M2)
+
+**Slot.** The annotation overlay is canvas-local layer 3 (§1.7): one SVG per mounted page, same box and transform as the page (§3.17
+Rotation). Clean annotations are in the bitmap; the overlay draws drafts, edited annotations and all selection chrome. Search hits
+stay in layer 2; the **active** hit's outline is redrawn in layer 3 so a filled shape never hides it. Popovers sit at `--z-popover`.
+
+**Anatomy.** Selection = bounding box 2 px `--color-doc-select`, 2 outside the shape; handles `--handle-size` 8, white fill, 1 px
+`--color-doc-select`, hit area 24. Boxes and ellipses: 8 handles; Line/Arrow: 2 endpoints; Ink: 4 corners; Highlight family and
+Note: box only (no resize).
+
+| State | Treatment |
+|---|---|
+| default | as in the file |
+| hover (Select tool) | 1 px `--color-doc-hover` box; cursor `move` (handles: the resize cursor of their edge) |
+| selected | box + handles |
+| focus-visible | §3.0 ring around the box (offset 2), plus the selection |
+| dragging | the overlay moves the draft; the bitmap copy is hidden (`pageRev`, ARCHITECTURE Annotate) |
+| locked / read-only | box without handles, cursor `default` |
+
+**Move/resize.** 4 px drag threshold; clamped to the page box; Shift keeps aspect (resize) or axis (move). One `apply_command` on
+pointerup. Click selects, Shift- or primary-click toggles in the selection; a drag on empty page area in Select tool selects text, not annotations.
+
+**Keyboard.** Each annotation is a tab stop after the canvas region, page then reading order (top-left first); F6 skips them.
+Focus selects; Shift+Space adds the focused one. Arrows nudge 1 pt (Shift 10), Alt+arrows resize the trailing/bottom edge;
+nudges coalesce for 500 ms into one undo step. Delete/Backspace deletes (announced, Undo toast §3.12); Enter edits (§3.25);
+Esc clears the selection (§2.3 order).
+
+**A11y.** `role=button`, `aria-roledescription` = type (`tool.*`), `aria-pressed` = selected, name `annot.name`.
+**Motion:** none; the canvas never animates (§2.4). **Forced colors:** box and handle borders `Highlight`, handle fill `Canvas`.
+
+**Tokens (new):** `--handle-size` 8, `--color-doc-hover` `rgba(91,91,214,.50)` both themes.
+
+| Key | en | de |
+|---|---|---|
+| `annot.name` | {type} by {author}, page {n}{text, select, none {} other {: {text}}} | {type} von {author}, Seite {n}{text, select, none {} other {: {text}}} |
+| `annot.deleted` | {type} deleted | {type} gelöscht |
+
+### 3.24 Properties inspector (M2)
+
+**Slot:** the inspector (§2, §3.9), 288. Header: type ("Highlight"), `inspector.items`, or `inspector.toolOptions` with the tool name.
+Sections 16 apart, divider between, each a label (meta 600) over its control. Tool options edit presets; a selection edits itself.
+
+**Colour.** Annotation colours are document content (ADR-011 §9): the eight Okabe-Ito colours, the same in both themes (pages are white),
+`--annot-yellow #F0E442` · `-orange #E69F00` · `-vermillion #D55E00` · `-purple #CC79A7` · `-blue #0072B2` · `-sky #56B4E9` ·
+`-green #009E73` · `-black #000000`. One row: 8 swatches `--swatch-size` 24 circles, gap 8, 1 px inset `--color-control-border`.
+Selected = `check` 12 (white on dark swatches, ink on light) + 2 px `--color-focus` ring offset 2: never colour alone. Second row
+"Recent": the last 4 colours read from the file that are not in the palette (a file may hold any colour); hidden when none.
+`radiogroup`, roving arrows (wrap), names in tooltip + `aria-label`. Defaults: Highlight yellow, Underline/Strike vermillion, Note
+yellow, Text black, Draw and Shapes blue.
+
+**Stroke** (Draw, Shapes): segmented 1 · 2 · 4 · 8 pt, each segment a line of that weight + `aria-label`. **Opacity:** Slider + field
+(§3.7), 10–100 %, step 5. **Font size** (Text): md Field 56 + sm `chevron-down` menu of 8 10 12 14 18 24 36; range 6–144 pt;
+Helvetica only in M2.
+
+**Live edit.** Slider drags preview in the overlay and commit on release; other controls commit at once; one undo step each.
+
+**Multi-selection.** Only sections every selected type has. Differing values: no swatch checked and meta `inspector.mixed`; the field
+shows `inspector.mixed` as placeholder. A change applies to all as one command (one undo step).
+
+**Empty state** (Select tool, nothing selected, inspector open): centred column per §3.15, `sliders-horizontal` tile,
+`inspector.empty` + `inspector.emptyHint`.
+
+**A11y / motion.** Never takes focus (§3.9); F6 region. Panel motion MOTION §4.2. **Forced colors:** swatches keep their colour
+(`forced-color-adjust: none`) with a 1 px `CanvasText` ring; selected adds a 2 px `Highlight` ring.
+
+| Key | en | de |
+|---|---|---|
+| `inspector.toolOptions` / `.items` | Tool options: {tool} / {n} items | Werkzeugoptionen: {tool} / {n} Elemente |
+| `inspector.colour` / `.recent` / `.stroke` / `.opacity` / `.fontSize` | Colour / Recent / Line width / Opacity / Font size | Farbe / Zuletzt / Linienstärke / Deckkraft / Schriftgröße |
+| `colour.*` | Yellow, Orange, Vermillion, Purple, Blue, Sky blue, Green, Black | Gelb, Orange, Zinnoberrot, Purpur, Blau, Himmelblau, Grün, Schwarz |
+| `inspector.mixed` | Mixed | Gemischt |
+| `inspector.empty` / `.emptyHint` | Nothing selected / Select an annotation or pick a tool to see its options. | Nichts ausgewählt / Wählen Sie eine Anmerkung oder ein Werkzeug, um Optionen zu sehen. |
+
+### 3.25 Note popover and free-text editing (M2)
+
+**Note anchor.** A 24 × 24 (`--note-icon`, in points, scales with zoom; hit area ≥ 24 px) icon in the note's colour on the page.
+Click, Enter or a new note opens its popover.
+
+**Popover.** G2 `role=dialog` (§3.5), `--note-width` 280, right-start of the anchor, 8 offset, flips; it closes when the anchor scrolls out.
+Anatomy, gap 8: header row 32: author `--text-md` 600 · date meta (`Intl` medium date + short time) · spacer · sm `ellipsis` menu
+(`note.delete`, `note.copy`) · sm `x`. Body: autosizing textarea, Field styles, 3–10 lines then scrolls. Replies (`/IRT`) below a
+divider: author/date line + text, read-only for others, editable for the own. Footer: field `note.replyPlaceholder`; primary sm
+`note.reply`, `aria-disabled` while empty.
+
+**Author** comes from the new Settings row "Author name" (§3.13), default the OS account's display name (read in Rust). Text is plain;
+file text renders as text nodes only.
+
+**Editing.** A new note opens with focus in the body. The body commits on blur or close (one coalesced undo step); a new note closed
+empty is removed without an undo entry. Primary+Enter posts a reply; Enter is a newline. Esc closes and refocuses the anchor. Tab cycles inside.
+
+**Free text.** Text tool: a click places a 160 pt box (drag sets the width) and enters editing; on an existing one, double-click or Enter.
+Editing is a textarea in layer 3 exactly over the box, font size × zoom, 1 px dashed `--color-doc-select`; width fixed, height grows.
+Esc or a click outside commits; empty → removed. Primary+Z inside the field is the field's own undo.
+
+**Motion.** Popover per §3.5; reduced motion opacity only. **Forced colors:** popover `Canvas` + `CanvasText` border.
+
+**Tokens (new):** `--note-icon` 24, `--note-width` 280.
+
+| Key | en | de |
+|---|---|---|
+| `note.label` | Note by {author} | Notiz von {author} |
+| `note.delete` / `.copy` | Delete note / Copy text | Notiz löschen / Text kopieren |
+| `note.replyPlaceholder` / `.reply` | Reply… / Reply | Antworten… / Antworten |
+| `settings.author` | Author name | Name des Autors |
+
+### 3.26 Comments panel (M2)
+
+**Purpose:** every markup annotation (not links, popups, widgets) of the document, in the left panel's Comments tab (§3.6).
+
+**Anatomy.** Title row "Comments" + sm IconButtons `list-filter` (filter popover, pressed while a filter is on) and `arrow-down-up`
+(sort menu). Under it, when filtered, meta `comments.filtered`. Body: `role=tree` as §3.15 (virtualized, fixed heights).
+- Group header rows 24 (`search.page`, meta 600, not focusable) when sorted by page.
+- Root row 64, radius 8, padding 8: colour dot 8 + type icon 16 + author 600 + date meta; excerpt `--text-sm`, 2 lines, ellipsis.
+- Replies: level 2, rows 48, indent 16; the root shows `comments.replies` and the §3.15 chevron.
+
+**Filter** (role=dialog popover): checkbox groups Type and Author (from the document), ghost `comments.reset`. **Sort** (menu, checked):
+Page (default), Newest, Oldest. Both per tab, in memory.
+
+**Behaviour.** Live from ChangeSets. Enter or click jumps (MOTION §4.8), selects the annotation on the canvas and keeps focus in the
+panel; the row of a canvas selection becomes `aria-selected` and scrolls into view (nearest). Delete deletes (§3.23).
+
+**States.** Empty: `messages-square` tile, `comments.empty` + `.emptyHint`. Filtered empty: `comments.noMatch` + ghost `comments.reset`.
+Loading/error as §3.15. Keyboard: §3.15 tree keys.
+
+**A11y.** Rows named by `annot.name` + reply count. **Motion:** §3.15. **Forced colors:** dots keep their colour + `CanvasText` ring.
+
+| Key | en | de |
+|---|---|---|
+| `comments.label` | Comments | Kommentare |
+| `comments.filter` / `.sort` / `.reset` | Filter / Sort / Reset filter | Filtern / Sortieren / Filter zurücksetzen |
+| `comments.type` / `.author` | Type / Author | Typ / Autor |
+| `comments.byPage` / `.newest` / `.oldest` | Page / Newest first / Oldest first | Seite / Neueste zuerst / Älteste zuerst |
+| `comments.filtered` | {shown} of {total} | {shown} von {total} |
+| `comments.replies` | {n, plural, one {# reply} other {# replies}} | {n, plural, one {# Antwort} other {# Antworten}} |
+| `comments.empty` / `.emptyHint` | No comments yet / Notes, highlights and drawings appear here. | Noch keine Kommentare / Notizen, Markierungen und Zeichnungen erscheinen hier. |
+| `comments.noMatch` | No comments match the filter. | Keine Kommentare entsprechen dem Filter. |
+
+### 3.27 Undo, Save and unsaved changes (M2)
+
+**Undo/Redo.** Toolbar cluster before More: IconButtons `undo-2` / `redo-2`, `aria-disabled` when the history is empty; tooltips name
+the step (`history.undo`). Overflow moves them into More first. Keys: primary+Z, primary+Shift+Z; Windows also Ctrl+Y. In a text
+field the field's native undo wins. Polite live `history.undone` / `.redone`. Per document (Rust history, ADR-003).
+
+**Unsaved indicator.** Tab dot (§3.18), status bar "Edited" badge (§3.10), `aria-description` `tabs.edited`; macOS also marks the
+window edited (dot in the close button) while any tab is edited.
+
+**Save.** Primary+S saves in place; primary+Shift+S opens Rust's Save As dialog (no path reaches the UI). Both in More and the macOS File
+menu. A document that cannot be written in place (welcome, read-only) saves as Save As. While saving: status "Saving…" (§3.10); done:
+success pulse "Edited" → "Saved" (MOTION §4.7); failure: error banner (§3.12) with `save.saveAs`. Errors never toast.
+
+**Close with changes.** Closing an edited tab or quitting opens a dialog as §3.19 (400 w): `save` tile | `save.title`; `save.body`
+muted; buttons ghost `save.discard` (leading) · secondary `save.cancel` · primary `save.save`. Initial focus Save; Enter saves, Esc
+cancels. Quitting walks the edited documents one by one, activating each tab; the title adds `save.count`. Cancel stops the quit.
+Motion as About.
+
+| Key | en | de |
+|---|---|---|
+| `history.undo` / `.redo` | Undo {step} / Redo {step} | {step} rückgängig / {step} wiederholen |
+| `history.undone` / `.redone` | Undone: {step} / Redone: {step} | Rückgängig: {step} / Wiederholt: {step} |
+| `save.save` / `.saveAs` / `.saved` | Save / Save As… / Saved | Speichern / Speichern unter… / Gespeichert |
+| `save.title` / `.count` | Save changes to "{name}"? / ({i} of {n}) | Änderungen an „{name}“ speichern? / ({i} von {n}) |
+| `save.body` | Your changes are lost if you don't save them. | Ihre Änderungen gehen verloren, wenn Sie sie nicht speichern. |
+| `save.discard` / `.cancel` | Don't Save / Cancel | Nicht speichern / Abbrechen |
+| `save.failed` | Couldn't save "{name}". | „{name}“ konnte nicht gespeichert werden. |
+
 ## 4. Contrast verification
 
 Worst points (ADR-020): `--surface` over the darkest field point (light `#C6C7FB` → glass `rgb(229,229,254)`; dark

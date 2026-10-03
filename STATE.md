@@ -1,7 +1,7 @@
 # STATE
 phase: M2
 version: 0.4.0
-current_item: ROADMAP M2 — cut the open items into 2–4 work packages (§8.4 step 1); designer specs first for new surfaces
+current_item: M2 wave 1 — designer DESIGN §3.22–3.27 + P4 annotation model/undo (running); then wave 2: P5 markup+notes+free text, P6 ink+shapes+inspector, P7 save+AP+interop; then P8 comments panel+onboarding+Politur M2
 last_completed: M1 Viewer released as v0.4.0 (tag v0.4.0); FEEDBACK F1–F6 done
 loop_count_this_session: 0
 open_blockers: 1 (B-001: macOS CI green; the UI has never been seen running on a Mac)
