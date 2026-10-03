@@ -11,7 +11,7 @@ still **private**. Nothing was published.
 
 | # | Item | State |
 |---|---|---|
-| P-1 | Personal e-mail address in commit metadata | **Resolved locally.** `git filter-repo` replaced it everywhere: author and committer of all own commits, 23 `Signed-off-by` trailers, tagger of all 8 tags. Dependabot entries and `Co-Authored-By` trailers are unchanged. The Windows user name in test paths is replaced by `user` in every revision. No old object is left in the local object store. |
+| P-1 | Personal e-mail address in commit metadata | **Resolved locally.** `git filter-repo` replaced it everywhere: author and committer of all own commits, 23 `Signed-off-by` trailers, tagger of all 8 tags. Dependabot entries and `Co-Authored-By` trailers are unchanged. The Windows user name in test paths is replaced by `user` in every revision. `main`, all tags and the local `dependabot/*` branches are clean. Caveat: while `origin` points to the old repository, a background fetch (editor or desktop app) brings the old history back as `refs/remotes/origin/main`; that ref is never pushed by the commands below, and step 2 of "Publishing" removes it. |
 | P-2 | **GitHub still holds the old history** of `renderdrop/sheer` | **Blocker for that repository.** A force-push does not remove it: (1) 52 of the 54 Actions runs carry the old address in their `head_commit` metadata (public through the API once the repository is public); (2) the closed Dependabot pull requests #1 and #2 keep `refs/pull/1/head` and `refs/pull/2/head`, whose parents are the old commits, and these refs cannot be deleted by the owner; (3) old commits stay reachable by SHA until GitHub garbage-collects them; (4) the releases 0.4.0–0.7.0 are attached to the old tags. **Clears with:** publish into a fresh repository (see "Publishing" below). Keep the old one private (rename it, e.g. `sheer-archive`) or delete it. |
 
 ## 1. Secrets (whole history, all refs, after the rewrite)
@@ -72,7 +72,10 @@ The rewrite removed the `origin` remote (filter-repo does that on purpose); it w
 repository before the rewrite exists outside the project (Git bundle and a copy of `.git` in the session scratchpad).
 
 1. Rename the old repository (Settings → General, e.g. `sheer-archive`) and keep it private, or delete it.
-2. Create a new, empty, private repository `renderdrop/sheer` (no README, no license, so the first push is a fast-forward).
+2. Create a new, empty, private repository `renderdrop/sheer` (no README, no license, so the first push is a fast-forward). If the old
+   one was renamed, point the clone at the new one and drop the stale old history:
+   `git remote set-url origin https://github.com/renderdrop/sheer.git`, `git update-ref -d refs/remotes/origin/main`,
+   `git reflog expire --expire=now --all`, `git gc --prune=now`. Never use `git push --mirror` or `--all`.
 3. Push only `main` and the tags: `git push -u origin main` and `git push origin --tags`. Do not push the two local
    `dependabot/*` branches (Dependabot recreates its pull requests). Pushing the tags runs `release.yml` for every tag; to save macOS
    minutes, push only `v0.7.0` (`git push origin v0.7.0`) and add the others later, or accept the runs.
