@@ -19,6 +19,7 @@ import {
   PageLayout,
   adjacentPages,
   centeredScroll,
+  centredScrollLeft,
   fitZoomFor,
   isPaged,
   metricsFor,
@@ -178,8 +179,13 @@ export function ViewerCanvas({ style }: { style?: CSSProperties }) {
     window: EMPTY_WINDOW,
     ahead: [],
   });
+  // Horizontal scroll stays centred (a wide page next to narrow ones overflows) until the user scrolls sideways themselves.
+  const autoCentre = useRef(true);
+  const lastLeft = useRef(0);
   const track = useCallback(
     (position: ScrollPosition) => {
+      if (Math.abs(position.left - lastLeft.current) > 1) autoCentre.current = false;
+      lastLeft.current = position.left;
       if (layout === null || docId === null) return;
       // What is on screen is the whole of the region: the content's origin is `padding` px inside it, so the content shows from
       // `scroll - padding` over the region's full height, which is the content box and the padding above and below it.
@@ -222,6 +228,7 @@ export function ViewerCanvas({ style }: { style?: CSSProperties }) {
     settleZoomMotion();
     const changed = shownDocRef.current !== docId;
     shownDocRef.current = docId;
+    if (changed) autoCentre.current = true;
     const wanted = anchor ?? (changed ? pageTopAnchor(layout, pageIndex, centeredScroll(layout)) : null);
     if (wanted !== null) {
       const target = scrollFor(layout, wanted);
@@ -254,6 +261,8 @@ export function ViewerCanvas({ style }: { style?: CSSProperties }) {
       }
       if (anchor !== null) useView.getState().consumeAnchor(docId);
     }
+    if (autoCentre.current) region.scrollLeft = centredScrollLeft(region.scrollWidth, region.clientWidth);
+    lastLeft.current = region.scrollLeft;
     track({ left: region.scrollLeft, top: region.scrollTop });
     // `pageIndex` is only read for a document that has just come forward: a page that scrolling reports is not a reason to run this again.
     // eslint-disable-next-line react-hooks/exhaustive-deps

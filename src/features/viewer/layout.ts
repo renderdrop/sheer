@@ -445,6 +445,11 @@ export function centeredScroll(layout: PageLayout): ScrollPosition {
   return { left: Math.max(0, (layout.width - layout.viewport.width) / 2), top: 0 };
 }
 
+/** The horizontal scroll that centres overflowing content in a scroller (0 where nothing overflows). */
+export function centredScrollLeft(scrollWidth: number, clientWidth: number): number {
+  return Math.max(0, (scrollWidth - clientWidth) / 2);
+}
+
 /**
  * The anchor that puts the top of `page` at the top of the viewport, keeping the horizontal scroll as it is: what going to a page
  * does. `null` if `page` is not in the layout.

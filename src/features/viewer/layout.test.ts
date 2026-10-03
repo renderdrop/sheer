@@ -10,6 +10,7 @@ import {
   anchorAt,
   buildMetrics,
   centeredScroll,
+  centredScrollLeft,
   fitZoomFor,
   isPaged,
   metricsFor,
@@ -799,5 +800,12 @@ describe('the point under the pointer stays within 1 px when the browser rounds 
         expect(Math.abs((box?.top ?? 0) + anchor.yPt * after.scale - Math.round(exact.top) - y)).toBeLessThanOrEqual(1);
       }
     }
+  });
+});
+
+describe('centredScrollLeft', () => {
+  it('centres overflowing content and is 0 without overflow', () => {
+    expect(centredScrollLeft(1000, 600)).toBe(200);
+    expect(centredScrollLeft(500, 600)).toBe(0);
   });
 });
