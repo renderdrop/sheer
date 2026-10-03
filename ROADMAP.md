@@ -80,6 +80,10 @@ The Stop hook picks the first open `- [ ]` line, so order matters. Scope: `docs/
 - [ ] Save annotations: appearance streams via lopdf, incremental + atomic save, backup of original; save refuses an in-place write to the welcome document (`DocKind::Welcome`, Save acts as Save As) with a security_baseline pin
 - [ ] Interop test: saved annotations re-open correctly (PDFium + AP present for every type)
 - [ ] Onboarding steps (F4): "Highlight" and "Comment" pages of the welcome document with coach marks + success moment
+- [ ] Politur M2
+  - (from M1 review) recents clone: fix the zoom before the FLIP measures the target rect (one frame of "–" and a moving target); counter-scale the clone radius or fade it earlier; make the empty-state fade-out visible
+  - (from M1 security) `style-src 'unsafe-inline'`: move to hashed/nonce styles or record the reason in DECISIONS; confirm the release build never uses devCsp; prune 3 unused license allowances in deny.toml
+  - (from M1 reviews) Clear in recents: one failure still shows Undo for every id; missing row opens Locate twice over (row + button) — keep one; text cache listeners: bound; links are untested with file /Rotate (no link overlay yet)
 
 ## M3 — Organize pages (v0.6.0)
 

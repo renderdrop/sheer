@@ -6,6 +6,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-10-03
+
+M1 — Viewer. CI green on Windows and macOS (run 37120538629).
+
+### Security
+
+- Windows file identity from the opened handle (`same-file`); the PDFium worker respawns after a wedge (at most 3 times per process);
+  unlocks are serialised per document; recents drop UNC, device and NTFS-stream spellings before any file-system access, and Locate goes
+  through the normal intake.
+
 ### Added
 
 - Search panel: live search after two characters, hits grouped by page with context, highlights on the canvas, next/previous (Enter, Shift+Enter, Ctrl/Cmd+G, F3).

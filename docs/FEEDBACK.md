@@ -49,7 +49,11 @@ After F1–F5: continue with the roadmap.
 
 CI runs #5 and #7 on `main` are red and the Dependabot PRs fail. Work this before the M1 milestone close.
 
-- [ ] Fetch the logs of the failed runs (`gh run view --log-failed`), find the cause per platform (Windows, macOS) and fix it
-- [ ] Record the macOS build result in B-001 (`docs/BLOCKERS.md`)
-- [ ] ORCHESTRATOR_PROMPT §8.6: CI green on Windows and macOS is part of the milestone DoD; the CI status is checked after every push
-- [ ] Dependabot: limit to security updates plus grouped patch/minor updates, ignore major bumps; close the open Dependabot PRs
+- [x] Fetch the logs of the failed runs (`gh run view --log-failed`), find the cause per platform (Windows, macOS) and fix it
+- [x] Record the macOS build result in B-001 (`docs/BLOCKERS.md`)
+- [x] ORCHESTRATOR_PROMPT §8.6: CI green on Windows and macOS is part of the milestone DoD; the CI status is checked after every push
+- [x] Dependabot: limit to security updates plus grouped patch/minor updates, ignore major bumps; close the open Dependabot PRs
+
+F6 result: macOS failed only on test-side issues (APFS refuses non-UTF-8 names; clippy constant assert; a 300 ms respawn timing); fixed,
+CI green on Windows and macOS (run 37120538629). Dependabot PRs #1/#2 closed. Open for the product owner: the repository setting
+"Dependabot security updates" (automated security fixes) is off — enabling it is a repo setting, left to a human.
