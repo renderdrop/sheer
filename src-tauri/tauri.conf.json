@@ -39,7 +39,7 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ],
-    "resources": ["pdfium/**/*"],
+    "resources": ["pdfium/**/*", "resources/welcome/*.pdf"],
     "fileAssociations": [
       {
         "ext": ["pdf"],

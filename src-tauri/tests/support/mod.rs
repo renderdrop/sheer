@@ -119,6 +119,10 @@ pub fn win_ansi(text: &str) -> String {
             '\u{2014}' => 0x97,
             '\u{2018}' => 0x91,
             '\u{2019}' => 0x92,
+            '\u{201c}' => 0x93,
+            '\u{201d}' => 0x94,
+            '\u{201e}' => 0x84,
+            '\u{2026}' => 0x85,
             _ => panic!("{c:?} is not in WinAnsiEncoding"),
         };
         out.push_str(&format!("\\{code:03o}"));

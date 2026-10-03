@@ -51,14 +51,26 @@ pub struct DocFlags {
     pub signed: bool,
 }
 
+/// Where a document comes from. `Welcome` is the bundled tour sample (ADR-023): read-only (Save acts as Save As, closing never
+/// asks to discard) and never a recent. Everything the user opens is `User`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum DocKind {
+    #[default]
+    User,
+    Welcome,
+}
+
 /// What the frontend learns about a document it just opened.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DocumentInfo {
     pub id: DocumentId,
     pub page_count: u32,
-    /// The file's name for the status bar, see [`display_name`]. Never contains a directory.
+    /// The file's name for the status bar, see [`display_name`]. Never contains a directory. The welcome document has its own
+    /// localized name instead of its file's.
     pub display_name: String,
+    pub kind: DocKind,
     pub flags: DocFlags,
 }
 
@@ -137,6 +149,7 @@ struct Entry {
     path: PathBuf,
     /// What the UI is told about the file, see [`display_name`].
     display_name: String,
+    kind: DocKind,
     /// `None` until the engine has loaded the document.
     page_count: Option<u32>,
     /// What PDFium said about the document when it loaded it (`set_flags`); all `false` until then.
@@ -154,7 +167,12 @@ struct Inner {
 
 impl Inner {
     /// Adds an entry under a fresh id, within the limit on open documents.
-    fn insert(&mut self, path: PathBuf) -> Result<DocumentId, AppError> {
+    fn insert(
+        &mut self,
+        path: PathBuf,
+        kind: DocKind,
+        name: Option<String>,
+    ) -> Result<DocumentId, AppError> {
         if self.entries.len() >= limits::MAX_OPEN_DOCUMENTS {
             return Err(AppError::limit(
                 "documents",
@@ -166,12 +184,16 @@ impl Inner {
             .next_id
             .checked_add(1)
             .ok_or(AppError::new(ErrorCode::Internal))?;
-        let display_name = display_name(&path);
+        let display_name = match name {
+            Some(name) => sanitize_text(&name, limits::MAX_DISPLAY_NAME_CHARS),
+            None => display_name(&path),
+        };
         self.entries.insert(
             id,
             Entry {
                 path,
                 display_name,
+                kind,
                 page_count: None,
                 flags: DocFlags::default(),
                 closing: false,
@@ -223,7 +245,7 @@ impl Registry {
     /// Registers a path and returns its new id, without looking whether the path is registered already (the intake uses
     /// [`Registry::claim`], which does).
     pub fn register(&self, path: PathBuf) -> Result<DocumentId, AppError> {
-        self.lock().insert(path)
+        self.lock().insert(path, DocKind::User, None)
     }
 
     /// Registers `path`, which must be canonical (`std::fs::canonicalize`, so two names of one file are one path), unless it
@@ -234,6 +256,17 @@ impl Registry {
     /// A document that is being closed (see [`Registry::begin_close`]) is not open any more: its path is claimed anew and gets
     /// a new id, but the entry still counts against the limit, because the engine still holds the document.
     pub fn claim(&self, path: PathBuf) -> Result<Claim, AppError> {
+        self.claim_as(path, DocKind::User, None)
+    }
+
+    /// [`Registry::claim`] for a document of `kind`, shown under `name` (when given) instead of its file's name. The kind and the
+    /// name only apply to a new entry: a document that is open already keeps what it has.
+    pub fn claim_as(
+        &self,
+        path: PathBuf,
+        kind: DocKind,
+        name: Option<String>,
+    ) -> Result<Claim, AppError> {
         let mut inner = self.lock();
         if let Some((&id, _)) = inner
             .entries
@@ -242,7 +275,20 @@ impl Registry {
         {
             return Ok(Claim::Existing(id));
         }
-        inner.insert(path).map(Claim::New)
+        inner.insert(path, kind, name).map(Claim::New)
+    }
+
+    /// The open welcome documents (not the ones being closed), oldest first.
+    pub fn welcome_ids(&self) -> Vec<DocumentId> {
+        let inner = self.lock();
+        let mut ids: Vec<DocumentId> = inner
+            .entries
+            .iter()
+            .filter(|(_, entry)| !entry.closing && entry.kind == DocKind::Welcome)
+            .map(|(&id, _)| id)
+            .collect();
+        ids.sort_by_key(|id| id.0);
+        ids
     }
 
     /// What the UI is told about a document that is loaded; `None` for an unknown one, one still loading, or one being closed.
@@ -253,6 +299,7 @@ impl Registry {
             id,
             page_count: entry.page_count?,
             display_name: entry.display_name.clone(),
+            kind: entry.kind,
             flags: entry.flags,
         })
     }
@@ -469,6 +516,7 @@ mod tests {
             id,
             page_count: 3,
             display_name: "a.pdf".to_owned(),
+            kind: DocKind::User,
             flags: DocFlags {
                 encrypted: true,
                 xfa: false,
@@ -478,11 +526,39 @@ mod tests {
         };
         assert_eq!(
             serde_json::to_string(&info).unwrap(),
-            r#"{"id":0,"pageCount":3,"displayName":"a.pdf","flags":{"encrypted":true,"xfa":false,"hasForms":true,"signed":false}}"#
+            r#"{"id":0,"pageCount":3,"displayName":"a.pdf","kind":"user","flags":{"encrypted":true,"xfa":false,"hasForms":true,"signed":false}}"#
         );
     }
 
     // --- claim, info, abandon ---
+
+    #[test]
+    fn a_welcome_document_has_its_kind_and_its_own_name_and_is_found_by_kind() {
+        let registry = Registry::new();
+        let user = registry.register(path("a.pdf")).unwrap();
+        let Claim::New(welcome) = registry
+            .claim_as(
+                path("welcome-en.pdf"),
+                DocKind::Welcome,
+                Some("Welcome to Sheer.pdf".to_owned()),
+            )
+            .unwrap()
+        else {
+            panic!("expected a new id");
+        };
+        registry.set_page_count(user, 1).unwrap();
+        registry.set_page_count(welcome, 4).unwrap();
+        let info = registry.info(welcome).unwrap();
+        assert_eq!(info.kind, DocKind::Welcome);
+        assert_eq!(info.display_name, "Welcome to Sheer.pdf");
+        assert_eq!(registry.info(user).unwrap().kind, DocKind::User);
+        assert!(serde_json::to_string(&info)
+            .unwrap()
+            .contains(r#""kind":"welcome""#));
+        assert_eq!(registry.welcome_ids(), [welcome]);
+        registry.begin_close(welcome);
+        assert!(registry.welcome_ids().is_empty(), "a closing one is gone");
+    }
 
     #[test]
     fn a_path_is_registered_once_and_claiming_it_again_returns_its_id() {
@@ -562,6 +638,7 @@ mod tests {
                 id,
                 page_count: 4,
                 display_name: "a.pdf".to_owned(),
+                kind: DocKind::User,
                 flags: DocFlags::default(),
             })
         );

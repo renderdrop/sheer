@@ -18,6 +18,10 @@ export type ThemeMode = (typeof THEME_MODES)[number];
 
 export { LANGUAGES, type Language };
 
+/** Wire names of the backend's `WelcomeTour` (storage/settings.rs, ADR-023): "pending" until the first launch has opened the tour. */
+export const WELCOME_TOUR_STATES = ['pending', 'shown'] as const;
+export type WelcomeTour = (typeof WELCOME_TOUR_STATES)[number];
+
 /**
  * Range and default of the left panel's width in px (src-tauri/src/limits.rs, DESIGN 2 and 3.8). A test checks these
  * against `PANEL` in src/components/tokens.ts, which the splitter uses.
@@ -32,6 +36,8 @@ export interface Settings {
   language: Language;
   /** Width of the left panel in px, an integer from `LEFT_PANEL_WIDTH.min` to `.max`. */
   leftPanelWidth: number;
+  /** "pending" until the welcome tour has been started once; the UI writes "shown" before it opens the welcome document. */
+  welcomeTour: WelcomeTour;
 }
 
 export const DEFAULT_SETTINGS: Readonly<Settings> = {
@@ -39,6 +45,7 @@ export const DEFAULT_SETTINGS: Readonly<Settings> = {
   theme: 'system',
   language: 'system',
   leftPanelWidth: LEFT_PANEL_WIDTH.default,
+  welcomeTour: 'pending',
 };
 
 /** A partial update. The backend rejects unknown keys and values with `invalid_argument`. */
@@ -68,19 +75,27 @@ function oneOf<T extends string>(values: readonly T[], value: unknown): T | null
 /** Validates a settings object from the backend. `null` if it is not one. */
 export function parseSettings(value: unknown): Settings | null {
   if (typeof value !== 'object' || value === null) return null;
-  const { glass, theme, language, leftPanelWidth } = value as {
+  const { glass, theme, language, leftPanelWidth, welcomeTour } = value as {
     glass?: unknown;
     theme?: unknown;
     language?: unknown;
     leftPanelWidth?: unknown;
+    welcomeTour?: unknown;
   };
   const parsedGlass = oneOf(GLASS_MODES, glass);
   const parsedTheme = oneOf(THEME_MODES, theme);
   const parsedLanguage = oneOf(LANGUAGES, language);
-  if (parsedGlass === null || parsedTheme === null || parsedLanguage === null || !isPanelWidth(leftPanelWidth)) {
+  const parsedTour = oneOf(WELCOME_TOUR_STATES, welcomeTour);
+  if (
+    parsedGlass === null ||
+    parsedTheme === null ||
+    parsedLanguage === null ||
+    parsedTour === null ||
+    !isPanelWidth(leftPanelWidth)
+  ) {
     return null;
   }
-  return { glass: parsedGlass, theme: parsedTheme, language: parsedLanguage, leftPanelWidth };
+  return { glass: parsedGlass, theme: parsedTheme, language: parsedLanguage, leftPanelWidth, welcomeTour: parsedTour };
 }
 
 /** Validates the startup report from the backend. `null` if it is not one. */

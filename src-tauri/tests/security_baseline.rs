@@ -362,6 +362,7 @@ fn capabilities_grant_only_the_app_commands_and_the_window_chrome_to_the_main_wi
     }
     let mut expected = set(&[
         "allow-open-document-dialog",
+        "allow-open-welcome-document",
         "allow-render-page",
         "allow-set-viewport",
         "allow-get-page-sizes",
@@ -603,6 +604,7 @@ fn build_script_declares_exactly_the_granted_commands() {
     let build = read("build.rs");
     let commands = [
         "open_document_dialog",
+        "open_welcome_document",
         "render_page",
         "set_viewport",
         "get_page_sizes",
@@ -877,4 +879,43 @@ fn open_link_takes_no_url_from_the_webview() {
     let mut names = parameter_names(&signature);
     names.retain(|name| name != "window" && name != "state");
     assert_eq!(names, ["doc_id", "page_id", "link_index"]);
+}
+
+/// ADR-023: the welcome document is opened by a command that takes nothing from the webview. Its file is resolved in Rust from
+/// the resource directory, opened through the one door (`AppState::open_welcome` -> `open_as` -> `intake::admit`), and shipped
+/// as a bundle resource next to PDFium and nothing else.
+#[test]
+fn open_welcome_document_takes_nothing_from_the_webview_and_opens_through_intake() {
+    let signatures = command_signatures();
+    let (_, signature) = signatures
+        .iter()
+        .find(|(name, _)| name == "open_welcome_document")
+        .expect("the command exists");
+    assert_eq!(
+        parameter_names(signature),
+        ["app", "state"],
+        "no argument comes from the webview, only Tauri's own handles"
+    );
+    let source = read("src/commands/mod.rs");
+    let production = source.split("#[cfg(test)]").next().unwrap();
+    assert!(production.contains("BaseDirectory::Resource"));
+    assert!(production.contains("\"resources/welcome/welcome-en.pdf\""));
+    assert!(production.contains("\"resources/welcome/welcome-de.pdf\""));
+    assert!(
+        production.contains("intake::admit(&path)"),
+        "open_as admits every file, the welcome document too"
+    );
+    let resources = config()["bundle"]["resources"].clone();
+    assert_eq!(
+        resources,
+        serde_json::json!(["pdfium/**/*", "resources/welcome/*.pdf"])
+    );
+    for edition in ["en", "de"] {
+        assert!(
+            root()
+                .join(format!("resources/welcome/welcome-{edition}.pdf"))
+                .is_file(),
+            "{edition}"
+        );
+    }
 }

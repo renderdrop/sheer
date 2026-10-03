@@ -3,8 +3,8 @@
 //! | Command | Arguments | Returns |
 //! |---|---|---|
 //! | `app_ready` | none | `AppBootstrap { platform, reducedTransparency, version }` |
-//! | `get_settings` | none | `Settings { glass, theme, language, leftPanelWidth }` |
-//! | `update_settings` | `patch: { glass?, theme?, language?, leftPanelWidth? }` | the settings after the update |
+//! | `get_settings` | none | `Settings { glass, theme, language, leftPanelWidth, welcomeTour }` |
+//! | `update_settings` | `patch: { glass?, theme?, language?, leftPanelWidth?, welcomeTour? }` | the settings after the update |
 //! | `watch_transparency` | `onChange: Channel<boolean>` | nothing; the channel then carries each change of the OS "Reduce transparency" flag |
 //! | `subscribe_menu` | `onAction: Channel<string>`, `systemLanguage?: string` | nothing; the channel then carries the id of each command chosen in the macOS menu bar |
 //! | `subscribe_app` | `onEvent: Channel<AppEvent>` | nothing; the channel then carries the backend's pushes (`dropHover`, `opened`, `openFailed`, see `events::AppEvent`), first those that waited for it |

@@ -9,6 +9,7 @@
 //! | Command | Arguments | Returns |
 //! |---|---|---|
 //! | `open_document_dialog` | none | the open events of the chosen files (at most 32, in order): `{ type: "opened", document: { id, pageCount, displayName, flags } }` or `{ type: "openFailed", code, key, retryable, params? }` each; empty if the dialog was cancelled |
+//! | `open_welcome_document` | none | the open event of the bundled welcome document (ADR-023): `{ type: "opened", document: { .., kind: "welcome" } }` or `openFailed`; the file is found by Rust, nothing path-like comes from the webview |
 //! | `render_page` | `req: { docId, pageId, bucket, tile?, priority, generation }` | frame (`ArrayBuffer`, ADR-002 §6, see `engine/encode.rs`), see [`render`] |
 //! | `set_viewport` | `docId: number`, `hint: { generation, visible: number[], near: number[] }` | nothing; cancels queued renders of pages that left the viewport, see [`render`] |
 //! | `get_page_sizes` | `docId: number` | `[width, height][]` in points, one per page, see [`render`] |
@@ -34,15 +35,17 @@ pub mod text;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use tauri::{State, WebviewWindow};
+use tauri::path::BaseDirectory;
+use tauri::{AppHandle, Manager, State, WebviewWindow};
 use tauri_plugin_dialog::DialogExt;
 
 use crate::documents::intake::{self, Admitted};
-use crate::documents::{Abandoned, Claim, DocumentId, DocumentInfo, Registry};
+use crate::documents::{Abandoned, Claim, DocKind, DocumentId, DocumentInfo, Registry};
 use crate::engine::Engine;
 use crate::error::{AppError, ErrorCode, UiError};
 use crate::events::AppEvent;
 use crate::limits;
+use crate::menu::{self, spec::MenuLocale};
 
 /// Everything the commands share. Managed by Tauri, created in `lib.rs`. Cloning is cheap (shared handles), which is
 /// how a command moves it onto the blocking pool.
@@ -83,10 +86,20 @@ impl AppState {
     /// (a file that is open already answers with its existing document, and a file that another request is still loading
     /// answers `None`: that request reports it), and the engine loads the same handle. Errors leave nothing registered.
     pub fn open_path(&self, path: PathBuf) -> Result<Option<DocumentInfo>, AppError> {
+        self.open_as(path, DocKind::User, None)
+    }
+
+    /// [`AppState::open_path`] for a document of `kind` that is shown under `name` (when given) and not under its file's name.
+    fn open_as(
+        &self,
+        path: PathBuf,
+        kind: DocKind,
+        name: Option<String>,
+    ) -> Result<Option<DocumentInfo>, AppError> {
         // Documents that were closed but could not be released then count against the limit: try again before looking at it.
         self.release_closing();
         let Admitted { path, file } = intake::admit(&path)?;
-        let id = match self.registry.claim(path)? {
+        let id = match self.registry.claim_as(path, kind, name)? {
             Claim::New(id) => id,
             Claim::Existing(id) => return Ok(self.info(id)),
         };
@@ -110,6 +123,23 @@ impl AppState {
             }
         }
         Ok(self.info(id))
+    }
+
+    /// Opens the bundled welcome document at `path` (found by the caller from the resource directory, never from the UI) as
+    /// `DocKind::Welcome` under `name`, through the same intake as every file. A welcome document that is open already is closed
+    /// (its edits are discarded) first, so the tour starts fresh. The answer is the open event, like the other opens.
+    pub fn open_welcome(&self, path: PathBuf, name: String) -> AppEvent {
+        for id in self.registry.welcome_ids() {
+            if let Err(error) = self.close_document(id) {
+                return AppEvent::open_failed(error);
+            }
+        }
+        match self.open_as(path, DocKind::Welcome, Some(name)) {
+            Ok(Some(document)) => AppEvent::opened(document),
+            // Another request is loading the very same file and reports it, so this one has nothing to say.
+            Ok(None) => AppEvent::open_failed(AppError::new(ErrorCode::Internal)),
+            Err(error) => AppEvent::open_failed(error),
+        }
     }
 
     /// Opens every path, one after the other, and hands `report` how each went as soon as it is known, in order: `opened`
@@ -232,6 +262,35 @@ pub async fn open_document_dialog(
             })
             .collect();
         Ok(state.open_paths(paths))
+    })
+    .await
+}
+
+/// The file of the welcome document in the resource directory (`tauri.conf.json` `bundle.resources`), per interface language.
+pub fn welcome_resource(locale: MenuLocale) -> &'static str {
+    match locale {
+        MenuLocale::En => "resources/welcome/welcome-en.pdf",
+        MenuLocale::De => "resources/welcome/welcome-de.pdf",
+    }
+}
+
+/// Opens the bundled welcome document ("Welcome to {app}.pdf", ADR-023) in the language of the interface. The command takes no
+/// argument from the webview: the file comes from the resource directory, found here, and goes through `documents::intake`
+/// like any other file. Not a recent. A welcome document that is open is closed first (restart).
+#[tauri::command]
+pub async fn open_welcome_document(
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<AppEvent, UiError> {
+    let state = state.inner().clone();
+    let locale = menu::ui_locale(&app);
+    let name = menu::spec::text(locale, "doc.welcomeName", &menu::app_name(&app));
+    let resolved = app
+        .path()
+        .resolve(welcome_resource(locale), BaseDirectory::Resource);
+    blocking(move || {
+        let path = resolved.map_err(|error| AppError::logged(ErrorCode::Internal, error))?;
+        Ok(state.open_welcome(path, name))
     })
     .await
 }
@@ -371,6 +430,60 @@ mod tests {
             ErrorCode::IoNotFound
         );
         assert!(state.registry.is_empty());
+    }
+
+    // --- the welcome document (ADR-023) ---
+
+    #[test]
+    fn the_welcome_document_opens_as_welcome_under_its_own_name_and_a_second_call_restarts_it() {
+        let dir = TempDir::new();
+        let path = pdf(&dir, "welcome-en.pdf");
+        let (engine, seen) = loading_engine(4);
+        let state = AppState::new(engine);
+
+        let first =
+            serde_json::to_value(state.open_welcome(path.clone(), "Welcome to Sheer.pdf".into()))
+                .unwrap();
+        assert_eq!(first["type"], "opened");
+        assert_eq!(first["document"]["kind"], "welcome");
+        assert_eq!(first["document"]["displayName"], "Welcome to Sheer.pdf");
+        assert_eq!(first["document"]["pageCount"], 4);
+        let first_id = first["document"]["id"].as_u64().unwrap() as u32;
+
+        // Again: the open one is closed (discarded) first and the file opens under a new id.
+        let second =
+            serde_json::to_value(state.open_welcome(path, "Welcome to Sheer.pdf".into())).unwrap();
+        assert_eq!(second["type"], "opened");
+        assert_ne!(second["document"]["id"].as_u64().unwrap() as u32, first_id);
+        assert_eq!(state.registry.welcome_ids().len(), 1);
+        let log = seen.lock().unwrap();
+        assert_eq!(log.len(), 3, "{log:?}");
+        assert!(matches!(log[1], Seen::Close(_)));
+    }
+
+    #[test]
+    fn a_missing_welcome_file_is_an_open_failure_like_any_other() {
+        let state = state_without_engine();
+        let event = serde_json::to_value(state.open_welcome(
+            PathBuf::from("no-such-dir").join("welcome-en.pdf"),
+            "x".into(),
+        ))
+        .unwrap();
+        assert_eq!(event["type"], "openFailed");
+        assert_eq!(event["code"], "io_not_found");
+        assert!(state.registry.is_empty());
+    }
+
+    #[test]
+    fn the_welcome_file_follows_the_interface_language() {
+        assert_eq!(
+            welcome_resource(MenuLocale::En),
+            "resources/welcome/welcome-en.pdf"
+        );
+        assert_eq!(
+            welcome_resource(MenuLocale::De),
+            "resources/welcome/welcome-de.pdf"
+        );
     }
 
     // --- the intake rules, through the state (ARCHITECTURE §4) ---
@@ -872,7 +985,7 @@ mod tests {
                     assert_eq!(keys(message), ["document", "type"]);
                     assert_eq!(
                         keys(&message["document"]),
-                        ["displayName", "flags", "id", "pageCount"]
+                        ["displayName", "flags", "id", "kind", "pageCount"]
                     );
                     assert_eq!(message["document"]["displayName"], "good-name-9090.pdf");
                 }

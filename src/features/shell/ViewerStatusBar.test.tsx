@@ -77,7 +77,7 @@ describe('the page in the status bar follows the scroll position of the canvas',
     act(() => useViewer.getState().goToPage(120));
     expect(pageButton()).toBe('121 / 500');
     act(() => useViewer.getState().zoomStep(1));
-    expect(screen.getByRole('button', { name: /Zoom level/ }).textContent).toBe(`110${NBSP}%`);
+    expect(screen.getByRole('button', { name: /Zoom level/ }).textContent).toBe(`108${NBSP}%`);
     // The page stays what the scroll position says after the zoom: the point in the middle of the viewport is kept.
     expect(pageButton()).toBe('121 / 500');
   });

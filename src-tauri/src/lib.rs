@@ -83,6 +83,7 @@ pub fn run() -> Result<(), AppError> {
         })
         .invoke_handler(tauri::generate_handler![
             commands::open_document_dialog,
+            commands::open_welcome_document,
             commands::render::render_page,
             commands::render::set_viewport,
             commands::render::get_page_sizes,

@@ -211,11 +211,11 @@ mod tests {
     }
 
     #[test]
-    fn an_opened_document_carries_its_id_page_count_display_name_and_flags_and_nothing_else() {
+    fn an_opened_document_carries_its_id_page_count_display_name_kind_and_flags_and_nothing_else() {
         let event = AppEvent::opened(document("a.pdf", 3));
         assert_eq!(
             serde_json::to_string(&event).unwrap(),
-            r#"{"type":"opened","document":{"id":0,"pageCount":3,"displayName":"a.pdf","flags":{"encrypted":false,"xfa":false,"hasForms":false,"signed":false}}}"#
+            r#"{"type":"opened","document":{"id":0,"pageCount":3,"displayName":"a.pdf","kind":"user","flags":{"encrypted":false,"xfa":false,"hasForms":false,"signed":false}}}"#
         );
     }
 

@@ -5,6 +5,7 @@
   "windows": ["main"],
   "permissions": [
     "allow-open-document-dialog",
+    "allow-open-welcome-document",
     "allow-render-page",
     "allow-set-viewport",
     "allow-get-page-sizes",

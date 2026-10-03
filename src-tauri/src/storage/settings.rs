@@ -2,7 +2,7 @@
 //!
 //! Wire shape (camelCase, enum values lowercase):
 //! `{ "glass": "auto" | "solid", "theme": "system" | "light" | "dark", "language": "system" | "en" | "de",
-//! "leftPanelWidth": 192..=400 }`.
+//! "leftPanelWidth": 192..=400, "welcomeTour": "pending" | "shown" }`.
 //!
 //! - **Reading** never fails: a missing, oversized, damaged or hand-edited file falls back to the defaults, field by
 //!   field. The file is user-writable, so nothing in it is trusted beyond the enum values and the width range it can
@@ -60,6 +60,16 @@ pub enum Language {
     De,
 }
 
+/// Whether the welcome tour (ADR-023, DESIGN 3.14) still has to run on a first launch. The UI writes `Shown` *before* it opens the
+/// welcome document, so the tour never starts twice on its own.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum WelcomeTour {
+    #[default]
+    Pending,
+    Shown,
+}
+
 /// Width of the left panel in px (DESIGN 2, 3.8). Always within `limits::LEFT_PANEL_MIN_WIDTH..=LEFT_PANEL_MAX_WIDTH`:
 /// the only ways in are [`PanelWidth::new`] and `Deserialize`, and both check the range. It is a plain number on the wire.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -104,6 +114,7 @@ pub struct Settings {
     pub theme: ThemeMode,
     pub language: Language,
     pub left_panel_width: PanelWidth,
+    pub welcome_tour: WelcomeTour,
 }
 
 impl Settings {
@@ -130,6 +141,10 @@ impl Settings {
                 .get("leftPanelWidth")
                 .and_then(|value| PanelWidth::deserialize(value).ok())
                 .unwrap_or_default(),
+            welcome_tour: map
+                .get("welcomeTour")
+                .and_then(|value| WelcomeTour::deserialize(value).ok())
+                .unwrap_or_default(),
         }
     }
 
@@ -140,12 +155,13 @@ impl Settings {
             theme: patch.theme.unwrap_or(self.theme),
             language: patch.language.unwrap_or(self.language),
             left_panel_width: patch.left_panel_width.unwrap_or(self.left_panel_width),
+            welcome_tour: patch.welcome_tour.unwrap_or(self.welcome_tour),
         }
     }
 }
 
-/// A partial update: at most the four settings, each optional. Parsed only by [`SettingsPatch::from_value`], which
-/// rejects every unknown key (`deny_unknown_fields`), so a patch can never name more than these four fields.
+/// A partial update: at most the five settings, each optional. Parsed only by [`SettingsPatch::from_value`], which
+/// rejects every unknown key (`deny_unknown_fields`), so a patch can never name more than these five fields.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
 pub struct SettingsPatch {
@@ -157,6 +173,8 @@ pub struct SettingsPatch {
     pub language: Option<Language>,
     #[serde(default, deserialize_with = "present")]
     pub left_panel_width: Option<PanelWidth>,
+    #[serde(default, deserialize_with = "present")]
+    pub welcome_tour: Option<WelcomeTour>,
 }
 
 /// A field that is present must hold a valid value. Plain `Option` would read `null` as "absent" and accept it.
@@ -309,18 +327,64 @@ mod tests {
     fn settings_serialize_with_lowercase_enum_values() {
         assert_eq!(
             serde_json::to_value(Settings::default()).unwrap(),
-            json!({ "glass": "auto", "theme": "system", "language": "system", "leftPanelWidth": 248 })
+            json!({ "glass": "auto", "theme": "system", "language": "system", "leftPanelWidth": 248, "welcomeTour": "pending" })
         );
         let settings = Settings {
             glass: GlassMode::Solid,
             theme: ThemeMode::Dark,
             language: Language::De,
             left_panel_width: PanelWidth::new(320).unwrap(),
+            welcome_tour: WelcomeTour::Shown,
         };
         assert_eq!(
             serde_json::to_value(settings).unwrap(),
-            json!({ "glass": "solid", "theme": "dark", "language": "de", "leftPanelWidth": 320 })
+            json!({ "glass": "solid", "theme": "dark", "language": "de", "leftPanelWidth": 320, "welcomeTour": "shown" })
         );
+    }
+
+    // --- the welcome tour flag (ADR-023) ---
+
+    #[test]
+    fn the_welcome_tour_is_pending_by_default_and_a_patch_can_mark_it_shown() {
+        assert_eq!(Settings::default().welcome_tour, WelcomeTour::Pending);
+        let patched = Settings::default().apply(patch(json!({ "welcomeTour": "shown" })).unwrap());
+        assert_eq!(patched.welcome_tour, WelcomeTour::Shown);
+        // Another field leaves it alone.
+        let other = patched.apply(patch(json!({ "theme": "dark" })).unwrap());
+        assert_eq!(other.welcome_tour, WelcomeTour::Shown);
+    }
+
+    #[test]
+    fn an_invalid_welcome_tour_value_is_refused_in_a_patch_and_falls_back_to_pending_in_a_file() {
+        for bad in [
+            json!("done"),
+            json!(true),
+            json!(null),
+            json!(1),
+            json!("Shown"),
+        ] {
+            assert_eq!(
+                rejected(json!({ "welcomeTour": bad.clone() })),
+                INVALID_SETTINGS,
+                "{bad}"
+            );
+        }
+        assert_eq!(
+            Settings::from_stored(br#"{"welcomeTour":"shown"}"#).welcome_tour,
+            WelcomeTour::Shown
+        );
+        for stored in [
+            r#"{"welcomeTour":"done"}"#,
+            r#"{"welcomeTour":3}"#,
+            r#"{"welcomeTour":null}"#,
+            r#"{}"#,
+        ] {
+            assert_eq!(
+                Settings::from_stored(stored.as_bytes()).welcome_tour,
+                WelcomeTour::Pending,
+                "{stored}"
+            );
+        }
     }
 
     // --- patch validation ---
@@ -369,7 +433,8 @@ mod tests {
                 glass: Some(GlassMode::Solid),
                 theme: Some(ThemeMode::Light),
                 language: Some(Language::En),
-                left_panel_width: PanelWidth::new(296)
+                left_panel_width: PanelWidth::new(296),
+                welcome_tour: None,
             }
         );
     }
@@ -674,7 +739,8 @@ mod tests {
                 glass: GlassMode::Solid,
                 theme: ThemeMode::Dark,
                 language: Language::De,
-                left_panel_width: PanelWidth::new(280).unwrap()
+                left_panel_width: PanelWidth::new(280).unwrap(),
+                welcome_tour: WelcomeTour::Pending,
             }
         );
         assert_eq!(store.get(), updated);
@@ -684,7 +750,7 @@ mod tests {
             serde_json::from_slice(&fs::read(dir.path().join(FILE_NAME)).unwrap()).unwrap();
         assert_eq!(
             stored,
-            json!({ "glass": "solid", "theme": "dark", "language": "de", "leftPanelWidth": 280 })
+            json!({ "glass": "solid", "theme": "dark", "language": "de", "leftPanelWidth": 280, "welcomeTour": "pending" })
         );
     }
 
@@ -865,7 +931,7 @@ mod tests {
     }
 
     #[test]
-    fn the_stored_file_holds_exactly_the_four_settings_as_json_with_a_final_newline() {
+    fn the_stored_file_holds_exactly_the_five_settings_as_json_with_a_final_newline() {
         let dir = TempDir::new();
         let store = store_in(&dir);
         apply_json(&store, json!({ "glass": "solid" })).unwrap();
@@ -874,7 +940,7 @@ mod tests {
         let stored: Value = serde_json::from_slice(&bytes).unwrap();
         assert_eq!(
             stored,
-            json!({ "glass": "solid", "theme": "system", "language": "system", "leftPanelWidth": 248 })
+            json!({ "glass": "solid", "theme": "system", "language": "system", "leftPanelWidth": 248, "welcomeTour": "pending" })
         );
     }
 
