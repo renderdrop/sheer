@@ -110,6 +110,9 @@ pub struct UiParams {
     pub what: &'static str,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub limit: Option<u64>,
+    /// The one character a text box refused (`textBox`, ADR-047 §1): never ASCII, so it cannot be a path separator or markup.
+    #[serde(rename = "char", skip_serializing_if = "Option::is_none")]
+    pub character: Option<char>,
 }
 
 /// The only error type that crosses the IPC boundary. Serializes to
@@ -182,6 +185,25 @@ impl AppError {
         Self::with_params(ErrorCode::UnsupportedFeature, what, None)
     }
 
+    /// `invalid_argument` for `textBox` with the character the font cannot show (ADR-047 §1). An ASCII character is not reported.
+    pub fn bad_char(character: char) -> Self {
+        let mut error = Self::with_params(ErrorCode::InvalidArgument, "textBox", None);
+        if let Some(params) = &mut error.params {
+            params.character = (!character.is_ascii()).then_some(character);
+        }
+        error
+    }
+
+    /// `unsupported_feature` (`what: "notYet"`): a seam of ADR-047 whose package has not filled it in yet. Never returned by a finished build.
+    pub const fn not_yet() -> Self {
+        Self::with_params(ErrorCode::UnsupportedFeature, "notYet", None)
+    }
+
+    /// `read_only` for the reason called `what` (`"permission"`: the file's permissions forbid the change, ADR-047 §4).
+    pub const fn read_only(what: &'static str) -> Self {
+        Self::with_params(ErrorCode::ReadOnly, what, None)
+    }
+
     /// `needs_confirmation`: saving would do `reason` (a fixed word such as `fileChangedOnDisk`) and the user decides first.
     pub const fn needs_confirmation(reason: &'static str) -> Self {
         Self::with_params(ErrorCode::NeedsConfirmation, reason, None)
@@ -190,7 +212,11 @@ impl AppError {
     const fn with_params(code: ErrorCode, what: &'static str, limit: Option<u64>) -> Self {
         Self {
             code,
-            params: Some(UiParams { what, limit }),
+            params: Some(UiParams {
+                what,
+                limit,
+                character: None,
+            }),
             detail: None,
         }
     }
@@ -312,6 +338,19 @@ mod tests {
             assert_eq!(serde_json::to_value(code).unwrap(), name);
             assert_eq!(code.to_string(), name);
         }
+    }
+
+    #[test]
+    fn a_refused_character_is_reported_only_when_it_is_not_ascii() {
+        let json = |error: AppError| serde_json::to_value(UiError::from(error)).unwrap();
+        assert_eq!(
+            json(AppError::bad_char('\u{4e2d}'))["params"],
+            serde_json::json!({"what": "textBox", "char": "\u{4e2d}"})
+        );
+        assert_eq!(
+            json(AppError::bad_char('\\'))["params"],
+            serde_json::json!({"what": "textBox"})
+        );
     }
 
     #[test]

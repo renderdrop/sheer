@@ -9,14 +9,16 @@ use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use serde::Serialize;
 
 use super::annotation::{Annotation, AnnotationBody, Imported, PdfOrigin, Sync};
-use super::command::DocCommand;
+use super::command::{DocCommand, LABEL_PROTECT_REMOVE};
 use super::form::{FieldId, FieldState, FieldUndo, FieldValue, FormInfo, FormModel, ReadForm};
 use super::history::{History, HistoryState};
 use super::ids::AnnotId;
+use super::metadata::MetadataState;
 use super::page::{PageSlot, PageSlotInfo, PageSource};
 use crate::documents::PageId;
 use crate::error::AppError;
 use crate::limits;
+use crate::security::secret::{PendingProtection, SecretSlots, Ticket};
 
 /// What a command needs to know about the moment it runs.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -34,6 +36,15 @@ pub enum ImportWarning {
     /// `skipped` annotations of `page` were not taken into the model: the page, the document or the string budget was full. They
     /// stay in the file as they are (drawn by PDFium, kept on save) but cannot be edited here.
     PageTruncated { page: u32, skipped: u32 },
+}
+
+/// A part of the document that is not an annotation, page or field, and that a command changed (ADR-047): the UI reads it again with
+/// `get_metadata` or `get_protection`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum DocPart {
+    Metadata,
+    Protection,
 }
 
 /// An annotation in the state, with what only Rust knows about it.
@@ -60,6 +71,8 @@ pub struct Delta {
     pub engine_rotations: Vec<(u32, u16)>,
     /// Form fields whose value changed.
     pub fields: BTreeSet<FieldId>,
+    /// Metadata or protection changed.
+    pub doc: BTreeSet<DocPart>,
 }
 
 impl Delta {
@@ -77,6 +90,7 @@ impl Delta {
         self.pages |= other.pages;
         self.engine_rotations.extend(other.engine_rotations);
         self.fields.extend(other.fields);
+        self.doc.extend(other.doc);
         for annotation in other.upserted.into_values() {
             self.upsert(annotation);
         }
@@ -101,6 +115,8 @@ pub struct ChangeSet {
     pub engine_rotations: Vec<(u32, u16)>,
     /// The form fields whose value changed (empty when none did), ADR-041.
     pub fields: Vec<FieldState>,
+    /// What else changed: the UI re-reads `get_metadata` and `get_protection` (ADR-047).
+    pub doc: Vec<DocPart>,
     pub history: HistoryState,
 }
 
@@ -133,6 +149,12 @@ pub struct DocState {
     form: Option<FormModel>,
     /// The signature art the document uses (ADR-041 §5, `use_signature`); dropped with the document.
     assets: crate::signatures::AssetStore,
+    /// The passwords of staged protection changes, by ticket (ADR-047 §4); cleared on save and close, and when a step leaves the history.
+    pub(super) secrets: SecretSlots,
+    /// The staged protection change the next save writes (a ticket of `secrets`), if any; the history holds tickets only.
+    pub(super) pending_protection: Option<Ticket>,
+    /// The metadata as read from the file and as the session has it, and a staged removal (ADR-047 §5).
+    pub(super) metadata: MetadataState,
 }
 
 /// Bytes of the strings an imported annotation brings.
@@ -171,6 +193,9 @@ impl DocState {
                 saved_rotation: rotation,
                 rev: 0,
                 size,
+                media: [0.0, 0.0, size[0], size[1]],
+                crop: None,
+                saved_crop: None,
             })
             .collect();
         Self {
@@ -190,6 +215,9 @@ impl DocState {
             replies: HashMap::new(),
             form: None,
             assets: crate::signatures::AssetStore::default(),
+            secrets: SecretSlots::default(),
+            pending_protection: None,
+            metadata: MetadataState::default(),
         }
     }
 
@@ -255,6 +283,14 @@ impl DocState {
     pub fn finish_save(&mut self, origins: &HashMap<AnnotId, PdfOrigin>) -> ChangeSet {
         let mut delta = Delta::default();
         self.entries.retain(|_, entry| !entry.tombstone);
+        // The text boxes and images were burned into the pages: they are page content now, no longer objects of the model (ADR-047 §1).
+        let burned: Vec<Slot> = self
+            .entries
+            .iter()
+            .filter(|(_, entry)| entry.annotation.body.is_content())
+            .map(|(id, _)| (*id, None))
+            .collect();
+        self.set_slots(burned, &mut delta);
         // The pages are the file's pages now, in this order: page *i* of the list is page *i* of the file. Where an annotation that
         // was not written is in the file moves with its page.
         let mut moved: HashMap<u32, u32> = HashMap::new();
@@ -278,6 +314,7 @@ impl DocState {
             slot.source = PageSource::File { index: position };
             slot.engine_index = position;
             slot.saved_rotation = slot.rotation;
+            slot.saved_crop = slot.crop;
         }
         self.file_pages = self.page_count();
         // The positions in the file moved with the write (deleted and rewritten annotations): what was Hidden in the old file is not
@@ -313,6 +350,12 @@ impl DocState {
                 .extend(form.changed().into_iter().map(|field| field.id));
             form.finish_save();
         }
+        // What a save wrote of the protection and the metadata is the file's now; the passwords are dropped, the metadata is read again.
+        self.secrets.clear();
+        self.pending_protection = None;
+        self.metadata = MetadataState::default();
+        delta.doc.insert(DocPart::Metadata);
+        delta.doc.insert(DocPart::Protection);
         self.history.clear();
         self.rev += 1;
         self.change_set(delta)
@@ -327,6 +370,36 @@ impl DocState {
 
     pub fn assets_mut(&mut self) -> &mut crate::signatures::AssetStore {
         &mut self.assets
+    }
+
+    // --- Protection and metadata (ADR-047 §4, §5) ---
+
+    /// The passwords of the staged protection changes.
+    pub fn secrets(&self) -> &SecretSlots {
+        &self.secrets
+    }
+
+    pub fn secrets_mut(&mut self) -> &mut SecretSlots {
+        &mut self.secrets
+    }
+
+    /// The staged protection change, as the secrets hold it.
+    pub fn pending_protection(&self) -> Option<(Ticket, &PendingProtection)> {
+        let ticket = self.pending_protection?;
+        Some((ticket, self.secrets.get(ticket)?))
+    }
+
+    pub fn set_pending_protection(&mut self, ticket: Option<Ticket>) {
+        self.pending_protection = ticket;
+    }
+
+    /// The metadata the model holds.
+    pub fn metadata(&self) -> &MetadataState {
+        &self.metadata
+    }
+
+    pub fn metadata_mut(&mut self) -> &mut MetadataState {
+        &mut self.metadata
     }
 
     // --- The form (ADR-041) ---
@@ -598,6 +671,7 @@ impl DocState {
                 .iter()
                 .filter_map(|id| self.form.as_ref().and_then(|form| form.state(*id)))
                 .collect(),
+            doc: delta.doc.iter().copied().collect(),
             history: self.history.state(),
         }
     }
@@ -606,14 +680,19 @@ impl DocState {
     /// `limit_exceeded`).
     pub fn execute(&mut self, command: DocCommand, stamp: &Stamp) -> Result<ChangeSet, AppError> {
         command.check_shape()?;
+        // A removal of the protection has a label of its own; the command holds the ticket only.
+        let label = match &command {
+            DocCommand::SetProtection { ticket }
+                if matches!(self.secrets.get(*ticket), Some(PendingProtection::Remove)) =>
+            {
+                LABEL_PROTECT_REMOVE.to_owned()
+            }
+            other => other.label(),
+        };
         let (inverse, delta) = command.run(self, stamp)?;
         self.rev += 1;
-        self.history.record(
-            command.label(),
-            inverse,
-            command.coalesce_key(),
-            stamp.now_ms,
-        );
+        self.history
+            .record(label, inverse, command.coalesce_key(), stamp.now_ms);
         Ok(self.change_set(delta))
     }
 

@@ -29,6 +29,7 @@ use crate::limits;
 use crate::model::command::{DocCommand, LABEL_INSERT_BLANK, LABEL_INSERT_PAGES};
 use crate::model::doc_state::ChangeSet;
 use crate::model::page::{NewPage, PageSlotInfo, PageSource, SourceId};
+use crate::model::protection::Permission;
 use crate::pdfwrite::pagetree;
 
 /// One PDF the user chose to take pages from.
@@ -81,6 +82,8 @@ impl AppState {
         command: DocCommand,
     ) -> Result<ChangeSet, AppError> {
         command.check_shape()?;
+        // A file opened with the open password of a restricted file keeps its restrictions (ADR-047 §4): no `edit`, no edit command.
+        self.check_may_edit(id)?;
         match command {
             DocCommand::InsertBlankPage { at, width, height } => {
                 let base = self.model(id, |state| {
@@ -156,6 +159,17 @@ impl AppState {
         }
     }
 
+    /// `read_only` (`permission`) when the document's permissions forbid editing it (`DocFlags.permissions`), else nothing.
+    pub(super) fn check_may_edit(&self, id: DocumentId) -> Result<(), AppError> {
+        let info = self.info(id).ok_or(AppError::not_found("document"))?;
+        match info.flags.permissions {
+            Some(allowed) if !allowed.contains(Permission::Edit) => {
+                Err(AppError::read_only("permission"))
+            }
+            _ => Ok(()),
+        }
+    }
+
     /// [`AppState::execute`] of an insert whose pages the engine has made already (`appended`: their engine indices). If the model refuses
     /// the step (the document changed since the check, or was closed) the pages are taken off the engine's copy again, so the two do not
     /// drift apart. Taking them back is best effort: pages left over in the copy are never listed by the model.
@@ -173,7 +187,11 @@ impl AppState {
     }
 
     /// Runs a validated command as one step of the history and makes the engine follow.
-    fn execute(&self, id: DocumentId, command: DocCommand) -> Result<ChangeSet, AppError> {
+    pub(super) fn execute(
+        &self,
+        id: DocumentId,
+        command: DocCommand,
+    ) -> Result<ChangeSet, AppError> {
         self.change_and_sync(id, Revert::Undo, |state, stamp| {
             state.execute(command, stamp)
         })

@@ -3,6 +3,7 @@
 //! All PDF work happens here. The frontend only ever holds document ids, page ids and rendered frames (PNG bytes).
 
 pub mod commands;
+pub mod content;
 pub mod documents;
 pub mod engine;
 pub mod error;
@@ -116,6 +117,13 @@ pub fn run() -> Result<(), AppError> {
             commands::annotations::list_document_annotations,
             commands::pages::apply_command,
             commands::forms::get_form_fields,
+            commands::content::insert_image_dialog,
+            commands::content::get_asset_preview,
+            commands::redact::apply_redactions,
+            commands::protect::get_protection,
+            commands::protect::stage_protection,
+            commands::protect::stage_unprotection,
+            commands::metadata::get_metadata,
             commands::pages::pick_pdf_sources,
             commands::pages::release_source,
             commands::annotations::undo,

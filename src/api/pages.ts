@@ -13,6 +13,23 @@ export const MAX_PAGES = 50_000;
 /** The largest page side the backend reports, in points. */
 export const MAX_PAGE_SIDE_PT = 14_400;
 
+/** Where a page's content is from; `redacted` is a page that true redaction replaced by a raster (ADR-047). */
+export type PageOrigin = 'file' | 'blank' | 'imported' | 'redacted';
+
+/** The size of a page's MediaBox in points, before the rotation (ADR-047, crop). */
+export interface PageMedia {
+  width: number;
+  height: number;
+}
+
+/** How far a page's crop is inside its MediaBox on each side, in points, before the rotation. */
+export interface PageCrop {
+  top: number;
+  right: number;
+  bottom: number;
+  left: number;
+}
+
 /** One page of a document in its current place. Sizes in points, before the rotation. */
 export interface PageSlotInfo {
   id: number;
@@ -22,7 +39,10 @@ export interface PageSlotInfo {
   /** Counts the changes that alter how the page looks; part of cache keys. */
   rev: number;
   label: string | null;
-  origin: 'file' | 'blank' | 'imported';
+  origin: PageOrigin;
+  /** The MediaBox and the crop (`null`: none). The backend always sends both; optional here so a fixture without them still types. */
+  media?: PageMedia;
+  crop?: PageCrop | null;
 }
 
 /** The page commands; members of `DocCommand` (wire `{ type, ..fields }`). */
@@ -33,13 +53,24 @@ export type PageCommand =
   | { type: 'insertBlankPage'; at: number; width?: number; height?: number }
   | { type: 'insertPages'; source: number; pages: readonly number[]; at: number };
 
+/** The crop command, a member of `DocCommand` (ADR-047). Not in `PageCommand`, so code that handles every page command one by one is not affected. */
+export type CropPagesCommand = { type: 'cropPages'; pages: readonly number[]; spec: CropSpec };
+
+/** How to crop (ADR-047): margins in points in page space (before `/Rotate`), measured from each page's MediaBox, or back to the MediaBox. */
+export type CropSpec = ({ type: 'margins' } & PageCrop) | { type: 'reset' };
+
+/** The `cropPages` command for `applyCommand`; the backend refuses a result under 72 x 72 pt or outside the MediaBox (`invalid_argument` `crop`). */
+export function cropPages(pages: readonly number[], spec: CropSpec): CropPagesCommand {
+  return { type: 'cropPages', pages, spec };
+}
+
 /** A PDF chosen to take pages from, or why it could not be read. */
 export type SourceResult =
   | { type: 'ready'; sourceId: number; displayName: string; pageCount: number }
   | { type: 'failed'; code: ErrorCode; key: string; retryable?: boolean; params?: { what: string; limit?: number } };
 
 const ROTATIONS: ReadonlySet<unknown> = new Set([0, 90, 180, 270]);
-const ORIGINS: ReadonlySet<unknown> = new Set(['file', 'blank', 'imported']);
+const ORIGINS: ReadonlySet<unknown> = new Set<PageOrigin>(['file', 'blank', 'imported', 'redacted']);
 
 function isUint(value: unknown): value is number {
   return typeof value === 'number' && Number.isInteger(value) && value >= 0 && value <= 0xffffffff;
@@ -49,10 +80,26 @@ function isSide(value: unknown): value is number {
   return typeof value === 'number' && Number.isFinite(value) && value > 0 && value <= MAX_PAGE_SIDE_PT;
 }
 
+function isMargin(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0 && value <= MAX_PAGE_SIDE_PT;
+}
+
+function parseMedia(value: unknown): PageMedia | null {
+  if (typeof value !== 'object' || value === null) return null;
+  const { width, height } = value as Record<string, unknown>;
+  return isSide(width) && isSide(height) ? { width, height } : null;
+}
+
+function parseCrop(value: unknown): PageCrop | null {
+  if (typeof value !== 'object' || value === null) return null;
+  const { top, right, bottom, left } = value as Record<string, unknown>;
+  return isMargin(top) && isMargin(right) && isMargin(bottom) && isMargin(left) ? { top, right, bottom, left } : null;
+}
+
 /** One slot of an answer, or `null` if it is not one the backend sends. */
 export function parseSlot(value: unknown): PageSlotInfo | null {
   if (typeof value !== 'object' || value === null) return null;
-  const { id, width, height, rotation, rev, label, origin } = value as Record<string, unknown>;
+  const { id, width, height, rotation, rev, label, origin, media, crop } = value as Record<string, unknown>;
   if (
     !isUint(id) ||
     !isSide(width) ||
@@ -63,7 +110,18 @@ export function parseSlot(value: unknown): PageSlotInfo | null {
     !ORIGINS.has(origin)
   )
     return null;
-  return { id, width, height, rotation, rev, label, origin } as PageSlotInfo;
+  const slot = { id, width, height, rotation, rev, label, origin } as PageSlotInfo;
+  if (media !== undefined) {
+    const parsed = parseMedia(media);
+    if (parsed === null) return null;
+    slot.media = parsed;
+  }
+  if (crop !== undefined) {
+    const parsed = crop === null ? null : parseCrop(crop);
+    if (crop !== null && parsed === null) return null;
+    slot.crop = parsed;
+  }
+  return slot;
 }
 
 /** The list of an answer, or `null` if any slot is not one, the list is too long or an id repeats. */

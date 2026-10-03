@@ -67,6 +67,13 @@ fn main() {
         "import_signature_image",
         "create_typed_signature",
         "create_drawn_signature",
+        "insert_image_dialog",
+        "get_asset_preview",
+        "apply_redactions",
+        "get_protection",
+        "stage_protection",
+        "stage_unprotection",
+        "get_metadata",
     ]);
     if let Err(error) =
         tauri_build::try_build(tauri_build::Attributes::new().app_manifest(manifest))

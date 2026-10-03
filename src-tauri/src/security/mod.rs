@@ -4,3 +4,4 @@
 //! rules: [`links`] decides which URLs may ever be opened, and gives the only value the opener accepts.
 
 pub mod links;
+pub mod secret;

@@ -500,6 +500,17 @@ Wrappers: `src/api/content.ts` (`insertImageDialog`, `getAssetPreview`), `pages.
   undo exact, export keeps crop), `tests/redaction.rs` (the D4 proof of ADR-047 §3), `tests/protection.rs` (R6 written by lopdf opens in
   PDFium with each password; permissions read back; re-save keeps encryption; no password in any `UiError` or log line),
   `tests/metadata.rs` (round trip, hostile strings filtered, strip leaves no `/Info` or `/Metadata`).
+- *W0 seams as built.* Every seam above exists and stops at a stub that answers `unsupported_feature` (`what: "notYet"`, `AppError::not_yet`);
+  each stub file starts with `owned by package X`. Where the build differs from the signatures: `SavePlan` is `pdfwrite::SavePlan` (the
+  annotation plan stays `Plan`), made by `commands::save::save_plan_of`, applied by `pdfwrite::apply_extras`; `PageSlot` also has
+  `saved_crop` (like `saved_rotation`), `PlanPage` carries `media/crop/saved_crop`, `PagePlan` has `crop_changed` and `redacted`;
+  `DocState` also has `pending_protection: Option<Ticket>` and `MetadataState` has `had_xmp`; `DocFlags.permissions` is a `PermissionSet`
+  (`Copy`, serialized as a list); `UiParams` has `char` (`textBox`, never ASCII); jobs have `Job::SetCropBox` and
+  `Job::RenderForRedaction` with `id` and `reply` like every job, and `Engine::{set_crop_box, render_for_redaction}`; the label
+  `protect.remove` is chosen in `DocState::execute` from the ticket. In TypeScript the content kinds are `ContentBody` (not in
+  `AnnotationBody`, so the comment features keep exhaustive maps): they arrive in `ChangeSet.content` and `listContentObjects`, and
+  `cropPages` is `CropPagesCommand`, not a `PageCommand`; `media`, `crop`, `doc` and `done.changes` are optional in the types and always
+  sent. The `PageSource` enum is no longer `Copy` (`Redacted` holds the raster page).
 
 ## 6. Pushes (Rust → UI, never with paths)
 

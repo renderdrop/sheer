@@ -346,7 +346,11 @@ pub fn annotation_dict(
             // The colour only matters to vector art; `/C` keeps it for the reader that looks at the annotation, not the picture.
             dict.set("C", color(annotation.color));
         }
-        AnnotationBody::Opaque { .. } => return None,
+        // Content objects and redaction marks are never annotations of the file (ADR-047): a save burns or drops them.
+        AnnotationBody::Opaque { .. }
+        | AnnotationBody::TextBox { .. }
+        | AnnotationBody::Image { .. }
+        | AnnotationBody::RedactMark { .. } => return None,
     }
     if let Some(ap) = kept_ap {
         dict.set("AP", ap);

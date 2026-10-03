@@ -7,6 +7,8 @@
 
 use std::collections::{HashMap, HashSet};
 
+use serde::Deserialize;
+
 use super::command::DocCommand;
 use super::doc_state::{Delta, DocState, Slot};
 use super::page::{
@@ -15,6 +17,25 @@ use super::page::{
 use crate::documents::PageId;
 use crate::error::AppError;
 use crate::limits;
+
+/// How `CropPages` crops (ADR-047 §2): margins in points, in page space before `/Rotate`, measured from each page's MediaBox, or back to
+/// the MediaBox.
+#[derive(Debug, Clone, Copy, PartialEq, Deserialize)]
+#[serde(
+    tag = "type",
+    rename_all = "camelCase",
+    rename_all_fields = "camelCase",
+    deny_unknown_fields
+)]
+pub enum CropSpec {
+    Margins {
+        top: f32,
+        right: f32,
+        bottom: f32,
+        left: f32,
+    },
+    Reset,
+}
 
 /// One page of the list a save has to write.
 #[derive(Debug, Clone, PartialEq)]
@@ -26,6 +47,10 @@ pub struct PlanPage {
     pub rotation: u16,
     pub saved_rotation: u16,
     pub size: [f32; 2],
+    /// The MediaBox, the crop now, and the crop the file has (ADR-047 §2).
+    pub media: [f32; 4],
+    pub crop: Option<[f32; 4]>,
+    pub saved_crop: Option<[f32; 4]>,
 }
 
 /// The pages a save has to write, in order, and what is different from the file.
@@ -38,12 +63,16 @@ pub struct PagePlan {
     pub structure_changed: bool,
     /// A page of the file has another rotation than the file says.
     pub rotation_changed: bool,
+    /// A page of the file has another crop than the file says.
+    pub crop_changed: bool,
+    /// A page was replaced by a redacted raster (`PageSource::Redacted`).
+    pub redacted: bool,
 }
 
 impl PagePlan {
     /// Anything about the pages differs from the file.
     pub fn changed(&self) -> bool {
-        self.structure_changed || self.rotation_changed
+        self.structure_changed || self.rotation_changed || self.crop_changed || self.redacted
     }
 
     /// The position in the saved file of file page `engine_index` (`None` if it was deleted).
@@ -150,22 +179,32 @@ impl DocState {
         let rotation_changed = self.pages.iter().any(|slot| {
             matches!(slot.source, PageSource::File { .. }) && slot.rotation != slot.saved_rotation
         });
+        let crop_changed = self.pages.iter().any(|slot| slot.crop != slot.saved_crop);
+        let redacted = self
+            .pages
+            .iter()
+            .any(|slot| matches!(slot.source, PageSource::Redacted { .. }));
         PagePlan {
             pages: self
                 .pages
                 .iter()
                 .map(|slot| PlanPage {
                     id: slot.id,
-                    source: slot.source,
+                    source: slot.source.clone(),
                     engine_index: slot.engine_index,
                     rotation: slot.rotation,
                     saved_rotation: slot.saved_rotation,
                     size: slot.size,
+                    media: slot.media,
+                    crop: slot.crop,
+                    saved_crop: slot.saved_crop,
                 })
                 .collect(),
             file_pages: self.file_pages,
             structure_changed,
             rotation_changed,
+            crop_changed,
+            redacted,
         }
     }
 
@@ -219,6 +258,18 @@ impl DocState {
         }
         delta.pages = true;
         Ok(DocCommand::SetRotations { rotations: before })
+    }
+
+    /// Crops pages (ADR-047 §2): validates every page first (at least 72 x 72 pt left, inside the MediaBox), sets the crops, shifts the
+    /// annotations, content objects and form widget rects of those pages by the origin change in the same step, and returns the inverse
+    /// (the old crops and the reverse shift). The engine mirrors it afterwards (`Job::SetCropBox`, `commands::pages`). Package B.
+    pub(super) fn crop_pages(
+        &mut self,
+        _pages: &[PageId],
+        _spec: &CropSpec,
+        _delta: &mut Delta,
+    ) -> Result<DocCommand, AppError> {
+        Err(AppError::not_yet())
     }
 
     /// Sets the rotation of each page to the given value.
@@ -361,12 +412,15 @@ impl DocState {
                     u32::try_from(at + k).unwrap_or(u32::MAX),
                     PageSlot {
                         id: PageId::new(id),
-                        source: page.source,
+                        source: page.source.clone(),
                         engine_index: page.engine_index,
                         rotation: page.rotation,
                         saved_rotation: page.rotation,
                         rev: 0,
                         size: page.size,
+                        media: [0.0, 0.0, page.size[0], page.size[1]],
+                        crop: None,
+                        saved_crop: None,
                     },
                 )
             })
@@ -377,11 +431,11 @@ impl DocState {
         // takes them out with the page). A page whose annotations were not read stays unread and is read like any page; a blank page
         // has none.
         for ((_, slot), page) in slots.iter().zip(pages) {
-            match (&page.annotations, slot.source) {
+            match (&page.annotations, &slot.source) {
                 (Some(items), _) => {
                     self.import_page(slot.id, items);
                 }
-                (None, PageSource::Blank) => {
+                (None, &PageSource::Blank) => {
                     self.imported.insert(slot.id.get());
                 }
                 (None, _) => {}

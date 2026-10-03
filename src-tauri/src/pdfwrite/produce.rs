@@ -30,6 +30,8 @@ pub enum Phase {
     Images,
     Write,
     Validate,
+    /// Rendering and rebuilding pages for true redaction (ADR-047 §3).
+    Redact,
 }
 
 /// Something the output lost, for the UI to say once.
@@ -40,6 +42,8 @@ pub enum Warning {
     FormsDropped,
     /// Form fields on pages taken from another file were not carried over (the widgets show no more).
     WidgetsDropped,
+    /// Redaction dropped session edits (annotations, content objects) on the pages it replaced (ADR-047 §3).
+    UnsavedEditsDropped,
 }
 
 /// How a job is told to stop and how it reports. `check` is called between objects, pages and images.

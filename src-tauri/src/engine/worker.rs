@@ -11,7 +11,7 @@ use super::queue::{RenderKey, Requests};
 use super::sizes::{PageSizes, SizeCache};
 use super::space::page_count;
 use super::{
-    encode, import, links, outline, pages, search, text, Confirm, Job, ReopenSource, Reply,
+    encode, import, links, outline, pages, redact, search, text, Confirm, Job, ReopenSource, Reply,
 };
 use crate::documents::{DocFlags, DocumentId};
 use crate::error::{AppError, ErrorCode};
@@ -198,6 +198,29 @@ fn serve<'a>(
         Job::SetPageRotations { id, items, reply } => {
             let result = read_job(documents, crashed, id, |document| {
                 pages::set_rotations(document, &items)
+            });
+            answer(reply, result, Some(id), documents, crashed);
+        }
+        Job::SetCropBox {
+            id,
+            engine_index,
+            crop,
+            reply,
+        } => {
+            let result = read_job(documents, crashed, id, |document| {
+                pages::set_crop_box(document, engine_index, crop)
+            });
+            answer(reply, result, Some(id), documents, crashed);
+        }
+        Job::RenderForRedaction {
+            id,
+            engine_index,
+            dpi,
+            burn,
+            reply,
+        } => {
+            let result = read_job(documents, crashed, id, |document| {
+                redact::render_for_redaction(document, engine_index, dpi, &burn)
             });
             answer(reply, result, Some(id), documents, crashed);
         }
@@ -426,6 +449,8 @@ fn read_flags(document: &PdfDocument<'_>) -> DocFlags {
         xfa,
         has_forms,
         signed: has_forms && !document.signatures().is_empty(),
+        // Package D: the permission bits PDFium reports for a file opened with its open password (ADR-047 §4).
+        permissions: None,
     }
 }
 

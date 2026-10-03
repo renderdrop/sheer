@@ -16,6 +16,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::error::{AppError, ErrorCode};
 use crate::limits;
+use crate::model::protection::PermissionSet;
 
 /// Opaque handle for an open document. Serialized as a plain number.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -56,6 +57,9 @@ pub struct DocFlags {
     pub has_forms: bool,
     /// The document has at least one digital signature field that is signed. Whether the signature is valid is not checked.
     pub signed: bool,
+    /// What the file's permissions still allow when it was opened with the open password of a restricted file (ADR-047 §4); `None`: not
+    /// encrypted, or opened with owner rights, so nothing is restricted. `apply_command` refuses edits when `edit` is missing.
+    pub permissions: Option<PermissionSet>,
 }
 
 /// Where a document comes from. `Welcome` is the bundled tour sample (ADR-023): read-only (Save acts as Save As, closing never
@@ -797,11 +801,12 @@ mod tests {
                 xfa: false,
                 has_forms: true,
                 signed: false,
+                permissions: None,
             },
         };
         assert_eq!(
             serde_json::to_string(&info).unwrap(),
-            r#"{"id":0,"pageCount":3,"displayName":"a.pdf","kind":"user","flags":{"encrypted":true,"xfa":false,"hasForms":true,"signed":false}}"#
+            r#"{"id":0,"pageCount":3,"displayName":"a.pdf","kind":"user","flags":{"encrypted":true,"xfa":false,"hasForms":true,"signed":false,"permissions":null}}"#
         );
     }
 

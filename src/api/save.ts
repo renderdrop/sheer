@@ -8,9 +8,11 @@ import { toAppError } from './errors';
  * Save As shows the native dialog from Rust.
  */
 
-/** What the user agreed to when a save asked for confirmation; today only a file that changed on disk can ask. */
+/** What the user agreed to when a save asked for confirmation: the file changed on disk, the save rewrites a signed file, or the save rewrites a protected file (ADR-047). */
 export interface SaveAck {
   fileChanged?: boolean;
+  breakSignature?: boolean;
+  rewriteEncrypted?: boolean;
 }
 
 export type SaveMode = 'incremental' | 'full';

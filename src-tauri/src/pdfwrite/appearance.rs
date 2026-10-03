@@ -525,7 +525,10 @@ pub fn build_with(
                 }
             }
         }
-        AnnotationBody::Opaque { .. } => return None,
+        AnnotationBody::Opaque { .. }
+        | AnnotationBody::TextBox { .. }
+        | AnnotationBody::Image { .. }
+        | AnnotationBody::RedactMark { .. } => return None,
     }
     c.push_str("Q\n");
     let uses_state = annotation.opacity < 1.0 || multiply;

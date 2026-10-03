@@ -593,9 +593,9 @@ pub fn rewrite_pages(
     let mut page_ids: Vec<ObjectId> = Vec::with_capacity(plan.pages.len());
     let mut dicts: Vec<(ObjectId, Dictionary)> = Vec::new();
     for page in &plan.pages {
-        match page.source {
+        match &page.source {
             PageSource::File { index } => {
-                let id = file_pages[usize::try_from(index).map_err(|_| failed("page index"))?];
+                let id = file_pages[usize::try_from(*index).map_err(|_| failed("page index"))?];
                 let prev = inc.get_prev_documents();
                 let mut dict = prev.get_dictionary(id).map_err(lopdf_error)?.clone();
                 materialize_inherited(prev, &mut dict);
@@ -608,7 +608,10 @@ pub fn rewrite_pages(
                 dicts.push((id, blank_page(page.size, page.rotation)));
                 page_ids.push(id);
             }
+            // Package C: the one-page PDF of a redacted slot is appended here (`copy_pages_from_document`).
+            PageSource::Redacted { .. } => return Err(AppError::not_yet()),
             PageSource::Imported { source, index } => {
+                let (source, index) = (*source, *index);
                 if let std::collections::hash_map::Entry::Vacant(vacant) = loaded.entry(source) {
                     let bytes = sources
                         .get(&source)

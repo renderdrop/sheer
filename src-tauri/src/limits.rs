@@ -487,6 +487,49 @@ pub fn render_region(page_px: (u32, u32), tile: Option<(u16, u16)>) -> Result<Re
     })
 }
 
+// --- Edit and protect (ADR-047, ARCHITECTURE §5 "Edit and protect") ---------------------------------------------------------
+
+/// Characters of a text box, lines after the layout, and the smallest side of a text box or an image box in points.
+pub const MAX_TEXT_BOX_CHARS: usize = 8_192;
+pub const MAX_TEXT_BOX_LINES: usize = 500;
+pub const MIN_CONTENT_BOX_PT: f32 = 4.0;
+/// The font size range of a text box in points.
+pub const MIN_TEXT_BOX_FONT_PT: f32 = 4.0;
+pub const MAX_TEXT_BOX_FONT_PT: f32 = 144.0;
+/// An image the user inserts: the file, the sides read from its header before decoding, its pixels, the decoder's allocation cap, the
+/// long side it is stored at, and what one stored image may take.
+pub const MAX_IMAGE_FILE_BYTES: u64 = 20 * 1024 * 1024;
+pub const MAX_INSERT_IMAGE_SIDE_PX: u32 = 8_192;
+pub const MAX_INSERT_IMAGE_PIXELS: u64 = 40_000_000;
+pub const MAX_IMAGE_DECODE_ALLOC_BYTES: u64 = 256 * 1024 * 1024;
+pub const MAX_IMAGE_STORED_SIDE_PX: u32 = 4_096;
+pub const MAX_IMAGE_STORED_BYTES: u64 = 24 * 1024 * 1024;
+/// Image assets of one document, and their total size.
+pub const MAX_IMAGE_ASSETS: usize = 128;
+pub const MAX_IMAGE_ASSET_BYTES_PER_DOC: u64 = 256 * 1024 * 1024;
+/// The smallest side a crop leaves, in points.
+pub const MIN_CROP_SIDE_PT: f32 = 72.0;
+/// Redaction marks in one command and in the document, and quads in one mark.
+pub const MAX_REDACT_MARKS_PER_COMMAND: usize = 10_000;
+pub const MAX_REDACT_MARKS_PER_DOC: usize = 20_000;
+pub const MAX_REDACT_QUADS_PER_MARK: usize = 512;
+/// Pages one redaction job rasters, the dpi it starts at, the lowest dpi it accepts, and the bitmap it may make per page.
+pub const MAX_REDACT_PAGES: usize = 5_000;
+pub const REDACT_DPI: f32 = 200.0;
+pub const MIN_REDACT_DPI: f32 = 72.0;
+pub const MAX_REDACT_SIDE_PX: u32 = 4_096;
+pub const MAX_REDACT_PIXELS: u64 = 16_000_000;
+/// A password in bytes after SASLprep.
+pub const MIN_NEW_PASSWORD_BYTES: usize = 1;
+pub const MAX_NEW_PASSWORD_BYTES: usize = 127;
+/// A metadata field in characters, the time one read of it may take, and how much of the XMP packet is looked at.
+pub const MAX_METADATA_FIELD_CHARS: usize = 1_000;
+pub const METADATA_READ_TIMEOUT: Duration = Duration::from_secs(30);
+pub const MAX_XMP_BYTES: u64 = 4 * 1024 * 1024;
+/// The size range of `get_asset_preview` (pixels on the long side).
+pub const MIN_ASSET_PREVIEW_PX: u16 = 16;
+pub const MAX_ASSET_PREVIEW_PX: u16 = 2_048;
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -780,6 +823,29 @@ mod tests {
             code(render_region(page, Some((last + 1, 0)))),
             ErrorCode::InvalidArgument
         );
+    }
+
+    #[test]
+    fn the_edit_and_protect_limits_are_the_documented_ones() {
+        assert_eq!(MAX_TEXT_BOX_CHARS, 8_192);
+        assert_eq!(MAX_TEXT_BOX_LINES, 500);
+        assert_eq!(MAX_IMAGE_FILE_BYTES, 20 * 1024 * 1024);
+        assert_eq!(MAX_INSERT_IMAGE_SIDE_PX, 8_192);
+        assert_eq!(MAX_INSERT_IMAGE_PIXELS, 40_000_000);
+        assert_eq!(MAX_IMAGE_ASSETS, 128);
+        assert_eq!(MAX_IMAGE_ASSET_BYTES_PER_DOC, 256 * 1024 * 1024);
+        assert_eq!(MIN_CROP_SIDE_PT, 72.0);
+        assert_eq!(MAX_REDACT_MARKS_PER_COMMAND, 10_000);
+        assert_eq!(MAX_REDACT_MARKS_PER_DOC, 20_000);
+        assert_eq!(MAX_REDACT_QUADS_PER_MARK, 512);
+        assert_eq!(MAX_REDACT_PAGES, 5_000);
+        assert_eq!((MIN_NEW_PASSWORD_BYTES, MAX_NEW_PASSWORD_BYTES), (1, 127));
+        assert_eq!(MAX_METADATA_FIELD_CHARS, 1_000);
+        assert_eq!(MAX_XMP_BYTES, 4 * 1024 * 1024);
+        // The redaction raster never goes below the lowest dpi it accepts, and starts above it.
+        const _: () = assert!(REDACT_DPI > MIN_REDACT_DPI);
+        const _: () =
+            assert!(MAX_REDACT_PIXELS <= (MAX_REDACT_SIDE_PX as u64) * (MAX_REDACT_SIDE_PX as u64));
     }
 
     #[test]

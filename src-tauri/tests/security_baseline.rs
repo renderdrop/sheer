@@ -450,6 +450,13 @@ fn capabilities_grant_only_the_app_commands_and_the_window_chrome_to_the_main_wi
         "allow-create-typed-signature",
         "allow-create-drawn-signature",
         "allow-clear-signature-library",
+        "allow-insert-image-dialog",
+        "allow-get-asset-preview",
+        "allow-apply-redactions",
+        "allow-get-protection",
+        "allow-stage-protection",
+        "allow-stage-unprotection",
+        "allow-get-metadata",
     ]);
     expected.extend(
         WINDOW_PERMISSIONS
@@ -729,6 +736,13 @@ fn build_script_declares_exactly_the_granted_commands() {
         "import_signature_image",
         "create_typed_signature",
         "create_drawn_signature",
+        "insert_image_dialog",
+        "get_asset_preview",
+        "apply_redactions",
+        "get_protection",
+        "stage_protection",
+        "stage_unprotection",
+        "get_metadata",
     ];
     let handlers = read("src/lib.rs");
     for command in commands {

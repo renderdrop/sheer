@@ -25,9 +25,10 @@ use tauri_plugin_dialog::DialogExt;
 
 use super::annotations::iso8601_utc;
 use super::{blocking, AppState};
+use crate::content::ContentObject;
 use crate::documents::intake::{self, Admitted};
 use crate::documents::sources::SourceBytes;
-use crate::documents::{DocKind, DocumentId, DocumentInfo, Fingerprint};
+use crate::documents::{DocKind, DocumentId, DocumentInfo, Fingerprint, PageId};
 use crate::error::{AppError, ErrorCode, UiError};
 use crate::limits;
 use crate::model::annotation::PdfOrigin;
@@ -35,16 +36,19 @@ use crate::model::doc_state::{ChangeSet, DocState};
 use crate::model::ids::AnnotId;
 use crate::model::page::SourceId;
 use crate::model::page_ops::PagePlan;
-use crate::pdfwrite::{self, pagetree, Built, Change, Plan};
+use crate::pdfwrite::{self, pagetree, Built, Change, Plan, SavePlan};
+use crate::security::secret::PendingProtection;
 use crate::storage::{atomic, backup};
 
-/// What the user agreed to when a save asked (ARCHITECTURE §5). Only `file_changed` can be asked for today; `break_signature` is for the full
-/// rewrite of M4. An encrypted file is not rewritten before M3 (`unsupported_feature`), so there is no `rewrite_encrypted` yet (ADR-033).
+/// What the user agreed to when a save asked (ARCHITECTURE §5): `file_changed` (the file changed on disk), `break_signature` (the save
+/// rewrites a signed file) and `rewrite_encrypted` (the save rewrites an encrypted file, ADR-047 §4; asked for once package D lets such a
+/// save through, until then an encrypted file is not changed: `unsupported_feature`).
 #[derive(Debug, Clone, Copy, Default, Deserialize)]
 #[serde(rename_all = "camelCase", default, deny_unknown_fields)]
 pub struct SaveAck {
     pub break_signature: bool,
     pub file_changed: bool,
+    pub rewrite_encrypted: bool,
 }
 
 /// Options of Save As: `clean_copy` writes the whole file again without the pages that were deleted (ADR-036 §5).
@@ -60,7 +64,7 @@ pub struct SaveAsOptions {
 pub enum SaveMode {
     /// The original bytes, followed by an update.
     Incremental,
-    /// The whole file again (not used before M3).
+    /// The whole file again: a clean copy, redaction, a change of the protection, a removal of the metadata, an encrypted document.
     Full,
 }
 
@@ -161,7 +165,10 @@ pub(super) fn plan_with_origins(
         if let Some(origin) = &origin {
             plan.known.push((annotation.id, origin.clone()));
         }
-        let to_write = !annotation.is_opaque() && annotation.sync != Sync::Clean;
+        // Text boxes and images are burned in, redaction marks are never written (ADR-047): neither is an annotation of the file.
+        let to_write = !annotation.is_opaque()
+            && annotation.body.is_written_as_annotation()
+            && annotation.sync != Sync::Clean;
         if let (true, Some(page_index)) = (to_write, page_index(annotation)) {
             plan.changes.push(Change::Write {
                 page_index,
@@ -173,10 +180,49 @@ pub(super) fn plan_with_origins(
     plan
 }
 
+/// What the model stages besides the annotations and the pages (ADR-047): text boxes and images of the pages, crops, whether a page was
+/// redacted, the staged protection and metadata. `keep_encryption` is set by the caller.
+pub(super) fn save_plan_of(state: &DocState, pages: &PagePlan, keep_encryption: bool) -> SavePlan {
+    let mut content: Vec<(PageId, Vec<ContentObject>)> = Vec::new();
+    // `entries` is in creation order (ids only grow), which is the order the objects are drawn in.
+    for entry in state.entries() {
+        if entry.tombstone || !entry.annotation.body.is_content() {
+            continue;
+        }
+        let object = ContentObject {
+            annotation: entry.annotation.clone(),
+        };
+        match content
+            .iter_mut()
+            .find(|(page, _)| *page == entry.annotation.page_id)
+        {
+            Some((_, objects)) => objects.push(object),
+            None => content.push((entry.annotation.page_id, vec![object])),
+        }
+    }
+    SavePlan {
+        content,
+        crops: pages
+            .pages
+            .iter()
+            .filter(|page| page.crop != page.saved_crop)
+            .map(|page| page.id)
+            .collect(),
+        redacted: pages.redacted,
+        protection: state
+            .pending_protection()
+            .map(|(_, pending)| pending.clone()),
+        metadata: state.metadata().change(),
+        keep_encryption,
+    }
+}
+
 /// What `build_pages` writes: the annotations, the pages, the bytes of the import sources the pages come from, and whether the result is
 /// a full rewrite ("clean copy").
 struct BuildPlan {
     plan: Plan,
+    /// Everything else the model stages (see [`save_plan_of`]).
+    extras: SavePlan,
     /// The form fields whose value changed, and whether the form is a hybrid one (its `/XFA` goes).
     form: Vec<crate::model::form::FormField>,
     strip_xfa: bool,
@@ -197,6 +243,7 @@ fn build_pages(
     build_with(slot, limits::SAVE_TIMEOUT, move || {
         let BuildPlan {
             plan,
+            extras,
             form,
             strip_xfa,
             pages,
@@ -211,6 +258,7 @@ fn build_pages(
         } else {
             (original, Vec::new())
         };
+        let full = clean_copy || extras.requires_full();
         let mut built = pdfwrite::append_annotations(bytes, &plan)?;
         // The form values follow the annotations: a second update on top of the first (the `/Annots` positions do not change).
         let mut xfa_removed = false;
@@ -219,10 +267,19 @@ fn build_pages(
             built.bytes = written.bytes;
             xfa_removed = written.xfa_removed;
         }
-        if clean_copy {
+        // Content objects, crops, redaction scrubbing, encryption and metadata (packages A to D).
+        if !extras.is_empty() {
+            built.bytes = pdfwrite::apply_extras(built.bytes, &extras)?;
+        }
+        if full {
             built.bytes = pagetree::compact(built.bytes, &deleted)?;
         }
-        if !plan.changes.is_empty() || pages.changed() || clean_copy || !form.is_empty() {
+        if !plan.changes.is_empty()
+            || pages.changed()
+            || full
+            || !form.is_empty()
+            || !extras.is_empty()
+        {
             pdfwrite::validate(&built.bytes, expected)?;
         }
         built.pages = expected;
@@ -363,7 +420,7 @@ impl AppState {
         }
 
         // What the file has to become: the pages in their order (ADR-036 §5) and the annotations on them, at the positions they will have.
-        let (pages, plan, form, strip_xfa) = self.model(id, |state| {
+        let (pages, plan, extras, form, strip_xfa) = self.model(id, |state| {
             let pages = state.page_plan();
             let position: std::collections::HashMap<u32, u32> = pages
                 .pages
@@ -394,12 +451,22 @@ impl AppState {
             let strip_xfa = state
                 .form()
                 .is_some_and(|form| form.xfa() == crate::model::form::Xfa::Hybrid);
-            Ok((pages, plan, form, strip_xfa))
+            // An encrypted document stays encrypted unless the save removes the protection (package D, ADR-047 §4; today the
+            // `unsupported_feature` below stops such a save first).
+            let mut extras = save_plan_of(state, &pages, false);
+            extras.keep_encryption = info.flags.encrypted
+                && !matches!(extras.protection, Some(PendingProtection::Remove));
+            Ok((pages, plan, extras, form, strip_xfa))
         })?;
         let expected =
             u32::try_from(pages.pages.len()).map_err(|_| AppError::new(ErrorCode::Internal))?;
         let page_changes = pages.changed();
-        let writes = !plan.changes.is_empty() || page_changes || clean_copy || !form.is_empty();
+        let full = clean_copy || extras.requires_full();
+        let writes = !plan.changes.is_empty()
+            || page_changes
+            || full
+            || !form.is_empty()
+            || !extras.is_empty();
         if writes && info.flags.encrypted {
             // lopdf would have to encrypt what it appends (ADR-004 §5); until that is settled an encrypted file is not changed.
             return Err(AppError::logged(
@@ -408,7 +475,7 @@ impl AppState {
             ));
         }
         // Changes to the pages are not among the changes a signature allows (ADR-036 §5), and a new file is not the signed one.
-        if (page_changes || clean_copy) && info.flags.signed && !ack.break_signature {
+        if (page_changes || full) && info.flags.signed && !ack.break_signature {
             return Err(AppError::needs_confirmation("breaksSignature"));
         }
         if !writes && target.is_none() {
@@ -440,13 +507,14 @@ impl AppState {
         }
         let original_len = original.len();
         // A full rewrite shares nothing with the original, so what the backup and a rollback need is kept apart.
-        let original_copy = clean_copy.then(|| original.clone());
+        let original_copy = full.then(|| original.clone());
         let (built, xfa_removed) = build_pages(
             Arc::as_ptr(&self.registry) as usize,
             id,
             original,
             BuildPlan {
                 plan,
+                extras: extras.clone(),
                 form,
                 strip_xfa,
                 pages,
@@ -459,7 +527,7 @@ impl AppState {
                 .clone()
                 .unwrap_or_else(|| built.bytes[..original_len].to_vec())
         };
-        let mode = if clean_copy {
+        let mode = if full {
             SaveMode::Full
         } else {
             SaveMode::Incremental
@@ -469,7 +537,7 @@ impl AppState {
 
         let in_place = target.is_none();
         let destination = target.clone().unwrap_or_else(|| source.clone());
-        let backup = if in_place && writes {
+        let backup = if in_place && writes && !extras.never_backed_up() {
             self.back_up(id, &source, &original_bytes(&built))
         } else {
             BackupOutcome::NotNeeded

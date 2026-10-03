@@ -131,7 +131,7 @@ fn the_flags_are_part_of_what_the_ui_is_told_about_a_document() {
     let wire = serde_json::to_value(&info).unwrap();
     assert_eq!(
         wire["flags"],
-        serde_json::json!({ "encrypted": false, "xfa": false, "hasForms": true, "signed": true })
+        serde_json::json!({ "encrypted": false, "xfa": false, "hasForms": true, "signed": true, "permissions": null })
     );
     // A document that is asked for again keeps its flags.
     assert_eq!(open(state, "signed.pdf").flags, info.flags);

@@ -5,15 +5,19 @@
 pub mod annots;
 pub mod appearance;
 pub mod compress;
+pub mod content;
 pub mod coords;
+pub mod crypt;
 pub mod field_ap;
 pub mod flatten;
 pub mod forms;
 pub mod inspect;
+pub mod metadata;
 pub mod pagetree;
 pub mod prescan;
 pub mod produce;
+pub mod redact;
 pub mod save;
 
 pub use prescan::load_untrusted;
-pub use save::{append_annotations, validate, Built, Change, Plan};
+pub use save::{append_annotations, apply_extras, validate, Built, Change, Plan, SavePlan};

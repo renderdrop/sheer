@@ -17,10 +17,15 @@ use super::annotation::{
 use super::doc_state::{Delta, DocState, Entry, Slot, Stamp};
 use super::form::{FieldId, FieldUndo, FieldValue};
 use super::ids::AnnotId;
+use super::metadata::{self, MetadataPatch};
 use super::page::{NewPage, PageSlot, SourceId};
+use super::page_ops::CropSpec;
+use super::protection;
+use super::redaction::{self, MarkSpec};
 use crate::documents::PageId;
 use crate::error::AppError;
 use crate::limits;
+use crate::security::secret::Ticket;
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(
@@ -82,6 +87,18 @@ pub enum DocCommand {
         pages: Vec<u32>,
         at: u32,
     },
+    /// Crops pages, or takes the crop off (ADR-047 §2); the annotations, content objects and form widgets move with the page origin.
+    CropPages { pages: Vec<PageId>, spec: CropSpec },
+    /// Marks areas for true redaction, up to 10 000 as one step (ADR-047 §3). The marks are model state; a save never writes them.
+    MarkRedactions { marks: Vec<MarkSpec> },
+    /// Makes the staged protection change named by `ticket` the document's pending one (ADR-047 §4). The passwords are in
+    /// `DocState.secrets`, never in the history. Made by `stage_protection` and `stage_unprotection`; not accepted from the UI.
+    #[serde(skip_deserializing)]
+    SetProtection { ticket: Ticket },
+    /// Changes the title, author, subject or keywords written at the next save (ADR-047 §5).
+    SetMetadata { patch: MetadataPatch },
+    /// Stages the removal of all metadata, written by the next (full) save.
+    RemoveMetadata,
     /// Puts the given content back into the given ids. The inverse of every command; not accepted from the UI.
     #[serde(skip_deserializing)]
     Restore { slots: Vec<Slot> },
@@ -122,6 +139,12 @@ pub const LABEL_MOVE_PAGES: &str = "page.move";
 pub const LABEL_INSERT_BLANK: &str = "page.insertBlank";
 pub const LABEL_INSERT_PAGES: &str = "page.insert";
 const LABEL_RESTORE_PAGES: &str = "page.restore";
+pub const LABEL_CROP_PAGES: &str = "page.crop";
+pub const LABEL_MARK_REDACTIONS: &str = "redact.mark";
+pub const LABEL_PROTECT_SET: &str = "protect.set";
+pub const LABEL_PROTECT_REMOVE: &str = "protect.remove";
+pub const LABEL_METADATA_SET: &str = "metadata.set";
+pub const LABEL_METADATA_REMOVE: &str = "metadata.remove";
 
 fn is_key(text: &str) -> bool {
     !text.is_empty()
@@ -148,6 +171,12 @@ impl DocCommand {
             Self::InsertBlankPage { .. } => LABEL_INSERT_BLANK.to_owned(),
             Self::InsertPages { .. } => LABEL_INSERT_PAGES.to_owned(),
             Self::AddPages { label, .. } => label.clone(),
+            Self::CropPages { .. } => LABEL_CROP_PAGES.to_owned(),
+            Self::MarkRedactions { .. } => LABEL_MARK_REDACTIONS.to_owned(),
+            // `DocState::execute` says `protect.remove` when the ticket is a removal.
+            Self::SetProtection { .. } => LABEL_PROTECT_SET.to_owned(),
+            Self::SetMetadata { .. } => LABEL_METADATA_SET.to_owned(),
+            Self::RemoveMetadata => LABEL_METADATA_REMOVE.to_owned(),
             Self::SetRotations { .. }
             | Self::ReorderPages { .. }
             | Self::RemovePages { .. }
@@ -155,11 +184,16 @@ impl DocCommand {
         }
     }
 
-    /// Whether this is a command on pages (not on annotations). Page commands are not part of a batch.
+    /// Whether this is a command of its own (pages, crop, redaction marks, protection, metadata: not annotations). Such commands are not part of a batch.
     pub fn is_page_command(&self) -> bool {
         matches!(
             self,
             Self::RotatePages { .. }
+                | Self::CropPages { .. }
+                | Self::MarkRedactions { .. }
+                | Self::SetProtection { .. }
+                | Self::SetMetadata { .. }
+                | Self::RemoveMetadata
                 | Self::DeletePages { .. }
                 | Self::MovePages { .. }
                 | Self::InsertBlankPage { .. }
@@ -215,7 +249,8 @@ impl DocCommand {
             },
             Self::RotatePages { pages, .. }
             | Self::DeletePages { pages }
-            | Self::MovePages { pages, .. } => {
+            | Self::MovePages { pages, .. }
+            | Self::CropPages { pages, .. } => {
                 if pages.is_empty() {
                     Err(AppError::invalid("pages"))
                 } else if pages.len() > limits::MAX_PAGES as usize {
@@ -252,6 +287,19 @@ impl DocCommand {
             | Self::RemovePages { .. }
             | Self::RestorePages { .. }
             | Self::AddPages { .. } => Ok(()),
+            Self::MarkRedactions { marks } => {
+                if marks.is_empty() {
+                    Err(AppError::invalid("marks"))
+                } else if marks.len() > limits::MAX_REDACT_MARKS_PER_COMMAND {
+                    Err(AppError::limit(
+                        "marks",
+                        limits::MAX_REDACT_MARKS_PER_COMMAND as u64,
+                    ))
+                } else {
+                    Ok(())
+                }
+            }
+            Self::SetProtection { .. } | Self::SetMetadata { .. } | Self::RemoveMetadata => Ok(()),
             Self::UpdateAnnotation { coalesce, .. } => match coalesce {
                 Some(key) if !is_key(key) => Err(AppError::invalid("coalesce")),
                 _ => Ok(()),
@@ -391,6 +439,13 @@ impl DocCommand {
                 state.restore_pages(slots, annotations, &mut delta)?
             }
             Self::AddPages { at, pages, .. } => state.insert_pages(*at, pages, &mut delta)?,
+            Self::CropPages { pages, spec } => state.crop_pages(pages, spec, &mut delta)?,
+            Self::MarkRedactions { marks } => redaction::mark(state, marks, &mut delta)?,
+            Self::SetProtection { ticket } => {
+                protection::run_set_protection(state, *ticket, &mut delta)?
+            }
+            Self::SetMetadata { patch } => metadata::set(state, patch, &mut delta)?,
+            Self::RemoveMetadata => metadata::remove(state, &mut delta)?,
             // The engine makes the pages first (`commands::pages`); the model alone cannot.
             Self::InsertBlankPage { .. } | Self::InsertPages { .. } => {
                 return Err(AppError::invalid("command"))
@@ -446,6 +501,13 @@ fn create(
     state.check_room(draft.page_id)?;
     // Validated under a placeholder id; the real one is taken only once the draft is known to be good.
     Annotation::from_draft(AnnotId::new(0), draft, &stamp.modified)?;
+    // An image's pixels are an asset of this document (ADR-047 §1).
+    if let AnnotationBody::Image {
+        asset_id, aspect, ..
+    } = &draft.body
+    {
+        crate::content::image::check_asset(state, *asset_id, *aspect)?;
+    }
     // A signature's art is an asset of this document (ADR-041 §5).
     if let AnnotationBody::Signature {
         art: SignatureArtRef::Asset { asset_id, aspect },
@@ -520,6 +582,7 @@ mod tests {
     use crate::error::ErrorCode;
     use crate::model::annotation::{AnnotationBody, Imported, PdfOrigin, Rgb, Sync};
     use crate::model::geometry::Rect;
+    use crate::security::secret::Ticket;
 
     fn stamp(now_ms: u64) -> Stamp {
         Stamp {
@@ -1329,5 +1392,83 @@ mod tests {
         let sent =
             serde_json::from_value::<DocCommand>(json!({"type": "restoreFields", "values": []}));
         assert!(sent.is_err());
+    }
+
+    #[test]
+    fn the_edit_and_protect_commands_parse_and_stop_at_their_stubs() {
+        let quad = json!([{"x":0.0,"y":0.0},{"x":9.0,"y":0.0},{"x":0.0,"y":9.0},{"x":9.0,"y":9.0}]);
+        let mut state = state();
+        for (command, expected) in [
+            (
+                json!({"type": "cropPages", "pages": [0], "spec": {"type": "reset"}}),
+                ErrorCode::UnsupportedFeature,
+            ),
+            (
+                json!({"type": "markRedactions", "marks": [{"pageId": 0, "quads": [quad], "source": "text"}]}),
+                ErrorCode::UnsupportedFeature,
+            ),
+            (
+                json!({"type": "setMetadata", "patch": {"title": null}}),
+                ErrorCode::UnsupportedFeature,
+            ),
+            (
+                json!({"type": "removeMetadata"}),
+                ErrorCode::UnsupportedFeature,
+            ),
+            // Shape checks come first.
+            (
+                json!({"type": "cropPages", "pages": [], "spec": {"type": "reset"}}),
+                ErrorCode::InvalidArgument,
+            ),
+            (
+                json!({"type": "markRedactions", "marks": []}),
+                ErrorCode::InvalidArgument,
+            ),
+        ] {
+            assert_eq!(code(state.execute(cmd(command), &stamp(0))), expected);
+        }
+        assert!(!state.is_dirty());
+    }
+
+    #[test]
+    fn the_ui_cannot_send_a_protection_ticket() {
+        let sent =
+            serde_json::from_value::<DocCommand>(json!({"type": "setProtection", "ticket": 1}));
+        assert!(sent.is_err());
+        let labels = [
+            (DocCommand::RemoveMetadata, "metadata.remove"),
+            (
+                DocCommand::SetProtection {
+                    ticket: Ticket::new(1),
+                },
+                "protect.set",
+            ),
+        ];
+        for (command, label) in labels {
+            assert_eq!(command.label(), label);
+            assert!(command.is_page_command());
+        }
+    }
+
+    #[test]
+    fn a_redact_mark_is_an_annotation_of_the_model_that_the_file_never_gets() {
+        let mut state = state();
+        let draft = cmd(json!({"type": "createAnnotation", "draft": {
+            "pageId": 0, "kind": "redactMark", "color": [0, 0, 0], "source": "area",
+            "quads": [[{"x":1.0,"y":1.0},{"x":9.0,"y":1.0},{"x":1.0,"y":9.0},{"x":9.0,"y":9.0}]]
+        }}));
+        let changes = state.execute(draft, &stamp(0)).unwrap();
+        let mark = &changes.upserted[0];
+        assert!(mark.body.is_redact_mark());
+        assert!(!mark.body.is_written_as_annotation());
+        // A text box is refused until package A has its layout.
+        let text_box = cmd(json!({"type": "createAnnotation", "draft": {
+            "pageId": 0, "kind": "textBox", "color": [0, 0, 0], "box": {"x":1.0,"y":1.0,"w":80.0,"h":0.0},
+            "text": "hi", "font": "sans", "fontSize": 12.0, "align": "left"
+        }}));
+        assert_eq!(
+            code(state.execute(text_box, &stamp(1))),
+            ErrorCode::UnsupportedFeature
+        );
     }
 }

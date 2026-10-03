@@ -13,10 +13,14 @@ use lopdf::{Dictionary, Document, IncrementalDocument, Object, ObjectId};
 
 use super::annots::{self, Links};
 use super::coords::page_mapper;
+use crate::content::ContentObject;
+use crate::documents::PageId;
 use crate::error::{AppError, ErrorCode};
 use crate::limits;
 use crate::model::annotation::{Annotation, PdfOrigin};
 use crate::model::ids::{AnnotId, AssetId};
+use crate::model::metadata::MetadataChange;
+use crate::security::secret::PendingProtection;
 use crate::signatures::Art;
 
 /// One thing to do to the file.
@@ -40,6 +44,62 @@ pub struct Plan {
     pub known: Vec<(AnnotId, PdfOrigin)>,
     /// The art the signatures of the changes refer to (`DocState.assets`).
     pub assets: HashMap<AssetId, Arc<Art>>,
+}
+
+/// What a save has to write besides the annotations, the form values and the page list (ADR-047, ARCHITECTURE §5 "Edit and protect"). It
+/// is made from the model by `commands::save` and consumed by [`apply_extras`]; every field is empty or false for a plain save.
+#[derive(Debug, Clone, Default)]
+pub struct SavePlan {
+    /// The text boxes and images to burn into each page, in creation order (`pdfwrite::content`, package A).
+    pub content: Vec<(PageId, Vec<ContentObject>)>,
+    /// The pages whose crop is not the file's: their page dictionaries are written again with `/CropBox` (package B).
+    pub crops: Vec<PageId>,
+    /// At least one page is a redacted raster (`PageSource::Redacted`): the save is Full and scrubbed (package C).
+    pub redacted: bool,
+    /// A staged protection change: `Protect` encrypts, `Remove` writes no `/Encrypt` (package D).
+    pub protection: Option<PendingProtection>,
+    /// Staged metadata: a new `/Info`, or a removal (package D).
+    pub metadata: Option<MetadataChange>,
+    /// The document is encrypted and stays so: the Full rewrite keeps its own `/Encrypt` and file key (package D).
+    pub keep_encryption: bool,
+}
+
+impl SavePlan {
+    /// Nothing besides the plain annotation save.
+    pub fn is_empty(&self) -> bool {
+        self.content.is_empty()
+            && self.crops.is_empty()
+            && !self.redacted
+            && self.protection.is_none()
+            && self.metadata.is_none()
+            && !self.keep_encryption
+    }
+
+    /// The save is a whole new file, no update on top of the original (ADR-047): redaction (no earlier revision may survive), a change
+    /// of the protection, a removal of the metadata, and the rewrite of an encrypted document. Content, crops and a metadata edit are
+    /// incremental.
+    pub fn requires_full(&self) -> bool {
+        self.redacted
+            || self.protection.is_some()
+            || self.keep_encryption
+            || matches!(self.metadata, Some(MetadataChange::Strip))
+    }
+
+    /// The original is not copied to the backup folder, and the file's old backups go (redaction and removal of the metadata: what was
+    /// taken out must not survive in a copy of ours).
+    pub fn never_backed_up(&self) -> bool {
+        self.redacted || matches!(self.metadata, Some(MetadataChange::Strip))
+    }
+}
+
+/// Writes what [`SavePlan`] holds on top of `bytes` (the file after the page list, the annotations and the form values): burns the content
+/// objects, writes the crops, scrubs after a redaction, encrypts or decrypts, writes or strips the metadata. An empty plan returns `bytes`
+/// as they are. Packages A to D fill this in, each in its own file (`content`, `redact`, `crypt`, `metadata`).
+pub fn apply_extras(bytes: Vec<u8>, plan: &SavePlan) -> Result<Vec<u8>, AppError> {
+    if plan.is_empty() {
+        return Ok(bytes);
+    }
+    Err(AppError::not_yet())
 }
 
 /// The saved file, and where every annotation of the plan is in it.
@@ -434,5 +494,79 @@ pub fn validate(bytes: &[u8], pages: u32) -> Result<(), AppError> {
         Ok(())
     } else {
         Err(failed("the saved file has another number of pages"))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::model::metadata::MetadataValues;
+
+    #[test]
+    fn an_empty_plan_is_incremental_and_leaves_the_bytes_alone() {
+        let plan = SavePlan::default();
+        assert!(plan.is_empty() && !plan.requires_full() && !plan.never_backed_up());
+        assert_eq!(apply_extras(b"x".to_vec(), &plan).unwrap(), b"x");
+    }
+
+    #[test]
+    fn redaction_protection_removal_and_encrypted_rewrites_are_full_saves() {
+        let full = |plan: SavePlan| plan.requires_full();
+        assert!(full(SavePlan {
+            redacted: true,
+            ..SavePlan::default()
+        }));
+        assert!(full(SavePlan {
+            protection: Some(PendingProtection::Remove),
+            ..SavePlan::default()
+        }));
+        assert!(full(SavePlan {
+            keep_encryption: true,
+            ..SavePlan::default()
+        }));
+        assert!(full(SavePlan {
+            metadata: Some(MetadataChange::Strip),
+            ..SavePlan::default()
+        }));
+        // A metadata edit and a crop are updates on top of the original.
+        let edit = SavePlan {
+            metadata: Some(MetadataChange::Set {
+                values: MetadataValues::default(),
+                had_xmp: false,
+            }),
+            crops: vec![PageId::new(0)],
+            ..SavePlan::default()
+        };
+        assert!(!edit.requires_full() && !edit.is_empty());
+    }
+
+    #[test]
+    fn only_redaction_and_removal_of_metadata_skip_the_backup() {
+        let redacted = SavePlan {
+            redacted: true,
+            ..SavePlan::default()
+        };
+        let stripped = SavePlan {
+            metadata: Some(MetadataChange::Strip),
+            ..SavePlan::default()
+        };
+        let protected = SavePlan {
+            protection: Some(PendingProtection::Remove),
+            ..SavePlan::default()
+        };
+        assert!(redacted.never_backed_up() && stripped.never_backed_up());
+        assert!(!protected.never_backed_up());
+    }
+
+    #[test]
+    fn a_plan_with_work_stops_at_the_stub() {
+        let plan = SavePlan {
+            redacted: true,
+            ..SavePlan::default()
+        };
+        assert_eq!(
+            apply_extras(Vec::new(), &plan).unwrap_err().code(),
+            ErrorCode::UnsupportedFeature
+        );
     }
 }

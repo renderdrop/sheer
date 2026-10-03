@@ -32,6 +32,8 @@ export type ErrorCode = (typeof ERROR_CODES)[number];
 export interface ErrorParams {
   what: string;
   limit?: number;
+  /** The one non-ASCII character a text box refused (`invalid_argument` `textBox`, ADR-047). */
+  char?: string;
 }
 
 /**
@@ -54,10 +56,13 @@ const WHAT = /^[a-z][a-zA-Z_]{0,31}$/;
 
 function toParams(value: unknown): ErrorParams | undefined {
   if (typeof value !== 'object' || value === null) return undefined;
-  const { what, limit } = value as { what?: unknown; limit?: unknown };
+  const { what, limit, char } = value as { what?: unknown; limit?: unknown; char?: unknown };
   if (typeof what !== 'string' || !WHAT.test(what)) return undefined;
-  if (typeof limit === 'number' && Number.isFinite(limit)) return { what, limit };
-  return { what };
+  const params: ErrorParams = { what };
+  if (typeof limit === 'number' && Number.isFinite(limit)) params.limit = limit;
+  // One code point and not ASCII: it is shown as text, never as markup or a path.
+  if (typeof char === 'string' && Array.from(char).length === 1 && /\P{ASCII}/u.test(char)) params.char = char;
+  return params;
 }
 
 /** Normalizes whatever `invoke` rejected with. Anything that is not a backend `UiError` becomes the generic error. */

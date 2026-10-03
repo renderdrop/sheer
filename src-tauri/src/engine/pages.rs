@@ -215,3 +215,13 @@ fn copy_pages(
     }
     Ok(added)
 }
+
+/// Sets the CropBox of engine page `engine_index` (`crop` in user space `[x0, y0, x1, y1]`) in PDFium's copy, so that renders, the text
+/// layer and the page size follow (ADR-047 §2). Package B.
+pub(super) fn set_crop_box(
+    _document: &PdfDocument<'_>,
+    _engine_index: u32,
+    _crop: [f32; 4],
+) -> Result<(), AppError> {
+    Err(AppError::not_yet())
+}

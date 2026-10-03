@@ -63,6 +63,9 @@ fn kind_of(body: &AnnotationBody) -> &'static str {
         AnnotationBody::Line { .. } => "line",
         AnnotationBody::Signature { .. } => "signature",
         AnnotationBody::Mark { .. } => "mark",
+        AnnotationBody::TextBox { .. } => "textBox",
+        AnnotationBody::Image { .. } => "image",
+        AnnotationBody::RedactMark { .. } => "redactMark",
         AnnotationBody::Opaque { .. } => "opaque",
     }
 }

@@ -25,7 +25,7 @@ impl SourceId {
 }
 
 /// Where the content of a page comes from.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PageSource {
     /// Page `index` of the file the document was opened from (or last saved to).
     File { index: u32 },
@@ -33,15 +33,19 @@ pub enum PageSource {
     Blank,
     /// Page `index` of an import source.
     Imported { source: SourceId, index: u32 },
+    /// A page that true redaction replaced by a raster (ADR-047 §3): a one-page PDF made by `pdfwrite::redact::raster_page`, held in
+    /// memory until the save. The page keeps its id.
+    Redacted { bytes: std::sync::Arc<[u8]> },
 }
 
 impl PageSource {
     /// The word the UI is told: `file`, `blank` or `imported`.
-    pub const fn origin(self) -> &'static str {
+    pub const fn origin(&self) -> &'static str {
         match self {
             Self::File { .. } => "file",
             Self::Blank => "blank",
             Self::Imported { .. } => "imported",
+            Self::Redacted { .. } => "redacted",
         }
     }
 }
@@ -61,6 +65,12 @@ pub struct PageSlot {
     pub rev: u32,
     /// Width and height in points, before the rotation.
     pub size: [f32; 2],
+    /// The MediaBox in user space `[x0, y0, x1, y1]`, read when the document is opened (ADR-047 §2).
+    pub media: [f32; 4],
+    /// The CropBox in user space when the page has one different from the MediaBox, else `None`.
+    pub crop: Option<[f32; 4]>,
+    /// The crop the file has (what a save would not need to write).
+    pub saved_crop: Option<[f32; 4]>,
 }
 
 /// What the UI is told about a page (`PageSlotInfo` of ARCHITECTURE §5).
@@ -74,6 +84,27 @@ pub struct PageSlotInfo {
     pub rev: u32,
     pub label: Option<String>,
     pub origin: &'static str,
+    /// The MediaBox size, and the margins the CropBox leaves from it (`null` without a crop), in points before the rotation.
+    pub media: MediaInfo,
+    pub crop: Option<CropInfo>,
+}
+
+/// The size of a page's MediaBox.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MediaInfo {
+    pub width: f32,
+    pub height: f32,
+}
+
+/// How far the CropBox is inside the MediaBox on each side.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CropInfo {
+    pub top: f32,
+    pub right: f32,
+    pub bottom: f32,
+    pub left: f32,
 }
 
 impl PageSlot {
@@ -86,6 +117,16 @@ impl PageSlot {
             rev: self.rev,
             label: None,
             origin: self.source.origin(),
+            media: MediaInfo {
+                width: self.media[2] - self.media[0],
+                height: self.media[3] - self.media[1],
+            },
+            crop: self.crop.map(|crop| CropInfo {
+                top: self.media[3] - crop[3],
+                right: self.media[2] - crop[2],
+                bottom: crop[1] - self.media[1],
+                left: crop[0] - self.media[0],
+            }),
         }
     }
 }
@@ -148,11 +189,19 @@ mod tests {
             saved_rotation: 0,
             rev: 2,
             size: [10.0, 20.0],
+            media: [0.0, 0.0, 10.0, 20.0],
+            crop: Some([1.0, 2.0, 9.0, 18.0]),
+            saved_crop: None,
         };
         let value = serde_json::to_value(slot.info()).unwrap();
         assert_eq!(value["id"], 3);
         assert_eq!(value["origin"], "blank");
         assert_eq!(value["rotation"], 90);
         assert!(value["label"].is_null());
+        assert_eq!(value["media"]["width"], 10.0);
+        assert_eq!(value["crop"]["left"], 1.0);
+        assert_eq!(value["crop"]["top"], 2.0);
+        assert_eq!(value["crop"]["right"], 1.0);
+        assert_eq!(value["crop"]["bottom"], 2.0);
     }
 }

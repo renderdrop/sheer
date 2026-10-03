@@ -1,6 +1,7 @@
 import { Channel } from '@tauri-apps/api/core';
 
 import { call } from './call';
+import { parseChangeSet, type ChangeSet } from './annotations';
 import { parseDocumentInfo, type DocumentInfo } from './documents';
 import { toAppError, type AppError } from './errors';
 
@@ -25,8 +26,8 @@ export type SplitPlan =
 export type MergeInput = { type: 'document'; docId: number } | { type: 'source'; sourceId: SourceId };
 export type CompressPreset = 'lossless' | 'print' | 'ebook' | 'screen';
 
-export type JobPhase = 'read' | 'images' | 'write' | 'validate';
-export type JobWarning = 'signaturesRemoved' | 'formsDropped' | 'widgetsDropped';
+export type JobPhase = 'read' | 'images' | 'write' | 'validate' | 'redact';
+export type JobWarning = 'signaturesRemoved' | 'formsDropped' | 'widgetsDropped' | 'unsavedEditsDropped';
 
 export type JobEvent =
   | { type: 'progress'; phase: JobPhase; done: number; total: number }
@@ -37,12 +38,14 @@ export type JobEvent =
       bytesAfter: number;
       warnings: JobWarning[];
       opened: DocumentInfo | null;
+      /** The change set of a job that edited the document in the model (`applyRedactions`, ADR-047); `null` for the others. */
+      changes?: ChangeSet | null;
     }
   | { type: 'cancelled' }
   | { type: 'failed'; error: AppError };
 
-const PHASES: readonly string[] = ['read', 'images', 'write', 'validate'];
-const WARNINGS: readonly string[] = ['signaturesRemoved', 'formsDropped', 'widgetsDropped'];
+const PHASES: readonly string[] = ['read', 'images', 'write', 'validate', 'redact'];
+const WARNINGS: readonly string[] = ['signaturesRemoved', 'formsDropped', 'widgetsDropped', 'unsavedEditsDropped'];
 const count = (value: unknown): value is number =>
   typeof value === 'number' && Number.isFinite(value) && value >= 0 && value <= Number.MAX_SAFE_INTEGER;
 
@@ -62,16 +65,36 @@ export function parseJobEvent(message: unknown): JobEvent | null {
       ? (m.warnings as unknown[]).filter((w): w is JobWarning => typeof w === 'string' && WARNINGS.includes(w))
       : [];
     const opened = m.opened === null || m.opened === undefined ? null : parseDocumentInfo(m.opened);
-    return { type: 'done', outputs: m.outputs, bytesBefore: m.bytesBefore, bytesAfter: m.bytesAfter, warnings, opened };
+    const done: JobEvent = {
+      type: 'done',
+      outputs: m.outputs,
+      bytesBefore: m.bytesBefore,
+      bytesAfter: m.bytesAfter,
+      warnings,
+      opened,
+    };
+    if (m.changes !== undefined) {
+      const changes = m.changes === null ? null : parseChangeSet(m.changes);
+      if (m.changes !== null && changes === null) return null;
+      done.changes = changes;
+    }
+    return done;
   }
   return null;
 }
 
-function newChannel(onEvent: (event: JobEvent) => void): Channel<unknown> {
+/** A channel whose messages are parsed as job events (for the commands that start a job outside this file). */
+export function newChannel(onEvent: (event: JobEvent) => void): Channel<unknown> {
   return new Channel<unknown>((message) => {
     const event = parseJobEvent(message);
     if (event !== null) onEvent(event);
   });
+}
+
+/** A job id from an answer that must have one (`apply_redactions` always starts a job). */
+export function requireJobId(value: unknown): JobId {
+  if (!count(value)) throw toAppError(null);
+  return value;
 }
 
 function parseJobId(value: unknown): JobId | null {

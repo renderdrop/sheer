@@ -95,6 +95,32 @@ pub enum SignatureArtRef {
     File,
 }
 
+/// The three faces of a text box (ADR-047 §1): the standard 14 Helvetica, Times-Roman and Courier, WinAnsi only.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum StdFont {
+    Sans,
+    Serif,
+    Mono,
+}
+
+/// Horizontal alignment of a text box.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum TextAlign {
+    Left,
+    Center,
+    Right,
+}
+
+/// Where a redaction mark came from: a text search or selection, or an area the user drew.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum RedactSource {
+    Text,
+    Area,
+}
+
 /// What kind of annotation it is and the geometry that belongs to the kind.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(
@@ -162,6 +188,30 @@ pub enum AnnotationBody {
         bounds: Rect,
         glyph: MarkGlyph,
     },
+    /// A text box (ADR-047 §1): page content, not a comment. Edited like an annotation until a save burns it into the page. `lines`
+    /// is Rust's layout of `text` in the box (read-only for the UI); the box grows in height to fit it. The colour is the text's.
+    TextBox {
+        #[serde(rename = "box")]
+        bounds: Rect,
+        text: String,
+        #[serde(default)]
+        lines: Vec<String>,
+        font: StdFont,
+        font_size: f32,
+        align: TextAlign,
+    },
+    /// An image (ADR-047 §1): page content like [`AnnotationBody::TextBox`]. The pixels are a document asset; `aspect` is width over height.
+    Image {
+        #[serde(rename = "box")]
+        bounds: Rect,
+        asset_id: AssetId,
+        aspect: f32,
+    },
+    /// A mark for true redaction (ADR-047 §3): in the model only, never written to a file and never imported.
+    RedactMark {
+        quads: Vec<Quad>,
+        source: RedactSource,
+    },
     /// An annotation of a kind the model does not edit (ink and lines from other programs, stamps, squiggly, ...): listed so it can be
     /// shown and selected, never changed or deleted. Only an import makes one.
     #[serde(skip_deserializing)]
@@ -173,6 +223,21 @@ pub enum AnnotationBody {
 impl AnnotationBody {
     fn is_opaque(&self) -> bool {
         matches!(self, Self::Opaque { .. })
+    }
+
+    /// A text box or an image: page content that a save burns into the page. Not a comment, and not written as an annotation.
+    pub fn is_content(&self) -> bool {
+        matches!(self, Self::TextBox { .. } | Self::Image { .. })
+    }
+
+    /// A redaction mark: model only.
+    pub fn is_redact_mark(&self) -> bool {
+        matches!(self, Self::RedactMark { .. })
+    }
+
+    /// Whether the annotation has a place in the file as an annotation (`/Annots`): not content, not a mark.
+    pub fn is_written_as_annotation(&self) -> bool {
+        !self.is_content() && !self.is_redact_mark()
     }
 }
 
@@ -258,6 +323,9 @@ pub struct AnnotationPatch {
     pub to: Option<Point>,
     pub head: Option<LineEnd>,
     pub tail: Option<LineEnd>,
+    pub text: Option<String>,
+    pub font: Option<StdFont>,
+    pub align: Option<TextAlign>,
 }
 
 /// Where an annotation sits in the PDF it was imported from. Rust only; the UI never sees it.
@@ -532,6 +600,42 @@ impl AnnotationBody {
                 check_stamp_box(*bounds)?;
                 Ok(*bounds)
             }
+            Self::TextBox {
+                bounds,
+                text,
+                font_size,
+                ..
+            } => {
+                check_rect(*bounds, "box")?;
+                if bounds.w < limits::MIN_CONTENT_BOX_PT {
+                    return Err(AppError::invalid("box"));
+                }
+                check_text(text, limits::MAX_TEXT_BOX_CHARS, true, "text")?;
+                if !font_size.is_finite()
+                    || !(limits::MIN_TEXT_BOX_FONT_PT..=limits::MAX_TEXT_BOX_FONT_PT)
+                        .contains(font_size)
+                {
+                    return Err(AppError::invalid("fontSize"));
+                }
+                Ok(*bounds)
+            }
+            Self::Image { bounds, aspect, .. } => {
+                check_rect(*bounds, "box")?;
+                if bounds.w < limits::MIN_CONTENT_BOX_PT || bounds.h < limits::MIN_CONTENT_BOX_PT {
+                    return Err(AppError::invalid("box"));
+                }
+                if !aspect.is_finite() || !SIGNATURE_ASPECT_RANGE.contains(aspect) {
+                    return Err(AppError::invalid("aspect"));
+                }
+                Ok(*bounds)
+            }
+            Self::RedactMark { quads, .. } => {
+                check_quads(quads)?;
+                crate::model::redaction::check_mark(self)?;
+                let mut extent = Extent::new();
+                quads.iter().flatten().for_each(|point| extent.add(*point));
+                Ok(extent.rect(0.0))
+            }
             Self::Opaque { subtype } => {
                 check_text(subtype, limits::MAX_ANNOT_AUTHOR_CHARS, false, "subtype")?;
                 check_rect(rect, "rect")?;
@@ -555,7 +659,9 @@ impl AnnotationBody {
             | Self::Rect { bounds, .. }
             | Self::Ellipse { bounds, .. }
             | Self::Signature { bounds, .. }
-            | Self::Mark { bounds, .. } => {
+            | Self::Mark { bounds, .. }
+            | Self::TextBox { bounds, .. }
+            | Self::Image { bounds, .. } => {
                 bounds.x += dx;
                 bounds.y += dy;
             }
@@ -572,6 +678,7 @@ impl AnnotationBody {
                 shift(from);
                 shift(to);
             }
+            Self::RedactMark { quads, .. } => quads.iter_mut().flatten().for_each(shift),
             Self::Opaque { .. } => {}
         }
     }
@@ -597,6 +704,19 @@ impl Annotation {
         }
         if self.in_reply_to == Some(self.id) {
             return Err(AppError::invalid("inReplyTo"));
+        }
+        self.body.check(self.rect)?;
+        // Rust lays a text box out: the lines, and a box that is as tall as they are (ADR-047 §1).
+        if let AnnotationBody::TextBox {
+            bounds,
+            text,
+            lines,
+            font,
+            font_size,
+            align,
+        } = &mut self.body
+        {
+            crate::content::text::layout_box(bounds, text, lines, *font, *font_size, *align)?;
         }
         self.rect = self.body.check(self.rect)?;
         Ok(())
@@ -681,6 +801,9 @@ impl Annotation {
             to,
             head,
             tail,
+            text,
+            font,
+            align,
             ..
         } = patch;
         // Every geometry field of the patch must be one the kind has; `take` marks the ones used, and what is left over is wrong.
@@ -700,6 +823,9 @@ impl Annotation {
             to.is_some(),
             head.is_some(),
             tail.is_some(),
+            text.is_some(),
+            font.is_some(),
+            align.is_some(),
         ]
         .iter()
         .filter(|present| **present)
@@ -774,9 +900,25 @@ impl Annotation {
                 set(tl, tail, &mut used);
             }
             AnnotationBody::Signature { bounds: b, .. }
-            | AnnotationBody::Mark { bounds: b, .. } => {
+            | AnnotationBody::Mark { bounds: b, .. }
+            | AnnotationBody::Image { bounds: b, .. } => {
                 set(b, bounds, &mut used);
             }
+            AnnotationBody::TextBox {
+                bounds: b,
+                text: t,
+                font: fo,
+                font_size: f,
+                align: al,
+                ..
+            } => {
+                set(b, bounds, &mut used);
+                set(t, text, &mut used);
+                set(fo, font, &mut used);
+                set(f, font_size, &mut used);
+                set(al, align, &mut used);
+            }
+            AnnotationBody::RedactMark { .. } => {}
             AnnotationBody::Opaque { .. } => {}
         }
         if left != 0 {

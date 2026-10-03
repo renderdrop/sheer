@@ -24,6 +24,7 @@ mod links;
 mod outline;
 mod pages;
 pub mod queue;
+mod redact;
 mod search;
 mod sizes;
 mod space;
@@ -45,7 +46,8 @@ use crate::documents::{DocFlags, DocumentId};
 use crate::error::{AppError, ErrorCode};
 use crate::limits;
 use crate::model::annotation::Imported;
-use crate::model::geometry::Quad;
+use crate::model::geometry::{Quad, Rect};
+use crate::pdfwrite::redact::RasterPage;
 
 use self::guard::Health;
 pub use self::links::{LinkTarget, PageLink};
@@ -194,6 +196,21 @@ pub(crate) enum Job {
         items: Vec<(u32, u16)>,
         reply: Reply<()>,
     },
+    /// Sets the CropBox of a page of PDFium's copy, in user space `[x0, y0, x1, y1]` (`pages`, ADR-047 §2).
+    SetCropBox {
+        id: DocumentId,
+        engine_index: u32,
+        crop: [f32; 4],
+        reply: Reply<()>,
+    },
+    /// A page drawn for redaction with `burn` (page space) filled black, as a bitmap (`redact`, ADR-047 §3).
+    RenderForRedaction {
+        id: DocumentId,
+        engine_index: u32,
+        dpi: f32,
+        burn: Vec<Rect>,
+        reply: Reply<RasterPage>,
+    },
     /// Adds an empty page of `size` points to the end of PDFium's copy (`pages`).
     AppendBlankPage {
         id: DocumentId,
@@ -276,6 +293,12 @@ impl Job {
                 let _ = reply.send(Err(error));
             }
             Job::SetPageRotations { reply, .. } => {
+                let _ = reply.send(Err(error));
+            }
+            Job::SetCropBox { reply, .. } => {
+                let _ = reply.send(Err(error));
+            }
+            Job::RenderForRedaction { reply, .. } => {
                 let _ = reply.send(Err(error));
             }
             Job::AppendBlankPage { reply, .. } => {
@@ -761,6 +784,43 @@ impl Engine {
     ) -> Result<(), AppError> {
         self.call(limits::CONTROL_TIMEOUT, Rank::CONTROL, |reply| {
             Job::SetPageRotations { id, items, reply }
+        })
+    }
+
+    /// Sets the CropBox of a page of PDFium's copy (`crop`: user space `[x0, y0, x1, y1]`); renders, the text layer and sizes follow
+    /// (ADR-047 §2, `Control` priority).
+    pub fn set_crop_box(
+        &self,
+        id: DocumentId,
+        engine_index: u32,
+        crop: [f32; 4],
+    ) -> Result<(), AppError> {
+        self.call(limits::CONTROL_TIMEOUT, Rank::CONTROL, |reply| {
+            Job::SetCropBox {
+                id,
+                engine_index,
+                crop,
+                reply,
+            }
+        })
+    }
+
+    /// Draws one page for redaction at `dpi` with the rectangles `burn` filled black (ADR-047 §3, `Background` priority).
+    pub fn render_for_redaction(
+        &self,
+        id: DocumentId,
+        engine_index: u32,
+        dpi: f32,
+        burn: Vec<Rect>,
+    ) -> Result<RasterPage, AppError> {
+        self.call(limits::RENDER_TIMEOUT, Rank::BACKGROUND, |reply| {
+            Job::RenderForRedaction {
+                id,
+                engine_index,
+                dpi,
+                burn,
+                reply,
+            }
         })
     }
 

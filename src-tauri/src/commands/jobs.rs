@@ -7,7 +7,7 @@
 //! | `merge_documents` | `inputs: ({ type: document, docId } \| { type: source, sourceId })[]`, `onEvent` | `JobId`, or `null` |
 //! | `compress_document` | `docId`, `preset`, `saveAs?` (accepted, not needed: the original is never replaced), `onEvent` | `JobId`, or `null` |
 //! | `estimate_compression` | `docId` | `{ current, presets: { lossless, print, ebook, screen } }` in bytes, from a sample |
-//! | `cancel_job` | `jobId` | nothing; an unknown or finished job is not an error |
+//! | `cancel_job` | `jobId` | nothing; an un.position(|known| known == source) or finished job is not an error |
 //!
 //! Paths come from native dialogs in Rust, go through `intake::admit_target` and never reach the webview. A job runs on a thread of its
 //! own (big stack, `catch_unwind`, at most two at once, ten minutes) and reports on the channel the UI passes: `progress`, then exactly
@@ -39,6 +39,7 @@ use crate::documents::{DocumentId, DocumentInfo, PageId};
 use crate::error::{AppError, ErrorCode, UiError};
 use crate::limits;
 use crate::model::annotation::PdfOrigin;
+use crate::model::doc_state::ChangeSet;
 use crate::model::page::{PageSource, SourceId};
 use crate::pdfwrite::compress::{self, Preset};
 use crate::pdfwrite::flatten::{self, FlattenOptions};
@@ -80,6 +81,8 @@ pub enum JobEvent {
         bytes_after: u64,
         warnings: Vec<Warning>,
         opened: Option<DocumentInfo>,
+        /// The change set of a job that edited the document in the model (`apply_redactions`, ADR-047 §3); `null` for the others.
+        changes: Option<Box<ChangeSet>>,
     },
     Cancelled,
     Failed(UiError),
@@ -166,6 +169,8 @@ pub struct JobDone {
     pub bytes_after: u64,
     pub warnings: Vec<Warning>,
     pub opened: Option<DocumentInfo>,
+    /// What a job that changed the model did to it (redaction); the UI applies it like the answer of `apply_command`.
+    pub changes: Option<ChangeSet>,
 }
 
 /// The running jobs of the app.
@@ -298,6 +303,7 @@ impl JobRegistry {
                         bytes_after: done.bytes_after,
                         warnings: done.warnings,
                         opened: done.opened,
+                        changes: done.changes.map(Box::new),
                     },
                     Err(error) if error.code() == ErrorCode::Cancelled => JobEvent::Cancelled,
                     Err(error) => JobEvent::Failed(UiError::from(error)),
@@ -599,8 +605,8 @@ impl AppState {
                 let mut imported: Vec<SourceId> = Vec::new();
                 let mut order = Vec::with_capacity(state.pages().len());
                 for slot in state.pages() {
-                    let kind = match slot.source {
-                        PageSource::File { index } => PageKind::File { index },
+                    let kind = match &slot.source {
+                        PageSource::File { index } => PageKind::File { index: *index },
                         PageSource::Blank => PageKind::Blank {
                             width: slot.size[0],
                             height: slot.size[1],
@@ -608,13 +614,18 @@ impl AppState {
                         PageSource::Imported { source, index } => {
                             let at = imported
                                 .iter()
-                                .position(|known| *known == source)
+                                .position(|known| *known == *source)
                                 .unwrap_or_else(|| {
-                                    imported.push(source);
+                                    imported.push(*source);
                                     imported.len() - 1
                                 });
-                            PageKind::Imported { source: at, index }
+                            PageKind::Imported {
+                                source: at,
+                                index: *index,
+                            }
                         }
+                        // Package C: the raster page of a redacted slot is what these jobs take.
+                        PageSource::Redacted { .. } => return Err(AppError::not_yet()),
                     };
                     order.push((
                         slot.id,
@@ -818,6 +829,7 @@ impl AppState {
                 bytes_after: after,
                 warnings: output.warnings,
                 opened,
+                changes: None,
             })
         })
     }
@@ -921,6 +933,7 @@ impl AppState {
                 bytes_after: after,
                 warnings,
                 opened: None,
+                changes: None,
             })
         })
     }
@@ -1060,6 +1073,7 @@ impl AppState {
                 bytes_after: after,
                 warnings: output.warnings,
                 opened,
+                changes: None,
             })
         })
     }
@@ -1093,6 +1107,7 @@ impl AppState {
                     bytes_after: after,
                     warnings: Vec::new(),
                     opened: None,
+                    changes: None,
                 });
             }
             let opened = state.publish(&target, &result.bytes)?;
@@ -1102,6 +1117,7 @@ impl AppState {
                 bytes_after: after,
                 warnings: result.warnings,
                 opened,
+                changes: None,
             })
         })
     }
@@ -1135,6 +1151,7 @@ impl AppState {
                 bytes_after: after,
                 warnings: output.warnings,
                 opened,
+                changes: None,
             })
         })
     }
@@ -1191,7 +1208,7 @@ fn pick_save_path(window: &WebviewWindow, name: &str) -> Result<Option<PathBuf>,
         .map_err(|error| AppError::logged(ErrorCode::Internal, error))
 }
 
-fn channel_sink(channel: Channel<JobEvent>) -> Arc<dyn EventSink> {
+pub(super) fn channel_sink(channel: Channel<JobEvent>) -> Arc<dyn EventSink> {
     Arc::new(channel)
 }
 
@@ -1381,6 +1398,7 @@ mod tests {
             bytes_after: 2,
             warnings: vec![Warning::FormsDropped],
             opened: None,
+            changes: None,
         }
     }
 
@@ -1430,9 +1448,10 @@ mod tests {
                     Warning::WidgetsDropped
                 ],
                 opened: None,
+                changes: None,
             }),
             serde_json::json!({"type": "done", "outputs": 2, "bytesBefore": 10, "bytesAfter": 5,
-                "warnings": ["signaturesRemoved", "formsDropped", "widgetsDropped"], "opened": null})
+                "warnings": ["signaturesRemoved", "formsDropped", "widgetsDropped"], "opened": null, "changes": null})
         );
         assert_eq!(
             value(&JobEvent::Cancelled),

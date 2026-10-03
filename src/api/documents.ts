@@ -1,5 +1,6 @@
 import { call } from './call';
 import { toAppError, type AppError } from './errors';
+import type { Permission } from './protection';
 import { MAX_PAGES } from './render';
 
 /**
@@ -15,6 +16,11 @@ export interface DocFlags {
   hasForms: boolean;
   /** The document has a digital signature field that is signed. Whether the signature is valid is not checked. */
   signed: boolean;
+  /**
+   * What the file's permissions still allow when it was opened with the open password of a restricted file (ADR-047); `null`: not
+   * encrypted, or opened with owner rights. The backend always sends it; optional here like `flags`. Without `edit` the backend refuses edits.
+   */
+  permissions?: readonly Permission[] | null;
 }
 
 /** Where a document comes from (src-tauri/src/documents/mod.rs, `DocKind`): `welcome` is the bundled tour sample (ADR-023), `user` is every file the user opened. */
@@ -44,10 +50,12 @@ function isCount(value: unknown, max = Number.MAX_SAFE_INTEGER): value is number
   return typeof value === 'number' && Number.isInteger(value) && value >= 0 && value <= max;
 }
 
-/** Validates document flags; `null` if they are not four booleans. Extra keys are dropped. */
+const PERMISSIONS: ReadonlySet<unknown> = new Set<Permission>(['print', 'copy', 'edit']);
+
+/** Validates document flags; `null` if they are not four booleans (and, if present, a list of permissions or `null`). Extra keys are dropped. */
 export function parseDocFlags(value: unknown): DocFlags | null {
   if (typeof value !== 'object' || value === null) return null;
-  const { encrypted, xfa, hasForms, signed } = value as Record<string, unknown>;
+  const { encrypted, xfa, hasForms, signed, permissions } = value as Record<string, unknown>;
   if (
     typeof encrypted !== 'boolean' ||
     typeof xfa !== 'boolean' ||
@@ -56,7 +64,16 @@ export function parseDocFlags(value: unknown): DocFlags | null {
   ) {
     return null;
   }
-  return { encrypted, xfa, hasForms, signed };
+  if (permissions === undefined) return { encrypted, xfa, hasForms, signed };
+  if (permissions === null) return { encrypted, xfa, hasForms, signed, permissions: null };
+  if (
+    !Array.isArray(permissions) ||
+    permissions.length > 3 ||
+    !(permissions as unknown[]).every((p) => PERMISSIONS.has(p))
+  ) {
+    return null;
+  }
+  return { encrypted, xfa, hasForms, signed, permissions: permissions as Permission[] };
 }
 
 /**

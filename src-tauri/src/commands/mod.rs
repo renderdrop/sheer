@@ -32,13 +32,17 @@
 
 pub mod annotations;
 pub mod app;
+pub mod content;
 pub mod forms;
 pub mod jobs;
 pub mod library;
 pub mod links;
+pub mod metadata;
 pub mod outline;
 pub mod pages;
+pub mod protect;
 pub mod recent_actions;
+pub mod redact;
 pub mod render;
 pub mod save;
 pub mod search;

@@ -2,7 +2,9 @@ import { call } from './call';
 import { toAppError } from './errors';
 import { parseFieldStates, type FieldState, type SetFieldValueCommand } from './forms';
 import type { SignatureRole } from './library';
-import { parseSlots, type PageCommand, type PageSlotInfo } from './pages';
+import type { MetadataPatch } from './metadata';
+import { parseSlots, type CropPagesCommand, type PageCommand, type PageSlotInfo } from './pages';
+import type { RedactMarkSpec } from './redaction';
 import {
   isCoordinate,
   isRecord,
@@ -31,6 +33,12 @@ export const MAX_ANNOT_QUADS = 512;
 export const MAX_INK_STROKES = 256;
 export const MAX_INK_POINTS_PER_STROKE = 10_000;
 export const MAX_FREE_TEXT_LINES = 500;
+/** Characters and laid-out lines of a text box, its font size range in points, the smallest side of a text box or image in points (ADR-047). */
+export const MAX_TEXT_BOX_CHARS = 8_192;
+export const MAX_TEXT_BOX_LINES = 500;
+export const MIN_TEXT_BOX_FONT_PT = 4;
+export const MAX_TEXT_BOX_FONT_PT = 144;
+export const MIN_CONTENT_BOX_PT = 4;
 /** Longest contents of an annotation in characters (`MAX_ANNOT_CONTENTS_CHARS`); a UTF-16 string is at most twice as long in units. */
 export const MAX_ANNOT_CONTENTS_CHARS = 32_768;
 /** Entries of the undo stack (`MAX_HISTORY_ENTRIES`). */
@@ -40,6 +48,11 @@ export type Rgb = readonly [number, number, number];
 export type LineEnd = 'none' | 'openArrow' | 'closedArrow';
 export type NoteIcon = 'comment' | 'note' | 'help';
 export type MarkGlyph = 'check' | 'cross' | 'dot';
+/** The faces of a text box: Helvetica, Times-Roman and Courier, WinAnsi characters only (ADR-047). */
+export type StdFont = 'sans' | 'serif' | 'mono';
+export type TextAlign = 'left' | 'center' | 'right';
+/** Where a redaction mark came from: a text search or selection, or an area the user drew. */
+export type RedactSource = 'text' | 'area';
 /** Where a signature's picture comes from: an asset of the document (`useSignature`), or the file. Aspect is width over height. */
 export type SignatureArtRef = { type: 'asset'; assetId: number; aspect: number } | { type: 'file' };
 /** Smallest side of a signature or mark in points, and the range of a signature's aspect (the backend refuses beyond them). */
@@ -88,14 +101,39 @@ export type AnnotationBody =
 export type Annotation = AnnotationCommon & AnnotationBody;
 export type AnnotationKind = Annotation['kind'];
 
+/**
+ * The kinds of ADR-047 that are not comments: text boxes and images (page content that the next save burns in) and redaction marks
+ * (model only). The backend sends them like any annotation, in `upserted` and in the page lists, but they are kept apart from
+ * `Annotation` in these types: the comment features (list, inspector, panel) handle exactly the kinds above, and a content or redaction
+ * feature reads these through `ChangeSet.content` and `listContentObjects`.
+ */
+export type ContentBody =
+  /** A text box. `lines` is the backend layout of `text` (read-only); it grows the box height to fit. The colour is the text colour. */
+  | {
+      kind: 'textBox';
+      box: Rect;
+      text: string;
+      lines: readonly string[];
+      font: StdFont;
+      fontSize: number;
+      align: TextAlign;
+    }
+  /** An image; the pixels are a document asset (`insertImageDialog`), aspect is width over height. */
+  | { kind: 'image'; box: Rect; assetId: number; aspect: number }
+  /** A mark for true redaction: in the model only, never written to a file or read from one. */
+  | { kind: 'redactMark'; quads: readonly Quad[]; source: RedactSource };
+
+export type ContentAnnotation = AnnotationCommon & ContentBody;
+export type ContentKind = ContentBody['kind'];
+
 /** The kinds the user can create (everything but `opaque`). */
 export type DraftBody =
   | Exclude<AnnotationBody, { kind: 'opaque' } | { kind: 'signature' }>
   /** A new signature always brings its own art; art that is "in the file" only comes from a reload. */
   | { kind: 'signature'; box: Rect; role: SignatureRole; art: Extract<SignatureArtRef, { type: 'asset' }> };
 
-/** An annotation to create: the backend assigns `id`, `rect`, `sync` and `modified`. */
-export type AnnotationDraft = {
+/** The fields every draft has. */
+interface DraftCommon {
   pageId: number;
   color: Rgb;
   opacity?: number;
@@ -103,7 +141,17 @@ export type AnnotationDraft = {
   author?: string | null;
   inReplyTo?: number | null;
   locked?: boolean;
-} & DraftBody;
+}
+
+/** An annotation to create: the backend assigns `id`, `rect`, `sync` and `modified`. */
+export type AnnotationDraft = DraftCommon & DraftBody;
+
+/** What a new content object or mark is made of. A text box has no `lines` (the backend lays them out) and its height is ignored. */
+export type ContentDraftBody =
+  Omit<Extract<ContentBody, { kind: 'textBox' }>, 'lines'> | Extract<ContentBody, { kind: 'image' | 'redactMark' }>;
+
+/** A text box, image or redaction mark to create. */
+export type ContentDraft = DraftCommon & ContentDraftBody;
 
 /**
  * A change to an annotation: only the fields present change; `fill` and `author` may be `null` to clear them. A field that does not
@@ -130,6 +178,10 @@ export interface AnnotationPatch {
   to?: Point;
   head?: LineEnd;
   tail?: LineEnd;
+  /** Text box fields (`fontSize` and `box` are shared with other kinds); `lines` is not patchable for a text box. */
+  text?: string;
+  font?: StdFont;
+  align?: TextAlign;
 }
 
 /**
@@ -138,13 +190,22 @@ export interface AnnotationPatch {
  * Updates of one annotation with the same `coalesce` key within 1.5 s are one step (a slider, a colour being dragged).
  */
 export type DocCommand =
-  | { type: 'createAnnotation'; draft: AnnotationDraft }
+  | { type: 'createAnnotation'; draft: AnnotationDraft | ContentDraft }
   | { type: 'updateAnnotation'; id: number; patch: AnnotationPatch; coalesce?: string }
   | { type: 'deleteAnnotations'; ids: readonly number[] }
   | { type: 'moveAnnotations'; ids: readonly number[]; dx: number; dy: number }
   | { type: 'batch'; label: string; commands: readonly DocCommand[] }
   | SetFieldValueCommand
-  | PageCommand;
+  | PageCommand
+  | CropPagesCommand
+  /** Marks areas for true redaction, up to 10 000 as one step (ADR-047). */
+  | { type: 'markRedactions'; marks: readonly RedactMarkSpec[] }
+  /** Edits the metadata written at the next save (ADR-047). */
+  | { type: 'setMetadata'; patch: MetadataPatch }
+  | { type: 'removeMetadata' };
+
+/** What else a command changed besides annotations, pages and fields: the UI reads it again with `getMetadata` or `getProtection`. */
+export type DocPart = 'metadata' | 'protection';
 
 /** What the UI needs for its Undo and Redo commands. */
 export interface HistoryState {
@@ -167,6 +228,10 @@ export interface ChangeSet {
   pages: readonly PageSlotInfo[] | null;
   /** The form fields whose value changed (ADR-041); empty when none did. */
   fields?: readonly FieldState[];
+  /** The text boxes, images and redaction marks among the upserted objects (ADR-047); they are not in `upserted`. Omitted when none. */
+  content?: readonly ContentAnnotation[];
+  /** Metadata or protection changed (ADR-047); the backend always sends the list, a fixture may leave it out. */
+  doc?: readonly DocPart[];
   history: HistoryState;
 }
 
@@ -234,6 +299,59 @@ function parseSignatureArt(value: unknown): SignatureArtRef | null {
     aspect <= MAX_SIGNATURE_ASPECT
     ? { type: 'asset', assetId, aspect }
     : null;
+}
+
+const STD_FONTS: ReadonlySet<unknown> = new Set<StdFont>(['sans', 'serif', 'mono']);
+const TEXT_ALIGNS: ReadonlySet<unknown> = new Set<TextAlign>(['left', 'center', 'right']);
+const REDACT_SOURCES: ReadonlySet<unknown> = new Set<RedactSource>(['text', 'area']);
+const DOC_PARTS: ReadonlySet<unknown> = new Set<DocPart>(['metadata', 'protection']);
+const CONTENT_KINDS: ReadonlySet<unknown> = new Set<ContentKind>(['textBox', 'image', 'redactMark']);
+
+function parseContentBody(value: Record<string, unknown>): ContentBody | null {
+  const { kind } = value;
+  switch (kind) {
+    case 'textBox': {
+      const box = parseRect(value.box);
+      const { text, lines, font, fontSize, align } = value;
+      if (
+        box === null ||
+        typeof text !== 'string' ||
+        text.length > 2 * MAX_TEXT_BOX_CHARS ||
+        !Array.isArray(lines) ||
+        lines.length > MAX_TEXT_BOX_LINES ||
+        !(lines as unknown[]).every((line) => typeof line === 'string') ||
+        !STD_FONTS.has(font) ||
+        !isWidth(fontSize) ||
+        !TEXT_ALIGNS.has(align)
+      )
+        return null;
+      return { kind, box, text, lines: lines as string[], font: font as StdFont, fontSize, align: align as TextAlign };
+    }
+    case 'image': {
+      const box = parseRect(value.box);
+      const { assetId, aspect } = value;
+      return box !== null &&
+        isUint(assetId) &&
+        typeof aspect === 'number' &&
+        aspect >= MIN_SIGNATURE_ASPECT &&
+        aspect <= MAX_SIGNATURE_ASPECT
+        ? { kind, box, assetId, aspect }
+        : null;
+    }
+    case 'redactMark': {
+      const quads = parseQuads(value.quads);
+      return quads !== null && REDACT_SOURCES.has(value.source)
+        ? { kind, quads, source: value.source as RedactSource }
+        : null;
+    }
+    default:
+      return null;
+  }
+}
+
+/** Whether a wire annotation is one of the content kinds (text box, image, redaction mark). */
+export function isContentWire(value: unknown): boolean {
+  return isRecord(value) && CONTENT_KINDS.has(value.kind);
 }
 
 function parseBody(value: Record<string, unknown>): AnnotationBody | null {
@@ -306,13 +424,16 @@ function parseBody(value: Record<string, unknown>): AnnotationBody | null {
   }
 }
 
-/** Validates one annotation; `null` if it is not one. Keys that are not part of it are dropped. */
-export function parseAnnotation(value: unknown): Annotation | null {
+/** The fields every annotation has, and a body parser for the kinds it may be; `null` if either does not fit. */
+function parseWith<Body>(
+  value: unknown,
+  parseBodyOf: (value: Record<string, unknown>) => Body | null,
+): (AnnotationCommon & Body) | null {
   if (!isRecord(value)) return null;
   const { id, pageId, opacity, contents, author, modified, inReplyTo, locked, sync } = value;
   const rect = parseRect(value.rect);
   const color = parseRgb(value.color);
-  const body = parseBody(value);
+  const body = parseBodyOf(value);
   if (
     !isUint(id) ||
     !isUint(pageId) ||
@@ -346,16 +467,43 @@ export function parseAnnotation(value: unknown): Annotation | null {
   };
 }
 
-/** Validates the answer of `list_annotations`: at most 2 000 annotations. `null` if it is not a list of annotations. */
+/** Validates one annotation; `null` if it is not one. Keys that are not part of it are dropped. */
+export function parseAnnotation(value: unknown): Annotation | null {
+  return parseWith(value, parseBody);
+}
+
+/** Validates one text box, image or redaction mark; `null` if it is not one. */
+export function parseContentAnnotation(value: unknown): ContentAnnotation | null {
+  return parseWith(value, parseContentBody);
+}
+
+/**
+ * Validates the answer of `list_annotations`: at most 2 000 annotations. `null` if it is not a list of annotations. The text boxes,
+ * images and redaction marks of the page are left out (`parseContentAnnotations` reads them).
+ */
 export function parseAnnotations(value: unknown): Annotation[] | null {
   if (!Array.isArray(value) || value.length > MAX_ANNOTATIONS_PER_PAGE) return null;
   const annotations: Annotation[] = [];
   for (const item of value as unknown[]) {
+    if (isContentWire(item)) continue;
     const annotation = parseAnnotation(item);
     if (annotation === null) return null;
     annotations.push(annotation);
   }
   return annotations;
+}
+
+/** The text boxes, images and redaction marks of an answer of `list_annotations`; the comments among them are left out. */
+export function parseContentAnnotations(value: unknown): ContentAnnotation[] | null {
+  if (!Array.isArray(value) || value.length > MAX_ANNOTATIONS_PER_PAGE) return null;
+  const objects: ContentAnnotation[] = [];
+  for (const item of value as unknown[]) {
+    if (!isContentWire(item)) continue;
+    const object = parseContentAnnotation(item);
+    if (object === null) return null;
+    objects.push(object);
+  }
+  return objects;
 }
 
 function parseLabel(value: unknown): string | null | undefined {
@@ -386,7 +534,12 @@ export function parseChangeSet(value: unknown): ChangeSet | null {
   const history = parseHistoryState(value.history);
   const parsedPages = pages === null || pages === undefined ? null : parseSlots(pages);
   const fields = parseFieldStates(value.fields);
+  const doc = value.doc;
   if (
+    !(
+      doc === undefined ||
+      (Array.isArray(doc) && doc.length <= 2 && (doc as unknown[]).every((part) => DOC_PARTS.has(part)))
+    ) ||
     !isUint(rev, Number.MAX_SAFE_INTEGER) ||
     history === null ||
     fields === null ||
@@ -399,12 +552,29 @@ export function parseChangeSet(value: unknown): ChangeSet | null {
   )
     return null;
   const parsed: Annotation[] = [];
+  const content: ContentAnnotation[] = [];
   for (const item of upserted as unknown[]) {
+    if (isContentWire(item)) {
+      const object = parseContentAnnotation(item);
+      if (object === null) return null;
+      content.push(object);
+      continue;
+    }
     const annotation = parseAnnotation(item);
     if (annotation === null) return null;
     parsed.push(annotation);
   }
-  return { rev, upserted: parsed, removed: removed as number[], pages: parsedPages, fields, history };
+  const changes: ChangeSet = {
+    rev,
+    upserted: parsed,
+    removed: removed as number[],
+    pages: parsedPages,
+    fields,
+    history,
+  };
+  if (content.length > 0) changes.content = content;
+  if (doc !== undefined) changes.doc = doc as DocPart[];
+  return changes;
 }
 
 // --- Commands --------------------------------------------------------------------------------------------------------
@@ -418,6 +588,15 @@ export async function listAnnotations(docId: number, pageId: number): Promise<An
   const annotations = parseAnnotations(await call<unknown>('list_annotations', { docId, pageId }));
   if (annotations === null) throw toAppError(null);
   return annotations;
+}
+
+/**
+ * The text boxes, images and redaction marks of a page (ADR-047), from the same answer as `listAnnotations`, which leaves them out.
+ */
+export async function listContentObjects(docId: number, pageId: number): Promise<ContentAnnotation[]> {
+  const objects = parseContentAnnotations(await call<unknown>('list_annotations', { docId, pageId }));
+  if (objects === null) throw toAppError(null);
+  return objects;
 }
 
 /**
