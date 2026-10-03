@@ -28,6 +28,8 @@ export function handlesOf(a: Annotation): readonly HandleId[] {
     case 'line':
       return ['from', 'to'];
     case 'ink':
+    case 'signature':
+    case 'mark':
       return CORNER_HANDLES;
     default:
       return [];
@@ -103,6 +105,8 @@ export function translated(a: Annotation, dx: number, dy: number): Annotation {
     case 'freeText':
     case 'rect':
     case 'ellipse':
+    case 'signature':
+    case 'mark':
       return { ...a, rect, box: shiftRect(a.box, dx, dy) };
     case 'ink':
       return { ...a, rect, strokes: a.strokes.map((s) => shiftStroke(s, dx, dy)) };
@@ -223,8 +227,12 @@ export function resized(
     }
     case 'rect':
     case 'ellipse':
-    case 'freeText': {
-      const box = resizeRect(a.box, handle, dx, dy, keepAspect, page);
+    case 'freeText':
+    case 'signature':
+    case 'mark': {
+      // A signature or mark keeps its proportions whatever the modifier says (DESIGN 3.34): only its corners show.
+      const lock = keepAspect || a.kind === 'signature' || a.kind === 'mark';
+      const box = resizeRect(a.box, handle, dx, dy, lock, page);
       // The bounding box keeps its margin around the box (the stroke, the backend's padding).
       const rect = {
         x: box.x - (a.box.x - a.rect.x),
@@ -254,6 +262,8 @@ export function patchOf(draft: Annotation): AnnotationPatch {
     case 'rect':
     case 'ellipse':
     case 'freeText':
+    case 'signature':
+    case 'mark':
       return { box: draft.box };
     case 'line':
       return { from: draft.from, to: draft.to };

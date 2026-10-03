@@ -2,7 +2,8 @@ import { create } from 'zustand';
 
 import { clampThumb } from './grid';
 
-const STORAGE_KEY = 'sheer.organizeThumb';
+/** Versioned: the first release defaulted to 96, and a value saved then is not a choice (default 160, DESIGN 3.28). */
+const STORAGE_KEY = 'sheer.organizeThumb2';
 
 function loadThumb(): number {
   try {

@@ -119,13 +119,14 @@ The Stop hook picks the first open `- [ ]` line, so order matters. Scope: `docs/
 
 ## M4 — Forms and signature (v0.7.0)
 
-- [ ] AcroForm fill (text, checkbox, radio, choice) with keyboard navigation
-- [ ] Save filled forms + flatten
-- [ ] Signature creation: draw, type, image
-- [ ] Place, move, scale signatures; initials and date
-- [ ] Fill & Sign for flat forms (text, check, cross, dot)
-- [ ] Signature library encrypted at rest, key in OS keychain (keyring ADR)
+- [x] AcroForm fill (text, checkbox, radio, choice) with keyboard navigation
+- [x] Save filled forms + flatten
+- [x] Signature creation: draw, type, image
+- [x] Place, move, scale signatures; initials and date
+- [x] Fill & Sign for flat forms (text, check, cross, dot)
+- [x] Signature library encrypted at rest, key in OS keychain (keyring ADR)
 - [ ] Politur M4
+  - (from M4 frontend reviews) DrawPad: rAF/ref-driven path instead of setDrawing(buffer.slice()) per pointermove; forms: rotation 90/180/270 tests for FormLayer/FormHost, control radii/insets as classes, `1px` border literal → token, record the localStorage highlight toggle in DECISIONS; PlacementLayer: Enter effect deps, centre from the scroll surface's visible rect; OrganizeBar icon size token; guard the `useSignMenuEntries` hook-in-data with a comment/test; sign-menu rows with thumbnails
   - (from M4 backend reviews) flatten: NoRotate annots kept upright (or note in ADR-041); explicit tests for /AS states, /Perms removal, object pruning and a hostile /Resources merge (many colliding /SheerFl names, huge /XObject dict); forms: radio-group + comb/MaxLen AP tests, negative MaxLen clamp; library: keychain read error vs corrupt key distinguished, 60 s keychain deadline, raster list preview, Art::check without re-serializing, tamper → quarantine test; macOS keychain untested (B-001)
   - (from M3 final security, medium — do first) prescan: resolve /Length only for /ObjStm and /XRef streams, charge nothing for others (false refusals of real files with lengths like 120.0 or in object streams); a repeated object id with differing values → refuse or keep the maximum (incremental updates can hide a bomb behind the last definition)
   - (from M3 final security, low) duplicate/non-name keys in any top-level dict refuse the file (stricter than lopdf)

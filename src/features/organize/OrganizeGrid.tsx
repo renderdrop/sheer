@@ -338,6 +338,8 @@ export function OrganizeGrid({ docId, scheduler }: OrganizeGridProps) {
     }
     const base = mods.toggle || mods.range ? selection.selected : [];
     if (base.length === 0) setSel({ selected: [] });
+    // A read-only document has nothing to lift or act on, so empty space starts no marquee.
+    if (readOnly) return;
     pending.current = { kind: 'marquee', id: -1, x: point.x, y: point.y, collapse: false, base };
   };
 
@@ -497,6 +499,7 @@ export function OrganizeGrid({ docId, scheduler }: OrganizeGridProps) {
               active={range !== null && index >= range.first && index <= range.last}
               dragged={draggedSet.has(slot.id)}
               pulseKey={pulseState.ids.includes(slot.id) ? pulseState.nonce : 0}
+              readOnly={readOnly}
               scheduler={scheduler}
             />
           );

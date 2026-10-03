@@ -19,6 +19,7 @@ import { ZOOM_STEPS } from '../../lib/zoom';
 import type { ScrollMode } from '../viewer/layout';
 import { toolNameKey, type MarkupVariant, type ShapeVariant } from '../../stores/tools';
 import type { ToolId } from '../../stores/ui';
+import { useSignMenuEntries } from '../signatures/place/menu';
 import { formatZoomStatus } from './status';
 
 /** Two zoom values closer than this are the same preset (zoom steps are fractions like 0.67). */
@@ -125,6 +126,12 @@ export function buildMoreItems(
 }
 
 /**
+ * The order in which items move into More when the toolbar is too narrow: the lowest number goes first (Redo, Undo, Pages, Form,
+ * Signature, zoom out, zoom in).
+ */
+const COLLAPSE_ORDER = { redo: 1, undo: 2, pages: 3, form: 4, signature: 5, zoomOut: 6, zoomIn: 7 } as const;
+
+/**
  * The toolbar of DESIGN 3.3 and ADR-011 section 6 as data for the Toolbar primitive: the panel toggle, then the four tool
  * clusters (Select, Markup, Fill and sign, Pages), Undo and Redo, More, a spacer, the zoom cluster and the inspector toggle. Names, icons,
  * shortcuts and the enabled state of every item come from the action registry (`src/actions`), and so does the More menu
@@ -159,8 +166,10 @@ export function buildToolbar(
       kind: 'tool',
       pressed: state.activeTool === id,
       locked: state.activeTool === id && state.toolLocked,
-      disabled: disabled || (id === 'pages' && state.readOnly === true),
+      disabled: disabled || ((id === 'pages' || id === 'signature') && state.readOnly === true),
       collapse,
+      // The Sign tool opens a menu of what to place (DESIGN 3.34) instead of toggling.
+      menu: id === 'signature' ? useSignMenuEntries : undefined,
       onActivate: () => actions.selectTool(id),
       onLock: id === 'select' ? undefined : () => actions.lockTool(id),
     };
@@ -203,13 +212,13 @@ export function buildToolbar(
     {
       id: 'fill-and-sign',
       label: t('toolbar.group.fillAndSign'),
-      items: [tool('form', 4), tool('signature', 5)],
+      items: [tool('form', COLLAPSE_ORDER.form), tool('signature', COLLAPSE_ORDER.signature)],
     },
-    { id: 'pages', label: t('toolbar.group.pages'), items: [tool('pages', 3)] },
+    { id: 'pages', label: t('toolbar.group.pages'), items: [tool('pages', COLLAPSE_ORDER.pages)] },
     {
       id: 'history',
       label: t('toolbar.group.history'),
-      items: [history('undo', 2), history('redo', 1)],
+      items: [history('undo', COLLAPSE_ORDER.undo), history('redo', COLLAPSE_ORDER.redo)],
     },
     { type: 'more', id: 'more' },
     { type: 'spacer', id: 'spacer' },
@@ -217,7 +226,7 @@ export function buildToolbar(
       id: 'zoom',
       label: t('toolbar.group.zoom'),
       items: [
-        zoom('zoom-out', 6),
+        zoom('zoom-out', COLLAPSE_ORDER.zoomOut),
         {
           id: 'zoom-level',
           label: t('toolbar.zoomLevel'),
@@ -225,7 +234,7 @@ export function buildToolbar(
           disabled: !hasDocument,
           menu: state.zoomMenu,
         },
-        zoom('zoom-in', 7),
+        zoom('zoom-in', COLLAPSE_ORDER.zoomIn),
       ],
     },
     {

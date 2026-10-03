@@ -5,6 +5,7 @@ import { AUTHOR_NAME_MAX, isAuthorName, type GlassMode, type ThemeMode } from '.
 import { errorText, useT, type Language, type PlainKey } from '../../i18n';
 import { useSettings } from '../../stores/settings';
 import { SegmentedControl, type SegmentOption } from './SegmentedControl';
+import { openSignatureLibrary } from '../signatures/library';
 import { restartTour } from '../tour/runtime';
 import { useTour } from '../tour/store';
 import { useSettingsPopover } from './state';
@@ -79,6 +80,20 @@ function TourRow() {
       {(labelId) => (
         <Button variant="secondary" size="sm" aria-describedby={labelId} onClick={() => void restartTour()}>
           {running ? t('settings.tour.restart') : t('settings.tour.start')}
+        </Button>
+      )}
+    </Setting>
+  );
+}
+
+/** The signature library row (DESIGN 3.35): the popover closes and the library dialog opens. */
+function SignaturesRow() {
+  const t = useT();
+  return (
+    <Setting label={t('settings.signatures')} hint={t('settings.signatures.hint')}>
+      {(labelId) => (
+        <Button variant="secondary" size="sm" aria-describedby={labelId} onClick={() => openSignatureLibrary()}>
+          {t('lib.manage')}
         </Button>
       )}
     </Setting>
@@ -178,6 +193,7 @@ function SettingsForm() {
         )}
       </Setting>
       <AuthorRow />
+      <SignaturesRow />
       <TourRow />
       {error !== null && (
         <p role="alert" className="m-0 text-sm text-error-text">

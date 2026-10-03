@@ -3,6 +3,7 @@ import { memo } from 'react';
 import type { Annotation, LineEnd } from '../../../api/annotations';
 import type { Point, Rect } from '../../../api/wire';
 import { rgbToCss } from '../../inspector/palette';
+import { MarkShape, SignatureShape } from '../../signatures/place/SignatureShape';
 import { quadBox } from '../../viewer/transform';
 
 /**
@@ -72,9 +73,13 @@ function EndHead({
 }
 
 /** The look of an annotation. An opaque one draws nothing: the page bitmap has it already. */
-export const Shape = memo(function Shape({ a }: { a: Annotation }) {
+export const Shape = memo(function Shape({ a, docId }: { a: Annotation; docId?: number }) {
   const color = rgbToCss(a.color);
   switch (a.kind) {
+    case 'signature':
+      return docId === undefined ? null : <SignatureShape a={a} docId={docId} />;
+    case 'mark':
+      return <MarkShape a={a} />;
     case 'highlight':
       return (
         <g fill={color} opacity={a.opacity}>

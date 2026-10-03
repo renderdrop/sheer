@@ -11,6 +11,8 @@ const STROKE_KINDS: ReadonlySet<AnnotationKind> = new Set(['ink', 'rect', 'ellip
 /** The sections one kind of annotation has. `opaque` annotations are shown and never changed, so they have none. */
 export function sectionsOfKind(kind: AnnotationKind): readonly Section[] {
   if (kind === 'opaque') return [];
+  // Marks and vector signatures take a colour only (DESIGN 3.34); a picture ignores it.
+  if (kind === 'signature' || kind === 'mark') return ['colour'];
   return [
     'colour',
     'opacity',

@@ -187,6 +187,8 @@ describe('the toolbar of DESIGN 3.3 and ADR-011 section 6', () => {
         'split-document',
         'extract-pages',
         'compress-document',
+        'edit:before',
+        'flatten-form',
         'view:before',
         'actual-size',
         'fit-width',
@@ -212,6 +214,7 @@ describe('the toolbar of DESIGN 3.3 and ADR-011 section 6', () => {
         'about',
       ]);
       expect(moreItems.filter((entry) => entry.type === 'separator').map((entry) => entry.id)).toEqual([
+        'edit:before',
         'view:before',
         'page:before',
         'view:before',

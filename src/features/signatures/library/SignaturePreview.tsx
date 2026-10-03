@@ -1,0 +1,44 @@
+import { ImageOff } from 'lucide-react';
+
+import type { LibraryItem } from '../../../api/library';
+import { Icon } from '../../../components';
+import { useT } from '../../../i18n';
+
+/** The outline of every polygon as one path: a move, lines, close. Coordinates are the art's own units. */
+export function pathData(paths: readonly (readonly [number, number][])[]): string {
+  return paths
+    .filter((polygon) => polygon.length > 1)
+    .map((polygon) => `M${polygon.map(([x, y]) => `${x} ${y}`).join('L')}Z`)
+    .join('');
+}
+
+/**
+ * The preview chip of a library row (DESIGN 3.35): 120 x 40 on the page colour (white in both themes, as the document is), with a
+ * hairline border (`CanvasText` under forced colors). Vector art is drawn as an SVG fitted in the chip; a raster entry has no
+ * preview from the backend yet, so the chip shows a placeholder glyph.
+ */
+export function SignaturePreview({ item }: { item: LibraryItem }) {
+  const t = useT();
+  const art = item.preview !== null && 'vector' in item.preview ? item.preview.vector : null;
+  return (
+    <span
+      data-lib-preview=""
+      className="flex h-sig-thumb-h w-sig-thumb-w shrink-0 items-center justify-center overflow-hidden rounded-xs border border-divider bg-page px-0-5 forced-colors:border-text"
+    >
+      {art !== null ? (
+        <svg
+          aria-hidden="true"
+          viewBox={`0 0 ${art.w} ${art.h}`}
+          preserveAspectRatio="xMidYMid meet"
+          className="size-full text-doc-ink"
+        >
+          <path d={pathData(art.paths)} fill="currentColor" />
+        </svg>
+      ) : (
+        <span role="img" aria-label={t('lib.previewLater')} title={t('lib.previewLater')} className="text-doc-ink">
+          <Icon icon={ImageOff} />
+        </span>
+      )}
+    </span>
+  );
+}

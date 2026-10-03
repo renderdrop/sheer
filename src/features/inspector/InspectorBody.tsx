@@ -4,8 +4,13 @@ import { Icon, PanelSection } from '../../components';
 import { useT, type PlainKey } from '../../i18n';
 import type { AnnotationKind } from '../../api/annotations';
 import type { CreationKind } from '../../stores/tools';
+import { useUi } from '../../stores/ui';
+import { FormOptions } from '../forms/FormOptions';
 import { ColourSection, FontSizeSection, LineEndSection, OpacitySection, StrokeSection } from './Sections';
 import { useInspectorModel, type InspectorModel } from './useInspectorModel';
+
+/** The ink of a drawn or typed signature (DESIGN 3.33). */
+const INK_COLOURS: readonly string[] = ['black', 'blue'];
 
 const KIND_KEYS: Readonly<Record<AnnotationKind, PlainKey>> = {
   highlight: 'annot.type.highlight',
@@ -73,7 +78,12 @@ export function InspectorBody({ model }: { model: InspectorModel }) {
     <>
       {sections.includes('colour') && (
         <PanelSection>
-          <ColourSection {...common} colour={values.color} recent={recent} />
+          <ColourSection
+            {...common}
+            colour={values.color}
+            recent={recent}
+            only={model.subject.type === 'kind' && model.subject.kind === 'signature' ? INK_COLOURS : undefined}
+          />
         </PanelSection>
       )}
       {sections.includes('stroke') && (
@@ -102,7 +112,13 @@ export function InspectorBody({ model }: { model: InspectorModel }) {
 
 /** The inspector's content from the stores. */
 export function useInspector(): { title: string; body: React.ReactNode } {
+  const t = useT();
   const model = useInspectorModel();
   const title = useInspectorTitle(model);
+  const formTool = useUi((state) => state.activeTool === 'form');
+  // The Form tool has options of its own (DESIGN 3.32): the highlight toggle and Flatten.
+  if (model.mode === 'empty' && formTool) {
+    return { title: t('inspector.toolOptions', { tool: t('toolbar.tool.form') }), body: <FormOptions /> };
+  }
   return { title, body: <InspectorBody model={model} /> };
 }

@@ -101,7 +101,7 @@ export function EmptyState({
 }: EmptyStateProps) {
   const t = useT();
   return (
-    <main className="m-auto flex w-full max-w-empty-max flex-col py-5">
+    <main className="m-auto flex w-full max-w-empty-max flex-col py-2">
       <LogoSlot />
       <section
         data-drop-zone=""

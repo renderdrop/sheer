@@ -297,13 +297,13 @@ describe('OrganizeGrid', () => {
     // Under the threshold nothing lifts.
     fireEvent.pointerMove(first, { clientX: 52, clientY: 50, pointerId: 1 });
     expect(document.querySelector('[data-drag-card]')).toBeNull();
-    fireEvent.pointerMove(first, { clientX: 300, clientY: 50, pointerId: 1 });
+    fireEvent.pointerMove(first, { clientX: 210, clientY: 50, pointerId: 1 });
     expect(document.querySelector('[data-drag-card]')).not.toBeNull();
     expect(document.querySelector('[data-insert-marker]')).not.toBeNull();
     expect(first.className).toContain('opacity-40');
-    // x 300 is nearest to the gap after the dragged page itself: the order would not change.
+    // x 210 is nearest to the gap after the dragged page itself: the order would not change.
     await act(async () => {
-      fireEvent.pointerUp(first, { clientX: 300, clientY: 50, pointerId: 1 });
+      fireEvent.pointerUp(first, { clientX: 210, clientY: 50, pointerId: 1 });
     });
     expect(model.sent).toHaveLength(0);
     expect(document.querySelector('[data-drag-card]')).toBeNull();
@@ -439,7 +439,9 @@ describe('OrganizeBar', () => {
     useOrganize.getState().setSelection(DOC, { selected: [1], focus: 1 });
     setup(<OrganizeBar docId={DOC} />);
     for (const name of ['Rotate left', 'Delete', 'Insert']) {
-      const button = screen.getAllByRole('button').find((b) => b.getAttribute('aria-label')?.startsWith(name));
+      const button = screen
+        .getAllByRole('button')
+        .find((b) => (b.getAttribute('aria-label') ?? b.textContent ?? '').startsWith(name));
       expect(button?.getAttribute('aria-disabled')).toBe('true');
     }
   });

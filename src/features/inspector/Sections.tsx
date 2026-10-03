@@ -100,7 +100,13 @@ export function ColourSection({
   recent,
   disabled,
   onChange,
-}: SectionProps & { colour: Shared<Rgb>; recent: readonly Rgb[] }) {
+  only,
+}: SectionProps & {
+  colour: Shared<Rgb>;
+  recent: readonly Rgb[];
+  /** Offer only these palette colours (ink of a signature: black or blue, DESIGN 3.33). */
+  only?: readonly string[];
+}) {
   const t = useT();
   const current = colour.value === null ? null : colour.value.join(',');
   const choose = (value: string) => {
@@ -118,9 +124,11 @@ export function ColourSection({
             disabled={disabled}
             onChange={choose}
             className="flex flex-wrap gap-1"
-            options={PALETTE.map((entry) => swatchOption(entry.rgb, t(entry.nameKey), entry.bg, entry.check))}
+            options={PALETTE.filter((entry) => only === undefined || only.includes(entry.id)).map((entry) =>
+              swatchOption(entry.rgb, t(entry.nameKey), entry.bg, entry.check),
+            )}
           />
-          {recentRow.length > 0 && (
+          {only === undefined && recentRow.length > 0 && (
             <RecentRow recent={recentRow} current={current} disabled={disabled} onChoose={choose} />
           )}
         </>

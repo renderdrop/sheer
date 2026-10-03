@@ -3,6 +3,7 @@ import {
   ChevronDown,
   ChevronUp,
   Combine,
+  Stamp,
   FileArchive,
   FileOutput,
   Scissors,
@@ -40,6 +41,7 @@ import {
 } from 'lucide-react';
 
 import type { Platform } from '../api/app';
+import { runFlatten } from '../features/forms/actions';
 import { toggleAbout } from '../features/about/state';
 import { stepHit } from '../features/search/jump';
 import { organizeActive, rotateOrganized } from '../features/organize/actions';
@@ -92,6 +94,7 @@ export type ActionId =
   | 'rotate-view-right'
   | 'rotate-view-left'
   | 'rotate-view-reset'
+  | 'flatten-form'
   | 'next-tab'
   | 'previous-tab'
   | 'toggle-left-panel'
@@ -153,6 +156,11 @@ const TOOL_ACTIONS: readonly ActionDef[] = (
   // The key makes the tool active and leaves it so; it is not the toolbar's click, which also releases an active tool.
   run: () => {
     const ui = useUi.getState();
+    // The Sign key opens the Sign menu (DESIGN 3.34): it is the toolbar item's own popover trigger.
+    if (tool === 'signature') {
+      document.querySelector<HTMLElement>('[data-toolbar-item="signature"]')?.click();
+      return;
+    }
     if (ui.activeTool !== tool) ui.selectTool(tool);
     // Markup and Shapes: the key of the active tool goes on to its next variant (DESIGN 3.22).
     else if (tool === 'highlight' || tool === 'shapes') useTools.getState().cycle(tool);
@@ -282,6 +290,17 @@ export const ACTIONS: readonly ActionDef[] = [
     menuBar: true,
     enabled: (state) => state.hasDocument && state.canRedo,
     run: () => runHistoryStep('redo'),
+  },
+  {
+    id: 'flatten-form',
+    labelKey: 'action.flattenForm',
+    icon: Stamp,
+    group: 'edit',
+    more: true,
+    menuBar: true,
+    enabled: needsDocument,
+    // The confirm dialog (src/features/forms), which runs the flatten job.
+    run: runFlatten,
   },
   {
     id: 'zoom-in',

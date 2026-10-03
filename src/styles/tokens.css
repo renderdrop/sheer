@@ -76,6 +76,10 @@
   --color-doc-hit: rgba(91, 91, 214, 0.28);
   /* Annotations on the canvas (DESIGN 3.23): the hover outline, and the size of a resize handle in px. */
   --color-doc-hover: rgba(91, 91, 214, 0.5);
+  /* Form fields (DESIGN 3.32): the tint over fillable widgets, its hover, and the border of a required one (>= 3:1 on white). */
+  --color-doc-field: rgba(91, 91, 214, 0.1);
+  --color-doc-field-hover: rgba(91, 91, 214, 0.18);
+  --color-doc-required: #d64b4b;
   --handle-size: 8px;
 
   /* Shadows (DESIGN 1.3). */
@@ -162,6 +166,14 @@
   --spacing-sheet: var(--sheet-width);
   --spacing-dialog-md: var(--dialog-width-md);
   --spacing-insert-marker: var(--insert-marker);
+  /* The signature library (DESIGN 3.35): w-sig-thumb-w and h-sig-thumb-h (the preview chip), max-h-lib-list (scrolls after 6 rows). */
+  --spacing-sig-thumb-w: var(--sig-thumb-w);
+  --spacing-sig-thumb-h: var(--sig-thumb-h);
+  --spacing-lib-list: var(--lib-list-max);
+  /* Signature creation pad (DESIGN 3.33): w-sig-pad, w-sig-pad-initials, h-sig-slot. */
+  --spacing-sig-pad: var(--sig-pad-width);
+  --spacing-sig-pad-initials: var(--sig-pad-width-initials);
+  --spacing-sig-slot: var(--sig-pad-height);
   --spacing-toast: var(--toast-height);
   --spacing-toast-min: var(--toast-min);
   --spacing-toast-max: var(--toast-max);
@@ -336,6 +348,9 @@
   --tab-max: 240px;
   --dialog-width: 400px; /* the password prompt (DESIGN 3.19) */
   --sheet-width: 560px; /* the merge sheet (DESIGN 3.29) */
+  --sig-pad-width: 512px; /* signature creation (DESIGN 3.33) */
+  --sig-pad-width-initials: 192px;
+  --sig-pad-height: 192px; /* every panel of the sheet fills this slot */
   --dialog-width-md: 480px; /* split and compress (DESIGN 3.30, 3.31) */
   --toast-height: 40px; /* toast (DESIGN 3.12): 40 high, 240 to 400 wide */
   --toast-min: 240px;
@@ -370,6 +385,9 @@
   --drag-card-width: 160px;
   --drag-card-height: 208px;
   --grid-thumb: 160px; /* organize grid: the thumbnail box, 96 to 256 in steps of 32 (DESIGN 3.28); the user's choice is set inline */
+  --sig-thumb-w: 120px; /* library preview chip (DESIGN 3.35, --sig-thumb-lg) */
+  --sig-thumb-h: 40px;
+  --lib-list-max: 360px; /* six 56 px rows and their 4 px gaps */
   --insert-marker: 2px; /* organize grid: the insertion marker's width */
 
   /* Elevation: the only z-index values (DESIGN 1.7). 1 to 4 are local to the canvas, which isolates itself. */
@@ -588,6 +606,9 @@
     --color-doc-text-select: Highlight;
     --color-doc-hit: Highlight;
     --color-doc-hover: Highlight;
+    --color-doc-field: transparent;
+    --color-doc-field-hover: transparent;
+    --color-doc-required: CanvasText;
     --win-close-hover: Highlight;
   }
 }
@@ -1054,5 +1075,85 @@
 
   [data-swatch][aria-checked="true"] {
     outline: 2px solid Highlight;
+  }
+}
+
+/* Form fields on the canvas (DESIGN 3.32). Layer 3, in page space and scaled by --page-scale (px per point), so a px size is divided by it.
+   The control is opaque (the field's own fill, else the page) so the value in the bitmap never shows through; the tint is a layer over it. */
+[data-form-widget] {
+  position: absolute;
+  box-sizing: border-box;
+  pointer-events: auto;
+}
+
+[data-form-layer][data-inert] [data-form-widget] {
+  pointer-events: none;
+}
+
+[data-form-control] {
+  box-sizing: border-box;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 0 calc(2px / var(--page-scale, 1));
+  border: var(--form-border, calc(1px / var(--page-scale, 1)) solid transparent);
+  border-radius: 0;
+  background-color: var(--form-fill, var(--color-page));
+  background-image: linear-gradient(var(--form-tint, transparent), var(--form-tint, transparent));
+  color: var(--form-text, var(--color-doc-ink));
+  font-family: Helvetica, Arial, sans-serif;
+  outline: none;
+  overflow: hidden;
+  resize: none;
+}
+
+[data-form-widget][data-highlight="on"] [data-form-control]:not([aria-readonly="true"]) {
+  --form-tint: var(--color-doc-field);
+}
+
+[data-form-widget][data-highlight="on"] [data-form-control]:not([aria-readonly="true"]):hover {
+  --form-tint: var(--color-doc-field-hover);
+}
+
+[data-form-widget][data-required="true"] [data-form-control] {
+  border: calc(1px / var(--page-scale, 1)) solid var(--color-doc-required);
+}
+
+[data-form-widget][data-readonly="true"] [data-form-control] {
+  cursor: default;
+}
+
+[data-form-control]:focus-visible {
+  outline: calc(2px / var(--page-scale, 1)) solid var(--color-doc-select);
+  outline-offset: calc(2px / var(--page-scale, 1));
+}
+
+[data-form-list] {
+  overflow-y: auto;
+}
+
+[data-form-option] {
+  display: block;
+  padding: 0 calc(2px / var(--page-scale, 1));
+  white-space: nowrap;
+  cursor: default;
+}
+
+[data-form-option][aria-selected="true"] {
+  background-color: var(--color-doc-select);
+  color: var(--color-page);
+}
+
+@media (forced-colors: active) {
+  [data-form-control] {
+    border: calc(1px / var(--page-scale, 1)) solid CanvasText;
+  }
+
+  [data-form-widget][data-required="true"] [data-form-control] {
+    border-width: calc(2px / var(--page-scale, 1));
+  }
+
+  [data-form-control]:focus-visible {
+    outline-color: Highlight;
   }
 }

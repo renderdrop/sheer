@@ -11,6 +11,7 @@ import { DURATION, ENTER_SCALE, FADE_END_SLACK_MS, SPRING } from '../../lib/moti
 import { pageRevOf, useAnnotations } from '../../stores/annotations';
 import { useUi } from '../../stores/ui';
 import { AnnotationLayer } from '../annotations/layer/AnnotationLayer';
+import { FormLayer } from '../forms/FormLayer';
 import { usePageText } from '../textlayer/cache';
 import { PageOverlay } from '../textlayer/PageOverlay';
 import { runsOf } from '../textlayer/runs';
@@ -407,6 +408,17 @@ export const PageView = memo(function PageView({
         heightPt={heightPt}
         rotation={rotation}
         visible={priority === 'visible'}
+        ready={text.layer !== null || hasFileRotation(docId, pageId)}
+      />
+      {/* After the annotations, so a field is above them (layer 3, DESIGN 3.32). */}
+      <FormLayer
+        docId={docId}
+        pageIndex={pageId}
+        boxWidth={width}
+        boxHeight={height}
+        widthPt={widthPt}
+        heightPt={heightPt}
+        rotation={rotation}
         ready={text.layer !== null || hasFileRotation(docId, pageId)}
       />
     </div>

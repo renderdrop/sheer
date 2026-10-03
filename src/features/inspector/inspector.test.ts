@@ -83,6 +83,8 @@ describe('sections', () => {
     expect(sectionsOfKind('freeText')).toEqual(['colour', 'opacity', 'fontSize']);
     expect(sectionsOfKind('line')).toEqual(['colour', 'opacity', 'stroke', 'lineEnd']);
     expect(sectionsOfKind('opaque')).toEqual([]);
+    expect(sectionsOfKind('mark')).toEqual(['colour']);
+    expect(sectionsOfKind('signature')).toEqual(['colour']);
   });
 
   it('of a multi-selection are those every kind has', () => {

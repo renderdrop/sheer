@@ -10,6 +10,7 @@ import { useTools } from '../../stores/tools';
 import { useUi } from '../../stores/ui';
 import { useDocViewValue } from '../../stores/view';
 import { AboutDialog } from '../about/AboutDialog';
+import { SignatureLibraryDialog } from '../signatures/library';
 import { ToolAnnouncer } from '../annotations/layer/ToolAnnouncer';
 import { SettingsPopover } from '../settings/SettingsPopover';
 import { buildToolbar, type ToolbarActions } from './toolbarEntries';
@@ -117,6 +118,7 @@ export const ToolbarSlot = memo(function ToolbarSlot({
       <ToolAnnouncer />
       <SettingsPopover />
       <AboutDialog />
+      <SignatureLibraryDialog />
     </>
   );
 });

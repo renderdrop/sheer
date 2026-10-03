@@ -23,6 +23,9 @@ export function fitInBox(
   return { width: Math.max(1, Math.round(w * scale)), height: Math.max(1, Math.round(h * scale)) };
 }
 
+/** A page image here is keyed by the slot revision, never by the document revision: that part of the key is always 0. */
+const NO_DOC_REV = 0;
+
 export interface OrganizeCellProps {
   docId: number;
   slot: Slot;
@@ -44,6 +47,8 @@ export interface OrganizeCellProps {
   dragged: boolean;
   /** Pulses once when this changes to a new number (an inserted page). */
   pulseKey: number;
+  /** The document cannot be changed (the welcome document): the cell says so (`aria-disabled`); selecting still works. */
+  readOnly?: boolean;
   scheduler?: RenderScheduler;
 }
 
@@ -69,6 +74,7 @@ export const OrganizeCell = memo(function OrganizeCell({
   active,
   dragged,
   pulseKey,
+  readOnly = false,
   scheduler = renderScheduler,
 }: OrganizeCellProps) {
   const t = useT();
@@ -86,7 +92,7 @@ export const OrganizeCell = memo(function OrganizeCell({
     () => cache.version(docId, page),
     () => 0,
   );
-  const exact = cache.get(imageKey({ docId, page, rev: 0, slotRev: slot.rev, bucket }));
+  const exact = cache.get(imageKey({ docId, page, rev: NO_DOC_REV, slotRev: slot.rev, bucket }));
   const shown = exact ?? cache.best(docId, page, 0, bucket, undefined, slot.rev);
   const shownKey = shown?.key ?? '';
   const [loaded, setLoaded] = useState<string>('');
@@ -98,7 +104,7 @@ export const OrganizeCell = memo(function OrganizeCell({
 
   useEffect(() => {
     if (!active) return;
-    const id: ImageId = { docId, page, rev: 0, slotRev: slot.rev, bucket };
+    const id: ImageId = { docId, page, rev: NO_DOC_REV, slotRev: slot.rev, bucket };
     if (cache.has(imageKey(id))) return;
     const timer = window.setTimeout(() => {
       scheduler.request(id, 'thumbnail').catch(() => undefined);
@@ -123,6 +129,7 @@ export const OrganizeCell = memo(function OrganizeCell({
       role="option"
       id={`organize-${docId}-${page}`}
       aria-selected={selected}
+      aria-disabled={readOnly ? true : undefined}
       aria-label={t('organize.page', { label: slot.label ?? String(index + 1), n: index + 1, total })}
       aria-posinset={index + 1}
       aria-setsize={total}
@@ -162,7 +169,7 @@ export const OrganizeCell = memo(function OrganizeCell({
         aria-hidden="true"
         className={cx(
           'inline-flex h-(--pill-height) min-w-3 items-center justify-center rounded-pill px-1 text-xs tabular-nums',
-          selected ? 'bg-accent text-on-accent' : 'bg-tile text-tile-icon',
+          selected ? 'bg-accent text-on-accent' : 'bg-tile text-text',
         )}
       >
         {number}

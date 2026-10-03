@@ -7,6 +7,7 @@ import { Icon } from '../../components/Icon';
 import { useT } from '../../i18n';
 import { useSettledValue } from './hooks';
 import { formatPageStatus, formatZoomStatus, splitForMiddleTruncation } from './status';
+import { FormPill } from '../forms/FormPill';
 import { TourPill } from '../tour/TourPill';
 import { zoomMenuEntries } from './toolbarEntries';
 
@@ -196,6 +197,7 @@ export function StatusBar({
           {t('status.edited')}
         </span>
       )}
+      <FormPill />
       <TourPill />
       <span className="flex-auto" />
       <span role="status" className="shrink-0">

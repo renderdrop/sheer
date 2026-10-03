@@ -8,6 +8,7 @@ import { useT } from '../../i18n';
 import { adoptOpenOutcomes } from '../viewer/useViewer';
 import { CompressDialog } from './CompressDialog';
 import { MergeSheet } from './MergeSheet';
+import { SignatureSheetHost } from '../signatures/create';
 import { SplitDialog } from './SplitDialog';
 import { discardHeld, useJobs } from './state';
 
@@ -74,10 +75,13 @@ export function DropBannerRow() {
 export function JobsHost() {
   const sheet = useJobs((state) => state.sheet);
   return (
-    <AnimatePresence>
-      {sheet?.kind === 'merge' && <MergeSheet key="merge" held={sheet.held} />}
-      {sheet?.kind === 'split' && <SplitDialog key="split" mode={sheet.mode} />}
-      {sheet?.kind === 'compress' && <CompressDialog key="compress" />}
-    </AnimatePresence>
+    <>
+      <SignatureSheetHost />
+      <AnimatePresence>
+        {sheet?.kind === 'merge' && <MergeSheet key="merge" held={sheet.held} />}
+        {sheet?.kind === 'split' && <SplitDialog key="split" mode={sheet.mode} />}
+        {sheet?.kind === 'compress' && <CompressDialog key="compress" />}
+      </AnimatePresence>
+    </>
   );
 }

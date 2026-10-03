@@ -8,6 +8,7 @@ import { chromeFor, detectPlatform } from '../../lib/platform';
 import { useSettings } from '../../stores/settings';
 import { useUi } from '../../stores/ui';
 import { setMenuState } from '../../api/recents';
+import { FormHost } from '../forms/FormHost';
 import { DropBannerRow, JobsHost } from '../jobs/JobsHost';
 import { PasswordDialog } from '../password/PasswordDialog';
 import { UnsavedDialog } from '../save/UnsavedDialog';
@@ -113,6 +114,7 @@ export function Shell() {
       <UnsavedDialog />
       <BannerRow />
       <XfaBannerRow />
+      <FormHost />
       <DropBannerRow />
       <MainGrid structure={structure}>
         {/* The empty state fades out on its own (it stays in its slot, inert, until it is gone) while the document comes in. */}

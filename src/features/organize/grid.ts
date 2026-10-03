@@ -42,8 +42,7 @@ export function gridMetrics(width: number, thumb: number, spacing: GridSpacing):
   const stepX = cellWidth + spacing.gap;
   const available = Math.max(0, width - 2 * spacing.padding);
   const cols = Math.max(1, Math.floor((available + spacing.gap) / stepX));
-  const used = cols * stepX - spacing.gap;
-  const left = spacing.padding + Math.max(0, Math.floor((available - used) / 2));
+  const left = spacing.padding;
   return { thumb, spacing, cols, cellWidth, cellHeight, stepX, stepY: cellHeight + spacing.gap, left };
 }
 

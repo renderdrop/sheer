@@ -40,10 +40,10 @@ describe('gridMetrics', () => {
     expect(gridMetrics(10, 256, SPACING).cols).toBe(1);
   });
 
-  it('centres the columns in a wider grid', () => {
+  it('keeps the left gutter at the padding in a wider grid', () => {
     const wide = gridMetrics(792 + 100, 160, SPACING);
     expect(wide.cols).toBe(4);
-    expect(wide.left).toBe(24 + 50);
+    expect(wide.left).toBe(24);
   });
 
   it('lays cells out row by row', () => {

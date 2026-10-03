@@ -68,7 +68,9 @@
           "label": "menu.edit.findPrevious",
           "accelerator": "CmdOrCtrl+Shift+G",
           "requiresDocument": true
-        }
+        },
+        { "separator": true },
+        { "action": "flatten-form", "label": "menu.edit.flattenForm", "requiresDocument": true }
       ]
     },
     {

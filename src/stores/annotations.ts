@@ -10,6 +10,7 @@ import {
   type DocCommand,
   type HistoryState,
 } from '../api/annotations';
+import { applyFieldStates } from '../features/forms/store';
 import { usePages } from './pages';
 
 /**
@@ -158,6 +159,9 @@ export const useAnnotations = create<AnnotationsState>()((set, get) => ({
   },
 
   applyChanges: (docId, changes) => {
+    // The form's values follow every change set (a command, an undo, a redo), unless the answer is older than the replica.
+    if (changes.fields !== undefined && changes.fields.length > 0 && changes.rev >= (get().byDoc[docId]?.rev ?? 0))
+      applyFieldStates(docId, changes.fields);
     if (changes.pages !== null && changes.rev >= (get().byDoc[docId]?.rev ?? 0))
       usePages.getState().setSlots(docId, changes.pages);
     set((state) => {

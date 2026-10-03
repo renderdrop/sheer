@@ -4,6 +4,7 @@ import type { Annotation } from '../../../api/annotations';
 import { useT } from '../../../i18n';
 import { annotationsOnPage, useAnnotations, type AnnotationsState } from '../../../stores/annotations';
 import { useUi } from '../../../stores/ui';
+import { PlacementLayer } from '../../signatures/place/PlacementLayer';
 import { fileRotationOf } from '../../viewer/fileRotation';
 import { normalizeRotation, overlayBox, swapsSides, totalRotation, unrotatedSize } from '../../viewer/transform';
 import { CreationLayer } from '../create';
@@ -212,7 +213,7 @@ export const AnnotationLayer = memo(function AnnotationLayer({
               const drawn = a.kind !== 'highlight' && isDrawn(a);
               return (
                 <g key={a.id}>
-                  {drawn && <Shape a={view} />}
+                  {drawn && <Shape a={view} docId={docId} />}
                   {selectActive && (
                     <g
                       data-annot-hit={a.id}
@@ -242,6 +243,12 @@ export const AnnotationLayer = memo(function AnnotationLayer({
           ))}
         </div>
         <CreationLayer
+          docId={docId}
+          pageIndex={pageIndex}
+          pageBox={{ width: page[0], height: page[1] }}
+          transform={{ pxPerPt, rotation: total }}
+        />
+        <PlacementLayer
           docId={docId}
           pageIndex={pageIndex}
           pageBox={{ width: page[0], height: page[1] }}

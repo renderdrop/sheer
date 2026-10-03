@@ -159,6 +159,25 @@ describe('resized', () => {
     expect(r.strokes[0]?.outline[1]).toEqual({ x: 20, y: 20 });
   });
 
+  it('keeps a signature and a mark at their aspect, with four corner handles, whatever the modifier', () => {
+    const box = { x: 10, y: 20, w: 90, h: 30 };
+    const signature = {
+      ...base,
+      rect: box,
+      kind: 'signature',
+      box,
+      role: 'signature',
+      art: { type: 'asset', assetId: 1, aspect: 3 },
+    } as Annotation;
+    expect(handlesOf(signature)).toEqual(['nw', 'ne', 'se', 'sw']);
+    expect(handlesOf({ ...signature, kind: 'mark', glyph: 'check' } as unknown as Annotation)).toHaveLength(4);
+    const r = resized(signature, 'se', 30, 1, false, PAGE) as Extract<Annotation, { kind: 'signature' }>;
+    expect(r.box.w / r.box.h).toBeCloseTo(3);
+    expect(patchOf(r)).toEqual({ box: r.box });
+    expect((translated(signature, 5, 5) as Extract<Annotation, { kind: 'signature' }>).box.x).toBe(15);
+    expect(resized(signature, 'n', 0, 5, false, PAGE)).toBeNull();
+  });
+
   it('refuses a handle the annotation does not have', () => {
     expect(resized(note(), 'se', 1, 1, false, PAGE)).toBeNull();
     expect(resized(line(), 'se', 1, 1, false, PAGE)).toBeNull();

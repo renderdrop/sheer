@@ -1,9 +1,19 @@
-import { FileOutput, FilePlus, FileText, FileUp, RotateCcw, RotateCw, Scissors, Trash2 } from 'lucide-react';
+import {
+  ChevronDown,
+  FileOutput,
+  FilePlus,
+  FileText,
+  FileUp,
+  RotateCcw,
+  RotateCw,
+  Scissors,
+  Trash2,
+} from 'lucide-react';
 import { useMemo } from 'react';
 
 import { runAction } from '../../actions/dispatch';
 import { shortcutFor } from '../../actions/registry';
-import { Button, IconButton, Menu, Slider, type MenuEntry } from '../../components';
+import { Button, Icon, IconButton, Menu, Slider, type MenuEntry } from '../../components';
 import { useT } from '../../i18n';
 import { detectPlatform } from '../../lib/platform';
 import { useDocuments } from '../../stores/documents';
@@ -81,13 +91,10 @@ export function OrganizeBar({ docId }: OrganizeBarProps) {
         label={t('organize.insert')}
         entries={insertEntries}
         trigger={(trigger) => (
-          <IconButton
-            {...trigger}
-            label={t('organize.insert')}
-            icon={FilePlus}
-            disabled={readOnly}
-            focusableWhenDisabled
-          />
+          <Button {...trigger} variant="ghost" size="sm" icon={FilePlus} disabled={readOnly} focusableWhenDisabled>
+            {t('organize.insert')}
+            <Icon icon={ChevronDown} size={12} />
+          </Button>
         )}
       />
       <Button
