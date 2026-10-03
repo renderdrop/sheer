@@ -14,7 +14,7 @@ menu item or shortcut.
 | tokio tasks | `async` commands: validate → registry → engine | PDFium calls |
 | `sheer-pdfium` | `Pdfium`, open `PdfDocument`s, `ReplaceFile` | lopdf |
 | `sheer-watchdog` | job deadlines | — |
-| blocking pool | lopdf save, backup, recents, autosave | PDFium |
+| blocking pool | lopdf save, backup, recents, autosave, page jobs (extract, split, merge, compress; ≤ 2) | PDFium |
 
 ## 2. Rust modules (`src-tauri/src/`)
 
@@ -28,14 +28,14 @@ error.rs         AppError (internal) → UiError (IPC)
 limits.rs        every numeric bound as a const
 commands/        thin: validate → registry/engine → UiError
                  app · documents · render · outline · text · search · links · edit · pages (M3) · forms (M4) · export (M6) · recovery (M7)
-documents/       registry (the table of open documents: claim = dedupe by canonical path, abandon = the arbiter of an open that outlives its deadline) · intake (admit: canonicalize, open once, judge the handle; command-line and URL parsing; the dialog is in commands/) · recents
+documents/       sources (M3: `SourceRegistry`, import bytes in memory, ADR-036 §4) · registry (the table of open documents: claim = dedupe by canonical path, abandon = the arbiter of an open that outlives its deadline) · intake (admit: canonicalize, open once, judge the handle; command-line and URL parsing; the dialog is in commands/) · recents
 engine/          the only PDFium user (ADR-002)
                  mod (Engine, Job) · worker (open, frames and tiles, page sizes) · queue (priority, cancellation by viewport, dedupe: ADR-018) · guard (catch_unwind, deadlines) · encode (frames)
-                 text (the layer, and the one reading of a page's characters) · search (one page: the page's text, found by `model::find`) · links · outline · space (pages and destinations in page space) · import (annotations → model) · forms (M4) · transport (M7)
+                 pages (M3: rotate, append blank, import pages; append-only) · text (the layer, and the one reading of a page's characters) · search (one page: the page's text, found by `model::find`) · links · outline · space (pages and destinations in page space) · import (annotations → model) · forms (M4) · transport (M7)
 model/           engine-free domain (ADR-003)
                  geometry (Point, Rect, Quad, PageBox) · find (text search) · reading (what the UI is told about content) · ids · annotation · page · command · history · doc_state · validate (the first three exist)
 pdfwrite/        the only lopdf user (ADR-004)
-                 save · annots · appearance · coords · pagetree (M3) · crypt (M5)
+                 save · annots · appearance · coords · pagetree (M3: tree rewrite, page deep copy) · produce (M3: extract, split, merge) · compress (M3: `image`, jpeg only) · crypt (M5)
 storage/         atomic (temp + fsync + rename) · backup · settings · app_dirs · autosave (M7)
 security/        links (http/https/mailto allowlist, `SafeUrl`) · names (display-name sanitizer; today `documents::sanitize_text`)
 menu/            macOS menu bar (ADR-016): mod (MenuBridge: the channel to the UI, the id allowlist, build + rebuild on a language change) · spec (layout of src/actions/menu.json, texts of the UI catalogs, ACTION_IDS)
@@ -168,7 +168,7 @@ struct SaveAck       { break_signature: bool, file_changed: bool }   // `rewrite
 struct TextLayer     { text: String, boxes: Vec<f32> /* x, y, w, h per UTF-16 code unit of `text`, page space (the box of a character of two units is there twice) */, truncated: bool }
 struct OutlineNode   { title: String, target: Option<PageTarget { page_id, y }>, children: Vec<OutlineNode> }
 struct LinkInfo      { index: u32 /* position among the page's links */, rect: Rect, target: LinkTarget /* Page { page_id, y } | Url { url ≤ 2048 } | Blocked; wire: `{ "type": "page" | "url" | "blocked", ..fields }` */ }
-struct ChangeSet     { rev: u64 /* grows with every change, undo and redo */, upserted: Vec<Annotation>, removed: Vec<AnnotId>, pages: Option<Vec<PageId>> /* null until M3 */,
+struct ChangeSet     { rev: u64 /* grows with every change, undo and redo */, upserted: Vec<Annotation>, removed: Vec<AnnotId>, pages: Option<Vec<PageSlotInfo>> /* M3: the full list when it changed, ADR-036 */,
                        history: HistoryState { can_undo, can_redo, undo_label: Option<String>, redo_label: Option<String> /* catalog keys: `annotation.create` | `.update` | `.delete` | `.move` or a batch's own label */, dirty } }
 enum   DocCommand    { CreateAnnotation { draft }, UpdateAnnotation { id, patch, coalesce: Option<String> }, DeleteAnnotations { ids } /* + their replies */, MoveAnnotations { ids, dx, dy },
                        Batch { label, commands } /* one undo step; ≤ 5 000 commands, ≤ 2 deep */, Restore { .. } /* internal: the inverse of everything, never accepted from the UI */ }   // wire: `{ "type": "createAnnotation" | ..., ..fields }`
@@ -241,7 +241,7 @@ document. The frontend therefore cannot make Rust open an arbitrary URL.
 A render frame is at most 4096×4096 px (16 Mpx), checked after the bucket and tile are resolved against the page's real size: a whole page above that is `limit_exceeded` and the UI asks for tiles; a page more than 64 tiles wide or high is refused. `get_page_sizes` and a viewport hint are bounded the same way (≤ 50 000 pages, ≤ 64 pages per list, refused while the hint is read). A tile column or row of 64 or more is refused at the command; at most 8 callers join one queued or running frame; at most 96 `render_page` calls per document and 128 in all are in flight (`limit_exceeded`, `requests`).
 
 **Planned commands.** The milestone ADR fixes the exact signatures; the same rules apply, and output paths come from a Rust-side save dialog.
-M3: `extract_pages`, `split_document`, `merge_documents`, `insert_pages_from_file`, `compress_document`. M4: `get_form_fields`,
+M3: see "Pages" below (ADR-036; `insert_pages_from_file` became `pick_pdf_sources` + `InsertPages`). M4: `get_form_fields`,
 `list_signatures`, `save_signature`, `delete_signature`. M5: `set_protection`, `remove_protection`, `get_metadata`, `set_metadata`.
 M6: `export_images`, `print_document`, `reveal_in_folder`. M7: `list_recoverable`, `restore_autosave`, `discard_autosave`.
 
@@ -256,6 +256,49 @@ M6: `export_images`, `print_document`, `reveal_in_folder`. M7: `list_recoverable
   Opaque annotations and locked ones (an update that only unlocks excepted) are refused (`invalid_argument`). `rect` is always computed by Rust. Updates with the same `coalesce` key on one annotation within 1.5 s share one undo step. History ≤ 500 steps; `dirty` compares the top step with the clean marker.
   Limits are in `limits.rs`: annotations per page 2 000 and per document 20 000, quads 512, strokes 256, points 10 000 per stroke and 50 000 in all, 500 free text lines, contents 32 768 characters.
 - *Stamp.* `modified` is stamped by `commands/annotations.rs` (ISO 8601, UTC); the model has no clock.
+
+### Pages (ADR-036; `model/{page,command,doc_state}.rs`, `engine/pages.rs`, `documents/sources.rs`, `pdfwrite/{pagetree,produce,compress}.rs`, `commands/pages.rs`)
+
+```rust
+// commands/pages.rs (M3)
+get_pages(doc_id: DocId) -> Vec<PageSlotInfo>        // current order; replaces get_page_sizes (removed in M3); ≤ 50 000
+apply_command(doc_id: DocId, command: DocCommand) -> ChangeSet   // replaces apply_annotation_command; annotation and page variants
+pick_pdf_sources(multiple: bool) -> Vec<SourceResult>            // Rust open dialog → intake::admit → bytes in memory; ≤ 32; [] = cancelled
+release_source(source_id: SourceId) -> ()                        // unknown id is not an error; pinned bytes live on in documents
+extract_pages(doc_id: DocId, pages: Vec<PageId>, on_event: Channel<JobEvent>) -> Option<JobId>          // None = save dialog cancelled
+split_document(doc_id: DocId, plan: SplitPlan, on_event: Channel<JobEvent>) -> Option<JobId>            // folder dialog
+merge_documents(inputs: Vec<MergeInput>, on_event: Channel<JobEvent>) -> Option<JobId>                  // 2..=64 inputs
+compress_document(doc_id: DocId, preset: CompressPreset, on_event: Channel<JobEvent>) -> Option<JobId>
+cancel_job(job_id: JobId) -> ()                                  // unknown or finished id is not an error
+```
+
+```ts
+type SourceId = number; type JobId = number;
+interface PageSlotInfo { id: PageId; width: number; height: number /* pt, unrotated CropBox */;
+  rotation: 0 | 90 | 180 | 270; rev: number; label: string | null; origin: 'file' | 'blank' | 'imported' }
+type PageCommand =   // members of DocCommand, wire `{ type, ..fields }`
+  | { type: 'rotatePages'; pages: PageId[]; quarterTurns: -1 | 1 | 2 }
+  | { type: 'deletePages'; pages: PageId[] }
+  | { type: 'movePages'; pages: PageId[]; toIndex: number }
+  | { type: 'insertBlankPage'; at: number; width?: number; height?: number }
+  | { type: 'insertPages'; source: SourceId; pages: number[] /* source indices, ≤ 5 000 */; at: number };
+type SourceResult = { type: 'ready'; sourceId: SourceId; displayName: string; pageCount: number }
+                  | { type: 'failed'; code: ErrorCode; key: string; params?: UiParams };
+type SplitPlan = { type: 'everyN'; n: number /* 1..=10 000 */ } | { type: 'before'; pages: PageId[] };   // ≤ 1 000 outputs
+type MergeInput = { type: 'document'; docId: DocId } | { type: 'source'; sourceId: SourceId };
+type CompressPreset = 'lossless' | 'print' | 'ebook' | 'screen';
+type JobEvent =
+  | { type: 'progress'; phase: 'read' | 'images' | 'write' | 'validate'; done: number; total: number }
+  | { type: 'done'; outputs: number; bytesBefore: number; bytesAfter: number;
+      warnings: ('signaturesRemoved' | 'formsDropped')[]; opened: DocumentInfo | null }
+  | { type: 'cancelled' } | { type: 'failed'; code: ErrorCode; key: string; retryable: boolean; params?: UiParams };
+```
+
+- *Order is model state.* `DocState.pages` is the order; `ChangeSet.pages` is `Option<Vec<PageSlotInfo>>` (the full list, only when it changed). `DocumentInfo.pages` carries the same list, so `viewer/fileRotation.ts` reads `rotation` from it and `get_text_layer`'s `rotation` becomes redundant.
+- *Engine mapping.* Commands translate `PageId → engine_index` before every engine job and back for outline and link targets. The engine document is append-only: rotate is `set_rotation`, inserts append (`create_page_at_end`, `copy_pages_from_document`), delete and move touch only the model. Mirroring jobs run at `Control` priority before the model applies.
+- *Frontend.* `stores/pages` holds the `PageSlotInfo[]` per document from `DocumentInfo`/ChangeSet; `layout.ts` builds rows from it, so a move relayouts without renders. `features/pages`: the organizer grid (virtualized thumbnails, multi-select, drag to `movePages`), insert/extract/split/merge/compress dialogs, one progress row per job in the status bar.
+- *Save.* Incremental page-tree rewrite or Full per ADR-036 §5; `SaveAsOptions.cleanCopy: boolean` selects Full. Signed or certified + any page change → `needs_confirmation{breaksSignature}`.
+- *Limits.* 50 000 live pages, 60 000 engine pages, ≤ 50 000 ids per page list (unique, existing), 5 000 pages per insert, sources ≤ 512 MiB each and 1 GiB in all, ≤ 2 jobs at once, 10 min per job; `image::Limits` 10 000 px per side, 50 MP, 256 MiB; Flate output ≤ 256 MiB per stream; deep copy ≤ 1 000 000 objects.
 
 ## 6. Pushes (Rust → UI, never with paths)
 
@@ -346,4 +389,4 @@ The spike layout (`lib.rs`, `main.rs`, `error.rs`, `engine/`, `commands/`, `docu
 | returns images as base64 or JSON | switch to the `ipc::Response` frame |
 | returns `String` errors | switch to `AppError` → `UiError` |
 | has sync commands | make them `async` |
-| addresses pages by index | address them by `PageId` (identity mapping until M3) |
+| addresses pages by index | address them by `PageId` (stable ids, mapped to engine indices: ADR-036) |

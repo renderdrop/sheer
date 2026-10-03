@@ -1133,6 +1133,132 @@ Motion as About.
 | `save.discard` / `.cancel` | Don't Save / Cancel | Nicht speichern / Abbrechen |
 | `save.failed` | Couldn't save "{name}". | „{name}“ konnte nicht gespeichert werden. |
 
+### 3.28 Organize mode (M3)
+
+**Purpose:** reorder, rotate, delete, insert and extract pages on a grid. Pages (`tool-pages`, P) is a mode, not one-shot: it
+ends with Done, P, Esc (tool level, §2.3) or Enter on a page; the viewer returns at the focused page (§4.6 clone from the cell).
+
+**Slot.** The grid replaces the canvas in its track (`<main>`, radius 16, `--color-canvas`). The left panel collapses (layout
+collapse) and returns on exit. Inspector: closed in `auto`; `open` shows the selection read-only. Read-only file: Pages `aria-disabled`.
+
+**Anatomy.** Top, inset 8: organize bar, G1 40 h per §3.3: `rotate-ccw` · `rotate-cw` · `trash-2` | `file-plus` Insert menu ·
+`file-output` Extract… · `scissors` Split… | spacer | Slider + Field `organize.size` (`--grid-thumb` 96–256, step 32, persisted) |
+primary sm `organize.done`. Below, the grid scrolls: padding 24, gap 24. Cell: square `--grid-thumb` box, thumbnail centred,
+radius 4, `--page-shadow`; 8 below the §3.9 pill: label, plus number when different ("iii · 3"). Hover: §3.0 fill behind the
+cell (radius 8, padding 4); selected §3.0; focus ring radius 8.
+
+**Selection.** Click; primary+click toggles; Shift+click ranges; primary+A; a drag on empty space draws a marquee (1 px accent).
+Commands act on the selection, else the focused page.
+
+**Drag.** After 4 px the selection lifts into a drag card (MOTION §4.5 lift, follows the pointer, `--z-drag`, ≤ 3 stacked
+thumbnails + count badge); sources fade to .4. An insertion marker, 2 px accent pill of cell height (`--insert-marker`), sits in
+the nearest gap; edges auto-scroll. Drop: FLIP reflow (base); Esc: card returns. Reduced motion: no lift, no FLIP.
+
+**Commands** (one undo step each). Rotate: primary+L / R (view rotation off here). Delete: no confirm, toast `organize.deleted`
++ Undo; never the last page. Insert (blank, sized like its neighbour; or from file, Rust's Open dialog) goes after the focused page,
+else at the end; inserted pages become the selection and pulse (§4.7).
+
+**Keyboard / A11y.** `role=listbox` `aria-multiselectable`, roving 2D arrows, Space toggles, Shift+arrows extend, Alt/Option+arrows
+move the selection (ADR-016 amendment). Options `organize.page`; changes announced politely. Forced colors: `Highlight`.
+
+| Key | en | de |
+|---|---|---|
+| `organize.done` / `.insert` | Done / Insert | Fertig / Einfügen |
+| `organize.blank` / `.fromFile` | Blank page / Pages from file… | Leere Seite / Seiten aus Datei… |
+| `organize.size` / `.page` | Thumbnail size / Page {label} ({n} of {total}) | Miniaturgröße / Seite {label} ({n} von {total}) |
+| `organize.deleted` | {n, plural, one {Page deleted} other {# pages deleted}} | {n, plural, one {Seite gelöscht} other {# Seiten gelöscht}} |
+| `organize.moved` | Moved to position {n} | An Position {n} verschoben |
+
+### 3.29 Merge (M3)
+
+**Suggestion.** Dropping two or more PDFs (window or empty state) opens nothing yet: an info banner (§3.12) `merge.suggest` with
+primary sm `merge.merge` and secondary sm `merge.tabs`; its `x` drops the files. Non-modal: the open document stays usable; a new
+drop replaces the banner. One PDF opens as today. Also More / macOS File: "Merge files…" (sheet with the active document first).
+
+**Sheet.** Dialog as §3.19, 560 w (`--sheet-width`), padding 24: `files` tile | `merge.title` `--text-xl`; 16 below a list
+(`role=listbox`, max 6 rows visible, then scrolls): rows 56 per §3.11 recents: `grip-vertical` 16 | thumbnail 32 × 40 | name over meta
+`merge.meta` | sm `x` (`merge.remove`). Under it secondary sm `merge.add` (Rust Open dialog) and meta `merge.total`. Footer
+trailing: secondary `merge.cancel`, primary `merge.merge`.
+
+**Reorder.** Pointer drag on a row with the §3.28 drag card (one row) and a horizontal 2 px marker in the 8 px row gap; keys:
+Alt/Option+Up/Down move the focused row (announced `organize.moved`). An encrypted file asks §3.19 when added; a broken one shows
+`circle-alert` + `merge.unreadable` and blocks Merge until removed. Fewer than two files: Merge `aria-disabled`.
+
+**Result.** Merge shows a 16 spinner, then the sheet closes and a new tab `merge.untitled` opens, unsaved (edited dot); Save goes
+to Save As. Failure: error banner. Motion as About; reduced motion opacity only.
+
+| Key | en | de |
+|---|---|---|
+| `merge.suggest` | Merge {n} files into one document? | {n} Dateien zu einem Dokument zusammenführen? |
+| `merge.merge` / `.tabs` | Merge… / Open as tabs | Zusammenführen… / Als Tabs öffnen |
+| `merge.title` / `.add` / `.remove` | Merge files / Add files… / Remove {name} | Dateien zusammenführen / Dateien hinzufügen… / {name} entfernen |
+| `merge.meta` / `.total` | {pages} pages · {size} / {n} pages in total | {pages} Seiten · {size} / {n} Seiten insgesamt |
+| `merge.unreadable` / `.cancel` / `.untitled` | Can't read this file / Cancel / Merged document | Datei nicht lesbar / Abbrechen / Zusammengeführtes Dokument |
+
+### 3.30 Split and Extract (M3)
+
+**Entry.** Organize bar Split… / Extract…, More "Split…" / "Extract pages…", macOS File menu. Extract in Organize with a
+selection goes straight to Rust's Save As (default name `split.extractName`); everywhere else it opens this dialog on Extract.
+
+**Dialog** as §3.19, 480 w (`--dialog-width-md`): `scissors` tile | `split.title`. A segmented control (§3.13, 32 h) `split.every` ·
+`split.ranges` · `split.extract`, then the field slot:
+- Every: md Field N (1 … n − 1, default 1), meta `split.pages`.
+- Ranges / Extract: full-width md text field, placeholder `split.placeholder`; commas separate, `8-` runs to the end; ranges may
+  not exceed n. Validation 150 ms after typing: `aria-invalid` + `split.invalid` in the reserved 16 px error slot.
+
+**Preview** (`role=status`, polite): meta `split.preview` with the first three ranges, "…" after. **Naming** (Every, Ranges): text
+field `split.naming`, default `{name}-{n}`, tokens `{name}` `{n}` `{pages}`; meta example `split.example`. Footer: secondary Cancel,
+primary `split.split` (Rust's native folder dialog, then write) or `split.save` (Save As). The UI never sees a path; Rust never
+overwrites (adds " (2)").
+
+**Progress.** Primary shows a spinner; > 1 s, a progress bar (4 h pill, `--color-track`, accent fill, `role=progressbar`) with
+Cancel. Done: dialog closes, toast `split.done` + `split.show` (OS file manager). Errors: banner. Reduced motion: bar steps.
+
+| Key | en | de |
+|---|---|---|
+| `split.title` / `.every` / `.ranges` / `.extract` | Split or extract / Every N pages / By ranges / Extract | Teilen oder extrahieren / Alle N Seiten / Nach Bereichen / Extrahieren |
+| `split.pages` / `.placeholder` | pages per file / e.g. 1-3, 5, 8- | Seiten pro Datei / z. B. 1-3, 5, 8- |
+| `split.invalid` | Use pages 1 to {n}, e.g. 1-3, 5, 8-. | Seiten 1 bis {n} verwenden, z. B. 1-3, 5, 8-. |
+| `split.preview` | {n, plural, one {Creates 1 file} other {Creates # files}}: {ranges} | {n, plural, one {Erzeugt 1 Datei} other {Erzeugt # Dateien}}: {ranges} |
+| `split.naming` / `.example` | File names / e.g. {example} | Dateinamen / z. B. {example} |
+| `split.split` / `.save` / `.extractName` | Split… / Save As… / {name} pages {range} | Teilen… / Speichern unter… / {name} Seiten {range} |
+| `split.done` / `.show` | {n} files saved / Show in folder | {n} Dateien gespeichert / Im Ordner zeigen |
+
+### 3.31 Compress (M3)
+
+**Entry.** More "Compress…" and macOS File menu (`compress`, `file-archive`). Dialog as §3.19, 480 w: `file-archive` tile |
+`compress.title`; meta `compress.now`.
+
+**Presets** (`role=radiogroup`, roving Up/Down, selection follows focus): three rows 64, radius 12, padding 12, §3.0 selected:
+name 600 over description meta, trailing estimate `--text-sm` tabular. Default Balanced, last choice persisted.
+
+| Preset | Images | Description key |
+|---|---|---|
+| Small | 96 dpi, JPEG q 50 | `compress.smallHint` |
+| Balanced | 150 dpi, q 70 | `compress.balancedHint` |
+| High quality | 220 dpi, q 85 | `compress.highHint` |
+
+All presets also recompress streams losslessly and drop unused objects. **Estimate:** Rust samples pages on open; until then a 12
+spinner; then `compress.estimate`; under 5 % gain `compress.little`.
+
+**After** (radio pair): `compress.openNew` (default) · `compress.saveAs`. Footer: Cancel, primary `compress.go`.
+
+**Progress.** Body keeps its height; the presets yield to a progress bar (§3.30) + meta `compress.progress`; Cancel stays and
+stops the job (nothing changes). Done: a new unsaved tab `compress.untitled`, or Rust's Save As; toast `compress.done`. Result
+not smaller: nothing opens, meta `compress.noGain` in place, Close. Errors: banner. Motion as About; reduced motion opacity only.
+
+| Key | en | de |
+|---|---|---|
+| `compress.title` / `.now` | Compress / Now {size} | Komprimieren / Aktuell {size} |
+| `compress.small` / `.balanced` / `.high` | Small / Balanced / High quality | Klein / Ausgewogen / Hohe Qualität |
+| `compress.smallHint` / `.balancedHint` / `.highHint` | For email; images look softer / Good for most uses / For print; smaller savings | Für E-Mail; Bilder weicher / Für die meisten Zwecke / Für den Druck; spart weniger |
+| `compress.estimate` / `.little` | ≈ {size} (−{pct} %) / Little to gain | ≈ {size} (−{pct} %) / Kaum Ersparnis |
+| `compress.openNew` / `.saveAs` / `.go` | Open as new document / Save as file… / Compress | Als neues Dokument öffnen / Als Datei speichern… / Komprimieren |
+| `compress.progress` / `.done` | Page {i} of {n} / Compressed to {size} | Seite {i} von {n} / Auf {size} komprimiert |
+| `compress.untitled` / `.noGain` | {name} (compressed) / This file can't be made smaller. | {name} (komprimiert) / Diese Datei lässt sich nicht verkleinern. |
+
+**Tokens (new, §3.28–§3.31):** `--grid-thumb` 160 (96–256), `--insert-marker` 2, `--sheet-width` 560, `--dialog-width-md` 480.
+
 ## 4. Contrast verification
 
 Worst points (ADR-020): `--surface` over the darkest field point (light `#C6C7FB` → glass `rgb(229,229,254)`; dark

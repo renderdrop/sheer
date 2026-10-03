@@ -964,3 +964,98 @@ itself uses the tag's sources, so a tag older than this workflow still builds; t
 4. **Save.** The fingerprint is compared when the file is read and again right before the rename (the build and the backup take time); a missing fingerprint on either side counts as changed (`needs_confirmation`, `ack.fileChanged` overrides). At most one build runs per document and app (`BuildSlot`): after `engine_timeout` the thread keeps running, and a new save is refused (`save_failed`) until it ends. A skipped backup is `warnings: ["backupSkipped"]` in the `SaveResult`. A failed rollback is logged. `SaveAck.rewrite_encrypted` is removed: an encrypted file is refused (`unsupported_feature`) and nothing could answer it; it returns with the full rewrite of M3 (ADR-004 §5). The backup folder is `0700` on Unix.
 5. **CSP `style-src 'unsafe-inline'` stays.** React sets `style` attributes (positions of pages, overlays and the scroll, sizes from tokens), which only `'unsafe-inline'` (or `'unsafe-hashes'` with a hash for every value, impossible for computed ones) allows; a nonce does not cover attributes. Scripts have no inline allowance (`script-src` falls back to `default-src 'self'`). Inline style cannot run code; the residual is CSS-based exfiltration, which needs an injection that the text-only rendering of PDF strings (P7) prevents. `security_baseline.rs::the_release_never_uses_the_dev_csp` pins that the release `csp` is not `devCsp`, has no dev server and no inline script, and that the release workflow builds with the config as it is.
 6. **deny.toml** allows only licenses a shipped target uses: `Apache-2.0 WITH LLVM-exception`, `BSD-2-Clause` and `BSL-1.0` were removed (checked per target as `scripts/check.sh` does). A dependency that needs one adds it back with its ADR-000 line.
+
+## ADR-036 — Page operations (M3)
+
+**Status:** accepted (2026-10-03). Amends ADR-002 §7, ADR-003 §6, ADR-004 §2, ADR-033 §1.
+
+**Context.** `PageId` is the file's page index ("identity until M3"). M3 adds rotate, delete, reorder, insert (blank, from a file) as undoable
+edits, and extract, split, merge, compress as new-file producers, on 500+ page documents, with hostile inputs on both sides.
+
+**Options.** (a) Mutate PDFium's page list in step with the model (`FPDFPage_Delete`, `FPDF_MovePages`): every move shifts indices of
+every cached render, text layer and hidden annotation, and pdfium-render has no safe `FPDF_MovePages`. (b) PDFium's in-memory document
+is **append-only**; order lives only in the model and engine indices never shift. (c) A second engine document per import source:
+routing per page, more PDFium state to replay in M7. → **(b)** for the live view, lopdf for every write.
+
+**Decision.**
+
+1. **Stable ids.** `PageId` is a per-document `u32` from a counter that never reuses: file page *i* gets id *i* at open (today's ids
+   stay valid), new pages get the next ids. Order is model state:
+   `DocState.pages: Vec<PageSlot { id, source: PageSource, engine_index: u32, rotation: u16, rev: u32, size: [f32; 2] }>` with
+   `PageSource = File { index } | Blank | Imported { source: SourceId, index }`. Annotations keep `page_id` and therefore follow moves and
+   rotations for free (page space is before `/Rotate`, ADR-003 §1). Every engine request maps `PageId → engine_index` in the command layer;
+   engine answers (outline and link targets) map back through the reverse map. A target on a deleted page is `None` in the UI's eyes (the
+   UI checks membership in the current list; outline items show disabled).
+2. **Page commands** (one undo step each, `model::command`, labels `page.rotate|delete|move|insertBlank|insert`):
+   - `RotatePages { pages, quarterTurns: -1 | 1 | 2 }` → inverse with the negated turn; `rev += 1` per page.
+   - `DeletePages { pages }` removes the slots **and** their annotations (with replies); inverse `RestorePages { slots: Vec<(u32, PageSlot)>, annotations: Vec<Slot>, imported: Vec<PageId> }` (internal). Deleting every page is `invalid_argument` (`lastPage`).
+   - `MovePages { pages, toIndex }`: moved pages keep their relative order and land at `toIndex` of the list without them; inverse is internal `ReorderPages { order: Vec<PageId> }`.
+   - `InsertBlankPage { at, width?, height? }`: missing size = the unrotated size of the page before `at`, else after, else A4.
+   - `InsertPages { source: SourceId, pages: Vec<u32> /* source indices */, at }`.
+   Inverses of inserts remove the slots; redo re-adds them with the **same** ids and engine indices.
+3. **Mirroring into PDFium** (`Control` jobs in `engine::pages`, before the model applies; a failure leaves the model untouched):
+   - rotate → `PdfPage::set_rotation` on the engine page (undo sets it back), `pageRev += 1`.
+   - delete, move → **no engine call**; the slot is just unmapped/reordered.
+   - insert blank → `PdfPages::create_page_at_end` (size from the command); insert from file →
+     `PdfPages::copy_pages_from_document` (`FPDF_ImportPages`) from a short-lived second `PdfDocument` loaded from the source bytes, **appended
+     at the end**, then the source document is closed. Imported pages' annotations are read by `engine::import` like file pages.
+   - The engine document holds ≤ 60 000 pages including unmapped ones (`limit_exceeded`, `pages`); a save resets it.
+   - Caches: render, text and thumbnail keys are `doc:pageId:pageRev…`, so a move or delete invalidates nothing and an undo hits the cache.
+     Search walks a snapshot of the order; the UI drops hits of removed pages and sorts by the current order. Hidden-annotation indices
+     (ADR-003 §4) are engine indices, which never shift.
+4. **Import sources.** `pick_pdf_sources` (Rust dialog) reads each chosen file through `intake::admit` into memory: ≤ 512 MiB each,
+   ≤ 1 GiB and ≤ 32 sources in all, encrypted sources `unsupported_feature`. `SourceRegistry` (app-level) holds `Arc<SourceBytes>`; a
+   document that inserted from a source pins its `Arc` until close or the next successful save (history is dropped then, ADR-033 §2).
+5. **Save: incremental by default** (`pdfwrite::pagetree`):
+   - Rotations only → re-append the changed page dicts with `/Rotate`.
+   - Membership or order changed → re-append the root `/Pages` object (same object number, so `/Root` is untouched) with flat `/Kids`
+     (≤ 512 pages) or a two-level tree of new nodes (≤ 256 kids each) and the new `/Count`; every kept page is re-appended with its new
+     `/Parent` and the inherited `/Resources /MediaBox /CropBox /Rotate` materialized. Old intermediate nodes become unreferenced.
+   - Blank page → new dict, `/MediaBox`, empty `/Resources`, no `/Contents`.
+   - Imported page → iterative deep copy of the object closure of the source page (visited set, ≤ 1 000 000 objects, `/Parent` cut,
+     annotation `/P` remapped), renumbered after the target's highest id. Widgets are dropped (no form merge until M4), links with a
+     destination outside the copied set lose it; `/StructParents` and `/B` are removed.
+   - Top-level `/AcroForm /Fields` is re-appended without fields whose every widget sits on a deleted page.
+   - Dangling outline/named destinations to deleted pages are left in incremental saves (the old page objects are still in the file;
+     readers fail the jump quietly).
+   - After `ReplaceFile`, slot *i* becomes `File { index: i }` with `engine_index = i`; ids stay, so the UI keeps its keys.
+   **Full rewrite** (`SaveMode::Full`) is required for: Save As "Clean copy" (the only way deleted pages leave the file, which the save
+   banner says once after a delete), a file lopdf had to repair or whose page tree has a cycle, depth > 64 or a wrong `/Count`, and all of §6.
+   A full rewrite replaces every reference to a deleted page object with `null` and removes nulls from `/Kids`, `/Fields` and `/Annots`.
+   **Signatures:** any page change in a signed or certified file returns `needs_confirmation{breaksSignature}` even when incremental
+   (page changes are never "allowed changes"); the UI defaults to Save As.
+6. **New-file operations** (`pdfwrite::produce`, one blocking thread per job, 64 MB stack, `catch_unwind`, ≤ 2 jobs at once, 10 min
+   deadline, temp file + atomic rename, lopdf re-parse + PDFium test open before rename). Inputs are the **current model state**
+   (unsaved annotations and page edits included) through the save builder in Full mode. Results are new files chosen in a Rust save/folder
+   dialog; extract, merge and compress open their result as a normal document; split reports the count. No untitled in-memory documents in
+   M3. Encrypted inputs are refused. Signature values and `/Perms` are removed (`warnings: ["signaturesRemoved"]`).
+   - extract: subset of `PageId`s. split: `everyN` (1..=10 000) or `before` page list; ≤ 1 000 outputs named `<stem>-NN.pdf`, `create_new`,
+     a taken name gets ` (n)`. merge: ≤ 64 inputs (open documents and sources), ≤ 50 000 pages, ≤ 2 GiB; `/AcroForm` only if exactly one
+     input has forms (else `formsDropped`); outline = one item per input.
+   - compress presets: `lossless` (prune, dedupe identical streams, Flate unfiltered streams, object streams); `print` 300 dpi JPEG q85;
+     `ebook` 150 dpi q70; `screen` 96 dpi q55. Target pixels per image = the largest page it is used on × dpi (an upper bound, no content
+     stream parsing). Only 8-bit DeviceGray/DeviceRGB (or ICC N=1/3) images with `DCTDecode` or `FlateDecode` are touched; JPX, JBIG2,
+     CCITT, Indexed, CMYK, masks, `/Decode`, 16 bpc are left as is; SMasks are kept. A recoded stream replaces the original only if smaller.
+   - Crate: `image` 0.25 (MIT OR Apache-2.0, image-rs, actively released), `default-features = false, features = ["jpeg"]` (decode via
+     `zune-jpeg`, MIT OR Apache-2.0 OR Zlib; image's own JPEG encoder; `imageops::resize` Triangle). No PNG, TIFF, WebP or other decoders.
+     `image::Limits`: ≤ 10 000 px per side, ≤ 50 MP, `max_alloc` 256 MiB; an image over a limit stays untouched. Flate decoding uses
+     `flate2` with a 256 MiB output cap per stream (bomb guard), never lopdf's unbounded `decompressed_content`.
+   - Progress and cancel: `Channel<JobEvent>` (progress ≤ every 100 ms); `cancel_job` sets an `AtomicBool` read between objects/pages; a
+     cancelled job deletes its temp files and sends `cancelled`.
+7. **Limits** (`limits.rs`): ≤ 50 000 live pages per document, ≤ 5 000 pages per insert, page lists unique and existing, `toIndex` ≤ len,
+   `ChangeSet.pages` = the full `PageSlotInfo` list only when the list changed.
+
+**Consequences.** Moves and deletes cost no PDFium work and no re-render. Deleted and undone-insert pages stay in PDFium memory until save.
+Incremental saves after deletes keep the removed content recoverable, so "Clean copy" is the privacy path. Imported forms, outlines of
+merged inputs and dangling destinations in incremental saves are deferred (M4/v1.1). `image` + `zune-jpeg` (+ `flate2`) are logged in
+`docs/LICENSES.md`.
+
+## ADR-037 — M3 organize UI (DESIGN §3.28–§3.31)
+
+**Decision.** (1) Pages is a mode, not a one-shot tool: the page grid takes the canvas track, the left panel collapses; leaving returns to
+the viewer at the focused page. (2) In Organize, primary+L/R rotate the selected pages (file rotation, ADR-036); view rotation is off.
+(3) Delete has no confirm (toast with Undo) and never removes the last page. (4) Insert goes after the focused page, else at the end.
+(5) A multi-file drop shows an info banner ("Merge into one" / "Open as tabs"); its × opens nothing. (6) Split writes only into a folder
+chosen in Rust's native dialog; the UI never sees a path; Rust never overwrites (" (2)" suffix). (7) Compress presets at 96 / 150 / 220 dpi;
+if the result is not smaller, nothing opens and the UI says so. (8) One shared progress bar (§3.30) for all new-file jobs.
+New tokens: `--grid-thumb` 160 (96–256), `--insert-marker` 2, `--sheet-width` 560, `--dialog-width-md` 480.
