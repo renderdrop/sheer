@@ -1212,3 +1212,38 @@ Form tool options, More and the macOS Edit menu; its confirm focuses Cancel; und
 on save). (4) The Sign tool opens a menu popover; signatures are always aspect-locked; the date follows the OS region and is fixed text.
 (5) Library: at most 8 entries per kind; key in the OS keychain; when the keychain is unavailable, entries live for the session only
 (nothing written, ADR-041 §4); Undo after delete stays inline in the row (toasts sit under the modal layer).
+(6) The field highlight toggle is a UI preference kept in `localStorage` (`sheer.formHighlight`, default on), not in the document or the backend.
+
+## ADR-043 — Politur M4, Rust half
+
+**Decision.** (1) **Pre-scan (amends ADR-040):** `/Length` is resolved, and refused when it cannot be, only for `/ObjStm` and `/XRef`
+streams (the only ones lopdf decodes at load); every other stream is charged nothing and ends at its length when `endstream`
+follows, else at the next `endstream`. Lengths written `120.0` or `+5` read as whole numbers; an indirect length may live anywhere. A
+number object defined twice with different values, or also as something else, is ambiguous and refuses a decoded stream that points at
+it (incremental updates cannot hide a bomb behind the last definition); decoded streams are charged per definition (their sum).
+Duplicate or non-name keys refuse only stream dictionaries (lopdf parity for the rest). (2) **Flatten:** a `NoRotate` annotation
+(`/F` bit 5) keeps its displayed upper-left corner and is drawn upright on a rotated page (`placement_upright`); the appearance is fitted
+to the rect as if the page were not turned, so on a 90 degree page the burned box is the rect's width by its height, hanging down and right
+from the anchor. The copying of resources is bounded to 400 000 entries over the file (a shared huge `/XObject` dictionary is copied
+into every page). (3) **Library:** the keychain distinguishes a store that failed a call (`Unreadable`: treated like no keychain for
+that call, never locks, never touches the file) from a secret that is not a key (`Invalid`: locks). Each OS call has a 60 s deadline on
+its own thread; one stuck call is outstanding at most (`Unavailable` for the rest). The list carries a re-encoded PNG thumbnail (96 px,
+24 KiB) of raster art. `forget_all` on a locked library renames the file that did not open to `library.bin.quarantine-<seconds>` (never
+over another file, newest 2 kept) instead of deleting it; its key goes either way. (4) **Imports:** annotations of a page that did not fit
+(per page, per document, strings budget) are counted: `DocState::import_warnings` gives `PageTruncated { page, skipped }`; they stay in
+the file untouched. No IPC command yet (the UI wave decides how to show it). (5) **Drafts:** `discard_signature_draft(draftId)` frees a
+draft (idempotent); the sheet calls it for a replaced typed draft and on close unless the draft was handed out as the answer.
+
+## ADR-043 — CI budget: Windows on main, macOS on tags and manual runs
+
+**Context.** Product-owner decision (2026-10-03): the GitHub Actions minutes are almost used up; macOS runners count ten times.
+
+**Decision.** `.github/workflows/ci.yml`: (1) a push to `main` (and a pull request) runs **Windows only**, `npm run check` (checks + tests),
+**no debug bundles**, and is skipped for docs-only changes (`paths-ignore`: `**/*.md` — includes STATE.md, ROADMAP.md, CHANGELOG.md — and
+`docs/**`). (2) **macOS** (plus the unsigned debug bundles on both platforms) runs only on a **tag push** (`v*`) and on a **manual start**
+(`workflow_dispatch`). (3) Caches: npm (setup-node), Cargo registry/git/target (actions/cache, keyed on toolchain + Cargo.lock), and the
+pinned PDFium download (re-verified against its SHA256 pin by `fetch-pdfium.sh`). `release.yml` is unchanged.
+
+**Consequences.** ORCHESTRATOR §8.6: "CI green on Windows and macOS" is met by the last finished Windows run on `main` plus **one manual
+`workflow_dispatch` run on the release candidate** at milestone end (before the tag), read once and not waited on (ADR-030); the tag push
+runs both platforms again. Amends ADR-030 §2 and FEEDBACK F6.
