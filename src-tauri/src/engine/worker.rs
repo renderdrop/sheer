@@ -78,10 +78,21 @@ fn serve<'a>(
         Job::Open {
             id,
             file,
+            password,
             confirm,
             reply,
         } => {
-            let result = guarded(|| open(pdfium, documents, sizes, id, file, confirm));
+            let result = guarded(|| {
+                open(
+                    pdfium,
+                    documents,
+                    sizes,
+                    id,
+                    file,
+                    password.as_deref().map(String::as_str),
+                    confirm,
+                )
+            });
             answer(reply, result, None, documents, crashed);
         }
         Job::Render { key, reply } => {
@@ -212,12 +223,13 @@ fn open<'a>(
     sizes: &SizeCache,
     id: DocumentId,
     file: File,
+    password: Option<&str>,
     confirm: Confirm,
 ) -> Result<u32, AppError> {
     // PDFium reads the handle intake judged; the file is not opened again by path (SECURITY I3). It owns the handle from
     // here on and closes it with the document, or at once if loading fails.
     let document = pdfium
-        .load_pdf_from_reader(file, None)
+        .load_pdf_from_reader(file, password)
         .map_err(map_load_error)?;
     let page_count = u32::try_from(document.pages().len())
         .map_err(|_| AppError::logged(ErrorCode::DamagedFile, "negative page count"))?;

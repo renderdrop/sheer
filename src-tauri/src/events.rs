@@ -15,7 +15,7 @@ use std::sync::{Mutex, MutexGuard, PoisonError};
 use serde::Serialize;
 use tauri::ipc::Channel;
 
-use crate::documents::DocumentInfo;
+use crate::documents::{DocumentId, DocumentInfo};
 use crate::error::{AppError, UiError};
 use crate::limits;
 
@@ -25,6 +25,7 @@ use crate::limits;
 /// |---|---|---|
 /// | `dropHover` | `active: boolean` | a drag with files entered (`true`) or left, was cancelled or ended in a drop (`false`) |
 /// | `opened` | `document: { id, pageCount, displayName, flags }` | a document was opened, or an open one was asked for again |
+/// | `needsPassword` | `id`, `displayName` | the file is encrypted and needs its user password (ADR-026): it waits under `id` for `unlock_document`, or for `close_document` when the user cancels; never the path |
 /// | `openFailed` | `code`, `key`, `retryable`, `params?` of the error model (ARCHITECTURE §7) | a file could not be opened |
 ///
 /// `openFailed` flattens the error: it is exactly what a rejected command carries, so the UI turns it into the same
@@ -42,6 +43,10 @@ pub enum AppEvent {
     Opened {
         document: DocumentInfo,
     },
+    NeedsPassword {
+        id: DocumentId,
+        display_name: String,
+    },
     OpenFailed {
         #[serde(flatten)]
         error: UiError,
@@ -52,6 +57,11 @@ impl AppEvent {
     /// The outcome of opening one file that worked.
     pub fn opened(document: DocumentInfo) -> Self {
         Self::Opened { document }
+    }
+
+    /// The outcome of opening one file that is encrypted: the UI asks for its password.
+    pub fn needs_password(id: DocumentId, display_name: String) -> Self {
+        Self::NeedsPassword { id, display_name }
     }
 
     /// The outcome of opening one file that did not. Logs the full error locally (`UiError::from`), the UI gets code and

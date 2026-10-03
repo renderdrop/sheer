@@ -6,6 +6,11 @@
   "permissions": [
     "allow-open-document-dialog",
     "allow-open-welcome-document",
+    "allow-unlock-document",
+    "allow-list-recents",
+    "allow-remove-recent",
+    "allow-open-recent",
+    "allow-set-menu-state",
     "allow-render-page",
     "allow-set-viewport",
     "allow-get-page-sizes",

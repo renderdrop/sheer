@@ -308,6 +308,10 @@ describe('widths and the left panel (DESIGN 2, 3.3 to 3.8)', () => {
     '--splitter-width': '8px',
     '--outline-indent': '16px', // outline tree (3.15)
     '--outline-indent-max': '64px',
+    '--tabs-row-height': '32px', // document tabs (3.18)
+    '--tab-min': '120px',
+    '--tab-max': '240px',
+    '--dialog-width': '400px', // password prompt (3.19)
   };
 
   it.each(Object.entries(widths))('%s is %s', (name, value) => {
@@ -322,6 +326,10 @@ describe('widths and the left panel (DESIGN 2, 3.3 to 3.8)', () => {
       'popover-max': '--popover-max',
       'tooltip-max': '--tooltip-max',
       splitter: '--splitter-width',
+      'tabs-row': '--tabs-row-height',
+      'tab-min': '--tab-min',
+      'tab-max': '--tab-max',
+      dialog: '--dialog-width',
     };
     for (const [name, token] of Object.entries(mapped)) {
       expect(themeStatic.get(`--spacing-${name}`), name).toBe(`var(${token})`);

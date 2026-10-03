@@ -124,6 +124,27 @@ pub const MAX_PENDING_FAILURES: usize = MAX_OPEN_DOCUMENTS;
 /// defaults are used instead (the file is user-writable, so its size is not trusted).
 pub const MAX_SETTINGS_FILE_BYTES: u64 = 64 * 1024;
 
+/// Longest password that `unlock_document` takes, in bytes (ARCHITECTURE section 5). PDF passwords are far shorter; the bound keeps
+/// a hostile caller from handing the engine a megabyte to hash.
+pub const MAX_PASSWORD_BYTES: usize = 1024;
+
+/// Wrong passwords for one document after which each further attempt waits [`PASSWORD_RETRY_DELAY`] (ADR-026). Enforced in Rust,
+/// so a script in the webview cannot skip it.
+pub const FREE_PASSWORD_ATTEMPTS: u32 = 3;
+
+/// How long an attempt after the free ones waits since the last wrong one.
+pub const PASSWORD_RETRY_DELAY: Duration = Duration::from_secs(1);
+
+/// Most recent files kept and listed (ARCHITECTURE section 5, `list_recents`).
+pub const MAX_RECENTS: usize = 50;
+
+/// Longest path, in characters, that is kept as a recent file; a longer one in the stored file is dropped when it is read.
+pub const MAX_RECENT_PATH_CHARS: usize = 4096;
+
+/// Largest recents file that is read: 50 paths of at most 4096 characters in UTF-8 with escapes fit with room to spare. Anything
+/// bigger is damaged or foreign and the list starts empty.
+pub const MAX_RECENTS_FILE_BYTES: u64 = 1024 * 1024;
+
 /// Range and default of the left panel's width in px (DESIGN 2, 3.8: 192 to 400, default 248). The frontend mirrors them as
 /// `LEFT_PANEL_WIDTH` in `src/api/app.ts` and `PANEL` in `src/components/tokens.ts`; a test there fails on drift.
 pub const LEFT_PANEL_MIN_WIDTH: u16 = 192;

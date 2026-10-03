@@ -12,6 +12,7 @@ import { DropCard } from '../viewer/DropCard';
 import { useTransition } from '../viewer/openTransition';
 import { useViewer } from '../viewer/useViewer';
 import { EmptyState } from './EmptyState';
+import { useRecents } from './recents';
 
 /** After the drag left the window the card stays this long: a drop that is accepted lets it fall (MOTION 4.5); otherwise it fades out. */
 export const DROP_HOLD_MS = 250;
@@ -53,6 +54,7 @@ export function EmptyStateSlot({ platform, style }: { platform: Platform | null;
   const t = useT();
   const openKey = shortcutFor('open', platform, t);
   const target = useDropTarget(dropActive);
+  const recents = useRecents();
   return (
     <div style={style} className="relative flex min-h-0 min-w-0 overflow-auto p-1">
       <div className={cx('flex min-w-0 flex-1 transition-opacity', target.shown ? 'opacity-0' : 'opacity-100')}>
@@ -62,6 +64,8 @@ export function EmptyStateSlot({ platform, style }: { platform: Platform | null;
           opening={opening}
           onOpen={() => void runAction('open')}
           dropActive={dropActive}
+          recents={recents.rows}
+          onClearRecents={recents.clear}
         />
       </div>
       <AnimatePresence>

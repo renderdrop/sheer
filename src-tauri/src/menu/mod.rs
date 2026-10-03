@@ -43,8 +43,10 @@ struct BridgeState {
     /// The language of the OS as the UI reported it (`navigator.language`), for the language setting "system". Only the
     /// locale it names is kept, never the string.
     system: Option<MenuLocale>,
-    /// The language of the menu bar that is installed now, `None` before the first one.
-    installed: Option<MenuLocale>,
+    /// What the installed menu bar was built for, `None` before the first one: its language and whether a document was open.
+    installed: Option<(MenuLocale, bool)>,
+    /// Whether the UI has a document open (`set_menu_state`): the commands that need one are greyed without it.
+    has_document: bool,
 }
 
 impl MenuBridge {
@@ -77,13 +79,27 @@ impl MenuBridge {
         self.lock().system
     }
 
-    /// Whether the menu bar installed now is not yet in `locale`.
+    /// Whether the menu bar installed now is not yet in `locale`, or was built for another document state.
     fn needs(&self, locale: MenuLocale) -> bool {
-        self.lock().installed != Some(locale)
+        let state = self.lock();
+        state.installed != Some((locale, state.has_document))
     }
 
-    fn installed(&self, locale: MenuLocale) {
-        self.lock().installed = Some(locale);
+    /// Notes that the menu bar was installed in `locale` for the document state `has_document` read at the build.
+    fn installed(&self, locale: MenuLocale, has_document: bool) {
+        self.lock().installed = Some((locale, has_document));
+    }
+
+    fn has_document(&self) -> bool {
+        self.lock().has_document
+    }
+
+    /// Records whether a document is open. Returns whether that changed anything.
+    fn set_has_document(&self, has_document: bool) -> bool {
+        let mut state = self.lock();
+        let changed = state.has_document != has_document;
+        state.has_document = has_document;
+        changed
     }
 
     /// The state is a few plain values; a panic elsewhere cannot leave it half-updated, so a poisoned lock is safe to use.
@@ -141,6 +157,16 @@ pub fn refresh<R: Runtime>(app: &AppHandle<R>) {
     }
 }
 
+/// Tells the menu bar whether the UI has a document open (`set_menu_state`): the commands that need one are greyed without it, and
+/// Cmd+W closes the window instead of a document. The menu is built again when the state changed (macOS; nothing elsewhere).
+pub fn set_has_document<R: Runtime>(app: &AppHandle<R>, has_document: bool) {
+    if let Some(bridge) = app.try_state::<Arc<MenuBridge>>() {
+        if bridge.set_has_document(has_document) {
+            refresh(app);
+        }
+    }
+}
+
 fn rebuild<R: Runtime>(app: &AppHandle<R>) {
     if !HAS_MENU_BAR {
         return;
@@ -156,8 +182,10 @@ fn rebuild<R: Runtime>(app: &AppHandle<R>) {
     if !bridge.needs(locale) {
         return;
     }
-    match build(app, layout, locale).and_then(|menu| app.set_menu(menu)) {
-        Ok(_) => bridge.installed(locale),
+    // Read once, so the menu is built and recorded for the same state even if the UI reports another one meanwhile.
+    let has_document = bridge.has_document();
+    match build(app, layout, locale, has_document).and_then(|menu| app.set_menu(menu)) {
+        Ok(_) => bridge.installed(locale, has_document),
         // A menu bar that cannot be built leaves the app usable: the commands are on the toolbar and the keyboard.
         Err(error) => AppError::logged(ErrorCode::Internal, format!("menu: {error}")).log(),
     }
@@ -176,6 +204,7 @@ fn build<R: Runtime>(
     app: &AppHandle<R>,
     layout: &spec::Layout,
     locale: MenuLocale,
+    has_document: bool,
 ) -> tauri::Result<Menu<R>> {
     let name = app_name(app);
     let text = |key: &str| spec::text(locale, key, &name);
@@ -184,7 +213,7 @@ fn build<R: Runtime>(
     for menu in &layout.menus {
         let mut kinds = Vec::with_capacity(menu.items.len());
         for item in &menu.items {
-            kinds.push(build_item(app, item, &text, &name)?);
+            kinds.push(build_item(app, item, &text, &name, has_document)?);
         }
         let items: Vec<&dyn IsMenuItem<R>> = kinds
             .iter()
@@ -215,49 +244,76 @@ fn build_item<R: Runtime>(
     item: &ItemSpec,
     text: &dyn Fn(&str) -> String,
     app_name: &str,
+    has_document: bool,
 ) -> tauri::Result<MenuItemKind<R>> {
     Ok(match item {
         ItemSpec::Action(action) => {
-            let builder = MenuItemBuilder::with_id(action.action.as_str(), text(&action.label));
+            // While no document is open some commands are the system's instead (Cmd+W then closes the window), with a label of
+            // their own.
+            if let (false, Some(predefined), Some(label)) = (
+                has_document,
+                action.without_document,
+                action.without_document_label.as_deref(),
+            ) {
+                let label = text(label);
+                return Ok(MenuItemKind::Predefined(build_predefined(
+                    app, predefined, &label, app_name,
+                )?));
+            }
+            let builder = MenuItemBuilder::with_id(action.action.as_str(), text(&action.label))
+                .enabled(has_document || !action.requires_document);
             let builder = match &action.accelerator {
                 Some(accelerator) => builder.accelerator(accelerator),
                 None => builder,
             };
             MenuItemKind::MenuItem(builder.build(app)?)
         }
-        ItemSpec::Predefined(item) => {
-            let label = text(&item.label);
-            let label = Some(label.as_str());
-            MenuItemKind::Predefined(match item.predefined {
-                Predefined::About => PredefinedMenuItem::about(
-                    app,
-                    label,
-                    Some(AboutMetadata {
-                        name: Some(app_name.to_owned()),
-                        version: Some(env!("CARGO_PKG_VERSION").to_owned()),
-                        license: Some(env!("CARGO_PKG_LICENSE").to_owned()),
-                        ..Default::default()
-                    }),
-                )?,
-                Predefined::Services => PredefinedMenuItem::services(app, label)?,
-                Predefined::Hide => PredefinedMenuItem::hide(app, label)?,
-                Predefined::HideOthers => PredefinedMenuItem::hide_others(app, label)?,
-                Predefined::ShowAll => PredefinedMenuItem::show_all(app, label)?,
-                Predefined::Quit => PredefinedMenuItem::quit(app, label)?,
-                Predefined::Undo => PredefinedMenuItem::undo(app, label)?,
-                Predefined::Redo => PredefinedMenuItem::redo(app, label)?,
-                Predefined::Cut => PredefinedMenuItem::cut(app, label)?,
-                Predefined::Copy => PredefinedMenuItem::copy(app, label)?,
-                Predefined::Paste => PredefinedMenuItem::paste(app, label)?,
-                Predefined::SelectAll => PredefinedMenuItem::select_all(app, label)?,
-                Predefined::Minimize => PredefinedMenuItem::minimize(app, label)?,
-                Predefined::Maximize => PredefinedMenuItem::maximize(app, label)?,
-                Predefined::Fullscreen => PredefinedMenuItem::fullscreen(app, label)?,
-                Predefined::BringAllToFront => PredefinedMenuItem::bring_all_to_front(app, label)?,
-            })
-        }
+        ItemSpec::Predefined(item) => MenuItemKind::Predefined(build_predefined(
+            app,
+            item.predefined,
+            &text(&item.label),
+            app_name,
+        )?),
         ItemSpec::Separator(_) => MenuItemKind::Predefined(PredefinedMenuItem::separator(app)?),
     })
+}
+
+/// A system item (AppKit labels and acts on it) with `label`.
+fn build_predefined<R: Runtime>(
+    app: &AppHandle<R>,
+    predefined: Predefined,
+    label: &str,
+    app_name: &str,
+) -> tauri::Result<PredefinedMenuItem<R>> {
+    let label = Some(label);
+    match predefined {
+        Predefined::About => PredefinedMenuItem::about(
+            app,
+            label,
+            Some(AboutMetadata {
+                name: Some(app_name.to_owned()),
+                version: Some(env!("CARGO_PKG_VERSION").to_owned()),
+                license: Some(env!("CARGO_PKG_LICENSE").to_owned()),
+                ..Default::default()
+            }),
+        ),
+        Predefined::Services => PredefinedMenuItem::services(app, label),
+        Predefined::Hide => PredefinedMenuItem::hide(app, label),
+        Predefined::HideOthers => PredefinedMenuItem::hide_others(app, label),
+        Predefined::ShowAll => PredefinedMenuItem::show_all(app, label),
+        Predefined::Quit => PredefinedMenuItem::quit(app, label),
+        Predefined::Undo => PredefinedMenuItem::undo(app, label),
+        Predefined::Redo => PredefinedMenuItem::redo(app, label),
+        Predefined::Cut => PredefinedMenuItem::cut(app, label),
+        Predefined::Copy => PredefinedMenuItem::copy(app, label),
+        Predefined::Paste => PredefinedMenuItem::paste(app, label),
+        Predefined::SelectAll => PredefinedMenuItem::select_all(app, label),
+        Predefined::Minimize => PredefinedMenuItem::minimize(app, label),
+        Predefined::Maximize => PredefinedMenuItem::maximize(app, label),
+        Predefined::Fullscreen => PredefinedMenuItem::fullscreen(app, label),
+        Predefined::BringAllToFront => PredefinedMenuItem::bring_all_to_front(app, label),
+        Predefined::CloseWindow => PredefinedMenuItem::close_window(app, label),
+    }
 }
 
 #[cfg(test)]
@@ -386,11 +442,28 @@ mod tests {
     fn the_menu_is_rebuilt_only_when_its_language_changes() {
         let bridge = MenuBridge::new();
         assert!(bridge.needs(MenuLocale::En), "nothing is installed yet");
-        bridge.installed(MenuLocale::En);
+        bridge.installed(MenuLocale::En, false);
         assert!(!bridge.needs(MenuLocale::En));
         assert!(bridge.needs(MenuLocale::De));
-        bridge.installed(MenuLocale::De);
+        bridge.installed(MenuLocale::De, false);
         assert!(!bridge.needs(MenuLocale::De));
+        assert!(bridge.needs(MenuLocale::En));
+    }
+
+    #[test]
+    fn the_menu_is_rebuilt_when_a_document_opens_or_the_last_one_closes() {
+        let bridge = MenuBridge::new();
+        assert!(!bridge.has_document(), "no document at the start");
+        bridge.installed(MenuLocale::En, false);
+        assert!(!bridge.needs(MenuLocale::En));
+        // The same state again is nothing; a changed one is a rebuild.
+        assert!(!bridge.set_has_document(false));
+        assert!(!bridge.needs(MenuLocale::En));
+        assert!(bridge.set_has_document(true));
+        assert!(bridge.needs(MenuLocale::En));
+        bridge.installed(MenuLocale::En, true);
+        assert!(!bridge.needs(MenuLocale::En));
+        assert!(bridge.set_has_document(false));
         assert!(bridge.needs(MenuLocale::En));
     }
 

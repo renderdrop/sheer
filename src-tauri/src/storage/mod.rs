@@ -3,6 +3,7 @@
 
 pub mod atomic;
 mod open;
+pub mod recents;
 pub mod settings;
 
 pub(crate) use open::open_without_blocking;

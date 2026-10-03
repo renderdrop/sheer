@@ -363,6 +363,11 @@ fn capabilities_grant_only_the_app_commands_and_the_window_chrome_to_the_main_wi
     let mut expected = set(&[
         "allow-open-document-dialog",
         "allow-open-welcome-document",
+        "allow-unlock-document",
+        "allow-list-recents",
+        "allow-remove-recent",
+        "allow-open-recent",
+        "allow-set-menu-state",
         "allow-render-page",
         "allow-set-viewport",
         "allow-get-page-sizes",
@@ -605,6 +610,11 @@ fn build_script_declares_exactly_the_granted_commands() {
     let commands = [
         "open_document_dialog",
         "open_welcome_document",
+        "unlock_document",
+        "list_recents",
+        "remove_recent",
+        "open_recent",
+        "set_menu_state",
         "render_page",
         "set_viewport",
         "get_page_sizes",

@@ -1,0 +1,179 @@
+import { ChevronDown, FileText, X } from 'lucide-react';
+import { motion } from 'motion/react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent } from 'react';
+
+import { isModalOpen } from '../../actions/dispatch';
+import { Icon, IconButton, Menu, Tooltip, type MenuEntry } from '../../components';
+import { SELECTED_FORCED_COLORS } from '../../components/controlStyles';
+import { cx } from '../../components/cx';
+import { SPRING } from '../../components/motion';
+import { isOwnEvent, itemsOf, rovingTarget } from '../../components/roving';
+import { useT } from '../../i18n';
+import { useDocuments } from '../../stores/documents';
+import { closeTab, cycleTab } from './nav';
+
+/** Names longer than this are cut in the middle, so both the start and the extension stay readable. */
+export const MAX_TAB_CHARS = 28;
+
+/** `name` shortened in the middle to at most `max` characters (counting the ellipsis). */
+export function middleTruncate(name: string, max = MAX_TAB_CHARS): string {
+  const chars = Array.from(name);
+  if (chars.length <= max) return name;
+  const keep = max - 1;
+  const tail = Math.floor(keep / 2);
+  const head = keep - tail;
+  return `${chars.slice(0, head).join('')}…${chars.slice(chars.length - tail).join('')}`;
+}
+
+/** Ctrl+Tab and Ctrl+Shift+Tab cycle the tabs on both platforms (Cmd+Tab belongs to the macOS app switcher). */
+function useTabCycleKeys(): void {
+  useEffect(() => {
+    const onKeyDown = (event: globalThis.KeyboardEvent) => {
+      if (event.key !== 'Tab' || !event.ctrlKey || event.metaKey || event.altKey || event.defaultPrevented) return;
+      if (isModalOpen()) return;
+      event.preventDefault();
+      if (!event.repeat) cycleTab(event.shiftKey ? -1 : 1);
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, []);
+}
+
+/** Whether the strip is wider than its box, so the all-documents menu is offered. */
+function useOverflow(strip: React.RefObject<HTMLDivElement | null>, count: number): boolean {
+  const [overflowing, setOverflowing] = useState(false);
+  useLayoutEffect(() => {
+    const element = strip.current;
+    if (element === null) return;
+    const measure = () => setOverflowing(element.scrollWidth > element.clientWidth + 1);
+    measure();
+    if (typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver(measure);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [strip, count]);
+  return overflowing;
+}
+
+/**
+ * The document tabs (DESIGN 3.18): one row of tabs between the toolbar and the banner, shown while a document is open. Click
+ * selects, middle click or the x closes, Left and Right move with automatic activation, Delete closes the focused tab. The strip
+ * scrolls when the tabs reach their minimum width and then offers a menu of all documents. No drag reorder in M1.
+ */
+export function TabStrip() {
+  const t = useT();
+  const order = useDocuments((state) => state.order);
+  const byId = useDocuments((state) => state.byId);
+  const activeId = useDocuments((state) => state.activeId);
+  const strip = useRef<HTMLDivElement>(null);
+  const overflowing = useOverflow(strip, order.length);
+  useTabCycleKeys();
+
+  // Keep the active tab in view.
+  useEffect(() => {
+    const active = strip.current?.querySelector<HTMLElement>('[role="tab"][aria-selected="true"]');
+    active?.scrollIntoView?.({ inline: 'nearest', block: 'nearest' });
+  }, [activeId]);
+
+  const names = useMemo(
+    () =>
+      order.map((id) => {
+        const name = byId[id]?.displayName ?? '';
+        return { id, name: name === '' ? t('status.untitled') : name };
+      }),
+    [order, byId, t],
+  );
+
+  const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    const list = event.currentTarget;
+    if (!isOwnEvent(list, event)) return;
+    const tabs = itemsOf(list, '[role="tab"]');
+    const current = tabs.findIndex((tab) => tab === event.target);
+    if (event.key === 'Delete' && current >= 0) {
+      event.preventDefault();
+      const id = Number(tabs[current]?.dataset.id);
+      closeTab(id);
+      return;
+    }
+    const target = rovingTarget(event.key, current, tabs.length, { orientation: 'horizontal', wrap: true });
+    if (target === null) return;
+    event.preventDefault();
+    const next = tabs[target];
+    next?.focus();
+    if (next?.dataset.id !== undefined) useDocuments.getState().setActive(Number(next.dataset.id));
+  };
+
+  const menu: MenuEntry[] = names.map(({ id, name }) => ({
+    id: String(id),
+    label: name,
+    checked: id === activeId,
+    onSelect: () => useDocuments.getState().setActive(id),
+  }));
+
+  if (order.length === 0) return null;
+  return (
+    <div className="mb-1 flex h-tabs-row shrink-0 items-center gap-1 px-1" data-tabs="">
+      <div
+        ref={strip}
+        role="tablist"
+        aria-label={t('tabs.label')}
+        aria-orientation="horizontal"
+        onKeyDown={onKeyDown}
+        className="flex min-w-0 flex-1 gap-0-5 overflow-x-auto [scrollbar-width:none]"
+      >
+        {names.map(({ id, name }) => {
+          const selected = id === activeId;
+          return (
+            <motion.div
+              key={id}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1, transition: SPRING.fast }}
+              className={cx(
+                'group/tab relative flex h-tabs-row min-w-tab-min max-w-tab-max flex-1 shrink-0 items-center rounded-button ps-1-5 pe-0-5',
+                selected ? 'glass-1 text-text' : 'text-text hover:bg-control-hover active:bg-control-pressed',
+                selected && SELECTED_FORCED_COLORS,
+              )}
+              onAuxClick={(event: MouseEvent) => {
+                if (event.button === 1) {
+                  event.preventDefault();
+                  closeTab(id);
+                }
+              }}
+            >
+              <Tooltip label={name}>
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={selected}
+                  tabIndex={selected ? 0 : -1}
+                  data-id={id}
+                  onClick={() => useDocuments.getState().setActive(id)}
+                  className="flex h-full min-w-0 flex-1 cursor-pointer items-center gap-1 rounded-button text-start text-md"
+                >
+                  <Icon icon={FileText} className="text-text-muted" />
+                  <span className="min-w-0 flex-1 truncate">{middleTruncate(name)}</span>
+                </button>
+              </Tooltip>
+              <IconButton
+                size="sm"
+                icon={X}
+                label={t('tabs.close', { name })}
+                tabIndex={-1}
+                onClick={() => closeTab(id)}
+              />
+            </motion.div>
+          );
+        })}
+      </div>
+      {overflowing && (
+        <Menu
+          label={t('tabs.all')}
+          entries={menu}
+          side="bottom"
+          align="end"
+          trigger={(trigger) => <IconButton {...trigger} size="sm" icon={ChevronDown} label={t('tabs.all')} />}
+        />
+      )}
+    </div>
+  );
+}

@@ -25,6 +25,7 @@ use crate::error::{AppError, ErrorCode};
 use crate::events::AppEvents;
 use crate::menu::MenuBridge;
 use crate::platform::TransparencyWatch;
+use crate::storage::recents::{self, RecentsStore};
 use crate::storage::settings::{self, SettingsStore};
 
 /// Builds and runs the app. Returns when the last window is closed. A startup failure comes back as an [`AppError`]
@@ -47,9 +48,6 @@ pub fn run() -> Result<(), AppError> {
         .setup(|app| {
             // PDFium ships as a bundled resource (scripts/fetch-pdfium.sh), never downloaded at runtime.
             let pdfium_root = app.path().resource_dir()?.join("pdfium");
-            app.manage(AppState::new(Engine::start(engine::library_path(
-                &pdfium_root,
-            ))));
             // What the backend pushes to the UI (drag over the window, files opened by the OS) reaches it on the channel
             // the UI opens with `subscribe_app`; what happens before that waits here.
             app.manage(Arc::new(AppEvents::new()));
@@ -57,6 +55,12 @@ pub fn run() -> Result<(), AppError> {
             // of a write leaves a hidden temp file there: the ones older than an hour are removed (SECURITY D1, D7).
             let data_dir = app.path().app_data_dir()?;
             storage::atomic::sweep_stale_temp_files(&data_dir);
+            // The recent files live next to the settings; every document the user opens is noted there (never the welcome one).
+            let recents = Arc::new(RecentsStore::load(data_dir.join(recents::FILE_NAME)));
+            app.manage(
+                AppState::new(Engine::start(engine::library_path(&pdfium_root)))
+                    .with_recents(recents),
+            );
             app.manage(Arc::new(SettingsStore::load(
                 data_dir.join(settings::FILE_NAME),
             )));
@@ -84,6 +88,11 @@ pub fn run() -> Result<(), AppError> {
         .invoke_handler(tauri::generate_handler![
             commands::open_document_dialog,
             commands::open_welcome_document,
+            commands::unlock_document,
+            commands::list_recents,
+            commands::remove_recent,
+            commands::open_recent,
+            commands::set_menu_state,
             commands::render::render_page,
             commands::render::set_viewport,
             commands::render::get_page_sizes,

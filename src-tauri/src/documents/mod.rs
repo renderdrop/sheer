@@ -9,6 +9,7 @@ pub mod intake;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, MutexGuard, PoisonError};
+use std::time::{Duration, Instant};
 
 use serde::{Deserialize, Serialize};
 
@@ -144,6 +145,13 @@ fn is_unsafe_in_display_name(c: char) -> bool {
         || matches!(c, '\u{2028}' | '\u{2029}' | '\u{FFFC}')
 }
 
+/// How often a password was wrong for a locked document, and when last (ADR-026). Never the passwords themselves.
+#[derive(Debug, Default, Clone, Copy)]
+struct PasswordTries {
+    wrong: u32,
+    last_wrong: Option<Instant>,
+}
+
 #[derive(Debug)]
 struct Entry {
     path: PathBuf,
@@ -157,6 +165,9 @@ struct Entry {
     /// The UI closed the document, but the engine has not confirmed that it released it (`Registry::begin_close`). The entry stays
     /// so that the release is tried again and the engine's copy is never lost; to everybody else the document is gone.
     closing: bool,
+    /// The file needs a password and has not been unlocked: the entry waits for `unlock_document` (it has no page count yet), and
+    /// counts the wrong tries. Cleared when the document is loaded.
+    locked: Option<PasswordTries>,
 }
 
 #[derive(Debug, Default)]
@@ -197,6 +208,7 @@ impl Inner {
                 page_count: None,
                 flags: DocFlags::default(),
                 closing: false,
+                locked: None,
             },
         );
         Ok(id)
@@ -310,9 +322,76 @@ impl Registry {
         match self.lock().entries.get_mut(&id) {
             Some(entry) => {
                 entry.page_count = Some(page_count);
+                entry.locked = None;
                 Ok(())
             }
             None => Err(AppError::not_found("document")),
+        }
+    }
+
+    /// Marks a document that is still loading as waiting for its password (the engine answered `password_required`): it keeps its
+    /// id and its path, so `unlock_document` can try again, and counts against the limit on open documents. `false` for an
+    /// unknown, loaded or closing entry.
+    pub fn lock_for_password(&self, id: DocumentId) -> bool {
+        match self.lock().entries.get_mut(&id) {
+            Some(entry) if entry.page_count.is_none() && !entry.closing => {
+                entry.locked.get_or_insert_with(PasswordTries::default);
+                true
+            }
+            _ => false,
+        }
+    }
+
+    /// The name to show for a document that waits for its password; `None` for any other.
+    pub fn locked_name(&self, id: DocumentId) -> Option<String> {
+        let inner = self.lock();
+        let entry = inner.entries.get(&id)?;
+        (entry.locked.is_some() && !entry.closing).then(|| entry.display_name.clone())
+    }
+
+    /// The path and kind of a document that waits for its password, for the next attempt; `None` for any other.
+    pub fn locked_path(&self, id: DocumentId) -> Option<(PathBuf, DocKind)> {
+        let inner = self.lock();
+        let entry = inner.entries.get(&id)?;
+        (entry.locked.is_some() && !entry.closing).then(|| (entry.path.clone(), entry.kind))
+    }
+
+    /// How long an attempt at `id` made at `now` has to wait (ADR-026): nothing for the first `FREE_PASSWORD_ATTEMPTS` wrong
+    /// passwords, then `PASSWORD_RETRY_DELAY` after the last wrong one. The registry keeps the count, so the webview cannot
+    /// skip the wait.
+    pub fn password_wait(&self, id: DocumentId, now: Instant) -> Duration {
+        let inner = self.lock();
+        let Some(tries) = inner.entries.get(&id).and_then(|entry| entry.locked) else {
+            return Duration::ZERO;
+        };
+        match tries.last_wrong {
+            Some(last) if tries.wrong >= limits::FREE_PASSWORD_ATTEMPTS => {
+                (last + limits::PASSWORD_RETRY_DELAY).saturating_duration_since(now)
+            }
+            _ => Duration::ZERO,
+        }
+    }
+
+    /// Counts a wrong password for a locked document, made at `now`.
+    pub fn note_wrong_password(&self, id: DocumentId, now: Instant) {
+        if let Some(tries) = self
+            .lock()
+            .entries
+            .get_mut(&id)
+            .and_then(|entry| entry.locked.as_mut())
+        {
+            tries.wrong = tries.wrong.saturating_add(1);
+            tries.last_wrong = Some(now);
+        }
+    }
+
+    /// Forgets a document that waits for its password (the user cancelled, or the file turned out to be unusable). Returns
+    /// `true` if there was one. A loaded document is not touched: it is closed with [`Registry::begin_close`].
+    pub fn remove_locked(&self, id: DocumentId) -> bool {
+        let mut inner = self.lock();
+        match inner.entries.get(&id) {
+            Some(entry) if entry.locked.is_some() => inner.entries.remove(&id).is_some(),
+            _ => false,
         }
     }
 
@@ -785,6 +864,92 @@ mod tests {
         registry.remove(first);
         assert!(registry.claim(path("extra.pdf")).is_ok());
     }
+
+    // --- documents that wait for a password ---
+
+    #[test]
+    fn a_locked_document_keeps_its_entry_and_is_not_loaded() {
+        let registry = Registry::new();
+        let id = registry.register(path("secret.pdf")).unwrap();
+        assert_eq!(registry.locked_name(id), None);
+        assert!(registry.lock_for_password(id));
+        assert_eq!(registry.locked_name(id).as_deref(), Some("secret.pdf"));
+        assert_eq!(
+            registry.locked_path(id),
+            Some((path("secret.pdf"), DocKind::User))
+        );
+        // Not open yet: no info, no page count, and it cannot be closed like a loaded one.
+        assert_eq!(registry.info(id), None);
+        assert!(!registry.begin_close(id));
+        // Loading it clears the lock.
+        registry.set_page_count(id, 2).unwrap();
+        assert_eq!(registry.locked_name(id), None);
+        assert!(
+            !registry.lock_for_password(id),
+            "a loaded document is never locked"
+        );
+        assert!(
+            !registry.remove_locked(id),
+            "and never removed as a locked one"
+        );
+        assert!(registry.info(id).is_some());
+    }
+
+    #[test]
+    fn cancelling_removes_a_locked_entry_and_nothing_else() {
+        let registry = Registry::new();
+        let locked = registry.register(path("a.pdf")).unwrap();
+        let loaded = registry.register(path("b.pdf")).unwrap();
+        registry.set_page_count(loaded, 1).unwrap();
+        assert!(registry.lock_for_password(locked));
+        assert!(registry.remove_locked(locked));
+        assert!(!registry.remove_locked(locked));
+        assert!(!registry.remove_locked(loaded));
+        assert_eq!(registry.len(), 1);
+    }
+
+    #[test]
+    fn after_the_third_wrong_password_each_try_waits_a_second() {
+        let registry = Registry::new();
+        let id = registry.register(path("a.pdf")).unwrap();
+        registry.lock_for_password(id);
+        let start = Instant::now();
+        for _ in 0..limits::FREE_PASSWORD_ATTEMPTS {
+            assert_eq!(registry.password_wait(id, start), Duration::ZERO);
+            registry.note_wrong_password(id, start);
+        }
+        assert_eq!(
+            registry.password_wait(id, start),
+            limits::PASSWORD_RETRY_DELAY
+        );
+        assert_eq!(
+            registry.password_wait(id, start + Duration::from_millis(400)),
+            Duration::from_millis(600)
+        );
+        assert_eq!(
+            registry.password_wait(id, start + limits::PASSWORD_RETRY_DELAY),
+            Duration::ZERO
+        );
+        // Every further wrong one starts the second again.
+        let later = start + Duration::from_secs(5);
+        registry.note_wrong_password(id, later);
+        assert_eq!(
+            registry.password_wait(id, later),
+            limits::PASSWORD_RETRY_DELAY
+        );
+    }
+
+    #[test]
+    fn a_document_that_is_not_locked_never_waits() {
+        let registry = Registry::new();
+        let id = registry.register(path("a.pdf")).unwrap();
+        registry.note_wrong_password(id, Instant::now());
+        assert_eq!(registry.password_wait(id, Instant::now()), Duration::ZERO);
+        let gone = registry.register(path("b.pdf")).unwrap();
+        registry.remove(gone);
+        assert_eq!(registry.password_wait(gone, Instant::now()), Duration::ZERO);
+    }
+
     // --- display names ---
 
     #[test]

@@ -1,9 +1,10 @@
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useState, type KeyboardEvent, type ReactNode } from 'react';
 
 import logoUrl from '../../../assets/brand/logo.svg';
 import { Button } from '../../components';
 import { SELECTED_FORCED_COLORS } from '../../components/controlStyles';
 import { cx } from '../../components/cx';
+import { isOwnEvent, itemsOf, rovingTarget } from '../../components/roving';
 import { useT } from '../../i18n';
 
 /** One row of the recent files list (M1 brings the row itself: thumbnail, name, folder and age, remove). */
@@ -27,6 +28,20 @@ export interface EmptyStateProps {
   dropActive?: boolean;
   /** The recent files, at most 8 (DESIGN 3.11). Empty until the recents list lands (M1). */
   recents?: readonly RecentRow[];
+  /** Empties the recent files list (the ghost Clear button beside the heading). */
+  onClearRecents?: () => void;
+}
+
+/** Up and Down move between the rows of the recent files (roving focus, DESIGN 3.11); Enter and Delete are the rows' own. */
+function onRecentsKeyDown(event: KeyboardEvent<HTMLUListElement>): void {
+  const list = event.currentTarget;
+  if (!isOwnEvent(list, event)) return;
+  const rows = itemsOf(list, '[data-recent-open]');
+  const current = rows.findIndex((row) => row === event.target);
+  const target = rovingTarget(event.key, current, rows.length, { orientation: 'vertical', wrap: false });
+  if (target === null) return;
+  event.preventDefault();
+  rows[target]?.focus();
 }
 
 /** True while the page is hidden: the float pauses then (DESIGN 1.10). */
@@ -79,6 +94,7 @@ export function EmptyState({
   onOpen,
   dropActive = false,
   recents = [],
+  onClearRecents,
 }: EmptyStateProps) {
   const t = useT();
   return (
@@ -123,14 +139,25 @@ export function EmptyState({
         </div>
       </section>
       <section aria-labelledby="recent-heading" className="mt-4 flex flex-col gap-1">
-        <h2 id="recent-heading" className="m-0 text-sm font-semibold text-text-muted">
-          {t('emptyState.recent')}
-        </h2>
+        <div className="flex items-center justify-between">
+          <h2 id="recent-heading" className="m-0 text-sm font-semibold text-text-muted">
+            {t('emptyState.recent')}
+          </h2>
+          {recents.length > 0 && onClearRecents !== undefined && (
+            <Button variant="ghost" size="sm" onClick={onClearRecents}>
+              {t('emptyState.recentClear')}
+            </Button>
+          )}
+        </div>
         {recents.length === 0 ? (
           <p className="m-0 rounded-button p-1 text-sm text-text-muted">{t('emptyState.recentPlaceholder')}</p>
         ) : (
           <>
-            <ul className="m-0 flex list-none flex-col gap-0-5 p-0">
+            <ul
+              aria-label={t('emptyState.recentList')}
+              onKeyDown={onRecentsKeyDown}
+              className="m-0 flex list-none flex-col gap-0-5 p-0"
+            >
               {recents.map((row) => (
                 <li key={row.id}>{row.content}</li>
               ))}

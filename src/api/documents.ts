@@ -88,19 +88,31 @@ export function parseDocumentInfo(value: unknown): DocumentInfo | null {
 
 /**
  * How opening one file went: `opened` with the document (also for a file that was open already: it comes back with the id it
- * has), or `openFailed` with the error that a rejected command would have carried. Neither names the file or its path. The
- * open dialog answers with a list of these, and the backend pushes them for files dropped on the window or opened by the OS
- * (`subscribeApp` in `app.ts`), in the same shapes.
+ * has), `needsPassword` for an encrypted file (it waits in the backend under `id` for `unlockDocument`, or for `closeDocument`
+ * when the user cancels; ADR-026), or `openFailed` with the error that a rejected command would have carried. None names the
+ * file or its path. The open dialog answers with a list of these, and the backend pushes them for files dropped on the window or
+ * opened by the OS (`subscribeApp` in `app.ts`), in the same shapes.
  */
-export type OpenOutcome = { type: 'opened'; document: DocumentInfo } | { type: 'openFailed'; error: AppError };
+export type OpenOutcome =
+  | { type: 'opened'; document: DocumentInfo }
+  | { type: 'needsPassword'; id: number; displayName: string }
+  | { type: 'openFailed'; error: AppError };
 
 /** Validates one open outcome from the backend. `null` if it is not one; extra keys are dropped. */
 export function parseOpenOutcome(value: unknown): OpenOutcome | null {
   if (typeof value !== 'object' || value === null) return null;
-  const { type, document } = value as { type?: unknown; document?: unknown };
+  const { type, document, id, displayName } = value as {
+    type?: unknown;
+    document?: unknown;
+    id?: unknown;
+    displayName?: unknown;
+  };
   if (type === 'opened') {
     const parsed = parseDocumentInfo(document);
     return parsed === null ? null : { type, document: parsed };
+  }
+  if (type === 'needsPassword') {
+    return isCount(id) && typeof displayName === 'string' ? { type, id, displayName } : null;
   }
   // The error sits flat in the message, next to `type`: `toAppError` reads the fields it knows and nothing else.
   if (type === 'openFailed') return { type, error: toAppError(value) };
@@ -143,4 +155,19 @@ export async function openWelcomeDocument(): Promise<OpenOutcome> {
 
 export function closeDocument(docId: number): Promise<void> {
   return call<void>('close_document', { docId });
+}
+
+/** The longest password the backend takes, in bytes (`limits::MAX_PASSWORD_BYTES`). */
+export const MAX_PASSWORD_BYTES = 1024;
+
+/**
+ * Gives the backend the password of a document that waits for it (`needsPassword`) and resolves to the document once it is open.
+ * The password crosses once per attempt and is not kept: not here, not in a store. A wrong password rejects with
+ * `password_required` (after the third wrong one the backend makes each try wait a second); any other rejection means the
+ * document is gone. An answer that is not a `DocumentInfo` is an internal error.
+ */
+export async function unlockDocument(docId: number, password: string): Promise<DocumentInfo> {
+  const parsed = parseDocumentInfo(await call<unknown>('unlock_document', { docId, password }));
+  if (parsed === null) throw toAppError(null);
+  return parsed;
 }

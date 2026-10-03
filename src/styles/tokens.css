@@ -123,6 +123,8 @@
   --spacing-toolbar-row: var(--toolbar-row-height);
   --spacing-banner-min: var(--banner-min-height);
   --spacing-status: var(--status-height);
+  --spacing-search-row: var(--search-row-height);
+  --spacing-search-progress: var(--search-progress-height);
   --spacing-status-name: var(--status-name-max);
   --spacing-caption-button: var(--caption-button-width);
   --spacing-chrome-inset: var(--chrome-inset-mac);
@@ -134,6 +136,11 @@
   --spacing-logo-hero: var(--logo-hero);
   --spacing-logo-slot: var(--logo-slot);
   --spacing-pill: var(--pill-height);
+  /* Document tabs (DESIGN 3.18) and the modal dialogs (3.13, 3.19): h-tabs-row, min-w-tab-min, max-w-tab-max, w-dialog. */
+  --spacing-tabs-row: var(--tabs-row-height);
+  --spacing-tab-min: var(--tab-min);
+  --spacing-tab-max: var(--tab-max);
+  --spacing-dialog: var(--dialog-width);
 
   /* Type (DESIGN 1.5). Size / line height, weight and tracking per step. Weights are 400 and 600 only. */
   --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
@@ -266,6 +273,8 @@
   --splitter-width: 8px;
   --outline-indent: 16px; /* outline tree: indent per level, capped at --outline-indent-max (DESIGN 3.15) */
   --outline-indent-max: 64px;
+  --search-row-height: 48px; /* search panel: a hit row; the page header row is --control-sm (DESIGN 3.16) */
+  --search-progress-height: 2px; /* search panel: the progress pill bar */
 
   /* Layout slots (DESIGN 2, 2.2, 3.11). Rows: caption 32 (Windows only), toolbar row 56 (toolbar 40 + 8 above and below),
      banner at least 48, status 32. Columns: inspector 288, canvas at least 360. The widths are mirrored as numbers in
@@ -282,6 +291,10 @@
   --scrollbar-size: 8px;
   --scrollbar-inset: 2px;
   --empty-max-width: 560px; /* the empty state's column */
+  --tabs-row-height: 32px; /* the tab strip (DESIGN 3.18); 0 without a document, with an 8 px gap below it when shown */
+  --tab-min: 120px;
+  --tab-max: 240px;
+  --dialog-width: 400px; /* the password prompt (DESIGN 3.19) */
   /* Scroll-edge scrim (DESIGN 2): 24 px in all, the first 8 solid canvas color, the rest a fade. */
   --scrim-height: 24px;
   --scrim-solid: 8px;
@@ -882,5 +895,27 @@
   &[data-pulse]::after {
     will-change: transform, opacity;
     animation: pulse-ring calc(var(--motion-fast) + var(--motion-slow)) var(--ease-spring);
+  }
+}
+
+/* Text layer and search hits (DESIGN 3.16, 3.17). The page's overlay is scaled by --page-scale (px per point), so a px size is divided by it. */
+[data-text-layer] ::selection,
+[data-text-layer]::selection {
+  background: var(--color-doc-text-select);
+  color: transparent;
+}
+
+[data-search-hit] {
+  background: var(--color-doc-hit);
+  border-radius: calc(2px / var(--page-scale, 1));
+}
+
+[data-search-hit="active"] {
+  outline: calc(2px / var(--page-scale, 1)) solid var(--color-doc-select);
+}
+
+@media (forced-colors: active) {
+  [data-search-hit="active"] {
+    outline-color: CanvasText;
   }
 }

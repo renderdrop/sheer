@@ -35,6 +35,8 @@ use std::sync::Arc;
 use std::thread;
 use std::time::{Duration, Instant};
 
+use zeroize::Zeroizing;
+
 use crate::documents::{DocFlags, DocumentId};
 use crate::error::{AppError, ErrorCode};
 use crate::limits;
@@ -127,6 +129,8 @@ pub(crate) enum Job {
         id: DocumentId,
         /// The file as intake judged it (`documents::intake`): PDFium reads this very handle, and no path is opened again.
         file: File,
+        /// The password the user typed for an encrypted file (`Engine::open_with_password`); wiped when the job is dropped.
+        password: Option<Zeroizing<String>>,
         confirm: Confirm,
         reply: Reply<u32>,
     },
@@ -376,9 +380,22 @@ impl Engine {
         file: File,
         confirm: impl FnOnce(u32) -> bool + Send + 'static,
     ) -> Result<u32, AppError> {
+        self.open_with_password(id, file, None, confirm)
+    }
+
+    /// [`Engine::open`] for an encrypted file with the password the user typed. A file that needs a password and gets none, or a
+    /// wrong one, is `password_required`. The password stays in a [`Zeroizing`] string all the way and is never logged.
+    pub fn open_with_password(
+        &self,
+        id: DocumentId,
+        file: File,
+        password: Option<Zeroizing<String>>,
+        confirm: impl FnOnce(u32) -> bool + Send + 'static,
+    ) -> Result<u32, AppError> {
         self.call(limits::OPEN_TIMEOUT, Rank::CONTROL, |reply| Job::Open {
             id,
             file,
+            password,
             confirm: Box::new(confirm),
             reply,
         })

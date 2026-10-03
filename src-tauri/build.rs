@@ -14,6 +14,11 @@ fn main() {
     let manifest = tauri_build::AppManifest::new().commands(&[
         "open_document_dialog",
         "open_welcome_document",
+        "unlock_document",
+        "list_recents",
+        "remove_recent",
+        "open_recent",
+        "set_menu_state",
         "render_page",
         "set_viewport",
         "get_page_sizes",
