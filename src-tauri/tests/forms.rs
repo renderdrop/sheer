@@ -891,3 +891,129 @@ fn hostile_forms_through_the_app_state_never_panic() {
         let _ = state.get_form_fields(info.id);
     }
 }
+
+// --- Politur M4: radio groups, comb fields and MaxLen (structure only, no PDFium) ------------------------------------------
+
+/// A one page file whose only field is the text widget 100 with `extra` in its dictionary.
+fn text_widget(extra: &str) -> Vec<u8> {
+    let mut builder = PdfBuilder::new();
+    add_pages(&mut builder, &[Page::new("").with("/Annots [100 0 R]")]);
+    let p = page_id(0);
+    builder
+        .object(
+            100,
+            &format!(
+                "<< /Type /Annot /Subtype /Widget /FT /Tx /T (a) /Rect [72 700 172 720] /F 4 /P {p} 0 R {extra} >>"
+            ),
+        )
+        .object(
+            1,
+            "<< /Type /Catalog /Pages 2 0 R /AcroForm << /Fields [100 0 R] /DA (/Helv 0 Tf 0 g) >> >>",
+        );
+    builder.finish(1)
+}
+
+/// The decoded content of the normal appearance stream of object `num`.
+fn normal_ap(bytes: &[u8], num: u32) -> String {
+    let doc = sheer_lib::pdfwrite::prescan::load_untrusted(bytes).unwrap();
+    let widget = doc.get_dictionary((num, 0)).unwrap();
+    let ap = widget.get(b"AP").unwrap().as_dict().unwrap();
+    let id = ap.get(b"N").unwrap().as_reference().unwrap();
+    let stream = doc.get_object(id).unwrap().as_stream().unwrap();
+    let data = stream
+        .decompressed_content()
+        .unwrap_or_else(|_| stream.content.clone());
+    String::from_utf8_lossy(&data).into_owned()
+}
+
+#[test]
+fn a_radio_group_selects_one_widget_and_writes_the_value_and_states() {
+    let read = read_fields(&form()).unwrap();
+    let mut field = read
+        .fields
+        .iter()
+        .find(|f| f.name == "color")
+        .unwrap()
+        .clone();
+    field.value = FieldValue::Radio { selected: Some(1) };
+    let written = write_values(form(), &[field.clone()], false).unwrap();
+    let doc = sheer_lib::pdfwrite::prescan::load_untrusted(&written.bytes).unwrap();
+    let state = |num: u32| {
+        doc.get_dictionary((num, 0))
+            .unwrap()
+            .get(b"AS")
+            .unwrap()
+            .as_name()
+            .unwrap()
+            .to_vec()
+    };
+    assert_eq!(state(105), b"Off");
+    assert_eq!(state(106), b"B");
+    let group = doc.get_dictionary((104, 0)).unwrap();
+    assert_eq!(group.get(b"V").unwrap().as_name().unwrap(), b"B");
+    // Selecting nothing turns every button off.
+    field.value = FieldValue::Radio { selected: None };
+    let cleared = write_values(form(), &[field], false).unwrap();
+    let doc = sheer_lib::pdfwrite::prescan::load_untrusted(&cleared.bytes).unwrap();
+    for num in [105, 106] {
+        let as_ = doc.get_dictionary((num, 0)).unwrap().get(b"AS").unwrap();
+        assert_eq!(as_.as_name().unwrap(), b"Off");
+    }
+}
+
+#[test]
+fn a_comb_field_gets_one_cell_per_character_up_to_max_len() {
+    let bytes = text_widget("/Ff 16777216 /MaxLen 6");
+    let read = read_fields(&bytes).unwrap();
+    let mut field = read.fields[0].clone();
+    assert!(matches!(
+        field.kind,
+        FieldKind::Text {
+            comb: true,
+            max_len: Some(6),
+            ..
+        }
+    ));
+    field.value = FieldValue::Text { text: "ABC".into() };
+    let written = write_values(bytes.clone(), &[field.clone()], false).unwrap();
+    let content = normal_ap(&written.bytes, 100);
+    assert_eq!(content.matches(" Tj").count(), 3, "{content}");
+    // Text longer than the cells is cut at the last cell.
+    field.value = FieldValue::Text {
+        text: "ABCDEFGHIJ".into(),
+    };
+    let written = write_values(bytes, &[field], false).unwrap();
+    assert_eq!(normal_ap(&written.bytes, 100).matches(" Tj").count(), 6);
+    // Comb needs a MaxLen: without one the field is plain text.
+    let plain = read_fields(&text_widget("/Ff 16777216")).unwrap();
+    assert!(matches!(
+        plain.fields[0].kind,
+        FieldKind::Text { comb: false, .. }
+    ));
+}
+
+#[test]
+fn a_negative_zero_or_absurd_max_len_is_no_max_len() {
+    for max in ["-3", "0", "99999999999999", "-9223372036854775808"] {
+        let bytes = text_widget(&format!("/Ff 16777216 /MaxLen {max}"));
+        let read = read_fields(&bytes).unwrap();
+        let mut field = read.fields[0].clone();
+        assert!(
+            matches!(
+                field.kind,
+                FieldKind::Text {
+                    comb: false,
+                    max_len: None,
+                    ..
+                }
+            ),
+            "{max}: {:?}",
+            field.kind
+        );
+        field.value = FieldValue::Text {
+            text: "hello".into(),
+        };
+        let written = write_values(bytes, &[field], false).unwrap();
+        assert!(normal_ap(&written.bytes, 100).contains("Tj"), "{max}");
+    }
+}

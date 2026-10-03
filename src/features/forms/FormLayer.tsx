@@ -44,7 +44,7 @@ function widgetStyle(widget: Widget): CSSProperties {
   const style: Record<string, string> = { '--form-text': cssRgb(widget.textColor) };
   if (widget.fill !== null) style['--form-fill'] = cssRgb(widget.fill);
   if (widget.border !== null)
-    style['--form-border'] = `calc(1px / var(--page-scale, 1)) solid ${cssRgb(widget.border)}`;
+    style['--form-border'] = `calc(var(--hairline) / var(--page-scale, 1)) solid ${cssRgb(widget.border)}`;
   return {
     left: widget.rect.x,
     top: widget.rect.y,

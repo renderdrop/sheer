@@ -33,6 +33,15 @@ describe('Sign menu wiring', () => {
     expect(useSignatureLibrary.getState().open).toBe(true);
   });
 
+  it('is a hook with a stable entry order across renders (the toolbar calls it as one)', () => {
+    const { result, rerender } = renderHook(() => useSignMenuEntries());
+    const ids = () => result.current.map((entry) => entry.id);
+    const first = ids();
+    rerender();
+    expect(ids()).toEqual(first);
+    expect(first.slice(0, 2)).toEqual(['add-signature', 'add-initials']);
+  });
+
   it('plugs create and place into the library; place arms the entry', () => {
     const { place, create } = useSignatureLibrary.getState().handlers;
     expect(create).toBeTypeOf('function');

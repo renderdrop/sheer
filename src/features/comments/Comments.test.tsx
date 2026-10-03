@@ -222,6 +222,20 @@ describe('Comments tree', () => {
       await vi.waitFor(() => expect(document.activeElement?.getAttribute('aria-posinset')).toBe('2'));
     });
 
+    it('puts the focus on the row after a deleted thread once the rows have really shrunk (no index clamp needed: it goes by key)', async () => {
+      apply.mockImplementation(() => {
+        listDocumentAnnotations.mockResolvedValue([LIST[2]]);
+        act(() => useComments.getState().load(1));
+        return Promise.resolve(undefined);
+      });
+      const { user } = await shown();
+      (items()[0] as HTMLElement).focus();
+      await user.keyboard('{Delete}');
+      await vi.waitFor(() => expect(items()).toHaveLength(1));
+      await vi.waitFor(() => expect(document.activeElement).toBe(items()[0]));
+      expect(document.activeElement?.getAttribute('aria-posinset')).toBe('1');
+    });
+
     it('Backspace does the same, and the focus goes to the previous row when it was the last', async () => {
       const { user } = await shown();
       await user.keyboard('{Tab}');

@@ -62,6 +62,7 @@ fn main() {
         "list_signatures",
         "use_signature",
         "get_signature_preview",
+        "discard_signature_draft",
         "save_draft_signature",
         "import_signature_image",
         "create_typed_signature",

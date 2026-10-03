@@ -1,4 +1,4 @@
-import { useRef, useState, type PointerEvent } from 'react';
+import { useEffect, useRef, useState, type PointerEvent } from 'react';
 
 import { useT } from '../../../i18n';
 import { polygonPoints, pushSample, smoothStroke, strokeOutline, type Sample } from '../../annotations/create/ink';
@@ -25,7 +25,23 @@ export function DrawPad({ strokes, onStrokes, colour, initials }: DrawPadProps) 
   const t = useT();
   const pad = useRef<HTMLDivElement>(null);
   const live = useRef<{ pointerId: number; buffer: Sample[] } | null>(null);
-  const [drawing, setDrawing] = useState<readonly Sample[]>([]);
+  const livePoly = useRef<SVGPolygonElement>(null);
+  const frame = useRef<number | null>(null);
+  /** Only whether a stroke is in progress is state; the growing outline is written to the DOM once per frame. */
+  const [drawing, setDrawing] = useState(false);
+
+  const cancelFrame = () => {
+    if (frame.current !== null) cancelAnimationFrame(frame.current);
+    frame.current = null;
+  };
+  useEffect(() => cancelFrame, []);
+
+  const paintLive = (buffer: readonly Sample[]) => {
+    livePoly.current?.setAttribute(
+      'points',
+      buffer.length > 0 ? polygonPoints(strokeOutline(buffer, PAD_WIDTH_PX)) : '',
+    );
+  };
 
   const sampleOf = (event: PointerEvent<HTMLDivElement>): Sample => {
     const box = pad.current?.getBoundingClientRect();
@@ -43,8 +59,10 @@ export function DrawPad({ strokes, onStrokes, colour, initials }: DrawPadProps) 
     if (typeof pad.current?.releasePointerCapture === 'function' && pad.current.hasPointerCapture(event.pointerId)) {
       pad.current.releasePointerCapture(event.pointerId);
     }
+    cancelFrame();
+    paintLive([]);
     if (current.buffer.length > 0) onStrokes([...strokes, smoothStroke(current.buffer)]);
-    setDrawing([]);
+    setDrawing(false);
   };
 
   const onDown = (event: PointerEvent<HTMLDivElement>) => {
@@ -54,16 +72,21 @@ export function DrawPad({ strokes, onStrokes, colour, initials }: DrawPadProps) 
     const buffer: Sample[] = [];
     pushSample(buffer, sampleOf(event));
     live.current = { pointerId: event.pointerId, buffer };
-    setDrawing(buffer.slice());
+    setDrawing(true);
+    paintLive(buffer);
   };
 
   const onMove = (event: PointerEvent<HTMLDivElement>) => {
     const current = live.current;
     if (current === null || current.pointerId !== event.pointerId) return;
-    if (pushSample(current.buffer, sampleOf(event))) setDrawing(current.buffer.slice());
+    if (!pushSample(current.buffer, sampleOf(event)) || frame.current !== null) return;
+    frame.current = requestAnimationFrame(() => {
+      frame.current = null;
+      if (live.current !== null) paintLive(live.current.buffer);
+    });
   };
 
-  const empty = strokes.length === 0 && drawing.length === 0;
+  const empty = strokes.length === 0 && !drawing;
 
   return (
     <div
@@ -93,9 +116,7 @@ export function DrawPad({ strokes, onStrokes, colour, initials }: DrawPadProps) 
         {strokes.map((stroke, index) => (
           <polygon key={index} points={polygonPoints(strokeOutline(stroke, PAD_WIDTH_PX))} fill="currentColor" />
         ))}
-        {drawing.length > 0 && (
-          <polygon points={polygonPoints(strokeOutline(drawing, PAD_WIDTH_PX))} fill="currentColor" />
-        )}
+        <polygon ref={livePoly} fill="currentColor" />
       </svg>
     </div>
   );

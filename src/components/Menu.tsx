@@ -11,6 +11,7 @@ import {
   useRef,
   useState,
   type KeyboardEvent,
+  type ReactNode,
   type MouseEvent,
   type PointerEvent as ReactPointerEvent,
 } from 'react';
@@ -32,6 +33,8 @@ export interface MenuItemSpec {
   id: string;
   label: string;
   icon?: LucideIcon;
+  /** Decorative element in the icon slot (for example a thumbnail); wins over `icon`. Must be `aria-hidden` or inert. */
+  leading?: ReactNode;
   /** Shortcut as meta text, formatted for the platform. */
   shortcut?: string;
   /** Set for items with a checked state: shows a check and the accent text color; the role becomes `menuitemcheckbox`. */
@@ -134,7 +137,9 @@ export function MenuList({ entries, onActivate, onTab, onBack }: MenuListProps) 
   const [open, setOpen] = useState<OpenSubmenu | null>(null);
   const timer = useRef<number | undefined>(undefined);
   const reserveIcon = entries.some(
-    (entry) => entry.type !== 'separator' && (entry.icon !== undefined || entry.checked !== undefined),
+    (entry) =>
+      entry.type !== 'separator' &&
+      (entry.icon !== undefined || entry.leading !== undefined || entry.checked !== undefined),
   );
   const hasSubmenus = entries.some((entry) => entry.type !== 'separator' && entry.submenu !== undefined);
 
@@ -269,6 +274,8 @@ export function MenuList({ entries, onActivate, onTab, onBack }: MenuListProps) 
               {reserveIcon &&
                 (entry.checked === true ? (
                   <Icon icon={Check} />
+                ) : entry.leading !== undefined ? (
+                  entry.leading
                 ) : entry.icon !== undefined ? (
                   <Icon icon={entry.icon} />
                 ) : (

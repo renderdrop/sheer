@@ -1,5 +1,5 @@
 import { Calendar, Check, Dot, Plus, Settings2, Signature, Type, X } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { createElement, useEffect, useState } from 'react';
 
 import { toAppError } from '../../../api/errors';
 import { listSignatures, type LibraryItem, type SignatureLibrary, type SignatureRole } from '../../../api/library';
@@ -9,6 +9,7 @@ import { selectActiveId, useDocuments } from '../../../stores/documents';
 import { useUi } from '../../../stores/ui';
 import { openSignatureSheet } from '../create/store';
 import { openSignatureLibrary, setLibraryHandlers } from '../library';
+import { SignaturePreview } from '../library/SignaturePreview';
 import { ensureAsset } from './assets';
 import { usePlacement, type PlaceItem } from './store';
 
@@ -66,12 +67,15 @@ const libraryEntry = (item: LibraryItem): MenuEntry => ({
   id: `lib-${item.id}`,
   label: item.name,
   icon: Signature,
+  leading: createElement(SignaturePreview, { item }),
   onSelect: () =>
     armItem({ type: 'signature', role: item.role, ref: { type: 'library', id: item.id }, aspect: item.aspect }),
 });
 
 /**
- * The entries of the menu, made while it renders (the `menu` of a toolbar item may use hooks): it reads the library when it opens.
+ * The entries of the menu, made while it renders. This is a hook on purpose: the toolbar calls the item's `menu` as a hook
+ * (toolbarEntries.ts, `menu: useSignMenuEntries`), so it must be called unconditionally and in the same order every render
+ * (the test renders it through `renderHook`). It reads the library when the menu opens.
  * Signatures come first, then initials, each group ending in its "Add" row; then the Fill and Sign items.
  */
 export function useSignMenuEntries(): readonly MenuEntry[] {

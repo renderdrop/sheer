@@ -524,6 +524,19 @@ describe('Menu submenus (DESIGN 3.5): edge cases', () => {
     expect(focused()).toBe(getByRole('button', { name: 'Open' }));
   });
 
+  it('renders an optional leading element in the icon slot', async () => {
+    const list: MenuEntry[] = [
+      { id: 'a', label: 'With thumb', leading: <span data-testid="thumb" />, onSelect: noop },
+      { id: 'b', label: 'Plain', onSelect: noop },
+    ];
+    const { user, getByRole, getByTestId } = setup(
+      <Menu label="Menu" entries={list} trigger={(trigger) => <button {...trigger}>Open</button>} />,
+    );
+    await user.click(getByRole('button', { name: 'Open' }));
+    expect(getByTestId('thumb')).toBeTruthy();
+    expect(getByRole('menuitem', { name: 'With thumb' }).contains(getByTestId('thumb'))).toBe(true);
+  });
+
   it('closes its submenu when the entries change and the item is gone, without an error', async () => {
     const error = vi.spyOn(console, 'error').mockImplementation(noop);
     const onSelect = vi.fn();

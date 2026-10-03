@@ -6,7 +6,8 @@
 //! whatever state it leaves does not move the appearances. The matrix is the one of PDF 32000 §12.5.5 (algorithm 8.1): `/BBox`
 //! through `/Matrix` fitted onto `/Rect`. `/Rect` is in default user space, so the page's `/Rotate` needs no extra step; a widget's
 //! `/MK /R` is part of its appearance stream. The result is saved whole and its unreachable objects (the fields, their values) are
-//! pruned, so nothing of a flattened field stays in the file. `NoRotate` annotations are placed like the others.
+//! pruned, so nothing of a flattened field stays in the file. A `NoRotate` annotation keeps its upper-left corner (as displayed) and
+//! stays upright on a rotated page: [`placement_upright`].
 
 use std::collections::HashSet;
 
@@ -38,6 +39,10 @@ pub struct FlattenOptions {
 const MAX_DEPTH: usize = 64;
 /// `/F` flags: Hidden and NoView.
 const NOT_SHOWN: i64 = 2 | 32;
+/// `/F` flag: NoRotate.
+const NO_ROTATE: i64 = 16;
+/// Most entries of the resources and XObject dictionaries copied over all pages (a shared huge dictionary is copied per page).
+const MAX_RESOURCE_ENTRIES: usize = 400_000;
 
 fn failed(detail: impl std::fmt::Display) -> AppError {
     AppError::logged(ErrorCode::SaveFailed, detail)
@@ -102,6 +107,69 @@ pub fn placement(bbox: [f32; 4], matrix: Matrix, rect: [f32; 4]) -> Option<Matri
         .iter()
         .all(|v| v.is_finite() && v.abs() < 1.0e9)
         .then_some(result)
+}
+
+/// `a` then `b` (row vectors, PDF order).
+fn multiply(a: Matrix, b: Matrix) -> Matrix {
+    [
+        a[0] * b[0] + a[1] * b[2],
+        a[0] * b[1] + a[1] * b[3],
+        a[2] * b[0] + a[3] * b[2],
+        a[2] * b[1] + a[3] * b[3],
+        a[4] * b[0] + a[5] * b[2] + b[4],
+        a[4] * b[1] + a[5] * b[3] + b[5],
+    ]
+}
+
+/// Like [`placement`] for a `NoRotate` annotation on a page turned by `rotation` (0, 90, 180 or 270 degrees clockwise): the appearance
+/// is fitted to the rect as if the page were not turned and hangs down and to the right from the corner of the rect that is the
+/// upper-left one as displayed, so that it is upright once the page is shown turned.
+pub fn placement_upright(
+    bbox: [f32; 4],
+    matrix: Matrix,
+    rect: [f32; 4],
+    rotation: i64,
+) -> Option<Matrix> {
+    let (x0, y0) = (rect[0].min(rect[2]), rect[1].min(rect[3]));
+    let (x1, y1) = (rect[0].max(rect[2]), rect[1].max(rect[3]));
+    // Counter-clockwise rotation by `rotation`, and the displayed upper-left corner in user space.
+    let (turn, anchor) = match rotation {
+        90 => ([0.0, 1.0, -1.0, 0.0, 0.0, 0.0], (x0, y0)),
+        180 => ([-1.0, 0.0, 0.0, -1.0, 0.0, 0.0], (x1, y0)),
+        270 => ([0.0, -1.0, 1.0, 0.0, 0.0, 0.0], (x1, y1)),
+        _ => return placement(bbox, matrix, rect),
+    };
+    let local = placement(bbox, matrix, [0.0, -(y1 - y0), x1 - x0, 0.0])?;
+    let mut result = multiply(local, turn);
+    result[4] += anchor.0;
+    result[5] += anchor.1;
+    result
+        .iter()
+        .all(|v| v.is_finite() && v.abs() < 1.0e9)
+        .then_some(result)
+}
+
+/// The page's `/Rotate`, own or inherited, as 0, 90, 180 or 270.
+fn page_rotation(doc: &Document, page: ObjectId) -> i64 {
+    let mut id = page;
+    for _ in 0..MAX_DEPTH {
+        let Ok(dict) = doc.get_dictionary(id) else {
+            break;
+        };
+        if let Some(value) = dict
+            .get(b"Rotate")
+            .ok()
+            .and_then(|r| doc.dereference(r).ok())
+            .and_then(|(_, r)| r.as_i64().ok())
+        {
+            return value.rem_euclid(360) / 90 * 90;
+        }
+        match dict.get(b"Parent").ok().and_then(|p| p.as_reference().ok()) {
+            Some(parent) => id = parent,
+            None => break,
+        }
+    }
+    0
 }
 
 /// What to do with one entry of `/Annots`.
@@ -185,7 +253,13 @@ fn has_value(doc: &Document, annot: &Dictionary) -> bool {
     false
 }
 
-fn judge(doc: &Document, annot: &Dictionary, scope: FlattenScope, signed: &mut bool) -> Verdict {
+fn judge(
+    doc: &Document,
+    annot: &Dictionary,
+    scope: FlattenScope,
+    rotation: i64,
+    signed: &mut bool,
+) -> Verdict {
     let kind = subtype(annot);
     let widget = kind == b"Widget";
     if !widget {
@@ -225,7 +299,12 @@ fn judge(doc: &Document, annot: &Dictionary, scope: FlattenScope, signed: &mut b
         .ok()
         .and_then(|m| numbers::<6>(doc, m))
         .unwrap_or([1.0, 0.0, 0.0, 1.0, 0.0, 0.0]);
-    match placement(bbox, matrix, rect) {
+    let placed = if flags(annot) & NO_ROTATE != 0 {
+        placement_upright(bbox, matrix, rect, rotation)
+    } else {
+        placement(bbox, matrix, rect)
+    };
+    match placed {
         Some(matrix) => Verdict::Burn { stream, matrix },
         None => Verdict::Remove,
     }
@@ -278,6 +357,7 @@ pub fn flatten(
     limits::validate_page_count(total)?;
     let mut signed = false;
     let mut burned_total = 0usize;
+    let mut copied = 0usize;
 
     for (at, &page) in pages.iter().enumerate() {
         control.check()?;
@@ -298,6 +378,7 @@ pub fn flatten(
                 limits::MAX_ANNOTS_ARRAY as u64,
             ));
         }
+        let rotation = page_rotation(&doc, page);
         // Judge every entry; a popup follows its parent.
         let mut verdicts: Vec<Verdict> = Vec::with_capacity(entries.len());
         let mut gone: HashSet<ObjectId> = HashSet::new();
@@ -310,7 +391,7 @@ pub fn flatten(
                 }
             };
             let verdict = match object.as_dict() {
-                Ok(annot) => judge(&doc, annot, scope, &mut signed),
+                Ok(annot) => judge(&doc, annot, scope, rotation, &mut signed),
                 Err(_) => Verdict::Keep,
             };
             if !matches!(verdict, Verdict::Keep) {
@@ -362,7 +443,7 @@ pub fn flatten(
             .collect();
 
         if !burns.is_empty() {
-            burn_into_page(&mut doc, page, &burns)?;
+            burn_into_page(&mut doc, page, &burns, &mut copied)?;
         }
         let dict = doc.get_dictionary_mut(page).map_err(failed)?;
         if kept.is_empty() {
@@ -410,8 +491,10 @@ fn burn_into_page(
     doc: &mut Document,
     page: ObjectId,
     burns: &[(ObjectId, Matrix)],
+    copied: &mut usize,
 ) -> Result<(), AppError> {
     let mut resources = effective_resources(doc, page);
+    *copied += resources.len();
     let mut xobjects = resources
         .get(b"XObject")
         .ok()
@@ -419,6 +502,10 @@ fn burn_into_page(
         .and_then(|(_, x)| x.as_dict().ok())
         .cloned()
         .unwrap_or_default();
+    *copied += xobjects.len();
+    if *copied > MAX_RESOURCE_ENTRIES {
+        return Err(AppError::limit("resources", MAX_RESOURCE_ENTRIES as u64));
+    }
 
     let mut tail = String::from("Q\n");
     let mut next = 0usize;
@@ -493,6 +580,39 @@ mod tests {
         assert_eq!(
             placement([0.0, 0.0, 10.0, 10.0], identity, [20.0, 20.0, 10.0, 10.0]),
             placement([0.0, 0.0, 10.0, 10.0], identity, [10.0, 10.0, 20.0, 20.0])
+        );
+    }
+
+    fn close(a: Matrix, b: Matrix) {
+        for (x, y) in a.iter().zip(b) {
+            assert!((x - y).abs() < 1.0e-4, "{a:?} != {b:?}");
+        }
+    }
+
+    #[test]
+    fn a_no_rotate_annotation_hangs_from_the_displayed_upper_left_corner() {
+        let identity = [1.0, 0.0, 0.0, 1.0, 0.0, 0.0];
+        let (bbox, rect) = ([0.0, 0.0, 40.0, 20.0], [100.0, 100.0, 140.0, 120.0]);
+        // Not turned: the same as the plain placement.
+        close(
+            placement_upright(bbox, identity, rect, 0).unwrap(),
+            placement(bbox, identity, rect).unwrap(),
+        );
+        // Turned 90 degrees clockwise: the displayed upper-left corner is the lower-left one in user space, and the form's
+        // lower-left corner lies at its right (user x grows downwards in the display).
+        let m = placement_upright(bbox, identity, rect, 90).unwrap();
+        close(m, [0.0, 1.0, -1.0, 0.0, 120.0, 100.0]);
+        // The form's upper-left corner (0, 20) is the anchor.
+        close(
+            [m[2] * 20.0 + m[4], m[3] * 20.0 + m[5], 0.0, 0.0, 0.0, 0.0],
+            [100.0, 100.0, 0.0, 0.0, 0.0, 0.0],
+        );
+        let m = placement_upright(bbox, identity, rect, 180).unwrap();
+        close(m, [-1.0, 0.0, 0.0, -1.0, 140.0, 120.0]);
+        let m = placement_upright(bbox, identity, rect, 270).unwrap();
+        close(
+            [m[2] * 20.0 + m[4], m[3] * 20.0 + m[5], 0.0, 0.0, 0.0, 0.0],
+            [140.0, 120.0, 0.0, 0.0, 0.0, 0.0],
         );
     }
 

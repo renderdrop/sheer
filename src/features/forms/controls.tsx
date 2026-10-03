@@ -51,7 +51,7 @@ function CheckMark() {
 }
 
 function Dot() {
-  return <span aria-hidden="true" className="absolute rounded-full bg-current" style={{ inset: '25%' }} />;
+  return <span aria-hidden="true" data-form-dot="" className="absolute rounded-full bg-current" />;
 }
 
 /** A read-only field: the value as text with `aria-readonly`; it takes no focus and no input. */
@@ -68,7 +68,7 @@ export function ReadOnlyView({ field, widget, label }: Pick<BaseProps, 'field' |
         aria-checked={on}
         aria-readonly="true"
         className="relative"
-        style={kind.type === 'radio' ? { borderRadius: '50%' } : undefined}
+        data-form-round={kind.type === 'radio' ? '' : undefined}
       >
         {on && (kind.type === 'checkbox' ? <CheckMark /> : <Dot />)}
       </div>
@@ -231,7 +231,7 @@ export function RadioControl({
       title={field.required ? t('form.required') : undefined}
       tabIndex={stop ? 0 : -1}
       className="relative"
-      style={{ borderRadius: '50%' }}
+      data-form-round=""
       onClick={() => choose(widget)}
       onKeyDown={onKeyDown}
     >
@@ -406,7 +406,7 @@ function ChoiceMenu({ docId, field, label, kind, widget }: ChoiceProps) {
               aria-label={t('form.choices', { name: label })}
               tabIndex={-1}
               className="flex shrink-0 items-center justify-center"
-              style={{ width: '1.5em', padding: 0 }}
+              data-form-chevron=""
             >
               {chevron}
             </button>

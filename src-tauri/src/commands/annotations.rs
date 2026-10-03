@@ -313,6 +313,15 @@ impl AppState {
         self.model(id, |state| Ok(state.list(page)))
     }
 
+    /// What the reading of the file's annotations left out so far (a page, the document or the string budget was full). The pages
+    /// concerned are those read already; the annotations stay in the file.
+    pub fn import_warnings(
+        &self,
+        id: DocumentId,
+    ) -> Result<Vec<crate::model::doc_state::ImportWarning>, AppError> {
+        self.model(id, |state| Ok(state.import_warnings()))
+    }
+
     /// The annotations of every page as summaries, by page and id (at most `MAX_ANNOTATIONS_PER_DOC`). Pages not read yet are read
     /// from the file one by one at `Background` priority, so a render or a page the user asked for goes first. A failed read fails
     /// the call (`engine_timeout` when the engine was busy: ask again; the pages read stay read).

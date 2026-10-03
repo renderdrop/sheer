@@ -14,12 +14,15 @@
 //! - **Never plaintext.** Without a usable keychain nothing is written: entries live in memory for the session
 //!   ([`Status::Unavailable`]). A file that does not open (key gone, wrong key, tampered, damaged, from a newer version) makes
 //!   the library [`Status::Locked`]: it is never read as anything else, never overwritten, and only
-//!   [`Library::forget_all`] (file and key) gets out.
+//!   [`Library::forget_all`] (file and key) gets out. There the file that did not open is quarantined, not deleted: renamed aside to
+//!   `library.bin.quarantine-<seconds>` (never over another file; the newest [`KEEP_QUARANTINED`] are kept), its key gone with the
+//!   rest. A keychain that fails a call ([`KeyError::Unreadable`]) is no evidence about the file: the library behaves as without a
+//!   keychain for that call and the file is not touched.
 //! - Deleting an entry rewrites the file without it (the old ciphertext is unreadable without the key; no secure wipe is claimed).
 //! - Key material and art are never logged and appear in no error.
 
 use std::fs::File;
-use std::io::{self, Read};
+use std::io::{self, Read, Write};
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, MutexGuard, PoisonError};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -57,6 +60,13 @@ pub const MAX_NAME_CHARS: usize = 64;
 const MAX_ART_UNITS: u32 = 1_000_000;
 /// Points in a preview of vector art (the list never carries more of an entry).
 const PREVIEW_POINTS: usize = 400;
+/// Longest side of the thumbnail of raster art in the list, in pixels, and the most bytes of its PNG.
+const PREVIEW_PX: u32 = 96;
+const PREVIEW_PNG_BYTES: usize = 24 * 1024;
+/// Quarantined library files that are kept.
+pub const KEEP_QUARANTINED: usize = 2;
+/// Name of a quarantined file up to the timestamp.
+const QUARANTINE_PREFIX: &str = "library.bin.quarantine-";
 
 /// What an entry is for.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -109,13 +119,48 @@ impl Art {
         if w == 0 || h == 0 || w > MAX_ART_UNITS || h > MAX_ART_UNITS {
             return Err(LibraryError::Invalid("art"));
         }
-        let size = serde_json::to_vec(self)
-            .map_err(|_| LibraryError::Invalid("art"))?
-            .len();
-        if size > MAX_ART_BYTES {
-            return Err(LibraryError::TooLarge);
+        // Measured as it is written, into a counter that stops at the limit: no copy of the art is made.
+        let mut counter = Counter { bytes: 0 };
+        match serde_json::to_writer(&mut counter, self) {
+            Ok(()) => Ok(()),
+            Err(error) if error.is_io() => Err(LibraryError::TooLarge),
+            Err(_) => Err(LibraryError::Invalid("art")),
         }
-        Ok(())
+    }
+
+    /// A PNG thumbnail of raster art in a box of [`PREVIEW_PX`], at most [`PREVIEW_PNG_BYTES`] (re-encoded, so nothing of the
+    /// original file but pixels). `None` when the art does not decode or no thumbnail fits.
+    fn thumbnail(png: &str) -> Option<Art> {
+        use crate::signatures::{convert, raster};
+        let picture = raster::decode_art(&convert::decode_base64(png)?).ok()?;
+        let mut side = PREVIEW_PX;
+        loop {
+            let longest = picture.width().max(picture.height());
+            let small = if longest <= side {
+                picture.clone()
+            } else {
+                let factor = side as f32 / longest as f32;
+                let scaled = |v: u32| ((v as f32 * factor).round() as u32).max(1);
+                image::imageops::resize(
+                    &picture,
+                    scaled(picture.width()),
+                    scaled(picture.height()),
+                    image::imageops::FilterType::Triangle,
+                )
+            };
+            let bytes = raster::encode_png(&small).ok()?;
+            if bytes.len() <= PREVIEW_PNG_BYTES {
+                return Some(Art::Raster {
+                    w: small.width(),
+                    h: small.height(),
+                    png: convert::encode_base64(&bytes),
+                });
+            }
+            if side <= 16 {
+                return None;
+            }
+            side = side * 3 / 4;
+        }
     }
 
     fn aspect(&self) -> f32 {
@@ -123,10 +168,11 @@ impl Art {
         *w as f32 / (*h).max(1) as f32
     }
 
-    /// The art cut down to a few hundred points, for the list. Raster art has no preview here (the UI asks for a frame).
+    /// The art cut down to a few hundred points, or a small PNG thumbnail of raster art, for the list.
     fn preview(&self) -> Option<Art> {
-        let Art::Vector { w, h, paths } = self else {
-            return None;
+        let (w, h, paths) = match self {
+            Art::Vector { w, h, paths } => (w, h, paths),
+            Art::Raster { png, .. } => return Self::thumbnail(png),
         };
         let total: usize = paths.iter().map(Vec::len).sum();
         let step = total.div_ceil(PREVIEW_POINTS).max(1);
@@ -149,6 +195,25 @@ impl Art {
             h: *h,
             paths,
         })
+    }
+}
+
+/// Counts the bytes written to it and refuses the ones past [`MAX_ART_BYTES`].
+struct Counter {
+    bytes: usize,
+}
+
+impl Write for Counter {
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        self.bytes = self.bytes.saturating_add(buf.len());
+        if self.bytes > MAX_ART_BYTES {
+            return Err(io::Error::from(io::ErrorKind::WriteZero));
+        }
+        Ok(buf.len())
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        Ok(())
     }
 }
 
@@ -177,7 +242,7 @@ pub struct ItemInfo {
     pub aspect: f32,
     /// `vector` or `raster`.
     pub kind: &'static str,
-    /// Vector art cut down to at most about 400 points; `None` for raster art.
+    /// Vector art cut down to at most about 400 points, or a PNG thumbnail (at most 96 px, 24 KiB) of raster art.
     pub preview: Option<Art>,
 }
 
@@ -469,7 +534,8 @@ impl Library {
     fn load(&self) -> Result<Loaded, LibraryError> {
         let key = match self.keychain.existing_key() {
             Ok(key) => key,
-            Err(KeyError::Unavailable) => return Ok(Loaded::Session),
+            // No keychain, or one that failed this call: the file is not judged and not touched.
+            Err(KeyError::Unavailable | KeyError::Unreadable) => return Ok(Loaded::Session),
             // A stored secret that is not a key: the file (if any) cannot be opened with it.
             Err(KeyError::Invalid) => return Ok(Loaded::Locked),
         };
@@ -576,6 +642,10 @@ impl Library {
     pub fn forget_all(&self) -> Result<(), LibraryError> {
         let mut session = self.lock();
         session.clear();
+        // A file that does not open is kept aside, not deleted; one that does is deleted.
+        if matches!(self.load(), Ok(Loaded::Locked)) {
+            self.quarantine()?;
+        }
         match std::fs::remove_file(&self.path) {
             Ok(()) => {}
             Err(error) if error.kind() == io::ErrorKind::NotFound => {}
@@ -584,8 +654,51 @@ impl Library {
         match self.keychain.forget() {
             // No keychain: there was no key to delete.
             Ok(()) | Err(KeyError::Unavailable) => Ok(()),
-            Err(KeyError::Invalid) => Err(LibraryError::Key),
+            Err(KeyError::Invalid | KeyError::Unreadable) => Err(LibraryError::Key),
         }
+    }
+
+    /// Renames the library file aside (never over an existing file) and keeps the newest [`KEEP_QUARANTINED`] such files.
+    fn quarantine(&self) -> Result<(), LibraryError> {
+        let (Some(dir), Some(_)) = (self.path.parent(), self.path.file_name()) else {
+            return Ok(());
+        };
+        if !self.path.exists() {
+            return Ok(());
+        }
+        let stamp = now();
+        let mut target = None;
+        for attempt in 0..100u32 {
+            let name = if attempt == 0 {
+                format!("{QUARANTINE_PREFIX}{stamp:012}")
+            } else {
+                format!("{QUARANTINE_PREFIX}{stamp:012}-{attempt}")
+            };
+            let candidate = dir.join(name);
+            if !candidate.exists() {
+                target = Some(candidate);
+                break;
+            }
+        }
+        let target = target.ok_or_else(|| io::Error::from(io::ErrorKind::AlreadyExists))?;
+        std::fs::rename(&self.path, &target)?;
+        let mut kept: Vec<PathBuf> = std::fs::read_dir(dir)?
+            .flatten()
+            .filter(|entry| {
+                entry
+                    .file_name()
+                    .to_string_lossy()
+                    .starts_with(QUARANTINE_PREFIX)
+            })
+            .map(|entry| entry.path())
+            .collect();
+        kept.sort();
+        let excess = kept.len().saturating_sub(KEEP_QUARANTINED);
+        for old in kept.into_iter().take(excess) {
+            // Best effort: an old copy that cannot be removed now is removed by the next forget.
+            let _ = std::fs::remove_file(old);
+        }
+        Ok(())
     }
 
     /// Applies `edit` to the entries wherever they are, and stores the result: encrypted into the file, or in the session.
@@ -607,7 +720,7 @@ impl Library {
                 // The key is created only now that there is something to protect.
                 match self.keychain.key_or_create() {
                     Ok(key) => self.write(&key, &items),
-                    Err(KeyError::Unavailable) => {
+                    Err(KeyError::Unavailable | KeyError::Unreadable) => {
                         *session = items;
                         Ok(())
                     }
@@ -886,7 +999,88 @@ mod tests {
         };
         let saved = lib.save(Role::Initials, "r", raster).unwrap();
         assert_eq!(saved.kind, "raster");
+        // Not a decodable PNG: no thumbnail, and the entry still saves.
         assert!(saved.preview.is_none());
+    }
+
+    fn picture(w: u32, h: u32) -> Art {
+        let mut image = image::RgbaImage::new(w, h);
+        for (x, y, pixel) in image.enumerate_pixels_mut() {
+            *pixel = image::Rgba([(x % 251) as u8, (y % 241) as u8, ((x * y) % 239) as u8, 255]);
+        }
+        let png = crate::signatures::raster::encode_png(&image).unwrap();
+        Art::Raster {
+            w,
+            h,
+            png: crate::signatures::convert::encode_base64(&png),
+        }
+    }
+
+    #[test]
+    fn raster_art_gets_a_small_re_encoded_thumbnail_in_the_list() {
+        let dir = TempDir::new();
+        let lib = library(&dir, &MemoryStore::default());
+        let saved = lib
+            .save(Role::Signature, "photo", picture(600, 200))
+            .unwrap();
+        let Some(Art::Raster { w, h, png }) = saved.preview.clone() else {
+            panic!("raster preview");
+        };
+        assert_eq!((w, h), (PREVIEW_PX, 32));
+        let bytes = crate::signatures::convert::decode_base64(&png).unwrap();
+        assert!(bytes.len() <= PREVIEW_PNG_BYTES);
+        assert!(bytes.starts_with(b"\x89PNG"));
+        // The same through the list, and the full art still places.
+        assert_eq!(lib.list().unwrap().items[0].preview, saved.preview);
+        let Art::Raster { w, .. } = lib.source(&saved.id).unwrap().art else {
+            panic!("raster");
+        };
+        assert_eq!(w, 600);
+        // Art smaller than the box is not enlarged.
+        let tiny = lib.save(Role::Signature, "tiny", picture(40, 20)).unwrap();
+        assert!(matches!(
+            tiny.preview,
+            Some(Art::Raster { w: 40, h: 20, .. })
+        ));
+    }
+
+    #[test]
+    fn a_noisy_picture_is_shrunk_until_its_thumbnail_fits() {
+        // Noise does not compress: 96 px of it is over the byte bound, so the thumbnail steps down or is left out; it never exceeds it.
+        let mut image = image::RgbaImage::new(400, 400);
+        let mut state = 0x1234_5678_u32;
+        for pixel in image.pixels_mut() {
+            state ^= state << 13;
+            state ^= state >> 17;
+            state ^= state << 5;
+            *pixel = image::Rgba(state.to_le_bytes());
+        }
+        let png = crate::signatures::raster::encode_png(&image).unwrap();
+        let art = Art::Raster {
+            w: 400,
+            h: 400,
+            png: crate::signatures::convert::encode_base64(&png),
+        };
+        if let Some(Art::Raster { png, .. }) = art.preview() {
+            let bytes = crate::signatures::convert::decode_base64(&png).unwrap();
+            assert!(bytes.len() <= PREVIEW_PNG_BYTES);
+        }
+    }
+
+    #[test]
+    fn art_is_measured_without_a_copy_and_the_limit_is_exact() {
+        let fits = Art::Raster {
+            w: 10,
+            h: 10,
+            png: "A".repeat(MAX_ART_BYTES - 100),
+        };
+        assert!(fits.check().is_ok());
+        let over = Art::Raster {
+            w: 10,
+            h: 10,
+            png: "A".repeat(MAX_ART_BYTES),
+        };
+        assert!(matches!(over.check(), Err(LibraryError::TooLarge)));
     }
 
     #[test]
@@ -1006,6 +1200,90 @@ mod tests {
         std::fs::remove_file(&path).unwrap();
         std::fs::create_dir(&path).unwrap();
         assert_eq!(lib.list().unwrap().status, Status::Locked);
+    }
+
+    #[test]
+    fn a_keychain_read_error_neither_locks_nor_touches_the_file() {
+        use crate::storage::keychain::{SecretStore, StoreError};
+        struct Failing;
+        impl SecretStore for Failing {
+            fn get(&self) -> Result<Option<Zeroizing<Vec<u8>>>, StoreError> {
+                Err(StoreError::Failed)
+            }
+            fn set(&self, _: &[u8]) -> Result<(), StoreError> {
+                Err(StoreError::Failed)
+            }
+            fn delete(&self) -> Result<(), StoreError> {
+                Err(StoreError::Failed)
+            }
+        }
+        let dir = TempDir::new();
+        let store = MemoryStore::default();
+        library(&dir, &store)
+            .save(Role::Signature, "kept", art())
+            .unwrap();
+        let path = dir.path().join(DIRECTORY).join(FILE_NAME);
+        let before = std::fs::read(&path).unwrap();
+        let lib = Library::new(path.clone(), Keychain::new(Box::new(Failing)));
+        assert_eq!(lib.list().unwrap().status, Status::Unavailable);
+        lib.save(Role::Signature, "session", art()).unwrap();
+        assert_eq!(std::fs::read(&path).unwrap(), before);
+        // A corrupt key, on the other hand, locks.
+        store.put(Some(vec![1, 2, 3]));
+        assert_eq!(library(&dir, &store).list().unwrap().status, Status::Locked);
+    }
+
+    #[test]
+    fn a_tampered_file_is_quarantined_by_forget_all_never_overwritten_or_dropped_silently() {
+        let dir = TempDir::new();
+        let store = MemoryStore::default();
+        let lib = library(&dir, &store);
+        lib.save(Role::Signature, "a", art()).unwrap();
+        let path = dir.path().join(DIRECTORY).join(FILE_NAME);
+        let mut bytes = std::fs::read(&path).unwrap();
+        let last = bytes.len() - 1;
+        bytes[last] ^= 0xff;
+        std::fs::write(&path, &bytes).unwrap();
+        // Locked: every write is refused and the bytes stay as they are.
+        assert!(matches!(
+            lib.save(Role::Signature, "b", art()),
+            Err(LibraryError::Locked)
+        ));
+        assert_eq!(std::fs::read(&path).unwrap(), bytes);
+
+        lib.forget_all().unwrap();
+        assert!(!path.exists());
+        let aside: Vec<PathBuf> = std::fs::read_dir(path.parent().unwrap())
+            .unwrap()
+            .map(|e| e.unwrap().path())
+            .collect();
+        assert_eq!(aside.len(), 1, "{aside:?}");
+        assert!(aside[0]
+            .file_name()
+            .unwrap()
+            .to_string_lossy()
+            .starts_with(QUARANTINE_PREFIX));
+        assert_eq!(std::fs::read(&aside[0]).unwrap(), bytes);
+        assert_eq!(store.peek(), None, "the key goes");
+        // The library works again, and a second tamper does not overwrite the first copy.
+        lib.save(Role::Signature, "new", art()).unwrap();
+        let mut again = std::fs::read(&path).unwrap();
+        again[10] ^= 0xff;
+        std::fs::write(&path, &again).unwrap();
+        lib.forget_all().unwrap();
+        let count = || std::fs::read_dir(path.parent().unwrap()).unwrap().count();
+        assert_eq!(count(), 2);
+        // Only the newest ones are kept.
+        for _ in 0..3 {
+            lib.save(Role::Signature, "x", art()).unwrap();
+            std::fs::write(&path, b"junk").unwrap();
+            lib.forget_all().unwrap();
+        }
+        assert_eq!(count(), KEEP_QUARANTINED);
+        // A healthy library is deleted, not quarantined.
+        lib.save(Role::Signature, "ok", art()).unwrap();
+        lib.forget_all().unwrap();
+        assert_eq!(count(), KEEP_QUARANTINED);
     }
 
     #[test]

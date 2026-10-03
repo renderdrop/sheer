@@ -1,11 +1,12 @@
 import { Eraser, Image as ImageIcon, PenLine, Signature, Type } from 'lucide-react';
-import { useEffect, useId, useRef, useState, type KeyboardEvent } from 'react';
+import { useEffect, useId, useRef, useState, type KeyboardEvent, type RefObject } from 'react';
 
 import { toAppError, type AppError } from '../../../api/errors';
 import { listSignatures, type LibraryStatus, type SignatureRole } from '../../../api/library';
 import {
   createDrawnSignature,
   createTypedSignature,
+  discardSignatureDraft,
   importSignatureImage,
   MAX_TYPED_CHARS,
   saveDraftSignature,
@@ -56,8 +57,17 @@ function colourOptions(t: Translate): RadioOption<SigColour>[] {
   });
 }
 
-/** The typed draft for `text`: the backend makes the outlines of the bundled font; a failed or stale call changes nothing. */
-function useTypedDraft(role: SignatureRole, text: string, active: boolean) {
+/** Frees a draft in the backend; a failure is of no interest (the store keeps only the last few anyway). */
+function discard(id: number) {
+  void Promise.resolve(discardSignatureDraft(id)).catch(() => undefined);
+}
+
+/**
+ * The typed draft for `text`: the backend makes the outlines of the bundled font; a failed or stale call changes nothing. A draft that
+ * is replaced, and the one left when the sheet closes (unless it was handed out: `kept`), is discarded.
+ */
+function useTypedDraft(role: SignatureRole, text: string, active: boolean, kept: RefObject<number | null>) {
+  const [held] = useState(() => ({ id: null as number | null }));
   const [draft, setDraft] = useState<SignatureDraft | null>(null);
   const [glyph, setGlyph] = useState(false);
   const [failure, setFailure] = useState<AppError | null>(null);
@@ -70,7 +80,12 @@ function useTypedDraft(role: SignatureRole, text: string, active: boolean) {
     const timer = window.setTimeout(() => {
       createTypedSignature(role, value)
         .then((made) => {
-          if (cancelled) return;
+          if (cancelled) {
+            discard(made.id);
+            return;
+          }
+          if (held.id !== null) discard(held.id);
+          held.id = made.id;
           setDraft(made);
           setGlyph(false);
           setFailure(null);
@@ -78,6 +93,8 @@ function useTypedDraft(role: SignatureRole, text: string, active: boolean) {
         .catch((caught: unknown) => {
           if (cancelled) return;
           const error = toAppError(caught);
+          if (held.id !== null) discard(held.id);
+          held.id = null;
           setDraft(null);
           setGlyph(error.code === 'invalid_argument' && error.params?.what === 'glyph');
           setFailure(error);
@@ -87,7 +104,14 @@ function useTypedDraft(role: SignatureRole, text: string, active: boolean) {
       cancelled = true;
       window.clearTimeout(timer);
     };
-  }, [role, text, active]);
+  }, [role, text, active, held]);
+
+  useEffect(
+    () => () => {
+      if (held.id !== null && held.id !== kept.current) discard(held.id);
+    },
+    [held, kept],
+  );
 
   return { draft, glyph, failure };
 }
@@ -108,7 +132,8 @@ function SheetBody({ id, kind }: { id: number; kind: SignatureRole }) {
   const [busy, setBusy] = useState(false);
   const [failure, setFailure] = useState<AppError | null>(null);
   const body = useRef<HTMLDivElement>(null);
-  const typed = useTypedDraft(kind, text, tab === 'type');
+  const kept = useRef<number | null>(null);
+  const typed = useTypedDraft(kind, text, tab === 'type', kept);
 
   useEffect(() => {
     let cancelled = false;
@@ -162,6 +187,8 @@ function SheetBody({ id, kind }: { id: number; kind: SignatureRole }) {
         const item = await saveDraftSignature(draft.id, Array.from(name).slice(0, 64).join(''));
         ref = { type: 'library', id: item.id };
       }
+      // A draft that goes out as the answer must outlive the sheet.
+      if (ref.type === 'draft') kept.current = draft.id;
       settleSignatureSheet(id, ref);
     } catch (caught) {
       setFailure(toAppError(caught));

@@ -123,6 +123,11 @@ export function saveDraftSignature(draftId: number, name: string): Promise<Libra
   return call<LibraryItem>('save_draft_signature', { draftId, name });
 }
 
+/** Frees a draft that will not be used any more (idempotent). Call it when a draft is replaced and when the sheet closes. */
+export function discardSignatureDraft(draftId: number): Promise<void> {
+  return call<void>('discard_signature_draft', { draftId });
+}
+
 /** A PNG frame of raster art, at most `maxPx` (16 to 1024) on its long side. */
 export async function getSignaturePreview(art: SignatureRef, maxPx: number): Promise<RenderFrame> {
   const body = await call<ArrayBuffer>('get_signature_preview', { art, maxPx });

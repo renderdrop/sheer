@@ -13,6 +13,7 @@ const sig = vi.hoisted(() => ({
   createTypedSignature: vi.fn(),
   importSignatureImage: vi.fn(),
   saveDraftSignature: vi.fn(),
+  discardSignatureDraft: vi.fn(),
   getSignaturePreview: vi.fn(),
 }));
 
@@ -92,6 +93,32 @@ describe('signature sheet', () => {
     await user.click(create);
     await waitFor(() => expect(result).toEqual({ type: 'library', id: 'a'.repeat(32) }));
     expect(sig.saveDraftSignature).toHaveBeenCalledWith(7, 'Ada');
+    // The draft was saved to the library and is not needed any more: it is freed when the sheet closes.
+    await waitFor(() => expect(sig.discardSignatureDraft).toHaveBeenCalledWith(7));
+  });
+
+  it('a draft replaced while typing is discarded, and one handed out is kept', async () => {
+    lib.listSignatures.mockResolvedValue({ status: 'unavailable', items: [] });
+    sig.createTypedSignature
+      .mockResolvedValueOnce({ id: 1, role: 'signature', art })
+      .mockResolvedValue({ id: 2, role: 'signature', art });
+    const { user } = setup(<SignatureSheetHost />);
+    let result: unknown = 'pending';
+    act(() => {
+      void openSignatureSheet('signature').then((ref) => {
+        result = ref;
+      });
+    });
+    const field = await screen.findByRole('textbox');
+    await user.type(field, 'A');
+    await waitFor(() => expect(sig.createTypedSignature).toHaveBeenCalledTimes(1));
+    await user.type(field, 'b');
+    await waitFor(() => expect(sig.discardSignatureDraft).toHaveBeenCalledWith(1));
+    const create = screen.getByRole('button', { name: 'Create' });
+    await waitFor(() => expect(create.getAttribute('aria-disabled')).toBeNull());
+    await user.click(create);
+    await waitFor(() => expect(result).toEqual({ type: 'draft', id: 2 }));
+    expect(sig.discardSignatureDraft).not.toHaveBeenCalledWith(2);
   });
 
   it('without a keychain the save box is disabled with a note and a draft comes back', async () => {

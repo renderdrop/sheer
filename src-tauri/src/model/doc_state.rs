@@ -27,6 +27,15 @@ pub struct Stamp {
     pub modified: String,
 }
 
+/// Something the import of a file's annotations could not do completely (never an error: the file is unchanged and still has them).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase", tag = "type")]
+pub enum ImportWarning {
+    /// `skipped` annotations of `page` were not taken into the model: the page, the document or the string budget was full. They
+    /// stay in the file as they are (drawn by PDFium, kept on save) but cannot be edited here.
+    PageTruncated { page: u32, skipped: u32 },
+}
+
 /// An annotation in the state, with what only Rust knows about it.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Entry {
@@ -109,6 +118,8 @@ pub struct DocState {
     pub(super) history: History,
     /// The pages whose annotations were read from the file.
     pub(super) imported: HashSet<u32>,
+    /// Per page id, how many of the annotations read from the file did not fit (see [`ImportWarning`]).
+    truncated: BTreeMap<u32, u32>,
     /// Where (page index, position) the file itself marks an annotation Hidden: PDFium keeps it hidden, so undo never shows it.
     file_hidden: BTreeSet<(u32, u32)>,
     /// Bytes of strings taken from the file so far (`limits::MAX_IMPORT_BYTES_PER_DOC`).
@@ -171,6 +182,7 @@ impl DocState {
             rev: 0,
             history: History::new(),
             imported: HashSet::new(),
+            truncated: BTreeMap::new(),
             imported_bytes: 0,
             file_hidden: BTreeSet::new(),
             live_total: 0,
@@ -513,12 +525,20 @@ impl DocState {
                     .insert((item.origin.page_index, item.origin.annot_index));
             }
         }
-        for item in items
+        let wanted: Vec<&Imported> = items
             .iter()
             .filter(|item| !known.contains(&item.origin.annot_index))
+            .collect();
+        // Where the loop stopped for want of room: what is left over is reported, not dropped silently.
+        let mut stopped_at = wanted.len().min(limits::MAX_IMPORT_PER_PAGE);
+        for (position, item) in wanted
+            .iter()
+            .copied()
+            .enumerate()
             .take(limits::MAX_IMPORT_PER_PAGE)
         {
             if self.check_room(page).is_err() {
+                stopped_at = position;
                 break;
             }
             // The strings of a page and of a document are budgeted: many annotations at the size limit would add up to much more.
@@ -526,9 +546,13 @@ impl DocState {
             if page_bytes.saturating_add(bytes) > limits::MAX_IMPORT_BYTES_PER_PAGE
                 || self.imported_bytes.saturating_add(bytes) > limits::MAX_IMPORT_BYTES_PER_DOC
             {
+                stopped_at = position;
                 break;
             }
-            let Ok(id) = self.alloc_id() else { break };
+            let Ok(id) = self.alloc_id() else {
+                stopped_at = position;
+                break;
+            };
             if let Some(annotation) = Annotation::from_import(id, page, item) {
                 let entry = Entry {
                     annotation,
@@ -542,7 +566,24 @@ impl DocState {
                 added += 1;
             }
         }
+        let skipped = wanted.len().saturating_sub(stopped_at);
+        if skipped > 0 {
+            self.truncated
+                .insert(page.get(), u32::try_from(skipped).unwrap_or(u32::MAX));
+        }
         added
+    }
+
+    /// What the reading of the file's annotations left out so far, by page (pages that are gone are not listed).
+    pub fn import_warnings(&self) -> Vec<ImportWarning> {
+        self.truncated
+            .iter()
+            .filter(|(page, _)| self.slot(PageId::new(**page)).is_some())
+            .map(|(page, skipped)| ImportWarning::PageTruncated {
+                page: *page,
+                skipped: *skipped,
+            })
+            .collect()
     }
 
     fn change_set(&self, delta: Delta) -> ChangeSet {

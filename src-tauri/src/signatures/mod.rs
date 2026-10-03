@@ -141,6 +141,14 @@ impl DraftStore {
         }
     }
 
+    /// Forgets draft `id`. `false` if there is no such draft (it fell off the end, or was discarded already).
+    pub fn discard(&self, id: DraftId) -> bool {
+        let mut inner = self.inner.lock().unwrap_or_else(PoisonError::into_inner);
+        let before = inner.items.len();
+        inner.items.retain(|(draft, ..)| *draft != id);
+        inner.items.len() != before
+    }
+
     pub fn get(&self, id: DraftId) -> Option<(SignatureRole, Arc<Art>)> {
         let inner = self.inner.lock().unwrap_or_else(PoisonError::into_inner);
         inner

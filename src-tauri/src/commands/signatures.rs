@@ -6,6 +6,7 @@
 //! | `create_typed_signature` | `role`, `text` (1 to 64 characters, no control characters), `font: "homemadeApple"` | `SignatureDraft`; `invalid_argument` (`glyph`) for a character the font lacks |
 //! | `import_signature_image` | `role`, `removeBackground` | `SignatureDraft`, or `null` if the native dialog was cancelled; PNG or JPEG, at most 10 MiB and 4 000 px a side, re-encoded as a PNG without metadata |
 //! | `save_draft_signature` | `draftId`, `name` | the library's `ItemInfo` of the new entry (the art never crosses IPC for it) |
+//! | `discard_signature_draft` | `draftId` | nothing; frees the draft (a draft that is gone already is not an error) |
 //! | `get_signature_preview` | `art: SignatureRef`, `maxPx` (16 to 1 024) | an `SHR1` frame (PNG) of raster art |
 //! | `use_signature` | `docId`, `art: SignatureRef` | `AssetInfo`: the art is copied into the document's assets; then the UI creates a `signature` annotation with its id |
 //!
@@ -178,6 +179,11 @@ impl AppState {
         })
     }
 
+    /// Forgets a draft. Idempotent: a draft that is gone is not an error.
+    pub fn discard_signature_draft(&self, draft: DraftId) {
+        self.drafts.discard(draft);
+    }
+
     /// Saves a draft in the library under `name`.
     pub fn save_draft_signature(
         &self,
@@ -262,6 +268,20 @@ pub async fn save_draft_signature(
     blocking(move || state.save_draft_signature(&library, draft_id, &name)).await
 }
 
+/// Frees a draft the UI will not use any more (the sheet closed, or the text it made one of changed).
+#[tauri::command]
+pub async fn discard_signature_draft(
+    state: State<'_, AppState>,
+    draft_id: DraftId,
+) -> Result<(), UiError> {
+    let state = state.inner().clone();
+    blocking(move || {
+        state.discard_signature_draft(draft_id);
+        Ok(())
+    })
+    .await
+}
+
 /// A frame of raster art.
 #[tauri::command]
 pub async fn get_signature_preview(
@@ -308,6 +328,26 @@ mod tests {
         )
         .is_err());
         assert!(serde_json::from_value::<SignatureRef>(json!({"type": "file"})).is_err());
+    }
+
+    #[test]
+    fn a_discarded_draft_is_gone_and_discarding_twice_is_fine() {
+        let drafts = crate::signatures::DraftStore::default();
+        let art = Art::Vector {
+            w: 10.0,
+            h: 10.0,
+            paths: vec![vec![
+                Point { x: 0.0, y: 0.0 },
+                Point { x: 1.0, y: 0.0 },
+                Point { x: 1.0, y: 1.0 },
+            ]],
+        };
+        let one = drafts.add(SignatureRole::Signature, art.clone());
+        let two = drafts.add(SignatureRole::Initials, art);
+        assert!(drafts.discard(one.id));
+        assert!(drafts.get(one.id).is_none());
+        assert!(!drafts.discard(one.id));
+        assert!(drafts.get(two.id).is_some(), "the others stay");
     }
 
     #[test]

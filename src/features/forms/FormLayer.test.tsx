@@ -295,6 +295,21 @@ describe('the form layer', () => {
     act(() => useForms.getState().setHighlight(true));
   });
 
+  it.each([90, 180, 270])('turns the layer with the view rotation of %i degrees and keeps the scale', (rotation) => {
+    seed([field(1, [widget(0, 0)])]);
+    // A quarter turn shows the page 400 wide and 200 high; a half turn keeps 200 x 400.
+    const quarter = rotation !== 180;
+    render(<FormLayer {...props} rotation={rotation} boxWidth={quarter ? 400 : 200} boxHeight={quarter ? 200 : 400} />);
+    const group = screen.getByRole('group');
+    expect(group.style.transform).toBe(`rotate(${rotation}deg) scale(1)`);
+    expect(group.style.width).toBe('200px');
+    expect(group.style.height).toBe('400px');
+    expect(group.style.left).toBe(quarter ? '100px' : '0px');
+    expect(group.style.top).toBe(quarter ? '-100px' : '0px');
+    expect(group.style.getPropertyValue('--page-scale')).toBe('1');
+    expect(screen.getByRole('textbox')).toBeTruthy();
+  });
+
   it('follows the field states of a change set (undo) on the page', () => {
     seed([field(1, [widget(0, 0)], { value: { type: 'text', text: 'one' } })]);
     render(<FormLayer {...props} />);

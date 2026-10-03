@@ -1214,7 +1214,7 @@ on save). (4) The Sign tool opens a menu popover; signatures are always aspect-l
 (nothing written, ADR-041 §4); Undo after delete stays inline in the row (toasts sit under the modal layer).
 (6) The field highlight toggle is a UI preference kept in `localStorage` (`sheer.formHighlight`, default on), not in the document or the backend.
 
-## ADR-043 — Politur M4, Rust half
+## ADR-044 — Politur M4, Rust half
 
 **Decision.** (1) **Pre-scan (amends ADR-040):** `/Length` is resolved, and refused when it cannot be, only for `/ObjStm` and `/XRef`
 streams (the only ones lopdf decodes at load); every other stream is charged nothing and ends at its length when `endstream`

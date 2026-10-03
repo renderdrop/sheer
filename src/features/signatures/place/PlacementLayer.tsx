@@ -26,6 +26,8 @@ const GHOST_OPACITY = 0.5;
 /** The outline of a ghost that is not a mark, in points. */
 const GHOST_OUTLINE_PT = 1;
 const GHOST_DASH = '4 3';
+/** The canvas region that scrolls the pages (Canvas.tsx). */
+const SCROLL_SURFACE = '[role="region"]';
 
 /**
  * The layer that places the armed item of the Sign tool on one page (DESIGN 3.34). It takes the pointer only while the tool is
@@ -95,27 +97,33 @@ function ActiveLayer({ item, docId, pageIndex, pageBox, transform }: PlacementLa
     placeAt(at);
   };
 
-  // Enter places at the centre of the viewport, on the page that is there (DESIGN 3.34; the keyboard's way to place).
+  // Enter places at the centre of the scroll surface's visible rect, on the page that is there (DESIGN 3.34; the keyboard's way
+  // to place). The listener is added once and calls the newest handler, so it never runs with a stale item or page.
+  const onEnter = useRef<(event: KeyboardEvent) => void>(() => undefined);
+  const handleEnter = (event: KeyboardEvent) => {
+    if (event.key !== 'Enter' || event.ctrlKey || event.metaKey || event.altKey || event.shiftKey) return;
+    const target = event.target;
+    if (target instanceof Element && target.closest('input, textarea, select, button, [role^="menu"]') !== null) return;
+    const element = surface.current;
+    if (element === null) return;
+    const rect = element.getBoundingClientRect();
+    const scroller = element.closest(SCROLL_SURFACE)?.getBoundingClientRect();
+    const cx = scroller !== undefined ? scroller.left + scroller.width / 2 : window.innerWidth / 2;
+    const cy = scroller !== undefined ? scroller.top + scroller.height / 2 : window.innerHeight / 2;
+    if (cx < rect.left || cx > rect.right || cy < rect.top || cy > rect.bottom) return;
+    const at = toPage({ clientX: cx, clientY: cy });
+    if (at === null) return;
+    event.preventDefault();
+    placeAt(at);
+  };
   useEffect(() => {
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key !== 'Enter' || event.ctrlKey || event.metaKey || event.altKey || event.shiftKey) return;
-      const target = event.target;
-      if (target instanceof Element && target.closest('input, textarea, select, button, [role^="menu"]') !== null)
-        return;
-      const element = surface.current;
-      if (element === null) return;
-      const rect = element.getBoundingClientRect();
-      const cx = window.innerWidth / 2;
-      const cy = window.innerHeight / 2;
-      if (cx < rect.left || cx > rect.right || cy < rect.top || cy > rect.bottom) return;
-      const at = toPage({ clientX: cx, clientY: cy });
-      if (at === null) return;
-      event.preventDefault();
-      placeAt(at);
-    };
+    onEnter.current = handleEnter;
+  });
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => onEnter.current(event);
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  });
+  }, []);
 
   const box = overlayBox(viewW, viewH, page, transform.pxPerPt, rotation);
   const ghostBox =

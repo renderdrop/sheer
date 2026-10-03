@@ -144,6 +144,7 @@ pub fn run() -> Result<(), AppError> {
             commands::library::list_signatures,
             commands::signatures::use_signature,
             commands::signatures::get_signature_preview,
+            commands::signatures::discard_signature_draft,
             commands::signatures::save_draft_signature,
             commands::signatures::import_signature_image,
             commands::signatures::create_typed_signature,

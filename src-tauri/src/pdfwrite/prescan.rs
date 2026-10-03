@@ -6,15 +6,18 @@
 //! literal strings (escapes, nesting), hex strings, comments, names with `#xx`, numbers, keywords and `<<` `>>` `[` `]` with a depth
 //! limit; a top-level `N G obj` header; only the **top-level** keys of a stream dictionary (a `/Length` in `/DecodeParms` is not the
 //! stream's). Object and xref streams are inflated into a counter under a budget for the file as a whole; a filter chain it cannot
-//! evaluate is charged at its worst case. What it cannot place is refused, not skipped: duplicate top-level keys, an unterminated string,
-//! dictionary or stream, nesting deeper than 64, an `obj` without its two numbers, a `stream` without its dictionary. An indirect or
-//! wrong `/Length` charges the data up to the next `endstream`.
+//! evaluate is charged at its worst case. What it cannot place is refused, not skipped: duplicate or non-name top-level keys of a stream
+//! dictionary (other dictionaries are read the way lopdf reads them, last key wins), an unterminated string, dictionary or stream,
+//! nesting deeper than 64, an `obj` without its two numbers, a `stream` without its dictionary. `/Length` is resolved (and refused when
+//! it cannot be) only for the two kinds that are decoded, `/ObjStm` and `/XRef`; every other stream is charged nothing and ends at its
+//! length when `endstream` follows, else at the next `endstream`. A number object defined twice with different values, or also defined
+//! as something else, is ambiguous: a decoded stream whose length points to it is refused (lopdf may read either definition).
 //!
 //! The lexer is one pass over the input with an explicit depth counter (no recursion), so it ends and cannot overflow the stack.
 //! It is defence in depth, not a parser to trust: the hard bound is the engine in its own process with an address-space limit
 //! (M7, SECURITY P6).
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::io::Read;
 
 use flate2::read::ZlibDecoder;
@@ -264,6 +267,7 @@ fn parse_value(lx: &mut Lexer<'_>) -> Result<Val, AppError> {
             Ok(Val::Int(first))
         }
         Tok::Name(name) => Ok(Val::Name(name)),
+        Tok::Word(word) => Ok(whole_number(word).map_or(Val::Other, Val::Int)),
         Tok::ArrOpen => {
             let mut names = Vec::new();
             let mut clean = true;
@@ -292,22 +296,96 @@ fn parse_value(lx: &mut Lexer<'_>) -> Result<Val, AppError> {
     }
 }
 
-/// The top-level keys of a dictionary whose `<<` was read. A key twice is refused.
-fn parse_dict(lx: &mut Lexer<'_>) -> Result<Vec<(Vec<u8>, Val)>, AppError> {
-    let mut entries: Vec<(Vec<u8>, Val)> = Vec::new();
+/// The keys of a dictionary with the values the scan reads.
+type Entries = Vec<(Vec<u8>, Val)>;
+
+/// A non-negative whole number written as a word: `+5`, `120.0` (a plain `120` is a `Tok::Int`).
+fn whole_number(word: &[u8]) -> Option<u64> {
+    let word = word.strip_prefix(b"+").unwrap_or(word);
+    let (int, frac) = match word.iter().position(|b| *b == b'.') {
+        Some(dot) => (word.get(..dot)?, word.get(dot + 1..)?),
+        None => (word, &[][..]),
+    };
+    if int.is_empty() && frac.is_empty() {
+        return None;
+    }
+    if !int.iter().all(u8::is_ascii_digit) || !frac.iter().all(|b| *b == b'0') {
+        return None;
+    }
+    Some(int.iter().fold(0u64, |value, digit| {
+        value
+            .saturating_mul(10)
+            .saturating_add(u64::from(digit - b'0'))
+    }))
+}
+
+/// A whole number object's value from the token that holds it.
+fn number_of(tok: &Tok<'_>) -> Option<u64> {
+    match tok {
+        Tok::Int(value) => Some(*value),
+        Tok::Word(word) => whole_number(word),
+        _ => None,
+    }
+}
+
+/// The top-level keys of a dictionary whose `<<` was read, and whether it is irregular (a key twice, or something that is not a
+/// key). Only a stream dictionary is refused for that, once the `stream` keyword shows it is one (lopdf takes the last key).
+fn parse_dict(lx: &mut Lexer<'_>) -> Result<(Entries, bool), AppError> {
+    let mut entries: Entries = Vec::new();
+    let mut irregular = false;
     loop {
         match lx.next()? {
-            Tok::DictClose => return Ok(entries),
+            Tok::DictClose => return Ok((entries, irregular)),
             Tok::Name(key) => {
                 if entries.iter().any(|(known, _)| *known == key) {
-                    return Err(refused("a key twice in a dictionary"));
+                    irregular = true;
                 }
                 let value = parse_value(lx)?;
                 entries.push((key, value));
             }
             Tok::Eof => return Err(refused("an unterminated dictionary")),
-            _ => return Err(refused("a dictionary that is not keys and values")),
+            Tok::DictOpen | Tok::ArrOpen => {
+                irregular = true;
+                lx.skip_container()?;
+            }
+            _ => irregular = true,
         }
+    }
+}
+
+/// The whole number objects (`9 0 obj 120 endobj`, what an indirect `/Length` points to) and every other object number seen.
+#[derive(Clone, Default)]
+struct Defs {
+    /// The value; `None` when the number was defined twice with different values.
+    numbers: HashMap<u64, Option<u64>>,
+    /// Numbers defined as anything but a whole number.
+    others: HashSet<u64>,
+}
+
+impl Defs {
+    fn add_number(&mut self, object: u64, value: u64) {
+        let entry = self.numbers.entry(object).or_insert(Some(value));
+        if *entry != Some(value) {
+            *entry = None;
+        }
+    }
+
+    fn add_other(&mut self, object: u64) {
+        self.others.insert(object);
+    }
+
+    /// `None`: no such number object. `Some(None)`: ambiguous. `Some(Some(v))`: the length.
+    fn number(&self, object: u64) -> Option<Option<u64>> {
+        let value = *self.numbers.get(&object)?;
+        Some(if self.others.contains(&object) {
+            None
+        } else {
+            value
+        })
+    }
+
+    fn size(&self) -> usize {
+        self.numbers.len() + self.others.len()
     }
 }
 
@@ -343,32 +421,52 @@ fn get<'a>(entries: &'a [(Vec<u8>, Val)], key: &[u8]) -> Option<&'a Val> {
 fn stream(
     lx: &mut Lexer<'_>,
     entries: &[(Vec<u8>, Val)],
-    numbers: &HashMap<u64, u64>,
+    defs: &Defs,
     pass: Pass,
     budget: &mut u64,
 ) -> Result<(), AppError> {
     let bytes = lx.bytes;
     let size = bytes.len() as u64;
-    // The length: written here, or the whole number object an `a b R` points to (known after the first pass). None of the other
-    // cases is a length.
-    let length = match get(entries, b"Length") {
-        Some(Val::Int(length)) => *length,
-        Some(Val::Ref(object)) => match numbers.get(object) {
-            Some(length) => *length,
-            None if pass == Pass::Collect => 0,
-            None => return Err(refused("an indirect length that is not a number object")),
-        },
-        None => 0,
-        Some(_) => return Err(refused("a length that is not a whole number")),
-    };
-    if length > size {
-        return Err(refused("a stream longer than the file"));
-    }
     let kind = match get(entries, b"Type") {
         Some(Val::Name(name)) => name.as_slice(),
         _ => b"",
     };
     let is_objstm = kind == b"ObjStm";
+    // Only these two kinds are decoded when lopdf loads a file: only they need a length that is right.
+    let decoded = is_objstm || kind == b"XRef";
+    let indirect = match get(entries, b"Length") {
+        Some(Val::Ref(object)) => defs.number(*object),
+        _ => None,
+    };
+    let length = if decoded {
+        // Written here, or the whole number object an `a b R` points to (known after the first pass).
+        let length = match get(entries, b"Length") {
+            Some(Val::Int(length)) => *length,
+            Some(Val::Ref(_)) => match indirect {
+                Some(Some(length)) => length,
+                Some(None) if pass == Pass::Charge => {
+                    return Err(refused("an ambiguous indirect length"));
+                }
+                None if pass == Pass::Charge => {
+                    return Err(refused("an indirect length that is not a number object"));
+                }
+                _ => 0,
+            },
+            None => 0,
+            Some(_) => return Err(refused("a length that is not a whole number")),
+        };
+        if length > size {
+            return Err(refused("a stream longer than the file"));
+        }
+        length
+    } else {
+        // A hint for where the data ends, nothing more.
+        match get(entries, b"Length") {
+            Some(Val::Int(length)) => *length,
+            Some(Val::Ref(_)) => indirect.flatten().unwrap_or(0),
+            _ => 0,
+        }
+    };
     if is_objstm {
         if let Some(Val::Int(n)) = get(entries, b"N") {
             if *n > MAX_OBJSTM_OBJECTS {
@@ -414,15 +512,19 @@ fn stream(
             let wanted = usize::try_from(length)
                 .ok()
                 .and_then(|length| start.checked_add(length))
-                .filter(|end| *end <= bytes.len())
-                .ok_or_else(|| refused("a length past the end of the file"))?;
-            (found.max(wanted), found + b"endstream".len())
+                .filter(|end| *end <= bytes.len());
+            if decoded {
+                let wanted = wanted.ok_or_else(|| refused("a length past the end of the file"))?;
+                (found.max(wanted), found + b"endstream".len())
+            } else {
+                (found, found + b"endstream".len())
+            }
         }
     };
     let data = bytes.get(start..end).unwrap_or_default();
     lx.pos = resume;
-    // Only these two kinds are decoded when lopdf loads a file; the first pass only finds the stream.
-    if pass == Pass::Collect || !(is_objstm || kind == b"XRef") {
+    // The first pass only finds the stream; the other kinds are charged nothing.
+    if pass == Pass::Collect || !decoded {
         return Ok(());
     }
     let charge = |budget: &mut u64, amount: u64| -> Result<(), AppError> {
@@ -460,14 +562,14 @@ enum Pass {
 }
 
 fn check_with(bytes: &[u8], decoded_budget: u64) -> Result<(), AppError> {
-    let mut numbers = HashMap::new();
+    let mut numbers = Defs::default();
     // A stream whose length is a number object further on is skipped by its `endstream` the first time, which may lead the lexer into
     // the data of a stream that hides a fake marker: an error of such a pass is not the file's verdict (the last pass gives it), and
     // what was found is used to read again until nothing new turns up (at most three times).
     for _ in 0..3 {
-        let before = numbers.len();
+        let before = numbers.size();
         let _ = pass(bytes, &mut numbers, Pass::Collect, &mut 0);
-        if numbers.len() == before {
+        if numbers.size() == before {
             break;
         }
     }
@@ -475,12 +577,7 @@ fn check_with(bytes: &[u8], decoded_budget: u64) -> Result<(), AppError> {
     pass(bytes, &mut numbers, Pass::Charge, &mut budget)
 }
 
-fn pass(
-    bytes: &[u8],
-    objects: &mut HashMap<u64, u64>,
-    pass: Pass,
-    budget: &mut u64,
-) -> Result<(), AppError> {
+fn pass(bytes: &[u8], objects: &mut Defs, pass: Pass, budget: &mut u64) -> Result<(), AppError> {
     let mut recent = [0u64; 2];
     let mut lx = Lexer { bytes, pos: 0 };
     // How many whole numbers came right before the token being read (`obj` needs two).
@@ -502,9 +599,15 @@ fn pass(
                 let object = recent[0];
                 let save = lx;
                 if lx.next()? == Tok::DictOpen {
-                    let entries = parse_dict(&mut lx)?;
+                    objects.add_other(object);
+                    let (entries, irregular) = parse_dict(&mut lx)?;
                     let after_dict = lx;
                     if lx.next()? == Tok::Word(b"stream") {
+                        if irregular {
+                            return Err(refused(
+                                "a stream dictionary with a key twice or a stray token",
+                            ));
+                        }
                         stream(&mut lx, &entries, &known, pass, budget)?;
                     } else {
                         lx = after_dict;
@@ -512,8 +615,10 @@ fn pass(
                 } else {
                     lx = save;
                     // `9 0 obj 120 endobj`: a whole number object.
-                    if let (Tok::Int(value), Tok::Word(b"endobj")) = (lx.next()?, lx.next()?) {
-                        objects.insert(object, value);
+                    let value = lx.next()?;
+                    match (number_of(&value), lx.next()?) {
+                        (Some(value), Tok::Word(b"endobj")) => objects.add_number(object, value),
+                        _ => objects.add_other(object),
                     }
                     lx = save;
                 }
@@ -786,6 +891,100 @@ mod tests {
             b"1 0 obj << /Type /ObjStm /N 99999999 >> ",
         );
         assert!(check_with(&hidden, 1024).is_ok());
+    }
+
+    // --- Politur: real files are not refused, ambiguity is ---
+
+    #[test]
+    fn other_streams_are_charged_nothing_and_their_length_is_not_judged() {
+        let data = b"BT (hi) Tj ET";
+        for length in ["120.0", "+5", "-3", "(x)", "9 0 R", "99999999999", "1.5"] {
+            let dict = format!("/Length {length} /Filter /FlateDecode");
+            assert!(
+                check_with(&file(&dict, "\n", data), 1024).is_ok(),
+                "{length}"
+            );
+        }
+        // An indirect length that lives in an object stream (not a top-level number object).
+        assert!(check_with(&file("/Length 12 0 R", "\n", data), 1024).is_ok());
+        // Still lexed in order: the next object after such a stream is read.
+        let mut next = file("/Length 120.0", "\n", data);
+        next.extend_from_slice(
+            b"5 0 obj\n<< /A 1 /A 2 /Type /ObjStm /Length 1 >>\nstream\nx\nendstream\nendobj\n",
+        );
+        refuses(&next);
+    }
+
+    #[test]
+    fn whole_reals_and_signs_are_read_as_lengths_of_decoded_streams() {
+        let packed = deflate(b"1 0 << /A 1 >>");
+        let n = packed.len();
+        for length in [format!("{n}.0"), format!("+{n}")] {
+            let dict = format!("/Type /ObjStm /N 1 /Filter /FlateDecode /Length {length}");
+            assert!(
+                check_with(&file(&dict, "\n", &packed), SMALL).is_ok(),
+                "{length}"
+            );
+        }
+        // A bomb behind such a length is still charged.
+        let bomb = bomb();
+        let dict = format!(
+            "/Type /ObjStm /N 1 /Filter /FlateDecode /Length {}.0",
+            bomb.len()
+        );
+        refuses_by_budget(&file(&dict, "\n", &bomb));
+    }
+
+    #[test]
+    fn a_number_object_defined_twice_differently_is_ambiguous() {
+        let dict = "/Type /ObjStm /N 1 /Filter /FlateDecode /Length 9 0 R";
+        let packed = bomb();
+        let right = with_number_object(&file(dict, "\n", &packed), 9, packed.len() as u64);
+        refuses_by_budget_with_room(&right);
+        // The same value twice is the same definition.
+        let same = with_number_object(&right, 9, packed.len() as u64);
+        refuses_by_budget_with_room(&same);
+        let mut differing = with_number_object(&right, 9, 5);
+        differing.extend_from_slice(b"9 0 obj\n7\nendobj\n");
+        assert_eq!(
+            check_with(&differing, 8 * 1024 * 1024).unwrap_err().code(),
+            ErrorCode::DamagedFile
+        );
+        // A number object that is also defined as something else.
+        let mut other = right.clone();
+        other.extend_from_slice(b"9 0 obj\n<< /A 1 >>\nendobj\n");
+        assert_eq!(
+            check_with(&other, 8 * 1024 * 1024).unwrap_err().code(),
+            ErrorCode::DamagedFile
+        );
+        // For a stream that is not decoded the ambiguity does not matter.
+        let mut plain = with_number_object(&file("/Length 9 0 R", "\n", b"abc"), 9, 3);
+        plain.extend_from_slice(b"9 0 obj\n7\nendobj\n");
+        assert!(check_with(&plain, 1024).is_ok());
+    }
+
+    /// Passes with room enough and is refused by the small budget: the bomb is charged.
+    fn refuses_by_budget_with_room(bytes: &[u8]) {
+        refuses_by_budget(bytes);
+    }
+
+    #[test]
+    fn irregular_dictionaries_pass_unless_they_head_a_stream() {
+        assert!(check(b"%PDF-1.4\n1 0 obj\n<< /A 1 /A 2 >>\nendobj\n").is_ok());
+        assert!(
+            check(b"%PDF-1.4\n1 0 obj\n<< /A 1 (stray) 7 << /B 1 >> [1] /C 2 >>\nendobj\n").is_ok()
+        );
+        assert!(check(
+            b"%PDF-1.4\n1 0 obj\n<< /A 1 (stray) /B 2 >>\nstream\nxx\nendstream\nendobj\n"
+        )
+        .is_err());
+        assert!(check(
+            b"%PDF-1.4\n1 0 obj\n<< /A 1 << /B 1 >> /C 2 >>\nstream\nxx\nendstream\nendobj\n"
+        )
+        .is_err());
+        // Unterminated ones are still refused.
+        refuses(b"%PDF-1.4\n1 0 obj\n<< /A 1 (stray");
+        refuses(b"%PDF-1.4\n1 0 obj\n<< /A 1 [ ");
     }
 
     // --- Termination ---

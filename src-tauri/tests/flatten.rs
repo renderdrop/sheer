@@ -269,3 +269,209 @@ fn the_hostile_corpus_never_panics_flatten() {
         }
     }
 }
+
+// --- Politur M4: structure of the result (no PDFium needed) ---
+
+macro_rules! reload {
+    ($bytes:expr) => {
+        sheer_lib::pdfwrite::prescan::load_untrusted($bytes).unwrap()
+    };
+}
+
+/// The content of the first page, all its streams joined.
+fn content_of(bytes: &[u8]) -> String {
+    let doc = reload!(bytes);
+    let page = *doc.get_pages().values().next().unwrap();
+    String::from_utf8_lossy(&doc.get_page_content(page)).into_owned()
+}
+
+/// A page with one widget per entry of `annots` (dictionary bodies after `/Type /Annot /Subtype /Widget /FT /Btn`).
+fn checkboxes(annots: &[&str]) -> Vec<u8> {
+    let mut pdf = PdfBuilder::new();
+    let refs: Vec<String> = (0..annots.len())
+        .map(|i| format!("{} 0 R", 100 + i))
+        .collect();
+    pdf.object(
+        1,
+        "<< /Type /Catalog /Pages 2 0 R /AcroForm << /Fields [] >> >>",
+    )
+    .object(2, "<< /Type /Pages /Kids [10 0 R] /Count 1 >>")
+    .object(
+        10,
+        &format!(
+            "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 200 200] /Annots [{}] >>",
+            refs.join(" ")
+        ),
+    )
+    .stream(
+        111,
+        "/Type /XObject /Subtype /Form /BBox [0 0 20 20]",
+        b"0 g ONMARK",
+    )
+    .stream(
+        112,
+        "/Type /XObject /Subtype /Form /BBox [0 0 20 20]",
+        b"0 g OFFMARK",
+    )
+    .stream(
+        113,
+        "/Type /XObject /Subtype /Form /BBox [0 0 20 20]",
+        b"0 g UNUSEDMARK",
+    );
+    for (i, body) in annots.iter().enumerate() {
+        pdf.object(
+            100 + u32::try_from(i).unwrap(),
+            &format!(
+                "<< /Type /Annot /Subtype /Widget /FT /Btn /Rect [10 10 30 30] /F 4 {body} >>"
+            ),
+        );
+    }
+    pdf.finish(1)
+}
+
+#[test]
+fn the_appearance_state_decides_what_is_burned() {
+    let states = "/AP << /N << /Yes 111 0 R /Off 112 0 R /Other 113 0 R >> >>";
+    let out = flat(
+        &checkboxes(&[
+            &format!("/AS /Yes {states}"),
+            &format!("/AS /Off {states}"),
+            // A state the dictionary does not have, and no state at all: nothing to burn, the widget still goes.
+            &format!("/AS /Nope {states}"),
+            states,
+        ]),
+        FlattenScope::Forms,
+    );
+    let content = content_of(&out.bytes);
+    assert_eq!(content.matches(" Do").count(), 2, "{content}");
+    let text = String::from_utf8_lossy(&out.bytes).into_owned();
+    assert!(text.contains("ONMARK") && text.contains("OFFMARK"));
+    // The state nobody selected is pruned with the widgets.
+    assert!(!text.contains("UNUSEDMARK"));
+    assert!(!text.contains("/Widget"));
+    assert!(!text.contains("/Annots"));
+}
+
+#[test]
+fn perms_and_the_form_are_removed_and_their_objects_pruned() {
+    let out = flat(&form(0), FlattenScope::Forms);
+    assert_eq!(out.warnings, vec![Warning::SignaturesRemoved]);
+    let text = String::from_utf8_lossy(&out.bytes).into_owned();
+    for gone in [
+        "/Perms",
+        "/DocMDP",
+        "Adobe.PPKLite",
+        "/AcroForm",
+        "/FT",
+        "Ada Lovelace)\n",
+    ] {
+        assert!(!text.contains(gone), "{gone}");
+    }
+    let doc = reload!(&out.bytes);
+    assert!(doc
+        .objects
+        .values()
+        .filter_map(|o| o.as_dict().ok())
+        .all(|d| !d.has(b"FT") && !d.has(b"V")));
+    // Without /Perms and without a signature there is no warning.
+    let plain = checkboxes(&["/AS /Yes /AP << /N << /Yes 111 0 R >> >>"]);
+    assert!(flat(&plain, FlattenScope::Forms).warnings.is_empty());
+}
+
+/// Pages that share one `/Resources` whose `/XObject` has `names` entries, a widget on each.
+fn crowded(pages: u32, names: u32, collide: bool) -> Vec<u8> {
+    let mut pdf = PdfBuilder::new();
+    let kids: Vec<String> = (0..pages).map(|i| format!("{} 0 R", 1000 + i)).collect();
+    pdf.object(1, "<< /Type /Catalog /Pages 2 0 R >>")
+        .object(
+            2,
+            &format!(
+                "<< /Type /Pages /Kids [{}] /Count {pages} /Resources 4 0 R >>",
+                kids.join(" ")
+            ),
+        )
+        .object(4, "<< /XObject 5 0 R >>")
+        .stream(3, "/Type /XObject /Subtype /Form /BBox [0 0 1 1]", b"")
+        .stream(
+            6,
+            "/Type /XObject /Subtype /Form /BBox [0 0 20 20]",
+            b"0 g NEWMARK",
+        );
+    let entries: String = (0..names)
+        .map(|i| {
+            if collide {
+                format!("/SheerFl{i} 3 0 R ")
+            } else {
+                format!("/Fx{i} 3 0 R ")
+            }
+        })
+        .collect();
+    pdf.object(5, &format!("<< {entries} >>"));
+    for i in 0..pages {
+        pdf.object(
+            1000 + i,
+            &format!(
+                "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 200 200] /Annots [{} 0 R] >>",
+                2000 + i
+            ),
+        )
+        .object(
+            2000 + i,
+            "<< /Type /Annot /Subtype /Widget /FT /Btn /Rect [10 10 30 30] /F 4 /AS /On /AP << /N << /On 6 0 R >> >> >>",
+        );
+    }
+    pdf.finish(1)
+}
+
+#[test]
+fn colliding_sheer_names_in_the_resources_are_stepped_over() {
+    let out = flat(&crowded(1, 3000, true), FlattenScope::Forms);
+    let doc = reload!(&out.bytes);
+    let page = *doc.get_pages().values().next().unwrap();
+    let (resources, _) = doc.get_page_resources(page).unwrap();
+    let xobjects = resources
+        .unwrap()
+        .get(b"XObject")
+        .unwrap()
+        .as_dict()
+        .unwrap();
+    // Every old name still points at the old form, and the new one has a name of its own.
+    assert_eq!(xobjects.len(), 3001);
+    let new = xobjects
+        .get(b"SheerFl3000")
+        .unwrap()
+        .as_reference()
+        .unwrap();
+    assert_ne!(new.0, 3);
+    assert!(content_of(&out.bytes).contains("/SheerFl3000 Do"));
+}
+
+#[test]
+fn a_huge_shared_xobject_dictionary_copied_to_many_pages_is_refused() {
+    // 100 pages x 5 000 entries is copied page by page: over the bound.
+    let error = flatten(&crowded(100, 5000, false), FlattenScope::Forms, &Unattended).unwrap_err();
+    assert_eq!(error.code(), ErrorCode::LimitExceeded);
+    // A few pages are fine.
+    assert!(flatten(&crowded(3, 5000, false), FlattenScope::Forms, &Unattended).is_ok());
+}
+
+#[test]
+fn a_no_rotate_annotation_is_placed_differently_only_on_a_turned_page() {
+    let build = |rotate: u16, flags: u16| {
+        let mut pdf = PdfBuilder::new();
+        pdf.object(1, "<< /Type /Catalog /Pages 2 0 R >>")
+            .object(2, "<< /Type /Pages /Kids [10 0 R] /Count 1 >>")
+            .object(
+                10,
+                &format!("<< /Type /Page /Parent 2 0 R /MediaBox [0 0 200 200] /Rotate {rotate} /Annots [100 0 R] >>"),
+            )
+            .object(
+                100,
+                &format!("<< /Type /Annot /Subtype /Stamp /Rect [100 100 140 120] /F {flags} /AP << /N 111 0 R >> >>"),
+            )
+            .stream(111, "/Type /XObject /Subtype /Form /BBox [0 0 40 20]", b"0 g");
+        content_of(&flat(&pdf.finish(1), FlattenScope::FormsAndAnnotations).bytes)
+    };
+    assert_eq!(build(0, 4), build(0, 20));
+    assert_ne!(build(90, 4), build(90, 20));
+}

@@ -1094,6 +1094,16 @@ mod tests {
             state.import_page(PageId::new(0), &items),
             limits::MAX_ANNOTATIONS_PER_PAGE
         );
+        // What did not fit is reported, not dropped silently; a page that was read completely has no warning.
+        assert_eq!(
+            state.import_warnings(),
+            vec![crate::model::doc_state::ImportWarning::PageTruncated {
+                page: 0,
+                skipped: 5
+            }]
+        );
+        assert_eq!(state.import_page(PageId::new(1), &items[..3]), 3);
+        assert_eq!(state.import_warnings().len(), 1);
         assert_eq!(
             code(state.execute(create_cmd(0, 0.0), &stamp(0))),
             ErrorCode::LimitExceeded
@@ -1156,6 +1166,14 @@ mod tests {
         assert_eq!(
             state.import_page(PageId::new(0), &items),
             limits::MAX_IMPORT_BYTES_PER_PAGE / one
+        );
+        let skipped = items.len() - limits::MAX_IMPORT_BYTES_PER_PAGE / one;
+        assert_eq!(
+            state.import_warnings(),
+            vec![crate::model::doc_state::ImportWarning::PageTruncated {
+                page: 0,
+                skipped: u32::try_from(skipped).unwrap()
+            }]
         );
         // The document budget goes in whole pages of these.
         let mut pages = 0;

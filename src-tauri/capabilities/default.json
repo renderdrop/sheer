@@ -54,6 +54,7 @@
     "allow-list-signatures",
     "allow-use-signature",
     "allow-get-signature-preview",
+    "allow-discard-signature-draft",
     "allow-save-draft-signature",
     "allow-import-signature-image",
     "allow-create-typed-signature",

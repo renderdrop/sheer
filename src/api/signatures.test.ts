@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { parseAnnotation } from './annotations';
 import {
   createTypedSignature,
+  discardSignatureDraft,
   importSignatureImage,
   parseAssetInfo,
   parseSignatureArt,
@@ -46,6 +47,11 @@ describe('commands', () => {
       text: 'Ada',
       font: 'homemadeApple',
     });
+  });
+  it('discards a draft by id', async () => {
+    invokeMock.mockResolvedValue(undefined);
+    await discardSignatureDraft(4);
+    expect(invokeMock).toHaveBeenCalledWith('discard_signature_draft', { draftId: 4 });
   });
   it('a cancelled import is null and a malformed answer rejects', async () => {
     invokeMock.mockResolvedValueOnce(null);

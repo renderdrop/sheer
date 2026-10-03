@@ -82,6 +82,18 @@ beforeEach(() => {
 });
 
 describe('the form host', () => {
+  it.each([90, 180, 270])('keeps the fields on a page turned by %i degrees', async (rotation) => {
+    const quarter = rotation !== 180;
+    render(
+      <>
+        <FormHost />
+        <FormLayer {...layer} rotation={rotation} boxWidth={quarter ? 400 : 200} boxHeight={quarter ? 200 : 400} />
+      </>,
+    );
+    expect(await screen.findAllByRole('textbox')).toHaveLength(3);
+    expect(screen.getByRole('group').style.transform).toBe(`rotate(${rotation}deg) scale(1)`);
+  });
+
   it('reads the form of the active document and shows the banner and the Form pill', async () => {
     render(
       <>
