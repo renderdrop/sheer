@@ -9,7 +9,9 @@ pub mod error;
 pub mod events;
 pub mod limits;
 pub mod menu;
+pub mod model;
 pub mod platform;
+pub mod security;
 pub mod sources;
 pub mod storage;
 
@@ -84,6 +86,12 @@ pub fn run() -> Result<(), AppError> {
             commands::render::render_page,
             commands::render::set_viewport,
             commands::render::get_page_sizes,
+            commands::outline::get_outline,
+            commands::text::get_text_layer,
+            commands::search::search,
+            commands::search::cancel_search,
+            commands::links::get_page_links,
+            commands::links::open_link,
             commands::close_document,
             commands::app::app_ready,
             commands::app::get_settings,

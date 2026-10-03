@@ -1,0 +1,94 @@
+%PDF-1.7
+%‚„œ”
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Kids [10 0 R 12 0 R 14 0 R] /Count 3 >>
+endobj
+3 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>
+endobj
+4 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding /ToUnicode 5 0 R >>
+endobj
+5 0 obj
+<<  /Length 335 >>
+stream
+/CIDInit /ProcSet findresource begin 12 dict begin begincmap
+/CIDSystemInfo << /Registry (Adobe) /Ordering (UCS) /Supplement 0 >> def
+/CMapName /Adobe-Identity-UCS def /CMapType 2 def
+1 begincodespacerange <00> <FF> endcodespacerange
+1 beginbfchar <41> <D83DDE00> endbfchar
+endcmap CMapName currentdict /CMap defineresource pop end end
+endstream
+endobj
+10 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792]  /Contents 11 0 R /Resources << /Font << /F1 3 0 R /F2 4 0 R >> >> >>
+endobj
+11 0 obj
+<<  /Length 439 >>
+stream
+BT /F1 14 Tf 72 700 Td (Gr\374\337e aus M\374nchen) Tj ET
+BT /F1 14 Tf 72 670 Td (Caf\351 Cr\350me \226 na\357ve fa\347ade \200 5) Tj ET
+BT /F1 14 Tf 72 640 Td (The quick brown fox jumps over the lazy dog.) Tj ET
+BT /F1 14 Tf 72 610 Td (A word that is hyphen-) Tj ET
+BT /F1 14 Tf 72 580 Td (ated across two lines.) Tj ET
+BT /F1 14 Tf 72 550 Td (Repeat repeat REPEAT Repeated.) Tj ET
+BT /F1 14 Tf 72 520 Td (The stra\337e ends here.) Tj ET
+
+endstream
+endobj
+12 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Rotate 90 /Contents 13 0 R /Resources << /Font << /F1 3 0 R /F2 4 0 R >> >> >>
+endobj
+13 0 obj
+<<  /Length 76 >>
+stream
+BT /F1 14 Tf 72 700 Td (Turned page) Tj ET
+BT /F2 14 Tf 72 670 Td (A) Tj ET
+
+endstream
+endobj
+14 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792]  /Contents 15 0 R /Resources << /Font << /F1 3 0 R /F2 4 0 R >> >> >>
+endobj
+15 0 obj
+<<  /Length 520 >>
+stream
+BT /F1 12 Tf 72 700 Td (needle needle needle) Tj ET
+BT /F1 12 Tf 72 680 Td (needle needle needle) Tj ET
+BT /F1 12 Tf 72 660 Td (needle needle needle) Tj ET
+BT /F1 12 Tf 72 640 Td (needle needle needle) Tj ET
+BT /F1 12 Tf 72 620 Td (needle needle needle) Tj ET
+BT /F1 12 Tf 72 600 Td (needle needle needle) Tj ET
+BT /F1 12 Tf 72 580 Td (needle needle needle) Tj ET
+BT /F1 12 Tf 72 560 Td (needle needle needle) Tj ET
+BT /F1 12 Tf 72 540 Td (needle needle needle) Tj ET
+BT /F1 12 Tf 72 520 Td (needle needle needle) Tj ET
+
+endstream
+endobj
+xref
+0 16
+0000000000 65535 f 
+0000000015 00000 n 
+0000000064 00000 n 
+0000000136 00000 n 
+0000000233 00000 n 
+0000000347 00000 n 
+0000000000 65535 f 
+0000000000 65535 f 
+0000000000 65535 f 
+0000000000 65535 f 
+0000000734 00000 n 
+0000000873 00000 n 
+0000001365 00000 n 
+0000001514 00000 n 
+0000001642 00000 n 
+0000001781 00000 n 
+trailer
+<< /Size 16 /Root 1 0 R  >>
+startxref
+2354
+%%EOF

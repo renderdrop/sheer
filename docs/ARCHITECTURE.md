@@ -27,17 +27,17 @@ state.rs         AppState { registry, engine, settings, recents }
 error.rs         AppError (internal) → UiError (IPC)
 limits.rs        every numeric bound as a const
 commands/        thin: validate → registry/engine → UiError
-                 app · documents · render · text · links · edit · pages (M3) · forms (M4) · export (M6) · recovery (M7)
+                 app · documents · render · outline · text · search · links · edit · pages (M3) · forms (M4) · export (M6) · recovery (M7)
 documents/       registry (the table of open documents: claim = dedupe by canonical path, abandon = the arbiter of an open that outlives its deadline) · intake (admit: canonicalize, open once, judge the handle; command-line and URL parsing; the dialog is in commands/) · recents
 engine/          the only PDFium user (ADR-002)
                  mod (Engine, Job) · worker (open, frames and tiles, page sizes) · queue (priority, cancellation by viewport, dedupe: ADR-018) · guard (catch_unwind, deadlines) · encode (frames)
-                 text · search · links · import (annotations → model) · forms (M4) · transport (M7)
+                 text (the layer, and the one reading of a page's characters) · search (one page: the page's text, found by `model::find`) · links · outline · space (pages and destinations in page space) · import (annotations → model) · forms (M4) · transport (M7)
 model/           engine-free domain (ADR-003)
-                 ids · geometry · annotation · page · command · history · doc_state · validate
+                 geometry (Point, Rect, Quad, PageBox) · find (text search) · reading (what the UI is told about content) · ids · annotation · page · command · history · doc_state · validate (the first three exist)
 pdfwrite/        the only lopdf user (ADR-004)
                  save · annots · appearance · coords · pagetree (M3) · crypt (M5)
 storage/         atomic (temp + fsync + rename) · backup · settings · app_dirs · autosave (M7)
-security/        links (http/https/mailto allowlist) · names (display-name sanitizer)
+security/        links (http/https/mailto allowlist, `SafeUrl`) · names (display-name sanitizer; today `documents::sanitize_text`)
 menu/            macOS menu bar (ADR-016): mod (MenuBridge: the channel to the UI, the id allowlist, build + rebuild on a language change) · spec (layout of src/actions/menu.json, texts of the UI catalogs, ACTION_IDS)
 platform/        macos (reduced transparency flag) · windows
 ```
@@ -51,7 +51,7 @@ Import rules, checked by a CI grep:
 ## 3. Frontend modules (`src/`)
 
 ```
-api/          call.ts (the one `invoke` caller) · app.ts, documents.ts, render.ts (render_page, set_viewport, get_page_sizes), … (one typed wrapper per command) · errors.ts · frame.ts · types.gen.ts (ts-rs, generated)
+api/          call.ts (the one `invoke` caller) · app.ts, documents.ts, render.ts (render_page, set_viewport, get_page_sizes), outline.ts · text.ts · search.ts · links.ts (the read commands: each parses what the backend answers and treats a wrong shape as `internal`; `wire.ts` holds the page-space shapes and number checks they share), … (one typed wrapper per command) · errors.ts · frame.ts · types.gen.ts (ts-rs, generated)
 engine/       buckets.ts (zoom buckets, tiles: pure) · renderCache.ts (Blob LRU, pins, in-flight dedupe, object URLs) · renderScheduler.ts (generations, set_viewport, quiet cancels) · textCache.ts
 stores/       documents · view · pages · annotations · tools · search · ui · settings · recents
 features/     shell (Shell, CaptionBar, ToolbarSlot, ToolbarRow, LeftPanel, MainGrid, Inspector, StatusBar, EmptyState, BannerRow: the app shell of DESIGN 2; grid rules in lib/layout.ts)
@@ -83,7 +83,7 @@ pub struct DocumentEntry {
 }
 ```
 
-Today the registry (`documents::Registry`) holds, per id, the canonical path, the display name and the page count (`None` while the engine is still loading); the other fields arrive with the features that need them.
+Today the registry (`documents::Registry`) holds, per id, the canonical path, the display name, the page count (`None` while the engine is still loading) and the flags (`DocFlags { encrypted, xfa, has_forms, signed }`, what PDFium said when it loaded the document: best effort, read once by the worker and kept with the page sizes until the document is released); the other fields arrive with the features that need them.
 
 A path enters the backend only from the Rust-side dialog, `WindowEvent::DragDrop`, `RunEvent::Opened` (macOS), argv or a second instance
 (Windows), or a recents entry (`sources.rs` and `commands::open_document_dialog`). `documents::intake::admit` then: canonicalizes → **opens the
@@ -130,17 +130,17 @@ close_document(doc_id: DocId, discard: bool) -> ()                      // dirty
 save_document(doc_id: DocId, ack: SaveAck) -> SaveResult
 save_document_as(doc_id: DocId, opts: SaveAsOptions, ack: SaveAck) -> Option<SaveResult>  // None = cancelled
 revert_document(doc_id: DocId) -> DocumentInfo
-get_outline(doc_id: DocId) -> Vec<OutlineNode>       // ≤ 10 000 nodes, depth ≤ 32, title ≤ 512 chars
+get_outline(doc_id: DocId) -> Vec<OutlineNode>       // ≤ 10 000 nodes, depth ≤ 32, title ≤ 512 chars sanitized like a display name; a target is a page id and y, or none; a cycle in the file ends where it comes back
 // render
 render_page(req: RenderRequest) -> tauri::ipc::Response   // frame, ADR-002 §6: the whole page or one 1024 px tile; `cancelled` if withdrawn while queued
 set_viewport(doc_id: DocId, hint: ViewportHint) -> ()      // cancels queued renders of pages that left the viewport, re-ranks the rest (ADR-018)
 get_page_sizes(doc_id: DocId) -> Vec<[f32; 2]>             // [width, height] in points per page, rotation applied, 1..=14 400 pt; ≤ 50 000 pages; read once at load, a lookup
 // text, search, links
-get_text_layer(doc_id: DocId, page_id: PageId) -> TextLayer   // ≤ 200 000 chars
-search(doc_id: DocId, query: SearchQuery, on_event: Channel<SearchEvent>) -> u32
-cancel_search(search_id: u32) -> ()
-get_page_links(doc_id: DocId, page_id: PageId) -> Vec<LinkInfo>     // ≤ 1 000
-open_link(doc_id: DocId, page_id: PageId, link_index: u32) -> ()    // URL re-read in Rust; http, https, mailto
+get_text_layer(doc_id: DocId, page_id: PageId) -> TextLayer   // ≤ 200 000 UTF-16 code units, four boxes per unit; `Interactive` priority
+search(doc_id: DocId, query: SearchQuery, on_event: Channel<SearchEvent>) -> u32   // returns at once; one page per `Background` job; ≤ 50 000 hits, ≤ 64 searches at once
+cancel_search(search_id: u32) -> ()                                  // an unknown or finished id is not an error
+get_page_links(doc_id: DocId, page_id: PageId) -> Vec<LinkInfo>     // ≤ 1 000, `Interactive` priority
+open_link(doc_id: DocId, page_id: PageId, link_index: u32) -> ()    // URL re-read in Rust, shown in a native dialog from Rust, then opened by Rust; http, https, mailto
 // edit (ADR-003)
 list_annotations(doc_id: DocId, pages: Option<Vec<PageId>>) -> Vec<Annotation>
 apply_command(doc_id: DocId, cmd: DocCommand, coalesce_key: Option<String>) -> ChangeSet  // key ≤ 64 chars
@@ -155,12 +155,15 @@ struct RenderRequest { doc_id: DocId, page_id: PageId, bucket: i16 /* -17..=24 *
                        priority: Priority /* Visible | Near | Thumbnail */, generation: u32 }   // `forms: bool` joins with M4
 struct ViewportHint  { generation: u32, visible: Vec<PageId> /* ≤ 64 */, near: Vec<PageId> /* ≤ 64 */ }
 struct SearchQuery   { text: String /* 1..=512 chars */, match_case: bool, whole_word: bool, max_hits: u32 /* ≤ 50 000 */ }
-enum   SearchEvent   { Hits { page_id: PageId, hits: Vec<Vec<Quad>> }, Progress { done: u32, total: u32 }, Done { truncated: bool } }
+enum   SearchEvent   { Hits { page_id: PageId, hits: Vec<Vec<Quad>> }, Progress { done: u32, total: u32 }, Done { truncated: bool }, Failed { code, key, retryable, params? } }
+                     // wire: `{ "type": "hits" | "progress" | "done" | "failed", ..fields }`, camelCase. `Failed` is an addition: the engine could not go on, and no `Done` follows. A cancelled search sends nothing more
 struct SaveAck       { break_signature: bool, file_changed: bool, rewrite_encrypted: bool }
-struct TextLayer     { text: String, boxes: Vec<f32> /* x, y, w, h per char, page space */, truncated: bool }
-struct LinkInfo      { index: u32, rect: Rect, target: LinkTarget /* Page { page_id, y } | Url { url ≤ 2048 } | Blocked */ }
+struct TextLayer     { text: String, boxes: Vec<f32> /* x, y, w, h per UTF-16 code unit of `text`, page space (the box of a character of two units is there twice) */, truncated: bool }
+struct OutlineNode   { title: String, target: Option<PageTarget { page_id, y }>, children: Vec<OutlineNode> }
+struct LinkInfo      { index: u32 /* position among the page's links */, rect: Rect, target: LinkTarget /* Page { page_id, y } | Url { url ≤ 2048 } | Blocked; wire: `{ "type": "page" | "url" | "blocked", ..fields }` */ }
+struct DocFlags      { encrypted: bool, xfa: bool, has_forms: bool, signed: bool }   // best effort, from PDFium, read when the document is loaded; part of `DocumentInfo` as `flags` (`signed` only for a document that has a form)
 struct OpenResult    { doc_id: DocId, status: OpenStatus /* Ready | NeedsPassword */, info: Option<DocumentInfo> }
-struct DocumentInfo  { doc_id: DocId, display_name: String, pages: Vec<PageSlotInfo>, rev: u32, flags: DocFlags, history: HistoryState }  // planned; today `{ id, pageCount, displayName }`, the three fields every open document has
+struct DocumentInfo  { doc_id: DocId, display_name: String, pages: Vec<PageSlotInfo>, rev: u32, flags: DocFlags, history: HistoryState }  // planned; today `{ id, pageCount, displayName, flags }`, the four fields every open document has
 struct PageSlotInfo  { id: PageId, width: f32, height: f32 /* pt, unrotated CropBox */, rotation: u16, rev: u32, label: Option<String> }
 struct SaveResult    { rev: u32, mode: SaveMode /* Incremental | Full */, backup_created: bool }
 struct AppBootstrap  { platform: Platform /* macos | windows | linux */, reduced_transparency: bool, version: &'static str }
@@ -186,7 +189,34 @@ focus (the setting is changed in System Settings, so the app was in the backgrou
 sends the new value over the channel the UI opened with `watch_transparency` (§5, §6), which the settings store mirrors. Startup does not wait for the backend: `src/main.tsx` renders with the defaults at
 once and `loadSettings` applies the stored settings when they arrive (after 3 s without an answer the defaults stay and a late answer still applies).
 
-Launch, GoToR and JavaScript actions map to `Blocked`. The UI's confirm dialog shows the URL, and `open_link` re-reads the URL from the
+**Read commands** (`engine::{outline, text, search, links, space}`, `commands::{outline, text, search, links}`, ADR-019). Each is one engine job per
+call, except `search`, which is one job per page. Coordinates are page space (ADR-003 §1: points, origin at the top left of the page's box, y down, before `/Rotate`)
+and are kept to a hundredth of a point; every number of a page comes from the file and is finite and within ±14 400 before it is sent. The command layer applies the
+bounds a second time on what it sends (the engine applies them first), so the UI is promised them whatever the engine hands over.
+- *Outline.* Read depth first with the set of bookmarks already read: a `/Next` that points to an earlier sibling, a `/First` that points to an ancestor and a bookmark that
+  is its own sibling end the chain there. A bookmark goes to a page only through a jump in this document (a `GoToR` action's destination is a page of another file and
+  is no target). Beyond 10 000 nodes or 32 levels the rest is left out.
+- *Text layer.* One reading of a page's characters (`engine::text::text_chars`) serves the layer and the search: PDFium's controls are left out (the hyphen of a
+  hyphenated line end is U+0002, so the word reads whole), and the two halves of a surrogate pair, which PDFium hands over as two characters where its characters are 16 bit
+  (Windows), are one character. The box is PDFium's "loose" one (the height of the font), so a selection of a line has no gaps.
+- *Search.* PDFium's own search is not used: it folds the case of ASCII letters only and does not see through a hyphenated line end (both measured, see ADR-019). The page's
+  text is searched in Rust (`model::find`: Unicode lower-casing unless the search is case sensitive, ligatures as letters, soft hyphens gone, a run of white space is one space so
+  a phrase is found across a line break, whole word where the hit's own edge is a letter, KMP so no page and no query makes it more than linear) and PDFium is asked for the box of
+  each character of each hit, which become the hit's quads, one per line. The loop (`commands::search`) asks the engine for one page at a time at `Background` priority, so a
+  render that is queued goes first; a page the engine is too busy for is asked again up to 10 times; a damaged page is skipped; a new search of a document, `cancel_search` and
+  `close_document` cancel the running one through a flag read between two pages, and a cancelled search sends nothing more.
+- *Links.* The page's link annotations in `/Annots` order (not `FPDFLink_Enumerate`'s index, which for a page with other annotations repeats links). A link is `Page` if its
+  action is a jump in this document or it has a `/Dest` of its own that names a page, `Url` if its URI action passes `security::links::classify` (`http`, `https`, `mailto`; at
+  most 2048 bytes; only RFC 3986 characters, no credentials before the host, no attachment parameter in a `mailto`), and `Blocked` otherwise: Launch, GoToR, GoToE,
+  JavaScript, any other scheme, a damaged destination. Nothing is executed.
+- *`open_link`.* The UI names a link by document, page and index. Rust reads the page's links again, takes the URL from the document (a `SafeUrl`, the only value the opener
+  takes), shows a native message box with the URL in full (texts from the UI catalogs, `link.confirm.*`, in the language of the settings), and only if the user agrees calls
+  `tauri_plugin_opener::open_url`, the one place the plugin is used. The plugin is not registered with the builder and no capability names it, so the webview has no opener
+  command at all. A link that is a page, is blocked or does not exist is `invalid_argument` (`link`) and the user is not asked; a declined dialog is `Ok(())`.
+- *Flags.* `encrypted` (the security handler revision is not "unprotected"), `xfa` and `has_forms` (`FPDF_GetFormType`), `signed` (a signed signature field; only looked for in a document
+  that has a form, because counting signatures walks every page).
+
+Launch, GoToR and JavaScript actions map to `Blocked`. The UI's confirm dialog is a native one shown by Rust with the URL, and `open_link` re-reads the URL from the
 document. The frontend therefore cannot make Rust open an arbitrary URL.
 
 `model::validate` bounds on `DocCommand`:
@@ -206,7 +236,7 @@ M6: `export_images`, `print_document`, `reveal_in_folder`. M7: `list_recoverable
 ## 6. Pushes (Rust → UI, never with paths)
 
 The webview has no event permission (SECURITY T3): it cannot `listen` to or `emit` events. A push reaches it as a message on a `tauri::ipc::Channel` that the
-UI passes to a command, like `search(.., on_event: Channel<SearchEvent>)`. Three are implemented: `watch_transparency(on_change: Channel<bool>)` sends
+UI passes to a command, like `search(.., on_event: Channel<SearchEvent>)`. Four are implemented: `search` sends `hits`, `progress`, `done` and `failed` (§5) for one search, one channel per search, so a message belongs to the search whose channel it came on; `watch_transparency(on_change: Channel<bool>)` sends
 each change of the macOS "Reduce transparency" flag (checked when the window gains focus) as a bare bool; a value that already differs from what `app_ready`
 reported is sent on subscribing. `subscribe_menu(on_action: Channel<String>, ..)` sends the id of each macOS menu command (`menu:action {id}` below, as a bare string) from the allowlist.
 `subscribe_app(on_event: Channel<AppEvent>)` sends the typed `AppEvent`s of `events.rs` (`dropHover { active }`, `opened { document }`, `openFailed { code, .. }`; shapes in §5). They are the events
@@ -264,6 +294,11 @@ Rules:
   Background for the rest; `doc:annotations-imported` triggers `list_annotations`.
 - **Render.** Scroll → `layout.ts` (visible range, ± one viewport height, ≤ 24 pages) → `PageView`s mount, sized from `get_page_sizes`. A page shows the best cached bucket as an `<img src=blob:>` scaled by CSS and asks the scheduler
   for its exact bucket (`bucketFor(zoom, dpr)`; tiles over a low underlay above 4096 px or 8 Mpx) → `render_page` (Visible or Near, stamped with the viewport generation) → the worker renders and encodes → frame → Blob → cache → the exact `<img>` covers the stand-in when decoded. 150 ms after the viewport settles, `set_viewport` cancels the stale jobs and re-ranks the rest. A zoom, a change of scroll mode and a jump to a page set a `ScrollAnchor` that the canvas scrolls to once it has laid out; a change of the display's pixel ratio changes the bucket and renders again.
+- **Search.** The search box → `search(doc, query, channel)` → validate, register (one search per document: an earlier one is cancelled) → returns the id; a blocking-pool thread asks the
+  engine for page 0, 1, 2, … as `Background` jobs → `hits` per page with quads in page space (the UI draws them over the page and keeps the active hit) · `progress` · `done`.
+  Typing again, closing the panel or the document cancels (`cancel_search`, a new `search`, `close_document`); a render on screen is always taken before the next page.
+- **Open a link.** `get_page_links` when a page is shown (the UI draws a hit area per link: a `page` target scrolls, a `url` target is a link, `blocked` does nothing) → a click on a `url`
+  link → `open_link(doc, page, index)` → Rust re-reads the link, shows the URL in a native dialog, and opens it with the system's handler if the user agrees.
 - **Annotate.** A pointer gesture builds a draft in `annotations.editing`. On pointerup, `apply_command(CreateAnnotation)` → validate,
   apply, push history → ChangeSet → store → overlay. A persisted annotation that becomes non-clean is hidden in PDFium, `pageRev`
   increments, and the page re-renders.

@@ -35,6 +35,22 @@ impl PageId {
     }
 }
 
+/// What PDFium says about a document, as far as it can tell: best effort, nothing here is a security promise. Read once, when the
+/// document is loaded (`engine::worker`).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DocFlags {
+    /// The file has a security handler (a password or permissions): `/Encrypt` in the trailer.
+    pub encrypted: bool,
+    /// The form is an XFA form (`/XFA` in the AcroForm dictionary). This build of PDFium has no XFA support, so such a document
+    /// shows its fallback page or none at all.
+    pub xfa: bool,
+    /// The document has an interactive form (AcroForm or XFA).
+    pub has_forms: bool,
+    /// The document has at least one digital signature field that is signed. Whether the signature is valid is not checked.
+    pub signed: bool,
+}
+
 /// What the frontend learns about a document it just opened.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -43,6 +59,7 @@ pub struct DocumentInfo {
     pub page_count: u32,
     /// The file's name for the status bar, see [`display_name`]. Never contains a directory.
     pub display_name: String,
+    pub flags: DocFlags,
 }
 
 /// The name of the file at `path` as the UI may show it: the last path component only (the frontend never learns
@@ -53,10 +70,16 @@ pub fn display_name(path: &Path) -> String {
     let Some(name) = path.file_name() else {
         return String::new();
     };
-    name.to_string_lossy()
-        .chars()
+    sanitize_text(&name.to_string_lossy(), limits::MAX_DISPLAY_NAME_CHARS)
+}
+
+/// `text` as the UI may show a string that came from a file: without the characters of [`display_name`]'s filter (see
+/// `is_unsafe_in_display_name`), at most `max_chars` characters. The name of a file and the title of an outline entry are
+/// both strings of the document, and both get this treatment, so the UI has one rule for what it may be shown.
+pub fn sanitize_text(text: &str, max_chars: usize) -> String {
+    text.chars()
         .filter(|&c| !is_unsafe_in_display_name(c))
-        .take(limits::MAX_DISPLAY_NAME_CHARS)
+        .take(max_chars)
         .collect()
 }
 
@@ -116,6 +139,8 @@ struct Entry {
     display_name: String,
     /// `None` until the engine has loaded the document.
     page_count: Option<u32>,
+    /// What PDFium said about the document when it loaded it (`set_flags`); all `false` until then.
+    flags: DocFlags,
     /// The UI closed the document, but the engine has not confirmed that it released it (`Registry::begin_close`). The entry stays
     /// so that the release is tried again and the engine's copy is never lost; to everybody else the document is gone.
     closing: bool,
@@ -148,6 +173,7 @@ impl Inner {
                 path,
                 display_name,
                 page_count: None,
+                flags: DocFlags::default(),
                 closing: false,
             },
         );
@@ -227,6 +253,7 @@ impl Registry {
             id,
             page_count: entry.page_count?,
             display_name: entry.display_name.clone(),
+            flags: entry.flags,
         })
     }
 
@@ -236,6 +263,17 @@ impl Registry {
         match self.lock().entries.get_mut(&id) {
             Some(entry) => {
                 entry.page_count = Some(page_count);
+                Ok(())
+            }
+            None => Err(AppError::not_found("document")),
+        }
+    }
+
+    /// Records what PDFium said about a document it loaded. Fails with `not_found` if the entry is gone.
+    pub fn set_flags(&self, id: DocumentId, flags: DocFlags) -> Result<(), AppError> {
+        match self.lock().entries.get_mut(&id) {
+            Some(entry) => {
+                entry.flags = flags;
                 Ok(())
             }
             None => Err(AppError::not_found("document")),
@@ -302,6 +340,12 @@ impl Registry {
     /// `invalid_argument` if the page does not exist and with `not_found` if the document is unknown.
     pub fn page_index(&self, id: DocumentId, page: PageId) -> Result<u32, AppError> {
         limits::validate_page_index(page.0, self.page_count(id)?)
+    }
+
+    /// The id of the page at position `index` of the loaded document `id`: the inverse of [`Registry::page_index`], identity until
+    /// M3. Fails with `invalid_argument` if the document has no such position and with `not_found` if the document is unknown.
+    pub fn page_id(&self, id: DocumentId, index: u32) -> Result<PageId, AppError> {
+        limits::validate_page_index(index, self.page_count(id)?).map(PageId)
     }
 
     /// Path of a registered document that is not being closed (for reload and save in later milestones).
@@ -425,10 +469,16 @@ mod tests {
             id,
             page_count: 3,
             display_name: "a.pdf".to_owned(),
+            flags: DocFlags {
+                encrypted: true,
+                xfa: false,
+                has_forms: true,
+                signed: false,
+            },
         };
         assert_eq!(
             serde_json::to_string(&info).unwrap(),
-            r#"{"id":0,"pageCount":3,"displayName":"a.pdf"}"#
+            r#"{"id":0,"pageCount":3,"displayName":"a.pdf","flags":{"encrypted":true,"xfa":false,"hasForms":true,"signed":false}}"#
         );
     }
 
@@ -511,11 +561,48 @@ mod tests {
             Some(DocumentInfo {
                 id,
                 page_count: 4,
-                display_name: "a.pdf".to_owned()
+                display_name: "a.pdf".to_owned(),
+                flags: DocFlags::default(),
             })
         );
         registry.remove(id);
         assert_eq!(registry.info(id), None);
+    }
+
+    #[test]
+    fn the_flags_of_a_document_are_recorded_for_the_info_and_only_for_an_entry_that_exists() {
+        let registry = Registry::new();
+        let id = registry.register(path("a.pdf")).unwrap();
+        registry.set_page_count(id, 1).unwrap();
+        let flags = DocFlags {
+            encrypted: true,
+            signed: true,
+            ..DocFlags::default()
+        };
+        registry.set_flags(id, flags).unwrap();
+        assert_eq!(registry.info(id).unwrap().flags, flags);
+        registry.remove(id);
+        assert_eq!(
+            registry.set_flags(id, flags).unwrap_err().code(),
+            ErrorCode::NotFound
+        );
+    }
+
+    #[test]
+    fn text_from_a_file_loses_what_could_reorder_or_hide_it_and_is_cut_at_the_limit() {
+        assert_eq!(sanitize_text("Chapter 1", 512), "Chapter 1");
+        // Direction override, zero width space, a control character, a line separator.
+        assert_eq!(
+            sanitize_text("a\u{202e}b\u{200b}c\u{7}d\u{2028}e", 512),
+            "abcde"
+        );
+        // The joiners stay: scripts and emoji need them.
+        assert_eq!(sanitize_text("a\u{200d}b", 512), "a\u{200d}b");
+        assert_eq!(
+            sanitize_text("\u{fc}ber \u{1f600}\u{1f600}", 6),
+            "\u{fc}ber \u{1f600}"
+        );
+        assert_eq!(sanitize_text("", 5), "");
     }
 
     #[test]

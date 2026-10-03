@@ -365,6 +365,12 @@ fn capabilities_grant_only_the_app_commands_and_the_window_chrome_to_the_main_wi
         "allow-render-page",
         "allow-set-viewport",
         "allow-get-page-sizes",
+        "allow-get-outline",
+        "allow-get-text-layer",
+        "allow-search",
+        "allow-cancel-search",
+        "allow-get-page-links",
+        "allow-open-link",
         "allow-close-document",
         "allow-app-ready",
         "allow-get-settings",
@@ -600,6 +606,12 @@ fn build_script_declares_exactly_the_granted_commands() {
         "render_page",
         "set_viewport",
         "get_page_sizes",
+        "get_outline",
+        "get_text_layer",
+        "search",
+        "cancel_search",
+        "get_page_links",
+        "open_link",
         "close_document",
         "app_ready",
         "get_settings",
@@ -793,4 +805,76 @@ fn lints_forbid_unsafe_and_unwrap_in_production_code() {
     let clippy = section(&manifest, "lints.clippy");
     assert!(clippy.contains(&"unwrap_used = \"deny\"".to_owned()));
     assert!(clippy.contains(&"expect_used = \"deny\"".to_owned()));
+}
+/// SECURITY P3: a link in a PDF is opened by Rust and only by Rust. The opener plugin is a dependency whose one function, `open_url`,
+/// is called in one place (`commands/links.rs`) with a `SafeUrl`; the plugin is not registered with the builder (so the webview has no
+/// `plugin:opener|...` command at all), and no capability grants it.
+#[test]
+fn the_opener_is_called_from_rust_only_and_the_webview_has_no_permission_for_it() {
+    // No capability names it, in any file.
+    for entry in fs::read_dir(root().join("capabilities")).unwrap() {
+        let path = entry.unwrap().path();
+        let text = fs::read_to_string(&path).unwrap();
+        assert!(
+            !text.contains("opener"),
+            "{} grants the opener to the webview (SECURITY P3)",
+            path.display()
+        );
+    }
+    // It is not registered as a plugin: `generate_handler!` and `.plugin(...)` do not know it.
+    let lib = read("src/lib.rs");
+    assert!(
+        !lib.contains("tauri_plugin_opener") && !lib.contains("opener::init"),
+        "the opener plugin must not be registered: it would add commands for the webview"
+    );
+    // Its `open_url` is the one function used, in the one file that has a confirmation dialog in front of it.
+    let mut users = Vec::new();
+    let mut stack = vec![root().join("src")];
+    while let Some(dir) = stack.pop() {
+        for entry in fs::read_dir(dir).unwrap() {
+            let path = entry.unwrap().path();
+            if path.is_dir() {
+                stack.push(path);
+            } else if path.extension().is_some_and(|ext| ext == "rs") {
+                let text = fs::read_to_string(&path).unwrap();
+                for line in text
+                    .lines()
+                    .filter(|line| !line.trim_start().starts_with("//"))
+                {
+                    if let Some((_, after)) = line.split_once("tauri_plugin_opener") {
+                        users.push((path.clone(), after.trim().to_owned()));
+                    }
+                }
+            }
+        }
+    }
+    assert_eq!(users.len(), 1, "the opener is named once: {users:?}");
+    let (path, call) = &users[0];
+    assert!(path.ends_with("commands/links.rs") || path.ends_with("commands\\links.rs"));
+    assert!(
+        call.starts_with("::open_url("),
+        "only `open_url` is used: {call}"
+    );
+    let links = read("src/commands/links.rs");
+    let confirm = links.find(".blocking_show()").expect("the dialog");
+    let open = links
+        .find("tauri_plugin_opener::open_url")
+        .expect("the opener");
+    assert!(
+        confirm < open,
+        "the dialog is built before the opener is called"
+    );
+}
+
+/// SECURITY P3: the webview passes no URL. `open_link` names a link by document, page and index; the URL comes from the file.
+#[test]
+fn open_link_takes_no_url_from_the_webview() {
+    let signature = command_signatures()
+        .into_iter()
+        .find(|(name, _)| name == "open_link")
+        .expect("open_link is a command")
+        .1;
+    let mut names = parameter_names(&signature);
+    names.retain(|name| name != "window" && name != "state");
+    assert_eq!(names, ["doc_id", "page_id", "link_index"]);
 }

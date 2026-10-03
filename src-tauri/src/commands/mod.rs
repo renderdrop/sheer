@@ -8,10 +8,14 @@
 //!
 //! | Command | Arguments | Returns |
 //! |---|---|---|
-//! | `open_document_dialog` | none | the open events of the chosen files (at most 32, in order): `{ type: "opened", document: { id, pageCount, displayName } }` or `{ type: "openFailed", code, key, retryable, params? }` each; empty if the dialog was cancelled |
+//! | `open_document_dialog` | none | the open events of the chosen files (at most 32, in order): `{ type: "opened", document: { id, pageCount, displayName, flags } }` or `{ type: "openFailed", code, key, retryable, params? }` each; empty if the dialog was cancelled |
 //! | `render_page` | `req: { docId, pageId, bucket, tile?, priority, generation }` | frame (`ArrayBuffer`, ADR-002 §6, see `engine/encode.rs`), see [`render`] |
 //! | `set_viewport` | `docId: number`, `hint: { generation, visible: number[], near: number[] }` | nothing; cancels queued renders of pages that left the viewport, see [`render`] |
 //! | `get_page_sizes` | `docId: number` | `[width, height][]` in points, one per page, see [`render`] |
+//! | `get_outline` | `docId: number` | the bookmarks as a tree, see [`outline`] |
+//! | `get_text_layer` | `docId: number`, `pageId: number` | the text of a page and the box of each character, see [`text`] |
+//! | `search`, `cancel_search` | `docId`, `query: { text, matchCase, wholeWord, maxHits }`, `onEvent: Channel<SearchEvent>`; `searchId` | the id of the search; the hits arrive on the channel, see [`search`] |
+//! | `get_page_links`, `open_link` | `docId`, `pageId` (and `linkIndex`) | the links of a page; opening one asks the user in a native dialog first, see [`links`] |
 //! | `close_document` | `docId: number` | nothing |
 //! | `app_ready`, `get_settings`, `update_settings`, `watch_transparency`, `subscribe_menu`, `subscribe_app` | see [`app`] | see [`app`] |
 //!
@@ -21,7 +25,11 @@
 //! stays in the registry.
 
 pub mod app;
+pub mod links;
+pub mod outline;
 pub mod render;
+pub mod search;
+pub mod text;
 
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -44,6 +52,8 @@ pub struct AppState {
     registry: Arc<Registry>,
     /// The `render_page` calls in flight, capped per document and in all (see [`render::RenderGate`]).
     renders: Arc<render::RenderGate>,
+    /// The searches that run (see [`search::SearchRegistry`]).
+    searches: Arc<search::SearchRegistry>,
 }
 
 impl AppState {
@@ -52,7 +62,19 @@ impl AppState {
             engine,
             registry: Arc::new(Registry::new()),
             renders: Arc::new(render::RenderGate::default()),
+            searches: Arc::new(search::SearchRegistry::default()),
         }
+    }
+
+    /// What the UI is told about document `id`: the registry's record, with the flags PDFium gave when it loaded the document
+    /// (`DocFlags`, kept by the engine). `None` for a document that is unknown, still loading or being closed.
+    fn info(&self, id: DocumentId) -> Option<DocumentInfo> {
+        // An engine that has no flags for the document (a test double) leaves the flags the registry has.
+        if let Ok(flags) = self.engine.doc_flags(id) {
+            // The entry may be gone by now (closed meanwhile); the info is then `None` below.
+            let _ = self.registry.set_flags(id, flags);
+        }
+        self.registry.info(id)
     }
 
     /// Opens the PDF at `path`, which must come from the Rust side (dialog, drop, OS, command line; SECURITY I3).
@@ -66,7 +88,7 @@ impl AppState {
         let Admitted { path, file } = intake::admit(&path)?;
         let id = match self.registry.claim(path)? {
             Claim::New(id) => id,
-            Claim::Existing(id) => return Ok(self.registry.info(id)),
+            Claim::Existing(id) => return Ok(self.info(id)),
         };
         // The engine asks this once the document is loaded. It records the page count in the same step, so the entry either
         // gets it before the caller gives up (below) or is already gone and the engine drops the document.
@@ -81,13 +103,13 @@ impl AppState {
                 return match self.registry.abandon(id) {
                     // The deadline passed, but the engine had finished loading and had recorded the document just before: it
                     // is open, and is told as such.
-                    Abandoned::Loaded(_) => Ok(self.registry.info(id)),
+                    Abandoned::Loaded(_) => Ok(self.info(id)),
                     // Not loaded: the entry is gone, so a load that is still running finds nobody and releases the document.
                     Abandoned::Removed | Abandoned::Gone => Err(error),
                 };
             }
         }
-        Ok(self.registry.info(id))
+        Ok(self.info(id))
     }
 
     /// Opens every path, one after the other, and hands `report` how each went as soon as it is known, in order: `opened`
@@ -127,6 +149,8 @@ impl AppState {
     /// close or open: the engine's copy of the document is never left without an entry that could name it. The same goes for
     /// documents left over from an earlier failure, oldest first.
     pub fn close_document(&self, id: DocumentId) -> Result<(), AppError> {
+        // A search of a document that is going away has nothing left to find in.
+        self.searches.cancel_document(id);
         self.registry.begin_close(id);
         match self.release_closing_checked() {
             // This document is still waiting for its release: that is the answer.
@@ -217,6 +241,30 @@ pub async fn open_document_dialog(
 pub async fn close_document(state: State<'_, AppState>, doc_id: DocumentId) -> Result<(), UiError> {
     let state = state.inner().clone();
     blocking(move || state.close_document(doc_id)).await
+}
+
+/// What the tests of the command modules need: a state whose engine is a double that the test scripts, with one loaded document.
+#[cfg(test)]
+pub(crate) mod testutil {
+    use super::*;
+    use crate::engine::Job;
+
+    /// A state with `pages` pages in its one document, and the engine double `handler` answers every job that reaches it.
+    pub fn state_with_pages(
+        pages: u32,
+        handler: impl FnMut(Job) + Send + 'static,
+    ) -> (AppState, DocumentId) {
+        let state = AppState::new(Engine::with_handler(handler));
+        let id = state
+            .registry
+            .register(PathBuf::from("doc.pdf"))
+            .expect("register");
+        state
+            .registry
+            .set_page_count(id, pages)
+            .expect("page count");
+        (state, id)
+    }
 }
 
 #[cfg(test)]
@@ -824,7 +872,7 @@ mod tests {
                     assert_eq!(keys(message), ["document", "type"]);
                     assert_eq!(
                         keys(&message["document"]),
-                        ["displayName", "id", "pageCount"]
+                        ["displayName", "flags", "id", "pageCount"]
                     );
                     assert_eq!(message["document"]["displayName"], "good-name-9090.pdf");
                 }

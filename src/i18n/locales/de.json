@@ -51,6 +51,9 @@
   "leftPanel.empty.comments": "Hier erscheinen die Kommentare.",
   "leftPanel.empty.search": "Hier erscheinen die Suchergebnisse.",
 
+  "thumbnails.list": "Seitenminiaturen",
+  "thumbnails.page": "Seite {page}",
+
   "inspector.label": "Eigenschaften",
   "inspector.title": "Werkzeugoptionen",
   "inspector.empty": "Objekt oder Werkzeug auswählen, um die Optionen anzuzeigen.",
@@ -172,5 +175,14 @@
   "error.limit_exceeded.pixels": "Diese Seite ist zu groß, um bei dieser Zoomstufe angezeigt zu werden.",
   "error.limit_exceeded.dimension": "Diese Seite ist zu groß, um bei dieser Zoomstufe angezeigt zu werden.",
   "error.limit_exceeded.pages": "Dieses Dokument hat zu viele Seiten zum Öffnen.",
-  "error.limit_exceeded.documents": "Es sind zu viele Dokumente geöffnet. Eines schließen und erneut versuchen."
+  "error.limit_exceeded.documents": "Es sind zu viele Dokumente geöffnet. Eines schließen und erneut versuchen.",
+  "error.invalid_argument.query": "Suchtext eingeben.",
+  "error.invalid_argument.link": "Dieser Link kann nicht geöffnet werden.",
+  "error.limit_exceeded.query": "Dieser Suchtext ist zu lang.",
+  "error.limit_exceeded.searches": "Es laufen zu viele Suchen. Gleich noch einmal versuchen.",
+
+  "link.confirm.title": "Diesen Link öffnen?",
+  "link.confirm.message": "{app} öffnet diese Adresse mit einer anderen App:\n\n{url}\n\nNur fortfahren, wenn Sie diesem Dokument vertrauen.",
+  "link.confirm.open": "Link öffnen",
+  "link.confirm.cancel": "Abbrechen"
 }

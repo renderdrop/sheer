@@ -17,9 +17,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Scroll modes: Continuous scrolling, Single page and Two pages (More menu, macOS View menu); the status bar shows the page the scroll position is on.
 - `get_page_sizes` and `set_viewport` commands; the error code `cancelled` (the UI stays silent about it); a document of more than 50 000 pages is refused.
 - A 500-page synthetic PDF test that logs how long opening it and its first visible page take.
+- The read APIs of the backend (ADR-019), with typed and validated wrappers in `src/api`: `get_outline` (at most 10 000 nodes, 32 levels, a cycle in the file ends where it comes back),
+  `get_text_layer` (the text of a page and a box for every character, in page space), `search` and `cancel_search` (page by page at the lowest priority, so renders go first; hits as
+  one rectangle per line, progress, done; Unicode case, hyphenated words and phrases across a line break are found, which PDFium's own search does not do), `get_page_links` and
+  `open_link`. A document tells whether it is encrypted, has an XFA or an AcroForm, or is signed (`flags` of `DocumentInfo`).
+- Test PDFs generated in code (`src-tauri/tests/support`), with the committed ones under `tests/fixtures/` checked against their generator: outlines (also a cycle), links of every kind,
+  text with non-ASCII letters, a hyphenated line end and an emoji, a form, an XFA form, a signed and an encrypted document.
 
 ### Security
 
+- Links in a PDF are read as data and nothing they ask for is done: a jump in the document is a page, a URL that is plain `http`, `https` or `mailto` (at most 2048 bytes, only RFC 3986
+  characters, no credentials before the host, no attachment in a mail link) is shown in a native dialog from Rust and opened only if the user agrees, and every other action (launch, a jump to
+  another file, JavaScript, any other scheme) is blocked. `open_link` takes no URL from the webview. `tauri-plugin-opener` (Apache-2.0 OR MIT) is a dependency for its `open_url` function
+  only: it is not registered and no capability names it.
+- Outline titles, text and URLs from a file are bounded and filtered before they reach the UI, and the frontend parsers refuse an answer that is not within the bounds.
 - A flood of `render_page` calls cannot park the blocking pool: a tile column or row of 64 or more is refused at the command, at most 8 callers join one frame that is being
   drawn (the frame is shared, not copied for each), at most 96 calls per document and 128 in all are in flight, and a viewport hint with more than 64 pages in a list is refused
   while it is read. `get_page_sizes` is answered from the sizes read once when the document was loaded.

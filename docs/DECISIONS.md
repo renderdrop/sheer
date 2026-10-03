@@ -585,3 +585,52 @@ on a Mac (B-001). A document opened while another request is still loading the s
 
 **Consequences.** `RenderRequest.forms` waits for M4. The cache budget is a constant until a setting exists. A document of ≥ ~8 000 pages at a high zoom exceeds the browser's
 maximum element height (≈ 33 M px); the scroll height is not compressed. A hint is a generation behind a render that the UI asked just after it, so it never cancels it.
+
+---
+
+## ADR-019 — Read APIs as built (M1: outline, text layer, search, links, document flags)
+
+**Status:** accepted (2026-10-03). Implements ARCHITECTURE §5 (outline, text, search, links) and ADR-002 §2, §3, §7; where it differs, this entry says so.
+
+**Context.** The left panel (outline, search, thumbnails) and the viewer's text and link layers need what PDFium knows about the *content* of a document. Every byte of it is
+hostile (SECURITY P2, P3, P5, P7): a bookmark tree that is a cycle, a million siblings, a link that launches a program, a URL that is a `file:` path, a page with ten million characters.
+
+**Decision.**
+
+1. **Engine jobs.** `Outline`, `TextLayer` and `PageLinks` are `Interactive` jobs (after the pages on screen, before anything that was not asked for), `SearchPage` is `Background`;
+   each has the 10 s deadline of ADR-002 §8. The engine is asked for page *indices*; the commands map them to page ids (identity until M3) and back. A search is a loop on a
+   blocking-pool thread that asks for one page at a time, so the queue's priorities are what keep a scroll from waiting for it; a page the engine was too busy for (a full queue, or
+   more urgent work for the whole deadline) is asked again up to 10 times, 250 ms apart, before the search ends with `failed`.
+2. **Page space.** `model::geometry::PageBox` turns PDFium's user space (y up, origin wherever the crop box is) into ADR-003 §1's page space (points, top left of the page's box, y down,
+   before `/Rotate`), checks that every number is finite, brings it within ±14 400 and keeps a hundredth of a point. One `PageBox` per page read, from `FPDF_GetPageBoundingBox`.
+3. **Search is Rust's, over PDFium's text. (Deviation from ADR-002 §7, "PDFium searches".)** Measured with the fixtures of `tests/support/fixtures.rs`: PDFium's search folds the case
+   of ASCII letters only (`MÜNCHEN` does not find `München`) and does not find `hyphenated` in `hyphen-` / `ated` on two lines, because the hyphen of a line end stays in its
+   text as U+0002. `model::find` normalizes the text of the page (the same characters as the text layer) and the query alike (Unicode lower-casing, ligatures as letters, soft hyphens gone,
+   a run of white space is one space), finds hits with KMP (linear whatever the page and the query) and PDFium gives the box of each character of each hit, merged per line. `ß` is not
+   `ss` (full case folding is not done). What can be selected is what can be found.
+4. **The text layer has a box per UTF-16 code unit** (`boxes.length == 4 * text.length` as JavaScript counts), not per Unicode scalar: it is what `Range` offsets and string indices
+   are, and a character of two units has its box twice. PDFium hands a character outside the Basic Multilingual Plane over as two surrogate halves where its characters are 16 bit (Windows;
+   measured); `engine::text::text_chars` puts them together, for the layer and the search alike. The layer is cut at 200 000 units (`truncated`), a search looks at the first 1 000 000
+   characters of a page.
+5. **Outline.** Depth first with a set of the bookmarks read (`PdfBookmark` is hashed by its handle): a chain that comes back to one ends there. The tree is cut at 10 000 nodes and 32 levels;
+   a title is one line (`\r \n \t` are spaces), goes through `documents::sanitize_text` (the display-name filter, now one function for both) and is cut at 512 characters. A bookmark has a
+   target only if its action is a jump in this document (PDFium reads the destination of a `GoToR` action too, and its page number is a page of the other file).
+6. **Links.** From the page's link annotations (`/Annots` order); `pdfium-render`'s `PdfPageLinks::get(i)` is `FPDFLink_Enumerate` from annotation position *i*, which repeats links on a page that
+   has other annotations, so it is not used. At most 1 000 links, taken out of the first 10 000 annotations. `Page` / `Url` / `Blocked` as in ARCHITECTURE §5; the URL rules are in
+   `security::links` (SECURITY P3). `SafeUrl` has no public constructor and is what the dialog and the opener take.
+7. **`open_link`.** `open_link(doc_id, page_id, link_index)`: no URL crosses IPC. Rust re-reads the page's links, checks that the link is a `Url`, asks in a native message box (`tauri-plugin-dialog`,
+   `blocking_show`, called from the blocking pool; texts `link.confirm.*` of the UI catalogs in the language of the settings, the URL filled in last) and calls
+   `tauri_plugin_opener::open_url`. The opener plugin (Apache-2.0 OR MIT) is a dependency for that one function: it is not registered with the builder and no capability names it, so there is no
+   `plugin:opener|…` command for the webview, which `security_baseline.rs` pins. Why not write it: starting the system's handler is Win32 and Objective-C FFI, which `unsafe_code = "forbid"` rules out.
+8. **Flags.** `DocFlags { encrypted, xfa, has_forms, signed }` is read when the document is loaded and kept with the page sizes (`engine/sizes.rs`), set into the registry and part of
+   `DocumentInfo` (`flags`). `encrypted`: the security handler revision is not "unprotected"; `xfa`, `has_forms`: `FPDF_GetFormType`; `signed`: a signed signature field, looked for only in a
+   document that has a form (counting signatures walks every page). Best effort, nothing to rely on for security.
+9. **Cancellation and bounds.** One search per document: a new one, `cancel_search` and `close_document` set a flag the loop reads between two pages; a cancelled search sends nothing more
+   (a page being searched is finished and its hits dropped). At most 64 searches run at once. The command layer applies the bounds again on what it sends. Search events are on a channel per search, so a message belongs to the
+   search whose channel it came on.
+10. **Deviations from ARCHITECTURE §5 as first written.** `SearchEvent::Failed` (the engine could not go on), `flags` in `DocumentInfo`, boxes per UTF-16 unit, `LinkInfo.index` is the position among the page's links,
+    `invalid_argument` / `limit_exceeded` with `what` = `query`, `hits`, `link`, `searches`.
+
+**Consequences.** A page that is rotated by an angle that is not a multiple of 180° in its text (not its `/Rotate`) gets one rectangle per character for a hit. Text in right-to-left order is
+searched in PDFium's logical order. A page with more than 1 000 000 characters is searched only in its first million. `FPDF_GetSignatureCount` is not called for a document without a form, so
+a signature in a document with no AcroForm (malformed) is not reported. The UI's selection of text, the search panel, the outline panel and the link layer are separate items (M1 items 4–6).

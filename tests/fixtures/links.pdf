@@ -1,0 +1,225 @@
+%PDF-1.7
+%‚„œ”
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R /Names << /Dests 30 0 R >> >>
+endobj
+2 0 obj
+<< /Type /Pages /Kids [10 0 R 12 0 R 14 0 R] /Count 3 >>
+endobj
+3 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>
+endobj
+4 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding /ToUnicode 5 0 R >>
+endobj
+5 0 obj
+<<  /Length 335 >>
+stream
+/CIDInit /ProcSet findresource begin 12 dict begin begincmap
+/CIDSystemInfo << /Registry (Adobe) /Ordering (UCS) /Supplement 0 >> def
+/CMapName /Adobe-Identity-UCS def /CMapType 2 def
+1 begincodespacerange <00> <FF> endcodespacerange
+1 beginbfchar <41> <D83DDE00> endbfchar
+endcmap CMapName currentdict /CMap defineresource pop end end
+endstream
+endobj
+10 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Annots [100 0 R 101 0 R 102 0 R 103 0 R 104 0 R 105 0 R 106 0 R 107 0 R 108 0 R 109 0 R 110 0 R 111 0 R 112 0 R 113 0 R 114 0 R] /Contents 11 0 R /Resources << /Font << /F1 3 0 R /F2 4 0 R >> >> >>
+endobj
+11 0 obj
+<<  /Length 37 >>
+stream
+BT /F1 24 Tf 72 740 Td (Links) Tj ET
+
+endstream
+endobj
+12 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792]  /Contents 13 0 R /Resources << /Font << /F1 3 0 R /F2 4 0 R >> >> >>
+endobj
+13 0 obj
+<<  /Length 38 >>
+stream
+BT /F1 24 Tf 72 700 Td (Page 2) Tj ET
+
+endstream
+endobj
+14 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /CropBox [50 100 562 700] /Contents 15 0 R /Resources << /Font << /F1 3 0 R /F2 4 0 R >> >> >>
+endobj
+15 0 obj
+<<  /Length 38 >>
+stream
+BT /F1 24 Tf 72 700 Td (Page 3) Tj ET
+
+endstream
+endobj
+30 0 obj
+<< /Names [(chapter2) [12 0 R /FitH 300]] >>
+endobj
+100 0 obj
+<< /Type /Annot /Subtype /Link /Border [0 0 0] /Rect [72 700 272 720] /A << /S /URI /URI (https://example.com/docs) >> >>
+endobj
+101 0 obj
+<< /Type /Annot /Subtype /Link /Border [0 0 0] /Rect [72 670 272 690] /A << /S /URI /URI (mailto:team@example.com?subject=Hello) >> >>
+endobj
+102 0 obj
+<< /Type /Annot /Subtype /Link /Border [0 0 0] /Rect [72 640 272 660] /A << /S /URI /URI (file:///C:/Windows/System32/calc.exe) >> >>
+endobj
+103 0 obj
+<< /Type /Annot /Subtype /Text /Rect [400 700 420 720] /Contents (A note) >>
+endobj
+104 0 obj
+<< /Type /Annot /Subtype /Link /Border [0 0 0] /Rect [72 610 272 630] /A << /S /URI /URI (javascript:alert(1)) >> >>
+endobj
+105 0 obj
+<< /Type /Annot /Subtype /Link /Border [0 0 0] /Rect [72 580 272 600] /A << /S /JavaScript /JS (app.alert\(1\)) >> >>
+endobj
+106 0 obj
+<< /Type /Annot /Subtype /Link /Border [0 0 0] /Rect [72 550 272 570] /A << /S /Launch /F (C:\\Windows\\System32\\calc.exe) >> >>
+endobj
+107 0 obj
+<< /Type /Annot /Subtype /Link /Border [0 0 0] /Rect [72 520 272 540] /A << /S /GoToR /F (other.pdf) /D [0 /Fit] >> >>
+endobj
+108 0 obj
+<< /Type /Annot /Subtype /Link /Border [0 0 0] /Rect [72 490 272 510] /A << /S /GoTo /D [14 0 R /XYZ 72 600 0] >> >>
+endobj
+109 0 obj
+<< /Type /Annot /Subtype /Link /Border [0 0 0] /Rect [72 460 272 480] /Dest [12 0 R /Fit] >>
+endobj
+110 0 obj
+<< /Type /Annot /Subtype /Link /Border [0 0 0] /Rect [72 430 272 450] /A << /S /GoTo /D (chapter2) >> >>
+endobj
+111 0 obj
+<< /Type /Annot /Subtype /Link /Border [0 0 0] /Rect [72 400 272 420] /A << /S /URI /URI (https://example.com/a b) >> >>
+endobj
+112 0 obj
+<< /Type /Annot /Subtype /Link /Border [0 0 0] /Rect [72 370 272 390] /A << /S /URI /URI (HTTP://EXAMPLE.COM/UP) >> >>
+endobj
+113 0 obj
+<< /Type /Annot /Subtype /Link /Border [0 0 0] /Rect [72 340 272 360] /Dest [3 0 R /Fit] >>
+endobj
+114 0 obj
+<< /Type /Annot /Subtype /Link /Border [0 0 0] /Rect [72 310 272 330] /A << /S /URI /URI (https://paypal.com@evil.example/) >> >>
+endobj
+xref
+0 115
+0000000000 65535 f 
+0000000015 00000 n 
+0000000091 00000 n 
+0000000163 00000 n 
+0000000260 00000 n 
+0000000374 00000 n 
+0000000000 65535 f 
+0000000000 65535 f 
+0000000000 65535 f 
+0000000000 65535 f 
+0000000761 00000 n 
+0000001029 00000 n 
+0000001118 00000 n 
+0000001257 00000 n 
+0000001347 00000 n 
+0000001511 00000 n 
+0000000000 65535 f 
+0000000000 65535 f 
+0000000000 65535 f 
+0000000000 65535 f 
+0000000000 65535 f 
+0000000000 65535 f 
+0000000000 65535 f 
+0000000000 65535 f 
+0000000000 65535 f 
+0000000000 65535 f 
+0000000000 65535 f 
+0000000000 65535 f 
+0000000000 65535 f 
+0000000000 65535 f 
+0000001601 00000 n 
+0000000000 65535 f 
+0000000000 65535 f 
+0000000000 65535 f 
+0000000000 65535 f 
+0000000000 65535 f 
+0000000000 65535 f 
+0000000000 65535 f 
+0000000000 65535 f 
+0000000000 65535 f 
+0000000000 65535 f 
+0000000000 65535 f 
+0000000000 65535 f 
+0000000000 65535 f 
+0000000000 65535 f 
+0000000000 65535 f 
+0000000000 65535 f 
+0000000000 65535 f 
+0000000000 65535 f 
+0000000000 65535 f 
+0000000000 65535 f 
+0000000000 65535 f 
+0000000000 65535 f 
+0000000000 65535 f 
+0000000000 65535 f 
+0000000000 65535 f 
+0000000000 65535 f 
+0000000000 65535 f 
+0000000000 65535 f 
+0000000000 65535 f 
+0000000000 65535 f 
+0000000000 65535 f 
+0000000000 65535 f 
+0000000000 65535 f 
+0000000000 65535 f 
+0000000000 65535 f 
+0000000000 65535 f 
+0000000000 65535 f 
+0000000000 65535 f 
+0000000000 65535 f 
+0000000000 65535 f 
+0000000000 65535 f 
+0000000000 65535 f 
+0000000000 65535 f 
+0000000000 65535 f 
+0000000000 65535 f 
+0000000000 65535 f 
+0000000000 65535 f 
+0000000000 65535 f 
+0000000000 65535 f 
+0000000000 65535 f 
+0000000000 65535 f 
+0000000000 65535 f 
+0000000000 65535 f 
+0000000000 65535 f 
+0000000000 65535 f 
+0000000000 65535 f 
+0000000000 65535 f 
+0000000000 65535 f 
+0000000000 65535 f 
+0000000000 65535 f 
+0000000000 65535 f 
+0000000000 65535 f 
+0000000000 65535 f 
+0000000000 65535 f 
+0000000000 65535 f 
+0000000000 65535 f 
+0000000000 65535 f 
+0000000000 65535 f 
+0000000000 65535 f 
+0000001662 00000 n 
+0000001801 00000 n 
+0000001953 00000 n 
+0000002104 00000 n 
+0000002198 00000 n 
+0000002332 00000 n 
+0000002467 00000 n 
+0000002614 00000 n 
+0000002750 00000 n 
+0000002884 00000 n 
+0000002994 00000 n 
+0000003116 00000 n 
+0000003254 00000 n 
+0000003390 00000 n 
+0000003499 00000 n 
+trailer
+<< /Size 115 /Root 1 0 R  >>
+startxref
+3646
+%%EOF

@@ -7,15 +7,25 @@
 //! skips jobs whose caller has already given up (a close excepted: it still releases its document). A caller that times
 //! out gets `engine_timeout`; while the stuck job is still running, new jobs fail fast with `engine_unavailable`
 //! ([`guard::Health`]) instead of piling up behind it. The size of every page of a document is read once when it is
-//! loaded and answered from a table afterwards ([`sizes`]), not by a job per question.
+//! loaded and answered from a table afterwards ([`sizes`], which also keeps the document's flags), not by a job per question.
+//!
+//! Besides frames the worker reads what the document says: its outline ([`outline`]), the text of a page ([`text`]), the links of
+//! a page ([`links`]) and one page of a search ([`search`]). The first three are `Interactive` jobs, a search page is
+//! `Background`, so a search never keeps a visible page waiting for more than the one page it is on. [`space`] puts what PDFium says
+//! about positions into the page space of the UI.
 //!
 //! The PDFium library is bundled as a Tauri resource (`scripts/fetch-pdfium.sh`) and bound dynamically at runtime.
 //! If it cannot be loaded, the worker stays alive and answers every job with `engine_unavailable`.
 
 pub mod encode;
 mod guard;
+mod links;
+mod outline;
 pub mod queue;
+mod search;
 mod sizes;
+mod space;
+mod text;
 mod worker;
 
 use std::fs::File;
@@ -25,15 +35,21 @@ use std::sync::Arc;
 use std::thread;
 use std::time::{Duration, Instant};
 
-use crate::documents::DocumentId;
+use crate::documents::{DocFlags, DocumentId};
 use crate::error::{AppError, ErrorCode};
 use crate::limits;
+use crate::model::geometry::Quad;
 
 use self::guard::Health;
+pub use self::links::{LinkTarget, PageLink};
+pub use self::outline::OutlineItem;
 pub use self::queue::{Priority, Rank, RenderKey};
 use self::queue::{Queue, Refused, Requests};
+pub use self::search::SearchSpec;
 pub use self::sizes::PageSizes;
 use self::sizes::SizeCache;
+pub use self::space::PageSpot;
+pub use self::text::TextPage;
 
 /// Directory name of the bundled PDFium build for this target, as created by `scripts/fetch-pdfium.sh`.
 pub const PLATFORM_DIR: &str = if cfg!(all(target_os = "windows", target_arch = "x86_64")) {
@@ -117,6 +133,31 @@ pub(crate) enum Job {
     /// One frame of one page. Callers that ask for the same frame meanwhile are not jobs of their own: they wait for this
     /// one's answer (`queue`).
     Render { key: RenderKey, reply: Reply<Frame> },
+    /// The outline of the document (`outline`).
+    Outline {
+        id: DocumentId,
+        reply: Reply<Vec<OutlineItem>>,
+    },
+    /// The text of one page with the box of every character (`text`).
+    TextLayer {
+        id: DocumentId,
+        page_index: u32,
+        reply: Reply<TextPage>,
+    },
+    /// The links of one page (`links`).
+    PageLinks {
+        id: DocumentId,
+        page_index: u32,
+        reply: Reply<Vec<PageLink>>,
+    },
+    /// A search of one page: its first `limit` hits (`search`).
+    SearchPage {
+        id: DocumentId,
+        page_index: u32,
+        spec: Arc<SearchSpec>,
+        limit: usize,
+        reply: Reply<Vec<Vec<Quad>>>,
+    },
     /// Releases the document, and the sizes of its pages. Not skipped when its caller gave up (`Request::expired`).
     Close { id: DocumentId, reply: Reply<()> },
     /// Makes the worker panic inside the job guard, to test panic containment. `id` is the document it "works on".
@@ -142,6 +183,18 @@ impl Job {
                 let _ = reply.send(Err(error));
             }
             Job::Render { reply, .. } => {
+                let _ = reply.send(Err(error));
+            }
+            Job::Outline { reply, .. } => {
+                let _ = reply.send(Err(error));
+            }
+            Job::TextLayer { reply, .. } => {
+                let _ = reply.send(Err(error));
+            }
+            Job::PageLinks { reply, .. } => {
+                let _ = reply.send(Err(error));
+            }
+            Job::SearchPage { reply, .. } => {
                 let _ = reply.send(Err(error));
             }
             Job::Close { reply, .. } => {
@@ -363,10 +416,75 @@ impl Engine {
             .ok_or_else(|| AppError::not_found("document"))
     }
 
+    /// What PDFium said about the document when it was loaded (`DocFlags`). A lookup like [`Engine::page_sizes`]: it takes no
+    /// place in the queue and never waits for the worker. `not_found` for a document the engine does not hold.
+    pub fn doc_flags(&self, id: DocumentId) -> Result<DocFlags, AppError> {
+        self.inner
+            .sizes
+            .flags(id)
+            .ok_or_else(|| AppError::not_found("document"))
+    }
+
+    /// The outline of the document: its top level bookmarks with their children, at most `limits::MAX_OUTLINE_NODES` of them down
+    /// to `limits::MAX_OUTLINE_DEPTH` levels, however the file's outline is shaped (a cycle ends where it comes back).
+    pub fn outline(&self, id: DocumentId) -> Result<Vec<OutlineItem>, AppError> {
+        self.call(limits::TEXT_TIMEOUT, Rank::INTERACTIVE, |reply| {
+            Job::Outline { id, reply }
+        })
+    }
+
+    /// The text of page `page_index` and the box of every character, in page space; see [`TextPage`]. `invalid_argument` for a
+    /// page the document does not have.
+    pub fn text_layer(&self, id: DocumentId, page_index: u32) -> Result<TextPage, AppError> {
+        self.call(limits::TEXT_TIMEOUT, Rank::INTERACTIVE, |reply| {
+            Job::TextLayer {
+                id,
+                page_index,
+                reply,
+            }
+        })
+    }
+
+    /// The links of page `page_index`, at most `limits::MAX_PAGE_LINKS`, in the order that gives each its index (`open_link`
+    /// names a link by it). Nothing is followed: a link that goes anywhere the app does not go is `LinkTarget::Blocked`.
+    pub fn page_links(&self, id: DocumentId, page_index: u32) -> Result<Vec<PageLink>, AppError> {
+        self.call(limits::TEXT_TIMEOUT, Rank::INTERACTIVE, |reply| {
+            Job::PageLinks {
+                id,
+                page_index,
+                reply,
+            }
+        })
+    }
+
+    /// Searches page `page_index` for `spec` and returns its first `limit` hits as the quads of the text each covers, in page
+    /// space. It runs at the lowest priority: a render that is queued goes first, and a caller that searches a whole document asks
+    /// for one page at a time, so renders are never held up for longer than one page takes. `engine_timeout` (`cancelled` if the
+    /// queue was full of more urgent work) says the page was not searched because the engine was busy, which is worth another try.
+    pub fn search_page(
+        &self,
+        id: DocumentId,
+        page_index: u32,
+        spec: Arc<SearchSpec>,
+        limit: usize,
+    ) -> Result<Vec<Vec<Quad>>, AppError> {
+        self.call(limits::TEXT_TIMEOUT, Rank::BACKGROUND, |reply| {
+            Job::SearchPage {
+                id,
+                page_index,
+                spec,
+                limit,
+                reply,
+            }
+        })
+    }
+
     /// Records page sizes for a document of a test double, as the worker does when it loads one.
     #[cfg(test)]
     pub(crate) fn seed_page_sizes(&self, id: DocumentId, sizes: Vec<[f32; 2]>) {
-        self.inner.sizes.insert(id, Arc::from(sizes));
+        self.inner
+            .sizes
+            .insert(id, Arc::from(sizes), DocFlags::default());
     }
 
     /// Releases the document, its page sizes, and cancels what is still queued for it. Unknown ids are ignored. If the answer
@@ -1391,6 +1509,94 @@ mod tests {
         );
         assert!(spared.join().unwrap().is_ok());
         engine.close(kept).unwrap();
+    }
+
+    #[test]
+    fn a_page_of_a_search_waits_behind_the_renders_and_the_reads_that_are_more_urgent() {
+        let (started_tx, started_rx) = mpsc::channel();
+        let (gate_tx, gate_rx) = mpsc::channel::<()>();
+        let gate_rx = std::sync::Mutex::new(gate_rx);
+        let order: Arc<std::sync::Mutex<Vec<&'static str>>> = Arc::default();
+        let log = Arc::clone(&order);
+        let engine = Engine::with_handler(move |job| {
+            let note = |what| log.lock().unwrap().push(what);
+            match job {
+                // The job that keeps the worker busy while the others queue up.
+                Job::Close { reply, .. } => {
+                    started_tx.send(()).unwrap();
+                    gate_rx.lock().unwrap().recv().unwrap();
+                    let _ = reply.send(Ok(()));
+                }
+                Job::SearchPage { reply, .. } => {
+                    note("search");
+                    let _ = reply.send(Ok(Vec::new()));
+                }
+                Job::Outline { reply, .. } => {
+                    note("outline");
+                    let _ = reply.send(Ok(Vec::new()));
+                }
+                Job::TextLayer { reply, .. } => {
+                    note("text");
+                    let _ = reply.send(Ok(TextPage {
+                        text: String::new(),
+                        boxes: Vec::new(),
+                        truncated: false,
+                    }));
+                }
+                Job::PageLinks { reply, .. } => {
+                    note("links");
+                    let _ = reply.send(Ok(Vec::new()));
+                }
+                Job::Render { reply, .. } => {
+                    note("render");
+                    let _ = reply.send(Ok(Arc::new(vec![1])));
+                }
+                _ => {}
+            }
+        });
+        let id = new_id();
+        let holder = {
+            let engine = engine.clone();
+            thread::spawn(move || close(&engine, id, Duration::from_secs(30)))
+        };
+        started_rx.recv().unwrap();
+
+        // They arrive least urgent first, and each is in the queue before the next one is asked.
+        let spec = Arc::new(SearchSpec {
+            text: "x".to_owned(),
+            match_case: false,
+            whole_word: false,
+        });
+        let mut callers = Vec::new();
+        let mut asked = |queued: usize, call: Box<dyn FnOnce() + Send>| {
+            callers.push(thread::spawn(call));
+            wait_for_queued(&engine, queued);
+        };
+        let e = engine.clone();
+        asked(1, Box::new(move || drop(e.search_page(id, 0, spec, 1))));
+        let e = engine.clone();
+        asked(2, Box::new(move || drop(e.outline(id))));
+        let e = engine.clone();
+        asked(3, Box::new(move || drop(e.text_layer(id, 0))));
+        let e = engine.clone();
+        asked(4, Box::new(move || drop(e.page_links(id, 0))));
+        let e = engine.clone();
+        asked(5, Box::new(move || drop(e.render(spec_of(id, 0)))));
+
+        gate_tx.send(()).unwrap();
+        holder.join().unwrap().unwrap();
+        for caller in callers {
+            caller.join().unwrap();
+        }
+        // A render that is on screen, then what the user waits for in the order it was asked, then the search.
+        assert_eq!(
+            *order.lock().unwrap(),
+            ["render", "outline", "text", "links", "search"]
+        );
+    }
+
+    fn spec_of(id: DocumentId, page_index: u32) -> RenderSpec {
+        spec(id, page_index, 0, None)
     }
 
     /// Waits until `count` callers have joined the render of `key`.

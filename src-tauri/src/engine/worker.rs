@@ -10,8 +10,9 @@ use pdfium_render::prelude::*;
 use super::guard::{guarded, Health};
 use super::queue::{RenderKey, Requests};
 use super::sizes::{PageSizes, SizeCache};
-use super::{encode, Confirm, Job, Reply};
-use crate::documents::DocumentId;
+use super::space::page_count;
+use super::{encode, links, outline, search, text, Confirm, Job, Reply};
+use crate::documents::{DocFlags, DocumentId};
 use crate::error::{AppError, ErrorCode};
 use crate::limits;
 
@@ -99,6 +100,48 @@ fn serve<'a>(
             }
             answer(reply, result, Some(key.id), documents, crashed);
         }
+        Job::Outline { id, reply } => {
+            let result = read_job(documents, crashed, id, |document| {
+                Ok(outline::read_outline(document, page_count(document)?))
+            });
+            answer(reply, result, Some(id), documents, crashed);
+        }
+        Job::TextLayer {
+            id,
+            page_index,
+            reply,
+        } => {
+            let result = read_job(documents, crashed, id, |document| {
+                let page_index = limits::validate_page_index(page_index, page_count(document)?)?;
+                text::read_text(document, page_index)
+            });
+            answer(reply, result, Some(id), documents, crashed);
+        }
+        Job::PageLinks {
+            id,
+            page_index,
+            reply,
+        } => {
+            let result = read_job(documents, crashed, id, |document| {
+                let count = page_count(document)?;
+                let page_index = limits::validate_page_index(page_index, count)?;
+                links::read_links(document, count, page_index)
+            });
+            answer(reply, result, Some(id), documents, crashed);
+        }
+        Job::SearchPage {
+            id,
+            page_index,
+            spec,
+            limit,
+            reply,
+        } => {
+            let result = read_job(documents, crashed, id, |document| {
+                let page_index = limits::validate_page_index(page_index, page_count(document)?)?;
+                search::search_page(document, page_index, &spec, limit)
+            });
+            answer(reply, result, Some(id), documents, crashed);
+        }
         Job::Close { id, reply } => {
             let result = guarded(|| {
                 crashed.remove(&id);
@@ -122,6 +165,23 @@ fn serve<'a>(
             answer(reply, Ok(()), None, documents, crashed);
         }
     }
+}
+
+/// Runs a read of document `id` (`read`) inside the panic guard. A document that is not loaded is `not_found`, one whose earlier job
+/// panicked is `engine_crashed` until it is closed, as for a render.
+fn read_job<T>(
+    documents: &Documents<'_>,
+    crashed: &HashSet<DocumentId>,
+    id: DocumentId,
+    read: impl FnOnce(&PdfDocument<'_>) -> Result<T, AppError>,
+) -> Result<T, AppError> {
+    if crashed.contains(&id) {
+        return Err(AppError::new(ErrorCode::EngineCrashed));
+    }
+    guarded(|| match documents.get(&id) {
+        Some(document) => read(document),
+        None => Err(AppError::not_found("document")),
+    })
 }
 
 /// Sends `result`. If the job panicked while working on document `id`, that document is dropped and quarantined first:
@@ -165,7 +225,7 @@ fn open<'a>(
     // here, the one place that sees the count first. The document is dropped with its handle.
     limits::validate_page_count(page_count)?;
     // The sizes are read once, here, and are there before anybody can know the document is: `confirm` makes it known.
-    sizes.insert(id, read_page_sizes(&document));
+    sizes.insert(id, read_page_sizes(&document), read_flags(&document));
     // The caller may have stopped waiting while the document loaded (the open deadline passed) and taken the registry entry
     // back. Nobody could ever close a document without an entry, so it is released here, with its handle.
     if !confirm(page_count) {
@@ -197,6 +257,28 @@ fn map_load_error(error: PdfiumError) -> AppError {
         }
         PdfiumError::IoError(error) => AppError::from(error),
         other => AppError::logged(ErrorCode::Internal, format!("{other:?}")),
+    }
+}
+
+/// What PDFium says about the document, as far as it can tell (`DocFlags`: best effort, read once when the document is loaded).
+/// An answer PDFium cannot give counts as no. The signatures are only counted for a document that has a form: a signature field is
+/// a form field, and counting them goes through the annotations of every page.
+fn read_flags(document: &PdfDocument<'_>) -> DocFlags {
+    let encrypted = !matches!(
+        document.permissions().security_handler_revision(),
+        Ok(PdfSecurityHandlerRevision::Unprotected) | Err(_)
+    );
+    let form_type = document.form().map(PdfForm::form_type);
+    let xfa = matches!(
+        form_type,
+        Some(PdfFormType::XfaFull | PdfFormType::XfaForeground)
+    );
+    let has_forms = form_type.is_some_and(|form_type| form_type != PdfFormType::None);
+    DocFlags {
+        encrypted,
+        xfa,
+        has_forms,
+        signed: has_forms && !document.signatures().is_empty(),
     }
 }
 

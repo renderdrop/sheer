@@ -6,6 +6,7 @@ import { Panel, Tab, TabList, TabPanel, Tabs } from '../../components';
 import { usePanelFade } from '../../components/motion';
 import { useT, type PlainKey } from '../../i18n';
 import { LEFT_PANEL_TABS, useUi, type LeftPanelTab } from '../../stores/ui';
+import { Thumbnails } from '../thumbnails/Thumbnails';
 
 interface TabSpec {
   label: PlainKey;
@@ -35,8 +36,8 @@ export interface LeftPanelProps {
 
 /**
  * The left panel (DESIGN 3.6, 3.9): a G1 `<aside>` whose header is the four-tab segmented control (Thumbnails, Outline,
- * Comments, Search) and whose body is the selected tab's panel, starting with its 32 px title row. The tabs are
- * placeholders until M1 fills them; each says what will appear there.
+ * Comments, Search) and whose body is the selected tab's panel, starting with its 32 px title row. Thumbnails shows the page list;
+ * the other tabs are placeholders until M1 fills them, and each says what will appear there.
  *
  * It follows the selected tab (`ui.leftPanelTab`) itself and is memoized, so it renders when the tab or its slot changes and
  * not for a page, a zoom step or a drag of the splitter next to it.
@@ -59,11 +60,18 @@ export const LeftPanel = memo(function LeftPanel({ id }: LeftPanelProps) {
         }
       >
         {LEFT_PANEL_TABS.map((value) => (
-          <TabPanel key={value} value={value}>
-            <div className="flex h-control-md items-center">
-              <h2 className="m-0 truncate text-md font-semibold">{t(TABS[value].label)}</h2>
+          <TabPanel key={value} value={value} className="h-full">
+            {/* A column: the title row, then the view, which takes the rest of the height (the thumbnails scroll inside it). */}
+            <div className="flex h-full min-h-0 flex-col">
+              <div className="flex h-control-md shrink-0 items-center">
+                <h2 className="m-0 truncate text-md font-semibold">{t(TABS[value].label)}</h2>
+              </div>
+              {value === 'thumbnails' ? (
+                <Thumbnails />
+              ) : (
+                <p className="m-0 text-sm text-text-muted">{t(TABS[value].empty)}</p>
+              )}
             </div>
-            <p className="m-0 text-sm text-text-muted">{t(TABS[value].empty)}</p>
           </TabPanel>
         ))}
       </Panel>

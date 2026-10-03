@@ -58,6 +58,16 @@ impl Rank {
         priority: Priority::Control,
         generation: 0,
     };
+    /// The rank of what the user waits for but that is not a render: text layer, links, outline.
+    pub const INTERACTIVE: Rank = Rank {
+        priority: Priority::Interactive,
+        generation: 0,
+    };
+    /// The rank of work that gives way to everything else: the pages of a search.
+    pub const BACKGROUND: Rank = Rank {
+        priority: Priority::Background,
+        generation: 0,
+    };
 }
 
 /// What a render draws. Two requests with the same key produce the same frame, so they share one job.

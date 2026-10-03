@@ -20,6 +20,9 @@ tauri-build = { version = "2.7.1", features = [] }
 # `protocol-asset` the asset protocol. `tests/security_baseline.rs` fails if either appears.
 tauri = { version = "2.12.1", features = [] }
 tauri-plugin-dialog = "2.8.1"
+# Opens the one link the user confirmed (commands/links.rs). The plugin is not registered with the builder and no capability names
+# it: only its `open_url` function is called, from Rust, with a URL that `security::links` classified (SECURITY P3).
+tauri-plugin-opener = "2.7.0"
 # Dynamic binding only (PDFium is bundled as a resource and bound at runtime). `image_api` and `thread_safe`
 # stay off: PNG encoding uses the `png` crate and every PDFium call lives on one worker thread.
 pdfium-render = { version = "0.9.4", default-features = false, features = ["pdfium_7881"] }

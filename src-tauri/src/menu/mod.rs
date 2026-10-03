@@ -114,6 +114,15 @@ fn wanted_locale<R: Runtime>(app: &AppHandle<R>, bridge: &MenuBridge) -> MenuLoc
     MenuLocale::resolve(language, bridge.system())
 }
 
+/// The language of the interface texts that Rust shows itself (the menu bar, the dialog that asks whether to open a link): the
+/// language setting, and the OS language the UI reported for "system"; English until it is known.
+pub fn ui_locale<R: Runtime>(app: &AppHandle<R>) -> MenuLocale {
+    match app.try_state::<Arc<MenuBridge>>() {
+        Some(bridge) => wanted_locale(app, &bridge),
+        None => MenuLocale::En,
+    }
+}
+
 /// Installs the menu bar at startup (macOS; nothing elsewhere). Must run on the main thread, as `setup` does.
 pub fn install<R: Runtime>(app: &AppHandle<R>) {
     rebuild(app);
@@ -154,8 +163,8 @@ fn rebuild<R: Runtime>(app: &AppHandle<R>) {
     }
 }
 
-/// The name macOS shows for the app: the product name of the config.
-fn app_name<R: Runtime>(app: &AppHandle<R>) -> String {
+/// The name macOS shows for the app: the product name of the config (and the name in the texts that Rust shows itself).
+pub(crate) fn app_name<R: Runtime>(app: &AppHandle<R>) -> String {
     app.config()
         .product_name
         .clone()

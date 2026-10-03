@@ -24,7 +24,7 @@ use crate::limits;
 /// | `type` | other fields | when |
 /// |---|---|---|
 /// | `dropHover` | `active: boolean` | a drag with files entered (`true`) or left, was cancelled or ended in a drop (`false`) |
-/// | `opened` | `document: { id, pageCount, displayName }` | a document was opened, or an open one was asked for again |
+/// | `opened` | `document: { id, pageCount, displayName, flags }` | a document was opened, or an open one was asked for again |
 /// | `openFailed` | `code`, `key`, `retryable`, `params?` of the error model (ARCHITECTURE §7) | a file could not be opened |
 ///
 /// `openFailed` flattens the error: it is exactly what a rejected command carries, so the UI turns it into the same
@@ -211,11 +211,11 @@ mod tests {
     }
 
     #[test]
-    fn an_opened_document_carries_its_id_page_count_and_display_name_and_nothing_else() {
+    fn an_opened_document_carries_its_id_page_count_display_name_and_flags_and_nothing_else() {
         let event = AppEvent::opened(document("a.pdf", 3));
         assert_eq!(
             serde_json::to_string(&event).unwrap(),
-            r#"{"type":"opened","document":{"id":0,"pageCount":3,"displayName":"a.pdf"}}"#
+            r#"{"type":"opened","document":{"id":0,"pageCount":3,"displayName":"a.pdf","flags":{"encrypted":false,"xfa":false,"hasForms":false,"signed":false}}}"#
         );
     }
 

@@ -51,6 +51,9 @@
   "leftPanel.empty.comments": "Comments appear here.",
   "leftPanel.empty.search": "Search results appear here.",
 
+  "thumbnails.list": "Page thumbnails",
+  "thumbnails.page": "Page {page}",
+
   "inspector.label": "Inspector",
   "inspector.title": "Tool options",
   "inspector.empty": "Select an object or choose a tool to see its options.",
@@ -172,5 +175,14 @@
   "error.limit_exceeded.pixels": "This page is too large to display at this zoom level.",
   "error.limit_exceeded.dimension": "This page is too large to display at this zoom level.",
   "error.limit_exceeded.pages": "This document has too many pages to open.",
-  "error.limit_exceeded.documents": "Too many documents are open. Close one and try again."
+  "error.limit_exceeded.documents": "Too many documents are open. Close one and try again.",
+  "error.invalid_argument.query": "Enter some text to search for.",
+  "error.invalid_argument.link": "That link cannot be opened.",
+  "error.limit_exceeded.query": "That search text is too long.",
+  "error.limit_exceeded.searches": "Too many searches are running. Try again in a moment.",
+
+  "link.confirm.title": "Open this link?",
+  "link.confirm.message": "{app} will open this address with another app:\n\n{url}\n\nOnly continue if you trust this document.",
+  "link.confirm.open": "Open link",
+  "link.confirm.cancel": "Cancel"
 }

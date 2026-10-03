@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { invoke } from '@tauri-apps/api/core';
 
-import { closeDocument, openDocumentDialog, parseDocumentInfo, parseOpenOutcome } from './documents';
+import { closeDocument, openDocumentDialog, parseDocFlags, parseDocumentInfo, parseOpenOutcome } from './documents';
 
 vi.mock('@tauri-apps/api/core', () => ({ invoke: vi.fn() }));
 
@@ -147,6 +147,60 @@ describe('parseDocumentInfo', () => {
     expect(parseDocumentInfo(null)).toBeNull();
     expect(parseDocumentInfo({ id: 2, pageCount: 9 })).toBeNull();
     expect(parseDocumentInfo({ id: 2, pageCount: 9.5, displayName: '' })).toBeNull();
+  });
+});
+
+describe('document flags', () => {
+  const FLAGS = { encrypted: true, xfa: false, hasForms: true, signed: false };
+
+  it('reads four booleans and drops everything else', () => {
+    expect(parseDocFlags(FLAGS)).toStrictEqual(FLAGS);
+    expect(parseDocFlags({ ...FLAGS, certified: true, path: 'C:\\x' })).toStrictEqual(FLAGS);
+    for (const bad of [
+      null,
+      [],
+      'flags',
+      {},
+      { ...FLAGS, encrypted: 1 },
+      { ...FLAGS, xfa: 'false' },
+      { encrypted: true, xfa: false, hasForms: true },
+      { encrypted: true, xfa: false, has_forms: true, signed: false },
+    ]) {
+      expect(parseDocFlags(bad), JSON.stringify(bad)).toBeNull();
+    }
+  });
+
+  it('are part of the document the backend reports, when they are there', () => {
+    expect(parseDocumentInfo({ id: 2, pageCount: 9, displayName: 'Q3.pdf', flags: FLAGS })).toStrictEqual({
+      id: 2,
+      pageCount: 9,
+      displayName: 'Q3.pdf',
+      flags: FLAGS,
+    });
+    // A document without flags is still a document, and does not get a key with nothing in it.
+    expect(parseDocumentInfo({ id: 2, pageCount: 9, displayName: 'Q3.pdf' })).toStrictEqual({
+      id: 2,
+      pageCount: 9,
+      displayName: 'Q3.pdf',
+    });
+  });
+
+  it('make a document that has them wrong not a document', () => {
+    for (const flags of [null, 'encrypted', { encrypted: true }, { ...FLAGS, signed: null }]) {
+      expect(
+        parseDocumentInfo({ id: 2, pageCount: 9, displayName: 'Q3.pdf', flags }),
+        JSON.stringify(flags),
+      ).toBeNull();
+    }
+  });
+
+  it('come with an opened document through the dialog', async () => {
+    invokeMock.mockResolvedValueOnce([
+      { type: 'opened', document: { id: 1, pageCount: 3, displayName: 'a.pdf', flags: FLAGS } },
+    ]);
+    await expect(openDocumentDialog()).resolves.toStrictEqual([
+      { type: 'opened', document: { id: 1, pageCount: 3, displayName: 'a.pdf', flags: FLAGS } },
+    ]);
   });
 });
 

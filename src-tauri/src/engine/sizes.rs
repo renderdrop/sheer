@@ -1,26 +1,34 @@
-//! The size of every page of each loaded document, read once.
+//! What is read once about each loaded document: the size of every page, and its flags.
 //!
-//! The worker reads the sizes when it loads a document (`worker::open`, before it asks whether anybody still wants the document)
-//! and keeps them here until the document is released. `get_page_sizes` is answered from this table by any thread, without a
-//! place in the job queue and without waking the worker: however often the UI asks, and however many ask at once, PDFium is
-//! asked once per document. There is nothing to compute on a call, so there is nothing to deduplicate either.
+//! The worker reads them when it loads a document (`worker::open`, before it asks whether anybody still wants the document)
+//! and keeps them here until the document is released. `get_page_sizes` and the flags of `DocumentInfo` are answered from this
+//! table by any thread, without a place in the job queue and without waking the worker: however often the UI asks, and however
+//! many ask at once, PDFium is asked once per document. There is nothing to compute on a call, so there is nothing to
+//! deduplicate either.
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
-use crate::documents::DocumentId;
+use crate::documents::{DocFlags, DocumentId};
 
 /// The size in points of every page of a document, in page order, shared by everyone who asks.
 pub type PageSizes = Arc<[[f32; 2]]>;
 
-/// The sizes of the loaded documents. Written by the worker, read by every `Engine` handle.
+/// What is known about a loaded document.
+#[derive(Debug, Clone)]
+struct Loaded {
+    sizes: PageSizes,
+    flags: DocFlags,
+}
+
+/// The sizes and flags of the loaded documents. Written by the worker, read by every `Engine` handle.
 #[derive(Debug, Default)]
 pub(super) struct SizeCache {
-    by_document: Mutex<HashMap<DocumentId, PageSizes>>,
+    by_document: Mutex<HashMap<DocumentId, Loaded>>,
 }
 
 impl SizeCache {
-    fn lock(&self) -> MutexGuard<'_, HashMap<DocumentId, PageSizes>> {
+    fn lock(&self) -> MutexGuard<'_, HashMap<DocumentId, Loaded>> {
         // A poisoned lock only means a holder panicked; the map stays consistent.
         self.by_document
             .lock()
@@ -29,12 +37,17 @@ impl SizeCache {
 
     /// The sizes of a loaded document; `None` for one the engine does not hold (unknown, released, or still loading).
     pub(super) fn get(&self, id: DocumentId) -> Option<PageSizes> {
-        self.lock().get(&id).map(Arc::clone)
+        self.lock().get(&id).map(|loaded| Arc::clone(&loaded.sizes))
     }
 
-    /// Records the sizes of a document that was just loaded and is wanted.
-    pub(super) fn insert(&self, id: DocumentId, sizes: PageSizes) {
-        self.lock().insert(id, sizes);
+    /// The flags of a loaded document; `None` for one the engine does not hold.
+    pub(super) fn flags(&self, id: DocumentId) -> Option<DocFlags> {
+        self.lock().get(&id).map(|loaded| loaded.flags)
+    }
+
+    /// Records the sizes and flags of a document that was just loaded and is wanted.
+    pub(super) fn insert(&self, id: DocumentId, sizes: PageSizes, flags: DocFlags) {
+        self.lock().insert(id, Loaded { sizes, flags });
     }
 
     /// Forgets a document that was released.
@@ -75,9 +88,14 @@ mod tests {
             cache.get(a).is_none(),
             "nothing before the document is loaded"
         );
+        assert!(cache.flags(a).is_none());
 
         let sizes: PageSizes = Arc::from(vec![[612.0, 792.0], [200.0, 100.0]]);
-        cache.insert(a, Arc::clone(&sizes));
+        let flags = DocFlags {
+            encrypted: true,
+            ..DocFlags::default()
+        };
+        cache.insert(a, Arc::clone(&sizes), flags);
         let first = cache.get(a).unwrap();
         let second = cache.get(a).unwrap();
         assert!(
@@ -85,10 +103,12 @@ mod tests {
             "every caller gets the one list"
         );
         assert_eq!(&*first, &[[612.0, 792.0], [200.0, 100.0]]);
+        assert_eq!(cache.flags(a), Some(flags));
         assert!(cache.get(b).is_none(), "another document is not affected");
 
         cache.remove(a);
         assert!(cache.get(a).is_none());
+        assert!(cache.flags(a).is_none());
         assert_eq!(cache.len(), 0);
         // Releasing a document that has no sizes is nothing.
         cache.remove(b);

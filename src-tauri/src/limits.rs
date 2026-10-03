@@ -59,6 +59,44 @@ pub const MIN_PAGE_SIDE_PT: f32 = 1.0;
 /// What a page without a usable size is shown as: US Letter.
 pub const DEFAULT_PAGE_SIZE_PT: [f32; 2] = [612.0, 792.0];
 
+// --- Reading: outline, text, search, links -----------------------------------------------------------------------
+
+/// Most nodes of the outline the UI is sent (ARCHITECTURE §5). The tree is read depth first, in document order, and reading
+/// stops here: a document with more has the rest left out.
+pub const MAX_OUTLINE_NODES: usize = 10_000;
+/// Deepest level of the outline the UI is sent, the top level being 1. A bookmark below it is left out with its children.
+pub const MAX_OUTLINE_DEPTH: usize = 32;
+/// Longest outline title in characters, after sanitizing (the same filter as a display name).
+pub const MAX_OUTLINE_TITLE_CHARS: usize = 512;
+/// Most characters of one page's text layer (UTF-16 code units, which is what JavaScript counts). A page with more is cut there and
+/// the layer says so (`truncated`).
+pub const MAX_TEXT_CHARS: usize = 200_000;
+/// Most characters of one page that a search looks at (twice what a text layer may hold, which is already more than a page of text has):
+/// the rest of a page with more is not searched.
+pub const MAX_SEARCH_PAGE_CHARS: usize = 1_000_000;
+/// Longest search text in characters (ARCHITECTURE §5).
+pub const MAX_SEARCH_QUERY_CHARS: usize = 512;
+/// Most hits one search reports (ARCHITECTURE §5). The search then ends with `truncated`.
+pub const MAX_SEARCH_HITS: u32 = 50_000;
+/// Most rectangles of one hit: a hit that spans lines has one per line, and no hit of a query of 512 characters spans more.
+pub const MAX_QUADS_PER_HIT: usize = 512;
+/// Most links of one page the UI is sent (ARCHITECTURE §5). The first ones in the page's order; the rest cannot be opened.
+pub const MAX_PAGE_LINKS: usize = 1_000;
+/// Longest URL a link may carry to the UI, and the longest one that is ever opened (bytes: a URL is ASCII, see `security::links`).
+pub const MAX_URL_LEN: usize = 2048;
+/// Deadline for reading the text of a page, its links, a search of one page and the outline (ADR-002 §8: text 10 s).
+pub const TEXT_TIMEOUT: Duration = Duration::from_secs(10);
+/// How often one page of a search is tried when the engine is too busy for it (a full queue, or other work that was more urgent for
+/// the whole deadline): a search runs at the lowest priority, so a scroll that keeps the worker busy may starve a page for a while.
+pub const SEARCH_PAGE_ATTEMPTS: u32 = 10;
+/// Pause between two attempts at one page of a search.
+pub const SEARCH_RETRY_PAUSE: Duration = Duration::from_millis(250);
+/// Searches that may run at once (each holds a thread of the blocking pool): one per document, and the ones that were cancelled and
+/// have not noticed yet. A search beyond it is `limit_exceeded` (`searches`).
+pub const MAX_ACTIVE_SEARCHES: usize = 2 * MAX_OPEN_DOCUMENTS;
+/// Least time between two `progress` messages of a search (the last page always reports).
+pub const SEARCH_PROGRESS_INTERVAL: Duration = Duration::from_millis(100);
+
 // --- Documents --------------------------------------------------------------------------------------------------
 
 /// Upper bound for simultaneously open documents (bounds memory held by the engine).
@@ -174,6 +212,32 @@ pub fn validate_viewport_pages(count: usize) -> Result<usize, AppError> {
         Ok(count)
     } else {
         Err(AppError::limit("pages", MAX_VIEWPORT_PAGES as u64))
+    }
+}
+
+/// Checks the text of a search: 1 to `MAX_SEARCH_QUERY_CHARS` characters, not only white space (that is nothing to look for) and
+/// without U+0000 (a string that is NUL terminated somewhere on the way would silently be a shorter search). Empty, white space only
+/// and NUL are `invalid_argument` (`query`), a longer text is `limit_exceeded` (`query`).
+pub fn validate_search_text(text: &str) -> Result<&str, AppError> {
+    if text.trim().is_empty() || text.contains('\0') {
+        return Err(AppError::invalid("query"));
+    }
+    // Bytes first: a text of more than 4 bytes per allowed character is too long whatever its characters, and it is not counted.
+    if text.len() > MAX_SEARCH_QUERY_CHARS * 4 || text.chars().count() > MAX_SEARCH_QUERY_CHARS {
+        return Err(AppError::limit("query", MAX_SEARCH_QUERY_CHARS as u64));
+    }
+    Ok(text)
+}
+
+/// Checks the number of hits a search may report: 1 to `MAX_SEARCH_HITS`. Zero is `invalid_argument` (`hits`), more is
+/// `limit_exceeded` (`hits`).
+pub fn validate_search_hits(max_hits: u32) -> Result<u32, AppError> {
+    if max_hits == 0 {
+        Err(AppError::invalid("hits"))
+    } else if max_hits > MAX_SEARCH_HITS {
+        Err(AppError::limit("hits", u64::from(MAX_SEARCH_HITS)))
+    } else {
+        Ok(max_hits)
     }
 }
 

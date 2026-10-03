@@ -255,7 +255,10 @@ mod tests {
             log[0],
             serde_json::json!({
                 "type": "opened",
-                "document": { "id": 0, "pageCount": 5, "displayName": "dropped.pdf" }
+                "document": {
+                    "id": 0, "pageCount": 5, "displayName": "dropped.pdf",
+                    "flags": { "encrypted": false, "xfa": false, "hasForms": false, "signed": false }
+                }
             })
         );
         let text = log[0].to_string();
