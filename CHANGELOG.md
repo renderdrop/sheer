@@ -6,6 +6,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-10-03
+
+M3 — Organize pages.
+
+### Added
+
+- Organize mode: a page grid with a size slider, multi-select, drag-and-drop and keyboard reordering, rotate, delete (never the last page; undo brings pages and their annotations back), insert blank pages or pages from another file — all undoable; the viewer, thumbnails, outline and search follow the new order.
+- Save rewrites the page tree incrementally; "clean copy" writes a full new file; changing pages of a signed file asks first.
+- Extract pages to a new file; split every N pages or by ranges with a naming pattern into a chosen folder (never overwrites); merge several PDFs (dropping several files offers "Merge into one" or "Open as tabs"); compress with three presets (96/150/220 dpi) and a size estimate. All with progress and cancel; annotations travel along.
+- Undo/Redo buttons in the toolbar, an "Edited" badge in the status bar; annotations on inserted pages are editable at once.
+
+### Security
+
+- Every PDF parsed for writing goes through one guarded loader with a decode-budget pre-scan (defence in depth until the separate engine process in M7); imported pages and annotations keep only safe web links (no automatic or JavaScript actions); Windows device names are never used as file names; outputs are claimed with create-new.
+- New dependencies: image 0.25 (JPEG only) and flate2 (MIT/Apache).
 ## [0.5.0] - 2026-10-03
 
 M2 — Comment and markup.
