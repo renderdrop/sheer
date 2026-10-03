@@ -506,6 +506,13 @@ pub fn append_annotations(original: Vec<u8>, plan: &Plan) -> Result<Built, AppEr
     })
 }
 
+// owned by package C
+/// The current state of a document as a Full, unencrypted PDF in memory, no backup, never on disk (ADR-049 §1): the snapshot an export
+/// or a print renders. Stub (package C): `not_yet`.
+pub fn write_to_memory(_plan: &SavePlan, _input: &[u8]) -> Result<Vec<u8>, AppError> {
+    Err(AppError::not_yet())
+}
+
 /// Reads `bytes` again as a PDF with `pages` pages (ADR-004 §1 step 6, the lopdf half of the check).
 pub fn validate(bytes: &[u8], pages: u32) -> Result<(), AppError> {
     let doc = crate::pdfwrite::prescan::load_untrusted(bytes)?;

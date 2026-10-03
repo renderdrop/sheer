@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-resolve-export-conflicts"
+description = "Enables the resolve_export_conflicts command without any pre-configured scope."
+commands.allow = ["resolve_export_conflicts"]
+
+[[permission]]
+identifier = "deny-resolve-export-conflicts"
+description = "Denies the resolve_export_conflicts command without any pre-configured scope."
+commands.deny = ["resolve_export_conflicts"]

@@ -26,9 +26,21 @@ export type SplitPlan =
 export type MergeInput = { type: 'document'; docId: number } | { type: 'source'; sourceId: SourceId };
 export type CompressPreset = 'lossless' | 'print' | 'ebook' | 'screen';
 
-export type JobPhase = 'read' | 'images' | 'write' | 'validate' | 'redact';
+export type JobPhase = 'read' | 'images' | 'write' | 'validate' | 'redact' | 'snapshot' | 'render' | 'encode';
 export type JobWarning =
-  'signaturesRemoved' | 'formsDropped' | 'widgetsDropped' | 'unsavedEditsDropped' | 'hiddenDataKept';
+  | 'signaturesRemoved'
+  | 'formsDropped'
+  | 'widgetsDropped'
+  | 'unsavedEditsDropped'
+  | 'hiddenDataKept'
+  | 'dpiLowered'
+  | 'imagesSkipped';
+
+/** The print set a finished `prepare_print` made (ADR-049): `printId` for `get_print_page`, `pages` frames. */
+export interface PrintDone {
+  printId: number;
+  pages: number;
+}
 
 export type JobEvent =
   | { type: 'progress'; phase: JobPhase; done: number; total: number }
@@ -41,20 +53,32 @@ export type JobEvent =
       opened: DocumentInfo | null;
       /** The change set of a job that edited the document in the model (`applyRedactions`, ADR-047); `null` for the others. */
       changes?: ChangeSet | null;
+      /** Images to PDF: images left out (the warnings then hold `imagesSkipped`); the backend always sends it, 0 for the other jobs. */
+      skipped?: number;
+      /** `prepare_print`: the set to fetch frames from; the backend always sends it, `null` for the other jobs. */
+      print?: PrintDone | null;
     }
   | { type: 'cancelled' }
   | { type: 'failed'; error: AppError };
 
-const PHASES: readonly string[] = ['read', 'images', 'write', 'validate', 'redact'];
+const PHASES: readonly string[] = ['read', 'images', 'write', 'validate', 'redact', 'snapshot', 'render', 'encode'];
 const WARNINGS: readonly string[] = [
   'signaturesRemoved',
   'formsDropped',
   'widgetsDropped',
   'unsavedEditsDropped',
   'hiddenDataKept',
+  'dpiLowered',
+  'imagesSkipped',
 ];
 const count = (value: unknown): value is number =>
   typeof value === 'number' && Number.isFinite(value) && value >= 0 && value <= Number.MAX_SAFE_INTEGER;
+
+function parsePrintDone(value: unknown): PrintDone | null {
+  if (typeof value !== 'object' || value === null) return null;
+  const { printId, pages } = value as { printId?: unknown; pages?: unknown };
+  return count(printId) && count(pages) ? { printId, pages } : null;
+}
 
 /** A job event from a channel message; `null` if it is not one. */
 export function parseJobEvent(message: unknown): JobEvent | null {
@@ -80,6 +104,8 @@ export function parseJobEvent(message: unknown): JobEvent | null {
       warnings,
       opened,
     };
+    if (count(m.skipped)) done.skipped = m.skipped;
+    if (m.print !== undefined) done.print = parsePrintDone(m.print);
     if (m.changes !== undefined) {
       const changes = m.changes === null ? null : parseChangeSet(m.changes);
       if (m.changes !== null && changes === null) return null;
@@ -104,7 +130,8 @@ export function requireJobId(value: unknown): JobId {
   return value;
 }
 
-function parseJobId(value: unknown): JobId | null {
+/** An optional job id from an answer: `null` when the user cancelled a dialog. */
+export function parseJobId(value: unknown): JobId | null {
   if (value === null || value === undefined) return null;
   if (!count(value)) throw toAppError(null);
   return value;

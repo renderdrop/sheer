@@ -34,6 +34,8 @@ export interface ErrorParams {
   limit?: number;
   /** The one non-ASCII character a text box refused (`invalid_argument` `textBox`, ADR-047). */
   char?: string;
+  /** The 1-based page an export refused (`limit_exceeded` `exportPixels`, ADR-049). */
+  page?: number;
 }
 
 /**
@@ -56,12 +58,13 @@ const WHAT = /^[a-z][a-zA-Z_]{0,31}$/;
 
 function toParams(value: unknown): ErrorParams | undefined {
   if (typeof value !== 'object' || value === null) return undefined;
-  const { what, limit, char } = value as { what?: unknown; limit?: unknown; char?: unknown };
+  const { what, limit, char, page } = value as { what?: unknown; limit?: unknown; char?: unknown; page?: unknown };
   if (typeof what !== 'string' || !WHAT.test(what)) return undefined;
   const params: ErrorParams = { what };
   if (typeof limit === 'number' && Number.isFinite(limit)) params.limit = limit;
   // One code point and not ASCII: it is shown as text, never as markup or a path.
   if (typeof char === 'string' && Array.from(char).length === 1 && /\P{ASCII}/u.test(char)) params.char = char;
+  if (typeof page === 'number' && Number.isInteger(page) && page >= 1) params.page = page;
   return params;
 }
 

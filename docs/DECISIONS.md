@@ -1524,3 +1524,9 @@ metadata removal. Rules that bind: the UI never holds paths or bytes, every outp
 **Consequences.** Printing is raster (150/300 dpi): fine text is slightly softer than vector printing, and very long jobs are capped
 (2 000 pages); vector print via native APIs is v1.1. Output reflects unsaved edits without saving. Images → PDF re-encodes (no JPEG
 pass-through, v1.1). Exported image names never carry document metadata. Not in M6: reveal in folder (v1.1), OCR, Office formats.
+
+**W0 corrections (2026-10-04).** The code names differ from the text above: `content::image::intake` is `content::image::prepare` / `prepare_bytes`
+(`ImageAsset` is the stored image, there is no `StoredImage`); SHR1 had only format 1 (PNG), so print frames are format 3 = JPEG
+(`src/api/print.ts`); `parse_ranges` reports more than 1 000 ranges as `limit_exceeded` `outputs`, so package A maps selection errors to
+`pageSelection` itself; `AppState` gains `engine()` and `has_unsaved_changes()` because its fields are private to `commands`.
+`export::snapshot::current` answers `Live` for a clean document and `notYet` for a dirty one until package C lands.

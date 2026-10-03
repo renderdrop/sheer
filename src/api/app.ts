@@ -9,6 +9,10 @@ import { toAppError } from './errors';
 export const PLATFORMS = ['macos', 'windows', 'linux'] as const;
 export type Platform = (typeof PLATFORMS)[number];
 
+/** The paper the OS region suggests (`platform::paper_default`, ADR-049): letter in the US and Canada, A4 elsewhere. */
+export const PAPER_DEFAULTS = ['a4', 'letter'] as const;
+export type PaperDefault = (typeof PAPER_DEFAULTS)[number];
+
 /** Wire names of the backend's `GlassMode`, `ThemeMode` and `Language` (storage/settings.rs). Keep in sync. */
 export const GLASS_MODES = ['auto', 'solid'] as const;
 export type GlassMode = (typeof GLASS_MODES)[number];
@@ -80,6 +84,8 @@ export interface AppBootstrap {
   version: string;
   /** The OS account name, only a suggestion for the author prompt (ADR-034); never stored. Empty when unknown. */
   authorSuggestion: string;
+  /** Default page size of Create PDF from images (ADR-049): from the OS region, read in Rust. */
+  paper: PaperDefault;
 }
 
 function isPanelWidth(value: unknown): value is number {
@@ -137,11 +143,12 @@ export function parseSettings(value: unknown): Settings | null {
 /** Validates the startup report from the backend. `null` if it is not one. */
 export function parseBootstrap(value: unknown): AppBootstrap | null {
   if (typeof value !== 'object' || value === null) return null;
-  const { platform, reducedTransparency, version, authorSuggestion } = value as {
+  const { platform, reducedTransparency, version, authorSuggestion, paper } = value as {
     platform?: unknown;
     reducedTransparency?: unknown;
     version?: unknown;
     authorSuggestion?: unknown;
+    paper?: unknown;
   };
   const parsedPlatform = oneOf(PLATFORMS, platform);
   if (parsedPlatform === null || typeof reducedTransparency !== 'boolean' || typeof version !== 'string') return null;
@@ -150,6 +157,7 @@ export function parseBootstrap(value: unknown): AppBootstrap | null {
     reducedTransparency,
     version,
     authorSuggestion: isAuthorName(authorSuggestion) ? authorSuggestion : '',
+    paper: oneOf(PAPER_DEFAULTS, paper) ?? 'a4',
   };
 }
 
@@ -223,14 +231,29 @@ export async function subscribeMenu(onAction: (id: string) => void, systemLangua
  * being dragged over the window, and how opening a file went when the UI did not ask for it (a file dropped on the window or
  * opened by the OS: file association, a second launch). The messages carry no path, only what the UI may know about a file.
  */
-export type AppEvent = { type: 'dropHover'; active: boolean } | { type: 'closeRequested' } | OpenOutcome;
+export type AppEvent =
+  | { type: 'dropHover'; active: boolean }
+  | { type: 'closeRequested' }
+  | { type: 'imagesDropped'; batch: number; count: number; skipped: number }
+  | OpenOutcome;
 
 /** A pushed event from a channel message; `null` if the message is not one. */
 export function parseAppEvent(message: unknown): AppEvent | null {
   if (typeof message !== 'object' || message === null) return null;
-  const { type, active } = message as { type?: unknown; active?: unknown };
+  const { type, active, batch, count, skipped } = message as {
+    type?: unknown;
+    active?: unknown;
+    batch?: unknown;
+    count?: unknown;
+    skipped?: unknown;
+  };
   if (type === 'closeRequested') return { type };
   if (type === 'dropHover') return typeof active === 'boolean' ? { type, active } : null;
+  if (type === 'imagesDropped') {
+    const whole = (value: unknown): value is number =>
+      typeof value === 'number' && Number.isInteger(value) && value >= 0;
+    return whole(batch) && whole(count) && whole(skipped) ? { type, batch, count, skipped } : null;
+  }
   return parseOpenOutcome(message);
 }
 

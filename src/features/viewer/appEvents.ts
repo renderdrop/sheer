@@ -16,6 +16,8 @@ export function handleAppEvent(event: AppEvent): void {
     useUi.getState().setDropHover(event.active);
   } else if (event.type === 'closeRequested') {
     void requestQuit();
+  } else if (event.type === 'imagesDropped') {
+    // Package B (ADR-049): the Create PDF from images offer for the dropped batch.
   } else {
     // A document that opens right after the drag left the window was dropped: the preview card falls and becomes its page (MOTION 4.5).
     if (event.type === 'opened') {

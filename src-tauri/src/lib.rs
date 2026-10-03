@@ -8,11 +8,13 @@ pub mod documents;
 pub mod engine;
 pub mod error;
 pub mod events;
+pub mod export;
 pub mod limits;
 pub mod menu;
 pub mod model;
 pub mod pdfwrite;
 pub mod platform;
+pub mod print;
 pub mod security;
 pub mod signatures;
 pub mod sources;
@@ -125,6 +127,15 @@ pub fn run() -> Result<(), AppError> {
             commands::protect::stage_protection,
             commands::protect::stage_unprotection,
             commands::metadata::get_metadata,
+            commands::export_images::export_images,
+            commands::export_images::resolve_export_conflicts,
+            commands::images_pdf::images_to_pdf,
+            commands::images_pdf::release_image_batch,
+            commands::export_pdf::export_pdf,
+            commands::print::prepare_print,
+            commands::print::get_print_page,
+            commands::print::open_print_dialog,
+            commands::print::release_print,
             commands::pages::pick_pdf_sources,
             commands::pages::release_source,
             commands::annotations::undo,

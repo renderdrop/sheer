@@ -4,6 +4,7 @@
 //! app to open a file, see `documents::intake` and `sources`) and never leave it. The frontend works with [`DocumentId`] and
 //! [`PageId`] values alone.
 
+pub mod image_batch;
 pub mod intake;
 pub mod sources;
 

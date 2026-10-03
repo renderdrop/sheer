@@ -11,13 +11,16 @@ use super::queue::{RenderKey, Requests};
 use super::sizes::{PageSizes, SizeCache};
 use super::space::page_count;
 use super::{
-    encode, import, links, outline, pages, redact, search, text, Confirm, Job, ReopenSource, Reply,
+    encode, export, import, links, outline, pages, redact, search, snapshot, text, Confirm, Job,
+    ReopenSource, Reply,
 };
 use crate::documents::{DocFlags, DocumentId};
 use crate::error::{AppError, ErrorCode};
+use crate::export::snapshot::{EngineDocRef, SnapshotId};
 use crate::limits;
+use snapshot::Snapshots;
 
-type Documents<'a> = HashMap<DocumentId, PdfDocument<'a>>;
+pub(super) type Documents<'a> = HashMap<DocumentId, PdfDocument<'a>>;
 
 /// Worker entry point: binds PDFium, then serves jobs until every `Engine` handle is gone.
 ///
@@ -51,6 +54,8 @@ pub(super) fn run(
     // `documents` borrows `pdfium`, so it must be declared after it (drop order: documents first).
     let pdfium = Pdfium::new(bindings);
     let mut documents: Documents<'_> = HashMap::new();
+    // Engine-only documents of output jobs (ADR-049 §1); they die with this worker, which is how a respawn closes them.
+    let mut snapshots: Snapshots<'_> = HashMap::new();
     // Documents whose job panicked. They are dropped from `documents` and refuse further work until closed.
     let mut crashed: HashSet<DocumentId> = stale;
 
@@ -73,6 +78,7 @@ pub(super) fn run(
             &pdfium,
             &requests,
             &mut documents,
+            &mut snapshots,
             &mut crashed,
             sizes,
             request.job,
@@ -80,6 +86,7 @@ pub(super) fn run(
     }
     if health.is_retired() {
         // Dropping the documents and `pdfium` would call `FPDF_DestroyLibrary` under the worker that replaced this one.
+        std::mem::forget(snapshots);
         std::mem::forget(documents);
         std::mem::forget(pdfium);
     }
@@ -90,6 +97,7 @@ fn serve<'a>(
     pdfium: &'a Pdfium,
     requests: &Requests,
     documents: &mut Documents<'a>,
+    snapshots: &mut Snapshots<'a>,
     crashed: &mut HashSet<DocumentId>,
     sizes: &SizeCache,
     job: Job,
@@ -223,6 +231,46 @@ fn serve<'a>(
                 redact::render_for_redaction(document, engine_index, dpi, &burn)
             });
             answer(reply, result, Some(id), documents, crashed);
+        }
+        Job::OpenSnapshot { bytes, reply } => {
+            let result = guarded(|| {
+                let id = SnapshotId::fresh();
+                snapshot::open(pdfium, snapshots, id, &bytes)?;
+                Ok(id)
+            });
+            answer(reply, result, None, documents, crashed);
+        }
+        Job::CloseSnapshot { id, reply } => {
+            let result = guarded(|| {
+                snapshot::close(snapshots, id);
+                Ok(())
+            });
+            answer(reply, result, None, documents, crashed);
+        }
+        Job::RenderExport {
+            doc,
+            engine_index,
+            dpi,
+            annotations,
+            rotate_quarter,
+            reply,
+        } => {
+            let result = guarded(|| {
+                export::render(
+                    documents,
+                    snapshots,
+                    doc,
+                    engine_index,
+                    dpi,
+                    annotations,
+                    rotate_quarter,
+                )
+            });
+            let live = match doc {
+                EngineDocRef::Live(id) => Some(id),
+                EngineDocRef::Snapshot(_) => None,
+            };
+            answer(reply, result, live, documents, crashed);
         }
         Job::AppendBlankPage { id, size, reply } => {
             let result = if crashed.contains(&id) {

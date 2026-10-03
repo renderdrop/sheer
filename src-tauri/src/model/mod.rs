@@ -18,5 +18,6 @@ pub mod metadata;
 pub mod page;
 pub mod page_ops;
 pub mod protection;
+pub mod ranges;
 pub mod reading;
 pub mod redaction;

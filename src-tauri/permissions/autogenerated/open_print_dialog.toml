@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-open-print-dialog"
+description = "Enables the open_print_dialog command without any pre-configured scope."
+commands.allow = ["open_print_dialog"]
+
+[[permission]]
+identifier = "deny-open-print-dialog"
+description = "Denies the open_print_dialog command without any pre-configured scope."
+commands.deny = ["open_print_dialog"]

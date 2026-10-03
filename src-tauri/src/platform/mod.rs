@@ -29,6 +29,21 @@ pub const fn current() -> Platform {
     }
 }
 
+/// The paper the OS region suggests for new documents (ADR-049 §3). The wire name is the lower-case word.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Paper {
+    A4,
+    #[allow(dead_code)] // package B returns it from `paper_default` (ADR-049 §6)
+    Letter,
+}
+
+/// Letter in the US and Canada, A4 elsewhere (Windows `GetLocaleInfoEx` with `LOCALE_IPAPERSIZE`, macOS `NSLocale`). Always A4 until
+/// package B (ADR-049 §6) reads the OS region; never fails.
+pub const fn paper_default() -> Paper {
+    Paper::A4
+}
+
 /// Whether the OS asks apps to avoid translucent surfaces (macOS: "Reduce transparency").
 ///
 /// WKWebView does not map that setting to `prefers-reduced-transparency`, so the UI gets it from here (DESIGN §1).

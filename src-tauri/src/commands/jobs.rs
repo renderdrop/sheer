@@ -83,9 +83,21 @@ pub enum JobEvent {
         opened: Option<DocumentInfo>,
         /// The change set of a job that edited the document in the model (`apply_redactions`, ADR-047 §3); `null` for the others.
         changes: Option<Box<ChangeSet>>,
+        /// Images → PDF: images that could not be used and were left out (`warnings` has `imagesSkipped`); 0 for the others (ADR-049 §3).
+        skipped: u32,
+        /// `prepare_print`: the set the UI fetches frames from; `null` for the others (ADR-049 §4).
+        print: Option<PrintDone>,
     },
     Cancelled,
     Failed(UiError),
+}
+
+/// The print set a finished `prepare_print` job made: `printId` for `get_print_page` (frames `0..pages`), `open_print_dialog` and `release_print`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PrintDone {
+    pub print_id: u32,
+    pub pages: u32,
 }
 
 /// Where a job sends its messages: the channel of the webview, or a collector in a test.
@@ -162,7 +174,7 @@ pub struct PresetSizes {
 // --- Running jobs -------------------------------------------------------------------------------------------------
 
 /// What a finished job reports.
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct JobDone {
     pub outputs: u32,
     pub bytes_before: u64,
@@ -171,6 +183,10 @@ pub struct JobDone {
     pub opened: Option<DocumentInfo>,
     /// What a job that changed the model did to it (redaction); the UI applies it like the answer of `apply_command`.
     pub changes: Option<ChangeSet>,
+    /// Images that could not be used and were left out (images → PDF).
+    pub skipped: u32,
+    /// The print set of `prepare_print`.
+    pub print: Option<PrintDone>,
 }
 
 /// The running jobs of the app.
@@ -304,6 +320,8 @@ impl JobRegistry {
                         warnings: done.warnings,
                         opened: done.opened,
                         changes: done.changes.map(Box::new),
+                        skipped: done.skipped,
+                        print: done.print,
                     },
                     Err(error) if error.code() == ErrorCode::Cancelled => JobEvent::Cancelled,
                     Err(error) => JobEvent::Failed(UiError::from(error)),
@@ -520,14 +538,22 @@ pub fn split_names(
         .collect())
 }
 
-/// Creates `<stem>.pdf` in `folder`, or `<stem> (2).pdf`, `<stem> (3).pdf` ... if the name is taken: a file is never overwritten, the
-/// name is claimed with `create_new`. Returns the open file and its path.
-pub fn create_unique(folder: &Path, stem: &str) -> Result<(std::fs::File, PathBuf), AppError> {
+/// Creates `<stem>.<ext>` in `folder`, or `<stem> (2).<ext>`, `<stem> (3).<ext>` ... if the name is taken: a file is never
+/// overwritten, the name is claimed with `create_new`. `ext` is a fixed word the caller chose (`pdf`, `png`, `jpg`), 1 to 8 ASCII
+/// letters or digits, else `invalid_argument` (`extension`). Returns the open file and its path.
+pub fn create_unique(
+    folder: &Path,
+    stem: &str,
+    ext: &str,
+) -> Result<(std::fs::File, PathBuf), AppError> {
+    if ext.is_empty() || ext.len() > 8 || !ext.bytes().all(|b| b.is_ascii_alphanumeric()) {
+        return Err(AppError::invalid("extension"));
+    }
     for attempt in 1..=limits::MAX_NAME_ATTEMPTS {
         let name = if attempt == 1 {
-            format!("{stem}.pdf")
+            format!("{stem}.{ext}")
         } else {
-            format!("{stem} ({attempt}).pdf")
+            format!("{stem} ({attempt}).{ext}")
         };
         let path = folder.join(name);
         match OpenOptions::new().write(true).create_new(true).open(&path) {
@@ -543,7 +569,7 @@ pub fn create_unique(folder: &Path, stem: &str) -> Result<(std::fs::File, PathBu
 }
 
 fn write_new(folder: &Path, stem: &str, bytes: &[u8]) -> Result<PathBuf, AppError> {
-    let (mut file, path) = create_unique(folder, stem)?;
+    let (mut file, path) = create_unique(folder, stem, "pdf")?;
     let written = file.write_all(bytes).and_then(|()| file.flush());
     drop(file);
     if let Err(error) = written {
@@ -860,6 +886,8 @@ impl AppState {
                 warnings: output.warnings,
                 opened,
                 changes: None,
+                skipped: 0,
+                print: None,
             })
         })
     }
@@ -964,6 +992,8 @@ impl AppState {
                 warnings,
                 opened: None,
                 changes: None,
+                skipped: 0,
+                print: None,
             })
         })
     }
@@ -1104,6 +1134,8 @@ impl AppState {
                 warnings: output.warnings,
                 opened,
                 changes: None,
+                skipped: 0,
+                print: None,
             })
         })
     }
@@ -1138,6 +1170,8 @@ impl AppState {
                     warnings: Vec::new(),
                     opened: None,
                     changes: None,
+                    skipped: 0,
+                    print: None,
                 });
             }
             let opened = state.publish(&target, &result.bytes)?;
@@ -1148,6 +1182,8 @@ impl AppState {
                 warnings: result.warnings,
                 opened,
                 changes: None,
+                skipped: 0,
+                print: None,
             })
         })
     }
@@ -1182,6 +1218,8 @@ impl AppState {
                 warnings: output.warnings,
                 opened,
                 changes: None,
+                skipped: 0,
+                print: None,
             })
         })
     }
@@ -1429,6 +1467,8 @@ mod tests {
             warnings: vec![Warning::FormsDropped],
             opened: None,
             changes: None,
+            skipped: 0,
+            print: None,
         }
     }
 
@@ -1479,9 +1519,11 @@ mod tests {
                 ],
                 opened: None,
                 changes: None,
+                skipped: 0,
+                print: None,
             }),
             serde_json::json!({"type": "done", "outputs": 2, "bytesBefore": 10, "bytesAfter": 5,
-                "warnings": ["signaturesRemoved", "formsDropped", "widgetsDropped"], "opened": null, "changes": null})
+                "warnings": ["signaturesRemoved", "formsDropped", "widgetsDropped"], "opened": null, "changes": null, "skipped": 0, "print": null})
         );
         assert_eq!(
             value(&JobEvent::Cancelled),
@@ -1495,6 +1537,44 @@ mod tests {
             failed,
             serde_json::json!({"type": "failed", "code": "save_failed", "key": "error.save_failed", "retryable": true})
         );
+    }
+
+    #[test]
+    fn output_jobs_have_their_phases_warnings_and_done_fields() {
+        let value = |event: &JobEvent| serde_json::to_value(event).unwrap();
+        for (phase, word) in [
+            (Phase::Snapshot, "snapshot"),
+            (Phase::Render, "render"),
+            (Phase::Encode, "encode"),
+        ] {
+            assert_eq!(
+                value(&JobEvent::Progress {
+                    phase,
+                    done: 0,
+                    total: 1
+                })["phase"],
+                word
+            );
+        }
+        let done = value(&JobEvent::Done {
+            outputs: 1,
+            bytes_before: 0,
+            bytes_after: 0,
+            warnings: vec![Warning::DpiLowered, Warning::ImagesSkipped],
+            opened: None,
+            changes: None,
+            skipped: 2,
+            print: Some(PrintDone {
+                print_id: 3,
+                pages: 9,
+            }),
+        });
+        assert_eq!(
+            done["warnings"],
+            serde_json::json!(["dpiLowered", "imagesSkipped"])
+        );
+        assert_eq!(done["skipped"], 2);
+        assert_eq!(done["print"], serde_json::json!({"printId": 3, "pages": 9}));
     }
 
     #[test]
@@ -1699,6 +1779,23 @@ mod tests {
         assert_eq!(second.file_name().unwrap(), "a-01 (3).pdf");
         assert_eq!(std::fs::read(folder.join("a-01.pdf")).unwrap(), b"mine");
         assert_eq!(std::fs::read(&second).unwrap(), b"newer");
+        let _ = std::fs::remove_dir_all(&folder);
+    }
+
+    #[test]
+    fn the_extension_is_part_of_the_claimed_name() {
+        let folder = std::env::temp_dir().join(format!("sheer-jobs-ext-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&folder);
+        std::fs::create_dir_all(&folder).unwrap();
+        std::fs::write(folder.join("doc-p1.png"), b"mine").unwrap();
+        let (_, taken) = create_unique(&folder, "doc-p1", "png").unwrap();
+        let (_, other) = create_unique(&folder, "doc-p1", "jpg").unwrap();
+        assert_eq!(taken.file_name().unwrap(), "doc-p1 (2).png");
+        assert_eq!(other.file_name().unwrap(), "doc-p1.jpg");
+        assert_eq!(std::fs::read(folder.join("doc-p1.png")).unwrap(), b"mine");
+        for bad in ["", "p.ng", "a/b", "toolongext"] {
+            assert!(create_unique(&folder, "x", bad).is_err(), "{bad}");
+        }
         let _ = std::fs::remove_dir_all(&folder);
     }
 }

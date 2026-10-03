@@ -427,6 +427,8 @@ pub fn crypt::read_protection(bytes: &[u8], password: Option<&Secret>) -> Result
 pub fn metadata::read(doc: &Document) -> Result<MetadataRead, AppError>;
 pub fn metadata::write(doc: &mut IncrementalDocument, m: &MetadataValues, had_xmp: bool, now: PdfDate) -> Result<(), AppError>;
 pub fn metadata::strip(doc: &mut Document) -> Result<(), AppError>;
+// AppState gains engine() -> &Engine and has_unsaved_changes(DocumentId) -> bool for the modules outside `commands`.
+// platform::paper_default() -> Paper { A4, Letter } (A4 until package B reads the OS region); model::ranges::PageSelection (serde twin of the TS type).
 // engine jobs
 Job::SetCropBox { engine_index: u32, crop: [f32; 4] }                                     // Control
 Job::RenderForRedaction { engine_index: u32, dpi: f32, burn: Vec<Rect> } -> RasterPage   // Background; with annotations + form appearances
@@ -532,12 +534,13 @@ release_print(print_id: u32) -> ()                                              
 
 ```rust
 // Rust-only shapes
+pub struct SnapshotId(u32);   // SnapshotId::fresh(): process-wide counter, called by the worker that opens it
 pub struct Snapshot { bytes: Option<Arc<[u8]>> /* None = clean, live document */, engine: EngineDocRef }
 pub enum EngineDocRef { Live(DocumentId), Snapshot(SnapshotId) }
 pub fn export::snapshot::current(app: &AppState, doc: DocumentId) -> Result<Snapshot, AppError>;   // blocking pool; ≤ 1 GiB
 pub fn pdfwrite::save::write_to_memory(plan: &SavePlan, input: &[u8]) -> Result<Vec<u8>, AppError>; // Full, unencrypted, no backup
 pub fn pdfwrite::images_pdf::build(pages: &[ImagePage], producer: &str) -> Result<Vec<u8>, AppError>;
-pub struct ImagePage { image: StoredImage /* content::image output */, size_pt: [f32; 2], place: Rect /* pt, fitted */ }
+pub struct ImagePage { image: ImageAsset /* content::image output (`prepare`) */, size_pt: [f32; 2], place: Rect /* pt, fitted */ }
 pub fn pdfwrite::export::strip_annotations(doc: &mut Document) -> Result<u32, AppError>;          // keeps /Link and /Widget
 pub fn export::names::image_names(stem: &str, positions: &[u32], total: u32, ext: ImageExt) -> Vec<String>;
 pub fn commands::jobs::create_unique(folder: &Path, stem: &str, ext: &str) -> Result<(File, PathBuf), AppError>;   // was .pdf only
@@ -548,6 +551,7 @@ pub fn print::dialog::open(window: &WebviewWindow) -> Result<PrintRoute, AppErro
 Job::OpenSnapshot { bytes: Arc<[u8]> } -> SnapshotId                                   // Control; not in the registry, no page sizes pushed
 Job::CloseSnapshot { id: SnapshotId }                                                  // Control; also on cancel and worker respawn
 Job::RenderExport { doc: EngineDocRef, engine_index: u32, dpi: f32, annotations: bool, rotate_quarter: u8 } -> RasterPage   // Background, RGB8 on white
+// Engine::{open_snapshot(Arc<[u8]>) -> SnapshotId, close_snapshot(SnapshotId), render_export(EngineDocRef, engine_index, dpi, annotations, rotate_quarter) -> RasterPage}
 ```
 
 ```ts
@@ -572,6 +576,8 @@ interface PrintOptions { pages: PageSelection; annotations: boolean; quality: 's
 type PrintRoute = 'system' | 'webview';
 // JobEvent: progress.phase gains 'snapshot' | 'render' | 'encode'; done gains print: { printId: number; pages: number } | null;
 //           done.warnings gains 'dpiLowered' | 'imagesSkipped'; done gains skipped: number (images → PDF, else 0)
+// PageSelection is src/api/pageSelection.ts (shared by exportImages.ts and print.ts). print.ts parses SHR1 frames of format 3 = JPEG
+// (format 1 = PNG, 2 reserved): width and height 1..=10 000, payload starts FF D8 FF.
 ```
 
 Wrappers: `src/api/exportImages.ts` (`exportImages`, `resolveExportConflicts`), `imagesToPdf.ts` (`imagesToPdf`, `releaseImageBatch`),
@@ -598,7 +604,9 @@ and treats a wrong shape as `internal`. UI (ADR-050) in `features/convert/` and 
   job, ticket 5 min; images in ≤ 500 per job and per batch, batch 10 min, stored sum ≤ 1 GiB, M5 per-image limits; margin 0..=72 pt;
   page 72..=14 400 pt; snapshot ≤ 1 GiB; print ≤ 2 000 pages (`high` ≤ 300), ≤ 768 MiB per set, ≤ 4 sets.
 - *Errors.* New `what` values: `exportPixels` (params `{ page }`), `exportTarget`, `snapshot`, `printJob`, `printDialog`, `imageBatch`,
-  `pageSelection`; each with `error.<code>.<what>` in en and de.
+  `pageSelection`; each with `error.<code>.<what>` in en and de. Codes: `exportPixels` `limit_exceeded` (params `{ what, page }`: `UiParams`/`ErrorParams` gain `page`), `exportTarget` and
+  `pageSelection` `invalid_argument`, `snapshot` and `printJob` `limit_exceeded`, `printDialog` `unsupported_feature`, `imageBatch` `not_found`; `create_unique`
+  with a bad extension is `invalid_argument` `extension` (internal, no text).
 - *Tests.* `tests/export_images.rs` (names never contain `/Title` or label bytes, hostile display names, conflict ticket, `create_new`
   never overwrites, `dpiLowered`, cancel keeps files), `tests/images_to_pdf.rs` (fit/A4/Letter geometry, EXIF orientation, skipped images,
   result opens in PDFium), `tests/snapshot.rs` (unsaved text box and annotation appear in a render, marks never), `tests/export_pdf.rs`

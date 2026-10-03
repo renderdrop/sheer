@@ -54,6 +54,7 @@ const bootstrap = (overrides: Partial<AppBootstrap> = {}): AppBootstrap => ({
   reducedTransparency: false,
   version: '0.2.0',
   authorSuggestion: '',
+  paper: 'a4',
   ...overrides,
 });
 

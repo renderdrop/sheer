@@ -23,7 +23,7 @@ use super::blocking;
 use crate::error::UiError;
 use crate::events::{AppEvent, AppEvents};
 use crate::menu::{self, MenuBridge};
-use crate::platform::{self, Platform, TransparencyWatch};
+use crate::platform::{self, Paper, Platform, TransparencyWatch};
 use crate::storage::settings::{AuthorName, Settings, SettingsPatch, SettingsStore};
 
 /// What the frontend asks once at startup.
@@ -36,6 +36,8 @@ pub struct AppBootstrap {
     pub version: &'static str,
     /// The OS account name, only as a suggestion for the author prompt (ADR-034); never stored. Empty when unknown.
     pub author_suggestion: String,
+    /// Default page size of Create PDF from images, from the OS region (ADR-049 §3).
+    pub paper: Paper,
 }
 
 impl AppBootstrap {
@@ -46,6 +48,7 @@ impl AppBootstrap {
             reduced_transparency: platform::reduced_transparency(),
             version: env!("CARGO_PKG_VERSION"),
             author_suggestion: AuthorName::os_suggestion(),
+            paper: platform::paper_default(),
         }
     }
 }
@@ -147,12 +150,14 @@ mod tests {
             keys,
             [
                 "authorSuggestion",
+                "paper",
                 "platform",
                 "reducedTransparency",
                 "version"
             ]
         );
         assert!(["macos", "windows", "linux"].contains(&object["platform"].as_str().unwrap()));
+        assert!(["a4", "letter"].contains(&object["paper"].as_str().unwrap()));
         assert!(object["reducedTransparency"].is_boolean());
         assert_eq!(object["version"], env!("CARGO_PKG_VERSION"));
     }

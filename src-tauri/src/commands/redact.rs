@@ -139,6 +139,8 @@ impl AppState {
                 },
                 opened: None,
                 changes: Some(changes),
+                skipped: 0,
+                print: None,
             })
         })
     }

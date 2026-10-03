@@ -33,13 +33,17 @@
 pub mod annotations;
 pub mod app;
 pub mod content;
+pub mod export_images;
+pub mod export_pdf;
 pub mod forms;
+pub mod images_pdf;
 pub mod jobs;
 pub mod library;
 pub mod links;
 pub mod metadata;
 pub mod outline;
 pub mod pages;
+pub mod print;
 pub mod protect;
 pub mod recent_actions;
 pub mod redact;
@@ -513,6 +517,18 @@ impl AppState {
         if let Err(error) = self.release_closing_checked() {
             error.log();
         }
+    }
+}
+
+impl AppState {
+    /// The engine handle, for the output modules outside `commands` (`export`, `print`; ADR-049).
+    pub fn engine(&self) -> &Engine {
+        &self.engine
+    }
+
+    /// Whether document `id` has unsaved changes: its file on disk is not what the user sees (ADR-049 §1).
+    pub fn has_unsaved_changes(&self, id: DocumentId) -> bool {
+        self.annotations.is_dirty(id)
     }
 }
 

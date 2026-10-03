@@ -75,6 +75,15 @@ fn main() {
         "stage_protection",
         "stage_unprotection",
         "get_metadata",
+        "export_images",
+        "resolve_export_conflicts",
+        "images_to_pdf",
+        "release_image_batch",
+        "export_pdf",
+        "prepare_print",
+        "get_print_page",
+        "open_print_dialog",
+        "release_print",
     ]);
     if let Err(error) =
         tauri_build::try_build(tauri_build::Attributes::new().app_manifest(manifest))

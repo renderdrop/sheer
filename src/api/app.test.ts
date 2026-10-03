@@ -194,6 +194,17 @@ describe('parseBootstrap', () => {
       reducedTransparency: true,
       version: '0.2.0',
       authorSuggestion: '',
+      paper: 'a4',
+    });
+    expect(
+      parseBootstrap({ platform: 'windows', reducedTransparency: false, version: '1', paper: 'letter' }),
+    ).toMatchObject({
+      paper: 'letter',
+    });
+    expect(
+      parseBootstrap({ platform: 'windows', reducedTransparency: false, version: '1', paper: 'a3' }),
+    ).toMatchObject({
+      paper: 'a4',
     });
     expect(
       parseBootstrap({ platform: 'macos', reducedTransparency: true, version: '0.2.0', authorSuggestion: 'user' }),
@@ -453,6 +464,17 @@ describe('subscribeApp', () => {
       channelOf().onmessage(bad);
     }
     expect(onEvent).not.toHaveBeenCalled();
+  });
+
+  it('passes an images drop on with whole numbers only and nothing else', async () => {
+    invokeMock.mockResolvedValueOnce(undefined);
+    const onEvent = vi.fn();
+    await subscribeApp(onEvent);
+    channelOf().onmessage({ type: 'imagesDropped', batch: 3, count: 2, skipped: 1, paths: ['/home/user/x.png'] });
+    channelOf().onmessage({ type: 'imagesDropped', batch: -1, count: 2, skipped: 1 });
+    channelOf().onmessage({ type: 'imagesDropped', batch: 1, count: 2.5, skipped: 0 });
+    channelOf().onmessage({ type: 'imagesDropped', batch: 1, count: 2 });
+    expect(onEvent.mock.calls).toStrictEqual([[{ type: 'imagesDropped', batch: 3, count: 2, skipped: 1 }]]);
   });
 
   it('never lets a path through: an event holds only the fields it is documented to have', async () => {

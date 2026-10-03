@@ -27,6 +27,7 @@ use crate::limits;
 /// | `opened` | `document: { id, pageCount, displayName, flags }` | a document was opened, or an open one was asked for again |
 /// | `needsPassword` | `id`, `displayName` | the file is encrypted and needs its user password (ADR-026): it waits under `id` for `unlock_document`, or for `close_document` when the user cancels; never the path |
 /// | `closeRequested` | none | the window or the app is asked to close while a document is open: the UI asks about unsaved changes, closes the documents and closes the window itself (ADR-029 §7) |
+/// | `imagesDropped` | `batch`, `count`, `skipped`: numbers | PNG or JPEG files were dropped (ADR-049 §3): they wait under `batch` for `images_to_pdf` (or `release_image_batch`); `skipped` counts dropped files that were neither PDF nor image; never a path, and not kept for a UI that is not listening |
 /// | `openFailed` | `code`, `key`, `retryable`, `params?` of the error model (ARCHITECTURE §7) | a file could not be opened |
 ///
 /// `openFailed` flattens the error: it is exactly what a rejected command carries, so the UI turns it into the same
@@ -53,6 +54,11 @@ pub enum AppEvent {
         error: UiError,
     },
     CloseRequested,
+    ImagesDropped {
+        batch: u32,
+        count: u32,
+        skipped: u32,
+    },
 }
 
 impl AppEvent {
@@ -74,9 +80,21 @@ impl AppEvent {
         }
     }
 
+    /// A batch of dropped images is waiting under `batch` (ADR-049 §3).
+    pub const fn images_dropped(batch: u32, count: u32, skipped: u32) -> Self {
+        Self::ImagesDropped {
+            batch,
+            count,
+            skipped,
+        }
+    }
+
     /// Whether the UI has to hear of it: an open result is never dropped while nobody listens, a hover is stale at once.
     fn is_open_result(&self) -> bool {
-        !matches!(self, Self::DropHover { .. } | Self::CloseRequested)
+        !matches!(
+            self,
+            Self::DropHover { .. } | Self::CloseRequested | Self::ImagesDropped { .. }
+        )
     }
 }
 
@@ -235,6 +253,15 @@ mod tests {
         events.subscribe(channel);
         assert!(events.request_close());
         assert_eq!(log.lock().unwrap().len(), 1);
+    }
+
+    #[test]
+    fn an_images_drop_is_three_numbers_and_is_never_kept_for_later() {
+        assert_eq!(
+            json(&AppEvent::images_dropped(2, 3, 1)),
+            serde_json::json!({"type": "imagesDropped", "batch": 2, "count": 3, "skipped": 1})
+        );
+        assert!(!AppEvent::images_dropped(1, 1, 0).is_open_result());
     }
 
     #[test]

@@ -47,6 +47,7 @@ const bootstrap: AppBootstrap = {
   reducedTransparency: false,
   version: '0.2.0',
   authorSuggestion: '',
+  paper: 'a4',
 };
 const root = () => document.getElementById('root');
 const html = document.documentElement;

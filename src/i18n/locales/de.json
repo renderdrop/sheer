@@ -365,6 +365,13 @@
   "error.limit_exceeded.redaction": "Es gibt zu viele Schwärzungsmarkierungen.",
   "error.limit_exceeded.metadata": "Diese Dokumentinformation ist zu lang.",
   "error.read_only.permission": "Die Berechtigungen dieses Dokuments erlauben keine Änderungen.",
+  "error.limit_exceeded.exportPixels": "Diese Seite ist zu groß, um sie als Bild zu exportieren, selbst bei der niedrigsten Auflösung.",
+  "error.invalid_argument.exportTarget": "Wählen Sie einen anderen Dateinamen: Eine Kopie kann das geöffnete Dokument nicht ersetzen.",
+  "error.limit_exceeded.snapshot": "Dieses Dokument ist zu groß, um es für die Ausgabe vorzubereiten.",
+  "error.limit_exceeded.printJob": "Das ist zu viel für einen Druckauftrag. Drucken Sie weniger Seiten oder wählen Sie die Standardqualität.",
+  "error.unsupported_feature.printDialog": "Der Druckdialog konnte nicht geöffnet werden.",
+  "error.not_found.imageBatch": "Die abgelegten Bilder sind nicht mehr verfügbar. Legen Sie sie erneut ab.",
+  "error.invalid_argument.pageSelection": "Diese Seitenauswahl ist nicht gültig.",
   "error.needs_confirmation.rewriteEncrypted": "Beim Speichern wird diese geschützte Datei vollständig neu geschrieben. Fortfahren?",
   "error.unsupported_feature.notYet": "Das ist noch nicht verfügbar.",
 

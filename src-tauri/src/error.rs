@@ -113,6 +113,9 @@ pub struct UiParams {
     /// The one character a text box refused (`textBox`, ADR-047 §1): never ASCII, so it cannot be a path separator or markup.
     #[serde(rename = "char", skip_serializing_if = "Option::is_none")]
     pub character: Option<char>,
+    /// The 1-based page position an export refused (`exportPixels`, ADR-049 §2): a number, never text.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub page: Option<u32>,
 }
 
 /// The only error type that crosses the IPC boundary. Serializes to
@@ -194,6 +197,15 @@ impl AppError {
         error
     }
 
+    /// `limit_exceeded` `exportPixels`: page `page` (1-based) stays over the bitmap limits even at the lowest dpi (ADR-049 §2).
+    pub fn export_pixels(page: u32) -> Self {
+        let mut error = Self::with_params(ErrorCode::LimitExceeded, "exportPixels", None);
+        if let Some(params) = &mut error.params {
+            params.page = Some(page);
+        }
+        error
+    }
+
     /// `unsupported_feature` (`what: "notYet"`): a seam of ADR-047 whose package has not filled it in yet. Never returned by a finished build.
     pub const fn not_yet() -> Self {
         Self::with_params(ErrorCode::UnsupportedFeature, "notYet", None)
@@ -216,6 +228,7 @@ impl AppError {
                 what,
                 limit,
                 character: None,
+                page: None,
             }),
             detail: None,
         }
@@ -439,6 +452,26 @@ mod tests {
                 "{}",
                 params.what
             );
+        }
+    }
+
+    #[test]
+    fn export_errors_have_the_documented_wire_shape() {
+        let value = |error: AppError| serde_json::to_value(UiError::from(error)).unwrap();
+        assert_eq!(
+            value(AppError::export_pixels(7)),
+            serde_json::json!({"code": "limit_exceeded", "key": "error.limit_exceeded", "retryable": false,
+                "params": {"what": "exportPixels", "page": 7}})
+        );
+        for error in [
+            AppError::invalid("exportTarget"),
+            AppError::invalid("pageSelection"),
+            AppError::not_found("imageBatch"),
+            AppError::limit("snapshot", 1 << 30),
+            AppError::limit("printJob", 2_000),
+            AppError::unsupported("printDialog"),
+        ] {
+            assert!(error.params.is_some());
         }
     }
 

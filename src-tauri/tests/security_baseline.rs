@@ -458,6 +458,15 @@ fn capabilities_grant_only_the_app_commands_and_the_window_chrome_to_the_main_wi
         "allow-stage-protection",
         "allow-stage-unprotection",
         "allow-get-metadata",
+        "allow-export-images",
+        "allow-resolve-export-conflicts",
+        "allow-images-to-pdf",
+        "allow-release-image-batch",
+        "allow-export-pdf",
+        "allow-prepare-print",
+        "allow-get-print-page",
+        "allow-open-print-dialog",
+        "allow-release-print",
     ]);
     expected.extend(
         WINDOW_PERMISSIONS
@@ -745,6 +754,15 @@ fn build_script_declares_exactly_the_granted_commands() {
         "stage_protection",
         "stage_unprotection",
         "get_metadata",
+        "export_images",
+        "resolve_export_conflicts",
+        "images_to_pdf",
+        "release_image_batch",
+        "export_pdf",
+        "prepare_print",
+        "get_print_page",
+        "open_print_dialog",
+        "release_print",
     ];
     let handlers = read("src/lib.rs");
     for command in commands {

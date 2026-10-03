@@ -18,6 +18,7 @@
 //! If it cannot be loaded, the worker stays alive and answers every job with `engine_unavailable`.
 
 pub mod encode;
+mod export;
 mod guard;
 mod import;
 mod links;
@@ -27,6 +28,7 @@ pub mod queue;
 mod redact;
 mod search;
 mod sizes;
+mod snapshot;
 mod space;
 mod text;
 mod worker;
@@ -44,6 +46,7 @@ use zeroize::Zeroizing;
 use crate::documents::sources::SourceBytes;
 use crate::documents::{DocFlags, DocumentId};
 use crate::error::{AppError, ErrorCode};
+use crate::export::snapshot::{EngineDocRef, SnapshotId};
 use crate::limits;
 use crate::model::annotation::Imported;
 use crate::model::geometry::{Quad, Rect};
@@ -107,14 +110,17 @@ impl Request {
     /// for a close: it releases what a document holds, so it runs although nobody waits for its answer any more, or a close that
     /// timed out would leave the document in the worker for good.
     fn expired(&self) -> bool {
-        !matches!(self.job, Job::Close { .. }) && Instant::now() >= self.deadline
+        !matches!(self.job, Job::Close { .. } | Job::CloseSnapshot { .. })
+            && Instant::now() >= self.deadline
     }
 
     /// The point in time after which a worker still busy with this request counts as stuck (`Health`): the caller's deadline,
     /// except for a close that runs late, which is given the time a close is allowed.
     fn run_deadline(&self) -> Instant {
         match self.job {
-            Job::Close { .. } => self.deadline.max(Instant::now() + limits::CONTROL_TIMEOUT),
+            Job::Close { .. } | Job::CloseSnapshot { .. } => {
+                self.deadline.max(Instant::now() + limits::CONTROL_TIMEOUT)
+            }
             _ => self.deadline,
         }
     }
@@ -214,6 +220,23 @@ pub(crate) enum Job {
         burn: Vec<Rect>,
         reply: Reply<RasterPage>,
     },
+    /// Loads `bytes` as an engine-only document for one output job: not in the registry, no page sizes pushed. Answers its id (ADR-049 §1).
+    OpenSnapshot {
+        bytes: Arc<[u8]>,
+        reply: Reply<SnapshotId>,
+    },
+    /// Drops a snapshot. Not skipped when its caller gave up (`Request::expired`): a snapshot nobody can close would stay for good.
+    CloseSnapshot { id: SnapshotId, reply: Reply<()> },
+    /// A page drawn for an export or a print: `dpi`, annotations on or off, turned by `rotate_quarter` quarter turns, RGB8 on white
+    /// (`export`, ADR-049 §2).
+    RenderExport {
+        doc: EngineDocRef,
+        engine_index: u32,
+        dpi: f32,
+        annotations: bool,
+        rotate_quarter: u8,
+        reply: Reply<RasterPage>,
+    },
     /// Adds an empty page of `size` points to the end of PDFium's copy (`pages`).
     AppendBlankPage {
         id: DocumentId,
@@ -302,6 +325,15 @@ impl Job {
                 let _ = reply.send(Err(error));
             }
             Job::RenderForRedaction { reply, .. } => {
+                let _ = reply.send(Err(error));
+            }
+            Job::OpenSnapshot { reply, .. } => {
+                let _ = reply.send(Err(error));
+            }
+            Job::CloseSnapshot { reply, .. } => {
+                let _ = reply.send(Err(error));
+            }
+            Job::RenderExport { reply, .. } => {
                 let _ = reply.send(Err(error));
             }
             Job::AppendBlankPage { reply, .. } => {
@@ -845,6 +877,43 @@ impl Engine {
                 engine_index,
                 dpi,
                 burn,
+                reply,
+            }
+        })
+    }
+
+    /// Loads `bytes` as a snapshot: an engine-only document for one output job (ADR-049 §1, `Control`). Close it with
+    /// [`Engine::close_snapshot`] when the job ends or is cancelled.
+    pub fn open_snapshot(&self, bytes: Arc<[u8]>) -> Result<SnapshotId, AppError> {
+        self.call(limits::OPEN_TIMEOUT, Rank::CONTROL, |reply| {
+            Job::OpenSnapshot { bytes, reply }
+        })
+    }
+
+    /// Drops snapshot `id`; an unknown id is not an error (`Control`).
+    pub fn close_snapshot(&self, id: SnapshotId) -> Result<(), AppError> {
+        self.call(limits::CONTROL_TIMEOUT, Rank::CONTROL, |reply| {
+            Job::CloseSnapshot { id, reply }
+        })
+    }
+
+    /// Draws one page of `doc` for an export or a print (ADR-049 §2, §4, `Background` priority): `dpi`, annotations on or off,
+    /// `rotate_quarter` quarter turns clockwise, RGB8 on white.
+    pub fn render_export(
+        &self,
+        doc: EngineDocRef,
+        engine_index: u32,
+        dpi: f32,
+        annotations: bool,
+        rotate_quarter: u8,
+    ) -> Result<RasterPage, AppError> {
+        self.call(limits::RENDER_TIMEOUT, Rank::BACKGROUND, |reply| {
+            Job::RenderExport {
+                doc,
+                engine_index,
+                dpi,
+                annotations,
+                rotate_quarter,
                 reply,
             }
         })

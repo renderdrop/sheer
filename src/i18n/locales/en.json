@@ -365,6 +365,13 @@
   "error.limit_exceeded.redaction": "There are too many redaction marks.",
   "error.limit_exceeded.metadata": "That document information is too long.",
   "error.read_only.permission": "This document's permissions do not allow changes.",
+  "error.limit_exceeded.exportPixels": "This page is too large to export as an image, even at the lowest resolution.",
+  "error.invalid_argument.exportTarget": "Choose a different file name: a copy cannot replace the open document.",
+  "error.limit_exceeded.snapshot": "This document is too large to prepare for output.",
+  "error.limit_exceeded.printJob": "This is too much to print at once. Print fewer pages or choose standard quality.",
+  "error.unsupported_feature.printDialog": "The print dialog could not be opened.",
+  "error.not_found.imageBatch": "The dropped images are no longer available. Drop them again.",
+  "error.invalid_argument.pageSelection": "That page selection is not valid.",
   "error.needs_confirmation.rewriteEncrypted": "Saving rewrites this protected file in full. Continue?",
   "error.unsupported_feature.notYet": "This is not available yet.",
 

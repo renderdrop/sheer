@@ -539,6 +539,54 @@ pub const MAX_XMP_BYTES: u64 = 4 * 1024 * 1024;
 pub const MIN_ASSET_PREVIEW_PX: u16 = 16;
 pub const MAX_ASSET_PREVIEW_PX: u16 = 2_048;
 
+// --- Convert and output (ADR-049) ---------------------------------------------------------------------------------
+
+/// Pages one export or print selection may name (also the longest accepted range text result).
+pub const MAX_EXPORT_PAGES: usize = 5_000;
+/// Accepted dpi of an image export.
+pub const MIN_EXPORT_DPI: f32 = 36.0;
+pub const MAX_EXPORT_DPI: f32 = 600.0;
+/// Default JPEG quality of an image export.
+pub const DEFAULT_JPEG_QUALITY: u8 = 85;
+/// One exported bitmap: longest side in pixels and total pixels. A page over it is rendered at the highest dpi that fits.
+pub const MAX_EXPORT_SIDE_PX: u32 = 10_000;
+pub const MAX_EXPORT_PIXELS: u64 = 64_000_000;
+/// Image files one export job writes.
+pub const MAX_EXPORT_FILES: usize = 5_000;
+/// How long a conflict ticket (folder held after a name clash) lives.
+pub const EXPORT_TICKET_TTL: Duration = Duration::from_secs(5 * 60);
+/// Names of a conflict answer.
+pub const MAX_CONFLICT_NAMES: usize = 5;
+/// Images of one images to PDF job and of one dropped batch.
+pub const MAX_IMAGES_PER_PDF: usize = 500;
+pub const MAX_IMAGE_BATCH: usize = MAX_IMAGES_PER_PDF;
+/// How long a dropped image batch is kept.
+pub const IMAGE_BATCH_TTL: Duration = Duration::from_secs(10 * 60);
+/// Sum of the stored (re-encoded) images of one images to PDF job.
+pub const MAX_IMAGES_PDF_STORED_BYTES: u64 = 1024 * 1024 * 1024;
+/// Margin of an images to PDF page, in points.
+pub const MIN_IMAGE_MARGIN_PT: f32 = 0.0;
+pub const MAX_IMAGE_MARGIN_PT: f32 = 72.0;
+/// Page side of an images to PDF page, in points, and the density range an image's own dpi is trusted in.
+pub const MIN_IMAGE_PAGE_PT: f32 = 72.0;
+pub const MAX_IMAGE_PAGE_PT: f32 = 14_400.0;
+pub const MIN_IMAGE_DENSITY_DPI: f32 = 72.0;
+pub const MAX_IMAGE_DENSITY_DPI: f32 = 1_200.0;
+/// Density assumed when an image states none.
+pub const DEFAULT_IMAGE_DENSITY_DPI: f32 = 150.0;
+/// Snapshot of a dirty document held in memory.
+pub const MAX_SNAPSHOT_BYTES: u64 = 1024 * 1024 * 1024;
+/// Print: pages of a set (`high` quality: fewer), bytes of one set, sets held at once, and the life of a set.
+pub const MAX_PRINT_PAGES: usize = 2_000;
+pub const MAX_PRINT_PAGES_HIGH: usize = 300;
+pub const MAX_PRINT_SET_BYTES: usize = 768 * 1024 * 1024;
+pub const MAX_PRINT_SETS: usize = 4;
+pub const PRINT_SET_TTL: Duration = Duration::from_secs(10 * 60);
+/// Print render dpi per quality and the JPEG quality of the frames.
+pub const PRINT_DPI_STANDARD: f32 = 150.0;
+pub const PRINT_DPI_HIGH: f32 = 300.0;
+pub const PRINT_JPEG_QUALITY: u8 = 92;
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -867,6 +915,30 @@ mod tests {
         assert_eq!(MAX_PDF_FILE_BYTES, 2 * 1024 * 1024 * 1024);
         // A queue of failures that nobody hears is small, and never smaller than a batch's worth.
         const _: () = assert!(MAX_PENDING_FAILURES >= MAX_OPEN_BATCH);
+    }
+
+    #[test]
+    fn the_output_limits_are_the_documented_ones() {
+        assert_eq!(MAX_EXPORT_PAGES, 5_000);
+        assert_eq!((MIN_EXPORT_DPI, MAX_EXPORT_DPI), (36.0, 600.0));
+        assert_eq!(
+            (MAX_EXPORT_SIDE_PX, MAX_EXPORT_PIXELS),
+            (10_000, 64_000_000)
+        );
+        assert_eq!(MAX_EXPORT_FILES, 5_000);
+        assert_eq!(EXPORT_TICKET_TTL.as_secs(), 300);
+        assert_eq!(MAX_IMAGES_PER_PDF, 500);
+        assert_eq!(IMAGE_BATCH_TTL.as_secs(), 600);
+        assert_eq!(MAX_IMAGES_PDF_STORED_BYTES, 1 << 30);
+        assert_eq!((MIN_IMAGE_MARGIN_PT, MAX_IMAGE_MARGIN_PT), (0.0, 72.0));
+        assert_eq!((MIN_IMAGE_PAGE_PT, MAX_IMAGE_PAGE_PT), (72.0, 14_400.0));
+        assert_eq!(MAX_SNAPSHOT_BYTES, 1 << 30);
+        assert_eq!((MAX_PRINT_PAGES, MAX_PRINT_PAGES_HIGH), (2_000, 300));
+        assert_eq!(MAX_PRINT_SET_BYTES, 768 * 1024 * 1024);
+        assert_eq!(MAX_PRINT_SETS, 4);
+        const _: () = assert!(MAX_PRINT_PAGES_HIGH <= MAX_PRINT_PAGES);
+        const _: () =
+            assert!(MAX_EXPORT_SIDE_PX as u64 * MAX_EXPORT_SIDE_PX as u64 >= MAX_EXPORT_PIXELS);
     }
 
     #[test]
