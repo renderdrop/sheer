@@ -1,5 +1,6 @@
-# Weekly dependency updates (ORCHESTRATOR_PROMPT 13.5). Every bump still has to pass `npm run check`
-# (licenses, advisories, sources) in CI before it can merge.
+# Dependency updates (ORCHESTRATOR_PROMPT 13.5, FEEDBACK F6): security updates, plus one grouped PR per ecosystem
+# for patch/minor version updates. Major bumps are ignored (they need a deliberate migration and an ADR).
+# Every update still has to pass `npm run check` (licenses, advisories, sources) in CI on Windows and macOS.
 version: 2
 updates:
   - package-ecosystem: npm
@@ -9,10 +10,20 @@ updates:
     commit-message:
       prefix: 'chore(deps)'
     labels: [dependencies]
-    open-pull-requests-limit: 5
+    open-pull-requests-limit: 2
+    groups:
+      npm-security:
+        applies-to: security-updates
+        patterns: ['*']
+      npm-patch-minor:
+        applies-to: version-updates
+        patterns: ['*']
+        update-types: [minor, patch]
+    ignore:
+      - dependency-name: '*'
+        update-types: ['version-update:semver-major']
 
-  # The ESLint workspace keeps its own TypeScript 6 for typescript-eslint (see tools/lint/config.js);
-  # the root TypeScript 7 compiler is updated by the entry above.
+  # The ESLint workspace keeps its own TypeScript 6 for typescript-eslint (see tools/lint/config.js).
   - package-ecosystem: npm
     directory: /tools/lint
     schedule:
@@ -20,11 +31,21 @@ updates:
     commit-message:
       prefix: 'chore(deps)'
     labels: [dependencies]
-    open-pull-requests-limit: 5
+    open-pull-requests-limit: 2
+    groups:
+      lint-security:
+        applies-to: security-updates
+        patterns: ['*']
+      lint-patch-minor:
+        applies-to: version-updates
+        patterns: ['*']
+        update-types: [minor, patch]
     ignore:
-      - dependency-name: typescript
+      - dependency-name: '*'
         update-types: ['version-update:semver-major']
 
+  # For 0.x crates a minor bump is breaking (Cargo semver), so only patch updates are grouped for them;
+  # Dependabot classifies 0.x minor bumps as minor, hence the extra ignore for the Tauri-family 0.x crates.
   - package-ecosystem: cargo
     directory: /src-tauri
     schedule:
@@ -32,7 +53,20 @@ updates:
     commit-message:
       prefix: 'chore(deps)'
     labels: [dependencies]
-    open-pull-requests-limit: 5
+    open-pull-requests-limit: 2
+    groups:
+      cargo-security:
+        applies-to: security-updates
+        patterns: ['*']
+      cargo-patch-minor:
+        applies-to: version-updates
+        patterns: ['*']
+        update-types: [minor, patch]
+    ignore:
+      - dependency-name: '*'
+        update-types: ['version-update:semver-major']
+      - dependency-name: 'muda'
+        update-types: ['version-update:semver-minor']
 
   - package-ecosystem: github-actions
     directory: /
@@ -41,4 +75,12 @@ updates:
     commit-message:
       prefix: 'chore(ci)'
     labels: [dependencies]
-    open-pull-requests-limit: 5
+    open-pull-requests-limit: 2
+    groups:
+      actions:
+        applies-to: version-updates
+        patterns: ['*']
+        update-types: [minor, patch]
+    ignore:
+      - dependency-name: '*'
+        update-types: ['version-update:semver-major']

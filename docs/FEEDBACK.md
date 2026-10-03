@@ -44,3 +44,12 @@ moment follows, then the next step. Progress in the status bar, skippable, resta
 - [x] Ticket in M7: NSIS target with own header and sidebar images in Iris, Sheer icon, no WiX default dialog
 
 After F1–F5: continue with the roadmap.
+
+## F6 — CI red on GitHub
+
+CI runs #5 and #7 on `main` are red and the Dependabot PRs fail. Work this before the M1 milestone close.
+
+- [ ] Fetch the logs of the failed runs (`gh run view --log-failed`), find the cause per platform (Windows, macOS) and fix it
+- [ ] Record the macOS build result in B-001 (`docs/BLOCKERS.md`)
+- [ ] ORCHESTRATOR_PROMPT §8.6: CI green on Windows and macOS is part of the milestone DoD; the CI status is checked after every push
+- [ ] Dependabot: limit to security updates plus grouped patch/minor updates, ignore major bumps; close the open Dependabot PRs

@@ -367,6 +367,14 @@ fn a_name_that_is_not_valid_text_is_never_taken_for_a_leftover() {
     bytes.push(0xFF);
     bytes.extend_from_slice(b".tmp");
     let odd = dir.path().join(OsStr::from_bytes(&bytes));
+    // APFS stores names as UTF-8 and refuses this one (EILSEQ): such a name cannot exist there, so there is nothing to sweep.
+    if let Err(error) = fs::write(&odd, b"x") {
+        assert!(
+            cfg!(target_os = "macos"),
+            "creating a non-UTF-8 name failed: {error}"
+        );
+        return;
+    }
     aged(&odd, b"x", DAY);
 
     assert_eq!(sweep_stale_temp_files(dir.path()), 0);
