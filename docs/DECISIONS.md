@@ -1277,3 +1277,135 @@ platforms). The unsigned debug bundles are built only on a manual start (`workfl
 **Consequences.** ORCHESTRATOR §8.6 "CI green on Windows and macOS" = the last finished CI run on `main` (both jobs), read once at
 milestone end, never waited on (ADR-030). The manual release-candidate run of ADR-043 is dropped. Supersedes ADR-043 (1)–(2); the caches
 of ADR-043 (3) stay.
+
+## ADR-048 — M5 UI decisions (DESIGN §3.36–§3.40)
+
+**Decision.** (1) New toolbar cluster **Edit** after Fill & Sign: Add text (E), Add image (I), Crop (K); it collapses after Pages.
+Redact, Protect and Document properties stay in More / macOS menus (rare or destructive, no letter). (2) Text colour uses the §3.24
+document palette (Okabe-Ito), not Iris: Iris is the UI hue, page content stays theme-independent (ADR-011 §9). Fonts: standard
+Helvetica/Times/Courier, WinAnsi only (as ADR-041). (3) Crop is a mode in Single page with the inspector forced open; margins in mm
+or in from the OS measurement system; crop hides, never removes. (4) Redaction marks live per tab in memory; pending marks show a
+persistent warning banner; apply confirms with Cancel focused, is undoable until save, and rasterises affected pages (dpi per
+ADR-047). (5) Permissions need a separate permissions password; password strength is a local heuristic, a hint only, no dependency.
+Protection and metadata changes take effect on the next save. (6) Image import limits 20 MB / 8192 px are UI defaults; ADR-047 may
+amend them. Storage and IPC details defer to ADR-047.
+
+## ADR-047 — Edit and protect (M5)
+
+**Status:** accepted (2026-10-03). Amends ADR-003 §2 (content kinds, redaction marks), ADR-004 §2/§5 (encrypted saves), ADR-035 §4
+(`rewriteEncrypted` returns), ADR-036 §1 (`PageSlot` gains crop and a redacted source), ADR-048 (6) (image limits confirmed). SECURITY D3,
+D4, D5. Signatures and types: ARCHITECTURE §5 "Edit and protect".
+
+**Context.** M5: add text boxes and images, crop pages, true redaction, password protection with permissions, metadata view/edit/remove.
+UI per DESIGN §3.36–§3.40: everything is one undo step and takes effect on the next save; redaction marks never reach the file.
+
+**Options.**
+- Text and images: (a) annotations (`/FreeText`, `/Stamp`): stay editable in every viewer, but they are comments, hidden by "print
+  without comments", and §3.36 says they are not comments; (b) **typed model objects, burned into page content at save**; (c) page content
+  at once in PDFium: needs `image_api`, and PDFium cannot save (ADR-002).
+- Redaction: (a) operator-level removal (parse content streams, cut glyphs and image pixels): fragile on hostile input; (b) **raster the
+  affected page** (ADR-010 §3). Raster at apply (job, preview is the real result) vs. at save (preview is a fake).
+- Encryption: (a) **lopdf 0.45** — verified on docs.rs: `EncryptionVersion::V5` (AES-256, R6; `R5` also exists), `crypt_filters::
+  Aes256CryptFilter`, `Permissions` bitflags, `Document::encrypt(&EncryptionState)`, `load_mem_with_password`, `authenticate_owner_password`;
+  `aes`, `cbc`, `ecb`, `sha2`, `md-5`, `stringprep` (SASLprep for R6), `rand`, `getrandom` are **non-optional** dependencies, so
+  `default-features = false` keeps them and they are already in our build; (b) qpdf (Apache-2.0, C++ build) — not needed.
+  PDFium opens R5/R6 (`CPDF_SecurityHandler`, revision ≥ 5), pinned by a test below.
+
+**Decision.**
+
+1. **Text boxes and images = content objects (b).** New `AnnotationBody` kinds `textBox` and `image` reuse `CreateAnnotation`,
+   `UpdateAnnotation`, `MoveAnnotations`, `DeleteAnnotations`, the overlay and undo, but are *content*: `list_document_annotations` skips
+   them, `engine::import` never produces them. **Editable until save**; the save burns them into the page (`pdfwrite::content`): the page's
+   content is wrapped `q … Q`, one appended stream draws the objects in creation order (text `BT … ET` clipped to the box; image
+   `q w 0 0 h x y cm /SheerImN Do Q`, opacity via an `/ExtGState` `ca`); on a rotated page they are drawn upright as displayed
+   (`flatten::placement_upright`). After the save they are ordinary page content (editing existing text: v1.1, ROADMAP). Incremental
+   (re-appended page dict and `/Resources`); a signed file asks `breaksSignature`.
+   - **Fonts:** standard 14 Helvetica / Times-Roman / Courier (sans/serif/mono, ADR-048 (2)), `/Type1` + `/WinAnsiEncoding`, not embedded,
+     so text stays extractable. **Rust lays out** (`content::text`, AFM widths of the three fonts in `content::std14`): the UI sends `text`
+     (LF breaks) and the box width; the answer carries `lines` and the grown height, which the overlay draws. A non-WinAnsi character is
+     `invalid_argument` (`textBox`, params `{ char }`) → `insert.charset`. Unicode (an embedded, subset font) waits for a permissive font
+     and a subsetter (v1.1); WinAnsi covers en and de.
+   - **Images:** `insert_image_dialog` opens the Rust dialog (PNG, JPEG), judges the opened handle (regular file ≤ 20 MiB), sniffs magic
+     bytes, **reads the header dimensions before decoding** (≤ 8 192 px per side, ≤ 40 MP, else `limit_exceeded` `image`), decodes with
+     `image::Limits` (`max_alloc` 256 MiB), applies EXIF orientation, drops all metadata (EXIF, ICC, text chunks), downsizes to ≤ 4 096 px
+     on the long side and stores **opaque → JPEG q90, alpha → Flate RGB + `/SMask`**. The bytes become a document asset (ADR-041
+     `AssetStore`): ≤ 128 image assets, ≤ 256 MiB per document. The UI sees `get_asset_preview` frames, never bytes or paths. Every lopdf load
+     on the save path stays behind `load_untrusted` + the ADR-040 pre-scan.
+
+2. **Crop = an undoable page op.** `CropPages { pages, spec: margins | reset }` (label `page.crop`): margins are distances in page space
+   (before `/Rotate`; the UI maps from the view) from each page's **MediaBox**, applied to every listed page; a result under 72 × 72 pt or
+   outside the MediaBox is `invalid_argument` (`crop`). `PageSlot` gains `media: [f32; 4]` (read at load) and `crop: Option<[f32; 4]>`
+   (user space). Page space is anchored at the CropBox, so the command **translates the page's annotations, content objects and form
+   widget rects** by the origin shift in the same step (inverse shifts back). Mirroring: `Job::SetCropBox` (`Control`, pdfium-render
+   `PdfPageBoundaries::set_crop`), `size` and `rev` update, so renders, thumbnails, text layer and search hits re-key. Save: the page dict
+   re-appended with `/CropBox` (reset writes the MediaBox), `/TrimBox /BleedBox /ArtBox` clipped to it. Extract, split, merge, flatten and
+   redaction raster go through the same builder and keep the crop. Crop hides, never removes (§3.37).
+
+3. **True redaction = raster at apply, permanent at save.**
+   - **Marks** are a kind `redactMark { quads }` in the model only: undoable, never written, never imported, skipped by the comments list.
+     `MarkRedactions { marks }` adds up to 10 000 marks (search hits) as one step. A save writes none of them (§3.38: allowed, banner stays).
+   - **Apply** is a job, `apply_redactions(doc, opts, channel)`: per affected page (Background priority) PDFium renders the page as it
+     draws it (file content, file annotations and widgets with their file appearances, crop applied) at **200 dpi**, lowered so the
+     bitmap stays ≤ 4 096 px per side and 16 MP (a page needing < 72 dpi is `limit_exceeded` `redactPage`); Rust fills every mark's
+     rectangle grown by 1 px with opaque black **in the bitmap**; `pdfwrite::redact::raster_page` builds a one-page PDF in memory (MediaBox
+     = the crop size, the page's `/Rotate`, one image: DeviceGray Flate if every pixel is grey, else DeviceRGB JPEG q90, no text, no
+     annotations); the engine appends it (`copy_pages_from_document`, as ADR-036 inserts) and the slot becomes
+     `PageSource::Redacted { bytes }` with the **same `PageId`**, `rev + 1`. The model step (label `redact.apply`) also removes the marks,
+     every annotation and content object on those pages (session edits on them are dropped: `warnings: ["unsavedEditsDropped"]`), detaches
+     their form widgets, and with `removeMetadata` stages a metadata removal (item 5). Undo swaps the old slots back. Cancel changes nothing.
+     Text layer, search and links of a redacted page come from the raster page: empty.
+   - **Save** with any redacted slot is **Full** (no earlier revision survives; unreferenced objects pruned), never backed up, and deletes
+     existing backups of the target file (`storage::backup::forget_target`). It also removes `/StructTreeRoot` and `/MarkInfo` (they hold
+     `/ActualText` and `/Alt` of removed content), `/Thumb` and `/PieceInfo` of redacted pages, fields whose every widget was on them, and
+     writes a new `/ID`.
+   - **Test (SECURITY D4/§13.4)** `tests/redaction.rs::redacted_text_is_not_extractable_after_save`: a fixture with `SHEER-SECRET-4711` in
+     page text, a `/Contents`, a form value, a link URI, `/Info /Title`, XMP and a tagged `/ActualText`; mark the search hits, apply
+     (metadata on), save. Then PDFium text of every page lacks it; every stream of the result, inflated with the 256 MiB cap, and every
+     string contain it in neither PDFDocEncoding, UTF-16BE nor hex; no `/Info`, no `/Metadata`, one xref section; page 2 text intact.
+
+4. **Protection = lopdf R6, staged, written by a Full save.**
+   - `stage_protection(doc, opts)` / `stage_unprotection(doc, permissionsPassword?)` are one undo step each (`DocCommand::
+     SetProtection { ticket }`, labels `protect.set|remove`). **Passwords never enter the history:** the step holds a ticket; the secrets sit in
+     `DocState.secrets: SecretSlots` (`Zeroizing<String>`, redacting `Debug`), dropped on save, close, and when the step leaves the stack.
+   - New protection is always **AES-256 R6** (`EncryptionVersion::V5`, `Aes256CryptFilter` for streams and strings, a fresh 32-byte file key
+     from `getrandom`, `encrypt_metadata = true`). Permissions (§3.39): print → print + high-quality; copy → copy (accessibility extraction
+     stays allowed); edit → modify + annotate + fill + assemble. A restriction needs a permissions (owner) password that differs from the open
+     password (`invalid_argument` `ownerPassword`); none restricted and no owner password → a random owner password, discarded.
+   - Passwords: UTF-8, 1..=127 bytes after SASLprep (longer is refused, never truncated), no NUL or control characters; never in errors,
+     logs, settings, recents or autosave; wrong permissions password → `password_required` with ADR-028's attempt rule.
+   - **Remove** needs owner rights: the document was opened with the owner password, its permissions are unrestricted, or the given password
+     passes `authenticate_owner_password`. Saved as an unencrypted Full rewrite.
+   - **Saving an encrypted document** (resolves ADR-004 §5): Full rewrite keeping its own `/Encrypt` and file key (lopdf
+     `encryption_state` from `load_mem_with_password`), after `needs_confirmation{rewriteEncrypted}` (`SaveAck.rewriteEncrypted` returns).
+     Gate tests in `tests/protection.rs`: lopdf-written R6 opens in PDFium with each password and the permissions read back; R2/R3/R4/R6
+     fixtures re-save with the same password. **If the R6 round-trip fails**, protection ships as AES-128 R4 (`V4` + `Aes128CryptFilter`)
+     with a BLOCKERS entry; if the keep-encryption save fails, encrypted documents stay unsaveable as today.
+   - **Enforcement:** a document opened with the open password of a restricted file honours its permissions: `DocFlags.permissions`
+     (PDFium, at load); `apply_command` refuses edits the flags forbid (`read_only`, `what: permission`).
+   - After an in-place save the registry's session password becomes the new open password (the reopen needs it).
+
+5. **Metadata.** `get_metadata` reads the trailer `/Info` and catalog `/Metadata` once (blocking pool, `load_untrusted`, with the session
+   password); strings decoded from PDFDocEncoding / UTF-16BE / UTF-8 BOM, control and Cf characters stripped, ≤ 1 000 chars (cut, flagged),
+   dates parsed to ISO 8601 or `null`. XMP is not parsed: presence and size only. `SetMetadata { patch }` and `RemoveMetadata` are
+   `DocCommand`s (labels `metadata.set|remove`). Save: a set is incremental (new `/Info` keeping keys it does not edit, `/ModDate` = now; if
+   the file had XMP, a **regenerated packet** from the Info values, XML-escaped, replaces it — "kept in sync", a PDF/A claim goes with it);
+   a removal is Full: no `/Info`, no catalog or object `/Metadata`, no `/PieceInfo`, never backed up.
+
+6. **Wave plan** (ADR-038, backend first). **W0 seams** (orchestrator, one short package): `DocCommand` variants and `AnnotationBody` kinds
+   dispatching to the files below, `DocState` fields, `limits.rs`, `SavePlan` fields and the Full triggers in `pdfwrite/save.rs`,
+   `SaveAck.rewriteEncrypted`, `JobEvent.done.changes`, error `what`s + en/de keys, `lib.rs` registration. Then **four disjoint packages**:
+   - **A content objects:** `content/{mod,text,std14,image}.rs`, `pdfwrite/content.rs`, `commands/content.rs`, `src/api/content.ts`,
+     `tests/content_objects.rs`.
+   - **B crop:** `model/{page,page_ops}.rs`, `engine/pages.rs`, `pdfwrite/pagetree.rs`, `commands/pages.rs`, `src/api/pages.ts`, `tests/crop.rs`.
+   - **C redaction:** `model/redaction.rs`, `engine/redact.rs`, `pdfwrite/redact.rs`, `commands/redact.rs`, `storage/backup.rs`,
+     `src/api/redaction.ts`, `tests/redaction.rs`.
+   - **D protect + metadata:** `pdfwrite/{crypt,metadata}.rs`, `model/{protection,metadata}.rs`, `security/secret.rs`,
+     `commands/{protect,metadata}.rs`, `src/api/{protection,metadata}.ts`, `tests/{protection,metadata}.rs`.
+
+**Crates.** None new. lopdf's crypto dependencies (`aes`, `cbc`, `ecb`, `sha2`, `md-5`, `stringprep`, `rand`; MIT OR Apache-2.0) are
+logged in `docs/LICENSES.md` by package D where missing; `cargo deny` already covers them.
+
+**Consequences.** Added content is final after save. Redacted pages lose selectable text and tagging (§3.38 says so); redaction and
+protection saves are always Full, so files with signatures ask `breaksSignature`. Permissions bind honest readers only (§3.39 note). XMP
+extensions beyond Dublin Core/pdf/xmp are lost on a metadata edit. Not in M5: Unicode fonts, editing existing text, certificate
+encryption, operator-level redaction.

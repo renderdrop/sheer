@@ -1408,6 +1408,191 @@ reaches row buttons and footer. Motion as About; reduced motion opacity only. **
 **Tokens (new, §3.32–§3.35):** `--color-doc-field` `rgba(91,91,214,.10)`, `--color-doc-field-hover` `.18`, `--color-doc-required`
 `#D64B4B` (both themes, ≥ 3:1 on white), `--sig-pad-height` 192, `--sig-pad-width` 512, `--sig-thumb` 96 × 32, `--sig-thumb-lg` 120 × 40.
 
+### 3.36 Insert text and image (M5)
+
+**Purpose:** add new page content: a text box or a PNG/JPEG image. Unlike the Text annotation (§3.22, T) it is not a comment and
+never appears in Comments (§3.26); storage per ADR-047.
+
+**Toolbar.** New cluster **Edit** after Fill & Sign (§3.3): `text-cursor` `insert.text` (E) · `image-plus` `insert.image` (I) · `crop`
+`crop.tool` (K, §3.37). Modes per §3.3 (one-shot / locked). Overflow order becomes Undo/Redo, Pages, **Edit**, Fill & Sign, zoom.
+No document, read-only, or edit not permitted (§3.39): `aria-disabled`, tooltip `tool.readOnly`. More gains (after Stamp): Redact…
+(§3.38), Protect… (§3.39), Document properties… (§3.40).
+
+**Text.** Cursor `crosshair`; a click places a 160 pt box (a drag sets the width) and enters editing. Editing as §3.25 free text
+(textarea in layer 3 over the box, font size × zoom, 1 px dashed `--color-doc-select`, width fixed, height grows; Esc or a click
+outside commits; empty → removed). Selected: §3.23 box + 2 side handles (width); double-click or Enter edits. Fonts: the standard
+Helvetica, Times, Courier, not embedded, WinAnsi only (as ADR-041); an unsupported character keeps the box in editing with
+`insert.charset` in `--color-error-text` below it (`role=alert`).
+
+**Image.** Arming opens Rust's Open dialog (PNG, JPEG) first; Cancel returns to Select. Rust decodes as hostile input (≤ 20 MB,
+≤ 8192 px; else error banner `insert.badImage`); the UI gets a preview, never a path. A ghost at default size (half the page width,
+natural aspect) follows the pointer at .5 opacity in layer 3, cursor `copy`; a click places it centred and clamped, a drag draws its
+size. Selected: 4 corner handles, aspect locked; with `insert.lockAspect` off, 4 side handles join.
+
+**Inspector** (Tool options or selection, §3.24). Text: Font segmented `insert.sans` · `insert.serif` · `insert.mono`; Font size
+§3.24 (default 12); Colour §3.24 swatches (default black); Align segmented `align-left` · `align-center` · `align-right`. Image:
+checkbox `insert.lockAspect` (on), Opacity §3.24. Multi-selection per §3.24.
+
+**Keyboard / A11y.** Enter on the focused canvas places at the viewport centre (§3.22). Move, nudge, delete, undo per §3.23.
+`aria-roledescription` `insert.textRole` / `.imageRole`; placing announces `insert.placed`. **Motion:** canvas none; inspector §3.24.
+**Forced colors:** per §3.23.
+
+| Key | en | de |
+|---|---|---|
+| `insert.text` / `.image` | Add text / Add image | Text hinzufügen / Bild hinzufügen |
+| `insert.sans` / `.serif` / `.mono` / `.font` / `.align` | Sans / Serif / Mono / Font / Alignment | Serifenlos / Serif / Monospace / Schrift / Ausrichtung |
+| `insert.lockAspect` | Keep proportions | Proportionen beibehalten |
+| `insert.textRole` / `.imageRole` / `.placed` | Text box / Image / {kind} added on page {n} | Textfeld / Bild / {kind} auf Seite {n} hinzugefügt |
+| `insert.charset` | This character can't be used here. Remove "{char}". | Dieses Zeichen ist hier nicht möglich. Entfernen Sie „{char}“. |
+| `insert.badImage` | Couldn't add the image. Use a PNG or JPEG under 20 MB. | Bild konnte nicht hinzugefügt werden. PNG oder JPEG unter 20 MB verwenden. |
+
+### 3.37 Crop mode (M5)
+
+**Purpose:** set the visible area (CropBox) of pages. Crop hides content, it does not remove it (`crop.hides` points to Redact).
+
+**Mode.** Crop (K) is a mode like Pages (§3.28): it ends with Apply, Cancel, K or Esc (tool level). While active the canvas shows
+Single page (restored after; Next/Previous page turn), and the inspector track opens at any width as in `open` (the previous
+`ui.inspector` returns on exit); the left panel's layout collapse (§2) keeps the canvas ≥ 360.
+
+**Canvas** (layer 3, current page): crop rect 2 px `--color-doc-select`, 8 handles (§3.23, hit 24); outside it
+`--color-doc-crop-shade`. Default rect = the current CropBox. Drag inside moves, handles resize, a drag on the shade draws a new
+rect; Shift keeps aspect; minimum 72 × 72 pt, clamped to the MediaBox; cursors per §3.23.
+
+**Inspector**, header `crop.title`, sections per §3.24:
+1. `crop.margins`: 2 × 2 grid, gap 8; each a label (meta) over md Field 56 + unit meta: Top, Bottom, Left, Right. Unit mm or in from
+   the OS measurement system (Rust), step 0.5 mm / 0.02 in, arrows step, Shift × 10. Field and rect are one value: Enter or blur
+   moves the rect, dragging updates the fields. Too small: `aria-invalid` + `crop.tooSmall` in the reserved 16 px slot.
+2. `crop.applyTo` (`radiogroup`): `crop.current` (default) · `crop.all` · `crop.range` + full-width md field (syntax and
+   `split.invalid` per §3.30). Margins apply as distances on every page; differing sizes add meta `crop.sizes`.
+3. `info` 12 + meta `crop.hides`.
+
+Footer, fixed at the panel foot (padding 8, divider above): secondary sm `crop.reset` (back to the MediaBox) | spacer | secondary sm
+`crop.cancel` · primary sm `crop.apply`. Apply is one undo step, ends the mode, and pulses the affected thumbnails (MOTION §4.7,
+message `crop.done`).
+
+**Keyboard.** The rect is a focusable `role=group` named `crop.rectLabel`; arrows move 1 pt (Shift 10), Alt+arrows resize the
+trailing/bottom edge (§3.23); Enter applies; F6 reaches the inspector. **Motion:** shade opacity fast; inspector MOTION §4.2;
+reduced motion opacity only. **Forced colors:** rect `Highlight`; shade keeps its fill (`forced-color-adjust: none`).
+
+| Key | en | de |
+|---|---|---|
+| `crop.tool` / `.title` / `.rectLabel` | Crop / Crop pages / Crop area, page {n} | Zuschneiden / Seiten zuschneiden / Zuschnittbereich, Seite {n} |
+| `crop.margins` / `.top` / `.bottom` / `.left` / `.right` | Margins / Top / Bottom / Left / Right | Ränder / Oben / Unten / Links / Rechts |
+| `crop.applyTo` / `.current` / `.all` / `.range` | Apply to / This page / All pages / Pages | Anwenden auf / Diese Seite / Alle Seiten / Seiten |
+| `crop.tooSmall` / `.sizes` | The area must be at least 1 inch on each side. / Pages differ in size; the same margins apply to each. | Der Bereich muss je Seite mindestens 2,54 cm groß sein. / Seiten sind unterschiedlich groß; für jede gelten dieselben Ränder. |
+| `crop.hides` | Cropping hides content but keeps it in the file. Use Redact to remove it. | Zuschneiden blendet Inhalte aus, entfernt sie aber nicht. Zum Entfernen „Schwärzen“ verwenden. |
+| `crop.reset` / `.cancel` / `.apply` / `.done` | Reset / Cancel / Apply / {n, plural, one {Page cropped} other {# pages cropped}} | Zurücksetzen / Abbrechen / Anwenden / {n, plural, one {Seite zugeschnitten} other {# Seiten zugeschnitten}} |
+
+### 3.38 Redaction (M5)
+
+**Purpose:** remove content permanently in two steps: **mark** (reviewable, undoable) and **apply**.
+
+**Entry.** More and macOS Tools menu `redact.tool` (`square-slash`); in Search (§3.16) the status row gains a sm IconButton
+`square-slash` `redact.searchAll` before the chevrons while hits exist. Redact is a mode (ends with Esc at tool level or Done).
+Marks live per tab in memory, never in the file. While a tab holds marks and the mode is off, a warning banner (§3.12) says
+`redact.pending` with secondary sm `redact.review`; saving is allowed and the banner stays.
+
+**Marking.** Cursor `text` over runs (a text drag marks the runs' quads), else `crosshair` (drag a rect, ≥ 4 pt). A mark in layer 3:
+2 px `--color-doc-redact` border over the `--color-doc-redact-fill` hatch (pattern, not colour alone). Select, move, resize, delete
+per §3.23 (area marks 8 handles, text marks box only). `redact.searchAll` marks every hit (≤ 10 000) as one undo step and opens the mode.
+
+**Inspector**, header `redact.title`: list (`role=listbox`, virtualized, roving) grouped by `search.page` headers 24; rows 48, radius
+8, padding 8: `text` or `square` 16 + excerpt `--text-sm` (2 lines) or `redact.area` | sm `x` `redact.remove` (hover/focus,
+`tabindex=-1`). Enter or click jumps (MOTION §4.8) and selects the mark; Delete removes it. Below: checkbox `redact.metadata` (on).
+Footer fixed as §3.37: ghost sm `redact.clear` | spacer | primary sm `redact.apply` (`aria-disabled` at 0). Empty: `square-slash`
+tile, `redact.empty` + `redact.emptyHint` (§3.15 column).
+
+**Apply dialog** as §3.19, 480 w: bare `triangle-alert` 16 in `--color-warning-icon` centred in 32 | `redact.confirmTitle`; body
+`--text-md`: `redact.confirmBody`, then meta `redact.pages`. Initial focus secondary `redact.cancel`; primary `redact.go`. Progress
+as §3.31 (bar + `redact.progress`; Cancel changes nothing).
+
+**Success.** The dialog closes, marks become solid black boxes, the affected thumbnails and the "Edited" badge pulse (MOTION §4.7,
+message `redact.done`), toast `redact.done` with `redact.undo` (one step until saved). The pending banner goes. Saving after
+redaction is a full rewrite without earlier revisions (ADR-047, SECURITY).
+
+**A11y.** Marks `aria-roledescription` `redact.mark`; count changes polite. **Motion:** none on the canvas; dialog as About.
+**Forced colors:** mark border `Highlight`, hatch kept (`forced-color-adjust: none`).
+
+| Key | en | de |
+|---|---|---|
+| `redact.tool` / `.title` / `.mark` | Redact… / {n, plural, one {1 mark} other {# marks}} / Redaction mark | Schwärzen… / {n, plural, one {1 Markierung} other {# Markierungen}} / Schwärzungsmarkierung |
+| `redact.searchAll` / `.area` / `.remove` | Mark all results for redaction / Area / Remove mark | Alle Treffer zum Schwärzen markieren / Bereich / Markierung entfernen |
+| `redact.pending` / `.review` | {n} redaction marks are not applied yet. / Review | {n} Schwärzungen sind noch nicht angewendet. / Prüfen |
+| `redact.metadata` / `.clear` / `.apply` | Also remove document metadata / Clear all / Apply… | Auch Dokument-Metadaten entfernen / Alle löschen / Anwenden… |
+| `redact.empty` / `.emptyHint` | No marks / Drag over text or an area, or mark search results. | Keine Markierungen / Über Text oder einen Bereich ziehen oder Suchtreffer markieren. |
+| `redact.confirmTitle` | Redact permanently? | Endgültig schwärzen? |
+| `redact.confirmBody` | Marked content is removed, not covered. Affected pages become images: their text can no longer be selected or searched, and their annotations, links and form fields are flattened. Once saved, this can't be undone. | Markierte Inhalte werden entfernt, nicht verdeckt. Betroffene Seiten werden zu Bildern: Ihr Text ist nicht mehr auswählbar oder durchsuchbar, Anmerkungen, Links und Formularfelder werden reduziert. Nach dem Speichern ist das nicht umkehrbar. |
+| `redact.pages` / `.progress` | Pages: {pages} / Redacting page {i} of {n} | Seiten: {pages} / Schwärze Seite {i} von {n} |
+| `redact.cancel` / `.go` | Cancel / {n, plural, one {Redact 1 page} other {Redact # pages}} | Abbrechen / {n, plural, one {1 Seite schwärzen} other {# Seiten schwärzen}} |
+| `redact.done` / `.undo` | Redacted. Save to make it permanent. / Undo | Geschwärzt. Zum Festschreiben speichern. / Rückgängig |
+
+### 3.39 Protect (M5)
+
+**Entry.** More and macOS File menu `protect.menu` (`lock`); the status bar's encrypted icon (§3.10) opens it too.
+
+**Sheet** as §3.19, 480 w: `lock` tile | `protect.title`. Sections split by a divider, 16 apart:
+1. **Status** (only when protected): `lock` 16 + `protect.isProtected` | secondary sm `protect.remove`. Without owner rights, Remove
+   reveals an md password field `protect.permPassword` in place + primary sm `protect.remove`.
+2. **Open password:** checkbox `protect.requireOpen`; on reveals label + md field `protect.password` and, 8 below, `protect.confirm`
+   (both as §3.19: `type=password`, `autocomplete=off`, `spellcheck=false`, `eye` toggle). Under them a strength meter: 4 segments,
+   each 4 h pill, gap 4, `--color-track`, filled segments accent, + meta label (`protect.weak` … `.strong`; the word carries the
+   state). Computed locally from length and character classes (weak < 8; fair 8–11; good 12–15 or ≥ 8 with 3 classes; strong ≥ 16
+   or ≥ 12 with 3 classes); a hint, never a block. Mismatch on blur: `aria-invalid` + `protect.mismatch` in the reserved 16 px slot.
+3. **Permissions:** checkboxes `protect.print`, `protect.copy`, `protect.edit` (all on). Turning one off reveals
+   `protect.permPassword` + confirm (required, must differ: `protect.same`). Meta `protect.permNote`.
+4. Meta `lock` 12 `protect.aes`.
+
+Footer: secondary `protect.cancel`, primary `protect.apply` (`aria-disabled` until valid). Existing passwords are never shown or
+prefilled.
+
+**Effect.** Apply is one undo step; the document is edited and encrypts on the next save (full rewrite, AES-256). Remove likewise.
+**Security:** passwords cross IPC once on Apply, live in Rust only until that save or the tab closes (zeroised), never in settings,
+logs, recents or the undo history; fields clear on close.
+
+**Keyboard.** Initial focus first control; Enter applies when valid; Esc cancels; Tab cycles. Motion as About.
+
+| Key | en | de |
+|---|---|---|
+| `protect.menu` / `.title` / `.apply` / `.cancel` | Protect… / Protect document / Protect / Cancel | Schützen… / Dokument schützen / Schützen / Abbrechen |
+| `protect.isProtected` / `.remove` | This document is password-protected. / Remove protection | Dieses Dokument ist passwortgeschützt. / Schutz entfernen |
+| `protect.requireOpen` / `.password` / `.confirm` | Require a password to open / Password / Confirm password | Passwort zum Öffnen verlangen / Passwort / Passwort bestätigen |
+| `protect.weak` / `.fair` / `.good` / `.strong` | Weak / Fair / Good / Strong | Schwach / Mittel / Gut / Stark |
+| `protect.mismatch` / `.same` | Passwords don't match. / Use a different password than the open password. | Passwörter stimmen nicht überein. / Ein anderes Passwort als das zum Öffnen verwenden. |
+| `protect.print` / `.copy` / `.edit` | Allow printing / Allow copying text / Allow editing | Drucken erlauben / Kopieren von Text erlauben / Bearbeiten erlauben |
+| `protect.permPassword` | Permissions password | Berechtigungspasswort |
+| `protect.permNote` | Most apps respect these limits, but they are not a lock. | Die meisten Apps beachten diese Einschränkungen, sie sind aber keine Sperre. |
+| `protect.aes` | Encrypted with AES-256 when you save. {app} never stores passwords. | Beim Speichern mit AES-256 verschlüsselt. {app} speichert keine Passwörter. |
+
+### 3.40 Document properties (M5)
+
+**Entry.** More and macOS File menu `props.menu` (`file-text`).
+
+**Dialog** as §3.19, 480 w: `file-text` tile | `props.title`. Editable, each label (meta 600) over a full-width md field, 16 apart:
+Title, Author, Subject, Keywords (comma-separated). ≤ 1000 chars; control characters stripped. Divider; a read-only `<dl>`, rows 24:
+label meta (120 w) | value `--text-md`, text nodes only: Creator, Producer, Created, Modified (`Intl` medium date + short time, OS
+region), Pages, PDF version, Size, Protection. Missing values `props.none`.
+
+**Remove all.** Leading ghost `props.removeAll` empties the fields; read-only values read `props.willRemove` (meta italic); a
+reserved slot shows `info` 12 + `props.removeNote`. Nothing changes before Apply; Cancel discards.
+
+Footer: ghost `props.removeAll` | spacer | secondary `props.cancel`, primary `props.apply` (`aria-disabled` while unchanged). Apply
+is one undo step (Info and XMP kept in sync, ADR-047); a removal adds toast `props.removed` + Undo.
+
+**Keyboard / A11y.** Initial focus Title; Enter in a field applies; Esc cancels. Motion as About; reduced motion opacity only.
+
+| Key | en | de |
+|---|---|---|
+| `props.menu` / `.title` | Document properties… / Document properties | Dokumenteigenschaften… / Dokumenteigenschaften |
+| `props.docTitle` / `.author` / `.subject` / `.keywords` | Title / Author / Subject / Keywords | Titel / Autor / Thema / Stichwörter |
+| `props.creator` / `.producer` / `.created` / `.modified` | Created with / PDF producer / Created / Modified | Erstellt mit / PDF-Erzeuger / Erstellt / Geändert |
+| `props.pages` / `.version` / `.size` / `.protection` | Pages / PDF version / Size / Protection | Seiten / PDF-Version / Größe / Schutz |
+| `props.none` / `.willRemove` | — / Will be removed | — / Wird entfernt |
+| `props.removeAll` / `.removeNote` | Remove all metadata / Document metadata is removed when you apply. Text and images on pages stay. | Alle Metadaten entfernen / Dokument-Metadaten werden beim Anwenden entfernt. Text und Bilder auf den Seiten bleiben. |
+| `props.cancel` / `.apply` / `.removed` | Cancel / Apply / Metadata removed | Abbrechen / Anwenden / Metadaten entfernt |
+
+**Tokens (new, §3.36–§3.40):** `--color-doc-redact` `#B03535`, `--color-doc-redact-fill` 45° stripes `rgba(176,53,53,.24)` 2 px /
+gap 4, `--color-doc-crop-shade` `rgba(15,16,32,.48)` (all both themes, document layer).
+
 ## 4. Contrast verification
 
 Worst points (ADR-020): `--surface` over the darkest field point (light `#C6C7FB` → glass `rgb(229,229,254)`; dark

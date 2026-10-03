@@ -35,7 +35,8 @@ engine/          the only PDFium user (ADR-002)
 model/           engine-free domain (ADR-003)
                  geometry (Point, Rect, Quad, PageBox) · find (text search) · reading (what the UI is told about content) · ids · annotation · page · command · history · doc_state · validate (the first three exist)
 pdfwrite/        the only lopdf user (ADR-004)
-                 save · annots · appearance · coords · pagetree (M3: tree rewrite, page deep copy) · produce (M3: extract, split, merge) · compress (M3: `image`, jpeg only) · forms (M4: read_fields, write_values, field appearances) · flatten (M4) · crypt (M5)
+                 save · annots · appearance · coords · pagetree (M3: tree rewrite, page deep copy) · produce (M3: extract, split, merge) · compress (M3: `image`, jpeg only) · forms (M4: read_fields, write_values, field appearances) · flatten (M4) · content (M5: burn text boxes and images into pages) · redact (M5: raster page, redacted Full save) · crypt (M5: R6 encrypt, keep encryption) · metadata (M5: Info + regenerated XMP)
+content/         M5, engine-free and lopdf-free: text (layout, WinAnsi check) · std14 (AFM widths of Helvetica, Times-Roman, Courier) · image (dialog handle → header check → decode → JPEG/Flate asset)
 signatures/      M4, engine-free and lopdf-free: art (normalise, simplify, bounds) · typed (skrifa + bundled font → polygons) · image (dialog handle → `image` decode → RGBA → PNG) · drafts (DraftStore, ≤ 16)
 storage/         atomic (temp + fsync + rename) · backup · settings · app_dirs · signatures (M4: library.bin, XChaCha20-Poly1305) · keychain (M4: `SecretStore` over keyring-core) · autosave (M7)
 security/        links (http/https/mailto allowlist, `SafeUrl`) · names (display-name sanitizer; today `documents::sanitize_text`)
@@ -243,7 +244,8 @@ A render frame is at most 4096×4096 px (16 Mpx), checked after the bucket and t
 
 **Planned commands.** The milestone ADR fixes the exact signatures; the same rules apply, and output paths come from a Rust-side save dialog.
 M3: see "Pages" below (ADR-036; `insert_pages_from_file` became `pick_pdf_sources` + `InsertPages`). M4: see "Forms and
-signatures" below (ADR-041). M5: `set_protection`, `remove_protection`, `get_metadata`, `set_metadata`.
+signatures" below (ADR-041). M5: see "Edit and protect" below (ADR-047; `set_protection`/`remove_protection` became
+`stage_protection`/`stage_unprotection`, `set_metadata` became `SetMetadata`/`RemoveMetadata` commands).
 M6: `export_images`, `print_document`, `reveal_in_folder`. M7: `list_recoverable`, `restore_autosave`, `discard_autosave`.
 
 ### Annotations (ADR-003; `model/{annotation,command,history,doc_state,ids}.rs`, `engine/import.rs`, `commands/annotations.rs`)
@@ -388,6 +390,116 @@ interface AssetInfo { assetId: AssetId; aspect: number /* w / h */; art: Signatu
   ≤ 512 KiB. Drafts ≤ 16 (oldest dropped). Assets ≤ 64 and ≤ 32 MiB per document. Library ≤ 32 items, file ≤ 16 MiB.
 - *Errors.* New `what` values: `field`, `fieldText`, `glyph`, `keychain`, `library`, `xfa`, `signatureImage` (decode or limit failure), each with
   `error.<code>.<what>` in en and de.
+
+### Edit and protect (ADR-047; `content/`, `pdfwrite/{content,redact,crypt,metadata}.rs`, `model/{annotation,command,doc_state,page,page_ops,redaction,protection,metadata}.rs`, `engine/{pages,redact}.rs`, `security/secret.rs`, `commands/{content,pages,redact,protect,metadata}.rs`)
+
+```rust
+// commands/content.rs (M5)
+insert_image_dialog(doc_id: DocId) -> Option<ImageAssetInfo>   // Rust open dialog (PNG, JPEG); None = cancelled; then CreateAnnotation { kind: "image" }
+get_asset_preview(doc_id: DocId, asset_id: AssetId, max_px: u16 /* 16..=2048 */) -> tauri::ipc::Response   // SHR1 PNG frame
+apply_command(doc_id: DocId, command: DocCommand) -> ChangeSet  // + textBox / image kinds via Create/Update/Move/DeleteAnnotation(s), + CropPages,
+                                                                //   MarkRedactions, SetMetadata, RemoveMetadata
+// commands/redact.rs
+apply_redactions(doc_id: DocId, opts: RedactOptions, on_event: Channel<JobEvent>) -> JobId   // no dialog; done.changes = the ChangeSet; cancel = no change
+// commands/protect.rs (passwords → security::secret::Secret at deserialisation; blocking pool for lopdf)
+get_protection(doc_id: DocId) -> ProtectionInfo
+stage_protection(doc_id: DocId, opts: ProtectOptions) -> ChangeSet                          // one undo step; written by the next save
+stage_unprotection(doc_id: DocId, permissions_password: Option<String>) -> ChangeSet       // owner rights checked now; wrong → password_required
+// commands/metadata.rs
+get_metadata(doc_id: DocId) -> DocMetadata         // first call reads the file (blocking pool, load_untrusted, 30 s); then from DocState.metadata
+```
+
+```rust
+// Rust-only shapes
+pub struct Secret(Zeroizing<String>);                       // security/secret.rs: Deserialize (1..=127 bytes after SASLprep, no NUL/controls), Debug = "<secret>", no Serialize
+pub struct SecretSlots { slots: HashMap<Ticket, PendingProtection> }   // DocState.secrets; cleared on save, close, and when a step leaves the history
+pub enum PendingProtection { Protect { open: Option<Secret>, owner: Secret /* random if none given */, allow: Permissions }, Remove }
+pub enum PageSource { File { index }, Blank, Imported { source, index }, Redacted { bytes: Arc<[u8]> } }   // + Redacted (one-page PDF from pdfwrite::redact)
+pub struct PageSlot { /* ADR-036 fields */ media: [f32; 4], crop: Option<[f32; 4]> }                     // user space
+pub struct SavePlan { /* .. */ content: Vec<(PageId, Vec<ContentObject>)>, crops: Vec<PageId>, redacted: bool,
+                      protection: Option<PendingProtection>, metadata: Option<MetadataChange>, keep_encryption: bool }
+// pdfwrite entry points
+pub fn content::burn(doc: &mut Document /* Full, or IncrementalDocument::new_document */, page: ObjectId, objs: &[ContentObject], assets: &AssetStore) -> Result<(), AppError>;
+pub fn redact::raster_page(img: RasterPage /* RGB8 or Gray8, w, h */, size_pt: [f32; 2], rotate: u16) -> Result<Vec<u8>, AppError>;
+pub fn redact::scrub(doc: &mut Document, redacted: &[ObjectId]) -> Result<(), AppError>;   // StructTreeRoot, MarkInfo, Thumb, PieceInfo, orphan fields, new /ID
+pub fn crypt::encrypt_r6(doc: &mut Document, p: &PendingProtection) -> Result<(), AppError>;
+pub fn crypt::read_protection(bytes: &[u8], password: Option<&Secret>) -> Result<ProtectionRead, AppError>;
+pub fn metadata::read(doc: &Document) -> Result<MetadataRead, AppError>;
+pub fn metadata::write(doc: &mut IncrementalDocument, m: &MetadataValues, had_xmp: bool, now: PdfDate) -> Result<(), AppError>;
+pub fn metadata::strip(doc: &mut Document) -> Result<(), AppError>;
+// engine jobs
+Job::SetCropBox { engine_index: u32, crop: [f32; 4] }                                     // Control
+Job::RenderForRedaction { engine_index: u32, dpi: f32, burn: Vec<Rect> } -> RasterPage   // Background; with annotations + form appearances
+```
+
+```ts
+type StdFont = 'sans' | 'serif' | 'mono';          // Helvetica, Times-Roman, Courier; WinAnsi only
+// AnnotationBody gains (colour and opacity are the annotation's common fields):
+//   | { kind: 'textBox'; box: Rect; text: string /* ≤ 8 192 chars, LF */; lines: string[] /* Rust layout, read-only */;
+//       font: StdFont; fontSize: number /* 4..=144 */; align: 'left' | 'center' | 'right' }   // draft: box.height ignored, Rust grows it
+//   | { kind: 'image'; box: Rect; assetId: AssetId; aspect: number }
+//   | { kind: 'redactMark'; quads: Quad[] /* ≤ 512 */; source: 'text' | 'area' }            // model only, never written or imported
+interface ImageAssetInfo { assetId: AssetId; width: number; height: number /* px after downsizing */; aspect: number }
+
+type CropSpec = { type: 'margins'; top: number; right: number; bottom: number; left: number /* pt, page space, from the MediaBox */ }
+              | { type: 'reset' };
+// PageCommand gains: { type: 'cropPages'; pages: PageId[]; spec: CropSpec }
+// PageSlotInfo gains: media: { width: number; height: number }; crop: { top: number; right: number; bottom: number; left: number } | null;
+//                     origin gains 'redacted'
+
+// DocCommand gains: { type: 'markRedactions'; marks: { pageId: PageId; quads: Quad[]; source: 'text' | 'area' }[] /* ≤ 10 000 */ }
+interface RedactOptions { pages: PageId[] | null /* null = every page with marks */; removeMetadata: boolean }
+// JobEvent: progress.phase gains 'redact'; done gains changes: ChangeSet | null; done.warnings gains 'unsavedEditsDropped'
+
+type Permission = 'print' | 'copy' | 'edit';
+interface ProtectOptions { openPassword: string | null; permissionsPassword: string | null; allow: Permission[] }
+interface ProtectionInfo { encrypted: boolean; method: 'none' | 'rc4' | 'aes128' | 'aes256' | 'unknown'; ownerRights: boolean;
+  allow: Permission[]; pending: 'none' | 'protect' | 'remove' }
+// DocFlags gains: permissions: Permission[] | null   (null = not encrypted, or opened with owner rights)
+// SaveAck gains:  rewriteEncrypted: boolean
+
+interface DocMetadata { title: string | null; author: string | null; subject: string | null; keywords: string | null;
+  creator: string | null; producer: string | null; created: string | null; modified: string | null /* ISO 8601 */;
+  pdfVersion: string; fileBytes: number; xmp: { present: boolean; bytes: number }; truncated: boolean;
+  pending: 'none' | 'edited' | 'remove' }
+type MetadataPatch = Partial<Record<'title' | 'author' | 'subject' | 'keywords', string | null>>;   // ≤ 1 000 chars, controls stripped
+// DocCommand gains: { type: 'setMetadata'; patch: MetadataPatch } | { type: 'removeMetadata' }
+// ChangeSet gains:  doc: ('metadata' | 'protection')[]   (the UI re-reads get_metadata / get_protection)
+```
+
+Wrappers: `src/api/content.ts` (`insertImageDialog`, `getAssetPreview`), `pages.ts` (`cropPages` builder), `redaction.ts` (`markRedactions`,
+`applyRedactions`), `protection.ts` (`getProtection`, `stageProtection`, `stageUnprotection`), `metadata.ts` (`getMetadata`, `setMetadata`,
+`removeMetadata`); each parses its answer and treats a wrong shape as `internal`. Password fields are cleared by the caller after the call.
+
+- *Content objects.* `textBox` and `image` live in `DocState.entries` like annotations (undo, overlay, move, scale) but are never in
+  `list_document_annotations`. `content::text::layout(text, font, size, width) -> (lines, height)` runs inside `model::validate` on create
+  and update. The overlay draws them while unsaved; a save burns them (`pdfwrite::content`), removes them from the model (`ChangeSet.removed`)
+  and PDFium shows them from the reloaded file. Image assets: `AssetStore` with an image budget beside the signature one.
+- *Crop.* `CropPages` validates every page first (≥ 72 × 72 pt, inside the MediaBox), then mirrors (`Job::SetCropBox`), then shifts the
+  page's annotations, content objects and widget rects by the origin change; inverse = the old crops + the reverse shift. Saving writes
+  `/CropBox` in the re-appended page dict (ADR-036 §5 path).
+- *Redaction.* `apply_redactions`: snapshot of the marked pages → per page `RenderForRedaction` (200 dpi, ≤ 4 096 px, ≤ 16 MP, ≥ 72 dpi)
+  → `raster_page` → engine append (Control) → one model step (`redact.apply`) swapping slots to `Redacted`. A page that changed while the job
+  ran (`rev`) fails the job. Text layer, search and links read the slot's engine page, which has no text. A save with any `Redacted` slot is
+  Full + `scrub`, `backupCreated: false`, and `storage::backup::forget_target(path)` deletes that file's backups.
+- *Protection.* A save with `SavePlan.protection` is Full: `Protect` → `crypt::encrypt_r6` (V5, `Aes256CryptFilter`, file key from
+  `getrandom`), `Remove` → no `/Encrypt`; then the registry's session password becomes the new open password. A save of an encrypted file
+  without a pending change keeps its `/Encrypt` and key (`keep_encryption`) after `needs_confirmation{rewriteEncrypted}`.
+  `apply_command` checks `DocFlags.permissions`: `edit` gates every edit command (annotate, fill, page ops, content, crop, redaction);
+  refused with `read_only` (`permission`). Secrets never reach `UiError`, logs, history JSON or `Debug`.
+- *Metadata.* `SetMetadata` keeps clean and current values (`DocState.metadata`), inverse = the old values; `RemoveMetadata` sets
+  `strip` (inverse clears it). Save: set → incremental `/Info` (+ regenerated XMP if the file had XMP, `/ModDate` now); strip → Full
+  `metadata::strip`, no backup. Strings from the file pass the display-name filter (no controls, Cf, bidi) before they cross IPC.
+- *Limits* (`limits.rs`): text box ≤ 8 192 chars, ≤ 500 lines, box ≥ 4 pt; image file ≤ 20 MiB, header ≤ 8 192 px per side and ≤ 40 MP,
+  `max_alloc` 256 MiB, stored ≤ 4 096 px long side and ≤ 24 MiB; ≤ 128 image assets, ≤ 256 MiB per document; crop ≥ 72 pt per side;
+  marks ≤ 10 000 per command and 20 000 per document, ≤ 512 quads each; redaction ≤ 5 000 pages per job, raster ≤ 16 MP; passwords
+  1..=127 bytes; metadata fields ≤ 1 000 chars, read once ≤ 30 s, XMP looked at ≤ 4 MiB.
+- *Errors.* New `what` values: `textBox` (params `{ char }`), `image`, `crop`, `redactPage`, `redaction`, `password`, `ownerPassword`,
+  `permission`, `metadata`; new confirmation reason `rewriteEncrypted`; each with `error.<code>.<what>` in en and de.
+- *Tests.* `tests/content_objects.rs` (burned text extractable, upright on rotated pages), `tests/crop.rs` (annotations stay put on screen,
+  undo exact, export keeps crop), `tests/redaction.rs` (the D4 proof of ADR-047 §3), `tests/protection.rs` (R6 written by lopdf opens in
+  PDFium with each password; permissions read back; re-save keeps encryption; no password in any `UiError` or log line),
+  `tests/metadata.rs` (round trip, hostile strings filtered, strip leaves no `/Info` or `/Metadata`).
 
 ## 6. Pushes (Rust → UI, never with paths)
 
