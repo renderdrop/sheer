@@ -467,6 +467,7 @@ Alle Checkboxen `[x]` · `npm run check` grün · `npm run tauri build --debug` 
 - **Conventional Commits** (`feat:`, `fix:`, `chore:`, `docs:`, `refactor:`, `test:`), Scope = Modul (`feat(annotations): add highlight tool`).
 - `CHANGELOG.md` nach Keep a Changelog; „Unreleased“ wird bei jedem Milestone-Tag zum Release-Abschnitt.
 - Version wird **nur** über `scripts/bump-version.sh` geändert.
+- **Nach jedem Commit:** `git push origin main --tags`. Schlägt der Push fehl (Netz, Auth), Blocker in `docs/BLOCKERS.md` festhalten und weiterarbeiten; beim nächsten Commit erneut pushen.
 
 ---
 
