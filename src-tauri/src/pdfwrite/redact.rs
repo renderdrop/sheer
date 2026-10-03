@@ -85,7 +85,11 @@ pub fn raster_page(img: RasterPage, size_pt: [f32; 2], rotate: u16) -> Result<Ve
         height,
     } = img;
     let (w, h) = (u64::from(width), u64::from(height));
-    if w == 0 || h == 0 || w * h > limits::MAX_REDACT_PIXELS {
+    if w == 0
+        || h == 0
+        || w * h > limits::MAX_REDACT_PIXELS
+        || width.max(height) > limits::MAX_REDACT_SIDE_PX
+    {
         return Err(AppError::limit("redactPage", limits::MAX_REDACT_PIXELS));
     }
     if !size_pt.iter().all(|side| side.is_finite() && *side > 0.0) || !rotate.is_multiple_of(90) {
@@ -226,8 +230,14 @@ pub fn redacted_pages(doc: &Document) -> Vec<ObjectId> {
 }
 
 /// Removes what still holds content of the redacted pages: `/StructTreeRoot`, `/MarkInfo`, `/Thumb` and `/PieceInfo` of `redacted`,
-/// fields whose every widget was on them, and writes a new `/ID`.
-pub fn scrub(doc: &mut Document, redacted: &[ObjectId]) -> Result<(), AppError> {
+/// fields whose every widget was on them, and writes a new `/ID`. With `strip_hidden` the document-level data that can hold the text too
+/// goes: `/Outlines` (bookmark titles), `/Names` (named destinations, JavaScript, embedded files), `/Dests`, `/PageLabels`, `/AF`,
+/// `/OpenAction` and the catalog's `/AA`.
+pub fn scrub(
+    doc: &mut Document,
+    redacted: &[ObjectId],
+    strip_hidden: bool,
+) -> Result<(), AppError> {
     // The structure tree holds `/ActualText` and `/Alt` of what was on the pages, and `/MarkInfo` only says that it exists.
     let root = doc
         .trailer
@@ -237,6 +247,11 @@ pub fn scrub(doc: &mut Document, redacted: &[ObjectId]) -> Result<(), AppError> 
     let catalog = doc.get_dictionary_mut(root).map_err(lopdf_error)?;
     catalog.remove(b"StructTreeRoot");
     catalog.remove(b"MarkInfo");
+    if strip_hidden {
+        for key in HIDDEN_DATA {
+            catalog.remove(key);
+        }
+    }
     for page in redacted {
         if let Ok(dict) = doc.get_dictionary_mut(*page) {
             for key in [&b"Thumb"[..], b"PieceInfo", b"StructParents", b"Metadata"] {
@@ -248,6 +263,18 @@ pub fn scrub(doc: &mut Document, redacted: &[ObjectId]) -> Result<(), AppError> 
     doc.trailer.set("ID", fresh_id()?);
     Ok(())
 }
+
+/// The catalog entries `scrub` takes out with `strip_hidden`.
+const HIDDEN_DATA: [&[u8]; 8] = [
+    b"Outlines",
+    b"Names",
+    b"Dests",
+    b"PageLabels",
+    b"AF",
+    b"OpenAction",
+    b"AA",
+    b"Threads",
+];
 
 /// A new `/ID`: two random strings of 16 bytes.
 fn fresh_id() -> Result<Object, AppError> {
@@ -405,7 +432,7 @@ fn prune_field(
 ///
 /// `keep_id`: the file is encrypted again afterwards with its old key, which R2 to R4 derive from the first `/ID` string, so that
 /// string stays (the second one is new).
-pub fn finish(bytes: Vec<u8>, keep_id: bool) -> Result<Vec<u8>, AppError> {
+pub fn finish(bytes: Vec<u8>, keep_id: bool, strip_hidden: bool) -> Result<Vec<u8>, AppError> {
     let mut doc = load_untrusted(&bytes)?;
     drop(bytes);
     if doc.is_encrypted() {
@@ -419,7 +446,7 @@ pub fn finish(bytes: Vec<u8>, keep_id: bool) -> Result<Vec<u8>, AppError> {
         .and_then(|items| items.first().cloned())
         .filter(|first| keep_id && matches!(first, Object::String(..)));
     let redacted = redacted_pages(&doc);
-    scrub(&mut doc, &redacted)?;
+    scrub(&mut doc, &redacted, strip_hidden)?;
     if let Some(first) = first_id {
         if let Ok(Object::Array(items)) = doc.trailer.get_mut(b"ID") {
             if let Some(slot) = items.first_mut() {
@@ -447,6 +474,8 @@ pub struct Audit {
     pub has_metadata: bool,
     /// The catalog has a `/StructTreeRoot` or `/MarkInfo`.
     pub has_structure: bool,
+    /// The catalog has `/Outlines`, `/Names`, `/Dests`, `/PageLabels`, `/OpenAction` or `/AA`.
+    pub has_hidden_data: bool,
     /// Cross-reference sections (`startxref` keywords) and whether the trailer chains to an earlier one (`/Prev`).
     pub xref_sections: usize,
     pub has_prev: bool,
@@ -534,6 +563,7 @@ pub fn audit(bytes: &[u8], needles: &[Vec<u8>]) -> Result<Audit, AppError> {
         has_info: doc.trailer.has(b"Info"),
         has_metadata,
         has_structure: catalog.is_some_and(|c| c.has(b"StructTreeRoot") || c.has(b"MarkInfo")),
+        has_hidden_data: catalog.is_some_and(|c| HIDDEN_DATA.iter().any(|key| c.has(key))),
         xref_sections: text.matches("startxref").count(),
         has_prev: doc.trailer.has(b"Prev"),
         id: doc
@@ -633,6 +663,12 @@ mod tests {
             height: 5_000,
         };
         assert!(raster_page(huge, [10.0, 10.0], 0).is_err());
+        let wide = RasterPage {
+            pixels: RasterPixels::Gray8(vec![0; 4_097]),
+            width: 4_097,
+            height: 1,
+        };
+        assert!(raster_page(wide, [10.0, 10.0], 0).is_err(), "the side cap");
     }
 
     /// A document with a catalog that has the structure tree, a form of two fields (`on` is on the page, `off` is on no page) and a page.
@@ -695,7 +731,7 @@ mod tests {
                 Object::String(vec![1; 16], StringFormat::Hexadecimal),
             ]),
         );
-        scrub(&mut doc, &[page]).unwrap();
+        scrub(&mut doc, &[page], false).unwrap();
         let catalog = doc.catalog().unwrap();
         assert!(catalog.get(b"StructTreeRoot").is_err() && catalog.get(b"MarkInfo").is_err());
         let fields = catalog
@@ -726,7 +762,7 @@ mod tests {
         );
         let mut bytes = Vec::new();
         doc.save_to(&mut bytes).unwrap();
-        let out = finish(bytes.clone(), false).unwrap();
+        let out = finish(bytes.clone(), false, false).unwrap();
         let text = String::from_utf8_lossy(&out);
         assert_eq!(text.matches("startxref").count(), 1);
         assert!(!text.contains("StructTreeRoot"));
@@ -741,7 +777,7 @@ mod tests {
         let before = id_of(&bytes);
         let fresh = id_of(&out);
         assert_ne!(before[0], fresh[0]);
-        let kept = id_of(&finish(bytes, true).unwrap());
+        let kept = id_of(&finish(bytes, true, false).unwrap());
         assert_eq!(before[0], kept[0]);
         assert_ne!(before[1], kept[1]);
     }
@@ -759,8 +795,16 @@ mod tests {
         let mut bytes = Vec::new();
         doc.save_to(&mut bytes).unwrap();
         let found = audit(&bytes, &[b"needle".to_vec(), b"SECRET".to_vec()]).unwrap();
-        assert!(found.leaks.iter().any(|l| l == "raw file") || found.leaks.len() >= 2);
-        assert!(found.leaks.len() >= 2, "{:?}", found.leaks);
+        assert!(
+            found.leaks.iter().any(|l| l == "raw file"),
+            "{:?}",
+            found.leaks
+        );
+        assert!(
+            found.leaks.iter().any(|l| l.starts_with("object")),
+            "{:?}",
+            found.leaks
+        );
         assert_eq!(found.pages, 1);
         assert!(!found.has_info && found.has_structure);
         assert_eq!(found.xref_sections, 1);

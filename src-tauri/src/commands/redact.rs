@@ -2,7 +2,7 @@
 //!
 //! | Command | Arguments | Returns |
 //! |---|---|---|
-//! | `apply_redactions` | `docId`, `opts: { pages: PageId[] or null, removeMetadata }`, `onEvent: Channel<JobEvent>` | `JobId`. No dialog. `progress` has `phase: "redact"`; `done.changes` is the `ChangeSet` of the one undo step (`redact.apply`); `done.warnings` may hold `unsavedEditsDropped`; a cancel changes nothing |
+//! | `apply_redactions` | `docId`, `opts: { pages: PageId[] or null, removeMetadata }`, `onEvent: Channel<JobEvent>` | `JobId`. No dialog. `progress` has `phase: "redact"`; `done.changes` is the `ChangeSet` of the one undo step (`redact.apply`); `done.warnings` may hold `unsavedEditsDropped` and `hiddenDataKept` (without `removeMetadata`); a cancel changes nothing |
 //!
 //! The marks are made with `apply_command` (`markRedactions`, or `createAnnotation` of kind `redactMark`).
 
@@ -126,10 +126,16 @@ impl AppState {
                 outputs: 0,
                 bytes_before: 0,
                 bytes_after: after,
-                warnings: if dropped {
-                    vec![Warning::UnsavedEditsDropped]
-                } else {
-                    Vec::new()
+                warnings: {
+                    let mut warnings = Vec::new();
+                    if dropped {
+                        warnings.push(Warning::UnsavedEditsDropped);
+                    }
+                    // Bookmarks, named destinations and the like stay unless the metadata goes too (the save strips them with it).
+                    if !remove_metadata {
+                        warnings.push(Warning::HiddenDataKept);
+                    }
+                    warnings
                 },
                 opened: None,
                 changes: Some(changes),

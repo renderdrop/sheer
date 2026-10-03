@@ -103,7 +103,11 @@ pub fn apply_extras(bytes: Vec<u8>, plan: &SavePlan) -> Result<Vec<u8>, AppError
     let bytes = super::content::burn_all(bytes, &plan.content)?;
     // Package C: what still holds content of a redacted page (structure tree, orphan fields, `/ID`); before any encryption.
     let bytes = if plan.redacted {
-        super::redact::finish(bytes, plan.keep_encryption)?
+        super::redact::finish(
+            bytes,
+            plan.keep_encryption,
+            matches!(plan.metadata, Some(MetadataChange::Strip)),
+        )?
     } else {
         bytes
     };

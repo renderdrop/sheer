@@ -44,6 +44,9 @@ pub enum Warning {
     WidgetsDropped,
     /// Redaction dropped session edits (annotations, content objects) on the pages it replaced (ADR-047 §3).
     UnsavedEditsDropped,
+    /// Redaction without "remove metadata" keeps bookmarks, named destinations, embedded files, page labels and open actions, which may
+    /// hold the redacted text (ADR-047 §3).
+    HiddenDataKept,
 }
 
 /// How a job is told to stop and how it reports. `check` is called between objects, pages and images.

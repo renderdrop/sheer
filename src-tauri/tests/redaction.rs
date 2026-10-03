@@ -132,10 +132,27 @@ fn fixture() -> Vec<u8> {
         )
         .object(104, &format!("<< /Title ({SECRET}) /Producer (fixture) >>"))
         .stream(105, "/Type /Metadata /Subtype /XML", xmp.as_bytes())
+        // Document-level places the text can hide: a bookmark, named JavaScript, an embedded file, a page label.
+        .object(106, "<< /Type /Outlines /First 107 0 R /Last 107 0 R /Count 1 >>")
+        .object(
+            107,
+            &format!("<< /Title ({SECRET}) /Parent 106 0 R /Dest [{} 0 R /Fit] >>", page_id(0)),
+        )
+        .object(108, &format!("<< /S /JavaScript /JS (app.alert('{SECRET}')) >>"))
+        .object(
+            109,
+            &format!("<< /Type /Filespec /F (a.txt) /EF << /F 110 0 R >> /Desc ({SECRET}) >>"),
+        )
+        .stream(110, "/Type /EmbeddedFile", format!("attached {SECRET}").as_bytes())
         .object(
             1,
-            "<< /Type /Catalog /Pages 2 0 R /AcroForm << /Fields [100 0 R] >> \
-             /StructTreeRoot 103 0 R /MarkInfo << /Marked true >> /Metadata 105 0 R >>",
+            &format!(
+                "<< /Type /Catalog /Pages 2 0 R /AcroForm << /Fields [100 0 R] >> \
+                 /StructTreeRoot 103 0 R /MarkInfo << /Marked true >> /Metadata 105 0 R \
+                 /Outlines 106 0 R /PageLabels << /Nums [0 << /P ({SECRET}) >>] >> \
+                 /Names << /JavaScript << /Names [(boot) 108 0 R] >> /EmbeddedFiles << /Names [(a.txt) 109 0 R] >> >> \
+                 /OpenAction 108 0 R >>"
+            ),
         )
         .trailer("/Info 104 0 R /ID [<00112233445566778899AABBCCDDEEFF> <00112233445566778899AABBCCDDEEFF>]");
     builder.finish(1)
@@ -237,7 +254,10 @@ fn redacted_text_is_not_extractable_after_save() {
         panic!("the redaction job did not finish");
     };
     let changes = changes.expect("the job reports its change set");
-    assert!(warnings.is_empty());
+    assert!(
+        warnings.is_empty(),
+        "metadata and hidden data go too: {warnings:?}"
+    );
     assert_eq!(changes.history.undo_label.as_deref(), Some("redact.apply"));
     let slots = changes.pages.as_ref().expect("the page list changed");
     assert_eq!((slots[0].origin, slots[0].rev), ("redacted", 1));
@@ -264,6 +284,10 @@ fn redacted_text_is_not_extractable_after_save() {
     assert!(!audit.has_info, "no /Info");
     assert!(!audit.has_metadata, "no /Metadata");
     assert!(!audit.has_structure, "no structure tree");
+    assert!(
+        !audit.has_hidden_data,
+        "no bookmarks, names, labels or open action"
+    );
     assert_eq!(audit.xref_sections, 1, "one xref section");
     assert!(!audit.has_prev);
     let first_id = audit.id.expect("a new /ID");
@@ -406,4 +430,113 @@ fn a_redacted_r4_file_is_saved_again_and_opens_with_the_same_password() {
         .unwrap()
         .text
         .contains(SECRET));
+}
+
+/// Marks and a save: marks are model state and never reach the file, so the text is still there (marks are not redaction).
+#[test]
+fn a_save_with_only_marks_writes_no_mark_and_leaves_the_text() {
+    let Some(state) = state() else { return };
+    let scratch = Scratch::new("marks");
+    let bytes = fixture();
+    let path = scratch.file("m.pdf");
+    std::fs::write(&path, &bytes).unwrap();
+    let id = state.open_path(path.clone()).unwrap().expect("loaded").id;
+    let found = hits(state, id, PageId::new(0));
+    state.apply_command(id, mark_command(0, &found)).unwrap();
+    state.save_in_place(id, SaveAck::default()).unwrap();
+    let out = std::fs::read(&path).unwrap();
+    let audit = redact::audit(&out, &[b"Redact".to_vec(), b"redactMark".to_vec()]).unwrap();
+    assert!(
+        audit.leaks.is_empty(),
+        "a mark was written: {:?}",
+        audit.leaks
+    );
+    assert!(
+        find(&out, SECRET.as_bytes()),
+        "the secret is still in the file"
+    );
+    assert!(state
+        .text_layer(id, PageId::new(0))
+        .unwrap()
+        .text
+        .contains(SECRET));
+}
+
+/// Without removeMetadata the page content goes, the job says that bookmarks and the like were kept, and they are in the file.
+#[test]
+fn without_remove_metadata_hidden_data_stays_and_the_job_says_so() {
+    use sheer_lib::pdfwrite::produce::Warning;
+    let Some(state) = state() else { return };
+    let scratch = Scratch::new("kept");
+    let path = scratch.file("k.pdf");
+    std::fs::write(&path, fixture()).unwrap();
+    let id = state.open_path(path.clone()).unwrap().expect("loaded").id;
+    let found = hits(state, id, PageId::new(0));
+    state.apply_command(id, mark_command(0, &found)).unwrap();
+    let opts = RedactOptions {
+        pages: None,
+        remove_metadata: false,
+    };
+    let JobEvent::Done { warnings, .. } = run_redaction(state, id, &opts) else {
+        panic!("the redaction job did not finish");
+    };
+    assert_eq!(warnings, vec![Warning::HiddenDataKept]);
+    state.save_in_place(id, SaveAck::default()).unwrap();
+    let out = std::fs::read(&path).unwrap();
+    // What was on the page is gone: its text, the link, the field.
+    let page_things: Vec<Vec<u8>> = ["Account", "example.com", "acct"]
+        .iter()
+        .map(|t| t.as_bytes().to_vec())
+        .collect();
+    let gone = redact::audit(&out, &page_things).unwrap();
+    assert!(gone.leaks.is_empty(), "page content left: {:?}", gone.leaks);
+    // The document-level data was kept on purpose, so the secret is still in it.
+    let kept = redact::audit(&out, &spellings()).unwrap();
+    assert!(!kept.leaks.is_empty());
+    assert!(kept.has_hidden_data && kept.has_info);
+    assert!(!kept.has_structure, "the structure tree goes either way");
+    assert!(!state
+        .text_layer(id, PageId::new(0))
+        .unwrap()
+        .text
+        .contains(SECRET));
+}
+
+/// A redacting save deletes the backups of the file it saves over (a backup is a copy of what was taken out).
+#[test]
+fn a_redacting_save_deletes_the_backups_of_its_target() {
+    use sheer_lib::storage::backup;
+    let Some(state) = state() else { return };
+    let scratch = Scratch::new("backups");
+    let data = scratch.file("data");
+    let state = state.clone().with_data_dir(data.clone());
+    let bytes = fixture();
+    let path = scratch.file("b.pdf");
+    std::fs::write(&path, &bytes).unwrap();
+    let id = state.open_path(path.clone()).unwrap().expect("loaded").id;
+    let canonical = std::fs::canonicalize(&path).unwrap();
+    let folder = data.join("backups");
+    let seeded = backup::write_backup(&folder, "20261003T120000Z", &canonical, &bytes).unwrap();
+    let other = backup::write_backup(
+        &folder,
+        "20261003T120000Z",
+        &scratch.file("other.pdf"),
+        &bytes,
+    )
+    .unwrap();
+    assert!(seeded.exists());
+    let found = hits(&state, id, PageId::new(0));
+    state.apply_command(id, mark_command(0, &found)).unwrap();
+    let opts = RedactOptions {
+        pages: None,
+        remove_metadata: true,
+    };
+    assert!(matches!(
+        run_redaction(&state, id, &opts),
+        JobEvent::Done { .. }
+    ));
+    let saved = state.save_in_place(id, SaveAck::default()).unwrap();
+    assert!(!saved.backup_created);
+    assert!(!seeded.exists(), "the backup of the target is gone");
+    assert!(other.exists(), "another file's backup is not touched");
 }

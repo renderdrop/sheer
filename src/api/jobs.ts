@@ -27,7 +27,8 @@ export type MergeInput = { type: 'document'; docId: number } | { type: 'source';
 export type CompressPreset = 'lossless' | 'print' | 'ebook' | 'screen';
 
 export type JobPhase = 'read' | 'images' | 'write' | 'validate' | 'redact';
-export type JobWarning = 'signaturesRemoved' | 'formsDropped' | 'widgetsDropped' | 'unsavedEditsDropped';
+export type JobWarning =
+  'signaturesRemoved' | 'formsDropped' | 'widgetsDropped' | 'unsavedEditsDropped' | 'hiddenDataKept';
 
 export type JobEvent =
   | { type: 'progress'; phase: JobPhase; done: number; total: number }
@@ -45,7 +46,13 @@ export type JobEvent =
   | { type: 'failed'; error: AppError };
 
 const PHASES: readonly string[] = ['read', 'images', 'write', 'validate', 'redact'];
-const WARNINGS: readonly string[] = ['signaturesRemoved', 'formsDropped', 'widgetsDropped', 'unsavedEditsDropped'];
+const WARNINGS: readonly string[] = [
+  'signaturesRemoved',
+  'formsDropped',
+  'widgetsDropped',
+  'unsavedEditsDropped',
+  'hiddenDataKept',
+];
 const count = (value: unknown): value is number =>
   typeof value === 'number' && Number.isFinite(value) && value >= 0 && value <= Number.MAX_SAFE_INTEGER;
 
