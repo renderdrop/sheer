@@ -1,8 +1,8 @@
 # STATE
 phase: M4
 version: 0.6.0
-current_item: M4 backend wave (ADR-038): S1 forms model, S2 flatten, S3 signature/mark kinds + images + font, S4 encrypted library + keychain; frontend wave after their commands + src/api wrappers are committed
-last_completed: M3 v0.6.0 (13b265d); ADR-041/042 M4 specs
+current_item: M4 frontend wave: F1 form filling, F2 signature sheet, F3 place + Fill&Sign, F4 library screen + Politur M4 UI items; then Politur M4 backend (prescan mediums) + milestone end
+last_completed: M4 backend wave (56568a0)
 loop_count_this_session: 0
 open_blockers: 2 (B-001 UI never seen on a Mac; B-002 code signing)
 notes: FEEDBACK (product owner) before ROADMAP (§14). Push after every commit; CI checked once per milestone, never wait (ADR-030).
