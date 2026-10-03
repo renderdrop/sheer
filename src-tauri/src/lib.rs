@@ -115,6 +115,7 @@ pub fn run() -> Result<(), AppError> {
             commands::links::open_link,
             commands::annotations::list_annotations,
             commands::annotations::list_document_annotations,
+            commands::annotations::import_warnings,
             commands::pages::apply_command,
             commands::forms::get_form_fields,
             commands::content::insert_image_dialog,

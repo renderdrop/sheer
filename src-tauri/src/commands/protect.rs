@@ -38,10 +38,15 @@ impl AppState {
 
     /// The password document `id` was opened with, if one was needed.
     pub(super) fn session_password(&self, id: DocumentId) -> Option<Zeroizing<String>> {
-        self.model(id, |state| Ok(state.secrets().session().map(str::to_owned)))
-            .ok()
-            .flatten()
-            .map(Zeroizing::new)
+        // The copy is wrapped inside the closure: no plain `String` of the password exists outside the model's lock.
+        self.model(id, |state| {
+            Ok(state
+                .secrets()
+                .session()
+                .map(|text| Zeroizing::new(text.to_owned())))
+        })
+        .ok()
+        .flatten()
     }
 
     /// How the file of document `id` is encrypted, read once and kept until the next save (`DocState.secrets`). Reads the file on the

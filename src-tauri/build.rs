@@ -32,6 +32,7 @@ fn main() {
         "open_link",
         "list_annotations",
         "list_document_annotations",
+        "import_warnings",
         "apply_command",
         "get_form_fields",
         "pick_pdf_sources",

@@ -563,7 +563,7 @@ impl AppState {
                 pages,
                 sources,
                 clean_copy,
-                session: session.clone(),
+                session,
             },
         )?;
         let original_bytes = |built: &Built| -> Vec<u8> {
@@ -723,10 +723,8 @@ impl AppState {
     /// Puts the engine's copy of `id` back from the file at `path` after a save that did not work. Best effort: logged.
     fn reopen_from(&self, id: DocumentId, path: &Path) {
         let session = self.session_password(id);
-        let reopened = intake::admit(path).and_then(|admitted| {
-            self.engine
-                .reopen_with_password(id, admitted.file, session.clone())
-        });
+        let reopened = intake::admit(path)
+            .and_then(|admitted| self.engine.reopen_with_password(id, admitted.file, session));
         if let Err(error) = reopened {
             error.log();
         }

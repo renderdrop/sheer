@@ -1,5 +1,5 @@
 //! True redaction against the real PDFium (ADR-047 §3, SECURITY D4): marked text is not in the saved file in any form a program could
-//! read it back, the other page is intact, undo brings everything back. Skips when the PDFium library is not fetched.
+//! read it back, the other page is intact, undo brings everything back. Skips when the PDFium library is not fetched (fails instead when `CI` is set).
 
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
@@ -51,9 +51,15 @@ fn state() -> Option<&'static AppState> {
         .get_or_init(|| {
             let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("pdfium");
             let library = engine::library_path(&root);
-            library
-                .is_file()
-                .then(|| AppState::new(Engine::start(library)))
+            if library.is_file() {
+                return Some(AppState::new(Engine::start(library)));
+            }
+            // In CI a missing library is a failure, never a silent pass.
+            assert!(
+                std::env::var_os("CI").is_none(),
+                "PDFium is missing and CI is set: fetch it before the tests"
+            );
+            None
         })
         .as_ref()
 }

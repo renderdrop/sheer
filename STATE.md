@@ -1,8 +1,8 @@
 # STATE
 phase: M5
 version: 0.7.0
-current_item: M5 backend committed (0318988; A, D PASS). Running: B crop FIX round, C redaction FIX round (hidden document-level data), M5 UI seams (i18n, toolbar Edit cluster, More menu, mode store, stub components). Next: UI wave F1 insert | F2 crop | F3 redaction | F4 protect+properties (DESIGN §3.36–§3.40), then Politur M5 Rust half
-last_completed: M5 backend wave (0318988)
+current_item: M5 UI committed (621bb91); 4 UI reviewers running + Politur M5 Rust half. Then: UI FIX rounds, tick M5 items, milestone end (tester, full security-reviewer, window review per docs/UI_REVIEW.md, designer round, CI read once, bump 0.8.0, tag)
+last_completed: M5 UI wave (621bb91)
 loop_count_this_session: 0
 open_blockers: 2 (B-001 UI never seen on a Mac, macOS keychain untested; B-002 code signing)
 notes: Repository renderdrop/sheer is public with the rewritten history; doc hashes mapped to it (ADR-046). Old Actions run IDs refer to the old private repo.

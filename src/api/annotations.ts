@@ -698,6 +698,30 @@ export function parseAnnotationSummaries(value: unknown): AnnotationSummary[] | 
   return summaries;
 }
 
+/** An annotation import that was not complete: `skipped` annotations of `page` stay in the file but cannot be edited here. */
+export interface ImportWarning {
+  type: 'pageTruncated';
+  page: number;
+  skipped: number;
+}
+
+/** Validates the answer of `import_warnings`; entries of another shape are dropped (a note is never worth an error). */
+export function parseImportWarnings(raw: unknown): ImportWarning[] {
+  if (!Array.isArray(raw)) return [];
+  const out: ImportWarning[] = [];
+  for (const item of raw as unknown[]) {
+    if (isRecord(item) && item.type === 'pageTruncated' && isUint(item.page) && isUint(item.skipped)) {
+      out.push({ type: 'pageTruncated', page: item.page, skipped: item.skipped });
+    }
+  }
+  return out;
+}
+
+/** What the reading of the document's annotations left out so far. Rejects with `not_found` for a document that is not open. */
+export async function importWarnings(docId: number): Promise<ImportWarning[]> {
+  return parseImportWarnings(await call<unknown>('import_warnings', { docId }));
+}
+
 /**
  * The annotations of every page as summaries, by page and id. Pages the backend has not read yet are read from the file at
  * background priority, so this can take a moment on a large document. Rejects with `not_found` for a document that is not open.

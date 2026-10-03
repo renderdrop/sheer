@@ -489,6 +489,8 @@
   "organize.delete": "Delete pages",
   "organize.deleted.one": "{count} page deleted",
   "organize.deleted.other": "{count} pages deleted",
+  "organize.truncated.one": "{count} annotation of the inserted pages cannot be edited here (limit reached). It stays in the file.",
+  "organize.truncated.other": "{count} annotations of the inserted pages cannot be edited here (limit reached). They stay in the file.",
   "organize.moved": "Moved to position {n}",
   "annotation.create": "Create annotation",
 

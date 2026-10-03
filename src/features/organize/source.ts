@@ -6,6 +6,7 @@
 import type { PageSlotInfo } from '../../api/pages';
 
 export type { PageCommand, SourceResult } from '../../api/pages';
+export { importWarnings } from '../../api/annotations';
 export { pickPdfSources, releaseSource } from '../../api/pages';
 export { applyPageCommand, undoPageStep } from '../../stores/pageActions';
 export { readSlots, useSlots } from '../../stores/pages';

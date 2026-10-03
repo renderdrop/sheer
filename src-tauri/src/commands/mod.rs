@@ -1706,6 +1706,28 @@ mod tests {
         assert!(state.close_document(id).is_ok());
     }
 
+    #[test]
+    fn closing_a_document_drops_its_session_password_and_secrets() {
+        let dir = TempDir::new();
+        let (engine, _seen) = engine_refusing_closes(3, 0, ErrorCode::EngineTimeout);
+        let state = AppState::new(engine);
+        let opened = state.open_path(pdf(&dir, "a.pdf")).unwrap().unwrap();
+        state.note_session_password(
+            opened.id,
+            Some(zeroize::Zeroizing::new("hunter2".to_owned())),
+        );
+        assert_eq!(
+            state
+                .session_password(opened.id)
+                .as_deref()
+                .map(String::as_str),
+            Some("hunter2")
+        );
+        state.close_document(opened.id).unwrap();
+        // The model, and the secrets slots in it, are gone and refused from now on: nothing hands the password out again.
+        assert!(state.session_password(opened.id).is_none());
+        assert!(state.annotations.with(opened.id, 3, |_| Ok(())).is_err());
+    }
     // --- a close the engine could not take ---
 
     /// An engine that "loads" every document as one of `pages` pages and refuses the first `failures` closes with `error`, as a

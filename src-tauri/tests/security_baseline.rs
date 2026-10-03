@@ -701,6 +701,7 @@ fn build_script_declares_exactly_the_granted_commands() {
         "open_link",
         "list_annotations",
         "list_document_annotations",
+        "import_warnings",
         "apply_command",
         "get_form_fields",
         "pick_pdf_sources",

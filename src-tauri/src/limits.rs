@@ -498,6 +498,11 @@ pub const MIN_TEXT_BOX_FONT_PT: f32 = 4.0;
 pub const MAX_TEXT_BOX_FONT_PT: f32 = 144.0;
 /// An image the user inserts: the file, the sides read from its header before decoding, its pixels, the decoder's allocation cap, the
 /// long side it is stored at, and what one stored image may take.
+///
+/// Two different caps on the picture's side: the DECODE cap (8 192 px per side, 40 MP, 256 MiB of decoder allocation) is what the
+/// decoder is allowed to read from a hostile file, so a phone photo or a scan still opens; the STORED cap (4 096 px on the long side,
+/// 24 MiB) is what is kept in the document and written to the PDF after the picture was scaled down. A picture between the two is
+/// accepted and stored smaller, never refused.
 pub const MAX_IMAGE_FILE_BYTES: u64 = 20 * 1024 * 1024;
 pub const MAX_INSERT_IMAGE_SIDE_PX: u32 = 8_192;
 pub const MAX_INSERT_IMAGE_PIXELS: u64 = 40_000_000;
@@ -518,6 +523,10 @@ pub const MAX_REDACT_PAGES: usize = 5_000;
 pub const REDACT_DPI: f32 = 200.0;
 pub const MIN_REDACT_DPI: f32 = 72.0;
 pub const MAX_REDACT_SIDE_PX: u32 = 4_096;
+///
+/// The redaction raster is its own budget, apart from the image caps above: a page is drawn at `REDACT_DPI`, the dpi is lowered (never
+/// below `MIN_REDACT_DPI`) until the bitmap fits both `MAX_REDACT_SIDE_PX` per side and `MAX_REDACT_PIXELS` in total (16 MP, at most
+/// 64 MB of RGBA per page), and a page that cannot fit at the lowest dpi fails the job instead of being rastered coarser.
 pub const MAX_REDACT_PIXELS: u64 = 16_000_000;
 /// A password in bytes after SASLprep.
 pub const MIN_NEW_PASSWORD_BYTES: usize = 1;

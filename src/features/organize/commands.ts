@@ -5,7 +5,15 @@ import { useLocaleStore } from '../../i18n/store';
 import { useDocuments } from '../../stores/documents';
 import { useUi } from '../../stores/ui';
 import { isNoopMove, keyboardMove, toIndexFor } from './grid';
-import { applyPageCommand, pickPdfSources, readSlots, releaseSource, undoPageStep, type Slot } from './source';
+import {
+  applyPageCommand,
+  importWarnings,
+  pickPdfSources,
+  readSlots,
+  releaseSource,
+  undoPageStep,
+  type Slot,
+} from './source';
 import { selectionOf, useOrganize } from './store';
 
 /** The pages a command acts on: the selection, else the focused page (DESIGN 3.28); in list order, only pages that exist. */
@@ -152,5 +160,19 @@ export async function insertFromFile(docId: number): Promise<boolean> {
   releaseSource(source.sourceId).catch(() => undefined);
   if (after === null) return false;
   showInserted(docId, before, after);
+  await noteTruncation(docId);
   return true;
+}
+
+/** Annotations of the inserted pages that did not fit the model stay in the file: say so in a toast (never an error). */
+async function noteTruncation(docId: number): Promise<void> {
+  try {
+    const skipped = (await importWarnings(docId)).reduce((sum, warning) => sum + warning.skipped, 0);
+    if (skipped === 0) return;
+    const message = translators[useLocaleStore.getState().locale]('organize.truncated', { count: skipped });
+    useUi.getState().showToast({ message });
+    announce(message);
+  } catch {
+    // A note that cannot be read is not worth a message.
+  }
 }

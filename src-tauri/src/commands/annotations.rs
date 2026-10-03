@@ -4,6 +4,7 @@
 //! |---|---|---|
 //! | `list_annotations` | `docId: number`, `pageId: number` | `Annotation[]` of the page, by id. The first call for a page reads its annotations from the file (an `Interactive` engine job) |
 //! | `list_document_annotations` | `docId: number` | `AnnotationSummary[]` of every page (at most 20 000) by page then id, for the comments panel. Pages not read yet are read at `Background` priority |
+//! | `import_warnings` | `docId: number` | `ImportWarning[]` (`{type: "pageTruncated", page, skipped}`): annotations of the pages read so far that did not fit the model caps; they stay in the file |
 //! | `apply_command` | `docId: number`, `command: DocCommand` | moved to `pages`: the `ChangeSet` of an annotation or page command; the whole command happened or nothing did |
 //! | `undo`, `redo` | `docId: number` | the `ChangeSet` of the step taken back or done again; empty (same `rev`) if there is none |
 //!
@@ -450,6 +451,16 @@ pub async fn list_document_annotations(
 ) -> Result<Vec<AnnotationSummary>, UiError> {
     let state = state.inner().clone();
     blocking(move || state.list_document_annotations(doc_id)).await
+}
+
+/// What the reading of a document's annotations left out so far (`PageTruncated`), for a note in the UI.
+#[tauri::command]
+pub async fn import_warnings(
+    state: State<'_, AppState>,
+    doc_id: DocumentId,
+) -> Result<Vec<crate::model::doc_state::ImportWarning>, UiError> {
+    let state = state.inner().clone();
+    blocking(move || state.import_warnings(doc_id)).await
 }
 
 /// Takes back the last step of a document's history.

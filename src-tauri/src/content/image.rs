@@ -214,10 +214,14 @@ pub fn prepare_bytes(bytes: &[u8]) -> Result<ImageAsset, AppError> {
         .unwrap_or(image::metadata::Orientation::NoTransforms);
     let mut picture = DynamicImage::from_decoder(decoder).map_err(decode_failed)?;
     picture.apply_orientation(orientation);
-    let has_alpha =
-        picture.color().has_alpha() && picture.to_rgba8().pixels().any(|p| p.0[3] != 255);
-    let mut picture = if has_alpha {
-        DynamicImage::ImageRgba8(picture.to_rgba8())
+    // One RGBA copy at most (a 40 MP picture is 160 MB): kept when something is see-through, dropped for RGB otherwise.
+    let mut picture = if picture.color().has_alpha() {
+        let rgba = picture.to_rgba8();
+        if rgba.pixels().any(|p| p.0[3] != 255) {
+            DynamicImage::ImageRgba8(rgba)
+        } else {
+            DynamicImage::ImageRgb8(DynamicImage::ImageRgba8(rgba).to_rgb8())
+        }
     } else {
         DynamicImage::ImageRgb8(picture.to_rgb8())
     };

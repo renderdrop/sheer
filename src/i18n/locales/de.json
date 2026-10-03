@@ -489,6 +489,8 @@
   "organize.delete": "Seiten löschen",
   "organize.deleted.one": "{count} Seite gelöscht",
   "organize.deleted.other": "{count} Seiten gelöscht",
+  "organize.truncated.one": "{count} Anmerkung der eingefügten Seiten lässt sich hier nicht bearbeiten (Grenze erreicht). Sie bleibt in der Datei.",
+  "organize.truncated.other": "{count} Anmerkungen der eingefügten Seiten lassen sich hier nicht bearbeiten (Grenze erreicht). Sie bleiben in der Datei.",
   "organize.moved": "An Position {n} verschoben",
   "annotation.create": "Anmerkung erstellen",
 

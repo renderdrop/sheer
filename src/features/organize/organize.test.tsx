@@ -39,6 +39,7 @@ const model = vi.hoisted(() => ({
   sent: [] as unknown[],
   undone: 0,
   picks: [] as unknown[],
+  warnings: [] as unknown[],
   next: 100,
 }));
 
@@ -102,6 +103,7 @@ vi.mock('./source', async () => {
     },
     pickPdfSources: async () => model.picks,
     releaseSource: async () => undefined,
+    importWarnings: async () => model.warnings,
   };
 });
 
@@ -113,6 +115,7 @@ function load(count: number): void {
   model.sent = [];
   model.undone = 0;
   model.picks = [];
+  model.warnings = [];
 }
 
 class FakeResizeObserver {
@@ -221,6 +224,16 @@ describe('commands', () => {
     await insertFromFile(DOC);
     expect(model.sent[0]).toEqual({ type: 'insertPages', source: 7, pages: [0, 1], at: 6 });
     expect(selectedIds()).toHaveLength(2);
+  });
+
+  it('notes annotations of the inserted pages that did not fit the model in a toast', async () => {
+    model.picks = [{ type: 'ready', sourceId: 7, displayName: 'b.pdf', pageCount: 1 }];
+    model.warnings = [
+      { type: 'pageTruncated', page: 1, skipped: 2 },
+      { type: 'pageTruncated', page: 2, skipped: 3 },
+    ];
+    await insertFromFile(DOC);
+    expect(useUi.getState().toast?.message).toContain('5');
   });
 
   it('shows a failed source in the banner, and a cancelled dialog does nothing', async () => {

@@ -8,6 +8,7 @@ import {
   MAX_ANNOT_QUADS,
   MAX_FREE_TEXT_LINES,
   MAX_HISTORY_ENTRIES,
+  importWarnings,
   MAX_INK_POINTS_PER_STROKE,
   MAX_INK_STROKES,
   applyCommand,
@@ -234,6 +235,23 @@ describe('the bounds mirror the backend (src-tauri/src/limits.rs)', () => {
     expect(rust.get('MAX_FREE_TEXT_LINES')).toBe(MAX_FREE_TEXT_LINES);
     expect(rust.get('MAX_ANNOT_CONTENTS_CHARS')).toBe(MAX_ANNOT_CONTENTS_CHARS);
     expect(rust.get('MAX_HISTORY_ENTRIES')).toBe(MAX_HISTORY_ENTRIES);
+  });
+});
+
+describe('import_warnings', () => {
+  it('asks for the document and keeps well-formed warnings only', async () => {
+    invokeMock.mockResolvedValueOnce([
+      { type: 'pageTruncated', page: 3, skipped: 2 },
+      { type: 'x' },
+      { type: 'pageTruncated', page: -1, skipped: 1 },
+    ]);
+    await expect(importWarnings(4)).resolves.toStrictEqual([{ type: 'pageTruncated', page: 3, skipped: 2 }]);
+    expect(invokeMock).toHaveBeenCalledWith('import_warnings', { docId: 4 });
+  });
+
+  it('answers an empty list for a wrong shape', async () => {
+    invokeMock.mockResolvedValueOnce('x');
+    await expect(importWarnings(4)).resolves.toStrictEqual([]);
   });
 });
 

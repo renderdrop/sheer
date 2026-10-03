@@ -103,6 +103,28 @@ pub fn load_decrypted(
     bytes: &[u8],
     password: Option<&str>,
 ) -> Result<(Document, Option<EncryptionState>), AppError> {
+    match load_decrypted_raw(bytes, password) {
+        // R5/R6 hash the SASLprep of the password (ISO 32000-2 7.6.4.3.3), and older revisions the raw one: try the typed spelling
+        // first, then its normalization (only when that differs).
+        Err(error) if error.code() == ErrorCode::PasswordRequired => {
+            let prepared = password
+                .and_then(|text| stringprep::saslprep(text).ok())
+                .map(|text| Zeroizing::new(text.into_owned()));
+            match (password, prepared) {
+                (Some(typed), Some(prepared)) if prepared.as_str() != typed => {
+                    load_decrypted_raw(bytes, Some(prepared.as_str()))
+                }
+                _ => Err(error),
+            }
+        }
+        other => other,
+    }
+}
+
+fn load_decrypted_raw(
+    bytes: &[u8],
+    password: Option<&str>,
+) -> Result<(Document, Option<EncryptionState>), AppError> {
     let loaded = prescan::load_with_password(bytes, password)?;
     let mut doc = loaded.map_err(|error| match error {
         LopdfError::InvalidPassword
@@ -250,6 +272,31 @@ mod tests {
         let read = read_protection(&bytes, None).unwrap();
         assert!(!read.encrypted && read.owner_rights);
         assert_eq!(read.method, ProtectionMethod::None);
+    }
+
+    /// R6 hashes the SASLprep of the password: a file protected with a decomposed spelling opens with the composed one, and the
+    /// other way round (lopdf normalizes on every load and check; this pins it, ISO 32000-2 7.6.4.3.3).
+    #[test]
+    fn a_non_ascii_session_password_is_saslprepped_for_r6() {
+        let plain = std::fs::read(
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../tests/fixtures/minimal.pdf"),
+        )
+        .unwrap();
+        let decomposed = "pa\u{308}sswo\u{308}rd";
+        let composed = "p\u{e4}ssw\u{f6}rd";
+        let pending = PendingProtection::Protect {
+            open: Some(Secret::new(decomposed).unwrap()),
+            owner: Secret::random().unwrap(),
+            allow: PermissionSet::ALL,
+        };
+        let bytes = encrypt_bytes(&plain, &pending).unwrap();
+        for spelling in [decomposed, composed] {
+            let read = read_protection_with(&bytes, Some(spelling))
+                .unwrap_or_else(|e| panic!("{spelling:?} {e:?}"));
+            assert!(read.encrypted, "{spelling}");
+            assert!(decrypt_for_rewrite(&bytes, Some(spelling)).is_ok());
+        }
+        assert!(read_protection_with(&bytes, Some("password")).is_err());
     }
 }
 
