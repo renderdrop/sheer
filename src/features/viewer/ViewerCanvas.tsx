@@ -1,14 +1,18 @@
+import { animate, useReducedMotion, type AnimationPlaybackControls } from 'motion/react';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 
 import type { PageSize } from '../../api/render';
 import { bucketFor, planPage } from '../../engine/buckets';
 import { imageKey } from '../../engine/renderCache';
 import { renderScheduler } from '../../engine/renderScheduler';
+import { JUMP_ANIMATE_MAX_VIEWPORTS, SPRING } from '../../lib/motion';
 import { clampZoom } from '../../lib/zoom';
 import { selectActiveId, useDocuments } from '../../stores/documents';
 import { DEFAULT_PAGE_SIZE, sizesFor, usePages } from '../../stores/pages';
 import { useUi } from '../../stores/ui';
 import { useDocView, useView } from '../../stores/view';
+import { OpenClone } from './OpenClone';
+import { entranceFor, finishTransition, isFresh, resolveFresh, useTransition, type SourceRect } from './openTransition';
 import { Canvas } from './Canvas';
 import {
   EMPTY_WINDOW,
@@ -27,9 +31,10 @@ import {
 } from './layout';
 import { canvasPadding, pageGap } from './model';
 import { BUCKET_SETTLE_MS, PageView } from './PageView';
-import { publishViewRect, registerScrollSource } from './scrollBridge';
+import { consumeJump, publishViewRect, registerScrollSource } from './scrollBridge';
 import { useDevicePixelRatio } from './useDevicePixelRatio';
-import { useViewer } from './useViewer';
+import { cancelZoomMotion, settleZoomMotion, useViewer } from './useViewer';
+import { animationsOff, registerZoomSurface } from './zoomMotion';
 
 function sameList(x: readonly number[], y: readonly number[]): boolean {
   return x.length === y.length && x.every((page, i) => page === y[i]);
@@ -72,6 +77,12 @@ export function ViewerCanvas({ style }: { style?: CSSProperties }) {
     scrollerRef.current = region;
   }, []);
   const pinRef = useRef<Pin | null>(null);
+  const reduce = useReducedMotion() === true || animationsOff();
+  /** A scroll that is animated (a jump to a page, MOTION 4.8); `null` at rest. */
+  const scrollAnim = useRef<AnimationPlaybackControls | null>(null);
+  const [scrolling, setScrolling] = useState(false);
+  const pagesLoaded = usePages((state) => docId !== null && state.byDoc[docId] !== undefined);
+  const transition = useTransition((state) => state.active);
 
   const { zoom, scrollMode, pageIndex, pageCount, anchor } = view;
   const paged = isPaged(scrollMode);
@@ -95,6 +106,32 @@ export function ViewerCanvas({ style }: { style?: CSSProperties }) {
     },
     [fit, metrics, pageIndex, gap, zoom],
   );
+
+  // The zoom's motion scales the canvas content (MOTION 4.4): this is how it finds it.
+  useEffect(
+    () => registerZoomSurface(() => scrollerRef.current?.querySelector<HTMLElement>('[data-canvas-content]') ?? null),
+    [],
+  );
+
+  // A scroll the user starts (wheel, touch, key, pointer) ends an animated jump: the newest intent wins.
+  useEffect(() => {
+    const region = scrollerRef.current;
+    if (region === null) return;
+    const cancel = () => {
+      scrollAnim.current?.stop();
+      scrollAnim.current = null;
+      setScrolling(false);
+    };
+    const events = ['wheel', 'pointerdown', 'keydown', 'touchstart'] as const;
+    for (const name of events) region.addEventListener(name, cancel, { passive: true });
+    return () => {
+      for (const name of events) region.removeEventListener(name, cancel);
+      scrollAnim.current?.stop();
+    };
+  }, []);
+
+  // A zoom in flight belongs to the document it started on: another document, or no canvas, ends it without a commit.
+  useLayoutEffect(() => cancelZoomMotion, [docId]);
 
   // The actions that need the scroll position (a zoom step from the keyboard) read it from here.
   useEffect(
@@ -134,7 +171,8 @@ export function ViewerCanvas({ style }: { style?: CSSProperties }) {
         // generation, and a hint that was made for the old window can never cancel them. Nothing on screen is nothing to tell.
         if (next.visible.length > 0) renderScheduler.updateViewport(docId, next.visible, [...next.near, ...ahead]);
       }
-      if (paged) return;
+      // Passing pages during an animated jump are not the page the user went to.
+      if (paged || scrollAnim.current !== null) return;
       // The page the status bar shows follows the scroll position, except right after a jump to a page: the last page cannot
       // be scrolled to the top, and would then be reported as the one before it.
       let page = layout.currentPageAt(top, height + 2 * pad);
@@ -154,21 +192,72 @@ export function ViewerCanvas({ style }: { style?: CSSProperties }) {
   useLayoutEffect(() => {
     const region = scrollerRef.current;
     if (region === null || layout === null || docId === null) return;
+    // The committed zoom is in the DOM: the transform that carried the zoom goes in the same frame.
+    settleZoomMotion();
     const changed = shownDocRef.current !== docId;
     shownDocRef.current = docId;
     const wanted = anchor ?? (changed ? pageTopAnchor(layout, pageIndex, centeredScroll(layout)) : null);
     if (wanted !== null) {
       const target = scrollFor(layout, wanted);
+      const jump = anchor !== null && consumeJump();
+      scrollAnim.current?.stop();
+      scrollAnim.current = null;
       region.scrollLeft = target.left;
-      region.scrollTop = target.top;
       // A jump puts the top of a page at the top of the viewport; a zoom keeps a point wherever it was.
-      pinRef.current = wanted.yPt === 0 && wanted.viewY === 0 ? { page: wanted.page, top: region.scrollTop } : null;
+      const pinned = wanted.yPt === 0 && wanted.viewY === 0;
+      const distance = Math.abs(target.top - region.scrollTop);
+      const near = distance > 1 && distance <= JUMP_ANIMATE_MAX_VIEWPORTS * region.clientHeight;
+      if (jump && !changed && !paged && !reduce && near) {
+        // Up to two viewports away the jump is carried by the spring (slow); farther, and for reduced motion, it is at once.
+        setScrolling(true);
+        scrollAnim.current = animate(region.scrollTop, target.top, {
+          ...SPRING.slow,
+          onUpdate: (value: number) => {
+            region.scrollTop = value;
+          },
+          onComplete: () => {
+            scrollAnim.current = null;
+            setScrolling(false);
+            pinRef.current = pinned ? { page: wanted.page, top: region.scrollTop } : null;
+            useView.getState().reportPage(docId, wanted.page);
+          },
+        });
+      } else {
+        region.scrollTop = target.top;
+        pinRef.current = pinned ? { page: wanted.page, top: region.scrollTop } : null;
+      }
       if (anchor !== null) useView.getState().consumeAnchor(docId);
     }
     track({ left: region.scrollLeft, top: region.scrollTop });
     // `pageIndex` is only read for a document that has just come forward: a page that scrolling reports is not a reason to run this again.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [layout, anchor, docId, track]);
+
+  // A document that has just opened starts at fit width, capped at 100 % (MOTION 4.4): where fit width would exceed 100 % it
+  // opens at 100 % (fixed, centred), else it follows fit width. Once its page sizes and the canvas's size are known.
+  useLayoutEffect(() => {
+    if (docId === null || viewport === null || !pagesLoaded || !isFresh(docId)) return;
+    resolveFresh(docId);
+    const fitted = fitZoomFor('width', metrics, 0, viewport, gap);
+    if (fitted !== null && fitted < 1 - 1e-9) useView.getState().setFit(docId, 'width', fitted, null);
+  }, [docId, viewport, pagesLoaded, metrics, gap]);
+
+  // The clone of a drop or of a thumbnail (MOTION 4.6) flies to its page once that is laid out (and, for a jump, scrolled to).
+  const [cloneTarget, setCloneTarget] = useState<{ id: number; rect: SourceRect } | null>(null);
+  useEffect(() => {
+    if (transition === null || transition.docId !== docId || scrolling) return;
+    const frame = window.requestAnimationFrame(() => {
+      const element = scrollerRef.current?.querySelector<HTMLElement>(`[data-page="${transition.page + 1}"]`);
+      if (element === null || element === undefined || (transition.kind === 'open' && isFresh(transition.docId)))
+        return;
+      const box = element.getBoundingClientRect();
+      setCloneTarget({
+        id: transition.id,
+        rect: { left: box.left, top: box.top, width: box.width, height: box.height },
+      });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [transition, docId, scrolling, layout, mounted]);
 
   // Render the pages of the neighbouring rows ahead of the turn of the page: nothing is mounted for them, so nothing else asks.
   // Like a mounted page (`PageView`) after its zoom bucket changed, they wait `BUCKET_SETTLE_MS` before they ask: a wheel zoom or a
@@ -193,6 +282,7 @@ export function ViewerCanvas({ style }: { style?: CSSProperties }) {
     [nextPage, previousPage],
   );
 
+  const clone = transition !== null && transition.docId === docId ? transition : null;
   const pages = [
     ...mounted.visible.map((page) => ({ page, priority: 'visible' as const })),
     ...mounted.near.map((page) => ({ page, priority: 'near' as const })),
@@ -236,9 +326,18 @@ export function ViewerCanvas({ style }: { style?: CSSProperties }) {
               heightPt={heightPt}
               bucket={bucket}
               priority={priority}
+              entrance={page === 0 ? entranceFor(docId) : undefined}
             />
           );
         })}
+      {clone !== null && (
+        <OpenClone
+          key={clone.id}
+          source={clone.source}
+          target={cloneTarget?.id === clone.id ? cloneTarget.rect : null}
+          onDone={() => finishTransition(clone.id)}
+        />
+      )}
     </Canvas>
   );
 }

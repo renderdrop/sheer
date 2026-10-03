@@ -1,4 +1,5 @@
-import { memo, useCallback, useEffect, useMemo, useState, useSyncExternalStore } from 'react';
+import { animate, useReducedMotion } from 'motion/react';
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 
 import { toAppError } from '../../api/errors';
 import type { RenderPriority } from '../../api/render';
@@ -6,6 +7,7 @@ import { planPage, tilesIn, TILE_SIZE_PX, tileRect, type PagePlan, type TileInde
 import { imageKey, type CacheEntry, type ImageId } from '../../engine/renderCache';
 import { renderScheduler, type RenderScheduler } from '../../engine/renderScheduler';
 import { useT } from '../../i18n';
+import { DURATION, ENTER_SCALE, FADE_END_SLACK_MS, SPRING } from '../../lib/motion';
 import { clearRenderFailure, showRenderFailure } from './renderFailure';
 import { readViewRect, subscribeViewRect } from './scrollBridge';
 
@@ -45,6 +47,11 @@ export interface PageViewProps {
   priority: Extract<RenderPriority, 'visible' | 'near'>;
   /** The scheduler and its cache; the app's by default. */
   scheduler?: RenderScheduler;
+  /**
+   * How the page appears when it mounts (MOTION 4.6): `scale` is the first page of a document that opened without a source to fly
+   * from (opacity and scale .96 to 1, slow); `fade` is the first page under a clone (opacity, slow). Read once, at mount.
+   */
+  entrance?: 'scale' | 'fade';
 }
 
 const tileKeyOf = (tile: TileIndex) => `${tile[0]},${tile[1]}`;
@@ -79,6 +86,60 @@ function parseTiles(key: string): TileIndex[] {
 
 const FILL = 'absolute max-w-none select-none';
 
+const FADE_MS = { first: DURATION.base * 1000, sharp: DURATION.fast * 1000 } as const;
+
+interface FadeImageProps {
+  src: string;
+  style: object;
+  /** Shown at full opacity from the start: it was in the cache when the page mounted (no fade, MOTION 4.3). */
+  instant: boolean;
+  /** `first`: the image fades over the placeholder (base); `sharp`: it fades over a stand-in (fast). */
+  over: 'first' | 'sharp';
+  /** The image has faded in completely: what it covered can go. */
+  onShown?: () => void;
+}
+
+/** An image of a page that fades in (opacity only) once the browser has decoded it. */
+function FadeImage({ src, style, instant, over, onShown }: FadeImageProps) {
+  const [on, setOn] = useState(instant);
+  const [fading, setFading] = useState(false);
+  const shown = useRef(onShown);
+  useEffect(() => {
+    shown.current = onShown;
+  });
+  useEffect(() => {
+    if (instant) shown.current?.();
+  }, [instant]);
+  useEffect(() => {
+    if (!fading) return;
+    const timer = window.setTimeout(() => {
+      setFading(false);
+      shown.current?.();
+    }, FADE_MS[over] + FADE_END_SLACK_MS);
+    return () => window.clearTimeout(timer);
+  }, [fading, over]);
+  return (
+    <img
+      src={src}
+      alt=""
+      draggable={false}
+      decoding="async"
+      className={FILL}
+      style={{
+        ...style,
+        opacity: on ? 1 : 0,
+        transition: instant ? undefined : `opacity ${FADE_MS[over]}ms var(--ease-spring)`,
+        willChange: fading ? 'opacity' : undefined,
+      }}
+      onLoad={() => {
+        if (on) return;
+        setOn(true);
+        setFading(true);
+      }}
+    />
+  );
+}
+
 /**
  * One page of the canvas (ADR-002 §5): a white placeholder of the page's size, with the best image the cache has of it on top, and
  * a request for the exact one. The image is scaled by the browser to the page's size, so the best cached bucket (a lower or higher
@@ -102,6 +163,7 @@ export const PageView = memo(function PageView({
   bucket,
   priority,
   scheduler = renderScheduler,
+  entrance,
 }: PageViewProps) {
   const t = useT();
   const { cache } = scheduler;
@@ -130,10 +192,12 @@ export const PageView = memo(function PageView({
 
   const wholeId: ImageId = { docId, page: pageIndex, rev: PAGE_REV, bucket: wholeBucket };
   const exact = cache.get(imageKey(wholeId));
-  // The exact image covers the stand-in only once the browser has decoded it (below), so the page is never blank in between.
-  const [decoded, setDecoded] = useState<string | null>(null);
+  // What the cache had when the page mounted shows without a fade; what arrives later fades in (MOTION 4.3).
+  const [atMount] = useState(() => new Set<string>(exact === undefined ? [] : [exact.key]));
+  // The exact image covers the stand-in only once it has decoded and faded in (below), so the page is never blank in between.
+  const [covered, setCovered] = useState<string | null>(exact?.key ?? null);
   const standIn =
-    exact === undefined || decoded !== exact.key
+    exact === undefined || covered !== exact.key
       ? cache.best(docId, pageIndex, PAGE_REV, wholeBucket, exact?.key)
       : undefined;
   const tileEntries = tiles.flatMap((tile) => {
@@ -181,38 +245,74 @@ export const PageView = memo(function PageView({
     };
   }, [scheduler, cache, docId, pageIndex, wholeBucket, tiledBucket, tiles, priority]);
 
-  const image = (entry: CacheEntry, style: object, onLoad?: () => void) => (
-    <img
+  // A stand-in is under the image that arrives: that one fades fast; over the bare placeholder it fades at base.
+  const image = (
+    entry: CacheEntry,
+    style: object,
+    over: 'first' | 'sharp',
+    onShown?: () => void,
+    shownAlready = false,
+  ) => (
+    <FadeImage
       key={entry.key}
       src={cache.urlOf(entry)}
-      alt=""
-      draggable={false}
-      decoding="async"
-      className={FILL}
       style={style}
-      onLoad={onLoad}
+      instant={shownAlready || atMount.has(entry.key)}
+      over={over}
+      onShown={onShown}
     />
   );
   const whole = { inset: 0, width: '100%', height: '100%' };
 
+  const pageRef = useRef<HTMLDivElement | null>(null);
+  const reduce = useReducedMotion() === true;
+  const [entering] = useState(entrance);
+  // A layout effect: the page starts invisible before its first paint.
+  useLayoutEffect(() => {
+    const element = pageRef.current;
+    if (element === null || entering === undefined) return;
+    const scaled = entering === 'scale' && !reduce;
+    const controls = animate(
+      element,
+      scaled ? { opacity: [0, 1], scale: [ENTER_SCALE, 1] } : { opacity: [0, 1] },
+      reduce ? SPRING.base : SPRING.slow,
+    );
+    element.style.willChange = scaled ? 'transform, opacity' : 'opacity';
+    controls.then(
+      () => {
+        element.style.willChange = '';
+        element.style.opacity = '';
+        element.style.transform = '';
+      },
+      () => undefined,
+    );
+    return () => controls.stop();
+  }, [entering, reduce]);
+
   return (
     <div
+      ref={pageRef}
       role="img"
       aria-label={t('canvas.pageImage', { page: pageIndex + 1, total: pageCount })}
       data-page={pageIndex + 1}
       className="absolute z-canvas-page bg-page shadow-page"
       style={{ left, top, width, height }}
     >
-      {standIn !== undefined && image(standIn, whole)}
-      {exact !== undefined && image(exact, whole, () => setDecoded(exact.key))}
+      {standIn !== undefined && image(standIn, whole, 'first', undefined, true)}
+      {exact !== undefined &&
+        image(exact, whole, standIn === undefined ? 'first' : 'sharp', () => setCovered(exact.key))}
       {tileEntries.map(({ tile, entry }) => {
         const rect = tileRect(plan, tile);
-        return image(entry, {
-          left: `${(rect.x0 / plan.width) * 100}%`,
-          top: `${(rect.y0 / plan.height) * 100}%`,
-          width: `${((rect.x1 - rect.x0) / plan.width) * 100}%`,
-          height: `${((rect.y1 - rect.y0) / plan.height) * 100}%`,
-        });
+        return image(
+          entry,
+          {
+            left: `${(rect.x0 / plan.width) * 100}%`,
+            top: `${(rect.y0 / plan.height) * 100}%`,
+            width: `${((rect.x1 - rect.x0) / plan.width) * 100}%`,
+            height: `${((rect.y1 - rect.y0) / plan.height) * 100}%`,
+          },
+          'sharp',
+        );
       })}
     </div>
   );

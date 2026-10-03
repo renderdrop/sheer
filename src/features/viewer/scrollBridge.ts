@@ -74,3 +74,22 @@ export function subscribeLayoutAnimating(listener: () => void): () => void {
   animationListeners.add(listener);
   return () => animationListeners.delete(listener);
 }
+
+/**
+ * A jump to a page (go to page, thumbnail click, outline) is marked here by the action that asks for it, and taken by the canvas
+ * when it scrolls there: only a jump may be animated (MOTION 4.8), a zoom or a change of mode puts the scroll position at once.
+ */
+let jumpMarkedAt = Number.NEGATIVE_INFINITY;
+/** A mark that the canvas has not taken by now belonged to a jump that never scrolled. */
+const JUMP_MARK_MS = 500;
+
+export function markJump(): void {
+  jumpMarkedAt = performance.now();
+}
+
+/** Whether the scroll that is about to happen is a jump; clears the mark. */
+export function consumeJump(): boolean {
+  const was = performance.now() - jumpMarkedAt <= JUMP_MARK_MS;
+  jumpMarkedAt = Number.NEGATIVE_INFINITY;
+  return was;
+}

@@ -1,5 +1,13 @@
 import { useReducedMotion } from 'motion/react';
-import { memo, useEffect, useLayoutEffect, useState, type CSSProperties, type ReactNode } from 'react';
+import {
+  memo,
+  useEffect,
+  useLayoutEffect,
+  useState,
+  type CSSProperties,
+  type ReactNode,
+  type TransitionEvent,
+} from 'react';
 
 import { Splitter } from '../../components';
 import { DURATION } from '../../components/motion';
@@ -15,7 +23,8 @@ export interface MainGridProps {
 
 /**
  * How long the grid keeps its `grid-template-columns` transition after the left panel was collapsed or restored: the slow duration of
- * the transition (MOTION 2) and a little more, because dropping the property while it runs would cut the transition short.
+ * the transition (MOTION 2) plus a margin. This is only the fallback: the clip is released by the grid's own
+ * `transitionend` (below), so dropping the property never cuts the settle short; the timer covers a transition that never fires.
  */
 const COLLAPSE_TRANSITION_MS = DURATION.slow * 1000 + 50;
 
@@ -62,6 +71,10 @@ export function MainGrid({ structure, children }: MainGridProps) {
     setLayoutAnimating(true);
     return () => setLayoutAnimating(false);
   }, [sliding, seen.animating]);
+  const release = (event: TransitionEvent<HTMLDivElement>) => {
+    if (event.target !== event.currentTarget || event.propertyName !== 'grid-template-columns') return;
+    setSeen((current) => (current.animating === null ? current : { ...current, animating: null }));
+  };
   // What opens takes the slow duration, what closes the base one (MOTION 2).
   const closing = seen.animating === 'left' ? collapsed : seen.animating === 'inspector' ? !inspector : false;
   return (
@@ -70,6 +83,7 @@ export function MainGrid({ structure, children }: MainGridProps) {
       data-left={collapsed ? 'collapsed' : 'open'}
       data-inspector={inspector ? 'open' : 'closed'}
       data-animating={seen.animating ?? undefined}
+      onTransitionEnd={release}
       style={{ gridTemplateColumns: shellTracks(structure, panelWidth).columns }}
       className={`group/main grid min-h-0 flex-auto grid-rows-[minmax(0,1fr)] pb-1 ${
         seen.animating === null

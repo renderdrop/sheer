@@ -40,6 +40,7 @@ export function usePopoverMotion(): EnterExit {
 }
 
 /**
+ * Banner reveal ONLY (MOTION allows a per-frame `height` animation for nothing else; use transform/opacity elsewhere).
  * A row that opens and closes in the flow of the page and pushes what is below it (the error banner, DESIGN 3.12): height and
  * opacity, slow in and base out. Reduced motion changes it to opacity only: the row is then there or gone at once and only
  * fades. The row has to clip its content while its height moves (and so should be `overflow: hidden` then and `visible` at

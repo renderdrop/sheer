@@ -14,6 +14,8 @@ const MESSAGE_MS = 1200;
 
 let message = '';
 let clearTimer: ReturnType<typeof setTimeout> | undefined;
+let nonce = false;
+const pending = new WeakMap<HTMLElement, () => void>();
 const listeners = new Set<() => void>();
 
 function setMessage(next: string): void {
@@ -37,16 +39,30 @@ export function pulse(target: HTMLElement, text: string): void {
   target.removeAttribute(ATTRIBUTE);
   void target.offsetWidth;
   target.setAttribute(ATTRIBUTE, '');
+  pending.get(target)?.();
+  const detach = () => {
+    target.removeEventListener('animationend', done);
+    clearTimeout(fallback);
+    pending.delete(target);
+  };
+  const cleanup = () => {
+    detach();
+    target.removeAttribute(ATTRIBUTE);
+  };
   const done = (event: AnimationEvent) => {
     // The target's own ring only, not an animation of a descendant that bubbles up.
     if (event.target !== target || event.pseudoElement !== '::after') return;
-    target.removeEventListener('animationend', done);
-    target.removeAttribute(ATTRIBUTE);
+    cleanup();
   };
   target.addEventListener('animationend', done);
+  // A hidden or unmounted target never fires animationend: the timer cleans up anyway.
+  const fallback = setTimeout(cleanup, MESSAGE_MS);
+  pending.set(target, detach);
 
-  // An empty text sets the same value twice, which is no change; the timer restarts for every call.
-  setMessage(text);
+  // The same text again must be announced again: clear first, then alternate a zero-width mark so the region's text changes.
+  nonce = !nonce;
+  setMessage('');
+  setMessage(nonce ? text : text + '​');
   clearTimeout(clearTimer);
   clearTimer = setTimeout(() => setMessage(''), MESSAGE_MS);
 }

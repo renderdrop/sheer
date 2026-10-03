@@ -1,11 +1,18 @@
 import { subscribeApp, type AppEvent } from '../../api/app';
 import { useUi } from '../../stores/ui';
+import { noteHoverEnded, noteOpenedFromApp } from './openTransition';
 import { adoptOpenOutcomes } from './useViewer';
 
 /** What the UI does with one push from the backend (see `AppEvent`, src/api/app.ts). */
 export function handleAppEvent(event: AppEvent): void {
-  if (event.type === 'dropHover') useUi.getState().setDropHover(event.active);
-  else adoptOpenOutcomes([event]);
+  if (event.type === 'dropHover') {
+    if (!event.active && useUi.getState().dropHover) noteHoverEnded();
+    useUi.getState().setDropHover(event.active);
+  } else {
+    // A document that opens right after the drag left the window was dropped: the preview card falls and becomes its page (MOTION 4.5).
+    if (event.type === 'opened') noteOpenedFromApp();
+    adoptOpenOutcomes([event]);
+  }
 }
 
 /** The part of `subscribeApp` (src/api/app.ts) that is used here. */

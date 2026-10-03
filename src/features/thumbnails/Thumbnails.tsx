@@ -16,6 +16,7 @@ import {
   type ListAnchor,
   type ThumbnailSpacing,
 } from './layout';
+import { launchJump } from '../viewer/openTransition';
 import { ThumbnailItem } from './ThumbnailItem';
 
 /** The most cells mounted at once, in view or around it: a bound for a list whose thumbnails are tiny. */
@@ -267,7 +268,22 @@ export function ThumbnailList({ docId, pageCount, scheduler }: ThumbnailListProp
     if (target !== null) moveFocus(target);
   };
 
-  const activate = useCallback((index: number) => useViewer.getState().goToPage(index), []);
+  // A click: the thumbnail's picture is cloned and flies into its page once the jump has scrolled there (MOTION 4.6).
+  const activate = useCallback(
+    (index: number) => {
+      const image = scrollerRef.current?.querySelector<HTMLImageElement>(`[role="option"][data-index="${index}"] img`);
+      if (image !== null && image !== undefined && image.src !== '') {
+        const box = image.getBoundingClientRect();
+        launchJump(docId, index, {
+          kind: 'image',
+          src: image.src,
+          rect: { left: box.left, top: box.top, width: box.width, height: box.height },
+        });
+      }
+      useViewer.getState().goToPage(index);
+    },
+    [docId],
+  );
 
   return (
     <div

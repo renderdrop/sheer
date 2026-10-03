@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { act, fireEvent, screen } from '@testing-library/react';
+import { MotionGlobalConfig } from 'motion/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { DocumentInfo } from '../../api/documents';
@@ -11,6 +12,7 @@ import { useView } from '../../stores/view';
 import { VIEWPORT_SETTLE_MS, renderScheduler } from '../../engine/renderScheduler';
 import { BUCKET_SETTLE_MS } from './PageView';
 import { PageLayout, metricsFor, anchorAt } from './layout';
+import { beginOpening, isFresh, resetTransition } from './openTransition';
 import { ViewerCanvas } from './ViewerCanvas';
 import { resetViewer, showDocument, sizes } from './viewer.testutil';
 import { useViewer } from './useViewer';
@@ -678,5 +680,77 @@ describe('rendering the pages again', () => {
     } finally {
       reads.mockRestore();
     }
+  });
+});
+
+describe('jumping to a page (MOTION 4.8)', () => {
+  const withClientHeight = () =>
+    Object.defineProperty(region(), 'clientHeight', { configurable: true, value: VIEWPORT.height });
+
+  it('animates up to two viewports, jumps at once beyond, and a wheel event ends the animation', async () => {
+    MotionGlobalConfig.skipAnimations = false;
+    try {
+      showDocument(BOOK, { viewport: VIEWPORT });
+      setup(<ViewerCanvas />);
+      withClientHeight();
+      // One page is 1072 px away, within two viewports (1400 px): the spring carries it, the scroll has not arrived yet.
+      act(() => useViewer.getState().goToPage(1));
+      expect(region().scrollTop).toBeLessThan(STRIDE);
+      // The user takes over: the animation stops where it is.
+      fireEvent.wheel(region());
+      const stopped = region().scrollTop;
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 600));
+      });
+      expect(region().scrollTop).toBe(stopped);
+      expect(stopped).toBeLessThan(STRIDE);
+      // Twenty pages away is farther than two viewports: at once.
+      act(() => useViewer.getState().goToPage(20));
+      expect(region().scrollTop).toBeCloseTo(20 * STRIDE);
+    } finally {
+      MotionGlobalConfig.skipAnimations = true;
+    }
+  });
+});
+
+describe('the opening zoom (MOTION 4.4)', () => {
+  it('fits the width of a document that has just opened where that is below 100 %, and leaves 100 % where it is above', () => {
+    beginOpening(1);
+    showDocument(BOOK, { viewport: { width: 500, height: 700 } });
+    setup(<ViewerCanvas />);
+    expect(useView.getState().byDoc[1]?.fit).toBe('width');
+    expect(isFresh(1)).toBe(false);
+    resetTransition();
+    resetViewer();
+    beginOpening(1);
+    showDocument(BOOK, { viewport: { width: 1600, height: 700 } });
+    setup(<ViewerCanvas />);
+    expect(useView.getState().byDoc[1]?.fit).toBe('none');
+    expect(useView.getState().byDoc[1]?.zoom).toBe(1);
+  });
+
+  it('is applied only at the opening: a canvas that is resized later does not fit again', () => {
+    beginOpening(1);
+    showDocument(BOOK, { viewport: { width: 1600, height: 700 } });
+    setup(<ViewerCanvas />);
+    act(() => useViewer.getState().setViewport({ width: 500, height: 700 }));
+    expect(useView.getState().byDoc[1]?.fit).toBe('none');
+  });
+});
+
+describe('a zoom in flight when the document changes', () => {
+  it('is dropped: no commit to the new document, no transform left on the content', async () => {
+    showDocument(BOOK, { viewport: VIEWPORT });
+    setup(<ViewerCanvas />);
+    act(() => useViewer.getState().zoomBy(1.2, { x: 100, y: 100 }));
+    const content = document.querySelector<HTMLElement>('[data-canvas-content]');
+    expect(content?.style.transform).toContain('scale(');
+    act(() => showDocument({ id: 2, pageCount: 3, displayName: 'b.pdf' }, { viewport: VIEWPORT }));
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 300));
+    });
+    expect(useView.getState().byDoc[2]?.zoom).toBe(1);
+    expect(useView.getState().byDoc[1]?.zoom).toBe(1);
+    expect(document.querySelector<HTMLElement>('[data-canvas-content]')?.style.transform ?? '').toBe('');
   });
 });

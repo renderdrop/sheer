@@ -437,7 +437,7 @@ describe('Canvas (DESIGN 2)', () => {
       expect(container.querySelector('[data-drop-overlay]')).toBeNull();
       rerender(<Canvas {...props({ dropActive: true })} />);
       const overlay = container.querySelector('[data-drop-overlay]');
-      expect(overlay?.textContent).toBe('Drop to open');
+      expect(overlay?.textContent).toContain('Drop to open');
       for (const className of ['glass-2', 'inset-1', 'z-drag', 'pointer-events-none']) {
         expect(overlay?.className, className).toContain(className);
       }

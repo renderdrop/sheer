@@ -205,9 +205,9 @@ describe('Shell with a document', () => {
       await openDocument(user);
       const readout = () => within(toolbar()).getByRole('button', { name: 'Zoom level' }).textContent;
       fireEvent.keyDown(window, { key: '+', ctrlKey: true });
-      expect(readout()).toBe(`110${NBSP}%`);
+      expect(readout()).toBe(`108${NBSP}%`);
       expect(within(screen.getByRole('contentinfo')).getByRole('button', { name: /Zoom level/ }).textContent).toBe(
-        `110${NBSP}%`,
+        `108${NBSP}%`,
       );
       fireEvent.keyDown(window, { key: '-', ctrlKey: true });
       fireEvent.keyDown(window, { key: '-', ctrlKey: true });
@@ -220,7 +220,7 @@ describe('Shell with a document', () => {
       const { user } = setup(<Shell />);
       await openDocument(user);
       await user.click(tool('Zoom in'));
-      expect(tool('Zoom level').textContent).toBe(`110${NBSP}%`);
+      expect(tool('Zoom level').textContent).toBe(`108${NBSP}%`);
       await user.click(tool('Zoom level'));
       await user.click(within(screen.getByRole('menu')).getByRole('menuitemcheckbox', { name: `200${NBSP}%` }));
       expect(tool('Zoom level').textContent).toBe(`200${NBSP}%`);
@@ -230,7 +230,7 @@ describe('Shell with a document', () => {
       const { user } = setup(<Shell />);
       await openDocument(user);
       fireEvent.keyDown(window, { key: '+', ctrlKey: true });
-      expect(useView.getState().byDoc[1]?.zoom).toBe(1.1);
+      expect(useView.getState().byDoc[1]?.zoom).toBeCloseTo(13 / 12);
     });
   });
 

@@ -1,7 +1,10 @@
+import { AnimatePresence, motion } from 'motion/react';
 import { useCallback, useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 
 import { cx } from '../../components/cx';
 import { useT } from '../../i18n';
+import { SPRING } from '../../lib/motion';
+import { DropCard } from './DropCard';
 import type { ScrollPosition, Viewport } from './layout';
 import { canvasPadding } from './model';
 import { isLayoutAnimating, subscribeLayoutAnimating } from './scrollBridge';
@@ -127,12 +130,17 @@ export function Canvas({
     if (region === null) return;
 
     /** The viewport position (in the region's content box) of a pointer position given in client coordinates. */
+    // While a zoom scales the content its rect is the scaled one: the origin measured before is used until the transform is gone.
+    let rest: { x: number; y: number } | null = null;
     const focusAt = (clientX: number, clientY: number): CanvasZoomFocus | undefined => {
-      const box = contentRef.current?.getBoundingClientRect();
-      if (box === undefined) return undefined;
-      // The content's own origin moves with the scroll position, so the pointer's place in the content box is what is left
-      // after taking the scroll position off the pointer's place in the content.
-      return { x: clientX - box.left - region.scrollLeft, y: clientY - box.top - region.scrollTop };
+      const content = contentRef.current;
+      if (content === null) return undefined;
+      if (content.style.transform === '' || rest === null) {
+        const box = content.getBoundingClientRect();
+        // The content's own origin moves with the scroll position; adding it back gives a place that does not.
+        rest = { x: box.left + region.scrollLeft, y: box.top + region.scrollTop };
+      }
+      return { x: clientX - rest.x, y: clientY - rest.y };
     };
 
     let lastTurn = Number.NEGATIVE_INFINITY;
@@ -263,6 +271,11 @@ export function Canvas({
       stop();
       window.cancelAnimationFrame(release);
       observer.disconnect();
+      const content = contentRef.current;
+      if (freeze !== null && content !== null) {
+        content.style.transform = '';
+        content.style.transformOrigin = '';
+      }
     };
   }, [onViewport]);
 
@@ -298,6 +311,7 @@ export function Canvas({
         ) : content !== null ? (
           <div
             ref={contentRef}
+            data-canvas-content=""
             className="relative m-auto flex-none"
             style={{ width: content.width, height: content.height }}
           >
@@ -313,15 +327,23 @@ export function Canvas({
           scrolled ? 'opacity-100' : 'opacity-0',
         )}
       />
-      {dropActive && (
-        // The drop overlay over a document (DESIGN 3.11): G2, inset 8 px, above everything in the canvas.
-        <div
-          data-drop-overlay=""
-          className="glass-2 pointer-events-none absolute inset-1 z-drag grid place-items-center rounded-panel"
-        >
-          <p className="m-0 font-display text-xl">{t('canvas.dropToOpen')}</p>
-        </div>
-      )}
+      <AnimatePresence>
+        {dropActive && (
+          // The drop overlay over a document (DESIGN 3.11): G2, inset 8 px, above everything in the canvas; the preview card
+          // is centred in it (MOTION 4.5) with the label below.
+          <motion.div
+            key="drop"
+            data-drop-overlay=""
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1, transition: SPRING.base }}
+            exit={{ opacity: 0, transition: SPRING.fast }}
+            className="glass-2 pointer-events-none absolute inset-1 z-drag flex flex-col items-center justify-center gap-3 rounded-panel"
+          >
+            <DropCard />
+            <p className="m-0 font-display text-xl">{t('canvas.dropToOpen')}</p>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </main>
   );
 }

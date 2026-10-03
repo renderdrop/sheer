@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { act, screen } from '@testing-library/react';
+import { act, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { actionOf } from '../../actions/registry';
@@ -96,5 +96,21 @@ describe('the empty state in its slot', () => {
     expect(documentsApi.openDocumentDialog).toHaveBeenCalledTimes(1);
     await act(async () => finish(null));
     expect(screen.getByRole('button', { name: 'Open…' })).not.toBeNull();
+  });
+});
+
+describe('the drop target (MOTION 4.5)', () => {
+  const card = () => document.querySelector('[data-drop-card]');
+
+  it('shows no preview card until a file is dragged over, then a card that holds a moment after the drag left', async () => {
+    setup(<EmptyStateSlot platform="windows" />);
+    expect(card()).toBeNull();
+    act(() => useUi.getState().setDropHover(true));
+    expect(card()).not.toBeNull();
+    expect(screen.getByText('PDF')).not.toBeNull();
+    act(() => useUi.getState().setDropHover(false));
+    // Held for DROP_HOLD_MS (a drop that is accepted lets it fall), then it fades out and goes.
+    expect(card()).not.toBeNull();
+    await waitFor(() => expect(card()).toBeNull());
   });
 });

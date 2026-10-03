@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { act, screen, within } from '@testing-library/react';
+import { act, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { AppEvent } from '../../api/app';
@@ -118,14 +118,14 @@ describe('in the window', () => {
   it('a file dragged over the empty state is invited by its title, and not by an overlay', () => {
     const { container } = setup(<Shell />);
     act(() => handleAppEvent(hover(true)));
-    expect(screen.getByText('Drop to open')).not.toBeNull();
+    expect(screen.getByRole('heading', { name: 'Drop to open' })).not.toBeNull();
     expect(container.querySelector('[data-drop-overlay]')).toBeNull();
     act(() => handleAppEvent(hover(false)));
-    expect(screen.queryByText('Drop to open')).toBeNull();
+    expect(screen.queryByRole('heading', { name: 'Drop to open' })).toBeNull();
     expect(screen.getByText('Open a PDF')).not.toBeNull();
   });
 
-  it('a file dragged over a document shows the overlay over the canvas, and it goes with the drag', () => {
+  it('a file dragged over a document shows the overlay over the canvas, and it goes with the drag', async () => {
     const { container } = setup(<Shell />);
     act(() => handleAppEvent(opened(REPORT)));
     expect(container.querySelector('[data-drop-overlay]')).toBeNull();
@@ -134,7 +134,8 @@ describe('in the window', () => {
     expect(overlay).not.toBeNull();
     expect(within(overlay as HTMLElement).getByText('Drop to open')).not.toBeNull();
     act(() => handleAppEvent(hover(false)));
-    expect(container.querySelector('[data-drop-overlay]')).toBeNull();
+    // The overlay fades out (fast) before it is removed.
+    await waitFor(() => expect(container.querySelector('[data-drop-overlay]')).toBeNull());
   });
 
   it('a dropped file that is not a PDF shows the error as an alert, in the words of the catalog', () => {

@@ -5,7 +5,7 @@ import { closeDocument, openDocumentDialog, type DocumentInfo, type OpenOutcome 
 import { toAppError, type AppError } from '../../api/errors';
 import { getPageSizes } from '../../api/render';
 import { renderScheduler } from '../../engine/renderScheduler';
-import { DEFAULT_ZOOM, clampZoom, stepZoom, wheelFactor } from '../../lib/zoom';
+import { DEFAULT_ZOOM, clampZoom, wheelFactor } from '../../lib/zoom';
 import { useDocuments } from '../../stores/documents';
 import { usePages } from '../../stores/pages';
 import { useUi } from '../../stores/ui';
@@ -23,7 +23,9 @@ import {
 } from './layout';
 import { layoutFor, metricsOfDocument, pageGap } from './model';
 import type { ViewportAnchor } from './Canvas';
-import { readScroll } from './scrollBridge';
+import { beginOpening, forgetOpening } from './openTransition';
+import { markJump, readScroll } from './scrollBridge';
+import { animationsOff, createZoomMotion, zoomContent, type ZoomMotion, type ZoomPoint } from './zoomMotion';
 
 export type { Viewport } from './layout';
 
@@ -31,9 +33,21 @@ export type { Viewport } from './layout';
  * Where a zoom gesture is centred: a position in the viewport in px (the scroll region's content box), the pointer for a wheel or a
  * pinch. Without one the middle of the viewport is the centre (the zoom buttons, the keys, the zoom menu).
  */
-export interface ZoomFocus {
-  x: number;
-  y: number;
+export type ZoomFocus = ZoomPoint;
+
+/** A Ctrl/Cmd+wheel event this large (or counted in lines) is a notch of a mouse wheel: one step. A trackpad pinch sends small deltas. */
+const WHEEL_NOTCH_PX = 50;
+
+/** The zoom motion of the running viewer: the canvas asks it to drop its transform once the committed layout is in the DOM. */
+let motionInUse: ZoomMotion | null = null;
+
+/** Drops a zoom in flight without committing it (document switch, canvas unmount). */
+export function cancelZoomMotion(): void {
+  motionInUse?.cancel();
+}
+
+export function settleZoomMotion(): void {
+  motionInUse?.settle();
 }
 
 /** A render has to last this long to be shown as activity: most are over in a few milliseconds and would only make the status bar blink. */
@@ -120,20 +134,48 @@ export const useViewer = create<ViewerState>()((set, get) => {
     useView.getState().setZoom(current.docId, next, anchorFor(current.docId, focus));
   };
 
-  const fitTo = (fit: 'width' | 'page') => {
+  /** The zoom of a fit of the current page, `null` until the canvas and the page sizes are known. */
+  const fitZoom = (fit: 'width' | 'page'): number | null => {
+    const current = active();
+    const { viewport } = get();
+    if (current === null || viewport === null) return null;
+    const metrics = metricsOfDocument(current.docId);
+    return metrics === null ? null : fitZoomFor(fit, metrics, current.view.pageIndex, viewport, pageGap());
+  };
+
+  /** Makes a fit real. Fitting the page shows it from its top; fitting the width keeps what is around `focus`. */
+  const applyFit = (fit: 'width' | 'page', zoom: number, focus?: ZoomFocus) => {
     const current = active();
     const { viewport } = get();
     if (current === null || viewport === null) return;
-    const metrics = metricsOfDocument(current.docId);
-    const zoom = metrics === null ? null : fitZoomFor(fit, metrics, current.view.pageIndex, viewport, pageGap());
-    if (zoom === null) return;
-    // Fitting the page shows it from its top; fitting the width keeps what is in the middle of the viewport.
     const layout = layoutFor(current.docId, viewport, { zoom: clampZoom(zoom) });
     const anchor =
       fit === 'page' && layout !== null
         ? pageTopAnchor(layout, current.view.pageIndex, centeredScroll(layout))
-        : anchorFor(current.docId);
+        : anchorFor(current.docId, focus);
     useView.getState().setFit(current.docId, fit, zoom, anchor);
+  };
+
+  /** The zoom's motion (MOTION 4.4): the canvas content is scaled while it runs, and this is called once, at rest. */
+  const motion = createZoomMotion({
+    zoom: () => active()?.view.zoom ?? DEFAULT_ZOOM,
+    fitStops: () => ({ width: fitZoom('width'), page: fitZoom('page') }),
+    commit: (zoom, fit, focus) => {
+      if (fit === 'none') zoomTo(zoom, focus);
+      else applyFit(fit, zoom, focus);
+    },
+    content: zoomContent,
+    scroll: readScroll,
+    center: () => motionCenter(),
+    reduced: () =>
+      animationsOff() ||
+      (typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches),
+  });
+  motionInUse = motion;
+
+  const fitTo = (fit: 'width' | 'page') => {
+    const zoom = fitZoom(fit);
+    if (zoom !== null) motion.animateTo(zoom, fit, 'slow');
   };
 
   /** Shows `pageIndex` (clamped) at the top of the viewport. Does nothing for a number that is not one. */
@@ -143,6 +185,7 @@ export const useViewer = create<ViewerState>()((set, get) => {
     const target = Math.min(Math.max(0, current.view.pageCount - 1), Math.max(0, Math.trunc(pageIndex)));
     const layout = layoutFor(current.docId, get().viewport, { current: target });
     const anchor = layout === null ? null : pageTopAnchor(layout, target, readScroll());
+    markJump();
     useView.getState().setPage(current.docId, target, anchor);
   };
 
@@ -156,6 +199,11 @@ export const useViewer = create<ViewerState>()((set, get) => {
     );
     // At the first or the last page there is nowhere to turn to: the page is not snapped back to its top.
     if (target !== current.view.pageIndex) goTo(target);
+  };
+
+  const motionCenter = (): ZoomFocus => {
+    const { viewport } = get();
+    return { x: (viewport?.width ?? 0) / 2, y: (viewport?.height ?? 0) / 2 };
   };
 
   return {
@@ -178,6 +226,7 @@ export const useViewer = create<ViewerState>()((set, get) => {
     close: () => {
       const docId = useDocuments.getState().activeId;
       if (docId === null) return;
+      forgetOpening(docId);
       useView.getState().close(docId);
       useDocuments.getState().remove(docId);
       usePages.getState().remove(docId);
@@ -186,17 +235,26 @@ export const useViewer = create<ViewerState>()((set, get) => {
       closeDocument(docId).catch(() => undefined);
     },
     zoomStep: (direction) => {
-      const current = active();
-      if (current !== null) zoomTo(stepZoom(current.view.zoom, direction));
+      if (active() !== null) motion.step(direction);
     },
-    setZoom: (zoom) => zoomTo(zoom),
-    resetZoom: () => zoomTo(DEFAULT_ZOOM),
+    setZoom: (zoom) => {
+      if (active() !== null) motion.animateTo(zoom, 'none', 'base');
+    },
+    resetZoom: () => {
+      if (active() !== null) motion.animateTo(DEFAULT_ZOOM, 'none', 'slow');
+    },
     fitWidth: () => fitTo('width'),
     fitPage: () => fitTo('page'),
-    zoomByWheel: (deltaY, deltaMode, focus) => get().zoomBy(wheelFactor(deltaY, deltaMode), focus),
+    zoomByWheel: (deltaY, deltaMode, focus) => {
+      if (active() === null) return;
+      if (deltaMode !== 0 || Math.abs(deltaY) >= WHEEL_NOTCH_PX) {
+        if (deltaY !== 0) motion.step(deltaY < 0 ? 1 : -1, focus);
+        return;
+      }
+      get().zoomBy(wheelFactor(deltaY, deltaMode), focus);
+    },
     zoomBy: (factor, focus) => {
-      const current = active();
-      if (current !== null && Number.isFinite(factor) && factor > 0) zoomTo(current.view.zoom * factor, focus);
+      if (active() !== null && Number.isFinite(factor) && factor > 0) motion.gesture(factor, focus ?? motionCenter());
     },
     setScrollMode: (mode) => {
       const current = active();
@@ -280,7 +338,10 @@ function showDocument(info: DocumentInfo): void {
     renderScheduler.cache.admit(info.id);
   }
   documents.add(info);
-  if (isNew) loadPageSizes(info.id);
+  if (isNew) {
+    beginOpening(info.id);
+    loadPageSizes(info.id);
+  }
 }
 
 /**

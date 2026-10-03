@@ -32,6 +32,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   panels shows what is behind it; Iris-tinted glass with a light top edge; soft Iris shadows; a large, gently floating logo on the empty
   state (still under reduced motion, paused while the window is hidden); thin Iris scrollbars; a tinted canvas with an edge in both themes and
   a visible page edge in dark. The inspector column is no longer reserved while nothing is selected: it slides open like the left panel.
+- Motion (ADR-022, docs/MOTION.md, FEEDBACK F3): one spring and three durations (120/200/320 ms) for every animation, exits shorter and
+  fading; buttons, tabs and menu items answer press and hover; the left panel and the inspector slide in and out while the page in the middle
+  stays put; pages fade in instead of popping, a sharp render fades over its stand-in; zoom glides with inertia and snaps to fit width, fit page
+  and 100 %, and a document opens at fit width (at most 100 %); a dropped file shows a preview card that falls into the window; opening
+  flies from the card or thumbnail to the page; short jumps scroll smoothly; a quiet Iris pulse instead of a dialog marks a success.
+  Reduced motion turns all of it into fades. Measured in the Tauri window at 60 fps.
 
 ### Security
 

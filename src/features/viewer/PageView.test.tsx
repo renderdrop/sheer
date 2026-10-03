@@ -206,8 +206,32 @@ describe('the best image meanwhile', () => {
     expect(images()).toHaveLength(2);
     const [, sharp] = images();
     fireEvent.load(sharp as HTMLImageElement);
+    // The sharp image fades in over the stand-in (fast); the stand-in goes when that is done.
+    expect(images()).toHaveLength(2);
+    act(() => {
+      vi.advanceTimersByTime(200);
+    });
     expect(images()).toHaveLength(1);
     expect(images()[0]).toBe(sharp);
+  });
+
+  it('fades the first image in over the placeholder once it is decoded, and shows a cached one at once', async () => {
+    const { scheduler, pending, cache } = fixture();
+    setup(view(scheduler, { pageIndex: 5 }));
+    await act(async () => {
+      pending[0]?.resolve(frame());
+      await Promise.resolve();
+    });
+    const arrived = screen.getByRole('img', { name: 'Page 6 of 12' }).querySelector('img') as HTMLImageElement;
+    expect(arrived.style.opacity).toBe('0');
+    expect(arrived.style.transition).toContain('opacity');
+    fireEvent.load(arrived);
+    expect(arrived.style.opacity).toBe('1');
+    // A frame that was in the cache when the page mounted needs no fade.
+    put(cache, 2);
+    setup(view(scheduler));
+    expect(images()[0]?.style.opacity).toBe('1');
+    expect(images()[0]?.style.transition).toBe('');
   });
 
   it('keeps the image it has when the zoom moves on, and asks for the new bucket', async () => {

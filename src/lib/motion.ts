@@ -27,3 +27,10 @@ export const ZOOM_SNAP_BAND = 0.08;
 export const ZOOM_INERTIA_S = 0.1;
 export const ZOOM_INERTIA_CAP = 1.5;
 export const JUMP_ANIMATE_MAX_VIEWPORTS = 2;
+
+/** Velocity samples of a zoom gesture are kept for this many velocity windows. */
+export const ZOOM_SAMPLE_WINDOWS = 4;
+/** Slack after a fade's duration before its end is acted on (ms). */
+export const FADE_END_SLACK_MS = 40;
+/** The drop card's lift if the tokens cannot be read (`--offset-enter` px, `--scale-lift`). */
+export const DROP_LIFT_FALLBACK = { y: 8, scale: 1.04 } as const;

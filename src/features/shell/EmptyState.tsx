@@ -29,17 +29,6 @@ export interface EmptyStateProps {
   recents?: readonly RecentRow[];
 }
 
-/**
- * The empty state (DESIGN 3.11), shown while no document is open: a centred column, at most 560 wide.
- *
- * 1. The logo slot (ADR-020): the full logo at 160 px floating in a 184 px row of its own, decorative.
- * 2. The drop card, 24 below: G1, radius 24, padding 40, "Open a PDF", the hint, and the primary large "Open…" button
- *    with the shortcut as a pill badge (no icon tile: the logo replaces it). Initial focus is on that button, the keyboard path (dropping is
- *    pointer-only).
- * 3. Recent files, 32 px below: a heading, then the rows, or a placeholder while there are none (until the recents list
- *    lands, M1). The footer "Recent files are stored only on this device." belongs to the rows and is left out with
- *    them: a note about a list that is not there would only say that something is stored.
- */
 /** True while the page is hidden: the float pauses then (DESIGN 1.10). */
 function usePageHidden(): boolean {
   const [hidden, setHidden] = useState(() => document.hidden);
@@ -72,6 +61,17 @@ function LogoSlot() {
   );
 }
 
+/**
+ * The empty state (DESIGN 3.11), shown while no document is open: a centred column, at most 560 wide.
+ *
+ * 1. The logo slot (ADR-020): the full logo at 160 px floating in a 184 px row of its own, decorative.
+ * 2. The drop card, 24 below: G1, radius 24, padding 40, "Open a PDF", the hint, and the primary large "Open…" button
+ *    with the shortcut as a pill badge (no icon tile: the logo replaces it). Initial focus is on that button, the keyboard path (dropping is
+ *    pointer-only).
+ * 3. Recent files, 32 px below: a heading, then the rows, or a placeholder while there are none (until the recents list
+ *    lands, M1). The footer "Recent files are stored only on this device." belongs to the rows and is left out with
+ *    them: a note about a list that is not there would only say that something is stored.
+ */
 export function EmptyState({
   openShortcut,
   openKeyShortcuts,

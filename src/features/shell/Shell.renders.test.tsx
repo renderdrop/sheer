@@ -184,11 +184,11 @@ describe('what changes often does not render the shell, the toolbar or the left 
         .textContent;
 
     fireEvent.keyDown(window, { key: '+', ctrlKey: true });
-    expect(readout()).toBe(`110${NBSP}%`);
-    expect(statusZoom()).toBe(`110${NBSP}%`);
+    expect(readout()).toBe(`108${NBSP}%`);
+    expect(statusZoom()).toBe(`108${NBSP}%`);
 
     fireEvent.wheel(screen.getByRole('region', { name: 'Document' }), { deltaY: -100, ctrlKey: true });
-    expect(readout()).not.toBe(`110${NBSP}%`);
+    expect(readout()).not.toBe(`108${NBSP}%`);
 
     await user.click(tool('Zoom in'));
     await user.click(tool('Zoom level'));

@@ -63,4 +63,16 @@ describe('pulse', () => {
     expect(result.current).toBe('');
     expect(document.activeElement).toBe(before);
   });
+
+  it('announces the same text again within the window, and drops the ring when animationend never comes', () => {
+    const element = target();
+    const { result } = renderHook(() => usePulseMessage());
+    act(() => pulse(element, 'Saved'));
+    const first = result.current;
+    act(() => pulse(element, 'Saved'));
+    expect(result.current).not.toBe(first);
+    expect(result.current.startsWith('Saved')).toBe(true);
+    act(() => vi.advanceTimersByTime(1300));
+    expect(element.hasAttribute('data-pulse')).toBe(false);
+  });
 });
