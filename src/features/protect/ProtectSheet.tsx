@@ -134,12 +134,13 @@ function ProtectModal({ docId }: { docId: number }) {
   const [permConfirm, setPermConfirm] = useState('');
   const [blurred, setBlurred] = useState({ open: false, perm: false });
   const [revealRemove, setRevealRemove] = useState(false);
+  const [removeShown, setRemoveShown] = useState(false);
   const [removePassword, setRemovePassword] = useState('');
   const [wrong, setWrong] = useState(false);
   const [busy, setBusy] = useState(false);
   const alive = useRef(true);
 
-  /** Every password leaves component state here: on close and on submit. */
+  /** Passwords leave component state here: on close, after a staged change, or when a password error needs retyping. */
   const clearSecrets = (): void => {
     setPassword('');
     setConfirm('');
@@ -147,6 +148,7 @@ function ProtectModal({ docId }: { docId: number }) {
     setPermConfirm('');
     setRemovePassword('');
     setShown(false);
+    setRemoveShown(false);
   };
   const close = (): void => {
     clearSecrets();
@@ -189,8 +191,10 @@ function ProtectModal({ docId }: { docId: number }) {
       close();
     } catch (caught) {
       const error = toAppError(caught);
-      if (error.code === 'password_required') setWrong(true);
-      else useUi.getState().showBanner(error);
+      if (error.code === 'password_required') {
+        setWrong(true);
+        setRemovePassword('');
+      } else useUi.getState().showBanner(error);
     } finally {
       if (alive.current) setBusy(false);
     }
@@ -204,7 +208,6 @@ function ProtectModal({ docId }: { docId: number }) {
       permissionsPassword: isRestricted(allow) ? permPassword : null,
       allow,
     };
-    clearSecrets();
     void stage(() => stageProtection(docId, opts));
   };
 
@@ -217,7 +220,6 @@ function ProtectModal({ docId }: { docId: number }) {
     }
     if (needsPassword && (removePassword === '' || byteLength(removePassword) > MAX_PASSWORD_BYTES)) return;
     const secret = needsPassword ? removePassword : null;
-    setRemovePassword('');
     setWrong(false);
     void stage(() => stageUnprotection(docId, secret));
   };
@@ -246,9 +248,9 @@ function ProtectModal({ docId }: { docId: number }) {
               <div className="flex flex-col">
                 <PasswordField
                   id={`${id}-rm`}
-                  label={t('protect.permPassword')}
+                  label={t('protect.ownerPassword')}
                   value={removePassword}
-                  shown={false}
+                  shown={removeShown}
                   invalid={wrong}
                   describedBy={wrong ? `${id}-rm-err` : undefined}
                   autoFocus
@@ -256,7 +258,8 @@ function ProtectModal({ docId }: { docId: number }) {
                     setRemovePassword(value);
                     setWrong(false);
                   }}
-                  toggleLabel=""
+                  onToggle={() => setRemoveShown(!removeShown)}
+                  toggleLabel={removeShown ? t('protect.hide') : t('protect.show')}
                 />
                 <ErrorSlot id={`${id}-rm-err`} message={wrong ? t('protect.wrongPerm') : null} />
                 <div className="flex justify-end">
@@ -296,7 +299,7 @@ function ProtectModal({ docId }: { docId: number }) {
                 invalid={problems.open === 'length'}
                 onChange={setPassword}
                 onToggle={() => setShown(!shown)}
-                toggleLabel={t('protect.show')}
+                toggleLabel={shown ? t('protect.hide') : t('protect.show')}
               />
               <div className="mt-1 flex flex-col">
                 <PasswordField
@@ -339,7 +342,7 @@ function ProtectModal({ docId }: { docId: number }) {
                 invalid={problems.same}
                 onChange={setPermPassword}
                 onToggle={requireOpen ? undefined : () => setShown(!shown)}
-                toggleLabel={t('protect.show')}
+                toggleLabel={shown ? t('protect.hide') : t('protect.show')}
               />
               <div className="mt-1 flex flex-col">
                 <PasswordField

@@ -53,6 +53,8 @@ export interface InsertState {
   byDoc: Readonly<Record<number, DocContent>>;
   /** The selected object of each document (one at a time). */
   selected: Readonly<Record<number, number | null>>;
+  /** Further objects Shift-click added to the selection of each document (DESIGN 3.23). */
+  extra: Readonly<Record<number, readonly number[]>>;
   editing: Editing | null;
   /** The image the Add image tool has chosen and that the next click places. */
   pendingImage: ImageAssetInfo | null;
@@ -63,6 +65,8 @@ export interface InsertState {
   style: InsertStyle;
 
   select: (docId: number, id: number | null) => void;
+  /** Shift-click: adds the object to the selection or takes it out. */
+  toggle: (docId: number, id: number) => void;
   startEditing: (editing: Editing) => void;
   stopEditing: () => void;
   setPendingImage: (image: ImageAssetInfo | null) => void;
@@ -81,6 +85,7 @@ const EMPTY_DOC: DocContent = { rev: 0, byId: {}, loaded: {}, gone: {} };
 export const useInsert = create<InsertState>()((set, get) => ({
   byDoc: {},
   selected: {},
+  extra: {},
   editing: null,
   pendingImage: null,
   arming: false,
@@ -88,7 +93,20 @@ export const useInsert = create<InsertState>()((set, get) => ({
   style: DEFAULT_INSERT_STYLE,
 
   select: (docId, id) =>
-    set((state) => ((state.selected[docId] ?? null) === id ? state : { selected: { ...state.selected, [docId]: id } })),
+    set((state) => {
+      const same = (state.selected[docId] ?? null) === id;
+      if (same && (state.extra[docId]?.length ?? 0) === 0) return state;
+      return { selected: { ...state.selected, [docId]: id }, extra: { ...state.extra, [docId]: [] } };
+    }),
+  toggle: (docId, id) =>
+    set((state) => {
+      const ids = selectionIds(state, docId);
+      const next = ids.includes(id) ? ids.filter((i) => i !== id) : [...ids, id];
+      return {
+        selected: { ...state.selected, [docId]: next[0] ?? null },
+        extra: { ...state.extra, [docId]: next.slice(1) },
+      };
+    }),
   startEditing: (editing) => set({ editing }),
   stopEditing: () => set((state) => (state.editing === null ? state : { editing: null })),
   setPendingImage: (pendingImage) => set({ pendingImage }),
@@ -145,12 +163,16 @@ export const useInsert = create<InsertState>()((set, get) => ({
 
         delete gone[object.id];
       }
-      const selectedId = state.selected[docId] ?? null;
+      const before = selectionIds(state, docId);
+      const kept = before.filter((id) => byId[id] !== undefined);
       const editingGone = state.editing !== null && state.editing.id !== null && byId[state.editing.id] === undefined;
       return {
         byDoc: { ...state.byDoc, [docId]: { ...doc, rev: changes.rev, byId, gone } },
-        ...(selectedId !== null && byId[selectedId] === undefined
-          ? { selected: { ...state.selected, [docId]: null } }
+        ...(kept.length !== before.length
+          ? {
+              selected: { ...state.selected, [docId]: kept[0] ?? null },
+              extra: { ...state.extra, [docId]: kept.slice(1) },
+            }
           : {}),
         ...(editingGone ? { editing: null } : {}),
       };
@@ -164,11 +186,18 @@ export const useInsert = create<InsertState>()((set, get) => ({
       return {
         byDoc: Object.fromEntries(Object.entries(state.byDoc).filter(([id]) => Number(id) !== docId)),
         selected: Object.fromEntries(Object.entries(state.selected).filter(([id]) => Number(id) !== docId)),
+        extra: Object.fromEntries(Object.entries(state.extra).filter(([id]) => Number(id) !== docId)),
         ...(state.editing?.docId === docId ? { editing: null } : {}),
       };
     });
   },
 }));
+
+/** All selected ids of a document, the primary first. */
+export function selectionIds(state: Pick<InsertState, 'selected' | 'extra'>, docId: number): readonly number[] {
+  const primary = state.selected[docId] ?? null;
+  return primary === null ? [] : [primary, ...(state.extra[docId] ?? [])];
+}
 
 const NONE: readonly ContentObject[] = [];
 const pageCache = new WeakMap<object, Map<number, readonly ContentObject[]>>();

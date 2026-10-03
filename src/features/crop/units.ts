@@ -6,7 +6,8 @@ export type Unit = 'mm' | 'in';
 const MM_PER_PT = 25.4 / 72;
 const PT_PER_IN = 72;
 
-/** Unit by locale: the German UI is metric, the English one imperial (the backend exposes no OS measurement system yet). */
+/** Unit by locale: the German UI is metric, the English one imperial (the backend exposes no OS measurement system yet).
+ * v1.1: follow the OS measurement system instead of the UI locale. */
 export function unitFor(locale: Locale): Unit {
   return locale === 'de' ? 'mm' : 'in';
 }

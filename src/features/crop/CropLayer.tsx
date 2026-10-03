@@ -45,6 +45,22 @@ const ARROWS: Record<string, readonly [number, number]> = {
   ArrowDown: [0, 1],
 };
 
+const HANDLE_LABELS = {
+  '-1:-1': 'crop.handle.nw',
+  '0:-1': 'crop.handle.n',
+  '1:-1': 'crop.handle.ne',
+  '-1:0': 'crop.handle.w',
+  '1:0': 'crop.handle.e',
+  '-1:1': 'crop.handle.sw',
+  '0:1': 'crop.handle.s',
+  '1:1': 'crop.handle.se',
+} as const;
+
+/** The label of a handle by where it is on screen. */
+function handleLabel(view: Handle) {
+  return HANDLE_LABELS[`${view.x}:${view.y}` as keyof typeof HANDLE_LABELS];
+}
+
 interface Gesture {
   /** `null` draws a new rectangle from `from`. */
   handle: Handle | null;
@@ -161,11 +177,23 @@ function CropRect({
     }
   };
 
+  const onHandleKeyDown = (event: KeyboardEvent<HTMLDivElement>, handle: Handle) => {
+    if (event.ctrlKey || event.metaKey || event.altKey) return;
+    const arrow = ARROWS[event.key];
+    if (arrow === undefined) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const step = event.shiftKey ? 10 : 1;
+    // The arrow moves the handle on screen; dragMargins takes the movement in page space and the handle's page-space side.
+    const delta = deltaToPage(arrow[0] * step, arrow[1] * step, total);
+    set(dragMargins(margins, handle, delta.x, delta.y, frame));
+  };
+
   const box = boxOf(margins, frame);
   const layout = overlayBox(boxWidth, boxHeight, page, pxPerPt, total);
   const style = { ...layout, transformOrigin: 'center', '--page-scale': pxPerPt } as CSSProperties;
   const [w, h] = page;
-  const shade = 'absolute bg-transparent transition-opacity duration-fast pointer-events-none';
+  const shade = 'absolute bg-transparent pointer-events-none';
   const rectStyle = (x: number, y: number, rw: number, rh: number): CSSProperties => ({
     left: x,
     top: y,
@@ -210,7 +238,9 @@ function CropRect({
             key={`${handle.x}:${handle.y}`}
             data-annot-handle=""
             data-crop-handle=""
-            aria-hidden="true"
+            role="button"
+            tabIndex={0}
+            aria-label={t(handleLabel(viewHandle(handle, total)))}
             style={{
               left: box.x + ((handle.x + 1) / 2) * box.w,
               top: box.y + ((handle.y + 1) / 2) * box.h,
@@ -220,6 +250,7 @@ function CropRect({
             onPointerMove={move}
             onPointerUp={end}
             onPointerCancel={end}
+            onKeyDown={(event) => onHandleKeyDown(event, handle)}
           />
         ))}
       </div>

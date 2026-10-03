@@ -1,7 +1,7 @@
 import { useId, type ReactNode } from 'react';
 
-import type { StdFont } from '../../api/annotations';
-import { PanelSection } from '../../components';
+import type { StdFont, TextAlign } from '../../api/annotations';
+import { Button, PanelSection } from '../../components';
 import { cx } from '../../components/cx';
 import { useT, type PlainKey } from '../../i18n';
 import { selectActiveId, useDocuments } from '../../stores/documents';
@@ -11,7 +11,7 @@ import { shared } from '../inspector/properties';
 import { RadioRow } from '../inspector/RadioRow';
 import { useAnnotations } from '../../stores/annotations';
 import type { AnnotationStyle } from '../inspector/style';
-import { updateObject } from './actions';
+import { deleteObjects, updateObject } from './actions';
 import { useInsert, type ContentObject } from './store';
 
 const FONTS: readonly { value: StdFont; key: PlainKey }[] = [
@@ -49,6 +49,45 @@ function FontSection({ font, onChange }: { font: StdFont; onChange: (font: StdFo
   );
 }
 
+const ALIGNS: readonly { value: TextAlign; key: PlainKey }[] = [
+  { value: 'left', key: 'insert.alignLeft' },
+  { value: 'center', key: 'insert.alignCenter' },
+  { value: 'right', key: 'insert.alignRight' },
+];
+
+function AlignSection({
+  align,
+  disabled,
+  onChange,
+}: {
+  align: TextAlign;
+  disabled: boolean;
+  onChange: (a: TextAlign) => void;
+}) {
+  const t = useT();
+  const labelId = useId();
+  return (
+    <div className="flex flex-col gap-1">
+      <span id={labelId} className="text-sm font-semibold text-text-muted">
+        {t('insert.align')}
+      </span>
+      <RadioRow
+        labelledBy={labelId}
+        value={align}
+        onChange={onChange}
+        className={SEGMENTS}
+        options={ALIGNS.map((entry) => ({
+          value: entry.value,
+          label: t(entry.key),
+          disabled,
+          className: cx(SEGMENT),
+          children: <span className="truncate">{t(entry.key)}</span>,
+        }))}
+      />
+    </div>
+  );
+}
+
 function LockAspect() {
   const t = useT();
   const lock = useInsert((s) => s.lockAspect);
@@ -73,7 +112,8 @@ function useSelectedObject(docId: number | null): ContentObject | null {
     return id === null || docId === null ? null : (s.byDoc[docId]?.byId[id] ?? null);
   });
   const comments = useAnnotations((s) => (docId === null ? 0 : (s.selectedIds[docId]?.length ?? 0)));
-  return comments > 0 ? null : object;
+  const several = useInsert((s) => (docId === null ? 0 : (s.extra[docId]?.length ?? 0))) > 0;
+  return comments > 0 || several ? null : object;
 }
 
 /**
@@ -97,6 +137,11 @@ export function useInsertInspector(): { title: string; body: ReactNode; footer?:
         ...(patch.opacity === undefined ? {} : { opacity: patch.opacity }),
       });
     const disabled = object.locked;
+    const deleteButton = (
+      <PanelSection>
+        <Button onClick={() => void deleteObjects(docId, [object.id])}>{t('insert.delete')}</Button>
+      </PanelSection>
+    );
     return {
       title: t(object.kind === 'textBox' ? 'insert.textRole' : 'insert.imageRole'),
       body:
@@ -109,8 +154,16 @@ export function useInsertInspector(): { title: string; body: ReactNode; footer?:
               <FontSizeSection fontSize={shared([object.fontSize])} disabled={disabled} onChange={change} />
             </PanelSection>
             <PanelSection>
+              <AlignSection
+                align={object.align}
+                disabled={disabled}
+                onChange={(align) => void updateObject(docId, object.id, { align })}
+              />
+            </PanelSection>
+            <PanelSection>
               <ColourSection colour={shared([object.color])} recent={[]} disabled={disabled} onChange={change} />
             </PanelSection>
+            {deleteButton}
           </>
         ) : (
           <>
@@ -120,6 +173,7 @@ export function useInsertInspector(): { title: string; body: ReactNode; footer?:
             <PanelSection>
               <OpacitySection opacity={shared([object.opacity])} disabled={disabled} onChange={change} />
             </PanelSection>
+            {deleteButton}
           </>
         ),
     };

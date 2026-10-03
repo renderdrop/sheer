@@ -63,6 +63,7 @@ function ReadyLayer({
   const tool = useUi((s) => s.activeTool);
   const objects = useInsert((s) => objectsOnPage(s, docId, pageIndex));
   const selectedId = useInsert((s) => s.selected[docId] ?? null);
+  const extraIds = useInsert((s) => s.extra[docId]);
   const editing = useInsert((s) => s.editing);
   const pendingImage = useInsert((s) => s.pendingImage);
   const lockAspect = useInsert((s) => s.lockAspect);
@@ -250,7 +251,7 @@ function ReadyLayer({
       ? defaultImageRect(pendingImage.aspect, ghost, page)
       : null;
 
-  const only = selectedId !== null;
+  const only = selectedId !== null && (extraIds?.length ?? 0) === 0;
   return (
     <div
       data-insert-layer=""
@@ -280,7 +281,7 @@ function ReadyLayer({
               <ObjectFrame
                 object={o}
                 box={shown}
-                selected={selectedId === o.id}
+                selected={selectedId === o.id || (extraIds?.includes(o.id) ?? false)}
                 withHandles={only && selectedId === o.id && !hidden}
                 keepAspect={lockAspect}
                 interactive={hitsOn}

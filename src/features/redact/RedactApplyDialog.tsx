@@ -32,7 +32,7 @@ export function redactWarnings(warnings: readonly JobWarning[]): (keyof typeof W
 const close = (): void => useRedact.getState().setApplyOpen(false);
 
 /** The success moment (MOTION 4.7): the "Edited" badge pulses with the message, and the toast offers the one-step undo. */
-function celebrate(docId: number): void {
+function celebrate(docId: number, pages: readonly number[]): void {
   const t = translators[useLocaleStore.getState().locale];
   const message = t('redact.done');
   useUi.getState().showToast({
@@ -50,6 +50,9 @@ function celebrate(docId: number): void {
   requestAnimationFrame(() => {
     const badge = document.querySelector<HTMLElement>('[data-edited]');
     if (badge !== null) pulse(badge, message);
+    // The affected thumbnails pulse silently: the badge already announced the message.
+    for (const page of pages)
+      for (const thumb of document.querySelectorAll<HTMLElement>(`[data-thumb-page="${page}"]`)) pulse(thumb, '');
   });
 }
 
@@ -64,6 +67,11 @@ function ApplyModal({ docId }: { docId: number }) {
   const [pages] = useState(() => markedPages(marks));
   const progress = run.progress;
   const finished = warnings !== null;
+  // One text for the bar's label and the visible line; the line is hidden from AT so it is announced once.
+  const progressText =
+    progress !== null && progress.total > 0
+      ? t('redact.progress', { i: Math.min(progress.done + 1, progress.total), n: progress.total })
+      : t('redact.progress', { i: 1, n: pages.length });
 
   const go = () => {
     if (run.running || pages.length === 0) return;
@@ -73,7 +81,7 @@ function ApplyModal({ docId }: { docId: number }) {
         if (event.changes !== undefined && event.changes !== null)
           useAnnotations.getState().applyChanges(docId, event.changes);
         useRedact.getState().select(docId, null);
-        celebrate(docId);
+        celebrate(docId, pages);
         const shown = redactWarnings(event.warnings);
         if (shown.length === 0) close();
         else setWarnings(shown);
@@ -85,18 +93,17 @@ function ApplyModal({ docId }: { docId: number }) {
   return (
     <Modal labelledBy={`${id}-title`} width="w-dialog-md" onClose={cancel}>
       <div className="flex items-center gap-1">
-        <span className="flex size-control-md shrink-0 items-center justify-center text-warning-icon">
-          <Icon icon={TriangleAlert} />
-        </span>
+        {!finished && (
+          <span className="flex size-control-md shrink-0 items-center justify-center text-warning-icon">
+            <Icon icon={TriangleAlert} />
+          </span>
+        )}
         <h2 id={`${id}-title`} className="m-0 font-display text-xl">
-          {t('redact.confirmTitle')}
+          {finished ? t('redact.done') : t('redact.confirmTitle')}
         </h2>
       </div>
       {finished ? (
         <div className="mt-1 flex flex-col gap-1">
-          <p role="status" className="m-0 text-md">
-            {t('redact.done')}
-          </p>
           <ul className="m-0 flex list-none flex-col gap-0-5 p-0 text-md">
             {warnings.map((key) => (
               <li key={key} className="flex items-start gap-0-5 text-warning-text">
@@ -117,15 +124,9 @@ function ApplyModal({ docId }: { docId: number }) {
           <div className="mt-1 flex min-h-2 flex-col justify-center gap-1">
             {run.running && (
               <>
-                <ProgressBar
-                  label={t('redact.progress', { i: 1, n: pages.length })}
-                  done={progress?.done ?? 0}
-                  total={progress?.total ?? 0}
-                />
-                <p role="status" className="m-0 text-sm text-text-muted tabular-nums">
-                  {progress !== null && progress.total > 0
-                    ? t('redact.progress', { i: Math.min(progress.done + 1, progress.total), n: progress.total })
-                    : t('redact.progress', { i: 1, n: pages.length })}
+                <ProgressBar label={progressText} done={progress?.done ?? 0} total={progress?.total ?? 0} />
+                <p aria-hidden="true" className="m-0 text-sm text-text-muted tabular-nums">
+                  {progressText}
                 </p>
               </>
             )}

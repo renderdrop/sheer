@@ -5,7 +5,7 @@ import { Button, Icon } from '../../components';
 import { useT } from '../../i18n';
 import { selectActiveId, useDocuments } from '../../stores/documents';
 import { useUi } from '../../stores/ui';
-import { clearMarks, endRedactMode } from './actions';
+import { clearMarks } from './actions';
 import { MarksList } from './MarksList';
 import { marksOf, useRedact } from './store';
 
@@ -23,7 +23,7 @@ function Empty() {
   );
 }
 
-/** The list, the metadata option and the fixed footer (clear, done, apply) of the redact mode. */
+/** The list, the metadata option and the fixed footer (clear, apply) of the redact mode. */
 function RedactBody({ docId }: { docId: number }) {
   const t = useT();
   const marks = useRedact((state) => marksOf(state, docId));
@@ -54,9 +54,6 @@ function RedactBody({ docId }: { docId: number }) {
           {t('redact.clear')}
         </Button>
         <span className="flex-auto" />
-        <Button variant="secondary" size="sm" onClick={endRedactMode}>
-          {t('redact.exit')}
-        </Button>
         <Button
           variant="primary"
           size="sm"
@@ -75,7 +72,7 @@ function RedactBody({ docId }: { docId: number }) {
 
 /**
  * Inspector content of the redact mode (DESIGN 3.38): the header counts the marks, the body lists them for review, the checkbox
- * decides about the metadata, and the footer clears, ends the mode or opens the apply dialog (`aria-disabled` without marks).
+ * decides about the metadata, and the footer clears or opens the apply dialog (`aria-disabled` without marks).
  * `null` while the mode is off, so the standard inspector shows.
  */
 export function useRedactInspector(): { title: string; body: ReactNode; footer?: ReactNode } | null {

@@ -186,12 +186,15 @@ export const ThumbnailItem = memo(function ThumbnailItem({
         // page a 2 px accent ring. The ring is a shape as well as a color: it is there or it is not, and under forced colors it is
         // still drawn in the system highlight.
         className={cx(
-          'relative shrink-0 overflow-hidden rounded-xs bg-page shadow-page',
+          'pulse-target shrink-0 rounded-xs bg-page shadow-page [--pulse-radius:var(--radius-xs)]',
           selected && 'outline-2 outline-accent',
         )}
+        data-thumb-page={pageId}
         style={{ width: thumbWidth, height: thumbHeight }}
       >
-        {shown !== undefined && <ThumbnailImage key={shown.key} src={cache.urlOf(shown)} />}
+        <div className="size-full overflow-hidden rounded-xs">
+          {shown !== undefined && <ThumbnailImage key={shown.key} src={cache.urlOf(shown)} />}
+        </div>
       </div>
       <span
         aria-hidden="true"

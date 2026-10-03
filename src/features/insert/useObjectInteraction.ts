@@ -5,9 +5,9 @@ import type { Rect } from '../../api/wire';
 import { useAnnotations } from '../../stores/annotations';
 import { arrowStep, type HandleId } from '../annotations/selection/geometry';
 import type { Rotation } from '../viewer/transform';
-import { deleteObjects, updateObject } from './actions';
+import { deleteObjects, moveObjects, updateObject } from './actions';
 import { BIG_NUDGE_PT, movedRect, NUDGE_PT, resizedRect, sameRect, viewDeltaToPage } from './geometry';
-import { useInsert, type ContentObject } from './store';
+import { selectionIds, useInsert, type ContentObject } from './store';
 
 /** A pointer must travel this far (screen px) before a press on an object becomes a drag. */
 export const DRAG_THRESHOLD_PX = 4;
@@ -77,6 +77,11 @@ export function useObjectInteraction(params: InteractionParams): Interaction {
     async (object: ContentObject, d: Draft) => {
       const box = draftBox(object, d, page);
       if (sameRect(box, object.box)) return;
+      const ids = selectionIds(useInsert.getState(), docId);
+      if (d.kind === 'move' && ids.length > 1 && ids.includes(object.id)) {
+        await moveObjects(docId, ids, box.x - object.box.x, box.y - object.box.y);
+        return;
+      }
       await updateObject(docId, object.id, { box });
     },
     [docId, page],
@@ -169,18 +174,26 @@ export function useObjectInteraction(params: InteractionParams): Interaction {
       if (event.button !== 0) return;
       event.preventDefault();
       flushNudge();
-      select(object.id);
+      const shift = event.shiftKey;
+      const alreadySelected = selectionIds(useInsert.getState(), docId).includes(object.id);
+      if (shift) {
+        useAnnotations.getState().clearSelection(docId);
+        useInsert.getState().toggle(docId, object.id);
+      } else if (!alreadySelected) {
+        select(object.id);
+      }
       (event.currentTarget as HTMLElement)
         .closest('[data-insert-layer]')
         ?.querySelector<HTMLElement>(`[data-insert-frame="${object.id}"]`)
         ?.focus({ preventScroll: true });
+      if (shift) return;
       if (object.kind === 'textBox' && event.detail >= 2) {
         onEdit(object);
         return;
       }
       drag(object, event, (dx, dy) => ({ kind: 'move', id: object.id, dx, dy }));
     },
-    [drag, flushNudge, onEdit, select],
+    [docId, drag, flushNudge, onEdit, select],
   );
 
   const onHandlePointerDown = useCallback(
@@ -247,7 +260,8 @@ export function useObjectInteraction(params: InteractionParams): Interaction {
       } else if (event.key === 'Delete' || event.key === 'Backspace') {
         event.preventDefault();
         flushNudge();
-        void deleteObjects(docId, [object.id]);
+        const ids = selectionIds(useInsert.getState(), docId);
+        void deleteObjects(docId, ids.includes(object.id) ? ids : [object.id]);
       } else if (event.key === 'Enter' && object.kind === 'textBox') {
         event.preventDefault();
         onEdit(object);
@@ -267,15 +281,37 @@ export function useObjectInteraction(params: InteractionParams): Interaction {
   );
 
   // Focus selects (DESIGN 3.23): a Tab stop that is not the selection becomes the selection.
-  const onItemFocus = useCallback((object: ContentObject) => select(object.id), [select]);
+  const onItemFocus = useCallback(
+    (object: ContentObject) => {
+      if (!selectionIds(useInsert.getState(), docId).includes(object.id)) select(object.id);
+    },
+    [docId, select],
+  );
+
+  const selected = useInsert((s) => s.selected[docId]);
+  const extra = useInsert((s) => s.extra[docId]);
+  const selection = useMemo(
+    () => (selected === null || selected === undefined ? [] : [selected, ...(extra ?? [])]),
+    [selected, extra],
+  );
 
   const preview = useMemo(() => {
     const map = new Map<number, Rect>();
     if (draft === null) return map;
     const object = objects.find((o) => o.id === draft.id);
-    if (object !== undefined) map.set(object.id, draftBox(object, draft, page));
+    if (object === undefined) return map;
+    map.set(object.id, draftBox(object, draft, page));
+    if (draft.kind === 'move' && selection.includes(object.id)) {
+      // The other selected objects of the page follow by the same distance as the one being dragged.
+      const box = draftBox(object, draft, page);
+      for (const other of objects) {
+        if (other.id !== object.id && selection.includes(other.id)) {
+          map.set(other.id, movedRect(other.box, box.x - object.box.x, box.y - object.box.y, page));
+        }
+      }
+    }
     return map;
-  }, [draft, objects, page]);
+  }, [draft, objects, page, selection]);
 
   return { preview, onItemPointerDown, onHandlePointerDown, onItemKeyDown, onItemFocus, onItemBlur: flushNudge };
 }

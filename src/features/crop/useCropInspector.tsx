@@ -38,6 +38,14 @@ function MarginField({ target, viewSide, label, unit, onValidity }: MarginFieldP
 
   const key = keyOf(target.docId, target.slot.id);
 
+  // A change of the rectangle (a drag, an arrow key, another field) makes a typed value and its error stale.
+  const [seen, setSeen] = useState(target.margins);
+  if (seen !== target.margins) {
+    setSeen(target.margins);
+    setInvalid(false);
+    setDraft(null);
+  }
+
   /** Moves the rectangle to the typed value when it leaves a valid rectangle; says so otherwise. */
   const commit = (pt: number | null): boolean => {
     const next: PageCrop = { ...target.margins, [side]: pt ?? Number.NaN };
@@ -103,6 +111,12 @@ function CropInspectorBody() {
   const [badSides, setBadSides] = useState<ReadonlySet<Side>>(new Set());
   const rangeId = useId();
   const errorId = useId();
+  const margins = target?.margins;
+  const [seenMargins, setSeenMargins] = useState(margins);
+  if (seenMargins !== margins) {
+    setSeenMargins(margins);
+    if (badSides.size > 0) setBadSides(new Set());
+  }
   if (target === null) return null;
 
   const unit = unitFor(locale);
@@ -177,7 +191,7 @@ function CropInspectorBody() {
                 aria-label={t('crop.range')}
                 aria-invalid={rangeInvalid && range.trim() !== '' ? true : undefined}
                 aria-describedby={rangeInvalid ? errorId : undefined}
-                placeholder="1-3, 5, 8-"
+                placeholder={t('crop.rangePlaceholder')}
                 value={range}
                 onChange={(event) => useCrop.getState().setRange(event.target.value)}
                 className="w-full"

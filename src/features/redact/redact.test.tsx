@@ -10,7 +10,7 @@ import { useDocuments } from '../../stores/documents';
 import { resetDocuments } from '../../stores/documents.testutil';
 import { useUi } from '../../stores/ui';
 import { useSearch, type Hit } from '../search/store';
-import { redactSearchResults } from './actions';
+import { markSelection, redactSearchResults } from './actions';
 import { RedactApplyDialog } from './RedactApplyDialog';
 import { RedactBanner } from './RedactBanner';
 import { RedactLayer } from './RedactLayer';
@@ -21,6 +21,7 @@ const api = vi.hoisted(() => ({ markRedactions: vi.fn(), applyRedactions: vi.fn(
 const annotations = vi.hoisted(() => ({ applyCommand: vi.fn() }));
 const jobs = vi.hoisted(() => ({ cancelJob: vi.fn() }));
 const goToPoint = vi.hoisted(() => vi.fn());
+const peekLayer = vi.hoisted(() => vi.fn());
 vi.mock('../../api/redaction', async (importOriginal) => ({ ...(await importOriginal<object>()), ...api }));
 vi.mock('../../api/annotations', async (importOriginal) => ({ ...(await importOriginal<object>()), ...annotations }));
 vi.mock('../../api/jobs', async (importOriginal) => ({ ...(await importOriginal<object>()), ...jobs }));
@@ -28,7 +29,7 @@ vi.mock('../viewer/useViewer', () => ({
   useViewer: { getState: () => ({ goToPoint }) },
   adoptOpenOutcomes: vi.fn(),
 }));
-vi.mock('../textlayer/cache', () => ({ loadLayer: () => Promise.resolve(null), peekLayer: () => undefined }));
+vi.mock('../textlayer/cache', () => ({ loadLayer: () => Promise.resolve(null), peekLayer }));
 
 MotionGlobalConfig.skipAnimations = true;
 
@@ -91,6 +92,7 @@ beforeEach(() => {
   for (const fn of [...Object.values(api), ...Object.values(annotations), ...Object.values(jobs)]) fn.mockReset();
   jobs.cancelJob.mockResolvedValue(undefined);
   goToPoint.mockReset();
+  peekLayer.mockReset();
 });
 
 const seed = (...marks: RedactMark[]) => act(() => useAnnotations.getState().applyChanges(DOC, changes(marks)));
@@ -188,6 +190,44 @@ describe('the inspector', () => {
     expect(useRedact.getState().removeMetadata).toBe(false);
     fireEvent.click(screen.getByRole('button', { name: 'Apply…' }));
     expect(useRedact.getState().applyOpen).toBe(true);
+  });
+});
+
+describe('a text selection becomes marks', () => {
+  it('sends the quads of the selected characters as a text mark and clears the selection', async () => {
+    const text = 'alpha beta';
+    const boxes = Float32Array.from(Array.from({ length: text.length }, (_, i) => [i * 6, 0, 6, 12]).flat());
+    peekLayer.mockReturnValue({ text, boxes, truncated: false });
+    const layer = document.createElement('div');
+    layer.dataset.textLayer = '';
+    layer.dataset.textPage = '1';
+    layer.dataset.textLength = String(text.length);
+    const span = document.createElement('span');
+    span.dataset.runStart = '0';
+    span.dataset.runEnd = String(text.length);
+    span.textContent = text;
+    layer.append(span);
+    document.body.append(layer);
+    const selection = window.getSelection() as Selection;
+    selection.setBaseAndExtent(span.firstChild as Node, 0, span.firstChild as Node, 5);
+    api.markRedactions.mockResolvedValue(changes([mark(1, 1, 'text')]));
+    expect(markSelection()).toBe(true);
+    await waitFor(() => expect(useRedact.getState().marks[DOC]?.[1]).toBeDefined());
+    const [doc, specs] = api.markRedactions.mock.calls[0] as [
+      number,
+      { pageId: number; source: string; quads: unknown[] }[],
+    ];
+    expect(doc).toBe(DOC);
+    expect(specs).toHaveLength(1);
+    expect(specs[0]).toMatchObject({ pageId: 1, source: 'text' });
+    expect(specs[0]?.quads).toHaveLength(1);
+    expect(selection.rangeCount).toBe(0);
+    layer.remove();
+  });
+
+  it('marks nothing without a selection in a text layer', () => {
+    expect(markSelection()).toBe(false);
+    expect(api.markRedactions).not.toHaveBeenCalled();
   });
 });
 

@@ -138,11 +138,65 @@ describe('the Protect sheet', () => {
     const { user } = setup(<Fixture />);
     await user.click(await screen.findByRole('button', { name: 'Remove protection' }));
     expect(api.stageUnprotection).not.toHaveBeenCalled();
-    await user.type(screen.getByLabelText('Permissions password'), 'nope');
+    await user.type(screen.getByLabelText('Owner password'), 'nope');
     await user.click(screen.getByRole('button', { name: 'Remove protection' }));
     expect(await screen.findByText('Wrong permissions password.')).toBeTruthy();
     expect(api.stageUnprotection).toHaveBeenCalledWith(1, 'nope');
     expect(useUi.getState().protectOpen).toBe(true);
-    expect((screen.getByLabelText('Permissions password') as HTMLInputElement).value).toBe('');
+    expect((screen.getByLabelText('Owner password') as HTMLInputElement).value).toBe('');
+  });
+
+  it('toggles password visibility and switches the toggle label', async () => {
+    const { user } = setup(<Fixture />);
+    await user.click(screen.getByLabelText('Require a password to open'));
+    const pw = screen.getByLabelText('Password') as HTMLInputElement;
+    const confirm = screen.getByLabelText('Confirm password') as HTMLInputElement;
+    await user.click(screen.getByRole('button', { name: 'Show passwords' }));
+    expect(pw.type).toBe('text');
+    expect(confirm.type).toBe('text');
+    await user.click(screen.getByRole('button', { name: 'Hide passwords' }));
+    expect(pw.type).toBe('password');
+    expect(screen.queryByRole('button', { name: 'Hide passwords' })).toBeNull();
+  });
+
+  it('gives the remove field an owner label and its own show/hide toggle', async () => {
+    api.getProtection.mockResolvedValue({ ...plain, encrypted: true, method: 'aes256', ownerRights: false });
+    const { user } = setup(<Fixture />);
+    await user.click(await screen.findByRole('button', { name: 'Remove protection' }));
+    const field = screen.getByLabelText('Owner password') as HTMLInputElement;
+    expect(field.type).toBe('password');
+    await user.click(screen.getByRole('button', { name: 'Show passwords' }));
+    expect(field.type).toBe('text');
+    await user.click(screen.getByRole('button', { name: 'Hide passwords' }));
+    expect(field.type).toBe('password');
+  });
+
+  it('shows the strength meter word by password strength', async () => {
+    const { user } = setup(<Fixture />);
+    await user.click(screen.getByLabelText('Require a password to open'));
+    const meter = screen.getByRole('group', { name: 'Password strength' });
+    expect(meter.textContent).toBe('');
+    const pw = screen.getByLabelText('Password');
+    await user.type(pw, 'abc');
+    expect(meter.textContent).toBe('Weak');
+    await user.clear(pw);
+    await user.type(pw, 'abcdefgh');
+    expect(meter.textContent).toBe('Fair');
+    await user.clear(pw);
+    await user.type(pw, 'Abcdefgh1234');
+    expect(meter.textContent).toBe('Strong');
+  });
+
+  it('keeps the typed passwords when staging fails with another error', async () => {
+    api.stageProtection.mockRejectedValue({ code: 'io', key: 'error.io', retryable: true });
+    const { user } = setup(<Fixture />);
+    await user.click(screen.getByLabelText('Require a password to open'));
+    await user.type(screen.getByLabelText('Password'), 'hunter22');
+    await user.type(screen.getByLabelText('Confirm password'), 'hunter22');
+    await user.click(apply());
+    await waitFor(() => expect(useUi.getState().banner).not.toBeNull());
+    expect(useUi.getState().protectOpen).toBe(true);
+    expect((screen.getByLabelText('Password') as HTMLInputElement).value).toBe('hunter22');
+    expect((screen.getByLabelText('Confirm password') as HTMLInputElement).value).toBe('hunter22');
   });
 });

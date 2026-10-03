@@ -143,15 +143,15 @@ The Stop hook picks the first open `- [ ]` line, so order matters. Scope: `docs/
 - [x] True redaction (flatten affected pages, strip text/annots/metadata) + not-extractable test
 - [x] Password protection and permissions (AES-256), remove password
 - [x] Metadata view/edit/remove
-- [ ] Politur M5
+- [x] Politur M5
   - (flaky) Comments.test.tsx "shows the contents as the excerpt, and a muted No text…" failed once under the full suite (passes alone 3/3): make it deterministic
   - (from M4 design review, major) empty state must fit an 800 px window (content 832 px in a 702 px scroller): smaller logo (≈96–112 px), tighter gaps, or at most 3 recents when the window is short
   - (from M4 design review, minor) light-theme "Formular" status pill without background; Flatten label "Formular fixieren…" vs §3.32 `form.flatten` "Formular reduzieren…" (fix string or ADR + DESIGN); same width rule for the Tool-options toggle and button; page gutter at 100 % (page flush to canvas edges, horizontal bar) and near-black top band in dark; check the field focus ring
   - (from M4 polish review) OrganizeBar icon size literal → token; comments delete-focus test must prove focus by key; Enter-to-place test for more than one rect layout; ~~`import_warnings` IPC + UI~~ (done); discard drawn/image drafts too (done ad9081a); macOS keychain untested (B-001)
   - (UI half done in ad9081a) page gutter at 100 % and the near-black top band in dark: check at the window review (jsdom cannot)
   - (from M5 backend reviews, minor) DONE: image.rs single to_rgba8, Zeroizing in closure, fewer password copies in save.rs, SASLprep fallback for session passwords, CI-fail tests, close drops secrets test, limits.rs docs
-  - (from M5 UI reviews, minor — carried to Politur M6 if not done at M5 close) insert: Align control (§3.36), multi-select, inspector Delete button, Delete announces + Undo toast; crop: unit from OS measurement system (Rust), stale aria-invalid after drag, dead shade transition, i18n range placeholder, focusable handles; redact: thumbnail pulse, duplicate progress label, title after warnings, extra exit button, text-selection marking test; protect: owner-password label + show/hide on remove, keep passwords on non-password stage errors, Hide label, strength/toggle tests, rewrite-cancel test
-  - (from M4 security, low) style-src 'unsafe-inline' (nonces/classes); devCsp never in release (pinned)
+  - (from M5 UI reviews, minor) DONE except the crop unit from the OS measurement system (v1.1): insert: Align control (§3.36), multi-select, inspector Delete button, Delete announces + Undo toast; crop: unit from OS measurement system (Rust), stale aria-invalid after drag, dead shade transition, i18n range placeholder, focusable handles; redact: thumbnail pulse, duplicate progress label, title after warnings, extra exit button, text-selection marking test; protect: owner-password label + show/hide on remove, keep passwords on non-password stage errors, Hide label, strength/toggle tests, rewrite-cancel test
+  - (open, carried to M7 hardening) (from M4 security, low) style-src 'unsafe-inline' (nonces/classes); devCsp never in release (pinned)
 
 ## M6 — Convert and output (v0.9.0)
 

@@ -7,6 +7,7 @@ import type { ChangeSet, ContentAnnotation } from '../../api/annotations';
 import * as content from '../../api/content';
 import { toAppError } from '../../api/errors';
 import { EMPTY_HISTORY, useAnnotations } from '../../stores/annotations';
+import { useDocuments } from '../../stores/documents';
 import { useUi } from '../../stores/ui';
 import { forgetFileRotations, setFileRotation } from '../viewer/fileRotation';
 import type { PageLayerProps } from '../viewer/pageLayer';
@@ -107,6 +108,7 @@ beforeEach(() => {
   useInsert.setState({
     byDoc: {},
     selected: {},
+    extra: {},
     editing: null,
     pendingImage: null,
     arming: false,
@@ -169,6 +171,36 @@ describe('InsertLayer: drawing and selecting', () => {
     render(<InsertLayer {...props} />);
     fireEvent.keyDown(frame(1), { key: 'Delete' });
     await waitFor(() => expect(lastCommand()).toEqual({ type: 'deleteAnnotations', ids: [1] }));
+  });
+
+  it('Delete shows the Undo toast', async () => {
+    render(<InsertLayer {...props} />);
+    fireEvent.keyDown(frame(1), { key: 'Delete' });
+    await waitFor(() => expect(useUi.getState().toast?.message).toBe('Text box deleted'));
+    expect(useUi.getState().toast?.action?.label).toBe('Undo');
+  });
+
+  it('Shift-click adds to the selection; Delete removes all selected, Shift-click again takes one out', async () => {
+    render(<InsertLayer {...props} />);
+    fireEvent.pointerDown(frame(1), { button: 0 });
+    fireEvent.pointerDown(frame(2), { button: 0, shiftKey: true });
+    expect(useInsert.getState().selected[1]).toBe(1);
+    expect(useInsert.getState().extra[1]).toEqual([2]);
+    fireEvent.keyDown(frame(2), { key: 'Delete' });
+    await waitFor(() => expect(lastCommand()).toEqual({ type: 'deleteAnnotations', ids: [1, 2] }));
+    await waitFor(() => expect(useUi.getState().toast?.message).toBe('2 objects deleted'));
+    fireEvent.pointerDown(frame(2), { button: 0, shiftKey: true });
+    expect(useInsert.getState().extra[1]).toEqual([]);
+  });
+
+  it('dragging one of several selected objects moves them together', async () => {
+    render(<InsertLayer {...props} />);
+    fireEvent.pointerDown(frame(1), { button: 0 });
+    fireEvent.pointerDown(frame(2), { button: 0, shiftKey: true });
+    fireEvent.pointerDown(frame(1), { button: 0, clientX: 20, clientY: 20 });
+    fireEvent.pointerMove(window, { clientX: 40, clientY: 20 });
+    fireEvent.pointerUp(window);
+    await waitFor(() => expect(lastCommand()).toEqual({ type: 'moveAnnotations', ids: [1, 2], dx: 10, dy: 0 }));
   });
 
   it('an arrow key nudges, joined into one update after a pause', async () => {
@@ -363,5 +395,22 @@ describe('the inspector', () => {
     expect(screen.getByTestId('probe').textContent).toBe('none');
     act(() => useUi.setState({ activeTool: 'textBox' }));
     expect(screen.getByTestId('probe').textContent).toBe('Tool options: Add text');
+  });
+
+  it('a selected text box has Alignment and Delete', async () => {
+    function Body() {
+      return <>{useInsertInspector()?.body}</>;
+    }
+    act(() => {
+      useDocuments.setState({ activeId: 1 });
+      useInsert.getState().select(1, 1);
+    });
+    render(<Body />);
+    fireEvent.click(screen.getByRole('radio', { name: 'Right' }));
+    await waitFor(() =>
+      expect(lastCommand()).toMatchObject({ type: 'updateAnnotation', id: 1, patch: { align: 'right' } }),
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
+    await waitFor(() => expect(lastCommand()).toEqual({ type: 'deleteAnnotations', ids: [1] }));
   });
 });

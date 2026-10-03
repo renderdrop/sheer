@@ -1,6 +1,10 @@
 import type { AnnotationPatch, ContentDraft, Rgb, StdFont } from '../../api/annotations';
 import { insertImageDialog, type ImageAssetInfo } from '../../api/content';
 import { toAppError, type AppError } from '../../api/errors';
+import { runHistoryStep } from '../../actions/history';
+import { announce } from '../../components';
+import { translators } from '../../i18n';
+import { useLocaleStore } from '../../i18n/store';
 import type { Rect } from '../../api/wire';
 import { useAnnotations } from '../../stores/annotations';
 import { useSettings } from '../../stores/settings';
@@ -89,8 +93,19 @@ export async function moveObjects(docId: number, ids: readonly number[], dx: num
   await run(docId, { type: 'moveAnnotations', ids, dx, dy });
 }
 
+/** Deletes objects; announces it and offers Undo in a toast, as annotations do (DESIGN 3.23). */
 export async function deleteObjects(docId: number, ids: readonly number[]): Promise<void> {
-  await run(docId, { type: 'deleteAnnotations', ids });
+  if (ids.length === 0) return;
+  const first = useInsert.getState().byDoc[docId]?.byId[ids[0] ?? -1];
+  const changes = await run(docId, { type: 'deleteAnnotations', ids });
+  if (changes === null) return;
+  const t = translators[useLocaleStore.getState().locale];
+  const message =
+    ids.length === 1
+      ? t('annot.deleted', { type: t(first?.kind === 'image' ? 'insert.imageRole' : 'insert.textRole') })
+      : t('insert.deletedMany', { n: ids.length });
+  announce(message);
+  useUi.getState().showToast({ message, action: { label: t('action.undo'), run: () => runHistoryStep('undo') } });
 }
 
 /** Opens the image dialog for the Add image tool. Cancel returns to Select; a bad image shows the banner. */

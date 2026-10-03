@@ -16,7 +16,7 @@ import { setFileRotation } from '../viewer/fileRotation';
 import { fitsAll, sizesDiffer, targetPages } from './actions';
 import { CropLayer } from './CropLayer';
 import { installCropMode } from './mode';
-import { useCrop } from './store';
+import { keyOf, useCrop } from './store';
 
 vi.mock('../../api/annotations', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../api/annotations')>()),
@@ -177,6 +177,18 @@ describe('the inspector', () => {
     expect(useCrop.getState().margins).toBeNull();
   });
 
+  it('clears a stale error when the rectangle changes otherwise', async () => {
+    const { user } = setup(<Inspector />);
+    act(() => useUi.getState().selectTool('crop'));
+    const left = screen.getByLabelText('Left');
+    await user.clear(left);
+    await user.type(left, '8{Enter}');
+    expect(left.getAttribute('aria-invalid')).toBe('true');
+    act(() => useCrop.getState().setMargins(keyOf(1, 0), { top: 5, right: 0, bottom: 0, left: 0 }));
+    expect(left.getAttribute('aria-invalid')).toBeNull();
+    expect(screen.queryByText('The area must be at least 1 inch on each side.')).toBeNull();
+  });
+
   it('maps the Top field to the page side that is on top when the page is turned', async () => {
     load([slot(0, { rotation: 90 })]);
     const { user } = setup(<Inspector />);
@@ -254,6 +266,17 @@ describe('the layer', () => {
     expect(useCrop.getState().margins).toEqual({ top: 0, right: 0, bottom: 0, left: 1 });
     await user.keyboard('{Enter}');
     expect(applyMock).toHaveBeenCalledWith(1, expect.objectContaining({ pages: [0] }));
+  });
+
+  it('resizes with the arrow keys on a focused handle, by its screen position', async () => {
+    const { user } = setup(<CropLayer {...props} />);
+    act(() => useUi.getState().selectTool('crop'));
+    screen.getByRole('button', { name: 'Right edge' }).focus();
+    await user.keyboard('{ArrowLeft}{Shift>}{ArrowLeft}{/Shift}');
+    expect(useCrop.getState().margins).toEqual({ top: 0, right: 11, bottom: 0, left: 0 });
+    screen.getByRole('button', { name: 'Top left corner' }).focus();
+    await user.keyboard('{ArrowRight}{ArrowDown}');
+    expect(useCrop.getState().margins).toEqual({ top: 1, right: 11, bottom: 0, left: 1 });
   });
 
   it('draws the rectangle in the page space of a turned page', () => {
