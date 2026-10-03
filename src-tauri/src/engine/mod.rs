@@ -200,6 +200,14 @@ pub(crate) enum Job {
         size: [f32; 2],
         reply: Reply<Appended>,
     },
+    /// Takes the pages from `keep` on off the end of PDFium's copy again, if it still has `total` pages (`pages::truncate`): the undo of an
+    /// append whose insert the model refused.
+    TruncatePages {
+        id: DocumentId,
+        keep: u32,
+        total: u32,
+        reply: Reply<()>,
+    },
     /// Copies pages of an import source to the end of PDFium's copy (`pages`).
     AppendPages {
         id: DocumentId,
@@ -274,6 +282,9 @@ impl Job {
                 let _ = reply.send(Err(error));
             }
             Job::AppendPages { reply, .. } => {
+                let _ = reply.send(Err(error));
+            }
+            Job::TruncatePages { reply, .. } => {
                 let _ = reply.send(Err(error));
             }
             Job::Release { reply, .. } => {
@@ -757,6 +768,19 @@ impl Engine {
     pub fn append_blank_page(&self, id: DocumentId, size: [f32; 2]) -> Result<Appended, AppError> {
         self.call(limits::CONTROL_TIMEOUT, Rank::CONTROL, |reply| {
             Job::AppendBlankPage { id, size, reply }
+        })
+    }
+
+    /// Takes the pages appended at `keep..total` off the end of PDFium's copy again (a page insert the model refused). Nothing is removed
+    /// if the copy has grown past `total` meanwhile.
+    pub fn truncate_pages(&self, id: DocumentId, keep: u32, total: u32) -> Result<(), AppError> {
+        self.call(limits::CONTROL_TIMEOUT, Rank::CONTROL, |reply| {
+            Job::TruncatePages {
+                id,
+                keep,
+                total,
+                reply,
+            }
         })
     }
 
@@ -1817,6 +1841,34 @@ mod tests {
             engine.page_sizes(id).unwrap().len(),
             (file_pages + 1) as usize
         );
+        engine.close(id).unwrap();
+    }
+
+    #[test]
+    fn pages_appended_for_an_insert_the_model_refused_are_taken_off_again() {
+        let Some(engine) = shared_engine() else {
+            return;
+        };
+        let id = new_id();
+        let file_pages = open_fixture(engine, id).unwrap();
+        let first = engine.append_blank_page(id, [100.0, 50.0]).unwrap();
+        let second = engine.append_blank_page(id, [100.0, 50.0]).unwrap();
+        assert_eq!(
+            (first.engine_index, second.engine_index),
+            (file_pages, file_pages + 1)
+        );
+        // A total that is not the copy's (something was added after the pages to take back): nothing is removed.
+        engine
+            .truncate_pages(id, file_pages, file_pages + 1)
+            .unwrap();
+        assert!(render(engine, id, second.engine_index, 0).is_ok());
+        // The right total: both are gone and the next page gets the first index again.
+        engine
+            .truncate_pages(id, file_pages, file_pages + 2)
+            .unwrap();
+        assert!(render(engine, id, second.engine_index, 0).is_err());
+        let again = engine.append_blank_page(id, [100.0, 50.0]).unwrap();
+        assert_eq!(again.engine_index, file_pages);
         engine.close(id).unwrap();
     }
 

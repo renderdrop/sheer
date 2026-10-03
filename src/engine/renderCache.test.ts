@@ -54,6 +54,15 @@ describe('keys', () => {
     expect(imageKey({ ...id(3), tile: null })).toBe(imageKey(id(3)));
   });
 
+  it('keep the annotation revision and the slot revision apart: 1 + 2 is not 2 + 1', () => {
+    const a = imageKey({ docId: 1, page: 1, rev: 1, slotRev: 2, bucket: 0 });
+    const b = imageKey({ docId: 1, page: 1, rev: 2, slotRev: 1, bucket: 0 });
+    expect(a).not.toBe(b);
+    expect(imageKey({ docId: 1, page: 1, rev: 1, slotRev: 0, bucket: 0 })).toBe(
+      imageKey({ docId: 1, page: 1, rev: 1, bucket: 0 }),
+    );
+  });
+
   it('tell every part apart: another document, page, revision, bucket or tile is another image', () => {
     const keys = new Set([
       imageKey(id(0)),

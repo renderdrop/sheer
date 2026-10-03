@@ -132,6 +132,22 @@ describe('quitting with unsaved documents', () => {
   });
 });
 
+describe('the retry count', () => {
+  it('starts afresh after a walk that asked the user', async () => {
+    addDocument(1, 'a.pdf', true);
+    const { user } = setup(<UnsavedDialog />);
+    const quit = requestQuit();
+    await screen.findByRole('dialog');
+    await user.click(screen.getByRole('button', { name: 'Cancel' }));
+    await quit;
+    useAnnotations.getState().applyChanges(1, changes(2, false));
+    for (let i = 0; i < 10; i += 1) await requestQuit();
+    expect(windowApi.closeWindow).toHaveBeenCalledTimes(10);
+    await requestQuit();
+    expect(windowApi.closeWindow).toHaveBeenCalledTimes(10);
+  });
+});
+
 describe('the file-changed dialog', () => {
   it('has Cancel focused and answers the save', async () => {
     const answer = vi.fn();

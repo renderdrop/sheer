@@ -16,10 +16,11 @@ use std::collections::{HashMap, HashSet};
 use lopdf::{Dictionary, Document, Object, ObjectId, Stream};
 use serde::Serialize;
 
-use super::save::validate;
+use super::save::{append_annotations, validate, Change, Plan};
 use crate::documents::sanitize_text;
 use crate::error::{AppError, ErrorCode};
 use crate::limits;
+use crate::model::annotation::PdfOrigin;
 
 /// The phase a [`Control::progress`] message is about; the wire name is the lower-case word.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -37,6 +38,8 @@ pub enum Phase {
 pub enum Warning {
     SignaturesRemoved,
     FormsDropped,
+    /// Form fields on pages taken from another file were not carried over (the widgets show no more).
+    WidgetsDropped,
 }
 
 /// How a job is told to stop and how it reports. `check` is called between objects, pages and images.
@@ -116,7 +119,7 @@ fn failed(detail: impl std::fmt::Display) -> AppError {
 /// Reads `bytes` for a job. Encrypted files are `unsupported_feature`, files without pages `damaged_file`, more than 50 000 pages
 /// `limit_exceeded`.
 pub fn load(bytes: &[u8]) -> Result<Parsed, AppError> {
-    let doc = Document::load_mem(bytes).map_err(damaged)?;
+    let doc = super::prescan::load_untrusted(bytes)?;
     // lopdf opens a file with an empty user password by itself and then no longer reports it as encrypted: its state says so.
     if doc.is_encrypted() || doc.encryption_state.is_some() {
         return Err(AppError::new(ErrorCode::UnsupportedFeature));
@@ -480,34 +483,55 @@ enum Who {
 }
 
 enum Planned {
-    Copy(Who, ObjectId),
+    /// A page copied from a file; the number is its index there.
+    Copy(Who, ObjectId, u32),
     Blank([f32; 2]),
 }
 
-/// Takes the widgets out of the annotations of a page that came from another file (forms of imported pages are not merged).
-fn drop_widgets(src: &Document, page: &mut Dictionary) {
+/// Takes the widgets out of the annotations of a page that came from another file (forms of imported pages are not merged), and gives
+/// the annotations that have no `/NM` the name the model knows them by (`annots::imported_name`, from the page's `index` in the file and
+/// the place the annotation had before the widgets went). Returns whether there was a widget.
+fn drop_widgets(src: &Document, page: &mut Dictionary, index: u32) -> bool {
     let entries = match page.get(b"Annots") {
         Ok(Object::Array(items)) => items.clone(),
         Ok(Object::Reference(id)) => match src.get_object(*id).and_then(Object::as_array) {
             Ok(items) => items.clone(),
-            Err(_) => return,
+            Err(_) => return false,
         },
-        _ => return,
+        _ => return false,
     };
-    let kept: Vec<Object> = entries
-        .into_iter()
-        .filter(|entry| {
-            let is_widget = src
-                .dereference(entry)
-                .ok()
-                .and_then(|(_, object)| object.as_dict().ok())
-                .and_then(|dict| dict.get(b"Subtype").ok())
-                .and_then(|subtype| subtype.as_name().ok())
-                .is_some_and(|name| name == b"Widget");
-            !is_widget
-        })
-        .collect();
+    let before = entries.len();
+    let mut counted = 0u32;
+    let mut kept: Vec<Object> = Vec::with_capacity(before);
+    for entry in entries {
+        let Some(dict) = src
+            .dereference(&entry)
+            .ok()
+            .and_then(|(_, object)| object.as_dict().ok())
+        else {
+            kept.push(entry);
+            continue;
+        };
+        let subtype = dict.get(b"Subtype").ok().and_then(|s| s.as_name().ok());
+        let at = (subtype != Some(b"Popup")).then(|| {
+            counted += 1;
+            counted - 1
+        });
+        if subtype == Some(b"Widget") {
+            continue;
+        }
+        match at {
+            Some(at) if !super::annots::has_name(dict) => {
+                let mut named = dict.clone();
+                super::annots::stamp_name(&mut named, index, at);
+                kept.push(Object::Dictionary(named));
+            }
+            _ => kept.push(entry),
+        }
+    }
+    let dropped = kept.len() < before;
     page.set("Annots", Object::Array(kept));
+    dropped
 }
 
 /// One input of an output: a read PDF and the pages of it that go in, in this order.
@@ -547,6 +571,7 @@ pub fn build(parts: &[Part<'_>], outline: bool, control: &dyn Control) -> Result
     let mut first_pages: Vec<ObjectId> = Vec::with_capacity(parts.len());
     let mut done = 0u32;
     let mut extra_signatures = false;
+    let mut widgets_dropped = false;
 
     for part in parts {
         let mut importer = Importer::new(part.parsed);
@@ -575,7 +600,7 @@ pub fn build(parts: &[Part<'_>], outline: bool, control: &dyn Control) -> Result
                         return Err(AppError::invalid("page"));
                     }
                     importer.kept.insert(source, new);
-                    Planned::Copy(Who::Main, source)
+                    Planned::Copy(Who::Main, source, index)
                 }
                 PageKind::Blank { width, height } => {
                     Planned::Blank(limits::sanitize_page_size(width, height))
@@ -593,10 +618,10 @@ pub fn build(parts: &[Part<'_>], outline: bool, control: &dyn Control) -> Result
                             .ok_or(AppError::invalid("page"))?
                             .kept
                             .insert(page, new);
-                        Planned::Copy(Who::Source(source), page)
+                        Planned::Copy(Who::Source(source), page, index)
                     } else {
                         // The same page of a source twice: the second copy brings its own objects.
-                        Planned::Copy(Who::Fresh(source), page)
+                        Planned::Copy(Who::Fresh(source), page, index)
                     }
                 }
             };
@@ -617,7 +642,7 @@ pub fn build(parts: &[Part<'_>], outline: bool, control: &dyn Control) -> Result
                     dict.set("Resources", Object::Dictionary(Dictionary::new()));
                     dict
                 }
-                Planned::Copy(who, source) => {
+                Planned::Copy(who, source, page_index) => {
                     let mut fresh;
                     let from: &mut Importer<'_> = match who {
                         Who::Main => &mut importer,
@@ -633,7 +658,7 @@ pub fn build(parts: &[Part<'_>], outline: bool, control: &dyn Control) -> Result
                     };
                     let mut flat = from.flattened_page(source)?;
                     if !matches!(who, Who::Main) {
-                        drop_widgets(from.src, &mut flat);
+                        widgets_dropped |= drop_widgets(from.src, &mut flat, page_index);
                     }
                     let dict = from.translate_dict(&mut dst, &flat, 0, &PAGE_SKIP);
                     from.drain(&mut dst, control)?;
@@ -757,6 +782,9 @@ pub fn build(parts: &[Part<'_>], outline: bool, control: &dyn Control) -> Result
             }
         }
     }
+    if widgets_dropped {
+        warnings.push(Warning::WidgetsDropped);
+    }
     if extra_signatures || importers.iter().any(|importer| importer.signatures) {
         warnings.push(Warning::SignaturesRemoved);
     }
@@ -818,6 +846,75 @@ fn build_outline(
     outlines.set("Count", items.len() as i64);
     dst.objects.insert(root, Object::Dictionary(outlines));
     Some(root)
+}
+
+/// The part of `plan` (its page indices are positions in the document) that concerns the pages `documents` (positions in the document,
+/// in the order they have in the output): page index `documents[j]` becomes `base + j`. Annotations and origins of other pages are left
+/// out. A page that is in the output more than once has its annotations in each place: one plan for each round of copies (annotation
+/// ids must be unique within a plan), to be written one after the other.
+pub fn plan_for_output(plan: &Plan, documents: &[u32], base: u32) -> Vec<Plan> {
+    let mut places: HashMap<u32, Vec<u32>> = HashMap::new();
+    for (offset, document) in documents.iter().enumerate() {
+        if let Ok(offset) = u32::try_from(offset) {
+            places
+                .entry(*document)
+                .or_default()
+                .push(base.saturating_add(offset));
+        }
+    }
+    let rounds = places.values().map(Vec::len).max().unwrap_or(0);
+    (0..rounds)
+        .map(|round| {
+            let place = |page: &u32| places.get(page).and_then(|list| list.get(round)).copied();
+            let moved = |origin: &PdfOrigin| {
+                place(&origin.page_index).map(|page_index| PdfOrigin {
+                    page_index,
+                    ..origin.clone()
+                })
+            };
+            let mut out = Plan::default();
+            for change in &plan.changes {
+                match change {
+                    Change::Write {
+                        page_index,
+                        annotation,
+                        origin,
+                    } => {
+                        if let Some(page_index) = place(page_index) {
+                            out.changes.push(Change::Write {
+                                page_index,
+                                annotation: annotation.clone(),
+                                origin: origin.as_ref().and_then(moved),
+                            });
+                        }
+                    }
+                    Change::Delete { id, origin } => {
+                        if let Some(origin) = moved(origin) {
+                            out.changes.push(Change::Delete { id: *id, origin });
+                        }
+                    }
+                }
+            }
+            out.known = plan
+                .known
+                .iter()
+                .filter_map(|(id, origin)| moved(origin).map(|origin| (*id, origin)))
+                .collect();
+            out
+        })
+        .collect()
+}
+
+/// Writes the annotations of `plans` (new, changed and deleted ones, with their appearance streams, as a save does) into `bytes`, a
+/// file this module produced that has `pages` pages. Nothing to write: `bytes` as they are.
+pub fn annotate(bytes: Vec<u8>, plans: &[Plan], pages: u32) -> Result<Vec<u8>, AppError> {
+    let mut bytes = bytes;
+    for plan in plans.iter().filter(|plan| !plan.changes.is_empty()) {
+        let built = append_annotations(bytes, plan)?;
+        validate(&built.bytes, pages)?;
+        bytes = built.bytes;
+    }
+    Ok(bytes)
 }
 
 /// The pages of one input in a new file (extract, and each file of a split).
@@ -1104,12 +1201,14 @@ mod tests {
             .as_array()
             .unwrap()
             .iter()
-            .map(|entry| {
-                parsed
+            .map(|entry| match entry {
+                // An annotation that had no name comes as a dictionary of its own, with the name the model knows it by.
+                Object::Dictionary(dict) => dict.clone(),
+                other => parsed
                     .doc
-                    .get_dictionary(entry.as_reference().unwrap())
+                    .get_dictionary(other.as_reference().unwrap())
                     .unwrap()
-                    .clone()
+                    .clone(),
             })
             .collect()
     }
@@ -1434,6 +1533,7 @@ mod tests {
             assert_eq!(annots.len(), 2, "link and highlight, no widget");
             assert!(contains(&output.bytes, "page-2-text"));
         }
+        assert_eq!(output.warnings, vec![Warning::WidgetsDropped]);
         assert!(!contains(&output.bytes, "field-2"));
         assert!(!contains(&output.bytes, "AcroForm"));
     }

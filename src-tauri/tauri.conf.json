@@ -30,7 +30,7 @@
   },
   "bundle": {
     "active": true,
-    "targets": "all",
+    "targets": ["nsis", "dmg", "app"],
     "license": "AGPL-3.0-or-later",
     "icon": [
       "icons/32x32.png",

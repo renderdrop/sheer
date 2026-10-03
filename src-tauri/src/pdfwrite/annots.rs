@@ -19,6 +19,31 @@ const FLAG_NO_ZOOM: i64 = 8;
 const FLAG_NO_ROTATE: i64 = 16;
 const FLAG_LOCKED: i64 = 128;
 
+/// The `/NM` given to an annotation of a page taken from another file that has none, so that the model can find it again in the copy
+/// (`Slots::find` matches by name): page `page_index` of the source, annotation number `annot_index` counted as the engine counts
+/// (popups left out, every other entry counted, widgets included).
+pub fn imported_name(page_index: u32, annot_index: u32) -> String {
+    format!("sheer-i{page_index}-{annot_index}")
+}
+
+/// Whether the annotation has a `/NM` the model can read (a string).
+pub fn has_name(dict: &Dictionary) -> bool {
+    matches!(dict.get(b"NM"), Ok(Object::String(..)))
+}
+
+/// Gives `dict` the name [`imported_name`] says if it has none.
+pub fn stamp_name(dict: &mut Dictionary, page_index: u32, annot_index: u32) {
+    if !has_name(dict) {
+        dict.set(
+            "NM",
+            Object::String(
+                imported_name(page_index, annot_index).into_bytes(),
+                StringFormat::Literal,
+            ),
+        );
+    }
+}
+
 /// Reals in a dictionary, rounded the way the content streams are (three decimals).
 fn real(value: f32) -> Object {
     Object::Real(num(value).parse::<f32>().unwrap_or(0.0))

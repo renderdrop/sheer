@@ -138,9 +138,9 @@ export const ThumbnailItem = memo(function ThumbnailItem({
     () => 0,
   );
 
-  const exact = cache.get(imageKey({ docId, page: pageId, rev: pageRev, bucket }));
+  const exact = cache.get(imageKey({ docId, page: pageId, rev: 0, slotRev: pageRev, bucket }));
   // Until the right size is there, any image of the page does: the canvas's, or a thumbnail of another size.
-  const shown = exact ?? cache.best(docId, pageId, pageRev, bucket);
+  const shown = exact ?? cache.best(docId, pageId, 0, bucket, undefined, pageRev);
   const shownKey = shown?.key ?? '';
 
   // The image this cell shows is not evicted while it does. (An effect: the cache is outside React, and pins are its state.)
@@ -153,7 +153,7 @@ export const ThumbnailItem = memo(function ThumbnailItem({
   // thumbnail that cannot be rendered stays a blank page, and the page's own render reports what is wrong.
   useEffect(() => {
     if (!active) return;
-    const id: ImageId = { docId, page: pageId, rev: pageRev, bucket };
+    const id: ImageId = { docId, page: pageId, rev: 0, slotRev: pageRev, bucket };
     if (cache.has(imageKey(id))) return;
     const timer = window.setTimeout(() => {
       scheduler.request(id, 'thumbnail').catch(() => undefined);

@@ -271,6 +271,8 @@ pub const TREE_KIDS_PER_NODE: usize = 256;
 pub const MAX_PARENT_CHAIN: usize = 64;
 /// Output of one decoded Flate stream (bomb guard), and the limits of a decoded JPEG (`image::Limits`).
 pub const MAX_FLATE_OUTPUT_BYTES: usize = 256 * 1024 * 1024;
+/// Decoded bytes of all object streams of one file that lopdf may be asked to load (`pdfwrite::prescan`).
+pub const MAX_LOAD_DECODED_BYTES: usize = 256 * 1024 * 1024;
 pub const MAX_IMAGE_SIDE_PX: u32 = 10_000;
 pub const MAX_IMAGE_PIXELS: u64 = 50_000_000;
 pub const MAX_IMAGE_ALLOC_BYTES: u64 = 256 * 1024 * 1024;

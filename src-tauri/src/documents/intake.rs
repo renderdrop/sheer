@@ -137,6 +137,18 @@ pub fn admit_target(path: &Path) -> Result<PathBuf, AppError> {
     Ok(target)
 }
 
+/// The folder a split writes into, judged like the folder of a Save As target: the spelling is plain, the folder exists and is
+/// resolved (`..` and links gone), and it is a directory. Nothing is created.
+pub fn admit_folder(path: &Path) -> Result<PathBuf, AppError> {
+    refuse_unsafe_spelling(path)?;
+    let folder = std::fs::canonicalize(path)?;
+    refuse_unsafe_spelling(&folder)?;
+    if !std::fs::metadata(&folder)?.is_dir() {
+        return Err(AppError::invalid("path"));
+    }
+    Ok(folder)
+}
+
 /// Whether the spelling of `path` is one the file system may be asked about: on Windows not a network, device or stream path (see
 /// [`refuse_unsafe_spelling`]), elsewhere always. Shared with the recent files, which must never stat such a path (an SMB
 /// connection leaks the user's NTLM hash).
@@ -262,6 +274,18 @@ mod tests {
 
     fn canonical(path: &Path) -> PathBuf {
         fs::canonicalize(path).unwrap()
+    }
+
+    #[test]
+    fn a_folder_is_admitted_resolved_and_a_file_is_not() {
+        let dir = TempDir::new();
+        let file = write(&dir, "a.pdf", MINIMAL);
+        assert_eq!(admit_folder(dir.path()).unwrap(), canonical(dir.path()));
+        assert_eq!(
+            admit_folder(&file).unwrap_err().code(),
+            ErrorCode::InvalidArgument
+        );
+        assert!(admit_folder(&dir.path().join("missing")).is_err());
     }
 
     #[test]

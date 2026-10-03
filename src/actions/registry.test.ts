@@ -257,8 +257,6 @@ describe('where an action is listed', () => {
       'file:split-document',
       'file:extract-pages',
       'file:compress-document',
-      'edit:undo',
-      'edit:redo',
       'view:actual-size',
       'view:fit-width',
       'view:fit-page',

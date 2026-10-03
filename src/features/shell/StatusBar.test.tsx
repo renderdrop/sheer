@@ -22,6 +22,17 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
+describe('the Edited badge (DESIGN 3.10, 3.27)', () => {
+  it('shows after the name while the document has unsaved changes, and not otherwise', () => {
+    const { container, rerender } = setup(<StatusBar {...props({ edited: true })} />);
+    expect(container.querySelector('[data-edited]')?.textContent).toBe('Edited');
+    rerender(<StatusBar {...props({ edited: false })} />);
+    expect(container.querySelector('[data-edited]')).toBeNull();
+    rerender(<StatusBar {...props({ fileName: null, edited: true })} />);
+    expect(container.querySelector('[data-edited]')).toBeNull();
+  });
+});
+
 describe('StatusBar formatting (DESIGN 3.10)', () => {
   it('shows the file name, the page as "3 / 120" and the zoom as "125 %"', () => {
     const { container } = setup(<StatusBar {...props()} />);

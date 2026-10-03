@@ -2,6 +2,7 @@ import { announce } from '../../components/SuccessPulse';
 import { toAppError } from '../../api/errors';
 import { translators } from '../../i18n';
 import { useLocaleStore } from '../../i18n/store';
+import { useDocuments } from '../../stores/documents';
 import { useUi } from '../../stores/ui';
 import { isNoopMove, keyboardMove, toIndexFor } from './grid';
 import { applyPageCommand, pickPdfSources, readSlots, releaseSource, undoPageStep, type Slot } from './source';
@@ -16,12 +17,18 @@ export function targetsOf(docId: number): number[] {
   return slots.filter((slot) => live.has(slot.id)).map((slot) => slot.id);
 }
 
+/** The tour's sample (and any document that cannot change) is read-only: the page commands do nothing there. */
+export function isReadOnly(docId: number): boolean {
+  return useDocuments.getState().byId[docId]?.kind === 'welcome';
+}
+
 function fail(error: unknown): void {
   useUi.getState().showBanner(toAppError(error));
 }
 
 /** Runs a page command and reports a failure in the banner (the model is unchanged then). Resolves to the new list or `null`. */
 async function run(docId: number, command: Parameters<typeof applyPageCommand>[1]): Promise<readonly Slot[] | null> {
+  if (isReadOnly(docId)) return null;
   try {
     return await applyPageCommand(docId, command);
   } catch (caught) {
@@ -125,6 +132,7 @@ export async function insertBlank(docId: number): Promise<boolean> {
 
 /** Inserts all pages of a PDF the user picks (Rust's Open dialog) after the focused page. */
 export async function insertFromFile(docId: number): Promise<boolean> {
+  if (isReadOnly(docId)) return false;
   let results;
   try {
     results = await pickPdfSources(false);

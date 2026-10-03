@@ -241,8 +241,8 @@ describe('main.tsx while the settings load hangs', () => {
     expect(useUi.getState().dropHover).toBe(false);
     act(() => push?.({ type: 'opened', document: { id: 7, pageCount: 2, displayName: 'Started with.pdf' } }));
     // Documents opened together wait a moment, in case they are a multi-file drop (DESIGN 3.29).
-    const { flushDropBatch } = await import('./features/jobs/dropBatch');
-    act(() => flushDropBatch());
+    const { appDropBatch } = await import('./features/jobs/dropBatch');
+    act(() => appDropBatch.flushNow());
     expect(useDocuments.getState().activeId).toBe(7);
   });
 

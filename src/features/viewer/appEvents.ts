@@ -1,6 +1,6 @@
 import { subscribeApp, type AppEvent } from '../../api/app';
 import type { DocumentInfo } from '../../api/documents';
-import { intakeOpened } from '../jobs/dropBatch';
+import { appDropBatch } from '../jobs/dropBatch';
 import { requestQuit } from '../save/quit';
 import { useUi } from '../../stores/ui';
 import { noteHoverEnded, noteOpenedFromApp } from './openTransition';
@@ -12,6 +12,7 @@ const showOpened = (document: DocumentInfo): void => adoptOpenOutcomes([{ type: 
 export function handleAppEvent(event: AppEvent): void {
   if (event.type === 'dropHover') {
     if (!event.active && useUi.getState().dropHover) noteHoverEnded();
+    appDropBatch.noteHover(event.active);
     useUi.getState().setDropHover(event.active);
   } else if (event.type === 'closeRequested') {
     void requestQuit();
@@ -20,7 +21,7 @@ export function handleAppEvent(event: AppEvent): void {
     if (event.type === 'opened') {
       noteOpenedFromApp();
       // Two or more within a moment are a multi-file drop: the merge banner instead of several tabs (DESIGN 3.29).
-      intakeOpened(event.document, showOpened);
+      appDropBatch.intake(event.document, showOpened);
     } else {
       adoptOpenOutcomes([event]);
     }

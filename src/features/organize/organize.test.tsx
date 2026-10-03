@@ -1,14 +1,34 @@
 // @vitest-environment jsdom
-import { act, fireEvent, screen } from '@testing-library/react';
+import { act, fireEvent, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { RenderCache } from '../../engine/renderCache';
 import { RenderScheduler, type RenderBackend } from '../../engine/renderScheduler';
+import { useDocuments } from '../../stores/documents';
+import { resetDocuments } from '../../stores/documents.testutil';
 import { useUi } from '../../stores/ui';
+import { launchJump } from '../viewer/openTransition';
+import { useViewer } from '../viewer/useViewer';
 import { setup } from '../../test/render';
 import { deletePages, dropPages, insertBlank, insertFromFile, moveByKeys, rotatePages } from './commands';
+import { OrganizeBar } from './OrganizeBar';
 import { OrganizeGrid } from './OrganizeGrid';
 import { useOrganize } from './store';
+
+const motion = vi.hoisted(() => ({ reduce: false }));
+const pulse = vi.hoisted(() => ({ announce: vi.fn() }));
+vi.mock('motion/react', async (original) => ({
+  ...(await original<typeof import('motion/react')>()),
+  useReducedMotion: () => motion.reduce,
+}));
+vi.mock('../../components/SuccessPulse', async (original) => ({
+  ...(await original<typeof import('../../components/SuccessPulse')>()),
+  announce: pulse.announce,
+}));
+vi.mock('../viewer/openTransition', async (original) => ({
+  ...(await original<typeof import('../viewer/openTransition')>()),
+  launchJump: vi.fn(),
+}));
 
 type Slot = import('./source').Slot;
 type Command = import('./source').PageCommand;
@@ -108,6 +128,10 @@ beforeEach(() => {
   vi.stubGlobal('ResizeObserver', FakeResizeObserver);
   Object.defineProperty(HTMLElement.prototype, 'clientWidth', { configurable: true, get: () => 800 });
   Object.defineProperty(HTMLElement.prototype, 'clientHeight', { configurable: true, get: () => 600 });
+  motion.reduce = false;
+  pulse.announce.mockReset();
+  vi.mocked(launchJump).mockReset();
+  resetDocuments();
   useOrganize.setState({ byDoc: {}, thumb: 160, pulse: { nonce: 0, ids: [] } });
   useUi.setState({ toast: null, banner: null, activeTool: 'pages' });
   load(6);
@@ -312,14 +336,111 @@ describe('OrganizeGrid', () => {
     expect(model.sent).toEqual([]);
   });
 
-  it('draws a marquee on empty space and selects what it touches', () => {
+  it('draws a marquee on empty space and selects what it touches', async () => {
     renderGrid();
     const scroller = screen.getByRole('listbox').parentElement as HTMLElement;
     fireEvent.pointerDown(scroller, { button: 0, clientX: 2, clientY: 2, pointerId: 1 });
     fireEvent.pointerMove(scroller, { clientX: 240, clientY: 60, pointerId: 1 });
     expect(document.querySelector('[data-marquee]')).not.toBeNull();
-    expect(selectedIds()).toEqual([0, 1]);
+    await waitFor(() => expect(selectedIds()).toEqual([0, 1]));
     fireEvent.pointerUp(scroller, { clientX: 240, clientY: 60, pointerId: 1 });
     expect(document.querySelector('[data-marquee]')).toBeNull();
+  });
+
+  it('sets the selection only when the marquee touches something else', async () => {
+    renderGrid();
+    const scroller = screen.getByRole('listbox').parentElement as HTMLElement;
+    const set = vi.fn(useOrganize.getState().setSelection);
+    useOrganize.setState({ setSelection: set });
+    fireEvent.pointerDown(scroller, { button: 0, clientX: 2, clientY: 2, pointerId: 1 });
+    fireEvent.pointerMove(scroller, { clientX: 240, clientY: 60, pointerId: 1 });
+    await waitFor(() => expect(selectedIds()).toEqual([0, 1]));
+    const calls = set.mock.calls.length;
+    fireEvent.pointerMove(scroller, { clientX: 241, clientY: 61, pointerId: 1 });
+    fireEvent.pointerMove(scroller, { clientX: 242, clientY: 62, pointerId: 1 });
+    await act(async () => {
+      await new Promise((resolve) => window.requestAnimationFrame(() => resolve(undefined)));
+    });
+    expect(set.mock.calls.length).toBe(calls);
+    fireEvent.pointerUp(scroller, { clientX: 242, clientY: 62, pointerId: 1 });
+    expect(set.mock.calls.length).toBe(calls);
+  });
+
+  it('keeps the grid as it is while the drag card follows the pointer', () => {
+    renderGrid();
+    const first = options()[0] as HTMLElement;
+    fireEvent.pointerDown(first, { button: 0, clientX: 50, clientY: 50, pointerId: 1 });
+    fireEvent.pointerMove(first, { clientX: 300, clientY: 50, pointerId: 1 });
+    expect(document.querySelector('[data-drag-card]')).not.toBeNull();
+    const before = options();
+    fireEvent.pointerMove(first, { clientX: 320, clientY: 60, pointerId: 1 });
+    expect(options()[0]).toBe(before[0]);
+    fireEvent.pointerUp(first, { clientX: 320, clientY: 60, pointerId: 1 });
+  });
+
+  it('does not lift a drag in a read-only document', () => {
+    useDocuments.getState().add({ id: DOC, pageCount: 6, displayName: 'w.pdf', kind: 'welcome' });
+    renderGrid();
+    expect(screen.getByRole('listbox').getAttribute('aria-readonly')).toBe('true');
+    const first = options()[0] as HTMLElement;
+    fireEvent.pointerDown(first, { button: 0, clientX: 50, clientY: 50, pointerId: 1 });
+    fireEvent.pointerMove(first, { clientX: 560, clientY: 50, pointerId: 1 });
+    expect(document.querySelector('[data-drag-card]')).toBeNull();
+    fireEvent.pointerUp(first, { clientX: 560, clientY: 50, pointerId: 1 });
+    expect(model.sent).toEqual([]);
+  });
+
+  it('leaves for the viewer at the focused page, and without a flying thumbnail under reduced motion', () => {
+    const goToPage = vi.fn();
+    useViewer.setState({ goToPage });
+    const first = renderGrid();
+    act(() => useOrganize.getState().setSelection(DOC, { focus: 3 }));
+    act(() => useUi.setState({ activeTool: 'select' }));
+    first.unmount();
+    expect(goToPage).toHaveBeenCalledWith(3);
+    expect(launchJump).not.toHaveBeenCalled();
+    useUi.setState({ activeTool: 'pages' });
+    motion.reduce = true;
+    const second = renderGrid();
+    act(() => useOrganize.getState().setSelection(DOC, { focus: 1 }));
+    act(() => useUi.setState({ activeTool: 'select' }));
+    second.unmount();
+    expect(goToPage).toHaveBeenLastCalledWith(1);
+    expect(launchJump).not.toHaveBeenCalled();
+  });
+
+  it('announces a move and a delete for screen readers', async () => {
+    renderGrid();
+    await act(async () => {
+      await dropPages(DOC, [0], 3);
+    });
+    expect(pulse.announce).toHaveBeenCalledTimes(1);
+    act(() => useOrganize.getState().setSelection(DOC, { selected: [1], focus: 1 }));
+    await act(async () => {
+      await deletePages(DOC);
+    });
+    expect(pulse.announce).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('OrganizeBar', () => {
+  it('sets the thumbnail size with the slider', async () => {
+    const { user } = setup(<OrganizeBar docId={DOC} />);
+    screen.getByRole('slider').focus();
+    const before = useOrganize.getState().thumb;
+    await user.keyboard('{ArrowRight}');
+    expect(useOrganize.getState().thumb).toBeGreaterThan(before);
+    await user.keyboard('{Home}');
+    expect(useOrganize.getState().thumb).toBeLessThan(before);
+  });
+
+  it('marks the page commands aria-disabled in a read-only document', () => {
+    useDocuments.getState().add({ id: DOC, pageCount: 6, displayName: 'w.pdf', kind: 'welcome' });
+    useOrganize.getState().setSelection(DOC, { selected: [1], focus: 1 });
+    setup(<OrganizeBar docId={DOC} />);
+    for (const name of ['Rotate left', 'Delete', 'Insert']) {
+      const button = screen.getAllByRole('button').find((b) => b.getAttribute('aria-label')?.startsWith(name));
+      expect(button?.getAttribute('aria-disabled')).toBe('true');
+    }
   });
 });

@@ -518,6 +518,7 @@ mod tests {
             author: None,
             modified: None,
             locked,
+            hidden: false,
         }
     }
 
@@ -992,6 +993,27 @@ mod tests {
         let edit =
             cmd(json!({"type": "updateAnnotation", "id": ids[1], "patch": {"contents": "now"}}));
         assert!(state.execute(edit, &stamp(2)).is_ok());
+    }
+
+    #[test]
+    fn undoing_a_change_to_an_annotation_hidden_in_the_file_keeps_it_hidden() {
+        let mut state = state();
+        let mut item = imported("h", false);
+        item.hidden = true;
+        item.origin.annot_index = 3;
+        state.import_page(PageId::new(0), &[item]);
+        let at = (0, 3);
+        assert!(
+            state.hidden_origins().contains(&at),
+            "hidden before any change"
+        );
+        let id = state.list(PageId::new(0))[0].id;
+        let edit = cmd(json!({"type": "updateAnnotation", "id": id, "patch": {"contents": "now"}}));
+        state.execute(edit, &stamp(1)).unwrap();
+        assert!(state.hidden_origins().contains(&at));
+        state.undo(&stamp(2)).unwrap();
+        // The set that decides what the engine shows again: the original stays in it, so it is never shown.
+        assert!(state.hidden_origins().contains(&at));
     }
 
     // --- limits ---

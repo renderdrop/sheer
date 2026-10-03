@@ -44,8 +44,8 @@ function openDocument(h: HistoryState = history()) {
 
 describe('Undo and Redo as actions', () => {
   it('are in the registry with their shortcuts, in the Edit group', () => {
-    expect(getAction('undo')).toMatchObject({ group: 'edit', menuBar: true, more: true });
-    expect(getAction('redo')).toMatchObject({ group: 'edit', menuBar: true, more: true });
+    expect(getAction('undo')).toMatchObject({ group: 'edit', menuBar: true });
+    expect(getAction('redo')).toMatchObject({ group: 'edit', menuBar: true });
   });
 
   it('can run only with a document whose history has the step', () => {

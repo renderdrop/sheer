@@ -86,8 +86,8 @@ export const OrganizeCell = memo(function OrganizeCell({
     () => cache.version(docId, page),
     () => 0,
   );
-  const exact = cache.get(imageKey({ docId, page, rev: slot.rev, bucket }));
-  const shown = exact ?? cache.best(docId, page, slot.rev, bucket);
+  const exact = cache.get(imageKey({ docId, page, rev: 0, slotRev: slot.rev, bucket }));
+  const shown = exact ?? cache.best(docId, page, 0, bucket, undefined, slot.rev);
   const shownKey = shown?.key ?? '';
   const [loaded, setLoaded] = useState<string>('');
 
@@ -98,7 +98,7 @@ export const OrganizeCell = memo(function OrganizeCell({
 
   useEffect(() => {
     if (!active) return;
-    const id: ImageId = { docId, page, rev: slot.rev, bucket };
+    const id: ImageId = { docId, page, rev: 0, slotRev: slot.rev, bucket };
     if (cache.has(imageKey(id))) return;
     const timer = window.setTimeout(() => {
       scheduler.request(id, 'thumbnail').catch(() => undefined);

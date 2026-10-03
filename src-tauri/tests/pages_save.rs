@@ -261,3 +261,136 @@ fn pages_of_another_file_are_inserted_and_saved() {
     let pages = state.pages(id).unwrap();
     assert!(pages.iter().all(|p| p.origin == "file"));
 }
+fn source_of(state: &AppState, path: PathBuf) -> sheer_lib::model::page::SourceId {
+    match state.add_sources(vec![path]).remove(0) {
+        sheer_lib::commands::pages::SourceResult::Ready { source_id, .. } => source_id,
+        failed => panic!("{failed:?}"),
+    }
+}
+
+#[test]
+fn annotations_of_inserted_pages_join_the_model_and_leave_with_an_undo() {
+    use sheer_lib::model::annotation::Sync;
+    let Some(state) = state() else { return };
+    let scratch = Scratch::new("insert-annots");
+    let id = open(state, &scratch, "a.pdf", &base(1));
+    let other = scratch.file("other.pdf");
+    std::fs::write(&other, base(2)).unwrap();
+    let source = source_of(state, other);
+    let changes = state
+        .apply_command(
+            id,
+            cmd(json!({"type": "insertPages", "source": source, "pages": [1], "at": 1})),
+        )
+        .unwrap();
+    let page = changes.pages.unwrap()[1].id;
+    let listed = state.list_annotations(id, page).unwrap();
+    assert_eq!(listed.len(), 1, "read from the engine's copy of the page");
+    let annotation = listed[0].clone();
+    assert_eq!(annotation.sync, Sync::Clean);
+    assert_eq!(annotation.page_id, page);
+    assert_eq!(state.list_document_annotations(id).unwrap().len(), 2);
+
+    // Editable: a move makes it modified; deleting and undoing work too.
+    let moved = state
+        .apply_command(
+            id,
+            cmd(json!({"type": "moveAnnotations", "ids": [annotation.id], "dx": 10.0, "dy": 0.0})),
+        )
+        .unwrap();
+    assert_eq!(moved.upserted[0].sync, Sync::Modified);
+    state.undo(id).unwrap();
+    let deleted = state
+        .apply_command(
+            id,
+            cmd(json!({"type": "deleteAnnotations", "ids": [annotation.id]})),
+        )
+        .unwrap();
+    assert_eq!(deleted.removed, [annotation.id]);
+    assert!(state.list_annotations(id, page).unwrap().is_empty());
+    state.undo(id).unwrap();
+    assert_eq!(state.list_annotations(id, page).unwrap().len(), 1);
+
+    // Undo of the insert takes the page and its annotations out; redo brings them back.
+    state.undo(id).unwrap();
+    assert_eq!(state.list_document_annotations(id).unwrap().len(), 1);
+    assert!(state.list_annotations(id, page).is_err());
+    state.redo(id).unwrap();
+    assert_eq!(state.list_annotations(id, page).unwrap().len(), 1);
+
+    // Saved, the page's square is in the file once, and the model still has it once.
+    state.save_in_place(id, SaveAck::default()).unwrap();
+    let bytes = std::fs::read(scratch.file("a.pdf")).unwrap();
+    let on_page_1 = list_annotations(&bytes)
+        .unwrap()
+        .iter()
+        .filter(|a| a.page_index == 1 && a.subtype == "Square")
+        .count();
+    assert_eq!(on_page_1, 1);
+    let after = state.pages(id).unwrap();
+    assert_eq!(state.list_annotations(id, after[1].id).unwrap().len(), 1);
+    assert_eq!(state.list_document_annotations(id).unwrap().len(), 2);
+}
+
+#[test]
+fn an_annotation_without_a_name_is_found_again_behind_a_dropped_widget() {
+    let Some(state) = state() else { return };
+    let scratch = Scratch::new("no-nm");
+    let id = open(state, &scratch, "a.pdf", &base(1));
+    // The source page: a widget (dropped by the copy), then two squares that have no /NM.
+    let mut builder = PdfBuilder::new();
+    add_pages(
+        &mut builder,
+        &[Page::new("").with("/Annots [100 0 R 101 0 R 102 0 R]")],
+    );
+    builder.object(
+        100,
+        "<< /Type /Annot /Subtype /Widget /FT /Tx /T (f) /Rect [10 700 90 720] >>",
+    );
+    builder.object(
+        101,
+        "<< /Type /Annot /Subtype /Square /Rect [10 10 60 60] /C [1 0 0] >>",
+    );
+    builder.object(
+        102,
+        "<< /Type /Annot /Subtype /Square /Rect [200 500 300 560] /C [0 0 1] >>",
+    );
+    builder.object(1, "<< /Type /Catalog /Pages 2 0 R >>");
+    let other = scratch.file("other.pdf");
+    std::fs::write(&other, builder.finish(1)).unwrap();
+    let source = source_of(state, other);
+    let page = state
+        .apply_command(
+            id,
+            cmd(json!({"type": "insertPages", "source": source, "pages": [0], "at": 1})),
+        )
+        .unwrap()
+        .pages
+        .unwrap()[1]
+        .id;
+    let listed = state.list_annotations(id, page).unwrap();
+    assert_eq!(
+        listed.len(),
+        2,
+        "the widget is not an annotation of the model"
+    );
+    let left = listed.iter().find(|a| a.rect.x < 100.0).unwrap();
+    state
+        .apply_command(
+            id,
+            cmd(json!({"type": "deleteAnnotations", "ids": [left.id]})),
+        )
+        .unwrap();
+    state.save_in_place(id, SaveAck::default()).unwrap();
+    let bytes = std::fs::read(scratch.file("a.pdf")).unwrap();
+    let squares: Vec<_> = list_annotations(&bytes)
+        .unwrap()
+        .into_iter()
+        .filter(|a| a.page_index == 1 && a.subtype == "Square")
+        .collect();
+    assert_eq!(squares.len(), 1, "the deleted square is gone");
+    assert!(
+        squares[0].rect[0] > 100.0,
+        "and the other one is the one left"
+    );
+}

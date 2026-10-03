@@ -59,7 +59,11 @@ function usePageHidden(): boolean {
 function LogoSlot() {
   const paused = usePageHidden() ? '' : undefined;
   return (
-    <div aria-hidden="true" data-logo-slot="" className="pointer-events-none relative h-logo-slot w-full shrink-0">
+    <div
+      aria-hidden="true"
+      data-logo-slot=""
+      className="pointer-events-none relative h-logo-slot w-full shrink-0 overflow-hidden"
+    >
       <div className="absolute inset-x-0 bottom-0-5 flex justify-center">
         <div data-paused={paused} className="logo-ground" />
       </div>

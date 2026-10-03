@@ -16,7 +16,7 @@ use crate::model::page::SourceId;
 /// A source PDF: its bytes and what was learnt when it was read.
 #[derive(Debug)]
 pub struct SourceBytes {
-    pub bytes: Vec<u8>,
+    pub bytes: Arc<[u8]>,
     pub page_count: u32,
     /// The file's name for the UI (never a directory).
     pub display_name: String,
@@ -144,7 +144,7 @@ mod tests {
 
     fn source(len: usize) -> SourceBytes {
         SourceBytes {
-            bytes: vec![0; len],
+            bytes: vec![0; len].into(),
             page_count: 1,
             display_name: "a.pdf".to_owned(),
         }

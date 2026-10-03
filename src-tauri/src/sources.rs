@@ -131,9 +131,17 @@ fn ui_takes_the_close<R: Runtime>(app: &AppHandle<R>) -> bool {
     let open = app
         .try_state::<AppState>()
         .is_some_and(|state| state.has_open_documents());
-    open && app
-        .try_state::<Arc<AppEvents>>()
-        .is_some_and(|events| events.request_close())
+    holds_back_close(open, || {
+        app.try_state::<Arc<AppEvents>>()
+            .is_some_and(|events| events.request_close())
+    })
+}
+
+/// The decision of [`ui_takes_the_close`]: a close is held back only when a document is open **and** a live UI took over the question
+/// (`ask` is not called otherwise). It is Rust state that decides, not anything the webview says, and a window whose page is gone can
+/// still be closed.
+fn holds_back_close(open_documents: bool, ask: impl FnOnce() -> bool) -> bool {
+    open_documents && ask()
 }
 
 /// Tells the UI, if the app state exists yet.
@@ -183,6 +191,18 @@ mod tests {
     use super::*;
     use crate::engine::{Engine, Job};
     use crate::storage::atomic::testutil::TempDir;
+
+    #[test]
+    fn a_close_is_held_back_only_for_open_documents_and_a_live_ui() {
+        // No document open: the window closes, and the UI is not even asked.
+        assert!(!holds_back_close(false, || panic!(
+            "asked without a document"
+        )));
+        // A document and a UI that took over the question: held back.
+        assert!(holds_back_close(true, || true));
+        // A document but nobody listening (the page is gone): the window can still be closed.
+        assert!(!holds_back_close(true, || false));
+    }
 
     fn at() -> PhysicalPosition<f64> {
         PhysicalPosition::new(10.0, 20.0)

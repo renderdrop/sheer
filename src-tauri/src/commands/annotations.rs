@@ -14,7 +14,7 @@
 //! The clock and the file are the only things that are not in the model: this module stamps the commands (`modified`, a monotonic
 //! time for coalescing) and asks the engine for the annotations of a page the first time the page is listed.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::{Mutex, MutexGuard};
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
@@ -89,7 +89,42 @@ impl AnnotationSummary {
 #[derive(Default)]
 struct Models {
     docs: HashMap<DocumentId, DocState>,
-    closed: HashSet<DocumentId>,
+    closed: Remembered,
+    /// Documents whose model was dropped after a panic: refused with a reason the UI can explain (`not_found`, `annotation_state`).
+    lost: Remembered,
+}
+
+/// How many ids [`Remembered`] keeps.
+const REMEMBERED_IDS: usize = 4096;
+
+/// A set of document ids that forgets the oldest once it holds [`REMEMBERED_IDS`] (ids are never reused and only a few documents are
+/// open at once, so an id that old is not asked for any more; the set must not grow with every document opened in a long session).
+#[derive(Default)]
+struct Remembered {
+    set: HashSet<DocumentId>,
+    order: VecDeque<DocumentId>,
+}
+
+impl Remembered {
+    fn insert(&mut self, id: DocumentId) {
+        if self.set.insert(id) {
+            self.order.push_back(id);
+            while self.order.len() > REMEMBERED_IDS {
+                if let Some(oldest) = self.order.pop_front() {
+                    self.set.remove(&oldest);
+                }
+            }
+        }
+    }
+
+    fn contains(&self, id: &DocumentId) -> bool {
+        self.set.contains(id)
+    }
+
+    #[cfg(test)]
+    fn len(&self) -> usize {
+        self.set.len()
+    }
 }
 
 /// The models of the open documents.
@@ -114,7 +149,9 @@ impl AnnotationStore {
         self.docs.lock().unwrap_or_else(|poisoned| {
             let mut models = poisoned.into_inner();
             let ids: Vec<DocumentId> = models.docs.keys().copied().collect();
-            models.closed.extend(ids);
+            for id in ids {
+                models.lost.insert(id);
+            }
             models.docs.clear();
             self.docs.clear_poison();
             models
@@ -140,6 +177,9 @@ impl AnnotationStore {
         f: impl FnOnce(&mut DocState) -> Result<T, AppError>,
     ) -> Result<T, AppError> {
         let mut models = self.lock();
+        if models.lost.contains(&id) {
+            return Err(AppError::not_found("annotation_state"));
+        }
         if models.closed.contains(&id) {
             return Err(AppError::not_found("document"));
         }
@@ -432,6 +472,7 @@ mod tests {
             author: None,
             modified: None,
             locked: false,
+            hidden: false,
         }
     }
 
@@ -688,6 +729,19 @@ mod tests {
     }
 
     #[test]
+    fn the_closed_ids_are_bounded_and_the_oldest_are_forgotten() {
+        let mut closed = Remembered::default();
+        let id = |n: usize| -> DocumentId { serde_json::from_str(&n.to_string()).unwrap() };
+        for n in 0..REMEMBERED_IDS + 10 {
+            closed.insert(id(n));
+        }
+        closed.insert(id(REMEMBERED_IDS + 9));
+        assert_eq!(closed.len(), REMEMBERED_IDS);
+        assert!(!closed.contains(&id(0)));
+        assert!(closed.contains(&id(REMEMBERED_IDS + 9)));
+    }
+
+    #[test]
     fn a_poisoned_lock_drops_the_models_and_refuses_their_documents() {
         let store = Arc::new(AnnotationStore::default());
         let (a, b): (DocumentId, DocumentId) = (
@@ -701,10 +755,11 @@ mod tests {
         })
         .join();
         assert!(crashed.is_err());
-        assert_eq!(
-            store.with(a, 1, |_| Ok(())).unwrap_err().code(),
-            ErrorCode::NotFound
-        );
+        let refused = store.with(a, 1, |_| Ok(())).unwrap_err();
+        assert_eq!(refused.code(), ErrorCode::NotFound);
+        // The UI can say why: `error.not_found.annotation_state`.
+        let wire = serde_json::to_value(crate::error::UiError::from(refused)).unwrap();
+        assert_eq!(wire["params"]["what"], "annotation_state");
         assert!(!store.is_dirty(a));
         // Another document works again.
         store.with(b, 1, |_| Ok(())).unwrap();

@@ -31,13 +31,14 @@ use tauri::ipc::Channel;
 use tauri::{State, WebviewWindow};
 use tauri_plugin_dialog::DialogExt;
 
-use super::save::{fingerprint_changed, plan_of, read_all};
+use super::save::{fingerprint_changed, plan_with_origins, read_all};
 use super::{blocking, AppState};
 use crate::documents::intake;
 use crate::documents::sources::SourceBytes;
 use crate::documents::{DocumentId, DocumentInfo, PageId};
 use crate::error::{AppError, ErrorCode, UiError};
 use crate::limits;
+use crate::model::annotation::PdfOrigin;
 use crate::model::page::{PageSource, SourceId};
 use crate::pdfwrite::compress::{self, Preset};
 use crate::pdfwrite::produce::{self, Control, PageKind, PageSel, Parsed, Part, Phase, Warning};
@@ -351,6 +352,9 @@ struct DocInput {
     name: String,
     source: PathBuf,
     plan: Plan,
+    /// The annotations of the pages that are not pages of the file (blank and imported ones), by position in `order`. They are written
+    /// into the produced file once its pages are made (`marked`).
+    foreign: Plan,
     /// The pages in the order of the model.
     order: Vec<(PageId, PageSel)>,
     /// The files the imported pages come from (`PageKind::Imported { source }` is an index into this).
@@ -359,12 +363,36 @@ struct DocInput {
     pages_changed: bool,
 }
 
+impl DocInput {
+    /// `output` with the annotations of the blank and imported pages written into it. `positions` are the positions in the document of
+    /// the pages `output` holds, in its order.
+    fn marked(
+        &self,
+        output: produce::Output,
+        positions: &[u32],
+    ) -> Result<produce::Output, AppError> {
+        let plan = produce::plan_for_output(&self.foreign, positions, 0);
+        let produce::Output {
+            bytes,
+            pages,
+            warnings,
+        } = output;
+        Ok(produce::Output {
+            bytes: produce::annotate(bytes, &plan, pages)?,
+            pages,
+            warnings,
+        })
+    }
+}
+
 /// A part of a merge.
 struct MergeBytes {
-    bytes: Vec<u8>,
+    bytes: Arc<[u8]>,
     name: String,
     order: Vec<PageSel>,
     sources: Vec<Arc<SourceBytes>>,
+    /// The annotations of its blank and imported pages (`DocInput::foreign`); empty for a source.
+    foreign: Plan,
 }
 
 /// Reads the files imported pages come from.
@@ -422,9 +450,24 @@ pub fn file_stem(display: &str) -> String {
     let cleaned = cleaned.trim_matches(|c: char| c == '.' || c.is_whitespace());
     if cleaned.is_empty() {
         "document".to_owned()
+    } else if is_reserved_device_name(cleaned) {
+        format!("_{cleaned}")
     } else {
         cleaned.to_owned()
     }
+}
+
+/// Whether Windows treats a file called `name` (with any extension) as a device: CON, PRN, AUX, NUL, COM1-9 and LPT1-9, in any case,
+/// judged on the part before the first dot. Such a name is refused on every platform so that a split made on a Mac opens on Windows.
+fn is_reserved_device_name(name: &str) -> bool {
+    let base = name.split('.').next().unwrap_or_default().trim_end();
+    let upper = base.to_ascii_uppercase();
+    matches!(upper.as_str(), "CON" | "PRN" | "AUX" | "NUL")
+        || ["COM", "LPT"].iter().any(|prefix| {
+            upper
+                .strip_prefix(prefix)
+                .is_some_and(|digit| matches!(digit.as_bytes(), [b'1'..=b'9']))
+        })
 }
 
 /// "3-5" or "7" for the page positions (0-based, ascending) of a file of a split.
@@ -511,41 +554,74 @@ impl AppState {
             .path(id)
             .ok_or(AppError::not_found("document"))?;
         let count = self.registry.page_count(id)?;
-        let (plan, order, imported, pages_changed) = self.annotations.with(id, count, |state| {
-            let plan = plan_of(state, |annotation| {
-                self.registry.page_index(id, annotation.page_id).ok()
-            });
-            let mut imported: Vec<SourceId> = Vec::new();
-            let mut order = Vec::with_capacity(state.pages().len());
-            for slot in state.pages() {
-                let kind = match slot.source {
-                    PageSource::File { index } => PageKind::File { index },
-                    PageSource::Blank => PageKind::Blank {
-                        width: slot.size[0],
-                        height: slot.size[1],
-                    },
-                    PageSource::Imported { source, index } => {
-                        let at = imported
-                            .iter()
-                            .position(|known| *known == source)
-                            .unwrap_or_else(|| {
-                                imported.push(source);
-                                imported.len() - 1
-                            });
-                        PageKind::Imported { source: at, index }
-                    }
+        let (plan, foreign, order, imported, pages_changed) =
+            self.annotations.with(id, count, |state| {
+                // The annotations of pages of the file are written into the file's bytes first; those of the other pages cannot be (the
+                // file has no such page) and are kept apart.
+                let layout = state.page_plan();
+                let of_file = |page: PageId| {
+                    state
+                        .slot(page)
+                        .filter(|slot| matches!(slot.source, PageSource::File { .. }))
                 };
-                order.push((
-                    slot.id,
-                    PageSel {
-                        kind,
-                        rotation: Some(slot.rotation),
+                let plan = plan_with_origins(
+                    state,
+                    |annotation| of_file(annotation.page_id).map(|slot| slot.engine_index),
+                    |origin| {
+                        layout
+                            .file_position(origin.page_index)
+                            .map(|_| origin.clone())
                     },
-                ));
-            }
-            let pages_changed = state.page_plan().changed();
-            Ok((plan, order, imported, pages_changed))
-        })?;
+                );
+                let foreign = plan_with_origins(
+                    state,
+                    |annotation| {
+                        state
+                            .slot(annotation.page_id)
+                            .filter(|slot| !matches!(slot.source, PageSource::File { .. }))
+                            .and_then(|_| state.position(annotation.page_id))
+                    },
+                    |origin| {
+                        layout
+                            .brought_position(origin.page_index)
+                            .filter(|_| origin.name.is_some())
+                            .map(|page_index| PdfOrigin {
+                                page_index,
+                                ..origin.clone()
+                            })
+                    },
+                );
+                let mut imported: Vec<SourceId> = Vec::new();
+                let mut order = Vec::with_capacity(state.pages().len());
+                for slot in state.pages() {
+                    let kind = match slot.source {
+                        PageSource::File { index } => PageKind::File { index },
+                        PageSource::Blank => PageKind::Blank {
+                            width: slot.size[0],
+                            height: slot.size[1],
+                        },
+                        PageSource::Imported { source, index } => {
+                            let at = imported
+                                .iter()
+                                .position(|known| *known == source)
+                                .unwrap_or_else(|| {
+                                    imported.push(source);
+                                    imported.len() - 1
+                                });
+                            PageKind::Imported { source: at, index }
+                        }
+                    };
+                    order.push((
+                        slot.id,
+                        PageSel {
+                            kind,
+                            rotation: Some(slot.rotation),
+                        },
+                    ));
+                }
+                let pages_changed = state.page_plan().changed();
+                Ok((plan, foreign, order, imported, pages_changed))
+            })?;
         // The bytes of the sources pages were taken from: pinned by the document, or still held by the registry.
         let sources = imported
             .iter()
@@ -561,6 +637,7 @@ impl AppState {
             name: info.display_name,
             source,
             plan,
+            foreign,
             order,
             sources,
             pages_changed,
@@ -594,7 +671,9 @@ impl AppState {
         let parsed = produce::load(&bytes)?;
         let sources = load_sources(&input.sources)?;
         let all: Vec<PageSel> = input.order.iter().map(|&(_, sel)| sel).collect();
-        Ok(build_pages(&parsed, &sources, &all, control)?.bytes)
+        let everything: Vec<u32> = (0..u32::try_from(all.len()).unwrap_or(0)).collect();
+        let output = input.marked(build_pages(&parsed, &sources, &all, control)?, &everything)?;
+        Ok(output.bytes)
     }
 
     /// The page ids as selections in the order of the document. Unique, existing, at least one (`invalid_argument`, `pages`).
@@ -618,19 +697,33 @@ impl AppState {
     }
 
     /// Whether `target` is the file of an open document.
-    fn target_is_open(&self, _ids: &[DocumentId], target: &Path) -> bool {
+    fn target_is_open(&self, target: &Path) -> bool {
         self.registry.is_open_path(target)
     }
 
     /// Writes `bytes` to `target` (which the user chose; the file there is replaced whole or not at all) and opens it as a document.
     fn publish(&self, target: &Path, bytes: &[u8]) -> Result<Option<DocumentInfo>, AppError> {
-        let existed = target.exists();
-        atomic::replace_atomic(target, bytes).map_err(write_error)?;
+        // The name is claimed first: whether this job made the file is the answer of `create_new`, not a look at the path that something
+        // else may change before the replace.
+        let made = match OpenOptions::new().write(true).create_new(true).open(target) {
+            Ok(file) => {
+                drop(file);
+                true
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => false,
+            Err(error) => return Err(write_error(error)),
+        };
+        if let Err(error) = atomic::replace_atomic(target, bytes) {
+            if made {
+                let _ = std::fs::remove_file(target);
+            }
+            return Err(write_error(error));
+        }
         match self.open_path(target.to_path_buf()) {
             Ok(opened) => Ok(opened),
             Err(error) => {
                 // What was written does not load: a file that this job made is taken away again.
-                if !existed {
+                if made {
                     let _ = std::fs::remove_file(target);
                 }
                 error.log();
@@ -654,8 +747,14 @@ impl AppState {
     ) -> Result<JobId, AppError> {
         let input = self.job_input(id)?;
         let selection = Self::select(&input.order, pages)?;
+        let chosen: HashSet<PageId> = pages.iter().copied().collect();
+        let positions: Vec<u32> = (0u32..)
+            .zip(&input.order)
+            .filter(|(_, (page, _))| chosen.contains(page))
+            .map(|(at, _)| at)
+            .collect();
         let target = intake::admit_target(target)?;
-        if self.target_is_open(&[id], &target) {
+        if self.target_is_open(&target) {
             return Err(AppError::new(ErrorCode::IoInUse));
         }
         let state = self.clone();
@@ -665,6 +764,7 @@ impl AppState {
             let parsed = produce::load(&bytes)?;
             let sources = load_sources(&input.sources)?;
             let output = build_pages(&parsed, &sources, &selection, ctx)?;
+            let output = input.marked(output, &positions)?;
             ctx.check()?;
             let after = output.bytes.len() as u64;
             let opened = state.publish(&target, &output.bytes)?;
@@ -716,6 +816,7 @@ impl AppState {
             | SplitPlan::Ranges { pattern, .. } => pattern.as_deref(),
         };
         let page_labels: Vec<String> = groups.iter().map(|g| page_label(g)).collect();
+        let group_positions: Vec<Vec<u32>> = groups.clone();
         let groups: Vec<Vec<PageSel>> = groups
             .into_iter()
             .map(|group| {
@@ -725,10 +826,7 @@ impl AppState {
                     .collect()
             })
             .collect();
-        let folder = intake::admit_target(&folder.join("split.pdf"))?
-            .parent()
-            .map(Path::to_path_buf)
-            .ok_or(AppError::invalid("path"))?;
+        let folder = intake::admit_folder(folder)?;
         let stem = file_stem(&input.name);
         let names = split_names(pattern, &stem, &page_labels)?;
         let state = self.clone();
@@ -747,6 +845,10 @@ impl AppState {
                 for (n, group) in groups.iter().enumerate() {
                     ctx.check()?;
                     let output = build_pages(&parsed, &sources, group, &quiet)?;
+                    let output = match group_positions.get(n) {
+                        Some(positions) => input.marked(output, positions)?,
+                        None => output,
+                    };
                     ctx.check()?;
                     let name = names
                         .get(n)
@@ -780,12 +882,12 @@ impl AppState {
     }
 
     /// The bytes of a source the user chose (`pick_pdf_sources`): a PDF held in memory, with its name.
-    fn source_part(&self, source: SourceId) -> Result<(Vec<u8>, String), AppError> {
+    fn source_part(&self, source: SourceId) -> Result<(Arc<[u8]>, String), AppError> {
         let held = self
             .sources
             .get(source)
             .ok_or(AppError::not_found("source"))?;
-        Ok((held.bytes.clone(), held.display_name.clone()))
+        Ok((Arc::clone(&held.bytes), held.display_name.clone()))
     }
 
     /// Merge: the inputs, in the order given, into a new file at `target`, which is then opened. 2 to 64 inputs; open documents and
@@ -801,43 +903,52 @@ impl AppState {
             return Err(AppError::limit("inputs", limits::MAX_MERGE_INPUTS as u64));
         }
         let target = intake::admit_target(target)?;
-        let mut documents: Vec<DocumentId> = Vec::new();
         enum Item {
             Document(Box<DocInput>),
-            Source(Vec<u8>, String),
+            Source(Arc<[u8]>, String),
         }
+        // What the merge holds in memory at once: the sources now, each document as it is read (checked against the same total).
+        let mut held = 0u64;
         let mut planned: Vec<Item> = Vec::with_capacity(inputs.len());
         for input in inputs {
             match input {
                 MergeInput::Document { doc_id } => {
-                    documents.push(*doc_id);
                     planned.push(Item::Document(Box::new(self.job_input(*doc_id)?)));
                 }
                 MergeInput::Source { source_id } => {
                     let (bytes, name) = self.source_part(*source_id)?;
+                    held += bytes.len() as u64;
+                    if held > limits::MAX_MERGE_BYTES {
+                        return Err(AppError::too_large("file_size", limits::MAX_MERGE_BYTES));
+                    }
                     planned.push(Item::Source(bytes, name));
                 }
             }
         }
-        if self.target_is_open(&documents, &target) {
+        if self.target_is_open(&target) {
             return Err(AppError::new(ErrorCode::IoInUse));
         }
         let state = self.clone();
         jobs.start(sink, move |ctx| {
             let inputs_total = u32::try_from(planned.len()).unwrap_or(u32::MAX);
             let mut parts: Vec<MergeBytes> = Vec::with_capacity(planned.len());
-            let mut total_bytes = 0u64;
+            let mut total_bytes = held;
             let mut total_pages = 0usize;
             for (n, item) in planned.into_iter().enumerate() {
                 ctx.check()?;
                 let part = match item {
                     Item::Document(input) => {
                         let bytes = state.job_bytes(&input)?;
+                        total_bytes += bytes.len() as u64;
+                        if total_bytes > limits::MAX_MERGE_BYTES {
+                            return Err(AppError::too_large("file_size", limits::MAX_MERGE_BYTES));
+                        }
                         MergeBytes {
-                            bytes,
+                            bytes: Arc::from(bytes),
                             name: input.name.clone(),
                             order: input.order.iter().map(|&(_, sel)| sel).collect(),
                             sources: input.sources.clone(),
+                            foreign: input.foreign.clone(),
                         }
                     }
                     Item::Source(bytes, name) => MergeBytes {
@@ -845,12 +956,9 @@ impl AppState {
                         name,
                         order: Vec::new(),
                         sources: Vec::new(),
+                        foreign: Plan::default(),
                     },
                 };
-                total_bytes += part.bytes.len() as u64;
-                if total_bytes > limits::MAX_MERGE_BYTES {
-                    return Err(AppError::too_large("file_size", limits::MAX_MERGE_BYTES));
-                }
                 total_pages += part.order.len();
                 parts.push(part);
                 ctx.progress(
@@ -886,7 +994,19 @@ impl AppState {
                     title: &part.name,
                 })
                 .collect();
-            let output = produce::build(&merge_parts, true, ctx)?;
+            let mut output = produce::build(&merge_parts, true, ctx)?;
+            // Each document's annotations on its blank and imported pages, at the place its pages have in the output. One file at a
+            // time: annotation ids are only unique within a document.
+            let mut base = 0u32;
+            for (part, merged) in parts.iter().zip(&merge_parts) {
+                let count = u32::try_from(merged.pages.len()).unwrap_or(0);
+                if !part.foreign.changes.is_empty() {
+                    let positions: Vec<u32> = (0..count).collect();
+                    let plan = produce::plan_for_output(&part.foreign, &positions, base);
+                    output.bytes = produce::annotate(output.bytes, &plan, output.pages)?;
+                }
+                base = base.saturating_add(count);
+            }
             ctx.check()?;
             let after = output.bytes.len() as u64;
             let opened = state.publish(&target, &output.bytes)?;
@@ -912,7 +1032,7 @@ impl AppState {
     ) -> Result<JobId, AppError> {
         let input = self.job_input(id)?;
         let target = intake::admit_target(target)?;
-        if self.target_is_open(&[id], &target) {
+        if self.target_is_open(&target) {
             return Err(AppError::new(ErrorCode::IoInUse));
         }
         let state = self.clone();
@@ -1203,11 +1323,15 @@ mod tests {
                 outputs: 2,
                 bytes_before: 10,
                 bytes_after: 5,
-                warnings: vec![Warning::SignaturesRemoved, Warning::FormsDropped],
+                warnings: vec![
+                    Warning::SignaturesRemoved,
+                    Warning::FormsDropped,
+                    Warning::WidgetsDropped
+                ],
                 opened: None,
             }),
             serde_json::json!({"type": "done", "outputs": 2, "bytesBefore": 10, "bytesAfter": 5,
-                "warnings": ["signaturesRemoved", "formsDropped"], "opened": null})
+                "warnings": ["signaturesRemoved", "formsDropped", "widgetsDropped"], "opened": null})
         );
         assert_eq!(
             value(&JobEvent::Cancelled),
@@ -1381,6 +1505,36 @@ mod tests {
             limits::MAX_SPLIT_STEM_CHARS
         );
         assert_eq!(file_stem("tab\there"), "tab_here");
+    }
+
+    #[test]
+    fn windows_device_names_get_a_prefix_on_every_platform() {
+        for name in [
+            "CON",
+            "con",
+            "Prn",
+            "AUX",
+            "nul",
+            "COM1",
+            "com9",
+            "LPT1",
+            "lpt9",
+            "NUL.txt",
+            "con.tar.pdf",
+            "CON .pdf",
+        ] {
+            let stem = file_stem(name);
+            assert!(stem.starts_with('_'), "{name} -> {stem}");
+        }
+        // Not devices: other digits, longer names, the device name inside a longer one.
+        for name in [
+            "COM0", "COM10", "LPT", "CONSOLE", "my-con", "COM1x", "Report",
+        ] {
+            assert_eq!(file_stem(name), name);
+        }
+        // Through the split pattern too.
+        let names = split_names(Some("{name}"), "nul", &["1".to_owned()]).unwrap();
+        assert_eq!(names, vec!["_nul".to_owned()]);
     }
 
     #[test]

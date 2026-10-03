@@ -54,10 +54,9 @@ pub fn on_big_stack<T: Send + 'static>(
 
 /// The number of pages of an import source. An encrypted source is `unsupported_feature`, one lopdf cannot read `damaged_file`, one without
 /// pages or with more than `MAX_PAGES` is refused.
-pub fn count_pages(bytes: Arc<Vec<u8>>) -> Result<u32, AppError> {
+pub fn count_pages(bytes: Arc<[u8]>) -> Result<u32, AppError> {
     on_big_stack(move || {
-        let doc = Document::load_mem(&bytes)
-            .map_err(|error| AppError::logged(ErrorCode::DamagedFile, format!("lopdf: {error}")))?;
+        let doc = super::prescan::load_untrusted(&bytes)?;
         if doc.is_encrypted() {
             return Err(AppError::new(ErrorCode::UnsupportedFeature));
         }
@@ -318,12 +317,32 @@ fn clean_annotation(src: &Document, annot: &Dictionary) -> Option<Dictionary> {
     if annot.get(b"Dest").is_ok_and(names_a_page) {
         cleaned.remove(b"Dest");
     }
+    // Actions of a document that came from elsewhere: only a link the app would itself offer to open (`security::links::classify`).
+    // Launch, JavaScript, GoToR, SubmitForm, ImportData and the rest are dropped, and so are the additional actions and a chain (`Next`).
+    cleaned.remove(b"AA");
     if let Some(action) = annot.get(b"A").ok().and_then(|a| resolve_dict(src, a)) {
-        if name_is(action, b"S", b"GoTo") && action.get(b"D").is_ok_and(names_a_page) {
-            cleaned.remove(b"A");
+        match safe_uri_action(action) {
+            Some(safe) => cleaned.set("A", Object::Dictionary(safe)),
+            None => {
+                cleaned.remove(b"A");
+            }
         }
     }
     Some(cleaned)
+}
+
+/// A fresh URI action (`S` and `URI` only) for `action` if it is one and its address passes the link classifier; else `None`.
+fn safe_uri_action(action: &Dictionary) -> Option<Dictionary> {
+    if !name_is(action, b"S", b"URI") {
+        return None;
+    }
+    let raw = action.get(b"URI").ok()?.as_str().ok()?;
+    let text = String::from_utf8_lossy(raw);
+    crate::security::links::classify(&text)?;
+    let mut safe = Dictionary::new();
+    safe.set("S", Object::Name(b"URI".to_vec()));
+    safe.set("URI", Object::string_literal(raw.to_vec()));
+    Some(safe)
 }
 
 /// The page `index` of `src` as a copy into `target`: the new object number, with `/Rotate` set. The parent is set by the caller.
@@ -352,19 +371,31 @@ fn import_page(
         .cloned()
     {
         let mut kept = Vec::with_capacity(entries.len());
+        let mut counted = 0u32;
         for entry in entries.into_iter().take(limits::MAX_ANNOTS_ARRAY) {
             let reference = entry.as_reference().ok();
             let Some(annot) = resolve_dict(src, &entry) else {
                 continue;
             };
+            // The place the engine knows it by (popups are not counted); an annotation without a name gets one made from it, so the
+            // model finds it again in the copy.
+            let at = (!name_is(annot, b"Subtype", b"Popup")).then(|| {
+                counted += 1;
+                counted - 1
+            });
             match clean_annotation(src, annot) {
-                Some(cleaned) => match reference {
-                    Some(id) => {
-                        overrides.insert(id, Object::Dictionary(cleaned));
-                        kept.push(Object::Reference(id));
+                Some(mut cleaned) => {
+                    if let Some(at) = at {
+                        super::annots::stamp_name(&mut cleaned, index, at);
                     }
-                    None => kept.push(Object::Dictionary(cleaned)),
-                },
+                    match reference {
+                        Some(id) => {
+                            overrides.insert(id, Object::Dictionary(cleaned));
+                            kept.push(Object::Reference(id));
+                        }
+                        None => kept.push(Object::Dictionary(cleaned)),
+                    }
+                }
                 None => {
                     dropped.extend(reference);
                 }
@@ -485,7 +516,7 @@ pub fn rewrite_pages(
     plan: &PagePlan,
     sources: &HashMap<SourceId, Arc<SourceBytes>>,
 ) -> Result<Rewritten, AppError> {
-    let doc = Document::load_mem(&original).map_err(lopdf_error)?;
+    let doc = super::prescan::load_untrusted(&original)?;
     if doc.is_encrypted() {
         return Err(AppError::new(ErrorCode::UnsupportedFeature));
     }
@@ -578,7 +609,7 @@ pub fn rewrite_pages(
                     let bytes = sources
                         .get(&source)
                         .ok_or_else(|| failed("an import source is gone"))?;
-                    let src = Document::load_mem(&bytes.bytes).map_err(lopdf_error)?;
+                    let src = super::prescan::load_untrusted(&bytes.bytes)?;
                     if src.is_encrypted() {
                         return Err(AppError::new(ErrorCode::UnsupportedFeature));
                     }
@@ -704,7 +735,7 @@ fn finish(
 /// and `/Annots` that listed it (ADR-036 §5, "clean copy"). Nothing of those pages, and no object only they or a deleted annotation held, is
 /// in the result.
 pub fn compact(bytes: Vec<u8>, deleted: &[ObjectId]) -> Result<Vec<u8>, AppError> {
-    let mut doc = Document::load_mem(&bytes).map_err(lopdf_error)?;
+    let mut doc = super::prescan::load_untrusted(&bytes)?;
     drop(bytes);
     if doc.is_encrypted() {
         return Err(AppError::new(ErrorCode::UnsupportedFeature));
@@ -756,5 +787,68 @@ fn strip_nulls(object: &mut Object, depth: usize) {
             .iter_mut()
             .for_each(|item| strip_nulls(item, depth + 1)),
         _ => {}
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn link_with(action: Dictionary) -> Dictionary {
+        let mut annot = Dictionary::new();
+        annot.set("Subtype", Object::Name(b"Link".to_vec()));
+        annot.set("A", Object::Dictionary(action));
+        let mut extra = Dictionary::new();
+        extra.set("S", Object::Name(b"JavaScript".to_vec()));
+        annot.set("AA", Object::Dictionary(extra));
+        annot
+    }
+
+    fn action(kind: &str, extra: &[(&str, Object)]) -> Dictionary {
+        let mut dict = Dictionary::new();
+        dict.set("S", Object::Name(kind.as_bytes().to_vec()));
+        for (key, value) in extra {
+            dict.set(*key, value.clone());
+        }
+        dict
+    }
+
+    #[test]
+    fn imported_annotations_keep_only_safe_uri_actions() {
+        let doc = Document::new();
+        for dangerous in [
+            action("Launch", &[("F", Object::string_literal("calc.exe"))]),
+            action(
+                "JavaScript",
+                &[("JS", Object::string_literal("app.alert(1)"))],
+            ),
+            action("GoToR", &[("F", Object::string_literal("x.pdf"))]),
+            action(
+                "SubmitForm",
+                &[("F", Object::string_literal("http://a.example/"))],
+            ),
+            action(
+                "URI",
+                &[("URI", Object::string_literal("file:///etc/passwd"))],
+            ),
+            action(
+                "URI",
+                &[("URI", Object::string_literal("javascript:alert(1)"))],
+            ),
+        ] {
+            let cleaned = clean_annotation(&doc, &link_with(dangerous)).unwrap();
+            assert!(cleaned.get(b"A").is_err());
+            assert!(cleaned.get(b"AA").is_err());
+        }
+        let mut good = action(
+            "URI",
+            &[("URI", Object::string_literal("https://example.org/a"))],
+        );
+        good.set("Next", Object::Dictionary(action("Launch", &[])));
+        let cleaned = clean_annotation(&doc, &link_with(good)).unwrap();
+        let kept = cleaned.get(b"A").unwrap().as_dict().unwrap();
+        assert!(name_is(kept, b"S", b"URI"));
+        assert!(kept.get(b"Next").is_err(), "a chain is not carried");
+        assert!(cleaned.get(b"AA").is_err());
     }
 }

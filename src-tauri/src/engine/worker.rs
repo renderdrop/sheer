@@ -212,6 +212,22 @@ fn serve<'a>(
             };
             answer(reply, result, Some(id), documents, crashed);
         }
+        Job::TruncatePages {
+            id,
+            keep,
+            total,
+            reply,
+        } => {
+            let result = if crashed.contains(&id) {
+                Err(AppError::new(ErrorCode::EngineCrashed))
+            } else {
+                guarded(|| match documents.get_mut(&id) {
+                    Some(document) => pages::truncate(document, keep, total),
+                    None => Err(AppError::not_found("document")),
+                })
+            };
+            answer(reply, result, Some(id), documents, crashed);
+        }
         Job::AppendPages {
             id,
             source,

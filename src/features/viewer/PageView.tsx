@@ -230,15 +230,17 @@ export const PageView = memo(function PageView({
 
   // An annotation of the file that was changed makes the page's pixels stale: the images of the new revision are asked for, and the
   // old ones stand in until they arrive.
-  const rev = useAnnotations((state) => pageRevOf(state, docId, pageId) + slotRev);
+  const rev = useAnnotations((state) => pageRevOf(state, docId, pageId));
   const standInFor = (bucket: number, except?: string): CacheEntry | undefined => {
-    for (let r = rev; r >= Math.max(0, rev - STAND_IN_REVS); r -= 1) {
-      const found = cache.best(docId, pageId, r, bucket, except);
-      if (found !== undefined) return found;
+    for (let q = slotRev; q >= Math.max(0, slotRev - STAND_IN_REVS); q -= 1) {
+      for (let r = rev; r >= Math.max(0, rev - STAND_IN_REVS); r -= 1) {
+        const found = cache.best(docId, pageId, r, bucket, except, q);
+        if (found !== undefined) return found;
+      }
     }
     return undefined;
   };
-  const wholeId: ImageId = { docId, page: pageId, rev, bucket: wholeBucket };
+  const wholeId: ImageId = { docId, page: pageId, rev, slotRev, bucket: wholeBucket };
   const exact = cache.get(imageKey(wholeId));
   // What the cache had when the page mounted shows without a fade; what arrives later fades in (MOTION 4.3).
   const [atMount] = useState(() => new Set<string>(exact === undefined ? [] : [exact.key]));
@@ -262,7 +264,7 @@ export const PageView = memo(function PageView({
 
   // Ask for what is missing: the page, or the underlay and the tiles near the viewport.
   useEffect(() => {
-    const whole: ImageId = { docId, page: pageId, rev, bucket: wholeBucket };
+    const whole: ImageId = { docId, page: pageId, rev, slotRev, bucket: wholeBucket };
     const wanted: ImageId[] = [whole];
     for (const tile of tiles) wanted.push({ ...whole, bucket: tiledBucket, tile });
     const missing = wanted.filter((id) => !cache.has(imageKey(id)));
@@ -282,8 +284,10 @@ export const PageView = memo(function PageView({
     };
     // Something to show meanwhile makes the wait cheap; without it the page is blank until the image arrives.
     let hasSomething = false;
-    for (let r = rev; r >= Math.max(0, rev - STAND_IN_REVS) && !hasSomething; r -= 1) {
-      hasSomething = cache.best(docId, pageId, r, wholeBucket) !== undefined;
+    for (let q = slotRev; q >= Math.max(0, slotRev - STAND_IN_REVS) && !hasSomething; q -= 1) {
+      for (let r = rev; r >= Math.max(0, rev - STAND_IN_REVS) && !hasSomething; r -= 1) {
+        hasSomething = cache.best(docId, pageId, r, wholeBucket, undefined, q) !== undefined;
+      }
     }
     const timer = hasSomething ? window.setTimeout(ask, BUCKET_SETTLE_MS) : undefined;
     if (timer === undefined) ask();
@@ -291,7 +295,7 @@ export const PageView = memo(function PageView({
       current = false;
       window.clearTimeout(timer);
     };
-  }, [scheduler, cache, docId, pageId, rev, wholeBucket, tiledBucket, tiles, priority]);
+  }, [scheduler, cache, docId, pageId, rev, slotRev, wholeBucket, tiledBucket, tiles, priority]);
 
   // A stand-in is under the image that arrives: that one fades fast; over the bare placeholder it fades at base.
   const image = (

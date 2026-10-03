@@ -1,4 +1,5 @@
 import { motion, useReducedMotion } from 'motion/react';
+import { useEffect, useRef, useState, type RefObject } from 'react';
 
 import { SPRING } from '../../components/motion';
 import { tokenPx } from '../../components/tokens';
@@ -15,12 +16,18 @@ export interface DragCardProps {
   docId: number;
   /** The dragged pages in document order. */
   ids: readonly number[];
-  /** The pointer, in window px. */
-  x: number;
-  y: number;
+  /** The pointer, in window px. A ref: the card follows it from an animation frame, so a move is no render. */
+  pointer: RefObject<{ x: number; y: number }>;
   thumb: number;
   pixelRatio: number;
   scheduler?: RenderScheduler;
+}
+
+/** The lift scale from the token, read once per card. */
+function readLift(): number {
+  return Number.parseFloat(
+    typeof document === 'undefined' ? '1' : getComputedStyle(document.documentElement).getPropertyValue('--scale-lift'),
+  );
 }
 
 /**
@@ -28,23 +35,41 @@ export interface DragCardProps {
  * lifted (scale `--scale-lift`, `--shadow-3`) and following the pointer at `--z-drag`. It only shows pictures that are in the render
  * cache already (the cells in view have asked for them). Reduced motion: `--scale-lift` is 1, so no lift.
  */
-export function DragCard({ docId, ids, x, y, thumb, pixelRatio, scheduler = renderScheduler }: DragCardProps) {
+export function DragCard({ docId, ids, pointer, thumb, pixelRatio, scheduler = renderScheduler }: DragCardProps) {
   const reduce = useReducedMotion() === true;
   const slots = readSlots(docId);
   const shown = ids.slice(0, STACK).flatMap((id) => slots.find((slot) => slot.id === id) ?? []);
-  const lift = Number.parseFloat(
-    typeof document === 'undefined' ? '1' : getComputedStyle(document.documentElement).getPropertyValue('--scale-lift'),
-  );
+  const [lift] = useState(readLift);
   const offset = tokenPx('--space-0-5', 4);
   const first = shown[0];
   const box = first === undefined ? { width: thumb, height: thumb } : fitInBox(first, thumb);
+  const element = useRef<HTMLDivElement | null>(null);
+  const halfWidth = box.width / 2;
+  const halfHeight = box.height / 2;
+  useEffect(() => {
+    let frame = 0;
+    let last = '';
+    const tick = () => {
+      const { x, y } = pointer.current ?? { x: 0, y: 0 };
+      const next = `translate(${x - halfWidth}px, ${y - halfHeight}px)`;
+      if (next !== last && element.current !== null) {
+        last = next;
+        element.current.style.transform = next;
+      }
+      frame = window.requestAnimationFrame(tick);
+    };
+    frame = window.requestAnimationFrame(tick);
+    return () => window.cancelAnimationFrame(frame);
+  }, [pointer, halfWidth, halfHeight]);
+  const start = pointer.current ?? { x: 0, y: 0 };
   return (
     <div
+      ref={element}
       aria-hidden="true"
       data-drag-card=""
       className="pointer-events-none fixed start-0 top-0 z-drag"
       style={{
-        transform: `translate(${x - box.width / 2}px, ${y - box.height / 2}px)`,
+        transform: `translate(${start.x - halfWidth}px, ${start.y - halfHeight}px)`,
         width: box.width,
         height: box.height,
       }}
@@ -60,7 +85,7 @@ export function DragCard({ docId, ids, x, y, thumb, pixelRatio, scheduler = rend
           const size = fitInBox(slot, thumb);
           const turned = slot.rotation === 90 || slot.rotation === 270;
           const bucket = bucketFor(size.width / ((turned ? slot.height : slot.width) * CSS_PX_PER_PT), pixelRatio);
-          const entry = scheduler.cache.best(docId, slot.id, slot.rev, bucket);
+          const entry = scheduler.cache.best(docId, slot.id, 0, bucket, undefined, slot.rev);
           return (
             <div
               key={slot.id}

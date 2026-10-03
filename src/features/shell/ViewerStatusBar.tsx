@@ -1,3 +1,4 @@
+import { isDirty, useAnnotations } from '../../stores/annotations';
 import { selectActiveDocument, selectActiveId, useDocuments } from '../../stores/documents';
 import { useDocView } from '../../stores/view';
 import { useSave } from '../save/state';
@@ -16,6 +17,7 @@ export function ViewerStatusBar() {
   const saveHint = useSave((state) =>
     activeId === null ? null : state.saving[activeId] === true ? 'saving' : state.saved === activeId ? 'saved' : null,
   );
+  const edited = useAnnotations((state) => activeId !== null && isDirty(state, activeId));
   const goToPage = useViewer((state) => state.goToPage);
   const setZoom = useViewer((state) => state.setZoom);
   const resetRotation = useViewer((state) => state.resetRotation);
@@ -30,6 +32,7 @@ export function ViewerStatusBar() {
       zoom={opening ? Number.NaN : zoom}
       rendering={rendering}
       saveHint={saveHint}
+      edited={edited}
       onGoToPage={goToPage}
       onZoom={setZoom}
       rotation={rotation}

@@ -33,6 +33,8 @@ export interface ToolbarState {
   /** How the open document's pages are laid out: the More menu checks the matching entry. */
   scrollMode: ScrollMode;
   activeTool: ToolId;
+  /** The open document cannot change (the tour sample): the Pages tool is aria-disabled. */
+  readOnly?: boolean;
   toolLocked: boolean;
   /** The remembered variants of Markup and Shapes (DESIGN 3.22): they name the tool and choose its icon. Highlight and Rectangle by default. */
   markupVariant?: MarkupVariant;
@@ -124,12 +126,12 @@ export function buildMoreItems(
 
 /**
  * The toolbar of DESIGN 3.3 and ADR-011 section 6 as data for the Toolbar primitive: the panel toggle, then the four tool
- * clusters (Select, Markup, Fill and sign, Pages), More, a spacer, the zoom cluster and the inspector toggle. Names, icons,
+ * clusters (Select, Markup, Fill and sign, Pages), Undo and Redo, More, a spacer, the zoom cluster and the inspector toggle. Names, icons,
  * shortcuts and the enabled state of every item come from the action registry (`src/actions`), and so does the More menu
  * (`buildMoreItems`). Without a document every item is disabled, which the primitive renders as `aria-disabled` (still
  * focusable, does nothing).
  *
- * When the toolbar is too narrow, items move into More in this order: Pages, Form, Signature, zoom out, zoom in. Select, the
+ * When the toolbar is too narrow, items move into More in this order: Redo, Undo, Pages, Form, Signature, zoom out, zoom in. Select, the
  * Markup tools, the zoom readout and the two toggles stay.
  */
 export function buildToolbar(
@@ -157,7 +159,7 @@ export function buildToolbar(
       kind: 'tool',
       pressed: state.activeTool === id,
       locked: state.activeTool === id && state.toolLocked,
-      disabled,
+      disabled: disabled || (id === 'pages' && state.readOnly === true),
       collapse,
       onActivate: () => actions.selectTool(id),
       onLock: id === 'select' ? undefined : () => actions.lockTool(id),
@@ -165,6 +167,13 @@ export function buildToolbar(
   };
 
   const zoom = (id: 'zoom-in' | 'zoom-out', collapse: number): ToolbarItem => ({
+    id,
+    ...described(id),
+    collapse,
+    onActivate: () => actions.run(id),
+  });
+
+  const history = (id: 'undo' | 'redo', collapse: number): ToolbarItem => ({
     id,
     ...described(id),
     collapse,
@@ -194,16 +203,21 @@ export function buildToolbar(
     {
       id: 'fill-and-sign',
       label: t('toolbar.group.fillAndSign'),
-      items: [tool('form', 2), tool('signature', 3)],
+      items: [tool('form', 4), tool('signature', 5)],
     },
-    { id: 'pages', label: t('toolbar.group.pages'), items: [tool('pages', 1)] },
+    { id: 'pages', label: t('toolbar.group.pages'), items: [tool('pages', 3)] },
+    {
+      id: 'history',
+      label: t('toolbar.group.history'),
+      items: [history('undo', 2), history('redo', 1)],
+    },
     { type: 'more', id: 'more' },
     { type: 'spacer', id: 'spacer' },
     {
       id: 'zoom',
       label: t('toolbar.group.zoom'),
       items: [
-        zoom('zoom-out', 4),
+        zoom('zoom-out', 6),
         {
           id: 'zoom-level',
           label: t('toolbar.zoomLevel'),
@@ -211,7 +225,7 @@ export function buildToolbar(
           disabled: !hasDocument,
           menu: state.zoomMenu,
         },
-        zoom('zoom-in', 5),
+        zoom('zoom-in', 7),
       ],
     },
     {

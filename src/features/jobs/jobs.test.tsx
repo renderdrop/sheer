@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { act, screen, waitFor } from '@testing-library/react';
 import { MotionGlobalConfig } from 'motion/react';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { DocumentInfo } from '../../api/documents';
 import type { JobEvent } from '../../api/jobs';
@@ -10,7 +10,7 @@ import { resetDocuments } from '../../stores/documents.testutil';
 import { useUi } from '../../stores/ui';
 import { setup } from '../../test/render';
 import { checkInput } from './SplitDialog';
-import { flushDropBatch, intakeOpened, setDropWindow } from './dropBatch';
+import { DropBatcher } from './dropBatch';
 import { DropBannerRow, JobsHost } from './JobsHost';
 import { initialEntries, moveEntry } from './MergeSheet';
 import { openCompress, openMerge, openSplit, useJobs } from './state';
@@ -66,10 +66,6 @@ beforeEach(() => {
   jobs.cancelJob.mockResolvedValue(undefined);
   useUi.setState({ toast: null });
 });
-afterEach(() => {
-  flushDropBatch();
-  setDropWindow(120);
-});
 
 describe('checkInput', () => {
   it('every N needs 1 to total - 1', () => {
@@ -95,17 +91,42 @@ describe('the merge list', () => {
 });
 
 describe('a multi-file drop', () => {
-  it('shows the banner for two documents and tabs for one', () => {
-    setDropWindow(1000);
+  it('shows the banner for two documents and a tab for one', () => {
+    const clock = 10_000;
+    const batch = new DropBatcher({ windowMs: 1000, now: () => clock });
     const show = vi.fn();
-    intakeOpened(A, show);
-    flushDropBatch();
+    batch.noteHover(true);
+    batch.intake(A, show);
+    batch.flushNow();
     expect(show).toHaveBeenCalledTimes(1);
-    intakeOpened(A, show);
-    intakeOpened(B, show);
-    flushDropBatch();
+    batch.intake(A, show);
+    batch.intake(B, show);
+    batch.flushNow();
     expect(show).toHaveBeenCalledTimes(1);
     expect(useJobs.getState().drop).toEqual([A, B]);
+  });
+
+  it('shows a document at once unless files were just dragged over the window, and keeps its state to itself', () => {
+    vi.useFakeTimers();
+    try {
+      let clock = 10_000;
+      const first = new DropBatcher({ windowMs: 120, now: () => clock });
+      const second = new DropBatcher({ windowMs: 120, now: () => clock });
+      const show = vi.fn();
+      first.intake(A, show);
+      expect(show).toHaveBeenCalledTimes(1);
+      first.noteHover(false);
+      first.intake(B, show);
+      second.intake(A, show);
+      expect(show).toHaveBeenCalledTimes(2);
+      vi.advanceTimersByTime(120);
+      expect(show).toHaveBeenCalledTimes(3);
+      clock += 5000;
+      first.intake(A, show);
+      expect(show).toHaveBeenCalledTimes(4);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('offers Merge, Open as tabs, and a close that opens nothing', async () => {

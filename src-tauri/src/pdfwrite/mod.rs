@@ -8,7 +8,9 @@ pub mod compress;
 pub mod coords;
 pub mod inspect;
 pub mod pagetree;
+pub mod prescan;
 pub mod produce;
 pub mod save;
 
+pub use prescan::load_untrusted;
 pub use save::{append_annotations, validate, Built, Change, Plan};

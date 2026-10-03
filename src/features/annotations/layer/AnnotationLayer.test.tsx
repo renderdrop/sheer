@@ -111,6 +111,37 @@ describe('rendering', () => {
     expect(container.querySelectorAll('[data-annot-hit]')).toHaveLength(3);
   });
 
+  it('draws a changed highlight in its own layer that multiplies with the page, not in the shape layer', () => {
+    const quad = [
+      { x: 10, y: 10 },
+      { x: 50, y: 10 },
+      { x: 10, y: 20 },
+      { x: 50, y: 20 },
+    ];
+    seed([
+      box(1, 10, 10, 'new', { kind: 'highlight', quads: [quad] } as unknown as Partial<Annotation>),
+      box(2, 60, 10, 'clean', { kind: 'highlight', quads: [quad] } as unknown as Partial<Annotation>),
+      box(3, 10, 100),
+    ]);
+    const { container } = render(<AnnotationLayer {...props()} />);
+    const blend = container.querySelector('[data-annot-blend]');
+    expect(blend?.className).toContain('mix-blend-multiply');
+    expect(blend?.querySelectorAll('rect')).toHaveLength(1);
+    // The rectangle is still in the shape layer; the highlight is not.
+    expect(container.querySelectorAll('[data-annot-layer] svg > g > rect:not([fill="transparent"])')).toHaveLength(1);
+  });
+
+  it('has no blend layer without a drawn highlight', () => {
+    const { container } = render(<AnnotationLayer {...props()} />);
+    expect(container.querySelector('[data-annot-blend]')).toBeNull();
+  });
+
+  it('draws a note as its colour with a speech bubble on it', () => {
+    seed([box(1, 10, 10, 'new', { kind: 'note', at: { x: 10, y: 10 } } as unknown as Partial<Annotation>)]);
+    const { container } = render(<AnnotationLayer {...props()} />);
+    expect(container.querySelectorAll('[data-note-glyph]')).toHaveLength(1);
+  });
+
   it('draws nothing for an opaque annotation but lets it be selected when its bounds are known', () => {
     const opaque = {
       ...common,

@@ -50,7 +50,7 @@ const item = (entries: ToolbarEntry[], id: string): ToolbarItem => {
 };
 
 describe('the toolbar of DESIGN 3.3 and ADR-011 section 6', () => {
-  it('has the order panel toggle | Select | Markup | Fill and sign | Pages | More | spacer | zoom | inspector toggle', () => {
+  it('has the order panel toggle | Select | Markup | Fill and sign | Pages | History | More | spacer | zoom | inspector toggle', () => {
     const { entries } = buildToolbar(state(), actions());
     expect(entries.map((entry) => ('type' in entry && entry.type !== undefined ? entry.type : entry.id))).toEqual([
       'panels',
@@ -58,6 +58,7 @@ describe('the toolbar of DESIGN 3.3 and ADR-011 section 6', () => {
       'markup',
       'fill-and-sign',
       'pages',
+      'history',
       'more',
       'spacer',
       'zoom',
@@ -69,6 +70,7 @@ describe('the toolbar of DESIGN 3.3 and ADR-011 section 6', () => {
       ['highlight', 'note', 'text', 'draw', 'shapes'],
       ['form', 'signature'],
       ['pages'],
+      ['undo', 'redo'],
       ['zoom-out', 'zoom-level', 'zoom-in'],
       ['inspector-toggle'],
     ]);
@@ -82,6 +84,7 @@ describe('the toolbar of DESIGN 3.3 and ADR-011 section 6', () => {
       'Markup',
       'Fill and sign',
       'Pages',
+      'History',
       'Zoom',
       'Inspector',
     ]);
@@ -94,9 +97,17 @@ describe('the toolbar of DESIGN 3.3 and ADR-011 section 6', () => {
       for (const entry of items(entries)) expect(entry.disabled, entry.id).toBe(true);
     });
 
-    it('with a document every item is enabled, except zoom at its limits', () => {
+    it('with a document every item is enabled, except zoom at its limits and Undo and Redo with an empty history', () => {
       const { entries } = buildToolbar(state(), actions());
-      for (const entry of items(entries)) expect(entry.disabled, entry.id).toBe(false);
+      for (const entry of items(entries)) {
+        expect(entry.disabled, entry.id).toBe(entry.id === 'undo' || entry.id === 'redo');
+      }
+      const history = buildToolbar(
+        state({ action: { hasDocument: true, zoomAtMin: false, zoomAtMax: false, canUndo: true, canRedo: false } }),
+        actions(),
+      ).entries;
+      expect(item(history, 'undo').disabled).toBe(false);
+      expect(item(history, 'redo').disabled).toBe(true);
       const atMin = buildToolbar(
         state({ action: { hasDocument: true, zoomAtMin: true, zoomAtMax: false, canUndo: false, canRedo: false } }),
         actions(),
@@ -143,13 +154,13 @@ describe('the toolbar of DESIGN 3.3 and ADR-011 section 6', () => {
   });
 
   describe('overflow', () => {
-    it('moves Pages first, then Form, Signature, zoom out and zoom in into More; the rest never moves', () => {
+    it('moves Redo first, then Undo, Pages, Form, Signature, zoom out and zoom in into More; the rest never moves', () => {
       const { entries } = buildToolbar(state(), actions());
       const collapsing = items(entries)
         .filter((entry) => entry.collapse !== undefined)
         .sort((a, b) => (a.collapse ?? 0) - (b.collapse ?? 0))
         .map((entry) => entry.id);
-      expect(collapsing).toEqual(['pages', 'form', 'signature', 'zoom-out', 'zoom-in']);
+      expect(collapsing).toEqual(['redo', 'undo', 'pages', 'form', 'signature', 'zoom-out', 'zoom-in']);
       for (const id of [
         'left-panel',
         'select',
@@ -176,9 +187,6 @@ describe('the toolbar of DESIGN 3.3 and ADR-011 section 6', () => {
         'split-document',
         'extract-pages',
         'compress-document',
-        'edit:before',
-        'undo',
-        'redo',
         'view:before',
         'actual-size',
         'fit-width',
@@ -204,7 +212,6 @@ describe('the toolbar of DESIGN 3.3 and ADR-011 section 6', () => {
         'about',
       ]);
       expect(moreItems.filter((entry) => entry.type === 'separator').map((entry) => entry.id)).toEqual([
-        'edit:before',
         'view:before',
         'page:before',
         'view:before',
@@ -375,6 +382,8 @@ describe('the toolbar and the More menu are the registry (no orphan shortcuts)',
     form: 'tool-form',
     signature: 'tool-signature',
     pages: 'tool-pages',
+    undo: 'undo',
+    redo: 'redo',
     'zoom-out': 'zoom-out',
     'zoom-level': null,
     'zoom-in': 'zoom-in',

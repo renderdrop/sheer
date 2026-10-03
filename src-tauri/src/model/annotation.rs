@@ -233,6 +233,8 @@ pub struct Imported {
     pub author: Option<String>,
     pub modified: Option<String>,
     pub locked: bool,
+    /// The file marks the annotation Hidden: PDFium does not draw it, and undo must not show it (`DocState::hidden_origins`).
+    pub hidden: bool,
 }
 
 // --- Validation ------------------------------------------------------------------------------------------------
@@ -1195,6 +1197,7 @@ mod tests {
             author: None,
             modified: Some("D:20240101".into()),
             locked: false,
+            hidden: false,
         };
         let made = Annotation::from_import(AnnotId::new(1), PageId::new(0), &good).unwrap();
         assert_eq!(made.sync, Sync::Clean);

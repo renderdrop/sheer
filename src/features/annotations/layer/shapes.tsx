@@ -12,6 +12,9 @@ import { quadBox } from '../../viewer/transform';
 
 /** The size of a note's icon in points when the backend's box is empty. */
 const NOTE_FALLBACK_PT = 20;
+/** The speech bubble drawn on a note's anchor (Lucide `message-square`, ISC, on a 24 grid) and its inset as a share of the anchor. */
+const NOTE_GLYPH = 'M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z';
+const NOTE_GLYPH_INSET = 0.2;
 /** The line height of free text, as a multiple of the font size. */
 const LINE_HEIGHT = 1.2;
 /** The inset of free text from its box, in points. */
@@ -74,7 +77,7 @@ export const Shape = memo(function Shape({ a }: { a: Annotation }) {
   switch (a.kind) {
     case 'highlight':
       return (
-        <g fill={color} opacity={a.opacity} style={{ mixBlendMode: 'multiply' }}>
+        <g fill={color} opacity={a.opacity}>
           {a.quads.map((q, i) => {
             const b = quadBox(q);
             return <rect key={i} x={b.x} y={b.y} width={b.w} height={b.h} />;
@@ -103,17 +106,31 @@ export const Shape = memo(function Shape({ a }: { a: Annotation }) {
       );
     case 'note': {
       const size = Math.max(a.rect.w, a.rect.h) || NOTE_FALLBACK_PT;
+      // The anchor is the note's colour with a speech bubble on it (the 24-unit path of the interface's note icon), so it reads as a note.
       return (
-        <rect
-          x={a.at.x}
-          y={a.at.y}
-          width={size}
-          height={size}
-          rx={size / 6}
-          fill={color}
-          fillOpacity={a.opacity}
-          stroke={color}
-        />
+        <g>
+          <rect
+            x={a.at.x}
+            y={a.at.y}
+            width={size}
+            height={size}
+            rx={size / 6}
+            fill={color}
+            fillOpacity={a.opacity}
+            stroke={color}
+          />
+          <path
+            d={NOTE_GLYPH}
+            transform={`translate(${a.at.x + size * NOTE_GLYPH_INSET} ${a.at.y + size * NOTE_GLYPH_INSET}) scale(${(size * (1 - 2 * NOTE_GLYPH_INSET)) / 24})`}
+            fill="none"
+            style={{ stroke: 'var(--color-doc-ink)' }}
+            strokeOpacity={0.75}
+            strokeWidth={2}
+            strokeLinejoin="round"
+            strokeLinecap="round"
+            data-note-glyph=""
+          />
+        </g>
       );
     }
     case 'freeText':

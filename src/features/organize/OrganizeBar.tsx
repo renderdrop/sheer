@@ -6,6 +6,7 @@ import { shortcutFor } from '../../actions/registry';
 import { Button, IconButton, Menu, Slider, type MenuEntry } from '../../components';
 import { useT } from '../../i18n';
 import { detectPlatform } from '../../lib/platform';
+import { useDocuments } from '../../stores/documents';
 import { useSettings } from '../../stores/settings';
 import { useUi } from '../../stores/ui';
 import { deletePages, insertBlank, insertFromFile, rotatePages } from './commands';
@@ -30,7 +31,8 @@ export function OrganizeBar({ docId }: OrganizeBarProps) {
   const thumb = useOrganize((state) => state.thumb);
   const selection = useOrganize((state) => selectionOf(state, docId));
   const targets = selection.selected.length > 0 ? selection.selected.length : selection.focus === null ? 0 : 1;
-  const none = targets === 0;
+  const readOnly = useDocuments((state) => state.byId[docId]?.kind === 'welcome');
+  const none = targets === 0 || readOnly;
   const cannotDelete = none || targets >= slots.length;
   const shortcut = (id: 'rotate-view-left' | 'rotate-view-right') => {
     const found = shortcutFor(id, platform, t);
@@ -78,7 +80,15 @@ export function OrganizeBar({ docId }: OrganizeBarProps) {
       <Menu
         label={t('organize.insert')}
         entries={insertEntries}
-        trigger={(trigger) => <IconButton {...trigger} label={t('organize.insert')} icon={FilePlus} />}
+        trigger={(trigger) => (
+          <IconButton
+            {...trigger}
+            label={t('organize.insert')}
+            icon={FilePlus}
+            disabled={readOnly}
+            focusableWhenDisabled
+          />
+        )}
       />
       <Button
         variant="ghost"

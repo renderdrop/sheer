@@ -33,15 +33,18 @@ export const MAX_DROPPED_REMEMBERED = 256;
 export interface ImageId {
   docId: number;
   page: number;
-  /** The page's revision; 0 until pages can change (the backend's `pageRev`). */
+  /** The page's annotation revision (the backend's `pageRev`; 0 until its pixels change). */
   rev: number;
+  /** The page slot's revision (a rotation raises it); with `rev` it is a tuple, not a sum. Absent is 0. */
+  slotRev?: number;
   bucket: number;
   tile?: TileIndex | null;
 }
 
 /** The key of an image in the cache. */
 export function imageKey(id: ImageId): string {
-  const page = `${id.docId}:${id.page}:${id.rev}:${id.bucket}`;
+  const slot = id.slotRev === undefined || id.slotRev === 0 ? '' : `-${id.slotRev}`;
+  const page = `${id.docId}:${id.page}:${id.rev}${slot}:${id.bucket}`;
   return id.tile === undefined || id.tile === null ? page : `${page}:${id.tile[0]},${id.tile[1]}`;
 }
 
@@ -145,13 +148,13 @@ export class RenderCache {
    * the page has none. Tiles are not considered. It is marked as used. `except` is a key to leave out: the image that is about
    * to replace the one this is for.
    */
-  best(docId: number, page: number, rev: number, bucket: number, except?: string): CacheEntry | undefined {
+  best(docId: number, page: number, rev: number, bucket: number, except?: string, slotRev = 0): CacheEntry | undefined {
     const buckets = this.wholePages.get(pageId(docId, page));
     if (buckets === undefined) return undefined;
     let above: CacheEntry | undefined;
     let below: CacheEntry | undefined;
     for (const entry of buckets.values()) {
-      if (entry.rev !== rev || entry.key === except) continue;
+      if (entry.rev !== rev || entry.slotRev !== slotRev || entry.key === except) continue;
       if (entry.bucket >= bucket) {
         if (above === undefined || entry.bucket < above.bucket) above = entry;
       } else if (below === undefined || entry.bucket > below.bucket) {
@@ -175,6 +178,7 @@ export class RenderCache {
       docId: id.docId,
       page: id.page,
       rev: id.rev,
+      slotRev: id.slotRev ?? 0,
       bucket: id.bucket,
       tile: id.tile ?? null,
       blob: image.blob,

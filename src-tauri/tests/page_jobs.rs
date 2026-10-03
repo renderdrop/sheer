@@ -352,3 +352,130 @@ fn the_hostile_corpus_never_panics_a_producer() {
     let error: AppError = produce::load(&support::fixtures::encrypted()).unwrap_err();
     assert_eq!(error.code(), ErrorCode::UnsupportedFeature);
 }
+/// A one page document with a blank page and page 1 of a two page file (a square, `sq-1`) inserted, and a rectangle drawn on both new
+/// pages. Returns the document and the ids of the blank and the imported page.
+fn marked_document(state: &AppState, scratch: &Scratch) -> (DocumentId, PageId, PageId) {
+    use serde_json::json;
+    use sheer_lib::model::command::DocCommand;
+    use support::fixtures::{add_pages, page_id, Page};
+    let command =
+        |value: serde_json::Value| -> DocCommand { serde_json::from_value(value).unwrap() };
+    let id = open(state, scratch, "marked.pdf", &numbered_pages(1, 2));
+    let mut builder = PdfBuilder::new();
+    let pages: Vec<Page> = (0..2)
+        .map(|i| Page::new("").with(&format!("/Annots [{} 0 R]", 100 + i)))
+        .collect();
+    add_pages(&mut builder, &pages);
+    for i in 0..2u32 {
+        builder.object(
+            100 + i,
+            &format!(
+                "<< /Type /Annot /Subtype /Square /Rect [200 500 300 560] /C [0 0 1] /NM (sq-{i}) /P {} 0 R >>",
+                page_id(i)
+            ),
+        );
+    }
+    builder.object(1, "<< /Type /Catalog /Pages 2 0 R >>");
+    let other = scratch.file("other.pdf");
+    std::fs::write(&other, builder.finish(1)).unwrap();
+    let source = match state.add_sources(vec![other]).remove(0) {
+        sheer_lib::commands::pages::SourceResult::Ready { source_id, .. } => source_id,
+        failed => panic!("{failed:?}"),
+    };
+    state
+        .apply_command(id, command(json!({"type": "insertBlankPage", "at": 1})))
+        .unwrap();
+    let list = state
+        .apply_command(
+            id,
+            command(json!({"type": "insertPages", "source": source, "pages": [1], "at": 2})),
+        )
+        .unwrap()
+        .pages
+        .unwrap();
+    let (blank, imported) = (list[1].id, list[2].id);
+    for page in [blank, imported] {
+        state
+            .apply_command(
+                id,
+                command(json!({"type": "createAnnotation", "draft": {
+                    "pageId": page.get(), "kind": "rect", "color": [10, 20, 200], "opacity": 1.0,
+                    "box": {"x": 100.0, "y": 50.0, "w": 80.0, "h": 40.0}, "width": 2.0, "fill": null, "dashed": false}})),
+            )
+            .unwrap();
+    }
+    (id, blank, imported)
+}
+
+/// `(page, has an appearance stream)` of every square in the file.
+fn squares(path: &Path) -> Vec<(u32, bool)> {
+    let mut squares: Vec<(u32, bool)> =
+        sheer_lib::pdfwrite::inspect::list_annotations(&std::fs::read(path).unwrap())
+            .unwrap()
+            .iter()
+            .filter(|a| a.subtype == "Square")
+            .map(|a| (a.page_index, a.has_appearance))
+            .collect();
+    squares.sort_unstable();
+    squares
+}
+
+#[test]
+fn unsaved_annotations_of_blank_and_imported_pages_reach_the_new_files() {
+    let Some(state) = state() else { return };
+    let scratch = Scratch::new("marks");
+    let (id, blank, imported) = marked_document(state, &scratch);
+    let jobs = Arc::new(JobRegistry::new());
+
+    // Extract: the blank page (the new rectangle) and the imported one (its own square and the new rectangle), in document order.
+    let (sink, receiver) = channel();
+    let target = scratch.file("extract.pdf");
+    state
+        .start_extract(&jobs, id, &[imported, blank], &target, sink)
+        .unwrap();
+    done(finish(&receiver));
+    // The source's own square has no appearance stream in the fixture.
+    assert_eq!(squares(&target), [(0, true), (1, false), (1, true)]);
+
+    // Split into single pages: each file carries what its page has.
+    let folder = scratch.file("split");
+    std::fs::create_dir_all(&folder).unwrap();
+    let (sink, receiver) = channel();
+    state
+        .start_split(
+            &jobs,
+            id,
+            &SplitPlan::EveryN {
+                n: 1,
+                pattern: None,
+            },
+            &folder,
+            sink,
+        )
+        .unwrap();
+    done(finish(&receiver));
+    let mut counts: Vec<usize> = std::fs::read_dir(&folder)
+        .unwrap()
+        .map(|entry| squares(&entry.unwrap().path()).len())
+        .collect();
+    counts.sort_unstable();
+    assert_eq!(counts, [0, 1, 2]);
+
+    // Merge with a plain file: the pages keep theirs at the place they have in the output.
+    let plain = open(state, &scratch, "plain.pdf", &numbered_pages(2, 2));
+    let (sink, receiver) = channel();
+    let merged = scratch.file("merged.pdf");
+    state
+        .start_merge(
+            &jobs,
+            &[
+                MergeInput::Document { doc_id: plain },
+                MergeInput::Document { doc_id: id },
+            ],
+            &merged,
+            sink,
+        )
+        .unwrap();
+    done(finish(&receiver));
+    assert_eq!(squares(&merged), [(3, true), (4, false), (4, true)]);
+}

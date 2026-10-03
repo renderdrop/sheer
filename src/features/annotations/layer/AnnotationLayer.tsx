@@ -166,57 +166,88 @@ export const AnnotationLayer = memo(function AnnotationLayer({
   const only = selectedHere.size === 1;
   const minPt = HIT_SLOP_PX / pxPerPt;
 
+  const isDrawn = (a: Annotation) => {
+    const view = preview.get(a.id) ?? a;
+    return view.sync !== 'clean' || view !== a;
+  };
+  // Highlights are drawn in their own layer that multiplies with the page bitmap: a blend only reaches the bitmap from a sibling
+  // of the page's surface, not from inside a layer that is a stacking context of its own (the transformed group below).
+  const highlights = items.filter((a) => a.kind === 'highlight' && isDrawn(a));
+
   return (
-    <div data-annot-layer="" className="pointer-events-none absolute inset-0 z-canvas-annotations">
-      <div role="group" aria-label={t('annot.layer', { n: pageIndex + 1 })} className="absolute" style={style}>
-        <svg
-          width={page[0]}
-          height={page[1]}
-          viewBox={`0 0 ${page[0]} ${page[1]}`}
+    <>
+      {highlights.length > 0 && (
+        <div
+          data-annot-blend=""
           aria-hidden="true"
-          className="pointer-events-none absolute inset-0 overflow-visible"
+          className="pointer-events-none absolute inset-0 z-canvas-annotations mix-blend-multiply"
         >
-          {items.map((a) => {
-            const view = preview.get(a.id) ?? a;
-            // Clean ones are in the bitmap, unless they are being dragged: then the preview is all there is of them.
-            const drawn = view.sync !== 'clean' || view !== a;
-            return (
-              <g key={a.id}>
-                {drawn && <Shape a={view} />}
-                {selectActive && (
-                  <g
-                    data-annot-hit={a.id}
-                    style={{ pointerEvents: 'all', cursor: canMove(a) ? 'move' : 'default' }}
-                    onPointerDown={(event) => handlers.onItemPointerDown(a, event)}
-                    onPointerEnter={() => setHover(a.id)}
-                    onPointerLeave={() => setHover((current) => (current === a.id ? null : current))}
-                  >
-                    <HitShape a={view} minPt={minPt} />
-                  </g>
-                )}
-              </g>
-            );
-          })}
-        </svg>
-        {items.map((a) => (
-          <Frame
-            key={a.id}
-            a={a}
-            view={preview.get(a.id) ?? a}
-            selected={selectedHere.has(a.id)}
-            hovered={hover === a.id && selectActive}
-            withHandles={only && selectActive}
-            pageNumber={pageIndex + 1}
-            api={handlers}
-          />
-        ))}
+          <div className="absolute" style={style}>
+            <svg
+              width={page[0]}
+              height={page[1]}
+              viewBox={`0 0 ${page[0]} ${page[1]}`}
+              className="pointer-events-none absolute inset-0 overflow-visible"
+            >
+              {highlights.map((a) => (
+                <Shape key={a.id} a={preview.get(a.id) ?? a} />
+              ))}
+            </svg>
+          </div>
+        </div>
+      )}
+      <div data-annot-layer="" className="pointer-events-none absolute inset-0 z-canvas-annotations">
+        <div role="group" aria-label={t('annot.layer', { n: pageIndex + 1 })} className="absolute" style={style}>
+          <svg
+            width={page[0]}
+            height={page[1]}
+            viewBox={`0 0 ${page[0]} ${page[1]}`}
+            aria-hidden="true"
+            className="pointer-events-none absolute inset-0 overflow-visible"
+          >
+            {items.map((a) => {
+              const view = preview.get(a.id) ?? a;
+              // Clean ones are in the bitmap, unless they are being dragged: then the preview is all there is of them.
+              // Highlights are in the blend layer.
+              const drawn = a.kind !== 'highlight' && isDrawn(a);
+              return (
+                <g key={a.id}>
+                  {drawn && <Shape a={view} />}
+                  {selectActive && (
+                    <g
+                      data-annot-hit={a.id}
+                      style={{ pointerEvents: 'all', cursor: canMove(a) ? 'move' : 'default' }}
+                      onPointerDown={(event) => handlers.onItemPointerDown(a, event)}
+                      onPointerEnter={() => setHover(a.id)}
+                      onPointerLeave={() => setHover((current) => (current === a.id ? null : current))}
+                    >
+                      <HitShape a={view} minPt={minPt} />
+                    </g>
+                  )}
+                </g>
+              );
+            })}
+          </svg>
+          {items.map((a) => (
+            <Frame
+              key={a.id}
+              a={a}
+              view={preview.get(a.id) ?? a}
+              selected={selectedHere.has(a.id)}
+              hovered={hover === a.id && selectActive}
+              withHandles={only && selectActive}
+              pageNumber={pageIndex + 1}
+              api={handlers}
+            />
+          ))}
+        </div>
+        <CreationLayer
+          docId={docId}
+          pageIndex={pageIndex}
+          pageBox={{ width: page[0], height: page[1] }}
+          transform={{ pxPerPt, rotation: total }}
+        />
       </div>
-      <CreationLayer
-        docId={docId}
-        pageIndex={pageIndex}
-        pageBox={{ width: page[0], height: page[1] }}
-        transform={{ pxPerPt, rotation: total }}
-      />
-    </div>
+    </>
   );
 });

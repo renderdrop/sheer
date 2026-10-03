@@ -103,7 +103,7 @@ The Stop hook picks the first open `- [ ]` line, so order matters. Scope: `docs/
 - [x] Merge files (multi-drop suggests merge)
 - [x] Split (every N pages, ranges)
 - [x] Compress: three named presets with estimated size
-- [ ] Politur M3
+- [x] Politur M3
   - (from M3 fix review) render cache revision as a tuple (annotation rev, slot rev) instead of a sum; drop the duplicated updateViewport effect; a save-level test that forces a write failure / reopen mismatch and checks the restore
   - (from M3 security, medium) jobs: reject Windows reserved device names (CON, NUL, AUX, COM1… before any dot, case-insensitive) in split/extract file stems → prefix "_"; lopdf `load_mem` on hostile inputs: cap total decoded bytes (pre-scan object streams / implausible /Length or /N)
   - (from M3 security/review, low) jobs: decide cleanup from the replace result instead of exists() (TOCTOU); `admit_folder` helper instead of the dummy split.pdf; merge sources as Arc<[u8]> with a total in-memory cap; drop `_ids` in target_is_open; widgets on imported pages dropped silently → warning
@@ -125,6 +125,9 @@ The Stop hook picks the first open `- [ ]` line, so order matters. Scope: `docs/
 - [ ] Place, move, scale signatures; initials and date
 - [ ] Fill & Sign for flat forms (text, check, cross, dot)
 - [ ] Signature library encrypted at rest, key in OS keychain (keyring ADR)
+- [ ] Politur M4
+  - (from M3 polish review) organize read-only: per-cell aria-disabled and no marquee when read-only; comments delete focus fallback clamp (`Math.min(fallback, index)`); toolbar collapse-order and slotRev constants named; imported annotations over MAX_ANNOTATIONS_PER_DOC leave pages unread (soft cap); single-file drop delay (backend drop count)
+  - (deferred) F6 skips annotation tab stops (no F6 handler yet); link overlay with file /Rotate test; user docs: undo history ends at save (ADR-033)
 
 ## M5 — Edit and protect (v0.8.0)
 

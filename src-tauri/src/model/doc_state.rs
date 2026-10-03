@@ -103,6 +103,8 @@ pub struct DocState {
     pub(super) history: History,
     /// The pages whose annotations were read from the file.
     pub(super) imported: HashSet<u32>,
+    /// Where (page index, position) the file itself marks an annotation Hidden: PDFium keeps it hidden, so undo never shows it.
+    file_hidden: BTreeSet<(u32, u32)>,
     /// Bytes of strings taken from the file so far (`limits::MAX_IMPORT_BYTES_PER_DOC`).
     imported_bytes: usize,
     /// Live (not deleted) entries in all and per page, kept by [`DocState::track`]; the limits are checked against these.
@@ -160,6 +162,7 @@ impl DocState {
             history: History::new(),
             imported: HashSet::new(),
             imported_bytes: 0,
+            file_hidden: BTreeSet::new(),
             live_total: 0,
             live_per_page: HashMap::new(),
             replies: HashMap::new(),
@@ -231,10 +234,19 @@ impl DocState {
         // The pages are the file's pages now, in this order: page *i* of the list is page *i* of the file. Where an annotation that
         // was not written is in the file moves with its page.
         let mut moved: HashMap<u32, u32> = HashMap::new();
+        // Pages that came from an import source: their annotations, if the model holds them, keep their ids.
+        let mut brought: HashMap<u32, u32> = HashMap::new();
+        let holding: HashSet<u32> = self
+            .entries
+            .values()
+            .map(|entry| entry.annotation.page_id.get())
+            .collect();
         for (position, slot) in self.pages.iter_mut().enumerate() {
             let position = u32::try_from(position).unwrap_or(u32::MAX);
             if matches!(slot.source, PageSource::File { .. }) {
                 moved.insert(slot.engine_index, position);
+            } else if holding.contains(&slot.id.get()) {
+                brought.insert(slot.engine_index, position);
             } else {
                 // A page of the file now: its annotations are read from the file like those of any page.
                 self.imported.remove(&slot.id.get());
@@ -244,10 +256,20 @@ impl DocState {
             slot.saved_rotation = slot.rotation;
         }
         self.file_pages = self.page_count();
+        // The positions in the file moved with the write (deleted and rewritten annotations): what was Hidden in the old file is not
+        // known by position any more.
+        self.file_hidden.clear();
         for entry in self.entries.values_mut() {
             if let Some(origin) = &mut entry.persisted {
                 if let Some(position) = moved.get(&origin.page_index) {
                     origin.page_index = *position;
+                } else if let Some(position) = brought.get(&origin.page_index) {
+                    // Where it is in the saved page is known by its `/NM` only: the copy of the page may have dropped entries before it.
+                    if origin.name.is_some() {
+                        origin.page_index = *position;
+                    } else {
+                        entry.persisted = None;
+                    }
                 }
             }
         }
@@ -360,12 +382,15 @@ impl DocState {
 
     /// Where (page index, position in the page) the originals are that PDFium must not draw: annotations of the file that were changed
     /// or deleted in this session. The overlay draws the changed ones; undo makes an original `Clean` again, which shows it.
+    ///
+    /// The ones the file itself marks Hidden are always in the set, so that going back to `Clean` (undo) never shows them.
     pub fn hidden_origins(&self) -> BTreeSet<(u32, u32)> {
         self.entries
             .values()
             .filter(|entry| entry.tombstone || entry.annotation.sync == Sync::Modified)
             .filter_map(|entry| entry.persisted.as_ref())
             .map(|origin| (origin.page_index, origin.annot_index))
+            .chain(self.file_hidden.iter().copied())
             .collect()
     }
 
@@ -394,6 +419,12 @@ impl DocState {
             .filter(|origin| origin.page_index == engine_index)
             .map(|origin| origin.annot_index)
             .collect();
+        for item in items.iter().filter(|item| item.hidden) {
+            if self.file_hidden.len() < limits::MAX_ANNOTATIONS_PER_DOC {
+                self.file_hidden
+                    .insert((item.origin.page_index, item.origin.annot_index));
+            }
+        }
         for item in items
             .iter()
             .filter(|item| !known.contains(&item.origin.annot_index))

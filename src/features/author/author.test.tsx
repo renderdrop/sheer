@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -87,6 +87,57 @@ describe('the author prompt on the first save', () => {
     await user.keyboard('{Escape}');
     expect(await second).toBe(true);
     expect(api.updateSettings).toHaveBeenCalledWith({ authorPrompt: 'done' });
+  });
+
+  it('keeps the field open and says why when the confirmed name is invalid, then accepts a valid one', async () => {
+    render(<AuthorPromptField />);
+    const user = userEvent.setup();
+    const pending = saveNow(1);
+    const field = await screen.findByRole('textbox');
+    await user.clear(field);
+    await user.type(field, 'bad');
+    // A control character cannot be typed, so the invalid name comes in through the value.
+    fireEvent.change(field, { target: { value: 'Ada' } });
+    await user.click(screen.getByRole('button', { name: 'Use name' }));
+    expect(screen.getByRole('alert').textContent).toContain('128');
+    expect(field.getAttribute('aria-invalid')).toBe('true');
+    expect(document.activeElement).toBe(field);
+    expect(api.saveDocument).not.toHaveBeenCalled();
+    fireEvent.change(field, { target: { value: 'Ada' } });
+    expect(screen.queryByRole('alert')).toBeNull();
+    await user.click(screen.getByRole('button', { name: 'Use name' }));
+    expect(await pending).toBe(true);
+    expect(api.updateSettings).toHaveBeenCalledWith({ authorName: 'Ada', authorPrompt: 'done' });
+  });
+
+  it('has its own placeholder, and an empty confirmed name stays anonymous', async () => {
+    render(<AuthorPromptField />);
+    const user = userEvent.setup();
+    const pending = saveNow(1);
+    const field = await screen.findByRole('textbox');
+    expect(field.getAttribute('placeholder')).toBe('Name (optional)');
+    await user.clear(field);
+    await user.click(screen.getByRole('button', { name: 'Use name' }));
+    expect(await pending).toBe(true);
+    expect(api.updateSettings).toHaveBeenCalledWith({ authorPrompt: 'done' });
+  });
+
+  it('returns the focus to the element that had it when the field closes', async () => {
+    render(
+      <>
+        <button type="button">Before</button>
+        <AuthorPromptField />
+      </>,
+    );
+    const user = userEvent.setup();
+    const before = screen.getByRole('button', { name: 'Before' });
+    before.focus();
+    const pending = saveNow(1);
+    await screen.findByRole('textbox');
+    expect(document.activeElement).not.toBe(before);
+    await user.click(screen.getByRole('button', { name: 'Skip' }));
+    await pending;
+    expect(document.activeElement).toBe(before);
   });
 
   it('does not ask when done, when a name is set, when the settings are not loaded or the document has no annotations', async () => {

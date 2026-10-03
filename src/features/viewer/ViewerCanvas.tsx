@@ -197,6 +197,17 @@ export function ViewerCanvas({ style }: { style?: CSSProperties }) {
     window: EMPTY_WINDOW,
     ahead: [],
   });
+  // What the scheduler was last told about the viewport: the same lists are not sent twice (the scroll handler tells it first, the
+  // effect below catches changes that come without a scroll).
+  const toldScheduler = useRef('');
+  const tellScheduler = useCallback((id: number, visible: readonly number[], near: readonly number[]) => {
+    const lists = idsOf(id, visible);
+    const nearIds = idsOf(id, near);
+    const key = `${id}|${lists.join(',')}|${nearIds.join(',')}`;
+    if (key === toldScheduler.current) return;
+    toldScheduler.current = key;
+    renderScheduler.updateViewport(id, lists, nearIds);
+  }, []);
   // Horizontal scroll stays centred (a wide page next to narrow ones overflows) until the user scrolls sideways themselves.
   const autoCentre = useRef(true);
   const lastLeft = useRef(0);
@@ -219,8 +230,7 @@ export function ViewerCanvas({ style }: { style?: CSSProperties }) {
         setMounted(next);
         // The scheduler hears of it now, before the new pages mount and ask for their images: those renders then carry this
         // generation, and a hint that was made for the old window can never cancel them. Nothing on screen is nothing to tell.
-        if (next.visible.length > 0)
-          renderScheduler.updateViewport(docId, idsOf(docId, next.visible), idsOf(docId, [...next.near, ...ahead]));
+        if (next.visible.length > 0) tellScheduler(docId, next.visible, [...next.near, ...ahead]);
       }
       // Passing pages during an animated jump are not the page the user went to.
       if (paged || scrollAnim.current !== null) return;
@@ -234,7 +244,7 @@ export function ViewerCanvas({ style }: { style?: CSSProperties }) {
       }
       useView.getState().reportPage(docId, page);
     },
-    [layout, docId, paged, ahead],
+    [layout, docId, paged, ahead, tellScheduler],
   );
 
   // A zoom, a change of mode or a jump to a page left an anchor: now that the layout is in the DOM, scroll there. Then follow the position.
@@ -337,7 +347,8 @@ export function ViewerCanvas({ style }: { style?: CSSProperties }) {
         const id = {
           docId,
           page: slot.id,
-          rev: pageRevOf(useAnnotations.getState(), docId, slot.id) + slot.rev,
+          rev: pageRevOf(useAnnotations.getState(), docId, slot.id),
+          slotRev: slot.rev,
           bucket: plan.tiled ? plan.underlayBucket : plan.bucket,
         };
         if (renderScheduler.cache.has(imageKey(id))) continue;
@@ -351,8 +362,8 @@ export function ViewerCanvas({ style }: { style?: CSSProperties }) {
   // change nothing).
   useEffect(() => {
     if (docId === null || mounted.visible.length === 0) return;
-    renderScheduler.updateViewport(docId, idsOf(docId, mounted.visible), idsOf(docId, [...mounted.near, ...ahead]));
-  }, [docId, slots, mounted, ahead]);
+    tellScheduler(docId, mounted.visible, [...mounted.near, ...ahead]);
+  }, [docId, slots, mounted, ahead, tellScheduler]);
 
   const turn = useCallback(
     (direction: 1 | -1) => (direction === 1 ? nextPage() : previousPage()),

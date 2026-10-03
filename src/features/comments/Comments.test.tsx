@@ -199,6 +199,110 @@ describe('Comments tree', () => {
     expect(listDocumentAnnotations).toHaveBeenCalledTimes(2);
   });
 
+  it('shows the contents as the excerpt, and a muted "No text" instead of the kind when there are none', async () => {
+    await shown();
+    expect(items()[0]?.textContent).toContain('First <b>bold</b>');
+    const empty = items()[1] as HTMLElement;
+    expect(empty.textContent).toContain('No text');
+    expect(empty.textContent).not.toContain('Highlight');
+  });
+
+  describe('Delete and Backspace', () => {
+    const apply = vi.fn();
+    beforeEach(() => {
+      apply.mockReset().mockResolvedValue(undefined);
+      useAnnotations.setState({ apply } as never);
+    });
+
+    it('delete the focused annotation as one undoable change and move the focus to the next row', async () => {
+      const { user } = await shown();
+      (items()[0] as HTMLElement).focus();
+      await user.keyboard('{Delete}');
+      expect(apply).toHaveBeenCalledWith(1, { type: 'deleteAnnotations', ids: [1] });
+      await vi.waitFor(() => expect(document.activeElement?.getAttribute('aria-posinset')).toBe('2'));
+    });
+
+    it('Backspace does the same, and the focus goes to the previous row when it was the last', async () => {
+      const { user } = await shown();
+      await user.keyboard('{Tab}');
+      (items()[1] as HTMLElement).focus();
+      await user.keyboard('{Backspace}');
+      expect(apply).toHaveBeenCalledWith(1, { type: 'deleteAnnotations', ids: [3] });
+      await vi.waitFor(() => expect(document.activeElement?.getAttribute('aria-posinset')).toBe('1'));
+    });
+
+    it('never delete an opaque annotation (it is not ours to edit)', async () => {
+      listDocumentAnnotations.mockResolvedValue([summary(1, { kind: 'opaque', contents: '' })]);
+      const { user } = setup(<Comments />);
+      await screen.findAllByRole('treeitem');
+      (items()[0] as HTMLElement).focus();
+      await user.keyboard('{Delete}{Backspace}');
+      expect(apply).not.toHaveBeenCalled();
+    });
+
+    it('leave the focus alone when the delete fails', async () => {
+      apply.mockRejectedValue(new Error('refused'));
+      const { user } = await shown();
+      const first = items()[0] as HTMLElement;
+      first.focus();
+      await user.keyboard('{Delete}');
+      await act(async () => {});
+      expect(document.activeElement).toBe(first);
+    });
+  });
+
+  it('keeps the rows when a refresh brings the same list, and replaces only what changed', async () => {
+    await shown();
+    const before = useComments.getState().byDoc[1];
+    if (before?.status !== 'ready') throw new Error('not ready');
+    listDocumentAnnotations.mockResolvedValue(LIST.map((item) => ({ ...item, color: [...item.color] })));
+    act(() => useComments.getState().load(1));
+    await vi.waitFor(() => expect(listDocumentAnnotations).toHaveBeenCalledTimes(2));
+    await act(async () => {});
+    const same = useComments.getState().byDoc[1];
+    if (same?.status !== 'ready') throw new Error('not ready');
+    expect(same.summaries).toBe(before.summaries);
+    expect(same.threads).toBe(before.threads);
+    expect(same.token).not.toBe(before.token);
+
+    listDocumentAnnotations.mockResolvedValue(
+      LIST.map((item) => (item.id === 3 ? { ...item, contents: 'Now' } : item)),
+    );
+    act(() => useComments.getState().load(1));
+    await vi.waitFor(() => expect(items()[1]?.textContent).toContain('Now'));
+    const changed = useComments.getState().byDoc[1];
+    if (changed?.status !== 'ready') throw new Error('not ready');
+    expect(changed.summaries[0]).toBe(before.summaries[0]);
+    expect(changed.summaries[2]).not.toBe(before.summaries[2]);
+  });
+
+  it('uses only the newest of overlapping list calls, whatever order they answer in', async () => {
+    await shown();
+    let answerOld: (value: AnnotationSummary[]) => void = () => undefined;
+    listDocumentAnnotations
+      .mockReturnValueOnce(new Promise<AnnotationSummary[]>((resolve) => (answerOld = resolve)))
+      .mockResolvedValueOnce([summary(9, { contents: 'Newest' })]);
+    act(() => {
+      useComments.getState().load(1);
+      useComments.getState().load(1);
+    });
+    await vi.waitFor(() => expect(items()[0]?.textContent).toContain('Newest'));
+    await act(async () => answerOld([summary(8, { contents: 'Stale' })]));
+    expect(items()).toHaveLength(1);
+    expect(items()[0]?.textContent).toContain('Newest');
+  });
+
+  it('ignores an answer for a document that was closed meanwhile', async () => {
+    listDocumentAnnotations.mockResolvedValue(LIST);
+    await shown();
+    let answer: (value: AnnotationSummary[]) => void = () => undefined;
+    listDocumentAnnotations.mockReturnValueOnce(new Promise<AnnotationSummary[]>((resolve) => (answer = resolve)));
+    act(() => useComments.getState().load(1));
+    act(() => useComments.getState().drop(1));
+    await act(async () => answer(LIST));
+    expect(useComments.getState().byDoc[1]).toBeUndefined();
+  });
+
   it('virtualizes a long list', async () => {
     listDocumentAnnotations.mockResolvedValue(Array.from({ length: 500 }, (_, i) => summary(i + 1, { pageId: i % 5 })));
     setup(<Comments />);

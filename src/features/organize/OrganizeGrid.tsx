@@ -18,7 +18,7 @@ import { useUi } from '../../stores/ui';
 import { launchJump } from '../viewer/openTransition';
 import { useViewer } from '../viewer/useViewer';
 import { useDevicePixelRatio } from '../viewer/useDevicePixelRatio';
-import { deletePages, dropPages, moveByKeys } from './commands';
+import { deletePages, dropPages, isReadOnly, moveByKeys } from './commands';
 import {
   arrowTarget,
   cellOrigin,
@@ -71,8 +71,13 @@ interface Pending {
 
 interface Drag {
   ids: readonly number[];
-  x: number;
-  y: number;
+}
+
+interface MarqueeRect {
+  x0: number;
+  y0: number;
+  x1: number;
+  y1: number;
 }
 
 export interface OrganizeGridProps {
@@ -101,10 +106,16 @@ export function OrganizeGrid({ docId, scheduler }: OrganizeGridProps) {
   const [scrollTop, setScrollTop] = useState(0);
   const [drag, setDrag] = useState<Drag | null>(null);
   const [insertion, setInsertion] = useState<Insertion | null>(null);
-  const [marquee, setMarquee] = useState<{ x0: number; y0: number; x1: number; y1: number } | null>(null);
+  // The marquee is drawn from a ref in an animation frame: only whether it is on is state, so a move is no render of the grid.
+  const [marqueeOn, setMarqueeOn] = useState(false);
+  const marqueeEl = useRef<HTMLDivElement | null>(null);
+  const marqueeRect = useRef<MarqueeRect | null>(null);
+  const marqueeHits = useRef('');
+  const marqueeFrame = useRef(0);
   const pending = useRef<Pending | null>(null);
   const pointer = useRef({ x: 0, y: 0 });
   const wantFocus = useRef<number | null>(null);
+  const readOnly = isReadOnly(docId);
 
   const count = slots.length;
   const ids = useMemo(() => slots.map((slot) => slot.id), [slots]);
@@ -210,15 +221,16 @@ export function OrganizeGrid({ docId, scheduler }: OrganizeGridProps) {
   }, [reduce]);
 
   // Keep the scroll position when the width changes the rows: the page at the top stays near it.
-  const toContent = (clientX: number, clientY: number) => {
+  const toContent = useCallback((clientX: number, clientY: number) => {
     const region = scroller.current;
     const rect = region?.getBoundingClientRect();
     return { x: clientX - (rect?.left ?? 0), y: clientY - (rect?.top ?? 0) + (region?.scrollTop ?? 0) };
-  };
+  }, []);
 
   // Edge scrolling while a drag is on: the insertion follows the pointer as the content moves under it.
+  const dragging = drag !== null;
   useEffect(() => {
-    if (drag === null) return;
+    if (!dragging) return;
     let frame = 0;
     const tick = () => {
       const region = scroller.current;
@@ -239,8 +251,45 @@ export function OrganizeGrid({ docId, scheduler }: OrganizeGridProps) {
     };
     frame = window.requestAnimationFrame(tick);
     return () => window.cancelAnimationFrame(frame);
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- `toContent` only reads refs
-  }, [drag === null, metrics, count]);
+  }, [dragging, metrics, count, toContent]);
+
+  // The marquee box and the selection under it, once per frame. The selection is set only when what it touches changes.
+  const applyMarquee = () => {
+    marqueeFrame.current = 0;
+    const down = pending.current;
+    const box = marqueeRect.current;
+    if (down === null || down.kind !== 'marquee' || box === null) return;
+    const rect = {
+      left: Math.min(box.x0, box.x1),
+      right: Math.max(box.x0, box.x1),
+      top: Math.min(box.y0, box.y1),
+      bottom: Math.max(box.y0, box.y1),
+    };
+    const element = marqueeEl.current;
+    if (element !== null) {
+      element.style.transform = `translate(${rect.left}px, ${rect.top}px)`;
+      element.style.width = `${rect.right - rect.left}px`;
+      element.style.height = `${rect.bottom - rect.top}px`;
+    }
+    const hits = cellsInRect(metrics, count, rect).map((index) => ids[index] ?? -1);
+    const key = hits.join(',');
+    if (key === marqueeHits.current) return;
+    marqueeHits.current = key;
+    setSel({ selected: [...new Set([...down.base, ...hits])] });
+  };
+  const endMarquee = () => {
+    if (marqueeFrame.current !== 0) window.cancelAnimationFrame(marqueeFrame.current);
+    marqueeFrame.current = 0;
+    marqueeRect.current = null;
+    marqueeHits.current = '';
+    setMarqueeOn(false);
+  };
+  useEffect(
+    () => () => {
+      if (marqueeFrame.current !== 0) window.cancelAnimationFrame(marqueeFrame.current);
+    },
+    [],
+  );
 
   const cancelDrag = useCallback(() => {
     pending.current = null;
@@ -250,7 +299,7 @@ export function OrganizeGrid({ docId, scheduler }: OrganizeGridProps) {
 
   // Esc during a drag puts the card back and does not leave the mode: this runs before the shell's own Esc handler.
   useEffect(() => {
-    if (drag === null) return;
+    if (!dragging) return;
     const onKey = (event: globalThis.KeyboardEvent) => {
       if (event.key !== 'Escape') return;
       event.preventDefault();
@@ -258,7 +307,7 @@ export function OrganizeGrid({ docId, scheduler }: OrganizeGridProps) {
     };
     window.addEventListener('keydown', onKey, true);
     return () => window.removeEventListener('keydown', onKey, true);
-  }, [drag === null, cancelDrag]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [dragging, cancelDrag]);
 
   const setSel = (change: Parameters<ReturnType<typeof useOrganize.getState>['setSelection']>[1]) =>
     useOrganize.getState().setSelection(docId, change);
@@ -297,34 +346,31 @@ export function OrganizeGrid({ docId, scheduler }: OrganizeGridProps) {
     if (down === null) return;
     pointer.current = { x: event.clientX, y: event.clientY };
     if (down.kind === 'cell') {
-      if (drag === null) {
-        if (Math.hypot(event.clientX - down.x, event.clientY - down.y) < DRAG_THRESHOLD_PX) return;
-        const lifted = selected.has(down.id) ? ids.filter((id) => selected.has(id)) : [down.id];
-        setDrag({ ids: lifted, x: event.clientX, y: event.clientY });
-        const point = toContent(event.clientX, event.clientY);
-        setInsertion(insertionAt(metrics, count, point.x, point.y));
-        return;
-      }
-      setDrag({ ...drag, x: event.clientX, y: event.clientY });
+      // The card and the marker follow the pointer from the animation frame (the card's own, and the tick above): no render here.
+      if (drag !== null || readOnly) return;
+      if (Math.hypot(event.clientX - down.x, event.clientY - down.y) < DRAG_THRESHOLD_PX) return;
+      const lifted = selected.has(down.id) ? ids.filter((id) => selected.has(id)) : [down.id];
+      setDrag({ ids: lifted });
+      const point = toContent(event.clientX, event.clientY);
+      setInsertion(insertionAt(metrics, count, point.x, point.y));
       return;
     }
     const point = toContent(event.clientX, event.clientY);
-    const next = { x0: down.x, y0: down.y, x1: point.x, y1: point.y };
-    setMarquee(next);
-    const hits = cellsInRect(metrics, count, {
-      left: Math.min(next.x0, next.x1),
-      right: Math.max(next.x0, next.x1),
-      top: Math.min(next.y0, next.y1),
-      bottom: Math.max(next.y0, next.y1),
-    }).map((index) => ids[index] ?? -1);
-    setSel({ selected: [...new Set([...down.base, ...hits])] });
+    marqueeRect.current = { x0: down.x, y0: down.y, x1: point.x, y1: point.y };
+    setMarqueeOn(true);
+    if (marqueeFrame.current === 0) marqueeFrame.current = window.requestAnimationFrame(applyMarquee);
   };
 
   const onPointerUp = (event: PointerEvent<HTMLDivElement>) => {
     const down = pending.current;
     pending.current = null;
     event.currentTarget.releasePointerCapture?.(event.pointerId);
-    setMarquee(null);
+    if (down?.kind === 'marquee') {
+      pending.current = down;
+      applyMarquee();
+      pending.current = null;
+    }
+    endMarquee();
     if (down === null) return;
     if (drag !== null && insertion !== null) {
       const { ids: moved } = drag;
@@ -405,12 +451,6 @@ export function OrganizeGrid({ docId, scheduler }: OrganizeGridProps) {
 
   const marker =
     insertion !== null && drag !== null ? markerRect(metrics, insertion, tokenPx('--insert-marker', 2)) : null;
-  const rectOf = marquee && {
-    left: Math.min(marquee.x0, marquee.x1),
-    top: Math.min(marquee.y0, marquee.y1),
-    width: Math.abs(marquee.x1 - marquee.x0),
-    height: Math.abs(marquee.y1 - marquee.y0),
-  };
   const draggedSet = useMemo(() => new Set(drag?.ids ?? []), [drag]);
 
   return (
@@ -423,12 +463,13 @@ export function OrganizeGrid({ docId, scheduler }: OrganizeGridProps) {
       onPointerCancel={onPointerUp}
       className={cx(
         'min-h-0 flex-auto overflow-y-auto overflow-x-hidden [overflow-anchor:none]',
-        drag !== null && 'cursor-grabbing',
+        dragging && 'cursor-grabbing',
       )}
     >
       <div
         role="listbox"
         aria-multiselectable="true"
+        aria-readonly={readOnly ? 'true' : undefined}
         aria-label={t('toolbar.tool.pages')}
         onKeyDown={onKeyDown}
         className="relative w-full"
@@ -468,25 +509,20 @@ export function OrganizeGrid({ docId, scheduler }: OrganizeGridProps) {
             style={{ transform: `translate(${marker.left}px, ${marker.top}px)`, height: marker.height }}
           />
         )}
-        {rectOf !== null && (
+        {marqueeOn && (
           <div
+            ref={marqueeEl}
             aria-hidden="true"
             data-marquee=""
             className="pointer-events-none absolute start-0 top-0 border border-accent"
-            style={{
-              transform: `translate(${rectOf.left}px, ${rectOf.top}px)`,
-              width: rectOf.width,
-              height: rectOf.height,
-            }}
           />
         )}
       </div>
-      {drag !== null && (
+      {dragging && (
         <DragCard
           docId={docId}
           ids={drag.ids}
-          x={drag.x}
-          y={drag.y}
+          pointer={pointer}
           thumb={thumb}
           pixelRatio={pixelRatio}
           scheduler={scheduler}

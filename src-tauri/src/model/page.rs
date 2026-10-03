@@ -97,6 +97,9 @@ pub struct NewPage {
     pub engine_index: u32,
     pub rotation: u16,
     pub size: [f32; 2],
+    /// The annotations a page of an import source came with, as the engine read them from its copy. `None`: not read (a blank page
+    /// has none; for an imported page the model reads them later like those of any page).
+    pub annotations: Option<Vec<super::annotation::Imported>>,
 }
 
 /// A size for a page that has no neighbour to take one from: A4 in points.

@@ -28,7 +28,12 @@ export function ToolbarRow({ entries, moreItems, trafficLightInset }: ToolbarRow
         trafficLightInset ? 'ps-chrome-inset' : 'ps-1',
       )}
     >
-      <Toolbar label={t('toolbar.label')} entries={entries} moreItems={moreItems} className="min-w-0 flex-auto" />
+      <Toolbar
+        label={t('toolbar.label')}
+        entries={entries}
+        moreItems={moreItems}
+        className="min-w-0 flex-auto [&_[aria-disabled=true]]:opacity-(--opacity-disabled)"
+      />
       <AuthorPromptField />
     </div>
   );

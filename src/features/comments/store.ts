@@ -35,6 +35,44 @@ export interface CommentsState {
 
 let nextToken = 1;
 
+const sameSummary = (a: AnnotationSummary, b: AnnotationSummary): boolean =>
+  a.id === b.id &&
+  a.pageId === b.pageId &&
+  a.kind === b.kind &&
+  a.contents === b.contents &&
+  a.author === b.author &&
+  a.modified === b.modified &&
+  a.inReplyTo === b.inReplyTo &&
+  a.color[0] === b.color[0] &&
+  a.color[1] === b.color[1] &&
+  a.color[2] === b.color[2];
+
+/**
+ * The entry for a fresh answer. When nothing in it differs from the list on screen, that list (its summaries and threads, by
+ * identity) stays, so a refresh after an edit that does not show here renders no row. Summaries that did not change keep their
+ * identity when others did.
+ */
+export function mergeReady(
+  before: CommentsEntry | undefined,
+  summaries: readonly AnnotationSummary[],
+  token: number,
+): Extract<CommentsEntry, { status: 'ready' }> {
+  if (before?.status !== 'ready') return { status: 'ready', token, summaries, threads: buildThreads(summaries) };
+  const old = new Map(before.summaries.map((summary) => [summary.id, summary]));
+  let same = summaries.length === before.summaries.length;
+  const merged = summaries.map((summary, index) => {
+    const previous = old.get(summary.id);
+    if (previous === undefined || !sameSummary(previous, summary)) {
+      same = false;
+      return summary;
+    }
+    if (before.summaries[index] !== previous) same = false;
+    return previous;
+  });
+  if (same) return { ...before, token };
+  return { status: 'ready', token, summaries: merged, threads: buildThreads(merged) };
+}
+
 export const useComments = create<CommentsState>()((set, get) => {
   const patchView = (docId: number, change: (view: CommentsView) => CommentsView) =>
     set((state) => ({ views: { ...state.views, [docId]: change(state.views[docId] ?? DEFAULT_VIEW) } }));
@@ -56,10 +94,7 @@ export const useComments = create<CommentsState>()((set, get) => {
           // Dropped (closed) or asked again while the answer was on its way.
           if (get().byDoc[docId]?.token !== token) return;
           set((state) => ({
-            byDoc: {
-              ...state.byDoc,
-              [docId]: { status: 'ready', token, summaries, threads: buildThreads(summaries) },
-            },
+            byDoc: { ...state.byDoc, [docId]: mergeReady(state.byDoc[docId], summaries, token) },
           }));
         },
         (caught: unknown) => {

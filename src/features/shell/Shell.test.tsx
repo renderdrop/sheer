@@ -260,8 +260,6 @@ describe('Shell with a document', () => {
         'Split…',
         'Extract pages…',
         'Compress…',
-        'UndoCtrl+Z',
-        'RedoCtrl+Y',
         'Actual sizeCtrl+1',
         'Fit widthCtrl+2',
         'Fit pageCtrl+0',

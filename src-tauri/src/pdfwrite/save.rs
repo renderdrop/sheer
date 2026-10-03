@@ -199,7 +199,7 @@ pub fn append_annotations(original: Vec<u8>, plan: &Plan) -> Result<Built, AppEr
             pages: 0,
         });
     }
-    let doc = Document::load_mem(&original).map_err(lopdf_error)?;
+    let doc = super::prescan::load_untrusted(&original)?;
     if doc.is_encrypted() {
         return Err(AppError::new(ErrorCode::UnsupportedFeature));
     }
@@ -418,7 +418,7 @@ pub fn append_annotations(original: Vec<u8>, plan: &Plan) -> Result<Built, AppEr
 
 /// Reads `bytes` again as a PDF with `pages` pages (ADR-004 §1 step 6, the lopdf half of the check).
 pub fn validate(bytes: &[u8], pages: u32) -> Result<(), AppError> {
-    let doc = Document::load_mem(bytes).map_err(lopdf_error)?;
+    let doc = super::prescan::load_untrusted(bytes)?;
     if u32::try_from(doc.get_pages().len()).ok() == Some(pages) {
         Ok(())
     } else {

@@ -142,8 +142,13 @@ const CommentRow = memo(function CommentRow({
     return (
       <div
         aria-hidden="true"
-        className="absolute inset-x-0 flex items-center px-1 text-sm font-semibold text-text-muted"
-        style={{ top, height }}
+        className="absolute inset-x-0 box-border flex items-center pe-1 text-sm font-semibold text-text-muted"
+        // Starts where the roots' content starts (padding, disclosure slot, gap), so the header and the colour dots line up.
+        style={{
+          top,
+          height,
+          paddingInlineStart: 'calc(var(--space-1) + var(--icon-16) + var(--space-0-5))',
+        }}
       >
         {t('search.page', { n: pageNumberOf(useDocuments.getState().activeId, row.pageId) })}
       </div>
@@ -203,7 +208,7 @@ const CommentRow = memo(function CommentRow({
           {!reply && (
             <>
               <span
-                className="size-comments-dot shrink-0 rounded-pill forced-color-adjust-none forced-colors:ring-1 forced-colors:ring-[CanvasText]"
+                className="size-comments-dot shrink-0 rounded-pill ring-1 ring-control-border forced-color-adjust-none forced-colors:ring-[CanvasText]"
                 style={{ backgroundColor: rgbToCss(summary.color) }}
               />
               <Icon icon={KIND_ICONS[summary.kind]} className="text-text-muted" />
@@ -221,7 +226,7 @@ const CommentRow = memo(function CommentRow({
             summary.contents.trim() === '' && 'text-text-muted',
           )}
         >
-          {summary.contents.trim() === '' ? t(kindLabel(summary.kind)) : summary.contents}
+          {summary.contents.trim() === '' ? t('comments.noText') : summary.contents}
         </span>
         {replyCount > 0 && (
           <span className="text-sm text-text-muted">{t('comments.replies', { count: replyCount })}</span>
@@ -417,7 +422,7 @@ export function CommentsTree({ docId, entry }: { docId: number; entry: Ready }) 
         void useAnnotations
           .getState()
           .apply(docId, { type: 'deleteAnnotations', ids: [row.summary.id] })
-          .then(() => (fallback >= 0 ? focusRow(Math.min(fallback, index)) : undefined))
+          .then(() => (fallback >= 0 ? focusRow(fallback) : undefined))
           .catch(() => undefined);
       }
     } else {

@@ -3,7 +3,7 @@
 
 use lopdf::{Dictionary, Document, Object};
 
-use crate::error::{AppError, ErrorCode};
+use crate::error::AppError;
 
 /// One annotation of a page, as the file has it.
 #[derive(Debug, Clone, PartialEq)]
@@ -35,8 +35,7 @@ fn numbers(doc: &Document, dict: &Dictionary, key: &[u8]) -> Vec<f32> {
 
 /// The annotations of every page of `bytes`, in page order and the order of the page's `/Annots` (popups included).
 pub fn list_annotations(bytes: &[u8]) -> Result<Vec<Summary>, AppError> {
-    let doc = Document::load_mem(bytes)
-        .map_err(|error| AppError::logged(ErrorCode::DamagedFile, format!("lopdf: {error}")))?;
+    let doc = super::prescan::load_untrusted(bytes)?;
     let mut out = Vec::new();
     for (number, page_id) in doc.get_pages() {
         for dict in doc.get_page_annotations(page_id).unwrap_or_default() {

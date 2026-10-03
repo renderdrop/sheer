@@ -24,6 +24,8 @@ export interface StatusBarProps {
   rendering: boolean;
   /** A save is running ("Saving…") or just finished ("Saved"); said in the same live region as the render activity (DESIGN 3.27). */
   saveHint?: 'saving' | 'saved' | null;
+  /** The document has changes that are not saved: an "Edited" badge follows the name (DESIGN 3.10, 3.27). */
+  edited?: boolean;
   onGoToPage: (pageIndex: number) => void;
   onZoom: (zoom: number) => void;
   /** The view rotation in degrees (DESIGN 3.20); a button that resets it is shown while it is not 0. */
@@ -167,6 +169,7 @@ export function StatusBar({
   zoom,
   rendering,
   saveHint = null,
+  edited = false,
   onGoToPage,
   onZoom,
   rotation = 0,
@@ -185,6 +188,14 @@ export function StatusBar({
       className="flex h-status shrink-0 items-center gap-2 px-2 text-sm text-text-muted"
     >
       {hasDocument && <FileName name={fileName === '' ? t('status.untitled') : fileName} />}
+      {hasDocument && edited && (
+        <span
+          data-edited=""
+          className="inline-flex h-pill shrink-0 items-center rounded-pill bg-tile px-1 text-xs text-tile-icon"
+        >
+          {t('status.edited')}
+        </span>
+      )}
       <TourPill />
       <span className="flex-auto" />
       <span role="status" className="shrink-0">

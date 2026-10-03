@@ -132,17 +132,8 @@ pub struct SaveResult {
     pub changes: ChangeSet,
 }
 
-/// What a save has to write, from the model. Annotations on pages the registry does not know are left out.
-pub(super) fn plan_of(
-    state: &DocState,
-    page_index: impl Fn(&crate::model::annotation::Annotation) -> Option<u32>,
-) -> Plan {
-    plan_with_origins(state, page_index, |origin| Some(origin.clone()))
-}
-
-/// [`plan_of`] for a file whose pages are not where the annotations were read (a save that moves, drops or adds pages): `page_index`
-/// is the page's position in the file being written, and `origin_of` says where the annotation that is in the file now will be (`None`:
-/// its page is not in the file any more, so there is nothing to write or delete).
+/// What a save has to write, from the model: `page_index` is the page's position in the file being written, and `origin_of` says where the
+/// annotation that is in the file now will be (`None`: its page is not in the file any more, so there is nothing to write or delete).
 pub(super) fn plan_with_origins(
     state: &DocState,
     page_index: impl Fn(&crate::model::annotation::Annotation) -> Option<u32>,
@@ -363,16 +354,19 @@ impl AppState {
                 .zip(0u32..)
                 .map(|(page, position)| (page.id.get(), position))
                 .collect();
+            // Pages of an import source: the annotations the model holds for them are found in the copy by their `/NM`.
             let plan = plan_with_origins(
                 state,
                 |annotation| position.get(&annotation.page_id.get()).copied(),
                 |origin| {
-                    pages
-                        .file_position(origin.page_index)
-                        .map(|page_index| PdfOrigin {
-                            page_index,
-                            ..origin.clone()
-                        })
+                    let page_index = match pages.brought_position(origin.page_index) {
+                        Some(page_index) => origin.name.as_ref().map(|_| page_index),
+                        None => pages.file_position(origin.page_index),
+                    }?;
+                    Some(PdfOrigin {
+                        page_index,
+                        ..origin.clone()
+                    })
                 },
             );
             Ok((pages, plan))

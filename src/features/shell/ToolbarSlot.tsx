@@ -64,6 +64,7 @@ export const ToolbarSlot = memo(function ToolbarSlot({
   const markupVariant = useTools((state) => state.markup);
   const shapeVariant = useTools((state) => state.shapes);
   const docId = useDocuments(selectActiveId);
+  const readOnly = useDocuments((state) => (docId === null ? false : state.byId[docId]?.kind === 'welcome'));
   const zoomAtMin = useDocViewValue(docId, (view) => view.zoom <= MIN_ZOOM);
   const zoomAtMax = useDocViewValue(docId, (view) => view.zoom >= MAX_ZOOM);
   const scrollMode = useDocViewValue(docId, (view) => view.scrollMode);
@@ -79,6 +80,7 @@ export const ToolbarSlot = memo(function ToolbarSlot({
           action: { hasDocument, zoomAtMin, zoomAtMax, canUndo, canRedo },
           scrollMode,
           activeTool,
+          readOnly,
           toolLocked,
           markupVariant,
           shapeVariant,
@@ -94,6 +96,7 @@ export const ToolbarSlot = memo(function ToolbarSlot({
       platform,
       hasDocument,
       activeTool,
+      readOnly,
       toolLocked,
       markupVariant,
       shapeVariant,

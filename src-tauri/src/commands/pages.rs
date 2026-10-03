@@ -74,7 +74,7 @@ impl AppState {
 
     /// Runs a command on a document as one undo step (ADR-003 §6, ADR-036 §2). `not_found` for an unknown document, annotation, page or
     /// source, `invalid_argument` for a value that does not fit (`lastPage` for the delete of every page), `limit_exceeded` for a count that
-    /// is too large. A page insert first makes the pages in the engine's copy; a command the model then refuses leaves them there, unused.
+    /// is too large. A page insert first makes the pages in the engine's copy; a command the model then refuses takes them off again.
     pub fn apply_command(
         &self,
         id: DocumentId,
@@ -83,8 +83,10 @@ impl AppState {
         command.check_shape()?;
         match command {
             DocCommand::InsertBlankPage { at, width, height } => {
-                self.model(id, |state| state.check_insert(at, 1))?;
-                let base = self.model(id, |state| Ok(state.blank_size(at)))?;
+                let base = self.model(id, |state| {
+                    state.check_insert(at, 1)?;
+                    Ok(state.blank_size(at))
+                })?;
                 let size = [width.unwrap_or(base[0]), height.unwrap_or(base[1])];
                 let page = self.engine.append_blank_page(id, size)?;
                 let add = DocCommand::AddPages {
@@ -95,9 +97,11 @@ impl AppState {
                         engine_index: page.engine_index,
                         rotation: page.rotation,
                         size: page.size,
+                        annotations: None,
                     }],
                 };
-                self.execute(id, add)
+                let appended = page.engine_index..page.engine_index.saturating_add(1);
+                self.execute_or_take_back(id, add, appended)
             }
             DocCommand::InsertPages { source, pages, at } => {
                 self.model(id, |state| state.check_insert(at, pages.len()))?;
@@ -109,14 +113,36 @@ impl AppState {
                     return Err(AppError::invalid("pages"));
                 }
                 let appended = self.engine.append_pages(id, bytes, pages.clone())?;
+                let range = match (appended.first(), appended.last()) {
+                    (Some(first), Some(last)) => {
+                        first.engine_index..last.engine_index.saturating_add(1)
+                    }
+                    _ => 0..0,
+                };
                 let new_pages = pages
                     .iter()
                     .zip(appended)
-                    .map(|(&index, page)| NewPage {
-                        source: PageSource::Imported { source, index },
-                        engine_index: page.engine_index,
-                        rotation: page.rotation,
-                        size: page.size,
+                    .map(|(&index, page)| {
+                        // The files written from this document name an original that has no `/NM` the same way (`pdfwrite::annots`).
+                        let annotations = page.annotations.map(|mut items| {
+                            for item in &mut items {
+                                if item.origin.name.is_none() {
+                                    item.origin.name =
+                                        Some(crate::pdfwrite::annots::imported_name(
+                                            index,
+                                            item.origin.annot_index,
+                                        ));
+                                }
+                            }
+                            items
+                        });
+                        NewPage {
+                            source: PageSource::Imported { source, index },
+                            engine_index: page.engine_index,
+                            rotation: page.rotation,
+                            size: page.size,
+                            annotations,
+                        }
                     })
                     .collect();
                 let add = DocCommand::AddPages {
@@ -124,10 +150,26 @@ impl AppState {
                     at,
                     pages: new_pages,
                 };
-                self.execute(id, add)
+                self.execute_or_take_back(id, add, range)
             }
             other => self.execute(id, other),
         }
+    }
+
+    /// [`AppState::execute`] of an insert whose pages the engine has made already (`appended`: their engine indices). If the model refuses
+    /// the step (the document changed since the check, or was closed) the pages are taken off the engine's copy again, so the two do not
+    /// drift apart. Taking them back is best effort: pages left over in the copy are never listed by the model.
+    fn execute_or_take_back(
+        &self,
+        id: DocumentId,
+        command: DocCommand,
+        appended: std::ops::Range<u32>,
+    ) -> Result<ChangeSet, AppError> {
+        let result = self.execute(id, command);
+        if result.is_err() && !appended.is_empty() {
+            let _ = self.engine.truncate_pages(id, appended.start, appended.end);
+        }
+        result
     }
 
     /// Runs a validated command as one step of the history and makes the engine follow.
@@ -156,9 +198,8 @@ impl AppState {
         self.sources.check_room(0)?;
         let (bytes, display_name) = read_source(path)?;
         self.sources.check_room(bytes.len() as u64)?;
-        let bytes = Arc::new(bytes);
+        let bytes: Arc<[u8]> = Arc::from(bytes);
         let page_count = pagetree::count_pages(Arc::clone(&bytes))?;
-        let bytes = Arc::try_unwrap(bytes).map_err(|_| AppError::new(ErrorCode::Internal))?;
         let (source_id, _) = self.sources.add(SourceBytes {
             bytes,
             page_count,

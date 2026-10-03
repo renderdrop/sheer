@@ -1014,3 +1014,36 @@ fn saving_in_place_refuses_the_welcome_document_before_anything_else() {
     assert_eq!(source.matches("self.save(id,").count(), 2);
     assert!(source.contains("intake::admit_target(target)"));
 }
+
+/// The close of the window is held back by Rust while a document is open (ADR-029 §7): the webview has the close permission of the
+/// custom title bar, so the question about unsaved changes must not depend on anything the page does. The handler is registered on the
+/// builder, answers `CloseRequested` with `prevent_close` (and a quit with `prevent_exit`), and decides from backend state.
+#[test]
+fn the_close_request_is_held_back_in_rust_not_by_the_page() {
+    let lib = read("src/lib.rs");
+    assert!(
+        lib.contains("sources::on_window_event(window, event)"),
+        "the window event hook must be registered on the builder"
+    );
+    assert!(
+        lib.contains("sources::on_run_event(app, &event)"),
+        "the run event hook must be registered"
+    );
+    let sources = read("src/sources.rs");
+    let close = sources
+        .split("WindowEvent::CloseRequested { api, .. }")
+        .nth(1)
+        .expect("the hook handles CloseRequested");
+    let handler: String = close.chars().take(240).collect();
+    assert!(
+        handler.contains("ui_takes_the_close(app)") && handler.contains("api.prevent_close()"),
+        "CloseRequested must call prevent_close when the UI takes the close: {handler}"
+    );
+    assert!(
+        sources.contains("RunEvent::ExitRequested") && sources.contains("api.prevent_exit()"),
+        "a quit with a document open must be held back too"
+    );
+    // The decision looks at backend state (the registry), not at an argument that came from the webview.
+    assert!(sources.contains("state.has_open_documents()"));
+    assert!(sources.contains("events.request_close()"));
+}

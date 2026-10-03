@@ -53,6 +53,9 @@ export async function requestQuit(): Promise<void> {
       if (answer === 'save' && !(await saveNow(id))) return;
     }
   } finally {
+    // A walk that asked the user is over (done, cancelled or failed): the next request starts counting afresh. A walk with
+    // nothing to ask keeps the count, which is what stops a backend that never lets go.
+    if (targets.length > 0) closeRequests = 0;
     useSave.getState().setQuit(null);
     useSave.getState().setPrompt(null);
   }

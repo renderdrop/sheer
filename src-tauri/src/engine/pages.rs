@@ -8,16 +8,21 @@ use std::sync::Arc;
 
 use pdfium_render::prelude::*;
 
+use super::import::read_annotations;
 use crate::error::{AppError, ErrorCode};
 use crate::limits;
+use crate::model::annotation::Imported;
 use crate::model::page::unrotated;
 
 /// A page the engine's copy gained: where it is, its size before rotation and the rotation it came with.
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Appended {
     pub engine_index: u32,
     pub size: [f32; 2],
     pub rotation: u16,
+    /// The annotations the page came with, read from the engine's copy (as `import::read_annotations` does for a page of the file).
+    /// `None`: not read (a blank page, or the read failed or went over the budget), so the model reads the page later like any other.
+    pub annotations: Option<Vec<Imported>>,
 }
 
 fn internal(error: PdfiumError) -> AppError {
@@ -96,6 +101,7 @@ fn appended(document: &PdfDocument<'_>, index: u32) -> Result<Appended, AppError
         engine_index: index,
         size: unrotated(drawn, rotation),
         rotation,
+        annotations: None,
     })
 }
 
@@ -115,6 +121,34 @@ pub(super) fn append_blank(
         .map_err(internal)?;
     drop(page);
     appended(document, index)
+}
+
+/// Takes the pages from `keep` to the end off the copy again (an insert the model refused). Only if the copy still has `total` pages: pages
+/// added after the ones to take back are not this call's to remove, and then nothing is done.
+pub(super) fn truncate(
+    document: &mut PdfDocument<'_>,
+    keep: u32,
+    total: u32,
+) -> Result<(), AppError> {
+    if engine_pages(document) != total || keep >= total {
+        return Ok(());
+    }
+    for index in (keep..total).rev() {
+        let index = i32::try_from(index).map_err(|_| AppError::invalid("pages"))?;
+        document
+            .pages()
+            .get(index)
+            .and_then(PdfPage::delete)
+            .map_err(|error| {
+                // Half of the pages are gone: the copy matches nothing the model knows. The worker drops the document for
+                // `engine_crashed` and the UI opens it again.
+                AppError::logged(
+                    ErrorCode::EngineCrashed,
+                    format!("taking pages back failed: {error}"),
+                )
+            })?;
+    }
+    Ok(())
 }
 
 /// Copies pages `indices` of the PDF in `source` to the end, in that order. An encrypted source, one that does not load, or an index that
@@ -141,16 +175,43 @@ pub(super) fn append_pages(
     if indices.iter().any(|index| *index >= available) {
         return Err(AppError::invalid("pages"));
     }
+    let start = engine_pages(document);
+    let result = copy_pages(document, &from, indices);
+    if result.is_err() {
+        // A copy that failed half way leaves no pages behind: the model never heard of them.
+        let total = engine_pages(document);
+        if let Err(error) = truncate(document, start, total) {
+            error.log();
+            return Err(error);
+        }
+    }
+    result
+}
+
+/// The loop of [`append_pages`]: copies `indices` of `from` to the end of the copy.
+fn copy_pages(
+    document: &mut PdfDocument<'_>,
+    from: &PdfDocument<'_>,
+    indices: &[u32],
+) -> Result<Vec<Appended>, AppError> {
     let mut added = Vec::with_capacity(indices.len());
+    let mut read_total = 0usize;
     for index in indices {
         let at = engine_pages(document);
         let source_index = i32::try_from(*index).map_err(|_| AppError::invalid("pages"))?;
         let destination = i32::try_from(at).map_err(|_| AppError::invalid("pages"))?;
         document
             .pages_mut()
-            .copy_page_from_document(&from, source_index, destination)
+            .copy_page_from_document(from, source_index, destination)
             .map_err(internal)?;
-        added.push(appended(document, at)?);
+        let mut page = appended(document, at)?;
+        // Read here, in the worker, from the copy just made: the positions are those the hide/show commands use later. A read that
+        // fails leaves the page for a later read; so does a document that already brought as many as the model will take.
+        if read_total < limits::MAX_ANNOTATIONS_PER_DOC {
+            page.annotations = read_annotations(document, at).ok();
+            read_total += page.annotations.as_ref().map_or(0, Vec::len);
+        }
+        added.push(page);
     }
     Ok(added)
 }

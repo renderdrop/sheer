@@ -21,6 +21,8 @@ use crate::limits;
 pub struct PlanPage {
     pub id: PageId,
     pub source: PageSource,
+    /// The page's position in the engine's copy.
+    pub engine_index: u32,
     pub rotation: u16,
     pub saved_rotation: u16,
     pub size: [f32; 2],
@@ -49,6 +51,17 @@ impl PagePlan {
         self.pages
             .iter()
             .position(|page| page.source == PageSource::File { index: file_index })
+            .and_then(|position| u32::try_from(position).ok())
+    }
+
+    /// The position in the saved file of the page that has engine page `engine_index` and is not a page of the file (`None`: not a
+    /// page of the list, or one of the file's).
+    pub fn brought_position(&self, engine_index: u32) -> Option<u32> {
+        self.pages
+            .iter()
+            .position(|page| {
+                page.engine_index == engine_index && !matches!(page.source, PageSource::File { .. })
+            })
             .and_then(|position| u32::try_from(position).ok())
     }
 
@@ -144,6 +157,7 @@ impl DocState {
                 .map(|slot| PlanPage {
                     id: slot.id,
                     source: slot.source,
+                    engine_index: slot.engine_index,
                     rotation: slot.rotation,
                     saved_rotation: slot.saved_rotation,
                     size: slot.size,
@@ -359,9 +373,19 @@ impl DocState {
             .collect();
         let inverse = self.restore_pages(&slots, &[], delta)?;
         self.next_page_id = next;
-        // Their annotations are not read into the model (the engine draws them), and a blank page has none.
-        for (_, slot) in &slots {
-            self.imported.insert(slot.id.get());
+        // The annotations an imported page came with join the model as the page's own `clean` ones (new ids; the undo of this step
+        // takes them out with the page). A page whose annotations were not read stays unread and is read like any page; a blank page
+        // has none.
+        for ((_, slot), page) in slots.iter().zip(pages) {
+            match (&page.annotations, slot.source) {
+                (Some(items), _) => {
+                    self.import_page(slot.id, items);
+                }
+                (None, PageSource::Blank) => {
+                    self.imported.insert(slot.id.get());
+                }
+                (None, _) => {}
+            }
         }
         Ok(inverse)
     }

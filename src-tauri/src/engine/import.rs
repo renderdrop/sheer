@@ -247,6 +247,7 @@ fn read_one(
             .map(|date| clean(&date, limits::MAX_ANNOT_DATE_CHARS))
             .filter(|date| !date.is_empty()),
         locked: annotation.is_locked(),
+        hidden: annotation.is_hidden(),
     })
 }
 
