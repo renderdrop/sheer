@@ -11,6 +11,7 @@ import {
   type HistoryState,
 } from '../api/annotations';
 import { applyFieldStates } from '../features/forms/store';
+import { applyContentChanges, removeContent } from '../features/insert/store';
 import { usePages } from './pages';
 
 /**
@@ -77,6 +78,20 @@ export interface AnnotationsState {
   applyChanges: (docId: number, changes: ChangeSet) => void;
   /** Forgets a closed document. */
   remove: (docId: number) => void;
+}
+
+/**
+ * Listeners of the change sets (a command, an undo, a redo, a job's result) and of a document's removal: the features that keep
+ * model objects the replica does not hold (`ChangeSet.content`: redaction marks, text boxes, images) follow the model through
+ * these. A change set older than the replica is not delivered; `null` means the document was closed.
+ */
+type ChangeListener = (docId: number, changes: ChangeSet | null) => void;
+const changeListeners = new Set<ChangeListener>();
+
+/** Subscribes to every applied change set; returns the unsubscribe function. */
+export function onChangeSet(listener: ChangeListener): () => void {
+  changeListeners.add(listener);
+  return () => changeListeners.delete(listener);
 }
 
 /** The page loads in flight, by document and page, so that two callers share one request. */
@@ -159,6 +174,9 @@ export const useAnnotations = create<AnnotationsState>()((set, get) => ({
   },
 
   applyChanges: (docId, changes) => {
+    // Text boxes and images (ADR-047) are the insert feature's replica; the comments below never see them.
+    applyContentChanges(docId, changes);
+    if (changes.rev >= (get().byDoc[docId]?.rev ?? 0)) for (const listener of changeListeners) listener(docId, changes);
     // The form's values follow every change set (a command, an undo, a redo), unless the answer is older than the replica.
     if (changes.fields !== undefined && changes.fields.length > 0 && changes.rev >= (get().byDoc[docId]?.rev ?? 0))
       applyFieldStates(docId, changes.fields);
@@ -218,8 +236,10 @@ export const useAnnotations = create<AnnotationsState>()((set, get) => ({
     });
   },
 
-  remove: (docId) =>
+  remove: (docId) => {
+    for (const listener of changeListeners) listener(docId, null);
     set((state) => {
+      removeContent(docId);
       for (const key of [...lastByPage.keys()]) if (key.startsWith(`${docId}:`)) lastByPage.delete(key);
       if (state.byDoc[docId] === undefined) return state;
       return {
@@ -227,7 +247,8 @@ export const useAnnotations = create<AnnotationsState>()((set, get) => ({
         selectedIds: Object.fromEntries(Object.entries(state.selectedIds).filter(([id]) => Number(id) !== docId)),
         pageRevs: Object.fromEntries(Object.entries(state.pageRevs).filter(([id]) => Number(id) !== docId)),
       };
-    }),
+    });
+  },
 }));
 
 /** The revision of a page's pixels; 0 until an annotation that is in the file changes. */

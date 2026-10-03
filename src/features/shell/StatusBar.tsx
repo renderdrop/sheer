@@ -191,7 +191,7 @@ export function StatusBar({
     >
       {hasDocument && <FileName name={fileName === '' ? t('status.untitled') : fileName} />}
       {hasDocument && edited && (
-        <span data-edited="" className={PILL}>
+        <span data-edited="" className={`${PILL} pulse-target`}>
           {t('status.edited')}
         </span>
       )}

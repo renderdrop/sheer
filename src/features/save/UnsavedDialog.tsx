@@ -1,5 +1,5 @@
 import { AnimatePresence, motion, useIsPresent } from 'motion/react';
-import { FileWarning, Save, type LucideIcon } from 'lucide-react';
+import { FileWarning, Lock, Save, type LucideIcon } from 'lucide-react';
 import { useEffect, useLayoutEffect, useRef, type KeyboardEvent, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 
@@ -183,6 +183,32 @@ function OverwriteModal({ docId, resolve }: { docId: number; resolve: (confirmed
   );
 }
 
+/** A save would rewrite a protected file in full (ADR-047): save, or leave it. Focus starts on Cancel. */
+function RewriteModal({ docId, resolve }: { docId: number; resolve: (confirmed: boolean) => void }) {
+  const t = useT();
+  const name = useDocuments((state) => state.byId[docId]?.displayName ?? '');
+  const answer = (confirmed: boolean): void => {
+    useSave.getState().setRewrite(null);
+    resolve(confirmed);
+  };
+  return (
+    <DialogShell
+      icon={Lock}
+      title={t('save.rewriteTitle', { name })}
+      body={t('error.needs_confirmation.rewriteEncrypted')}
+      onCancel={() => answer(false)}
+    >
+      <span className="flex-1" />
+      <Button variant="secondary" data-autofocus="" onClick={() => answer(false)}>
+        {t('save.cancel')}
+      </Button>
+      <Button variant="primary" onClick={() => answer(true)}>
+        {t('save.rewriteConfirm')}
+      </Button>
+    </DialogShell>
+  );
+}
+
 /**
  * The dialogs of saving (DESIGN 3.27), mounted once with the shell. The first asks before a tab with changes that are not saved is
  * closed, or at each edited document while quitting: Don't Save, Cancel, Save; initial focus is Save, Esc and the backdrop cancel.
@@ -191,11 +217,15 @@ function OverwriteModal({ docId, resolve }: { docId: number; resolve: (confirmed
 export function UnsavedDialog() {
   const prompt = useSave((state) => state.prompt);
   const overwrite = useSave((state) => state.overwrite);
+  const rewrite = useSave((state) => state.rewrite);
   return createPortal(
     <AnimatePresence>
       {prompt !== null && <UnsavedModal key={`unsaved-${prompt}`} docId={prompt} />}
       {overwrite !== null && (
         <OverwriteModal key={`overwrite-${overwrite.docId}`} docId={overwrite.docId} resolve={overwrite.resolve} />
+      )}
+      {rewrite !== null && (
+        <RewriteModal key={`rewrite-${rewrite.docId}`} docId={rewrite.docId} resolve={rewrite.resolve} />
       )}
     </AnimatePresence>,
     document.body,

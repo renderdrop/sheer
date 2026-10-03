@@ -121,6 +121,8 @@ describe('color roles (DESIGN 1.2)', () => {
     '--color-doc-text-select': ['rgba(91,91,214,0.3)', 'rgba(91,91,214,0.3)'],
     '--color-doc-hit': ['rgba(91,91,214,0.28)', 'rgba(91,91,214,0.28)'],
     '--color-doc-hover': ['rgba(91,91,214,0.5)', 'rgba(91,91,214,0.5)'],
+    '--color-doc-redact': ['#d64b4b', '#d64b4b'],
+    '--color-doc-redact-fill': ['rgba(214,75,75,0.16)', 'rgba(214,75,75,0.16)'],
     '--color-doc-field': ['rgba(91,91,214,0.1)', 'rgba(91,91,214,0.1)'],
     '--color-doc-field-hover': ['rgba(91,91,214,0.18)', 'rgba(91,91,214,0.18)'],
     '--color-doc-required': ['#d64b4b', '#d64b4b'],

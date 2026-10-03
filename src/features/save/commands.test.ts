@@ -33,7 +33,7 @@ beforeEach(() => {
   useDocuments.setState({ byId: {}, order: [], activeId: null });
   useAnnotations.setState({ byDoc: {} });
   useUi.setState({ banner: null });
-  useSave.setState({ saving: {}, prompt: null, saved: null, overwrite: null, quit: null, answer: null });
+  useSave.setState({ saving: {}, prompt: null, saved: null, overwrite: null, rewrite: null, quit: null, answer: null });
   api.saveDocument.mockReset();
   api.saveDocumentAs.mockReset();
 });
@@ -129,5 +129,35 @@ describe('the status hints', () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+});
+
+describe('a protected file', () => {
+  const rewrite = {
+    code: 'needs_confirmation',
+    key: 'error.needs_confirmation',
+    retryable: false,
+    params: { what: 'rewriteEncrypted' },
+  };
+
+  it('asks first and saves again with the ack when the user agrees', async () => {
+    open('user', true);
+    api.saveDocument.mockRejectedValueOnce(rewrite).mockResolvedValueOnce(result('a.pdf'));
+    const saving = saveNow(1);
+    await vi.waitFor(() => expect(useSave.getState().rewrite?.docId).toBe(1));
+    useSave.getState().rewrite?.resolve(true);
+    expect(await saving).toBe(true);
+    expect(api.saveDocument).toHaveBeenLastCalledWith(1, { rewriteEncrypted: true });
+    expect(useUi.getState().banner).toBeNull();
+  });
+
+  it('leaves the file alone when the user declines', async () => {
+    open('user', true);
+    api.saveDocument.mockRejectedValue(rewrite);
+    const saving = saveNow(1);
+    await vi.waitFor(() => expect(useSave.getState().rewrite).not.toBeNull());
+    useSave.getState().rewrite?.resolve(false);
+    expect(await saving).toBe(false);
+    expect(api.saveDocument).toHaveBeenCalledTimes(1);
   });
 });

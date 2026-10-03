@@ -71,6 +71,9 @@
   /* Document layer: pages are white in both themes (DESIGN 1.2, last paragraph). */
   --color-page: #ffffff;
   --color-doc-select: var(--iris-500);
+  /* Crop mode (DESIGN 3.37): the shade outside the crop rectangle, and the rectangle's stroke in px. */
+  --color-doc-crop-shade: rgba(15, 16, 32, 0.5);
+  --crop-stroke: 2px;
   --color-doc-ink: #1c1c2e; /* ink drawn on the paper over an annotation's own colour (the note glyph, DESIGN 3.25); paper stays white in both themes */
   --color-doc-text-select: rgba(91, 91, 214, 0.3);
   --color-doc-hit: rgba(91, 91, 214, 0.28);
@@ -80,6 +83,9 @@
   --color-doc-field: rgba(91, 91, 214, 0.1);
   --color-doc-field-hover: rgba(91, 91, 214, 0.18);
   --color-doc-required: #d64b4b;
+  /* Redaction marks (DESIGN 3.38): the border, and the fill under the hatch (the hatch is a pattern, not colour alone). */
+  --color-doc-redact: #d64b4b;
+  --color-doc-redact-fill: rgba(214, 75, 75, 0.16);
   --handle-size: 8px;
 
   /* Shadows (DESIGN 1.3). */
@@ -608,6 +614,8 @@
     --color-doc-text-select: Highlight;
     --color-doc-hit: Highlight;
     --color-doc-hover: Highlight;
+    --color-doc-redact: Highlight;
+    --color-doc-redact-fill: transparent;
     --color-doc-field: transparent;
     --color-doc-field-hover: transparent;
     --color-doc-required: CanvasText;
@@ -1181,4 +1189,80 @@
       display: none;
     }
   }
+}
+
+/* Redaction marks (DESIGN 3.38): 2 px border over a diagonal hatch; the page's overlay is scaled by --page-scale, so px sizes are divided by it. */
+[data-redact-mark] {
+  box-sizing: border-box;
+  border: calc(var(--focus-width) / var(--page-scale, 1)) solid var(--color-doc-redact);
+  background-color: var(--color-doc-redact-fill);
+  background-image: repeating-linear-gradient(
+    45deg,
+    var(--color-doc-redact) 0,
+    var(--color-doc-redact) calc(var(--hairline) / var(--page-scale, 1)),
+    transparent calc(var(--hairline) / var(--page-scale, 1)),
+    transparent calc(var(--space-1) / var(--page-scale, 1))
+  );
+}
+
+[data-redact-mark][data-selected="true"] {
+  outline: calc(var(--focus-width) / var(--page-scale, 1)) solid var(--color-doc-select);
+  outline-offset: calc(var(--focus-width) / var(--page-scale, 1));
+}
+
+[data-redact-draft] {
+  box-sizing: border-box;
+  border: calc(var(--focus-width) / var(--page-scale, 1)) dashed var(--color-doc-redact);
+  background-color: var(--color-doc-redact-fill);
+}
+
+[data-redact-handle] {
+  box-sizing: border-box;
+  width: calc(var(--handle-size) / var(--page-scale, 1));
+  height: calc(var(--handle-size) / var(--page-scale, 1));
+  background: var(--color-page);
+  border: calc(var(--hairline) / var(--page-scale, 1)) solid var(--color-doc-select);
+}
+
+@media (forced-colors: active) {
+  [data-redact-mark],
+  [data-redact-draft] {
+    forced-color-adjust: none;
+    border-color: Highlight;
+  }
+
+  [data-redact-mark] {
+    background-image: repeating-linear-gradient(
+      45deg,
+      Highlight 0,
+      Highlight calc(var(--hairline) / var(--page-scale, 1)),
+      transparent calc(var(--hairline) / var(--page-scale, 1)),
+      transparent calc(var(--space-1) / var(--page-scale, 1))
+    );
+  }
+
+  [data-redact-handle] {
+    background: Canvas;
+  }
+}
+
+/* Crop mode (DESIGN 3.37): the rectangle's stroke and focus ring are drawn in page space, so they are divided by the page scale. */
+[data-crop-rect] {
+  box-sizing: border-box;
+  border: calc(var(--crop-stroke) / var(--page-scale, 1)) solid var(--color-doc-select);
+}
+
+[data-crop-rect]:focus-visible {
+  outline: calc(var(--focus-width) / var(--page-scale, 1)) solid var(--color-focus);
+  outline-offset: calc(var(--focus-offset) / var(--page-scale, 1));
+}
+
+[data-crop-shade] {
+  background: var(--color-doc-crop-shade);
+  forced-color-adjust: none;
+}
+
+/* While the redact mode is on, the empty space of a page's text layer is where an area mark is drawn (DESIGN 3.38). */
+[data-redact-active] [data-text-layer] {
+  cursor: crosshair;
 }

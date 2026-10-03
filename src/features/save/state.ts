@@ -25,12 +25,15 @@ export interface SaveState {
   quit: QuitProgress | null;
   answer: ((answer: PromptAnswer) => void) | null;
   overwrite: { docId: number; resolve: (confirmed: boolean) => void } | null;
+  /** The document whose protected file a save asks to rewrite in full (ADR-047). */
+  rewrite: { docId: number; resolve: (confirmed: boolean) => void } | null;
   setSaving: (docId: number, saving: boolean) => void;
   /** Shows "Saved" for `SAVED_HINT_MS`. */
   markSaved: (docId: number) => void;
   setPrompt: (docId: number | null) => void;
   setQuit: (quit: QuitProgress | null, answer?: ((answer: PromptAnswer) => void) | null) => void;
   setOverwrite: (overwrite: SaveState['overwrite']) => void;
+  setRewrite: (rewrite: SaveState['rewrite']) => void;
 }
 
 let savedTimer: ReturnType<typeof setTimeout> | undefined;
@@ -42,6 +45,7 @@ export const useSave = create<SaveState>()((set) => ({
   quit: null,
   answer: null,
   overwrite: null,
+  rewrite: null,
   setSaving: (docId, saving) =>
     set((state) => {
       if ((state.saving[docId] === true) === saving) return state;
@@ -58,4 +62,5 @@ export const useSave = create<SaveState>()((set) => ({
   setPrompt: (docId) => set((state) => (state.prompt === docId ? state : { prompt: docId })),
   setQuit: (quit, answer = null) => set({ quit, answer }),
   setOverwrite: (overwrite) => set({ overwrite }),
+  setRewrite: (rewrite) => set({ rewrite }),
 }));

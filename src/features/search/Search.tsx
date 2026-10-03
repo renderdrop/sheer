@@ -1,4 +1,13 @@
-import { CaseSensitive, ChevronDown, ChevronUp, CircleAlert, Search as SearchIcon, WholeWord, X } from 'lucide-react';
+import {
+  CaseSensitive,
+  ChevronDown,
+  ChevronUp,
+  CircleAlert,
+  Search as SearchIcon,
+  SquareSlash,
+  WholeWord,
+  X,
+} from 'lucide-react';
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 
 import { Button, Field, IconButton } from '../../components';
@@ -9,6 +18,7 @@ import { useT } from '../../i18n';
 import { selectActiveId, useDocuments } from '../../stores/documents';
 import { pageIdAt, pageNumberOf } from '../../stores/pages';
 import { useDocViewValue } from '../../stores/view';
+import { redactSearchResults } from '../redact/actions';
 import { loadLayer } from '../textlayer/cache';
 import { f3FindsNext } from './commands';
 import { jumpToHit, stepHit } from './jump';
@@ -499,6 +509,14 @@ function SearchView({ docId }: { docId: number }) {
         <span role="status" className="sr-only">
           {live}
         </span>
+        {hasHits && (
+          <IconButton
+            size="sm"
+            icon={SquareSlash}
+            label={t('redact.searchAll')}
+            onClick={() => void redactSearchResults(docId)}
+          />
+        )}
         <IconButton
           size="sm"
           icon={ChevronUp}

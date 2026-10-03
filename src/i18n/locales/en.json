@@ -702,6 +702,9 @@
   "redact.done": "Redacted. Save to make it permanent.",
   "redact.undo": "Undo",
   "redact.hiddenDataKept": "Bookmarks, attachments, page labels or scripts were kept. They can still contain the redacted text.",
+  "redact.unsavedEditsDropped": "Unsaved edits on the redacted pages were dropped: comments, text boxes, images and form entries.",
+  "redact.close": "Close",
+  "redact.exit": "Done",
   "protect.menu": "Protect…",
   "protect.title": "Protect document",
   "protect.apply": "Protect",
@@ -743,5 +746,17 @@
   "props.removeNote": "Document metadata is removed when you apply. Text and images on pages stay.",
   "props.cancel": "Cancel",
   "props.apply": "Apply",
-  "props.removed": "Metadata removed"
+  "props.removed": "Metadata removed",
+  "save.rewriteTitle": "Rewrite protected \"{name}\"?",
+  "save.rewriteConfirm": "Save",
+  "protect.staged": "Takes effect the next time you save.",
+  "protect.permConfirm": "Confirm permissions password",
+  "protect.wrongPerm": "Wrong permissions password.",
+  "protect.strength": "Password strength",
+  "protect.show": "Show passwords",
+  "protect.invalidLength": "Use 1 to 127 bytes.",
+  "props.xmpNote": "This file also has XMP metadata. It is kept in sync.",
+  "props.truncated": "Some values were too long and were cut.",
+  "props.protectionOn": "Password-protected",
+  "props.protectionOff": "None"
 }

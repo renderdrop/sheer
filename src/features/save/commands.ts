@@ -33,10 +33,19 @@ function confirmOverwrite(docId: number): Promise<boolean> {
   });
 }
 
-/** Whether the backend asks the user to confirm replacing a file that changed on disk. */
-function isFileChanged(caught: unknown): boolean {
+/** Asks whether a protected file may be rewritten in full by this save; resolves `true` for "Save". */
+function confirmRewrite(docId: number): Promise<boolean> {
+  return new Promise((resolve) => {
+    useSave.getState().rewrite?.resolve(false);
+    useSave.getState().setRewrite({ docId, resolve });
+  });
+}
+
+/** What a `needs_confirmation` answer asks about (`fileChangedOnDisk`, `rewriteEncrypted`), or `null` for any other error. */
+function confirmationOf(caught: unknown): string | null {
   const error = toAppError(caught);
-  return error.code === 'needs_confirmation' && error.params?.what === 'fileChangedOnDisk';
+  const what = error.params?.what;
+  return error.code === 'needs_confirmation' && typeof what === 'string' ? what : null;
 }
 
 /**
@@ -73,12 +82,23 @@ export async function saveNow(docId: number, as = false): Promise<boolean> {
       }
     };
     let result: SaveResult | null;
-    try {
-      result = await run();
-    } catch (caught) {
-      if (!isFileChanged(caught)) throw caught;
-      if (!(await confirmOverwrite(docId))) return false;
-      result = await run({ fileChanged: true });
+    let ack: SaveAck | undefined;
+    for (;;) {
+      try {
+        result = await run(ack);
+        break;
+      } catch (caught) {
+        const what = confirmationOf(caught);
+        if (what === 'fileChangedOnDisk' && ack?.fileChanged !== true) {
+          if (!(await confirmOverwrite(docId))) return false;
+          ack = { ...ack, fileChanged: true };
+        } else if (what === 'rewriteEncrypted' && ack?.rewriteEncrypted !== true) {
+          if (!(await confirmRewrite(docId))) return false;
+          ack = { ...ack, rewriteEncrypted: true };
+        } else {
+          throw caught;
+        }
+      }
     }
     if (result === null) return false;
     adopt(docId, result);

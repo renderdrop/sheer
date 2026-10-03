@@ -702,6 +702,9 @@
   "redact.done": "Geschwärzt. Zum Festschreiben speichern.",
   "redact.undo": "Rückgängig",
   "redact.hiddenDataKept": "Lesezeichen, Anhänge, Seitenbeschriftungen oder Skripte wurden behalten. Sie können den geschwärzten Text noch enthalten.",
+  "redact.unsavedEditsDropped": "Nicht gespeicherte Änderungen auf den geschwärzten Seiten wurden verworfen: Kommentare, Textfelder, Bilder und Formulareingaben.",
+  "redact.close": "Schließen",
+  "redact.exit": "Fertig",
   "protect.menu": "Schützen…",
   "protect.title": "Dokument schützen",
   "protect.apply": "Schützen",
@@ -743,5 +746,17 @@
   "props.removeNote": "Dokument-Metadaten werden beim Anwenden entfernt. Text und Bilder auf den Seiten bleiben.",
   "props.cancel": "Abbrechen",
   "props.apply": "Anwenden",
-  "props.removed": "Metadaten entfernt"
+  "props.removed": "Metadaten entfernt",
+  "save.rewriteTitle": "Geschützte Datei „{name}“ neu schreiben?",
+  "save.rewriteConfirm": "Speichern",
+  "protect.staged": "Wird beim nächsten Speichern wirksam.",
+  "protect.permConfirm": "Berechtigungs-Passwort bestätigen",
+  "protect.wrongPerm": "Falsches Berechtigungs-Passwort.",
+  "protect.strength": "Passwortstärke",
+  "protect.show": "Passwörter anzeigen",
+  "protect.invalidLength": "1 bis 127 Bytes verwenden.",
+  "props.xmpNote": "Diese Datei enthält auch XMP-Metadaten. Sie werden synchron gehalten.",
+  "props.truncated": "Einige Werte waren zu lang und wurden gekürzt.",
+  "props.protectionOn": "Passwortgeschützt",
+  "props.protectionOff": "Keiner"
 }
