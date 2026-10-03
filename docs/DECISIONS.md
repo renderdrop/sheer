@@ -695,3 +695,35 @@ who reads the PNGs. Frame pacing is measured in the page (`cdp.mjs fps`), becaus
 
 **Consequences.** The `fetch(`/`WebSocket` hits in `scripts/ui/cdp.mjs` are loopback CDP in a dev script, not app networking
 (rule 4 concerns the product). Captures show the window content, not OS material behind it.
+
+---
+
+## ADR-022 — One motion system
+
+**Status:** accepted (2026-10-03). Product-owner feedback F3 (`docs/FEEDBACK.md`). Spec: `docs/MOTION.md`; replaces DESIGN §1.6 and
+amends ADR-011/012 motion tokens, ADR-018 §5 ("nothing animates" on the canvas) and ADR-020 (G2 blur).
+
+**Context.** Motion grew per component: three easings (an overshooting `cubic-bezier(.34,1.56,.64,1)` for transforms, ease-out,
+ease-in), 150/200/250 ms, panels that only fade, a canvas that jumps on every zoom, page frames that pop in, and a left-panel
+collapse that animates the grid tracks so the canvas reflows every frame and the centred page drifts by half the track before
+fit width re-fits at the end (a second jump).
+
+**Decision.**
+1. **One curve:** a spring with bounce .15 (damping ratio .85). CSS `--ease-spring` is its `linear()` sampling over the visual
+   duration (fallback `cubic-bezier(.25,.1,.25,1)`); Motion uses `{ type: "spring", bounce: .15, visualDuration }`. Peak
+   overshoot 0.6 %, so it serves opacity, transforms and grid tracks alike. `--ease-in`/`--ease-out` are removed.
+2. **Three durations:** 120 / 200 / 320 ms (`--motion-fast/base/slow`); exits one step shorter and opacity-only.
+3. **Layout:** only the main row's columns and the banner row may animate. Contents do not reflow per frame (panels slide at
+   their final width in a clipped track; fit width is a transform until it commits once at rest). The canvas keeps the document
+   point under the pointer or viewport centre fixed. *Anchored* means: no vertical movement; a page narrower than the canvas
+   stays centred in its slot (rule 8) and glides with the panel in one spring, never in a jump or two steps.
+4. **Zoom** animates as a transform with inertia (projected target) and snaps to fit width, fit page and 100 % within ±8 %;
+   a document opens at fit width capped at 100 %.
+5. **Blur** only on G1 (toolbar, panels, banner, empty card); G2 loses its backdrop filter because it sits over the canvas.
+6. **Reduced motion:** opacity only, layout and zoom at once.
+7. **Scrollbars:** the `::-webkit-scrollbar` recipe in both webviews, arrow buttons hidden; standard `scrollbar-*`
+   properties dropped (on WebView2 they disable that recipe and draw arrow buttons).
+
+**Consequences.** `tokens.css`, `tokens.test.ts` and a new `src/lib/motion.ts` (parity-tested) change; every component that
+named `ease-out`/`ease-in` moves to `ease-spring`. The canvas gains a per-frame anchor during track animations and a transform
+layer for zoom. Acceptance: Tauri-window screen recording plus `cdp.mjs fps` per MOTION §5 (avg ≥ 58, p95 ≤ 18 ms).

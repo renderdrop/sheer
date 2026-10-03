@@ -69,7 +69,8 @@ handles 8 px; text selection `rgba(91,91,214,.30)`, hits `.28`.
 
 Light shadows are Iris (iris-500 at 12 % for the main shadow of G1, iris-700 for the contact shadow); dark keeps black,
 where a coloured shadow does not read. Recipes: **G1** = `--surface` + filter + edge + `--shadow-1` (toolbar, panels,
-banner, empty card). **G2** = `--surface-strong` + filter + edge + `--shadow-2` (popover, toast, drop overlay).
+banner, empty card). **G2** = `--surface-strong` + edge + `--shadow-2`, no filter (popover, toast, drop overlay;
+they sit over the canvas, which is never blurred, MOTION §5).
 Dialogs, submenus: solid + `--shadow-3`.
 
 `--surface-strong` is .90, not ADR-011's ≈ .86: worst-case muted text drops to 4.47 at .86. It stays untinted: over
@@ -104,13 +105,16 @@ shadows none, focus `Highlight`. Blur never animates.
 
 ### 1.6 Motion
 
-- `--motion-fast 150ms` hover, press, tooltip, exits · `--motion-base 200ms` popover, toast, tab indicator ·
-  `--motion-slow 250ms` panel, inspector, banner.
-- `--ease-out cubic-bezier(.22,1,.36,1)` opacity/color/size · `--ease-in cubic-bezier(.4,0,1,1)` exits ·
-  `--ease-spring cubic-bezier(.34,1.56,.64,1)` transforms only (Motion: `spring`, `visualDuration .2`, `bounce .15`).
+**`docs/MOTION.md` is the motion spec (ADR-022)** and supersedes every duration, easing and motion note in this file.
+
+- One curve: `--ease-spring` = the bounce-.15 spring as `linear()` (MOTION §1), fallback `cubic-bezier(.25,.1,.25,1)`;
+  Motion: `{ type: "spring", bounce: .15, visualDuration: <token in s> }`. `--ease-in` and `--ease-out` are removed.
+- `--motion-fast 120ms` · `--motion-base 200ms` · `--motion-slow 320ms`; exits one step shorter than enters.
+- Transform amounts: `--scale-press .97`, `--scale-enter .96`, `--scale-thumb 1.125`, `--offset-enter 8px`, new
+  `--scale-lift 1.04`, `--pulse-scale 1.06`, `--pulse-opacity .6`; new sizes `--drag-card-width 160`, `--drag-card-height 208`.
 - Tooltip delay 500 ms (keyboard 300, 0 if another closed < 300 ms ago).
-- Reduced motion: no transforms; transitions opacity-only, 150 ms `--ease-out`; smooth scroll → instant.
-- One ambient exception: the empty-state logo float (§1.10), 3 s per direction; off under reduced motion.
+- Reduced motion: opacity only (enter base, exit fast), layout in one step, zoom and scroll at once; transform tokens → 1 / 0.
+- One ambient exception: the empty-state logo float (§1.10, `--ease-float`); off under reduced motion.
 
 ### 1.7 Elevation (only these z-index values)
 
@@ -207,10 +211,12 @@ unmounted with the empty state. Entry: opacity 0 → 1 + `scale(--scale-enter)` 
 
 ### 1.11 Scrollbars (F2 review)
 
-Never the native grey bar. Every scroll region (canvas, panel bodies, popover lists, empty state) uses
-`scrollbar-width: thin; scrollbar-color: var(--color-scrollbar) transparent` (WebView2/Chromium; no arrow buttons).
-WKWebView fallback: `::-webkit-scrollbar` 8 px, track transparent, thumb `--color-scrollbar`, radius pill, 2 px
-transparent border with `background-clip: padding-box`; hover thumb `--color-scrollbar-hover`. The bar sits inside
+Never the native grey bar, never arrow buttons. Every scroll region (canvas, panel bodies, popover lists, empty state)
+uses the `::-webkit-scrollbar` recipe in both webviews: 8 px, track and corner transparent, thumb `--color-scrollbar`,
+radius pill, 2 px transparent border with `background-clip: padding-box`; hover thumb `--color-scrollbar-hover`;
+`::-webkit-scrollbar-button { display: none; width: 0; height: 0 }`. **Not** `scrollbar-width`/`scrollbar-color`:
+WebView2 (Chromium ≥ 121) ignores every `::-webkit-scrollbar` rule on an element that sets them, and its standard bar
+draws arrow buttons on Windows (F2 review). They stay only under `@supports not selector(::-webkit-scrollbar)`. The bar sits inside
 the slot's padding, never in a separate white band. **Forced colors:** rules removed (`scrollbar-color: auto`), native bars.
 **Page shadow, dark:** `--page-shadow` is `0 0 0 1px rgba(255,255,255,.08), 0 8px 24px rgba(0,0,0,.56)` (black alone
 vanishes on the canvas); light stays `--shadow-1`. The canvas carries `--canvas-edge`; it is paint, so solid mode keeps it.
@@ -239,8 +245,8 @@ Main columns: `8 | left 192–400 (default 248) | splitter 8 | canvas minmax(360
 - No document: main = `8 | empty state | 8` on `--color-bg`; toolbar keeps its slot, tools `aria-disabled`.
 - ≥ 1280 px (`auto`): no empty reservation (F2 review: a blank 288 column reads as broken). The canvas spans to the
   trailing gutter; a selection or non-Select tool opens the inspector track with the same grid-track transition as the
-  left panel (F3: 250 ms, panel fades in on the track, canvas keeps the page under its centre anchored); it closes
-  when selection and tool return to none/Select. Reduced motion: track at once, opacity 150.
+  left panel (MOTION §4.2: the panel slides in on the track, the canvas keeps its anchor); it closes
+  when selection and tool return to none/Select. Reduced motion: track at once, opacity fade.
   960–1279: track only via toggle; left panel auto-collapses if the canvas would be < 360.
 
 ### 2.2 Window chrome
@@ -395,15 +401,15 @@ global 2 px ring. It has no label of its own.
 
 The 8 px gutter right of the left panel, full main height; centred 4 × 32 pill: hidden at rest, control-border on hover,
 accent on drag/focus; `col-resize`. Target 8 px under the spacing exception (neighbours pad 8). Range 192–400, step 8;
-release < 144 collapses; double-click resets 248; width persisted. Toggle collapse animates 250 `--ease-out`; fit-width
-re-fits once at the end. Keys: `role=separator`,
+release < 144 collapses; double-click resets 248; width persisted. Toggle collapse slides per MOTION §4.2; fit width follows
+as a transform and commits once at the end without a visible change. Keys: `role=separator`,
 `aria-valuenow/min/max`, `aria-controls`, tab stop; Left/Right 8 (Shift 40), Home/End, Enter collapse/restore.
 
 ### 3.9 Panel
 
 Left panel and inspector: G1, radius 16; header 48 (padding 8); body scrolls, padding 8, rows 32 h radius 8. Inspector
-288: header = selection ("Highlight", "3 items") or "Tool options"; sections split by dividers; fades
-in (opacity 250), never translates or takes focus. Thumbnails: radius 4, `--page-shadow`, page pill (`--text-xs`, tile
+288: header = selection ("Highlight", "3 items") or "Tool options"; sections split by dividers; slides in
+from the trailing edge (MOTION §4.2), never takes focus. Thumbnails: radius 4, `--page-shadow`, page pill (`--text-xs`, tile
 colors; current page: accent pill + 2 px accent ring). Reorder by pointer or Move up/down (menu, Alt+↑/↓). `<aside>`
 landmarks, F6 stops; lists roving Up/Down, Enter.
 
