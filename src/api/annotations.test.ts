@@ -1,0 +1,227 @@
+import { invoke } from '@tauri-apps/api/core';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+
+import {
+  MAX_ANNOTATIONS_PER_DOC,
+  MAX_ANNOTATIONS_PER_PAGE,
+  MAX_ANNOT_CONTENTS_CHARS,
+  MAX_ANNOT_QUADS,
+  MAX_FREE_TEXT_LINES,
+  MAX_HISTORY_ENTRIES,
+  MAX_INK_POINTS_PER_STROKE,
+  MAX_INK_STROKES,
+  applyAnnotationCommand,
+  listAnnotations,
+  parseAnnotation,
+  parseChangeSet,
+  redo,
+  undo,
+  type DocCommand,
+} from './annotations';
+import { rustConstants } from './limits.testutil';
+
+vi.mock('@tauri-apps/api/core', () => ({ invoke: vi.fn() }));
+
+const invokeMock = vi.mocked(invoke);
+
+beforeEach(() => {
+  invokeMock.mockReset();
+});
+
+const RECT = { x: 10, y: 20, w: 50, h: 12 };
+const POINT = { x: 1, y: 2 };
+const QUAD = [POINT, POINT, POINT, POINT];
+
+/** The fields every annotation has, as the backend sends them. */
+const common = (extra: Record<string, unknown>): Record<string, unknown> => ({
+  id: 1,
+  pageId: 0,
+  rect: RECT,
+  color: [255, 235, 0],
+  opacity: 1,
+  contents: '',
+  author: null,
+  modified: '2024-01-02T03:04:05Z',
+  inReplyTo: null,
+  locked: false,
+  sync: 'new',
+  ...extra,
+});
+
+const BODIES: Record<string, Record<string, unknown>> = {
+  highlight: { kind: 'highlight', quads: [QUAD] },
+  underline: { kind: 'underline', quads: [QUAD] },
+  strikeout: { kind: 'strikeout', quads: [QUAD] },
+  note: { kind: 'note', at: POINT, icon: 'comment' },
+  freeText: { kind: 'freeText', box: RECT, lines: ['a', 'b'], fontSize: 12, fill: null, borderWidth: 0 },
+  ink: { kind: 'ink', strokes: [{ points: [POINT], outline: [POINT, POINT, POINT] }], width: 2 },
+  rect: { kind: 'rect', box: RECT, width: 1, fill: [1, 2, 3], dashed: true },
+  ellipse: { kind: 'ellipse', box: RECT, width: 1, fill: null, dashed: false },
+  line: { kind: 'line', from: POINT, to: { x: 5, y: 6 }, width: 1, head: 'none', tail: 'closedArrow' },
+  opaque: { kind: 'opaque', subtype: 'Stamp' },
+};
+const NOTE = BODIES.note ?? {};
+
+const HISTORY = { canUndo: true, canRedo: false, undoLabel: 'annotation.create', redoLabel: null, dirty: true };
+
+describe('parseAnnotation', () => {
+  it.each(Object.keys(BODIES))('reads a %s with its geometry', (kind) => {
+    const wire = common(BODIES[kind] ?? {});
+    expect(parseAnnotation(wire)).toStrictEqual(wire);
+  });
+
+  it('drops keys that are not part of an annotation', () => {
+    const parsed = parseAnnotation(common({ ...NOTE, path: 'C:\\x.pdf', rect: { ...RECT, z: 1 } }));
+    expect(parsed).toStrictEqual(common(NOTE));
+  });
+
+  it('reads the optional fields: author, reply link, lock, other sync states', () => {
+    const wire = common({ ...NOTE, author: 'Ada', inReplyTo: 4, locked: true, sync: 'modified', modified: 'D:2024' });
+    expect(parseAnnotation(wire)).toStrictEqual(wire);
+    expect(parseAnnotation(common({ ...NOTE, sync: 'clean' }))?.sync).toBe('clean');
+  });
+
+  it.each([
+    ['a value that is not an object', 7],
+    ['an unknown kind', common({ kind: 'squiggly', quads: [QUAD] })],
+    ['no kind', common({})],
+    ['a negative id', common({ ...NOTE, id: -1 })],
+    ['a fractional page', common({ ...NOTE, pageId: 0.5 })],
+    ['an opacity above 1', common({ ...NOTE, opacity: 1.2 })],
+    ['a colour channel above 255', common({ ...NOTE, color: [256, 0, 0] })],
+    ['a colour with two channels', common({ ...NOTE, color: [1, 2] })],
+    ['a rect with a negative size', common({ ...NOTE, rect: { ...RECT, w: -1 } })],
+    ['a coordinate beyond the page range', common({ ...NOTE, at: { x: 20_000, y: 0 } })],
+    ['a note with an unknown icon', common({ ...NOTE, icon: 'star' })],
+    ['a sync state that does not exist', common({ ...NOTE, sync: 'dirty' })],
+    ['an author that is a number', common({ ...NOTE, author: 3 })],
+    ['contents that are not text', common({ ...NOTE, contents: null })],
+    ['a highlight without quads', common({ kind: 'highlight', quads: [] })],
+    ['a quad with three corners', common({ kind: 'highlight', quads: [[POINT, POINT, POINT]] })],
+    ['an ink annotation without strokes', common({ kind: 'ink', strokes: [], width: 1 })],
+    ['a line with an unknown end', common({ ...BODIES.line, head: 'diamond' })],
+    ['a free text line that is a number', common({ ...BODIES.freeText, lines: [1] })],
+    ['a rect with a fill of two channels', common({ ...BODIES.rect, fill: [1, 2] })],
+    ['a rect whose dashed flag is a string', common({ ...BODIES.rect, dashed: 'yes' })],
+  ])('rejects %s', (_name, wire) => {
+    expect(parseAnnotation(wire)).toBeNull();
+  });
+
+  it('bounds the sizes it reads', () => {
+    const quads = (count: number) => Array.from({ length: count }, () => QUAD);
+    expect(parseAnnotation(common({ kind: 'highlight', quads: quads(MAX_ANNOT_QUADS + 1) }))).toBeNull();
+    expect(parseAnnotation(common({ kind: 'highlight', quads: quads(MAX_ANNOT_QUADS) }))).not.toBeNull();
+    const stroke = { points: [POINT], outline: [] };
+    const strokes = Array.from({ length: MAX_INK_STROKES + 1 }, () => stroke);
+    expect(parseAnnotation(common({ kind: 'ink', width: 1, strokes }))).toBeNull();
+    const long = { points: Array.from({ length: MAX_INK_POINTS_PER_STROKE + 1 }, () => POINT), outline: [] };
+    expect(parseAnnotation(common({ kind: 'ink', width: 1, strokes: [long] }))).toBeNull();
+    const lines = Array.from({ length: MAX_FREE_TEXT_LINES + 1 }, () => 'x');
+    expect(parseAnnotation(common({ ...BODIES.freeText, lines }))).toBeNull();
+    expect(parseAnnotation(common({ ...NOTE, contents: 'x'.repeat(2 * MAX_ANNOT_CONTENTS_CHARS + 1) }))).toBeNull();
+  });
+});
+
+describe('parseChangeSet', () => {
+  const wire = (extra: Record<string, unknown> = {}) => ({
+    rev: 3,
+    upserted: [common(NOTE)],
+    removed: [4, 5],
+    pages: null,
+    history: HISTORY,
+    ...extra,
+  });
+
+  it('reads the revision, the delta and the history', () => {
+    expect(parseChangeSet(wire())).toStrictEqual(wire());
+    expect(parseChangeSet(wire({ pages: [0, 1] }))?.pages).toEqual([0, 1]);
+  });
+
+  it.each([
+    ['a revision that is negative', wire({ rev: -1 })],
+    ['an upserted list with a bad annotation', wire({ upserted: [{}] })],
+    ['removed ids that are not ids', wire({ removed: ['a'] })],
+    ['a history without a flag', wire({ history: { ...HISTORY, dirty: undefined } })],
+    ['a history label that is a number', wire({ history: { ...HISTORY, undoLabel: 1 } })],
+    ['no history', wire({ history: undefined })],
+    ['pages that are not ids', wire({ pages: ['x'] })],
+    ['nothing', null],
+  ])('rejects %s', (_name, value) => {
+    expect(parseChangeSet(value)).toBeNull();
+  });
+
+  it('bounds the delta to the size of a document', () => {
+    const removed = Array.from({ length: MAX_ANNOTATIONS_PER_DOC + 1 }, (_, id) => id);
+    expect(parseChangeSet(wire({ removed }))).toBeNull();
+  });
+});
+
+describe('the commands', () => {
+  it('list_annotations asks for a page and returns its annotations', async () => {
+    const answer = [common(BODIES.highlight ?? {}), common({ ...NOTE, id: 2 })];
+    invokeMock.mockResolvedValueOnce(answer);
+    await expect(listAnnotations(4, 1)).resolves.toStrictEqual(answer);
+    expect(invokeMock).toHaveBeenCalledWith('list_annotations', { docId: 4, pageId: 1 });
+  });
+
+  it('list_annotations rejects with an internal error for an answer of the wrong shape', async () => {
+    invokeMock.mockResolvedValueOnce([{ id: 1 }]);
+    await expect(listAnnotations(0, 0)).rejects.toMatchObject({ code: 'internal' });
+    invokeMock.mockResolvedValueOnce(Array.from({ length: MAX_ANNOTATIONS_PER_PAGE + 1 }, () => common(NOTE)));
+    await expect(listAnnotations(0, 0)).rejects.toMatchObject({ code: 'internal' });
+  });
+
+  it('apply_annotation_command sends the command as it is and returns the change set', async () => {
+    const command: DocCommand = {
+      type: 'batch',
+      label: 'annotation.paste',
+      commands: [
+        { type: 'createAnnotation', draft: { pageId: 0, color: [1, 2, 3], kind: 'note', at: POINT, icon: 'note' } },
+        { type: 'updateAnnotation', id: 3, patch: { fill: null, contents: 'x' }, coalesce: 'text' },
+        { type: 'moveAnnotations', ids: [1, 2], dx: 5, dy: -5 },
+        { type: 'deleteAnnotations', ids: [9] },
+      ],
+    };
+    const changes = { rev: 1, upserted: [], removed: [], pages: null, history: HISTORY };
+    invokeMock.mockResolvedValueOnce(changes);
+    await expect(applyAnnotationCommand(2, command)).resolves.toStrictEqual(changes);
+    expect(invokeMock).toHaveBeenCalledWith('apply_annotation_command', { docId: 2, command });
+  });
+
+  it('undo and redo take the document and return the change set', async () => {
+    const changes = { rev: 2, upserted: [], removed: [1], pages: null, history: { ...HISTORY, canRedo: true } };
+    invokeMock.mockResolvedValue(changes);
+    await expect(undo(7)).resolves.toStrictEqual(changes);
+    expect(invokeMock).toHaveBeenLastCalledWith('undo', { docId: 7 });
+    await expect(redo(7)).resolves.toStrictEqual(changes);
+    expect(invokeMock).toHaveBeenLastCalledWith('redo', { docId: 7 });
+  });
+
+  it('rejects with the backend error, whole', async () => {
+    invokeMock.mockRejectedValue({
+      code: 'not_found',
+      key: 'error.not_found',
+      retryable: false,
+      params: { what: 'annotation' },
+    });
+    await expect(applyAnnotationCommand(0, { type: 'deleteAnnotations', ids: [1] })).rejects.toMatchObject({
+      code: 'not_found',
+      params: { what: 'annotation' },
+    });
+    await expect(undo(0)).rejects.toMatchObject({ code: 'not_found' });
+  });
+});
+
+describe('the bounds mirror the backend (src-tauri/src/limits.rs)', () => {
+  it('has the same value for every limit the parsers check', () => {
+    const rust = rustConstants();
+    expect(rust.get('MAX_ANNOTATIONS_PER_DOC')).toBe(MAX_ANNOTATIONS_PER_DOC);
+    expect(rust.get('MAX_ANNOTATIONS_PER_PAGE')).toBe(MAX_ANNOTATIONS_PER_PAGE);
+    expect(rust.get('MAX_ANNOT_QUADS')).toBe(MAX_ANNOT_QUADS);
+    expect(rust.get('MAX_INK_STROKES')).toBe(MAX_INK_STROKES);
+    expect(rust.get('MAX_INK_POINTS_PER_STROKE')).toBe(MAX_INK_POINTS_PER_STROKE);
+    expect(rust.get('MAX_FREE_TEXT_LINES')).toBe(MAX_FREE_TEXT_LINES);
+    expect(rust.get('MAX_ANNOT_CONTENTS_CHARS')).toBe(MAX_ANNOT_CONTENTS_CHARS);
+    expect(rust.get('MAX_HISTORY_ENTRIES')).toBe(MAX_HISTORY_ENTRIES);
+  });
+});

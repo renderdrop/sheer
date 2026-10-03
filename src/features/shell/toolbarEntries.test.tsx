@@ -18,7 +18,7 @@ const NBSP = String.fromCharCode(0xa0);
 const state = (overrides: Partial<ToolbarState> = {}): ToolbarState => ({
   t: translators.en,
   platform: 'windows',
-  action: { hasDocument: true, zoomAtMin: false, zoomAtMax: false },
+  action: { hasDocument: true, zoomAtMin: false, zoomAtMax: false, canUndo: false, canRedo: false },
   scrollMode: 'continuous',
   activeTool: 'select',
   toolLocked: false,
@@ -98,13 +98,13 @@ describe('the toolbar of DESIGN 3.3 and ADR-011 section 6', () => {
       const { entries } = buildToolbar(state(), actions());
       for (const entry of items(entries)) expect(entry.disabled, entry.id).toBe(false);
       const atMin = buildToolbar(
-        state({ action: { hasDocument: true, zoomAtMin: true, zoomAtMax: false } }),
+        state({ action: { hasDocument: true, zoomAtMin: true, zoomAtMax: false, canUndo: false, canRedo: false } }),
         actions(),
       ).entries;
       expect(item(atMin, 'zoom-out').disabled).toBe(true);
       expect(item(atMin, 'zoom-in').disabled).toBe(false);
       const atMax = buildToolbar(
-        state({ action: { hasDocument: true, zoomAtMin: false, zoomAtMax: true } }),
+        state({ action: { hasDocument: true, zoomAtMin: false, zoomAtMax: true, canUndo: false, canRedo: false } }),
         actions(),
       ).entries;
       expect(item(atMax, 'zoom-in').disabled).toBe(true);
@@ -160,6 +160,9 @@ describe('the toolbar of DESIGN 3.3 and ADR-011 section 6', () => {
       expect(moreItems.map((entry) => entry.id)).toEqual([
         'open',
         'close-document',
+        'edit:before',
+        'undo',
+        'redo',
         'view:before',
         'actual-size',
         'fit-width',
@@ -185,6 +188,7 @@ describe('the toolbar of DESIGN 3.3 and ADR-011 section 6', () => {
         'about',
       ]);
       expect(moreItems.filter((entry) => entry.type === 'separator').map((entry) => entry.id)).toEqual([
+        'edit:before',
         'view:before',
         'page:before',
         'view:before',
@@ -361,9 +365,9 @@ describe('the toolbar and the More menu are the registry (no orphan shortcuts)',
   const LOCALES = ['en', 'de'] as const;
   const STATES: readonly ActionState[] = [
     NO_DOCUMENT,
-    { hasDocument: true, zoomAtMin: false, zoomAtMax: false },
-    { hasDocument: true, zoomAtMin: true, zoomAtMax: false },
-    { hasDocument: true, zoomAtMin: false, zoomAtMax: true },
+    { hasDocument: true, zoomAtMin: false, zoomAtMax: false, canUndo: false, canRedo: false },
+    { hasDocument: true, zoomAtMin: true, zoomAtMax: false, canUndo: false, canRedo: false },
+    { hasDocument: true, zoomAtMin: false, zoomAtMax: true, canUndo: false, canRedo: false },
   ];
 
   const moreEntries = (entries: readonly MenuEntry[]) =>

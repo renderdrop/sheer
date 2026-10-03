@@ -2,19 +2,19 @@
 //! down, before `/Rotate` is applied. PDF user space has y pointing up and an origin that is wherever the page's box happens to
 //! be, so every coordinate PDFium reports goes through a [`PageBox`] on its way to the UI.
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use crate::limits;
 
 /// A position on a page, in points.
-#[derive(Debug, Clone, Copy, PartialEq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct Point {
     pub x: f32,
     pub y: f32,
 }
 
 /// A rectangle on a page, in points: its top left corner and its size (never negative).
-#[derive(Debug, Clone, Copy, PartialEq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct Rect {
     pub x: f32,
     pub y: f32,

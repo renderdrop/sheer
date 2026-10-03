@@ -10,7 +10,13 @@ import { NO_DOCUMENT, type ActionState } from './state';
 
 const NOT_IN_MENU_BAR: ReadonlySet<string> = new Set();
 const PLATFORMS: readonly (Platform | null)[] = ['macos', 'windows', 'linux', null];
-const WITH_DOCUMENT: ActionState = { hasDocument: true, zoomAtMin: false, zoomAtMax: false };
+const WITH_DOCUMENT: ActionState = {
+  hasDocument: true,
+  zoomAtMin: false,
+  zoomAtMax: false,
+  canUndo: true,
+  canRedo: true,
+};
 
 describe('the registry', () => {
   it('has the initial actions, one per tool, and no id twice', () => {
@@ -18,6 +24,8 @@ describe('the registry', () => {
     const expected: ActionId[] = [
       'open',
       'close-document',
+      'undo',
+      'redo',
       'zoom-in',
       'zoom-out',
       'actual-size',
@@ -71,6 +79,8 @@ describe('shortcuts per platform', () => {
   const LABELS: Readonly<Record<ActionId, { macos: string | null; windows: string | null }>> = {
     open: { macos: '⌘O', windows: 'Ctrl+O' },
     'close-document': { macos: '⌘W', windows: 'Ctrl+W' },
+    undo: { macos: '⌘Z', windows: 'Ctrl+Z' },
+    redo: { macos: '⇧⌘Z', windows: 'Ctrl+Y' },
     'zoom-in': { macos: '⌘+', windows: 'Ctrl++' },
     'zoom-out': { macos: '⌘−', windows: 'Ctrl+−' },
     'actual-size': { macos: '⌘1', windows: 'Ctrl+1' },
@@ -209,7 +219,9 @@ describe('enabled', () => {
     expect(enabledIds({ ...WITH_DOCUMENT, zoomAtMin: true })).not.toContain('zoom-out');
     expect(enabledIds({ ...WITH_DOCUMENT, zoomAtMin: true })).toContain('zoom-in');
     // The flags mean nothing without a document.
-    expect(enabledIds({ hasDocument: false, zoomAtMin: false, zoomAtMax: false })).not.toContain('zoom-in');
+    expect(
+      enabledIds({ hasDocument: false, zoomAtMin: false, zoomAtMax: false, canUndo: true, canRedo: true }),
+    ).not.toContain('zoom-in');
   });
 
   it('is a pure question: asking changes nothing', () => {
@@ -225,6 +237,8 @@ describe('where an action is listed', () => {
     expect(more).toEqual([
       'file:open',
       'file:close-document',
+      'edit:undo',
+      'edit:redo',
       'view:actual-size',
       'view:fit-width',
       'view:fit-page',

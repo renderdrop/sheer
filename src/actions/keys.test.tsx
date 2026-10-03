@@ -6,6 +6,7 @@ import type { Platform } from '../api/app';
 import type { DocumentInfo } from '../api/documents';
 import { useSettingsPopover } from '../features/settings/state';
 import { useViewer } from '../features/viewer/useViewer';
+import { useAnnotations } from '../stores/annotations';
 import { useSettings } from '../stores/settings';
 import { activeDocument, opened, resetDocuments } from '../stores/documents.testutil';
 import { useUi } from '../stores/ui';
@@ -37,6 +38,7 @@ function reset() {
   useUi.setState({ ...uiInitial }, true);
   useViewer.setState({ ...viewerInitial }, true);
   resetDocuments();
+  useAnnotations.setState({ byDoc: {} });
   useView.setState({ byDoc: {} });
   useSettings.setState({ ...settingsInitial, platform: null }, true);
 }
@@ -188,7 +190,7 @@ describe('the bindings', () => {
 
   it('a key that is not bound, or is bound with other modifiers, does nothing and is left to the browser', () => {
     for (const init of [
-      { key: 'z', ctrlKey: true },
+      { key: 'q', ctrlKey: true },
       { key: 'o', ctrlKey: true, shiftKey: true },
       { key: 'o', ctrlKey: true, altKey: true },
       { key: 'o' },
@@ -562,6 +564,14 @@ describe('every binding of the registry, on every platform', () => {
 
   it('runs exactly its own action: Cmd on macOS, Ctrl on Windows, Linux and an unknown platform', async () => {
     await openDocument();
+    // Undo and Redo run only when the history has the step.
+    useAnnotations.getState().applyChanges(REPORT.id, {
+      rev: 1,
+      upserted: [],
+      removed: [],
+      pages: null,
+      history: { canUndo: true, canRedo: true, undoLabel: null, redoLabel: null, dirty: true },
+    });
     const { region } = inCanvas();
     const all = spies();
     try {

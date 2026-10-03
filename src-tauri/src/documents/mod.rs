@@ -34,6 +34,11 @@ impl PageId {
     pub const fn new(value: u32) -> Self {
         Self(value)
     }
+
+    /// The number of the page id (its position until M3).
+    pub const fn get(self) -> u32 {
+        self.0
+    }
 }
 
 /// What PDFium says about a document, as far as it can tell: best effort, nothing here is a security promise. Read once, when the

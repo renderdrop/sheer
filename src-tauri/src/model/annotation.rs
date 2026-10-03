@@ -1,0 +1,1206 @@
+//! The annotation domain model (ADR-003 §2): what an annotation is, independent of PDFium and of the PDF file it came from.
+//!
+//! Page space as in [`super::geometry`]. The structs are the source of the wire format (camelCase, `kind` tags); the TypeScript
+//! mirror is `src/api/annotations.ts`. Everything that arrives from the UI or from a file is checked here ([`Annotation::normalize`]):
+//! counts, string lengths and numbers are bounded by `limits.rs`, coordinates are finite and within a page's range, and the bounding
+//! rectangle ([`Annotation::rect`]) is always computed by Rust from the geometry, never taken from the caller.
+
+use serde::{Deserialize, Deserializer, Serialize};
+
+use super::geometry::{Point, Quad, Rect};
+use super::ids::AnnotId;
+use crate::documents::PageId;
+use crate::error::AppError;
+use crate::limits;
+
+/// Side of the box a note icon occupies on the page, in points (notes do not scale with the zoom).
+pub const NOTE_SIZE_PT: f32 = 20.0;
+
+/// A colour, 0 to 255 per channel.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct Rgb(pub [u8; 3]);
+
+/// How the end of a line is drawn.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum LineEnd {
+    None,
+    OpenArrow,
+    ClosedArrow,
+}
+
+/// The icon of a note.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum NoteIcon {
+    Comment,
+    Note,
+    Help,
+}
+
+/// Whether the annotation is in the file as it is.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum Sync {
+    /// Created in this session, not in the file yet.
+    New,
+    /// As in the file.
+    Clean,
+    /// In the file, changed in this session.
+    Modified,
+}
+
+/// One freehand stroke: the points the user drew, and the outline polygon that is filled (perfect-freehand output, ADR-003 §3).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Stroke {
+    pub points: Vec<Point>,
+    pub outline: Vec<Point>,
+}
+
+/// What kind of annotation it is and the geometry that belongs to the kind.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(
+    tag = "kind",
+    rename_all = "camelCase",
+    rename_all_fields = "camelCase"
+)]
+pub enum AnnotationBody {
+    Highlight {
+        quads: Vec<Quad>,
+    },
+    Underline {
+        quads: Vec<Quad>,
+    },
+    Strikeout {
+        quads: Vec<Quad>,
+    },
+    Note {
+        at: Point,
+        icon: NoteIcon,
+    },
+    FreeText {
+        #[serde(rename = "box")]
+        bounds: Rect,
+        lines: Vec<String>,
+        font_size: f32,
+        fill: Option<Rgb>,
+        border_width: f32,
+    },
+    Ink {
+        strokes: Vec<Stroke>,
+        width: f32,
+    },
+    Rect {
+        #[serde(rename = "box")]
+        bounds: Rect,
+        width: f32,
+        fill: Option<Rgb>,
+        dashed: bool,
+    },
+    Ellipse {
+        #[serde(rename = "box")]
+        bounds: Rect,
+        width: f32,
+        fill: Option<Rgb>,
+        dashed: bool,
+    },
+    Line {
+        from: Point,
+        to: Point,
+        width: f32,
+        head: LineEnd,
+        tail: LineEnd,
+    },
+    /// An annotation of a kind the model does not edit (ink and lines from other programs, stamps, squiggly, ...): listed so it can be
+    /// shown and selected, never changed or deleted. Only an import makes one.
+    #[serde(skip_deserializing)]
+    Opaque {
+        subtype: String,
+    },
+}
+
+impl AnnotationBody {
+    fn is_opaque(&self) -> bool {
+        matches!(self, Self::Opaque { .. })
+    }
+}
+
+/// An annotation as the UI sees it (ADR-003 §2).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Annotation {
+    pub id: AnnotId,
+    pub page_id: PageId,
+    /// The bounding box, computed by Rust from the geometry.
+    pub rect: Rect,
+    pub color: Rgb,
+    pub opacity: f32,
+    pub contents: String,
+    pub author: Option<String>,
+    pub modified: Option<String>,
+    /// The annotation this one replies to (`/IRT`).
+    pub in_reply_to: Option<AnnotId>,
+    pub locked: bool,
+    pub sync: Sync,
+    #[serde(flatten)]
+    pub body: AnnotationBody,
+}
+
+/// An annotation to create: an [`Annotation`] without the fields Rust assigns (`id`, `rect`, `sync`, `modified`).
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AnnotationDraft {
+    pub page_id: PageId,
+    pub color: Rgb,
+    #[serde(default = "full_opacity")]
+    pub opacity: f32,
+    #[serde(default)]
+    pub contents: String,
+    #[serde(default)]
+    pub author: Option<String>,
+    #[serde(default)]
+    pub in_reply_to: Option<AnnotId>,
+    #[serde(default)]
+    pub locked: bool,
+    #[serde(flatten)]
+    pub body: AnnotationBody,
+}
+
+fn full_opacity() -> f32 {
+    1.0
+}
+
+/// `Some(None)` for an explicit `null` (clear the field), `None` for a missing key (leave it).
+fn nullable<'de, D, T>(deserializer: D) -> Result<Option<Option<T>>, D::Error>
+where
+    D: Deserializer<'de>,
+    T: Deserialize<'de>,
+{
+    Option::<T>::deserialize(deserializer).map(Some)
+}
+
+/// A change to an annotation: only the fields that are present change. A field that does not belong to the kind is refused
+/// (`invalid_argument`, `patch`); an unknown key does not even parse.
+#[derive(Debug, Clone, Default, PartialEq, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct AnnotationPatch {
+    pub color: Option<Rgb>,
+    pub opacity: Option<f32>,
+    pub contents: Option<String>,
+    #[serde(default, deserialize_with = "nullable")]
+    pub author: Option<Option<String>>,
+    pub locked: Option<bool>,
+    pub quads: Option<Vec<Quad>>,
+    pub at: Option<Point>,
+    pub icon: Option<NoteIcon>,
+    #[serde(rename = "box")]
+    pub bounds: Option<Rect>,
+    pub lines: Option<Vec<String>>,
+    pub font_size: Option<f32>,
+    #[serde(default, deserialize_with = "nullable")]
+    pub fill: Option<Option<Rgb>>,
+    pub border_width: Option<f32>,
+    pub strokes: Option<Vec<Stroke>>,
+    pub width: Option<f32>,
+    pub dashed: Option<bool>,
+    pub from: Option<Point>,
+    pub to: Option<Point>,
+    pub head: Option<LineEnd>,
+    pub tail: Option<LineEnd>,
+}
+
+/// Where an annotation sits in the PDF it was imported from. Rust only; the UI never sees it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PdfOrigin {
+    pub page_index: u32,
+    /// Position in the page's `/Annots` when it was loaded.
+    pub annot_index: u32,
+    /// `/NM`, the annotation's identity across reloads.
+    pub name: Option<String>,
+}
+
+/// An annotation as the engine reads it from a file (`engine::import`), before it has an id.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Imported {
+    pub origin: PdfOrigin,
+    pub body: AnnotationBody,
+    /// Used for [`AnnotationBody::Opaque`] only; every other kind gets its rectangle from its geometry.
+    pub rect: Rect,
+    pub color: Rgb,
+    pub opacity: f32,
+    pub contents: String,
+    pub author: Option<String>,
+    pub modified: Option<String>,
+    pub locked: bool,
+}
+
+// --- Validation ------------------------------------------------------------------------------------------------
+
+fn coordinate(value: f32, what: &'static str) -> Result<(), AppError> {
+    if value.is_finite() && value.abs() <= limits::MAX_PAGE_SIDE_PT {
+        Ok(())
+    } else {
+        Err(AppError::invalid(what))
+    }
+}
+
+fn check_point(point: Point, what: &'static str) -> Result<(), AppError> {
+    coordinate(point.x, what)?;
+    coordinate(point.y, what)
+}
+
+fn check_rect(rect: Rect, what: &'static str) -> Result<(), AppError> {
+    for value in [rect.x, rect.y, rect.w, rect.h] {
+        coordinate(value, what)?;
+    }
+    if rect.w < 0.0 || rect.h < 0.0 {
+        return Err(AppError::invalid(what));
+    }
+    Ok(())
+}
+
+fn check_width(width: f32, what: &'static str) -> Result<(), AppError> {
+    if width.is_finite() && (0.0..=limits::MAX_ANNOT_STROKE_PT).contains(&width) {
+        Ok(())
+    } else {
+        Err(AppError::invalid(what))
+    }
+}
+
+/// `text` has at most `max` characters and no NUL or other control character (a tab, and a line break when `multiline`, excepted).
+fn check_text(text: &str, max: usize, multiline: bool, what: &'static str) -> Result<(), AppError> {
+    let mut count = 0usize;
+    for c in text.chars() {
+        count += 1;
+        let allowed = !c.is_control() || c == '\t' || (multiline && (c == '\n' || c == '\r'));
+        if count > max || !allowed {
+            return Err(AppError::invalid(what));
+        }
+    }
+    Ok(())
+}
+
+fn check_quads(quads: &[Quad]) -> Result<(), AppError> {
+    if quads.is_empty() {
+        return Err(AppError::invalid("quads"));
+    }
+    if quads.len() > limits::MAX_ANNOT_QUADS {
+        return Err(AppError::limit("quads", limits::MAX_ANNOT_QUADS as u64));
+    }
+    quads
+        .iter()
+        .flatten()
+        .try_for_each(|point| check_point(*point, "quads"))
+}
+
+fn check_strokes(strokes: &[Stroke]) -> Result<(), AppError> {
+    if strokes.is_empty() {
+        return Err(AppError::invalid("strokes"));
+    }
+    if strokes.len() > limits::MAX_INK_STROKES {
+        return Err(AppError::limit("strokes", limits::MAX_INK_STROKES as u64));
+    }
+    let mut total = 0usize;
+    for stroke in strokes {
+        if stroke.points.is_empty() {
+            return Err(AppError::invalid("strokes"));
+        }
+        if stroke.points.len() > limits::MAX_INK_POINTS_PER_STROKE
+            || stroke.outline.len() > limits::MAX_INK_POINTS_PER_STROKE
+        {
+            return Err(AppError::limit(
+                "points",
+                limits::MAX_INK_POINTS_PER_STROKE as u64,
+            ));
+        }
+        total += stroke.points.len() + stroke.outline.len();
+        if total > limits::MAX_INK_POINTS_TOTAL {
+            return Err(AppError::limit(
+                "points",
+                limits::MAX_INK_POINTS_TOTAL as u64,
+            ));
+        }
+        stroke
+            .points
+            .iter()
+            .chain(&stroke.outline)
+            .try_for_each(|point| check_point(*point, "strokes"))?;
+    }
+    Ok(())
+}
+
+/// Collects the extent of some points.
+struct Extent {
+    min: Point,
+    max: Point,
+    empty: bool,
+}
+
+impl Extent {
+    fn new() -> Self {
+        Self {
+            min: Point { x: 0.0, y: 0.0 },
+            max: Point { x: 0.0, y: 0.0 },
+            empty: true,
+        }
+    }
+
+    fn add(&mut self, point: Point) {
+        if self.empty {
+            self.min = point;
+            self.max = point;
+            self.empty = false;
+        } else {
+            self.min.x = self.min.x.min(point.x);
+            self.min.y = self.min.y.min(point.y);
+            self.max.x = self.max.x.max(point.x);
+            self.max.y = self.max.y.max(point.y);
+        }
+    }
+
+    fn rect(&self, pad: f32) -> Rect {
+        Rect {
+            x: self.min.x - pad,
+            y: self.min.y - pad,
+            w: self.max.x - self.min.x + 2.0 * pad,
+            h: self.max.y - self.min.y + 2.0 * pad,
+        }
+    }
+}
+
+fn padded(rect: Rect, pad: f32) -> Rect {
+    Rect {
+        x: rect.x - pad,
+        y: rect.y - pad,
+        w: rect.w + 2.0 * pad,
+        h: rect.h + 2.0 * pad,
+    }
+}
+
+impl AnnotationBody {
+    /// Checks the geometry and returns the bounding box. `rect` is what an opaque annotation brings along.
+    fn check(&self, rect: Rect) -> Result<Rect, AppError> {
+        match self {
+            Self::Highlight { quads } | Self::Underline { quads } | Self::Strikeout { quads } => {
+                check_quads(quads)?;
+                let mut extent = Extent::new();
+                quads.iter().flatten().for_each(|point| extent.add(*point));
+                Ok(extent.rect(0.0))
+            }
+            Self::Note { at, .. } => {
+                check_point(*at, "at")?;
+                Ok(Rect {
+                    x: at.x,
+                    y: at.y,
+                    w: NOTE_SIZE_PT,
+                    h: NOTE_SIZE_PT,
+                })
+            }
+            Self::FreeText {
+                bounds,
+                lines,
+                font_size,
+                border_width,
+                ..
+            } => {
+                check_rect(*bounds, "box")?;
+                if lines.len() > limits::MAX_FREE_TEXT_LINES {
+                    return Err(AppError::limit("lines", limits::MAX_FREE_TEXT_LINES as u64));
+                }
+                for line in lines {
+                    check_text(line, limits::MAX_FREE_TEXT_LINE_CHARS, false, "lines")?;
+                }
+                if !font_size.is_finite()
+                    || !(limits::MIN_FONT_SIZE_PT..=limits::MAX_FONT_SIZE_PT).contains(font_size)
+                {
+                    return Err(AppError::invalid("fontSize"));
+                }
+                check_width(*border_width, "borderWidth")?;
+                Ok(*bounds)
+            }
+            Self::Ink { strokes, width } => {
+                check_width(*width, "width")?;
+                check_strokes(strokes)?;
+                let mut extent = Extent::new();
+                for stroke in strokes {
+                    stroke
+                        .points
+                        .iter()
+                        .chain(&stroke.outline)
+                        .for_each(|point| extent.add(*point));
+                }
+                Ok(extent.rect(width / 2.0))
+            }
+            Self::Rect { bounds, width, .. } | Self::Ellipse { bounds, width, .. } => {
+                check_rect(*bounds, "box")?;
+                check_width(*width, "width")?;
+                Ok(padded(*bounds, width / 2.0))
+            }
+            Self::Line {
+                from,
+                to,
+                width,
+                head,
+                tail,
+            } => {
+                check_point(*from, "from")?;
+                check_point(*to, "to")?;
+                check_width(*width, "width")?;
+                let mut extent = Extent::new();
+                extent.add(*from);
+                extent.add(*to);
+                // An arrow head reaches out sideways by a few widths.
+                let arrow = if *head == LineEnd::None && *tail == LineEnd::None {
+                    0.0
+                } else {
+                    width * 5.0
+                };
+                Ok(extent.rect(width / 2.0 + arrow))
+            }
+            Self::Opaque { subtype } => {
+                check_text(subtype, limits::MAX_ANNOT_AUTHOR_CHARS, false, "subtype")?;
+                check_rect(rect, "rect")?;
+                Ok(rect)
+            }
+        }
+    }
+
+    /// Moves the geometry by (`dx`, `dy`).
+    fn translate(&mut self, dx: f32, dy: f32) {
+        let shift = |point: &mut Point| {
+            point.x += dx;
+            point.y += dy;
+        };
+        match self {
+            Self::Highlight { quads } | Self::Underline { quads } | Self::Strikeout { quads } => {
+                quads.iter_mut().flatten().for_each(shift);
+            }
+            Self::Note { at, .. } => shift(at),
+            Self::FreeText { bounds, .. }
+            | Self::Rect { bounds, .. }
+            | Self::Ellipse { bounds, .. } => {
+                bounds.x += dx;
+                bounds.y += dy;
+            }
+            Self::Ink { strokes, .. } => {
+                for stroke in strokes {
+                    stroke
+                        .points
+                        .iter_mut()
+                        .chain(&mut stroke.outline)
+                        .for_each(shift);
+                }
+            }
+            Self::Line { from, to, .. } => {
+                shift(from);
+                shift(to);
+            }
+            Self::Opaque { .. } => {}
+        }
+    }
+}
+
+impl Annotation {
+    /// Checks every field and recomputes `rect` from the geometry. Run on everything that enters the model.
+    pub fn normalize(&mut self) -> Result<(), AppError> {
+        if !self.opacity.is_finite() || !(0.0..=1.0).contains(&self.opacity) {
+            return Err(AppError::invalid("opacity"));
+        }
+        check_text(
+            &self.contents,
+            limits::MAX_ANNOT_CONTENTS_CHARS,
+            true,
+            "contents",
+        )?;
+        if let Some(author) = &self.author {
+            check_text(author, limits::MAX_ANNOT_AUTHOR_CHARS, false, "author")?;
+        }
+        if let Some(modified) = &self.modified {
+            check_text(modified, limits::MAX_ANNOT_DATE_CHARS, false, "modified")?;
+        }
+        if self.in_reply_to == Some(self.id) {
+            return Err(AppError::invalid("inReplyTo"));
+        }
+        self.rect = self.body.check(self.rect)?;
+        Ok(())
+    }
+
+    /// The annotation `draft` becomes under `id`, last modified `now`. Validated.
+    pub fn from_draft(id: AnnotId, draft: &AnnotationDraft, now: &str) -> Result<Self, AppError> {
+        if draft.body.is_opaque() {
+            return Err(AppError::invalid("kind"));
+        }
+        let mut annotation = Self {
+            id,
+            page_id: draft.page_id,
+            rect: Rect {
+                x: 0.0,
+                y: 0.0,
+                w: 0.0,
+                h: 0.0,
+            },
+            color: draft.color,
+            opacity: draft.opacity,
+            contents: draft.contents.clone(),
+            author: draft.author.clone(),
+            modified: Some(now.to_owned()),
+            in_reply_to: draft.in_reply_to,
+            locked: draft.locked,
+            sync: Sync::New,
+            body: draft.body.clone(),
+        };
+        annotation.normalize()?;
+        Ok(annotation)
+    }
+
+    /// Whether the user may change or delete it.
+    pub fn is_opaque(&self) -> bool {
+        self.body.is_opaque()
+    }
+
+    /// This annotation with `patch` applied and `modified` set to `now`, validated. A field that does not belong to the kind is
+    /// `invalid_argument` (`patch`).
+    pub fn patched(&self, patch: &AnnotationPatch, now: &str) -> Result<Self, AppError> {
+        let mut next = self.clone();
+        if let Some(color) = patch.color {
+            next.color = color;
+        }
+        if let Some(opacity) = patch.opacity {
+            next.opacity = opacity;
+        }
+        if let Some(contents) = &patch.contents {
+            next.contents.clone_from(contents);
+        }
+        if let Some(author) = &patch.author {
+            next.author.clone_from(author);
+        }
+        if let Some(locked) = patch.locked {
+            next.locked = locked;
+        }
+        let wrong = || AppError::invalid("patch");
+        let AnnotationPatch {
+            quads,
+            at,
+            icon,
+            bounds,
+            lines,
+            font_size,
+            fill,
+            border_width,
+            strokes,
+            width,
+            dashed,
+            from,
+            to,
+            head,
+            tail,
+            ..
+        } = patch;
+        // Every geometry field of the patch must be one the kind has; `take` marks the ones used, and what is left over is wrong.
+        let mut left = [
+            quads.is_some(),
+            at.is_some(),
+            icon.is_some(),
+            bounds.is_some(),
+            lines.is_some(),
+            font_size.is_some(),
+            fill.is_some(),
+            border_width.is_some(),
+            strokes.is_some(),
+            width.is_some(),
+            dashed.is_some(),
+            from.is_some(),
+            to.is_some(),
+            head.is_some(),
+            tail.is_some(),
+        ]
+        .iter()
+        .filter(|present| **present)
+        .count();
+        let mut used = |present: bool| {
+            if present {
+                left -= 1;
+            }
+        };
+        fn set<T: Clone>(slot: &mut T, value: &Option<T>, used: &mut impl FnMut(bool)) {
+            if let Some(value) = value {
+                slot.clone_from(value);
+                used(true);
+            }
+        }
+        match &mut next.body {
+            AnnotationBody::Highlight { quads: q }
+            | AnnotationBody::Underline { quads: q }
+            | AnnotationBody::Strikeout { quads: q } => set(q, quads, &mut used),
+            AnnotationBody::Note { at: a, icon: i } => {
+                set(a, at, &mut used);
+                set(i, icon, &mut used);
+            }
+            AnnotationBody::FreeText {
+                bounds: b,
+                lines: l,
+                font_size: f,
+                fill: fl,
+                border_width: bw,
+            } => {
+                set(b, bounds, &mut used);
+                set(l, lines, &mut used);
+                set(f, font_size, &mut used);
+                set(fl, fill, &mut used);
+                set(bw, border_width, &mut used);
+            }
+            AnnotationBody::Ink {
+                strokes: s,
+                width: w,
+            } => {
+                set(s, strokes, &mut used);
+                set(w, width, &mut used);
+            }
+            AnnotationBody::Rect {
+                bounds: b,
+                width: w,
+                fill: fl,
+                dashed: d,
+            }
+            | AnnotationBody::Ellipse {
+                bounds: b,
+                width: w,
+                fill: fl,
+                dashed: d,
+            } => {
+                set(b, bounds, &mut used);
+                set(w, width, &mut used);
+                set(fl, fill, &mut used);
+                set(d, dashed, &mut used);
+            }
+            AnnotationBody::Line {
+                from: f,
+                to: t,
+                width: w,
+                head: h,
+                tail: tl,
+            } => {
+                set(f, from, &mut used);
+                set(t, to, &mut used);
+                set(w, width, &mut used);
+                set(h, head, &mut used);
+                set(tl, tail, &mut used);
+            }
+            AnnotationBody::Opaque { .. } => {}
+        }
+        if left != 0 {
+            return Err(wrong());
+        }
+        next.modified = Some(now.to_owned());
+        if next.sync == Sync::Clean {
+            next.sync = Sync::Modified;
+        }
+        next.normalize()?;
+        Ok(next)
+    }
+
+    /// This annotation moved by (`dx`, `dy`) points, `modified` set to `now`. Validated: it must stay within the page range.
+    pub fn moved(&self, dx: f32, dy: f32, now: &str) -> Result<Self, AppError> {
+        if !dx.is_finite() || !dy.is_finite() {
+            return Err(AppError::invalid("delta"));
+        }
+        let mut next = self.clone();
+        next.body.translate(dx, dy);
+        next.modified = Some(now.to_owned());
+        if next.sync == Sync::Clean {
+            next.sync = Sync::Modified;
+        }
+        next.normalize()?;
+        Ok(next)
+    }
+
+    /// The annotation `imported` becomes under `id`: clean, as in the file. `None` if it does not pass the checks (the file is
+    /// hostile input: such an annotation is left out instead of failing the page).
+    pub fn from_import(id: AnnotId, page_id: PageId, imported: &Imported) -> Option<Self> {
+        let mut annotation = Self {
+            id,
+            page_id,
+            rect: imported.rect,
+            color: imported.color,
+            opacity: imported.opacity,
+            contents: imported.contents.clone(),
+            author: imported.author.clone(),
+            modified: imported.modified.clone(),
+            in_reply_to: None,
+            locked: imported.locked,
+            sync: Sync::Clean,
+            body: imported.body.clone(),
+        };
+        annotation.normalize().ok()?;
+        Some(annotation)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::error::ErrorCode;
+    use serde_json::json;
+
+    fn pt(x: f32, y: f32) -> Point {
+        Point { x, y }
+    }
+
+    pub(crate) fn quad(x: f32, y: f32, w: f32, h: f32) -> Quad {
+        [pt(x, y), pt(x + w, y), pt(x, y + h), pt(x + w, y + h)]
+    }
+
+    pub(crate) fn highlight(page: u32) -> AnnotationDraft {
+        serde_json::from_value(json!({
+            "pageId": page, "kind": "highlight", "color": [255, 235, 0],
+            "quads": [[{"x":10.0,"y":20.0},{"x":60.0,"y":20.0},{"x":10.0,"y":32.0},{"x":60.0,"y":32.0}]]
+        }))
+        .expect("a highlight draft")
+    }
+
+    fn code(result: Result<impl std::fmt::Debug, AppError>) -> ErrorCode {
+        result.unwrap_err().code()
+    }
+
+    #[test]
+    fn a_draft_parses_with_defaults_and_becomes_an_annotation_with_a_computed_rect() {
+        let draft = highlight(0);
+        assert_eq!(draft.opacity, 1.0);
+        assert_eq!(draft.contents, "");
+        let annotation = Annotation::from_draft(AnnotId::new(7), &draft, "now").unwrap();
+        assert_eq!(annotation.id, AnnotId::new(7));
+        assert_eq!(annotation.sync, Sync::New);
+        assert_eq!(annotation.modified.as_deref(), Some("now"));
+        assert_eq!(
+            annotation.rect,
+            Rect {
+                x: 10.0,
+                y: 20.0,
+                w: 50.0,
+                h: 12.0
+            }
+        );
+    }
+
+    #[test]
+    fn the_wire_format_is_camel_case_with_a_kind_tag_and_the_geometry_next_to_the_common_fields() {
+        let annotation = Annotation::from_draft(AnnotId::new(1), &highlight(2), "t").unwrap();
+        let value = serde_json::to_value(&annotation).unwrap();
+        assert_eq!(value["kind"], "highlight");
+        assert_eq!(value["pageId"], 2);
+        assert_eq!(value["sync"], "new");
+        assert_eq!(value["inReplyTo"], serde_json::Value::Null);
+        assert_eq!(value["color"], json!([255, 235, 0]));
+        assert!(value["quads"].is_array());
+        let free: AnnotationDraft = serde_json::from_value(json!({
+            "pageId": 0, "kind": "freeText", "color": [0, 0, 0],
+            "box": {"x": 1.0, "y": 2.0, "w": 100.0, "h": 40.0},
+            "lines": ["Hello"], "fontSize": 12.0, "fill": null, "borderWidth": 0.0
+        }))
+        .unwrap();
+        let free = Annotation::from_draft(AnnotId::new(2), &free, "t").unwrap();
+        let value = serde_json::to_value(&free).unwrap();
+        assert_eq!(value["kind"], "freeText");
+        assert_eq!(value["box"]["w"], 100.0);
+        assert_eq!(value["fontSize"], 12.0);
+        // It reads back as it was written.
+        let back: Annotation = serde_json::from_value(value).unwrap();
+        assert_eq!(back, free);
+    }
+
+    #[test]
+    fn an_opaque_annotation_cannot_be_made_from_the_wire() {
+        let parsed = serde_json::from_value::<AnnotationDraft>(json!({
+            "pageId": 0, "kind": "opaque", "subtype": "Ink", "color": [0, 0, 0]
+        }));
+        assert!(parsed.is_err());
+        let draft = AnnotationDraft {
+            body: AnnotationBody::Opaque {
+                subtype: "Ink".into(),
+            },
+            ..highlight(0)
+        };
+        assert_eq!(
+            code(Annotation::from_draft(AnnotId::new(1), &draft, "t")),
+            ErrorCode::InvalidArgument
+        );
+    }
+
+    #[test]
+    fn every_kind_gets_a_bounding_box_that_includes_its_stroke() {
+        let ink = AnnotationBody::Ink {
+            strokes: vec![Stroke {
+                points: vec![pt(10.0, 10.0), pt(30.0, 20.0)],
+                outline: vec![pt(9.0, 9.0), pt(31.0, 21.0)],
+            }],
+            width: 4.0,
+        };
+        assert_eq!(
+            ink.check(Rect {
+                x: 0.0,
+                y: 0.0,
+                w: 0.0,
+                h: 0.0
+            })
+            .unwrap(),
+            Rect {
+                x: 7.0,
+                y: 7.0,
+                w: 26.0,
+                h: 16.0
+            }
+        );
+        let square = AnnotationBody::Rect {
+            bounds: Rect {
+                x: 10.0,
+                y: 10.0,
+                w: 20.0,
+                h: 20.0,
+            },
+            width: 2.0,
+            fill: None,
+            dashed: false,
+        };
+        assert_eq!(
+            square
+                .check(Rect {
+                    x: 0.0,
+                    y: 0.0,
+                    w: 0.0,
+                    h: 0.0
+                })
+                .unwrap(),
+            Rect {
+                x: 9.0,
+                y: 9.0,
+                w: 22.0,
+                h: 22.0
+            }
+        );
+        let line = AnnotationBody::Line {
+            from: pt(0.0, 0.0),
+            to: pt(100.0, 0.0),
+            width: 2.0,
+            head: LineEnd::None,
+            tail: LineEnd::ClosedArrow,
+        };
+        let rect = line
+            .check(Rect {
+                x: 0.0,
+                y: 0.0,
+                w: 0.0,
+                h: 0.0,
+            })
+            .unwrap();
+        // 1 for the stroke and 10 for the arrow, on each side.
+        assert_eq!(
+            rect,
+            Rect {
+                x: -11.0,
+                y: -11.0,
+                w: 122.0,
+                h: 22.0
+            }
+        );
+        let note = AnnotationBody::Note {
+            at: pt(5.0, 6.0),
+            icon: NoteIcon::Note,
+        };
+        assert_eq!(
+            note.check(Rect {
+                x: 0.0,
+                y: 0.0,
+                w: 0.0,
+                h: 0.0
+            })
+            .unwrap(),
+            Rect {
+                x: 5.0,
+                y: 6.0,
+                w: NOTE_SIZE_PT,
+                h: NOTE_SIZE_PT
+            }
+        );
+    }
+
+    #[test]
+    fn numbers_that_are_not_numbers_or_out_of_range_are_refused() {
+        let mut draft = highlight(0);
+        draft.opacity = f32::NAN;
+        assert_eq!(
+            code(Annotation::from_draft(AnnotId::new(1), &draft, "t")),
+            ErrorCode::InvalidArgument
+        );
+        draft.opacity = 1.5;
+        assert_eq!(
+            code(Annotation::from_draft(AnnotId::new(1), &draft, "t")),
+            ErrorCode::InvalidArgument
+        );
+        let mut far = highlight(0);
+        far.body = AnnotationBody::Highlight {
+            quads: vec![quad(0.0, 0.0, f32::INFINITY, 1.0)],
+        };
+        assert_eq!(
+            code(Annotation::from_draft(AnnotId::new(1), &far, "t")),
+            ErrorCode::InvalidArgument
+        );
+        far.body = AnnotationBody::Highlight {
+            quads: vec![quad(20_000.0, 0.0, 1.0, 1.0)],
+        };
+        assert_eq!(
+            code(Annotation::from_draft(AnnotId::new(1), &far, "t")),
+            ErrorCode::InvalidArgument
+        );
+        let wide = AnnotationBody::Ink {
+            strokes: vec![Stroke {
+                points: vec![pt(0.0, 0.0)],
+                outline: vec![],
+            }],
+            width: 500.0,
+        };
+        assert!(wide
+            .check(Rect {
+                x: 0.0,
+                y: 0.0,
+                w: 0.0,
+                h: 0.0
+            })
+            .is_err());
+    }
+
+    #[test]
+    fn counts_and_string_lengths_are_bounded() {
+        let mut draft = highlight(0);
+        draft.body = AnnotationBody::Highlight { quads: vec![] };
+        assert_eq!(
+            code(Annotation::from_draft(AnnotId::new(1), &draft, "t")),
+            ErrorCode::InvalidArgument
+        );
+        draft.body = AnnotationBody::Highlight {
+            quads: vec![quad(0.0, 0.0, 1.0, 1.0); limits::MAX_ANNOT_QUADS + 1],
+        };
+        assert_eq!(
+            code(Annotation::from_draft(AnnotId::new(1), &draft, "t")),
+            ErrorCode::LimitExceeded
+        );
+
+        let mut text = highlight(0);
+        text.contents = "x".repeat(limits::MAX_ANNOT_CONTENTS_CHARS);
+        assert!(Annotation::from_draft(AnnotId::new(1), &text, "t").is_ok());
+        text.contents.push('x');
+        assert_eq!(
+            code(Annotation::from_draft(AnnotId::new(1), &text, "t")),
+            ErrorCode::InvalidArgument
+        );
+        text.contents = "a\0b".into();
+        assert_eq!(
+            code(Annotation::from_draft(AnnotId::new(1), &text, "t")),
+            ErrorCode::InvalidArgument
+        );
+        text.contents = "two\nlines\tand a tab".into();
+        assert!(Annotation::from_draft(AnnotId::new(1), &text, "t").is_ok());
+        text.author = Some("x".repeat(limits::MAX_ANNOT_AUTHOR_CHARS + 1));
+        text.contents.clear();
+        assert_eq!(
+            code(Annotation::from_draft(AnnotId::new(1), &text, "t")),
+            ErrorCode::InvalidArgument
+        );
+
+        let many_points = AnnotationBody::Ink {
+            strokes: vec![Stroke {
+                points: vec![pt(1.0, 1.0); limits::MAX_INK_POINTS_PER_STROKE + 1],
+                outline: vec![],
+            }],
+            width: 1.0,
+        };
+        assert_eq!(
+            many_points
+                .check(Rect {
+                    x: 0.0,
+                    y: 0.0,
+                    w: 0.0,
+                    h: 0.0
+                })
+                .unwrap_err()
+                .code(),
+            ErrorCode::LimitExceeded
+        );
+        let too_many_strokes = AnnotationBody::Ink {
+            strokes: vec![
+                Stroke {
+                    points: vec![pt(1.0, 1.0)],
+                    outline: vec![]
+                };
+                limits::MAX_INK_STROKES + 1
+            ],
+            width: 1.0,
+        };
+        assert!(too_many_strokes
+            .check(Rect {
+                x: 0.0,
+                y: 0.0,
+                w: 0.0,
+                h: 0.0
+            })
+            .is_err());
+        // The total of 50 000 points is reached by 6 strokes of 9 000 points and outlines together.
+        let heavy = Stroke {
+            points: vec![pt(1.0, 1.0); 9_000],
+            outline: vec![pt(1.0, 1.0); 9_000],
+        };
+        let total = AnnotationBody::Ink {
+            strokes: vec![heavy; 3],
+            width: 1.0,
+        };
+        assert_eq!(
+            total
+                .check(Rect {
+                    x: 0.0,
+                    y: 0.0,
+                    w: 0.0,
+                    h: 0.0
+                })
+                .unwrap_err()
+                .code(),
+            ErrorCode::LimitExceeded
+        );
+
+        let free = AnnotationBody::FreeText {
+            bounds: Rect {
+                x: 0.0,
+                y: 0.0,
+                w: 10.0,
+                h: 10.0,
+            },
+            lines: vec!["a\nb".into()],
+            font_size: 12.0,
+            fill: None,
+            border_width: 0.0,
+        };
+        assert!(
+            free.check(Rect {
+                x: 0.0,
+                y: 0.0,
+                w: 0.0,
+                h: 0.0
+            })
+            .is_err(),
+            "a line has no line break"
+        );
+    }
+
+    #[test]
+    fn a_patch_changes_only_what_it_names_and_marks_a_clean_annotation_modified() {
+        let mut base = Annotation::from_draft(AnnotId::new(1), &highlight(0), "t0").unwrap();
+        base.sync = Sync::Clean;
+        let patch: AnnotationPatch =
+            serde_json::from_value(json!({"color": [1, 2, 3], "contents": "hi"})).unwrap();
+        let next = base.patched(&patch, "t1").unwrap();
+        assert_eq!(next.color, Rgb([1, 2, 3]));
+        assert_eq!(next.contents, "hi");
+        assert_eq!(next.sync, Sync::Modified);
+        assert_eq!(next.modified.as_deref(), Some("t1"));
+        assert_eq!(next.body, base.body);
+        assert_eq!(base.contents, "", "the original is untouched");
+    }
+
+    #[test]
+    fn a_patch_with_a_field_of_another_kind_or_an_unknown_key_is_refused() {
+        let base = Annotation::from_draft(AnnotId::new(1), &highlight(0), "t").unwrap();
+        let wrong: AnnotationPatch = serde_json::from_value(json!({"width": 2.0})).unwrap();
+        assert_eq!(code(base.patched(&wrong, "t")), ErrorCode::InvalidArgument);
+        let mixed: AnnotationPatch =
+            serde_json::from_value(json!({"color": [0, 0, 0], "dashed": true})).unwrap();
+        assert_eq!(code(base.patched(&mixed, "t")), ErrorCode::InvalidArgument);
+        assert!(serde_json::from_value::<AnnotationPatch>(json!({"id": 4})).is_err());
+        assert!(serde_json::from_value::<AnnotationPatch>(json!({"sync": "clean"})).is_err());
+    }
+
+    #[test]
+    fn a_null_fill_clears_it_and_a_missing_one_leaves_it() {
+        let draft: AnnotationDraft = serde_json::from_value(json!({
+            "pageId": 0, "kind": "rect", "color": [0, 0, 0],
+            "box": {"x": 1.0, "y": 1.0, "w": 5.0, "h": 5.0}, "width": 1.0, "fill": [9, 9, 9], "dashed": false
+        }))
+        .unwrap();
+        let base = Annotation::from_draft(AnnotId::new(1), &draft, "t").unwrap();
+        let clear: AnnotationPatch = serde_json::from_value(json!({"fill": null})).unwrap();
+        let AnnotationBody::Rect { fill, .. } = base.patched(&clear, "t").unwrap().body else {
+            panic!("kind changed")
+        };
+        assert_eq!(fill, None);
+        let keep: AnnotationPatch = serde_json::from_value(json!({"width": 3.0})).unwrap();
+        let AnnotationBody::Rect { fill, width, .. } = base.patched(&keep, "t").unwrap().body
+        else {
+            panic!("kind changed")
+        };
+        assert_eq!((fill, width), (Some(Rgb([9, 9, 9])), 3.0));
+    }
+
+    #[test]
+    fn moving_shifts_all_geometry_and_the_rect_and_stays_within_the_page_range() {
+        let base = Annotation::from_draft(AnnotId::new(1), &highlight(0), "t").unwrap();
+        let moved = base.moved(5.0, -2.0, "t2").unwrap();
+        assert_eq!(
+            moved.rect,
+            Rect {
+                x: 15.0,
+                y: 18.0,
+                w: 50.0,
+                h: 12.0
+            }
+        );
+        assert_eq!(
+            code(base.moved(f32::NAN, 0.0, "t")),
+            ErrorCode::InvalidArgument
+        );
+        assert_eq!(
+            code(base.moved(1.0e6, 0.0, "t")),
+            ErrorCode::InvalidArgument
+        );
+    }
+
+    #[test]
+    fn an_annotation_cannot_reply_to_itself() {
+        let mut draft = highlight(0);
+        draft.in_reply_to = Some(AnnotId::new(3));
+        assert_eq!(
+            code(Annotation::from_draft(AnnotId::new(3), &draft, "t")),
+            ErrorCode::InvalidArgument
+        );
+        assert!(Annotation::from_draft(AnnotId::new(4), &draft, "t").is_ok());
+    }
+
+    #[test]
+    fn an_import_that_fails_the_checks_is_left_out() {
+        let good = Imported {
+            origin: PdfOrigin {
+                page_index: 0,
+                annot_index: 0,
+                name: None,
+            },
+            body: AnnotationBody::Opaque {
+                subtype: "Ink".into(),
+            },
+            rect: Rect {
+                x: 1.0,
+                y: 1.0,
+                w: 5.0,
+                h: 5.0,
+            },
+            color: Rgb([0, 0, 0]),
+            opacity: 1.0,
+            contents: String::new(),
+            author: None,
+            modified: Some("D:20240101".into()),
+            locked: false,
+        };
+        let made = Annotation::from_import(AnnotId::new(1), PageId::new(0), &good).unwrap();
+        assert_eq!(made.sync, Sync::Clean);
+        assert!(made.is_opaque());
+        let mut bad = good;
+        bad.rect.w = f32::NAN;
+        assert!(Annotation::from_import(AnnotId::new(1), PageId::new(0), &bad).is_none());
+    }
+}

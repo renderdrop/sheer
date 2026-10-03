@@ -35,8 +35,8 @@
       "id": "edit",
       "label": "menu.edit",
       "items": [
-        { "predefined": "undo", "label": "menu.edit.undo" },
-        { "predefined": "redo", "label": "menu.edit.redo" },
+        { "action": "undo", "label": "menu.edit.undo", "accelerator": "CmdOrCtrl+Z", "requiresDocument": true },
+        { "action": "redo", "label": "menu.edit.redo", "accelerator": "CmdOrCtrl+Shift+Z", "requiresDocument": true },
         { "separator": true },
         { "predefined": "cut", "label": "menu.edit.cut" },
         { "predefined": "copy", "label": "menu.edit.copy" },

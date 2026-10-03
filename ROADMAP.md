@@ -70,7 +70,7 @@ The Stop hook picks the first open `- [ ]` line, so order matters. Scope: `docs/
 
 ## M2 — Comment and markup (v0.5.0)
 
-- [ ] Annotation domain model + undo/redo command stack
+- [x] Annotation domain model + undo/redo command stack
 - [ ] Text markup: highlight, underline, strikethrough
 - [ ] Sticky notes and free text
 - [ ] Freehand ink (smoothing, pressure)
@@ -84,6 +84,9 @@ The Stop hook picks the first open `- [ ]` line, so order matters. Scope: `docs/
   - (from M1 review) recents clone: fix the zoom before the FLIP measures the target rect (one frame of "–" and a moving target); counter-scale the clone radius or fade it earlier; make the empty-state fade-out visible
   - (from M1 security) `style-src 'unsafe-inline'`: move to hashed/nonce styles or record the reason in DECISIONS; confirm the release build never uses devCsp; prune 3 unused license allowances in deny.toml
   - (from M1 reviews) Clear in recents: one failure still shows Undo for every id; missing row opens Locate twice over (row + button) — keep one; text cache listeners: bound; links are untested with file /Rotate (no link overlay yet)
+  - (from P4 security, medium) import.rs `quads_of`: cap iterations (`.take(MAX_ANNOT_QUADS * 4)`); aggregate byte budget for imported strings per page and per document; undo history bounded by bytes, not only 500 entries
+  - (from P4 security, low) `with()` must not re-create a DocState for a closed document; strip Cf (bidi/format) characters from imported author/contents; per-page counters + reply index instead of O(n) scans; clear the model on a poisoned lock
+  - (from P4 review) annotations store: cache per page so one change does not re-render every page; prune `removed`; wire `mark_clean` from save
 
 ## M3 — Organize pages (v0.6.0)
 

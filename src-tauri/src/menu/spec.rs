@@ -22,10 +22,12 @@ const DE_JSON: &str = include_str!("../../../src/i18n/locales/de.json");
 /// [`is_action_id`] is the only gate between a menu event and the channel, so an id that is not listed here (a system item,
 /// something a future layout names by mistake) never reaches the webview. A test keeps it equal to the layout, and the
 /// frontend's `src/actions/menu.test.ts` keeps the layout equal to its registry.
-pub const ACTION_IDS: [&str; 24] = [
+pub const ACTION_IDS: [&str; 26] = [
     "settings",
     "open",
     "close-document",
+    "undo",
+    "redo",
     "toggle-left-panel",
     "toggle-inspector",
     "zoom-in",
@@ -296,7 +298,7 @@ mod tests {
             "quit",
             "about",
             "copy",
-            "undo",
+            "undo_all",
             "close_document",
             "close-document-",
             "toggle-left-panel\0",
@@ -393,8 +395,6 @@ mod tests {
         assert_eq!(
             predefined(MenuKind::Edit),
             [
-                Predefined::Undo,
-                Predefined::Redo,
                 Predefined::Cut,
                 Predefined::Copy,
                 Predefined::Paste,

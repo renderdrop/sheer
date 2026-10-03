@@ -11,7 +11,7 @@ use super::guard::{guarded, Health};
 use super::queue::{RenderKey, Requests};
 use super::sizes::{PageSizes, SizeCache};
 use super::space::page_count;
-use super::{encode, links, outline, search, text, Confirm, Job, Reply};
+use super::{encode, import, links, outline, search, text, Confirm, Job, Reply};
 use crate::documents::{DocFlags, DocumentId};
 use crate::error::{AppError, ErrorCode};
 use crate::limits;
@@ -156,6 +156,17 @@ fn serve<'a>(
                 let count = page_count(document)?;
                 let page_index = limits::validate_page_index(page_index, count)?;
                 links::read_links(document, count, page_index)
+            });
+            answer(reply, result, Some(id), documents, crashed);
+        }
+        Job::ImportAnnotations {
+            id,
+            page_index,
+            reply,
+        } => {
+            let result = read_job(documents, crashed, id, |document| {
+                let page_index = limits::validate_page_index(page_index, page_count(document)?)?;
+                import::read_annotations(document, page_index)
             });
             answer(reply, result, Some(id), documents, crashed);
         }

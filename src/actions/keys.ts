@@ -2,10 +2,11 @@ import { useEffect } from 'react';
 
 import type { Platform } from '../api/app';
 import { detectPlatform } from '../lib/platform';
+import { isTextEntry } from '../lib/textEntry';
 import { useSettings } from '../stores/settings';
 import { MODAL_SELECTOR, runAction } from './dispatch';
 import { ACTIONS } from './registry';
-import { isBareKey, matchesBinding, resolveBinding } from './shortcut';
+import { isBareKey, matchesBinding, resolveBindings } from './shortcut';
 
 /**
  * The attribute that marks the canvas (`data-action-scope="canvas"`): single-key shortcuts such as the tool letters work
@@ -13,32 +14,7 @@ import { isBareKey, matchesBinding, resolveBinding } from './shortcut';
  */
 export const CANVAS_SCOPE_ATTRIBUTE = 'data-action-scope';
 
-/** Input types that take no text: a key typed on them is not typing, so shortcuts still work there. */
-const NON_TEXT_INPUTS: ReadonlySet<string> = new Set([
-  'button',
-  'checkbox',
-  'color',
-  'file',
-  'image',
-  'radio',
-  'range',
-  'reset',
-  'submit',
-]);
-
-const EDITABLE =
-  '[contenteditable]:not([contenteditable="false"]), [role="textbox"], [role="searchbox"], [role="combobox"], [role="spinbutton"]';
-
-/**
- * Whether `target` is somewhere the user types: a text field, a text area, a select, or an element that is editable or
- * says it is a text box. A key pressed there belongs to the field, whatever shortcut it looks like.
- */
-export function isTextEntry(target: EventTarget | null): boolean {
-  if (!(target instanceof Element)) return false;
-  if (target instanceof HTMLInputElement) return !NON_TEXT_INPUTS.has(target.type);
-  if (target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement) return true;
-  return target.closest(EDITABLE) !== null;
-}
+export { isTextEntry };
 
 /** Whether `target` is inside a modal dialog (`aria-modal="true"`): the dialog owns the keyboard while it is open. */
 export function isInModal(target: EventTarget | null): boolean {
@@ -81,8 +57,10 @@ export function currentPlatform(): Platform | null {
 export function handleKeyDown(event: KeyboardEvent, platform: Platform | null = currentPlatform()): boolean {
   if (event.defaultPrevented || isImeEvent(event) || isTextEntry(event.target) || isInModal(event.target)) return false;
   for (const action of ACTIONS) {
-    const binding = resolveBinding(action.shortcut, platform);
-    if (binding === null || !matchesBinding(event, binding, platform)) continue;
+    const binding = resolveBindings(action.shortcut, platform).find((candidate) =>
+      matchesBinding(event, candidate, platform),
+    );
+    if (binding === undefined) continue;
     if (isBareKey(binding) && !isInCanvas(event.target)) return false;
     event.preventDefault();
     if (!event.repeat || action.repeat === true) runAction(action.id);

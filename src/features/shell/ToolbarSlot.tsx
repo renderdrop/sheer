@@ -4,6 +4,7 @@ import { canRunAction, runAction } from '../../actions/dispatch';
 import type { Platform } from '../../api/app';
 import { useT } from '../../i18n';
 import { MAX_ZOOM, MIN_ZOOM } from '../../lib/zoom';
+import { historyOf, useAnnotations } from '../../stores/annotations';
 import { selectActiveId, useDocuments } from '../../stores/documents';
 import { useUi } from '../../stores/ui';
 import { useDocViewValue } from '../../stores/view';
@@ -62,6 +63,8 @@ export const ToolbarSlot = memo(function ToolbarSlot({
   const zoomAtMin = useDocViewValue(docId, (view) => view.zoom <= MIN_ZOOM);
   const zoomAtMax = useDocViewValue(docId, (view) => view.zoom >= MAX_ZOOM);
   const scrollMode = useDocViewValue(docId, (view) => view.scrollMode);
+  const canUndo = useAnnotations((state) => historyOf(state, docId).canUndo);
+  const canRedo = useAnnotations((state) => historyOf(state, docId).canRedo);
 
   const { entries, moreItems } = useMemo(
     () =>
@@ -69,7 +72,7 @@ export const ToolbarSlot = memo(function ToolbarSlot({
         {
           t,
           platform,
-          action: { hasDocument, zoomAtMin, zoomAtMax },
+          action: { hasDocument, zoomAtMin, zoomAtMax, canUndo, canRedo },
           scrollMode,
           activeTool,
           toolLocked,
@@ -90,6 +93,8 @@ export const ToolbarSlot = memo(function ToolbarSlot({
       inspectorVisible,
       zoomAtMin,
       zoomAtMax,
+      canUndo,
+      canRedo,
       scrollMode,
     ],
   );

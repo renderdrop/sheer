@@ -1,0 +1,855 @@
+//! Commands on a document (ADR-003 §6): the only way the annotations change.
+//!
+//! The UI sends a [`DocCommand`]; [`DocState::execute`] checks its shape ([`DocCommand::check_shape`]: counts, depth, labels) and runs
+//! it ([`DocCommand::run`]), which validates every value it touches before it changes anything and returns the exact inverse as a
+//! list of [`Slot`]s: the previous content of every id it touched. That one primitive (`Restore`, never sent by the UI) undoes
+//! creates, updates, deletes and moves alike, and its own inverse redoes them, with the same ids.
+//!
+//! A `Batch` is one undo step made of several commands, run in order; if one fails the ones before it are rolled back.
+
+use std::collections::BTreeSet;
+
+use serde::Deserialize;
+
+use super::annotation::{Annotation, AnnotationDraft, AnnotationPatch};
+use super::doc_state::{Delta, DocState, Entry, Slot, Stamp};
+use super::ids::AnnotId;
+use crate::error::AppError;
+use crate::limits;
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(
+    tag = "type",
+    rename_all = "camelCase",
+    rename_all_fields = "camelCase"
+)]
+pub enum DocCommand {
+    /// Adds an annotation; the answer has the id.
+    CreateAnnotation { draft: AnnotationDraft },
+    /// Changes some fields of an annotation. Updates of one annotation with the same `coalesce` key within 1.5 s of each other
+    /// (a slider, a colour being dragged) are one undo step.
+    UpdateAnnotation {
+        id: AnnotId,
+        patch: AnnotationPatch,
+        #[serde(default)]
+        coalesce: Option<String>,
+    },
+    /// Deletes annotations, and the replies to them.
+    DeleteAnnotations { ids: Vec<AnnotId> },
+    /// Moves annotations by (`dx`, `dy`) points.
+    MoveAnnotations { ids: Vec<AnnotId>, dx: f32, dy: f32 },
+    /// Several commands as one undo step. `label` is a key of the UI catalogs (`[A-Za-z0-9._-]`).
+    Batch {
+        label: String,
+        commands: Vec<DocCommand>,
+    },
+    /// Puts the given content back into the given ids. The inverse of every command; not accepted from the UI.
+    #[serde(skip_deserializing)]
+    Restore { slots: Vec<Slot> },
+}
+
+/// Label of the undo step of a command that is not a batch (keys of the UI catalogs).
+pub const LABEL_CREATE: &str = "annotation.create";
+pub const LABEL_UPDATE: &str = "annotation.update";
+pub const LABEL_DELETE: &str = "annotation.delete";
+pub const LABEL_MOVE: &str = "annotation.move";
+const LABEL_RESTORE: &str = "annotation.restore";
+
+fn is_key(text: &str) -> bool {
+    !text.is_empty()
+        && text.chars().count() <= limits::MAX_LABEL_CHARS
+        && text
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-'))
+}
+
+impl DocCommand {
+    /// The label of the undo step this command becomes.
+    pub fn label(&self) -> String {
+        match self {
+            Self::CreateAnnotation { .. } => LABEL_CREATE.to_owned(),
+            Self::UpdateAnnotation { .. } => LABEL_UPDATE.to_owned(),
+            Self::DeleteAnnotations { .. } => LABEL_DELETE.to_owned(),
+            Self::MoveAnnotations { .. } => LABEL_MOVE.to_owned(),
+            Self::Batch { label, .. } => label.clone(),
+            Self::Restore { .. } => LABEL_RESTORE.to_owned(),
+        }
+    }
+
+    /// The annotation and the key that let this step merge with the one before it.
+    pub fn coalesce_key(&self) -> Option<(AnnotId, String)> {
+        match self {
+            Self::UpdateAnnotation {
+                id,
+                coalesce: Some(key),
+                ..
+            } => Some((*id, key.clone())),
+            _ => None,
+        }
+    }
+
+    /// Checks the sizes of what the UI sent, before anything runs: at most `MAX_BATCH_COMMANDS` commands in all, batches nested at
+    /// most `MAX_BATCH_DEPTH` deep, `MAX_COMMAND_IDS` ids per command, labels and keys that are keys.
+    pub fn check_shape(&self) -> Result<(), AppError> {
+        let mut count = 0usize;
+        self.shape(1, &mut count)
+    }
+
+    fn shape(&self, depth: usize, count: &mut usize) -> Result<(), AppError> {
+        *count += 1;
+        if *count > limits::MAX_BATCH_COMMANDS {
+            return Err(AppError::limit(
+                "commands",
+                limits::MAX_BATCH_COMMANDS as u64,
+            ));
+        }
+        match self {
+            Self::CreateAnnotation { .. } | Self::Restore { .. } => Ok(()),
+            Self::UpdateAnnotation { coalesce, .. } => match coalesce {
+                Some(key) if !is_key(key) => Err(AppError::invalid("coalesce")),
+                _ => Ok(()),
+            },
+            Self::DeleteAnnotations { ids } | Self::MoveAnnotations { ids, .. } => {
+                if ids.is_empty() {
+                    Err(AppError::invalid("ids"))
+                } else if ids.len() > limits::MAX_COMMAND_IDS {
+                    Err(AppError::limit("ids", limits::MAX_COMMAND_IDS as u64))
+                } else {
+                    Ok(())
+                }
+            }
+            Self::Batch { label, commands } => {
+                if depth > limits::MAX_BATCH_DEPTH {
+                    return Err(AppError::limit("depth", limits::MAX_BATCH_DEPTH as u64));
+                }
+                if !is_key(label) || commands.is_empty() {
+                    return Err(AppError::invalid("batch"));
+                }
+                commands
+                    .iter()
+                    .try_for_each(|command| command.shape(depth + 1, count))
+            }
+        }
+    }
+
+    /// Runs the command on `state`. Returns the slots that undo it and what changed. On an error nothing has changed.
+    pub(crate) fn run(
+        &self,
+        state: &mut DocState,
+        stamp: &Stamp,
+    ) -> Result<(Vec<Slot>, Delta), AppError> {
+        let mut delta = Delta::default();
+        let inverse = match self {
+            Self::CreateAnnotation { draft } => create(state, draft, stamp, &mut delta)?,
+            Self::UpdateAnnotation { id, patch, .. } => {
+                let entry = editable(state, *id)?;
+                if entry.annotation.locked && !only_unlocks(patch) {
+                    return Err(AppError::invalid("locked"));
+                }
+                let annotation = entry.annotation.patched(patch, &stamp.modified)?;
+                let next = Entry {
+                    annotation,
+                    ..entry.clone()
+                };
+                state.set_slots(vec![(*id, Some(next))], &mut delta)
+            }
+            Self::DeleteAnnotations { ids } => delete(state, ids, &mut delta)?,
+            Self::MoveAnnotations { ids, dx, dy } => {
+                let mut slots = Vec::new();
+                let mut seen = BTreeSet::new();
+                for id in ids {
+                    if !seen.insert(*id) {
+                        continue;
+                    }
+                    let entry = editable(state, *id)?;
+                    if entry.annotation.locked {
+                        return Err(AppError::invalid("locked"));
+                    }
+                    let annotation = entry.annotation.moved(*dx, *dy, &stamp.modified)?;
+                    slots.push((
+                        *id,
+                        Some(Entry {
+                            annotation,
+                            ..entry.clone()
+                        }),
+                    ));
+                }
+                state.set_slots(slots, &mut delta)
+            }
+            Self::Batch { commands, .. } => {
+                let mut inverses: Vec<Vec<Slot>> = Vec::with_capacity(commands.len());
+                for command in commands {
+                    match command.run(state, stamp) {
+                        Ok((inverse, step)) => {
+                            inverses.push(inverse);
+                            delta.merge(step);
+                        }
+                        Err(error) => {
+                            // The ones before it are taken back, last first.
+                            let undo = inverses.into_iter().rev().flatten().collect();
+                            state.set_slots(undo, &mut Delta::default());
+                            return Err(error);
+                        }
+                    }
+                }
+                inverses.into_iter().rev().flatten().collect()
+            }
+            Self::Restore { slots } => state.set_slots(slots.clone(), &mut delta),
+        };
+        Ok((inverse, delta))
+    }
+}
+
+/// The patch changes nothing but `locked`.
+fn only_unlocks(patch: &AnnotationPatch) -> bool {
+    patch.locked.is_some()
+        && *patch
+            == AnnotationPatch {
+                locked: patch.locked,
+                ..AnnotationPatch::default()
+            }
+}
+
+/// The entry of `id`, if the user may change it: it exists, was not deleted, and is not an opaque annotation.
+fn editable(state: &DocState, id: AnnotId) -> Result<&Entry, AppError> {
+    let entry = state.live(id)?;
+    if entry.annotation.is_opaque() {
+        return Err(AppError::invalid("readOnly"));
+    }
+    Ok(entry)
+}
+
+fn create(
+    state: &mut DocState,
+    draft: &AnnotationDraft,
+    stamp: &Stamp,
+    delta: &mut Delta,
+) -> Result<Vec<Slot>, AppError> {
+    if draft.page_id.get() >= state.page_count() {
+        return Err(AppError::invalid("page"));
+    }
+    state.check_room(draft.page_id)?;
+    // Validated under a placeholder id; the real one is taken only once the draft is known to be good.
+    Annotation::from_draft(AnnotId::new(0), draft, &stamp.modified)?;
+    if let Some(parent) = draft.in_reply_to {
+        let parent = state.live(parent)?;
+        if parent.annotation.page_id != draft.page_id {
+            return Err(AppError::invalid("inReplyTo"));
+        }
+    }
+    let id = state.alloc_id()?;
+    let annotation = Annotation::from_draft(id, draft, &stamp.modified)?;
+    Ok(state.set_slots(
+        vec![(
+            id,
+            Some(Entry {
+                annotation,
+                persisted: None,
+                tombstone: false,
+            }),
+        )],
+        delta,
+    ))
+}
+
+fn delete(state: &mut DocState, ids: &[AnnotId], delta: &mut Delta) -> Result<Vec<Slot>, AppError> {
+    let mut doomed: BTreeSet<AnnotId> = BTreeSet::new();
+    for id in ids {
+        let entry = editable(state, *id)?;
+        if entry.annotation.locked {
+            return Err(AppError::invalid("locked"));
+        }
+        doomed.insert(*id);
+    }
+    // The replies go with what they reply to, and the replies to those.
+    let mut frontier = doomed.clone();
+    while !frontier.is_empty() {
+        let replies = state.replies_to(&frontier);
+        frontier = replies
+            .into_iter()
+            .filter(|reply| doomed.insert(*reply))
+            .collect();
+    }
+    let mut slots = Vec::with_capacity(doomed.len());
+    for id in doomed {
+        let entry = state.live(id)?;
+        slots.push((
+            id,
+            // In the file: kept as a tombstone, so that saving removes it. Created in this session: gone.
+            entry.persisted.is_some().then(|| Entry {
+                tombstone: true,
+                ..entry.clone()
+            }),
+        ));
+    }
+    Ok(state.set_slots(slots, delta))
+}
+
+#[cfg(test)]
+mod tests {
+    use serde_json::json;
+
+    use super::*;
+    use crate::documents::PageId;
+    use crate::error::ErrorCode;
+    use crate::model::annotation::{AnnotationBody, Imported, PdfOrigin, Rgb, Sync};
+    use crate::model::geometry::Rect;
+
+    fn stamp(now_ms: u64) -> Stamp {
+        Stamp {
+            now_ms,
+            modified: format!("t{now_ms}"),
+        }
+    }
+
+    fn draft_json(page: u32, x: f32) -> serde_json::Value {
+        json!({
+            "pageId": page, "kind": "highlight", "color": [255, 235, 0],
+            "quads": [[{"x":x,"y":20.0},{"x":x+50.0,"y":20.0},{"x":x,"y":32.0},{"x":x+50.0,"y":32.0}]]
+        })
+    }
+
+    fn create_cmd(page: u32, x: f32) -> DocCommand {
+        serde_json::from_value(json!({"type": "createAnnotation", "draft": draft_json(page, x)}))
+            .unwrap()
+    }
+
+    fn cmd(value: serde_json::Value) -> DocCommand {
+        serde_json::from_value(value).unwrap()
+    }
+
+    fn state() -> DocState {
+        DocState::new(3)
+    }
+
+    fn created(state: &mut DocState, page: u32, x: f32, ms: u64) -> AnnotId {
+        let changes = state.execute(create_cmd(page, x), &stamp(ms)).unwrap();
+        changes.upserted[0].id
+    }
+
+    fn code(result: Result<impl std::fmt::Debug, AppError>) -> ErrorCode {
+        result.unwrap_err().code()
+    }
+
+    fn imported(name: &str, locked: bool) -> Imported {
+        Imported {
+            origin: PdfOrigin {
+                page_index: 0,
+                annot_index: 0,
+                name: Some(name.into()),
+            },
+            body: AnnotationBody::Highlight {
+                quads: vec![[
+                    crate::model::geometry::Point { x: 1.0, y: 1.0 },
+                    crate::model::geometry::Point { x: 5.0, y: 1.0 },
+                    crate::model::geometry::Point { x: 1.0, y: 3.0 },
+                    crate::model::geometry::Point { x: 5.0, y: 3.0 },
+                ]],
+            },
+            rect: Rect {
+                x: 0.0,
+                y: 0.0,
+                w: 0.0,
+                h: 0.0,
+            },
+            color: Rgb([255, 255, 0]),
+            opacity: 1.0,
+            contents: String::new(),
+            author: None,
+            modified: None,
+            locked,
+        }
+    }
+
+    // --- create, update, delete, move ---
+
+    #[test]
+    fn create_adds_an_annotation_with_a_fresh_id_and_reports_it_with_the_history() {
+        let mut state = state();
+        let first = state.execute(create_cmd(0, 10.0), &stamp(0)).unwrap();
+        assert_eq!(first.rev, 1);
+        assert_eq!(first.upserted.len(), 1);
+        assert!(first.removed.is_empty());
+        assert_eq!(first.pages, None);
+        assert!(first.history.can_undo && first.history.dirty && !first.history.can_redo);
+        assert_eq!(first.history.undo_label.as_deref(), Some(LABEL_CREATE));
+        let second = state.execute(create_cmd(1, 10.0), &stamp(1)).unwrap();
+        assert_eq!(second.rev, 2);
+        assert_ne!(first.upserted[0].id, second.upserted[0].id);
+        assert_eq!(state.list(PageId::new(0)).len(), 1);
+        assert_eq!(state.list(PageId::new(1)).len(), 1);
+        assert!(state.list(PageId::new(2)).is_empty());
+    }
+
+    #[test]
+    fn create_refuses_a_page_the_document_does_not_have_and_a_bad_draft_changes_nothing() {
+        let mut state = state();
+        assert_eq!(
+            code(state.execute(create_cmd(3, 0.0), &stamp(0))),
+            ErrorCode::InvalidArgument
+        );
+        let bad = cmd(json!({"type": "createAnnotation", "draft": {
+            "pageId": 0, "kind": "highlight", "color": [0, 0, 0], "quads": []
+        }}));
+        assert_eq!(
+            code(state.execute(bad, &stamp(0))),
+            ErrorCode::InvalidArgument
+        );
+        assert_eq!(state.rev(), 0);
+        assert!(!state.is_dirty());
+        // The id of the next one is not wasted by the failures.
+        assert_eq!(created(&mut state, 0, 0.0, 0).get(), 1);
+    }
+
+    #[test]
+    fn update_changes_the_named_fields_and_undo_restores_the_exact_previous_state() {
+        let mut state = state();
+        let id = created(&mut state, 0, 10.0, 0);
+        let before = state.list(PageId::new(0));
+        let update = cmd(
+            json!({"type": "updateAnnotation", "id": id, "patch": {"color": [1, 2, 3], "contents": "hello"}}),
+        );
+        let changes = state.execute(update, &stamp(5)).unwrap();
+        assert_eq!(changes.upserted[0].color, Rgb([1, 2, 3]));
+        assert_eq!(changes.upserted[0].modified.as_deref(), Some("t5"));
+        assert_eq!(changes.upserted[0].sync, Sync::New, "still not in the file");
+        let undone = state.undo(&stamp(6)).unwrap();
+        assert_eq!(undone.upserted[0], before[0]);
+        let redone = state.redo(&stamp(7)).unwrap();
+        assert_eq!(redone.upserted[0].contents, "hello");
+        assert_eq!(redone.rev, 4);
+    }
+
+    #[test]
+    fn update_refuses_unknown_deleted_opaque_and_foreign_fields() {
+        let mut state = state();
+        let id = created(&mut state, 0, 10.0, 0);
+        let missing =
+            cmd(json!({"type": "updateAnnotation", "id": 99, "patch": {"contents": "x"}}));
+        assert_eq!(code(state.execute(missing, &stamp(1))), ErrorCode::NotFound);
+        let foreign = cmd(json!({"type": "updateAnnotation", "id": id, "patch": {"dashed": true}}));
+        assert_eq!(
+            code(state.execute(foreign, &stamp(1))),
+            ErrorCode::InvalidArgument
+        );
+        let rev = state.rev();
+        state
+            .execute(
+                cmd(json!({"type": "deleteAnnotations", "ids": [id]})),
+                &stamp(2),
+            )
+            .unwrap();
+        let gone = cmd(json!({"type": "updateAnnotation", "id": id, "patch": {"contents": "x"}}));
+        assert_eq!(code(state.execute(gone, &stamp(3))), ErrorCode::NotFound);
+        assert_eq!(state.rev(), rev + 1);
+    }
+
+    #[test]
+    fn delete_removes_and_undo_brings_back_the_same_id() {
+        let mut state = state();
+        let a = created(&mut state, 0, 10.0, 0);
+        let b = created(&mut state, 0, 100.0, 1);
+        let changes = state
+            .execute(
+                cmd(json!({"type": "deleteAnnotations", "ids": [a, a]})),
+                &stamp(2),
+            )
+            .unwrap();
+        assert_eq!(changes.removed, [a]);
+        assert_eq!(state.list(PageId::new(0)).len(), 1);
+        let undone = state.undo(&stamp(3)).unwrap();
+        assert_eq!(undone.upserted[0].id, a);
+        assert_eq!(
+            state
+                .list(PageId::new(0))
+                .iter()
+                .map(|x| x.id)
+                .collect::<Vec<_>>(),
+            [a, b]
+        );
+        let redone = state.redo(&stamp(4)).unwrap();
+        assert_eq!(redone.removed, [a]);
+    }
+
+    #[test]
+    fn deleting_an_annotation_deletes_its_replies_and_undo_brings_all_back() {
+        let mut state = state();
+        let parent = created(&mut state, 0, 10.0, 0);
+        let mut reply = draft_json(0, 70.0);
+        reply["inReplyTo"] = json!(parent);
+        let reply_id = state
+            .execute(
+                cmd(json!({"type": "createAnnotation", "draft": reply})),
+                &stamp(1),
+            )
+            .unwrap()
+            .upserted[0]
+            .id;
+        let mut grand = draft_json(0, 90.0);
+        grand["inReplyTo"] = json!(reply_id);
+        state
+            .execute(
+                cmd(json!({"type": "createAnnotation", "draft": grand})),
+                &stamp(2),
+            )
+            .unwrap();
+        let other = created(&mut state, 0, 200.0, 3);
+        let changes = state
+            .execute(
+                cmd(json!({"type": "deleteAnnotations", "ids": [parent]})),
+                &stamp(4),
+            )
+            .unwrap();
+        assert_eq!(changes.removed.len(), 3);
+        assert_eq!(
+            state
+                .list(PageId::new(0))
+                .iter()
+                .map(|a| a.id)
+                .collect::<Vec<_>>(),
+            [other]
+        );
+        assert_eq!(state.undo(&stamp(5)).unwrap().upserted.len(), 3);
+        assert_eq!(state.list(PageId::new(0)).len(), 4);
+    }
+
+    #[test]
+    fn a_reply_needs_a_live_parent_on_the_same_page() {
+        let mut state = state();
+        let parent = created(&mut state, 0, 10.0, 0);
+        let mut elsewhere = draft_json(1, 0.0);
+        elsewhere["inReplyTo"] = json!(parent);
+        assert_eq!(
+            code(state.execute(
+                cmd(json!({"type": "createAnnotation", "draft": elsewhere})),
+                &stamp(1)
+            )),
+            ErrorCode::InvalidArgument
+        );
+        let mut orphan = draft_json(0, 0.0);
+        orphan["inReplyTo"] = json!(77);
+        assert_eq!(
+            code(state.execute(
+                cmd(json!({"type": "createAnnotation", "draft": orphan})),
+                &stamp(1)
+            )),
+            ErrorCode::NotFound
+        );
+    }
+
+    #[test]
+    fn move_shifts_all_named_annotations_or_none() {
+        let mut state = state();
+        let a = created(&mut state, 0, 10.0, 0);
+        let b = created(&mut state, 0, 100.0, 1);
+        let changes = state
+            .execute(
+                cmd(json!({"type": "moveAnnotations", "ids": [a, b], "dx": 5.0, "dy": 7.0})),
+                &stamp(2),
+            )
+            .unwrap();
+        assert_eq!(changes.upserted.len(), 2);
+        assert_eq!(changes.upserted[0].rect.x, 15.0);
+        assert_eq!(changes.upserted[0].rect.y, 27.0);
+        // One that cannot move stops the lot.
+        let rev = state.rev();
+        let bad = cmd(json!({"type": "moveAnnotations", "ids": [a, 55], "dx": 1.0, "dy": 1.0}));
+        assert_eq!(code(state.execute(bad, &stamp(3))), ErrorCode::NotFound);
+        let far = cmd(json!({"type": "moveAnnotations", "ids": [a], "dx": 1.0e7, "dy": 0.0}));
+        assert_eq!(
+            code(state.execute(far, &stamp(3))),
+            ErrorCode::InvalidArgument
+        );
+        assert_eq!(state.rev(), rev);
+        assert_eq!(state.list(PageId::new(0))[0].rect.x, 15.0);
+        // Undo moves back exactly.
+        state.undo(&stamp(4)).unwrap();
+        assert_eq!(state.list(PageId::new(0))[0].rect.x, 10.0);
+    }
+
+    // --- batches ---
+
+    #[test]
+    fn a_batch_is_one_undo_step_with_one_label() {
+        let mut state = state();
+        let batch = cmd(
+            json!({"type": "batch", "label": "annotation.paste", "commands": [
+                {"type": "createAnnotation", "draft": draft_json(0, 0.0)},
+                {"type": "createAnnotation", "draft": draft_json(1, 0.0)},
+                {"type": "createAnnotation", "draft": draft_json(2, 0.0)},
+            ]}),
+        );
+        let changes = state.execute(batch, &stamp(0)).unwrap();
+        assert_eq!(changes.upserted.len(), 3);
+        assert_eq!(changes.rev, 1);
+        assert_eq!(
+            changes.history.undo_label.as_deref(),
+            Some("annotation.paste")
+        );
+        let undone = state.undo(&stamp(1)).unwrap();
+        assert_eq!(undone.removed.len(), 3);
+        assert!(!undone.history.can_undo && undone.history.can_redo && !undone.history.dirty);
+        assert_eq!(state.redo(&stamp(2)).unwrap().upserted.len(), 3);
+    }
+
+    #[test]
+    fn a_batch_that_fails_halfway_leaves_nothing_behind() {
+        let mut state = state();
+        let keep = created(&mut state, 0, 10.0, 0);
+        let rev = state.rev();
+        let batch = cmd(json!({"type": "batch", "label": "x", "commands": [
+            {"type": "updateAnnotation", "id": keep, "patch": {"contents": "changed"}},
+            {"type": "createAnnotation", "draft": draft_json(0, 50.0)},
+            {"type": "deleteAnnotations", "ids": [keep]},
+            {"type": "deleteAnnotations", "ids": [keep]},
+        ]}));
+        assert_eq!(code(state.execute(batch, &stamp(1))), ErrorCode::NotFound);
+        assert_eq!(state.rev(), rev);
+        let now = state.list(PageId::new(0));
+        assert_eq!(now.len(), 1);
+        assert_eq!(now[0].contents, "");
+        assert_eq!(
+            state.history_state().undo_label.as_deref(),
+            Some(LABEL_CREATE)
+        );
+    }
+
+    #[test]
+    fn a_move_to_another_page_is_a_batch_of_delete_and_create_and_one_step() {
+        let mut state = state();
+        let id = created(&mut state, 0, 10.0, 0);
+        let batch = cmd(
+            json!({"type": "batch", "label": "annotation.movePage", "commands": [
+                {"type": "deleteAnnotations", "ids": [id]},
+                {"type": "createAnnotation", "draft": draft_json(2, 10.0)},
+            ]}),
+        );
+        let changes = state.execute(batch, &stamp(1)).unwrap();
+        assert_eq!((changes.removed.len(), changes.upserted.len()), (1, 1));
+        assert!(state.list(PageId::new(0)).is_empty());
+        assert_eq!(state.list(PageId::new(2)).len(), 1);
+        state.undo(&stamp(2)).unwrap();
+        assert_eq!(state.list(PageId::new(0)).len(), 1);
+        assert!(state.list(PageId::new(2)).is_empty());
+    }
+
+    #[test]
+    fn batch_shape_is_bounded_and_the_ui_cannot_send_a_restore() {
+        let mut state = state();
+        let nested = |depth: usize| {
+            let mut value = json!({"type": "deleteAnnotations", "ids": [1]});
+            for _ in 0..depth {
+                value = json!({"type": "batch", "label": "b", "commands": [value]});
+            }
+            cmd(value)
+        };
+        assert!(nested(limits::MAX_BATCH_DEPTH).check_shape().is_ok());
+        assert_eq!(
+            code(nested(limits::MAX_BATCH_DEPTH + 1).check_shape()),
+            ErrorCode::LimitExceeded
+        );
+        assert_eq!(
+            code(state.execute(nested(3), &stamp(0))),
+            ErrorCode::LimitExceeded
+        );
+        let long = DocCommand::Batch {
+            label: "b".into(),
+            commands: vec![create_cmd(0, 0.0); limits::MAX_BATCH_COMMANDS + 1],
+        };
+        assert_eq!(code(long.check_shape()), ErrorCode::LimitExceeded);
+        let empty = cmd(json!({"type": "batch", "label": "b", "commands": []}));
+        assert_eq!(code(empty.check_shape()), ErrorCode::InvalidArgument);
+        for label in [
+            "",
+            "has space",
+            "ünï",
+            &"x".repeat(limits::MAX_LABEL_CHARS + 1),
+        ] {
+            let bad = cmd(
+                json!({"type": "batch", "label": label, "commands": [{"type": "deleteAnnotations", "ids": [1]}]}),
+            );
+            assert_eq!(
+                code(bad.check_shape()),
+                ErrorCode::InvalidArgument,
+                "{label}"
+            );
+        }
+        let no_ids = cmd(json!({"type": "deleteAnnotations", "ids": []}));
+        assert_eq!(code(no_ids.check_shape()), ErrorCode::InvalidArgument);
+        let ids: Vec<u32> = (0..=limits::MAX_COMMAND_IDS as u32).collect();
+        let many = cmd(json!({"type": "moveAnnotations", "ids": ids, "dx": 0.0, "dy": 0.0}));
+        assert_eq!(code(many.check_shape()), ErrorCode::LimitExceeded);
+        let bad_key =
+            cmd(json!({"type": "updateAnnotation", "id": 1, "patch": {}, "coalesce": "a b"}));
+        assert_eq!(code(bad_key.check_shape()), ErrorCode::InvalidArgument);
+        assert!(
+            serde_json::from_value::<DocCommand>(json!({"type": "restore", "slots": []})).is_err()
+        );
+        assert!(serde_json::from_value::<DocCommand>(json!({"type": "rotatePages"})).is_err());
+    }
+
+    // --- history ---
+
+    #[test]
+    fn undo_and_redo_walk_the_history_and_a_new_command_drops_the_redo_steps() {
+        let mut state = state();
+        let a = created(&mut state, 0, 10.0, 0);
+        let b = created(&mut state, 0, 100.0, 1);
+        state.undo(&stamp(2)).unwrap();
+        state.undo(&stamp(3)).unwrap();
+        assert!(!state.is_dirty());
+        assert!(state.list(PageId::new(0)).is_empty());
+        state.redo(&stamp(4)).unwrap();
+        assert_eq!(state.list(PageId::new(0))[0].id, a);
+        let c = created(&mut state, 0, 300.0, 5);
+        assert!(!state.history_state().can_redo);
+        assert_ne!(c, b, "an id is never used twice");
+        assert_eq!(state.rev(), 6);
+    }
+
+    #[test]
+    fn with_nothing_to_undo_or_redo_the_change_set_is_empty_and_the_revision_is_unchanged() {
+        let mut state = state();
+        let empty = state.undo(&stamp(0)).unwrap();
+        assert!(empty.upserted.is_empty() && empty.removed.is_empty());
+        assert_eq!(empty.rev, 0);
+        assert_eq!(state.redo(&stamp(0)).unwrap().rev, 0);
+    }
+
+    #[test]
+    fn updates_that_share_a_key_merge_into_one_step_that_undoes_to_before_the_first() {
+        let mut state = state();
+        let id = created(&mut state, 0, 10.0, 0);
+        for (ms, opacity) in [(100, 0.9), (400, 0.8), (900, 0.7)] {
+            let update = cmd(
+                json!({"type": "updateAnnotation", "id": id, "coalesce": "opacity", "patch": {"opacity": opacity}}),
+            );
+            state.execute(update, &stamp(ms)).unwrap();
+        }
+        assert_eq!(state.list(PageId::new(0))[0].opacity, 0.7);
+        assert_eq!(state.rev(), 4, "every update is a revision");
+        let undone = state.undo(&stamp(1000)).unwrap();
+        assert_eq!(undone.upserted[0].opacity, 1.0);
+        assert!(undone.history.undo_label.as_deref() == Some(LABEL_CREATE));
+    }
+
+    #[test]
+    fn save_marks_clean_and_the_history_survives_it() {
+        let mut state = state();
+        let id = created(&mut state, 0, 10.0, 0);
+        state.mark_clean();
+        assert!(!state.is_dirty());
+        let update = cmd(json!({"type": "updateAnnotation", "id": id, "patch": {"contents": "x"}}));
+        state.execute(update, &stamp(1)).unwrap();
+        assert!(state.is_dirty());
+        assert!(!state.undo(&stamp(2)).unwrap().history.dirty);
+        assert!(state.undo(&stamp(3)).unwrap().history.dirty);
+    }
+
+    // --- imported annotations ---
+
+    #[test]
+    fn imported_annotations_are_clean_listed_once_and_do_not_touch_the_history() {
+        let mut state = state();
+        let items = [imported("a", false), imported("b", false)];
+        assert_eq!(state.import_page(PageId::new(1), &items), 2);
+        assert_eq!(
+            state.import_page(PageId::new(1), &items),
+            0,
+            "a page is read once"
+        );
+        assert!(state.is_imported(PageId::new(1)));
+        assert!(!state.is_imported(PageId::new(0)));
+        assert_eq!(state.import_page(PageId::new(9), &items), 0);
+        let listed = state.list(PageId::new(1));
+        assert_eq!(listed.len(), 2);
+        assert!(listed
+            .iter()
+            .all(|a| a.sync == Sync::Clean && a.page_id == PageId::new(1)));
+        assert_eq!((state.rev(), state.is_dirty()), (0, false));
+    }
+
+    #[test]
+    fn changing_an_imported_annotation_marks_it_modified_and_deleting_it_keeps_a_tombstone() {
+        let mut state = state();
+        state.import_page(PageId::new(0), &[imported("a", false)]);
+        let id = state.list(PageId::new(0))[0].id;
+        let update = cmd(json!({"type": "updateAnnotation", "id": id, "patch": {"contents": "x"}}));
+        assert_eq!(
+            state.execute(update, &stamp(1)).unwrap().upserted[0].sync,
+            Sync::Modified
+        );
+        state
+            .execute(
+                cmd(json!({"type": "deleteAnnotations", "ids": [id]})),
+                &stamp(2),
+            )
+            .unwrap();
+        assert!(state.list(PageId::new(0)).is_empty());
+        let tomb: Vec<_> = state.entries().filter(|e| e.tombstone).collect();
+        assert_eq!(tomb.len(), 1);
+        assert_eq!(
+            tomb[0].persisted.as_ref().and_then(|o| o.name.as_deref()),
+            Some("a")
+        );
+        state.undo(&stamp(3)).unwrap();
+        assert_eq!(state.list(PageId::new(0)).len(), 1);
+        assert!(state.entries().all(|e| !e.tombstone));
+        state.undo(&stamp(4)).unwrap();
+        assert_eq!(state.list(PageId::new(0))[0].sync, Sync::Clean);
+    }
+
+    #[test]
+    fn opaque_and_locked_annotations_cannot_be_changed_and_a_lock_can_be_lifted() {
+        let mut state = state();
+        let mut opaque = imported("o", false);
+        opaque.body = AnnotationBody::Opaque {
+            subtype: "Ink".into(),
+        };
+        opaque.rect = Rect {
+            x: 1.0,
+            y: 1.0,
+            w: 10.0,
+            h: 10.0,
+        };
+        state.import_page(PageId::new(0), &[opaque, imported("l", true)]);
+        let ids: Vec<AnnotId> = state.list(PageId::new(0)).iter().map(|a| a.id).collect();
+        for id in &ids {
+            for command in [
+                json!({"type": "deleteAnnotations", "ids": [id]}),
+                json!({"type": "moveAnnotations", "ids": [id], "dx": 1.0, "dy": 1.0}),
+                json!({"type": "updateAnnotation", "id": id, "patch": {"contents": "x"}}),
+            ] {
+                assert_eq!(
+                    code(state.execute(cmd(command), &stamp(0))),
+                    ErrorCode::InvalidArgument
+                );
+            }
+        }
+        let unlock =
+            cmd(json!({"type": "updateAnnotation", "id": ids[1], "patch": {"locked": false}}));
+        assert!(!state.execute(unlock, &stamp(1)).unwrap().upserted[0].locked);
+        let edit =
+            cmd(json!({"type": "updateAnnotation", "id": ids[1], "patch": {"contents": "now"}}));
+        assert!(state.execute(edit, &stamp(2)).is_ok());
+    }
+
+    // --- limits ---
+
+    #[test]
+    fn the_number_of_annotations_per_page_and_per_document_is_bounded() {
+        let mut state = DocState::new(2);
+        let items: Vec<Imported> = (0..limits::MAX_ANNOTATIONS_PER_PAGE + 5)
+            .map(|n| imported(&n.to_string(), false))
+            .collect();
+        assert_eq!(
+            state.import_page(PageId::new(0), &items),
+            limits::MAX_ANNOTATIONS_PER_PAGE
+        );
+        assert_eq!(
+            code(state.execute(create_cmd(0, 0.0), &stamp(0))),
+            ErrorCode::LimitExceeded
+        );
+        assert!(state.execute(create_cmd(1, 0.0), &stamp(0)).is_ok());
+    }
+}

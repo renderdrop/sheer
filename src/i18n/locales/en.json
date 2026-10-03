@@ -75,6 +75,8 @@
   "canvas.pageImage": "Page {page} of {total}",
   "canvas.dropToOpen": "Drop to open",
 
+  "action.undo": "Undo",
+  "action.redo": "Redo",
   "action.find": "Find",
   "action.findNext": "Find next",
   "action.findPrevious": "Find previous",

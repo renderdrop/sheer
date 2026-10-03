@@ -252,6 +252,8 @@ describe('Shell with a document', () => {
       expect(items).toEqual([
         'Open…Ctrl+O',
         'Close documentCtrl+W',
+        'UndoCtrl+Z',
+        'RedoCtrl+Y',
         'Actual sizeCtrl+1',
         'Fit widthCtrl+2',
         'Fit pageCtrl+0',

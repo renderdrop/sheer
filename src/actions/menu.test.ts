@@ -74,7 +74,7 @@ describe('the layout of the macOS menu bar', () => {
         'predefined' in item ? [item.predefined] : [],
       );
     expect(names('app')).toEqual(['about', 'services', 'hide', 'hide_others', 'show_all', 'quit']);
-    expect(names('edit')).toEqual(['undo', 'redo', 'cut', 'copy', 'paste', 'select_all']);
+    expect(names('edit')).toEqual(['cut', 'copy', 'paste', 'select_all']);
     expect(names('window')).toEqual(['minimize', 'maximize', 'bring_all_to_front']);
     expect(names('view')).toEqual(['fullscreen']);
   });

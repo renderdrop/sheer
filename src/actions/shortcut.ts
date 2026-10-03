@@ -27,12 +27,20 @@ export interface Binding {
 export interface Shortcuts {
   readonly default?: Binding;
   readonly macos?: Binding;
+  /** Further bindings that run the action on every platform and are not shown (Redo is also Ctrl+Shift+Z on Windows). */
+  readonly alternates?: readonly Binding[];
 }
 
 /** The binding on `platform`, or `null` when the action has none there. */
 export function resolveBinding(shortcuts: Shortcuts | undefined, platform: Platform | null): Binding | null {
   if (shortcuts === undefined) return null;
   return (platform === 'macos' ? (shortcuts.macos ?? shortcuts.default) : shortcuts.default) ?? null;
+}
+
+/** Every binding that runs the action on : the one that is shown first, then the alternates. */
+export function resolveBindings(shortcuts: Shortcuts | undefined, platform: Platform | null): readonly Binding[] {
+  const shown = resolveBinding(shortcuts, platform);
+  return [...(shown === null ? [] : [shown]), ...(shortcuts?.alternates ?? [])];
 }
 
 const hasMod = (binding: Binding, mod: BindingMod): boolean => binding.mods?.includes(mod) ?? false;

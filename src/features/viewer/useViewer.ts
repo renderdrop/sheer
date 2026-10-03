@@ -10,6 +10,7 @@ import { renderScheduler } from '../../engine/renderScheduler';
 import { translators } from '../../i18n';
 import { useLocaleStore } from '../../i18n/store';
 import { DEFAULT_ZOOM, clampZoom, wheelFactor } from '../../lib/zoom';
+import { useAnnotations } from '../../stores/annotations';
 import { useDocuments } from '../../stores/documents';
 import { usePages } from '../../stores/pages';
 import { useUi } from '../../stores/ui';
@@ -278,6 +279,7 @@ export const useViewer = create<ViewerState>()((set, get) => {
       if (docId === null) return;
       forgetOpening(docId);
       useView.getState().close(docId);
+      useAnnotations.getState().remove(docId);
       useDocuments.getState().remove(docId);
       usePages.getState().remove(docId);
       // Its images go, and what is still on its way is dropped when it arrives.

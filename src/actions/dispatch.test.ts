@@ -275,11 +275,23 @@ describe('canRunAction', () => {
 
 describe('readActionState', () => {
   it('has no document before one is open, and the flags are off', () => {
-    expect(readActionState()).toEqual({ hasDocument: false, zoomAtMin: false, zoomAtMax: false });
+    expect(readActionState()).toEqual({
+      hasDocument: false,
+      zoomAtMin: false,
+      zoomAtMax: false,
+      canUndo: false,
+      canRedo: false,
+    });
   });
 
   it('follows the open document', async () => {
     await open();
-    expect(readActionState()).toEqual({ hasDocument: true, zoomAtMin: false, zoomAtMax: false });
+    expect(readActionState()).toEqual({
+      hasDocument: true,
+      zoomAtMin: false,
+      zoomAtMax: false,
+      canUndo: false,
+      canRedo: false,
+    });
   });
 });

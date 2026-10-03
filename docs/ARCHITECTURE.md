@@ -148,9 +148,9 @@ cancel_search(search_id: u32) -> ()                                  // an unkno
 get_page_links(doc_id: DocId, page_id: PageId) -> Vec<LinkInfo>     // ≤ 1 000, `Interactive` priority
 open_link(doc_id: DocId, page_id: PageId, link_index: u32) -> ()    // URL re-read in Rust, shown in a native dialog from Rust, then opened by Rust; http, https, mailto
 // edit (ADR-003)
-list_annotations(doc_id: DocId, pages: Option<Vec<PageId>>) -> Vec<Annotation>
-apply_command(doc_id: DocId, cmd: DocCommand, coalesce_key: Option<String>) -> ChangeSet  // key ≤ 64 chars
-undo(doc_id: DocId) -> ChangeSet
+list_annotations(doc_id: DocId, page_id: PageId) -> Vec<Annotation>   // by id, ≤ 2 000; the first call for a page reads it from the file (`Interactive`), later calls answer from the model
+apply_annotation_command(doc_id: DocId, command: DocCommand) -> ChangeSet   // one undo step; all or nothing; the coalesce key is part of `UpdateAnnotation` (≤ 64 chars of [A-Za-z0-9._-])
+undo(doc_id: DocId) -> ChangeSet          // nothing to undo: an empty ChangeSet with the current rev
 redo(doc_id: DocId) -> ChangeSet
 ```
 
@@ -167,6 +167,10 @@ struct SaveAck       { break_signature: bool, file_changed: bool, rewrite_encryp
 struct TextLayer     { text: String, boxes: Vec<f32> /* x, y, w, h per UTF-16 code unit of `text`, page space (the box of a character of two units is there twice) */, truncated: bool }
 struct OutlineNode   { title: String, target: Option<PageTarget { page_id, y }>, children: Vec<OutlineNode> }
 struct LinkInfo      { index: u32 /* position among the page's links */, rect: Rect, target: LinkTarget /* Page { page_id, y } | Url { url ≤ 2048 } | Blocked; wire: `{ "type": "page" | "url" | "blocked", ..fields }` */ }
+struct ChangeSet     { rev: u64 /* grows with every change, undo and redo */, upserted: Vec<Annotation>, removed: Vec<AnnotId>, pages: Option<Vec<PageId>> /* null until M3 */,
+                       history: HistoryState { can_undo, can_redo, undo_label: Option<String>, redo_label: Option<String> /* catalog keys: `annotation.create` | `.update` | `.delete` | `.move` or a batch's own label */, dirty } }
+enum   DocCommand    { CreateAnnotation { draft }, UpdateAnnotation { id, patch, coalesce: Option<String> }, DeleteAnnotations { ids } /* + their replies */, MoveAnnotations { ids, dx, dy },
+                       Batch { label, commands } /* one undo step; ≤ 5 000 commands, ≤ 2 deep */, Restore { .. } /* internal: the inverse of everything, never accepted from the UI */ }   // wire: `{ "type": "createAnnotation" | ..., ..fields }`
 struct DocFlags      { encrypted: bool, xfa: bool, has_forms: bool, signed: bool }   // best effort, from PDFium, read when the document is loaded; part of `DocumentInfo` as `flags` (`signed` only for a document that has a form)
 struct OpenResult    { doc_id: DocId, status: OpenStatus /* Ready | NeedsPassword */, info: Option<DocumentInfo> }
 struct DocumentInfo  { doc_id: DocId, display_name: String, kind: DocKind, pages: Vec<PageSlotInfo>, rev: u32, flags: DocFlags, history: HistoryState }  // planned; today `{ id, pageCount, displayName, flags }` + `kind`, the fields every open document has
@@ -240,6 +244,18 @@ M3: `extract_pages`, `split_document`, `merge_documents`, `insert_pages_from_fil
 `list_signatures`, `save_signature`, `delete_signature`. M5: `set_protection`, `remove_protection`, `get_metadata`, `set_metadata`.
 M6: `export_images`, `print_document`, `reveal_in_folder`. M7: `list_recoverable`, `restore_autosave`, `discard_autosave`.
 
+### Annotations (ADR-003; `model/{annotation,command,history,doc_state,ids}.rs`, `engine/import.rs`, `commands/annotations.rs`)
+
+- *Ownership.* `model` has no PDFium or lopdf import. A `DocState` per open document (created on first use, dropped by `close_document`) holds the annotations, the revision, the history and the set of
+  imported pages. PDFium reads annotations (`engine::import`, an `Interactive` job) and never saves; saving is a later package (lopdf) that works from `DocState::entries` (`persisted` origin, `tombstone`) and then calls `mark_clean`.
+- *No event channel.* The model changes only as the answer to a command of the UI, so the answer is the delta (`ChangeSet`); the UI replica (`stores/annotations.ts`) applies it, ignores one older than its `rev`, and never lets a page list that was on its way meanwhile overwrite or resurrect what commands decided.
+- *Import.* Highlight, underline and strikeout (quads), text notes, free text, squares and circles become typed annotations (`sync: clean`). Ink, lines, stamps, squiggly and the rest are `opaque { subtype }`: listed, selectable, never changed. Links, widgets and popups are not annotations
+  of the model. What PDFium cannot say (opacity, stroke width, a free text's font size, `/IRT`) is read as the default. A page is read once (≤ 2 000 annotations looked at); strings are cut and stripped of control characters, and an annotation that fails validation is left out.
+- *Commands.* Every apply validates before it changes anything and returns its exact inverse as slots (`id → previous entry | none`); undo applies it, and the inverse of that is the redo, so ids and snapshots return exactly. A `Batch` rolls back whole on an error. A reply (`inReplyTo`) needs a live parent on the same page; deleting a parent deletes its replies.
+  Opaque annotations and locked ones (an update that only unlocks excepted) are refused (`invalid_argument`). `rect` is always computed by Rust. Updates with the same `coalesce` key on one annotation within 1.5 s share one undo step. History ≤ 500 steps; `dirty` compares the top step with the clean marker.
+  Limits are in `limits.rs`: annotations per page 2 000 and per document 20 000, quads 512, strokes 256, points 10 000 per stroke and 50 000 in all, 500 free text lines, contents 32 768 characters.
+- *Stamp.* `modified` is stamped by `commands/annotations.rs` (ISO 8601, UTC); the model has no clock.
+
 ## 6. Pushes (Rust → UI, never with paths)
 
 The webview has no event permission (SECURITY T3): it cannot `listen` to or `emit` events. A push reaches it as a message on a `tauri::ipc::Channel` that the
@@ -281,7 +297,7 @@ Codes: `invalid_argument`, `limit_exceeded`, `not_found`, `not_a_pdf`, `damaged_
 | `documents` | `byId: Record<DocId, DocMeta>` (today the `DocumentInfo` of the backend: displayName, pageCount; later pages, rev, flags, history), `order` (opening order), `activeId` (the last one opened or brought forward; the one closed is replaced by its next neighbour, else the previous) | `add` for each `opened` (dialog answer, app channel), `remove` on close, ChangeSet |
 | `view` | per doc: zoom, fit (`none` / `width` / `page`, a mode that follows the window), scrollMode (`continuous` / `single` / `spread`), pageIndex (the current page: follows the scroll position in continuous mode), pageCount, anchor (`{ page, xPt, yPt, viewX, viewY }`: where the canvas puts the document next, consumed by it), rotation (view rotation 0/90/180/270, viewing only, in memory; the layout is made from the rotated page sizes, `viewer/transform.ts`) | canvas, toolbar, status bar |
 | `pages` | per doc: the size of every page in points (`get_page_sizes`), replaced as a whole; placeholders of US Letter until it arrives | `showDocument` |
-| `annotations` | per doc: `byId`, `byPage`, `selection`, `editing` (transient draft) | ChangeSet; `editing` locally |
+| `annotations` | per doc: `rev`, `byId`, `loaded` (pages), `removed` (ids), `history` (can undo/redo, labels, dirty); `annotationsOnPage` selects a page; `selection` and `editing` (transient draft) join with the tools | `loadPage`, ChangeSet (`apply`, `undo`, `redo`); `editing` locally |
 | `tools` | active tool, locked, presets per tool | toolbar, actions |
 | `search` | per doc (`features/search/store.ts`): query, options, status, `runId`, hits in document order and by page (a page's array is replaced only when that page gets hits), active hit, progress; the pages draw their own hits (`SearchHits`), so a hit or an active hit wakes the pages it concerns, not the document. The UI asks for ≤ 10 000 hits (ADR-026). Text layers are not a store: `features/textlayer/cache.ts` keeps the fetched ones in an LRU bounded by 2 M code units | search Channel |
 | `ui` | left panel tab/width/collapsed, inspector mode, active tool (moves to `tools` in M2), drop-hover flag, error banner, dialogs, toasts, engine status | UI, events |
@@ -313,7 +329,7 @@ Rules:
   apply, push history → ChangeSet → store → overlay. A persisted annotation that becomes non-clean is hidden in PDFium, `pageRev`
   increments, and the page re-renders.
 - **Command.** Key press → `handleKeyDown` (not from a text field; a bare key only in the canvas) → `runAction(id)`. Toolbar and More clicks call `runAction` too. A macOS menu choice → `on_menu_event` → allowlist → channel → `runAction`. `runAction` looks the id up, asks `enabled(readActionState())` and calls `run()`.
-- **Undo.** Ctrl/⌘+Z → `undo` → inverse applied → ChangeSet (same path).
+- **Undo.** Ctrl/⌘+Z (Redo: Ctrl+Y or Ctrl+Shift+Z, ⌘+Shift+Z) → the `undo` and `redo` actions (enabled by `ActionState.canUndo` and `canRedo`, from the `annotations` store; in a text field the field's own undo) → `undo` → inverse applied → ChangeSet (same path).
 - **Save.** Ctrl/⌘+S → `save_document` (no ack). On `needs_confirmation` the UI shows a dialog and retries with `ack` → ADR-004 pipeline →
   `SaveResult` + `doc:reloaded` → store marked clean; the new `pageRev` keys refresh the images.
 

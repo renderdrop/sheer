@@ -16,6 +16,7 @@ import {
   ListOrdered,
   Percent,
   PenLine,
+  Redo2,
   RotateCcw,
   RotateCw,
   Search,
@@ -24,6 +25,7 @@ import {
   Signature,
   StretchHorizontal,
   TextCursorInput,
+  Undo2,
   ZoomIn,
   ZoomOut,
   type LucideIcon,
@@ -41,6 +43,7 @@ import { useViewer } from '../features/viewer/useViewer';
 import type { PlainKey, Translate } from '../i18n';
 import type { Shortcut } from '../lib/shortcuts';
 import { useUi, type ToolId } from '../stores/ui';
+import { runHistoryStep } from './history';
 import { formatBinding, resolveBinding, type Binding, type Shortcuts } from './shortcut';
 import type { ActionState } from './state';
 
@@ -51,6 +54,8 @@ export type ToolActionId = `tool-${ToolId}`;
 export type ActionId =
   | 'open'
   | 'close-document'
+  | 'undo'
+  | 'redo'
   | 'zoom-in'
   | 'zoom-out'
   | 'actual-size'
@@ -77,7 +82,7 @@ export type ActionId =
   | ToolActionId;
 
 /** Actions of one group sit together in the More menu, with a separator between groups. */
-export type ActionGroup = 'file' | 'view' | 'page' | 'panels' | 'tools' | 'app';
+export type ActionGroup = 'file' | 'edit' | 'view' | 'page' | 'panels' | 'tools' | 'app';
 
 /**
  * A command of the app: what the toolbar, the More menu, the macOS menu bar and the keyboard all run. It is defined once, here;
@@ -164,6 +169,33 @@ export const ACTIONS: readonly ActionDef[] = [
     menuBar: true,
     enabled: needsDocument,
     run: () => useViewer.getState().close(),
+  },
+  {
+    id: 'undo',
+    labelKey: 'action.undo',
+    icon: Undo2,
+    shortcut: { default: primary('z') },
+    group: 'edit',
+    more: true,
+    menuBar: true,
+    enabled: (state) => state.hasDocument && state.canUndo,
+    run: () => runHistoryStep('undo'),
+  },
+  {
+    id: 'redo',
+    labelKey: 'action.redo',
+    icon: Redo2,
+    // Ctrl+Y is Windows' Redo, Cmd+Shift+Z is macOS's; Ctrl+Shift+Z works on Windows too, as in most editors.
+    shortcut: {
+      default: primary('y'),
+      macos: { key: 'z', mods: ['primary', 'shift'] },
+      alternates: [{ key: 'z', mods: ['primary', 'shift'] }],
+    },
+    group: 'edit',
+    more: true,
+    menuBar: true,
+    enabled: (state) => state.hasDocument && state.canRedo,
+    run: () => runHistoryStep('redo'),
   },
   {
     id: 'zoom-in',

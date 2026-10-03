@@ -84,6 +84,45 @@ pub const MAX_QUADS_PER_HIT: usize = 512;
 pub const MAX_PAGE_LINKS: usize = 1_000;
 /// Longest URL a link may carry to the UI, and the longest one that is ever opened (bytes: a URL is ASCII, see `security::links`).
 pub const MAX_URL_LEN: usize = 2048;
+
+// --- Annotations (ADR-003, ARCHITECTURE §5 annotations) -----------------------------------------------------------
+
+/// Annotations one document may hold in the model (imported and created), and on one page. A command that would go past either is
+/// refused with `limit_exceeded`.
+pub const MAX_ANNOTATIONS_PER_DOC: usize = 20_000;
+pub const MAX_ANNOTATIONS_PER_PAGE: usize = 2_000;
+/// Annotations of a page that are looked at when the page is imported from PDFium.
+pub const MAX_IMPORT_PER_PAGE: usize = 2_000;
+/// Rectangles (quads) of one highlight, underline or strikeout.
+pub const MAX_ANNOT_QUADS: usize = 512;
+/// Strokes of one ink annotation, points of one stroke, and points of one annotation in all (path and outline together).
+pub const MAX_INK_STROKES: usize = 256;
+pub const MAX_INK_POINTS_PER_STROKE: usize = 10_000;
+pub const MAX_INK_POINTS_TOTAL: usize = 50_000;
+/// Lines of a free text annotation and characters of one line.
+pub const MAX_FREE_TEXT_LINES: usize = 500;
+pub const MAX_FREE_TEXT_LINE_CHARS: usize = 1_000;
+/// Characters of the contents (a note's text) and of the author's name.
+pub const MAX_ANNOT_CONTENTS_CHARS: usize = 32_768;
+pub const MAX_ANNOT_AUTHOR_CHARS: usize = 256;
+/// Characters of a modification date as read from a file or stamped (`D:...` or ISO 8601).
+pub const MAX_ANNOT_DATE_CHARS: usize = 64;
+/// Widest stroke and the font size range, in points.
+pub const MAX_ANNOT_STROKE_PT: f32 = 144.0;
+pub const MIN_FONT_SIZE_PT: f32 = 1.0;
+pub const MAX_FONT_SIZE_PT: f32 = 400.0;
+/// Commands in one `Batch`, how deep batches may nest (1 = a batch of plain commands), ids in one delete or move, and characters of
+/// a history label (a key of the UI catalogs: `[A-Za-z0-9._-]`).
+pub const MAX_BATCH_COMMANDS: usize = 5_000;
+pub const MAX_BATCH_DEPTH: usize = 2;
+pub const MAX_COMMAND_IDS: usize = 5_000;
+pub const MAX_LABEL_CHARS: usize = 64;
+/// Entries of one document's undo stack (the redo stack never grows past it either).
+pub const MAX_HISTORY_ENTRIES: usize = 500;
+/// Updates of one annotation with the same coalesce key that come this close together are one undo step (ADR-003 §7).
+pub const COALESCE_WINDOW_MS: u64 = 1_500;
+/// Characters of a coalesce key.
+pub const MAX_COALESCE_KEY_CHARS: usize = 64;
 /// Deadline for reading the text of a page, its links, a search of one page and the outline (ADR-002 §8: text 10 s).
 pub const TEXT_TIMEOUT: Duration = Duration::from_secs(10);
 /// How often one page of a search is tried when the engine is too busy for it (a full queue, or other work that was more urgent for

@@ -19,6 +19,7 @@
 
 pub mod encode;
 mod guard;
+mod import;
 mod links;
 mod outline;
 pub mod queue;
@@ -41,6 +42,7 @@ use zeroize::Zeroizing;
 use crate::documents::{DocFlags, DocumentId};
 use crate::error::{AppError, ErrorCode};
 use crate::limits;
+use crate::model::annotation::Imported;
 use crate::model::geometry::Quad;
 
 use self::guard::Health;
@@ -155,6 +157,12 @@ pub(crate) enum Job {
         page_index: u32,
         reply: Reply<Vec<PageLink>>,
     },
+    /// The annotations of one page as the file has them (`import`).
+    ImportAnnotations {
+        id: DocumentId,
+        page_index: u32,
+        reply: Reply<Vec<Imported>>,
+    },
     /// A search of one page: its first `limit` hits (`search`).
     SearchPage {
         id: DocumentId,
@@ -197,6 +205,9 @@ impl Job {
                 let _ = reply.send(Err(error));
             }
             Job::PageLinks { reply, .. } => {
+                let _ = reply.send(Err(error));
+            }
+            Job::ImportAnnotations { reply, .. } => {
                 let _ = reply.send(Err(error));
             }
             Job::SearchPage { reply, .. } => {
@@ -580,6 +591,23 @@ impl Engine {
         })
     }
 
+    /// The annotations of page `page_index` as the file has them, at most `limits::MAX_IMPORT_PER_PAGE` scanned, in the order of the page's
+    /// `/Annots` (see `import`). Links, widgets and popups are not annotations of the model and are left out; kinds the model does not
+    /// edit come as [`crate::model::annotation::AnnotationBody::Opaque`]. `invalid_argument` for a page the document does not have.
+    pub fn import_annotations(
+        &self,
+        id: DocumentId,
+        page_index: u32,
+    ) -> Result<Vec<Imported>, AppError> {
+        self.call(limits::TEXT_TIMEOUT, Rank::INTERACTIVE, |reply| {
+            Job::ImportAnnotations {
+                id,
+                page_index,
+                reply,
+            }
+        })
+    }
+
     /// Searches page `page_index` for `spec` and returns its first `limit` hits as the quads of the text each covers, in page
     /// space. It runs at the lowest priority: a render that is queued goes first, and a caller that searches a whole document asks
     /// for one page at a time, so renders are never held up for longer than one page takes. `engine_timeout` (`cancelled` if the
@@ -641,8 +669,17 @@ mod tests {
 
     /// PDFium can be bound once per process, so all engine tests share one worker. `None` when the library has not
     /// been fetched (`npm run fetch-pdfium`); those tests then skip instead of failing a fresh checkout.
+    ///
+    /// Each test thread also takes a read lock on the engine for as long as it lives, so a test that counts what is in the
+    /// queue ([`exclusive_engine`]) runs while no other test has jobs on the shared worker.
     fn shared_engine() -> Option<&'static Engine> {
         static ENGINE: OnceLock<Option<Engine>> = OnceLock::new();
+        ENGINE_USERS.with(|slot| {
+            let mut slot = slot.borrow_mut();
+            if matches!(*slot, Users::None) {
+                *slot = Users::Shared(engine_lock().read().unwrap_or_else(|e| e.into_inner()));
+            }
+        });
         ENGINE
             .get_or_init(|| {
                 let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("pdfium");
@@ -657,6 +694,34 @@ mod tests {
             .as_ref()
     }
 
+    fn engine_lock() -> &'static std::sync::RwLock<()> {
+        static LOCK: std::sync::RwLock<()> = std::sync::RwLock::new(());
+        &LOCK
+    }
+
+    /// What this test thread holds of the shared engine until it ends.
+    #[allow(dead_code)] // the guards are held for their drop
+    enum Users {
+        None,
+        Shared(std::sync::RwLockReadGuard<'static, ()>),
+        Exclusive(std::sync::RwLockWriteGuard<'static, ()>),
+    }
+
+    thread_local! {
+        static ENGINE_USERS: std::cell::RefCell<Users> = const { std::cell::RefCell::new(Users::None) };
+    }
+
+    /// The shared engine with no other test using it until this one ends. Call it before anything else that touches the
+    /// engine, for tests whose outcome depends on the exact contents of the queue.
+    fn exclusive_engine() -> Option<&'static Engine> {
+        ENGINE_USERS.with(|slot| {
+            let mut slot = slot.borrow_mut();
+            assert!(matches!(*slot, Users::None), "call exclusive_engine first");
+            *slot = Users::Exclusive(engine_lock().write().unwrap_or_else(|e| e.into_inner()));
+        });
+        shared_engine()
+    }
+
     /// The registry the tests' ids come from. One for all of them, because they all use the same engine and an id must not
     /// be used by two documents there.
     fn shared_registry() -> &'static Registry {
@@ -664,8 +729,17 @@ mod tests {
         REGISTRY.get_or_init(Registry::new)
     }
 
-    /// A fresh id, registered (as intake would have done).
+    /// A fresh id the engine can use, not in the registry: ids are never reused, and the registry's limit on open
+    /// documents would run out over the many tests that never close theirs.
     fn new_id() -> DocumentId {
+        let registry = shared_registry();
+        let id = registry.register(fixture()).unwrap();
+        registry.remove(id);
+        id
+    }
+
+    /// A fresh id, registered (as intake would have done), for the tests that confirm or abandon it there.
+    fn new_registered_id() -> DocumentId {
         shared_registry().register(fixture()).unwrap()
     }
 
@@ -852,7 +926,7 @@ mod tests {
         let Some(engine) = shared_engine() else {
             return;
         };
-        let id = new_id();
+        let id = new_registered_id();
 
         // The open is in the worker when its caller gives up: the registry entry goes (this is what the caller of a timed-out
         // open does), and only then does the worker's "is it still wanted" question come.
@@ -911,7 +985,11 @@ mod tests {
         let Some(engine) = shared_engine() else {
             return;
         };
-        let (kept, orphan, next_orphan) = (new_id(), new_id(), new_id());
+        let (kept, orphan, next_orphan) = (
+            new_registered_id(),
+            new_registered_id(),
+            new_registered_id(),
+        );
         open_fixture(engine, kept).unwrap();
 
         // Two documents in a row that nobody waits for any more; each open answers with an error, not with a page count.
@@ -928,7 +1006,7 @@ mod tests {
 
         // The one that was wanted is untouched, and the worker takes new work.
         assert!(render(engine, kept, 0, -4).is_ok());
-        let fresh = new_id();
+        let fresh = new_registered_id();
         assert_eq!(open_fixture(engine, fresh).unwrap(), 2);
         assert!(render(engine, fresh, 1, -4).is_ok());
         engine.close(fresh).unwrap();
@@ -958,7 +1036,7 @@ mod tests {
         std::fs::copy(fixture(), &path).unwrap();
 
         // The probe works: a document that is open holds its file, and closing it lets the file go.
-        let kept = new_id();
+        let kept = new_registered_id();
         let registry = shared_registry();
         let confirm = move |pages| registry.set_page_count(kept, pages).is_ok();
         engine
@@ -969,7 +1047,7 @@ mod tests {
         assert!(is_free(&path), "a closed document still holds its file");
 
         // The orphan: loaded, then released because its caller gave up. The file is free again as soon as the open answers.
-        let orphan = new_id();
+        let orphan = new_registered_id();
         assert!(open_then_give_up(engine, orphan, File::open(&path).unwrap()).is_err());
         assert!(is_free(&path), "a released orphan still holds its file");
     }
@@ -979,7 +1057,7 @@ mod tests {
         let Some(engine) = shared_engine() else {
             return;
         };
-        let id = new_id();
+        let id = new_registered_id();
         let registry = shared_registry();
         let confirm = move |pages| registry.set_page_count(id, pages).is_ok();
         assert_eq!(
@@ -1489,7 +1567,7 @@ mod tests {
         let Some(engine) = shared_engine() else {
             return;
         };
-        let id = new_id();
+        let id = new_registered_id();
         let error = open_then_give_up(engine, id, File::open(fixture()).unwrap()).unwrap_err();
         assert_eq!(error.code(), ErrorCode::EngineTimeout);
         assert_eq!(
@@ -1706,7 +1784,7 @@ mod tests {
 
     #[test]
     fn closing_a_document_cancels_its_waiting_renders() {
-        let Some(engine) = shared_engine() else {
+        let Some(engine) = exclusive_engine() else {
             return;
         };
         let (kept, closed) = (new_id(), new_id());

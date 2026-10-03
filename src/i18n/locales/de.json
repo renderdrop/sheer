@@ -75,6 +75,8 @@
   "canvas.pageImage": "Seite {page} von {total}",
   "canvas.dropToOpen": "Zum Öffnen ablegen",
 
+  "action.undo": "Widerrufen",
+  "action.redo": "Wiederholen",
   "action.find": "Suchen",
   "action.findNext": "Weitersuchen",
   "action.findPrevious": "Rückwärts suchen",

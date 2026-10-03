@@ -17,6 +17,7 @@
 //! | `get_text_layer` | `docId: number`, `pageId: number` | the text of a page and the box of each character, see [`text`] |
 //! | `search`, `cancel_search` | `docId`, `query: { text, matchCase, wholeWord, maxHits }`, `onEvent: Channel<SearchEvent>`; `searchId` | the id of the search; the hits arrive on the channel, see [`search`] |
 //! | `get_page_links`, `open_link` | `docId`, `pageId` (and `linkIndex`) | the links of a page; opening one asks the user in a native dialog first, see [`links`] |
+//! | `list_annotations`, `apply_annotation_command`, `undo`, `redo` | `docId`, and `pageId` or `command` | the annotations of a page; the `ChangeSet` of a command, an undo or a redo, see [`annotations`] |
 //! | `close_document` | `docId: number` | nothing |
 //! | `unlock_document` | `docId`, `password: string` (1 to 1024 bytes) | the `DocumentInfo` once the encrypted file is open; a wrong password is `password_required` (retry waits 1 s after the third, in Rust) |
 //! | `list_recents`, `remove_recent`, `open_recent` | none; `recentId`; `recentId` | `{ id, displayName, folder, lastOpened, missing }[]` (at most 50, no paths; `folder` is the parent folder's name); nothing; the open event of the file (`opened`, `needsPassword` or `openFailed`) |
@@ -28,6 +29,7 @@
 //! path comes from the dialog (here), a drop, the OS or the command line (`sources`), is judged by `documents::intake` and
 //! stays in the registry.
 
+pub mod annotations;
 pub mod app;
 pub mod links;
 pub mod outline;
@@ -135,6 +137,8 @@ pub struct AppState {
     searches: Arc<search::SearchRegistry>,
     /// The unlock attempts in flight (see [`UnlockGate`]).
     unlocks: Arc<UnlockGate>,
+    /// The annotation models of the open documents (see [`annotations::AnnotationStore`]).
+    annotations: Arc<annotations::AnnotationStore>,
     /// The recent files (`storage::recents`); `None` where there is no app data directory (most tests).
     recents: Option<Arc<RecentsStore>>,
 }
@@ -147,6 +151,7 @@ impl AppState {
             renders: Arc::new(render::RenderGate::default()),
             searches: Arc::new(search::SearchRegistry::default()),
             unlocks: Arc::new(UnlockGate::default()),
+            annotations: Arc::new(annotations::AnnotationStore::default()),
             recents: None,
         }
     }
@@ -422,6 +427,8 @@ impl AppState {
     pub fn close_document(&self, id: DocumentId) -> Result<(), AppError> {
         // A search of a document that is going away has nothing left to find in.
         self.searches.cancel_document(id);
+        // Its annotations and undo history go with it (a save has to come first; the UI asks before closing a document with changes).
+        self.annotations.remove(id);
         // A document that still waits for its password was never loaded: cancelling its prompt forgets it.
         self.registry.remove_locked(id);
         self.registry.begin_close(id);
