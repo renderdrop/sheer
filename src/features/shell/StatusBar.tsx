@@ -1,6 +1,6 @@
 import { useRef, type FormEvent } from 'react';
 
-import { Button, Field, Menu, Popover } from '../../components';
+import { Button, Field, Menu, Popover, usePulseMessage } from '../../components';
 import { useT } from '../../i18n';
 import { useSettledValue } from './hooks';
 import { formatPageStatus, formatZoomStatus, splitForMiddleTruncation } from './status';
@@ -119,6 +119,7 @@ export function StatusBar({ fileName, pageIndex, pageCount, zoom, rendering, onG
   const t = useT();
   const hasDocument = fileName !== null;
   const settledPage = useSettledValue(pageIndex, ANNOUNCE_DELAY_MS);
+  const pulseMessage = usePulseMessage();
 
   return (
     <footer
@@ -152,6 +153,10 @@ export function StatusBar({ fileName, pageIndex, pageCount, zoom, rendering, onG
       {/* The settled page, for screen readers only (the visible page number changes at once). */}
       <span role="status" className="sr-only">
         {hasDocument && pageCount > 0 ? t('status.page', { page: settledPage + 1, total: pageCount }) : ''}
+      </span>
+      {/* Success pulses announce here (MOTION 4.7). */}
+      <span role="status" className="sr-only">
+        {pulseMessage}
       </span>
     </footer>
   );

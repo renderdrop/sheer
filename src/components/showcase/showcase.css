@@ -54,7 +54,7 @@
 /* The left-panel demo: panel, splitter, canvas and inspector in one grid row. */
 .showcase-stage {
   height: calc(var(--space-8) * 6);
-  transition: grid-template-columns var(--motion-slow) var(--ease-out);
+  transition: grid-template-columns var(--motion-slow) var(--ease-spring);
 }
 
 .showcase-inspector {

@@ -2,10 +2,11 @@ import type { LucideIcon } from 'lucide-react';
 import { motion, useReducedMotion } from 'motion/react';
 import { createContext, useContext, useId, type KeyboardEvent, type ReactNode } from 'react';
 
-import { SELECTED_FORCED_COLORS } from './controlStyles';
+import { PRESS_MOTION, SELECTED_FORCED_COLORS } from './controlStyles';
 import { cx } from './cx';
 import { Icon } from './Icon';
-import { DURATION, EASE_OUT, SPRING } from './motion';
+import { DURATION, spring } from '../lib/motion';
+import { SPRING } from './motion';
 import { isOwnEvent, itemsOf, rovingTarget } from './roving';
 import { Tooltip } from './Tooltip';
 
@@ -99,7 +100,7 @@ export interface TabProps {
 }
 
 /**
- * The selected fill. With motion it slides to the next tab (`transform`, 200 ms spring) through a shared layout id;
+ * The selected fill. With motion it slides to the next tab (`transform`, base spring) through a shared layout id;
  * under reduced motion no transform is used and the new fill just fades in.
  */
 function Indicator({ layoutId }: { layoutId: string }) {
@@ -108,8 +109,8 @@ function Indicator({ layoutId }: { layoutId: string }) {
     <motion.span
       aria-hidden="true"
       {...(reduce
-        ? { initial: { opacity: 0 }, animate: { opacity: 1 }, transition: { duration: DURATION.fast, ease: EASE_OUT } }
-        : { layoutId, transition: SPRING })}
+        ? { initial: { opacity: 0 }, animate: { opacity: 1 }, transition: spring(DURATION.fast) }
+        : { layoutId, transition: SPRING.base })}
       className={cx(
         'absolute inset-0 rounded-button bg-selected inset-ring-1 inset-ring-accent',
         SELECTED_FORCED_COLORS,
@@ -141,10 +142,12 @@ export function Tab({ value, label, icon, shortcut, keyShortcuts, disabled = fal
         }}
         className={cx(
           'relative flex h-full min-w-0 flex-1 cursor-pointer items-center justify-center rounded-button',
-          'transition-[background-color,color] aria-disabled:cursor-not-allowed aria-disabled:text-text-disabled',
+          PRESS_MOTION,
+          'aria-disabled:cursor-not-allowed aria-disabled:text-text-disabled',
           selected
             ? 'text-text-accent'
             : 'text-text not-aria-disabled:hover:bg-control-hover not-aria-disabled:active:bg-control-pressed',
+          'not-aria-disabled:active:scale-(--scale-press)',
         )}
       >
         {selected && <Indicator layoutId={`${baseId}-indicator`} />}

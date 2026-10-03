@@ -200,7 +200,7 @@ export function Slider({
             // and drag; reduced motion sets that token to 1, so the thumb stays still without a branch here.
             className={cx(
               'absolute top-1/2 size-2 -translate-x-1/2 -translate-y-1/2 rounded-pill border bg-page shadow-1',
-              'transition-[scale] ease-spring',
+              'transition-[scale] duration-fast',
               disabled
                 ? 'border-text-disabled'
                 : 'border-control-border group-hover:scale-(--scale-thumb) data-[dragging=true]:scale-(--scale-thumb)',

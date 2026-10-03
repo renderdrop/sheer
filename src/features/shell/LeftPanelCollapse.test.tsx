@@ -105,7 +105,7 @@ describe('the columns', () => {
     expect(tracks(grid)).toEqual(open);
   });
 
-  it('slide for 300 ms after the panel was collapsed or restored, and not while the splitter is dragged', async () => {
+  it('slide for 370 ms after the panel was collapsed or restored, and not while the splitter is dragged', async () => {
     const { container, user } = setup(<Shell />);
     await openDocument(user);
     const grid = gridOf(container);
@@ -116,11 +116,10 @@ describe('the columns', () => {
     fireEvent.keyDown(window, { key: 'F4' });
     expect(grid.getAttribute('data-left')).toBe('collapsed');
     expect(grid.hasAttribute('data-animating')).toBe(true);
-    // 250 ms ease-out on the columns (the duration of the spec, DESIGN 3.8).
+    // The slow spring (--motion-slow) on the columns plus 50 ms of margin for the timer.
     expect(grid.className).toContain(TRANSITION);
     expect(grid.className).toContain('duration-slow');
-    expect(grid.className).toContain('ease-out');
-    advance(299);
+    advance(369);
     expect(grid.hasAttribute('data-animating')).toBe(true);
     advance(1);
     expect(grid.hasAttribute('data-animating')).toBe(false);
@@ -130,7 +129,7 @@ describe('the columns', () => {
     fireEvent.keyDown(window, { key: 'F4' });
     expect(grid.getAttribute('data-left')).toBe('open');
     expect(grid.hasAttribute('data-animating')).toBe(true);
-    advance(300);
+    advance(370);
     expect(grid.hasAttribute('data-animating')).toBe(false);
 
     // A new width of the panel changes the same property: it follows the pointer at once, with no transition.
@@ -155,7 +154,7 @@ describe('the columns', () => {
     expect(grid.getAttribute('data-animating')).toBe('inspector');
     expect(grid.className).toContain(TRANSITION);
     expect(tracks(grid).slice(-3)).toEqual(['var(--space-1)', 'var(--inspector-width)', 'var(--space-1)']);
-    advance(300);
+    advance(370);
     expect(grid.hasAttribute('data-animating')).toBe(false);
   });
 
@@ -170,7 +169,7 @@ describe('the columns', () => {
     advance(200);
     // 400 ms after the first toggle, 200 after the second: it is still sliding.
     expect(grid.hasAttribute('data-animating')).toBe(true);
-    advance(100);
+    advance(170);
     expect(grid.hasAttribute('data-animating')).toBe(false);
   });
 
@@ -195,7 +194,7 @@ describe('the columns', () => {
     resizeTo(960);
     expect(grid.getAttribute('data-left')).toBe('collapsed');
     expect(grid.hasAttribute('data-animating')).toBe(true);
-    advance(300);
+    advance(370);
     resizeTo(1300);
     expect(grid.getAttribute('data-left')).toBe('open');
     expect(grid.hasAttribute('data-animating')).toBe(true);

@@ -51,7 +51,7 @@ export function Tooltip({ label, shortcut, note, side = 'bottom', disabled = fal
   const wrapper = useRef<HTMLSpanElement>(null);
   const showTimer = useRef<number | undefined>(undefined);
   const hideTimer = useRef<number | undefined>(undefined);
-  const motionProps = useFade(DURATION.fast, DURATION.tooltipOut);
+  const motionProps = useFade(DURATION.base, DURATION.fast);
 
   const hideNow = useCallback(() => {
     window.clearTimeout(showTimer.current);

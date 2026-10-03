@@ -469,7 +469,7 @@ function LeftPanelDemo() {
           Canvas
         </div>
         <div
-          className={`showcase-inspector-slot grid transition-opacity duration-slow ease-out ${inspector ? '' : 'showcase-inspector-slot-hidden'}`}
+          className={`showcase-inspector-slot grid transition-opacity duration-slow ${inspector ? '' : 'showcase-inspector-slot-hidden'}`}
         >
           <Panel
             label="Inspector"

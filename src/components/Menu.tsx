@@ -18,6 +18,7 @@ import { createPortal } from 'react-dom';
 
 import { DISMISS_PRIORITY, registerDismissLayer } from './dismiss';
 import { Icon } from './Icon';
+import { PRESS_MOTION } from './controlStyles';
 import { usePopoverMotion } from './motion';
 import { ownedBy, PopoverScope } from './popoverScope';
 import { POPOVER_WIDTHS, Popover, type PopoverProps } from './Popover';
@@ -67,8 +68,9 @@ const SUBMENU_CLOSE_DELAY = 300;
 
 const ITEM =
   'flex h-control-md w-full cursor-pointer items-center gap-1 rounded-sm px-1 text-start text-md ' +
-  'transition-[background-color,color] aria-disabled:cursor-not-allowed aria-disabled:text-text-disabled ' +
-  'not-aria-disabled:hover:bg-control-hover not-aria-disabled:focus-visible:bg-control-hover not-aria-disabled:active:bg-control-pressed ' +
+  PRESS_MOTION +
+  ' aria-disabled:cursor-not-allowed aria-disabled:text-text-disabled ' +
+  'not-aria-disabled:hover:bg-control-hover not-aria-disabled:focus-visible:bg-control-hover not-aria-disabled:active:bg-control-pressed not-aria-disabled:active:scale-(--scale-press) ' +
   'not-aria-disabled:aria-expanded:bg-control-hover';
 
 /** The submenu that is open in a list: which item opened it, and how often focus was asked to go into it. */

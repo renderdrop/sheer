@@ -189,7 +189,7 @@ describe('glass (DESIGN 1.3)', () => {
     expect(body1).toMatch(/var\(--glass-edge\),\s*var\(--shadow-1\)/);
     const body2 = blockBody('@utility glass-2');
     expect(body2).toMatch(/background: var\(--surface-strong\);/);
-    expect(body2).toMatch(/backdrop-filter: var\(--glass-filter\);/);
+    expect(body2).not.toMatch(/backdrop-filter/); // G2 carries no blur (MOTION 5)
     expect(body2).toMatch(/var\(--glass-edge\),\s*var\(--shadow-2\)/);
     // Dialogs and submenus: solid + shadow-3.
     expect(blockBody('@utility surface-dialog')).toMatch(/var\(--surface-solid\)[\s\S]*var\(--shadow-3\)/);
@@ -450,18 +450,49 @@ describe('type (DESIGN 1.5)', () => {
 });
 
 describe('motion (DESIGN 1.6)', () => {
-  it('durations and easings', () => {
-    expect(root.get('--motion-fast')).toBe('150ms');
+  it('three durations and the one spring as linear() (MOTION 1, 2, 6); --ease-in and --ease-out are gone', () => {
+    expect(root.get('--motion-fast')).toBe('120ms');
     expect(root.get('--motion-base')).toBe('200ms');
-    expect(root.get('--motion-slow')).toBe('250ms');
-    expect(themeStatic.get('--ease-out')).toBe('cubic-bezier(0.22,1,0.36,1)');
-    expect(themeStatic.get('--ease-in')).toBe('cubic-bezier(0.4,0,1,1)');
-    expect(themeStatic.get('--ease-spring')).toBe('cubic-bezier(0.34,1.56,0.64,1)');
+    expect(root.get('--motion-slow')).toBe('320ms');
+    expect(themeStatic.get('--ease-spring')?.replace('( ', '(').replace(' )', ')')).toBe(
+      'linear(0,0.029 5%,0.102 10%,0.198 15%,0.303 20%,0.409 25%,0.509 30%,0.601 35%,0.681 40%,0.808 50%,0.895 60%,0.949 70%,0.98 80%,0.996 90%,1)',
+    );
+    expect(themeStatic.has('--ease-out')).toBe(false);
+    expect(themeStatic.has('--ease-in')).toBe(false);
+    expect(css).not.toContain('--ease-in');
+    expect(css).not.toContain('--ease-out');
   });
 
-  it('Tailwind transitions default to --motion-fast and --ease-out', () => {
+  it('where linear() is unsupported the spring is cubic-bezier(.25,.1,.25,1)', () => {
+    const at = css.indexOf('@supports not (transition-timing-function: linear(0, 1))');
+    expect(at).toBeGreaterThan(-1);
+    const body = declarations(css.slice(at).split('}')[0] ?? '');
+    expect(body.get('--ease-spring')).toBe('cubic-bezier(0.25,0.1,0.25,1)');
+  });
+
+  it('Tailwind transitions default to --motion-fast and --ease-spring', () => {
     expect(themeStatic.get('--default-transition-duration')).toBe('var(--motion-fast)');
-    expect(themeStatic.get('--default-transition-timing-function')).toBe('var(--ease-out)');
+    expect(themeStatic.get('--default-transition-timing-function')).toBe('var(--ease-spring)');
+  });
+
+  it('the new motion tokens: lift, pulse, drag card', () => {
+    expect(root.get('--scale-lift')).toBe('1.04');
+    expect(root.get('--pulse-scale')).toBe('1.06');
+    expect(root.get('--pulse-opacity')).toBe('0.6');
+    expect(root.get('--drag-card-width')).toBe('160px');
+    expect(root.get('--drag-card-height')).toBe('208px');
+  });
+
+  it('G2 surfaces (popover, menu, toast, drop overlay) carry no blur; G1 keeps it (MOTION 5)', () => {
+    expect(blockBody('@utility glass-2')).not.toMatch(/backdrop-filter/);
+    expect(blockBody('@utility glass-1')).toContain('backdrop-filter: var(--glass-filter);');
+  });
+
+  it('the success pulse is a ring pseudo-layer that fades in fast, then grows by --pulse-scale while it fades out', () => {
+    const keyframes = blockBody('@keyframes pulse-ring');
+    expect(keyframes).toContain('var(--pulse-opacity)');
+    expect(keyframes).toContain('scale(var(--pulse-scale))');
+    expect(blockBody('@utility pulse-target')).toContain('var(--motion-fast) + var(--motion-slow)');
   });
 
   it('reduced motion: no transforms, opacity-only 150 ms ease-out transitions, instant scroll', () => {
@@ -475,7 +506,10 @@ describe('motion (DESIGN 1.6)', () => {
     expect(tokens.get('--offset-enter')).toBe('0px');
     expect(block).toMatch(/transition-property: opacity !important;/);
     expect(block).toMatch(/transition-duration: var\(--motion-fast\) !important;/);
-    expect(block).toMatch(/transition-timing-function: var\(--ease-out\) !important;/);
+    expect(block).toMatch(/transition-timing-function: var\(--ease-spring\) !important;/);
+    expect(tokens.get('--scale-lift')).toBe('1');
+    expect(tokens.get('--pulse-scale')).toBe('1');
+    expect(block).toMatch(/\[data-pulse\]::after \{\s*animation: pulse-ring/);
     expect(block).toMatch(/scroll-behavior: auto !important;/);
     expect(block).toMatch(/animation: none !important;/);
   });
@@ -500,7 +534,9 @@ describe('motion (DESIGN 1.6)', () => {
     const start = css.indexOf('@layer base');
     const block = css.slice(start, css.indexOf('/* The page background gradient'));
     expect(block).toMatch(/@media not \(forced-colors: active\)/);
-    expect(block).toMatch(/scrollbar-width: thin;/);
+    // The standard properties switch the WebKit recipe off in WebView2: fallback only, and no arrow buttons (DESIGN 1.11).
+    expect(block).toMatch(/@supports not selector\(::-webkit-scrollbar\)\s*\{\s*\*\s*\{\s*scrollbar-width: thin;/);
+    expect(block).toMatch(/::-webkit-scrollbar-button \{\s*display: none;\s*width: 0;\s*height: 0;/);
     expect(block).toMatch(/scrollbar-color: var\(--color-scrollbar\) transparent;/);
     expect(block).toMatch(/::-webkit-scrollbar-thumb \{[^}]*var\(--color-scrollbar\)[^}]*background-clip: padding-box/);
     expect(block).toMatch(/::-webkit-scrollbar-thumb:hover \{[^}]*var\(--color-scrollbar-hover\)/);

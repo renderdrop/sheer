@@ -16,12 +16,21 @@
  */
 export const SELECTED_FORCED_COLORS = 'forced-colors:border-(length:--focus-width) forced-colors:border-accent';
 
-/** Layout and motion of every control: color transitions ease out, the press scale uses the spring curve. */
+/**
+ * Hover and press response (MOTION 4.1), one spring curve: fills and colours change in --motion-fast; the press scales down
+ * in fast (the active rule below) and springs back in base on release. Reduced motion resets `--scale-press` to 1, so only
+ * the fill remains. Shared by buttons, toolbar items, tabs, segments and menu items.
+ */
+export const PRESS_MOTION =
+  'transition-[background-color,color,border-color,box-shadow,scale] ' +
+  '[transition-duration:var(--motion-fast),var(--motion-fast),var(--motion-fast),var(--motion-fast),var(--motion-base)] ' +
+  'not-aria-disabled:active:[transition-duration:var(--motion-fast)]';
+
+/** Layout and motion of every control. */
 export const CONTROL_BASE =
   'relative inline-flex shrink-0 cursor-pointer select-none items-center justify-center whitespace-nowrap font-semibold ' +
-  'transition-[background-color,color,border-color,box-shadow,scale] ' +
-  '[transition-timing-function:var(--ease-out),var(--ease-out),var(--ease-out),var(--ease-out),var(--ease-spring)] ' +
-  'not-aria-disabled:enabled:active:scale-(--scale-press) disabled:cursor-not-allowed aria-disabled:cursor-not-allowed';
+  PRESS_MOTION +
+  ' not-aria-disabled:enabled:active:scale-(--scale-press) disabled:cursor-not-allowed aria-disabled:cursor-not-allowed';
 
 export type ButtonVariant = 'primary' | 'secondary' | 'ghost';
 export type ButtonSize = 'sm' | 'md' | 'lg';

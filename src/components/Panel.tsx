@@ -30,7 +30,7 @@ export function Panel({ label, title, actions, header, visible = true, className
       aria-label={label}
       inert={!visible}
       className={cx(
-        'glass-1 flex min-h-0 flex-col overflow-hidden rounded-panel transition-opacity duration-slow ease-out',
+        'glass-1 flex min-h-0 flex-col overflow-hidden rounded-panel transition-opacity duration-slow',
         visible ? 'opacity-100' : 'opacity-0',
         className,
       )}

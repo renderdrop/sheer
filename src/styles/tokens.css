@@ -160,13 +160,27 @@
   --text-2xl--font-weight: 600;
   --text-2xl--letter-spacing: -0.01em;
 
-  /* Easing and the default for Tailwind's transition utilities (DESIGN 1.6). */
-  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
-  --ease-in: cubic-bezier(0.4, 0, 1, 1);
-  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+  /* The one curve (MOTION 1): the bounce-.15 spring sampled as linear(); the cubic-bezier fallback is in section 6. */
+  --ease-spring: linear(
+    0,
+    0.029 5%,
+    0.102 10%,
+    0.198 15%,
+    0.303 20%,
+    0.409 25%,
+    0.509 30%,
+    0.601 35%,
+    0.681 40%,
+    0.808 50%,
+    0.895 60%,
+    0.949 70%,
+    0.98 80%,
+    0.996 90%,
+    1
+  );
   --ease-float: cubic-bezier(0.37, 0, 0.63, 1); /* sine in-out: the empty-state float only (DESIGN 1.10) */
   --default-transition-duration: var(--motion-fast);
-  --default-transition-timing-function: var(--ease-out);
+  --default-transition-timing-function: var(--ease-spring);
 }
 
 /* 3. Tokens without a Tailwind namespace. */
@@ -278,9 +292,9 @@
   --ground-shadow: radial-gradient(closest-side, rgba(91, 91, 214, 0.24), transparent);
 
   /* Motion (DESIGN 1.6). */
-  --motion-fast: 150ms;
+  --motion-fast: 120ms;
   --motion-base: 200ms;
-  --motion-slow: 250ms;
+  --motion-slow: 320ms;
   /* The empty-state logo's float, the one ambient motion of the app (DESIGN 1.10). Reduced motion: distance 0. */
   --float-distance: 8px;
   --float-duration: 3000ms; /* per direction: a 6 s cycle */
@@ -289,6 +303,11 @@
   --scale-enter: 0.96;
   --scale-thumb: 1.125; /* slider thumb on hover and drag (DESIGN 3.7) */
   --offset-enter: 8px;
+  --scale-lift: 1.04; /* drag preview card (MOTION 4.5) */
+  --pulse-scale: 1.06; /* success pulse ring (MOTION 4.7) */
+  --pulse-opacity: 0.6;
+  --drag-card-width: 160px;
+  --drag-card-height: 208px;
 
   /* Elevation: the only z-index values (DESIGN 1.7). 1 to 4 are local to the canvas, which isolates itself. */
   --z-base: 0;
@@ -509,8 +528,15 @@
   }
 }
 
+/* The spring where linear() is unsupported (WKWebView before Safari 17.2): max deviation 0.01 (MOTION 1). */
+@supports not (transition-timing-function: linear(0, 1)) {
+  :root:root {
+    --ease-spring: cubic-bezier(0.25, 0.1, 0.25, 1);
+  }
+}
+
 /*
- * 6. Reduced motion (DESIGN 1.6): no transforms, transitions opacity-only at 150 ms ease-out, smooth scroll instant.
+ * 6. Reduced motion (MOTION 5): no transforms, transitions opacity-only at --motion-fast, smooth scroll instant.
  * Transform amounts are tokens, so a component that uses them (active:scale-(--scale-press)) needs no extra branch.
  */
 @media (prefers-reduced-motion: reduce) {
@@ -518,6 +544,8 @@
     --scale-press: 1;
     --scale-enter: 1;
     --scale-thumb: 1;
+    --scale-lift: 1;
+    --pulse-scale: 1;
     --offset-enter: 0px;
     --float-distance: 0px;
   }
@@ -528,13 +556,18 @@
     transition-property: opacity !important;
     transition-duration: var(--motion-fast) !important;
     transition-delay: 0s !important;
-    transition-timing-function: var(--ease-out) !important;
+    transition-timing-function: var(--ease-spring) !important;
     animation: none !important;
     scroll-behavior: auto !important;
   }
 
+  /* The success pulse keeps its ring: --pulse-scale is 1 here, so it only fades (MOTION 4.7). More specific than the reset. */
+  [data-pulse]::after {
+    animation: pulse-ring calc(var(--motion-fast) + var(--motion-base)) var(--ease-spring) !important;
+  }
+
   /*
-   * The left panel's collapse (DESIGN 3.8) is opacity-only. The panel fades in 150 ms (it is a Motion element) and a collapse
+   * The left panel's collapse (DESIGN 3.8) is opacity-only. The panel fades in --motion-fast (it is a Motion element) and a collapse
    * then takes its tracks away in one step, after that fade (a transition of no duration that starts 150 ms late), where
    * the 250 ms slide of the tracks is off. Restoring the panel gives it its tracks at once and it fades in on them.
    */
@@ -564,18 +597,26 @@
     font-variant-numeric: tabular-nums;
   }
 
-  /* DESIGN 1.11: thin token-coloured thumbs on a transparent track, everywhere. Forced colors keeps native bars. */
+  /* DESIGN 1.11: the ::-webkit-scrollbar recipe in both webviews, no arrow buttons. Forced colors keeps native bars.
+     scrollbar-width / scrollbar-color switch the recipe off in WebView2, so they are only the fallback. */
   @media not (forced-colors: active) {
-    * {
-      scrollbar-width: thin;
-      scrollbar-color: var(--color-scrollbar) transparent;
+    @supports not selector(::-webkit-scrollbar) {
+      * {
+        scrollbar-width: thin;
+        scrollbar-color: var(--color-scrollbar) transparent;
+      }
     }
 
-    /* WKWebView fallback. */
     ::-webkit-scrollbar {
       width: var(--scrollbar-size);
       height: var(--scrollbar-size);
       background: transparent;
+    }
+
+    ::-webkit-scrollbar-button {
+      display: none;
+      width: 0;
+      height: 0;
     }
 
     ::-webkit-scrollbar-track,
@@ -592,6 +633,12 @@
 
     ::-webkit-scrollbar-thumb:hover {
       background-color: var(--color-scrollbar-hover);
+    }
+  }
+
+  @media (forced-colors: active) {
+    * {
+      scrollbar-color: auto;
     }
   }
 
@@ -612,7 +659,8 @@
 }
 
 /*
- * Glass recipes (DESIGN 1.3). G1: toolbar, panels, banner, empty card. G2: popover, toast, drop overlay.
+ * Glass recipes (DESIGN 1.3, MOTION 5). G1: toolbar, panels, banner, empty card (blurred). G2: popover, menu, toast, drop
+ * overlay (--surface-strong + edge + --shadow-2, no blur: they sit over the canvas, which carries no backdrop-filter).
  * Dialogs and submenus are solid with --shadow-3 (surface-dialog). Glass only on the control layer, never inside glass.
  * Solid mode needs no variant: the tokens change underneath. The blur never animates: do not put backdrop-filter in a
  * transition list (transition-colors and transition-opacity are fine; plain `transition` is not).
@@ -631,8 +679,6 @@
 
 @utility glass-2 {
   background: var(--surface-strong);
-  -webkit-backdrop-filter: var(--glass-filter);
-  backdrop-filter: var(--glass-filter);
   box-shadow: var(--glass-edge), var(--shadow-2);
 
   @media (forced-colors: active) {
@@ -669,7 +715,7 @@
 }
 
 /*
- * The empty-state logo (DESIGN 1.10, 3.11). Transform and opacity only. The float starts after the 250 ms entry and runs on
+ * The empty-state logo (DESIGN 1.10, 3.11). Transform and opacity only. The float starts after the entry and runs on
  * the sheet and its ground shadow with the same timing. Reduced motion removes every animation (section 6), so the sheet
  * rests at 0 with the static ground shadow. The component sets data-paused while the document is hidden.
  */
@@ -778,7 +824,7 @@
   z-index: var(--z-drag);
 }
 
-/* Durations (DESIGN 1.6). Easing comes from the ease-out, ease-in and ease-spring utilities. */
+/* Durations (DESIGN 1.6). Easing is the one ease-spring (MOTION 1). */
 @utility duration-fast {
   transition-duration: var(--motion-fast);
 }
@@ -789,4 +835,45 @@
 
 @utility duration-slow {
   transition-duration: var(--motion-slow);
+}
+
+/*
+ * The success pulse (MOTION 4.7): a 2 px accent ring on a pseudo-layer, radius = the target's (--pulse-radius) + 2. It fades
+ * in (fast), then grows by --pulse-scale while it fades out (slow). components/SuccessPulse sets and clears data-pulse.
+ * Reduced motion: --pulse-scale is 1, so it only fades (rule in section 6). Forced colors: --color-accent is Highlight.
+ */
+@keyframes pulse-ring {
+  0% {
+    opacity: 0;
+    transform: scale(1);
+  }
+
+  27% {
+    opacity: var(--pulse-opacity);
+    transform: scale(1);
+  }
+
+  100% {
+    opacity: 0;
+    transform: scale(var(--pulse-scale));
+  }
+}
+
+@utility pulse-target {
+  position: relative;
+
+  &::after {
+    content: "";
+    position: absolute;
+    inset: calc(-1 * var(--focus-offset));
+    border: var(--focus-width) solid var(--color-accent);
+    border-radius: calc(var(--pulse-radius, var(--radius-button)) + var(--focus-offset));
+    pointer-events: none;
+    opacity: 0;
+  }
+
+  &[data-pulse]::after {
+    will-change: transform, opacity;
+    animation: pulse-ring calc(var(--motion-fast) + var(--motion-slow)) var(--ease-spring);
+  }
 }
