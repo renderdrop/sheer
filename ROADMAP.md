@@ -104,6 +104,8 @@ The Stop hook picks the first open `- [ ]` line, so order matters. Scope: `docs/
 - [ ] Split (every N pages, ranges)
 - [ ] Compress: three named presets with estimated size
 - [ ] Politur M3
+  - (from M2 design review, major) Undo/Redo buttons in the toolbar (§3.27); "Bearbeitet"/"Edited" badge in the status bar (§3.10/§3.27); comments row excerpt shows free-text contents, not the kind label (§3.26)
+  - (from M2 design review, minor) note anchor glyph (§3.25); highlight blended (multiply) instead of painted over text; 1 px ring on colour dots in both themes; comment root rows aligned with the group header (§3.15); tools/zoom visibly disabled without a document (§3.22); no vertical scrollbar on the empty state when content fits
   - (from M2 reviews) author prompt: feedback when a confirmed name is invalid; own placeholder; focus return on close; end-to-end test that an empty author saves without /T
   - (from M2 reviews) comments panel: test Delete/Backspace (opaque guard, focus move); confirm-free delete stays undoable; cancel overlapping list calls; keep summary identity stable across refreshes
   - (from M2 reviews) `Models.closed` bounded; explain not_found after a poisoned lock in the UI; reset `closeRequests` after a quit walk; undoing a change to an annotation that was Hidden in the file must keep it hidden

@@ -6,6 +6,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-10-03
+
+M2 — Comment and markup.
+
+### Added
+
+- Annotation model with a per-document undo/redo command stack (Ctrl/Cmd+Z, Ctrl/Cmd+Shift+Z, Ctrl+Y on Windows; macOS Edit menu); existing annotations are imported from the file, unknown types stay read-only.
+- Tools: highlight, underline, strikethrough (from text), sticky notes with replies, free text (Helvetica), freehand ink (smoothing, pressure), rectangle, ellipse, line and arrow; one-shot or locked tool mode.
+- Annotations on the canvas: select, move, resize, nudge with the keyboard, delete; edited originals disappear from the page image at once and come back on undo.
+- Properties inspector with the eight Okabe-Ito colours, stroke presets, opacity, font size and line ends.
+- Comments panel: threads with replies, filter by type and author, sort by page or date, jump to the annotation.
+- Save and Save As (Ctrl/Cmd+S, Ctrl/Cmd+Shift+S): appearance streams for every type, incremental and atomic write, a backup of the original on the first save, the welcome document saves only as a copy; unsaved-changes dot, quit with unsaved documents, file-changed-on-disk confirmation.
+- Author name: empty by default; asked once at the first save of a document with annotations (the system name only as a suggestion); empty writes no author; invisible and bidirectional characters are removed.
+- Release workflow: unsigned NSIS and DMG installers attached to a GitHub Release on every tag.
+
+### Security
+
+- Bounded annotation import (counts, quads, string bytes per page and document) and an undo history bounded by bytes; the save checks the file again right before replacing it and refuses when it cannot tell; backups are private (0700); one save build per document at a time.
+- New dependency: lopdf 0.45.0 (MIT).
 ## [0.4.0] - 2026-10-03
 
 M1 — Viewer. CI green on Windows and macOS (run 37120538629).

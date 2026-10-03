@@ -763,3 +763,22 @@ fn a_save_without_a_data_folder_says_that_no_backup_was_made() {
     let wire = serde_json::to_value(&saved).unwrap();
     assert_eq!(wire["warnings"], json!(["backupSkipped"]));
 }
+
+#[test]
+fn an_empty_author_is_saved_without_a_t_entry_and_reads_back_as_none() {
+    let Some(state) = state() else { return };
+    let scratch = Scratch::new("noauthor");
+    let (id, path) = open(state, &scratch, "noauthor.pdf", &base());
+    let made = create(
+        state,
+        id,
+        json!({"pageId": 1, "kind": "note", "color": [255, 235, 0], "at": {"x": 10.0, "y": 10.0}, "icon": "note", "author": "", "contents": "x"}),
+    );
+    assert!(made.author.as_deref().unwrap_or("").is_empty());
+    state.save_in_place(id, SaveAck::default()).unwrap();
+    let bytes = read(&path);
+    let tail = String::from_utf8_lossy(&bytes[base().len()..]).into_owned();
+    assert!(tail.contains("/Subtype /Text") || tail.contains("/Subtype/Text"));
+    assert!(!tail.contains("/T ("), "no /T entry for an empty author");
+    assert!(!tail.contains("/T("), "no /T entry for an empty author");
+}
