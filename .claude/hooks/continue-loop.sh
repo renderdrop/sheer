@@ -36,5 +36,5 @@ if [ "$STALL" -ge "$STUCK_MAX" ]; then
 fi
 echo $((COUNT + 1)) > "$STATE/loop_count"
 NEXT_CLEAN=$(printf '%s' "$NEXT" | tr -d '"\\' | head -c 200)
-printf '{"decision":"block","reason":"Loop %s/%s. Do not stop. Update STATE.md, then run the Feature Loop (section 8.4) on the next open %s item: %s. If it is blocked, record it in docs/BLOCKERS.md, tick it as [~] and take the next one."}' "$((COUNT + 1))" "$MAX" "$SRC" "$NEXT_CLEAN"
+printf '{"decision":"block","reason":"Loop %s/%s. Do not stop. Update STATE.md, then run the Feature Loop (section 8.4) on the next work package (next open %s item: %s). If an item is blocked, record it in docs/BLOCKERS.md, tick it as [~] and take the next one."}' "$((COUNT + 1))" "$MAX" "$SRC" "$NEXT_CLEAN"
 exit 0

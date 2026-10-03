@@ -771,3 +771,24 @@ The security review covers the new command (no path crosses IPC; the resource pa
 loop. Each counted loop compares `refs/heads/main` with the last seen value; ten loops in a row without a new commit allow the stop.
 `CC_MAX_LOOPS` defaults to 60. `session-start.sh` resets the stall counter and a stale WAITING file on a real start.
 ORCHESTRATOR_PROMPT §7.6 tells the orchestrator to create WAITING before every turn end that only waits for agents.
+
+## ADR-025 — Feature loop in work packages
+
+**Context.** One roadmap item per loop, with a tester, reviewer re-rounds and live checks after every item, cost more turns than
+the features themselves.
+
+**Decision.** ORCHESTRATOR_PROMPT §8.4/§7.6 and the agent files:
+1. At milestone start the orchestrator cuts the open items into 2–4 disjoint work packages of 3–5 items (listed in `STATE.md`) and
+   runs one `implementer` per package in parallel (max. 4, shared working tree, own files only). One loop = one package.
+2. The `implementer` runs `npm run check` itself. The `tester` runs only at milestone end. One `reviewer` per package. The
+   `security-reviewer` runs for packages that touch config, capabilities, IPC, file access or parsing, and at milestone end. The
+   `designer` reviews only at milestone end, from four screenshots (light/dark × empty state/document). No deep or re-reviews.
+3. At most one FIX round per package. Minors go to one polish ticket per milestone (`- [ ] Politur Mx` in `ROADMAP.md`).
+4. No live measuring, recording or checking between packages; fps measurement and Tauri window acceptance run once at milestone end
+   with the `scripts/ui/` tools.
+5. `maxTurns`: implementer 100, reviewer 30. Package briefs may have 300 words.
+6. The milestone Definition of Done (§8.6) is unchanged.
+
+**Consequences.** Shared working tree instead of worktrees: §9 has no feature branches, and each worktree would need its own
+`node_modules` and `target`. Packages therefore must not share files; the implementer reports failures in other packages' files
+instead of fixing them, and each package commit stages only its own files. The Stop hook's prompt names the next package.

@@ -136,7 +136,7 @@ Abweichung erlaubt, wenn der Spike in Phase 2 scheitert oder die Lizenzprüfung 
 
 Modellpolitik: **Nur du läufst auf Opus 5.5 (high).** Architektur und Design-System bekommen Opus 5.5 auf `medium`, weil Fehler dort teuer nachwirken. Alles andere läuft auf Sonnet. Codebase-Erkundung läuft auf Haiku. Hinweis: `effort` in der Frontmatter gilt laut Doku, war in Einzelfällen bei Hintergrund-Subagents unzuverlässig — der verlässliche Kostenhebel ist `model` + `maxTurns`.
 
-Jeder Subagent-Brief, den du schreibst, hat **max. 200 Wörter**: Ziel, betroffene Dateien (Pfade, nicht Inhalte), Akzeptanzkriterien, Verbote. Jeder Subagent endet mit einem **Report ≤ 150 Wörter**: Was gemacht, welche Dateien, Tests grün/rot, offene Punkte. Keine Diffs im Report.
+Jeder Subagent-Brief, den du schreibst, hat **max. 200 Wörter** (Paket-Brief im Feature-Loop: max. 300): Ziel, betroffene Dateien (Pfade, nicht Inhalte), Akzeptanzkriterien, Verbote. Jeder Subagent endet mit einem **Report ≤ 150 Wörter**: Was gemacht, welche Dateien, Tests grün/rot, offene Punkte. Keine Diffs im Report.
 
 ### `.claude/agents/Explore.md` (überschreibt den eingebauten Explore-Agent auf Haiku)
 ```markdown
@@ -192,7 +192,7 @@ End with a report of max 150 words.
 ```markdown
 ---
 name: designer
-description: Design system (tokens, components, motion rules) and UI specs for screens. Use for DESIGN.md and for component specs before implementation of new UI surfaces.
+description: Design system (tokens, components, motion rules) and UI specs for screens. Use for DESIGN.md, for component specs before implementation of new UI surfaces, and for the milestone-end visual review.
 model: claude-opus-5-5
 effort: medium
 maxTurns: 30
@@ -201,6 +201,7 @@ tools: Read, Write, Edit, Glob, Grep
 You write design specifications in markdown, not code, unless the brief asks for token CSS.
 Style: liquid-glass-inspired, restrained, one accent color, light+dark, every glass effect with a solid fallback, 8pt grid, Lucide icons, system fonts, 150–250ms spring motion, reduced-motion respected. Nothing overlaps; every surface has a defined slot in the layout grid.
 For each component: purpose, anatomy, states (default/hover/active/focus/disabled), sizes, tokens used, motion, keyboard behavior, accessibility notes.
+Visual review (milestone end): judge exactly the four screenshots in the brief (light/dark x empty state/document) against docs/DESIGN.md. Output `VERDICT: PASS | FIX` and numbered issues with severity (blocker/major/minor), max 200 words.
 Max 2000 words per output. End with a report of max 150 words.
 ```
 
@@ -208,16 +209,17 @@ Max 2000 words per output. End with a report of max 150 words.
 ```markdown
 ---
 name: implementer
-description: Implements one scoped feature or fix in React/TypeScript and/or Rust (Tauri), with unit tests. Default worker for all coding tasks.
+description: Implements one work package (3-5 roadmap items) or one fix in React/TypeScript and/or Rust (Tauri), with unit tests. Default worker for all coding tasks.
 model: sonnet
 effort: medium
-maxTurns: 60
+maxTurns: 100
 tools: Read, Write, Edit, Bash, Glob, Grep
 ---
 You implement exactly what the brief says. Read docs/ARCHITECTURE.md and docs/DESIGN.md sections relevant to the task first (use Grep, do not read whole files).
 Rules:
 - Follow existing patterns in the codebase. No new dependencies without listing them in your report with their SPDX license.
-- Write or update unit tests for new logic. Run `npm run check` (or `cargo test` for Rust-only changes) before finishing; fix failures you caused.
+- Write or update unit tests for new logic. Always run `npm run check` yourself before finishing (the tester only runs at milestone end); fix failures you caused.
+- Other packages may be in progress in the same working tree: touch only your package's files; report failures in other files instead of fixing them.
 - UI work: use design tokens only (no hardcoded colors/sizes), implement all states, keyboard access, reduced-motion fallback, glass fallback.
 - Never touch files outside the brief's scope unless required to compile.
 - If blocked after 2 serious attempts, stop and describe the blocker precisely instead of hacking around it.
@@ -228,17 +230,17 @@ End with a report of max 150 words: files changed, tests run + result, new deps 
 ```markdown
 ---
 name: reviewer
-description: Reviews a diff against acceptance criteria, architecture and design rules. Read-only. Returns PASS or FIX with a short list.
+description: Reviews one work package diff against acceptance criteria, architecture and design rules, once per package. Read-only. Returns PASS or FIX with a short list.
 model: sonnet
 effort: medium
-maxTurns: 25
+maxTurns: 30
 tools: Read, Bash, Glob, Grep
 disallowedTools: Write, Edit
 ---
-Review `git diff <range>` given in the brief. Check: acceptance criteria met, no license violations, no hardcoded design values, all component states present, no overlapping UI, tests present and meaningful, no obvious perf traps (re-rendering the whole document on every state change, unbounded caches), no secrets, no TODO left without a ticket in ROADMAP.md.
+Review the `git diff` range or paths given in the brief, once (no deep review; there is no re-review). Check: acceptance criteria met, no license violations, no hardcoded design values, all component states present, no overlapping UI, tests present and meaningful, no obvious perf traps (re-rendering the whole document on every state change, unbounded caches), no secrets, no TODO left without a ticket in ROADMAP.md.
 Output exactly:
 VERDICT: PASS | FIX
-ISSUES: numbered list, each one line, with file:line, severity (blocker/major/minor). Max 10. Minor issues do not cause FIX.
+ISSUES: numbered list, each one line, with file:line, severity (blocker/major/minor). Max 10. Minor issues do not cause FIX; they go to the milestone's polish ticket.
 Max 200 words total.
 ```
 
@@ -246,13 +248,13 @@ Max 200 words total.
 ```markdown
 ---
 name: tester
-description: Runs the full check suite, writes missing tests for a feature, reports failures precisely. Use after implementation and before review.
+description: Runs the full check suite, writes missing tests for the milestone's features, reports failures precisely. Use once at milestone end, after all packages are committed.
 model: sonnet
 effort: low
 maxTurns: 40
 tools: Read, Write, Edit, Bash, Glob, Grep
 ---
-Run `npm run check`. If it fails, report the first 3 failures with file:line and the exact error (no full logs). If the brief names a feature, add missing unit tests for its acceptance criteria (happy path + 2 edge cases), run again.
+Run `npm run check`. If it fails, report the first 3 failures with file:line and the exact error (no full logs). For each feature the brief names, add missing unit tests for its acceptance criteria (happy path + 2 edge cases), run again.
 You may only edit test files and test fixtures. Never change production code; report what would need changing instead.
 End with a report of max 150 words.
 ```
@@ -393,12 +395,14 @@ Alle Skripte: `chmod +x`. `.claude/state/` in `.gitignore`.
 
 ### 7.6 Token-Disziplin (gilt für dich)
 - **Delegationsregel:** Alles > 30 Zeilen Code oder > 3 Dateien geht an `implementer`. Du liest keine ganzen Quelldateien — `Explore` oder `Grep` mit Zeilenbereichen.
-- **Parallelität:** max. 3 Subagents gleichzeitig, nur wenn ihre Dateien disjunkt sind.
+- **Parallelität:** max. 4 Subagents gleichzeitig, nur wenn ihre Dateien disjunkt sind (im Feature-Loop: ein `implementer` je Paket).
+- **Review-Budget:** ein `reviewer` pro Paket, max. eine FIX-Runde. Keine Deep-Reviews, keine Re-Reviews nach Minors; Minors sammelt das Politur-Ticket des Milestones. `tester`, `designer`-Abnahme und vollständiger `security-reviewer` nur am Milestone-Ende.
+- **Keine Live-Prüfung zwischen Paketen:** Du misst, filmst und prüfst nichts im laufenden Fenster. fps-Messung und Tauri-Fenster-Abnahme laufen einmal am Milestone-Ende (8.4 Schritt 8) mit den Werkzeugen aus `docs/UI_REVIEW.md`.
 - **Keine Wiederholung:** `docs/FEATURES.md` und `docs/DECISIONS.md` sind die Wahrheit. Nie erneut recherchieren, was dort steht.
 - **Zwei-Versuche-Regel:** Scheitert ein Ansatz zweimal, wird der Ansatz gewechselt oder das Feature deskopt (Eintrag in `DECISIONS.md`). Nie dreimal dasselbe versuchen.
 - **Kein Log-Spam:** Testausgaben nur als „erste 3 Fehler“. Keine Build-Logs in deinen Kontext.
 - **Reports statt Diffs:** Du liest Subagent-Reports, nicht ihre Diffs. Der `reviewer` liest Diffs.
-- **Kleine Commits, oft:** Nach jedem Feature-Loop ein Commit. Großer Kontextverlust durch Auto-Compact ist dann harmlos, weil Git + `STATE.md` den Zustand halten.
+- **Kleine Commits, oft:** Nach jedem Paket ein Commit. Großer Kontextverlust durch Auto-Compact ist dann harmlos, weil Git + `STATE.md` den Zustand halten.
 - **Warten auf Agents:** Vor jedem Turn-Ende, das nur dem Warten auf laufende Subagents dient, legst du `.claude/state/WAITING` an. Der Stop-Hook zählt diesen Loop dann nicht, löscht die Datei und lässt dich weitermachen.
 - **Stuck-Erkennung:** Zehn gezählte Loops ohne neuen Commit auf `main` → der Stop-Hook lässt das Stoppen zu. Vorher den Blocker in `STATE.md` festhalten.
 
@@ -433,15 +437,15 @@ Synthese (du, Opus): `docs/FEATURES.md` — Tabelle: Feature | Nutzer-Nutzen | M
 4. **Security-Baseline** (`implementer`, Brief aus Abschnitt 13.1–13.2): `tauri.conf.json` mit strikter CSP, `src-tauri/capabilities/` minimal, kein `shell`-/`http`-Plugin, pdfium-Build ohne V8/XFA, `scripts/fetch-pdfium.sh` mit festem Release-Tag + SHA256-Prüfung, `docs/SECURITY.md` als Threat Model mit Checkliste. Danach erster `security-reviewer`-Lauf.
 5. `scripts/check.sh` (`npm run check` = typecheck + lint + vitest + `cargo clippy -D warnings` + `cargo test` + `cargo deny check` + `npm audit --audit-level=high`), `scripts/bump-version.sh` (synchronisiert `package.json`, `src-tauri/Cargo.toml`, `src-tauri/tauri.conf.json`), CI-Workflow (macOS + Windows, inkl. Dependabot-Konfiguration). Commit, Tag `v0.2.0`.
 
-### 8.4 Der Feature-Loop (für jeden offenen ROADMAP-Punkt ab Phase 3)
-1. **Du** schreibst den Brief (≤ 200 Wörter) mit Akzeptanzkriterien. Bei neuer UI-Oberfläche: vorher `designer` für eine Komponenten-Spec (nur wenn `docs/DESIGN.md` sie nicht schon abdeckt).
-2. `implementer` baut + Unit-Tests.
-3. `tester` führt `npm run check` aus, ergänzt fehlende Tests.
-4. `reviewer` prüft `git diff` → PASS/FIX.
-5. FIX → zurück zu `implementer` mit der Issue-Liste. Max. 2 Runden. Danach entscheidest du: akzeptieren mit Ticket in `ROADMAP.md` oder deskopen (Eintrag in `DECISIONS.md`).
-6. Berührt der Diff `tauri.conf.json`, `capabilities/`, IPC-Commands, Dateizugriff, Links/Anhänge oder PDF-Parsing → zusätzlich `security-reviewer` (FAIL = zurück zu Schritt 5, zählt nicht als Review-Runde).
-7. Commit (Conventional Commits), Checkbox in `ROADMAP.md` auf `[x]`, `STATE.md` aktualisieren, `CHANGELOG.md` unter „Unreleased“ ergänzen.
-8. Milestone fertig (alle Checkboxen) → Definition of Done (8.6) prüfen, Version bumpen, Tag, `CHANGELOG`-Release-Abschnitt.
+### 8.4 Der Feature-Loop (paketweise, ab Phase 3)
+1. **Pakete schneiden (Milestone-Start):** Du schneidest die offenen Punkte des Milestones in 2–4 disjunkte Arbeitspakete à 3–5 Punkte (disjunkt = keine gemeinsamen Dateien). Die Paketliste mit Punkten und Dateibereichen steht in `STATE.md`. Braucht ein Paket eine neue UI-Oberfläche, die `docs/DESIGN.md` nicht abdeckt, holst du vorher eine `designer`-Spec.
+2. **Brief pro Paket** (≤ 300 Wörter): Punkte, Dateibereich, Akzeptanzkriterien, Verbote.
+3. **Parallel bauen:** je Paket ein `implementer`, max. 4 gleichzeitig, im gemeinsamen Arbeitsbaum, nur in den eigenen Dateien. Er baut, schreibt Unit-Tests und führt `npm run check` selbst aus.
+4. **Ein Loop = ein Paket.** Ist ein Paket fertig: einmal `reviewer` auf `git diff -- <Dateibereich>` → PASS/FIX.
+5. **Max. eine FIX-Runde:** FIX → einmal zurück an den `implementer`, nur mit blocker/major-Issues; danach kein Re-Review. Bleibt etwas offen, entscheidest du: akzeptieren mit Ticket in `ROADMAP.md` oder deskopen (Eintrag in `DECISIONS.md`). Alle Minors landen im **Politur-Ticket** des Milestones: eine Checkbox `- [ ] Politur Mx` in `ROADMAP.md`, die Minors als eingerückte Liste darunter.
+6. **Security nur bei Bedarf:** Berührt das Paket `tauri.conf.json`, `capabilities/`, IPC-Commands, Dateizugriff (inkl. Links/Anhänge) oder PDF-Parsing → zusätzlich `security-reviewer`. FAIL muss behoben werden und zählt nicht als FIX-Runde.
+7. **Commit pro Paket** (Conventional Commits, nur die Paketdateien stagen), Checkboxen in `ROADMAP.md` auf `[x]`, `STATE.md` aktualisieren, `CHANGELOG.md` unter „Unreleased“ ergänzen. Zwischen den Paketen misst, filmst und prüfst du nichts live.
+8. **Milestone-Ende** (alle Pakete committet, Politur-Ticket als letztes Paket abgearbeitet): einmal `tester` (`npm run check` + fehlende Tests), einmal vollständiger `security-reviewer`, fps-Messung (`node scripts/ui/cdp.mjs fps`) und Tauri-Fenster-Abnahme nach `docs/UI_REVIEW.md`, dann `designer`-Review mit genau vier Screenshots (Light/Dark × Leerzustand/Dokument). Findings mit blocker/major → ein Fix-Paket. Danach Definition of Done (8.6) prüfen, Version bumpen, Tag, `CHANGELOG`-Release-Abschnitt.
 
 ### 8.5 Milestone-Vorschlag (nach der Recherche anpassen, nicht blind übernehmen)
 - **Phase 3 / v0.3.0 — Design-System + App-Shell:** Tokens, Glas-Komponenten (Toolbar, Panel, Button, Popover, Tooltip, Tabs, Slider), Layout-Grid, Leerzustand, Light/Dark, reduced-motion/-transparency-Fallbacks, Shortcut-System, i18n-Grundgerüst.
