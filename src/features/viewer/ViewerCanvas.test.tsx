@@ -759,6 +759,28 @@ describe('the opening zoom (MOTION 4.4)', () => {
     expect(useView.getState().byDoc[1]?.opening).toBe(false);
   });
 
+  it('opens at fit width where that is below 100 %, and at 100 % with fit none where it is above', () => {
+    beginOpening(1);
+    showDocument(BOOK, { viewport: { width: 500, height: 700 } });
+    setup(<ViewerCanvas />);
+    const narrow = useView.getState().byDoc[1];
+    expect(narrow?.fit).toBe('width');
+    expect(narrow?.zoom).toBeLessThan(1);
+    resetTransition();
+    resetViewer();
+    beginOpening(1);
+    showDocument(BOOK, { viewport: { width: 1600, height: 700 } });
+    setup(<ViewerCanvas />);
+    expect(useView.getState().byDoc[1]).toMatchObject({ fit: 'none', zoom: 1, opening: false });
+  });
+
+  it('does not apply the cap to a document that is not opening: a restored zoom stays', () => {
+    showDocument(BOOK, { viewport: { width: 1600, height: 700 } });
+    useView.getState().setZoom(1, 2.5, null);
+    setup(<ViewerCanvas />);
+    expect(useView.getState().byDoc[1]?.zoom).toBe(2.5);
+  });
+
   it('is applied only at the opening: a canvas that is resized later does not fit again', () => {
     beginOpening(1);
     showDocument(BOOK, { viewport: { width: 1600, height: 700 } });

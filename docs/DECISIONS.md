@@ -752,6 +752,7 @@ exist in M1. Highlight and comment (M2), reorder (M3) and signature (M4) follow.
    ([4] before [3]), and the reorder task moves page 3 above page 4. Five pages in total, and the closing page never moves.
 3. **Coach mark at `--z-popover`**, clamped to the canvas slot, never over chrome, its anchor or its target. It is non-modal, never takes
    focus, sits in the F6 cycle, and is not in `DISMISS_PRIORITY` (Esc releases tools as before). The anchor's tooltip is suppressed, the card yields to popovers, and toasts move above it.
+   The Navigate card may cover the page's own copy of the same instruction at scroll 0; accepted.
 4. **Once only.** Setting `welcomeTour: pending | shown`, written `shown` *before* the document opens. It does not start when a file
    came with the launch. Restart lives in the Settings popover. Close or Skip ends the tour, with no resume.
 5. **Sample semantics.** `open_welcome_document()` opens the resource through the normal intake (hostile input as always) as

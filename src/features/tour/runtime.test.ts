@@ -105,10 +105,10 @@ describe('the steps', () => {
     vi.advanceTimersByTime(HOLD_MS);
     expect(tour()).toMatchObject({ index: 2, phase: 'waiting' });
 
-    // Zoom: 1.2 times the zoom at the step start.
-    useView.getState().setZoom(1, 1.19);
+    // Zoom: any zoom-in above the zoom at the step start.
+    useView.getState().setZoom(1, 0.9);
     expect(tour().phase).toBe('waiting');
-    useView.getState().setZoom(1, 1.2);
+    useView.getState().setZoom(1, 1.1);
     expect(tour().phase).toBe('done');
     vi.advanceTimersByTime(HOLD_MS);
     expect(tour().phase).toBe('finishing');

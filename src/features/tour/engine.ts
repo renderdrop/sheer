@@ -6,9 +6,6 @@
 /** The page must hold still this long before the Navigate step counts (the page announcement's delay, DESIGN 3.10). */
 export const NAVIGATE_SETTLE_MS = 500;
 
-/** A zoom of at least this factor of the zoom at the step's start completes the Zoom step. */
-export const ZOOM_FACTOR = 1.2;
-
 /** How long the "done" card is held before the next step (or the end) follows, ms. */
 export const HOLD_MS = 1200;
 
@@ -33,7 +30,7 @@ export function isSatisfied(stepId: string, view: ViewReading, baseline: Baselin
     case 'navigate':
       return view.pageIndex >= 1;
     case 'zoom':
-      return view.zoom >= baseline.zoom * ZOOM_FACTOR;
+      return view.zoom > baseline.zoom + 1e-9;
     default:
       return false;
   }

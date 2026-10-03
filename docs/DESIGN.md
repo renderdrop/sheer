@@ -485,7 +485,7 @@ target rects in pt, `shipped`). The PR that ships a step's tool flips `shipped`.
 |---|---|---|---|---|---|
 | 1 | open | 1 | status bar file name | the welcome document's `opened` event, after its first frame has faded in (§4.6) | M1 |
 | 2 | navigate | 1 | status bar page button | current page (§3.10) ≥ 2 once scrolling settles (500 ms), by any input | M1 |
-| 3 | zoom | Z | toolbar zoom in | a zoom commits at rest at ≥ 1.2 × the zoom at step start (button, keys, wheel, pinch, menu) | M1 |
+| 3 | zoom | Z | toolbar zoom in | a zoom-in commits at rest above the zoom at step start (button, keys, wheel, pinch, menu) | M1 |
 | 4 | highlight | M | Highlight tool → sentence box | a highlight covers ≥ 50 % of the sentence quad | M2 |
 | 5 | comment | M | Comment tool → comment spot | a comment anchored ≤ 24 pt from the spot centre | M2 |
 | 6 | sign | S | Signature tool → signature box | a signature's centre lies in the box | M4 |

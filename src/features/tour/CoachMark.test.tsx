@@ -1,9 +1,10 @@
 // @vitest-environment jsdom
 import { act, screen } from '@testing-library/react';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { useState } from 'react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { setup } from '../../test/render';
-import { CoachMark } from './CoachMark';
+import { CANVAS_EXTRA_SCROLL, CoachMark } from './CoachMark';
 import { useTour } from './store';
 import { TourPill } from './TourPill';
 
@@ -102,6 +103,9 @@ describe('the coach mark', () => {
     act(() => useTour.getState().complete());
     expect(await screen.findByRole('heading', { name: 'Done: Open a PDF' })).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'Skip tour' })).toBeNull();
+    // The success moment tints the chip and the card is a solid surface.
+    expect(document.querySelector('[data-done]')?.className).toContain('bg-accent');
+    expect(document.querySelector('[data-tour-card]')?.className).toContain('surface-dialog');
   });
 
   it('points at More and says so when the zoom button has moved into the overflow', async () => {
@@ -143,5 +147,86 @@ describe('the coach mark', () => {
     act(() => useTour.getState().start(1));
     act(() => useTour.setState({ index: 2 }));
     expect(await screen.findByRole('region', { name: 'Zoom in' })).toBeTruthy();
+  });
+
+  describe('the clearance under the card', () => {
+    /** A canvas that scrolls, as the viewer renders it; `key` remounts it, as a document switch does. */
+    function Canvas({ id }: { id: number }) {
+      return (
+        <main key={id} data-action-scope="canvas">
+          <div role="region" aria-label="Document" data-canvas-id={id} ref={scrolls} />
+        </main>
+      );
+    }
+    function Shell() {
+      const [id, setId] = useState(1);
+      return (
+        <>
+          <Canvas id={id} />
+          <button type="button" onClick={() => setId(2)}>
+            switch
+          </button>
+          <Fixture />
+        </>
+      );
+    }
+    // The status bar's anchors sit at the bottom of the window, so the card is placed above them.
+    beforeEach(() => {
+      vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: HTMLElement) {
+        const at = this.hasAttribute('data-tour-anchor') ? 700 : 0;
+        return {
+          left: 0,
+          top: at,
+          width: 100,
+          height: 24,
+          right: 100,
+          bottom: at + 24,
+          x: 0,
+          y: at,
+          toJSON: () => ({}),
+        };
+      });
+    });
+    afterEach(() => vi.restoreAllMocks());
+    const scroller = (id: number) => document.querySelector<HTMLElement>(`[data-canvas-id="${id}"]`);
+    const scrolls = (element: HTMLElement | null) => {
+      if (element === null) return;
+      Object.defineProperty(element, 'scrollHeight', { value: 2000, configurable: true });
+      Object.defineProperty(element, 'clientHeight', { value: 600, configurable: true });
+    };
+
+    it('adds scroll height through a custom property and leaves the viewport alone, and removes it when the step ends', async () => {
+      const { user } = setup(<Shell />);
+      act(() => useTour.getState().start(1));
+      await screen.findByRole('region', { name: 'Open a PDF' });
+      const region = scroller(1);
+      await act(async () => {
+        await Promise.resolve();
+      });
+      expect(region?.style.getPropertyValue(CANVAS_EXTRA_SCROLL)).toContain('calc(');
+      // Nothing that resizes the content box: no padding, border or size is written.
+      expect(region?.style.paddingBottom).toBe('');
+      expect(region?.style.height).toBe('');
+      act(() => useTour.getState().skip());
+      await act(async () => {
+        await Promise.resolve();
+      });
+      expect(region?.style.getPropertyValue(CANVAS_EXTRA_SCROLL)).toBe('');
+      void user;
+    });
+
+    it('is removed when the card unmounts, and follows a canvas that remounts', async () => {
+      const { user, unmount } = setup(<Shell />);
+      act(() => useTour.getState().start(1));
+      await screen.findByRole('region', { name: 'Open a PDF' });
+      const first = scroller(1);
+      expect(first?.style.getPropertyValue(CANVAS_EXTRA_SCROLL)).toContain('calc(');
+      await user.click(screen.getByRole('button', { name: 'switch' }));
+      const second = scroller(2);
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      expect(second?.style.getPropertyValue(CANVAS_EXTRA_SCROLL)).toContain('calc(');
+      unmount();
+      expect(second?.style.getPropertyValue(CANVAS_EXTRA_SCROLL)).toBe('');
+    });
   });
 });

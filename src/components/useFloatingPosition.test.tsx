@@ -43,6 +43,7 @@ beforeEach(() => {
   rectReads = 0;
   vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: HTMLElement) {
     rectReads += 1;
+    if (this.dataset.slot !== undefined) return rect(50, 0, 310, 500);
     return this.tagName === 'BUTTON' ? anchorRect : rect(0, 0, 200, 100);
   });
 });
@@ -171,5 +172,56 @@ describe('useFloatingPosition', () => {
     expect(observer.takeRecords().length).toBeGreaterThan(0);
     expect(floating.style.top).toBe('240px');
     observer.disconnect();
+  });
+
+  describe('clampTo', () => {
+    function Clamped({ clamp }: { clamp: boolean }) {
+      const anchor = useRef<HTMLButtonElement>(null);
+      const floating = useRef<HTMLDivElement>(null);
+      useFloatingPosition({
+        anchor,
+        floatingRef: floating,
+        active: true,
+        side: 'bottom',
+        align: 'start',
+        clampTo: clamp ? { selector: '[data-slot]', inset: 16 } : undefined,
+      });
+      return (
+        <>
+          <div data-slot="" />
+          <button ref={anchor} type="button">
+            anchor
+          </button>
+          <div ref={floating} data-testid="floating" />
+        </>
+      );
+    }
+    /** The slot's content box starts at 50 and is 300 wide (a 10 px scrollbar already taken off); the card is 200 wide. */
+    function mockSlot(): void {
+      const slot = document.querySelector<HTMLElement>('[data-slot]');
+      if (slot === null) return;
+      Object.defineProperty(slot, 'clientLeft', { value: 0, configurable: true });
+      Object.defineProperty(slot, 'clientWidth', { value: 300, configurable: true });
+    }
+
+    it('keeps the element inside the slot, inset from its edges', () => {
+      anchorRect = rect(340, 100, 40, 32);
+      const { getByTestId } = render(<Clamped clamp />);
+      mockSlot();
+      fireEvent.scroll(window);
+      runFrame();
+      // Right edge limit: 50 + 300 - 16 - 200 = 134.
+      expect(getByTestId('floating').style.left).toBe('134px');
+      anchorRect = rect(0, 100, 40, 32);
+      fireEvent.scroll(window);
+      runFrame();
+      expect(getByTestId('floating').style.left).toBe('66px');
+    });
+
+    it('leaves the position alone when omitted', () => {
+      anchorRect = rect(340, 100, 40, 32);
+      const { getByTestId } = render(<Clamped clamp={false} />);
+      expect(getByTestId('floating').style.left).toBe('340px');
+    });
   });
 });

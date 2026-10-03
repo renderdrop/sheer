@@ -17,6 +17,11 @@ interface Options {
   offset?: number;
   /** Shift along the other axis, see `computePosition`. */
   crossOffset?: number;
+  /**
+   * Keeps the element horizontally inside the content box of this element (a scroller's width without its scrollbar), `inset`
+   * px from its edges, on top of the window margin. Looked up on every placement, so a slot that appears later is honoured.
+   */
+  clampTo?: { selector: string; inset: number };
 }
 
 /**
@@ -38,7 +43,10 @@ export function useFloatingPosition({
   align,
   offset,
   crossOffset,
+  clampTo,
 }: Options): void {
+  const clampSelector = clampTo?.selector;
+  const clampInset = clampTo?.inset;
   useLayoutEffect(() => {
     const node = source !== null && 'current' in source ? source.current : source;
     // A `display: contents` wrapper (Tooltip) has no box: its first child is the anchor.
@@ -71,7 +79,16 @@ export function useFloatingPosition({
         margin: gap,
         crossOffset,
       });
-      const left = `${placed.x}px`;
+      let x = placed.x;
+      const slot = clampSelector === undefined ? null : document.querySelector<HTMLElement>(clampSelector);
+      if (slot !== null) {
+        const box = slot.getBoundingClientRect();
+        const low = box.left + slot.clientLeft + (clampInset ?? 0);
+        const high =
+          box.left + slot.clientLeft + slot.clientWidth - (clampInset ?? 0) - floating.getBoundingClientRect().width;
+        x = Math.max(low, Math.min(x, Math.max(low, high)));
+      }
+      const left = `${x}px`;
       const top = `${placed.y}px`;
       if (left !== written.left) {
         floating.style.left = left;
@@ -111,5 +128,5 @@ export function useFloatingPosition({
       observer.disconnect();
       cancelAnimationFrame(frame);
     };
-  }, [source, floatingRef, active, side, align, offset, crossOffset]);
+  }, [source, floatingRef, active, side, align, offset, crossOffset, clampSelector, clampInset]);
 }

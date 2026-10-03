@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { NAVIGATE_SETTLE_MS, ZOOM_FACTOR, isSatisfied, settleDelay } from './engine';
+import { NAVIGATE_SETTLE_MS, isSatisfied, settleDelay } from './engine';
 import { SHIPPED_STEPS, shippedOf, type TourStep } from './steps';
 
 const view = (pageIndex: number, zoom: number) => ({ pageIndex, zoom });
@@ -12,11 +12,11 @@ describe('step conditions', () => {
     expect(isSatisfied('navigate', view(3, 1), { zoom: 1 })).toBe(true);
   });
 
-  it('completes Zoom at 1.2 times the zoom the step started with', () => {
-    expect(isSatisfied('zoom', view(0, 1.19), { zoom: 1 })).toBe(false);
-    expect(isSatisfied('zoom', view(0, ZOOM_FACTOR), { zoom: 1 })).toBe(true);
-    expect(isSatisfied('zoom', view(0, 1.49), { zoom: 1.25 })).toBe(false);
-    expect(isSatisfied('zoom', view(0, 1.5), { zoom: 1.25 / 1.04 })).toBe(true);
+  it('completes Zoom at any committed zoom above the zoom the step started with', () => {
+    expect(isSatisfied('zoom', view(0, 1), { zoom: 1 })).toBe(false);
+    expect(isSatisfied('zoom', view(0, 0.9), { zoom: 1 })).toBe(false);
+    expect(isSatisfied('zoom', view(0, 1.1), { zoom: 1 })).toBe(true);
+    expect(isSatisfied('zoom', view(0, 1.3), { zoom: 1.25 })).toBe(true);
   });
 
   it('never completes Open or an unknown step by state', () => {

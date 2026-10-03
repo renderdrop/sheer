@@ -240,7 +240,9 @@ export function ViewerCanvas({ style }: { style?: CSSProperties }) {
     resolveFresh(docId);
     const fitted = fitZoomFor('width', metrics, 0, viewport, gap);
     if (fitted !== null && fitted < 1 - 1e-9) useView.getState().setFit(docId, 'width', fitted, null);
-    useView.getState().settleOpening(docId);
+    // Where fit width would exceed 100 % the document opens at exactly 100 %, fixed, whatever it was at before (the welcome document
+    // included); this also ends the opening.
+    else useView.getState().setZoom(docId, 1, null);
   }, [docId, viewport, pagesLoaded, metrics, gap]);
 
   // The clone of a drop or of a thumbnail (MOTION 4.6) flies to its page once that is laid out (and, for a jump, scrolled to).

@@ -209,7 +209,7 @@
   "tour.step.open.title": "PDF öffnen",
   "tour.step.open.text": "Diese Datei hat sich selbst geöffnet. Künftig: Öffnen… oder Datei ablegen.",
   "tour.step.navigate.title": "Zu Seite 2",
-  "tour.step.navigate.text": "Scrollen Sie nach unten oder drücken Sie Bild ab.",
+  "tour.step.navigate.text": "Scrollen Sie nach unten oder drücken Sie Bild\u00a0ab.",
   "tour.step.zoom.title": "Vergrößern",
   "tour.step.zoom.text": "Klicken Sie auf +, bis die kleine Schrift gut lesbar ist.",
   "tour.step.highlight.title": "Satz hervorheben",

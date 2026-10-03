@@ -5,6 +5,7 @@ import { createPortal } from 'react-dom';
 
 import { Button, Icon, IconButton, pulse } from '../../components';
 import { usePopoverMotion } from '../../components/motion';
+import { tokenPx } from '../../components/tokens';
 import { useFloatingPosition } from '../../components/useFloatingPosition';
 import { useT } from '../../i18n';
 import { resolveAnchor, type ResolvedAnchor } from './anchors';
@@ -32,6 +33,70 @@ function useOverlayOpen(active: boolean): boolean {
     return () => observer.disconnect();
   }, [active]);
   return active && open;
+}
+
+/** The canvas's scroller: the slot the card stays inside, 16 px from its edges and clear of its scrollbar. */
+const CANVAS_SCROLLER = '[data-action-scope="canvas"] > [role="region"]';
+
+/** The scroll extent the card asks of the canvas: `Canvas` adds it as a margin after its content, which never changes the viewport it reports. */
+export const CANVAS_EXTRA_SCROLL = '--canvas-extra-scroll';
+
+/** The canvas's scroller, looked up again when the canvas remounts (another document came forward) while the card is active. */
+function useCanvasScroller(active: boolean): HTMLElement | null {
+  const [scroller, setScroller] = useState<HTMLElement | null>(null);
+  useLayoutEffect(() => {
+    if (!active) return;
+    const find = () => {
+      const next = document.querySelector<HTMLElement>(CANVAS_SCROLLER);
+      setScroller((previous) => (previous === next ? previous : next));
+    };
+    find();
+    let frame = 0;
+    const observer = new MutationObserver(() => {
+      if (frame === 0) {
+        frame = requestAnimationFrame(() => {
+          frame = 0;
+          find();
+        });
+      }
+    });
+    observer.observe(document.body, { childList: true, subtree: true });
+    return () => {
+      observer.disconnect();
+      cancelAnimationFrame(frame);
+    };
+  }, [active]);
+  return active ? scroller : null;
+}
+
+/**
+ * While the card sits over the canvas (it was placed above its anchor, at the status bar), the canvas gets extra scroll height
+ * after its last page equal to the card's height, so what the step refers to can be scrolled clear of it. It is a custom property
+ * that `Canvas` turns into a margin, so the viewport the canvas reports does not change. Only a canvas that scrolls already gets it
+ * (no scrollbar may appear). Removed when the card goes (the step ends, is skipped, or unmounts).
+ */
+function useCanvasClearance(
+  positioner: RefObject<HTMLElement | null>,
+  card: RefObject<HTMLElement | null>,
+  active: boolean,
+): void {
+  const scroller = useCanvasScroller(active);
+  useLayoutEffect(() => {
+    const box = card.current;
+    if (!active || scroller === null || box === null) return;
+    const apply = () => {
+      const over = positioner.current?.dataset.side === 'top' && scroller.scrollHeight > scroller.clientHeight;
+      if (over) scroller.style.setProperty(CANVAS_EXTRA_SCROLL, `calc(var(--spacing-3) + ${box.offsetHeight}px)`);
+      else scroller.style.removeProperty(CANVAS_EXTRA_SCROLL);
+    };
+    apply();
+    const observer = new ResizeObserver(apply);
+    observer.observe(box);
+    return () => {
+      observer.disconnect();
+      scroller.style.removeProperty(CANVAS_EXTRA_SCROLL);
+    };
+  }, [positioner, card, active, scroller]);
 }
 
 /** The anchor element of the running step; looked up again after a resize, since the toolbar may move the control into More. */
@@ -133,7 +198,9 @@ function Card({ anchor }: CardProps) {
     active: present,
     side: anchor.spec.side,
     align: anchor.spec.align,
+    clampTo: { selector: CANVAS_SCROLLER, inset: tokenPx('--space-2', 16) },
   });
+  useCanvasClearance(positioner, card, present);
 
   // The pill's Enter shows the card and focuses its first control; it never takes focus on appearing otherwise.
   useLayoutEffect(() => {
@@ -178,10 +245,15 @@ function Card({ anchor }: CardProps) {
           const from = event.relatedTarget;
           if (from instanceof HTMLElement && !card.current?.contains(from)) lastFocus.current = from;
         }}
-        className="glass-2 flex w-popover-max max-w-full flex-col gap-1 rounded-panel p-2 text-md text-text"
+        className="surface-dialog flex w-popover-max max-w-full flex-col gap-1 rounded-panel p-2 text-md text-text"
       >
         <div className="flex h-3 items-center gap-1">
-          <span className="inline-flex h-3 items-center gap-0-5 rounded-pill bg-tile px-1 text-xs tabular-nums text-tile-icon">
+          <span
+            data-done={done ? '' : undefined}
+            className={`inline-flex h-3 items-center gap-0-5 rounded-pill px-1 text-xs tabular-nums transition-colors ${
+              done ? 'bg-accent text-on-accent' : 'bg-tile text-tile-icon'
+            }`}
+          >
             {done ? <Icon icon={Check} size={12} /> : null}
             {t('tour.stepOf', { step: index + 1, total })}
           </span>
@@ -197,7 +269,7 @@ function Card({ anchor }: CardProps) {
         </p>
         {!done && (
           <div className="flex h-3 items-center">
-            <Button variant="ghost" size="sm" onClick={skip}>
+            <Button variant="ghost" size="sm" onClick={skip} className="ms-[calc(-1*var(--spacing-1))]">
               {t('tour.skip')}
             </Button>
           </div>
