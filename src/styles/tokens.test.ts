@@ -306,6 +306,8 @@ describe('widths and the left panel (DESIGN 2, 3.3 to 3.8)', () => {
     '--panel-max': '400px',
     '--panel-collapse-below': '144px',
     '--splitter-width': '8px',
+    '--outline-indent': '16px', // outline tree (3.15)
+    '--outline-indent-max': '64px',
   };
 
   it.each(Object.entries(widths))('%s is %s', (name, value) => {

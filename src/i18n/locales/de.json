@@ -54,6 +54,16 @@
   "thumbnails.list": "Seitenminiaturen",
   "thumbnails.page": "Seite {page}",
 
+  "outline.list": "Dokumentgliederung",
+  "outline.collapseAll": "Alle zuklappen",
+  "outline.untitled": "Ohne Titel",
+  "outline.noTarget": "Dieser Eintrag hat kein Ziel im Dokument.",
+  "outline.empty": "Keine Gliederung",
+  "outline.emptyHint": "Dieses Dokument hat keine Lesezeichen.",
+  "outline.loading": "Gliederung wird geladen",
+  "outline.error": "Die Gliederung konnte nicht gelesen werden.",
+  "outline.retry": "Erneut versuchen",
+
   "inspector.label": "Eigenschaften",
   "inspector.title": "Werkzeugoptionen",
   "inspector.empty": "Objekt oder Werkzeug auswählen, um die Optionen anzuzeigen.",

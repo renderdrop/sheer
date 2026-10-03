@@ -4,6 +4,7 @@ import { create } from 'zustand';
 import { closeDocument, openDocumentDialog, type DocumentInfo, type OpenOutcome } from '../../api/documents';
 import { toAppError, type AppError } from '../../api/errors';
 import { getPageSizes } from '../../api/render';
+import { tokenPx } from '../../components/tokens';
 import { renderScheduler } from '../../engine/renderScheduler';
 import { DEFAULT_ZOOM, clampZoom, wheelFactor } from '../../lib/zoom';
 import { useDocuments } from '../../stores/documents';
@@ -83,6 +84,8 @@ export interface ViewerState {
   /** Continuous scrolling, one page at a time, or two pages side by side; the current page stays in view. */
   setScrollMode: (mode: ScrollMode) => void;
   goToPage: (pageIndex: number) => void;
+  /** Shows the point `yPt` (points from the top of the page's box) of a page at the canvas's top padding; the outline's jump. */
+  goToPoint: (pageIndex: number, yPt: number) => void;
   /** One page on (a spread on, in the two-page mode) or back; stops at the first and the last. */
   nextPage: () => void;
   previousPage: () => void;
@@ -189,6 +192,25 @@ export const useViewer = create<ViewerState>()((set, get) => {
     useView.getState().setPage(current.docId, target, anchor);
   };
 
+  /** Like `goTo`, to a point of the page: it lands 24 px (`--space-3`) below the viewport's top (the canvas's `scroll-padding-top`). */
+  const goToPoint = (pageIndex: number, yPt: number) => {
+    const current = active();
+    if (current === null || !Number.isFinite(pageIndex)) return;
+    if (!Number.isFinite(yPt) || yPt <= 0) {
+      goTo(pageIndex);
+      return;
+    }
+    const target = Math.min(Math.max(0, current.view.pageCount - 1), Math.max(0, Math.trunc(pageIndex)));
+    const layout = layoutFor(current.docId, get().viewport, { current: target });
+    const top = layout === null ? null : pageTopAnchor(layout, target, readScroll());
+    const box = layout?.box(target) ?? null;
+    // A y beyond the page (a hostile file) stays on the page: it never scrolls into the next one.
+    const heightPt = box === null || layout === null ? yPt : box.height / layout.scale;
+    const anchor = top === null ? null : { ...top, yPt: Math.min(yPt, heightPt), viewY: tokenPx('--space-3', 24) };
+    markJump();
+    useView.getState().setPage(current.docId, target, anchor);
+  };
+
   const turn = (direction: 1 | -1) => {
     const current = active();
     if (current === null) return;
@@ -271,6 +293,7 @@ export const useViewer = create<ViewerState>()((set, get) => {
       useView.getState().setScrollMode(current.docId, mode, anchor, refit ?? undefined);
     },
     goToPage: goTo,
+    goToPoint,
     nextPage: () => turn(1),
     previousPage: () => turn(-1),
     setViewport: (viewport, kept) => {

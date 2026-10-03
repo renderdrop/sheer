@@ -54,6 +54,16 @@
   "thumbnails.list": "Page thumbnails",
   "thumbnails.page": "Page {page}",
 
+  "outline.list": "Document outline",
+  "outline.collapseAll": "Collapse all",
+  "outline.untitled": "Untitled",
+  "outline.noTarget": "This entry has no destination in the document.",
+  "outline.empty": "No outline",
+  "outline.emptyHint": "This document has no bookmarks.",
+  "outline.loading": "Loading outline",
+  "outline.error": "The outline could not be read.",
+  "outline.retry": "Try again",
+
   "inspector.label": "Inspector",
   "inspector.title": "Tool options",
   "inspector.empty": "Select an object or choose a tool to see its options.",

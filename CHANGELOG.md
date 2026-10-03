@@ -23,6 +23,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `open_link`. A document tells whether it is encrypted, has an XFA or an AcroForm, or is signed (`flags` of `DocumentInfo`).
 - Thumbnails panel in the left panel: virtualized for any page count, rendered lazily at thumbnail priority from the shared render cache, the current
   page highlighted and kept in view, one Tab stop with arrow keys, Home and End, click or Enter to jump.
+- Outline panel (DESIGN 3.15): the document's bookmarks as a tree in the left panel (WAI-ARIA tree keys, type-ahead, one Tab stop, virtualized
+  for 10 000 entries), the section you are reading marked, a click or Enter jumps to the exact spot; entries without a target in this document are
+  shown muted.
 - Welcome tour (ADR-023, FEEDBACK F4): on the first launch without a file, a bundled "Welcome to Sheer" document (English or German, 4 pages
   in the Iris design, drawn in code) opens once; coach marks point at the control for each task (open, go to page 2, zoom in), a short success
   moment follows each one, progress shows in the status bar, the tour can be skipped and restarted from Settings. More steps (highlight,

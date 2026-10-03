@@ -264,6 +264,8 @@
   --panel-max: 400px;
   --panel-collapse-below: 144px;
   --splitter-width: 8px;
+  --outline-indent: 16px; /* outline tree: indent per level, capped at --outline-indent-max (DESIGN 3.15) */
+  --outline-indent-max: 64px;
 
   /* Layout slots (DESIGN 2, 2.2, 3.11). Rows: caption 32 (Windows only), toolbar row 56 (toolbar 40 + 8 above and below),
      banner at least 48, status 32. Columns: inspector 288, canvas at least 360. The widths are mirrored as numbers in

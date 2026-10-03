@@ -44,7 +44,7 @@ The Stop hook picks the first open `- [ ]` line, so order matters. Scope: `docs/
 - [x] Render pipeline: serialized PDFium worker, render cache (page, zoom, DPR), page virtualization
 - [x] Zoom and fit (width/page/100 %), Ctrl/Cmd+scroll, pinch; scroll modes (continuous/single/two-page); zoom controls disabled without a document
 - [x] Thumbnails panel (lazy)
-- [ ] Outline (bookmarks) panel
+- [x] Outline (bookmarks) panel
 - [ ] Full-text search with hit highlight and next/previous
 - [ ] Text selection and copy (char-box text layer)
 - [ ] View rotation, go to page, status bar page x/y + zoom
