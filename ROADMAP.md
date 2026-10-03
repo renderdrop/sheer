@@ -76,10 +76,8 @@ The Stop hook picks the first open `- [ ]` line, so order matters. Scope: `docs/
 - [ ] Freehand ink (smoothing, pressure)
 - [ ] Shapes: rectangle, ellipse, line, arrow
 - [ ] Palette, stroke presets, properties inspector; one-shot/locked tool modes
-- [ ] Comments panel: threads (/IRT), filter, sort, jump
 - [ ] Save annotations: appearance streams via lopdf, incremental + atomic save, backup of original; save refuses an in-place write to the welcome document (`DocKind::Welcome`, Save acts as Save As) with a security_baseline pin
 - [ ] Interop test: saved annotations re-open correctly (PDFium + AP present for every type)
-- [ ] Onboarding steps (F4): "Highlight" and "Comment" pages of the welcome document with coach marks + success moment
 - [ ] Politur M2
   - (from M1 review) recents clone: fix the zoom before the FLIP measures the target rect (one frame of "–" and a moving target); counter-scale the clone radius or fade it earlier; make the empty-state fade-out visible
   - (from M1 security) `style-src 'unsafe-inline'`: move to hashed/nonce styles or record the reason in DECISIONS; confirm the release build never uses devCsp; prune 3 unused license allowances in deny.toml
@@ -97,7 +95,6 @@ The Stop hook picks the first open `- [ ]` line, so order matters. Scope: `docs/
 - [ ] Merge files (multi-drop suggests merge)
 - [ ] Split (every N pages, ranges)
 - [ ] Compress: three named presets with estimated size
-- [ ] Onboarding step (F4): "Reorder pages" page of the welcome document with coach mark + success moment
 
 ## M4 — Forms and signature (v0.7.0)
 
@@ -106,20 +103,15 @@ The Stop hook picks the first open `- [ ]` line, so order matters. Scope: `docs/
 - [ ] Signature creation: draw, type, image
 - [ ] Place, move, scale signatures; initials and date
 - [ ] Fill & Sign for flat forms (text, check, cross, dot)
-- [ ] Stamps (Approved, Draft, …)
 - [ ] Signature library encrypted at rest, key in OS keychain (keyring ADR)
-- [ ] Onboarding step (F4): "Drag a signature" page of the welcome document with coach mark + success moment
 
 ## M5 — Edit and protect (v0.8.0)
 
 - [ ] Add text boxes and images
-- [ ] Edit existing text objects (single line/paragraph, same font)
-- [ ] Replace image
 - [ ] Crop pages
 - [ ] True redaction (flatten affected pages, strip text/annots/metadata) + not-extractable test
 - [ ] Password protection and permissions (AES-256), remove password
 - [ ] Metadata view/edit/remove
-- [ ] Header/footer, page numbers, watermark
 
 ## M6 — Convert and output (v0.9.0)
 
@@ -127,8 +119,6 @@ The Stop hook picks the first open `- [ ]` line, so order matters. Scope: `docs/
 - [ ] Images → PDF
 - [ ] Print via native dialog
 - [ ] Export with/without annotations, optional metadata removal
-- [ ] Reveal in Finder/Explorer
-- [ ] OCR via OS APIs (Vision / Windows.Media.Ocr), invisible text layer
 
 ## M7 — Polish and ship (v1.0.0)
 
@@ -136,7 +126,9 @@ The Stop hook picks the first open `- [ ]` line, so order matters. Scope: `docs/
 - [ ] Accessibility pass (WCAG 2.2 AA analog, screen reader labels, focus order)
 - [ ] Recents rows with a 32 × 40 first-page thumbnail (DESIGN §3.11), cached locally at close, no paths to the UI (M1 review minor, deferred)
 - [ ] i18n de/en complete
-- [ ] Per-tool tips; read mode (onboarding = welcome-document tour, FEEDBACK F4)
+- [ ] Per-tool tips (onboarding = welcome-document tour, FEEDBACK F4)
+- [ ] Onboarding steps (F4, moved here by ADR-030): "Highlight" + "Comment", "Reorder pages", "Drag a signature" pages of the welcome document with coach marks + success moment; flip `shipped` in steps.json and regenerate both PDFs
+- [ ] fps measurement in the Tauri window (`node scripts/ui/cdp.mjs fps`, moved here by ADR-030): 60 fps idle, scroll, zoom, panel slide
 - [ ] PDF engine in its own process (crash isolation, ADR)
 - [ ] Crash-safe autosave
 - [ ] Windows installer (FEEDBACK F5): NSIS target (no MSI/WiX default dialog) with own header and sidebar images in Iris and the Sheer icon
@@ -148,3 +140,16 @@ The Stop hook picks the first open `- [ ]` line, so order matters. Scope: `docs/
 ## Later (post-1.0, not scheduled)
 
 See `docs/FEATURES.md` → "Later".
+
+## v1.1 backlog (ADR-030)
+
+- [~] v1.1-Backlog — Should/Could items moved out of M2–M7 (Tempo level 2); not part of v1.0, not picked by the loop
+  - Comments panel: threads (/IRT), filter, sort, jump (Should, was M2)
+  - Stamps (Approved, Draft, …) (Should, was M4)
+  - Edit existing text objects (single line/paragraph, same font) (Should, was M5)
+  - Replace image (Should, was M5)
+  - Header/footer, page numbers, watermark (Should, was M5)
+  - Reveal in Finder/Explorer (Should, was M6)
+  - OCR via OS APIs (Vision / Windows.Media.Ocr), invisible text layer (Should, was M6)
+  - Read mode / full screen (Could, was M7)
+  - Import/export comments (XFDF) (Could); self-signed digital signature (Could)

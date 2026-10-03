@@ -57,3 +57,9 @@ CI runs #5 and #7 on `main` are red and the Dependabot PRs fail. Work this befor
 F6 result: macOS failed only on test-side issues (APFS refuses non-UTF-8 names; clippy constant assert; a 300 ms respawn timing); fixed,
 CI green on Windows and macOS (run 37120538629). Dependabot PRs #1/#2 closed. Open for the product owner: the repository setting
 "Dependabot security updates" (automated security fixes) is off — enabling it is a repo setting, left to a human.
+
+## F7 — Release workflow
+
+- [ ] `.github/workflows/release.yml`: on every tag push `v*`, build the installers on Windows and macOS (NSIS setup and DMG, unsigned) and attach them
+      to a GitHub Release whose body is the tag's section from CHANGELOG.md
+- [ ] Build the existing tag v0.4.0 with it after the fact (workflow_dispatch with a tag input; never move or re-push a tag)

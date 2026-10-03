@@ -885,3 +885,21 @@ bounded variants (`XStep 2`, one call per level). A real fix is the engine proce
 7. **Quit with several edited documents:** asks one document at a time.
 
 **Consequences.** New tokens per DESIGN §3.22–§3.27; `Settings` gains `authorName` (validated, ≤ 128 chars).
+
+## ADR-030 — Tempo level 2
+
+**Context.** Product-owner decision (2026-10-03): ship v1.0 faster; review rounds, CI waiting and Should/Could scope cost more than they return.
+
+**Decision.**
+1. **Designer review at milestone end: one round only.** Only `blocker` findings trigger a fix package; major and minor go to the next
+   milestone's polish ticket. No second round. (DoD §8.6 adjusted: no open `blocker`; major → polish.)
+2. **CI status is checked once per milestone** (at milestone end, the last finished run on `main`); never wait for a running run. A red run
+   is fixed as part of the milestone close. This replaces the "check after every push" rule of FEEDBACK F6 (§9); pushing after every commit stays.
+3. **fps measurement and all onboarding steps move to M7** (ROADMAP M7: onboarding steps highlight/comment, reorder, signature; fps in the Tauri window).
+4. **Roadmap M2–M6 trimmed to "Must" from docs/FEATURES.md.** Should/Could items move to one ticket "v1.1-Backlog" (ROADMAP, marked `[~]`, not picked
+   by the loop): comments panel, stamps, edit existing text, replace image, header/footer/watermark, reveal in Finder/Explorer, OCR, read mode, XFDF,
+   self-signed digital signature.
+5. **Four implementers in parallel per milestone**, packages cut accordingly (in waves of four where dependencies require it).
+
+**Consequences.** ORCHESTRATOR_PROMPT §7.6, §8.4 (steps 1, 3, 8), §8.6 and §9 changed. M2 keeps the comments needed for notes (sticky-note popover,
+replies via /IRT stay in the model) but loses the comments panel.

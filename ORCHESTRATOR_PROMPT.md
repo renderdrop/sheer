@@ -395,9 +395,9 @@ Alle Skripte: `chmod +x`. `.claude/state/` in `.gitignore`.
 
 ### 7.6 Token-Disziplin (gilt für dich)
 - **Delegationsregel:** Alles > 30 Zeilen Code oder > 3 Dateien geht an `implementer`. Du liest keine ganzen Quelldateien — `Explore` oder `Grep` mit Zeilenbereichen.
-- **Parallelität:** max. 4 Subagents gleichzeitig, nur wenn ihre Dateien disjunkt sind (im Feature-Loop: ein `implementer` je Paket).
+- **Parallelität:** pro Milestone immer **vier** `implementer` parallel (ADR-030), je einer pro Paket, Dateien disjunkt; dazu höchstens Reviewer derselben Welle. Wo die Abhängigkeiten keine vier disjunkten Pakete hergeben, wird in Wellen geschnitten, und jede Welle hat vier Pakete, soweit offene Punkte reichen.
 - **Review-Budget:** ein `reviewer` pro Paket, max. eine FIX-Runde. Keine Deep-Reviews, keine Re-Reviews nach Minors; Minors sammelt das Politur-Ticket des Milestones. `tester`, `designer`-Abnahme und vollständiger `security-reviewer` nur am Milestone-Ende.
-- **Keine Live-Prüfung zwischen Paketen:** Du misst, filmst und prüfst nichts im laufenden Fenster. fps-Messung und Tauri-Fenster-Abnahme laufen einmal am Milestone-Ende (8.4 Schritt 8) mit den Werkzeugen aus `docs/UI_REVIEW.md`.
+- **Keine Live-Prüfung zwischen Paketen:** Du misst, filmst und prüfst nichts im laufenden Fenster. Die Tauri-Fenster-Abnahme (vier Screenshots) läuft einmal am Milestone-Ende (8.4 Schritt 8) mit den Werkzeugen aus `docs/UI_REVIEW.md`; die fps-Messung läuft erst in M7 (ADR-030).
 - **Keine Wiederholung:** `docs/FEATURES.md` und `docs/DECISIONS.md` sind die Wahrheit. Nie erneut recherchieren, was dort steht.
 - **Zwei-Versuche-Regel:** Scheitert ein Ansatz zweimal, wird der Ansatz gewechselt oder das Feature deskopt (Eintrag in `DECISIONS.md`). Nie dreimal dasselbe versuchen.
 - **Kein Log-Spam:** Testausgaben nur als „erste 3 Fehler“. Keine Build-Logs in deinen Kontext.
@@ -438,14 +438,14 @@ Synthese (du, Opus): `docs/FEATURES.md` — Tabelle: Feature | Nutzer-Nutzen | M
 5. `scripts/check.sh` (`npm run check` = typecheck + lint + vitest + `cargo clippy -D warnings` + `cargo test` + `cargo deny check` + `npm audit --audit-level=high`), `scripts/bump-version.sh` (synchronisiert `package.json`, `src-tauri/Cargo.toml`, `src-tauri/tauri.conf.json`), CI-Workflow (macOS + Windows, inkl. Dependabot-Konfiguration). Commit, Tag `v0.2.0`.
 
 ### 8.4 Der Feature-Loop (paketweise, ab Phase 3)
-1. **Pakete schneiden (Milestone-Start):** Du schneidest die offenen Punkte des Milestones in 2–4 disjunkte Arbeitspakete à 3–5 Punkte (disjunkt = keine gemeinsamen Dateien). Die Paketliste mit Punkten und Dateibereichen steht in `STATE.md`. Braucht ein Paket eine neue UI-Oberfläche, die `docs/DESIGN.md` nicht abdeckt, holst du vorher eine `designer`-Spec.
+1. **Pakete schneiden (Milestone-Start):** Du schneidest die offenen Punkte des Milestones in **vier** disjunkte Arbeitspakete (ADR-030; bei Abhängigkeiten in Wellen zu je vier) (disjunkt = keine gemeinsamen Dateien). Die Paketliste mit Punkten und Dateibereichen steht in `STATE.md`. Braucht ein Paket eine neue UI-Oberfläche, die `docs/DESIGN.md` nicht abdeckt, holst du vorher eine `designer`-Spec.
 2. **Brief pro Paket** (≤ 300 Wörter): Punkte, Dateibereich, Akzeptanzkriterien, Verbote.
-3. **Parallel bauen:** je Paket ein `implementer`, max. 4 gleichzeitig, im gemeinsamen Arbeitsbaum, nur in den eigenen Dateien. Er baut, schreibt Unit-Tests und führt `npm run check` selbst aus.
+3. **Parallel bauen:** je Paket ein `implementer`, immer vier gleichzeitig, im gemeinsamen Arbeitsbaum, nur in den eigenen Dateien. Er baut, schreibt Unit-Tests und führt `npm run check` selbst aus.
 4. **Ein Loop = ein Paket.** Ist ein Paket fertig: einmal `reviewer` auf `git diff -- <Dateibereich>` → PASS/FIX.
 5. **Max. eine FIX-Runde:** FIX → einmal zurück an den `implementer`, nur mit blocker/major-Issues; danach kein Re-Review. Bleibt etwas offen, entscheidest du: akzeptieren mit Ticket in `ROADMAP.md` oder deskopen (Eintrag in `DECISIONS.md`). Alle Minors landen im **Politur-Ticket** des Milestones: eine Checkbox `- [ ] Politur Mx` in `ROADMAP.md`, die Minors als eingerückte Liste darunter.
 6. **Security nur bei Bedarf:** Berührt das Paket `tauri.conf.json`, `capabilities/`, IPC-Commands, Dateizugriff (inkl. Links/Anhänge) oder PDF-Parsing → zusätzlich `security-reviewer`. FAIL muss behoben werden und zählt nicht als FIX-Runde.
 7. **Commit pro Paket** (Conventional Commits, nur die Paketdateien stagen), Checkboxen in `ROADMAP.md` auf `[x]`, `STATE.md` aktualisieren, `CHANGELOG.md` unter „Unreleased“ ergänzen. Zwischen den Paketen misst, filmst und prüfst du nichts live.
-8. **Milestone-Ende** (alle Pakete committet, Politur-Ticket als letztes Paket abgearbeitet): einmal `tester` (`npm run check` + fehlende Tests), einmal vollständiger `security-reviewer`, fps-Messung (`node scripts/ui/cdp.mjs fps`) und Tauri-Fenster-Abnahme nach `docs/UI_REVIEW.md`, dann `designer`-Review mit genau vier Screenshots (Light/Dark × Leerzustand/Dokument). Findings mit blocker/major → ein Fix-Paket. Danach Definition of Done (8.6) prüfen, Version bumpen, Tag, `CHANGELOG`-Release-Abschnitt.
+8. **Milestone-Ende** (alle Pakete committet, Politur-Ticket als letztes Paket abgearbeitet): einmal `tester` (`npm run check` + fehlende Tests), einmal vollständiger `security-reviewer`, Tauri-Fenster-Abnahme nach `docs/UI_REVIEW.md`, dann **eine** `designer`-Review-Runde mit genau vier Screenshots (Light/Dark × Leerzustand/Dokument). **Nur `blocker`** lösen ein Fix-Paket aus; major und minor gehen ins Politur-Ticket des nächsten Milestones (ADR-030). Keine zweite Designer-Runde. Einmal den CI-Status lesen (8.6). Danach Definition of Done (8.6) prüfen, Version bumpen, Tag, `CHANGELOG`-Release-Abschnitt.
 
 ### 8.5 Milestone-Vorschlag (nach der Recherche anpassen, nicht blind übernehmen)
 - **Phase 3 / v0.3.0 — Design-System + App-Shell:** Tokens, Glas-Komponenten (Toolbar, Panel, Button, Popover, Tooltip, Tabs, Slider), Layout-Grid, Leerzustand, Light/Dark, reduced-motion/-transparency-Fallbacks, Shortcut-System, i18n-Grundgerüst.
@@ -458,7 +458,7 @@ Synthese (du, Opus): `docs/FEATURES.md` — Tabelle: Feature | Nutzer-Nutzen | M
 - **M7 / v1.0.0 — Polish & Ship:** Performance-Budget (500-Seiten-PDF öffnet < 1 s, Scrollen 60 fps), Barrierefreiheit, i18n de/en komplett, Onboarding (3 Screens), Installer (DMG, MSI/NSIS), signierter opt-in Updater (minisign-Schlüsselpaar: Public Key im Repo, Private Key = Blocker), PDF-Engine in eigenem Prozess (Crash-Isolation, ADR), vollständiger `security-reviewer`-Audit, Crash-sicheres Autosave, `docs/SECURITY.md` finalisiert, Signing-/Notarization-Anleitung in `docs/BLOCKERS.md` (Zertifikate kann nur ein Mensch beschaffen).
 
 ### 8.6 Definition of Done (pro Milestone)
-Alle Checkboxen `[x]` · `npm run check` grün · `npm run tauri build --debug` erfolgreich · **CI auf GitHub grün auf Windows und macOS** (letzter Run auf `main` für den Tag-Commit) · keine `blocker`/`major` Reviewer-Issues offen · `security-reviewer` = PASS · Visueller Review durch den `designer` anhand von Screenshots aus dem Tauri-Fenster, Light und Dark, Leerzustand und Dokument, Verdict PASS/FIX · Fuzz-Korpus-Test grün (kein Crash bei allen Dateien in `tests/fixtures/malformed/`) · neue Dependencies in `docs/LICENSES.md` · `CHANGELOG.md` Release-Abschnitt · Version in allen drei Manifesten identisch · Tag gesetzt · `STATE.md` zeigt auf den nächsten Milestone.
+Alle Checkboxen `[x]` · `npm run check` grün · `npm run tauri build --debug` erfolgreich · **CI auf GitHub grün auf Windows und macOS** (letzter abgeschlossene Run auf `main` beim einmaligen Check am Milestone-Ende; nicht warten, ADR-030) · keine `blocker` Reviewer-Issues offen (major → Politur-Ticket, ADR-030) · `security-reviewer` = PASS · Visueller Review durch den `designer` (eine Runde) anhand von Screenshots aus dem Tauri-Fenster, Light und Dark, Leerzustand und Dokument, Verdict PASS/FIX (FIX nur bei blocker) · Fuzz-Korpus-Test grün (kein Crash bei allen Dateien in `tests/fixtures/malformed/`) · neue Dependencies in `docs/LICENSES.md` · `CHANGELOG.md` Release-Abschnitt · Version in allen drei Manifesten identisch · Tag gesetzt · `STATE.md` zeigt auf den nächsten Milestone.
 
 ---
 
@@ -468,7 +468,7 @@ Alle Checkboxen `[x]` · `npm run check` grün · `npm run tauri build --debug` 
 - `CHANGELOG.md` nach Keep a Changelog; „Unreleased“ wird bei jedem Milestone-Tag zum Release-Abschnitt.
 - Version wird **nur** über `scripts/bump-version.sh` geändert.
 - **Nach jedem Commit:** `git push origin main --tags`. Schlägt der Push fehl (Netz, Auth), Blocker in `docs/BLOCKERS.md` festhalten und weiterarbeiten; beim nächsten Commit erneut pushen.
-- **Nach jedem Push:** CI-Status prüfen (`gh run list --branch main --limit 3`; fertigen Run abwarten, wenn kein anderer Push folgt). Rot → `gh run view <id> --log-failed`, Ursache beheben, bevor neue Feature-Arbeit beginnt.
+- **CI-Status:** nur **einmal pro Milestone** prüfen, am Milestone-Ende (`gh run list --branch main --limit 3`), **nie auf einen laufenden Run warten** (ADR-030). Ist der letzte abgeschlossene Run rot → `gh run view <id> --log-failed`, Ursache beheben (Teil des Milestone-Abschlusses).
 
 ---
 
