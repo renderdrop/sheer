@@ -231,6 +231,7 @@ rgba(91,91,214,.24), transparent)` light, `rgba(0,0,0,.48)` dark).
 |---|---|
 | caption (Windows only) | 32 |
 | toolbar-row (drag region) | 56 = toolbar 40 + 8 above/below |
+| tabs (§3.18) | 0 with no document, else 32 + 8 gap |
 | banner | 0, or ≥ 48 + 8 gap |
 | main | 1fr |
 | status | 32 |
@@ -260,7 +261,7 @@ Main columns: `8 | left 192–400 (default 248) | splitter 8 | canvas minmax(360
 
 ### 2.3 Focus
 
-Tab and F6/Shift+F6: toolbar → banner → left panel → splitter → canvas → inspector → status bar; F6 restores each region's
+Tab and F6/Shift+F6: toolbar → document tabs → banner → left panel → splitter → canvas → inspector → status bar; F6 restores each region's
 last focus. Closing a panel, popover or dialog refocuses its trigger. Esc order:
 tooltip → dialog → popover → gesture → tool → selection (the stacking order of 1.7, topmost first; `DISMISS_PRIORITY`). Every command is in the native menu on macOS; Windows has none (ADR-016), so there every command is on the toolbar, in More or on the keyboard; no Ctrl+Alt on Windows (AltGr).
 
@@ -737,6 +738,193 @@ empty tile uses tile colours. Solid mode changes nothing beyond the panel surfac
 | `outline.empty` / `.emptyHint` | This document has no outline / Bookmarks saved in the file appear here. | Dieses Dokument hat keine Gliederung / Lesezeichen aus der Datei erscheinen hier. |
 | `outline.loading` | Loading outline… | Gliederung wird geladen… |
 | `outline.error` / `.retry` | Couldn't read the outline. / Try again | Gliederung konnte nicht gelesen werden. / Erneut versuchen |
+
+### 3.16 Search panel (M1)
+
+**Purpose:** find text in the open document; the left panel's Search tab (`search`, §3.6). Code `src/features/search/`. Rust searches page by page,
+streams hits (page, char range, quads, snippet) and cancels on every new query. Query ≤ 256 chars; hits capped at 10 000.
+
+**Anatomy** (header per §3.6, title "Search"):
+- Query field: full width, md 32, Field styles (§3.7); leading `search` 16 muted, trailing sm `x` (`search.clear`, shown when non-empty, `tabindex=-1`).
+- Option row, 8 below: sm toggle IconButtons `case-sensitive` (`search.matchCase`) and `whole-word` (`search.wholeWord`), `aria-pressed`.
+- Status row, 32 h: count meta (`tabular-nums`) | spacer | sm `chevron-up` / `chevron-down` (previous / next). While running: `search.progress` and a
+  2 h pill bar (`--color-track`, fill accent) under the row.
+- Hit list, `role=listbox`: page header rows 24 h (`search.page`, meta 600, not focusable, never sticky); hit rows 48 h, radius 8, padding 8:
+  snippet `--text-sm`, ≤ 2 lines, ≤ 40 chars of context each side, match 600 + `--color-selected` fill radius 4. Snippets are text nodes only.
+  Virtualized as §3.15 (fixed heights).
+
+**Lifecycle.** Typing searches after 250 ms idle from 2 chars; Enter searches 1 char at once. Hits appear as pages finish; the first
+hit becomes active without scrolling the canvas. Options rerun the query. Results live until the query is cleared or the document closes.
+
+**Canvas.** Hits draw in the text layer (§3.17, below the glyph spans): every hit `--color-doc-hit` (.28), radius 2; the active hit adds a
+2 px `--color-doc-select` outline. Hits stay while the panel is collapsed; clearing the query removes them.
+
+**States** (centred column per §3.15): empty query: `search` tile, `search.empty` + `search.emptyHint` · no result: `search.none`
++ `search.noneHint` · no text layer anywhere: `search.noText` · failed: `circle-alert`, `search.error`, secondary sm `search.retry`, `role=alert`.
+
+**Keyboard.** Primary+F opens the tab, focuses and selects the field. In the field: Enter next, Shift+Enter previous, Down enters the
+list, Esc clears a non-empty field. Anywhere with hits: primary+G / primary+Shift+G (Windows also F3 / Shift+F3), wrapping. List: roving
+Up/Down over hit rows, Enter or click makes the hit active and jumps (target quad at `scroll-padding-top`, MOTION §4.8); focus stays.
+
+**A11y.** Status row is a polite live region: the final count once, then `search.position` per step. Rows `aria-selected` = active hit,
+named by page + snippet. **Reduced motion:** jumps at once; the progress bar has no transition.
+**Forced colors:** hits `Highlight` (§1.9), active hit 2 px `CanvasText` outline.
+
+| Key | en | de |
+|---|---|---|
+| `search.label` / `.placeholder` | Search / Find in document | Suche / Im Dokument suchen |
+| `search.clear` | Clear search | Suche löschen |
+| `search.matchCase` / `.wholeWord` | Match case / Whole words | Groß-/Kleinschreibung / Ganze Wörter |
+| `search.count` | {n} results on {p} pages (10 000+ when capped) | {n} Treffer auf {p} Seiten |
+| `search.progress` | Searching… page {i} of {n} | Suche… Seite {i} von {n} |
+| `search.page` | Page {n} | Seite {n} |
+| `search.position` | Result {i} of {n}, page {p} | Treffer {i} von {n}, Seite {p} |
+| `search.empty` / `.emptyHint` | Search this document / Results appear here, grouped by page. | Dieses Dokument durchsuchen / Treffer erscheinen hier, nach Seiten gruppiert. |
+| `search.none` / `.noneHint` | No results for "{q}" / Check the spelling or turn off the options. | Keine Treffer für „{q}“ / Schreibweise prüfen oder Optionen ausschalten. |
+| `search.noText` | This document has no searchable text. | Dieses Dokument enthält keinen durchsuchbaren Text. |
+| `search.error` / `.retry` | Search failed. / Try again | Suche fehlgeschlagen. / Erneut versuchen |
+
+### 3.17 Text layer (M1)
+
+**Purpose:** select and copy page text. One layer per mounted page (canvas-local layer 2), above the bitmap, same box as the page.
+
+**Anatomy.** Rust returns text runs (string, quad, char range) per page in content order; each run is a transparent span scaled to its
+quad (`color: transparent`, never visible). Search hits (§3.16) sit beneath the spans. No per-glyph DOM.
+
+**States.** Select tool only (other tools: `pointer-events: none`). Cursor `text` over runs, `default` between, `pointer` over links
+(§3.21). Selection `--color-doc-text-select` (.30) via `::selection`, both themes (pages are white). Disabled: page not yet rendered;
+no text: the layer is empty and the cursor stays `default`.
+
+**Keyboard.** Canvas focused: primary+C copies the selection; primary+A selects all text on the current page (§3.10), never the
+whole document; Esc clears it (last in the §2.3 Esc order). Shift+arrows are the browser's. Copy goes through Rust (`get_text`,
+by char range) so ligatures and hyphens come out as plain text; the frontend writes the clipboard, text only.
+
+**Rotation.** The layer takes the same transform as its page (file `/Rotate` + view rotation, §3.20) so runs stay on their glyphs.
+Selection follows content order, not screen geometry: a drag on a rotated page selects the same text as on the upright page.
+Hit-testing maps the pointer into page space once per move.
+
+**A11y.** The run text is real DOM text in content order; each page is `role=group` named "Page n of m" (replacing `role=img` once
+the layer exists). Pages without text keep `role=img` + `text.noText` description.
+**Reduced motion / forced colors:** nothing moves; selection becomes `Highlight` (§1.9).
+
+| Key | en | de |
+|---|---|---|
+| `text.copied` (polite live) | Copied | Kopiert |
+| `text.noText` | No text on this page | Kein Text auf dieser Seite |
+
+### 3.18 Document tabs (M1)
+
+**Slot.** A new grid row `tabs` between toolbar-row and banner (§2): 0 with no document, else 32 + 8 gap below. Columns
+`8 | strip 1fr | 8 | overflow 24 | 8`. It is on `--color-bg`, no surface, and its empty part is a drag region like the toolbar row. It
+appears in one step with the first document (no height animation); nothing else shares it.
+
+**Anatomy (tab).** 32 h, 120–240 w (`--tab-min` / `--tab-max`, equal shares), radius 12, padding 0 4 0 12, gap 8: `file-text` 16 muted |
+name `--text-md`, middle-truncated, full name in the tooltip | trailing 24 slot: sm `x` (`tabs.close`, `tabindex=-1`), or an 8 px accent
+dot when edited and not hovered/focused. Tabs gap 4.
+
+| State | Treatment |
+|---|---|
+| default | text on bg |
+| hover / pressed | §3.0 (no scale) |
+| focus-visible | §3.0 ring, radius 12 |
+| selected | G1 (`--surface` + edge, no shadow) + text; solid mode: `--surface-fallback` + divider edge |
+
+**Overflow.** At `--tab-min` the strip scrolls horizontally (wheel, Shift+wheel, keyboard follow), no scrollbar; 16 px mask fades at
+clipped edges. The overflow sm IconButton `chevron-down` (`tabs.all`) appears only then: a menu of all documents, checked = active.
+
+**Behaviour.** Click selects; middle-click or `x` closes; closing the active tab selects its right neighbour, else left; the last close
+returns to the empty state. Primary+W closes the active document. Ctrl+Tab / Ctrl+Shift+Tab cycle on both platforms (Cmd+Tab is the
+macOS app switcher), plus Cmd+Shift+] / [ on macOS and Ctrl+PageDown / PageUp on Windows. **No drag reorder in M1** (decided:
+no keyboard equivalent yet; recorded in DECISIONS). The welcome document (§3.14) is an ordinary tab named by its title; closing it
+follows §3.14 Lifecycle. Each tab keeps its own page, zoom, rotation, panel tab and search.
+
+**Keyboard / A11y.** `role=tablist` (`tabs.label`), roving Left/Right (wrap), automatic activation, Delete closes the focused tab;
+`aria-controls` the canvas. Edited state in `aria-description`. F6 order: toolbar → tabs → banner → … (§2.3).
+**Motion.** A new tab fades in (fast); a closing tab fades out (fast) and the others reflow at once. Selected fill does not slide.
+Reduced motion: opacity only. **Forced colors:** selected = 2 px `Highlight` border.
+
+**Tokens (new):** `--tabs-row-height` 32, `--tab-min` 120, `--tab-max` 240.
+
+| Key | en | de |
+|---|---|---|
+| `tabs.label` | Open documents | Geöffnete Dokumente |
+| `tabs.close` | Close {name} | {name} schließen |
+| `tabs.all` | All open documents | Alle geöffneten Dokumente |
+| `tabs.edited` | Edited | Bearbeitet |
+
+### 3.19 Password prompt (M1)
+
+**Purpose:** open an encrypted PDF that needs a user password. Owner-only protection opens without prompting.
+
+**Anatomy.** Dialog as About (§3.13: solid, `--shadow-3`, `--radius-card`, backdrop, `--z-modal`), 400 w (`--dialog-width`), padding 24,
+left-aligned: `lock` 16 in a 32 tile | title `password.title` `--text-xl`; 8 below `password.body` muted; 16 below the label
+(meta 600) and a full-width md field (`type=password`, `autocomplete=off`, `spellcheck=false`) with a trailing sm toggle `eye` / `eye-off`
+(`password.show`, `aria-pressed`); error line slot (16 h, reserved, so nothing jumps); 24 below, trailing: secondary `password.cancel`, primary `password.open`.
+
+**States.** Empty field: Open `aria-disabled`. Checking: Open shows a 16 spinner, field read-only. Wrong: field `aria-invalid`,
+`circle-alert` 12 + `password.wrong` in `--color-error-text` (`role=alert`), field text selected; no shake. Each retry after the third
+waits 1 s (Rust-side). Corrupt or unsupported encryption: the dialog closes and the error banner (§3.12) explains.
+
+**Security.** The password crosses IPC once per attempt, is never stored, logged, or put in settings or recents, and the field is cleared
+when the dialog closes. Session-only: reopening asks again.
+
+**Keyboard.** Initial focus: the field. Enter submits; Esc or Cancel closes, nothing opens, focus returns to the trigger. Tab cycles inside.
+**Motion** as About; reduced motion opacity only.
+
+| Key | en | de |
+|---|---|---|
+| `password.title` | Password required | Passwort erforderlich |
+| `password.body` | "{name}" is protected. Enter its password to open it. | „{name}“ ist geschützt. Geben Sie das Passwort ein, um es zu öffnen. |
+| `password.label` / `.show` | Password / Show password | Passwort / Passwort anzeigen |
+| `password.wrong` | Wrong password. Try again. | Falsches Passwort. Bitte erneut versuchen. |
+| `password.cancel` / `.open` | Cancel / Open | Abbrechen / Öffnen |
+
+### 3.20 Go to page and view rotation (M1)
+
+**Go to page.** The status bar page button (§3.10) opens a `role=dialog` popover (§3.5) above it (top-start, flips): label
+`goto.label` meta 600; row: md Field (56) | `goto.of` meta | primary sm `goto.go`. The field opens holding the current page,
+selected. Enter or Go jumps (MOTION §4.8) and closes; Esc closes. Input outside 1…n: `aria-invalid` + `goto.invalid` in
+`--color-error-text` below, popover stays. Action `go-to-page`: primary+Shift+N, More "Go to page…", macOS menu.
+
+**View rotation.** Rotates every page of the active document by 90° for viewing only; the file is untouched (page rotation that saves
+is M3 Organize). Per tab, in memory. Commands: `rotate-view-right` `rotate-cw` primary+R, `rotate-view-left` `rotate-ccw` primary+L,
+`rotate-view-reset`; they live in More → "Rotate view" submenu and the macOS View menu. While rotation ≠ 0, the status bar shows a
+sm ghost button `rotate-cw` 12 + "90°" before the page button; it resets (`aria-label` `rotate.reset`).
+The reading position (current page, its relative y) is kept; fit modes recompute. Motion: the canvas crossfades (base), pages never spin;
+reduced motion: at once. A polite announcement `rotate.announce`.
+
+| Key | en | de |
+|---|---|---|
+| `goto.label` / `.of` / `.go` | Go to page / of {n} / Go | Gehe zu Seite / von {n} / Los |
+| `goto.invalid` | Enter a number from 1 to {n}. | Geben Sie eine Zahl von 1 bis {n} ein. |
+| `rotate.menu` / `.right` / `.left` | Rotate view / Rotate right / Rotate left | Ansicht drehen / Nach rechts drehen / Nach links drehen |
+| `rotate.reset` / `.announce` | Reset rotation / View rotated {deg}° | Drehung zurücksetzen / Ansicht um {deg}° gedreht |
+
+### 3.21 Link confirmation and XFA banner (M1)
+
+**Links.** Internal links (GoTo) jump without asking. A URI link opens a dialog first; nothing leaves the app without a click.
+Rust validates: scheme `http`, `https` or `mailto` only, ≤ 2048 chars, IDN hosts shown as punycode, no credentials in the URL.
+
+**Anatomy.** Dialog as §3.19, 400 w: `external-link` 16 tile | `link.title`; `link.body` muted; the target in a `--surface-solid` box
+with 1 px divider border, radius 8, padding 8, `--text-md`, `overflow-wrap: anywhere`, ≤ 6 lines then scrolls; scheme + host
+600, rest regular. Buttons: ghost `link.copy` (leading) · secondary `link.cancel` · primary `link.open`. Blocked scheme or invalid
+URL: title `link.blockedTitle`, body `link.blocked`, target shown, only `link.close`.
+
+**Keyboard.** Initial focus Cancel (safe default); Enter on Open opens via the OS (`open_url` in Rust) and closes; Esc cancels. Copy
+gives a `text.copied` announcement, dialog stays. No "don't ask again".
+
+**XFA banner.** When Rust reports XFA, a warning banner (§3.12): bare `triangle-alert` in `--color-warning-text`, `xfa.message`,
+optional `x` (`xfa.dismiss`, hides it for this document's session). `role=status`, F6 region; per tab, so switching tabs swaps it.
+
+| Key | en | de |
+|---|---|---|
+| `link.title` / `.body` | Open external link? / This link leads outside {app}: | Externen Link öffnen? / Dieser Link führt aus {app} heraus: |
+| `link.open` / `.cancel` / `.copy` / `.close` | Open / Cancel / Copy link / Close | Öffnen / Abbrechen / Link kopieren / Schließen |
+| `link.blockedTitle` / `.blocked` | Link not opened / {app} opens only web and email links. | Link nicht geöffnet / {app} öffnet nur Web- und E-Mail-Links. |
+| `xfa.message` | This form uses XFA, which {app} can't show. You see its fallback pages, which may be incomplete. | Dieses Formular nutzt XFA, das {app} nicht anzeigen kann. Angezeigt werden Ersatzseiten, die unvollständig sein können. |
+| `xfa.dismiss` | Dismiss | Ausblenden |
+
+**Tokens (new):** `--dialog-width` 400 (§3.19, §3.21).
 
 ## 4. Contrast verification
 

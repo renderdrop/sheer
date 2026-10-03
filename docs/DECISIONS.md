@@ -792,3 +792,19 @@ the features themselves.
 **Consequences.** Shared working tree instead of worktrees: §9 has no feature branches, and each worktree would need its own
 `node_modules` and `target`. Packages therefore must not share files; the implementer reports failures in other packages' files
 instead of fixing them, and each package commit stages only its own files. The Stop hook's prompt names the next package.
+
+## ADR-026 — Remaining M1 viewer surfaces (DESIGN §3.16–§3.21)
+
+**Context.** Search, text selection, document tabs, password prompt, go to page, rotation, link confirmation and the XFA warning
+needed specs before the M1 work packages start.
+
+**Decision.** The designer's spec (DESIGN §3.16–§3.21) with these choices:
+1. **Tabs:** own grid row (`--tabs-row-height` 32, 0 without a document); no drag reorder in M1; Ctrl+Tab / Ctrl+Shift+Tab on both
+   platforms (Cmd+Tab is the macOS app switcher); primary+W closes the tab.
+2. **Go to page:** primary+Shift+N focuses the page field in the status bar.
+3. **Rotate view:** primary+R / primary+L, view-only (never written to the file), kept per tab.
+4. **Search:** live after 2 characters, capped at 10 000 hits in the UI; Windows also binds F3 / Shift+F3.
+5. **Link dialog:** focus starts on Cancel, hosts shown as punycode, no "don't ask again".
+6. **Password prompt:** after the third wrong attempt each retry waits 1 s, enforced in Rust; the password lives only in memory.
+
+**Consequences.** New tokens `--tabs-row-height`, `--tab-min`, `--tab-max`, `--dialog-width` (tokens.css, tokens.test.ts, §1.9).
