@@ -23,7 +23,15 @@ const settingsInitial = useSettings.getState();
 function answerWithPatch() {
   updateSettingsMock.mockImplementation((patch) => {
     const { glass, theme, language, leftPanelWidth, authorName } = useSettings.getState();
-    const current: Settings = { glass, theme, language, leftPanelWidth, authorName, welcomeTour: 'pending' };
+    const current: Settings = {
+      glass,
+      theme,
+      language,
+      leftPanelWidth,
+      authorName,
+      welcomeTour: 'pending',
+      authorPrompt: 'pending',
+    };
     return Promise.resolve({ ...current, ...patch });
   });
 }

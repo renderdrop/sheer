@@ -2,7 +2,8 @@
 //!
 //! Wire shape (camelCase, enum values lowercase):
 //! `{ "glass": "auto" | "solid", "theme": "system" | "light" | "dark", "language": "system" | "en" | "de",
-//! "leftPanelWidth": 192..=400, "welcomeTour": "pending" | "shown", "authorName": 1..=128 chars without control characters }`.
+//! "leftPanelWidth": 192..=400, "welcomeTour": "pending" | "shown", "authorName": 0..=128 chars, sanitized (ADR-034), no control
+//! characters, "authorPrompt": "pending" | "done" }`.
 //!
 //! - **Reading** never fails: a missing, oversized, damaged or hand-edited file falls back to the defaults, field by
 //!   field. The file is user-writable, so nothing in it is trusted beyond the enum values and the width range it can
@@ -106,23 +107,43 @@ impl<'de> Deserialize<'de> for PanelWidth {
     }
 }
 
-/// The name put on annotations the user creates (ADR-029, DESIGN 3.25). Always 1 to `limits::MAX_AUTHOR_NAME_CHARS` characters
-/// without control characters: the only ways in are [`AuthorName::new`] and `Deserialize`, and both check. It is a plain string on the wire.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+/// Whether `c` is an invisible format character (Unicode category Cf: bidi controls U+202A-U+202E and U+2066-U+2069, zero-width
+/// U+200B-U+200F, U+FEFF and the rest of the category). Written out so no dependency is needed.
+fn is_invisible(c: char) -> bool {
+    matches!(u32::from(c),
+        0x00AD | 0x0600..=0x0605 | 0x061C | 0x06DD | 0x070F | 0x0890..=0x0891 | 0x08E2 | 0x180E
+        | 0x200B..=0x200F | 0x202A..=0x202E | 0x2060..=0x2064 | 0x2066..=0x206F | 0xFEFF
+        | 0xFFF9..=0xFFFB | 0x110BD | 0x110CD | 0x13430..=0x1343F | 0x1BCA0..=0x1BCA3
+        | 0x1D173..=0x1D17A | 0xE0001 | 0xE0020..=0xE007F)
+}
+
+/// `name` without invisible and bidirectional characters (ADR-034), trimmed. Control characters are not touched here: they make
+/// [`AuthorName::new`] refuse the name. Used when the setting is stored and when a PDF is written.
+pub fn sanitize_author(name: &str) -> String {
+    name.chars()
+        .filter(|c| !is_invisible(*c))
+        .collect::<String>()
+        .trim()
+        .to_owned()
+}
+
+/// The name put on annotations the user creates (ADR-029, ADR-034, DESIGN 3.25). Empty (the default: no /T is written) or at
+/// most `limits::MAX_AUTHOR_NAME_CHARS` characters, sanitized, without control characters: the only ways in are
+/// [`AuthorName::new`] and `Deserialize`, and both check. It is a plain string on the wire.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
 #[serde(transparent)]
 pub struct AuthorName(String);
 
 impl AuthorName {
-    /// `None` for an empty name, a name over the limit, or one with a control character.
+    /// The sanitized name; `None` for a name over the limit (after sanitizing) or one with a control character.
     pub fn new(name: &str) -> Option<Self> {
-        let length = name.chars().count();
-        if length == 0
-            || length > limits::MAX_AUTHOR_NAME_CHARS
-            || name.chars().any(char::is_control)
+        let clean = sanitize_author(name);
+        if clean.chars().count() > limits::MAX_AUTHOR_NAME_CHARS
+            || clean.chars().any(char::is_control)
         {
             None
         } else {
-            Some(Self(name.to_owned()))
+            Some(Self(clean))
         }
     }
 
@@ -130,35 +151,39 @@ impl AuthorName {
         &self.0
     }
 
-    /// The OS account's name, from the environment (`USERNAME` on Windows, `USER` or `LOGNAME` elsewhere): cleaned to be valid, or
-    /// "Author" when there is none. No call into the OS and no new dependency; it is only a default the user can change.
-    pub fn os_default() -> Self {
+    /// The OS account's name, from the environment (`USERNAME` on Windows, `USER` or `LOGNAME` elsewhere), cleaned to be valid;
+    /// empty when there is none. Only a *suggestion* for the author prompt (ADR-034): it is never stored by itself.
+    pub fn os_suggestion() -> String {
         ["USERNAME", "USER", "LOGNAME"]
             .iter()
             .filter_map(|key| std::env::var(key).ok())
             .map(|raw| {
                 raw.chars()
                     .filter(|c| !c.is_control())
-                    .take(limits::MAX_AUTHOR_NAME_CHARS)
+                    .take(limits::MAX_AUTHOR_NAME_CHARS * 2)
                     .collect::<String>()
             })
-            .find_map(|clean| Self::new(clean.trim()))
-            .unwrap_or_else(|| Self("Author".to_owned()))
-    }
-}
-
-impl Default for AuthorName {
-    fn default() -> Self {
-        Self::os_default()
+            .find_map(|clean| Self::new(&clean).filter(|name| !name.0.is_empty()))
+            .map(|name| name.0)
+            .unwrap_or_default()
     }
 }
 
 impl<'de> Deserialize<'de> for AuthorName {
-    /// A string that passes [`AuthorName::new`]; anything else is an error, never trimmed or cut.
+    /// A string that passes [`AuthorName::new`] (invisible characters are removed); anything else is an error, never cut.
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         let name = String::deserialize(deserializer)?;
         Self::new(&name).ok_or_else(|| serde::de::Error::custom("author name not valid"))
     }
+}
+
+/// Whether the one-time author prompt (ADR-034) is still to be shown. The UI writes `Done` when the user confirmed or skipped.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum AuthorPrompt {
+    #[default]
+    Pending,
+    Done,
 }
 
 /// Every persisted setting. Add a field here, to [`SettingsPatch`] and to `src/api/app.ts` together.
@@ -171,6 +196,7 @@ pub struct Settings {
     pub left_panel_width: PanelWidth,
     pub welcome_tour: WelcomeTour,
     pub author_name: AuthorName,
+    pub author_prompt: AuthorPrompt,
 }
 
 impl Settings {
@@ -205,6 +231,10 @@ impl Settings {
                 .get("authorName")
                 .and_then(|value| AuthorName::deserialize(value).ok())
                 .unwrap_or_default(),
+            author_prompt: map
+                .get("authorPrompt")
+                .and_then(|value| AuthorPrompt::deserialize(value).ok())
+                .unwrap_or_default(),
         }
     }
 
@@ -217,12 +247,13 @@ impl Settings {
             left_panel_width: patch.left_panel_width.unwrap_or(self.left_panel_width),
             welcome_tour: patch.welcome_tour.unwrap_or(self.welcome_tour),
             author_name: patch.author_name.unwrap_or(self.author_name),
+            author_prompt: patch.author_prompt.unwrap_or(self.author_prompt),
         }
     }
 }
 
-/// A partial update: at most the six settings, each optional. Parsed only by [`SettingsPatch::from_value`], which
-/// rejects every unknown key (`deny_unknown_fields`), so a patch can never name more than these six fields.
+/// A partial update: at most the seven settings, each optional. Parsed only by [`SettingsPatch::from_value`], which
+/// rejects every unknown key (`deny_unknown_fields`), so a patch can never name more than these seven fields.
 #[derive(Debug, Clone, PartialEq, Eq, Default, Deserialize)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
 pub struct SettingsPatch {
@@ -238,6 +269,8 @@ pub struct SettingsPatch {
     pub welcome_tour: Option<WelcomeTour>,
     #[serde(default, deserialize_with = "present")]
     pub author_name: Option<AuthorName>,
+    #[serde(default, deserialize_with = "present")]
+    pub author_prompt: Option<AuthorPrompt>,
 }
 
 /// A field that is present must hold a valid value. Plain `Option` would read `null` as "absent" and accept it.
@@ -388,10 +421,9 @@ mod tests {
 
     #[test]
     fn settings_serialize_with_lowercase_enum_values() {
-        let author = AuthorName::default();
         assert_eq!(
             serde_json::to_value(Settings::default()).unwrap(),
-            json!({ "glass": "auto", "theme": "system", "language": "system", "leftPanelWidth": 248, "welcomeTour": "pending", "authorName": author.as_str() })
+            json!({ "glass": "auto", "theme": "system", "language": "system", "leftPanelWidth": 248, "welcomeTour": "pending", "authorName": "", "authorPrompt": "pending" })
         );
         let settings = Settings {
             glass: GlassMode::Solid,
@@ -400,10 +432,11 @@ mod tests {
             left_panel_width: PanelWidth::new(320).unwrap(),
             welcome_tour: WelcomeTour::Shown,
             author_name: AuthorName::new("Ada Lovelace").unwrap(),
+            author_prompt: AuthorPrompt::Done,
         };
         assert_eq!(
             serde_json::to_value(settings).unwrap(),
-            json!({ "glass": "solid", "theme": "dark", "language": "de", "leftPanelWidth": 320, "welcomeTour": "shown", "authorName": "Ada Lovelace" })
+            json!({ "glass": "solid", "theme": "dark", "language": "de", "leftPanelWidth": 320, "welcomeTour": "shown", "authorName": "Ada Lovelace", "authorPrompt": "done" })
         );
     }
 
@@ -452,12 +485,12 @@ mod tests {
         }
     }
 
-    // --- the author name (ADR-029) ---
+    // --- the author name (ADR-029, ADR-034) ---
 
     #[test]
-    fn an_author_name_is_one_to_128_characters_without_control_characters() {
+    fn an_author_name_is_empty_or_up_to_128_characters_without_control_characters() {
         let longest = "ä".repeat(limits::MAX_AUTHOR_NAME_CHARS);
-        for ok in ["A", "Ada Lovelace", "李雷", longest.as_str()] {
+        for ok in ["", "A", "Ada Lovelace", "李雷", longest.as_str()] {
             assert_eq!(
                 patch(json!({ "authorName": ok })).unwrap().author_name,
                 AuthorName::new(ok),
@@ -466,14 +499,10 @@ mod tests {
         }
         let too_long = "a".repeat(limits::MAX_AUTHOR_NAME_CHARS + 1);
         for bad in [
-            json!(""),
             json!(too_long),
-            json!(
-                "a
-b"
-            ),
-            json!("a "),
-            json!(""),
+            json!("a\nb"),
+            json!("a\u{0}b"),
+            json!("a\u{7f}"),
             json!(null),
             json!(3),
             json!(["Ada"]),
@@ -487,22 +516,66 @@ b"
     }
 
     #[test]
-    fn the_author_name_defaults_to_a_valid_name_and_is_stored_and_read_back() {
-        assert!(AuthorName::new(AuthorName::default().as_str()).is_some());
+    fn invisible_and_bidi_characters_are_removed_from_a_name() {
+        assert_eq!(
+            sanitize_author("\u{202E}Ada\u{200B} Love\u{2066}lace\u{FEFF}"),
+            "Ada Lovelace"
+        );
+        for c in [
+            '\u{202A}', '\u{202E}', '\u{2066}', '\u{2069}', '\u{200B}', '\u{200F}', '\u{FEFF}',
+        ] {
+            assert_eq!(sanitize_author(&format!("a{c}b")), "ab", "{c:?}");
+        }
+        // Only invisible characters: the name becomes empty, which is allowed.
+        assert_eq!(AuthorName::new("\u{200B}\u{202E}").unwrap().as_str(), "");
+        // The limit counts what is left after sanitizing.
+        let padded = format!("{}\u{200B}", "a".repeat(limits::MAX_AUTHOR_NAME_CHARS));
+        assert!(AuthorName::new(&padded).is_some());
+        assert_eq!(
+            patch(json!({ "authorName": "\u{202E}Ada" }))
+                .unwrap()
+                .author_name,
+            AuthorName::new("Ada")
+        );
+        // Control characters are still refused, not stripped.
+        assert!(AuthorName::new("a\u{85}b").is_none());
+    }
+
+    #[test]
+    fn the_author_name_is_empty_by_default_and_is_stored_and_read_back() {
+        assert_eq!(Settings::default().author_name.as_str(), "");
+        assert_eq!(Settings::default().author_prompt, AuthorPrompt::Pending);
         let dir = TempDir::new();
         let store = store_in(&dir);
-        apply_json(&store, json!({ "authorName": "Ada" })).unwrap();
+        apply_json(
+            &store,
+            json!({ "authorName": "Ada", "authorPrompt": "done" }),
+        )
+        .unwrap();
         assert_eq!(store_in(&dir).get().author_name.as_str(), "Ada");
-        // A damaged stored name falls back to the default.
+        assert_eq!(store_in(&dir).get().author_prompt, AuthorPrompt::Done);
+        apply_json(&store, json!({ "authorName": "" })).unwrap();
+        assert_eq!(store_in(&dir).get().author_name.as_str(), "");
+        // A damaged stored name or prompt falls back to the default.
         for contents in [
-            r#"{"authorName":""}"#,
-            r#"{"authorName":"a "}"#,
-            r#"{"authorName":5}"#,
+            r#"{"authorName":5,"authorPrompt":"x"}"#,
+            r#"{"authorName":"a\nb","authorPrompt":null}"#,
         ] {
             let dir = TempDir::new();
             fs::write(dir.path().join(FILE_NAME), contents).unwrap();
-            assert_eq!(store_in(&dir).get().author_name, AuthorName::default());
+            assert_eq!(store_in(&dir).get(), Settings::default());
         }
+        assert_eq!(
+            rejected(json!({ "authorPrompt": "later" })),
+            INVALID_SETTINGS
+        );
+    }
+
+    #[test]
+    fn the_os_suggestion_is_valid_but_never_the_default() {
+        let suggestion = AuthorName::os_suggestion();
+        assert!(AuthorName::new(&suggestion).is_some());
+        assert_eq!(Settings::default().author_name.as_str(), "");
     }
 
     // --- patch validation ---
@@ -554,6 +627,7 @@ b"
                 left_panel_width: PanelWidth::new(296),
                 welcome_tour: None,
                 author_name: None,
+                author_prompt: None,
             }
         );
     }
@@ -861,6 +935,7 @@ b"
                 left_panel_width: PanelWidth::new(280).unwrap(),
                 welcome_tour: WelcomeTour::Pending,
                 author_name: AuthorName::default(),
+                author_prompt: AuthorPrompt::Pending,
             }
         );
         assert_eq!(store.get(), updated);
@@ -870,7 +945,7 @@ b"
             serde_json::from_slice(&fs::read(dir.path().join(FILE_NAME)).unwrap()).unwrap();
         assert_eq!(
             stored,
-            json!({ "glass": "solid", "theme": "dark", "language": "de", "leftPanelWidth": 280, "welcomeTour": "pending", "authorName": AuthorName::default().as_str() })
+            json!({ "glass": "solid", "theme": "dark", "language": "de", "leftPanelWidth": 280, "welcomeTour": "pending", "authorName": "", "authorPrompt": "pending" })
         );
     }
 
@@ -1060,7 +1135,7 @@ b"
         let stored: Value = serde_json::from_slice(&bytes).unwrap();
         assert_eq!(
             stored,
-            json!({ "glass": "solid", "theme": "system", "language": "system", "leftPanelWidth": 248, "welcomeTour": "pending", "authorName": AuthorName::default().as_str() })
+            json!({ "glass": "solid", "theme": "system", "language": "system", "leftPanelWidth": 248, "welcomeTour": "pending", "authorName": "", "authorPrompt": "pending" })
         );
     }
 

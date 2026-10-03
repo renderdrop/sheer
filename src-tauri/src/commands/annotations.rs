@@ -3,6 +3,7 @@
 //! | Command | Arguments | Returns |
 //! |---|---|---|
 //! | `list_annotations` | `docId: number`, `pageId: number` | `Annotation[]` of the page, by id. The first call for a page reads its annotations from the file (an `Interactive` engine job) |
+//! | `list_document_annotations` | `docId: number` | `AnnotationSummary[]` of every page (at most 20 000) by page then id, for the comments panel. Pages not read yet are read at `Background` priority |
 //! | `apply_annotation_command` | `docId: number`, `command: DocCommand` | the `ChangeSet` `{ rev, upserted, removed, pages, history }`; the whole command happened or nothing did |
 //! | `undo`, `redo` | `docId: number` | the `ChangeSet` of the step taken back or done again; empty (same `rev`) if there is none |
 //!
@@ -13,71 +14,146 @@
 //! The clock and the file are the only things that are not in the model: this module stamps the commands (`modified`, a monotonic
 //! time for coalescing) and asks the engine for the annotations of a page the first time the page is listed.
 
-use std::collections::HashMap;
-use std::sync::{Mutex, PoisonError};
+use std::collections::{HashMap, HashSet};
+use std::sync::{Mutex, MutexGuard};
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
+use serde::Serialize;
 use tauri::State;
 
 use super::{blocking, AppState};
 use crate::documents::{DocumentId, PageId};
 use crate::error::{AppError, UiError};
-use crate::model::annotation::Annotation;
+use crate::limits;
+use crate::model::annotation::{Annotation, AnnotationBody, Rgb};
 use crate::model::command::DocCommand;
 use crate::model::doc_state::{ChangeSet, DocState, Stamp};
+use crate::model::ids::AnnotId;
+
+/// Longest excerpt of an annotation's contents in a summary, in characters.
+pub const SUMMARY_EXCERPT_CHARS: usize = 240;
+
+/// What the comments panel needs of an annotation: no geometry, and only the start of the contents. The strings come from the file
+/// and are shown as text only.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AnnotationSummary {
+    pub id: AnnotId,
+    pub page_id: PageId,
+    /// The `kind` tag of the annotation (`highlight`, `note`, `opaque`, ...).
+    pub kind: &'static str,
+    pub color: Rgb,
+    /// The first [`SUMMARY_EXCERPT_CHARS`] characters of the contents.
+    pub contents: String,
+    pub author: Option<String>,
+    pub modified: Option<String>,
+    pub in_reply_to: Option<AnnotId>,
+}
+
+fn kind_of(body: &AnnotationBody) -> &'static str {
+    match body {
+        AnnotationBody::Highlight { .. } => "highlight",
+        AnnotationBody::Underline { .. } => "underline",
+        AnnotationBody::Strikeout { .. } => "strikeout",
+        AnnotationBody::Note { .. } => "note",
+        AnnotationBody::FreeText { .. } => "freeText",
+        AnnotationBody::Ink { .. } => "ink",
+        AnnotationBody::Rect { .. } => "rect",
+        AnnotationBody::Ellipse { .. } => "ellipse",
+        AnnotationBody::Line { .. } => "line",
+        AnnotationBody::Opaque { .. } => "opaque",
+    }
+}
+
+impl AnnotationSummary {
+    fn of(annotation: &Annotation) -> Self {
+        Self {
+            id: annotation.id,
+            page_id: annotation.page_id,
+            kind: kind_of(&annotation.body),
+            color: annotation.color,
+            contents: annotation
+                .contents
+                .chars()
+                .take(SUMMARY_EXCERPT_CHARS)
+                .collect(),
+            author: annotation.author.clone(),
+            modified: annotation.modified.clone(),
+            in_reply_to: annotation.in_reply_to,
+        }
+    }
+}
+
+/// The models of the open documents, and the ids of the documents that were closed (an id is never reused, so a late command for a
+/// closed document finds it there and is refused instead of getting a model of its own).
+#[derive(Default)]
+struct Models {
+    docs: HashMap<DocumentId, DocState>,
+    closed: HashSet<DocumentId>,
+}
 
 /// The models of the open documents.
 pub struct AnnotationStore {
-    docs: Mutex<HashMap<DocumentId, DocState>>,
+    docs: Mutex<Models>,
     started: Instant,
 }
 
 impl Default for AnnotationStore {
     fn default() -> Self {
         Self {
-            docs: Mutex::new(HashMap::new()),
+            docs: Mutex::new(Models::default()),
             started: Instant::now(),
         }
     }
 }
 
 impl AnnotationStore {
-    /// Runs `f` on the model of document `id` (of `page_count` pages), which is created if the document has none yet.
+    /// The lock. A poisoned lock means a command panicked while it held the models, which then may be half changed: every model is
+    /// dropped and its document refused from then on (`not_found`) rather than trusted; the lock is usable again for new documents.
+    fn lock(&self) -> MutexGuard<'_, Models> {
+        self.docs.lock().unwrap_or_else(|poisoned| {
+            let mut models = poisoned.into_inner();
+            let ids: Vec<DocumentId> = models.docs.keys().copied().collect();
+            models.closed.extend(ids);
+            models.docs.clear();
+            self.docs.clear_poison();
+            models
+        })
+    }
+
+    /// Runs `f` on the model of document `id` (of `page_count` pages), which is created if the document has none yet. A document that
+    /// was closed (or whose model was dropped after a panic) is `not_found`.
     pub(super) fn with<T>(
         &self,
         id: DocumentId,
         page_count: u32,
         f: impl FnOnce(&mut DocState) -> Result<T, AppError>,
     ) -> Result<T, AppError> {
-        // A poisoned lock means a command panicked in the model; the blocking pool turned that into `internal`, and the model's
-        // maps are never left half-written between statements that can panic.
-        let mut docs = self.docs.lock().unwrap_or_else(PoisonError::into_inner);
-        f(docs.entry(id).or_insert_with(|| DocState::new(page_count)))
+        let mut models = self.lock();
+        if models.closed.contains(&id) {
+            return Err(AppError::not_found("document"));
+        }
+        f(models
+            .docs
+            .entry(id)
+            .or_insert_with(|| DocState::new(page_count)))
     }
 
-    /// Forgets the model of a document that is closed.
+    /// Forgets the model of a document that is closed, and refuses it from now on.
     pub fn remove(&self, id: DocumentId) {
-        self.docs
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner)
-            .remove(&id);
+        let mut models = self.lock();
+        models.docs.remove(&id);
+        models.closed.insert(id);
     }
 
     /// Whether document `id` has changes that are not saved. A document without a model has none.
     pub fn is_dirty(&self, id: DocumentId) -> bool {
-        self.docs
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner)
-            .get(&id)
-            .is_some_and(DocState::is_dirty)
+        self.lock().docs.get(&id).is_some_and(DocState::is_dirty)
     }
 
     /// How many documents have a model.
     pub fn len(&self) -> usize {
-        self.docs
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner)
-            .len()
+        self.lock().docs.len()
     }
 
     pub fn is_empty(&self) -> bool {
@@ -151,6 +227,60 @@ impl AppState {
             .with(id, count, |state| Ok(state.list(page)))
     }
 
+    /// The annotations of every page as summaries, by page and id (at most `MAX_ANNOTATIONS_PER_DOC`). Pages not read yet are read
+    /// from the file one by one at `Background` priority, so a render or a page the user asked for goes first. A failed read fails
+    /// the call (`engine_timeout` when the engine was busy: ask again; the pages read stay read).
+    pub fn list_document_annotations(
+        &self,
+        id: DocumentId,
+    ) -> Result<Vec<AnnotationSummary>, AppError> {
+        let count = self.registry.page_count(id)?;
+        let mut summaries = Vec::new();
+        for index in 0..count {
+            let page = self.registry.page_id(id, index)?;
+            if !self
+                .annotations
+                .with(id, count, |state| Ok(state.is_imported(page)))?
+            {
+                let items = self.engine.import_annotations_background(id, index)?;
+                self.annotations.with(id, count, |state| {
+                    state.import_page(page, &items);
+                    Ok(())
+                })?;
+            }
+            let listed = self
+                .annotations
+                .with(id, count, |state| Ok(state.list(page)))?;
+            let room = limits::MAX_ANNOTATIONS_PER_DOC.saturating_sub(summaries.len());
+            summaries.extend(listed.iter().take(room).map(AnnotationSummary::of));
+        }
+        Ok(summaries)
+    }
+
+    /// Runs `step` on the model of `id`, then makes PDFium's render match: the originals the model changed or deleted are hidden in the
+    /// engine's copy, the ones that are `Clean` again (undo) shown. The frontend re-renders the page on the change set (`pageRev`).
+    /// The model has changed whatever the engine answers, so a failure there is not the command's: the page then keeps showing the
+    /// original under the overlay until the next change.
+    fn change_and_sync(
+        &self,
+        id: DocumentId,
+        step: impl FnOnce(&mut DocState, &Stamp) -> Result<ChangeSet, AppError>,
+    ) -> Result<ChangeSet, AppError> {
+        let count = self.registry.page_count(id)?;
+        let stamp = self.annotations.stamp();
+        let (changes, before, after) = self.annotations.with(id, count, |state| {
+            let before = state.hidden_origins();
+            let changes = step(state, &stamp)?;
+            Ok((changes, before, state.hidden_origins()))
+        })?;
+        let hide: Vec<(u32, u32)> = after.difference(&before).copied().collect();
+        let show: Vec<(u32, u32)> = before.difference(&after).copied().collect();
+        if !hide.is_empty() || !show.is_empty() {
+            let _ = self.engine.set_annotations_hidden(id, hide, show);
+        }
+        Ok(changes)
+    }
+
     /// Runs a command on the model of a document as one undo step (ADR-003 §6). `not_found` for an unknown document, annotation or reply
     /// target, `invalid_argument` for a page, a value or a field that does not fit, `limit_exceeded` for a count that is too large.
     pub fn apply_annotation_command(
@@ -158,24 +288,17 @@ impl AppState {
         id: DocumentId,
         command: DocCommand,
     ) -> Result<ChangeSet, AppError> {
-        let count = self.registry.page_count(id)?;
-        let stamp = self.annotations.stamp();
-        self.annotations
-            .with(id, count, |state| state.execute(command, &stamp))
+        self.change_and_sync(id, |state, stamp| state.execute(command, stamp))
     }
 
     /// Takes back the last step; an empty change set if there is none.
     pub fn undo(&self, id: DocumentId) -> Result<ChangeSet, AppError> {
-        let count = self.registry.page_count(id)?;
-        let stamp = self.annotations.stamp();
-        self.annotations.with(id, count, |state| state.undo(&stamp))
+        self.change_and_sync(id, DocState::undo)
     }
 
     /// Does the last undone step again; an empty change set if there is none.
     pub fn redo(&self, id: DocumentId) -> Result<ChangeSet, AppError> {
-        let count = self.registry.page_count(id)?;
-        let stamp = self.annotations.stamp();
-        self.annotations.with(id, count, |state| state.redo(&stamp))
+        self.change_and_sync(id, DocState::redo)
     }
 }
 
@@ -188,6 +311,16 @@ pub async fn list_annotations(
 ) -> Result<Vec<Annotation>, UiError> {
     let state = state.inner().clone();
     blocking(move || state.list_annotations(doc_id, page_id)).await
+}
+
+/// The annotations of all pages of a document as summaries, for the comments panel.
+#[tauri::command]
+pub async fn list_document_annotations(
+    state: State<'_, AppState>,
+    doc_id: DocumentId,
+) -> Result<Vec<AnnotationSummary>, UiError> {
+    let state = state.inner().clone();
+    blocking(move || state.list_document_annotations(doc_id)).await
 }
 
 /// Runs a command on the annotations of a document as one undo step and answers with what changed.
@@ -299,6 +432,40 @@ mod tests {
         // Another page is read on its own.
         state.list_annotations(id, PageId::new(0)).unwrap();
         assert_eq!(*asked.lock().unwrap(), [1, 0]);
+    }
+
+    #[test]
+    fn the_document_list_reads_every_page_once_and_summarizes_without_geometry() {
+        let mut note = imported("x");
+        note.body = AnnotationBody::Note {
+            at: crate::model::geometry::Point { x: 5.0, y: 5.0 },
+            icon: crate::model::annotation::NoteIcon::Note,
+        };
+        note.contents = "x".repeat(SUMMARY_EXCERPT_CHARS + 50);
+        note.author = Some("Ann".to_owned());
+        let (state, id, asked) = state_with_import(3, vec![note]);
+        let all = state.list_document_annotations(id).unwrap();
+        assert_eq!(all.len(), 3);
+        assert_eq!(
+            all.iter().map(|s| s.page_id.get()).collect::<Vec<_>>(),
+            [0, 1, 2]
+        );
+        assert_eq!(all[0].kind, "note");
+        assert_eq!(all[0].contents.chars().count(), SUMMARY_EXCERPT_CHARS);
+        assert_eq!(all[0].author.as_deref(), Some("Ann"));
+        let value = serde_json::to_value(&all[0]).unwrap();
+        assert!(
+            value.get("rect").is_none() && value["pageId"] == 0 && value["inReplyTo"].is_null()
+        );
+        // A second call and a page list answer from the model.
+        assert_eq!(state.list_document_annotations(id).unwrap(), all);
+        state.list_annotations(id, PageId::new(1)).unwrap();
+        assert_eq!(*asked.lock().unwrap(), [0, 1, 2]);
+        let unknown: DocumentId = serde_json::from_str("999").unwrap();
+        assert_eq!(
+            state.list_document_annotations(unknown).unwrap_err().code(),
+            ErrorCode::NotFound
+        );
     }
 
     #[test]
@@ -461,5 +628,43 @@ mod tests {
             value["history"],
             json!({"canUndo": true, "canRedo": false, "undoLabel": "annotation.create", "redoLabel": null, "dirty": true})
         );
+    }
+
+    #[test]
+    fn a_closed_document_gets_no_model_again() {
+        let store = AnnotationStore::default();
+        let id: DocumentId = serde_json::from_str("7").unwrap();
+        store.with(id, 1, |_| Ok(())).unwrap();
+        assert_eq!(store.len(), 1);
+        store.remove(id);
+        assert_eq!(
+            store.with(id, 1, |_| Ok(())).unwrap_err().code(),
+            ErrorCode::NotFound
+        );
+        assert!(store.is_empty());
+    }
+
+    #[test]
+    fn a_poisoned_lock_drops_the_models_and_refuses_their_documents() {
+        let store = Arc::new(AnnotationStore::default());
+        let (a, b): (DocumentId, DocumentId) = (
+            serde_json::from_str("1").unwrap(),
+            serde_json::from_str("2").unwrap(),
+        );
+        store.with(a, 1, |_| Ok(())).unwrap();
+        let thief = Arc::clone(&store);
+        let crashed = std::thread::spawn(move || {
+            let _ = thief.with(a, 1, |_| -> Result<(), AppError> { panic!("in the model") });
+        })
+        .join();
+        assert!(crashed.is_err());
+        assert_eq!(
+            store.with(a, 1, |_| Ok(())).unwrap_err().code(),
+            ErrorCode::NotFound
+        );
+        assert!(!store.is_dirty(a));
+        // Another document works again.
+        store.with(b, 1, |_| Ok(())).unwrap();
+        assert_eq!(store.len(), 1);
     }
 }

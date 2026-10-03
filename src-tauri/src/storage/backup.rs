@@ -47,6 +47,24 @@ pub fn backup_name(stamp: &str, source: &Path) -> String {
     format!("{stamp}-{stem}-{}.pdf", path_hash(source))
 }
 
+/// Makes `directory` (and its parents) if it is missing; on Unix it is for its owner alone (0700): a backup is a copy of a user's document.
+fn make_private_dir(directory: &Path) -> io::Result<()> {
+    #[cfg(unix)]
+    {
+        use std::fs::DirBuilder;
+        use std::os::unix::fs::{DirBuilderExt, PermissionsExt};
+        DirBuilder::new()
+            .recursive(true)
+            .mode(0o700)
+            .create(directory)?;
+        fs::set_permissions(directory, fs::Permissions::from_mode(0o700))
+    }
+    #[cfg(not(unix))]
+    {
+        fs::create_dir_all(directory)
+    }
+}
+
 /// Writes `bytes`, the original of `source`, into `directory` (made if it is missing) and returns where.
 pub fn write_backup(
     directory: &Path,
@@ -54,6 +72,7 @@ pub fn write_backup(
     source: &Path,
     bytes: &[u8],
 ) -> io::Result<PathBuf> {
+    make_private_dir(directory)?;
     let target = directory.join(backup_name(stamp, source));
     write_atomic(&target, bytes)?;
     Ok(target)
@@ -129,6 +148,30 @@ mod tests {
         let later = now + Duration::from_secs(86_400);
         assert_eq!(prune(dir.path(), later, Duration::from_secs(60), 1000), 1);
         assert_eq!(fs::read_dir(dir.path()).unwrap().count(), 0);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn the_backup_folder_is_private_to_the_owner() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = TempDir::new();
+        let folder = dir.path().join("data").join("backups");
+        let source = Path::new("/docs/a.pdf");
+        write_backup(&folder, "20261003T120000Z", source, &[1]).unwrap();
+        let mode = |p: &Path| fs::metadata(p).unwrap().permissions().mode() & 0o777;
+        assert_eq!(mode(&folder), 0o700);
+        // One that exists with wider rights is narrowed.
+        fs::set_permissions(&folder, fs::Permissions::from_mode(0o755)).unwrap();
+        write_backup(&folder, "20261004T120000Z", source, &[1]).unwrap();
+        assert_eq!(mode(&folder), 0o700);
+    }
+
+    #[test]
+    fn a_backup_folder_that_is_missing_is_made() {
+        let dir = TempDir::new();
+        let folder = dir.path().join("a").join("backups");
+        let written = write_backup(&folder, "x", Path::new("/d/a.pdf"), &[7]).unwrap();
+        assert_eq!(fs::read(written).unwrap(), vec![7]);
     }
 
     #[test]

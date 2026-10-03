@@ -466,6 +466,11 @@ control. Keys: the chosen segment is the only tab stop; Left, Right, Up and Down
 jump; Tab cycles inside the popover; Esc closes and refocuses More. A choice is saved at once (`update_settings`) and applies at once (theme and glass
 on `<html>`, language to the UI); a change the backend refuses shows its error under the rows (`role=alert`, `--color-error-text`).
 
+**Author prompt (ADR-034).** The author name is empty by default (placeholder `settings.author.placeholder`, "No author"; no `/T` is written). Before the first
+save of a document with annotations, while the name is empty and `authorPrompt` is pending, an inline group appears once in its own slot at the end of the
+toolbar row (`glass-1`, Field sm pre-filled with the OS name as suggestion, primary `author.prompt.confirm`, ghost `author.prompt.skip`). Enter confirms, Esc
+and Skip keep it empty; the save follows at once; `authorPrompt` becomes done.
+
 **About** is a dialog (`role=dialog`, `aria-modal`): solid `--surface-solid` with `--shadow-3`, `--radius-card`, 320 wide, centred over the
 `--color-backdrop` at `--z-modal`. Column, centred, 16 apart: the logo (64), the name (`--text-xl`) over "Version x.y.z" (meta, from `app_ready`; omitted
 until known), "Open source under AGPL-3.0-or-later", the privacy line (meta: offline, no telemetry), then a secondary "Third-party licenses" button

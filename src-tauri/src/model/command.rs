@@ -852,4 +852,95 @@ mod tests {
         );
         assert!(state.execute(create_cmd(1, 0.0), &stamp(0)).is_ok());
     }
+
+    // --- counters, reply index and the import budget ---
+
+    #[test]
+    fn the_counters_and_the_reply_index_follow_create_delete_undo_and_redo() {
+        let mut state = state();
+        let parent = created(&mut state, 0, 10.0, 0);
+        let mut draft = draft_json(0, 40.0);
+        draft["inReplyTo"] = json!(parent.get());
+        let reply = state
+            .execute(
+                cmd(json!({"type": "createAnnotation", "draft": draft})),
+                &stamp(1),
+            )
+            .unwrap()
+            .upserted[0]
+            .id;
+        assert_eq!(state.replies_to(&BTreeSet::from([parent])), vec![reply]);
+        assert_eq!(state.live_total, 2);
+        let deleted = state
+            .execute(
+                cmd(json!({"type": "deleteAnnotations", "ids": [parent.get()]})),
+                &stamp(2),
+            )
+            .unwrap();
+        assert_eq!(deleted.removed.len(), 2, "the reply goes with its parent");
+        assert_eq!(
+            (state.live_total, state.live_per_page.get(&0)),
+            (0, Some(&0))
+        );
+        assert!(state.replies_to(&BTreeSet::from([parent])).is_empty());
+        state.undo(&stamp(3)).unwrap();
+        assert_eq!(state.live_total, 2);
+        assert_eq!(state.replies_to(&BTreeSet::from([parent])), vec![reply]);
+        state.undo(&stamp(4)).unwrap();
+        state.undo(&stamp(5)).unwrap();
+        assert_eq!(state.live_total, 0);
+        assert!(state.replies.is_empty());
+        state.redo(&stamp(6)).unwrap();
+        assert_eq!(state.live_total, 1);
+    }
+
+    #[test]
+    fn imported_strings_are_budgeted_per_page_and_per_document() {
+        let big = |chars: usize| {
+            let mut item = imported("n", false);
+            item.contents = "x".repeat(chars);
+            item
+        };
+        let one = 32_000;
+        let items: Vec<_> = (0..200).map(|_| big(one)).collect();
+        let mut state = DocState::new(100);
+        // 131 of them fit in the budget of a page.
+        assert_eq!(
+            state.import_page(PageId::new(0), &items),
+            limits::MAX_IMPORT_BYTES_PER_PAGE / one
+        );
+        // The document budget goes in whole pages of these.
+        let mut pages = 0;
+        for page in 1..100 {
+            if state.import_page(PageId::new(page), &items) == 0 {
+                break;
+            }
+            pages += 1;
+        }
+        assert!(
+            pages < 10,
+            "the document stops taking strings after about {} pages",
+            limits::MAX_IMPORT_BYTES_PER_DOC / limits::MAX_IMPORT_BYTES_PER_PAGE
+        );
+    }
+
+    #[test]
+    fn reading_a_page_after_a_save_does_not_add_what_the_save_wrote_again() {
+        let mut state = state();
+        let id = created(&mut state, 0, 10.0, 0);
+        let origin = PdfOrigin {
+            page_index: 0,
+            annot_index: 0,
+            name: None,
+        };
+        state.finish_save(&std::collections::HashMap::from([(id, origin)]));
+        // The file lists the annotation that was written (position 0) and an older one (position 1).
+        let mut older = imported("old", false);
+        older.origin.annot_index = 1;
+        assert_eq!(
+            state.import_page(PageId::new(0), &[imported("new", false), older]),
+            1
+        );
+        assert_eq!(state.list(PageId::new(0)).len(), 2);
+    }
 }

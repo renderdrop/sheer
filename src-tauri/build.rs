@@ -31,6 +31,7 @@ fn main() {
         "get_page_links",
         "open_link",
         "list_annotations",
+        "list_document_annotations",
         "apply_annotation_command",
         "undo",
         "redo",

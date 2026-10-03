@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef, useState, type KeyboardEvent } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent } from 'react';
 
 import { MAX_ANNOT_CONTENTS_CHARS, MAX_FREE_TEXT_LINES, type Annotation } from '../../../api/annotations';
 import { toAppError } from '../../../api/errors';
@@ -47,6 +47,15 @@ export function FreeTextEditor({ docId, annotation, scale, isNew = false, onDone
   const [text, setText] = useState(textOf(annotation.lines));
   const done = useRef(false);
   useAutosize(ref, text);
+
+  // Another annotation in the same editor starts a new edit: it can end (once) again with its own text.
+  const editedId = useRef(annotation.id);
+  useEffect(() => {
+    if (editedId.current === annotation.id) return;
+    editedId.current = annotation.id;
+    done.current = false;
+    setText(textOf(annotation.lines));
+  }, [annotation.id, annotation.lines]);
 
   useLayoutEffect(() => {
     const element = ref.current;
@@ -109,7 +118,7 @@ export function FreeTextEditor({ docId, annotation, scale, isNew = false, onDone
         minHeight: box.h * scale,
         fontFamily: HELVETICA,
         fontSize: annotation.fontSize * scale,
-        lineHeight: 1.2,
+        lineHeight: 'var(--free-text-line-height)',
         color: rgbToCss(annotation.color),
         opacity: annotation.opacity,
       }}

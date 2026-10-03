@@ -2,9 +2,9 @@
 //!
 //! | Command | Arguments | Returns |
 //! |---|---|---|
-//! | `app_ready` | none | `AppBootstrap { platform, reducedTransparency, version }` |
-//! | `get_settings` | none | `Settings { glass, theme, language, leftPanelWidth, welcomeTour, authorName }` |
-//! | `update_settings` | `patch: { glass?, theme?, language?, leftPanelWidth?, welcomeTour? }` | the settings after the update |
+//! | `app_ready` | none | `AppBootstrap { platform, reducedTransparency, version, authorSuggestion }` |
+//! | `get_settings` | none | `Settings { glass, theme, language, leftPanelWidth, welcomeTour, authorName, authorPrompt }` |
+//! | `update_settings` | `patch: { glass?, theme?, language?, leftPanelWidth?, welcomeTour?, authorName?, authorPrompt? }` | the settings after the update |
 //! | `watch_transparency` | `onChange: Channel<boolean>` | nothing; the channel then carries each change of the OS "Reduce transparency" flag |
 //! | `subscribe_menu` | `onAction: Channel<string>`, `systemLanguage?: string` | nothing; the channel then carries the id of each command chosen in the macOS menu bar |
 //! | `subscribe_app` | `onEvent: Channel<AppEvent>` | nothing; the channel then carries the backend's pushes (`dropHover`, `opened`, `openFailed`, see `events::AppEvent`), first those that waited for it |
@@ -24,7 +24,7 @@ use crate::error::UiError;
 use crate::events::{AppEvent, AppEvents};
 use crate::menu::{self, MenuBridge};
 use crate::platform::{self, Platform, TransparencyWatch};
-use crate::storage::settings::{Settings, SettingsPatch, SettingsStore};
+use crate::storage::settings::{AuthorName, Settings, SettingsPatch, SettingsStore};
 
 /// What the frontend asks once at startup.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -34,6 +34,8 @@ pub struct AppBootstrap {
     /// The OS "reduce transparency" flag (macOS only for now; `false` elsewhere).
     pub reduced_transparency: bool,
     pub version: &'static str,
+    /// The OS account name, only as a suggestion for the author prompt (ADR-034); never stored. Empty when unknown.
+    pub author_suggestion: String,
 }
 
 impl AppBootstrap {
@@ -43,6 +45,7 @@ impl AppBootstrap {
             platform: platform::current(),
             reduced_transparency: platform::reduced_transparency(),
             version: env!("CARGO_PKG_VERSION"),
+            author_suggestion: AuthorName::os_suggestion(),
         }
     }
 }
@@ -140,7 +143,15 @@ mod tests {
         let object = value.as_object().unwrap();
         let mut keys: Vec<&str> = object.keys().map(String::as_str).collect();
         keys.sort_unstable();
-        assert_eq!(keys, ["platform", "reducedTransparency", "version"]);
+        assert_eq!(
+            keys,
+            [
+                "authorSuggestion",
+                "platform",
+                "reducedTransparency",
+                "version"
+            ]
+        );
         assert!(["macos", "windows", "linux"].contains(&object["platform"].as_str().unwrap()));
         assert!(object["reducedTransparency"].is_boolean());
         assert_eq!(object["version"], env!("CARGO_PKG_VERSION"));

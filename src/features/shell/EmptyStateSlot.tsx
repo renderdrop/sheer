@@ -1,4 +1,4 @@
-import { AnimatePresence, motion } from 'motion/react';
+import { AnimatePresence, motion, useIsPresent } from 'motion/react';
 import { useEffect, useState, type CSSProperties } from 'react';
 
 import { runAction } from '../../actions/dispatch';
@@ -6,6 +6,7 @@ import { shortcutFor } from '../../actions/registry';
 import type { Platform } from '../../api/app';
 import { cx } from '../../components/cx';
 import { useT } from '../../i18n';
+import { DURATION, useFade } from '../../components/motion';
 import { SPRING } from '../../lib/motion';
 import { useUi } from '../../stores/ui';
 import { DropCard } from '../viewer/DropCard';
@@ -55,8 +56,16 @@ export function EmptyStateSlot({ platform, style }: { platform: Platform | null;
   const openKey = shortcutFor('open', platform, t);
   const target = useDropTarget(dropActive);
   const recents = useRecents();
+  // Leaving (a document opened): the slot fades out where it is, and takes no input while it does.
+  const present = useIsPresent();
+  const { exit } = useFade(DURATION.base, DURATION.base);
   return (
-    <div style={style} className="relative flex min-h-0 min-w-0 overflow-auto p-1">
+    <motion.div
+      exit={exit}
+      style={style}
+      inert={!present || undefined}
+      className={cx('relative flex min-h-0 min-w-0 overflow-auto p-1', !present && 'pointer-events-none')}
+    >
       <div className={cx('flex min-w-0 flex-1 transition-opacity', target.shown ? 'opacity-0' : 'opacity-100')}>
         <EmptyState
           openShortcut={openKey?.label ?? ''}
@@ -84,6 +93,6 @@ export function EmptyStateSlot({ platform, style }: { platform: Platform | null;
           </motion.div>
         )}
       </AnimatePresence>
-    </div>
+    </motion.div>
   );
 }

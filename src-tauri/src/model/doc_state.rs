@@ -8,7 +8,7 @@ use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
 use serde::Serialize;
 
-use super::annotation::{Annotation, Imported, PdfOrigin, Sync};
+use super::annotation::{Annotation, AnnotationBody, Imported, PdfOrigin, Sync};
 use super::command::DocCommand;
 use super::history::{History, HistoryState};
 use super::ids::AnnotId;
@@ -88,6 +88,26 @@ pub struct DocState {
     history: History,
     /// The pages whose annotations were read from the file.
     imported: HashSet<u32>,
+    /// Bytes of strings taken from the file so far (`limits::MAX_IMPORT_BYTES_PER_DOC`).
+    imported_bytes: usize,
+    /// Live (not deleted) entries in all and per page, kept by [`DocState::track`]; the limits are checked against these.
+    pub(super) live_total: usize,
+    pub(super) live_per_page: HashMap<u32, usize>,
+    /// Live replies by the annotation they reply to.
+    pub(super) replies: HashMap<AnnotId, BTreeSet<AnnotId>>,
+}
+
+/// Bytes of the strings an imported annotation brings.
+fn import_bytes(item: &Imported) -> usize {
+    let lines = match &item.body {
+        AnnotationBody::FreeText { lines, .. } => lines.iter().map(String::len).sum(),
+        _ => 0,
+    };
+    item.contents.len()
+        + lines
+        + item.author.as_ref().map_or(0, String::len)
+        + item.modified.as_ref().map_or(0, String::len)
+        + item.origin.name.as_ref().map_or(0, String::len)
 }
 
 impl DocState {
@@ -99,6 +119,42 @@ impl DocState {
             rev: 0,
             history: History::new(),
             imported: HashSet::new(),
+            imported_bytes: 0,
+            live_total: 0,
+            live_per_page: HashMap::new(),
+            replies: HashMap::new(),
+        }
+    }
+
+    /// Updates the counters and the reply index for an entry that comes into (`add`) or leaves the state. Deleted entries are not in them.
+    fn track(&mut self, entry: &Entry, add: bool) {
+        if entry.tombstone {
+            return;
+        }
+        let annotation = &entry.annotation;
+        let page = self
+            .live_per_page
+            .entry(annotation.page_id.get())
+            .or_insert(0);
+        if add {
+            *page += 1;
+            self.live_total += 1;
+        } else {
+            *page = page.saturating_sub(1);
+            self.live_total = self.live_total.saturating_sub(1);
+        }
+        if let Some(parent) = annotation.in_reply_to {
+            if add {
+                self.replies
+                    .entry(parent)
+                    .or_default()
+                    .insert(annotation.id);
+            } else if let Some(set) = self.replies.get_mut(&parent) {
+                set.remove(&annotation.id);
+                if set.is_empty() {
+                    self.replies.remove(&parent);
+                }
+            }
         }
     }
 
@@ -168,27 +224,17 @@ impl DocState {
 
     /// The live entries that reply (directly) to one of `ids`.
     pub(crate) fn replies_to(&self, ids: &BTreeSet<AnnotId>) -> Vec<AnnotId> {
-        self.entries
-            .values()
-            .filter(|entry| !entry.tombstone)
-            .filter(|entry| {
-                entry
-                    .annotation
-                    .in_reply_to
-                    .is_some_and(|parent| ids.contains(&parent))
-            })
-            .map(|entry| entry.annotation.id)
+        ids.iter()
+            .filter_map(|id| self.replies.get(id))
+            .flatten()
+            .copied()
             .collect()
     }
 
     /// Whether one more annotation fits on `page` and in the document.
     pub(crate) fn check_room(&self, page: PageId) -> Result<(), AppError> {
-        let mut total = 0usize;
-        let mut on_page = 0usize;
-        for entry in self.entries.values().filter(|entry| !entry.tombstone) {
-            total += 1;
-            on_page += usize::from(entry.annotation.page_id == page);
-        }
+        let total = self.live_total;
+        let on_page = self.live_per_page.get(&page.get()).copied().unwrap_or(0);
         if total >= limits::MAX_ANNOTATIONS_PER_DOC {
             return Err(AppError::limit(
                 "annotations",
@@ -216,6 +262,7 @@ impl DocState {
                     } else {
                         delta.upsert(entry.annotation.clone());
                     }
+                    self.track(&entry, true);
                     self.entries.insert(id, entry)
                 }
                 None => {
@@ -223,6 +270,9 @@ impl DocState {
                     self.entries.remove(&id)
                 }
             };
+            if let Some(old) = &old {
+                self.track(old, false);
+            }
             inverse.push((id, old));
         }
         inverse.reverse();
@@ -243,6 +293,17 @@ impl DocState {
         self.entries.values()
     }
 
+    /// Where (page index, position in the page) the originals are that PDFium must not draw: annotations of the file that were changed
+    /// or deleted in this session. The overlay draws the changed ones; undo makes an original `Clean` again, which shows it.
+    pub fn hidden_origins(&self) -> BTreeSet<(u32, u32)> {
+        self.entries
+            .values()
+            .filter(|entry| entry.tombstone || entry.annotation.sync == Sync::Modified)
+            .filter_map(|entry| entry.persisted.as_ref())
+            .map(|origin| (origin.page_index, origin.annot_index))
+            .collect()
+    }
+
     /// Whether the annotations of `page` have been read from the file.
     pub fn is_imported(&self, page: PageId) -> bool {
         self.imported.contains(&page.get())
@@ -256,20 +317,41 @@ impl DocState {
             return 0;
         }
         let mut added = 0;
-        for item in items.iter().take(limits::MAX_IMPORT_PER_PAGE) {
+        let mut page_bytes = 0usize;
+        // Annotations created on a page that was not read yet and then saved are in the file now: reading the page must not add them twice.
+        let known: HashSet<u32> = self
+            .entries
+            .values()
+            .filter_map(|entry| entry.persisted.as_ref())
+            .filter(|origin| origin.page_index == page.get())
+            .map(|origin| origin.annot_index)
+            .collect();
+        for item in items
+            .iter()
+            .filter(|item| !known.contains(&item.origin.annot_index))
+            .take(limits::MAX_IMPORT_PER_PAGE)
+        {
             if self.check_room(page).is_err() {
+                break;
+            }
+            // The strings of a page and of a document are budgeted: many annotations at the size limit would add up to much more.
+            let bytes = import_bytes(item);
+            if page_bytes.saturating_add(bytes) > limits::MAX_IMPORT_BYTES_PER_PAGE
+                || self.imported_bytes.saturating_add(bytes) > limits::MAX_IMPORT_BYTES_PER_DOC
+            {
                 break;
             }
             let Ok(id) = self.alloc_id() else { break };
             if let Some(annotation) = Annotation::from_import(id, page, item) {
-                self.entries.insert(
-                    id,
-                    Entry {
-                        annotation,
-                        persisted: Some(item.origin.clone()),
-                        tombstone: false,
-                    },
-                );
+                let entry = Entry {
+                    annotation,
+                    persisted: Some(item.origin.clone()),
+                    tombstone: false,
+                };
+                self.track(&entry, true);
+                self.entries.insert(id, entry);
+                page_bytes += bytes;
+                self.imported_bytes += bytes;
                 added += 1;
             }
         }

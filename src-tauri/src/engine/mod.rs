@@ -163,6 +163,14 @@ pub(crate) enum Job {
         page_index: u32,
         reply: Reply<Vec<Imported>>,
     },
+    /// Hides or shows annotations of PDFium's in-memory copy, by `(page index, position in the page's annotations)`, so that the page
+    /// render stops drawing an original the model has changed or deleted, and draws it again on undo (`import::set_hidden`).
+    SetAnnotationsHidden {
+        id: DocumentId,
+        hide: Vec<(u32, u32)>,
+        show: Vec<(u32, u32)>,
+        reply: Reply<()>,
+    },
     /// A search of one page: its first `limit` hits (`search`).
     SearchPage {
         id: DocumentId,
@@ -218,6 +226,9 @@ impl Job {
                 let _ = reply.send(Err(error));
             }
             Job::ImportAnnotations { reply, .. } => {
+                let _ = reply.send(Err(error));
+            }
+            Job::SetAnnotationsHidden { reply, .. } => {
                 let _ = reply.send(Err(error));
             }
             Job::SearchPage { reply, .. } => {
@@ -616,6 +627,40 @@ impl Engine {
         page_index: u32,
     ) -> Result<Vec<Imported>, AppError> {
         self.call(limits::TEXT_TIMEOUT, Rank::INTERACTIVE, |reply| {
+            Job::ImportAnnotations {
+                id,
+                page_index,
+                reply,
+            }
+        })
+    }
+
+    /// Hides the annotations `hide` and shows the annotations `show` (each `(page index, position)` as in `PdfOrigin`) in PDFium's copy
+    /// of the document, which is never saved (ADR-002 §7): only what the render draws changes. A position that is not there is skipped.
+    pub fn set_annotations_hidden(
+        &self,
+        id: DocumentId,
+        hide: Vec<(u32, u32)>,
+        show: Vec<(u32, u32)>,
+    ) -> Result<(), AppError> {
+        self.call(limits::TEXT_TIMEOUT, Rank::INTERACTIVE, |reply| {
+            Job::SetAnnotationsHidden {
+                id,
+                hide,
+                show,
+                reply,
+            }
+        })
+    }
+
+    /// [`Engine::import_annotations`] at `Background` priority, for a read of every page of a document (the comments list): a render
+    /// or a read the user is waiting for goes first.
+    pub fn import_annotations_background(
+        &self,
+        id: DocumentId,
+        page_index: u32,
+    ) -> Result<Vec<Imported>, AppError> {
+        self.call(limits::TEXT_TIMEOUT, Rank::BACKGROUND, |reply| {
             Job::ImportAnnotations {
                 id,
                 page_index,

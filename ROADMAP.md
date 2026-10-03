@@ -78,9 +78,9 @@ The Stop hook picks the first open `- [ ]` line, so order matters. Scope: `docs/
 - [x] Palette, stroke presets, properties inspector; one-shot/locked tool modes
 - [x] Save annotations: appearance streams via lopdf, incremental + atomic save, backup of original; save refuses an in-place write to the welcome document (`DocKind::Welcome`, Save acts as Save As) with a security_baseline pin
 - [x] Interop test: saved annotations re-open correctly (PDFium + AP present for every type)
-- [ ] Comments panel (DESIGN §3.26, ADR-034): threads via /IRT, filter (type, author), sort (page, date), jump, empty state
-- [ ] Author name (ADR-034): default empty; one-time inline toolbar field at the first annotation save (OS name as suggestion, stored after confirm); empty → no /T; strip invisible/bidi characters on save
-- [ ] Politur M2
+- [x] Comments panel (DESIGN §3.26, ADR-034): threads via /IRT, filter (type, author), sort (page, date), jump, empty state
+- [x] Author name (ADR-034): default empty; one-time inline toolbar field at the first annotation save (OS name as suggestion, stored after confirm); empty → no /T; strip invisible/bidi characters on save
+- [x] Politur M2
   - (from M1 review) recents clone: fix the zoom before the FLIP measures the target rect (one frame of "–" and a moving target); counter-scale the clone radius or fade it earlier; make the empty-state fade-out visible
   - (from M1 security) `style-src 'unsafe-inline'`: move to hashed/nonce styles or record the reason in DECISIONS; confirm the release build never uses devCsp; prune 3 unused license allowances in deny.toml
   - (from M1 reviews) Clear in recents: one failure still shows Undo for every id; missing row opens Locate twice over (row + button) — keep one; text cache listeners: bound; links are untested with file /Rotate (no link overlay yet)
@@ -103,6 +103,12 @@ The Stop hook picks the first open `- [ ]` line, so order matters. Scope: `docs/
 - [ ] Merge files (multi-drop suggests merge)
 - [ ] Split (every N pages, ranges)
 - [ ] Compress: three named presets with estimated size
+- [ ] Politur M3
+  - (from M2 reviews) author prompt: feedback when a confirmed name is invalid; own placeholder; focus return on close; end-to-end test that an empty author saves without /T
+  - (from M2 reviews) comments panel: test Delete/Backspace (opaque guard, focus move); confirm-free delete stays undoable; cancel overlapping list calls; keep summary identity stable across refreshes
+  - (from M2 reviews) `Models.closed` bounded; explain not_found after a poisoned lock in the UI; reset `closeRequests` after a quit walk; undoing a change to an annotation that was Hidden in the file must keep it hidden
+  - (from M2 security, low) `bundle.targets` "all" → only the shipped macOS/Windows targets; a test that the closeRequested handler is enforced in Rust; devCsp never in release (pinned) — keep
+  - (deferred) F6 skips annotation tab stops (no F6 handler yet); link overlay with file /Rotate test; user docs: undo history ends at save (ADR-033)
 
 ## M4 — Forms and signature (v0.7.0)
 

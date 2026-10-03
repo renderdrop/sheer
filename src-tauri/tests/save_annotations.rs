@@ -15,7 +15,7 @@ use std::time::Duration;
 
 use serde_json::json;
 use sheer_lib::commands::render::{RenderPriority, RenderRequest};
-use sheer_lib::commands::save::{SaveAck, SaveResult};
+use sheer_lib::commands::save::{SaveAck, SaveResult, SaveWarning};
 use sheer_lib::commands::AppState;
 use sheer_lib::documents::{DocKind, DocumentId, PageId};
 use sheer_lib::engine::{self, Engine};
@@ -699,4 +699,67 @@ fn a_save_result_holds_no_path() {
     let wire = serde_json::to_string(&result).unwrap();
     assert!(!wire.contains(&*scratch.0.to_string_lossy()), "{wire}");
     assert!(!wire.contains(&*path.to_string_lossy()), "{wire}");
+}
+
+#[test]
+fn a_page_with_rotate_is_saved_in_page_space_and_the_opacity_reads_back_as_ca() {
+    let Some(state) = state() else { return };
+    let scratch = Scratch::new("rotate");
+    let mut builder = PdfBuilder::new();
+    add_pages(&mut builder, &[Page::new("").with("/Rotate 90")]);
+    builder.object(1, "<< /Type /Catalog /Pages 2 0 R >>");
+    let (id, path) = open(state, &scratch, "turned.pdf", &builder.finish(1));
+    let square = create(
+        state,
+        id,
+        json!({"pageId": 0, "kind": "rect", "color": [10, 20, 200], "opacity": 0.5,
+               "box": {"x": 100.0, "y": 50.0, "w": 80.0, "h": 40.0}, "width": 2.0, "fill": null, "dashed": false}),
+    );
+    let saved = state.save_in_place(id, SaveAck::default()).unwrap();
+    assert!(saved.warnings.is_empty());
+
+    let bytes = read(&path);
+    // Page space is before /Rotate, so the rectangle is the one of an upright page (y up in the file).
+    let in_file = list_annotations(&bytes).unwrap();
+    let written = in_file.iter().find(|s| s.subtype == "Square").unwrap();
+    assert!(written.has_appearance);
+    let rect = square.rect;
+    assert!(
+        near(written.rect[0], rect.x)
+            && near(written.rect[2], rect.x + rect.w)
+            && near(written.rect[1], 792.0 - rect.y - rect.h)
+            && near(written.rect[3], 792.0 - rect.y),
+        "{:?} vs {rect:?}",
+        written.rect
+    );
+    // The opacity is /CA of the annotation.
+    assert!(
+        written.opacity.is_some_and(|ca| near(ca, 0.5)),
+        "{:?}",
+        written.opacity
+    );
+    // The file loads again and the page is still turned: PDFium reopened it under the same id.
+    assert_eq!(state.list_annotations(id, PageId::new(0)).unwrap().len(), 1);
+}
+
+#[test]
+fn a_save_without_a_data_folder_says_that_no_backup_was_made() {
+    if state().is_none() {
+        return;
+    }
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("pdfium");
+    let state = AppState::new(Engine::start(engine::library_path(&root)));
+    let scratch = Scratch::new("no-backup");
+    let (id, path) = open(&state, &scratch, "doc.pdf", &base());
+    create(
+        &state,
+        id,
+        json!({"pageId": 1, "kind": "note", "color": [255, 235, 0], "at": {"x": 10.0, "y": 10.0}, "icon": "note"}),
+    );
+    let saved = state.save_in_place(id, SaveAck::default()).unwrap();
+    assert!(!saved.backup_created);
+    assert_eq!(saved.warnings, [SaveWarning::BackupSkipped]);
+    assert!(read(&path).len() > base().len(), "the file was saved");
+    let wire = serde_json::to_value(&saved).unwrap();
+    assert_eq!(wire["warnings"], json!(["backupSkipped"]));
 }

@@ -26,6 +26,7 @@ use crate::limits;
 /// | `dropHover` | `active: boolean` | a drag with files entered (`true`) or left, was cancelled or ended in a drop (`false`) |
 /// | `opened` | `document: { id, pageCount, displayName, flags }` | a document was opened, or an open one was asked for again |
 /// | `needsPassword` | `id`, `displayName` | the file is encrypted and needs its user password (ADR-026): it waits under `id` for `unlock_document`, or for `close_document` when the user cancels; never the path |
+/// | `closeRequested` | none | the window or the app is asked to close while a document is open: the UI asks about unsaved changes, closes the documents and closes the window itself (ADR-029 §7) |
 /// | `openFailed` | `code`, `key`, `retryable`, `params?` of the error model (ARCHITECTURE §7) | a file could not be opened |
 ///
 /// `openFailed` flattens the error: it is exactly what a rejected command carries, so the UI turns it into the same
@@ -51,6 +52,7 @@ pub enum AppEvent {
         #[serde(flatten)]
         error: UiError,
     },
+    CloseRequested,
 }
 
 impl AppEvent {
@@ -74,7 +76,7 @@ impl AppEvent {
 
     /// Whether the UI has to hear of it: an open result is never dropped while nobody listens, a hover is stale at once.
     fn is_open_result(&self) -> bool {
-        !matches!(self, Self::DropHover { .. })
+        !matches!(self, Self::DropHover { .. } | Self::CloseRequested)
     }
 }
 
@@ -112,6 +114,15 @@ impl AppEvents {
     /// `subscribe`; a hover does not.
     pub fn publish(&self, event: AppEvent) {
         self.lock().deliver(event);
+    }
+
+    /// Asks the UI to take care of a close. `true` if a live receiver got it (the caller then holds the close back); `false`
+    /// if nobody listens, so a window whose page is gone can still be closed.
+    pub fn request_close(&self) -> bool {
+        self.lock()
+            .receiver
+            .as_ref()
+            .is_some_and(|channel| channel.send(AppEvent::CloseRequested).is_ok())
     }
 
     /// How many open results wait for a receiver.
@@ -207,6 +218,24 @@ mod tests {
     }
 
     // --- the wire shapes ---
+
+    #[test]
+    fn a_close_request_is_a_bare_type_and_is_never_kept_for_later() {
+        assert_eq!(
+            serde_json::to_string(&AppEvent::CloseRequested).unwrap(),
+            r#"{"type":"closeRequested"}"#
+        );
+        let events = AppEvents::new();
+        assert!(
+            !events.request_close(),
+            "nobody listens: the close goes through"
+        );
+        assert_eq!(events.waiting(), 0);
+        let (channel, log) = recording();
+        events.subscribe(channel);
+        assert!(events.request_close());
+        assert_eq!(log.lock().unwrap().len(), 1);
+    }
 
     #[test]
     fn a_hover_is_a_type_and_a_flag() {

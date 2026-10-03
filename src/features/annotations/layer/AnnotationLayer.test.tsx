@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import * as api from '../../../api/annotations';
 import type { Annotation, ChangeSet } from '../../../api/annotations';
+import { usePulseMessage } from '../../../components';
 import { EMPTY_HISTORY, useAnnotations } from '../../../stores/annotations';
 import { useUi } from '../../../stores/ui';
 import { forgetFileRotations, setFileRotation } from '../../viewer/fileRotation';
@@ -357,6 +358,41 @@ describe('keyboard', () => {
       patch: { box: { x: 10, y: 10, w: 41, h: 21 } },
       coalesce: 'resize:1',
     });
+  });
+
+  it('Esc takes back the nudges that wait: nothing is sent, the selection stays, a second Esc clears it', async () => {
+    render(<AnnotationLayer {...props()} />);
+    act(() => frame(1).focus());
+    fireEvent.keyDown(frame(1), { key: 'ArrowRight' });
+    expect(frame(1).style.left).toBe('11px');
+    fireEvent.keyDown(frame(1), { key: 'Escape' });
+    expect(frame(1).style.left).toBe('10px');
+    expect(selected()).toEqual([1]);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1000);
+    });
+    expect(mocked.applyAnnotationCommand).not.toHaveBeenCalled();
+    fireEvent.keyDown(frame(1), { key: 'Escape' });
+    expect(selected()).toEqual([]);
+  });
+
+  it('says so when Alt with the arrows has nothing to resize', () => {
+    seed([box(1, 10, 10, 'new', { locked: true })]);
+    function Probe() {
+      return <span data-testid="said">{usePulseMessage()}</span>;
+    }
+    render(
+      <>
+        <AnnotationLayer {...props()} />
+        <Probe />
+      </>,
+    );
+    act(() => frame(1).focus());
+    act(() => {
+      fireEvent.keyDown(frame(1), { key: 'ArrowRight', altKey: true });
+    });
+    expect(screen.getByTestId('said').textContent).toContain('can’t be resized');
+    expect(mocked.applyAnnotationCommand).not.toHaveBeenCalled();
   });
 
   it('Delete removes the selection and offers Undo', async () => {

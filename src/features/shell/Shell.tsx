@@ -1,3 +1,4 @@
+import { AnimatePresence } from 'motion/react';
 import { useEffect, useId, useMemo, type CSSProperties } from 'react';
 
 import { ActionKeys } from '../../actions/keys';
@@ -111,15 +112,17 @@ export function Shell() {
       <BannerRow />
       <XfaBannerRow />
       <MainGrid structure={structure}>
-        {hasDocument ? (
+        {/* The empty state fades out on its own (it stays in its slot, inert, until it is gone) while the document comes in. */}
+        <AnimatePresence initial={false}>
+          {!hasDocument && <EmptyStateSlot key="empty" platform={platform} style={slots.canvas} />}
+        </AnimatePresence>
+        {hasDocument && (
           <>
             <LeftPanelSlot present={!structure.leftCollapsed} id={leftPanelId} style={slots.left} />
             <LeftPanelSplitter controls={leftPanelId} collapsed={structure.leftCollapsed} style={slots.splitter} />
             <ViewerCanvas style={slots.canvas} />
             <InspectorSlot present={structure.inspectorReserved} style={slots.inspector} />
           </>
-        ) : (
-          <EmptyStateSlot platform={platform} style={slots.canvas} />
         )}
       </MainGrid>
       <ViewerStatusBar />

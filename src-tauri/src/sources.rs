@@ -49,13 +49,19 @@ fn classify(event: &DragDropEvent) -> Drag {
 
 /// Window event hook (`Builder::on_window_event`): files dragged over the main window and dropped on it.
 pub fn on_window_event<R: Runtime>(window: &Window<R>, event: &WindowEvent) {
-    let WindowEvent::DragDrop(drag) = event else {
-        return;
-    };
     if window.label() != "main" {
         return;
     }
     let app = window.app_handle();
+    if let WindowEvent::CloseRequested { api, .. } = event {
+        if ui_takes_the_close(app) {
+            api.prevent_close();
+        }
+        return;
+    }
+    let WindowEvent::DragDrop(drag) = event else {
+        return;
+    };
     match classify(drag) {
         Drag::Hover(active) => publish(app, AppEvent::DropHover { active }),
         Drag::Drop(paths) => {
@@ -69,6 +75,16 @@ pub fn on_window_event<R: Runtime>(window: &Window<R>, event: &WindowEvent) {
 /// `RunEvent` hook: macOS asks the app to open files (a double click in Finder, "Open With", `open file.pdf`, a file dropped
 /// on the Dock icon), also while the app is running. Nothing on the other platforms.
 pub fn on_run_event<R: Runtime>(app: &AppHandle<R>, event: &RunEvent) {
+    // A quit the user asked for (Cmd+Q) while a document is open goes through the UI like a window close. Once the UI has
+    // closed the documents it closes the window, and this lets the exit that follows through.
+    if let RunEvent::ExitRequested {
+        code: None, api, ..
+    } = event
+    {
+        if ui_takes_the_close(app) {
+            api.prevent_exit();
+        }
+    }
     #[cfg(target_os = "macos")]
     if let RunEvent::Opened { urls } = event {
         open_in_background(app, intake::paths_from_urls(urls));
@@ -107,6 +123,17 @@ fn focus_main_window<R: Runtime>(app: &AppHandle<R>) {
             AppError::logged(ErrorCode::Internal, format!("focus the window: {error}")).log();
         }
     }
+}
+
+/// Whether a close is held back for the UI: a document is open and a live UI was told. The UI asks about unsaved changes,
+/// closes the documents (so none is open any more) and closes the window again, which then goes through.
+fn ui_takes_the_close<R: Runtime>(app: &AppHandle<R>) -> bool {
+    let open = app
+        .try_state::<AppState>()
+        .is_some_and(|state| state.has_open_documents());
+    open && app
+        .try_state::<Arc<AppEvents>>()
+        .is_some_and(|events| events.request_close())
 }
 
 /// Tells the UI, if the app state exists yet.

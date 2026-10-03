@@ -8,6 +8,7 @@ import { imageKey, type CacheEntry, type ImageId } from '../../engine/renderCach
 import { renderScheduler, type RenderScheduler } from '../../engine/renderScheduler';
 import { useT } from '../../i18n';
 import { DURATION, ENTER_SCALE, FADE_END_SLACK_MS, SPRING } from '../../lib/motion';
+import { pageRevOf, useAnnotations } from '../../stores/annotations';
 import { useUi } from '../../stores/ui';
 import { AnnotationLayer } from '../annotations/layer/AnnotationLayer';
 import { usePageText } from '../textlayer/cache';
@@ -25,8 +26,8 @@ import { boxToPage, normalizeRotation, swapsSides, type Rotation } from './trans
  */
 export const BUCKET_SETTLE_MS = 80;
 
-/** The revision of a page's pixels (the backend's `pageRev`); pages cannot change until M2, so it is always 0. */
-const PAGE_REV = 0;
+/** How many earlier revisions of a page are looked at for a stand-in while the image of the new one is on its way. */
+const STAND_IN_REVS = 8;
 
 /** A tiled page also renders the tiles this far (in px of its bucket) beyond the viewport, so scrolling does not show blanks. */
 const TILE_LOOKAHEAD_PX = TILE_SIZE_PX / 2;
@@ -218,16 +219,23 @@ export const PageView = memo(function PageView({
   );
   const tiles = useMemo(() => parseTiles(tilesKey), [tilesKey]);
 
-  const wholeId: ImageId = { docId, page: pageIndex, rev: PAGE_REV, bucket: wholeBucket };
+  // An annotation of the file that was changed makes the page's pixels stale: the images of the new revision are asked for, and the
+  // old ones stand in until they arrive.
+  const rev = useAnnotations((state) => pageRevOf(state, docId, pageIndex));
+  const standInFor = (bucket: number, except?: string): CacheEntry | undefined => {
+    for (let r = rev; r >= Math.max(0, rev - STAND_IN_REVS); r -= 1) {
+      const found = cache.best(docId, pageIndex, r, bucket, except);
+      if (found !== undefined) return found;
+    }
+    return undefined;
+  };
+  const wholeId: ImageId = { docId, page: pageIndex, rev, bucket: wholeBucket };
   const exact = cache.get(imageKey(wholeId));
   // What the cache had when the page mounted shows without a fade; what arrives later fades in (MOTION 4.3).
   const [atMount] = useState(() => new Set<string>(exact === undefined ? [] : [exact.key]));
   // The exact image covers the stand-in only once it has decoded and faded in (below), so the page is never blank in between.
   const [covered, setCovered] = useState<string | null>(exact?.key ?? null);
-  const standIn =
-    exact === undefined || covered !== exact.key
-      ? cache.best(docId, pageIndex, PAGE_REV, wholeBucket, exact?.key)
-      : undefined;
+  const standIn = exact === undefined || covered !== exact.key ? standInFor(wholeBucket, exact?.key) : undefined;
   const tileEntries = tiles.flatMap((tile) => {
     const entry = cache.get(imageKey({ ...wholeId, bucket: plan.bucket, tile }));
     return entry === undefined ? [] : [{ tile, entry }];
@@ -245,7 +253,7 @@ export const PageView = memo(function PageView({
 
   // Ask for what is missing: the page, or the underlay and the tiles near the viewport.
   useEffect(() => {
-    const whole: ImageId = { docId, page: pageIndex, rev: PAGE_REV, bucket: wholeBucket };
+    const whole: ImageId = { docId, page: pageIndex, rev, bucket: wholeBucket };
     const wanted: ImageId[] = [whole];
     for (const tile of tiles) wanted.push({ ...whole, bucket: tiledBucket, tile });
     const missing = wanted.filter((id) => !cache.has(imageKey(id)));
@@ -264,14 +272,17 @@ export const PageView = memo(function PageView({
       }
     };
     // Something to show meanwhile makes the wait cheap; without it the page is blank until the image arrives.
-    const hasSomething = cache.best(docId, pageIndex, PAGE_REV, wholeBucket) !== undefined;
+    let hasSomething = false;
+    for (let r = rev; r >= Math.max(0, rev - STAND_IN_REVS) && !hasSomething; r -= 1) {
+      hasSomething = cache.best(docId, pageIndex, r, wholeBucket) !== undefined;
+    }
     const timer = hasSomething ? window.setTimeout(ask, BUCKET_SETTLE_MS) : undefined;
     if (timer === undefined) ask();
     return () => {
       current = false;
       window.clearTimeout(timer);
     };
-  }, [scheduler, cache, docId, pageIndex, wholeBucket, tiledBucket, tiles, priority]);
+  }, [scheduler, cache, docId, pageIndex, rev, wholeBucket, tiledBucket, tiles, priority]);
 
   // A stand-in is under the image that arrives: that one fades fast; over the bare placeholder it fades at base.
   const image = (

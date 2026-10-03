@@ -101,7 +101,9 @@ fn a_page_is_read_into_the_model_with_typed_kinds_and_opaque_leftovers() {
         .all(|a| a.sync == Sync::Clean && a.page_id == page));
 
     let highlight = &listed[0];
-    assert_eq!(highlight.color, Rgb([255, 255, 0]));
+    // None of these has an appearance stream, and the colour calls on an annotation itself are not made (they crash PDFium for an /AP
+    // without objects, and the two cannot be told apart): the default colour of the kind. The path route is covered by saved files.
+    assert_eq!(highlight.color, Rgb([255, 235, 0]));
     assert_eq!(highlight.contents, "Marked");
     assert_eq!(highlight.author.as_deref(), Some("Ada"));
     assert!(highlight
@@ -132,7 +134,7 @@ fn a_page_is_read_into_the_model_with_typed_kinds_and_opaque_leftovers() {
     let AnnotationBody::Rect { fill, .. } = &listed[5].body else {
         panic!("not a square")
     };
-    assert_eq!(*fill, Some(Rgb([255, 127, 0])));
+    assert_eq!(*fill, None);
     let subtypes: Vec<&str> = listed[7..]
         .iter()
         .map(|a| match &a.body {
@@ -180,4 +182,117 @@ fn commands_work_on_what_was_read_and_opaque_annotations_stay_read_only() {
     );
     assert!(refused.is_err());
     state.close_document(info.id).unwrap();
+}
+
+#[test]
+fn an_appearance_without_objects_and_format_characters_are_survived() {
+    let Some(state) = state() else { return };
+    let mut builder = PdfBuilder::new();
+    add_pages(
+        &mut builder,
+        &[Page::new("").with("/Annots [100 0 R 101 0 R]")],
+    );
+    let page = support::fixtures::page_id(0);
+    // A square whose /AP /N is a form with nothing in it, and a note whose text and author carry bidi and zero-width characters.
+    builder.stream(102, "/Type /XObject /Subtype /Form /BBox [0 0 100 60]", b"");
+    builder.object(
+        100,
+        &format!("<< /Type /Annot /Subtype /Square /Rect [72 500 172 560] /C [0 0 1] /IC [1 0.5 0] /AP << /N 102 0 R >> /P {page} 0 R >>"),
+    );
+    builder.object(
+        101,
+        &format!("<< /Type /Annot /Subtype /Text /Rect [400 700 420 720] /Contents <FEFF202E0061200B0062> /T <FEFF202E004100640061FEFF> /P {page} 0 R >>"),
+    );
+    builder.object(1, "<< /Type /Catalog /Pages 2 0 R >>");
+    let file = TempFile::write("empty-ap.pdf", &builder.finish(1));
+    let info = state.open_path(file.0.clone()).unwrap().expect("loaded");
+    let listed = state.list_annotations(info.id, PageId::new(0)).unwrap();
+    assert_eq!(listed.len(), 2);
+    assert_eq!(listed[1].contents, "ab");
+    assert_eq!(listed[1].author.as_deref(), Some("Ada"));
+    // The worker is alive: the page can be listed again and another document opens.
+    assert_eq!(
+        state.list_annotations(info.id, PageId::new(0)).unwrap(),
+        listed
+    );
+    state.close_document(info.id).unwrap();
+}
+
+fn square_page(with_square: bool) -> Vec<u8> {
+    let mut builder = PdfBuilder::new();
+    let annots = if with_square { "/Annots [100 0 R]" } else { "" };
+    add_pages(&mut builder, &[Page::new("").with(annots)]);
+    let page = support::fixtures::page_id(0);
+    if with_square {
+        builder.object(
+            100,
+            &format!("<< /Type /Annot /Subtype /Square /Rect [72 500 172 560] /C [0 0 1] /IC [1 0.5 0] /P {page} 0 R >>"),
+        );
+    }
+    builder.object(1, "<< /Type /Catalog /Pages 2 0 R >>");
+    builder.finish(1)
+}
+
+fn frame(state: &AppState, id: sheer_lib::documents::DocumentId) -> Vec<u8> {
+    use sheer_lib::commands::render::{RenderPriority, RenderRequest};
+    state
+        .render_page(RenderRequest {
+            doc_id: id,
+            page_id: PageId::new(0),
+            bucket: 0,
+            tile: None,
+            priority: RenderPriority::Visible,
+            generation: 1,
+        })
+        .unwrap()
+        .as_ref()
+        .clone()
+}
+
+#[test]
+fn the_original_of_a_changed_or_deleted_annotation_leaves_the_render_and_comes_back_on_undo() {
+    let Some(state) = state() else { return };
+    let with = TempFile::write("square-with.pdf", &square_page(true));
+    let without = TempFile::write("square-without.pdf", &square_page(false));
+    let blank = state.open_path(without.0.clone()).unwrap().expect("loaded");
+    let blank_frame = frame(state, blank.id);
+    let info = state.open_path(with.0.clone()).unwrap().expect("loaded");
+    let original = frame(state, info.id);
+    assert_ne!(original, blank_frame, "the square is drawn by PDFium");
+
+    let listed = state.list_annotations(info.id, PageId::new(0)).unwrap();
+    let id = listed[0].id;
+    let command =
+        |value: serde_json::Value| -> DocCommand { serde_json::from_value(value).unwrap() };
+
+    // Moved: the original no longer shows at its place (the overlay draws the moved one).
+    state
+        .apply_annotation_command(
+            info.id,
+            command(
+                serde_json::json!({"type": "moveAnnotations", "ids": [id], "dx": 100.0, "dy": 0.0}),
+            ),
+        )
+        .unwrap();
+    assert_eq!(frame(state, info.id), blank_frame);
+    state.undo(info.id).unwrap();
+    assert_eq!(frame(state, info.id), original);
+    state.redo(info.id).unwrap();
+    assert_eq!(frame(state, info.id), blank_frame);
+    state.undo(info.id).unwrap();
+    assert_eq!(frame(state, info.id), original);
+
+    // Deleted: gone from the render; undo brings it back.
+    state
+        .apply_annotation_command(
+            info.id,
+            command(serde_json::json!({"type": "deleteAnnotations", "ids": [id]})),
+        )
+        .unwrap();
+    assert_eq!(frame(state, info.id), blank_frame);
+    state.undo(info.id).unwrap();
+    assert_eq!(frame(state, info.id), original);
+
+    state.close_document(info.id).unwrap();
+    state.close_document(blank.id).unwrap();
 }

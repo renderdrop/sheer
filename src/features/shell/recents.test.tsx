@@ -148,7 +148,32 @@ describe('the recent files of the empty state', () => {
     expect(api.restoreRecent.mock.calls.map(([id]) => id)).toEqual([2, 1]);
   });
 
-  it('a missing file offers Locate, from its button and by activating the row; an intact file does not', async () => {
+  it('Clear offers Undo only for the entries that really went', async () => {
+    api.removeRecent.mockImplementation((id: number) =>
+      id === 1 ? Promise.reject(new Error('busy')) : Promise.resolve(),
+    );
+    const { user } = setup(<Host />);
+    await screen.findByText('First.pdf');
+    await user.click(screen.getByRole('button', { name: 'Clear' }));
+    await waitFor(() => expect(useUi.getState().toast?.message).toBe('Recent files cleared'));
+    act(() => useUi.getState().toast?.action?.run());
+    await waitFor(() => expect(api.restoreRecent).toHaveBeenCalledTimes(1));
+    expect(api.restoreRecent).toHaveBeenCalledWith(2);
+    // The one that stayed is read from the backend again.
+    await waitFor(() => expect(api.listRecents.mock.calls.length).toBeGreaterThan(1));
+  });
+
+  it('Clear with every removal failing shows no Undo', async () => {
+    api.removeRecent.mockRejectedValue(new Error('busy'));
+    const { user } = setup(<Host />);
+    await screen.findByText('First.pdf');
+    await user.click(screen.getByRole('button', { name: 'Clear' }));
+    await waitFor(() => expect(api.removeRecent).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(api.listRecents.mock.calls.length).toBeGreaterThan(1));
+    expect(useUi.getState().toast).toBeNull();
+  });
+
+  it('a missing file offers Locate from its button only, once; the row does nothing; an intact file has no button', async () => {
     const { user } = setup(<Host />);
     await screen.findByText('Gone.pdf');
     expect(screen.queryByRole('button', { name: 'Locate First.pdf' })).toBeNull();
@@ -156,7 +181,7 @@ describe('the recent files of the empty state', () => {
     expect(api.locateRecent).toHaveBeenCalledWith(2);
     await waitFor(() => expect(api.listRecents).toHaveBeenCalledTimes(2));
     await user.click(await screen.findByRole('button', { name: /^Gone[.]pdf/ }));
-    expect(api.locateRecent).toHaveBeenCalledTimes(2);
+    expect(api.locateRecent).toHaveBeenCalledTimes(1);
     expect(api.openRecent).not.toHaveBeenCalled();
   });
 

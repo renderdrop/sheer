@@ -107,6 +107,7 @@ pub fn run() -> Result<(), AppError> {
             commands::links::get_page_links,
             commands::links::open_link,
             commands::annotations::list_annotations,
+            commands::annotations::list_document_annotations,
             commands::annotations::apply_annotation_command,
             commands::annotations::undo,
             commands::annotations::redo,

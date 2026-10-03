@@ -16,6 +16,8 @@ pub struct Summary {
     pub quad_points: Vec<f32>,
     /// Whether `/IRT` is a reference.
     pub is_reply: bool,
+    /// `/CA`, the constant opacity.
+    pub opacity: Option<f32>,
 }
 
 fn numbers(doc: &Document, dict: &Dictionary, key: &[u8]) -> Vec<f32> {
@@ -69,6 +71,7 @@ pub fn list_annotations(bytes: &[u8]) -> Result<Vec<Summary>, AppError> {
                 },
                 quad_points: numbers(&doc, dict, b"QuadPoints"),
                 is_reply: matches!(dict.get(b"IRT"), Ok(Object::Reference(_))),
+                opacity: dict.get(b"CA").and_then(Object::as_float).ok(),
             });
         }
     }

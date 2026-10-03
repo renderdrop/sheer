@@ -1,19 +1,47 @@
 import { create } from 'zustand';
 
+/** What the user chose in the dialog that asks about a tab (or, when quitting, a document) with unsaved changes. */
+export type PromptAnswer = 'save' | 'discard' | 'cancel';
+
+/** How long "Saved" stays in the status bar after a save. */
+export const SAVED_HINT_MS = 2500;
+
+/** The quit walks the edited documents one by one: this is the `i`-th (1-based) of `n`. */
+export interface QuitProgress {
+  i: number;
+  n: number;
+}
+
 /**
  * Saving and closing with changes (DESIGN 3.27). `saving` holds the documents a save is running for (the status bar says
- * "Saving…"); `prompt` is the document whose tab was closed with unsaved changes, for which the dialog asks.
+ * "Saving…"); `saved` the document that was saved a moment ago ("Saved"); `prompt` is the document whose tab was closed (or that the
+ * quit is at) with unsaved changes, for which the dialog asks; `quit` is set while the quit walks the documents, and `answer` is the
+ * waiting quit's way to hear what the user chose. `overwrite` is the document whose file changed on disk and a save asks to replace it.
  */
 export interface SaveState {
   saving: Readonly<Record<number, true>>;
+  saved: number | null;
   prompt: number | null;
+  quit: QuitProgress | null;
+  answer: ((answer: PromptAnswer) => void) | null;
+  overwrite: { docId: number; resolve: (confirmed: boolean) => void } | null;
   setSaving: (docId: number, saving: boolean) => void;
+  /** Shows "Saved" for `SAVED_HINT_MS`. */
+  markSaved: (docId: number) => void;
   setPrompt: (docId: number | null) => void;
+  setQuit: (quit: QuitProgress | null, answer?: ((answer: PromptAnswer) => void) | null) => void;
+  setOverwrite: (overwrite: SaveState['overwrite']) => void;
 }
+
+let savedTimer: ReturnType<typeof setTimeout> | undefined;
 
 export const useSave = create<SaveState>()((set) => ({
   saving: {},
+  saved: null,
   prompt: null,
+  quit: null,
+  answer: null,
+  overwrite: null,
   setSaving: (docId, saving) =>
     set((state) => {
       if ((state.saving[docId] === true) === saving) return state;
@@ -22,5 +50,12 @@ export const useSave = create<SaveState>()((set) => ({
       else delete next[docId];
       return { saving: next };
     }),
+  markSaved: (docId) => {
+    clearTimeout(savedTimer);
+    set({ saved: docId });
+    savedTimer = setTimeout(() => set({ saved: null }), SAVED_HINT_MS);
+  },
   setPrompt: (docId) => set((state) => (state.prompt === docId ? state : { prompt: docId })),
+  setQuit: (quit, answer = null) => set({ quit, answer }),
+  setOverwrite: (overwrite) => set({ overwrite }),
 }));

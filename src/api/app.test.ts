@@ -51,6 +51,7 @@ describe('parseSettings', () => {
             leftPanelWidth: 248,
             welcomeTour: 'pending',
             authorName: 'Author',
+            authorPrompt: 'pending',
           };
           expect(parseSettings(settings)).toEqual(settings);
         }
@@ -68,6 +69,7 @@ describe('parseSettings', () => {
           leftPanelWidth,
           welcomeTour: 'shown',
           authorName: 'Author',
+          authorPrompt: 'pending',
         }),
       ).toMatchObject({
         leftPanelWidth,
@@ -95,6 +97,7 @@ describe('parseSettings', () => {
           leftPanelWidth: bad,
           welcomeTour: 'pending',
           authorName: 'Author',
+          authorPrompt: 'pending',
         }),
         String(bad),
       ).toBeNull();
@@ -123,6 +126,7 @@ describe('parseSettings', () => {
         leftPanelWidth: 248,
         welcomeTour: 'pending',
         authorName: 'Author',
+        authorPrompt: 'pending',
       },
       {
         glass: 1,
@@ -131,6 +135,7 @@ describe('parseSettings', () => {
         leftPanelWidth: 248,
         welcomeTour: 'pending',
         authorName: 'Author',
+        authorPrompt: 'pending',
       },
       {
         glass: 'auto',
@@ -139,6 +144,7 @@ describe('parseSettings', () => {
         leftPanelWidth: 248,
         welcomeTour: 'done',
         authorName: 'Author',
+        authorPrompt: 'pending',
       },
       { glass: 'auto', theme: 'system', language: 'system', leftPanelWidth: 248 },
       // A language that is not one of the three wire names: a tag, another case, another language.
@@ -166,6 +172,7 @@ describe('parseSettings', () => {
         leftPanelWidth: 300,
         welcomeTour: 'shown',
         authorName: 'Author',
+        authorPrompt: 'pending',
         extra: '<img src=x>',
       }),
     ).toEqual({
@@ -175,6 +182,7 @@ describe('parseSettings', () => {
       leftPanelWidth: 300,
       welcomeTour: 'shown',
       authorName: 'Author',
+      authorPrompt: 'pending',
     });
   });
 });
@@ -185,7 +193,11 @@ describe('parseBootstrap', () => {
       platform: 'macos',
       reducedTransparency: true,
       version: '0.2.0',
+      authorSuggestion: '',
     });
+    expect(
+      parseBootstrap({ platform: 'macos', reducedTransparency: true, version: '0.2.0', authorSuggestion: 'user' }),
+    ).toMatchObject({ authorSuggestion: 'user' });
   });
 
   it('rejects other platforms, types and shapes', () => {
@@ -215,6 +227,7 @@ describe('commands', () => {
       leftPanelWidth: 248,
       welcomeTour: 'pending',
       authorName: 'Author',
+      authorPrompt: 'pending',
     });
     await expect(getSettings()).resolves.toEqual({
       glass: 'auto',
@@ -223,6 +236,7 @@ describe('commands', () => {
       leftPanelWidth: 248,
       welcomeTour: 'pending',
       authorName: 'Author',
+      authorPrompt: 'pending',
     });
     expect(invokeMock).toHaveBeenLastCalledWith('get_settings', undefined);
   });
@@ -235,6 +249,7 @@ describe('commands', () => {
       leftPanelWidth: 248,
       welcomeTour: 'pending',
       authorName: 'Author',
+      authorPrompt: 'pending',
     });
     await expect(updateSettings({ glass: 'solid' })).resolves.toEqual({
       glass: 'solid',
@@ -243,6 +258,7 @@ describe('commands', () => {
       leftPanelWidth: 248,
       welcomeTour: 'pending',
       authorName: 'Author',
+      authorPrompt: 'pending',
     });
     expect(invokeMock).toHaveBeenCalledWith('update_settings', { patch: { glass: 'solid' } });
   });

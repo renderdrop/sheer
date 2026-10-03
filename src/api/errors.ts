@@ -49,8 +49,8 @@ const GENERIC: AppError = { code: 'internal', key: 'error.internal', retryable: 
 
 const CODES: ReadonlySet<string> = new Set<string>(ERROR_CODES);
 
-/** `what` is a `&'static str` in the backend; anything else is not from us. */
-const WHAT = /^[a-z_]{1,32}$/;
+/** `what` is a `&'static str` in the backend (a snake_case or lowerCamelCase word); anything else is not from us. */
+const WHAT = /^[a-z][a-zA-Z_]{0,31}$/;
 
 function toParams(value: unknown): ErrorParams | undefined {
   if (typeof value !== 'object' || value === null) return undefined;

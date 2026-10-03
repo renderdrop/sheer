@@ -22,6 +22,8 @@ export interface StatusBarProps {
   zoom: number;
   /** A render is in flight: shown as activity text. */
   rendering: boolean;
+  /** A save is running ("Saving…") or just finished ("Saved"); said in the same live region as the render activity (DESIGN 3.27). */
+  saveHint?: 'saving' | 'saved' | null;
   onGoToPage: (pageIndex: number) => void;
   onZoom: (zoom: number) => void;
   /** The view rotation in degrees (DESIGN 3.20); a button that resets it is shown while it is not 0. */
@@ -164,6 +166,7 @@ export function StatusBar({
   pageCount,
   zoom,
   rendering,
+  saveHint = null,
   onGoToPage,
   onZoom,
   rotation = 0,
@@ -185,7 +188,13 @@ export function StatusBar({
       <TourPill />
       <span className="flex-auto" />
       <span role="status" className="shrink-0">
-        {rendering ? t('status.rendering') : ''}
+        {saveHint === 'saving'
+          ? t('save.saving')
+          : saveHint === 'saved'
+            ? t('save.saved')
+            : rendering
+              ? t('status.rendering')
+              : ''}
       </span>
       {hasDocument && rotation !== 0 && (
         <Button variant="ghost" size="sm" aria-label={t('rotate.reset')} onClick={() => onResetRotation?.()}>

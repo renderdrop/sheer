@@ -53,6 +53,7 @@ const bootstrap = (overrides: Partial<AppBootstrap> = {}): AppBootstrap => ({
   platform: 'windows',
   reducedTransparency: false,
   version: '0.2.0',
+  authorSuggestion: '',
   ...overrides,
 });
 
@@ -111,6 +112,7 @@ describe('store to <html> attributes', () => {
         leftPanelWidth: 248,
         welcomeTour: 'pending',
         authorName: 'Author',
+        authorPrompt: 'pending',
       });
       await useSettings.getState().setTheme(theme);
       expect(root.attributes.get('data-theme')).toBe(theme === 'system' ? undefined : theme);
@@ -128,6 +130,7 @@ describe('store to <html> attributes', () => {
       leftPanelWidth: 248,
       welcomeTour: 'pending',
       authorName: 'Author',
+      authorPrompt: 'pending',
     });
     await useSettings.getState().setGlass('solid');
     expect(root.snapshot()).toEqual({ 'data-transparency': 'reduced' });
@@ -138,6 +141,7 @@ describe('store to <html> attributes', () => {
       leftPanelWidth: 248,
       welcomeTour: 'pending',
       authorName: 'Author',
+      authorPrompt: 'pending',
     });
     await useSettings.getState().setGlass('auto');
     expect(root.snapshot()).toEqual({});
@@ -152,6 +156,7 @@ describe('store to <html> attributes', () => {
       leftPanelWidth: 248,
       welcomeTour: 'pending',
       authorName: 'Author',
+      authorPrompt: 'pending',
     });
     const root = new FakeRoot();
     bindSettingsToRoot(root);
@@ -164,6 +169,7 @@ describe('store to <html> attributes', () => {
       leftPanelWidth: 248,
       welcomeTour: 'pending',
       authorName: 'Author',
+      authorPrompt: 'pending',
     });
     await useSettings.getState().setGlass('solid');
     updateSettingsMock.mockResolvedValueOnce({
@@ -173,6 +179,7 @@ describe('store to <html> attributes', () => {
       leftPanelWidth: 248,
       welcomeTour: 'pending',
       authorName: 'Author',
+      authorPrompt: 'pending',
     });
     await useSettings.getState().setGlass('auto');
     expect(root.snapshot()).toEqual({ 'data-transparency': 'reduced' });
@@ -189,6 +196,7 @@ describe('store to <html> attributes', () => {
       leftPanelWidth: 248,
       welcomeTour: 'pending',
       authorName: 'Author',
+      authorPrompt: 'pending',
     });
     await useSettings.getState().setTheme('dark');
     expect(root.snapshot()).toEqual({});
@@ -205,6 +213,7 @@ describe('load', () => {
       leftPanelWidth: 248,
       welcomeTour: 'pending',
       authorName: 'Author',
+      authorPrompt: 'pending',
     });
     const root = new FakeRoot();
     bindSettingsToRoot(root);
@@ -245,6 +254,7 @@ describe('load', () => {
       leftPanelWidth: 248,
       welcomeTour: 'pending',
       authorName: 'Author',
+      authorPrompt: 'pending',
     });
     await useSettings.getState().load();
     expect(useSettings.getState()).toMatchObject({ theme: 'light', platform: null, loaded: true });
@@ -280,6 +290,7 @@ describe('update', () => {
       leftPanelWidth: 248,
       welcomeTour: 'pending',
       authorName: 'Author',
+      authorPrompt: 'pending',
     });
     await useSettings.getState().setTheme('light');
     expect(useSettings.getState().error).toBeNull();
@@ -293,6 +304,7 @@ describe('update', () => {
       leftPanelWidth: 248,
       welcomeTour: 'pending',
       authorName: 'Author',
+      authorPrompt: 'pending',
     });
     await useSettings.getState().setTheme('dark');
     expect(useSettings.getState()).toMatchObject({
@@ -323,6 +335,7 @@ describe('update', () => {
       leftPanelWidth: 248,
       welcomeTour: 'pending',
       authorName: 'Author',
+      authorPrompt: 'pending',
     });
     await second;
     resolvers[0]?.({
@@ -332,6 +345,7 @@ describe('update', () => {
       leftPanelWidth: 248,
       welcomeTour: 'pending',
       authorName: 'Author',
+      authorPrompt: 'pending',
     });
     await first;
 
@@ -354,6 +368,7 @@ describe('update', () => {
       leftPanelWidth: 248,
       welcomeTour: 'pending',
       authorName: 'Author',
+      authorPrompt: 'pending',
     });
 
     const first = useSettings.getState().setTheme('dark');
@@ -386,6 +401,7 @@ describe('update', () => {
       leftPanelWidth: 248,
       welcomeTour: 'pending',
       authorName: 'Author',
+      authorPrompt: 'pending',
     });
     await first;
 
@@ -403,6 +419,7 @@ describe('update', () => {
       leftPanelWidth: 248,
       welcomeTour: 'pending',
       authorName: 'Author',
+      authorPrompt: 'pending',
     });
 
     await useSettings.getState().setGlass('solid');
@@ -490,6 +507,7 @@ describe('OS flag without stored settings', () => {
       leftPanelWidth: 248,
       welcomeTour: 'pending',
       authorName: 'Author',
+      authorPrompt: 'pending',
     });
     const root = new FakeRoot();
     bindSettingsToRoot(root);
@@ -502,6 +520,7 @@ describe('OS flag without stored settings', () => {
       leftPanelWidth: 248,
       welcomeTour: 'pending',
       authorName: 'Author',
+      authorPrompt: 'pending',
     });
     await useSettings.getState().setTheme('light');
 
@@ -524,6 +543,7 @@ describe('loadSettings (startup, never blocks the UI)', () => {
       leftPanelWidth: 248,
       welcomeTour: 'pending',
       authorName: 'Author',
+      authorPrompt: 'pending',
     });
 
     await loadSettings(1000);
@@ -586,6 +606,7 @@ describe('loadSettings (startup, never blocks the UI)', () => {
       leftPanelWidth: 248,
       welcomeTour: 'pending',
       authorName: 'Author',
+      authorPrompt: 'pending',
     });
     await vi.advanceTimersByTimeAsync(0);
 

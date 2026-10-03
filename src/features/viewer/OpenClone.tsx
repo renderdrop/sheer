@@ -10,7 +10,7 @@ import type { OpenSource, SourceRect } from './openTransition';
 export const CLONE_WAIT_MS = 2000;
 
 /** The last share of the flight over which the clone fades out while the page's render fades in under it (MOTION 4.6). */
-const FADE_SHARE = 0.4;
+const FADE_SHARE = 0.6;
 
 export interface OpenCloneProps {
   source: OpenSource;
@@ -21,7 +21,7 @@ export interface OpenCloneProps {
 
 /**
  * The shared-element clone of MOTION 4.6: a copy of the source at `--z-drag`, travelling with `translate` and `scale` (no size
- * properties) to the page's rect, fading out over the last 40 % while the page fades in under it, then removed. Reduced motion
+ * properties) to the page's rect, fading out over the last 60 % (the scaled corners would show a stretched radius for longer otherwise) while the page fades in under it, then removed. Reduced motion
  * has no clone.
  */
 export function OpenClone({ source, target, onDone }: OpenCloneProps) {

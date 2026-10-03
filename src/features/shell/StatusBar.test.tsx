@@ -240,3 +240,15 @@ describe('Go to page: input outside the document and the rotation chip (DESIGN 3
     expect(onResetRotation).toHaveBeenCalledTimes(1);
   });
 });
+
+describe('the save hints', () => {
+  it('say Saving… and Saved in the live region, ahead of the render activity', () => {
+    const { rerender } = setup(<StatusBar {...props({ rendering: true, saveHint: 'saving' })} />);
+    expect(screen.getByText('Saving…').getAttribute('role')).toBe('status');
+    expect(screen.queryByText('Rendering…')).toBeNull();
+    rerender(<StatusBar {...props({ rendering: true, saveHint: 'saved' })} />);
+    expect(screen.getByText('Saved')).toBeTruthy();
+    rerender(<StatusBar {...props({ rendering: true, saveHint: null })} />);
+    expect(screen.getByText('Rendering…')).toBeTruthy();
+  });
+});

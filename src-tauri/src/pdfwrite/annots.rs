@@ -313,8 +313,8 @@ pub fn annotation_dict(
         _ => annotation.contents.clone(),
     };
     dict.set("Contents", text_string(&contents));
-    match &annotation.author {
-        Some(author) => dict.set("T", text_string(author)),
+    match written_author(annotation.author.as_deref()) {
+        Some(author) => dict.set("T", text_string(&author)),
         None => {
             dict.remove(b"T");
         }
@@ -371,6 +371,13 @@ pub fn build_stream(annotation: &Annotation, m: Mapper) -> Option<Stream> {
     appearance::build(annotation, m).map(|ap| appearance_stream(&ap, annotation.opacity))
 }
 
+/// The /T text for an annotation's author (ADR-034): sanitized, and `None` (no /T) when nothing is left.
+fn written_author(author: Option<&str>) -> Option<String> {
+    author
+        .map(crate::storage::settings::sanitize_author)
+        .filter(|name| !name.is_empty())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -408,5 +415,17 @@ mod tests {
         assert_eq!(a.len(), 32);
         assert!(a.bytes().all(|c| c.is_ascii_hexdigit()));
         assert_ne!(a, b);
+    }
+
+    #[test]
+    fn an_empty_author_writes_no_t_and_a_name_is_sanitized() {
+        assert_eq!(written_author(None), None);
+        assert_eq!(written_author(Some("")), None);
+        assert_eq!(written_author(Some("\u{200B}\u{202E}")), None);
+        assert_eq!(written_author(Some("Ada")).as_deref(), Some("Ada"));
+        assert_eq!(
+            written_author(Some("\u{202E}Ada\u{FEFF}")).as_deref(),
+            Some("Ada")
+        );
     }
 }

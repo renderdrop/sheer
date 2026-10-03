@@ -255,18 +255,10 @@ fn the_next_update_repairs_a_damaged_file() {
 
     store.update(patch(json!({ "theme": "dark" }))).unwrap();
 
-    let mut stored: Value =
-        serde_json::from_slice(&fs::read(dir.settings_file()).unwrap()).unwrap();
-    // The default author name comes from the environment (ADR-029); it only has to be a non-empty string.
-    let author = stored
-        .as_object_mut()
-        .unwrap()
-        .remove("authorName")
-        .unwrap();
-    assert!(author.as_str().is_some_and(|name| !name.is_empty()));
+    let stored: Value = serde_json::from_slice(&fs::read(dir.settings_file()).unwrap()).unwrap();
     assert_eq!(
         stored,
-        json!({ "glass": "auto", "theme": "dark", "language": "system", "leftPanelWidth": 248, "welcomeTour": "pending" })
+        json!({ "glass": "auto", "theme": "dark", "language": "system", "leftPanelWidth": 248, "welcomeTour": "pending", "authorName": "", "authorPrompt": "pending" })
     );
     assert_eq!(names(dir.path()), [FILE_NAME]);
 }

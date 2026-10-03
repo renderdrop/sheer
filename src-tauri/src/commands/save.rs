@@ -2,7 +2,7 @@
 //!
 //! | Command | Arguments | Returns |
 //! |---|---|---|
-//! | `save_document` | `docId`, `ack?: { breakSignature, fileChanged, rewriteEncrypted }` | `SaveResult { rev, mode, backupCreated, document, changes }`. The welcome document answers `read_only` (the UI offers Save As); a file that changed on disk since it was opened answers `needs_confirmation` (`params.what: "fileChangedOnDisk"`) until `ack.fileChanged` |
+//! | `save_document` | `docId`, `ack?: { breakSignature, fileChanged }` | `SaveResult { rev, mode, backupCreated, warnings, document, changes }`. The welcome document answers `read_only` (the UI offers Save As); a file that changed on disk since it was opened answers `needs_confirmation` (`params.what: "fileChangedOnDisk"`) until `ack.fileChanged` |
 //! | `save_document_as` | `docId`, `opts?: {}`, `ack?` | the same, or `null` if the user cancelled the dialog. The path comes from the native dialog in Rust and goes through `intake::admit_target`; it never reaches the webview |
 //! | `close_document` | `docId`, `discard?: boolean` | nothing; a document with changes that are not saved answers `unsaved_changes` unless `discard` (the welcome document never does) |
 //!
@@ -15,7 +15,7 @@
 use std::io::Read;
 use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::path::{Path, PathBuf};
-use std::sync::mpsc;
+use std::sync::{mpsc, Arc, Mutex, PoisonError};
 use std::thread;
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -35,14 +35,13 @@ use crate::model::ids::AnnotId;
 use crate::pdfwrite::{self, Built, Change, Plan};
 use crate::storage::{atomic, backup};
 
-/// What the user agreed to when a save asked (ARCHITECTURE §5). Only `file_changed` can be asked for today; the others are for the full
-/// rewrites of later milestones.
+/// What the user agreed to when a save asked (ARCHITECTURE §5). Only `file_changed` can be asked for today; `break_signature` is for the full
+/// rewrite of M4. An encrypted file is not rewritten before M3 (`unsupported_feature`), so there is no `rewrite_encrypted` yet (ADR-033).
 #[derive(Debug, Clone, Copy, Default, Deserialize)]
 #[serde(rename_all = "camelCase", default, deny_unknown_fields)]
 pub struct SaveAck {
     pub break_signature: bool,
     pub file_changed: bool,
-    pub rewrite_encrypted: bool,
 }
 
 /// Options of Save As. None yet: the "clean copy" and "compress" outputs are full rewrites of M3.
@@ -60,6 +59,57 @@ pub enum SaveMode {
     Full,
 }
 
+/// A save that worked but not completely.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum SaveWarning {
+    /// The original could not be copied to the backup folder (no data folder, or the copy failed); the file was saved anyway.
+    BackupSkipped,
+}
+
+/// How a backup attempt went.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum BackupOutcome {
+    Created,
+    /// This session has one already, or the save writes no original (Save As).
+    NotNeeded,
+    Skipped,
+}
+
+/// Documents with a save build that is still running, also one that was given up on after the deadline (its thread cannot be stopped).
+/// A new save of such a document is refused until the thread is done, instead of starting a second one next to it.
+static BUILDING: Mutex<Vec<(usize, DocumentId)>> = Mutex::new(Vec::new());
+
+/// Tells the app states apart in [`BUILDING`] (there is one in the app; the tests make several, whose document ids overlap): the address of
+/// the registry, which all clones of a state share.
+type Owner = usize;
+
+/// Holds the document's place in [`BUILDING`] until dropped (by the build thread, when it ends).
+struct BuildSlot(Owner, DocumentId);
+
+impl BuildSlot {
+    fn take(owner: Owner, id: DocumentId) -> Result<Self, AppError> {
+        let mut building = BUILDING.lock().unwrap_or_else(PoisonError::into_inner);
+        if building.contains(&(owner, id)) {
+            return Err(AppError::logged(
+                ErrorCode::SaveFailed,
+                "an earlier save of the document is still being built",
+            ));
+        }
+        building.push((owner, id));
+        Ok(Self(owner, id))
+    }
+}
+
+impl Drop for BuildSlot {
+    fn drop(&mut self) {
+        BUILDING
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .retain(|other| *other != (self.0, self.1));
+    }
+}
+
 /// The answer to a save.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -69,6 +119,8 @@ pub struct SaveResult {
     pub mode: SaveMode,
     /// The original was copied to the backup folder by this save.
     pub backup_created: bool,
+    /// What went less well than it should have, though the file is saved.
+    pub warnings: Vec<SaveWarning>,
     /// The document as it is now: after a Save As another name, and no longer the welcome document.
     pub document: DocumentInfo,
     /// What changed in the annotations: they are `clean` now, and the history is empty and not dirty.
@@ -110,20 +162,31 @@ fn plan_of(
 
 /// Builds the update on a thread of its own (a big stack: lopdf recurses into the file's structures), contained and with a deadline
 /// (ADR-004 §1). A panic is `internal`; running past the deadline is `engine_timeout`, and then the thread's result is discarded.
-fn build(original: Vec<u8>, plan: Plan) -> Result<Built, AppError> {
+fn build(owner: Owner, id: DocumentId, original: Vec<u8>, plan: Plan) -> Result<Built, AppError> {
+    let slot = BuildSlot::take(owner, id)?;
+    build_with(slot, limits::SAVE_TIMEOUT, move || {
+        let built = pdfwrite::append_annotations(original, &plan)?;
+        if !plan.changes.is_empty() {
+            pdfwrite::validate(&built.bytes, built.pages)?;
+        }
+        Ok(built)
+    })
+}
+
+/// Runs `work` on the build thread, which owns `slot` until it ends.
+fn build_with<T: Send + 'static>(
+    slot: BuildSlot,
+    timeout: std::time::Duration,
+    work: impl FnOnce() -> Result<T, AppError> + Send + 'static,
+) -> Result<T, AppError> {
     let (sender, receiver) = mpsc::channel();
     let spawned = thread::Builder::new()
         .name("sheer-save".into())
         .stack_size(limits::SAVE_STACK_BYTES)
         .spawn(move || {
-            let result = catch_unwind(AssertUnwindSafe(|| {
-                let built = pdfwrite::append_annotations(original, &plan)?;
-                if !plan.changes.is_empty() {
-                    pdfwrite::validate(&built.bytes, built.pages)?;
-                }
-                Ok(built)
-            }))
-            .unwrap_or_else(|_| Err(AppError::logged(ErrorCode::Internal, "saving panicked")));
+            let _slot = slot;
+            let result = catch_unwind(AssertUnwindSafe(work))
+                .unwrap_or_else(|_| Err(AppError::logged(ErrorCode::Internal, "saving panicked")));
             // The caller may have given up.
             let _ = sender.send(result);
         });
@@ -131,7 +194,7 @@ fn build(original: Vec<u8>, plan: Plan) -> Result<Built, AppError> {
         return Err(AppError::logged(ErrorCode::SaveFailed, error));
     }
     receiver
-        .recv_timeout(limits::SAVE_TIMEOUT)
+        .recv_timeout(timeout)
         .map_err(|_| AppError::logged(ErrorCode::EngineTimeout, "saving took too long"))?
 }
 
@@ -153,6 +216,15 @@ fn compact_stamp() -> String {
         .duration_since(UNIX_EPOCH)
         .map_or(0, |since| since.as_secs());
     iso8601_utc(secs).replace(['-', ':'], "")
+}
+
+/// Whether a file is not what it was when `opened` was taken. A fingerprint that is missing on either side counts as changed: what cannot be
+/// compared is not known to be the same (fail closed).
+fn fingerprint_changed(opened: Option<Fingerprint>, now: Option<Fingerprint>) -> bool {
+    match (opened, now) {
+        (Some(opened), Some(now)) => opened != now,
+        _ => true,
+    }
 }
 
 /// Reads the whole file behind an admitted handle.
@@ -239,32 +311,39 @@ impl AppState {
             // Nothing to put in the file: it is saved as it is.
             return self.annotations.with(id, count, |state| {
                 state.mark_clean();
-                Ok(self.result(id, state.current(), false))
+                Ok(self.result(id, state.current(), false, Vec::new()))
             });
         }
 
         // The file as it is on disk now, and whether it is the one that was opened.
-        let (original, fingerprint) = read_all(intake::admit(&source)?)?;
-        if !ack.file_changed {
-            if let (Some(opened), Some(now)) = (self.registry.fingerprint(id), fingerprint) {
-                if opened != now {
-                    return Err(AppError::needs_confirmation("fileChangedOnDisk"));
-                }
-            }
+        let (original, read_fingerprint) = read_all(intake::admit(&source)?)?;
+        if !ack.file_changed && fingerprint_changed(self.registry.fingerprint(id), read_fingerprint)
+        {
+            return Err(AppError::needs_confirmation("fileChangedOnDisk"));
         }
         let original_len = original.len();
-        let built = build(original, plan)?;
+        let built = build(Arc::as_ptr(&self.registry) as usize, id, original, plan)?;
         let origins: std::collections::HashMap<AnnotId, PdfOrigin> =
             built.origins.iter().cloned().collect();
         debug_assert!(built.bytes.len() >= original_len);
 
         let in_place = target.is_none();
         let destination = target.clone().unwrap_or_else(|| source.clone());
-        let backup_created = if in_place && writes {
+        let backup = if in_place && writes {
             self.back_up(id, &source, &built.bytes[..original_len])
         } else {
-            false
+            BackupOutcome::NotNeeded
         };
+        let mut warnings = Vec::new();
+        if backup == BackupOutcome::Skipped {
+            warnings.push(SaveWarning::BackupSkipped);
+        }
+
+        // The build and the backup took time: look at the file again right before it is replaced, so that a change made by another
+        // program meanwhile is not overwritten without the user's say.
+        if !ack.file_changed && self.changed_on_disk(id, &source)? {
+            return Err(AppError::needs_confirmation("fileChangedOnDisk"));
+        }
 
         // Close, rename, reopen. PDFium lets go of the file the rename replaces.
         if in_place {
@@ -288,10 +367,14 @@ impl AppState {
                     error.log();
                 }
                 // What was written does not load as the document: the original is put back (ADR-004 §1 step 9).
-                if in_place {
-                    let _ = atomic::replace_atomic(&destination, &built.bytes[..original_len]);
+                let rollback = if in_place {
+                    atomic::replace_atomic(&destination, &built.bytes[..original_len])
                 } else {
-                    let _ = std::fs::remove_file(&destination);
+                    std::fs::remove_file(&destination)
+                };
+                if let Err(error) = rollback {
+                    // The user's file may now be the update that does not load: this must be findable in the log.
+                    AppError::logged(ErrorCode::SaveFailed, error).log();
                 }
                 self.reopen_from(id, &source);
                 return Err(AppError::logged(
@@ -309,14 +392,27 @@ impl AppState {
         let changes = self
             .annotations
             .with(id, count, |state| Ok(state.finish_save(&origins)))?;
-        Ok(self.result(id, changes, backup_created))
+        Ok(self.result(id, changes, backup == BackupOutcome::Created, warnings))
     }
 
-    fn result(&self, id: DocumentId, changes: ChangeSet, backup_created: bool) -> SaveResult {
+    /// Whether the file `id` was opened from is no longer what it was (or cannot be looked at: not knowing counts as changed).
+    fn changed_on_disk(&self, id: DocumentId, source: &Path) -> Result<bool, AppError> {
+        let now = Fingerprint::of(&intake::admit(source)?.file);
+        Ok(fingerprint_changed(self.registry.fingerprint(id), now))
+    }
+
+    fn result(
+        &self,
+        id: DocumentId,
+        changes: ChangeSet,
+        backup_created: bool,
+        warnings: Vec<SaveWarning>,
+    ) -> SaveResult {
         SaveResult {
             rev: changes.rev,
             mode: SaveMode::Incremental,
             backup_created,
+            warnings,
             document: self.info(id).unwrap_or_else(|| DocumentInfo {
                 id,
                 page_count: 0,
@@ -338,13 +434,13 @@ impl AppState {
     }
 
     /// Copies the original into the backup folder, once per session and document (ADR-004 §3). A backup that cannot be made is logged
-    /// and does not stop the save. `true` if one was made.
-    fn back_up(&self, id: DocumentId, source: &Path, original: &[u8]) -> bool {
+    /// and does not stop the save, but is reported (`SaveWarning::BackupSkipped`).
+    fn back_up(&self, id: DocumentId, source: &Path, original: &[u8]) -> BackupOutcome {
         let Some(data_dir) = &self.data_dir else {
-            return false;
+            return BackupOutcome::Skipped;
         };
         if self.registry.backed_up(id) {
-            return false;
+            return BackupOutcome::NotNeeded;
         }
         let directory = data_dir.join("backups");
         match backup::write_backup(&directory, &compact_stamp(), source, original) {
@@ -356,11 +452,11 @@ impl AppState {
                     limits::BACKUP_KEEP,
                     limits::BACKUP_MAX_BYTES,
                 );
-                true
+                BackupOutcome::Created
             }
             Err(error) => {
                 AppError::from(error).log();
-                false
+                BackupOutcome::Skipped
             }
         }
     }
@@ -472,5 +568,52 @@ mod tests {
     fn a_close_without_discard_refuses_a_document_with_unsaved_changes_but_not_a_clean_one() {
         let (state, id) = welcome_state();
         state.close_document_checked(id, false).unwrap();
+    }
+
+    #[test]
+    fn a_missing_fingerprint_counts_as_a_change() {
+        let some = Fingerprint {
+            len: 3,
+            modified: None,
+        };
+        let other = Fingerprint {
+            len: 4,
+            modified: None,
+        };
+        assert!(!fingerprint_changed(Some(some), Some(some)));
+        assert!(fingerprint_changed(Some(some), Some(other)));
+        assert!(fingerprint_changed(None, Some(some)));
+        assert!(fingerprint_changed(Some(some), None));
+        assert!(fingerprint_changed(None, None));
+    }
+
+    #[test]
+    fn a_build_that_ran_past_its_deadline_blocks_a_second_one_until_it_ends() {
+        let id: DocumentId = serde_json::from_str("424242").unwrap();
+        let slot = BuildSlot::take(1, id).unwrap();
+        let (release, gate) = mpsc::channel::<()>();
+        let slow = build_with(slot, std::time::Duration::from_millis(20), move || {
+            let _ = gate.recv();
+            Ok(())
+        });
+        assert_eq!(slow.unwrap_err().code(), ErrorCode::EngineTimeout);
+        // The thread is still there: no second build for the document, but one for another.
+        assert_eq!(
+            BuildSlot::take(1, id).err().map(|e| e.code()),
+            Some(ErrorCode::SaveFailed)
+        );
+        let other: DocumentId = serde_json::from_str("424243").unwrap();
+        drop(BuildSlot::take(1, other).unwrap());
+        drop(release);
+        let mut free = false;
+        for _ in 0..200 {
+            if let Ok(slot) = BuildSlot::take(1, id) {
+                drop(slot);
+                free = true;
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+        assert!(free, "the slot is given back when the thread ends");
     }
 }

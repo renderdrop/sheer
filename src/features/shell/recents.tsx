@@ -111,11 +111,8 @@ export function useRecents(): Recents {
 
   const open = useCallback(
     (entry: RecentEntry, tile?: Element | null) => {
-      // A file that is gone cannot be opened: activating its row offers to find it (DESIGN 3.11).
-      if (entry.missing) {
-        locate(entry);
-        return;
-      }
+      // A file that is gone cannot be opened; its Locate button is the one way to find it (DESIGN 3.11), so the row does nothing.
+      if (entry.missing) return;
       // The row's tile becomes the page (MOTION 4.6): its rect is the clone's source.
       if (tile !== null && tile !== undefined) {
         const box = tile.getBoundingClientRect();
@@ -160,6 +157,7 @@ export function useRecents(): Recents {
           <button
             type="button"
             data-recent-open=""
+            aria-disabled={entry.missing || undefined}
             onClick={(event) => open(entry, event.currentTarget.querySelector('[data-recent-tile]'))}
             onKeyDown={onKeyDown}
             className="flex h-full min-w-0 flex-1 cursor-pointer items-center gap-1 rounded-sm text-start"
@@ -202,17 +200,23 @@ export function useRecents(): Recents {
   const clear = useCallback(() => {
     const all = entries;
     setEntries([]);
-    // One after the other, so the order they went is the order Undo reverses.
+    // One after the other, so the order they went is the order Undo reverses. Only the ones that really went can be put back.
+    const removed: number[] = [];
     let chain: Promise<unknown> = Promise.resolve();
-    for (const entry of all) chain = chain.then(() => removeRecent(entry.id)).catch(() => undefined);
+    for (const entry of all) {
+      chain = chain
+        .then(() => removeRecent(entry.id))
+        .then(() => {
+          removed.push(entry.id);
+        })
+        .catch(() => undefined);
+    }
     void chain.then(() => {
-      if (all.length > 0)
-        toast(
-          t('emptyState.recentCleared'),
-          all.map((entry) => entry.id),
-        );
+      if (removed.length > 0) toast(t('emptyState.recentCleared'), removed);
+      // A row whose removal failed is still in the list.
+      if (removed.length < all.length) refresh();
     });
-  }, [entries, t, toast]);
+  }, [entries, t, toast, refresh]);
 
   return { rows, clear };
 }

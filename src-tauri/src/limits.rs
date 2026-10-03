@@ -128,6 +128,12 @@ pub const MAX_COMMAND_IDS: usize = 5_000;
 pub const MAX_LABEL_CHARS: usize = 64;
 /// Entries of one document's undo stack (the redo stack never grows past it either).
 pub const MAX_HISTORY_ENTRIES: usize = 500;
+/// Bytes of the undo stack (what its steps hold, estimated); the oldest steps are dropped past it.
+pub const MAX_HISTORY_BYTES: usize = 16 * 1024 * 1024;
+/// Bytes of strings (contents, author, date, name, free text lines) imported from a file: per page and in all. What would go past
+/// either is left out.
+pub const MAX_IMPORT_BYTES_PER_PAGE: usize = 4 * 1024 * 1024;
+pub const MAX_IMPORT_BYTES_PER_DOC: usize = 32 * 1024 * 1024;
 /// Updates of one annotation with the same coalesce key that come this close together are one undo step (ADR-003 §7).
 pub const COALESCE_WINDOW_MS: u64 = 1_500;
 /// Characters of a coalesce key.

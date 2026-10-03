@@ -123,6 +123,40 @@ fn production_csp_is_strict() {
     );
 }
 
+/// Tauri uses `devCsp` only under `tauri dev`; a release must not be able to pick it up: the two differ, the production policy has
+/// nothing of the dev server in it, `'unsafe-inline'` is for styles alone (never scripts), and the release workflow builds with the
+/// config as it is (no `--config` override, no `--debug`).
+#[test]
+fn the_release_never_uses_the_dev_csp() {
+    let config = config();
+    let production = config["app"]["security"]["csp"].as_str().unwrap();
+    let dev = config["app"]["security"]["devCsp"].as_str().unwrap();
+    assert_ne!(production, dev);
+    for forbidden in ["localhost:1420", "ws:", "script-src", "unsafe-eval"] {
+        assert!(!production.contains(forbidden), "csp has {forbidden}");
+    }
+    for (name, tokens) in csp("csp") {
+        assert!(
+            name == "style-src" || !tokens.contains("'unsafe-inline'"),
+            "{name} allows inline code"
+        );
+    }
+    let workflow = std::fs::read_to_string(
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../.github/workflows/release.yml"),
+    )
+    .unwrap();
+    let build: Vec<&str> = workflow
+        .lines()
+        .filter(|line| line.contains("tauri build") || line.contains("tauri -- build"))
+        .collect();
+    assert!(!build.is_empty(), "no tauri build step in release.yml");
+    for line in build {
+        assert!(
+            !line.contains("--config") && !line.contains("--debug") && !line.contains("--features"),
+            "{line}"
+        );
+    }
+}
 #[test]
 fn csp_never_allows_remote_hosts_or_eval() {
     for key in ["csp", "devCsp"] {
@@ -380,6 +414,7 @@ fn capabilities_grant_only_the_app_commands_and_the_window_chrome_to_the_main_wi
         "allow-get-page-links",
         "allow-open-link",
         "allow-list-annotations",
+        "allow-list-document-annotations",
         "allow-apply-annotation-command",
         "allow-undo",
         "allow-redo",
@@ -635,6 +670,7 @@ fn build_script_declares_exactly_the_granted_commands() {
         "get_page_links",
         "open_link",
         "list_annotations",
+        "list_document_annotations",
         "apply_annotation_command",
         "undo",
         "redo",

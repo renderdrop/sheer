@@ -333,6 +333,14 @@ impl Registry {
         ids
     }
 
+    /// Whether a document is open that the UI shows (loaded and not being closed). A document waiting for its password is not.
+    pub fn has_loaded(&self) -> bool {
+        self.lock()
+            .entries
+            .values()
+            .any(|entry| !entry.closing && entry.page_count.is_some())
+    }
+
     /// What the UI is told about a document that is loaded; `None` for an unknown one, one still loading, or one being closed.
     pub fn info(&self, id: DocumentId) -> Option<DocumentInfo> {
         let inner = self.lock();
@@ -697,6 +705,18 @@ mod tests {
     }
 
     // --- claim, info, abandon ---
+
+    #[test]
+    fn only_a_loaded_document_counts_as_open_for_the_window_close() {
+        let registry = Registry::new();
+        assert!(!registry.has_loaded());
+        let id = registry.register(path("a.pdf")).unwrap();
+        assert!(!registry.has_loaded(), "still loading");
+        registry.set_page_count(id, 1).unwrap();
+        assert!(registry.has_loaded());
+        assert!(registry.begin_close(id));
+        assert!(!registry.has_loaded(), "closing");
+    }
 
     #[test]
     fn a_welcome_document_has_its_kind_and_its_own_name_and_is_found_by_kind() {

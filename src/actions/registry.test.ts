@@ -9,7 +9,6 @@ import { isBareKey, resolveBinding } from './shortcut';
 import { NO_DOCUMENT, type ActionState } from './state';
 
 // Save and Save As join the menu bar with the Rust allowlist (src-tauri/src/menu/spec.rs); until then they are keyboard and More commands.
-const NOT_IN_MENU_BAR: ReadonlySet<string> = new Set(['save', 'save-as']);
 const PLATFORMS: readonly (Platform | null)[] = ['macos', 'windows', 'linux', null];
 const WITH_DOCUMENT: ActionState = {
   hasDocument: true,
@@ -274,9 +273,7 @@ describe('where an action is listed', () => {
     const inMenu = ACTIONS.filter((action) => action.menuBar === true).map((action) => action.id);
     // Find, Go to page and the view rotation join the menu bar with the Rust allowlist (src-tauri/src/menu/spec.rs); until then
     // they are keyboard and More commands.
-    expect(inMenu).toEqual(
-      ACTION_IDS.filter((id) => !id.startsWith('tool-') && id !== 'about' && !NOT_IN_MENU_BAR.has(id)),
-    );
+    expect(inMenu).toEqual(ACTION_IDS.filter((id) => !id.startsWith('tool-') && id !== 'about'));
   });
 
   it('lets a held key repeat the zoom and page steps and nothing else', () => {

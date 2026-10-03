@@ -140,6 +140,7 @@
   --spacing-status: var(--status-height);
   --spacing-search-row: var(--search-row-height);
   --spacing-search-progress: var(--search-progress-height);
+  --spacing-comments-dot: var(--comments-dot);
   --spacing-status-name: var(--status-name-max);
   --spacing-caption-button: var(--caption-button-width);
   --spacing-chrome-inset: var(--chrome-inset-mac);
@@ -304,6 +305,10 @@
   --outline-indent-max: 64px;
   --search-row-height: 48px; /* search panel: a hit row; the page header row is --control-sm (DESIGN 3.16) */
   --search-progress-height: 2px; /* search panel: the progress pill bar */
+  --comments-group-height: 24px; /* comments panel rows: page header, thread root, reply (DESIGN 3.26) */
+  --comments-root-height: 64px;
+  --comments-reply-height: 48px;
+  --comments-dot: 8px; /* the colour dot of a row */
 
   /* Layout slots (DESIGN 2, 2.2, 3.11). Rows: caption 32 (Windows only), toolbar row 56 (toolbar 40 + 8 above and below),
      banner at least 48, status 32. Columns: inspector 288, canvas at least 360. The widths are mirrored as numbers in
@@ -315,6 +320,7 @@
   --status-name-max: 40%; /* the file name's share of the status bar (DESIGN 3.10) */
   --caption-button-width: 46px;
   --chrome-inset-mac: 80px; /* leading inset of the toolbar row for the macOS traffic lights; 8 in full screen */
+  --free-text-line-height: 1.2; /* the line height of a free text, in times its font size: the editor matches the written file */
   --inspector-width: 288px;
   --canvas-min: 360px;
   --scrollbar-size: 8px;

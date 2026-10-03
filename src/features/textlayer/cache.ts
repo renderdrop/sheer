@@ -147,6 +147,9 @@ function stateOf(docId: number, page: number): PageTextState {
 export function usePageText(docId: number, page: number, enabled: boolean): PageTextState {
   const subscribe = useCallback(
     (listener: () => void) => {
+      // The clean-up of closed documents is armed by the first subscriber, not only by the first fetch: a page that subscribed and whose
+      // document was closed before anything was fetched leaves nothing behind.
+      watchDocuments();
       const key = keyOf(docId, page);
       let set = listeners.get(key);
       if (set === undefined) {

@@ -7,6 +7,7 @@ import { imageKey } from '../../engine/renderCache';
 import { renderScheduler } from '../../engine/renderScheduler';
 import { JUMP_ANIMATE_MAX_VIEWPORTS, SPRING } from '../../lib/motion';
 import { clampZoom } from '../../lib/zoom';
+import { pageRevOf, useAnnotations } from '../../stores/annotations';
 import { selectActiveId, useDocuments } from '../../stores/documents';
 import { DEFAULT_PAGE_SIZE, sizesFor, usePages } from '../../stores/pages';
 import { useUi } from '../../stores/ui';
@@ -281,12 +282,18 @@ export function ViewerCanvas({ style }: { style?: CSSProperties }) {
   }, [docId, viewport, pagesLoaded, metrics, gap]);
 
   // The clone of a drop or of a thumbnail (MOTION 4.6) flies to its page once that is laid out (and, for a jump, scrolled to).
+  const opening = view.opening;
   const [cloneTarget, setCloneTarget] = useState<{ id: number; rect: SourceRect } | null>(null);
   useEffect(() => {
     if (transition === null || transition.docId !== docId || scrolling) return;
     const frame = window.requestAnimationFrame(() => {
       const element = scrollerRef.current?.querySelector<HTMLElement>(`[data-page="${transition.page + 1}"]`);
-      if (element === null || element === undefined || (transition.kind === 'open' && isFresh(transition.docId)))
+      // A new document is measured once its opening zoom is final: before, the page is still resized and the target would move.
+      if (
+        element === null ||
+        element === undefined ||
+        (transition.kind === 'open' && (isFresh(transition.docId) || opening))
+      )
         return;
       const box = element.getBoundingClientRect();
       setCloneTarget({
@@ -295,7 +302,7 @@ export function ViewerCanvas({ style }: { style?: CSSProperties }) {
       });
     });
     return () => window.cancelAnimationFrame(frame);
-  }, [transition, docId, scrolling, layout, mounted]);
+  }, [transition, docId, scrolling, layout, mounted, opening]);
 
   // Render the pages of the neighbouring rows ahead of the turn of the page: nothing is mounted for them, so nothing else asks.
   // Like a mounted page (`PageView`) after its zoom bucket changed, they wait `BUCKET_SETTLE_MS` before they ask: a wheel zoom or a
@@ -307,7 +314,12 @@ export function ViewerCanvas({ style }: { style?: CSSProperties }) {
       for (const page of ahead) {
         const size = drawnSizes[page] ?? DEFAULT_PAGE_SIZE;
         const plan = planPage(size[0], size[1], bucket);
-        const id = { docId, page, rev: 0, bucket: plan.tiled ? plan.underlayBucket : plan.bucket };
+        const id = {
+          docId,
+          page,
+          rev: pageRevOf(useAnnotations.getState(), docId, page),
+          bucket: plan.tiled ? plan.underlayBucket : plan.bucket,
+        };
         if (renderScheduler.cache.has(imageKey(id))) continue;
         renderScheduler.request(id, 'near').catch(() => undefined);
       }

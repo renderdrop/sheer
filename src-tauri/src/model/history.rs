@@ -36,6 +36,46 @@ pub(crate) struct HistoryEntry {
     coalesce: Option<(AnnotId, String)>,
     last_ms: u64,
     serial: u64,
+    /// What the step holds, estimated (see [`command_bytes`]).
+    bytes: usize,
+}
+
+/// A `Write` that only counts.
+struct Counter(usize);
+
+impl std::io::Write for Counter {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        self.0 = self.0.saturating_add(buf.len());
+        Ok(buf.len())
+    }
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
+}
+
+/// A fixed cost for what a step is besides the annotations in it.
+const STEP_OVERHEAD_BYTES: usize = 128;
+
+/// The bytes a step holds, estimated as the length of the annotations in its slots as JSON.
+fn command_bytes(command: &DocCommand) -> usize {
+    match command {
+        DocCommand::Restore { slots } => {
+            slots.iter().fold(STEP_OVERHEAD_BYTES, |total, (_, slot)| {
+                let mut counter = Counter(STEP_OVERHEAD_BYTES);
+                if let Some(entry) = slot {
+                    // A failure to serialize cannot happen for these types; the count so far is then the estimate.
+                    let _ = serde_json::to_writer(&mut counter, &entry.annotation);
+                }
+                total.saturating_add(counter.0)
+            })
+        }
+        DocCommand::Batch { commands, .. } => {
+            commands.iter().fold(STEP_OVERHEAD_BYTES, |total, inner| {
+                total.saturating_add(command_bytes(inner))
+            })
+        }
+        _ => STEP_OVERHEAD_BYTES,
+    }
 }
 
 #[derive(Debug)]
@@ -94,18 +134,28 @@ impl History {
                 return;
             }
         }
+        let bytes = command_bytes(&inverse);
         self.undo.push_back(HistoryEntry {
             label,
             command: inverse,
             coalesce,
             last_ms: now_ms,
             serial,
+            bytes,
         });
-        while self.undo.len() > limits::MAX_HISTORY_ENTRIES {
-            if let Some(dropped) = self.undo.pop_front() {
-                if self.clean.is_some_and(|clean| clean <= dropped.serial) {
-                    self.clean = None;
-                }
+        self.trim(limits::MAX_HISTORY_ENTRIES, limits::MAX_HISTORY_BYTES);
+    }
+
+    /// Drops the oldest steps while there are more than `max_entries` or they hold more than `max_bytes` (the newest stays).
+    fn trim(&mut self, max_entries: usize, max_bytes: usize) {
+        let mut bytes: usize = self.undo.iter().map(|entry| entry.bytes).sum();
+        while self.undo.len() > max_entries || (bytes > max_bytes && self.undo.len() > 1) {
+            let Some(dropped) = self.undo.pop_front() else {
+                break;
+            };
+            bytes = bytes.saturating_sub(dropped.bytes);
+            if self.clean.is_some_and(|clean| clean <= dropped.serial) {
+                self.clean = None;
             }
         }
     }
@@ -120,6 +170,7 @@ impl History {
 
     /// Puts a step that was just undone on the redo stack (`command` redoes it).
     pub fn push_redo(&mut self, mut entry: HistoryEntry, command: DocCommand) {
+        entry.bytes = command_bytes(&command);
         entry.command = command;
         entry.coalesce = None;
         self.redo.push(entry);
@@ -127,6 +178,7 @@ impl History {
 
     /// Puts a step that was just redone back on the undo stack (`command` undoes it).
     pub fn push_undo(&mut self, mut entry: HistoryEntry, command: DocCommand) {
+        entry.bytes = command_bytes(&command);
         entry.command = command;
         entry.coalesce = None;
         self.undo.push_back(entry);
@@ -288,5 +340,22 @@ mod tests {
             history.state().dirty,
             "the empty state at open is out of reach"
         );
+    }
+
+    #[test]
+    fn the_stack_is_bounded_by_bytes_and_the_oldest_steps_go_first() {
+        let mut history = History::new();
+        for label in ["a", "b", "c"] {
+            history.record(label.into(), nothing(), None, 0);
+        }
+        history.mark_clean();
+        history.trim(10, 2 * STEP_OVERHEAD_BYTES + 1);
+        assert_eq!(history.undo.len(), 2);
+        assert_eq!(history.undo.front().map(|e| e.label.as_str()), Some("b"));
+        // The newest step stays however big it is.
+        history.trim(10, 1);
+        assert_eq!(history.undo.len(), 1);
+        assert_eq!(history.state().undo_label.as_deref(), Some("c"));
+        assert!(!history.state().dirty, "the clean step is the newest");
     }
 }

@@ -28,6 +28,14 @@
           "requiresDocument": true,
           "withoutDocument": "close_window",
           "withoutDocumentLabel": "menu.file.closeWindow"
+        },
+        { "separator": true },
+        { "action": "save", "label": "menu.file.save", "accelerator": "CmdOrCtrl+S", "requiresDocument": true },
+        {
+          "action": "save-as",
+          "label": "menu.file.saveAs",
+          "accelerator": "CmdOrCtrl+Shift+S",
+          "requiresDocument": true
         }
       ]
     },

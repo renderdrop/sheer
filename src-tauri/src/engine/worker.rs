@@ -170,6 +170,17 @@ fn serve<'a>(
             });
             answer(reply, result, Some(id), documents, crashed);
         }
+        Job::SetAnnotationsHidden {
+            id,
+            hide,
+            show,
+            reply,
+        } => {
+            let result = read_job(documents, crashed, id, |document| {
+                import::set_hidden(document, &hide, &show)
+            });
+            answer(reply, result, Some(id), documents, crashed);
+        }
         Job::SearchPage {
             id,
             page_index,

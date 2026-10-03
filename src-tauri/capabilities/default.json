@@ -23,6 +23,7 @@
     "allow-get-page-links",
     "allow-open-link",
     "allow-list-annotations",
+    "allow-list-document-annotations",
     "allow-apply-annotation-command",
     "allow-undo",
     "allow-redo",

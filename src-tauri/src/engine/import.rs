@@ -26,10 +26,20 @@ const BLACK: Rgb = Rgb([0, 0, 0]);
 const DEFAULT_FONT_SIZE_PT: f32 = 12.0;
 const DEFAULT_STROKE_PT: f32 = 1.0;
 
-/// `text` without control characters (a tab and line breaks excepted; `\r` goes), at most `max` characters.
+/// Format characters (Unicode category Cf): bidi controls, zero-width marks and the like. In an author or a note they can make text
+/// read as something else, so they are not imported.
+fn is_format_char(c: char) -> bool {
+    matches!(u32::from(c),
+        0x00AD | 0x0600..=0x0605 | 0x061C | 0x06DD | 0x070F | 0x0890..=0x0891 | 0x08E2 | 0x180E
+        | 0x200B..=0x200F | 0x202A..=0x202E | 0x2060..=0x2064 | 0x2066..=0x206F | 0xFEFF
+        | 0xFFF9..=0xFFFB | 0x110BD | 0x110CD | 0x13430..=0x1343F | 0x1BCA0..=0x1BCA3
+        | 0x1D173..=0x1D17A | 0xE0001 | 0xE0020..=0xE007F)
+}
+
+/// `text` without control and format characters (a tab and line breaks excepted; `\r` goes), at most `max` characters.
 fn clean(text: &str, max: usize) -> String {
     text.chars()
-        .filter(|c| !c.is_control() || matches!(c, '\n' | '\t'))
+        .filter(|c| (!c.is_control() || matches!(c, '\n' | '\t')) && !is_format_char(*c))
         .take(max)
         .collect()
 }
@@ -63,23 +73,21 @@ fn path_colors(annotation: &PdfPageAnnotation<'_>) -> (Option<Rgb>, Option<Rgb>)
                 .map(|color| rgb(&color));
         }
     }
-    // No objects: no appearance was drawn, and the annotation's own colours are the answer (`FPDFAnnot_GetColor` works then). An
-    // appearance stream without any object would still take the crashing way; that is the one case left, and a rare one.
-    if annotation.objects().len() == 0 {
-        stroke = annotation.stroke_color().ok().map(|color| rgb(&color));
-        fill = annotation
-            .fill_color()
-            .ok()
-            .filter(|color| color.alpha() > 0)
-            .map(|color| rgb(&color));
-    }
+    // No objects: either no appearance was drawn, or an /AP without any object exists. PDFium's colour calls on the annotation itself
+    // (`FPDFAnnot_GetColor`, then the page-object fallback) crash the worker for the second kind, and the handle cannot tell the two
+    // apart, so they are not called: the colour is the default of the kind.
     (stroke, fill)
 }
 
 /// The quads of a text markup, in page space. A markup without usable quads covers its rectangle.
 fn quads_of(annotation: &PdfPageAnnotation<'_>, page_box: PageBox, rect: Rect) -> Vec<Quad> {
     let mut quads = Vec::new();
-    for points in annotation.attachment_points().iter() {
+    // Counted before they are checked, so a markup of nothing but bad quads ends too.
+    for points in annotation
+        .attachment_points()
+        .iter()
+        .take(limits::MAX_ANNOT_QUADS * 4)
+    {
         if quads.len() >= limits::MAX_ANNOT_QUADS {
             break;
         }
@@ -261,4 +269,52 @@ pub(super) fn read_annotations(
         }
     }
     Ok(imported)
+}
+
+/// Sets the Hidden flag of each `(page index, position)` in `hide` and clears it in `show`, in PDFium's memory only. A position the page
+/// does not have is skipped (the file is hostile). A page that is out of range is `invalid_argument`.
+pub(super) fn set_hidden(
+    document: &PdfDocument<'_>,
+    hide: &[(u32, u32)],
+    show: &[(u32, u32)],
+) -> Result<(), AppError> {
+    let count = u32::try_from(document.pages().len()).unwrap_or(0);
+    let wanted = hide
+        .iter()
+        .map(|at| (*at, true))
+        .chain(show.iter().map(|at| (*at, false)))
+        .take(limits::MAX_ANNOTATIONS_PER_DOC.saturating_mul(2));
+    for ((page_index, position), hidden) in wanted {
+        let page_index = limits::validate_page_index(page_index, count)?;
+        let page = load_page(document, page_index)?;
+        let annotations = page.annotations();
+        let Ok(position) = usize::try_from(position) else {
+            continue;
+        };
+        let found = annotations.get(position);
+        if let Ok(mut annotation) = found {
+            // A flag PDFium refuses to set only leaves the original drawn; nothing else depends on it.
+            let _ = annotation.set_is_hidden(hidden);
+        }
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::clean;
+
+    #[test]
+    fn imported_text_loses_control_and_format_characters() {
+        assert_eq!(
+            clean("a\u{202E}b\u{200B}c\u{FEFF}d\u{2066}e\r\u{7}", 99),
+            "abcde"
+        );
+        assert_eq!(clean("l1\nl2\tx", 99), "l1\nl2\tx");
+        assert_eq!(
+            clean("\u{E4}\u{4E2D}\u{1F600}", 99),
+            "\u{E4}\u{4E2D}\u{1F600}"
+        );
+        assert_eq!(clean("abcdef", 3), "abc");
+    }
 }

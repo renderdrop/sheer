@@ -46,8 +46,8 @@ beforeEach(() => {
   useTour.setState({ ...tourInitial }, true);
   updateSettingsMock.mockReset();
   updateSettingsMock.mockImplementation((patch) => {
-    const { glass, theme, language, leftPanelWidth, welcomeTour, authorName } = useSettings.getState();
-    const current: Settings = { glass, theme, language, leftPanelWidth, welcomeTour, authorName };
+    const { glass, theme, language, leftPanelWidth, welcomeTour, authorName, authorPrompt } = useSettings.getState();
+    const current: Settings = { glass, theme, language, leftPanelWidth, welcomeTour, authorName, authorPrompt };
     return Promise.resolve({ ...current, ...patch });
   });
   openWelcomeMock.mockReset();

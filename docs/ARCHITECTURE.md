@@ -149,6 +149,7 @@ get_page_links(doc_id: DocId, page_id: PageId) -> Vec<LinkInfo>     // ≤ 1 000
 open_link(doc_id: DocId, page_id: PageId, link_index: u32) -> ()    // URL re-read in Rust, shown in a native dialog from Rust, then opened by Rust; http, https, mailto
 // edit (ADR-003)
 list_annotations(doc_id: DocId, page_id: PageId) -> Vec<Annotation>   // by id, ≤ 2 000; the first call for a page reads it from the file (`Interactive`), later calls answer from the model
+list_document_annotations(doc_id: DocId) -> Vec<AnnotationSummary>   // {id, pageId, kind, color, contents (≤ 240 chars), author, modified, inReplyTo}, ≤ 20 000, by page then id; reads unread pages at `Background`; for the comments panel (`features/comments`)
 apply_annotation_command(doc_id: DocId, command: DocCommand) -> ChangeSet   // one undo step; all or nothing; the coalesce key is part of `UpdateAnnotation` (≤ 64 chars of [A-Za-z0-9._-])
 undo(doc_id: DocId) -> ChangeSet          // nothing to undo: an empty ChangeSet with the current rev
 redo(doc_id: DocId) -> ChangeSet
@@ -163,7 +164,7 @@ struct ViewportHint  { generation: u32, visible: Vec<PageId> /* ≤ 64 */, near:
 struct SearchQuery   { text: String /* 1..=512 chars */, match_case: bool, whole_word: bool, max_hits: u32 /* ≤ 50 000 */ }
 enum   SearchEvent   { Hits { page_id: PageId, hits: Vec<Vec<Quad>> }, Progress { done: u32, total: u32 }, Done { truncated: bool }, Failed { code, key, retryable, params? } }
                      // wire: `{ "type": "hits" | "progress" | "done" | "failed", ..fields }`, camelCase. `Failed` is an addition: the engine could not go on, and no `Done` follows. A cancelled search sends nothing more
-struct SaveAck       { break_signature: bool, file_changed: bool, rewrite_encrypted: bool }
+struct SaveAck       { break_signature: bool, file_changed: bool }   // `rewrite_encrypted` returns with the full rewrite (M3, ADR-035 §4)
 struct TextLayer     { text: String, boxes: Vec<f32> /* x, y, w, h per UTF-16 code unit of `text`, page space (the box of a character of two units is there twice) */, truncated: bool }
 struct OutlineNode   { title: String, target: Option<PageTarget { page_id, y }>, children: Vec<OutlineNode> }
 struct LinkInfo      { index: u32 /* position among the page's links */, rect: Rect, target: LinkTarget /* Page { page_id, y } | Url { url ≤ 2048 } | Blocked; wire: `{ "type": "page" | "url" | "blocked", ..fields }` */ }
@@ -179,7 +180,7 @@ struct PageSlotInfo  { id: PageId, width: f32, height: f32 /* pt, unrotated Crop
 struct SaveResult    { rev: u64, mode: SaveMode /* Incremental | Full */, backup_created: bool, document: DocumentInfo, changes: ChangeSet }   // ADR-033: `document` = the document as it is now (Save As renames it, the welcome document becomes a user document), `changes` = the annotations as `clean` and an empty history
 struct AppBootstrap  { platform: Platform /* macos | windows | linux */, reduced_transparency: bool, version: &'static str }
 enum   AppEvent      { DropHover { active: bool }, Opened { document: DocumentInfo }, OpenFailed { code, key, retryable, params? } }  // wire: `{ "type": "dropHover" | "opened" | "openFailed", ..fields }`, camelCase; OpenFailed carries the error of §7 flat and names no file; no variant has room for a path
-struct Settings      { glass: GlassMode /* Auto | Solid */, theme: ThemeMode /* System | Light | Dark */, language: Language /* System | En | De */, left_panel_width: PanelWidth, welcome_tour: WelcomeTour /* Pending | Shown */, author_name: AuthorName /* 1..=128 chars, no control chars; default OS account name (ADR-029) */ }   // serde lowercase values; `welcomeTour` default pending (missing or invalid → pending), the UI writes `shown` before it calls `open_welcome_document` on first launch (ADR-023)
+struct Settings      { glass: GlassMode /* Auto | Solid */, theme: ThemeMode /* System | Light | Dark */, language: Language /* System | En | De */, left_panel_width: PanelWidth, welcome_tour: WelcomeTour /* Pending | Shown */, author_name: AuthorName /* "" or ≤128 chars, sanitized, no control chars; default "" (ADR-034) */, author_prompt: AuthorPrompt /* Pending | Done */ }   // serde lowercase values; `welcomeTour` default pending (missing or invalid → pending), the UI writes `shown` before it calls `open_welcome_document` on first launch (ADR-023)
 ```
 
 **Menu bar.** On macOS `menu::install` builds the menu bar at startup from `src/actions/menu.json` (App, File, Edit with the system items, View, Window, Help; the labels are the `menu.*` keys of `src/i18n/locales/*.json`, compiled in with `include_str!`) and `.on_menu_event` hands each chosen item to `MenuBridge::forward`, which sends it on the channel of `subscribe_menu` if `menu::spec::is_action_id` allows it. `update_settings` rebuilds the menu when `language` changes (`menu::refresh`, on the main thread); "system" uses the language `subscribe_menu` reported. Windows has no menu bar (ADR-016): nothing is installed there. Open runs like every other command: the menu sends `open`, the UI calls `open_document_dialog`. The menu is not synchronised with the UI's state (items are not greyed without a document): `runAction` refuses a command that cannot run, which is all the menu needs.
@@ -187,7 +188,7 @@ struct Settings      { glass: GlassMode /* Auto | Solid */, theme: ThemeMode /* 
 **Settings.** `storage::settings` keeps the settings in memory and in `<app data dir>/settings.json`. A missing, oversized (> 64 KiB), damaged
 or hand-edited file never blocks start: only a regular file is read (its type is taken from the opened handle, not from the path, and on Unix it is opened
 `O_NONBLOCK` so a FIFO cannot hang the start), and each field that is invalid falls back to its default. `update_settings`
-takes the patch as raw JSON, validates all of it first (an object that passes a `deny_unknown_fields` struct, so at most `glass`, `theme`, `language`, `leftPanelWidth`, `welcomeTour` and `authorName`, with
+takes the patch as raw JSON, validates all of it first (an object that passes a `deny_unknown_fields` struct, so at most `glass`, `theme`, `language`, `leftPanelWidth`, `welcomeTour`, `authorName` and `authorPrompt`, with
 known enum values) and writes it with `storage::atomic::write_atomic`: a temp file `.settings.json.<pid>.<n>.tmp` (process id and a per-process counter, so no two
 writers share one) is created with `create_new` (a name that is taken is skipped, never written through; mode `0600` on Unix, directories `0700`), fsynced,
 renamed over the file, and the directory is fsynced on Unix. At startup `sweep_stale_temp_files` removes the temp files of that exact name pattern that a crash left in the data directory and that are older than an hour. Only after the write succeeds does the

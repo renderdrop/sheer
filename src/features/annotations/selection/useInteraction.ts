@@ -13,6 +13,7 @@ import type { Annotation } from '../../../api/annotations';
 import { toAppError } from '../../../api/errors';
 import type { PageSize } from '../../../api/render';
 import { runHistoryStep } from '../../../actions/history';
+import { announce } from '../../../components';
 import { useT } from '../../../i18n';
 import { useAnnotations } from '../../../stores/annotations';
 import { useUi } from '../../../stores/ui';
@@ -120,6 +121,14 @@ export function useInteraction(params: InteractionParams): Interaction {
         report(caught);
       },
     );
+  }, []);
+
+  /** Drops the nudges that wait (Esc): nothing is written and the annotation is back where it was. */
+  const cancelNudge = useCallback(() => {
+    clearTimeout(nudgeTimer.current);
+    nudgeTimer.current = undefined;
+    nudging.current = null;
+    setDraft(null);
   }, []);
 
   const flushNudge = useCallback(() => {
@@ -277,7 +286,11 @@ export function useInteraction(params: InteractionParams): Interaction {
         : handlesOf(a).includes('to')
           ? 'to'
           : undefined;
-      if (handle === undefined) return;
+      if (handle === undefined) {
+        // Nothing to say it with otherwise: the keys do nothing, and the user hears why.
+        announce(t('annot.resizeUnavailable'));
+        return;
+      }
       const same = before?.kind === 'resize' && before.id === a.id;
       next = {
         kind: 'resize',
@@ -336,9 +349,12 @@ export function useInteraction(params: InteractionParams): Interaction {
       event.preventDefault();
       const current = selected();
       select(current.includes(a.id) ? current.filter((id) => id !== a.id) : [...current, a.id]);
+    } else if (event.key === 'Escape' && nudging.current !== null) {
+      // The first Esc takes back the nudges that are still waiting; the selection stays.
+      event.preventDefault();
+      cancelNudge();
     } else if (event.key === 'Escape' && selected().length > 0) {
       event.preventDefault();
-      flushNudge();
       select([]);
     }
   };

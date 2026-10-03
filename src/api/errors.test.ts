@@ -52,6 +52,9 @@ describe('toAppError', () => {
 
   it('keeps only well-formed params', () => {
     expect(toAppError({ code: 'invalid_argument', params: { what: 'page' } }).params).toEqual({ what: 'page' });
+    expect(toAppError({ code: 'needs_confirmation', params: { what: 'fileChangedOnDisk' } }).params).toEqual({
+      what: 'fileChangedOnDisk',
+    });
     // Not a fixed-vocabulary word (could carry a path or markup): dropped.
     for (const what of ['C:\\Users\\x', '../etc/passwd', '<img src=x>', 'Page', '', 'a'.repeat(33), 7]) {
       expect(toAppError({ code: 'invalid_argument', params: { what } }).params).toBeUndefined();

@@ -21,6 +21,8 @@ export interface SettingsState extends Settings {
   osReducedTransparency: boolean;
   platform: Platform | null;
   version: string | null;
+  /** The OS account name, offered by the author prompt as a suggestion only (ADR-034). */
+  authorSuggestion: string;
   /** `true` once `load` has finished, whether or not the backend answered. */
   loaded: boolean;
   /** The last failed backend call, for the UI to show. Cleared by the next success. */
@@ -33,8 +35,10 @@ export interface SettingsState extends Settings {
   setTheme: (theme: ThemeMode) => Promise<void>;
   /** "system", "en" or "de". `bindLocaleToSettings` (src/i18n/bind.ts) turns it into the UI's locale. */
   setLanguage: (language: Language) => Promise<void>;
-  /** The name put on new annotations (DESIGN 3.25); the backend refuses an empty or over-long one. */
+  /** The name put on new annotations (DESIGN 3.25); empty is allowed (no author), the backend refuses an over-long one. */
   setAuthorName: (authorName: string) => Promise<void>;
+  /** Ends the one-time author prompt (ADR-034): stores `name` when given (an empty or no name keeps the author empty) and sets `authorPrompt` to done. */
+  finishAuthorPrompt: (name: string | null) => Promise<void>;
 }
 
 /** Number of the newest `update` call. A slower, older answer must not overwrite a newer one. */
@@ -45,6 +49,7 @@ export const useSettings = create<SettingsState>()((set, get) => ({
   osReducedTransparency: false,
   platform: null,
   version: null,
+  authorSuggestion: '',
   loaded: false,
   error: null,
 
@@ -57,6 +62,7 @@ export const useSettings = create<SettingsState>()((set, get) => ({
             osReducedTransparency: bootstrap.value.reducedTransparency,
             platform: bootstrap.value.platform,
             version: bootstrap.value.version,
+            authorSuggestion: bootstrap.value.authorSuggestion,
           }
         : {}),
       ...(settings.status === 'fulfilled' ? settings.value : {}),
@@ -79,6 +85,8 @@ export const useSettings = create<SettingsState>()((set, get) => ({
   setTheme: (theme) => get().update({ theme }),
   setLanguage: (language) => get().update({ language }),
   setAuthorName: (authorName) => get().update({ authorName }),
+  finishAuthorPrompt: (name) =>
+    get().update(name === null || name === '' ? { authorPrompt: 'done' } : { authorName: name, authorPrompt: 'done' }),
 }));
 
 /** `html[data-theme]`: absent for "system" so the OS decides. */

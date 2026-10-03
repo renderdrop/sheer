@@ -17,7 +17,7 @@
 //! | `get_text_layer` | `docId: number`, `pageId: number` | the text of a page and the box of each character, see [`text`] |
 //! | `search`, `cancel_search` | `docId`, `query: { text, matchCase, wholeWord, maxHits }`, `onEvent: Channel<SearchEvent>`; `searchId` | the id of the search; the hits arrive on the channel, see [`search`] |
 //! | `get_page_links`, `open_link` | `docId`, `pageId` (and `linkIndex`) | the links of a page; opening one asks the user in a native dialog first, see [`links`] |
-//! | `list_annotations`, `apply_annotation_command`, `undo`, `redo` | `docId`, and `pageId` or `command` | the annotations of a page; the `ChangeSet` of a command, an undo or a redo, see [`annotations`] |
+//! | `list_annotations`, `list_document_annotations`, `apply_annotation_command`, `undo`, `redo` | `docId`, and `pageId` or `command` | the annotations of a page; the `ChangeSet` of a command, an undo or a redo, see [`annotations`] |
 //! | `close_document` | `docId: number`, `discard?: boolean` | nothing; unsaved changes without `discard` are `unsaved_changes`, see [`save`] |
 //! | `save_document`, `save_document_as` | `docId`, `ack?` (and `opts?`) | the `SaveResult` (`null` if the Save As dialog was cancelled), see [`save`] |
 //! | `unlock_document` | `docId`, `password: string` (1 to 1024 bytes) | the `DocumentInfo` once the encrypted file is open; a wrong password is `password_required` (retry waits 1 s after the third, in Rust) |
@@ -204,6 +204,11 @@ impl AppState {
     /// answers `None`: that request reports it), and the engine loads the same handle. Errors leave nothing registered. A file
     /// that needs a password is an error here (`password_required`) and is not kept; the paths that can ask for the password
     /// ([`AppState::open_each`], `open_recent`) use [`AppState::open_outcome`].
+    /// Whether the UI has a document open: the window asks the UI before it closes then (`sources::on_window_event`).
+    pub fn has_open_documents(&self) -> bool {
+        self.registry.has_loaded()
+    }
+
     pub fn open_path(&self, path: PathBuf) -> Result<Option<DocumentInfo>, AppError> {
         self.require_ready(self.open_as(path, DocKind::User, None)?)
     }

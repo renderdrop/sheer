@@ -47,8 +47,17 @@ export interface AnnotationsState {
   byDoc: Readonly<Record<number, DocAnnotations>>;
   /** The selected annotations of each document, in the order they were selected (UI state, not part of the model). */
   selectedIds: Readonly<Record<number, readonly number[]>>;
+  /**
+   * The revision of each page's pixels, by document and page (the frontend's `pageRev`): it grows when an annotation that is in the file
+   * is changed, moved or taken away, or comes back by Undo, because the page image then no longer matches what the overlay draws.
+   * Pages not listed are at 0.
+   */
+  pageRevs: Readonly<Record<number, Readonly<Record<number, number>>>>;
 
-  /** Replaces the selection of a document; an empty list clears it. The same ids in the same order change nothing. */
+  /**
+   * Replaces the selection of a document; an empty list clears it. The same ids in the same order change nothing. A selection lives
+   * on one page: ids on another page than the first one's are left out.
+   */
   select: (docId: number, ids: readonly number[]) => void;
   /** Empties the selection of a document (nothing changes if it is empty already). */
   clearSelection: (docId: number) => void;
@@ -71,12 +80,24 @@ export interface AnnotationsState {
 /** The page loads in flight, by document and page, so that two callers share one request. */
 const loading = new Map<string, Promise<void>>();
 
+/** Whether a page of the document is being loaded: only then does a removed id need to be remembered. */
+function loadsRunning(docId: number): boolean {
+  const prefix = `${docId}:`;
+  for (const key of loading.keys()) if (key.startsWith(prefix)) return true;
+  return false;
+}
+
 export const useAnnotations = create<AnnotationsState>()((set, get) => ({
   byDoc: {},
   selectedIds: {},
+  pageRevs: {},
 
-  select: (docId, ids) =>
+  select: (docId, requested) =>
     set((state) => {
+      const byId = state.byDoc[docId]?.byId;
+      const page = requested.length === 0 ? undefined : byId?.[requested[0] as number]?.pageId;
+      const ids =
+        page === undefined || byId === undefined ? requested : requested.filter((id) => byId[id]?.pageId === page);
       const current = state.selectedIds[docId] ?? [];
       if (current.length === ids.length && current.every((id, i) => id === ids[i])) return state;
       return { selectedIds: { ...state.selectedIds, [docId]: ids } };
@@ -105,6 +126,13 @@ export const useAnnotations = create<AnnotationsState>()((set, get) => ({
       })
       .finally(() => {
         loading.delete(key);
+        // Nothing can bring a removed id back any more: forget them (the list would only grow).
+        if (loadsRunning(docId)) return;
+        set((state) => {
+          const doc = state.byDoc[docId];
+          if (doc === undefined || Object.keys(doc.removed).length === 0) return state;
+          return { byDoc: { ...state.byDoc, [docId]: { ...doc, removed: {} } } };
+        });
       });
     loading.set(key, request);
     return request;
@@ -140,20 +168,42 @@ export const useAnnotations = create<AnnotationsState>()((set, get) => ({
       }
       const byId = { ...doc.byId } as Record<number, Annotation>;
       const removed = { ...doc.removed } as Record<number, true>;
+      const remember = loadsRunning(docId);
       for (const id of changes.removed) {
+        // eslint-disable-next-line @typescript-eslint/no-dynamic-delete -- a record keyed by annotation id
         delete byId[id];
-        removed[id] = true;
+        if (remember) removed[id] = true;
       }
       for (const annotation of changes.upserted) {
         byId[annotation.id] = annotation;
-
+        // eslint-disable-next-line @typescript-eslint/no-dynamic-delete -- a record keyed by annotation id
         delete removed[annotation.id];
+      }
+      // A page whose bitmap shows an annotation that changed (or no longer exists) needs a new image.
+      const stale = new Set<number>();
+      for (const id of changes.removed) {
+        const before = doc.byId[id];
+        if (before !== undefined && before.sync !== 'new') stale.add(before.pageId);
+      }
+      for (const annotation of changes.upserted) {
+        const before = doc.byId[annotation.id];
+        if (annotation.sync !== 'new' || (before !== undefined && before.sync !== 'new')) {
+          stale.add(annotation.pageId);
+          if (before !== undefined) stale.add(before.pageId);
+        }
+      }
+      let pageRevs = state.pageRevs;
+      if (stale.size > 0) {
+        const revs = { ...(pageRevs[docId] ?? {}) } as Record<number, number>;
+        for (const page of stale) revs[page] = (revs[page] ?? 0) + 1;
+        pageRevs = { ...pageRevs, [docId]: revs };
       }
       // What was removed cannot stay selected.
       const selected = state.selectedIds[docId];
       const kept = selected?.filter((id) => byId[id] !== undefined);
       return {
         byDoc: { ...state.byDoc, [docId]: { ...doc, rev: changes.rev, byId, removed, history: changes.history } },
+        ...(pageRevs !== state.pageRevs ? { pageRevs } : {}),
         ...(selected !== undefined && kept !== undefined && kept.length !== selected.length
           ? { selectedIds: { ...state.selectedIds, [docId]: kept } }
           : {}),
@@ -162,13 +212,20 @@ export const useAnnotations = create<AnnotationsState>()((set, get) => ({
 
   remove: (docId) =>
     set((state) => {
+      for (const key of [...lastByPage.keys()]) if (key.startsWith(`${docId}:`)) lastByPage.delete(key);
       if (state.byDoc[docId] === undefined) return state;
       return {
         byDoc: Object.fromEntries(Object.entries(state.byDoc).filter(([id]) => Number(id) !== docId)),
         selectedIds: Object.fromEntries(Object.entries(state.selectedIds).filter(([id]) => Number(id) !== docId)),
+        pageRevs: Object.fromEntries(Object.entries(state.pageRevs).filter(([id]) => Number(id) !== docId)),
       };
     }),
 }));
+
+/** The revision of a page's pixels; 0 until an annotation that is in the file changes. */
+export function pageRevOf(state: Pick<AnnotationsState, 'pageRevs'>, docId: number, pageId: number): number {
+  return state.pageRevs[docId]?.[pageId] ?? 0;
+}
 
 /** The history of a document, or the empty one. */
 export function historyOf(state: Pick<AnnotationsState, 'byDoc'>, docId: number | null): Readonly<HistoryState> {
@@ -177,10 +234,12 @@ export function historyOf(state: Pick<AnnotationsState, 'byDoc'>, docId: number 
 
 const NONE: readonly Annotation[] = [];
 const pageCache = new WeakMap<object, Map<number, readonly Annotation[]>>();
+/** The last list of each page, by `doc:page`: a change to one page hands the other pages the arrays they had. */
+const lastByPage = new Map<string, readonly Annotation[]>();
 
 /**
- * The annotations of a page in id order. The same array while the document's annotations are unchanged, so a component that selects it does not
- * render again for a selection or a view change.
+ * The annotations of a page in id order. The same array while the page's annotations are unchanged (also when another page's change
+ * made a new `byId`), so a component that selects it does not render again for a selection, a view change or an edit elsewhere.
  */
 export function annotationsOnPage(
   state: Pick<AnnotationsState, 'byDoc'>,
@@ -196,9 +255,17 @@ export function annotationsOnPage(
   }
   const cached = pages.get(pageId);
   if (cached !== undefined) return cached;
-  const list = Object.values(doc.byId)
+  const fresh = Object.values(doc.byId)
     .filter((annotation) => annotation.pageId === pageId)
     .sort((a, b) => a.id - b.id);
+  // The same annotations in the same order are the same array, so the page's layer does not render for a change elsewhere.
+  const key = `${docId}:${pageId}`;
+  const before = lastByPage.get(key);
+  const list =
+    before !== undefined && before.length === fresh.length && before.every((annotation, i) => annotation === fresh[i])
+      ? before
+      : fresh;
+  lastByPage.set(key, list);
   pages.set(pageId, list);
   return list;
 }

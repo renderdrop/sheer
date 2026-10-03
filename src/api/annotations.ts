@@ -393,3 +393,88 @@ export async function redo(docId: number): Promise<ChangeSet> {
   if (changes === null) throw toAppError(null);
   return changes;
 }
+
+// --- The document's annotations as a list (the comments panel) -----------------------------------------------------------
+
+/** Longest excerpt of the contents in a summary, in characters (`SUMMARY_EXCERPT_CHARS`). */
+export const MAX_SUMMARY_EXCERPT_CHARS = 240;
+
+/**
+ * What the comments panel needs of an annotation (`list_document_annotations`): no geometry, only the start of the contents.
+ * `contents`, `author` and `modified` come from the file: text only, never markup.
+ */
+export interface AnnotationSummary {
+  id: number;
+  pageId: number;
+  kind: AnnotationKind;
+  color: Rgb;
+  contents: string;
+  author: string | null;
+  modified: string | null;
+  inReplyTo: number | null;
+}
+
+const KINDS: readonly string[] = [
+  'highlight',
+  'underline',
+  'strikeout',
+  'note',
+  'freeText',
+  'ink',
+  'rect',
+  'ellipse',
+  'line',
+  'opaque',
+] satisfies AnnotationKind[];
+
+function parseSummary(value: unknown): AnnotationSummary | null {
+  if (!isRecord(value)) return null;
+  const { id, pageId, kind, color, contents, author, modified, inReplyTo } = value;
+  if (
+    !isUint(id) ||
+    !isUint(pageId) ||
+    typeof kind !== 'string' ||
+    !KINDS.includes(kind) ||
+    !Array.isArray(color) ||
+    color.length !== 3 ||
+    !(color as unknown[]).every((c) => isUint(c, 255)) ||
+    typeof contents !== 'string' ||
+    contents.length > MAX_SUMMARY_EXCERPT_CHARS * 2 ||
+    !(author === null || typeof author === 'string') ||
+    !(modified === null || typeof modified === 'string') ||
+    !(inReplyTo === null || isUint(inReplyTo))
+  )
+    return null;
+  return {
+    id,
+    pageId,
+    kind: kind as AnnotationKind,
+    color: color as unknown as Rgb,
+    contents,
+    author,
+    modified,
+    inReplyTo,
+  };
+}
+
+/** Validates the answer of `list_document_annotations`: at most 20 000 summaries. `null` if it is not a list of them. */
+export function parseAnnotationSummaries(value: unknown): AnnotationSummary[] | null {
+  if (!Array.isArray(value) || value.length > MAX_ANNOTATIONS_PER_DOC) return null;
+  const summaries: AnnotationSummary[] = [];
+  for (const item of value as unknown[]) {
+    const summary = parseSummary(item);
+    if (summary === null) return null;
+    summaries.push(summary);
+  }
+  return summaries;
+}
+
+/**
+ * The annotations of every page as summaries, by page and id. Pages the backend has not read yet are read from the file at
+ * background priority, so this can take a moment on a large document. Rejects with `not_found` for a document that is not open.
+ */
+export async function listDocumentAnnotations(docId: number): Promise<AnnotationSummary[]> {
+  const summaries = parseAnnotationSummaries(await call<unknown>('list_document_annotations', { docId }));
+  if (summaries === null) throw toAppError(null);
+  return summaries;
+}

@@ -6,6 +6,7 @@ import { Panel, Tab, TabList, TabPanel, Tabs } from '../../components';
 import { useT, type PlainKey } from '../../i18n';
 import { clampPanelWidth } from '../../lib/layout';
 import { LEFT_PANEL_TABS, useUi, type LeftPanelTab } from '../../stores/ui';
+import { Comments, CommentsActions } from '../comments/Comments';
 import { Outline, OutlineActions } from '../outline/Outline';
 import { SearchPanel } from '../search/Search';
 import { Thumbnails } from '../thumbnails/Thumbnails';
@@ -69,15 +70,16 @@ export const LeftPanel = memo(function LeftPanel({ id }: LeftPanelProps) {
               <div className="flex h-control-md shrink-0 items-center">
                 <h2 className="m-0 min-w-0 flex-1 truncate text-md font-semibold">{t(TABS[value].label)}</h2>
                 {value === 'outline' && <OutlineActions />}
+                {value === 'comments' && <CommentsActions />}
               </div>
               {value === 'thumbnails' ? (
                 <Thumbnails />
               ) : value === 'outline' ? (
                 <Outline />
-              ) : value === 'search' ? (
-                <SearchPanel />
+              ) : value === 'comments' ? (
+                <Comments />
               ) : (
-                <p className="m-0 text-sm text-text-muted">{t(TABS[value].empty)}</p>
+                <SearchPanel />
               )}
             </div>
           </TabPanel>

@@ -16,6 +16,7 @@ import { Button, IconButton, Popover } from '../../../components';
 import { cx } from '../../../components/cx';
 import { useT } from '../../../i18n';
 import { useAnnotations } from '../../../stores/annotations';
+import { isOwnReply, markOwnReply, useOwnReplies } from './ownReplies';
 import { useSettings } from '../../../stores/settings';
 import { useUi } from '../../../stores/ui';
 import { formatAnnotationDate } from './date';
@@ -158,6 +159,7 @@ export function NotePopover({ docId, noteId, anchor, open, onClose, isNew = fals
   const note = useAnnotations((state) => state.byDoc[docId]?.byId[noteId]);
   const byId = useAnnotations((state) => state.byDoc[docId]?.byId);
   const ownName = useSettings((state) => state.authorName);
+  const ownReplies = useOwnReplies((state) => state.byDoc[docId]);
   const replies = useMemo(
     () =>
       Object.values(byId ?? {})
@@ -244,19 +246,30 @@ export function NotePopover({ docId, noteId, anchor, open, onClose, isNew = fals
     if (text === '' || note === undefined || note.kind !== 'note') return;
     flush();
     setReply('');
-    void run(docId, {
-      type: 'createAnnotation',
-      draft: {
-        kind: 'note',
-        pageId: note.pageId,
-        at: note.at,
-        icon: note.icon,
-        color: note.color,
-        contents: text,
-        author: ownName,
-        inReplyTo: note.id,
-      },
-    });
+    void useAnnotations
+      .getState()
+      .apply(docId, {
+        type: 'createAnnotation',
+        draft: {
+          kind: 'note',
+          pageId: note.pageId,
+          at: note.at,
+          icon: note.icon,
+          color: note.color,
+          contents: text,
+          author: ownName === '' ? null : ownName,
+          inReplyTo: note.id,
+        },
+      })
+      .then(
+        (changes) => {
+          // The reply belongs to this session's user, whatever the author name becomes later.
+          for (const created of changes.upserted) {
+            if (created.inReplyTo === note.id && created.contents === text) markOwnReply(docId, created.id);
+          }
+        },
+        (caught: unknown) => useUi.getState().showBanner(toAppError(caught)),
+      );
   };
 
   const onReplyKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
@@ -311,7 +324,12 @@ export function NotePopover({ docId, noteId, anchor, open, onClose, isNew = fals
         {replies.length > 0 && (
           <ul className="m-0 flex list-none flex-col gap-1 border-t border-divider p-0 pt-1">
             {replies.map((item) => (
-              <Reply key={item.id} docId={docId} reply={item} own={item.author === ownName && !item.locked} />
+              <Reply
+                key={item.id}
+                docId={docId}
+                reply={item}
+                own={isOwnReply(ownReplies, item, ownName) && !item.locked}
+              />
             ))}
           </ul>
         )}

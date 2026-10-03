@@ -1,6 +1,7 @@
 import { Toolbar, type MenuEntry, type ToolbarEntry } from '../../components';
 import { cx } from '../../components/cx';
 import { useT } from '../../i18n';
+import { AuthorPromptField } from '../author/AuthorPromptField';
 
 export interface ToolbarRowProps {
   entries: readonly ToolbarEntry[];
@@ -28,6 +29,7 @@ export function ToolbarRow({ entries, moreItems, trafficLightInset }: ToolbarRow
       )}
     >
       <Toolbar label={t('toolbar.label')} entries={entries} moreItems={moreItems} className="min-w-0 flex-auto" />
+      <AuthorPromptField />
     </div>
   );
 }

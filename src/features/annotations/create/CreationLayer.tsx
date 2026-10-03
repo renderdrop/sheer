@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as
 import type { Annotation, AnnotationDraft, Rgb } from '../../../api/annotations';
 import type { Point, Quad, Rect } from '../../../api/wire';
 import { useAnnotations } from '../../../stores/annotations';
+import { useSettings } from '../../../stores/settings';
 import { creationKind, useTools, type CreationKind } from '../../../stores/tools';
 import { useUi } from '../../../stores/ui';
 import { rgbToCss } from '../../inspector/palette';
@@ -81,6 +82,12 @@ const UNDERLINE_INSET_PT = 0.5;
 const MARKUP_LINE_PT = 1;
 /** The free text box outline in the preview is this thick, in points. */
 const BOX_OUTLINE_PT = 1;
+
+/** The draft with the current author name (ADR-034); an empty name adds none, so no /T is written. */
+function withAuthor(draft: AnnotationDraft): AnnotationDraft {
+  const author = useSettings.getState().authorName;
+  return author === '' ? draft : { ...draft, author };
+}
 
 /**
  * The layer that makes annotations on one page for the active tool (DESIGN 3.22). It takes the pointer only while a creation
@@ -161,7 +168,7 @@ function ActiveLayer({
       if (draft === null) return;
       useAnnotations
         .getState()
-        .apply(docId, { type: 'createAnnotation', draft })
+        .apply(docId, { type: 'createAnnotation', draft: withAuthor(draft) })
         .then((changes) => {
           const created = changes.upserted[0];
           if (created !== undefined) onCreated?.(created);

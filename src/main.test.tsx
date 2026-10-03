@@ -42,7 +42,12 @@ function deferred<T>() {
   return { promise, resolve, reject };
 }
 
-const bootstrap: AppBootstrap = { platform: 'macos', reducedTransparency: false, version: '0.2.0' };
+const bootstrap: AppBootstrap = {
+  platform: 'macos',
+  reducedTransparency: false,
+  version: '0.2.0',
+  authorSuggestion: '',
+};
 const root = () => document.getElementById('root');
 const html = document.documentElement;
 const settingsStore = async () => (await import('./stores/settings')).useSettings;
@@ -123,6 +128,7 @@ describe('main.tsx while the settings load hangs', () => {
         leftPanelWidth: 248,
         welcomeTour: 'pending',
         authorName: 'Author',
+        authorPrompt: 'pending',
       });
     });
     expect(html.getAttribute('data-theme')).toBe('dark');

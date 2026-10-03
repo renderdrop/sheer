@@ -22,7 +22,15 @@ beforeEach(() => {
   updateSettingsMock.mockReset();
   updateSettingsMock.mockImplementation((patch) => {
     const { glass, theme, language, leftPanelWidth, authorName } = useSettings.getState();
-    const current: Settings = { glass, theme, language, leftPanelWidth, authorName, welcomeTour: 'pending' };
+    const current: Settings = {
+      glass,
+      theme,
+      language,
+      leftPanelWidth,
+      authorName,
+      welcomeTour: 'pending',
+      authorPrompt: 'pending',
+    };
     return Promise.resolve({ ...current, ...patch });
   });
 });
@@ -48,13 +56,12 @@ describe('the author name setting', () => {
     await waitFor(() => expect(useSettings.getState().authorName).toBe('Grace Hopper'));
   });
 
-  it('does not save an empty name and goes back to the saved one', async () => {
+  it('saves an empty name: no author (ADR-034)', async () => {
     const { user } = setup(<SettingsPopover />);
     act(() => openSettings());
     await user.clear(field());
     await user.tab();
-    expect(updateSettingsMock).not.toHaveBeenCalled();
-    expect(field().value).toBe('Ada');
+    await waitFor(() => expect(updateSettingsMock).toHaveBeenCalledWith({ authorName: '' }));
   });
 
   it('reverts the typing on Esc and keeps the popover open', async () => {

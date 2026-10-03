@@ -12,6 +12,7 @@ import {
   MAX_INK_STROKES,
   applyAnnotationCommand,
   listAnnotations,
+  listDocumentAnnotations,
   parseAnnotation,
   parseChangeSet,
   redo,
@@ -223,5 +224,31 @@ describe('the bounds mirror the backend (src-tauri/src/limits.rs)', () => {
     expect(rust.get('MAX_FREE_TEXT_LINES')).toBe(MAX_FREE_TEXT_LINES);
     expect(rust.get('MAX_ANNOT_CONTENTS_CHARS')).toBe(MAX_ANNOT_CONTENTS_CHARS);
     expect(rust.get('MAX_HISTORY_ENTRIES')).toBe(MAX_HISTORY_ENTRIES);
+  });
+});
+
+describe('list_document_annotations', () => {
+  const summary = {
+    id: 1,
+    pageId: 0,
+    kind: 'note',
+    color: [1, 2, 3],
+    contents: 'hi',
+    author: null,
+    modified: null,
+    inReplyTo: null,
+  };
+
+  it('asks for the document and returns the summaries', async () => {
+    invokeMock.mockResolvedValueOnce([summary]);
+    await expect(listDocumentAnnotations(4)).resolves.toStrictEqual([summary]);
+    expect(invokeMock).toHaveBeenCalledWith('list_document_annotations', { docId: 4 });
+  });
+
+  it('rejects an answer of the wrong shape', async () => {
+    for (const bad of [[{ ...summary, kind: 'nope' }], [{ ...summary, color: [1, 2] }], [{ id: 1 }], 'x']) {
+      invokeMock.mockResolvedValueOnce(bad);
+      await expect(listDocumentAnnotations(0)).rejects.toMatchObject({ code: 'internal' });
+    }
   });
 });
