@@ -246,7 +246,7 @@ A render frame is at most 4096×4096 px (16 Mpx), checked after the bucket and t
 M3: see "Pages" below (ADR-036; `insert_pages_from_file` became `pick_pdf_sources` + `InsertPages`). M4: see "Forms and
 signatures" below (ADR-041). M5: see "Edit and protect" below (ADR-047; `set_protection`/`remove_protection` became
 `stage_protection`/`stage_unprotection`, `set_metadata` became `SetMetadata`/`RemoveMetadata` commands).
-M6: `export_images`, `print_document`, `reveal_in_folder`. M7: `list_recoverable`, `restore_autosave`, `discard_autosave`.
+M6: see "Convert and output" below (ADR-049; `print_document` became `prepare_print` + `open_print_dialog`, `reveal_in_folder` is v1.1). M7: `list_recoverable`, `restore_autosave`, `discard_autosave`.
 
 ### Annotations (ADR-003; `model/{annotation,command,history,doc_state,ids}.rs`, `engine/import.rs`, `commands/annotations.rs`)
 
@@ -511,6 +511,99 @@ Wrappers: `src/api/content.ts` (`insertImageDialog`, `getAssetPreview`), `pages.
   `AnnotationBody`, so the comment features keep exhaustive maps): they arrive in `ChangeSet.content` and `listContentObjects`, and
   `cropPages` is `CropPagesCommand`, not a `PageCommand`; `media`, `crop`, `doc` and `done.changes` are optional in the types and always
   sent. The `PageSource` enum is no longer `Copy` (`Redacted` holds the raster page).
+
+### Convert and output (ADR-049; `export/{mod,snapshot,images,names,from_images}.rs`, `print/{mod,set,dialog}.rs`, `engine/{export,snapshot}.rs`, `pdfwrite/{images_pdf,export,save}.rs`, `documents/image_batch.rs`, `model/ranges.rs`, `commands/{export_images,images_pdf,export_pdf,print}.rs`)
+
+```rust
+// commands/export_images.rs (A)
+export_images(doc_id: DocId, opts: ImageExportOptions, on_event: Channel<JobEvent>) -> ExportStart   // folder dialog after validation
+resolve_export_conflicts(ticket: u32, choice: ConflictChoice, on_event: Channel<JobEvent>) -> Option<JobId>   // cancel / expired ticket → None
+// commands/images_pdf.rs (B)
+images_to_pdf(opts: ImagesToPdfOptions, on_event: Channel<JobEvent>) -> Option<JobId>   // open dialog (or batch) → Save As dialog; None = cancelled; done.opened
+release_image_batch(batch: u32) -> ()                                                   // unknown id is not an error
+// commands/export_pdf.rs (C)
+export_pdf(doc_id: DocId, opts: PdfExportOptions, ack: SaveAck, on_event: Channel<JobEvent>) -> Option<JobId>   // Save As dialog; open document unchanged
+// commands/print.rs (D)
+prepare_print(doc_id: DocId, opts: PrintOptions, on_event: Channel<JobEvent>) -> JobId   // done.print
+get_print_page(print_id: u32, index: u32) -> tauri::ipc::Response                        // SHR1 JPEG frame; index < done.print.pages
+open_print_dialog(print_id: u32) -> PrintRoute                                           // main window only; set must be complete
+release_print(print_id: u32) -> ()                                                       // also on close_document and after 10 min
+```
+
+```rust
+// Rust-only shapes
+pub struct Snapshot { bytes: Option<Arc<[u8]>> /* None = clean, live document */, engine: EngineDocRef }
+pub enum EngineDocRef { Live(DocumentId), Snapshot(SnapshotId) }
+pub fn export::snapshot::current(app: &AppState, doc: DocumentId) -> Result<Snapshot, AppError>;   // blocking pool; ≤ 1 GiB
+pub fn pdfwrite::save::write_to_memory(plan: &SavePlan, input: &[u8]) -> Result<Vec<u8>, AppError>; // Full, unencrypted, no backup
+pub fn pdfwrite::images_pdf::build(pages: &[ImagePage], producer: &str) -> Result<Vec<u8>, AppError>;
+pub struct ImagePage { image: StoredImage /* content::image output */, size_pt: [f32; 2], place: Rect /* pt, fitted */ }
+pub fn pdfwrite::export::strip_annotations(doc: &mut Document) -> Result<u32, AppError>;          // keeps /Link and /Widget
+pub fn export::names::image_names(stem: &str, positions: &[u32], total: u32, ext: ImageExt) -> Vec<String>;
+pub fn commands::jobs::create_unique(folder: &Path, stem: &str, ext: &str) -> Result<(File, PathBuf), AppError>;   // was .pdf only
+pub struct PrintSet { id: u32, doc: DocumentId, frames: Vec<Arc<[u8]>>, bytes: usize, created: Instant }   // print/set.rs, ≤ 4 sets
+pub fn print::dialog::open(window: &WebviewWindow) -> Result<PrintRoute, AppError>;   // Windows: with_webview → ICoreWebView2_16::ShowPrintUI(System),
+                                                                                      //   cast fails → Webview::print(); macOS: Webview::print()
+// engine jobs
+Job::OpenSnapshot { bytes: Arc<[u8]> } -> SnapshotId                                   // Control; not in the registry, no page sizes pushed
+Job::CloseSnapshot { id: SnapshotId }                                                  // Control; also on cancel and worker respawn
+Job::RenderExport { doc: EngineDocRef, engine_index: u32, dpi: f32, annotations: bool, rotate_quarter: u8 } -> RasterPage   // Background, RGB8 on white
+```
+
+```ts
+type PageSelection = { type: 'all' } | { type: 'current'; pageId: PageId } | { type: 'pages'; pages: PageId[] }
+                   | { type: 'ranges'; text: string /* "1-3, 5, 8-", positions in the current order */ };
+interface ImageExportOptions { pages: PageSelection; dpi: number /* 36..=600 */; format: 'png' | 'jpeg';
+  jpegQuality: number /* 1..=100, ignored for png */; annotations: boolean }
+type ExportStart = { type: 'started'; jobId: JobId } | { type: 'cancelled' }
+                 | { type: 'conflicts'; ticket: number; count: number; names: string[] /* ≤ 5, generated by Rust */ };
+type ConflictChoice = 'replace' | 'keepBoth' | 'cancel';
+
+type PaperSize = 'fit' | 'a4' | 'letter';
+interface ImagesToPdfOptions { source: { type: 'dialog' } | { type: 'batch'; batch: number };
+  paper: PaperSize; orientation: 'auto' | 'portrait' | 'landscape'; marginPt: number /* 0..=72 */ }
+// AppEvent gains: { type: 'imagesDropped'; batch: number; count: number; skipped: number }
+// AppBootstrap gains: paper: 'a4' | 'letter'
+
+interface PdfExportOptions { annotations: 'keep' | 'flatten' | 'remove'; removeMetadata: boolean }
+
+interface PrintOptions { pages: PageSelection; annotations: boolean; quality: 'standard' | 'high'; autoRotate: boolean;
+  paper: 'portrait' | 'landscape' /* orientation landscape pages are turned to */ }
+type PrintRoute = 'system' | 'webview';
+// JobEvent: progress.phase gains 'snapshot' | 'render' | 'encode'; done gains print: { printId: number; pages: number } | null;
+//           done.warnings gains 'dpiLowered' | 'imagesSkipped'; done gains skipped: number (images → PDF, else 0)
+```
+
+Wrappers: `src/api/exportImages.ts` (`exportImages`, `resolveExportConflicts`), `imagesToPdf.ts` (`imagesToPdf`, `releaseImageBatch`),
+`exportPdf.ts` (`exportPdf`), `print.ts` (`preparePrint`, `getPrintPage`, `openPrintDialog`, `releasePrint`); each parses its answer
+and treats a wrong shape as `internal`. UI (ADR-050) in `features/convert/` and `features/print/PrintSurface.tsx`.
+
+- *Snapshot.* Dirty → `save_plan_of` + `write_to_memory` (content burned, crops, redacted slots, form values; marks never) → `OpenSnapshot`.
+  Clean → the live engine document, no copy. A snapshot is closed by the job's drop guard (done, failed, cancelled).
+- *Images out.* Validate all → resolve positions → per page compute px = pt × dpi / 72; above 10 000 px per side or 64 MP, dpi lowered to
+  fit (`dpiLowered`), below 36 → `limit_exceeded` `exportPixels` `{ page }` before any file. Name plan → conflict check
+  (`symlink_metadata`) → folder held under a ticket if needed. Each page: `RenderExport` → `image` PNG / JPEG encode → `create_new` file,
+  or `write_atomic` for `replace` (target must be a regular file or absent). `done.outputs` = files written; Cancel keeps them.
+- *Images in.* `documents::image_batch` holds dropped image handles (opened once, judged as regular files, magic bytes PNG/JPEG);
+  `content::image::intake(handle)` per image; skipped ones counted. Fit size from pHYs / JFIF density. `build` writes catalog, pages,
+  XObjects (`/DCTDecode` or `/FlateDecode` + `/SMask`), `/Info` with `/Producer` only; then the merge path (atomic write, `intake::admit`, tab).
+- *Export a copy.* Snapshot bytes → `load_untrusted` → `flatten` / `strip_annotations` / `metadata::strip` → new `/ID` → Full write via
+  `write_atomic` to the Save As target; encrypted source → `crypt` keep-encryption with the session password (ack `rewriteEncrypted`).
+  A target equal to the open document's path is `invalid_argument` (`exportTarget`): a copy never replaces its source.
+- *Print.* `prepare_print` → snapshot → `RenderExport` (150/300 dpi, rotated per `autoRotate`) → JPEG q92 frames in `PrintSet`.
+  `PrintSurface` (one `<section>` per page, `break-after: page`, `img { width: 100%; height: 100vh; object-fit: contain }`, `@page
+  { margin: 0 }`) loads all frames, awaits decode, calls `open_print_dialog`, releases the set and blob URLs when the call returns.
+  Permissions: `print` for print, `copy` for images out, `edit` for export-copy transforms of a restricted document.
+- *Limits* (`limits.rs`): selection ≤ 5 000 pages; dpi 36..=600; export bitmap ≤ 10 000 px per side, ≤ 64 MP; ≤ 5 000 image files per
+  job, ticket 5 min; images in ≤ 500 per job and per batch, batch 10 min, stored sum ≤ 1 GiB, M5 per-image limits; margin 0..=72 pt;
+  page 72..=14 400 pt; snapshot ≤ 1 GiB; print ≤ 2 000 pages (`high` ≤ 300), ≤ 768 MiB per set, ≤ 4 sets.
+- *Errors.* New `what` values: `exportPixels` (params `{ page }`), `exportTarget`, `snapshot`, `printJob`, `printDialog`, `imageBatch`,
+  `pageSelection`; each with `error.<code>.<what>` in en and de.
+- *Tests.* `tests/export_images.rs` (names never contain `/Title` or label bytes, hostile display names, conflict ticket, `create_new`
+  never overwrites, `dpiLowered`, cancel keeps files), `tests/images_to_pdf.rs` (fit/A4/Letter geometry, EXIF orientation, skipped images,
+  result opens in PDFium), `tests/snapshot.rs` (unsaved text box and annotation appear in a render, marks never), `tests/export_pdf.rs`
+  (remove keeps links and widgets, strip leaves no `/Info` or `/Metadata`, encrypted copy reopens with its password, source untouched),
+  `tests/print_set.rs` (caps, release on close, frames decode).
 
 ## 6. Pushes (Rust → UI, never with paths)
 

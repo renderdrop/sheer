@@ -1409,3 +1409,118 @@ logged in `docs/LICENSES.md` by package D where missing; `cargo deny` already co
 protection saves are always Full, so files with signatures ask `breaksSignature`. Permissions bind honest readers only (§3.39 note). XMP
 extensions beyond Dublin Core/pdf/xmp are lost on a metadata edit. Not in M5: Unicode fonts, editing existing text, certificate
 encryption, operator-level redaction.
+
+## ADR-050 — M6 UI decisions (DESIGN §3.41–§3.45)
+
+**Status:** accepted (2026-10-04). Engine, limits and IPC defer to ADR-049 (M6 architecture).
+
+**Decision.** (1) No toolbar buttons for output: Create PDF from images, Export a copy, Export as images and Print form one group
+after Save As in More and the macOS File menu. Keys: Primary+P (Print, platform convention), Primary+Shift+E (Export as images; free in
+the registry); none for the rare two. No Ctrl+Shift+I (WebView dev tools). (2) Create PDF from images is reachable without a document:
+More, a ghost button under Open in the empty-state drop card (Open stays the one primary), and dropping only images. A mixed drop opens
+the PDFs and explains the skipped images in a banner. (3) Print keeps a minimal pre-step (annotations on/off, page range) because the
+OS dialog cannot choose annotation visibility and Rust must prepare the pages; everything else is the native dialog. Primary+P twice
+prints with the last choices. (4) Export a copy never changes the open document or its path; annotations on by default, metadata
+removal opt-in. (5) Export as images: 150 dpi default, presets 72/150/300 + custom 36–600, JPEG quality 85; folder chosen after Go;
+Cancel keeps files already written. (6) Images → PDF page size defaults to A4, Letter in US/CA (OS region via Rust); auto orientation;
+12 mm margin; images fit, never crop. (7) Permissions (§3.39) gate Print (print) and Export as images (copy); unapplied redaction marks
+are never output and the dialogs say so. (8) No new tokens.
+
+## ADR-049 — Convert and output (M6)
+
+**Status:** accepted (2026-10-04). Implements the backend behind ADR-050. Amends ADR-017 (a drop of images), ADR-036 (`JobEvent`,
+`create_unique` takes an extension). SECURITY T9 (paths), D3 (hostile input). Signatures and types: ARCHITECTURE §5
+"Convert and output".
+
+**Context.** M6: PDF → PNG/JPEG, images → PDF, print through the OS dialog, export a copy with/without annotations and optional
+metadata removal. Rules that bind: the UI never holds paths or bytes, every output path comes from a Rust dialog, every job reports on a
+`Channel<JobEvent>` and can be cancelled (`cancel_job`), PDF strings never become file names, no network, no shell plugin.
+
+**Options.**
+- *What is output when the document has unsaved edits:* (a) the file on disk: surprising, content objects and annotations vanish;
+  (b) **a snapshot**: the save pipeline (ADR-033/036/041/047, content burned, crops, redacted slots) writes the current state into
+  memory, never to disk; PDFium opens it as an engine-only document. A clean document skips the snapshot and renders the open one.
+- *Print:* (a) shell "print" verb on a temp PDF: hands the file to whatever app owns `.pdf` (may be online, may be absent), needs
+  the shell, leaves a file; rejected. (b) OS print APIs: Windows GDI (`PrintDlgEx` + `FPDF_RenderPage` to an HDC, not exposed by
+  pdfium-render) and macOS PDFKit (`objc2-pdf-kit`); two native code paths, high cost. (c) **The webview prints a print-only surface of
+  pre-rendered page images**, opened by Rust: Windows `ICoreWebView2_16::ShowPrintUI(COREWEBVIEW2_PRINT_DIALOG_KIND_SYSTEM)` (the OS
+  dialog) via `Webview::with_webview`; macOS `Webview::print()` (wry: `WKWebView` print operation, `NSPrintPanel`). One render path,
+  no temp file, offline.
+- *Images → PDF result:* untitled in-memory document (no such concept in the registry yet) vs. **the merge pattern** (ADR-036: Save As
+  dialog first, the written file opens in a tab).
+
+**Decision.**
+
+1. **Snapshot seam** `export::snapshot::current(doc) -> Snapshot { bytes: Option<Arc<[u8]>>, engine: EngineDocRef }`: dirty →
+   `pdfwrite::save::write_to_memory` (Full, no backup, unencrypted, never on disk), opened by `Job::OpenSnapshot` (Control) and closed by
+   `Job::CloseSnapshot` when the job ends or is cancelled; clean → the live engine document. Redaction marks are never output (they
+   are not written by a save). ≤ 1 GiB snapshot (`limit_exceeded` `snapshot`).
+
+2. **PDF → images** (`export_images`). Pages: `PageSelection` (all, current, selected ids, or range text parsed by the split parser, which
+   moves from `pdfwrite::produce` to `model::ranges`, positions in the current order, ≤ 5 000 pages). DPI 36..=600, PNG or JPEG
+   (quality 1..=100, default 85, flattened on white), annotations on/off (PDFium `FPDF_ANNOT`; off also hides widgets).
+   Per page the bitmap must stay ≤ 10 000 px per side and ≤ 64 MP; a page over it is rendered at the highest DPI that fits and
+   `done.warnings` gets `dpiLowered` (page refused only below 36 dpi: `limit_exceeded` `exportPixels`, params `{ page }`). Render is
+   `Job::RenderExport` at **Background**, so the viewer stays first; encode on the blocking pool (≤ 2 jobs, ADR-036).
+   - Folder: Rust `blocking_pick_folder` after Go (ADR-050 (5)). Names: `{stem}-p{NNN}.{png|jpg}` where `stem = file_stem(display
+     name)` (the sanitised file name, never `/Title` or page labels), `NNN` the 1-based position, zero-padded to the page count's width.
+   - **No silent overwrite:** before the job Rust checks the planned names; if any exists the call answers `conflicts { ticket, count,
+     names ≤ 5 }` and holds the folder behind a ticket (5 min, one per document). `resolve_export_conflicts(ticket, choice)`: `keepBoth`
+     → `create_unique` (`name (2).png`, `create_new`), `replace` → `storage::atomic::write_atomic` (temp + rename, never through a
+     symlink: the target's `symlink_metadata` must be a regular file or absent), `cancel` → nothing. Without conflicts each file is
+     still claimed with `create_new`, so a file appearing meanwhile becomes `name (2)`. Cancel keeps the files already written.
+   - Requires `copy` permission on a restricted document (`read_only` `permission`).
+
+3. **Images → PDF** (`images_to_pdf`). Source: the Rust open dialog (PNG, JPEG, multi, ≤ 500, sorted by natural file-name order) or a
+   dropped batch: `sources.rs` sniffs dropped non-PDFs, keeps PNG/JPEG handles as an `ImageBatch` (≤ 500, 10 min) and pushes
+   `AppEvent::ImagesDropped { batch, count, skipped }`; a mixed drop opens the PDFs and batches the images. Each image goes through
+   **`content::image::intake` unchanged** (M5 limits: ≤ 20 MiB, header ≤ 8 192 px and 40 MP before decode, `max_alloc` 256 MiB, EXIF
+   orientation, metadata dropped, ≤ 4 096 px long side, JPEG q90 or Flate + `/SMask`); a failing image is skipped with
+   `done.warnings: imagesSkipped` and `skipped` count, all failing is `invalid_argument` `image`. Sum of stored images ≤ 1 GiB.
+   Page size `fit` (image size at its pHYs/JFIF density if 72..=1 200 dpi, else 150 dpi, clamped 72..=14 400 pt), `a4`, `letter`;
+   orientation `auto` (by aspect) / portrait / landscape; margin 0..=72 pt (ADR-050: 12 mm = 34 pt). Image scaled to fit, centred,
+   never cropped. `pdfwrite::images_pdf::build` writes a fresh document (one page, one XObject per image, `/Producer` = APP_NAME, no
+   other metadata). Then the merge pattern: Save As dialog (default `{first image stem}.pdf`), atomic write, opens as a tab
+   (`done.opened`). Paper default: `AppBootstrap.paper` from `platform::paper_default()` (Windows `GetLocaleInfoEx` `LOCALE_IPAPERSIZE`,
+   macOS `NSLocale` country US/CA → letter).
+
+4. **Print** = option (c). `prepare_print` renders the selection (annotations on/off, range as item 2) through the same snapshot and
+   `RenderExport` at `standard` 150 dpi or `high` 300 dpi (≤ 300 pages), JPEG q92, landscape pages pre-rotated to the paper orientation
+   the UI asks for (`autoRotate`, default on), into an in-memory `PrintSet` (≤ 2 000 pages, ≤ 768 MiB, else `limit_exceeded`
+   `printJob`). The UI fetches frames (`get_print_page`, SHR1) into blob URLs in `PrintSurface` (shown only under `@media print`, so it
+   takes no screen slot; every other element is `display: none` in print), awaits `img.decode()`, then calls `open_print_dialog`:
+   Windows `ShowPrintUI(System)`; if that interface is missing (runtime < 1.0.1185) → `Webview::print()` (WebView2 print preview,
+   still local); macOS `Webview::print()`. It answers the route taken. `release_print` (also on close and after 10 min) drops the set.
+   **No temp files** on any route; a future route needing one uses `storage::temp` (app cache dir, random name, 0600 / owner-only ACL,
+   deleted on completion, swept at startup). Requires `print` permission. **Fallback:** if a platform route fails its gate (manual
+   window review prints a 3-page fixture to "Microsoft Print to PDF" / macOS "Save as PDF"; text readable, one page per sheet, no UI
+   chrome), Print on that platform is hidden, `BLOCKERS` records it, export a copy / images is the documented workaround, and native APIs
+   (b) move to v1.1. macOS is unverified until B-001.
+
+5. **Export a copy** (`export_pdf`). Options: `annotations: keep | flatten | remove`, `removeMetadata`. From the snapshot bytes
+   (`load_untrusted` + ADR-040 pre-scan): `flatten` reuses `pdfwrite::flatten` (scope `formsAndAnnotations`), `remove` drops every
+   `/Annots` entry except `/Link` and `/Widget` (and orphaned `/Popup`s), `removeMetadata` reuses `metadata::strip`. Always Full, new
+   `/ID`, Save As dialog (default `{stem} copy.pdf`), atomic write, the open document and its path unchanged, nothing opens. An
+   encrypted document's copy keeps its encryption (`keep_encryption`, ack `rewriteEncrypted`); `flatten`/`remove`/`removeMetadata` on a
+   restricted document need `edit`. Signed source → `done.warnings: signaturesRemoved` when the copy changes signed content.
+
+6. **Wave plan** (ADR-038). **W0 seams** (orchestrator): `limits.rs`, `JobEvent` phases and `done` fields, error `what`s + en/de keys,
+   `AppEvent::ImagesDropped`, `AppBootstrap.paper`, `model/ranges.rs` (moved parser), `create_unique(folder, stem, ext)`, `Job::{OpenSnapshot,
+   CloseSnapshot, RenderExport}` + `Engine` methods, `export::snapshot::current` signature, command stubs (`AppError::not_yet`, header
+   `owned by package X`), capability grants, `lib.rs` registration. Then **four disjoint packages**:
+   - **A images out:** `export/{mod,images,names}.rs`, `engine/export.rs`, `commands/export_images.rs`, `src/api/exportImages.ts`,
+     `tests/export_images.rs`.
+   - **B images in:** `export/from_images.rs`, `pdfwrite/images_pdf.rs`, `documents/image_batch.rs`, `sources.rs` (image sniff),
+     `platform/{windows,macos}.rs` (paper), `commands/images_pdf.rs`, `src/api/imagesToPdf.ts`, `tests/images_to_pdf.rs`.
+   - **C snapshot + export a copy:** `export/snapshot.rs`, `engine/snapshot.rs`, `pdfwrite/{export,save}.rs` (`write_to_memory`),
+     `commands/export_pdf.rs`, `src/api/exportPdf.ts`, `tests/{snapshot,export_pdf}.rs`.
+   - **D print:** `print/{mod,set,dialog}.rs`, `commands/print.rs`, `src/api/print.ts`, `tests/print_set.rs`.
+   A and D render clean documents until C lands; dirty-document tests join in Politur M6.
+
+**Crates.** Direct `cfg(windows)` dependencies on `webview2-com` 0.39 (MIT) and `windows` 0.62 (MIT OR Apache-2.0, feature
+`Win32_Globalization`), the exact versions wry already pulls in (no new code in the tree); `objc2-foundation` likewise on macOS. Logged in
+`docs/LICENSES.md` by packages B/D; `cargo deny` duplicate check pins them to wry's versions.
+
+**Consequences.** Printing is raster (150/300 dpi): fine text is slightly softer than vector printing, and very long jobs are capped
+(2 000 pages); vector print via native APIs is v1.1. Output reflects unsaved edits without saving. Images → PDF re-encodes (no JPEG
+pass-through, v1.1). Exported image names never carry document metadata. Not in M6: reveal in folder (v1.1), OCR, Office formats.

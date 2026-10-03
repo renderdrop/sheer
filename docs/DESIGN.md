@@ -222,7 +222,7 @@ the slot's padding, never in a separate white band. **Forced colors:** rules rem
 vanishes on the canvas); light stays `--shadow-1`. The canvas carries `--canvas-edge`; it is paint, so solid mode keeps it.
 
 New tokens join §1.9's test: `--canvas-edge`, `--color-scrollbar`, `--color-scrollbar-hover`, `--bg-gradient`, `--bg-field-a/b/c`, `--bg-fields`, `--surface-fallback`, `--float-*`,
-`--ease-float`, `--logo-hero` 160, `--logo-slot` 184, `--ground-shadow` (`radial-gradient(closest-side,
+`--ease-float`, `--logo-hero` 104, `--logo-slot` 128 (Politur M5: sized so an 800 px window fits; was 160 / 184), `--ground-shadow` (`radial-gradient(closest-side,
 rgba(91,91,214,.24), transparent)` light, `rgba(0,0,0,.48)` dark).
 
 ## 2. Layout grid
@@ -426,14 +426,16 @@ landmarks, F6 stops; lists roving Up/Down, Enter.
 Centred column, max 560 w, padding 40 top and bottom; it scrolls when the window is short (at 640 × 960 logo and card
 fit, recents scroll).
 
-1. **Logo slot** (focal point, ADR-020): 184 h (`--logo-slot`), full column width, own grid row; nothing else sits in
-   it. `assets/brand/logo.svg` at 160 (`--logo-hero`), centred, top inset 8 at rest, so the float (§1.10) stays inside
+1. **Logo slot** (focal point, ADR-020): 128 h (`--logo-slot`), full column width, own grid row; nothing else sits in
+   it. `assets/brand/logo.svg` at 104 (`--logo-hero`; one size at every window height, chosen so an 800 px window shows
+   logo, card and recents; was 160 in 184), centred, top inset 8 at rest, so the float (§1.10) stays inside
    the slot; ground shadow 96 × 8 (`--ground-shadow`), centred, bottom inset 4. Decorative: `alt=""`, `aria-hidden`,
    `pointer-events: none`; never a tab stop. Always the full-colour logo (Iris tile + sheet), both themes.
 2. **Drop card**, 24 below: G1, radius 24, padding 40, content centred; no icon tile (the logo above replaces it);
    "Open a PDF" `--text-xl`; 8 below, "Drop a file anywhere in this window or choose one." muted; 24 below, primary lg
-   "Open…" and, 8 right, the shortcut as a pill badge ("⌘O"/"Ctrl+O", §1.10).
-3. **Recents**, 32 below: header "Recent" (meta 600) + ghost sm "Clear"; ≤ 8 rows, 56 h, radius 12, padding 8:
+   "Open…" and, 8 right, the shortcut as a pill badge ("⌘O"/"Ctrl+O", §1.10); 16 below, the ghost md
+   "Create PDF from images…" (M6, §3.43).
+3. **Recents**, 32 below: header "Recent" (meta 600) + ghost sm "Clear"; ≤ 8 rows (3 when the viewport is ≤ 860 high, `empty-recents`), 56 h, radius 12, padding 8:
    thumbnail 32 × 40 | name over meta "Folder · 2 h ago" | sm `x` (on hover/focus, `tabindex=-1`). Missing file:
    `file-x` in warning-icon, "File not found"; activation offers Locate… / Remove. Footer meta: "Recent files are
    stored only on this device." Omitted when empty.
@@ -1592,6 +1594,139 @@ is one undo step (Info and XMP kept in sync, ADR-047); a removal adds toast `pro
 
 **Tokens (new, §3.36–§3.40):** `--color-doc-redact` `#B03535`, `--color-doc-redact-fill` 45° stripes `rgba(176,53,53,.24)` 2 px /
 gap 4, `--color-doc-crop-shade` `rgba(15,16,32,.48)` (all both themes, document layer).
+
+### 3.41 Output commands: placement and keys (M6)
+
+No toolbar buttons (output is rare; the toolbar stays tools). Every command is an action (ADR-016) in More and the macOS File
+menu, in one group after Save As, divider above and below:
+
+| Action | Label key | Lucide | Shortcut | Disabled when |
+|---|---|---|---|---|
+| `images-to-pdf` | `img2pdf.menu` | `images` | — | never |
+| `export-copy` | `copy.menu` | `file-output` | — | no document |
+| `export-images` | `exportImg.menu` | `file-image` | Primary+Shift+E | no document; copying not permitted |
+| `print` | `print.menu` | `printer` | Primary+P | no document; printing not permitted |
+
+`images-to-pdf` also sits in More with no document. A disabled item stays focusable (§3.0), tooltip `output.notAllowed` for a
+permission (§3.39). All four open a dialog (§3.19 recipe: solid, `--shadow-3`, `--radius-card`, backdrop, `--z-modal`, padding 24,
+`icon` tile | title `--text-xl`); motion as About (MOTION §4.1: opacity + `--scale-enter`, `--motion-base` spring, exit
+`--motion-fast`; reduced motion opacity only); Esc or Cancel closes and refocuses the trigger; Tab cycles inside. Paths never reach
+the UI: Rust shows every native file and folder dialog and never overwrites (adds " (2)"). **Progress** everywhere is §3.30's bar:
+primary shows a 16 spinner, after 1 s the body keeps its height and the option area yields to a 4 h bar (`role=progressbar`,
+`aria-valuetext` = the meta line) + meta; Cancel stays. Errors: banner (§3.12), never toast. Pending redaction marks (§3.38) are
+never output; while a tab holds them, Print, Export a copy and Export as images show `info` 12 + meta `output.pendingRedact` in a
+reserved slot above the footer.
+
+### 3.42 Export as images (M6)
+
+**Purpose:** write pages as PNG or JPEG files into a folder.
+
+**Dialog** 480 w (`--dialog-width-md`): `file-image` tile | `exportImg.title`. Rows 16 apart, each a label (meta 600) over its control:
+1. **Format:** segmented control (§3.13, 32 h) `PNG` · `JPEG` (format names untranslated).
+2. **Pages** (`radiogroup`): `exportImg.all` (default) · `exportImg.current` · `exportImg.range` + full-width md field (syntax,
+   validation 150 ms and `split.invalid` in the reserved 16 px slot, per §3.30).
+3. **Resolution:** segmented `72` · `150` (default) · `300` · `exportImg.custom`, each with meta "dpi" below the group; Custom
+   enables an md Field 56 + meta "dpi" in the same row (36–600, arrows step 1, Shift × 10). The field slot is always reserved
+   (disabled, not hidden), so nothing jumps.
+4. **JPEG quality:** Slider + Field (§3.7), 10–100, default 85, `aria-valuetext` `exportImg.qualityValue`. With PNG it stays,
+   `aria-disabled`, meta `exportImg.pngLossless` beside the label.
+5. **Estimate** (`role=status`, polite): 12 spinner while Rust samples (≤ 3 pages, rendered at the chosen settings, 300 ms after the
+   last change), then meta `exportImg.estimate`. Rust lowers a page that would exceed its pixel cap (ADR-049); then `info` 12 +
+   `exportImg.capped`.
+
+Last format, resolution and quality persist (settings); pages reset to All. Footer: secondary `output.cancel`, primary
+`exportImg.go` (`aria-disabled` while the range is invalid). Go opens Rust's folder dialog (folder choice; cancelling it returns to the
+dialog), then writes `{name}-p{n}.{ext}` (n zero-padded to the page count's width).
+
+**States.** Progress: meta `exportImg.progress`; Cancel stops after the current page and keeps the files written (toast says how many).
+Done: dialog closes, toast `exportImg.done` with ghost `split.show` (opens the folder in the OS file manager, Rust). Single page →
+toast names the file.
+
+**Keyboard / A11y.** Initial focus: Format. Enter activates Go when valid. Segmented controls are radiogroups (arrows, selection
+follows focus). The estimate is not announced while it changes faster than every 1 s.
+
+### 3.43 Create PDF from images (M6)
+
+**Purpose:** combine PNG/JPEG images into a new document, one image per page.
+
+**Entry.** More / macOS File `img2pdf.menu`; **empty state:** in the drop card, 16 below the Open row, a ghost md button `images`
+16 + `img2pdf.menu` (its own row, centred; Open stays the one primary and the initial focus). Dropping only images (no PDF) on
+the window or the empty state opens the dialog with them; a mix of PDFs and images opens the PDFs as today and ignores the
+images with an info banner `img2pdf.mixedDrop`.
+
+**Dialog** 560 w (`--sheet-width`): `images` tile | `img2pdf.title`. If opened from a menu, Rust's Open dialog (PNG, JPEG,
+multi-select) runs first; Cancel there with no images closes everything.
+1. **List** as §3.29 (`role=listbox`, max 5 rows, then scrolls; rows 56: `grip-vertical` 16 | thumbnail 32 × 40 on a white chip,
+   `object-fit: contain`, radius 4 | name over meta `img2pdf.meta` | sm `x` `img2pdf.remove` on hover/focus). Rust decodes as
+   hostile input (§3.36 limits); the UI gets previews only. Unreadable: `circle-alert` + `img2pdf.unreadable`, blocks Create until
+   removed. Below: secondary sm `img2pdf.add` + meta `img2pdf.total`.
+2. **Reorder:** pointer drag with the §3.28 drag card and 2 px marker (MOTION §4.5); Alt/Option+Up/Down moves the focused row
+   (announced `organize.moved`); Delete removes it.
+3. **Page** (16 below, label meta 600 over each, two columns of 240 at gap 16 for size | orientation; margin full width below):
+   - **Size:** segmented `img2pdf.fit` · `A4` · `Letter`; default A4, or Letter where the OS region is US or CA (Rust).
+   - **Orientation:** segmented `img2pdf.auto` (default; per image, landscape if wider) · `img2pdf.portrait` · `img2pdf.landscape`.
+   - **Margin:** segmented `img2pdf.none` · `img2pdf.small` (12 mm / 0.5 in) · `img2pdf.large` (24 mm / 1 in); default Small.
+   - With Fit, the page is the image at 72 dpi or its own dpi (no margin): orientation and margin stay visible, `aria-disabled`.
+   Images scale to fit inside the margins, centred, aspect kept, never cropped. Choices persist.
+
+Footer: secondary `output.cancel`, primary `img2pdf.create` (`aria-disabled` with no images or an unreadable one). **Result:** progress
+as §3.41 (`img2pdf.progress`); then the dialog closes and a new tab `img2pdf.untitled` opens, unsaved (edited dot), as Merge (§3.29);
+Save goes to Save As.
+
+**Keyboard / A11y.** Initial focus: the list's first row (Add when empty). Empty list: centred meta `img2pdf.empty` in the list slot
+(height of 2 rows). Forced colors: chips `Canvas` + `CanvasText` border.
+
+### 3.44 Print (M6)
+
+**Purpose:** hand the document to the OS print dialog. Copies, printer, duplex, paper and scaling belong to that dialog; we never copy it.
+
+**Pre-step** dialog, 400 w (`--dialog-width`): `printer` tile | `print.title`.
+1. Checkbox `print.annotations` (default on; persisted): off prints page content and form values only (content objects of §3.36
+   are page content). Meta under it `print.annotationsHint`.
+2. **Pages** (`radiogroup`): `exportImg.all` · `exportImg.current` · `exportImg.range` + field, as §3.42.
+
+Footer: secondary `output.cancel`, primary `print.go` (initial focus; Enter prints). Go: progress (`print.preparing`, §3.41) while Rust
+prepares the pages, then the dialog closes and the **native print dialog** takes over (modal to the window). Its own cancel
+returns quietly. Primary+P inside the pre-step = Go, so Primary+P twice prints with the last choices.
+
+### 3.45 Export a copy (M6)
+
+**Purpose:** save a variant to a new file; the open document, its path and its unsaved state stay unchanged (unlike Save As).
+
+**Dialog** 400 w: `file-output` tile | `copy.title`; 8 below meta `copy.body`. Checkboxes 8 apart:
+`copy.annotations` (default on; off removes annotations, form values stay) · `copy.metadata` (default off; removes `/Info`, XMP and
+document-level private data as §3.40) — when on, meta `copy.metadataHint` in its reserved slot. Not persisted.
+Footer: secondary `output.cancel`, primary `copy.go` → Rust Save As, default name `copy.defaultName`. Done: toast `copy.done` + ghost
+`split.show`. Initial focus: `copy.go`.
+
+| Key | en | de |
+|---|---|---|
+| `output.cancel` / `.notAllowed` | Cancel / The document's permissions don't allow this. | Abbrechen / Die Berechtigungen des Dokuments erlauben das nicht. |
+| `output.pendingRedact` | Unapplied redaction marks are not included. | Nicht angewendete Schwärzungen werden nicht übernommen. |
+| `exportImg.menu` / `.title` / `.go` | Export as images… / Export as images / Export… | Als Bilder exportieren… / Als Bilder exportieren / Exportieren… |
+| `exportImg.format` / `.pages` / `.resolution` / `.quality` | Format / Pages / Resolution / JPEG quality | Format / Seiten / Auflösung / JPEG-Qualität |
+| `exportImg.all` / `.current` / `.range` | All pages / Current page / Pages | Alle Seiten / Aktuelle Seite / Seiten |
+| `exportImg.custom` / `.qualityValue` / `.pngLossless` | Custom / Quality {n} % / PNG is lossless | Eigene / Qualität {n} % / PNG ist verlustfrei |
+| `exportImg.estimate` | {n, plural, one {1 image} other {# images}}, about {size} | {n, plural, one {1 Bild} other {# Bilder}}, etwa {size} |
+| `exportImg.capped` | Some large pages are exported at a lower resolution. | Einige große Seiten werden mit geringerer Auflösung exportiert. |
+| `exportImg.progress` / `.done` | Exporting page {i} of {n} / {n, plural, one {1 image saved} other {# images saved}} | Exportiere Seite {i} von {n} / {n, plural, one {1 Bild gespeichert} other {# Bilder gespeichert}} |
+| `img2pdf.menu` / `.title` | Create PDF from images… / Create PDF from images | PDF aus Bildern erstellen… / PDF aus Bildern erstellen |
+| `img2pdf.add` / `.remove` / `.total` | Add images… / Remove {name} / {n, plural, one {1 page} other {# pages}} | Bilder hinzufügen… / {name} entfernen / {n, plural, one {1 Seite} other {# Seiten}} |
+| `img2pdf.meta` / `.unreadable` / `.empty` | {w} × {h} px · {size} / Can't read this image / Add images to begin. | {w} × {h} px · {size} / Bild nicht lesbar / Fügen Sie Bilder hinzu. |
+| `img2pdf.fit` / `.auto` / `.portrait` / `.landscape` | Fit to image / Auto / Portrait / Landscape | An Bild anpassen / Automatisch / Hochformat / Querformat |
+| `img2pdf.size` / `.orientation` / `.margin` | Page size / Orientation / Margin | Seitengröße / Ausrichtung / Rand |
+| `img2pdf.none` / `.small` / `.large` | None / Small / Large | Kein / Klein / Groß |
+| `img2pdf.create` / `.progress` / `.untitled` | Create / Adding image {i} of {n} / Images | Erstellen / Füge Bild {i} von {n} hinzu / Bilder |
+| `img2pdf.mixedDrop` | Images were not added. Use Create PDF from images for them. | Bilder wurden nicht hinzugefügt. Dafür „PDF aus Bildern erstellen“ verwenden. |
+| `print.menu` / `.title` / `.go` | Print… / Print / Print… | Drucken… / Drucken / Drucken… |
+| `print.annotations` / `.annotationsHint` | Print comments and markup / Form entries are always printed. | Kommentare und Markierungen drucken / Formulareinträge werden immer gedruckt. |
+| `print.preparing` | Preparing page {i} of {n} | Bereite Seite {i} von {n} vor |
+| `copy.menu` / `.title` / `.go` | Export a copy… / Export a copy / Save copy… | Kopie exportieren… / Kopie exportieren / Kopie speichern… |
+| `copy.body` | The open document stays as it is. | Das geöffnete Dokument bleibt unverändert. |
+| `copy.annotations` / `.metadata` | Include comments and markup / Remove document metadata | Kommentare und Markierungen einschließen / Dokument-Metadaten entfernen |
+| `copy.metadataHint` / `.defaultName` / `.done` | Title, author and similar details are left out. / {name} (copy) / Copy saved | Titel, Autor und ähnliche Angaben werden weggelassen. / {name} (Kopie) / Kopie gespeichert |
+
+**Tokens:** none new; §3.41–§3.45 reuse `--dialog-width`, `--dialog-width-md`, `--sheet-width`, §3.28 drag tokens and §3.30's bar.
 
 ## 4. Contrast verification
 
