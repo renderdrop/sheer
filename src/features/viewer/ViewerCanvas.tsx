@@ -4,6 +4,7 @@ import type { PageSize } from '../../api/render';
 import { bucketFor, planPage } from '../../engine/buckets';
 import { imageKey } from '../../engine/renderCache';
 import { renderScheduler } from '../../engine/renderScheduler';
+import { clampZoom } from '../../lib/zoom';
 import { selectActiveId, useDocuments } from '../../stores/documents';
 import { DEFAULT_PAGE_SIZE, sizesFor, usePages } from '../../stores/pages';
 import { useUi } from '../../stores/ui';
@@ -14,6 +15,7 @@ import {
   PageLayout,
   adjacentPages,
   centeredScroll,
+  fitZoomFor,
   isPaged,
   metricsFor,
   pageTopAnchor,
@@ -21,6 +23,7 @@ import {
   scrollFor,
   type PageWindow,
   type ScrollPosition,
+  type Viewport,
 } from './layout';
 import { canvasPadding, pageGap } from './model';
 import { BUCKET_SETTLE_MS, PageView } from './PageView';
@@ -82,6 +85,16 @@ export function ViewerCanvas({ style }: { style?: CSSProperties }) {
   );
   const content = useMemo(() => (layout === null ? null : { width: layout.width, height: layout.height }), [layout]);
   const bucket = bucketFor(zoom, ratio);
+  // While the grid slides a panel the content keeps its zoom and a fit follows as a transform (MOTION 3): the scale it would have.
+  const { fit } = view;
+  const fitScale = useCallback(
+    (size: Viewport): number | null => {
+      if (fit === 'none') return null;
+      const target = fitZoomFor(fit, metrics, pageIndex, size, gap);
+      return target === null ? null : clampZoom(target) / zoom;
+    },
+    [fit, metrics, pageIndex, gap, zoom],
+  );
 
   // The actions that need the scroll position (a zoom step from the keyboard) read it from here.
   useEffect(
@@ -195,6 +208,7 @@ export function ViewerCanvas({ style }: { style?: CSSProperties }) {
       onPinch={zoomBy}
       onScroll={track}
       onViewport={setViewport}
+      fitScale={fitScale}
       paged={paged}
       onPageTurn={turn}
       onRegion={setRegion}

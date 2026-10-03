@@ -2,12 +2,12 @@ import { AnimatePresence, motion, useIsPresent } from 'motion/react';
 import { memo, type CSSProperties } from 'react';
 
 import { Panel, PanelSection } from '../../components';
-import { usePanelFade } from '../../components/motion';
+import { LAYOUT } from '../../components/tokens';
 import { useT } from '../../i18n';
+import { usePanelSlide } from './usePanelSlide';
 
 /**
- * The inspector slot (DESIGN 3.9): a 288 px G1 `<aside>` that fades in (opacity 250) without moving the canvas and
- * never takes focus by itself. Its header names the selection, or says "Tool options"; the body is a placeholder until
+ * The inspector slot (DESIGN 3.9): a 288 px G1 `<aside>` that slides in (MOTION 4.2) and never takes focus by itself. Its header names the selection, or says "Tool options"; the body is a placeholder until
  * the annotation tools (M2) put their properties here.
  */
 export const Inspector = memo(function Inspector() {
@@ -30,23 +30,25 @@ export interface InspectorSlotProps {
 
 /**
  * The inspector's slot of the main grid, handled like the left panel's (`LeftPanelSlot`): the track animates in `MainGrid`, the
- * panel fades over 250 ms beside it (opacity only under reduced motion) and leaves the page once it has faded.
+ * panel slides in from the trailing edge at its final width (opacity only under reduced motion) and leaves the page once it has gone.
  */
 export function InspectorSlot({ present, style }: InspectorSlotProps) {
   return (
-    <AnimatePresence initial={false}>{present && <InspectorFrame key="inspector" style={style} />}</AnimatePresence>
+    <div style={style} className="grid min-h-0 min-w-0 group-data-[animating]/main:overflow-clip">
+      <AnimatePresence initial={false}>{present && <InspectorFrame key="inspector" />}</AnimatePresence>
+    </div>
   );
 }
 
-function InspectorFrame({ style }: { style: CSSProperties }) {
-  const motionProps = usePanelFade();
+function InspectorFrame() {
+  const motionProps = usePanelSlide('end', LAYOUT.inspector);
   const present = useIsPresent();
   return (
     <motion.div
       {...motionProps}
       inert={!present}
-      style={style}
-      className="grid min-h-0 min-w-0 grid-cols-[minmax(0,1fr)] grid-rows-[minmax(0,1fr)]"
+      style={{ width: LAYOUT.inspector }}
+      className="grid min-h-0 grid-cols-[minmax(0,1fr)] grid-rows-[minmax(0,1fr)] justify-self-end"
     >
       <Inspector />
     </motion.div>

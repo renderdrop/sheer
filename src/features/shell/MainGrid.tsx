@@ -1,10 +1,12 @@
-import { memo, useEffect, useState, type CSSProperties, type ReactNode } from 'react';
+import { useReducedMotion } from 'motion/react';
+import { memo, useEffect, useLayoutEffect, useState, type CSSProperties, type ReactNode } from 'react';
 
 import { Splitter } from '../../components';
 import { DURATION } from '../../components/motion';
 import { clampPanelWidth, shellTracks, type ShellStructure } from '../../lib/layout';
 import { useT } from '../../i18n';
 import { useUi } from '../../stores/ui';
+import { setLayoutAnimating } from '../viewer/scrollBridge';
 
 export interface MainGridProps {
   structure: ShellStructure;
@@ -12,8 +14,8 @@ export interface MainGridProps {
 }
 
 /**
- * How long the grid keeps its `grid-template-columns` transition after the left panel was collapsed or restored: the 250 ms of
- * the transition (DESIGN 3.8) and a little more, because dropping the property while it runs would cut the transition short.
+ * How long the grid keeps its `grid-template-columns` transition after the left panel was collapsed or restored: the slow duration of
+ * the transition (MOTION 2) and a little more, because dropping the property while it runs would cut the transition short.
  */
 const COLLAPSE_TRANSITION_MS = DURATION.slow * 1000 + 50;
 
@@ -31,12 +33,12 @@ interface Seen {
  * step of a splitter drag. Its children are made by the shell and passed in, which is why they are not rendered again then:
  * React skips an element that is the same object as in the last render.
  *
- * Collapsing or restoring the left panel animates the columns (250 ms ease-out, `transition-[grid-template-columns]`). The track
+ * Collapsing or restoring the left panel animates the columns (the spring, slow in and base out, `transition-[grid-template-columns]`). The track
  * list keeps its shape for that (the collapsed panel's tracks are 0), and the browser does every frame: nothing renders for it.
- * The transition is there only for 300 ms after the panel's state changed: a drag of the splitter changes the same property
+ * The transition is there only for a moment after the panel's state changed: a drag of the splitter changes the same property
  * and must follow the pointer at once. `data-animating` and `data-left` also let tokens.css make the change opacity-only
  * under reduced motion (the panel fades, then a collapse takes the tracks away in one step). The inspector's track (F2 review) opens
- * and closes the same way, so the canvas grows to the trailing gutter and gives it back with the same 250 ms.
+ * and closes the same way, so the canvas grows to the trailing gutter and gives it back the same way. While it runs the canvas is told (`setLayoutAnimating`): it anchors itself and commits its new size once at the end.
  */
 export function MainGrid({ structure, children }: MainGridProps) {
   const panelWidth = useUi((state) => state.leftPanelWidth);
@@ -52,6 +54,16 @@ export function MainGrid({ structure, children }: MainGridProps) {
     const timer = window.setTimeout(() => setSeen({ ...seen, animating: null }), COLLAPSE_TRANSITION_MS);
     return () => window.clearTimeout(timer);
   }, [seen]);
+  // Under reduced motion the tracks change in one step, so there is nothing for the canvas to hold back.
+  const reduce = useReducedMotion() === true;
+  const sliding = seen.animating !== null && !reduce;
+  useLayoutEffect(() => {
+    if (!sliding) return;
+    setLayoutAnimating(true);
+    return () => setLayoutAnimating(false);
+  }, [sliding, seen.animating]);
+  // What opens takes the slow duration, what closes the base one (MOTION 2).
+  const closing = seen.animating === 'left' ? collapsed : seen.animating === 'inspector' ? !inspector : false;
   return (
     <div
       data-layout={structure.mode}
@@ -59,8 +71,10 @@ export function MainGrid({ structure, children }: MainGridProps) {
       data-inspector={inspector ? 'open' : 'closed'}
       data-animating={seen.animating ?? undefined}
       style={{ gridTemplateColumns: shellTracks(structure, panelWidth).columns }}
-      className={`grid min-h-0 flex-auto grid-rows-[minmax(0,1fr)] pb-1 ${
-        seen.animating !== null ? 'transition-[grid-template-columns] duration-slow ease-out' : ''
+      className={`group/main grid min-h-0 flex-auto grid-rows-[minmax(0,1fr)] pb-1 ${
+        seen.animating === null
+          ? ''
+          : `transition-[grid-template-columns] ease-spring ${closing ? 'duration-base' : 'duration-slow'}`
       }`}
     >
       {children}

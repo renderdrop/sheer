@@ -116,9 +116,11 @@ describe('the columns', () => {
     fireEvent.keyDown(window, { key: 'F4' });
     expect(grid.getAttribute('data-left')).toBe('collapsed');
     expect(grid.hasAttribute('data-animating')).toBe(true);
-    // The slow spring (--motion-slow) on the columns plus 50 ms of margin for the timer.
+    // The spring on the columns: what closes takes --motion-base (MOTION 2). The timer keeps 50 ms of margin over --motion-slow.
     expect(grid.className).toContain(TRANSITION);
-    expect(grid.className).toContain('duration-slow');
+    expect(grid.className).toContain('ease-spring');
+    expect(grid.className).toContain('duration-base');
+    expect(grid.className).not.toContain('ease-out');
     advance(369);
     expect(grid.hasAttribute('data-animating')).toBe(true);
     advance(1);
@@ -129,6 +131,8 @@ describe('the columns', () => {
     fireEvent.keyDown(window, { key: 'F4' });
     expect(grid.getAttribute('data-left')).toBe('open');
     expect(grid.hasAttribute('data-animating')).toBe(true);
+    // What opens takes --motion-slow.
+    expect(grid.className).toContain('duration-slow');
     advance(370);
     expect(grid.hasAttribute('data-animating')).toBe(false);
 

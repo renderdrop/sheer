@@ -3,6 +3,8 @@ import { useCallback, useEffect, useRef, useState, type CSSProperties, type Reac
 import { cx } from '../../components/cx';
 import { useT } from '../../i18n';
 import type { ScrollPosition, Viewport } from './layout';
+import { canvasPadding } from './model';
+import { isLayoutAnimating, subscribeLayoutAnimating } from './scrollBridge';
 
 /** WebKit's pinch gesture events (WKWebView, which does not turn a pinch into ctrl+wheel the way Chromium does). Not in lib.dom. */
 interface GestureEvent extends UIEvent {
@@ -16,6 +18,29 @@ interface GestureEvent extends UIEvent {
 export interface CanvasZoomFocus {
   x: number;
   y: number;
+}
+
+/**
+ * Reported with the size that ends a track animation of the grid: the content point (in the content's own px) that has to appear
+ * at (`viewX`, `viewY`) of the new viewport, so the layout that follows keeps what the user saw where it was (MOTION 3).
+ */
+export interface ViewportAnchor {
+  x: number;
+  y: number;
+  viewX: number;
+  viewY: number;
+}
+
+/** What the canvas knows at the start of a track animation. */
+interface Freeze {
+  /** The viewport the layout was made for, the scroll position, and the content's own width then. */
+  width: number;
+  height: number;
+  scrollLeft: number;
+  contentWidth: number;
+  /** The content point under the viewport's centre: the origin of the fit's scale. */
+  originX: number;
+  originY: number;
 }
 
 /** After a wheel turned the page (a paged mode, scrolled to its end), the next turn waits this long: a trackpad's inertia sends wheel events for a second. */
@@ -39,7 +64,13 @@ export interface CanvasProps {
    * The size of the region the pages sit in (its content box, padding excluded) in CSS px, reported when the canvas mounts
    * and each time it changes: what the layout and the fits fill.
    */
-  onViewport?: (viewport: Viewport) => void;
+  onViewport?: (viewport: Viewport, anchor?: ViewportAnchor) => void;
+  /**
+   * While the grid animates its tracks the size is not reported per frame; this gives the scale the content would have at the
+   * region's size of that frame (a fit follows it as a transform, around the point under the centre) and the new size is committed
+   * once at the end. `1` or `null`: no scale.
+   */
+  fitScale?: (viewport: Viewport) => number | null;
   /** One page shows at a time (the single and two-page modes): a wheel turn at the end of the shown page goes to the next or the previous. */
   paged?: boolean;
   onPageTurn?: (direction: 1 | -1) => void;
@@ -73,6 +104,7 @@ export function Canvas({
   onPinch,
   onScroll,
   onViewport,
+  fitScale,
   paged = false,
   onPageTurn,
   onRegion,
@@ -85,9 +117,9 @@ export function Canvas({
   const contentRef = useRef<HTMLDivElement | null>(null);
   const [scrolled, setScrolled] = useState(false);
   // The listeners are attached once and read the latest props from here, so a new callback does not detach and attach them.
-  const latest = useRef({ onWheelZoom, onPinch, paged, onPageTurn });
+  const latest = useRef({ onWheelZoom, onPinch, paged, onPageTurn, fitScale });
   useEffect(() => {
-    latest.current = { onWheelZoom, onPinch, paged, onPageTurn };
+    latest.current = { onWheelZoom, onPinch, paged, onPageTurn, fitScale };
   });
 
   useEffect(() => {
@@ -151,12 +183,87 @@ export function Canvas({
   useEffect(() => {
     const region = regionRef.current;
     if (region === null || onViewport === undefined) return;
+    const pad = canvasPadding();
+    /** The size last handed on, and the size now (they differ while a track animation holds the report back). */
+    let reported: Viewport | null = null;
+    let current: Viewport | null = null;
+    let freeze: Freeze | null = null;
+    let release = 0;
+
+    const begin = () => {
+      window.cancelAnimationFrame(release);
+      if (freeze !== null || reported === null) return;
+      const content = contentRef.current;
+      if (content === null) return;
+      const box = region.getBoundingClientRect();
+      const at = content.getBoundingClientRect();
+      freeze = {
+        width: reported.width,
+        height: reported.height,
+        scrollLeft: region.scrollLeft,
+        contentWidth: content.offsetWidth,
+        originX: box.left + pad + reported.width / 2 - at.left,
+        originY: box.top + pad + reported.height / 2 - at.top,
+      };
+    };
+
+    /** Per frame: a page narrower than the canvas stays centred in it, a wider one keeps its point; a fit is scaled by transform. */
+    const follow = (size: Viewport, hold: Freeze) => {
+      if (hold.contentWidth <= hold.width + 0.5) {
+        region.scrollLeft = Math.max(0, hold.scrollLeft + (hold.width - size.width) / 2);
+      }
+      const content = contentRef.current;
+      if (content === null) return;
+      const scale = latest.current.fitScale?.(size) ?? 1;
+      content.style.transformOrigin = `${hold.originX}px ${hold.originY}px`;
+      content.style.transform = scale === 1 ? '' : `scale(${scale})`;
+    };
+
+    const commit = () => {
+      if (isLayoutAnimating()) return;
+      const hold = freeze;
+      freeze = null;
+      const size = current;
+      if (size === null) return;
+      const content = contentRef.current;
+      let anchor: ViewportAnchor | undefined;
+      if (hold !== null && content !== null) {
+        content.style.transform = '';
+        content.style.transformOrigin = '';
+        const viewX = hold.contentWidth <= hold.width + 0.5 ? size.width / 2 : hold.width / 2;
+        const viewY = size.height / 2;
+        const box = region.getBoundingClientRect();
+        const at = content.getBoundingClientRect();
+        anchor = { x: box.left + pad + viewX - at.left, y: box.top + pad + viewY - at.top, viewX, viewY };
+      }
+      reported = size;
+      onViewport(size, anchor);
+    };
+
     const observer = new ResizeObserver((entries) => {
       const box = entries.at(-1)?.contentRect;
-      if (box !== undefined) onViewport({ width: Math.floor(box.width), height: Math.floor(box.height) });
+      if (box === undefined) return;
+      current = { width: Math.floor(box.width), height: Math.floor(box.height) };
+      if (isLayoutAnimating() && reported !== null) {
+        begin();
+        if (freeze !== null) follow(current, freeze);
+        return;
+      }
+      reported = current;
+      onViewport(current);
     });
     observer.observe(region);
-    return () => observer.disconnect();
+    const stop = subscribeLayoutAnimating(() => {
+      if (isLayoutAnimating()) begin();
+      // Ended: commit in the next frame, unless another animation has started by then (a reversal).
+      else release = window.requestAnimationFrame(commit);
+    });
+    if (isLayoutAnimating()) begin();
+    return () => {
+      stop();
+      window.cancelAnimationFrame(release);
+      observer.disconnect();
+    };
   }, [onViewport]);
 
   const setRegion = useCallback(

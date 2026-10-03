@@ -22,6 +22,7 @@ import {
   type Viewport,
 } from './layout';
 import { layoutFor, metricsOfDocument, pageGap } from './model';
+import type { ViewportAnchor } from './Canvas';
 import { readScroll } from './scrollBridge';
 
 export type { Viewport } from './layout';
@@ -72,7 +73,7 @@ export interface ViewerState {
   nextPage: () => void;
   previousPage: () => void;
   /** The canvas reports its size here (it observes itself). A fit follows it. */
-  setViewport: (viewport: Viewport) => void;
+  setViewport: (viewport: Viewport, anchor?: ViewportAnchor) => void;
 }
 
 /**
@@ -214,7 +215,7 @@ export const useViewer = create<ViewerState>()((set, get) => {
     goToPage: goTo,
     nextPage: () => turn(1),
     previousPage: () => turn(-1),
-    setViewport: (viewport) => {
+    setViewport: (viewport, kept) => {
       const previous = get().viewport;
       if (previous?.width === viewport.width && previous.height === viewport.height) return;
       // A fit follows the window: the zoom is computed for the new size, around what is at the top left of the viewport now.
@@ -231,6 +232,20 @@ export const useViewer = create<ViewerState>()((set, get) => {
             zoom,
             anchor: before === null ? null : anchorAt(before, readScroll(), 0, 0),
           };
+        }
+      }
+      // The size that ends a slide of the panels keeps the content point the canvas says is where the user was looking.
+      if (kept !== undefined && current !== null) {
+        const before = layoutFor(current.docId, previous);
+        const found = before === null ? null : anchorAt(before, { left: 0, top: 0 }, kept.x, kept.y);
+        const anchor = found === null ? null : { ...found, viewX: kept.viewX, viewY: kept.viewY };
+        if (refit !== null) refit.anchor = anchor;
+        else {
+          set({ viewport });
+          const { fit, zoom } = current.view;
+          if (fit === 'none') useView.getState().setZoom(current.docId, zoom, anchor);
+          else useView.getState().setFit(current.docId, fit, zoom, anchor);
+          return;
         }
       }
       set({ viewport });

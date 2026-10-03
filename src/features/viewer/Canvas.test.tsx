@@ -2,8 +2,10 @@
 import { fireEvent, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
+import { act } from '@testing-library/react';
 import { setup } from '../../test/render';
 import { Canvas, PAGE_TURN_COOLDOWN_MS, type CanvasProps } from './Canvas';
+import { setLayoutAnimating } from './scrollBridge';
 
 const props = (overrides: Partial<CanvasProps> = {}): CanvasProps => ({
   content: { width: 900, height: 3000 },
@@ -385,6 +387,32 @@ describe('Canvas (DESIGN 2)', () => {
       report(816.7, 528.2);
       report(1000, 600);
       expect(onViewport.mock.calls).toEqual([[{ width: 816, height: 528 }], [{ width: 1000, height: 600 }]]);
+    });
+
+    it('holds the size back while the grid slides, scales the content for a fit, and commits the final size once', () => {
+      const { report } = fakeObserver();
+      const onViewport = vi.fn();
+      const fitScale = vi.fn((size: { width: number }) => size.width / 800);
+      const { container } = setup(<Canvas {...props({ onViewport, fitScale })} />);
+      report(800, 500);
+      act(() => setLayoutAnimating(true));
+      report(700, 500);
+      report(600, 500);
+      expect(onViewport).toHaveBeenCalledTimes(1);
+      expect(content(container)?.style.transform).toBe('scale(0.75)');
+      let frame: FrameRequestCallback | undefined;
+      vi.spyOn(window, 'requestAnimationFrame').mockImplementation((callback) => {
+        frame = callback;
+        return 1;
+      });
+      act(() => setLayoutAnimating(false));
+      // Ended: nothing until the next frame, where the last size is the only one handed on, with the point to keep.
+      expect(onViewport).toHaveBeenCalledTimes(1);
+      act(() => frame?.(0));
+      expect(onViewport).toHaveBeenCalledTimes(2);
+      expect(onViewport.mock.calls[1]?.[0]).toEqual({ width: 600, height: 500 });
+      expect(onViewport.mock.calls[1]?.[1]).toMatchObject({ viewX: 300, viewY: 250 });
+      expect(content(container)?.style.transform).toBe('');
     });
 
     it('stops observing when it goes away, and observes nothing when nobody asks', () => {

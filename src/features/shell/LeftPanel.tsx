@@ -3,10 +3,11 @@ import { AnimatePresence, motion, useIsPresent } from 'motion/react';
 import { memo, type CSSProperties } from 'react';
 
 import { Panel, Tab, TabList, TabPanel, Tabs } from '../../components';
-import { usePanelFade } from '../../components/motion';
 import { useT, type PlainKey } from '../../i18n';
+import { clampPanelWidth } from '../../lib/layout';
 import { LEFT_PANEL_TABS, useUi, type LeftPanelTab } from '../../stores/ui';
 import { Thumbnails } from '../thumbnails/Thumbnails';
+import { usePanelSlide } from './usePanelSlide';
 
 interface TabSpec {
   label: PlainKey;
@@ -89,28 +90,33 @@ export interface LeftPanelSlotProps {
 
 /**
  * The left panel's slot of the main grid, which is there with or without the panel (its tracks only shrink to nothing when it
- * is collapsed, `shellTracks`). The panel fades over 250 ms in step with its track (opacity only under reduced motion, where the
+ * is collapsed, `shellTracks`). The panel slides in step with its track (MOTION 4.2) (opacity only under reduced motion, where the
  * track changes in one step, tokens.css), and a collapsed one is removed once it has faded, so it is neither in the page nor
  * in the tab order. The fading is this component's own state: the shell renders once for the change, and not again when the
  * panel has gone or for any frame of the track, and the memoized panel inside does not render at all.
  */
 export function LeftPanelSlot({ present, id, style }: LeftPanelSlotProps) {
   return (
-    // The panel is there from the first paint; only a change animates.
-    <AnimatePresence initial={false}>{present && <LeftPanelFrame key="left" id={id} style={style} />}</AnimatePresence>
+    // The track clips while it slides (`data-animating` of the grid), so the panel never paints outside its slot; at rest nothing
+    // is clipped, which keeps the panel's shadow and focus ring. The panel is there from the first paint; only a change animates.
+    <div style={style} className="grid min-h-0 min-w-0 group-data-[animating]/main:overflow-clip">
+      <AnimatePresence initial={false}>{present && <LeftPanelFrame key="left" id={id} />}</AnimatePresence>
+    </div>
   );
 }
 
-function LeftPanelFrame({ id, style }: Omit<LeftPanelSlotProps, 'present'>) {
-  const motionProps = usePanelFade();
+function LeftPanelFrame({ id }: { id: string }) {
+  // The panel keeps its width whatever the track does, so nothing inside it reflows during the slide.
+  const width = useUi((state) => clampPanelWidth(state.leftPanelWidth));
+  const motionProps = usePanelSlide('start', width);
   // While it fades out the panel is on its way out: nothing in it takes focus or a click any more.
   const present = useIsPresent();
   return (
     <motion.div
       {...motionProps}
       inert={!present}
-      style={style}
-      className="grid min-h-0 min-w-0 grid-cols-[minmax(0,1fr)] grid-rows-[minmax(0,1fr)]"
+      style={{ width }}
+      className="grid min-h-0 grid-cols-[minmax(0,1fr)] grid-rows-[minmax(0,1fr)]"
     >
       <LeftPanel id={id} />
     </motion.div>

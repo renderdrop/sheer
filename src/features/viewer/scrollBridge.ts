@@ -51,3 +51,26 @@ export function subscribeViewRect(listener: () => void): () => void {
   listeners.add(listener);
   return () => listeners.delete(listener);
 }
+
+/**
+ * Whether a track animation of the main grid (the left panel or the inspector sliding, MOTION 3) is running. The grid sets it;
+ * the canvas then does not hand its size on for every frame (no layout, no refit per frame) and anchors itself instead, and it
+ * commits the final size once when this ends.
+ */
+let layoutAnimating = false;
+const animationListeners = new Set<() => void>();
+
+export function setLayoutAnimating(on: boolean): void {
+  if (layoutAnimating === on) return;
+  layoutAnimating = on;
+  for (const listener of [...animationListeners]) listener();
+}
+
+export function isLayoutAnimating(): boolean {
+  return layoutAnimating;
+}
+
+export function subscribeLayoutAnimating(listener: () => void): () => void {
+  animationListeners.add(listener);
+  return () => animationListeners.delete(listener);
+}
