@@ -19,6 +19,8 @@ fn main() {
         "remove_recent",
         "open_recent",
         "restore_recent",
+        "set_recent_starred",
+        "reveal_recent",
         "locate_recent",
         "get_recent_thumbnail",
         "set_menu_state",

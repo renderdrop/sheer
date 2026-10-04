@@ -11,6 +11,8 @@
     "allow-remove-recent",
     "allow-open-recent",
     "allow-restore-recent",
+    "allow-set-recent-starred",
+    "allow-reveal-recent",
     "allow-locate-recent",
     "allow-get-recent-thumbnail",
     "allow-set-menu-state",

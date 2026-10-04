@@ -1,9 +1,11 @@
-//! What can be done with a recent file besides opening it: take the removal back (`restore_recent`) and find a file that moved
+//! What can be done with a recent file besides opening it: take the removal back (`restore_recent`), star it (`set_recent_starred`), show it in the file manager (`reveal_recent`) and find a file that moved
 //! (`locate_recent`). Both name the entry by its `recentId`; no path comes from or goes to the webview (ARCHITECTURE section 5).
 //!
 //! | Command | Arguments | Returns |
 //! |---|---|---|
 //! | `restore_recent` | `recentId: number` | `boolean`: the entry was put back where it was (false: not removed in this run, or listed again) |
+//! | `set_recent_starred` | `recentId: number`, `starred: boolean` | nothing; unknown id: `not_found` |
+//! | `reveal_recent` | `recentId: number` | nothing; unknown id or file gone: `not_found` |
 //! | `locate_recent` | `recentId: number` | `boolean`: the user chose a file and the entry points to it now (false: cancelled, or unknown id) |
 
 use tauri::{State, WebviewWindow};
@@ -18,6 +20,32 @@ impl AppState {
         self.recents
             .as_ref()
             .is_some_and(|recents| recents.restore(id))
+    }
+
+    /// Stars or unstars recent file `id`; `not_found` for an id that is not listed (or a refused star, see `RecentsStore::set_starred`).
+    pub fn set_recent_starred(&self, id: u32, starred: bool) -> Result<(), AppError> {
+        match &self.recents {
+            Some(recents) if recents.set_starred(id, starred) => Ok(()),
+            _ => Err(AppError::not_found("recent")),
+        }
+    }
+
+    /// Shows recent file `id` in the OS file manager through `reveal`. The path comes from the store only; an unlisted id, a path
+    /// that may not be kept (network, device) or a file that is gone is `not_found`, and `reveal` is not called then.
+    pub fn reveal_recent_with(
+        &self,
+        id: u32,
+        reveal: impl FnOnce(&std::path::Path) -> Result<(), String>,
+    ) -> Result<(), AppError> {
+        let path = self
+            .recents
+            .as_ref()
+            .and_then(|recents| recents.path_of(id))
+            .ok_or(AppError::not_found("recent"))?;
+        if !crate::storage::recents::storable(&path) || !matches!(path.try_exists(), Ok(true)) {
+            return Err(AppError::not_found("recent"));
+        }
+        reveal(&path).map_err(|error| AppError::logged(ErrorCode::Internal, error))
     }
 
     /// Points recent file `id` at `path`, the file the user chose. `not_found` for an id that is not listed.
@@ -40,6 +68,30 @@ impl AppState {
 pub async fn restore_recent(state: State<'_, AppState>, recent_id: u32) -> Result<bool, UiError> {
     let state = state.inner().clone();
     blocking(move || Ok(state.restore_recent(recent_id))).await
+}
+
+/// Marks a recent file as a favourite ("Markiert") or takes the mark off. Unknown id → `not_found`.
+#[tauri::command]
+pub async fn set_recent_starred(
+    state: State<'_, AppState>,
+    recent_id: u32,
+    starred: bool,
+) -> Result<(), UiError> {
+    let state = state.inner().clone();
+    blocking(move || state.set_recent_starred(recent_id, starred)).await
+}
+
+/// Shows a recent file in the OS file manager (Explorer / Finder) with the file selected. The path stays in Rust; a file that is gone
+/// or an id that is not listed is `not_found`.
+#[tauri::command]
+pub async fn reveal_recent(state: State<'_, AppState>, recent_id: u32) -> Result<(), UiError> {
+    let state = state.inner().clone();
+    blocking(move || {
+        state.reveal_recent_with(recent_id, |path| {
+            tauri_plugin_opener::reveal_item_in_dir(path).map_err(|error| error.to_string())
+        })
+    })
+    .await
 }
 
 /// Shows the native "open" dialog for a recent file that is gone and, if the user chooses one, makes the entry point to it. The path
@@ -129,6 +181,54 @@ mod tests {
             state.relocate_recent(77, &abs("c.pdf")).unwrap_err().code(),
             ErrorCode::NotFound
         );
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn starring_by_id_and_revealing_only_what_exists() {
+        let (state, store, _shared) = state_with_store();
+        let dir = std::env::temp_dir().join(format!("sheer-recent-reveal-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let there = dir.join("there.pdf");
+        std::fs::write(&there, b"%PDF-1.4\n").unwrap();
+        store.record(&there);
+        store.record(&abs("gone.pdf"));
+        let list = state.list_recents();
+        let (gone, here) = (list[0].id, list[1].id);
+
+        assert!(state.set_recent_starred(here, true).is_ok());
+        assert!(state.list_recents()[1].starred);
+        assert_eq!(
+            state.set_recent_starred(777, true).unwrap_err().code(),
+            ErrorCode::NotFound
+        );
+
+        let mut spawned = 0;
+        let missing = state.reveal_recent_with(gone, |_| {
+            spawned += 1;
+            Ok(())
+        });
+        assert_eq!(missing.unwrap_err().code(), ErrorCode::NotFound);
+        let unknown = state.reveal_recent_with(777, |_| {
+            spawned += 1;
+            Ok(())
+        });
+        assert_eq!(unknown.unwrap_err().code(), ErrorCode::NotFound);
+        assert_eq!(
+            spawned, 0,
+            "nothing is spawned for a missing file or unknown id"
+        );
+
+        let mut shown = None;
+        state
+            .reveal_recent_with(here, |path| {
+                shown = Some(path.to_path_buf());
+                Ok(())
+            })
+            .unwrap();
+        assert_eq!(shown.as_deref(), Some(there.as_path()));
+        let failed = state.reveal_recent_with(here, |_| Err("no file manager".into()));
+        assert_eq!(failed.unwrap_err().code(), ErrorCode::Internal);
         let _ = std::fs::remove_dir_all(dir);
     }
 

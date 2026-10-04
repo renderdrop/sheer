@@ -9,7 +9,9 @@ import {
   parseRecentEntry,
   removeRecent,
   restoreRecent,
+  revealRecent,
   setMenuState,
+  setRecentStarred,
 } from './recents';
 
 const invoke = vi.hoisted(() => vi.fn());
@@ -17,7 +19,7 @@ vi.mock('@tauri-apps/api/core', () => ({ invoke }));
 
 beforeEach(() => invoke.mockReset());
 
-const entry = { id: 3, displayName: 'a.pdf', folder: 'Docs', lastOpened: 1700000000, missing: false };
+const entry = { id: 3, displayName: 'a.pdf', folder: 'Docs', lastOpened: 1700000000, missing: false, starred: false };
 
 describe('the needsPassword outcome', () => {
   it('is an id and a name, nothing else', () => {
@@ -53,6 +55,19 @@ describe('recent files', () => {
     expect(parseRecentEntry({ ...entry, id: -1 })).toBeNull();
     expect(parseRecentEntry({ ...entry, folder: 3 })).toBeNull();
     expect(parseRecentEntry(null)).toBeNull();
+    expect(parseRecentEntry({ ...entry, starred: true })).toEqual({ ...entry, starred: true });
+    expect(parseRecentEntry({ ...entry, starred: undefined })).toBeNull();
+  });
+
+  it('stars and reveals by id only', async () => {
+    invoke.mockResolvedValueOnce(undefined);
+    await setRecentStarred(3, true);
+    expect(invoke).toHaveBeenLastCalledWith('set_recent_starred', { recentId: 3, starred: true });
+    invoke.mockResolvedValueOnce(undefined);
+    await revealRecent(3);
+    expect(invoke).toHaveBeenLastCalledWith('reveal_recent', { recentId: 3 });
+    invoke.mockRejectedValueOnce({ code: 'not_found', key: 'error.not_found', retryable: false });
+    await expect(revealRecent(3)).rejects.toMatchObject({ code: 'not_found' });
   });
 
   it('lists, removes and opens by id', async () => {

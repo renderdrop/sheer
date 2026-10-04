@@ -404,6 +404,8 @@ fn capabilities_grant_only_the_app_commands_and_the_window_chrome_to_the_main_wi
         "allow-remove-recent",
         "allow-open-recent",
         "allow-restore-recent",
+        "allow-set-recent-starred",
+        "allow-reveal-recent",
         "allow-locate-recent",
         "allow-get-recent-thumbnail",
         "allow-set-menu-state",
@@ -989,12 +991,21 @@ fn the_opener_is_called_from_rust_only_and_the_webview_has_no_permission_for_it(
             }
         }
     }
-    assert_eq!(users.len(), 1, "the opener is named once: {users:?}");
-    let (path, call) = &users[0];
-    assert!(path.ends_with("commands/links.rs") || path.ends_with("commands\\links.rs"));
+    // Two uses: `open_url` for links, and `reveal_item_in_dir` for "show in the file manager" of a recent file, whose path comes
+    // from the recents store only (`commands/recent_actions.rs`).
+    assert_eq!(users.len(), 2, "the opener is named twice: {users:?}");
+    let named = |file: &str, call: &str| {
+        users
+            .iter()
+            .any(|(path, after)| path.ends_with(file) && after.starts_with(call))
+    };
     assert!(
-        call.starts_with("::open_url("),
-        "only `open_url` is used: {call}"
+        named("links.rs", "::open_url("),
+        "open_url is used in links.rs: {users:?}"
+    );
+    assert!(
+        named("recent_actions.rs", "::reveal_item_in_dir("),
+        "only reveal_item_in_dir is used in recent_actions.rs: {users:?}"
     );
     let links = read("src/commands/links.rs");
     let confirm = links.find(".blocking_show()").expect("the dialog");

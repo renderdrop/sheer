@@ -19,6 +19,8 @@ export interface RecentEntry {
   folder: string;
   lastOpened: number;
   missing: boolean;
+  /** Marked by the user ("Markiert"); starred entries are never pushed off the list by the cap. */
+  starred: boolean;
 }
 
 /** The most recent files the backend keeps and lists. */
@@ -27,17 +29,18 @@ export const MAX_RECENTS = 50;
 /** Validates one recent entry; `null` if it is not one. Extra keys are dropped. */
 export function parseRecentEntry(value: unknown): RecentEntry | null {
   if (typeof value !== 'object' || value === null) return null;
-  const { id, displayName, folder, lastOpened, missing } = value as Record<string, unknown>;
+  const { id, displayName, folder, lastOpened, missing, starred } = value as Record<string, unknown>;
   if (
     !isCount(id, 0xffffffff) ||
     typeof displayName !== 'string' ||
     typeof folder !== 'string' ||
     !isCount(lastOpened) ||
-    typeof missing !== 'boolean'
+    typeof missing !== 'boolean' ||
+    typeof starred !== 'boolean'
   ) {
     return null;
   }
-  return { id, displayName, folder, lastOpened, missing };
+  return { id, displayName, folder, lastOpened, missing, starred };
 }
 
 /** The recent files, newest first. An answer that is not a list of at most 50 entries is an internal error. */
@@ -77,6 +80,19 @@ export function restoreRecent(recentId: number): Promise<boolean> {
  */
 export function locateRecent(recentId: number): Promise<boolean> {
   return call<boolean>('locate_recent', { recentId }).then((done) => done === true);
+}
+
+/** Marks a recent file as a favourite or takes the mark off. Rejects with `not_found` for an id that is not listed. */
+export function setRecentStarred(recentId: number, starred: boolean): Promise<void> {
+  return call<void>('set_recent_starred', { recentId, starred });
+}
+
+/**
+ * Shows a recent file in the OS file manager (Explorer / Finder) with the file selected; the path never reaches the UI. Rejects with
+ * `not_found` for an id that is not listed or a file that is gone.
+ */
+export function revealRecent(recentId: number): Promise<void> {
+  return call<void>('reveal_recent', { recentId });
 }
 
 /**

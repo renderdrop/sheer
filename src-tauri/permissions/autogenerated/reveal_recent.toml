@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-reveal-recent"
+description = "Enables the reveal_recent command without any pre-configured scope."
+commands.allow = ["reveal_recent"]
+
+[[permission]]
+identifier = "deny-reveal-recent"
+description = "Denies the reveal_recent command without any pre-configured scope."
+commands.deny = ["reveal_recent"]

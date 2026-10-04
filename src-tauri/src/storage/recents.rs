@@ -46,6 +46,8 @@ pub struct RecentEntry {
     pub folder: String,
     pub last_opened: u64,
     pub missing: bool,
+    /// Marked by the user ("Markiert"): never pushed off the list by the cap.
+    pub starred: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -53,6 +55,7 @@ struct Recent {
     id: u32,
     path: PathBuf,
     last_opened: u64,
+    starred: bool,
 }
 
 #[derive(Debug, Default)]
@@ -88,12 +91,13 @@ impl RecentsStore {
         let mut state = State::default();
         match read_bounded(&path) {
             Ok(bytes) => {
-                for (path, last_opened) in parse(&bytes) {
+                for (path, last_opened, starred) in parse(&bytes) {
                     let id = state.fresh_id();
                     state.items.push(Recent {
                         id,
                         path,
                         last_opened,
+                        starred,
                     });
                 }
             }
@@ -121,6 +125,7 @@ impl RecentsStore {
                 folder: item.path.parent().map(display_name).unwrap_or_default(),
                 last_opened: item.last_opened,
                 // A file that cannot be examined (permissions) is not reported gone: opening it says what is wrong.
+                starred: item.starred,
                 missing: position < MAX_EXISTENCE_CHECKS
                     && storable(&item.path)
                     && matches!(item.path.try_exists(), Ok(false)),
@@ -162,9 +167,12 @@ impl RecentsStore {
             return;
         }
         self.change(|state| {
-            let id = match state.items.iter().position(|item| item.path == path) {
-                Some(index) => state.items.remove(index).id,
-                None => state.fresh_id(),
+            let (id, starred) = match state.items.iter().position(|item| item.path == path) {
+                Some(index) => {
+                    let old = state.items.remove(index);
+                    (old.id, old.starred)
+                }
+                None => (state.fresh_id(), false),
             };
             state.items.insert(
                 0,
@@ -172,9 +180,10 @@ impl RecentsStore {
                     id,
                     path: path.to_path_buf(),
                     last_opened: opened,
+                    starred,
                 },
             );
-            state.items.truncate(limits::MAX_RECENTS);
+            cut_to_cap(&mut state.items);
             true
         });
     }
@@ -207,9 +216,32 @@ impl RecentsStore {
             }
             let index = index.min(state.items.len());
             state.items.insert(index, item);
-            state.items.truncate(limits::MAX_RECENTS);
+            cut_to_cap(&mut state.items);
             true
         })
+    }
+
+    /// Stars or unstars entry `id`. `false` for an unknown id, or when starring would leave no room for a new entry (at most
+    /// `MAX_RECENTS - 1` stars). Setting the state an entry already has is a success that writes nothing.
+    pub fn set_starred(&self, id: u32, starred: bool) -> bool {
+        let mut accepted = false;
+        self.change(|state| {
+            let stars = state.items.iter().filter(|item| item.starred).count();
+            let Some(item) = state.items.iter_mut().find(|item| item.id == id) else {
+                return false;
+            };
+            if item.starred == starred {
+                accepted = true;
+                return false;
+            }
+            if starred && stars >= limits::MAX_RECENTS - 1 {
+                return false;
+            }
+            item.starred = starred;
+            accepted = true;
+            true
+        });
+        accepted
     }
 
     /// Points entry `id` at another file (the user located it): the entry keeps its place and id and gets the new path and
@@ -254,7 +286,11 @@ impl RecentsStore {
             .iter()
             .filter_map(|item| {
                 let path = item.path.to_str()?;
-                Some(serde_json::json!({ "path": path, "lastOpened": item.last_opened }))
+                Some(serde_json::json!({
+                    "path": path,
+                    "lastOpened": item.last_opened,
+                    "starred": item.starred,
+                }))
             })
             .collect();
         let document = serde_json::json!({ "version": 1, "files": files });
@@ -282,7 +318,7 @@ fn now() -> u64 {
 }
 
 /// Whether a path may be kept: absolute, UTF-8 (the file is JSON), without NUL, within the length bound.
-fn storable(path: &Path) -> bool {
+pub(crate) fn storable(path: &Path) -> bool {
     let Some(text) = path.to_str() else {
         return false;
     };
@@ -294,24 +330,38 @@ fn storable(path: &Path) -> bool {
         && text.chars().count() <= limits::MAX_RECENT_PATH_CHARS
 }
 
-/// The entries of a stored file, newest first, each valid and unique, at most `MAX_RECENTS`. Anything else in it is ignored.
-fn parse(bytes: &[u8]) -> Vec<(PathBuf, u64)> {
+/// Cuts the list (newest first) to the cap by dropping the oldest entries that are not starred; only a list of stars alone
+/// loses its oldest entry.
+fn cut_to_cap(items: &mut Vec<Recent>) {
+    while items.len() > limits::MAX_RECENTS {
+        let victim = items
+            .iter()
+            .rposition(|item| !item.starred)
+            .unwrap_or(items.len() - 1);
+        items.remove(victim);
+    }
+}
+
+/// The entries of a stored file, newest first, each valid and unique, at most `MAX_RECENTS`: path, time, star (absent or not a
+/// boolean: no star). Anything else in it is ignored.
+fn parse(bytes: &[u8]) -> Vec<(PathBuf, u64, bool)> {
     let Ok(Value::Object(map)) = serde_json::from_slice::<Value>(bytes) else {
         return Vec::new();
     };
     let Some(Value::Array(files)) = map.get("files") else {
         return Vec::new();
     };
-    let mut found: Vec<(PathBuf, u64)> = Vec::new();
+    let mut found: Vec<(PathBuf, u64, bool)> = Vec::new();
     for file in files {
         let Some(path) = file.get("path").and_then(Value::as_str).map(PathBuf::from) else {
             continue;
         };
-        if !storable(&path) || found.iter().any(|(known, _)| *known == path) {
+        if !storable(&path) || found.iter().any(|(known, _, _)| *known == path) {
             continue;
         }
         let opened = file.get("lastOpened").and_then(Value::as_u64).unwrap_or(0);
-        found.push((path, opened));
+        let starred = file.get("starred").and_then(Value::as_bool) == Some(true);
+        found.push((path, opened, starred));
         if found.len() == limits::MAX_RECENTS {
             break;
         }
@@ -531,7 +581,7 @@ mod tests {
         let json = serde_json::to_string(&store.list()).unwrap();
         assert_eq!(
             json,
-            r#"[{"id":0,"displayName":"report.pdf","folder":"sheer-recents-test","lastOpened":7,"missing":true}]"#
+            r#"[{"id":0,"displayName":"report.pdf","folder":"sheer-recents-test","lastOpened":7,"missing":true,"starred":false}]"#
         );
         assert!(!json.contains(std::env::temp_dir().to_string_lossy().as_ref()));
     }
@@ -602,6 +652,79 @@ mod tests {
         store.record_at(Path::new(""), 1);
         assert!(store.list().is_empty());
         assert!(!dir.path().join(FILE_NAME).exists(), "nothing to write");
+    }
+
+    #[test]
+    fn stars_survive_a_restart_and_a_file_without_them_loads_unstarred() {
+        let dir = TempDir::new();
+        let store = store(&dir);
+        store.record_at(&abs("a.pdf"), 1);
+        store.record_at(&abs("b.pdf"), 2);
+        let a = store.list()[1].id;
+        assert!(store.set_starred(a, true));
+        assert!(store.set_starred(a, true), "already starred is fine");
+        assert!(!store.set_starred(9999, true));
+        assert!(store.list()[1].starred && !store.list()[0].starred);
+        // Opening it again keeps the star.
+        store.record_at(&abs("a.pdf"), 3);
+        assert!(store.list()[0].starred);
+        let again = RecentsStore::load(dir.path().join(FILE_NAME));
+        let stars: Vec<bool> = again.list().iter().map(|e| e.starred).collect();
+        assert_eq!(stars, [true, false]);
+        assert!(again.set_starred(again.list()[0].id, false));
+        assert!(!RecentsStore::load(dir.path().join(FILE_NAME)).list()[0].starred);
+        // Old or tampered files: no star.
+        let text = serde_json::json!({ "files": [
+            { "path": abs("o.pdf").to_str().unwrap(), "lastOpened": 1 },
+            { "path": abs("t.pdf").to_str().unwrap(), "starred": "yes" },
+            { "path": abs("u.pdf").to_str().unwrap(), "starred": 1 },
+        ]});
+        fs::write(dir.path().join(FILE_NAME), text.to_string()).unwrap();
+        let loaded = RecentsStore::load(dir.path().join(FILE_NAME)).list();
+        assert_eq!(loaded.len(), 3);
+        assert!(loaded.iter().all(|e| !e.starred));
+    }
+
+    #[test]
+    fn starred_entries_are_not_pushed_off_by_the_cap_and_removing_unstars() {
+        let dir = TempDir::new();
+        let store = store(&dir);
+        store.record_at(&abs("keep.pdf"), 1);
+        let keep = store.list()[0].id;
+        assert!(store.set_starred(keep, true));
+        for i in 0..limits::MAX_RECENTS + 5 {
+            store.record_at(&abs(&format!("{i}.pdf")), i as u64 + 2);
+        }
+        let list = store.list();
+        assert_eq!(list.len(), limits::MAX_RECENTS);
+        assert_eq!(list.last().unwrap().display_name, "keep.pdf");
+        assert!(list.last().unwrap().starred);
+        assert!(store.remove(keep));
+        assert!(RecentsStore::load(dir.path().join(FILE_NAME))
+            .list()
+            .iter()
+            .all(|e| e.display_name != "keep.pdf"));
+    }
+
+    #[test]
+    fn at_most_one_less_than_the_cap_can_be_starred() {
+        let dir = TempDir::new();
+        let store = store(&dir);
+        for i in 0..limits::MAX_RECENTS {
+            store.record_at(&abs(&format!("{i}.pdf")), i as u64);
+        }
+        let ids: Vec<u32> = store.list().iter().map(|e| e.id).collect();
+        for id in &ids[..limits::MAX_RECENTS - 1] {
+            assert!(store.set_starred(*id, true));
+        }
+        assert!(!store.set_starred(ids[limits::MAX_RECENTS - 1], true));
+        store.record_at(&abs("new.pdf"), 999);
+        let list = store.list();
+        assert_eq!(list.len(), limits::MAX_RECENTS);
+        assert_eq!(
+            list.iter().filter(|e| e.starred).count(),
+            limits::MAX_RECENTS - 1
+        );
     }
 
     #[test]

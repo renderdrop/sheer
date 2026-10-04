@@ -138,6 +138,8 @@ pub fn run() -> Result<(), AppError> {
             commands::remove_recent,
             commands::open_recent,
             commands::recent_actions::restore_recent,
+            commands::recent_actions::set_recent_starred,
+            commands::recent_actions::reveal_recent,
             commands::recent_actions::locate_recent,
             commands::thumbnails::get_recent_thumbnail,
             commands::set_menu_state,
