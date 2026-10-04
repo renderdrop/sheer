@@ -1854,3 +1854,45 @@ signature; `PageWork` gains `source` and `shown`; `pdfwrite::redact::raster_page
 **Decision.** OFL-1.1 is allowed for **font assets only**, never for code dependencies; `deny.toml` (crates) is unchanged because fonts are not crates. The TTFs are unmodified, so the Reserved Font Names are not touched; each ships beside its `OFL-<name>.txt` in `src-tauri/resources/fonts/` and is logged in `docs/LICENSES.md`. Glyphs become outlines (Bézier paths) in the PDF and the library; no font is embedded, so the output is not a font derivative. `TypedFont` is `dancingScript | greatVibes | alexBrush` (IPC `create_typed_signature`, default `dancingScript`). The font of a typed library entry is remembered in UI storage (`sheer.signatureItemFonts`); the last choice is `signatureFont`; stored `homemadeApple` values migrate to the default. Homemade Apple and its license are removed.
 
 **Consequences.** Old entries keep rendering (stored as paths). A font-license allowlist exists in prose only; adding another font license needs a new ADR.
+
+---
+
+## ADR-100 — Rebrand to "sheer." (milestone v1.2)
+
+**Status:** accepted (2026-10-04). Source: `docs/REDESIGN_BRIEF.md` (product owner), `docs/BRAND.md` (the only truth for tokens,
+colours, type, shapes and brand rules), `docs/brand/moodboard.png` (layout reference). The brief outranks everything it contradicts.
+
+**Superseded.** ORCHESTRATOR_PROMPT §3 design guardrails (Iris accent, liquid glass, light + dark, spring motion) and Anhang A (glass-sheet
+logo, "Sheer" word mark); ADR-011 (design adjustments), ADR-012 (token amendments), ADR-020 (mood: gradient, tinted glass), ADR-022 (one
+spring motion system, `docs/MOTION.md` v1), the visual parts of ADR-029, ADR-037, ADR-042, ADR-048, ADR-050, ADR-054 and ADR-058 (glass
+toolbar card, inspector panel, Windows in-window menu bar in the caption row), the Okabe-Ito highlight palette, and the visual parts of
+ADR-051 (selection frame styling). Behaviour from those ADRs (keyboard, data, IPC, security) stays unless the brief changes it. ADR-016
+(macOS native menu bar) stays; ADR-059 (OFL fonts) stays and is extended to Inter.
+
+**What changes.** Solar Yellow `#FFF84D` is the only accent on Canvas/Sand/Mist; flat surfaces (no `backdrop-filter`, no translucency);
+light only (`prefers-color-scheme` ignored, the theme and glass settings go); ease-out 120/160/180 ms, no overshoot; word mark "sheer."
+and app icon "s."; Inter bundled; Top Bar + left Pages sidebar + right Tools sidebar; highlight default Solar Yellow.
+
+**Decisions the brief leaves to the conductor (brief §5 plus the following).**
+1. Home navigation has no "Shared"/"Trash" (no cloud, no file management). Windows has no classic menu bar (Top Bar, sidebars and More
+   cover every command); macOS keeps the native one. Red only for the redaction warning and errors. Conflict moodboard vs BRAND text:
+   BRAND wins on tokens, the moodboard on layout proportions. The old brand leaves repo, docs and assets except CHANGELOG and ADR history.
+2. `docs/FEEDBACK.md` has no F13 section at the start of v1.2, so nothing precedes the brief. The `[~]` "v1.2 polish" list from v1.1 is
+   folded into the last package "Politur v1.2": items made obsolete by the redesign (glass, dark, toolbar card, menu bar) are dropped there.
+3. Package 0 (designer: `docs/DESIGN.md` v2 + `docs/MOTION.md` v2) blocks all visual work. The Rust package B1 (favourites + reveal a
+   recent file) has no design content and runs in parallel with it.
+4. Token migration: `tokens.css` is rewritten in R0 (BRAND §24 primitives + brief R0.1 semantic tokens). The Tailwind role layer
+   (`--color-text-muted`, `--color-accent`, … that the utilities use) stays as the component API and is re-pointed to the semantic tokens,
+   so the whole app repaints in one step. Old palette names (`--iris-*`, `--ink-*`, glass recipes) survive only in a marked "legacy
+   aliases" block mapped to new values, so parallel packages do not collide; R3/R4 remove every use and R7 deletes the block (brief §6:
+   no "iris", "glass", "dark" in code).
+5. Fonts: OFL-1.1 stays a font-asset-only allowance (ADR-059). `deny.toml` governs crates, so OFL-1.1 is not added to its crate
+   allowlist; a comment there records the font-only allowance. Inter (variable, woff2, Latin + Latin Extended) is logged in
+   `docs/LICENSES.md` and served from the bundle (`font-src 'self'`).
+6. `APP_NAME` renders "sheer." in UI text; bundle name, product name, file names and installer name stay `Sheer` (file-system
+   conventions; trademark text in `TRADEMARK.md` names both spellings).
+7. Designer acceptance runs once per phase (brief §3), from Tauri-window screenshots next to moodboard crops; only blockers trigger a fix
+   package, majors/minors go to "Politur v1.2".
+
+**Consequences.** `ROADMAP.md` gains "v1.2 Redesign" (Package 0, B1, R0–R7). Every R-phase ends with a designer round. Smoke test,
+CSP gate, contrast script and fps budget gate the tag v1.2.0.

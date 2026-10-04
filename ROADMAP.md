@@ -215,7 +215,7 @@ See `docs/FEATURES.md` → "Later".
 
 ## v1.2 polish (collected at the v1.1 milestone end, ADR-030)
 
-- [~] Politur v1.1 — not picked by the loop until the owner schedules it
+- [~] Politur v1.1 — folded into "Politur v1.2" (ADR-100)
   - (designer, major) tooltips linger after the pointer leaves and can cover the tab pill (dark doc screenshot)
   - (designer, minor) horizontal scrollbar at 100–115 % although the page fits; toast on the hub sits on the Recent row; Recent thumbnail and light-theme page need a visible edge token
   - (reviewer P1, minor) hub compact rule repeats a literal `max-height: 800px` (use one custom variant); single-file cards open multi-select then close extras; Sign card couples to `[data-toolbar-item="signature"]`
@@ -224,3 +224,46 @@ See `docs/FEATURES.md` → "Later".
   - (P2 deviations) English menu labels Title Case vs spec sentence case; Windows full screen via web API; Open Recent not in the macOS bar
   - (security, low) docs/SECURITY.md re-date to v1.1 with rows for get_annotation_quote (280-char cap), review-state replies, bundled skrifa fonts, menu module; skip /State strings > 16 bytes before cloning; A→B→A /IRT cycle unit test; cite the typed-signature text cap test
   - (F11) a fresh annotation's inspector narrows the canvas without refit, so wide pages scroll horizontally (ADR-056 trade-off) — revisit with the §3.57 inspector rules
+
+## v1.2 Redesign "sheer." (docs/REDESIGN_BRIEF.md, ADR-100)
+
+Order as in the brief. Each phase ends with one designer round on Tauri-window screenshots next to moodboard crops (brief §3).
+
+- [ ] Package 0 — docs/DESIGN.md v2 + docs/MOTION.md v2 (designer, from BRAND + moodboard + brief; blocks all visual work)
+- [ ] B1 — Favourites ("Markiert") and "Show in Explorer/Finder" for recent files (Rust + src/api)
+- [ ] R0.1 — tokens.css rewritten (BRAND §24 + semantic tokens), role layer re-pointed, glass recipes flat, legacy aliases marked
+- [ ] R0.2 — Lint gate: no hex/rgb/hsl outside tokens.css, no backdrop-filter, no prefers-color-scheme, token-only shadows/radii/durations
+- [ ] R0.3 — Dark mode and glass setting removed (tokens, settings + one-time migration, data-theme, tests, UI scripts)
+- [ ] R0.4 — Inter bundled (OFL, woff2 Latin + Latin Ext), type scale utilities (.t-display … .t-caption), tabular-nums
+- [ ] R0.5 — Icon audit: Lucide stroke 1.75, sizes 16/18/20 (24 for large actions), monochrome; own icons removed or redrawn
+- [ ] R0.6 — BrandSurface, WorkSurface and SolarGlow primitives
+- [ ] R0 acceptance — Inter visible in the Tauri window, no dark/glass/backdrop leftovers, designer round
+- [ ] R1.1 — Word mark SVGs as paths (primary with claim, secondary, mono ink)
+- [ ] R1.2 — App icon "s." in three variants, measured optical centering (< 1 %), platform icons via `tauri icon`
+- [ ] R1.3 — Installer art (NSIS header/sidebar) in brand mode
+- [ ] R1.4 — Welcome PDF "Welcome to sheer." in the new layout
+- [ ] R1.5 — About dialog, README head, release-notes template; APP_NAME "sheer." in UI text
+- [ ] R1 acceptance — icons in Explorer, word mark in Home, installer built locally, designer round
+- [ ] R2.1 — Home: left navigation (Home, Recent, Starred, Tools), hero (Sand, glow, display type, search with `/`, yellow open button)
+- [ ] R2.2 — Recent cards (thumbnail, name, relative time, context menu: Open, Star, Show in Explorer, Remove), max 12 + "Show all"; Starred list
+- [ ] R2.3 — Tools view (rows): file dialog → editor in the matching mode
+- [ ] R2.4 — Empty state (large glow, "Drop a PDF here.", ghost button), drop on the whole surface
+- [ ] R2 acceptance — screenshot vs moodboard, drag and drop with the mouse, keyboard navigation, designer round
+- [ ] R3.1 — Editor top bar (back, file name, tabs, zoom, page field, undo/redo, search, export, Done, More); Windows menu bar removed
+- [ ] R3.2 — Left sidebar (Pages, Outline, Comments, Search) in the new style; yellow page selection; collapsible, remembered
+- [ ] R3.3 — Canvas (#EFEFEC, page shadow, 24 px gap) and right tool sidebar with progressive disclosure (inspector panel removed)
+- [ ] R3.4 — Form banner, selection popover (Highlight · Comment · Copy), comments tab (filter, resolved), redact mode (red band, Apply)
+- [ ] R3 acceptance — annot-smoke 16/16, old ⋯-menu → new place table (ADR), screenshot vs moodboard, designer round
+- [ ] R4.1 — Buttons, icon buttons, inputs, dropdowns, popovers, dialogs, toasts, tooltips with kbd
+- [ ] R4.2 — Tabs, segmented control, toggle, checkbox, slider, skeletons, banner, dropzone
+- [ ] R4.3 — Highlight/ink palette (Solar default + Mint, Sky, Rose, Lavender); signature sheet (Sand pad, baseline not in the path, ink Ink/Blue)
+- [ ] R4.4 — /dev/components page (dev builds only) and contrast script (text ≥ 4.5:1, UI ≥ 3:1)
+- [ ] R4 acceptance — contrast script green, designer round
+- [ ] R5.1 — Spells 1–6 (tool pill, page indicator, document open, drop zone, marker trail, saved check)
+- [ ] R5.2 — Spells 7–12 (undo, comment jump, delete page, app start, ambient glow, tool cursors)
+- [ ] R5.3 — Spells 13–18 (magnifier, sidebar chevrons, skeletons, tooltip groups, zoom snap, focus ring)
+- [ ] R5 acceptance — recordings, fps p95 ≤ 16.8 ms, reduced-motion variants, designer round
+- [ ] R6 — Tour coach marks + tour pill, welcome in a new tab, settings reduced, tool tips (max three per session)
+- [ ] R6 acceptance — designer round
+- [ ] Politur v1.2 — reviewer/designer minors of v1.2 plus the still-valid items of "v1.2 polish" above
+- [ ] R7 — Screenshot series docs/review/v1.2, designer review vs BRAND §2, smoke, gates, audits, CI green, CHANGELOG, tag v1.2.0
