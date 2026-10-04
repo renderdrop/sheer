@@ -1,6 +1,7 @@
 import { call } from './call';
 import { toAppError } from './errors';
 import { parseOpenOutcome, type OpenOutcome } from './documents';
+import { parseFrame, type RenderFrame } from './frame';
 
 /** A whole number from 0 up to `max`. */
 function isCount(value: unknown, max = Number.MAX_SAFE_INTEGER): value is number {
@@ -76,6 +77,17 @@ export function restoreRecent(recentId: number): Promise<boolean> {
  */
 export function locateRecent(recentId: number): Promise<boolean> {
   return call<boolean>('locate_recent', { recentId }).then((done) => done === true);
+}
+
+/**
+ * The preview of a recent file: its first page as a PNG frame of at most 64 x 80 px, made by the backend when the file was closed or
+ * saved (never for a file with a password). Rejects with `not_found` when there is none (the row shows its placeholder).
+ */
+export async function getRecentThumbnail(recentId: number): Promise<RenderFrame> {
+  const body = await call<ArrayBuffer>('get_recent_thumbnail', { recentId });
+  const frame = parseFrame(new Uint8Array(body));
+  if (frame === null) throw toAppError(null);
+  return frame;
 }
 
 /** Tells the macOS menu bar whether a document is open, so it greys the commands that need one. Rejects like any command. */

@@ -9,5 +9,6 @@ mod open;
 pub mod recents;
 pub mod settings;
 pub mod signatures;
+pub mod thumbs;
 
 pub(crate) use open::open_without_blocking;

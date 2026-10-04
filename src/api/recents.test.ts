@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { parseOpenOutcome, unlockDocument } from './documents';
 import {
+  getRecentThumbnail,
   listRecents,
   locateRecent,
   openRecent,
@@ -88,5 +89,36 @@ describe('recent files', () => {
     invoke.mockResolvedValueOnce(undefined);
     await setMenuState(true);
     expect(invoke).toHaveBeenCalledWith('set_menu_state', { hasDocument: true });
+  });
+});
+
+describe('getRecentThumbnail', () => {
+  /** An SHR1 frame (PNG signature and IHDR only: the header is checked against it) of the given size. */
+  function frame(width: number, height: number): ArrayBuffer {
+    const bytes = new Uint8Array(16 + 8 + 25);
+    bytes.set([0x53, 0x48, 0x52, 0x31, 1]);
+    const view = new DataView(bytes.buffer);
+    view.setUint32(8, width, true);
+    view.setUint32(12, height, true);
+    bytes.set([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a], 16);
+    view.setUint32(24, 13);
+    bytes.set([0x49, 0x48, 0x44, 0x52], 28);
+    view.setUint32(32, width);
+    view.setUint32(36, height);
+    return bytes.buffer;
+  }
+
+  it('asks by id only and returns the parsed frame', async () => {
+    invoke.mockResolvedValue(frame(60, 80));
+    const answer = await getRecentThumbnail(4);
+    expect(invoke).toHaveBeenCalledWith('get_recent_thumbnail', { recentId: 4 });
+    expect([answer.width, answer.height]).toEqual([60, 80]);
+  });
+
+  it('rejects an answer that is not a frame and passes a not_found on', async () => {
+    invoke.mockResolvedValue(new Uint8Array([1, 2, 3]).buffer);
+    await expect(getRecentThumbnail(4)).rejects.toMatchObject({ code: 'internal' });
+    invoke.mockRejectedValueOnce({ code: 'not_found', key: 'error.not_found', retryable: false });
+    await expect(getRecentThumbnail(4)).rejects.toMatchObject({ code: 'not_found' });
   });
 });

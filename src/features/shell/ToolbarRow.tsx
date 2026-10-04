@@ -32,7 +32,7 @@ export function ToolbarRow({ entries, moreItems, trafficLightInset }: ToolbarRow
         label={t('toolbar.label')}
         entries={entries}
         moreItems={moreItems}
-        className="min-w-0 flex-auto [&_[aria-disabled=true]]:opacity-(--opacity-disabled)"
+        className="min-w-0 flex-auto [&_[aria-disabled=true]]:text-icon-disabled"
       />
       <AuthorPromptField />
     </div>

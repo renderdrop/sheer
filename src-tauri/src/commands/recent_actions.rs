@@ -28,7 +28,10 @@ impl AppState {
         }
         // The chosen file is judged like any file that is opened (spelling, regular file, PDF signature); its canonical path is kept.
         let admitted = crate::documents::intake::admit(path)?;
-        Ok(recents.relocate(id, &admitted.path))
+        let moved = recents.relocate(id, &admitted.path);
+        // The preview of the old path has no entry any more.
+        self.sweep_thumbnails();
+        Ok(moved)
     }
 }
 

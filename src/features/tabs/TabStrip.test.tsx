@@ -67,7 +67,7 @@ describe('the tab strip', () => {
     setup(<TabStrip />);
     fireEvent.click(screen.getByRole('tab', { name: /A\.pdf/ }));
     expect(useDocuments.getState().activeId).toBe(1);
-    const close = screen.getByRole('button', { name: 'Close B.pdf' });
+    const close = screen.getByLabelText('Close B.pdf');
     expect(close.tabIndex).toBe(-1);
     fireEvent.click(close);
     expect(useDocuments.getState().order).toEqual([1]);
@@ -78,9 +78,9 @@ describe('the tab strip', () => {
     open('A.pdf', 'B.pdf', 'C.pdf');
     setup(<TabStrip />);
     act(() => useDocuments.getState().setActive(2));
-    fireEvent.click(screen.getByRole('button', { name: 'Close B.pdf' }));
+    fireEvent.click(screen.getByLabelText('Close B.pdf'));
     expect(useDocuments.getState().activeId).toBe(3);
-    fireEvent.click(screen.getByRole('button', { name: 'Close C.pdf' }));
+    fireEvent.click(screen.getByLabelText('Close C.pdf'));
     expect(useDocuments.getState().activeId).toBe(1);
   });
 

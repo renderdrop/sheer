@@ -14,6 +14,7 @@ const api = vi.hoisted(() => ({
   openRecent: vi.fn(),
   restoreRecent: vi.fn(),
   locateRecent: vi.fn(),
+  getRecentThumbnail: vi.fn(),
 }));
 const adopt = vi.hoisted(() => vi.fn());
 vi.mock('../../api/recents', () => api);
@@ -31,6 +32,7 @@ beforeEach(() => {
   api.openRecent.mockReset();
   api.restoreRecent.mockReset().mockResolvedValue(true);
   api.locateRecent.mockReset().mockResolvedValue(true);
+  api.getRecentThumbnail.mockReset().mockRejectedValue({ code: 'not_found' });
   useUi.setState({ toast: null, banner: null });
   adopt.mockReset();
   resetTransition();
@@ -65,8 +67,39 @@ describe('the recent files of the empty state', () => {
     setup(<Host />);
     expect(await screen.findByText('First.pdf')).not.toBeNull();
     expect(screen.getByText('File not found')).not.toBeNull();
-    expect(screen.getByText('Recent files are stored only on this device.')).not.toBeNull();
+    expect(screen.getByText('Recent files and their previews are stored only on this device.')).not.toBeNull();
     expect(screen.getByRole('list', { name: 'Recent files' })).not.toBeNull();
+  });
+
+  it('shows the placeholder while the preview is missing and the image once it is there', async () => {
+    const create = vi.fn().mockReturnValue('blob:preview');
+    const revoke = vi.fn();
+    vi.stubGlobal('URL', Object.assign(URL, { createObjectURL: create, revokeObjectURL: revoke }));
+    api.getRecentThumbnail.mockImplementation((id: number) =>
+      id === 1
+        ? Promise.resolve({ data: new Uint8Array([1]), width: 60, height: 80 })
+        : Promise.reject({ code: 'not_found' }),
+    );
+    const { container, unmount } = setup(<Host />);
+    await screen.findByText('First.pdf');
+    await waitFor(() => expect(container.querySelectorAll('[data-recent-thumb]')).toHaveLength(1));
+    const image = container.querySelector('[data-recent-thumb]');
+    expect(image?.getAttribute('alt')).toBe('');
+    expect(image?.getAttribute('src')).toBe('blob:preview');
+    // Only the listed file that is there is asked: the missing one shows its warning tile.
+    expect(api.getRecentThumbnail).toHaveBeenCalledTimes(1);
+    expect(api.getRecentThumbnail).toHaveBeenCalledWith(1);
+    unmount();
+    expect(revoke).toHaveBeenCalledWith('blob:preview');
+    vi.unstubAllGlobals();
+  });
+
+  it('keeps the placeholder when the preview cannot be had', async () => {
+    const { container } = setup(<Host />);
+    await screen.findByText('First.pdf');
+    await waitFor(() => expect(api.getRecentThumbnail).toHaveBeenCalled());
+    expect(container.querySelector('[data-recent-thumb]')).toBeNull();
+    expect(container.querySelector('[data-recent-tile] svg')).not.toBeNull();
   });
 
   it('names the parent folder and the age on the meta line, never a path', async () => {

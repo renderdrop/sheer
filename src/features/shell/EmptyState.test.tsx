@@ -79,7 +79,7 @@ describe('EmptyState (DESIGN 3.11)', () => {
   });
 
   describe('the privacy footer (DESIGN 3.11: omitted when there are no recents)', () => {
-    const FOOTER = 'Recent files are stored only on this device.';
+    const FOOTER = 'Recent files and their previews are stored only on this device.';
 
     it('is not there while the recents are empty', () => {
       const { rerender } = setup(<EmptyState {...props()} />);

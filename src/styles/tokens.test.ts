@@ -91,6 +91,7 @@ describe('color roles (DESIGN 1.2)', () => {
     '--color-text-muted': ['var(--ink-60)', 'var(--ink-40)'],
     '--color-text-accent': ['var(--iris-700)', 'var(--iris-200)'],
     '--color-text-disabled': ['var(--ink-50)', 'var(--ink-60)'],
+    '--color-icon-disabled': ['var(--ink-50)', 'var(--ink-50)'],
     '--color-accent': ['var(--iris-500)', 'var(--iris-300)'],
     '--color-accent-hover': ['var(--iris-600)', 'var(--iris-200)'],
     '--color-accent-pressed': ['var(--iris-700)', 'var(--iris-400)'],

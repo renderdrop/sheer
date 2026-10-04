@@ -405,6 +405,7 @@ fn capabilities_grant_only_the_app_commands_and_the_window_chrome_to_the_main_wi
         "allow-open-recent",
         "allow-restore-recent",
         "allow-locate-recent",
+        "allow-get-recent-thumbnail",
         "allow-set-menu-state",
         "allow-render-page",
         "allow-set-viewport",

@@ -22,6 +22,7 @@
 //! | `save_document`, `save_document_as` | `docId`, `ack?` (and `opts?`) | the `SaveResult` (`null` if the Save As dialog was cancelled), see [`save`] |
 //! | `unlock_document` | `docId`, `password: string` (1 to 1024 bytes) | the `DocumentInfo` once the encrypted file is open; a wrong password is `password_required` (retry waits 1 s after the third, in Rust) |
 //! | `list_recents`, `remove_recent`, `open_recent` | none; `recentId`; `recentId` | `{ id, displayName, folder, lastOpened, missing }[]` (at most 50, no paths; `folder` is the parent folder's name); nothing; the open event of the file (`opened`, `needsPassword` or `openFailed`) |
+//! | `get_recent_thumbnail` | `recentId` | an `SHR1` frame (PNG, at most 64 x 80 px) of the first page; `not_found` when there is none, see [`thumbnails`] |
 //! | `set_menu_state` | `hasDocument: boolean` | nothing; the macOS menu bar greys the commands that need a document |
 //! | `app_ready`, `get_settings`, `update_settings`, `watch_transparency`, `subscribe_menu`, `subscribe_app` | see [`app`] | see [`app`] |
 //!
@@ -53,6 +54,7 @@ pub mod save;
 pub mod search;
 pub mod signatures;
 pub mod text;
+pub mod thumbnails;
 pub mod update;
 
 use std::collections::HashSet;
@@ -164,6 +166,8 @@ pub struct AppState {
     drafts: Arc<crate::signatures::DraftStore>,
     /// The recent files (`storage::recents`); `None` where there is no app data directory (most tests).
     recents: Option<Arc<RecentsStore>>,
+    /// The first-page thumbnails of the recent files (`commands::thumbnails`); `None` where there is no cache directory (most tests).
+    thumbs: Option<Arc<crate::storage::thumbs::ThumbCache>>,
     /// The app data directory, where the backups of the originals go (`commands::save`); `None` where there is none (most tests).
     data_dir: Option<Arc<PathBuf>>,
     /// The crash-safe autosave of this session (ADR-053 section 2); set once by `storage::autosave::start`, empty in most tests.
@@ -182,6 +186,7 @@ impl AppState {
             sources: Arc::new(crate::documents::sources::SourceRegistry::new()),
             drafts: Arc::new(crate::signatures::DraftStore::default()),
             recents: None,
+            thumbs: None,
             data_dir: None,
             autosave: Arc::new(std::sync::OnceLock::new()),
         }
@@ -191,6 +196,13 @@ impl AppState {
     #[must_use]
     pub fn with_recents(mut self, recents: Arc<RecentsStore>) -> Self {
         self.recents = Some(recents);
+        self
+    }
+
+    /// This state with the recents thumbnails kept in `thumbs` (made at close and after a save).
+    #[must_use]
+    pub fn with_thumbnails(mut self, thumbs: Arc<crate::storage::thumbs::ThumbCache>) -> Self {
+        self.thumbs = Some(thumbs);
         self
     }
 
@@ -215,6 +227,8 @@ impl AppState {
             if let Some(recents) = &self.recents {
                 recents.record(path);
             }
+            // A file that fell off the list (the cap) takes its thumbnail along.
+            self.sweep_thumbnails();
         }
     }
 
@@ -408,7 +422,12 @@ impl AppState {
     /// Takes entry `id` off the list. An id that is not listed is nothing (the list may have changed under the UI).
     pub fn remove_recent(&self, id: u32) {
         if let Some(recents) = &self.recents {
+            let path = recents.path_of(id);
             recents.remove(id);
+            // Its preview is deleted with it (DESIGN 3.48); Undo brings the entry back, and the preview is made again at the next close.
+            if let (Some(path), Some(thumbs)) = (path, &self.thumbs) {
+                thumbs.evict(&path);
+            }
         }
     }
 
@@ -488,6 +507,10 @@ impl AppState {
     /// close or open: the engine's copy of the document is never left without an entry that could name it. The same goes for
     /// documents left over from an earlier failure, oldest first.
     pub fn close_document(&self, id: DocumentId) -> Result<(), AppError> {
+        // Its first page becomes the preview of its recents row, while the engine still has it (nothing unsaved: that would be shown).
+        if !self.has_unsaved_changes(id) {
+            self.cache_thumbnail(id);
+        }
         // A search of a document that is going away has nothing left to find in.
         self.searches.cancel_document(id);
         // Its annotations and undo history go with it (a save has to come first; the UI asks before closing a document with changes).

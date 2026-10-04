@@ -137,6 +137,20 @@ impl RecentsStore {
             .map(|item| item.path.clone())
     }
 
+    /// The paths of all listed entries (for the thumbnail cache, which keeps nothing else).
+    pub fn paths(&self) -> Vec<PathBuf> {
+        self.lock()
+            .items
+            .iter()
+            .map(|item| item.path.clone())
+            .collect()
+    }
+
+    /// Whether the file at `path` is listed.
+    pub fn contains(&self, path: &Path) -> bool {
+        self.lock().items.iter().any(|item| item.path == path)
+    }
+
     /// Notes that the file at `path` (absolute, canonical) was opened now: it goes to the front, keeping its id if it was listed,
     /// and the list is cut at the cap. A path that is not UTF-8 cannot be stored and is skipped.
     pub fn record(&self, path: &Path) {

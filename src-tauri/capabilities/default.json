@@ -12,6 +12,7 @@
     "allow-open-recent",
     "allow-restore-recent",
     "allow-locate-recent",
+    "allow-get-recent-thumbnail",
     "allow-set-menu-state",
     "allow-render-page",
     "allow-set-viewport",

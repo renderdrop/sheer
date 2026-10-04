@@ -736,6 +736,8 @@ impl AppState {
         // inserts is in the file.
         self.registry.set_page_count(id, expected)?;
         self.sources.unpin_all(id);
+        // The saved first page is the preview of the recents row (what a redaction took out is not in it: it is drawn from the saved file).
+        self.cache_thumbnail(id);
         Ok(self.result(
             id,
             changes,

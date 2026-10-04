@@ -130,6 +130,7 @@ export function TabStrip() {
           return (
             <motion.div
               key={id}
+              role="presentation"
               initial={{ opacity: 0 }}
               animate={{ opacity: 1, transition: SPRING.fast }}
               className={cx(
@@ -166,6 +167,8 @@ export function TabStrip() {
                 size="sm"
                 icon={X}
                 label={t('tabs.close', { name })}
+                // A tablist owns only tabs (ARIA); keyboard users close with Delete or Primary+W, so the pointer x is hidden from AT.
+                aria-hidden="true"
                 tabIndex={-1}
                 onClick={() => closeTab(id)}
               />

@@ -20,6 +20,7 @@ fn main() {
         "open_recent",
         "restore_recent",
         "locate_recent",
+        "get_recent_thumbnail",
         "set_menu_state",
         "render_page",
         "set_viewport",

@@ -81,9 +81,15 @@ pub fn run() -> Result<(), AppError> {
                     restart_events.publish(events::AppEvent::EngineRestarted { lost });
                 })),
             );
+            // Previews of the recent files live in the app cache directory; any that is not for a listed file is removed now.
+            let thumbs = Arc::new(storage::thumbs::ThumbCache::new(
+                app.path().app_cache_dir()?.join("recent-previews"),
+            ));
+            thumbs.retain(&recents.paths());
             app.manage(
                 AppState::new(engine)
                     .with_recents(recents)
+                    .with_thumbnails(thumbs)
                     .with_data_dir(data_dir.clone()),
             );
             app.manage(Arc::new(SettingsStore::load(
@@ -130,6 +136,7 @@ pub fn run() -> Result<(), AppError> {
             commands::open_recent,
             commands::recent_actions::restore_recent,
             commands::recent_actions::locate_recent,
+            commands::thumbnails::get_recent_thumbnail,
             commands::set_menu_state,
             commands::render::render_page,
             commands::render::set_viewport,

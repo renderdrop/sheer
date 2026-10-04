@@ -88,7 +88,7 @@ function LogoSlot() {
  * 2. The drop card, 24 below: G1, radius 24, padding 40, "Open a PDF", the hint, and the primary large "Open…" button
  *    with the shortcut as a pill badge (no icon tile: the logo replaces it). Initial focus is on that button, the keyboard path (dropping is
  *    pointer-only).
- * 3. Recent files, 32 px below: a heading, then the rows; the whole section is omitted while there are none (DESIGN 3.11). The footer "Recent files are stored only on this device." belongs to the rows and is left out with
+ * 3. Recent files, 32 px below: a heading, then the rows; the whole section is omitted while there are none (DESIGN 3.11). The footer "Recent files and their previews are stored only on this device." belongs to the rows and is left out with
  *    them: a note about a list that is not there would only say that something is stored.
  */
 export function EmptyState({

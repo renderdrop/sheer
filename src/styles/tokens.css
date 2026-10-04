@@ -36,6 +36,7 @@
   --color-text-muted: var(--ink-60);
   --color-text-accent: var(--iris-700);
   --color-text-disabled: var(--ink-50);
+  --color-icon-disabled: var(--ink-50);
   --color-accent: var(--iris-500);
   --color-accent-hover: var(--iris-600);
   --color-accent-pressed: var(--iris-700);
@@ -398,7 +399,6 @@
   --scale-lift: 1.04; /* drag preview card (MOTION 4.5) */
   --pulse-scale: 1.06; /* success pulse ring (MOTION 4.7) */
   --pulse-opacity: 0.6;
-  --opacity-disabled: 0.5; /* toolbar items without a document (DESIGN 3.22) */
   --drag-card-width: 160px;
   --drag-card-height: 208px;
   --grid-thumb: 160px; /* organize grid: the thumbnail box, 96 to 256 in steps of 32 (DESIGN 3.28); the user's choice is set inline */
@@ -438,6 +438,7 @@
     --color-text-muted: var(--ink-40);
     --color-text-accent: var(--iris-200);
     --color-text-disabled: var(--ink-60);
+    --color-icon-disabled: var(--ink-50);
     --color-accent: var(--iris-300);
     --color-accent-hover: var(--iris-200);
     --color-accent-pressed: var(--iris-400);
@@ -483,6 +484,7 @@
   --color-text-muted: var(--ink-40);
   --color-text-accent: var(--iris-200);
   --color-text-disabled: var(--ink-60);
+  --color-icon-disabled: var(--ink-50);
   --color-accent: var(--iris-300);
   --color-accent-hover: var(--iris-200);
   --color-accent-pressed: var(--iris-400);
@@ -594,6 +596,7 @@
     --color-text-muted: CanvasText;
     --color-text-accent: LinkText;
     --color-text-disabled: GrayText;
+    --color-icon-disabled: GrayText;
     --color-accent: Highlight;
     --color-accent-hover: Highlight;
     --color-accent-pressed: Highlight;

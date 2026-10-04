@@ -2,6 +2,7 @@ import { FileText, FileX, X } from 'lucide-react';
 import { useCallback, useEffect, useState, type KeyboardEvent } from 'react';
 
 import {
+  getRecentThumbnail,
   listRecents,
   locateRecent,
   openRecent,
@@ -42,6 +43,49 @@ export function formatAge(lastOpened: number, nowSeconds: number, locale: Locale
     if (elapsed >= seconds) return format.format(-Math.floor(elapsed / seconds), unit);
   }
   return format.format(0, 'second');
+}
+
+/**
+ * The first-page preview of a recent file over the tile's placeholder icon (DESIGN 3.48). The icon stays while the preview loads and when
+ * there is none (no cache yet, a file with a password, a failure); the image fades in over it. Nothing but the id goes to the backend.
+ */
+function RecentThumb({ id, enabled }: { id: number; enabled: boolean }) {
+  const [url, setUrl] = useState<string | null>(null);
+  const [loaded, setLoaded] = useState(false);
+  useEffect(() => {
+    if (!enabled) return;
+    let alive = true;
+    let made: string | null = null;
+    getRecentThumbnail(id).then(
+      (frame) => {
+        if (!alive) return;
+        made = URL.createObjectURL(new Blob([frame.data], { type: 'image/png' }));
+        setUrl(made);
+      },
+      () => undefined,
+    );
+    return () => {
+      alive = false;
+      if (made !== null) URL.revokeObjectURL(made);
+    };
+  }, [id, enabled]);
+  if (url === null) return null;
+  return (
+    <>
+      <img
+        src={url}
+        alt=""
+        data-recent-thumb=""
+        draggable={false}
+        onLoad={() => setLoaded(true)}
+        className={cx(
+          'absolute inset-0 h-full w-full rounded-xs bg-page object-contain transition-opacity duration-base',
+          loaded ? 'opacity-100' : 'opacity-0',
+        )}
+      />
+      <span aria-hidden className="pointer-events-none absolute inset-0 rounded-xs border border-divider" />
+    </>
+  );
 }
 
 export interface Recents {
@@ -164,9 +208,10 @@ export function useRecents(): Recents {
           >
             <span
               data-recent-tile=""
-              className="flex h-5 w-4 shrink-0 items-center justify-center rounded-xs bg-tile text-tile-icon"
+              className="relative flex h-5 w-4 shrink-0 items-center justify-center overflow-hidden rounded-xs bg-tile text-tile-icon"
             >
               <Icon icon={entry.missing ? FileX : FileText} className={cx(entry.missing && 'text-warning-icon')} />
+              <RecentThumb id={entry.id} enabled={!entry.missing} />
             </span>
             <span className="flex min-w-0 flex-1 flex-col">
               <span className="truncate text-md">{name}</span>
