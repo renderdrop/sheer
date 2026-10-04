@@ -251,14 +251,16 @@ Order as in the brief. Each phase ends with one designer round on Tauri-window s
 - [ ] R2 acceptance — screenshot vs moodboard, drag and drop with the mouse, keyboard navigation, designer round
 - [ ] R3.1 — Editor top bar (back, file name, tabs, zoom, page field, undo/redo, search, export, Done, More); Windows menu bar removed
 - [ ] R3.2 — Left sidebar (Pages, Outline, Comments, Search) in the new style; yellow page selection; collapsible, remembered
-- [ ] R3.3 — Canvas (#EFEFEC, page shadow, 24 px gap) and right tool sidebar with progressive disclosure (inspector panel removed)
+- [ ] R3.3 — Canvas (#EFEFEC, page shadow, 24 px gap); ADR-102: mode tabs (Lesen · Kommentieren · Ausfüllen & Signieren · Seiten · Bearbeiten, keys 1–5) with a tool row (≤ 8 tools, F14), contextual properties mini bar, no right sidebar, Windows menu bar restored
 - [ ] R3.4 — Form banner, selection popover (Highlight · Comment · Copy), comments tab (filter, resolved), redact mode (red band, Apply)
+- [ ] R3 spec — DESIGN v2 §3.2 rewritten for ADR-102 (designer)
 - [ ] R3 acceptance — annot-smoke 16/16, old ⋯-menu → new place table (ADR), screenshot vs moodboard, designer round
 - [x] R4.1 — Buttons, icon buttons, inputs, dropdowns, popovers, dialogs, toasts, tooltips with kbd
 - [x] R4.2 — Tabs, segmented control, toggle, checkbox, slider, skeletons, banner, dropzone
 - [ ] R4.3 — Highlight/ink palette (Solar default + Mint, Sky, Rose, Lavender); signature sheet (Sand pad, baseline not in the path, ink Ink/Blue)
 - [ ] R4.4 — /dev/components page (dev builds only) and contrast script (text ≥ 4.5:1, UI ≥ 3:1)
 - [ ] R4 acceptance — contrast script green, designer round
+- [ ] Owner checkpoint — local installer build, then STOP for owner feedback (ADR-102); R5 only after it
 - [ ] R5.1 — Spells 1–6 (tool pill, page indicator, document open, drop zone, marker trail, saved check)
 - [ ] R5.2 — Spells 7–12 (undo, comment jump, delete page, app start, ambient glow, tool cursors)
 - [ ] R5.3 — Spells 13–18 (magnifier, sidebar chevrons, skeletons, tooltip groups, zoom snap, focus ring)

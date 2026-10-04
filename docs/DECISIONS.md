@@ -1915,3 +1915,23 @@ slider, swatch, skeleton, banner, dropzone), F1 = R1 brand fixes from the R0 des
 installer build) completes after wave 4.
 
 **Consequences.** The brief's phase order R2 → R3 → R4 holds for acceptance, not for build order.
+
+## ADR-102 — Editor layout: mode tabs and a tool row instead of the right tool sidebar (owner decision)
+
+**Status:** accepted (2026-10-04). Source: product-owner decision in the session of 2026-10-04 (verbatim intent below); tool assignment
+per mode: `docs/FEEDBACK.md` F14 (entered by the owner). Supersedes BRAND §15–§19 and REDESIGN_BRIEF R3 where they describe the right
+tool sidebar, DESIGN v2 §3.2 "Tool sidebar" and the rail, ADR-100 item 1 ("Windows has no classic menu bar") and ADR-101 item (2) for
+the tool sidebar package.
+
+**Decision.** (1) No right tool sidebar and no rail; the column is removed from the editor grid. (2) Below the top bar a row of mode
+tabs as text tabs: Lesen · Kommentieren · Ausfüllen & Signieren · Seiten · Bearbeiten (keys 1–5). Each mode shows one row of at most
+eight tools with icon and label; the active tool has the Solar background (Ink label). (3) Properties are a contextual mini bar above
+the selection, visible only while something is selected, never covering the selected element. (4) The left navigation stays (Seiten,
+Gliederung, Kommentare, Suche), collapsible. (5) Mode "Seiten" replaces the document view with the page grid. (6) Export, Drucken,
+Schützen and Dokumenteigenschaften stay in the File menu; the Windows in-window menu bar stays (restored); macOS keeps the native one.
+(7) Order of work: designer spec (DESIGN v2 §3.2 rewritten), then the shell package, then a local installer build, then STOP —
+R5 (motion) only after the owner's feedback.
+
+**Consequences.** The wave 4 tool sidebar (`src/features/tools/`) is replaced, not polished; the wave 5 fix package drops its sidebar
+items. The v1.2 command map (ARCHITECTURE §12) is redone for the menu bar. `ui.inspector`/`toolSidebarCollapsed` lose their meaning
+and are removed with the shell package.
