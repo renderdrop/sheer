@@ -108,7 +108,7 @@ signatures is the bundled Homemade Apple font's marker texture, not rasterisatio
 Every item: reproduce and accept in the installed build with real mouse input (OS cursor, `scripts/ui/mouse.ps1`), not only in tests.
 Owner screenshots: `review/owner/` (not tracked).
 
-- [ ] 1. Redaction is surgical: (a) the extra black bar at the page bottom on the first click (check after item 2); (b) the rest of the
+- [x] 1. Redaction is surgical: (a) the extra black bar at the page bottom on the first click (check after item 2); (b) the rest of the
       page stays text (selectable, searchable); remove only text objects, image areas and vectors inside the rectangle; rasterise at most
       the affected image area, never the page. Acceptance: after redact + save, an unredacted sentence is selectable and findable in Sheer
       and in Edge, the redacted one is not
@@ -121,7 +121,7 @@ Owner screenshots: `review/owner/` (not tracked).
 - [x] 7. Starting the tour closes the current document and drops changes: open the welcome document in a new tab, never lose unsaved work
 - [x] 8. Drawn signature: the pad shows raw angular strokes and a guide line that is drawn along; smoothing must apply live; the guide is
       not part of the path
-- [ ] Tag v1.0.1 (tester, security-reviewer, annot-smoke, installed-build acceptance)
+- [x] Tag v1.0.1 (tester, security-reviewer, annot-smoke, installed-build acceptance)
 
 ## F12 — Milestone v1.1 "Structure and comfort"
 
@@ -139,3 +139,9 @@ soft gradient, translucent white cards, icon tiles, pill badges; the owner's ima
 - [ ] 5. Typed signature: three selectable fonts (SIL OFL: e.g. Dancing Script, Great Vibes, Alex Brush); add OFL-1.1 to the font license
       allowlist; remove Homemade Apple
 - [ ] Tag v1.1.0 (milestone DoD §8.6)
+
+F11 result (v1.0.1): accepted in the installed build with the real OS cursor (scripts/ui/mouse.ps1). Redaction cuts glyphs/vectors/image
+pixels inside the marks only (ADR-055); after save "Repeated" is found and "lazy" is not, in Sheer and in Edge (1/1 vs 0/0), the file has
+no images. Preview under the pointer (overlayBox got pt instead of px); editing via a valid coalesce key + double-click/Enter; selecting
+never refits the zoom (ADR-056); comments list marks (ADR-057); the tour opens a new tab; pad strokes never join; pages re-render sharp
+after a save. tester PASS, security-reviewer PASS, annot-smoke 16/16. Screenshots in review/f11/ (not tracked).

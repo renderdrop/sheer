@@ -6,6 +6,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.1] - 2026-10-04
+
+Patch from the product owner's test of 1.0.0 (FEEDBACK F11).
+
 ### Fixed
 
 - Redaction is surgical: only text, drawings and image areas inside the marked rectangles are removed; the rest of the page stays real, selectable and searchable text (in Sheer and in other viewers). Pages are never turned into pictures.
