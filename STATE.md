@@ -1,7 +1,7 @@
 # STATE
 phase: M7
 version: 0.9.0
-current_item: M7 backend committed (0bead88; reviews PASS except B3/B4 FIX round on updater artifacts, running; security PASS, engine lows being fixed). UI wave running: F1 recovery | F2 updater UI | F3 performance | F4 CSP sweep. Then W3 accessibility, i18n, recents thumbnails; Politur M7; v1.0.0 close
+current_item: M7 W3 running: accessibility pass | recents thumbnails | i18n complete | signing guide + SECURITY.md; review of M7 UI wave. Then Politur M7, fps zoom/panel slide measurement, milestone end (tester, full security audit, annot-smoke, csp gate, print gate, designer), v1.0.0 per DoD §8.6 + stop condition 1 (DONE)
 last_completed: v0.9.0 (tag on 4706a0b; candidate CI 37170218415 green on Windows + macOS; release built)
 loop_count_this_session: 0
 open_blockers: 2 (B-001 UI never seen on a Mac, macOS keychain untested; B-002 code signing)
