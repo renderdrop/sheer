@@ -13,7 +13,7 @@ import type { HubCardId } from './cards';
  * What a hub card does once its document is open (DESIGN 3.54, "Then" column). Cards whose mode needs a document set an intent
  * after the file is open; `consumeIntent` runs it once and forgets it. Merge and Images to PDF need no document and have none.
  */
-export type HubIntent = 'split' | 'compress' | 'sign' | 'redact' | 'fill';
+export type HubIntent = 'split' | 'compress' | 'sign' | 'redact' | 'fill' | 'export';
 
 interface Pending {
   intent: HubIntent;
@@ -93,6 +93,9 @@ export async function applyIntent(intent: HubIntent, docId: number): Promise<voi
     case 'redact':
       enterRedactMode();
       useUi.getState().setInspector('open');
+      return;
+    case 'export':
+      useUi.getState().setExportImagesOpen(true);
       return;
     case 'sign':
       await openSignPopover();

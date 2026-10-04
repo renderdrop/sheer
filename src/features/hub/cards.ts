@@ -1,5 +1,6 @@
 import {
   FileArchive,
+  FileImage,
   Files,
   FolderOpen,
   Images,
@@ -13,7 +14,17 @@ import {
 import type { PlainKey } from '../../i18n';
 import type { HubIntent } from './intent';
 
-export const HUB_CARD_IDS = ['open', 'merge', 'split', 'compress', 'images', 'sign', 'redact', 'fill'] as const;
+export const HUB_CARD_IDS = [
+  'open',
+  'merge',
+  'split',
+  'compress',
+  'images',
+  'sign',
+  'redact',
+  'fill',
+  'export',
+] as const;
 export type HubCardId = (typeof HUB_CARD_IDS)[number];
 
 export interface HubCard {
@@ -57,5 +68,13 @@ export const HUB_CARDS: readonly HubCard[] = [
     hintKey: 'hub.fillHint',
     multi: false,
     intent: 'fill',
+  },
+  {
+    id: 'export',
+    icon: FileImage,
+    titleKey: 'home.tool.export',
+    hintKey: 'home.tool.exportHint',
+    multi: false,
+    intent: 'export',
   },
 ];

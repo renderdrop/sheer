@@ -21,8 +21,8 @@ const LANGUAGE_CHOICES: readonly { value: Language; labelKey: PlainKey }[] = [
   { value: 'de', labelKey: 'settings.language.de' },
 ];
 
-/** Where the popover is anchored: the toolbar's More button (the command's home, `data-toolbar-item="more"`), else the toolbar, else (Home has no toolbar) the Home strip. */
-const ANCHORS = ['[data-toolbar-item="more"]', '[role="toolbar"]', '[data-slot="home-strip"]'];
+/** Where the popover is anchored: Home's Settings row, else the toolbar's More button (the command's home, `data-toolbar-item="more"`), else the toolbar, else (Home has no toolbar) the Home strip. */
+const ANCHORS = ['[data-home-settings]', '[data-toolbar-item="more"]', '[role="toolbar"]', '[data-slot="home-strip"]'];
 
 function findAnchor(): HTMLElement | null {
   for (const selector of ANCHORS) {

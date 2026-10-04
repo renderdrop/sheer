@@ -3,8 +3,8 @@ import type { ReactNode } from 'react';
 import type { Platform } from '../../api/app';
 import { BrandSurface } from '../../components';
 import { cx } from '../../components/cx';
+import { Home } from '../home/Home';
 import { BannerSlot } from './BannerSlot';
-import { EmptyStateSlot } from './EmptyStateSlot';
 
 export interface HomeSlotProps {
   platform: Platform | null;
@@ -16,8 +16,7 @@ export interface HomeSlotProps {
 
 /**
  * Home (DESIGN v2 3.1): the whole window on a `BrandSurface`. The top 56 strip is the drag region, with the Windows caption buttons
- * at the right or the macOS traffic-light inset at the left; below it the banner slot and the body. TEMPORARY body: today's empty
- * state and hub, until the Home package.
+ * at the right or the macOS traffic-light inset at the left; below it the banner slot and the body (`features/home`).
  */
 export function HomeSlot({ platform, trafficLightInset, captionControls }: HomeSlotProps) {
   return (
@@ -31,9 +30,7 @@ export function HomeSlot({ platform, trafficLightInset, captionControls }: HomeS
         {captionControls}
       </div>
       <BannerSlot />
-      <div className="flex min-h-0 flex-auto">
-        <EmptyStateSlot platform={platform} />
-      </div>
+      <Home platform={platform} />
     </BrandSurface>
   );
 }
