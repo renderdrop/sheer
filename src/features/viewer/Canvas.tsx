@@ -362,10 +362,15 @@ export function Canvas({
             data-canvas-content=""
             className="relative m-auto flex-none"
             // The tour's card may ask for scroll height after the last page; a margin does not touch the viewport.
-            style={{ width: content.width + reserve, height: content.height, marginBottom: 'var(--canvas-extra-scroll, 0px)' }}
+            style={{
+              width: content.width + reserve,
+              height: content.height,
+              marginBottom: 'var(--canvas-extra-scroll, 0px)',
+            }}
           >
             {children}
-            {reserve > 0 && renderMargin?.(reserve > marginMetrics().gap + marginMetrics().compact ? 'full' : 'compact')}
+            {reserve > 0 &&
+              renderMargin?.(reserve > marginMetrics().gap + marginMetrics().compact ? 'full' : 'compact')}
           </div>
         ) : null}
       </div>
