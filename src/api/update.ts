@@ -1,7 +1,7 @@
 import { Channel } from '@tauri-apps/api/core';
 
 import { call } from './call';
-import { ERROR_CODES, toAppError, type ErrorCode } from './errors';
+import { ERROR_CODES, toAppError, type AppError, type ErrorCode } from './errors';
 
 /*
  * Updates (docs/ARCHITECTURE.md section 5, "Ship (M7)", ADR-053 section 3; commands/update.rs). The backend makes every request;
@@ -86,4 +86,9 @@ export function installUpdateOnQuit(): Promise<void> {
 /** Does not offer `version` again. Rejects with `invalid_argument` `updateVersion` for a string that is not a version. */
 export function skipUpdateVersion(version: string): Promise<void> {
   return call<void>('skip_update_version', { version });
+}
+
+/** The signing key is still the placeholder, so the updater cannot run and the Updates setting stays hidden (BLOCKERS B-005). */
+export function isUpdaterUnconfigured(error: AppError): boolean {
+  return error.code === 'unsupported_feature' && error.params?.what === 'updater_unconfigured';
 }

@@ -1,5 +1,5 @@
 //! The hostile corpus (`tests/fixtures/malformed/`, made by `tests/support/malformed.rs`) against the real PDFium, through the same
-//! `AppState` the commands use. Every file is opened and then asked for what the viewer asks for: the page sizes, page 0 rendered,
+//! `AppState` the commands use, with PDFium in the engine child process (ADR-053). Every file is opened and then asked for what the viewer asks for: the page sizes, page 0 rendered,
 //! its text layer and its links. The answer may be a document or a typed error. It may not be a panic, a hang, or an engine that is
 //! dead afterwards (SECURITY P5, ORCHESTRATOR 13.3).
 //!
@@ -44,7 +44,12 @@ fn state() -> Option<Arc<AppState>> {
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("pdfium");
     let library = engine::library_path(&root);
     if library.is_file() {
-        Some(Arc::new(AppState::new(Engine::start(library))))
+        // Through the engine child (ADR-053): a file that crashes or wedges PDFium costs a restart, never the app.
+        Some(Arc::new(AppState::new(Engine::start_process(
+            library,
+            PathBuf::from(env!("CARGO_BIN_EXE_sheer")),
+            None,
+        ))))
     } else {
         eprintln!("skipping the fuzz corpus: {} not found", library.display());
         None
@@ -154,10 +159,10 @@ fn every_malformed_file_ends_in_a_document_or_a_typed_error_never_a_panic_or_a_h
 
 // --- known wedges (SECURITY P5, ROADMAP "Politur M1") ---
 //
-// Two files make PDFium work for a very long time inside one call, which nothing in-process can interrupt. They are not in
-// `malformed::all()` (that would hang the suite until PDFium is fixed or the engine process of M7 can kill the call), only here, and
-// ignored. Run them by hand with `cargo test --test fuzz_corpus -- --ignored`. What they pin down is the part that is ours: the
-// caller gets a typed error at its deadline, the engine replaces the stuck worker, and a good file opens afterwards.
+// Two files make PDFium work for a very long time inside one call. Since M7 (ADR-053) PDFium runs in the engine child, which the
+// parent kills at the deadline, so they run with the rest. They are not in `malformed::all()` only because each costs the render
+// deadline (twice, for the second strike). What they pin down is the part that is ours: the caller gets a typed error at its
+// deadline, the engine restarts, and a good file opens afterwards.
 //
 // Note on the command line (`documents::intake::paths_from_args`): a dotless file name that follows a bare `--flag` is taken for
 // the flag's value and skipped; give such a file with a path separator or an extension.
@@ -216,13 +221,11 @@ fn wedge_then_recovery(name: &'static str, bytes: Vec<u8>) {
 }
 
 #[test]
-#[ignore = "wedges PDFium for minutes: an in-process engine cannot interrupt it (M7)"]
 fn a_tiny_xstep_tiling_pattern_ends_in_a_typed_error_and_the_engine_recovers() {
     wedge_then_recovery("tiny-xstep-tiling.pdf", tiny_xstep_tiling());
 }
 
 #[test]
-#[ignore = "wedges PDFium for minutes: an in-process engine cannot interrupt it (M7)"]
 fn a_self_calling_form_xobject_ends_in_a_typed_error_and_the_engine_recovers() {
     wedge_then_recovery("self-calling-form.pdf", self_calling_form());
 }

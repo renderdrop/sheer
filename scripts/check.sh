@@ -5,7 +5,7 @@
 # The full output of a failed step is kept under the directory printed at the end.
 #
 # Steps: PDFium fetch, version sync, tsc, eslint, prettier, vitest, cargo fmt, clippy -D warnings, cargo test,
-#        cargo deny, cargo audit, npm audit, network-crate guard, PDF-library import guard, secret scan.
+#        cargo deny, cargo audit, npm audit, network-crate guard, updater-scope guard, PDF-library import guard, secret scan.
 set -uo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -82,42 +82,56 @@ step() {
 # Rule 4 (local only): no HTTP/WebSocket stack in the desktop build. Tauri lists reqwest (and hyper beneath it) in
 # Cargo.lock for its Android/iOS targets only, so a plain grep of the lockfile would fail on day one. The guard
 # therefore resolves the real dependency graph of the shipped targets and fails when a network crate is in it.
-# The only permitted exception is the opt-in updater module: crates listed in NETWORK_ALLOWED_PARENTS may depend on
-# them. Add the updater plugin there when it lands (and nothing else).
+# The only permitted exception is the opt-in updater (ADR-053 section 3): the graph is resolved with the roots in
+# NETWORK_ALLOWED_ROOTS pruned (`cargo tree --prune`), so the updater plugin and everything below it (reqwest, hyper,
+# native-tls, ...) is allowed, but the same crate reached from anywhere else is not. guard_updater_scope then makes sure only
+# src-tauri/src/update/ names those crates in code.
 # tokio is not listed: it is the async runtime Tauri needs, and tauri-plugin-single-instance (Windows) enables its `net` feature for
 # the named pipe / local socket it forwards a second launch over. That is local IPC, not HTTP or WebSocket (SECURITY T10); the
 # crates below are the ones that would reach the network.
 NETWORK_CRATES=(reqwest hyper ureq tauri-plugin-http tauri-plugin-websocket tungstenite)
-NETWORK_ALLOWED_PARENTS=(tauri-plugin-updater)
+NETWORK_ALLOWED_ROOTS=(tauri-plugin-updater)
 DESKTOP_TARGETS=(x86_64-pc-windows-msvc aarch64-apple-darwin x86_64-apple-darwin)
 
 guard_network_crates() {
-  local target crate packages parents parent allowed a ok=1
+  local target crate packages root ok=1
+  local prune=()
+  for root in "${NETWORK_ALLOWED_ROOTS[@]}"; do
+    prune+=(--prune "$root")
+  done
   for target in "${DESKTOP_TARGETS[@]}"; do
     if ! packages="$(cargo tree --manifest-path "$MANIFEST" --locked --all-features -e normal,build \
-      --target "$target" --prefix none --format '{p}' 2>&1)"; then
+      --target "$target" --prefix none --format '{p}' "${prune[@]}" 2>&1)"; then
       echo "error: cargo tree failed for $target:"
       printf '%s\n' "$packages"
       return 1
     fi
     for crate in "${NETWORK_CRATES[@]}"; do
-      printf '%s\n' "$packages" | grep -q "^$crate v" || continue
-      parents="$(cargo tree --manifest-path "$MANIFEST" --locked --all-features -e normal,build \
-        --target "$target" --prefix none --format '{p}' -i "$crate" --depth 1 2>/dev/null |
-        awk -v crate="$crate" '$1 != crate { print $1 }' | sort -u)"
-      for parent in $parents; do
-        allowed=0
-        for a in "${NETWORK_ALLOWED_PARENTS[@]}"; do
-          [ "$parent" = "$a" ] && allowed=1
-        done
-        if [ "$allowed" -eq 0 ]; then
-          echo "error: network crate '$crate' is part of the $target build via '$parent'"
-          ok=0
-        fi
-      done
+      if printf '%s\n' "$packages" | grep -q "^$crate v"; then
+        echo "error: network crate '$crate' is part of the $target build outside the updater (${NETWORK_ALLOWED_ROOTS[*]})"
+        ok=0
+      fi
     done
   done
   [ "$ok" -eq 1 ]
+}
+
+# The updater and HTTP crates may be named in code only under src-tauri/src/update/ (comment lines are ignored). Takes the source
+# directory as an argument so the test (src-tauri/tests/updater_scope.rs) can point it at a scratch tree.
+UPDATER_SCOPE_PATTERN='(^|[^A-Za-z0-9_])(tauri_plugin_updater|tauri_plugin_http|tauri_plugin_websocket|reqwest|hyper|ureq|tungstenite|minisign_verify)([^A-Za-z0-9_]|$)'
+
+guard_updater_scope() {
+  local dir="${1:-src-tauri/src}" hits
+  dir="${dir%/}"
+  hits="$(
+    grep -rnE --include='*.rs' "$UPDATER_SCOPE_PATTERN" "$dir" 2>/dev/null |
+      grep -vF "$dir/update/" |
+      grep -vE '^.+:[0-9]+:[[:space:]]*//'
+  )"
+  if [ -n "$hits" ]; then
+    printf '%s\n' "$hits" | sed 's|^|error: updater/HTTP crate named outside update/: |'
+    return 1
+  fi
 }
 
 # cargo deny once per shipped target. The lockfile also carries the Linux GTK stack (RUSTSEC-flagged glib and
@@ -173,6 +187,9 @@ guard_secrets() {
   esac
 }
 
+# `source scripts/check.sh` with SHEER_CHECK_SOURCE_ONLY=1 only defines the functions (src-tauri/tests/updater_scope.rs).
+if [ "${SHEER_CHECK_SOURCE_ONLY:-}" = 1 ]; then return 0 2>/dev/null || exit 0; fi
+
 # --- run -------------------------------------------------------------------------------------------------------
 
 # PDFium must be unpacked before any cargo step: tauri-build checks the bundled resources. The script is a no-op
@@ -193,6 +210,7 @@ step "cargo audit" cargo audit --file src-tauri/Cargo.lock
 step "npm audit" npm audit --audit-level=high
 
 step "guard: network crates" guard_network_crates
+step "guard: updater scope" guard_updater_scope
 step "guard: pdf imports" guard_pdf_imports
 step "guard: secrets" guard_secrets
 

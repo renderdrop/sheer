@@ -38,14 +38,19 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # macOS: the runner's architecture (arm64 on macos-latest), not universal, because the pinned PDFium
-          # binary is fetched for the runner architecture only. Intel Macs are not covered by this build.
+          # Windows: NSIS per-user installer; the WebView2 bootstrapper and the .pdf "Open with" hooks are in
+          # tauri.windows.conf.json (ADR-053 section 5).
           - os: windows-latest
             bundle: nsis
+            target_args: ''
+            pdfium: win-x64
             glob: src-tauri/target/release/bundle/nsis/*.exe
+          # macOS: one universal DMG (arm64 + x86_64). fetch-pdfium.sh mac-universal fetches both PDFium slices.
           - os: macos-latest
             bundle: dmg
-            glob: src-tauri/target/release/bundle/dmg/*.dmg
+            target_args: --target universal-apple-darwin
+            pdfium: mac-universal
+            glob: src-tauri/target/universal-apple-darwin/release/bundle/dmg/*.dmg
     defaults:
       run:
         shell: bash
@@ -68,6 +73,10 @@ jobs:
       - name: Install Rust toolchain
         run: rustup toolchain install
 
+      - name: Add the second macOS target
+        if: runner.os == 'macOS'
+        run: rustup target add aarch64-apple-darwin x86_64-apple-darwin
+
       - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
@@ -84,10 +93,10 @@ jobs:
 
       # Pinned release, SHA256-verified (scripts/fetch-pdfium.sh).
       - name: Fetch PDFium
-        run: npm run fetch-pdfium
+        run: bash scripts/fetch-pdfium.sh "${{ matrix.pdfium }}"
 
       - name: Build unsigned installer
-        run: npm run tauri build -- --bundles ${{ matrix.bundle }}
+        run: npm run tauri build -- --bundles ${{ matrix.bundle }} ${{ matrix.target_args }}
 
       - name: Checksum
         run: |

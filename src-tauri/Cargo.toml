@@ -45,6 +45,9 @@ getrandom = "0.3"
 # SASLprep (RFC 4013) for the passwords of AES-256 R6 (security/secret.rs); the same crate and version lopdf uses. MIT OR Apache-2.0.
 stringprep = "0.1"
 keyring-core = "1.0"
+tauri-plugin-updater = { version = "2", default-features = false, features = ["native-tls", "zip"] }
+minisign-verify = "0.2"
+base64 = "0.22"
 
 # Windows only: opening another PDF from the file manager starts another process; this hands its command line to the running
 # window and ends it (src/sources.rs). Local only (a named mutex and a window message): no network. macOS routes files to the
@@ -72,6 +75,7 @@ libc = "0.2"
 # Tests only: the macOS menu's accelerators (src/actions/menu.json) are parsed by muda, the crate under Tauri's menus, and a
 # string it cannot read is dropped without an error; a test parses each one. Already in the build through Tauri (same version).
 [dev-dependencies]
+minisign = { version = "0.10", default-features = false }
 muda = { version = "0.20.0", default-features = false }
 
 # The engine contains panics with `catch_unwind` (SECURITY P5), which only works when panics unwind.

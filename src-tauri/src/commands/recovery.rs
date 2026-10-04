@@ -8,26 +8,29 @@
 //! | `discard_recovery` | `id: RecoveryId` | nothing |
 //! | `discard_all_recoveries` | none | how many were removed |
 //!
-//! Every answer names a record by a session-scoped [`RecoveryId`], never by path.
+//! Every answer names a record by a session-scoped [`RecoveryId`], never by path. This module also holds the `AppState` side of autosave:
+//! the timer round that feeds `storage::autosave` with snapshot bytes, and the hooks of save and close.
+
+use std::path::PathBuf;
+use std::sync::Arc;
+use std::time::{Duration, Instant};
 
 use serde::Serialize;
-use tauri::State;
+use tauri::{AppHandle, Manager, State};
 
-use super::{blocking, AppState};
-use crate::error::{AppError, UiError};
+use super::{blocking, AppState, Opened};
+use crate::documents::{DocKind, DocumentId};
+use crate::error::{AppError, ErrorCode, UiError};
 use crate::events::AppEvent;
+use crate::export::snapshot;
+pub use crate::storage::autosave::OriginalState;
+use crate::storage::autosave::{Autosave, AutosaveStatus, SaveGuard, Snapshot, Written};
 
 /// Names one recovery record for the lifetime of the app session; not a path, not stable across runs.
 pub type RecoveryId = u32;
 
-/// Whether the file the document was opened from still is what it was.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub enum OriginalState {
-    Unchanged,
-    Changed,
-    Missing,
-}
+/// How often the timer looks at the open documents.
+const TICK: Duration = Duration::from_secs(5);
 
 /// A document the last session left behind.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -44,25 +47,288 @@ pub struct RecoveryEntry {
 }
 
 impl AppState {
-    /// The records of dead sessions. Stub (package B2): `not_yet`.
+    /// Hands the session's autosave to the state. `false` when it has one already.
+    pub fn attach_autosave(&self, autosave: Arc<Autosave>) -> bool {
+        self.autosave.set(autosave).is_ok()
+    }
+
+    /// The session's autosave, where there is one.
+    pub fn autosave(&self) -> Option<&Arc<Autosave>> {
+        self.autosave.get()
+    }
+
+    /// What `DocumentInfo.autosave` says about `id`.
+    pub(super) fn autosave_status_of(&self, id: DocumentId) -> AutosaveStatus {
+        self.autosave
+            .get()
+            .map_or(AutosaveStatus::Clean, |autosave| autosave.status_of(id))
+    }
+
+    /// A save or close of `id` is done: its records go (and the one a recovered document came from).
+    pub(super) fn autosave_forget(&self, id: DocumentId) {
+        if let Some(autosave) = self.autosave.get() {
+            autosave.forget(id);
+        }
+    }
+
+    /// Held while a save runs: no autosave write starts meanwhile.
+    pub(super) fn autosave_save_guard(&self) -> Option<SaveGuard> {
+        self.autosave.get().map(Autosave::begin_save)
+    }
+
+    /// The folder a recovered document's original was in, for the Save As dialog; never sent to the UI.
+    pub(super) fn autosave_original_dir(&self, id: DocumentId) -> Option<PathBuf> {
+        self.autosave.get()?.original_dir(id)
+    }
+
+    /// One round of the timer at `now`: looks at every open document and writes the ones that are due. Answers how many were written.
+    pub fn autosave_tick(&self, now: Instant) -> usize {
+        self.autosave_round(now, false)
+    }
+
+    /// The window lost focus: writes every document with changes that are not written yet.
+    pub fn autosave_flush(&self, now: Instant) -> usize {
+        self.autosave_round(now, true)
+    }
+
+    fn autosave_round(&self, now: Instant, force: bool) -> usize {
+        let Some(autosave) = self.autosave.get() else {
+            return 0;
+        };
+        let Some(_run) = autosave.begin_run() else {
+            return 0;
+        };
+        for id in self.registry.open_ids() {
+            self.autosave_observe(autosave, id, now);
+        }
+        let ids = if force {
+            autosave.unwritten_all()
+        } else {
+            autosave.due(now)
+        };
+        let mut written = 0;
+        for id in ids {
+            // One at a time, and never during a save.
+            if autosave.saving() {
+                break;
+            }
+            if self.registry.kind(id).is_none() {
+                autosave.clear_own(id);
+                continue;
+            }
+            match self.autosave_write(autosave, id) {
+                Ok(true) => written += 1,
+                Ok(false) => {}
+                // Logged, never a banner (ADR-053 section 2).
+                Err(error) => error.log(),
+            }
+        }
+        written
+    }
+
+    /// Decides what autosave does with `id` now: nothing to protect, withheld (encrypted or a protection change is staged), or tracked.
+    fn autosave_observe(&self, autosave: &Autosave, id: DocumentId, now: Instant) {
+        let Some(info) = self.info(id) else {
+            return;
+        };
+        // The bundled tour sample is a throw-away: there is nothing of the user's in it.
+        if info.kind == DocKind::Welcome {
+            return;
+        }
+        if !self.annotations.is_dirty(id) {
+            autosave.settle_clean(id);
+            return;
+        }
+        let Ok((rev, pending)) = self.model(id, |state| {
+            Ok((state.rev(), state.pending_protection().is_some()))
+        }) else {
+            return;
+        };
+        if info.flags.encrypted || pending {
+            autosave.withhold(id);
+            return;
+        }
+        autosave.observe(id, rev, now);
+        if autosave.status_of(id) == AutosaveStatus::Clean {
+            autosave.set_status(id, AutosaveStatus::On);
+        }
+    }
+
+    /// Writes the snapshot of `id`. `true` when a record was written.
+    fn autosave_write(&self, autosave: &Autosave, id: DocumentId) -> Result<bool, AppError> {
+        let info = self.info(id).ok_or(AppError::not_found("document"))?;
+        let rev = autosave
+            .observed_rev(id)
+            .ok_or(AppError::not_found("document"))?;
+        let bytes = match snapshot::current_bytes(self, id) {
+            Ok(Some(bytes)) => bytes,
+            Ok(None) => {
+                autosave.settle_clean(id);
+                return Ok(false);
+            }
+            Err(error) if error.code() == ErrorCode::LimitExceeded => {
+                autosave.mark_too_large(id, rev);
+                return Ok(false);
+            }
+            Err(error) => {
+                autosave.note_failed(id, rev);
+                return Err(error);
+            }
+        };
+        let original = autosave.original_of(id).or_else(|| self.registry.path(id));
+        let written = autosave.write(&Snapshot {
+            id,
+            rev,
+            bytes: &bytes,
+            display_name: &info.display_name,
+            original: original.as_deref(),
+            page_count: self.registry.page_count(id).unwrap_or(info.page_count),
+        });
+        match written {
+            Ok(Written::Done) => Ok(true),
+            Ok(Written::TooLarge) => Ok(false),
+            Err(error) => {
+                autosave.note_failed(id, rev);
+                Err(error)
+            }
+        }
+    }
+
+    /// The records of dead sessions (newest first). Without an autosave there are none.
     pub fn list_recoveries(&self) -> Result<Vec<RecoveryEntry>, AppError> {
-        Err(AppError::not_yet())
+        let Some(autosave) = self.autosave.get() else {
+            return Ok(Vec::new());
+        };
+        Ok(autosave
+            .list()
+            .into_iter()
+            .map(|view| RecoveryEntry {
+                id: view.id,
+                display_name: view.display_name,
+                folder: view.folder,
+                saved_at: super::annotations::iso8601_utc(view.saved_at),
+                page_count: view.page_count,
+                original: view.original,
+            })
+            .collect())
     }
 
-    /// Opens record `id` through intake as `DocKind::Recovered`. Stub (package B2): `not_yet`.
-    pub fn restore_recovery(&self, _id: RecoveryId) -> Result<AppEvent, AppError> {
-        Err(AppError::not_yet())
+    /// Opens record `id` through intake as `DocKind::Recovered`: a copy in this session's directory is what is opened, the record stays
+    /// until the document is saved (as another file) or closed. A record that is open already answers with its document.
+    pub fn restore_recovery(&self, id: RecoveryId) -> Result<AppEvent, AppError> {
+        let autosave = self.autosave.get().ok_or(AppError::not_found("recovery"))?;
+        if let Some(open) = autosave
+            .restored_doc(id)
+            .and_then(|document| self.info(document))
+        {
+            return Ok(AppEvent::opened(open));
+        }
+        let staged = autosave.stage_restore(id)?;
+        let opened = self.open_as(
+            staged.path.clone(),
+            DocKind::Recovered,
+            Some(staged.display_name.clone()),
+        );
+        Ok(match opened {
+            Ok(Opened::Ready(info)) => {
+                autosave.adopt(info.id, &staged);
+                AppEvent::opened(info)
+            }
+            // A snapshot is never encrypted: a record that asks for a password is not ours.
+            Ok(Opened::Locked { id: document, .. }) => {
+                self.registry.remove_locked(document);
+                autosave.unstage(&staged);
+                autosave.quarantine_dead(id);
+                AppEvent::open_failed(AppError::new(ErrorCode::DamagedFile))
+            }
+            Ok(Opened::Pending) => AppEvent::open_failed(AppError::new(ErrorCode::Internal)),
+            Err(error) => {
+                autosave.unstage(&staged);
+                if matches!(error.code(), ErrorCode::DamagedFile | ErrorCode::NotAPdf) {
+                    autosave.quarantine_dead(id);
+                }
+                AppEvent::open_failed(error)
+            }
+        })
     }
 
-    /// Deletes record `id`. Stub (package B2): `not_yet`.
-    pub fn discard_recovery(&self, _id: RecoveryId) -> Result<(), AppError> {
-        Err(AppError::not_yet())
+    /// Deletes record `id`; `not_found` (`recovery`) for an id that is not listed.
+    pub fn discard_recovery(&self, id: RecoveryId) -> Result<(), AppError> {
+        self.autosave
+            .get()
+            .ok_or(AppError::not_found("recovery"))?
+            .discard(id)
     }
 
-    /// Deletes every record and answers how many there were. Stub (package B2): `not_yet`.
+    /// Deletes every record and answers how many there were.
     pub fn discard_all_recoveries(&self) -> Result<u32, AppError> {
-        Err(AppError::not_yet())
+        Ok(self
+            .autosave
+            .get()
+            .map_or(0, |autosave| autosave.discard_all()))
     }
+}
+
+/// The hook of `storage::autosave::start`: takes the session lock under the app data directory, hands the autosave to the managed
+/// `AppState` and starts the timer. A failure is logged and leaves the app without autosave, never without a window.
+pub fn start_autosave(app: &AppHandle) {
+    let Some(state) = app.try_state::<AppState>() else {
+        return;
+    };
+    let Ok(data_dir) = app.path().app_data_dir() else {
+        return;
+    };
+    let autosave = match Autosave::start(&data_dir) {
+        Ok(autosave) => Arc::new(autosave),
+        Err(error) => {
+            error.log();
+            return;
+        }
+    };
+    if !state.attach_autosave(autosave) {
+        return;
+    }
+    let state = state.inner().clone();
+    let timer = std::thread::Builder::new()
+        .name("sheer-autosave".to_owned())
+        .spawn(move || loop {
+            std::thread::sleep(TICK);
+            let round = state.clone();
+            // A panic in one round must not end autosave for the session.
+            let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(move || {
+                round.autosave_tick(Instant::now())
+            }));
+        });
+    if let Err(error) = timer {
+        AppError::logged(ErrorCode::Internal, error).log();
+    }
+}
+
+/// Normal quit: the session's directory is removed.
+pub fn stop_autosave(app: &AppHandle) {
+    if let Some(autosave) = app
+        .try_state::<AppState>()
+        .and_then(|state| state.autosave().cloned())
+    {
+        autosave.shutdown();
+    }
+}
+
+/// The window lost focus: what is not written yet is, on a thread of its own.
+pub fn autosave_on_blur(app: &AppHandle) {
+    let Some(state) = app.try_state::<AppState>() else {
+        return;
+    };
+    if state.autosave().is_none() {
+        return;
+    }
+    let state = state.inner().clone();
+    // Best effort: when no thread can be made the timer writes it a little later.
+    let _ = std::thread::Builder::new()
+        .name("sheer-autosave-blur".to_owned())
+        .spawn(move || {
+            state.autosave_flush(Instant::now());
+        });
 }
 
 /// The documents a crashed session left behind, newest first.
@@ -100,19 +366,38 @@ pub async fn discard_all_recoveries(state: State<'_, AppState>) -> Result<u32, U
 mod tests {
     use super::*;
     use crate::engine::Engine;
-    use crate::error::ErrorCode;
+    use crate::storage::atomic::testutil::TempDir;
     use serde_json::json;
 
     #[test]
-    fn every_stub_answers_not_yet_until_package_b2() {
+    fn without_an_autosave_there_is_nothing_to_list_restore_or_discard() {
         let state = AppState::new(Engine::with_handler(|_| {}));
-        let unsupported = ErrorCode::UnsupportedFeature;
-        assert_eq!(state.list_recoveries().unwrap_err().code(), unsupported);
-        assert_eq!(state.restore_recovery(1).unwrap_err().code(), unsupported);
-        assert_eq!(state.discard_recovery(1).unwrap_err().code(), unsupported);
+        assert!(state.list_recoveries().unwrap().is_empty());
         assert_eq!(
-            state.discard_all_recoveries().unwrap_err().code(),
-            unsupported
+            state.restore_recovery(1).unwrap_err().code(),
+            ErrorCode::NotFound
+        );
+        assert_eq!(
+            state.discard_recovery(1).unwrap_err().code(),
+            ErrorCode::NotFound
+        );
+        assert_eq!(state.discard_all_recoveries().unwrap(), 0);
+        assert_eq!(state.autosave_tick(Instant::now()), 0);
+    }
+
+    #[test]
+    fn an_unknown_record_is_not_found_with_an_autosave_too() {
+        let dir = TempDir::new();
+        let state = AppState::new(Engine::with_handler(|_| {}));
+        assert!(state.attach_autosave(Arc::new(Autosave::start(dir.path()).unwrap())));
+        assert!(!state.attach_autosave(Arc::new(Autosave::start(dir.path()).unwrap())));
+        assert_eq!(
+            state.restore_recovery(9).unwrap_err().code(),
+            ErrorCode::NotFound
+        );
+        assert_eq!(
+            state.discard_recovery(9).unwrap_err().code(),
+            ErrorCode::NotFound
         );
     }
 

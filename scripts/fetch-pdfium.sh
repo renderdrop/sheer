@@ -6,7 +6,9 @@
 # Variant: plain build. No V8 (no JavaScript) and no XFA. The script refuses archives whose args.gn says otherwise.
 # Policy:  pinned release tag + per-platform SHA256 (the release asset digests). Never downloaded at runtime.
 #
-# Usage:   scripts/fetch-pdfium.sh [platform]     platform: win-x64 | win-arm64 | mac-x64 | mac-arm64
+# Usage:   scripts/fetch-pdfium.sh [platform]     platform: win-x64 | win-arm64 | mac-x64 | mac-arm64 | mac-universal
+#          mac-universal fetches both mac slices (ADR-053 section 5): the universal app bundles both directories and each
+#          slice loads its own (engine::PLATFORM_DIR), so no lipo-merged library is needed.
 #          Default: detected from the host. Override with PDFIUM_PLATFORM=...
 # To bump the pin: change PDFIUM_TAG and every SHA256 below from the new release's asset digests
 # (gh api repos/bblanchon/pdfium-binaries/releases/tags/<tag> --jq '.assets[] | [.name, .digest]'),
@@ -69,6 +71,10 @@ sha256_of() {
 PLATFORM="${1:-${PDFIUM_PLATFORM:-}}"
 if [ -z "$PLATFORM" ]; then
   PLATFORM="$(detect_platform)" || { echo "fetch-pdfium: unsupported host; pass a platform explicitly" >&2; exit 2; }
+fi
+if [ "$PLATFORM" = "mac-universal" ]; then
+  bash "$0" mac-arm64
+  exec bash "$0" mac-x64
 fi
 EXPECTED="$(expected_sha256 "$PLATFORM")" || { echo "fetch-pdfium: unknown platform '$PLATFORM'" >&2; exit 2; }
 LIB_IN_ARCHIVE="$(library_in_archive "$PLATFORM")"

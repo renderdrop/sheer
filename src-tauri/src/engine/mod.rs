@@ -21,12 +21,16 @@ pub mod encode;
 mod export;
 pub mod files;
 mod guard;
+pub mod host;
 mod import;
+mod ledger;
 mod links;
 mod outline;
 mod pages;
+mod pump;
 pub mod queue;
 mod redact;
+pub mod remote_file;
 mod search;
 mod sizes;
 mod snapshot;
@@ -143,11 +147,36 @@ impl Request {
 /// meantime, and then the worker drops the document instead of keeping one nobody can ever close.
 pub(crate) type Confirm = Box<dyn FnOnce(u32) -> bool + Send>;
 
+/// What PDFium reads a document from: the handle that passed intake (in the parent, and in the in-process engine), or a file of the
+/// parent read through the pipe (in the engine child, `remote_file`).
+pub(crate) enum Handle {
+    Local(File),
+    Remote(remote_file::RemoteFile),
+}
+
+impl std::io::Read for Handle {
+    fn read(&mut self, buffer: &mut [u8]) -> std::io::Result<usize> {
+        match self {
+            Self::Local(file) => file.read(buffer),
+            Self::Remote(file) => file.read(buffer),
+        }
+    }
+}
+
+impl std::io::Seek for Handle {
+    fn seek(&mut self, to: std::io::SeekFrom) -> std::io::Result<u64> {
+        match self {
+            Self::Local(file) => file.seek(to),
+            Self::Remote(file) => file.seek(to),
+        }
+    }
+}
+
 /// What a document is loaded again from.
 pub(crate) enum ReopenSource {
-    File(File),
+    File(Handle),
     /// An encrypted file, with the password it opens with.
-    FileWithPassword(File, Zeroizing<String>),
+    FileWithPassword(Handle, Zeroizing<String>),
     Bytes(Vec<u8>),
 }
 
@@ -155,7 +184,7 @@ pub(crate) enum Job {
     Open {
         id: DocumentId,
         /// The file as intake judged it (`documents::intake`): PDFium reads this very handle, and no path is opened again.
-        file: File,
+        file: Handle,
         /// The password the user typed for an encrypted file (`Engine::open_with_password`); wiped when the job is dropped.
         password: Option<Zeroizing<String>>,
         confirm: Confirm,
@@ -398,6 +427,8 @@ struct Inner {
     runner: Option<Arc<Runner>>,
     /// How many times a stuck worker was replaced; at most [`MAX_RESPAWNS`] (each leaves a thread and its PDFium state behind).
     respawns: std::sync::atomic::AtomicUsize,
+    /// The id of the engine child (`start_process`); 0 for none.
+    child_pid: Arc<std::sync::atomic::AtomicU32>,
 }
 
 impl Inner {
@@ -426,6 +457,7 @@ impl Drop for Inner {
 /// fails fast with `engine_unavailable`.
 fn launch(
     queue_depth: usize,
+    name: &'static str,
     run: impl FnOnce(Requests, Arc<Health>) + Send + 'static,
 ) -> InProcessTransport {
     let queue = Queue::new(queue_depth);
@@ -433,7 +465,7 @@ fn launch(
     let requests = Requests::new(Arc::clone(&queue));
     let worker_health = Arc::clone(&health);
     let spawned = thread::Builder::new()
-        .name("sheer-pdfium".into())
+        .name(name.into())
         .stack_size(limits::ENGINE_STACK_BYTES)
         .spawn(move || run(requests, worker_health));
     if let Err(error) = spawned {
@@ -464,11 +496,69 @@ impl Engine {
         let sizes = Arc::new(SizeCache::default());
         let live = {
             let (runner, sizes) = (Arc::clone(&runner), Arc::clone(&sizes));
-            launch(limits::ENGINE_QUEUE_DEPTH, move |requests, health| {
-                runner(requests, health, sizes, HashSet::new());
-            })
+            launch(
+                limits::ENGINE_QUEUE_DEPTH,
+                "sheer-pdfium",
+                move |requests, health| {
+                    runner(requests, health, sizes, HashSet::new());
+                },
+            )
         };
         Self::assemble(live, sizes, limits::ENGINE_QUEUE_DEPTH, Some(runner))
+    }
+
+    /// Starts the engine as a child process (ADR-053): `exe` is started with the child flag and speaks the protocol of [`wire`] over its
+    /// pipes; PDFium runs there and never in this process. The queue stays here, and so do the open files (the child reads them through
+    /// this process). When the child dies, hangs past a deadline or breaks the protocol it is killed and a new one is started with every
+    /// open document reopened; `on_restart` hears which documents could not be brought back. The first child starts on the pump's thread,
+    /// so a caller never waits for it here.
+    pub fn start_process(
+        library: PathBuf,
+        exe: PathBuf,
+        on_restart: Option<Arc<dyn Fn(Vec<DocumentId>) + Send + Sync>>,
+    ) -> Self {
+        let sizes = Arc::new(SizeCache::default());
+        let files = Arc::new(files::FileTable::new());
+        let child_pid = Arc::new(std::sync::atomic::AtomicU32::new(0));
+        let spec = transport::ChildSpec {
+            exe,
+            library,
+            files: Arc::clone(&files),
+        };
+        let pid = Arc::clone(&child_pid);
+        let config = pump::Config {
+            spawn: Box::new(move || {
+                let child = transport::ChildTransport::spawn(&spec)?;
+                pid.store(child.id(), std::sync::atomic::Ordering::SeqCst);
+                Ok(Box::new(child) as Box<dyn transport::Transport>)
+            }),
+            sizes: Arc::clone(&sizes),
+            files,
+            on_restart,
+        };
+        let live = launch(
+            limits::ENGINE_QUEUE_DEPTH,
+            "sheer-engine-pump",
+            move |requests, _health| pump::run(requests, config),
+        );
+        let mut engine = Self::assemble(live, sizes, limits::ENGINE_QUEUE_DEPTH, None);
+        if let Some(inner) = Arc::get_mut(&mut engine.inner) {
+            inner.child_pid = child_pid;
+        }
+        engine
+    }
+
+    /// The operating system's id of the engine child now running (`None` for an in-process engine, or before the first child started).
+    /// For tests that kill it from outside.
+    pub fn child_id(&self) -> Option<u32> {
+        match self
+            .inner
+            .child_pid
+            .load(std::sync::atomic::Ordering::SeqCst)
+        {
+            0 => None,
+            pid => Some(pid),
+        }
     }
 
     #[cfg(test)]
@@ -478,7 +568,7 @@ impl Engine {
     ) -> Self {
         let sizes = Arc::new(SizeCache::default());
         let worker_sizes = Arc::clone(&sizes);
-        let live = launch(queue_depth, move |requests, health| {
+        let live = launch(queue_depth, "sheer-pdfium", move |requests, health| {
             run(requests, health, worker_sizes);
         });
         Self::assemble(live, sizes, queue_depth, None)
@@ -497,6 +587,7 @@ impl Engine {
                 queue_depth,
                 runner,
                 respawns: std::sync::atomic::AtomicUsize::new(0),
+                child_pid: Arc::new(std::sync::atomic::AtomicU32::new(0)),
             }),
         }
     }
@@ -529,9 +620,13 @@ impl Engine {
         live.health.retire();
         live.queue.close();
         let (runner, sizes) = (Arc::clone(runner), Arc::clone(&self.inner.sizes));
-        *live = launch(self.inner.queue_depth, move |requests, health| {
-            runner(requests, health, sizes, stale);
-        });
+        *live = launch(
+            self.inner.queue_depth,
+            "sheer-pdfium",
+            move |requests, health| {
+                runner(requests, health, sizes, stale);
+            },
+        );
         AppError::logged(
             ErrorCode::EngineUnavailable,
             "a PDF job ran past its deadline: the worker was replaced and open documents must be reopened",
@@ -648,7 +743,7 @@ impl Engine {
     ) -> Result<u32, AppError> {
         self.call(limits::OPEN_TIMEOUT, Rank::CONTROL, |reply| Job::Open {
             id,
-            file,
+            file: Handle::Local(file),
             password,
             confirm: Box::new(confirm),
             reply,
@@ -1022,7 +1117,7 @@ impl Engine {
         };
         self.call(limits::OPEN_TIMEOUT, Rank::CONTROL, |reply| Job::Reopen {
             id,
-            source: ReopenSource::FileWithPassword(file, password),
+            source: ReopenSource::FileWithPassword(Handle::Local(file), password),
             reply,
         })
     }
@@ -1030,7 +1125,7 @@ impl Engine {
     pub fn reopen(&self, id: DocumentId, file: File) -> Result<u32, AppError> {
         self.call(limits::OPEN_TIMEOUT, Rank::CONTROL, |reply| Job::Reopen {
             id,
-            source: ReopenSource::File(file),
+            source: ReopenSource::File(Handle::Local(file)),
             reply,
         })
     }
@@ -1585,7 +1680,7 @@ mod tests {
         let sizes = Arc::new(SizeCache::default());
         let live = {
             let (runner, sizes) = (Arc::clone(&runner), Arc::clone(&sizes));
-            launch(8, move |requests, health| {
+            launch(8, "sheer-pdfium", move |requests, health| {
                 runner(requests, health, sizes, HashSet::new());
             })
         };

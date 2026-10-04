@@ -18,11 +18,19 @@ use serde::{Deserialize, Serialize};
 use crate::error::{AppError, ErrorCode};
 use crate::limits;
 use crate::model::protection::PermissionSet;
+use crate::storage::autosave::AutosaveStatus;
 
 /// Opaque handle for an open document. Serialized as a plain number.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct DocumentId(u32);
+
+impl DocumentId {
+    /// The number of the id (names the autosave record of the document).
+    pub const fn get(self) -> u32 {
+        self.0
+    }
+}
 
 /// Opaque handle for a page of an open document. Serialized as a plain number.
 ///
@@ -87,6 +95,8 @@ pub struct DocumentInfo {
     pub display_name: String,
     pub kind: DocKind,
     pub flags: DocFlags,
+    /// Whether autosave covers the document now (ADR-053 section 2); the registry says `clean`, `AppState` fills in the rest.
+    pub autosave: AutosaveStatus,
 }
 
 /// The name of the file at `path` as the UI may show it: the last path component only (the frontend never learns
@@ -373,7 +383,31 @@ impl Registry {
             display_name: entry.display_name.clone(),
             kind: entry.kind,
             flags: entry.flags,
+            autosave: AutosaveStatus::Clean,
         })
+    }
+
+    /// The ids of the documents the UI shows (loaded, not being closed), oldest first.
+    pub fn open_ids(&self) -> Vec<DocumentId> {
+        let inner = self.lock();
+        let mut ids: Vec<DocumentId> = inner
+            .entries
+            .iter()
+            .filter(|(_, entry)| !entry.closing && entry.page_count.is_some())
+            .map(|(&id, _)| id)
+            .collect();
+        ids.sort_by_key(|id| id.0);
+        ids
+    }
+
+    /// The kind of a document that is not being closed.
+    pub fn kind(&self, id: DocumentId) -> Option<DocKind> {
+        let inner = self.lock();
+        inner
+            .entries
+            .get(&id)
+            .filter(|entry| !entry.closing)
+            .map(|entry| entry.kind)
     }
 
     /// Records the page count once the engine has loaded the document. Fails with `not_found` if the entry is gone, which is
@@ -807,10 +841,11 @@ mod tests {
                 signed: false,
                 permissions: None,
             },
+            autosave: AutosaveStatus::On,
         };
         assert_eq!(
             serde_json::to_string(&info).unwrap(),
-            r#"{"id":0,"pageCount":3,"displayName":"a.pdf","kind":"user","flags":{"encrypted":true,"xfa":false,"hasForms":true,"signed":false,"permissions":null}}"#
+            r#"{"id":0,"pageCount":3,"displayName":"a.pdf","kind":"user","flags":{"encrypted":true,"xfa":false,"hasForms":true,"signed":false,"permissions":null},"autosave":"on"}"#
         );
     }
 
@@ -936,6 +971,7 @@ mod tests {
                 display_name: "a.pdf".to_owned(),
                 kind: DocKind::User,
                 flags: DocFlags::default(),
+                autosave: AutosaveStatus::Clean,
             })
         );
         registry.remove(id);

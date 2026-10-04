@@ -398,13 +398,18 @@ impl AppState {
     /// into Save As.
     pub fn save_in_place(&self, id: DocumentId, ack: SaveAck) -> Result<SaveResult, AppError> {
         // Before anything else is looked at, let alone opened for writing.
+        // A recovered document has no file of its own yet: Save acts as Save As (ADR-053 section 2).
         if self
             .info(id)
-            .is_some_and(|info| info.kind == DocKind::Welcome)
+            .is_some_and(|info| matches!(info.kind, DocKind::Welcome | DocKind::Recovered))
         {
             return Err(AppError::new(ErrorCode::ReadOnly));
         }
-        self.save(id, None, ack, false)
+        let _guard = self.autosave_save_guard();
+        let mut result = self.save(id, None, ack, false)?;
+        self.autosave_forget(id);
+        result.document.autosave = self.autosave_status_of(id);
+        Ok(result)
     }
 
     /// Saves document `id` into `target`, a path the user chose in the dialog (Save As). The path is judged by
@@ -428,7 +433,11 @@ impl AppState {
         options: SaveAsOptions,
     ) -> Result<SaveResult, AppError> {
         let target = intake::admit_target(target)?;
-        self.save(id, Some(target), ack, options.clean_copy)
+        let _guard = self.autosave_save_guard();
+        let mut result = self.save(id, Some(target), ack, options.clean_copy)?;
+        self.autosave_forget(id);
+        result.document.autosave = self.autosave_status_of(id);
+        Ok(result)
     }
 
     /// What the file has to become, from the model: the pages in their order (ADR-036 §5), the annotations on them, the extras, the form
@@ -761,6 +770,7 @@ impl AppState {
                 display_name: String::new(),
                 kind: DocKind::User,
                 flags: crate::documents::DocFlags::default(),
+                autosave: crate::storage::autosave::AutosaveStatus::Clean,
             }),
             changes,
         }
@@ -823,7 +833,9 @@ impl AppState {
             .registry
             .info(id)
             .is_some_and(|info| info.kind == DocKind::Welcome);
-        if !discard && !welcome && self.annotations.is_dirty(id) {
+        // A recovered document is unsaved by nature: its only other copy is the autosave record that closing deletes.
+        let recovered = self.registry.kind(id) == Some(DocKind::Recovered);
+        if !discard && !welcome && (recovered || self.annotations.is_dirty(id)) {
             return Err(AppError::new(ErrorCode::UnsavedChanges));
         }
         self.close_document(id)
@@ -866,6 +878,10 @@ pub async fn save_document_as(
                 format!("{}.pdf", info.display_name)
             };
             dialog = dialog.set_file_name(name);
+        }
+        // A recovered document proposes the folder its original was in (known to Rust only).
+        if let Some(folder) = state.autosave_original_dir(doc_id) {
+            dialog = dialog.set_directory(folder);
         }
         let Some(chosen) = dialog.blocking_save_file() else {
             return Ok(None);

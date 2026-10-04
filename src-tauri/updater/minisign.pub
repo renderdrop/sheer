@@ -1,0 +1,7 @@
+# Sheer update signing key (public half), ADR-053 section 3.
+#
+# PLACEHOLDER. The updater refuses to run (error updater_unconfigured) while the line below is not a real key.
+# The owner replaces the next line with the content of the .pub file that `tauri signer generate` writes
+# (one base64 line). Steps: docs/BLOCKERS.md, entry B-005. Never commit the private key.
+# Lines that start with # are ignored.
+REPLACE_WITH_BASE64_MINISIGN_PUBLIC_KEY

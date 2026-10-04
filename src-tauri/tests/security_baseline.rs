@@ -109,7 +109,9 @@ fn production_csp_is_strict() {
     let csp = csp("csp");
     assert_eq!(csp["default-src"], set(&["'self'"]));
     assert_eq!(csp["img-src"], set(&["'self'", "data:", "blob:"]));
-    assert_eq!(csp["style-src"], set(&["'self'", "'unsafe-inline'"]));
+    // ADR-053 section 6: no inline style *markup*. React and Motion write styles through CSSOM (`element.style`, WAAPI), which
+    // style-src does not govern; the dev policy keeps 'unsafe-inline' for Vite's injected <style> only.
+    assert_eq!(csp["style-src"], set(&["'self'"]));
     assert_eq!(csp["font-src"], set(&["'self'"]));
     // ADR-005: Tauri's IPC needs exactly these two sources, which are app-internal protocol handlers, not hosts.
     assert_eq!(csp["connect-src"], set(&["ipc:", "http://ipc.localhost"]));
@@ -666,14 +668,50 @@ fn the_file_association_is_pdf_only_and_viewer_only() {
         pdf["role"]
     );
     assert_eq!(pdf["rank"], "Alternate");
-    // No platform file changes it.
+    // Windows registers through the NSIS hooks instead (ADR-053 section 5): Tauri's own macro would write the .pdf default.
+    // Every other platform file leaves the base list alone.
     for platform in platform_names() {
+        let expected = if platform == "windows" {
+            serde_json::json!([])
+        } else {
+            config["bundle"]["fileAssociations"].clone()
+        };
         assert_eq!(
             platform_config(&platform)["bundle"]["fileAssociations"],
-            config["bundle"]["fileAssociations"],
+            expected,
             "{platform}"
         );
     }
+}
+
+/// The NSIS hooks add Sheer to "Open with" and never take the default: no write to the (Default) value of `.pdf` or to
+/// `HKCR`/`UserChoice`, everything under HKCU, and the uninstall removes the ProgID it wrote.
+#[test]
+fn nsis_hooks_register_pdf_without_becoming_the_default() {
+    let windows = platform_config("windows");
+    let nsis = &windows["bundle"]["windows"]["nsis"];
+    assert_eq!(nsis["installMode"], "currentUser");
+    assert_eq!(nsis["installerHooks"], "installer/hooks.nsh");
+    let hooks = read("installer/hooks.nsh");
+    let code: Vec<&str> = hooks
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.starts_with(';'))
+        .collect();
+    for line in &code {
+        assert!(!line.contains("UserChoice"), "{line}");
+        assert!(!line.contains("HKCR") && !line.contains("HKLM"), "{line}");
+        if line.starts_with("WriteReg") && line.contains(r"Software\Classes\.pdf") {
+            assert!(
+                line.contains("OpenWithProgids"),
+                "only OpenWithProgids may be written under .pdf: {line}"
+            );
+        }
+    }
+    let joined = code.join("\n");
+    assert!(joined.contains("NSIS_HOOK_POSTINSTALL") && joined.contains("NSIS_HOOK_PREUNINSTALL"));
+    assert!(joined.contains(r#"DeleteRegKey HKCU "Software\Classes\${SHEER_PROGID}""#));
+    assert!(joined.contains(r#"DeleteRegValue HKCU "Software\Classes\.pdf\OpenWithProgids""#));
 }
 
 /// A second instance is forwarded to the running one by a plugin that only talks locally (a named mutex and a window message on

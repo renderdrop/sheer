@@ -28,6 +28,7 @@ use crate::limits;
 /// | `needsPassword` | `id`, `displayName` | the file is encrypted and needs its user password (ADR-026): it waits under `id` for `unlock_document`, or for `close_document` when the user cancels; never the path |
 /// | `closeRequested` | none | the window or the app is asked to close while a document is open: the UI asks about unsaved changes, closes the documents and closes the window itself (ADR-029 §7) |
 /// | `imagesDropped` | `batch`, `count`, `skipped`: numbers | PNG or JPEG files were dropped (ADR-049 §3): they wait under `batch` for `images_to_pdf` (or `release_image_batch`); `skipped` counts dropped files that were neither PDF nor image; never a path, and not kept for a UI that is not listening |
+/// | `engineRestarted` | `lost`: document ids | the engine process was restarted; `lost` could not be brought back and answer `engine_crashed` until reopened (ADR-053 §1.7) |
 /// | `openFailed` | `code`, `key`, `retryable`, `params?` of the error model (ARCHITECTURE §7) | a file could not be opened |
 ///
 /// `openFailed` flattens the error: it is exactly what a rejected command carries, so the UI turns it into the same
@@ -58,6 +59,15 @@ pub enum AppEvent {
         batch: u32,
         count: u32,
         skipped: u32,
+    },
+    /// The engine process was restarted (ADR-053 section 1): `lost` are the documents it could not bring back, which answer
+    /// `engine_crashed` until the UI closes and opens them again. Never kept for a UI that is not listening.
+    EngineRestarted {
+        lost: Vec<DocumentId>,
+    },
+    /// The automatic update check found a newer version (ADR-053 section 3). Never sent for the explicit "Check for updates".
+    UpdateAvailable {
+        info: crate::update::UpdateInfo,
     },
 }
 
@@ -281,7 +291,7 @@ mod tests {
         let event = AppEvent::opened(document("a.pdf", 3));
         assert_eq!(
             serde_json::to_string(&event).unwrap(),
-            r#"{"type":"opened","document":{"id":0,"pageCount":3,"displayName":"a.pdf","kind":"user","flags":{"encrypted":false,"xfa":false,"hasForms":false,"signed":false,"permissions":null}}}"#
+            r#"{"type":"opened","document":{"id":0,"pageCount":3,"displayName":"a.pdf","kind":"user","flags":{"encrypted":false,"xfa":false,"hasForms":false,"signed":false,"permissions":null},"autosave":"clean"}}"#
         );
     }
 

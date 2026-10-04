@@ -35,9 +35,9 @@ use crate::storage::recents::{self, RecentsStore};
 use crate::storage::settings::{self, SettingsStore};
 
 /// Runs the engine child loop when this process was started as one (`main` checks the flag and the variable first); `Some(exit code)`
-/// when it did. Stub (package B1): nothing is served yet, so it always answers `None` and the process runs the app.
+/// when it did (the child loop of `engine::host`, which ends when the parent closes the pipe).
 pub fn engine_child_main() -> Option<i32> {
-    None
+    Some(engine::host::child_main())
 }
 
 /// Builds and runs the app. Returns when the last window is closed. A startup failure comes back as an [`AppError`]
@@ -57,7 +57,7 @@ pub fn run() -> Result<(), AppError> {
         .enable_macos_default_menu(false)
         // Registered for Rust-side use only: no capability grants the dialog commands to the webview.
         .plugin(tauri_plugin_dialog::init())
-        // The only network module (ADR-053 section 3); an empty plugin until package B3.
+        // The only network module (ADR-053 section 3); registers the updater itself, and only with a real signing key.
         .plugin(update::plugin())
         .setup(|app| {
             // PDFium ships as a bundled resource (scripts/fetch-pdfium.sh), never downloaded at runtime.
@@ -71,8 +71,18 @@ pub fn run() -> Result<(), AppError> {
             storage::atomic::sweep_stale_temp_files(&data_dir);
             // The recent files live next to the settings; every document the user opens is noted there (never the welcome one).
             let recents = Arc::new(RecentsStore::load(data_dir.join(recents::FILE_NAME)));
+            // PDFium runs in a child process of this executable (ADR-053 section 1): a crash or a wedge there restarts it and
+            // reopens the documents; the UI hears which ones were lost.
+            let restart_events = Arc::clone(&app.state::<Arc<AppEvents>>());
+            let engine = Engine::start_process(
+                engine::library_path(&pdfium_root),
+                std::env::current_exe()?,
+                Some(Arc::new(move |lost| {
+                    restart_events.publish(events::AppEvent::EngineRestarted { lost });
+                })),
+            );
             app.manage(
-                AppState::new(Engine::start(engine::library_path(&pdfium_root)))
+                AppState::new(engine)
                     .with_recents(recents)
                     .with_data_dir(data_dir.clone()),
             );
@@ -106,6 +116,10 @@ pub fn run() -> Result<(), AppError> {
         .on_window_event(|window, event| {
             platform::on_window_event(window, event);
             sources::on_window_event(window, event);
+            // Losing focus is a moment to write what autosave has not written yet (ADR-053 section 2).
+            if matches!(event, tauri::WindowEvent::Focused(false)) {
+                commands::recovery::autosave_on_blur(window.app_handle());
+            }
         })
         .invoke_handler(tauri::generate_handler![
             commands::open_document_dialog,
@@ -193,9 +207,13 @@ pub fn run() -> Result<(), AppError> {
             commands::signatures::create_typed_signature,
             commands::signatures::create_drawn_signature,
         ])
-        .build(tauri::generate_context!())
+        .build(update::configure(tauri::generate_context!()))
         .map_err(|error| AppError::logged(ErrorCode::Internal, error))?;
     // macOS hands the files it is asked to open to the running app as `RunEvent::Opened`.
-    app.run(|app, event| sources::on_run_event(app, &event));
+    app.run(|app, event| {
+        sources::on_run_event(app, &event);
+        update::on_run_event(app, &event);
+        storage::autosave::on_run_event(app, &event);
+    });
     Ok(())
 }

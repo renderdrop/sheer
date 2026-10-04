@@ -329,7 +329,8 @@ mod tests {
                 "type": "opened",
                 "document": {
                     "id": 0, "pageCount": 5, "displayName": "dropped.pdf", "kind": "user",
-                    "flags": { "encrypted": false, "xfa": false, "hasForms": false, "signed": false, "permissions": null }
+                    "flags": { "encrypted": false, "xfa": false, "hasForms": false, "signed": false, "permissions": null },
+                    "autosave": "clean"
                 }
             })
         );

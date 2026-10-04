@@ -166,6 +166,8 @@ pub struct AppState {
     recents: Option<Arc<RecentsStore>>,
     /// The app data directory, where the backups of the originals go (`commands::save`); `None` where there is none (most tests).
     data_dir: Option<Arc<PathBuf>>,
+    /// The crash-safe autosave of this session (ADR-053 section 2); set once by `storage::autosave::start`, empty in most tests.
+    autosave: Arc<std::sync::OnceLock<Arc<crate::storage::autosave::Autosave>>>,
 }
 
 impl AppState {
@@ -181,6 +183,7 @@ impl AppState {
             drafts: Arc::new(crate::signatures::DraftStore::default()),
             recents: None,
             data_dir: None,
+            autosave: Arc::new(std::sync::OnceLock::new()),
         }
     }
 
@@ -223,7 +226,10 @@ impl AppState {
             // The entry may be gone by now (closed meanwhile); the info is then `None` below.
             let _ = self.registry.set_flags(id, flags);
         }
-        self.registry.info(id)
+        self.registry.info(id).map(|mut info| {
+            info.autosave = self.autosave_status_of(id);
+            info
+        })
     }
 
     /// Opens the PDF at `path`, which must come from the Rust side (dialog, drop, OS, command line; SECURITY I3).
@@ -490,6 +496,8 @@ impl AppState {
         self.sources.unpin_all(id);
         // Its print sets (rendered pages held in memory) go too.
         crate::print::sets().release_doc(id);
+        // Its autosave record (and the one a recovered document came from) is not needed any more.
+        self.autosave_forget(id);
         // A document that still waits for its password was never loaded: cancelling its prompt forgets it.
         self.registry.remove_locked(id);
         self.registry.begin_close(id);
@@ -1696,7 +1704,14 @@ mod tests {
                     assert_eq!(keys(message), ["document", "type"]);
                     assert_eq!(
                         keys(&message["document"]),
-                        ["displayName", "flags", "id", "kind", "pageCount"]
+                        [
+                            "autosave",
+                            "displayName",
+                            "flags",
+                            "id",
+                            "kind",
+                            "pageCount"
+                        ]
                     );
                     assert_eq!(message["document"]["displayName"], "good-name-9090.pdf");
                 }
