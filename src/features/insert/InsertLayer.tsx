@@ -155,10 +155,6 @@ function ReadyLayer({
     [page, total, viewW, viewH],
   );
 
-  const afterPlacing = useCallback(() => {
-    if (!useUi.getState().toolLocked) useUi.getState().releaseTool();
-  }, []);
-
   const place = useCallback(
     (from: Point, to: Point, shift: boolean) => {
       if (tool === 'textBox') {
@@ -166,7 +162,6 @@ function ReadyLayer({
         useInsert
           .getState()
           .startEditing({ docId, pageId: pageIndex, id: null, box: newTextBoxRect(from, to, fontSize, page) });
-        afterPlacing();
         return;
       }
       const image = useInsert.getState().pendingImage;
@@ -176,15 +171,14 @@ function ReadyLayer({
       const rect: Rect = dragged
         ? imageRectFromDrag(from, to, image.aspect, keep, page)
         : defaultImageRect(image.aspect, to, page);
-      useInsert.getState().setPendingImage(null);
-      afterPlacing();
+      // The tool stays active (F11): the image stays armed so the next click places it again.
       void createImage(docId, pageIndex, rect, image).then((created) => {
         if (created === null) return;
         useInsert.getState().select(docId, created.id);
         announce(t('insert.placed', { kind: t('insert.imageRole'), n: pageIndex + 1 }));
       });
     },
-    [tool, docId, pageIndex, page, afterPlacing, t],
+    [tool, docId, pageIndex, page, t],
   );
 
   const onSurfaceDown = (event: ReactPointerEvent<HTMLDivElement>) => {

@@ -1,11 +1,20 @@
 // @vitest-environment jsdom
-import { act, fireEvent, render } from '@testing-library/react';
+import { act, fireEvent, render, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { DocCommand } from '../../../api/annotations';
 import { useAnnotations } from '../../../stores/annotations';
+import { useTools } from '../../../stores/tools';
 import { useUi } from '../../../stores/ui';
 import { CreationLayer } from './CreationLayer';
+
+vi.mock('../../textlayer/cache', () => ({
+  loadLayer: vi.fn(),
+  peekLayer: () => ({
+    text: 'HELLO',
+    boxes: [50, 100, 10, 12, 60, 100, 10, 12, 70, 100, 10, 12, 80, 100, 10, 12, 90, 100, 10, 12],
+  }),
+}));
 
 const props = { docId: 1, pageIndex: 0, pageBox: { width: 600, height: 800 }, transform: { pxPerPt: 1, rotation: 0 } };
 
@@ -46,7 +55,7 @@ describe('CreationLayer', () => {
     expect(mount().surface).toBeNull();
   });
 
-  it('places a note with one command and returns to Select', () => {
+  it('places a note with one command and stays on the Note tool', () => {
     useUi.setState({ activeTool: 'note' });
     const { surface } = mount();
     if (surface === null) throw new Error('no layer');
@@ -57,7 +66,7 @@ describe('CreationLayer', () => {
       type: 'createAnnotation',
       draft: { kind: 'note', pageId: 0, at: { x: 100, y: 200 } },
     });
-    expect(useUi.getState().activeTool).toBe('select');
+    expect(useUi.getState().activeTool).toBe('note');
   });
 
   it('draws a shape by dragging and maps the rotated page back to page space', () => {
@@ -176,5 +185,122 @@ describe('CreationLayer ink grouping and cancel', () => {
     });
     expect(surface.querySelectorAll('polygon').length).toBe(1);
     fireEvent.pointerUp(surface, { button: 0, clientX: 110, clientY: 60, pointerId: 1 });
+  });
+});
+
+describe('CreationLayer preview placement (F11)', () => {
+  beforeEach(() => {
+    useAnnotations.setState({ apply: vi.fn(() => Promise.resolve({ upserted: [], removed: [], rev: 1 })) } as never);
+    vi.useRealTimers();
+    useTools.getState().setShapes('line');
+    useUi.setState({ activeTool: 'shapes', toolLocked: true });
+  });
+  afterEach(() => {
+    useUi.setState({ activeTool: 'select', toolLocked: false });
+    vi.unstubAllGlobals();
+  });
+
+  // The client position of a page-space point inside the preview svg, from its inline box: left/top/size, rotate, scale about the
+  // centre. This is what the browser computes; the point drawn for the drag's start must be under the pointer.
+  function clientOf(svg: SVGElement, layer: { left: number; top: number }, p: { x: number; y: number }) {
+    const left = parseFloat(svg.style.left);
+    const top = parseFloat(svg.style.top);
+    const w = parseFloat(svg.getAttribute('width') ?? '0');
+    const h = parseFloat(svg.getAttribute('height') ?? '0');
+    const scale = /scale\(([-\d.]+)\)/.exec(svg.style.transform)?.[1] ?? '1';
+    const turn = /rotate\(([-\d.]+)deg\)/.exec(svg.style.transform)?.[1] ?? '0';
+    const z = Number(scale);
+    const a = (Number(turn) * Math.PI) / 180;
+    const vx = (p.x - w / 2) * z;
+    const vy = (p.y - h / 2) * z;
+    return {
+      x: layer.left + left + w / 2 + vx * Math.cos(a) - vy * Math.sin(a),
+      y: layer.top + top + h / 2 + vx * Math.sin(a) + vy * Math.cos(a),
+    };
+  }
+
+  it.each([
+    [1.04, 0],
+    [1.04, 90],
+    [2.5, 270],
+    [0.5, 180],
+  ])('keeps the preview under the pointer at zoom %s, rotation %s, DPR 2', async (pxPerPt, rotation) => {
+    vi.stubGlobal('devicePixelRatio', 2);
+    vi.stubGlobal('requestAnimationFrame', (cb: FrameRequestCallback) => {
+      cb(0);
+      return 1;
+    });
+    vi.stubGlobal('cancelAnimationFrame', () => undefined);
+    const view = render(<CreationLayer {...props} transform={{ pxPerPt, rotation }} />);
+    const surface = view.container.querySelector<HTMLElement>('[data-creation-layer]');
+    if (surface === null) throw new Error('no layer');
+    const swap = rotation % 180 !== 0;
+    const w = (swap ? 800 : 600) * pxPerPt;
+    const h = (swap ? 600 : 800) * pxPerPt;
+    // The layer sits at (30, 40) in the client.
+    const origin = { left: 30, top: 40 };
+    surface.getBoundingClientRect = () =>
+      ({ ...origin, width: w, height: h, right: 30 + w, bottom: 40 + h, x: 30, y: 40, toJSON: () => '' }) as DOMRect;
+    const down = { x: 30 + w * 0.3, y: 40 + h * 0.4 };
+    fireEvent.pointerDown(surface, { button: 0, clientX: down.x, clientY: down.y, pointerId: 1 });
+    fireEvent.pointerMove(surface, { clientX: down.x + 40, clientY: down.y + 30, pointerId: 1 });
+    await waitFor(() => expect(surface.querySelector('line'), surface.outerHTML).not.toBeNull());
+    const line = surface.querySelector('line') as SVGLineElement;
+    const svg = surface.querySelector('svg') as SVGElement;
+    const start = clientOf(svg, origin, { x: Number(line.getAttribute('x1')), y: Number(line.getAttribute('y1')) });
+    const end = clientOf(svg, origin, { x: Number(line.getAttribute('x2')), y: Number(line.getAttribute('y2')) });
+    expect(start.x).toBeCloseTo(down.x, 3);
+    expect(start.y).toBeCloseTo(down.y, 3);
+    expect(end.x).toBeCloseTo(down.x + 40, 3);
+    expect(end.y).toBeCloseTo(down.y + 30, 3);
+  });
+});
+
+describe('CreationLayer text markup preview (F11)', () => {
+  afterEach(() => {
+    useUi.setState({ activeTool: 'select', toolLocked: false });
+    vi.unstubAllGlobals();
+  });
+
+  it('snaps the highlight preview to the text quads and draws it where the text is on screen', async () => {
+    vi.stubGlobal('requestAnimationFrame', (cb: FrameRequestCallback) => {
+      cb(0);
+      return 1;
+    });
+    vi.stubGlobal('cancelAnimationFrame', () => undefined);
+    useAnnotations.setState({ apply: vi.fn(() => Promise.resolve({ upserted: [], removed: [], rev: 1 })) } as never);
+    useTools.getState().setMarkup('highlight');
+    useUi.setState({ activeTool: 'highlight', toolLocked: true });
+    const view = render(<CreationLayer {...props} transform={{ pxPerPt: 2, rotation: 0 }} />);
+    const surface = view.container.querySelector<HTMLElement>('[data-creation-layer]');
+    if (surface === null) throw new Error('no layer');
+    surface.getBoundingClientRect = () =>
+      ({
+        left: 30,
+        top: 40,
+        width: 1200,
+        height: 1600,
+        right: 1230,
+        bottom: 1640,
+        x: 30,
+        y: 40,
+        toJSON: () => '',
+      }) as DOMRect;
+    // Pointer at page (52, 106) to (73, 106) = client (30 + 104, 40 + 212) to (30 + 146, ...): inside chars 0 and 2.
+    fireEvent.pointerDown(surface, { button: 0, clientX: 134, clientY: 252, pointerId: 1 });
+    fireEvent.pointerMove(surface, { clientX: 176, clientY: 252, pointerId: 1 });
+    await waitFor(() => expect(surface.querySelector('rect')).not.toBeNull());
+    const rect = surface.querySelector('rect') as SVGRectElement;
+    // Snapped to the characters (x 50..80, y 100..112), not to the pointer.
+    expect(Number(rect.getAttribute('x'))).toBeCloseTo(50);
+    expect(Number(rect.getAttribute('y'))).toBeCloseTo(100);
+    expect(Number(rect.getAttribute('width'))).toBeCloseTo(30);
+    expect(Number(rect.getAttribute('height'))).toBeCloseTo(12);
+    // The svg is laid out so that page (50, 100) is at client (30 + 100, 40 + 200).
+    const svg = surface.querySelector('svg') as SVGElement;
+    const w = Number(svg.getAttribute('width'));
+    const h = Number(svg.getAttribute('height'));
+    expect(parseFloat(svg.style.left) + w / 2 + (50 - w / 2) * 2).toBeCloseTo(100);
+    expect(parseFloat(svg.style.top) + h / 2 + (100 - h / 2) * 2).toBeCloseTo(200);
   });
 });

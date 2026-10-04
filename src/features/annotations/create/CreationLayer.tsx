@@ -175,7 +175,6 @@ function ActiveLayer({
           if (created !== undefined) onCreated?.(created);
         })
         .catch(reportRefusal);
-      if (!useUi.getState().toolLocked) useUi.getState().releaseTool();
     },
     [docId, onCreated],
   );
@@ -393,7 +392,7 @@ function ActiveLayer({
     if (kind === 'ink') endStroke(d.samples.length > 1 ? d.samples : [], event.timeStamp);
     else show(null);
   };
-  const box = overlayBox(viewW, viewH, page, transform.pxPerPt, rotation);
+  const box = overlayBox(viewW * transform.pxPerPt, viewH * transform.pxPerPt, page, transform.pxPerPt, rotation);
   return (
     <div
       ref={surface}

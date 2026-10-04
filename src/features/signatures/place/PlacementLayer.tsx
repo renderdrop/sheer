@@ -78,11 +78,6 @@ function ActiveLayer({ item, docId, pageIndex, pageBox, transform }: PlacementLa
   const onPointerMove = (event: ReactPointerEvent<HTMLDivElement>) => setGhost(toPage(event));
 
   const placeAt = (at: Point) => {
-    if (!useUi.getState().toolLocked) {
-      // One-shot: the tool is done with this click, whatever the backend answers.
-      usePlacement.getState().disarm();
-      useUi.getState().releaseTool();
-    }
     setGhost(null);
     void placeItem(docId, pageIndex, item, at, page).then((created) => {
       if (created !== null) announce(t('sign.placed', { kind: t(`annot.type.${created.kind}`), n: pageIndex + 1 }));
@@ -125,7 +120,7 @@ function ActiveLayer({ item, docId, pageIndex, pageBox, transform }: PlacementLa
     return () => window.removeEventListener('keydown', onKey);
   }, []);
 
-  const box = overlayBox(viewW, viewH, page, transform.pxPerPt, rotation);
+  const box = overlayBox(viewW * transform.pxPerPt, viewH * transform.pxPerPt, page, transform.pxPerPt, rotation);
   const ghostBox =
     ghost === null ? null : centredBox(ghost, itemSize(item, page, item.type === 'date' ? dateText() : ''), page);
   return (

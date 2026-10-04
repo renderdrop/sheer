@@ -27,6 +27,7 @@ import {
   type Viewport,
 } from './layout';
 import { requestPassword } from '../password/state';
+import { consumeFitHold, watchToolInspector } from './fitHold';
 import { layoutFor, metricsOfDocument, pageGap } from './model';
 import type { ViewportAnchor } from './Canvas';
 import { beginOpening, forgetOpening } from './openTransition';
@@ -116,6 +117,8 @@ export interface ViewerState {
  *
  * Until pages can be reordered (M3) a page id is its position.
  */
+watchToolInspector();
+
 export const useViewer = create<ViewerState>()((set, get) => {
   /** The active document and its view; `null` while none is open. */
   const active = (): { docId: number; view: DocView } | null => {
@@ -339,7 +342,9 @@ export const useViewer = create<ViewerState>()((set, get) => {
       // A fit follows the window: the zoom is computed for the new size, around what is at the top left of the viewport now.
       const current = active();
       let refit: { fit: 'width' | 'page'; zoom: number; anchor: ScrollAnchor | null } | null = null;
-      if (current !== null && current.view.fit !== 'none') {
+      // ADR-056: the resize a tool's options inspector causes keeps zoom and scroll (no refit).
+      const held = consumeFitHold();
+      if (current !== null && current.view.fit !== 'none' && !held) {
         const metrics = metricsOfDocument(current.docId);
         const zoom =
           metrics === null ? null : fitZoomFor(current.view.fit, metrics, current.view.pageIndex, viewport, pageGap());

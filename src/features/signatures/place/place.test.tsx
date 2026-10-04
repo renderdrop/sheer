@@ -162,7 +162,7 @@ describe('PlacementLayer', () => {
     expect(mount().surface).toBeNull();
   });
 
-  it('shows a ghost and places on click, then leaves the tool', async () => {
+  it('shows a ghost and places on click and keeps the tool', async () => {
     usePlacement.getState().arm({ type: 'mark', glyph: 'check' });
     const { surface, container } = mount();
     if (surface === null) throw new Error('no layer');
@@ -175,8 +175,8 @@ describe('PlacementLayer', () => {
     expect(apply.mock.calls[0]?.[1]).toMatchObject({
       draft: { kind: 'mark', box: { x: 94, y: 94, w: 12, h: 12 } },
     });
-    expect(useUi.getState().activeTool).toBe('select');
-    expect(usePlacement.getState().item).toBeNull();
+    expect(useUi.getState().activeTool).toBe('signature');
+    expect(usePlacement.getState().item).not.toBeNull();
   });
 
   it('keeps the item armed when the tool is locked, and Esc disarms', async () => {

@@ -257,8 +257,8 @@ describe('InsertLayer: Add text', () => {
     fireEvent.pointerUp(surface(), { button: 0, clientX: 40, clientY: 80, pointerId: 1 });
     const editor = await screen.findByRole('textbox', { name: 'Text box' });
     expect(document.activeElement).toBe(editor);
-    // One-shot: the tool is done with the click.
-    expect(useUi.getState().activeTool).toBe('select');
+    // The tool stays active until Esc or Select (F11).
+    expect(useUi.getState().activeTool).toBe('textBox');
     fireEvent.change(editor, { target: { value: 'Line one\nLine two' } });
     fireEvent.keyDown(editor, { key: 'Escape' });
     await waitFor(() => expect(mocked.applyCommand).toHaveBeenCalledTimes(1));
@@ -361,7 +361,7 @@ describe('InsertLayer: Add image', () => {
       type: 'createAnnotation',
       draft: { kind: 'image', assetId: 7, aspect: 2, box: { x: 25, y: 87.5, w: 50, h: 25 } },
     });
-    expect(useUi.getState().activeTool).toBe('select');
+    expect(useUi.getState().activeTool).toBe('image');
     await waitFor(() => expect(useInsert.getState().selected[1]).toBe(11));
   });
 
