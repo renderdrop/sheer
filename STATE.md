@@ -1,8 +1,8 @@
 # STATE
 phase: M7
 version: 0.9.0
-current_item: M7 W0 seams (ADR-053) + onboarding/tips running; v0.9.0 release commit 4706a0b pushed, tag waits for its CI run (37170218415) to be green on both platforms. Then W1 B1 engine process | B2 autosave | B3 updater | B4 packaging/CSP/bench
-last_completed: M6 Convert and output released as v0.9.0 (tag v0.9.0)
+current_item: M7 backend wave running (ADR-053): B1 engine process | B2 autosave | B3 updater (placeholder key, private key = human, BLOCKERS) | B4 packaging/CSP/bench. Done: W0 a8da321, tour + tips bc63805. Then F1 recovery UI | F2 updater UI | F3 performance | F4 CSP sweep/default app; W3 accessibility, i18n, recents thumbnails; Politur M7
+last_completed: v0.9.0 (tag on 4706a0b; candidate CI 37170218415 green on Windows + macOS; release built)
 loop_count_this_session: 0
 open_blockers: 2 (B-001 UI never seen on a Mac, macOS keychain untested; B-002 code signing)
 notes: Repository renderdrop/sheer is public (ADR-046). CI: every push to main runs Windows + macOS (docs-only skipped); tags run only release.yml. Read CI once per milestone, never wait (ADR-030).
