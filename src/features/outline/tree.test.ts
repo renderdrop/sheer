@@ -18,6 +18,7 @@ const leaf = (title: string, page?: number, y = 0): OutlineNode => ({
   title,
   target: page === undefined ? null : { pageId: page, y },
   children: [],
+  derived: false,
 });
 const parent = (title: string, page: number | undefined, ...children: OutlineNode[]): OutlineNode => ({
   ...leaf(title, page),

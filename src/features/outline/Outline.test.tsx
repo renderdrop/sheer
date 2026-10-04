@@ -22,6 +22,12 @@ const node = (title: string, page: number | null, ...children: OutlineNode[]): O
   title,
   target: page === null ? null : { pageId: page, y: 0 },
   children,
+  derived: false,
+});
+const derivedNode = (title: string, page: number, y: number): OutlineNode => ({
+  ...node(title, page),
+  target: { pageId: page, y },
+  derived: true,
 });
 
 const BOOK = { id: 1, pageCount: 20, displayName: 'Book.pdf' };
@@ -257,5 +263,39 @@ describe('Outline fetch results', () => {
     act(() => useViewer.getState().close());
     await act(async () => resolve([node('Late', 0)]));
     expect(useOutline.getState().byDoc[1]).toBeUndefined();
+  });
+});
+
+describe('Derived outline', () => {
+  it('marks the outline as derived, mutes the rows, describes the tree by the info row and jumps', async () => {
+    const goToPoint = vi.fn();
+    useViewer.setState({ goToPoint });
+    getOutline.mockResolvedValue([derivedNode('Big Title', 1, 72)]);
+    const { user } = setup(<Outline />);
+    const tree = await screen.findByRole('tree');
+    const info = screen.getByText('Derived from headings').parentElement as HTMLElement;
+    expect(tree.getAttribute('aria-describedby')).toBe(info.id);
+    const row = screen.getByRole('treeitem', { name: /Big Title/ });
+    expect(row.className).toContain('text-text-muted');
+    await user.click(row);
+    expect(goToPoint).toHaveBeenCalledWith(1, 72);
+    await user.hover(info);
+    expect(await screen.findByText('Not stored in the file. Add bookmarks to replace it.')).toBeTruthy();
+  });
+
+  it('shows no info row and Ink rows for the bookmarks of a file', async () => {
+    getOutline.mockResolvedValue([node('Real', 0)]);
+    setup(<Outline />);
+    const row = await screen.findByRole('treeitem', { name: /Real/ });
+    expect(screen.queryByText('Derived from headings')).toBeNull();
+    expect(screen.getByRole('tree').getAttribute('aria-describedby')).toBeNull();
+    expect(row.className).not.toContain('text-text-muted');
+  });
+
+  it('keeps the empty state when nothing was found', async () => {
+    getOutline.mockResolvedValue([]);
+    setup(<Outline />);
+    expect(await screen.findByText('No outline')).toBeTruthy();
+    expect(screen.queryByText('Derived from headings')).toBeNull();
   });
 });

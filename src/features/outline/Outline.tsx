@@ -1,8 +1,9 @@
-import { ChevronRight, ChevronsDownUp, CircleAlert, ListTree, LoaderCircle } from 'lucide-react';
+import { ChevronRight, ChevronsDownUp, CircleAlert, ListTree, LoaderCircle, Wand } from 'lucide-react';
 import {
   memo,
   useCallback,
   useEffect,
+  useId,
   useLayoutEffect,
   useMemo,
   useRef,
@@ -54,6 +55,8 @@ interface RowProps {
   /** `undefined` for a leaf. */
   expanded: boolean | undefined;
   hasTarget: boolean;
+  /** A row of the derived outline: Text-secondary, not Ink (DESIGN 3.5 B8). */
+  derived: boolean;
   selected: boolean;
   current: boolean;
   tabStop: boolean;
@@ -72,6 +75,7 @@ const OutlineRow = memo(function OutlineRow({
   setsize,
   expanded,
   hasTarget,
+  derived,
   selected,
   current,
   tabStop,
@@ -112,7 +116,7 @@ const OutlineRow = memo(function OutlineRow({
           selected
             ? 'bg-selected forced-colors:outline-2 forced-colors:outline-[Highlight]'
             : 'hover:bg-control-hover active:bg-control-pressed',
-          muted ? 'text-text-muted forced-colors:text-[GrayText]' : 'text-text',
+          muted ? 'text-text-muted forced-colors:text-[GrayText]' : derived ? 'text-text-muted' : 'text-text',
         )}
         style={{
           top,
@@ -313,7 +317,8 @@ export function OutlineTree({ docId, entry }: { docId: number; entry: Ready }) {
     return [...set].sort((a, b) => a - b);
   }, [range?.first, range?.last, tabNode, focusNode, rowOf]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  return (
+  const infoId = useId();
+  const tree = (
     <div
       ref={scrollerRef}
       onScroll={(event) => {
@@ -330,6 +335,7 @@ export function OutlineTree({ docId, entry }: { docId: number; entry: Ready }) {
       <div
         role="tree"
         aria-label={t('outline.list')}
+        aria-describedby={entry.derived ? infoId : undefined}
         onKeyDown={onKeyDown}
         onFocus={(event) => {
           const item = event.target instanceof Element ? event.target.closest<HTMLElement>('[role="treeitem"]') : null;
@@ -357,6 +363,7 @@ export function OutlineTree({ docId, entry }: { docId: number; entry: Ready }) {
               setsize={index.setsize[node] as number}
               expanded={parent ? expanded.has(node) : undefined}
               hasTarget={index.targets[node] !== null}
+              derived={entry.derived}
               selected={selected === node}
               current={markerNode === node}
               tabStop={tabNode === node}
@@ -368,6 +375,22 @@ export function OutlineTree({ docId, entry }: { docId: number; entry: Ready }) {
         })}
       </div>
     </div>
+  );
+  if (!entry.derived) return tree;
+  return (
+    <>
+      <Tooltip label={t('outline.derived.hint')} side="right">
+        <div
+          id={infoId}
+          tabIndex={0}
+          className="m-2 flex h-control-md shrink-0 items-center gap-2 rounded-sm bg-sand px-2 t-caption text-text-muted forced-colors:border forced-colors:text-[CanvasText]"
+        >
+          <Icon icon={Wand} className="shrink-0" />
+          <span className="min-w-0 truncate">{t('outline.derived')}</span>
+        </div>
+      </Tooltip>
+      {tree}
+    </>
   );
 }
 

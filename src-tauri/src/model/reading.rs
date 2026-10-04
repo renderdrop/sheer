@@ -26,6 +26,8 @@ pub struct OutlineNode {
     pub title: String,
     pub target: Option<PageTarget>,
     pub children: Vec<OutlineNode>,
+    /// Derived from the headings of the text, not a bookmark of the file (ADR-113).
+    pub derived: bool,
 }
 
 /// The text of a page and the box of each character: `boxes` holds four numbers (x, y, width, height, in page space) for every UTF-16
@@ -137,14 +139,17 @@ mod tests {
                 title: "Web".to_owned(),
                 target: None,
                 children: Vec::new(),
+                derived: false,
             }],
+            derived: true,
         };
         assert_eq!(
             wire(&node),
             json!({
                 "title": "Chapter 1",
                 "target": { "pageId": 2, "y": 100.5 },
-                "children": [{ "title": "Web", "target": null, "children": [] }]
+                "children": [{ "title": "Web", "target": null, "children": [], "derived": false }],
+                "derived": true
             })
         );
     }

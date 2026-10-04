@@ -17,6 +17,8 @@ export type OutlineEntry =
       token: number;
       /** The outline as the file has it: targets are page ids. */
       nodes: readonly OutlineNode[];
+      /** The outline was derived from headings: the file has no bookmarks (ADR-113). */
+      derived: boolean;
       /** `nodes` with targets as the positions the pages sit at now; rebuilt when the pages move (ADR-036). */
       index: OutlineIndex;
       /** Expanded parents, per document and in memory: kept across tab switches. */
@@ -57,7 +59,18 @@ export const useOutline = create<OutlineState>()((set, get) => {
         const index = buildIndex(retarget(nodes, positionsOf(readSlots(docId))));
         const expanded = initialExpansion(index, currentNode(index, readingPosition(docId)));
         set((state) => ({
-          byDoc: { ...state.byDoc, [docId]: { status: 'ready', token, nodes, index, expanded, selected: -1 } },
+          byDoc: {
+            ...state.byDoc,
+            [docId]: {
+              status: 'ready',
+              token,
+              nodes,
+              derived: nodes[0]?.derived === true,
+              index,
+              expanded,
+              selected: -1,
+            },
+          },
         }));
       },
       (caught: unknown) => {

@@ -290,6 +290,7 @@ export function retarget(roots: readonly OutlineNode[], positions: ReadonlyMap<n
       title: node.title,
       target: node.target === null || position === undefined ? null : { pageId: position, y: node.target.y },
       children: retarget(node.children, positions),
+      derived: node.derived,
     };
   });
 }

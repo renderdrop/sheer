@@ -2,7 +2,7 @@
 //!
 //! | Command | Arguments | Returns |
 //! |---|---|---|
-//! | `get_outline` | `docId: number` | `OutlineNode[]`: `{ title, target: { pageId, y } | null, children }`, at most 10 000 nodes down to 32 levels, a title of at most 512 characters |
+//! | `get_outline` | `docId: number` | `OutlineNode[]`: `{ title, target: { pageId, y } | null, children, derived }` (`derived`: made from the headings of a document without bookmarks, ADR-113), at most 10 000 nodes down to 32 levels, a title of at most 512 characters |
 //!
 //! The engine reads the outline with its limits and a guard against cycles (`engine::outline`). The bounds are applied again here, on
 //! what is sent, so the UI is promised them whatever the engine hands over; and the engine's page positions become page ids.
@@ -53,6 +53,7 @@ impl AppState {
                 title: sanitize_text(&item.title, limits::MAX_OUTLINE_TITLE_CHARS),
                 target,
                 children,
+                derived: item.derived,
             });
         }
         nodes
@@ -85,6 +86,7 @@ mod tests {
                 y: 12.5,
             }),
             children,
+            derived: false,
         }
     }
 

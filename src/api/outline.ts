@@ -29,6 +29,8 @@ export interface OutlineNode {
   title: string;
   target: OutlineTarget | null;
   children: OutlineNode[];
+  /** Made from the headings of a document without bookmarks (ADR-113), not stored in the file. */
+  derived: boolean;
 }
 
 /** Characters as the backend counts them (code points), not UTF-16 code units. */
@@ -51,13 +53,14 @@ function parseLevel(value: unknown, depth: number, budget: { left: number }): Ou
   for (const item of value as unknown[]) {
     if (!isRecord(item) || budget.left <= 0) return undefined;
     budget.left -= 1;
-    const { title, target, children } = item;
-    if (typeof title !== 'string' || title.length > MAX_OUTLINE_TITLE_CHARS * 2) return undefined;
+    const { title, target, children, derived = false } = item;
+    if (typeof derived !== 'boolean' || typeof title !== 'string' || title.length > MAX_OUTLINE_TITLE_CHARS * 2)
+      return undefined;
     if (characterCount(title) > MAX_OUTLINE_TITLE_CHARS) return undefined;
     const parsedTarget = parseTarget(target);
     const parsedChildren = parseLevel(children, depth + 1, budget);
     if (parsedTarget === undefined || parsedChildren === undefined) return undefined;
-    nodes.push({ title, target: parsedTarget, children: parsedChildren });
+    nodes.push({ title, target: parsedTarget, children: parsedChildren, derived });
   }
   return nodes;
 }

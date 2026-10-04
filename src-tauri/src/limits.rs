@@ -68,6 +68,17 @@ pub const MAX_OUTLINE_NODES: usize = 10_000;
 pub const MAX_OUTLINE_DEPTH: usize = 32;
 /// Longest outline title in characters, after sanitizing (the same filter as a display name).
 pub const MAX_OUTLINE_TITLE_CHARS: usize = 512;
+/// The derived outline (ADR-113): entries, levels, title length, and what it may read of a hostile file. Pages scanned, characters
+/// read per page and in all, lines kept per page and in all, and the time it may take on the worker.
+pub const MAX_DERIVED_ENTRIES: usize = 200;
+pub const MAX_DERIVED_LEVELS: u8 = 3;
+pub const MAX_DERIVED_TITLE_CHARS: usize = 200;
+pub const MAX_DERIVED_PAGES: u32 = 2_000;
+pub const MAX_DERIVED_CHARS_PER_PAGE: usize = 50_000;
+pub const MAX_DERIVED_CHARS: usize = 3_000_000;
+pub const MAX_DERIVED_LINES_PER_PAGE: usize = 400;
+pub const MAX_DERIVED_LINES: usize = 100_000;
+pub const DERIVED_OUTLINE_BUDGET: Duration = Duration::from_secs(3);
 /// Most characters of one page's text layer (UTF-16 code units, which is what JavaScript counts). A page with more is cut there and
 /// the layer says so (`truncated`).
 pub const MAX_TEXT_CHARS: usize = 200_000;

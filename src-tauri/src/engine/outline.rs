@@ -21,6 +21,9 @@ pub struct OutlineItem {
     pub title: String,
     pub target: Option<PageSpot>,
     pub children: Vec<OutlineItem>,
+    /// Derived from the look of the text (`derived_outline`), not a bookmark of the file.
+    #[serde(default)]
+    pub derived: bool,
 }
 
 /// The title of a bookmark as the UI may show it: line breaks and tabs become spaces (a title is one line), then the filter that
@@ -61,6 +64,7 @@ impl<'d> Walk<'d, '_> {
                     .unwrap_or_default(),
                 target: self.target(&bookmark),
                 children,
+                derived: false,
             });
             next = bookmark.next_sibling();
         }
@@ -82,7 +86,8 @@ impl<'d> Walk<'d, '_> {
     }
 }
 
-/// The outline of `document` (`page_count` pages): the top level bookmarks, in order. Empty if it has none.
+/// The outline of `document` (`page_count` pages): the top level bookmarks, in order; for a document without bookmarks the one
+/// derived from its headings (`derived_outline`). Empty if there is none.
 pub(super) fn read_outline(document: &PdfDocument<'_>, page_count: u32) -> Vec<OutlineItem> {
     let mut walk = Walk {
         document,
@@ -90,7 +95,13 @@ pub(super) fn read_outline(document: &PdfDocument<'_>, page_count: u32) -> Vec<O
         spots: Spots::default(),
         read: HashSet::new(),
     };
-    walk.level(document.bookmarks().root(), 1)
+    let real = walk.level(document.bookmarks().root(), 1);
+    // The bookmarks of the file always win; the heuristic runs only for a document that has none.
+    if real.is_empty() {
+        super::derived_outline::derive_outline(document, page_count)
+    } else {
+        real
+    }
 }
 
 #[cfg(test)]

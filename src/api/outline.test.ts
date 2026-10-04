@@ -18,16 +18,24 @@ beforeEach(() => {
   invokeMock.mockReset();
 });
 
-const leaf = (title: string, target: unknown = null): unknown => ({ title, target, children: [] });
+const leaf = (title: string, target: unknown = null): unknown => ({ title, target, children: [], derived: false });
 
 /** A ladder `levels` deep, one node per level. */
 function ladder(levels: number): unknown {
   let node: unknown = leaf(`Level ${levels}`);
   for (let level = levels - 1; level >= 1; level -= 1) {
-    node = { title: `Level ${level}`, target: null, children: [node] };
+    node = { title: `Level ${level}`, target: null, children: [node], derived: false };
   }
   return node;
 }
+
+describe('derived flag', () => {
+  it('is read, defaults to false and must be a boolean', () => {
+    expect(parseOutline([{ ...(leaf('A') as object), derived: true }])?.[0]?.derived).toBe(true);
+    expect(parseOutline([{ title: 'A', target: null, children: [] }])?.[0]?.derived).toBe(false);
+    expect(parseOutline([{ ...(leaf('A') as object), derived: 'yes' }])).toBeNull();
+  });
+});
 
 describe('getOutline', () => {
   it('calls get_outline with the document id and returns the tree', async () => {
@@ -36,6 +44,7 @@ describe('getOutline', () => {
         title: 'Chapter 1',
         target: { pageId: 0, y: 92 },
         children: [leaf('Section 1.1', { pageId: 1, y: 292.5 })],
+        derived: false,
       },
       leaf('Website'),
     ];
@@ -55,13 +64,15 @@ describe('getOutline', () => {
     invokeMock.mockResolvedValueOnce([
       { title: 'a', target: { pageId: 3, y: 1, path: 'C:\\x' }, children: [], path: 'C:\\secret.pdf' },
     ]);
-    await expect(getOutline(0)).resolves.toStrictEqual([{ title: 'a', target: { pageId: 3, y: 1 }, children: [] }]);
+    await expect(getOutline(0)).resolves.toStrictEqual([
+      { title: 'a', target: { pageId: 3, y: 1 }, children: [], derived: false },
+    ]);
   });
 
   it('keeps unicode titles as they are and does not read them as markup', async () => {
     const title = '\u00dcbersicht \u2013 Gr\u00f6\u00dfe <img src=x onerror=alert(1)>';
     invokeMock.mockResolvedValueOnce([leaf(title)]);
-    await expect(getOutline(0)).resolves.toStrictEqual([{ title, target: null, children: [] }]);
+    await expect(getOutline(0)).resolves.toStrictEqual([{ title, target: null, children: [], derived: false }]);
   });
 
   it('rejects with the backend error', async () => {

@@ -17,6 +17,7 @@
 //! The PDFium library is bundled as a Tauri resource (`scripts/fetch-pdfium.sh`) and bound dynamically at runtime.
 //! If it cannot be loaded, the worker stays alive and answers every job with `engine_unavailable`.
 
+mod derived_outline;
 pub mod encode;
 mod export;
 pub mod files;
