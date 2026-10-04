@@ -50,6 +50,21 @@ const item = (entries: ToolbarEntry[], id: string): ToolbarItem => {
 };
 
 describe('the toolbar of DESIGN 3.3 and ADR-011 section 6', () => {
+  it('tells the two text tools apart by name and by a tooltip hint (F9)', () => {
+    const { entries } = buildToolbar(state(), actions());
+    expect(item(entries, 'text')).toMatchObject({
+      label: 'Text comment',
+      hint: 'Floating note on the page – stays a comment',
+    });
+    expect(item(entries, 'textBox')).toMatchObject({
+      label: 'Insert text',
+      hint: 'Becomes a permanent part of the page',
+    });
+    expect(item(entries, 'note').hint).toBeUndefined();
+    const de = buildToolbar(state({ t: translators.de }), actions()).entries;
+    expect(item(de, 'text').label).toBe('Textkommentar');
+    expect(item(de, 'textBox').label).toBe('Text einfügen');
+  });
   it('has the order panel toggle | Select | Markup | Fill and sign | Edit | Pages | History | More | spacer | zoom | inspector toggle', () => {
     const { entries } = buildToolbar(state(), actions());
     expect(entries.map((entry) => ('type' in entry && entry.type !== undefined ? entry.type : entry.id))).toEqual([

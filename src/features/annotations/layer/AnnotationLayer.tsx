@@ -8,6 +8,8 @@ import { PlacementLayer } from '../../signatures/place/PlacementLayer';
 import { fileRotationOf } from '../../viewer/fileRotation';
 import { normalizeRotation, overlayBox, swapsSides, totalRotation, unrotatedSize } from '../../viewer/transform';
 import { CreationLayer } from '../create';
+import { FreeTextEditor } from '../note/FreeTextEditor';
+import { NotePopover } from '../note/NotePopover';
 import { canMove, handleCursor, handlePoint, handlesOf, readingOrder, type HandleId } from '../selection/geometry';
 import { useInteraction, type Handlers } from '../selection/useInteraction';
 import { HitShape, Shape, hasExtent } from './shapes';
@@ -136,6 +138,16 @@ export const AnnotationLayer = memo(function AnnotationLayer({
   );
   const selectActive = useUi((state) => state.activeTool === 'select');
   const [hover, setHover] = useState<number | null>(null);
+  /** The annotation the Text or Note tool just made: its editor (free text) or popover (note) is open until it is done. */
+  const [editing, setEditing] = useState<{ id: number; kind: 'freeText' | 'note' } | null>(null);
+  const [anchor, setAnchor] = useState<HTMLElement | null>(null);
+  const editingId = editing?.id;
+  useEffect(() => {
+    setAnchor(
+      editingId === undefined ? null : document.querySelector<HTMLElement>(`[data-annot-frame="${editingId}"]`),
+    );
+  }, [editingId, list]);
+  const editedText = editing?.kind === 'freeText' ? list.find((a) => a.id === editing.id) : undefined;
 
   const rotation = normalizeRotation(rotationProp);
   const file = fileRotationOf(docId, pageIndex);
@@ -247,7 +259,22 @@ export const AnnotationLayer = memo(function AnnotationLayer({
           pageIndex={pageIndex}
           pageBox={{ width: page[0], height: page[1] }}
           transform={{ pxPerPt, rotation: total }}
+          onCreated={(created) => {
+            if (created.kind === 'freeText' || created.kind === 'note')
+              setEditing({ id: created.id, kind: created.kind });
+          }}
         />
+        {editedText?.kind === 'freeText' && (
+          // The group is in page space and scaled as a whole, so the editor works at scale 1; it takes the pointer itself.
+          <div className="absolute" style={style}>
+            <div data-annot-keep="" className="pointer-events-auto contents">
+              <FreeTextEditor docId={docId} annotation={editedText} scale={1} isNew onDone={() => setEditing(null)} />
+            </div>
+          </div>
+        )}
+        {editing?.kind === 'note' && (
+          <NotePopover docId={docId} noteId={editing.id} anchor={anchor} open isNew onClose={() => setEditing(null)} />
+        )}
         <PlacementLayer
           docId={docId}
           pageIndex={pageIndex}

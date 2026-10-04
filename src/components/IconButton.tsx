@@ -40,6 +40,8 @@ export interface IconButtonProps extends Omit<ComponentProps<'button'>, Managed>
   /** `aria-keyshortcuts` value ("Control+O Meta+O"); set it whenever the control is bound. */
   keyShortcuts?: string;
   tooltipSide?: Side;
+  /** One-line explanation: the tooltip's second line and the accessible description (unless the tool is locked). */
+  hint?: string;
   /** Overrides the default `aria-description` / tooltip note of a locked tool. */
   lockedDescription?: string;
   lockedNote?: string;
@@ -69,6 +71,7 @@ export function IconButton({
   tooltipSide,
   lockedDescription,
   lockedNote,
+  hint,
   disabled = false,
   focusableWhenDisabled = false,
   className,
@@ -89,7 +92,7 @@ export function IconButton({
       aria-label={label}
       aria-pressed={pressed}
       aria-keyshortcuts={keyShortcuts}
-      aria-description={locked ? (lockedDescription ?? t('component.locked')) : undefined}
+      aria-description={locked ? (lockedDescription ?? t('component.locked')) : hint}
       aria-disabled={soft ? true : undefined}
       disabled={disabled && !soft}
       onClick={soft ? cancelClick : onClick}
@@ -118,7 +121,7 @@ export function IconButton({
     <Tooltip
       label={label}
       shortcut={shortcut}
-      note={locked ? (lockedNote ?? t('component.lockedNote')) : undefined}
+      note={locked ? (lockedNote ?? t('component.lockedNote')) : hint}
       side={tooltipSide}
     >
       {button}

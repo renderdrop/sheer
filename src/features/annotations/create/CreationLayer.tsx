@@ -20,6 +20,7 @@ import {
   shapeEnd,
   type CreationStyle,
 } from './drafts';
+import { reportRefusal } from './refusal';
 import { boxFromPoints, clampToPage, isDrag } from './geometry';
 import {
   INK_JOIN_MS,
@@ -173,9 +174,7 @@ function ActiveLayer({
           const created = changes.upserted[0];
           if (created !== undefined) onCreated?.(created);
         })
-        .catch(() => {
-          // The backend refused (a limit, a read-only document): the replica is unchanged, so nothing appears. Errors never toast.
-        });
+        .catch(reportRefusal);
       if (!useUi.getState().toolLocked) useUi.getState().releaseTool();
     },
     [docId, onCreated],
@@ -401,7 +400,7 @@ function ActiveLayer({
       data-creation-layer=""
       data-tool={kind}
       style={{ zIndex: 'var(--z-canvas-annotations)' }}
-      className={`absolute inset-0 touch-none select-none ${isMarkup ? 'cursor-text' : 'cursor-crosshair'}`}
+      className={`pointer-events-auto absolute inset-0 touch-none select-none ${isMarkup ? 'cursor-text' : 'cursor-crosshair'}`}
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}

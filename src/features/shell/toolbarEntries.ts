@@ -171,6 +171,8 @@ export function buildToolbar(
       locked: state.activeTool === id && state.toolLocked,
       disabled: disabled || (WRITE_TOOLS.has(id) && state.readOnly === true),
       collapse,
+      // The two text tools look alike by name, so each says what it makes (ADR-048 amendment, F9).
+      hint: id === 'text' ? t('toolbar.tool.text.hint') : id === 'textBox' ? t('insert.text.hint') : undefined,
       // The Sign tool opens a menu of what to place (DESIGN 3.34) instead of toggling.
       menu: id === 'signature' ? useSignMenuEntries : undefined,
       onActivate: () => actions.selectTool(id),

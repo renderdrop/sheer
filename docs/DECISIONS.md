@@ -1280,7 +1280,7 @@ of ADR-043 (3) stay.
 
 ## ADR-048 — M5 UI decisions (DESIGN §3.36–§3.40)
 
-**Decision.** (1) New toolbar cluster **Edit** after Fill & Sign: Add text (E), Add image (I), Crop (K); it collapses after Pages.
+**Decision.** (1) New toolbar cluster **Edit** after Fill & Sign: Insert text (E), Add image (I), Crop (K); it collapses after Pages.
 Redact, Protect and Document properties stay in More / macOS menus (rare or destructive, no letter). (2) Text colour uses the §3.24
 document palette (Okabe-Ito), not Iris: Iris is the UI hue, page content stays theme-independent (ADR-011 §9). Fonts: standard
 Helvetica/Times/Courier, WinAnsi only (as ADR-041). (3) Crop is a mode in Single page with the inspector forced open; margins in mm
@@ -1289,6 +1289,8 @@ persistent warning banner; apply confirms with Cancel focused, is undoable until
 ADR-047). (5) Permissions need a separate permissions password; password strength is a local heuristic, a hint only, no dependency.
 Protection and metadata changes take effect on the next save. (6) Image import limits 20 MB / 8192 px are UI defaults; ADR-047 may
 amend them. Storage and IPC details defer to ADR-047.
+
+**Amendment (F9).** The tools are named "Text comment" / "Textkommentar" (annotation, T) and "Insert text" / "Text einfügen" (page content, E), each with a tooltip hint saying what it makes. Toolbar groups Markup (de "Markieren") and Edit (de "Bearbeiten") are split by a wider divider gap (`--toolbar-group-gap`).
 
 ## ADR-047 — Edit and protect (M5)
 

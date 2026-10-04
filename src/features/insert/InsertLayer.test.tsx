@@ -394,7 +394,7 @@ describe('the inspector', () => {
     render(<Probe />);
     expect(screen.getByTestId('probe').textContent).toBe('none');
     act(() => useUi.setState({ activeTool: 'textBox' }));
-    expect(screen.getByTestId('probe').textContent).toBe('Tool options: Add text');
+    expect(screen.getByTestId('probe').textContent).toBe('Tool options: Insert text');
   });
 
   it('a selected text box has Alignment and Delete', async () => {

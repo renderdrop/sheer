@@ -134,7 +134,7 @@ function ActiveLayer({ item, docId, pageIndex, pageBox, transform }: PlacementLa
       data-placement-layer=""
       data-item={item.type}
       style={{ zIndex: 'var(--z-canvas-annotations)' }}
-      className="absolute inset-0 cursor-copy touch-none select-none"
+      className="pointer-events-auto absolute inset-0 cursor-copy touch-none select-none"
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
       onPointerLeave={() => setGhost(null)}

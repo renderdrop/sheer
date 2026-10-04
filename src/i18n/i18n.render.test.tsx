@@ -144,7 +144,7 @@ describe('the language setting', () => {
       'Auswählen',
       'Hervorheben',
       'Notiz',
-      'Text',
+      'Textkommentar',
       'Zeichnen',
       'Rechteck',
       'Formular',

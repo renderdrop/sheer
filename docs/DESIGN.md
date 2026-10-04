@@ -333,7 +333,7 @@ md 32 / sm 24 (status bar, rows, banners); icon 16, toolbar 20; radius 12 / 8. V
 
 Leading → trailing: sidebar toggle `panel-left` | **Select** | **Markup**: Highlight, Comment, Draw | **Fill & Sign**:
 Form, Signature | **Pages** | More `ellipsis` | spacer | zoom out, readout (56 w, `--text-sm`, opens zoom menu),
-zoom in | inspector toggle `panel-right`. Items gap 4; clusters split by 8 + 1 × 16 px divider + 8. G1, 40 h,
+zoom in | inspector toggle `panel-right`. Items gap 4; clusters split by `--toolbar-group-gap` (12) + 1 × 16 px divider + 12 (F9: Markup and Edit read as two groups). G1, 40 h,
 padding 4, radius 16.
 
 | Tool | Select | Highlight | Comment | Draw | Form | Signature | Pages |
@@ -941,7 +941,7 @@ optional `x` (`xfa.dismiss`, hides it for this document's session). `role=status
 |---|---|---|---|---|
 | Highlight | `highlighter` · `underline` · `strikethrough` | H | Highlight, Underline, Strikethrough | `text` over runs, else `crosshair` (drag a rect) |
 | Note | `message-square` | C | — | `crosshair` |
-| Text | `type` | T | — | `crosshair` |
+| Text comment | `type` | T | — | `crosshair` |
 | Draw | `pen-line` | D | — | `crosshair` |
 | Shapes | `square` · `circle` · `minus` · `move-up-right` | R | Rectangle, Ellipse, Line, Arrow | `crosshair` |
 
@@ -965,7 +965,7 @@ text selection, §3.17: H with selected text marks it at once).
 | Key | en | de |
 |---|---|---|
 | `tool.highlight` / `.underline` / `.strike` | Highlight / Underline / Strikethrough | Hervorheben / Unterstreichen / Durchstreichen |
-| `tool.note` / `.text` / `.draw` | Note / Text / Draw | Notiz / Text / Zeichnen |
+| `tool.note` / `.text` / `.draw` | Note / Text comment / Draw | Notiz / Textkommentar / Zeichnen |
 | `tool.shapes` / `.rect` / `.ellipse` / `.line` / `.arrow` | Shapes / Rectangle / Ellipse / Line / Arrow | Formen / Rechteck / Ellipse / Linie / Pfeil |
 | `tool.announce` | {tool} tool{locked, select, true { , locked} other {}} | Werkzeug {tool}{locked, select, true { , fixiert} other {}} |
 | `tool.readOnly` | This document can't be edited. | Dieses Dokument kann nicht bearbeitet werden. |
@@ -1060,7 +1060,7 @@ file text renders as text nodes only.
 **Editing.** A new note opens with focus in the body. The body commits on blur or close (one coalesced undo step); a new note closed
 empty is removed without an undo entry. Primary+Enter posts a reply; Enter is a newline. Esc closes and refocuses the anchor. Tab cycles inside.
 
-**Free text.** Text tool: a click places a 160 pt box (drag sets the width) and enters editing; on an existing one, double-click or Enter.
+**Free text.** Text comment tool (en "Text comment", de "Textkommentar"; tooltip hint `toolbar.tool.text.hint`): a click places a 160 pt box (drag sets the width) and enters editing; on an existing one, double-click or Enter.
 Editing is a textarea in layer 3 exactly over the box, font size × zoom, 1 px dashed `--color-doc-select`; width fixed, height grows.
 Esc or a click outside commits; empty → removed. Primary+Z inside the field is the field's own undo.
 
@@ -1412,10 +1412,10 @@ reaches row buttons and footer. Motion as About; reduced motion opacity only. **
 
 ### 3.36 Insert text and image (M5)
 
-**Purpose:** add new page content: a text box or a PNG/JPEG image. Unlike the Text annotation (§3.22, T) it is not a comment and
+**Purpose:** add new page content: a text box or a PNG/JPEG image. Unlike the Text comment annotation (§3.22, T) it is not a comment and
 never appears in Comments (§3.26); storage per ADR-047.
 
-**Toolbar.** New cluster **Edit** after Fill & Sign (§3.3): `text-cursor` `insert.text` (E) · `image-plus` `insert.image` (I) · `crop`
+**Toolbar.** New cluster **Edit** after Fill & Sign (§3.3): `text-cursor` `insert.text` "Insert text" / "Text einfügen" (E; tooltip hint `insert.text.hint`) · `image-plus` `insert.image` (I) · `crop`
 `crop.tool` (K, §3.37). Modes per §3.3 (one-shot / locked). Overflow order becomes Undo/Redo, Pages, **Edit**, Fill & Sign, zoom.
 No document, read-only, or edit not permitted (§3.39): `aria-disabled`, tooltip `tool.readOnly`. More gains (after Stamp): Redact…
 (§3.38), Protect… (§3.39), Document properties… (§3.40).

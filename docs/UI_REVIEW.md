@@ -53,3 +53,17 @@ node scripts/ui/cdp.mjs record 1500 --out review/x.png --delay 200 --scale 0.5 -
 - Uses `Page.startScreencast`: the WebView content of the Tauri window only (no OS caption), smooth (about 60 fps).
 - Writes an APNG with real frame delays plus `x-f01..f06.png` stills; prints frame count and capture fps.
 - `record.ps1` (PrintWindow) captures the whole window incl. caption but is slow (about 11 fps); use it for static shots.
+
+## Annotation smoke test (milestone DoD)
+
+```
+node scripts/ui/dev.mjs                 # in one terminal
+node scripts/ui/annot-smoke.mjs         # in another; exit code 1 if any row fails
+```
+Opens `tests/fixtures/text.pdf` (second launch of the debug exe) and the welcome document (the app's `openWelcome`), and for each
+of them makes one annotation per tool with real CDP mouse and keyboard input (`Input.dispatchMouseEvent`, `Input.insertText`):
+Highlight on text, Note (click, type in the popover), Text comment (click, type, Esc), Draw, Rectangle, and the M4 Sign tool
+(check mark, date, typed signature). Each row is verified against the annotations store and printed in a table. jsdom cannot see
+hit-testing (a layer under a `pointer-events-none` parent is dead in the window and green in vitest, FEEDBACK F9), so this run is a
+required step before a milestone tag. Only tool selection and arming the Sign item use the stores; everything else is real input.
+Stop the dev window afterwards (`taskkill /F /IM sheer.exe`): a running exe blocks `cargo test` on Windows.

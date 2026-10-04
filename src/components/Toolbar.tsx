@@ -28,6 +28,8 @@ export interface ToolbarItem {
   /** A tool that stays active after use: lock badge, `aria-description`, tooltip note. */
   locked?: boolean;
   disabled?: boolean;
+  /** One-line explanation under the name in the tooltip. */
+  hint?: string;
   /** Key chip in the tooltip, formatted for the platform. */
   shortcut?: string;
   /** `aria-keyshortcuts` value. */
@@ -215,6 +217,7 @@ export function Toolbar({
         locked={item.locked}
         disabled={item.disabled}
         shortcut={item.shortcut}
+        hint={item.hint}
         keyShortcuts={item.keyShortcuts}
         className={item.text !== undefined ? READOUT_WIDTH : undefined}
       >
@@ -253,7 +256,11 @@ export function Toolbar({
       continue;
     }
     const divider = dividerNeeded ? (
-      <div role="separator" aria-orientation="vertical" className="mx-1 h-2 w-hairline shrink-0 bg-divider" />
+      <div
+        role="separator"
+        aria-orientation="vertical"
+        className="mx-toolbar-group h-2 w-hairline shrink-0 bg-divider"
+      />
     ) : null;
     if (entry.type === 'more') {
       if (!showMore) continue;

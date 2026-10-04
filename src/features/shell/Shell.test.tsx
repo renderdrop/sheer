@@ -97,7 +97,7 @@ describe('Shell without a document (DESIGN 2, 3.11)', () => {
       'Select',
       'Highlight',
       'Note',
-      'Text',
+      'Text comment',
       'Draw',
       'Rectangle',
       'Form',

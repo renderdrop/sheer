@@ -119,6 +119,7 @@
   --spacing-target-min: var(--target-min);
   --spacing-target-default: var(--target-default);
   --spacing-hairline: var(--hairline);
+  --spacing-toolbar-group: var(--toolbar-group-gap);
   --spacing-icon-12: var(--icon-12);
   --spacing-icon-16: var(--icon-16);
   --spacing-icon-20: var(--icon-20);
@@ -294,6 +295,8 @@
   --target-min: 24px;
   --target-default: var(--control-md);
   --hairline: 1px;
+  /* Each side of the divider between toolbar groups (F9: Markup and Edit read as two groups). */
+  --toolbar-group-gap: var(--space-1-5);
   /** Inner padding and focus offset of a form control, in px at 100% zoom (divided by --page-scale on the canvas). */
   --form-inset: 2px;
   --focus-width: 2px;
