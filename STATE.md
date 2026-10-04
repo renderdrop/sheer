@@ -1,8 +1,8 @@
 # STATE
 phase: v1.2 Redesign "sheer." (docs/REDESIGN_BRIEF.md, ADR-100, wave plan ADR-101)
-version: 1.1.0
+version: 1.2.0-beta.1 (pre-release, tag v1.2.0-beta.1, ADR-103)
 current_item: STOPPED at the owner checkpoint (ADR-102): waiting for the owner's feedback on the installer build; R5 only after it
-last_completed: wave 6 (modes + F14 tool row, Windows menu row, mini bar, Lesen tools) + tour/lint fix (686caf0); installer Sheer_1.1.0_x64-setup.exe built
+last_completed: pre-release v1.2.0-beta.1 published (0a79e45; GitHub pre-release with universal DMG + NSIS setup, release run 37232680749 green)
 loop_count_this_session: 0
 open_blockers: 3 human-only (B-001, B-002, B-005)
 notes: .claude/state/STOP is set on purpose (owner: build the installer, then STOP). Next session: read the owner feedback (FEEDBACK.md F15?),
