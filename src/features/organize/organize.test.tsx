@@ -438,24 +438,12 @@ describe('OrganizeGrid', () => {
 
 describe('OrganizeBar', () => {
   it('sets the thumbnail size with the slider', async () => {
-    const { user } = setup(<OrganizeBar docId={DOC} />);
+    const { user } = setup(<OrganizeBar />);
     screen.getByRole('slider').focus();
     const before = useOrganize.getState().thumb;
     await user.keyboard('{ArrowRight}');
     expect(useOrganize.getState().thumb).toBeGreaterThan(before);
     await user.keyboard('{Home}');
     expect(useOrganize.getState().thumb).toBeLessThan(before);
-  });
-
-  it('marks the page commands aria-disabled in a read-only document', () => {
-    useDocuments.getState().add({ id: DOC, pageCount: 6, displayName: 'w.pdf', kind: 'welcome' });
-    useOrganize.getState().setSelection(DOC, { selected: [1], focus: 1 });
-    setup(<OrganizeBar docId={DOC} />);
-    for (const name of ['Rotate left', 'Delete', 'Insert']) {
-      const button = screen
-        .getAllByRole('button')
-        .find((b) => (b.getAttribute('aria-label') ?? b.textContent ?? '').startsWith(name));
-      expect(button?.getAttribute('aria-disabled')).toBe('true');
-    }
   });
 });

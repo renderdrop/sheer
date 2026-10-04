@@ -2,6 +2,7 @@ import { DropBannerRow } from '../jobs/JobsHost';
 import { RecoveryBanner } from '../recovery/RecoveryBanner';
 import { RedactBanner } from '../redact/RedactBanner';
 import { UpdateBannerRow } from '../update/UpdateBanner';
+import { MiniBarDock } from '../minibar/MiniBarDock';
 import { FormHost } from '../forms/FormHost';
 import { useBannerWinner } from './bannerPriority';
 import { BannerRow, XfaBannerRow } from './Banner';
@@ -25,6 +26,8 @@ export function BannerSlot() {
         <DropBannerRow />
         <UpdateBannerRow />
       </div>
+      {/* The second row: the properties mini bar docks here when neither side of the selection has room (DESIGN v2 3.3). */}
+      <MiniBarDock />
     </div>
   );
 }

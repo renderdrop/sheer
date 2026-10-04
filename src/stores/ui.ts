@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 
 import type { AppError } from '../api/errors';
-import { clampPanelWidth, type InspectorMode } from '../lib/layout';
+import { clampPanelWidth } from '../lib/layout';
 import { useDocuments } from './documents';
 import { useSettings } from './settings';
 
@@ -42,6 +42,42 @@ export const TOOLS = [
 ] as const;
 export type ToolId = (typeof TOOLS)[number];
 
+/** The five modes of the editor (DESIGN v2 3.2, FEEDBACK F14), in tab order: keys 1 to 5. */
+export const MODES = ['read', 'comment', 'fill', 'pages', 'edit'] as const;
+export type Mode = (typeof MODES)[number];
+
+/** The mode a tool belongs to; `select` belongs to every mode (it is the idle tool of all but Seiten). */
+export function modeOfTool(tool: ToolId): Mode | null {
+  switch (tool) {
+    case 'hand':
+    case 'textSelect':
+    case 'magnifier':
+      return 'read';
+    case 'highlight':
+    case 'note':
+    case 'text':
+    case 'draw':
+    case 'shapes':
+      return 'comment';
+    case 'form':
+    case 'signature':
+      return 'fill';
+    case 'pages':
+      return 'pages';
+    case 'textBox':
+    case 'image':
+    case 'crop':
+      return 'edit';
+    case 'select':
+      return null;
+  }
+}
+
+/** The tool of a mode that is on when nothing else is: Auswahl, and in Seiten the page grid (Ordnen). */
+export const idleToolOf = (mode: Mode): ToolId => (mode === 'pages' ? 'pages' : 'select');
+
+const idle = (mode: Mode) => ({ activeTool: idleToolOf(mode), toolLocked: false }) as const;
+
 /** The two views of the shell (DESIGN v2 3): Home, or the editor around the active document. */
 export type View = 'home' | 'editor';
 
@@ -53,7 +89,8 @@ export interface UiState {
   /** Live width while the splitter is dragged; `bindPanelWidthToSettings` persists it a moment after it settles. */
   leftPanelWidth: number;
   leftPanelCollapsed: boolean;
-  inspector: InspectorMode;
+  /** The active mode of the editor; Lesen on every open. */
+  mode: Mode;
   activeTool: ToolId;
   /** The active tool stays active after use (double click or Shift+Enter, DESIGN 3.3). */
   toolLocked: boolean;
@@ -80,13 +117,13 @@ export interface UiState {
   setLeftPanelTab: (tab: LeftPanelTab) => void;
   setLeftPanelWidth: (width: number) => void;
   setLeftPanelCollapsed: (collapsed: boolean) => void;
-  setInspector: (inspector: InspectorMode) => void;
   /** A click on a tool: activates it, and a click on the active tool, locked or not, goes back to Select. */
   selectTool: (tool: ToolId) => void;
   /** A double click or Shift+Enter on a tool: activates it and keeps it. */
   lockTool: (tool: ToolId) => void;
   /** Esc: back to Select. */
   releaseTool: () => void;
+  setMode: (mode: Mode) => void;
   setRedactMode: (on: boolean) => void;
   setProtectOpen: (open: boolean) => void;
   setPropsOpen: (open: boolean) => void;
@@ -106,14 +143,12 @@ export interface UiState {
 
 let toastCounter = 0;
 
-const SELECT = { activeTool: 'select', toolLocked: false } as const;
-
-export const useUi = create<UiState>()((set, get) => ({
+export const useUi = create<UiState>()((set) => ({
   view: 'home',
   leftPanelTab: 'thumbnails',
   leftPanelWidth: clampPanelWidth(Number.NaN),
   leftPanelCollapsed: false,
-  inspector: 'auto',
+  mode: 'read',
   activeTool: 'select',
   toolLocked: false,
   redactMode: false,
@@ -132,12 +167,24 @@ export const useUi = create<UiState>()((set, get) => ({
   setLeftPanelTab: (leftPanelTab) => set({ leftPanelTab }),
   setLeftPanelWidth: (width) => set({ leftPanelWidth: clampPanelWidth(width) }),
   setLeftPanelCollapsed: (leftPanelCollapsed) => set({ leftPanelCollapsed }),
-  setInspector: (inspector) => set({ inspector }),
+  // A tool of another mode switches the mode with it (a v1.1 single-letter key, a hub intent); the tool stays.
   selectTool: (tool) =>
-    set(tool === 'select' || tool === get().activeTool ? SELECT : { activeTool: tool, toolLocked: false }),
-  lockTool: (tool) => set(tool === 'select' ? SELECT : { activeTool: tool, toolLocked: true }),
-  // Esc is pressed all the time; with Select already active it must not wake the subscribers.
-  releaseTool: () => set((state) => (state.activeTool === 'select' && !state.toolLocked ? state : SELECT)),
+    set((state) =>
+      tool === 'select' || tool === state.activeTool
+        ? idle(state.mode)
+        : { activeTool: tool, toolLocked: false, mode: modeOfTool(tool) ?? state.mode },
+    ),
+  lockTool: (tool) =>
+    set((state) =>
+      tool === 'select'
+        ? idle(state.mode)
+        : { activeTool: tool, toolLocked: true, mode: modeOfTool(tool) ?? state.mode },
+    ),
+  // Esc is pressed all the time; with the idle tool already active it must not wake the subscribers.
+  releaseTool: () =>
+    set((state) => (state.activeTool === idleToolOf(state.mode) && !state.toolLocked ? state : idle(state.mode))),
+  // A switch releases the tool (to Auswahl, in Seiten to the grid).
+  setMode: (mode) => set((state) => (state.mode === mode ? state : { mode, ...idle(mode) })),
   setRedactMode: (redactMode) => set({ redactMode }),
   setProtectOpen: (protectOpen) => set({ protectOpen }),
   setPropsOpen: (propsOpen) => set({ propsOpen }),
@@ -159,6 +206,20 @@ export const useUi = create<UiState>()((set, get) => ({
 // Home. "Back to Home" (`view-home`) sets Home while the documents stay open; the next activation leaves it again.
 useDocuments.subscribe((state, previous) => {
   if (state.activeId !== previous.activeId) useUi.getState().setView(state.activeId === null ? 'home' : 'editor');
+});
+// The mode is kept per document tab for the session (DESIGN v2 3.2): leaving a document stores it, a document that was never
+// shown (a new open) starts in Lesen. The tool follows: it is the idle tool of the restored mode.
+const modeByDoc = new Map<number, Mode>();
+useDocuments.subscribe((state, previous) => {
+  if (state.activeId === previous.activeId) return;
+  const ui = useUi.getState();
+  if (previous.activeId !== null) {
+    if (state.byId[previous.activeId] === undefined) modeByDoc.delete(previous.activeId);
+    else modeByDoc.set(previous.activeId, ui.mode);
+  }
+  if (state.activeId === null) return;
+  const mode = modeByDoc.get(state.activeId) ?? 'read';
+  useUi.setState({ mode, ...idle(mode) });
 });
 // Activating or adding a document that is already the active one changes no `activeId`, so those two calls also show the editor.
 const { setActive, add } = useDocuments.getState();
@@ -248,11 +309,11 @@ export function bindPanelWidthToSettings(
 }
 
 /**
- * Connects both sidebar collapse states to the persisted settings (DESIGN v2 3.2): the page sidebar's `leftPanelCollapsed` and the
- * tool sidebar's `inspector === 'closed'`.
+ * Connects the page sidebar's collapse state `leftPanelCollapsed` to the persisted settings (DESIGN v2 3.2; the tool sidebar and its
+ * flag are gone, ADR-102).
  *
- * - Once the settings have loaded, their flags become the UI's, unless the user already toggled that sidebar (then theirs wins and is saved).
- * - A change of either state is written with `update`, unless the settings already hold it.
+ * - Once the settings have loaded, their flag becomes the UI's, unless the user already toggled the sidebar (then theirs wins and is saved).
+ * - A change of the state is written with `update`, unless the settings already hold it.
  *
  * Returns the function that disconnects it.
  */
@@ -260,44 +321,31 @@ export function bindSidebarCollapseToSettings(ui: UiLike = useUi, settings: Sett
   let applying = false;
   let appliedLoad = false;
   let pageMoved = false;
-  let toolMoved = false;
 
   const apply = () => {
     const stored = settings.getState();
     if (!stored.loaded || appliedLoad) return;
     appliedLoad = true;
-    const patch: Partial<UiState> = {};
-    if (!pageMoved) patch.leftPanelCollapsed = stored.pageSidebarCollapsed === true;
-    if (!toolMoved) {
-      const closed = stored.toolSidebarCollapsed === true;
-      const current = ui.getState().inspector;
-      if (closed && current !== 'closed') patch.inspector = 'closed';
-      else if (!closed && current === 'closed') patch.inspector = 'auto';
+    if (!pageMoved) {
+      applying = true;
+      ui.setState({ leftPanelCollapsed: stored.pageSidebarCollapsed === true });
+      applying = false;
     }
-    applying = true;
-    ui.setState(patch);
-    applying = false;
     save();
   };
 
   const save = () => {
     const stored = settings.getState();
     if (!stored.loaded) return;
-    const { leftPanelCollapsed, inspector } = ui.getState();
-    const patch: { pageSidebarCollapsed?: boolean; toolSidebarCollapsed?: boolean } = {};
-    if (leftPanelCollapsed !== (stored.pageSidebarCollapsed === true)) patch.pageSidebarCollapsed = leftPanelCollapsed;
-    const toolClosed = inspector === 'closed';
-    if (toolClosed !== (stored.toolSidebarCollapsed === true)) patch.toolSidebarCollapsed = toolClosed;
-    if (Object.keys(patch).length > 0) void settings.getState().update(patch);
+    const { leftPanelCollapsed } = ui.getState();
+    if (leftPanelCollapsed !== (stored.pageSidebarCollapsed === true)) {
+      void settings.getState().update({ pageSidebarCollapsed: leftPanelCollapsed });
+    }
   };
 
   const stopUi = ui.subscribe((state, previous) => {
-    if (applying) return;
-    const page = state.leftPanelCollapsed !== previous.leftPanelCollapsed;
-    const tool = (state.inspector === 'closed') !== (previous.inspector === 'closed');
-    if (!page && !tool) return;
-    pageMoved ||= page;
-    toolMoved ||= tool;
+    if (applying || state.leftPanelCollapsed === previous.leftPanelCollapsed) return;
+    pageMoved = true;
     if (appliedLoad) save();
   });
   const stopSettings = settings.subscribe(apply);

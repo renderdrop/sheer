@@ -50,7 +50,8 @@ export function useWindowState(chrome: Chrome): WindowState & { refresh: () => v
   const refresh = useCallback(() => {
     void Promise.all([
       caption ? isWindowMaximized().catch(() => false) : false,
-      trafficLights ? isWindowFullscreen().catch(() => false) : false,
+      // Windows needs it too: the caption buttons of the menu row are hidden in full screen (DESIGN v2 3.2).
+      caption || trafficLights ? isWindowFullscreen().catch(() => false) : false,
     ]).then(([maximized, fullscreen]) =>
       setState((previous) =>
         previous.maximized === maximized && previous.fullscreen === fullscreen ? previous : { maximized, fullscreen },

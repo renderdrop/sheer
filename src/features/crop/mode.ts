@@ -1,19 +1,17 @@
 import { selectActiveId, useDocuments } from '../../stores/documents';
 import { useUi } from '../../stores/ui';
 import { useView } from '../../stores/view';
-import type { InspectorMode } from '../../lib/layout';
 import type { ScrollAnchor, ScrollMode } from '../viewer/layout';
 import { useCrop } from './store';
 
 /**
- * The crop mode as a mode of the shell (DESIGN 3.37): while the Crop tool is active the canvas shows one page and the inspector is
- * open; what the user had comes back when the mode ends. The Crop tool is a plain tool of `ui`, so this follows it from outside
+ * The crop mode as a mode of the shell (DESIGN 3.37): while the Crop tool is active the canvas shows one page; what the user had
+ * comes back when the mode ends. The Crop tool is a plain tool of `ui`, so this follows it from outside
  * and any way of leaving the tool (K, Esc, Apply, another tool, another document) restores the view.
  */
 interface Saved {
   docId: number;
   scrollMode: ScrollMode;
-  inspector: InspectorMode;
 }
 
 let saved: Saved | null = null;
@@ -28,9 +26,8 @@ function enter(): void {
   if (docId === null) return;
   const view = useView.getState().byDoc[docId];
   if (view === undefined) return;
-  saved = { docId, scrollMode: view.scrollMode, inspector: useUi.getState().inspector };
+  saved = { docId, scrollMode: view.scrollMode };
   if (view.scrollMode !== 'single') useView.getState().setScrollMode(docId, 'single', topOf(view.pageIndex));
-  useUi.getState().setInspector('open');
 }
 
 function leave(): void {
@@ -42,7 +39,6 @@ function leave(): void {
   if (view !== undefined && view.scrollMode !== was.scrollMode) {
     useView.getState().setScrollMode(was.docId, was.scrollMode, topOf(view.pageIndex));
   }
-  useUi.getState().setInspector(was.inspector);
 }
 
 /** Starts following the tool. Once; the layer module calls it on import, which is when the canvas exists. Returns the function that stops it. */

@@ -24,19 +24,20 @@ export function overlayOffset(): number {
 }
 
 /**
- * Widths of the layout grid in px (DESIGN v2 3.2) for the collapse rules, which are arithmetic in JavaScript (src/lib/layout.ts).
- * They mirror `--splitter-width`, `--canvas-min`, `--tool-sidebar-width`, `--tool-rail-width` and `--topbar-height` of
- * tokens.css, and tokens.test.ts fails when they drift apart. `railBelow` (the tool sidebar becomes the rail) and
- * `leftCollapseBelow` (the page sidebar collapses) are breakpoints of the spec with no CSS counterpart; `minWindow*` is the
+ * Sizes of the layout grid in px (DESIGN v2 3.2, ADR-102) for the collapse rules and the body height, which are arithmetic in
+ * JavaScript (src/lib/layout.ts). They mirror `--splitter-width`, `--canvas-min`, `--menubar-height`, `--topbar-height`,
+ * `--mode-row-height`, `--tool-row-height` and `--minibar-height` of tokens.css, and tokens.test.ts fails when they drift apart.
+ * `leftCollapseBelow` (the page sidebar collapses) is a breakpoint of the spec with no CSS counterpart; `minWindow*` is the
  * smallest window, and `tauri.conf.json` has the minimum (tested).
  */
 export const LAYOUT = {
   splitter: 8,
   canvasMin: 360,
+  menubar: 32,
   topbar: 56,
-  toolSidebar: 280,
-  toolRail: 56,
-  railBelow: 1100,
+  modeRow: 40,
+  toolRow: 48,
+  minibar: 40,
   leftCollapseBelow: 860,
   minWindowWidth: 960,
   minWindowHeight: 640,

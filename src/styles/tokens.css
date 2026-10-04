@@ -147,11 +147,13 @@
   --spacing-popover-max: var(--popover-max);
   --spacing-tooltip-max: var(--tooltip-max);
   --spacing-splitter: var(--splitter-width);
-  /* Layout slots: h-topbar, min-h-banner-min, max-w-status-name, w-caption-button, ps-chrome-inset, w-tool-sidebar,
-     w-tool-rail, min-w-canvas-min, max-w-empty-max and h-scrim. */
+  /* Layout slots: h-topbar, h-mode-row, h-tool-row, h-minibar, min-h-banner-min, max-w-status-name, w-caption-button,
+     ps-chrome-inset, min-w-canvas-min, max-w-empty-max and h-scrim. */
   --spacing-topbar: var(--topbar-height);
-  --spacing-tool-sidebar: var(--tool-sidebar-width);
-  --spacing-tool-rail: var(--tool-rail-width);
+  --spacing-menubar: var(--menubar-height);
+  --spacing-mode-row: var(--mode-row-height);
+  --spacing-tool-row: var(--tool-row-height);
+  --spacing-minibar: var(--minibar-height);
   --spacing-banner-min: var(--banner-min-height);
   --spacing-search-row: var(--search-row-height);
   --spacing-search-progress: var(--search-progress-height);
@@ -387,8 +389,10 @@
   /* Layout slots (DESIGN 1.3, 3). The widths are mirrored as numbers in components/tokens.ts (LAYOUT) for the collapse rules,
      and a test fails on drift. */
   --topbar-height: 56px;
-  --tool-sidebar-width: 280px;
-  --tool-rail-width: 56px;
+  --menubar-height: 32px; /* the Windows menu row and the caption buttons (DESIGN v2 3.2) */
+  --mode-row-height: 40px; /* the mode tabs (DESIGN v2 3.2, ADR-102) */
+  --tool-row-height: 48px; /* the tool row under them */
+  --minibar-height: 40px; /* the properties mini bar (DESIGN v2 3.3) */
   --banner-min-height: 40px;
   --status-name-max: 40%; /* the file name's share of the status bar */
   --caption-button-width: 46px;
@@ -605,8 +609,7 @@
    * then takes its tracks away in one step, after that fade (a transition of no duration that starts --motion-fast late), where
    * the --motion-slow slide of the tracks is off. Restoring the panel gives it its tracks at once and it fades in on them.
    */
-  [data-layout][data-animating="left"][data-left="collapsed"],
-  [data-layout][data-animating="inspector"][data-inspector="closed"] {
+  [data-layout][data-animating="left"][data-left="collapsed"] {
     transition-property: grid-template-columns !important;
     transition-duration: 0s !important;
     transition-delay: var(--motion-fast) !important;

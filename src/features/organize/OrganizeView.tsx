@@ -13,8 +13,8 @@ import { readSlots } from './source';
 import { useOrganize } from './store';
 
 /**
- * The canvas slot while the Pages tool is active (DESIGN 3.28, ADR-037): the organize bar over the page grid, in the track the canvas
- * has otherwise (`<main>`, radius 16, `--color-canvas`). It is a mode, not a one-shot tool: it ends with Done, P, Esc or Enter on a
+ * The canvas slot in the mode Seiten (DESIGN v2 3.2, ADR-102): the size strip over the page grid, in the track the canvas
+ * has otherwise (`<main>`, radius 16, `--color-canvas`). It is a mode of the mode row: it ends with another tab or Enter on a
  * page, and the viewer comes back at the focused page (the grid does that when it unmounts). The grid enters with a fade (base);
  * reduced motion changes nothing about it, a fade is the reduced form already. The selection of a document is dropped on leaving.
  */
@@ -55,7 +55,7 @@ export function OrganizeView({ style }: { style?: CSSProperties }) {
     >
       {docId !== null && (
         <>
-          <OrganizeBar docId={docId} />
+          <OrganizeBar />
           <OrganizeGrid key={docId} docId={docId} />
         </>
       )}

@@ -3,32 +3,30 @@ import { useEffect } from 'react';
 import { announce } from '../../components';
 import { translators } from '../../i18n';
 import { useLocaleStore } from '../../i18n/store';
-import type { InspectorMode } from '../../lib/layout';
 import { selectActiveId, useDocuments } from '../../stores/documents';
-import { useUi } from '../../stores/ui';
+import { idleToolOf, useUi } from '../../stores/ui';
 import { hasTextSelection } from '../textlayer/selection';
 import { endRedactMode, markSelection } from './actions';
 
-let savedInspector: InspectorMode | null = null;
-
 /**
  * What the redact mode needs from outside the canvas, installed once by the banner (always mounted in the shell): the mode needs the
- * Select tool (the text is marked by selecting it) and the inspector open, and gives both back; another tool or another document
- * ends it; Esc at tool level ends it; a drag that selects text in a text layer marks that text when the pointer is released, and
+ * Select tool (the text is marked by selecting it); another tool or another document ends it (a switch of the mode row is not a tool: the
+ * marks and the band stay until Anwenden or Abbrechen, DESIGN v2 3.2); Esc at tool level ends it; a drag that selects text in a text layer marks that text when the pointer is released, and
  * Enter marks a selection made with the keyboard.
  */
 export function useRedactHost(): void {
   useEffect(() => {
     const stopUi = useUi.subscribe((state, previous) => {
       if (state.redactMode && !previous.redactMode) {
-        savedInspector = state.inspector;
-        useUi.getState().setInspector('open');
         // The text is marked by selecting it, which is the Select tool's.
         useUi.getState().releaseTool();
-      } else if (!state.redactMode && previous.redactMode) {
-        if (savedInspector !== null) useUi.getState().setInspector(savedInspector);
-        savedInspector = null;
-      } else if (state.redactMode && state.activeTool !== 'select' && state.activeTool !== previous.activeTool) {
+      } else if (
+        state.redactMode &&
+        state.activeTool !== 'select' &&
+        state.activeTool !== previous.activeTool &&
+        // Seiten's idle tool is the page grid: entering the mode is not choosing a tool.
+        state.activeTool !== idleToolOf(state.mode)
+      ) {
         endRedactMode();
       }
     });

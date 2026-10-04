@@ -9,7 +9,6 @@ import { useUi } from '../../stores/ui';
 import { setup } from '../../test/render';
 import { CaptionBar } from './CaptionBar';
 import { HomeSlot } from './HomeSlot';
-import { ToolSidebarSlot } from './ToolSidebarSlot';
 
 vi.mock('../../api/window', () => ({
   minimizeWindow: vi.fn(),
@@ -83,17 +82,5 @@ describe('HomeSlot', () => {
     const { container } = setup(<HomeSlot platform="macos" trafficLightInset captionControls={null} />);
     expect(container.querySelector('[data-slot="home-strip"]')?.className).toContain('ps-chrome-inset');
     expect(screen.queryByRole('group', { name: 'Window controls' })).toBeNull();
-  });
-});
-
-describe('ToolSidebarSlot', () => {
-  it('shows the tool sidebar, and the rail of tool icons when it is not visible', () => {
-    const style = { gridColumn: 4 };
-    const { rerender } = setup(<ToolSidebarSlot visible style={style} />);
-    expect(screen.getByRole('complementary', { name: 'Inspector' })).not.toBeNull();
-    expect(screen.getByRole('heading', { name: 'Tools' })).not.toBeNull();
-    rerender(<ToolSidebarSlot visible={false} style={style} />);
-    expect(screen.queryByRole('complementary', { name: 'Inspector' })).toBeNull();
-    expect(within(screen.getByRole('group', { name: 'Inspector' })).getAllByRole('button')).toHaveLength(11);
   });
 });

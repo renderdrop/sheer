@@ -31,9 +31,8 @@ const COLLAPSE_TRANSITION_MS = DURATION.slow * 1000 + 50;
 interface Seen {
   mode: ShellStructure['mode'];
   collapsed: boolean;
-  inspector: boolean;
-  /** Which track change is sliding now: the page sidebar's or the tool column's (sidebar and rail). */
-  animating: 'left' | 'inspector' | null;
+  /** The page sidebar's track is sliding now. */
+  animating: 'left' | null;
 }
 
 /**
@@ -46,18 +45,17 @@ interface Seen {
  * list keeps its shape for that (the collapsed panel's tracks are 0), and the browser does every frame: nothing renders for it.
  * The transition is there only for a moment after the panel's state changed: a drag of the splitter changes the same property
  * and must follow the pointer at once. `data-animating` and `data-left` also let tokens.css make the change opacity-only
- * under reduced motion (the panel fades, then a collapse takes the tracks away in one step). The inspector's track (F2 review) opens
- * and closes the same way, so the canvas grows to the trailing gutter and gives it back the same way. While it runs the canvas is told (`setLayoutAnimating`): it anchors itself and commits its new size once at the end.
+ * under reduced motion (the panel fades, then a collapse takes the tracks away in one step). While it runs the canvas is told
+ * (`setLayoutAnimating`): it anchors itself and commits its new size once at the end.
  */
 export function MainGrid({ structure, children }: MainGridProps) {
   const panelWidth = useUi((state) => state.leftPanelWidth);
-  const { mode, leftCollapsed: collapsed, inspectorVisible: inspector } = structure;
-  const [seen, setSeen] = useState<Seen>({ mode, collapsed, inspector, animating: null });
+  const { mode, leftCollapsed: collapsed } = structure;
+  const [seen, setSeen] = useState<Seen>({ mode, collapsed, animating: null });
   // A new state of the panel in a window that keeps its mode slides. A window that opens or closes a document has other
   // columns altogether (Home has one), which the browser cannot animate between: they just change.
-  if (seen.mode !== mode) setSeen({ mode, collapsed, inspector, animating: null });
-  else if (seen.collapsed !== collapsed) setSeen({ mode, collapsed, inspector, animating: 'left' });
-  else if (seen.inspector !== inspector) setSeen({ mode, collapsed, inspector, animating: 'inspector' });
+  if (seen.mode !== mode) setSeen({ mode, collapsed, animating: null });
+  else if (seen.collapsed !== collapsed) setSeen({ mode, collapsed, animating: 'left' });
   useEffect(() => {
     if (seen.animating === null) return;
     const timer = window.setTimeout(() => setSeen({ ...seen, animating: null }), COLLAPSE_TRANSITION_MS);
@@ -76,12 +74,11 @@ export function MainGrid({ structure, children }: MainGridProps) {
     setSeen((current) => (current.animating === null ? current : { ...current, animating: null }));
   };
   // What opens takes the slow duration, what closes the base one (MOTION 2).
-  const closing = seen.animating === 'left' ? collapsed : seen.animating === 'inspector' ? !inspector : false;
+  const closing = seen.animating === 'left' && collapsed;
   return (
     <div
       data-layout={structure.mode}
       data-left={collapsed ? 'collapsed' : 'open'}
-      data-inspector={inspector ? 'open' : 'closed'}
       data-animating={seen.animating ?? undefined}
       onTransitionEnd={release}
       style={{ gridTemplateColumns: shellTracks(structure, panelWidth).columns }}

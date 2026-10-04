@@ -253,9 +253,10 @@ impl<'de> Deserialize<'de> for TipsSeen {
     }
 }
 
-/// Keys that older versions wrote (colour theme and glass mode went away with the light-only redesign, ADR-100). They are
+/// Keys that older versions wrote (colour theme and glass mode went away with the light-only redesign, ADR-100; the tool
+/// sidebar and with it its collapse flag went away with the mode tabs, ADR-102). They are
 /// ignored on reading and dropped from the file by the first write.
-const RETIRED_KEYS: [&str; 2] = ["glass", "theme"];
+const RETIRED_KEYS: [&str; 3] = ["glass", "theme", "toolSidebarCollapsed"];
 
 /// Every persisted setting. Add a field here, to [`SettingsPatch`] and to `src/api/app.ts` together.
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize)]
@@ -271,8 +272,6 @@ pub struct Settings {
     pub tips_seen: TipsSeen,
     /// The page sidebar is collapsed (DESIGN v2 3.2).
     pub page_sidebar_collapsed: bool,
-    /// The tool sidebar is collapsed to its rail (DESIGN v2 3.2).
-    pub tool_sidebar_collapsed: bool,
 }
 
 impl Settings {
@@ -319,10 +318,6 @@ impl Settings {
                 .get("pageSidebarCollapsed")
                 .and_then(Value::as_bool)
                 .unwrap_or_default(),
-            tool_sidebar_collapsed: map
-                .get("toolSidebarCollapsed")
-                .and_then(Value::as_bool)
-                .unwrap_or_default(),
         }
     }
 
@@ -340,15 +335,12 @@ impl Settings {
             page_sidebar_collapsed: patch
                 .page_sidebar_collapsed
                 .unwrap_or(self.page_sidebar_collapsed),
-            tool_sidebar_collapsed: patch
-                .tool_sidebar_collapsed
-                .unwrap_or(self.tool_sidebar_collapsed),
         }
     }
 }
 
-/// A partial update: at most the ten settings, each optional. Parsed only by [`SettingsPatch::from_value`], which
-/// rejects every unknown key (`deny_unknown_fields`), so a patch can never name more than these ten fields.
+/// A partial update: at most the nine settings, each optional. Parsed only by [`SettingsPatch::from_value`], which
+/// rejects every unknown key (`deny_unknown_fields`), so a patch can never name more than these nine fields.
 #[derive(Debug, Clone, PartialEq, Eq, Default, Deserialize)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
 pub struct SettingsPatch {
@@ -370,8 +362,6 @@ pub struct SettingsPatch {
     pub tips_seen: Option<TipsSeen>,
     #[serde(default, deserialize_with = "present")]
     pub page_sidebar_collapsed: Option<bool>,
-    #[serde(default, deserialize_with = "present")]
-    pub tool_sidebar_collapsed: Option<bool>,
 }
 
 /// A field that is present must hold a valid value. Plain `Option` would read `null` as "absent" and accept it.
@@ -555,7 +545,7 @@ mod tests {
     fn settings_serialize_with_lowercase_enum_values() {
         assert_eq!(
             serde_json::to_value(Settings::default()).unwrap(),
-            json!({ "language": "system", "leftPanelWidth": 200, "welcomeTour": "pending", "authorName": "", "authorPrompt": "pending", "updates": "off", "skippedVersion": null, "tipsSeen": [], "pageSidebarCollapsed": false, "toolSidebarCollapsed": false })
+            json!({ "language": "system", "leftPanelWidth": 200, "welcomeTour": "pending", "authorName": "", "authorPrompt": "pending", "updates": "off", "skippedVersion": null, "tipsSeen": [], "pageSidebarCollapsed": false })
         );
         let settings = Settings {
             language: Language::De,
@@ -567,11 +557,10 @@ mod tests {
             skipped_version: SkippedVersion::new("1.2.3-rc.1").unwrap(),
             tips_seen: TipsSeen::new(&["textBox".to_owned()]).unwrap(),
             page_sidebar_collapsed: true,
-            tool_sidebar_collapsed: false,
         };
         assert_eq!(
             serde_json::to_value(settings).unwrap(),
-            json!({ "language": "de", "leftPanelWidth": 320, "welcomeTour": "shown", "authorName": "Ada Lovelace", "authorPrompt": "done", "updates": "on", "skippedVersion": "1.2.3-rc.1", "tipsSeen": ["textBox"], "pageSidebarCollapsed": true, "toolSidebarCollapsed": false })
+            json!({ "language": "de", "leftPanelWidth": 320, "welcomeTour": "shown", "authorName": "Ada Lovelace", "authorPrompt": "done", "updates": "on", "skippedVersion": "1.2.3-rc.1", "tipsSeen": ["textBox"], "pageSidebarCollapsed": true })
         );
     }
 
@@ -742,25 +731,21 @@ mod tests {
                 skipped_version: None,
                 tips_seen: None,
                 page_sidebar_collapsed: None,
-                tool_sidebar_collapsed: None,
             }
         );
     }
 
     #[test]
-    fn sidebar_collapse_flags_default_open_and_must_be_booleans() {
-        let stored =
-            Settings::from_stored(br#"{"pageSidebarCollapsed":true,"toolSidebarCollapsed":"yes"}"#);
+    fn the_page_sidebar_flag_defaults_open_and_must_be_a_boolean() {
+        let stored = Settings::from_stored(br#"{"pageSidebarCollapsed":true}"#);
         assert!(stored.page_sidebar_collapsed);
-        assert!(!stored.tool_sidebar_collapsed);
-        assert_eq!(
-            patch(json!({ "toolSidebarCollapsed": true }))
-                .unwrap()
-                .tool_sidebar_collapsed,
-            Some(true)
+        assert!(
+            !Settings::from_stored(br#"{"pageSidebarCollapsed":"yes"}"#).page_sidebar_collapsed
         );
         assert!(patch(json!({ "pageSidebarCollapsed": null })).is_err());
         assert!(patch(json!({ "pageSidebarCollapsed": 1 })).is_err());
+        // The tool sidebar is gone (ADR-102): its flag is no longer a setting.
+        assert!(patch(json!({ "toolSidebarCollapsed": true })).is_err());
     }
 
     #[test]
@@ -1125,7 +1110,6 @@ mod tests {
                 skipped_version: SkippedVersion::default(),
                 tips_seen: TipsSeen::default(),
                 page_sidebar_collapsed: false,
-                tool_sidebar_collapsed: false,
             }
         );
         assert_eq!(store.get(), updated);
@@ -1135,7 +1119,7 @@ mod tests {
             serde_json::from_slice(&fs::read(dir.path().join(FILE_NAME)).unwrap()).unwrap();
         assert_eq!(
             stored,
-            json!({ "language": "de", "leftPanelWidth": 280, "welcomeTour": "pending", "authorName": "", "authorPrompt": "pending", "updates": "off", "skippedVersion": null, "tipsSeen": [], "pageSidebarCollapsed": false, "toolSidebarCollapsed": false })
+            json!({ "language": "de", "leftPanelWidth": 280, "welcomeTour": "pending", "authorName": "", "authorPrompt": "pending", "updates": "off", "skippedVersion": null, "tipsSeen": [], "pageSidebarCollapsed": false })
         );
     }
 
@@ -1325,7 +1309,7 @@ mod tests {
         let stored: Value = serde_json::from_slice(&bytes).unwrap();
         assert_eq!(
             stored,
-            json!({ "language": "system", "leftPanelWidth": 200, "welcomeTour": "pending", "authorName": "", "authorPrompt": "pending", "updates": "on", "skippedVersion": null, "tipsSeen": [], "pageSidebarCollapsed": false, "toolSidebarCollapsed": false })
+            json!({ "language": "system", "leftPanelWidth": 200, "welcomeTour": "pending", "authorName": "", "authorPrompt": "pending", "updates": "on", "skippedVersion": null, "tipsSeen": [], "pageSidebarCollapsed": false })
         );
     }
 

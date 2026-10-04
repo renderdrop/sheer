@@ -4,7 +4,14 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 
 import { LAYOUT, PANEL } from '../components/tokens';
-import { clampPanelWidth, computeShellLayout, shellStructure, shellTracks, type LayoutInput } from './layout';
+import {
+  bodyHeight,
+  clampPanelWidth,
+  computeShellLayout,
+  shellStructure,
+  shellTracks,
+  type LayoutInput,
+} from './layout';
 
 /** The editor shows, the window is 1280 wide, the page sidebar has its default width, the user changed nothing. */
 const base: LayoutInput = {
@@ -12,43 +19,65 @@ const base: LayoutInput = {
   windowWidth: 1280,
   panelWidth: PANEL.default,
   panelCollapsed: false,
-  inspector: 'auto',
 };
 
 const layout = (overrides: Partial<LayoutInput> = {}) => computeShellLayout({ ...base, ...overrides });
 
 describe('the editor columns of DESIGN v2 3.2', () => {
-  it('page sidebar | splitter 8 | canvas | tool sidebar 280, as tracks of tokens', () => {
+  it('page sidebar | splitter 8 | canvas, as tracks of tokens, with no tool column', () => {
     const wide = layout();
     expect(wide.mode).toBe('document');
     expect(wide.tracks).toEqual([
       { slot: 'left', size: '200px' },
       { slot: 'splitter', size: 'var(--splitter-width)' },
       { slot: 'canvas', size: 'minmax(var(--canvas-min), 1fr)' },
-      { slot: 'tool', size: 'var(--tool-sidebar-width)' },
     ]);
-    expect(wide.columns).toBe('200px var(--splitter-width) minmax(var(--canvas-min), 1fr) var(--tool-sidebar-width)');
-    expect(wide.column).toEqual({ left: 1, splitter: 2, canvas: 3, tool: 4 });
+    expect(wide.columns).toBe('200px var(--splitter-width) minmax(var(--canvas-min), 1fr)');
+    expect(wide.column).toEqual({ left: 1, splitter: 2, canvas: 3 });
   });
 
-  it('the canvas width is what is left of the window after the other tracks', () => {
-    // 1280 - 200 - 8 - 280
-    expect(layout().canvasWidth).toBe(792);
-    // Below 1100 the rail: 1000 - 200 - 8 - 56
-    expect(layout({ windowWidth: 1000 }).canvasWidth).toBe(736);
-    // A collapsed page sidebar: 1280 - 8 - 280
-    expect(layout({ panelCollapsed: true }).canvasWidth).toBe(992);
+  it('the canvas width is what is left of the window after the other tracks, at every width', () => {
+    // 1280 - 200 - 8
+    expect(layout().canvasWidth).toBe(1072);
+    expect(layout({ windowWidth: 1000 }).canvasWidth).toBe(792);
+    // A collapsed page sidebar: 1280 - 8
+    expect(layout({ panelCollapsed: true }).canvasWidth).toBe(1272);
   });
 
   it('Home has one slot, the window, whatever the state says', () => {
-    const home = layout({ hasDocument: false, windowWidth: 1600, inspector: 'open' });
+    const home = layout({ hasDocument: false, windowWidth: 1600, menuRow: true });
     expect(home.mode).toBe('empty');
     expect(home.tracks.map((track) => track.slot)).toEqual(['canvas']);
     expect(home.columns).toBe('minmax(0, 1fr)');
-    expect(home.inspectorReserved).toBe(false);
-    expect(home.inspectorVisible).toBe(false);
+    expect(home.menuRow).toBe(false);
+    expect(home.rows).toBe('minmax(0, 1fr)');
     expect(home.leftCollapsed).toBe(true);
     expect(home.canvasWidth).toBe(1600);
+  });
+});
+
+describe('the editor rows of DESIGN v2 3.2', () => {
+  it('Windows: menu 32 | top bar 56 | mode 40 | tool 48 | body', () => {
+    const windows = layout({ menuRow: true });
+    expect(windows.menuRow).toBe(true);
+    expect(windows.rowTracks.map((track) => track.row)).toEqual(['menu', 'topbar', 'mode', 'tool', 'body']);
+    expect(windows.rows).toBe(
+      'var(--menubar-height) var(--topbar-height) var(--mode-row-height) var(--tool-row-height) minmax(0, 1fr)',
+    );
+    expect(windows.row).toEqual({ menu: 1, topbar: 2, mode: 3, tool: 4, body: 5 });
+  });
+
+  it('macOS has no menu row: the native bar', () => {
+    const mac = layout();
+    expect(mac.menuRow).toBe(false);
+    expect(mac.rows).toBe('var(--topbar-height) var(--mode-row-height) var(--tool-row-height) minmax(0, 1fr)');
+    expect(mac.row).toEqual({ topbar: 1, mode: 2, tool: 3, body: 4 });
+  });
+
+  it('the body at 960 x 640 is 464 on Windows and 496 on macOS', () => {
+    expect(bodyHeight(shellStructure({ ...base, menuRow: true }), LAYOUT.minWindowHeight)).toBe(464);
+    expect(bodyHeight(shellStructure(base), LAYOUT.minWindowHeight)).toBe(496);
+    expect(bodyHeight(shellStructure({ ...base, hasDocument: false }), 640)).toBe(640);
   });
 });
 
@@ -73,16 +102,16 @@ describe('the page sidebar', () => {
   });
 
   it('collapses by itself below 860 px (exact), and comes back when the window grows', () => {
-    expect(shellStructure({ ...base, windowWidth: 859, inspector: 'closed' }).leftAutoCollapsed).toBe(true);
-    expect(shellStructure({ ...base, windowWidth: 860, inspector: 'closed' }).leftCollapsed).toBe(false);
+    expect(shellStructure({ ...base, windowWidth: 859 }).leftAutoCollapsed).toBe(true);
+    expect(shellStructure({ ...base, windowWidth: 860 }).leftCollapsed).toBe(false);
   });
 
   it('collapses by itself when the canvas would be narrower than 360, with the exact threshold', () => {
-    // 1100 - 320 - 8 - 280 = 492 fits; with the sidebar open at 960 and the full tool sidebar (a mode): 960 - 320 - 8 - 280 = 352
-    const input: LayoutInput = { ...base, windowWidth: 960, panelWidth: 320, inspectorMode: true };
-    expect(shellStructure(input).leftAutoCollapsed).toBe(true);
-    expect(shellStructure({ ...input, panelWidth: 312 }).leftAutoCollapsed).toBe(false);
-    expect(shellStructure({ ...input, panelWidth: 313 }).leftAutoCollapsed).toBe(true);
+    // 960 - 320 - 8 = 632 fits; at 860 (the lowest width where the sidebar stays) 860 - 320 - 8 = 532 fits too, so only a wide
+    // sidebar in a narrow window can trip the rule: 860 - 492 - 8 = 360 is the edge, but the sidebar is at most 320.
+    const input: LayoutInput = { ...base, windowWidth: 860, panelWidth: 320 };
+    expect(shellStructure(input).leftAutoCollapsed).toBe(false);
+    expect(shellStructure({ ...input, windowWidth: 859 }).leftAutoCollapsed).toBe(true);
   });
 
   it('a sidebar the user collapsed is not reported as auto-collapsed', () => {
@@ -91,7 +120,7 @@ describe('the page sidebar', () => {
     expect(structure.leftAutoCollapsed).toBe(false);
   });
 
-  it('every sidebar width fits the minimum window with the rail', () => {
+  it('every sidebar width fits the minimum window', () => {
     for (const panelWidth of [PANEL.min, PANEL.default, PANEL.max]) {
       const result = layout({ windowWidth: LAYOUT.minWindowWidth, panelWidth });
       expect(result.leftCollapsed).toBe(false);
@@ -100,35 +129,11 @@ describe('the page sidebar', () => {
   });
 });
 
-describe('the tool sidebar and the rail', () => {
-  it('280 from 1100 wide, the 56 rail below (exact)', () => {
-    expect(shellStructure({ ...base, windowWidth: 1100 }).inspectorVisible).toBe(true);
-    expect(shellStructure({ ...base, windowWidth: 1099 }).inspectorVisible).toBe(false);
-    expect(layout({ windowWidth: 1099 }).tracks[3]).toEqual({ slot: 'tool', size: 'var(--tool-rail-width)' });
-  });
-
-  it('the column exists in the editor at every width', () => {
-    for (const windowWidth of [960, 1099, 1100, 1920]) {
-      expect(shellStructure({ ...base, windowWidth }).inspectorReserved).toBe(true);
-    }
-  });
-
-  it('"closed" is the rail at any width, "open" is the sidebar at any width', () => {
-    expect(shellStructure({ ...base, windowWidth: 1920, inspector: 'closed' }).inspectorVisible).toBe(false);
-    expect(shellStructure({ ...base, windowWidth: 960, inspector: 'open' }).inspectorVisible).toBe(true);
-  });
-
-  it('"closed" still opens for a mode panel (Crop, Redact) and for nothing else', () => {
-    expect(shellStructure({ ...base, inspector: 'closed', inspectorMode: true }).inspectorVisible).toBe(true);
-    expect(shellStructure({ ...base, windowWidth: 960, inspectorMode: true }).inspectorVisible).toBe(true);
-  });
-});
-
 describe('the window minimum', () => {
-  it('the spec numbers: 960 x 640, rail below 1100, page sidebar collapse below 860', () => {
+  it('the spec numbers: 960 x 640, page sidebar collapse below 860, rows 32, 56, 40, 48', () => {
     expect(LAYOUT.minWindowWidth).toBe(960);
     expect(LAYOUT.minWindowHeight).toBe(640);
-    expect(LAYOUT.railBelow).toBe(1100);
+    expect([LAYOUT.menubar, LAYOUT.topbar, LAYOUT.modeRow, LAYOUT.toolRow]).toEqual([32, 56, 40, 48]);
     expect(LAYOUT.leftCollapseBelow).toBe(860);
     expect(LAYOUT.leftCollapseBelow).toBeLessThan(LAYOUT.minWindowWidth);
   });

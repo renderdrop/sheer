@@ -12,12 +12,12 @@ beforeEach(reset);
 afterEach(reset);
 
 describe('the ui store', () => {
-  it('starts with the defaults of the spec: Thumbnails, default width, nothing collapsed, Select, auto inspector', () => {
+  it('starts with the defaults of the spec: Thumbnails, default width, nothing collapsed, Select, Lesen', () => {
     expect(useUi.getState()).toMatchObject({
       leftPanelTab: 'thumbnails',
       leftPanelWidth: PANEL.default,
       leftPanelCollapsed: false,
-      inspector: 'auto',
+      mode: 'read',
       activeTool: 'select',
       toolLocked: false,
       dropHover: false,
@@ -52,12 +52,11 @@ describe('the ui store', () => {
     }
   });
 
-  it('the tab, the collapsed flag and the inspector mode are set as given', () => {
+  it('the tab and the collapsed flag are set as given', () => {
     const state = useUi.getState();
     state.setLeftPanelTab('search');
     state.setLeftPanelCollapsed(true);
-    state.setInspector('open');
-    expect(useUi.getState()).toMatchObject({ leftPanelTab: 'search', leftPanelCollapsed: true, inspector: 'open' });
+    expect(useUi.getState()).toMatchObject({ leftPanelTab: 'search', leftPanelCollapsed: true });
   });
 
   describe('tools (DESIGN 3.3)', () => {
@@ -290,7 +289,7 @@ describe('bindSidebarCollapseToSettings', () => {
   beforeEach(() => {
     update.mockReset().mockResolvedValue(undefined);
     useSettings.setState({ ...settingsInitial, loaded: false, update }, true);
-    useUi.setState({ leftPanelCollapsed: false, inspector: 'auto' });
+    useUi.setState({ leftPanelCollapsed: false });
   });
 
   afterEach(() => {
@@ -298,24 +297,22 @@ describe('bindSidebarCollapseToSettings', () => {
     useUi.setState(uiInitial, true);
   });
 
-  it('applies the saved flags once the settings have loaded', () => {
+  it('applies the saved flag once the settings have loaded', () => {
     const stop = bindSidebarCollapseToSettings();
-    useSettings.setState({ loaded: true, pageSidebarCollapsed: true, toolSidebarCollapsed: true });
+    useSettings.setState({ loaded: true, pageSidebarCollapsed: true });
     expect(useUi.getState().leftPanelCollapsed).toBe(true);
-    expect(useUi.getState().inspector).toBe('closed');
     expect(update).not.toHaveBeenCalled();
     stop();
   });
 
-  it('writes a change of either sidebar and nothing the settings already hold', () => {
+  it('writes a change of the page sidebar and nothing the settings already hold', () => {
     useSettings.setState({ loaded: true });
     const stop = bindSidebarCollapseToSettings();
     useUi.getState().setLeftPanelCollapsed(true);
     expect(update).toHaveBeenLastCalledWith({ pageSidebarCollapsed: true });
-    useUi.getState().setInspector('closed');
-    expect(update).toHaveBeenLastCalledWith({ pageSidebarCollapsed: true, toolSidebarCollapsed: true });
-    useUi.getState().setInspector('open');
-    expect(update).toHaveBeenLastCalledWith({ pageSidebarCollapsed: true });
+    useUi.getState().setLeftPanelCollapsed(false);
+    // The settings mock does not follow, and it holds false: nothing more to write.
+    expect(update).toHaveBeenCalledTimes(1);
     stop();
   });
 

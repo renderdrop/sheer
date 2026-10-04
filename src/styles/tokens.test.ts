@@ -364,8 +364,10 @@ describe('widths and the left panel (DESIGN 1.3)', () => {
     '--toast-min': '240px',
     '--toast-max': '400px',
     '--topbar-height': '56px',
-    '--tool-sidebar-width': '280px',
-    '--tool-rail-width': '56px',
+    '--menubar-height': '32px',
+    '--mode-row-height': '40px',
+    '--tool-row-height': '48px',
+    '--minibar-height': '40px',
     '--canvas-min': '360px',
     '--empty-max-width': '560px',
     '--scrim-height': '24px',
@@ -391,8 +393,10 @@ describe('widths and the left panel (DESIGN 1.3)', () => {
       'toast-min': '--toast-min',
       'toast-max': '--toast-max',
       topbar: '--topbar-height',
-      'tool-sidebar': '--tool-sidebar-width',
-      'tool-rail': '--tool-rail-width',
+      menubar: '--menubar-height',
+      'mode-row': '--mode-row-height',
+      'tool-row': '--tool-row-height',
+      minibar: '--minibar-height',
       'canvas-min': '--canvas-min',
       'empty-max': '--empty-max-width',
       scrim: '--scrim-height',
@@ -413,8 +417,10 @@ describe('widths and the left panel (DESIGN 1.3)', () => {
     expect(`${PANEL.step}px`).toBe(root.get('--splitter-width'));
     expect(`${LAYOUT.splitter}px`).toBe(root.get('--splitter-width'));
     expect(`${LAYOUT.canvasMin}px`).toBe(root.get('--canvas-min'));
-    expect(`${LAYOUT.toolSidebar}px`).toBe(root.get('--tool-sidebar-width'));
-    expect(`${LAYOUT.toolRail}px`).toBe(root.get('--tool-rail-width'));
+    expect(`${LAYOUT.menubar}px`).toBe(root.get('--menubar-height'));
+    expect(`${LAYOUT.modeRow}px`).toBe(root.get('--mode-row-height'));
+    expect(`${LAYOUT.toolRow}px`).toBe(root.get('--tool-row-height'));
+    expect(`${LAYOUT.minibar}px`).toBe(root.get('--minibar-height'));
     expect(`${LAYOUT.topbar}px`).toBe(root.get('--topbar-height'));
   });
 
@@ -579,9 +585,7 @@ describe('motion (DESIGN 1.2, MOTION 1)', () => {
     const start = css.indexOf('@media (prefers-reduced-motion: reduce)');
     const block = css.slice(start, css.indexOf('@layer base'));
     const rule =
-      /\[data-layout\]\[data-animating="left"\]\[data-left="collapsed"\],\s*\[data-layout\]\[data-animating="inspector"\]\[data-inspector="closed"\]\s*\{([^}]*)\}/.exec(
-        block,
-      )?.[1] ?? '';
+      /\[data-layout\]\[data-animating="left"\]\[data-left="collapsed"\]\s*\{([^}]*)\}/.exec(block)?.[1] ?? '';
     expect(rule).toMatch(/transition-property: grid-template-columns !important;/);
     expect(rule).toMatch(/transition-duration: 0s !important;/);
     expect(rule).toMatch(/transition-delay: var\(--motion-fast\) !important;/);

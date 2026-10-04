@@ -101,7 +101,7 @@ describe('useWindowState reads the window when a resize has settled, not for eve
     expect(windowApi.isWindowMaximized).not.toHaveBeenCalled();
   });
 
-  it('asks only for what the platform needs: macOS the full screen state, Windows the maximized one, others nothing', async () => {
+  it('asks only for what the platform needs: macOS the full screen state, Windows both, others nothing', async () => {
     const mac = renderHook(() => useWindowState(MACOS));
     await flush();
     resize();
@@ -116,10 +116,11 @@ describe('useWindowState reads the window when a resize has settled, not for eve
     resize();
     await advance(RESIZE_SETTLE_MS);
     expect(windowApi.isWindowMaximized).toHaveBeenCalledTimes(2);
-    expect(windowApi.isWindowFullscreen).not.toHaveBeenCalled();
+    expect(windowApi.isWindowFullscreen).toHaveBeenCalledTimes(2);
     windows.unmount();
 
     windowApi.isWindowMaximized.mockClear();
+    windowApi.isWindowFullscreen.mockClear();
     renderHook(() => useWindowState(LINUX));
     await flush();
     resize();

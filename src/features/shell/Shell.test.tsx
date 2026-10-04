@@ -65,13 +65,13 @@ afterEach(() => {
   useSettings.setState(settingsInitial, true);
 });
 
-/** The tool sidebar (a complementary region) or, below 1100 wide, its rail (a group): both are the region "Inspector". */
-const toolRegion = () => document.querySelector<HTMLElement>('[data-region="inspector"]') as HTMLElement;
+/** The tool row (a toolbar named by the mode, DESIGN v2 3.2). */
+const toolRegion = () => document.querySelector<HTMLElement>('[data-slot="tool-row"]') as HTMLElement;
 const layout = (container: HTMLElement) =>
   container.querySelector('[data-layout]')?.getAttribute('data-layout') ??
   (container.querySelector('[data-slot="home"]') === null ? undefined : 'empty');
 const tool = (name: string) => within(toolRegion()).getByRole('button', { name });
-/** The page sidebar's collapse chevron; F4 and Shift+F4 are the way back and the way to the rail (the command map, ARCHITECTURE 12). */
+/** The page sidebar's collapse chevron; F4 is the way back (the command map, ARCHITECTURE 12). */
 const collapseLeft = () => screen.getByRole('button', { name: 'Hide page sidebar' });
 const pressF4 = (shiftKey = false) => fireEvent.keyDown(window, { key: 'F4', shiftKey });
 /** The top bar: zoom and page live there since v1.2 (no status bar). */
@@ -83,6 +83,9 @@ const pageTextNow = () => `${pageField().value} ${pageField().parentElement?.tex
 /** The left of the top bar: the file name, or with two or more documents the tabs; it has the name of every open document. */
 const tabs = () => topbarElement();
 const toolPressed = (name: string) => tool(name).getAttribute('aria-pressed');
+/** Switches the mode with its tab. */
+const inMode = async (user: ReturnType<typeof setup>['user'], name: string) =>
+  user.click(screen.getByRole('tab', { name }));
 const readout = () => status().getByRole('button', { name: /Zoom level/ });
 /** Opens the zoom menu and chooses an item by its name. */
 const zoomItem = async (user: ReturnType<typeof setup>['user'], name: string) => {
@@ -159,9 +162,12 @@ describe('Shell with a document', () => {
   it('the tools are enabled and Select is the active one', async () => {
     const { user } = setup(<Shell />);
     await openDocument(user);
-    expect(tool('Markup').hasAttribute('aria-disabled')).toBe(false);
+    expect(tool('Hand').hasAttribute('aria-disabled')).toBe(false);
     expect(toolPressed('Select')).toBe('true');
-    expect(toolPressed('Markup')).toBe('false');
+    expect(toolPressed('Hand')).toBe('false');
+    await inMode(user, 'Comment');
+    expect(tool('Highlight').hasAttribute('aria-disabled')).toBe(false);
+    expect(toolPressed('Highlight')).toBe('false');
   });
 
   it('another document opens beside the first and is the one shown; closing it brings the first back', async () => {
@@ -280,18 +286,6 @@ describe('Shell with a document', () => {
       expect(screen.getByRole('complementary', { name: 'Left panel' })).not.toBeNull();
     });
 
-    it('Shift+F4 makes the tool sidebar the rail and brings it back', async () => {
-      const { user } = setup(<Shell />);
-      await openDocument(user);
-      expect(screen.getByRole('complementary', { name: 'Inspector' })).not.toBeNull();
-      pressF4(true);
-      expect(useUi.getState().inspector).toBe('closed');
-      expect(screen.queryByRole('complementary', { name: 'Inspector' })).toBeNull();
-      expect(screen.getByRole('group', { name: 'Inspector' })).not.toBeNull();
-      pressF4(true);
-      expect(screen.getByRole('complementary', { name: 'Inspector' })).not.toBeNull();
-    });
-
     it('Ctrl+2 and Ctrl+0 fit the page to the canvas once it is measured, and the readout follows', async () => {
       const { user } = setup(<Shell />);
       await openDocument(user);
@@ -315,12 +309,15 @@ describe('Shell with a document', () => {
       const canvas = screen.getByRole('region', { name: 'Document' });
       canvas.focus();
       await user.keyboard('h');
-      expect(toolPressed('Markup')).toBe('true');
+      // A tool of another mode switches the mode first (DESIGN v2 3.2).
+      expect(useUi.getState()).toMatchObject({ mode: 'comment', activeTool: 'highlight' });
+      expect(toolPressed('Highlight')).toBe('true');
       await user.keyboard('d');
       expect(toolPressed('Draw')).toBe('true');
-      expect(toolPressed('Markup')).toBe('false');
+      expect(toolPressed('Highlight')).toBe('false');
       await user.keyboard('v');
-      expect(toolPressed('Select')).toBe('true');
+      expect(useUi.getState().activeTool).toBe('select');
+      expect(toolPressed('Draw')).toBe('false');
     });
 
     it('typing in the Go to page field never takes a shortcut: letters and Ctrl+plus stay with the field', async () => {
@@ -412,60 +409,23 @@ describe('Shell with a document', () => {
   });
 
   describe('collapse rules (DESIGN 2)', () => {
-    it('from 1100 the tool sidebar is there with its content, Shift+F4 makes it the rail and back (DESIGN v2 3.2)', async () => {
+    it('there is no tool sidebar and no rail: the mode row and the tool row are the only tool surfaces (ADR-102)', async () => {
       const { container, user } = setup(<Shell />);
       await openDocument(user);
-      expect(screen.getByRole('complementary', { name: 'Inspector' })).not.toBeNull();
-      await user.click(tool('Markup'));
-      // The active tool's options open right under its row.
-      expect(container.querySelector('[data-tool-panel="highlight"]')).not.toBeNull();
-      pressF4(true);
+      expect(container.querySelector('[data-region="inspector"]')).toBeNull();
       expect(screen.queryByRole('complementary', { name: 'Inspector' })).toBeNull();
-      expect(container.querySelector('[data-tool-panel]')).toBeNull();
-      // The rail keeps the tool icons, and the active one stays pressed.
-      expect(screen.getByRole('group', { name: 'Inspector' })).not.toBeNull();
-      expect(toolPressed('Markup')).toBe('true');
-      pressF4(true);
-      expect(screen.getByRole('complementary', { name: 'Inspector' })).not.toBeNull();
+      expect(screen.getByRole('tablist', { name: 'Mode' })).not.toBeNull();
+      expect(screen.getByRole('toolbar', { name: 'Read' })).not.toBeNull();
+      const columns = container.querySelector<HTMLElement>('[data-layout]')?.style.gridTemplateColumns ?? '';
+      expect(columns).not.toContain('tool-');
+      expect(columns.split(' ').length).toBeLessThanOrEqual(4);
     });
 
-    it('below 1100 the tool sidebar is the 56 rail, and a tool does not open it', async () => {
-      resizeTo(1099);
+    it('the editor rows are top bar, mode row, tool row and body (no menu row off Windows)', async () => {
       const { container, user } = setup(<Shell />);
       await openDocument(user);
-      expect(screen.queryByRole('complementary', { name: 'Inspector' })).toBeNull();
-      expect(screen.getByRole('group', { name: 'Inspector' })).not.toBeNull();
-      expect(container.querySelector<HTMLElement>('[data-layout]')?.style.gridTemplateColumns).toContain(
-        'var(--tool-rail-width)',
-      );
-      await user.click(tool('Markup'));
-      expect(screen.queryByRole('complementary', { name: 'Inspector' })).toBeNull();
-      resizeTo(1100);
-      expect(screen.getByRole('complementary', { name: 'Inspector' })).not.toBeNull();
-    });
-
-    it('Shift+F4 opens the sidebar below 1100 too, and the rail again', async () => {
-      resizeTo(1000);
-      const { user } = setup(<Shell />);
-      await openDocument(user);
-      pressF4(true);
-      expect(screen.getByRole('complementary', { name: 'Inspector' })).not.toBeNull();
-      pressF4(true);
-      expect(screen.queryByRole('complementary', { name: 'Inspector' })).toBeNull();
-    });
-
-    it('at 960 the left panel collapses by itself when the inspector leaves the canvas under 360, and returns with room', async () => {
-      resizeTo(960);
-      useUi.setState({ leftPanelWidth: 400 });
-      const { user } = setup(<Shell />);
-      await openDocument(user);
-      expect(screen.getByRole('complementary', { name: 'Left panel' })).not.toBeNull();
-      pressF4(true);
-      await waitFor(() => expect(screen.queryByRole('complementary', { name: 'Left panel' })).toBeNull());
-      // The user did not collapse it: the layout did, so growing the window brings it back.
-      expect(useUi.getState().leftPanelCollapsed).toBe(false);
-      resizeTo(1300);
-      expect(screen.getByRole('complementary', { name: 'Left panel' })).not.toBeNull();
+      const rows = container.querySelector<HTMLElement>('[data-slot="editor"]')?.style.gridTemplateRows;
+      expect(rows).toBe('var(--topbar-height) var(--mode-row-height) var(--tool-row-height) minmax(0, 1fr)');
     });
 
     it('the grid follows the layout: its columns carry the panel width', async () => {
@@ -479,23 +439,24 @@ describe('Shell with a document', () => {
   });
 
   describe('tools', () => {
-    it('a click activates a tool, it stays active on a second click, and the Select row goes back (ADR-056)', async () => {
+    it('a click activates a tool, it stays active on a second click, and Esc goes back to Select (ADR-056)', async () => {
       const { user } = setup(<Shell />);
       await openDocument(user);
+      await inMode(user, 'Comment');
       await user.click(tool('Draw'));
       expect(toolPressed('Draw')).toBe('true');
-      expect(toolPressed('Select')).toBe('false');
       await user.click(tool('Draw'));
       expect(toolPressed('Draw')).toBe('true');
-      await user.click(tool('Select'));
-      expect(toolPressed('Select')).toBe('true');
+      await user.keyboard('{Escape}');
       expect(toolPressed('Draw')).toBe('false');
+      expect(useUi.getState().activeTool).toBe('select');
     });
 
     it('Esc releases the active tool back to Select', async () => {
       const { user } = setup(<Shell />);
       await openDocument(user);
-      await user.click(tool('Comment'));
+      await inMode(user, 'Comment');
+      await user.click(tool('Note'));
       expect(useUi.getState().activeTool).toBe('note');
       await user.keyboard('{Escape}');
       expect(useUi.getState()).toMatchObject({ activeTool: 'select', toolLocked: false });
@@ -504,7 +465,8 @@ describe('Shell with a document', () => {
     it('Esc closes an open menu first and leaves the tool alone', async () => {
       const { user } = setup(<Shell />);
       await openDocument(user);
-      await user.click(tool('Markup'));
+      await inMode(user, 'Comment');
+      await user.click(tool('Highlight'));
       await user.click(readout());
       expect(screen.getByRole('menu')).not.toBeNull();
       await user.keyboard('{Escape}');
@@ -563,7 +525,7 @@ describe('the window chrome (DESIGN 2.2)', () => {
     );
   });
 
-  it('the Home strip and the top bar are drag regions, and the caption buttons sit in them on Windows only', async () => {
+  it('the Home strip, the menu row and the top bar are drag regions; the caption buttons sit in the strip and in the menu row (46 x 32), not in the top bar', async () => {
     useSettings.setState({ platform: 'windows' });
     const { container, user } = setup(<Shell />);
     const strip = container.querySelectorAll('[data-tauri-drag-region]');
@@ -571,8 +533,11 @@ describe('the window chrome (DESIGN 2.2)', () => {
     expect(strip[0]?.className).toContain('h-topbar');
     await openDocument(user);
     const regions = [...container.querySelectorAll('[data-tauri-drag-region]')];
-    expect(regions[0]?.className).toContain('h-topbar');
+    expect(regions[0]?.className).toContain('h-menubar');
     expect(within(regions[0] as HTMLElement).getByRole('group', { name: 'Window controls' })).not.toBeNull();
+    expect(within(regions[0] as HTMLElement).getByRole('menubar')).not.toBeNull();
+    expect(regions[1]?.className).toContain('h-topbar');
+    expect(within(regions[1] as HTMLElement).queryByRole('group', { name: 'Window controls' })).toBeNull();
   });
 
   it('a platform that cannot be told has neither chrome', () => {
@@ -770,24 +735,21 @@ describe('Shell with a document: edge cases', () => {
   });
 
   describe('collapse rules (DESIGN 2): boundaries', () => {
-    it('at 960 with the inspector open the default panel stays: the canvas keeps 472', async () => {
+    it('at 960 the default panel stays: the canvas keeps 752', async () => {
       resizeTo(960);
-      useUi.setState({ inspector: 'open' });
       const { user } = setup(<Shell />);
       await openDocument(user);
       expect(screen.getByRole('complementary', { name: 'Left panel' })).not.toBeNull();
-      expect(screen.getByRole('complementary', { name: 'Inspector' })).not.toBeNull();
     });
 
     it('shrinking the window collapses the panel by itself and growing it again brings it back', async () => {
       resizeTo(1300);
-      useUi.setState({ leftPanelWidth: 400, inspector: 'open' });
+      useUi.setState({ leftPanelWidth: 400 });
       const { user } = setup(<Shell />);
       await openDocument(user);
       expect(screen.getByRole('complementary', { name: 'Left panel' })).not.toBeNull();
-      resizeTo(960);
+      resizeTo(800);
       await waitFor(() => expect(screen.queryByRole('complementary', { name: 'Left panel' })).toBeNull());
-      expect(screen.getByRole('complementary', { name: 'Inspector' })).not.toBeNull();
       resizeTo(1300);
       expect(screen.getByRole('complementary', { name: 'Left panel' })).not.toBeNull();
     });

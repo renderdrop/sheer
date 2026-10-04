@@ -35,9 +35,9 @@ export const useHub = create<HubState>()((set) => ({
   setPending: (pending) => set({ pending }),
 }));
 
-/** The toolbar item that opens the Fill & Sign popover (DESIGN 3.58). */
+/** The tool-row item of the signature (DESIGN v2 3.2): the Sign intent lands on it, in Ausfüllen & Signieren. */
 export const SIGN_ITEM_SELECTOR = '[data-toolbar-item="signature"]';
-/** How long an intent waits for something that mounts or loads after the open (the toolbar item). */
+/** How long an intent waits for something that mounts or loads after the open (the tool-row item). */
 export const INTENT_WAIT_MS = 2000;
 const POLL_MS = 40;
 
@@ -55,18 +55,14 @@ export function waitForElement(selector: string): Promise<HTMLElement | null> {
   });
 }
 
-/** Opens the Fill & Sign popover through its toolbar item. */
-async function openSignPopover(): Promise<void> {
-  (await waitForElement(SIGN_ITEM_SELECTOR))?.click();
-}
-
-/** Organize mode: the Pages tool, unless it is on already (choosing the active tool would leave it). */
-function enterOrganize(): void {
-  const ui = useUi.getState();
-  if (ui.activeTool !== 'pages') ui.selectTool('pages');
+/** Lands in Ausfüllen & Signieren with the focus on the Signatur item. */
+async function landOnSignature(): Promise<void> {
+  useUi.getState().setMode('fill');
+  (await waitForElement(SIGN_ITEM_SELECTOR))?.focus({ preventScroll: true });
 }
 
 async function fillForm(docId: number): Promise<void> {
+  useUi.getState().setMode('fill');
   const forms = useForms.getState();
   await forms.load(docId);
   const form = useForms.getState().byDoc[docId];
@@ -75,30 +71,31 @@ async function fillForm(docId: number): Promise<void> {
     focusFirstEmpty(docId);
     return;
   }
-  // No fields: the popover on its Fill section, and a note why.
+  // No fields: a note why; the mode row is on Ausfüllen & Signieren already, with its Text, Datum and Signatur items.
   useUi.getState().showToast({ message: translators[useLocaleStore.getState().locale]('hub.noFields') });
-  await openSignPopover();
 }
 
 /** Runs the intent on the document, which must be the active one by now. */
 export async function applyIntent(intent: HubIntent, docId: number): Promise<void> {
   switch (intent) {
+    // Each intent lands in its mode (DESIGN v2 3.2): Split and Compress in Seiten, Redact in Bearbeiten.
     case 'split':
-      enterOrganize();
+      useUi.getState().setMode('pages');
       openSplit('every');
       return;
     case 'compress':
+      useUi.getState().setMode('pages');
       openCompress();
       return;
     case 'redact':
+      useUi.getState().setMode('edit');
       enterRedactMode();
-      useUi.getState().setInspector('open');
       return;
     case 'export':
       useUi.getState().setExportImagesOpen(true);
       return;
     case 'sign':
-      await openSignPopover();
+      await landOnSignature();
       return;
     case 'fill':
       await fillForm(docId);

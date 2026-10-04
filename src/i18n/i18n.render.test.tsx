@@ -126,31 +126,19 @@ describe('the language setting', () => {
     expect(open().getAttribute('aria-keyshortcuts')).toBe('Meta+O');
   });
 
-  it('the tool sidebar, its rows and the page sidebar chevron follow the language', async () => {
+  it('the mode row, the tool row and the page sidebar chevron follow the language', async () => {
     const { user } = setup(<Shell />);
     await user.click(screen.getByRole('button', { name: /^(Or open|Open)$/ }));
     await screen.findByRole('img', { name: /^Page 1 of/ });
     chooseLanguage('de');
-    // jsdom is narrower than 1100: the tool sidebar is its rail here, so the window is widened for the full sidebar.
-    act(() => {
-      Object.defineProperty(window, 'innerWidth', { value: 1280, configurable: true, writable: true });
-      window.dispatchEvent(new Event('resize'));
-    });
-    const tools = screen.getByRole('complementary', { name: 'Eigenschaften' });
-    expect(within(tools).getByRole('heading', { name: 'Werkzeuge' })).not.toBeNull();
-    for (const name of [
-      'Auswählen',
-      'Markieren',
-      'Text',
-      'Zeichnen',
-      'Kommentar',
-      'Signatur',
-      'Formen',
-      'Bilder',
-      'Seiten organisieren',
-      'PDF exportieren',
-      'Mehr',
-    ]) {
+    const modes = screen.getByRole('tablist', { name: 'Modus' });
+    expect(
+      within(modes)
+        .getAllByRole('tab')
+        .map((tab) => tab.textContent),
+    ).toEqual(['Lesen', 'Kommentieren', 'Ausfüllen & Signieren', 'Seiten', 'Bearbeiten']);
+    const tools = screen.getByRole('toolbar', { name: 'Lesen' });
+    for (const name of ['Auswahl', 'Hand', 'Textauswahl', 'Lupe', 'Drehen', 'Suche']) {
       expect(within(tools).getByRole('button', { name }), name).not.toBeNull();
     }
     expect(screen.getByRole('button', { name: 'Seitenleiste ausblenden' })).not.toBeNull();
@@ -171,7 +159,9 @@ describe('the language setting', () => {
       screen.getByRole('separator', { name: 'Breite der Seitenleiste ändern' }).getAttribute('aria-valuetext'),
     ).toBe('200 Pixel');
     expect(screen.getByRole('region', { name: 'Dokument' })).not.toBeNull();
-    for (const tab of ['Seiten', 'Gliederung', 'Kommentare', 'Suche']) {
+    // Seiten is a mode tab and a sidebar tab.
+    expect(screen.getAllByRole('tab', { name: 'Seiten' })).toHaveLength(2);
+    for (const tab of ['Gliederung', 'Kommentare', 'Suche']) {
       expect(screen.getByRole('tab', { name: tab }), tab).not.toBeNull();
     }
     const topbar = within(document.querySelector<HTMLElement>('[data-slot="topbar"]') as HTMLElement);

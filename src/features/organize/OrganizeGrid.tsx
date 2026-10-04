@@ -90,7 +90,7 @@ export interface OrganizeGridProps {
  * columns as fit. Pointer: a click selects (primary toggles, Shift ranges), a drag on empty space draws a marquee, a drag from a page
  * lifts the selection into a card and shows a 2 px insertion marker in the nearest gap (the edges scroll); a drop sends one move
  * command. Keys: arrows move the focus (Shift extends), Space toggles, primary+A selects all, Alt+arrows move the selection,
- * Delete deletes, Enter goes back to the viewer at the focused page. Esc cancels a drag, else it leaves the mode (the shell).
+ * Delete deletes, Enter goes back to the viewer at the focused page. Esc cancels a drag; the mode ends with another tab of the mode row.
  */
 export function OrganizeGrid({ docId, scheduler }: OrganizeGridProps) {
   const t = useT();
@@ -424,7 +424,8 @@ export function OrganizeGrid({ docId, scheduler }: OrganizeGridProps) {
         return;
       case 'Enter':
         event.preventDefault();
-        useUi.getState().releaseTool();
+        // Back to the viewer at the focused page: the mode Lesen (the grid's cleanup goes to the page).
+        useUi.getState().setMode('read');
         return;
       case ' ':
         event.preventDefault();

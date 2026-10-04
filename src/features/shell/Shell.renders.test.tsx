@@ -22,7 +22,7 @@ import { Shell } from './Shell';
  * Render counts (the shell must not re-render for what changes often). Three counters, each at a seam where a parent's render
  * reaches a child:
  * - `shell`: the shell calls `useShellStructure` once per render, so the wrapper below counts the shell's renders.
- * - `tools`: the tool sidebar and its rail; both ask `rowOfState` once per render, so that is the seam.
+ * - `tools`: the tool row; it asks `useModeSlots` once per render, so that is the seam.
  * - `leftPanel`: the Tabs primitive, which only the page sidebar uses in these tests, counted the same way.
  */
 const renders = vi.hoisted(() => ({ shell: 0, tools: 0, leftPanel: 0 }));
@@ -38,13 +38,13 @@ vi.mock('./useShellStructure', async (importOriginal) => {
   };
 });
 
-vi.mock('../tools/rows', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('../tools/rows')>();
+vi.mock('../modes/useSlots', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../modes/useSlots')>();
   return {
     ...actual,
-    rowOfState: (...args: Parameters<typeof actual.rowOfState>) => {
+    useModeSlots: (...args: Parameters<typeof actual.useModeSlots>) => {
       renders.tools += 1;
-      return actual.rowOfState(...args);
+      return actual.useModeSlots(...args);
     },
   };
 });
@@ -120,8 +120,8 @@ afterEach(() => {
   reset();
 });
 
-/** The tool sidebar (or its rail): the region "Inspector". */
-const toolRegion = () => document.querySelector<HTMLElement>('[data-region="inspector"]') as HTMLElement;
+/** The tool row (a toolbar named by the mode). */
+const toolRegion = () => document.querySelector<HTMLElement>('[data-slot="tool-row"]') as HTMLElement;
 const tool = (name: string) => within(toolRegion()).getByRole('button', { name });
 const collapseLeft = () => screen.getByRole('button', { name: 'Hide page sidebar' });
 const pressF4 = () => fireEvent.keyDown(window, { key: 'F4' });
@@ -170,9 +170,9 @@ describe('the counters', () => {
     const { user } = setup(<Shell />);
     await openAndSettle(user);
     const before = counts();
-    await user.click(tool('Markup'));
+    await user.click(tool('Hand'));
     expect(renders.tools).toBeGreaterThan(before.tools);
-    // The tool sidebar is there with or without a tool: no structure change, no render of the shell.
+    // The tool row is there with or without a tool: no structure change, no render of the shell.
     expect(renders.shell).toBe(before.shell);
     expect(renders.leftPanel).toBe(before.leftPanel);
 
@@ -321,10 +321,10 @@ describe('what changes often does not render the shell, the tool sidebar or the 
     for (const width of [1110, 1150, 1200, 1279]) resizeTo(width);
     expect(counts()).toEqual(before);
 
-    // Crossing 1280 changes nothing either: the tool sidebar is 280 from 1100 on.
+    // Crossing 1280 changes nothing either.
     resizeTo(1280);
     expect(counts()).toEqual(before);
-    expect(screen.getByRole('complementary', { name: 'Inspector' })).not.toBeNull();
+    expect(screen.getByRole('toolbar', { name: 'Read' })).not.toBeNull();
 
     const wide = counts();
     for (const width of [1300, 1500, 1920, 2400]) resizeTo(width);
@@ -473,14 +473,14 @@ describe('a language switch', () => {
     try {
       const before = counts();
       chooseLanguage('de');
-      // The switch took effect: the tool sidebar renders again, with German text.
-      expect(within(toolRegion()).getByRole('heading', { name: 'Werkzeuge' })).not.toBeNull();
+      // The switch took effect: the tool row renders again, with German text.
+      expect(within(toolRegion()).getByRole('button', { name: 'Textauswahl' })).not.toBeNull();
       expect(renders.tools).toBeGreaterThan(before.tools);
       expect(renders.shell).toBe(before.shell);
 
       const german = counts();
       chooseLanguage('en');
-      expect(within(toolRegion()).getByRole('heading', { name: 'Tools' })).not.toBeNull();
+      expect(within(toolRegion()).getByRole('button', { name: 'Select text' })).not.toBeNull();
       expect(renders.tools).toBeGreaterThan(german.tools);
       expect(renders.shell).toBe(before.shell);
     } finally {

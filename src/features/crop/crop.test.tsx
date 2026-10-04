@@ -11,12 +11,18 @@ import { usePages } from '../../stores/pages';
 import { useUi } from '../../stores/ui';
 import { useView } from '../../stores/view';
 import { setup } from '../../test/render';
-import { ToolSidebar as Inspector } from '../tools';
 import { setFileRotation } from '../viewer/fileRotation';
 import { fitsAll, sizesDiffer, targetPages } from './actions';
 import { CropLayer } from './CropLayer';
 import { installCropMode } from './mode';
 import { keyOf, useCrop } from './store';
+import { useCropInspector } from './useCropInspector';
+
+/** The crop options as the tool row's popover shows them (the sidebar that hosted them is gone, ADR-102). */
+function Inspector() {
+  const own = useCropInspector();
+  return <div>{own?.body}</div>;
+}
 
 vi.mock('../../api/annotations', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../api/annotations')>()),
@@ -103,14 +109,11 @@ describe('targetPages', () => {
 });
 
 describe('the crop mode', () => {
-  it('forces single page view and opens the inspector, and gives both back', () => {
-    useUi.getState().setInspector('closed');
+  it('forces single page view, and gives the view back', () => {
     act(() => useUi.getState().selectTool('crop'));
     expect(useView.getState().byDoc[1]?.scrollMode).toBe('single');
-    expect(useUi.getState().inspector).toBe('open');
     act(() => useUi.getState().releaseTool());
     expect(useView.getState().byDoc[1]?.scrollMode).toBe('continuous');
-    expect(useUi.getState().inspector).toBe('closed');
   });
 
   it('ends when another document becomes active', () => {
@@ -129,7 +132,7 @@ describe('the inspector', () => {
   it('applies the margins to the current page as one command and ends the mode', async () => {
     const { user } = setup(<Inspector />);
     act(() => useUi.getState().selectTool('crop'));
-    expect(screen.getByRole('heading', { name: 'Crop pages' })).not.toBeNull();
+    expect(screen.getByRole('button', { name: 'Apply' })).not.toBeNull();
     const top = screen.getByLabelText('Top');
     await user.clear(top);
     await user.type(top, '1{Enter}');

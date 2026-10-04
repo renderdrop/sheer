@@ -65,27 +65,83 @@ describe('the Windows menus built from menu.json', () => {
     expect(find(context({ hasTextSelection: true }))).toBe(false);
   });
 
-  it('list the recent files in Open Recent with Clear, and disable it when there are none', () => {
-    const onSelect = vi.fn();
-    const withRecents = buildMenuEntries(
-      'file',
-      context({ recents: { items: [{ id: '1', label: 'A.pdf', onSelect }], clear: vi.fn() } }),
-    ).find((entry) => entry.id === 'submenu:recent');
-    expect(
-      withRecents?.type !== 'separator' &&
-        withRecents?.submenu?.map((entry) => (entry.type === 'separator' ? '-' : entry.label)),
-    ).toEqual(['A.pdf', '-', 'Clear Menu']);
-    const none = buildMenuEntries('file', context()).find((entry) => entry.id === 'submenu:recent');
-    expect(none?.type !== 'separator' && none?.disabled).toBe(true);
+  it('has the File menu of the design: the commands outside the modes, Close, Settings and Exit last', () => {
+    expect(labels('file')).toEqual([
+      'Open…',
+      '-',
+      'Save',
+      'Save As…',
+      'Export Copy…',
+      'Export Images…',
+      'Create PDF From Images…',
+      'Compress…',
+      '-',
+      'Flatten Form…',
+      'Protect…',
+      'Document Properties…',
+      '-',
+      'Print…',
+      'Close Document',
+      '-',
+      'Settings…',
+      'Exit',
+    ]);
+    expect(labels('file', context({ t: translators.de }))).toEqual(
+      expect.arrayContaining([
+        'Speichern',
+        'Speichern unter…',
+        'Kopie exportieren…',
+        'Als Bilder exportieren…',
+        'Drucken…',
+        'Formular reduzieren…',
+        'Dokumenteigenschaften…',
+        'PDF aus Bildern erstellen…',
+      ]),
+    );
+  });
+
+  it('lose the Properties item in View', () => {
+    expect(buildMenuEntries('view', context()).map((entry) => entry.id)).not.toContain('toggle-inspector');
+  });
+
+  it('list the five modes as radio items with the digit as hint, then form highlight and signatures, and no tools', () => {
+    const entries = buildMenuEntries('tools', context({ checked: (id) => (id === 'mode-fill' ? true : undefined) }));
+    expect(labels('tools')).toEqual([
+      'Read',
+      'Comment',
+      'Fill & Sign',
+      'Pages',
+      'Edit',
+      '-',
+      'Highlight Form Fields',
+      'Manage Signatures…',
+    ]);
+    const modes = entries.slice(0, 5).flatMap((entry) => (entry.type === 'separator' ? [] : [entry]));
+    expect(modes.map((entry) => entry.shortcut)).toEqual(['1', '2', '3', '4', '5']);
+    expect(modes.map((entry) => [entry.radio, entry.checked])).toEqual([
+      [true, false],
+      [true, false],
+      [true, true],
+      [true, false],
+      [true, false],
+    ]);
+    expect(entries.map((entry) => entry.id).some((id) => id.startsWith('tool-'))).toBe(false);
+    expect(labels('tools', context({ t: translators.de })).slice(0, 5)).toEqual([
+      'Lesen',
+      'Kommentieren',
+      'Ausfüllen & Signieren',
+      'Seiten',
+      'Bearbeiten',
+    ]);
   });
 
   it('run the action of the item and show its check state', () => {
     const run = vi.fn();
-    const entries = buildMenuEntries('tools', context({ run, checked: (id) => id === 'tool-draw' }));
-    const draw = entries.find((entry) => entry.id === 'tool-draw');
-    if (draw === undefined || draw.type === 'separator') throw new Error('no Draw');
+    const entries = buildMenuEntries('tools', context({ run, checked: (id) => id === 'mode-comment' }));
+    const draw = entries.find((entry) => entry.id === 'mode-comment');
+    if (draw === undefined || draw.type === 'separator') throw new Error('no Comment');
     expect(draw.checked).toBe(true);
     draw.onSelect();
-    expect(run).toHaveBeenCalledWith('tool-draw');
+    expect(run).toHaveBeenCalledWith('mode-comment');
   });
 });

@@ -1,7 +1,9 @@
 import { useCallback, useRef, useSyncExternalStore } from 'react';
 
 import { shellStructure, type ShellStructure } from '../../lib/layout';
+import { chromeFor, detectPlatform } from '../../lib/platform';
 import { useDocuments } from '../../stores/documents';
+import { useSettings } from '../../stores/settings';
 import { useUi } from '../../stores/ui';
 
 /** The structure of the shell as the stores and the window say it now (see `shellStructure`, src/lib/layout.ts). */
@@ -15,9 +17,8 @@ export function readShellStructure(): ShellStructure {
     panelWidth: ui.leftPanelWidth,
     // The page grid takes the room of the page sidebar (DESIGN 3.28); it returns when the mode ends.
     panelCollapsed: ui.leftPanelCollapsed || ui.activeTool === 'pages',
-    inspector: ui.inspector,
-    // A mode panel (Crop, Redact) needs the full tool sidebar (DESIGN 3.57).
-    inspectorMode: ui.redactMode || ui.activeTool === 'crop',
+    // Windows draws its own menu row; macOS has the native bar (DESIGN v2 3.2).
+    menuRow: chromeFor(useSettings.getState().platform ?? detectPlatform()).caption,
   });
 }
 
@@ -25,10 +26,12 @@ function subscribe(notify: () => void): () => void {
   window.addEventListener('resize', notify);
   const stopUi = useUi.subscribe(notify);
   const stopDocuments = useDocuments.subscribe(notify);
+  const stopSettings = useSettings.subscribe(notify);
   return () => {
     window.removeEventListener('resize', notify);
     stopUi();
     stopDocuments();
+    stopSettings();
   };
 }
 
@@ -37,13 +40,12 @@ function sameStructure(a: ShellStructure, b: ShellStructure): boolean {
     a.mode === b.mode &&
     a.leftCollapsed === b.leftCollapsed &&
     a.leftAutoCollapsed === b.leftAutoCollapsed &&
-    a.inspectorReserved === b.inspectorReserved &&
-    a.inspectorVisible === b.inspectorVisible
+    a.menuRow === b.menuRow
   );
 }
 
 /**
- * The structure of the shell: Home or editor, and which sidebars show. It depends on the window width, the
+ * The structure of the shell: Home or editor, whether the page sidebar shows and whether there is a menu row. It depends on the window width, the
  * page sidebar's width, the user's panel choices, the active tool and whether a document is open and the view is the editor, but its answer is a handful
  * of booleans, so the component that uses it re-renders when one of them flips and not with every pixel of a window
  * resize, every step of a splitter drag or every change of page and zoom. A new answer that equals the last one is

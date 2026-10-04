@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { PANEL } from '../../components/tokens';
 import { useDocuments } from '../../stores/documents';
+import { useSettings } from '../../stores/settings';
 import { resetDocuments } from '../../stores/documents.testutil';
 import { useUi } from '../../stores/ui';
 import { useViewer } from '../viewer/useViewer';
@@ -47,10 +48,9 @@ function follow() {
 describe('useShellStructure', () => {
   it('is the empty structure without a document, whatever the window does', () => {
     const { result, renders } = follow();
-    expect(result.current).toMatchObject({ mode: 'empty', leftCollapsed: true, inspectorReserved: false });
+    expect(result.current).toMatchObject({ mode: 'empty', leftCollapsed: true, menuRow: false });
     const first = renders();
     for (const width of [960, 1280, 2400]) resizeTo(width);
-    act(() => useUi.getState().setInspector('open'));
     act(() => useUi.getState().selectTool('draw'));
     expect(renders()).toBe(first);
   });
@@ -59,13 +59,7 @@ describe('useShellStructure', () => {
     const { result, renders } = follow();
     const before = renders();
     openDocument();
-    // 1100 wide: the full tool sidebar.
-    expect(result.current).toMatchObject({
-      mode: 'document',
-      leftCollapsed: false,
-      inspectorReserved: true,
-      inspectorVisible: true,
-    });
+    expect(result.current).toMatchObject({ mode: 'document', leftCollapsed: false, menuRow: false });
     expect(renders()).toBe(before + 1);
   });
 
@@ -87,7 +81,7 @@ describe('useShellStructure', () => {
     expect(useUi.getState().view).toBe('home');
   });
 
-  it('renders for the thresholds only: 1100, the user collapsing a sidebar, and the canvas under 360', () => {
+  it('renders for the thresholds only: 860, the user collapsing the sidebar, and the canvas under 360', () => {
     openDocument();
     const { result, renders } = follow();
     const rest = result.current;
@@ -105,29 +99,34 @@ describe('useShellStructure', () => {
     expect(result.current.leftCollapsed).toBe(true);
     act(() => useUi.getState().setLeftPanelCollapsed(false));
 
-    // The tool sidebar closed by the user is the rail; a tool or a selection changes nothing in the structure.
+    // A tool, a mode or a selection changes nothing in the structure.
     const before = renders();
-    act(() => useUi.getState().setInspector('closed'));
-    expect(renders()).toBe(before + 1);
-    expect(result.current.inspectorVisible).toBe(false);
-    expect(result.current.inspectorReserved).toBe(true);
     act(() => useUi.getState().selectTool('draw'));
-    expect(renders()).toBe(before + 1);
-    // Below 1100 the window makes it the rail by itself.
-    act(() => useUi.getState().setInspector('auto'));
-    resizeTo(1099);
-    expect(result.current.inspectorVisible).toBe(false);
+    act(() => useUi.getState().setMode('edit'));
+    expect(renders()).toBe(before);
+    // Below 860 the window collapses the page sidebar by itself.
+    resizeTo(859);
+    expect(result.current).toMatchObject({ leftCollapsed: true, leftAutoCollapsed: true });
   });
 
-  it('the canvas falling under 360 collapses the page sidebar by itself, in the render where the splitter makes it so', () => {
-    resizeTo(960);
-    useUi.setState({ inspector: 'open', leftPanelWidth: PANEL.min });
+  it('Windows has the menu row, the other platforms none', () => {
+    openDocument();
+    const { result } = follow();
+    expect(result.current.menuRow).toBe(false);
+    act(() => useSettings.setState({ platform: 'windows' }));
+    expect(result.current.menuRow).toBe(true);
+    act(() => useSettings.setState({ platform: 'macos' }));
+    expect(result.current.menuRow).toBe(false);
+  });
+
+  it('the canvas falling under 360 collapses the page sidebar by itself, in the render where the window makes it so', () => {
+    resizeTo(870);
+    useUi.setState({ leftPanelWidth: PANEL.min });
     openDocument();
     const { result, renders } = follow();
     expect(result.current.leftCollapsed).toBe(false);
     const first = renders();
-    // 960 - 320 - 8 - 280 = 352: under 360.
-    act(() => useUi.getState().setLeftPanelWidth(320));
+    resizeTo(850);
     expect(result.current).toMatchObject({ leftCollapsed: true, leftAutoCollapsed: true });
     expect(renders()).toBe(first + 1);
   });
@@ -136,11 +135,8 @@ describe('useShellStructure', () => {
     expect(readShellStructure().mode).toBe('empty');
     openDocument();
     expect(readShellStructure().mode).toBe('document');
-    expect(readShellStructure().inspectorVisible).toBe(true);
-    resizeTo(1000);
-    expect(readShellStructure().inspectorVisible).toBe(false);
-    useUi.setState({ inspector: 'open' });
-    expect(readShellStructure().inspectorVisible).toBe(true);
+    resizeTo(800);
+    expect(readShellStructure().leftAutoCollapsed).toBe(true);
     useUi.setState({ leftPanelCollapsed: true });
     expect(readShellStructure().leftCollapsed).toBe(true);
     useUi.setState({ view: 'home' });
@@ -152,7 +148,7 @@ describe('useShellStructure', () => {
     const before = renders();
     unmount();
     resizeTo(1500);
-    act(() => useUi.getState().setInspector('open'));
+    act(() => useUi.getState().setLeftPanelCollapsed(true));
     openDocument();
     expect(renders()).toBe(before);
   });

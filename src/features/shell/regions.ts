@@ -1,7 +1,7 @@
 import { useEffect } from 'react';
 
 /**
- * F6 / Shift+F6 region cycling (DESIGN 2.3, 3.52): toolbar, hint card, tabs, banners, left panel, splitter, canvas, inspector, status bar.
+ * F6 / Shift+F6 region cycling (DESIGN 2.3, 3.52): toolbar, hint card, tabs, banners, left panel, splitter, canvas, status bar (the tool row is the toolbar).
  * A region that is not on screen, or has nothing to focus, is skipped. Leaving a region remembers where focus was, and F6 back into it
  * restores that element while it is still there. Dialogs own the keyboard: with one open, F6 does nothing.
  */
@@ -13,7 +13,6 @@ export const REGIONS: readonly { id: string; selector: string }[] = [
   { id: 'left', selector: '[data-region="left"]' },
   { id: 'splitter', selector: '[role="separator"]' },
   { id: 'canvas', selector: '[data-action-scope="canvas"] > [role="region"]' },
-  { id: 'inspector', selector: '[data-region="inspector"]' },
   { id: 'status', selector: 'footer' },
 ];
 

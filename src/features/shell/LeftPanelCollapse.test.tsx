@@ -70,7 +70,6 @@ afterEach(() => {
 /** The page sidebar's own collapse chevron; a collapsed sidebar comes back by F4 or the splitter (DESIGN v2 3.2). */
 const collapseButton = () => screen.getByRole('button', { name: 'Hide page sidebar' });
 const toggleLeft = () => fireEvent.keyDown(window, { key: 'F4' });
-const toggleTools = () => fireEvent.keyDown(window, { key: 'F4', shiftKey: true });
 const panel = () => screen.queryByRole('complementary', { name: 'Left panel' });
 /** The element that fades and sits in the grid: around the panel and the `display: contents` element of its tabs. */
 const frameOf = (aside: HTMLElement) => aside.parentElement?.parentElement as HTMLElement;
@@ -144,25 +143,6 @@ describe('the columns', () => {
     expect(grid.className).not.toContain(TRANSITION);
   });
 
-  it('slide the tool column between the sidebar and the rail the same way, and stay in step with it', async () => {
-    resizeTo(1400);
-    const { container, user } = setup(<Shell />);
-    await openDocument(user);
-    const grid = gridOf(container);
-    // The sidebar: the last track is 280 wide, the canvas reaches it with no gutter.
-    expect(tracks(grid).slice(-1)).toEqual(['var(--tool-sidebar-width)']);
-    expect(grid.getAttribute('data-inspector')).toBe('open');
-
-    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
-    toggleTools();
-    expect(grid.getAttribute('data-inspector')).toBe('closed');
-    expect(grid.getAttribute('data-animating')).toBe('inspector');
-    expect(grid.className).toContain(TRANSITION);
-    expect(tracks(grid).slice(-1)).toEqual(['var(--tool-rail-width)']);
-    advance(370);
-    expect(grid.hasAttribute('data-animating')).toBe(false);
-  });
-
   it('start another slide when the panel is toggled again before the first is over', async () => {
     const { container, user } = setup(<Shell />);
     await openDocument(user);
@@ -191,12 +171,12 @@ describe('the columns', () => {
 
   it('slide when the window gets too narrow for the panel and when it grows again, the same way', async () => {
     resizeTo(1300);
-    useUi.setState({ leftPanelWidth: 400, inspector: 'open' });
+    useUi.setState({ leftPanelWidth: 400 });
     const { container, user } = setup(<Shell />);
     await openDocument(user);
     const grid = gridOf(container);
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
-    resizeTo(960);
+    resizeTo(850);
     expect(grid.getAttribute('data-left')).toBe('collapsed');
     expect(grid.hasAttribute('data-animating')).toBe(true);
     advance(370);

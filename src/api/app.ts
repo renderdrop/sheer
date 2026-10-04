@@ -47,8 +47,6 @@ export interface Settings {
   skippedVersion?: string | null;
   /** The page sidebar is collapsed (DESIGN v2 3.2). Absent until the backend knows the field; absent means open. */
   pageSidebarCollapsed?: boolean;
-  /** The tool sidebar is collapsed to its rail (DESIGN v2 3.2). Absent until the backend knows the field. */
-  toolSidebarCollapsed?: boolean;
 }
 
 /** Wire names of the backend's `UpdatesMode` (storage/settings.rs, ADR-053). */
@@ -131,7 +129,6 @@ export function parseSettings(value: unknown): Settings | null {
     updates,
     skippedVersion,
     pageSidebarCollapsed,
-    toolSidebarCollapsed,
   } = value as {
     language?: unknown;
     leftPanelWidth?: unknown;
@@ -142,7 +139,6 @@ export function parseSettings(value: unknown): Settings | null {
     updates?: unknown;
     skippedVersion?: unknown;
     pageSidebarCollapsed?: unknown;
-    toolSidebarCollapsed?: unknown;
   };
   const parsedPrompt = oneOf(AUTHOR_PROMPT_STATES, authorPrompt);
   const parsedLanguage = oneOf(LANGUAGES, language);
@@ -174,7 +170,6 @@ export function parseSettings(value: unknown): Settings | null {
     ...(parsedUpdates === null ? {} : { updates: parsedUpdates }),
     ...(parsedSkipped === undefined ? {} : { skippedVersion: parsedSkipped }),
     ...(typeof pageSidebarCollapsed === 'boolean' ? { pageSidebarCollapsed } : {}),
-    ...(typeof toolSidebarCollapsed === 'boolean' ? { toolSidebarCollapsed } : {}),
   };
 }
 
