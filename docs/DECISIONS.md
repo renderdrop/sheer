@@ -1896,3 +1896,22 @@ and app icon "s."; Inter bundled; Top Bar + left Pages sidebar + right Tools sid
 
 **Consequences.** `ROADMAP.md` gains "v1.2 Redesign" (Package 0, B1, R0–R7). Every R-phase ends with a designer round. Smoke test,
 CSP gate, contrast script and fps budget gate the tag v1.2.0.
+
+## ADR-101 — v1.2 wave plan: shell skeleton and R4 primitives before the R2/R3 screens
+
+**Status:** accepted (2026-10-04). Extends ADR-100.
+
+**Context.** Home (R2) and the editor (R3) both rewrite `Shell.tsx`, `MainGrid.tsx` and `src/lib/layout.ts`, so four parallel packages
+cannot share them; and the R2/R3 screens should be built from the restyled R4 primitives, not restyled twice.
+
+**Decision.** (1) Wave 3 runs four packages in parallel: S = shell skeleton (Home/editor view switch, the DESIGN v2 §3 grid with empty
+slots filled by the old components, panel widths 200/200/320 in `layout.ts`, `components/tokens.ts` and `limits.rs`), C1 = R4.1 primitives
+(buttons, icon buttons, inputs, menus, popovers, tooltips, dialogs, toasts), C2 = R4.2 primitives (tabs, segmented, toggle, checkbox,
+slider, swatch, skeleton, banner, dropzone), F1 = R1 brand fixes from the R0 designer round plus R1.5 (About, README, release notes).
+(2) Wave 4 fills the skeleton slots in parallel: Home (R2), top bar (R3.1), tool sidebar (R3.3), page sidebar and canvas (R3.2/R3.3).
+(3) R3.4 (form banner, selection popover, comments tab, redact band) and R4.3/R4.4 follow in wave 5. Designer rounds stay per phase
+(brief §3); the R2 and R3 rounds run after wave 4, the R4 round after wave 5. Intermediate states between waves are never tagged.
+(4) The R0 designer round (PASS) and the R1 asset review are combined into one round; R1 acceptance (Explorer icon, word mark in Home,
+installer build) completes after wave 4.
+
+**Consequences.** The brief's phase order R2 → R3 → R4 holds for acceptance, not for build order.

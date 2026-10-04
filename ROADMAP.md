@@ -237,7 +237,7 @@ Order as in the brief. Each phase ends with one designer round on Tauri-window s
 - [x] R0.4 — Inter bundled (OFL, woff2 Latin + Latin Ext), type scale utilities (.t-display … .t-caption), tabular-nums
 - [x] R0.5 — Icon audit: Lucide stroke 1.75, sizes 16/18/20 (24 for large actions), monochrome; own icons removed or redrawn
 - [x] R0.6 — BrandSurface, WorkSurface and SolarGlow primitives
-- [ ] R0 acceptance — Inter visible in the Tauri window, no dark/glass/backdrop leftovers, designer round
+- [x] R0 acceptance — Inter visible in the Tauri window, no dark/glass/backdrop leftovers, designer round
 - [x] R1.1 — Word mark SVGs as paths (primary with claim, secondary, mono ink)
 - [x] R1.2 — App icon "s." in three variants, measured optical centering (< 1 %), platform icons via `tauri icon`
 - [x] R1.3 — Installer art (NSIS header/sidebar) in brand mode
@@ -270,5 +270,6 @@ Order as in the brief. Each phase ends with one designer round on Tauri-window s
   - (R1 review, minor) gen-installer-art.mjs reads the old logo.svg (dead); delete assets/brand/logo.svg and "Sheer — Logo & Farbe.html" once unused; brand claim test checks tracking/weight only via the up-to-date test; LICENSES skrifa row also covers tests/brand_assets.rs; word mark without GPOS kerning (tracking only)
   - (R0b reviews, minor) LICENSES objc2-app-kit row stale (transitive only); settings.rs RETIRED_KEYS comment says "first write" (startup rewrite); brandRules comment stripper eats `//` inside strings; brandRules non-vacuity check wants a minimum file count; `--font-display` duplicates `--font-sans`; Surface.tsx spreads `rest` after `data-surface`; WorkSurface wraps only panel/canvas/inspector (wrap the whole editor in R3); SolarGlow `drop` needs an opacity variable (R5 spell 4); tauri.conf backgroundColor hex outside tokens (record in DECISIONS)
   - (welcome review, minor) page 1 glow runs under the footer; page 3 highlight card has no Solar cue; task-page headings in Helvetica-Bold (BRAND: no bold headings) — use regular; top-right page number duplicates the footer
+  - (R0 designer, minor) welcome PDF could embed Inter instead of Helvetica; "Strg+O" key badge outline should be `--color-border`; yellow-outline toggles (left-panel button, sidebar tab) fail 3:1 — Solar fill + Ink, Ink focus ring (R4 primitives)
   - (P-A review, minor) legacy alias block still carries v1.1 `--annot-*` hex values (remove with the §1.4 palette migration, R4.3); rename `--color-surface-solid`; `text-accent` left in IconButton.tsx (yellow on Ink); legacy `--spacing-*` slot aliases (hub, logo, caption) go with R2/R3; `--panel-*` 192/248/400 and `--inspector-width` 288 keep v1.1 values until R3 (Rust limits.rs + layout tests)
 - [ ] R7 — Screenshot series docs/review/v1.2, designer review vs BRAND §2, smoke, gates, audits, CI green, CHANGELOG, tag v1.2.0
