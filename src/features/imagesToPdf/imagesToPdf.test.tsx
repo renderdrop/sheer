@@ -8,6 +8,7 @@ import { makeFrame } from '../../api/frame.testutil';
 import type { JobEvent } from '../../api/jobs';
 import { useUi } from '../../stores/ui';
 import { setup } from '../../test/render';
+import { MAX_PREVIEWS_IN_FLIGHT } from './ImageList';
 import { handleImagesDropped } from './imagesDropped';
 import { ImagesToPdfDialog } from './ImagesToPdfDialog';
 import { MARGIN_PT, toOptions } from './options';
@@ -191,5 +192,73 @@ describe('Create PDF from images dialog', () => {
     handleImagesDropped({ type: 'imagesDropped', batch: 2, count: 1, skipped: 0 });
     handleImagesDropped({ type: 'imagesDropped', batch: 3, count: 1, skipped: 0 });
     expect(api.releaseImageBatch).toHaveBeenCalledWith(2);
+  });
+});
+
+describe('thumbnail loading', () => {
+  const observers: Array<{ el: Element; fire: (v: boolean) => void }> = [];
+  beforeEach(() => {
+    observers.length = 0;
+    vi.stubGlobal(
+      'IntersectionObserver',
+      class {
+        cb: IntersectionObserverCallback;
+        constructor(cb: IntersectionObserverCallback) {
+          this.cb = cb;
+        }
+        observe(el: Element) {
+          observers.push({
+            el,
+            fire: (v) =>
+              this.cb([{ isIntersecting: v } as IntersectionObserverEntry], this as unknown as IntersectionObserver),
+          });
+        }
+        disconnect() {}
+      },
+    );
+  });
+
+  it('requests previews only for rows that became visible', async () => {
+    api.listImageBatch.mockResolvedValue(items(6));
+    setup(<ImagesToPdfDialog />);
+    act(() => handleImagesDropped({ type: 'imagesDropped', batch: 7, count: 6, skipped: 0 }));
+    await screen.findAllByRole('option');
+    await waitFor(() => expect(observers.length).toBe(6));
+    expect(api.getImageBatchPreview).not.toHaveBeenCalled();
+    act(() => {
+      observers[0]?.fire(true);
+      observers[1]?.fire(true);
+    });
+    await waitFor(() => expect(api.getImageBatchPreview).toHaveBeenCalledTimes(2));
+  });
+
+  it('never has more than the cap of previews in flight', async () => {
+    api.listImageBatch.mockResolvedValue(items(10));
+    let active = 0;
+    let peak = 0;
+    const releases: Array<() => void> = [];
+    api.getImageBatchPreview.mockImplementation(() => {
+      active += 1;
+      peak = Math.max(peak, active);
+      return new Promise((resolve) => {
+        releases.push(() => {
+          active -= 1;
+          resolve(parseFrame(makeFrame()));
+        });
+      });
+    });
+    setup(<ImagesToPdfDialog />);
+    act(() => handleImagesDropped({ type: 'imagesDropped', batch: 7, count: 10, skipped: 0 }));
+    await waitFor(() => expect(observers.length).toBe(10));
+    act(() => observers.forEach((o) => o.fire(true)));
+    await waitFor(() => expect(api.getImageBatchPreview).toHaveBeenCalledTimes(MAX_PREVIEWS_IN_FLIGHT));
+    for (let i = 0; i < 10; i += 1) {
+      await act(async () => {
+        releases.shift()?.();
+        await Promise.resolve();
+      });
+    }
+    await waitFor(() => expect(api.getImageBatchPreview).toHaveBeenCalledTimes(10));
+    expect(peak).toBeLessThanOrEqual(MAX_PREVIEWS_IN_FLIGHT);
   });
 });

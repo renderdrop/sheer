@@ -1,5 +1,5 @@
 import { CircleAlert, GripVertical, X } from 'lucide-react';
-import { useEffect, useRef, useState, type KeyboardEvent, type PointerEvent } from 'react';
+import { useEffect, useRef, useState, type KeyboardEvent, type PointerEvent, type RefObject } from 'react';
 
 import { getImageBatchPreview, type BatchItem } from '../../api/imagesToPdf';
 import { Icon, IconButton } from '../../components';
@@ -10,31 +10,102 @@ import { moveEntry } from '../jobs/MergeSheet';
 /** The long side of a thumbnail request: twice the 40 px row tile, for dense screens. */
 const THUMB_PX = 96;
 
-/** A thumbnail from the backend through an object URL that is revoked when it goes. A failure is reported once (unreadable). */
-function Thumb({ batch, index, onFail }: { batch: number; index: number; onFail: (index: number) => void }) {
+/** At most this many preview requests are in flight; the rest wait in a queue. */
+export const MAX_PREVIEWS_IN_FLIGHT = 4;
+let inFlight = 0;
+const waiting: Array<() => void> = [];
+
+function pump() {
+  while (inFlight < MAX_PREVIEWS_IN_FLIGHT) {
+    const start = waiting.shift();
+    if (start === undefined) return;
+    start();
+  }
+}
+
+/** Runs `task` when a slot is free; the returned function drops it if still queued (a started task just has its result ignored). */
+function schedulePreview(task: () => Promise<void>): () => void {
+  let started = false;
+  const start = () => {
+    started = true;
+    inFlight += 1;
+    void task().finally(() => {
+      inFlight -= 1;
+      pump();
+    });
+  };
+  waiting.push(start);
+  pump();
+  return () => {
+    if (started) return;
+    const at = waiting.indexOf(start);
+    if (at >= 0) waiting.splice(at, 1);
+  };
+}
+
+/** True once the element has entered the scroll root's view (always true where IntersectionObserver is missing). */
+function useVisible(target: RefObject<HTMLElement | null>, root: RefObject<HTMLElement | null>): boolean {
+  const [seen, setSeen] = useState(typeof IntersectionObserver === 'undefined');
+  useEffect(() => {
+    const el = target.current;
+    if (seen || el === null || typeof IntersectionObserver === 'undefined') return;
+    const observer = new IntersectionObserver(
+      (hits) => {
+        if (hits.some((hit) => hit.isIntersecting)) setSeen(true);
+      },
+      { root: root.current },
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [seen, target, root]);
+  return seen;
+}
+
+/** A thumbnail from the backend through an object URL that is revoked when it goes. Loaded when visible, through the request cap. A failure is reported once (unreadable). */
+function Thumb({
+  batch,
+  index,
+  onFail,
+  root,
+}: {
+  batch: number;
+  index: number;
+  onFail: (index: number) => void;
+  root: RefObject<HTMLElement | null>;
+}) {
   const [url, setUrl] = useState<string | null>(null);
+  const box = useRef<HTMLSpanElement>(null);
+  const visible = useVisible(box, root);
   const fail = useRef(onFail);
   useEffect(() => {
     fail.current = onFail;
   });
   useEffect(() => {
+    if (!visible) return;
     let cancelled = false;
     let made: string | null = null;
-    getImageBatchPreview(batch, index, THUMB_PX)
-      .then((frame) => {
-        if (cancelled) return;
-        made = URL.createObjectURL(new Blob([frame.data], { type: 'image/png' }));
-        setUrl(made);
-      })
-      .catch(() => {
-        if (!cancelled) fail.current(index);
-      });
+    const drop = schedulePreview(() =>
+      getImageBatchPreview(batch, index, THUMB_PX)
+        .then((frame) => {
+          if (cancelled) return;
+          made = URL.createObjectURL(new Blob([frame.data], { type: 'image/png' }));
+          setUrl(made);
+        })
+        .catch(() => {
+          if (!cancelled) fail.current(index);
+        }),
+    );
     return () => {
       cancelled = true;
+      drop();
       if (made !== null) URL.revokeObjectURL(made);
     };
-  }, [batch, index]);
-  return url === null ? null : <img src={url} alt="" className="size-full object-contain" />;
+  }, [batch, index, visible]);
+  return (
+    <span ref={box} className="flex size-full items-center justify-center">
+      {url === null ? null : <img src={url} alt="" className="size-full object-contain" />}
+    </span>
+  );
 }
 
 interface Props {
@@ -176,7 +247,11 @@ export function ImageList({ batch, entries, onChange, failed, onFail, disabled }
                 <Icon icon={GripVertical} />
               </span>
               <span className="flex h-5 w-4 shrink-0 items-center justify-center overflow-hidden rounded-sm border border-divider bg-page text-error-text forced-colors:border-text">
-                {bad ? <Icon icon={CircleAlert} /> : <Thumb batch={batch} index={entry.index} onFail={onFail} />}
+                {bad ? (
+                  <Icon icon={CircleAlert} />
+                ) : (
+                  <Thumb batch={batch} index={entry.index} onFail={onFail} root={list} />
+                )}
               </span>
               <span className="flex min-w-0 flex-auto flex-col">
                 <span className="truncate font-semibold">{entry.name}</span>
