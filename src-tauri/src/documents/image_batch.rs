@@ -5,6 +5,7 @@
 //! webview (SECURITY T9). A job reads through a duplicate of the handle, so a failed job leaves the batch for another try.
 
 use std::cmp::Ordering;
+use std::collections::HashMap;
 use std::fs::File;
 use std::io::{Read, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
@@ -36,20 +37,75 @@ pub fn classify_head(head: &[u8]) -> Dropped {
     }
 }
 
-/// One held image: its file name's stem for the default target name, and the handle.
+/// One held image: its file name's stem for the default target name, the display name, and the handle.
 #[derive(Debug)]
 pub struct HeldImage {
     pub stem: String,
+    /// The file name only (no folder), without control characters, at most `MAX_BATCH_NAME_CHARS` characters.
+    pub name: String,
     file: File,
+    size: OnceLock<(u32, u32)>,
 }
 
 impl HeldImage {
+    pub fn new(path: &Path, file: File) -> Self {
+        Self {
+            stem: stem_of(path),
+            name: display_name(path),
+            file,
+            size: OnceLock::new(),
+        }
+    }
+
     /// A second handle on the same file, positioned at the start.
     pub fn reopen(&self) -> Result<File, AppError> {
         let mut file = self.file.try_clone()?;
         file.seek(SeekFrom::Start(0))?;
         Ok(file)
     }
+
+    fn duplicate(&self) -> Result<Self, AppError> {
+        let size = OnceLock::new();
+        if let Some(known) = self.size.get() {
+            let _ = size.set(*known);
+        }
+        Ok(Self {
+            stem: self.stem.clone(),
+            name: self.name.clone(),
+            file: self.reopen()?,
+            size,
+        })
+    }
+
+    /// The size the file's header declares, `(0, 0)` when it cannot be read; read once.
+    pub fn declared_size(&self) -> (u32, u32) {
+        *self.size.get_or_init(|| {
+            let mut head = Vec::new();
+            let read = self
+                .reopen()
+                .and_then(|f| Ok(f.take(HEADER_READ_BYTES).read_to_end(&mut head)?));
+            if read.is_err() {
+                return (0, 0);
+            }
+            crate::export::from_images::header_info(&head)
+                .size
+                .unwrap_or((0, 0))
+        })
+    }
+}
+
+/// How much of a file is read to find its size (a JPEG's frame header can follow a large EXIF block).
+const HEADER_READ_BYTES: u64 = 256 * 1024;
+
+/// The file name of `path` for the UI: no folder, no control characters, bounded.
+pub fn display_name(path: &Path) -> String {
+    path.file_name()
+        .map(|n| n.to_string_lossy())
+        .unwrap_or_default()
+        .chars()
+        .filter(|c| !c.is_control())
+        .take(limits::MAX_BATCH_NAME_CHARS)
+        .collect()
 }
 
 /// The files of one drop that are images, in natural name order.
@@ -139,6 +195,8 @@ struct Held {
     id: u32,
     at: Instant,
     batch: Arc<ImageBatch>,
+    /// Thumbnails by (index, long side); indices never move, so they stay valid when images are appended.
+    previews: HashMap<(u32, u16), Arc<Vec<u8>>>,
 }
 
 #[derive(Default)]
@@ -174,8 +232,55 @@ impl ImageBatches {
             id,
             at: now,
             batch: Arc::new(batch),
+            previews: HashMap::new(),
         });
         id
+    }
+
+    /// Appends `images` to batch `id` (a new batch when `id` is `None`) and returns its id and the number kept (the batch holds at
+    /// most `MAX_IMAGE_BATCH`). `None`: the batch is unknown or expired.
+    pub fn append(
+        &self,
+        id: Option<u32>,
+        images: Vec<HeldImage>,
+    ) -> Result<Option<(u32, usize)>, AppError> {
+        let Some(id) = id else {
+            let kept = images.len().min(limits::MAX_IMAGE_BATCH);
+            return Ok(Some((self.add(ImageBatch { images }), kept)));
+        };
+        let mut inner = self.inner.lock().unwrap_or_else(PoisonError::into_inner);
+        Self::purge(&mut inner.held, Instant::now());
+        let Some(held) = inner.held.iter_mut().find(|h| h.id == id) else {
+            return Ok(None);
+        };
+        let mut all = held
+            .batch
+            .images
+            .iter()
+            .map(HeldImage::duplicate)
+            .collect::<Result<Vec<_>, _>>()?;
+        let room = limits::MAX_IMAGE_BATCH.saturating_sub(all.len());
+        let kept = images.len().min(room);
+        all.extend(images.into_iter().take(kept));
+        held.batch = Arc::new(ImageBatch { images: all });
+        Ok(Some((id, kept)))
+    }
+
+    /// A thumbnail frame cached for (`id`, `index`, `px`).
+    pub fn cached_preview(&self, id: u32, index: u32, px: u16) -> Option<Arc<Vec<u8>>> {
+        let inner = self.inner.lock().unwrap_or_else(PoisonError::into_inner);
+        let held = inner.held.iter().find(|h| h.id == id)?;
+        held.previews.get(&(index, px)).cloned()
+    }
+
+    /// Remembers a thumbnail frame (bounded by `MAX_BATCH_PREVIEWS` per batch).
+    pub fn cache_preview(&self, id: u32, index: u32, px: u16, frame: Arc<Vec<u8>>) {
+        let mut inner = self.inner.lock().unwrap_or_else(PoisonError::into_inner);
+        if let Some(held) = inner.held.iter_mut().find(|h| h.id == id) {
+            if held.previews.len() < limits::MAX_BATCH_PREVIEWS {
+                held.previews.insert((index, px), frame);
+            }
+        }
     }
 
     /// The batch `id`, if it is held and has not expired.
@@ -251,10 +356,7 @@ pub fn sort_drop(paths: Vec<PathBuf>) -> Sorted {
         pdfs,
         images: images
             .into_iter()
-            .map(|(path, file)| HeldImage {
-                stem: stem_of(&path),
-                file,
-            })
+            .map(|(path, file)| HeldImage::new(&path, file))
             .collect(),
         skipped: u32::try_from(skipped).unwrap_or(u32::MAX),
     }
@@ -338,6 +440,43 @@ mod tests {
         assert!(batches.get(one).is_none());
         batches.age(two, limits::IMAGE_BATCH_TTL + Duration::from_secs(1));
         assert!(batches.get(two).is_none());
+    }
+    #[test]
+    fn names_are_shown_without_folder_or_control_characters() {
+        assert_eq!(display_name(Path::new("dir/photo.png")), "photo.png");
+        assert_eq!(display_name(Path::new("a\u{7}b.png")), "ab.png");
+        let long = "x".repeat(300);
+        assert_eq!(
+            display_name(Path::new(&long)).chars().count(),
+            limits::MAX_BATCH_NAME_CHARS
+        );
+    }
+
+    #[test]
+    fn appending_keeps_indices_and_the_batch_size_bounded() {
+        let dir = TempDir::new();
+        let make = |name: &str| {
+            let path = dir.path().join(name);
+            std::fs::write(&path, b"\x89PNG\r\n\x1a\nabc").unwrap();
+            HeldImage::new(&path, File::open(&path).unwrap())
+        };
+        let batches = ImageBatches::new();
+        let (id, kept) = batches.append(None, vec![make("a.png")]).unwrap().unwrap();
+        assert_eq!(kept, 1);
+        batches.cache_preview(id, 0, 64, Arc::new(vec![1]));
+        let (same, kept) = batches
+            .append(Some(id), vec![make("b.png")])
+            .unwrap()
+            .unwrap();
+        assert_eq!((same, kept), (id, 1));
+        let held = batches.get(id).unwrap();
+        let names: Vec<&str> = held.images.iter().map(|i| i.name.as_str()).collect();
+        assert_eq!(names, ["a.png", "b.png"]);
+        assert!(batches.cached_preview(id, 0, 64).is_some());
+        assert!(batches
+            .append(Some(id + 100), vec![make("c.png")])
+            .unwrap()
+            .is_none());
     }
 
     #[test]

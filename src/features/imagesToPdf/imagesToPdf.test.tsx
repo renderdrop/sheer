@@ -3,6 +3,8 @@ import { act, screen, waitFor } from '@testing-library/react';
 import { MotionGlobalConfig } from 'motion/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { parseFrame } from '../../api/frame';
+import { makeFrame } from '../../api/frame.testutil';
 import type { JobEvent } from '../../api/jobs';
 import { useUi } from '../../stores/ui';
 import { setup } from '../../test/render';
@@ -11,7 +13,13 @@ import { ImagesToPdfDialog } from './ImagesToPdfDialog';
 import { MARGIN_PT, toOptions } from './options';
 import { useImagesToPdf } from './state';
 
-const api = vi.hoisted(() => ({ imagesToPdf: vi.fn(), releaseImageBatch: vi.fn() }));
+const api = vi.hoisted(() => ({
+  imagesToPdf: vi.fn(),
+  releaseImageBatch: vi.fn(),
+  pickImages: vi.fn(),
+  listImageBatch: vi.fn(),
+  getImageBatchPreview: vi.fn(),
+}));
 const app = vi.hoisted(() => ({ appReady: vi.fn() }));
 const adopt = vi.hoisted(() => vi.fn());
 vi.mock('../../api/imagesToPdf', () => api);
@@ -20,6 +28,10 @@ vi.mock('../viewer/useViewer', () => ({ adoptOpenOutcomes: adopt }));
 vi.mock('../../api/jobs', async (importOriginal) => ({ ...(await importOriginal<object>()), cancelJob: vi.fn() }));
 
 MotionGlobalConfig.skipAnimations = true;
+
+const items = (n: number) =>
+  Array.from({ length: n }, (_, index) => ({ index, name: `img${index + 1}.png`, width: 100 + index, height: 200 }));
+const rows = () => screen.getAllByRole('option').map((row) => row.querySelector('.font-semibold')?.textContent);
 
 const reports = (event: JobEvent) => (_opts: unknown, onEvent: (e: JobEvent) => void) => {
   queueMicrotask(() => onEvent(event));
@@ -31,6 +43,9 @@ beforeEach(() => {
   window.localStorage.clear();
   app.appReady.mockResolvedValue({ paper: 'letter' });
   api.releaseImageBatch.mockResolvedValue(undefined);
+  api.getImageBatchPreview.mockResolvedValue(parseFrame(makeFrame()));
+  api.listImageBatch.mockResolvedValue(items(3));
+  vi.stubGlobal('URL', Object.assign(URL, { createObjectURL: vi.fn(() => 'blob:x'), revokeObjectURL: vi.fn() }));
   useImagesToPdf.getState().setDropped(null);
   useUi.setState({ imagesToPdfOpen: false });
 });
@@ -47,7 +62,8 @@ describe('options', () => {
 });
 
 describe('Create PDF from images dialog', () => {
-  it('defaults the paper from the OS region and creates from the open dialog', async () => {
+  it('defaults the paper from the OS region and creates from the picked images', async () => {
+    api.pickImages.mockResolvedValueOnce({ batch: 9, count: 3, added: 3, skipped: 0 });
     api.imagesToPdf.mockImplementation(
       reports({
         type: 'done',
@@ -66,10 +82,11 @@ describe('Create PDF from images dialog', () => {
     );
     await user.click(screen.getByRole('radio', { name: 'Landscape' }));
     await user.click(screen.getByRole('radio', { name: 'Large' }));
+    await screen.findAllByRole('option');
     await user.click(screen.getByRole('button', { name: 'Create' }));
     await waitFor(() => expect(adopt).toHaveBeenCalled());
     expect(api.imagesToPdf.mock.calls[0]?.[0]).toEqual({
-      source: { type: 'dialog' },
+      source: { type: 'batch', batch: 9 },
       paper: 'letter',
       orientation: 'landscape',
       marginPt: 68,
@@ -92,12 +109,66 @@ describe('Create PDF from images dialog', () => {
     );
     const { user } = setup(<ImagesToPdfDialog />);
     act(() => handleImagesDropped({ type: 'imagesDropped', batch: 7, count: 3, skipped: 1 }));
-    expect(await screen.findByText('3 images ready to add.')).toBeTruthy();
+    expect(await screen.findByText('3 pages')).toBeTruthy();
     expect(screen.getByText('1 image could not be used and was left out.')).toBeTruthy();
     await user.click(screen.getByRole('button', { name: 'Create' }));
     await waitFor(() => expect(useUi.getState().toast?.message).toBe('2 images could not be used and were left out.'));
     expect(api.imagesToPdf.mock.calls[0]?.[0].source).toEqual({ type: 'batch', batch: 7 });
     expect(api.releaseImageBatch).not.toHaveBeenCalled();
+  });
+
+  it('closes when the picker is cancelled', async () => {
+    api.pickImages.mockResolvedValueOnce(null);
+    setup(<ImagesToPdfDialog />);
+    act(() => useUi.getState().setImagesToPdfOpen(true));
+    await waitFor(() => expect(useUi.getState().imagesToPdfOpen).toBe(false));
+  });
+
+  it('lists names, reorders with Alt+arrows, removes, and sends the order', async () => {
+    api.imagesToPdf.mockImplementation(
+      reports({ type: 'done', outputs: 1, bytesBefore: 0, bytesAfter: 1, warnings: [], opened: null, skipped: 0 }),
+    );
+    const { user } = setup(<ImagesToPdfDialog />);
+    act(() => handleImagesDropped({ type: 'imagesDropped', batch: 7, count: 3, skipped: 0 }));
+    await screen.findAllByRole('option');
+    expect(rows()).toEqual(['img1.png', 'img2.png', 'img3.png']);
+    screen.getAllByRole('option')[0]?.focus();
+    await user.keyboard('{Alt>}{ArrowDown}{/Alt}');
+    expect(rows()).toEqual(['img2.png', 'img1.png', 'img3.png']);
+    await user.keyboard('{Delete}');
+    expect(rows()).toEqual(['img2.png', 'img3.png']);
+    await user.click(screen.getByRole('button', { name: 'Create' }));
+    await waitFor(() => expect(api.imagesToPdf).toHaveBeenCalled());
+    expect(api.imagesToPdf.mock.calls[0]?.[2]).toEqual([1, 2]);
+  });
+
+  it('adds images to the batch without resurrecting removed ones, and disables Create when empty', async () => {
+    const { user } = setup(<ImagesToPdfDialog />);
+    act(() => handleImagesDropped({ type: 'imagesDropped', batch: 7, count: 2, skipped: 0 }));
+    api.listImageBatch.mockResolvedValue(items(2));
+    await screen.findAllByRole('option');
+    await user.click(screen.getByRole('button', { name: 'Remove img1.png' }));
+    api.pickImages.mockResolvedValueOnce({ batch: 7, count: 3, added: 1, skipped: 0 });
+    api.listImageBatch.mockResolvedValue(items(3));
+    await user.click(screen.getByRole('button', { name: 'Add images…' }));
+    await waitFor(() => expect(rows()).toEqual(['img2.png', 'img3.png']));
+    expect(api.pickImages).toHaveBeenCalledWith(7);
+    await user.click(screen.getByRole('button', { name: 'Remove img2.png' }));
+    await user.click(screen.getByRole('button', { name: 'Remove img3.png' }));
+    expect(screen.getByText('Add images to begin.')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Create' }).getAttribute('aria-disabled')).toBe('true');
+  });
+
+  it('blocks Create on an image that cannot be read until it is removed', async () => {
+    api.getImageBatchPreview.mockRejectedValue(new Error('cannot decode'));
+    const { user } = setup(<ImagesToPdfDialog />);
+    act(() => handleImagesDropped({ type: 'imagesDropped', batch: 7, count: 3, skipped: 0 }));
+    await screen.findAllByText("Can't read this image");
+    expect(screen.getByRole('button', { name: 'Create' }).getAttribute('aria-disabled')).toBe('true');
+    for (const name of ['img1.png', 'img2.png'])
+      await user.click(screen.getByRole('button', { name: `Remove ${name}` }));
+    await user.click(screen.getByRole('button', { name: 'Remove img3.png' }));
+    expect(screen.getByText('Add images to begin.')).toBeTruthy();
   });
 
   it('releases the batch on Cancel and on Esc', async () => {

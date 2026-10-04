@@ -1535,6 +1535,8 @@ pass-through, v1.1). Exported image names never carry document metadata. Not in 
 `pageSelection` itself; `AppState` gains `engine()` and `has_unsaved_changes()` because its fields are private to `commands`.
 `export::snapshot::current` answers `Live` for a clean document and `notYet` for a dirty one until package C lands.
 
+**Amendment (U2b, images list).** DESIGN §3.43 needs a reorderable list with thumbnails, so one model serves both entry paths: the Rust picker (`pick_images`) also creates (or extends) a batch, and the dialog always works on a batch. New commands `list_image_batch` (index, display file name ≤ 120 chars, declared size; never a path) and `get_image_batch_preview` (SHR1, `maxPx` 16..=512, decoded under the M5 intake limits, cached per batch, at most 1 000 entries). `images_to_pdf` takes `order` (indices into the batch, a permutation or subset, ≤ 500, no repeats; `invalid_argument` `order`); indices are stable, so removing an image in the UI only leaves it out of `order`. The `dialog` source stays for compatibility.
+
 ## ADR-051 — Vector signatures with real curves (FEEDBACK F10)
 
 **Status:** accepted (2026-10-04). Amends ADR-041 §3–§5 (signature art), ADR-042. Product-owner blocker for v1.0, ships with v0.8.1.

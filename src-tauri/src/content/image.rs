@@ -329,15 +329,19 @@ fn decode_asset(asset: &ImageAsset) -> Result<RgbaImage, AppError> {
 }
 
 /// A frame for `get_asset_preview`: the SHR1 PNG of asset `id`, at most `max_px` on the long side.
-#[allow(clippy::cast_precision_loss)]
 pub fn preview(state: &DocState, id: AssetId, max_px: u16) -> Result<Vec<u8>, AppError> {
     let asset = state
         .assets()
         .image(id)
         .ok_or_else(|| AppError::not_found("asset"))?;
+    asset_frame(asset, u32::from(max_px))
+}
+
+/// The SHR1 PNG frame of `asset`, at most `max_px` on the long side.
+#[allow(clippy::cast_precision_loss)]
+pub fn asset_frame(asset: &ImageAsset, max_px: u32) -> Result<Vec<u8>, AppError> {
     let mut picture = DynamicImage::ImageRgba8(decode_asset(asset)?);
     let longest = picture.width().max(picture.height());
-    let max_px = u32::from(max_px);
     if longest > max_px {
         picture = fitted(&picture, max_px as f32 / longest as f32);
     }

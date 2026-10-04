@@ -522,7 +522,10 @@ Wrappers: `src/api/content.ts` (`insertImageDialog`, `getAssetPreview`), `pages.
 export_images(doc_id: DocId, opts: ImageExportOptions, on_event: Channel<JobEvent>) -> ExportStart   // folder dialog after validation
 resolve_export_conflicts(ticket: u32, choice: ConflictChoice, on_event: Channel<JobEvent>) -> Option<JobId>   // cancel / expired ticket → None
 // commands/images_pdf.rs (B)
-images_to_pdf(opts: ImagesToPdfOptions, on_event: Channel<JobEvent>) -> Option<JobId>   // open dialog (or batch) → Save As dialog; None = cancelled; done.opened
+images_to_pdf(opts: ImagesToPdfOptions, order?: u32[], on_event: Channel<JobEvent>) -> Option<JobId>   // batch source: order = indices into the batch in page order (permutation or subset, ≤ 500, no repeats; else invalid_argument "order"); None = cancelled; done.opened
+pick_images(batch?: u32) -> Option<{ batch, count, added, skipped }>                    // Rust open dialog appends PNG/JPEG to the batch (new batch when absent); None = cancelled or nothing usable
+list_image_batch(batch: u32) -> [{ index, name, width, height }]                        // name = file name only, ≤ 120 chars; size from the header (0 = unreadable); not_found "imageBatch" when expired
+get_image_batch_preview(batch: u32, index: u32, max_px: u16 /*16..=512*/) -> SHR1 frame // decoded under the M5 intake limits, cached per batch
 release_image_batch(batch: u32) -> ()                                                   // unknown id is not an error
 // commands/export_pdf.rs (C)
 export_pdf(doc_id: DocId, opts: PdfExportOptions, ack: SaveAck, on_event: Channel<JobEvent>) -> Option<JobId>   // Save As dialog; open document unchanged

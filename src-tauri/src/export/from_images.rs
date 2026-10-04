@@ -10,7 +10,7 @@ use std::io::Read;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use tauri::{Manager, WebviewWindow};
 use tauri_plugin_dialog::DialogExt;
 
@@ -70,8 +70,10 @@ pub struct ImagesToPdfOptions {
 pub enum Inputs {
     /// Paths from the open dialog (they never leave Rust), in the order to use.
     Paths(Vec<PathBuf>),
-    /// A dropped batch.
+    /// A dropped or picked batch, all images in batch order.
     Batch(Arc<ImageBatch>),
+    /// A batch read in the given order (indices into it, checked by [`validate_order`]).
+    Ordered(Arc<ImageBatch>, Vec<usize>),
 }
 
 impl Inputs {
@@ -79,6 +81,7 @@ impl Inputs {
         match self {
             Self::Paths(paths) => paths.len(),
             Self::Batch(batch) => batch.images.len(),
+            Self::Ordered(_, order) => order.len(),
         }
     }
 
@@ -91,6 +94,11 @@ impl Inputs {
             Self::Batch(batch) => batch
                 .images
                 .get(index)
+                .ok_or(AppError::invalid("image"))?
+                .reopen(),
+            Self::Ordered(batch, order) => order
+                .get(index)
+                .and_then(|i| batch.images.get(*i))
                 .ok_or(AppError::invalid("image"))?
                 .reopen(),
         }
@@ -413,11 +421,15 @@ pub fn start(
     state: &AppState,
     window: &WebviewWindow,
     opts: &ImagesToPdfOptions,
+    order: Option<&[u32]>,
     sink: Arc<dyn EventSink>,
 ) -> Result<Option<JobId>, AppError> {
     check_options(opts)?;
     let (inputs, stem) = match opts.source {
         ImageSource::Dialog => {
+            if order.is_some() {
+                return Err(AppError::invalid("order"));
+            }
             let picked = window
                 .dialog()
                 .file()
@@ -451,12 +463,21 @@ pub fn start(
             let held = image_batch::batches()
                 .get(batch)
                 .ok_or(AppError::not_found("imageBatch"))?;
-            let stem = held
-                .images
-                .first()
-                .map(|image| image.stem.clone())
-                .ok_or(AppError::invalid("image"))?;
-            (Inputs::Batch(held), stem)
+            match order {
+                Some(order) => {
+                    let order = validate_order(order, held.images.len())?;
+                    let stem = held.images[order[0]].stem.clone();
+                    (Inputs::Ordered(held, order), stem)
+                }
+                None => {
+                    let stem = held
+                        .images
+                        .first()
+                        .map(|image| image.stem.clone())
+                        .ok_or(AppError::invalid("image"))?;
+                    (Inputs::Batch(held), stem)
+                }
+            }
         }
     };
     let name = format!("{}.pdf", crate::commands::jobs::file_stem(&stem));
@@ -475,6 +496,142 @@ pub fn start(
         .map_err(|error| AppError::logged(ErrorCode::Internal, error))?;
     let producer = crate::menu::app_name(window.app_handle());
     start_job(state, jobs(), inputs, opts, &target, &producer, sink).map(Some)
+}
+
+/// Checks an `order` over a batch of `len` images: not empty, at most `MAX_IMAGES_PER_PDF`, every index in range and used once.
+pub fn validate_order(order: &[u32], len: usize) -> Result<Vec<usize>, AppError> {
+    if order.is_empty() {
+        return Err(AppError::invalid("image"));
+    }
+    if order.len() > limits::MAX_IMAGES_PER_PDF {
+        return Err(AppError::limit("images", limits::MAX_IMAGES_PER_PDF as u64));
+    }
+    let mut seen = vec![false; len];
+    let mut out = Vec::with_capacity(order.len());
+    for &index in order {
+        let index = index as usize;
+        match seen.get_mut(index) {
+            Some(slot) if !*slot => *slot = true,
+            _ => return Err(AppError::invalid("order")),
+        }
+        out.push(index);
+    }
+    Ok(out)
+}
+
+/// One row of `list_image_batch`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BatchItem {
+    pub index: u32,
+    pub name: String,
+    pub width: u32,
+    pub height: u32,
+}
+
+/// What `pick_images` returns: the batch, how many images it holds now and how many picked files were left out.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PickedImages {
+    pub batch: u32,
+    pub count: u32,
+    pub added: u32,
+    pub skipped: u32,
+}
+
+/// The images of batch `id`, with names and declared sizes (`0` when a header cannot be read).
+pub fn list_batch(id: u32) -> Result<Vec<BatchItem>, AppError> {
+    let held = image_batch::batches()
+        .get(id)
+        .ok_or(AppError::not_found("imageBatch"))?;
+    Ok(held
+        .images
+        .iter()
+        .enumerate()
+        .map(|(index, image)| {
+            let (width, height) = image.declared_size();
+            BatchItem {
+                index: u32::try_from(index).unwrap_or(u32::MAX),
+                name: image.name.clone(),
+                width,
+                height,
+            }
+        })
+        .collect())
+}
+
+/// The SHR1 frame of image `index` of batch `id`, at most `max_px` (16..=512) on the long side; decoded under the intake limits and
+/// cached per batch.
+pub fn batch_preview(id: u32, index: u32, max_px: u16) -> Result<Arc<Vec<u8>>, AppError> {
+    if !(limits::MIN_BATCH_PREVIEW_PX..=limits::MAX_BATCH_PREVIEW_PX).contains(&max_px) {
+        return Err(AppError::invalid("maxPx"));
+    }
+    let batches = image_batch::batches();
+    let held = batches.get(id).ok_or(AppError::not_found("imageBatch"))?;
+    if let Some(frame) = batches.cached_preview(id, index, max_px) {
+        return Ok(frame);
+    }
+    let image = held
+        .images
+        .get(index as usize)
+        .ok_or(AppError::not_found("image"))?;
+    let bytes = read_file(image.reopen()?)?;
+    let asset = image::prepare_bytes(&bytes)?;
+    let frame = Arc::new(image::asset_frame(&asset, u32::from(max_px))?);
+    batches.cache_preview(id, index, max_px, Arc::clone(&frame));
+    Ok(frame)
+}
+
+/// Asks for images in the open dialog and holds them in batch `batch` (a new one when `None`). `None`: the dialog was cancelled or
+/// nothing usable was picked.
+pub fn pick_images(
+    window: &WebviewWindow,
+    batch: Option<u32>,
+) -> Result<Option<PickedImages>, AppError> {
+    let picked = window
+        .dialog()
+        .file()
+        .set_parent(window)
+        .add_filter("Image", &["png", "jpg", "jpeg"])
+        .blocking_pick_files();
+    let Some(picked) = picked else {
+        return Ok(None);
+    };
+    let paths: Vec<PathBuf> = picked
+        .into_iter()
+        .take(limits::MAX_IMAGES_PER_PDF + 1)
+        .filter_map(|file| {
+            file.into_path()
+                .map_err(|error| AppError::logged(ErrorCode::Internal, error).log())
+                .ok()
+        })
+        .collect();
+    add_to_batch(batch, paths)
+}
+
+/// Judges `paths` as dropped files and appends the images to the batch.
+pub fn add_to_batch(
+    batch: Option<u32>,
+    paths: Vec<PathBuf>,
+) -> Result<Option<PickedImages>, AppError> {
+    let total = paths.len();
+    let sorted = image_batch::sort_drop(paths);
+    if sorted.images.is_empty() {
+        return Ok(None);
+    }
+    let Some((id, kept)) = image_batch::batches().append(batch, sorted.images)? else {
+        return Err(AppError::not_found("imageBatch"));
+    };
+    let count = image_batch::batches()
+        .get(id)
+        .map_or(0, |held| held.images.len());
+    let to_u32 = |n: usize| u32::try_from(n).unwrap_or(u32::MAX);
+    Ok(Some(PickedImages {
+        batch: id,
+        count: to_u32(count),
+        added: to_u32(kept),
+        skipped: to_u32(total.saturating_sub(kept)),
+    }))
 }
 
 /// Lets go of a dropped batch; an unknown id is not an error.
@@ -541,6 +698,16 @@ mod tests {
             r#"{"source":{"type":"dialog"},"paper":"a3","orientation":"auto","marginPt":0}"#
         )
         .is_err());
+    }
+
+    #[test]
+    fn an_order_is_a_bounded_selection_without_repeats() {
+        assert_eq!(validate_order(&[2, 0], 3).unwrap(), [2, 0]);
+        for bad in [&[][..], &[0, 0][..], &[3][..]] {
+            assert!(validate_order(bad, 3).is_err());
+        }
+        let many: Vec<u32> = (0..501).collect();
+        assert!(validate_order(&many, 600).is_err());
     }
 
     #[test]

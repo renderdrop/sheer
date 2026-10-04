@@ -384,3 +384,56 @@ fn bad_requests_are_refused_before_anything_runs() {
     );
     assert!(!scratch.file("a.pdf").exists());
 }
+
+#[test]
+fn a_batch_is_listed_previewed_extended_and_read_in_the_chosen_order() {
+    use sheer_lib::export::from_images::{add_to_batch, batch_preview, list_batch, validate_order};
+    let scratch = Scratch::new("ordered");
+    let a = scratch.write("a.png", &png(100, 200, Some(72.0)));
+    let b = scratch.write("b.jpg", &jpeg(300, 150));
+    let c = scratch.write("c.png", &png(100, 100, Some(72.0)));
+    let first = add_to_batch(None, vec![a, b]).unwrap().unwrap();
+    assert_eq!((first.count, first.added, first.skipped), (2, 2, 0));
+    let second = add_to_batch(Some(first.batch), vec![c, scratch.file("gone.png")])
+        .unwrap()
+        .unwrap();
+    assert_eq!((second.batch, second.count), (first.batch, 3));
+    let list = list_batch(first.batch).unwrap();
+    let names: Vec<&str> = list.iter().map(|i| i.name.as_str()).collect();
+    assert_eq!(names, ["a.png", "b.jpg", "c.png"]);
+    assert_eq!((list[1].width, list[1].height), (300, 150));
+    let frame = batch_preview(first.batch, 0, 64).unwrap();
+    assert!(frame.starts_with(b"SHR1"));
+    assert!(Arc::ptr_eq(
+        &frame,
+        &batch_preview(first.batch, 0, 64).unwrap()
+    ));
+    assert_eq!(
+        batch_preview(first.batch, 0, 8).unwrap_err().code(),
+        ErrorCode::InvalidArgument
+    );
+    assert!(batch_preview(first.batch, 9, 64).is_err());
+    assert!(add_to_batch(Some(999_999), vec![scratch.file("a.png")]).is_err());
+
+    let held = image_batch::batches().get(first.batch).unwrap();
+    let order = validate_order(&[2, 0], 3).unwrap();
+    assert!(validate_order(&[0, 0], 3).is_err());
+    assert!(validate_order(&[3], 3).is_err());
+    assert!(validate_order(&[], 3).is_err());
+    if let Some(state) = state() {
+        let mut opts = options(PaperSize::Fit, Orientation::Auto, 0.0);
+        opts.source = ImageSource::Batch { batch: first.batch };
+        let outcome = run(
+            state,
+            &scratch,
+            Inputs::Ordered(held, order),
+            &opts,
+            "o.pdf",
+        )
+        .unwrap();
+        assert_eq!(outcome.pages.len(), 2);
+        near(outcome.pages[0], [100.0, 100.0]);
+        near(outcome.pages[1], [100.0, 200.0]);
+    }
+    image_batch::batches().release(first.batch);
+}
