@@ -6,6 +6,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-10-04
+
+Structure and comfort (FEEDBACK F12).
+
+### Added
+
+- Start page as a tool hub: Open, Merge, Split, Compress, Images to PDF, Sign, Redact and Fill form as cards; a card asks for the file and opens it straight in the matching mode. Recent files stay below.
+- A real menu bar (File, Edit, View, Tools, Help): in the window on Windows, the system menu bar on macOS. Every command and shortcut has a place there.
+- Word-style comments: select text, choose "Add comment"; the comments panel shows the quoted text, the comment, author and time, with replies and resolve/accept/reject that other PDF viewers can read. Click a card to jump to the spot. Every annotation type is labelled with its icon.
+- Typed signatures in three handwriting fonts: Dancing Script, Great Vibes and Alex Brush (SIL Open Font License).
+
+### Changed
+
+- The toolbar holds only tools: Select, Highlight, Comment, Draw, Shapes, Fill & Sign, Redact. Zoom moved to the status bar.
+- Forms: no Form tool any more. Fields are fillable as soon as a document has them, with a notice; "Flatten form" is in the File menu. Check marks, crosses, dots, dates and text for documents without fields are under Fill & Sign.
+- Left sidebar tabs: Pages, Outline, Comments, Search. The right panel shows the properties of the selection or the active tool.
+- Menus and popovers are opaque enough that the page never shows through.
+
+### Removed
+
+- The Homemade Apple signature font.
+
 ## [1.0.1] - 2026-10-04
 
 Patch from the product owner's test of 1.0.0 (FEEDBACK F11).

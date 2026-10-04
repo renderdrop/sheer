@@ -67,6 +67,8 @@ const drag = async (a, b, steps = 8) => {
     await sleep(25);
   }
   await mouse('mouseReleased', b.x, b.y);
+  // A real mouse keeps reporting hover moves after the release (and the page gets a click): same order here.
+  await mouse('mouseMoved', b.x + 1, b.y, { button: 'none' });
 };
 const click = async (p) => {
   await mouse('mouseMoved', p.x, p.y, { button: 'none' });

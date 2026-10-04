@@ -303,4 +303,39 @@ describe('CreationLayer text markup preview (F11)', () => {
     expect(parseFloat(svg.style.left) + w / 2 + (50 - w / 2) * 2).toBeCloseTo(100);
     expect(parseFloat(svg.style.top) + h / 2 + (100 - h / 2) * 2).toBeCloseTo(200);
   });
+
+  it('commits a highlight for the order of a real mouse: hover, down, moves, up, lostpointercapture, click', async () => {
+    const apply = vi.fn(() => Promise.resolve({ upserted: [], removed: [], rev: 1 }));
+    useAnnotations.setState({ apply } as never);
+    useTools.getState().setMarkup('highlight');
+    useUi.setState({ activeTool: 'highlight', toolLocked: true });
+    const view = render(<CreationLayer {...props} transform={{ pxPerPt: 2, rotation: 0 }} />);
+    const surface = view.container.querySelector<HTMLElement>('[data-creation-layer]');
+    if (surface === null) throw new Error('no layer');
+    surface.getBoundingClientRect = () =>
+      ({
+        left: 30,
+        top: 40,
+        width: 1200,
+        height: 1600,
+        right: 1230,
+        bottom: 1640,
+        x: 30,
+        y: 40,
+        toJSON: () => '',
+      }) as DOMRect;
+    const at = { pointerId: 1, pointerType: 'mouse', clientY: 252 };
+    fireEvent.pointerMove(surface, { ...at, clientX: 120, buttons: 0 });
+    fireEvent.pointerDown(surface, { ...at, clientX: 134, button: 0, buttons: 1 });
+    for (const x of [140, 150, 160, 176]) fireEvent.pointerMove(surface, { ...at, clientX: x, buttons: 1 });
+    // The release carries no buttons; the capture is lost after it, and a click follows.
+    fireEvent.pointerUp(surface, { ...at, clientX: 176, button: 0, buttons: 0 });
+    fireEvent.lostPointerCapture(surface, at);
+    fireEvent.click(surface, { clientX: 176, clientY: 252 });
+    await waitFor(() => expect(apply).toHaveBeenCalledTimes(1));
+    expect(apply).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ type: 'createAnnotation', draft: expect.objectContaining({ kind: 'highlight' }) }),
+    );
+  });
 });

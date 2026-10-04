@@ -128,20 +128,28 @@ Owner screenshots: `review/owner/` (not tracked).
 Designer spec before any implementation; the designer justifies every decision against the reference image (§3 reference direction:
 soft gradient, translucent white cards, icon tiles, pill badges; the owner's image is not in the repo).
 
-- [ ] 1. Start page as a tool hub: cards for Open, Merge, Split, Compress, Images to PDF, Sign, Redact, Fill form; recents below. Card →
+- [x] 1. Start page as a tool hub: cards for Open, Merge, Split, Compress, Images to PDF, Sign, Redact, Fill form; recents below. Card →
       file dialog → straight into the matching mode
-- [ ] 2. Toolbar only tools (Select, Highlight, Comment, Draw, Shapes, Sign, Redact). File and document functions in a real menu bar (File,
+- [x] 2. Toolbar only tools (Select, Highlight, Comment, Draw, Shapes, Sign, Redact). File and document functions in a real menu bar (File,
       Edit, View, Tools) instead of the overflow menu. Left sidebar: Pages, Outline, Comments, Search. Right: properties of the selection
-- [ ] 3. Remove the "Form" button: fields are fillable automatically when present, with a notice banner; "Flatten form" in the File menu;
+- [x] 3. Remove the "Form" button: fields are fillable automatically when present, with a notice banner; "Flatten form" in the File menu;
       marks (✓ ✗ •) and text fields for PDFs without fields under "Sign" as "Fill & Sign"
-- [ ] 4. Comments like Word: select a sentence → popover "Add comment" → panel shows quoted text, comment, author; replies and
+- [x] 4. Comments like Word: select a sentence → popover "Add comment" → panel shows quoted text, comment, author; replies and
       resolve/accept; click jumps to the spot; every annotation clearly typed in the panel
-- [ ] 5. Typed signature: three selectable fonts (SIL OFL: e.g. Dancing Script, Great Vibes, Alex Brush); add OFL-1.1 to the font license
+- [x] 5. Typed signature: three selectable fonts (SIL OFL: e.g. Dancing Script, Great Vibes, Alex Brush); add OFL-1.1 to the font license
       allowlist; remove Homemade Apple
-- [ ] Tag v1.1.0 (milestone DoD §8.6)
+- [x] Tag v1.1.0 (milestone DoD §8.6)
 
 F11 result (v1.0.1): accepted in the installed build with the real OS cursor (scripts/ui/mouse.ps1). Redaction cuts glyphs/vectors/image
 pixels inside the marks only (ADR-055); after save "Repeated" is found and "lazy" is not, in Sheer and in Edge (1/1 vs 0/0), the file has
 no images. Preview under the pointer (overlayBox got pt instead of px); editing via a valid coalesce key + double-click/Enter; selecting
 never refits the zoom (ADR-056); comments list marks (ADR-057); the tour opens a new tab; pad strokes never join; pages re-render sharp
 after a save. tester PASS, security-reviewer PASS, annot-smoke 16/16. Screenshots in review/f11/ (not tracked).
+
+F12 result (v1.1.0): spec DESIGN §3.54–§3.60 (ADR-058) before any code; built in four packages, each reviewed (PASS), security PASS.
+Accepted in the installed build with the real OS cursor: hub card "Schwärzen" → file dialog → document opens in redact mode; tools-only
+toolbar, File/Edit/View/Tools/Help menu bar (Flatten form in File), Pages/Outline/Comments/Search sidebar, zoom in the status bar;
+form.pdf shows the fillable-fields banner, a field is filled by click + typing and saved; Fill & Sign menu (Sign / Fill sections, ✓ ✗ •,
+date, text); selecting a sentence → "Add comment" → card with quote, text, author, time, reply, resolve (saved as /IRT review state);
+three OFL signature fonts (Dancing Script, Great Vibes, Alex Brush), Homemade Apple removed (ADR-059). Designer PASS (4 screenshots,
+majors/minors in ROADMAP "v1.2 polish"), tester PASS, annot-smoke 16/16, CSP gate 0 violations.
