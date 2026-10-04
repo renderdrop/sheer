@@ -229,7 +229,7 @@ See `docs/FEATURES.md` → "Later".
 
 Order as in the brief. Each phase ends with one designer round on Tauri-window screenshots next to moodboard crops (brief §3).
 
-- [ ] Package 0 — docs/DESIGN.md v2 + docs/MOTION.md v2 (designer, from BRAND + moodboard + brief; blocks all visual work)
+- [x] Package 0 — docs/DESIGN.md v2 + docs/MOTION.md v2 (designer, from BRAND + moodboard + brief; blocks all visual work)
 - [ ] B1 — Favourites ("Markiert") and "Show in Explorer/Finder" for recent files (Rust + src/api)
 - [ ] R0.1 — tokens.css rewritten (BRAND §24 + semantic tokens), role layer re-pointed, glass recipes flat, legacy aliases marked
 - [ ] R0.2 — Lint gate: no hex/rgb/hsl outside tokens.css, no backdrop-filter, no prefers-color-scheme, token-only shadows/radii/durations
