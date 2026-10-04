@@ -155,13 +155,13 @@ The Stop hook picks the first open `- [ ]` line, so order matters. Scope: `docs/
 
 ## M6 — Convert and output (v0.9.0)
 
-- [ ] PDF → PNG/JPG (page ranges, DPI)
-- [ ] Images → PDF
-- [ ] Print via native dialog
-- [ ] Export with/without annotations, optional metadata removal
-- [ ] Politur M6
-  - (from M5 design review, major) page gutter at 100 %: the horizontal scrollbar sits right under the page
-  - (from M5 design review, minor) DESIGN §1.11/§3.11 still say logo 160 in a 184 slot (tokens: 104/128 on short windows); empty state top-heavy at 800 px (equal top/bottom padding); dark canvas around the page near-black vs window background (§1.10); thumbnail panel bottom padding
+- [x] PDF → PNG/JPG (page ranges, DPI)
+- [x] Images → PDF
+- [x] Print via native dialog
+- [x] Export with/without annotations, optional metadata removal
+- [x] Politur M6
+  - [x] (from M5 design review, major; 7ccfe48) page gutter at 100 %: the horizontal scrollbar sits right under the page
+  - [x] (from M5 design review, minor; 7ccfe48, DESIGN fixed with ADR-050) DESIGN §1.11/§3.11 still say logo 160 in a 184 slot (tokens: 104/128 on short windows); empty state top-heavy at 800 px (equal top/bottom padding); dark canvas around the page near-black vs window background (§1.10); thumbnail panel bottom padding
   - (v1.1) crop units from the OS measurement system
   - [x] (from M6 backend reviews; all DONE) print: global byte cap across sets (or MAX_PRINT_SETS 2), sort+dedup range pages, take order and snapshot together (SnapshotGuard), confirm per-page pixel cap at 300 dpi, test open_dialog's main-window check; images out: no-follow open on replace, preflight all names before replace, longer timeout for export renders, encode on the blocking pool; snapshot: tests for burned content, crops, redaction rasters, no marks, encrypted original, size cap, guard on engine open error, loud skip when PDFium is missing in CI, avoid the extra bytes copy; images in: cap live batches, drop handles beyond the cap while sniffing, log skip reasons, re-check target_is_open at publish
   - [x] (from F10 security review, low) DrawCmd payload count guard in the deserializer
