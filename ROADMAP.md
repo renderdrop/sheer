@@ -244,21 +244,21 @@ Order as in the brief. Each phase ends with one designer round on Tauri-window s
 - [x] R1.4 — Welcome PDF "Welcome to sheer." in the new layout
 - [x] R1.5 — About dialog, README head, release-notes template; APP_NAME "sheer." in UI text
 - [ ] R1 acceptance — icons in Explorer, word mark in Home, installer built locally, designer round
-- [ ] R2.1 — Home: left navigation (Home, Recent, Starred, Tools), hero (Sand, glow, display type, search with `/`, yellow open button)
-- [ ] R2.2 — Recent cards (thumbnail, name, relative time, context menu: Open, Star, Show in Explorer, Remove), max 12 + "Show all"; Starred list
-- [ ] R2.3 — Tools view (rows): file dialog → editor in the matching mode
-- [ ] R2.4 — Empty state (large glow, "Drop a PDF here.", ghost button), drop on the whole surface
+- [x] R2.1 — Home: left navigation (Home, Recent, Starred, Tools), hero (Sand, glow, display type, search with `/`, yellow open button)
+- [x] R2.2 — Recent cards (thumbnail, name, relative time, context menu: Open, Star, Show in Explorer, Remove), max 12 + "Show all"; Starred list
+- [x] R2.3 — Tools view (rows): file dialog → editor in the matching mode
+- [x] R2.4 — Empty state (large glow, "Drop a PDF here.", ghost button), drop on the whole surface
 - [ ] R2 acceptance — screenshot vs moodboard, drag and drop with the mouse, keyboard navigation, designer round
-- [ ] R3.1 — Editor top bar (back, file name, tabs, zoom, page field, undo/redo, search, export, Done, More); Windows menu bar removed
-- [ ] R3.2 — Left sidebar (Pages, Outline, Comments, Search) in the new style; yellow page selection; collapsible, remembered
+- [x] R3.1 — Editor top bar (back, file name, tabs, zoom, page field, undo/redo, search, export, Done, More); Windows menu bar removed
+- [x] R3.2 — Left sidebar (Pages, Outline, Comments, Search) in the new style; yellow page selection; collapsible, remembered
 - [ ] R3.3 — Canvas (#EFEFEC, page shadow, 24 px gap); ADR-102: mode tabs (Lesen · Kommentieren · Ausfüllen & Signieren · Seiten · Bearbeiten, keys 1–5) with a tool row (≤ 8 tools, F14), contextual properties mini bar, no right sidebar, Windows menu bar restored
-- [ ] R3.4 — Form banner, selection popover (Highlight · Comment · Copy), comments tab (filter, resolved), redact mode (red band, Apply)
-- [ ] R3 spec — DESIGN v2 §3.2 rewritten for ADR-102 (designer)
+- [x] R3.4 — Form banner, selection popover (Highlight · Comment · Copy), comments tab (filter, resolved), redact mode (red band, Apply)
+- [x] R3 spec — DESIGN v2 §3.2 rewritten for ADR-102 (designer)
 - [ ] R3 acceptance — annot-smoke 16/16, old ⋯-menu → new place table (ADR), screenshot vs moodboard, designer round
 - [x] R4.1 — Buttons, icon buttons, inputs, dropdowns, popovers, dialogs, toasts, tooltips with kbd
 - [x] R4.2 — Tabs, segmented control, toggle, checkbox, slider, skeletons, banner, dropzone
-- [ ] R4.3 — Highlight/ink palette (Solar default + Mint, Sky, Rose, Lavender); signature sheet (Sand pad, baseline not in the path, ink Ink/Blue)
-- [ ] R4.4 — /dev/components page (dev builds only) and contrast script (text ≥ 4.5:1, UI ≥ 3:1)
+- [x] R4.3 — Highlight/ink palette (Solar default + Mint, Sky, Rose, Lavender); signature sheet (Sand pad, baseline not in the path, ink Ink/Blue)
+- [x] R4.4 — /dev/components page (dev builds only) and contrast script (text ≥ 4.5:1, UI ≥ 3:1)
 - [ ] R4 acceptance — contrast script green, designer round
 - [ ] Owner checkpoint — local installer build, then STOP for owner feedback (ADR-102); R5 only after it
 - [ ] R5.1 — Spells 1–6 (tool pill, page indicator, document open, drop zone, marker trail, saved check)
@@ -274,5 +274,6 @@ Order as in the brief. Each phase ends with one designer round on Tauri-window s
   - (welcome review, minor) page 1 glow runs under the footer; page 3 highlight card has no Solar cue; task-page headings in Helvetica-Bold (BRAND: no bold headings) — use regular; top-right page number duplicates the footer
   - (R0 designer, minor) welcome PDF could embed Inter instead of Helvetica; "Strg+O" key badge outline should be `--color-border`; yellow-outline toggles (left-panel button, sidebar tab) fail 3:1 — Solar fill + Ink, Ink focus ring (R4 primitives)
   - (wave 3 reviews, minor) controlStyles tests cover only the forced-colors cue (assert the §4 state matrix); Secondary button lacks `active:bg-pressed`; Menu items still use `bg-control-hover/pressed` (move to `bg-subtle/pressed`, then drop those tokens and `--color-accent-pressed`); icon-button `sm` square is control-sm; Toggle knob travel asymmetric (`translate-x-5`); Dropzone/Skeleton without tests, Dropzone doc comment has a hex; Segmented Up/Down remap undocumented; Tabs leftover PRESS_MOTION; word-mark kerning without variation deltas; Wordmark.tsx duplicates the SVG path (guarded by a test); README prose still says "Sheer"; banners stack without a cap (BannerSlot); EditorLayout module-level `placements` map → useMemo; StatusBar.tsx, `--status-name-max`, `--toolbar-row-height`, `leftAutoCollapsed` possibly dead after wave 4
+  - (wave 4/5 reviews, minor) home.css local px block (200/1120/280/76/48, minmax 208) → tokens; HomeNav/RecentCard/CenterCluster numeric icon sizes; `emptyState.recentList` key → home.*; topbar `w-12!`/`px-2!` overrides; hardcoded `100 %` label; ARCHITECTURE: document localStorage keys `sheer.signatureInk`, `sheer.styleColours`; HIGHLIGHT_OPACITY duplicates `--hl-opacity`; `--color-hl-excerpt` should derive from `--hl-solar`; BannerSlot hides queued notices with `hidden` (live regions silent); RedactBanner Ghost override chain → Button onDanger variant; dead `form.highlight`/`form.banner` keys?; SelectionBar flip-below component test; showcase inline style props + duplicate #showcase route; contrast page-area heuristic; comments tab wrapper divs between TabList and tabs; horizontal canvas scrollbar when the page fits — floor the fit width (zoom.ts:59) or overflow-x hidden while it fits
   - (P-A review, minor) legacy alias block still carries v1.1 `--annot-*` hex values (remove with the §1.4 palette migration, R4.3); rename `--color-surface-solid`; `text-accent` left in IconButton.tsx (yellow on Ink); legacy `--spacing-*` slot aliases (hub, logo, caption) go with R2/R3; `--panel-*` 192/248/400 and `--inspector-width` 288 keep v1.1 values until R3 (Rust limits.rs + layout tests)
 - [ ] R7 — Screenshot series docs/review/v1.2, designer review vs BRAND §2, smoke, gates, audits, CI green, CHANGELOG, tag v1.2.0
