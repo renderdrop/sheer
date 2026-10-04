@@ -19,8 +19,8 @@ use sheer_lib::engine::{self, Engine};
 use sheer_lib::error::ErrorCode;
 use sheer_lib::model::annotation::{Annotation, SignatureRole};
 use sheer_lib::model::command::DocCommand;
-use sheer_lib::model::geometry::Point;
 use sheer_lib::pdfwrite::inspect::list_annotations;
+use sheer_lib::signatures::DrawCmd;
 use sheer_lib::signatures::SignatureArt;
 use support::fixtures::{add_pages, Page};
 use support::PdfBuilder;
@@ -98,8 +98,13 @@ fn create(state: &AppState, id: DocumentId, draft: serde_json::Value) -> Annotat
     changes.upserted.into_iter().next().unwrap()
 }
 
-fn pt(x: f32, y: f32) -> Point {
-    Point { x, y }
+fn triangle(a: (f32, f32), b: (f32, f32), c: (f32, f32)) -> Vec<DrawCmd> {
+    vec![
+        DrawCmd::M(a.0, a.1),
+        DrawCmd::C(b.0, a.1, b.0, b.1, b.0, b.1),
+        DrawCmd::L(c.0, c.1),
+        DrawCmd::Z,
+    ]
 }
 
 /// A PNG file of a 40 x 20 picture: a red block with a transparent corner, on white.
@@ -160,12 +165,7 @@ fn every_kind_is_saved_with_an_appearance_and_pdfium_reads_it_back() {
     let drawn = state
         .create_drawn_signature(
             SignatureRole::Signature,
-            &[vec![
-                pt(10.0, 10.0),
-                pt(110.0, 12.0),
-                pt(60.0, 60.0),
-                pt(30.0, 40.0),
-            ]],
+            &[triangle((10.0, 10.0), (110.0, 40.0), (30.0, 60.0))],
         )
         .unwrap();
     let typed = state
@@ -339,7 +339,7 @@ fn a_signature_needs_a_live_asset_and_a_sane_box() {
     let drawn = state
         .create_drawn_signature(
             SignatureRole::Signature,
-            &[vec![pt(0.0, 0.0), pt(100.0, 0.0), pt(100.0, 50.0)]],
+            &[triangle((0.0, 0.0), (100.0, 0.0), (100.0, 50.0))],
         )
         .unwrap();
     let (asset_id, aspect) = asset(state, id, drawn.id);
@@ -505,4 +505,156 @@ fn a_saved_mark_and_picture_are_drawn_by_pdfium() {
     let ink = pixel_at(state, reopened, 0, 245.0, 120.0);
     assert!(ink[0] > 150 && ink[1] < 80, "ink: {ink:?}");
     assert_eq!(pixel_at(state, reopened, 0, 400.0, 400.0), [255, 255, 255]);
+}
+
+/// Ink of a page region rendered at `bucket`: a grayscale mask (true where the pixel is darker than half grey) and its width.
+fn ink_mask(state: &AppState, id: DocumentId, bucket: i16) -> (Vec<bool>, usize) {
+    use sheer_lib::commands::render::{RenderPriority, RenderRequest};
+    let frame = state
+        .render_page(RenderRequest {
+            doc_id: id,
+            page_id: PageId::new(0),
+            bucket,
+            tile: None,
+            priority: RenderPriority::Visible,
+            generation: 1,
+        })
+        .unwrap();
+    let width = u32::from_le_bytes(frame[8..12].try_into().unwrap()) as usize;
+    let decoder = png::Decoder::new(std::io::Cursor::new(&frame[16..]));
+    let mut reader = decoder.read_info().unwrap();
+    let mut pixels = vec![0; reader.output_buffer_size().unwrap()];
+    reader.next_frame(&mut pixels).unwrap();
+    // The ink is dark blue (20, 40, 160) on white: the red channel tells ink from paper, 128 is the middle.
+    let mask = pixels
+        .as_chunks::<3>()
+        .0
+        .iter()
+        .map(|p| p[0] < 128)
+        .collect();
+    (mask, width)
+}
+
+/// The art filled with the nonzero rule at pixel centres, from the curves flattened very finely (the reference for the render).
+fn reference_mask(
+    paths: &[Vec<DrawCmd>],
+    (art_w, art_h): (f32, f32),
+    (bx, by, bw, bh): (f32, f32, f32, f32),
+    scale: f32,
+    (width, height): (usize, usize),
+) -> Vec<bool> {
+    let to_px = |x: f32, y: f32| ((bx + x / art_w * bw) * scale, (by + y / art_h * bh) * scale);
+    let mut edges: Vec<((f32, f32), (f32, f32))> = Vec::new();
+    for path in paths {
+        let (mut start, mut at) = ((0.0, 0.0), (0.0, 0.0));
+        for cmd in path {
+            match *cmd {
+                DrawCmd::M(x, y) => {
+                    if at != start {
+                        edges.push((at, start));
+                    }
+                    start = to_px(x, y);
+                    at = start;
+                }
+                DrawCmd::L(x, y) => {
+                    let next = to_px(x, y);
+                    edges.push((at, next));
+                    at = next;
+                }
+                DrawCmd::C(x1, y1, x2, y2, x, y) => {
+                    let (c1, c2, end) = (to_px(x1, y1), to_px(x2, y2), to_px(x, y));
+                    let mut last = at;
+                    for step in 1..=256 {
+                        let t = step as f32 / 256.0;
+                        let u = 1.0 - t;
+                        let point = |a: f32, b: f32, c: f32, d: f32| {
+                            u * u * u * a
+                                + 3.0 * u * u * t * b
+                                + 3.0 * u * t * t * c
+                                + t * t * t * d
+                        };
+                        let next = (
+                            point(at.0, c1.0, c2.0, end.0),
+                            point(at.1, c1.1, c2.1, end.1),
+                        );
+                        edges.push((last, next));
+                        last = next;
+                    }
+                    at = end;
+                }
+                DrawCmd::Z => {
+                    edges.push((at, start));
+                    at = start;
+                }
+            }
+        }
+        if at != start {
+            edges.push((at, start));
+        }
+    }
+    let mut mask = vec![false; width * height];
+    for row in 0..height {
+        let y = row as f32 + 0.5;
+        let mut crossings: Vec<(f32, i32)> = edges
+            .iter()
+            .filter_map(|&((x0, y0), (x1, y1))| {
+                if (y0 <= y) == (y1 <= y) {
+                    return None;
+                }
+                let x = x0 + (y - y0) / (y1 - y0) * (x1 - x0);
+                Some((x, if y1 > y0 { 1 } else { -1 }))
+            })
+            .collect();
+        crossings.sort_by(|a, b| a.0.total_cmp(&b.0));
+        let mut winding = 0;
+        for pair in crossings.windows(2) {
+            winding += pair[0].1;
+            if winding != 0 {
+                let from = (pair[0].0 - 0.5).ceil().max(0.0) as usize;
+                let to = ((pair[1].0 - 0.5).floor() + 1.0).max(0.0) as usize;
+                for column in from..to.min(width) {
+                    mask[row * width + column] = true;
+                }
+            }
+        }
+        // `windows(2)` adds the winding of the first of each pair; the last crossing closes the final span.
+    }
+    mask
+}
+
+#[test]
+fn a_saved_typed_signature_is_smooth_at_400_percent() {
+    let Some(state) = state() else { return };
+    let scratch = Scratch::new("smooth");
+    let (id, path) = open(state, &scratch, "doc.pdf", &blank());
+    let typed = state
+        .create_typed_signature(SignatureRole::Signature, "Sheer", TypedFont::HomemadeApple)
+        .unwrap();
+    let SignatureArt::Vector { w, h, paths } = typed.art.clone() else {
+        panic!("typed art is vector")
+    };
+    let (asset_id, aspect) = asset(state, id, typed.id);
+    // A large box so that the curves of one glyph span hundreds of pixels at 400 %.
+    let bounds = (36.0, 100.0, 540.0, 540.0 / aspect);
+    create(
+        state,
+        id,
+        signature_draft("signature", asset_id, aspect, "signature", bounds),
+    );
+    state.save_in_place(id, SaveAck::default()).unwrap();
+    let copy = scratch.file("copy.pdf");
+    std::fs::copy(&path, &copy).unwrap();
+    let reopened = state.open_path(copy).unwrap().expect("loaded").id;
+    // Bucket 8 is 2^(8/4) = 4 pixels per point.
+    let (mask, width) = ink_mask(state, reopened, 8);
+    let height = mask.len() / width;
+    let reference = reference_mask(&paths, (w, h), bounds, 4.0, (width, height));
+    let ink = reference.iter().filter(|p| **p).count();
+    let wrong = mask.iter().zip(&reference).filter(|(a, b)| a != b).count();
+    assert!(ink > 20_000, "the reference has ink: {ink}");
+    // Only the anti-aliased rim may differ: a flattened or simplified outline would leave a band of wrong pixels along every curve.
+    assert!(
+        (wrong as f64) < ink as f64 * 0.01,
+        "{wrong} of {ink} ink pixels differ from the exact curves"
+    );
 }

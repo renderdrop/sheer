@@ -2,27 +2,30 @@ import { call } from './call';
 import { toAppError } from './errors';
 import { parseFrame, type RenderFrame } from './frame';
 import type { LibraryItem, SignatureRole } from './library';
-import { isRecord, isUint, parsePoint, type Point } from './wire';
+import { MAX_COMMANDS, MAX_PATHS, parsePaths, type PathCmd } from './pathcmd';
+import { isRecord, isUint } from './wire';
 import { MAX_SIGNATURE_ASPECT, MIN_SIGNATURE_ASPECT } from './annotations';
 
 /**
  * Making and placing signatures (src-tauri/src/commands/signatures.rs, ADR-041 sections 5, 6 and 8). The art never carries file
- * bytes or paths: vector art is polygons, raster art is fetched as a frame. The saved library is `./library`.
+ * bytes or paths: vector art is path commands (ADR-051), raster art is fetched as a frame. The saved library is `./library`.
  */
 
-/** Polygons of vector art: 1 000 units high, y down, filled with the nonzero rule. */
-export const MAX_SIGNATURE_POLYGONS = 1_024;
-export const MAX_SIGNATURE_POINTS = 100_000;
+/** Limits of vector art (mirrors the backend): paths and commands. Art is 1 000 units high, y down, filled with the nonzero rule. */
+export const MAX_SIGNATURE_PATHS = MAX_PATHS;
+export const MAX_SIGNATURE_COMMANDS = MAX_COMMANDS;
 /** Longest typed signature, in characters. */
 export const MAX_TYPED_CHARS = 64;
 /** Range of `maxPx` of a preview. */
 export const MIN_PREVIEW_PX = 16;
 export const MAX_PREVIEW_PX = 1024;
 
+export type { PathCmd };
+
 export type TypedFont = 'homemadeApple';
 
 export type SignatureArt =
-  | { type: 'vector'; w: number; h: number; paths: readonly (readonly Point[])[] }
+  | { type: 'vector'; w: number; h: number; paths: readonly (readonly PathCmd[])[] }
   | { type: 'raster'; w: number; h: number };
 
 export interface SignatureDraft {
@@ -49,23 +52,9 @@ export function parseSignatureArt(value: unknown): SignatureArt | null {
   if (!isRecord(value) || !isSize(value.w) || !isSize(value.h)) return null;
   const { w, h } = value;
   if (value.type === 'raster') return Number.isInteger(w) && Number.isInteger(h) ? { type: 'raster', w, h } : null;
-  if (value.type !== 'vector' || !Array.isArray(value.paths) || value.paths.length > MAX_SIGNATURE_POLYGONS)
-    return null;
-  let total = 0;
-  const paths: Point[][] = [];
-  for (const path of value.paths as unknown[]) {
-    if (!Array.isArray(path)) return null;
-    total += path.length;
-    if (total > MAX_SIGNATURE_POINTS) return null;
-    const points: Point[] = [];
-    for (const item of path as unknown[]) {
-      const point = parsePoint(item);
-      if (point === null) return null;
-      points.push(point);
-    }
-    paths.push(points);
-  }
-  return { type: 'vector', w, h, paths };
+  if (value.type !== 'vector') return null;
+  const paths = parsePaths(value.paths);
+  return paths === null ? null : { type: 'vector', w, h, paths };
 }
 
 export function parseSignatureDraft(value: unknown): SignatureDraft | null {
@@ -92,10 +81,10 @@ function need<T>(value: T | null): T {
   return value;
 }
 
-/** A drawn signature from perfect-freehand outline polygons in pad pixels; the backend trims, scales and simplifies them. */
+/** A drawn signature from cubic Bézier outline paths in pad pixels; the backend validates, trims and scales them (no simplification). */
 export async function createDrawnSignature(
   role: SignatureRole,
-  outlines: readonly (readonly Point[])[],
+  outlines: readonly (readonly PathCmd[])[],
 ): Promise<SignatureDraft> {
   return need(parseSignatureDraft(await call<unknown>('create_drawn_signature', { role, outlines })));
 }

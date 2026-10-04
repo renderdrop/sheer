@@ -10,7 +10,7 @@ use std::fmt::Write as _;
 use super::coords::Mapper;
 use crate::model::annotation::{Annotation, AnnotationBody, LineEnd, NoteIcon, Rgb, Stroke};
 use crate::model::geometry::{Point, Quad};
-use crate::signatures::{marks, Art};
+use crate::signatures::{marks, Art, DrawCmd};
 
 /// The name the opacity graphics state has in the form's resources.
 pub const GS_NAME: &str = "GS";
@@ -75,6 +75,20 @@ fn move_to(out: &mut String, m: Mapper, p: Point) {
 fn line_to(out: &mut String, m: Mapper, p: Point) {
     let (x, y) = m.point(p);
     let _ = writeln!(out, "{} {} l", num(x), num(y));
+}
+
+fn curve_to(out: &mut String, m: Mapper, points: [Point; 3]) {
+    let [(x1, y1), (x2, y2), (x3, y3)] = points.map(|p| m.point(p));
+    let _ = writeln!(
+        out,
+        "{} {} {} {} {} {} c",
+        num(x1),
+        num(y1),
+        num(x2),
+        num(y2),
+        num(x3),
+        num(y3)
+    );
 }
 
 fn midpoint(a: Point, b: Point) -> Point {
@@ -470,18 +484,20 @@ pub fn build_with(
         AnnotationBody::Signature { bounds, .. } => match art {
             Some(Art::Vector { w, h, paths }) => {
                 fill_color(&mut c, annotation.color);
-                for path in paths {
-                    let mut points = path.iter().map(|p| Point {
-                        x: bounds.x + p.x / w * bounds.w,
-                        y: bounds.y + p.y / h * bounds.h,
-                    });
-                    if let Some(first) = points.next() {
-                        move_to(&mut c, m, first);
+                // The art's commands 1:1 (ADR-051): art space to the box, then `Mapper` flips y; one fill for all (nonzero).
+                let at = |x: f32, y: f32| Point {
+                    x: bounds.x + x / w * bounds.w,
+                    y: bounds.y + y / h * bounds.h,
+                };
+                for cmd in paths.iter().flatten() {
+                    match *cmd {
+                        DrawCmd::M(x, y) => move_to(&mut c, m, at(x, y)),
+                        DrawCmd::L(x, y) => line_to(&mut c, m, at(x, y)),
+                        DrawCmd::C(x1, y1, x2, y2, x, y) => {
+                            curve_to(&mut c, m, [at(x1, y1), at(x2, y2), at(x, y)]);
+                        }
+                        DrawCmd::Z => c.push_str("h\n"),
                     }
-                    for point in points {
-                        line_to(&mut c, m, point);
-                    }
-                    c.push_str("h\n");
                 }
                 c.push_str("f\n");
             }
@@ -710,5 +726,80 @@ mod tests {
         let ap = build(&a, mapper()).unwrap();
         assert!(ap.content.contains("h\nf\n"));
         assert!(ap.content.contains("S\n"));
+    }
+
+    #[test]
+    fn signature_art_is_written_one_to_one_as_curves_with_y_flipped() {
+        use crate::model::annotation::{SignatureArtRef, SignatureRole};
+        let art = Art::Vector {
+            w: 2000.0,
+            h: 1000.0,
+            paths: vec![vec![
+                DrawCmd::M(0.0, 0.0),
+                DrawCmd::L(1000.0, 0.0),
+                DrawCmd::C(1500.0, 0.0, 2000.0, 500.0, 2000.0, 1000.0),
+                DrawCmd::Z,
+            ]],
+        };
+        let a = annotation(
+            AnnotationBody::Signature {
+                bounds: rect(100.0, 100.0, 200.0, 100.0),
+                role: SignatureRole::Signature,
+                art: SignatureArtRef::File,
+            },
+            rect(100.0, 100.0, 200.0, 100.0),
+        );
+        let (ap, image) = build_with(&a, mapper(), Some(&art)).unwrap();
+        assert!(!image);
+        // Page y is down, PDF y is up: the top left corner of the box (100, 100) is (100, 692).
+        assert!(
+            ap.content.contains("100 692 m\n200 692 l\n"),
+            "{}",
+            ap.content
+        );
+        assert!(
+            ap.content.contains("250 692 300 642 300 592 c\nh\nf\n"),
+            "{}",
+            ap.content
+        );
+        assert_eq!(ap.content.matches(" c\n").count(), 1);
+    }
+
+    #[test]
+    fn a_typed_signature_appearance_is_made_of_curves_not_long_polylines() {
+        use crate::model::annotation::{SignatureArtRef, SignatureRole};
+        let art = crate::signatures::typed::outlines("Ada Lovelace").unwrap();
+        let a = annotation(
+            AnnotationBody::Signature {
+                bounds: rect(100.0, 100.0, 300.0, 60.0),
+                role: SignatureRole::Signature,
+                art: SignatureArtRef::File,
+            },
+            rect(100.0, 100.0, 300.0, 60.0),
+        );
+        let (ap, _) = build_with(&a, mapper(), Some(&art)).unwrap();
+        let curves = ap.content.matches(" c\n").count();
+        let lines = ap.content.matches(" l\n").count();
+        assert!(
+            curves > 50 && curves > lines,
+            "{curves} curves, {lines} lines"
+        );
+        // Longest run of line segments in a row: a glyph's straight parts only, never a flattened curve.
+        let mut longest = 0;
+        let mut run = 0;
+        for operator in ap
+            .content
+            .lines()
+            .filter_map(|line| line.split(' ').next_back())
+        {
+            if operator == "l" {
+                run += 1;
+                longest = longest.max(run);
+            } else {
+                run = 0;
+            }
+        }
+        assert!(longest <= 8, "{longest} line segments in a row");
+        assert_eq!(ap.content.matches("f\n").count(), 1);
     }
 }

@@ -1,7 +1,7 @@
 //! Signature art (ADR-041 §5, §6, §8): what a signature, initials or a mark looks like before it is a PDF, and where it is kept
 //! while the app runs.
 //!
-//! * [`Art`] is vector (filled polygons, nonzero, y down, 1 000 units high) or raster (a PNG of RGBA8, metadata-free).
+//! * [`Art`] is vector (path commands `M L C Z`, filled nonzero, y down, 1 000 units high, ADR-051) or raster (a PNG of RGBA8, metadata-free).
 //! * [`vector`] normalizes drawn outlines, [`typed`] lays a name out with the bundled font, [`raster`] imports a picture. All three
 //!   treat their input as hostile: counts, sizes and numbers are bounded here.
 //! * [`DraftStore`] holds the art of the last signatures made (app level, in memory); [`AssetStore`] holds the art a document uses
@@ -22,8 +22,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::error::AppError;
 use crate::model::annotation::SignatureRole;
-use crate::model::geometry::Point;
 use crate::model::ids::AssetId;
+pub use vector::DrawCmd;
 
 /// Drafts kept at once; the oldest is dropped (ADR-041 §6).
 pub const MAX_DRAFTS: usize = 16;
@@ -39,11 +39,11 @@ pub struct DraftId(pub u32);
 /// The picture of a signature.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Art {
-    /// Filled polygons (nonzero rule), y down, in a box `w` by `h` units; `h` is [`vector::UNIT_HEIGHT`].
+    /// Filled paths (nonzero rule), y down, in a box `w` by `h` units; `h` is [`vector::UNIT_HEIGHT`].
     Vector {
         w: f32,
         h: f32,
-        paths: Vec<Vec<Point>>,
+        paths: Vec<Vec<DrawCmd>>,
     },
     /// A PNG, RGBA8, without metadata, `w` by `h` pixels.
     Raster { w: u32, h: u32, png: Vec<u8> },
@@ -56,7 +56,7 @@ pub enum SignatureArt {
     Vector {
         w: f32,
         h: f32,
-        paths: Vec<Vec<Point>>,
+        paths: Vec<Vec<DrawCmd>>,
     },
     Raster {
         w: u32,
@@ -77,7 +77,7 @@ impl Art {
     /// About how much memory the art holds.
     pub fn byte_size(&self) -> usize {
         match self {
-            Self::Vector { paths, .. } => paths.iter().map(|path| path.len() * 8 + 24).sum(),
+            Self::Vector { paths, .. } => paths.iter().map(|path| path.len() * 28 + 24).sum(),
             Self::Raster { png, .. } => png.len(),
         }
     }
@@ -264,14 +264,14 @@ mod tests {
     use super::*;
 
     fn square(size: f32) -> Art {
-        let corner = |x, y| Point { x, y };
         Art::Vector {
             w: size,
             h: size,
             paths: vec![vec![
-                corner(0.0, 0.0),
-                corner(size, 0.0),
-                corner(size, size),
+                DrawCmd::M(0.0, 0.0),
+                DrawCmd::L(size, 0.0),
+                DrawCmd::L(size, size),
+                DrawCmd::Z,
             ]],
         }
     }

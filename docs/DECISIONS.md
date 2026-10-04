@@ -1559,5 +1559,7 @@ the pad was 512×192 CSS px without device-pixel-ratio scaling.
 5. **Pad:** ≥ 600×200 CSS px (initials 200×200), canvas backing store scaled by `devicePixelRatio`, real-time smoothing, a "New" (clear) button.
 6. **Selection frame and handles** follow DESIGN §3 selection rules (rounded handles, Iris ring), not square boxes.
 
+**Amendment (implementation).** The pad stays an SVG surface instead of a canvas: SVG is resolution-independent, so no backing store or DPR rescaling is needed and the live preview is as sharp as the result. The sheet gets a wide variant (`--sheet-width-wide`, 696 px) so the 600 px pad fits.
+
 **Consequences.** Library entries saved before 0.8.1 hold polygons: they load as `L` paths (still vector) and look as before; re-creating
 them gives curves. Acceptance: window screenshot at 200 % with smooth edges; the saved PDF rendered at 400 %.

@@ -5,7 +5,6 @@
 use super::{raster, vector, Art};
 use crate::error::AppError;
 use crate::model::annotation::{SignatureRole, SIGNATURE_ASPECT_RANGE};
-use crate::model::geometry::Point;
 use crate::storage::signatures::{Art as Stored, Role};
 
 const ALPHABET: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
@@ -83,10 +82,7 @@ pub fn to_stored(art: &Art) -> Stored {
         Art::Vector { w, h, paths } => Stored::Vector {
             w: w.ceil() as u32,
             h: h.ceil() as u32,
-            paths: paths
-                .iter()
-                .map(|path| path.iter().map(|p| [p.x, p.y]).collect())
-                .collect(),
+            paths: paths.clone(),
         },
         Art::Raster { w, h, png } => Stored::Raster {
             w: *w,
@@ -103,34 +99,14 @@ pub fn from_stored(stored: &Stored) -> Result<Art, AppError> {
     match stored {
         Stored::Vector { w, h, paths } => {
             let (w, h) = (*w as f32, *h as f32);
-            let total: usize = paths.iter().map(Vec::len).sum();
-            if w < 1.0
-                || h < 1.0
-                || !SIGNATURE_ASPECT_RANGE.contains(&(w / h))
-                || paths.is_empty()
-                || paths.len() > vector::MAX_POLYGONS
-                || total > vector::MAX_POINTS_TOTAL
-                || paths.iter().any(|path| {
-                    path.len() < 3
-                        || path.iter().any(|[x, y]| {
-                            !x.is_finite()
-                                || !y.is_finite()
-                                || *x < -w
-                                || *x > 2.0 * w
-                                || *y < -h
-                                || *y > 2.0 * h
-                        })
-                })
-            {
+            if w < 1.0 || h < 1.0 || !SIGNATURE_ASPECT_RANGE.contains(&(w / h)) {
                 return Err(bad());
             }
+            vector::validate_art(w, h, paths)?;
             Ok(Art::Vector {
                 w,
                 h,
-                paths: paths
-                    .iter()
-                    .map(|path| path.iter().map(|[x, y]| Point { x: *x, y: *y }).collect())
-                    .collect(),
+                paths: paths.clone(),
             })
         }
         Stored::Raster { png, .. } => {
@@ -152,6 +128,7 @@ pub fn from_stored(stored: &Stored) -> Result<Art, AppError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::signatures::vector::DrawCmd;
 
     #[test]
     fn base64_matches_the_standard() {
@@ -180,16 +157,17 @@ mod tests {
             w: 2000.4,
             h: 1000.0,
             paths: vec![vec![
-                Point { x: 0.0, y: 0.0 },
-                Point { x: 2000.0, y: 10.0 },
-                Point { x: 50.0, y: 1000.0 },
+                DrawCmd::M(0.0, 0.0),
+                DrawCmd::C(500.0, 0.0, 1500.0, 10.0, 2000.0, 10.0),
+                DrawCmd::L(50.0, 1000.0),
+                DrawCmd::Z,
             ]],
         };
         let Art::Vector { w, h, paths } = from_stored(&to_stored(&vector)).unwrap() else {
             panic!("not vector")
         };
         assert_eq!((w, h), (2001.0, 1000.0));
-        assert_eq!(paths[0].len(), 3);
+        assert_eq!(paths[0].len(), 4);
 
         let picture = image::RgbaImage::from_pixel(5, 3, image::Rgba([1, 2, 3, 255]));
         let png = raster::encode_png(&picture).unwrap();
@@ -210,7 +188,11 @@ mod tests {
         let bad_vector = Stored::Vector {
             w: 10,
             h: 10,
-            paths: vec![vec![[0.0, 0.0], [f32::NAN, 1.0], [1.0, 1.0]]],
+            paths: vec![vec![
+                DrawCmd::M(0.0, 0.0),
+                DrawCmd::L(f32::NAN, 1.0),
+                DrawCmd::Z,
+            ]],
         };
         assert!(from_stored(&bad_vector).is_err());
         let not_png = Stored::Raster {

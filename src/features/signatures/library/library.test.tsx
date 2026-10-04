@@ -44,13 +44,7 @@ function item(
             vector: {
               w: 30,
               h: 10,
-              paths: [
-                [
-                  [0, 0],
-                  [10, 0],
-                  [10, 10],
-                ],
-              ],
+              paths: [[['M', 0, 0], ['L', 10, 0], ['L', 10, 10], ['Z']]],
             },
           }
         : null,
@@ -97,16 +91,7 @@ async function openWith(value: SignatureLibrary) {
 
 describe('pathData', () => {
   it('writes one closed path per polygon and skips degenerate ones', () => {
-    expect(
-      pathData([
-        [
-          [0, 0],
-          [4, 0],
-          [4, 2],
-        ],
-        [[1, 1]],
-      ]),
-    ).toBe('M0 0L4 0L4 2Z');
+    expect(pathData([[['M', 0, 0], ['L', 4, 0], ['L', 4, 2], ['Z']]])).toBe('M0 0L4 0L4 2Z');
   });
 });
 

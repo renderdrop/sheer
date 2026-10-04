@@ -23,13 +23,7 @@ const vector: LibraryArt = {
   vector: {
     w: 3000,
     h: 1000,
-    paths: [
-      [
-        [0, 0],
-        [10, 0],
-        [10, 10],
-      ],
-    ],
+    paths: [[['M', 0, 0], ['L', 10, 0], ['C', 10, 5, 5, 10, 0, 10], ['Z']]],
   },
 };
 const item = { id, role: 'signature', name: 'Work', created: 1700000000, aspect: 3, kind: 'vector', preview: vector };
@@ -45,8 +39,8 @@ describe('library art', () => {
     expect(parseLibraryArt(null)).toBeNull();
     expect(parseLibraryArt({})).toBeNull();
     expect(parseLibraryArt({ vector: { w: 0, h: 10, paths: [] } })).toBeNull();
-    expect(parseLibraryArt({ vector: { w: 1, h: 1, paths: [[[0, Number.NaN]]] } })).toBeNull();
-    expect(parseLibraryArt({ vector: { w: 1, h: 1, paths: [[[0, 1, 2]]] } })).toBeNull();
+    expect(parseLibraryArt({ vector: { w: 1, h: 1, paths: [[['M', 0, Number.NaN]]] } })).toBeNull();
+    expect(parseLibraryArt({ vector: { w: 1, h: 1, paths: [[['M', 0, 1, 2]]] } })).toBeNull();
     expect(parseLibraryArt({ raster: { w: 1, h: 1, png: 'not base64!' } })).toBeNull();
     expect(parseLibraryArt({ vector: vector.vector, raster: { w: 1, h: 1, png: 'AA==' } })).toBeNull();
   });

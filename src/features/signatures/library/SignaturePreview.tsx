@@ -3,14 +3,9 @@ import { ImageOff } from 'lucide-react';
 import type { LibraryItem } from '../../../api/library';
 import { Icon } from '../../../components';
 import { useT } from '../../../i18n';
+import { pathToD } from '../ink';
 
-/** The outline of every polygon as one path: a move, lines, close. Coordinates are the art's own units. */
-export function pathData(paths: readonly (readonly [number, number][])[]): string {
-  return paths
-    .filter((polygon) => polygon.length > 1)
-    .map((polygon) => `M${polygon.map(([x, y]) => `${x} ${y}`).join('L')}Z`)
-    .join('');
-}
+export const pathData = pathToD;
 
 /**
  * The preview chip of a library row (DESIGN 3.35): 120 x 40 on the page colour (white in both themes, as the document is), with a

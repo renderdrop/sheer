@@ -596,7 +596,7 @@
   "sign.type": "Type",
   "sign.image": "Image",
   "sign.here": "Sign here",
-  "sign.clear": "Clear",
+  "sign.clear": "New",
   "sign.padLabel": "Signature pad",
   "sign.keyboardHint": "Can't draw? Use Type.",
   "sign.choose": "Choose image…",

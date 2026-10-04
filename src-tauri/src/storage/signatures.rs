@@ -33,6 +33,7 @@ use serde::{Deserialize, Serialize};
 use zeroize::Zeroizing;
 
 use crate::error::{AppError, ErrorCode};
+use crate::signatures::vector::{self, DrawCmd};
 use crate::storage::atomic::write_atomic;
 use crate::storage::keychain::{Key, KeyError, Keychain};
 use crate::storage::open_without_blocking;
@@ -51,15 +52,15 @@ const TAG_LEN: usize = 16;
 /// Most entries of one role.
 pub const MAX_PER_ROLE: usize = 8;
 /// Most bytes of art (its JSON) in one entry.
-pub const MAX_ART_BYTES: usize = 512 * 1024;
+pub const MAX_ART_BYTES: usize = 4 * 1024 * 1024;
 /// Largest library file that is read at all.
-pub const MAX_FILE_BYTES: usize = 16 * 1024 * 1024;
+pub const MAX_FILE_BYTES: usize = 64 * 1024 * 1024;
 /// Longest name of an entry, in characters.
 pub const MAX_NAME_CHARS: usize = 64;
 /// Largest side of the art's box, in its own units.
 const MAX_ART_UNITS: u32 = 1_000_000;
-/// Points in a preview of vector art (the list never carries more of an entry).
-const PREVIEW_POINTS: usize = 400;
+/// Commands in a preview of vector art (the list never carries more of an entry).
+const PREVIEW_COMMANDS: usize = 1_500;
 /// Longest side of the thumbnail of raster art in the list, in pixels, and the most bytes of its PNG.
 const PREVIEW_PX: u32 = 96;
 const PREVIEW_PNG_BYTES: usize = 24 * 1024;
@@ -76,14 +77,16 @@ pub enum Role {
     Initials,
 }
 
-/// The art of an entry (ADR-041 section 7). Vector: polygons in a box of `w` x `h` units. Raster: a PNG as standard base64.
+/// The art of an entry (ADR-041 section 7, ADR-051). Vector: path commands in a box of `w` x `h` units (entries saved before 0.8.1
+/// hold polygons: they load as `M`, `L`... `Z` paths). Raster: a PNG as standard base64.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub enum Art {
     Vector {
         w: u32,
         h: u32,
-        paths: Vec<Vec<[f32; 2]>>,
+        #[serde(deserialize_with = "paths_or_polygons")]
+        paths: Vec<Vec<DrawCmd>>,
     },
     Raster {
         w: u32,
@@ -97,11 +100,8 @@ impl Art {
     fn check(&self) -> Result<(), LibraryError> {
         let (w, h) = match self {
             Art::Vector { w, h, paths } => {
-                let finite = paths
-                    .iter()
-                    .flatten()
-                    .all(|[x, y]| x.is_finite() && y.is_finite());
-                if paths.is_empty() || paths.iter().any(|path| path.len() < 3) || !finite {
+                // Counts, structure and range as the art is held (commands may lie a margin outside the box).
+                if vector::validate_art(*w as f32, *h as f32, paths).is_err() {
                     return Err(LibraryError::Invalid("art"));
                 }
                 (*w, *h)
@@ -168,24 +168,44 @@ impl Art {
         *w as f32 / (*h).max(1) as f32
     }
 
-    /// The art cut down to a few hundred points, or a small PNG thumbnail of raster art, for the list.
+    /// The art as is when it is small; else cut down to its end points (curves become lines), a few hundred of them, for the list.
     fn preview(&self) -> Option<Art> {
         let (w, h, paths) = match self {
             Art::Vector { w, h, paths } => (w, h, paths),
             Art::Raster { png, .. } => return Self::thumbnail(png),
         };
         let total: usize = paths.iter().map(Vec::len).sum();
-        let step = total.div_ceil(PREVIEW_POINTS).max(1);
+        if total <= PREVIEW_COMMANDS {
+            return Some(self.clone());
+        }
+        let step = total.div_ceil(PREVIEW_COMMANDS / 2).max(1);
         let paths = paths
             .iter()
             .map(|path| {
-                let mut kept: Vec<[f32; 2]> = path.iter().step_by(step).copied().collect();
-                // A polygon keeps at least a triangle.
-                for point in path.iter().rev() {
-                    if kept.len() >= 3 {
-                        break;
+                let ends: Vec<DrawCmd> = path
+                    .iter()
+                    .map(|cmd| match *cmd {
+                        DrawCmd::M(x, y) => DrawCmd::M(x, y),
+                        DrawCmd::L(x, y) | DrawCmd::C(_, _, _, _, x, y) => DrawCmd::L(x, y),
+                        DrawCmd::Z => DrawCmd::Z,
+                    })
+                    .collect();
+                // Every start and close stays; the lines in between are thinned.
+                let mut kept = Vec::new();
+                let mut run = 0usize;
+                for cmd in ends {
+                    match cmd {
+                        DrawCmd::L(..) => {
+                            if run.is_multiple_of(step) {
+                                kept.push(cmd);
+                            }
+                            run += 1;
+                        }
+                        _ => {
+                            run = 0;
+                            kept.push(cmd);
+                        }
                     }
-                    kept.push(*point);
                 }
                 kept
             })
@@ -196,6 +216,22 @@ impl Art {
             paths,
         })
     }
+}
+
+/// Reads `paths` as path commands, or as the polygons older versions saved (ADR-051 consequences).
+fn paths_or_polygons<'de, D: serde::Deserializer<'de>>(
+    deserializer: D,
+) -> Result<Vec<Vec<DrawCmd>>, D::Error> {
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum Paths {
+        Commands(Vec<Vec<DrawCmd>>),
+        Polygons(Vec<Vec<[f32; 2]>>),
+    }
+    Ok(match Paths::deserialize(deserializer)? {
+        Paths::Commands(paths) => paths,
+        Paths::Polygons(polygons) => vector::from_polygons(&polygons),
+    })
 }
 
 /// Counts the bytes written to it and refuses the ones past [`MAX_ART_BYTES`].
@@ -761,8 +797,51 @@ mod tests {
         Art::Vector {
             w: 3000,
             h: 1000,
-            paths: vec![vec![[0.0, 0.0], [10.0, 0.0], [10.0, 10.0], [0.0, 10.0]]],
+            paths: vec![square()],
         }
+    }
+
+    fn square() -> Vec<DrawCmd> {
+        vec![
+            DrawCmd::M(0.0, 0.0),
+            DrawCmd::L(10.0, 0.0),
+            DrawCmd::C(10.0, 5.0, 10.0, 8.0, 10.0, 10.0),
+            DrawCmd::L(0.0, 10.0),
+            DrawCmd::Z,
+        ]
+    }
+
+    fn dense_path(at: f32) -> Vec<DrawCmd> {
+        let mut path = vec![DrawCmd::M(at, at)];
+        path.extend(std::iter::repeat_n(DrawCmd::L(at, at), 5000));
+        path.push(DrawCmd::Z);
+        path
+    }
+
+    #[test]
+    fn an_entry_saved_before_curves_loads_its_polygons_as_line_paths() {
+        // The format of 0.8.0: `paths` is a list of polygons, each a list of [x, y].
+        let old = r#"{"id":"00000000000000000000000000000001","role":"signature","name":"Old","created":1700000000,
+            "art":{"vector":{"w":3000,"h":1000,"paths":[[[0.0,0.0],[10.5,0.0],[10.5,10.0]],[[1.0,1.0],[2.0,1.0],[2.0,2.0]]]}}}"#;
+        let item: Item = serde_json::from_str(old).unwrap();
+        let Art::Vector { paths, .. } = &item.art else {
+            panic!("vector");
+        };
+        assert_eq!(paths.len(), 2);
+        assert_eq!(
+            paths[0],
+            vec![
+                DrawCmd::M(0.0, 0.0),
+                DrawCmd::L(10.5, 0.0),
+                DrawCmd::L(10.5, 10.0),
+                DrawCmd::Z
+            ]
+        );
+        assert!(item.art.check().is_ok());
+        // New entries read back as they were written.
+        let new = serde_json::to_string(&item).unwrap();
+        assert!(new.contains(r#"["M",0.0,0.0]"#));
+        assert_eq!(serde_json::from_str::<Item>(&new).unwrap(), item);
     }
 
     fn key(byte: u8) -> Key {
@@ -937,10 +1016,10 @@ mod tests {
     fn entry_sizes_names_and_art_are_bounded() {
         let dir = TempDir::new();
         let lib = library(&dir, &MemoryStore::default());
-        let big = Art::Vector {
+        let big = Art::Raster {
             w: 10,
             h: 10,
-            paths: vec![vec![[0.123_456, 0.654_321]; MAX_ART_BYTES / 8]],
+            png: "A".repeat(MAX_ART_BYTES),
         };
         assert!(matches!(
             lib.save(Role::Signature, "x", big),
@@ -950,7 +1029,7 @@ mod tests {
             Art::Vector {
                 w: 0,
                 h: 10,
-                paths: vec![vec![[0.0, 0.0]; 3]],
+                paths: vec![square()],
             },
             Art::Vector {
                 w: 10,
@@ -960,12 +1039,16 @@ mod tests {
             Art::Vector {
                 w: 10,
                 h: 10,
-                paths: vec![vec![[0.0, 0.0]; 2]],
+                paths: vec![vec![DrawCmd::L(0.0, 0.0), DrawCmd::L(1.0, 1.0)]],
             },
             Art::Vector {
                 w: 10,
                 h: 10,
-                paths: vec![vec![[f32::NAN, 0.0]; 3]],
+                paths: vec![vec![
+                    DrawCmd::M(f32::NAN, 0.0),
+                    DrawCmd::L(1.0, 1.0),
+                    DrawCmd::Z,
+                ]],
             },
             Art::Raster {
                 w: 10,
@@ -1090,20 +1173,22 @@ mod tests {
         let dense = Art::Vector {
             w: 10,
             h: 10,
-            paths: vec![vec![[1.0, 1.0]; 5000], vec![[2.0, 2.0]; 5000]],
+            paths: vec![dense_path(1.0), dense_path(2.0)],
         };
         let saved = lib.save(Role::Signature, "dense", dense).unwrap();
         let Some(Art::Vector { paths, .. }) = saved.preview else {
             panic!("vector preview");
         };
-        let points: usize = paths.iter().map(Vec::len).sum();
-        assert!(points <= PREVIEW_POINTS + 6, "{points}");
-        assert!(paths.iter().all(|path| path.len() >= 3));
+        let commands: usize = paths.iter().map(Vec::len).sum();
+        assert!(commands <= PREVIEW_COMMANDS + 16, "{commands}");
+        assert!(paths
+            .iter()
+            .all(|path| matches!(path.first(), Some(DrawCmd::M(..)))));
         // The full art is still what places.
         let Art::Vector { paths, .. } = lib.source(&saved.id).unwrap().art else {
             panic!("vector");
         };
-        assert_eq!(paths[0].len(), 5000);
+        assert_eq!(paths[0].len(), 5002);
     }
 
     #[test]

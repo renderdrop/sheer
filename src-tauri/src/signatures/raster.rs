@@ -21,11 +21,13 @@ pub const MAX_SIDE_PX: u32 = 4_000;
 pub const MAX_PIXELS: u64 = 16_000_000;
 pub const MAX_ALLOC_BYTES: u64 = 128 * 1024 * 1024;
 /// The art is brought down to this on its long side.
-pub const MAX_ART_SIDE_PX: u32 = 1_600;
+pub const MAX_ART_SIDE_PX: u32 = 3_000;
 /// The PNG of the art; a picture that does not fit is shrunk until it does.
-pub const MAX_ART_BYTES: usize = 512 * 1024;
-/// A pixel at least this bright (luminance, 0 to 255) becomes transparent when the background is removed.
-pub const BACKGROUND_LUMINANCE: u32 = 235;
+pub const MAX_ART_BYTES: usize = 2 * 1024 * 1024;
+/// Luminance (0 to 255) where the background starts to fade and where it is gone: alpha goes from 1 at [`RAMP_LOW`] to 0 at
+/// [`RAMP_HIGH`] (ADR-051 §4).
+pub const RAMP_LOW: u32 = 225;
+pub const RAMP_HIGH: u32 = 245;
 /// The smallest side the shrinking goes to.
 const MIN_SHRUNK_SIDE_PX: u32 = 16;
 
@@ -102,14 +104,31 @@ fn decode(bytes: &[u8]) -> Result<RgbaImage, AppError> {
     Ok(picture.to_rgba8())
 }
 
-/// Makes the near-white pixels transparent, and every transparent pixel `0 0 0 0` (nothing hides in the colour of a pixel that
-/// cannot be seen).
+/// Makes the near-white pixels transparent with a soft ramp (luminance [`RAMP_LOW`] to [`RAMP_HIGH`] gives alpha 1 to 0), and every
+/// fully transparent pixel `0 0 0 0` (nothing hides in the colour of a pixel that cannot be seen). A faded pixel is first taken off
+/// its white backing (`c = (C - 255 (1 - k)) / k`), so an edge does not keep a light halo on a dark page.
 fn clear_background(picture: &mut RgbaImage, remove_background: bool) {
     for pixel in picture.pixels_mut() {
         let [r, g, b, a] = pixel.0;
         let luminance = (299 * u32::from(r) + 587 * u32::from(g) + 114 * u32::from(b)) / 1000;
-        if a == 0 || (remove_background && luminance >= BACKGROUND_LUMINANCE) {
+        let keep = if remove_background && luminance > RAMP_LOW {
+            (RAMP_HIGH.saturating_sub(luminance)) as f32 / (RAMP_HIGH - RAMP_LOW) as f32
+        } else {
+            1.0
+        };
+        if a == 0 || keep <= 0.0 {
             pixel.0 = [0, 0, 0, 0];
+        } else if keep < 1.0 {
+            let unmix = |c: u8| {
+                let value = (f32::from(c) - 255.0 * (1.0 - keep)) / keep;
+                value.clamp(0.0, 255.0).round() as u8
+            };
+            pixel.0 = [
+                unmix(r),
+                unmix(g),
+                unmix(b),
+                (f32::from(a) * keep).round() as u8,
+            ];
         }
     }
 }
@@ -332,20 +351,62 @@ mod tests {
     }
 
     #[test]
-    fn the_art_is_brought_down_to_1600_px_and_the_preview_to_what_was_asked() {
-        let mut picture = RgbaImage::from_pixel(3_000, 600, Rgba([0, 0, 0, 255]));
+    fn the_art_is_brought_down_to_3000_px_and_the_preview_to_what_was_asked() {
+        let mut picture = RgbaImage::from_pixel(4_000, 800, Rgba([0, 0, 0, 255]));
         picture.put_pixel(0, 0, Rgba([255, 0, 0, 255]));
         let png = encode_png(&picture).unwrap();
         let Art::Raster { w, h, png } = import(&png, false).unwrap() else {
             panic!("not raster")
         };
-        assert_eq!((w, h), (1_600, 320));
+        assert_eq!((w, h), (3_000, 600));
         let (pw, ph, small) = preview(&png, 100).unwrap();
         assert_eq!((pw, ph), (100, 20));
         assert!(small.starts_with(b"\x89PNG"));
-        let (fw, _, same) = preview(&png, 1_600).unwrap();
-        assert_eq!(fw, 1_600);
+        let (fw, _, same) = preview(&png, 3_000).unwrap();
+        assert_eq!(fw, 3_000);
         assert_eq!(same, png);
+    }
+
+    #[test]
+    fn a_small_picture_is_never_upscaled_and_a_large_one_has_dpi_to_spare() {
+        let small = encode_png(&sheet(100, 100)).unwrap();
+        let Art::Raster { w, .. } = import(&small, false).unwrap() else {
+            panic!("not raster")
+        };
+        assert_eq!(w, 100);
+        // At the default placed width of about 2 in, a 3 000 px picture embeds at far more than 300 dpi.
+        let picture = RgbaImage::from_pixel(3_500, 1_000, Rgba([10, 10, 10, 255]));
+        let Art::Raster { w, .. } = import(&encode_png(&picture).unwrap(), false).unwrap() else {
+            panic!("not raster")
+        };
+        assert!(f64::from(w) / 2.0 >= 300.0, "{w} px over 2 in");
+    }
+
+    #[test]
+    fn the_background_fades_softly_and_leaves_no_light_halo() {
+        let gray = |v: u8| Rgba([v, v, v, 255]);
+        let mut picture = RgbaImage::from_pixel(4, 1, gray(0));
+        picture.put_pixel(0, 0, gray(225));
+        picture.put_pixel(1, 0, gray(235));
+        picture.put_pixel(2, 0, gray(245));
+        picture.put_pixel(3, 0, gray(10));
+        clear_background(&mut picture, true);
+        assert_eq!(
+            picture.get_pixel(0, 0).0[3],
+            255,
+            "fully opaque at the low end"
+        );
+        let middle = picture.get_pixel(1, 0).0;
+        assert!(
+            (i16::from(middle[3]) - 128).abs() <= 1,
+            "half way: {middle:?}"
+        );
+        assert!(
+            middle[0] < 225,
+            "the white backing is taken off: {middle:?}"
+        );
+        assert_eq!(picture.get_pixel(2, 0).0, [0, 0, 0, 0]);
+        assert_eq!(picture.get_pixel(3, 0).0, [10, 10, 10, 255]);
     }
 
     #[test]

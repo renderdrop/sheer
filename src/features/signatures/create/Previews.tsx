@@ -10,7 +10,7 @@ export const INK_CLASS: Readonly<Record<SigColour, string>> = { black: 'text-ann
 export const PAD_SURFACE =
   'relative overflow-hidden rounded-button border border-divider bg-page forced-colors:border-text';
 
-const RASTER_PREVIEW_PX = 512;
+const RASTER_PREVIEW_PX = 1024;
 
 /** Vector art as one filled path (nonzero rule), scaled to fit. */
 export function VectorPreview({ art, colour }: { art: Extract<SignatureArt, { type: 'vector' }>; colour: SigColour }) {

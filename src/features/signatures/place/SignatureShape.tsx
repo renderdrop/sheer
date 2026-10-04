@@ -2,20 +2,18 @@ import { memo } from 'react';
 
 import type { Annotation } from '../../../api/annotations';
 import { rgbToCss } from '../../inspector/palette';
+import { pathToD } from '../ink';
 import { assetArt, useRasterUrl } from './assets';
 import { markGeometry } from './marks';
 
 /**
- * The look of the `signature` and `mark` kinds in page space (DESIGN 3.34). Vector art (drawn, typed) is polygons filled in the
+ * The look of the `signature` and `mark` kinds in page space (DESIGN 3.34). Vector art (drawn, typed) is Bézier paths, one SVG `<path d>` each, filled in the
  * annotation's colour; a picture is the asset's PNG preview; a signature that only the file has is in the page bitmap, so nothing is
  * drawn for it. Marks are strokes in the annotation's colour.
  */
 
 type SignatureAnnotation = Extract<Annotation, { kind: 'signature' }>;
 type MarkAnnotation = Extract<Annotation, { kind: 'mark' }>;
-
-const polygonD = (points: readonly { x: number; y: number }[]): string =>
-  points.length === 0 ? '' : `M${points.map((p) => `${p.x} ${p.y}`).join('L')}Z`;
 
 export const SignatureShape = memo(function SignatureShape({ a, docId }: { a: SignatureAnnotation; docId: number }) {
   const assetId = a.art.type === 'asset' ? a.art.assetId : null;
@@ -46,7 +44,7 @@ export const SignatureShape = memo(function SignatureShape({ a, docId }: { a: Si
       data-signature-vector=""
     >
       {art.paths.map((path, i) => (
-        <path key={i} d={polygonD(path)} />
+        <path key={i} d={pathToD([path])} />
       ))}
     </g>
   );

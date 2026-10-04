@@ -37,7 +37,7 @@ model/           engine-free domain (ADR-003)
 pdfwrite/        the only lopdf user (ADR-004)
                  save · annots · appearance · coords · pagetree (M3: tree rewrite, page deep copy) · produce (M3: extract, split, merge) · compress (M3: `image`, jpeg only) · forms (M4: read_fields, write_values, field appearances) · flatten (M4) · content (M5: burn text boxes and images into pages) · redact (M5: raster page, redacted Full save) · crypt (M5: R6 encrypt, keep encryption) · metadata (M5: Info + regenerated XMP)
 content/         M5, engine-free and lopdf-free: text (layout, WinAnsi check) · std14 (AFM widths of Helvetica, Times-Roman, Courier) · image (dialog handle → header check → decode → JPEG/Flate asset)
-signatures/      M4, engine-free and lopdf-free: art (normalise, simplify, bounds) · typed (skrifa + bundled font → polygons) · image (dialog handle → `image` decode → RGBA → PNG) · drafts (DraftStore, ≤ 16)
+signatures/      M4, engine-free and lopdf-free: vector (validate, trim, normalise `PathCmd` paths; no simplification, ADR-051) · typed (skrifa + bundled font → cubic paths) · image (dialog handle → `image` decode → RGBA → PNG) · drafts (DraftStore, ≤ 16)
 storage/         atomic (temp + fsync + rename) · backup · settings · app_dirs · signatures (M4: library.bin, XChaCha20-Poly1305) · keychain (M4: `SecretStore` over keyring-core) · autosave (M7)
 security/        links (http/https/mailto allowlist, `SafeUrl`) · names (display-name sanitizer; today `documents::sanitize_text`)
 menu/            macOS menu bar (ADR-016): mod (MenuBridge: the channel to the UI, the id allowlist, build + rebuild on a language change) · spec (layout of src/actions/menu.json, texts of the UI catalogs, ACTION_IDS)
@@ -314,7 +314,7 @@ get_form_fields(doc_id: DocId) -> FormInfo            // first call reads the fi
 apply_command(doc_id: DocId, command: DocCommand) -> ChangeSet   // + SetFieldValue
 flatten_document(doc_id: DocId, opts: FlattenOptions, on_event: Channel<JobEvent>) -> Option<JobId>   // Save As dialog (None = cancelled); full rewrite; result opens
 // commands/signatures.rs (M4); library calls run on the blocking pool, keychain deadline 60 s
-create_drawn_signature(role: SignatureRole, outlines: Vec<Vec<Point>>) -> SignatureDraft   // perfect-freehand outline polygons in pad pixels
+create_drawn_signature(role: SignatureRole, outlines: Vec<Vec<PathCmd>>) -> SignatureDraft   // cubic Bézier outlines in pad pixels (ADR-051): <= 64 paths, <= 20 000 commands; Rust validates, trims, scales to 1000 units, never simplifies
 create_typed_signature(role: SignatureRole, text: String, font: TypedFont) -> SignatureDraft  // 1..=64 chars, no control chars
 import_signature_image(role: SignatureRole, remove_background: bool) -> Option<SignatureDraft> // Rust open dialog (PNG, JPEG); None = cancelled
 list_signatures() -> SignatureLibrary
@@ -350,8 +350,9 @@ type FlattenOptions = { scope: 'forms' | 'formsAndAnnotations' };
 // JobEvent.done.warnings gains 'xfaRemoved'; SaveResult.warnings too
 
 type SignatureRole = 'signature' | 'initials';
+type PathCmd = ['M', number, number] | ['L', number, number] | ['C', number, number, number, number, number, number] | ['Z'];  // ADR-051; written 1:1 as m / l / c / h + one f; typed = skrifa curves (quad raised to cubic); image art: white 225..245 luminance fades to transparent, <= 3000 px long side, never upscaled
 type TypedFont = 'homemadeApple';
-type SignatureArt = { type: 'vector'; w: number; h: number; paths: Point[][] /* filled polygons, nonzero, y down */ }
+type SignatureArt = { type: 'vector'; w: number; h: number; paths: PathCmd[][] /* nonzero fill, y down, 1000 units high; also what the library stores (old polygon entries load as L paths) */ }
                   | { type: 'raster'; w: number; h: number /* px; pixels via get_signature_preview */ };
 type SignatureRef = { type: 'draft'; id: DraftId } | { type: 'library'; id: string };
 interface SignatureDraft { id: DraftId; role: SignatureRole; art: SignatureArt }

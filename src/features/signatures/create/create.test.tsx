@@ -26,13 +26,7 @@ const art = {
   type: 'vector' as const,
   w: 1000,
   h: 1000,
-  paths: [
-    [
-      { x: 0, y: 0 },
-      { x: 10, y: 0 },
-      { x: 10, y: 10 },
-    ],
-  ],
+  paths: [[['M', 0, 0], ['L', 10, 0], ['L', 10, 10], ['Z']]],
 };
 
 describe('model', () => {
@@ -43,15 +37,7 @@ describe('model', () => {
     expect(samplePressure('pen', 3)).toBe(1);
   });
   it('builds a closed path per polygon', () => {
-    expect(
-      pathData([
-        [
-          { x: 1, y: 2 },
-          { x: 3, y: 4 },
-        ],
-        [],
-      ]),
-    ).toBe('M1 2L3 4Z');
+    expect(pathData([[['M', 1, 2], ['C', 1, 2, 3, 4, 5, 6], ['Z']]])).toBe('M1 2C1 2 3 4 5 6Z');
   });
   it('initials are the first letters of the words', () => {
     expect(initialsOf('ada lovelace')).toBe('AL');

@@ -17,7 +17,7 @@ import { Button, Field, Icon, Tab, TabList, TabPanel, Tabs } from '../../../comp
 import { cx } from '../../../components/cx';
 import { errorText, useT, type Translate } from '../../../i18n';
 import { useSettings } from '../../../stores/settings';
-import type { Sample } from '../../annotations/create/ink';
+import type { InkSample } from '../ink';
 import { PALETTE } from '../../inspector/palette';
 import { RadioRow, type RadioOption } from '../../inspector/RadioRow';
 import { Modal, ModalHeader } from '../../jobs/Modal';
@@ -122,7 +122,7 @@ function SheetBody({ id, kind }: { id: number; kind: SignatureRole }) {
   const authorName = useSettings((state) => state.authorName);
   const [tab, setTab] = useState<SigTab>(loadTab);
   const [colour, setColour] = useState<SigColour>(lastSignatureColour);
-  const [strokes, setStrokes] = useState<readonly (readonly Sample[])[]>([]);
+  const [strokes, setStrokes] = useState<readonly (readonly InkSample[])[]>([]);
   const [text, setText] = useState(() => typePrefill(kind, authorName));
   const [image, setImage] = useState<SignatureDraft | null>(null);
   const [imageError, setImageError] = useState(false);
@@ -253,7 +253,7 @@ function SheetBody({ id, kind }: { id: number; kind: SignatureRole }) {
   const createProblem = failure !== null ? errorText(t, failure) : '';
 
   return (
-    <Modal labelledBy={titleId} width="w-sheet" onClose={() => settleSignatureSheet(id, null)}>
+    <Modal labelledBy={titleId} width="w-sheet-wide" onClose={() => settleSignatureSheet(id, null)}>
       <ModalHeader
         id={titleId}
         icon={<Icon icon={Signature} />}

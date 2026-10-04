@@ -1,7 +1,6 @@
 import type { SignatureArt } from '../../../api/signatures';
 import type { SignatureRole } from '../../../api/library';
-import type { Point } from '../../../api/wire';
-import { strokeOutline, type Sample } from '../../annotations/create/ink';
+import { inkPaths, pathToD, type InkSample, type PathCmd } from '../ink';
 
 /** The ways to make a signature (DESIGN 3.33). */
 export type SigTab = 'draw' | 'type' | 'image';
@@ -9,10 +8,10 @@ export type SigTab = 'draw' | 'type' | 'image';
 /** The ink colours of the pad: the black and blue of the annotation palette (DESIGN 3.24). */
 export type SigColour = 'black' | 'blue';
 
-/** Nominal stroke width of the pad in px; the pressure moves it between 1 and 4 (see `ink.ts`: 0.4 to 1.6 times). */
-export const PAD_WIDTH_PX = 2.5;
-/** A mouse draws 2 px: the pressure that gives that width at the nominal one. */
-export const MOUSE_PRESSURE = (2 / PAD_WIDTH_PX - 0.4) / 1.2;
+/** Nominal stroke width of the pad in px; velocity and pressure move it between 0.45 and 1.5 times (see `../ink`). */
+export const PAD_WIDTH_PX = 3;
+/** A mouse reports no pressure: the neutral 0.5, which leaves the width to the velocity alone. */
+export const MOUSE_PRESSURE = 0.5;
 /** Typing waits this long after the last key before the backend makes the outlines. */
 export const TYPE_DEBOUNCE_MS = 250;
 /** Longest initials the Type tab suggests. */
@@ -27,18 +26,13 @@ export function samplePressure(pointerType: string, pressure: number): number {
   return Math.min(pressure, 1);
 }
 
-/** The outline polygons of the strokes, in pad pixels, as the backend takes them. */
-export function strokesToOutlines(strokes: readonly (readonly Sample[])[]): Point[][] {
-  return strokes.map((stroke) => strokeOutline(stroke, PAD_WIDTH_PX)).filter((polygon) => polygon.length > 0);
+/** The Bézier outlines of the strokes, in pad pixels, as the backend takes them. */
+export function strokesToOutlines(strokes: readonly (readonly InkSample[])[]): PathCmd[][] {
+  return inkPaths(strokes, PAD_WIDTH_PX);
 }
 
-/** The SVG path of vector art: one closed subpath per polygon, filled with the nonzero rule. */
-export function pathData(paths: readonly (readonly Point[])[]): string {
-  return paths
-    .filter((polygon) => polygon.length > 0)
-    .map((polygon) => `M${polygon.map((p) => `${p.x} ${p.y}`).join('L')}Z`)
-    .join('');
-}
+/** The SVG path data of vector art: one subpath per outline, filled with the nonzero rule. */
+export const pathData = pathToD;
 
 export function isVector(art: SignatureArt): art is Extract<SignatureArt, { type: 'vector' }> {
   return art.type === 'vector';

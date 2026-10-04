@@ -2,9 +2,9 @@
 //!
 //! | Command | Arguments | Returns |
 //! |---|---|---|
-//! | `create_drawn_signature` | `role`, `outlines: Point[][]` (perfect-freehand outline polygons in pad pixels) | `SignatureDraft`; trimmed, scaled to 1 000 units high and simplified by Rust |
+//! | `create_drawn_signature` | `role`, `outlines: DrawCmd[][]` (cubic Bézier outlines in pad pixels; `['M',x,y]`, `['L',x,y]`, `['C',x1,y1,x2,y2,x,y]`, `['Z']`) | `SignatureDraft`; validated (at most 64 paths, 20 000 commands), trimmed and scaled to 1 000 units high by Rust, never simplified |
 //! | `create_typed_signature` | `role`, `text` (1 to 64 characters, no control characters), `font: "homemadeApple"` | `SignatureDraft`; `invalid_argument` (`glyph`) for a character the font lacks |
-//! | `import_signature_image` | `role`, `removeBackground` | `SignatureDraft`, or `null` if the native dialog was cancelled; PNG or JPEG, at most 10 MiB and 4 000 px a side, re-encoded as a PNG without metadata |
+//! | `import_signature_image` | `role`, `removeBackground` | `SignatureDraft`, or `null` if the native dialog was cancelled; PNG or JPEG, at most 10 MiB and 4 000 px a side, re-encoded as a PNG without metadata, at most 3 000 px on the long side (never upscaled), near-white fades to transparent |
 //! | `save_draft_signature` | `draftId`, `name` | the library's `ItemInfo` of the new entry (the art never crosses IPC for it) |
 //! | `discard_signature_draft` | `draftId` | nothing; frees the draft (a draft that is gone already is not an error) |
 //! | `get_signature_preview` | `art: SignatureRef`, `maxPx` (16 to 1 024) | an `SHR1` frame (PNG) of raster art |
@@ -22,8 +22,8 @@ use super::{blocking, AppState};
 use crate::documents::DocumentId;
 use crate::error::{AppError, ErrorCode, UiError};
 use crate::model::annotation::SignatureRole;
-use crate::model::geometry::Point;
 use crate::model::ids::AssetId;
+use crate::signatures::DrawCmd;
 use crate::signatures::{
     convert, preview_frame, raster, typed, vector, Art, DraftId, SignatureArt, SignatureDraft,
 };
@@ -82,7 +82,7 @@ impl AppState {
     pub fn create_drawn_signature(
         &self,
         role: SignatureRole,
-        outlines: &[Vec<Point>],
+        outlines: &[Vec<DrawCmd>],
     ) -> Result<SignatureDraft, AppError> {
         Ok(self.drafts.add(role, vector::normalize(outlines)?))
     }
@@ -208,7 +208,7 @@ impl AppState {
 pub async fn create_drawn_signature(
     state: State<'_, AppState>,
     role: SignatureRole,
-    outlines: Vec<Vec<Point>>,
+    outlines: Vec<Vec<DrawCmd>>,
 ) -> Result<SignatureDraft, UiError> {
     let state = state.inner().clone();
     blocking(move || state.create_drawn_signature(role, &outlines)).await
@@ -337,9 +337,10 @@ mod tests {
             w: 10.0,
             h: 10.0,
             paths: vec![vec![
-                Point { x: 0.0, y: 0.0 },
-                Point { x: 1.0, y: 0.0 },
-                Point { x: 1.0, y: 1.0 },
+                DrawCmd::M(0.0, 0.0),
+                DrawCmd::L(1.0, 0.0),
+                DrawCmd::L(1.0, 1.0),
+                DrawCmd::Z,
             ]],
         };
         let one = drafts.add(SignatureRole::Signature, art.clone());

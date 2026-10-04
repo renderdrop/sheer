@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { parseAnnotation } from './annotations';
 import {
+  createDrawnSignature,
   createTypedSignature,
   discardSignatureDraft,
   importSignatureImage,
@@ -15,8 +16,12 @@ vi.mock('@tauri-apps/api/core', () => ({ invoke: vi.fn() }));
 const invokeMock = vi.mocked(invoke);
 beforeEach(() => invokeMock.mockReset());
 
-const P = { x: 1, y: 2 };
-const VECTOR = { type: 'vector', w: 2000, h: 1000, paths: [[P, P, P]] };
+const VECTOR = {
+  type: 'vector',
+  w: 2000,
+  h: 1000,
+  paths: [[['M', 1, 2], ['L', 3, 4], ['C', 1, 2, 3, 4, 5, 6], ['Z']]],
+};
 
 describe('signature art', () => {
   it('reads vector and raster art', () => {
@@ -25,7 +30,35 @@ describe('signature art', () => {
   });
   it.each([
     ['no size', { type: 'vector', paths: [] }],
-    ['a point that is not one', { ...VECTOR, paths: [[1]] }],
+    ['a command that is not one', { ...VECTOR, paths: [[['M', 1]]] }],
+    [
+      'an unknown command',
+      {
+        ...VECTOR,
+        paths: [
+          [
+            ['M', 1, 2],
+            ['Q', 1, 2, 3, 4],
+          ],
+        ],
+      },
+    ],
+    ['a path without a start', { ...VECTOR, paths: [[['L', 1, 2], ['Z']]] }],
+    ['a number that is not finite', { ...VECTOR, paths: [[['M', 1, Number.NaN]]] }],
+    [
+      'legacy polygons',
+      {
+        ...VECTOR,
+        paths: [
+          [
+            [1, 2],
+            [3, 4],
+            [5, 6],
+          ],
+        ],
+      },
+    ],
+    ['too many paths', { ...VECTOR, paths: Array.from({ length: 65 }, () => [['M', 1, 2]]) }],
     ['an unknown type', { type: 'file', w: 1, h: 1 }],
     ['fractional raster pixels', { type: 'raster', w: 1.5, h: 1 }],
   ])('rejects %s', (_n, value) => expect(parseSignatureArt(value)).toBeNull());
@@ -47,6 +80,13 @@ describe('commands', () => {
       text: 'Ada',
       font: 'homemadeApple',
     });
+  });
+  it('sends the drawn outlines as path commands', async () => {
+    invokeMock.mockResolvedValue({ id: 2, role: 'signature', art: VECTOR });
+    const outlines = [[['M', 1, 2], ['C', 1, 2, 3, 4, 5, 6], ['Z']]] as const;
+    const draft = await createDrawnSignature('signature', outlines);
+    expect(invokeMock).toHaveBeenCalledWith('create_drawn_signature', { role: 'signature', outlines });
+    expect(draft.art).toStrictEqual(VECTOR);
   });
   it('discards a draft by id', async () => {
     invokeMock.mockResolvedValue(undefined);

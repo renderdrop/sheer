@@ -172,6 +172,7 @@
   --spacing-dialog: var(--dialog-width);
   /* The new-file jobs (DESIGN 3.29-3.31): w-sheet (merge), w-dialog-md (split, compress). */
   --spacing-sheet: var(--sheet-width);
+  --spacing-sheet-wide: var(--sheet-width-wide);
   --spacing-dialog-md: var(--dialog-width-md);
   --spacing-insert-marker: var(--insert-marker);
   /* The signature library (DESIGN 3.35): w-sig-thumb-w and h-sig-thumb-h (the preview chip), max-h-lib-list (scrolls after 6 rows). */
@@ -362,9 +363,10 @@
   --tab-max: 240px;
   --dialog-width: 400px; /* the password prompt (DESIGN 3.19) */
   --sheet-width: 560px; /* the merge sheet (DESIGN 3.29) */
-  --sig-pad-width: 512px; /* signature creation (DESIGN 3.33) */
-  --sig-pad-width-initials: 192px;
-  --sig-pad-height: 192px; /* every panel of the sheet fills this slot */
+  --sheet-width-wide: 696px; /* the signature sheet: the 600 px pad plus the 24 px padding on both sides */
+  --sig-pad-width: 600px; /* signature creation (DESIGN 3.33, ADR-051) */
+  --sig-pad-width-initials: 200px;
+  --sig-pad-height: 200px; /* every panel of the sheet fills this slot */
   --dialog-width-md: 480px; /* split and compress (DESIGN 3.30, 3.31) */
   --toast-height: 40px; /* toast (DESIGN 3.12): 40 high, 240 to 400 wide */
   --toast-min: 240px;
@@ -1047,7 +1049,7 @@
   display: block;
 }
 
-/* A handle: a 24 px hit area with the 8 px square drawn at its centre. */
+/* A handle: a 24 px hit area with the round 8 px knob drawn at its centre (surface fill, Iris ring; DESIGN 3.23). */
 [data-annot-handle] {
   position: absolute;
   width: calc(24px / var(--page-scale, 1));
@@ -1066,13 +1068,30 @@
   width: calc(var(--handle-size) / var(--page-scale, 1));
   height: calc(var(--handle-size) / var(--page-scale, 1));
   transform: translate(-50%, -50%);
+  border-radius: var(--radius-pill);
   background: var(--color-page);
-  border: calc(var(--hairline) / var(--page-scale, 1)) solid var(--color-doc-select);
+  border: calc(var(--form-inset) / var(--page-scale, 1)) solid var(--color-doc-select);
+}
+
+[data-annot-handle]:hover::after,
+[data-annot-handle]:active::after {
+  background: var(--color-doc-select);
+}
+
+/* While the item has keyboard focus the knobs take the focus colour, so the focused frame reads as one unit. */
+[data-annot-frame]:focus-visible > [data-annot-handle]::after {
+  border-color: var(--color-focus);
 }
 
 @media (forced-colors: active) {
   [data-annot-handle]::after {
     background: Canvas;
+    border-color: Highlight;
+  }
+
+  [data-annot-handle]:hover::after,
+  [data-annot-handle]:active::after {
+    background: Highlight;
   }
 }
 

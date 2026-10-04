@@ -1,5 +1,6 @@
 import { call } from './call';
 import { toAppError } from './errors';
+import { parsePaths, type PathCmd } from './pathcmd';
 
 /**
  * The signature library (src-tauri/src/commands/library.rs, ADR-041 section 7): saved signatures and initials, encrypted in the app
@@ -19,9 +20,9 @@ export const MAX_NAME_CHARS = 64;
  */
 export type LibraryStatus = 'ready' | 'unavailable' | 'locked';
 
-/** Art on the wire: vector polygons in a `w` x `h` box, or a PNG (standard base64). */
+/** Art on the wire: vector path commands (ADR-051) in a `w` x `h` box, or a PNG (standard base64). */
 export type LibraryArt =
-  { vector: { w: number; h: number; paths: [number, number][][] } } | { raster: { w: number; h: number; png: string } };
+  { vector: { w: number; h: number; paths: PathCmd[][] } } | { raster: { w: number; h: number; png: string } };
 
 /** An entry as the list shows it: metadata and, for vector art, a small preview (never the full art). */
 export interface LibraryItem {
@@ -52,7 +53,6 @@ export interface LibrarySource {
 const ID = /^[0-9a-f]{32}$/;
 const STATUSES: readonly string[] = ['ready', 'unavailable', 'locked'];
 const ROLES: readonly string[] = ['signature', 'initials'];
-const MAX_POINTS = 100_000;
 
 function isObject(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -66,17 +66,6 @@ function isUnits(value: unknown): value is number {
   return typeof value === 'number' && Number.isInteger(value) && value > 0 && value <= 1_000_000;
 }
 
-function isPoint(value: unknown): value is [number, number] {
-  return (
-    Array.isArray(value) &&
-    value.length === 2 &&
-    typeof value[0] === 'number' &&
-    typeof value[1] === 'number' &&
-    Number.isFinite(value[0]) &&
-    Number.isFinite(value[1])
-  );
-}
-
 /** Validates art; `null` if it is not art. Extra keys are dropped. */
 export function parseLibraryArt(value: unknown): LibraryArt | null {
   if (!isObject(value)) return null;
@@ -84,20 +73,8 @@ export function parseLibraryArt(value: unknown): LibraryArt | null {
   if (isObject(vector) && raster === undefined) {
     const { w, h, paths } = vector;
     if (!isUnits(w) || !isUnits(h) || !Array.isArray(paths)) return null;
-    let points = 0;
-    const out: [number, number][][] = [];
-    for (const path of paths as unknown[]) {
-      if (!Array.isArray(path)) return null;
-      points += path.length;
-      if (points > MAX_POINTS) return null;
-      const polygon: [number, number][] = [];
-      for (const point of path as unknown[]) {
-        if (!isPoint(point)) return null;
-        polygon.push([point[0], point[1]]);
-      }
-      out.push(polygon);
-    }
-    return { vector: { w, h, paths: out } };
+    const out = parsePaths(paths);
+    return out === null ? null : { vector: { w, h, paths: out } };
   }
   if (isObject(raster) && vector === undefined) {
     const { w, h, png } = raster;

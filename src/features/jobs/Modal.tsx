@@ -12,7 +12,7 @@ export interface ModalProps {
   /** Id of the heading that names the dialog. */
   labelledBy: string;
   /** Tailwind width class from the tokens: `w-sheet` or `w-dialog-md`. */
-  width: 'w-sheet' | 'w-dialog-md';
+  width: 'w-sheet' | 'w-sheet-wide' | 'w-dialog-md';
   /** Esc and a press on the backdrop. */
   onClose: () => void;
   children: ReactNode;

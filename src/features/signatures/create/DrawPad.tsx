@@ -1,31 +1,33 @@
-import { useEffect, useRef, useState, type PointerEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, type PointerEvent } from 'react';
 
 import { useT } from '../../../i18n';
-import { polygonPoints, pushSample, smoothStroke, strokeOutline, type Sample } from '../../annotations/create/ink';
+import { inkOutline, pathToD, type InkSample } from '../ink';
 import { INK_CLASS, PAD_SURFACE } from './Previews';
 import { PAD_WIDTH_PX, samplePressure, type SigColour } from './model';
 
 /** Where the baseline sits, in percent of the pad height. */
 const BASELINE_PCT = 72;
+/** A stroke keeps at most this many samples (a pad stroke is a few hundred). */
+const MAX_SAMPLES = 4000;
 
 export interface DrawPadProps {
-  /** The finished strokes, smoothed. */
-  strokes: readonly (readonly Sample[])[];
-  onStrokes: (strokes: readonly (readonly Sample[])[]) => void;
+  /** The finished strokes, as the pointer reported them. */
+  strokes: readonly (readonly InkSample[])[];
+  onStrokes: (strokes: readonly (readonly InkSample[])[]) => void;
   colour: SigColour;
   initials: boolean;
 }
 
 /**
- * The ink pad (DESIGN 3.33): pointer strokes with the width following the pressure, drawn as filled outlines. Coordinates are the
- * pad's own pixels, so the outlines go to the backend as they are seen. The pad is an image for screen readers; the Type tab is the
- * alternative for anyone who cannot draw.
+ * The ink pad (DESIGN 3.33, ADR-051): pointer strokes drawn as filled Bézier outlines, the live stroke with the same `inkOutline`
+ * that makes the saved art. Coordinates are the pad's own CSS pixels. The pad is SVG, so it is sharp at every device pixel ratio and
+ * needs no backing store to re-scale. It is an image for screen readers; the Type tab is the alternative for anyone who cannot draw.
  */
 export function DrawPad({ strokes, onStrokes, colour, initials }: DrawPadProps) {
   const t = useT();
   const pad = useRef<HTMLDivElement>(null);
-  const live = useRef<{ pointerId: number; buffer: Sample[] } | null>(null);
-  const livePoly = useRef<SVGPolygonElement>(null);
+  const live = useRef<{ pointerId: number; buffer: InkSample[] } | null>(null);
+  const livePath = useRef<SVGPathElement>(null);
   const frame = useRef<number | null>(null);
   /** Only whether a stroke is in progress is state; the growing outline is written to the DOM once per frame. */
   const [drawing, setDrawing] = useState(false);
@@ -36,20 +38,24 @@ export function DrawPad({ strokes, onStrokes, colour, initials }: DrawPadProps) 
   };
   useEffect(() => cancelFrame, []);
 
-  const paintLive = (buffer: readonly Sample[]) => {
-    livePoly.current?.setAttribute(
-      'points',
-      buffer.length > 0 ? polygonPoints(strokeOutline(buffer, PAD_WIDTH_PX)) : '',
-    );
+  const paintLive = (buffer: readonly InkSample[]) => {
+    livePath.current?.setAttribute('d', buffer.length > 0 ? pathToD([inkOutline(buffer, PAD_WIDTH_PX)]) : '');
   };
 
-  const sampleOf = (event: PointerEvent<HTMLDivElement>): Sample => {
+  const sampleOf = (event: {
+    clientX: number;
+    clientY: number;
+    timeStamp: number;
+    pointerType: string;
+    pressure: number;
+  }) => {
     const box = pad.current?.getBoundingClientRect();
     return {
       x: event.clientX - (box?.left ?? 0),
       y: event.clientY - (box?.top ?? 0),
+      t: event.timeStamp,
       pressure: samplePressure(event.pointerType, event.pressure),
-    };
+    } satisfies InkSample;
   };
 
   const finish = (event: PointerEvent<HTMLDivElement>) => {
@@ -61,7 +67,7 @@ export function DrawPad({ strokes, onStrokes, colour, initials }: DrawPadProps) 
     }
     cancelFrame();
     paintLive([]);
-    if (current.buffer.length > 0) onStrokes([...strokes, smoothStroke(current.buffer)]);
+    if (current.buffer.length > 0) onStrokes([...strokes, current.buffer]);
     setDrawing(false);
   };
 
@@ -69,8 +75,7 @@ export function DrawPad({ strokes, onStrokes, colour, initials }: DrawPadProps) 
     if (event.button !== 0 || live.current !== null) return;
     event.preventDefault();
     if (typeof pad.current?.setPointerCapture === 'function') pad.current.setPointerCapture(event.pointerId);
-    const buffer: Sample[] = [];
-    pushSample(buffer, sampleOf(event));
+    const buffer: InkSample[] = [sampleOf(event)];
     live.current = { pointerId: event.pointerId, buffer };
     setDrawing(true);
     paintLive(buffer);
@@ -79,13 +84,19 @@ export function DrawPad({ strokes, onStrokes, colour, initials }: DrawPadProps) 
   const onMove = (event: PointerEvent<HTMLDivElement>) => {
     const current = live.current;
     if (current === null || current.pointerId !== event.pointerId) return;
-    if (!pushSample(current.buffer, sampleOf(event)) || frame.current !== null) return;
+    const native = event.nativeEvent;
+    const batch = typeof native.getCoalescedEvents === 'function' ? native.getCoalescedEvents() : [];
+    for (const item of batch.length > 0 ? batch : [native]) {
+      if (current.buffer.length < MAX_SAMPLES) current.buffer.push(sampleOf(item));
+    }
+    if (frame.current !== null) return;
     frame.current = requestAnimationFrame(() => {
       frame.current = null;
       if (live.current !== null) paintLive(live.current.buffer);
     });
   };
 
+  const done = useMemo(() => pathToD(strokes.map((stroke) => inkOutline(stroke, PAD_WIDTH_PX))), [strokes]);
   const empty = strokes.length === 0 && !drawing;
 
   return (
@@ -113,10 +124,8 @@ export function DrawPad({ strokes, onStrokes, colour, initials }: DrawPadProps) 
         </span>
       )}
       <svg aria-hidden="true" className={`absolute inset-0 size-full ${INK_CLASS[colour]}`}>
-        {strokes.map((stroke, index) => (
-          <polygon key={index} points={polygonPoints(strokeOutline(stroke, PAD_WIDTH_PX))} fill="currentColor" />
-        ))}
-        <polygon ref={livePoly} fill="currentColor" />
+        <path d={done} fill="currentColor" fillRule="nonzero" />
+        <path ref={livePath} fill="currentColor" fillRule="nonzero" />
       </svg>
     </div>
   );

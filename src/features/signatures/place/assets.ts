@@ -48,7 +48,7 @@ export function forgetAssets(): void {
 }
 
 /** Longest side of the preview of raster art, in px. */
-const PREVIEW_PX = 512;
+const PREVIEW_PX = 1024;
 
 /** An object URL of the PNG of a raster asset: `null` until it is there or when it cannot be had. Revoked when not needed. */
 export function useRasterUrl(docId: number, assetId: number, enabled: boolean): string | null {

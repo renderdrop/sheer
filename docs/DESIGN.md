@@ -976,8 +976,9 @@ text selection, §3.17: H with selected text marks it at once).
 Rotation). Clean annotations are in the bitmap; the overlay draws drafts, edited annotations and all selection chrome. Search hits
 stay in layer 2; the **active** hit's outline is redrawn in layer 3 so a filled shape never hides it. Popovers sit at `--z-popover`.
 
-**Anatomy.** Selection = bounding box 2 px `--color-doc-select`, 2 outside the shape; handles `--handle-size` 8, white fill, 1 px
-`--color-doc-select`, hit area 24. Boxes and ellipses: 8 handles; Line/Arrow: 2 endpoints; Ink: 4 corners; Highlight family and
+**Anatomy.** Selection = bounding box 2 px `--color-doc-select`, 2 outside the shape; handles `--handle-size` 8, **round** (`--radius-pill`), page-surface fill, 2 px
+`--color-doc-select` ring, hit area 24; hover/press fill `--color-doc-select`; while the item has keyboard focus the ring is `--color-focus`.
+Never square. Boxes and ellipses: 8 handles; Line/Arrow: 2 endpoints; Ink: 4 corners; Highlight family and
 Note: box only (no resize).
 
 | State | Treatment |
@@ -998,7 +999,7 @@ nudges coalesce for 500 ms into one undo step. Delete/Backspace deletes (announc
 Esc clears the selection (§2.3 order).
 
 **A11y.** `role=button`, `aria-roledescription` = type (`tool.*`), `aria-pressed` = selected, name `annot.name`.
-**Motion:** none; the canvas never animates (§2.4). **Forced colors:** box and handle borders `Highlight`, handle fill `Canvas`.
+**Motion:** none; the canvas never animates (§2.4). **Forced colors:** box and handle borders `Highlight`, handle fill `Canvas` (hover `Highlight`).
 
 **Tokens (new):** `--handle-size` 8, `--color-doc-hover` `rgba(91,91,214,.50)` both themes.
 
@@ -1305,14 +1306,16 @@ supplies the order, so an unmounted page scrolls into view (nearest, at once). P
 
 ### 3.33 Signature creation sheet (M4)
 
-**Entry.** Sign popover (§3.34), library (§3.35). Dialog as §3.29, 560 w, padding 24: `signature` tile | `sign.createTitle` or
+**Entry.** Sign popover (§3.34), library (§3.35). Dialog as §3.29 but 696 w (`--sheet-width-wide`: the pad plus padding), padding 24: `signature` tile | `sign.createTitle` or
 `sign.createInitials`. 16 below, a segmented tablist (§3.6, 32 h): Draw `pen-line` · Type `type` · Image `image` (last persisted).
-Every panel fills the same 192 h slot (`--sig-pad-height`), so switching never resizes.
+Every panel fills the same 200 h slot (`--sig-pad-height`), so switching never resizes.
 
-**Draw.** Pad: white in both themes (document surface), 1 px `--color-divider`, radius 12, 512 w (`--sig-pad-width`; initials 192,
-centred). Baseline 1 px `--ink-30` at 72 % height; meta `sign.here` centred until the first stroke. Width 1–4 px from pointer
-`pressure` (mouse: constant 2), smoothed; Rust stores vector paths. Below: colour radiogroup of two §3.24 swatches (`--annot-black`
-default, `--annot-blue`) | spacer | ghost sm `eraser` `sign.clear`. Primary+Z removes the last stroke. Pad `role=img`
+**Draw.** Pad: white in both themes (document surface), 1 px `--color-divider`, radius 12, 600 w (`--sig-pad-width`; initials 200 × 200,
+centred). Baseline 1 px `--ink-30` at 72 % height; meta `sign.here` centred until the first stroke. Ink (ADR-051, `features/signatures/ink`): centripetal Catmull-Rom centreline, width from velocity (fast thin, slow thick, 0.45–1.5 × the
+3 px nominal, eased) plus pen `pressure` when reported (mouse: neutral); round caps; the outline is cubic Béziers. The pad is SVG (sharp at
+any devicePixelRatio, no backing store) and the live stroke uses the same function as the saved art, redrawn once per animation frame.
+Rust validates and stores the Bézier paths. Below: colour radiogroup of two §3.24 swatches (`--annot-black`
+default, `--annot-blue`) | spacer | ghost sm `eraser` `sign.clear` (label "New": clears the pad; a real button, so Tab and Enter/Space work). Primary+Z removes the last stroke. Pad `role=img`
 `sign.padLabel`; meta `sign.keyboardHint`.
 
 **Type.** md Field, full width, prefilled with the author name (§3.13), ≤ 64 chars. Below: radiogroup of up to four 248 × 64 cards
@@ -1334,7 +1337,7 @@ Cancel, primary `sign.create` (`aria-disabled` while empty). From the popover, C
 |---|---|---|
 | `sign.createTitle` / `.createInitials` | Create signature / Create initials | Unterschrift erstellen / Initialen erstellen |
 | `sign.draw` / `.type` / `.image` | Draw / Type / Image | Zeichnen / Tippen / Bild |
-| `sign.here` / `.clear` / `.padLabel` | Sign here / Clear / Signature pad | Hier unterschreiben / Löschen / Unterschriftenfeld |
+| `sign.here` / `.clear` / `.padLabel` | Sign here / New / Signature pad | Hier unterschreiben / Neu / Unterschriftenfeld |
 | `sign.keyboardHint` | Can't draw? Use Type. | Zeichnen nicht möglich? Nutzen Sie Tippen. |
 | `sign.choose` / `.badImage` | Choose image… / Use a PNG or JPEG under 10 MB. | Bild auswählen… / PNG oder JPEG unter 10 MB verwenden. |
 | `sign.save` / `.create` | Save to library / Create | In Bibliothek speichern / Erstellen |
@@ -1351,7 +1354,7 @@ Cancel, primary `sign.create` (`aria-disabled` while empty). From the popover, C
 layer 3, cursor `copy`; a click places it centred on the pointer, clamped to the page. Enter on the focused canvas places at the
 viewport centre (§3.22); Esc disarms. Defaults: signature 36 pt high, initials 24 pt, text/date 12 pt Helvetica, marks 12 × 12 pt.
 
-**Editing.** Placed items are selected (§3.23). Signatures, initials, marks: 4 corner handles, aspect always locked. Text, Date: 2 side
+**Editing.** Placed items are selected (§3.23; round handles, Iris ring). Vector art is drawn as SVG `<path d>` (Béziers), the picture as the 1 024 px frame. Signatures, initials, marks: 4 corner handles, aspect always locked. Text, Date: 2 side
 handles (width); editing as §3.25 free text. Move, nudge, delete, undo per §3.23. Stored as annotations; Flatten (§3.32) bakes them.
 
 **Inspector.** Colour (§3.24): drawn/typed ink black or blue; image none; marks and text the full palette. Date: segmented
