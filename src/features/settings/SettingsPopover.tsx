@@ -6,6 +6,7 @@ import { APP_NAME } from '../../config/app';
 import type { AppError } from '../../api/errors';
 import { errorText, useT, type Language, type PlainKey } from '../../i18n';
 import { useSettings } from '../../stores/settings';
+import { RecogniseSwitch } from '../modes/RecogniseSwitch';
 import { SegmentedControl, type SegmentOption } from './SegmentedControl';
 import { openSignatureLibrary } from '../signatures/library';
 import { resetTips } from '../tips/runtime';
@@ -235,6 +236,7 @@ function SettingsForm() {
         )}
       </Setting>
       <AuthorRow />
+      <Setting label={t('settings.drawing')}>{() => <RecogniseSwitch />}</Setting>
       <SignaturesRow />
       <DefaultAppRow />
       <Setting label={t('settings.updates')} hint={t('settings.updates.hint')}>

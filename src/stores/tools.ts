@@ -38,8 +38,20 @@ export function parseDefaults(raw: unknown): KindDefaults {
   for (const kind of KINDS) {
     const entry = (raw as Record<string, unknown>)[kind];
     if (typeof entry !== 'object' || entry === null) continue;
-    const { color, opacity, width, fontSize, head, align, border, borderWidth, borderColor, fillOn, fillColor } =
-      entry as Record<string, unknown>;
+    const {
+      color,
+      opacity,
+      width,
+      fontSize,
+      head,
+      bothEnds,
+      align,
+      border,
+      borderWidth,
+      borderColor,
+      fillOn,
+      fillColor,
+    } = entry as Record<string, unknown>;
     const value: { -readonly [K in keyof KindDefault]: KindDefault[K] } = {};
     if (isColour(color)) value.color = color;
     const knownAlign = ALIGNS.find((a) => a === align);
@@ -54,6 +66,7 @@ export function parseDefaults(raw: unknown): KindDefaults {
     if (isNum(fontSize, 6, 144)) value.fontSize = fontSize;
     const known = HEADS.find((h) => h === head);
     if (known !== undefined) value.head = known;
+    if (typeof bothEnds === 'boolean') value.bothEnds = bothEnds;
     if (Object.keys(value).length > 0) out[kind] = value;
   }
   return out;
@@ -85,6 +98,8 @@ export interface KindDefault {
   width?: number;
   fontSize?: number;
   head?: LineEnd;
+  /** An arrow has its head at both ends (DESIGN 3.5 B11). */
+  bothEnds?: boolean;
   /** Text comment (DESIGN 3.5 B4): alignment, border on/off with its width and colour, fill on/off with its colour. */
   align?: TextAlign;
   border?: boolean;
@@ -101,6 +116,9 @@ export interface ToolsState {
   shapes: ShapeVariant;
   /** The last used style per creation kind. */
   defaults: KindDefaults;
+  /** Whether Zeichnen turns a rough shape into a real one when the pen pauses (DESIGN 3.5 B11); default on. */
+  recogniseShapes: boolean;
+  setRecogniseShapes: (on: boolean) => void;
   /** Remembers a change as the default of a kind (merged into what the kind has). */
   setDefault: (kind: CreationKind, change: KindDefault) => void;
   setMarkup: (variant: MarkupVariant) => void;
@@ -135,9 +153,29 @@ function save(state: Pick<ToolsState, 'markup' | 'shapes'>): void {
 const next = <T extends string>(all: readonly T[], current: T): T =>
   all[(all.indexOf(current) + 1) % all.length] ?? current;
 
+/** UI storage of the shape recognition switch (DESIGN 3.5 B11): "0" is off, anything else on. */
+export const RECOGNISE_KEY = 'sheer.tools.shapeRecognition';
+
+function loadRecognise(): boolean {
+  try {
+    return globalThis.localStorage.getItem(RECOGNISE_KEY) !== '0';
+  } catch {
+    return true;
+  }
+}
+
 export const useTools = create<ToolsState>()((set, get) => ({
   ...load(),
   defaults: loadDefaults(),
+  recogniseShapes: loadRecognise(),
+  setRecogniseShapes: (on) => {
+    set({ recogniseShapes: on });
+    try {
+      globalThis.localStorage.setItem(RECOGNISE_KEY, on ? '1' : '0');
+    } catch {
+      // Storage unavailable or full: the choice lasts for the session.
+    }
+  },
   setDefault: (kind, change) => {
     const defaults = { ...get().defaults, [kind]: { ...get().defaults[kind], ...change } };
     set({ defaults });

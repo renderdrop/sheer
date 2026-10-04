@@ -31,6 +31,7 @@ use crate::model::annotation::{Annotation, AnnotationBody, ReviewState, Rgb};
 use crate::model::doc_state::{ChangeSet, DocState, Stamp};
 use crate::model::ids::AnnotId;
 use crate::model::page::unrotated;
+use crate::pdfwrite::lines::{self, LineRead};
 use crate::pdfwrite::reviews::{self, ReviewLink};
 
 /// Longest excerpt of an annotation's contents in a summary, in characters.
@@ -84,6 +85,18 @@ fn read_links_file(
     path: std::path::PathBuf,
     page_index: u32,
 ) -> Result<HashMap<u32, ReviewLink>, AppError> {
+    read_page_file(path, page_index, reviews::read_page)
+}
+
+/// Runs `read` over the bytes of the file at `path` and page `page_index`, on a thread of its own, with a deadline.
+/// What a page reader answers: a value per annotation position.
+type PageReader<T> = fn(&[u8], u32) -> Result<HashMap<u32, T>, AppError>;
+
+fn read_page_file<T: Send + 'static>(
+    path: std::path::PathBuf,
+    page_index: u32,
+    read: PageReader<T>,
+) -> Result<HashMap<u32, T>, AppError> {
     let (sender, receiver) = std::sync::mpsc::channel();
     let spawned = std::thread::Builder::new()
         .name("sheer-review".into())
@@ -91,7 +104,7 @@ fn read_links_file(
         .spawn(move || {
             let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                 let (bytes, _) = super::save::read_all(crate::documents::intake::admit(&path)?)?;
-                reviews::read_page(&bytes, page_index)
+                read(&bytes, page_index)
             }))
             .unwrap_or_else(|_| {
                 Err(AppError::logged(
@@ -432,6 +445,7 @@ impl AppState {
             // Not under the lock: a read of a page takes the worker's time, and the model must stay available meanwhile. Two
             // requests at once read twice; the model keeps the first answer (`DocState::import_page`).
             let items = self.engine.import_annotations(id, page_index)?;
+            let items = self.lift_lines(id, page_index, items);
             let links = self.review_links(id, page_index, &items);
             self.model(id, |state| {
                 state.import_page_linked(page, &items, &links);
@@ -439,6 +453,34 @@ impl AppState {
             })?;
         }
         self.model(id, |state| Ok(state.list(page)))
+    }
+
+    /// Makes the `Line` annotations of the file that PDFium lists as opaque into lines the model can edit (`pdfwrite::lines`). Only a
+    /// page with such an annotation is looked at; a file that cannot be read again leaves them opaque.
+    fn lift_lines(
+        &self,
+        id: DocumentId,
+        page_index: u32,
+        mut items: Vec<crate::model::annotation::Imported>,
+    ) -> Vec<crate::model::annotation::Imported> {
+        let has_line = items.iter().any(
+            |item| matches!(&item.body, AnnotationBody::Opaque { subtype } if subtype == "Line"),
+        );
+        let readable = self.info(id).is_some_and(|info| !info.flags.encrypted);
+        if !has_line || !readable {
+            return items;
+        }
+        let Some(path) = self.registry.path(id) else {
+            return items;
+        };
+        let found: HashMap<u32, LineRead> =
+            read_page_file(path, page_index, lines::read_page).unwrap_or_default();
+        for item in &mut items {
+            if let Some(read) = found.get(&item.origin.annot_index) {
+                lines::lift(item, read);
+            }
+        }
+        items
     }
 
     /// The reply links and review states the file has for the notes of a page (see `pdfwrite::reviews`). Only a page with a note is
@@ -483,6 +525,7 @@ impl AppState {
         for (page, index) in self.registry.page_order(id)? {
             if !self.model(id, |state| Ok(state.is_imported(page)))? {
                 let items = self.engine.import_annotations_background(id, index)?;
+                let items = self.lift_lines(id, index, items);
                 let links = self.review_links(id, index, &items);
                 self.model(id, |state| {
                     state.import_page_linked(page, &items, &links);

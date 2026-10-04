@@ -247,7 +247,7 @@ const kommentieren: Maker = (inputs) => {
     markupSlot('strikeout', t('modes.tool.strike'), Strikethrough),
     plain('note', 'note', t('modes.tool.note'), StickyNote, 'tool-note'),
     plain('text', 'freeText', t('modes.tool.freeText'), MessageSquareText, 'tool-text'),
-    plain('draw', 'draw', t('modes.tool.draw'), PenLine, 'tool-draw'),
+    { ...plain('draw', 'draw', t('modes.tool.draw'), PenLine, 'tool-draw'), recogniseSwitch: true },
     {
       id: 'shapes',
       label: t('modes.tool.shapes'),

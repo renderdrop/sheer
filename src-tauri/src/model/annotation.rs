@@ -677,11 +677,11 @@ impl AnnotationBody {
                 let mut extent = Extent::new();
                 extent.add(*from);
                 extent.add(*to);
-                // An arrow head reaches out sideways by a few widths.
+                // An arrow head (3 widths + 6 pt long, 30 degrees) reaches out sideways by less than this.
                 let arrow = if *head == LineEnd::None && *tail == LineEnd::None {
                     0.0
                 } else {
-                    width * 5.0
+                    (width * 5.0).max(width * 1.5 + 3.0)
                 };
                 Ok(extent.rect(width / 2.0 + arrow))
             }

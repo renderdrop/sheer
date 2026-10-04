@@ -1212,5 +1212,10 @@
   "modes.tool.crop": "Crop",
   "modes.tool.redact": "Redact",
   "modes.tool.protect": "Protect…",
-  "modes.tool.properties": "Metadata…"
+  "modes.tool.properties": "Metadata…",
+  "shape.arrowEnds": "Ends",
+  "shape.arrowEnd": "End",
+  "shape.arrowBoth": "Both",
+  "settings.drawing": "Drawing",
+  "settings.shapeRecognition": "Recognise shapes when you pause"
 }

@@ -17,7 +17,7 @@ import type { AnnotationStyle } from '../inspector/style';
 export type MiniObject = Annotation | ContentAnnotation;
 
 /** The groups of selection that have the same controls (DESIGN v2 3.3 table). */
-export type BarKind = 'markup' | 'note' | 'text' | 'freeText' | 'stroke' | 'shape' | 'mark' | 'plain';
+export type BarKind = 'markup' | 'note' | 'text' | 'freeText' | 'stroke' | 'arrow' | 'shape' | 'mark' | 'plain';
 
 /** The controls of the bar; Löschen is always last and not listed. */
 export type ControlId =
@@ -32,6 +32,7 @@ export type ControlId =
   | 'textFill'
   | 'strokeWidth'
   | 'opacity'
+  | 'arrowEnds'
   | 'fill';
 
 /** The order the controls have in the bar. */
@@ -42,6 +43,7 @@ const ORDER: readonly ControlId[] = [
   'kindMark',
   'strokeWidth',
   'opacity',
+  'arrowEnds',
   'fill',
   'fontSize',
   'align',
@@ -49,6 +51,10 @@ const ORDER: readonly ControlId[] = [
   'textFill',
   'comment',
 ];
+
+/** A line with a head at either end is an arrow (DESIGN 3.5 B11). */
+const hasEnd = (line: { head: string; tail?: string }): boolean =>
+  line.head !== 'none' || (line.tail !== undefined && line.tail !== 'none');
 
 export function barKindOf(object: MiniObject): BarKind | null {
   switch (object.kind) {
@@ -63,8 +69,10 @@ export function barKindOf(object: MiniObject): BarKind | null {
     case 'textBox':
       return 'text';
     case 'ink':
-    case 'line':
       return 'stroke';
+    case 'line':
+      // A line with an end is an arrow (DESIGN 3.5 B11): it has the Ends control as well.
+      return hasEnd(object) ? 'arrow' : 'stroke';
     case 'rect':
     case 'ellipse':
       return 'shape';
@@ -86,6 +94,7 @@ const CONTROLS: Readonly<Record<BarKind, readonly ControlId[]>> = {
   text: ['colourStroke', 'fontSize'],
   freeText: ['colourStroke', 'fontSize', 'align', 'textBorder', 'textFill'],
   stroke: ['colourStroke', 'strokeWidth', 'opacity'],
+  arrow: ['colourStroke', 'strokeWidth', 'opacity', 'arrowEnds'],
   shape: ['colourStroke', 'strokeWidth', 'opacity', 'fill'],
   mark: ['kindMark'],
   plain: [],
@@ -115,7 +124,11 @@ export interface MiniValues {
   borderColour: Shared<Rgb>;
   /** The markup kind or mark glyph. */
   kind: Shared<string>;
+  /** An arrow's heads: at its end only, or at both ends (DESIGN 3.5 B11). */
+  ends: Shared<ArrowEnds>;
 }
+
+export type ArrowEnds = 'end' | 'both';
 
 export function valuesOf(objects: readonly MiniObject[]): MiniValues {
   const numbers = (pick: (o: MiniObject) => number | null): number[] =>
@@ -144,6 +157,11 @@ export function valuesOf(objects: readonly MiniObject[]): MiniValues {
       sameRgb,
     ),
     kind: shared(objects.map((o) => (o.kind === 'mark' ? o.glyph : o.kind))),
+    ends: shared(
+      objects.flatMap((o): ArrowEnds[] =>
+        o.kind === 'line' && hasEnd(o) ? [o.head !== 'none' && o.tail !== 'none' ? 'both' : 'end'] : [],
+      ),
+    ),
   };
 }
 
@@ -154,6 +172,8 @@ export type MiniChange = Partial<AnnotationStyle> & {
   /** 0 switches the border off. */
   borderWidth?: number;
   borderColor?: Rgb;
+  /** An arrow's heads (DESIGN 3.5 B11). */
+  ends?: ArrowEnds;
 };
 
 /** The font sizes of the bar's dropdown (DESIGN v2 3.3: 8 to 72 pt). */
@@ -170,8 +190,15 @@ export function patchOf(object: MiniObject, change: MiniChange): AnnotationPatch
   if (kind === null || kind === 'mark' || kind === 'plain') return patch;
   const text = kind === 'text' || kind === 'freeText';
   if (change.color !== undefined) patch.color = change.color;
-  if (change.opacity !== undefined && (kind === 'stroke' || kind === 'shape')) patch.opacity = change.opacity;
-  if (change.width !== undefined && (kind === 'stroke' || kind === 'shape')) patch.width = change.width;
+  const drawn = kind === 'stroke' || kind === 'arrow' || kind === 'shape';
+  if (change.opacity !== undefined && drawn) patch.opacity = change.opacity;
+  if (change.width !== undefined && drawn) patch.width = change.width;
+  if (change.ends !== undefined && kind === 'arrow' && object.kind === 'line') {
+    // The head is the open or closed arrow it has (a file's tail-only arrow gets it at the end); "End" clears the other end.
+    const head = object.head !== 'none' ? object.head : object.tail !== 'none' ? object.tail : 'openArrow';
+    patch.head = head;
+    patch.tail = change.ends === 'both' ? head : 'none';
+  }
   if (change.fill !== undefined && (kind === 'shape' || kind === 'freeText')) patch.fill = change.fill;
   if (change.fontSize !== undefined && text) patch.fontSize = change.fontSize;
   if (kind === 'freeText') {
@@ -207,7 +234,7 @@ export function creationKindOf(object: MiniObject): CreationKind | null {
     case 'ellipse':
       return object.kind;
     case 'line':
-      return object.head === 'none' ? 'line' : 'arrow';
+      return hasEnd(object) ? 'arrow' : 'line';
     default:
       return null;
   }
@@ -221,6 +248,7 @@ export function defaultOf(object: MiniObject, change: MiniChange): Partial<Annot
   if (patch.opacity !== undefined) out.opacity = patch.opacity;
   if (patch.width !== undefined) out.width = patch.width;
   if (patch.fontSize !== undefined) out.fontSize = patch.fontSize;
+  if (change.ends !== undefined && patch.tail !== undefined) out.bothEnds = change.ends === 'both';
   return Object.keys(out).length === 0 ? null : out;
 }
 

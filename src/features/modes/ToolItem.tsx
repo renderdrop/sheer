@@ -8,6 +8,7 @@ import { useT } from '../../i18n';
 import { detectPlatform } from '../../lib/platform';
 import { useSettings } from '../../stores/settings';
 import { ColourRow } from './ColourRow';
+import { RecogniseSwitch } from './RecogniseSwitch';
 import type { SlotDef, VariantDef } from './model';
 
 /** The main part of an item (DESIGN v2 3.2): 36 high, radius md, icon 18 + 6 + label; the active tool is Solar with Ink 600 (2.3). */
@@ -163,6 +164,7 @@ export function ToolItem({ slot, iconOnly, stop }: ToolItemProps) {
                 </div>
               )}
               <ColourRow kinds={slot.colour?.kinds ?? []} />
+              {slot.recogniseSwitch === true && <RecogniseSwitch className="border-t border-border-subtle p-2" />}
             </div>
           )}
         </Popover>

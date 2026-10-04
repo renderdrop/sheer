@@ -1212,5 +1212,10 @@
   "modes.tool.crop": "Zuschneiden",
   "modes.tool.redact": "Schwärzen",
   "modes.tool.protect": "Schützen…",
-  "modes.tool.properties": "Metadaten…"
+  "modes.tool.properties": "Metadaten…",
+  "shape.arrowEnds": "Enden",
+  "shape.arrowEnd": "Ende",
+  "shape.arrowBoth": "Beide",
+  "settings.drawing": "Zeichnen",
+  "settings.shapeRecognition": "Formen beim Innehalten erkennen"
 }

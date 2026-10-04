@@ -23,8 +23,10 @@ const LINE_HEIGHT = 1.2;
 const TEXT_PAD_PT = FREE_TEXT_PAD;
 /** The first baseline below the top of the text area, in times the font size (the same as the appearance stream and the editor). */
 const BASELINE = 0.86;
-const ARROW_LENGTH_FACTOR = 4;
-const ARROW_MIN_PT = 6;
+/** The arrow head (DESIGN 3.5 B11, the same as the appearance stream): 3 widths + 6 pt long, 30 degrees to each side. */
+const ARROW_LENGTH_PER_WIDTH = 3;
+const ARROW_LENGTH_BASE_PT = 6;
+const ARROW_HALF_ANGLE = Math.PI / 6;
 /** The share of a markup's height at which the strike-out runs, and the underline's width as a share of the height. */
 const STRIKE_AT = 0.55;
 const UNDERLINE_SHARE = 0.08;
@@ -33,8 +35,8 @@ const UNDERLINE_MIN_PT = 0.75;
 /** The points of an arrow head at `tip`, pointing away from `from`. */
 export function arrowHead(from: Point, tip: Point, width: number): readonly Point[] {
   const angle = Math.atan2(tip.y - from.y, tip.x - from.x);
-  const length = Math.max(ARROW_MIN_PT, width * ARROW_LENGTH_FACTOR);
-  const spread = Math.PI / 7;
+  const length = width * ARROW_LENGTH_PER_WIDTH + ARROW_LENGTH_BASE_PT;
+  const spread = ARROW_HALF_ANGLE;
   return [
     tip,
     { x: tip.x - length * Math.cos(angle - spread), y: tip.y - length * Math.sin(angle - spread) },
@@ -46,7 +48,7 @@ const pointsAttr = (points: readonly Point[]): string => points.map((p) => `${p.
 const outlineD = (points: readonly Point[]): string =>
   points.length === 0 ? '' : `M${points.map((p) => `${p.x} ${p.y}`).join('L')}Z`;
 
-function EndHead({
+export function EndHead({
   at,
   from,
   end,

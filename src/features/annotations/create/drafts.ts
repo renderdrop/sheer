@@ -5,6 +5,7 @@ import { DEFAULT_COLOURS, HIGHLIGHT_OPACITY } from '../../inspector/palette';
 import { boxFromPoints, boxInPage, clampToPage, constrainSquare, snapAngle } from './geometry';
 import { FREE_TEXT_MIN_WIDTH, boxHeight, startX } from './freeTextLayout';
 import { strokeOutline, toPoints, type Sample } from './ink';
+import type { Recognised } from './recognise';
 
 /** The annotation drafts a creation makes (one `createAnnotation` command each), and the style they start from. */
 
@@ -23,6 +24,8 @@ export interface CreationStyle {
   dashed: boolean;
   fontSize: number;
   head: LineEnd;
+  /** An arrow has its head at both ends (DESIGN 3.5 B11). */
+  bothEnds: boolean;
   /** Text comment only: the alignment of its lines, its border (0 is none) and the border's colour. `fill` is its background. */
   align: TextAlign;
   borderWidth: number;
@@ -39,6 +42,7 @@ export function defaultStyle(kind: CreationKind): CreationStyle {
     dashed: false,
     fontSize: 12,
     head: 'none',
+    bothEnds: false,
     align: 'left',
     borderWidth: 0,
     borderColor: PALETTE.ink,
@@ -153,14 +157,16 @@ export function shapeDraft(
   const a = clampToPage(from, page[0], page[1]);
   const b = clampToPage(to, page[0], page[1]);
   if (kind === 'line' || kind === 'arrow') {
+    // The head is the tip, at `to`; an arrow is an open head unless the style says otherwise (DESIGN 3.5 B11).
+    const head: LineEnd = kind === 'arrow' ? (style.head === 'none' ? 'openArrow' : style.head) : 'none';
     return {
       kind: 'line',
       pageId,
       from: a,
       to: b,
       width: style.width,
-      head: kind === 'arrow' ? (style.head === 'none' ? 'closedArrow' : style.head) : 'none', // the head is the tip, at `to`
-      tail: 'none',
+      head,
+      tail: kind === 'arrow' && style.bothEnds ? head : 'none',
       color: style.color,
       opacity: style.opacity,
     };
@@ -188,4 +194,29 @@ export function inkDraft(
     .map((samples) => ({ points: toPoints(samples), outline: strokeOutline(samples, style.width) }));
   if (made.length === 0) return null;
   return { kind: 'ink', pageId, strokes: made, width: style.width, color: style.color, opacity: style.opacity };
+}
+
+/** What a recognised shape is as a draft: a real shape annotation in the stroke's colour and width, never filled (DESIGN 3.5 B11). */
+export function recognisedDraft(
+  shape: Recognised,
+  pageId: number,
+  page: readonly [number, number],
+  style: CreationStyle,
+): AnnotationDraft {
+  const plain: CreationStyle = { ...style, fill: null, dashed: false, head: 'none', bothEnds: false };
+  switch (shape.kind) {
+    case 'line':
+      return shapeDraft('line', pageId, shape.from, shape.to, page, plain);
+    case 'arrow':
+      return shapeDraft('arrow', pageId, shape.from, shape.to, page, { ...plain, head: 'openArrow' });
+    default:
+      return shapeDraft(
+        shape.kind,
+        pageId,
+        { x: shape.box.x, y: shape.box.y },
+        { x: shape.box.x + shape.box.w, y: shape.box.y + shape.box.h },
+        page,
+        plain,
+      );
+  }
 }

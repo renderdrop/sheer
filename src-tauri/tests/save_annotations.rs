@@ -325,7 +325,7 @@ fn every_type_is_written_with_an_appearance_and_pdfium_reads_it_back() {
             "opaque",
             "rect",
             "ellipse",
-            "opaque"
+            "line"
         ]
     );
     let highlight = &listed[0];
@@ -1029,4 +1029,82 @@ fn a_free_text_without_border_or_fill_reads_back_without_them_and_a_change_is_wr
     assert!((border_width - 1.0).abs() < 0.1);
     assert_eq!(border_color.map(|c| c.0), Some([225, 92, 134]));
     assert_eq!(serde_json::to_value(align).unwrap(), json!("right"));
+}
+
+/// Whether a pixel in the 3 by 3 around page position (`x`, `y`) is dark.
+fn dark_near(frame: &(u32, u32, Vec<u8>), x: f32, y: f32) -> bool {
+    let scale = frame.0 as f32 / 612.0;
+    (-1..=1).any(|dx| {
+        (-1..=1).any(|dy| {
+            let [r, g, b] = pixel(frame, x + dx as f32 / scale, y + dy as f32 / scale);
+            u32::from(r) + u32::from(g) + u32::from(b) < 300
+        })
+    })
+}
+
+#[test]
+fn an_arrow_is_written_with_an_open_head_drawn_and_comes_back_as_an_editable_line() {
+    use sheer_lib::model::annotation::LineEnd;
+    let Some(state) = state() else { return };
+    let scratch = Scratch::new("arrow");
+    let (id, path) = open(state, &scratch, "arrow.pdf", &base());
+    let arrow = create(
+        state,
+        id,
+        json!({"pageId": 1, "kind": "line", "color": [15, 15, 15], "from": {"x": 72.0, "y": 520.0}, "to": {"x": 272.0, "y": 520.0}, "width": 2.0, "head": "openArrow", "tail": "none"}),
+    );
+    let plain = create(
+        state,
+        id,
+        json!({"pageId": 1, "kind": "line", "color": [15, 15, 15], "from": {"x": 72.0, "y": 620.0}, "to": {"x": 272.0, "y": 620.0}, "width": 2.0, "head": "none", "tail": "none"}),
+    );
+    state.save_in_place(id, SaveAck::default()).unwrap();
+
+    // The file says /LE [/None /OpenArrow]: the head is the second ending.
+    let text = String::from_utf8_lossy(&read(&path)).into_owned();
+    assert!(
+        text.contains("/LE[/None/OpenArrow]") || text.contains("/LE [/None /OpenArrow]"),
+        "no /LE with an open head"
+    );
+
+    // PDFium draws the head: an arm is 3.5 pt off the line, 6 pt behind the tip; a line without a head has nothing there.
+    let frame = render(state, id, 1);
+    assert!(
+        dark_near(&frame, 266.0, 523.5),
+        "the arrow head is not drawn"
+    );
+    assert!(
+        dark_near(&frame, 266.0, 516.5),
+        "the other arm is not drawn"
+    );
+    assert!(!dark_near(&frame, 266.0, 623.5), "a line has no head");
+
+    // Reopened, both are lines the model can edit, and the arrow keeps its head.
+    state.close_document_checked(id, true).unwrap();
+    let reopened = state.open_path(path).unwrap().expect("loaded").id;
+    let listed = state.list_annotations(reopened, PageId::new(1)).unwrap();
+    let lines: Vec<&Annotation> = listed
+        .iter()
+        .filter(|a| matches!(a.body, AnnotationBody::Line { .. }))
+        .collect();
+    assert_eq!(lines.len(), 2, "both come back as lines, not opaque");
+    let AnnotationBody::Line {
+        from,
+        to,
+        width,
+        head,
+        tail,
+    } = &lines[0].body
+    else {
+        panic!("not a line")
+    };
+    assert!(near(from.x, 72.0) && near(from.y, 520.0), "{from:?}");
+    assert!(near(to.x, 272.0) && near(to.y, 520.0), "{to:?}");
+    assert!(near(*width, 2.0));
+    assert_eq!((*head, *tail), (LineEnd::OpenArrow, LineEnd::None));
+    let AnnotationBody::Line { head, .. } = &lines[1].body else {
+        panic!("not a line")
+    };
+    assert_eq!(*head, LineEnd::None);
+    let _ = (arrow, plain);
 }

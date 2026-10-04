@@ -21,6 +21,8 @@ export interface AnnotationStyle {
   fontSize: number;
   /** The head of a line or arrow. */
   head: LineEnd;
+  /** An arrow has its head at both ends (DESIGN 3.5 B11). */
+  bothEnds: boolean;
 }
 
 export const STROKE_PRESETS = [1, 2, 4, 8] as const;
@@ -28,7 +30,7 @@ export const FONT_SIZES = [8, 10, 12, 14, 18, 24, 36] as const;
 export const FONT_SIZE_RANGE = { min: 6, max: 144 } as const;
 export const OPACITY_RANGE = { min: 0.1, max: 1, step: 0.05 } as const;
 
-const BASE = { opacity: 1, width: 2, fontSize: 12, head: 'none' } as const;
+const BASE = { opacity: 1, width: 2, fontSize: 12, head: 'none', bothEnds: false } as const;
 
 /** The defaults of every kind a tool creates. */
 export const DEFAULT_STYLES: Readonly<Record<CreationKind, AnnotationStyle>> = {
@@ -100,12 +102,13 @@ function initialOverrides(): StyleStoreState['overrides'] {
   const out: Partial<Record<CreationKind, Partial<AnnotationStyle>>> = {};
   const stored = useTools.getState().defaults;
   for (const kind of Object.keys(DEFAULT_STYLES) as CreationKind[]) {
-    const { opacity, width, fontSize, head } = stored[kind] ?? {};
+    const { opacity, width, fontSize, head, bothEnds } = stored[kind] ?? {};
     const rest: Partial<AnnotationStyle> = {
       ...(opacity === undefined ? {} : { opacity }),
       ...(width === undefined ? {} : { width }),
       ...(fontSize === undefined ? {} : { fontSize }),
       ...(head === undefined ? {} : { head }),
+      ...(bothEnds === undefined ? {} : { bothEnds }),
     };
     const merged = { ...rest, ...colours[kind] };
     if (Object.keys(merged).length > 0) out[kind] = merged;

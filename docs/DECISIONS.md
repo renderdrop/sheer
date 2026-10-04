@@ -2047,3 +2047,12 @@ installed beta).
 **Wrap.** The frontend wraps (TS Helvetica table) and stores the wrapped lines plus the grown box in one patch; the backend draws lines as given.
 **Storage.** Recent colours: one list, max 8, `localStorage` key `sheer.tools.recentColors` (the app's UI storage; ARCHITECTURE has no settings key for it). Last-used text defaults: `tools` store `defaults.freeText` (`align, border, borderWidth, borderColor, fillOn, fillColor`). A custom last-used colour survives a restart while it is in the recent list.
 **Not done.** The tool row's split-menu swatch rows keep the old palette (B5 there is open).
+
+## ADR-114 — Arrow, shape recognition, line read-back (F15 B11)
+
+- **Arrow** is a PDF Line with `/LE [/None /OpenArrow]` (head at `to`), head 3 x width + 6 pt long, 30 degrees; "Both" writes the head at both ends. Rust appearance, TS preview and layer share the geometry.
+- **Read-back:** PDFium has no accessor for `/L` and `/LE`, so `pdfwrite/lines.rs` reads them with lopdf after the engine import (as `reviews` does) and `commands::annotations::lift_lines` turns the opaque Line into an editable `AnnotationBody::Line`. No new IPC.
+- **Recognition** (`create/recognise.ts`): resample to 64 points; closed when the ends are within 20 % of the path. Closed: axis-aligned rectangle (tilt search up to 10 degrees, all four corners touched) or ellipse/circle, rms error at most 4 % of the box diagonal, the better must be at most 70 % of the other's error, at least 0.85 turns. Open: line (max deviation 7 % of chord, chord at least 88 % of path) or arrow (straight shaft plus a hook reaching 8 to 35 % of the shaft). Otherwise nothing: it stays ink.
+- **Undo:** release creates the ink stroke, then one batch swaps it for the shape, so one undo returns the stroke.
+- **Setting:** `tools.shapeRecognition` in UI storage (`sheer.tools.shapeRecognition`), default on; Settings > Drawing and the Zeichnen split menu.
+- `Popover`: a popover rendered inside another no longer closes it (colour popover in split menus).

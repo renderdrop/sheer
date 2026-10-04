@@ -44,7 +44,7 @@ import {
 } from '../annotations/create/textStyle';
 import { HIGHLIGHT_PALETTE, isCustomColour, PALETTES, rgbToCss, sameRgb, type PaletteName } from '../inspector/palette';
 import type { Shared } from '../inspector/properties';
-import { MINI_FONT_SIZES, MINI_FONT_SIZE_RANGE, MINI_OPACITIES, MINI_STROKES } from './model';
+import { MINI_FONT_SIZES, MINI_FONT_SIZE_RANGE, MINI_OPACITIES, MINI_STROKES, type ArrowEnds } from './model';
 
 /** Marks an element as one stop of the bar's roving focus. */
 export const ITEM = { 'data-mb-item': '' } as const;
@@ -395,6 +395,35 @@ export function StrokeControl({
       }))}
     >
       {value.value === null ? MIXED : <LinePreview points={value.value} />}
+    </Dropdown>
+  );
+}
+
+/** The heads of an arrow (DESIGN 3.5 B11): "End" (one head at the end) or "Both". */
+export function EndsControl({
+  value,
+  disabled,
+  onChange,
+}: DisabledProps & { value: Shared<ArrowEnds>; onChange: (ends: ArrowEnds) => void }) {
+  const t = useT();
+  const choices: readonly { id: ArrowEnds; label: string }[] = [
+    { id: 'end', label: t('shape.arrowEnd') },
+    { id: 'both', label: t('shape.arrowBoth') },
+  ];
+  const shown = choices.find((choice) => choice.id === value.value);
+  return (
+    <Dropdown
+      label={t('shape.arrowEnds')}
+      disabled={disabled}
+      entries={choices.map((choice) => ({
+        id: choice.id,
+        label: choice.label,
+        checked: value.value === choice.id,
+        radio: true,
+        onSelect: () => onChange(choice.id),
+      }))}
+    >
+      {shown === undefined ? MIXED : shown.label}
     </Dropdown>
   );
 }

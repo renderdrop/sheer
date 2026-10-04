@@ -26,6 +26,57 @@ const rect = (id: number) =>
 const highlight = (id: number, extra: Record<string, unknown> = {}) =>
   make(id, { kind: 'highlight', quads: [], ...extra });
 
+const arrow = (id: number, extra: Record<string, unknown> = {}) =>
+  make(id, {
+    kind: 'line',
+    from: { x: 0, y: 0 },
+    to: { x: 5, y: 5 },
+    width: 2,
+    head: 'openArrow',
+    tail: 'none',
+    ...extra,
+  });
+
+describe('an arrow in the mini bar (DESIGN 3.5 B11)', () => {
+  it('has the Ends control, a plain line has not', () => {
+    expect(controlsOf([arrow(1)])).toEqual(['colourStroke', 'strokeWidth', 'opacity', 'arrowEnds']);
+    expect(controlsOf([arrow(1, { head: 'none', tail: 'none' })])).toEqual(['colourStroke', 'strokeWidth', 'opacity']);
+    // Together with ink only the shared controls stay.
+    expect(controlsOf([arrow(1), ink(2)])).toEqual(['colourStroke', 'strokeWidth', 'opacity']);
+  });
+
+  it('shows End or Both, and mixed when arrows differ', () => {
+    expect(valuesOf([arrow(1)]).ends.value).toBe('end');
+    expect(valuesOf([arrow(1, { tail: 'openArrow' })]).ends.value).toBe('both');
+    expect(valuesOf([arrow(1), arrow(2, { tail: 'openArrow' })]).ends.mixed).toBe(true);
+  });
+
+  it('Both puts the head on the start as well, End takes it off again, one update per arrow', () => {
+    expect(changeCommand([arrow(1)], { ends: 'both' })).toEqual({
+      type: 'updateAnnotation',
+      id: 1,
+      patch: { head: 'openArrow', tail: 'openArrow' },
+    });
+    expect(changeCommand([arrow(1, { tail: 'openArrow' })], { ends: 'end' })).toEqual({
+      type: 'updateAnnotation',
+      id: 1,
+      patch: { head: 'openArrow', tail: 'none' },
+    });
+    // An arrow a file has only at its start keeps its kind of head, now at the end.
+    expect(changeCommand([arrow(1, { head: 'none', tail: 'closedArrow' })], { ends: 'end' })).toEqual({
+      type: 'updateAnnotation',
+      id: 1,
+      patch: { head: 'closedArrow', tail: 'none' },
+    });
+    // Ink has no heads.
+    expect(changeCommand([ink(1)], { ends: 'both' })).toBeNull();
+  });
+
+  it('is the arrow kind for its defaults', () => {
+    expect(creationKindOf(arrow(1))).toBe('arrow');
+  });
+});
+
 describe('controlsOf (DESIGN v2 3.3 table)', () => {
   it('has the controls of each kind, in order', () => {
     expect(controlsOf([highlight(1)])).toEqual(['colourHighlight', 'kindMarkup', 'comment']);

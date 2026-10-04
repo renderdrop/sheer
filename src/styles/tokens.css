@@ -465,6 +465,7 @@
   --hold-check: 600ms; /* spell 6 */
   --tooltip-leave: 100ms; /* spell 16 */
   --hold-outline: 1000ms; /* spell 8, reduced motion */
+  --hold-shape: 500ms; /* spell 20, F15 B11 */
   /* Transform amounts of states and entrances. Reduced motion resets them (section 5). */
   --scale-press: 0.98;
   --scale-enter: 0.98;
@@ -1220,4 +1221,30 @@
 /* F15 B4–B5 */
 :root {
   --colour-popover-inner: calc(240px - 2 * var(--space-4)); /* inside the popover's padding */
+}
+
+/* F15 B11 (--hold-shape is with the other holds above) */
+/* Spell 20: the stroke fades out while the recognised shape fades in at the same place. */
+@keyframes shape-snap-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+[data-snap-out] {
+  opacity: 0;
+  transition: opacity var(--motion-fast) var(--ease-out);
+}
+[data-snap-in] {
+  animation: shape-snap-in var(--motion-fast) var(--ease-out);
+}
+@media (prefers-reduced-motion: reduce) {
+  [data-snap-out] {
+    transition: none;
+  }
+  [data-snap-in] {
+    animation: none;
+  }
 }

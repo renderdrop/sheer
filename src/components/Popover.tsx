@@ -1,6 +1,7 @@
 import { AnimatePresence, motion, useIsPresent } from 'motion/react';
 import {
   useCallback,
+  useContext,
   useEffect,
   useId,
   useLayoutEffect,
@@ -18,7 +19,7 @@ import { DISMISS_PRIORITY, registerDismissLayer } from './dismiss';
 import { cycleTab, TAB_STOPS } from './focusTrap';
 import { useControllableState } from './hooks';
 import { usePopoverMotion } from './motion';
-import { isInsideOwned, PopoverScope } from './popoverScope';
+import { isInsideOwned, ownedBy, PopoverScope } from './popoverScope';
 import type { Align, Side } from './position';
 import { isOwnEvent, itemsOf } from './roving';
 import { useFloatingPosition } from './useFloatingPosition';
@@ -64,7 +65,15 @@ export interface PopoverProps {
 type FocusRequest = 'first' | 'last' | 'auto';
 
 /** The one open popover (DESIGN 3.5: one open at a time). Opening another closes it without moving focus. */
-const group: { current: { id: string; close: (reason: PopoverCloseReason) => void } | null } = { current: null };
+const openPopovers = new Map<string, { parent: string | null; close: (reason: PopoverCloseReason) => void }>();
+
+/** Whether `ancestor` is `id` itself or a popover that `id` is rendered inside of (a colour popover in a split menu). */
+function isAncestor(ancestor: string, id: string): boolean {
+  for (let at: string | null | undefined = id; at !== null && at !== undefined; at = openPopovers.get(at)?.parent) {
+    if (at === ancestor) return true;
+  }
+  return false;
+}
 
 /**
  * G2 popover (DESIGN 3.5): opens from a trigger, takes focus, closes on Esc and outside click, and returns focus to
@@ -84,6 +93,7 @@ export function Popover({
   children,
 }: PopoverProps) {
   const id = useId();
+  const parent = useContext(PopoverScope);
   const [open, setOpen] = useControllableState(openProp, defaultOpen, onOpenChange);
   // The trigger element lives in state (set through its ref), so rendering never has to read a ref.
   const [anchor, setAnchor] = useState<HTMLElement | null>(null);
@@ -109,12 +119,15 @@ export function Popover({
   // One open at a time, whether it was opened here or by the parent through `open`.
   useEffect(() => {
     if (!open) return;
-    if (group.current !== null && group.current.id !== id) group.current.close('other');
-    group.current = { id, close };
+    // The popovers this one is rendered in stay open; every other one closes.
+    openPopovers.set(id, { parent, close });
+    for (const [other, entry] of [...openPopovers]) {
+      if (other !== id && !isAncestor(other, id)) entry.close('other');
+    }
     return () => {
-      if (group.current?.id === id) group.current = null;
+      openPopovers.delete(id);
     };
-  }, [open, id, close]);
+  }, [open, id, close, parent]);
 
   // A trigger that becomes disabled takes its popover with it.
   useEffect(() => {
@@ -164,6 +177,7 @@ export function Popover({
               side={side}
               align={align}
               focusRequest={focusRequest}
+              parent={parent}
               onClose={close}
             >
               {typeof children === 'function' ? children({ close }) : children}
@@ -184,6 +198,8 @@ interface SurfaceProps {
   side: Side;
   align: Align;
   focusRequest: FocusRequest;
+  /** The popover this one is rendered in: a click in this one is a click in that one. */
+  parent: string | null;
   onClose: (reason: PopoverCloseReason) => void;
   children: ReactNode;
 }
@@ -207,7 +223,7 @@ function originOf(side: Side, align: Align): string {
   }
 }
 
-function Surface({ id, label, role, anchor, side, align, focusRequest, onClose, children }: SurfaceProps) {
+function Surface({ id, label, role, anchor, side, align, focusRequest, parent, onClose, children }: SurfaceProps) {
   const positioner = useRef<HTMLDivElement>(null);
   const surface = useRef<HTMLDivElement>(null);
   const present = useIsPresent();
@@ -259,6 +275,7 @@ function Surface({ id, label, role, anchor, side, align, focusRequest, onClose, 
   return (
     <div
       ref={positioner}
+      {...ownedBy(parent)}
       className={`fixed start-0 top-0 z-popover flex flex-col ${present ? '' : 'pointer-events-none'}`}
     >
       <motion.div

@@ -278,11 +278,11 @@ fn arrow(out: &mut String, m: Mapper, tip: Point, from: Point, kind: LineEnd, wi
     if kind == LineEnd::None {
         return;
     }
-    // The arms go back from the tip along the line, a quarter turn of a right angle to each side.
-    let length = 5.0 * width.max(1.0);
+    // The arms go back from the tip along the line, 3 widths + 6 pt long, 30 degrees to each side (DESIGN 3.5 B11).
+    let length = 3.0 * width + 6.0;
     let back = toward(tip, from, length);
     let (dx, dy) = (back.x - tip.x, back.y - tip.y);
-    let (sin, cos) = (25.0f32.to_radians().sin(), 25.0f32.to_radians().cos());
+    let (sin, cos) = (30.0f32.to_radians().sin(), 30.0f32.to_radians().cos());
     let arm = |sign: f32| Point {
         x: tip.x + dx * cos - sign * dy * sin,
         y: tip.y + sign * dx * sin + dy * cos,

@@ -10,6 +10,7 @@ import {
   CommentControl,
   DeleteControl,
   Divider,
+  EndsControl,
   FillControl,
   FontSizeControl,
   KindControl,
@@ -129,6 +130,9 @@ export function MiniBar({ docId, objects, ref, onReturn }: MiniBarProps) {
           control,
           <OpacityControl value={values.opacity} disabled={locked} onChange={(opacity) => change({ opacity })} />,
         );
+        break;
+      case 'arrowEnds':
+        add(control, <EndsControl value={values.ends} disabled={locked} onChange={(ends) => change({ ends })} />);
         break;
       case 'fill':
         add(control, <FillControl value={values.fill} disabled={locked} onChange={(fill) => change({ fill })} />);

@@ -14,6 +14,7 @@ pub mod flatten;
 pub mod forms;
 pub mod images_pdf;
 pub mod inspect;
+pub mod lines;
 pub mod metadata;
 pub mod pagetree;
 pub mod prescan;

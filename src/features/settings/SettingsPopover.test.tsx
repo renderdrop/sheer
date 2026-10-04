@@ -182,9 +182,13 @@ describe('the settings popover', () => {
     expect(updateSettingsMock).toHaveBeenLastCalledWith({ language: 'en' });
     await waitFor(() => expect(checked('Language')).toBe('English'));
     // Tab at the last control wraps to the first: the popover keeps focus inside.
-    // The author name field is the second stop, Manage signatures the third, the Help row's two buttons the fifth and the sixth (the last one).
+    // The author name field is the second stop, the shape recognition switch the third, Manage signatures the fourth, the Help row's two buttons the sixth and the seventh (the last one).
     await user.tab();
     expect(document.activeElement).toBe(within(popover()).getByRole('textbox', { name: 'Author name' }));
+    await user.tab();
+    expect(document.activeElement).toBe(
+      within(popover()).getByRole('switch', { name: 'Recognise shapes when you pause' }),
+    );
     await user.tab();
     expect(document.activeElement).toBe(within(popover()).getByRole('button', { name: 'Manage signatures…' }));
     await user.tab();

@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useAnnotations } from '../../stores/annotations';
 import { useDocuments } from '../../stores/documents';
 import { resetDocuments } from '../../stores/documents.testutil';
+import { useRecentColours } from '../../stores/recentColours';
 import { useTools } from '../../stores/tools';
 import { useUi } from '../../stores/ui';
 import { setup } from '../../test/render';
@@ -37,6 +38,7 @@ beforeEach(() => {
   useTools.setState({ ...toolsInitial }, true);
   useAnnotations.setState({ ...annotationsInitial }, true);
   useStyleStore.getState().reset();
+  useRecentColours.setState({ colours: [] });
   resetDocuments();
   useUi.setState({ mode: 'read', activeTool: 'select', toolLocked: false });
   usePlacement.getState().disarm();
@@ -373,6 +375,73 @@ describe('Kommentieren', () => {
     await user.click(within(group).getByRole('radio', { name: 'Sky' }));
     expect(styleFor('highlight').color).toEqual([163, 222, 255]);
     expect(within(group).getByRole('radio', { name: 'Sky' }).getAttribute('aria-checked')).toBe('true');
+  });
+
+  it('the swatch row has More colours: a hex colour is applied, joins the recent ones and shows as a swatch (DESIGN 3.5 B5)', async () => {
+    const { user } = setup(<Rows />);
+    await user.click(item('Options for Highlight'));
+    const group = await screen.findByRole('radiogroup', { name: 'Colour' });
+    await user.click(within(group).getByRole('button', { name: 'More colours' }));
+    await user.type(await screen.findByRole('textbox', { name: 'Hex colour' }), '1f9e6a');
+    await user.click(screen.getByRole('button', { name: 'Apply' }));
+    expect(styleFor('highlight').color).toEqual([31, 158, 106]);
+    expect(useRecentColours.getState().colours).toEqual([[31, 158, 106]]);
+    // The row shows it as a recent swatch, checked, after the five of the palette.
+    const row = await screen.findByRole('radiogroup', { name: 'Colour' });
+    const radios = within(row).getAllByRole('radio');
+    expect(radios).toHaveLength(6);
+    expect(radios[5]?.getAttribute('aria-label')).toBe('Custom');
+    expect(radios[5]?.getAttribute('aria-checked')).toBe('true');
+  });
+
+  it('a recent colour of another tool is offered in every swatch row, and picking it sets the colour of that tool', async () => {
+    useRecentColours.getState().add([10, 20, 30]);
+    const { user } = setup(<Rows />);
+    await user.click(item('Options for Draw'));
+    const group = await screen.findByRole('radiogroup', { name: 'Colour' });
+    // Draw has the stroke palette: the recent colour is not in it, so it is a swatch after the five.
+    expect(within(group).getAllByRole('radio')).toHaveLength(6);
+    await user.click(within(group).getByRole('radio', { name: '#0A141E' }));
+    expect(styleFor('ink').color).toEqual([10, 20, 30]);
+  });
+
+  it('Formen has More colours too, and a colour set there is the colour of all four shapes', async () => {
+    const { user } = setup(<Rows />);
+    await user.click(item('Options for Shapes'));
+    const group = await screen.findByRole('radiogroup', { name: 'Colour' });
+    await user.click(within(group).getByRole('button', { name: 'More colours' }));
+    await user.type(await screen.findByRole('textbox', { name: 'Hex colour' }), '#E15C86');
+    await user.click(screen.getByRole('button', { name: 'Apply' }));
+    for (const kind of ['rect', 'ellipse', 'line', 'arrow'] as const) {
+      expect(styleFor(kind).color, kind).toEqual([225, 92, 134]);
+    }
+  });
+
+  it('the Formen menu lists Rectangle, Ellipse, Line and Arrow, and Arrow is the arrow shape of the shapes tool', async () => {
+    const { user } = setup(<Rows />);
+    await user.click(item('Options for Shapes'));
+    const names = (await screen.findAllByRole('radio'))
+      .map((radio) => radio.textContent)
+      .filter((name) => name !== '' && name !== null);
+    expect(names).toEqual(['Rectangle', 'Ellipse', 'Line', 'Arrow']);
+    await user.click(screen.getByRole('radio', { name: 'Arrow' }));
+    expect(useTools.getState().shapes).toBe('arrow');
+    expect(useUi.getState().activeTool).toBe('shapes');
+  });
+
+  it('Zeichnen has the shape recognition switch at the bottom of its menu, on by default, and it is the stored setting', async () => {
+    const { user } = setup(<Rows />);
+    await user.click(item('Options for Draw'));
+    const toggle = await screen.findByRole('switch', { name: 'Recognise shapes when you pause' });
+    expect(toggle.getAttribute('aria-checked')).toBe('true');
+    await user.click(toggle);
+    expect(useTools.getState().recogniseShapes).toBe(false);
+    expect(globalThis.localStorage.getItem('sheer.tools.shapeRecognition')).toBe('0');
+    expect(screen.getByRole('switch', { name: 'Recognise shapes when you pause' }).getAttribute('aria-checked')).toBe(
+      'false',
+    );
+    await user.click(screen.getByRole('switch', { name: 'Recognise shapes when you pause' }));
+    expect(useTools.getState().recogniseShapes).toBe(true);
   });
 
   it('Formen is a split item with the four shapes and the colour row in one popover', async () => {
