@@ -856,3 +856,43 @@ fn a_comment_with_a_reply_and_a_resolved_state_survives_a_save_and_is_read_back(
     );
     let _ = reply;
 }
+
+#[test]
+fn accepted_and_rejected_states_survive_a_save_and_a_reopen() {
+    use sheer_lib::model::annotation::ReviewState;
+    let Some(state) = state() else { return };
+    let scratch = Scratch::new("review-states");
+    let (id, path) = open(state, &scratch, "review.pdf", &base());
+    for name in ["accepted", "rejected"] {
+        let root = create(
+            state,
+            id,
+            json!({"pageId": 1, "kind": "highlight", "color": [240, 228, 66], "author": "Ada", "contents": name, "quads": [quad(72.0, 80.0, 100.0, 12.0)]}),
+        );
+        create(
+            state,
+            id,
+            json!({"pageId": 1, "kind": "note", "color": [240, 228, 66], "author": "Ada", "at": {"x": 72.0, "y": 80.0}, "icon": "note", "inReplyTo": root.id, "state": name}),
+        );
+    }
+    state.save_in_place(id, SaveAck::default()).unwrap();
+    let hex = |word: &str| word.bytes().map(|b| format!("{b:02X}")).collect::<String>();
+    let upper = String::from_utf8_lossy(&read(&path)).to_ascii_uppercase();
+    for word in ["Accepted", "Rejected"] {
+        assert!(upper.contains(&hex(word)), "{word} is in the file");
+    }
+    state.close_document_checked(id, true).unwrap();
+    let reopened = state.open_path(path).unwrap().expect("loaded").id;
+    let listed = state.list_annotations(reopened, PageId::new(1)).unwrap();
+    for (name, expected) in [
+        ("accepted", ReviewState::Accepted),
+        ("rejected", ReviewState::Rejected),
+    ] {
+        let root = listed.iter().find(|a| a.contents == name).unwrap();
+        let status = listed
+            .iter()
+            .find(|a| a.in_reply_to == Some(root.id) && a.state.is_some())
+            .expect("state reply");
+        assert_eq!(status.state, Some(expected));
+    }
+}

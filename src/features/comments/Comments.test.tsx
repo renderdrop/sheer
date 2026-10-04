@@ -224,6 +224,77 @@ describe('Comments cards', () => {
     expect(command.draft).toMatchObject({ kind: 'note', inReplyTo: 1, state: 'completed', pageId: 0 });
   });
 
+  describe('the reply field', () => {
+    const seed = () => {
+      const apply = vi.fn().mockResolvedValue({ upserted: [] });
+      useAnnotations.setState({
+        apply,
+        byDoc: {
+          1: {
+            rev: 0,
+            byId: {
+              1: {
+                id: 1,
+                pageId: 0,
+                rect: { x: 5, y: 6, w: 10, h: 10 },
+                color: [255, 235, 0],
+                opacity: 1,
+                contents: 'First',
+                author: 'Ann',
+                modified: null,
+                inReplyTo: null,
+                locked: false,
+                sync: 'clean',
+                kind: 'note',
+                at: { x: 5, y: 6 },
+                icon: 'note',
+              },
+            },
+            loaded: { 0: true },
+            removed: {},
+            history: EMPTY_HISTORY,
+          },
+        },
+      } as never);
+      return apply;
+    };
+    const field = async () => {
+      const { user } = await shown();
+      await user.click(cards()[0] as HTMLElement);
+      return { user, box: (await screen.findByRole('textbox', { name: 'Write a reply' })) as HTMLTextAreaElement };
+    };
+
+    it('Enter sends the reply and clears the field', async () => {
+      const apply = seed();
+      const { user, box } = await field();
+      await user.type(box, 'Thanks{Enter}');
+      await vi.waitFor(() => expect(apply).toHaveBeenCalled());
+      expect(apply.mock.calls[0]?.[1].draft).toMatchObject({ inReplyTo: 1, contents: 'Thanks' });
+      expect(box.value).toBe('');
+    });
+
+    it('Shift+Enter is a new line and sends nothing', async () => {
+      const apply = seed();
+      const { user, box } = await field();
+      await user.type(box, 'a{Shift>}{Enter}{/Shift}b');
+      expect(box.value).toBe('a\nb');
+      expect(apply).not.toHaveBeenCalled();
+    });
+
+    it('Enter on a blank field sends nothing', async () => {
+      const apply = seed();
+      const { user, box } = await field();
+      await user.type(box, '   {Enter}');
+      expect(apply).not.toHaveBeenCalled();
+    });
+
+    it('is a full-width textarea', async () => {
+      seed();
+      const { box } = await field();
+      expect(box.className).toMatch(/\bw-full\b/);
+    });
+  });
+
   it('delete removes the thread with its replies', async () => {
     const apply = vi.fn().mockResolvedValue(undefined);
     useAnnotations.setState({ apply } as never);

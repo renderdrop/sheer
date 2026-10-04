@@ -444,6 +444,32 @@ fn a_typed_signature_has_outlines_and_bad_text_is_refused() {
     }
 }
 
+#[test]
+fn every_typed_font_has_non_empty_outlines() {
+    let Some(state) = state() else { return };
+    for font in [
+        TypedFont::DancingScript,
+        TypedFont::GreatVibes,
+        TypedFont::AlexBrush,
+    ] {
+        let draft = state
+            .create_typed_signature(SignatureRole::Signature, "Grace Hopper", font)
+            .unwrap();
+        let SignatureArt::Vector { w, h, paths } = draft.art else {
+            panic!("vector")
+        };
+        assert!(w > 0.0 && h > 0.0 && !paths.is_empty());
+        // Edge: bad text is refused in every font.
+        assert!(state
+            .create_typed_signature(SignatureRole::Signature, "", font)
+            .is_err());
+    }
+    // Edge: a single glyph still has an outline.
+    assert!(state
+        .create_typed_signature(SignatureRole::Signature, "G", TypedFont::AlexBrush)
+        .is_ok());
+}
+
 /// The RGB of the pixel at page position (`x`, `y`) of page `page` rendered at bucket 0 (4/3 pixel per point).
 fn pixel_at(state: &AppState, id: DocumentId, page: u32, x: f32, y: f32) -> [u8; 3] {
     use sheer_lib::commands::render::{RenderPriority, RenderRequest};
