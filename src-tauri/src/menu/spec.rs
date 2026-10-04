@@ -22,7 +22,7 @@ const DE_JSON: &str = include_str!("../../../src/i18n/locales/de.json");
 /// [`is_action_id`] is the only gate between a menu event and the channel, so an id that is not listed here (a system item,
 /// something a future layout names by mistake) never reaches the webview. A test keeps it equal to the layout, and the
 /// frontend's `src/actions/menu.test.ts` keeps the layout equal to its registry.
-pub const ACTION_IDS: [&str; 40] = [
+pub const ACTION_IDS: [&str; 64] = [
     "settings",
     "open",
     "close-document",
@@ -58,11 +58,35 @@ pub const ACTION_IDS: [&str; 40] = [
     "flatten-form",
     "protect",
     "document-properties",
-    "redact",
     "images-to-pdf",
     "export-copy",
     "export-images",
     "print",
+    "exit",
+    "fullscreen",
+    "delete-selection",
+    "add-comment",
+    "sidebar-tab-pages",
+    "sidebar-tab-outline",
+    "sidebar-tab-comments",
+    "sidebar-tab-search",
+    "tool-select",
+    "tool-highlight",
+    "tool-note",
+    "tool-text",
+    "tool-draw",
+    "tool-shapes",
+    "tool-signature",
+    "tool-redact",
+    "tool-pages",
+    "tool-textBox",
+    "tool-image",
+    "tool-crop",
+    "form-highlight",
+    "manage-signatures",
+    "welcome-tour",
+    "reset-tips",
+    "about",
 ];
 
 /// Whether `id` is a command the menu bar may send to the UI.
@@ -131,7 +155,21 @@ pub enum Predefined {
     CloseWindow,
 }
 
-/// The six menus of the macOS menu bar, in HIG order. Window and Help are told apart because AppKit has a role for them.
+/// The platform an item is for. An item without one is on both; the Windows menu bar (the caption row, DESIGN 3.56) and the macOS
+/// one are built from the same file.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Only {
+    Windows,
+    Macos,
+}
+
+/// Whether an item with this restriction is part of the macOS menu bar.
+fn on_macos(only: Option<Only>) -> bool {
+    only != Some(Only::Windows)
+}
+
+/// The seven menus of the macOS menu bar, in HIG order. Window and Help are told apart because AppKit has a role for them.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum MenuKind {
@@ -139,6 +177,7 @@ pub enum MenuKind {
     File,
     Edit,
     View,
+    Tools,
     Window,
     Help,
 }
@@ -147,6 +186,9 @@ pub enum MenuKind {
 #[serde(deny_unknown_fields)]
 pub struct Layout {
     pub menus: Vec<MenuSpec>,
+    /// The catalog key of the Windows menu bar's accessible name (the macOS bar has none).
+    #[serde(default, rename = "barLabel")]
+    pub bar_label: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -156,6 +198,9 @@ pub struct MenuSpec {
     /// The catalog key of the title. The app menu has none: macOS shows the app's name there.
     #[serde(default)]
     pub label: Option<String>,
+    /// The catalog key of the access key letter of the Windows menu bar (Alt plus this letter opens the menu).
+    #[serde(default)]
+    pub access: Option<String>,
     pub items: Vec<ItemSpec>,
 }
 
@@ -165,6 +210,19 @@ pub enum ItemSpec {
     Action(ActionItem),
     Predefined(PredefinedItem),
     Separator(SeparatorItem),
+    Submenu(SubmenuItem),
+}
+
+impl ItemSpec {
+    /// Whether the macOS menu bar has this item (the Windows-only ones are for the caption row).
+    pub fn on_macos(&self) -> bool {
+        match self {
+            Self::Action(item) => on_macos(item.platform),
+            Self::Separator(item) => on_macos(item.platform),
+            Self::Submenu(item) => on_macos(item.platform),
+            Self::Predefined(_) => true,
+        }
+    }
 }
 
 /// A command of the app: choosing it sends `action` to the UI.
@@ -184,6 +242,8 @@ pub struct ActionItem {
     pub without_document: Option<Predefined>,
     #[serde(default, rename = "withoutDocumentLabel")]
     pub without_document_label: Option<String>,
+    #[serde(default)]
+    pub platform: Option<Only>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -197,6 +257,20 @@ pub struct PredefinedItem {
 #[serde(deny_unknown_fields)]
 pub struct SeparatorItem {
     pub separator: bool,
+    #[serde(default)]
+    pub platform: Option<Only>,
+}
+
+/// A submenu that the Windows menu bar fills at run time (Open recent). The macOS bar has none.
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SubmenuItem {
+    pub submenu: String,
+    pub label: String,
+    #[serde(default, rename = "clearLabel")]
+    pub clear_label: Option<String>,
+    #[serde(default)]
+    pub platform: Option<Only>,
 }
 
 /// The layout, parsed once. `None` if the compiled-in file is damaged (a test fails first), in which case there is no menu bar
@@ -277,11 +351,25 @@ mod tests {
             ItemSpec::Action(action) => Some(action.label.as_str()),
             ItemSpec::Predefined(predefined) => Some(predefined.label.as_str()),
             ItemSpec::Separator(_) => None,
+            ItemSpec::Submenu(submenu) => Some(submenu.label.as_str()),
         });
+        let extras = layout_or_fail()
+            .menus
+            .iter()
+            .filter_map(|menu| menu.access.as_deref())
+            .chain(layout_or_fail().bar_label.as_deref())
+            .chain(items().filter_map(|item| match item {
+                ItemSpec::Submenu(submenu) => submenu.clear_label.as_deref(),
+                _ => None,
+            }));
         let fallbacks = actions()
             .into_iter()
             .filter_map(|action| action.without_document_label.as_deref());
-        titles.chain(labels).chain(fallbacks).collect()
+        titles
+            .chain(labels)
+            .chain(extras)
+            .chain(fallbacks)
+            .collect()
     }
 
     // --- the allowlist ------------------------------------------------------------------------------------------
@@ -310,7 +398,6 @@ mod tests {
             "open ",
             "open\n",
             "quit",
-            "about",
             "copy",
             "undo_all",
             "close_document",
@@ -333,7 +420,7 @@ mod tests {
             assert!(!id.starts_with('-') && !id.ends_with('-'), "{id}");
             assert!(
                 id.bytes()
-                    .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'-'),
+                    .all(|byte| byte.is_ascii_alphanumeric() || byte == b'-'),
                 "{id}"
             );
         }
@@ -342,7 +429,7 @@ mod tests {
     // --- the layout ---------------------------------------------------------------------------------------------
 
     #[test]
-    fn the_layout_is_app_file_edit_view_window_help() {
+    fn the_layout_is_app_file_edit_view_tools_window_help() {
         let kinds: Vec<MenuKind> = layout_or_fail().menus.iter().map(|menu| menu.id).collect();
         assert_eq!(
             kinds,
@@ -351,6 +438,7 @@ mod tests {
                 MenuKind::File,
                 MenuKind::Edit,
                 MenuKind::View,
+                MenuKind::Tools,
                 MenuKind::Window,
                 MenuKind::Help
             ]
@@ -372,11 +460,15 @@ mod tests {
         // turn into a silently missing menu item; this counts what the file says against what was parsed.
         let written = LAYOUT_JSON.matches("\"action\"").count()
             + LAYOUT_JSON.matches("\"predefined\"").count()
-            + LAYOUT_JSON.matches("\"separator\"").count();
+            + LAYOUT_JSON.matches("\"separator\"").count()
+            + LAYOUT_JSON.matches("\"submenu\"").count();
         assert_eq!(items().count(), written);
         assert!(items().all(|item| !matches!(
             item,
-            ItemSpec::Separator(SeparatorItem { separator: false })
+            ItemSpec::Separator(SeparatorItem {
+                separator: false,
+                ..
+            })
         )));
     }
 
@@ -490,13 +582,26 @@ mod tests {
     }
 
     #[test]
-    fn the_commands_that_work_without_a_document_are_open_images_to_pdf_and_settings_only() {
+    fn the_commands_that_work_without_a_document_are_the_few_that_need_none() {
         let free: BTreeSet<&str> = actions()
             .into_iter()
             .filter(|action| !action.requires_document)
             .map(|action| action.action.as_str())
             .collect();
-        assert_eq!(free, BTreeSet::from(["images-to-pdf", "open", "settings"]));
+        assert_eq!(
+            free,
+            BTreeSet::from([
+                "about",
+                "exit",
+                "fullscreen",
+                "images-to-pdf",
+                "manage-signatures",
+                "open",
+                "reset-tips",
+                "settings",
+                "welcome-tour"
+            ])
+        );
     }
 
     // --- the accelerators ---------------------------------------------------------------------------------------
@@ -575,14 +680,16 @@ mod tests {
 
     #[test]
     fn only_the_app_menu_has_the_app_name_placeholder_and_nothing_else_is_a_placeholder() {
+        // The app menu, and the Windows-only About of the Help menu (it has no app menu there).
         let app_menu_labels: BTreeSet<&str> = layout_or_fail().menus[0]
             .items
             .iter()
             .filter_map(|item| match item {
                 ItemSpec::Predefined(item) => Some(item.label.as_str()),
                 ItemSpec::Action(item) => Some(item.label.as_str()),
-                ItemSpec::Separator(_) => None,
+                ItemSpec::Separator(_) | ItemSpec::Submenu(_) => None,
             })
+            .chain(["menu.help.about"])
             .collect();
         for locale in MenuLocale::ALL {
             for key in label_keys() {
@@ -607,7 +714,7 @@ mod tests {
             "Sheer beenden"
         );
         assert_eq!(text(MenuLocale::En, "menu.file", "Sheer"), "File");
-        assert_eq!(text(MenuLocale::De, "menu.file", "Sheer"), "Ablage");
+        assert_eq!(text(MenuLocale::De, "menu.file", "Sheer"), "Datei");
         assert_eq!(text(MenuLocale::De, "menu.file.open", "Sheer"), "Öffnen…");
     }
 

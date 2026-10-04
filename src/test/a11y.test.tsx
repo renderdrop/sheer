@@ -111,7 +111,7 @@ describe('axe rules on the main surfaces (DESIGN 3.52)', () => {
 
   it('the document view shell has no violations', async () => {
     const { user, container } = setup(<Shell />);
-    await user.click(screen.getByRole('button', { name: 'Open…' }));
+    await user.click(screen.getByRole('button', { name: 'Open' }));
     await screen.findByRole('img', { name: /^Page 1 of/ });
     expect(await violations(container)).toEqual([]);
   });
@@ -133,7 +133,7 @@ describe('axe rules on the main surfaces (DESIGN 3.52)', () => {
 
   it('the unsaved-changes dialog has no violations', async () => {
     const { user } = setup(<Shell />);
-    await user.click(screen.getByRole('button', { name: 'Open…' }));
+    await user.click(screen.getByRole('button', { name: 'Open' }));
     await screen.findByRole('img', { name: /^Page 1 of/ });
     act(() => useSave.getState().setPrompt(1));
     const dialog = await screen.findByRole('dialog');

@@ -2,7 +2,6 @@
 import { act, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { APP_NAME } from '../../config/app';
 import { setup } from '../../test/render';
 import { CaptionBar } from './CaptionBar';
 
@@ -21,9 +20,9 @@ beforeEach(() => {
 const flush = () => act(async () => undefined);
 
 describe('CaptionBar (DESIGN 2.2, Windows)', () => {
-  it('shows the app icon and the app name, and three named caption buttons', () => {
+  it('shows the app icon, the menu bar and three named caption buttons', () => {
     const { container } = setup(<CaptionBar maximized={false} onChanged={vi.fn()} />);
-    expect(screen.getByText(APP_NAME)).not.toBeNull();
+    expect(screen.getByRole('menubar', { name: 'Application menu' })).not.toBeNull();
     expect(container.querySelector('img')?.getAttribute('alt')).toBe('');
     const group = screen.getByRole('group', { name: 'Window controls' });
     expect([...group.querySelectorAll('button')].map((button) => button.getAttribute('aria-label'))).toEqual([

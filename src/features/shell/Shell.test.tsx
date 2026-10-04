@@ -68,10 +68,19 @@ afterEach(() => {
 const toolbar = () => screen.getByRole('toolbar', { name: 'Tools' });
 const layout = (container: HTMLElement) => container.querySelector('[data-layout]')?.getAttribute('data-layout');
 const tool = (name: string) => within(toolbar()).getByRole('button', { name });
+const status = () => within(screen.getByRole('contentinfo', { name: 'Status' }));
+const readout = () => status().getByRole('button', { name: /Zoom level/ });
+const zoomButton = (name: string) => status().getByRole('button', { name });
+/** The Windows menu bar: the platform is Windows, and a menu of the bar is opened by its title. */
+const windows = () => useSettings.setState({ platform: 'windows' });
+const openMenu = async (user: ReturnType<typeof setup>['user'], title: string) => {
+  await user.click(screen.getByRole('menuitem', { name: title }));
+  return screen.findByRole('menu', { name: title });
+};
 
 /** Opens the document through the empty state's Open button and waits for the first page to arrive. */
 async function openDocument(user: ReturnType<typeof setup>['user']) {
-  await user.click(screen.getByRole('button', { name: 'Open…' }));
+  await user.click(screen.getByRole('button', { name: 'Open' }));
   await screen.findByRole('img', { name: /^Page 1 of/ });
 }
 
@@ -79,7 +88,7 @@ describe('Shell without a document (DESIGN 2, 3.11)', () => {
   it('shows the empty state alone in the main row, on the page background', () => {
     const { container } = setup(<Shell />);
     expect(layout(container)).toBe('empty');
-    expect(screen.getByRole('heading', { level: 1, name: 'Open a PDF' })).not.toBeNull();
+    expect(screen.getByRole('heading', { level: 1, name: 'What would you like to do?' })).not.toBeNull();
     expect(screen.queryByRole('complementary')).toBeNull();
     expect(screen.queryByRole('separator', { name: 'Resize left panel' })).toBeNull();
     expect(container.querySelector('[role="region"][aria-label="Document"]')).toBeNull();
@@ -87,7 +96,7 @@ describe('Shell without a document (DESIGN 2, 3.11)', () => {
 
   it('the initial focus is on Open', () => {
     setup(<Shell />);
-    expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Open…' }));
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Open' }));
   });
 
   it('the toolbar keeps its slot and every tool is aria-disabled', () => {
@@ -96,20 +105,18 @@ describe('Shell without a document (DESIGN 2, 3.11)', () => {
       'Left panel',
       'Select',
       'Highlight',
-      'Note',
-      'Text comment',
+      'Comment',
       'Draw',
       'Rectangle',
-      'Form',
-      'Signature',
-      'Pages',
-      'Zoom out',
-      'Zoom in',
+      'Fill & Sign',
+      'Redact',
       'Inspector',
     ]) {
       expect(tool(name).getAttribute('aria-disabled'), name).toBe('true');
     }
-    expect(tool('Zoom level').getAttribute('aria-disabled')).toBe('true');
+    for (const gone of ['More', 'Undo', 'Redo', 'Zoom level', 'Zoom in', 'Form', 'Pages']) {
+      expect(within(toolbar()).queryByRole('button', { name: gone }), gone).toBeNull();
+    }
   });
 
   it('a disabled tool stays focusable and does nothing', async () => {
@@ -122,20 +129,22 @@ describe('Shell without a document (DESIGN 2, 3.11)', () => {
     expect(useUi.getState().activeTool).toBe('select');
   });
 
-  it('the status bar is empty, and the toolbar still has More with Open in it', async () => {
+  it('the status bar is empty, and the File menu of the bar has Open in it', async () => {
+    windows();
     const { user } = setup(<Shell />);
     expect(screen.getByRole('contentinfo', { name: 'Status' }).textContent).toBe('');
-    await user.click(tool('More'));
-    expect(within(screen.getByRole('menu')).getByRole('menuitem', { name: /Open…/ })).not.toBeNull();
+    const menu = await openMenu(user, 'File');
+    expect(within(menu).getByRole('menuitem', { name: /Open…/ })).not.toBeNull();
   });
 
-  it('Open calls the open dialog, and the toolbar More menu does too', async () => {
+  it('Open calls the open dialog, and the File menu does too', async () => {
+    windows();
     documentsApi.openDocumentDialog.mockResolvedValue([]);
     const { user } = setup(<Shell />);
-    await user.click(screen.getByRole('button', { name: 'Open…' }));
+    await user.click(screen.getByRole('button', { name: 'Open' }));
     expect(documentsApi.openDocumentDialog).toHaveBeenCalledTimes(1);
-    await user.click(tool('More'));
-    await user.click(within(screen.getByRole('menu')).getByRole('menuitem', { name: /Open…/ }));
+    const menu = await openMenu(user, 'File');
+    await user.click(within(menu).getByRole('menuitem', { name: /Open…/ }));
     expect(documentsApi.openDocumentDialog).toHaveBeenCalledTimes(2);
   });
 
@@ -194,7 +203,7 @@ describe('Shell with a document', () => {
       retryable: false,
     });
     const { user } = setup(<Shell />);
-    await user.click(screen.getByRole('button', { name: 'Open…' }));
+    await user.click(screen.getByRole('button', { name: 'Open' }));
     const alert = await screen.findByRole('alert');
     expect(alert.textContent).toContain('This PDF is damaged and could not be displayed.');
     await user.click(within(alert).getByRole('button', { name: 'Dismiss' }));
@@ -202,30 +211,28 @@ describe('Shell with a document', () => {
   });
 
   describe('zoom', () => {
-    it('Ctrl+plus and Ctrl+minus step the zoom, Ctrl+1 resets it, and the status bar and toolbar follow', async () => {
+    it('Ctrl+plus and Ctrl+minus step the zoom, Ctrl+1 resets it, and the status bar follows', async () => {
       const { user } = setup(<Shell />);
       await openDocument(user);
-      const readout = () => within(toolbar()).getByRole('button', { name: 'Zoom level' }).textContent;
       fireEvent.keyDown(window, { key: '+', ctrlKey: true });
-      expect(readout()).toBe(`108${NBSP}%`);
-      expect(within(screen.getByRole('contentinfo')).getByRole('button', { name: /Zoom level/ }).textContent).toBe(
-        `108${NBSP}%`,
-      );
+      expect(readout().textContent).toBe(`108${NBSP}%`);
       fireEvent.keyDown(window, { key: '-', ctrlKey: true });
       fireEvent.keyDown(window, { key: '-', ctrlKey: true });
-      expect(readout()).toBe(`90${NBSP}%`);
+      expect(readout().textContent).toBe(`90${NBSP}%`);
       fireEvent.keyDown(window, { key: '1', ctrlKey: true });
-      expect(readout()).toBe(`100${NBSP}%`);
+      expect(readout().textContent).toBe(`100${NBSP}%`);
     });
 
-    it('the toolbar buttons and the zoom menu change it too', async () => {
+    it('the status bar buttons and the zoom menu change it too', async () => {
       const { user } = setup(<Shell />);
       await openDocument(user);
-      await user.click(tool('Zoom in'));
-      expect(tool('Zoom level').textContent).toBe(`108${NBSP}%`);
-      await user.click(tool('Zoom level'));
+      await user.click(zoomButton('Zoom in'));
+      expect(readout().textContent).toBe(`108${NBSP}%`);
+      await user.click(zoomButton('Zoom out'));
+      expect(readout().textContent).toBe(`100${NBSP}%`);
+      await user.click(readout());
       await user.click(within(screen.getByRole('menu')).getByRole('menuitemcheckbox', { name: `200${NBSP}%` }));
-      expect(tool('Zoom level').textContent).toBe(`200${NBSP}%`);
+      expect(readout().textContent).toBe(`200${NBSP}%`);
     });
 
     it('is a view of the document: it does not touch another document', async () => {
@@ -237,95 +244,73 @@ describe('Shell with a document', () => {
   });
 
   describe('commands (the action registry)', () => {
-    const more = async (user: ReturnType<typeof setup>['user']) => {
-      await user.click(tool('More'));
-      return screen.getByRole('menu');
-    };
     const pageText = () =>
       within(screen.getByRole('contentinfo')).getByRole('button', { name: /Go to page/ }).textContent;
 
-    it('More lists every command that has no toolbar button, with its shortcut, on the platform without a menu bar', async () => {
+    it('the View menu lists the view commands with their shortcuts, on the platform with the in-window menu bar', async () => {
+      windows();
       const { user } = setup(<Shell />);
       await openDocument(user);
-      const menu = await more(user);
+      const menu = await openMenu(user, 'View');
       const items = within(menu)
         .getAllByRole('menuitem')
         .map((item) => item.textContent);
-      expect(items).toEqual([
-        'Open…Ctrl+O',
-        'Close documentCtrl+W',
-        'SaveCtrl+S',
-        'Save As…Ctrl+Shift+S',
-        'Create PDF from images…',
-        'Export a copy…',
-        'Export as images…Ctrl+Shift+E',
-        'Print…Ctrl+P',
-        'Merge files…',
-        'Split…',
-        'Extract pages…',
-        'Compress…',
-        'Flatten form…',
-        'Redact…',
-        'Protect…',
-        'Document properties…',
-        'Actual sizeCtrl+1',
-        'Fit widthCtrl+2',
-        'Fit pageCtrl+0',
-        'Next pageCtrl+↓',
-        'Previous pageCtrl+↑',
-        'Next tabCtrl+PageDown',
-        'Previous tabCtrl+PageUp',
-        'Go to page…Ctrl+Shift+N',
-        'FindCtrl+F',
-        'Find nextCtrl+G',
-        'Find previousCtrl+Shift+G',
-        'Rotate rightCtrl+R',
-        'Rotate leftCtrl+L',
-        'Reset rotation',
-        'Settings…Ctrl+,',
-        'About',
-      ]);
+      expect(items).toEqual(
+        expect.arrayContaining([
+          'Actual SizeCtrl+1',
+          'Fit WidthCtrl+2',
+          'Fit PageCtrl+0',
+          'Next PageCtrl+↓',
+          'Previous PageCtrl+↑',
+          'Go to Page…Ctrl+Shift+N',
+          'Show Next TabCtrl+PageDown',
+          'Rotate RightCtrl+R',
+          'Reset Rotation',
+        ]),
+      );
     });
 
-    it('More runs them: Next page and Previous page turn the page, Close document returns to the empty state', async () => {
+    it('the menus run them: Next Page and Previous Page turn the page, Close Document returns to the empty state', async () => {
+      windows();
       const { user } = setup(<Shell />);
       await openDocument(user);
-      await user.click(within(await more(user)).getByRole('menuitem', { name: /^Next page/ }));
+      await user.click(within(await openMenu(user, 'View')).getByRole('menuitem', { name: /^Next Page/ }));
       expect(pageText()).toBe('2 / 120');
-      await user.click(within(await more(user)).getByRole('menuitem', { name: /^Previous page/ }));
+      await user.click(within(await openMenu(user, 'View')).getByRole('menuitem', { name: /^Previous Page/ }));
       expect(pageText()).toBe('1 / 120');
-      await user.click(within(await more(user)).getByRole('menuitem', { name: /^Close document/ }));
-      expect(screen.getByRole('heading', { level: 1, name: 'Open a PDF' })).not.toBeNull();
+      await user.click(within(await openMenu(user, 'File')).getByRole('menuitem', { name: /^Close Document/ }));
+      expect(screen.getByRole('heading', { level: 1, name: 'What would you like to do?' })).not.toBeNull();
       expect(documentsApi.closeDocument).toHaveBeenCalledWith(1, true);
     });
 
-    it('More offers the three ways to lay out pages as a choice of one: the current one is checked, and choosing one changes the canvas', async () => {
+    it('the View menu offers the three ways to lay out pages with the current one checked, and choosing one changes the canvas', async () => {
+      windows();
       const { user } = setup(<Shell />);
       await openDocument(user);
       const modes = () =>
-        within(screen.getByRole('menu'))
-          .getAllByRole('menuitemcheckbox')
+        within(screen.getByRole('menu', { name: 'View' }))
+          .getAllByRole('menuitemcheckbox', { name: /Scrolling|Single Page|Two Pages/ })
           .map((item) => [item.textContent, item.getAttribute('aria-checked')]);
-      await more(user);
+      await openMenu(user, 'View');
       expect(modes()).toEqual([
-        ['Continuous scrolling', 'true'],
-        ['Single page', 'false'],
-        ['Two pages', 'false'],
+        ['Continuous Scrolling', 'true'],
+        ['Single Page', 'false'],
+        ['Two Pages', 'false'],
       ]);
       const mounted = () => document.querySelectorAll('[data-page]').length;
       expect(mounted()).toBeGreaterThan(1);
 
-      await user.click(within(screen.getByRole('menu')).getByRole('menuitemcheckbox', { name: 'Single page' }));
+      await user.click(within(screen.getByRole('menu')).getByRole('menuitemcheckbox', { name: 'Single Page' }));
       expect(useView.getState().byDoc[1]?.scrollMode).toBe('single');
       expect(mounted()).toBe(1);
-      await more(user);
+      await openMenu(user, 'View');
       expect(modes()).toEqual([
-        ['Continuous scrolling', 'false'],
-        ['Single page', 'true'],
-        ['Two pages', 'false'],
+        ['Continuous Scrolling', 'false'],
+        ['Single Page', 'true'],
+        ['Two Pages', 'false'],
       ]);
 
-      await user.click(within(screen.getByRole('menu')).getByRole('menuitemcheckbox', { name: 'Two pages' }));
+      await user.click(within(screen.getByRole('menu')).getByRole('menuitemcheckbox', { name: 'Two Pages' }));
       expect(mounted()).toBe(2);
       // The next page turns a spread, and the status bar follows.
       fireEvent.keyDown(window, { key: 'ArrowDown', ctrlKey: true });
@@ -333,9 +318,10 @@ describe('Shell with a document', () => {
     });
 
     it('the three ways to lay out pages are aria-disabled without a document', async () => {
+      windows();
       const { user } = setup(<Shell />);
-      await more(user);
-      for (const name of ['Continuous scrolling', 'Single page', 'Two pages']) {
+      await openMenu(user, 'View');
+      for (const name of ['Continuous Scrolling', 'Single Page', 'Two Pages']) {
         const item = within(screen.getByRole('menu')).getByRole('menuitemcheckbox', { name });
         expect(item.getAttribute('aria-disabled'), name).toBe('true');
       }
@@ -355,21 +341,22 @@ describe('Shell with a document', () => {
       expect(pageText()).toBe('1 / 120');
     });
 
-    it('without a document More has only Open, Settings and About enabled, and the others are aria-disabled', async () => {
+    it('without a document the File menu has only Open, Create PDF, Settings and Exit enabled, and the others are aria-disabled', async () => {
+      windows();
       const { user } = setup(<Shell />);
-      const menu = await more(user);
+      const menu = await openMenu(user, 'File');
       const enabled = within(menu)
         .getAllByRole('menuitem')
         .filter((item) => item.getAttribute('aria-disabled') !== 'true')
         .map((item) => item.textContent);
-      expect(enabled).toEqual(['Open…Ctrl+O', 'Create PDF from images…', 'Settings…Ctrl+,', 'About']);
+      expect(enabled).toEqual(['Open…Ctrl+O', 'Create PDF From Images…', 'Settings…Ctrl+,', 'Exit']);
     });
 
     it('Ctrl+W closes the document and the empty state comes back; Ctrl+W without one does nothing', async () => {
       const { user } = setup(<Shell />);
       await openDocument(user);
       fireEvent.keyDown(window, { key: 'w', ctrlKey: true });
-      expect(await screen.findByRole('heading', { level: 1, name: 'Open a PDF' })).not.toBeNull();
+      expect(await screen.findByRole('heading', { level: 1, name: 'What would you like to do?' })).not.toBeNull();
       expect(documentsApi.closeDocument).toHaveBeenCalledTimes(1);
       fireEvent.keyDown(window, { key: 'w', ctrlKey: true });
       expect(documentsApi.closeDocument).toHaveBeenCalledTimes(1);
@@ -416,11 +403,11 @@ describe('Shell with a document', () => {
       // jsdom has no layout: the canvas reports its size here, as the ResizeObserver does in the app. The rendered page is 612 x 792 pt.
       act(() => useViewer.getState().setViewport({ width: 816 + 16, height: 528 }));
       fireEvent.keyDown(window, { key: '2', code: 'Digit2', ctrlKey: true });
-      expect(tool('Zoom level').textContent).toBe(`100${NBSP}%`);
+      expect(readout().textContent).toBe(`100${NBSP}%`);
       fireEvent.keyDown(window, { key: '0', code: 'Digit0', ctrlKey: true });
-      expect(tool('Zoom level').textContent).toBe(`50${NBSP}%`);
+      expect(readout().textContent).toBe(`50${NBSP}%`);
       fireEvent.keyDown(window, { key: '1', code: 'Digit1', ctrlKey: true });
-      expect(tool('Zoom level').textContent).toBe(`100${NBSP}%`);
+      expect(readout().textContent).toBe(`100${NBSP}%`);
     });
 
     it('a tool letter selects the tool only while the canvas has the focus', async () => {
@@ -428,7 +415,7 @@ describe('Shell with a document', () => {
       await openDocument(user);
       expect(tool('Select').getAttribute('aria-pressed')).toBe('true');
       fireEvent.keyDown(window, { key: 'h' });
-      fireEvent.keyDown(tool('Zoom in'), { key: 'h' });
+      fireEvent.keyDown(tool('Select'), { key: 'h' });
       expect(tool('Select').getAttribute('aria-pressed')).toBe('true');
       const canvas = screen.getByRole('region', { name: 'Document' });
       canvas.focus();
@@ -450,7 +437,7 @@ describe('Shell with a document', () => {
       fireEvent.keyDown(field, { key: '+', ctrlKey: true });
       fireEvent.keyDown(field, { key: 'w', ctrlKey: true });
       expect(tool('Select').getAttribute('aria-pressed')).toBe('true');
-      expect(tool('Zoom level').textContent).toBe(`100${NBSP}%`);
+      expect(readout().textContent).toBe(`100${NBSP}%`);
       expect(activeDocument()).not.toBeNull();
     });
 
@@ -459,21 +446,16 @@ describe('Shell with a document', () => {
       await openDocument(user);
       expect(tool('Highlight').getAttribute('aria-keyshortcuts')).toBe('H');
       expect(tool('Left panel').getAttribute('aria-keyshortcuts')).toBe('F4');
-      expect(tool('Zoom in').getAttribute('aria-keyshortcuts')).toBe('Control+Plus');
+      expect(tool('Redact').getAttribute('aria-keyshortcuts')).toBe('X');
     });
   });
 
   describe('the left panel (DESIGN 3.6, 3.8)', () => {
-    it('has the four tabs, Thumbnails first and selected', async () => {
+    it('has the four tabs, Pages first and selected', async () => {
       const { user } = setup(<Shell />);
       await openDocument(user);
       const tabs = within(screen.getByRole('tablist', { name: 'Left panel views' })).getAllByRole('tab');
-      expect(tabs.map((tab) => tab.getAttribute('aria-label'))).toEqual([
-        'Thumbnails',
-        'Outline',
-        'Comments',
-        'Search',
-      ]);
+      expect(tabs.map((tab) => tab.getAttribute('aria-label'))).toEqual(['Pages', 'Outline', 'Comments', 'Search']);
       expect(tabs.map((tab) => tab.getAttribute('aria-selected'))).toEqual(['true', 'false', 'false', 'false']);
     });
 
@@ -537,21 +519,23 @@ describe('Shell with a document', () => {
   });
 
   describe('collapse rules (DESIGN 2)', () => {
-    it('below 1280 there is no inspector until it is toggled; a tool does not open it', async () => {
+    it('at 1100 a tool opens the inspector, Select closes it again, and the toggle pins it (DESIGN 3.57)', async () => {
       const { user } = setup(<Shell />);
       await openDocument(user);
       await user.click(tool('Highlight'));
-      expect(screen.queryByRole('complementary', { name: 'Inspector', hidden: true })).toBeNull();
-      expect(tool('Inspector').getAttribute('aria-pressed')).toBe('false');
-      await user.click(tool('Inspector'));
       const inspector = screen.getByRole('complementary', { name: 'Inspector' });
       expect(inspector.hasAttribute('inert')).toBe(false);
       expect(tool('Inspector').getAttribute('aria-pressed')).toBe('true');
+      await user.click(tool('Highlight'));
+      await waitFor(() => expect(screen.queryByRole('complementary', { name: 'Inspector', hidden: true })).toBeNull());
+      expect(tool('Inspector').getAttribute('aria-pressed')).toBe('false');
       await user.click(tool('Inspector'));
-      expect(screen.queryByRole('complementary', { name: 'Inspector', hidden: true })).toBeNull();
+      expect(screen.getByRole('complementary', { name: 'Inspector' }).hasAttribute('inert')).toBe(false);
+      await user.click(tool('Inspector'));
+      await waitFor(() => expect(screen.queryByRole('complementary', { name: 'Inspector', hidden: true })).toBeNull());
     });
 
-    it('from 1280 nothing is reserved for the inspector until a tool or selection wants it, and it leaves again with them', async () => {
+    it('nothing is reserved for the inspector until a tool or selection wants it, and it leaves again with them', async () => {
       resizeTo(1280);
       const { user } = setup(<Shell />);
       await openDocument(user);
@@ -617,9 +601,9 @@ describe('Shell with a document', () => {
     it('a double click locks a tool and Esc releases it back to Select', async () => {
       const { user } = setup(<Shell />);
       await openDocument(user);
-      await user.dblClick(tool('Note'));
+      await user.dblClick(tool('Comment'));
       expect(useUi.getState()).toMatchObject({ activeTool: 'note', toolLocked: true });
-      expect(tool('Note').getAttribute('aria-description')).toBe('Locked');
+      expect(tool('Comment').getAttribute('aria-description')).toBe('Locked');
       await user.keyboard('{Escape}');
       expect(useUi.getState()).toMatchObject({ activeTool: 'select', toolLocked: false });
     });
@@ -628,7 +612,7 @@ describe('Shell with a document', () => {
       const { user } = setup(<Shell />);
       await openDocument(user);
       await user.click(tool('Highlight'));
-      await user.click(tool('Zoom level'));
+      await user.click(readout());
       expect(screen.getByRole('menu')).not.toBeNull();
       await user.keyboard('{Escape}');
       expect(screen.queryByRole('menu')).toBeNull();
@@ -746,8 +730,8 @@ describe('Shell without a document: edge cases', () => {
   it('a cancelled dialog leaves the empty state as it was: no banner, Open is ready again and keeps the focus', async () => {
     documentsApi.openDocumentDialog.mockResolvedValue([]);
     const { container, user } = setup(<Shell />);
-    await user.click(screen.getByRole('button', { name: 'Open…' }));
-    const open = await screen.findByRole('button', { name: 'Open…' });
+    await user.click(screen.getByRole('button', { name: 'Open' }));
+    const open = await screen.findByRole('button', { name: 'Open' });
     expect(open.hasAttribute('aria-disabled')).toBe(false);
     expect(layout(container)).toBe('empty');
     expect(screen.queryByRole('alert')).toBeNull();
@@ -763,20 +747,21 @@ describe('Shell without a document: edge cases', () => {
       }),
     );
     const { user } = setup(<Shell />);
-    await user.click(screen.getByRole('button', { name: 'Open…' }));
-    const opening = await screen.findByRole('button', { name: 'Opening…' });
+    await user.click(screen.getByRole('button', { name: 'Open' }));
+    const opening = screen.getByRole('button', { name: 'Open' });
+    expect(opening.getAttribute('aria-busy')).toBe('true');
     await user.click(opening);
     await user.keyboard('{Enter}');
     fireEvent.keyDown(window, { key: 'o', ctrlKey: true });
     expect(documentsApi.openDocumentDialog).toHaveBeenCalledTimes(1);
     await act(async () => finish(null));
-    expect(await screen.findByRole('button', { name: 'Open…' })).not.toBeNull();
+    expect(await screen.findByRole('button', { name: 'Open' })).not.toBeNull();
   });
 
   it('the initial focus is on Open with the Windows caption row above it too (its buttons are no tab stops)', () => {
     useSettings.setState({ platform: 'windows' });
     setup(<Shell />);
-    expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Open…' }));
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Open' }));
   });
 
   it('the zoom keys do nothing and break nothing without a document', () => {
@@ -793,7 +778,6 @@ describe('Shell without a document: edge cases', () => {
     await user.dblClick(tool('Draw'));
     await user.click(tool('Inspector'));
     await user.click(tool('Left panel'));
-    await user.click(tool('Zoom in'));
     expect(useUi.getState()).toMatchObject({
       activeTool: 'select',
       toolLocked: false,
@@ -837,7 +821,7 @@ describe('Shell with a document: edge cases', () => {
   it('a document without pages: name and zoom in the status bar, no page button, no render', async () => {
     documentsApi.openDocumentDialog.mockResolvedValue([opened({ id: 4, pageCount: 0, displayName: 'Empty.pdf' })]);
     const { container, user } = setup(<Shell />);
-    await user.click(screen.getByRole('button', { name: 'Open…' }));
+    await user.click(screen.getByRole('button', { name: 'Open' }));
     expect(await screen.findByText('This document has no pages.')).not.toBeNull();
     expect(layout(container)).toBe('document');
     const status = screen.getByRole('contentinfo', { name: 'Status' });
@@ -920,15 +904,15 @@ describe('Shell with a document: edge cases', () => {
   });
 
   describe('collapse rules (DESIGN 2): boundaries', () => {
-    it('a tool opens the inspector track from exactly 1280, not at 1279', async () => {
+    it('a tool opens the inspector track at 1279 as at 1280 (DESIGN 3.57), and Select closes it', async () => {
       resizeTo(1279);
       const { user } = setup(<Shell />);
       await openDocument(user);
       await user.click(tool('Highlight'));
-      expect(screen.queryByRole('complementary', { name: 'Inspector', hidden: true })).toBeNull();
+      expect(screen.getByRole('complementary', { name: 'Inspector' })).not.toBeNull();
       resizeTo(1280);
       expect(screen.getByRole('complementary', { name: 'Inspector' })).not.toBeNull();
-      resizeTo(1279);
+      await user.click(tool('Select'));
       await waitFor(() => expect(screen.queryByRole('complementary', { name: 'Inspector', hidden: true })).toBeNull());
     });
 

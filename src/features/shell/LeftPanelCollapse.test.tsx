@@ -78,7 +78,7 @@ const advance = (ms: number) =>
   });
 
 async function openDocument(user: ReturnType<typeof setup>['user']) {
-  await user.click(screen.getByRole('button', { name: 'Open…' }));
+  await user.click(screen.getByRole('button', { name: 'Open' }));
   await screen.findByRole('img', { name: /^Page 1 of/ });
 }
 

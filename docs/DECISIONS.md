@@ -1842,3 +1842,15 @@ black is one rectangle per mark, each clamped to the shown box, and marks that a
 **Consequences.** Text outside the marks stays text in Sheer and other viewers. Residual (SECURITY D4): font programs and `/ToUnicode`
 maps keep the subset's glyphs; shading definitions stay; fonts without widths lose whole show operators. `apply_redactions` keeps its
 signature; `PageWork` gains `source` and `shown`; `pdfwrite::redact::raster_page` is removed.
+
+---
+
+## ADR-059 — OFL-1.1 for bundled fonts only (typed signature fonts)
+
+**Status:** accepted (2026-10-04). Part of ADR-058 (DESIGN §3.60).
+
+**Context.** Homemade Apple (Apache-2.0) is replaced by Dancing Script, Great Vibes and Alex Brush, which are SIL OFL 1.1 (google/fonts `ofl/`; `OFL.txt` headers confirmed at import). OFL-1.1 is permissive but not on the rule 2 list.
+
+**Decision.** OFL-1.1 is allowed for **font assets only**, never for code dependencies; `deny.toml` (crates) is unchanged because fonts are not crates. The TTFs are unmodified, so the Reserved Font Names are not touched; each ships beside its `OFL-<name>.txt` in `src-tauri/resources/fonts/` and is logged in `docs/LICENSES.md`. Glyphs become outlines (Bézier paths) in the PDF and the library; no font is embedded, so the output is not a font derivative. `TypedFont` is `dancingScript | greatVibes | alexBrush` (IPC `create_typed_signature`, default `dancingScript`). The font of a typed library entry is remembered in UI storage (`sheer.signatureItemFonts`); the last choice is `signatureFont`; stored `homemadeApple` values migrate to the default. Homemade Apple and its license are removed.
+
+**Consequences.** Old entries keep rendering (stored as paths). A font-license allowlist exists in prose only; adding another font license needs a new ADR.

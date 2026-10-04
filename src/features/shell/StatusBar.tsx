@@ -1,11 +1,12 @@
-import { RotateCw } from 'lucide-react';
+import { RotateCw, ZoomIn, ZoomOut } from 'lucide-react';
 import { useId, useState, type FormEvent } from 'react';
 
 import { FIND_KEYS_ATTRIBUTE } from '../search/commands';
-import { Button, Field, Menu, Popover, usePulseMessage } from '../../components';
+import { Button, Field, IconButton, Menu, Popover, usePulseMessage } from '../../components';
 import { PILL } from '../../components/controlStyles';
 import { Icon } from '../../components/Icon';
 import { useT } from '../../i18n';
+import { MAX_ZOOM, MIN_ZOOM } from '../../lib/zoom';
 import { useSettledValue } from './hooks';
 import { formatPageStatus, formatZoomStatus, splitForMiddleTruncation } from './status';
 import { FormPill } from '../forms/FormPill';
@@ -30,6 +31,8 @@ export interface StatusBarProps {
   edited?: boolean;
   onGoToPage: (pageIndex: number) => void;
   onZoom: (zoom: number) => void;
+  /** The zoom buttons beside the readout (DESIGN 3.55): one step in or out. */
+  onZoomStep?: (direction: 1 | -1) => void;
   /** The view rotation in degrees (DESIGN 3.20); a button that resets it is shown while it is not 0. */
   rotation?: number;
   onResetRotation?: () => void;
@@ -174,6 +177,7 @@ export function StatusBar({
   edited = false,
   onGoToPage,
   onZoom,
+  onZoomStep,
   rotation = 0,
   onResetRotation,
   goToOpen,
@@ -223,26 +227,44 @@ export function StatusBar({
         />
       )}
       {hasDocument && (
-        <Menu
-          label={t('status.zoomMenu')}
-          side="top"
-          align="end"
-          entries={zoomMenuEntries(zoom, onZoom, t.locale)}
-          trigger={(trigger) => (
-            <Button
-              {...trigger}
-              variant="ghost"
-              size="sm"
-              aria-label={
-                Number.isFinite(zoom)
-                  ? `${formatZoomStatus(zoom, t.locale)} · ${t('toolbar.zoomLevel')}`
-                  : t('toolbar.zoomLevel')
-              }
-            >
-              {formatZoomStatus(zoom, t.locale)}
-            </Button>
-          )}
-        />
+        <div role="group" aria-label={t('toolbar.group.zoom')} className="flex shrink-0 items-center gap-0-5">
+          <IconButton
+            size="sm"
+            icon={ZoomOut}
+            label={t('toolbar.zoomOut')}
+            disabled={Number.isFinite(zoom) && zoom <= MIN_ZOOM}
+            focusableWhenDisabled
+            onClick={() => onZoomStep?.(-1)}
+          />
+          <Menu
+            label={t('status.zoomMenu')}
+            side="top"
+            align="end"
+            entries={zoomMenuEntries(zoom, onZoom, t.locale)}
+            trigger={(trigger) => (
+              <Button
+                {...trigger}
+                variant="ghost"
+                size="sm"
+                aria-label={
+                  Number.isFinite(zoom)
+                    ? `${formatZoomStatus(zoom, t.locale)} · ${t('toolbar.zoomLevel')}`
+                    : t('toolbar.zoomLevel')
+                }
+              >
+                {formatZoomStatus(zoom, t.locale)}
+              </Button>
+            )}
+          />
+          <IconButton
+            size="sm"
+            icon={ZoomIn}
+            label={t('toolbar.zoomIn')}
+            disabled={Number.isFinite(zoom) && zoom >= MAX_ZOOM}
+            focusableWhenDisabled
+            onClick={() => onZoomStep?.(1)}
+          />
+        </div>
       )}
       {/* The settled page, for screen readers only (the visible page number changes at once). */}
       <span role="status" className="sr-only">

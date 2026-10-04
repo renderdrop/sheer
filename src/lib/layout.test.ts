@@ -188,17 +188,25 @@ describe('the inspector', () => {
     expect(withTool.canvasWidth).toBe(quiet.canvasWidth - LAYOUT.gutter - LAYOUT.inspector);
   });
 
-  it('below 1280 the track exists only through the toggle, and a selection or tool does not open it', () => {
-    for (const windowWidth of [960, 1100, 1279]) {
+  it('at every width from 960 content opens the track by itself and no content closes it (DESIGN 3.57)', () => {
+    for (const windowWidth of [960, 1100, 1279, 1280, 2000]) {
       const auto = layout({ windowWidth, inspectorContent: true });
-      expect(auto.inspectorReserved, String(windowWidth)).toBe(false);
-      expect(auto.inspectorVisible, String(windowWidth)).toBe(false);
+      expect(auto.inspectorReserved, String(windowWidth)).toBe(true);
+      expect(auto.inspectorVisible, String(windowWidth)).toBe(true);
+      expect(layout({ windowWidth }).inspectorVisible, String(windowWidth)).toBe(false);
 
       const open = layout({ windowWidth, inspector: 'open' });
       expect(open.inspectorReserved, String(windowWidth)).toBe(true);
       expect(open.inspectorVisible, String(windowWidth)).toBe(true);
       expect(open.tracks.find((track) => track.slot === 'inspector')?.size).toBe('var(--inspector-width)');
     }
+  });
+
+  it('"closed" still opens for a mode panel (Crop, Redact) and for nothing else', () => {
+    expect(layout({ windowWidth: 1100, inspector: 'closed', inspectorContent: true }).inspectorVisible).toBe(false);
+    expect(
+      layout({ windowWidth: 1100, inspector: 'closed', inspectorContent: true, inspectorMode: true }).inspectorVisible,
+    ).toBe(true);
   });
 
   it('hidden: the gap and the track take no room', () => {
@@ -311,7 +319,7 @@ describe('the structure and the tracks, which the shell follows separately', () 
     const at = (windowWidth: number) => shellStructure({ ...base, windowWidth });
     expect(at(1000)).toEqual(at(1279));
     expect(at(1280)).toEqual(at(2400));
-    expect(shellStructure({ ...base, windowWidth: 1279, inspectorContent: true })).not.toEqual(
+    expect(shellStructure({ ...base, windowWidth: 1279, inspectorContent: true })).toEqual(
       shellStructure({ ...base, windowWidth: 1280, inspectorContent: true }),
     );
     for (const value of Object.values(at(1100))) expect(['string', 'boolean']).toContain(typeof value);

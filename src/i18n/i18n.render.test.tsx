@@ -76,20 +76,20 @@ describe('the language setting', () => {
     // jsdom reports "en-US": "system" is English.
     expect(html.lang).toBe('en');
     expect(screen.getByRole('toolbar', { name: 'Tools' })).not.toBeNull();
-    expect(screen.getByRole('heading', { level: 1, name: 'Open a PDF' })).not.toBeNull();
-    expect(screen.getByRole('button', { name: 'Open…' })).not.toBeNull();
+    expect(screen.getByRole('heading', { level: 1, name: 'What would you like to do?' })).not.toBeNull();
+    expect(screen.getByRole('button', { name: 'Open' })).not.toBeNull();
 
     chooseLanguage('de');
     expect(html.lang).toBe('de');
     expect(screen.getByRole('toolbar', { name: 'Werkzeuge' })).not.toBeNull();
-    expect(screen.getByRole('heading', { level: 1, name: 'PDF öffnen' })).not.toBeNull();
-    expect(screen.getByRole('button', { name: 'Öffnen…' })).not.toBeNull();
+    expect(screen.getByRole('heading', { level: 1, name: 'Was möchten Sie tun?' })).not.toBeNull();
+    expect(screen.getByRole('button', { name: 'Öffnen' })).not.toBeNull();
     expect(screen.queryByRole('toolbar', { name: 'Tools' })).toBeNull();
     expect(screen.queryByText('Open a PDF')).toBeNull();
 
     chooseLanguage('en');
     expect(html.lang).toBe('en');
-    expect(screen.getByRole('heading', { level: 1, name: 'Open a PDF' })).not.toBeNull();
+    expect(screen.getByRole('heading', { level: 1, name: 'What would you like to do?' })).not.toBeNull();
     expect(screen.queryByText('PDF öffnen')).toBeNull();
   });
 
@@ -100,17 +100,18 @@ describe('the language setting', () => {
     unbind = bindLocaleToSettings(html);
     expect(html.lang).toBe('de');
     setup(<Shell />);
-    expect(screen.getByRole('heading', { level: 1, name: 'PDF öffnen' })).not.toBeNull();
+    expect(screen.getByRole('heading', { level: 1, name: 'Was möchten Sie tun?' })).not.toBeNull();
 
     // An explicit choice overrides the OS.
     chooseLanguage('en');
     expect(html.lang).toBe('en');
-    expect(screen.getByRole('heading', { level: 1, name: 'Open a PDF' })).not.toBeNull();
+    expect(screen.getByRole('heading', { level: 1, name: 'What would you like to do?' })).not.toBeNull();
   });
 
   it('the shortcut chips follow the language on Windows, and the announced shortcuts stay canonical', async () => {
+    act(() => useSettings.setState({ platform: 'windows' }));
     const { user } = setup(<Shell />);
-    const open = () => screen.getByRole('button', { name: /^(Open…|Öffnen…)$/ });
+    const open = () => screen.getByRole('button', { name: /^(Open|Öffnen)$/ });
     expect(screen.getByText('Ctrl+O')).not.toBeNull();
 
     chooseLanguage('de');
@@ -118,7 +119,8 @@ describe('the language setting', () => {
     expect(screen.queryByText('Ctrl+O')).toBeNull();
     expect(open().getAttribute('aria-keyshortcuts')).toBe('Control+O');
 
-    await user.click(within(screen.getByRole('toolbar', { name: 'Werkzeuge' })).getByRole('button', { name: 'Mehr' }));
+    // The in-window menu bar of Windows (DESIGN 3.56).
+    await user.click(screen.getByRole('menuitem', { name: 'Datei' }));
     const item = within(screen.getByRole('menu')).getByRole('menuitem', { name: /Öffnen…/ });
     expect(item.textContent).toContain('Strg+O');
 
@@ -135,35 +137,28 @@ describe('the language setting', () => {
     expect(screen.queryByText(/Strg|Ctrl/)).toBeNull();
   });
 
-  it('the toolbar, its menus and tooltips follow the language', async () => {
-    const { user } = setup(<Shell />);
+  it('the toolbar, its menus and tooltips follow the language', () => {
+    setup(<Shell />);
     chooseLanguage('de');
     const toolbar = screen.getByRole('toolbar', { name: 'Werkzeuge' });
     for (const name of [
       'Linke Seitenleiste',
       'Auswählen',
       'Hervorheben',
-      'Notiz',
-      'Textkommentar',
+      'Kommentar',
       'Zeichnen',
       'Rechteck',
-      'Formular',
-      'Signatur',
-      'Seiten',
-      'Verkleinern',
-      'Vergrößern',
-      'Zoomstufe',
+      'Ausfüllen & signieren',
+      'Schwärzen',
       'Eigenschaften',
     ]) {
       expect(within(toolbar).getByRole('button', { name }), name).not.toBeNull();
     }
-    await user.click(within(toolbar).getByRole('button', { name: 'Mehr' }));
-    expect(within(screen.getByRole('menu')).getByRole('menuitem', { name: /Öffnen…/ })).not.toBeNull();
   });
 
   it('with a document open the panels, canvas and status bar are German, and plurals follow the language', async () => {
     const { user } = setup(<Shell />);
-    await user.click(screen.getByRole('button', { name: 'Open…' }));
+    await user.click(screen.getByRole('button', { name: 'Open' }));
     await screen.findByRole('img', { name: /^Page 1 of/ });
     const separator = screen.getByRole('separator', { name: 'Resize left panel' });
     expect(separator.getAttribute('aria-valuetext')).toBe('248 pixels');
@@ -176,7 +171,7 @@ describe('the language setting', () => {
       screen.getByRole('separator', { name: 'Breite der Seitenleiste ändern' }).getAttribute('aria-valuetext'),
     ).toBe('248 Pixel');
     expect(screen.getByRole('region', { name: 'Dokument' })).not.toBeNull();
-    for (const tab of ['Miniaturen', 'Gliederung', 'Kommentare', 'Suche']) {
+    for (const tab of ['Seiten', 'Gliederung', 'Kommentare', 'Suche']) {
       expect(screen.getByRole('tab', { name: tab }), tab).not.toBeNull();
     }
     const status = screen.getByRole('contentinfo', { name: 'Status' });
@@ -193,7 +188,7 @@ describe('the language setting', () => {
   it('page numbers are written in the language of the UI', async () => {
     documentsApi.openDocumentDialog.mockResolvedValue([opened({ id: 1, pageCount: 12000, displayName: 'Big.pdf' })]);
     const { user } = setup(<Shell />);
-    await user.click(screen.getByRole('button', { name: 'Open…' }));
+    await user.click(screen.getByRole('button', { name: 'Open' }));
     await screen.findByRole('img', { name: /^Page 1 of/ });
     expect(screen.getByRole('img', { name: 'Page 1 of 12,000' })).not.toBeNull();
     chooseLanguage('de');
@@ -231,7 +226,7 @@ describe('the language setting', () => {
 
   it('no English text of the shell is left over in the German UI', async () => {
     const { user, container } = setup(<Shell />);
-    await user.click(screen.getByRole('button', { name: 'Open…' }));
+    await user.click(screen.getByRole('button', { name: 'Open' }));
     await screen.findByRole('img', { name: /^Page 1 of/ });
     act(() => useUi.getState().showBanner({ code: 'internal', key: 'error.internal', retryable: false }));
     chooseLanguage('de');
@@ -257,7 +252,7 @@ describe('the language setting', () => {
 
   it('no "undefined", "null", "NaN", object text or unfilled {placeholder} reaches the screen in either language', async () => {
     const { user, container } = setup(<Shell />);
-    await user.click(screen.getByRole('button', { name: 'Open…' }));
+    await user.click(screen.getByRole('button', { name: 'Open' }));
     await screen.findByRole('img', { name: /^Page 1 of/ });
     act(() => useUi.getState().showBanner({ code: 'limit_exceeded', key: 'error.limit_exceeded', retryable: false }));
 

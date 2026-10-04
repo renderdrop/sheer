@@ -52,7 +52,7 @@ describe('StatusBar formatting (DESIGN 3.10)', () => {
   it('a long name keeps its end visible: the head may be cut, the tail never is', () => {
     const name = 'Quarterly report 2024 final version.pdf';
     const { container } = setup(<StatusBar {...props({ fileName: name })} />);
-    const visible = [...container.querySelectorAll('footer [aria-hidden="true"]')].map((part) => part.textContent);
+    const visible = [...container.querySelectorAll('footer span[aria-hidden="true"]')].map((part) => part.textContent);
     expect(visible.join('')).toBe(name);
     expect(visible[1]).toBe('sion.pdf');
     expect(visible[0]?.endsWith('final ver')).toBe(true);
@@ -73,7 +73,7 @@ describe('StatusBar formatting (DESIGN 3.10)', () => {
     const long = `${'n'.repeat(251)}.pdf`;
     const { container, rerender } = setup(<StatusBar {...props({ fileName: long })} />);
     const visible = () =>
-      [...container.querySelectorAll('footer [aria-hidden="true"]')].map((part) => part.textContent ?? '');
+      [...container.querySelectorAll('footer span[aria-hidden="true"]')].map((part) => part.textContent ?? '');
     expect(visible().join('')).toBe(long);
     expect(visible()[1]).toBe('nnnn.pdf');
     rerender(<StatusBar {...props({ fileName: 'a.pdf' })} />);
@@ -261,5 +261,21 @@ describe('the save hints', () => {
     expect(screen.getByText('Saved')).toBeTruthy();
     rerender(<StatusBar {...props({ rendering: true, saveHint: null })} />);
     expect(screen.getByText('Rendering…')).toBeTruthy();
+  });
+});
+
+describe('the zoom buttons beside the readout (DESIGN 3.55)', () => {
+  it('step the zoom out and in, and are disabled at the limits', async () => {
+    const onZoomStep = vi.fn();
+    const { user } = setup(<StatusBar {...props({ onZoomStep })} />);
+    await user.click(screen.getByRole('button', { name: 'Zoom out' }));
+    await user.click(screen.getByRole('button', { name: 'Zoom in' }));
+    expect(onZoomStep.mock.calls).toEqual([[-1], [1]]);
+  });
+
+  it('disable the button that cannot go on', () => {
+    setup(<StatusBar {...props({ zoom: 0.25 })} />);
+    expect(screen.getByRole('button', { name: 'Zoom out' }).getAttribute('aria-disabled')).toBe('true');
+    expect(screen.getByRole('button', { name: 'Zoom in' }).getAttribute('aria-disabled')).toBeNull();
   });
 });

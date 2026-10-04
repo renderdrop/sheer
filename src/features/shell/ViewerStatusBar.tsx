@@ -20,6 +20,7 @@ export function ViewerStatusBar() {
   const edited = useAnnotations((state) => activeId !== null && isDirty(state, activeId));
   const goToPage = useViewer((state) => state.goToPage);
   const setZoom = useViewer((state) => state.setZoom);
+  const zoomStep = useViewer((state) => state.zoomStep);
   const resetRotation = useViewer((state) => state.resetRotation);
   const goToOpen = useGoToPage((state) => state.open);
   const setGoToOpen = useGoToPage((state) => state.setOpen);
@@ -35,6 +36,7 @@ export function ViewerStatusBar() {
       edited={edited}
       onGoToPage={goToPage}
       onZoom={setZoom}
+      onZoomStep={zoomStep}
       rotation={rotation}
       onResetRotation={resetRotation}
       goToOpen={goToOpen}

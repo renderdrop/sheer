@@ -1,8 +1,9 @@
 //! The native menu bar (macOS) and the channel that carries its commands to the UI.
 //!
 //! macOS needs a menu bar: HIG wants every command in it, and without an Edit menu the webview's Cmd+C and Cmd+V do not
-//! work. Windows has none (the window has custom chrome, ADR-014, ADR-016): there the commands are on the toolbar, in More
-//! and on the keyboard, and nothing in this module installs anything. The layout and the texts are in [`spec`].
+//! work. Windows has no native menu (the window has custom chrome, ADR-014): its menu bar is drawn in the caption row by the UI
+//! from the same layout (ADR-058, DESIGN 3.56), so nothing in this module installs anything there. The items the layout marks
+//! for Windows only are skipped here. The layout and the texts are in [`spec`].
 //!
 //! **To the UI.** A choice in the menu is a [`MenuEvent`] with the item's id. The webview has no event permission
 //! (SECURITY T3, ADR-013), so the id reaches it on a `tauri::ipc::Channel<String>` that the UI handed over with the
@@ -212,7 +213,7 @@ fn build<R: Runtime>(
     let mut submenus = Vec::with_capacity(layout.menus.len());
     for menu in &layout.menus {
         let mut kinds = Vec::with_capacity(menu.items.len());
-        for item in &menu.items {
+        for item in menu.items.iter().filter(|item| item.on_macos()) {
             kinds.push(build_item(app, item, &text, &name, has_document)?);
         }
         let items: Vec<&dyn IsMenuItem<R>> = kinds
@@ -274,7 +275,10 @@ fn build_item<R: Runtime>(
             &text(&item.label),
             app_name,
         )?),
-        ItemSpec::Separator(_) => MenuItemKind::Predefined(PredefinedMenuItem::separator(app)?),
+        // A submenu is Windows only (filtered before this); a separator is the harmless answer.
+        ItemSpec::Separator(_) | ItemSpec::Submenu(_) => {
+            MenuItemKind::Predefined(PredefinedMenuItem::separator(app)?)
+        }
     })
 }
 
@@ -363,7 +367,6 @@ mod tests {
         bridge.subscribe(channel, None);
         // The system items (AppKit acts on them itself), Tauri's own menu ids, and plain junk.
         for id in [
-            "about",
             "quit",
             "copy",
             "paste",

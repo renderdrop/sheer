@@ -9,6 +9,7 @@ import { useUi } from '../../stores/ui';
 export function readShellStructure(): ShellStructure {
   const ui = useUi.getState();
   const activeId = useDocuments.getState().activeId;
+  const modePanel = ui.redactMode || ui.activeTool === 'crop';
   return shellStructure({
     hasDocument: activeId !== null,
     windowWidth: window.innerWidth,
@@ -16,10 +17,13 @@ export function readShellStructure(): ShellStructure {
     // The page grid takes the room of the left panel (DESIGN 3.28); it returns when the mode ends.
     panelCollapsed: ui.leftPanelCollapsed || ui.activeTool === 'pages',
     inspector: ui.inspector,
-    // A tool other than Select has options to show, and so has a selection; the Pages tool has none (the grid is its own view).
+    // DESIGN 3.57: a mode panel (Crop, Redact), a selection, or the options of a tool that has some. Select, Pages and the
+    // retired Form tool have none.
     inspectorContent:
-      (ui.activeTool !== 'select' && ui.activeTool !== 'pages') ||
+      modePanel ||
+      (ui.activeTool !== 'select' && ui.activeTool !== 'pages' && ui.activeTool !== 'form') ||
       (activeId !== null && (useAnnotations.getState().selectedIds[activeId]?.length ?? 0) > 0),
+    inspectorMode: modePanel,
   });
 }
 

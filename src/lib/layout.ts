@@ -30,8 +30,10 @@ export interface LayoutInput {
   /** The user collapsed the left panel. It also collapses by itself when the canvas would get too narrow. */
   panelCollapsed: boolean;
   inspector: InspectorMode;
-  /** A selection, or a tool other than Select, has something to show in the inspector. */
+  /** A mode panel, a selection, or the options of a tool that has some, has something to show in the inspector. */
   inspectorContent: boolean;
+  /** A mode (Crop, Redact) is on: its panel opens the inspector even when the user closed it (DESIGN 3.57). */
+  inspectorMode?: boolean;
 }
 
 export interface Track {
@@ -106,8 +108,11 @@ export function shellStructure(input: LayoutInput): ShellStructure {
   const panelWidth = clampPanelWidth(input.panelWidth);
   const width = widthOf(input);
 
-  const wide = width >= LAYOUT.inspectorReserveFrom;
-  const inspectorVisible = input.inspector === 'open' || (input.inspector === 'auto' && input.inspectorContent && wide);
+  // At every width of the window (960 and up): the canvas collapse below is what protects the canvas (DESIGN 3.57).
+  const inspectorVisible =
+    input.inspector === 'open' ||
+    (input.inspector === 'auto' && input.inspectorContent) ||
+    (input.inspector === 'closed' && input.inspectorMode === true);
   const inspectorReserved = inspectorVisible;
 
   const canvasWithLeft = width - LAYOUT.gutter - panelWidth - LAYOUT.splitter - trailingWidth(inspectorReserved);

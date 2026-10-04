@@ -118,14 +118,15 @@ describe('watching the backend', () => {
 });
 
 describe('in the window', () => {
-  it('a file dragged over the empty state is invited by its title, and not by an overlay', () => {
+  it('a file dragged over the start page shows its drop target card (3.54), and not the canvas overlay', () => {
     const { container } = setup(<Shell />);
     act(() => handleAppEvent(hover(true)));
-    expect(screen.getByRole('heading', { name: 'Drop to open' })).not.toBeNull();
+    expect(
+      within(container.querySelector('[data-drop-target]') as HTMLElement).getByText('Drop to open'),
+    ).not.toBeNull();
     expect(container.querySelector('[data-drop-overlay]')).toBeNull();
     act(() => handleAppEvent(hover(false)));
-    expect(screen.queryByRole('heading', { name: 'Drop to open' })).toBeNull();
-    expect(screen.getByText('Open a PDF')).not.toBeNull();
+    expect(screen.getByText('What would you like to do?')).not.toBeNull();
   });
 
   it('a file dragged over a document shows the overlay over the canvas, and it goes with the drag', async () => {

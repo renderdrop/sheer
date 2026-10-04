@@ -1,9 +1,10 @@
-import { GalleryVertical, ListTree, MessagesSquare, Search, type LucideIcon } from 'lucide-react';
+import { GalleryVertical, LayoutGrid, ListTree, MessagesSquare, Search, type LucideIcon } from 'lucide-react';
 import { AnimatePresence, motion, useIsPresent } from 'motion/react';
 import { memo, type CSSProperties } from 'react';
 
-import { Panel, Tab, TabList, TabPanel, Tabs } from '../../components';
+import { IconButton, Panel, Tab, TabList, TabPanel, Tabs } from '../../components';
 import { useT, type PlainKey } from '../../i18n';
+import { canRunAction, runAction } from '../../actions/dispatch';
 import { clampPanelWidth } from '../../lib/layout';
 import { LEFT_PANEL_TABS, useUi, type LeftPanelTab } from '../../stores/ui';
 import { Comments, CommentsActions } from '../comments/Comments';
@@ -19,7 +20,7 @@ interface TabSpec {
 }
 
 const TABS: Record<LeftPanelTab, TabSpec> = {
-  thumbnails: { label: 'leftPanel.tab.thumbnails', icon: GalleryVertical, empty: 'leftPanel.empty.thumbnails' },
+  thumbnails: { label: 'leftPanel.tab.pages', icon: GalleryVertical, empty: 'leftPanel.empty.thumbnails' },
   outline: { label: 'leftPanel.tab.outline', icon: ListTree, empty: 'leftPanel.empty.outline' },
   comments: { label: 'leftPanel.tab.comments', icon: MessagesSquare, empty: 'leftPanel.empty.comments' },
   search: { label: 'leftPanel.tab.search', icon: Search, empty: 'leftPanel.empty.search' },
@@ -27,6 +28,24 @@ const TABS: Record<LeftPanelTab, TabSpec> = {
 
 function isLeftPanelTab(value: string): value is LeftPanelTab {
   return (LEFT_PANEL_TABS as readonly string[]).includes(value);
+}
+
+/** The Pages title row's button (DESIGN 3.57): enters Organize, which the toolbar's Pages button used to do. */
+function OrganizeButton() {
+  const t = useT();
+  const active = useUi((state) => state.activeTool === 'pages');
+  return (
+    <IconButton
+      size="sm"
+      variant="plain"
+      icon={LayoutGrid}
+      label={t('pages.organize')}
+      pressed={active}
+      onClick={() => {
+        if (canRunAction('tool-pages')) void runAction(active ? 'tool-select' : 'tool-pages');
+      }}
+    />
+  );
 }
 
 const selectTab = (tab: string) => {
@@ -39,7 +58,7 @@ export interface LeftPanelProps {
 }
 
 /**
- * The left panel (DESIGN 3.6, 3.9): a G1 `<aside>` whose header is the four-tab segmented control (Thumbnails, Outline,
+ * The left panel (DESIGN 3.6, 3.9): a G1 `<aside>` whose header is the four-tab segmented control (Pages, Outline,
  * Comments, Search) and whose body is the selected tab's panel, starting with its 32 px title row. Thumbnails shows the page list;
  * the other tabs are placeholders until M1 fills them, and each says what will appear there.
  *
@@ -70,6 +89,7 @@ export const LeftPanel = memo(function LeftPanel({ id }: LeftPanelProps) {
             <div className="flex h-full min-h-0 flex-col">
               <div className="flex h-control-md shrink-0 items-center">
                 <h2 className="m-0 min-w-0 flex-1 truncate text-md font-semibold">{t(TABS[value].label)}</h2>
+                {value === 'thumbnails' && <OrganizeButton />}
                 {value === 'outline' && <OutlineActions />}
                 {value === 'comments' && <CommentsActions />}
               </div>

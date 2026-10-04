@@ -502,7 +502,7 @@ describe('Toolbar overflow', () => {
       for (const name of everything) expect(reached, `${name} at ${width} px`).toContain(name);
       unmount();
     }
-  });
+  }, 30_000); // walks every width × item; slow under the full parallel suite
 
   it('keeps exactly one tab stop when the item that had it moves into More', async () => {
     const resize = fakeLayout(400);

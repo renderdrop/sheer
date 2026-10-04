@@ -50,7 +50,13 @@ import {
 } from 'lucide-react';
 
 import type { Platform } from '../api/app';
+import { closeWindow } from '../api/window';
 import { runFlatten } from '../features/forms/actions';
+import { useForms } from '../features/forms/store';
+import { openSignatureLibrary } from '../features/signatures/library';
+import { restartTour } from '../features/tour/runtime';
+import { resetTips } from '../features/tips/runtime';
+import { useAnnotations } from '../stores/annotations';
 import { toggleAbout } from '../features/about/state';
 import { stepHit } from '../features/search/jump';
 import { organizeActive, rotateOrganized } from '../features/organize/actions';
@@ -66,7 +72,8 @@ import { useViewer } from '../features/viewer/useViewer';
 import type { PlainKey, Translate } from '../i18n';
 import type { Shortcut } from '../lib/shortcuts';
 import { useTools } from '../stores/tools';
-import { useUi, type ToolId } from '../stores/ui';
+import { useUi, type LeftPanelTab, type ToolId } from '../stores/ui';
+import { requestAddComment } from './commentIntent';
 import { runHistoryStep } from './history';
 import { formatBinding, resolveBinding, type Binding, type Shortcuts } from './shortcut';
 import { mayCopy, mayPrint, type ActionState } from './state';
@@ -117,27 +124,38 @@ export type ActionId =
   | 'export-copy'
   | 'export-images'
   | 'print'
+  | 'exit'
+  | 'fullscreen'
+  | 'delete-selection'
+  | 'add-comment'
+  | 'sidebar-tab-pages'
+  | 'sidebar-tab-outline'
+  | 'sidebar-tab-comments'
+  | 'sidebar-tab-search'
+  | 'tool-redact'
+  | 'form-highlight'
+  | 'manage-signatures'
+  | 'welcome-tour'
+  | 'reset-tips'
   | ToolActionId;
 
-/** Actions of one group sit together in the More menu, with a separator between groups. */
+/** Where an action belongs (the menu bar's layout is `menu.json`; the group is for readers and tests). */
 export type ActionGroup = 'file' | 'output' | 'edit' | 'view' | 'page' | 'panels' | 'tools' | 'app';
 
 /**
- * A command of the app: what the toolbar, the More menu, the macOS menu bar and the keyboard all run. It is defined once, here;
+ * A command of the app: what the toolbar, the menu bars (native on macOS, in the caption row on Windows) and the keyboard all run. It is defined once, here;
  * each of those derives what it shows (name, icon, shortcut, enabled) from this entry and runs `run`, so a command cannot be on
  * the toolbar and not on the keyboard, or have two different shortcuts.
  */
 export interface ActionDef {
   readonly id: ActionId;
-  /** The name in the catalogs, for the toolbar (tooltip, accessible name) and the More menu. */
+  /** The name in the catalogs, for the toolbar (tooltip, accessible name). The menus use the labels of `menu.json`. */
   readonly labelKey: PlainKey;
   readonly icon?: LucideIcon;
   /** Canonical, per platform (`resolveBinding`). Absent: no shortcut. */
   readonly shortcut?: Shortcuts;
   readonly group: ActionGroup;
-  /** Listed in the More menu: the toolbar's overflow, and on Windows (which has no menu bar) the way to every command. */
-  readonly more?: boolean;
-  /** Listed in the macOS menu bar. `src/actions/menu.json` has the layout; a test ties the two together. */
+  /** Listed in the menu bars. `src/actions/menu.json` has the layout; a test ties the two together. */
   readonly menuBar?: boolean;
   /** A held key repeats the action (zoom, page turning). Otherwise only the first press runs it. */
   readonly repeat?: boolean;
@@ -154,24 +172,32 @@ const TOOL_ACTIONS: readonly ActionDef[] = (
   [
     ['select', 'v', MousePointer2, 'toolbar.tool.select'],
     ['highlight', 'h', Highlighter, 'toolbar.tool.highlight'],
-    ['note', 'n', MessageSquare, 'toolbar.tool.note'],
+    ['note', 'c', MessageSquare, 'toolbar.tool.comment'],
     ['text', 't', Type, 'toolbar.tool.text'],
     ['draw', 'd', PenLine, 'toolbar.tool.draw'],
     ['shapes', 'r', Square, 'toolbar.tool.shapes'],
-    ['form', 'f', TextCursorInput, 'toolbar.tool.form'],
+    // The Form tool is gone from the toolbar and has no key (DESIGN 3.58: fields are always live); the action stays for the hub.
+    ['form', undefined, TextCursorInput, 'toolbar.tool.form'],
     ['signature', 's', Signature, 'toolbar.tool.signature'],
     ['pages', 'p', LayoutGrid, 'toolbar.tool.pages'],
     // M5 Edit cluster (DESIGN 3.36, 3.37).
     ['textBox', 'e', TextCursor, 'insert.text'],
     ['image', 'i', ImagePlus, 'insert.image'],
     ['crop', 'k', Crop, 'crop.tool'],
-  ] as const satisfies readonly (readonly [ToolId, string, LucideIcon, PlainKey])[]
+  ] as const satisfies readonly (readonly [ToolId, string | undefined, LucideIcon, PlainKey])[]
 ).map(([tool, key, icon, labelKey]): ActionDef => ({
   id: `tool-${tool}`,
   labelKey,
   icon,
-  shortcut: { default: { key } },
+  // Comment keeps N as well as C (DESIGN 3.55): both name the Note tool.
+  shortcut:
+    key === undefined
+      ? undefined
+      : tool === 'note'
+        ? { default: { key }, alternates: [{ key: 'n' }] }
+        : { default: { key } },
   group: 'tools',
+  menuBar: tool !== 'form',
   enabled: needsDocument,
   // The key makes the tool active and leaves it so; it is not the toolbar's click, which also releases an active tool.
   run: () => {
@@ -181,11 +207,59 @@ const TOOL_ACTIONS: readonly ActionDef[] = (
       document.querySelector<HTMLElement>('[data-toolbar-item="signature"]')?.click();
       return;
     }
+    // C cycles Comment between its two variants, Note and Text comment (DESIGN 3.55).
+    if (tool === 'note' && ui.activeTool === 'text') {
+      ui.selectTool('note');
+      return;
+    }
+    if (tool === 'note' && ui.activeTool === 'note') {
+      ui.selectTool('text');
+      return;
+    }
     if (ui.activeTool !== tool) ui.selectTool(tool);
     // Markup and Shapes: the key of the active tool goes on to its next variant (DESIGN 3.22).
     else if (tool === 'highlight' || tool === 'shapes') useTools.getState().cycle(tool);
   },
 }));
+
+/** The sidebar tab each `sidebar-tab-*` action shows (the store's name for Pages is `thumbnails`). */
+const SIDEBAR_TABS: readonly (readonly [string, LeftPanelTab, PlainKey])[] = [
+  ['pages', 'thumbnails', 'menu.view.tabPages'],
+  ['outline', 'outline', 'menu.view.tabOutline'],
+  ['comments', 'comments', 'menu.view.tabComments'],
+  ['search', 'search', 'menu.view.tabSearch'],
+];
+
+const SIDEBAR_TAB_ACTIONS: readonly ActionDef[] = SIDEBAR_TABS.map(([name, tab, labelKey]): ActionDef => ({
+  id: `sidebar-tab-${name}` as ActionId,
+  labelKey,
+  group: 'panels',
+  menuBar: true,
+  enabled: needsDocument,
+  // Shows the tab, and the sidebar when it was hidden.
+  run: () => {
+    const ui = useUi.getState();
+    ui.setLeftPanelTab(tab);
+    ui.setLeftPanelCollapsed(false);
+  },
+}));
+
+/** Deletes the selected annotations of the active document (the menu's Delete; the canvas has its own key handling). */
+function deleteSelection(): void {
+  const docId = useDocuments.getState().activeId;
+  if (docId === null) return;
+  const ids = useAnnotations.getState().selectedIds[docId] ?? [];
+  if (ids.length === 0) return;
+  void useAnnotations.getState().apply(docId, { type: 'deleteAnnotations', ids });
+}
+
+/** Full screen on and off with the web's own API (no window permission); a refusal is nothing to report. */
+function toggleFullscreen(): void {
+  // Where the API is missing (a test, an old webview) there is nothing to toggle.
+  const on = (document.fullscreenElement ?? null) !== null;
+  const request = on ? document.exitFullscreen?.() : document.documentElement.requestFullscreen?.();
+  void Promise.resolve(request).catch(() => undefined);
+}
 
 /**
  * Where the shortcuts come from (docs/research/ux-patterns.md section 5). macOS: Command is primary, avoid Control. Windows:
@@ -205,7 +279,6 @@ export const ACTIONS: readonly ActionDef[] = [
     icon: FolderOpen,
     shortcut: { default: primary('o') },
     group: 'file',
-    more: true,
     menuBar: true,
     enabled: () => true,
     run: () => void useViewer.getState().open(),
@@ -216,7 +289,6 @@ export const ACTIONS: readonly ActionDef[] = [
     icon: FileX,
     shortcut: { default: primary('w') },
     group: 'file',
-    more: true,
     menuBar: true,
     enabled: needsDocument,
     run: () => {
@@ -230,7 +302,6 @@ export const ACTIONS: readonly ActionDef[] = [
     icon: Save,
     shortcut: { default: primary('s') },
     group: 'file',
-    more: true,
     menuBar: true,
     enabled: needsDocument,
     run: () => saveActive(false),
@@ -241,7 +312,6 @@ export const ACTIONS: readonly ActionDef[] = [
     icon: SaveAll,
     shortcut: { default: { key: 's', mods: ['primary', 'shift'] } },
     group: 'file',
-    more: true,
     menuBar: true,
     enabled: needsDocument,
     run: () => saveActive(true),
@@ -252,7 +322,6 @@ export const ACTIONS: readonly ActionDef[] = [
     labelKey: 'img2pdf.menu',
     icon: Images,
     group: 'output',
-    more: true,
     menuBar: true,
     enabled: () => true,
     run: () => useUi.getState().setImagesToPdfOpen(true),
@@ -262,7 +331,6 @@ export const ACTIONS: readonly ActionDef[] = [
     labelKey: 'copy.menu',
     icon: FileOutput,
     group: 'output',
-    more: true,
     menuBar: true,
     enabled: needsDocument,
     run: () => useUi.getState().setExportCopyOpen(true),
@@ -273,7 +341,6 @@ export const ACTIONS: readonly ActionDef[] = [
     icon: FileImage,
     shortcut: { default: { key: 'e', mods: ['primary', 'shift'] } },
     group: 'output',
-    more: true,
     menuBar: true,
     // Copying content out is a permission (DESIGN 3.39); the item stays focusable and the dialog says why ('output.notAllowed').
     enabled: (state) => state.hasDocument && mayCopy(state),
@@ -285,7 +352,6 @@ export const ACTIONS: readonly ActionDef[] = [
     icon: Printer,
     shortcut: { default: primary('p') },
     group: 'output',
-    more: true,
     menuBar: true,
     enabled: (state) => state.hasDocument && mayPrint(state),
     run: () => useUi.getState().setPrintOpen(true),
@@ -295,7 +361,6 @@ export const ACTIONS: readonly ActionDef[] = [
     labelKey: 'action.merge',
     icon: Combine,
     group: 'file',
-    more: true,
     menuBar: true,
     enabled: needsDocument,
     run: runMerge,
@@ -305,7 +370,6 @@ export const ACTIONS: readonly ActionDef[] = [
     labelKey: 'action.split',
     icon: Scissors,
     group: 'file',
-    more: true,
     menuBar: true,
     enabled: needsDocument,
     run: runSplit,
@@ -315,7 +379,6 @@ export const ACTIONS: readonly ActionDef[] = [
     labelKey: 'action.extractPages',
     icon: FileOutput,
     group: 'file',
-    more: true,
     menuBar: true,
     enabled: needsDocument,
     run: runExtract,
@@ -325,7 +388,6 @@ export const ACTIONS: readonly ActionDef[] = [
     labelKey: 'action.compress',
     icon: FileArchive,
     group: 'file',
-    more: true,
     menuBar: true,
     enabled: needsDocument,
     run: runCompress,
@@ -360,7 +422,6 @@ export const ACTIONS: readonly ActionDef[] = [
     labelKey: 'action.flattenForm',
     icon: Stamp,
     group: 'edit',
-    more: true,
     menuBar: true,
     enabled: needsDocument,
     // The confirm dialog (src/features/forms), which runs the flatten job.
@@ -371,8 +432,6 @@ export const ACTIONS: readonly ActionDef[] = [
     labelKey: 'redact.tool',
     icon: SquareSlash,
     group: 'edit',
-    more: true,
-    menuBar: true,
     enabled: needsDocument,
     // A mode (DESIGN 3.38): the canvas and inspector slots of src/features/redact read it.
     run: () => useUi.getState().setRedactMode(true),
@@ -382,7 +441,6 @@ export const ACTIONS: readonly ActionDef[] = [
     labelKey: 'protect.menu',
     icon: Lock,
     group: 'edit',
-    more: true,
     menuBar: true,
     enabled: needsDocument,
     run: () => useUi.getState().setProtectOpen(true),
@@ -392,7 +450,6 @@ export const ACTIONS: readonly ActionDef[] = [
     labelKey: 'props.menu',
     icon: FileText,
     group: 'edit',
-    more: true,
     menuBar: true,
     enabled: needsDocument,
     run: () => useUi.getState().setPropsOpen(true),
@@ -425,7 +482,6 @@ export const ACTIONS: readonly ActionDef[] = [
     icon: Percent,
     shortcut: { default: primary('1') },
     group: 'view',
-    more: true,
     menuBar: true,
     enabled: needsDocument,
     run: () => useViewer.getState().resetZoom(),
@@ -436,7 +492,6 @@ export const ACTIONS: readonly ActionDef[] = [
     icon: StretchHorizontal,
     shortcut: { default: primary('2') },
     group: 'view',
-    more: true,
     menuBar: true,
     enabled: needsDocument,
     run: () => useViewer.getState().fitWidth(),
@@ -447,7 +502,6 @@ export const ACTIONS: readonly ActionDef[] = [
     icon: Maximize2,
     shortcut: { default: primary('0') },
     group: 'view',
-    more: true,
     menuBar: true,
     enabled: needsDocument,
     run: () => useViewer.getState().fitPage(),
@@ -457,7 +511,6 @@ export const ACTIONS: readonly ActionDef[] = [
     labelKey: 'action.scrollContinuous',
     icon: GalleryVertical,
     group: 'view',
-    more: true,
     menuBar: true,
     enabled: needsDocument,
     run: () => useViewer.getState().setScrollMode('continuous'),
@@ -467,7 +520,6 @@ export const ACTIONS: readonly ActionDef[] = [
     labelKey: 'action.scrollSingle',
     icon: File,
     group: 'view',
-    more: true,
     menuBar: true,
     enabled: needsDocument,
     run: () => useViewer.getState().setScrollMode('single'),
@@ -477,7 +529,6 @@ export const ACTIONS: readonly ActionDef[] = [
     labelKey: 'action.scrollSpread',
     icon: BookOpen,
     group: 'view',
-    more: true,
     menuBar: true,
     enabled: needsDocument,
     run: () => useViewer.getState().setScrollMode('spread'),
@@ -488,7 +539,6 @@ export const ACTIONS: readonly ActionDef[] = [
     icon: ChevronDown,
     shortcut: { default: primary('ArrowDown') },
     group: 'page',
-    more: true,
     menuBar: true,
     repeat: true,
     enabled: needsDocument,
@@ -500,7 +550,6 @@ export const ACTIONS: readonly ActionDef[] = [
     icon: ChevronUp,
     shortcut: { default: primary('ArrowUp') },
     group: 'page',
-    more: true,
     menuBar: true,
     repeat: true,
     enabled: needsDocument,
@@ -513,7 +562,6 @@ export const ACTIONS: readonly ActionDef[] = [
     // these are the others: Ctrl+PageDown on Windows, Cmd+Shift+] on macOS, where the menu bar shows it (DESIGN 3.18).
     shortcut: { default: primary('PageDown'), macos: { key: ']', mods: ['primary', 'shift'] } },
     group: 'page',
-    more: true,
     menuBar: true,
     enabled: needsDocument,
     run: () => cycleTab(1),
@@ -523,7 +571,6 @@ export const ACTIONS: readonly ActionDef[] = [
     labelKey: 'action.previousTab',
     shortcut: { default: primary('PageUp'), macos: { key: '[', mods: ['primary', 'shift'] } },
     group: 'page',
-    more: true,
     menuBar: true,
     enabled: needsDocument,
     run: () => cycleTab(-1),
@@ -534,7 +581,6 @@ export const ACTIONS: readonly ActionDef[] = [
     icon: ListOrdered,
     shortcut: { default: { key: 'n', mods: ['primary', 'shift'] } },
     group: 'page',
-    more: true,
     menuBar: true,
     enabled: needsDocument,
     // The status bar's popover opens with the page field selected (src/features/shell/StatusBar).
@@ -546,7 +592,6 @@ export const ACTIONS: readonly ActionDef[] = [
     icon: Search,
     shortcut: { default: primary('f') },
     group: 'page',
-    more: true,
     menuBar: true,
     enabled: needsDocument,
     run: openSearch,
@@ -555,9 +600,8 @@ export const ACTIONS: readonly ActionDef[] = [
     id: 'find-next',
     labelKey: 'action.findNext',
     icon: ChevronDown,
-    shortcut: { default: primary('g') },
+    shortcut: { default: primary('g'), alternates: [{ key: 'F3' }] },
     group: 'page',
-    more: true,
     menuBar: true,
     repeat: true,
     enabled: needsDocument,
@@ -569,7 +613,6 @@ export const ACTIONS: readonly ActionDef[] = [
     icon: ChevronUp,
     shortcut: { default: { key: 'g', mods: ['primary', 'shift'] } },
     group: 'page',
-    more: true,
     menuBar: true,
     repeat: true,
     enabled: needsDocument,
@@ -581,7 +624,6 @@ export const ACTIONS: readonly ActionDef[] = [
     icon: RotateCw,
     shortcut: { default: primary('r') },
     group: 'view',
-    more: true,
     menuBar: true,
     enabled: needsDocument,
     run: () => {
@@ -594,7 +636,6 @@ export const ACTIONS: readonly ActionDef[] = [
     icon: RotateCcw,
     shortcut: { default: primary('l') },
     group: 'view',
-    more: true,
     menuBar: true,
     enabled: needsDocument,
     run: () => {
@@ -605,7 +646,6 @@ export const ACTIONS: readonly ActionDef[] = [
     id: 'rotate-view-reset',
     labelKey: 'rotate.reset',
     group: 'view',
-    more: true,
     menuBar: true,
     // The view rotation is off in the page grid (DESIGN 3.28).
     enabled: (state) => state.hasDocument && !organizeActive(),
@@ -638,7 +678,6 @@ export const ACTIONS: readonly ActionDef[] = [
     icon: Settings,
     shortcut: { default: primary(',') },
     group: 'app',
-    more: true,
     menuBar: true,
     enabled: () => true,
     // The popover under the toolbar (src/features/settings), wherever the command came from.
@@ -649,11 +688,96 @@ export const ACTIONS: readonly ActionDef[] = [
     labelKey: 'action.about',
     icon: Info,
     group: 'app',
-    more: true,
+    // Windows' Help menu has it; the macOS menu bar has the system's own About panel (menu.json marks it Windows only).
+    menuBar: true,
     enabled: () => true,
     // The dialog (src/features/about): opens it, and closes it when it is open (the one command that runs while a modal is open).
-    // The macOS menu bar has the system's own About panel (menu.json), so no `menuBar` here.
     run: toggleAbout,
+  },
+  // F12 (DESIGN 3.56): the commands that only the menu bars carry.
+  {
+    id: 'tool-redact',
+    labelKey: 'toolbar.tool.redact',
+    icon: SquareSlash,
+    shortcut: { default: { key: 'x' } },
+    group: 'tools',
+    menuBar: true,
+    enabled: needsDocument,
+    // A mode (DESIGN 3.38): the key toggles it like the toolbar item does.
+    run: () => useUi.getState().setRedactMode(!useUi.getState().redactMode),
+  },
+  ...SIDEBAR_TAB_ACTIONS,
+  {
+    id: 'delete-selection',
+    labelKey: 'menu.edit.delete',
+    group: 'edit',
+    menuBar: true,
+    enabled: needsDocument,
+    // The Delete key itself is the canvas's (it works where the selection is focused); this is the menu's way to the same step.
+    run: deleteSelection,
+  },
+  {
+    id: 'add-comment',
+    labelKey: 'menu.edit.addComment',
+    icon: MessageSquare,
+    shortcut: { default: { key: 'm', mods: ['primary', 'shift'] } },
+    group: 'edit',
+    menuBar: true,
+    enabled: needsDocument,
+    // The selection bar of the comments feature answers (`onAddComment`); without a text selection nothing happens.
+    run: requestAddComment,
+  },
+  {
+    id: 'form-highlight',
+    labelKey: 'menu.tools.formHighlight',
+    group: 'app',
+    menuBar: true,
+    enabled: needsDocument,
+    run: () => useForms.getState().setHighlight(!useForms.getState().highlight),
+  },
+  {
+    id: 'manage-signatures',
+    labelKey: 'menu.tools.manageSignatures',
+    icon: Signature,
+    group: 'app',
+    menuBar: true,
+    enabled: () => true,
+    run: openSignatureLibrary,
+  },
+  {
+    id: 'welcome-tour',
+    labelKey: 'menu.help.tour',
+    group: 'app',
+    menuBar: true,
+    enabled: () => true,
+    run: () => void restartTour(),
+  },
+  {
+    id: 'reset-tips',
+    labelKey: 'menu.help.tips',
+    group: 'app',
+    menuBar: true,
+    enabled: () => true,
+    run: () => void resetTips(),
+  },
+  {
+    id: 'fullscreen',
+    labelKey: 'menu.view.fullscreenWindows',
+    shortcut: { default: { key: 'F11' } },
+    group: 'view',
+    menuBar: true,
+    enabled: () => true,
+    // The web's own full screen: the window fills the screen, with no window permission (SECURITY T3). macOS has the system item.
+    run: toggleFullscreen,
+  },
+  {
+    id: 'exit',
+    labelKey: 'menu.file.exit',
+    group: 'app',
+    menuBar: true,
+    enabled: () => true,
+    // A close request, like the caption's close button: the window may still veto it (unsaved changes).
+    run: () => void closeWindow().catch(() => undefined),
   },
 ];
 

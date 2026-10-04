@@ -22,7 +22,7 @@ import { Shell } from './Shell';
  * Render counts (the shell must not re-render for what changes often). Three counters, each at a seam where a parent's render
  * reaches a child:
  * - `shell`: the shell calls `useShellStructure` once per render, so the wrapper below counts the shell's renders.
- * - `toolbar`: the Toolbar primitive, counted when its parent renders it (its own state changes do not pass this wrapper).
+ * - `toolbar`: the toolbar row, counted when its parent renders it (its own state changes do not pass this wrapper).
  * - `leftPanel`: the Panel primitive with the left panel's name, counted the same way.
  */
 const renders = vi.hoisted(() => ({ shell: 0, toolbar: 0, leftPanel: 0 }));
@@ -38,14 +38,14 @@ vi.mock('./useShellStructure', async (importOriginal) => {
   };
 });
 
-vi.mock('../../components/Toolbar', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('../../components/Toolbar')>();
+vi.mock('./ToolbarRow', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./ToolbarRow')>();
   const { createElement } = await import('react');
   return {
     ...actual,
-    Toolbar: (props: ComponentProps<typeof actual.Toolbar>) => {
+    ToolbarRow: (props: ComponentProps<typeof actual.ToolbarRow>) => {
       renders.toolbar += 1;
-      return createElement(actual.Toolbar, props);
+      return createElement(actual.ToolbarRow, props);
     },
   };
 });
@@ -124,10 +124,12 @@ afterEach(() => {
 const toolbar = () => screen.getByRole('toolbar', { name: 'Tools' });
 const tool = (name: string) => within(toolbar()).getByRole('button', { name });
 const counts = () => ({ ...renders });
+const statusButton = (name: string | RegExp) =>
+  within(screen.getByRole('contentinfo', { name: 'Status' })).getByRole('button', { name });
 
 /** Opens a document and waits until its first page is shown and the viewer is idle, so the counts start from rest. */
 async function openAndSettle(user: ReturnType<typeof setup>['user']) {
-  await user.click(screen.getByRole('button', { name: 'Open…' }));
+  await user.click(screen.getByRole('button', { name: 'Open' }));
   await screen.findByRole('img', { name: /^Page 1 of/ });
   await waitFor(() => expect(useViewer.getState().rendering).toBe(false));
 }
@@ -161,8 +163,8 @@ describe('the counters', () => {
     const before = counts();
     await user.click(tool('Highlight'));
     expect(renders.toolbar).toBeGreaterThan(before.toolbar);
-    // The inspector has content now, which is a structure change only from 1280 px; at 1100 nothing in the shell moves.
-    expect(renders.shell).toBe(before.shell);
+    // The inspector has content now and opens at every width (DESIGN 3.57): one structure change, one render of the shell.
+    expect(renders.shell).toBe(before.shell + 1);
     expect(renders.leftPanel).toBe(before.leftPanel);
 
     const afterTool = counts();
@@ -174,27 +176,25 @@ describe('the counters', () => {
 });
 
 describe('what changes often does not render the shell, the toolbar or the left panel', () => {
-  it('a zoom step by key, wheel, toolbar button, menu and store, while the readouts follow', async () => {
+  it('a zoom step by key, wheel, status bar button, menu and store, while the readout follows', async () => {
     const { user } = setup(<Shell />);
     await openAndSettle(user);
     const before = counts();
-    const readout = () => within(toolbar()).getByRole('button', { name: 'Zoom level' }).textContent;
+    const readout = () => statusZoom();
     const statusZoom = () =>
       within(screen.getByRole('contentinfo', { name: 'Status' })).getByRole('button', { name: /Zoom level/ })
         .textContent;
 
     fireEvent.keyDown(window, { key: '+', ctrlKey: true });
     expect(readout()).toBe(`108${NBSP}%`);
-    expect(statusZoom()).toBe(`108${NBSP}%`);
 
     fireEvent.wheel(screen.getByRole('region', { name: 'Document' }), { deltaY: -100, ctrlKey: true });
     expect(readout()).not.toBe(`108${NBSP}%`);
 
-    await user.click(tool('Zoom in'));
-    await user.click(tool('Zoom level'));
+    await user.click(statusButton('Zoom in'));
+    await user.click(statusButton(/Zoom level/));
     await user.click(within(screen.getByRole('menu')).getByRole('menuitemcheckbox', { name: `200${NBSP}%` }));
     expect(readout()).toBe(`200${NBSP}%`);
-    expect(statusZoom()).toBe(`200${NBSP}%`);
 
     act(() => useView.getState().setZoom(REPORT.id, 1.5));
     expect(readout()).toBe(`150${NBSP}%`);
@@ -205,34 +205,26 @@ describe('what changes often does not render the shell, the toolbar or the left 
     expect(counts()).toEqual(before);
   });
 
-  it('the toolbar zoom menu opens with the current zoom checked', async () => {
+  it('the status bar zoom menu opens with the current zoom checked', async () => {
     const { user } = setup(<Shell />);
     await openAndSettle(user);
     act(() => useView.getState().setZoom(REPORT.id, 2));
-    await user.click(tool('Zoom level'));
-    const menu = screen.getByRole('menu', { name: 'Zoom level' });
+    await user.click(statusButton(/Zoom level/));
+    const menu = screen.getByRole('menu', { name: 'Zoom' });
     const checked = within(menu).getAllByRole('menuitemcheckbox', { checked: true });
     expect(checked.map((item) => item.textContent)).toEqual([`200${NBSP}%`]);
   });
 
-  it('the zoom limits are the exception: reaching one renders the toolbar once, to disable the button that cannot go on', async () => {
+  it('the zoom limits render the status bar and never the shell, the toolbar or the left panel', async () => {
     const { user } = setup(<Shell />);
     await openAndSettle(user);
-    expect(tool('Zoom in').hasAttribute('aria-disabled')).toBe(false);
+    expect(statusButton('Zoom in').hasAttribute('aria-disabled')).toBe(false);
     const before = counts();
-    act(() => useView.getState().setZoom(REPORT.id, MAX_ZOOM - 1));
-    act(() => useView.getState().setZoom(REPORT.id, MAX_ZOOM - 0.5));
-    expect(counts()).toEqual(before);
     act(() => useView.getState().setZoom(REPORT.id, MAX_ZOOM));
-    expect(tool('Zoom in').getAttribute('aria-disabled')).toBe('true');
-    expect(renders.toolbar).toBe(before.toolbar + 1);
-    expect(renders.shell).toBe(before.shell);
-    expect(renders.leftPanel).toBe(before.leftPanel);
-    // Leaving the limit enables it again, once.
+    expect(statusButton('Zoom in').getAttribute('aria-disabled')).toBe('true');
     act(() => useView.getState().setZoom(REPORT.id, MAX_ZOOM - 1));
-    expect(tool('Zoom in').hasAttribute('aria-disabled')).toBe(false);
-    expect(renders.toolbar).toBe(before.toolbar + 2);
-    expect(renders.shell).toBe(before.shell);
+    expect(statusButton('Zoom in').hasAttribute('aria-disabled')).toBe(false);
+    expect(counts()).toEqual(before);
   });
 
   it('a change of page, by Go to page or by the store, while the status bar follows', async () => {
@@ -273,7 +265,7 @@ describe('what changes often does not render the shell, the toolbar or the left 
     const { container, user } = setup(<Shell />);
     const before = counts();
     act(() => useUi.getState().setDropHover(true));
-    expect(screen.getByRole('heading', { level: 1, name: 'Drop to open' })).not.toBeNull();
+    expect(screen.getByText('Drop to open')).not.toBeNull();
     act(() => useUi.getState().setDropHover(false));
     expect(counts()).toEqual(before);
 
@@ -496,10 +488,10 @@ describe('a language switch', () => {
     try {
       const before = counts();
       chooseLanguage('de');
-      expect(screen.getByRole('heading', { level: 1, name: 'PDF öffnen' })).not.toBeNull();
+      expect(screen.getByRole('heading', { level: 1, name: 'Was möchten Sie tun?' })).not.toBeNull();
       expect(renders.shell).toBe(before.shell);
       chooseLanguage('en');
-      expect(screen.getByRole('heading', { level: 1, name: 'Open a PDF' })).not.toBeNull();
+      expect(screen.getByRole('heading', { level: 1, name: 'What would you like to do?' })).not.toBeNull();
       expect(renders.shell).toBe(before.shell);
     } finally {
       unbind();

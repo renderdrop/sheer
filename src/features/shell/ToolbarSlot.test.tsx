@@ -2,6 +2,7 @@
 import { act, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { runAction } from '../../actions/dispatch';
 import { ActionKeys } from '../../actions/keys';
 import { actionOf } from '../../actions/registry';
 import type { DocumentInfo } from '../../api/documents';
@@ -73,10 +74,10 @@ describe('a click on a tool goes through the action registry', () => {
     await user.click(tool('Highlight'));
     expect(useUi.getState().activeTool).toBe('highlight');
     expect(pressed('Highlight')).toBe('true');
-    await user.click(tool('Note'));
+    await user.click(tool('Comment'));
     expect(useUi.getState().activeTool).toBe('note');
     expect(pressed('Highlight')).toBe('false');
-    await user.click(tool('Note'));
+    await user.click(tool('Comment'));
     expect(useUi.getState().activeTool).toBe('select');
     expect(pressed('Select')).toBe('true');
   });
@@ -136,17 +137,15 @@ describe('a click on a tool goes through the action registry', () => {
     const { user } = setup(<Toolbar />);
     act(() => useDocuments.getState().remove(REPORT.id));
     await user.click(tool('Highlight'));
-    await user.dblClick(tool('Note'));
+    await user.dblClick(tool('Comment'));
     expect(useUi.getState()).toMatchObject({ activeTool: 'select', toolLocked: false });
   });
 });
 
 describe('Settings and About, from the toolbar row', () => {
-  it('Settings in More opens the popover under the toolbar, with focus on its first control, and Esc returns focus to More', async () => {
+  it('the Settings command opens the popover under the toolbar, with focus on its first control, and Esc closes it', async () => {
     const { user } = setup(<Toolbar hasDocument={false} />);
-    const more = tool('More');
-    await user.click(more);
-    await user.click(screen.getByRole('menuitem', { name: /^Settings/ }));
+    act(() => void runAction('settings'));
     const popover = await screen.findByRole('dialog', { name: 'Settings' });
     expect(popover.className).toContain('glass-2');
     await waitFor(() =>
@@ -159,7 +158,6 @@ describe('Settings and About, from the toolbar row', () => {
     );
     await user.keyboard('{Escape}');
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
-    expect(document.activeElement).toBe(more);
   });
 
   it('Ctrl+Comma opens it with focus anywhere, also without a document', async () => {
@@ -168,16 +166,13 @@ describe('Settings and About, from the toolbar row', () => {
     expect(await screen.findByRole('dialog', { name: 'Settings' })).not.toBeNull();
   });
 
-  it('About in More opens the dialog; Esc closes it and focus returns to More', async () => {
+  it('the About command opens the dialog; Esc closes it', async () => {
     const { user } = setup(<Toolbar hasDocument={false} />);
-    const more = tool('More');
-    await user.click(more);
-    await user.click(screen.getByRole('menuitem', { name: 'About' }));
+    act(() => void runAction('about'));
     const dialog = await screen.findByRole('dialog', { name: 'About Sheer' });
     expect(within(dialog).getByText('Version 1.2.3')).not.toBeNull();
     await user.keyboard('{Escape}');
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
-    expect(document.activeElement).toBe(more);
   });
 
   it('while the dialog is open the shortcuts of the app are off: Ctrl+Comma does not open the popover over it', async () => {

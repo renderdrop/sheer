@@ -63,6 +63,19 @@ describe('the registry', () => {
       'toggle-inspector',
       'settings',
       'about',
+      'exit',
+      'fullscreen',
+      'delete-selection',
+      'add-comment',
+      'sidebar-tab-pages',
+      'sidebar-tab-outline',
+      'sidebar-tab-comments',
+      'sidebar-tab-search',
+      'tool-redact',
+      'form-highlight',
+      'manage-signatures',
+      'welcome-tour',
+      'reset-tips',
       ...TOOLS.map((tool): ActionId => `tool-${tool}`),
     ];
     expect([...ACTION_IDS].sort()).toEqual([...expected].sort());
@@ -134,11 +147,24 @@ describe('shortcuts per platform', () => {
     about: { macos: null, windows: null },
     'tool-select': { macos: 'V', windows: 'V' },
     'tool-highlight': { macos: 'H', windows: 'H' },
-    'tool-note': { macos: 'N', windows: 'N' },
+    'tool-note': { macos: 'C', windows: 'C' },
     'tool-text': { macos: 'T', windows: 'T' },
     'tool-draw': { macos: 'D', windows: 'D' },
     'tool-shapes': { macos: 'R', windows: 'R' },
-    'tool-form': { macos: 'F', windows: 'F' },
+    'tool-form': { macos: null, windows: null },
+    'tool-redact': { macos: 'X', windows: 'X' },
+    exit: { macos: null, windows: null },
+    fullscreen: { macos: 'F11', windows: 'F11' },
+    'delete-selection': { macos: null, windows: null },
+    'add-comment': { macos: '⇧⌘M', windows: 'Ctrl+Shift+M' },
+    'sidebar-tab-pages': { macos: null, windows: null },
+    'sidebar-tab-outline': { macos: null, windows: null },
+    'sidebar-tab-comments': { macos: null, windows: null },
+    'sidebar-tab-search': { macos: null, windows: null },
+    'form-highlight': { macos: null, windows: null },
+    'manage-signatures': { macos: null, windows: null },
+    'welcome-tour': { macos: null, windows: null },
+    'reset-tips': { macos: null, windows: null },
     'tool-signature': { macos: 'S', windows: 'S' },
     'tool-pages': { macos: 'P', windows: 'P' },
     'tool-textBox': { macos: 'E', windows: 'E' },
@@ -220,7 +246,9 @@ describe('shortcuts per platform', () => {
     for (const platform of PLATFORMS) {
       for (const action of ACTIONS) {
         const binding = resolveBinding(action.shortcut, platform);
-        expect(binding !== null && isBareKey(binding), `${platform} ${action.id}`).toBe(action.group === 'tools');
+        expect(binding !== null && isBareKey(binding), `${platform} ${action.id}`).toBe(
+          action.group === 'tools' && action.shortcut !== undefined,
+        );
       }
     }
   });
@@ -229,7 +257,7 @@ describe('shortcuts per platform', () => {
     for (const platform of PLATFORMS) {
       for (const action of ACTIONS) {
         const binding = resolveBinding(action.shortcut, platform);
-        if (binding === null || action.group === 'tools') continue;
+        if (binding === null || action.group === 'tools' || action.id === 'fullscreen') continue;
         const typesText = (binding.mods ?? []).every((mod) => mod === 'shift') && binding.key.length === 1;
         expect(typesText, `${platform} ${action.id}`).toBe(false);
       }
@@ -241,8 +269,18 @@ describe('enabled', () => {
   const enabledIds = (state: ActionState): ActionId[] =>
     ACTIONS.filter((action) => action.enabled(state)).map((action) => action.id);
 
-  it('without a document only Open, Create PDF from images, Settings and About can run', () => {
-    expect(enabledIds(NO_DOCUMENT)).toEqual(['open', 'images-to-pdf', 'settings', 'about']);
+  it('without a document only the commands that need none can run', () => {
+    expect(enabledIds(NO_DOCUMENT)).toEqual([
+      'open',
+      'images-to-pdf',
+      'settings',
+      'about',
+      'manage-signatures',
+      'welcome-tour',
+      'reset-tips',
+      'fullscreen',
+      'exit',
+    ]);
   });
 
   it('with a document everything can run, except a zoom step that is at its limit', () => {
@@ -265,54 +303,6 @@ describe('enabled', () => {
 });
 
 describe('where an action is listed', () => {
-  it('puts in More the commands that have no toolbar button, in groups', () => {
-    const more = ACTIONS.filter((action) => action.more === true).map((action) => `${action.group}:${action.id}`);
-    expect(more).toEqual([
-      'file:open',
-      'file:close-document',
-      'file:save',
-      'file:save-as',
-      'output:images-to-pdf',
-      'output:export-copy',
-      'output:export-images',
-      'output:print',
-      'file:merge-files',
-      'file:split-document',
-      'file:extract-pages',
-      'file:compress-document',
-      'edit:flatten-form',
-      'edit:redact',
-      'edit:protect',
-      'edit:document-properties',
-      'view:actual-size',
-      'view:fit-width',
-      'view:fit-page',
-      'view:scroll-continuous',
-      'view:scroll-single',
-      'view:scroll-spread',
-      'page:next-page',
-      'page:previous-page',
-      'page:next-tab',
-      'page:previous-tab',
-      'page:go-to-page',
-      'page:find',
-      'page:find-next',
-      'page:find-previous',
-      'view:rotate-view-right',
-      'view:rotate-view-left',
-      'view:rotate-view-reset',
-      'app:settings',
-      'app:about',
-    ]);
-  });
-
-  it('puts every action but the tools and About in the macOS menu bar (About is the system panel there)', () => {
-    const inMenu = ACTIONS.filter((action) => action.menuBar === true).map((action) => action.id);
-    // Find, Go to page and the view rotation join the menu bar with the Rust allowlist (src-tauri/src/menu/spec.rs); until then
-    // they are keyboard and More commands.
-    expect(inMenu).toEqual(ACTION_IDS.filter((id) => !id.startsWith('tool-') && id !== 'about'));
-  });
-
   it('lets a held key repeat the zoom and page steps and nothing else', () => {
     expect(ACTIONS.filter((action) => action.repeat === true).map((action) => action.id)).toEqual([
       'zoom-in',
