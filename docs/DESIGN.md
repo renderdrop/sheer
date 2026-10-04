@@ -58,7 +58,7 @@ handles 8 px; text selection `rgba(91,91,214,.30)`, hits `.28`.
 | Token | Light | Dark |
 |---|---|---|
 | `--surface` (over `--color-bg` only; iris-50 tint) | `rgba(244,245,255,.66)` | `rgba(30,30,58,.60)` |
-| `--surface-strong` (over page content; untinted, ADR-020) | `rgba(255,255,255,.90)` | `rgba(28,28,46,.90)` |
+| `--surface-strong` (over page content; untinted, ADR-020) | `rgba(255,255,255,.98)` | `rgba(28,28,46,.98)` |
 | `--surface-solid` (dialogs, submenus, fields, G2 in solid mode) | `#FFFFFF` | `#1C1C2E` |
 | `--surface-fallback` (G1 in solid mode) | `#F8F8FF` | `#1E1E3A` |
 | `--glass-filter` | `blur(24px) saturate(160%)` | same |
@@ -73,7 +73,7 @@ banner, empty card). **G2** = `--surface-strong` + edge + `--shadow-2`, no filte
 they sit over the canvas, which is never blurred, MOTION §5).
 Dialogs, submenus: solid + `--shadow-3`.
 
-`--surface-strong` is .90, not ADR-011's ≈ .86: worst-case muted text drops to 4.47 at .86. It stays untinted: over
+`--surface-strong` is .98 (F12-FIX: page text must not read through a menu; was .90), not ADR-011's ≈ .86: worst-case muted text drops to 4.47 at .86. It stays untinted: over
 pages a tint does not show and costs the control border its 3:1 (2.93 at an `#F8F8FF` base, less at iris-50).
 **Solid mode:** G1 → `--surface-fallback`, G2 → `--surface-solid`, no filter, edge → 1 px `--color-divider`,
 `--bg-fields: none` (the gradient stays: it is paint, not transparency); shadows and geometry unchanged.
@@ -2183,7 +2183,7 @@ the G1 panel), radius 16, padding 12, 1 px inset `--color-divider` edge. R: the 
 | Meta | author `--text-sm` 600 · relative time meta (`Intl.RelativeTimeFormat` < 7 days, else medium date; absolute in the tooltip) |
 | Status | open: nothing; else a pill with icon: `circle-check` `comments.resolved`, `thumbs-up` `comments.accepted`, `circle-x` `comments.rejected` |
 | Replies | divider, then per reply author · time over text, 8 apart; own replies editable |
-| Footer (selected card only) | reply Field sm full width `note.replyPlaceholder` · ghost sm `circle-check` `comments.resolve` |
+| Footer (selected card only) | reply Field sm on its own full-width row (Enter sends, Shift+Enter new line), then below it, end-aligned, ghost sm `circle-check` `comments.resolve` / `comments.reopen` |
 
 Resolve/Accept/Reject write a PDF review-state reply (`/IRT`, `/StateModel /Review`, `/State /Completed|/Accepted|/Rejected`;
 Reopen `/None`), one undo step. Non-open cards collapse to header + quote (1 line) + status pill. Filter (§3.26) gains Status (Open,

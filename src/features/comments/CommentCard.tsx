@@ -366,33 +366,36 @@ export const CommentCard = memo(function CommentCard({
       )}
 
       {selected && !isEditing && (
-        <div className="flex items-end gap-1 border-0 border-t border-solid border-divider pt-1">
+        <div className="flex flex-col gap-1 border-0 border-t border-solid border-divider pt-1">
           <textarea
             ref={replyRef}
             aria-label={t('note.replyField')}
-            aria-keyshortcuts="Control+Enter Meta+Enter"
+            aria-keyshortcuts="Enter"
             placeholder={t('note.replyPlaceholder')}
             rows={1}
             maxLength={MAX_ANNOT_CONTENTS_CHARS}
             value={reply}
             style={MAX_LINES}
-            className={cx(CARD_TEXTAREA, 'min-w-0 flex-1 overflow-auto text-sm')}
+            className={cx(CARD_TEXTAREA, 'overflow-auto text-sm')}
             onChange={(event) => setReply(event.target.value)}
             onKeyDown={(event) => {
-              if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) {
+              // Enter sends, Shift+Enter is a new line (an IME composition keeps its Enter).
+              if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) {
                 event.preventDefault();
                 sendReply();
               }
             }}
           />
-          <Button
-            size="sm"
-            variant="ghost"
-            icon={CircleCheck}
-            onClick={review(status === 'open' ? 'completed' : 'none')}
-          >
-            {status === 'open' ? t('comments.resolve') : t('comments.reopen')}
-          </Button>
+          <div className="flex justify-end">
+            <Button
+              size="sm"
+              variant="ghost"
+              icon={CircleCheck}
+              onClick={review(status === 'open' ? 'completed' : 'none')}
+            >
+              {status === 'open' ? t('comments.resolve') : t('comments.reopen')}
+            </Button>
+          </div>
         </div>
       )}
     </article>

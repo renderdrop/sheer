@@ -303,6 +303,10 @@ export function ViewerCanvas({ style }: { style?: CSSProperties }) {
   useLayoutEffect(() => {
     if (docId === null || viewport === null || !pagesLoaded || !isFresh(docId)) return;
     resolveFresh(docId);
+    // A document that opens starts at the top of its first page unless a jump to a page was asked for (the previous scroll position,
+    // or a control scrolled into view, is not a reason to open half way down).
+    const region = scrollerRef.current;
+    if (region !== null && useView.getState().byDoc[docId]?.anchor == null) region.scrollTop = 0;
     const fitted = fitZoomFor('width', metrics, 0, viewport, gap);
     if (fitted !== null && fitted < 1 - 1e-9) useView.getState().setFit(docId, 'width', fitted, null);
     // Where fit width would exceed 100 % the document opens at exactly 100 %, fixed, whatever it was at before (the welcome document

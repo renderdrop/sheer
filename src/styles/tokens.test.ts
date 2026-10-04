@@ -166,7 +166,7 @@ describe('glass (DESIGN 1.3)', () => {
   const glass: Record<string, [string, string]> = {
     '--surface': ['rgba(244,245,255,0.66)', 'rgba(30,30,58,0.6)'],
     '--surface-fallback': ['#f8f8ff', '#1e1e3a'],
-    '--surface-strong': ['rgba(255,255,255,0.9)', 'rgba(28,28,46,0.9)'],
+    '--surface-strong': ['rgba(255,255,255,0.98)', 'rgba(28,28,46,0.98)'],
     '--surface-solid': ['#ffffff', '#1c1c2e'],
     '--glass-filter': ['blur(24px) saturate(160%)', 'blur(24px) saturate(160%)'],
     '--glass-edge': [

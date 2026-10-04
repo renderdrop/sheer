@@ -1,6 +1,7 @@
 import { useEffect, type RefObject } from 'react';
 
 import { announce } from '../../components';
+import { isTextEntry } from '../../lib/textEntry';
 import { translators } from '../../i18n';
 import { useLocaleStore } from '../../i18n/store';
 import { useDocuments } from '../../stores/documents';
@@ -52,6 +53,8 @@ export function useTextKeys(region: RefObject<HTMLElement | null>, docId: number
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.defaultPrevented) return;
       if ((event.ctrlKey || event.metaKey) && !event.altKey && !event.shiftKey && event.key.toLowerCase() === 'a') {
+        // In a field the browser's own select-all is the user's (a form field on the page, a comment box).
+        if (isTextEntry(event.target)) return;
         const page = pageIdAt(docId, useView.getState().byDoc[docId]?.pageIndex ?? 0) ?? 0;
         if (selectPageText(element, page, window.getSelection())) event.preventDefault();
         return;

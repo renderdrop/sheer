@@ -114,6 +114,16 @@ describe('the canvas keys for the text', () => {
     );
   });
 
+  it("primary+A in a text field is the field's own select-all", () => {
+    const { getByTestId } = render(<Region />);
+    const input = document.createElement('input');
+    getByTestId('region').appendChild(input);
+    const event = new KeyboardEvent('keydown', { key: 'a', ctrlKey: true, bubbles: true, cancelable: true });
+    input.dispatchEvent(event);
+    expect(event.defaultPrevented).toBe(false);
+    expect(window.getSelection()?.toString()).toBe('');
+  });
+
   it('primary+A on a page whose text is not mounted leaves the key alone', () => {
     useView.getState().setPage(1, 2);
     const { getByTestId } = render(<Region />);
