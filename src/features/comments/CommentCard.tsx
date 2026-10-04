@@ -62,8 +62,7 @@ function ReplyText({ docId, reply, text, editable, label }: ReplyTextProps) {
     if (document.activeElement !== ref.current) setDraft(text);
   }, [text]);
   useAutosize(ref, draft);
-  if (!editable)
-    return <p className="m-0 text-md [overflow-wrap:break-word] whitespace-pre-wrap">{text}</p>;
+  if (!editable) return <p className="m-0 text-md [overflow-wrap:break-word] whitespace-pre-wrap">{text}</p>;
   return (
     <textarea
       ref={ref}
@@ -334,10 +333,7 @@ export const CommentCard = memo(function CommentCard({
             />
           ) : (
             text !== '' && (
-              <p
-                id={`${ids}-b`}
-                className="t-body m-0 whitespace-pre-wrap text-text [overflow-wrap:break-word]"
-              >
+              <p id={`${ids}-b`} className="t-body m-0 whitespace-pre-wrap text-text [overflow-wrap:break-word]">
                 {text}
               </p>
             )
