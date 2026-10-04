@@ -1,5 +1,7 @@
 import { create } from 'zustand';
 
+import type { AppError } from '../../api/errors';
+
 /** What the user chose in the dialog that asks about a tab (or, when quitting, a document) with unsaved changes. */
 export type PromptAnswer = 'save' | 'discard' | 'cancel';
 
@@ -21,6 +23,8 @@ export interface QuitProgress {
 export interface SaveState {
   saving: Readonly<Record<number, true>>;
   saved: number | null;
+  /** Documents whose last save failed, with the error the status button shows as its tooltip (DESIGN 3.5 B1). */
+  failed: Readonly<Record<number, AppError>>;
   prompt: number | null;
   quit: QuitProgress | null;
   answer: ((answer: PromptAnswer) => void) | null;
@@ -28,6 +32,8 @@ export interface SaveState {
   /** The document whose protected file a save asks to rewrite in full (ADR-047). */
   rewrite: { docId: number; resolve: (confirmed: boolean) => void } | null;
   setSaving: (docId: number, saving: boolean) => void;
+  /** Records (or, with `null`, clears) the failure of the last save of `docId`. */
+  setFailed: (docId: number, error: AppError | null) => void;
   /** Shows "Saved" for `SAVED_HINT_MS`. */
   markSaved: (docId: number) => void;
   setPrompt: (docId: number | null) => void;
@@ -41,6 +47,7 @@ let savedTimer: ReturnType<typeof setTimeout> | undefined;
 export const useSave = create<SaveState>()((set) => ({
   saving: {},
   saved: null,
+  failed: {},
   prompt: null,
   quit: null,
   answer: null,
@@ -53,6 +60,14 @@ export const useSave = create<SaveState>()((set) => ({
       if (saving) next[docId] = true;
       else delete next[docId];
       return { saving: next };
+    }),
+  setFailed: (docId, error) =>
+    set((state) => {
+      if ((state.failed[docId] ?? null) === error) return state;
+      const next = { ...state.failed } as Record<number, AppError>;
+      if (error === null) delete next[docId];
+      else next[docId] = error;
+      return { failed: next };
     }),
   markSaved: (docId) => {
     clearTimeout(savedTimer);

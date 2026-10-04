@@ -167,7 +167,8 @@ describe('the language setting', () => {
     const topbar = within(document.querySelector<HTMLElement>('[data-slot="topbar"]') as HTMLElement);
     expect(topbar.getByRole('textbox', { name: 'Zu Seite springen' })).not.toBeNull();
     expect(topbar.getByRole('button', { name: `100${NBSP}% · Zoomstufe` })).not.toBeNull();
-    expect(topbar.getByRole('button', { name: 'Fertig' })).not.toBeNull();
+    expect(topbar.getByRole('button', { name: 'Gespeichert' })).not.toBeNull();
+    expect(topbar.queryByRole('button', { name: 'Fertig' })).toBeNull();
   });
 
   it('page numbers are written in the language of the UI', async () => {

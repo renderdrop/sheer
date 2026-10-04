@@ -122,6 +122,7 @@ export const PageOverlay = memo(function PageOverlay({
   return (
     <div
       aria-hidden={layer === null ? true : undefined}
+      data-page-overlay=""
       className="pointer-events-none absolute z-canvas-text"
       style={style}
     >

@@ -14,7 +14,7 @@ import { useModeSlots } from './useSlots';
 
 const MORE =
   'flex h-control-md w-control-md shrink-0 cursor-pointer items-center justify-center rounded-md text-text transition-colors duration-fast ' +
-  'not-aria-disabled:hover:bg-control-hover not-aria-disabled:aria-expanded:bg-control-hover';
+  'not-aria-disabled:hover:bg-panel not-aria-disabled:aria-expanded:bg-panel';
 
 /** What "Mehr" lists for the items that left the row: an item, or a submenu for a split one. */
 function moreEntries(slots: readonly SlotDef[]): MenuEntry[] {
@@ -138,7 +138,7 @@ export const ToolRow = memo(function ToolRow() {
       onKeyDown={onKeyDown}
       onFocus={onFocus}
       className={cx(
-        'bg-panel flex h-tool-row min-w-0 items-center gap-1 overflow-hidden border-b border-border-subtle px-4',
+        'bg-subtle flex h-tool-row min-w-0 items-center gap-1 overflow-hidden border-b border-border-subtle px-4',
       )}
     >
       {visible.map((slot) => (

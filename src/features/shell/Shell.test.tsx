@@ -72,7 +72,7 @@ const layout = (container: HTMLElement) =>
   (container.querySelector('[data-slot="home"]') === null ? undefined : 'empty');
 const tool = (name: string) => within(toolRegion()).getByRole('button', { name });
 /** The page sidebar's collapse chevron; F4 is the way back (the command map, ARCHITECTURE 12). */
-const collapseLeft = () => screen.getByRole('button', { name: 'Hide page sidebar' });
+const collapseLeft = () => screen.getByRole('button', { name: 'Hide sidebar' });
 const pressF4 = (shiftKey = false) => fireEvent.keyDown(window, { key: 'F4', shiftKey });
 /** The top bar: zoom and page live there since v1.2 (no status bar). */
 const topbarElement = () => document.querySelector<HTMLElement>('[data-slot="topbar"]') as HTMLElement;

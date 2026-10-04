@@ -14,14 +14,14 @@ import type { SlotDef, VariantDef } from './model';
 const MAIN =
   'flex h-control-md shrink-0 cursor-pointer items-center gap-2 rounded-md t-label font-medium text-text ' +
   'transition-colors duration-fast aria-disabled:cursor-not-allowed aria-disabled:opacity-(--opacity-disabled) ' +
-  'not-aria-disabled:hover:bg-control-hover not-aria-disabled:active:bg-control-pressed not-aria-disabled:active:scale-(--scale-press) ' +
-  'data-[on=true]:bg-accent data-[on=true]:font-semibold not-aria-disabled:data-[on=true]:hover:bg-accent-hover';
+  'not-aria-disabled:hover:bg-panel not-aria-disabled:active:bg-control-pressed not-aria-disabled:active:scale-(--scale-press) ' +
+  'data-[on=true]:bg-accent data-[on=true]:font-semibold data-[on=true]:shadow-(--tool-active-edge) not-aria-disabled:data-[on=true]:hover:bg-accent-hover';
 
 /** The chevron part of a split item: 20 wide, its own tab stop. */
 const CHEVRON =
   'flex h-control-md w-icon-20 shrink-0 cursor-pointer items-center justify-center rounded-e-md text-text transition-colors duration-fast ' +
   'aria-disabled:cursor-not-allowed aria-disabled:opacity-(--opacity-disabled) ' +
-  'not-aria-disabled:hover:bg-control-hover not-aria-disabled:aria-expanded:bg-control-hover ' +
+  'not-aria-disabled:hover:bg-panel not-aria-disabled:aria-expanded:bg-panel ' +
   'group-data-[on=true]:not-aria-disabled:hover:bg-accent-hover group-data-[on=true]:not-aria-disabled:aria-expanded:bg-accent-hover';
 
 const VARIANT =
@@ -78,7 +78,7 @@ export function ToolItem({ slot, iconOnly, stop }: ToolItemProps) {
       onClick={() => {
         if (!off) slot.run();
       }}
-      className={cx(MAIN, iconOnly ? 'w-control-md justify-center' : 'px-3', split && 'rounded-e-none')}
+      className={cx(MAIN, iconOnly ? 'w-control-md justify-center' : 'px-3', split && 'rounded-e-none shadow-none!')}
     >
       <Icon icon={slot.icon} size={18} />
       {!iconOnly && <span data-label="">{slot.label}</span>}
@@ -126,7 +126,11 @@ export function ToolItem({ slot, iconOnly, stop }: ToolItemProps) {
   );
 
   return (
-    <div data-split={slot.id} data-on={slot.on} className="group flex shrink-0 rounded-md data-[on=true]:bg-accent">
+    <div
+      data-split={slot.id}
+      data-on={slot.on}
+      className="group flex shrink-0 rounded-md data-[on=true]:bg-accent data-[on=true]:shadow-(--tool-active-edge)"
+    >
       {tipped}
       {slot.Options !== undefined ? (
         <Popover label={optionsLabel} disabled={chevronOff} trigger={trigger}>

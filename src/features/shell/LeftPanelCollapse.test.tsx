@@ -68,7 +68,7 @@ afterEach(() => {
 });
 
 /** The page sidebar's own collapse chevron; a collapsed sidebar comes back by F4 or the splitter (DESIGN v2 3.2). */
-const collapseButton = () => screen.getByRole('button', { name: 'Hide page sidebar' });
+const collapseButton = () => screen.getByRole('button', { name: 'Hide sidebar' });
 const toggleLeft = () => fireEvent.keyDown(window, { key: 'F4' });
 const panel = () => screen.queryByRole('complementary', { name: 'Left panel' });
 /** The element that fades and sits in the grid: around the panel and the `display: contents` element of its tabs. */

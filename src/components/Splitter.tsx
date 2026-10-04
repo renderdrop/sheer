@@ -35,7 +35,12 @@ interface Drag {
   startWidth: number;
   /** Width the pointer asks for, before clamping. */
   raw: number;
+  /** The pointer moved 4 px or more: it was a drag, not a click (DESIGN 3.5 B2). */
+  moved: boolean;
 }
+
+/** Movement under this many px is a click, not a drag. */
+const CLICK_SLOP = 4;
 
 const clamp = (value: number, low: number, high: number) => Math.min(high, Math.max(low, value));
 
@@ -114,13 +119,14 @@ export function Splitter({
     if (event.button !== 0) return;
     event.currentTarget.setPointerCapture(event.pointerId);
     const startWidth = collapsed ? 0 : value;
-    drag.current = { startX: event.clientX, startWidth, raw: startWidth };
+    drag.current = { startX: event.clientX, startWidth, raw: startWidth, moved: false };
     setDragging(true);
   };
 
   const onPointerMove = (event: PointerEvent<HTMLDivElement>) => {
     const current = drag.current;
     if (current === null) return;
+    if (Math.abs(event.clientX - current.startX) >= CLICK_SLOP) current.moved = true;
     current.raw = current.startWidth + direction * (event.clientX - current.startX);
     // Narrower than the collapse threshold the pane waits at its current width; the release decides.
     if (current.raw < collapseBelow) return;
@@ -135,6 +141,11 @@ export function Splitter({
     drag.current = null;
     setDragging(false);
     event.currentTarget.releasePointerCapture(event.pointerId);
+    // A click on the grip (less than 4 px of movement) toggles the pane; a cancelled gesture does nothing.
+    if (!current.moved && event.type === 'pointerup') {
+      onCollapsedChange(!collapsed);
+      return;
+    }
     if (current.raw < collapseBelow) {
       // Keep the width from before the drag, so restoring brings back what the user had.
       if (current.startWidth > 0 && current.startWidth !== value) onValueChange(current.startWidth);
@@ -174,12 +185,12 @@ export function Splitter({
         className,
       )}
     >
-      {/* The 4 x 32 px grip: hidden at rest, control border on hover, accent while dragging or focused. */}
+      {/* The 4 x 32 px grip: always there (border colour), control border on hover, accent while dragging or focused. */}
       <span
         aria-hidden="true"
         className={cx(
-          'h-8 w-1 rounded-pill transition-[background-color]',
-          dragging ? 'bg-accent' : 'bg-transparent group-hover:bg-control-border group-focus-visible:bg-accent',
+          'h-8 w-grip rounded-pill transition-[background-color]',
+          dragging ? 'bg-control-border' : 'bg-border group-hover:bg-control-border group-focus-visible:bg-accent',
         )}
       />
     </div>

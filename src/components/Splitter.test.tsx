@@ -316,3 +316,20 @@ describe('Splitter pointer edge cases', () => {
     expect(now()).toBe('200');
   });
 });
+
+describe('Splitter grip click (DESIGN 3.5 B2)', () => {
+  it('a click without movement collapses and a second click restores; a drag of 4 px or more is not a click', () => {
+    setup(<Demo />);
+    fireEvent.pointerDown(separator(), { clientX: 300, button: 0, pointerId: 1 });
+    fireEvent.pointerMove(separator(), { clientX: 302, pointerId: 1 });
+    fireEvent.pointerUp(separator(), { clientX: 302, pointerId: 1 });
+    expect(now()).toBe('0');
+    fireEvent.pointerDown(separator(), { clientX: 8, button: 0, pointerId: 1 });
+    fireEvent.pointerUp(separator(), { clientX: 8, pointerId: 1 });
+    expect(Number(now())).toBeGreaterThan(0);
+    fireEvent.pointerDown(separator(), { clientX: 300, button: 0, pointerId: 1 });
+    fireEvent.pointerMove(separator(), { clientX: 310, pointerId: 1 });
+    fireEvent.pointerUp(separator(), { clientX: 310, pointerId: 1 });
+    expect(Number(now())).toBeGreaterThan(0);
+  });
+});

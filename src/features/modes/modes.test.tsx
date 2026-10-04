@@ -646,3 +646,16 @@ describe('the overflow', () => {
     expect(screen.getByRole('toolbar').getAttribute('data-fit')).toBe('1');
   });
 });
+
+describe('the segmented mode tabs (DESIGN 3.5 B3)', () => {
+  it('the selected segment is White with a Stone border and Ink 500, the others are not; the bar is Sand', () => {
+    const { container } = setup(<Rows />);
+    expect(tab('Read').className).toContain('aria-selected:bg-panel');
+    expect(tab('Read').className).toContain('aria-selected:border-control-border');
+    expect(tab('Read').getAttribute('aria-selected')).toBe('true');
+    expect(tab('Edit').getAttribute('aria-selected')).toBe('false');
+    expect(container.querySelector('[data-slot="mode-row"]')?.className).toContain('bg-subtle');
+    expect(container.querySelector('[data-slot="tool-row"]')?.className).toContain('bg-subtle');
+    expect(tab('Read').getAttribute('aria-controls')).toBe('mode-tool-row');
+  });
+});

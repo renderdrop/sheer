@@ -123,7 +123,7 @@ afterEach(() => {
 /** The tool row (a toolbar named by the mode). */
 const toolRegion = () => document.querySelector<HTMLElement>('[data-slot="tool-row"]') as HTMLElement;
 const tool = (name: string) => within(toolRegion()).getByRole('button', { name });
-const collapseLeft = () => screen.getByRole('button', { name: 'Hide page sidebar' });
+const collapseLeft = () => screen.getByRole('button', { name: 'Hide sidebar' });
 const pressF4 = () => fireEvent.keyDown(window, { key: 'F4' });
 const counts = () => ({ ...renders });
 /** The top bar holds zoom and page (v1.2). */

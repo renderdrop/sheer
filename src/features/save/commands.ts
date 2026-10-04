@@ -69,6 +69,7 @@ export async function saveNow(docId: number, as = false): Promise<boolean> {
   const save = useSave.getState();
   if (save.saving[docId] === true) return false;
   save.setSaving(docId, true);
+  save.setFailed(docId, null);
   try {
     await askAuthorOnce(docId);
     // A recovered document has no file to write to (DESIGN 3.50): Save is Save As, like the welcome document.
@@ -104,10 +105,13 @@ export async function saveNow(docId: number, as = false): Promise<boolean> {
     }
     if (result === null) return false;
     adopt(docId, result);
+    useSave.getState().setFailed(docId, null);
     useSave.getState().markSaved(docId);
     return true;
   } catch (caught) {
-    useUi.getState().showBanner(toAppError(caught));
+    const error = toAppError(caught);
+    useSave.getState().setFailed(docId, error);
+    useUi.getState().showBanner(error);
     return false;
   } finally {
     useSave.getState().setSaving(docId, false);

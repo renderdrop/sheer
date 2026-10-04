@@ -1,11 +1,10 @@
-import { ChevronsLeft, GalleryVertical, ListTree, MessagesSquare, Search, type LucideIcon } from 'lucide-react';
+import { GalleryVertical, ListTree, MessagesSquare, Search, type LucideIcon } from 'lucide-react';
 import { AnimatePresence, motion, useIsPresent } from 'motion/react';
 import { memo, type CSSProperties } from 'react';
 
-import { IconButton, Tab, TabList, TabPanel, Tabs } from '../../components';
+import { Tab, TabList, TabPanel, Tabs } from '../../components';
 import { useT, type PlainKey } from '../../i18n';
-import { runAction } from '../../actions/dispatch';
-import { clampPanelWidth } from '../../lib/layout';
+import { panelWidthFor } from '../../lib/layout';
 import { LEFT_PANEL_TABS, useUi, type LeftPanelTab } from '../../stores/ui';
 import { Comments } from '../comments/Comments';
 import { Outline, OutlineActions } from '../outline/Outline';
@@ -40,7 +39,7 @@ export interface LeftPanelProps {
 
 /**
  * The page sidebar (DESIGN v2 3.2): an `<aside>` on the Canvas surface without a border. Its header row (48) holds the four icon tabs
- * (Pages, Outline, Comments, Search; 36 each, the underline cue of 2.8) and, at the right, the collapse chevron. The body is the
+ * (Pages, Outline, Comments, Search; 36 each, the underline cue of 2.8) (the sidebar collapses by the top bar's toggle, the splitter's grip and View > Sidebar, DESIGN 3.5 B2). The body is the
  * selected tab's panel: thumbnails, outline, comments or search results.
  *
  * It follows the selected tab (`ui.leftPanelTab`) itself and is memoized, so it renders when the tab or its slot changes and
@@ -66,14 +65,6 @@ export const LeftPanel = memo(function LeftPanel({ id }: LeftPanelProps) {
               </div>
             ))}
           </TabList>
-          <span className="flex-1" />
-          <IconButton
-            icon={ChevronsLeft}
-            label={t('sidebar.collapse')}
-            tooltipSide="bottom"
-            data-toolbar-item="left-panel"
-            onClick={() => void runAction('toggle-left-panel')}
-          />
         </div>
         <div className="min-h-0 flex-1">
           {LEFT_PANEL_TABS.map((value) => (
@@ -129,8 +120,9 @@ export function LeftPanelSlot({ present, id, style }: LeftPanelSlotProps) {
 }
 
 function LeftPanelFrame({ id }: { id: string }) {
-  // The panel keeps its width whatever the track does, so nothing inside it reflows during the slide.
-  const width = useUi((state) => clampPanelWidth(state.leftPanelWidth));
+  // The panel keeps its width whatever the track does, so nothing inside it reflows during the slide. It is the track's width,
+  // widened for the Comments tab like the grid (`panelWidthFor`, F15 A5): the clamp alone left the cards 200 px wide.
+  const width = useUi((state) => panelWidthFor(state.leftPanelWidth, state.leftPanelTab));
   const motionProps = usePanelSlide('start', width);
   // While it fades out the panel is on its way out: nothing in it takes focus or a click any more.
   const present = useIsPresent();

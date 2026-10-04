@@ -57,28 +57,6 @@ describe('the top bar', () => {
     expect(useUi.getState().view).toBe('home');
   });
 
-  it('Done goes straight to Home without changes, and saves first with them', async () => {
-    open('Report.pdf');
-    const { user } = setup(<TopBar trafficLightInset={false} />);
-    await user.click(bar().getByRole('button', { name: 'Done' }));
-    expect(save.saveNow).not.toHaveBeenCalled();
-    expect(useUi.getState().view).toBe('home');
-
-    useUi.getState().setView('editor');
-    act(() =>
-      useDocuments.setState((state) => ({
-        byId: { ...state.byId, 1: { ...doc(1, 'Report.pdf'), kind: 'recovered' } },
-      })),
-    );
-    expect(bar().getByText('Edited')).not.toBeNull();
-    save.saveNow.mockResolvedValueOnce(false);
-    await user.click(bar().getByRole('button', { name: 'Done' }));
-    expect(save.saveNow).toHaveBeenCalledWith(1);
-    expect(useUi.getState().view).toBe('editor');
-    await user.click(bar().getByRole('button', { name: 'Done' }));
-    expect(useUi.getState().view).toBe('home');
-  });
-
   it('a double click on the name is Save As', () => {
     open('Report.pdf');
     setup(<TopBar trafficLightInset={false} />);
@@ -104,13 +82,13 @@ describe('the top bar', () => {
     expect(useGoToPage.getState().open).toBe(false);
   });
 
-  it('has Undo, Redo, Search and Done on the right, and no Export, More or caption buttons', () => {
+  it('has Undo, Redo and Search on the right, and no Done, Export, More or caption buttons', () => {
     open('Report.pdf');
     setup(<TopBar trafficLightInset={false} />);
-    for (const name of ['Undo', 'Redo', 'Done'])
+    for (const name of ['Undo', 'Redo'])
       expect(bar().getByRole('button', { name: new RegExp(name) }), name).not.toBeNull();
     expect(bar().getByRole('button', { name: /Search|Find/ })).not.toBeNull();
-    for (const name of ['Export', 'More', 'Close', 'Minimize'])
+    for (const name of ['Export', 'More', 'Close', 'Minimize', 'Done'])
       expect(bar().queryByRole('button', { name }), name).toBeNull();
   });
 

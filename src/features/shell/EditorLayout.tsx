@@ -1,4 +1,4 @@
-import { useId, useMemo, type CSSProperties, type ReactNode } from 'react';
+import { useMemo, type CSSProperties, type ReactNode } from 'react';
 
 import type { Platform } from '../../api/app';
 import { WorkSurface } from '../../components';
@@ -12,6 +12,7 @@ import { MenuRowSlot } from './MenuRowSlot';
 import { LeftPanelSlot } from './LeftPanel';
 import { LeftPanelSplitter, MainGrid } from './MainGrid';
 import { TopBarSlot } from './TopBarSlot';
+import { LEFT_PANEL_ID } from './ids';
 
 const placements = new Map<number | undefined, CSSProperties>();
 
@@ -43,7 +44,7 @@ export interface EditorLayoutProps {
  * later packages replace one file each. The rows come from `shellTracks` (src/lib/layout.ts), one child per track, in order.
  */
 export function EditorLayout({ structure, platform, trafficLightInset }: EditorLayoutProps) {
-  const leftPanelId = useId();
+  const leftPanelId = LEFT_PANEL_ID;
   // Where each slot sits depends on the structure alone, not on the panel's width.
   const slots = useMemo(() => {
     const { column } = shellTracks(structure, PANEL.default);
