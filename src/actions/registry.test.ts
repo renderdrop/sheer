@@ -61,6 +61,7 @@ describe('the registry', () => {
       'print',
       'toggle-left-panel',
       'toggle-inspector',
+      'view-home',
       'settings',
       'about',
       'exit',
@@ -143,6 +144,7 @@ describe('shortcuts per platform', () => {
     print: { macos: '⌘P', windows: 'Ctrl+P' },
     'toggle-left-panel': { macos: '⌥⌘1', windows: 'F4' },
     'toggle-inspector': { macos: '⌥⌘I', windows: 'Shift+F4' },
+    'view-home': { macos: null, windows: null },
     settings: { macos: '⌘,', windows: 'Ctrl+,' },
     about: { macos: null, windows: null },
     'tool-select': { macos: 'V', windows: 'V' },
@@ -273,6 +275,7 @@ describe('enabled', () => {
     expect(enabledIds(NO_DOCUMENT)).toEqual([
       'open',
       'images-to-pdf',
+      'view-home',
       'settings',
       'about',
       'manage-signatures',

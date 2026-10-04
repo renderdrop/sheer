@@ -350,9 +350,9 @@ describe('widths and the left panel (DESIGN 1.3)', () => {
     '--popover-min': '200px',
     '--popover-max': '320px',
     '--tooltip-max': '240px',
-    '--panel-min': '192px', // DESIGN 1.3 says 200 / 200 / 320; moves with the layout package and limits.rs (R1)
-    '--panel-default': '248px',
-    '--panel-max': '400px',
+    '--panel-min': '200px',
+    '--panel-default': '200px',
+    '--panel-max': '320px',
     '--panel-collapse-below': '144px',
     '--splitter-width': '8px',
     '--outline-indent': '16px',
@@ -411,10 +411,11 @@ describe('widths and the left panel (DESIGN 1.3)', () => {
     expect(`${PANEL.step}px`).toBe(root.get('--space-2'));
     expect(`${PANEL.largeStep}px`).toBe(root.get('--space-10'));
     expect(`${PANEL.step}px`).toBe(root.get('--splitter-width'));
-    expect(`${LAYOUT.gutter}px`).toBe(root.get('--space-2'));
     expect(`${LAYOUT.splitter}px`).toBe(root.get('--splitter-width'));
     expect(`${LAYOUT.canvasMin}px`).toBe(root.get('--canvas-min'));
-    expect(`${LAYOUT.inspector}px`).toBe(legacy.get('--inspector-width')); // 288 until the layout package (R1): the spec value is 280
+    expect(`${LAYOUT.toolSidebar}px`).toBe(root.get('--tool-sidebar-width'));
+    expect(`${LAYOUT.toolRail}px`).toBe(root.get('--tool-rail-width'));
+    expect(`${LAYOUT.topbar}px`).toBe(root.get('--topbar-height'));
   });
 
   it('the panel range is ordered: collapse threshold below the minimum, minimum not above the default, default below the maximum', () => {
@@ -436,18 +437,11 @@ describe('widths and the left panel (DESIGN 1.3)', () => {
   });
 
   it('the removed layout tokens only exist in the legacy block, which names the release that drops it', () => {
-    for (const name of [
-      '--caption-height',
-      '--status-height',
-      '--tabs-row-height',
-      '--hub-card-height',
-      '--logo-slot',
-    ]) {
+    for (const name of ['--tabs-row-height', '--hub-card-height']) {
       expect(token(name), name).toBeUndefined();
       expect(legacy.has(name), name).toBe(true);
     }
     expect(legacy.get('--toolbar-row-height')).toBe('var(--topbar-height)');
-    expect(legacy.get('--inspector-width')).toBe('288px');
     expect(legacyStart).toBeGreaterThan(-1);
   });
 });

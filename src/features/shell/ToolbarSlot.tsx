@@ -7,10 +7,6 @@ import { useT } from '../../i18n';
 import { selectActiveId, useDocuments } from '../../stores/documents';
 import { useTools } from '../../stores/tools';
 import { useUi } from '../../stores/ui';
-import { AboutDialog } from '../about/AboutDialog';
-import { SignatureLibraryDialog } from '../signatures/library';
-import { ToolAnnouncer } from '../annotations/layer/ToolAnnouncer';
-import { SettingsPopover } from '../settings/SettingsPopover';
 import { buildToolbar, type ToolbarActions } from './toolbarEntries';
 import { ToolbarRow } from './ToolbarRow';
 
@@ -99,14 +95,5 @@ export const ToolbarSlot = memo(function ToolbarSlot({
     ],
   );
 
-  return (
-    <>
-      <ToolbarRow leading={leading} trailing={trailing} groups={groups} trafficLightInset={trafficLightInset} />
-      {/* Portals, so they take no room in the shell: the settings popover hangs from the toolbar (it opens from its key), the About dialog is a modal. */}
-      <ToolAnnouncer />
-      <SettingsPopover />
-      <AboutDialog />
-      <SignatureLibraryDialog />
-    </>
-  );
+  return <ToolbarRow leading={leading} trailing={trailing} groups={groups} trafficLightInset={trafficLightInset} />;
 });

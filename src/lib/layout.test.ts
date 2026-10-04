@@ -6,232 +6,131 @@ import { describe, expect, it } from 'vitest';
 import { LAYOUT, PANEL } from '../components/tokens';
 import { clampPanelWidth, computeShellLayout, shellStructure, shellTracks, type LayoutInput } from './layout';
 
-/** A document is open, the window is 1100 wide (the default size), the panel has its default width, the user changed nothing. */
+/** The editor shows, the window is 1280 wide, the page sidebar has its default width, the user changed nothing. */
 const base: LayoutInput = {
   hasDocument: true,
-  windowWidth: 1100,
+  windowWidth: 1280,
   panelWidth: PANEL.default,
   panelCollapsed: false,
   inspector: 'auto',
-  inspectorContent: false,
 };
 
 const layout = (overrides: Partial<LayoutInput> = {}) => computeShellLayout({ ...base, ...overrides });
 
-describe('the columns of DESIGN 2', () => {
-  it('with a document: 8 | left | splitter 8 | canvas | 8 | inspector 288 | 8, as tracks of tokens', () => {
-    const wide = layout({ windowWidth: 1280, inspector: 'open' });
+describe('the editor columns of DESIGN v2 3.2', () => {
+  it('page sidebar | splitter 8 | canvas | tool sidebar 280, as tracks of tokens', () => {
+    const wide = layout();
     expect(wide.mode).toBe('document');
     expect(wide.tracks).toEqual([
-      { slot: 'gutter-start', size: 'var(--space-2)' },
-      { slot: 'left', size: '248px' },
+      { slot: 'left', size: '200px' },
       { slot: 'splitter', size: 'var(--splitter-width)' },
       { slot: 'canvas', size: 'minmax(var(--canvas-min), 1fr)' },
-      { slot: 'gap', size: 'var(--space-2)' },
-      { slot: 'inspector', size: 'var(--inspector-width)' },
-      { slot: 'gutter-end', size: 'var(--space-2)' },
+      { slot: 'tool', size: 'var(--tool-sidebar-width)' },
     ]);
-    expect(wide.columns).toBe(
-      'var(--space-2) 248px var(--splitter-width) minmax(var(--canvas-min), 1fr) var(--space-2) var(--inspector-width) var(--space-2)',
-    );
-    expect(wide.column).toEqual({
-      'gutter-start': 1,
-      left: 2,
-      splitter: 3,
-      canvas: 4,
-      gap: 5,
-      inspector: 6,
-      'gutter-end': 7,
-    });
+    expect(wide.columns).toBe('200px var(--splitter-width) minmax(var(--canvas-min), 1fr) var(--tool-sidebar-width)');
+    expect(wide.column).toEqual({ left: 1, splitter: 2, canvas: 3, tool: 4 });
   });
 
   it('the canvas width is what is left of the window after the other tracks', () => {
-    // 1280 - 8 - 248 - 8 - 8 - 288 - 8, the inspector open
-    expect(layout({ windowWidth: 1280, inspector: 'open' }).canvasWidth).toBe(712);
-    // Nothing is reserved for a hidden inspector (F2 review): 1280 - 8 - 248 - 8 - 8
-    expect(layout({ windowWidth: 1280 }).canvasWidth).toBe(1008);
-    expect(layout().canvasWidth).toBe(828);
-    // The minimum window, default panel, no inspector: 960 - 8 - 248 - 8 - 8
-    expect(layout({ windowWidth: 960 }).canvasWidth).toBe(688);
+    // 1280 - 200 - 8 - 280
+    expect(layout().canvasWidth).toBe(792);
+    // Below 1100 the rail: 1000 - 200 - 8 - 56
+    expect(layout({ windowWidth: 1000 }).canvasWidth).toBe(736);
+    // A collapsed page sidebar: 1280 - 8 - 280
+    expect(layout({ panelCollapsed: true }).canvasWidth).toBe(992);
   });
 
-  it('without a document: 8 | empty state | 8, no panel and no inspector whatever the state says', () => {
-    const empty = layout({ hasDocument: false, windowWidth: 1600, inspector: 'open', inspectorContent: true });
-    expect(empty.mode).toBe('empty');
-    expect(empty.tracks.map((track) => track.slot)).toEqual(['gutter-start', 'canvas', 'gutter-end']);
-    expect(empty.columns).toBe('var(--space-2) minmax(0, 1fr) var(--space-2)');
-    expect(empty.inspectorReserved).toBe(false);
-    expect(empty.inspectorVisible).toBe(false);
-    expect(empty.canvasWidth).toBe(1600 - 2 * LAYOUT.gutter);
+  it('Home has one slot, the window, whatever the state says', () => {
+    const home = layout({ hasDocument: false, windowWidth: 1600, inspector: 'open' });
+    expect(home.mode).toBe('empty');
+    expect(home.tracks.map((track) => track.slot)).toEqual(['canvas']);
+    expect(home.columns).toBe('minmax(0, 1fr)');
+    expect(home.inspectorReserved).toBe(false);
+    expect(home.inspectorVisible).toBe(false);
+    expect(home.leftCollapsed).toBe(true);
+    expect(home.canvasWidth).toBe(1600);
   });
 });
 
-describe('the left panel', () => {
-  it('collapsed: its track and the outer gutter go, the splitter is the leading gutter', () => {
+describe('the page sidebar', () => {
+  it('collapsed: its track takes no room but stays in the list, so no slot moves', () => {
+    const open = layout();
     const collapsed = layout({ panelCollapsed: true });
     expect(collapsed.leftCollapsed).toBe(true);
     expect(collapsed.leftAutoCollapsed).toBe(false);
-    // They go by taking no room, and stay in the list (see the next test).
-    expect(collapsed.tracks.slice(0, 3)).toEqual([
-      { slot: 'gutter-start', size: 'var(--spacing-0)' },
-      { slot: 'left', size: 'var(--spacing-0)' },
-      { slot: 'splitter', size: 'var(--splitter-width)' },
-    ]);
-    // 1100 - 8 (splitter) - 8 (outer gutter)
-    expect(collapsed.canvasWidth).toBe(1084);
+    expect(collapsed.tracks[0]).toEqual({ slot: 'left', size: 'var(--spacing-0)' });
+    expect(collapsed.tracks.map((track) => track.slot)).toEqual(open.tracks.map((track) => track.slot));
+    expect(collapsed.column).toEqual(open.column);
   });
 
-  it('collapsed or not, the list has the same tracks in the same places, so the browser can animate between the two', () => {
-    for (const windowWidth of [960, 1100, 1280, 1600]) {
-      for (const inspector of ['auto', 'open', 'closed'] as const) {
-        const open = layout({ windowWidth, inspector, panelCollapsed: false, panelWidth: PANEL.min });
-        const shut = layout({ windowWidth, inspector, panelCollapsed: true, panelWidth: PANEL.min });
-        const label = `${windowWidth} ${inspector}`;
-        expect(
-          shut.tracks.map((track) => track.slot),
-          label,
-        ).toEqual(open.tracks.map((track) => track.slot));
-        expect(shut.column, label).toEqual(open.column);
-        // Only the sizes of the left panel's two tracks differ.
-        const differing = open.tracks.filter((track, index) => track.size !== shut.tracks[index]?.size);
-        expect(
-          differing.map((track) => track.slot),
-          label,
-        ).toEqual(['gutter-start', 'left']);
-      }
-    }
-    expect(layout({ panelCollapsed: true }).column).toEqual({
-      'gutter-start': 1,
-      left: 2,
-      splitter: 3,
-      canvas: 4,
-      gap: 5,
-      inspector: 6,
-      'gutter-end': 7,
-    });
+  it('is clamped to 200..320, and a bad width gives the default', () => {
+    expect(clampPanelWidth(10)).toBe(200);
+    expect(clampPanelWidth(9000)).toBe(320);
+    expect(clampPanelWidth(250.4)).toBe(250);
+    expect(clampPanelWidth(Number.NaN)).toBe(PANEL.default);
+    expect(clampPanelWidth(Number.POSITIVE_INFINITY)).toBe(PANEL.default);
+    expect(layout({ panelWidth: 9000 }).tracks[0]?.size).toBe('320px');
   });
 
-  it('is clamped to the range of the spec, and a bad width gives the default', () => {
-    expect(layout({ panelWidth: 100 }).panelWidth).toBe(192);
-    expect(layout({ panelWidth: 9000 }).panelWidth).toBe(400);
-    expect(layout({ panelWidth: 300 }).tracks[1]).toEqual({ slot: 'left', size: '300px' });
-    expect(layout({ panelWidth: Number.NaN }).panelWidth).toBe(248);
-    expect(clampPanelWidth(Number.POSITIVE_INFINITY)).toBe(248);
-    expect(clampPanelWidth(192)).toBe(192);
-    expect(clampPanelWidth(400)).toBe(400);
+  it('collapses by itself below 860 px (exact), and comes back when the window grows', () => {
+    expect(shellStructure({ ...base, windowWidth: 859, inspector: 'closed' }).leftAutoCollapsed).toBe(true);
+    expect(shellStructure({ ...base, windowWidth: 860, inspector: 'closed' }).leftCollapsed).toBe(false);
   });
 
-  it('collapses by itself when the canvas would be narrower than 360, and comes back when there is room', () => {
-    // 960, inspector open, widest panel: 960 - 8 - 400 - 8 - 8 - 296 = 240 < 360
-    const squeezed = layout({ windowWidth: 960, panelWidth: 400, inspector: 'open' });
-    expect(squeezed.leftCollapsed).toBe(true);
-    expect(squeezed.leftAutoCollapsed).toBe(true);
-    expect(squeezed.inspectorReserved).toBe(true);
-    // The canvas then gets 960 - 8 (splitter) - 296 - 8 = 648 and never falls under its minimum.
-    expect(squeezed.canvasWidth).toBe(648);
-    expect(squeezed.canvasWidth).toBeGreaterThanOrEqual(LAYOUT.canvasMin);
-
-    // The same panel with room: 1280 - 8 - 400 - 8 - 8 - 296 = 560
-    const roomy = layout({ windowWidth: 1280, panelWidth: 400, inspector: 'open' });
-    expect(roomy.leftCollapsed).toBe(false);
-    expect(roomy.canvasWidth).toBe(560);
+  it('collapses by itself when the canvas would be narrower than 360, with the exact threshold', () => {
+    // 1100 - 320 - 8 - 280 = 492 fits; with the sidebar open at 960 and the full tool sidebar (a mode): 960 - 320 - 8 - 280 = 352
+    const input: LayoutInput = { ...base, windowWidth: 960, panelWidth: 320, inspectorMode: true };
+    expect(shellStructure(input).leftAutoCollapsed).toBe(true);
+    expect(shellStructure({ ...input, panelWidth: 312 }).leftAutoCollapsed).toBe(false);
+    expect(shellStructure({ ...input, panelWidth: 313 }).leftAutoCollapsed).toBe(true);
   });
 
-  it('the threshold is exact: 360 keeps the panel, 359 collapses it', () => {
-    // canvas = width - 8 - 248 - 8 - 8 - 296 with the inspector open
-    const fits = 360 + 8 + 248 + 8 + 8 + 296;
-    expect(layout({ windowWidth: fits, inspector: 'open' }).leftCollapsed).toBe(false);
-    expect(layout({ windowWidth: fits, inspector: 'open' }).canvasWidth).toBe(360);
-    expect(layout({ windowWidth: fits - 1, inspector: 'open' }).leftAutoCollapsed).toBe(true);
+  it('a sidebar the user collapsed is not reported as auto-collapsed', () => {
+    const structure = shellStructure({ ...base, windowWidth: 800, panelCollapsed: true });
+    expect(structure.leftCollapsed).toBe(true);
+    expect(structure.leftAutoCollapsed).toBe(false);
   });
 
-  it('a panel the user collapsed is not reported as auto-collapsed', () => {
-    const both = layout({ windowWidth: 960, panelWidth: 400, inspector: 'open', panelCollapsed: true });
-    expect(both.leftCollapsed).toBe(true);
-    expect(both.leftAutoCollapsed).toBe(false);
-  });
-
-  it('every panel width of the range fits the minimum window with the inspector closed', () => {
+  it('every sidebar width fits the minimum window with the rail', () => {
     for (const panelWidth of [PANEL.min, PANEL.default, PANEL.max]) {
       const result = layout({ windowWidth: LAYOUT.minWindowWidth, panelWidth });
-      expect(result.leftCollapsed, String(panelWidth)).toBe(false);
-      expect(result.canvasWidth, String(panelWidth)).toBeGreaterThanOrEqual(LAYOUT.canvasMin);
+      expect(result.leftCollapsed).toBe(false);
+      expect(result.canvasWidth).toBeGreaterThanOrEqual(LAYOUT.canvasMin);
     }
   });
 });
 
-describe('the inspector', () => {
-  it('in auto mode nothing is reserved while nothing is selected and Select is active: the canvas reaches the trailing gutter', () => {
-    for (const windowWidth of [960, 1279, 1280, 1600]) {
-      const quiet = layout({ windowWidth });
-      expect(quiet.inspectorReserved, String(windowWidth)).toBe(false);
-      expect(quiet.inspectorVisible, String(windowWidth)).toBe(false);
-      // The gap and the track stay in the list at size 0, so the browser can animate them.
-      expect(quiet.tracks.slice(-3).map((track) => track.size)).toEqual([
-        'var(--spacing-0)',
-        'var(--spacing-0)',
-        'var(--space-2)',
-      ]);
-    }
-    // 1280 - 8 - 248 - 8 - 8
-    expect(layout({ windowWidth: 1280 }).canvasWidth).toBe(1008);
+describe('the tool sidebar and the rail', () => {
+  it('280 from 1100 wide, the 56 rail below (exact)', () => {
+    expect(shellStructure({ ...base, windowWidth: 1100 }).inspectorVisible).toBe(true);
+    expect(shellStructure({ ...base, windowWidth: 1099 }).inspectorVisible).toBe(false);
+    expect(layout({ windowWidth: 1099 }).tracks[3]).toEqual({ slot: 'tool', size: 'var(--tool-rail-width)' });
   });
 
-  it('from 1280 px a selection or tool opens the track; the canvas gives its width to it', () => {
-    const quiet = layout({ windowWidth: 1280 });
-    const withTool = layout({ windowWidth: 1280, inspectorContent: true });
-    expect(withTool.inspectorReserved).toBe(true);
-    expect(withTool.inspectorVisible).toBe(true);
-    // The list keeps its shape: the same slots in the same columns, so the browser can slide between the two.
-    expect(withTool.column).toEqual(quiet.column);
-    expect(withTool.tracks.map((track) => track.slot)).toEqual(quiet.tracks.map((track) => track.slot));
-    expect(withTool.canvasWidth).toBe(quiet.canvasWidth - LAYOUT.gutter - LAYOUT.inspector);
+  it('the column exists in the editor at every width', () => {
+    for (const windowWidth of [960, 1099, 1100, 1920]) {
+      expect(shellStructure({ ...base, windowWidth }).inspectorReserved).toBe(true);
+    }
   });
 
-  it('at every width from 960 content opens the track by itself and no content closes it (DESIGN 3.57)', () => {
-    for (const windowWidth of [960, 1100, 1279, 1280, 2000]) {
-      const auto = layout({ windowWidth, inspectorContent: true });
-      expect(auto.inspectorReserved, String(windowWidth)).toBe(true);
-      expect(auto.inspectorVisible, String(windowWidth)).toBe(true);
-      expect(layout({ windowWidth }).inspectorVisible, String(windowWidth)).toBe(false);
-
-      const open = layout({ windowWidth, inspector: 'open' });
-      expect(open.inspectorReserved, String(windowWidth)).toBe(true);
-      expect(open.inspectorVisible, String(windowWidth)).toBe(true);
-      expect(open.tracks.find((track) => track.slot === 'inspector')?.size).toBe('var(--inspector-width)');
-    }
+  it('"closed" is the rail at any width, "open" is the sidebar at any width', () => {
+    expect(shellStructure({ ...base, windowWidth: 1920, inspector: 'closed' }).inspectorVisible).toBe(false);
+    expect(shellStructure({ ...base, windowWidth: 960, inspector: 'open' }).inspectorVisible).toBe(true);
   });
 
   it('"closed" still opens for a mode panel (Crop, Redact) and for nothing else', () => {
-    expect(layout({ windowWidth: 1100, inspector: 'closed', inspectorContent: true }).inspectorVisible).toBe(false);
-    expect(
-      layout({ windowWidth: 1100, inspector: 'closed', inspectorContent: true, inspectorMode: true }).inspectorVisible,
-    ).toBe(true);
-  });
-
-  it('hidden: the gap and the track take no room', () => {
-    expect(layout({ windowWidth: 1100 }).columns).toBe(
-      'var(--space-2) 248px var(--splitter-width) minmax(var(--canvas-min), 1fr) var(--spacing-0) var(--spacing-0) var(--space-2)',
-    );
-  });
-
-  it('"closed" hides the panel and reserves nothing, at any width', () => {
-    const closed = layout({ windowWidth: 1400, inspector: 'closed', inspectorContent: true });
-    expect(closed.inspectorReserved).toBe(false);
-    expect(closed.inspectorVisible).toBe(false);
-    expect(layout({ windowWidth: 1100, inspector: 'closed' }).inspectorReserved).toBe(false);
-  });
-
-  it('"open" at 1280 and more shows the panel without a selection', () => {
-    expect(layout({ windowWidth: 1400, inspector: 'open' }).inspectorVisible).toBe(true);
+    expect(shellStructure({ ...base, inspector: 'closed', inspectorMode: true }).inspectorVisible).toBe(true);
+    expect(shellStructure({ ...base, windowWidth: 960, inspectorMode: true }).inspectorVisible).toBe(true);
   });
 });
 
 describe('the window minimum', () => {
-  it('the spec numbers: 960 x 640, inspector reserved from 1280', () => {
+  it('the spec numbers: 960 x 640, rail below 1100, page sidebar collapse below 860', () => {
     expect(LAYOUT.minWindowWidth).toBe(960);
     expect(LAYOUT.minWindowHeight).toBe(640);
-    expect(LAYOUT.inspectorReserveFrom).toBe(1280);
+    expect(LAYOUT.railBelow).toBe(1100);
+    expect(LAYOUT.leftCollapseBelow).toBe(860);
+    expect(LAYOUT.leftCollapseBelow).toBeLessThan(LAYOUT.minWindowWidth);
   });
 
   it('tauri.conf.json and both platform files set that minimum', () => {
@@ -244,128 +143,36 @@ describe('the window minimum', () => {
     }
   });
 
-  it('a window that is not a number does not break the layout', () => {
+  it('a window width that is not a number, Infinity or negative does not break the layout', () => {
     expect(layout({ windowWidth: Number.NaN }).canvasWidth).toBeGreaterThanOrEqual(LAYOUT.canvasMin);
-  });
-});
-
-describe('edge cases of the clamp and the collapse rules', () => {
-  it('rounds a fractional width to whole pixels before clamping, and a negative or -Infinity width is a bad one', () => {
-    expect(clampPanelWidth(247.6)).toBe(248);
-    expect(clampPanelWidth(191.6)).toBe(192);
-    expect(clampPanelWidth(400.4)).toBe(400);
-    expect(clampPanelWidth(-50)).toBe(PANEL.min);
-    expect(clampPanelWidth(Number.NEGATIVE_INFINITY)).toBe(PANEL.default);
-    expect(layout({ panelWidth: 300.4 }).tracks[1]).toEqual({ slot: 'left', size: '300px' });
-  });
-
-  it('the collapse decision uses the clamped width: 9000 behaves like 400, 1 like 192', () => {
-    const wide = layout({ windowWidth: 960, panelWidth: 9000, inspector: 'open' });
-    expect(wide.panelWidth).toBe(PANEL.max);
-    expect(wide.leftAutoCollapsed).toBe(true);
-    // 960 - 8 - 192 - 8 - 8 - 296 = 448: the narrowest panel keeps its place next to an open inspector.
-    const narrow = layout({ windowWidth: 960, panelWidth: 1, inspector: 'open' });
-    expect(narrow.panelWidth).toBe(PANEL.min);
-    expect(narrow.leftCollapsed).toBe(false);
-    expect(narrow.canvasWidth).toBe(448);
-    expect(narrow.tracks[1]).toEqual({ slot: 'left', size: '192px' });
-  });
-
-  it('the threshold is exact for the widest panel too: 360 keeps it, 359 collapses it', () => {
-    const fits = 360 + 8 + PANEL.max + 8 + 8 + 296;
-    const at = layout({ windowWidth: fits, panelWidth: PANEL.max, inspector: 'open' });
-    expect(at.leftCollapsed).toBe(false);
-    expect(at.canvasWidth).toBe(360);
-    expect(layout({ windowWidth: fits - 1, panelWidth: PANEL.max, inspector: 'open' }).leftAutoCollapsed).toBe(true);
-  });
-
-  it('at the 960 minimum with the inspector open the default panel stays and a 296 px panel gives way', () => {
-    // 960 - 8 - 248 - 8 - 8 - 296 = 392
-    expect(layout({ windowWidth: 960, inspector: 'open' }).leftCollapsed).toBe(false);
-    expect(layout({ windowWidth: 960, inspector: 'open' }).canvasWidth).toBe(392);
-    // 960 - 8 - 296 - 8 - 8 - 296 = 344
-    expect(layout({ windowWidth: 960, panelWidth: 296, inspector: 'open' }).leftAutoCollapsed).toBe(true);
-  });
-
-  it('from 1280 the reserved inspector track never squeezes the canvas under 360, whatever the panel width', () => {
-    for (const panelWidth of [PANEL.min, PANEL.default, PANEL.max]) {
-      for (const inspector of ['auto', 'open', 'closed'] as const) {
-        const result = layout({ windowWidth: LAYOUT.inspectorReserveFrom, panelWidth, inspector });
-        expect(result.leftCollapsed, `${panelWidth} ${inspector}`).toBe(false);
-        expect(result.canvasWidth, `${panelWidth} ${inspector}`).toBeGreaterThanOrEqual(LAYOUT.canvasMin);
-      }
-    }
-  });
-
-  it('without a document the panel flags say "no panel", the window width does not matter, and a bad width stays clamped', () => {
-    for (const windowWidth of [960, 1279, 1280, 2400]) {
-      const empty = layout({ hasDocument: false, windowWidth, panelCollapsed: true, panelWidth: Number.NaN });
-      expect(empty.columns, String(windowWidth)).toBe('var(--space-2) minmax(0, 1fr) var(--space-2)');
-      expect(empty.leftCollapsed).toBe(true);
-      expect(empty.leftAutoCollapsed).toBe(false);
-      expect(empty.panelWidth).toBe(PANEL.default);
-      expect(empty.column).toEqual({ 'gutter-start': 1, canvas: 2, 'gutter-end': 3 });
-    }
-  });
-
-  it('a window width that is Infinity or negative does not break the layout', () => {
     expect(layout({ windowWidth: Number.POSITIVE_INFINITY }).canvasWidth).toBeGreaterThanOrEqual(LAYOUT.canvasMin);
-    expect(layout({ hasDocument: false, windowWidth: -5 }).canvasWidth).toBe(0);
+    expect(layout({ windowWidth: -5 }).mode).toBe('document');
   });
 });
 
 describe('the structure and the tracks, which the shell follows separately', () => {
   it('the structure is booleans and a mode, so it is equal for every width inside one regime', () => {
-    const at = (windowWidth: number) => shellStructure({ ...base, windowWidth });
-    expect(at(1000)).toEqual(at(1279));
-    expect(at(1280)).toEqual(at(2400));
-    expect(shellStructure({ ...base, windowWidth: 1279, inspectorContent: true })).toEqual(
-      shellStructure({ ...base, windowWidth: 1280, inspectorContent: true }),
-    );
-    for (const value of Object.values(at(1100))) expect(['string', 'boolean']).toContain(typeof value);
+    expect(shellStructure({ ...base, windowWidth: 1100 })).toEqual(shellStructure({ ...base, windowWidth: 1900 }));
+    expect(shellStructure({ ...base, windowWidth: 900 })).toEqual(shellStructure({ ...base, windowWidth: 1050 }));
   });
 
-  it('the structure does not depend on the panel width until the canvas would fall under 360', () => {
-    const at = (panelWidth: number) => shellStructure({ ...base, panelWidth });
-    expect(at(PANEL.min)).toEqual(at(PANEL.max));
-    expect(shellStructure({ ...base, windowWidth: 960, inspector: 'open', panelWidth: PANEL.max })).not.toEqual(
-      shellStructure({ ...base, windowWidth: 960, inspector: 'open', panelWidth: PANEL.min }),
-    );
-  });
-
-  it('the tracks follow the panel width and the structure, and the slots sit where they sat for any width', () => {
-    const structure = shellStructure({ ...base, windowWidth: 1280, inspector: 'open' });
-    const narrow = shellTracks(structure, PANEL.min);
-    const wide = shellTracks(structure, PANEL.max);
-    expect(narrow.columns).toContain(`${PANEL.min}px`);
-    expect(wide.columns).toContain(`${PANEL.max}px`);
+  it('the tracks follow the sidebar width and the structure, and the slots sit where they sat for any width', () => {
+    const structure = shellStructure(base);
+    const narrow = shellTracks(structure, 200);
+    const wide = shellTracks(structure, 320);
+    expect(narrow.columns).not.toBe(wide.columns);
     expect(narrow.column).toEqual(wide.column);
-    expect(narrow.panelWidth).toBe(PANEL.min);
-    expect(shellTracks(structure, 9000).panelWidth).toBe(PANEL.max);
-    expect(shellTracks(structure, Number.NaN).panelWidth).toBe(PANEL.default);
+    expect(wide.panelWidth).toBe(320);
   });
 
   it('computeShellLayout is the two together', () => {
-    for (const windowWidth of [960, 1100, 1280, 1600]) {
-      for (const inspector of ['auto', 'open', 'closed'] as const) {
-        const input = { ...base, windowWidth, inspector, panelWidth: 300 };
-        const whole = computeShellLayout(input);
-        expect(whole).toMatchObject(shellStructure(input));
-        expect(whole).toMatchObject(shellTracks(shellStructure(input), 300));
-      }
-    }
+    const structure = shellStructure(base);
+    expect(layout()).toMatchObject({ ...structure, ...shellTracks(structure, base.panelWidth) });
   });
 
-  it('the empty structure is the same object every time and has no panel and no inspector', () => {
-    const one = shellStructure({ ...base, hasDocument: false });
-    expect(shellStructure({ ...base, hasDocument: false, windowWidth: 2400 })).toBe(one);
-    expect(one).toEqual({
-      mode: 'empty',
-      leftCollapsed: true,
-      leftAutoCollapsed: false,
-      inspectorReserved: false,
-      inspectorVisible: false,
-    });
-    expect(shellTracks(one, 300).columns).toBe('var(--space-2) minmax(0, 1fr) var(--space-2)');
+  it('the Home structure is the same object every time', () => {
+    expect(shellStructure({ ...base, hasDocument: false })).toBe(
+      shellStructure({ ...base, hasDocument: false, windowWidth: 5 }),
+    );
   });
 });

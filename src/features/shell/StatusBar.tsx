@@ -36,6 +36,8 @@ export interface StatusBarProps {
   /** The view rotation in degrees (DESIGN 3.20); a button that resets it is shown while it is not 0. */
   rotation?: number;
   onResetRotation?: () => void;
+  /** Show the file name (default). The top bar has the tabs for it. */
+  showName?: boolean;
   /** The Go to page popover is open (controlled, so the `go-to-page` action can open it); uncontrolled without these. */
   goToOpen?: boolean;
   onGoToOpenChange?: (open: boolean) => void;
@@ -182,6 +184,7 @@ export function StatusBar({
   onResetRotation,
   goToOpen,
   onGoToOpenChange,
+  showName = true,
 }: StatusBarProps) {
   const t = useT();
   const hasDocument = fileName !== null;
@@ -191,9 +194,9 @@ export function StatusBar({
   return (
     <footer
       aria-label={t('status.label')}
-      className="flex h-status shrink-0 items-center gap-4 px-4 text-sm text-text-muted"
+      className="flex h-topbar shrink-0 items-center gap-4 px-4 text-sm text-text-muted"
     >
-      {hasDocument && <FileName name={fileName === '' ? t('status.untitled') : fileName} />}
+      {hasDocument && showName && <FileName name={fileName === '' ? t('status.untitled') : fileName} />}
       {hasDocument && edited && (
         <span data-edited="" className={`${PILL} pulse-target`}>
           {t('status.edited')}

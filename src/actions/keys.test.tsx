@@ -148,7 +148,7 @@ describe('the bindings', () => {
     press({ key: 'F4' });
     expect(useUi.getState().leftPanelCollapsed).toBe(true);
     press({ key: 'F4', shiftKey: true });
-    expect(useUi.getState().inspector).toBe('open');
+    expect(useUi.getState().inspector).toBe('closed');
   });
 
   it('Option+Cmd+1 and Option+Cmd+I toggle the panels on macOS, although Option changes the characters', () => {
@@ -156,7 +156,7 @@ describe('the bindings', () => {
     press({ key: '¡', code: 'Digit1', altKey: true, metaKey: true });
     expect(useUi.getState().leftPanelCollapsed).toBe(true);
     press({ key: 'ˆ', code: 'KeyI', altKey: true, metaKey: true });
-    expect(useUi.getState().inspector).toBe('open');
+    expect(useUi.getState().inspector).toBe('closed');
     // F4 is not the macOS key.
     press({ key: 'F4' });
     expect(useUi.getState().leftPanelCollapsed).toBe(true);

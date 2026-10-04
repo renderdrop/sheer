@@ -55,58 +55,79 @@ describe('useShellStructure', () => {
     expect(renders()).toBe(first);
   });
 
-  it('is the document structure with one, and a document opening renders once', () => {
+  it('is the editor structure with a document, and a document opening renders once', () => {
     const { result, renders } = follow();
     const before = renders();
     openDocument();
-    expect(result.current).toMatchObject({ mode: 'document', leftCollapsed: false, inspectorReserved: false });
+    // 1100 wide: the full tool sidebar.
+    expect(result.current).toMatchObject({
+      mode: 'document',
+      leftCollapsed: false,
+      inspectorReserved: true,
+      inspectorVisible: true,
+    });
     expect(renders()).toBe(before + 1);
   });
 
-  it('renders for the thresholds only: 1280, the user collapsing the panel, the inspector toggle, and the canvas under 360', () => {
+  it('is Home after "back to Home" while the document stays open, and the editor again when one is activated', () => {
+    openDocument();
+    const { result } = follow();
+    expect(result.current.mode).toBe('document');
+    act(() => useUi.getState().setView('home'));
+    expect(result.current.mode).toBe('empty');
+    expect(useDocuments.getState().activeId).toBe(1);
+    act(() => useDocuments.getState().add({ id: 2, pageCount: 1, displayName: 'b.pdf' }));
+    expect(result.current.mode).toBe('document');
+    act(() => useUi.getState().setView('home'));
+    act(() => useDocuments.getState().setActive(1));
+    expect(result.current.mode).toBe('document');
+    act(() => useDocuments.getState().remove(1));
+    act(() => useDocuments.getState().remove(2));
+    expect(result.current.mode).toBe('empty');
+    expect(useUi.getState().view).toBe('home');
+  });
+
+  it('renders for the thresholds only: 1100, the user collapsing a sidebar, and the canvas under 360', () => {
     openDocument();
     const { result, renders } = follow();
     const rest = result.current;
     const first = renders();
 
     // Pixels of a resize within a regime, and the steps of a splitter drag within the room there is: the same object.
-    for (const width of [1101, 1150, 1279]) resizeTo(width);
-    for (const width of [200, 248, 300, 400]) act(() => useUi.getState().setLeftPanelWidth(width));
+    for (const width of [1101, 1150, 1279, 1800, 2400]) resizeTo(width);
+    for (const width of [200, 248, 300, 320]) act(() => useUi.getState().setLeftPanelWidth(width));
     act(() => useUi.getState().setLeftPanelWidth(PANEL.default));
     expect(renders()).toBe(first);
     expect(result.current).toBe(rest);
-
-    // Nothing is reserved for a hidden inspector, so even 1280 is no change.
-    resizeTo(1280);
-    for (const width of [1300, 1800, 2400]) resizeTo(width);
-    expect(renders()).toBe(first);
-    expect(result.current.inspectorReserved).toBe(false);
 
     act(() => useUi.getState().setLeftPanelCollapsed(true));
     expect(renders()).toBe(first + 1);
     expect(result.current.leftCollapsed).toBe(true);
     act(() => useUi.getState().setLeftPanelCollapsed(false));
 
-    // A tool has options to show, which fades the inspector in from 1280 px.
+    // The tool sidebar closed by the user is the rail; a tool or a selection changes nothing in the structure.
     const before = renders();
-    act(() => useUi.getState().selectTool('highlight'));
+    act(() => useUi.getState().setInspector('closed'));
     expect(renders()).toBe(before + 1);
-    expect(result.current.inspectorVisible).toBe(true);
+    expect(result.current.inspectorVisible).toBe(false);
     expect(result.current.inspectorReserved).toBe(true);
-    // Another tool changes nothing in the structure.
     act(() => useUi.getState().selectTool('draw'));
     expect(renders()).toBe(before + 1);
+    // Below 1100 the window makes it the rail by itself.
+    act(() => useUi.getState().setInspector('auto'));
+    resizeTo(1099);
+    expect(result.current.inspectorVisible).toBe(false);
   });
 
-  it('the canvas falling under 360 collapses the panel by itself, in the render where the splitter makes it so', () => {
+  it('the canvas falling under 360 collapses the page sidebar by itself, in the render where the splitter makes it so', () => {
     resizeTo(960);
     useUi.setState({ inspector: 'open', leftPanelWidth: PANEL.min });
     openDocument();
     const { result, renders } = follow();
     expect(result.current.leftCollapsed).toBe(false);
     const first = renders();
-    // 960 - 8 - 296 - 8 - 8 - 296 = 344: under 360.
-    act(() => useUi.getState().setLeftPanelWidth(296));
+    // 960 - 320 - 8 - 280 = 352: under 360.
+    act(() => useUi.getState().setLeftPanelWidth(320));
     expect(result.current).toMatchObject({ leftCollapsed: true, leftAutoCollapsed: true });
     expect(renders()).toBe(first + 1);
   });
@@ -115,13 +136,15 @@ describe('useShellStructure', () => {
     expect(readShellStructure().mode).toBe('empty');
     openDocument();
     expect(readShellStructure().mode).toBe('document');
-    expect(readShellStructure().inspectorReserved).toBe(false);
-    resizeTo(1400);
-    expect(readShellStructure().inspectorReserved).toBe(false);
+    expect(readShellStructure().inspectorVisible).toBe(true);
+    resizeTo(1000);
+    expect(readShellStructure().inspectorVisible).toBe(false);
     useUi.setState({ inspector: 'open' });
-    expect(readShellStructure().inspectorReserved).toBe(true);
+    expect(readShellStructure().inspectorVisible).toBe(true);
     useUi.setState({ leftPanelCollapsed: true });
     expect(readShellStructure().leftCollapsed).toBe(true);
+    useUi.setState({ view: 'home' });
+    expect(readShellStructure().mode).toBe('empty');
   });
 
   it('stops listening when the component goes', () => {

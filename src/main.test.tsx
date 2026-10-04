@@ -140,10 +140,10 @@ describe('main.tsx while the settings load hangs', () => {
     await start();
     const { useUi } = await import('./stores/ui');
     expect(useUi.getState().leftPanelWidth).toBe(320);
-    act(() => useUi.getState().setLeftPanelWidth(352));
+    act(() => useUi.getState().setLeftPanelWidth(248));
     await wait(1000);
     expect(backend.updateSettings).toHaveBeenCalledTimes(1);
-    expect(backend.updateSettings).toHaveBeenCalledWith({ leftPanelWidth: 352 });
+    expect(backend.updateSettings).toHaveBeenCalledWith({ leftPanelWidth: 248 });
   });
 
   it('keeps the window and the defaults when the backend refuses', async () => {

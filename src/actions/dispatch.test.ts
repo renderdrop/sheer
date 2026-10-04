@@ -134,11 +134,11 @@ describe('runAction', () => {
     expect(useUi.getState().leftPanelCollapsed).toBe(true);
     runAction('toggle-left-panel');
     expect(useUi.getState().leftPanelCollapsed).toBe(false);
-    // At 1400 px the inspector is reserved but shows only for a tool or when it is asked for.
-    runAction('toggle-inspector');
-    expect(useUi.getState().inspector).toBe('open');
+    // At 1400 px the tool sidebar is shown, so the first toggle makes it the rail and the second brings it back.
     runAction('toggle-inspector');
     expect(useUi.getState().inspector).toBe('closed');
+    runAction('toggle-inspector');
+    expect(useUi.getState().inspector).toBe('open');
   });
 
   it('makes a tool the active one, and leaves it active when its key is pressed again', async () => {

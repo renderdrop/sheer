@@ -175,14 +175,14 @@ describe('bindPanelWidthToSettings', () => {
 
   it('when the user moves the splitter before the settings arrive, their width wins and is saved after the load', () => {
     const stop = bindPanelWidthToSettings();
-    useUi.getState().setLeftPanelWidth(344);
+    useUi.getState().setLeftPanelWidth(304);
     vi.advanceTimersByTime(PANEL_WIDTH_PERSIST_DELAY_MS * 2);
     expect(update).not.toHaveBeenCalled(); // nothing to compare with yet
     loaded(PANEL.default);
-    expect(useUi.getState().leftPanelWidth).toBe(344);
+    expect(useUi.getState().leftPanelWidth).toBe(304);
     vi.advanceTimersByTime(PANEL_WIDTH_PERSIST_DELAY_MS + 1);
     expect(update).toHaveBeenCalledTimes(1);
-    expect(update).toHaveBeenCalledWith({ leftPanelWidth: 344 });
+    expect(update).toHaveBeenCalledWith({ leftPanelWidth: 304 });
     stop();
   });
 
@@ -207,7 +207,7 @@ describe('bindPanelWidthToSettings', () => {
     stop();
     vi.advanceTimersByTime(PANEL_WIDTH_PERSIST_DELAY_MS * 2);
     expect(update).not.toHaveBeenCalled();
-    useSettings.setState({ leftPanelWidth: 392 });
+    useSettings.setState({ leftPanelWidth: 312 });
     expect(useUi.getState().leftPanelWidth).toBe(264);
   });
 
@@ -218,8 +218,8 @@ describe('bindPanelWidthToSettings', () => {
     stop();
   });
 
-  it('persists the clamped width, never the raw one: a drag past either end is saved as 400 or 192', () => {
-    loaded(PANEL.default);
+  it('persists the clamped width, never the raw one: a drag past either end is saved as 320 or 200', () => {
+    loaded(260);
     const stop = bindPanelWidthToSettings();
     useUi.getState().setLeftPanelWidth(9000);
     vi.advanceTimersByTime(PANEL_WIDTH_PERSIST_DELAY_MS + 1);
@@ -236,14 +236,14 @@ describe('bindPanelWidthToSettings', () => {
     loaded(PANEL.max);
     const stop = bindPanelWidthToSettings();
     useUi.getState().setLeftPanelWidth(PANEL.max); // already there: not a change
-    useUi.getState().setLeftPanelWidth(4000); // clamps to the same 400
+    useUi.getState().setLeftPanelWidth(4000); // clamps to the same 320
     vi.advanceTimersByTime(PANEL_WIDTH_PERSIST_DELAY_MS * 2);
     expect(update).not.toHaveBeenCalled();
     stop();
   });
 
   it('the range ends themselves are saved as they are', () => {
-    loaded(PANEL.default);
+    loaded(260);
     const stop = bindPanelWidthToSettings();
     useUi.getState().setLeftPanelWidth(PANEL.min);
     vi.advanceTimersByTime(PANEL_WIDTH_PERSIST_DELAY_MS + 1);

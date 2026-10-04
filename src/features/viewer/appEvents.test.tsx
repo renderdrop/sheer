@@ -174,7 +174,7 @@ describe('in the window', () => {
     expect(screen.queryByRole('region', { name: 'Document' })).toBeNull();
     act(() => handleAppEvent(opened(REPORT)));
     expect(screen.getByRole('region', { name: 'Document' })).not.toBeNull();
-    expect(screen.getByRole('contentinfo', { name: 'Status' }).textContent).toContain('Report.pdf');
+    expect(screen.getByRole('tablist', { name: 'Open documents' }).textContent).toContain('Report.pdf');
   });
 });
 

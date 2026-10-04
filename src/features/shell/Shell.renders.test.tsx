@@ -163,8 +163,8 @@ describe('the counters', () => {
     const before = counts();
     await user.click(tool('Highlight'));
     expect(renders.toolbar).toBeGreaterThan(before.toolbar);
-    // The inspector has content now and opens at every width (DESIGN 3.57): one structure change, one render of the shell.
-    expect(renders.shell).toBe(before.shell + 1);
+    // The tool sidebar is there with or without a tool: no structure change, no render of the shell.
+    expect(renders.shell).toBe(before.shell);
     expect(renders.leftPanel).toBe(before.leftPanel);
 
     const afterTool = counts();
@@ -308,17 +308,17 @@ describe('what changes often does not render the shell, the toolbar or the left 
     expect(counts()).toEqual(before);
   });
 
-  it('a window resize within a regime, and not even the one that crosses 1280 renders the toolbar or the left panel', async () => {
+  it('a window resize within a regime, and not even the one that crosses 1280 (nothing changes there any more) renders the toolbar or the left panel', async () => {
     const { user } = setup(<Shell />);
     await openAndSettle(user);
     const before = counts();
     for (const width of [1110, 1150, 1200, 1279]) resizeTo(width);
     expect(counts()).toEqual(before);
 
-    // The inspector reserves nothing without a selection or tool, so crossing 1280 changes nothing either.
+    // Crossing 1280 changes nothing either: the tool sidebar is 280 from 1100 on.
     resizeTo(1280);
     expect(counts()).toEqual(before);
-    expect(screen.queryByRole('complementary', { name: 'Inspector', hidden: true })).toBeNull();
+    expect(screen.getByRole('complementary', { name: 'Inspector' })).not.toBeNull();
 
     const wide = counts();
     for (const width of [1300, 1500, 1920, 2400]) resizeTo(width);

@@ -32,12 +32,12 @@ interface Seen {
   mode: ShellStructure['mode'];
   collapsed: boolean;
   inspector: boolean;
-  /** Which track change is sliding now: the left panel's or the inspector's. */
+  /** Which track change is sliding now: the page sidebar's or the tool column's (sidebar and rail). */
   animating: 'left' | 'inspector' | null;
 }
 
 /**
- * The main row: a grid whose columns come from `shellTracks` (src/lib/layout.ts). The left panel's width goes into the
+ * The editor's body: a grid whose columns come from `shellTracks` (src/lib/layout.ts). The left panel's width goes into the
  * `grid-template-columns`, so this component follows `ui.leftPanelWidth` itself and is the only one that renders for every
  * step of a splitter drag. Its children are made by the shell and passed in, which is why they are not rendered again then:
  * React skips an element that is the same object as in the last render.
@@ -51,10 +51,10 @@ interface Seen {
  */
 export function MainGrid({ structure, children }: MainGridProps) {
   const panelWidth = useUi((state) => state.leftPanelWidth);
-  const { mode, leftCollapsed: collapsed, inspectorReserved: inspector } = structure;
+  const { mode, leftCollapsed: collapsed, inspectorVisible: inspector } = structure;
   const [seen, setSeen] = useState<Seen>({ mode, collapsed, inspector, animating: null });
   // A new state of the panel in a window that keeps its mode slides. A window that opens or closes a document has other
-  // columns altogether (the empty state has three), which the browser cannot animate between: they just change.
+  // columns altogether (Home has one), which the browser cannot animate between: they just change.
   if (seen.mode !== mode) setSeen({ mode, collapsed, inspector, animating: null });
   else if (seen.collapsed !== collapsed) setSeen({ mode, collapsed, inspector, animating: 'left' });
   else if (seen.inspector !== inspector) setSeen({ mode, collapsed, inspector, animating: 'inspector' });
@@ -85,7 +85,7 @@ export function MainGrid({ structure, children }: MainGridProps) {
       data-animating={seen.animating ?? undefined}
       onTransitionEnd={release}
       style={{ gridTemplateColumns: shellTracks(structure, panelWidth).columns }}
-      className={`group/main grid min-h-0 flex-auto grid-rows-[minmax(0,1fr)] pb-2 ${
+      className={`group/main grid min-h-0 flex-auto grid-rows-[minmax(0,1fr)] ${
         seen.animating === null
           ? ''
           : `transition-[grid-template-columns] ease-out ${closing ? 'duration-base' : 'duration-slow'}`

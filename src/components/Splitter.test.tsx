@@ -6,6 +6,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { setup } from '../test/render';
 import { Splitter, type SplitterProps } from './Splitter';
 
+// The range of the v1.1 left panel: the tests pin the Splitter's own arithmetic, whatever PANEL says.
 function Demo(props: Partial<SplitterProps>) {
   const [value, setValue] = useState(248);
   const [collapsed, setCollapsed] = useState(false);
@@ -18,6 +19,9 @@ function Demo(props: Partial<SplitterProps>) {
         collapsed={collapsed}
         onValueChange={setValue}
         onCollapsedChange={setCollapsed}
+        min={192}
+        max={400}
+        defaultValue={248}
         {...props}
       />
     </div>
@@ -219,6 +223,9 @@ describe('Splitter range edge cases', () => {
       <Splitter
         label="Resize"
         controls="pane"
+        min={192}
+        max={400}
+        defaultValue={248}
         value={400}
         collapsed={false}
         onValueChange={onValueChange}
@@ -240,6 +247,9 @@ describe('Splitter range edge cases', () => {
       <Splitter
         label="Resize"
         controls="pane"
+        min={192}
+        max={400}
+        defaultValue={248}
         value={248}
         collapsed
         onValueChange={onValueChange}

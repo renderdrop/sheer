@@ -41,6 +41,7 @@ export function ViewerStatusBar() {
       onResetRotation={resetRotation}
       goToOpen={goToOpen}
       onGoToOpenChange={setGoToOpen}
+      showName={false}
     />
   );
 }

@@ -25,7 +25,7 @@ export type WelcomeTour = (typeof WELCOME_TOUR_STATES)[number];
  * Range and default of the left panel's width in px (src-tauri/src/limits.rs, DESIGN 2 and 3.8). A test checks these
  * against `PANEL` in src/components/tokens.ts, which the splitter uses.
  */
-export const LEFT_PANEL_WIDTH = { min: 192, max: 400, default: 248 } as const;
+export const LEFT_PANEL_WIDTH = { min: 200, max: 320, default: 200 } as const;
 
 /** The persisted settings. The language overrides the OS. */
 export interface Settings {

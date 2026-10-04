@@ -93,13 +93,13 @@ describe('the columns', () => {
     await openDocument(user);
     const grid = gridOf(container);
     const open = tracks(grid);
-    expect(open.slice(0, 3)).toEqual(['var(--space-2)', `${PANEL.default}px`, 'var(--splitter-width)']);
+    expect(open.slice(0, 2)).toEqual([`${PANEL.default}px`, 'var(--splitter-width)']);
 
     await user.click(tool('Left panel'));
     const shut = tracks(grid);
     expect(shut).toHaveLength(open.length);
-    expect(shut.slice(0, 3)).toEqual(['var(--spacing-0)', 'var(--spacing-0)', 'var(--splitter-width)']);
-    expect(shut.slice(2)).toEqual(open.slice(2));
+    expect(shut.slice(0, 2)).toEqual(['var(--spacing-0)', 'var(--splitter-width)']);
+    expect(shut.slice(1)).toEqual(open.slice(1));
 
     await user.click(tool('Left panel'));
     expect(tracks(grid)).toEqual(open);
@@ -142,21 +142,21 @@ describe('the columns', () => {
     expect(grid.className).not.toContain(TRANSITION);
   });
 
-  it('slide the inspector track in and out the same way, and stay in step with it', async () => {
+  it('slide the tool column between the sidebar and the rail the same way, and stay in step with it', async () => {
     resizeTo(1400);
     const { container, user } = setup(<Shell />);
     await openDocument(user);
     const grid = gridOf(container);
-    // Hidden: the gap and the track take no room, so the canvas reaches the trailing gutter.
-    expect(tracks(grid).slice(-3)).toEqual(['var(--spacing-0)', 'var(--spacing-0)', 'var(--space-2)']);
-    expect(grid.getAttribute('data-inspector')).toBe('closed');
+    // The sidebar: the last track is 280 wide, the canvas reaches it with no gutter.
+    expect(tracks(grid).slice(-1)).toEqual(['var(--tool-sidebar-width)']);
+    expect(grid.getAttribute('data-inspector')).toBe('open');
 
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
-    fireEvent.click(tool('Highlight'));
-    expect(grid.getAttribute('data-inspector')).toBe('open');
+    fireEvent.click(tool('Inspector'));
+    expect(grid.getAttribute('data-inspector')).toBe('closed');
     expect(grid.getAttribute('data-animating')).toBe('inspector');
     expect(grid.className).toContain(TRANSITION);
-    expect(tracks(grid).slice(-3)).toEqual(['var(--space-2)', 'var(--inspector-width)', 'var(--space-2)']);
+    expect(tracks(grid).slice(-1)).toEqual(['var(--tool-rail-width)']);
     advance(370);
     expect(grid.hasAttribute('data-animating')).toBe(false);
   });
@@ -178,7 +178,7 @@ describe('the columns', () => {
 
   it('do not slide when the window opens a document: the panel is there at once', async () => {
     const { container, user } = setup(<Shell />);
-    expect(gridOf(container).getAttribute('data-layout')).toBe('empty');
+    expect(container.querySelector('[data-slot="home"]')).not.toBeNull();
     await openDocument(user);
     const grid = gridOf(container);
     expect(grid.getAttribute('data-left')).toBe('open');

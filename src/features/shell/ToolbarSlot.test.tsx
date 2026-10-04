@@ -15,6 +15,8 @@ import { setup } from '../../test/render';
 import { useAboutDialog } from '../about/state';
 import { useSettingsPopover } from '../settings/state';
 import { useViewer } from '../viewer/useViewer';
+import { AboutDialog } from '../about/AboutDialog';
+import { SettingsPopover } from '../settings/SettingsPopover';
 import { ToolbarSlot } from './ToolbarSlot';
 
 const uiInitial = useUi.getState();
@@ -45,11 +47,13 @@ function openDocument() {
   });
 }
 
-/** The toolbar as the shell mounts it, with the window's key handler, which the shell mounts beside it. */
+/** The toolbar as the shell mounts it, with the window's key handler and the popover and dialog portals, which the shell mounts beside it. */
 function Toolbar({ hasDocument = true }: { hasDocument?: boolean }) {
   return (
     <>
       <ActionKeys />
+      <SettingsPopover />
+      <AboutDialog />
       <ToolbarSlot
         platform="windows"
         hasDocument={hasDocument}

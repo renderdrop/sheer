@@ -20,10 +20,9 @@ beforeEach(() => {
 const flush = () => act(async () => undefined);
 
 describe('CaptionBar (DESIGN 2.2, Windows)', () => {
-  it('shows the app icon, the menu bar and three named caption buttons', () => {
-    const { container } = setup(<CaptionBar maximized={false} onChanged={vi.fn()} />);
-    expect(screen.getByRole('menubar', { name: 'Application menu' })).not.toBeNull();
-    expect(container.querySelector('img')?.getAttribute('alt')).toBe('');
+  it('shows three named caption buttons and no menu bar', () => {
+    setup(<CaptionBar maximized={false} onChanged={vi.fn()} />);
+    expect(screen.queryByRole('menubar')).toBeNull();
     const group = screen.getByRole('group', { name: 'Window controls' });
     expect([...group.querySelectorAll('button')].map((button) => button.getAttribute('aria-label'))).toEqual([
       'Minimize',
@@ -75,9 +74,9 @@ describe('CaptionBar (DESIGN 2.2, Windows)', () => {
     expect(onChanged).toHaveBeenCalledTimes(2);
   });
 
-  it('is a drag region, and its buttons are not (a click on a button must not start a drag)', () => {
+  it('is no drag region itself (the strip around it is), and its buttons are not (a click on a button must not start a drag)', () => {
     const { container } = setup(<CaptionBar maximized={false} onChanged={vi.fn()} />);
-    expect(container.firstElementChild?.getAttribute('data-tauri-drag-region')).toBe('deep');
+    expect(container.firstElementChild?.hasAttribute('data-tauri-drag-region')).toBe(false);
     expect(container.querySelector('button')?.hasAttribute('data-tauri-drag-region')).toBe(false);
   });
 
@@ -94,7 +93,7 @@ describe('CaptionBar (DESIGN 2.2, Windows)', () => {
     expect(screen.getByRole('button', { name: 'Minimize' }).className).toContain('hover:bg-control-hover');
   });
 
-  it('the buttons are 46 x 32 through the layout tokens', () => {
+  it('the buttons are 46 wide and as high as the 56 strip through the layout tokens', () => {
     setup(<CaptionBar maximized={false} onChanged={vi.fn()} />);
     expect(screen.getByRole('button', { name: 'Close' }).className).toContain('w-caption-button');
     expect(screen.getByRole('button', { name: 'Close' }).className).toContain('h-full');

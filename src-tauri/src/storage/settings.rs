@@ -2,7 +2,7 @@
 //!
 //! Wire shape (camelCase, enum values lowercase):
 //! `{ "language": "system" | "en" | "de",
-//! "leftPanelWidth": 192..=400, "welcomeTour": "pending" | "shown", "authorName": 0..=128 chars, sanitized (ADR-034), no control
+//! "leftPanelWidth": 200..=320, "welcomeTour": "pending" | "shown", "authorName": 0..=128 chars, sanitized (ADR-034), no control
 //! characters, "authorPrompt": "pending" | "done", "updates": "off" | "on", "skippedVersion": null | version string (ADR-053) }`.
 //!
 //! - **Reading** never fails: a missing, oversized, damaged or hand-edited file falls back to the defaults, field by
@@ -533,7 +533,7 @@ mod tests {
     fn settings_serialize_with_lowercase_enum_values() {
         assert_eq!(
             serde_json::to_value(Settings::default()).unwrap(),
-            json!({ "language": "system", "leftPanelWidth": 248, "welcomeTour": "pending", "authorName": "", "authorPrompt": "pending", "updates": "off", "skippedVersion": null, "tipsSeen": [] })
+            json!({ "language": "system", "leftPanelWidth": 200, "welcomeTour": "pending", "authorName": "", "authorPrompt": "pending", "updates": "off", "skippedVersion": null, "tipsSeen": [] })
         );
         let settings = Settings {
             language: Language::De,
@@ -785,7 +785,7 @@ mod tests {
 
     #[test]
     fn a_panel_width_patch_accepts_exactly_the_design_range() {
-        for pixels in [192, 193, 248, 399, 400] {
+        for pixels in [200, 201, 248, 319, 320] {
             assert_eq!(
                 patch(json!({ "leftPanelWidth": pixels })).unwrap(),
                 SettingsPatch {
@@ -797,8 +797,8 @@ mod tests {
         }
         for bad in [
             json!(0),
-            json!(191),
-            json!(401),
+            json!(199),
+            json!(321),
             json!(65_535),
             json!(65_536),
             json!(-248),
@@ -1020,18 +1020,17 @@ mod tests {
     #[test]
     fn a_stored_panel_width_is_read_only_inside_the_range() {
         for (contents, expected) in [
-            (r#"{"leftPanelWidth":192}"#, 192),
-            (r#"{"leftPanelWidth":400}"#, 400),
+            (r#"{"leftPanelWidth":200}"#, 200),
             (r#"{"leftPanelWidth":320}"#, 320),
             // Out of range, wrong type or missing: the default, never a clamped guess.
-            (r#"{"leftPanelWidth":191}"#, 248),
-            (r#"{"leftPanelWidth":401}"#, 248),
-            (r#"{"leftPanelWidth":-1}"#, 248),
-            (r#"{"leftPanelWidth":300.5}"#, 248),
-            (r#"{"leftPanelWidth":"300"}"#, 248),
-            (r#"{"leftPanelWidth":null}"#, 248),
-            (r#"{"left_panel_width":300}"#, 248),
-            (r#"{}"#, 248),
+            (r#"{"leftPanelWidth":199}"#, 200),
+            (r#"{"leftPanelWidth":321}"#, 200),
+            (r#"{"leftPanelWidth":-1}"#, 200),
+            (r#"{"leftPanelWidth":300.5}"#, 200),
+            (r#"{"leftPanelWidth":"300"}"#, 200),
+            (r#"{"leftPanelWidth":null}"#, 200),
+            (r#"{"left_panel_width":300}"#, 200),
+            (r#"{}"#, 200),
         ] {
             let dir = TempDir::new();
             fs::write(dir.path().join(FILE_NAME), contents).unwrap();
@@ -1282,7 +1281,7 @@ mod tests {
         let stored: Value = serde_json::from_slice(&bytes).unwrap();
         assert_eq!(
             stored,
-            json!({ "language": "system", "leftPanelWidth": 248, "welcomeTour": "pending", "authorName": "", "authorPrompt": "pending", "updates": "on", "skippedVersion": null, "tipsSeen": [] })
+            json!({ "language": "system", "leftPanelWidth": 200, "welcomeTour": "pending", "authorName": "", "authorPrompt": "pending", "updates": "on", "skippedVersion": null, "tipsSeen": [] })
         );
     }
 

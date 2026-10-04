@@ -1,5 +1,6 @@
 import {
   BookOpen,
+  House,
   ChevronDown,
   ChevronUp,
   Combine,
@@ -115,6 +116,7 @@ export type ActionId =
   | 'previous-tab'
   | 'toggle-left-panel'
   | 'toggle-inspector'
+  | 'view-home'
   | 'settings'
   | 'about'
   | 'redact'
@@ -670,6 +672,15 @@ export const ACTIONS: readonly ActionDef[] = [
     menuBar: true,
     enabled: needsDocument,
     run: () => useUi.getState().setInspector(readShellStructure().inspectorVisible ? 'closed' : 'open'),
+  },
+  {
+    id: 'view-home',
+    labelKey: 'action.viewHome',
+    icon: House,
+    group: 'view',
+    // Back to Home (the top bar's chevron and Fertig call it): documents stay open behind it.
+    enabled: () => true,
+    run: () => useUi.getState().setView('home'),
   },
   ...TOOL_ACTIONS,
   {

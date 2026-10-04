@@ -4,7 +4,6 @@ import { useEffect, useState, type CSSProperties } from 'react';
 import { runAction } from '../../actions/dispatch';
 import { shortcutFor } from '../../actions/registry';
 import type { Platform } from '../../api/app';
-import { BrandSurface } from '../../components';
 import { cx } from '../../components/cx';
 import { useT } from '../../i18n';
 import { DURATION, useFade } from '../../components/motion';
@@ -46,7 +45,7 @@ function useDropTarget(dropActive: boolean): { shown: boolean; falling: boolean 
 }
 
 /**
- * The empty state in the main row's only slot, with what it needs from the stores: whether a document is being opened
+ * The empty state in Home's body, with what it needs from the stores: whether a document is being opened
  * and whether a file is dragged over the window. It subscribes to those itself, so the shell does not. Its Open button runs
  * the registry's `open` action like the key, More and the menu bar do, so all of them follow the same rules. While a file is
  * dragged over the window the drop target shows the preview card (MOTION 4.5) and the empty state behind it fades out, so
@@ -72,9 +71,7 @@ export function EmptyStateSlot({ platform, style }: { platform: Platform | null;
       inert={!present || undefined}
       className={cx('relative flex min-h-0 min-w-0 overflow-auto p-2', !present && 'pointer-events-none')}
     >
-      <BrandSurface
-        className={cx('flex min-w-0 flex-1 transition-opacity', target.shown ? 'opacity-0' : 'opacity-100')}
-      >
+      <div className={cx('flex min-w-0 flex-1 transition-opacity', target.shown ? 'opacity-0' : 'opacity-100')}>
         <EmptyState
           openShortcut={openKey?.label ?? ''}
           openKeyShortcuts={openKey?.aria ?? ''}
@@ -85,7 +82,7 @@ export function EmptyStateSlot({ platform, style }: { platform: Platform | null;
           recents={recents.rows}
           onClearRecents={recents.clear}
         />
-      </BrandSurface>
+      </div>
       <AnimatePresence>
         {target.shown && (
           <motion.div

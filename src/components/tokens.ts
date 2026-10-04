@@ -11,12 +11,12 @@ export function tokenPx(name: string, fallback: number): number {
 }
 
 /**
- * Geometry of the left panel and its splitter in px (DESIGN 2, 3.8): range, default, the width below which a released
+ * Geometry of the page sidebar and its splitter in px (DESIGN v2 3.2): range, default, the width below which a released
  * drag collapses the pane, and the arrow-key steps (`--space-2` and `--space-10`). Resizing is arithmetic in JavaScript, so
  * it needs numbers; these mirror `--panel-*` and the spacing tokens of tokens.css, and tokens.test.ts fails when they
  * drift apart.
  */
-export const PANEL = { min: 192, default: 248, max: 400, collapseBelow: 144, step: 8, largeStep: 40 } as const;
+export const PANEL = { min: 200, default: 200, max: 320, collapseBelow: 144, step: 8, largeStep: 40 } as const;
 
 /** Gap between an anchor and a tooltip or popover, and margin kept to the window edge (DESIGN 3.4, 3.5: 8 px). */
 export function overlayOffset(): number {
@@ -24,18 +24,20 @@ export function overlayOffset(): number {
 }
 
 /**
- * Widths of the layout grid in px (DESIGN 2) for the collapse rules, which are arithmetic in JavaScript (src/lib/layout.ts).
- * They mirror `--space-2` (the 8 px gutters and the gap before the inspector), `--splitter-width`, `--canvas-min` and
- * `--inspector-width` of tokens.css, and tokens.test.ts fails when they drift apart. `inspectorReserveFrom` is the window
- * width from which the inspector track stays reserved while a document is open, `minWindow*` the smallest window; both are
- * breakpoints of the spec (2) with no CSS counterpart, and `tauri.conf.json` has the window minimum (tested).
+ * Widths of the layout grid in px (DESIGN v2 3.2) for the collapse rules, which are arithmetic in JavaScript (src/lib/layout.ts).
+ * They mirror `--splitter-width`, `--canvas-min`, `--tool-sidebar-width`, `--tool-rail-width` and `--topbar-height` of
+ * tokens.css, and tokens.test.ts fails when they drift apart. `railBelow` (the tool sidebar becomes the rail) and
+ * `leftCollapseBelow` (the page sidebar collapses) are breakpoints of the spec with no CSS counterpart; `minWindow*` is the
+ * smallest window, and `tauri.conf.json` has the minimum (tested).
  */
 export const LAYOUT = {
-  gutter: 8,
   splitter: 8,
   canvasMin: 360,
-  inspector: 288,
-  inspectorReserveFrom: 1280,
+  topbar: 56,
+  toolSidebar: 280,
+  toolRail: 56,
+  railBelow: 1100,
+  leftCollapseBelow: 860,
   minWindowWidth: 960,
   minWindowHeight: 640,
 } as const;

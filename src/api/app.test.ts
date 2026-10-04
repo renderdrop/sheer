@@ -61,7 +61,7 @@ describe('parseSettings', () => {
   });
 
   it('accepts the whole range of the left panel width and nothing outside it', () => {
-    for (const leftPanelWidth of [LEFT_PANEL_WIDTH.min, 193, 320, LEFT_PANEL_WIDTH.max]) {
+    for (const leftPanelWidth of [LEFT_PANEL_WIDTH.min, 201, 300, LEFT_PANEL_WIDTH.max]) {
       expect(
         parseSettings({
           language: 'system',
@@ -75,8 +75,8 @@ describe('parseSettings', () => {
       });
     }
     for (const bad of [
-      191,
-      401,
+      199,
+      321,
       0,
       -248,
       248.5,

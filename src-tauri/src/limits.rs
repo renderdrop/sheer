@@ -225,13 +225,13 @@ pub const MAX_RECENT_PATH_CHARS: usize = 4096;
 /// bigger is damaged or foreign and the list starts empty.
 pub const MAX_RECENTS_FILE_BYTES: u64 = 1024 * 1024;
 
-/// Range and default of the left panel's width in px (DESIGN 2, 3.8: 192 to 400, default 248). The frontend mirrors them as
+/// Range and default of the page sidebar's width in px (DESIGN v2 3.2: 200 to 320, default 200). The frontend mirrors them as
 /// `LEFT_PANEL_WIDTH` in `src/api/app.ts` and `PANEL` in `src/components/tokens.ts`; a test there fails on drift.
-pub const LEFT_PANEL_MIN_WIDTH: u16 = 192;
-pub const LEFT_PANEL_MAX_WIDTH: u16 = 400;
-pub const LEFT_PANEL_DEFAULT_WIDTH: u16 = 248;
+pub const LEFT_PANEL_MIN_WIDTH: u16 = 200;
+pub const LEFT_PANEL_MAX_WIDTH: u16 = 320;
+pub const LEFT_PANEL_DEFAULT_WIDTH: u16 = 200;
 const _: () = assert!(
-    LEFT_PANEL_MIN_WIDTH < LEFT_PANEL_DEFAULT_WIDTH
+    LEFT_PANEL_MIN_WIDTH <= LEFT_PANEL_DEFAULT_WIDTH
         && LEFT_PANEL_DEFAULT_WIDTH < LEFT_PANEL_MAX_WIDTH,
     "the left panel range must be ordered: minimum, default, maximum"
 );

@@ -257,7 +257,7 @@ fn the_next_update_repairs_a_damaged_file() {
     let stored: Value = serde_json::from_slice(&fs::read(dir.settings_file()).unwrap()).unwrap();
     assert_eq!(
         stored,
-        json!({ "language": "de", "leftPanelWidth": 248, "welcomeTour": "pending", "authorName": "", "authorPrompt": "pending", "updates": "off", "skippedVersion": null, "tipsSeen": [] })
+        json!({ "language": "de", "leftPanelWidth": 200, "welcomeTour": "pending", "authorName": "", "authorPrompt": "pending", "updates": "off", "skippedVersion": null, "tipsSeen": [] })
     );
     assert_eq!(names(dir.path()), [FILE_NAME]);
 }
@@ -339,17 +339,17 @@ fn the_settings_file_and_a_new_data_directory_are_private_to_the_user() {
 fn the_panel_width_survives_a_restart_and_a_bad_width_changes_nothing() {
     let dir = TempDir::new();
     let store = SettingsStore::load(dir.settings_file());
-    assert_eq!(store.get().left_panel_width.get(), 248);
+    assert_eq!(store.get().left_panel_width.get(), 200);
 
     store
-        .update(patch(json!({ "leftPanelWidth": 320 })))
+        .update(patch(json!({ "leftPanelWidth": 300 })))
         .unwrap();
     assert_eq!(
         SettingsStore::load(dir.settings_file())
             .get()
             .left_panel_width
             .get(),
-        320
+        300
     );
 
     // Out of range, wrongly typed or in company of an invalid field: the patch is refused whole, so neither the file nor
@@ -366,5 +366,5 @@ fn the_panel_width_survives_a_restart_and_a_bad_width_changes_nothing() {
         assert_eq!(error.code(), ErrorCode::InvalidArgument, "{bad}");
     }
     assert_eq!(fs::read(dir.settings_file()).unwrap(), before);
-    assert_eq!(store.get().left_panel_width.get(), 320);
+    assert_eq!(store.get().left_panel_width.get(), 300);
 }

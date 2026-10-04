@@ -1,7 +1,6 @@
 import { useCallback, useRef, useSyncExternalStore } from 'react';
 
 import { shellStructure, type ShellStructure } from '../../lib/layout';
-import { useAnnotations } from '../../stores/annotations';
 import { useDocuments } from '../../stores/documents';
 import { useUi } from '../../stores/ui';
 
@@ -9,21 +8,16 @@ import { useUi } from '../../stores/ui';
 export function readShellStructure(): ShellStructure {
   const ui = useUi.getState();
   const activeId = useDocuments.getState().activeId;
-  const modePanel = ui.redactMode || ui.activeTool === 'crop';
   return shellStructure({
-    hasDocument: activeId !== null,
+    // Home shows without a document and after "back to Home"; the documents stay open behind it.
+    hasDocument: activeId !== null && ui.view === 'editor',
     windowWidth: window.innerWidth,
     panelWidth: ui.leftPanelWidth,
-    // The page grid takes the room of the left panel (DESIGN 3.28); it returns when the mode ends.
+    // The page grid takes the room of the page sidebar (DESIGN 3.28); it returns when the mode ends.
     panelCollapsed: ui.leftPanelCollapsed || ui.activeTool === 'pages',
     inspector: ui.inspector,
-    // DESIGN 3.57: a mode panel (Crop, Redact), a selection, or the options of a tool that has some. Select, Pages and the
-    // retired Form tool have none.
-    inspectorContent:
-      modePanel ||
-      (ui.activeTool !== 'select' && ui.activeTool !== 'pages' && ui.activeTool !== 'form') ||
-      (activeId !== null && (useAnnotations.getState().selectedIds[activeId]?.length ?? 0) > 0),
-    inspectorMode: modePanel,
+    // A mode panel (Crop, Redact) needs the full tool sidebar (DESIGN 3.57).
+    inspectorMode: ui.redactMode || ui.activeTool === 'crop',
   });
 }
 
@@ -31,11 +25,7 @@ function subscribe(notify: () => void): () => void {
   window.addEventListener('resize', notify);
   const stopUi = useUi.subscribe(notify);
   const stopDocuments = useDocuments.subscribe(notify);
-  const stopSelection = useAnnotations.subscribe((state, previous) => {
-    if (state.selectedIds !== previous.selectedIds) notify();
-  });
   return () => {
-    stopSelection();
     window.removeEventListener('resize', notify);
     stopUi();
     stopDocuments();
@@ -53,8 +43,8 @@ function sameStructure(a: ShellStructure, b: ShellStructure): boolean {
 }
 
 /**
- * The structure of the shell: which slots exist and whether the inspector shows. It depends on the window width, the
- * left panel's width, the user's panel choices, the active tool and whether a document is open, but its answer is a handful
+ * The structure of the shell: Home or editor, and which sidebars show. It depends on the window width, the
+ * page sidebar's width, the user's panel choices, the active tool and whether a document is open and the view is the editor, but its answer is a handful
  * of booleans, so the component that uses it re-renders when one of them flips and not with every pixel of a window
  * resize, every step of a splitter drag or every change of page and zoom. A new answer that equals the last one is
  * not a change: the previous object is returned, which is what lets React skip the render.

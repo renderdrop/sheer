@@ -1,7 +1,9 @@
-import { useCallback, useEffect, useState, useSyncExternalStore } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useState, useSyncExternalStore } from 'react';
 
 import { isWindowFullscreen, isWindowMaximized } from '../../api/window';
 import type { Chrome } from '../../lib/platform';
+import { useDocuments } from '../../stores/documents';
+import { useUi } from '../../stores/ui';
 
 function subscribeToFocus(notify: () => void): () => void {
   window.addEventListener('focus', notify);
@@ -85,4 +87,14 @@ export function useSettledValue<T>(value: T, delayMs: number): T {
     return () => window.clearTimeout(timer);
   }, [value, delayMs]);
   return settled;
+}
+
+/**
+ * The view when the shell mounts (DESIGN v2 3): a document that is already active shows the editor, none shows Home. Later changes
+ * follow the documents in the ui store itself.
+ */
+export function useViewSync(): void {
+  useLayoutEffect(() => {
+    useUi.getState().setView(useDocuments.getState().activeId === null ? 'home' : 'editor');
+  }, []);
 }

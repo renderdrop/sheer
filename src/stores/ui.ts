@@ -2,6 +2,7 @@ import { create } from 'zustand';
 
 import type { AppError } from '../api/errors';
 import { clampPanelWidth, type InspectorMode } from '../lib/layout';
+import { useDocuments } from './documents';
 import { useSettings } from './settings';
 
 /** A toast (DESIGN 3.12): a confirmation with, at most, one action. Errors never toast. */
@@ -37,8 +38,13 @@ export const TOOLS = [
 ] as const;
 export type ToolId = (typeof TOOLS)[number];
 
-/** Interface state that is not about a document (ARCHITECTURE section 8, `ui`). Nothing here is persisted except the panel width. */
+/** The two views of the shell (DESIGN v2 3): Home, or the editor around the active document. */
+export type View = 'home' | 'editor';
+
+/** Interface state that is not about a document (ARCHITECTURE section 8, `ui`). Nothing here is persisted except the page sidebar's width. */
 export interface UiState {
+  /** `home` while no document is open or after "back to Home"; documents stay open behind it. Opening or activating one makes it `editor`. */
+  view: View;
   leftPanelTab: LeftPanelTab;
   /** Live width while the splitter is dragged; `bindPanelWidthToSettings` persists it a moment after it settles. */
   leftPanelWidth: number;
@@ -66,6 +72,7 @@ export interface UiState {
   /** The one toast on screen, if any. */
   toast: Toast | null;
 
+  setView: (view: View) => void;
   setLeftPanelTab: (tab: LeftPanelTab) => void;
   setLeftPanelWidth: (width: number) => void;
   setLeftPanelCollapsed: (collapsed: boolean) => void;
@@ -98,6 +105,7 @@ let toastCounter = 0;
 const SELECT = { activeTool: 'select', toolLocked: false } as const;
 
 export const useUi = create<UiState>()((set, get) => ({
+  view: 'home',
   leftPanelTab: 'thumbnails',
   leftPanelWidth: clampPanelWidth(Number.NaN),
   leftPanelCollapsed: false,
@@ -116,6 +124,7 @@ export const useUi = create<UiState>()((set, get) => ({
   xfaDismissed: [],
   toast: null,
 
+  setView: (view) => set((state) => (state.view === view ? state : { view })),
   setLeftPanelTab: (leftPanelTab) => set({ leftPanelTab }),
   setLeftPanelWidth: (width) => set({ leftPanelWidth: clampPanelWidth(width) }),
   setLeftPanelCollapsed: (leftPanelCollapsed) => set({ leftPanelCollapsed }),
@@ -141,6 +150,24 @@ export const useUi = create<UiState>()((set, get) => ({
   dismissXfa: (docId) =>
     set((state) => (state.xfaDismissed.includes(docId) ? state : { xfaDismissed: [...state.xfaDismissed, docId] })),
 }));
+
+// The view follows the documents (DESIGN v2 3): activating one (opening it, or picking its tab) shows the editor, closing the last one shows
+// Home. "Back to Home" (`view-home`) sets Home while the documents stay open; the next activation leaves it again.
+useDocuments.subscribe((state, previous) => {
+  if (state.activeId !== previous.activeId) useUi.getState().setView(state.activeId === null ? 'home' : 'editor');
+});
+// Activating or adding a document that is already the active one changes no `activeId`, so those two calls also show the editor.
+const { setActive, add } = useDocuments.getState();
+useDocuments.setState({
+  setActive: (id) => {
+    setActive(id);
+    if (useDocuments.getState().byId[id] !== undefined) useUi.getState().setView('editor');
+  },
+  add: (info) => {
+    add(info);
+    useUi.getState().setView('editor');
+  },
+});
 
 /** The part of the settings store the panel width needs; `useSettings` satisfies it. */
 type SettingsLike = Pick<typeof useSettings, 'getState' | 'subscribe'>;
