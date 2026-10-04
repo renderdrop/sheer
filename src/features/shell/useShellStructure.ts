@@ -15,6 +15,7 @@ export function readShellStructure(): ShellStructure {
     hasDocument: activeId !== null && ui.view === 'editor',
     windowWidth: window.innerWidth,
     panelWidth: ui.leftPanelWidth,
+    leftTab: ui.leftPanelTab,
     // The page grid takes the room of the page sidebar (DESIGN 3.28); it returns when the mode ends.
     panelCollapsed: ui.leftPanelCollapsed || ui.activeTool === 'pages',
     // Windows draws its own menu row; macOS has the native bar (DESIGN v2 3.2).

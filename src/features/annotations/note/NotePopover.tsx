@@ -20,6 +20,7 @@ import { isOwnReply, markOwnReply, useOwnReplies } from './ownReplies';
 import { useSettings } from '../../../stores/settings';
 import { useUi } from '../../../stores/ui';
 import { formatAnnotationDate } from './date';
+import { isConfirmKey } from './confirmKey';
 import { useAutosize } from './useAutosize';
 
 /** The step label the model gives a create; a new note that is closed empty takes it back with Undo instead of adding a delete. */
@@ -66,13 +67,24 @@ interface TextPartProps {
   textareaRef?: RefObject<HTMLTextAreaElement | null>;
   /** Called with the pending text whenever it changes, and with `null` once it is committed, so the popover can flush it on close. */
   onDraft?: (text: string | null) => void;
+  /** Enter (without Shift, outside an IME composition) confirms the field; without it the field blurs, which commits. */
+  onConfirm?: () => void;
 }
 
 /**
  * The text of a note or reply as a textarea (plain text, a text node only). The change commits on blur and when the popover closes
  * (`flush` of the parent), as one update that coalesces with the ones before it into one undo step.
  */
-function TextPart({ docId, annotation, editable, label, autoFocus = false, textareaRef, onDraft }: TextPartProps) {
+function TextPart({
+  docId,
+  annotation,
+  editable,
+  label,
+  autoFocus = false,
+  textareaRef,
+  onDraft,
+  onConfirm,
+}: TextPartProps) {
   const own = useRef<HTMLTextAreaElement | null>(null);
   const ref = textareaRef ?? own;
   const [draft, setDraft] = useState(annotation.contents);
@@ -113,6 +125,12 @@ function TextPart({ docId, annotation, editable, label, autoFocus = false, texta
         setDraft(event.target.value);
         onDraft?.(event.target.value);
       }}
+      onKeyDown={(event) => {
+        if (!editable || !isConfirmKey(event)) return;
+        event.preventDefault();
+        if (onConfirm !== undefined) onConfirm();
+        else event.currentTarget.blur();
+      }}
       onBlur={(event) => {
         if (!editable) return;
         commit(event.target.value);
@@ -152,7 +170,7 @@ export interface NotePopoverProps {
 /**
  * The sticky-note popover (DESIGN 3.25): author and date, the note's text, its replies (`/IRT`) and a reply field. The body commits on
  * blur or close as one coalesced undo step. A new note closed empty is taken back (Undo of its creation, so no step is left).
- * Primary+Enter posts a reply, Enter is a newline.
+ * Enter confirms (the body closes the popover, a reply is posted), Shift+Enter is a line break.
  */
 export function NotePopover({ docId, noteId, anchor, open, onClose, isNew = false }: NotePopoverProps) {
   const t = useT();
@@ -273,7 +291,7 @@ export function NotePopover({ docId, noteId, anchor, open, onClose, isNew = fals
   };
 
   const onReplyKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
-    if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) {
+    if (isConfirmKey(event)) {
       event.preventDefault();
       post();
     }
@@ -317,6 +335,7 @@ export function NotePopover({ docId, noteId, anchor, open, onClose, isNew = fals
           label={t('note.body')}
           autoFocus={isNew}
           textareaRef={bodyRef}
+          onConfirm={() => close()}
           onDraft={(text) => {
             pending.current = text;
           }}

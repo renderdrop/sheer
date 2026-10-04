@@ -196,3 +196,108 @@ mod tests {
         assert_eq!(media[3].as_float().unwrap(), 10.0);
     }
 }
+
+#[cfg(test)]
+mod batch_tests {
+    use super::*;
+    use crate::documents::image_batch::sort_drop;
+    use crate::storage::atomic::testutil::TempDir;
+    use image::codecs::jpeg::JpegEncoder;
+    use image::ExtendedColorType;
+
+    fn jpeg(width: u32, height: u32, gray: bool, exif_orientation: Option<u8>) -> Vec<u8> {
+        let mut out = Vec::new();
+        let mut encoder = JpegEncoder::new_with_quality(&mut out, 85);
+        if gray {
+            let px: Vec<u8> = (0..width * height).map(|i| (i % 256) as u8).collect();
+            encoder
+                .encode(&px, width, height, ExtendedColorType::L8)
+                .unwrap();
+        } else {
+            let px: Vec<u8> = (0..width * height * 3).map(|i| (i % 253) as u8).collect();
+            encoder
+                .encode(&px, width, height, ExtendedColorType::Rgb8)
+                .unwrap();
+        }
+        if let Some(o) = exif_orientation {
+            // APP1 Exif with one IFD0 entry (orientation), inserted right after SOI.
+            let mut tiff = b"MM\0\x2a\0\0\0\x08\0\x01\x01\x12\0\x03\0\0\0\x01".to_vec();
+            tiff.extend_from_slice(&[0, o, 0, 0, 0, 0, 0, 0]);
+            let mut seg = vec![0xFF, 0xE1];
+            let len = u16::try_from(2 + 6 + tiff.len()).unwrap();
+            seg.extend_from_slice(&len.to_be_bytes());
+            seg.extend_from_slice(b"Exif\0\0");
+            seg.extend_from_slice(&tiff);
+            out.splice(2..2, seg);
+        }
+        out
+    }
+
+    #[test]
+    fn ten_mixed_jpegs_read_concurrently_make_ten_pages() {
+        let dir = TempDir::new();
+        let specs = [
+            (4000, 3000, false, None),
+            (640, 480, false, Some(6)),
+            (100, 300, true, None),
+            (1920, 1080, false, Some(3)),
+            (50, 50, false, None),
+            (3000, 4000, false, Some(8)),
+            (800, 800, true, None),
+            (1200, 900, false, None),
+            (4000, 2000, false, None),
+            (321, 123, false, Some(6)),
+        ];
+        let paths: Vec<_> = specs
+            .iter()
+            .enumerate()
+            .map(|(i, &(w, h, g, o))| {
+                let path = dir.path().join(format!("p{i:02}.jpg"));
+                std::fs::write(&path, jpeg(w, h, g, o)).unwrap();
+                path
+            })
+            .collect();
+        let sorted = sort_drop(paths);
+        assert_eq!(sorted.images.len(), 10);
+        let images = &sorted.images;
+        // Previews, the list and the job read the same handles at the same time.
+        let pages: Vec<ImagePage> = std::thread::scope(|scope| {
+            for image in images {
+                scope.spawn(move || {
+                    let _ = image.declared_size();
+                    let bytes = image.read_limited(limits::MAX_IMAGE_FILE_BYTES).unwrap();
+                    crate::content::image::prepare_bytes(&bytes).unwrap();
+                });
+            }
+            images
+                .iter()
+                .map(|image| {
+                    let bytes = image.read_limited(limits::MAX_IMAGE_FILE_BYTES).unwrap();
+                    let asset = crate::content::image::prepare_bytes(&bytes).unwrap();
+                    ImagePage {
+                        image: asset,
+                        size_pt: [595.0, 842.0],
+                        place: Rect {
+                            x: 0.0,
+                            y: 0.0,
+                            w: 100.0,
+                            h: 100.0,
+                        },
+                    }
+                })
+                .collect()
+        });
+        // EXIF orientation 6 turns 640x480 into 480x640.
+        assert_eq!((pages[1].image.width, pages[1].image.height), (480, 640));
+        assert_eq!(pages[0].image.width, 4000);
+        let bytes = build(&pages, "Sheer").unwrap();
+        let doc = crate::pdfwrite::produce::load(&bytes).unwrap().doc;
+        assert_eq!(doc.get_pages().len(), 10);
+        let streams = doc
+            .objects
+            .values()
+            .filter(|o| matches!(o, Object::Stream(s) if s.dict.has(b"Subtype")))
+            .count();
+        assert_eq!(streams, 10);
+    }
+}

@@ -57,11 +57,34 @@ impl HeldImage {
         }
     }
 
-    /// A second handle on the same file, positioned at the start.
+    /// A second handle on the same file, positioned at the start. A duplicated handle SHARES the file offset with the original, so
+    /// reading through it is only safe for one reader at a time; the readers use [`Self::read_limited`] instead.
+    #[cfg(test)]
     pub fn reopen(&self) -> Result<File, AppError> {
         let mut file = self.file.try_clone()?;
         file.seek(SeekFrom::Start(0))?;
         Ok(file)
+    }
+
+    /// The whole file (`too_large` over `max`; `invalid` when empty or not a regular file), read at explicit offsets: concurrent
+    /// readers (thumbnails, the list, the job) never move each other's position (ADR-106).
+    pub fn read_limited(&self, max: u64) -> Result<Vec<u8>, AppError> {
+        let meta = self.file.metadata()?;
+        if !meta.is_file() || meta.len() == 0 {
+            return Err(AppError::invalid("image"));
+        }
+        if meta.len() > max {
+            return Err(AppError::too_large("image", max));
+        }
+        // The size can change after it was looked at: the read stops one byte past the limit.
+        let want = usize::try_from(max.min(meta.len()).saturating_add(1)).unwrap_or(usize::MAX);
+        let mut bytes = vec![0u8; want];
+        let filled = read_filled(&self.file, &mut bytes)?;
+        bytes.truncate(filled);
+        if bytes.len() as u64 > max {
+            return Err(AppError::too_large("image", max));
+        }
+        Ok(bytes)
     }
 
     fn duplicate(&self) -> Result<Self, AppError> {
@@ -72,7 +95,7 @@ impl HeldImage {
         Ok(Self {
             stem: self.stem.clone(),
             name: self.name.clone(),
-            file: self.reopen()?,
+            file: self.file.try_clone()?,
             size,
         })
     }
@@ -80,13 +103,11 @@ impl HeldImage {
     /// The size the file's header declares, `(0, 0)` when it cannot be read; read once.
     pub fn declared_size(&self) -> (u32, u32) {
         *self.size.get_or_init(|| {
-            let mut head = Vec::new();
-            let read = self
-                .reopen()
-                .and_then(|f| Ok(f.take(HEADER_READ_BYTES).read_to_end(&mut head)?));
-            if read.is_err() {
+            let mut head = vec![0u8; HEADER_READ_BYTES];
+            let Ok(filled) = read_filled(&self.file, &mut head) else {
                 return (0, 0);
-            }
+            };
+            head.truncate(filled);
             crate::export::from_images::header_info(&head)
                 .size
                 .unwrap_or((0, 0))
@@ -95,7 +116,33 @@ impl HeldImage {
 }
 
 /// How much of a file is read to find its size (a JPEG's frame header can follow a large EXIF block).
-const HEADER_READ_BYTES: u64 = 256 * 1024;
+const HEADER_READ_BYTES: usize = 256 * 1024;
+
+/// One read at `offset` that does not use the handle's own position.
+fn read_at(file: &File, buf: &mut [u8], offset: u64) -> std::io::Result<usize> {
+    #[cfg(windows)]
+    {
+        std::os::windows::fs::FileExt::seek_read(file, buf, offset)
+    }
+    #[cfg(unix)]
+    {
+        std::os::unix::fs::FileExt::read_at(file, buf, offset)
+    }
+}
+
+/// Fills `buf` from the start of the file as far as the file goes; the number of bytes read.
+fn read_filled(file: &File, buf: &mut [u8]) -> std::io::Result<usize> {
+    let mut filled = 0;
+    while filled < buf.len() {
+        match read_at(file, &mut buf[filled..], filled as u64) {
+            Ok(0) => break,
+            Ok(n) => filled += n,
+            Err(e) if e.kind() == std::io::ErrorKind::Interrupted => {}
+            Err(e) => return Err(e),
+        }
+    }
+    Ok(filled)
+}
 
 /// The file name of `path` for the UI: no folder, no control characters, bounded.
 pub fn display_name(path: &Path) -> String {
@@ -564,6 +611,26 @@ mod tests {
         let reason = sniff_checked(&missing).err().unwrap();
         assert!(!reason.contains("secret"));
         assert_eq!(sniff_checked(dir.path()).err(), Some("not a regular file"));
+    }
+
+    #[test]
+    fn concurrent_readers_of_one_held_image_all_get_the_whole_file() {
+        let dir = TempDir::new();
+        let path = dir.path().join("a.png");
+        let mut data = b"\x89PNG\r\n\x1a\n".to_vec();
+        data.extend((0..300_000u32).map(|i| (i % 251) as u8));
+        std::fs::write(&path, &data).unwrap();
+        let sorted = sort_drop(vec![path]);
+        let image = &sorted.images[0];
+        std::thread::scope(|scope| {
+            let jobs: Vec<_> = (0..8)
+                .map(|_| scope.spawn(|| image.read_limited(1 << 20).unwrap()))
+                .collect();
+            for job in jobs {
+                assert_eq!(job.join().unwrap(), data);
+            }
+        });
+        assert!(image.read_limited(10).is_err());
     }
 
     #[test]

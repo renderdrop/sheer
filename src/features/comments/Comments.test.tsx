@@ -374,6 +374,31 @@ describe('Comments cards', () => {
     expect(useComments.getState().editing[1]).toBeNull();
   });
 
+  it('compose: Enter posts, Shift+Enter is a line break', async () => {
+    const apply = vi.fn().mockResolvedValue({ upserted: [] });
+    useAnnotations.setState({
+      apply,
+      byDoc: {
+        1: {
+          rev: 0,
+          byId: { 3: { id: 3, contents: '', locked: false } },
+          loaded: {},
+          removed: {},
+          history: EMPTY_HISTORY,
+        },
+      },
+    } as never);
+    const { user } = await shown();
+    act(() => useComments.getState().startEdit(1, 3, true));
+    const box = (await screen.findByRole('textbox', { name: 'Note text' })) as HTMLTextAreaElement;
+    await user.type(box, 'a{Shift>}{Enter}{/Shift}b');
+    expect(box.value).toBe('a\nb');
+    expect(apply).not.toHaveBeenCalled();
+    await user.keyboard('{Enter}');
+    await vi.waitFor(() => expect(apply).toHaveBeenCalled());
+    expect(useComments.getState().editing[1]).toBeNull();
+  });
+
   it('keeps the rows when a refresh brings the same list', async () => {
     await shown();
     const before = useComments.getState().byDoc[1];

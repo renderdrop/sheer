@@ -6,7 +6,9 @@ import { describe, expect, it } from 'vitest';
 import { LAYOUT, PANEL } from '../components/tokens';
 import {
   bodyHeight,
+  COMMENTS_PANEL_MIN,
   clampPanelWidth,
+  panelWidthFor,
   computeShellLayout,
   shellStructure,
   shellTracks,
@@ -179,5 +181,20 @@ describe('the structure and the tracks, which the shell follows separately', () 
     expect(shellStructure({ ...base, hasDocument: false })).toBe(
       shellStructure({ ...base, hasDocument: false, windowWidth: 5 }),
     );
+  });
+});
+
+describe('the Comments tab width (ADR-106)', () => {
+  it('widens the sidebar for the Comments tab only', () => {
+    expect(panelWidthFor(PANEL.default, 'thumbnails')).toBe(PANEL.default);
+    expect(panelWidthFor(PANEL.default, 'comments')).toBe(COMMENTS_PANEL_MIN);
+    expect(panelWidthFor(PANEL.max, 'comments')).toBe(PANEL.max);
+    expect(COMMENTS_PANEL_MIN).toBeLessThanOrEqual(PANEL.max);
+  });
+
+  it('puts the wider width in the track', () => {
+    const input = { hasDocument: true, windowWidth: 1400, panelWidth: PANEL.default, panelCollapsed: false };
+    expect(computeShellLayout({ ...input, leftTab: 'comments' }).panelWidth).toBe(COMMENTS_PANEL_MIN);
+    expect(computeShellLayout(input).panelWidth).toBe(PANEL.default);
   });
 });

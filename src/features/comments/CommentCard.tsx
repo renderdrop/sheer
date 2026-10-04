@@ -9,6 +9,7 @@ import { useT, type PlainKey } from '../../i18n';
 import { useAnnotations } from '../../stores/annotations';
 import { pageNumberOf } from '../../stores/pages';
 import { useSettings } from '../../stores/settings';
+import { isConfirmKey } from '../annotations/note/confirmKey';
 import { isOwnReply, useOwnReplies } from '../annotations/note/ownReplies';
 import { useAutosize } from '../annotations/note/useAutosize';
 import { deleteThread, discardNew, postReply, run, setReviewState } from './actions';
@@ -61,7 +62,8 @@ function ReplyText({ docId, reply, text, editable, label }: ReplyTextProps) {
     if (document.activeElement !== ref.current) setDraft(text);
   }, [text]);
   useAutosize(ref, draft);
-  if (!editable) return <p className="m-0 text-md break-words whitespace-pre-wrap">{text}</p>;
+  if (!editable)
+    return <p className="m-0 text-md [overflow-wrap:break-word] whitespace-pre-wrap">{text}</p>;
   return (
     <textarea
       ref={ref}
@@ -72,6 +74,12 @@ function ReplyText({ docId, reply, text, editable, label }: ReplyTextProps) {
       className={cx(CARD_TEXTAREA, 'overflow-auto')}
       style={MAX_LINES}
       onChange={(event) => setDraft(event.target.value)}
+      onKeyDown={(event) => {
+        if (isConfirmKey(event)) {
+          event.preventDefault();
+          event.currentTarget.blur();
+        }
+      }}
       onBlur={(event) => {
         const next = event.target.value;
         if (next !== text && next.trim() !== '') {
@@ -188,7 +196,7 @@ export const CommentCard = memo(function CommentCard({
     if (draft !== text) void run(docId, { type: 'updateAnnotation', id: root.id, patch: { contents: draft } });
   };
   const onBodyKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
-    if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) {
+    if (isConfirmKey(event)) {
       event.preventDefault();
       post();
     } else if (event.key === 'Escape') {
@@ -234,6 +242,7 @@ export const CommentCard = memo(function CommentCard({
   return (
     <article
       data-key={`a${root.id}`}
+      lang={t.locale}
       data-state={selected ? 'selected' : 'idle'}
       aria-labelledby={`${ids}-h`}
       aria-describedby={describedBy}
@@ -255,7 +264,7 @@ export const CommentCard = memo(function CommentCard({
         <span
           id={`${ids}-h`}
           className={cx(
-            't-body min-w-0 flex-1 text-text [overflow-wrap:anywhere]',
+            't-body min-w-0 flex-1 text-text [overflow-wrap:break-word]',
             collapsed ? 'line-clamp-1' : 'line-clamp-2',
           )}
         >
@@ -325,7 +334,10 @@ export const CommentCard = memo(function CommentCard({
             />
           ) : (
             text !== '' && (
-              <p id={`${ids}-b`} className="t-body m-0 whitespace-pre-wrap text-text [overflow-wrap:anywhere]">
+              <p
+                id={`${ids}-b`}
+                className="t-body m-0 whitespace-pre-wrap text-text [overflow-wrap:break-word]"
+              >
                 {text}
               </p>
             )
@@ -404,7 +416,7 @@ export const CommentCard = memo(function CommentCard({
             onChange={(event) => setReply(event.target.value)}
             onKeyDown={(event) => {
               // Enter sends, Shift+Enter is a new line (an IME composition keeps its Enter).
-              if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) {
+              if (isConfirmKey(event)) {
                 event.preventDefault();
                 sendReply();
               }

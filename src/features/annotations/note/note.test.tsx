@@ -189,14 +189,14 @@ describe('the note popover', () => {
     expect(undoMock).not.toHaveBeenCalled();
   });
 
-  it('posts a reply with Primary+Enter as an /IRT note by the settings author; Enter alone is a newline', async () => {
+  it('posts a reply with Enter as an /IRT note by the settings author; Shift+Enter is a newline', async () => {
     load([note(1, { contents: 'x' })]);
     const { user } = render();
     const field = screen.getByRole('textbox', { name: 'Write a reply' }) as HTMLTextAreaElement;
-    await user.type(field, 'Agreed{Enter}more');
+    await user.type(field, 'Agreed{Shift>}{Enter}{/Shift}more');
     expect(field.value).toBe('Agreed\nmore');
     expect(applyMock).not.toHaveBeenCalled();
-    await user.keyboard('{Control>}{Enter}{/Control}');
+    await user.keyboard('{Enter}');
     expect(applyMock).toHaveBeenCalledWith(1, {
       type: 'createAnnotation',
       draft: expect.objectContaining({

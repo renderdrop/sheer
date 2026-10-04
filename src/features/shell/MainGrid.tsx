@@ -50,6 +50,7 @@ interface Seen {
  */
 export function MainGrid({ structure, children }: MainGridProps) {
   const panelWidth = useUi((state) => state.leftPanelWidth);
+  const leftTab = useUi((state) => state.leftPanelTab);
   const { mode, leftCollapsed: collapsed } = structure;
   const [seen, setSeen] = useState<Seen>({ mode, collapsed, animating: null });
   // A new state of the panel in a window that keeps its mode slides. A window that opens or closes a document has other
@@ -81,7 +82,7 @@ export function MainGrid({ structure, children }: MainGridProps) {
       data-left={collapsed ? 'collapsed' : 'open'}
       data-animating={seen.animating ?? undefined}
       onTransitionEnd={release}
-      style={{ gridTemplateColumns: shellTracks(structure, panelWidth).columns }}
+      style={{ gridTemplateColumns: shellTracks(structure, panelWidth, leftTab).columns }}
       className={`group/main grid min-h-0 flex-auto grid-rows-[minmax(0,1fr)] ${
         seen.animating === null
           ? ''

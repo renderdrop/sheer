@@ -13,6 +13,9 @@
  */
 import { LAYOUT, PANEL } from '../components/tokens';
 
+/** Narrowest the page sidebar is while it shows the Comments tab: a card needs room for its type, author and text (FEEDBACK F15 A5, ADR-106). */
+export const COMMENTS_PANEL_MIN = 280;
+
 export type SlotName = 'left' | 'splitter' | 'canvas';
 
 /** The rows of the editor, top to bottom. `menu` exists on Windows only. */
@@ -29,6 +32,8 @@ export interface LayoutInput {
   panelCollapsed: boolean;
   /** The platform draws its own in-window menu row (Windows). macOS has the native menu bar and no row. Default: no. */
   menuRow?: boolean;
+  /** The sidebar tab that shows; the Comments tab is at least `COMMENTS_PANEL_MIN` wide. */
+  leftTab?: string;
 }
 
 export interface Track {
@@ -89,6 +94,12 @@ const EMPTY_STRUCTURE: ShellStructure = {
   menuRow: false,
 };
 
+/** The width the sidebar takes for `tab`: the chosen width, widened for the Comments tab. */
+export function panelWidthFor(value: number, tab?: string): number {
+  const width = clampPanelWidth(value);
+  return tab === 'comments' ? Math.max(width, COMMENTS_PANEL_MIN) : width;
+}
+
 /** `value` within the page sidebar's range; anything that is not a finite number gives the default. No snapping. */
 export function clampPanelWidth(value: number): number {
   if (!Number.isFinite(value)) return PANEL.default;
@@ -102,7 +113,7 @@ function widthOf(input: LayoutInput): number {
 /** The slots and the page sidebar's state for the given input (DESIGN v2 3.2). See the module comment for the rules. */
 export function shellStructure(input: LayoutInput): ShellStructure {
   if (!input.hasDocument) return EMPTY_STRUCTURE;
-  const panelWidth = clampPanelWidth(input.panelWidth);
+  const panelWidth = panelWidthFor(input.panelWidth, input.leftTab);
   const width = widthOf(input);
   const canvasWithLeft = width - panelWidth - LAYOUT.splitter;
   const leftAutoCollapsed =
@@ -128,8 +139,8 @@ function rowTracksOf(structure: ShellStructure): RowTrack[] {
 }
 
 /** The tracks of the grid for a structure, with the page sidebar at `panelWidth` (clamped). */
-export function shellTracks(structure: ShellStructure, panelWidth: number): ShellTracks {
-  const width = clampPanelWidth(panelWidth);
+export function shellTracks(structure: ShellStructure, panelWidth: number, leftTab?: string): ShellTracks {
+  const width = panelWidthFor(panelWidth, leftTab);
   const tracks: Track[] =
     structure.mode === 'empty'
       ? [{ slot: 'canvas', size: 'minmax(0, 1fr)' }]
@@ -163,7 +174,7 @@ export function shellTracks(structure: ShellStructure, panelWidth: number): Shel
 export function computeShellLayout(input: LayoutInput): ShellLayout {
   const structure = shellStructure(input);
   const width = widthOf(input);
-  const tracks = shellTracks(structure, input.panelWidth);
+  const tracks = shellTracks(structure, input.panelWidth, input.leftTab);
   if (structure.mode === 'empty') return { ...structure, ...tracks, canvasWidth: Math.max(0, width) };
   const left = structure.leftCollapsed ? 0 : tracks.panelWidth;
   return { ...structure, ...tracks, canvasWidth: width - left - LAYOUT.splitter };

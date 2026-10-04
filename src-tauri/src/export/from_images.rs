@@ -85,22 +85,24 @@ impl Inputs {
         }
     }
 
-    fn open(&self, index: usize) -> Result<File, AppError> {
+    /// The bytes of image `index`; batch images are read at explicit offsets, never through a shared file position (ADR-106).
+    fn read(&self, index: usize) -> Result<Vec<u8>, AppError> {
+        let max = limits::MAX_IMAGE_FILE_BYTES;
         match self {
             Self::Paths(paths) => {
                 let path = paths.get(index).ok_or(AppError::invalid("image"))?;
-                image::open_picked(path)
+                read_file(image::open_picked(path)?)
             }
             Self::Batch(batch) => batch
                 .images
                 .get(index)
                 .ok_or(AppError::invalid("image"))?
-                .reopen(),
+                .read_limited(max),
             Self::Ordered(batch, order) => order
                 .get(index)
                 .and_then(|i| batch.images.get(*i))
                 .ok_or(AppError::invalid("image"))?
-                .reopen(),
+                .read_limited(max),
         }
     }
 }
@@ -318,7 +320,7 @@ fn run(
     let (mut skipped, mut stored, mut read_bytes) = (0u32, 0u64, 0u64);
     for index in 0..inputs.len() {
         ctx.check()?;
-        let prepared = inputs.open(index).and_then(read_file).and_then(|bytes| {
+        let prepared = inputs.read(index).and_then(|bytes| {
             read_bytes += bytes.len() as u64;
             let info = header_info(&bytes);
             let asset = image::prepare_bytes(&bytes)?;
@@ -585,7 +587,7 @@ pub fn batch_preview(id: u32, index: u32, max_px: u16) -> Result<Arc<Vec<u8>>, A
         .images
         .get(index as usize)
         .ok_or(AppError::not_found("image"))?;
-    let bytes = read_file(image.reopen()?)?;
+    let bytes = image.read_limited(limits::MAX_IMAGE_FILE_BYTES)?;
     let asset = image::prepare_bytes(&bytes)?;
     let frame = Arc::new(image::asset_frame(&asset, u32::from(max_px))?);
     batches.cache_preview(id, index, max_px, Arc::clone(&frame));
