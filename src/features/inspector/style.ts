@@ -83,6 +83,28 @@ function readColours(): StyleStoreState['overrides'] {
   }
 }
 
+/**
+ * The overrides at start: the last used values of the `tools` store (DESIGN v2 3.3) with the colours of the palette-checked key on top
+ * (a colour of an older palette falls back to the default of its kind).
+ */
+function initialOverrides(): StyleStoreState['overrides'] {
+  const colours = readColours();
+  const out: Partial<Record<CreationKind, Partial<AnnotationStyle>>> = {};
+  const stored = useTools.getState().defaults;
+  for (const kind of Object.keys(DEFAULT_STYLES) as CreationKind[]) {
+    const { opacity, width, fontSize, head } = stored[kind] ?? {};
+    const rest: Partial<AnnotationStyle> = {
+      ...(opacity === undefined ? {} : { opacity }),
+      ...(width === undefined ? {} : { width }),
+      ...(fontSize === undefined ? {} : { fontSize }),
+      ...(head === undefined ? {} : { head }),
+    };
+    const merged = { ...rest, ...colours[kind] };
+    if (Object.keys(merged).length > 0) out[kind] = merged;
+  }
+  return out;
+}
+
 function writeColours(overrides: StyleStoreState['overrides']): void {
   try {
     const colours = Object.fromEntries(
@@ -95,13 +117,16 @@ function writeColours(overrides: StyleStoreState['overrides']): void {
 }
 
 export const useStyleStore = create<StyleStoreState>()((set) => ({
-  overrides: readColours(),
-  set: (kind, change) =>
+  overrides: initialOverrides(),
+  set: (kind, change) => {
     set((state) => {
       const overrides = { ...state.overrides, [kind]: { ...state.overrides[kind], ...change } };
       if (change.color !== undefined) writeColours(overrides);
       return { overrides };
-    }),
+    });
+    // The last used value is the default of the next annotation of the kind (DESIGN v2 3.3).
+    useTools.getState().setDefault(kind, change);
+  },
   reset: () => {
     writeColours({});
     set({ overrides: {} });

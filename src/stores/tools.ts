@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 
+import type { LineEnd, Rgb } from '../api/annotations';
 import type { ToolId } from './ui';
 
 /**
@@ -20,10 +21,71 @@ export type ToolFamily = 'highlight' | 'shapes';
 export type CreationKind = MarkupVariant | 'note' | 'freeText' | 'ink' | 'rect' | 'ellipse' | 'line' | 'arrow';
 
 const STORAGE_KEY = 'sheer.toolVariants';
+const DEFAULTS_KEY = 'sheer.toolDefaults';
+const KINDS: readonly CreationKind[] = [...MARKUP_VARIANTS, 'note', 'freeText', 'ink', ...SHAPE_VARIANTS];
+const HEADS: readonly LineEnd[] = ['none', 'openArrow', 'closedArrow'];
+
+const isByte = (n: unknown): n is number => typeof n === 'number' && Number.isInteger(n) && n >= 0 && n <= 255;
+const isNum = (n: unknown, min: number, max: number): n is number =>
+  typeof n === 'number' && Number.isFinite(n) && n >= min && n <= max;
+
+/** The stored defaults, field by field validated (storage is outside input); whatever is wrong is dropped. */
+export function parseDefaults(raw: unknown): KindDefaults {
+  if (typeof raw !== 'object' || raw === null) return {};
+  const out: Partial<Record<CreationKind, KindDefault>> = {};
+  for (const kind of KINDS) {
+    const entry = (raw as Record<string, unknown>)[kind];
+    if (typeof entry !== 'object' || entry === null) continue;
+    const { color, opacity, width, fontSize, head } = entry as Record<string, unknown>;
+    const value: { -readonly [K in keyof KindDefault]: KindDefault[K] } = {};
+    if (Array.isArray(color) && color.length === 3 && color.every(isByte)) value.color = color as unknown as Rgb;
+    if (isNum(opacity, 0.1, 1)) value.opacity = opacity;
+    if (isNum(width, 0.5, 72)) value.width = width;
+    if (isNum(fontSize, 6, 144)) value.fontSize = fontSize;
+    const known = HEADS.find((h) => h === head);
+    if (known !== undefined) value.head = known;
+    if (Object.keys(value).length > 0) out[kind] = value;
+  }
+  return out;
+}
+
+function loadDefaults(): KindDefaults {
+  try {
+    return parseDefaults(JSON.parse(globalThis.localStorage.getItem(DEFAULTS_KEY) ?? 'null'));
+  } catch {
+    return {};
+  }
+}
+
+function saveDefaults(defaults: KindDefaults): void {
+  try {
+    globalThis.localStorage.setItem(DEFAULTS_KEY, JSON.stringify(defaults));
+  } catch {
+    // Storage unavailable or full: the defaults last for the session.
+  }
+}
+
+/**
+ * What the next annotation of a kind gets (DESIGN v2 3.3): the last value the user chose, in the mini bar or in the split menu's swatch
+ * row. A field that is not here has the first-run default (highlight Solar, strokes Ink 2 pt, text 12 pt; `DEFAULT_STYLES`).
+ */
+export interface KindDefault {
+  color?: Rgb;
+  opacity?: number;
+  width?: number;
+  fontSize?: number;
+  head?: LineEnd;
+}
+
+export type KindDefaults = Readonly<Partial<Record<CreationKind, KindDefault>>>;
 
 export interface ToolsState {
   markup: MarkupVariant;
   shapes: ShapeVariant;
+  /** The last used style per creation kind. */
+  defaults: KindDefaults;
+  /** Remembers a change as the default of a kind (merged into what the kind has). */
+  setDefault: (kind: CreationKind, change: KindDefault) => void;
   setMarkup: (variant: MarkupVariant) => void;
   setShapes: (variant: ShapeVariant) => void;
   /** The key of the tool again while it is active: the next variant of its family. */
@@ -58,6 +120,12 @@ const next = <T extends string>(all: readonly T[], current: T): T =>
 
 export const useTools = create<ToolsState>()((set, get) => ({
   ...load(),
+  defaults: loadDefaults(),
+  setDefault: (kind, change) => {
+    const defaults = { ...get().defaults, [kind]: { ...get().defaults[kind], ...change } };
+    set({ defaults });
+    saveDefaults(defaults);
+  },
   setMarkup: (markup) => {
     set({ markup });
     save(get());

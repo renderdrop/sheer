@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { beforeEach, describe, expect, it } from 'vitest';
 
-import { creationKind, familyOf, toolNameKey, useTools } from './tools';
+import { creationKind, familyOf, parseDefaults, toolNameKey, useTools } from './tools';
 
 beforeEach(() => {
   localStorage.clear();
@@ -48,5 +48,23 @@ describe('what the active tool makes', () => {
     expect(toolNameKey('select', tools)).toBeNull();
     expect(familyOf('highlight')).toBe('highlight');
     expect(familyOf('draw')).toBeNull();
+  });
+});
+
+describe('the defaults of the next annotation (DESIGN v2 3.3)', () => {
+  it('start empty (the first-run values are the kind defaults) and remember the last change per kind', () => {
+    useTools.setState({ defaults: {} });
+    expect(useTools.getState().defaults).toEqual({});
+    useTools.getState().setDefault('ink', { width: 4 });
+    useTools.getState().setDefault('ink', { color: [225, 92, 134] });
+    expect(useTools.getState().defaults.ink).toEqual({ width: 4, color: [225, 92, 134] });
+    expect(JSON.parse(localStorage.getItem('sheer.toolDefaults') ?? 'null')).toMatchObject({ ink: { width: 4 } });
+  });
+
+  it('drops stored values that are not valid', () => {
+    expect(
+      parseDefaults({ ink: { width: 4, color: [300, 0, 0], head: 'spear' }, bogus: { width: 2 }, note: 'x' }),
+    ).toEqual({ ink: { width: 4 } });
+    expect(parseDefaults(null)).toEqual({});
   });
 });
