@@ -97,6 +97,34 @@ pub struct Stroke {
 
 /// The smallest side of a signature or a mark, in points (ADR-041 §5).
 pub const MIN_SIGNATURE_SIDE_PT: f32 = 4.0;
+/// The bounds of `bounds` turned `angle` degrees about its centre.
+pub fn rotated_bounds(bounds: Rect, angle: f32) -> Rect {
+    let (sin, cos) = angle.to_radians().sin_cos();
+    let w = bounds.w * cos.abs() + bounds.h * sin.abs();
+    let h = bounds.w * sin.abs() + bounds.h * cos.abs();
+    let (cx, cy) = (bounds.x + bounds.w / 2.0, bounds.y + bounds.h / 2.0);
+    Rect {
+        x: cx - w / 2.0,
+        y: cy - h / 2.0,
+        w,
+        h,
+    }
+}
+
+/// An angle in degrees brought into (-180, 180] and rounded to a hundredth; `None` if it is not a finite number.
+pub fn normalize_angle(angle: f32) -> Option<f32> {
+    if !angle.is_finite() {
+        return None;
+    }
+    let mut turned = angle.rem_euclid(360.0);
+    if turned > 180.0 {
+        turned -= 360.0;
+    }
+    let rounded = (turned * 100.0).round() / 100.0;
+    // -0 is no turn.
+    Some(if rounded == 0.0 { 0.0 } else { rounded })
+}
+
 /// The range of a signature's aspect ratio (width over height).
 pub const SIGNATURE_ASPECT_RANGE: std::ops::RangeInclusive<f32> = 0.01..=100.0;
 
@@ -218,12 +246,19 @@ pub enum AnnotationBody {
         bounds: Rect,
         role: SignatureRole,
         art: SignatureArtRef,
+        /// The turn of the box about its centre, in degrees, clockwise on the page (y down), in (-180, 180] (ADR-105). `box` is the
+        /// box before the turn, `rect` the bounds of the turned box.
+        #[serde(default)]
+        angle: f32,
     },
     /// A check, a cross or a dot of Fill & Sign: a `/Stamp` named `sheer-mark-<glyph>-`, drawn in the annotation's colour.
     Mark {
         #[serde(rename = "box")]
         bounds: Rect,
         glyph: MarkGlyph,
+        /// As for [`AnnotationBody::Signature`].
+        #[serde(default)]
+        angle: f32,
     },
     /// A text box (ADR-047 §1): page content, not a comment. Edited like an annotation until a save burns it into the page. `lines`
     /// is Rust's layout of `text` in the box (read-only for the UI); the box grows in height to fit it. The colour is the text's.
@@ -369,6 +404,8 @@ pub struct AnnotationPatch {
     pub text: Option<String>,
     pub font: Option<StdFont>,
     pub align: Option<TextAlign>,
+    /// The turn of a signature or a mark (ADR-105), in degrees.
+    pub angle: Option<f32>,
 }
 
 /// Where an annotation sits in the PDF it was imported from. Rust only; the UI never sees it.
@@ -451,6 +488,15 @@ fn check_stamp_box(bounds: Rect) -> Result<(), AppError> {
         return Err(AppError::invalid("box"));
     }
     Ok(())
+}
+
+/// The turn of a signature or a mark: a finite number in (-180, 180] (the model normalises it first).
+fn check_stamp_angle(angle: f32) -> Result<(), AppError> {
+    if angle.is_finite() && angle > -180.0 && angle <= 180.0 {
+        Ok(())
+    } else {
+        Err(AppError::invalid("angle"))
+    }
 }
 
 fn check_quads(quads: &[Quad]) -> Result<(), AppError> {
@@ -630,18 +676,22 @@ impl AnnotationBody {
                 };
                 Ok(extent.rect(width / 2.0 + arrow))
             }
-            Self::Signature { bounds, art, .. } => {
+            Self::Signature {
+                bounds, art, angle, ..
+            } => {
                 check_stamp_box(*bounds)?;
                 if let SignatureArtRef::Asset { aspect, .. } = art {
                     if !aspect.is_finite() || !SIGNATURE_ASPECT_RANGE.contains(aspect) {
                         return Err(AppError::invalid("art"));
                     }
                 }
-                Ok(*bounds)
+                check_stamp_angle(*angle)?;
+                Ok(rotated_bounds(*bounds, *angle))
             }
-            Self::Mark { bounds, .. } => {
+            Self::Mark { bounds, angle, .. } => {
                 check_stamp_box(*bounds)?;
-                Ok(*bounds)
+                check_stamp_angle(*angle)?;
+                Ok(rotated_bounds(*bounds, *angle))
             }
             Self::TextBox {
                 bounds,
@@ -747,6 +797,11 @@ impl Annotation {
         }
         if self.in_reply_to == Some(self.id) {
             return Err(AppError::invalid("inReplyTo"));
+        }
+        if let AnnotationBody::Signature { angle, .. } | AnnotationBody::Mark { angle, .. } =
+            &mut self.body
+        {
+            *angle = normalize_angle(*angle).ok_or_else(|| AppError::invalid("angle"))?;
         }
         self.body.check(self.rect)?;
         // Rust lays a text box out: the lines, and a box that is as tall as they are (ADR-047 §1).
@@ -855,6 +910,7 @@ impl Annotation {
             text,
             font,
             align,
+            angle,
             ..
         } = patch;
         // Every geometry field of the patch must be one the kind has; `take` marks the ones used, and what is left over is wrong.
@@ -877,6 +933,7 @@ impl Annotation {
             text.is_some(),
             font.is_some(),
             align.is_some(),
+            angle.is_some(),
         ]
         .iter()
         .filter(|present| **present)
@@ -950,9 +1007,20 @@ impl Annotation {
                 set(h, head, &mut used);
                 set(tl, tail, &mut used);
             }
-            AnnotationBody::Signature { bounds: b, .. }
-            | AnnotationBody::Mark { bounds: b, .. }
-            | AnnotationBody::Image { bounds: b, .. } => {
+            AnnotationBody::Signature {
+                bounds: b,
+                angle: turn,
+                ..
+            }
+            | AnnotationBody::Mark {
+                bounds: b,
+                angle: turn,
+                ..
+            } => {
+                set(b, bounds, &mut used);
+                set(turn, angle, &mut used);
+            }
+            AnnotationBody::Image { bounds: b, .. } => {
                 set(b, bounds, &mut used);
             }
             AnnotationBody::TextBox {
@@ -1597,5 +1665,52 @@ mod tests {
         assert_eq!(code(base.patched(&wrong, "t2")), ErrorCode::InvalidArgument);
         let moved = base.moved(5.0, -5.0, "t3").unwrap();
         assert_eq!((moved.rect.x, moved.rect.y), (15.0, 15.0));
+    }
+
+    #[test]
+    fn a_turn_is_normalised_validated_and_gives_the_rect_of_the_turned_box() {
+        let base = Annotation::from_draft(AnnotId::new(1), &signature(1, 80.0, 40.0), "t").unwrap();
+        let turn = |angle: serde_json::Value| -> AnnotationPatch {
+            serde_json::from_value(json!({ "angle": angle })).unwrap()
+        };
+        let quarter = base.patched(&turn(json!(450.0)), "t2").unwrap();
+        let AnnotationBody::Signature { angle, bounds, .. } = &quarter.body else {
+            panic!("a signature")
+        };
+        assert_eq!(*angle, 90.0);
+        assert_eq!(bounds.w, 80.0);
+        // The box 80 x 40 at (10, 20) turned a quarter about its centre (50, 40): 40 x 80 around the same centre.
+        assert!((quarter.rect.w - 40.0).abs() < 0.01 && (quarter.rect.h - 80.0).abs() < 0.01);
+        assert!((quarter.rect.x - 30.0).abs() < 0.01 && (quarter.rect.y - 0.0).abs() < 0.01);
+        assert_eq!(quarter.sync, Sync::New);
+        let half = base.patched(&turn(json!(-180.0)), "t2").unwrap();
+        assert!(matches!(
+            half.body,
+            AnnotationBody::Signature { angle: 180.0, .. }
+        ));
+        // Not a number never gets in; a patch for a kind without a turn is refused.
+        let mut hostile = base.clone();
+        if let AnnotationBody::Signature { angle, .. } = &mut hostile.body {
+            *angle = f32::INFINITY;
+        }
+        assert_eq!(
+            code(hostile.moved(1.0, 1.0, "t")),
+            ErrorCode::InvalidArgument
+        );
+        assert_eq!(normalize_angle(f32::NAN), None);
+        assert_eq!(normalize_angle(-0.001), Some(0.0));
+        let note = Annotation::from_draft(
+            AnnotId::new(2),
+            &serde_json::from_value(json!({
+                "pageId": 0, "kind": "note", "color": [0, 0, 0], "at": {"x": 5.0, "y": 5.0}, "icon": "note"
+            }))
+            .unwrap(),
+            "t",
+        )
+        .unwrap();
+        assert_eq!(
+            code(note.patched(&turn(json!(10.0)), "t")),
+            ErrorCode::InvalidArgument
+        );
     }
 }

@@ -17,11 +17,11 @@ use super::space::{load_page, page_box};
 use crate::error::AppError;
 use crate::limits;
 use crate::model::annotation::{
-    AnnotationBody, Imported, NoteIcon, PdfOrigin, Rgb, SignatureArtRef, SignatureRole,
-    MIN_SIGNATURE_SIDE_PT,
+    normalize_angle, rotated_bounds, AnnotationBody, Imported, NoteIcon, PdfOrigin, Rgb,
+    SignatureArtRef, SignatureRole, MIN_SIGNATURE_SIDE_PT,
 };
 use crate::model::geometry::{PageBox, Point, Quad, Rect};
-use crate::signatures::marks::{parse_name, Named};
+use crate::signatures::marks::{parse_name, split_turn, Named, Turn};
 
 /// Colour of a highlight that has none; any other annotation without a colour is black.
 const DEFAULT_MARKUP: Rgb = Rgb([255, 235, 0]);
@@ -123,6 +123,32 @@ fn quads_of(annotation: &PdfPageAnnotation<'_>, page_box: PageBox, rect: Rect) -
         ]);
     }
     quads
+}
+
+/// How far (points) the bounds of the turned box the name describes may be from the file's `/Rect` before the name is not believed
+/// (another program moved or resized the stamp since).
+const TURN_TOLERANCE_PT: f32 = 1.0;
+
+/// The box before the turn, and its angle, that a name's turn describes for a stamp at `rect`; `None` if the name does not fit the rect.
+fn turned_box(rect: Rect, turn: Turn) -> Option<(Rect, f32)> {
+    let angle = normalize_angle(f32::from(u16::try_from(turn.centi_degrees).ok()?) / 100.0)?;
+    let (w, h) = (turn.w_centi as f32 / 100.0, turn.h_centi as f32 / 100.0);
+    if w < MIN_SIGNATURE_SIDE_PT || h < MIN_SIGNATURE_SIDE_PT || angle == 0.0 {
+        return None;
+    }
+    let bounds = Rect {
+        x: rect.x + rect.w / 2.0 - w / 2.0,
+        y: rect.y + rect.h / 2.0 - h / 2.0,
+        w,
+        h,
+    };
+    let turned = rotated_bounds(bounds, angle);
+    let near = |a: f32, b: f32| (a - b).abs() <= TURN_TOLERANCE_PT;
+    (near(turned.x, rect.x)
+        && near(turned.y, rect.y)
+        && near(turned.w, rect.w)
+        && near(turned.h, rect.h))
+    .then_some((bounds, angle))
 }
 
 /// What the `/NM` of a stamp says about it, if it is one of ours.
@@ -233,19 +259,27 @@ fn read_one(
                 && rect.w >= MIN_SIGNATURE_SIDE_PT
                 && rect.h >= MIN_SIGNATURE_SIDE_PT =>
         {
+            // A turned one of ours has its box and angle in its name (ADR-105); the rect is the bounds of the turned box.
+            let (bounds, angle) = annotation
+                .name()
+                .and_then(|name| split_turn(&name).1)
+                .and_then(|turn| turned_box(rect, turn))
+                .unwrap_or((rect, 0.0));
             let body = match stamp_kind(annotation) {
                 Some(Named::Mark(glyph)) => AnnotationBody::Mark {
-                    bounds: rect,
+                    bounds,
                     glyph,
+                    angle,
                 },
                 other => AnnotationBody::Signature {
-                    bounds: rect,
+                    bounds,
                     role: if other == Some(Named::Initials) {
                         SignatureRole::Initials
                     } else {
                         SignatureRole::Signature
                     },
                     art: SignatureArtRef::File,
+                    angle,
                 },
             };
             (body, fill.or(stroke).unwrap_or(BLACK))

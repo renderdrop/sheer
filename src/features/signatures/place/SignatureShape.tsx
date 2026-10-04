@@ -12,6 +12,11 @@ import { markGeometry } from './marks';
  * drawn for it. Marks are strokes in the annotation's colour.
  */
 
+/** The SVG `transform` that turns a box by its annotation's angle (degrees, clockwise) about its centre; none for no turn (ADR-105). */
+function turnAttr(box: { x: number; y: number; w: number; h: number }, angle: number | undefined): string | undefined {
+  return angle === undefined || angle === 0 ? undefined : `rotate(${angle} ${box.x + box.w / 2} ${box.y + box.h / 2})`;
+}
+
 type SignatureAnnotation = Extract<Annotation, { kind: 'signature' }>;
 type MarkAnnotation = Extract<Annotation, { kind: 'mark' }>;
 
@@ -31,21 +36,24 @@ export const SignatureShape = memo(function SignatureShape({ a, docId }: { a: Si
         height={box.h}
         preserveAspectRatio="none"
         opacity={a.opacity}
+        transform={turnAttr(box, a.angle)}
         data-signature-image=""
       />
     );
   }
   return (
-    <g
-      transform={`translate(${box.x} ${box.y}) scale(${box.w / art.w} ${box.h / art.h})`}
-      fill={rgbToCss(a.color)}
-      fillRule="nonzero"
-      opacity={a.opacity}
-      data-signature-vector=""
-    >
-      {art.paths.map((path, i) => (
-        <path key={i} d={pathToD([path])} />
-      ))}
+    <g transform={turnAttr(box, a.angle)}>
+      <g
+        transform={`translate(${box.x} ${box.y}) scale(${box.w / art.w} ${box.h / art.h})`}
+        fill={rgbToCss(a.color)}
+        fillRule="nonzero"
+        opacity={a.opacity}
+        data-signature-vector=""
+      >
+        {art.paths.map((path, i) => (
+          <path key={i} d={pathToD([path])} />
+        ))}
+      </g>
     </g>
   );
 });
@@ -83,5 +91,9 @@ export function MarkGlyphShape({
 }
 
 export function MarkShape({ a }: { a: MarkAnnotation }) {
-  return <MarkGlyphShape glyph={a.glyph} box={a.box} color={rgbToCss(a.color)} opacity={a.opacity} />;
+  return (
+    <g transform={turnAttr(a.box, a.angle)}>
+      <MarkGlyphShape glyph={a.glyph} box={a.box} color={rgbToCss(a.color)} opacity={a.opacity} />
+    </g>
+  );
 }

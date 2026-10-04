@@ -320,11 +320,12 @@ create_drawn_signature(role: SignatureRole, outlines: Vec<Vec<PathCmd>>) -> Sign
 create_typed_signature(role: SignatureRole, text: String, font: TypedFont) -> SignatureDraft  // 1..=64 chars, no control chars
 import_signature_image(role: SignatureRole, remove_background: bool) -> Option<SignatureDraft> // Rust open dialog (PNG, JPEG); None = cancelled
 list_signatures() -> SignatureLibrary
-save_signature(draft_id: DraftId) -> SignatureItem    // keychain missing → unsupported_feature (what: "keychain"); locked → invalid_argument (what: "library"); 32 items → limit_exceeded
+save_signature(draft_id: DraftId) -> SignatureItem    // keychain missing, refused or timed out → invalid_argument (what: "keychain"), never kept in memory only (ADR-107); locked → invalid_argument (what: "library"); 32 items → limit_exceeded
 delete_signature(item_id: String) -> ()               // 32 lowercase hex; unknown → not_found
 clear_signature_library() -> ()                       // deletes library.bin and the keychain entry; the way out of `locked`
 get_signature_preview(art: SignatureRef, max_px: u16 /* 16..=1024 */) -> tauri::ipc::Response   // SHR1 PNG frame of raster art
 use_signature(doc_id: DocId, art: SignatureRef) -> AssetInfo   // copies the art into the document's assets; then CreateAnnotation { kind: "signature" }
+// ADR-105: Signature and Mark annotations (draft, patch and wire) carry `angle: f32` degrees, clockwise on the page, default 0, normalised to (-180, 180]; non-finite → invalid_argument ("angle"). `box` is the box before the turn, `rect` the bounds of the turned box. AnnotationPatch gains `angle` (signature, mark only). Saved as the appearance `/Matrix`; the turn and box ride in `/NM` suffix `-r<centi-deg>-<w*100>-<h*100>`
 ```
 
 ```ts
@@ -609,7 +610,7 @@ and treats a wrong shape as `internal`. UI (ADR-050) in `features/convert/` and 
   A target equal to the open document's path is `invalid_argument` (`exportTarget`): a copy never replaces its source.
 - *Print.* `prepare_print` → snapshot → `RenderExport` (150/300 dpi, rotated per `autoRotate`) → JPEG q92 frames in `PrintSet`.
   `PrintSurface` (one `<section>` per page, `break-after: page`, `img { width: 100%; height: 100vh; object-fit: contain }`, `@page
-  { margin: 0 }`) loads all frames, awaits decode, calls `open_print_dialog`, releases the set and blob URLs when the call returns.
+  { margin: 0 }`) loads all frames, awaits decode, calls `open_print_dialog`, releases the backend set when the call returns; the frames and blob URLs stay until `afterprint` (+30 s, at most 5 min) because `Webview::print()` returns when the dialog opens, not when WKWebView has painted (ADR-107).
   Permissions: `print` for print, `copy` for images out, `edit` for export-copy transforms of a restricted document.
 - *Limits* (`limits.rs`): selection ≤ 5 000 pages; dpi 36..=600; export bitmap ≤ 10 000 px per side, ≤ 64 MP; ≤ 5 000 image files per
   job, ticket 5 min; images in ≤ 500 per job and per batch, batch 10 min, stored sum ≤ 1 GiB, M5 per-image limits; margin 0..=72 pt;

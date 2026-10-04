@@ -9,13 +9,67 @@ import type { Point, Rect } from '../../../api/wire';
  */
 
 /** Handles: the eight of a box, the two ends of a line (`from`, `to`). Ink uses the four corners. */
-export type HandleId = 'n' | 's' | 'e' | 'w' | 'ne' | 'nw' | 'se' | 'sw' | 'from' | 'to';
+export type HandleId = 'n' | 's' | 'e' | 'w' | 'ne' | 'nw' | 'se' | 'sw' | 'from' | 'to' | 'rotate';
 
 /** The smallest a resized annotation gets, in points. */
 export const MIN_SIZE_PT = 4;
+/** How far above the top edge of a signature the rotate handle sits, in points (ADR-105); `--annot-rotate-offset` in tokens.css (test). */
+export const ROTATE_OFFSET_PT = 18;
+/** Shift snaps the rotation to multiples of this, in degrees. */
+export const ROTATE_SNAP_DEG = 15;
 
 const BOX_HANDLES: readonly HandleId[] = ['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w'];
 const CORNER_HANDLES: readonly HandleId[] = ['nw', 'ne', 'se', 'sw'];
+
+/** The turn of a signature or a mark in degrees, clockwise on the page; 0 for every other kind. */
+export function angleOf(a: Annotation): number {
+  return (a.kind === 'signature' || a.kind === 'mark' ? a.angle : undefined) ?? 0;
+}
+
+/** An angle in degrees in (-180, 180], rounded to a hundredth (what the backend keeps). */
+export function normalizeAngle(angle: number): number {
+  if (!Number.isFinite(angle)) return 0;
+  let turned = ((angle % 360) + 360) % 360;
+  if (turned > 180) turned -= 360;
+  const rounded = Math.round(turned * 100) / 100;
+  return rounded === 0 ? 0 : rounded;
+}
+
+/** The bounds of `box` turned `angle` degrees about its centre. */
+export function rotatedBounds(box: Rect, angle: number): Rect {
+  const rad = (angle * Math.PI) / 180;
+  const sin = Math.abs(Math.sin(rad));
+  const cos = Math.abs(Math.cos(rad));
+  const w = box.w * cos + box.h * sin;
+  const h = box.w * sin + box.h * cos;
+  return { x: box.x + box.w / 2 - w / 2, y: box.y + box.h / 2 - h / 2, w, h };
+}
+
+/** The signature or mark turned to `angle` (its bounding box follows; the backend computes the same). */
+export function turnedTo(a: Annotation, angle: number): Annotation {
+  if (a.kind !== 'signature' && a.kind !== 'mark') return a;
+  return { ...a, angle, rect: rotatedBounds(a.box, angle) };
+}
+
+/** The angle at which the rotate handle (above the top edge) is dragged to `point`, about the centre of `box`. */
+export function angleToward(box: Rect, point: Point, snap: boolean): number {
+  const dx = point.x - (box.x + box.w / 2);
+  const dy = point.y - (box.y + box.h / 2);
+  if (dx === 0 && dy === 0) return 0;
+  // Straight up is 0; clockwise on the page (y down) is positive.
+  const degrees = (Math.atan2(dy, dx) * 180) / Math.PI + 90;
+  return normalizeAngle(snap ? Math.round(degrees / ROTATE_SNAP_DEG) * ROTATE_SNAP_DEG : degrees);
+}
+
+/** Where the rotate handle of a signature box turned by `angle` sits, in page space. */
+export function rotateHandleAt(box: Rect, angle: number): Point {
+  const rad = (angle * Math.PI) / 180;
+  const reach = box.h / 2 + ROTATE_OFFSET_PT;
+  return {
+    x: box.x + box.w / 2 + Math.sin(rad) * reach,
+    y: box.y + box.h / 2 - Math.cos(rad) * reach,
+  };
+}
 
 /** The handles an annotation shows when it is the only one selected; none for what cannot be resized or is locked. */
 export function handlesOf(a: Annotation): readonly HandleId[] {
@@ -28,12 +82,91 @@ export function handlesOf(a: Annotation): readonly HandleId[] {
     case 'line':
       return ['from', 'to'];
     case 'ink':
+      return CORNER_HANDLES;
+    // A turned one cannot be resized (its corners would have to follow the turn): turn it back first.
     case 'signature':
     case 'mark':
-      return CORNER_HANDLES;
+      return angleOf(a) === 0 ? [...CORNER_HANDLES, 'rotate'] : ['rotate'];
     default:
       return [];
   }
+}
+
+/** Text markup stays on the text it marks: it is never moved (ADR-105). */
+export const isTextMarkup = (a: Annotation): boolean =>
+  a.kind === 'highlight' || a.kind === 'underline' || a.kind === 'strikeout';
+
+/** Whether the annotation can be turned (a signature, initials or mark that is not locked). */
+export function canRotate(a: Annotation): boolean {
+  return !a.locked && (a.kind === 'signature' || a.kind === 'mark');
+}
+
+/** Whether a point of the page is on an annotation: inside its shape, or within `slop` points of its line (a click on a thin stroke). */
+export function hitsAnnotation(a: Annotation, p: Point, slop: number): boolean {
+  switch (a.kind) {
+    case 'ink':
+      return a.strokes.some((s) => {
+        const reach = Math.max(a.width / 2, slop);
+        if (s.points.length === 1) return distanceToSegment(p, s.points[0] ?? p, s.points[0] ?? p) <= reach;
+        return s.points.some((q, i) => {
+          const next = s.points[i + 1];
+          return next !== undefined && distanceToSegment(p, q, next) <= reach;
+        });
+      });
+    case 'line':
+      return distanceToSegment(p, a.from, a.to) <= Math.max(a.width / 2, slop);
+    case 'rect':
+    case 'ellipse': {
+      const b = a.box;
+      const outer = { x: b.x - slop, y: b.y - slop, w: b.w + 2 * slop, h: b.h + 2 * slop };
+      if (!inside(outer, p)) return false;
+      // An unfilled shape is its outline only: the inside stays free for text or a signature.
+      if (a.fill !== null) return a.kind === 'rect' || insideEllipse(b, p, slop);
+      const inner = { x: b.x + slop, y: b.y + slop, w: Math.max(0, b.w - 2 * slop), h: Math.max(0, b.h - 2 * slop) };
+      if (a.kind === 'rect') return !inside(inner, p) || inner.w === 0 || inner.h === 0;
+      return insideEllipse(b, p, slop) && !insideEllipse(b, p, -slop);
+    }
+    case 'signature':
+    case 'mark': {
+      const turn = -angleOf(a);
+      const rad = (turn * Math.PI) / 180;
+      const cx = a.box.x + a.box.w / 2;
+      const cy = a.box.y + a.box.h / 2;
+      const dx = p.x - cx;
+      const dy = p.y - cy;
+      const local = {
+        x: cx + dx * Math.cos(rad) - dy * Math.sin(rad),
+        y: cy + dx * Math.sin(rad) + dy * Math.cos(rad),
+      };
+      return inside({ x: a.box.x - slop, y: a.box.y - slop, w: a.box.w + 2 * slop, h: a.box.h + 2 * slop }, local);
+    }
+    case 'freeText':
+      return inside({ x: a.box.x - slop, y: a.box.y - slop, w: a.box.w + 2 * slop, h: a.box.h + 2 * slop }, p);
+    case 'note':
+      return inside({ x: a.rect.x - slop, y: a.rect.y - slop, w: a.rect.w + 2 * slop, h: a.rect.h + 2 * slop }, p);
+    default:
+      return false;
+  }
+}
+
+const inside = (r: Rect, p: Point): boolean => p.x >= r.x && p.x <= r.x + r.w && p.y >= r.y && p.y <= r.y + r.h;
+
+/** Whether a point is inside the ellipse of `box` grown by `grow` points on every side. */
+function insideEllipse(box: Rect, p: Point, grow: number): boolean {
+  const rx = box.w / 2 + grow;
+  const ry = box.h / 2 + grow;
+  if (rx <= 0 || ry <= 0) return false;
+  const dx = (p.x - (box.x + box.w / 2)) / rx;
+  const dy = (p.y - (box.y + box.h / 2)) / ry;
+  return dx * dx + dy * dy <= 1;
+}
+
+function distanceToSegment(p: Point, a: Point, b: Point): number {
+  const dx = b.x - a.x;
+  const dy = b.y - a.y;
+  const length2 = dx * dx + dy * dy;
+  const t = length2 === 0 ? 0 : Math.min(1, Math.max(0, ((p.x - a.x) * dx + (p.y - a.y) * dy) / length2));
+  return Math.hypot(p.x - (a.x + t * dx), p.y - (a.y + t * dy));
 }
 
 /** Whether the annotation can be moved: not locked, and not one the app never changes. */
@@ -44,6 +177,8 @@ export function canMove(a: Annotation): boolean {
 /** Where a handle sits on a frame. */
 export function handlePoint(frame: Rect, a: Annotation, handle: HandleId): Point {
   if (a.kind === 'line') return handle === 'from' ? a.from : a.to;
+  // The rotate handle sits above the top edge of the unturned frame (the frame itself is turned by CSS).
+  if (handle === 'rotate') return { x: frame.x + frame.w / 2, y: frame.y - ROTATE_OFFSET_PT };
   const left = frame.x;
   const right = frame.x + frame.w;
   const top = frame.y;
@@ -58,6 +193,8 @@ export function handlePoint(frame: Rect, a: Annotation, handle: HandleId): Point
 /** The cursor of a handle (CSS names). */
 export function handleCursor(handle: HandleId): string {
   switch (handle) {
+    case 'rotate':
+      return 'grab';
     case 'n':
     case 's':
       return 'ns-resize';
@@ -206,7 +343,7 @@ export function resized(
   keepAspect: boolean,
   page: PageSize | null,
 ): Annotation | null {
-  if (!handlesOf(a).includes(handle)) return null;
+  if (handle === 'rotate' || !handlesOf(a).includes(handle)) return null;
   switch (a.kind) {
     case 'line': {
       const moved = (p: Point): Point => ({

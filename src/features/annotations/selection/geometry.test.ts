@@ -2,15 +2,24 @@ import { describe, expect, it } from 'vitest';
 
 import type { Annotation } from '../../../api/annotations';
 import {
+  angleOf,
+  angleToward,
   arrowStep,
   canMove,
+  canRotate,
   clampMove,
   handlesOf,
+  hitsAnnotation,
+  isTextMarkup,
+  normalizeAngle,
   patchOf,
   readingOrder,
   resizeRect,
   resized,
+  rotateHandleAt,
+  rotatedBounds,
   translated,
+  turnedTo,
   unionOf,
 } from './geometry';
 
@@ -169,8 +178,8 @@ describe('resized', () => {
       role: 'signature',
       art: { type: 'asset', assetId: 1, aspect: 3 },
     } as Annotation;
-    expect(handlesOf(signature)).toEqual(['nw', 'ne', 'se', 'sw']);
-    expect(handlesOf({ ...signature, kind: 'mark', glyph: 'check' } as unknown as Annotation)).toHaveLength(4);
+    expect(handlesOf(signature)).toEqual(['nw', 'ne', 'se', 'sw', 'rotate']);
+    expect(handlesOf({ ...signature, kind: 'mark', glyph: 'check' } as unknown as Annotation)).toHaveLength(5);
     const r = resized(signature, 'se', 30, 1, false, PAGE) as Extract<Annotation, { kind: 'signature' }>;
     expect(r.box.w / r.box.h).toBeCloseTo(3);
     expect(patchOf(r)).toEqual({ box: r.box });
@@ -196,5 +205,131 @@ describe('keys and order', () => {
     const b = { id: 2, rect: { x: 0, y: 0, w: 1, h: 1 } };
     const c = { id: 3, rect: { x: 0, y: 10, w: 1, h: 1 } };
     expect(readingOrder([c, a, b]).map((x) => x.id)).toEqual([2, 1, 3]);
+  });
+});
+
+describe('turning a signature or a mark (ADR-105)', () => {
+  const signature = (angle?: number, locked = false) =>
+    ({
+      ...base,
+      locked,
+      kind: 'signature',
+      rect: { x: 100, y: 100, w: 80, h: 20 },
+      box: { x: 100, y: 100, w: 80, h: 20 },
+      role: 'signature',
+      art: { type: 'asset', assetId: 1, aspect: 4 },
+      ...(angle === undefined ? {} : { angle }),
+    }) as Annotation;
+
+  it('normalises an angle into (-180, 180] and a quarter turn swaps the bounds', () => {
+    expect(normalizeAngle(450)).toBe(90);
+    expect(normalizeAngle(-180)).toBe(180);
+    expect(normalizeAngle(-0.001)).toBe(0);
+    expect(normalizeAngle(Number.NaN)).toBe(0);
+    const bounds = rotatedBounds({ x: 100, y: 100, w: 80, h: 20 }, 90);
+    expect(bounds.w).toBeCloseTo(20);
+    expect(bounds.h).toBeCloseTo(80);
+    expect(bounds.x + bounds.w / 2).toBeCloseTo(140);
+    expect(bounds.y + bounds.h / 2).toBeCloseTo(110);
+  });
+
+  it('the angle follows the pointer about the centre, up is 0, clockwise is positive, Shift snaps to 15', () => {
+    const box = { x: 100, y: 100, w: 80, h: 20 };
+    expect(angleToward(box, { x: 140, y: 0 }, false)).toBe(0);
+    expect(angleToward(box, { x: 300, y: 110 }, false)).toBe(90);
+    expect(angleToward(box, { x: 140, y: 300 }, false)).toBe(180);
+    expect(angleToward(box, { x: 0, y: 110 }, false)).toBe(-90);
+    // 100 px right and 90 px up of the centre is about 48 degrees; snapped it is 45.
+    const free = angleToward(box, { x: 240, y: 20 }, false);
+    expect(free).toBeGreaterThan(47);
+    expect(free).toBeLessThan(50);
+    expect(angleToward(box, { x: 240, y: 20 }, true)).toBe(45);
+  });
+
+  it('the rotate handle sits above the turned box; a turned one has only that handle and cannot be resized', () => {
+    expect(handlesOf(signature(0))).toContain('rotate');
+    expect(handlesOf(signature(30))).toEqual(['rotate']);
+    expect(handlesOf(signature(0, true))).toEqual([]);
+    expect(resized(signature(0), 'rotate', 5, 5, false, PAGE)).toBeNull();
+    const up = rotateHandleAt({ x: 100, y: 100, w: 80, h: 20 }, 0);
+    expect(up.x).toBeCloseTo(140);
+    expect(up.y).toBeLessThan(100);
+    const right = rotateHandleAt({ x: 100, y: 100, w: 80, h: 20 }, 90);
+    expect(right.x).toBeGreaterThan(140);
+    expect(right.y).toBeCloseTo(110);
+    expect(canRotate(signature(0))).toBe(true);
+    expect(canRotate({ ...base, kind: 'rect' } as unknown as Annotation)).toBe(false);
+    expect(angleOf(signature())).toBe(0);
+  });
+
+  it('turnedTo keeps the box and gives the turned bounds', () => {
+    const t = turnedTo(signature(0), 90) as Extract<Annotation, { kind: 'signature' }>;
+    expect(t.angle).toBe(90);
+    expect(t.box).toEqual({ x: 100, y: 100, w: 80, h: 20 });
+    expect(t.rect.w).toBeCloseTo(20);
+    expect(turnedTo({ ...base, kind: 'rect' } as unknown as Annotation, 90)).toMatchObject({ kind: 'rect' });
+  });
+});
+
+describe('hitsAnnotation', () => {
+  const slop = 3;
+  it('hits a filled shape inside, an unfilled one only at its outline, text by its box and a turned signature by its turned box', () => {
+    const rect = (fill: [number, number, number] | null) =>
+      ({
+        ...base,
+        kind: 'rect',
+        rect: { x: 10, y: 10, w: 100, h: 60 },
+        box: { x: 10, y: 10, w: 100, h: 60 },
+        width: 1,
+        fill,
+        dashed: false,
+      }) as Annotation;
+    expect(hitsAnnotation(rect([1, 2, 3]), { x: 60, y: 40 }, slop)).toBe(true);
+    expect(hitsAnnotation(rect(null), { x: 60, y: 40 }, slop)).toBe(false);
+    expect(hitsAnnotation(rect(null), { x: 11, y: 40 }, slop)).toBe(true);
+    expect(hitsAnnotation(rect(null), { x: 200, y: 40 }, slop)).toBe(false);
+    const text = { ...base, kind: 'freeText', rect: { x: 0, y: 0, w: 50, h: 20 }, box: { x: 0, y: 0, w: 50, h: 20 } };
+    expect(hitsAnnotation(text as unknown as Annotation, { x: 25, y: 10 }, slop)).toBe(true);
+    expect(hitsAnnotation(text as unknown as Annotation, { x: 25, y: 40 }, slop)).toBe(false);
+    const turned = {
+      ...base,
+      kind: 'signature',
+      angle: 90,
+      rect: { x: 130, y: 70, w: 20, h: 80 },
+      box: { x: 100, y: 100, w: 80, h: 20 },
+    } as unknown as Annotation;
+    expect(hitsAnnotation(turned, { x: 140, y: 80 }, slop)).toBe(true);
+    expect(hitsAnnotation(turned, { x: 105, y: 110 }, slop)).toBe(false);
+  });
+
+  it('hits a thin stroke and a line within the slop, and never text markup', () => {
+    const ink = {
+      ...base,
+      kind: 'ink',
+      width: 1,
+      rect: { x: 0, y: 0, w: 100, h: 10 },
+      strokes: [
+        {
+          points: [
+            { x: 0, y: 5 },
+            { x: 100, y: 5 },
+          ],
+          outline: [],
+        },
+      ],
+    } as unknown as Annotation;
+    expect(hitsAnnotation(ink, { x: 50, y: 7 }, 3)).toBe(true);
+    expect(hitsAnnotation(ink, { x: 50, y: 20 }, 3)).toBe(false);
+    const line = {
+      ...base,
+      kind: 'line',
+      width: 1,
+      from: { x: 0, y: 0 },
+      to: { x: 100, y: 0 },
+    } as unknown as Annotation;
+    expect(hitsAnnotation(line, { x: 50, y: 2 }, 3)).toBe(true);
+    const mark = { ...base, kind: 'highlight', quads: [], rect: { x: 0, y: 0, w: 99, h: 99 } } as unknown as Annotation;
+    expect(hitsAnnotation(mark, { x: 5, y: 5 }, 3)).toBe(false);
+    expect(isTextMarkup(mark)).toBe(true);
   });
 });

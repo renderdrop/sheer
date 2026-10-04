@@ -6,7 +6,7 @@ import type { Point } from '../../../api/wire';
 import { useUi } from '../../../stores/ui';
 import { clampToPage } from '../../annotations/create/geometry';
 import { overlayBox, swapsSides, viewToPage, normalizeRotation } from '../../viewer/transform';
-import { centredBox, dateText, itemSize } from './drafts';
+import { centredBox, dateText, itemSize, uprightAngle } from './drafts';
 import { placeItem } from './place';
 import { MarkGlyphShape } from './SignatureShape';
 import { usePlacement, type PlaceItem } from './store';
@@ -19,7 +19,13 @@ export interface PlacementLayerProps {
   pageBox: { width: number; height: number };
   /** Scale (px per point) and the rotation that is applied to page space in total. */
   transform: { pxPerPt: number; rotation: number };
+  /** A press on a movable annotation moves it instead of placing the item: true if it took the press (ADR-105). */
+  grab?: (event: ReactPointerEvent, at: Point) => boolean;
 }
+
+/** The SVG `transform` that turns a box `angle` degrees about its centre; none for no turn. */
+const turnOf = (box: { x: number; y: number; w: number; h: number }, angle: number): string | undefined =>
+  angle === 0 ? undefined : `rotate(${angle} ${box.x + box.w / 2} ${box.y + box.h / 2})`;
 
 /** The ghost is shown at this opacity (DESIGN 3.34). */
 const GHOST_OPACITY = 0.5;
@@ -41,7 +47,7 @@ export function PlacementLayer(props: PlacementLayerProps) {
   return <ActiveLayer item={item} {...props} />;
 }
 
-function ActiveLayer({ item, docId, pageIndex, pageBox, transform }: PlacementLayerProps & { item: PlaceItem }) {
+function ActiveLayer({ item, docId, pageIndex, pageBox, transform, grab }: PlacementLayerProps & { item: PlaceItem }) {
   const t = useT();
   const surface = useRef<HTMLDivElement>(null);
   const [ghost, setGhost] = useState<Point | null>(null);
@@ -49,6 +55,9 @@ function ActiveLayer({ item, docId, pageIndex, pageBox, transform }: PlacementLa
   const page = useMemo(() => [pageBox.width, pageBox.height] as const, [pageBox.width, pageBox.height]);
   const viewW = swapsSides(rotation) ? page[1] : page[0];
   const viewH = swapsSides(rotation) ? page[0] : page[1];
+
+  // The item stands upright on the screen: it is turned against the page's rotation on screen (ADR-105).
+  const turn = item.type === 'signature' || item.type === 'mark' ? uprightAngle(rotation) : 0;
 
   const toPage = (event: { clientX: number; clientY: number }): Point | null => {
     const element = surface.current;
@@ -79,7 +88,7 @@ function ActiveLayer({ item, docId, pageIndex, pageBox, transform }: PlacementLa
 
   const placeAt = (at: Point) => {
     setGhost(null);
-    void placeItem(docId, pageIndex, item, at, page).then((created) => {
+    void placeItem(docId, pageIndex, item, at, page, new Date(), turn).then((created) => {
       if (created !== null) announce(t('sign.placed', { kind: t(`annot.type.${created.kind}`), n: pageIndex + 1 }));
     });
   };
@@ -88,6 +97,7 @@ function ActiveLayer({ item, docId, pageIndex, pageBox, transform }: PlacementLa
     if (event.button !== 0) return;
     const at = toPage(event);
     if (at === null) return;
+    if (grab?.(event, at) === true) return;
     event.preventDefault();
     placeAt(at);
   };
@@ -122,7 +132,7 @@ function ActiveLayer({ item, docId, pageIndex, pageBox, transform }: PlacementLa
 
   const box = overlayBox(viewW * transform.pxPerPt, viewH * transform.pxPerPt, page, transform.pxPerPt, rotation);
   const ghostBox =
-    ghost === null ? null : centredBox(ghost, itemSize(item, page, item.type === 'date' ? dateText() : ''), page);
+    ghost === null ? null : centredBox(ghost, itemSize(item, page, item.type === 'date' ? dateText() : ''), page, turn);
   return (
     <div
       ref={surface}
@@ -143,9 +153,12 @@ function ActiveLayer({ item, docId, pageIndex, pageBox, transform }: PlacementLa
         style={{ left: box.left, top: box.top, transform: box.transform, transformOrigin: 'center' }}
       >
         {ghostBox === null ? null : item.type === 'mark' ? (
-          <MarkGlyphShape glyph={item.glyph} box={ghostBox} color="var(--color-doc-select)" opacity={GHOST_OPACITY} />
+          <g transform={turnOf(ghostBox, turn)}>
+            <MarkGlyphShape glyph={item.glyph} box={ghostBox} color="var(--color-doc-select)" opacity={GHOST_OPACITY} />
+          </g>
         ) : (
           <rect
+            transform={turnOf(ghostBox, turn)}
             data-placement-ghost=""
             x={ghostBox.x}
             y={ghostBox.y}

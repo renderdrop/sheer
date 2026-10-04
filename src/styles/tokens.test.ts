@@ -784,3 +784,10 @@ describe('the rest of src/ uses tokens only', () => {
     }
   });
 });
+
+describe('rotate handle offset (ADR-105)', () => {
+  it('matches ROTATE_OFFSET_PT of the selection geometry', async () => {
+    const { ROTATE_OFFSET_PT } = await import('../features/annotations/selection/geometry');
+    expect(main).toContain(`--annot-rotate-offset: ${ROTATE_OFFSET_PT}px;`);
+  });
+});

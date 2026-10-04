@@ -90,6 +90,7 @@
   --color-doc-redact: var(--color-danger);
   --color-doc-redact-fill: rgba(200, 50, 31, 0.12);
   --handle-size: 8px;
+  --annot-rotate-offset: 18px; /* page points (the layer is scaled): ROTATE_OFFSET_PT in annotations/selection/geometry.ts */
 
   /* Shadows (DESIGN 1.2): two only. The numbered names are aliases of the old scale. */
   --shadow-standard: 0 2px 12px rgba(0, 0, 0, 0.04);
@@ -894,6 +895,19 @@
 [data-annot-handle]:hover::after,
 [data-annot-handle]:active::after {
   background: var(--color-doc-select);
+}
+
+/* The rotate handle of a signature or mark (ADR-105): the same knob above the top edge, joined to the frame by a hairline stem. */
+[data-annot-handle="rotate"]::before {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: calc(var(--hairline) / var(--page-scale, 1));
+  height: var(--annot-rotate-offset);
+  background: var(--color-doc-select);
+  transform: translateX(-50%);
+  pointer-events: none;
 }
 
 /* While the item has keyboard focus the knobs take the focus colour, so the focused frame reads as one unit. */

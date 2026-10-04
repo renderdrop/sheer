@@ -6,7 +6,7 @@ import type { Annotation, DocCommand } from '../../../api/annotations';
 import { useAnnotations } from '../../../stores/annotations';
 import { useUi } from '../../../stores/ui';
 import { forgetAssets } from './assets';
-import { centredBox, dateText, itemSize, markDraft, signatureDraft, textDraft } from './drafts';
+import { centredBox, dateText, itemSize, markDraft, signatureDraft, textDraft, uprightAngle } from './drafts';
 import { markGeometry } from './marks';
 import { placeItem } from './place';
 import { PlacementLayer } from './PlacementLayer';
@@ -43,6 +43,14 @@ describe('sizes and drafts', () => {
   it('centres on the pointer and stays inside the page', () => {
     expect(centredBox({ x: 100, y: 100 }, { w: 40, h: 20 }, PAGE)).toEqual({ x: 80, y: 90, w: 40, h: 20 });
     expect(centredBox({ x: 0, y: 800 }, { w: 40, h: 20 }, PAGE)).toEqual({ x: 0, y: 780, w: 40, h: 20 });
+  });
+
+  it('turns an item against the page rotation on screen so that it stands upright (ADR-105)', () => {
+    expect([0, 90, 180, 270, 360].map(uprightAngle)).toEqual([0, -90, 180, 90, 0]);
+    // A 108 x 36 box turned a quarter is 36 x 108: kept inside the page by its turned bounds, the box itself stays 108 x 36.
+    expect(centredBox({ x: 0, y: 400 }, { w: 108, h: 36 }, PAGE, -90)).toEqual({ x: -36, y: 382, w: 108, h: 36 });
+    expect(markDraft(0, { x: 1, y: 2, w: 3, h: 4 }, 'check', -90)).toMatchObject({ angle: -90 });
+    expect(markDraft(0, { x: 1, y: 2, w: 3, h: 4 }, 'check')).not.toHaveProperty('angle');
   });
 
   it('formats the date with the system locale as fixed text', () => {
@@ -97,6 +105,17 @@ describe('placeItem', () => {
       type: 'createAnnotation',
       draft: { kind: 'signature', pageId: 0, box: { x: 246, y: 382, w: 108, h: 36 }, art: { assetId: 7 } },
     });
+  });
+
+  it('places a signature and a mark turned, a date not', async () => {
+    await placeItem(1, 0, SIGNATURE, { x: 300, y: 400 }, PAGE, new Date(), -90);
+    await placeItem(1, 0, { type: 'mark', glyph: 'check' }, { x: 300, y: 400 }, PAGE, new Date(), 90);
+    await placeItem(1, 0, { type: 'date' }, { x: 300, y: 400 }, PAGE, new Date(), 90);
+    expect(apply.mock.calls[0]?.[1]).toMatchObject({
+      draft: { kind: 'signature', angle: -90, box: { x: 246, y: 382, w: 108, h: 36 } },
+    });
+    expect(apply.mock.calls[1]?.[1]).toMatchObject({ draft: { kind: 'mark', angle: 90 } });
+    expect(apply.mock.calls[2]?.[1]).not.toMatchObject({ draft: { angle: 90 } });
   });
 
   it('places a date as fixed text and a mark as a mark', async () => {
@@ -177,6 +196,34 @@ describe('PlacementLayer', () => {
     });
     expect(useUi.getState().activeTool).toBe('signature');
     expect(usePlacement.getState().item).not.toBeNull();
+  });
+
+  it('places upright on a page shown turned: the angle is against the rotation on screen', async () => {
+    usePlacement.getState().arm({ type: 'mark', glyph: 'check' });
+    const view = render(<PlacementLayer {...props} transform={{ pxPerPt: 1, rotation: 90 }} />);
+    const surface = view.container.querySelector<HTMLElement>('[data-placement-layer]');
+    if (surface === null) throw new Error('no layer');
+    surface.getBoundingClientRect = () =>
+      ({ left: 0, top: 0, width: 800, height: 600, right: 800, bottom: 600, x: 0, y: 0, toJSON: () => '' }) as DOMRect;
+    await act(async () => {
+      fireEvent.pointerDown(surface, { button: 0, clientX: 100, clientY: 100, pointerId: 1 });
+    });
+    expect(apply.mock.calls[0]?.[1]).toMatchObject({ draft: { kind: 'mark', angle: -90 } });
+  });
+
+  it('moves an existing annotation instead of placing when the layer hands the press on', async () => {
+    usePlacement.getState().arm({ type: 'mark', glyph: 'check' });
+    const grab = vi.fn(() => true);
+    const view = render(<PlacementLayer {...props} grab={grab} />);
+    const surface = view.container.querySelector<HTMLElement>('[data-placement-layer]');
+    if (surface === null) throw new Error('no layer');
+    surface.getBoundingClientRect = () =>
+      ({ left: 0, top: 0, width: 600, height: 800, right: 600, bottom: 800, x: 0, y: 0, toJSON: () => '' }) as DOMRect;
+    await act(async () => {
+      fireEvent.pointerDown(surface, { button: 0, clientX: 100, clientY: 100, pointerId: 1 });
+    });
+    expect(grab).toHaveBeenCalledTimes(1);
+    expect(apply).not.toHaveBeenCalled();
   });
 
   it('keeps the item armed when the tool is locked, and Esc disarms', async () => {

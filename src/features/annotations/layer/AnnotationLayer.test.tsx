@@ -77,6 +77,7 @@ function seed(list: Annotation[]) {
   });
 }
 
+const nextFrame = () => act(() => new Promise<void>((done) => requestAnimationFrame(() => done())));
 const frame = (id: number) => document.querySelector<HTMLElement>(`[data-annot-frame="${id}"]`) as HTMLElement;
 const selected = () => useAnnotations.getState().selectedIds[1] ?? [];
 
@@ -278,10 +279,15 @@ describe('moving', () => {
     const hit = container.querySelector('[data-annot-hit="1"]') as Element;
     fireEvent.pointerDown(hit, { button: 0, clientX: 0, clientY: 0 });
     fireEvent.pointerMove(window, { clientX: 20, clientY: 10 });
-    // The preview follows the pointer.
-    expect(frame(1).style.left).toBe('20px');
+    // The preview is a CSS offset on the frame, drawn on the next animation frame; no command and no render per pointer event.
+    await nextFrame();
+    expect(frame(1).style.translate).toBe('10px 5px');
+    expect(frame(1).style.left).toBe('10px');
+    expect(mocked.applyCommand).not.toHaveBeenCalled();
     fireEvent.pointerUp(window);
     await act(async () => undefined);
+    // Released: the offset is gone (the store is a mock here, so the frame is back at its own place).
+    expect(frame(1).style.translate).toBe('');
     expect(mocked.applyCommand).toHaveBeenCalledTimes(1);
     expect(mocked.applyCommand).toHaveBeenCalledWith(1, {
       type: 'moveAnnotations',
@@ -472,5 +478,106 @@ describe('keyboard', () => {
     fireEvent.keyDown(frame(1), { key: 'Delete' });
     await act(async () => undefined);
     expect(useUi.getState().banner?.code).toBe('read_only');
+  });
+});
+
+describe('moving in every tool and turning (ADR-105)', () => {
+  /** The creation or placement surface of the page, 100 x 200 pt shown at 2 px per pt. */
+  function withSurface(selector: string) {
+    const view = render(<AnnotationLayer {...props()} />);
+    const surface = view.container.querySelector<HTMLElement>(selector);
+    if (surface === null) throw new Error(`no ${selector}`);
+    surface.getBoundingClientRect = () =>
+      ({ left: 0, top: 0, width: 200, height: 400, right: 200, bottom: 400, x: 0, y: 0, toJSON: () => '' }) as DOMRect;
+    return { ...view, surface };
+  }
+  const filled = (id: number, x: number, y: number, extra: Partial<Annotation> = {}) =>
+    box(id, x, y, 'new', { fill: [10, 20, 30], ...extra } as Partial<Annotation>);
+
+  beforeEach(() => {
+    seed([filled(1, 10, 10), filled(2, 60, 100)]);
+  });
+
+  it('a press on a movable annotation with the Note tool moves it: one command on release, nothing created', async () => {
+    useUi.setState({ activeTool: 'note', toolLocked: false });
+    const { surface } = withSurface('[data-creation-layer]');
+    // (30, 30) px is (15, 15) pt: inside the rectangle at (10, 10).
+    fireEvent.pointerDown(surface, { button: 0, clientX: 30, clientY: 30, pointerId: 1 });
+    for (const x of [34, 40, 50, 60]) fireEvent.pointerMove(window, { clientX: x, clientY: 30 });
+    await nextFrame();
+    expect(frame(1).style.translate).toBe('15px 0px');
+    expect(mocked.applyCommand).not.toHaveBeenCalled();
+    fireEvent.pointerUp(window);
+    await act(async () => undefined);
+    // One command for the whole drag: a move, and no createAnnotation.
+    expect(mocked.applyCommand).toHaveBeenCalledTimes(1);
+    expect(mocked.applyCommand).toHaveBeenCalledWith(1, { type: 'moveAnnotations', ids: [1], dx: 15, dy: 0 });
+    expect(selected()).toEqual([1]);
+    expect(useUi.getState().activeTool).toBe('note');
+  });
+
+  it('a click without movement only selects it, and a press elsewhere still creates', async () => {
+    useUi.setState({ activeTool: 'note', toolLocked: false });
+    const { surface } = withSurface('[data-creation-layer]');
+    fireEvent.pointerDown(surface, { button: 0, clientX: 30, clientY: 30, pointerId: 1 });
+    fireEvent.pointerUp(window);
+    await act(async () => undefined);
+    expect(mocked.applyCommand).not.toHaveBeenCalled();
+    expect(selected()).toEqual([1]);
+    fireEvent.pointerDown(surface, { button: 0, clientX: 150, clientY: 300, pointerId: 1 });
+    fireEvent.pointerUp(surface, { button: 0, clientX: 150, clientY: 300, pointerId: 1 });
+    expect(mocked.applyCommand).toHaveBeenCalledWith(1, expect.objectContaining({ type: 'createAnnotation' }));
+  });
+
+  it('an outline-only shape leaves its inside to the tool, and text markup is never moved', async () => {
+    seed([box(1, 10, 10), { ...filled(2, 60, 100), kind: 'highlight', quads: [] } as unknown as Annotation]);
+    useUi.setState({ activeTool: 'note', toolLocked: false });
+    const { surface } = withSurface('[data-creation-layer]');
+    fireEvent.pointerDown(surface, { button: 0, clientX: 60, clientY: 40, pointerId: 1 });
+    fireEvent.pointerUp(surface, { button: 0, clientX: 60, clientY: 40, pointerId: 1 });
+    fireEvent.pointerDown(surface, { button: 0, clientX: 130, clientY: 210, pointerId: 1 });
+    fireEvent.pointerUp(surface, { button: 0, clientX: 130, clientY: 210, pointerId: 1 });
+    expect(mocked.applyCommand).toHaveBeenCalledTimes(2);
+    expect(mocked.applyCommand).toHaveBeenCalledWith(1, expect.objectContaining({ type: 'createAnnotation' }));
+  });
+
+  it('a drag in the Select tool is also one rAF-coalesced preview and one command', async () => {
+    const { container } = render(<AnnotationLayer {...props()} />);
+    const hit = container.querySelector('[data-annot-hit="1"]') as Element;
+    fireEvent.pointerDown(hit, { button: 0, clientX: 0, clientY: 0 });
+    for (let x = 6; x <= 60; x += 6) fireEvent.pointerMove(window, { clientX: x, clientY: 0 });
+    fireEvent.pointerUp(window);
+    await act(async () => undefined);
+    expect(mocked.applyCommand).toHaveBeenCalledTimes(1);
+  });
+
+  it('the rotate handle turns a signature to the pointer, Shift snaps to 15 degrees, one updateAnnotation on release', async () => {
+    const signature = {
+      ...common,
+      id: 5,
+      kind: 'signature',
+      sync: 'new',
+      role: 'signature',
+      art: { type: 'file' },
+      angle: 0,
+      rect: { x: 10, y: 100, w: 80, h: 20 },
+      box: { x: 10, y: 100, w: 80, h: 20 },
+    } as unknown as Annotation;
+    seed([signature]);
+    const { container } = render(<AnnotationLayer {...props()} />);
+    act(() => useAnnotations.getState().select(1, [5]));
+    const handle = container.querySelector('[data-annot-handle="rotate"]') as Element;
+    expect(handle).not.toBeNull();
+    // The handle is at (50, 82) pt, 18 pt above the box; the centre is (50, 110). 56 pt right of it and 28 up: atan2 = 63.4 degrees.
+    fireEvent.pointerDown(handle, { button: 0, clientX: 0, clientY: 0 });
+    fireEvent.pointerMove(window, { clientX: 112, clientY: 0, shiftKey: true });
+    fireEvent.pointerUp(window);
+    await act(async () => undefined);
+    expect(mocked.applyCommand).toHaveBeenCalledTimes(1);
+    const sent = mocked.applyCommand.mock.calls[0]?.[1] as { type: string; id: number; patch: { angle: number } };
+    expect(sent.type).toBe('updateAnnotation');
+    expect(sent.id).toBe(5);
+    expect(sent.patch.angle % 15).toBe(0);
+    expect(sent.patch.angle).toBeGreaterThan(0);
   });
 });

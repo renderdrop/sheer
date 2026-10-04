@@ -18,7 +18,27 @@ import { useT } from '../../../i18n';
 import { useAnnotations } from '../../../stores/annotations';
 import { useUi } from '../../../stores/ui';
 import { viewToPage, type Rotation } from '../../viewer/transform';
-import { arrowStep, canMove, clampMove, handlesOf, patchOf, resized, translated, type HandleId } from './geometry';
+import type { Point } from '../../../api/wire';
+import {
+  ROTATE_SNAP_DEG,
+  angleOf,
+  angleToward,
+  arrowStep,
+  canMove,
+  canRotate,
+  clampMove,
+  handlesOf,
+  hitsAnnotation,
+  isTextMarkup,
+  normalizeAngle,
+  patchOf,
+  readingOrder,
+  resized,
+  rotateHandleAt,
+  translated,
+  turnedTo,
+  type HandleId,
+} from './geometry';
 
 /** A pointer must travel this far (screen px) before a press on an annotation becomes a drag (DESIGN 3.23). */
 export const DRAG_THRESHOLD_PX = 4;
@@ -30,7 +50,9 @@ export const BIG_STEP_PT = 10;
 /** What is being done to the annotations, as a preview: a move of some, or one resize. */
 export type Draft =
   | { kind: 'move'; ids: readonly number[]; dx: number; dy: number }
-  | { kind: 'resize'; id: number; handle: HandleId; dx: number; dy: number; keepAspect: boolean };
+  | { kind: 'resize'; id: number; handle: HandleId; dx: number; dy: number; keepAspect: boolean }
+  /** A signature or mark turned to an absolute angle in degrees (ADR-105). */
+  | { kind: 'rotate'; id: number; angle: number };
 
 export interface InteractionParams {
   docId: number;
@@ -50,6 +72,12 @@ export interface Handlers {
   onItemKeyDown: (a: Annotation, event: KeyboardEvent) => void;
   onItemFocus: (a: Annotation) => void;
   onItemBlur: () => void;
+  /**
+   * A press that a creation or placement layer received at `at` (page space): if it is on a movable annotation, that annotation is
+   * selected and dragged instead of a new one being made, and this returns true (ADR-105). `slop` is the reach of a click on a thin
+   * line, in points.
+   */
+  onGrab: (event: PointerEvent, at: Point, slop: number) => boolean;
 }
 
 export interface Interaction {
@@ -78,6 +106,22 @@ export function useInteraction(params: InteractionParams): Interaction {
   const nudging = useRef<Draft | null>(null);
   const cancelDrag = useRef<(() => void) | null>(null);
   const mounted = useRef(true);
+  /** The elements that a move in progress offsets by CSS, and whether one is in progress (the layout effect below resets them). */
+  const moved = useRef<HTMLElement[]>([]);
+  const dragging = useRef(false);
+  const frame = useRef<number | null>(null);
+  const resetMoved = () => {
+    for (const element of moved.current) {
+      element.style.removeProperty('transform');
+      element.style.removeProperty('translate');
+    }
+    moved.current = [];
+  };
+  // The preview of a move is a CSS offset on the elements themselves: no render per pointer event. When the drag is over, the draft
+  // is the final one, the elements are drawn there, and the offset goes in the same frame.
+  useLayoutEffect(() => {
+    if (!dragging.current) resetMoved();
+  }, [draft]);
 
   const report = (caught: unknown) => useUi.getState().showBanner(toAppError(caught));
 
@@ -100,6 +144,11 @@ export function useInteraction(params: InteractionParams): Interaction {
     if (d.kind === 'move') {
       if (d.dx !== 0 || d.dy !== 0)
         run = store.apply(docId, { type: 'moveAnnotations', ids: d.ids, dx: d.dx, dy: d.dy });
+    } else if (d.kind === 'rotate') {
+      const original = list.find((a) => a.id === d.id);
+      if (original && angleOf(original) !== d.angle) {
+        run = store.apply(docId, { type: 'updateAnnotation', id: d.id, patch: { angle: d.angle } });
+      }
     } else {
       const original = list.find((a) => a.id === d.id);
       const next = original && resized(original, d.handle, d.dx, d.dy, d.keepAspect, latest.current.page);
@@ -144,6 +193,7 @@ export function useInteraction(params: InteractionParams): Interaction {
     return () => {
       mounted.current = false;
       cancelDrag.current?.();
+      if (frame.current !== null) cancelAnimationFrame(frame.current);
       // Unmounted with a nudge waiting (the page scrolled away): it is still the user's edit.
       const pending = nudging.current;
       clearTimeout(nudgeTimer.current);
@@ -172,13 +222,28 @@ export function useInteraction(params: InteractionParams): Interaction {
     event: PointerEvent,
     make: (dxPx: number, dyPx: number, shift: boolean) => Draft,
     click: () => void,
+    /** Draws a move without a render: it offsets the moved elements (`applyMove`). */
+    live?: (d: Draft) => void,
   ) => {
     cancelDrag.current?.();
     const startX = event.clientX;
     const startY = event.clientY;
     let active = false;
     let last: Draft | null = null;
+    /** The newest draft waits for the next animation frame: the pointer may report faster than the screen draws. */
+    const show = (d: Draft) => {
+      last = d;
+      if (frame.current !== null) return;
+      frame.current = requestAnimationFrame(() => {
+        frame.current = null;
+        if (last === null) return;
+        if (live) live(last);
+        else setDraft(last);
+      });
+    };
     const stop = () => {
+      if (frame.current !== null) cancelAnimationFrame(frame.current);
+      frame.current = null;
       window.removeEventListener('pointermove', onMove);
       window.removeEventListener('pointerup', onUp);
       window.removeEventListener('pointercancel', onCancel);
@@ -189,17 +254,29 @@ export function useInteraction(params: InteractionParams): Interaction {
       const dx = e.clientX - startX;
       const dy = e.clientY - startY;
       if (!active && Math.hypot(dx, dy) < DRAG_THRESHOLD_PX) return;
+      const first = !active;
       active = true;
-      last = make(dx, dy, e.shiftKey);
-      setDraft(last);
+      const next = make(dx, dy, e.shiftKey);
+      if (first && live && next.kind === 'move') {
+        // The drawing of the moved annotations switches to their previews once; every move after that is a CSS offset.
+        dragging.current = true;
+        setDraft({ ...next, dx: 0, dy: 0 });
+      }
+      show(next);
     };
     const onUp = () => {
       stop();
-      if (active && last !== null) void commit(last);
-      else click();
+      if (active && last !== null) {
+        dragging.current = false;
+        const done = last;
+        setDraft(done);
+        void commit(done);
+      } else click();
     };
     const onCancel = () => {
       stop();
+      dragging.current = false;
+      resetMoved();
       setDraft(null);
     };
     const onKey = (e: globalThis.KeyboardEvent) => {
@@ -214,6 +291,8 @@ export function useInteraction(params: InteractionParams): Interaction {
     window.addEventListener('keydown', onKey, true);
     cancelDrag.current = () => {
       stop();
+      dragging.current = false;
+      resetMoved();
       setDraft(null);
     };
   };
@@ -237,6 +316,7 @@ export function useInteraction(params: InteractionParams): Interaction {
     const ids = movable();
     if (!ids.includes(a.id)) return;
     event.preventDefault();
+    const root = (event.currentTarget as Element | null)?.closest('[data-annot-layer]') ?? null;
     startDrag(
       event,
       (dxPx, dyPx, shift) => {
@@ -249,7 +329,32 @@ export function useInteraction(params: InteractionParams): Interaction {
         // A click on one of several selected annotations narrows the selection to it.
         if (!toggle && selected().length > 1) select([a.id]);
       },
+      (d) => applyMove(root, d),
     );
+  };
+
+  /** Offsets the drawn shape and the frame of each annotation of a move draft by CSS; nothing is rendered. */
+  const applyMove = (root: Element | null, d: Draft) => {
+    if (root === null || d.kind !== 'move') return;
+    for (const id of d.ids) {
+      const selector = `[data-annot-item="${id}"], [data-annot-frame="${id}"]`;
+      for (const element of root.querySelectorAll<HTMLElement>(selector)) {
+        // Page space is the layer's own unit (it is scaled as a whole), so the offset is in points.
+        if (element.hasAttribute('data-annot-item')) element.style.transform = `translate(${d.dx}px, ${d.dy}px)`;
+        else element.style.translate = `${d.dx}px ${d.dy}px`;
+        if (!moved.current.includes(element)) moved.current.push(element);
+      }
+    }
+  };
+
+  const onGrab = (event: PointerEvent, at: Point, slop: number): boolean => {
+    if (event.button !== 0) return false;
+    const hit = readingOrder(latest.current.list)
+      .reverse()
+      .find((a) => a.state === undefined && canMove(a) && !isTextMarkup(a) && hitsAnnotation(a, at, slop));
+    if (hit === undefined) return false;
+    onItemPointerDown(hit, event);
+    return true;
   };
 
   const onHandlePointerDown = (a: Annotation, handle: HandleId, event: PointerEvent) => {
@@ -257,6 +362,25 @@ export function useInteraction(params: InteractionParams): Interaction {
     event.preventDefault();
     event.stopPropagation();
     flushNudge();
+    if (handle === 'rotate') {
+      if (!canRotate(a) || (a.kind !== 'signature' && a.kind !== 'mark')) return;
+      // The turn follows where the pointer is about the centre of the box: the handle's own position plus the pointer's travel.
+      const { box } = a;
+      const from = rotateHandleAt(box, angleOf(a));
+      startDrag(
+        event,
+        (dxPx, dyPx, shift) => {
+          const delta = toPage(dxPx, dyPx);
+          return {
+            kind: 'rotate',
+            id: a.id,
+            angle: angleToward(box, { x: from.x + delta.x, y: from.y + delta.y }, shift),
+          };
+        },
+        () => undefined,
+      );
+      return;
+    }
     startDrag(
       event,
       (dxPx, dyPx, shift) => {
@@ -330,6 +454,21 @@ export function useInteraction(params: InteractionParams): Interaction {
 
   const onItemKeyDown = (a: Annotation, event: KeyboardEvent) => {
     if (event.defaultPrevented) return;
+    if (event.altKey && event.shiftKey && (event.key === 'ArrowLeft' || event.key === 'ArrowRight') && canRotate(a)) {
+      // Alt+Shift+Left and Right turn a signature or mark by 15 degrees, one undo step each.
+      event.preventDefault();
+      flushNudge();
+      const current = angleOf(latest.current.list.find((x) => x.id === a.id) ?? a);
+      const direction = event.key === 'ArrowRight' ? 1 : -1;
+      const angle = normalizeAngle(
+        Math.round(current / ROTATE_SNAP_DEG) * ROTATE_SNAP_DEG + direction * ROTATE_SNAP_DEG,
+      );
+      useAnnotations
+        .getState()
+        .apply(latest.current.docId, { type: 'updateAnnotation', id: a.id, patch: { angle } })
+        .catch(report);
+      return;
+    }
     const step = arrowStep(event.key);
     if (step !== null) {
       if (event.ctrlKey || event.metaKey) return;
@@ -370,6 +509,8 @@ export function useInteraction(params: InteractionParams): Interaction {
     for (const a of params.list) {
       if (draft.kind === 'move' && draft.ids.includes(a.id)) {
         map.set(a.id, translated(a, draft.dx, draft.dy));
+      } else if (draft.kind === 'rotate' && draft.id === a.id) {
+        map.set(a.id, turnedTo(a, draft.angle));
       } else if (draft.kind === 'resize' && draft.id === a.id) {
         const next = resized(a, draft.handle, draft.dx, draft.dy, draft.keepAspect, params.page);
         if (next !== null) map.set(a.id, next);
@@ -378,7 +519,14 @@ export function useInteraction(params: InteractionParams): Interaction {
     return map;
   }, [draft, params.list, params.page]);
 
-  const current = { onItemPointerDown, onHandlePointerDown, onItemKeyDown, onItemFocus, onItemBlur: flushNudge };
+  const current = {
+    onItemPointerDown,
+    onHandlePointerDown,
+    onItemKeyDown,
+    onItemFocus,
+    onItemBlur: flushNudge,
+    onGrab,
+  };
   const impl = useRef(current);
   useLayoutEffect(() => {
     impl.current = current;
@@ -390,6 +538,7 @@ export function useInteraction(params: InteractionParams): Interaction {
       onItemKeyDown: (a, event) => impl.current.onItemKeyDown(a, event),
       onItemFocus: (a) => impl.current.onItemFocus(a),
       onItemBlur: () => impl.current.onItemBlur(),
+      onGrab: (event, at, slop) => impl.current.onGrab(event, at, slop),
     }),
     [],
   );

@@ -3,6 +3,7 @@ import { MAX_SIGNATURE_ASPECT, MIN_SIGNATURE_ASPECT } from '../../../api/annotat
 import type { SignatureRole } from '../../../api/library';
 import type { Point, Rect } from '../../../api/wire';
 import { boxInPage } from '../../annotations/create/geometry';
+import { normalizeAngle, rotatedBounds } from '../../annotations/selection/geometry';
 import { SIGNATURE_PALETTE } from '../../inspector/palette';
 import type { PlaceItem } from './store';
 
@@ -45,8 +46,32 @@ export function itemSize(item: PlaceItem, page: readonly [number, number], dateT
   }
 }
 
-/** The box of the given size centred on `at`, moved to lie inside the page. */
-export function centredBox(at: Point, size: { w: number; h: number }, page: readonly [number, number]): Rect {
+/**
+ * The turn that makes an item stand upright on the screen when the page's page space is shown turned `rotation` degrees clockwise
+ * (the file's `/Rotate` and the view rotation together): the item is turned against it (ADR-105). In (-180, 180].
+ */
+export function uprightAngle(rotation: number): number {
+  return normalizeAngle(-rotation);
+}
+
+/**
+ * The box of the given size centred on `at`, moved to lie inside the page. A box that is turned `angle` degrees is kept inside with its
+ * turned bounds, the size before the turn is returned.
+ */
+export function centredBox(
+  at: Point,
+  size: { w: number; h: number },
+  page: readonly [number, number],
+  angle = 0,
+): Rect {
+  if (angle !== 0) {
+    const bounds = rotatedBounds({ x: 0, y: 0, ...size }, angle);
+    const keep = (centre: number, span: number, side: number) =>
+      span >= side ? side / 2 : Math.min(Math.max(centre, span / 2), side - span / 2);
+    const cx = keep(at.x, bounds.w, page[0]);
+    const cy = keep(at.y, bounds.h, page[1]);
+    return { x: cx - size.w / 2, y: cy - size.h / 2, w: size.w, h: size.h };
+  }
   return boxInPage({ x: at.x - size.w / 2, y: at.y - size.h / 2 }, size.w, size.h, page[0], page[1]);
 }
 
@@ -74,8 +99,8 @@ export function textDraft(pageId: number, box: Rect, lines: readonly string[]): 
   };
 }
 
-export function markDraft(pageId: number, box: Rect, glyph: MarkGlyph): AnnotationDraft {
-  return { kind: 'mark', pageId, box, glyph, color: BLACK, opacity: 1 };
+export function markDraft(pageId: number, box: Rect, glyph: MarkGlyph, angle = 0): AnnotationDraft {
+  return { kind: 'mark', pageId, box, glyph, color: BLACK, opacity: 1, ...(angle === 0 ? {} : { angle }) };
 }
 
 export function signatureDraft(
@@ -84,6 +109,7 @@ export function signatureDraft(
   role: SignatureRole,
   art: { assetId: number; aspect: number },
   ink: 'ink' | 'signature' = 'ink',
+  angle = 0,
 ): AnnotationDraft {
   return {
     kind: 'signature',
@@ -93,5 +119,6 @@ export function signatureDraft(
     art: { type: 'asset', assetId: art.assetId, aspect: art.aspect },
     color: ink === 'signature' ? SIGNATURE_BLUE : INK,
     opacity: 1,
+    ...(angle === 0 ? {} : { angle }),
   };
 }

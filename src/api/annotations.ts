@@ -100,9 +100,9 @@ export type AnnotationBody =
   | { kind: 'rect' | 'ellipse'; box: Rect; width: number; fill: Rgb | null; dashed: boolean }
   | { kind: 'line'; from: Point; to: Point; width: number; head: LineEnd; tail: LineEnd }
   /** A signature or initials (ADR-041 section 5). `art.type = 'file'` is what a reloaded file has: the picture is in the file and is kept. */
-  | { kind: 'signature'; box: Rect; role: SignatureRole; art: SignatureArtRef }
+  | { kind: 'signature'; box: Rect; role: SignatureRole; art: SignatureArtRef; angle?: number }
   /** A check, a cross or a dot of Fill & Sign, drawn in the annotation's colour. */
-  | { kind: 'mark'; box: Rect; glyph: MarkGlyph }
+  | { kind: 'mark'; box: Rect; glyph: MarkGlyph; angle?: number }
   /** An annotation of a kind the app does not edit: shown and selectable, never changed. */
   | { kind: 'opaque'; subtype: string };
 
@@ -138,7 +138,13 @@ export type ContentKind = ContentBody['kind'];
 export type DraftBody =
   | Exclude<AnnotationBody, { kind: 'opaque' } | { kind: 'signature' }>
   /** A new signature always brings its own art; art that is "in the file" only comes from a reload. */
-  | { kind: 'signature'; box: Rect; role: SignatureRole; art: Extract<SignatureArtRef, { type: 'asset' }> };
+  | {
+      kind: 'signature';
+      box: Rect;
+      role: SignatureRole;
+      art: Extract<SignatureArtRef, { type: 'asset' }>;
+      angle?: number;
+    };
 
 /** The fields every draft has. */
 interface DraftCommon {
@@ -192,6 +198,8 @@ export interface AnnotationPatch {
   text?: string;
   font?: StdFont;
   align?: TextAlign;
+  /** The turn of a signature or a mark in degrees, clockwise on the page (ADR-105). */
+  angle?: number;
 }
 
 /**
@@ -297,6 +305,11 @@ function parseQuads(value: unknown): Quad[] | null {
 }
 
 const isWidth = (value: unknown): value is number => isCoordinate(value) && value >= 0;
+
+/** The turn of a signature or a mark if the backend sent a finite one (ADR-105); an answer without it is not turned. */
+function parseAngle(value: unknown): { angle?: number } {
+  return typeof value === 'number' && Number.isFinite(value) ? { angle: value } : {};
+}
 
 function parseSignatureArt(value: unknown): SignatureArtRef | null {
   if (!isRecord(value)) return null;
@@ -418,13 +431,13 @@ function parseBody(value: Record<string, unknown>): AnnotationBody | null {
       const box = parseRect(value.box);
       const art = parseSignatureArt(value.art);
       return box !== null && art !== null && (value.role === 'signature' || value.role === 'initials')
-        ? { kind, box, role: value.role, art }
+        ? { kind, box, role: value.role, art, ...parseAngle(value.angle) }
         : null;
     }
     case 'mark': {
       const box = parseRect(value.box);
       return box !== null && (value.glyph === 'check' || value.glyph === 'cross' || value.glyph === 'dot')
-        ? { kind, box, glyph: value.glyph }
+        ? { kind, box, glyph: value.glyph, ...parseAngle(value.angle) }
         : null;
     }
     case 'opaque':

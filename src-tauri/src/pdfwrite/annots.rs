@@ -420,6 +420,66 @@ pub fn new_name(annotation: &Annotation) -> String {
     }
 }
 
+/// `name` with the turn of a signature or a mark in it (`signatures::marks::split_turn`), so that a reload can give the box and its
+/// angle back (ADR-105); any other annotation, and one that is not turned, gets the name without a turn.
+pub fn named_with_turn(annotation: &Annotation, name: &str) -> String {
+    let turn = match &annotation.body {
+        AnnotationBody::Signature { bounds, angle, .. }
+        | AnnotationBody::Mark { bounds, angle, .. } => marks::turn_of(*angle, bounds.w, bounds.h),
+        _ => return name.to_owned(),
+    };
+    marks::with_turn(name, turn)
+}
+
+/// The appearance of a signature whose art is in the file, turned by the annotation's angle: the file's own form stream, copied with a
+/// new `/Matrix` (ADR-105), for the caller to add. `None` when the annotation has no such appearance, or nothing about it changes (no turn now, none before).
+pub fn turned_file_appearance(
+    annotation: &Annotation,
+    prev: &lopdf::Document,
+    base: &Dictionary,
+) -> Option<Stream> {
+    let AnnotationBody::Signature {
+        art: SignatureArtRef::File,
+        angle,
+        ..
+    } = &annotation.body
+    else {
+        return None;
+    };
+    let ap = prev
+        .dereference(base.get(b"AP").ok()?)
+        .ok()?
+        .1
+        .as_dict()
+        .ok()?;
+    let normal = ap.get(b"N").ok()?;
+    let Object::Stream(stream) = prev.dereference(normal).ok()?.1 else {
+        return None;
+    };
+    let had = stream.dict.has(b"Matrix");
+    if *angle == 0.0 && !had {
+        return None;
+    }
+    let corners: Vec<f32> = stream
+        .dict
+        .get(b"BBox")
+        .ok()
+        .and_then(|bbox| prev.dereference(bbox).ok())
+        .and_then(|(_, bbox)| bbox.as_array().ok())?
+        .iter()
+        .filter_map(|v| v.as_float().ok())
+        .collect();
+    let bbox: [f32; 4] = corners.try_into().ok()?;
+    let mut copy = stream.clone();
+    match appearance::turn_matrix(bbox, *angle) {
+        Some(matrix) => copy.dict.set("Matrix", numbers(&matrix)),
+        None => {
+            copy.dict.remove(b"Matrix");
+        }
+    }
+    Some(copy)
+}
+
 /// The Form XObject of an appearance: the rectangle as `/BBox`, an identity matrix, and the resources the content names.
 pub fn appearance_stream(ap: &Appearance, opacity: f32) -> Stream {
     appearance_stream_with(ap, opacity, None)
@@ -431,6 +491,9 @@ pub fn appearance_stream_with(ap: &Appearance, opacity: f32, image: Option<Objec
     dict.set("Type", name("XObject"));
     dict.set("Subtype", name("Form"));
     dict.set("BBox", numbers(&ap.bbox));
+    if let Some(matrix) = ap.matrix {
+        dict.set("Matrix", numbers(&matrix));
+    }
     let mut resources = Dictionary::new();
     if ap.uses_state {
         let mut state = Dictionary::new();

@@ -27,12 +27,33 @@ const KAPPA: f32 = 0.552_284_8;
 pub struct Appearance {
     /// `/BBox`, in user space: `[left, bottom, right, top]`.
     pub bbox: [f32; 4],
+    /// `/Matrix`: the turn of a signature or a mark about the centre of `bbox` (ADR-105); `None` for the identity.
+    pub matrix: Option<[f32; 6]>,
     pub content: String,
     /// Whether `/GS` is in the content (opacity below 1, or the multiply blend of a highlight).
     pub uses_state: bool,
     pub multiply: bool,
     /// Whether `/Helv` is in the content.
     pub uses_font: bool,
+}
+
+/// The `/Matrix` that turns a form `angle` degrees clockwise (as seen on the page) about the centre of `bbox`
+/// (`[left, bottom, right, top]` in user space, y up). `None` for no turn.
+pub fn turn_matrix(bbox: [f32; 4], angle: f32) -> Option<[f32; 6]> {
+    if !angle.is_finite() || angle == 0.0 || bbox.iter().any(|v| !v.is_finite()) {
+        return None;
+    }
+    let (sin, cos) = angle.to_radians().sin_cos();
+    let cx = f32::midpoint(bbox[0], bbox[2]);
+    let cy = f32::midpoint(bbox[1], bbox[3]);
+    Some([
+        cos,
+        -sin,
+        sin,
+        cos,
+        cx - (cos * cx + sin * cy),
+        cy - (-sin * cx + cos * cy),
+    ])
 }
 
 /// A number the way a content stream wants it: at most three decimals, no exponent, no `-0`.
@@ -275,7 +296,12 @@ pub fn build_with(
     art: Option<&Art>,
 ) -> Option<(Appearance, bool)> {
     let mut uses_image = false;
-    let bbox = m.rect(annotation.rect);
+    // A signature or a mark is drawn in its box before the turn; the form's matrix turns it, and `/Rect` is the bounds of the result.
+    let (bbox, turn) = match &annotation.body {
+        AnnotationBody::Signature { bounds, angle, .. }
+        | AnnotationBody::Mark { bounds, angle, .. } => (m.rect(*bounds), *angle),
+        _ => (m.rect(annotation.rect), 0.0),
+    };
     let mut c = String::new();
     let mut multiply = false;
     let mut uses_font = false;
@@ -516,7 +542,7 @@ pub fn build_with(
             // The art of an annotation read from the file is in the file: nothing is written.
             None => return None,
         },
-        AnnotationBody::Mark { bounds, glyph } => {
+        AnnotationBody::Mark { bounds, glyph, .. } => {
             fill_color(&mut c, annotation.color);
             let at = |u: f32, v: f32| Point {
                 x: bounds.x + u * bounds.w,
@@ -553,6 +579,7 @@ pub fn build_with(
     }
     let ap = Appearance {
         bbox,
+        matrix: turn_matrix(bbox, turn),
         content: c,
         uses_state,
         multiply,
@@ -747,6 +774,7 @@ mod tests {
                 bounds: rect(100.0, 100.0, 200.0, 100.0),
                 role: SignatureRole::Signature,
                 art: SignatureArtRef::File,
+                angle: 0.0,
             },
             rect(100.0, 100.0, 200.0, 100.0),
         );
@@ -767,6 +795,35 @@ mod tests {
     }
 
     #[test]
+    fn a_turned_mark_keeps_its_box_as_bbox_and_turns_by_matrix_about_the_centre() {
+        use crate::model::annotation::{rotated_bounds, MarkGlyph};
+        let bounds = rect(100.0, 100.0, 80.0, 20.0);
+        let a = annotation(
+            AnnotationBody::Mark {
+                bounds,
+                glyph: MarkGlyph::Dot,
+                angle: 90.0,
+            },
+            rotated_bounds(bounds, 90.0),
+        );
+        let ap = build(&a, mapper()).unwrap();
+        // The box before the turn, in user space (y up): the top of the page is 792.
+        assert_eq!(ap.bbox, [100.0, 672.0, 180.0, 692.0]);
+        let [aa, b, c, d, e, f] = ap.matrix.unwrap();
+        assert!(
+            aa.abs() < 1e-5 && (b + 1.0).abs() < 1e-5 && (c - 1.0).abs() < 1e-5 && d.abs() < 1e-5
+        );
+        // The centre (140, 682) stays where it is.
+        assert!((aa * 140.0 + c * 682.0 + e - 140.0).abs() < 1e-3);
+        assert!((b * 140.0 + d * 682.0 + f - 682.0).abs() < 1e-3);
+        // Clockwise on the page: the right end of the box goes down (smaller y).
+        let right = (b * 180.0 + d * 682.0 + f, aa * 180.0 + c * 682.0 + e);
+        assert!(right.0 < 682.0 && (right.1 - 140.0).abs() < 1e-3);
+        assert_eq!(turn_matrix(ap.bbox, 0.0), None);
+        assert_eq!(turn_matrix(ap.bbox, f32::NAN), None);
+    }
+
+    #[test]
     fn a_typed_signature_appearance_is_made_of_curves_not_long_polylines() {
         use crate::model::annotation::{SignatureArtRef, SignatureRole};
         let art = crate::signatures::typed::outlines(
@@ -779,6 +836,7 @@ mod tests {
                 bounds: rect(100.0, 100.0, 300.0, 60.0),
                 role: SignatureRole::Signature,
                 art: SignatureArtRef::File,
+                angle: 0.0,
             },
             rect(100.0, 100.0, 300.0, 60.0),
         );

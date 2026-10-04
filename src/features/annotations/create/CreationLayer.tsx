@@ -45,6 +45,8 @@ export interface CreationLayerProps {
   transform: { pxPerPt: number; rotation: number };
   /** Called with the annotation after the backend created it (free text: select it and hand focus to the editor). */
   onCreated?: (annotation: Annotation) => void;
+  /** A press on a movable annotation moves it instead of making a new one: true if it took the press (ADR-105). */
+  grab?: (event: ReactPointerEvent, at: Point) => boolean;
 }
 
 type Preview =
@@ -110,6 +112,7 @@ function ActiveLayer({
   pageBox,
   transform,
   onCreated,
+  grab,
 }: CreationLayerProps & { kind: CreationKind }) {
   const surface = useRef<HTMLDivElement>(null);
   const drag = useRef<Drag | null>(null);
@@ -291,6 +294,7 @@ function ActiveLayer({
     if (event.button !== 0 || drag.current !== null) return;
     const point = toPage(event);
     if (point === null) return;
+    if (grab?.(event, point) === true) return;
     const layer = isMarkup ? peekLayer(docId, pageIndex) : undefined;
     if (isMarkup && layer === undefined) return;
     event.preventDefault();

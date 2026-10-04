@@ -395,6 +395,8 @@ pub fn append_annotations(original: Vec<u8>, plan: &Plan) -> Result<Built, AppEr
                 .filter(|_| target.entry.is_some())
                 .and_then(|origin| origin.name.clone())
                 .unwrap_or_else(|| annots::new_name(annotation));
+            // A turned signature or mark carries its turn and box in its name, so a reload can give them back (ADR-105).
+            let name = annots::named_with_turn(annotation, &name);
             let reply_to = annotation.in_reply_to.and_then(|parent| {
                 targets.get(&parent).map(|t| t.id).or_else(|| {
                     let prev = inc.get_prev_documents();
@@ -418,6 +420,13 @@ pub fn append_annotations(original: Vec<u8>, plan: &Plan) -> Result<Built, AppEr
                 &mut inc.new_document,
                 &mut images,
             ) {
+                let mut normal = Dictionary::new();
+                normal.set("N", Object::Reference(ap));
+                dict.set("AP", Object::Dictionary(normal));
+            } else if let Some(stream) = target.base.as_ref().and_then(|base| {
+                annots::turned_file_appearance(annotation, inc.get_prev_documents(), base)
+            }) {
+                let ap = inc.new_document.add_object(stream);
                 let mut normal = Dictionary::new();
                 normal.set("N", Object::Reference(ap));
                 dict.set("AP", Object::Dictionary(normal));

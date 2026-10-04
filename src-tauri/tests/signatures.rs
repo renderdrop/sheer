@@ -11,6 +11,7 @@ use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 
 use serde_json::json;
+use sheer_lib::commands::render::{RenderPriority, RenderRequest};
 use sheer_lib::commands::save::SaveAck;
 use sheer_lib::commands::signatures::{SignatureRef, TypedFont};
 use sheer_lib::commands::AppState;
@@ -309,6 +310,152 @@ fn every_kind_is_saved_with_an_appearance_and_pdfium_reads_it_back() {
     assert!(after.iter().all(|s| s.has_appearance));
     assert!((after[0].rect[0] - (in_file[0].rect[0] + 50.0)).abs() < 0.1);
     assert!((after[0].rect[1] - (in_file[0].rect[1] - 10.0)).abs() < 0.1);
+}
+
+/// The size in pixels of the box around the blue ink of page 0 rendered at bucket 0, and the frame's size.
+fn ink_extent(state: &AppState, id: DocumentId) -> (u32, u32, u32, u32) {
+    let frame = state
+        .render_page(RenderRequest {
+            doc_id: id,
+            page_id: PageId::new(0),
+            bucket: 0,
+            tile: None,
+            priority: RenderPriority::Visible,
+            generation: 1,
+        })
+        .unwrap();
+    let width = u32::from_le_bytes(frame[8..12].try_into().unwrap());
+    let height = u32::from_le_bytes(frame[12..16].try_into().unwrap());
+    let decoder = png::Decoder::new(std::io::Cursor::new(&frame[16..]));
+    let mut reader = decoder.read_info().unwrap();
+    let mut pixels = vec![0; reader.output_buffer_size().unwrap()];
+    let info = reader.next_frame(&mut pixels).unwrap();
+    let channels = info.line_size / width as usize;
+    let (mut x0, mut y0, mut x1, mut y1) = (u32::MAX, u32::MAX, 0, 0);
+    for y in 0..height {
+        for x in 0..width {
+            let at = (y * width + x) as usize * channels;
+            let [r, g, b] = [pixels[at], pixels[at + 1], pixels[at + 2]];
+            if b > 120 && r < 100 && g < 120 {
+                (x0, y0, x1, y1) = (x0.min(x), y0.min(y), x1.max(x), y1.max(y));
+            }
+        }
+    }
+    assert!(x1 > x0 && y1 > y0, "no ink on the page");
+    (x1 - x0 + 1, y1 - y0 + 1, width, height)
+}
+
+#[test]
+fn a_turned_signature_is_upright_for_the_page_rotation_and_keeps_its_angle_through_a_reopen() {
+    let Some(state) = state() else { return };
+    let scratch = Scratch::new("turn");
+    let mut builder = PdfBuilder::new();
+    add_pages(&mut builder, &[Page::new("").with("/Rotate 90")]);
+    builder.object(1, "<< /Type /Catalog /Pages 2 0 R >>");
+    let original = builder.finish(1);
+    let (id, path) = open(state, &scratch, "doc.pdf", &original);
+
+    let block = state
+        .create_drawn_signature(
+            SignatureRole::Signature,
+            &[vec![
+                DrawCmd::M(0.0, 0.0),
+                DrawCmd::L(100.0, 0.0),
+                DrawCmd::L(100.0, 25.0),
+                DrawCmd::L(0.0, 25.0),
+                DrawCmd::Z,
+            ]],
+        )
+        .unwrap();
+    let (asset_id, aspect) = asset(state, id, block.id);
+    // The page is shown turned a quarter (/Rotate 90), so the signature is turned against it to stand upright on the screen: -90.
+    let mut draft = signature_draft(
+        "signature",
+        asset_id,
+        aspect,
+        "signature",
+        (200.0, 300.0, 160.0, 40.0),
+    );
+    draft["angle"] = json!(-90.0);
+    let made = create(state, id, draft);
+    // The rect is the bounds of the turned box: 40 x 160 around the same centre (280, 320).
+    assert!((made.rect.w - 40.0).abs() < 0.01 && (made.rect.h - 160.0).abs() < 0.01);
+    assert!((made.rect.x - 260.0).abs() < 0.01 && (made.rect.y - 240.0).abs() < 0.01);
+    state.save_in_place(id, SaveAck::default()).unwrap();
+
+    // PDFium draws it upright on the rotated page: wider than tall.
+    let copy = scratch.file("copy.pdf");
+    std::fs::copy(&path, &copy).unwrap();
+    let reopened = state.open_path(copy.clone()).unwrap().expect("loaded").id;
+    let (w, h, frame_w, frame_h) = ink_extent(state, reopened);
+    assert!(frame_w > frame_h, "the page is shown turned");
+    assert!(w > 3 * h, "upright: {w} x {h}");
+    let in_file = list_annotations(&std::fs::read(&path).unwrap()).unwrap();
+    assert!(in_file[0]
+        .name
+        .as_deref()
+        .is_some_and(|name| name.contains("-r27000-16000-4000")));
+
+    // The angle and the box come back.
+    let listed = state.list_annotations(reopened, PageId::new(0)).unwrap();
+    let value = serde_json::to_value(&listed[0]).unwrap();
+    assert_eq!(value["angle"], json!(-90.0));
+    assert_eq!(value["art"], json!({"type": "file"}));
+    assert!((value["box"]["w"].as_f64().unwrap() - 160.0).abs() < 0.05);
+    assert!((value["box"]["h"].as_f64().unwrap() - 40.0).abs() < 0.05);
+
+    // Turned again after the reopen (its art is the file's): the matrix changes, upright is gone, and the new angle survives.
+    state
+        .apply_command(
+            reopened,
+            command(
+                json!({"type": "updateAnnotation", "id": listed[0].id.get(), "patch": {"angle": 0.0}}),
+            ),
+        )
+        .unwrap();
+    state.save_in_place(reopened, SaveAck::default()).unwrap();
+    let again = state
+        .open_path({
+            let next = scratch.file("again.pdf");
+            std::fs::copy(&copy, &next).unwrap();
+            next
+        })
+        .unwrap()
+        .expect("loaded")
+        .id;
+    let (w, h, _, _) = ink_extent(state, again);
+    assert!(
+        h > 3 * w,
+        "turned back to the page's own orientation: {w} x {h}"
+    );
+    let listed = state.list_annotations(again, PageId::new(0)).unwrap();
+    assert_eq!(
+        serde_json::to_value(&listed[0]).unwrap()["angle"],
+        json!(0.0)
+    );
+}
+
+#[test]
+fn a_hostile_angle_is_refused() {
+    let Some(state) = state() else { return };
+    let scratch = Scratch::new("angle");
+    let (id, _) = open(state, &scratch, "doc.pdf", &blank());
+    let mark = json!({"pageId": 0, "kind": "mark", "color": [0, 0, 0], "box": {"x": 10.0, "y": 10.0, "w": 20.0, "h": 20.0}, "glyph": "check"});
+    for angle in [json!("x"), json!(null)] {
+        let mut draft = mark.clone();
+        draft["angle"] = angle;
+        let parsed = serde_json::from_value::<DocCommand>(
+            json!({"type": "createAnnotation", "draft": draft}),
+        );
+        assert!(parsed.is_err() || state.apply_command(id, parsed.unwrap()).is_err());
+    }
+    // A big angle is brought into range.
+    let mut draft = mark;
+    draft["angle"] = json!(1_000_000.0);
+    let made = create(state, id, draft);
+    let value = serde_json::to_value(&made).unwrap();
+    let angle = value["angle"].as_f64().unwrap();
+    assert!(angle > -180.0 && angle <= 180.0);
 }
 
 #[test]

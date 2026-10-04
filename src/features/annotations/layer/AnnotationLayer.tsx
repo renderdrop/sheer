@@ -1,6 +1,7 @@
-import { memo, useEffect, useMemo, useState, type CSSProperties } from 'react';
+import { memo, useEffect, useMemo, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from 'react';
 
 import type { Annotation } from '../../../api/annotations';
+import type { Point } from '../../../api/wire';
 import { useT } from '../../../i18n';
 import { annotationsOnPage, useAnnotations, type AnnotationsState } from '../../../stores/annotations';
 import { PlacementLayer } from '../../signatures/place/PlacementLayer';
@@ -10,7 +11,15 @@ import { normalizeRotation, overlayBox, swapsSides, totalRotation, unrotatedSize
 import { CreationLayer } from '../create';
 import { FreeTextEditor } from '../note/FreeTextEditor';
 import { NotePopover } from '../note/NotePopover';
-import { canMove, handleCursor, handlePoint, handlesOf, readingOrder, type HandleId } from '../selection/geometry';
+import {
+  angleOf,
+  canMove,
+  handleCursor,
+  handlePoint,
+  handlesOf,
+  readingOrder,
+  type HandleId,
+} from '../selection/geometry';
 import { useInteraction, type Handlers } from '../selection/useInteraction';
 import { HitShape, Shape, hasExtent } from './shapes';
 
@@ -68,7 +77,9 @@ const Frame = memo(function Frame({ a, view, selected, hovered, withHandles, pag
     a.author !== null
       ? t(text === '' ? 'annot.name' : 'annot.nameText', { type, author: a.author, n: pageNumber, text })
       : t(text === '' ? 'annot.nameNoAuthor' : 'annot.nameNoAuthorText', { type, n: pageNumber, text });
-  const { rect } = view;
+  // A signature or mark that is turned has its frame on the box before the turn, turned by CSS about its centre (ADR-105).
+  const turn = angleOf(view);
+  const rect = view.kind === 'signature' || view.kind === 'mark' ? view.box : view.rect;
   const handles: readonly HandleId[] = selected && withHandles ? handlesOf(view) : [];
   return (
     <div
@@ -79,7 +90,13 @@ const Frame = memo(function Frame({ a, view, selected, hovered, withHandles, pag
       aria-label={name}
       data-annot-frame={a.id}
       data-state={selected ? 'selected' : hovered ? 'hover' : 'idle'}
-      style={{ left: rect.x, top: rect.y, width: rect.w, height: rect.h }}
+      style={{
+        left: rect.x,
+        top: rect.y,
+        width: rect.w,
+        height: rect.h,
+        transform: turn === 0 ? undefined : `rotate(${turn}deg)`,
+      }}
       onFocus={() => api.onItemFocus(a)}
       onBlur={api.onItemBlur}
       onKeyDown={(event) => {
@@ -194,6 +211,8 @@ export const AnnotationLayer = memo(function AnnotationLayer({
   const style = { ...box, transformOrigin: 'center', '--page-scale': pxPerPt } as CSSProperties;
   const only = selectedHere.size === 1;
   const minPt = HIT_SLOP_PX / pxPerPt;
+  // A press of a creation or placement tool on an annotation that can be moved moves it instead (ADR-105).
+  const grab = (event: ReactPointerEvent, at: Point) => handlers.onGrab(event, at, minPt / 2);
 
   const isDrawn = (a: Annotation) => {
     const view = preview.get(a.id) ?? a;
@@ -240,7 +259,7 @@ export const AnnotationLayer = memo(function AnnotationLayer({
               // Highlights are in the blend layer.
               const drawn = a.kind !== 'highlight' && isDrawn(a);
               return (
-                <g key={a.id}>
+                <g key={a.id} data-annot-item={a.id}>
                   {drawn && <Shape a={view} docId={docId} />}
                   {selectActive && (
                     <g
@@ -277,6 +296,7 @@ export const AnnotationLayer = memo(function AnnotationLayer({
           pageIndex={pageIndex}
           pageBox={{ width: page[0], height: page[1] }}
           transform={{ pxPerPt, rotation: total }}
+          grab={grab}
           onCreated={(created) => {
             if (created.kind === 'freeText' || created.kind === 'note')
               setEditing({ id: created.id, kind: created.kind, fresh: true });
@@ -304,6 +324,7 @@ export const AnnotationLayer = memo(function AnnotationLayer({
           pageIndex={pageIndex}
           pageBox={{ width: page[0], height: page[1] }}
           transform={{ pxPerPt, rotation: total }}
+          grab={grab}
         />
       </div>
     </>
