@@ -15,7 +15,7 @@ export function JobError({ error }: { error: AppError | null }) {
       {error !== null && (
         <p role="alert" className="m-0 flex items-start gap-1">
           <span className="shrink-0">
-            <Icon icon={CircleAlert} size={12} />
+            <Icon icon={CircleAlert} size={16} />
           </span>
           {errorText(t, error)}
         </p>
@@ -25,7 +25,7 @@ export function JobError({ error }: { error: AppError | null }) {
 }
 
 /** The spinner that stands in a primary button's label while its job runs. */
-export function Spinner({ size }: { size?: 12 | 16 }) {
+export function Spinner({ size }: { size?: 16 }) {
   return <Icon icon={LoaderCircle} size={size} className="animate-spin motion-reduce:animate-none" />;
 }
 

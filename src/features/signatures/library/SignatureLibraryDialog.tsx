@@ -256,13 +256,13 @@ function LibraryModal() {
 
         {session && (
           <p role="status" className="m-0 flex items-start gap-2 text-sm text-text">
-            <Icon icon={TriangleAlert} size={12} className="mt-1 shrink-0" />
+            <Icon icon={TriangleAlert} size={16} className="mt-1 shrink-0" />
             {t('lib.noKeychainWarning', { app: APP_NAME })}
           </p>
         )}
         {status === 'locked' && (
           <p role="status" className="m-0 flex flex-wrap items-center gap-2 text-sm text-text">
-            <Icon icon={TriangleAlert} size={12} className="shrink-0" />
+            <Icon icon={TriangleAlert} size={16} className="shrink-0" />
             <span className="min-w-0 flex-1">{t('lib.locked')}</span>
             <Button variant="ghost" size="sm" onClick={() => setConfirming(true)}>
               {t('lib.reset')}
@@ -368,7 +368,7 @@ function LibraryModal() {
           <div className="flex items-center gap-2">
             {!session && status !== 'locked' ? (
               <p className="m-0 flex min-w-0 flex-1 items-center gap-1 text-sm text-text-muted">
-                <Icon icon={Lock} size={12} className="shrink-0" />
+                <Icon icon={Lock} size={16} className="shrink-0" />
                 {t('lib.encrypted')}
               </p>
             ) : (

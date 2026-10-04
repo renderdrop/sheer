@@ -44,7 +44,7 @@ function Row({ entry }: { entry: RecoveryEntry }) {
           <div id={metaId} className="truncate text-sm text-text-muted">
             {failed ? (
               <span role="alert" className="inline-flex items-center gap-1 text-error-text">
-                <Icon icon={CircleAlert} size={12} />
+                <Icon icon={CircleAlert} size={16} />
                 {t('recover.failed')}
               </span>
             ) : (

@@ -146,7 +146,7 @@ function CompressModal() {
                   <span className="shrink-0 text-sm font-normal tabular-nums">
                     {estimate === undefined ? (
                       <span role="img" aria-label={t('compress.estimating')}>
-                        <Spinner size={12} />
+                        <Spinner size={16} />
                       </span>
                     ) : (
                       estimateText(value)

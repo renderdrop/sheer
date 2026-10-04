@@ -2,6 +2,7 @@ import { AnimatePresence } from 'motion/react';
 import { useEffect, useId, useMemo, type CSSProperties } from 'react';
 
 import { ActionKeys } from '../../actions/keys';
+import { WorkSurface } from '../../components';
 import { PANEL } from '../../components/tokens';
 import { shellTracks } from '../../lib/layout';
 import { chromeFor, detectPlatform } from '../../lib/platform';
@@ -147,12 +148,12 @@ export function Shell() {
           {!hasDocument && <EmptyStateSlot key="empty" platform={platform} style={slots.canvas} />}
         </AnimatePresence>
         {hasDocument && (
-          <>
+          <WorkSurface className="contents">
             <LeftPanelSlot present={!structure.leftCollapsed} id={leftPanelId} style={slots.left} />
             <LeftPanelSplitter controls={leftPanelId} collapsed={structure.leftCollapsed} style={slots.splitter} />
             <CanvasSlot style={slots.canvas} />
             <InspectorSlot present={structure.inspectorReserved} style={slots.inspector} />
-          </>
+          </WorkSurface>
         )}
       </MainGrid>
       <ViewerStatusBar />

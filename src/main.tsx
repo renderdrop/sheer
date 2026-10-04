@@ -7,9 +7,11 @@ import { App } from './App';
 import { APP_NAME } from './config/app';
 import { watchAppEvents } from './features/viewer/appEvents';
 import { bindLocaleToSettings } from './i18n/bind';
-import { bindSettingsToRoot, loadSettings, watchOsTransparency } from './stores/settings';
+import { loadSettings } from './stores/settings';
 import { bindPanelWidthToSettings } from './stores/ui';
+import './styles/fonts.css';
 import './styles/tokens.css';
+import './styles/type.css';
 
 document.title = APP_NAME;
 
@@ -18,10 +20,9 @@ if (container === null) {
   throw new Error('Missing #root element');
 }
 
-// The window never waits for the backend: it renders at once with the defaults (follow the OS, glass on) and the
-// saved settings are applied to <html> when they arrive, so a slow or silent backend cannot leave a blank window.
+// The window never waits for the backend: it renders at once with the defaults and the
+// saved settings are applied when they arrive, so a slow or silent backend cannot leave a blank window.
 // `loadSettings` gives up waiting after a few seconds (the defaults stay) and never rejects.
-bindSettingsToRoot(document.documentElement);
 // The language follows the OS until the saved one arrives; it sets the UI's locale and `<html lang>`.
 bindLocaleToSettings(document.documentElement);
 // The left panel's width follows the saved one once the settings have loaded, and is saved when the user changes it.
@@ -36,7 +37,6 @@ createRoot(container).render(
 );
 
 void loadSettings();
-void watchOsTransparency();
 // The macOS menu bar's commands arrive over a channel (nothing arrives on Windows, which has no menu bar).
 void watchNativeMenu();
 // Files dropped on the window, opened by the OS or given at startup arrive over a channel too (and the drop overlay follows

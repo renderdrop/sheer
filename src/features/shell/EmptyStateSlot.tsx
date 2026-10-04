@@ -4,6 +4,7 @@ import { useEffect, useState, type CSSProperties } from 'react';
 import { runAction } from '../../actions/dispatch';
 import { shortcutFor } from '../../actions/registry';
 import type { Platform } from '../../api/app';
+import { BrandSurface } from '../../components';
 import { cx } from '../../components/cx';
 import { useT } from '../../i18n';
 import { DURATION, useFade } from '../../components/motion';
@@ -71,7 +72,9 @@ export function EmptyStateSlot({ platform, style }: { platform: Platform | null;
       inert={!present || undefined}
       className={cx('relative flex min-h-0 min-w-0 overflow-auto p-2', !present && 'pointer-events-none')}
     >
-      <div className={cx('flex min-w-0 flex-1 transition-opacity', target.shown ? 'opacity-0' : 'opacity-100')}>
+      <BrandSurface
+        className={cx('flex min-w-0 flex-1 transition-opacity', target.shown ? 'opacity-0' : 'opacity-100')}
+      >
         <EmptyState
           openShortcut={openKey?.label ?? ''}
           openKeyShortcuts={openKey?.aria ?? ''}
@@ -82,7 +85,7 @@ export function EmptyStateSlot({ platform, style }: { platform: Platform | null;
           recents={recents.rows}
           onClearRecents={recents.clear}
         />
-      </div>
+      </BrandSurface>
       <AnimatePresence>
         {target.shown && (
           <motion.div

@@ -47,7 +47,7 @@ export function UpdateRow({ labelId }: { labelId: string }) {
             role="status"
             className={`flex min-w-0 flex-auto items-center gap-2 text-sm ${check === 'failed' ? 'text-error-text' : 'text-text-muted'}`}
           >
-            {check === 'failed' && <Icon icon={CircleAlert} size={12} />}
+            {check === 'failed' && <Icon icon={CircleAlert} size={16} />}
             {status}
           </span>
           <Button

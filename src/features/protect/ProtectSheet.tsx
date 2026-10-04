@@ -90,7 +90,7 @@ function ErrorSlot({ id, message }: { id: string; message: string | null }) {
     <div className="flex h-4 items-center text-sm text-error-text">
       {message !== null && (
         <p id={id} role="alert" className="m-0 flex items-center gap-1">
-          <Icon icon={CircleAlert} size={12} />
+          <Icon icon={CircleAlert} size={16} />
           {message}
         </p>
       )}
@@ -364,11 +364,11 @@ function ProtectModal({ docId }: { docId: number }) {
         </section>
 
         <p className="m-0 mt-4 flex items-center gap-1 text-sm text-text-muted">
-          <Icon icon={Lock} size={12} />
+          <Icon icon={Lock} size={16} />
           {t('protect.aes', { app: APP_NAME })}
         </p>
         <p className="m-0 mt-1 flex items-center gap-1 text-sm text-text-muted">
-          <Icon icon={Info} size={12} />
+          <Icon icon={Info} size={16} />
           {t('protect.staged')}
         </p>
 

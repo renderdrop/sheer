@@ -236,7 +236,7 @@ function ExportImagesModal() {
         {lowered ? (
           <p role="status" className="m-0 mt-4 flex items-start gap-1 text-md text-text-muted">
             <span className="shrink-0">
-              <Icon icon={Info} size={12} />
+              <Icon icon={Info} size={16} />
             </span>
             {t('exportImg.capped')}
           </p>
@@ -399,7 +399,7 @@ function ExportImagesModal() {
           ) : (
             hasMarks && (
               <>
-                <Icon icon={Info} size={12} />
+                <Icon icon={Info} size={16} />
                 <p className="m-0">{t('output.pendingRedact')}</p>
               </>
             )

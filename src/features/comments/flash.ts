@@ -3,6 +3,8 @@
  * twice, opacity only. The page may still be coming into view, so the frame is looked for for a moment. Reduced motion: no flash (the
  * selection already marks it).
  */
+import { FLASH_MS } from '../../lib/motion';
+
 const TRIES = 30;
 
 export function flashAnnotation(id: number): void {
@@ -11,7 +13,7 @@ export function flashAnnotation(id: number): void {
   const look = () => {
     const frame = document.querySelector<HTMLElement>(`[data-annot-frame="${id}"]`);
     if (frame !== null && typeof frame.animate === 'function') {
-      frame.animate({ opacity: [1, 0.3, 1, 0.3, 1] }, { duration: 640, easing: 'ease-in-out' });
+      frame.animate({ opacity: [1, 0.3, 1, 0.3, 1] }, { duration: FLASH_MS, easing: 'ease-in-out' });
       return;
     }
     tries += 1;

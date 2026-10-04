@@ -68,9 +68,9 @@ export function DropCard({ falling = false }: { falling?: boolean }) {
       exit={{ opacity: 0, transition: SPRING.fast }}
       className="relative h-(--drag-card-height) w-(--drag-card-width) rounded-sm"
     >
-      <span className="absolute inset-0 rounded-sm shadow-1" />
+      <span className="absolute inset-0 rounded-sm shadow-standard" />
       <motion.span
-        className="absolute inset-0 rounded-sm shadow-3"
+        className="absolute inset-0 rounded-sm shadow-floating"
         initial={false}
         animate={{ opacity: falling ? 0 : 1, transition: SPRING.base }}
       />

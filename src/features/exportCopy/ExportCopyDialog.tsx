@@ -103,7 +103,7 @@ function ExportModal({ docId }: { docId: number }) {
         {warnings.map((key) => (
           <li key={key} className="flex items-start gap-1 text-md text-text">
             <span className="shrink-0">
-              <Icon icon={CircleAlert} size={12} />
+              <Icon icon={CircleAlert} size={16} />
             </span>
             {t(WARNING_KEYS[key])}
           </li>
@@ -165,7 +165,7 @@ function ExportModal({ docId }: { docId: number }) {
         {!canEdit && (
           <p id={`${id}-needs`} className="m-0 flex items-start gap-1 text-sm text-text-muted">
             <span className="shrink-0">
-              <Icon icon={CircleAlert} size={12} />
+              <Icon icon={CircleAlert} size={16} />
             </span>
             {t('output.notAllowed')} {t('copy.needsEdit')}
           </p>

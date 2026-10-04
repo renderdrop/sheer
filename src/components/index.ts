@@ -45,3 +45,5 @@ export {
 export { Tooltip, type TooltipProps } from './Tooltip';
 export type { Align, Side } from './position';
 export { announce, pulse, usePulseMessage } from './SuccessPulse';
+export { BrandSurface, WorkSurface, useSurfaceMode, type SurfaceMode, type SurfaceProps } from './Surface';
+export { SolarGlow, type SolarGlowProps, type SolarGlowVariant } from './SolarGlow';

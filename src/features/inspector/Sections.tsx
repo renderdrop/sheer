@@ -51,7 +51,7 @@ function swatchOption(rgb: Rgb, label: string, bg: string | null, check: string)
     className: cx(SWATCH, bg ?? undefined, check),
     // A colour from the file is data, not a design colour: it can only be set inline.
     style: bg === null ? { backgroundColor: rgbToCss(rgb) } : undefined,
-    children: <Icon icon={Check} size={12} className="invisible group-aria-checked:visible" />,
+    children: <Icon icon={Check} size={16} className="invisible group-aria-checked:visible" />,
   };
 }
 

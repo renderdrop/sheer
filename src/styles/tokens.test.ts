@@ -312,13 +312,13 @@ describe('sizes and the focus ring (DESIGN 1.3, 2)', () => {
     expect(root.get('--focus-offset')).toBe('2px');
   });
 
-  it('icon sizes and stroke; --icon-12 and --icon-stroke-sm live only in the legacy block', () => {
+  it('icon sizes and stroke; --icon-12 and --icon-stroke-sm are gone', () => {
     for (const size of [16, 18, 20, 24]) expect(root.get(`--icon-${size}`)).toBe(`${size}px`);
     expect(root.get('--icon-stroke')).toBe('1.75px');
     expect(token('--icon-12')).toBeUndefined();
     expect(token('--icon-stroke-sm')).toBeUndefined();
-    expect(legacy.get('--icon-12')).toBe('var(--icon-16)');
-    expect(legacy.get('--icon-stroke-sm')).toBe('2px');
+    expect(legacy.has('--icon-12')).toBe(false);
+    expect(legacy.has('--icon-stroke-sm')).toBe(false);
   });
 
   it('the ring is a box-shadow of the focus-visible rule, with a transparent outline for forced colors', () => {

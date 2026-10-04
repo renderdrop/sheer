@@ -91,7 +91,7 @@ describe('the placeholder', () => {
     expect(element.style.top).toBe('340px');
     expect(element.style.width).toBe('816px');
     expect(element.style.height).toBe('1056px');
-    for (const className of ['absolute', 'bg-page', 'shadow-page', 'z-canvas-page']) {
+    for (const className of ['absolute', 'bg-page', 'shadow-floating', 'z-canvas-page']) {
       expect(element.className, className).toContain(className);
     }
     expect(element.getAttribute('data-page')).toBe('5');

@@ -316,7 +316,7 @@ function Card({ anchor }: CardProps) {
               done ? 'bg-accent text-on-accent' : 'bg-tile text-tile-icon'
             }`}
           >
-            {done ? <Icon icon={Check} size={12} /> : null}
+            {done ? <Icon icon={Check} size={16} /> : null}
             {t('tour.stepOf', { step: index + 1, total })}
           </span>
           <span className="flex-auto" />

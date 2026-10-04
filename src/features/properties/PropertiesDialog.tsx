@@ -161,7 +161,7 @@ function PropertiesModal({ docId, pageCount }: { docId: number; pageCount: numbe
         <div className="flex h-4 items-center gap-1 text-sm text-text-muted">
           {removing && (
             <>
-              <Icon icon={Info} size={12} />
+              <Icon icon={Info} size={16} />
               <span role="status">{t('props.removeNote')}</span>
             </>
           )}

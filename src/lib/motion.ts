@@ -23,6 +23,9 @@ export const SPRING = {
 /** Start scale of an entering popover or dialog (`--scale-enter`). */
 export const ENTER_SCALE = 0.98;
 
+/** The annotation flash after a jump (MOTION 4.8): two blinks in this many ms. */
+export const FLASH_MS = 640;
+
 export const ZOOM_SNAP_BAND = 0.08;
 export const ZOOM_INERTIA_S = 0.1;
 export const ZOOM_INERTIA_CAP = 1.5;

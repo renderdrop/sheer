@@ -186,7 +186,7 @@ export const ThumbnailItem = memo(function ThumbnailItem({
         // page a 2 px accent ring. The ring is a shape as well as a color: it is there or it is not, and under forced colors it is
         // still drawn in the system highlight.
         className={cx(
-          'pulse-target shrink-0 rounded-sm bg-page shadow-page [--pulse-radius:var(--radius-sm)]',
+          'pulse-target shrink-0 rounded-sm bg-page shadow-floating [--pulse-radius:var(--radius-sm)]',
           selected && 'outline-2 outline-accent',
         )}
         data-thumb-page={pageId}

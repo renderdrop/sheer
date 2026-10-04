@@ -93,7 +93,7 @@ export function OrganizeBar({ docId }: OrganizeBarProps) {
         trigger={(trigger) => (
           <Button {...trigger} variant="ghost" size="sm" icon={FilePlus} disabled={readOnly} focusableWhenDisabled>
             {t('organize.insert')}
-            <Icon icon={ChevronDown} size={12} />
+            <Icon icon={ChevronDown} size={16} />
           </Button>
         )}
       />

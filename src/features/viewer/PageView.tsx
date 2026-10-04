@@ -403,7 +403,7 @@ export const PageView = memo(function PageView({
       aria-label={t('canvas.pageImage', { page: pageIndex + 1, total: pageCount })}
       aria-description={noText ? t('text.noText') : undefined}
       data-page={pageIndex + 1}
-      className="absolute z-canvas-page bg-page shadow-page"
+      className="absolute z-canvas-page bg-page shadow-floating"
       style={{ left, top, width, height }}
     >
       <div className="absolute" style={surface}>

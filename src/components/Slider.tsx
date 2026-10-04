@@ -199,7 +199,7 @@ export function Slider({
             // Thumb: 16 px white disc with a hairline border and the level-1 shadow. It grows by `--scale-thumb` on hover
             // and drag; reduced motion sets that token to 1, so the thumb stays still without a branch here.
             className={cx(
-              'absolute top-1/2 size-4 -translate-x-1/2 -translate-y-1/2 rounded-pill border bg-page shadow-1',
+              'absolute top-1/2 size-4 -translate-x-1/2 -translate-y-1/2 rounded-pill border bg-page shadow-standard',
               'transition-[scale] duration-fast',
               disabled
                 ? 'border-text-disabled'

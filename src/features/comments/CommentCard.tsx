@@ -242,7 +242,7 @@ export const CommentCard = memo(function CommentCard({
           aria-hidden="true"
           className="flex size-control-sm shrink-0 items-center justify-center rounded-sm bg-tile text-tile-icon"
         >
-          <Icon icon={info.icon} size={12} />
+          <Icon icon={info.icon} size={16} />
         </span>
         <span id={`${ids}-h`} className="min-w-0 flex-1 truncate text-sm font-semibold">
           {t(info.key)}
@@ -352,7 +352,7 @@ export const CommentCard = memo(function CommentCard({
 
       {statusPill !== null && (
         <span className="flex w-fit items-center gap-1 rounded-pill bg-tile px-2 text-sm text-tile-icon forced-colors:bg-[Canvas] forced-colors:ring-1 forced-colors:ring-[CanvasText]">
-          <Icon icon={statusPill.icon} size={12} />
+          <Icon icon={statusPill.icon} size={16} />
           {t(statusPill.key)}
         </span>
       )}

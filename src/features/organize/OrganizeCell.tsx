@@ -146,7 +146,7 @@ export const OrganizeCell = memo(function OrganizeCell({
       <div className="flex shrink-0 items-center justify-center" style={{ width: thumb, height: thumb }}>
         <div
           ref={pageRef}
-          className="pulse-target relative overflow-hidden rounded-sm bg-page shadow-page [--pulse-radius:var(--radius-sm)]"
+          className="pulse-target relative overflow-hidden rounded-sm bg-page shadow-floating [--pulse-radius:var(--radius-sm)]"
           style={{ width: size.width, height: size.height }}
         >
           {shown !== undefined && (

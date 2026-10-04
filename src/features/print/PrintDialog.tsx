@@ -255,7 +255,7 @@ function PrintModal() {
       <div className="flex min-h-6 items-center gap-1 text-sm text-text-muted">
         {hasMarks && (
           <>
-            <Icon icon={Info} size={12} />
+            <Icon icon={Info} size={16} />
             <p className="m-0">{t('output.pendingRedact')}</p>
           </>
         )}

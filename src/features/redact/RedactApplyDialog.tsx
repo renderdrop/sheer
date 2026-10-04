@@ -108,7 +108,7 @@ function ApplyModal({ docId }: { docId: number }) {
             {warnings.map((key) => (
               <li key={key} className="flex items-start gap-1 text-text">
                 <span className="shrink-0">
-                  <Icon icon={CircleAlert} size={12} />
+                  <Icon icon={CircleAlert} size={16} />
                 </span>
                 {t(WARNING_KEYS[key])}
               </li>

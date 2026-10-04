@@ -30,6 +30,8 @@ allow = [
   "Unicode-3.0",
 ]
 
+# OFL-1.1 is allowed for bundled font files only (Inter, typed signature fonts; ADR-059, ADR-100), never for crates: it is deliberately not in the list above.
+
 [licenses.private]
 # Our own (unpublished, AGPL) workspace crates are not dependencies.
 ignore = true

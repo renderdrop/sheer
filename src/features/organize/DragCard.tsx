@@ -89,7 +89,7 @@ export function DragCard({ docId, ids, pointer, thumb, pixelRatio, scheduler = r
           return (
             <div
               key={slot.id}
-              className="absolute overflow-hidden rounded-sm bg-page shadow-3"
+              className="absolute overflow-hidden rounded-sm bg-page shadow-floating"
               style={{ width: size.width, height: size.height, left: depth * offset, top: depth * offset }}
             >
               {entry !== undefined && (

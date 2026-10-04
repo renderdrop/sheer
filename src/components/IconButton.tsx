@@ -106,12 +106,12 @@ export function IconButton({
       {icon !== undefined && <Icon icon={icon} size={iconSize} />}
       {children}
       {locked && (
-        // 12 px disc inside the bottom-right corner, inset 2 px (half of --space-1): on-accent disc, accent lock.
+        // Lock glyph in the bottom-right corner, inset 2 px (half of --space-1): Ink, never accent.
         <span
           aria-hidden="true"
-          className="absolute bottom-[calc(var(--space-1)/2)] end-[calc(var(--space-1)/2)] grid size-icon-12 place-items-center rounded-pill bg-on-accent text-accent"
+          className="absolute bottom-[calc(var(--space-1)/2)] end-[calc(var(--space-1)/2)] grid place-items-center text-text"
         >
-          <Icon icon={Lock} size={8} />
+          <Icon icon={Lock} size={16} />
         </span>
       )}
     </button>

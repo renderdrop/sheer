@@ -166,7 +166,7 @@ function PasswordModal({ request }: { request: PasswordRequest }) {
           <div className="mt-1 flex h-4 items-center text-sm text-error-text">
             {wrong && (
               <p id="password-error" role="alert" className="m-0 flex items-center gap-1">
-                <Icon icon={CircleAlert} size={12} />
+                <Icon icon={CircleAlert} size={16} />
                 {t('password.wrong')}
               </p>
             )}

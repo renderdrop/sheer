@@ -271,3 +271,7 @@ All checked with `cargo deny` per shipped target (x86_64-pc-windows-msvc, aarch6
 - `minisign-verify` 0.2.5 (MIT), direct: the second signature check on the bytes we keep (the plugin uses the same crate). No dependencies.
 - `base64` 0.22 (MIT OR Apache-2.0), direct: the key and signature files are base64 of the minisign text (already in the build).
 - `minisign` 0.10.0 (MIT), dev only: makes a throwaway key pair and signature in the tests; brings `scrypt`, `pbkdf2`, `salsa20`, `hmac`, `cipher`, `subtle`, `ct-codecs`, `rpassword` (MIT or Apache-2.0). Never in the shipped build.
+
+## v1.2 R0.2 (Inter, ADR-059, ADR-100)
+
+- Inter variable 5.3.0 (OFL-1.1, The Inter Project Authors), files `inter-latin-wght-normal.woff2` and `inter-latin-ext-wght-normal.woff2` taken from the npm package `@fontsource-variable/inter` (`npm pack`, not a dependency), in `src/assets/fonts/` with `Inter-OFL.txt`. Font file only, never a crate; `font-src 'self'` covers it.

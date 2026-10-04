@@ -213,7 +213,7 @@ export function StatusBar({
       </span>
       {hasDocument && rotation !== 0 && (
         <Button variant="ghost" size="sm" aria-label={t('rotate.reset')} onClick={() => onResetRotation?.()}>
-          <Icon icon={RotateCw} size={12} />
+          <Icon icon={RotateCw} size={16} />
           {rotation}°
         </Button>
       )}
