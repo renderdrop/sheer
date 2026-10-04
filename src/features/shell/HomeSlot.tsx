@@ -27,7 +27,8 @@ export function HomeSlot({ platform, trafficLightInset, captionControls }: HomeS
         className={cx('flex h-topbar shrink-0 items-stretch', trafficLightInset && 'ps-chrome-inset')}
       >
         <span aria-hidden="true" className="flex-auto" />
-        {captionControls}
+        {/* 46 x 32, the size of the menu row's, so the buttons do not jump between Home and the editor (DESIGN v2 3.2). */}
+        {captionControls !== null && <div className="h-menubar shrink-0">{captionControls}</div>}
       </div>
       <BannerSlot />
       <Home platform={platform} />

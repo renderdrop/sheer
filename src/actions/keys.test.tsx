@@ -139,7 +139,7 @@ describe('the bindings', () => {
     expect(zoom()).toBe(1);
   });
 
-  it('Ctrl+Down and Ctrl+Up turn pages, F4 and Shift+F4 toggle the panels on Windows', () => {
+  it('Ctrl+Down and Ctrl+Up turn pages, F4 toggles the page sidebar on Windows', () => {
     press({ key: 'ArrowDown', ctrlKey: true });
     press({ key: 'ArrowDown', ctrlKey: true });
     expect(useView.getState().byDoc[1]?.pageIndex).toBe(2);
@@ -147,16 +147,12 @@ describe('the bindings', () => {
     expect(useView.getState().byDoc[1]?.pageIndex).toBe(1);
     press({ key: 'F4' });
     expect(useUi.getState().leftPanelCollapsed).toBe(true);
-    press({ key: 'F4', shiftKey: true });
-    expect(useUi.getState().inspector).toBe('closed');
   });
 
-  it('Option+Cmd+1 and Option+Cmd+I toggle the panels on macOS, although Option changes the characters', () => {
+  it('Option+Cmd+1 toggles the page sidebar on macOS, although Option changes the characters', () => {
     setPlatform('macos');
     press({ key: '¡', code: 'Digit1', altKey: true, metaKey: true });
     expect(useUi.getState().leftPanelCollapsed).toBe(true);
-    press({ key: 'ˆ', code: 'KeyI', altKey: true, metaKey: true });
-    expect(useUi.getState().inspector).toBe('closed');
     // F4 is not the macOS key.
     press({ key: 'F4' });
     expect(useUi.getState().leftPanelCollapsed).toBe(true);

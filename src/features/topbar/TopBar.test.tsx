@@ -41,26 +41,25 @@ beforeEach(() => {
 describe('the top bar', () => {
   it('shows the file name with the tour anchors, and tabs from two documents on', () => {
     open('Report.pdf');
-    setup(<TopBar trafficLightInset={false} captionControls={null} />);
+    setup(<TopBar trafficLightInset={false} />);
     expect(bar().getByText('Report.pdf').getAttribute('data-tour-anchor')).toBe('status-file-name');
     expect(bar().queryByRole('tablist')).toBeNull();
     expect(document.querySelector('[data-tour-anchor="status-page-button"]')).not.toBeNull();
     expect(document.querySelector('[data-toolbar-item="zoom-in"]')).not.toBeNull();
-    expect(document.querySelector('[data-toolbar-item="more"]')).not.toBeNull();
     act(() => open('Other.pdf'));
     expect(bar().getByRole('tablist', { name: 'Open documents' })).not.toBeNull();
   });
 
   it('the Back chevron shows Home', async () => {
     open('Report.pdf');
-    const { user } = setup(<TopBar trafficLightInset={false} captionControls={null} />);
+    const { user } = setup(<TopBar trafficLightInset={false} />);
     await user.click(bar().getByRole('button', { name: 'Back to Home' }));
     expect(useUi.getState().view).toBe('home');
   });
 
   it('Done goes straight to Home without changes, and saves first with them', async () => {
     open('Report.pdf');
-    const { user } = setup(<TopBar trafficLightInset={false} captionControls={null} />);
+    const { user } = setup(<TopBar trafficLightInset={false} />);
     await user.click(bar().getByRole('button', { name: 'Done' }));
     expect(save.saveNow).not.toHaveBeenCalled();
     expect(useUi.getState().view).toBe('home');
@@ -82,14 +81,14 @@ describe('the top bar', () => {
 
   it('a double click on the name is Save As', () => {
     open('Report.pdf');
-    setup(<TopBar trafficLightInset={false} captionControls={null} />);
+    setup(<TopBar trafficLightInset={false} />);
     fireEvent.doubleClick(bar().getByText('Report.pdf'));
     expect(save.saveActive).toHaveBeenCalledWith(true);
   });
 
   it('the page field goes to the typed page, refuses a wrong one, and the go-to-page action focuses it', async () => {
     open('Report.pdf');
-    const { user } = setup(<TopBar trafficLightInset={false} captionControls={null} />);
+    const { user } = setup(<TopBar trafficLightInset={false} />);
     const field = bar().getByRole('textbox', { name: 'Go to page' }) as HTMLInputElement;
     expect(field.value).toBe('1');
     expect(field.parentElement?.textContent).toBe('/ 12');
@@ -105,15 +104,19 @@ describe('the top bar', () => {
     expect(useGoToPage.getState().open).toBe(false);
   });
 
-  it('the menus hold the commands of the old Windows menu bar', async () => {
+  it('has Undo, Redo, Search and Done on the right, and no Export, More or caption buttons', () => {
     open('Report.pdf');
-    const { user } = setup(<TopBar trafficLightInset={false} captionControls={null} />);
-    await user.click(bar().getByRole('button', { name: 'More' }));
-    const more = within(screen.getByRole('menu', { name: 'More' }));
-    for (const name of ['Document properties', 'Save As…', 'Settings']) {
-      expect(more.getByRole('menuitem', { name: new RegExp(name) }), name).not.toBeNull();
-    }
-    await user.keyboard('{Escape}');
+    setup(<TopBar trafficLightInset={false} />);
+    for (const name of ['Undo', 'Redo', 'Done'])
+      expect(bar().getByRole('button', { name: new RegExp(name) }), name).not.toBeNull();
+    expect(bar().getByRole('button', { name: /Search|Find/ })).not.toBeNull();
+    for (const name of ['Export', 'More', 'Close', 'Minimize'])
+      expect(bar().queryByRole('button', { name }), name).toBeNull();
+  });
+
+  it('the zoom menu holds the scroll modes and the rotation', async () => {
+    open('Report.pdf');
+    const { user } = setup(<TopBar trafficLightInset={false} />);
     await user.click(bar().getByRole('button', { name: /Zoom level/ }));
     const zoom = within(screen.getByRole('menu', { name: 'Zoom' }));
     expect(zoom.getByText('Scrolling')).not.toBeNull();

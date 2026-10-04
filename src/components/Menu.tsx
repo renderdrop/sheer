@@ -39,6 +39,8 @@ export interface MenuItemSpec {
   shortcut?: string;
   /** Set for items with a checked state: shows a check and the accent text color; the role becomes `menuitemcheckbox`. */
   checked?: boolean;
+  /** With `checked`: one of a group of exclusive choices, so the role is `menuitemradio`. */
+  radio?: boolean;
   /** Stays focusable (`aria-disabled`, DESIGN 3.0) but does nothing. */
   disabled?: boolean;
   /**
@@ -271,7 +273,9 @@ export function MenuList({ entries, onActivate, onTab, onBack }: MenuListProps) 
             <button
               key={entry.id}
               type="button"
-              role={entry.checked === undefined ? 'menuitem' : 'menuitemcheckbox'}
+              role={
+                entry.checked === undefined ? 'menuitem' : entry.radio === true ? 'menuitemradio' : 'menuitemcheckbox'
+              }
               aria-checked={entry.checked}
               aria-disabled={entry.disabled === true ? true : undefined}
               aria-haspopup={hasSubmenu ? 'menu' : undefined}

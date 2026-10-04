@@ -22,20 +22,16 @@ const DE_JSON: &str = include_str!("../../../src/i18n/locales/de.json");
 /// [`is_action_id`] is the only gate between a menu event and the channel, so an id that is not listed here (a system item,
 /// something a future layout names by mistake) never reaches the webview. A test keeps it equal to the layout, and the
 /// frontend's `src/actions/menu.test.ts` keeps the layout equal to its registry.
-pub const ACTION_IDS: [&str; 64] = [
+pub const ACTION_IDS: [&str; 53] = [
     "settings",
     "open",
     "close-document",
     "save",
     "save-as",
-    "merge-files",
-    "split-document",
-    "extract-pages",
     "compress-document",
     "undo",
     "redo",
     "toggle-left-panel",
-    "toggle-inspector",
     "zoom-in",
     "zoom-out",
     "actual-size",
@@ -70,18 +66,11 @@ pub const ACTION_IDS: [&str; 64] = [
     "sidebar-tab-outline",
     "sidebar-tab-comments",
     "sidebar-tab-search",
-    "tool-select",
-    "tool-highlight",
-    "tool-note",
-    "tool-text",
-    "tool-draw",
-    "tool-shapes",
-    "tool-signature",
-    "tool-redact",
-    "tool-pages",
-    "tool-textBox",
-    "tool-image",
-    "tool-crop",
+    "mode-read",
+    "mode-comment",
+    "mode-fill",
+    "mode-pages",
+    "mode-edit",
     "form-highlight",
     "manage-signatures",
     "welcome-tour",
@@ -452,6 +441,81 @@ mod tests {
                 menu.id
             );
         }
+    }
+
+    /// The ids of the action items of one menu, in order, for the macOS bar.
+    fn menu_actions(kind: MenuKind) -> Vec<&'static str> {
+        layout_or_fail()
+            .menus
+            .iter()
+            .filter(|menu| menu.id == kind)
+            .flat_map(|menu| &menu.items)
+            .filter(|item| item.on_macos())
+            .filter_map(|item| match item {
+                ItemSpec::Action(action) => Some(action.action.as_str()),
+                _ => None,
+            })
+            .collect()
+    }
+
+    #[test]
+    fn the_tools_menu_lists_the_five_modes_then_form_highlight_and_signatures() {
+        // ADR-102: modes, not tools; the digits are hint text in the Windows menu and never accelerators.
+        assert_eq!(
+            menu_actions(MenuKind::Tools),
+            [
+                "mode-read",
+                "mode-comment",
+                "mode-fill",
+                "mode-pages",
+                "mode-edit",
+                "form-highlight",
+                "manage-signatures"
+            ]
+        );
+        assert!(actions()
+            .iter()
+            .filter(|action| action.action.starts_with("mode-"))
+            .all(|action| action.accelerator.is_none() && action.requires_document));
+        assert!(!ACTION_IDS.iter().any(|id| id.starts_with("tool-")));
+    }
+
+    #[test]
+    fn the_file_menu_holds_the_commands_that_are_not_in_a_mode() {
+        assert_eq!(
+            menu_actions(MenuKind::File),
+            [
+                "open",
+                "save",
+                "save-as",
+                "export-copy",
+                "export-images",
+                "images-to-pdf",
+                "compress-document",
+                "flatten-form",
+                "protect",
+                "document-properties",
+                "print",
+                "close-document"
+            ]
+        );
+        // Settings and Exit are Windows-only items of Datei.
+        let windows: Vec<&str> = layout_or_fail()
+            .menus
+            .iter()
+            .filter(|menu| menu.id == MenuKind::File)
+            .flat_map(|menu| &menu.items)
+            .filter_map(|item| match item {
+                ItemSpec::Action(action) => Some(action.action.as_str()),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(windows[windows.len() - 2..], ["settings", "exit"]);
+    }
+
+    #[test]
+    fn the_view_menu_has_no_inspector_item() {
+        assert!(!menu_actions(MenuKind::View).contains(&"toggle-inspector"));
     }
 
     #[test]

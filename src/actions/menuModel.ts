@@ -3,6 +3,7 @@ import type { MenuEntry } from '../components';
 import { APP_NAME } from '../config/app';
 import { isPlainKey, type Translate } from '../i18n';
 import layoutJson from './menu.json';
+import { MODES } from '../stores/ui';
 import { actionShortcut, getAction, type ActionDef } from './registry';
 import type { ActionState } from './state';
 
@@ -43,6 +44,9 @@ interface Layout {
 }
 
 const layout = layoutJson as Layout;
+
+const MODE_ACTION = /^mode-(.+)$/;
+const MODE_ORDER: readonly string[] = MODES;
 
 /** The label of the bar for assistive technology (`menu.bar`). */
 export const BAR_LABEL_KEY: string = layout.barLabel ?? 'menu.bar';
@@ -152,12 +156,16 @@ export function buildMenuEntries(menuId: string, context: MenuContext): MenuEntr
     const action = getAction(item.action);
     if (action === undefined) return;
     const shortcut = actionShortcut(action, context.platform, context.t);
+    // The modes are radio items; the digit that switches them is hint text here, never an accelerator.
+    const mode = MODE_ACTION.exec(action.id)?.[1];
+    const radio = mode !== undefined;
     entries.push({
       id: action.id,
       label: text(context.t, item.label),
       icon: action.icon,
-      shortcut: shortcut?.label,
-      checked: context.checked(action.id),
+      shortcut: radio ? String(MODE_ORDER.indexOf(mode) + 1) : shortcut?.label,
+      checked: radio ? context.checked(action.id) === true : context.checked(action.id),
+      radio: radio || undefined,
       disabled: !isEnabled(action, context),
       onSelect: () => context.run(action.id),
     });

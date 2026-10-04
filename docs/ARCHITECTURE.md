@@ -862,36 +862,22 @@ update/state.rs      UpdateState { pending: Mutex<Option<Update + bytes>> }; ins
   picks the slice's directory at compile time (unchanged).
 - Release CSP: `style-src 'self'`; devCsp unchanged.
 
-## 12. v1.2 command map (Windows menu bar removed)
+## 12. v1.2 command map (menu row and modes, ADR-102)
 
-The Windows in-window menu bar and the status bar are gone (`src/features/topbar/` is the top bar; macOS keeps its native menu from `menu.json`). Every command stays an action of the registry, so shortcuts and the macOS menu are unchanged. Where the old Windows menu items live now:
+Windows has the in-window menu row again (`features/shell/MenuRowSlot.tsx`: `MenuBar` from `menu.json` and the registry, 32 high, with the caption buttons 46 x 32 at the right, hidden in full screen; Home has no menu row and its caption buttons are 46 x 32 in the strip). macOS keeps its native menu, built from the same `menu.json` (`src-tauri/src/menu`). The top bar keeps Undo, Redo, Search, the tour pill and Fertig; Export and More are gone. Every command stays an action of the registry, so shortcuts are unchanged. The modes are the actions `mode-read`, `mode-comment`, `mode-fill`, `mode-pages`, `mode-edit` (they call `ui.setMode`); the Werkzeuge menu lists them as radio items with "1" to "5" as hint text only (never accelerators; the digit keys are the shell's, not the menu's). Tool actions (`tool-*`), `merge-files`, `split-document`, `extract-pages` and `toggle-inspector` are not in any menu (`menuBar: false`). Where each command lives (FEEDBACK F14: Speichern, Speichern unter, Kopie exportieren, Als Bilder exportieren, Drucken, Formular reduzieren, Dokumenteigenschaften and PDF aus Bildern are not in a mode):
 
-| Old menu | Commands | New place |
-|---|---|---|
-| File | Open, Open recent, Images to PDF, Merge, Split, Extract pages | Home (open, recents, hub cards) and the tool sidebar rows "PDF exportieren" / "Mehr"; shortcut Primary+O |
-| File | Close document | tab close x, Primary+W |
-| File | Save | **Fertig** (saves, then Home), Primary+S |
-| File | Save As | More ⋯, double click on the file name, Primary+Shift+S |
-| File | Export copy, Export as images, Compress | Export menu in the top bar |
-| File | Flatten form, Protect, Document properties, Print | More ⋯ |
-| File | Settings | More ⋯, Primary+, |
-| File | Exit | caption close button |
-| Edit | Undo, Redo | top bar icon buttons, Primary+Z / Primary+Shift+Z |
-| Edit | Copy, Cut, Paste (annotations) | Primary+C / Primary+X / Primary+V on the selected annotation (keyboard, not menu actions) |
-| Edit | Find | Search button (opens the Search tab of the page sidebar), Primary+F |
-| Edit | Find next / previous | Search tab, Primary+G / Primary+Shift+G, F3 |
-| Edit | Add comment, Delete | selection popover, Primary+Shift+M, Delete |
-| View | Zoom in/out, 100 %, Fit width, Fit page | zoom dropdown |
-| View | Continuous / Single / Two pages | zoom dropdown, section "Scrollen" |
-| View | Rotate right / left / reset | zoom dropdown, section "Ansicht drehen" |
-| View | Go to page, Next/Previous page | page field (Primary+Shift+N focuses it), Primary+Down / Up |
-| View | Next/Previous tab | tabs, Ctrl+Tab / Ctrl+Shift+Tab |
-| View | Toggle left panel / inspector, sidebar tabs | the sidebars' own collapse buttons and tab row, F4 / Shift+F4 |
-| View | Full screen | More ⋯, F11 |
-| Tools | Select, Markup, Text, Draw, Shapes, Comment, Signature, Redact, Pages, Text box, Image, Crop | tool sidebar rows (W-Tools), tool letters |
-| Tools | Form highlight, Manage signatures | tool sidebar rows (Signatur, forms) |
-| Help | Welcome tour | More ⋯ ("Tour starten"); the tour pill shows progress |
-| Help | Reset tips | More ⋯ |
-| Help | About | Home (brand) |
+| Command | Place |
+|---|---|
+| Open, Save, Save As, Export copy, Export images, Images to PDF, Compress, Flatten form, Protect, Document properties, Print, Close, Settings, Exit | Datei menu (Settings and Exit Windows only); Save is also **Fertig**, Save As also double click on the file name |
+| Open recent, Merge, Split, Extract pages | Home (recents, hub cards) and the Seiten mode tool row |
+| Undo, Redo, Find (and Find next / previous) | Bearbeiten menu, top bar buttons (Undo, Redo, Search), Primary+Z / Primary+Shift+Z / Primary+F / Primary+G |
+| Delete, Add comment | Bearbeiten menu, selection popover, Delete, Primary+Shift+M |
+| Zoom, fits, scroll modes, rotate, go to page, next / previous page and tab, sidebar toggle and tabs, full screen | Ansicht menu (no "Eigenschaften" item), zoom dropdown, page field, tabs, F11 |
+| Lesen, Kommentieren, Ausfüllen & Signieren, Seiten, Bearbeiten | Werkzeuge menu (radio items, hint 1 to 5), the mode row, keys 1 to 5 |
+| Highlight form fields, Manage signatures | Werkzeuge menu, tool row of Ausfüllen & Signieren |
+| Tools (select, highlight, comment, draw, shapes, signature, redact, pages, text box, image, crop, Lesen tools) | The tool row of their mode (F14 table, DESIGN §3.2), tool letters |
+| Welcome tour, Reset tips, About | Hilfe menu (About Windows only); the tour pill shows progress |
 
-Zoom and page text that the status bar showed are in the top bar centre; the polite live regions (save, render, settled page, success pulses) are `topbar/LiveRegions.tsx`.
+Keyboard of the menu row (DESIGN §3.2): Alt alone or F10 focuses Datei and shows the mnemonics; Alt plus the access letter opens a menu (never with Ctrl, which is AltGr); Left/Right switch menus, Down/Enter/Space open, Esc closes and then returns focus. ARIA `menubar`, `menuitem`, `menuitemradio` for the modes.
+
+Zoom and page text are in the top bar centre; the polite live regions (save, render, settled page, success pulses) are `topbar/LiveRegions.tsx`.

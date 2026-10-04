@@ -4,17 +4,47 @@
     {
       "id": "app",
       "items": [
-        { "predefined": "about", "label": "menu.app.about" },
-        { "separator": true },
-        { "action": "settings", "label": "menu.app.settings", "accelerator": "CmdOrCtrl+," },
-        { "separator": true },
-        { "predefined": "services", "label": "menu.app.services" },
-        { "separator": true },
-        { "predefined": "hide", "label": "menu.app.hide" },
-        { "predefined": "hide_others", "label": "menu.app.hideOthers" },
-        { "predefined": "show_all", "label": "menu.app.showAll" },
-        { "separator": true },
-        { "predefined": "quit", "label": "menu.app.quit" }
+        {
+          "predefined": "about",
+          "label": "menu.app.about"
+        },
+        {
+          "separator": true
+        },
+        {
+          "action": "settings",
+          "label": "menu.app.settings",
+          "accelerator": "CmdOrCtrl+,"
+        },
+        {
+          "separator": true
+        },
+        {
+          "predefined": "services",
+          "label": "menu.app.services"
+        },
+        {
+          "separator": true
+        },
+        {
+          "predefined": "hide",
+          "label": "menu.app.hide"
+        },
+        {
+          "predefined": "hide_others",
+          "label": "menu.app.hideOthers"
+        },
+        {
+          "predefined": "show_all",
+          "label": "menu.app.showAll"
+        },
+        {
+          "separator": true
+        },
+        {
+          "predefined": "quit",
+          "label": "menu.app.quit"
+        }
       ]
     },
     {
@@ -22,12 +52,72 @@
       "label": "menu.file",
       "access": "menu.access.file",
       "items": [
-        { "action": "open", "label": "menu.file.open", "accelerator": "CmdOrCtrl+O" },
         {
-          "submenu": "recent",
-          "label": "menu.file.openRecent",
-          "clearLabel": "menu.file.clearRecent",
-          "platform": "windows"
+          "action": "open",
+          "label": "menu.file.open",
+          "accelerator": "CmdOrCtrl+O"
+        },
+        {
+          "separator": true
+        },
+        {
+          "action": "save",
+          "label": "menu.file.save",
+          "accelerator": "CmdOrCtrl+S",
+          "requiresDocument": true
+        },
+        {
+          "action": "save-as",
+          "label": "menu.file.saveAs",
+          "accelerator": "CmdOrCtrl+Shift+S",
+          "requiresDocument": true
+        },
+        {
+          "action": "export-copy",
+          "label": "menu.file.exportCopy",
+          "requiresDocument": true
+        },
+        {
+          "action": "export-images",
+          "label": "menu.file.exportImages",
+          "accelerator": "CmdOrCtrl+Shift+E",
+          "requiresDocument": true
+        },
+        {
+          "action": "images-to-pdf",
+          "label": "menu.file.imagesToPdf"
+        },
+        {
+          "action": "compress-document",
+          "label": "menu.file.compress",
+          "requiresDocument": true
+        },
+        {
+          "separator": true
+        },
+        {
+          "action": "flatten-form",
+          "label": "menu.file.flattenForm",
+          "requiresDocument": true
+        },
+        {
+          "action": "protect",
+          "label": "menu.file.protect",
+          "requiresDocument": true
+        },
+        {
+          "action": "document-properties",
+          "label": "menu.file.props",
+          "requiresDocument": true
+        },
+        {
+          "separator": true
+        },
+        {
+          "action": "print",
+          "label": "menu.file.print",
+          "accelerator": "CmdOrCtrl+P",
+          "requiresDocument": true
         },
         {
           "action": "close-document",
@@ -37,36 +127,20 @@
           "withoutDocument": "close_window",
           "withoutDocumentLabel": "menu.file.closeWindow"
         },
-        { "separator": true },
-        { "action": "save", "label": "menu.file.save", "accelerator": "CmdOrCtrl+S", "requiresDocument": true },
         {
-          "action": "save-as",
-          "label": "menu.file.saveAs",
-          "accelerator": "CmdOrCtrl+Shift+S",
-          "requiresDocument": true
+          "separator": true,
+          "platform": "windows"
         },
-        { "action": "export-copy", "label": "menu.file.exportCopy", "requiresDocument": true },
         {
-          "action": "export-images",
-          "label": "menu.file.exportImages",
-          "accelerator": "CmdOrCtrl+Shift+E",
-          "requiresDocument": true
+          "action": "settings",
+          "label": "menu.file.settings",
+          "platform": "windows"
         },
-        { "separator": true },
-        { "action": "images-to-pdf", "label": "menu.file.imagesToPdf" },
-        { "action": "merge-files", "label": "menu.file.merge", "requiresDocument": true },
-        { "action": "split-document", "label": "menu.file.split", "requiresDocument": true },
-        { "action": "extract-pages", "label": "menu.file.extractPages", "requiresDocument": true },
-        { "action": "compress-document", "label": "menu.file.compress", "requiresDocument": true },
-        { "separator": true },
-        { "action": "flatten-form", "label": "menu.file.flattenForm", "requiresDocument": true },
-        { "action": "protect", "label": "menu.file.protect", "requiresDocument": true },
-        { "action": "document-properties", "label": "menu.file.props", "requiresDocument": true },
-        { "separator": true },
-        { "action": "print", "label": "menu.file.print", "accelerator": "CmdOrCtrl+P", "requiresDocument": true },
-        { "separator": true, "platform": "windows" },
-        { "action": "settings", "label": "menu.file.settings", "platform": "windows" },
-        { "action": "exit", "label": "menu.file.exit", "platform": "windows" }
+        {
+          "action": "exit",
+          "label": "menu.file.exit",
+          "platform": "windows"
+        }
       ]
     },
     {
@@ -74,23 +148,60 @@
       "label": "menu.edit",
       "access": "menu.access.edit",
       "items": [
-        { "action": "undo", "label": "menu.edit.undo", "accelerator": "CmdOrCtrl+Z", "requiresDocument": true },
-        { "action": "redo", "label": "menu.edit.redo", "accelerator": "CmdOrCtrl+Shift+Z", "requiresDocument": true },
-        { "separator": true },
-        { "predefined": "cut", "label": "menu.edit.cut" },
-        { "predefined": "copy", "label": "menu.edit.copy" },
-        { "predefined": "paste", "label": "menu.edit.paste" },
-        { "predefined": "select_all", "label": "menu.edit.selectAll" },
-        { "action": "delete-selection", "label": "menu.edit.delete", "requiresDocument": true },
-        { "separator": true },
+        {
+          "action": "undo",
+          "label": "menu.edit.undo",
+          "accelerator": "CmdOrCtrl+Z",
+          "requiresDocument": true
+        },
+        {
+          "action": "redo",
+          "label": "menu.edit.redo",
+          "accelerator": "CmdOrCtrl+Shift+Z",
+          "requiresDocument": true
+        },
+        {
+          "separator": true
+        },
+        {
+          "predefined": "cut",
+          "label": "menu.edit.cut"
+        },
+        {
+          "predefined": "copy",
+          "label": "menu.edit.copy"
+        },
+        {
+          "predefined": "paste",
+          "label": "menu.edit.paste"
+        },
+        {
+          "predefined": "select_all",
+          "label": "menu.edit.selectAll"
+        },
+        {
+          "action": "delete-selection",
+          "label": "menu.edit.delete",
+          "requiresDocument": true
+        },
+        {
+          "separator": true
+        },
         {
           "action": "add-comment",
           "label": "menu.edit.addComment",
           "accelerator": "CmdOrCtrl+Shift+M",
           "requiresDocument": true
         },
-        { "separator": true },
-        { "action": "find", "label": "menu.edit.find", "accelerator": "CmdOrCtrl+F", "requiresDocument": true },
+        {
+          "separator": true
+        },
+        {
+          "action": "find",
+          "label": "menu.edit.find",
+          "accelerator": "CmdOrCtrl+F",
+          "requiresDocument": true
+        },
         {
           "action": "find-next",
           "label": "menu.edit.findNext",
@@ -116,17 +227,29 @@
           "accelerator": "CmdOrCtrl+Alt+1",
           "requiresDocument": true
         },
-        { "action": "sidebar-tab-pages", "label": "menu.view.tabPages", "requiresDocument": true },
-        { "action": "sidebar-tab-outline", "label": "menu.view.tabOutline", "requiresDocument": true },
-        { "action": "sidebar-tab-comments", "label": "menu.view.tabComments", "requiresDocument": true },
-        { "action": "sidebar-tab-search", "label": "menu.view.tabSearch", "requiresDocument": true },
         {
-          "action": "toggle-inspector",
-          "label": "menu.view.properties",
-          "accelerator": "CmdOrCtrl+Alt+I",
+          "action": "sidebar-tab-pages",
+          "label": "menu.view.tabPages",
           "requiresDocument": true
         },
-        { "separator": true },
+        {
+          "action": "sidebar-tab-outline",
+          "label": "menu.view.tabOutline",
+          "requiresDocument": true
+        },
+        {
+          "action": "sidebar-tab-comments",
+          "label": "menu.view.tabComments",
+          "requiresDocument": true
+        },
+        {
+          "action": "sidebar-tab-search",
+          "label": "menu.view.tabSearch",
+          "requiresDocument": true
+        },
+        {
+          "separator": true
+        },
         {
           "action": "zoom-in",
           "label": "menu.view.zoomIn",
@@ -151,12 +274,33 @@
           "accelerator": "CmdOrCtrl+2",
           "requiresDocument": true
         },
-        { "action": "fit-page", "label": "menu.view.fitPage", "accelerator": "CmdOrCtrl+0", "requiresDocument": true },
-        { "separator": true },
-        { "action": "scroll-continuous", "label": "menu.view.scrollContinuous", "requiresDocument": true },
-        { "action": "scroll-single", "label": "menu.view.scrollSingle", "requiresDocument": true },
-        { "action": "scroll-spread", "label": "menu.view.scrollSpread", "requiresDocument": true },
-        { "separator": true },
+        {
+          "action": "fit-page",
+          "label": "menu.view.fitPage",
+          "accelerator": "CmdOrCtrl+0",
+          "requiresDocument": true
+        },
+        {
+          "separator": true
+        },
+        {
+          "action": "scroll-continuous",
+          "label": "menu.view.scrollContinuous",
+          "requiresDocument": true
+        },
+        {
+          "action": "scroll-single",
+          "label": "menu.view.scrollSingle",
+          "requiresDocument": true
+        },
+        {
+          "action": "scroll-spread",
+          "label": "menu.view.scrollSpread",
+          "requiresDocument": true
+        },
+        {
+          "separator": true
+        },
         {
           "action": "next-page",
           "label": "menu.view.nextPage",
@@ -187,7 +331,9 @@
           "accelerator": "CmdOrCtrl+Shift+[",
           "requiresDocument": true
         },
-        { "separator": true },
+        {
+          "separator": true
+        },
         {
           "action": "rotate-view-right",
           "label": "menu.view.rotateRight",
@@ -200,10 +346,23 @@
           "accelerator": "CmdOrCtrl+L",
           "requiresDocument": true
         },
-        { "action": "rotate-view-reset", "label": "menu.view.rotateReset", "requiresDocument": true },
-        { "separator": true },
-        { "predefined": "fullscreen", "label": "menu.view.fullscreen" },
-        { "action": "fullscreen", "label": "menu.view.fullscreenWindows", "platform": "windows" }
+        {
+          "action": "rotate-view-reset",
+          "label": "menu.view.rotateReset",
+          "requiresDocument": true
+        },
+        {
+          "separator": true
+        },
+        {
+          "predefined": "fullscreen",
+          "label": "menu.view.fullscreen"
+        },
+        {
+          "action": "fullscreen",
+          "label": "menu.view.fullscreenWindows",
+          "platform": "windows"
+        }
       ]
     },
     {
@@ -211,32 +370,64 @@
       "label": "menu.tools",
       "access": "menu.access.tools",
       "items": [
-        { "action": "tool-select", "label": "menu.tools.select", "requiresDocument": true },
-        { "action": "tool-highlight", "label": "menu.tools.highlight", "requiresDocument": true },
-        { "action": "tool-note", "label": "menu.tools.comment", "requiresDocument": true },
-        { "action": "tool-text", "label": "menu.tools.textComment", "requiresDocument": true },
-        { "action": "tool-draw", "label": "menu.tools.draw", "requiresDocument": true },
-        { "action": "tool-shapes", "label": "menu.tools.shapes", "requiresDocument": true },
-        { "action": "tool-signature", "label": "menu.tools.fillSign", "requiresDocument": true },
-        { "action": "tool-redact", "label": "menu.tools.redact", "requiresDocument": true },
-        { "separator": true },
-        { "action": "tool-pages", "label": "menu.tools.organize", "requiresDocument": true },
-        { "action": "tool-textBox", "label": "menu.tools.addText", "requiresDocument": true },
-        { "action": "tool-image", "label": "menu.tools.addImage", "requiresDocument": true },
-        { "action": "tool-crop", "label": "menu.tools.crop", "requiresDocument": true },
-        { "separator": true },
-        { "action": "form-highlight", "label": "menu.tools.formHighlight", "requiresDocument": true },
-        { "action": "manage-signatures", "label": "menu.tools.manageSignatures" }
+        {
+          "action": "mode-read",
+          "label": "menu.tools.modeRead",
+          "requiresDocument": true
+        },
+        {
+          "action": "mode-comment",
+          "label": "menu.tools.modeComment",
+          "requiresDocument": true
+        },
+        {
+          "action": "mode-fill",
+          "label": "menu.tools.modeFill",
+          "requiresDocument": true
+        },
+        {
+          "action": "mode-pages",
+          "label": "menu.tools.modePages",
+          "requiresDocument": true
+        },
+        {
+          "action": "mode-edit",
+          "label": "menu.tools.modeEdit",
+          "requiresDocument": true
+        },
+        {
+          "separator": true
+        },
+        {
+          "action": "form-highlight",
+          "label": "menu.tools.formHighlight",
+          "requiresDocument": true
+        },
+        {
+          "action": "manage-signatures",
+          "label": "menu.tools.manageSignatures"
+        }
       ]
     },
     {
       "id": "window",
       "label": "menu.window",
       "items": [
-        { "predefined": "minimize", "label": "menu.window.minimize" },
-        { "predefined": "maximize", "label": "menu.window.zoom" },
-        { "separator": true },
-        { "predefined": "bring_all_to_front", "label": "menu.window.bringAllToFront" }
+        {
+          "predefined": "minimize",
+          "label": "menu.window.minimize"
+        },
+        {
+          "predefined": "maximize",
+          "label": "menu.window.zoom"
+        },
+        {
+          "separator": true
+        },
+        {
+          "predefined": "bring_all_to_front",
+          "label": "menu.window.bringAllToFront"
+        }
       ]
     },
     {
@@ -244,10 +435,23 @@
       "label": "menu.help",
       "access": "menu.access.help",
       "items": [
-        { "action": "welcome-tour", "label": "menu.help.tour" },
-        { "action": "reset-tips", "label": "menu.help.tips" },
-        { "separator": true, "platform": "windows" },
-        { "action": "about", "label": "menu.help.about", "platform": "windows" }
+        {
+          "action": "welcome-tour",
+          "label": "menu.help.tour"
+        },
+        {
+          "action": "reset-tips",
+          "label": "menu.help.tips"
+        },
+        {
+          "separator": true,
+          "platform": "windows"
+        },
+        {
+          "action": "about",
+          "label": "menu.help.about",
+          "platform": "windows"
+        }
       ]
     }
   ]

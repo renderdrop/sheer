@@ -128,17 +128,12 @@ describe('runAction', () => {
     expect(view()?.pageIndex).toBe(1);
   });
 
-  it('toggles the left panel and the inspector, whatever the window width', async () => {
+  it('toggles the left panel, whatever the window width', async () => {
     await open();
     runAction('toggle-left-panel');
     expect(useUi.getState().leftPanelCollapsed).toBe(true);
     runAction('toggle-left-panel');
     expect(useUi.getState().leftPanelCollapsed).toBe(false);
-    // At 1400 px the tool sidebar is shown, so the first toggle makes it the rail and the second brings it back.
-    runAction('toggle-inspector');
-    expect(useUi.getState().inspector).toBe('closed');
-    runAction('toggle-inspector');
-    expect(useUi.getState().inspector).toBe('open');
   });
 
   it('makes a tool the active one, and leaves it active when its key is pressed again', async () => {

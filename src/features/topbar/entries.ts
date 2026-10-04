@@ -28,27 +28,6 @@ export function commandEntry(id: ActionId, ctx: EntryContext, extra: Partial<Men
 
 const separator = (id: string, label?: string): MenuEntry => ({ type: 'separator', id, label });
 
-/** The export menu: copy, images, compress. */
-export function exportEntries(ctx: EntryContext): MenuEntry[] {
-  return [commandEntry('export-copy', ctx), commandEntry('export-images', ctx), commandEntry('compress-document', ctx)];
-}
-
-/** The More menu. */
-export function moreEntries(ctx: EntryContext): MenuEntry[] {
-  return [
-    commandEntry('document-properties', ctx),
-    commandEntry('protect', ctx),
-    commandEntry('flatten-form', ctx),
-    commandEntry('print', ctx),
-    separator('more-sep-1'),
-    commandEntry('save-as', ctx),
-    commandEntry('fullscreen', ctx),
-    commandEntry('settings', ctx),
-    commandEntry('welcome-tour', ctx),
-    commandEntry('reset-tips', ctx),
-  ];
-}
-
 /** The zoom menu: steps and fits, then the scroll modes and the view rotation under their own headings. */
 export function zoomEntries(ctx: EntryContext, scrollMode: string): MenuEntry[] {
   const scroll = (id: 'scroll-continuous' | 'scroll-single' | 'scroll-spread') =>

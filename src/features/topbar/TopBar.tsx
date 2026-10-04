@@ -1,5 +1,3 @@
-import type { ReactNode } from 'react';
-
 import { cx } from '../../components/cx';
 import { CenterCluster } from './CenterCluster';
 import { LeftCluster } from './LeftCluster';
@@ -9,16 +7,14 @@ import { RightCluster } from './RightCluster';
 export interface TopBarProps {
   /** macOS, not in full screen: the traffic lights float over the start of the bar. */
   trafficLightInset: boolean;
-  /** The Windows caption buttons, flush right; `null` elsewhere. */
-  captionControls: ReactNode;
 }
 
 /**
  * The editor's top bar (DESIGN v2 3.2): 56 high, White, 1 px border below, grid `1fr auto 1fr`. Left: Back, the file name or the
- * tabs. Centre: zoom dropdown and page field. Right: Undo, Redo, Search, Export, More, the tour pill, Fertig, the caption buttons.
+ * tabs. Centre: zoom dropdown and page field. Right: Undo, Redo, Search, the tour pill, Fertig (the caption buttons are in the menu row).
  * Empty space is the drag region (Tauri's `data-tauri-drag-region`; buttons and fields are not).
  */
-export function TopBar({ trafficLightInset, captionControls }: TopBarProps) {
+export function TopBar({ trafficLightInset }: TopBarProps) {
   return (
     <div
       data-slot="topbar"
@@ -30,7 +26,7 @@ export function TopBar({ trafficLightInset, captionControls }: TopBarProps) {
     >
       <LeftCluster />
       <CenterCluster />
-      <RightCluster captionControls={captionControls} />
+      <RightCluster />
       <LiveRegions />
     </div>
   );

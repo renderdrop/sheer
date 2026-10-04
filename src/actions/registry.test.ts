@@ -60,7 +60,6 @@ describe('the registry', () => {
       'export-images',
       'print',
       'toggle-left-panel',
-      'toggle-inspector',
       'view-home',
       'settings',
       'about',
@@ -78,6 +77,7 @@ describe('the registry', () => {
       'welcome-tour',
       'reset-tips',
       ...TOOLS.map((tool): ActionId => `tool-${tool}`),
+      ...'read comment fill pages edit'.split(' ').map((mode): ActionId => `mode-${mode}` as ActionId),
     ];
     expect([...ACTION_IDS].sort()).toEqual([...expected].sort());
   });
@@ -109,6 +109,11 @@ describe('shortcuts per platform', () => {
     'close-document': { macos: '⌘W', windows: 'Ctrl+W' },
     save: { macos: '⌘S', windows: 'Ctrl+S' },
     'save-as': { macos: '⇧⌘S', windows: 'Ctrl+Shift+S' },
+    'mode-read': { macos: null, windows: null },
+    'mode-comment': { macos: null, windows: null },
+    'mode-fill': { macos: null, windows: null },
+    'mode-pages': { macos: null, windows: null },
+    'mode-edit': { macos: null, windows: null },
     'merge-files': { macos: null, windows: null },
     'split-document': { macos: null, windows: null },
     'extract-pages': { macos: null, windows: null },
@@ -143,7 +148,6 @@ describe('shortcuts per platform', () => {
     'export-images': { macos: '⇧⌘E', windows: 'Ctrl+Shift+E' },
     print: { macos: '⌘P', windows: 'Ctrl+P' },
     'toggle-left-panel': { macos: '⌥⌘1', windows: 'F4' },
-    'toggle-inspector': { macos: '⌥⌘I', windows: 'Shift+F4' },
     'view-home': { macos: null, windows: null },
     settings: { macos: '⌘,', windows: 'Ctrl+,' },
     about: { macos: null, windows: null },
@@ -191,7 +195,7 @@ describe('shortcuts per platform', () => {
 
   it('are written in the UI language on Windows and not on macOS', () => {
     expect(shortcutFor('open', 'windows', translators.de)?.label).toBe('Strg+O');
-    expect(shortcutFor('toggle-inspector', 'windows', translators.de)?.label).toBe('Umschalt+F4');
+    expect(shortcutFor('toggle-left-panel', 'windows', translators.de)?.label).toBe('F4');
     expect(shortcutFor('open', 'macos', translators.de)?.label).toBe('⌘O');
   });
 

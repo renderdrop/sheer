@@ -30,7 +30,6 @@ import {
   MessageSquare,
   MousePointer2,
   PanelLeft,
-  PanelRight,
   ListOrdered,
   Percent,
   PenLine,
@@ -76,7 +75,7 @@ import { useViewer } from '../features/viewer/useViewer';
 import type { PlainKey, Translate } from '../i18n';
 import type { Shortcut } from '../lib/shortcuts';
 import { useTools } from '../stores/tools';
-import { useUi, type LeftPanelTab, type ToolId } from '../stores/ui';
+import { MODES, useUi, type LeftPanelTab, type Mode, type ToolId } from '../stores/ui';
 import { requestAddComment } from './commentIntent';
 import { runHistoryStep } from './history';
 import { formatBinding, resolveBinding, type Binding, type Shortcuts } from './shortcut';
@@ -84,6 +83,9 @@ import { mayCopy, mayPrint, type ActionState } from './state';
 
 /** The action of each tool of the toolbar: it makes the tool the active one. */
 export type ToolActionId = `tool-${ToolId}`;
+
+/** The action of each mode of the editor (Werkzeuge menu, DESIGN v2 3.2): it makes the mode the active one. */
+export type ModeActionId = `mode-${Mode}`;
 
 /** The id of every action. These strings are also the native menu's item ids (`src/actions/menu.json`, the Rust allowlist). */
 export type ActionId =
@@ -118,7 +120,6 @@ export type ActionId =
   | 'next-tab'
   | 'previous-tab'
   | 'toggle-left-panel'
-  | 'toggle-inspector'
   | 'view-home'
   | 'settings'
   | 'about'
@@ -142,6 +143,7 @@ export type ActionId =
   | 'manage-signatures'
   | 'welcome-tour'
   | 'reset-tips'
+  | ModeActionId
   | ToolActionId;
 
 /** Where an action belongs (the menu bar's layout is `menu.json`; the group is for readers and tests). */
@@ -206,15 +208,19 @@ const TOOL_ACTIONS: readonly ActionDef[] = (
         ? { default: { key }, alternates: [{ key: 'n' }] }
         : { default: { key } },
   group: 'tools',
-  // The F14 Lesen tools live in the mode tool row only (the menus list modes, DESIGN v2 3.2).
-  menuBar: tool !== 'form' && tool !== 'hand' && tool !== 'textSelect' && tool !== 'magnifier',
+  // The tools live in the tool row only (the menus list modes, DESIGN v2 3.2).
+  menuBar: false,
   enabled: needsDocument,
   // The key makes the tool active and leaves it so; it is not the toolbar's click, which also releases an active tool.
   run: () => {
     const ui = useUi.getState();
-    // The Sign key opens the Sign menu (DESIGN 3.34): it is the toolbar item's own popover trigger.
+    // The Sign key goes to the Signatur item of Ausfüllen & Signieren (DESIGN v2 3.2): Enter there places the signature, the chevron
+    // opens the saved ones. The mode row mounts the item once the mode is on, hence the frame.
     if (tool === 'signature') {
-      document.querySelector<HTMLElement>('[data-toolbar-item="signature"]')?.click();
+      ui.setMode('fill');
+      requestAnimationFrame(() =>
+        document.querySelector<HTMLElement>('[data-toolbar-item="signature"]')?.focus({ preventScroll: true }),
+      );
       return;
     }
     // C cycles Comment between its two variants, Note and Text comment (DESIGN 3.55).
@@ -239,6 +245,24 @@ const SIDEBAR_TABS: readonly (readonly [string, LeftPanelTab, PlainKey])[] = [
   ['comments', 'comments', 'menu.view.tabComments'],
   ['search', 'search', 'menu.view.tabSearch'],
 ];
+
+/** The five mode actions of the Werkzeuge menu (labels in the menus only; the digits 1 to 5 are hints there, never accelerators). */
+const MODE_LABELS: Readonly<Record<Mode, PlainKey>> = {
+  read: 'menu.tools.modeRead',
+  comment: 'menu.tools.modeComment',
+  fill: 'menu.tools.modeFill',
+  pages: 'menu.tools.modePages',
+  edit: 'menu.tools.modeEdit',
+};
+
+const MODE_ACTIONS: readonly ActionDef[] = MODES.map((mode): ActionDef => ({
+  id: `mode-${mode}`,
+  labelKey: MODE_LABELS[mode],
+  group: 'view',
+  menuBar: true,
+  enabled: needsDocument,
+  run: () => useUi.getState().setMode(mode),
+}));
 
 const SIDEBAR_TAB_ACTIONS: readonly ActionDef[] = SIDEBAR_TABS.map(([name, tab, labelKey]): ActionDef => ({
   id: `sidebar-tab-${name}` as ActionId,
@@ -275,7 +299,7 @@ function toggleFullscreen(): void {
  * Where the shortcuts come from (docs/research/ux-patterns.md section 5). macOS: Command is primary, avoid Control. Windows:
  * Ctrl accelerators, no Ctrl+Alt (AltGr). Cmd or Ctrl with 0, 1, 2 are Acrobat's fit page, 100 % and fit width; they are the same
  * on macOS, where the research found Preview's keys unverified. The panel toggles (Option+Cmd+1 on macOS, F4 and Shift+F4
- * on Windows), the inspector's Option+Cmd+I and the page keys are not in the research, so they are chosen here. Next and
+ * on Windows) and the page keys are not in the research, so they are chosen here. Next and
  * previous page are Cmd (macOS) or Ctrl (Windows) with the Down and Up arrows: Option or Alt with the arrows is the left
  * panel's Move up and Move down for a thumbnail (DESIGN 3.9), and the native menu's key equivalent would take it from that
  * list; PageDown and PageUp stay with the canvas and the panels' scrolling (a zoomed page is taller than the window). The
@@ -371,7 +395,7 @@ export const ACTIONS: readonly ActionDef[] = [
     labelKey: 'action.merge',
     icon: Combine,
     group: 'file',
-    menuBar: true,
+    menuBar: false,
     enabled: needsDocument,
     run: runMerge,
   },
@@ -380,7 +404,7 @@ export const ACTIONS: readonly ActionDef[] = [
     labelKey: 'action.split',
     icon: Scissors,
     group: 'file',
-    menuBar: true,
+    menuBar: false,
     enabled: needsDocument,
     run: runSplit,
   },
@@ -389,7 +413,7 @@ export const ACTIONS: readonly ActionDef[] = [
     labelKey: 'action.extractPages',
     icon: FileOutput,
     group: 'file',
-    menuBar: true,
+    menuBar: false,
     enabled: needsDocument,
     run: runExtract,
   },
@@ -443,7 +467,7 @@ export const ACTIONS: readonly ActionDef[] = [
     icon: SquareSlash,
     group: 'edit',
     enabled: needsDocument,
-    // A mode (DESIGN 3.38): the canvas and inspector slots of src/features/redact read it.
+    // A mode (DESIGN 3.38): the canvas and banner slots of src/features/redact read it.
     run: () => useUi.getState().setRedactMode(true),
   },
   {
@@ -672,16 +696,6 @@ export const ACTIONS: readonly ActionDef[] = [
     run: () => useUi.getState().setLeftPanelCollapsed(!readShellStructure().leftCollapsed),
   },
   {
-    id: 'toggle-inspector',
-    labelKey: 'toolbar.inspector',
-    icon: PanelRight,
-    shortcut: { default: { key: 'F4', mods: ['shift'] }, macos: { key: 'i', mods: ['alt', 'primary'] } },
-    group: 'panels',
-    menuBar: true,
-    enabled: needsDocument,
-    run: () => useUi.getState().setInspector(readShellStructure().inspectorVisible ? 'closed' : 'open'),
-  },
-  {
     id: 'view-home',
     labelKey: 'action.viewHome',
     icon: House,
@@ -720,11 +734,12 @@ export const ACTIONS: readonly ActionDef[] = [
     icon: SquareSlash,
     shortcut: { default: { key: 'x' } },
     group: 'tools',
-    menuBar: true,
+    menuBar: false,
     enabled: needsDocument,
     // A mode (DESIGN 3.38): the key toggles it like the toolbar item does.
     run: () => useUi.getState().setRedactMode(!useUi.getState().redactMode),
   },
+  ...MODE_ACTIONS,
   ...SIDEBAR_TAB_ACTIONS,
   {
     id: 'delete-selection',

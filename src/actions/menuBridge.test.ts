@@ -125,7 +125,6 @@ describe('a menu id from the backend, through the bridge into the registry', () 
       'next-page',
       'previous-page',
       'toggle-left-panel',
-      'toggle-inspector',
       'tool-draw',
     ]) {
       send(id);
@@ -169,7 +168,7 @@ describe('a menu id from the backend, through the bridge into the registry', () 
       const ui = useUi.getState();
       for (const id of ['open', 'close-document', 'zoom-in', 'zoom-out', 'actual-size', 'fit-width', 'fit-page'])
         send(id);
-      for (const id of ['next-page', 'toggle-left-panel', 'toggle-inspector', 'tool-draw', 'settings']) send(id);
+      for (const id of ['next-page', 'toggle-left-panel', 'tool-draw', 'settings']) send(id);
       expect(documentsApi.openDocumentDialog).not.toHaveBeenCalled();
       expect(documentsApi.closeDocument).not.toHaveBeenCalled();
       expect(activeDocument()).toEqual(REPORT);
