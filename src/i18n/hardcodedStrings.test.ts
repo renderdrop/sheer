@@ -22,7 +22,7 @@ const lintRequire = createRequire(fileURLToPath(new URL('../../tools/lint/packag
 const ts = lintRequire('typescript') as TypeScript;
 
 const SRC = fileURLToPath(new URL('..', import.meta.url));
-const SCANNED = ['features', 'components'];
+const SCANNED = ['features', 'components', 'actions', 'stores', 'lib'];
 const TEXT_NAME = /(label|title|alt|placeholder|description|tooltip|note|text|message|caption|hint|legend|summary)$/i;
 /** Names that look like text and are not: an `aria-` token list, a key binding. */
 const NOT_TEXT = new Set(['aria-keyshortcuts', 'aria-labelledby', 'aria-describedby', 'aria-errormessage']);

@@ -1938,6 +1938,22 @@ Checklist, run per screen (empty state, document, organize, crop, redact, each d
 **Tokens (new, §3.46–§3.52):** `--list-thumb-w` 32, `--list-thumb-h` 40, `--color-icon-disabled` (ink-50 both themes; forced colors
 `GrayText`); removed `--opacity-disabled`. The tip reuses the coach card's width.
 
+### 3.53 i18n glossary (en / de)
+
+Typography (de): ellipsis `…` (never three dots); quotes „…“; a no-break space (U+00A0) between a number and its unit or `%`
+(`20 MB`, `72 × 72 Punkt`) and in thousands groups (`8 192`); a test enforces it. Dates and numbers go through `Intl` with the UI locale.
+
+| English | German | Note |
+|---|---|---|
+| Text comment (free text annotation) | Textkommentar | the annotation; never "Textfeld" (that is a form field) |
+| Insert text | Text einfügen | adds page content, not an annotation |
+| Redact / redaction | Schwärzen / Schwärzung | irreversible removal; "geschwärzt" for done |
+| Crop | Zuschneiden / Zuschnitt | hides, does not remove |
+| Comment, highlight | Kommentar, Hervorhebung | |
+| Page | Seite | |
+| Sign / signature | Signieren / Signatur | visual signatures only |
+| Form field | Formularfeld | |
+
 ## 4. Contrast verification
 
 Worst points (ADR-020): `--surface` over the darkest field point (light `#C6C7FB` → glass `rgb(229,229,254)`; dark

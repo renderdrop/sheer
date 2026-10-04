@@ -19,6 +19,19 @@ const placeholders = (message: string): string[] =>
 const keysOf = (locale: (typeof LOCALES)[number]): string[] => Object.keys(catalogs[locale]).sort();
 
 describe('the catalogs', () => {
+  it('German typography: the ellipsis character, „…“ quotes, a no-break space before a unit', () => {
+    const bad = Object.entries(catalogs.de).flatMap(([key, message]) => {
+      const text = String(message);
+      const problems: string[] = [];
+      if (text.includes('...')) problems.push('three dots instead of the ellipsis');
+      if (/["”]/.test(text)) problems.push('quotes other than „…“');
+      if (/\d (MB|KB|GB|%|Pixel|Punkt|Megapixel|px|pt|mm)(?![\p{L}])/u.test(text))
+        problems.push('a plain space before a unit');
+      return problems.map((problem) => `${key}: ${problem}`);
+    });
+    expect(bad).toEqual([]);
+  });
+
   it('en and de have exactly the same keys', () => {
     const en = new Set(keysOf('en'));
     const german = new Set(keysOf('de'));

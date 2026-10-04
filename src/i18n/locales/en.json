@@ -187,7 +187,7 @@
   "emptyState.title": "Open a PDF",
   "emptyState.hint": "Drop a file anywhere in this window or choose one.",
   "emptyState.recent": "Recent",
-  "emptyState.recentPrivacy": "Recent files are stored only on this device.",
+  "emptyState.recentPrivacy": "Recent files and their previews are stored only on this device.",
   "emptyState.recentClear": "Clear",
   "emptyState.recentRemove": "Remove {name} from recent files",
   "emptyState.recentMissing": "File not found",
