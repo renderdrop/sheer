@@ -102,3 +102,40 @@ F10 result (ADR-051): art crosses IPC as path commands with cubic Béziers and i
 ramp. Acceptance: window screenshot at 200 % antialiased without steps (review/f10-sig-200*.png, not tracked); the saved file rendered by
 PDFium at 400 % deviates from an exact-curve reference in 0.2 % of ink pixels (`tests/signatures.rs`). The slightly rough edge of typed
 signatures is the bundled Homemade Apple font's marker texture, not rasterisation. The Edge 400 % check is the owner's re-test.
+
+## F11 — Patch v1.0.1 (owner test of the installed v1.0.0, 2026-10-04)
+
+Every item: reproduce and accept in the installed build with real mouse input (OS cursor, `scripts/ui/mouse.ps1`), not only in tests.
+Owner screenshots: `review/owner/` (not tracked).
+
+- [ ] 1. Redaction is surgical: (a) the extra black bar at the page bottom on the first click (check after item 2); (b) the rest of the
+      page stays text (selectable, searchable); remove only text objects, image areas and vectors inside the rectangle; rasterise at most
+      the affected image area, never the page. Acceptance: after redact + save, an unredacted sentence is selectable and findable in Sheer
+      and in Edge, the redacted one is not
+- [ ] 2. Live drag preview is offset from the cursor for every tool (highlight, text comment, draw, rectangle, signature); fix the common
+      cause in the preview layer's coordinate conversion (zoom, scroll, DPR)
+- [ ] 3. Highlight while dragging shows at the top left instead of on the text; the drag must look like and follow a text selection
+- [ ] 4. Text comment, drawing and rectangle cannot be edited after insertion ("This request was invalid"): check IPC validation
+- [ ] 5. Comments panel shows "Comments could not be read" once a check mark from the Sign menu is placed: handle mark annotations
+- [ ] 6. Tools stay active after an action until Esc or the select tool; no fallback after each annotation
+- [ ] 7. Starting the tour closes the current document and drops changes: open the welcome document in a new tab, never lose unsaved work
+- [ ] 8. Drawn signature: the pad shows raw angular strokes and a guide line that is drawn along; smoothing must apply live; the guide is
+      not part of the path
+- [ ] Tag v1.0.1 (tester, security-reviewer, annot-smoke, installed-build acceptance)
+
+## F12 — Milestone v1.1 "Structure and comfort"
+
+Designer spec before any implementation; the designer justifies every decision against the reference image (§3 reference direction:
+soft gradient, translucent white cards, icon tiles, pill badges; the owner's image is not in the repo).
+
+- [ ] 1. Start page as a tool hub: cards for Open, Merge, Split, Compress, Images to PDF, Sign, Redact, Fill form; recents below. Card →
+      file dialog → straight into the matching mode
+- [ ] 2. Toolbar only tools (Select, Highlight, Comment, Draw, Shapes, Sign, Redact). File and document functions in a real menu bar (File,
+      Edit, View, Tools) instead of the overflow menu. Left sidebar: Pages, Outline, Comments, Search. Right: properties of the selection
+- [ ] 3. Remove the "Form" button: fields are fillable automatically when present, with a notice banner; "Flatten form" in the File menu;
+      marks (✓ ✗ •) and text fields for PDFs without fields under "Sign" as "Fill & Sign"
+- [ ] 4. Comments like Word: select a sentence → popover "Add comment" → panel shows quoted text, comment, author; replies and
+      resolve/accept; click jumps to the spot; every annotation clearly typed in the panel
+- [ ] 5. Typed signature: three selectable fonts (SIL OFL: e.g. Dancing Script, Great Vibes, Alex Brush); add OFL-1.1 to the font license
+      allowlist; remove Homemade Apple
+- [ ] Tag v1.1.0 (milestone DoD §8.6)

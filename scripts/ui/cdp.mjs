@@ -5,7 +5,7 @@ import { writeFileSync, mkdirSync } from 'node:fs';
 import { crc32 } from 'node:zlib';
 import { dirname } from 'node:path';
 
-const BASE = 'http://127.0.0.1:9222';
+const BASE = `http://127.0.0.1:${process.env.CDP_PORT ?? 9222}`;
 
 async function connect() {
   const targets = await (await fetch(`${BASE}/json`)).json();
