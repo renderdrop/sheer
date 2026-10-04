@@ -1,10 +1,9 @@
-import { ChevronDown, FileText, X } from 'lucide-react';
+import { ChevronDown, X } from 'lucide-react';
 import { motion } from 'motion/react';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent } from 'react';
 
 import { isModalOpen } from '../../actions/dispatch';
-import { Icon, IconButton, Menu, Tooltip, type MenuEntry } from '../../components';
-import { SELECTED_FORCED_COLORS } from '../../components/controlStyles';
+import { IconButton, Menu, Tooltip, type MenuEntry } from '../../components';
 import { cx } from '../../components/cx';
 import { SPRING } from '../../components/motion';
 import { isOwnEvent, itemsOf, rovingTarget } from '../../components/roving';
@@ -57,7 +56,7 @@ function useOverflow(strip: React.RefObject<HTMLDivElement | null>, count: numbe
 }
 
 /**
- * The document tabs (DESIGN 3.18): one row of tabs between the toolbar and the banner, shown while a document is open. Click
+ * The document tabs (DESIGN v2 3.2, 2.8), in the top bar from two open documents on: 28 high, 96 to 200 wide, the close x on hover or for the active tab, the active tab in Ink with a 2 px Solar underline. Click
  * selects, middle click or the x closes, Left and Right move with automatic activation, Delete closes the focused tab. The strip
  * scrolls when the tabs reach their minimum width and then offers a menu of all documents. No drag reorder in M1.
  */
@@ -114,7 +113,7 @@ export function TabStrip() {
 
   if (order.length === 0) return null;
   return (
-    <div className="mb-2 flex h-tabs-row shrink-0 items-center gap-2 px-2" data-tabs="">
+    <div className="flex min-w-0 flex-1 items-center gap-1" data-tabs="">
       <div
         ref={strip}
         role="tablist"
@@ -134,11 +133,8 @@ export function TabStrip() {
               initial={{ opacity: 0 }}
               animate={{ opacity: 1, transition: SPRING.fast }}
               className={cx(
-                'group/tab relative flex h-tabs-row min-w-tab-min max-w-tab-max flex-1 shrink-0 items-center rounded-button ps-3 pe-1',
-                selected
-                  ? 'bg-panel border border-border-subtle shadow-floating text-text'
-                  : 'text-text hover:bg-control-hover active:bg-control-pressed',
-                selected && SELECTED_FORCED_COLORS,
+                'group/tab relative flex h-control-sm min-w-tab-min max-w-tab-max flex-1 items-center rounded-sm ps-2 pe-1',
+                selected ? 'text-text' : 'text-text-muted hover:bg-control-hover hover:text-text',
               )}
               onAuxClick={(event: MouseEvent) => {
                 if (event.button === 1) {
@@ -156,13 +152,21 @@ export function TabStrip() {
                   tabIndex={selected ? 0 : -1}
                   data-id={id}
                   onClick={() => useDocuments.getState().setActive(id)}
-                  className="flex h-full min-w-0 flex-1 cursor-pointer items-center gap-2 rounded-button text-start text-md"
+                  className="flex h-full min-w-0 flex-1 cursor-pointer items-center gap-2 rounded-sm text-start"
                 >
-                  <Icon icon={FileText} className="text-text-muted" />
-                  <span className="min-w-0 flex-1 truncate">{middleTruncate(name)}</span>
                   {edited && (
-                    <span aria-hidden="true" data-edited="" className="size-2 shrink-0 rounded-pill bg-accent" />
+                    <span
+                      aria-hidden="true"
+                      data-edited=""
+                      className="size-[calc(var(--space-1)+var(--space-1)/2)] shrink-0 rounded-pill bg-text"
+                    />
                   )}
+                  <span
+                    data-tour-anchor={selected ? 'status-file-name' : undefined}
+                    className={cx('t-label min-w-0 flex-1 truncate', selected && 'font-medium')}
+                  >
+                    {middleTruncate(name)}
+                  </span>
                 </button>
               </Tooltip>
               <IconButton
@@ -172,8 +176,18 @@ export function TabStrip() {
                 // A tablist owns only tabs (ARIA); keyboard users close with Delete or Primary+W, so the pointer x is hidden from AT.
                 aria-hidden="true"
                 tabIndex={-1}
+                className={cx(
+                  'opacity-0 group-focus-within/tab:opacity-100 group-hover/tab:opacity-100',
+                  selected && 'opacity-100',
+                )}
                 onClick={() => closeTab(id)}
               />
+              {selected && (
+                <span
+                  aria-hidden="true"
+                  className="pointer-events-none absolute inset-x-0 bottom-0 h-[calc(var(--space-1)/2)] bg-accent"
+                />
+              )}
             </motion.div>
           );
         })}

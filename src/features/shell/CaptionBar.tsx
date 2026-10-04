@@ -50,7 +50,7 @@ export interface CaptionBarProps {
  * The Windows caption controls (DESIGN v2 3.2): minimize, maximize or restore, and close, flush right in the 56 strip of Home and of
  * the editor's top bar. The window has no native decorations (`decorations: false`); the strip around them is the drag region
  * (drag, and a double click maximizes, handled by Tauri's `data-tauri-drag-region` script, which needs `core:window:allow-start-dragging`
- * and `-internal-toggle-maximize`). The in-window menu bar is gone from the layout (its file stays until the top bar package deletes it).
+ * and `-internal-toggle-maximize`). There is no in-window menu bar (the top bar and its menus replaced it).
  */
 export function CaptionBar({ maximized, onChanged }: CaptionBarProps) {
   const t = useT();

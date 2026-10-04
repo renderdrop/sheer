@@ -861,3 +861,36 @@ update/state.rs      UpdateState { pending: Mutex<Option<Update + bytes>> }; ins
 - macOS: `--target universal-apple-darwin`, DMG; `fetch-pdfium.sh --universal` fetches `mac-x64` and `mac-arm64`; `library_path`
   picks the slice's directory at compile time (unchanged).
 - Release CSP: `style-src 'self'`; devCsp unchanged.
+
+## 12. v1.2 command map (Windows menu bar removed)
+
+The Windows in-window menu bar and the status bar are gone (`src/features/topbar/` is the top bar; macOS keeps its native menu from `menu.json`). Every command stays an action of the registry, so shortcuts and the macOS menu are unchanged. Where the old Windows menu items live now:
+
+| Old menu | Commands | New place |
+|---|---|---|
+| File | Open, Open recent, Images to PDF, Merge, Split, Extract pages | Home (open, recents, hub cards) and the tool sidebar rows "PDF exportieren" / "Mehr"; shortcut Primary+O |
+| File | Close document | tab close x, Primary+W |
+| File | Save | **Fertig** (saves, then Home), Primary+S |
+| File | Save As | More ⋯, double click on the file name, Primary+Shift+S |
+| File | Export copy, Export as images, Compress | Export menu in the top bar |
+| File | Flatten form, Protect, Document properties, Print | More ⋯ |
+| File | Settings | More ⋯, Primary+, |
+| File | Exit | caption close button |
+| Edit | Undo, Redo | top bar icon buttons, Primary+Z / Primary+Shift+Z |
+| Edit | Find | Search button (opens the Search tab of the page sidebar), Primary+F |
+| Edit | Find next / previous | Search tab, Primary+G / Primary+Shift+G, F3 |
+| Edit | Add comment, Delete | selection popover, Primary+Shift+M, Delete |
+| View | Zoom in/out, 100 %, Fit width, Fit page | zoom dropdown |
+| View | Continuous / Single / Two pages | zoom dropdown, section "Scrollen" |
+| View | Rotate right / left / reset | zoom dropdown, section "Ansicht drehen" |
+| View | Go to page, Next/Previous page | page field (Primary+Shift+N focuses it), Primary+Down / Up |
+| View | Next/Previous tab | tabs, Ctrl+Tab / Ctrl+Shift+Tab |
+| View | Toggle left panel / inspector, sidebar tabs | the sidebars' own collapse buttons and tab row, F4 / Shift+F4 |
+| View | Full screen | More ⋯, F11 |
+| Tools | Select, Markup, Text, Draw, Shapes, Comment, Signature, Redact, Pages, Text box, Image, Crop | tool sidebar rows (W-Tools), tool letters |
+| Tools | Form highlight, Manage signatures | tool sidebar rows (Signatur, forms) |
+| Help | Welcome tour | More ⋯ ("Tour starten"); the tour pill shows progress |
+| Help | Reset tips | More ⋯ |
+| Help | About | Home (brand) |
+
+Zoom and page text that the status bar showed are in the top bar centre; the polite live regions (save, render, settled page, success pulses) are `topbar/LiveRegions.tsx`.
