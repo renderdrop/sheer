@@ -98,3 +98,20 @@ describe('rows', () => {
     expect(windowOf([0], 0, 100, 0)).toBeNull();
   });
 });
+
+describe('mark and signature summaries (F11)', () => {
+  const threads = buildThreads([item(1, { kind: 'mark' }), item(2, { kind: 'signature', author: 'Ann' }), item(3)]);
+
+  it('lists their kinds as filter facets', () => {
+    expect(facets([item(1, { kind: 'mark' }), item(2, { kind: 'signature' })]).kinds).toEqual(['mark', 'signature']);
+  });
+
+  it('filters by those kinds', () => {
+    expect(filterThreads(threads, { kinds: ['signature'], authors: [] }).map((t) => t.root.id)).toEqual([2]);
+    expect(filterThreads(threads, { kinds: ['mark', 'signature'], authors: [] }).map((t) => t.root.id)).toEqual([1, 2]);
+  });
+
+  it('keeps authorless marks out of an author filter', () => {
+    expect(filterThreads(threads, { kinds: ['mark'], authors: ['Ann'] })).toEqual([]);
+  });
+});
