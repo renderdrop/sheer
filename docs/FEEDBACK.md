@@ -153,3 +153,19 @@ form.pdf shows the fillable-fields banner, a field is filled by click + typing a
 date, text); selecting a sentence → "Add comment" → card with quote, text, author, time, reply, resolve (saved as /IRT review state);
 three OFL signature fonts (Dancing Script, Great Vibes, Alex Brush), Homemade Apple removed (ADR-059). Designer PASS (4 screenshots,
 majors/minors in ROADMAP "v1.2 polish"), tester PASS, annot-smoke 16/16, CSP gate 0 violations.
+
+## F14 — Tool assignment per mode (owner, 2026-10-04; binding for ADR-102)
+
+Lesen: Auswahl, Hand, Textauswahl, Lupe (Z halten), Drehen, Suche.
+Kommentieren: Hervorheben, Unterstreichen, Durchstreichen, Notiz, Textkommentar, Zeichnen, Formen (Rechteck, Ellipse, Linie, Pfeil).
+Ausfüllen & Signieren: Felder automatisch aktiv, Text, Häkchen, Kreuz, Punkt, Datum, Signatur, Initialen.
+Seiten: Raster statt Dokumentansicht; ordnen, drehen, löschen, einfügen, extrahieren, teilen, zusammenführen, komprimieren.
+Bearbeiten: Text einfügen, Bild einfügen, Zuschneiden, Schwärzen, Schützen, Metadaten.
+Nicht in Modi, sondern Datei-Menü und „Fertig": Speichern, Speichern unter, Kopie exportieren, Als Bilder exportieren, Drucken,
+Formular reduzieren, Dokumenteigenschaften, PDF aus Bildern.
+Jedes Werkzeug mit Icon und Label; maximal acht sichtbar pro Modus, der Rest unter „Mehr" am Ende der Reihe. Tasten 1–5 wechseln den
+Modus, Esc zurück zur Auswahl.
+
+- [x] Spec: DESIGN v2 §3.2 tool table replaced by F14 (ADR-102)
+- [ ] Shell package: mode row + tool row per F14, properties mini bar, no right sidebar, Windows menu bar restored (DESIGN §3.2–§3.4)
+- [ ] Build the installer locally (NSIS), then STOP for the owner's feedback — R5 only after it
