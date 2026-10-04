@@ -6,6 +6,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.1] - 2026-10-04
+
+Fixes from the product owner's test of 0.8.0 (FEEDBACK F9, F10).
+
+### Fixed
+
+- Annotation tools work again: Highlight, Note, Text comment, Draw and Rectangle, signature placing and Fill & Sign marks received no pointer input since 0.7.0 (the creation and placement layers inherited `pointer-events: none`). The text-comment and note editors open after creation. A refused edit (read-only or restricted file) now shows a notice instead of doing nothing.
+- Signatures are vector with real curves: drawn signatures are smoothed (Catmull-Rom) with velocity-dependent width, typed signatures keep the font's Bézier curves, image signatures keep up to 3 000 px with a soft transparent background; sharp at any zoom and in other viewers.
+
+### Changed
+
+- The two text tools are distinct: "Text comment" (a floating note that stays a comment) and "Insert text" (becomes part of the page); the Markup and Edit toolbar groups are visibly separated.
+- Larger signature pad (600×200) with a "New" button; rounded selection handles.
+
+### Added
+
+- `scripts/ui/annot-smoke.mjs`: a window test that creates an annotation with every tool using real input; part of the milestone checks.
+
+### Notes
+
+- This build already contains the backend for M6 (export as images, images to PDF, export a copy, print); it is not reachable from the UI yet.
+
 ## [0.8.0] - 2026-10-04
 
 M5 — Edit and protect.

@@ -79,7 +79,7 @@ Product-owner test of the installed v0.8.0 build (2026-10-04).
 - [x] Window test: in the Tauri window, every annotation tool creates an annotation; part of the milestone DoD (ORCHESTRATOR §8.6)
 - [x] Naming: annotation tool → "Textkommentar" / "Text comment" (tooltip: floating note, stays a comment); edit tool → "Text einfügen" /
       "Insert text" (tooltip: becomes a permanent part of the page). The toolbar groups "Markieren" and "Bearbeiten" are visibly separated
-- [ ] Tag v0.8.1 for the owner's re-test
+- [x] Tag v0.8.1 for the owner's re-test
 
 F9 finding: reproduced with the installed v0.8.0 via CDP. Not the M5 layers: since M4 (b0487ee) the annotation creation layer sits inside
 `[data-annot-layer]`, which is `pointer-events: none`, and inherited it, so no tool got pointer input (already broken in v0.7.0).
@@ -89,10 +89,16 @@ jsdom ignores `pointer-events` when dispatching, so the unit tests passed. Fix: 
 
 Product-owner test (2026-10-04): signatures are placed as low-resolution bitmaps; the typed signature is pixelated.
 
-- [ ] (a) Drawn: capture pointer points, smooth the path (Catmull-Rom or Bézier), vary stroke width with velocity, write it as a vector
+- [x] (a) Drawn: capture pointer points, smooth the path (Catmull-Rom or Bézier), vary stroke width with velocity, write it as a vector
       path into the appearance stream; in the app render it as SVG at the device pixel ratio
-- [ ] (b) Typed: glyphs of the handwriting font as paths (skrifa) in the appearance stream, never rasterised
-- [ ] (c) Image: make a white background transparent, embed at ≥ 300 dpi
-- [ ] (d) Drawing area in the signature sheet ≥ 600×200 CSS px, DPR-scaled, real-time smoothing, "New" (clear) button
-- [ ] (e) Selection frame and handles in design-system style instead of square boxes
-- [ ] Acceptance: screenshot at 200 % zoom with smooth edges; exported PDF checked at 400 % (Edge, or an equivalent PDFium render at 400 %)
+- [x] (b) Typed: glyphs of the handwriting font as paths (skrifa) in the appearance stream, never rasterised
+- [x] (c) Image: make a white background transparent, embed at ≥ 300 dpi
+- [x] (d) Drawing area in the signature sheet ≥ 600×200 CSS px, DPR-scaled, real-time smoothing, "New" (clear) button
+- [x] (e) Selection frame and handles in design-system style instead of square boxes
+- [x] Acceptance: screenshot at 200 % zoom with smooth edges; exported PDF checked at 400 % (Edge, or an equivalent PDFium render at 400 %)
+
+F10 result (ADR-051): art crosses IPC as path commands with cubic Béziers and is written 1:1 as m/l/c/h; typed glyphs are skrifa curves
+(no linearisation); drawn ink is one Catmull-Rom + velocity-width function for preview and file; image art up to 3 000 px with a soft white
+ramp. Acceptance: window screenshot at 200 % antialiased without steps (review/f10-sig-200*.png, not tracked); the saved file rendered by
+PDFium at 400 % deviates from an exact-curve reference in 0.2 % of ink pixels (`tests/signatures.rs`). The slightly rough edge of typed
+signatures is the bundled Homemade Apple font's marker texture, not rasterisation. The Edge 400 % check is the owner's re-test.
