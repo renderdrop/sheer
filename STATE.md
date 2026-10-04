@@ -1,11 +1,11 @@
 # STATE
 phase: v1.2 Redesign "sheer." — owner feedback F15 (docs/FEEDBACK.md, ADR-104): A bug patch → B shell polish → mode-layout designer acceptance → R5 → v1.2.0
 version: 1.2.0-beta.1 (pre-release, tag v1.2.0-beta.1, ADR-103)
-current_item: F15 A wave — P-A1 (A1–A3 canvas visuals), P-A2 (A4 drag in any tool, A8 rotation + rotate handle, ADR-105), P-A3 (A5–A7, ADR-106), P-A4 (A9 keychain, A10 macOS print, ADR-107)
-last_completed: F15 recorded, B-001 closed, v1.3–v1.8 tickets, B design spec DESIGN §3.5 + ADR-108 (6ee5724)
+current_item: F15 A acceptance in the installed build + B wave 1 (P-B2 B4/B5 ADR-110, P-B3 B6/B7 ADR-111, P-B4 B9/B10 ADR-112) + A11 save-hang fix (ADR-109)
+last_completed: A1–A10 fixes, A6 engine short-read fix, B1–B3 (19f4345)
 loop_count_this_session: 0
 open_blockers: 2 human-only (B-002, B-005)
-notes: After the A wave: security-reviewer on the A diff, local NSIS build, install, mouse acceptance per item (scripts/ui/mouse.ps1, review/f15/).
-  B wave builds from DESIGN §3.5; B7 fonts = Ms Madi (default), Hurricane, Birthstone (owner pick, ADR-108; TTFs in google/fonts ofl/).
-  B3 before-shot: review/f15/b3-before.png (installed beta). Installed app: %LOCALAPPDATA%\Sheer\sheer.exe.
-  Stop the dev window (taskkill sheer.exe) before agents run cargo test. Window shots: node scripts/ui/dev.mjs → shot.ps1.
+notes: Accepted with the mouse in the installed build: A1, A4, A7, A8 placement upright + rotate handle, A9 (Windows: library survives restart).
+  Re-check after the next build: A2/A3 (overlay multiply), A5 (panel frame width), A6 (grey bottom → engine reads), A8 save/reopen, A10 print (Windows), A11.
+  Then B wave 2: B8 outline, B11 arrow + shape recognition, B12 canvas drift. Minors: images-to-PDF orientation segments collide; signature menu thumbs overlap rows.
+  Installed app: %LOCALAPPDATA%\Sheer\sheer.exe; helpers in the session scratchpad (keys.ps1, wheel.ps1). Do not run the dev window while agents run cargo/vitest.

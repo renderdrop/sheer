@@ -195,6 +195,7 @@ mock where no Mac is at hand (ADR-104). After A and B: designer acceptance of th
 - [ ] A10. Printing on macOS gives blank pages (Windows works; drag and drop on the Mac works). Likely `Webview::print()` in WKWebView
       does not render the canvas pages; switch the macOS print path to rendered page images or hand a PDF to the system print dialog.
       Acceptance: "Save as PDF" in the Mac print dialog with visible content
+- [ ] A11. (found in the acceptance) Saving a document with annotations does nothing while the author name is empty: the author      prompt (ADR-034) lost its slot in the v1.2 layout, so the save waits forever (ADR-109)
 
 ### B — Shell polish (before R5)
 
