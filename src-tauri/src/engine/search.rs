@@ -17,7 +17,7 @@ use crate::model::find::find;
 use crate::model::geometry::{PageBox, Point, Quad, Rect};
 
 /// What to look for. The text is checked by the caller (`limits::validate_search_text`).
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct SearchSpec {
     pub text: String,
     /// Upper and lower case are different letters.

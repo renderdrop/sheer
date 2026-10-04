@@ -137,7 +137,7 @@ impl PageSlot {
 }
 
 /// What PDFium reports about a page's boxes when the document is loaded: the MediaBox and the CropBox if the page has one.
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct BoxesRead {
     pub media: [f32; 4],
     pub crop: Option<[f32; 4]>,

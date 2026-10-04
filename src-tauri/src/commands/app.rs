@@ -3,11 +3,12 @@
 //! | Command | Arguments | Returns |
 //! |---|---|---|
 //! | `app_ready` | none | `AppBootstrap { platform, reducedTransparency, version, authorSuggestion }` |
-//! | `get_settings` | none | `Settings { glass, theme, language, leftPanelWidth, welcomeTour, authorName, authorPrompt }` |
-//! | `update_settings` | `patch: { glass?, theme?, language?, leftPanelWidth?, welcomeTour?, authorName?, authorPrompt? }` | the settings after the update |
+//! | `get_settings` | none | `Settings { glass, theme, language, leftPanelWidth, welcomeTour, authorName, authorPrompt, updates, skippedVersion }` |
+//! | `update_settings` | `patch: { glass?, theme?, language?, leftPanelWidth?, welcomeTour?, authorName?, authorPrompt?, updates?, skippedVersion? }` | the settings after the update |
 //! | `watch_transparency` | `onChange: Channel<boolean>` | nothing; the channel then carries each change of the OS "Reduce transparency" flag |
 //! | `subscribe_menu` | `onAction: Channel<string>`, `systemLanguage?: string` | nothing; the channel then carries the id of each command chosen in the macOS menu bar |
 //! | `subscribe_app` | `onEvent: Channel<AppEvent>` | nothing; the channel then carries the backend's pushes (`dropHover`, `opened`, `openFailed`, see `events::AppEvent`), first those that waited for it |
+//! | `open_default_apps_settings` | none | nothing (Windows: opens the default-apps page; macOS: `unsupported_feature`); stub until M7 package B4 |
 //!
 //! `update_settings` takes the patch as raw JSON on purpose: a bad value is then a normal `invalid_argument` with
 //! `what: "settings"` (see `storage::settings`), not a deserialization failure that bypasses the error model.
@@ -20,7 +21,7 @@ use tauri::ipc::Channel;
 use tauri::{AppHandle, State};
 
 use super::blocking;
-use crate::error::UiError;
+use crate::error::{AppError, UiError};
 use crate::events::{AppEvent, AppEvents};
 use crate::menu::{self, MenuBridge};
 use crate::platform::{self, Paper, Platform, TransparencyWatch};
@@ -80,6 +81,13 @@ pub async fn update_settings(
         menu::refresh(&app);
     }
     Ok(settings)
+}
+
+/// Opens the OS page where the user picks the default PDF app (Windows: the `ms-settings:` deep link; macOS: `unsupported_feature`).
+/// Stub (package B4 / frontend F4): `not_yet`.
+#[tauri::command]
+pub async fn open_default_apps_settings(_app: AppHandle) -> Result<(), UiError> {
+    blocking(|| Err::<(), _>(AppError::not_yet())).await
 }
 
 /// Starts pushing changes of the OS "Reduce transparency" flag to `on_change` (on macOS, when the window regains focus;

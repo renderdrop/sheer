@@ -19,6 +19,7 @@ pub mod security;
 pub mod signatures;
 pub mod sources;
 pub mod storage;
+pub mod update;
 
 use std::sync::Arc;
 
@@ -32,6 +33,12 @@ use crate::menu::MenuBridge;
 use crate::platform::TransparencyWatch;
 use crate::storage::recents::{self, RecentsStore};
 use crate::storage::settings::{self, SettingsStore};
+
+/// Runs the engine child loop when this process was started as one (`main` checks the flag and the variable first); `Some(exit code)`
+/// when it did. Stub (package B1): nothing is served yet, so it always answers `None` and the process runs the app.
+pub fn engine_child_main() -> Option<i32> {
+    None
+}
 
 /// Builds and runs the app. Returns when the last window is closed. A startup failure comes back as an [`AppError`]
 /// (the Tauri error text, which can contain paths, is only its log detail); the caller logs it with `AppError::log`.
@@ -50,6 +57,8 @@ pub fn run() -> Result<(), AppError> {
         .enable_macos_default_menu(false)
         // Registered for Rust-side use only: no capability grants the dialog commands to the webview.
         .plugin(tauri_plugin_dialog::init())
+        // The only network module (ADR-053 section 3); an empty plugin until package B3.
+        .plugin(update::plugin())
         .setup(|app| {
             // PDFium ships as a bundled resource (scripts/fetch-pdfium.sh), never downloaded at runtime.
             let pdfium_root = app.path().resource_dir()?.join("pdfium");
@@ -87,6 +96,8 @@ pub fn run() -> Result<(), AppError> {
             // A file the app was started with (Windows: the double-clicked file is on the command line) opens now, while
             // the window loads; its result waits for the UI.
             sources::open_startup_arguments(app.handle());
+            // Crash-safe autosave (ADR-053 section 2): a no-op until package B2.
+            storage::autosave::start(app.handle());
             Ok(())
         })
         .on_menu_event(menu::on_menu_event)
@@ -135,6 +146,15 @@ pub fn run() -> Result<(), AppError> {
             commands::images_pdf::list_image_batch,
             commands::images_pdf::get_image_batch_preview,
             commands::export_pdf::export_pdf,
+            commands::recovery::list_recoveries,
+            commands::recovery::restore_recovery,
+            commands::recovery::discard_recovery,
+            commands::recovery::discard_all_recoveries,
+            commands::update::check_for_update,
+            commands::update::download_update,
+            commands::update::install_update_on_quit,
+            commands::update::skip_update_version,
+            commands::app::open_default_apps_settings,
             commands::print::prepare_print,
             commands::print::get_print_page,
             commands::print::open_print_dialog,

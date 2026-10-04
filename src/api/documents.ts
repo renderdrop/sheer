@@ -23,8 +23,8 @@ export interface DocFlags {
   permissions?: readonly Permission[] | null;
 }
 
-/** Where a document comes from (src-tauri/src/documents/mod.rs, `DocKind`): `welcome` is the bundled tour sample (ADR-023), `user` is every file the user opened. */
-export const DOC_KINDS = ['user', 'welcome'] as const;
+/** Where a document comes from (src-tauri/src/documents/mod.rs, `DocKind`): `welcome` is the bundled tour sample (ADR-023), `recovered` is a crash-recovery snapshot (ADR-053), `user` is every file the user opened. */
+export const DOC_KINDS = ['user', 'welcome', 'recovered'] as const;
 export type DocKind = (typeof DOC_KINDS)[number];
 
 /** Result of opening a document. `id` is opaque; the frontend never sees file paths. */

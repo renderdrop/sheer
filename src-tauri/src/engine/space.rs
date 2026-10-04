@@ -10,7 +10,7 @@ use crate::model::geometry::PageBox;
 
 /// A place in a document: the position of a page, and how far down it a destination points, in page space (points from the top of
 /// the page's box, 0 when the destination does not say).
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct PageSpot {
     pub page_index: u32,
     pub y: f32,

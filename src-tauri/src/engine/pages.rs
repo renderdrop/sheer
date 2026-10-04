@@ -15,7 +15,7 @@ use crate::model::annotation::Imported;
 use crate::model::page::{unrotated, BoxesRead};
 
 /// A page the engine's copy gained: where it is, its size before rotation and the rotation it came with.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Appended {
     pub engine_index: u32,
     pub size: [f32; 2],

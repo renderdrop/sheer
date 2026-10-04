@@ -12,7 +12,7 @@ use crate::error::AppError;
 use crate::limits;
 
 /// A document the engine holds for one output job only: not in the registry, no page sizes pushed.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub struct SnapshotId(u32);
 
 impl SnapshotId {
@@ -28,7 +28,7 @@ impl SnapshotId {
 }
 
 /// The engine document an export renders from.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum EngineDocRef {
     /// The open document itself (nothing unsaved).
     Live(DocumentId),

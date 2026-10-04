@@ -19,6 +19,7 @@
 
 pub mod encode;
 mod export;
+pub mod files;
 mod guard;
 mod import;
 mod links;
@@ -31,6 +32,8 @@ mod sizes;
 mod snapshot;
 mod space;
 mod text;
+pub mod transport;
+pub mod wire;
 mod worker;
 
 use std::collections::HashSet;
@@ -64,6 +67,7 @@ pub use self::sizes::PageSizes;
 use self::sizes::SizeCache;
 pub use self::space::PageSpot;
 pub use self::text::TextPage;
+use self::transport::InProcessTransport;
 
 /// Directory name of the bundled PDFium build for this target, as created by `scripts/fetch-pdfium.sh`.
 pub const PLATFORM_DIR: &str = if cfg!(all(target_os = "windows", target_arch = "x86_64")) {
@@ -377,12 +381,6 @@ pub struct RenderSpec {
     pub generation: u32,
 }
 
-/// The worker thread's side of an engine as the engine knows it: replaced as a whole by [`Engine::recover`].
-struct Live {
-    queue: Arc<Queue>,
-    health: Arc<Health>,
-}
-
 /// Most times per process that a stuck worker is replaced (`Engine::recover`, ADR-028).
 pub const MAX_RESPAWNS: usize = 3;
 
@@ -391,7 +389,7 @@ type Runner = dyn Fn(Requests, Arc<Health>, Arc<SizeCache>, HashSet<DocumentId>)
 
 /// Shared by every clone of an [`Engine`]. When the last one is dropped the queue is closed and the worker ends.
 struct Inner {
-    live: Mutex<Live>,
+    live: Mutex<InProcessTransport>,
     /// The sizes of the pages of every loaded document: written by the worker, read by every handle (see [`sizes`]). They outlive
     /// a respawned worker, which is how the documents it does not hold are found (`Engine::recover`).
     sizes: Arc<SizeCache>,
@@ -403,7 +401,7 @@ struct Inner {
 }
 
 impl Inner {
-    fn live(&self) -> MutexGuard<'_, Live> {
+    fn live(&self) -> MutexGuard<'_, InProcessTransport> {
         // A poisoned lock only means a holder panicked; two `Arc`s cannot be left inconsistent.
         self.live.lock().unwrap_or_else(PoisonError::into_inner)
     }
@@ -426,7 +424,10 @@ impl Drop for Inner {
 
 /// Starts a worker thread on a new queue. A thread that cannot be started leaves the queue without a consumer, so every job
 /// fails fast with `engine_unavailable`.
-fn launch(queue_depth: usize, run: impl FnOnce(Requests, Arc<Health>) + Send + 'static) -> Live {
+fn launch(
+    queue_depth: usize,
+    run: impl FnOnce(Requests, Arc<Health>) + Send + 'static,
+) -> InProcessTransport {
     let queue = Queue::new(queue_depth);
     let health = Arc::new(Health::default());
     let requests = Requests::new(Arc::clone(&queue));
@@ -443,7 +444,7 @@ fn launch(queue_depth: usize, run: impl FnOnce(Requests, Arc<Health>) + Send + '
         )
         .log();
     }
-    Live { queue, health }
+    InProcessTransport { queue, health }
 }
 
 /// Handle to the worker thread. Cheap to clone; every method blocks until the worker answers or the job's deadline
@@ -484,7 +485,7 @@ impl Engine {
     }
 
     fn assemble(
-        live: Live,
+        live: InProcessTransport,
         sizes: Arc<SizeCache>,
         queue_depth: usize,
         runner: Option<Arc<Runner>>,

@@ -329,7 +329,7 @@ pub struct AnnotationPatch {
 }
 
 /// Where an annotation sits in the PDF it was imported from. Rust only; the UI never sees it.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct PdfOrigin {
     pub page_index: u32,
     /// Position in the page's `/Annots` when it was loaded.
@@ -339,7 +339,7 @@ pub struct PdfOrigin {
 }
 
 /// An annotation as the engine reads it from a file (`engine::import`), before it has an id.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Imported {
     pub origin: PdfOrigin,
     pub body: AnnotationBody,

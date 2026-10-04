@@ -625,7 +625,7 @@ and treats a wrong shape as `internal`. UI (ADR-050) in `features/convert/` and 
 ```rust
 // commands/recovery.rs: every answer names records by a session-scoped id, never by path
 async fn list_recoveries(state) -> Result<Vec<RecoveryEntry>, UiError>;
-async fn restore_recovery(state, id: RecoveryId) -> Result<OpenOutcome, UiError>;  // opens as DocKind::Recovered
+async fn restore_recovery(state, id: RecoveryId) -> Result<AppEvent, UiError>;  // opened | needsPassword | openFailed (TS: OpenOutcome), as DocKind::Recovered
 async fn discard_recovery(state, id: RecoveryId) -> Result<(), UiError>;
 async fn discard_all_recoveries(state) -> Result<u32, UiError>;                    // how many were removed
 
@@ -653,7 +653,7 @@ type AutosaveStatus = 'on' | 'offEncrypted' | 'offTooLarge' | 'clean';   // Docu
 ```
 
 - *Settings.* `updates: 'off' | 'on'` (default `'off'`), `skippedVersion: string | null`, `lastUpdateCheck` (Rust-only, not sent).
-- *Limits* (`limits.rs`): `ENGINE_HANDSHAKE_TIMEOUT` 5 s; `ENGINE_RESTART_BUDGET` 5 per 10 min; `ENGINE_STRIKES` 2; `WIRE_HEADER_MAX`
+- *Limits* (`limits.rs`): `ENGINE_HANDSHAKE_TIMEOUT` 5 s; `ENGINE_RESTART_BUDGET` 5 per `ENGINE_RESTART_WINDOW` 10 min; `MAX_FRAME_BYTES` 80 MiB (a render reply's blob cap); `ENGINE_LOG_LINE_MAX` 4 KiB; `UPDATE_VERSION_MAX_CHARS` 32; `ENGINE_STRIKES` 2; `WIRE_HEADER_MAX`
   16 MiB; `READ_AT_MAX` 1 MiB; remote block cache 64 × 256 KiB per document; `AUTOSAVE_DEBOUNCE` 30 s, `AUTOSAVE_MAX_INTERVAL` 120 s,
   `AUTOSAVE_DOC_MAX` 512 MiB, `AUTOSAVE_STORE_MAX` 2 GiB, `AUTOSAVE_RETENTION` 14 days; `UPDATE_CHECK_INTERVAL` 24 h; update package
   ≤ 256 MiB, notes ≤ 4 KiB.
@@ -773,17 +773,18 @@ engine/worker.rs         unchanged serving code, now called by host.rs and InPro
 ```
 
 ```rust
-pub fn engine_child_main() -> Option<i32>;   // Some only for argv[1] == "--sheer-engine" && env SHEER_ENGINE_PROTOCOL == "1"
+pub fn engine_child_main() -> Option<i32>;   // lib.rs; main.rs calls it only if wire::child_mode_requested(args, env): argv[1] == CHILD_FLAG && env CHILD_ENV == "1"
+                                              // (W0: always None). Types below are `pub` (engine is a pub mod), not pub(crate): unused pub(crate) items trip dead_code
 
-pub(crate) trait Transport: Send {
+pub trait Transport: Send {
     fn call(&mut self, request: WireRequest, blob: Blob, deadline: Instant) -> Result<(WireReply, Blob), TransportError>;
     fn kill(&mut self);
 }
-pub(crate) enum TransportError { Timeout, Died, Protocol(&'static str) }   // all three end in a restart
-pub(crate) enum Blob { None, Shared(Arc<[u8]>), Owned(Vec<u8>) }
+pub enum TransportError { Timeout, Died, Protocol(&'static str) }   // all three end in a restart
+pub enum Blob { None, Shared(Arc<[u8]>), Owned(Vec<u8>) }
 
 #[derive(Serialize, Deserialize)]
-pub(crate) enum WireRequest {
+pub enum WireRequest {
     Open { id: DocumentId, file: FileToken, password: Option<WireSecret> }, // WireSecret: zeroized on drop, redacting Debug
     Reopen { id: DocumentId, source: WireSource },                           // File(FileToken) | FileWithPassword(..) | Bytes (blob)
     Render { key: RenderKey },
@@ -801,7 +802,12 @@ pub(crate) enum WireRequest {
     Release { id: DocumentId, snapshot: bool }, Close { id: DocumentId },
     #[cfg(debug_assertions)] Crash,                                           // honoured only with SHEER_ENGINE_TEST_HOOKS=1
 }
-// Child → parent, besides replies: ReadAt { token: FileToken, offset: u64, len: u32 } (answered with ReadData in the blob).
+// Child → parent, besides replies: WireRead { token: FileToken, offset: u64, len: u32 } in a ReadAt frame (answered by a ReadData frame, blob = bytes).
+// Replies: WireReply { Opened(WireLoaded) | Reopened(WireLoaded) | Frame | Outline | TextLayer | PageLinks(Vec<WireLink>) | Annotations | Done | Search |
+//   Raster { width, height, gray } | SnapshotOpened | Appended | Released { snapshot } | Failed(WireError { code }) }. WireLink carries the URL as a string:
+//   the parent classifies it again (security::links), so a child cannot hand the UI a URL it would refuse. WireError carries only the code.
+// Frame kinds: Hello, Ready, Request, Reply, ReadAt, ReadData, ReadFailed. wire.rs frames raw header bytes; B1 adds postcard (the only new dep).
+// `Transport::call` of InProcessTransport (the queue + health of the thread worker, held by Engine) is a refusal until B1's pump maps wire requests to jobs.
 // Opened / Reopened replies carry pages, sizes, rotations, boxes and flags; the pump writes them into SizeCache.
 ```
 
@@ -820,6 +826,7 @@ pub(crate) enum WireRequest {
 pub struct Autosave { dir: PathBuf /* $APPDATA/autosave/<session-uuid> */, lock: File, pending: Mutex<HashMap<DocumentId, Instant>> }
 impl Autosave {
     pub fn start(app_data: &Path) -> Result<Self, AppError>;                 // creates 0700 dir, takes `lock` with File::try_lock
+    // free fn `autosave::start(&AppHandle)`: the lib.rs hook (W0: no-op) that calls this, manages the state, spawns the timer
     pub fn note_change(&self, id: DocumentId);                               // called from apply/undo/redo ChangeSets
     pub fn status(&self, doc: &DocumentEntry) -> AutosaveStatus;
     pub fn write(&self, state: &AppState, id: DocumentId) -> Result<(), AppError>; // snapshot::current → write_atomic <n>.pdf + <n>.json
@@ -840,6 +847,8 @@ update/state.rs      UpdateState { pending: Mutex<Option<Update + bytes>> }; ins
 
 `Cargo.toml`: `tauri-plugin-updater = { version = "2", default-features = false, features = ["native-tls", "system-proxy", "zip"] }`.
 `tauri.conf.json`: `bundle.createUpdaterArtifacts: true`, `plugins.updater.windows.installMode: "passive"`; no capability names `updater:*`.
+
+**W0 seams as landed.** `DocKind::Recovered` is a unit variant (wire `"recovered"`); the original path/name live in the registry entry (B2), so the enum stays `Copy`. `update::plugin()` is an empty plugin named `sheer-update` until B3 swaps in `tauri-plugin-updater`; `AutosaveStatus` lives in `storage/autosave.rs` (`DocumentInfo.autosave` and the `AppEvent` additions `engineRestarted` / `updateAvailable` are added by B2 / B1 / B3). Settings `updates` and `skippedVersion` are optional in `src/api/app.ts` until F2 reads them. Commands stubbed with `AppError::not_yet()`: all of `commands/{recovery,update}.rs` and `open_default_apps_settings`.
 
 ### 11.4 Packaging
 

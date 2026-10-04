@@ -19,7 +19,7 @@ use crate::model::geometry::{PageBox, Rect};
 /// The text of a page and the boxes of its characters: four numbers (x, y, width, height, in page space) for every UTF-16 code unit of
 /// `text`, so `text[i]` is in the box `boxes[4 * i..4 * i + 4]` however JavaScript counts. A character that is two code units (an
 /// emoji) has its box twice.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct TextPage {
     pub text: String,
     pub boxes: Vec<f32>,

@@ -28,14 +28,14 @@ const MAX_FIELD_NODES: usize = 100_000;
 const MAX_FIELD_DEPTH: usize = 16;
 
 /// The bitmap of a page as PDFium drew it, with the marks filled in black.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum RasterPixels {
     Rgb8(Vec<u8>),
     Gray8(Vec<u8>),
 }
 
 /// A rendered page for [`raster_page`].
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct RasterPage {
     pub pixels: RasterPixels,
     pub width: u32,

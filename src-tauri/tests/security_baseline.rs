@@ -470,6 +470,15 @@ fn capabilities_grant_only_the_app_commands_and_the_window_chrome_to_the_main_wi
         "allow-get-print-page",
         "allow-open-print-dialog",
         "allow-release-print",
+        "allow-list-recoveries",
+        "allow-restore-recovery",
+        "allow-discard-recovery",
+        "allow-discard-all-recoveries",
+        "allow-check-for-update",
+        "allow-download-update",
+        "allow-install-update-on-quit",
+        "allow-skip-update-version",
+        "allow-open-default-apps-settings",
     ]);
     expected.extend(
         WINDOW_PERMISSIONS

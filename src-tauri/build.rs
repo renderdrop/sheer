@@ -87,6 +87,15 @@ fn main() {
         "get_print_page",
         "open_print_dialog",
         "release_print",
+        "list_recoveries",
+        "restore_recovery",
+        "discard_recovery",
+        "discard_all_recoveries",
+        "check_for_update",
+        "download_update",
+        "install_update_on_quit",
+        "skip_update_version",
+        "open_default_apps_settings",
     ]);
     if let Err(error) =
         tauri_build::try_build(tauri_build::Attributes::new().app_manifest(manifest))

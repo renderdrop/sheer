@@ -258,7 +258,7 @@ fn the_next_update_repairs_a_damaged_file() {
     let stored: Value = serde_json::from_slice(&fs::read(dir.settings_file()).unwrap()).unwrap();
     assert_eq!(
         stored,
-        json!({ "glass": "auto", "theme": "dark", "language": "system", "leftPanelWidth": 248, "welcomeTour": "pending", "authorName": "", "authorPrompt": "pending" })
+        json!({ "glass": "auto", "theme": "dark", "language": "system", "leftPanelWidth": 248, "welcomeTour": "pending", "authorName": "", "authorPrompt": "pending", "updates": "off", "skippedVersion": null, "tipsSeen": [] })
     );
     assert_eq!(names(dir.path()), [FILE_NAME]);
 }

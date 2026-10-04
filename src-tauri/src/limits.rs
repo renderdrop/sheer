@@ -597,6 +597,47 @@ pub const PRINT_DPI_STANDARD: f32 = 150.0;
 pub const PRINT_DPI_HIGH: f32 = 300.0;
 pub const PRINT_JPEG_QUALITY: u8 = 92;
 
+// --- Engine process, autosave, updater (M7, ADR-053) ----------------------------------------------------------------
+
+/// Time the parent waits for a new engine child's `Ready` (ADR-053 §1.2).
+pub const ENGINE_HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(5);
+/// Child restarts allowed per [`ENGINE_RESTART_WINDOW`]; after that the engine stays `engine_unavailable` until the app restarts.
+pub const ENGINE_RESTART_BUDGET: u32 = 5;
+/// The window [`ENGINE_RESTART_BUDGET`] counts in.
+pub const ENGINE_RESTART_WINDOW: Duration = Duration::from_secs(10 * 60);
+/// Crashes a document may cause before it is quarantined (not replayed, `engine_crashed` until closed).
+pub const ENGINE_STRIKES: u32 = 2;
+/// Longest header (postcard of a `WireRequest` or `WireReply`) in a frame, in either direction.
+pub const WIRE_HEADER_MAX: usize = 16 * 1024 * 1024;
+/// Largest encoded frame (PNG) a render reply may carry: a full 4096 x 4096 RGBA bitmap, which no PNG of it exceeds by much.
+pub const MAX_FRAME_BYTES: usize = 80 * 1024 * 1024;
+/// Largest `ReadAt` the child may ask the parent for, and so the largest `ReadData` blob.
+pub const READ_AT_MAX: usize = 1024 * 1024;
+/// A block of the child's per-document read cache (`RemoteFile`) ...
+pub const REMOTE_BLOCK_BYTES: usize = 256 * 1024;
+/// ... and how many of them it keeps per document.
+pub const REMOTE_BLOCKS: usize = 64;
+/// One line of the child's stderr as the parent logs it; longer lines are cut.
+pub const ENGINE_LOG_LINE_MAX: usize = 4096;
+/// Quiet time after the last change before an autosave (ADR-053 §2).
+pub const AUTOSAVE_DEBOUNCE: Duration = Duration::from_secs(30);
+/// Longest time between autosaves of a document that is edited continuously.
+pub const AUTOSAVE_MAX_INTERVAL: Duration = Duration::from_secs(120);
+/// Largest snapshot autosave writes; a bigger document is `offTooLarge`.
+pub const AUTOSAVE_DOC_MAX: u64 = 512 * 1024 * 1024;
+/// Largest total of the autosave store; the oldest session is purged beyond it.
+pub const AUTOSAVE_STORE_MAX: u64 = 2 * 1024 * 1024 * 1024;
+/// Age after which a dead session's records are purged at startup.
+pub const AUTOSAVE_RETENTION: Duration = Duration::from_secs(14 * 24 * 60 * 60);
+/// Time between automatic update checks while the setting is on.
+pub const UPDATE_CHECK_INTERVAL: Duration = Duration::from_secs(24 * 60 * 60);
+/// Largest update package that is downloaded.
+pub const UPDATE_PACKAGE_MAX: u64 = 256 * 1024 * 1024;
+/// Longest release notes text passed to the UI, in bytes.
+pub const UPDATE_NOTES_MAX: usize = 4 * 1024;
+/// Longest version string accepted by `skip_update_version` and the `skippedVersion` setting, in characters.
+pub const UPDATE_VERSION_MAX_CHARS: usize = 32;
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -950,6 +991,33 @@ mod tests {
         const _: () = assert!(MAX_PRINT_PAGES_HIGH <= MAX_PRINT_PAGES);
         const _: () =
             assert!(MAX_EXPORT_SIDE_PX as u64 * MAX_EXPORT_SIDE_PX as u64 >= MAX_EXPORT_PIXELS);
+    }
+
+    #[test]
+    fn ship_limits_are_pinned_to_adr_053() {
+        assert_eq!(ENGINE_HANDSHAKE_TIMEOUT.as_secs(), 5);
+        assert_eq!(
+            (
+                ENGINE_RESTART_BUDGET,
+                ENGINE_RESTART_WINDOW.as_secs(),
+                ENGINE_STRIKES
+            ),
+            (5, 600, 2)
+        );
+        assert_eq!((WIRE_HEADER_MAX, READ_AT_MAX), (16 << 20, 1 << 20));
+        assert_eq!((REMOTE_BLOCK_BYTES, REMOTE_BLOCKS), (256 << 10, 64));
+        assert_eq!(
+            (AUTOSAVE_DEBOUNCE.as_secs(), AUTOSAVE_MAX_INTERVAL.as_secs()),
+            (30, 120)
+        );
+        assert_eq!((AUTOSAVE_DOC_MAX, AUTOSAVE_STORE_MAX), (512 << 20, 2 << 30));
+        assert_eq!(AUTOSAVE_RETENTION.as_secs(), 14 * 86_400);
+        assert_eq!(UPDATE_CHECK_INTERVAL.as_secs(), 86_400);
+        assert_eq!((UPDATE_PACKAGE_MAX, UPDATE_NOTES_MAX), (256 << 20, 4096));
+        // A full-size render must fit a frame, and a read block must fit one `ReadAt`.
+        const _: () = assert!(MAX_FRAME_BYTES as u64 >= MAX_RENDER_PIXELS * 4);
+        const _: () = assert!(REMOTE_BLOCK_BYTES <= READ_AT_MAX);
+        const _: () = assert!(AUTOSAVE_DOC_MAX <= AUTOSAVE_STORE_MAX);
     }
 
     #[test]

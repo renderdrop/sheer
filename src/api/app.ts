@@ -46,6 +46,30 @@ export interface Settings {
   authorName: string;
   /** "pending" until the one-time author prompt on the first save with annotations has been confirmed or skipped. */
   authorPrompt: AuthorPrompt;
+  /** The tools whose first-use tip was shown (DESIGN 3.47, ADR-054): tool ids, at most `TIPS_SEEN_MAX`. Absent until the backend knows the field. */
+  tipsSeen?: readonly string[];
+  /** "off" (the default) until the user allows the daily automatic update check (ADR-053 section 3). Absent until the backend knows the field. */
+  updates?: UpdatesMode;
+  /** The version the user chose not to be offered again, or `null` (`limits::UPDATE_VERSION_MAX_CHARS`). Absent until the backend knows the field. */
+  skippedVersion?: string | null;
+}
+
+/** Wire names of the backend's `UpdatesMode` (storage/settings.rs, ADR-053). */
+export const UPDATES_MODES = ['off', 'on'] as const;
+export type UpdatesMode = (typeof UPDATES_MODES)[number];
+
+/** Longest `skippedVersion` in characters (`limits::UPDATE_VERSION_MAX_CHARS`). */
+export const SKIPPED_VERSION_MAX = 32;
+
+/** The most tool ids `tipsSeen` holds (DESIGN 3.47). */
+export const TIPS_SEEN_MAX = 32;
+
+function parseTipsSeen(value: unknown): readonly string[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const ids = (value as unknown[]).filter(
+    (id): id is string => typeof id === 'string' && id.length > 0 && id.length <= 32,
+  );
+  return ids.slice(0, TIPS_SEEN_MAX);
 }
 
 /** Wire names of the backend's `AuthorPrompt` (storage/settings.rs, ADR-034). */
@@ -104,7 +128,18 @@ function oneOf<T extends string>(values: readonly T[], value: unknown): T | null
 /** Validates a settings object from the backend. `null` if it is not one. */
 export function parseSettings(value: unknown): Settings | null {
   if (typeof value !== 'object' || value === null) return null;
-  const { glass, theme, language, leftPanelWidth, welcomeTour, authorName, authorPrompt } = value as {
+  const {
+    glass,
+    theme,
+    language,
+    leftPanelWidth,
+    welcomeTour,
+    authorName,
+    authorPrompt,
+    tipsSeen,
+    updates,
+    skippedVersion,
+  } = value as {
     glass?: unknown;
     theme?: unknown;
     language?: unknown;
@@ -112,12 +147,23 @@ export function parseSettings(value: unknown): Settings | null {
     welcomeTour?: unknown;
     authorName?: unknown;
     authorPrompt?: unknown;
+    tipsSeen?: unknown;
+    updates?: unknown;
+    skippedVersion?: unknown;
   };
   const parsedPrompt = oneOf(AUTHOR_PROMPT_STATES, authorPrompt);
   const parsedGlass = oneOf(GLASS_MODES, glass);
   const parsedTheme = oneOf(THEME_MODES, theme);
   const parsedLanguage = oneOf(LANGUAGES, language);
   const parsedTour = oneOf(WELCOME_TOUR_STATES, welcomeTour);
+  const parsedTips = parseTipsSeen(tipsSeen);
+  const parsedUpdates = oneOf(UPDATES_MODES, updates);
+  const parsedSkipped =
+    typeof skippedVersion === 'string' && skippedVersion.length > 0 && skippedVersion.length <= SKIPPED_VERSION_MAX
+      ? skippedVersion
+      : skippedVersion === null
+        ? null
+        : undefined;
   if (
     parsedGlass === null ||
     parsedTheme === null ||
@@ -137,6 +183,9 @@ export function parseSettings(value: unknown): Settings | null {
     welcomeTour: parsedTour,
     authorName,
     authorPrompt: parsedPrompt,
+    ...(parsedTips === undefined ? {} : { tipsSeen: parsedTips }),
+    ...(parsedUpdates === null ? {} : { updates: parsedUpdates }),
+    ...(parsedSkipped === undefined ? {} : { skippedVersion: parsedSkipped }),
   };
 }
 
@@ -178,6 +227,11 @@ export async function getSettings(): Promise<Settings> {
 /** Applies `patch` and resolves to the settings after the update. Rejects with `invalid_argument` on a bad value. */
 export async function updateSettings(patch: SettingsPatch): Promise<Settings> {
   return validated(parseSettings(await call<unknown>('update_settings', { patch })));
+}
+
+/** Opens the OS page where the user picks the default PDF app (Windows; rejects with `unsupported_feature` on macOS). */
+export function openDefaultAppsSettings(): Promise<void> {
+  return call<void>('open_default_apps_settings');
 }
 
 /** The new value of the OS "reduce transparency" flag from a channel message, `null` if the message is not a boolean. */

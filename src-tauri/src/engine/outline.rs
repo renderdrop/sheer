@@ -16,7 +16,7 @@ use crate::limits;
 
 /// A bookmark: its title as the UI may show it (`documents::sanitize_text`, at most `limits::MAX_OUTLINE_TITLE_CHARS` characters),
 /// the place it goes to if it goes to a page of this document, and its children.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct OutlineItem {
     pub title: String,
     pub target: Option<PageSpot>,

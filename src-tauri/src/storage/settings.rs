@@ -3,7 +3,7 @@
 //! Wire shape (camelCase, enum values lowercase):
 //! `{ "glass": "auto" | "solid", "theme": "system" | "light" | "dark", "language": "system" | "en" | "de",
 //! "leftPanelWidth": 192..=400, "welcomeTour": "pending" | "shown", "authorName": 0..=128 chars, sanitized (ADR-034), no control
-//! characters, "authorPrompt": "pending" | "done" }`.
+//! characters, "authorPrompt": "pending" | "done", "updates": "off" | "on", "skippedVersion": null | version string (ADR-053) }`.
 //!
 //! - **Reading** never fails: a missing, oversized, damaged or hand-edited file falls back to the defaults, field by
 //!   field. The file is user-writable, so nothing in it is trusted beyond the enum values and the width range it can
@@ -186,6 +186,91 @@ pub enum AuthorPrompt {
     Done,
 }
 
+/// Whether Sheer may look for updates by itself (ADR-053 section 3). Off until the user turns it on; "Check for updates" in About is a
+/// separate, per-click consent.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum UpdatesMode {
+    #[default]
+    Off,
+    On,
+}
+
+/// The version the user chose not to be offered again: none, or at most `limits::UPDATE_VERSION_MAX_CHARS` characters of a version
+/// string (ASCII letters, digits, `.`, `-`, `+`). The only ways in are [`SkippedVersion::new`] and `Deserialize`. `null` on the wire when none.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
+#[serde(transparent)]
+pub struct SkippedVersion(Option<String>);
+
+impl SkippedVersion {
+    /// `None` for a string that is empty, too long or not a version-like word.
+    pub fn new(version: &str) -> Option<Self> {
+        let valid = !version.is_empty()
+            && version.chars().count() <= limits::UPDATE_VERSION_MAX_CHARS
+            && version
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '-' | '+'));
+        valid.then(|| Self(Some(version.to_owned())))
+    }
+
+    pub fn as_deref(&self) -> Option<&str> {
+        self.0.as_deref()
+    }
+}
+
+impl<'de> Deserialize<'de> for SkippedVersion {
+    /// `null` (none) or a string that passes [`SkippedVersion::new`]; anything else is an error, never cut.
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        match Option::<String>::deserialize(deserializer)? {
+            None => Ok(Self(None)),
+            Some(version) => {
+                Self::new(&version).ok_or_else(|| serde::de::Error::custom("version not valid"))
+            }
+        }
+    }
+}
+
+/// The tools whose first-use tip was shown (ADR-054): tool ids of at most 32 ASCII letters, digits, `-` or `_`, at most 64 of them,
+/// without repeats (a repeat is dropped, not an error). The only ways in are [`TipsSeen::new`] and `Deserialize`.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
+#[serde(transparent)]
+pub struct TipsSeen(Vec<String>);
+
+impl TipsSeen {
+    pub const MAX_IDS: usize = 64;
+    pub const MAX_ID_CHARS: usize = 32;
+
+    /// `None` for a list over the limit or with an id that is empty, too long or not plain ASCII.
+    pub fn new(ids: &[String]) -> Option<Self> {
+        let mut kept: Vec<String> = Vec::new();
+        for id in ids {
+            let valid = !id.is_empty()
+                && id.len() <= Self::MAX_ID_CHARS
+                && id
+                    .chars()
+                    .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_');
+            if !valid {
+                return None;
+            }
+            if !kept.contains(id) {
+                kept.push(id.clone());
+            }
+        }
+        (ids.len() <= Self::MAX_IDS && kept.len() <= Self::MAX_IDS).then_some(Self(kept))
+    }
+
+    pub fn ids(&self) -> &[String] {
+        &self.0
+    }
+}
+
+impl<'de> Deserialize<'de> for TipsSeen {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let ids = Vec::<String>::deserialize(deserializer)?;
+        Self::new(&ids).ok_or_else(|| serde::de::Error::custom("tip ids not valid"))
+    }
+}
+
 /// Every persisted setting. Add a field here, to [`SettingsPatch`] and to `src/api/app.ts` together.
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -197,6 +282,9 @@ pub struct Settings {
     pub welcome_tour: WelcomeTour,
     pub author_name: AuthorName,
     pub author_prompt: AuthorPrompt,
+    pub updates: UpdatesMode,
+    pub skipped_version: SkippedVersion,
+    pub tips_seen: TipsSeen,
 }
 
 impl Settings {
@@ -235,6 +323,18 @@ impl Settings {
                 .get("authorPrompt")
                 .and_then(|value| AuthorPrompt::deserialize(value).ok())
                 .unwrap_or_default(),
+            updates: map
+                .get("updates")
+                .and_then(|value| UpdatesMode::deserialize(value).ok())
+                .unwrap_or_default(),
+            skipped_version: map
+                .get("skippedVersion")
+                .and_then(|value| SkippedVersion::deserialize(value).ok())
+                .unwrap_or_default(),
+            tips_seen: map
+                .get("tipsSeen")
+                .and_then(|value| TipsSeen::deserialize(value).ok())
+                .unwrap_or_default(),
         }
     }
 
@@ -248,12 +348,15 @@ impl Settings {
             welcome_tour: patch.welcome_tour.unwrap_or(self.welcome_tour),
             author_name: patch.author_name.unwrap_or(self.author_name),
             author_prompt: patch.author_prompt.unwrap_or(self.author_prompt),
+            updates: patch.updates.unwrap_or(self.updates),
+            skipped_version: patch.skipped_version.unwrap_or(self.skipped_version),
+            tips_seen: patch.tips_seen.unwrap_or(self.tips_seen),
         }
     }
 }
 
-/// A partial update: at most the seven settings, each optional. Parsed only by [`SettingsPatch::from_value`], which
-/// rejects every unknown key (`deny_unknown_fields`), so a patch can never name more than these seven fields.
+/// A partial update: at most the eleven settings, each optional. Parsed only by [`SettingsPatch::from_value`], which
+/// rejects every unknown key (`deny_unknown_fields`), so a patch can never name more than these eleven fields.
 #[derive(Debug, Clone, PartialEq, Eq, Default, Deserialize)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
 pub struct SettingsPatch {
@@ -271,6 +374,12 @@ pub struct SettingsPatch {
     pub author_name: Option<AuthorName>,
     #[serde(default, deserialize_with = "present")]
     pub author_prompt: Option<AuthorPrompt>,
+    #[serde(default, deserialize_with = "present")]
+    pub updates: Option<UpdatesMode>,
+    #[serde(default, deserialize_with = "present")]
+    pub skipped_version: Option<SkippedVersion>,
+    #[serde(default, deserialize_with = "present")]
+    pub tips_seen: Option<TipsSeen>,
 }
 
 /// A field that is present must hold a valid value. Plain `Option` would read `null` as "absent" and accept it.
@@ -423,7 +532,7 @@ mod tests {
     fn settings_serialize_with_lowercase_enum_values() {
         assert_eq!(
             serde_json::to_value(Settings::default()).unwrap(),
-            json!({ "glass": "auto", "theme": "system", "language": "system", "leftPanelWidth": 248, "welcomeTour": "pending", "authorName": "", "authorPrompt": "pending" })
+            json!({ "glass": "auto", "theme": "system", "language": "system", "leftPanelWidth": 248, "welcomeTour": "pending", "authorName": "", "authorPrompt": "pending", "updates": "off", "skippedVersion": null, "tipsSeen": [] })
         );
         let settings = Settings {
             glass: GlassMode::Solid,
@@ -433,10 +542,13 @@ mod tests {
             welcome_tour: WelcomeTour::Shown,
             author_name: AuthorName::new("Ada Lovelace").unwrap(),
             author_prompt: AuthorPrompt::Done,
+            updates: UpdatesMode::On,
+            skipped_version: SkippedVersion::new("1.2.3-rc.1").unwrap(),
+            tips_seen: TipsSeen::new(&["textBox".to_owned()]).unwrap(),
         };
         assert_eq!(
             serde_json::to_value(settings).unwrap(),
-            json!({ "glass": "solid", "theme": "dark", "language": "de", "leftPanelWidth": 320, "welcomeTour": "shown", "authorName": "Ada Lovelace", "authorPrompt": "done" })
+            json!({ "glass": "solid", "theme": "dark", "language": "de", "leftPanelWidth": 320, "welcomeTour": "shown", "authorName": "Ada Lovelace", "authorPrompt": "done", "updates": "on", "skippedVersion": "1.2.3-rc.1", "tipsSeen": ["textBox"] })
         );
     }
 
@@ -628,8 +740,73 @@ mod tests {
                 welcome_tour: None,
                 author_name: None,
                 author_prompt: None,
+                updates: None,
+                skipped_version: None,
+                tips_seen: None,
             }
         );
+    }
+
+    #[test]
+    fn tips_seen_is_bounded_deduplicated_and_ascii() {
+        assert!(Settings::default().tips_seen.ids().is_empty());
+        let stored = Settings::from_stored(br#"{"tipsSeen":["a","b","a"]}"#);
+        assert_eq!(stored.tips_seen.ids(), ["a", "b"]);
+        let many: Vec<String> = (0..=TipsSeen::MAX_IDS).map(|n| format!("t{n}")).collect();
+        let long = "x".repeat(TipsSeen::MAX_ID_CHARS + 1);
+        for bad in [
+            json!(many),
+            json!([long]),
+            json!([""]),
+            json!(["a b"]),
+            json!(["ä"]),
+            json!([5]),
+            json!("a"),
+            json!(null),
+        ] {
+            assert!(
+                SettingsPatch::from_value(&json!({ "tipsSeen": bad })).is_err(),
+                "{bad}"
+            );
+        }
+        let exact: Vec<String> = (0..TipsSeen::MAX_IDS).map(|n| format!("t{n}")).collect();
+        assert!(SettingsPatch::from_value(&json!({ "tipsSeen": exact })).is_ok());
+        assert_eq!(
+            Settings::from_stored(br#"{"tipsSeen":["a b"]}"#).tips_seen,
+            TipsSeen::default()
+        );
+    }
+
+    #[test]
+    fn updates_default_off_and_the_skipped_version_is_checked() {
+        assert_eq!(Settings::default().updates, UpdatesMode::Off);
+        assert_eq!(Settings::default().skipped_version.as_deref(), None);
+        let stored = Settings::from_stored(br#"{"updates":"on","skippedVersion":"2.0.0"}"#);
+        assert_eq!(stored.updates, UpdatesMode::On);
+        assert_eq!(stored.skipped_version.as_deref(), Some("2.0.0"));
+        // A damaged file falls back field by field.
+        let damaged = Settings::from_stored(br#"{"updates":"maybe","skippedVersion":"1 2"}"#);
+        assert_eq!(damaged.updates, UpdatesMode::Off);
+        assert_eq!(damaged.skipped_version.as_deref(), None);
+        let long = "1".repeat(limits::UPDATE_VERSION_MAX_CHARS + 1);
+        for bad in [
+            json!({ "updates": "auto" }),
+            json!({ "updates": null }),
+            json!({ "skippedVersion": "" }),
+            json!({ "skippedVersion": long }),
+            json!({ "skippedVersion": 5 }),
+            json!({ "skippedVersion": "a{202e}b" }),
+        ] {
+            assert!(SettingsPatch::from_value(&bad).is_err(), "{bad}");
+        }
+        let patch = SettingsPatch::from_value(
+            &json!({ "updates": "on", "skippedVersion": null, "tipsSeen": [] }),
+        )
+        .unwrap();
+        assert_eq!(patch.updates, Some(UpdatesMode::On));
+        assert_eq!(patch.skipped_version, Some(SkippedVersion::default()));
+        let applied = Settings::default().apply(patch);
+        assert_eq!(applied.updates, UpdatesMode::On);
     }
 
     #[test]
@@ -936,6 +1113,9 @@ mod tests {
                 welcome_tour: WelcomeTour::Pending,
                 author_name: AuthorName::default(),
                 author_prompt: AuthorPrompt::Pending,
+                updates: UpdatesMode::Off,
+                skipped_version: SkippedVersion::default(),
+                tips_seen: TipsSeen::default(),
             }
         );
         assert_eq!(store.get(), updated);
@@ -945,7 +1125,7 @@ mod tests {
             serde_json::from_slice(&fs::read(dir.path().join(FILE_NAME)).unwrap()).unwrap();
         assert_eq!(
             stored,
-            json!({ "glass": "solid", "theme": "dark", "language": "de", "leftPanelWidth": 280, "welcomeTour": "pending", "authorName": "", "authorPrompt": "pending" })
+            json!({ "glass": "solid", "theme": "dark", "language": "de", "leftPanelWidth": 280, "welcomeTour": "pending", "authorName": "", "authorPrompt": "pending", "updates": "off", "skippedVersion": null, "tipsSeen": [] })
         );
     }
 
@@ -1135,7 +1315,7 @@ mod tests {
         let stored: Value = serde_json::from_slice(&bytes).unwrap();
         assert_eq!(
             stored,
-            json!({ "glass": "solid", "theme": "system", "language": "system", "leftPanelWidth": 248, "welcomeTour": "pending", "authorName": "", "authorPrompt": "pending" })
+            json!({ "glass": "solid", "theme": "system", "language": "system", "leftPanelWidth": 248, "welcomeTour": "pending", "authorName": "", "authorPrompt": "pending", "updates": "off", "skippedVersion": null, "tipsSeen": [] })
         );
     }
 

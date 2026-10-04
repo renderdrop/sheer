@@ -71,7 +71,7 @@ impl Rank {
 }
 
 /// What a render draws. Two requests with the same key produce the same frame, so they share one job.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub struct RenderKey {
     pub id: DocumentId,
     pub page_index: u32,

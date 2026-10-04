@@ -46,12 +46,14 @@ pub mod pages;
 pub mod print;
 pub mod protect;
 pub mod recent_actions;
+pub mod recovery;
 pub mod redact;
 pub mod render;
 pub mod save;
 pub mod search;
 pub mod signatures;
 pub mod text;
+pub mod update;
 
 use std::collections::HashSet;
 use std::path::PathBuf;

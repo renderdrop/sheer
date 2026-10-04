@@ -59,6 +59,12 @@ impl Serialize for PermissionSet {
     }
 }
 
+impl<'de> serde::Deserialize<'de> for PermissionSet {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        Vec::<Permission>::deserialize(deserializer).map(|list| Self::from_list(&list))
+    }
+}
+
 /// The arguments of `stage_protection`. The passwords are [`Secret`]s from the moment they are deserialized.
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]

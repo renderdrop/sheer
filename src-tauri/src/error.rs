@@ -18,7 +18,7 @@ macro_rules! error_codes {
     ($($(#[$meta:meta])* $variant:ident => $name:literal, retryable: $retryable:literal;)+) => {
         /// Stable, machine-readable error identifiers. The frontend mirrors this list in `src/api/errors.ts`
         /// and maps each code to the translated string `error.<code>`.
-        #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+        #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, serde::Deserialize)]
         pub enum ErrorCode {
             $($(#[$meta])* #[serde(rename = $name)] $variant,)+
         }

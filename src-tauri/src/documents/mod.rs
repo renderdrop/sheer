@@ -46,7 +46,7 @@ impl PageId {
 
 /// What PDFium says about a document, as far as it can tell: best effort, nothing here is a security promise. Read once, when the
 /// document is loaded (`engine::worker`).
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DocFlags {
     /// The file has a security handler (a password or permissions): `/Encrypt` in the trailer.
@@ -64,13 +64,16 @@ pub struct DocFlags {
 }
 
 /// Where a document comes from. `Welcome` is the bundled tour sample (ADR-023): read-only (Save acts as Save As, closing never
-/// asks to discard) and never a recent. Everything the user opens is `User`.
+/// asks to discard) and never a recent. Everything the user opens is `User`; `Recovered` is an autosave snapshot (ADR-053).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum DocKind {
     #[default]
     User,
     Welcome,
+    /// A crash-recovery snapshot opened from the autosave store (ADR-053 §2): Save acts as Save As, like `Welcome`, but proposes the
+    /// original folder and name (kept in the registry entry, not here: this enum stays `Copy` and a plain word on the wire).
+    Recovered,
 }
 
 /// What the frontend learns about a document it just opened.
