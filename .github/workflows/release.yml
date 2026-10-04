@@ -14,7 +14,7 @@ on:
         required: true
         type: string
 
-# No signing secrets, no updater keys. Read-only token everywhere except the publish job.
+# Installer signing secrets: none. The updater key (TAURI_SIGNING_PRIVATE_KEY) is optional and used only by the build step. Read-only token everywhere except the publish job.
 permissions:
   contents: read
 
@@ -45,12 +45,14 @@ jobs:
             target_args: ''
             pdfium: win-x64
             glob: src-tauri/target/release/bundle/nsis/*.exe
+            updater_glob: src-tauri/target/release/bundle/nsis/*.exe.sig
           # macOS: one universal DMG (arm64 + x86_64). fetch-pdfium.sh mac-universal fetches both PDFium slices.
           - os: macos-latest
             bundle: dmg
             target_args: --target universal-apple-darwin
             pdfium: mac-universal
             glob: src-tauri/target/universal-apple-darwin/release/bundle/dmg/*.dmg
+            updater_glob: src-tauri/target/universal-apple-darwin/release/bundle/macos/*.app.tar.gz*
     defaults:
       run:
         shell: bash
@@ -95,17 +97,34 @@ jobs:
       - name: Fetch PDFium
         run: bash scripts/fetch-pdfium.sh "${{ matrix.pdfium }}"
 
-      - name: Build unsigned installer
-        run: npm run tauri build -- --bundles ${{ matrix.bundle }} ${{ matrix.target_args }}
+      # Updater artifacts (the macOS .app.tar.gz, the NSIS .sig) only when the repository secret TAURI_SIGNING_PRIVATE_KEY exists
+      # (ADR-053 section 3). The expression below yields only "true" or "false": the secret itself is never echoed or logged.
+      # Without it the release is as before: unsigned installers, no latest.json. The alternative is `scripts/sign-update.sh` locally.
+      - name: Build installer
+        env:
+          HAS_UPDATER_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY != '' }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          bundles="${{ matrix.bundle }}"
+          args=()
+          if [ "$HAS_UPDATER_KEY" = "true" ]; then
+            args+=(--config '{"bundle":{"createUpdaterArtifacts":true}}')
+            if [ "$RUNNER_OS" = "macOS" ]; then bundles="app,dmg"; fi
+          fi
+          npm run tauri build -- --bundles "$bundles" ${{ matrix.target_args }} ${args[@]+"${args[@]}"}
 
       - name: Checksum
         run: |
           set -euo pipefail
           mkdir -p dist-release
           cp ${{ matrix.glob }} dist-release/
+          # Updater packages and signatures exist only when the signing secret was set.
+          for u in ${{ matrix.updater_glob }}; do [ -e "$u" ] && cp "$u" dist-release/ || true; done
           cd dist-release
           for f in *; do
-            case "$f" in *.sha256) continue ;; esac
+            case "$f" in *.sha256|*.sig) continue ;; esac
             if command -v sha256sum >/dev/null; then sha256sum "$f"; else shasum -a 256 "$f"; fi > "$f.sha256"
           done
           ls -l
@@ -157,6 +176,8 @@ jobs:
           [[ "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([-+][0-9A-Za-z.-]+)?$ ]] || { echo "bad tag: $RELEASE_TAG" >&2; exit 1; }
 
           cd artifacts
+          # latest.json only when signed packages (with .sig files) were built.
+          if ls *.sig >/dev/null 2>&1; then node ../scripts/latest-json.mjs . "$version"; fi
           cat *.sha256 > SHA256SUMS.txt
           rm -- *.sha256
           cd ..

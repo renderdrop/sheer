@@ -18,13 +18,16 @@ usage() {
 DIR="$1"
 VERSION="$2"
 [ -d "$DIR" ] || { echo "error: $DIR is not a directory" >&2; exit 2; }
+DIR="$(cd "$DIR" && pwd)"
 [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+([-+][0-9A-Za-z.-]+)?$ ]] || { echo "error: version must be semver, got $VERSION" >&2; exit 2; }
 [ -n "${SHEER_UPDATER_KEY:-}" ] && [ -f "$SHEER_UPDATER_KEY" ] || { echo "error: SHEER_UPDATER_KEY must name the private key file" >&2; exit 2; }
-grep -q 'REPLACE_WITH_BASE64_MINISIGN_PUBLIC_KEY' "$(dirname "${BASH_SOURCE[0]}")/../src-tauri/updater/minisign.pub" &&
-  { echo "error: src-tauri/updater/minisign.pub is still the placeholder; replace it first (docs/BLOCKERS.md B-005)" >&2; exit 2; }
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
+if grep -q "REPLACE_WITH_BASE64_MINISIGN_PUBLIC_KEY" src-tauri/updater/minisign.pub; then
+  echo "error: src-tauri/updater/minisign.pub is still the placeholder; replace it first (docs/BLOCKERS.md B-005)" >&2
+  exit 2
+fi
 
 shopt -s nullglob
 files=("$DIR"/*-setup.exe "$DIR"/*.app.tar.gz)
@@ -36,25 +39,5 @@ for file in "${files[@]}"; do
   [ -s "$file.sig" ] || { echo "error: no signature written for $file" >&2; exit 1; }
 done
 
-# The manifest: one entry per platform, URLs fixed to the release's download path (HTTPS, GitHub only).
-SHEER_VERSION="$VERSION" SHEER_DIR="$DIR" node -e '
-const fs = require("fs");
-const path = require("path");
-const dir = process.env.SHEER_DIR;
-const version = process.env.SHEER_VERSION;
-const base = `https://github.com/renderdrop/sheer/releases/download/v${version}/`;
-const platforms = {};
-for (const name of fs.readdirSync(dir)) {
-  const signature = (file) => fs.readFileSync(path.join(dir, file + ".sig"), "utf8").trim();
-  if (name.endsWith("-setup.exe")) {
-    platforms["windows-x86_64"] = { signature: signature(name), url: base + encodeURIComponent(name) };
-  } else if (name.endsWith(".app.tar.gz")) {
-    const entry = { signature: signature(name), url: base + encodeURIComponent(name) };
-    platforms["darwin-aarch64"] = entry;
-    platforms["darwin-x86_64"] = entry;
-  }
-}
-const manifest = { version, notes: `Sheer ${version}`, pub_date: new Date().toISOString(), platforms };
-fs.writeFileSync(path.join(dir, "latest.json"), JSON.stringify(manifest, null, 2) + "\n");
-'
+node scripts/latest-json.mjs "$DIR" "$VERSION"
 echo "signed ${#files[@]} package(s); wrote $DIR/latest.json"
