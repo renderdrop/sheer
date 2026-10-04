@@ -42,6 +42,7 @@ import {
   type ToolbarEntry,
 } from '..';
 import './showcase.css';
+import { ButtonStates, FormControls, Placeholders, Surfaces, TabsDemo } from './States';
 
 /*
  * Dev-only showcase of the primitives (DESIGN section 3), reached at #showcase in `npm run dev`. App.tsx loads it only
@@ -433,7 +434,7 @@ function LeftPanelDemo() {
           onValueChange={setWidth}
           onCollapsedChange={setCollapsed}
         />
-        <div className="flex min-w-0 items-center justify-center rounded-panel bg-page-area p-6 text-text-muted">
+        <div className="flex min-w-0 items-center justify-center rounded-panel bg-page-area p-6 text-text">
           <FileText aria-hidden="true" className="showcase-icon-gap size-icon-24" />
           Canvas
         </div>
@@ -543,6 +544,11 @@ export default function Showcase() {
       <LeftPanelDemo />
       <Sliders />
       <Fields />
+      <ButtonStates />
+      <FormControls />
+      <TabsDemo />
+      <Surfaces />
+      <Placeholders />
     </div>
   );
 }

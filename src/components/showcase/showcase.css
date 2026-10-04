@@ -69,3 +69,225 @@
 .showcase-inspector-slot-hidden {
   padding-inline-start: 0;
 }
+
+/*
+ * Forced states: hover and pressed cannot be shown statically, so a wrapper carries data-force and these rules paint the same
+ * token values the primitives use on :hover, :active and :focus-visible (DESIGN section 4).
+ */
+.showcase-force {
+  display: inline-flex;
+}
+
+.showcase-force[data-force="hover"][data-variant="primary"] > button {
+  background-color: var(--accent-bright);
+}
+
+.showcase-force[data-force="hover"][data-variant="secondary"] > button,
+.showcase-force[data-force="pressed"][data-variant="ghost"] > button {
+  background-color: var(--surface-pressed);
+}
+
+.showcase-force[data-force="hover"][data-variant="ghost"] > button,
+.showcase-force[data-force="hover"][data-variant="icon"] > button {
+  background-color: var(--surface-subtle);
+}
+
+.showcase-force[data-force="pressed"][data-variant="icon"] > button {
+  background-color: var(--surface-pressed);
+}
+
+.showcase-force[data-force="pressed"] > button {
+  transform: scale(0.98);
+}
+
+.showcase-force[data-force="focus"] > button {
+  box-shadow: var(--ring-focus);
+}
+
+.showcase-force[data-force="hover"] > input[type="checkbox"],
+.showcase-force[data-force="hover"] > span > input {
+  border-color: var(--text-primary);
+}
+
+/* Static specimens of surfaces that have no primitive yet (Dialog, Toast, Banner, kbd). */
+.showcase-dialog {
+  width: calc(var(--space-16) * 5);
+  padding: var(--space-6);
+  border-radius: var(--radius-dialog);
+  background: var(--surface-subtle);
+  box-shadow: var(--shadow-floating);
+}
+
+.showcase-dialog-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
+  margin-top: var(--space-6);
+}
+
+.showcase-scrim {
+  padding: var(--space-6);
+  background: var(--scrim);
+  border-radius: var(--radius-lg);
+}
+
+.showcase-toast {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  height: var(--control-lg);
+  padding-inline: var(--space-3);
+  border: var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--surface-panel);
+  box-shadow: var(--shadow-floating);
+  color: var(--text-primary);
+}
+
+.showcase-banner {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: var(--control-lg);
+  padding-inline: var(--space-4);
+  border-radius: var(--radius-md);
+  background: var(--surface-subtle);
+  color: var(--text-primary);
+}
+
+.showcase-banner > span {
+  flex: 1;
+}
+
+.showcase-banner[data-danger] {
+  background: var(--color-danger);
+  color: var(--color-white);
+}
+
+.showcase-kbd {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: var(--space-5);
+  min-width: var(--space-5);
+  padding-inline: var(--space-1);
+  border: var(--border-subtle);
+  border-radius: var(--radius-sm);
+  background: var(--surface-subtle);
+  font-size: var(--text-xs);
+  font-weight: var(--font-weight-medium);
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+}
+
+.showcase-tooltip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-2);
+  border: var(--border-subtle);
+  border-radius: var(--radius-sm);
+  background: var(--surface-panel);
+  box-shadow: var(--shadow-floating);
+  font-size: var(--text-xs);
+  color: var(--text-primary);
+}
+
+.showcase-popover-static {
+  width: calc(var(--space-16) * 4);
+  padding: var(--space-4);
+  border: var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--surface-panel);
+  box-shadow: var(--shadow-floating);
+}
+
+.showcase-menu-static {
+  width: calc(var(--space-16) * 3);
+  padding: var(--space-1);
+  border: var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--surface-panel);
+  box-shadow: var(--shadow-floating);
+}
+
+.showcase-menu-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: var(--space-8);
+  padding-inline: var(--space-2);
+  border-radius: var(--radius-sm);
+  font-size: var(--text-md);
+  color: var(--text-primary);
+}
+
+.showcase-menu-item[data-hover] {
+  background: var(--surface-subtle);
+}
+
+.showcase-menu-item[data-disabled] {
+  opacity: var(--opacity-disabled);
+}
+
+.showcase-tile {
+  padding: var(--space-4);
+  border-radius: var(--radius-md);
+  background: var(--surface-panel);
+  border: var(--border-subtle);
+}
+
+.showcase-skeletons {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.showcase-skeleton-block {
+  width: calc(var(--space-16) * 2);
+  height: var(--space-16);
+}
+
+.showcase-skeleton-line {
+  width: calc(var(--space-16) * 3);
+}
+
+.showcase-dropzone {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: calc(var(--space-16) * 5);
+  height: calc(var(--space-16) * 2);
+  color: var(--text-primary);
+}
+
+/* BrandSurface with a glow: the parent clips the glow with its radius (DESIGN section 5). */
+.showcase-brand {
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: calc(var(--space-16) * 5);
+  height: calc(var(--space-16) * 3);
+  border-radius: var(--radius-xl);
+  background: var(--surface-subtle);
+  color: var(--text-primary);
+}
+
+.showcase-brand > p {
+  position: relative;
+}
+
+.showcase-brand > [data-glow] {
+  position: absolute;
+  inset: -10%;
+  z-index: -1;
+}
+
+.showcase-states-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-4);
+}
