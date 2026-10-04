@@ -11,6 +11,7 @@ import { useDocuments } from '../../stores/documents';
 import { usePages } from '../../stores/pages';
 import { useView } from '../../stores/view';
 import { setup } from '../../test/render';
+import { resetTransition, useTransition } from '../viewer/openTransition';
 import { useViewer } from '../viewer/useViewer';
 import { resetViewer, showDocument, sizes } from '../viewer/viewer.testutil';
 import { ThumbnailLayout, thumbnailMetricsFor, type ThumbnailSpacing } from './layout';
@@ -519,6 +520,17 @@ describe('keys', () => {
     expect(currentPage()).toBe(3);
     expect(focused()).toBe('3');
     fireEvent.click(optionOf(1));
+    expect(currentPage()).toBe(1);
+  });
+
+  it('a click is a plain page change: no fly-in clone is launched, however often it is repeated', () => {
+    resetTransition();
+    const { scheduler } = fixture();
+    setup(list(scheduler));
+    fireEvent.click(optionOf(1));
+    fireEvent.click(optionOf(2));
+    fireEvent.click(optionOf(1));
+    expect(useTransition.getState().active).toBeNull();
     expect(currentPage()).toBe(1);
   });
 

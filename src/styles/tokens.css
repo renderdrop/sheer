@@ -79,8 +79,10 @@
   --crop-stroke: 2px;
   --color-doc-ink: var(--color-ink); /* ink drawn on the paper over an annotation's own colour (the note glyph) */
   --color-doc-paper: var(--color-white); /* the page paper under an inline editor of existing text */
-  --color-doc-text-select: rgba(111, 111, 107, 0.28);
-  --color-doc-hit: var(--color-mist); /* drawn with mix-blend-mode: multiply; the active hit adds a 2px Ink outline */
+  --color-doc-text-select: color-mix(in srgb, var(--hl-solar) 35%, transparent);
+  --color-doc-hit: color-mix(in srgb, var(--hl-solar) 70%, transparent);
+  --color-doc-hit-active: var(--hl-solar);
+  /* drawn with mix-blend-mode: multiply; the active hit adds a 2px Ink outline */
   --color-doc-hover: var(--color-stone);
   --color-doc-field: rgba(221, 226, 234, 0.6);
   --color-doc-field-hover: var(--color-mist);
@@ -566,6 +568,7 @@
     --color-doc-select: Highlight;
     --color-doc-text-select: Highlight;
     --color-doc-hit: Highlight;
+    --color-doc-hit-active: Highlight;
     --color-doc-hover: Highlight;
     --color-doc-redact: Highlight;
     --color-doc-redact-fill: transparent;
@@ -811,6 +814,7 @@
 }
 
 [data-search-hit="active"] {
+  background: var(--color-doc-hit-active);
   outline: calc(var(--form-inset) / var(--page-scale, 1)) solid var(--color-doc-select);
 }
 
