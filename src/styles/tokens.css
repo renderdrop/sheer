@@ -155,6 +155,13 @@
   --spacing-topbar: var(--topbar-height);
   --spacing-menubar: var(--menubar-height);
   --spacing-mode-row: var(--mode-row-height);
+  /* F15 B12 */
+  --gap-shape-opacity: 0.06; /* the most a drifting Solar shape may show (DESIGN 3.5 B12) */
+  --gap-shape-clearance: 40px; /* >= the page shadow reach: blur 30 + offset-y 8 = 38 below a page (--shadow-floating); keep in step with it */
+  --gap-shape-min: 200px;
+  --gap-shape-max: 360px;
+  --gap-shape-travel: 24px; /* drift in x and y */
+  --gap-drift: 120s; /* one way of the alternating loop (MOTION 19) */
   /* F15 B1-B3 (DESIGN 3.5): the segmented mode tabs, the active tool's hairline on Sand, the save status and the sidebar grip. */
   --segment-height: 28px;
   --spacing-segment: var(--segment-height);
@@ -1171,6 +1178,43 @@
   --margin-marker: 24px; /* avatar marker in the compact column */
   --note-bubble: var(--accent); /* the note-paper bubble */
   --note-bubble-resolved: var(--color-surface-solid);
+}
+
+/* F15 B12 (tokens are with the others above) */
+@keyframes gap-drift {
+  from {
+    transform: translate3d(
+        calc(var(--gap-shape-travel) * var(--dx, 1) * -1),
+        calc(var(--gap-shape-travel) * var(--dy, 1) * -1),
+        0
+      )
+      scale(0.98);
+  }
+  to {
+    transform: translate3d(
+        calc(var(--gap-shape-travel) * var(--dx, 1)),
+        calc(var(--gap-shape-travel) * var(--dy, 1)),
+        0
+      )
+      scale(1.02);
+  }
+}
+[data-canvas-drift] [data-drift-shape] {
+  background: radial-gradient(closest-side, var(--hl-solar), transparent);
+  opacity: var(--gap-shape-opacity);
+  will-change: transform;
+}
+[data-canvas-drift][data-drift="live"] [data-drift-shape] {
+  animation: gap-drift var(--gap-drift) ease-in-out infinite alternate;
+  animation-delay: var(--delay, 0s);
+}
+[data-canvas-drift][data-paused="true"] [data-drift-shape] {
+  animation-play-state: paused;
+}
+@media (prefers-reduced-motion: reduce) {
+  [data-canvas-drift] [data-drift-shape] {
+    animation: none !important;
+  }
 }
 
 /* F15 B4–B5 */

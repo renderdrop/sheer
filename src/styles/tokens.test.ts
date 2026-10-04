@@ -520,6 +520,7 @@ describe('motion (DESIGN 1.2, MOTION 1)', () => {
       '--hold-check': '600ms',
       '--tooltip-leave': '100ms',
       '--hold-outline': '1000ms',
+      '--hold-shape': '500ms',
     };
     for (const [name, value] of Object.entries(exceptions)) expect(root.get(name), name).toBe(value);
     const times = [...root.entries()].filter(([, value]) => /^\d+(ms|s)$/.test(value)).map(([name]) => name);
@@ -715,6 +716,9 @@ describe('Tailwind theme', () => {
       '--form-tint',
       '--form-text',
       '--canvas-extra-scroll',
+      '--dx',
+      '--dy',
+      '--delay',
     ]);
     const unknown = [...used].filter(
       (name) => !defined.has(name) && !local.has(name) && !/^--(tw|logo-ground)-/.test(name),

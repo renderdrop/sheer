@@ -204,7 +204,7 @@ describe('the labels of the menu bar', () => {
       // Every word of a menu title starts with a capital letter, except small words ("or", "to") in longer titles.
       for (const word of text.replace('…', '').split(' ')) {
         expect(
-          word === 'or' || word === 'to' || word === '&' || word === '{app}' || /^[A-Z]/.test(word),
+          word === 'or' || word === 'in' || word === 'to' || word === '&' || word === '{app}' || /^[A-Z]/.test(word),
           `${label}: ${text}`,
         ).toBe(true);
       }

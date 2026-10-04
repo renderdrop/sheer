@@ -302,6 +302,13 @@
           "separator": true
         },
         {
+          "action": "toggle-margin-comments",
+          "label": "menu.view.marginComments"
+        },
+        {
+          "separator": true
+        },
+        {
           "action": "next-page",
           "label": "menu.view.nextPage",
           "accelerator": "CmdOrCtrl+ArrowDown",

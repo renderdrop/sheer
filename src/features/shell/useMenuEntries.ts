@@ -7,6 +7,7 @@ import { buildMenuEntries, type RecentItem } from '../../actions/menuModel';
 import type { MenuEntry } from '../../components';
 import { useT } from '../../i18n';
 import { useForms } from '../forms/store';
+import { useMarginPrefs } from '../margin/store';
 import { useSettings } from '../../stores/settings';
 import { selectActiveId, useDocuments } from '../../stores/documents';
 import { useUi } from '../../stores/ui';
@@ -40,6 +41,7 @@ export function useMenuEntries(menuId: string, afterRun: () => void): readonly M
   const docId = useDocuments(selectActiveId);
   const scrollMode = useDocViewValue(docId, (view) => view.scrollMode);
   const formHighlight = useForms((forms) => forms.highlight);
+  const marginComments = useMarginPrefs((margin) => margin.enabled);
   // The selection is read when the menu is built: it cannot change while the pointer or the keys are in the menu.
   const selection = hasTextSelection();
 
@@ -59,6 +61,7 @@ export function useMenuEntries(menuId: string, afterRun: () => void): readonly M
           if (id === 'toggle-left-panel') return !structure.leftCollapsed;
           if (id in TAB_OF) return leftTab === TAB_OF[id];
           if (id === 'form-highlight') return formHighlight;
+          if (id === 'toggle-margin-comments') return marginComments;
           return undefined;
         },
         hasTextSelection: selection,
@@ -75,6 +78,7 @@ export function useMenuEntries(menuId: string, afterRun: () => void): readonly M
       structure.leftCollapsed,
       leftTab,
       formHighlight,
+      marginComments,
       selection,
     ],
   );

@@ -1996,7 +1996,7 @@ loop does not pick them before v1.2.0 is tagged.
 1.02:1 and fails the 3:1 rule); the active segment is White with a Stone border and Ink label, the active tool keeps Solar plus a 1 px Ink
 hairline. The Sand bar overrides DESIGN §1.2/§2.8 for this bar only. (2) B9: comment margin column 240 px, 16 px from the page; fit
 widths subtract 256 px while it is shown; below 360 px of free page width it collapses to 32 px avatar markers; bubbles stack 8 px apart;
-leader line only on hover/focus. (3) B12 is a trial and an explicit exception to BRAND §18, DESIGN §5 and MOTION rule 5; the designer
+leader line only on hover/focus. (3) B12 is a trial (its switch is localStorage `canvas.drift`, no UI: designer/dev only; clearance 40 px covers the page shadow reach of 38 px) and an explicit exception to BRAND §18, DESIGN §5 and MOTION rule 5; the designer
 runs the legibility test of DESIGN §3.5 and records the verdict (keep / 0.04 / remove) here. (4) B7: the owner picked three typed
 signature fonts, in this order: **Ms Madi (default), Hurricane, Birthstone** (OFL-1.1, no Reserved Font Name, google/fonts `ofl/`);
 Dancing Script, Great Vibes and Alex Brush are removed, the other seven candidates are not shipped. Existing saved typed signatures keep

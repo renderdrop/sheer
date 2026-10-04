@@ -13,6 +13,7 @@ import type { PageSlotInfo } from '../../api/pages';
 import { DEFAULT_PAGE_SIZE, readSlots, sizesFor, useSlots, usePages } from '../../stores/pages';
 import { useUi } from '../../stores/ui';
 import { useDocView, useView } from '../../stores/view';
+import { CanvasDrift } from '../canvasDrift/CanvasDrift';
 import { MarginColumn } from '../margin/MarginColumn';
 import { useMarginPrefs } from '../margin/store';
 import { useBubbleThreads } from '../margin/useBubbles';
@@ -424,6 +425,7 @@ export function ViewerCanvas({ style }: { style?: CSSProperties }) {
       }
       dropActive={dropActive}
     >
+      {layout !== null && <CanvasDrift layout={layout} margin={marginOn} />}
       {layout !== null &&
         docId !== null &&
         pages.map(({ page, priority }) => {

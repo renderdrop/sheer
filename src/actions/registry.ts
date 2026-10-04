@@ -56,6 +56,7 @@ import type { Platform } from '../api/app';
 import { closeWindow } from '../api/window';
 import { runFlatten } from '../features/forms/actions';
 import { useForms } from '../features/forms/store';
+import { useMarginPrefs } from '../features/margin/store';
 import { openSignatureLibrary } from '../features/signatures/library';
 import { restartTour } from '../features/tour/runtime';
 import { resetTips } from '../features/tips/runtime';
@@ -107,6 +108,7 @@ export type ActionId =
   | 'scroll-continuous'
   | 'scroll-single'
   | 'scroll-spread'
+  | 'toggle-margin-comments'
   | 'next-page'
   | 'previous-page'
   | 'go-to-page'
@@ -566,6 +568,15 @@ export const ACTIONS: readonly ActionDef[] = [
     menuBar: true,
     enabled: needsDocument,
     run: () => useViewer.getState().setScrollMode('spread'),
+  },
+  {
+    id: 'toggle-margin-comments',
+    labelKey: 'menu.view.marginComments',
+    group: 'view',
+    menuBar: true,
+    // Not tied to a document: it is a preference (DESIGN 3.5 B9).
+    enabled: () => true,
+    run: () => useMarginPrefs.getState().setEnabled(!useMarginPrefs.getState().enabled),
   },
   {
     id: 'next-page',

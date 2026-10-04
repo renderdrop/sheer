@@ -40,6 +40,7 @@ describe('the registry', () => {
       'scroll-continuous',
       'scroll-single',
       'scroll-spread',
+      'toggle-margin-comments',
       'next-page',
       'previous-page',
       'next-tab',
@@ -128,6 +129,7 @@ describe('shortcuts per platform', () => {
     'scroll-continuous': { macos: null, windows: null },
     'scroll-single': { macos: null, windows: null },
     'scroll-spread': { macos: null, windows: null },
+    'toggle-margin-comments': { macos: null, windows: null },
     'next-page': { macos: '⌘↓', windows: 'Ctrl+↓' },
     'previous-page': { macos: '⌘↑', windows: 'Ctrl+↑' },
     'next-tab': { macos: '⇧⌘]', windows: 'Ctrl+PageDown' },
@@ -282,6 +284,7 @@ describe('enabled', () => {
     expect(enabledIds(NO_DOCUMENT)).toEqual([
       'open',
       'images-to-pdf',
+      'toggle-margin-comments',
       'view-home',
       'settings',
       'about',
