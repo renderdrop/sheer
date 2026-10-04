@@ -1954,6 +1954,305 @@ Typography (de): ellipsis `…` (never three dots); quotes „…“; a no-break
 | Sign / signature | Signieren / Signatur | visual signatures only |
 | Form field | Formularfeld | |
 
+## v1.1 "Structure and comfort" (F12, ADR-058)
+
+§3.53 is the glossary, so v1.1 starts at §3.54. Where a section below contradicts an earlier one, the later section wins; it names
+what it supersedes. **R** = the reference direction (ORCHESTRATOR §3: soft visible gradient, translucent white Iris-tinted cards, large
+radii, icons in small rounded tiles, pill badges, much white space, thin dividers). **O** = the owner's complaint (F12; the overflow
+menu screenshot shows 35 unrelated commands in one list; Form and Sign are separate buttons; comments lack context; the typed font
+looks like a marker).
+
+### 3.54 Start page: tool hub (supersedes §3.11 items 1–2; recents §3.11 item 3 and §3.48 unchanged)
+
+**Purpose.** Start from the task, not from the file. O: the start page offered only "Open"; every other task was in the overflow.
+
+**Slot.** Main row with no document = `8 | hub | 8` on `--color-bg` (as §2). The banner row above it (recovery §3.50, update §3.49) pushes
+the hub down; nothing overlays it. Hub column: max 880 (`--hub-max-width`), centred, padding 32 block and inline, scrolls as one
+region (§1.11) when short.
+
+| Row | Content | Height |
+|---|---|---|
+| 1 Header | logo slot 64 × 64 (`--logo-hub-slot`; logo 48 `--logo-hub`, rest inset 8 top, float §1.10 unchanged, ground shadow 40 × 6 inset 2) · 16 · `hub.title` `--text-xl` `--color-text`, vertically centred | 64 |
+| gap | | 24 |
+| 2 Tool grid | `repeat(auto-fill, minmax(200px, 1fr))`, gap 16; 4 columns at every window ≥ 960 (880 → 4 × 208); fewer only under OS text scaling | 2 × 144 + 16 |
+| gap | | 32 |
+| 3 Recents | §3.11 item 3 / §3.48 unchanged, full column width | rows |
+
+**Card** (`button`): G1, radius 24 (`--radius-card`), padding 16. Tile 40 (`--hub-tile`), radius 8 (concentric: 24 − 16), icon 20 in
+`--color-tile-icon` on `--color-tile`; 16 below title `--text-md` 600; 4 below description meta, 2 lines, clamp. Height 144
+(`--hub-card-height`). Optional pill badge (§1.10) top-right, inset 16. **Compact** when the viewport is ≤ 800 high: 64 h, tile 32
+(radius 8) | 16 | title; description hidden visually (kept as `aria-describedby`); grid 2 × 64 + 16, so 3 recents rows show at 960 × 640.
+
+R: G1 cards are the reference's translucent Iris-tinted white cards; the tile is its rounded icon tile; pills its badges; 16/24/32 gaps
+and a title with no subtitle keep the white space. The muted subtitle is dropped because text on `--color-bg` inside the 240 px field
+band fails (§1.10 placement rule; ink passes); the drop hint moves into the Open card.
+
+| Card | Lucide | Pill | Dialog first | Then |
+|---|---|---|---|---|
+| Open | `folder-open` | shortcut "Ctrl+O"/"⌘O" | Open, PDFs, multi | each file a tab, Select tool. **Primary:** tile `--color-accent` + `--color-on-accent` icon; initial focus |
+| Merge | `files` | `hub.multi` | Open, PDFs, multi | Merge sheet §3.29 with the files in pick order; 1 file: sheet with Merge `aria-disabled` + Add files… |
+| Split | `scissors` | — | Open, 1 PDF | tab opens in Organize (§3.28), Split dialog §3.30 on top; Cancel stays in Organize |
+| Compress | `file-archive` | — | Open, 1 PDF | tab opens, Compress dialog §3.31 on top |
+| Images to PDF | `images` | `hub.multi` | Open, PNG/JPEG, multi | §3.43 dialog with the images |
+| Sign | `signature` | — | Open, 1 PDF | tab opens, Fill & Sign popover (§3.58) open on its Sign section |
+| Redact | `square-slash` | — | Open, 1 PDF | tab opens in Redact mode (§3.38), inspector shows the marks list |
+| Fill form | `text-cursor-input` | — | Open, 1 PDF | fields: highlight on, focus first empty field, form banner (§3.58). No fields: Fill & Sign popover on its Fill section + info banner `hub.noFields` |
+
+All dialogs are Rust's (no path reaches the UI). Cancelling the file dialog returns focus to the card; nothing changes. While the dialog
+or opening runs, the card is `aria-busy`, its icon becomes a 16 spinner, and other cards are `aria-disabled` (one opening guard, §2.4).
+An encrypted file asks §3.19 first. A failure is an error banner; the hub stays.
+
+**States** (§3.0): hover fill fast; pressed `--scale-press`; focus ring radius 24 offset 2; busy as above. **Drop:** the whole hub is
+the target: §3.11's G2 drop overlay inset 8 in the main slot with the §4.5 preview card ("Drop to open"); routing of PDFs, several
+PDFs (merge suggestion §3.29) and images (§3.43) unchanged.
+
+**Keyboard.** Grid = `role=group` `hub.tools`, roving: arrows move in 2D (no wrap), Home/End; Enter/Space activate; Tab → recents.
+**A11y.** Each card's name = title, description via `aria-describedby`. **Motion.** Hub enters with RM-safe opacity (base); logo per
+§1.10; cards have no stagger (O asks for calm, MOTION §3 one cue). **Forced colors:** cards `Canvas` + 1 px `CanvasText`, tiles bordered.
+
+| Key | en | de |
+|---|---|---|
+| `hub.title` / `.tools` / `.multi` | What would you like to do? / Tools / Several files | Was möchten Sie tun? / Werkzeuge / Mehrere Dateien |
+| `hub.open` / `.openHint` | Open / Choose a PDF or drop it anywhere in this window. | Öffnen / PDF auswählen oder irgendwo ins Fenster ziehen. |
+| `hub.merge` / `.mergeHint` | Merge / Combine PDFs into one document. | Zusammenführen / PDFs zu einem Dokument verbinden. |
+| `hub.split` / `.splitHint` | Split / Divide a PDF or extract pages. | Teilen / PDF aufteilen oder Seiten extrahieren. |
+| `hub.compress` / `.compressHint` | Compress / Make a PDF smaller. | Komprimieren / PDF verkleinern. |
+| `hub.images` / `.imagesHint` | Images to PDF / Turn PNG and JPEG files into a PDF. | Bilder zu PDF / PNG- und JPEG-Dateien in ein PDF umwandeln. |
+| `hub.sign` / `.signHint` | Sign / Add your signature or initials. | Signieren / Unterschrift oder Initialen einfügen. |
+| `hub.redact` / `.redactHint` | Redact / Remove sensitive content for good. | Schwärzen / Vertrauliche Inhalte endgültig entfernen. |
+| `hub.fill` / `.fillHint` | Fill form / Type into fields, add text and marks. | Formular ausfüllen / Felder ausfüllen, Text und Zeichen einfügen. |
+| `hub.noFields` | This PDF has no form fields. Use Fill & Sign to add text and marks. | Dieses PDF hat keine Formularfelder. Mit „Ausfüllen & signieren“ Text und Zeichen einfügen. |
+
+### 3.55 Toolbar: tools only (supersedes §3.3 clusters, overflow and More; §3.22 tool list; §3.27 Undo cluster; §3.36 Edit cluster)
+
+O: "toolbar only tools". R: one floating glass card with a few tiles, not a strip of commands.
+
+**Toolbar row** (56): grid `40 | 1fr | auto | 1fr | 40` inside the row's padding (macOS inset 80 per §2.2). Leading: `panel-left`
+toggle (IconButton md on its own G1 40 × 40 card, radius 16). Centre: the **tool card** (G1, 40 h, padding 4, radius 16). Trailing:
+`panel-right` toggle, same recipe. The toggles stay because they are the panels' handles, not commands, and frame the card
+symmetrically. Zoom moves to the status bar (§3.10 trailing: sm `zoom-out` · readout · sm `zoom-in`, gap 4). Undo/Redo, More and every
+overflow rule are removed: seven tools always fit (compact card 298 w), so nothing collapses.
+
+| Group | Tool | Lucide (variant) | Key | Variants (inspector) |
+|---|---|---|---|---|
+| Select | Select | `mouse-pointer-2` | V | — |
+| Markup | Highlight | `highlighter` · `underline` · `strikethrough` | H | Highlight, Underline, Strikethrough |
+| | Comment | `message-square` · `type` | C (cycles), T (Text comment) | Note, Text comment |
+| | Draw | `pen-line` | D | — |
+| | Shapes | `square` · `circle` · `minus` · `move-up-right` | R | Rectangle, Ellipse, Line, Arrow |
+| Document | Fill & Sign | `signature` | S | opens the §3.58 popover |
+| | Redact | `square-slash` | X | mode (§3.38) |
+
+F (Form) is removed. Add text (E), Add image (I), Crop (K) and Organize (P) keep their keys and live in the Tools menu (§3.56). Groups
+split by 12 + 1 × 16 divider + 12; items gap 4.
+
+**Labelled vs compact.** Labelled: each item 32 h, padding 0 12, icon 20 · 8 · label `--text-sm` 600. Compact: 32 × 32 icon only,
+label in the tooltip. The toolbar measures the labelled card (ResizeObserver, current locale) and uses it when it fits into the centre
+track with 16 to spare on each side; it returns to compact only when 24 px short (hysteresis). The switch is one layout step, no
+animation (MOTION §3). R: labelled tiles where there is room; O: names visible, not guessed.
+
+States, activation (ADR-056: tools stay active until Esc or Select), keys (roving Left/Right, letters only in the canvas), tooltips and
+a11y as §3.3. **No document:** card keeps its slot, tools `aria-disabled` (`--color-icon-disabled`).
+
+| Key | en | de |
+|---|---|---|
+| `toolbar.tool.comment` / `.fillSign` / `.redact` | Comment / Fill & Sign / Redact | Kommentar / Ausfüllen & signieren / Schwärzen |
+| `toolbar.group.document` | Document | Dokument |
+
+### 3.56 Menu bar (supersedes §2.3's "Windows has none", ADR-016 item 4)
+
+**Decision.** macOS: the native menu (Tauri/muda, `menu.json`) as today, plus a Tools menu. Windows: an **in-window menu bar in the
+caption row**. Why not a native Win32 menu: it needs native decorations (ADR-014 removed them), cannot sit in the custom caption, and
+draws grey system chrome that ignores the glass and dark theme. Both bars render from `menu.json` + the registry, so labels, enabled
+state and shortcuts cannot drift (ADR-016).
+
+**Windows caption row** (32): logo 16 at x 16 · 8 · menu bar · drag spacer (document name meta, centred in it, middle-truncated;
+hidden when < 80 free) · caption buttons. Menu bar items: 24 h, padding 0 8, radius 8, `--text-md`, gap 0; never drag regions.
+
+| State | Treatment |
+|---|---|
+| default | `--color-text`; window inactive `--color-text-disabled` |
+| hover | `--color-control-hover` (fast) |
+| open | `--color-control-pressed`, `aria-expanded=true` |
+| focus-visible | §3.0 ring, offset 2 |
+| Alt held | access-key letter underlined |
+
+Menus are §3.5 popovers: G2, 240–320 w, items 32 h with icon 16 (or 16 empty slot), label, shortcut meta right; checks via
+`menuitemcheckbox` / `menuitemradio`; disabled focusable. Opening below the item, 4 offset, left-aligned. **Motion:** first open per
+§4.1 (base in, fast out); moving to a neighbour while open swaps instantly with an opacity fade (fast), no scale cascade. RM fade.
+
+**Keyboard (Windows).** Alt pressed and released alone, or F10, focuses File (no menu opens); Alt+access key opens that menu; the
+AltGr chord (Ctrl+Alt) never triggers. In the bar: Left/Right move (wrap), Down/Enter/Space open; inside a menu Left/Right open the
+neighbouring menu; Esc closes the menu (focus on its bar item), a second Esc or Alt returns focus to where it was. Not a Tab or F6
+stop. `role=menubar` `aria-label` `menu.bar`, items `role=menuitem` `aria-haspopup=menu` `aria-keyshortcuts="Alt+F"`.
+
+**Contents.** Primary = Ctrl/Cmd. (W) = Windows only (macOS has these in the App menu); (M) = macOS uses the system item.
+
+- **File / Datei (F / D):** Open… P+O · Open recent ▸ (≤ 8 recents, divider, Clear) · Close document P+W · — · Save P+S · Save As…
+  P+Shift+S · Export a copy… · Export as images… P+Shift+E · — · Create PDF from images… · Merge files… · Split… · Extract pages… ·
+  Compress… · — · Flatten form… · Protect… · Document properties… · — · Print… P+P · — · Settings… P+, (W) · Exit Alt+F4 (W)
+- **Edit / Bearbeiten (E / B):** Undo P+Z · Redo P+Shift+Z (W also Ctrl+Y) · — · Cut, Copy, Paste, Select all (M) · Delete Del · — ·
+  Add comment P+Shift+M (enabled with a text selection) · — · Find… P+F · Find next P+G (W also F3) · Find previous P+Shift+G
+- **View / Ansicht (V / A):** Sidebar ✓ (Option+Cmd+1 / F4) · Sidebar tab ◉ Pages, Outline, Comments, Search · Properties ✓
+  (Option+Cmd+I / Shift+F4) · — · Zoom in, Zoom out, Actual size, Fit width, Fit page (keys per ADR-016) · — · ◉ Continuous, Single page,
+  Two pages · — · Next page, Previous page, Go to page… P+Shift+N, Next tab, Previous tab · — · Rotate view right P+R / left P+L / reset
+  · — · Full screen (M; W F11)
+- **Tools / Werkzeuge (T / W):** ◉ Select V, Highlight H, Comment C, Text comment T, Draw D, Shapes R, Fill & Sign S, Redact X · — ·
+  Organize pages P · Add text E · Add image I · Crop K · — · Highlight form fields ✓ · Manage signatures…
+- **Help / Hilfe (H / H):** Welcome tour · Show tips again · — · About {app} (W)
+
+Every item is an action in `registry.ts`; new actions: `open-recent`, `sidebar-tab-*`, `add-comment`, `delete-selection`,
+`tool-redact`, `form-highlight`, `manage-signatures`, `welcome-tour`, `reset-tips`, `exit`, `fullscreen`. Menu labels end in "…" when a
+dialog follows.
+
+| Key | en | de |
+|---|---|---|
+| `menu.bar` / `menu.tools` / `menu.help` | Application menu / Tools / Help | Anwendungsmenü / Werkzeuge / Hilfe |
+| `menu.access.file/edit/view/tools/help` | F / E / V / T / H | D / B / A / W / H |
+| `menu.file.openRecent` / `.clearRecent` / `.exit` | Open recent / Clear menu / Exit | Zuletzt geöffnet / Liste leeren / Beenden |
+| `menu.edit.addComment` / `.delete` | Add comment / Delete | Kommentar hinzufügen / Löschen |
+| `menu.view.sidebar` / `.properties` / `.fullscreen` | Sidebar / Properties / Full screen | Seitenleiste / Eigenschaften / Vollbild |
+| `menu.tools.organize` / `.formHighlight` / `.manageSignatures` | Organize pages / Highlight form fields / Manage signatures… | Seiten organisieren / Formularfelder hervorheben / Unterschriften verwalten… |
+| `menu.help.tour` / `.tips` / `.about` | Welcome tour / Show tips again / About {app} | Willkommenstour / Tipps erneut zeigen / Über {app} |
+
+### 3.57 Sidebar and inspector (amends §2, §2.4, §3.6, §3.9, §3.24)
+
+**Left sidebar tabs:** Pages `gallery-vertical`, Outline `list-tree`, Comments `messages-square`, Search `search` (`leftPanel.tab.thumbnails`
+becomes `leftPanel.tab.pages`: Pages / Seiten). The Pages title row gains a trailing ghost sm `layout-grid` `pages.organize` (enters
+Organize; the mouse path that the toolbar's Pages button was). Everything else §3.6.
+
+**Inspector = context only.** O: "properties of the selection". Content, first match wins:
+
+1. Mode panel: Crop (§3.37), Redact (§3.38).
+2. Selection (§3.24).
+3. Tool options, only while a tool **with options** is active and nothing is selected: Highlight family, Comment, Draw, Shapes, Fill &
+   Sign item armed (colour, size), Add text, Add image. Select and Organize have none.
+4. Nothing.
+
+`auto` (default) opens the track whenever 1–3 has content, at **every** width ≥ 960 (960 − left 264 − inspector 304 leaves 392 ≥ 360;
+the §2 layout collapse still guards the canvas), and closes it at 4. `open` (toggle/View) pins it and shows §3.24's empty state at 4.
+`closed` never auto-opens except modes (1). Motion MOTION §4.2; ADR-056 fit hold applies. Inspector toggle stays (§3.55).
+
+| Key | en | de |
+|---|---|---|
+| `leftPanel.tab.pages` / `pages.organize` | Pages / Organize | Seiten / Organisieren |
+
+### 3.58 Forms and Fill & Sign (supersedes §3.32 Form tool and Flatten entry; amends §3.34 popover)
+
+**Fields are always live** under Select and Fill & Sign: no Form tool. When a document with fields becomes active for the first time
+in a session, the info banner (§3.12) shows `form.banner` with secondary sm toggle `form.highlight` (`aria-pressed`), ghost sm
+`form.next` (focuses the first empty field; this replaces F) and `x`. Status pill `form.badge` stays. Flatten: File menu (§3.56), dialog
+§3.32 unchanged. Highlight toggle: banner and Tools menu.
+
+**Fill & Sign popover** (toolbar S; `role=menu`, 280 w, §3.5). R: two labelled sections instead of one list. O: marks belong to Sign.
+
+1. Section header `sign.section.sign` (24, meta 600, `role=group` label, not focusable): signatures, initials, Add…, as §3.34 item 1.
+2. Divider; header `sign.section.fill`: rows 32 — `type` Text · `calendar` Date · `check` ✓ Check mark · `x` ✗ Cross · `dot` • Dot.
+   They place free text / marks anywhere, so they are the form for PDFs without fields.
+3. Divider; `sign.manage`.
+
+Opened from the hub (§3.54) the first item of the named section takes focus. Placement, editing, inspector: §3.34.
+
+| Key | en | de |
+|---|---|---|
+| `sign.section.sign` / `.fill` | Sign / Fill | Signieren / Ausfüllen |
+| `form.next` | Go to first empty field | Zum ersten leeren Feld |
+
+### 3.59 Comments, Word-style (supersedes §3.26 anatomy; §3.25 note popover stays for the canvas icon)
+
+**1. Selection bar.** Under Select, 150 ms after a text selection settles (pointerup, or keyboard selection idle 300 ms), a G2 bar
+appears 8 above the selection's last line (flips below; clamped to the canvas slot inset 8; never covers the selection), `--z-popover`,
+40 h, padding 4, radius 16: ghost item `message-square-plus` + `comments.add` (labelled) | divider | `highlighter` Highlight |
+`copy` Copy. Hides on: selection cleared or scrolled out, tool change, Esc (selection level), outside click. `role=toolbar`
+`comments.selectionBar`; first Tab stop after the canvas while shown; never takes focus by itself. Every item has a key (P+Shift+M,
+H, P+C). Motion: §4.1 popover (opacity + scale .96 from the selection side), RM fade.
+
+**2. Add comment** creates a Highlight annotation over the selection's quads (yellow, author §3.25) with empty `/Contents`, opens the
+left panel on Comments (user-initiated: slides per §4.2), scrolls its card into view and puts focus in the card's text field. Footer
+while editing: ghost sm `comments.cancel` · primary sm `comments.post` (`aria-disabled` while empty). P+Enter posts; Esc cancels;
+cancelling a new comment removes it without an undo entry.
+
+**3. Card** (one per root annotation; list padding 8, gap 8). Fill `--color-card` (new; translucent white, not glass: no filter inside
+the G1 panel), radius 16, padding 12, 1 px inset `--color-divider` edge. R: the reference's white card on frosted glass.
+
+| Part | Spec |
+|---|---|
+| Header 24 | type tile 24 (radius 8, icon 12) · 8 · type label `--text-sm` 600 · spacer · page pill `comments.page` (§1.10) · sm `ellipsis` menu (Edit, Delete, Accept, Reject, Reopen, Copy text) |
+| Quote | text-markup only, 8 below: 2 px inline-start bar in the annotation colour, padding-start 8, `--text-sm` muted, `comments.quote` quotes, 3 lines clamp. Text from Rust (runs under the quads, ≤ 280 chars, whitespace collapsed), text nodes only |
+| Body | 8 below, `--text-md`; editing = autosizing Field textarea |
+| Meta | author `--text-sm` 600 · relative time meta (`Intl.RelativeTimeFormat` < 7 days, else medium date; absolute in the tooltip) |
+| Status | open: nothing; else a pill with icon: `circle-check` `comments.resolved`, `thumbs-up` `comments.accepted`, `circle-x` `comments.rejected` |
+| Replies | divider, then per reply author · time over text, 8 apart; own replies editable |
+| Footer (selected card only) | reply Field sm full width `note.replyPlaceholder` · ghost sm `circle-check` `comments.resolve` |
+
+Resolve/Accept/Reject write a PDF review-state reply (`/IRT`, `/StateModel /Review`, `/State /Completed|/Accepted|/Rejected`;
+Reopen `/None`), one undo step. Non-open cards collapse to header + quote (1 line) + status pill. Filter (§3.26) gains Status (Open,
+Resolved, Accepted, Rejected; all on).
+
+**Type labels** (O: "every annotation clearly typed"; icon + word, never colour alone). Highlight with non-empty contents →
+`annot.type.comment` `message-square-quote`; Highlight `highlighter`; Underline `underline`; Strikethrough `strikethrough`; Note
+`message-square`; Text comment `type`; Drawing `pen-line`; Rectangle `square`; Ellipse `circle`; Line `minus`; Arrow `move-up-right`;
+Signature / Initials `signature`; marks by kind: Check mark `check`, Cross `x`, Dot `dot`; fill Text `type`; Date `calendar`; other
+`annot.type.opaque` `sticky-note`. Kind comes from the Rust summary (ADR-057).
+
+| State | Treatment |
+|---|---|
+| hover | `--color-control-hover` fill (fast) |
+| selected (= canvas selection) | `--color-selected` + 1 px inset accent ring, footer shown |
+| focus-visible | §3.0 ring, radius 16 |
+| editing | body becomes the field, footer Cancel/Post |
+
+**Behaviour.** Click or Enter: jump (MOTION §4.8) and select on the canvas; focus stays in the panel. Canvas selection selects and
+scrolls the card (nearest). Sort and group headers as §3.26. Virtualized with measured heights (ResizeObserver, overscan 4; 2 000
+annotations stay ≥ 58 fps, MOTION §5).
+
+**Keyboard.** `role=list`; each card an `<article>` (`aria-labelledby` header, `aria-describedby` quote + body), roving Up/Down,
+Home/End; Enter jumps; Tab enters the card's controls, Shift+Tab back; Delete deletes (Undo toast). **Motion:** a new card fades in
+(base); collapse/expand is one layout step (no height animation). **Forced colors:** cards `Canvas` + `CanvasText`, pills bordered.
+
+| Key | en | de |
+|---|---|---|
+| `comments.add` / `.selectionBar` | Add comment / Text actions | Kommentar hinzufügen / Textaktionen |
+| `comments.post` / `.cancel` / `.resolve` | Comment / Cancel / Resolve | Kommentieren / Abbrechen / Erledigen |
+| `comments.accept` / `.reject` / `.reopen` | Accept / Reject / Reopen | Annehmen / Ablehnen / Wieder öffnen |
+| `comments.resolved` / `.accepted` / `.rejected` / `.open` / `.status` | Resolved / Accepted / Rejected / Open / Status | Erledigt / Angenommen / Abgelehnt / Offen / Status |
+| `comments.page` / `.quote` | p. {n} / “{text}” | S. {n} / „{text}“ |
+| `annot.type.comment` / `.initials` / `.check` / `.cross` / `.dot` / `.date` / `.text` / `.arrow` | Comment / Initials / Check mark / Cross / Dot / Date / Text / Arrow | Kommentar / Initialen / Häkchen / Kreuz / Punkt / Datum / Text / Pfeil |
+
+### 3.60 Typed signature fonts (supersedes §3.33 Type and ADR-042 (1))
+
+**Fonts.** Three bundled TTFs, unmodified, each with its `OFL.txt`: **Dancing Script** (Impallari Type), **Great Vibes** and **Alex
+Brush** (both TypeSETit, Reserved Font Names). All three are SIL OFL 1.1 (google/fonts `ofl/` directory); the implementer confirms the
+`OFL.txt` header at import and logs each in `docs/LICENSES.md`; OFL-1.1 joins the allowlist **for fonts only**. Homemade Apple and its
+license are removed; existing library entries keep rendering (they are stored as Bézier paths, ADR-051). Glyphs become outlines; no
+font is embedded (output is not a font derivative).
+
+**Type panel** (the 200 h slot of §3.33; field above it unchanged): radiogroup `sign.font` of three cards, 200 × 152
+(`--sig-font-card-w/-h`), gap 24 (3 × 200 + 48 = the 648 content width). Card: white document surface both themes, 1 px
+`--color-divider`, radius 12; preview area 104 h (inset 8): the name in that font and the chosen ink colour, centred, auto-fit 20–48 px
+to the width minus 32; 8 below, caption 24: font name `--text-sm` muted, centred. Empty name: `sign.typePlaceholder` in `--ink-30`;
+Create stays `aria-disabled`. R: three white cards with captions; O: the marker texture is gone and the choice is visible as one's own
+name.
+
+| State | Treatment |
+|---|---|
+| hover | border `--color-control-border` |
+| selected | 2 px `--color-accent` ring (replaces the border) + `circle-check` 16 accent, top-right inset 8 |
+| focus-visible | §3.0 ring offset 2 outside the selection ring |
+
+Keys: roving Left/Right (wrap), selection follows focus; Tab moves to the swatches. Default Dancing Script; last font persisted
+(`signatureFont`). Each card `aria-label` = font name; previews `aria-hidden`. Motion: selection ring fast; RM same. Forced colors:
+cards `Canvas` + `CanvasText`, selected `Highlight` 2 px.
+
+| Key | en | de |
+|---|---|---|
+| `sign.font` / `.typePlaceholder` | Style / Your name | Stil / Ihr Name |
+
+**Tokens (new, §3.54–§3.60):** `--hub-max-width` 880, `--hub-card-height` 144, `--hub-card-compact` 64, `--hub-tile` 40,
+`--logo-hub` 48, `--logo-hub-slot` 64, `--menubar-item-height` 24, `--sig-font-card-w` 200, `--sig-font-card-h` 152, `--color-card`
+(light `rgba(255,255,255,.72)`, dark `rgba(255,255,255,.06)`; solid mode `#FFFFFF` / `#26264A`; muted on it ≥ 4.9 at the worst glass
+point, to be added to §4 by the token test). Removed: `--empty-max-width`, the Form tool, More, toolbar Undo/Redo and overflow order.
+
 ## 4. Contrast verification
 
 Worst points (ADR-020): `--surface` over the darkest field point (light `#C6C7FB` → glass `rgb(229,229,254)`; dark
