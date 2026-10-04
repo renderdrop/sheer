@@ -238,9 +238,9 @@ Order as in the brief. Each phase ends with one designer round on Tauri-window s
 - [ ] R0.5 — Icon audit: Lucide stroke 1.75, sizes 16/18/20 (24 for large actions), monochrome; own icons removed or redrawn
 - [ ] R0.6 — BrandSurface, WorkSurface and SolarGlow primitives
 - [ ] R0 acceptance — Inter visible in the Tauri window, no dark/glass/backdrop leftovers, designer round
-- [ ] R1.1 — Word mark SVGs as paths (primary with claim, secondary, mono ink)
-- [ ] R1.2 — App icon "s." in three variants, measured optical centering (< 1 %), platform icons via `tauri icon`
-- [ ] R1.3 — Installer art (NSIS header/sidebar) in brand mode
+- [x] R1.1 — Word mark SVGs as paths (primary with claim, secondary, mono ink)
+- [x] R1.2 — App icon "s." in three variants, measured optical centering (< 1 %), platform icons via `tauri icon`
+- [x] R1.3 — Installer art (NSIS header/sidebar) in brand mode
 - [ ] R1.4 — Welcome PDF "Welcome to sheer." in the new layout
 - [ ] R1.5 — About dialog, README head, release-notes template; APP_NAME "sheer." in UI text
 - [ ] R1 acceptance — icons in Explorer, word mark in Home, installer built locally, designer round
