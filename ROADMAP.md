@@ -212,3 +212,15 @@ See `docs/FEATURES.md` → "Later".
   - OCR via OS APIs (Vision / Windows.Media.Ocr), invisible text layer (Should, was M6)
   - Read mode / full screen (Could, was M7)
   - Import/export comments (XFDF) (Could); self-signed digital signature (Could)
+
+## v1.2 polish (collected at the v1.1 milestone end, ADR-030)
+
+- [~] Politur v1.1 — not picked by the loop until the owner schedules it
+  - (designer, major) tooltips linger after the pointer leaves and can cover the tab pill (dark doc screenshot)
+  - (designer, minor) horizontal scrollbar at 100–115 % although the page fits; toast on the hub sits on the Recent row; Recent thumbnail and light-theme page need a visible edge token
+  - (reviewer P1, minor) hub compact rule repeats a literal `max-height: 800px` (use one custom variant); single-file cards open multi-select then close extras; Sign card couples to `[data-toolbar-item="signature"]`
+  - (reviewer P3, minor) docs/LICENSES.md skrifa row still says "flattened to polygons"; signature font choice is kept in localStorage, not in the encrypted library
+  - (reviewer P4, minor) SelectionBar clamp near viewport edges unverified; SelectionBar not the first Tab stop
+  - (P2 deviations) English menu labels Title Case vs spec sentence case; Windows full screen via web API; Open Recent not in the macOS bar
+  - (security, low) docs/SECURITY.md re-date to v1.1 with rows for get_annotation_quote (280-char cap), review-state replies, bundled skrifa fonts, menu module; skip /State strings > 16 bytes before cloning; A→B→A /IRT cycle unit test; cite the typed-signature text cap test
+  - (F11) a fresh annotation's inspector narrows the canvas without refit, so wide pages scroll horizontally (ADR-056 trade-off) — revisit with the §3.57 inspector rules

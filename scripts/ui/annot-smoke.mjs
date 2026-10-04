@@ -150,10 +150,10 @@ async function suite(doc) {
     await drag(a, b);
     return 'highlight';
   });
-  await row(doc, 'Note (click)', async () => {
+  await row(doc, 'Comment (note, click)', async () => {
     await selectTool('note');
     await click(at(0.75, 0.3));
-    // The popover takes focus; an empty new note is taken back on close, so it gets a body.
+    // Comment tool (DESIGN 3.55, tool id 'note'): the popover takes focus; an empty new note is taken back on close, so it gets a body.
     let body = false;
     for (let i = 0; i < 10 && !body; i++) {
       body = await ev(`document.activeElement?.tagName==='TEXTAREA'`);
