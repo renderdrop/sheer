@@ -454,6 +454,7 @@ fn capabilities_grant_only_the_app_commands_and_the_window_chrome_to_the_main_wi
         "allow-create-drawn-signature",
         "allow-clear-signature-library",
         "allow-insert-image-dialog",
+        "allow-get-annotation-quote",
         "allow-get-asset-preview",
         "allow-import-warnings",
         "allow-apply-redactions",

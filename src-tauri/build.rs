@@ -33,6 +33,7 @@ fn main() {
         "open_link",
         "list_annotations",
         "list_document_annotations",
+        "get_annotation_quote",
         "import_warnings",
         "apply_command",
         "get_form_fields",

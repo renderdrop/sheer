@@ -16,6 +16,43 @@ use crate::limits;
 /// Side of the box a note icon occupies on the page, in points (notes do not scale with the zoom).
 pub const NOTE_SIZE_PT: f32 = 20.0;
 
+/// The review state a reply gives its parent (PDF 32000-1 section 12.5.6.3: `/StateModel /Review`, `/State`). A comment's status is the
+/// state of its newest reply that has one; `None` is "reopened".
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum ReviewState {
+    None,
+    Accepted,
+    Rejected,
+    Cancelled,
+    Completed,
+}
+
+impl ReviewState {
+    /// The name `/State` has in the file.
+    pub const fn pdf_name(self) -> &'static str {
+        match self {
+            Self::None => "None",
+            Self::Accepted => "Accepted",
+            Self::Rejected => "Rejected",
+            Self::Cancelled => "Cancelled",
+            Self::Completed => "Completed",
+        }
+    }
+
+    /// The state a `/State` value of the Review model names; `Option::None` for anything else (a state of the Marked model included).
+    pub fn from_pdf(text: &[u8]) -> Option<Self> {
+        match text {
+            b"None" => Some(Self::None),
+            b"Accepted" => Some(Self::Accepted),
+            b"Rejected" => Some(Self::Rejected),
+            b"Cancelled" => Some(Self::Cancelled),
+            b"Completed" => Some(Self::Completed),
+            _ => Option::None,
+        }
+    }
+}
+
 /// A colour, 0 to 255 per channel.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(transparent)]
@@ -256,6 +293,9 @@ pub struct Annotation {
     pub modified: Option<String>,
     /// The annotation this one replies to (`/IRT`).
     pub in_reply_to: Option<AnnotId>,
+    /// Set on a review reply (a note without text that only gives its parent a state); the UI does not draw it on the page.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub state: Option<ReviewState>,
     pub locked: bool,
     pub sync: Sync,
     #[serde(flatten)]
@@ -276,6 +316,9 @@ pub struct AnnotationDraft {
     pub author: Option<String>,
     #[serde(default)]
     pub in_reply_to: Option<AnnotId>,
+    /// Makes the draft a review reply: needs `in_reply_to`, a note body and no text.
+    #[serde(default)]
+    pub state: Option<ReviewState>,
     #[serde(default)]
     pub locked: bool,
     #[serde(flatten)]
@@ -752,10 +795,18 @@ impl Annotation {
             author: draft.author.clone(),
             modified: Some(now.to_owned()),
             in_reply_to: draft.in_reply_to,
+            state: draft.state,
             locked: draft.locked,
             sync: Sync::New,
             body: draft.body.clone(),
         };
+        if draft.state.is_some()
+            && (draft.in_reply_to.is_none()
+                || !matches!(draft.body, AnnotationBody::Note { .. })
+                || !draft.contents.is_empty())
+        {
+            return Err(AppError::invalid("state"));
+        }
         annotation.normalize()?;
         Ok(annotation)
     }
@@ -960,6 +1011,7 @@ impl Annotation {
             author: imported.author.clone(),
             modified: imported.modified.clone(),
             in_reply_to: None,
+            state: None,
             locked: imported.locked,
             sync: Sync::Clean,
             body: imported.body.clone(),

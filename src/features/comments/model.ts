@@ -1,4 +1,4 @@
-import type { AnnotationKind, AnnotationSummary } from '../../api/annotations';
+import type { AnnotationKind, AnnotationSummary, ReviewState } from '../../api/annotations';
 
 /**
  * The comments list as pure data (DESIGN 3.26): threads from the summaries (a root and the replies that point at it, directly or
@@ -9,10 +9,32 @@ import type { AnnotationKind, AnnotationSummary } from '../../api/annotations';
 export type SortOrder = 'page' | 'newest' | 'oldest';
 export const SORT_ORDERS: readonly SortOrder[] = ['page', 'newest', 'oldest'];
 
+/** The status of a comment (DESIGN 3.59): the review state its newest state reply gives it. */
+export type Status = 'open' | 'resolved' | 'accepted' | 'rejected';
+export const STATUSES: readonly Status[] = ['open', 'resolved', 'accepted', 'rejected'];
+
+/** The status a review state means; `cancelled` reads as rejected, `none` (reopened) and no state as open. */
+export function statusOf(state: ReviewState | undefined): Status {
+  switch (state) {
+    case 'completed':
+      return 'resolved';
+    case 'accepted':
+      return 'accepted';
+    case 'rejected':
+    case 'cancelled':
+      return 'rejected';
+    default:
+      return 'open';
+  }
+}
+
 export interface Thread {
   root: AnnotationSummary;
-  /** Oldest first. */
+  /** The replies that have text, oldest first (review-state replies are not among them). */
   replies: readonly AnnotationSummary[];
+  /** The review-state replies, oldest first. */
+  states: readonly AnnotationSummary[];
+  status: Status;
   /** The newest time in the thread (ms), 0 if none of it has a date. */
   latest: number;
 }
@@ -22,11 +44,14 @@ export interface Filter {
   kinds: readonly AnnotationKind[];
   /** Authors to show (`''` is "no author"); empty means all. */
   authors: readonly string[];
+  /** Statuses to show; empty means all. */
+  statuses: readonly Status[];
 }
 
-export const NO_FILTER: Filter = { kinds: [], authors: [] };
+export const NO_FILTER: Filter = { kinds: [], authors: [], statuses: [] };
 
-export const isFiltering = (filter: Filter) => filter.kinds.length > 0 || filter.authors.length > 0;
+export const isFiltering = (filter: Filter) =>
+  filter.kinds.length > 0 || filter.authors.length > 0 || filter.statuses.length > 0;
 
 /**
  * A date of the file as milliseconds: ISO 8601 (what the app writes) or a PDF date (`D:YYYYMMDDHHmmSS` with an optional zone).
@@ -74,20 +99,33 @@ export function buildThreads(summaries: readonly AnnotationSummary[]): Thread[] 
     }
     return current;
   };
-  const threads = new Map<number, { root: AnnotationSummary; replies: AnnotationSummary[] }>();
+  const threads = new Map<
+    number,
+    { root: AnnotationSummary; replies: AnnotationSummary[]; states: AnnotationSummary[] }
+  >();
   for (const summary of summaries) {
     const root = rootOf(summary);
+    // A review reply whose comment is gone has nothing to say.
+    if (root.state !== undefined) continue;
     let thread = threads.get(root.id);
     if (thread === undefined) {
-      thread = { root, replies: [] };
+      thread = { root, replies: [], states: [] };
       threads.set(root.id, thread);
     }
-    if (root.id !== summary.id) thread.replies.push(summary);
+    if (root.id !== summary.id) (summary.state === undefined ? thread.replies : thread.states).push(summary);
   }
-  return [...threads.values()].map(({ root, replies }) => {
+  return [...threads.values()].map(({ root, replies, states }) => {
     const dated = (s: AnnotationSummary) => parseDate(s.modified) ?? 0;
-    replies.sort((a, b) => dated(a) - dated(b) || a.id - b.id);
-    return { root, replies, latest: Math.max(dated(root), ...replies.map(dated)) };
+    const older = (a: AnnotationSummary, b: AnnotationSummary) => dated(a) - dated(b) || a.id - b.id;
+    replies.sort(older);
+    states.sort(older);
+    return {
+      root,
+      replies,
+      states,
+      status: statusOf(states[states.length - 1]?.state),
+      latest: Math.max(dated(root), ...replies.map(dated), ...states.map(dated)),
+    };
   });
 }
 
@@ -95,10 +133,14 @@ const matches = (summary: AnnotationSummary, filter: Filter) =>
   (filter.kinds.length === 0 || filter.kinds.includes(summary.kind)) &&
   (filter.authors.length === 0 || filter.authors.includes(summary.author ?? ''));
 
-/** The threads of which any member passes the filter. */
+/** The threads whose status is wanted and of which any member passes the kind and author filter. */
 export function filterThreads(threads: readonly Thread[], filter: Filter): Thread[] {
   if (!isFiltering(filter)) return [...threads];
-  return threads.filter((thread) => matches(thread.root, filter) || thread.replies.some((r) => matches(r, filter)));
+  return threads.filter(
+    (thread) =>
+      (filter.statuses.length === 0 || filter.statuses.includes(thread.status)) &&
+      (matches(thread.root, filter) || thread.replies.some((r) => matches(r, filter))),
+  );
 }
 
 export function sortThreads(threads: readonly Thread[], order: SortOrder): Thread[] {
@@ -121,6 +163,8 @@ export function facets(summaries: readonly AnnotationSummary[]): { kinds: Annota
   const kinds = new Set<AnnotationKind>();
   const authors = new Set<string>();
   for (const s of summaries) {
+    // A review-state reply is not a comment of its own.
+    if (s.state !== undefined) continue;
     kinds.add(s.kind);
     authors.add(s.author ?? '');
   }
@@ -129,19 +173,10 @@ export function facets(summaries: readonly AnnotationSummary[]): { kinds: Annota
 
 export type Row =
   | { type: 'group'; key: string; pageId: number }
-  | {
-      type: 'root';
-      key: string;
-      summary: AnnotationSummary;
-      replyCount: number;
-      expanded: boolean | undefined;
-      posinset: number;
-      setsize: number;
-    }
-  | { type: 'reply'; key: string; summary: AnnotationSummary; root: number; posinset: number; setsize: number };
+  | { type: 'card'; key: string; thread: Thread; posinset: number; setsize: number };
 
-/** The flat rows: a group header per page when sorted by page, each thread's root, and its replies if the root is expanded. */
-export function buildRows(threads: readonly Thread[], order: SortOrder, expanded: ReadonlySet<number>): Row[] {
+/** The flat rows: a group header per page when sorted by page, then a card per thread. */
+export function buildRows(threads: readonly Thread[], order: SortOrder): Row[] {
   const rows: Row[] = [];
   let page = -1;
   for (const [position, thread] of threads.entries()) {
@@ -149,38 +184,17 @@ export function buildRows(threads: readonly Thread[], order: SortOrder, expanded
       page = thread.root.pageId;
       rows.push({ type: 'group', key: `g${page}`, pageId: page });
     }
-    const open = thread.replies.length === 0 ? undefined : expanded.has(thread.root.id);
-    rows.push({
-      type: 'root',
-      key: `a${thread.root.id}`,
-      summary: thread.root,
-      replyCount: thread.replies.length,
-      expanded: open,
-      posinset: position + 1,
-      setsize: threads.length,
-    });
-    if (open === true) {
-      for (const [at, reply] of thread.replies.entries()) {
-        rows.push({
-          type: 'reply',
-          key: `a${reply.id}`,
-          summary: reply,
-          root: thread.root.id,
-          posinset: at + 1,
-          setsize: thread.replies.length,
-        });
-      }
-    }
+    rows.push({ type: 'card', key: `a${thread.root.id}`, thread, posinset: position + 1, setsize: threads.length });
   }
   return rows;
 }
 
-/** Top offsets of the rows (plus the total as the last entry) for rows of the given heights. */
-export function offsetsOf(rows: readonly Row[], heights: { group: number; root: number; reply: number }): number[] {
+/** Top offsets of the rows (plus the total as the last entry); `heightOf` is the measured or estimated height of a row. */
+export function offsetsOf(rows: readonly Row[], heightOf: (row: Row) => number): number[] {
   const offsets: number[] = [0];
   let top = 0;
   for (const row of rows) {
-    top += heights[row.type];
+    top += heightOf(row);
     offsets.push(top);
   }
   return offsets;

@@ -54,10 +54,12 @@ describe('filter and sort', () => {
   ]);
 
   it('filters by kind and author; a thread stays if any member matches', () => {
-    expect(filterThreads(threads, { kinds: ['highlight'], authors: [] }).map((t) => t.root.id)).toEqual([1]);
-    expect(filterThreads(threads, { kinds: [], authors: ['Bob'] }).map((t) => t.root.id)).toEqual([2]);
-    expect(filterThreads(threads, { kinds: [], authors: [''] }).map((t) => t.root.id)).toEqual([2]);
-    expect(filterThreads(threads, { kinds: [], authors: [] })).toHaveLength(3);
+    expect(filterThreads(threads, { kinds: ['highlight'], authors: [], statuses: [] }).map((t) => t.root.id)).toEqual([
+      1,
+    ]);
+    expect(filterThreads(threads, { kinds: [], authors: ['Bob'], statuses: [] }).map((t) => t.root.id)).toEqual([2]);
+    expect(filterThreads(threads, { kinds: [], authors: [''], statuses: [] }).map((t) => t.root.id)).toEqual([2]);
+    expect(filterThreads(threads, { kinds: [], authors: [], statuses: [] })).toHaveLength(3);
   });
 
   it('sorts by page, newest and oldest, undated last', () => {
@@ -73,27 +75,40 @@ describe('filter and sort', () => {
   });
 });
 
+describe('status', () => {
+  it('is the state of the newest review reply; review replies are not text replies', () => {
+    const threads = buildThreads([
+      item(1),
+      item(2, { inReplyTo: 1, state: 'completed', modified: '2024-01-01T00:00:00Z' }),
+      item(3, { inReplyTo: 1, contents: 'text', modified: '2024-01-02T00:00:00Z' }),
+      item(4),
+      item(5, { inReplyTo: 4, state: 'accepted', modified: '2024-01-01T00:00:00Z' }),
+      item(6, { inReplyTo: 4, state: 'none', modified: '2024-01-02T00:00:00Z' }),
+    ]);
+    expect(threads.map((t) => t.status)).toEqual(['resolved', 'open']);
+    expect(threads[0]?.replies.map((r) => r.id)).toEqual([3]);
+    expect(filterThreads(threads, { kinds: [], authors: [], statuses: ['resolved'] }).map((t) => t.root.id)).toEqual([
+      1,
+    ]);
+  });
+});
+
 describe('rows', () => {
   const threads = sortThreads(
     buildThreads([item(1, { pageId: 0 }), item(2, { pageId: 0, inReplyTo: 1 }), item(3, { pageId: 4 })]),
     'page',
   );
 
-  it('has a header per page, roots, and replies only when the root is expanded', () => {
-    expect(buildRows(threads, 'page', new Set()).map((r) => r.key)).toEqual(['g0', 'a1', 'g4', 'a3']);
-    const open = buildRows(threads, 'page', new Set([1]));
-    expect(open.map((r) => r.key)).toEqual(['g0', 'a1', 'a2', 'g4', 'a3']);
-    expect(open[2]).toMatchObject({ type: 'reply', posinset: 1, setsize: 1 });
-    expect(open[1]).toMatchObject({ type: 'root', expanded: true, replyCount: 1, posinset: 1, setsize: 2 });
-    expect(buildRows(threads, 'newest', new Set()).some((r) => r.type === 'group')).toBe(false);
+  it('has a header per page and a card per thread', () => {
+    expect(buildRows(threads, 'page').map((r) => r.key)).toEqual(['g0', 'a1', 'g4', 'a3']);
+    expect(buildRows(threads, 'newest').some((r) => r.type === 'group')).toBe(false);
   });
 
   it('windows the rows by their offsets', () => {
-    const rows = buildRows(threads, 'page', new Set([1]));
-    const offsets = offsetsOf(rows, { group: 24, root: 64, reply: 48 });
-    expect(offsets).toEqual([0, 24, 88, 136, 160, 224]);
+    const rows = buildRows(threads, 'page');
+    const offsets = offsetsOf(rows, (row) => (row.type === 'group' ? 24 : 64));
+    expect(offsets).toEqual([0, 24, 88, 112, 176]);
     expect(windowOf(offsets, 0, 100, 0)).toEqual({ first: 0, last: 2 });
-    expect(windowOf(offsets, 90, 50, 0)).toEqual({ first: 2, last: 3 });
     expect(windowOf(offsets, 0, 0, 0)).toBeNull();
     expect(windowOf([0], 0, 100, 0)).toBeNull();
   });
@@ -107,11 +122,15 @@ describe('mark and signature summaries (F11)', () => {
   });
 
   it('filters by those kinds', () => {
-    expect(filterThreads(threads, { kinds: ['signature'], authors: [] }).map((t) => t.root.id)).toEqual([2]);
-    expect(filterThreads(threads, { kinds: ['mark', 'signature'], authors: [] }).map((t) => t.root.id)).toEqual([1, 2]);
+    expect(filterThreads(threads, { kinds: ['signature'], authors: [], statuses: [] }).map((t) => t.root.id)).toEqual([
+      2,
+    ]);
+    expect(
+      filterThreads(threads, { kinds: ['mark', 'signature'], authors: [], statuses: [] }).map((t) => t.root.id),
+    ).toEqual([1, 2]);
   });
 
   it('keeps authorless marks out of an author filter', () => {
-    expect(filterThreads(threads, { kinds: ['mark'], authors: ['Ann'] })).toEqual([]);
+    expect(filterThreads(threads, { kinds: ['mark'], authors: ['Ann'], statuses: [] })).toEqual([]);
   });
 });

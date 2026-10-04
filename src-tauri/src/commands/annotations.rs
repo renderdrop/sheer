@@ -4,6 +4,7 @@
 //! |---|---|---|
 //! | `list_annotations` | `docId: number`, `pageId: number` | `Annotation[]` of the page, by id. The first call for a page reads its annotations from the file (an `Interactive` engine job) |
 //! | `list_document_annotations` | `docId: number` | `AnnotationSummary[]` of every page (at most 20 000) by page then id, for the comments panel. Pages not read yet are read at `Background` priority |
+//! | `get_annotation_quote` | `docId: number`, `annotationId: number` | `string | null`: the text of the page under a highlight, underline or strikeout (characters whose centre is inside a quad, whitespace collapsed, at most 280 characters, `…` last if cut); `null` for another kind or no text. `not_found` (`annotation`) for an id the model does not have |
 //! | `import_warnings` | `docId: number` | `ImportWarning[]` (`{type: "pageTruncated", page, skipped}`): annotations of the pages read so far that did not fit the model caps; they stay in the file |
 //! | `apply_command` | `docId: number`, `command: DocCommand` | moved to `pages`: the `ChangeSet` of an annotation or page command; the whole command happened or nothing did |
 //! | `undo`, `redo` | `docId: number` | the `ChangeSet` of the step taken back or done again; empty (same `rev`) if there is none |
@@ -26,10 +27,11 @@ use super::{blocking, AppState};
 use crate::documents::{DocumentId, PageId};
 use crate::error::{AppError, UiError};
 use crate::limits;
-use crate::model::annotation::{Annotation, AnnotationBody, Rgb};
+use crate::model::annotation::{Annotation, AnnotationBody, ReviewState, Rgb};
 use crate::model::doc_state::{ChangeSet, DocState, Stamp};
 use crate::model::ids::AnnotId;
 use crate::model::page::unrotated;
+use crate::pdfwrite::reviews::{self, ReviewLink};
 
 /// Longest excerpt of an annotation's contents in a summary, in characters.
 pub const SUMMARY_EXCERPT_CHARS: usize = 240;
@@ -49,6 +51,12 @@ pub struct AnnotationSummary {
     pub author: Option<String>,
     pub modified: Option<String>,
     pub in_reply_to: Option<AnnotId>,
+    /// The review state a reply gives its parent; absent on every other annotation.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub state: Option<ReviewState>,
+    /// What a `mark`, `signature` or `line` is: `check`, `cross`, `dot`; `signature`, `initials`; `arrow` (a line with an end) (ADR-057).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub detail: Option<&'static str>,
 }
 
 fn kind_of(body: &AnnotationBody) -> &'static str {
@@ -71,6 +79,36 @@ fn kind_of(body: &AnnotationBody) -> &'static str {
     }
 }
 
+/// Reads the review links of page `page_index` of the file at `path` on a thread of its own, with a deadline (as the form read does).
+fn read_links_file(
+    path: std::path::PathBuf,
+    page_index: u32,
+) -> Result<HashMap<u32, ReviewLink>, AppError> {
+    let (sender, receiver) = std::sync::mpsc::channel();
+    let spawned = std::thread::Builder::new()
+        .name("sheer-review".into())
+        .stack_size(limits::SAVE_STACK_BYTES)
+        .spawn(move || {
+            let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                let (bytes, _) = super::save::read_all(crate::documents::intake::admit(&path)?)?;
+                reviews::read_page(&bytes, page_index)
+            }))
+            .unwrap_or_else(|_| {
+                Err(AppError::logged(
+                    crate::error::ErrorCode::Internal,
+                    "reading the review links panicked",
+                ))
+            });
+            let _ = sender.send(result);
+        });
+    if spawned.is_err() {
+        return Ok(HashMap::new());
+    }
+    receiver
+        .recv_timeout(limits::FORM_READ_TIMEOUT)
+        .unwrap_or_else(|_| Ok(HashMap::new()))
+}
+
 impl AnnotationSummary {
     fn of(annotation: &Annotation) -> Self {
         Self {
@@ -86,8 +124,89 @@ impl AnnotationSummary {
             author: annotation.author.clone(),
             modified: annotation.modified.clone(),
             in_reply_to: annotation.in_reply_to,
+            state: annotation.state,
+            detail: detail_of(&annotation.body),
         }
     }
+}
+
+fn detail_of(body: &AnnotationBody) -> Option<&'static str> {
+    use crate::model::annotation::{MarkGlyph, SignatureRole};
+    match body {
+        AnnotationBody::Mark { glyph, .. } => Some(match glyph {
+            MarkGlyph::Check => "check",
+            MarkGlyph::Cross => "cross",
+            MarkGlyph::Dot => "dot",
+        }),
+        AnnotationBody::Signature { role, .. } => Some(match role {
+            SignatureRole::Signature => "signature",
+            SignatureRole::Initials => "initials",
+        }),
+        AnnotationBody::Line { head, tail, .. }
+            if *head != crate::model::annotation::LineEnd::None
+                || *tail != crate::model::annotation::LineEnd::None =>
+        {
+            Some("arrow")
+        }
+        _ => None,
+    }
+}
+
+/// Longest quote of a comment card, in characters.
+pub const QUOTE_MAX_CHARS: usize = 280;
+
+/// The text of `text` (a box of `boxes` -- x, y, width, height -- per UTF-16 code unit) whose characters have their centre in a quad's
+/// bounding box, from the first such character to the last; the whitespace between them is kept and collapsed to single spaces.
+pub fn quote_of(text: &str, boxes: &[f32], quads: &[crate::model::geometry::Quad]) -> String {
+    let areas: Vec<[f32; 4]> = quads
+        .iter()
+        .map(|quad| {
+            let xs = quad.map(|p| p.x);
+            let ys = quad.map(|p| p.y);
+            [
+                xs.iter().copied().fold(f32::INFINITY, f32::min),
+                ys.iter().copied().fold(f32::INFINITY, f32::min),
+                xs.iter().copied().fold(f32::NEG_INFINITY, f32::max),
+                ys.iter().copied().fold(f32::NEG_INFINITY, f32::max),
+            ]
+        })
+        .collect();
+    let mut units = 0usize;
+    let mut picked: Vec<(char, bool)> = Vec::new();
+    for c in text.chars() {
+        let hit = boxes.get(units * 4..units * 4 + 4).is_some_and(|b| {
+            let (cx, cy) = (b[0] + b[2] / 2.0, b[1] + b[3] / 2.0);
+            !c.is_whitespace()
+                && areas
+                    .iter()
+                    .any(|a| cx >= a[0] && cx <= a[2] && cy >= a[1] && cy <= a[3])
+        });
+        picked.push((c, hit));
+        units += c.len_utf16();
+    }
+    let first = picked.iter().position(|(_, hit)| *hit);
+    let last = picked.iter().rposition(|(_, hit)| *hit);
+    let (Some(first), Some(last)) = (first, last) else {
+        return String::new();
+    };
+    let mut out = String::new();
+    let mut gap = false;
+    for (c, hit) in &picked[first..=last] {
+        if c.is_whitespace() {
+            gap = true;
+        } else if *hit {
+            if gap && !out.is_empty() {
+                out.push(' ');
+            }
+            gap = false;
+            out.push(*c);
+        }
+    }
+    if out.chars().count() > QUOTE_MAX_CHARS {
+        out = out.chars().take(QUOTE_MAX_CHARS - 1).collect();
+        out.push('…');
+    }
+    out
 }
 
 /// The models of the open documents, and the ids of the documents that were closed (an id is never reused, so a late command for a
@@ -313,12 +432,35 @@ impl AppState {
             // Not under the lock: a read of a page takes the worker's time, and the model must stay available meanwhile. Two
             // requests at once read twice; the model keeps the first answer (`DocState::import_page`).
             let items = self.engine.import_annotations(id, page_index)?;
+            let links = self.review_links(id, page_index, &items);
             self.model(id, |state| {
-                state.import_page(page, &items);
+                state.import_page_linked(page, &items, &links);
                 Ok(())
             })?;
         }
         self.model(id, |state| Ok(state.list(page)))
+    }
+
+    /// The reply links and review states the file has for the notes of a page (see `pdfwrite::reviews`). Only a page with a note is
+    /// looked at, and an encrypted document, a file that cannot be read again or one that takes too long has none: its comments are
+    /// then listed without threads, as before.
+    fn review_links(
+        &self,
+        id: DocumentId,
+        page_index: u32,
+        items: &[crate::model::annotation::Imported],
+    ) -> HashMap<u32, ReviewLink> {
+        let has_note = items
+            .iter()
+            .any(|item| matches!(item.body, AnnotationBody::Note { .. }));
+        let readable = self.info(id).is_some_and(|info| !info.flags.encrypted);
+        if !has_note || !readable {
+            return HashMap::new();
+        }
+        let Some(path) = self.registry.path(id) else {
+            return HashMap::new();
+        };
+        read_links_file(path, page_index).unwrap_or_default()
     }
 
     /// What the reading of the file's annotations left out so far (a page, the document or the string budget was full). The pages
@@ -341,8 +483,9 @@ impl AppState {
         for (page, index) in self.registry.page_order(id)? {
             if !self.model(id, |state| Ok(state.is_imported(page)))? {
                 let items = self.engine.import_annotations_background(id, index)?;
+                let links = self.review_links(id, index, &items);
                 self.model(id, |state| {
-                    state.import_page(page, &items);
+                    state.import_page_linked(page, &items, &links);
                     Ok(())
                 })?;
             }
@@ -358,6 +501,27 @@ impl AppState {
             );
         }
         Ok(summaries)
+    }
+
+    /// The text under a text markup (highlight, underline, strikeout), for the quote of a comment card: the characters of the page whose
+    /// centre is inside one of the markup's quads, in reading order, whitespace collapsed, at most [`QUOTE_MAX_CHARS`] characters.
+    /// `None` for another kind of annotation or a page without text there. `not_found` for an annotation the document does not have.
+    pub fn annotation_quote(
+        &self,
+        id: DocumentId,
+        annotation: AnnotId,
+    ) -> Result<Option<String>, AppError> {
+        let found = self.model(id, |state| Ok(state.annotation(annotation).cloned()))?;
+        let found = found.ok_or(AppError::not_found("annotation"))?;
+        let (AnnotationBody::Highlight { quads }
+        | AnnotationBody::Underline { quads }
+        | AnnotationBody::Strikeout { quads }) = &found.body
+        else {
+            return Ok(None);
+        };
+        let layer = self.text_layer(id, found.page_id)?;
+        let quote = quote_of(&layer.text, &layer.boxes, quads);
+        Ok((!quote.is_empty()).then_some(quote))
     }
 
     /// Runs `step` on the model of `id`, then makes PDFium's copy match: the originals the model changed or deleted are hidden in the
@@ -458,6 +622,17 @@ pub async fn list_document_annotations(
 ) -> Result<Vec<AnnotationSummary>, UiError> {
     let state = state.inner().clone();
     blocking(move || state.list_document_annotations(doc_id)).await
+}
+
+/// The text under a text markup, for the quote of its card in the comments panel (`null` for another kind or no text).
+#[tauri::command]
+pub async fn get_annotation_quote(
+    state: State<'_, AppState>,
+    doc_id: DocumentId,
+    annotation_id: AnnotId,
+) -> Result<Option<String>, UiError> {
+    let state = state.inner().clone();
+    blocking(move || state.annotation_quote(doc_id, annotation_id)).await
 }
 
 /// What the reading of a document's annotations left out so far (`PageTruncated`), for a note in the UI.
@@ -841,5 +1016,95 @@ mod tests {
         // Another document works again.
         store.with(b, 1, |_| Ok(())).unwrap();
         assert_eq!(store.len(), 1);
+    }
+
+    fn quad_of(x: f32, y: f32, w: f32, h: f32) -> crate::model::geometry::Quad {
+        use crate::model::geometry::Point;
+        let p = |x, y| Point { x, y };
+        [p(x, y), p(x + w, y), p(x, y + h), p(x + w, y + h)]
+    }
+
+    /// "ab cd" with a box of 10 x 10 per character on one line, and "ef" on the next.
+    fn layer() -> (String, Vec<f32>) {
+        let text = "ab cd\nef";
+        let mut boxes = Vec::new();
+        let (mut x, mut y) = (0.0f32, 0.0f32);
+        for c in text.chars() {
+            if c == '\n' {
+                boxes.extend([0.0, 0.0, 0.0, 0.0]);
+                x = 0.0;
+                y += 12.0;
+            } else {
+                boxes.extend([x, y, 10.0, 10.0]);
+                x += 10.0;
+            }
+        }
+        (text.to_owned(), boxes)
+    }
+
+    #[test]
+    fn the_quote_is_the_text_under_the_quads_with_whitespace_collapsed() {
+        let (text, boxes) = layer();
+        // The second letter to the first of "cd".
+        let quote = quote_of(&text, &boxes, &[quad_of(11.0, 0.0, 30.0, 10.0)]);
+        assert_eq!(quote, "b c");
+        // Two lines: the break is a space.
+        let both = quote_of(
+            &text,
+            &boxes,
+            &[
+                quad_of(0.0, 0.0, 50.0, 10.0),
+                quad_of(0.0, 12.0, 20.0, 10.0),
+            ],
+        );
+        assert_eq!(both, "ab cd ef");
+        // Nothing under the quad.
+        assert_eq!(
+            quote_of(&text, &boxes, &[quad_of(500.0, 500.0, 5.0, 5.0)]),
+            ""
+        );
+    }
+
+    #[test]
+    fn a_long_quote_is_cut_to_the_limit_and_a_character_of_two_code_units_keeps_its_box() {
+        let long = "x".repeat(QUOTE_MAX_CHARS + 50);
+        let boxes: Vec<f32> = (0..long.len())
+            .flat_map(|n| [n as f32, 0.0, 1.0, 1.0])
+            .collect();
+        let quote = quote_of(&long, &boxes, &[quad_of(0.0, 0.0, 10_000.0, 2.0)]);
+        assert_eq!(quote.chars().count(), QUOTE_MAX_CHARS);
+        assert!(quote.ends_with('…'));
+        // The emoji is two units; the character after it is at unit 3.
+        let boxes = vec![
+            0.0, 0.0, 1.0, 1.0, 0.0, 0.0, 1.0, 1.0, 0.0, 0.0, 1.0, 1.0, 50.0, 0.0, 1.0, 1.0,
+        ];
+        assert_eq!(
+            quote_of("a😀b", &boxes, &[quad_of(49.0, 0.0, 3.0, 2.0)]),
+            "b"
+        );
+    }
+
+    #[test]
+    fn a_summary_says_what_a_mark_and_a_signature_are_and_the_state_of_a_review_reply() {
+        use crate::model::annotation::{MarkGlyph, ReviewState};
+        let mut a = Annotation::from_draft(
+            crate::model::ids::AnnotId::new(1),
+            &serde_json::from_value(json!({"pageId": 0, "kind": "mark", "color": [0, 0, 0], "box": {"x": 0.0, "y": 0.0, "w": 10.0, "h": 10.0}, "glyph": "cross"})).unwrap(),
+            "t",
+        )
+        .unwrap();
+        assert!(matches!(
+            a.body,
+            AnnotationBody::Mark {
+                glyph: MarkGlyph::Cross,
+                ..
+            }
+        ));
+        let summary = AnnotationSummary::of(&a);
+        assert_eq!(summary.detail, Some("cross"));
+        assert_eq!(serde_json::to_value(&summary).unwrap().get("state"), None);
+        a.state = Some(ReviewState::Accepted);
+        let value = serde_json::to_value(AnnotationSummary::of(&a)).unwrap();
+        assert_eq!(value["state"], "accepted");
     }
 }

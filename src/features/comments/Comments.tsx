@@ -1,25 +1,5 @@
+import { ArrowDownUp, CircleAlert, ListFilter, LoaderCircle, MessagesSquare } from 'lucide-react';
 import {
-  ArrowDownUp,
-  ChevronRight,
-  Circle,
-  CircleAlert,
-  Check,
-  Highlighter,
-  ListFilter,
-  LoaderCircle,
-  MessagesSquare,
-  PenLine,
-  Signature,
-  Slash,
-  Square,
-  StickyNote,
-  Strikethrough,
-  Type,
-  Underline,
-  type LucideIcon,
-} from 'lucide-react';
-import {
-  memo,
   useCallback,
   useEffect,
   useLayoutEffect,
@@ -27,35 +7,36 @@ import {
   useRef,
   useState,
   type KeyboardEvent,
-  type MouseEvent,
+  type ReactNode,
 } from 'react';
 
-import type { AnnotationKind, AnnotationSummary } from '../../api/annotations';
 import { Button, IconButton, Menu, Popover } from '../../components';
-import { cx } from '../../components/cx';
 import { Icon } from '../../components/Icon';
 import { tokenPx } from '../../components/tokens';
-import { useT, type PlainKey, type Translate } from '../../i18n';
+import { useT, type PlainKey } from '../../i18n';
 import { useAnnotations } from '../../stores/annotations';
 import { selectActiveId, useDocuments } from '../../stores/documents';
-import { pageNumberOf, positionOf } from '../../stores/pages';
-import { rgbToCss } from '../inspector/palette';
-import { useViewer } from '../viewer/useViewer';
+import { pageNumberOf } from '../../stores/pages';
+import { deleteThread, jumpTo } from './actions';
+import { CommentCard } from './CommentCard';
 import {
   NO_FILTER,
   SORT_ORDERS,
+  STATUSES,
   buildRows,
   facets,
   filterThreads,
   isFiltering,
   offsetsOf,
-  parseDate,
   sortThreads,
   windowOf,
   type Row,
   type SortOrder,
+  type Status,
+  type Thread,
 } from './model';
 import { DEFAULT_VIEW, useComments, type CommentsEntry } from './store';
+import { kindInfo } from './typeInfo';
 
 /** The loading state shows nothing for this long. */
 export const LOADING_SHOWN_AFTER_MS = 300;
@@ -63,23 +44,10 @@ export const LOADING_SHOWN_AFTER_MS = 300;
 export const REFRESH_DELAY_MS = 200;
 /** Pixels mounted beyond the viewport on each side. */
 const OVERSCAN_PX = 256;
+/** The relative times of the cards are fresh to the minute. */
+const CLOCK_MS = 60_000;
 
-const HEIGHT_FALLBACK = { group: 24, root: 64, reply: 48 } as const;
-
-const KIND_ICONS: Record<AnnotationKind, LucideIcon> = {
-  highlight: Highlighter,
-  underline: Underline,
-  strikeout: Strikethrough,
-  note: StickyNote,
-  freeText: Type,
-  ink: PenLine,
-  rect: Square,
-  ellipse: Circle,
-  line: Slash,
-  signature: Signature,
-  mark: Check,
-  opaque: MessagesSquare,
-};
+const HEIGHT_FALLBACK = { group: 24, card: 112 } as const;
 
 const SORT_LABELS: Record<SortOrder, PlainKey> = {
   page: 'comments.byPage',
@@ -87,160 +55,14 @@ const SORT_LABELS: Record<SortOrder, PlainKey> = {
   oldest: 'comments.oldest',
 };
 
-const kindLabel = (kind: AnnotationKind): PlainKey => `annot.type.${kind}`;
+const STATUS_LABELS: Record<Status, PlainKey> = {
+  open: 'comments.open',
+  resolved: 'comments.resolved',
+  accepted: 'comments.accepted',
+  rejected: 'comments.rejected',
+};
 
-const formatters = new Map<string, Intl.DateTimeFormat>();
-/** A date of the file in the user's language; `''` for one that cannot be read. */
-export function formatDate(text: string | null, locale: string): string {
-  const time = parseDate(text);
-  if (time === null) return '';
-  let format = formatters.get(locale);
-  if (format === undefined) {
-    format = new Intl.DateTimeFormat(locale, { dateStyle: 'medium' });
-    formatters.set(locale, format);
-  }
-  return format.format(time);
-}
-
-/** The accessible name of a row: the annotation's name (`annot.name`) and, for a root, the number of replies. */
-function rowName(t: Translate, summary: AnnotationSummary, replyCount: number): string {
-  const type = t(kindLabel(summary.kind));
-  const n = summary.pageId + 1;
-  const author = summary.author ?? '';
-  const text = summary.contents.trim();
-  const base =
-    author === ''
-      ? text === ''
-        ? t('annot.nameNoAuthor', { type, n })
-        : t('annot.nameNoAuthorText', { type, n, text })
-      : text === ''
-        ? t('annot.name', { type, author, n })
-        : t('annot.nameText', { type, author, n, text });
-  return replyCount > 0 ? `${base}, ${t('comments.replies', { count: replyCount })}` : base;
-}
-
-interface RowProps {
-  row: Row;
-  index: number;
-  top: number;
-  height: number;
-  selected: boolean;
-  tabStop: boolean;
-  onActivate: (summary: AnnotationSummary) => void;
-  onToggle: (root: number) => void;
-}
-
-/** One treeitem (a root or a reply) or a page header. Text from the file is rendered as text only. */
-const CommentRow = memo(function CommentRow({
-  row,
-  index,
-  top,
-  height,
-  selected,
-  tabStop,
-  onActivate,
-  onToggle,
-}: RowProps) {
-  const t = useT();
-  if (row.type === 'group') {
-    return (
-      <div
-        aria-hidden="true"
-        className="absolute inset-x-0 box-border flex items-center pe-1 text-sm font-semibold text-text-muted"
-        // Starts where the roots' content starts (padding, disclosure slot, gap), so the header and the colour dots line up.
-        style={{
-          top,
-          height,
-          paddingInlineStart: 'calc(var(--space-1) + var(--icon-16) + var(--space-0-5))',
-        }}
-      >
-        {t('search.page', { n: pageNumberOf(useDocuments.getState().activeId, row.pageId) })}
-      </div>
-    );
-  }
-  const { summary } = row;
-  const reply = row.type === 'reply';
-  const replyCount = row.type === 'root' ? row.replyCount : 0;
-  const author = summary.author ?? '';
-  const date = formatDate(summary.modified, t.locale);
-  return (
-    <div
-      role="treeitem"
-      aria-level={reply ? 2 : 1}
-      aria-setsize={row.setsize}
-      aria-posinset={row.posinset}
-      aria-expanded={row.type === 'root' ? row.expanded : undefined}
-      aria-selected={selected}
-      aria-label={rowName(t, summary, replyCount)}
-      data-key={row.key}
-      data-index={index}
-      tabIndex={tabStop ? 0 : -1}
-      onClick={() => onActivate(summary)}
-      className={cx(
-        'absolute inset-x-0 box-border flex cursor-pointer select-none items-start gap-0-5 rounded-sm p-1 text-md',
-        selected
-          ? 'bg-selected forced-colors:outline-2 forced-colors:outline-[Highlight]'
-          : 'hover:bg-control-hover active:bg-control-pressed',
-      )}
-      style={{ top, height, paddingInlineStart: reply ? 'calc(var(--space-1) + var(--outline-indent))' : undefined }}
-    >
-      <span
-        aria-hidden="true"
-        onClick={
-          row.type === 'root' && row.expanded !== undefined
-            ? (event: MouseEvent) => {
-                // The chevron toggles without jumping.
-                event.stopPropagation();
-                onToggle(summary.id);
-              }
-            : undefined
-        }
-        className="flex h-icon-16 w-icon-16 shrink-0 items-center justify-center"
-      >
-        {row.type === 'root' && row.expanded !== undefined && (
-          <Icon
-            icon={ChevronRight}
-            className={cx(
-              'transition-transform duration-fast motion-reduce:transition-none forced-colors:text-[CanvasText]',
-              row.expanded ? 'rotate-90' : 'rtl:-scale-x-100',
-            )}
-          />
-        )}
-      </span>
-      <span className="flex min-w-0 flex-1 flex-col" aria-hidden="true">
-        <span className="flex h-icon-16 items-center gap-0-5">
-          {!reply && (
-            <>
-              <span
-                className="size-comments-dot shrink-0 rounded-pill ring-1 ring-control-border forced-color-adjust-none forced-colors:ring-[CanvasText]"
-                style={{ backgroundColor: rgbToCss(summary.color) }}
-              />
-              <Icon icon={KIND_ICONS[summary.kind]} className="text-text-muted" />
-            </>
-          )}
-          <span className={cx('min-w-0 flex-1 truncate font-semibold', author === '' && 'text-text-muted')}>
-            {author === '' ? t('comments.noAuthor') : author}
-          </span>
-          {date !== '' && <span className="shrink-0 text-sm text-text-muted">{date}</span>}
-        </span>
-        <span
-          className={cx(
-            'text-sm break-words',
-            reply || replyCount > 0 ? 'line-clamp-1' : 'line-clamp-2',
-            summary.contents.trim() === '' && 'text-text-muted',
-          )}
-        >
-          {summary.contents.trim() === '' ? t('comments.noText') : summary.contents}
-        </span>
-        {replyCount > 0 && (
-          <span className="text-sm text-text-muted">{t('comments.replies', { count: replyCount })}</span>
-        )}
-      </span>
-    </div>
-  );
-});
-
-function Message({ children }: { children: React.ReactNode }) {
+function Message({ children }: { children: ReactNode }) {
   return <div className="flex flex-col items-center gap-1 p-3 text-center">{children}</div>;
 }
 
@@ -266,36 +88,109 @@ function Loading() {
 
 type Ready = Extract<CommentsEntry, { status: 'ready' }>;
 
-/** The tree of a loaded list: virtualized (rows of three fixed heights), one tab stop, the WAI-ARIA keyboard model. */
-export function CommentsTree({ docId, entry }: { docId: number; entry: Ready }) {
+/** A row of the list: placed at its offset, its height measured (a card has no fixed height). */
+function Slot({
+  rowKey,
+  top,
+  measure,
+  children,
+}: {
+  rowKey: string;
+  top: number;
+  measure: { observe: (element: HTMLElement) => () => void };
+  children: ReactNode;
+}) {
+  const ref = useRef<HTMLDivElement | null>(null);
+  useLayoutEffect(() => {
+    const element = ref.current;
+    return element === null ? undefined : measure.observe(element);
+  }, [measure]);
+  return (
+    <div ref={ref} data-row-key={rowKey} className="absolute inset-x-0 box-border pb-1" style={{ top }}>
+      {children}
+    </div>
+  );
+}
+
+/** The list of a loaded comments list: cards, virtualized with measured heights (overscan), one tab stop, roving Up/Down. */
+export function CommentsList({ docId, entry }: { docId: number; entry: Ready }) {
   const t = useT();
   const view = useComments((state) => state.views[docId]) ?? DEFAULT_VIEW;
+  const editing = useComments((state) => state.editing[docId]);
   const selectedIds = useAnnotations((state) => state.selectedIds[docId]);
-  const [heights] = useState(() => ({
-    group: tokenPx('--comments-group-height', HEIGHT_FALLBACK.group),
-    root: tokenPx('--comments-root-height', HEIGHT_FALLBACK.root),
-    reply: tokenPx('--comments-reply-height', HEIGHT_FALLBACK.reply),
+  const [base] = useState(() => ({
+    group: tokenPx('--comments-group-height', HEIGHT_FALLBACK.group) + tokenPx('--space-1', 8),
+    card: tokenPx('--comments-card-estimate', HEIGHT_FALLBACK.card) + tokenPx('--space-1', 8),
   }));
   const threads = useMemo(
     () => sortThreads(filterThreads(entry.threads, view.filter), view.order),
     [entry.threads, view.filter, view.order],
   );
-  const rows = useMemo(() => buildRows(threads, view.order, view.expanded), [threads, view.order, view.expanded]);
-  const offsets = useMemo(() => offsetsOf(rows, heights), [rows, heights]);
-  const rowIndexOf = useMemo(() => new Map(rows.map((row, i) => [row.key, i])), [rows]);
+  const rows = useMemo(() => buildRows(threads, view.order), [threads, view.order]);
 
   const scrollerRef = useRef<HTMLDivElement | null>(null);
   const [box, setBox] = useState(0);
   const [scrollTop, setScrollTop] = useState(0);
   const [focusKey, setFocusKey] = useState<string | null>(null);
   const pendingFocus = useRef<string | null>(null);
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(Date.now()), CLOCK_MS);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  // Measured heights: one observer for every mounted row. A change of a height renders the offsets again.
+  const [heights, setHeights] = useState<ReadonlyMap<string, number>>(() => new Map());
+  const observer = useRef<ResizeObserver | null>(null);
+  const tracker = useMemo(() => {
+    const note = (changes: [string, number][]) =>
+      setHeights((before) => {
+        const next = new Map(before);
+        let any = false;
+        for (const [key, height] of changes) {
+          if (height > 0 && next.get(key) !== height) {
+            next.set(key, height);
+            any = true;
+          }
+        }
+        return any ? next : before;
+      });
+    return {
+      observe: (element: HTMLElement) => {
+        note([[element.dataset.rowKey ?? '', element.getBoundingClientRect().height]]);
+        observer.current ??= new ResizeObserver((entries) => {
+          note(
+            entries.map((item) => [
+              (item.target as HTMLElement).dataset.rowKey ?? '',
+              item.borderBoxSize?.[0]?.blockSize ?? (item.target as HTMLElement).offsetHeight,
+            ]),
+          );
+        });
+        observer.current.observe(element);
+        return () => observer.current?.unobserve(element);
+      },
+    };
+  }, []);
+  useEffect(
+    () => () => {
+      observer.current?.disconnect();
+      observer.current = null;
+    },
+    [],
+  );
+
+  const offsets = useMemo(
+    () => offsetsOf(rows, (row) => heights.get(row.key) ?? (row.type === 'group' ? base.group : base.card)),
+    [rows, base, heights],
+  );
+  const rowIndexOf = useMemo(() => new Map(rows.map((row, i) => [row.key, i])), [rows]);
 
   useEffect(() => {
     const region = scrollerRef.current;
     if (region === null) return;
-    const observer = new ResizeObserver(() => setBox(region.clientHeight));
-    observer.observe(region);
-    return () => observer.disconnect();
+    const watcher = new ResizeObserver(() => setBox(region.clientHeight));
+    watcher.observe(region);
+    return () => watcher.disconnect();
   }, []);
 
   /** Scrolls the region so that row `index` is whole in view (nearest). */
@@ -312,26 +207,37 @@ export function CommentsTree({ docId, entry }: { docId: number; entry: Ready }) 
     [offsets],
   );
 
-  // A selection made on the canvas: its row comes into view (a reply opens its thread first).
+  // A selection made on the canvas: its card comes into view.
   const selectedFirst = selectedIds?.[0];
+  const selectedRoot = useMemo(() => {
+    if (selectedFirst === undefined) return undefined;
+    return entry.threads.find((th) => th.root.id === selectedFirst || th.replies.some((r) => r.id === selectedFirst))
+      ?.root.id;
+  }, [selectedFirst, entry.threads]);
   useEffect(() => {
-    if (selectedFirst === undefined) return;
-    const thread = entry.threads.find(
-      (th) => th.root.id === selectedFirst || th.replies.some((r) => r.id === selectedFirst),
-    );
-    if (thread !== undefined && thread.root.id !== selectedFirst) useComments.getState().expand(docId, thread.root.id);
-  }, [selectedFirst, entry.threads, docId]);
-  useEffect(() => {
-    if (selectedFirst === undefined) return;
-    const index = rowIndexOf.get(`a${selectedFirst}`);
+    if (selectedRoot === undefined) return;
+    const index = rowIndexOf.get(`a${selectedRoot}`);
     if (index !== undefined) reveal(index);
-  }, [selectedFirst, rowIndexOf, reveal]);
+  }, [selectedRoot, rowIndexOf, reveal]);
 
-  const isNav = (row: Row | undefined): row is Exclude<Row, { type: 'group' }> =>
-    row !== undefined && row.type !== 'group';
-  const navStep = useCallback(
-    (from: number, step: 1 | -1): number => {
-      for (let i = from + step; i >= 0 && i < rows.length; i += step) if (isNav(rows[i])) return i;
+  // A new comment being written: its card comes into view once it is in the list.
+  const revealedEdit = useRef<number | null>(null);
+  useEffect(() => {
+    if (editing === null || editing === undefined) {
+      revealedEdit.current = null;
+      return;
+    }
+    if (revealedEdit.current === editing.id) return;
+    const index = rowIndexOf.get(`a${editing.id}`);
+    if (index === undefined) return;
+    revealedEdit.current = editing.id;
+    reveal(index);
+  }, [editing, rowIndexOf, reveal]);
+
+  const cardIndexes = useMemo(() => rows.flatMap((row, i) => (row.type === 'card' ? [i] : [])), [rows]);
+  const step = useCallback(
+    (from: number, direction: 1 | -1): number => {
+      for (let i = from + direction; i >= 0 && i < rows.length; i += direction) if (rows[i]?.type === 'card') return i;
       return -1;
     },
     [rows],
@@ -340,11 +246,11 @@ export function CommentsTree({ docId, entry }: { docId: number; entry: Ready }) 
   const focusRow = useCallback(
     (index: number) => {
       const row = rows[index];
-      if (!isNav(row)) return;
+      if (row === undefined || row.type !== 'card') return;
       reveal(index);
       setFocusKey(row.key);
       pendingFocus.current = row.key;
-      const element = scrollerRef.current?.querySelector<HTMLElement>(`[role="treeitem"][data-key="${row.key}"]`);
+      const element = scrollerRef.current?.querySelector<HTMLElement>(`article[data-key="${row.key}"]`);
       if (element !== null && element !== undefined) {
         element.focus({ preventScroll: true });
         pendingFocus.current = null;
@@ -353,11 +259,11 @@ export function CommentsTree({ docId, entry }: { docId: number; entry: Ready }) 
     [rows, reveal],
   );
 
-  // A row that was asked to take the focus and was not mounted yet takes it once it is.
+  // A card that was asked to take the focus and was not mounted yet takes it once it is.
   useLayoutEffect(() => {
     const wanted = pendingFocus.current;
     if (wanted === null) return;
-    const element = scrollerRef.current?.querySelector<HTMLElement>(`[role="treeitem"][data-key="${wanted}"]`);
+    const element = scrollerRef.current?.querySelector<HTMLElement>(`article[data-key="${wanted}"]`);
     if (element !== null && element !== undefined) {
       element.focus({ preventScroll: true });
       pendingFocus.current = null;
@@ -365,69 +271,42 @@ export function CommentsTree({ docId, entry }: { docId: number; entry: Ready }) 
   });
 
   const activate = useCallback(
-    (summary: AnnotationSummary) => {
-      setFocusKey(`a${summary.id}`);
-      // Focus stays where it is: in the tree. The page loads first, so the selection has its annotation.
-      useViewer.getState().goToPage(positionOf(docId, summary.pageId) ?? summary.pageId);
-      const store = useAnnotations.getState();
-      void store
-        .loadPage(docId, summary.pageId)
-        .catch(() => undefined)
-        .then(() => store.select(docId, [summary.id]));
+    (thread: Thread) => {
+      setFocusKey(`a${thread.root.id}`);
+      // Focus stays where it is: in the list. The page loads first, so the selection has its annotation.
+      jumpTo(docId, thread.root.pageId, thread.root.id);
     },
     [docId],
   );
-  const toggle = useCallback((root: number) => useComments.getState().toggle(docId, root), [docId]);
 
   const onKeyDown = (event: KeyboardEvent<HTMLElement>) => {
     if (event.defaultPrevented || event.ctrlKey || event.metaKey || event.altKey) return;
-    const item = event.target instanceof Element ? event.target.closest<HTMLElement>('[role="treeitem"]') : null;
-    const index = Number(item?.dataset.index);
-    const row = rows[index];
-    if (item === null || !isNav(row)) return;
-    const rtl = document.documentElement.dir === 'rtl' || getComputedStyle(item).direction === 'rtl';
-    const key =
-      event.key === 'ArrowRight'
-        ? rtl
-          ? 'ArrowLeft'
-          : 'ArrowRight'
-        : event.key === 'ArrowLeft'
-          ? rtl
-            ? 'ArrowRight'
-            : 'ArrowLeft'
-          : event.key;
-    const store = useComments.getState();
+    // Only the card itself has these keys; its fields and buttons keep theirs.
+    const item = event.target instanceof HTMLElement && event.target.tagName === 'ARTICLE' ? event.target : null;
+    const index = rowIndexOf.get(item?.dataset.key ?? '');
+    const row = index === undefined ? undefined : rows[index];
+    if (item === null || index === undefined || row === undefined || row.type !== 'card') return;
     let handled = true;
-    if (key === 'ArrowDown') {
-      const next = navStep(index, 1);
+    if (event.key === 'ArrowDown') {
+      const next = step(index, 1);
       if (next >= 0) focusRow(next);
-    } else if (key === 'ArrowUp') {
-      const previous = navStep(index, -1);
+    } else if (event.key === 'ArrowUp') {
+      const previous = step(index, -1);
       if (previous >= 0) focusRow(previous);
-    } else if (key === 'Home') {
-      focusRow(navStep(-1, 1));
-    } else if (key === 'End') {
-      focusRow(navStep(rows.length, -1));
-    } else if (key === 'ArrowRight') {
-      if (row.type === 'root' && row.expanded === false) store.toggle(docId, row.summary.id);
-      else if (row.type === 'root' && row.expanded === true) focusRow(index + 1);
-    } else if (key === 'ArrowLeft') {
-      if (row.type === 'root' && row.expanded === true) store.toggle(docId, row.summary.id);
-      else if (row.type === 'reply') {
-        const parent = rowIndexOf.get(`a${row.root}`);
-        if (parent !== undefined) focusRow(parent);
-      }
-    } else if (key === 'Enter' || key === ' ') {
-      activate(row.summary);
-    } else if (key === 'Delete' || key === 'Backspace') {
-      if (row.summary.kind !== 'opaque') {
-        const next = navStep(index, 1);
-        const fallback = next >= 0 ? next : navStep(index, -1);
-        void useAnnotations
-          .getState()
-          .apply(docId, { type: 'deleteAnnotations', ids: [row.summary.id] })
-          .then(() => (fallback >= 0 ? focusRow(fallback) : undefined))
-          .catch(() => undefined);
+    } else if (event.key === 'Home') {
+      focusRow(step(-1, 1));
+    } else if (event.key === 'End') {
+      focusRow(step(rows.length, -1));
+    } else if (event.key === 'Enter' || event.key === ' ') {
+      activate(row.thread);
+    } else if (event.key === 'Delete' || event.key === 'Backspace') {
+      const { root, replies, states } = row.thread;
+      if (root.kind !== 'opaque') {
+        const next = step(index, 1);
+        const fallback = next >= 0 ? next : step(index, -1);
+        void deleteThread(docId, [root.id, ...replies.map((r) => r.id), ...states.map((s) => s.id)]).then((done) =>
+          done && fallback >= 0 ? focusRow(fallback) : undefined,
+        );
       }
     } else {
       handled = false;
@@ -435,27 +314,26 @@ export function CommentsTree({ docId, entry }: { docId: number; entry: Ready }) 
     if (handled) event.preventDefault();
   };
 
-  // The tab stop: the focused row, else the selected one, else the first.
+  // The tab stop: the focused card, else the selected one, else the first.
   const tabKey = useMemo(() => {
-    for (const key of [focusKey, selectedFirst === undefined ? null : `a${selectedFirst}`]) {
+    for (const key of [focusKey, selectedRoot === undefined ? null : `a${selectedRoot}`]) {
       if (key !== null && rowIndexOf.has(key)) return key;
     }
-    const first = rows.find((row) => row.type !== 'group');
-    return first?.key ?? null;
-  }, [focusKey, selectedFirst, rowIndexOf, rows]);
+    const first = cardIndexes[0];
+    return first === undefined ? null : (rows[first]?.key ?? null);
+  }, [focusKey, selectedRoot, rowIndexOf, rows, cardIndexes]);
 
   const range = windowOf(offsets, scrollTop, box, OVERSCAN_PX);
   const mounted = useMemo(() => {
     const set = new Set<number>();
     if (range !== null) for (let i = range.first; i <= range.last; i += 1) set.add(i);
-    for (const key of [tabKey, focusKey]) {
+    for (const key of [tabKey, focusKey, editing === null || editing === undefined ? null : `a${editing.id}`]) {
       const i = key === null ? undefined : rowIndexOf.get(key);
       if (i !== undefined) set.add(i);
     }
     return [...set].sort((a, b) => a - b);
-  }, [range?.first, range?.last, tabKey, focusKey, rowIndexOf]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [range?.first, range?.last, tabKey, focusKey, editing, rowIndexOf]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const selected = useMemo(() => new Set(selectedIds ?? []), [selectedIds]);
   const total = entry.threads.length;
 
   if (threads.length === 0) {
@@ -479,7 +357,7 @@ export function CommentsTree({ docId, entry }: { docId: number; entry: Ready }) 
       <div
         ref={scrollerRef}
         onScroll={(event) => {
-          // Only a change of the mounted window renders the tree again.
+          // Only a change of the mounted window renders the list again.
           const top = event.currentTarget.scrollTop;
           setScrollTop((previous) => {
             const before = windowOf(offsets, previous, box, OVERSCAN_PX);
@@ -487,15 +365,14 @@ export function CommentsTree({ docId, entry }: { docId: number; entry: Ready }) 
             return before?.first === after?.first && before?.last === after?.last ? previous : top;
           });
         }}
-        className="min-h-0 flex-auto overflow-y-auto overflow-x-hidden p-1 [overflow-anchor:none] [scrollbar-gutter:stable]"
+        className="min-h-0 flex-auto overflow-x-hidden overflow-y-auto p-1 [overflow-anchor:none] [scrollbar-gutter:stable]"
       >
         <div
-          role="tree"
+          role="list"
           aria-label={t('comments.list')}
           onKeyDown={onKeyDown}
           onFocus={(event) => {
-            const item =
-              event.target instanceof Element ? event.target.closest<HTMLElement>('[role="treeitem"]') : null;
+            const item = event.target instanceof Element ? event.target.closest<HTMLElement>('article') : null;
             if (item?.dataset.key !== undefined) setFocusKey(item.dataset.key);
           }}
           onBlur={(event) => {
@@ -507,18 +384,33 @@ export function CommentsTree({ docId, entry }: { docId: number; entry: Ready }) 
         >
           {mounted.map((i) => {
             const row = rows[i] as Row;
+            const top = offsets[i] as number;
+            if (row.type === 'group') {
+              return (
+                <Slot key={row.key} rowKey={row.key} top={top} measure={tracker}>
+                  <div
+                    aria-hidden="true"
+                    className="flex h-control-sm items-center px-0-5 text-sm font-semibold text-text-muted"
+                  >
+                    {t('search.page', { n: pageNumberOf(docId, row.pageId) })}
+                  </div>
+                </Slot>
+              );
+            }
+            const selected = selectedRoot === row.thread.root.id;
             return (
-              <CommentRow
-                key={row.key}
-                row={row}
-                index={i}
-                top={offsets[i] as number}
-                height={heights[row.type]}
-                selected={row.type !== 'group' && selected.has(row.summary.id)}
-                tabStop={tabKey === row.key}
-                onActivate={activate}
-                onToggle={toggle}
-              />
+              <Slot key={row.key} rowKey={row.key} top={top} measure={tracker}>
+                <div role="listitem" aria-posinset={row.posinset} aria-setsize={row.setsize}>
+                  <CommentCard
+                    docId={docId}
+                    thread={row.thread}
+                    selected={selected}
+                    tabStop={tabKey === row.key}
+                    now={now}
+                    onActivate={activate}
+                  />
+                </div>
+              </Slot>
             );
           })}
         </div>
@@ -568,7 +460,7 @@ function CommentsView({ docId }: { docId: number }) {
       </Message>
     );
   }
-  return <CommentsTree docId={docId} entry={entry} />;
+  return <CommentsList docId={docId} entry={entry} />;
 }
 
 /** The Comments tab's content. Another document is another list: its view, scroll and focus are its own. */
@@ -645,10 +537,17 @@ export function CommentsActions() {
       >
         <div className="flex max-h-[60vh] flex-col gap-2 overflow-y-auto p-1">
           <FilterGroup
+            legend={t('comments.status')}
+            values={STATUSES}
+            chosen={view.filter.statuses}
+            label={(status) => t(STATUS_LABELS[status])}
+            onChange={(statuses) => useComments.getState().setFilter(docId, { ...view.filter, statuses })}
+          />
+          <FilterGroup
             legend={t('comments.type')}
             values={options.kinds}
             chosen={view.filter.kinds}
-            label={(kind) => t(kindLabel(kind))}
+            label={(kind) => t(kindInfo(kind).key)}
             onChange={(kinds) => useComments.getState().setFilter(docId, { ...view.filter, kinds })}
           />
           <FilterGroup

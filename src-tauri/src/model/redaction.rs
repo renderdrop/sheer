@@ -101,6 +101,7 @@ pub(crate) fn mark(
             author: None,
             modified: None,
             in_reply_to: None,
+            state: None,
             locked: false,
             sync: AnnotSync::New,
             body: AnnotationBody::RedactMark {

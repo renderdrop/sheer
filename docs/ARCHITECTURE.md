@@ -154,7 +154,9 @@ get_page_links(doc_id: DocId, page_id: PageId) -> Vec<LinkInfo>     // ≤ 1 000
 open_link(doc_id: DocId, page_id: PageId, link_index: u32) -> ()    // URL re-read in Rust, shown in a native dialog from Rust, then opened by Rust; http, https, mailto
 // edit (ADR-003)
 list_annotations(doc_id: DocId, page_id: PageId) -> Vec<Annotation>   // by id, ≤ 2 000; the first call for a page reads it from the file (`Interactive`), later calls answer from the model
-list_document_annotations(doc_id: DocId) -> Vec<AnnotationSummary>   // {id, pageId, kind, color, contents (≤ 240 chars), author, modified, inReplyTo}, ≤ 20 000, by page then id; reads unread pages at `Background`; for the comments panel (`features/comments`)
+list_document_annotations(doc_id: DocId) -> Vec<AnnotationSummary>   // {id, pageId, kind, color, contents (≤ 240 chars), author, modified, inReplyTo} + optional `state` (review state of a reply: none|accepted|rejected|cancelled|completed) and `detail` (mark glyph check|cross|dot, signature role signature|initials; ADR-057), ≤ 20 000, by page then id; reads unread pages at `Background`; for the comments panel (`features/comments`)
+get_annotation_quote(doc_id: DocId, annotation_id: AnnotId) -> Option<String>   // text under a highlight/underline/strikeout: characters whose centre is in a quad, whitespace collapsed, ≤ 280 chars (… last if cut); null for other kinds; not_found for an unknown id. F12-P4, DESIGN 3.59
+// Review replies (F12-P4): `createAnnotation` with `draft.state` (accepted|rejected|cancelled|completed|none) makes a Text annotation with `/IRT`, `/RT /R`, `/StateModel (Review)`, `/State (…)`, flag Hidden, no appearance; it needs `inReplyTo`, a note body and empty contents (else invalid_argument `state`). A page read links replies and states from the file (`pdfwrite::reviews`, lopdf, best effort; encrypted documents have no threads).
 apply_command(doc_id: DocId, command: DocCommand) -> ChangeSet   // M3: was apply_annotation_command; annotation and page variants (see "Pages")
 undo(doc_id: DocId) -> ChangeSet          // nothing to undo: an empty ChangeSet with the current rev
 redo(doc_id: DocId) -> ChangeSet
@@ -354,7 +356,7 @@ type FlattenOptions = { scope: 'forms' | 'formsAndAnnotations' };
 
 type SignatureRole = 'signature' | 'initials';
 type PathCmd = ['M', number, number] | ['L', number, number] | ['C', number, number, number, number, number, number] | ['Z'];  // ADR-051; written 1:1 as m / l / c / h + one f; typed = skrifa curves (quad raised to cubic); image art: white 225..245 luminance fades to transparent, <= 3000 px long side, never upscaled
-type TypedFont = 'homemadeApple';
+type TypedFont = 'dancingScript' | 'greatVibes' | 'alexBrush';  // DESIGN 3.60, SIL OFL 1.1 fonts, unmodified; default dancingScript
 type SignatureArt = { type: 'vector'; w: number; h: number; paths: PathCmd[][] /* nonzero fill, y down, 1000 units high; also what the library stores (old polygon entries load as L paths) */ }
                   | { type: 'raster'; w: number; h: number /* px; pixels via get_signature_preview */ };
 type SignatureRef = { type: 'draft'; id: DraftId } | { type: 'library'; id: string };

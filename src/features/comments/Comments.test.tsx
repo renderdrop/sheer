@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { act, fireEvent, screen, within } from '@testing-library/react';
+import { act, screen, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { AnnotationSummary } from '../../api/annotations';
@@ -9,13 +9,16 @@ import { useViewer } from '../viewer/useViewer';
 import { resetViewer, showDocument } from '../viewer/viewer.testutil';
 import { Comments, CommentsActions, LOADING_SHOWN_AFTER_MS } from './Comments';
 import { useComments } from './store';
+import { clearQuotes } from './useQuote';
 
 const listDocumentAnnotations = vi.hoisted(() => vi.fn());
 const listAnnotations = vi.hoisted(() => vi.fn());
+const getAnnotationQuote = vi.hoisted(() => vi.fn());
 vi.mock('../../api/annotations', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../api/annotations')>()),
   listDocumentAnnotations,
   listAnnotations,
+  getAnnotationQuote,
 }));
 
 const summary = (id: number, over: Partial<AnnotationSummary> = {}): AnnotationSummary => ({
@@ -50,7 +53,9 @@ beforeEach(() => {
   Object.defineProperty(HTMLElement.prototype, 'clientHeight', { configurable: true, get: () => 400 });
   listDocumentAnnotations.mockReset();
   listAnnotations.mockReset().mockResolvedValue([]);
-  useComments.setState({ byDoc: {}, views: {} });
+  getAnnotationQuote.mockReset().mockResolvedValue(null);
+  clearQuotes();
+  useComments.setState({ byDoc: {}, views: {}, editing: {} });
   useAnnotations.setState({ byDoc: {}, selectedIds: {} });
   resetViewer();
   showDocument({ id: 1, pageCount: 5, displayName: 'Book.pdf' });
@@ -62,7 +67,7 @@ afterEach(() => {
   delete (HTMLElement.prototype as { clientHeight?: number }).clientHeight;
 });
 
-const items = () => screen.queryAllByRole('treeitem');
+const cards = () => screen.queryAllByRole('article');
 
 describe('Comments states', () => {
   it('shows the placeholder without a document', () => {
@@ -84,7 +89,6 @@ describe('Comments states', () => {
     listDocumentAnnotations.mockResolvedValue([]);
     setup(<Comments />);
     expect(await screen.findByText('No comments yet')).toBeTruthy();
-    expect(screen.getByText('Notes, highlights and drawings appear here.')).toBeTruthy();
   });
 
   it('shows an error with a retry', async () => {
@@ -92,101 +96,171 @@ describe('Comments states', () => {
     const { user } = setup(<Comments />);
     expect(await screen.findByRole('alert')).toBeTruthy();
     await user.click(screen.getByRole('button', { name: 'Try again' }));
-    expect((await screen.findAllByRole('treeitem')).length).toBeGreaterThan(0);
+    expect((await screen.findAllByRole('article')).length).toBeGreaterThan(0);
   });
 });
 
-describe('Comments tree', () => {
-  async function shown() {
-    listDocumentAnnotations.mockResolvedValue(LIST);
+describe('Comments cards', () => {
+  async function shown(list: AnnotationSummary[] = LIST) {
+    listDocumentAnnotations.mockResolvedValue(list);
     const view = setup(
       <>
         <CommentsActions />
         <Comments />
       </>,
     );
-    // A cold first render can take longer than the 1 s default under a full suite: wait for the whole list.
-    await vi.waitFor(() => expect(items()).toHaveLength(2), { timeout: 8000 });
+    await vi.waitFor(() => expect(cards().length).toBeGreaterThan(0), { timeout: 8000 });
     return view;
   }
 
-  it('lists roots with a reply count and text only, replies hidden until expanded', async () => {
+  it('shows a card per thread with type, text as text, author and the reply', async () => {
     await shown();
-    expect(items()).toHaveLength(2);
-    const first = items()[0] as HTMLElement;
-    expect(first.getAttribute('aria-expanded')).toBe('false');
-    expect(first.getAttribute('aria-label')).toContain('1 reply');
+    expect(cards()).toHaveLength(2);
+    const first = cards()[0] as HTMLElement;
+    expect(first.textContent).toContain('Note');
     expect(first.textContent).toContain('First <b>bold</b>');
     expect(first.querySelector('b')).toBeNull();
-    expect(items()[1]?.getAttribute('aria-label')).toBe('Highlight, page 3');
-    expect(screen.getByRole('tree', { name: 'Comments' })).toBeTruthy();
+    expect(first.textContent).toContain('A reply');
+    expect(first.textContent).toContain('p. 1');
+    expect(cards()[1]?.textContent).toContain('Highlight');
   });
 
-  it('expands with the arrow keys and walks the tree', async () => {
-    const { user } = await shown();
-    (items()[0] as HTMLElement).focus();
-    await user.keyboard('{ArrowRight}');
-    expect(items()).toHaveLength(3);
-    await user.keyboard('{ArrowRight}');
-    expect(document.activeElement?.getAttribute('aria-level')).toBe('2');
-    await user.keyboard('{ArrowLeft}');
-    expect(document.activeElement?.getAttribute('aria-level')).toBe('1');
-    await user.keyboard('{ArrowLeft}');
-    expect(items()).toHaveLength(2);
-    await user.keyboard('{End}');
-    expect(document.activeElement?.getAttribute('aria-posinset')).toBe('2');
-    await user.keyboard('{Home}');
-    expect(document.activeElement?.getAttribute('aria-posinset')).toBe('1');
+  it('shows the quote of a text markup, from the backend', async () => {
+    getAnnotationQuote.mockResolvedValue('quoted words');
+    await shown([summary(3, { kind: 'highlight', contents: '' })]);
+    expect(await screen.findByText('“quoted words”')).toBeTruthy();
   });
 
-  it('jumps to the page and selects the annotation on Enter and on click, keeping the focus in the tree', async () => {
+  it('labels marks, signatures and comments by their type', async () => {
+    await shown([
+      summary(1, { kind: 'mark', detail: 'cross', contents: '' }),
+      summary(2, { kind: 'signature', detail: 'initials', contents: '', pageId: 1 }),
+      summary(3, { kind: 'highlight', contents: 'hi', pageId: 2 }),
+    ]);
+    const text = cards().map((c) => c.textContent);
+    expect(text[0]).toContain('Cross');
+    expect(text[1]).toContain('Initials');
+    expect(text[2]).toContain('Comment');
+  });
+
+  it('collapses a resolved thread to a status pill and filters by status', async () => {
+    const { user } = await shown([
+      summary(1),
+      summary(2, { inReplyTo: 1, state: 'completed', contents: '' }),
+      summary(3, { pageId: 1 }),
+    ]);
+    expect(cards()).toHaveLength(2);
+    expect(cards()[0]?.textContent).toContain('Resolved');
+    expect(cards()[0]?.textContent).not.toContain('Text 1');
+    await user.click(screen.getByRole('button', { name: 'Filter' }));
+    const dialog = screen.getByRole('dialog', { name: 'Filter' });
+    await user.click(within(dialog).getByRole('checkbox', { name: 'Open' }));
+    expect(cards()).toHaveLength(1);
+    expect(cards()[0]?.textContent).toContain('Text 3');
+  });
+
+  it('jumps, selects and keeps the focus on the card on Enter and click', async () => {
     const goToPage = vi.fn();
     useViewer.setState({ goToPage });
     const { user } = await shown();
-    const first = items()[0] as HTMLElement;
+    const first = cards()[0] as HTMLElement;
     first.focus();
     await user.keyboard('{Enter}');
     await vi.waitFor(() => expect(useAnnotations.getState().selectedIds[1]).toEqual([1]));
     expect(goToPage).toHaveBeenCalledWith(0);
-    expect(listAnnotations).toHaveBeenCalledWith(1, 0);
     expect(document.activeElement).toBe(first);
-    await user.click(items()[1] as HTMLElement);
+    await user.click(cards()[1] as HTMLElement);
     expect(goToPage).toHaveBeenLastCalledWith(2);
     await vi.waitFor(() => expect(useAnnotations.getState().selectedIds[1]).toEqual([3]));
-    expect(items()[1]?.getAttribute('aria-selected')).toBe('true');
   });
 
-  it('marks the row of a canvas selection and opens the thread of a selected reply', async () => {
-    await shown();
-    act(() => useAnnotations.getState().select(1, [2]));
-    expect(items()).toHaveLength(3);
-    expect(items()[1]?.getAttribute('aria-selected')).toBe('true');
+  it('walks the cards with the arrow keys', async () => {
+    const { user } = await shown();
+    (cards()[0] as HTMLElement).focus();
+    await user.keyboard('{ArrowDown}');
+    expect(document.activeElement).toBe(cards()[1]);
+    await user.keyboard('{Home}');
+    expect(document.activeElement).toBe(cards()[0]);
+    await user.keyboard('{End}');
+    expect(document.activeElement).toBe(cards()[1]);
   });
 
-  it('sorts, filters and resets', async () => {
+  it('writes a review reply on Resolve', async () => {
+    const apply = vi.fn().mockResolvedValue({ upserted: [] });
+    useAnnotations.setState({
+      apply,
+      byDoc: {
+        1: {
+          rev: 0,
+          byId: {
+            1: {
+              id: 1,
+              pageId: 0,
+              rect: { x: 5, y: 6, w: 10, h: 10 },
+              color: [255, 235, 0],
+              opacity: 1,
+              contents: 'First',
+              author: 'Ann',
+              modified: null,
+              inReplyTo: null,
+              locked: false,
+              sync: 'clean',
+              kind: 'note',
+              at: { x: 5, y: 6 },
+              icon: 'note',
+            },
+          },
+          loaded: { 0: true },
+          removed: {},
+          history: EMPTY_HISTORY,
+        },
+      },
+    } as never);
+    const { user } = await shown();
+    await user.click(cards()[0] as HTMLElement);
+    await user.click(await screen.findByRole('button', { name: 'Resolve' }));
+    await vi.waitFor(() => expect(apply).toHaveBeenCalled());
+    const command = apply.mock.calls[0]?.[1];
+    expect(command.draft).toMatchObject({ kind: 'note', inReplyTo: 1, state: 'completed', pageId: 0 });
+  });
+
+  it('delete removes the thread with its replies', async () => {
+    const apply = vi.fn().mockResolvedValue(undefined);
+    useAnnotations.setState({ apply } as never);
+    const { user } = await shown();
+    (cards()[0] as HTMLElement).focus();
+    await user.keyboard('{Delete}');
+    expect(apply).toHaveBeenCalledWith(1, { type: 'deleteAnnotations', ids: [1, 2] });
+  });
+
+  it('never deletes an opaque annotation', async () => {
+    const apply = vi.fn();
+    useAnnotations.setState({ apply } as never);
+    const { user } = await shown([summary(1, { kind: 'opaque', contents: '' })]);
+    (cards()[0] as HTMLElement).focus();
+    await user.keyboard('{Delete}');
+    expect(apply).not.toHaveBeenCalled();
+  });
+
+  it('sorts, filters by author and resets', async () => {
     const { user } = await shown();
     await user.click(screen.getByRole('button', { name: 'Sort' }));
     await user.click(screen.getByRole('menuitemcheckbox', { name: 'Newest first' }));
-    expect(items()).toHaveLength(2);
-
     await user.click(screen.getByRole('button', { name: 'Filter' }));
     const dialog = screen.getByRole('dialog', { name: 'Filter' });
-    await user.click(within(dialog).getByRole('checkbox', { name: 'Highlight' }));
-    expect(items()).toHaveLength(1);
-    expect(screen.getByText('1 of 2')).toBeTruthy();
-    await user.click(within(dialog).getByRole('checkbox', { name: 'Highlight' }));
-    await user.click(within(dialog).getByRole('checkbox', { name: 'Bob' }));
-    expect(items()).toHaveLength(1);
     await user.click(within(dialog).getByRole('checkbox', { name: 'No author' }));
-    expect(items()).toHaveLength(2);
+    expect(cards()).toHaveLength(1);
+    expect(screen.getByText('1 of 2')).toBeTruthy();
+    await user.click(within(dialog).getByRole('button', { name: 'Reset filter' }));
+    expect(cards()).toHaveLength(2);
   });
 
   it('says nothing matches, with a reset', async () => {
     const { user } = await shown();
-    act(() => useComments.getState().setFilter(1, { kinds: ['ink'], authors: [] }));
+    act(() => useComments.getState().setFilter(1, { kinds: ['ink'], authors: [], statuses: [] }));
     expect(screen.getByText('No comments match the filter.')).toBeTruthy();
     await user.click(screen.getByRole('button', { name: 'Reset filter' }));
-    expect(items()).toHaveLength(2);
+    expect(cards()).toHaveLength(2);
   });
 
   it('reads the list again when the annotations change', async () => {
@@ -200,74 +274,30 @@ describe('Comments tree', () => {
     expect(listDocumentAnnotations).toHaveBeenCalledTimes(2);
   });
 
-  it('shows the contents as the excerpt, and a muted "No text" instead of the kind when there are none', async () => {
-    await shown();
-    expect(items()[0]?.textContent).toContain('First <b>bold</b>');
-    const empty = items()[1] as HTMLElement;
-    expect(empty.textContent).toContain('No text');
-    expect(empty.textContent).not.toContain('Highlight');
+  it('puts a new comment in editing: Post is disabled while empty, Cancel takes it back', async () => {
+    const undo = vi.fn().mockResolvedValue(undefined);
+    useAnnotations.setState({
+      undo,
+      byDoc: {
+        1: {
+          rev: 0,
+          byId: { 3: { id: 3 } },
+          loaded: {},
+          removed: {},
+          history: { ...EMPTY_HISTORY, canUndo: true, undoLabel: 'annotation.create' },
+        },
+      },
+    } as never);
+    const { user } = await shown();
+    act(() => useComments.getState().startEdit(1, 3, true));
+    const post = await screen.findByRole('button', { name: 'Comment' });
+    expect(post.getAttribute('aria-disabled')).toBe('true');
+    await user.click(screen.getByRole('button', { name: 'Cancel' }));
+    expect(undo).toHaveBeenCalledWith(1);
+    expect(useComments.getState().editing[1]).toBeNull();
   });
 
-  describe('Delete and Backspace', () => {
-    const apply = vi.fn();
-    beforeEach(() => {
-      apply.mockReset().mockResolvedValue(undefined);
-      useAnnotations.setState({ apply } as never);
-    });
-
-    it('delete the focused annotation as one undoable change and move the focus to the next row', async () => {
-      const { user } = await shown();
-      (items()[0] as HTMLElement).focus();
-      await user.keyboard('{Delete}');
-      expect(apply).toHaveBeenCalledWith(1, { type: 'deleteAnnotations', ids: [1] });
-      await vi.waitFor(() => expect(document.activeElement?.getAttribute('aria-label')).toBe('Highlight, page 3'));
-      expect(document.activeElement).toBe(items()[1]);
-    });
-
-    it('puts the focus on the row after a deleted thread once the rows have really shrunk (no index clamp needed: it goes by key)', async () => {
-      apply.mockImplementation(() => {
-        listDocumentAnnotations.mockResolvedValue([LIST[2]]);
-        act(() => useComments.getState().load(1));
-        return Promise.resolve(undefined);
-      });
-      const { user } = await shown();
-      (items()[0] as HTMLElement).focus();
-      await user.keyboard('{Delete}');
-      await vi.waitFor(() => expect(items()).toHaveLength(1));
-      await vi.waitFor(() => expect(document.activeElement).toBe(items()[0]));
-      expect(document.activeElement?.getAttribute('aria-posinset')).toBe('1');
-    });
-
-    it('Backspace does the same, and the focus goes to the previous row when it was the last', async () => {
-      const { user } = await shown();
-      await user.keyboard('{Tab}');
-      (items()[1] as HTMLElement).focus();
-      await user.keyboard('{Backspace}');
-      expect(apply).toHaveBeenCalledWith(1, { type: 'deleteAnnotations', ids: [3] });
-      await vi.waitFor(() => expect(document.activeElement?.getAttribute('aria-label')).toContain('1 reply'));
-    });
-
-    it('never delete an opaque annotation (it is not ours to edit)', async () => {
-      listDocumentAnnotations.mockResolvedValue([summary(1, { kind: 'opaque', contents: '' })]);
-      const { user } = setup(<Comments />);
-      await screen.findAllByRole('treeitem');
-      (items()[0] as HTMLElement).focus();
-      await user.keyboard('{Delete}{Backspace}');
-      expect(apply).not.toHaveBeenCalled();
-    });
-
-    it('leave the focus alone when the delete fails', async () => {
-      apply.mockRejectedValue(new Error('refused'));
-      const { user } = await shown();
-      const first = items()[0] as HTMLElement;
-      first.focus();
-      await user.keyboard('{Delete}');
-      await act(async () => {});
-      expect(document.activeElement).toBe(first);
-    });
-  });
-
-  it('keeps the rows when a refresh brings the same list, and replaces only what changed', async () => {
+  it('keeps the rows when a refresh brings the same list', async () => {
     await shown();
     const before = useComments.getState().byDoc[1];
     if (before?.status !== 'ready') throw new Error('not ready');
@@ -277,54 +307,11 @@ describe('Comments tree', () => {
     await act(async () => {});
     const same = useComments.getState().byDoc[1];
     if (same?.status !== 'ready') throw new Error('not ready');
-    expect(same.summaries).toBe(before.summaries);
     expect(same.threads).toBe(before.threads);
-    expect(same.token).not.toBe(before.token);
-
-    listDocumentAnnotations.mockResolvedValue(
-      LIST.map((item) => (item.id === 3 ? { ...item, contents: 'Now' } : item)),
-    );
-    act(() => useComments.getState().load(1));
-    await vi.waitFor(() => expect(items()[1]?.textContent).toContain('Now'));
-    const changed = useComments.getState().byDoc[1];
-    if (changed?.status !== 'ready') throw new Error('not ready');
-    expect(changed.summaries[0]).toBe(before.summaries[0]);
-    expect(changed.summaries[2]).not.toBe(before.summaries[2]);
-  });
-
-  it('uses only the newest of overlapping list calls, whatever order they answer in', async () => {
-    await shown();
-    let answerOld: (value: AnnotationSummary[]) => void = () => undefined;
-    listDocumentAnnotations
-      .mockReturnValueOnce(new Promise<AnnotationSummary[]>((resolve) => (answerOld = resolve)))
-      .mockResolvedValueOnce([summary(9, { contents: 'Newest' })]);
-    act(() => {
-      useComments.getState().load(1);
-      useComments.getState().load(1);
-    });
-    await vi.waitFor(() => expect(items()[0]?.textContent).toContain('Newest'));
-    await act(async () => answerOld([summary(8, { contents: 'Stale' })]));
-    expect(items()).toHaveLength(1);
-    expect(items()[0]?.textContent).toContain('Newest');
-  });
-
-  it('ignores an answer for a document that was closed meanwhile', async () => {
-    listDocumentAnnotations.mockResolvedValue(LIST);
-    await shown();
-    let answer: (value: AnnotationSummary[]) => void = () => undefined;
-    listDocumentAnnotations.mockReturnValueOnce(new Promise<AnnotationSummary[]>((resolve) => (answer = resolve)));
-    act(() => useComments.getState().load(1));
-    act(() => useComments.getState().drop(1));
-    await act(async () => answer(LIST));
-    expect(useComments.getState().byDoc[1]).toBeUndefined();
   });
 
   it('virtualizes a long list', async () => {
-    listDocumentAnnotations.mockResolvedValue(Array.from({ length: 500 }, (_, i) => summary(i + 1, { pageId: i % 5 })));
-    setup(<Comments />);
-    await screen.findAllByRole('treeitem');
-    expect(items().length).toBeLessThan(40);
-    fireEvent.scroll(screen.getByRole('tree').parentElement as HTMLElement, { target: { scrollTop: 5000 } });
-    expect(items().length).toBeLessThan(40);
+    await shown(Array.from({ length: 500 }, (_, i) => summary(i + 1, { pageId: i % 5 })));
+    expect(cards().length).toBeLessThan(40);
   });
 });

@@ -59,6 +59,12 @@ export type SignatureArtRef = { type: 'asset'; assetId: number; aspect: number }
 export const MIN_SIGNATURE_SIDE_PT = 4;
 export const MIN_SIGNATURE_ASPECT = 0.01;
 export const MAX_SIGNATURE_ASPECT = 100;
+/**
+ * The review state a reply gives the annotation it replies to (PDF `/StateModel /Review`, `/State`): Resolve is `completed`,
+ * Reopen is `none`. The status of a comment is the state of its newest reply that has one.
+ */
+export type ReviewState = 'none' | 'accepted' | 'rejected' | 'cancelled' | 'completed';
+export const REVIEW_STATES: readonly ReviewState[] = ['none', 'accepted', 'rejected', 'cancelled', 'completed'];
 /** Whether the annotation is in the file as it is: `new` (this session), `clean`, or `modified` (in the file, changed since). */
 export type SyncState = 'new' | 'clean' | 'modified';
 
@@ -80,6 +86,8 @@ export interface AnnotationCommon {
   /** ISO 8601 for what was changed in this session; a PDF date (`D:...`) for what the file says. */
   modified: string | null;
   inReplyTo: number | null;
+  /** Set on a review reply: it only gives its parent a state and is not drawn on the page. */
+  state?: ReviewState;
   locked: boolean;
   sync: SyncState;
 }
@@ -140,6 +148,8 @@ interface DraftCommon {
   contents?: string;
   author?: string | null;
   inReplyTo?: number | null;
+  /** Makes the draft a review reply: a note with `inReplyTo`, no contents. */
+  state?: ReviewState;
   locked?: boolean;
 }
 
@@ -430,7 +440,7 @@ function parseWith<Body>(
   parseBodyOf: (value: Record<string, unknown>) => Body | null,
 ): (AnnotationCommon & Body) | null {
   if (!isRecord(value)) return null;
-  const { id, pageId, opacity, contents, author, modified, inReplyTo, locked, sync } = value;
+  const { id, pageId, opacity, contents, author, modified, inReplyTo, locked, sync, state } = value;
   const rect = parseRect(value.rect);
   const color = parseRgb(value.color);
   const body = parseBodyOf(value);
@@ -448,7 +458,8 @@ function parseWith<Body>(
     !(modified === null || typeof modified === 'string') ||
     !(inReplyTo === null || isUint(inReplyTo)) ||
     typeof locked !== 'boolean' ||
-    !SYNC_STATES.has(sync)
+    !SYNC_STATES.has(sync) ||
+    !(state === undefined || REVIEW_STATES.includes(state as ReviewState))
   )
     return null;
   return {
@@ -463,6 +474,7 @@ function parseWith<Body>(
     inReplyTo,
     locked,
     sync: sync as SyncState,
+    ...(state === undefined ? {} : { state: state as ReviewState }),
     ...body,
   };
 }
@@ -641,6 +653,10 @@ export interface AnnotationSummary {
   author: string | null;
   modified: string | null;
   inReplyTo: number | null;
+  /** Review replies only. */
+  state?: ReviewState;
+  /** A mark's glyph (`check`, `cross`, `dot`), a signature's role (`signature`, `initials`), `arrow` for a line with an end. */
+  detail?: string;
 }
 
 const KINDS: readonly string[] = [
@@ -660,8 +676,10 @@ const KINDS: readonly string[] = [
 
 function parseSummary(value: unknown): AnnotationSummary | null {
   if (!isRecord(value)) return null;
-  const { id, pageId, kind, color, contents, author, modified, inReplyTo } = value;
+  const { id, pageId, kind, color, contents, author, modified, inReplyTo, state, detail } = value;
   if (
+    !(state === undefined || REVIEW_STATES.includes(state as ReviewState)) ||
+    !(detail === undefined || (typeof detail === 'string' && detail.length <= 16)) ||
     !isUint(id) ||
     !isUint(pageId) ||
     typeof kind !== 'string' ||
@@ -685,6 +703,8 @@ function parseSummary(value: unknown): AnnotationSummary | null {
     author,
     modified,
     inReplyTo,
+    ...(state === undefined ? {} : { state: state as ReviewState }),
+    ...(detail === undefined ? {} : { detail }),
   };
 }
 
@@ -732,4 +752,18 @@ export async function listDocumentAnnotations(docId: number): Promise<Annotation
   const summaries = parseAnnotationSummaries(await call<unknown>('list_document_annotations', { docId }));
   if (summaries === null) throw toAppError(null);
   return summaries;
+}
+
+/** Longest quote the backend sends, in characters. */
+export const MAX_QUOTE_CHARS = 280;
+
+/**
+ * The text of the page under a highlight, underline or strikeout (`get_annotation_quote`): at most 280 characters, whitespace collapsed;
+ * `null` for another kind or when there is no text there. Rejects with `not_found` (`annotation`) for an id the model does not have.
+ */
+export async function getAnnotationQuote(docId: number, annotationId: number): Promise<string | null> {
+  const raw = await call<unknown>('get_annotation_quote', { docId, annotationId });
+  if (raw === null) return null;
+  if (typeof raw !== 'string' || raw.length > MAX_QUOTE_CHARS * 2) throw toAppError(null);
+  return raw;
 }

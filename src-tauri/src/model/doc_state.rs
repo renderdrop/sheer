@@ -18,6 +18,7 @@ use super::page::{PageSlot, PageSlotInfo, PageSource};
 use crate::documents::PageId;
 use crate::error::AppError;
 use crate::limits;
+use crate::pdfwrite::reviews::ReviewLink;
 use crate::security::secret::{PendingProtection, SecretSlots, Ticket};
 
 /// What a command needs to know about the moment it runs.
@@ -549,6 +550,14 @@ impl DocState {
         inverse
     }
 
+    /// The live annotation `id`, if the model has it.
+    pub fn annotation(&self, id: AnnotId) -> Option<&Annotation> {
+        self.entries
+            .get(&id)
+            .filter(|entry| !entry.tombstone)
+            .map(|entry| &entry.annotation)
+    }
+
     /// The live annotations of `page`, by id.
     pub fn list(&self, page: PageId) -> Vec<Annotation> {
         self.entries
@@ -586,6 +595,18 @@ impl DocState {
     /// was read twice (two requests at the same time) is not doubled. What does not pass the checks, and what does not fit under the
     /// limits, is left out. Returns how many were added. Not a change: the revision and the history stay as they are.
     pub fn import_page(&mut self, page: PageId, items: &[Imported]) -> usize {
+        self.import_page_linked(page, items, &HashMap::new())
+    }
+
+    /// [`DocState::import_page`] with what the file says about threads: `links` by position in the page's annotations (the engine's
+    /// `annot_index`) gives the annotation a reply points at and the review state it gives. A link only applies to a note and only to
+    /// a parent that was imported (the parent is on the same page).
+    pub fn import_page_linked(
+        &mut self,
+        page: PageId,
+        items: &[Imported],
+        links: &HashMap<u32, ReviewLink>,
+    ) -> usize {
         let Some(engine_index) = self.slot(page).map(|slot| slot.engine_index) else {
             return 0;
         };
@@ -649,12 +670,54 @@ impl DocState {
                 added += 1;
             }
         }
+        self.link_replies(page, items, links);
         let skipped = wanted.len().saturating_sub(stopped_at);
         if skipped > 0 {
             self.truncated
                 .insert(page.get(), u32::try_from(skipped).unwrap_or(u32::MAX));
         }
         added
+    }
+
+    /// Applies the reply links and states of a page that was just read (see [`DocState::import_page_linked`]).
+    fn link_replies(&mut self, page: PageId, items: &[Imported], links: &HashMap<u32, ReviewLink>) {
+        if links.is_empty() {
+            return;
+        }
+        let by_position: HashMap<u32, AnnotId> = self
+            .entries
+            .iter()
+            .filter(|(_, entry)| !entry.tombstone && entry.annotation.page_id == page)
+            .filter_map(|(id, entry)| Some((entry.persisted.as_ref()?.annot_index, *id)))
+            .collect();
+        for item in items {
+            let Some(link) = links.get(&item.origin.annot_index) else {
+                continue;
+            };
+            let Some(id) = by_position.get(&item.origin.annot_index).copied() else {
+                continue;
+            };
+            let parent = link
+                .reply_to
+                .and_then(|position| by_position.get(&position).copied())
+                .filter(|parent| *parent != id);
+            let is_note = self
+                .entries
+                .get(&id)
+                .is_some_and(|entry| matches!(entry.annotation.body, AnnotationBody::Note { .. }));
+            // Only a note replies in the model; a state without a parent is not a review reply.
+            if parent.is_none() || !is_note {
+                continue;
+            }
+            let Some(mut entry) = self.entries.remove(&id) else {
+                continue;
+            };
+            self.track(&entry, false);
+            entry.annotation.in_reply_to = parent;
+            entry.annotation.state = link.state;
+            self.track(&entry, true);
+            self.entries.insert(id, entry);
+        }
     }
 
     /// What the reading of the file's annotations left out so far, by page (pages that are gone are not listed).

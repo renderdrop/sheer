@@ -184,7 +184,10 @@ export const AnnotationLayer = memo(function AnnotationLayer({
     if (a.kind === 'freeText' && !a.locked) setEditing({ id: a.id, kind: 'freeText', fresh: false });
   };
 
-  const items = useMemo(() => readingOrder(list.filter((a) => a.kind !== 'opaque' || hasExtent(a.rect))), [list]);
+  const items = useMemo(
+    () => readingOrder(list.filter((a) => a.state === undefined && (a.kind !== 'opaque' || hasExtent(a.rect)))),
+    [list],
+  );
 
   if (!ready) return null;
   const box = overlayBox(boxWidth, boxHeight, page, pxPerPt, total);

@@ -780,3 +780,79 @@ fn an_empty_author_is_saved_without_a_t_entry_and_reads_back_as_none() {
     assert!(!tail.contains("/T ("), "no /T entry for an empty author");
     assert!(!tail.contains("/T("), "no /T entry for an empty author");
 }
+
+#[test]
+fn a_comment_with_a_reply_and_a_resolved_state_survives_a_save_and_is_read_back() {
+    let Some(state) = state() else { return };
+    let scratch = Scratch::new("comments");
+    let (id, path) = open(state, &scratch, "comments.pdf", &base());
+    let comment = create(
+        state,
+        id,
+        json!({"pageId": 1, "kind": "highlight", "color": [240, 228, 66], "author": "Ada", "contents": "Please check", "quads": [quad(72.0, 80.0, 100.0, 12.0)]}),
+    );
+    let reply = create(
+        state,
+        id,
+        json!({"pageId": 1, "kind": "note", "color": [240, 228, 66], "author": "Bo", "contents": "Done", "at": {"x": 72.0, "y": 80.0}, "icon": "note", "inReplyTo": comment.id}),
+    );
+    let resolved = create(
+        state,
+        id,
+        json!({"pageId": 1, "kind": "note", "color": [240, 228, 66], "author": "Ada", "at": {"x": 72.0, "y": 80.0}, "icon": "note", "inReplyTo": comment.id, "state": "completed"}),
+    );
+    assert_eq!(
+        resolved.state,
+        Some(sheer_lib::model::annotation::ReviewState::Completed)
+    );
+    // A state without a parent, or with text, is not a review reply.
+    for bad in [
+        json!({"pageId": 1, "kind": "note", "color": [0, 0, 0], "at": {"x": 1.0, "y": 1.0}, "icon": "note", "state": "completed"}),
+        json!({"pageId": 1, "kind": "note", "color": [0, 0, 0], "at": {"x": 1.0, "y": 1.0}, "icon": "note", "inReplyTo": comment.id, "state": "completed", "contents": "x"}),
+    ] {
+        let result = state.apply_command(
+            id,
+            command(json!({"type": "createAnnotation", "draft": bad})),
+        );
+        assert_eq!(result.unwrap_err().code(), ErrorCode::InvalidArgument);
+    }
+    state.save_in_place(id, SaveAck::default()).unwrap();
+
+    // The file says it in the words of the PDF specification, so other viewers read it.
+    let text = String::from_utf8_lossy(&read(&path)).into_owned();
+    // (Strings are written as hexadecimal strings.)
+    let hex = |word: &str| word.bytes().map(|b| format!("{b:02X}")).collect::<String>();
+    let upper = text.to_ascii_uppercase();
+    assert!(
+        upper.contains(&format!("/STATEMODEL<{}>", hex("Review")))
+            || upper.contains(&format!("/STATEMODEL <{}>", hex("Review")))
+    );
+    assert!(
+        upper.contains(&format!("/STATE<{}>", hex("Completed")))
+            || upper.contains(&format!("/STATE <{}>", hex("Completed")))
+    );
+
+    // Reopened, the thread and the state are there.
+    state.close_document_checked(id, true).unwrap();
+    let reopened = state.open_path(path).unwrap().expect("loaded").id;
+    let listed = state.list_annotations(reopened, PageId::new(1)).unwrap();
+    let find = |contents: &str| {
+        listed
+            .iter()
+            .find(|a| a.contents == contents && a.state.is_none())
+            .unwrap()
+    };
+    let root = find("Please check");
+    let note = find("Done");
+    assert_eq!(note.in_reply_to, Some(root.id));
+    let status = listed
+        .iter()
+        .find(|a| a.state.is_some())
+        .expect("the state reply");
+    assert_eq!(status.in_reply_to, Some(root.id));
+    assert_eq!(
+        status.state,
+        Some(sheer_lib::model::annotation::ReviewState::Completed)
+    );
+    let _ = reply;
+}

@@ -15,11 +15,15 @@ export type CommentsEntry =
 export interface CommentsView {
   order: SortOrder;
   filter: Filter;
-  /** Roots whose replies are shown. */
-  expanded: ReadonlySet<number>;
 }
 
-export const DEFAULT_VIEW: CommentsView = { order: 'page', filter: NO_FILTER, expanded: new Set() };
+export const DEFAULT_VIEW: CommentsView = { order: 'page', filter: NO_FILTER };
+
+/** The card whose text is being edited. A `fresh` one was just made by Add comment: cancelling it takes it back. */
+export interface Editing {
+  id: number;
+  fresh: boolean;
+}
 
 export interface CommentsState {
   byDoc: Readonly<Record<number, CommentsEntry>>;
@@ -28,8 +32,10 @@ export interface CommentsState {
   load: (docId: number) => void;
   setOrder: (docId: number, order: SortOrder) => void;
   setFilter: (docId: number, filter: Filter) => void;
-  toggle: (docId: number, root: number) => void;
-  expand: (docId: number, root: number) => void;
+  /** The card being edited per document (`null`: none). */
+  editing: Readonly<Record<number, Editing | null>>;
+  startEdit: (docId: number, id: number, fresh: boolean) => void;
+  stopEdit: (docId: number) => void;
   drop: (docId: number) => void;
 }
 
@@ -43,6 +49,8 @@ const sameSummary = (a: AnnotationSummary, b: AnnotationSummary): boolean =>
   a.author === b.author &&
   a.modified === b.modified &&
   a.inReplyTo === b.inReplyTo &&
+  a.state === b.state &&
+  a.detail === b.detail &&
   a.color[0] === b.color[0] &&
   a.color[1] === b.color[1] &&
   a.color[2] === b.color[2];
@@ -80,6 +88,7 @@ export const useComments = create<CommentsState>()((set, get) => {
   return {
     byDoc: {},
     views: {},
+    editing: {},
     load: (docId) => {
       const token = nextToken++;
       const before = get().byDoc[docId];
@@ -107,21 +116,13 @@ export const useComments = create<CommentsState>()((set, get) => {
     },
     setOrder: (docId, order) => patchView(docId, (view) => ({ ...view, order })),
     setFilter: (docId, filter) => patchView(docId, (view) => ({ ...view, filter })),
-    toggle: (docId, root) =>
-      patchView(docId, (view) => {
-        const expanded = new Set(view.expanded);
-        if (!expanded.delete(root)) expanded.add(root);
-        return { ...view, expanded };
-      }),
-    expand: (docId, root) =>
-      patchView(docId, (view) =>
-        view.expanded.has(root) ? view : { ...view, expanded: new Set(view.expanded).add(root) },
-      ),
+    startEdit: (docId, id, fresh) => set((state) => ({ editing: { ...state.editing, [docId]: { id, fresh } } })),
+    stopEdit: (docId) => set((state) => ({ editing: { ...state.editing, [docId]: null } })),
     drop: (docId) =>
       set((state) => {
         const without = <T>(record: Readonly<Record<number, T>>) =>
           Object.fromEntries(Object.entries(record).filter(([key]) => Number(key) !== docId)) as Record<number, T>;
-        return { byDoc: without(state.byDoc), views: without(state.views) };
+        return { byDoc: without(state.byDoc), views: without(state.views), editing: without(state.editing) };
       }),
   };
 });

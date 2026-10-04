@@ -21,6 +21,7 @@ use crate::model::ids::AssetId;
 use crate::signatures::{marks, raster, Art};
 
 /// Annotation flags (ISO 32000-1, table 165).
+const FLAG_HIDDEN: i64 = 2;
 const FLAG_PRINT: i64 = 4;
 const FLAG_NO_ZOOM: i64 = 8;
 const FLAG_NO_ROTATE: i64 = 16;
@@ -198,6 +199,8 @@ pub fn annotation_dict(
         b"RD",
         b"IRT",
         b"RT",
+        b"State",
+        b"StateModel",
         b"BS",
         b"Border",
         b"IC",
@@ -355,6 +358,10 @@ pub fn annotation_dict(
     if let Some(ap) = kept_ap {
         dict.set("AP", ap);
     }
+    // A review reply is a record for readers that list comments; it is never drawn on the page.
+    if annotation.state.is_some() {
+        flags |= FLAG_HIDDEN;
+    }
     dict.set("F", flags);
     dict.set("Rect", numbers(&rect));
     dict.set("P", Object::Reference(links.page));
@@ -387,6 +394,10 @@ pub fn annotation_dict(
     if let Some(parent) = links.reply_to {
         dict.set("IRT", Object::Reference(parent));
         dict.set("RT", name("R"));
+        if let Some(state) = annotation.state {
+            dict.set("StateModel", text_string("Review"));
+            dict.set("State", text_string(state.pdf_name()));
+        }
     }
     Some(dict)
 }
@@ -509,6 +520,9 @@ pub fn write_appearance(
     doc: &mut lopdf::Document,
     images: &mut HashMap<AssetId, ObjectId>,
 ) -> Option<ObjectId> {
+    if annotation.state.is_some() {
+        return None;
+    }
     let AnnotationBody::Signature { art: reference, .. } = &annotation.body else {
         let stream = build_stream(annotation, m)?;
         return Some(doc.add_object(stream));

@@ -35,6 +35,7 @@ import {
 import { canvasPadding, pageGap } from './model';
 import { rotatedSizes } from './transform';
 import { useFindKeys } from '../search/commands';
+import { SelectionBar } from '../textlayer/SelectionBar';
 import { useTextCopy, useTextKeys } from '../textlayer/useTextSelection';
 import { BUCKET_SETTLE_MS, PageView } from './PageView';
 import { consumeJump, publishViewRect, registerScrollSource } from './scrollBridge';
@@ -431,6 +432,7 @@ export function ViewerCanvas({ style }: { style?: CSSProperties }) {
           onDone={() => finishTransition(clone.id)}
         />
       )}
+      <SelectionBar docId={docId} region={scrollerRef} />
     </Canvas>
   );
 }

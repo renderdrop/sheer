@@ -21,6 +21,7 @@ pub mod produce;
 pub mod redact;
 pub mod redact_content;
 pub mod redact_image;
+pub mod reviews;
 pub mod save;
 
 pub use prescan::load_untrusted;

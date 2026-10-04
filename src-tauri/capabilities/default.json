@@ -25,6 +25,7 @@
     "allow-open-link",
     "allow-list-annotations",
     "allow-list-document-annotations",
+    "allow-get-annotation-quote",
     "allow-apply-command",
     "allow-get-form-fields",
     "allow-pick-pdf-sources",

@@ -580,6 +580,7 @@ mod tests {
             author: None,
             modified: None,
             in_reply_to: None,
+            state: None,
             locked: false,
             sync: Sync::New,
             body,
@@ -768,7 +769,11 @@ mod tests {
     #[test]
     fn a_typed_signature_appearance_is_made_of_curves_not_long_polylines() {
         use crate::model::annotation::{SignatureArtRef, SignatureRole};
-        let art = crate::signatures::typed::outlines("Ada Lovelace").unwrap();
+        let art = crate::signatures::typed::outlines(
+            "Ada Lovelace",
+            crate::signatures::typed::TypedFont::DancingScript,
+        )
+        .unwrap();
         let a = annotation(
             AnnotationBody::Signature {
                 bounds: rect(100.0, 100.0, 300.0, 60.0),

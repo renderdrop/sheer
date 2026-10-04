@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-get-annotation-quote"
+description = "Enables the get_annotation_quote command without any pre-configured scope."
+commands.allow = ["get_annotation_quote"]
+
+[[permission]]
+identifier = "deny-get-annotation-quote"
+description = "Denies the get_annotation_quote command without any pre-configured scope."
+commands.deny = ["get_annotation_quote"]
