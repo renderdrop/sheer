@@ -167,5 +167,5 @@ Jedes Werkzeug mit Icon und Label; maximal acht sichtbar pro Modus, der Rest unt
 Modus, Esc zurück zur Auswahl.
 
 - [x] Spec: DESIGN v2 §3.2 tool table replaced by F14 (ADR-102)
-- [ ] Shell package: mode row + tool row per F14, properties mini bar, no right sidebar, Windows menu bar restored (DESIGN §3.2–§3.4)
+- [x] Shell package: mode row + tool row per F14, properties mini bar, no right sidebar, Windows menu bar restored (DESIGN §3.2–§3.4)
 - [ ] Build the installer locally (NSIS), then STOP for the owner's feedback — R5 only after it
