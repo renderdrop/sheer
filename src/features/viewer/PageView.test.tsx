@@ -10,7 +10,7 @@ import { RenderCache, imageKey, MIN_BUDGET_BYTES } from '../../engine/renderCach
 import { RenderScheduler, type RenderBackend } from '../../engine/renderScheduler';
 import { setup } from '../../test/render';
 import { useUi } from '../../stores/ui';
-import { BUCKET_SETTLE_MS, PageView, type PageViewProps } from './PageView';
+import { BUCKET_SETTLE_MS, RENDER_RETRIES, RENDER_RETRY_MS, PageView, type PageViewProps } from './PageView';
 import { clearRenderFailure } from './renderFailure';
 import { publishViewRect } from './scrollBridge';
 
@@ -298,6 +298,31 @@ describe('the cache', () => {
   });
 });
 
+describe('a cache that was emptied under a mounted page (a save loads the file again)', () => {
+  it('asks again for the exact image, and a thumbnail that arrives first is only the stand-in', async () => {
+    const { scheduler, pending, cache } = fixture();
+    put(cache, 2);
+    setup(view(scheduler));
+    expect(pending).toHaveLength(0);
+    await act(async () => {
+      cache.dropDocument(1);
+      cache.admit(1);
+    });
+    expect(pending).toHaveLength(1);
+    expect(pending[0]?.request).toMatchObject({ pageId: 4, bucket: 2 });
+    // The thumbnail of the new file lands first (another bucket of the same page).
+    await act(async () => {
+      put(cache, -6);
+    });
+    expect(pending).toHaveLength(1);
+    await act(async () => {
+      pending[0]?.resolve(frame());
+      await Promise.resolve();
+    });
+    expect(cache.has(imageKey({ docId: 1, page: 4, rev: 0, bucket: 2 }))).toBe(true);
+  });
+});
+
 describe('a failure', () => {
   it('shows the error in the banner, once for pages that fail alike, and a page that renders afterwards clears it', async () => {
     const { scheduler, pending } = fixture();
@@ -326,6 +351,45 @@ describe('a failure', () => {
       await Promise.resolve();
     });
     expect(useUi.getState().banner).toBeNull();
+  });
+
+  it('asks again for an image whose request was withdrawn, so a stand-in of an older revision never stays for good', async () => {
+    const { scheduler, pending, cache } = fixture();
+    put(cache, 2);
+    setup(view(scheduler, { slotRev: 1 }));
+    await act(async () => {
+      vi.advanceTimersByTime(BUCKET_SETTLE_MS);
+    });
+    expect(pending).toHaveLength(1);
+    await act(async () => {
+      pending[0]?.reject({ code: 'cancelled', key: 'error.cancelled', retryable: false });
+      await Promise.resolve();
+    });
+    await act(async () => {
+      vi.advanceTimersByTime(RENDER_RETRY_MS);
+    });
+    expect(pending).toHaveLength(2);
+    expect(pending[1]?.request).toMatchObject({ pageId: 4, bucket: 2 });
+    await act(async () => {
+      pending[1]?.resolve(frame());
+      await Promise.resolve();
+    });
+    expect(cache.has(imageKey({ docId: 1, page: 4, rev: 0, slotRev: 1, bucket: 2 }))).toBe(true);
+  });
+
+  it('stops asking after a few withdrawn answers', async () => {
+    const { scheduler, pending } = fixture();
+    setup(view(scheduler));
+    for (let i = 0; i <= RENDER_RETRIES; i += 1) {
+      await act(async () => {
+        pending[i]?.reject({ code: 'cancelled', key: 'error.cancelled', retryable: false });
+        await Promise.resolve();
+      });
+      await act(async () => {
+        vi.advanceTimersByTime(RENDER_RETRY_MS * (i + 1));
+      });
+    }
+    expect(pending).toHaveLength(RENDER_RETRIES + 1);
   });
 
   it('does not touch an error that has nothing to do with rendering', async () => {

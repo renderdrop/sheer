@@ -31,6 +31,10 @@ import { boxToPage, normalizeRotation, swapsSides, type Rotation } from './trans
  */
 export const BUCKET_SETTLE_MS = 80;
 
+/** A request that came back withdrawn is asked again this many times, `RENDER_RETRY_MS` times the attempt apart. */
+export const RENDER_RETRIES = 5;
+export const RENDER_RETRY_MS = 200;
+
 /** How many earlier revisions of a page are looked at for a stand-in while the image of the new one is on its way. */
 const STAND_IN_REVS = 8;
 
@@ -221,7 +225,7 @@ export const PageView = memo(function PageView({
     (notify: () => void) => cache.subscribe(docId, pageId, notify),
     [cache, docId, pageId],
   );
-  useSyncExternalStore(
+  const cacheVersion = useSyncExternalStore(
     subscribeToPage,
     () => cache.version(docId, pageId),
     () => 0,
@@ -267,7 +271,8 @@ export const PageView = memo(function PageView({
   }, [cache, owner, shownKey]);
   useEffect(() => () => cache.unpin(owner), [cache, owner]);
 
-  // Ask for what is missing: the page, or the underlay and the tiles near the viewport.
+  // Ask for what is missing: the page, or the underlay and the tiles near the viewport. The cache version is a dependency: a save drops
+  // the document's images (the file was loaded again), and the page must ask again for what it showed, not keep a thumbnail as stand-in.
   useEffect(() => {
     const whole: ImageId = { docId, page: pageId, rev, slotRev, bucket: wholeBucket };
     const wanted: ImageId[] = [whole];
@@ -275,11 +280,26 @@ export const PageView = memo(function PageView({
     const missing = wanted.filter((id) => !cache.has(imageKey(id)));
     if (missing.length === 0) return;
     let current = true;
-    const ask = () => {
-      for (const id of missing) {
+    const timers = new Set<number>();
+    const ask = (ids: readonly ImageId[], attempt: number) => {
+      for (const id of ids) {
         scheduler.request(id, priority).then(
           (entry) => {
-            if (entry !== null) clearRenderFailure();
+            if (entry !== null) {
+              clearRenderFailure();
+              return;
+            }
+            // Withdrawn (a viewport hint overtook it, as after an edit that swaps the page) and nothing stored: the effect's inputs
+            // did not change, so nothing else would ask again, and the stand-in (a soft image of an older revision) would stay.
+            if (!current || cache.isDropped(docId) || cache.has(imageKey(id)) || attempt >= RENDER_RETRIES) return;
+            const timer = window.setTimeout(
+              () => {
+                timers.delete(timer);
+                if (current) ask([id], attempt + 1);
+              },
+              RENDER_RETRY_MS * (attempt + 1),
+            );
+            timers.add(timer);
           },
           (caught: unknown) => {
             if (current) showRenderFailure(toAppError(caught));
@@ -294,13 +314,14 @@ export const PageView = memo(function PageView({
         hasSomething = cache.best(docId, pageId, r, wholeBucket, undefined, q) !== undefined;
       }
     }
-    const timer = hasSomething ? window.setTimeout(ask, BUCKET_SETTLE_MS) : undefined;
-    if (timer === undefined) ask();
+    const timer = hasSomething ? window.setTimeout(() => ask(missing, 0), BUCKET_SETTLE_MS) : undefined;
+    if (timer === undefined) ask(missing, 0);
     return () => {
       current = false;
       window.clearTimeout(timer);
+      for (const pending of timers) window.clearTimeout(pending);
     };
-  }, [scheduler, cache, docId, pageId, rev, slotRev, wholeBucket, tiledBucket, tiles, priority]);
+  }, [scheduler, cache, docId, pageId, rev, slotRev, wholeBucket, tiledBucket, tiles, priority, cacheVersion]);
 
   // A stand-in is under the image that arrives: that one fades fast; over the bare placeholder it fades at base.
   const image = (
