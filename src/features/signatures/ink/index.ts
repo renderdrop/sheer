@@ -1,8 +1,8 @@
 /**
  * Signature ink (DESIGN 3.33, ADR-051): pointer samples to a closed outline made of cubic Béziers. One pure function serves the live
  * preview and the saved art, so what is drawn is what is saved. Pipeline: centripetal Catmull-Rom centreline (alpha 0.5), width from
- * velocity (fast thin, slow thick, eased, clamped to 0.45 to 1.5 times nominal) and pressure when the pen reports it, offset curves on
- * both sides, round caps.
+ * velocity (fast thin, slow thick, eased, clamped to 0.45 to 1.5 times nominal and never under MIN_STROKE_PX) and pressure when the pen
+ * reports it, offset curves on both sides, round caps. The samples first pass a One Euro filter (ADR-111) against hand jitter.
  */
 
 import type { PathCmd } from '../../../api/pathcmd';
@@ -24,6 +24,22 @@ export const MAX_WIDTH_FACTOR = 1.5;
 /** Speeds (px per ms) at and below which the pen is "slow" (thickest) and at and above which it is "fast" (thinnest). */
 const SLOW_SPEED = 0.2;
 const FAST_SPEED = 2.5;
+/** No stroke is ever thinner than this (px), whatever the speed or pressure. */
+export const MIN_STROKE_PX = 1.4;
+
+/**
+ * One Euro filter parameters (Casiez et al., CHI 2012; ADR-111). `minCutoff` (Hz) is the smoothing at rest: lower is smoother but laggier.
+ * `beta` raises the cutoff with speed (px/s) so fast strokes follow the pointer. `dCutoff` smooths the speed estimate.
+ * A mouse is jittery (integer pixel steps): stronger smoothing. A pen (any non-neutral pressure) is already smooth.
+ */
+export interface OneEuroParams {
+  minCutoff: number;
+  beta: number;
+  dCutoff: number;
+}
+export const MOUSE_FILTER: OneEuroParams = { minCutoff: 1.2, beta: 0.012, dCutoff: 1 };
+export const PEN_FILTER: OneEuroParams = { minCutoff: 2.4, beta: 0.025, dCutoff: 1 };
+
 /** Samples closer than this (px) to the one before are dropped. */
 const MIN_DISTANCE = 0.3;
 /** Outline points are about this far apart (px) along the centreline. */
@@ -44,6 +60,30 @@ export function widthFactor(speed: number, pressure: number): number {
   return clamp(byVelocity * byPressure, MIN_WIDTH_FACTOR, MAX_WIDTH_FACTOR);
 }
 
+const smoothingFactor = (dt: number, cutoff: number): number => 1 / (1 + 1 / (2 * Math.PI * cutoff * dt));
+
+/** One Euro filter over the sample positions (time from `t`, ms). Timestamps and pressure are kept; the first sample is exact. */
+export function oneEuro(samples: readonly InkSample[], params: OneEuroParams): InkSample[] {
+  const out: InkSample[] = [];
+  let dx = 0;
+  let dy = 0;
+  samples.forEach((s, i) => {
+    const prev = out[i - 1];
+    const prevRaw = samples[i - 1];
+    if (prev === undefined || prevRaw === undefined) {
+      out.push({ ...s });
+      return;
+    }
+    const dt = Math.max(1, s.t - prevRaw.t) / 1000;
+    const ad = smoothingFactor(dt, params.dCutoff);
+    dx += ad * ((s.x - prevRaw.x) / dt - dx);
+    dy += ad * ((s.y - prevRaw.y) / dt - dy);
+    const a = smoothingFactor(dt, params.minCutoff + params.beta * Math.hypot(dx, dy));
+    out.push({ ...s, x: prev.x + a * (s.x - prev.x), y: prev.y + a * (s.y - prev.y) });
+  });
+  return out;
+}
+
 interface Node {
   p: Vec;
   /** Half width in px. */
@@ -51,13 +91,15 @@ interface Node {
 }
 
 function prepare(samples: readonly InkSample[], width: number): Node[] {
-  const kept: InkSample[] = [];
+  const dedup: InkSample[] = [];
   for (const s of samples) {
     if (!Number.isFinite(s.x) || !Number.isFinite(s.y)) continue;
-    const last = kept[kept.length - 1];
+    const last = dedup[dedup.length - 1];
     if (last !== undefined && Math.hypot(s.x - last.x, s.y - last.y) < MIN_DISTANCE) continue;
-    kept.push(s);
+    dedup.push(s);
   }
+  const isPen = dedup.some((s) => Math.abs(s.pressure - 0.5) > 1e-6);
+  const kept = oneEuro(dedup, isPen ? PEN_FILTER : MOUSE_FILTER);
   const seg: number[] = [];
   for (let i = 0; i + 1 < kept.length; i += 1) {
     const a = kept[i];
@@ -74,7 +116,10 @@ function prepare(samples: readonly InkSample[], width: number): Node[] {
     const prev = speed;
     speed = prev.map((v, i) => ((prev[i - 1] ?? v) + 2 * v + (prev[i + 1] ?? v)) / 4);
   }
-  return kept.map((s, i) => ({ p: [s.x, s.y], h: (width * widthFactor(speed[i] ?? 0, s.pressure)) / 2 }));
+  return kept.map((s, i) => ({
+    p: [s.x, s.y],
+    h: Math.max(MIN_STROKE_PX, width * widthFactor(speed[i] ?? 0, s.pressure)) / 2,
+  }));
 }
 
 /** Cubic Bézier control points of the centripetal Catmull-Rom segment p1 to p2 (alpha 0.5). */

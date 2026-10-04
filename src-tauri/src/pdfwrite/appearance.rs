@@ -828,7 +828,7 @@ mod tests {
         use crate::model::annotation::{SignatureArtRef, SignatureRole};
         let art = crate::signatures::typed::outlines(
             "Ada Lovelace",
-            crate::signatures::typed::TypedFont::DancingScript,
+            crate::signatures::typed::TypedFont::MsMadi,
         )
         .unwrap();
         let a = annotation(

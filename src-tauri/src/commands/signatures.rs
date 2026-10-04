@@ -3,7 +3,7 @@
 //! | Command | Arguments | Returns |
 //! |---|---|---|
 //! | `create_drawn_signature` | `role`, `outlines: DrawCmd[][]` (cubic Bézier outlines in pad pixels; `['M',x,y]`, `['L',x,y]`, `['C',x1,y1,x2,y2,x,y]`, `['Z']`) | `SignatureDraft`; validated (at most 64 paths, 20 000 commands), trimmed and scaled to 1 000 units high by Rust, never simplified |
-//! | `create_typed_signature` | `role`, `text` (1 to 64 characters, no control characters), `font: "dancingScript" | "greatVibes" | "alexBrush"` | `SignatureDraft`; `invalid_argument` (`glyph`) for a character the font lacks |
+//! | `create_typed_signature` | `role`, `text` (1 to 64 characters, no control characters), `font: "msMadi" | "hurricane" | "birthstone"` | `SignatureDraft`; `invalid_argument` (`glyph`) for a character the font lacks |
 //! | `import_signature_image` | `role`, `removeBackground` | `SignatureDraft`, or `null` if the native dialog was cancelled; PNG or JPEG, at most 10 MiB and 4 000 px a side, re-encoded as a PNG without metadata, at most 3 000 px on the long side (never upscaled), near-white fades to transparent |
 //! | `save_draft_signature` | `draftId`, `name` | the library's `ItemInfo` of the new entry (the art never crosses IPC for it) |
 //! | `discard_signature_draft` | `draftId` | nothing; frees the draft (a draft that is gone already is not an error) |

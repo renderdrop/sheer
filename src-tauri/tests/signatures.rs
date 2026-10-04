@@ -170,7 +170,7 @@ fn every_kind_is_saved_with_an_appearance_and_pdfium_reads_it_back() {
         )
         .unwrap();
     let typed = state
-        .create_typed_signature(SignatureRole::Initials, "A.L.", TypedFont::DancingScript)
+        .create_typed_signature(SignatureRole::Initials, "A.L.", TypedFont::MsMadi)
         .unwrap();
     let SignatureArt::Vector { paths, .. } = &typed.art else {
         panic!("typed art is vector")
@@ -574,11 +574,7 @@ fn the_image_import_enforces_its_limits() {
 fn a_typed_signature_has_outlines_and_bad_text_is_refused() {
     let Some(state) = state() else { return };
     let draft = state
-        .create_typed_signature(
-            SignatureRole::Signature,
-            "Grace Hopper",
-            TypedFont::DancingScript,
-        )
+        .create_typed_signature(SignatureRole::Signature, "Grace Hopper", TypedFont::MsMadi)
         .unwrap();
     let SignatureArt::Vector { w, h, paths } = draft.art else {
         panic!("vector")
@@ -586,7 +582,7 @@ fn a_typed_signature_has_outlines_and_bad_text_is_refused() {
     assert!(w > h && !paths.is_empty());
     for text in ["", "a\u{0}b", "\u{4E2D}"] {
         assert!(state
-            .create_typed_signature(SignatureRole::Signature, text, TypedFont::DancingScript)
+            .create_typed_signature(SignatureRole::Signature, text, TypedFont::MsMadi)
             .is_err());
     }
 }
@@ -595,9 +591,9 @@ fn a_typed_signature_has_outlines_and_bad_text_is_refused() {
 fn every_typed_font_has_non_empty_outlines() {
     let Some(state) = state() else { return };
     for font in [
-        TypedFont::DancingScript,
-        TypedFont::GreatVibes,
-        TypedFont::AlexBrush,
+        TypedFont::MsMadi,
+        TypedFont::Hurricane,
+        TypedFont::Birthstone,
     ] {
         let draft = state
             .create_typed_signature(SignatureRole::Signature, "Grace Hopper", font)
@@ -613,7 +609,7 @@ fn every_typed_font_has_non_empty_outlines() {
     }
     // Edge: a single glyph still has an outline.
     assert!(state
-        .create_typed_signature(SignatureRole::Signature, "G", TypedFont::AlexBrush)
+        .create_typed_signature(SignatureRole::Signature, "G", TypedFont::Birthstone)
         .is_ok());
 }
 
@@ -801,7 +797,7 @@ fn a_saved_typed_signature_is_smooth_at_400_percent() {
     let scratch = Scratch::new("smooth");
     let (id, path) = open(state, &scratch, "doc.pdf", &blank());
     let typed = state
-        .create_typed_signature(SignatureRole::Signature, "Sheer", TypedFont::DancingScript)
+        .create_typed_signature(SignatureRole::Signature, "Sheer", TypedFont::MsMadi)
         .unwrap();
     let SignatureArt::Vector { w, h, paths } = typed.art.clone() else {
         panic!("typed art is vector")

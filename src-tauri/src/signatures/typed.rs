@@ -1,5 +1,5 @@
-//! Typed signatures (ADR-041 §6, ADR-051 §3, ADR-058/059): a name laid out with one of three bundled SIL OFL 1.1 fonts (Dancing Script,
-//! Great Vibes, Alex Brush; files and `OFL-*.txt` in `resources/fonts/`) and turned into path commands with `skrifa`: quadratic segments are raised
+//! Typed signatures (ADR-041 §6, ADR-051 §3, ADR-058/059/108): a name laid out with one of three bundled SIL OFL 1.1 fonts (Ms Madi,
+//! Hurricane, Birthstone; files and `OFL-*.txt` in `resources/fonts/`) and turned into path commands with `skrifa`: quadratic segments are raised
 //! exactly to cubic, cubic ones kept, nothing is flattened. This is the only module that uses `skrifa`.
 //! The font is compiled in: no path to read at run time, no system fonts, no font in the PDF.
 
@@ -17,19 +17,19 @@ use serde::Deserialize;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum TypedFont {
-    DancingScript,
-    GreatVibes,
-    AlexBrush,
+    MsMadi,
+    Hurricane,
+    Birthstone,
 }
 
 impl TypedFont {
-    pub const ALL: [TypedFont; 3] = [Self::DancingScript, Self::GreatVibes, Self::AlexBrush];
+    pub const ALL: [TypedFont; 3] = [Self::MsMadi, Self::Hurricane, Self::Birthstone];
 
     fn bytes(self) -> &'static [u8] {
         match self {
-            Self::DancingScript => include_bytes!("../../resources/fonts/DancingScript.ttf"),
-            Self::GreatVibes => include_bytes!("../../resources/fonts/GreatVibes-Regular.ttf"),
-            Self::AlexBrush => include_bytes!("../../resources/fonts/AlexBrush-Regular.ttf"),
+            Self::MsMadi => include_bytes!("../../resources/fonts/MsMadi-Regular.ttf"),
+            Self::Hurricane => include_bytes!("../../resources/fonts/Hurricane-Regular.ttf"),
+            Self::Birthstone => include_bytes!("../../resources/fonts/Birthstone-Regular.ttf"),
         }
     }
 }
@@ -159,7 +159,7 @@ mod tests {
             .unwrap_or(ErrorCode::Internal)
     }
 
-    const D: TypedFont = TypedFont::DancingScript;
+    const D: TypedFont = TypedFont::MsMadi;
 
     #[test]
     fn every_font_has_outlines_with_curves() {
@@ -176,10 +176,33 @@ mod tests {
     }
 
     #[test]
+    fn every_font_renders_a_name_and_umlauts_to_non_empty_outlines() {
+        assert_eq!(
+            TypedFont::ALL,
+            [
+                TypedFont::MsMadi,
+                TypedFont::Hurricane,
+                TypedFont::Birthstone
+            ]
+        );
+        for font in TypedFont::ALL {
+            for text in ["Dijana Kornelsen", "äöüß ÄÖÜ"] {
+                let Art::Vector { paths, .. } = outlines(text, font)
+                    .unwrap_or_else(|e| panic!("{font:?} {text}: {:?}", e.code()))
+                else {
+                    panic!("not vector")
+                };
+                assert!(
+                    paths.iter().map(Vec::len).sum::<usize>() > 10,
+                    "{font:?} {text}"
+                );
+            }
+        }
+    }
+
+    #[test]
     fn a_name_has_outlines() {
-        let Art::Vector { w, h, paths } =
-            outlines("Ada Lovelace", TypedFont::DancingScript).unwrap()
-        else {
+        let Art::Vector { w, h, paths } = outlines("Ada Lovelace", D).unwrap() else {
             panic!("not vector")
         };
         assert_eq!(h, vector::UNIT_HEIGHT);

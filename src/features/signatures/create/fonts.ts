@@ -2,12 +2,12 @@ import type { TypedFont } from '../../../api/signatures';
 
 /** The typed signature fonts (DESIGN 3.60, ADR-058/059): bundled SIL OFL 1.1 TTFs, turned into outlines by the backend. */
 export const SIGNATURE_FONTS: readonly { id: TypedFont; name: string }[] = [
-  { id: 'dancingScript', name: 'Dancing Script' },
-  { id: 'greatVibes', name: 'Great Vibes' },
-  { id: 'alexBrush', name: 'Alex Brush' },
+  { id: 'msMadi', name: 'Ms Madi' },
+  { id: 'hurricane', name: 'Hurricane' },
+  { id: 'birthstone', name: 'Birthstone' },
 ];
 
-export const DEFAULT_FONT: TypedFont = 'dancingScript';
+export const DEFAULT_FONT: TypedFont = 'msMadi';
 
 const FONT_KEY = 'signatureFont';
 const ITEM_FONTS_KEY = 'sheer.signatureItemFonts';

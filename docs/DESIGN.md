@@ -363,7 +363,7 @@ States apply to all: hover ≤ background/border/icon colour change; pressed sca
 | Thumbnail card | §3.2 | border Stone | selected §2.2 | |
 | Doc card / tool row / nav row | §3.1 | Sand | | |
 
-**Signature sheet:** White (sheet exception to Sand dialogs), radius dialog, width `--sheet-width-wide`; tabs Zeichnen / Tippen / Bild; pad: Sand, 1px Stone baseline at 75 % height, drawn as a separate element and never exported; ink choice Ink / #1F3A93 as two swatches. Tippen: three cards (`--sig-font-card-*`) in Dancing Script, Great Vibes, Alex Brush (OFL, bundled); Homemade Apple is removed.
+**Signature sheet:** White (sheet exception to Sand dialogs), radius dialog, width `--sheet-width-wide`; tabs Zeichnen / Tippen / Bild; pad: Sand, 1px Stone baseline at 75 % height, drawn as a separate element and never exported; ink choice Ink / #1F3A93 as two swatches. Tippen: three cards (`--sig-font-card-*`) in Ms Madi (default), Hurricane, Birthstone (OFL, bundled; owner pick, ADR-108); Homemade Apple is removed.
 
 **Cursors:** per tool SVG at 2× DPR (MOTION spell 12); default arrow elsewhere.
 

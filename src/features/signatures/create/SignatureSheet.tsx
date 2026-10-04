@@ -135,9 +135,9 @@ function SheetBody({ id, kind }: { id: number; kind: SignatureRole }) {
   // The style cards preview the name (or the placeholder) in every font; the chosen font's draft is the one that is made.
   const shown = text.trim() === '' ? t('sign.typePlaceholder') : text;
   const typedByFont = {
-    dancingScript: useTypedDraft(kind, shown, 'dancingScript', tab === 'type', kept),
-    greatVibes: useTypedDraft(kind, shown, 'greatVibes', tab === 'type', kept),
-    alexBrush: useTypedDraft(kind, shown, 'alexBrush', tab === 'type', kept),
+    msMadi: useTypedDraft(kind, shown, 'msMadi', tab === 'type', kept),
+    hurricane: useTypedDraft(kind, shown, 'hurricane', tab === 'type', kept),
+    birthstone: useTypedDraft(kind, shown, 'birthstone', tab === 'type', kept),
   };
   const typed = typedByFont[font];
   const arts = Object.fromEntries(SIGNATURE_FONTS.map(({ id }) => [id, typedByFont[id].draft?.art ?? null])) as Record<

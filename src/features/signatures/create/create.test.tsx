@@ -72,16 +72,16 @@ describe('typed font picker', () => {
     await user.type(await screen.findByRole('textbox'), 'Ada');
     const group = await screen.findByRole('radiogroup', { name: 'Style' });
     expect(group.querySelectorAll('[role="radio"]')).toHaveLength(3);
-    expect(screen.getByRole('radio', { name: 'Dancing Script' }).getAttribute('aria-checked')).toBe('true');
-    await user.click(screen.getByRole('radio', { name: 'Great Vibes' }));
-    expect(window.localStorage.getItem('signatureFont')).toBe('greatVibes');
+    expect(screen.getByRole('radio', { name: 'Ms Madi' }).getAttribute('aria-checked')).toBe('true');
+    await user.click(screen.getByRole('radio', { name: 'Hurricane' }));
+    expect(window.localStorage.getItem('signatureFont')).toBe('hurricane');
     // Arrow keys move and select, wrapping.
-    screen.getByRole('radio', { name: 'Great Vibes' }).focus();
+    screen.getByRole('radio', { name: 'Hurricane' }).focus();
     await user.keyboard('{ArrowRight}');
-    expect(screen.getByRole('radio', { name: 'Alex Brush' }).getAttribute('aria-checked')).toBe('true');
+    expect(screen.getByRole('radio', { name: 'Birthstone' }).getAttribute('aria-checked')).toBe('true');
     await user.keyboard('{ArrowRight}');
-    expect(screen.getByRole('radio', { name: 'Dancing Script' }).getAttribute('aria-checked')).toBe('true');
-    expect(document.activeElement).toBe(screen.getByRole('radio', { name: 'Dancing Script' }));
+    expect(screen.getByRole('radio', { name: 'Ms Madi' }).getAttribute('aria-checked')).toBe('true');
+    expect(document.activeElement).toBe(screen.getByRole('radio', { name: 'Ms Madi' }));
   });
 
   it('starts with the font of last time, and a removed font falls back to the default', async () => {
@@ -91,7 +91,7 @@ describe('typed font picker', () => {
     act(() => {
       void openSignatureSheet('signature');
     });
-    expect((await screen.findByRole('radio', { name: 'Dancing Script' })).getAttribute('aria-checked')).toBe('true');
+    expect((await screen.findByRole('radio', { name: 'Ms Madi' })).getAttribute('aria-checked')).toBe('true');
   });
 });
 
@@ -111,9 +111,9 @@ describe('signature sheet', () => {
     await waitFor(() =>
       expect(sig.createTypedSignature).toHaveBeenLastCalledWith('signature', 'Ada', expect.any(String)),
     );
-    expect(sig.createTypedSignature).toHaveBeenCalledWith('signature', 'Ada', 'dancingScript');
-    expect(sig.createTypedSignature).toHaveBeenCalledWith('signature', 'Ada', 'greatVibes');
-    expect(sig.createTypedSignature).toHaveBeenCalledWith('signature', 'Ada', 'alexBrush');
+    expect(sig.createTypedSignature).toHaveBeenCalledWith('signature', 'Ada', 'msMadi');
+    expect(sig.createTypedSignature).toHaveBeenCalledWith('signature', 'Ada', 'hurricane');
+    expect(sig.createTypedSignature).toHaveBeenCalledWith('signature', 'Ada', 'birthstone');
     const create = screen.getByRole('button', { name: 'Create' });
     await waitFor(() => expect(create.getAttribute('aria-disabled')).toBeNull());
     await user.click(create);
@@ -125,10 +125,10 @@ describe('signature sheet', () => {
 
   it('a draft replaced while typing is discarded, and one handed out is kept', async () => {
     lib.listSignatures.mockResolvedValue({ status: 'unavailable', items: [] });
-    // Dancing Script (the default font) is draft 1 for "A" and 2 for "Ab"; the other fonts' previews get ids from 10 up.
+    // Ms Madi (the default font) is draft 1 for "A" and 2 for "Ab"; the other fonts' previews get ids from 10 up.
     let other = 10;
     sig.createTypedSignature.mockImplementation((_role: string, text: string, font: string) =>
-      Promise.resolve({ id: font === 'dancingScript' ? text.length : ++other, role: 'signature', art }),
+      Promise.resolve({ id: font === 'msMadi' ? text.length : ++other, role: 'signature', art }),
     );
     const { user } = setup(<SignatureSheetHost />);
     let result: unknown = 'pending';
@@ -139,7 +139,7 @@ describe('signature sheet', () => {
     });
     const field = await screen.findByRole('textbox');
     await user.type(field, 'A');
-    await waitFor(() => expect(sig.createTypedSignature).toHaveBeenCalledWith('signature', 'A', 'dancingScript'));
+    await waitFor(() => expect(sig.createTypedSignature).toHaveBeenCalledWith('signature', 'A', 'msMadi'));
     await user.type(field, 'b');
     await waitFor(() => expect(sig.discardSignatureDraft).toHaveBeenCalledWith(1));
     const create = screen.getByRole('button', { name: 'Create' });
