@@ -9,7 +9,6 @@ import { renderScheduler, type RenderScheduler } from '../../engine/renderSchedu
 import { useT } from '../../i18n';
 import { DURATION, ENTER_SCALE, FADE_END_SLACK_MS, SPRING } from '../../lib/motion';
 import { pageRevOf, useAnnotations } from '../../stores/annotations';
-import { useUi } from '../../stores/ui';
 import { AnnotationLayer } from '../annotations/layer/AnnotationLayer';
 import { CropLayer } from '../crop/CropLayer';
 import { FormLayer } from '../forms/FormLayer';
@@ -21,6 +20,7 @@ import { PageOverlay } from '../textlayer/PageOverlay';
 import { Skeleton } from '../../components';
 import { runsOf } from '../textlayer/runs';
 import { hasFileRotation } from './fileRotation';
+import { textPointer, useEffectiveTool } from './lesen';
 import { clearRenderFailure, showRenderFailure } from './renderFailure';
 import { readViewRect, subscribeViewRect } from './scrollBridge';
 import { boxToPage, normalizeRotation, swapsSides, type Rotation } from './transform';
@@ -359,7 +359,7 @@ export const PageView = memo(function PageView({
   const text = usePageText(docId, pageId, priority === 'visible');
   const hasText = text.status === 'ready' && runsOf(text.layer).length > 0;
   const noText = text.status === 'ready' && !hasText;
-  const interactive = useUi((state) => state.activeTool === 'select');
+  const interactive = textPointer(useEffectiveTool());
 
   const pageRef = useRef<HTMLDivElement | null>(null);
   const reduce = useReducedMotion() === true;

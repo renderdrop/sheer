@@ -8,6 +8,7 @@ import { useDocuments } from '../../stores/documents';
 import { pageIdAt, positionOf } from '../../stores/pages';
 import { useUi } from '../../stores/ui';
 import { useView } from '../../stores/view';
+import { textPointer } from '../viewer/lesen';
 import { peekLayer } from './cache';
 import { hasTextSelection, selectPageText, selectionText } from './selection';
 
@@ -59,7 +60,7 @@ export function useTextKeys(region: RefObject<HTMLElement | null>, docId: number
         if (selectPageText(element, page, window.getSelection())) event.preventDefault();
         return;
       }
-      if (event.key === 'Escape' && useUi.getState().activeTool === 'select') {
+      if (event.key === 'Escape' && textPointer(useUi.getState().activeTool)) {
         const selection = window.getSelection();
         if (hasTextSelection(selection)) {
           selection?.removeAllRanges();

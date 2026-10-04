@@ -10,6 +10,7 @@ import { useUi } from '../../stores/ui';
 import { markSelection } from '../annotations/create/fromSelection';
 import { onAddComment } from '../../actions/commentIntent';
 import { addCommentFromSelection } from './comment';
+import { textPointer } from '../viewer/lesen';
 import { hasTextSelection } from './selection';
 
 /** A text selection settles this long after the pointer was released, or after the last key of a keyboard selection. */
@@ -68,7 +69,7 @@ export interface SelectionBarProps {
  */
 export function SelectionBar({ docId, region }: SelectionBarProps) {
   const t = useT();
-  const select = useUi((state) => state.activeTool === 'select');
+  const select = useUi((state) => textPointer(state.activeTool));
   const motionProps = usePopoverMotion();
   const barRef = useRef<HTMLDivElement | null>(null);
   const [rects, setRects] = useState<ReturnType<typeof selectionRects>>(null);

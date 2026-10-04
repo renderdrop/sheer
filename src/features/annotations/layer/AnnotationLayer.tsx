@@ -3,9 +3,9 @@ import { memo, useEffect, useMemo, useState, type CSSProperties } from 'react';
 import type { Annotation } from '../../../api/annotations';
 import { useT } from '../../../i18n';
 import { annotationsOnPage, useAnnotations, type AnnotationsState } from '../../../stores/annotations';
-import { useUi } from '../../../stores/ui';
 import { PlacementLayer } from '../../signatures/place/PlacementLayer';
 import { fileRotationOf } from '../../viewer/fileRotation';
+import { useEffectiveTool } from '../../viewer/lesen';
 import { normalizeRotation, overlayBox, swapsSides, totalRotation, unrotatedSize } from '../../viewer/transform';
 import { CreationLayer } from '../create';
 import { FreeTextEditor } from '../note/FreeTextEditor';
@@ -144,7 +144,7 @@ export const AnnotationLayer = memo(function AnnotationLayer({
     () => new Set(selectionKey === '' ? [] : selectionKey.split(',').map(Number)),
     [selectionKey],
   );
-  const selectActive = useUi((state) => state.activeTool === 'select');
+  const selectActive = useEffectiveTool() === 'select';
   const [hover, setHover] = useState<number | null>(null);
   /** The annotation the Text or Note tool just made: its editor (free text) or popover (note) is open until it is done. */
   const [editing, setEditing] = useState<{ id: number; kind: 'freeText' | 'note'; fresh: boolean } | null>(null);

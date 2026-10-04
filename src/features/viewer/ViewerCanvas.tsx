@@ -16,6 +16,9 @@ import { useDocView, useView } from '../../stores/view';
 import { OpenClone } from './OpenClone';
 import { entranceFor, finishTransition, isFresh, resolveFresh, useTransition, type SourceRect } from './openTransition';
 import { Canvas } from './Canvas';
+import { useLesenKeys } from './lesen';
+import { Magnifier } from './Magnifier';
+import { usePan } from './usePan';
 import {
   EMPTY_WINDOW,
   PageLayout,
@@ -111,6 +114,8 @@ export function ViewerCanvas({ style }: { style?: CSSProperties }) {
   useTextCopy();
   useFindKeys();
   useTextKeys(scrollerRef, docId);
+  useLesenKeys();
+  usePan(scrollerRef);
 
   const { zoom, scrollMode, pageIndex, pageCount, anchor } = view;
   const paged = isPaged(scrollMode);
@@ -437,6 +442,7 @@ export function ViewerCanvas({ style }: { style?: CSSProperties }) {
         />
       )}
       <SelectionBar docId={docId} region={scrollerRef} />
+      <Magnifier region={scrollerRef} />
     </Canvas>
   );
 }
