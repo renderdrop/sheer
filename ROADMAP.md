@@ -232,16 +232,16 @@ Order as in the brief. Each phase ends with one designer round on Tauri-window s
 - [x] Package 0 — docs/DESIGN.md v2 + docs/MOTION.md v2 (designer, from BRAND + moodboard + brief; blocks all visual work)
 - [x] B1 — Favourites ("Markiert") and "Show in Explorer/Finder" for recent files (Rust + src/api)
 - [x] R0.1 — tokens.css rewritten (BRAND §24 + semantic tokens), role layer re-pointed, glass recipes flat, legacy aliases marked
-- [ ] R0.2 — Lint gate: no hex/rgb/hsl outside tokens.css, no backdrop-filter, no prefers-color-scheme, token-only shadows/radii/durations
-- [ ] R0.3 — Dark mode and glass setting removed (tokens, settings + one-time migration, data-theme, tests, UI scripts)
-- [ ] R0.4 — Inter bundled (OFL, woff2 Latin + Latin Ext), type scale utilities (.t-display … .t-caption), tabular-nums
-- [ ] R0.5 — Icon audit: Lucide stroke 1.75, sizes 16/18/20 (24 for large actions), monochrome; own icons removed or redrawn
-- [ ] R0.6 — BrandSurface, WorkSurface and SolarGlow primitives
+- [x] R0.2 — Lint gate: no hex/rgb/hsl outside tokens.css, no backdrop-filter, no prefers-color-scheme, token-only shadows/radii/durations
+- [x] R0.3 — Dark mode and glass setting removed (tokens, settings + one-time migration, data-theme, tests, UI scripts)
+- [x] R0.4 — Inter bundled (OFL, woff2 Latin + Latin Ext), type scale utilities (.t-display … .t-caption), tabular-nums
+- [x] R0.5 — Icon audit: Lucide stroke 1.75, sizes 16/18/20 (24 for large actions), monochrome; own icons removed or redrawn
+- [x] R0.6 — BrandSurface, WorkSurface and SolarGlow primitives
 - [ ] R0 acceptance — Inter visible in the Tauri window, no dark/glass/backdrop leftovers, designer round
 - [x] R1.1 — Word mark SVGs as paths (primary with claim, secondary, mono ink)
 - [x] R1.2 — App icon "s." in three variants, measured optical centering (< 1 %), platform icons via `tauri icon`
 - [x] R1.3 — Installer art (NSIS header/sidebar) in brand mode
-- [ ] R1.4 — Welcome PDF "Welcome to sheer." in the new layout
+- [x] R1.4 — Welcome PDF "Welcome to sheer." in the new layout
 - [ ] R1.5 — About dialog, README head, release-notes template; APP_NAME "sheer." in UI text
 - [ ] R1 acceptance — icons in Explorer, word mark in Home, installer built locally, designer round
 - [ ] R2.1 — Home: left navigation (Home, Recent, Starred, Tools), hero (Sand, glow, display type, search with `/`, yellow open button)
@@ -268,6 +268,7 @@ Order as in the brief. Each phase ends with one designer round on Tauri-window s
 - [ ] Politur v1.2 — reviewer/designer minors of v1.2 plus the still-valid items of "v1.2 polish" above
   - (B1 review/security, minor) reveal: test that a UNC/network recent is refused; `metadata().is_file()` before reveal (+ SECURITY I5 clause); `starred` field order under the `missing` comment in recents.rs; a refused star (49 cap) needs its own error code or a quiet tooltip, not `not_found`
   - (R1 review, minor) gen-installer-art.mjs reads the old logo.svg (dead); delete assets/brand/logo.svg and "Sheer — Logo & Farbe.html" once unused; brand claim test checks tracking/weight only via the up-to-date test; LICENSES skrifa row also covers tests/brand_assets.rs; word mark without GPOS kerning (tracking only)
+  - (R0b reviews, minor) LICENSES objc2-app-kit row stale (transitive only); settings.rs RETIRED_KEYS comment says "first write" (startup rewrite); brandRules comment stripper eats `//` inside strings; brandRules non-vacuity check wants a minimum file count; `--font-display` duplicates `--font-sans`; Surface.tsx spreads `rest` after `data-surface`; WorkSurface wraps only panel/canvas/inspector (wrap the whole editor in R3); SolarGlow `drop` needs an opacity variable (R5 spell 4); tauri.conf backgroundColor hex outside tokens (record in DECISIONS)
+  - (welcome review, minor) page 1 glow runs under the footer; page 3 highlight card has no Solar cue; task-page headings in Helvetica-Bold (BRAND: no bold headings) — use regular; top-right page number duplicates the footer
   - (P-A review, minor) legacy alias block still carries v1.1 `--annot-*` hex values (remove with the §1.4 palette migration, R4.3); rename `--color-surface-solid`; `text-accent` left in IconButton.tsx (yellow on Ink); legacy `--spacing-*` slot aliases (hub, logo, caption) go with R2/R3; `--panel-*` 192/248/400 and `--inspector-width` 288 keep v1.1 values until R3 (Rust limits.rs + layout tests)
-  - (flaky) fuzz_corpus `a_self_calling_form_xobject_ends_in_a_typed_error_and_the_engine_recovers` panicked once under parallel cargo load (passes alone, 21 s): widen its deadline or serialise it
 - [ ] R7 — Screenshot series docs/review/v1.2, designer review vs BRAND §2, smoke, gates, audits, CI green, CHANGELOG, tag v1.2.0
