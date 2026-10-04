@@ -137,7 +137,7 @@ export const OrganizeCell = memo(function OrganizeCell({
       data-index={index}
       tabIndex={tabStop ? 0 : -1}
       className={cx(
-        'absolute start-0 top-0 flex touch-none cursor-pointer select-none flex-col items-center gap-1 rounded-sm p-0-5 transition-[transform,opacity,background-color] duration-base ease-spring',
+        'absolute start-0 top-0 flex touch-none cursor-pointer select-none flex-col items-center gap-2 rounded-sm p-1 transition-[transform,opacity,background-color] duration-base ease-out',
         selected ? 'bg-selected' : 'hover:bg-control-hover',
         dragged && 'opacity-40',
       )}
@@ -146,7 +146,7 @@ export const OrganizeCell = memo(function OrganizeCell({
       <div className="flex shrink-0 items-center justify-center" style={{ width: thumb, height: thumb }}>
         <div
           ref={pageRef}
-          className="pulse-target relative overflow-hidden rounded-xs bg-page shadow-page [--pulse-radius:var(--radius-xs)]"
+          className="pulse-target relative overflow-hidden rounded-sm bg-page shadow-page [--pulse-radius:var(--radius-sm)]"
           style={{ width: size.width, height: size.height }}
         >
           {shown !== undefined && (
@@ -168,7 +168,7 @@ export const OrganizeCell = memo(function OrganizeCell({
       <span
         aria-hidden="true"
         className={cx(
-          'inline-flex h-(--pill-height) min-w-3 items-center justify-center rounded-pill px-1 text-xs tabular-nums',
+          'inline-flex h-(--pill-height) min-w-6 items-center justify-center rounded-pill px-2 text-xs tabular-nums',
           selected ? 'bg-accent text-on-accent' : 'bg-tile text-text',
         )}
       >

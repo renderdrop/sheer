@@ -121,12 +121,12 @@ function CompressModal() {
     <Modal labelledBy={`${id}-title`} width="w-dialog-md" onClose={cancel}>
       <ModalHeader id={`${id}-title`} icon={<Icon icon={FileArchive} />} title={t('compress.title')} />
       {estimate !== undefined && estimate !== null && (
-        <p className="m-0 mt-1 text-sm text-text-muted">
+        <p className="m-0 mt-2 text-sm text-text-muted">
           {t('compress.now', { size: formatSize(estimate.current, locale) })}
         </p>
       )}
       {/* The body keeps its height while the job runs: the presets only become invisible under the bar. */}
-      <div className="relative mt-2">
+      <div className="relative mt-4">
         <div className={run.running || noGain ? 'invisible' : ''} inert={run.running || noGain ? true : undefined}>
           <RadioGroup
             label={t('compress.presets')}
@@ -138,7 +138,7 @@ function CompressModal() {
               value,
               label: names[value],
               content: (
-                <span className="flex w-full items-center gap-1">
+                <span className="flex w-full items-center gap-2">
                   <span className="flex min-w-0 flex-auto flex-col">
                     <span className="font-semibold">{names[value]}</span>
                     <span className="text-sm font-normal text-text-muted">{hints[value]}</span>
@@ -162,7 +162,7 @@ function CompressModal() {
             orientation="vertical"
             value={after}
             onChange={setAfter}
-            className="mt-1-5"
+            className="mt-3"
             options={[
               { value: 'new', label: t('compress.openNew'), content: t('compress.openNew') },
               { value: 'file', label: t('compress.saveAs'), content: t('compress.saveAs') },
@@ -170,7 +170,7 @@ function CompressModal() {
           />
         </div>
         {(run.running || noGain) && (
-          <div className="absolute inset-0 flex flex-col justify-center gap-1">
+          <div className="absolute inset-0 flex flex-col justify-center gap-2">
             {run.running ? (
               <>
                 <ProgressBar label={t('compress.working')} done={progress?.done ?? 0} total={progress?.total ?? 0} />
@@ -189,7 +189,7 @@ function CompressModal() {
         )}
       </div>
       <JobError error={run.error} />
-      <div className="mt-2 flex items-center justify-end gap-1">
+      <div className="mt-4 flex items-center justify-end gap-2">
         {noGain ? (
           <Button variant="primary" data-autofocus="" onClick={closeSheet}>
             {t('compress.close')}

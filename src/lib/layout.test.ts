@@ -23,16 +23,16 @@ describe('the columns of DESIGN 2', () => {
     const wide = layout({ windowWidth: 1280, inspector: 'open' });
     expect(wide.mode).toBe('document');
     expect(wide.tracks).toEqual([
-      { slot: 'gutter-start', size: 'var(--space-1)' },
+      { slot: 'gutter-start', size: 'var(--space-2)' },
       { slot: 'left', size: '248px' },
       { slot: 'splitter', size: 'var(--splitter-width)' },
       { slot: 'canvas', size: 'minmax(var(--canvas-min), 1fr)' },
-      { slot: 'gap', size: 'var(--space-1)' },
+      { slot: 'gap', size: 'var(--space-2)' },
       { slot: 'inspector', size: 'var(--inspector-width)' },
-      { slot: 'gutter-end', size: 'var(--space-1)' },
+      { slot: 'gutter-end', size: 'var(--space-2)' },
     ]);
     expect(wide.columns).toBe(
-      'var(--space-1) 248px var(--splitter-width) minmax(var(--canvas-min), 1fr) var(--space-1) var(--inspector-width) var(--space-1)',
+      'var(--space-2) 248px var(--splitter-width) minmax(var(--canvas-min), 1fr) var(--space-2) var(--inspector-width) var(--space-2)',
     );
     expect(wide.column).toEqual({
       'gutter-start': 1,
@@ -59,7 +59,7 @@ describe('the columns of DESIGN 2', () => {
     const empty = layout({ hasDocument: false, windowWidth: 1600, inspector: 'open', inspectorContent: true });
     expect(empty.mode).toBe('empty');
     expect(empty.tracks.map((track) => track.slot)).toEqual(['gutter-start', 'canvas', 'gutter-end']);
-    expect(empty.columns).toBe('var(--space-1) minmax(0, 1fr) var(--space-1)');
+    expect(empty.columns).toBe('var(--space-2) minmax(0, 1fr) var(--space-2)');
     expect(empty.inspectorReserved).toBe(false);
     expect(empty.inspectorVisible).toBe(false);
     expect(empty.canvasWidth).toBe(1600 - 2 * LAYOUT.gutter);
@@ -170,7 +170,7 @@ describe('the inspector', () => {
       expect(quiet.tracks.slice(-3).map((track) => track.size)).toEqual([
         'var(--spacing-0)',
         'var(--spacing-0)',
-        'var(--space-1)',
+        'var(--space-2)',
       ]);
     }
     // 1280 - 8 - 248 - 8 - 8
@@ -211,7 +211,7 @@ describe('the inspector', () => {
 
   it('hidden: the gap and the track take no room', () => {
     expect(layout({ windowWidth: 1100 }).columns).toBe(
-      'var(--space-1) 248px var(--splitter-width) minmax(var(--canvas-min), 1fr) var(--spacing-0) var(--spacing-0) var(--space-1)',
+      'var(--space-2) 248px var(--splitter-width) minmax(var(--canvas-min), 1fr) var(--spacing-0) var(--spacing-0) var(--space-2)',
     );
   });
 
@@ -300,7 +300,7 @@ describe('edge cases of the clamp and the collapse rules', () => {
   it('without a document the panel flags say "no panel", the window width does not matter, and a bad width stays clamped', () => {
     for (const windowWidth of [960, 1279, 1280, 2400]) {
       const empty = layout({ hasDocument: false, windowWidth, panelCollapsed: true, panelWidth: Number.NaN });
-      expect(empty.columns, String(windowWidth)).toBe('var(--space-1) minmax(0, 1fr) var(--space-1)');
+      expect(empty.columns, String(windowWidth)).toBe('var(--space-2) minmax(0, 1fr) var(--space-2)');
       expect(empty.leftCollapsed).toBe(true);
       expect(empty.leftAutoCollapsed).toBe(false);
       expect(empty.panelWidth).toBe(PANEL.default);
@@ -366,6 +366,6 @@ describe('the structure and the tracks, which the shell follows separately', () 
       inspectorReserved: false,
       inspectorVisible: false,
     });
-    expect(shellTracks(one, 300).columns).toBe('var(--space-1) minmax(0, 1fr) var(--space-1)');
+    expect(shellTracks(one, 300).columns).toBe('var(--space-2) minmax(0, 1fr) var(--space-2)');
   });
 });

@@ -40,7 +40,7 @@ export function DragCard({ docId, ids, pointer, thumb, pixelRatio, scheduler = r
   const slots = readSlots(docId);
   const shown = ids.slice(0, STACK).flatMap((id) => slots.find((slot) => slot.id === id) ?? []);
   const [lift] = useState(readLift);
-  const offset = tokenPx('--space-0-5', 4);
+  const offset = tokenPx('--space-1', 4);
   const first = shown[0];
   const box = first === undefined ? { width: thumb, height: thumb } : fitInBox(first, thumb);
   const element = useRef<HTMLDivElement | null>(null);
@@ -89,7 +89,7 @@ export function DragCard({ docId, ids, pointer, thumb, pixelRatio, scheduler = r
           return (
             <div
               key={slot.id}
-              className="absolute overflow-hidden rounded-xs bg-page shadow-3"
+              className="absolute overflow-hidden rounded-sm bg-page shadow-3"
               style={{ width: size.width, height: size.height, left: depth * offset, top: depth * offset }}
             >
               {entry !== undefined && (
@@ -99,7 +99,7 @@ export function DragCard({ docId, ids, pointer, thumb, pixelRatio, scheduler = r
           );
         })}
         {ids.length > 1 && (
-          <span className="absolute -end-1 -top-1 inline-flex h-(--pill-height) min-w-3 items-center justify-center rounded-pill bg-accent px-1 text-xs tabular-nums text-on-accent">
+          <span className="absolute -end-2 -top-2 inline-flex h-(--pill-height) min-w-6 items-center justify-center rounded-pill bg-accent px-2 text-xs tabular-nums text-on-accent">
             {ids.length}
           </span>
         )}

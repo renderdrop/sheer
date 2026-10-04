@@ -75,7 +75,7 @@ export interface ShellLayout extends ShellStructure, ShellTracks {
   canvasWidth: number;
 }
 
-const GUTTER = 'var(--space-1)';
+const GUTTER = 'var(--space-2)';
 /** A track that is there but takes no room: the collapsed left panel's and the hidden inspector's tracks. */
 const NO_ROOM = 'var(--spacing-0)';
 

@@ -34,7 +34,7 @@ vi.mock('../../i18n', async (importOriginal) => {
 });
 
 const SPACING: ThumbnailSpacing = { pad: 4, labelGap: 4, labelHeight: 16, gap: 4 };
-/** The padding of the scroll region around the cells and of a cell around its thumbnail (`--space-0-5`). */
+/** The padding of the scroll region around the cells and of a cell around its thumbnail (`--space-1`). */
 const INSET = 4;
 
 const BOOK = { id: 1, pageCount: 500, displayName: 'Book.pdf' };

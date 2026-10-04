@@ -16,7 +16,7 @@ export function FormOptions() {
   return (
     <>
       <PanelSection>
-        <div className="flex flex-col gap-1">
+        <div className="flex flex-col gap-2">
           <Button
             variant="secondary"
             size="sm"

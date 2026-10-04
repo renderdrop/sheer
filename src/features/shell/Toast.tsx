@@ -38,7 +38,7 @@ function ToastView({ toast }: { toast: Toast }) {
       onMouseLeave={arm}
       onFocus={hold}
       onBlur={arm}
-      className="glass-2 pointer-events-auto flex h-toast min-w-toast-min max-w-toast-max items-center gap-1 rounded-panel py-0-5 pe-1-5 ps-0-5"
+      className="bg-panel border border-border-subtle shadow-floating pointer-events-auto flex h-toast min-w-toast-min max-w-toast-max items-center gap-2 rounded-panel py-1 pe-3 ps-1"
     >
       <span className="flex size-control-md shrink-0 items-center justify-center rounded-button bg-tile text-tile-icon">
         <Icon icon={Check} />
@@ -67,7 +67,7 @@ function ToastView({ toast }: { toast: Toast }) {
 export function ToastLayer() {
   const toast = useUi((state) => state.toast);
   return (
-    <div className="pointer-events-none fixed inset-x-0 bottom-[calc(var(--status-height)+var(--space-2))] z-toast flex justify-center">
+    <div className="pointer-events-none fixed inset-x-0 bottom-[calc(var(--status-height)+var(--space-4))] z-toast flex justify-center">
       <div role="status" className="sr-only">
         {toast?.message}
       </div>

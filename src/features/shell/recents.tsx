@@ -79,11 +79,11 @@ function RecentThumb({ id, enabled }: { id: number; enabled: boolean }) {
         draggable={false}
         onLoad={() => setLoaded(true)}
         className={cx(
-          'absolute inset-0 h-full w-full rounded-xs bg-page object-contain transition-opacity duration-base',
+          'absolute inset-0 h-full w-full rounded-sm bg-page object-contain transition-opacity duration-base',
           loaded ? 'opacity-100' : 'opacity-0',
         )}
       />
-      <span aria-hidden className="pointer-events-none absolute inset-0 rounded-xs border border-divider" />
+      <span aria-hidden className="pointer-events-none absolute inset-0 rounded-sm border border-divider" />
     </>
   );
 }
@@ -197,20 +197,20 @@ export function useRecents(): Recents {
     return {
       id: String(entry.id),
       content: (
-        <div className="group/recent flex h-7 items-center gap-1 rounded-button p-1 hover:bg-control-hover focus-within:bg-control-hover">
+        <div className="group/recent flex h-7 items-center gap-2 rounded-button p-2 hover:bg-control-hover focus-within:bg-control-hover">
           <button
             type="button"
             data-recent-open=""
             aria-disabled={entry.missing || undefined}
             onClick={(event) => open(entry, event.currentTarget.querySelector('[data-recent-tile]'))}
             onKeyDown={onKeyDown}
-            className="flex h-full min-w-0 flex-1 cursor-pointer items-center gap-1 rounded-sm text-start"
+            className="flex h-full min-w-0 flex-1 cursor-pointer items-center gap-2 rounded-sm text-start"
           >
             <span
               data-recent-tile=""
-              className="relative flex h-5 w-4 shrink-0 items-center justify-center overflow-hidden rounded-xs bg-tile text-tile-icon"
+              className="relative flex h-10 w-8 shrink-0 items-center justify-center overflow-hidden rounded-sm bg-tile text-tile-icon"
             >
-              <Icon icon={entry.missing ? FileX : FileText} className={cx(entry.missing && 'text-warning-icon')} />
+              <Icon icon={entry.missing ? FileX : FileText} className={cx(entry.missing && 'text-text')} />
               <RecentThumb id={entry.id} enabled={!entry.missing} />
             </span>
             <span className="flex min-w-0 flex-1 flex-col">

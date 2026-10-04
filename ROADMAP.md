@@ -231,7 +231,7 @@ Order as in the brief. Each phase ends with one designer round on Tauri-window s
 
 - [x] Package 0 — docs/DESIGN.md v2 + docs/MOTION.md v2 (designer, from BRAND + moodboard + brief; blocks all visual work)
 - [x] B1 — Favourites ("Markiert") and "Show in Explorer/Finder" for recent files (Rust + src/api)
-- [ ] R0.1 — tokens.css rewritten (BRAND §24 + semantic tokens), role layer re-pointed, glass recipes flat, legacy aliases marked
+- [x] R0.1 — tokens.css rewritten (BRAND §24 + semantic tokens), role layer re-pointed, glass recipes flat, legacy aliases marked
 - [ ] R0.2 — Lint gate: no hex/rgb/hsl outside tokens.css, no backdrop-filter, no prefers-color-scheme, token-only shadows/radii/durations
 - [ ] R0.3 — Dark mode and glass setting removed (tokens, settings + one-time migration, data-theme, tests, UI scripts)
 - [ ] R0.4 — Inter bundled (OFL, woff2 Latin + Latin Ext), type scale utilities (.t-display … .t-caption), tabular-nums
@@ -268,5 +268,6 @@ Order as in the brief. Each phase ends with one designer round on Tauri-window s
 - [ ] Politur v1.2 — reviewer/designer minors of v1.2 plus the still-valid items of "v1.2 polish" above
   - (B1 review/security, minor) reveal: test that a UNC/network recent is refused; `metadata().is_file()` before reveal (+ SECURITY I5 clause); `starred` field order under the `missing` comment in recents.rs; a refused star (49 cap) needs its own error code or a quiet tooltip, not `not_found`
   - (R1 review, minor) gen-installer-art.mjs reads the old logo.svg (dead); delete assets/brand/logo.svg and "Sheer — Logo & Farbe.html" once unused; brand claim test checks tracking/weight only via the up-to-date test; LICENSES skrifa row also covers tests/brand_assets.rs; word mark without GPOS kerning (tracking only)
+  - (P-A review, minor) legacy alias block still carries v1.1 `--annot-*` hex values (remove with the §1.4 palette migration, R4.3); rename `--color-surface-solid`; `text-accent` left in IconButton.tsx (yellow on Ink); legacy `--spacing-*` slot aliases (hub, logo, caption) go with R2/R3; `--panel-*` 192/248/400 and `--inspector-width` 288 keep v1.1 values until R3 (Rust limits.rs + layout tests)
   - (flaky) fuzz_corpus `a_self_calling_form_xobject_ends_in_a_typed_error_and_the_engine_recovers` panicked once under parallel cargo load (passes alone, 21 s): widen its deadline or serialise it
 - [ ] R7 — Screenshot series docs/review/v1.2, designer review vs BRAND §2, smoke, gates, audits, CI green, CHANGELOG, tag v1.2.0

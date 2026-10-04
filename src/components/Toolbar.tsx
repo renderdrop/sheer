@@ -259,7 +259,7 @@ export function Toolbar({
       <div
         role="separator"
         aria-orientation="vertical"
-        className="mx-toolbar-group h-2 w-hairline shrink-0 bg-divider"
+        className="mx-toolbar-group h-4 w-hairline shrink-0 bg-divider"
       />
     ) : null;
     if (entry.type === 'more') {
@@ -293,7 +293,7 @@ export function Toolbar({
     nodes.push(
       <Fragment key={entry.id}>
         {divider}
-        <div role="group" aria-label={entry.label} className="flex items-center gap-0-5">
+        <div role="group" aria-label={entry.label} className="flex items-center gap-1">
           {visible.map((item) => (
             <Fragment key={item.id}>{renderItem(item)}</Fragment>
           ))}
@@ -309,7 +309,10 @@ export function Toolbar({
       aria-label={label}
       aria-orientation="horizontal"
       onKeyDown={onKeyDown}
-      className={cx('glass-1 flex h-control-lg items-center overflow-hidden rounded-panel p-0-5', className)}
+      className={cx(
+        'bg-panel border border-border-subtle shadow-floating flex h-control-lg items-center overflow-hidden rounded-panel p-1',
+        className,
+      )}
     >
       {nodes}
     </div>

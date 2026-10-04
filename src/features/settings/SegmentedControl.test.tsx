@@ -163,7 +163,7 @@ describe('SegmentedControl', () => {
   it('shows the selected look on the checked radio only, in tokens', () => {
     setup(<Demo initial="dark" />);
     expect(radio('Dark').className).toContain('bg-selected');
-    expect(radio('Dark').className).toContain('text-text-accent');
+    expect(radio('Dark').className).toContain('text-text');
     expect(radio('Light').className).not.toContain('bg-selected');
     // The track and the segments are concentric: 12 px outside with 4 px padding, 8 px inside.
     expect(screen.getByRole('radiogroup').className).toContain('rounded-button');

@@ -86,7 +86,7 @@ function Card({ id, anchor }: { id: TipId; anchor: ResolvedAnchor }) {
     active: present,
     side: 'bottom',
     align: 'center',
-    clampTo: { selector: CANVAS_SCROLLER, inset: tokenPx('--space-1', 8) },
+    clampTo: { selector: CANVAS_SCROLLER, inset: tokenPx('--space-2', 8) },
   });
 
   // The tool is described by the tip while it shows (DESIGN 3.47).
@@ -124,7 +124,7 @@ function Card({ id, anchor }: { id: TipId; anchor: ResolvedAnchor }) {
         aria-label={t('tip.region')}
         data-tip-card=""
         onKeyDown={onKeyDown}
-        className="surface-dialog flex w-popover-max max-w-full items-center gap-1 rounded-panel p-2 text-md text-text"
+        className="bg-panel border border-border-subtle shadow-floating flex w-popover-max max-w-full items-center gap-2 rounded-panel p-4 text-md text-text"
       >
         <span className="flex size-control-md shrink-0 items-center justify-center rounded-sm bg-tile text-tile-icon">
           <Icon icon={Lightbulb} size={16} />

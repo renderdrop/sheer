@@ -59,7 +59,7 @@ export function SegmentedControl<Value extends string>({
       role="radiogroup"
       aria-labelledby={labelledBy}
       onKeyDown={onKeyDown}
-      className="flex h-control-lg gap-0-5 rounded-button border border-divider p-0-5"
+      className="flex h-control-lg gap-1 rounded-button border border-divider p-1"
     >
       {options.map((option, index) => {
         const selected = option.value === value;
@@ -76,7 +76,7 @@ export function SegmentedControl<Value extends string>({
             }}
             className={cx(
               CONTROL_BASE,
-              'min-w-0 flex-1 basis-0 rounded-sm px-1 text-md',
+              'min-w-0 flex-1 basis-0 rounded-sm px-2 text-md',
               // The look of a toggle: rest, hover and pressed (a segment is never disabled), selected with its ring and forced-colors cue.
               ICON_BUTTON_VARIANTS.toggle[selected ? 'on' : 'off'],
             )}

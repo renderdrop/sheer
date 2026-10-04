@@ -167,7 +167,7 @@ function ImagesModal() {
   };
   const options = <V extends keyof typeof names>(values: readonly V[]) =>
     values.map((value) => ({ value, label: names[value], content: names[value] }));
-  const label = 'm-0 mb-0-5 text-sm font-semibold text-text-muted';
+  const label = 'm-0 mb-1 text-sm font-semibold text-text-muted';
   const busy = run.running;
   const dim = fit ? 'opacity-60' : '';
 
@@ -175,7 +175,7 @@ function ImagesModal() {
     <Modal labelledBy={`${id}-title`} width="w-sheet" onClose={cancel}>
       <ModalHeader id={`${id}-title`} icon={<Icon icon={Images} />} title={t('img2pdf.title')} />
       {dropped !== null && dropped.skipped > 0 && (
-        <p role="status" className="m-0 mt-0-5 text-sm text-warning-text">
+        <p role="status" className="m-0 mt-1 text-sm text-text">
           {t('img2pdf.skipped', { count: dropped.skipped })}
         </p>
       )}
@@ -189,7 +189,7 @@ function ImagesModal() {
             onFail={onFail}
             disabled={busy}
           />
-          <div className="mt-1 flex items-center justify-between gap-1">
+          <div className="mt-2 flex items-center justify-between gap-2">
             <Button variant="secondary" size="sm" onClick={add} disabled={picking || busy} focusableWhenDisabled>
               {t('img2pdf.add')}
             </Button>
@@ -199,9 +199,9 @@ function ImagesModal() {
           </div>
         </>
       )}
-      <div className="relative mt-2">
+      <div className="relative mt-4">
         <div className={busy ? 'invisible' : ''} inert={busy ? true : undefined}>
-          <div className="grid grid-cols-2 gap-2">
+          <div className="grid grid-cols-2 gap-4">
             <div>
               <p className={label}>{t('img2pdf.size')}</p>
               <RadioGroup
@@ -227,7 +227,7 @@ function ImagesModal() {
               </div>
             </div>
           </div>
-          <div className="mt-2" aria-disabled={fit ? 'true' : undefined}>
+          <div className="mt-4" aria-disabled={fit ? 'true' : undefined}>
             <p className={label}>{t('img2pdf.margin')}</p>
             <div className={dim}>
               <RadioGroup
@@ -242,7 +242,7 @@ function ImagesModal() {
           </div>
         </div>
         {busy && (
-          <div className="absolute inset-0 flex flex-col justify-center gap-1">
+          <div className="absolute inset-0 flex flex-col justify-center gap-2">
             <ProgressBar label={t('img2pdf.title')} done={progress?.done ?? 0} total={progress?.total ?? 0} />
             <p role="status" className="m-0 text-sm text-text-muted tabular-nums">
               {progress !== null && progress.total > 0
@@ -253,7 +253,7 @@ function ImagesModal() {
         )}
       </div>
       <JobError error={run.error ?? listError} />
-      <div className="mt-2 flex items-center justify-end gap-1">
+      <div className="mt-4 flex items-center justify-end gap-2">
         <Button variant="secondary" onClick={cancel}>
           {t('output.cancel')}
         </Button>

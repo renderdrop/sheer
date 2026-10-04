@@ -52,12 +52,12 @@ function FormBannerRow() {
     <AnimatePresence initial={false}>
       {has && !dismissed && (
         <motion.div key="form" {...motionProps} className="shrink-0">
-          <div className="px-1 pb-1">
+          <div className="px-2 pb-2">
             <div
               role="status"
-              className="glass-1 flex min-h-banner-min items-center gap-1 rounded-panel py-1 pe-1 ps-2"
+              className="bg-panel border border-border-subtle shadow-floating flex min-h-banner-min items-center gap-2 rounded-panel py-2 pe-2 ps-4"
             >
-              <span className="shrink-0 text-text-accent">
+              <span className="shrink-0 text-text">
                 <Icon icon={Info} />
               </span>
               <span className="min-w-0 flex-auto">{t('form.banner')}</span>

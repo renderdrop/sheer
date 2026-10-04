@@ -66,7 +66,7 @@ function DocumentName({ focused }: { focused: boolean }) {
   }, []);
   const parts = name === null || name === '' ? null : splitForMiddleTruncation(name);
   return (
-    <div ref={ref} className="flex min-w-0 flex-auto items-center justify-center px-1 text-sm">
+    <div ref={ref} className="flex min-w-0 flex-auto items-center justify-center px-2 text-sm">
       {parts !== null && room >= NAME_MIN_ROOM && (
         <span
           data-caption-name=""
@@ -112,7 +112,7 @@ export function CaptionBar({ maximized, onChanged }: CaptionBarProps) {
       data-tauri-drag-region="deep"
       className={cx('flex h-caption shrink-0 items-center', focused ? 'text-text' : 'text-text-disabled')}
     >
-      <div className="flex shrink-0 items-center gap-1 ps-2">
+      <div className="flex shrink-0 items-center gap-2 ps-4">
         <img src={logoUrl} alt="" className="size-icon-16 shrink-0" draggable={false} />
         <MenuBar />
       </div>

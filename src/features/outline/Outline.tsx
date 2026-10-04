@@ -108,7 +108,7 @@ const OutlineRow = memo(function OutlineRow({
         onPointerEnter={measure}
         onFocus={measure}
         className={cx(
-          'absolute inset-x-0 flex h-control-md cursor-pointer select-none items-center gap-0-5 rounded-sm pe-1 text-md',
+          'absolute inset-x-0 flex h-control-md cursor-pointer select-none items-center gap-1 rounded-sm pe-2 text-md',
           selected
             ? 'bg-selected forced-colors:outline-2 forced-colors:outline-[Highlight]'
             : 'hover:bg-control-hover active:bg-control-pressed',
@@ -116,13 +116,13 @@ const OutlineRow = memo(function OutlineRow({
         )}
         style={{
           top,
-          paddingInlineStart: `calc(var(--space-0-5) + min(var(--outline-indent) * ${level - 1}, var(--outline-indent-max)))`,
+          paddingInlineStart: `calc(var(--space-1) + min(var(--outline-indent) * ${level - 1}, var(--outline-indent-max)))`,
         }}
       >
         {current && (
           <span
             aria-hidden="true"
-            className="pointer-events-none absolute start-[calc(var(--space-0-5)/2)] top-1/2 h-icon-16 w-0 -translate-y-1/2 rounded-pill border-s-2 border-accent forced-colors:border-[Highlight]"
+            className="pointer-events-none absolute start-[calc(var(--space-1)/2)] top-1/2 h-icon-16 w-0 -translate-y-1/2 rounded-pill border-s-2 border-accent forced-colors:border-[Highlight]"
           />
         )}
         <span
@@ -325,7 +325,7 @@ export function OutlineTree({ docId, entry }: { docId: number; entry: Ready }) {
           return before?.first === after?.first && before?.last === after?.last ? previous : top;
         });
       }}
-      className="min-h-0 flex-auto overflow-y-auto overflow-x-hidden p-1 [overflow-anchor:none] [scrollbar-gutter:stable]"
+      className="min-h-0 flex-auto overflow-y-auto overflow-x-hidden p-2 [overflow-anchor:none] [scrollbar-gutter:stable]"
     >
       <div
         role="tree"
@@ -372,7 +372,7 @@ export function OutlineTree({ docId, entry }: { docId: number; entry: Ready }) {
 }
 
 function Message({ children }: { children: React.ReactNode }) {
-  return <div className="flex flex-col items-center gap-1 p-3 text-center">{children}</div>;
+  return <div className="flex flex-col items-center gap-2 p-6 text-center">{children}</div>;
 }
 
 /** The loading state: nothing for 300 ms, then a spinner and a line (`role=status`). */
@@ -405,7 +405,7 @@ function OutlineView({ docId }: { docId: number }) {
   if (entry.status === 'error') {
     return (
       <Message>
-        <div role="alert" className="flex flex-col items-center gap-1">
+        <div role="alert" className="flex flex-col items-center gap-2">
           <Icon icon={CircleAlert} className="text-error-text" />
           <span className="text-md">{t('outline.error')}</span>
         </div>

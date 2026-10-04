@@ -85,10 +85,10 @@ export function MainGrid({ structure, children }: MainGridProps) {
       data-animating={seen.animating ?? undefined}
       onTransitionEnd={release}
       style={{ gridTemplateColumns: shellTracks(structure, panelWidth).columns }}
-      className={`group/main grid min-h-0 flex-auto grid-rows-[minmax(0,1fr)] pb-1 ${
+      className={`group/main grid min-h-0 flex-auto grid-rows-[minmax(0,1fr)] pb-2 ${
         seen.animating === null
           ? ''
-          : `transition-[grid-template-columns] ease-spring ${closing ? 'duration-base' : 'duration-slow'}`
+          : `transition-[grid-template-columns] ease-out ${closing ? 'duration-base' : 'duration-slow'}`
       }`}
     >
       {children}

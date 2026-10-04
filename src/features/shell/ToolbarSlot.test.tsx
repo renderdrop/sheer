@@ -147,7 +147,7 @@ describe('Settings and About, from the toolbar row', () => {
     const { user } = setup(<Toolbar hasDocument={false} />);
     act(() => void runAction('settings'));
     const popover = await screen.findByRole('dialog', { name: 'Settings' });
-    expect(popover.className).toContain('glass-2');
+    expect(popover.className).toContain('bg-panel border border-border-subtle shadow-floating');
     await waitFor(() =>
       expect(document.activeElement).toBe(
         within(within(popover).getByRole('radiogroup', { name: 'Theme' })).getByRole('radio', {

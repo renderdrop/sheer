@@ -53,7 +53,7 @@ function PasswordField({
       <label htmlFor={id} className="text-sm font-semibold">
         {label}
       </label>
-      <div className="relative mt-0-5">
+      <div className="relative mt-1">
         <Field
           id={id}
           type={shown ? 'text' : 'password'}
@@ -65,10 +65,10 @@ function PasswordField({
           aria-describedby={describedBy}
           onChange={(event) => onChange(event.target.value)}
           onBlur={onBlur}
-          className="w-full! pe-4!"
+          className="w-full! pe-8!"
         />
         {onToggle !== undefined && (
-          <span className="absolute inset-y-0 end-0-5 flex items-center">
+          <span className="absolute inset-y-0 end-1 flex items-center">
             <IconButton
               size="sm"
               label={toggleLabel}
@@ -87,9 +87,9 @@ function PasswordField({
 /** The 16 px slot under a field pair: the error is announced, the slot stays so nothing jumps. */
 function ErrorSlot({ id, message }: { id: string; message: string | null }) {
   return (
-    <div className="flex h-2 items-center text-sm text-error-text">
+    <div className="flex h-4 items-center text-sm text-error-text">
       {message !== null && (
-        <p id={id} role="alert" className="m-0 flex items-center gap-0-5">
+        <p id={id} role="alert" className="m-0 flex items-center gap-1">
           <Icon icon={CircleAlert} size={12} />
           {message}
         </p>
@@ -102,13 +102,13 @@ function StrengthMeter({ password }: { password: string }) {
   const t = useT();
   const { level, word } = passwordStrength(password);
   return (
-    <div className="flex items-center gap-1" role="group" aria-label={t('protect.strength')}>
-      <div className="flex flex-1 gap-0-5" aria-hidden="true">
+    <div className="flex items-center gap-2" role="group" aria-label={t('protect.strength')}>
+      <div className="flex flex-1 gap-1" aria-hidden="true">
         {[1, 2, 3, 4].map((n) => (
-          <span key={n} className={cx('h-0-5 flex-1 rounded-full', n <= level ? 'bg-accent' : 'bg-track')} />
+          <span key={n} className={cx('h-1 flex-1 rounded-full', n <= level ? 'bg-accent' : 'bg-track')} />
         ))}
       </div>
-      <span className="min-w-6 text-sm text-text-muted" aria-live="polite">
+      <span className="min-w-12 text-sm text-text-muted" aria-live="polite">
         {level === 0 ? '' : t(`protect.${word}`)}
       </span>
     </div>
@@ -232,10 +232,10 @@ function ProtectModal({ docId }: { docId: number }) {
   return (
     <Modal labelledBy={titleId} width="w-dialog-md" onClose={close}>
       <ModalHeader id={titleId} icon={<Icon icon={Lock} />} title={t('protect.title')} />
-      <form onSubmit={apply} className="mt-2 flex flex-col" noValidate>
+      <form onSubmit={apply} className="mt-4 flex flex-col" noValidate>
         {showStatus && (
-          <section className="mb-2 flex flex-col gap-1 border-b border-divider pb-2">
-            <div className="flex items-center gap-1">
+          <section className="mb-4 flex flex-col gap-2 border-b border-divider pb-4">
+            <div className="flex items-center gap-2">
               <Icon icon={Lock} size={16} />
               <span className="flex-1">{t('protect.isProtected')}</span>
               {!revealRemove && (
@@ -279,7 +279,7 @@ function ProtectModal({ docId }: { docId: number }) {
         )}
 
         <section className="flex flex-col">
-          <label className="flex min-h-control-sm cursor-pointer items-center gap-1 text-md">
+          <label className="flex min-h-control-sm cursor-pointer items-center gap-2 text-md">
             <input
               type="checkbox"
               className="accent-accent"
@@ -290,7 +290,7 @@ function ProtectModal({ docId }: { docId: number }) {
             {t('protect.requireOpen')}
           </label>
           {requireOpen && (
-            <div className="mt-1 flex flex-col">
+            <div className="mt-2 flex flex-col">
               <PasswordField
                 id={`${id}-pw`}
                 label={t('protect.password')}
@@ -301,7 +301,7 @@ function ProtectModal({ docId }: { docId: number }) {
                 onToggle={() => setShown(!shown)}
                 toggleLabel={shown ? t('protect.hide') : t('protect.show')}
               />
-              <div className="mt-1 flex flex-col">
+              <div className="mt-2 flex flex-col">
                 <PasswordField
                   id={`${id}-pw2`}
                   label={t('protect.confirm')}
@@ -320,9 +320,9 @@ function ProtectModal({ docId }: { docId: number }) {
           )}
         </section>
 
-        <section className="mt-2 flex flex-col border-t border-divider pt-2">
+        <section className="mt-4 flex flex-col border-t border-divider pt-4">
           {PERMISSIONS.map((permission) => (
-            <label key={permission} className="flex min-h-control-sm cursor-pointer items-center gap-1 text-md">
+            <label key={permission} className="flex min-h-control-sm cursor-pointer items-center gap-2 text-md">
               <input
                 type="checkbox"
                 className="accent-accent"
@@ -333,7 +333,7 @@ function ProtectModal({ docId }: { docId: number }) {
             </label>
           ))}
           {isRestricted(allow) && (
-            <div className="mt-1 flex flex-col">
+            <div className="mt-2 flex flex-col">
               <PasswordField
                 id={`${id}-pp`}
                 label={t('protect.permPassword')}
@@ -344,7 +344,7 @@ function ProtectModal({ docId }: { docId: number }) {
                 onToggle={requireOpen ? undefined : () => setShown(!shown)}
                 toggleLabel={shown ? t('protect.hide') : t('protect.show')}
               />
-              <div className="mt-1 flex flex-col">
+              <div className="mt-2 flex flex-col">
                 <PasswordField
                   id={`${id}-pp2`}
                   label={t('protect.permConfirm')}
@@ -360,19 +360,19 @@ function ProtectModal({ docId }: { docId: number }) {
               <ErrorSlot id={`${id}-perm-err`} message={permMessage} />
             </div>
           )}
-          <p className="m-0 mt-1 text-sm text-text-muted">{t('protect.permNote')}</p>
+          <p className="m-0 mt-2 text-sm text-text-muted">{t('protect.permNote')}</p>
         </section>
 
-        <p className="m-0 mt-2 flex items-center gap-0-5 text-sm text-text-muted">
+        <p className="m-0 mt-4 flex items-center gap-1 text-sm text-text-muted">
           <Icon icon={Lock} size={12} />
           {t('protect.aes', { app: APP_NAME })}
         </p>
-        <p className="m-0 mt-0-5 flex items-center gap-0-5 text-sm text-text-muted">
+        <p className="m-0 mt-1 flex items-center gap-1 text-sm text-text-muted">
           <Icon icon={Info} size={12} />
           {t('protect.staged')}
         </p>
 
-        <div className="mt-3 flex items-center justify-end gap-1">
+        <div className="mt-6 flex items-center justify-end gap-2">
           <Button variant="secondary" onClick={close}>
             {t('protect.cancel')}
           </Button>

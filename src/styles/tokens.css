@@ -1,17 +1,15 @@
 /*
- * Design tokens: docs/DESIGN.md section 1, and nothing else. This is the only file with raw colors and sizes (ADR-011);
- * components use the role tokens through Tailwind utilities (bg-accent, p-2, rounded-panel, text-md, glass-1, ...).
- * tokens.test.ts checks this file against the spec.
+ * Design tokens: docs/DESIGN.md v2 section 1, and nothing else (ADR-011, ADR-100). This is the only file with raw colors, sizes
+ * and gradients; components use the role tokens through Tailwind utilities (bg-panel, p-4, rounded-lg, text-md, ...).
+ * tokens.test.ts checks this file against the spec. Light only: no dark values, no glass, no solid mode.
  *
  * How it is organised
  *   1. Tailwind: the default theme is dropped, so only the tokens below become utilities.
  *   2. @theme static: every token that has a Tailwind namespace (--color-*, --radius-*, --text-*, --shadow-*, --ease-*,
  *      --spacing-*, --font-*). "static" emits them all, because plain CSS reads them through var() as well.
- *   3. :root: tokens without a namespace (palette, glass surfaces, motion, z-layers, sizes, document layer).
- *   4. Dark values, written twice on purpose: once for "OS is dark and no override", once for html[data-theme="dark"].
- *      Plain CSS cannot share one declaration list between a media query and an attribute selector.
- *   5. Solid mode (same four-times rule) and forced colors.
- *   6. Reduced motion, base layer, glass recipes and z-layer utilities.
+ *   3. :root: primitives (1.1), semantic tokens (1.2), highlight and stroke palette (1.4), glows (5), motion, sizes, z-layers.
+ *   4. Legacy aliases (removed in R7) and forced colors.
+ *   5. Reduced motion, base layer and utilities.
  */
 
 @import "tailwindcss" source("../");
@@ -25,418 +23,389 @@
   --*: initial;
 }
 
-/* 2. Namespaced tokens. Light values; the dark and solid blocks below override them on :root. */
+/* 2. Namespaced tokens. */
 @theme static {
-  /* Color roles (DESIGN 1.2). --color-bg is a gradient, so it lives in :root and has the bg-bg utility below. */
-  --color-canvas: #ecedfc;
+  /* Color roles (DESIGN 1.2, 1.3). The primitives (Ink, Sand, Stone, ...) are in :root and are not utilities. */
+  --color-app: var(--surface-canvas);
+  --color-panel: var(--surface-panel);
+  --color-subtle: var(--surface-subtle);
+  --color-pressed: var(--surface-pressed);
+  --color-page-area: var(--surface-page-area);
+  --color-border-subtle: var(--color-border);
+  --color-border-control: var(--color-stone);
   /* Scrollbar thumb on a transparent track (DESIGN 1.11). */
-  --color-scrollbar: rgba(58, 58, 171, 0.28);
-  --color-scrollbar-hover: rgba(58, 58, 171, 0.44);
-  --color-text: var(--ink);
-  --color-text-muted: var(--ink-60);
-  --color-text-accent: var(--iris-700);
-  --color-text-disabled: var(--ink-50);
-  --color-icon-disabled: var(--ink-50);
-  --color-accent: var(--iris-500);
-  --color-accent-hover: var(--iris-600);
-  --color-accent-pressed: var(--iris-700);
-  --color-on-accent: #ffffff;
-  --color-focus: var(--iris-500);
-  --color-control-border: var(--ink-50);
-  --color-control-hover: var(--iris-100);
-  --color-control-pressed: var(--iris-200);
-  --color-selected: var(--iris-100);
-  --color-fill-disabled: rgba(28, 28, 46, 0.06);
-  --color-track: var(--iris-200);
-  --color-divider: var(--ink-30);
-  --color-tile: var(--iris-100);
-  --color-tile-icon: var(--iris-700);
-  --color-card: rgba(
-    255,
-    255,
-    255,
-    0.72
-  ); /* a comment card inside the glass panel: translucent, not glass (DESIGN 3.59) */
-  --color-tooltip-bg: var(--ink);
-  --color-tooltip-text: #ffffff;
-  --color-tooltip-key: var(--ink-40);
-  --color-success-icon: #2e9e6b;
-  --color-warning-icon: #b5700f;
-  --color-error-icon: #d64b4b;
-  --color-success-text: #1b7049;
-  --color-warning-text: #8a5a0e;
-  --color-error-text: #b03535;
+  --color-scrollbar: rgba(15, 15, 15, 0.2);
+  --color-scrollbar-hover: rgba(15, 15, 15, 0.36);
+  --color-text: var(--text-primary);
+  --color-text-muted: var(--text-secondary);
+  --color-text-disabled: var(--color-stone);
+  --color-icon-disabled: var(--color-stone);
+  --color-accent: var(--accent);
+  --color-accent-hover: var(--accent-bright);
+  --color-accent-pressed: var(--accent);
+  --color-on-accent: var(--on-accent);
+  --color-focus: var(--accent);
+  --color-control-border: var(--color-stone);
+  --color-control-hover: var(--color-sand);
+  --color-control-pressed: var(--surface-pressed);
+  --color-selected: var(--color-sand);
+  --color-fill-disabled: var(--color-sand);
+  --color-track: var(--surface-pressed);
+  --color-divider: var(--color-border);
+  --color-tile: var(--color-sand);
+  --color-tile-icon: var(--color-ink);
+  --color-card: var(--color-white);
+  --color-tooltip-bg: var(--color-white);
+  --color-tooltip-text: var(--color-ink);
+  --color-tooltip-key: var(--color-sand);
+  --color-error-icon: var(--color-danger);
+  --color-error-text: var(--color-danger);
+  --color-surface: var(--color-white);
+  --color-surface-strong: var(--color-white);
+  --color-surface-solid: var(--color-white);
+  --color-backdrop: var(--scrim);
+  /* The glyph on the Windows close button's hover (--win-close-hover). */
+  --color-on-close: var(--color-white);
 
-  /* Glass surfaces as colors (the values live in :root, so the dark and solid blocks reach them). */
-  --color-surface: var(--surface);
-  --color-surface-strong: var(--surface-strong);
-  --color-surface-solid: var(--surface-solid);
-  --color-backdrop: rgba(15, 16, 32, 0.32);
-  /* The glyph on the Windows close button's hover (--win-close-hover): white in both themes, 5.66:1 (DESIGN 4). */
-  --color-on-close: #ffffff;
-
-  /* Document layer: pages are white in both themes (DESIGN 1.2, last paragraph). */
-  --color-page: #ffffff;
-  --color-doc-select: var(--iris-500);
-  /* Crop mode (DESIGN 3.37): the shade outside the crop rectangle, and the rectangle's stroke in px. */
-  --color-doc-crop-shade: rgba(15, 16, 32, 0.5);
+  /* Document layer: pages are white (DESIGN 1.3, last rows). */
+  --color-page: var(--surface-page);
+  --color-doc-select: var(--color-ink);
+  --color-doc-crop-shade: rgba(15, 15, 15, 0.4);
   --crop-stroke: 2px;
-  --color-doc-ink: #1c1c2e; /* ink drawn on the paper over an annotation's own colour (the note glyph, DESIGN 3.25); paper stays white in both themes */
-  --color-doc-paper: #ffffff; /* the page paper under an inline editor of existing text; white in both themes */
-  --color-doc-text-select: rgba(91, 91, 214, 0.3);
-  --color-doc-hit: rgba(91, 91, 214, 0.28);
-  /* Annotations on the canvas (DESIGN 3.23): the hover outline, and the size of a resize handle in px. */
-  --color-doc-hover: rgba(91, 91, 214, 0.5);
-  /* Form fields (DESIGN 3.32): the tint over fillable widgets, its hover, and the border of a required one (>= 3:1 on white). */
-  --color-doc-field: rgba(91, 91, 214, 0.1);
-  --color-doc-field-hover: rgba(91, 91, 214, 0.18);
-  --color-doc-required: #d64b4b;
-  /* Redaction marks (DESIGN 3.38): the border, and the fill under the hatch (the hatch is a pattern, not colour alone). */
-  --color-doc-redact: #d64b4b;
-  --color-doc-redact-fill: rgba(214, 75, 75, 0.16);
+  --color-doc-ink: var(--color-ink); /* ink drawn on the paper over an annotation's own colour (the note glyph) */
+  --color-doc-paper: var(--color-white); /* the page paper under an inline editor of existing text */
+  --color-doc-text-select: rgba(111, 111, 107, 0.28);
+  --color-doc-hit: var(--color-mist); /* drawn with mix-blend-mode: multiply; the active hit adds a 2px Ink outline */
+  --color-doc-hover: var(--color-stone);
+  --color-doc-field: rgba(221, 226, 234, 0.6);
+  --color-doc-field-hover: var(--color-mist);
+  --color-doc-required: var(--color-ink);
+  --color-doc-redact: var(--color-danger);
+  --color-doc-redact-fill: rgba(200, 50, 31, 0.12);
   --handle-size: 8px;
 
-  /* Shadows (DESIGN 1.3). */
-  --shadow-1: 0 1px 2px rgba(58, 58, 171, 0.06), 0 8px 32px rgba(91, 91, 214, 0.12);
-  --shadow-2: 0 2px 6px rgba(58, 58, 171, 0.08), 0 12px 40px rgba(91, 91, 214, 0.16);
-  --shadow-3: 0 24px 64px rgba(58, 58, 171, 0.24);
+  /* Shadows (DESIGN 1.2): two only. The numbered names are aliases of the old scale. */
+  --shadow-standard: 0 2px 12px rgba(0, 0, 0, 0.04);
+  --shadow-floating: 0 8px 30px rgba(0, 0, 0, 0.08);
+  --shadow-1: var(--shadow-standard);
+  --shadow-2: var(--shadow-floating);
+  --shadow-3: var(--shadow-floating);
 
-  /* Radii (DESIGN 1.4). Concentric: inner = outer - padding. */
-  --radius-xs: 4px;
-  --radius-sm: 8px;
-  --radius-button: 12px;
-  --radius-panel: 16px;
-  --radius-card: 24px;
-  --radius-pill: 999px;
+  /* Radii (DESIGN 1.1, 1.3). */
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --radius-xl: 18px;
+  --radius-dialog: 16px;
+  --radius-pill: 999px; /* toggles, filter chips, the round "+" button only */
+  --radius-button: var(--radius-md);
+  --radius-panel: var(--radius-lg);
+  --radius-card: var(--radius-md);
 
-  /* Spacing: p-1 is --space-1 (8px), not Tailwind's 4px. 8-pt grid; 4 and 12 only inside controls (DESIGN 1.4). */
+  /* Spacing, BRAND names (grid base 4 px): p-2 is --space-2 (8px), not Tailwind's 8px by accident but by this table. */
   --spacing-0: 0px;
-  --spacing-0-5: var(--space-0-5);
   --spacing-1: var(--space-1);
-  --spacing-1-5: var(--space-1-5);
   --spacing-2: var(--space-2);
   --spacing-3: var(--space-3);
   --spacing-4: var(--space-4);
   --spacing-5: var(--space-5);
   --spacing-6: var(--space-6);
   --spacing-8: var(--space-8);
+  --spacing-10: var(--space-10);
+  --spacing-12: var(--space-12);
+  --spacing-16: var(--space-16);
+  --spacing-20: var(--space-20);
+  --spacing-24: var(--space-24);
   /* Sizes: h-control-md, size-icon-16, min-w-target-min. */
   --spacing-control-sm: var(--control-sm);
   --spacing-control-md: var(--control-md);
   --spacing-control-lg: var(--control-lg);
+  --spacing-control-xl: var(--control-xl);
   --spacing-target-min: var(--target-min);
   --spacing-target-default: var(--target-default);
   --spacing-hairline: var(--hairline);
   --spacing-toolbar-group: var(--toolbar-group-gap);
-  --spacing-icon-12: var(--icon-12);
   --spacing-icon-16: var(--icon-16);
+  --spacing-icon-18: var(--icon-18);
   --spacing-icon-20: var(--icon-20);
   --spacing-icon-24: var(--icon-24);
   /* Widths of the specs: w-field (slider number field, zoom readout), min-w-slider-min, min-w-popover-min, max-w-popover-max,
      max-w-tooltip-max, and w-splitter (the gutter beside the left panel). */
   --spacing-field: var(--field-width);
   --spacing-slider-min: var(--slider-min);
-  /* Inspector swatches and the note popover (DESIGN 3.24, 3.25): size-swatch, w-note. */
+  /* Inspector swatches and the note popover: size-swatch, w-note. */
   --spacing-swatch: var(--swatch-size);
   --spacing-note: var(--note-width);
-  /* Annotation colours are document content (ADR-029): the eight Okabe-Ito colours, the same in both themes. bg-annot-yellow, ... */
-  --color-annot-yellow: var(--annot-yellow);
-  --color-annot-orange: var(--annot-orange);
-  --color-annot-vermillion: var(--annot-vermillion);
-  --color-annot-purple: var(--annot-purple);
-  --color-annot-blue: var(--annot-blue);
-  --color-annot-sky: var(--annot-sky);
-  --color-annot-green: var(--annot-green);
-  --color-annot-black: var(--annot-black);
   --spacing-popover-min: var(--popover-min);
   --spacing-popover-max: var(--popover-max);
   --spacing-tooltip-max: var(--tooltip-max);
   --spacing-splitter: var(--splitter-width);
-  /* Layout slots (DESIGN 2): h-caption, h-toolbar-row, min-h-banner-min, h-status, max-w-status-name, w-caption-button,
-     ps-chrome-inset, w-inspector, min-w-canvas-min, max-w-empty-max and h-scrim. */
-  --spacing-caption: var(--caption-height);
-  --spacing-toolbar-row: var(--toolbar-row-height);
+  /* Layout slots: h-topbar, min-h-banner-min, max-w-status-name, w-caption-button, ps-chrome-inset, w-tool-sidebar,
+     w-tool-rail, min-w-canvas-min, max-w-empty-max and h-scrim. */
+  --spacing-topbar: var(--topbar-height);
+  --spacing-tool-sidebar: var(--tool-sidebar-width);
+  --spacing-tool-rail: var(--tool-rail-width);
   --spacing-banner-min: var(--banner-min-height);
-  --spacing-status: var(--status-height);
   --spacing-search-row: var(--search-row-height);
   --spacing-search-progress: var(--search-progress-height);
   --spacing-comments-dot: var(--comments-dot);
   --spacing-status-name: var(--status-name-max);
   --spacing-caption-button: var(--caption-button-width);
   --spacing-chrome-inset: var(--chrome-inset-mac);
-  --spacing-inspector: var(--inspector-width);
   --spacing-canvas-min: var(--canvas-min);
   --spacing-canvas-gutter: var(--canvas-gutter);
   --spacing-empty-max: var(--empty-max-width);
   --spacing-scrim: var(--scrim-height);
-  /* Empty-state logo (DESIGN 3.11): size-logo-hero and h-logo-slot (the ground shadow is the logo-ground utility). */
-  --spacing-logo-hero: var(--logo-hero);
-  --spacing-logo-slot: var(--logo-slot);
-  /* The start page hub (DESIGN 3.54): max-w-hub-max, h-hub-card, h-hub-compact, size-hub-tile, size-logo-hub, h-logo-hub-slot. */
-  --spacing-hub-max: var(--hub-max-width);
-  --spacing-hub-card: var(--hub-card-height);
-  --spacing-hub-compact: var(--hub-card-compact);
-  --spacing-hub-tile: var(--hub-tile);
-  --spacing-hub-tile-compact: var(--hub-tile-compact);
-  --spacing-logo-hub: var(--logo-hub);
-  --spacing-logo-hub-slot: var(--logo-hub-slot);
   --spacing-pill: var(--pill-height);
-  /* Document tabs (DESIGN 3.18) and the modal dialogs (3.13, 3.19): h-tabs-row, min-w-tab-min, max-w-tab-max, w-dialog. */
-  --spacing-tabs-row: var(--tabs-row-height);
+  /* Tabs and the modal dialogs: min-w-tab-min, max-w-tab-max, w-dialog. */
   --spacing-tab-min: var(--tab-min);
   --spacing-tab-max: var(--tab-max);
   --spacing-dialog: var(--dialog-width);
-  /* The new-file jobs (DESIGN 3.29-3.31): w-sheet (merge), w-dialog-md (split, compress). */
+  /* The new-file jobs: w-sheet (merge), w-dialog-md (split, compress). */
   --spacing-sheet: var(--sheet-width);
   --spacing-sheet-wide: var(--sheet-width-wide);
   --spacing-dialog-md: var(--dialog-width-md);
   --spacing-insert-marker: var(--insert-marker);
-  /* The signature library (DESIGN 3.35): w-sig-thumb-w and h-sig-thumb-h (the preview chip), max-h-lib-list (scrolls after 6 rows). */
+  /* The signature library: w-sig-thumb-w and h-sig-thumb-h (the preview chip), max-h-lib-list (scrolls after 6 rows). */
   --spacing-sig-thumb-w: var(--sig-thumb-w);
   --spacing-sig-thumb-h: var(--sig-thumb-h);
   --spacing-lib-list: var(--lib-list-max);
   --spacing-recover-list: var(--recover-list-max);
-  /* Signature creation pad (DESIGN 3.33): w-sig-pad, w-sig-pad-initials, h-sig-slot. */
+  /* Signature creation pad: w-sig-pad, w-sig-pad-initials, h-sig-slot. */
   --spacing-sig-pad: var(--sig-pad-width);
   --spacing-sig-pad-initials: var(--sig-pad-width-initials);
   --spacing-sig-slot: var(--sig-pad-height);
-  /* Typed signature style cards (DESIGN 3.60): w-sig-font-card, h-sig-font-card. */
+  /* Typed signature style cards: w-sig-font-card, h-sig-font-card. */
   --spacing-sig-font-card: var(--sig-font-card-w);
   --spacing-sig-font-card-h: var(--sig-font-card-h);
   --spacing-toast: var(--toast-height);
   --spacing-toast-min: var(--toast-min);
   --spacing-toast-max: var(--toast-max);
 
-  /* Type (DESIGN 1.5). Size / line height, weight and tracking per step. Weights are 400 and 600 only. */
-  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
-  --font-display: -apple-system, BlinkMacSystemFont, "Segoe UI Variable Display", "Segoe UI", system-ui, sans-serif;
+  /* Type (DESIGN 1.3, 1.5): Inter is added by a later package; the fallbacks carry until then. Weights 400, 500 and 600
+     (600 is reserved for state cues). */
+  --font-sans: "Inter", "Helvetica Neue", Helvetica, Arial, sans-serif;
+  --font-display: "Inter", "Helvetica Neue", Helvetica, Arial, sans-serif;
   --default-font-family: var(--font-sans);
   --font-weight-normal: 400;
+  --font-weight-medium: 500;
   --font-weight-semibold: 600;
-  --text-xs: 11px;
+  --text-xs: 12px;
   --text-xs--line-height: 16px;
-  --text-xs--font-weight: 600;
   --text-sm: 12px;
   --text-sm--line-height: 16px;
   --text-md: 14px;
   --text-md--line-height: 20px;
   --text-lg: 16px;
   --text-lg--line-height: 24px;
-  --text-lg--font-weight: 600;
+  --text-lg--font-weight: 500;
   --text-xl: 20px;
   --text-xl--line-height: 28px;
-  --text-xl--font-weight: 600;
+  --text-xl--font-weight: 500;
   --text-xl--letter-spacing: -0.01em;
-  --text-2xl: 28px;
+  --text-2xl: 32px;
   --text-2xl--line-height: 36px;
-  --text-2xl--font-weight: 600;
-  --text-2xl--letter-spacing: -0.01em;
+  --text-2xl--font-weight: 400;
+  --text-2xl--letter-spacing: -0.025em;
 
-  /* The one curve (MOTION 1): the bounce-.15 spring sampled as linear(); the cubic-bezier fallback is in section 6. */
-  --ease-spring: linear(
-    0,
-    0.029 5%,
-    0.102 10%,
-    0.198 15%,
-    0.303 20%,
-    0.409 25%,
-    0.509 30%,
-    0.601 35%,
-    0.681 40%,
-    0.808 50%,
-    0.895 60%,
-    0.949 70%,
-    0.98 80%,
-    0.996 90%,
-    1
-  );
-  --ease-float: cubic-bezier(0.37, 0, 0.63, 1); /* sine in-out: the empty-state float only (DESIGN 1.10) */
+  /* The one curve (MOTION 1.1). No spring, overshoot or bounce. */
+  --ease-out: cubic-bezier(0.2, 0, 0, 1);
   --default-transition-duration: var(--motion-fast);
-  --default-transition-timing-function: var(--ease-spring);
+  --default-transition-timing-function: var(--ease-out);
 }
 
 /* 3. Tokens without a Tailwind namespace. */
 :root {
-  color-scheme: light dark;
+  color-scheme: light;
 
-  /* Palette (DESIGN 1.1). Raw values; components never use these directly, only the roles above. */
-  --iris-50: #f4f5ff;
-  --iris-100: #e1e2ff;
-  --iris-200: #c9caff;
-  --iris-300: #8e8ef2;
-  --iris-400: #7b7cf0;
-  --iris-500: #5b5bd6;
-  --iris-600: #4a4ac4;
-  --iris-700: #3a3aab;
-  --ink: #1c1c2e;
-  --ink-60: #5f6072;
-  --ink-50: #7f8094;
-  --ink-40: #a3a4b8;
-  --ink-30: #b4b5c4; /* dividers only */
-  --success: #2e9e6b; /* icons and fills only */
-  --warning: #d98a1f;
-  --error: #d64b4b;
+  /* Primitives (DESIGN 1.1, BRAND 24). Raw values; components use the roles above, not these. */
+  --color-yellow: #fff84d; /* Solar */
+  --color-yellow-bright: #ffff22;
+  --color-ink: #0f0f0f;
+  --color-text-secondary: #6f6f6b;
+  --color-canvas: #fafaf8;
+  --color-sand: #f6f5f1;
+  --color-mist: #dde2ea;
+  --color-border: #e5e5e1;
+  --color-white: #ffffff;
+  --color-stone: #8a8a86; /* control boundaries: 3.47:1 on white, 3.18:1 on Sand */
+  --color-danger: #c8321f; /* 5.34:1 on white, 4.89:1 on Sand */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+  --space-12: 48px;
+  --space-16: 64px;
+  --space-20: 80px;
+  --space-24: 96px;
 
-  /* Roles that are not a plain color token: bg-bg and bg-win-close are utilities at the end of this file. */
-  --color-bg: var(--bg-fields), var(--bg-gradient);
-  --bg-gradient: linear-gradient(135deg, #e1e2ff, #f4f5ff);
-  /* Three static light fields (DESIGN 1.10): they give the glass something to frost. Field a ends 240 px below the top. */
-  --bg-field-a: radial-gradient(ellipse 720px 240px at 8% 0%, rgba(142, 142, 242, 0.32), transparent);
-  --bg-field-b: radial-gradient(ellipse 560px 200px at 72% 0%, rgba(255, 255, 255, 0.85), transparent);
-  --bg-field-c: radial-gradient(ellipse 480px 360px at 0% 100%, rgba(201, 202, 255, 0.4), transparent);
-  --bg-fields: var(--bg-field-a), var(--bg-field-b), var(--bg-field-c);
-  --win-close-hover: #c42b1c;
+  /* Semantic tokens (DESIGN 1.2). */
+  --surface-canvas: var(--color-canvas); /* app background, nav, page sidebar */
+  --surface-panel: var(--color-white); /* top bar, tool sidebar, menus, popovers, cards */
+  --surface-page-area: #efefec; /* behind PDF pages only */
+  --surface-page: var(--color-white);
+  --surface-subtle: var(--color-sand); /* hover, secondary button, banner, dialog */
+  --surface-pressed: #e5e5e1;
+  --text-primary: var(--color-ink);
+  --text-secondary: var(--color-text-secondary); /* never on --surface-page-area: 4.38:1 */
+  --border-subtle: 1px solid var(--color-border);
+  --border-control: 1px solid var(--color-stone);
+  --accent: var(--color-yellow);
+  --accent-bright: var(--color-yellow-bright);
+  --on-accent: var(--color-ink);
+  /* The focus ring (DESIGN 2.1): a 1px Ink hairline at the edge inside a 2px Solar band. The only third box-shadow. */
+  --ring-focus: 0 0 0 1px var(--color-ink), 0 0 0 3px var(--accent);
+  --opacity-disabled: 0.4;
+  --scrim: rgba(15, 15, 15, 0.12); /* the modal backdrop, no blur */
+  --page-shadow: var(--shadow-floating);
+  --win-close-hover: var(--color-danger);
 
-  /* Glass (DESIGN 1.3). --surface goes over --color-bg only, --surface-strong over page content. */
-  --surface: rgba(244, 245, 255, 0.66);
-  --surface-strong: rgba(255, 255, 255, 0.98);
-  --surface-solid: #ffffff;
-  --surface-fallback: #f8f8ff; /* G1 in solid mode */
-  --glass-filter: blur(24px) saturate(160%);
-  --glass-edge: inset 0 1px 0 rgba(255, 255, 255, 0.9), inset 0 0 0 1px rgba(255, 255, 255, 0.55);
-  --page-shadow: var(--shadow-1);
-  /* The canvas's own inset edge (DESIGN 1.2, 1.11); paint, so solid mode keeps it. */
-  --canvas-edge: inset 0 1px 0 rgba(255, 255, 255, 0.7), inset 0 0 0 1px rgba(91, 91, 214, 0.08);
+  /* Highlight and stroke palette, document content (DESIGN 1.4). Highlights are drawn at 45 % with mix-blend-mode: multiply. */
+  --hl-solar: #fff84d;
+  --hl-mint: #7debb5;
+  --hl-sky: #a3deff;
+  --hl-rose: #ffc7d7;
+  --hl-lavender: #dccfff;
+  --stroke-solar: #fff84d; /* fills only: the picker labels it "Solar, fill" */
+  --stroke-mint: #1f9e6a;
+  --stroke-sky: #3d8fd1;
+  --stroke-rose: #e15c86;
+  --stroke-lavender: #9278e6;
+  --stroke-ink: #0f0f0f;
+  --ink-signature: #1f3a93; /* the only blue */
 
-  /* Spacing (DESIGN 1.4). */
-  --space-0-5: 4px;
-  --space-1: 8px;
-  --space-1-5: 12px;
-  --space-2: 16px;
-  --space-3: 24px;
-  --space-4: 32px;
-  --space-5: 40px;
-  --space-6: 48px;
-  --space-8: 64px;
+  /* Glows (DESIGN 5, BRAND 5): brand surfaces only. Solar at most 0.95 alpha; Mist is the counter-light at 20% 10%. */
+  --glow-mist: radial-gradient(circle at 20% 10%, rgba(221, 226, 234, 0.8), transparent 45%);
+  --glow-hero:
+    radial-gradient(
+      circle at 80% 85%,
+      rgba(255, 248, 77, 0.95) 0%,
+      rgba(255, 248, 77, 0.55) 22%,
+      rgba(255, 248, 77, 0) 55%
+    ),
+    var(--glow-mist);
+  --glow-empty: radial-gradient(circle at 70% 75%, rgba(255, 255, 34, 0.9), transparent 48%), var(--glow-mist);
+  --glow-card: radial-gradient(circle at 90% 90%, rgba(255, 248, 77, 0.7), transparent 60%);
+  --glow-drop: var(--glow-empty); /* its opacity follows the cursor (MOTION spell 4) */
+  --glow-splash: radial-gradient(circle at 50% 50%, rgba(255, 255, 34, 0.9), transparent 48%), var(--glow-mist);
 
-  /* Sizes (DESIGN 1.4, 1.8). */
-  --control-sm: 24px;
-  --control-md: 32px;
+  /* Sizes (DESIGN 1.3). */
+  --control-sm: 28px;
+  --control-md: 36px;
   --control-lg: 40px;
+  --control-xl: 44px; /* hero search */
   --target-min: 24px;
   --target-default: var(--control-md);
   --hairline: 1px;
-  /* Each side of the divider between toolbar groups (F9: Markup and Edit read as two groups). */
-  --toolbar-group-gap: var(--space-1-5);
+  /* Each side of the divider between toolbar groups. */
+  --toolbar-group-gap: var(--space-3);
   /** Inner padding and focus offset of a form control, in px at 100% zoom (divided by --page-scale on the canvas). */
   --form-inset: 2px;
   --focus-width: 2px;
   --focus-offset: 2px;
-  --icon-12: 12px;
   --icon-16: 16px;
+  --icon-18: 18px;
   --icon-20: 20px;
   --icon-24: 24px;
-  --icon-stroke: 1.5px;
-  --icon-stroke-sm: 2px; /* at 12 px */
+  --icon-stroke: 1.75px;
 
-  /* Widths (DESIGN 2, 3.3 to 3.8). The panel values are mirrored as numbers in components/tokens.ts (PANEL). */
+  /* Widths (DESIGN 1.3). The panel values are mirrored as numbers in components/tokens.ts (PANEL). */
   --field-width: 56px; /* slider number field and zoom readout */
   --slider-min: 120px;
   --swatch-size: 24px;
   --note-icon: 24px;
   --note-width: 280px;
-  --annot-yellow: #f0e442;
-  --annot-orange: #e69f00;
-  --annot-vermillion: #d55e00;
-  --annot-purple: #cc79a7;
-  --annot-blue: #0072b2;
-  --annot-sky: #56b4e9;
-  --annot-green: #009e73;
-  --annot-black: #000000;
   --popover-min: 200px;
   --popover-max: 320px;
   --tooltip-max: 240px;
-  --panel-min: 192px; /* left panel range, default and collapse threshold */
+  /* Left panel range, default and collapse threshold. DESIGN 1.3 says 200 / 200 / 320: those wait for the layout package (R1), because
+     the splitter, the store clamp and limits.rs (Rust) still use 192 / 248 / 400. */
+  --panel-min: 192px;
   --panel-default: 248px;
   --panel-max: 400px;
   --panel-collapse-below: 144px;
   --splitter-width: 8px;
-  --outline-indent: 16px; /* outline tree: indent per level, capped at --outline-indent-max (DESIGN 3.15) */
+  --outline-indent: 16px; /* outline tree: indent per level, capped at --outline-indent-max */
   --outline-indent-max: 64px;
-  --search-row-height: 48px; /* search panel: a hit row; the page header row is --control-sm (DESIGN 3.16) */
+  --search-row-height: 48px; /* search panel: a hit row; the page header row is --control-sm */
   --search-progress-height: 2px; /* search panel: the progress pill bar */
-  --comments-group-height: 24px; /* comments panel rows: page header, thread root, reply (DESIGN 3.26) */
+  --comments-group-height: 24px; /* comments panel rows: page header, thread root, reply */
   --comments-root-height: 64px;
   --comments-reply-height: 48px;
-  --comments-card-estimate: 112px; /* a card before it is measured (DESIGN 3.59) */
+  --comments-card-estimate: 112px; /* a card before it is measured */
   --comments-dot: 8px; /* the colour dot of a row */
 
-  /* Layout slots (DESIGN 2, 2.2, 3.11). Rows: caption 32 (Windows only), toolbar row 56 (toolbar 40 + 8 above and below),
-     banner at least 48, status 32. Columns: inspector 288, canvas at least 360. The widths are mirrored as numbers in
-     components/tokens.ts (LAYOUT) for the collapse rules, and a test fails on drift. */
-  --caption-height: 32px;
-  --toolbar-row-height: 56px;
+  /* Layout slots (DESIGN 1.3, 3). The widths are mirrored as numbers in components/tokens.ts (LAYOUT) for the collapse rules,
+     and a test fails on drift. */
+  --topbar-height: 56px;
+  --tool-sidebar-width: 280px;
+  --tool-rail-width: 56px;
   --banner-min-height: 48px;
-  --status-height: 32px;
-  --status-name-max: 40%; /* the file name's share of the status bar (DESIGN 3.10) */
+  --status-name-max: 40%; /* the file name's share of the status bar */
   --caption-button-width: 46px;
-  --chrome-inset-mac: 80px; /* leading inset of the toolbar row for the macOS traffic lights; 8 in full screen */
+  --chrome-inset-mac: 80px; /* leading inset of the top bar for the macOS traffic lights; 8 in full screen */
   --free-text-line-height: 1.2; /* the line height of a free text, in times its font size: the editor matches the written file */
-  --inspector-width: 288px;
   --canvas-min: 360px;
-  /* The canvas gutter (DESIGN 3 canvas): room between the page and the canvas edge, and the end padding of the scroll region. */
-  --canvas-gutter: var(--space-3);
+  /* The canvas gutter: room between the page and the canvas edge, and the end padding of the scroll region. */
+  --canvas-gutter: var(--space-6);
   --scrollbar-size: 8px;
   --scrollbar-inset: 2px;
   --empty-max-width: 560px; /* the empty state's column */
-  --tabs-row-height: 32px; /* the tab strip (DESIGN 3.18); 0 without a document, with an 8 px gap below it when shown */
-  --tab-min: 120px;
-  --tab-max: 240px;
-  --dialog-width: 400px; /* the password prompt (DESIGN 3.19) */
-  --sheet-width: 560px; /* the merge sheet (DESIGN 3.29) */
+  --tab-min: 96px;
+  --tab-max: 200px;
+  --dialog-width: 400px; /* the password prompt */
+  --sheet-width: 560px; /* the merge sheet */
   --sheet-width-wide: 696px; /* the signature sheet: the 600 px pad plus the 24 px padding on both sides */
-  --sig-pad-width: 600px; /* signature creation (DESIGN 3.33, ADR-051) */
+  --sig-pad-width: 600px; /* signature creation (ADR-051) */
   --sig-pad-width-initials: 200px;
   --sig-pad-height: 200px; /* every panel of the sheet fills this slot */
-  --sig-font-card-w: 200px; /* typed signature style cards (DESIGN 3.60): 3 x 200 + 2 x 24 = the 648 px content width */
+  --sig-font-card-w: 200px; /* typed signature style cards: 3 x 200 + 2 x 24 = the 648 px content width */
   --sig-font-card-h: 152px;
-  --dialog-width-md: 480px; /* split and compress (DESIGN 3.30, 3.31) */
-  --toast-height: 40px; /* toast (DESIGN 3.12): 40 high, 240 to 400 wide */
+  --dialog-width-md: 480px; /* split and compress */
+  --toast-height: 40px; /* toast: 40 high, 240 to 400 wide */
   --toast-min: 240px;
   --toast-max: 400px;
-  /* Scroll-edge scrim (DESIGN 2): 24 px in all, the first 8 solid canvas color, the rest a fade. */
+  /* Scroll-edge scrim: 24 px in all, the first 8 solid page-area color, the rest a fade. */
   --scrim-height: 24px;
   --scrim-solid: 8px;
-  /* Empty-state logo (DESIGN 3.11, 800 px windows): 104 in a 128 slot, so the float stays inside it. Ground shadow 96 x 8. */
-  --pill-height: 20px; /* pill badges (DESIGN 1.10) */
-  --logo-hero: 104px;
-  --logo-slot: 128px;
-  --logo-ground-width: 96px;
-  --logo-ground-height: 8px;
-  /* The start page hub (DESIGN 3.54): column 880, cards 144 (64 compact at windows up to 800 high), tiles 40 (32 compact), header logo 48 in a 64 slot, ground shadow 40 x 6. */
-  --hub-max-width: 880px;
-  --hub-card-min: 200px;
-  --hub-card-height: 144px;
-  --hub-card-compact: 64px;
-  --hub-tile: 40px;
-  --hub-tile-compact: 32px;
-  --logo-hub: 48px;
-  --logo-hub-slot: 64px;
-  --logo-hub-ground-width: 40px;
-  --logo-hub-ground-height: 6px;
-  --ground-shadow: radial-gradient(closest-side, rgba(91, 91, 214, 0.24), transparent);
+  --pill-height: 20px; /* pill badges */
 
-  /* Motion (DESIGN 1.6). */
+  /* Motion (DESIGN 1.2, MOTION 1): three durations, exits 40 ms shorter. */
   --motion-fast: 120ms;
-  --motion-base: 200ms;
-  --motion-slow: 320ms;
-  /* The empty-state logo's float, the one ambient motion of the app (DESIGN 1.10). Reduced motion: distance 0. */
-  --float-distance: 8px;
-  --float-duration: 3000ms; /* per direction: a 6 s cycle */
-  /* Transform amounts of states and entrances (DESIGN 3.0, 3.5, 3.12). Reduced motion resets them (section 6). */
-  --scale-press: 0.97;
-  --scale-enter: 0.96;
-  --scale-thumb: 1.125; /* slider thumb on hover and drag (DESIGN 3.7) */
+  --motion-base: 160ms;
+  --motion-slow: 180ms;
+  --motion-fast-exit: 80ms;
+  --motion-base-exit: 120ms;
+  --motion-slow-exit: 140ms;
+  /* Named exceptions (MOTION 1.3): only these. */
+  --motion-check: 240ms; /* spell 6 */
+  --motion-scroll-max: 300ms; /* spell 8 */
+  --tooltip-delay: 400ms; /* spell 16 */
+  --stagger: 20ms; /* spell 3 */
+  --shimmer: 1200ms; /* spell 15 */
+  --breathe: 2000ms; /* spell 10 */
+  --drift: 60s; /* spell 11 */
+  --splash-max: 1500ms; /* spell 10 */
+  /* Holds, not animations. */
+  --hold-check: 600ms; /* spell 6 */
+  --tooltip-leave: 100ms; /* spell 16 */
+  --hold-outline: 1000ms; /* spell 8, reduced motion */
+  /* Transform amounts of states and entrances. Reduced motion resets them (section 5). */
+  --scale-press: 0.98;
+  --scale-enter: 0.98;
+  --scale-lift: 1.02; /* drag preview card */
   --offset-enter: 8px;
-  --scale-lift: 1.04; /* drag preview card (MOTION 4.5) */
-  --pulse-scale: 1.06; /* success pulse ring (MOTION 4.7) */
-  --pulse-opacity: 0.6;
+  --pulse-opacity: 0.6; /* success pulse ring (MOTION 4.7) */
   --drag-card-width: 160px;
   --drag-card-height: 208px;
-  --grid-thumb: 160px; /* organize grid: the thumbnail box, 96 to 256 in steps of 32 (DESIGN 3.28); the user's choice is set inline */
-  --sig-thumb-w: 120px; /* library preview chip (DESIGN 3.35, --sig-thumb-lg) */
+  --grid-thumb: 160px; /* organize grid: the thumbnail box, 96 to 256 in steps of 32; the user's choice is set inline */
+  --sig-thumb-w: 120px; /* library preview chip */
   --sig-thumb-h: 40px;
-  --recover-list-max: 128px; /* recovery banner (DESIGN 3.50): three 40 px rows and their 4 px gaps, then it scrolls */
+  --recover-list-max: 128px; /* recovery banner: three 40 px rows and their 4 px gaps, then it scrolls */
   --lib-list-max: 360px; /* six 56 px rows and their 4 px gaps */
   --insert-marker: 2px; /* organize grid: the insertion marker's width */
 
@@ -453,192 +422,83 @@
   --z-drag: 500;
 }
 
-/* 4a. Dark: the OS is dark and html[data-theme="light"] is not set. Keep identical to 4b (tokens.test.ts checks). */
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) {
-    --bg-gradient: linear-gradient(135deg, #1c1d40, #0f1020);
-    --bg-field-a: radial-gradient(ellipse 720px 240px at 8% 0%, rgba(91, 91, 214, 0.28), transparent);
-    --bg-field-b: radial-gradient(ellipse 560px 200px at 72% 0%, rgba(142, 142, 242, 0.1), transparent);
-    --bg-field-c: radial-gradient(ellipse 480px 360px at 0% 100%, rgba(58, 58, 171, 0.3), transparent);
-    --ground-shadow: radial-gradient(closest-side, rgba(0, 0, 0, 0.48), transparent);
-    --color-canvas: #181936;
-    --canvas-edge: inset 0 0 0 1px rgba(255, 255, 255, 0.06);
-    --color-scrollbar: rgba(201, 202, 255, 0.24);
-    --color-scrollbar-hover: rgba(201, 202, 255, 0.4);
-    --page-shadow: 0 0 0 1px rgba(255, 255, 255, 0.08), 0 8px 24px rgba(0, 0, 0, 0.56);
-    --color-text: #ffffff;
-    --color-text-muted: var(--ink-40);
-    --color-text-accent: var(--iris-200);
-    --color-text-disabled: var(--ink-60);
-    --color-icon-disabled: var(--ink-50);
-    --color-accent: var(--iris-300);
-    --color-accent-hover: var(--iris-200);
-    --color-accent-pressed: var(--iris-400);
-    --color-on-accent: var(--ink);
-    --color-focus: var(--iris-300);
-    --color-control-hover: rgba(255, 255, 255, 0.08);
-    --color-control-pressed: rgba(255, 255, 255, 0.14);
-    --color-selected: rgba(142, 142, 242, 0.2);
-    --color-fill-disabled: rgba(255, 255, 255, 0.06);
-    --color-track: rgba(255, 255, 255, 0.2);
-    --color-divider: rgba(255, 255, 255, 0.12);
-    --color-tile: rgba(142, 142, 242, 0.16);
-    --color-tile-icon: var(--iris-200);
-    --color-card: rgba(
-      255,
-      255,
-      255,
-      0.06
-    ); /* a comment card inside the glass panel: translucent, not glass (DESIGN 3.59) */
-    --color-tooltip-bg: #2b2c42;
-    --color-warning-icon: #d98a1f;
-    --color-success-text: #7fd8aa;
-    --color-warning-text: #f5c26b;
-    --color-error-text: #ff9a9a;
-    --surface: rgba(30, 30, 58, 0.6);
-    --surface-fallback: #1e1e3a;
-    --surface-strong: rgba(28, 28, 46, 0.98);
-    --surface-solid: #1c1c2e;
-    --glass-edge: inset 0 1px 0 rgba(255, 255, 255, 0.14), inset 0 0 0 1px rgba(255, 255, 255, 0.1);
-    --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.24), 0 8px 32px rgba(0, 0, 0, 0.32);
-    --shadow-2: 0 2px 6px rgba(0, 0, 0, 0.32), 0 12px 40px rgba(0, 0, 0, 0.48);
-    --shadow-3: 0 24px 64px rgba(0, 0, 0, 0.56);
-  }
+/* legacy aliases — removed in R7 (ADR-100) */
+@theme static {
+  --spacing-icon-12: var(--icon-12);
+  --spacing-toolbar-row: var(--toolbar-row-height);
+  --spacing-inspector: var(--inspector-width);
+  --spacing-caption: var(--caption-height);
+  --spacing-status: var(--status-height);
+  --spacing-tabs-row: var(--tabs-row-height);
+  --spacing-logo-slot: var(--logo-slot);
+  --spacing-hub-max: var(--hub-max-width);
+  --spacing-hub-card: var(--hub-card-height);
+  --spacing-hub-compact: var(--hub-card-compact);
+  --spacing-hub-tile: var(--hub-tile);
+  --spacing-hub-tile-compact: var(--hub-tile-compact);
+  --spacing-logo-hub: var(--logo-hub);
+  --spacing-logo-hub-slot: var(--logo-hub-slot);
+  /* Annotation colours of v1.1 (ADR-029): the Okabe-Ito eight, still read by the annotation UI until the §1.4 palette lands. */
+  --color-annot-yellow: var(--annot-yellow);
+  --color-annot-orange: var(--annot-orange);
+  --color-annot-vermillion: var(--annot-vermillion);
+  --color-annot-purple: var(--annot-purple);
+  --color-annot-blue: var(--annot-blue);
+  --color-annot-sky: var(--annot-sky);
+  --color-annot-green: var(--annot-green);
+  --color-annot-black: var(--annot-black);
 }
 
-/* 4b. Dark by choice (Settings: Theme: Dark), whatever the OS says. */
-:root[data-theme="dark"] {
-  --bg-gradient: linear-gradient(135deg, #1c1d40, #0f1020);
-  --bg-field-a: radial-gradient(ellipse 720px 240px at 8% 0%, rgba(91, 91, 214, 0.28), transparent);
-  --bg-field-b: radial-gradient(ellipse 560px 200px at 72% 0%, rgba(142, 142, 242, 0.1), transparent);
-  --bg-field-c: radial-gradient(ellipse 480px 360px at 0% 100%, rgba(58, 58, 171, 0.3), transparent);
-  --ground-shadow: radial-gradient(closest-side, rgba(0, 0, 0, 0.48), transparent);
-  --color-canvas: #181936;
-  --canvas-edge: inset 0 0 0 1px rgba(255, 255, 255, 0.06);
-  --color-scrollbar: rgba(201, 202, 255, 0.24);
-  --color-scrollbar-hover: rgba(201, 202, 255, 0.4);
-  --page-shadow: 0 0 0 1px rgba(255, 255, 255, 0.08), 0 8px 24px rgba(0, 0, 0, 0.56);
-  --color-text: #ffffff;
-  --color-text-muted: var(--ink-40);
-  --color-text-accent: var(--iris-200);
-  --color-text-disabled: var(--ink-60);
-  --color-icon-disabled: var(--ink-50);
-  --color-accent: var(--iris-300);
-  --color-accent-hover: var(--iris-200);
-  --color-accent-pressed: var(--iris-400);
-  --color-on-accent: var(--ink);
-  --color-focus: var(--iris-300);
-  --color-control-hover: rgba(255, 255, 255, 0.08);
-  --color-control-pressed: rgba(255, 255, 255, 0.14);
-  --color-selected: rgba(142, 142, 242, 0.2);
-  --color-fill-disabled: rgba(255, 255, 255, 0.06);
-  --color-track: rgba(255, 255, 255, 0.2);
-  --color-divider: rgba(255, 255, 255, 0.12);
-  --color-tile: rgba(142, 142, 242, 0.16);
-  --color-tile-icon: var(--iris-200);
-  --color-card: rgba(
-    255,
-    255,
-    255,
-    0.06
-  ); /* a comment card inside the glass panel: translucent, not glass (DESIGN 3.59) */
-  --color-tooltip-bg: #2b2c42;
-  --color-warning-icon: #d98a1f;
-  --color-success-text: #7fd8aa;
-  --color-warning-text: #f5c26b;
-  --color-error-text: #ff9a9a;
-  --surface: rgba(30, 30, 58, 0.6);
-  --surface-fallback: #1e1e3a;
-  --surface-strong: rgba(28, 28, 46, 0.98);
-  --surface-solid: #1c1c2e;
-  --glass-edge: inset 0 1px 0 rgba(255, 255, 255, 0.14), inset 0 0 0 1px rgba(255, 255, 255, 0.1);
-  --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.24), 0 8px 32px rgba(0, 0, 0, 0.32);
-  --shadow-2: 0 2px 6px rgba(0, 0, 0, 0.32), 0 12px 40px rgba(0, 0, 0, 0.48);
-  --shadow-3: 0 24px 64px rgba(0, 0, 0, 0.56);
-}
-
-/*
- * The dark: variant follows the same rule as the two blocks above, so it can never disagree with the tokens. Components
- * should not need it: the role tokens already change with the theme.
- */
-@custom-variant dark {
-  @media (prefers-color-scheme: dark) {
-    &:where(:root:not([data-theme="light"]) *) {
-      @slot;
-    }
-  }
-
-  &:where([data-theme="dark"], [data-theme="dark"] *) {
-    @slot;
-  }
-}
-
-/* Native controls and scrollbars follow the chosen theme. */
-:root[data-theme="light"] {
-  color-scheme: light;
-}
-
-:root[data-theme="dark"] {
-  color-scheme: dark;
-}
-
-/*
- * 5. Solid mode (DESIGN 1.1, 1.3): --surface-solid, no filter, the edge becomes a 1 px divider; geometry unchanged.
- * Applies when backdrop-filter is unsupported, under prefers-reduced-transparency, with
- * html[data-transparency="reduced"] (the macOS flag from Rust, or Settings: Glass: Solid) and in forced colors.
- * `:root:root` outranks the dark blocks above; these blocks come after them. Keep the four bodies identical.
- */
-@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
-  :root:root {
-    --surface: var(--surface-fallback);
-    --surface-strong: var(--surface-solid);
-    --bg-fields: none;
-    --glass-filter: none;
-    --glass-edge: inset 0 0 0 var(--hairline) var(--color-divider);
-  }
-}
-
-@media (prefers-reduced-transparency: reduce) {
-  :root:root {
-    --surface: var(--surface-fallback);
-    --surface-strong: var(--surface-solid);
-    --bg-fields: none;
-    --glass-filter: none;
-    --glass-edge: inset 0 0 0 var(--hairline) var(--color-divider);
-  }
-}
-
-:root[data-transparency="reduced"] {
-  --surface: var(--surface-fallback);
-  --surface-strong: var(--surface-solid);
-  --bg-fields: none;
-  --glass-filter: none;
-  --glass-edge: inset 0 0 0 var(--hairline) var(--color-divider);
+:root {
+  --icon-12: var(--icon-16); /* DESIGN 1.3: --icon-12 is removed, 16; Icon.tsx sizes move in the icon audit */
+  --icon-stroke-sm: 2px;
+  --scale-thumb: 1;
+  --toolbar-row-height: var(--topbar-height);
+  --inspector-width: 288px; /* DESIGN 1.3: --tool-sidebar-width 280; LAYOUT.inspector moves with the layout package (R1) */
+  --caption-height: 32px;
+  --status-height: 32px;
+  --tabs-row-height: 32px;
+  --annot-yellow: #f0e442;
+  --annot-orange: #e69f00;
+  --annot-vermillion: #d55e00;
+  --annot-purple: #cc79a7;
+  --annot-blue: #0072b2;
+  --annot-sky: #56b4e9;
+  --annot-green: #009e73;
+  --annot-black: #000000;
+  --logo-slot: 128px;
+  --hub-max-width: 880px;
+  --hub-card-min: 200px;
+  --hub-card-height: 144px;
+  --hub-card-compact: 64px;
+  --hub-tile: 40px;
+  --hub-tile-compact: 32px;
+  --logo-hub: 48px;
+  --logo-hub-slot: 64px;
+  --logo-hub-ground-width: 40px;
+  --logo-hub-ground-height: 6px;
 }
 
 /* Forced colors: system colors throughout, focus is Highlight. State never relies on color alone (DESIGN rules). */
 @media (forced-colors: active) {
   :root:root {
-    --surface: var(--surface-fallback);
-    --surface-strong: var(--surface-solid);
-    --bg-fields: none;
-    --glass-filter: none;
-    --glass-edge: inset 0 0 0 var(--hairline) var(--color-divider);
-    --surface-solid: Canvas;
-    --color-bg: Canvas;
-    --surface-fallback: Canvas;
-    /* No shadows (DESIGN 1.3): a transparent one keeps the box-shadow lists of the glass recipes valid. */
+    --surface-canvas: Canvas;
+    --surface-panel: Canvas;
+    --surface-page-area: Canvas;
+    --surface-page: Canvas;
+    --surface-subtle: Canvas;
+    --surface-pressed: Canvas;
+    /* No shadows (DESIGN 1.2): a transparent one keeps box-shadow lists valid. The focus outline stays (transparent = Highlight). */
+    --shadow-standard: 0 0 transparent;
+    --shadow-floating: 0 0 transparent;
     --shadow-1: 0 0 transparent;
     --shadow-2: 0 0 transparent;
     --shadow-3: 0 0 transparent;
-    --ground-shadow: none;
-    --color-canvas: Canvas;
-    --canvas-edge: inset 0 0 transparent;
     --page-shadow: 0 0 transparent;
+    --ring-focus: 0 0 transparent;
     --color-page: Canvas;
     --color-text: CanvasText;
     --color-text-muted: CanvasText;
-    --color-text-accent: LinkText;
     --color-text-disabled: GrayText;
     --color-icon-disabled: GrayText;
     --color-accent: Highlight;
@@ -646,6 +506,8 @@
     --color-accent-pressed: Highlight;
     --color-on-accent: HighlightText;
     --color-focus: Highlight;
+    --color-border-subtle: ButtonBorder;
+    --color-border-control: ButtonBorder;
     --color-control-border: ButtonBorder;
     --color-control-hover: Canvas;
     --color-control-pressed: Canvas;
@@ -655,18 +517,17 @@
     --color-divider: CanvasText;
     --color-tile: Canvas;
     --color-tile-icon: CanvasText;
-    --color-card: Canvas; /* a comment card inside the glass panel: translucent, not glass (DESIGN 3.59) */
+    --color-card: Canvas;
     --color-tooltip-bg: Canvas;
     --color-tooltip-text: CanvasText;
     --color-tooltip-key: CanvasText;
-    --color-success-icon: CanvasText;
-    --color-warning-icon: CanvasText;
     --color-error-icon: CanvasText;
-    --color-success-text: CanvasText;
-    --color-warning-text: CanvasText;
     --color-error-text: CanvasText;
+    --color-surface: Canvas;
+    --color-surface-strong: Canvas;
+    --color-surface-solid: Canvas;
     --color-on-close: HighlightText;
-    /* Document layer: the translucent iris fills would be replaced or dropped, so selection and search hits become the
+    /* Document layer: the translucent fills would be replaced or dropped, so selection and search hits become the
        system Highlight. It is opaque, so a box in this color needs an outline or a text color of its own (HighlightText). */
     --color-doc-select: Highlight;
     --color-doc-text-select: Highlight;
@@ -681,26 +542,16 @@
   }
 }
 
-/* The spring where linear() is unsupported (WKWebView before Safari 17.2): max deviation 0.01 (MOTION 1). */
-@supports not (transition-timing-function: linear(0, 1)) {
-  :root:root {
-    --ease-spring: cubic-bezier(0.25, 0.1, 0.25, 1);
-  }
-}
-
 /*
- * 6. Reduced motion (MOTION 5): no transforms, transitions opacity-only at --motion-fast, smooth scroll instant.
+ * 5. Reduced motion (MOTION 1.7): no transforms, transitions opacity-only at --motion-fast, smooth scroll instant.
  * Transform amounts are tokens, so a component that uses them (active:scale-(--scale-press)) needs no extra branch.
  */
 @media (prefers-reduced-motion: reduce) {
   :root:root {
     --scale-press: 1;
     --scale-enter: 1;
-    --scale-thumb: 1;
     --scale-lift: 1;
-    --pulse-scale: 1;
     --offset-enter: 0px;
-    --float-distance: 0px;
   }
 
   *,
@@ -709,20 +560,20 @@
     transition-property: opacity !important;
     transition-duration: var(--motion-fast) !important;
     transition-delay: 0s !important;
-    transition-timing-function: var(--ease-spring) !important;
+    transition-timing-function: var(--ease-out) !important;
     animation: none !important;
     scroll-behavior: auto !important;
   }
 
-  /* The success pulse keeps its ring: --pulse-scale is 1 here, so it only fades (MOTION 4.7). More specific than the reset. */
+  /* The success pulse keeps its ring: it only fades (MOTION 4.7). More specific than the reset. */
   [data-pulse]::after {
-    animation: pulse-ring calc(var(--motion-fast) + var(--motion-base)) var(--ease-spring) !important;
+    animation: pulse-ring calc(var(--motion-fast) + var(--motion-base)) var(--ease-out) !important;
   }
 
   /*
-   * The left panel's collapse (DESIGN 3.8) is opacity-only. The panel fades in --motion-fast (it is a Motion element) and a collapse
-   * then takes its tracks away in one step, after that fade (a transition of no duration that starts --motion-fast (120 ms) late), where
-   * the --motion-slow (320 ms) slide of the tracks is off. Restoring the panel gives it its tracks at once and it fades in on them.
+   * The left panel's collapse is opacity-only. The panel fades in --motion-fast (it is a Motion element) and a collapse
+   * then takes its tracks away in one step, after that fade (a transition of no duration that starts --motion-fast late), where
+   * the --motion-slow slide of the tracks is off. Restoring the panel gives it its tracks at once and it fades in on them.
    */
   [data-layout][data-animating="left"][data-left="collapsed"],
   [data-layout][data-animating="inspector"][data-inspector="closed"] {
@@ -741,14 +592,15 @@
 
   body {
     margin: 0;
-    background: var(--color-bg);
+    background: var(--surface-canvas);
     color: var(--color-text);
     font-family: var(--font-sans);
     font-size: var(--text-md);
     font-weight: var(--font-weight-normal);
     line-height: var(--text-md--line-height);
+    font-feature-settings: "cv11", "ss01";
     font-variant-numeric: tabular-nums;
-    -webkit-font-smoothing: antialiased; /* light-on-dark text renders heavier with default smoothing on macOS; same weight tokens in both themes */
+    -webkit-font-smoothing: antialiased;
   }
 
   /* DESIGN 1.11: the ::-webkit-scrollbar recipe in both webviews, no arrow buttons. Forced colors keeps native bars.
@@ -795,146 +647,31 @@
       scrollbar-color: auto;
     }
   }
-
-  /* DESIGN 3.0: 2 px focus outline, offset 2, follows the radius. */
-  :focus-visible {
-    outline: var(--focus-width) solid var(--color-focus);
-    outline-offset: var(--focus-offset);
-  }
-}
-
-/* The page background gradient. A color utility cannot hold a gradient, so this one is a plain background. */
-@utility bg-bg {
-  background: var(--color-bg);
-}
-
-@utility bg-win-close {
-  background-color: var(--win-close-hover);
 }
 
 /*
- * Glass recipes (DESIGN 1.3, MOTION 5). G1: toolbar, panels, banner, empty card (blurred). G2: popover, menu, toast, drop
- * overlay (--surface-strong + edge + --shadow-2, no blur: they sit over the canvas, which carries no backdrop-filter).
- * Dialogs and submenus are solid with --shadow-3 (surface-dialog). Glass only on the control layer, never inside glass.
- * Solid mode needs no variant: the tokens change underneath. The blur never animates: do not put backdrop-filter in a
- * transition list (transition-colors and transition-opacity are fine; plain `transition` is not).
+ * The focus ring (DESIGN 2.1): --ring-focus, a 1px Ink hairline inside a 2px Solar band, drawn as a box-shadow. Not in a layer, so
+ * a shadow utility on the element (shadow-floating) cannot hide it. Containers that take programmatic focus (tabindex="-1") show
+ * none, and so do the canvas items scaled by --page-scale, which draw the pair themselves below. The transparent outline is what forced colors turns into Highlight.
  */
-@utility glass-1 {
-  background: var(--surface);
-  -webkit-backdrop-filter: var(--glass-filter);
-  backdrop-filter: var(--glass-filter);
-  box-shadow: var(--glass-edge), var(--shadow-1);
-
-  @media (forced-colors: active) {
-    outline: var(--hairline) solid transparent;
-    outline-offset: calc(var(--hairline) * -1);
-  }
-}
-
-@utility glass-2 {
-  background: var(--surface-strong);
-  box-shadow: var(--glass-edge), var(--shadow-2);
-
-  @media (forced-colors: active) {
-    outline: var(--hairline) solid transparent;
-    outline-offset: calc(var(--hairline) * -1);
-  }
-}
-
-@utility surface-dialog {
-  background: var(--surface-solid);
-  box-shadow: var(--shadow-3);
-
-  @media (forced-colors: active) {
-    outline: var(--hairline) solid transparent;
-    outline-offset: calc(var(--hairline) * -1);
-  }
+:focus-visible:not([tabindex="-1"], [data-annot-frame], [data-crop-rect], [data-form-control]) {
+  outline: var(--focus-width) solid transparent;
+  box-shadow: var(--ring-focus);
 }
 
 /* Scroll-edge scrim (DESIGN 2): the strip under the toolbar edge of the canvas that hides page content scrolled behind it. */
 @utility canvas-scrim {
   height: var(--scrim-height);
-  background: linear-gradient(to bottom, var(--color-canvas) var(--scrim-solid), transparent);
+  background: linear-gradient(to bottom, var(--color-page-area) var(--scrim-solid), transparent);
 }
 
-/* The canvas: its colour and inset edge (DESIGN 1.2). */
-@utility surface-canvas {
-  background: var(--color-canvas);
-  box-shadow: var(--canvas-edge);
-}
-
-/* A page of the document: white in both themes, with the page shadow. */
+/* A page of the document: white, with the floating shadow. */
 @utility shadow-page {
   box-shadow: var(--page-shadow);
 }
 
-/*
- * The empty-state logo (DESIGN 1.10, 3.11). Transform and opacity only. The float starts after the entry and runs on
- * the sheet and its ground shadow with the same timing. Reduced motion removes every animation (section 6), so the sheet
- * rests at 0 with the static ground shadow. The component sets data-paused while the document is hidden.
- */
-@keyframes logo-enter {
-  from {
-    opacity: 0;
-    transform: scale(var(--scale-enter));
-  }
-
-  to {
-    opacity: 1;
-    transform: scale(1);
-  }
-}
-
-@keyframes float {
-  from {
-    transform: translateY(0);
-  }
-
-  to {
-    transform: translateY(calc(-1 * var(--float-distance)));
-  }
-}
-
-@keyframes float-shadow {
-  from {
-    transform: scale(1);
-    opacity: 1;
-  }
-
-  to {
-    transform: scale(0.88);
-    opacity: 0.7;
-  }
-}
-
-@utility logo-float {
-  will-change: transform;
-  animation:
-    logo-enter var(--motion-slow) var(--ease-spring) both,
-    float var(--float-duration) var(--ease-float) var(--motion-slow) infinite alternate;
-
-  &[data-paused] {
-    animation-play-state: paused;
-  }
-
-  @media (forced-colors: active) {
-    forced-color-adjust: none;
-  }
-}
-
-@utility logo-ground {
-  width: var(--logo-ground-width);
-  height: var(--logo-ground-height);
-  background: var(--ground-shadow);
-  animation: float-shadow var(--float-duration) var(--ease-float) var(--motion-slow) infinite alternate;
-
-  &[data-paused] {
-    animation-play-state: paused;
-  }
-
-  @media (forced-colors: active) {
-    display: none;
-  }
+@utility bg-win-close {
+  background-color: var(--win-close-hover);
 }
 
 /* Elevation layers (DESIGN 1.7). */
@@ -978,7 +715,7 @@
   z-index: var(--z-drag);
 }
 
-/* Durations (DESIGN 1.6). Easing is the one ease-spring (MOTION 1). */
+/* Durations (DESIGN 1.2). Easing is the one ease-out (MOTION 1.1). */
 @utility duration-fast {
   transition-duration: var(--motion-fast);
 }
@@ -993,23 +730,19 @@
 
 /*
  * The success pulse (MOTION 4.7): a 2 px accent ring on a pseudo-layer, radius = the target's (--pulse-radius) + 2. It fades
- * in (fast), then grows by --pulse-scale while it fades out (slow). components/SuccessPulse sets and clears data-pulse.
- * Reduced motion: --pulse-scale is 1, so it only fades (rule in section 6). Forced colors: --color-accent is Highlight.
+ * in (fast), then fades out (base): no growth, since --pulse-scale is gone (DESIGN 1.3). components/SuccessPulse sets and clears data-pulse.
  */
 @keyframes pulse-ring {
   0% {
     opacity: 0;
-    transform: scale(1);
   }
 
   27% {
     opacity: var(--pulse-opacity);
-    transform: scale(1);
   }
 
   100% {
     opacity: 0;
-    transform: scale(var(--pulse-scale));
   }
 }
 
@@ -1032,11 +765,10 @@
   }
 
   &[data-pulse]::after {
-    will-change: transform, opacity;
-    animation: pulse-ring calc(var(--motion-fast) + var(--motion-slow)) var(--ease-spring);
+    will-change: opacity;
+    animation: pulse-ring calc(var(--motion-fast) + var(--motion-slow)) var(--ease-out);
   }
 }
-
 /* Text layer and search hits (DESIGN 3.16, 3.17). The page's overlay is scaled by --page-scale (px per point), so a px size is divided by it. */
 [data-text-layer] ::selection,
 [data-text-layer]::selection {
@@ -1046,6 +778,7 @@
 
 [data-search-hit] {
   background: var(--color-doc-hit);
+  mix-blend-mode: multiply;
   border-radius: calc(var(--form-inset) / var(--page-scale, 1));
 }
 
@@ -1094,6 +827,8 @@
 [data-annot-ring] {
   inset: calc((-4px - var(--focus-offset)) / var(--page-scale, 1));
   border: calc(var(--focus-width) / var(--page-scale, 1)) solid var(--color-focus);
+  /* The same pair as the ring (DESIGN 2.1) on the canvas: the Solar band is the border, the Ink hairline the outline; the selection box inside is Ink. */
+  outline: calc(var(--hairline) / var(--page-scale, 1)) solid var(--color-ink);
 }
 
 [data-annot-frame]:focus-visible > [data-annot-ring] {
@@ -1146,9 +881,9 @@
   }
 }
 
-/* The chosen swatch: a 2 px focus-colour ring, offset 2, besides the check (never colour alone). */
+/* The chosen swatch: a 2 px Ink ring, offset 2 (DESIGN 2.7), besides the check (never colour alone). */
 [data-swatch][aria-checked="true"] {
-  outline: var(--focus-width) solid var(--color-focus);
+  outline: var(--focus-width) solid var(--color-ink);
   outline-offset: var(--focus-offset);
 }
 
@@ -1277,7 +1012,7 @@
     var(--color-doc-redact) 0,
     var(--color-doc-redact) calc(var(--hairline) / var(--page-scale, 1)),
     transparent calc(var(--hairline) / var(--page-scale, 1)),
-    transparent calc(var(--space-1) / var(--page-scale, 1))
+    transparent calc(var(--space-2) / var(--page-scale, 1))
   );
 }
 
@@ -1313,7 +1048,7 @@
       Highlight 0,
       Highlight calc(var(--hairline) / var(--page-scale, 1)),
       transparent calc(var(--hairline) / var(--page-scale, 1)),
-      transparent calc(var(--space-1) / var(--page-scale, 1))
+      transparent calc(var(--space-2) / var(--page-scale, 1))
     );
   }
 

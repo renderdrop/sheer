@@ -39,7 +39,7 @@ let servedFocusRequest = 0;
 const isPrimary = (event: KeyboardEvent) => event.ctrlKey || event.metaKey;
 
 function Message({ children }: { children: React.ReactNode }) {
-  return <div className="flex flex-col items-center gap-1 p-3 text-center">{children}</div>;
+  return <div className="flex flex-col items-center gap-2 p-6 text-center">{children}</div>;
 }
 
 interface HitRowProps {
@@ -67,7 +67,7 @@ const HitRow = memo(function HitRow({ hit, top, row, snippet, active, tabStop, o
       tabIndex={tabStop ? 0 : -1}
       onClick={() => onActivate(hit.index)}
       className={cx(
-        'absolute inset-x-0 box-border flex h-search-row cursor-pointer select-none items-center rounded-sm p-1 text-sm',
+        'absolute inset-x-0 box-border flex h-search-row cursor-pointer select-none items-center rounded-sm p-2 text-sm',
         active
           ? 'bg-selected forced-colors:outline-2 forced-colors:outline-[Highlight]'
           : 'hover:bg-control-hover active:bg-control-pressed',
@@ -78,7 +78,7 @@ const HitRow = memo(function HitRow({ hit, top, row, snippet, active, tabStop, o
         {snippet && (
           <>
             {snippet.before}
-            <span className="rounded-xs bg-selected font-semibold forced-colors:bg-[Highlight]">{snippet.match}</span>
+            <span className="rounded-sm bg-selected font-semibold forced-colors:bg-[Highlight]">{snippet.match}</span>
             {snippet.after}
           </>
         )}
@@ -293,7 +293,7 @@ function HitList({ docId, entry, onFocusField }: { docId: number; entry: SearchE
               <div
                 key={`p${item.page}`}
                 role="presentation"
-                className="absolute inset-x-0 flex h-control-sm items-center px-1 text-sm font-semibold text-text-muted"
+                className="absolute inset-x-0 flex h-control-sm items-center px-2 text-sm font-semibold text-text-muted"
                 style={{ top }}
               >
                 {t('search.page', { n: pageNumberOf(useDocuments.getState().activeId, item.page) })}
@@ -413,7 +413,7 @@ function SearchView({ docId }: { docId: number }) {
   if (entry.status === 'failed') {
     body = (
       <Message>
-        <div role="alert" className="flex flex-col items-center gap-1">
+        <div role="alert" className="flex flex-col items-center gap-2">
           <Icon icon={CircleAlert} className="text-error-text" />
           <span className="text-md">{t('search.error')}</span>
         </div>
@@ -452,7 +452,7 @@ function SearchView({ docId }: { docId: number }) {
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="relative shrink-0">
-        <span className="pointer-events-none absolute inset-y-0 start-1 flex items-center text-text-muted">
+        <span className="pointer-events-none absolute inset-y-0 start-2 flex items-center text-text-muted">
           <Icon icon={SearchIcon} />
         </span>
         <Field
@@ -467,10 +467,10 @@ function SearchView({ docId }: { docId: number }) {
           placeholder={t('search.placeholder')}
           onChange={(event) => store.setText(docId, event.target.value)}
           onKeyDown={onFieldKeyDown}
-          className="w-full! ps-4! pe-4!"
+          className="w-full! ps-8! pe-8!"
         />
         {hasText && (
-          <span className="absolute inset-y-0 end-0-5 flex items-center">
+          <span className="absolute inset-y-0 end-1 flex items-center">
             <IconButton
               size="sm"
               icon={X}
@@ -484,7 +484,7 @@ function SearchView({ docId }: { docId: number }) {
           </span>
         )}
       </div>
-      <div className="mt-1 flex shrink-0 gap-0-5">
+      <div className="mt-2 flex shrink-0 gap-1">
         <IconButton
           size="sm"
           variant="toggle"
@@ -502,7 +502,7 @@ function SearchView({ docId }: { docId: number }) {
           onClick={() => store.setOptions(docId, { wholeWord: !entry.wholeWord })}
         />
       </div>
-      <div className="relative flex h-control-md shrink-0 items-center gap-0-5 text-sm text-text-muted">
+      <div className="relative flex h-control-md shrink-0 items-center gap-1 text-sm text-text-muted">
         <span aria-hidden="true" className="min-w-0 flex-1 truncate tabular-nums">
           {statusText(t, entry)}
         </span>

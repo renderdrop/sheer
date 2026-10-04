@@ -28,8 +28,8 @@ function Labelled({
   const t = useT();
   const labelId = useId();
   return (
-    <div className="flex flex-col gap-1">
-      <div className="flex items-baseline gap-1">
+    <div className="flex flex-col gap-2">
+      <div className="flex items-baseline gap-2">
         <span id={labelId} className="text-sm font-semibold text-text-muted">
           {label}
         </span>
@@ -79,7 +79,7 @@ function RecentRow({
           value={current}
           disabled={disabled}
           onChange={onChoose}
-          className="flex flex-wrap gap-1"
+          className="flex flex-wrap gap-2"
           options={recent.map((rgb) =>
             // Ink on a light colour of the file, white on a dark one.
             swatchOption(
@@ -123,7 +123,7 @@ export function ColourSection({
             value={current}
             disabled={disabled}
             onChange={choose}
-            className="flex flex-wrap gap-1"
+            className="flex flex-wrap gap-2"
             options={PALETTE.filter((entry) => only === undefined || only.includes(entry.id)).map((entry) =>
               swatchOption(entry.rgb, t(entry.nameKey), entry.bg, entry.check),
             )}
@@ -139,8 +139,8 @@ export function ColourSection({
 
 const SEGMENT =
   'flex h-control-md min-w-0 flex-1 basis-0 cursor-pointer items-center justify-center rounded-sm text-md aria-disabled:cursor-not-allowed ' +
-  'hover:bg-control-hover aria-checked:bg-selected aria-checked:text-text-accent';
-const SEGMENTS = 'flex gap-0-5 rounded-button border border-divider p-0-5';
+  'hover:bg-control-hover aria-checked:bg-selected aria-checked:text-text';
+const SEGMENTS = 'flex gap-1 rounded-button border border-divider p-1';
 
 export function StrokeSection({ width, disabled, onChange }: SectionProps & { width: Shared<number> }) {
   const t = useT();
@@ -192,7 +192,7 @@ export function LineEndSection({ head, disabled, onChange }: SectionProps & { he
           options={LINE_ENDS.map((end) => ({
             value: end.value,
             label: t(end.labelKey),
-            className: cx(SEGMENT, 'px-1'),
+            className: cx(SEGMENT, 'px-2'),
             children: <span className="truncate">{t(end.labelKey)}</span>,
           }))}
         />
@@ -257,7 +257,7 @@ export function FontSizeSection({ fontSize, disabled, onChange }: SectionProps &
   return (
     <Labelled label={t('inspector.fontSize')} mixed={fontSize.mixed}>
       {() => (
-        <div className="flex items-center gap-0-5">
+        <div className="flex items-center gap-1">
           <Field
             size="md"
             align="end"

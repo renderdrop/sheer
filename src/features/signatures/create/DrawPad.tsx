@@ -138,7 +138,7 @@ export function DrawPad({ strokes, onStrokes, colour, initials }: DrawPadProps) 
       <span
         aria-hidden="true"
         style={{ top: `${BASELINE_PCT}%` }}
-        className="absolute inset-x-2 border-t border-divider"
+        className="absolute inset-x-4 border-t border-divider"
       />
       {empty && (
         <span

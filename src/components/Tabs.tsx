@@ -145,7 +145,7 @@ export function Tab({ value, label, icon, shortcut, keyShortcuts, disabled = fal
           PRESS_MOTION,
           'aria-disabled:cursor-not-allowed aria-disabled:text-text-disabled',
           selected
-            ? 'text-text-accent'
+            ? 'text-text'
             : 'text-text not-aria-disabled:hover:bg-control-hover not-aria-disabled:active:bg-control-pressed',
           'not-aria-disabled:active:scale-(--scale-press)',
         )}

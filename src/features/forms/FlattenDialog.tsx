@@ -43,8 +43,8 @@ export function FlattenDialog() {
   return (
     <Modal labelledBy={`${id}-title`} width="w-dialog-md" onClose={cancel}>
       <ModalHeader id={`${id}-title`} icon={<Icon icon={Stamp} />} title={t('form.flattenTitle')} />
-      <p className="m-0 mt-1 text-md text-text-muted">{t('form.flattenBody')}</p>
-      <div className="mt-2 flex min-h-2 flex-col justify-center gap-1">
+      <p className="m-0 mt-2 text-md text-text-muted">{t('form.flattenBody')}</p>
+      <div className="mt-4 flex min-h-4 flex-col justify-center gap-2">
         {run.running && (
           <>
             <ProgressBar label={t('form.working')} done={progress?.done ?? 0} total={progress?.total ?? 0} />
@@ -57,7 +57,7 @@ export function FlattenDialog() {
         )}
       </div>
       <JobError error={run.error} />
-      <div className="mt-2 flex items-center justify-end gap-1">
+      <div className="mt-4 flex items-center justify-end gap-2">
         <Button variant="secondary" data-autofocus="" onClick={cancel}>
           {t('form.cancel')}
         </Button>

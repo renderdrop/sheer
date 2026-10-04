@@ -21,15 +21,15 @@ const FONTS: readonly { value: StdFont; key: PlainKey }[] = [
 ];
 
 const SEGMENT =
-  'flex h-control-md min-w-0 flex-1 basis-0 cursor-pointer items-center justify-center rounded-sm px-1 text-md aria-disabled:cursor-not-allowed ' +
-  'hover:bg-control-hover aria-checked:bg-selected aria-checked:text-text-accent';
-const SEGMENTS = 'flex gap-0-5 rounded-button border border-divider p-0-5';
+  'flex h-control-md min-w-0 flex-1 basis-0 cursor-pointer items-center justify-center rounded-sm px-2 text-md aria-disabled:cursor-not-allowed ' +
+  'hover:bg-control-hover aria-checked:bg-selected aria-checked:text-text';
+const SEGMENTS = 'flex gap-1 rounded-button border border-divider p-1';
 
 function FontSection({ font, onChange }: { font: StdFont; onChange: (font: StdFont) => void }) {
   const t = useT();
   const labelId = useId();
   return (
-    <div className="flex flex-col gap-1">
+    <div className="flex flex-col gap-2">
       <span id={labelId} className="text-sm font-semibold text-text-muted">
         {t('insert.font')}
       </span>
@@ -67,7 +67,7 @@ function AlignSection({
   const t = useT();
   const labelId = useId();
   return (
-    <div className="flex flex-col gap-1">
+    <div className="flex flex-col gap-2">
       <span id={labelId} className="text-sm font-semibold text-text-muted">
         {t('insert.align')}
       </span>
@@ -93,7 +93,7 @@ function LockAspect() {
   const lock = useInsert((s) => s.lockAspect);
   const setLock = useInsert((s) => s.setLockAspect);
   return (
-    <label className="flex min-h-control-sm cursor-pointer items-center gap-1 text-md">
+    <label className="flex min-h-control-sm cursor-pointer items-center gap-2 text-md">
       <input
         type="checkbox"
         className="accent-accent"

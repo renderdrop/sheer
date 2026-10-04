@@ -61,7 +61,7 @@ const MarkRow = memo(function MarkRow({ docId, mark, index, row, top, selected, 
       tabIndex={tabStop ? 0 : -1}
       onClick={() => goToMark(docId, mark)}
       className={cx(
-        'group absolute inset-x-0 box-border flex h-search-row cursor-pointer select-none items-center gap-1 rounded-sm p-1 text-sm',
+        'group absolute inset-x-0 box-border flex h-search-row cursor-pointer select-none items-center gap-2 rounded-sm p-2 text-sm',
         selected
           ? 'bg-selected forced-colors:outline-2 forced-colors:outline-[Highlight]'
           : 'hover:bg-control-hover active:bg-control-pressed',
@@ -241,7 +241,7 @@ export function MarksList({ docId, marks }: { docId: number; marks: readonly Red
               <div
                 key={`p${item.page}`}
                 role="presentation"
-                className="absolute inset-x-0 flex h-control-sm items-center px-1 text-sm font-semibold text-text-muted"
+                className="absolute inset-x-0 flex h-control-sm items-center px-2 text-sm font-semibold text-text-muted"
                 style={{ top }}
               >
                 {t('search.page', { n: pageNumberOf(docId, item.page) })}

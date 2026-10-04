@@ -88,7 +88,7 @@ function useCanvasClearance(
     if (!active || scroller === null || box === null) return;
     const apply = () => {
       const over = positioner.current?.dataset.side === 'top' && scroller.scrollHeight > scroller.clientHeight;
-      if (over) scroller.style.setProperty(CANVAS_EXTRA_SCROLL, `calc(var(--spacing-3) + ${box.offsetHeight}px)`);
+      if (over) scroller.style.setProperty(CANVAS_EXTRA_SCROLL, `calc(var(--spacing-6) + ${box.offsetHeight}px)`);
       else scroller.style.removeProperty(CANVAS_EXTRA_SCROLL);
     };
     apply();
@@ -260,7 +260,7 @@ function Card({ anchor }: CardProps) {
     active: present,
     side: anchor.spec.side,
     align: anchor.spec.align,
-    clampTo: { selector: CANVAS_SCROLLER, inset: tokenPx('--space-2', 16) },
+    clampTo: { selector: CANVAS_SCROLLER, inset: tokenPx('--space-4', 16) },
   });
   useCanvasClearance(positioner, card, present);
 
@@ -307,12 +307,12 @@ function Card({ anchor }: CardProps) {
           const from = event.relatedTarget;
           if (from instanceof HTMLElement && !card.current?.contains(from)) lastFocus.current = from;
         }}
-        className="surface-dialog flex w-popover-max max-w-full flex-col gap-1 rounded-panel p-2 text-md text-text"
+        className="bg-panel border border-border-subtle shadow-floating flex w-popover-max max-w-full flex-col gap-2 rounded-panel p-4 text-md text-text"
       >
-        <div className="flex h-3 items-center gap-1">
+        <div className="flex h-6 items-center gap-2">
           <span
             data-done={done ? '' : undefined}
-            className={`inline-flex h-3 items-center gap-0-5 rounded-pill px-1 text-xs tabular-nums transition-colors ${
+            className={`inline-flex h-6 items-center gap-1 rounded-pill px-2 text-xs tabular-nums transition-colors ${
               done ? 'bg-accent text-on-accent' : 'bg-tile text-tile-icon'
             }`}
           >
@@ -330,8 +330,8 @@ function Card({ anchor }: CardProps) {
           {anchor.inMore ? ` ${t('tour.inMore')}` : ''}
         </p>
         {!done && (
-          <div className="flex h-3 items-center">
-            <Button variant="ghost" size="sm" onClick={skip} className="ms-[calc(-1*var(--spacing-1))]">
+          <div className="flex h-6 items-center">
+            <Button variant="ghost" size="sm" onClick={skip} className="ms-[calc(-1*var(--spacing-2))]">
               {t('tour.skip')}
             </Button>
           </div>

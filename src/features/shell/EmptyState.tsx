@@ -69,7 +69,7 @@ function LogoSlot() {
           className="logo-ground [--logo-ground-height:var(--logo-hub-ground-height)] [--logo-ground-width:var(--logo-hub-ground-width)]"
         />
       </div>
-      <div className="absolute inset-x-0 top-1 flex justify-center">
+      <div className="absolute inset-x-0 top-2 flex justify-center">
         <img
           src={logoUrl}
           alt=""
@@ -100,12 +100,12 @@ export function EmptyState({
 }: EmptyStateProps) {
   const t = useT();
   return (
-    <main className="mx-auto my-auto flex w-full max-w-hub-max flex-col p-4">
-      <header className="flex items-center gap-2">
+    <main className="mx-auto my-auto flex w-full max-w-hub-max flex-col p-8">
+      <header className="flex items-center gap-4">
         <LogoSlot />
         <h1 className="m-0 font-display text-xl text-text">{t('hub.title')}</h1>
       </header>
-      <div className="mt-3">
+      <div className="mt-6">
         <ToolHub
           openShortcut={openShortcut}
           openKeyShortcuts={openKeyShortcuts}
@@ -115,7 +115,7 @@ export function EmptyState({
         />
       </div>
       {recents.length > 0 && (
-        <section aria-labelledby="recent-heading" className="mt-4 flex flex-col gap-1">
+        <section aria-labelledby="recent-heading" className="mt-8 flex flex-col gap-2">
           <div className="flex items-center justify-between">
             <h2 id="recent-heading" className="m-0 text-sm font-semibold text-text-muted">
               {t('emptyState.recent')}
@@ -129,7 +129,7 @@ export function EmptyState({
           <ul
             aria-label={t('emptyState.recentList')}
             onKeyDown={onRecentsKeyDown}
-            className="empty-recents m-0 flex list-none flex-col gap-0-5 p-0"
+            className="empty-recents m-0 flex list-none flex-col gap-1 p-0"
           >
             {recents.map((row) => (
               <li key={row.id}>{row.content}</li>

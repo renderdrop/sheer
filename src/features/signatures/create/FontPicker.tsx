@@ -20,7 +20,7 @@ export interface FontPickerProps {
 }
 
 const CARD =
-  'relative flex h-sig-font-card-h w-sig-font-card shrink-0 cursor-pointer flex-col rounded-button border border-divider bg-page p-1 ' +
+  'relative flex h-sig-font-card-h w-sig-font-card shrink-0 cursor-pointer flex-col rounded-button border border-divider bg-page p-2 ' +
   'transition-colors duration-fast hover:border-control-border forced-colors:border-text forced-colors:bg-[Canvas] ' +
   'aria-checked:border-2 aria-checked:border-accent aria-checked:forced-colors:border-[Highlight]';
 
@@ -58,18 +58,18 @@ export function FontPicker({ label, value, onChange, arts, colour, empty }: Font
             className={CARD}
           >
             {checked && (
-              <span className="absolute end-1 top-1 text-text-accent">
+              <span className="absolute end-2 top-2 text-text">
                 <Icon icon={CircleCheck} />
               </span>
             )}
-            <div aria-hidden="true" className="flex min-h-0 flex-auto items-center justify-center px-2">
+            <div aria-hidden="true" className="flex min-h-0 flex-auto items-center justify-center px-4">
               {art !== null && isVector(art) && (
                 <div className={`size-full ${empty ? 'text-divider' : INK_CLASS[colour]}`}>
                   <VectorPreview art={art} colour={colour} inherit />
                 </div>
               )}
             </div>
-            <span className="h-3 text-center text-sm text-text-muted">{name}</span>
+            <span className="h-6 text-center text-sm text-text-muted">{name}</span>
           </div>
         );
       })}

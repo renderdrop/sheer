@@ -66,7 +66,7 @@ function AboutModal() {
         // A press on the backdrop itself (not one that began in the dialog and ended here) dismisses.
         if (event.target === event.currentTarget) close();
       }}
-      className={`fixed inset-0 z-modal grid place-items-center bg-backdrop p-2 ${present ? '' : 'pointer-events-none'}`}
+      className={`fixed inset-0 z-modal grid place-items-center bg-backdrop p-4 ${present ? '' : 'pointer-events-none'}`}
     >
       <motion.div
         {...dialogMotion}
@@ -77,19 +77,19 @@ function AboutModal() {
         aria-label={t('about.title', { app: APP_NAME })}
         tabIndex={-1}
         onKeyDown={onKeyDown}
-        className="surface-dialog flex w-popover-max max-w-full flex-col items-center gap-2 rounded-card p-3 text-center text-text outline-none"
+        className="bg-panel border border-border-subtle shadow-floating flex w-popover-max max-w-full flex-col items-center gap-4 rounded-card p-6 text-center text-text outline-none"
       >
-        <img src={logoUrl} alt="" draggable={false} className="size-8 shrink-0" />
+        <img src={logoUrl} alt="" draggable={false} className="size-16 shrink-0" />
         <div className="flex flex-col items-center">
           <h2 className="m-0 font-display text-xl">{APP_NAME}</h2>
           {version !== null && <p className="m-0 text-sm text-text-muted">{t('about.version', { version })}</p>}
         </div>
         <p className="m-0 text-md">{t('about.license')}</p>
         <p className="m-0 text-sm text-text-muted">{t('about.privacy')}</p>
-        <div className="flex w-full flex-col items-center gap-1">
+        <div className="flex w-full flex-col items-center gap-2">
           <AboutUpdate />
         </div>
-        <div className="flex flex-wrap items-center justify-center gap-1">
+        <div className="flex flex-wrap items-center justify-center gap-2">
           {/* A placeholder until the licence notices ship with the app (ADR-010, item 8): focusable and announced, but it does nothing. */}
           <Tooltip label={soon}>
             <Button variant="secondary" disabled focusableWhenDisabled aria-description={soon}>

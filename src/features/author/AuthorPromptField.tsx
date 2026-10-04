@@ -55,7 +55,7 @@ function Inline() {
     <div
       role="group"
       aria-label={t('author.prompt.label')}
-      className="glass-1 ms-1 flex h-control-lg min-w-0 shrink items-center gap-1 rounded-panel p-0-5 ps-1"
+      className="bg-panel border border-border-subtle shadow-floating ms-2 flex h-control-lg min-w-0 shrink items-center gap-2 rounded-panel p-1 ps-2"
     >
       <Field
         ref={input}

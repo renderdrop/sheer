@@ -118,7 +118,7 @@ interface Props {
   disabled: boolean;
 }
 
-const ROW = 'h-[calc(var(--space-6)+var(--space-1))]';
+const ROW = 'h-[calc(var(--space-12)+var(--space-2))]';
 
 /**
  * The reorderable list of images (DESIGN 3.43): drag by the grip, Alt+Up/Down, Delete removes. Indices are the batch's own. The drag
@@ -139,7 +139,7 @@ export function ImageList({ batch, entries, onChange, failed, onFail, disabled }
   if (entries.length === 0) {
     return (
       <div
-        className={`mt-2 flex min-h-[calc((var(--space-6)+var(--space-1))*2)] items-center justify-center rounded-card border border-divider text-center text-md text-text-muted`}
+        className={`mt-4 flex min-h-[calc((var(--space-12)+var(--space-2))*2)] items-center justify-center rounded-card border border-divider text-center text-md text-text-muted`}
       >
         {t('img2pdf.empty')}
       </div>
@@ -215,14 +215,14 @@ export function ImageList({ batch, entries, onChange, failed, onFail, disabled }
       role="listbox"
       aria-label={t('img2pdf.list')}
       aria-orientation="vertical"
-      className="relative mt-2 flex max-h-[calc((var(--space-6)+var(--space-1))*5+var(--space-1)*4)] flex-col gap-1 overflow-y-auto"
+      className="relative mt-4 flex max-h-[calc((var(--space-12)+var(--space-2))*5+var(--space-2)*4)] flex-col gap-2 overflow-y-auto"
     >
       {entries.map((entry, position) => {
         const bad = failed.has(entry.index);
         return (
           <div key={entry.index} className="relative">
             {drag !== null && drag.over === position && drag.index !== entry.index && (
-              <span aria-hidden="true" className="absolute inset-x-0 -top-0-5 h-insert-marker rounded-full bg-accent" />
+              <span aria-hidden="true" className="absolute inset-x-0 -top-1 h-insert-marker rounded-full bg-accent" />
             )}
             <div
               role="option"
@@ -232,7 +232,7 @@ export function ImageList({ batch, entries, onChange, failed, onFail, disabled }
               data-index={entry.index}
               tabIndex={entry.index === tabStop ? 0 : -1}
               onKeyDown={(event) => onRowKey(event, position)}
-              className={`flex ${ROW} items-center gap-1 rounded-card border border-divider bg-surface-solid px-1 ${
+              className={`flex ${ROW} items-center gap-2 rounded-card border border-divider bg-surface-solid px-2 ${
                 drag?.index === entry.index ? 'opacity-60' : ''
               }`}
             >
@@ -246,7 +246,7 @@ export function ImageList({ batch, entries, onChange, failed, onFail, disabled }
               >
                 <Icon icon={GripVertical} />
               </span>
-              <span className="flex h-5 w-4 shrink-0 items-center justify-center overflow-hidden rounded-sm border border-divider bg-page text-error-text forced-colors:border-text">
+              <span className="flex h-10 w-8 shrink-0 items-center justify-center overflow-hidden rounded-sm border border-divider bg-page text-error-text forced-colors:border-text">
                 {bad ? (
                   <Icon icon={CircleAlert} />
                 ) : (

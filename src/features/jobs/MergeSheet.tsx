@@ -184,7 +184,7 @@ function MergeModal({ held }: { held: readonly DocumentInfo[] | null }) {
 
   const cancel = () => (run.running ? run.cancel() : closeSheet());
   const titleId = `${id}-title`;
-  const rowHeight = 'h-[calc(var(--space-6)+var(--space-1))]';
+  const rowHeight = 'h-[calc(var(--space-12)+var(--space-2))]';
   const firstKey = entries[0]?.key;
   const tabStop = focusKey !== null && entries.some((entry) => entry.key === focusKey) ? focusKey : firstKey;
 
@@ -196,12 +196,12 @@ function MergeModal({ held }: { held: readonly DocumentInfo[] | null }) {
         role="listbox"
         aria-label={t('merge.list')}
         aria-orientation="vertical"
-        className="relative mt-2 flex max-h-[calc(var(--space-6)*6+var(--space-1)*6)] flex-col gap-1 overflow-y-auto"
+        className="relative mt-4 flex max-h-[calc(var(--space-12)*6+var(--space-2)*6)] flex-col gap-2 overflow-y-auto"
       >
         {entries.map((entry, index) => (
           <div key={entry.key} className="relative">
             {drag !== null && drag.over === index && drag.key !== entry.key && (
-              <span aria-hidden="true" className="absolute inset-x-0 -top-0-5 h-insert-marker rounded-full bg-accent" />
+              <span aria-hidden="true" className="absolute inset-x-0 -top-1 h-insert-marker rounded-full bg-accent" />
             )}
             <div
               role="option"
@@ -211,7 +211,7 @@ function MergeModal({ held }: { held: readonly DocumentInfo[] | null }) {
               data-key={entry.key}
               tabIndex={entry.key === tabStop ? 0 : -1}
               onKeyDown={(event) => onRowKey(event, index)}
-              className={`flex ${rowHeight} items-center gap-1 rounded-card border border-divider bg-surface-solid px-1 ${
+              className={`flex ${rowHeight} items-center gap-2 rounded-card border border-divider bg-surface-solid px-2 ${
                 drag?.key === entry.key ? 'opacity-60' : ''
               }`}
             >
@@ -225,7 +225,7 @@ function MergeModal({ held }: { held: readonly DocumentInfo[] | null }) {
               >
                 <Icon icon={GripVertical} />
               </span>
-              <span className="flex h-5 w-4 shrink-0 items-center justify-center rounded-sm bg-tile text-tile-icon">
+              <span className="flex h-10 w-8 shrink-0 items-center justify-center rounded-sm bg-tile text-tile-icon">
                 <Icon icon={entry.error !== undefined ? CircleAlert : FileText} />
               </span>
               <span className="flex min-w-0 flex-auto flex-col">
@@ -250,7 +250,7 @@ function MergeModal({ held }: { held: readonly DocumentInfo[] | null }) {
           </div>
         ))}
       </div>
-      <div className="mt-1 flex items-center justify-between gap-1">
+      <div className="mt-2 flex items-center justify-between gap-2">
         <Button variant="secondary" size="sm" onClick={add} disabled={adding || run.running} focusableWhenDisabled>
           {t('merge.add')}
         </Button>
@@ -259,7 +259,7 @@ function MergeModal({ held }: { held: readonly DocumentInfo[] | null }) {
         </p>
       </div>
       <JobError error={run.error ?? addError} />
-      <div className="mt-2 flex items-center justify-end gap-1">
+      <div className="mt-4 flex items-center justify-end gap-2">
         <Button variant="secondary" onClick={cancel}>
           {t('merge.cancel')}
         </Button>

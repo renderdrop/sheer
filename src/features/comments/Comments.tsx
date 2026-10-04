@@ -63,7 +63,7 @@ const STATUS_LABELS: Record<Status, PlainKey> = {
 };
 
 function Message({ children }: { children: ReactNode }) {
-  return <div className="flex flex-col items-center gap-1 p-3 text-center">{children}</div>;
+  return <div className="flex flex-col items-center gap-2 p-6 text-center">{children}</div>;
 }
 
 /** The loading state: nothing for 300 ms, then a spinner and a line (`role=status`). */
@@ -106,7 +106,7 @@ function Slot({
     return element === null ? undefined : measure.observe(element);
   }, [measure]);
   return (
-    <div ref={ref} data-row-key={rowKey} className="absolute inset-x-0 box-border pb-1" style={{ top }}>
+    <div ref={ref} data-row-key={rowKey} className="absolute inset-x-0 box-border pb-2" style={{ top }}>
       {children}
     </div>
   );
@@ -119,8 +119,8 @@ export function CommentsList({ docId, entry }: { docId: number; entry: Ready }) 
   const editing = useComments((state) => state.editing[docId]);
   const selectedIds = useAnnotations((state) => state.selectedIds[docId]);
   const [base] = useState(() => ({
-    group: tokenPx('--comments-group-height', HEIGHT_FALLBACK.group) + tokenPx('--space-1', 8),
-    card: tokenPx('--comments-card-estimate', HEIGHT_FALLBACK.card) + tokenPx('--space-1', 8),
+    group: tokenPx('--comments-group-height', HEIGHT_FALLBACK.group) + tokenPx('--space-2', 8),
+    card: tokenPx('--comments-card-estimate', HEIGHT_FALLBACK.card) + tokenPx('--space-2', 8),
   }));
   const threads = useMemo(
     () => sortThreads(filterThreads(entry.threads, view.filter), view.order),
@@ -350,7 +350,7 @@ export function CommentsList({ docId, entry }: { docId: number; entry: Ready }) 
   return (
     <>
       {isFiltering(view.filter) && (
-        <p className="m-0 px-1 pb-0-5 text-sm text-text-muted">
+        <p className="m-0 px-2 pb-1 text-sm text-text-muted">
           {t('comments.filtered', { shown: threads.length, total })}
         </p>
       )}
@@ -365,7 +365,7 @@ export function CommentsList({ docId, entry }: { docId: number; entry: Ready }) 
             return before?.first === after?.first && before?.last === after?.last ? previous : top;
           });
         }}
-        className="min-h-0 flex-auto overflow-x-hidden overflow-y-auto p-1 [overflow-anchor:none] [scrollbar-gutter:stable]"
+        className="min-h-0 flex-auto overflow-x-hidden overflow-y-auto p-2 [overflow-anchor:none] [scrollbar-gutter:stable]"
       >
         <div
           role="list"
@@ -390,7 +390,7 @@ export function CommentsList({ docId, entry }: { docId: number; entry: Ready }) 
                 <Slot key={row.key} rowKey={row.key} top={top} measure={tracker}>
                   <div
                     aria-hidden="true"
-                    className="flex h-control-sm items-center px-0-5 text-sm font-semibold text-text-muted"
+                    className="flex h-control-sm items-center px-1 text-sm font-semibold text-text-muted"
                   >
                     {t('search.page', { n: pageNumberOf(docId, row.pageId) })}
                   </div>
@@ -439,7 +439,7 @@ function CommentsView({ docId }: { docId: number }) {
   if (entry.status === 'error') {
     return (
       <Message>
-        <div role="alert" className="flex flex-col items-center gap-1">
+        <div role="alert" className="flex flex-col items-center gap-2">
           <Icon icon={CircleAlert} className="text-error-text" />
           <span className="text-md">{t('comments.error')}</span>
         </div>
@@ -485,10 +485,10 @@ function FilterGroup<T extends string>({
   onChange: (next: T[]) => void;
 }) {
   return (
-    <fieldset className="m-0 flex min-w-0 flex-col gap-0-5 border-0 p-0">
-      <legend className="p-0 pb-0-5 text-sm font-semibold text-text-muted">{legend}</legend>
+    <fieldset className="m-0 flex min-w-0 flex-col gap-1 border-0 p-0">
+      <legend className="p-0 pb-1 text-sm font-semibold text-text-muted">{legend}</legend>
       {values.map((value) => (
-        <label key={value} className="flex min-h-control-sm cursor-pointer items-center gap-1 text-md">
+        <label key={value} className="flex min-h-control-sm cursor-pointer items-center gap-2 text-md">
           <input
             type="checkbox"
             className="accent-accent"
@@ -535,7 +535,7 @@ export function CommentsActions() {
           />
         )}
       >
-        <div className="flex max-h-[60vh] flex-col gap-2 overflow-y-auto p-1">
+        <div className="flex max-h-[60vh] flex-col gap-4 overflow-y-auto p-2">
           <FilterGroup
             legend={t('comments.status')}
             values={STATUSES}

@@ -42,10 +42,10 @@ export function UpdateRow({ labelId }: { labelId: string }) {
         onChange={choose}
       />
       {mode === 'on' && (
-        <div className="flex items-center gap-1">
+        <div className="flex items-center gap-2">
           <span
             role="status"
-            className={`flex min-w-0 flex-auto items-center gap-1 text-sm ${check === 'failed' ? 'text-error-text' : 'text-text-muted'}`}
+            className={`flex min-w-0 flex-auto items-center gap-2 text-sm ${check === 'failed' ? 'text-error-text' : 'text-text-muted'}`}
           >
             {check === 'failed' && <Icon icon={CircleAlert} size={12} />}
             {status}

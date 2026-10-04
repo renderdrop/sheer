@@ -25,9 +25,9 @@ export interface RadioGroupProps<Value extends string> {
 }
 
 const LOOKS = {
-  segmented: 'h-control-md min-w-0 flex-1 rounded-button px-1 text-md font-semibold',
-  rows: 'min-h-8 w-full flex-col items-stretch justify-center rounded-card p-1-5 text-start',
-  plain: 'min-h-control-md w-full justify-start rounded-button px-1 text-start text-md',
+  segmented: 'h-control-md min-w-0 flex-1 rounded-button px-2 text-md font-semibold',
+  rows: 'min-h-16 w-full flex-col items-stretch justify-center rounded-card p-3 text-start',
+  plain: 'min-h-control-md w-full justify-start rounded-button px-2 text-start text-md',
 } as const;
 
 /**
@@ -76,7 +76,7 @@ export function RadioGroup<Value extends string>({
       aria-label={label}
       aria-orientation={orientation}
       onKeyDown={onKeyDown}
-      className={cx('flex', orientation === 'vertical' ? 'flex-col gap-1' : 'gap-0-5', className)}
+      className={cx('flex', orientation === 'vertical' ? 'flex-col gap-2' : 'gap-1', className)}
     >
       {options.map((option) => {
         const selected = option.value === value;

@@ -39,8 +39,11 @@ export function Banner({ error, onDismiss }: BannerProps) {
       onAnimationComplete={() => setMoving(false)}
       className={cx('shrink-0', moving || !present ? 'overflow-hidden' : 'overflow-visible')}
     >
-      <div className="px-1 pb-1">
-        <div role="alert" className="glass-1 flex min-h-banner-min items-center gap-1 rounded-panel py-1 pe-1 ps-2">
+      <div className="px-2 pb-2">
+        <div
+          role="alert"
+          className="bg-panel border border-border-subtle shadow-floating flex min-h-banner-min items-center gap-2 rounded-panel py-2 pe-2 ps-4"
+        >
           <span className="shrink-0 text-error-text">
             <Icon icon={CircleAlert} />
           </span>
@@ -86,15 +89,15 @@ export function XfaBannerRow() {
     <AnimatePresence initial={false}>
       {show && (
         <motion.div key="xfa" {...motionProps} className="shrink-0">
-          <div className="px-1 pb-1">
+          <div className="px-2 pb-2">
             <div
               role="status"
-              className="glass-1 flex min-h-banner-min items-center gap-1 rounded-panel py-1 pe-1 ps-2"
+              className="bg-panel border border-border-subtle shadow-floating flex min-h-banner-min items-center gap-2 rounded-panel py-2 pe-2 ps-4"
             >
-              <span className="shrink-0 text-warning-text">
+              <span className="shrink-0 text-text">
                 <Icon icon={TriangleAlert} />
               </span>
-              <span className="min-w-0 flex-auto text-warning-text">{t('xfa.message', { app: APP_NAME })}</span>
+              <span className="min-w-0 flex-auto text-text">{t('xfa.message', { app: APP_NAME })}</span>
               <IconButton
                 label={t('xfa.dismiss')}
                 icon={X}

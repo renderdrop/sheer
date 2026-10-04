@@ -143,7 +143,7 @@ describe('the settings popover', () => {
   it('hangs from the toolbar: it is a G2 popover, and focus goes back to the More button on Esc', async () => {
     const { user } = setup(<Fixture />);
     act(() => openSettings());
-    expect(popover().className).toContain('glass-2');
+    expect(popover().className).toContain('bg-panel border border-border-subtle shadow-floating');
     await user.keyboard('{Escape}');
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
     expect(useSettingsPopover.getState().open).toBe(false);

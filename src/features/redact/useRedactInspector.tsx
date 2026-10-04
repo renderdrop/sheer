@@ -13,7 +13,7 @@ import { marksOf, useRedact } from './store';
 function Empty() {
   const t = useT();
   return (
-    <div className="flex flex-col items-center gap-1 p-2 text-center">
+    <div className="flex flex-col items-center gap-2 p-4 text-center">
       <span className="flex size-control-md items-center justify-center rounded-sm bg-tile text-tile-icon">
         <Icon icon={SquareSlash} size={24} />
       </span>
@@ -30,10 +30,10 @@ function RedactBody({ docId }: { docId: number }) {
   const removeMetadata = useRedact((state) => state.removeMetadata);
   const count = marks.length;
   return (
-    <div className="flex min-h-full flex-col gap-1">
-      <div className="flex flex-col gap-1">
+    <div className="flex min-h-full flex-col gap-2">
+      <div className="flex flex-col gap-2">
         {count === 0 ? <Empty /> : <MarksList docId={docId} marks={marks} />}
-        <label className="flex min-h-control-sm cursor-pointer items-center gap-1 text-md">
+        <label className="flex min-h-control-sm cursor-pointer items-center gap-2 text-md">
           <input
             type="checkbox"
             className="accent-accent"
@@ -43,7 +43,7 @@ function RedactBody({ docId }: { docId: number }) {
           {t('redact.metadata')}
         </label>
       </div>
-      <div className="sticky bottom-0 mt-auto flex items-center gap-0-5 border-t border-divider bg-surface-strong pt-1">
+      <div className="sticky bottom-0 mt-auto flex items-center gap-1 border-t border-divider bg-surface-strong pt-2">
         <Button
           variant="ghost"
           size="sm"

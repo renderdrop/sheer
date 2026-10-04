@@ -128,9 +128,9 @@ function GoToPageForm({
     done();
   };
   return (
-    <form onSubmit={submit} className="flex flex-col gap-1 p-1">
+    <form onSubmit={submit} className="flex flex-col gap-2 p-2">
       <span className="text-sm font-semibold text-text-muted">{t('goto.label')}</span>
-      <div className="flex items-center gap-1">
+      <div className="flex items-center gap-2">
         <Field
           type="text"
           inputMode="numeric"
@@ -191,7 +191,7 @@ export function StatusBar({
   return (
     <footer
       aria-label={t('status.label')}
-      className="flex h-status shrink-0 items-center gap-2 px-2 text-sm text-text-muted"
+      className="flex h-status shrink-0 items-center gap-4 px-4 text-sm text-text-muted"
     >
       {hasDocument && <FileName name={fileName === '' ? t('status.untitled') : fileName} />}
       {hasDocument && edited && (
@@ -227,7 +227,7 @@ export function StatusBar({
         />
       )}
       {hasDocument && (
-        <div role="group" aria-label={t('toolbar.group.zoom')} className="flex shrink-0 items-center gap-0-5">
+        <div role="group" aria-label={t('toolbar.group.zoom')} className="flex shrink-0 items-center gap-1">
           <IconButton
             size="sm"
             icon={ZoomOut}

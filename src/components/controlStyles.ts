@@ -35,11 +35,11 @@ export const CONTROL_BASE =
 export type ButtonVariant = 'primary' | 'secondary' | 'ghost';
 export type ButtonSize = 'sm' | 'md' | 'lg';
 
-/** `min-w-8` is 64 px: the spacing token `--space-8` (DESIGN 3.1 minimum width). */
+/** `min-w-16` is 64 px: the spacing token `--space-16` (DESIGN 3.1 minimum width). */
 export const BUTTON_SIZES: Record<ButtonSize, string> = {
-  sm: 'h-control-sm min-w-8 gap-1 rounded-sm px-1 text-sm',
-  md: 'h-control-md min-w-8 gap-1 rounded-button px-1-5 text-md',
-  lg: 'h-control-lg min-w-8 gap-1 rounded-button px-2 text-md',
+  sm: 'h-control-sm min-w-16 gap-2 rounded-sm px-2 text-sm',
+  md: 'h-control-md min-w-16 gap-2 rounded-button px-3 text-md',
+  lg: 'h-control-lg min-w-16 gap-2 rounded-button px-4 text-md',
 };
 
 export const BUTTON_VARIANTS: Record<ButtonVariant, string> = {
@@ -60,8 +60,8 @@ export type IconButtonSize = 'sm' | 'md';
 
 /** Square for icon-only buttons; with text content (the zoom readout) the width follows the content. */
 export const ICON_BUTTON_SIZES: Record<IconButtonSize, { square: string; text: string }> = {
-  md: { square: 'size-control-md rounded-button', text: 'h-control-md min-w-control-md rounded-button px-1' },
-  sm: { square: 'size-control-sm rounded-sm', text: 'h-control-sm min-w-control-sm rounded-sm px-0-5' },
+  md: { square: 'size-control-md rounded-button', text: 'h-control-md min-w-control-md rounded-button px-2' },
+  sm: { square: 'size-control-sm rounded-sm', text: 'h-control-sm min-w-control-sm rounded-sm px-1' },
 };
 
 /** The two looks a button has besides rest: `off`, and `on` (toggle: selected, tool: active fill). */
@@ -77,7 +77,7 @@ export const ICON_BUTTON_VARIANTS: Record<IconButtonVariant, { off: string; on: 
       'bg-transparent text-text not-aria-disabled:enabled:hover:bg-control-hover not-aria-disabled:enabled:active:bg-control-pressed ' +
       'disabled:text-text-disabled aria-disabled:text-text-disabled',
     on:
-      `bg-selected text-text-accent inset-ring-1 inset-ring-accent ${SELECTED_FORCED_COLORS} not-aria-disabled:enabled:active:bg-control-pressed ` +
+      `bg-selected text-text inset-ring-1 inset-ring-accent ${SELECTED_FORCED_COLORS} not-aria-disabled:enabled:active:bg-control-pressed ` +
       'disabled:text-text-disabled aria-disabled:text-text-disabled',
   },
   tool: {
@@ -98,7 +98,7 @@ export type FieldSize = 'sm' | 'md';
  * error icon's color for the border. The focus ring is the global `:focus-visible` outline.
  */
 export const FIELD_BASE =
-  'w-field shrink-0 rounded-sm border border-control-border bg-surface-solid px-1 text-text tabular-nums ' +
+  'w-field shrink-0 rounded-sm border border-control-border bg-surface-solid px-2 text-text tabular-nums ' +
   'disabled:border-divider disabled:text-text-disabled aria-invalid:border-error-icon';
 
 /** `sm` 24 high in the slider's row, `md` 32 high in a form (a popover). */
@@ -109,4 +109,4 @@ export const FIELD_SIZES: Record<FieldSize, string> = {
 
 /** The pill badge (DESIGN 1.10): "Edited", "Form" and the shortcut chip share it, so none can lose its fill. */
 export const PILL =
-  'inline-flex h-pill shrink-0 items-center rounded-pill bg-tile px-1 text-xs text-tile-icon inset-ring-1 inset-ring-control-border';
+  'inline-flex h-pill shrink-0 items-center rounded-pill bg-tile px-2 text-xs text-tile-icon inset-ring-1 inset-ring-control-border';

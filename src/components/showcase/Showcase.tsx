@@ -56,14 +56,14 @@ function Section({ title, hint, children }: { title: string; hint?: string; chil
     <section className="showcase-section">
       <h2 className="font-display text-xl">{title}</h2>
       {hint !== undefined && <p className="showcase-hint text-sm text-text-muted">{hint}</p>}
-      <div className="showcase-rows flex flex-col gap-1-5">{children}</div>
+      <div className="showcase-rows flex flex-col gap-3">{children}</div>
     </section>
   );
 }
 
 function Row({ label, children }: { label: string; children: ReactNode }) {
   return (
-    <div className="flex flex-wrap items-center gap-1-5">
+    <div className="flex flex-wrap items-center gap-3">
       <span className="showcase-label shrink-0 text-sm text-text-muted">{label}</span>
       {children}
     </div>
@@ -77,7 +77,7 @@ function ModeSwitches() {
     else document.documentElement.dataset[name] = value;
   };
   return (
-    <div className="flex flex-wrap items-center gap-2">
+    <div className="flex flex-wrap items-center gap-4">
       <Row label="Theme">
         <Button size="sm" onClick={() => set('theme', null)}>
           Auto
@@ -384,9 +384,9 @@ function Popovers() {
       <Row label="dialog">
         <Popover label="Highlight options" trigger={(trigger) => <Button {...trigger}>Options…</Button>}>
           {({ close }) => (
-            <div className="flex flex-col gap-1 p-1">
+            <div className="flex flex-col gap-2 p-2">
               <Slider label="Opacity" unit="%" value={opacity} onValueChange={setOpacity} />
-              <div className="showcase-end flex gap-1">
+              <div className="showcase-end flex gap-2">
                 <Button size="sm" variant="ghost" onClick={() => close('select')}>
                   Close
                 </Button>
@@ -464,7 +464,7 @@ function LeftPanelDemo() {
           onValueChange={setWidth}
           onCollapsedChange={setCollapsed}
         />
-        <div className="flex min-w-0 items-center justify-center rounded-panel bg-canvas p-3 text-text-muted">
+        <div className="flex min-w-0 items-center justify-center rounded-panel bg-page-area p-6 text-text-muted">
           <FileText aria-hidden="true" className="showcase-icon-gap size-icon-24" />
           Canvas
         </div>
@@ -537,19 +537,19 @@ function Fields() {
       title="Field"
       hint="The number field of the slider and of the forms in popovers: 56 wide, 24 or 32 high. Focus it with Tab; the invalid one has the error border."
     >
-      <label className="flex items-center gap-1-5 text-sm font-semibold">
+      <label className="flex items-center gap-3 text-sm font-semibold">
         md (32)
         <Field type="number" min={1} max={120} defaultValue={3} />
       </label>
-      <label className="flex items-center gap-1-5 text-sm font-semibold">
+      <label className="flex items-center gap-3 text-sm font-semibold">
         sm (24), text at the end
         <Field size="sm" align="end" defaultValue="125 %" />
       </label>
-      <label className="flex items-center gap-1-5 text-sm font-semibold">
+      <label className="flex items-center gap-3 text-sm font-semibold">
         Disabled
         <Field disabled defaultValue="42" />
       </label>
-      <label className="flex items-center gap-1-5 text-sm font-semibold">
+      <label className="flex items-center gap-3 text-sm font-semibold">
         Invalid
         <Field aria-invalid="true" defaultValue="999" />
       </label>
@@ -559,8 +559,8 @@ function Fields() {
 
 export default function Showcase() {
   return (
-    <div className="h-full overflow-auto p-3">
-      <header className="showcase-header flex flex-wrap items-center gap-2">
+    <div className="h-full overflow-auto p-6">
+      <header className="showcase-header flex flex-wrap items-center gap-4">
         <div>
           <h1 className="showcase-title font-display">Components</h1>
           <p className="text-text-muted">

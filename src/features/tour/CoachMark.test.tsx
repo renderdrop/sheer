@@ -105,7 +105,9 @@ describe('the coach mark', () => {
     expect(screen.queryByRole('button', { name: 'Skip tour' })).toBeNull();
     // The success moment tints the chip and the card is a solid surface.
     expect(document.querySelector('[data-done]')?.className).toContain('bg-accent');
-    expect(document.querySelector('[data-tour-card]')?.className).toContain('surface-dialog');
+    expect(document.querySelector('[data-tour-card]')?.className).toContain(
+      'bg-panel border border-border-subtle shadow-floating',
+    );
   });
 
   it('points at More and says so when the zoom button has moved into the overflow', async () => {

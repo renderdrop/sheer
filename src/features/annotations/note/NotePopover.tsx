@@ -28,7 +28,7 @@ const COALESCE_BODY = 'note.contents';
 
 /** Text areas of the popover: Field styles, 3 to 10 lines (DESIGN 3.25), then they scroll. */
 const TEXTAREA =
-  'block w-full resize-none rounded-sm border border-control-border bg-transparent px-1 py-0-5 text-md text-text ' +
+  'block w-full resize-none rounded-sm border border-control-border bg-transparent px-2 py-1 text-md text-text ' +
   'placeholder:text-text-muted disabled:cursor-not-allowed disabled:text-text-disabled';
 
 /** Reports a failed command in the banner (errors never toast) and resolves either way. */
@@ -107,7 +107,7 @@ function TextPart({ docId, annotation, editable, label, autoFocus = false, texta
       value={draft}
       rows={1}
       // Three to ten lines of the text size.
-      style={{ minHeight: 'calc(3lh + 2 * var(--spacing-0-5))', maxHeight: 'calc(10lh + 2 * var(--spacing-0-5))' }}
+      style={{ minHeight: 'calc(3lh + 2 * var(--spacing-1))', maxHeight: 'calc(10lh + 2 * var(--spacing-1))' }}
       className={cx(TEXTAREA, 'overflow-auto', !editable && 'cursor-default border-transparent px-0')}
       onChange={(event) => {
         setDraft(event.target.value);
@@ -126,8 +126,8 @@ function Reply({ docId, reply, own }: { docId: number; reply: Annotation; own: b
   const t = useT();
   const author = reply.author ?? t('note.unknownAuthor');
   return (
-    <li className="flex flex-col gap-0-5">
-      <div className="flex items-baseline gap-1 text-sm">
+    <li className="flex flex-col gap-1">
+      <div className="flex items-baseline gap-2 text-sm">
         <span className="min-w-0 truncate font-semibold">{author}</span>
         <span className="shrink-0 text-text-muted">{formatAnnotationDate(reply.modified, t.locale)}</span>
       </div>
@@ -301,8 +301,8 @@ export function NotePopover({ docId, noteId, anchor, open, onClose, isNew = fals
       align="start"
       trigger={(props) => <AnchorAttach attach={props.ref} anchor={anchor} />}
     >
-      <div className="flex w-note flex-col gap-1">
-        <div className="flex h-control-md items-center gap-1">
+      <div className="flex w-note flex-col gap-2">
+        <div className="flex h-control-md items-center gap-2">
           <span className="min-w-0 truncate text-md font-semibold">{author}</span>
           <span className="shrink-0 text-sm text-text-muted">{date}</span>
           <span className="flex-auto" />
@@ -322,7 +322,7 @@ export function NotePopover({ docId, noteId, anchor, open, onClose, isNew = fals
           }}
         />
         {replies.length > 0 && (
-          <ul className="m-0 flex list-none flex-col gap-1 border-t border-divider p-0 pt-1">
+          <ul className="m-0 flex list-none flex-col gap-2 border-t border-divider p-0 pt-2">
             {replies.map((item) => (
               <Reply
                 key={item.id}
@@ -333,7 +333,7 @@ export function NotePopover({ docId, noteId, anchor, open, onClose, isNew = fals
             ))}
           </ul>
         )}
-        <div className="flex flex-col gap-1 border-t border-divider pt-1">
+        <div className="flex flex-col gap-2 border-t border-divider pt-2">
           <textarea
             ref={replyRef}
             aria-label={t('note.replyField')}
@@ -341,7 +341,7 @@ export function NotePopover({ docId, noteId, anchor, open, onClose, isNew = fals
             rows={1}
             maxLength={MAX_ANNOT_CONTENTS_CHARS}
             value={reply}
-            style={{ maxHeight: 'calc(10lh + 2 * var(--spacing-0-5))' }}
+            style={{ maxHeight: 'calc(10lh + 2 * var(--spacing-1))' }}
             className={cx(TEXTAREA, 'overflow-auto')}
             onChange={(event) => setReply(event.target.value)}
             onKeyDown={onReplyKeyDown}

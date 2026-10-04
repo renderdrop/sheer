@@ -420,7 +420,7 @@ function ChoiceMenu({ docId, field, label, kind, widget }: ChoiceProps) {
               aria-required={field.required || undefined}
               aria-description={text === '' ? undefined : text}
               tabIndex={0}
-              className="flex items-center justify-between gap-1 text-start"
+              className="flex items-center justify-between gap-2 text-start"
               style={{ fontSize: size }}
             >
               <span className="min-w-0 flex-auto truncate">{text}</span>

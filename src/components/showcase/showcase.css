@@ -3,23 +3,23 @@
  * of its class scan, so the page's one-off utilities cannot end up in the stylesheet of the app.
  */
 .showcase-section {
-  margin-bottom: var(--space-4);
+  margin-bottom: var(--space-8);
 }
 
 .showcase-hint {
-  margin-top: var(--space-0-5);
+  margin-top: var(--space-1);
 }
 
 .showcase-rows {
-  margin-top: var(--space-1-5);
+  margin-top: var(--space-3);
 }
 
 .showcase-label {
-  width: var(--space-8);
+  width: var(--space-16);
 }
 
 .showcase-header {
-  margin-bottom: var(--space-3);
+  margin-bottom: var(--space-6);
   justify-content: space-between;
 }
 
@@ -32,11 +32,11 @@
 
 /* A slider row: 384 px, or 448 px for the toolbar-width control. */
 .showcase-slider {
-  max-width: calc(var(--space-8) * 6);
+  max-width: calc(var(--space-16) * 6);
 }
 
 .showcase-slider-wide {
-  max-width: calc(var(--space-8) * 7);
+  max-width: calc(var(--space-16) * 7);
 }
 
 .showcase-fit {
@@ -48,22 +48,22 @@
 }
 
 .showcase-icon-gap {
-  margin-inline-end: var(--space-1);
+  margin-inline-end: var(--space-2);
 }
 
 /* The left-panel demo: panel, splitter, canvas and inspector in one grid row. */
 .showcase-stage {
-  height: calc(var(--space-8) * 6);
-  transition: grid-template-columns var(--motion-slow) var(--ease-spring);
+  height: calc(var(--space-16) * 6);
+  transition: grid-template-columns var(--motion-slow) var(--ease-out);
 }
 
 .showcase-inspector {
-  width: calc(var(--space-8) * 4 + var(--space-4));
+  width: calc(var(--space-16) * 4 + var(--space-8));
 }
 
 /* The 8 px gap before the inspector is padding of its slot and goes with the inspector, so no gutter is left behind. */
 .showcase-inspector-slot {
-  padding-inline-start: var(--space-1);
+  padding-inline-start: var(--space-2);
 }
 
 .showcase-inspector-slot-hidden {

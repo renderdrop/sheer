@@ -59,10 +59,10 @@ function CardView({ card, busy, disabled, tabStop, shortcut, keyShortcuts, onRun
         if (!disabled) onRun(card.id);
       }}
       className={cx(
-        'group glass-1 relative flex h-hub-card min-w-0 cursor-pointer select-none flex-col items-start overflow-hidden rounded-card p-2 text-start',
+        'group bg-panel border border-border-subtle shadow-floating relative flex h-hub-card min-w-0 cursor-pointer select-none flex-col items-start overflow-hidden rounded-card p-4 text-start',
         PRESS_MOTION,
         'not-aria-disabled:active:scale-(--scale-press) aria-disabled:cursor-not-allowed',
-        '[@media(max-height:800px)]:h-hub-compact [@media(max-height:800px)]:flex-row [@media(max-height:800px)]:items-center [@media(max-height:800px)]:gap-2',
+        '[@media(max-height:800px)]:h-hub-compact [@media(max-height:800px)]:flex-row [@media(max-height:800px)]:items-center [@media(max-height:800px)]:gap-4',
         'forced-colors:border forced-colors:border-[CanvasText] forced-colors:bg-[Canvas]',
       )}
     >
@@ -80,11 +80,11 @@ function CardView({ card, busy, disabled, tabStop, shortcut, keyShortcuts, onRun
       >
         {busy ? <Spinner size={16} /> : <Icon icon={card.icon} size={20} />}
       </span>
-      <span className="relative mt-2 flex min-w-0 flex-col [@media(max-height:800px)]:mt-0 [@media(max-height:800px)]:flex-1">
+      <span className="relative mt-4 flex min-w-0 flex-col [@media(max-height:800px)]:mt-0 [@media(max-height:800px)]:flex-1">
         <span id={titleId} className="truncate text-md font-semibold">
           {t(card.titleKey)}
         </span>
-        <span id={hintId} className="mt-0-5 line-clamp-2 text-sm text-text-muted [@media(max-height:800px)]:sr-only">
+        <span id={hintId} className="mt-1 line-clamp-2 text-sm text-text-muted [@media(max-height:800px)]:sr-only">
           {t(card.hintKey)}
         </span>
       </span>
@@ -92,7 +92,7 @@ function CardView({ card, busy, disabled, tabStop, shortcut, keyShortcuts, onRun
         <span
           className={cx(
             PILL,
-            'absolute end-2 top-2 [@media(max-height:800px)]:static [@media(max-height:800px)]:ms-auto',
+            'absolute end-4 top-4 [@media(max-height:800px)]:static [@media(max-height:800px)]:ms-auto',
           )}
         >
           {pill}
@@ -132,7 +132,7 @@ export function ToolHub({ openShortcut, openKeyShortcuts, busy, opening, onRun }
       role="group"
       aria-label={t('hub.tools')}
       onKeyDown={onKeyDown}
-      className="grid grid-cols-[repeat(auto-fill,minmax(var(--hub-card-min),1fr))] gap-2"
+      className="grid grid-cols-[repeat(auto-fill,minmax(var(--hub-card-min),1fr))] gap-4"
     >
       {HUB_CARDS.map((card, index) => (
         <CardView

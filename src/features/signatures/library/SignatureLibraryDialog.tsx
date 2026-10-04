@@ -98,7 +98,7 @@ function LibraryRow({ item, deleted, session, tabStop, editing, onEdit, onFocusR
 
   if (deleted) {
     return (
-      <li className="flex h-control-lg items-center gap-1 rounded-button px-1 text-text-muted">
+      <li className="flex h-control-lg items-center gap-2 rounded-button px-2 text-text-muted">
         <span role="status" className="min-w-0 flex-1 truncate">
           {t('lib.deleted', { name: item.name })}
         </span>
@@ -127,7 +127,7 @@ function LibraryRow({ item, deleted, session, tabStop, editing, onEdit, onFocusR
       onFocus={(event) => {
         if (event.target === event.currentTarget) onFocusRow();
       }}
-      className="flex items-center gap-1 rounded-button p-1 hover:bg-control-hover focus-within:bg-control-hover"
+      className="flex items-center gap-2 rounded-button p-2 hover:bg-control-hover focus-within:bg-control-hover"
     >
       <SignaturePreview item={item} />
       <div className="flex min-w-0 flex-1 flex-col">
@@ -232,7 +232,7 @@ function LibraryModal() {
       onPointerDown={(event) => {
         if (event.target === event.currentTarget) closeSignatureLibrary();
       }}
-      className={`fixed inset-0 z-modal grid place-items-center bg-backdrop p-2 ${present ? '' : 'pointer-events-none'}`}
+      className={`fixed inset-0 z-modal grid place-items-center bg-backdrop p-4 ${present ? '' : 'pointer-events-none'}`}
     >
       <motion.div
         {...dialogMotion}
@@ -243,9 +243,9 @@ function LibraryModal() {
         aria-busy={loaded ? undefined : true}
         tabIndex={-1}
         onKeyDown={(event) => cycleTab(event, event.currentTarget)}
-        className="surface-dialog flex w-dialog-md max-w-full flex-col gap-2 rounded-card p-3 text-text outline-none"
+        className="bg-panel border border-border-subtle shadow-floating flex w-dialog-md max-w-full flex-col gap-4 rounded-card p-6 text-text outline-none"
       >
-        <div className="flex items-center gap-1">
+        <div className="flex items-center gap-2">
           <span className="flex size-control-md shrink-0 items-center justify-center rounded-sm bg-tile text-tile-icon">
             <Icon icon={Signature} />
           </span>
@@ -255,13 +255,13 @@ function LibraryModal() {
         </div>
 
         {session && (
-          <p role="status" className="m-0 flex items-start gap-1 text-sm text-warning-text">
-            <Icon icon={TriangleAlert} size={12} className="mt-0-5 shrink-0" />
+          <p role="status" className="m-0 flex items-start gap-2 text-sm text-text">
+            <Icon icon={TriangleAlert} size={12} className="mt-1 shrink-0" />
             {t('lib.noKeychainWarning', { app: APP_NAME })}
           </p>
         )}
         {status === 'locked' && (
-          <p role="status" className="m-0 flex flex-wrap items-center gap-1 text-sm text-warning-text">
+          <p role="status" className="m-0 flex flex-wrap items-center gap-2 text-sm text-text">
             <Icon icon={TriangleAlert} size={12} className="shrink-0" />
             <span className="min-w-0 flex-1">{t('lib.locked')}</span>
             <Button variant="ghost" size="sm" onClick={() => setConfirming(true)}>
@@ -276,7 +276,7 @@ function LibraryModal() {
         )}
 
         {empty ? (
-          <div className="flex flex-col items-center gap-1 py-3 text-center">
+          <div className="flex flex-col items-center gap-2 py-6 text-center">
             <span className="flex size-control-lg items-center justify-center rounded-button bg-tile text-tile-icon">
               <Icon icon={Signature} size={24} />
             </span>
@@ -289,21 +289,21 @@ function LibraryModal() {
             )}
           </div>
         ) : (
-          <div onKeyDown={onListKeyDown} className="flex max-h-lib-list flex-col gap-1 overflow-y-auto">
+          <div onKeyDown={onListKeyDown} className="flex max-h-lib-list flex-col gap-2 overflow-y-auto">
             {ROLES.map((role) => {
               const rows = items.filter((item) => item.role === role);
               if (rows.length === 0 && !loaded) return null;
               const heading = role === 'signature' ? t('lib.signatures') : t('lib.initials');
               const full = count(role) >= MAX_PER_ROLE;
               return (
-                <section key={role} aria-labelledby={`lib-group-${role}`} className="flex flex-col gap-0-5">
-                  <div className="flex h-3 items-center justify-between gap-1">
+                <section key={role} aria-labelledby={`lib-group-${role}`} className="flex flex-col gap-1">
+                  <div className="flex h-6 items-center justify-between gap-2">
                     <h3 id={`lib-group-${role}`} className="m-0 text-sm font-semibold text-text-muted">
                       {heading}
                     </h3>
                     {full && <span className="text-sm text-text-muted">{t('lib.full')}</span>}
                   </div>
-                  <ul className="m-0 flex list-none flex-col gap-0-5 p-0">
+                  <ul className="m-0 flex list-none flex-col gap-1 p-0">
                     {rows.map((item) => (
                       <LibraryRow
                         key={item.id}
@@ -324,7 +324,7 @@ function LibraryModal() {
         )}
 
         {handlers.create !== undefined && !empty && (
-          <div className="flex flex-wrap items-center gap-1">
+          <div className="flex flex-wrap items-center gap-2">
             <Button
               variant="secondary"
               size="sm"
@@ -347,9 +347,9 @@ function LibraryModal() {
         )}
 
         {confirming ? (
-          <div role="alertdialog" aria-label={t('lib.forgetAll')} className="flex flex-col gap-1">
+          <div role="alertdialog" aria-label={t('lib.forgetAll')} className="flex flex-col gap-2">
             <p className="m-0">{t('lib.forgetConfirm')}</p>
-            <div className="flex items-center justify-end gap-1">
+            <div className="flex items-center justify-end gap-2">
               <Button variant="secondary" autoFocus onClick={() => setConfirming(false)}>
                 {t('lib.forgetCancel')}
               </Button>
@@ -365,9 +365,9 @@ function LibraryModal() {
             </div>
           </div>
         ) : (
-          <div className="flex items-center gap-1">
+          <div className="flex items-center gap-2">
             {!session && status !== 'locked' ? (
-              <p className="m-0 flex min-w-0 flex-1 items-center gap-0-5 text-sm text-text-muted">
+              <p className="m-0 flex min-w-0 flex-1 items-center gap-1 text-sm text-text-muted">
                 <Icon icon={Lock} size={12} className="shrink-0" />
                 {t('lib.encrypted')}
               </p>

@@ -44,10 +44,10 @@ export function UpdateBannerRow() {
     <AnimatePresence initial={false}>
       {show && (
         <motion.div key="update" {...motionProps} className="shrink-0">
-          <div className="px-1 pb-1">
-            <div className="glass-1 flex flex-col gap-1 rounded-panel py-1 pe-1 ps-2">
-              <div className="flex min-h-banner-min items-center gap-1">
-                <span className={failed ? 'shrink-0 text-error-text' : 'shrink-0 text-text-accent'}>
+          <div className="px-2 pb-2">
+            <div className="bg-panel border border-border-subtle shadow-floating flex flex-col gap-2 rounded-panel py-2 pe-2 ps-4">
+              <div className="flex min-h-banner-min items-center gap-2">
+                <span className={failed ? 'shrink-0 text-error-text' : 'shrink-0 text-text'}>
                   <Icon icon={failed ? CircleAlert : Download} />
                 </span>
                 <span
@@ -92,7 +92,7 @@ export function UpdateBannerRow() {
                   label={t('update.downloading', { version: info?.version ?? '' })}
                   done={phase === 'verifying' ? 0 : progress.downloaded}
                   total={phase === 'verifying' ? 0 : (progress.total ?? 0)}
-                  className="me-1"
+                  className="me-2"
                 />
               )}
               {phase === 'available' && details && info !== null && (
@@ -100,7 +100,7 @@ export function UpdateBannerRow() {
                   id={notesId}
                   tabIndex={0}
                   aria-label={t('update.notes')}
-                  className="m-0 me-1 max-h-lib-list overflow-auto whitespace-pre-wrap rounded-sm bg-surface-strong p-1 font-sans text-sm text-text"
+                  className="m-0 me-2 max-h-lib-list overflow-auto whitespace-pre-wrap rounded-sm bg-surface-strong p-2 font-sans text-sm text-text"
                 >
                   {info.notes.length > 0 ? info.notes : t('update.noNotes')}
                 </pre>

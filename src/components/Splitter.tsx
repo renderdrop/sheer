@@ -178,7 +178,7 @@ export function Splitter({
       <span
         aria-hidden="true"
         className={cx(
-          'h-4 w-0-5 rounded-pill transition-[background-color]',
+          'h-8 w-1 rounded-pill transition-[background-color]',
           dragging ? 'bg-accent' : 'bg-transparent group-hover:bg-control-border group-focus-visible:bg-accent',
         )}
       />

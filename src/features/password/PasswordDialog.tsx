@@ -107,7 +107,7 @@ function PasswordModal({ request }: { request: PasswordRequest }) {
       onPointerDown={(event) => {
         if (event.target === event.currentTarget) cancel();
       }}
-      className={`fixed inset-0 z-modal grid place-items-center bg-backdrop p-2 ${present ? '' : 'pointer-events-none'}`}
+      className={`fixed inset-0 z-modal grid place-items-center bg-backdrop p-4 ${present ? '' : 'pointer-events-none'}`}
     >
       <motion.div
         {...dialogMotion}
@@ -118,10 +118,10 @@ function PasswordModal({ request }: { request: PasswordRequest }) {
         aria-describedby="password-body"
         tabIndex={-1}
         onKeyDown={onKeyDown}
-        className="surface-dialog flex w-dialog max-w-full flex-col rounded-card p-3 text-text outline-none"
+        className="bg-panel border border-border-subtle shadow-floating flex w-dialog max-w-full flex-col rounded-card p-6 text-text outline-none"
       >
         <form onSubmit={submit} className="flex flex-col">
-          <div className="flex items-center gap-1">
+          <div className="flex items-center gap-2">
             <span className="flex size-control-md shrink-0 items-center justify-center rounded-sm bg-tile text-tile-icon">
               <Icon icon={Lock} />
             </span>
@@ -129,13 +129,13 @@ function PasswordModal({ request }: { request: PasswordRequest }) {
               {t('password.title')}
             </h2>
           </div>
-          <p id="password-body" className="m-0 mt-1 text-text-muted">
+          <p id="password-body" className="m-0 mt-2 text-text-muted">
             {t('password.body', { name: request.name })}
           </p>
-          <label htmlFor="password-field" className="mt-2 text-sm font-semibold">
+          <label htmlFor="password-field" className="mt-4 text-sm font-semibold">
             {t('password.label')}
           </label>
-          <div className="relative mt-0-5">
+          <div className="relative mt-1">
             <Field
               id="password-field"
               ref={field}
@@ -150,9 +150,9 @@ function PasswordModal({ request }: { request: PasswordRequest }) {
                 setPassword(event.target.value);
                 setWrong(false);
               }}
-              className="w-full! pe-4!"
+              className="w-full! pe-8!"
             />
-            <span className="absolute inset-y-0 end-0-5 flex items-center">
+            <span className="absolute inset-y-0 end-1 flex items-center">
               <IconButton
                 size="sm"
                 label={t('password.show')}
@@ -163,15 +163,15 @@ function PasswordModal({ request }: { request: PasswordRequest }) {
               />
             </span>
           </div>
-          <div className="mt-0-5 flex h-2 items-center text-sm text-error-text">
+          <div className="mt-1 flex h-4 items-center text-sm text-error-text">
             {wrong && (
-              <p id="password-error" role="alert" className="m-0 flex items-center gap-0-5">
+              <p id="password-error" role="alert" className="m-0 flex items-center gap-1">
                 <Icon icon={CircleAlert} size={12} />
                 {t('password.wrong')}
               </p>
             )}
           </div>
-          <div className="mt-3 flex items-center justify-end gap-1">
+          <div className="mt-6 flex items-center justify-end gap-2">
             <Button variant="secondary" onClick={cancel}>
               {t('password.cancel')}
             </Button>

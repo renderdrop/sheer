@@ -158,7 +158,7 @@ export function Slider({
   };
 
   return (
-    <div className={cx('flex items-center gap-1-5', className)}>
+    <div className={cx('flex items-center gap-3', className)}>
       <label
         id={labelId}
         htmlFor={fieldId}
@@ -171,13 +171,13 @@ export function Slider({
         {label}
       </label>
       <div
-        className={`group relative flex h-control-sm flex-1 touch-none items-center px-1 ${TRACK_MIN} ${disabled ? 'cursor-not-allowed' : 'cursor-pointer'}`}
+        className={`group relative flex h-control-sm flex-1 touch-none items-center px-2 ${TRACK_MIN} ${disabled ? 'cursor-not-allowed' : 'cursor-pointer'}`}
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={endDrag}
         onPointerCancel={endDrag}
       >
-        <div ref={trackRef} className="relative h-0-5 w-full rounded-pill bg-track">
+        <div ref={trackRef} className="relative h-1 w-full rounded-pill bg-track">
           <div
             aria-hidden="true"
             className={`absolute inset-y-0 start-0 rounded-pill ${disabled ? 'bg-text-disabled' : 'bg-accent'}`}
@@ -199,7 +199,7 @@ export function Slider({
             // Thumb: 16 px white disc with a hairline border and the level-1 shadow. It grows by `--scale-thumb` on hover
             // and drag; reduced motion sets that token to 1, so the thumb stays still without a branch here.
             className={cx(
-              'absolute top-1/2 size-2 -translate-x-1/2 -translate-y-1/2 rounded-pill border bg-page shadow-1',
+              'absolute top-1/2 size-4 -translate-x-1/2 -translate-y-1/2 rounded-pill border bg-page shadow-1',
               'transition-[scale] duration-fast',
               disabled
                 ? 'border-text-disabled'

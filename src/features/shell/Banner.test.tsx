@@ -104,7 +104,7 @@ describe('the banner row (DESIGN 3.12)', () => {
     act(() => useUi.getState().showBanner(DAMAGED));
     const alert = screen.getByRole('alert');
     expect(alert.className).toContain('min-h-banner-min');
-    expect(alert.className).toContain('glass-1');
+    expect(alert.className).toContain('bg-panel border border-border-subtle shadow-floating');
     const row = container.firstElementChild;
     expect(row?.className).toContain('shrink-0');
     expect(row?.contains(alert)).toBe(true);
@@ -113,8 +113,8 @@ describe('the banner row (DESIGN 3.12)', () => {
     // gutters at the sides and below are padding of the element between it and the alert.
     expect(row?.className).not.toMatch(/(^|\s)-?(p|px|py|pt|pb|ps|pe|pl|pr)-/);
     expect(alert.parentElement?.parentElement).toBe(row);
-    expect(alert.parentElement?.className).toContain('px-1');
-    expect(alert.parentElement?.className).toContain('pb-1');
+    expect(alert.parentElement?.className).toContain('px-2');
+    expect(alert.parentElement?.className).toContain('pb-2');
   });
 
   describe('motion (DESIGN 3.12: height and opacity, 250 ms; reduced: opacity only)', () => {

@@ -78,7 +78,7 @@ function BarMenu({
           aria-keyshortcuts={`Alt+${access}`}
           onPointerEnter={onHover}
           className={cx(
-            'h-control-sm shrink-0 cursor-default rounded-sm bg-transparent px-1 text-md text-inherit transition-colors',
+            'h-control-sm shrink-0 cursor-default rounded-sm bg-transparent px-2 text-md text-inherit transition-colors',
             'hover:bg-control-hover aria-expanded:bg-control-pressed',
           )}
         >

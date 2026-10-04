@@ -92,9 +92,9 @@ function ApplyModal({ docId }: { docId: number }) {
 
   return (
     <Modal labelledBy={`${id}-title`} width="w-dialog-md" onClose={cancel}>
-      <div className="flex items-center gap-1">
+      <div className="flex items-center gap-2">
         {!finished && (
-          <span className="flex size-control-md shrink-0 items-center justify-center text-warning-icon">
+          <span className="flex size-control-md shrink-0 items-center justify-center text-text">
             <Icon icon={TriangleAlert} />
           </span>
         )}
@@ -103,10 +103,10 @@ function ApplyModal({ docId }: { docId: number }) {
         </h2>
       </div>
       {finished ? (
-        <div className="mt-1 flex flex-col gap-1">
-          <ul className="m-0 flex list-none flex-col gap-0-5 p-0 text-md">
+        <div className="mt-2 flex flex-col gap-2">
+          <ul className="m-0 flex list-none flex-col gap-1 p-0 text-md">
             {warnings.map((key) => (
-              <li key={key} className="flex items-start gap-0-5 text-warning-text">
+              <li key={key} className="flex items-start gap-1 text-text">
                 <span className="shrink-0">
                   <Icon icon={CircleAlert} size={12} />
                 </span>
@@ -117,11 +117,11 @@ function ApplyModal({ docId }: { docId: number }) {
         </div>
       ) : (
         <>
-          <p className="m-0 mt-1 text-md">{t('redact.confirmBody')}</p>
-          <p className="m-0 mt-1 text-sm text-text-muted">
+          <p className="m-0 mt-2 text-md">{t('redact.confirmBody')}</p>
+          <p className="m-0 mt-2 text-sm text-text-muted">
             {t('redact.pages', { pages: formatPages(pages.map((page) => pageNumberOf(docId, page))) })}
           </p>
-          <div className="mt-1 flex min-h-2 flex-col justify-center gap-1">
+          <div className="mt-2 flex min-h-4 flex-col justify-center gap-2">
             {run.running && (
               <>
                 <ProgressBar label={progressText} done={progress?.done ?? 0} total={progress?.total ?? 0} />
@@ -134,7 +134,7 @@ function ApplyModal({ docId }: { docId: number }) {
         </>
       )}
       <JobError error={run.error} />
-      <div className="mt-2 flex items-center justify-end gap-1">
+      <div className="mt-4 flex items-center justify-end gap-2">
         {finished ? (
           <Button variant="primary" data-autofocus="" onClick={close}>
             {t('redact.close')}

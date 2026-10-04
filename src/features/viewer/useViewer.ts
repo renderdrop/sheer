@@ -205,7 +205,7 @@ export const useViewer = create<ViewerState>()((set, get) => {
     useView.getState().setPage(current.docId, target, anchor);
   };
 
-  /** Like `goTo`, to a point of the page: it lands 24 px (`--space-3`) below the viewport's top (the canvas's `scroll-padding-top`). */
+  /** Like `goTo`, to a point of the page: it lands 24 px (`--space-6`) below the viewport's top (the canvas's `scroll-padding-top`). */
   const goToPoint = (pageIndex: number, yPt: number) => {
     const current = active();
     if (current === null || !Number.isFinite(pageIndex)) return;
@@ -219,7 +219,7 @@ export const useViewer = create<ViewerState>()((set, get) => {
     const box = layout?.box(target) ?? null;
     // A y beyond the page (a hostile file) stays on the page: it never scrolls into the next one.
     const heightPt = box === null || layout === null ? yPt : box.height / layout.scale;
-    const anchor = top === null ? null : { ...top, yPt: Math.min(yPt, heightPt), viewY: tokenPx('--space-3', 24) };
+    const anchor = top === null ? null : { ...top, yPt: Math.min(yPt, heightPt), viewY: tokenPx('--space-6', 24) };
     markJump();
     useView.getState().setPage(current.docId, target, anchor);
   };

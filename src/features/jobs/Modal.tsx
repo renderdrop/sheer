@@ -62,7 +62,7 @@ export function Modal({ labelledBy, width, onClose, children }: ModalProps) {
       onPointerDown={(event) => {
         if (event.target === event.currentTarget) onClose();
       }}
-      className={`fixed inset-0 z-modal grid place-items-center bg-backdrop p-2 ${present ? '' : 'pointer-events-none'}`}
+      className={`fixed inset-0 z-modal grid place-items-center bg-backdrop p-4 ${present ? '' : 'pointer-events-none'}`}
     >
       <motion.div
         {...dialogMotion}
@@ -72,7 +72,7 @@ export function Modal({ labelledBy, width, onClose, children }: ModalProps) {
         aria-labelledby={labelledBy}
         tabIndex={-1}
         onKeyDown={onKeyDown}
-        className={`surface-dialog flex ${width} max-w-full flex-col rounded-card p-3 text-text outline-none`}
+        className={`bg-panel border border-border-subtle shadow-floating flex ${width} max-w-full flex-col rounded-card p-6 text-text outline-none`}
       >
         {children}
       </motion.div>
@@ -84,7 +84,7 @@ export function Modal({ labelledBy, width, onClose, children }: ModalProps) {
 /** Tile and title of a dialog (DESIGN 3.19): a 32 accent tile with the icon, then the heading. */
 export function ModalHeader({ id, icon, title }: { id: string; icon: ReactNode; title: string }) {
   return (
-    <div className="flex items-center gap-1">
+    <div className="flex items-center gap-2">
       <span className="flex size-control-md shrink-0 items-center justify-center rounded-sm bg-tile text-tile-icon">
         {icon}
       </span>

@@ -51,7 +51,7 @@ export function OrganizeView({ style }: { style?: CSSProperties }) {
       style={style}
       initial={{ opacity: 0 }}
       animate={{ opacity: 1, transition: reduce ? SPRING.fast : SPRING.base }}
-      className="relative isolate flex min-h-0 min-w-0 flex-col overflow-hidden rounded-panel surface-canvas"
+      className="relative isolate flex min-h-0 min-w-0 flex-col overflow-hidden rounded-panel bg-page-area"
     >
       {docId !== null && (
         <>

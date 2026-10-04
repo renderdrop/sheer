@@ -118,10 +118,10 @@ function SplitModal({ initialMode }: { initialMode: SplitMode }) {
           value={mode}
           disabled={run.running}
           onChange={setMode}
-          className="mt-2"
+          className="mt-4"
           options={modes.map((m) => ({ value: m.value, label: m.label, content: m.label }))}
         />
-        <div className="mt-1-5 flex min-h-control-md items-center gap-1">
+        <div className="mt-3 flex min-h-control-md items-center gap-2">
           {mode === 'every' ? (
             <>
               <Field
@@ -157,14 +157,14 @@ function SplitModal({ initialMode }: { initialMode: SplitMode }) {
             />
           )}
         </div>
-        <div className="flex h-2 items-center text-sm text-error-text">
+        <div className="flex h-4 items-center text-sm text-error-text">
           {invalid && (
             <p id={errorId} className="m-0">
               {t('split.invalid', { n: total })}
             </p>
           )}
         </div>
-        <p id={previewId} role="status" aria-live="polite" className="m-0 min-h-3 text-sm text-text-muted">
+        <p id={previewId} role="status" aria-live="polite" className="m-0 min-h-6 text-sm text-text-muted">
           {preview}
         </p>
         {mode !== 'extract' && (
@@ -175,14 +175,14 @@ function SplitModal({ initialMode }: { initialMode: SplitMode }) {
             readOnly={run.running}
             value={pattern}
             onChange={(event) => setPattern(event.target.value)}
-            className="mt-1 w-full"
+            className="mt-2 w-full"
           />
         )}
-        <div className="mt-1">
+        <div className="mt-2">
           <JobProgress run={run} label={t('split.working')} />
         </div>
         <JobError error={run.error} />
-        <div className="mt-2 flex items-center justify-end gap-1">
+        <div className="mt-4 flex items-center justify-end gap-2">
           <Button variant="secondary" onClick={cancel}>
             {t('split.cancel')}
           </Button>

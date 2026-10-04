@@ -46,10 +46,10 @@ const MAX_SCROLL_PER_FRAME = 24;
 
 function readSpacing(): GridSpacing {
   return {
-    padding: tokenPx('--space-3', 24),
-    gap: tokenPx('--space-3', 24),
-    cellPad: tokenPx('--space-0-5', 4),
-    labelGap: tokenPx('--space-1', 8),
+    padding: tokenPx('--space-6', 24),
+    gap: tokenPx('--space-6', 24),
+    cellPad: tokenPx('--space-1', 4),
+    labelGap: tokenPx('--space-2', 8),
     labelHeight: tokenPx('--pill-height', 20),
   };
 }

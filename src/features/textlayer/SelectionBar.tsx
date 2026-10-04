@@ -173,7 +173,7 @@ export function SelectionBar({ docId, region }: SelectionBarProps) {
       }}
       // Taking a pointer on the bar must not collapse the selection it acts on.
       onPointerDown={(event) => event.preventDefault()}
-      className="glass-2 fixed z-popover flex h-control-lg items-center gap-0-5 rounded-panel p-0-5 text-md text-text"
+      className="bg-panel border border-border-subtle shadow-floating fixed z-popover flex h-control-lg items-center gap-1 rounded-panel p-1 text-md text-text"
     >
       <Button
         size="sm"

@@ -122,9 +122,9 @@ function PropertiesModal({ docId, pageCount }: { docId: number; pageCount: numbe
   return (
     <Modal labelledBy={titleId} width="w-dialog-md" onClose={close}>
       <ModalHeader id={titleId} icon={<Icon icon={FileText} />} title={t('props.title')} />
-      <form onSubmit={apply} className="mt-2 flex flex-col gap-2" noValidate>
+      <form onSubmit={apply} className="mt-4 flex flex-col gap-4" noValidate>
         {EDITABLE.map(([key, label], index) => (
-          <div key={key} className="flex flex-col gap-0-5">
+          <div key={key} className="flex flex-col gap-1">
             <label htmlFor={`${id}-f-${key}`} className="text-sm font-semibold">
               {t(label)}
             </label>
@@ -145,7 +145,7 @@ function PropertiesModal({ docId, pageCount }: { docId: number; pageCount: numbe
             />
           </div>
         ))}
-        <dl className="m-0 grid grid-cols-[max-content_1fr] gap-x-2 gap-y-0-5 border-t border-divider pt-2">
+        <dl className="m-0 grid grid-cols-[max-content_1fr] gap-x-4 gap-y-1 border-t border-divider pt-4">
           {rows.map(([label, value]) => (
             <Fragment key={label}>
               <dt className="text-sm text-text-muted">{label}</dt>
@@ -158,7 +158,7 @@ function PropertiesModal({ docId, pageCount }: { docId: number; pageCount: numbe
             {metadata.xmp.present ? t('props.xmpNote') : ''} {metadata.truncated ? t('props.truncated') : ''}
           </p>
         )}
-        <div className="flex h-2 items-center gap-0-5 text-sm text-text-muted">
+        <div className="flex h-4 items-center gap-1 text-sm text-text-muted">
           {removing && (
             <>
               <Icon icon={Info} size={12} />
@@ -166,7 +166,7 @@ function PropertiesModal({ docId, pageCount }: { docId: number; pageCount: numbe
             </>
           )}
         </div>
-        <div className="flex items-center gap-1">
+        <div className="flex items-center gap-2">
           <Button
             variant="ghost"
             disabled={metadata === null || removing}

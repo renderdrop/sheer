@@ -114,14 +114,14 @@ export function TabStrip() {
 
   if (order.length === 0) return null;
   return (
-    <div className="mb-1 flex h-tabs-row shrink-0 items-center gap-1 px-1" data-tabs="">
+    <div className="mb-2 flex h-tabs-row shrink-0 items-center gap-2 px-2" data-tabs="">
       <div
         ref={strip}
         role="tablist"
         aria-label={t('tabs.label')}
         aria-orientation="horizontal"
         onKeyDown={onKeyDown}
-        className="flex min-w-0 flex-1 gap-0-5 overflow-x-auto [scrollbar-width:none]"
+        className="flex min-w-0 flex-1 gap-1 overflow-x-auto [scrollbar-width:none]"
       >
         {names.map(({ id, name }) => {
           const selected = id === activeId;
@@ -134,8 +134,10 @@ export function TabStrip() {
               initial={{ opacity: 0 }}
               animate={{ opacity: 1, transition: SPRING.fast }}
               className={cx(
-                'group/tab relative flex h-tabs-row min-w-tab-min max-w-tab-max flex-1 shrink-0 items-center rounded-button ps-1-5 pe-0-5',
-                selected ? 'glass-1 text-text' : 'text-text hover:bg-control-hover active:bg-control-pressed',
+                'group/tab relative flex h-tabs-row min-w-tab-min max-w-tab-max flex-1 shrink-0 items-center rounded-button ps-3 pe-1',
+                selected
+                  ? 'bg-panel border border-border-subtle shadow-floating text-text'
+                  : 'text-text hover:bg-control-hover active:bg-control-pressed',
                 selected && SELECTED_FORCED_COLORS,
               )}
               onAuxClick={(event: MouseEvent) => {
@@ -154,12 +156,12 @@ export function TabStrip() {
                   tabIndex={selected ? 0 : -1}
                   data-id={id}
                   onClick={() => useDocuments.getState().setActive(id)}
-                  className="flex h-full min-w-0 flex-1 cursor-pointer items-center gap-1 rounded-button text-start text-md"
+                  className="flex h-full min-w-0 flex-1 cursor-pointer items-center gap-2 rounded-button text-start text-md"
                 >
                   <Icon icon={FileText} className="text-text-muted" />
                   <span className="min-w-0 flex-1 truncate">{middleTruncate(name)}</span>
                   {edited && (
-                    <span aria-hidden="true" data-edited="" className="size-1 shrink-0 rounded-pill bg-accent" />
+                    <span aria-hidden="true" data-edited="" className="size-2 shrink-0 rounded-pill bg-accent" />
                   )}
                 </button>
               </Tooltip>

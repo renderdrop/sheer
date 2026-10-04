@@ -8,7 +8,7 @@ import { useUi } from '../../stores/ui';
 export function EmptyStateImagesButton() {
   const t = useT();
   return (
-    <div className="mt-2 flex justify-center">
+    <div className="mt-4 flex justify-center">
       <Button variant="ghost" onClick={() => useUi.getState().setImagesToPdfOpen(true)}>
         <Icon icon={Images} size={16} />
         {t('img2pdf.menu')}

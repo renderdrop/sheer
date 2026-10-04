@@ -81,7 +81,7 @@ function DialogShell({
       onPointerDown={(event) => {
         if (event.target === event.currentTarget) onCancel();
       }}
-      className={`fixed inset-0 z-modal grid place-items-center bg-backdrop p-2 ${present ? '' : 'pointer-events-none'}`}
+      className={`fixed inset-0 z-modal grid place-items-center bg-backdrop p-4 ${present ? '' : 'pointer-events-none'}`}
     >
       <motion.div
         {...dialogMotion}
@@ -92,9 +92,9 @@ function DialogShell({
         aria-describedby="save-body"
         tabIndex={-1}
         onKeyDown={onKeyDown}
-        className="surface-dialog flex w-dialog max-w-full flex-col rounded-card p-3 text-text outline-none"
+        className="bg-panel border border-border-subtle shadow-floating flex w-dialog max-w-full flex-col rounded-card p-6 text-text outline-none"
       >
-        <div className="flex items-center gap-1">
+        <div className="flex items-center gap-2">
           <span className="flex size-control-md shrink-0 items-center justify-center rounded-sm bg-tile text-tile-icon">
             <Icon icon={icon} />
           </span>
@@ -102,10 +102,10 @@ function DialogShell({
             {title}
           </h2>
         </div>
-        <p id="save-body" className="m-0 mt-1 text-text-muted">
+        <p id="save-body" className="m-0 mt-2 text-text-muted">
           {body}
         </p>
-        <div className="mt-3 flex items-center gap-1">{children}</div>
+        <div className="mt-6 flex items-center gap-2">{children}</div>
       </motion.div>
     </motion.div>
   );

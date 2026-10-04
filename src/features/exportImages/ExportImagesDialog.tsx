@@ -221,7 +221,7 @@ function ExportImagesModal() {
   const busy = run.running;
   const rangeErrorId = `${id}-range`;
   const dpiErrorId = `${id}-dpi`;
-  const labelClass = 'mb-0-5 text-sm font-semibold text-text-muted';
+  const labelClass = 'mb-1 text-sm font-semibold text-text-muted';
 
   return (
     <Modal labelledBy={`${id}-title`} width="w-dialog-md" onClose={cancel}>
@@ -234,14 +234,14 @@ function ExportImagesModal() {
       >
         <ModalHeader id={`${id}-title`} icon={<Icon icon={FileImage} />} title={t('exportImg.title')} />
         {lowered ? (
-          <p role="status" className="m-0 mt-2 flex items-start gap-0-5 text-md text-text-muted">
+          <p role="status" className="m-0 mt-4 flex items-start gap-1 text-md text-text-muted">
             <span className="shrink-0">
               <Icon icon={Info} size={12} />
             </span>
             {t('exportImg.capped')}
           </p>
         ) : conflict !== null ? (
-          <div className="mt-2 flex flex-col gap-1" role="group" aria-labelledby={`${id}-conflict`}>
+          <div className="mt-4 flex flex-col gap-2" role="group" aria-labelledby={`${id}-conflict`}>
             <h3 id={`${id}-conflict`} className="m-0 text-md font-semibold">
               {t('exportImg.conflictTitle')}
             </h3>
@@ -256,8 +256,8 @@ function ExportImagesModal() {
             </ul>
           </div>
         ) : (
-          <div ref={body} className="relative mt-2">
-            <div className={`flex flex-col gap-2 ${busy ? 'invisible' : ''}`} inert={busy ? true : undefined}>
+          <div ref={body} className="relative mt-4">
+            <div className={`flex flex-col gap-4 ${busy ? 'invisible' : ''}`} inert={busy ? true : undefined}>
               <div>
                 <div className={labelClass}>{t('exportImg.format')}</div>
                 <RadioGroup
@@ -296,9 +296,9 @@ function ExportImagesModal() {
                   placeholder={t('split.placeholder')}
                   value={rangeText}
                   onChange={(event) => setRangeText(event.target.value)}
-                  className="mt-0-5 w-full"
+                  className="mt-1 w-full"
                 />
-                <div className="flex h-2 items-center text-sm text-error-text">
+                <div className="flex h-4 items-center text-sm text-error-text">
                   {rangeInvalid && (
                     <p id={rangeErrorId} className="m-0">
                       {t('split.invalid', { n: slots.length })}
@@ -308,7 +308,7 @@ function ExportImagesModal() {
               </div>
               <div>
                 <div className={labelClass}>{t('exportImg.resolution')}</div>
-                <div className="flex items-center gap-1">
+                <div className="flex items-center gap-2">
                   <RadioGroup
                     label={t('exportImg.resolution')}
                     look="segmented"
@@ -333,7 +333,7 @@ function ExportImagesModal() {
                   />
                   <span className="shrink-0 text-sm text-text-muted">{t('exportImg.dpi')}</span>
                 </div>
-                <div className="flex h-2 items-center text-sm text-error-text">
+                <div className="flex h-4 items-center text-sm text-error-text">
                   {dpiInvalid && (
                     <p id={dpiErrorId} className="m-0">
                       {t('exportImg.dpiInvalid')}
@@ -342,7 +342,7 @@ function ExportImagesModal() {
                 </div>
               </div>
               <div role="group" aria-labelledby={`${id}-quality`} aria-disabled={format === 'png' ? true : undefined}>
-                <div className="mb-0-5 flex items-baseline gap-1">
+                <div className="mb-1 flex items-baseline gap-2">
                   <span id={`${id}-quality`} className="text-sm font-semibold text-text-muted">
                     {t('exportImg.quality')}
                   </span>
@@ -361,7 +361,7 @@ function ExportImagesModal() {
                   onValueCommit={(value) => remember({ quality: value })}
                 />
               </div>
-              <label className="flex min-h-control-md cursor-pointer items-center gap-1">
+              <label className="flex min-h-control-md cursor-pointer items-center gap-2">
                 <input
                   type="checkbox"
                   checked={annotations}
@@ -370,7 +370,7 @@ function ExportImagesModal() {
                 />
                 {t('exportImg.annotations')}
               </label>
-              <p role="status" aria-live="polite" className="m-0 min-h-3 text-sm text-text-muted">
+              <p role="status" aria-live="polite" className="m-0 min-h-6 text-sm text-text-muted">
                 {estimate !== null &&
                   t('exportImg.estimateSize', {
                     images: t('exportImg.estimate', { count: estimate.count }),
@@ -379,7 +379,7 @@ function ExportImagesModal() {
               </p>
             </div>
             {busy && (
-              <div className="absolute inset-0 flex flex-col justify-center gap-1">
+              <div className="absolute inset-0 flex flex-col justify-center gap-2">
                 <ProgressBar label={t('exportImg.working')} done={progress?.done ?? 0} total={progress?.total ?? 0} />
                 <p role="status" className="m-0 text-sm text-text-muted tabular-nums">
                   {progress !== null && progress.total > 0
@@ -391,7 +391,7 @@ function ExportImagesModal() {
           </div>
         )}
         <JobError error={run.error} />
-        <div className="flex min-h-3 items-center gap-0-5 text-sm text-text-muted">
+        <div className="flex min-h-6 items-center gap-1 text-sm text-text-muted">
           {!mayCopy ? (
             <p role="status" className="m-0">
               {t('output.notAllowed')}
@@ -405,7 +405,7 @@ function ExportImagesModal() {
             )
           )}
         </div>
-        <div className="mt-1 flex items-center justify-end gap-1">
+        <div className="mt-2 flex items-center justify-end gap-2">
           {lowered ? (
             <Button variant="primary" data-autofocus="" onClick={close}>
               {t('copy.close')}

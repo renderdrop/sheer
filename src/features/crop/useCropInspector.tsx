@@ -76,11 +76,11 @@ function MarginField({ target, viewSide, label, unit, onValidity }: MarginFieldP
   };
 
   return (
-    <div className="flex flex-col gap-0-5">
+    <div className="flex flex-col gap-1">
       <label htmlFor={id} className="text-sm font-semibold text-text-muted">
         {label}
       </label>
-      <div className="flex items-center gap-0-5">
+      <div className="flex items-center gap-1">
         <Field
           id={id}
           inputMode="decimal"
@@ -157,7 +157,7 @@ function CropInspectorBody() {
     <div className="flex min-h-full flex-col" onKeyDown={onKeyDown}>
       <div className="flex-auto">
         <PanelSection label={t('crop.margins')}>
-          <div key={target.slot.id} className="grid grid-cols-2 gap-1">
+          <div key={target.slot.id} className="grid grid-cols-2 gap-2">
             {GRID.map(({ side, label }) => (
               <MarginField
                 key={side}
@@ -169,7 +169,7 @@ function CropInspectorBody() {
               />
             ))}
           </div>
-          <div className="mt-0-5 flex min-h-2 items-center text-sm text-error-text" role="status">
+          <div className="mt-1 flex min-h-4 items-center text-sm text-error-text" role="status">
             {tooSmall && <p className="m-0">{t('crop.tooSmall')}</p>}
           </div>
         </PanelSection>
@@ -183,7 +183,7 @@ function CropInspectorBody() {
             look="plain"
           />
           {scope === 'range' && (
-            <div className="mt-0-5 flex flex-col gap-0-5">
+            <div className="mt-1 flex flex-col gap-1">
               <Field
                 id={rangeId}
                 autoComplete="off"
@@ -196,7 +196,7 @@ function CropInspectorBody() {
                 onChange={(event) => useCrop.getState().setRange(event.target.value)}
                 className="w-full"
               />
-              <div className="flex min-h-2 items-center text-sm text-error-text">
+              <div className="flex min-h-4 items-center text-sm text-error-text">
                 {rangeInvalid && range.trim() !== '' && (
                   <p id={errorId} className="m-0">
                     {t('split.invalid', { n: target.slots.length })}
@@ -211,7 +211,7 @@ function CropInspectorBody() {
           <p className="m-0 text-sm text-text-muted">{t('crop.hides')}</p>
         </PanelSection>
       </div>
-      <div className="sticky bottom-0 -mx-1 -mb-1 mt-1 flex items-center gap-1 border-t border-divider bg-surface-strong p-1">
+      <div className="sticky bottom-0 -mx-2 -mb-2 mt-2 flex items-center gap-2 border-t border-divider bg-surface-strong p-2">
         <Button
           size="sm"
           disabled={!canReset}

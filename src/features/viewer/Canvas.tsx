@@ -309,7 +309,7 @@ export function Canvas({
     <main
       data-action-scope="canvas"
       style={style}
-      className={cx('relative isolate min-h-0 min-w-0 overflow-hidden rounded-panel surface-canvas', className)}
+      className={cx('relative isolate min-h-0 min-w-0 overflow-hidden rounded-panel bg-page-area', className)}
     >
       <div
         ref={setRegion}
@@ -322,7 +322,7 @@ export function Canvas({
           setScrolled(region.scrollTop > 0);
           onScroll?.({ left: region.scrollLeft, top: region.scrollTop });
         }}
-        className="flex size-full scroll-pt-canvas-gutter overflow-auto p-canvas-gutter [overflow-anchor:none] [scrollbar-gutter:stable] [&::-webkit-scrollbar-track]:bg-canvas [&::-webkit-scrollbar-corner]:bg-canvas"
+        className="flex size-full scroll-pt-canvas-gutter overflow-auto p-canvas-gutter [overflow-anchor:none] [scrollbar-gutter:stable] [&::-webkit-scrollbar-track]:bg-page-area [&::-webkit-scrollbar-corner]:bg-page-area"
       >
         {pageCount === 0 ? (
           <p className="m-auto text-text-muted">{t('canvas.noPages')}</p>
@@ -356,7 +356,7 @@ export function Canvas({
             initial={{ opacity: 0 }}
             animate={{ opacity: 1, transition: SPRING.base }}
             exit={{ opacity: 0, transition: SPRING.fast }}
-            className="glass-2 pointer-events-none absolute inset-1 z-drag flex flex-col items-center justify-center gap-3 rounded-panel"
+            className="bg-panel border border-border-subtle shadow-floating pointer-events-none absolute inset-2 z-drag flex flex-col items-center justify-center gap-6 rounded-panel"
           >
             <DropCard />
             <p className="m-0 font-display text-xl">{t('canvas.dropToOpen')}</p>

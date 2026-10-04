@@ -668,7 +668,7 @@ describe('the window chrome (DESIGN 2.2)', () => {
     await waitFor(() =>
       expect(container.querySelector('[data-tauri-drag-region]')?.className).not.toContain('ps-chrome-inset'),
     );
-    expect(container.querySelector('[data-tauri-drag-region]')?.className).toContain('ps-1');
+    expect(container.querySelector('[data-tauri-drag-region]')?.className).toContain('ps-2');
   });
 
   it('the toolbar row is a drag region on every platform, and only Windows has the caption row above it', () => {
@@ -791,7 +791,7 @@ describe('Shell without a document: edge cases', () => {
     const { container } = setup(<Shell />);
     expect(screen.queryByRole('complementary', { hidden: true })).toBeNull();
     expect(container.querySelector<HTMLElement>('[data-layout]')?.style.gridTemplateColumns).toBe(
-      'var(--space-1) minmax(0, 1fr) var(--space-1)',
+      'var(--space-2) minmax(0, 1fr) var(--space-2)',
     );
   });
 });

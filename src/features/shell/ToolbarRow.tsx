@@ -21,15 +21,16 @@ export interface ToolbarRowProps {
 
 const ITEM_SELECTOR = '[data-toolbar-item]';
 /** Labelled item: 32 high, padding 0 12, icon 20, 8, label (DESIGN 3.55). */
-const LABELLED = 'gap-1 px-1-5! text-sm font-semibold';
+const LABELLED = 'gap-2 px-3! text-sm font-semibold';
 /** The card is used labelled when it fits with this much to spare on each side, and goes compact only when this much short (DESIGN 3.55). */
 const SPARE = 16;
 const SHORT = 24;
 
 /** The G1 40 x 40 card of a panel toggle. */
-const TOGGLE_CARD = 'glass-1 grid size-control-lg place-items-center rounded-panel';
+const TOGGLE_CARD =
+  'bg-panel border border-border-subtle shadow-floating grid size-control-lg place-items-center rounded-panel';
 
-const DIVIDER = 'mx-toolbar-group h-2 w-hairline shrink-0 bg-divider';
+const DIVIDER = 'mx-toolbar-group h-4 w-hairline shrink-0 bg-divider';
 
 /**
  * The toolbar row (DESIGN 2, 3.55): 56 high, a grid `40 | 1fr | auto | 1fr | 40`: the left panel toggle, the centred tool card,
@@ -150,8 +151,8 @@ export function ToolbarRow({ leading, trailing, groups, trafficLightInset }: Too
       aria-orientation="horizontal"
       onKeyDown={onKeyDown}
       className={cx(
-        'relative grid h-toolbar-row shrink-0 grid-cols-[var(--control-lg)_minmax(0,1fr)_auto_minmax(0,1fr)_var(--control-lg)] items-center py-1 pe-1',
-        trafficLightInset ? 'ps-chrome-inset' : 'ps-1',
+        'relative grid h-toolbar-row shrink-0 grid-cols-[var(--control-lg)_minmax(0,1fr)_auto_minmax(0,1fr)_var(--control-lg)] items-center py-2 pe-2',
+        trafficLightInset ? 'ps-chrome-inset' : 'ps-2',
         '[&_[aria-disabled=true]]:text-icon-disabled',
       )}
     >
@@ -162,12 +163,12 @@ export function ToolbarRow({ leading, trailing, groups, trafficLightInset }: Too
       <div
         data-tool-card=""
         data-labelled={labelled || undefined}
-        className="glass-1 flex h-control-lg items-center rounded-panel p-0-5"
+        className="bg-panel border border-border-subtle shadow-floating flex h-control-lg items-center rounded-panel p-1"
       >
         {groups.map((group, index) => (
           <Fragment key={group.id}>
             {index > 0 && <div role="separator" aria-orientation="vertical" className={DIVIDER} />}
-            <div role="group" aria-label={group.label} className="flex items-center gap-0-5">
+            <div role="group" aria-label={group.label} className="flex items-center gap-1">
               {group.items.map((item) => (
                 <Fragment key={item.id}>{renderTool(item)}</Fragment>
               ))}
@@ -184,12 +185,12 @@ export function ToolbarRow({ leading, trailing, groups, trafficLightInset }: Too
         ref={measureRef}
         aria-hidden="true"
         inert
-        className="pointer-events-none invisible absolute start-0 top-0 flex w-max items-center p-0-5"
+        className="pointer-events-none invisible absolute start-0 top-0 flex w-max items-center p-1"
       >
         {groups.map((group, index) => (
           <Fragment key={group.id}>
             {index > 0 && <div className={DIVIDER} />}
-            <div className="flex items-center gap-0-5">
+            <div className="flex items-center gap-1">
               {group.items.map((item) => (
                 <span key={item.id} className={cx('flex h-control-md items-center whitespace-nowrap', LABELLED)}>
                   <span className="size-icon-20 shrink-0" />

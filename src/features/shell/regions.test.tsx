@@ -16,8 +16,8 @@ function Fixture({ dialog = false, inspector = true }: { dialog?: boolean; inspe
         <span>nothing to focus</span>
       </div>
       <aside data-region="left">
-        <button>left-1</button>
         <button>left-2</button>
+        <button>left-4</button>
       </aside>
       <main data-action-scope="canvas">
         <div role="region" aria-label="Pages" tabIndex={0} />
@@ -43,7 +43,7 @@ describe('F6 region cycling (DESIGN 2.3)', () => {
     f6();
     expect(document.activeElement).toBe(screen.getByText('tool-a'));
     f6();
-    expect(document.activeElement).toBe(screen.getByText('left-1'));
+    expect(document.activeElement).toBe(screen.getByText('left-2'));
     f6();
     expect(document.activeElement).toBe(screen.getByRole('region', { name: 'Pages' }));
     f6();
@@ -56,10 +56,10 @@ describe('F6 region cycling (DESIGN 2.3)', () => {
     render(<Fixture />);
     f6();
     f6();
-    screen.getByText('left-2').focus();
+    screen.getByText('left-4').focus();
     f6();
     f6(true);
-    expect(document.activeElement).toBe(screen.getByText('left-2'));
+    expect(document.activeElement).toBe(screen.getByText('left-4'));
     f6(true);
     expect(document.activeElement).toBe(screen.getByText('tool-a'));
     f6(true);

@@ -170,9 +170,9 @@ function PrintModal() {
   return (
     <Modal labelledBy={`${id}-title`} width="w-dialog-md" onClose={cancel}>
       <ModalHeader id={`${id}-title`} icon={<Icon icon={Printer} />} title={t('print.title')} />
-      <div className="relative mt-2">
+      <div className="relative mt-4">
         <div className={busy ? 'invisible' : ''} inert={busy ? true : undefined}>
-          <label className="flex min-h-control-sm cursor-pointer items-center gap-1 text-md">
+          <label className="flex min-h-control-sm cursor-pointer items-center gap-2 text-md">
             <input
               type="checkbox"
               className="accent-accent"
@@ -194,7 +194,7 @@ function PrintModal() {
             orientation="vertical"
             value={pages}
             onChange={setPages}
-            className="mt-1"
+            className="mt-2"
             options={[
               { value: 'all', label: t('exportImg.all'), content: t('exportImg.all') },
               { value: 'current', label: t('exportImg.current'), content: t('exportImg.current') },
@@ -212,10 +212,10 @@ function PrintModal() {
                 placeholder={t('split.placeholder')}
                 value={rangeText}
                 onChange={(event) => setRangeText(event.target.value)}
-                className="mt-0-5 w-full"
+                className="mt-1 w-full"
               />
               {rangeInvalid && (
-                <p id={`${id}-range`} className="m-0 mt-0-5 text-sm text-error-text">
+                <p id={`${id}-range`} className="m-0 mt-1 text-sm text-error-text">
                   {t('split.invalid', { n: total })}
                 </p>
               )}
@@ -230,7 +230,7 @@ function PrintModal() {
               setQuality(value);
               save(QUALITY_KEY, value);
             }}
-            className="mt-1"
+            className="mt-2"
             options={[
               { value: 'standard', label: t('print.qualityStandard'), content: t('print.qualityStandard') },
               { value: 'high', label: t('print.qualityHigh'), content: t('print.qualityHigh') },
@@ -238,7 +238,7 @@ function PrintModal() {
           />
         </div>
         {busy && (
-          <div className="absolute inset-0 flex flex-col justify-center gap-1">
+          <div className="absolute inset-0 flex flex-col justify-center gap-2">
             <ProgressBar label={t('print.title')} done={progress?.done ?? 0} total={progress?.total ?? 0} />
             <p role="status" className="m-0 text-sm text-text-muted tabular-nums">
               {caption}
@@ -247,12 +247,12 @@ function PrintModal() {
         )}
       </div>
       {!allowed && (
-        <p id={`${id}-denied`} role="status" className="m-0 mt-1 text-sm text-text-muted">
+        <p id={`${id}-denied`} role="status" className="m-0 mt-2 text-sm text-text-muted">
           {t('output.notAllowed')}
         </p>
       )}
       <JobError error={error ?? run.error} />
-      <div className="flex min-h-3 items-center gap-0-5 text-sm text-text-muted">
+      <div className="flex min-h-6 items-center gap-1 text-sm text-text-muted">
         {hasMarks && (
           <>
             <Icon icon={Info} size={12} />
@@ -260,7 +260,7 @@ function PrintModal() {
           </>
         )}
       </div>
-      <div className="mt-2 flex items-center justify-end gap-1">
+      <div className="mt-4 flex items-center justify-end gap-2">
         <Button variant="secondary" onClick={cancel}>
           {t('output.cancel')}
         </Button>

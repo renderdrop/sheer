@@ -33,10 +33,10 @@ export const USER_SCROLL_GRACE_MS = 1500;
 
 const SPACING_FALLBACK = { pad: 4, labelGap: 4, labelHeight: 16, gap: 4 } as const;
 
-/** The fixed parts of a cell in px, read from the spacing tokens once (`--space-0-5`: 4 px, `--space-2`: 16 px). */
+/** The fixed parts of a cell in px, read from the spacing tokens once (`--space-1`: 4 px, `--space-4`: 16 px). */
 function readSpacing(): ThumbnailSpacing {
-  const small = tokenPx('--space-0-5', SPACING_FALLBACK.pad);
-  return { pad: small, labelGap: small, labelHeight: tokenPx('--space-2', SPACING_FALLBACK.labelHeight), gap: small };
+  const small = tokenPx('--space-1', SPACING_FALLBACK.pad);
+  return { pad: small, labelGap: small, labelHeight: tokenPx('--space-4', SPACING_FALLBACK.labelHeight), gap: small };
 }
 
 interface Box {
@@ -297,7 +297,7 @@ export function ThumbnailList({ docId, pageCount, scheduler }: ThumbnailListProp
         }
         track();
       }}
-      className="min-h-0 flex-auto overflow-y-auto overflow-x-hidden p-0-5 [overflow-anchor:none] [scrollbar-gutter:stable]"
+      className="min-h-0 flex-auto overflow-y-auto overflow-x-hidden p-1 [overflow-anchor:none] [scrollbar-gutter:stable]"
     >
       <div
         role="listbox"

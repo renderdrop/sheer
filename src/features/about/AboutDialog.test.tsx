@@ -85,7 +85,7 @@ describe('the About dialog', () => {
     setup(<Fixture />);
     act(() => openAbout());
     expect(dialog().getAttribute('aria-modal')).toBe('true');
-    expect(dialog().className).toContain('surface-dialog');
+    expect(dialog().className).toContain('bg-panel border border-border-subtle shadow-floating');
     expect(dialog().className).toContain('rounded-card');
     // Not glass: solid with --shadow-3 (DESIGN 1.3).
     expect(dialog().className).not.toContain('glass');

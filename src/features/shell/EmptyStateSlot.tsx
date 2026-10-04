@@ -69,7 +69,7 @@ export function EmptyStateSlot({ platform, style }: { platform: Platform | null;
       exit={exit}
       style={style}
       inert={!present || undefined}
-      className={cx('relative flex min-h-0 min-w-0 overflow-auto p-1', !present && 'pointer-events-none')}
+      className={cx('relative flex min-h-0 min-w-0 overflow-auto p-2', !present && 'pointer-events-none')}
     >
       <div className={cx('flex min-w-0 flex-1 transition-opacity', target.shown ? 'opacity-0' : 'opacity-100')}>
         <EmptyState
@@ -92,7 +92,7 @@ export function EmptyStateSlot({ platform, style }: { platform: Platform | null;
             initial={{ opacity: 0 }}
             animate={{ opacity: 1, transition: SPRING.base }}
             exit={{ opacity: 0, transition: SPRING.fast }}
-            className="pointer-events-none absolute inset-1 z-drag flex flex-col items-center justify-center gap-3"
+            className="pointer-events-none absolute inset-2 z-drag flex flex-col items-center justify-center gap-6"
           >
             <DropCard falling={target.falling} />
             <p className="m-0 font-display text-xl">{t('canvas.dropToOpen')}</p>

@@ -68,7 +68,7 @@ function Setting({
 }) {
   const labelId = useId();
   return (
-    <div className="flex flex-col gap-1">
+    <div className="flex flex-col gap-2">
       <span id={labelId} className="text-sm font-semibold text-text-muted">
         {label}
       </span>
@@ -96,7 +96,7 @@ function HelpRow() {
   return (
     <Setting label={t('settings.help')} hint={done ? t('settings.tips.resetDone') : t('settings.tour.hint')} live>
       {(labelId) => (
-        <div className="flex flex-wrap gap-1">
+        <div className="flex flex-wrap gap-2">
           <Button variant="secondary" size="sm" aria-describedby={labelId} onClick={() => void restartTour()}>
             {running ? t('settings.tour.restart') : t('settings.tour.start')}
           </Button>
@@ -146,7 +146,7 @@ function DefaultAppRow() {
   return (
     <Setting label={t('settings.defaultApp')} hint={t('settings.defaultApp.hint', { app: APP_NAME })}>
       {(labelId) => (
-        <div className="flex flex-col gap-1">
+        <div className="flex flex-col gap-2">
           <Button
             variant="secondary"
             size="sm"
@@ -230,7 +230,7 @@ function SettingsForm() {
   ): SegmentOption<Value>[] => choices.map((choice) => ({ value: choice.value, label: t(choice.labelKey) }));
 
   return (
-    <div className="flex flex-col gap-2 p-1">
+    <div className="flex flex-col gap-4 p-2">
       <Setting label={t('settings.theme')}>
         {(labelId) => (
           <SegmentedControl

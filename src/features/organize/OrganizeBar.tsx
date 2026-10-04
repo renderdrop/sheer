@@ -61,7 +61,7 @@ export function OrganizeBar({ docId }: OrganizeBarProps) {
     <div
       role="toolbar"
       aria-label={t('toolbar.tool.pages')}
-      className="glass-1 mx-1 mt-1 flex h-control-lg shrink-0 items-center gap-0-5 rounded-panel px-0-5"
+      className="bg-panel border border-border-subtle shadow-floating mx-2 mt-2 flex h-control-lg shrink-0 items-center gap-1 rounded-panel px-1"
     >
       <IconButton
         label={t('rotate.left')}
@@ -86,7 +86,7 @@ export function OrganizeBar({ docId }: OrganizeBarProps) {
         focusableWhenDisabled
         onClick={() => void deletePages(docId)}
       />
-      <div role="separator" aria-orientation="vertical" className="mx-1 h-2 w-hairline shrink-0 bg-divider" />
+      <div role="separator" aria-orientation="vertical" className="mx-2 h-4 w-hairline shrink-0 bg-divider" />
       <Menu
         label={t('organize.insert')}
         entries={insertEntries}

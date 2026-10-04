@@ -254,9 +254,11 @@ describe('Menu submenus (DESIGN 3.5): surface and pointer', () => {
     await toExport(user, getByRole);
     await user.keyboard('{ArrowRight}');
     const submenu = getByRole('menu', { name: 'Export as' });
-    expect(submenu.className).toContain('surface-dialog');
+    expect(submenu.className).toContain('bg-panel border border-border-subtle shadow-floating');
     expect(submenu.className).not.toContain('glass-');
-    expect(getByRole('menu', { name: 'Actions' }).className).toContain('glass-2');
+    expect(getByRole('menu', { name: 'Actions' }).className).toContain(
+      'bg-panel border border-border-subtle shadow-floating',
+    );
     // A submenu in the same layer as the menu (z-popover), in the page body like the menu.
     expect(submenu.parentElement?.className).toContain('z-popover');
     expect(submenu.parentElement?.parentElement).toBe(document.body);

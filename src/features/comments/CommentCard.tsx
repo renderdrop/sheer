@@ -21,7 +21,7 @@ import { useQuote } from './useQuote';
 
 /** The text areas of a card: the look of a Field (DESIGN 3.7) over several lines. */
 export const CARD_TEXTAREA =
-  'block w-full resize-none rounded-sm border border-control-border bg-transparent px-1 py-0-5 text-md text-text ' +
+  'block w-full resize-none rounded-sm border border-control-border bg-transparent px-2 py-1 text-md text-text ' +
   'placeholder:text-text-muted disabled:cursor-not-allowed disabled:text-text-disabled';
 
 const STATUS_PILL: Record<Exclude<Status, 'open'>, { key: PlainKey; icon: LucideIcon }> = {
@@ -44,7 +44,7 @@ const TEXT_KINDS: ReadonlySet<string> = new Set([
 
 const COALESCE_REPLY = 'comment.reply';
 /** A field grows to this many lines, then scrolls. */
-const MAX_LINES = { maxHeight: 'calc(10lh + 2 * var(--spacing-0-5))' } as const;
+const MAX_LINES = { maxHeight: 'calc(10lh + 2 * var(--spacing-1))' } as const;
 
 interface ReplyTextProps {
   docId: number;
@@ -96,8 +96,8 @@ function ReplyItem({ docId, summary, now }: { docId: number; summary: Thread['re
   const author = summary.author ?? t('note.unknownAuthor');
   const own = full !== undefined && !full.locked && isOwnReply(mine, full, ownName);
   return (
-    <li className="flex flex-col gap-0-5">
-      <div className="flex items-baseline gap-1 text-sm">
+    <li className="flex flex-col gap-1">
+      <div className="flex items-baseline gap-2 text-sm">
         <span className="min-w-0 truncate font-semibold">{author}</span>
         <span className="shrink-0 text-text-muted" title={summary.modified ?? undefined}>
           {relativeTime(summary.modified, t.locale, now)}
@@ -231,13 +231,13 @@ export const CommentCard = memo(function CommentCard({
       tabIndex={tabStop ? 0 : -1}
       onClick={onClick}
       className={cx(
-        'box-border flex cursor-pointer flex-col gap-1 rounded-panel p-1-5 ring-1 ring-inset focus-visible:outline-2 focus-visible:outline-offset-0 focus-visible:outline-focus',
+        'box-border flex cursor-pointer flex-col gap-2 rounded-panel p-3 ring-1 ring-inset focus-visible:outline-2 focus-visible:outline-offset-0 focus-visible:outline-focus',
         'transition-colors duration-fast motion-reduce:transition-none',
         'forced-colors:bg-[Canvas] forced-colors:text-[CanvasText]',
         selected ? 'bg-selected ring-accent' : 'bg-card ring-divider hover:bg-control-hover',
       )}
     >
-      <header className="flex h-control-sm items-center gap-1">
+      <header className="flex h-control-sm items-center gap-2">
         <span
           aria-hidden="true"
           className="flex size-control-sm shrink-0 items-center justify-center rounded-sm bg-tile text-tile-icon"
@@ -247,7 +247,7 @@ export const CommentCard = memo(function CommentCard({
         <span id={`${ids}-h`} className="min-w-0 flex-1 truncate text-sm font-semibold">
           {t(info.key)}
         </span>
-        <span className="shrink-0 rounded-pill px-1 text-sm text-text-muted ring-1 ring-divider ring-inset">
+        <span className="shrink-0 rounded-pill px-2 text-sm text-text-muted ring-1 ring-divider ring-inset">
           {t('comments.page', { n: page })}
         </span>
         <Menu
@@ -295,7 +295,7 @@ export const CommentCard = memo(function CommentCard({
         <blockquote
           id={`${ids}-q`}
           className={cx(
-            'm-0 border-0 border-s-2 border-solid ps-1 text-sm text-text-muted [overflow-wrap:anywhere]',
+            'm-0 border-0 border-s-2 border-solid ps-2 text-sm text-text-muted [overflow-wrap:anywhere]',
             collapsed ? 'line-clamp-1' : 'line-clamp-3',
           )}
           style={{ borderInlineStartColor: rgbToCss(root.color) }}
@@ -314,7 +314,7 @@ export const CommentCard = memo(function CommentCard({
               rows={1}
               maxLength={MAX_ANNOT_CONTENTS_CHARS}
               value={draft}
-              style={{ minHeight: 'calc(2lh + 2 * var(--spacing-0-5))', ...MAX_LINES }}
+              style={{ minHeight: 'calc(2lh + 2 * var(--spacing-1))', ...MAX_LINES }}
               className={cx(CARD_TEXTAREA, 'overflow-auto')}
               onChange={(event) => setDraft(event.target.value)}
               onKeyDown={onBodyKeyDown}
@@ -327,7 +327,7 @@ export const CommentCard = memo(function CommentCard({
             )
           )}
           {isEditing ? (
-            <div className="flex justify-end gap-1">
+            <div className="flex justify-end gap-2">
               <Button size="sm" variant="ghost" onClick={cancel}>
                 {t('comments.cancel')}
               </Button>
@@ -336,7 +336,7 @@ export const CommentCard = memo(function CommentCard({
               </Button>
             </div>
           ) : (
-            <div className="flex items-baseline gap-1 text-sm">
+            <div className="flex items-baseline gap-2 text-sm">
               <span className={cx('min-w-0 truncate font-semibold', author === '' && 'text-text-muted')}>
                 {author === '' ? t('comments.noAuthor') : author}
               </span>
@@ -351,14 +351,14 @@ export const CommentCard = memo(function CommentCard({
       )}
 
       {statusPill !== null && (
-        <span className="flex w-fit items-center gap-0-5 rounded-pill bg-tile px-1 text-sm text-tile-icon forced-colors:bg-[Canvas] forced-colors:ring-1 forced-colors:ring-[CanvasText]">
+        <span className="flex w-fit items-center gap-1 rounded-pill bg-tile px-2 text-sm text-tile-icon forced-colors:bg-[Canvas] forced-colors:ring-1 forced-colors:ring-[CanvasText]">
           <Icon icon={statusPill.icon} size={12} />
           {t(statusPill.key)}
         </span>
       )}
 
       {!collapsed && replies.length > 0 && (
-        <ul className="m-0 flex list-none flex-col gap-1 border-0 border-t border-solid border-divider p-0 pt-1">
+        <ul className="m-0 flex list-none flex-col gap-2 border-0 border-t border-solid border-divider p-0 pt-2">
           {replies.map((item) => (
             <ReplyItem key={item.id} docId={docId} summary={item} now={now} />
           ))}
@@ -366,7 +366,7 @@ export const CommentCard = memo(function CommentCard({
       )}
 
       {selected && !isEditing && (
-        <div className="flex flex-col gap-1 border-0 border-t border-solid border-divider pt-1">
+        <div className="flex flex-col gap-2 border-0 border-t border-solid border-divider pt-2">
           <textarea
             ref={replyRef}
             aria-label={t('note.replyField')}

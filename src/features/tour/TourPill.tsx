@@ -50,7 +50,7 @@ export function TourPill() {
             aria-controls={COACH_MARK_ID}
             aria-label={finishing ? t('tour.complete') : t('tour.pillLabel', { step, total })}
             onClick={toggle}
-            className="pulse-target rounded-pill px-1 text-xs tabular-nums"
+            className="pulse-target rounded-pill px-2 text-xs tabular-nums"
           >
             {finishing ? t('tour.complete') : t('tour.pill', { step, total })}
           </Button>

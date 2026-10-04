@@ -61,7 +61,7 @@ export function useInspectorTitle(model: InspectorModel): string {
 function EmptyState() {
   const t = useT();
   return (
-    <div className="flex flex-col items-center gap-1 p-2 text-center">
+    <div className="flex flex-col items-center gap-2 p-4 text-center">
       <span className="flex size-control-md items-center justify-center rounded-sm bg-tile text-tile-icon">
         <Icon icon={SlidersHorizontal} size={24} />
       </span>

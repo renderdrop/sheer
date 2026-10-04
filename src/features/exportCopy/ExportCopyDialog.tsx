@@ -99,9 +99,9 @@ function ExportModal({ docId }: { docId: number }) {
   let footer;
   if (finished) {
     body = (
-      <ul className="m-0 mt-2 flex list-none flex-col gap-0-5 p-0">
+      <ul className="m-0 mt-4 flex list-none flex-col gap-1 p-0">
         {warnings.map((key) => (
-          <li key={key} className="flex items-start gap-0-5 text-md text-warning-text">
+          <li key={key} className="flex items-start gap-1 text-md text-text">
             <span className="shrink-0">
               <Icon icon={CircleAlert} size={12} />
             </span>
@@ -116,7 +116,7 @@ function ExportModal({ docId }: { docId: number }) {
       </Button>
     );
   } else if (confirming) {
-    body = <p className="m-0 mt-1 text-md text-text-muted">{t('copy.confirmBody')}</p>;
+    body = <p className="m-0 mt-2 text-md text-text-muted">{t('copy.confirmBody')}</p>;
     footer = (
       <>
         <Button variant="secondary" data-autofocus="" onClick={run.clearError}>
@@ -130,9 +130,9 @@ function ExportModal({ docId }: { docId: number }) {
   } else {
     body = (
       <>
-        <p className="m-0 mt-1 text-md text-text-muted">{t('copy.unsaved')}</p>
-        <p className="m-0 mt-0-5 text-md text-text-muted">{t('copy.body')}</p>
-        <div className="mt-2 flex flex-col gap-1">
+        <p className="m-0 mt-2 text-md text-text-muted">{t('copy.unsaved')}</p>
+        <p className="m-0 mt-1 text-md text-text-muted">{t('copy.body')}</p>
+        <div className="mt-4 flex flex-col gap-2">
           <RadioGroup
             label={t('copy.annotations')}
             value={shownAnnotations}
@@ -146,8 +146,8 @@ function ExportModal({ docId }: { docId: number }) {
             {hint}
           </p>
         </div>
-        <div className="mt-1 flex flex-col">
-          <label className="flex min-h-control-sm cursor-pointer items-center gap-1 text-md has-disabled:cursor-not-allowed has-disabled:text-text-disabled">
+        <div className="mt-2 flex flex-col">
+          <label className="flex min-h-control-sm cursor-pointer items-center gap-2 text-md has-disabled:cursor-not-allowed has-disabled:text-text-disabled">
             <input
               type="checkbox"
               className="accent-accent"
@@ -158,19 +158,19 @@ function ExportModal({ docId }: { docId: number }) {
             />
             {t('copy.metadata')}
           </label>
-          <p className="m-0 min-h-2 ps-3 text-sm text-text-muted">
+          <p className="m-0 min-h-4 ps-6 text-sm text-text-muted">
             {canEdit && removeMetadata ? t('copy.metadataHint') : ''}
           </p>
         </div>
         {!canEdit && (
-          <p id={`${id}-needs`} className="m-0 flex items-start gap-0-5 text-sm text-text-muted">
+          <p id={`${id}-needs`} className="m-0 flex items-start gap-1 text-sm text-text-muted">
             <span className="shrink-0">
               <Icon icon={CircleAlert} size={12} />
             </span>
             {t('output.notAllowed')} {t('copy.needsEdit')}
           </p>
         )}
-        <div className="mt-1 flex min-h-2 flex-col justify-center gap-1">
+        <div className="mt-2 flex min-h-4 flex-col justify-center gap-2">
           {run.running && (
             <>
               <ProgressBar label={t('copy.working')} done={progress?.done ?? 0} total={progress?.total ?? 0} />
@@ -213,7 +213,7 @@ function ExportModal({ docId }: { docId: number }) {
         title={finished ? t('copy.doneTitle') : confirming ? t('copy.confirmTitle') : t('copy.title')}
       />
       {body}
-      <div className="mt-2 flex items-center justify-end gap-1">{footer}</div>
+      <div className="mt-4 flex items-center justify-end gap-2">{footer}</div>
     </Modal>
   );
 }

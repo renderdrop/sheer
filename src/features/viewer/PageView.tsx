@@ -171,7 +171,7 @@ function FadeImage({ src, style, instant, over, onShown }: FadeImageProps) {
       style={{
         ...style,
         opacity: on ? 1 : 0,
-        transition: instant ? undefined : `opacity ${FADE_MS[over]}ms var(--ease-spring)`,
+        transition: instant ? undefined : `opacity ${FADE_MS[over]}ms var(--ease-out)`,
         willChange: fading ? 'opacity' : undefined,
       }}
       onLoad={() => {

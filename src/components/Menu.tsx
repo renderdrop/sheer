@@ -72,7 +72,7 @@ const SUBMENU_OPEN_DELAY = 200;
 const SUBMENU_CLOSE_DELAY = 300;
 
 const ITEM =
-  'flex h-control-md w-full cursor-pointer items-center gap-1 rounded-sm px-1 text-start text-md ' +
+  'flex h-control-md w-full cursor-pointer items-center gap-2 rounded-sm px-2 text-start text-md ' +
   PRESS_MOTION +
   ' aria-disabled:cursor-not-allowed aria-disabled:text-text-disabled ' +
   'not-aria-disabled:hover:bg-control-hover not-aria-disabled:focus-visible:bg-control-hover not-aria-disabled:active:bg-control-pressed not-aria-disabled:active:scale-(--scale-press) ' +
@@ -240,14 +240,14 @@ export function MenuList({ entries, onActivate, onTab, onBack }: MenuListProps) 
       <div role="presentation" className="flex flex-col" onKeyDown={onKeyDown}>
         {entries.map((entry, index) => {
           if (entry.type === 'separator') {
-            const line = <div role="separator" className="my-0-5 h-hairline bg-divider" />;
+            const line = <div role="separator" className="my-1 h-hairline bg-divider" />;
             if (entry.label === undefined) return <div key={entry.id}>{line}</div>;
             return (
               <div key={entry.id} role="presentation">
                 {index > 0 && line}
                 <div
                   role="presentation"
-                  className="flex h-control-sm items-center px-1 text-sm font-semibold text-text-muted"
+                  className="flex h-control-sm items-center px-2 text-sm font-semibold text-text-muted"
                 >
                   {entry.label}
                 </div>
@@ -283,7 +283,7 @@ export function MenuList({ entries, onActivate, onTab, onBack }: MenuListProps) 
               onClick={onClick}
               onPointerEnter={(event) => onItemEnter(event, entry)}
               onPointerLeave={(event) => onItemLeave(event, entry)}
-              className={`${ITEM} ${entry.checked === true ? 'text-text-accent' : 'text-text'}`}
+              className={`${ITEM} ${entry.checked === true ? 'text-text' : 'text-text'}`}
             >
               {reserveIcon &&
                 (entry.checked === true ? (
@@ -368,7 +368,7 @@ function SubmenuSurface({
   const owner = useContext(PopoverScope);
   // Beside the item, away from the end of the text: on the left in a right-to-left language. It overlaps the panel of its
   // parent (offset 0), so the pointer has no gap to cross, and its first item lines up with the parent item (the padding of
-  // the panel, `--space-1`, is taken off).
+  // the panel, `--space-2`, is taken off).
   const [side] = useState<Side>(() => (getComputedStyle(anchor).direction === 'rtl' ? 'left' : 'right'));
   const crossOffset = useMemo(() => -overlayOffset(), []);
   useFloatingPosition({
@@ -426,7 +426,7 @@ function SubmenuSurface({
         tabIndex={-1}
         onKeyDown={onKeyDown}
         style={{ transformOrigin: side === 'left' ? 'right top' : 'left top' }}
-        className={`surface-dialog min-h-0 overflow-auto rounded-panel p-1 text-md text-text outline-none ${POPOVER_WIDTHS}`}
+        className={`bg-panel border border-border-subtle shadow-floating min-h-0 overflow-auto rounded-panel p-2 text-md text-text outline-none ${POPOVER_WIDTHS}`}
       >
         <MenuList entries={entries} onActivate={onActivate} onTab={onTab} onBack={back} />
       </motion.div>

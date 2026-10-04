@@ -54,7 +54,7 @@ function colourOptions(t: Translate): RadioOption<SigColour>[] {
         swatch: true,
         className: cx(SWATCH, entry.bg, entry.check),
         children: (
-          <span aria-hidden="true" className="invisible size-1 rounded-pill bg-current group-aria-checked:visible" />
+          <span aria-hidden="true" className="invisible size-2 rounded-pill bg-current group-aria-checked:visible" />
         ),
       },
     ];
@@ -287,7 +287,7 @@ function SheetBody({ id, kind }: { id: number; kind: SignatureRole }) {
         title={t(initials ? 'sign.createInitials' : 'sign.createTitle')}
       />
       <div ref={body} onKeyDown={onKeyDown}>
-        <Tabs value={tab} onValueChange={choose} className="mt-2 flex flex-col gap-2">
+        <Tabs value={tab} onValueChange={choose} className="mt-4 flex flex-col gap-4">
           <TabList label={t('sign.tabs')}>
             <Tab value="draw" label={t('sign.draw')} icon={PenLine} />
             <Tab value="type" label={t('sign.type')} icon={Type} />
@@ -297,7 +297,7 @@ function SheetBody({ id, kind }: { id: number; kind: SignatureRole }) {
           <TabPanel value="draw" className="flex h-sig-slot justify-center">
             <DrawPad strokes={strokes} onStrokes={setStrokes} colour={colour} initials={initials} />
           </TabPanel>
-          <TabPanel value="type" className="flex min-h-sig-slot flex-col gap-1">
+          <TabPanel value="type" className="flex min-h-sig-slot flex-col gap-2">
             <label htmlFor={typeId} className="sr-only">
               {t('sign.typeLabel')}
             </label>
@@ -320,28 +320,28 @@ function SheetBody({ id, kind }: { id: number; kind: SignatureRole }) {
               colour={colour}
               empty={text.trim() === ''}
             />
-            <p id={noteId} role="status" className="m-0 h-2 truncate text-sm text-error-text">
+            <p id={noteId} role="status" className="m-0 h-4 truncate text-sm text-error-text">
               {typeProblem}
             </p>
           </TabPanel>
-          <TabPanel value="image" className="flex h-sig-slot flex-col gap-1">
-            <div className="flex items-center gap-1">
+          <TabPanel value="image" className="flex h-sig-slot flex-col gap-2">
+            <div className="flex items-center gap-2">
               <Button variant="secondary" onClick={chooseImage} disabled={importing} focusableWhenDisabled>
                 {t('sign.choose')}
               </Button>
               {image === null && <span className="text-sm text-text-muted">{t('sign.noImage')}</span>}
             </div>
-            <div className={`${PAD_SURFACE} min-h-0 flex-auto p-1`}>
+            <div className={`${PAD_SURFACE} min-h-0 flex-auto p-2`}>
               {image !== null && <ArtPreview draft={image} colour={colour} />}
             </div>
-            <p role="alert" className="m-0 h-2 truncate text-sm text-error-text">
+            <p role="alert" className="m-0 h-4 truncate text-sm text-error-text">
               {imageError ? t('sign.badImage') : ''}
             </p>
           </TabPanel>
         </Tabs>
 
         {tab !== 'image' && (
-          <div className="mt-1 flex items-center gap-1">
+          <div className="mt-2 flex items-center gap-2">
             <span id={colourId} className="sr-only">
               {t('sign.colour')}
             </span>
@@ -350,7 +350,7 @@ function SheetBody({ id, kind }: { id: number; kind: SignatureRole }) {
               value={colour}
               options={colourOptions(t)}
               onChange={setColour}
-              className="flex gap-1"
+              className="flex gap-2"
             />
             <span className="flex-auto" />
             {tab === 'draw' && (
@@ -367,16 +367,16 @@ function SheetBody({ id, kind }: { id: number; kind: SignatureRole }) {
             )}
           </div>
         )}
-        {tab === 'draw' && <p className="m-0 mt-1 text-sm text-text-muted">{t('sign.keyboardHint')}</p>}
+        {tab === 'draw' && <p className="m-0 mt-2 text-sm text-text-muted">{t('sign.keyboardHint')}</p>}
       </div>
 
-      <p role="alert" className="m-0 mt-1 h-2 text-sm text-error-text">
+      <p role="alert" className="m-0 mt-2 h-4 text-sm text-error-text">
         {createProblem}
       </p>
-      <div className="mt-1 flex items-center gap-1">
+      <div className="mt-2 flex items-center gap-2">
         <label
           className={cx(
-            'flex min-h-control-sm items-center gap-1 text-md',
+            'flex min-h-control-sm items-center gap-2 text-md',
             libraryOk ? 'cursor-pointer' : 'cursor-not-allowed text-text-disabled',
           )}
         >

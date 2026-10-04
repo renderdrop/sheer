@@ -35,7 +35,7 @@ function Row({ entry }: { entry: RecoveryEntry }) {
         aria-label={entry.displayName}
         aria-busy={busy}
         aria-describedby={metaId}
-        className="flex h-control-lg items-center gap-1 rounded-button ps-5 pe-1 hover:bg-control-hover"
+        className="flex h-control-lg items-center gap-2 rounded-button ps-10 pe-2 hover:bg-control-hover"
       >
         <div className="min-w-0 flex-auto">
           <div className="truncate text-md" title={entry.displayName}>
@@ -43,7 +43,7 @@ function Row({ entry }: { entry: RecoveryEntry }) {
           </div>
           <div id={metaId} className="truncate text-sm text-text-muted">
             {failed ? (
-              <span role="alert" className="inline-flex items-center gap-0-5 text-error-text">
+              <span role="alert" className="inline-flex items-center gap-1 text-error-text">
                 <Icon icon={CircleAlert} size={12} />
                 {t('recover.failed')}
               </span>
@@ -82,9 +82,12 @@ export function RecoveryBanner() {
     <AnimatePresence initial={false}>
       {show && (
         <motion.div key="recovery" {...motionProps} className="shrink-0 overflow-hidden">
-          <div className="px-1 pb-1">
-            <section aria-labelledby={titleId} className="glass-1 rounded-panel p-1">
-              <div className="flex items-center gap-1">
+          <div className="px-2 pb-2">
+            <section
+              aria-labelledby={titleId}
+              className="bg-panel border border-border-subtle shadow-floating rounded-panel p-2"
+            >
+              <div className="flex items-center gap-2">
                 <span className="flex size-control-md shrink-0 items-center justify-center rounded-button bg-tile text-tile-icon">
                   <Icon icon={LifeBuoy} />
                 </span>
@@ -115,7 +118,7 @@ export function RecoveryBanner() {
               </div>
               <ul
                 aria-label={t('recover.rows')}
-                className={cx('mt-1 flex max-h-recover-list flex-col gap-0-5 overflow-y-auto', 'list-none p-0')}
+                className={cx('mt-2 flex max-h-recover-list flex-col gap-1 overflow-y-auto', 'list-none p-0')}
               >
                 {entries.map((entry) => (
                   <Row key={entry.id} entry={entry} />

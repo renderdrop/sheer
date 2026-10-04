@@ -13,6 +13,6 @@ import type { ReadingPosition } from './tree';
 export function readingPosition(docId: number): ReadingPosition {
   const page = useView.getState().byDoc[docId]?.pageIndex ?? 0;
   const layout = layoutFor(docId, useViewer.getState().viewport);
-  const anchor = layout === null ? null : anchorAt(layout, readScroll(), 0, tokenPx('--space-3', 24));
+  const anchor = layout === null ? null : anchorAt(layout, readScroll(), 0, tokenPx('--space-6', 24));
   return anchor === null ? { page, y: 0 } : { page: anchor.page, y: Math.max(0, anchor.yPt) };
 }

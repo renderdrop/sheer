@@ -23,7 +23,7 @@ export function ProgressBar({ label, done, total, className }: ProgressBarProps)
       aria-valuemin={0}
       aria-valuemax={known ? total : undefined}
       aria-valuenow={known ? Math.min(done, total) : undefined}
-      className={cx('h-0-5 w-full overflow-hidden rounded-full bg-track', className)}
+      className={cx('h-1 w-full overflow-hidden rounded-full bg-track', className)}
     >
       <div
         className={cx(

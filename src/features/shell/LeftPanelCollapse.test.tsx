@@ -93,7 +93,7 @@ describe('the columns', () => {
     await openDocument(user);
     const grid = gridOf(container);
     const open = tracks(grid);
-    expect(open.slice(0, 3)).toEqual(['var(--space-1)', `${PANEL.default}px`, 'var(--splitter-width)']);
+    expect(open.slice(0, 3)).toEqual(['var(--space-2)', `${PANEL.default}px`, 'var(--splitter-width)']);
 
     await user.click(tool('Left panel'));
     const shut = tracks(grid);
@@ -105,7 +105,7 @@ describe('the columns', () => {
     expect(tracks(grid)).toEqual(open);
   });
 
-  it('slide for 370 ms after the panel was collapsed or restored, and not while the splitter is dragged', async () => {
+  it('slide for 230 ms after the panel was collapsed or restored, and not while the splitter is dragged', async () => {
     const { container, user } = setup(<Shell />);
     await openDocument(user);
     const grid = gridOf(container);
@@ -118,10 +118,9 @@ describe('the columns', () => {
     expect(grid.hasAttribute('data-animating')).toBe(true);
     // The spring on the columns: what closes takes --motion-base (MOTION 2). The timer keeps 50 ms of margin over --motion-slow.
     expect(grid.className).toContain(TRANSITION);
-    expect(grid.className).toContain('ease-spring');
+    expect(grid.className).toContain('ease-out');
     expect(grid.className).toContain('duration-base');
-    expect(grid.className).not.toContain('ease-out');
-    advance(369);
+    advance(229);
     expect(grid.hasAttribute('data-animating')).toBe(true);
     advance(1);
     expect(grid.hasAttribute('data-animating')).toBe(false);
@@ -149,7 +148,7 @@ describe('the columns', () => {
     await openDocument(user);
     const grid = gridOf(container);
     // Hidden: the gap and the track take no room, so the canvas reaches the trailing gutter.
-    expect(tracks(grid).slice(-3)).toEqual(['var(--spacing-0)', 'var(--spacing-0)', 'var(--space-1)']);
+    expect(tracks(grid).slice(-3)).toEqual(['var(--spacing-0)', 'var(--spacing-0)', 'var(--space-2)']);
     expect(grid.getAttribute('data-inspector')).toBe('closed');
 
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
@@ -157,7 +156,7 @@ describe('the columns', () => {
     expect(grid.getAttribute('data-inspector')).toBe('open');
     expect(grid.getAttribute('data-animating')).toBe('inspector');
     expect(grid.className).toContain(TRANSITION);
-    expect(tracks(grid).slice(-3)).toEqual(['var(--space-1)', 'var(--inspector-width)', 'var(--space-1)']);
+    expect(tracks(grid).slice(-3)).toEqual(['var(--space-2)', 'var(--inspector-width)', 'var(--space-2)']);
     advance(370);
     expect(grid.hasAttribute('data-animating')).toBe(false);
   });

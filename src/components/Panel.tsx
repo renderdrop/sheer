@@ -30,14 +30,14 @@ export function Panel({ label, title, actions, header, visible = true, className
       aria-label={label}
       inert={!visible}
       className={cx(
-        'glass-1 flex min-h-0 flex-col overflow-hidden rounded-panel transition-opacity duration-slow',
+        'bg-panel border border-border-subtle shadow-floating flex min-h-0 flex-col overflow-hidden rounded-panel transition-opacity duration-slow',
         visible ? 'opacity-100' : 'opacity-0',
         className,
       )}
     >
       {hasHeader && (
-        // h-6 is 48 px (--space-6): the header height of the spec; padding 8 leaves 32 for controls.
-        <div className="flex min-h-6 shrink-0 items-center gap-1 p-1">
+        // h-12 is 48 px (--space-12): the header height of the spec; padding 8 leaves 32 for controls.
+        <div className="flex min-h-12 shrink-0 items-center gap-2 p-2">
           {header ?? (
             <>
               <h2 className="min-w-0 flex-auto truncate text-lg">{title}</h2>
@@ -46,7 +46,7 @@ export function Panel({ label, title, actions, header, visible = true, className
           )}
         </div>
       )}
-      <div className="min-h-0 flex-auto overflow-auto p-1">{children}</div>
+      <div className="min-h-0 flex-auto overflow-auto p-2">{children}</div>
     </aside>
   );
 }
@@ -62,7 +62,7 @@ export function PanelSection({ label, className, children, ...rest }: PanelSecti
     <section
       {...rest}
       aria-label={label}
-      className={cx('not-first:mt-1 not-first:border-t not-first:border-divider not-first:pt-1', className)}
+      className={cx('not-first:mt-2 not-first:border-t not-first:border-divider not-first:pt-2', className)}
     >
       {children}
     </section>

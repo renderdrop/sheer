@@ -7,7 +7,7 @@ export type IconSize = 8 | 12 | 16 | 20 | 24;
 
 // Static class names so Tailwind finds them. Sizes and stroke widths are tokens (`--icon-*`).
 const SIZE: Record<IconSize, string> = {
-  8: 'size-1',
+  8: 'size-2',
   12: 'size-icon-12',
   16: 'size-icon-16',
   20: 'size-icon-20',

@@ -18,7 +18,7 @@ export function SignaturePreview({ item }: { item: LibraryItem }) {
   return (
     <span
       data-lib-preview=""
-      className="flex h-sig-thumb-h w-sig-thumb-w shrink-0 items-center justify-center overflow-hidden rounded-xs border border-divider bg-page px-0-5 forced-colors:border-text"
+      className="flex h-sig-thumb-h w-sig-thumb-w shrink-0 items-center justify-center overflow-hidden rounded-sm border border-divider bg-page px-1 forced-colors:border-text"
     >
       {art !== null ? (
         <svg

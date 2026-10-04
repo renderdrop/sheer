@@ -72,7 +72,7 @@ describe('Field (DESIGN 3.7)', () => {
   });
 
   it('keeps the classes of the caller after its own', () => {
-    const { getByLabelText } = setup(<Field aria-label="A" className="mt-1" />);
-    expect(getByLabelText('A').className.endsWith('mt-1')).toBe(true);
+    const { getByLabelText } = setup(<Field aria-label="A" className="mt-2" />);
+    expect(getByLabelText('A').className.endsWith('mt-2')).toBe(true);
   });
 });

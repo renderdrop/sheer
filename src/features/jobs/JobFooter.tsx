@@ -11,9 +11,9 @@ import type { JobRun } from './useJobRun';
 export function JobError({ error }: { error: AppError | null }) {
   const t = useT();
   return (
-    <div className="flex min-h-2 items-start text-sm text-error-text">
+    <div className="flex min-h-4 items-start text-sm text-error-text">
       {error !== null && (
-        <p role="alert" className="m-0 flex items-start gap-0-5">
+        <p role="alert" className="m-0 flex items-start gap-1">
           <span className="shrink-0">
             <Icon icon={CircleAlert} size={12} />
           </span>
@@ -33,7 +33,7 @@ export function Spinner({ size }: { size?: 12 | 16 }) {
 export function JobProgress({ run, label, caption }: { run: JobRun; label: string; caption?: ReactNode }) {
   if (!run.running || !run.slow) return null;
   return (
-    <div className="flex flex-col gap-0-5">
+    <div className="flex flex-col gap-1">
       <ProgressBar label={label} done={run.progress?.done ?? 0} total={run.progress?.total ?? 0} />
       {caption !== undefined && <p className="m-0 text-sm text-text-muted tabular-nums">{caption}</p>}
     </div>

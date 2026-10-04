@@ -185,12 +185,12 @@ function Bubble({ wrapper, side, label, shortcut, note, onPointerEnter, onPointe
     >
       <motion.div
         {...motionProps}
-        className={`flex min-h-control-sm ${MAX_WIDTH} flex-col justify-center rounded-sm bg-tooltip-bg px-1 py-0-5 text-sm text-tooltip-text outline outline-transparent`}
+        className={`flex min-h-control-sm ${MAX_WIDTH} flex-col justify-center rounded-sm bg-tooltip-bg px-2 py-1 text-sm text-tooltip-text outline outline-transparent`}
       >
-        <span className="flex items-center gap-1">
+        <span className="flex items-center gap-2">
           <span>{label}</span>
           {shortcut !== undefined && (
-            <kbd className="rounded-xs bg-tooltip-text/12 px-0-5 font-sans text-xs text-tooltip-key">{shortcut}</kbd>
+            <kbd className="rounded-sm bg-tooltip-text/12 px-1 font-sans text-xs text-tooltip-key">{shortcut}</kbd>
           )}
         </span>
         {note !== undefined && <span className="text-tooltip-key">{note}</span>}

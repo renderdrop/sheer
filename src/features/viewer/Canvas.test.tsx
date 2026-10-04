@@ -48,7 +48,7 @@ describe('Canvas (DESIGN 2)', () => {
   it('is opaque canvas with radius 16 and padding 24 through tokens, and isolates its own layers', () => {
     const { container } = setup(<Canvas {...props()} />);
     const slot = container.querySelector('main');
-    expect(slot?.className).toContain('surface-canvas');
+    expect(slot?.className).toContain('bg-page-area');
     expect(slot?.className).toContain('rounded-panel');
     expect(slot?.className).toContain('isolate');
     expect(slot?.className).not.toContain('glass');
@@ -438,7 +438,12 @@ describe('Canvas (DESIGN 2)', () => {
       rerender(<Canvas {...props({ dropActive: true })} />);
       const overlay = container.querySelector('[data-drop-overlay]');
       expect(overlay?.textContent).toContain('Drop to open');
-      for (const className of ['glass-2', 'inset-1', 'z-drag', 'pointer-events-none']) {
+      for (const className of [
+        'bg-panel border border-border-subtle shadow-floating',
+        'inset-2',
+        'z-drag',
+        'pointer-events-none',
+      ]) {
         expect(overlay?.className, className).toContain(className);
       }
     });
