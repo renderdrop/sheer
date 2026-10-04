@@ -18,6 +18,7 @@ import { RedactLayer } from '../redact/RedactLayer';
 import { usePageText } from '../textlayer/cache';
 import type { PageLayerProps } from './pageLayer';
 import { PageOverlay } from '../textlayer/PageOverlay';
+import { Skeleton } from '../../components';
 import { runsOf } from '../textlayer/runs';
 import { hasFileRotation } from './fileRotation';
 import { clearRenderFailure, showRenderFailure } from './renderFailure';
@@ -407,6 +408,12 @@ export const PageView = memo(function PageView({
       style={{ left, top, width, height }}
     >
       <div className="absolute" style={surface}>
+        {/* Until the first image of the page is there, a static Skeleton (DESIGN v2 4) stands for it. */}
+        {standIn === undefined && exact === undefined && tileEntries.length === 0 && (
+          <div className="absolute inset-0">
+            <Skeleton className="size-full" />
+          </div>
+        )}
         {standIn !== undefined && image(standIn, whole, 'first', undefined, true)}
         {exact !== undefined &&
           image(exact, whole, standIn === undefined ? 'first' : 'sharp', () => setCovered(exact.key))}

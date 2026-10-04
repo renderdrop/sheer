@@ -33,9 +33,9 @@ vi.mock('../../i18n', async (importOriginal) => {
   };
 });
 
-const SPACING: ThumbnailSpacing = { pad: 4, labelGap: 4, labelHeight: 16, gap: 4 };
-/** The padding of the scroll region around the cells and of a cell around its thumbnail (`--space-1`). */
-const INSET = 4;
+const SPACING: ThumbnailSpacing = { pad: 0, labelGap: 8, labelHeight: 16, gap: 16 };
+/** The padding of the scroll region around the cells (`--space-6`). */
+const INSET = 24;
 
 const BOOK = { id: 1, pageCount: 500, displayName: 'Book.pdf' };
 
@@ -163,7 +163,7 @@ describe('virtualization', () => {
     expect(reach).not.toBeNull();
     expect(mounted()).toEqual(Array.from({ length: (reach?.last ?? 0) + 1 }, (_, index) => index));
     expect(mounted().length).toBeLessThan(10);
-    expect(Number.parseFloat(listbox().style.height)).toBeCloseTo(layout.height + INSET, 3);
+    expect(Number.parseFloat(listbox().style.height)).toBeCloseTo(layout.height, 3);
   });
 
   it('mounts the cells around the viewport when the list is scrolled, and lets the ones it left go', () => {
@@ -235,10 +235,10 @@ describe('virtualization', () => {
     const thumbnail = (page: number) => optionOf(page).firstElementChild as HTMLElement;
     expect(mounted()).toEqual([0, 1, 2, 3]);
     expect(Number.parseFloat(thumbnail(0).style.width)).toBeCloseTo(layout.thumbnailSize(0).width);
-    expect(Number.parseFloat(thumbnail(1).style.height)).toBeCloseTo((216 * 612) / 792);
+    expect(Number.parseFloat(thumbnail(1).style.height)).toBeCloseTo((184 * 612) / 792);
     // The tall page is as tall as the limit allows and narrower than the others.
-    expect(Number.parseFloat(thumbnail(2).style.height)).toBeCloseTo(2 * 216);
-    expect(Number.parseFloat(thumbnail(2).style.width)).toBeCloseTo(216 / 5);
+    expect(Number.parseFloat(thumbnail(2).style.height)).toBeCloseTo(2 * 184);
+    expect(Number.parseFloat(thumbnail(2).style.width)).toBeCloseTo(184 / 5);
     expect(thumbnail(3).querySelector('img')).toBeNull();
   });
 
@@ -247,9 +247,9 @@ describe('virtualization', () => {
     const { scheduler } = fixture();
     setup(list(scheduler, 3));
     const height = (page: number) => Number.parseFloat((optionOf(page).firstElementChild as HTMLElement).style.height);
-    expect(height(0)).toBeCloseTo((216 * 792) / 612);
+    expect(height(0)).toBeCloseTo((184 * 792) / 612);
     act(() => usePages.getState().set(1, [[300, 300], ...sizes(2)]));
-    expect(height(0)).toBeCloseTo(216);
+    expect(height(0)).toBeCloseTo(184);
   });
 });
 
@@ -259,12 +259,12 @@ describe('the width of the panel', () => {
     setup(list(scheduler));
     const thumbnailWidth = () => Number.parseFloat((options()[0]?.firstElementChild as HTMLElement).style.width);
     const before = Number.parseFloat(listbox().style.height);
-    expect(thumbnailWidth()).toBe(216);
+    expect(thumbnailWidth()).toBe(184);
     resizeRegion({ width: 400 });
-    expect(thumbnailWidth()).toBe(384);
+    expect(thumbnailWidth()).toBe(352);
     expect(Number.parseFloat(listbox().style.height)).toBeGreaterThan(before);
     resizeRegion({ width: 192 });
-    expect(thumbnailWidth()).toBe(176);
+    expect(thumbnailWidth()).toBe(144);
   });
 
   it('keeps the cell at the top of the viewport where it is through a change of width', () => {

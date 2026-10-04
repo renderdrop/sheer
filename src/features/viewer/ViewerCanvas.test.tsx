@@ -25,7 +25,7 @@ vi.mock('../../api/render', () => renderApi);
 
 const BOOK: DocumentInfo = { id: 1, pageCount: 500, displayName: 'Book.pdf' };
 const VIEWPORT = { width: 900, height: 700 };
-const GAP = 16;
+const GAP = 24;
 const LETTER_PX = 792 * CSS_PX_PER_PT;
 const STRIDE = LETTER_PX + GAP;
 

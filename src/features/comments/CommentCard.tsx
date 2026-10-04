@@ -1,4 +1,4 @@
-import { CircleCheck, CircleX, Ellipsis, ThumbsUp, type LucideIcon } from 'lucide-react';
+import { ChevronDown, CircleCheck, CircleX, Ellipsis, ThumbsUp, type LucideIcon } from 'lucide-react';
 import { memo, useEffect, useId, useRef, useState, type KeyboardEvent, type MouseEvent } from 'react';
 
 import { MAX_ANNOT_CONTENTS_CHARS, type Annotation } from '../../api/annotations';
@@ -11,7 +11,6 @@ import { pageNumberOf } from '../../stores/pages';
 import { useSettings } from '../../stores/settings';
 import { isOwnReply, useOwnReplies } from '../annotations/note/ownReplies';
 import { useAutosize } from '../annotations/note/useAutosize';
-import { rgbToCss } from '../inspector/palette';
 import { deleteThread, discardNew, postReply, run, setReviewState } from './actions';
 import type { Status, Thread } from './model';
 import { useComments } from './store';
@@ -144,7 +143,11 @@ export const CommentCard = memo(function CommentCard({
   const quote = useQuote(docId, root.id, isTextMarkup(root.kind));
   const text = full?.contents ?? root.contents;
   const author = root.author ?? '';
-  const collapsed = status !== 'open' && !selected && !isEditing;
+  const done = status !== 'open' && !selected && !isEditing;
+  // A done card shows its excerpt line only, until the user expands it (DESIGN v2 3.2).
+  const [expanded, setExpanded] = useState(false);
+  const collapsed = done && !expanded;
+  const [replying, setReplying] = useState(false);
   const canEdit = full !== undefined && !full.locked && TEXT_KINDS.has(root.kind);
   const canDelete = root.kind !== 'opaque';
 
@@ -173,6 +176,7 @@ export const CommentCard = memo(function CommentCard({
     element?.setSelectionRange(element.value.length, element.value.length);
   }, [isEditing]);
   const canPost = draft.trim() !== '';
+  const highlight = root.kind === 'highlight';
 
   const cancel = () => {
     useComments.getState().stopEdit(docId);
@@ -221,6 +225,12 @@ export const CommentCard = memo(function CommentCard({
       .filter((id) => id !== null)
       .join(' ') || undefined;
 
+  const excerpt = quote !== null && quote !== undefined ? t('comments.quote', { text: quote }) : t(info.key);
+  const showReply = (selected || replying) && !isEditing;
+  const footerTime = [author === '' ? t('comments.noAuthor') : author, time, t('comments.page', { n: page })]
+    .filter((part) => part !== '')
+    .join(' · ');
+
   return (
     <article
       data-key={`a${root.id}`}
@@ -231,25 +241,40 @@ export const CommentCard = memo(function CommentCard({
       tabIndex={tabStop ? 0 : -1}
       onClick={onClick}
       className={cx(
-        'box-border flex cursor-pointer flex-col gap-2 rounded-panel p-3 ring-1 ring-inset focus-visible:outline-2 focus-visible:outline-offset-0 focus-visible:outline-focus',
+        'bg-panel box-border flex cursor-pointer flex-col gap-2 rounded-md border p-3 focus-visible:outline-2 focus-visible:outline-offset-0 focus-visible:outline-focus',
         'transition-colors duration-fast motion-reduce:transition-none',
         'forced-colors:bg-[Canvas] forced-colors:text-[CanvasText]',
-        selected ? 'bg-selected ring-accent' : 'bg-card ring-divider hover:bg-control-hover',
+        selected ? 'border-accent' : 'border-border-subtle hover:border-control-border',
+        done && 'opacity-60',
       )}
     >
-      <header className="flex h-control-sm items-center gap-2">
-        <span
-          aria-hidden="true"
-          className="flex size-control-sm shrink-0 items-center justify-center rounded-sm bg-tile text-tile-icon"
-        >
+      <header className="flex items-start gap-2">
+        <span aria-hidden="true" className="flex h-6 shrink-0 items-center text-text">
           <Icon icon={info.icon} size={16} />
         </span>
-        <span id={`${ids}-h`} className="min-w-0 flex-1 truncate text-sm font-semibold">
-          {t(info.key)}
+        <span
+          id={`${ids}-h`}
+          className={cx(
+            't-body min-w-0 flex-1 text-text [overflow-wrap:anywhere]',
+            collapsed ? 'line-clamp-1' : 'line-clamp-2',
+          )}
+        >
+          <span id={`${ids}-q`} className={cx(highlight && quote !== null && quote !== undefined && 'bg-accent/45')}>
+            {excerpt}
+          </span>
         </span>
-        <span className="shrink-0 rounded-pill px-2 text-sm text-text-muted ring-1 ring-divider ring-inset">
-          {t('comments.page', { n: page })}
-        </span>
+        {done && (
+          <IconButton
+            size="sm"
+            variant="toggle"
+            icon={ChevronDown}
+            label={expanded ? t('comments.collapse') : t('comments.expand')}
+            pressed={expanded}
+            aria-expanded={expanded}
+            tooltipSide="bottom"
+            onClick={() => setExpanded(!expanded)}
+          />
+        )}
         <Menu
           label={t('comments.more')}
           side="bottom"
@@ -261,14 +286,6 @@ export const CommentCard = memo(function CommentCard({
               disabled: !canEdit,
               onSelect: () => useComments.getState().startEdit(docId, root.id, false),
             },
-            {
-              id: 'delete',
-              label: t('comments.delete'),
-              disabled: !canDelete,
-              onSelect: () =>
-                void deleteThread(docId, [root.id, ...replies.map((r) => r.id), ...thread.states.map((s) => s.id)]),
-            },
-            { type: 'separator', id: 'review' },
             {
               id: 'accept',
               label: t('comments.accept'),
@@ -291,19 +308,6 @@ export const CommentCard = memo(function CommentCard({
         />
       </header>
 
-      {quote !== null && quote !== undefined && (
-        <blockquote
-          id={`${ids}-q`}
-          className={cx(
-            'm-0 border-0 border-s-2 border-solid ps-2 text-sm text-text-muted [overflow-wrap:anywhere]',
-            collapsed ? 'line-clamp-1' : 'line-clamp-3',
-          )}
-          style={{ borderInlineStartColor: rgbToCss(root.color) }}
-        >
-          {t('comments.quote', { text: quote })}
-        </blockquote>
-      )}
-
       {!collapsed && (
         <>
           {isEditing ? (
@@ -321,7 +325,7 @@ export const CommentCard = memo(function CommentCard({
             />
           ) : (
             text !== '' && (
-              <p id={`${ids}-b`} className="m-0 text-md whitespace-pre-wrap [overflow-wrap:anywhere]">
+              <p id={`${ids}-b`} className="t-body m-0 whitespace-pre-wrap text-text [overflow-wrap:anywhere]">
                 {text}
               </p>
             )
@@ -336,16 +340,36 @@ export const CommentCard = memo(function CommentCard({
               </Button>
             </div>
           ) : (
-            <div className="flex items-baseline gap-2 text-sm">
-              <span className={cx('min-w-0 truncate font-semibold', author === '' && 'text-text-muted')}>
-                {author === '' ? t('comments.noAuthor') : author}
-              </span>
-              {time !== '' && (
-                <span className="shrink-0 text-text-muted" title={root.modified ?? undefined}>
-                  {time}
-                </span>
-              )}
-            </div>
+            <>
+              <p className="t-caption m-0 truncate" title={root.modified ?? undefined}>
+                {footerTime}
+              </p>
+              <div className="flex items-center gap-1">
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => {
+                    onActivate(thread);
+                    setReplying(true);
+                  }}
+                >
+                  {t('note.reply')}
+                </Button>
+                <Button size="sm" variant="ghost" onClick={review(status === 'open' ? 'completed' : 'none')}>
+                  {status === 'open' ? t('comments.resolve') : t('comments.reopen')}
+                </Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  disabled={!canDelete}
+                  onClick={() =>
+                    void deleteThread(docId, [root.id, ...replies.map((r) => r.id), ...thread.states.map((s) => s.id)])
+                  }
+                >
+                  {t('comments.delete')}
+                </Button>
+              </div>
+            </>
           )}
         </>
       )}
@@ -365,7 +389,7 @@ export const CommentCard = memo(function CommentCard({
         </ul>
       )}
 
-      {selected && !isEditing && (
+      {showReply && (
         <div className="flex flex-col gap-2 border-0 border-t border-solid border-divider pt-2">
           <textarea
             ref={replyRef}
@@ -386,16 +410,6 @@ export const CommentCard = memo(function CommentCard({
               }
             }}
           />
-          <div className="flex justify-end">
-            <Button
-              size="sm"
-              variant="ghost"
-              icon={CircleCheck}
-              onClick={review(status === 'open' ? 'completed' : 'none')}
-            >
-              {status === 'open' ? t('comments.resolve') : t('comments.reopen')}
-            </Button>
-          </div>
         </div>
       )}
     </article>

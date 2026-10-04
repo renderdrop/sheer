@@ -31,12 +31,16 @@ const OVERSCAN_VIEWPORTS = 0.5;
  */
 export const USER_SCROLL_GRACE_MS = 1500;
 
-const SPACING_FALLBACK = { pad: 4, labelGap: 4, labelHeight: 16, gap: 4 } as const;
+const SPACING_FALLBACK = { pad: 0, labelGap: 8, labelHeight: 16, gap: 16, inset: 24 } as const;
 
-/** The fixed parts of a cell in px, read from the spacing tokens once (`--space-1`: 4 px, `--space-4`: 16 px). */
+/** The fixed parts of a cell in px, read from the spacing tokens once (DESIGN v2 3.2: gap 16, number 8 below, scroll padding 24). */
 function readSpacing(): ThumbnailSpacing {
-  const small = tokenPx('--space-1', SPACING_FALLBACK.pad);
-  return { pad: small, labelGap: small, labelHeight: tokenPx('--space-4', SPACING_FALLBACK.labelHeight), gap: small };
+  return {
+    pad: SPACING_FALLBACK.pad,
+    labelGap: tokenPx('--space-2', SPACING_FALLBACK.labelGap),
+    labelHeight: tokenPx('--space-4', SPACING_FALLBACK.labelHeight),
+    gap: tokenPx('--space-4', SPACING_FALLBACK.gap),
+  };
 }
 
 interface Box {
@@ -104,8 +108,8 @@ export function ThumbnailList({ docId, pageCount, scheduler }: ThumbnailListProp
   const slots = useSlots(docId);
   const pixelRatio = useDevicePixelRatio();
   const [spacing] = useState(readSpacing);
-  // The scroll region's padding: room for the focus ring of a cell at its edge (outline 2 px + offset 2 px).
-  const inset = spacing.pad;
+  // The scroll region's padding (`--space-6`): the thumbnail's width is the column minus it on both sides.
+  const [inset] = useState(() => tokenPx('--space-6', SPACING_FALLBACK.inset));
   const scrollerRef = useRef<HTMLDivElement | null>(null);
   const [box, setBox] = useState(UNMEASURED);
   const [range, setRange] = useState<IndexRange | null>(null);
@@ -297,7 +301,7 @@ export function ThumbnailList({ docId, pageCount, scheduler }: ThumbnailListProp
         }
         track();
       }}
-      className="min-h-0 flex-auto overflow-y-auto overflow-x-hidden p-1 [overflow-anchor:none] [scrollbar-gutter:stable]"
+      className="min-h-0 flex-auto overflow-y-auto overflow-x-hidden p-6 [overflow-anchor:none] [scrollbar-gutter:stable]"
     >
       <div
         role="listbox"
@@ -315,7 +319,7 @@ export function ThumbnailList({ docId, pageCount, scheduler }: ThumbnailListProp
           }
         }}
         className="relative"
-        style={{ height: layout.height + inset }}
+        style={{ height: layout.height }}
       >
         {mounted.map((index) => {
           const size = layout.thumbnailSize(index);
@@ -353,8 +357,7 @@ export function Thumbnails() {
   const t = useT();
   const docId = useDocuments(selectActiveId);
   const pageCount = useDocViewValue(docId, (view) => view.pageCount);
-  if (docId === null || pageCount === 0)
-    return <p className="m-0 text-sm text-text-muted">{t('leftPanel.empty.thumbnails')}</p>;
+  if (docId === null || pageCount === 0) return <p className="t-caption m-0 px-6">{t('leftPanel.empty.thumbnails')}</p>;
   // Another document is another list: its scroll position, focus and cells are its own.
   return <ThumbnailList key={docId} docId={docId} pageCount={pageCount} />;
 }

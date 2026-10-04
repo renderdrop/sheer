@@ -175,24 +175,20 @@ export const ThumbnailItem = memo(function ThumbnailItem({
       data-index={index}
       tabIndex={tabStop ? 0 : -1}
       onClick={() => onActivate(index)}
-      className={cx(
-        'absolute inset-x-0 flex cursor-pointer select-none flex-col items-center gap-1 rounded-sm p-1 transition-colors',
-        selected ? 'bg-selected' : 'hover:bg-control-hover active:bg-control-pressed',
-      )}
+      className={cx('group absolute inset-x-0 flex cursor-pointer select-none flex-col items-center gap-2 rounded-sm')}
       style={{ top, height }}
     >
       <div
-        // The thumbnail: radius 4 inside the cell's 8 and its 4 px padding (concentric), the page's shadow, and for the current
-        // page a 2 px accent ring. The ring is a shape as well as a color: it is there or it is not, and under forced colors it is
-        // still drawn in the system highlight.
+        // The thumbnail card (DESIGN v2 2.2, 3.2): White, a 1 px border (Stone on hover), radius sm; the current page has a 2 px Solar
+        // border (the number's chip below is the Ink partner of that cue). The border box keeps the size: the border is inside it.
         className={cx(
-          'pulse-target shrink-0 rounded-sm bg-page shadow-floating [--pulse-radius:var(--radius-sm)]',
-          selected && 'outline-2 outline-accent',
+          'pulse-target box-border shrink-0 rounded-sm border bg-page [--pulse-radius:var(--radius-sm)]',
+          selected ? 'border-2 border-accent' : 'border-border-subtle group-hover:border-control-border',
         )}
         data-thumb-page={pageId}
         style={{ width: thumbWidth, height: thumbHeight }}
       >
-        <div className="size-full overflow-hidden rounded-sm">
+        <div className="relative size-full overflow-hidden rounded-sm">
           {shown !== undefined && <ThumbnailImage key={shown.key} src={cache.urlOf(shown)} />}
         </div>
       </div>
@@ -200,7 +196,7 @@ export const ThumbnailItem = memo(function ThumbnailItem({
         aria-hidden="true"
         className={cx(
           'inline-flex h-4 min-w-6 items-center justify-center rounded-pill px-2 text-xs tabular-nums',
-          selected ? 'bg-accent text-on-accent' : 'bg-tile text-tile-icon',
+          selected ? 'bg-accent font-semibold text-on-accent' : 'text-text-muted',
         )}
       >
         {index + 1}

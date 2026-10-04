@@ -8,7 +8,7 @@ import { APP_NAME } from './config/app';
 import { watchAppEvents } from './features/viewer/appEvents';
 import { bindLocaleToSettings } from './i18n/bind';
 import { loadSettings } from './stores/settings';
-import { bindPanelWidthToSettings } from './stores/ui';
+import { bindPanelWidthToSettings, bindSidebarCollapseToSettings } from './stores/ui';
 import './styles/fonts.css';
 import './styles/tokens.css';
 import './styles/type.css';
@@ -27,6 +27,7 @@ if (container === null) {
 bindLocaleToSettings(document.documentElement);
 // The left panel's width follows the saved one once the settings have loaded, and is saved when the user changes it.
 bindPanelWidthToSettings();
+bindSidebarCollapseToSettings();
 
 createRoot(container).render(
   <StrictMode>

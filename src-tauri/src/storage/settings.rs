@@ -269,6 +269,10 @@ pub struct Settings {
     pub updates: UpdatesMode,
     pub skipped_version: SkippedVersion,
     pub tips_seen: TipsSeen,
+    /// The page sidebar is collapsed (DESIGN v2 3.2).
+    pub page_sidebar_collapsed: bool,
+    /// The tool sidebar is collapsed to its rail (DESIGN v2 3.2).
+    pub tool_sidebar_collapsed: bool,
 }
 
 impl Settings {
@@ -311,6 +315,14 @@ impl Settings {
                 .get("tipsSeen")
                 .and_then(|value| TipsSeen::deserialize(value).ok())
                 .unwrap_or_default(),
+            page_sidebar_collapsed: map
+                .get("pageSidebarCollapsed")
+                .and_then(Value::as_bool)
+                .unwrap_or_default(),
+            tool_sidebar_collapsed: map
+                .get("toolSidebarCollapsed")
+                .and_then(Value::as_bool)
+                .unwrap_or_default(),
         }
     }
 
@@ -325,6 +337,12 @@ impl Settings {
             updates: patch.updates.unwrap_or(self.updates),
             skipped_version: patch.skipped_version.unwrap_or(self.skipped_version),
             tips_seen: patch.tips_seen.unwrap_or(self.tips_seen),
+            page_sidebar_collapsed: patch
+                .page_sidebar_collapsed
+                .unwrap_or(self.page_sidebar_collapsed),
+            tool_sidebar_collapsed: patch
+                .tool_sidebar_collapsed
+                .unwrap_or(self.tool_sidebar_collapsed),
         }
     }
 }
@@ -350,6 +368,10 @@ pub struct SettingsPatch {
     pub skipped_version: Option<SkippedVersion>,
     #[serde(default, deserialize_with = "present")]
     pub tips_seen: Option<TipsSeen>,
+    #[serde(default, deserialize_with = "present")]
+    pub page_sidebar_collapsed: Option<bool>,
+    #[serde(default, deserialize_with = "present")]
+    pub tool_sidebar_collapsed: Option<bool>,
 }
 
 /// A field that is present must hold a valid value. Plain `Option` would read `null` as "absent" and accept it.
@@ -533,7 +555,7 @@ mod tests {
     fn settings_serialize_with_lowercase_enum_values() {
         assert_eq!(
             serde_json::to_value(Settings::default()).unwrap(),
-            json!({ "language": "system", "leftPanelWidth": 200, "welcomeTour": "pending", "authorName": "", "authorPrompt": "pending", "updates": "off", "skippedVersion": null, "tipsSeen": [] })
+            json!({ "language": "system", "leftPanelWidth": 200, "welcomeTour": "pending", "authorName": "", "authorPrompt": "pending", "updates": "off", "skippedVersion": null, "tipsSeen": [], "pageSidebarCollapsed": false, "toolSidebarCollapsed": false })
         );
         let settings = Settings {
             language: Language::De,
@@ -544,10 +566,12 @@ mod tests {
             updates: UpdatesMode::On,
             skipped_version: SkippedVersion::new("1.2.3-rc.1").unwrap(),
             tips_seen: TipsSeen::new(&["textBox".to_owned()]).unwrap(),
+            page_sidebar_collapsed: true,
+            tool_sidebar_collapsed: false,
         };
         assert_eq!(
             serde_json::to_value(settings).unwrap(),
-            json!({ "language": "de", "leftPanelWidth": 320, "welcomeTour": "shown", "authorName": "Ada Lovelace", "authorPrompt": "done", "updates": "on", "skippedVersion": "1.2.3-rc.1", "tipsSeen": ["textBox"] })
+            json!({ "language": "de", "leftPanelWidth": 320, "welcomeTour": "shown", "authorName": "Ada Lovelace", "authorPrompt": "done", "updates": "on", "skippedVersion": "1.2.3-rc.1", "tipsSeen": ["textBox"], "pageSidebarCollapsed": true, "toolSidebarCollapsed": false })
         );
     }
 
@@ -717,8 +741,26 @@ mod tests {
                 updates: None,
                 skipped_version: None,
                 tips_seen: None,
+                page_sidebar_collapsed: None,
+                tool_sidebar_collapsed: None,
             }
         );
+    }
+
+    #[test]
+    fn sidebar_collapse_flags_default_open_and_must_be_booleans() {
+        let stored =
+            Settings::from_stored(br#"{"pageSidebarCollapsed":true,"toolSidebarCollapsed":"yes"}"#);
+        assert!(stored.page_sidebar_collapsed);
+        assert!(!stored.tool_sidebar_collapsed);
+        assert_eq!(
+            patch(json!({ "toolSidebarCollapsed": true }))
+                .unwrap()
+                .tool_sidebar_collapsed,
+            Some(true)
+        );
+        assert!(patch(json!({ "pageSidebarCollapsed": null })).is_err());
+        assert!(patch(json!({ "pageSidebarCollapsed": 1 })).is_err());
     }
 
     #[test]
@@ -1082,6 +1124,8 @@ mod tests {
                 updates: UpdatesMode::Off,
                 skipped_version: SkippedVersion::default(),
                 tips_seen: TipsSeen::default(),
+                page_sidebar_collapsed: false,
+                tool_sidebar_collapsed: false,
             }
         );
         assert_eq!(store.get(), updated);
@@ -1091,7 +1135,7 @@ mod tests {
             serde_json::from_slice(&fs::read(dir.path().join(FILE_NAME)).unwrap()).unwrap();
         assert_eq!(
             stored,
-            json!({ "language": "de", "leftPanelWidth": 280, "welcomeTour": "pending", "authorName": "", "authorPrompt": "pending", "updates": "off", "skippedVersion": null, "tipsSeen": [] })
+            json!({ "language": "de", "leftPanelWidth": 280, "welcomeTour": "pending", "authorName": "", "authorPrompt": "pending", "updates": "off", "skippedVersion": null, "tipsSeen": [], "pageSidebarCollapsed": false, "toolSidebarCollapsed": false })
         );
     }
 
@@ -1281,7 +1325,7 @@ mod tests {
         let stored: Value = serde_json::from_slice(&bytes).unwrap();
         assert_eq!(
             stored,
-            json!({ "language": "system", "leftPanelWidth": 200, "welcomeTour": "pending", "authorName": "", "authorPrompt": "pending", "updates": "on", "skippedVersion": null, "tipsSeen": [] })
+            json!({ "language": "system", "leftPanelWidth": 200, "welcomeTour": "pending", "authorName": "", "authorPrompt": "pending", "updates": "on", "skippedVersion": null, "tipsSeen": [], "pageSidebarCollapsed": false, "toolSidebarCollapsed": false })
         );
     }
 

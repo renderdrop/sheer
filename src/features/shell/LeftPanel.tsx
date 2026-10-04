@@ -1,13 +1,13 @@
-import { GalleryVertical, LayoutGrid, ListTree, MessagesSquare, Search, type LucideIcon } from 'lucide-react';
+import { ChevronsLeft, GalleryVertical, ListTree, MessagesSquare, Search, type LucideIcon } from 'lucide-react';
 import { AnimatePresence, motion, useIsPresent } from 'motion/react';
 import { memo, type CSSProperties } from 'react';
 
-import { IconButton, Panel, Tab, TabList, TabPanel, Tabs } from '../../components';
+import { IconButton, Tab, TabList, TabPanel, Tabs } from '../../components';
 import { useT, type PlainKey } from '../../i18n';
-import { canRunAction, runAction } from '../../actions/dispatch';
+import { runAction } from '../../actions/dispatch';
 import { clampPanelWidth } from '../../lib/layout';
 import { LEFT_PANEL_TABS, useUi, type LeftPanelTab } from '../../stores/ui';
-import { Comments, CommentsActions } from '../comments/Comments';
+import { Comments } from '../comments/Comments';
 import { Outline, OutlineActions } from '../outline/Outline';
 import { SearchPanel } from '../search/Search';
 import { Thumbnails } from '../thumbnails/Thumbnails';
@@ -16,36 +16,17 @@ import { usePanelSlide } from './usePanelSlide';
 interface TabSpec {
   label: PlainKey;
   icon: LucideIcon;
-  empty: PlainKey;
 }
 
 const TABS: Record<LeftPanelTab, TabSpec> = {
-  thumbnails: { label: 'leftPanel.tab.pages', icon: GalleryVertical, empty: 'leftPanel.empty.thumbnails' },
-  outline: { label: 'leftPanel.tab.outline', icon: ListTree, empty: 'leftPanel.empty.outline' },
-  comments: { label: 'leftPanel.tab.comments', icon: MessagesSquare, empty: 'leftPanel.empty.comments' },
-  search: { label: 'leftPanel.tab.search', icon: Search, empty: 'leftPanel.empty.search' },
+  thumbnails: { label: 'leftPanel.tab.pages', icon: GalleryVertical },
+  outline: { label: 'leftPanel.tab.outline', icon: ListTree },
+  comments: { label: 'leftPanel.tab.comments', icon: MessagesSquare },
+  search: { label: 'leftPanel.tab.search', icon: Search },
 };
 
 function isLeftPanelTab(value: string): value is LeftPanelTab {
   return (LEFT_PANEL_TABS as readonly string[]).includes(value);
-}
-
-/** The Pages title row's button (DESIGN 3.57): enters Organize, which the toolbar's Pages button used to do. */
-function OrganizeButton() {
-  const t = useT();
-  const active = useUi((state) => state.activeTool === 'pages');
-  return (
-    <IconButton
-      size="sm"
-      variant="plain"
-      icon={LayoutGrid}
-      label={t('pages.organize')}
-      pressed={active}
-      onClick={() => {
-        if (canRunAction('tool-pages')) void runAction(active ? 'tool-select' : 'tool-pages');
-      }}
-    />
-  );
 }
 
 const selectTab = (tab: string) => {
@@ -58,9 +39,9 @@ export interface LeftPanelProps {
 }
 
 /**
- * The left panel (DESIGN 3.6, 3.9): a G1 `<aside>` whose header is the four-tab segmented control (Pages, Outline,
- * Comments, Search) and whose body is the selected tab's panel, starting with its 32 px title row. Thumbnails shows the page list;
- * the other tabs are placeholders until M1 fills them, and each says what will appear there.
+ * The page sidebar (DESIGN v2 3.2): an `<aside>` on the Canvas surface without a border. Its header row (48) holds the four icon tabs
+ * (Pages, Outline, Comments, Search; 36 each, the underline cue of 2.8) and, at the right, the collapse chevron. The body is the
+ * selected tab's panel: thumbnails, outline, comments or search results.
  *
  * It follows the selected tab (`ui.leftPanelTab`) itself and is memoized, so it renders when the tab or its slot changes and
  * not for a page, a zoom step or a drag of the splitter next to it.
@@ -71,41 +52,53 @@ export const LeftPanel = memo(function LeftPanel({ id }: LeftPanelProps) {
   return (
     // The wrapper of Tabs is `display: contents`, so the panel itself is the grid item.
     <Tabs value={tab} onValueChange={selectTab} className="contents">
-      <Panel
+      <aside
         data-region="left"
         id={id}
-        label={t('leftPanel.label')}
-        header={
-          <TabList label={t('leftPanel.views')}>
+        aria-label={t('leftPanel.label')}
+        className="bg-app flex min-h-0 flex-col overflow-hidden"
+      >
+        <div className="flex h-12 shrink-0 items-center gap-1 px-2">
+          <TabList label={t('leftPanel.views')} className="h-control-md w-auto gap-1">
             {LEFT_PANEL_TABS.map((value) => (
-              <Tab key={value} value={value} label={t(TABS[value].label)} icon={TABS[value].icon} />
+              <div key={value} className="flex h-control-md w-control-md">
+                <Tab value={value} label={t(TABS[value].label)} icon={TABS[value].icon} />
+              </div>
             ))}
           </TabList>
-        }
-      >
-        {LEFT_PANEL_TABS.map((value) => (
-          <TabPanel key={value} value={value} className="h-full">
-            {/* A column: the title row, then the view, which takes the rest of the height (the thumbnails scroll inside it). */}
-            <div className="flex h-full min-h-0 flex-col">
-              <div className="flex h-control-md shrink-0 items-center">
-                <h2 className="m-0 min-w-0 flex-1 truncate text-md font-semibold">{t(TABS[value].label)}</h2>
-                {value === 'thumbnails' && <OrganizeButton />}
-                {value === 'outline' && <OutlineActions />}
-                {value === 'comments' && <CommentsActions />}
+          <span className="flex-1" />
+          <IconButton
+            icon={ChevronsLeft}
+            label={t('sidebar.collapse')}
+            tooltipSide="bottom"
+            data-toolbar-item="left-panel"
+            onClick={() => void runAction('toggle-left-panel')}
+          />
+        </div>
+        <div className="min-h-0 flex-1">
+          {LEFT_PANEL_TABS.map((value) => (
+            <TabPanel key={value} value={value} className="h-full">
+              {/* A column: the view takes the height (the thumbnails scroll inside it). */}
+              <div className="flex h-full min-h-0 flex-col">
+                {value === 'thumbnails' ? (
+                  <Thumbnails />
+                ) : value === 'outline' ? (
+                  <>
+                    <div className="flex h-control-md shrink-0 items-center justify-end px-2">
+                      <OutlineActions />
+                    </div>
+                    <Outline />
+                  </>
+                ) : value === 'comments' ? (
+                  <Comments />
+                ) : (
+                  <SearchPanel />
+                )}
               </div>
-              {value === 'thumbnails' ? (
-                <Thumbnails />
-              ) : value === 'outline' ? (
-                <Outline />
-              ) : value === 'comments' ? (
-                <Comments />
-              ) : (
-                <SearchPanel />
-              )}
-            </div>
-          </TabPanel>
-        ))}
-      </Panel>
+            </TabPanel>
+          ))}
+        </div>
+      </aside>
     </Tabs>
   );
 });

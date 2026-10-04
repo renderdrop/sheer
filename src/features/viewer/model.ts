@@ -4,15 +4,15 @@ import { useView } from '../../stores/view';
 import { PageLayout, metricsFor, type Metrics, type ScrollMode, type Viewport } from './layout';
 import { rotatedSizes, type Rotation } from './transform';
 
-/** The space between pages: `--space-4`, 16 px (DESIGN 2). */
-const PAGE_GAP_FALLBACK = 16;
+/** The space between pages: `--space-6`, 24 px (DESIGN v2 3.2). */
+const PAGE_GAP_FALLBACK = 24;
 let gap: number | null = null;
 
 /** The space between pages in px, read from the design token once. */
 export function pageGap(): number {
   if (gap !== null) return gap;
   if (typeof document === 'undefined') return PAGE_GAP_FALLBACK;
-  const read = tokenPx('--space-4', PAGE_GAP_FALLBACK);
+  const read = tokenPx('--space-6', PAGE_GAP_FALLBACK);
   gap = read;
   return read;
 }

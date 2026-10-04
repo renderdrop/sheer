@@ -1,4 +1,4 @@
-import { ArrowDownUp, CircleAlert, ListFilter, LoaderCircle, MessagesSquare } from 'lucide-react';
+import { CircleAlert, ListFilter, LoaderCircle, MessagesSquare } from 'lucide-react';
 import {
   useCallback,
   useEffect,
@@ -10,7 +10,9 @@ import {
   type ReactNode,
 } from 'react';
 
-import { Button, IconButton, Menu, Popover, Checkbox } from '../../components';
+import { Button, Menu, Toggle, type MenuEntry } from '../../components';
+import { cx } from '../../components/cx';
+import type { AnnotationSummary } from '../../api/annotations';
 import { Icon } from '../../components/Icon';
 import { tokenPx } from '../../components/tokens';
 import { useT, type PlainKey } from '../../i18n';
@@ -22,7 +24,6 @@ import { CommentCard } from './CommentCard';
 import {
   NO_FILTER,
   SORT_ORDERS,
-  STATUSES,
   buildRows,
   facets,
   filterThreads,
@@ -30,9 +31,9 @@ import {
   offsetsOf,
   sortThreads,
   windowOf,
+  type Filter,
   type Row,
   type SortOrder,
-  type Status,
   type Thread,
 } from './model';
 import { DEFAULT_VIEW, useComments, type CommentsEntry } from './store';
@@ -53,13 +54,6 @@ const SORT_LABELS: Record<SortOrder, PlainKey> = {
   page: 'comments.byPage',
   newest: 'comments.newest',
   oldest: 'comments.oldest',
-};
-
-const STATUS_LABELS: Record<Status, PlainKey> = {
-  open: 'comments.open',
-  resolved: 'comments.resolved',
-  accepted: 'comments.accepted',
-  rejected: 'comments.rejected',
 };
 
 function Message({ children }: { children: ReactNode }) {
@@ -350,9 +344,7 @@ export function CommentsList({ docId, entry }: { docId: number; entry: Ready }) 
   return (
     <>
       {isFiltering(view.filter) && (
-        <p className="m-0 px-2 pb-1 text-sm text-text-muted">
-          {t('comments.filtered', { shown: threads.length, total })}
-        </p>
+        <p className="t-caption m-0 px-3 pb-1">{t('comments.filtered', { shown: threads.length, total })}</p>
       )}
       <div
         ref={scrollerRef}
@@ -365,7 +357,7 @@ export function CommentsList({ docId, entry }: { docId: number; entry: Ready }) 
             return before?.first === after?.first && before?.last === after?.last ? previous : top;
           });
         }}
-        className="min-h-0 flex-auto overflow-x-hidden overflow-y-auto p-2 [overflow-anchor:none] [scrollbar-gutter:stable]"
+        className="min-h-0 flex-auto overflow-x-hidden overflow-y-auto px-3 pt-2 pb-3 [overflow-anchor:none] [scrollbar-gutter:stable]"
       >
         <div
           role="list"
@@ -460,7 +452,12 @@ function CommentsView({ docId }: { docId: number }) {
       </Message>
     );
   }
-  return <CommentsList docId={docId} entry={entry} />;
+  return (
+    <>
+      <FilterRow docId={docId} summaries={entry.summaries} />
+      <CommentsList docId={docId} entry={entry} />
+    </>
+  );
 }
 
 /** The Comments tab's content. Another document is another list: its view, scroll and focus are its own. */
@@ -471,124 +468,72 @@ export function Comments() {
   return <CommentsView key={docId} docId={docId} />;
 }
 
-function FilterGroup<T extends string>({
-  legend,
-  values,
-  chosen,
-  label,
-  onChange,
-}: {
-  legend: string;
-  values: readonly T[];
-  chosen: readonly T[];
-  label: (value: T) => string;
-  onChange: (next: T[]) => void;
-}) {
-  return (
-    <fieldset className="m-0 flex min-w-0 flex-col gap-1 border-0 p-0">
-      <legend className="p-0 pb-1 text-sm font-semibold text-text-muted">{legend}</legend>
-      {values.map((value) => (
-        <label key={value} className="flex min-h-control-sm cursor-pointer items-center gap-2 text-md">
-          <Checkbox
-            checked={chosen.includes(value)}
-            onChange={(event) =>
-              onChange(event.target.checked ? [...chosen, value] : chosen.filter((other) => other !== value))
-            }
-          />
-          <span className="min-w-0 flex-1 truncate">{label(value)}</span>
-        </label>
-      ))}
-    </fieldset>
-  );
-}
-
-/** The Comments tab's title-row actions: the filter popover and the sort menu. */
-export function CommentsActions() {
+/**
+ * The filter row (DESIGN v2 3.2), 36 high: a type menu (the kinds, the authors and the sort order of the list; a check marks a chosen
+ * one) and the "Open only" switch. Choosing none of a group shows all of it.
+ */
+function FilterRow({ docId, summaries }: { docId: number; summaries: readonly AnnotationSummary[] }) {
   const t = useT();
-  const docId = useDocuments(selectActiveId);
-  const entry = useComments((state) => (docId === null ? undefined : state.byDoc[docId]));
-  const view = useComments((state) => (docId === null ? undefined : state.views[docId])) ?? DEFAULT_VIEW;
-  const summaries = entry?.status === 'ready' ? entry.summaries : null;
-  const options = useMemo(() => (summaries === null ? { kinds: [], authors: [] } : facets(summaries)), [summaries]);
-  if (docId === null) return null;
-  const can = summaries !== null && summaries.length > 0;
-  const filtering = isFiltering(view.filter);
+  const view = useComments((state) => state.views[docId]) ?? DEFAULT_VIEW;
+  const options = useMemo(() => facets(summaries), [summaries]);
+  const { filter } = view;
+  const onlyOpen = filter.statuses.length === 1 && filter.statuses[0] === 'open';
+  const toggle = <T,>(chosen: readonly T[], value: T): T[] =>
+    chosen.includes(value) ? chosen.filter((other) => other !== value) : [...chosen, value];
+  const set = (next: Partial<Filter>) => useComments.getState().setFilter(docId, { ...filter, ...next });
+  const entries: MenuEntry[] = [
+    { type: 'separator', id: 'h-type', label: t('comments.type') },
+    ...options.kinds.map((kind) => ({
+      id: `kind-${kind}`,
+      label: t(kindInfo(kind).key),
+      checked: filter.kinds.includes(kind),
+      onSelect: () => set({ kinds: toggle(filter.kinds, kind) }),
+    })),
+    { type: 'separator', id: 'h-author', label: t('comments.author') },
+    ...options.authors.map((author) => ({
+      id: `author-${author}`,
+      label: author === '' ? t('comments.noAuthor') : author,
+      checked: filter.authors.includes(author),
+      onSelect: () => set({ authors: toggle(filter.authors, author) }),
+    })),
+    { type: 'separator', id: 'h-sort', label: t('comments.sort') },
+    ...SORT_ORDERS.map((order) => ({
+      id: `sort-${order}`,
+      label: t(SORT_LABELS[order]),
+      checked: view.order === order,
+      onSelect: () => useComments.getState().setOrder(docId, order),
+    })),
+  ];
+  const typeCount = filter.kinds.length;
   return (
-    <>
-      <Popover
+    <div className="flex h-control-md shrink-0 items-center gap-2 px-3">
+      <Menu
         label={t('comments.filter')}
         side="bottom"
-        align="end"
-        disabled={!can}
+        align="start"
+        entries={entries}
         trigger={(trigger) => (
-          <IconButton
-            {...trigger}
-            size="sm"
-            icon={ListFilter}
-            label={t('comments.filter')}
-            tooltipSide="bottom"
-            active={filtering}
-            disabled={!can}
-            focusableWhenDisabled
-          />
-        )}
-      >
-        <div className="flex max-h-[60vh] flex-col gap-4 overflow-y-auto p-2">
-          <FilterGroup
-            legend={t('comments.status')}
-            values={STATUSES}
-            chosen={view.filter.statuses}
-            label={(status) => t(STATUS_LABELS[status])}
-            onChange={(statuses) => useComments.getState().setFilter(docId, { ...view.filter, statuses })}
-          />
-          <FilterGroup
-            legend={t('comments.type')}
-            values={options.kinds}
-            chosen={view.filter.kinds}
-            label={(kind) => t(kindInfo(kind).key)}
-            onChange={(kinds) => useComments.getState().setFilter(docId, { ...view.filter, kinds })}
-          />
-          <FilterGroup
-            legend={t('comments.author')}
-            values={options.authors}
-            chosen={view.filter.authors}
-            label={(author) => (author === '' ? t('comments.noAuthor') : author)}
-            onChange={(authors) => useComments.getState().setFilter(docId, { ...view.filter, authors })}
-          />
           <Button
+            {...trigger}
             size="sm"
             variant="ghost"
-            disabled={!filtering}
-            focusableWhenDisabled
-            onClick={() => useComments.getState().setFilter(docId, NO_FILTER)}
+            icon={ListFilter}
+            className={cx('min-w-0 flex-1 justify-start', isFiltering(filter) && 'font-semibold')}
           >
-            {t('comments.reset')}
+            <span className="truncate">
+              {typeCount === 0 ? t('comments.allTypes') : t('comments.typeCount', { n: typeCount })}
+            </span>
           </Button>
-        </div>
-      </Popover>
-      <Menu
-        label={t('comments.sort')}
-        side="bottom"
-        align="end"
-        disabled={!can}
-        entries={SORT_ORDERS.map((order) => ({
-          id: order,
-          label: t(SORT_LABELS[order]),
-          checked: view.order === order,
-          onSelect: () => useComments.getState().setOrder(docId, order),
-        }))}
-        trigger={(trigger) => (
-          <IconButton
-            {...trigger}
-            size="sm"
-            icon={ArrowDownUp}
-            label={t('comments.sort')}
-            tooltipSide="bottom"
-            disabled={!can}
-            focusableWhenDisabled
-          />
         )}
       />
-    </>
+      <label className="flex shrink-0 cursor-pointer items-center gap-2">
+        <span className="t-caption">{t('comments.onlyOpen')}</span>
+        <Toggle
+          checked={onlyOpen}
+          onCheckedChange={(on) => set({ statuses: on ? ['open'] : [] })}
+          aria-label={t('comments.onlyOpen')}
+        />
+      </label>
+    </div>
   );
 }

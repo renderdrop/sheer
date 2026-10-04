@@ -7,7 +7,7 @@ import { EMPTY_HISTORY, useAnnotations } from '../../stores/annotations';
 import { setup } from '../../test/render';
 import { useViewer } from '../viewer/useViewer';
 import { resetViewer, showDocument } from '../viewer/viewer.testutil';
-import { Comments, CommentsActions, LOADING_SHOWN_AFTER_MS } from './Comments';
+import { Comments, LOADING_SHOWN_AFTER_MS } from './Comments';
 import { useComments } from './store';
 import { clearQuotes } from './useQuote';
 
@@ -103,12 +103,7 @@ describe('Comments states', () => {
 describe('Comments cards', () => {
   async function shown(list: AnnotationSummary[] = LIST) {
     listDocumentAnnotations.mockResolvedValue(list);
-    const view = setup(
-      <>
-        <CommentsActions />
-        <Comments />
-      </>,
-    );
+    const view = setup(<Comments />);
     await vi.waitFor(() => expect(cards().length).toBeGreaterThan(0), { timeout: 8000 });
     return view;
   }
@@ -152,11 +147,21 @@ describe('Comments cards', () => {
     expect(cards()).toHaveLength(2);
     expect(cards()[0]?.textContent).toContain('Resolved');
     expect(cards()[0]?.textContent).not.toContain('Text 1');
-    await user.click(screen.getByRole('button', { name: 'Filter' }));
-    const dialog = screen.getByRole('dialog', { name: 'Filter' });
-    await user.click(within(dialog).getByRole('checkbox', { name: 'Open' }));
+    await user.click(screen.getByRole('switch', { name: 'Open only' }));
     expect(cards()).toHaveLength(1);
     expect(cards()[0]?.textContent).toContain('Text 3');
+  });
+
+  it('expands a done card from its excerpt line and back', async () => {
+    const { user } = await shown([summary(1), summary(2, { inReplyTo: 1, state: 'completed', contents: '' })]);
+    const card = cards()[0] as HTMLElement;
+    expect(card.className).toContain('opacity-60');
+    expect(within(card).queryByRole('button', { name: 'Delete' })).toBeNull();
+    await user.click(within(card).getByRole('button', { name: 'Show comment' }));
+    expect(within(card).getByRole('button', { name: 'Delete' })).toBeTruthy();
+    expect(card.textContent).toContain('Text 1');
+    await user.click(within(card).getByRole('button', { name: 'Hide comment' }));
+    expect(within(card).queryByRole('button', { name: 'Delete' })).toBeNull();
   });
 
   it('jumps, selects and keeps the focus on the card on Enter and click', async () => {
@@ -218,7 +223,7 @@ describe('Comments cards', () => {
     } as never);
     const { user } = await shown();
     await user.click(cards()[0] as HTMLElement);
-    await user.click(await screen.findByRole('button', { name: 'Resolve' }));
+    await user.click(within(cards()[0] as HTMLElement).getByRole('button', { name: 'Resolve' }));
     await vi.waitFor(() => expect(apply).toHaveBeenCalled());
     const command = apply.mock.calls[0]?.[1];
     expect(command.draft).toMatchObject({ kind: 'note', inReplyTo: 1, state: 'completed', pageId: 0 });
@@ -315,14 +320,15 @@ describe('Comments cards', () => {
 
   it('sorts, filters by author and resets', async () => {
     const { user } = await shown();
-    await user.click(screen.getByRole('button', { name: 'Sort' }));
+    await user.click(screen.getByRole('button', { name: 'All types' }));
     await user.click(screen.getByRole('menuitemcheckbox', { name: 'Newest first' }));
-    await user.click(screen.getByRole('button', { name: 'Filter' }));
-    const dialog = screen.getByRole('dialog', { name: 'Filter' });
-    await user.click(within(dialog).getByRole('checkbox', { name: 'No author' }));
+    expect(useComments.getState().views[1]?.order).toBe('newest');
+    await user.click(screen.getByRole('button', { name: 'All types' }));
+    await user.click(screen.getByRole('menuitemcheckbox', { name: 'No author' }));
     expect(cards()).toHaveLength(1);
     expect(screen.getByText('1 of 2')).toBeTruthy();
-    await user.click(within(dialog).getByRole('button', { name: 'Reset filter' }));
+    act(() => useComments.getState().setFilter(1, { kinds: ['ink'], authors: [], statuses: [] }));
+    await user.click(screen.getByRole('button', { name: 'Reset filter' }));
     expect(cards()).toHaveLength(2);
   });
 

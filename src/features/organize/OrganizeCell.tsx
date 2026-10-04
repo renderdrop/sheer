@@ -137,8 +137,7 @@ export const OrganizeCell = memo(function OrganizeCell({
       data-index={index}
       tabIndex={tabStop ? 0 : -1}
       className={cx(
-        'absolute start-0 top-0 flex touch-none cursor-pointer select-none flex-col items-center gap-2 rounded-sm p-1 transition-[transform,opacity,background-color] duration-base ease-out',
-        selected ? 'bg-selected' : 'hover:bg-control-hover',
+        'group absolute start-0 top-0 flex touch-none cursor-pointer select-none flex-col items-center gap-2 rounded-sm p-1 transition-[transform,opacity,background-color] duration-base ease-out',
         dragged && 'opacity-40',
       )}
       style={{ transform: `translate(${left}px, ${top}px)`, width, height }}
@@ -146,7 +145,11 @@ export const OrganizeCell = memo(function OrganizeCell({
       <div className="flex shrink-0 items-center justify-center" style={{ width: thumb, height: thumb }}>
         <div
           ref={pageRef}
-          className="pulse-target relative overflow-hidden rounded-sm bg-page shadow-floating [--pulse-radius:var(--radius-sm)]"
+          // The card of the thumbnails (DESIGN v2 2.2, 3.2): White, border, radius sm; selected = 2 px Solar border and the Solar number chip.
+          className={cx(
+            'pulse-target relative box-border overflow-hidden rounded-sm border bg-page [--pulse-radius:var(--radius-sm)]',
+            selected ? 'border-2 border-accent' : 'border-border-subtle group-hover:border-control-border',
+          )}
           style={{ width: size.width, height: size.height }}
         >
           {shown !== undefined && (
@@ -169,7 +172,7 @@ export const OrganizeCell = memo(function OrganizeCell({
         aria-hidden="true"
         className={cx(
           'inline-flex h-(--pill-height) min-w-6 items-center justify-center rounded-pill px-2 text-xs tabular-nums',
-          selected ? 'bg-accent text-on-accent' : 'bg-tile text-text',
+          selected ? 'bg-accent font-semibold text-on-accent' : 'text-text-muted',
         )}
       >
         {number}

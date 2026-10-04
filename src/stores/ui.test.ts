@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { AppError } from '../api/errors';
 import { PANEL } from '../components/tokens';
-import { PANEL_WIDTH_PERSIST_DELAY_MS, bindPanelWidthToSettings, useUi } from './ui';
+import { PANEL_WIDTH_PERSIST_DELAY_MS, bindPanelWidthToSettings, bindSidebarCollapseToSettings, useUi } from './ui';
 import { useSettings } from './settings';
 
 const initial = useUi.getState();
@@ -278,6 +278,53 @@ describe('releaseTool', () => {
     useUi.getState().selectTool('draw');
     useUi.getState().releaseTool();
     expect(calls).toBe(2);
+    stop();
+  });
+});
+
+describe('bindSidebarCollapseToSettings', () => {
+  const settingsInitial = useSettings.getState();
+  const uiInitial = useUi.getState();
+  const update = vi.fn<(patch: object) => Promise<void>>();
+
+  beforeEach(() => {
+    update.mockReset().mockResolvedValue(undefined);
+    useSettings.setState({ ...settingsInitial, loaded: false, update }, true);
+    useUi.setState({ leftPanelCollapsed: false, inspector: 'auto' });
+  });
+
+  afterEach(() => {
+    useSettings.setState(settingsInitial, true);
+    useUi.setState(uiInitial, true);
+  });
+
+  it('applies the saved flags once the settings have loaded', () => {
+    const stop = bindSidebarCollapseToSettings();
+    useSettings.setState({ loaded: true, pageSidebarCollapsed: true, toolSidebarCollapsed: true });
+    expect(useUi.getState().leftPanelCollapsed).toBe(true);
+    expect(useUi.getState().inspector).toBe('closed');
+    expect(update).not.toHaveBeenCalled();
+    stop();
+  });
+
+  it('writes a change of either sidebar and nothing the settings already hold', () => {
+    useSettings.setState({ loaded: true });
+    const stop = bindSidebarCollapseToSettings();
+    useUi.getState().setLeftPanelCollapsed(true);
+    expect(update).toHaveBeenLastCalledWith({ pageSidebarCollapsed: true });
+    useUi.getState().setInspector('closed');
+    expect(update).toHaveBeenLastCalledWith({ pageSidebarCollapsed: true, toolSidebarCollapsed: true });
+    useUi.getState().setInspector('open');
+    expect(update).toHaveBeenLastCalledWith({ pageSidebarCollapsed: true });
+    stop();
+  });
+
+  it('keeps the user choice made before the settings arrived', () => {
+    const stop = bindSidebarCollapseToSettings();
+    useUi.getState().setLeftPanelCollapsed(true);
+    useSettings.setState({ loaded: true, pageSidebarCollapsed: false });
+    expect(useUi.getState().leftPanelCollapsed).toBe(true);
+    expect(update).toHaveBeenCalledWith({ pageSidebarCollapsed: true });
     stop();
   });
 });

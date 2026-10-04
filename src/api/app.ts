@@ -45,6 +45,10 @@ export interface Settings {
   updates?: UpdatesMode;
   /** The version the user chose not to be offered again, or `null` (`limits::UPDATE_VERSION_MAX_CHARS`). Absent until the backend knows the field. */
   skippedVersion?: string | null;
+  /** The page sidebar is collapsed (DESIGN v2 3.2). Absent until the backend knows the field; absent means open. */
+  pageSidebarCollapsed?: boolean;
+  /** The tool sidebar is collapsed to its rail (DESIGN v2 3.2). Absent until the backend knows the field. */
+  toolSidebarCollapsed?: boolean;
 }
 
 /** Wire names of the backend's `UpdatesMode` (storage/settings.rs, ADR-053). */
@@ -117,17 +121,29 @@ function oneOf<T extends string>(values: readonly T[], value: unknown): T | null
 /** Validates a settings object from the backend. `null` if it is not one. */
 export function parseSettings(value: unknown): Settings | null {
   if (typeof value !== 'object' || value === null) return null;
-  const { language, leftPanelWidth, welcomeTour, authorName, authorPrompt, tipsSeen, updates, skippedVersion } =
-    value as {
-      language?: unknown;
-      leftPanelWidth?: unknown;
-      welcomeTour?: unknown;
-      authorName?: unknown;
-      authorPrompt?: unknown;
-      tipsSeen?: unknown;
-      updates?: unknown;
-      skippedVersion?: unknown;
-    };
+  const {
+    language,
+    leftPanelWidth,
+    welcomeTour,
+    authorName,
+    authorPrompt,
+    tipsSeen,
+    updates,
+    skippedVersion,
+    pageSidebarCollapsed,
+    toolSidebarCollapsed,
+  } = value as {
+    language?: unknown;
+    leftPanelWidth?: unknown;
+    welcomeTour?: unknown;
+    authorName?: unknown;
+    authorPrompt?: unknown;
+    tipsSeen?: unknown;
+    updates?: unknown;
+    skippedVersion?: unknown;
+    pageSidebarCollapsed?: unknown;
+    toolSidebarCollapsed?: unknown;
+  };
   const parsedPrompt = oneOf(AUTHOR_PROMPT_STATES, authorPrompt);
   const parsedLanguage = oneOf(LANGUAGES, language);
   const parsedTour = oneOf(WELCOME_TOUR_STATES, welcomeTour);
@@ -157,6 +173,8 @@ export function parseSettings(value: unknown): Settings | null {
     ...(parsedTips === undefined ? {} : { tipsSeen: parsedTips }),
     ...(parsedUpdates === null ? {} : { updates: parsedUpdates }),
     ...(parsedSkipped === undefined ? {} : { skippedVersion: parsedSkipped }),
+    ...(typeof pageSidebarCollapsed === 'boolean' ? { pageSidebarCollapsed } : {}),
+    ...(typeof toolSidebarCollapsed === 'boolean' ? { toolSidebarCollapsed } : {}),
   };
 }
 

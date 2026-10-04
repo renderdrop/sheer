@@ -548,7 +548,7 @@ describe('the actions', () => {
 
       it('reads where the canvas is scrolled to from the canvas', () => {
         viewer().setViewport({ width: 900, height: 700 });
-        const stop = registerScrollSource(() => ({ left: 0, top: 3 * (792 * CSS_PX_PER_PT + 16) }));
+        const stop = registerScrollSource(() => ({ left: 0, top: 3 * (792 * CSS_PX_PER_PT + 24) }));
         viewer().zoomStep(1);
         stop();
         // The middle of the viewport is 350 px into the fourth page's slot.
@@ -603,7 +603,7 @@ describe('the actions', () => {
       });
 
       it('makes a fit again for the new mode: a spread is two pages wide', () => {
-        viewer().setViewport({ width: 2 * 816 + 16 + FIT_SCROLLBAR_PX, height: 5000 });
+        viewer().setViewport({ width: 2 * 816 + 24 + FIT_SCROLLBAR_PX, height: 5000 });
         viewer().fitWidth();
         expect(zoomOf()).toBeCloseTo(2 + 0, 1);
         viewer().setScrollMode('spread');

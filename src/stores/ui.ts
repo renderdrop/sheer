@@ -242,3 +242,64 @@ export function bindPanelWidthToSettings(
     clearTimeout(timer);
   };
 }
+
+/**
+ * Connects both sidebar collapse states to the persisted settings (DESIGN v2 3.2): the page sidebar's `leftPanelCollapsed` and the
+ * tool sidebar's `inspector === 'closed'`.
+ *
+ * - Once the settings have loaded, their flags become the UI's, unless the user already toggled that sidebar (then theirs wins and is saved).
+ * - A change of either state is written with `update`, unless the settings already hold it.
+ *
+ * Returns the function that disconnects it.
+ */
+export function bindSidebarCollapseToSettings(ui: UiLike = useUi, settings: SettingsLike = useSettings): () => void {
+  let applying = false;
+  let appliedLoad = false;
+  let pageMoved = false;
+  let toolMoved = false;
+
+  const apply = () => {
+    const stored = settings.getState();
+    if (!stored.loaded || appliedLoad) return;
+    appliedLoad = true;
+    const patch: Partial<UiState> = {};
+    if (!pageMoved) patch.leftPanelCollapsed = stored.pageSidebarCollapsed === true;
+    if (!toolMoved) {
+      const closed = stored.toolSidebarCollapsed === true;
+      const current = ui.getState().inspector;
+      if (closed && current !== 'closed') patch.inspector = 'closed';
+      else if (!closed && current === 'closed') patch.inspector = 'auto';
+    }
+    applying = true;
+    ui.setState(patch);
+    applying = false;
+    save();
+  };
+
+  const save = () => {
+    const stored = settings.getState();
+    if (!stored.loaded) return;
+    const { leftPanelCollapsed, inspector } = ui.getState();
+    const patch: { pageSidebarCollapsed?: boolean; toolSidebarCollapsed?: boolean } = {};
+    if (leftPanelCollapsed !== (stored.pageSidebarCollapsed === true)) patch.pageSidebarCollapsed = leftPanelCollapsed;
+    const toolClosed = inspector === 'closed';
+    if (toolClosed !== (stored.toolSidebarCollapsed === true)) patch.toolSidebarCollapsed = toolClosed;
+    if (Object.keys(patch).length > 0) void settings.getState().update(patch);
+  };
+
+  const stopUi = ui.subscribe((state, previous) => {
+    if (applying) return;
+    const page = state.leftPanelCollapsed !== previous.leftPanelCollapsed;
+    const tool = (state.inspector === 'closed') !== (previous.inspector === 'closed');
+    if (!page && !tool) return;
+    pageMoved ||= page;
+    toolMoved ||= tool;
+    if (appliedLoad) save();
+  });
+  const stopSettings = settings.subscribe(apply);
+  apply();
+  return () => {
+    stopUi();
+    stopSettings();
+  };
+}
