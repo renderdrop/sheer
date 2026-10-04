@@ -1,22 +1,23 @@
+import { AnimatePresence } from 'motion/react';
+import { UserRound } from 'lucide-react';
 import { useEffect, useId, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 
 import { AUTHOR_NAME_MAX, isAuthorName } from '../../api/app';
 import { Button, Field } from '../../components';
-import { DISMISS_PRIORITY, registerDismissLayer } from '../../components/dismiss';
 import { useT } from '../../i18n';
 import { useSettings } from '../../stores/settings';
-import { finishAuthorPrompt, useAuthorPrompt } from './state';
+import { DialogShell } from '../save/UnsavedDialog';
+import { finishAuthorPrompt, registerAuthorHost, useAuthorPrompt } from './state';
 
-/** Confirm stores the name (when it is valid and not empty) and ends the prompt; Skip and Esc end it with the author left empty. */
-function Inline() {
+/** Confirm stores the name (when it is valid and not empty) and ends the prompt; Skip, Esc and the backdrop end it with the author left empty. */
+function Modal() {
   const t = useT();
   const suggestion = useSettings((state) => state.authorSuggestion);
   const [text, setText] = useState(suggestion);
   const [invalid, setInvalid] = useState(false);
   const errorId = useId();
   const input = useRef<HTMLInputElement>(null);
-  /** Where the focus was when the field opened: it goes back there when the field closes. */
-  const returnTo = useRef<Element | null>(null);
 
   const end = (name: string | null): void => {
     // The save goes on at once; the setting is stored in the background.
@@ -35,72 +36,62 @@ function Inline() {
   };
   const skip = (): void => end(null);
 
-  useEffect(() => {
-    returnTo.current = document.activeElement;
-    input.current?.focus({ preventScroll: true });
-    const unregister = registerDismissLayer(DISMISS_PRIORITY.popover, skip);
-    return () => {
-      unregister();
-      const target = returnTo.current;
-      // Back to the previous element, unless the user has moved the focus elsewhere on purpose (or it is gone).
-      const active = document.activeElement;
-      const lost =
-        active === null || active === document.body || active === input.current || !document.contains(active);
-      if (lost && target instanceof HTMLElement && target.isConnected) target.focus({ preventScroll: true });
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- registered once for this showing; `skip` only reads the store
-  }, []);
-
   return (
-    <div
-      role="group"
-      aria-label={t('author.prompt.label')}
-      className="bg-panel border border-border-subtle shadow-floating ms-2 flex h-control-lg min-w-0 shrink items-center gap-2 rounded-panel p-1 ps-2"
+    <DialogShell
+      icon={UserRound}
+      title={t('author.prompt.label')}
+      body={t('author.prompt.hint')}
+      onCancel={skip}
+      field={
+        <div className="mt-4 flex flex-col gap-1">
+          <Field
+            ref={input}
+            data-autofocus=""
+            aria-label={t('author.prompt.label')}
+            autoComplete="off"
+            spellCheck={false}
+            maxLength={AUTHOR_NAME_MAX}
+            aria-invalid={invalid || undefined}
+            aria-errormessage={invalid ? errorId : undefined}
+            placeholder={t('author.prompt.placeholder')}
+            value={text}
+            onChange={(event) => {
+              setText(event.target.value);
+              setInvalid(false);
+            }}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter') {
+                event.preventDefault();
+                confirm();
+              }
+            }}
+          />
+          {invalid && (
+            <span id={errorId} role="alert" className="text-sm text-error-text">
+              {t('author.prompt.invalid', { max: AUTHOR_NAME_MAX })}
+            </span>
+          )}
+        </div>
+      }
     >
-      <Field
-        ref={input}
-        size="sm"
-        aria-label={t('author.prompt.label')}
-        aria-description={t('author.prompt.hint')}
-        autoComplete="off"
-        spellCheck={false}
-        maxLength={AUTHOR_NAME_MAX}
-        aria-invalid={invalid || undefined}
-        aria-errormessage={invalid ? errorId : undefined}
-        placeholder={t('author.prompt.placeholder')}
-        className="w-note min-w-0 flex-auto"
-        value={text}
-        onChange={(event) => {
-          setText(event.target.value);
-          setInvalid(false);
-        }}
-        onKeyDown={(event) => {
-          if (event.key === 'Enter') {
-            event.preventDefault();
-            confirm();
-          }
-        }}
-      />
-      {invalid && (
-        <span id={errorId} role="alert" className="min-w-0 max-w-note truncate text-sm text-error-text">
-          {t('author.prompt.invalid', { max: AUTHOR_NAME_MAX })}
-        </span>
-      )}
-      <Button variant="primary" size="sm" onClick={confirm}>
-        {t('author.prompt.confirm')}
-      </Button>
-      <Button variant="ghost" size="sm" onClick={skip}>
+      <span className="flex-1" />
+      <Button variant="ghost" onClick={skip}>
         {t('author.prompt.skip')}
       </Button>
-    </div>
+      <Button variant="primary" onClick={confirm}>
+        {t('author.prompt.confirm')}
+      </Button>
+    </DialogShell>
   );
 }
 
 /**
- * The one-time author field in its own slot of the toolbar row (ADR-034, DESIGN 3.13): shown before the first save of a document
- * with annotations while the author name is empty. Pre-filled with the OS name as a suggestion only.
+ * The one-time author dialog (ADR-034, ADR-109): a modal shown before the first save of a document with annotations while the
+ * author name is empty. Pre-filled with the OS name as a suggestion only. While mounted it is the prompt host: without a host a
+ * save does not wait for an answer.
  */
 export function AuthorPromptField() {
   const open = useAuthorPrompt((state) => state.open);
-  return open ? <Inline /> : null;
+  useEffect(() => registerAuthorHost(), []);
+  return createPortal(<AnimatePresence>{open && <Modal key="author" />}</AnimatePresence>, document.body);
 }

@@ -18,6 +18,7 @@ import { PasswordDialog } from '../password/PasswordDialog';
 import { ProtectSheet } from '../protect/ProtectSheet';
 import { PropertiesDialog } from '../properties/PropertiesDialog';
 import { RedactApplyDialog } from '../redact/RedactApplyDialog';
+import { AuthorPromptField } from '../author/AuthorPromptField';
 import { UnsavedDialog } from '../save/UnsavedDialog';
 import { TourEffects } from '../tour/TourEffects';
 import { ViewerEffects } from '../viewer/useViewer';
@@ -81,6 +82,7 @@ export function Shell() {
       <PasswordDialog />
       <JobsHost />
       <UnsavedDialog />
+      <AuthorPromptField />
       <ProtectSheet />
       <PropertiesDialog />
       <RedactApplyDialog />

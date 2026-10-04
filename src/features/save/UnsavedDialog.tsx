@@ -30,17 +30,20 @@ const cancelOverwrite = (): void => {
 };
 
 /** The modal frame of both dialogs (DESIGN 3.27, motion as About): inert app behind it, focus trap, Esc and backdrop cancel. */
-function DialogShell({
+export function DialogShell({
   icon,
   title,
   body,
   onCancel,
+  field,
   children,
 }: {
   icon: LucideIcon;
   title: string;
   body: string;
   onCancel: () => void;
+  /** Optional content between the text and the buttons (the author name field). */
+  field?: ReactNode;
   children: ReactNode;
 }) {
   const present = useIsPresent();
@@ -105,6 +108,7 @@ function DialogShell({
         <p id="save-body" className="m-0 mt-2 text-text-muted">
           {body}
         </p>
+        {field}
         <div className="mt-6 flex items-center gap-2">{children}</div>
       </motion.div>
     </motion.div>
