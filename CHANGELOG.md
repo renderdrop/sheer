@@ -6,6 +6,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Redaction is surgical: only text, drawings and image areas inside the marked rectangles are removed; the rest of the page stays real, selectable and searchable text (in Sheer and in other viewers). Pages are never turned into pictures.
+- The live preview while dragging (highlight, text comment, drawing, shapes, signatures) sits exactly under the pointer at every zoom level; highlights follow the text like a selection.
+- Text comments, drawings and shapes can be edited after inserting them (move, resize, restyle, edit text by double-click or Enter) without "This request was invalid".
+- The comments panel no longer fails once a check mark, cross, dot or signature is placed; they are listed with their own icon.
+- Tools stay active after each use until you press Esc or pick Select; selecting something no longer changes the zoom.
+- Starting the tour opens the welcome document in a new tab and never closes or discards your open documents.
+- Drawn signatures: strokes are never joined across pen lifts and are smoothed while you draw.
+
 ## [1.0.0] - 2026-10-04
 
 M7 — Polish and ship.

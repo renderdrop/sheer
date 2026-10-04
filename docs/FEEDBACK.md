@@ -112,14 +112,14 @@ Owner screenshots: `review/owner/` (not tracked).
       page stays text (selectable, searchable); remove only text objects, image areas and vectors inside the rectangle; rasterise at most
       the affected image area, never the page. Acceptance: after redact + save, an unredacted sentence is selectable and findable in Sheer
       and in Edge, the redacted one is not
-- [ ] 2. Live drag preview is offset from the cursor for every tool (highlight, text comment, draw, rectangle, signature); fix the common
+- [x] 2. Live drag preview is offset from the cursor for every tool (highlight, text comment, draw, rectangle, signature); fix the common
       cause in the preview layer's coordinate conversion (zoom, scroll, DPR)
-- [ ] 3. Highlight while dragging shows at the top left instead of on the text; the drag must look like and follow a text selection
-- [ ] 4. Text comment, drawing and rectangle cannot be edited after insertion ("This request was invalid"): check IPC validation
-- [ ] 5. Comments panel shows "Comments could not be read" once a check mark from the Sign menu is placed: handle mark annotations
-- [ ] 6. Tools stay active after an action until Esc or the select tool; no fallback after each annotation
-- [ ] 7. Starting the tour closes the current document and drops changes: open the welcome document in a new tab, never lose unsaved work
-- [ ] 8. Drawn signature: the pad shows raw angular strokes and a guide line that is drawn along; smoothing must apply live; the guide is
+- [x] 3. Highlight while dragging shows at the top left instead of on the text; the drag must look like and follow a text selection
+- [x] 4. Text comment, drawing and rectangle cannot be edited after insertion ("This request was invalid"): check IPC validation
+- [x] 5. Comments panel shows "Comments could not be read" once a check mark from the Sign menu is placed: handle mark annotations
+- [x] 6. Tools stay active after an action until Esc or the select tool; no fallback after each annotation
+- [x] 7. Starting the tour closes the current document and drops changes: open the welcome document in a new tab, never lose unsaved work
+- [x] 8. Drawn signature: the pad shows raw angular strokes and a guide line that is drawn along; smoothing must apply live; the guide is
       not part of the path
 - [ ] Tag v1.0.1 (tester, security-reviewer, annot-smoke, installed-build acceptance)
 
