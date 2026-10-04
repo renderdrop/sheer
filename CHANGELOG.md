@@ -6,6 +6,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+v1.2 "sheer." redesign, in progress (docs/REDESIGN_BRIEF.md, ADR-100 to ADR-102).
+
+### Changed
+- New brand: word mark "sheer.", app icon "s.", Solar Yellow on Canvas/Sand/Mist, flat surfaces, Inter, light only (theme and glass settings removed), ease-out motion tokens.
+- Home: navigation (Home, Recent, Starred, Tools), hero with search over recent files, recent cards with star and "Show in Explorer/Finder", tool rows, a drop-a-PDF empty state.
+- Editor: top bar (back, file name or tabs, zoom, page, undo/redo, search, Done), mode tabs Read · Comment · Fill & Sign · Pages · Edit (keys 1–5) with a tool row per mode (FEEDBACK F14), a properties mini bar above the selection, the Windows menu row with all output commands in File; the right inspector panel is gone.
+- Highlights default to Solar at 45 % multiply with Mint, Sky, Rose, Lavender; strokes Ink plus four tones; new signature sheet.
+- Form banner, red redact band, selection popover (Highlight · Comment · Copy); welcome document redesigned.
+
+### Added
+- Favourites for recent files; reveal a recent file in the file manager.
+- Read tools: hand (pan), text selection, magnifier (also Z held).
+- Brand lint gate, contrast gate and a dev-only component page.
+
 ## [1.1.0] - 2026-10-04
 
 Structure and comfort (FEEDBACK F12).
