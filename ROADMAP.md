@@ -170,19 +170,19 @@ The Stop hook picks the first open `- [ ]` line, so order matters. Scope: `docs/
 
 ## M7 — Polish and ship (v1.0.0)
 
-- [ ] CSP hardening (from M4 security, low): style-src unsafe-inline replaced by nonces/classes
-- [ ] Performance budget: 500-page PDF opens < 1 s, 60 fps scrolling (benchmark); thumbnail list fast scroll (one 34 ms frame at 120 px/frame, F3); scroll-height compression beyond the browser element limit (≈ 8k pages at 400 %), memory-aware cache budget
+- [x] CSP hardening (from M4 security, low): style-src unsafe-inline replaced by nonces/classes
+- [x] Performance budget: 500-page PDF opens < 1 s, 60 fps scrolling (benchmark); thumbnail list fast scroll (one 34 ms frame at 120 px/frame, F3); scroll-height compression beyond the browser element limit (≈ 8k pages at 400 %), memory-aware cache budget
 - [ ] Accessibility pass (WCAG 2.2 AA analog, screen reader labels, focus order)
 - [ ] Recents rows with a 32 × 40 first-page thumbnail (DESIGN §3.11), cached locally at close, no paths to the UI (M1 review minor, deferred)
 - [ ] i18n de/en complete
-- [ ] Per-tool tips (onboarding = welcome-document tour, FEEDBACK F4)
-- [ ] Onboarding steps (F4, moved here by ADR-030): "Highlight" + "Comment", "Reorder pages", "Drag a signature" pages of the welcome document with coach marks + success moment; flip `shipped` in steps.json and regenerate both PDFs
+- [x] Per-tool tips (onboarding = welcome-document tour, FEEDBACK F4)
+- [x] Onboarding steps (F4, moved here by ADR-030): "Highlight" + "Comment", "Reorder pages", "Drag a signature" pages of the welcome document with coach marks + success moment; flip `shipped` in steps.json and regenerate both PDFs
 - [ ] fps measurement in the Tauri window (`node scripts/ui/cdp.mjs fps`, moved here by ADR-030): 60 fps idle, scroll, zoom, panel slide
-- [ ] PDF engine in its own process (crash isolation, ADR)
-- [ ] Crash-safe autosave
-- [ ] Windows installer (FEEDBACK F5): NSIS target (no MSI/WiX default dialog) with own header and sidebar images in Iris and the Sheer icon
-- [ ] Installers: DMG, NSIS (WebView2 bootstrapper); Windows .pdf association via OpenWithProgids, default handler only on opt-in
-- [ ] Signed opt-in updater (minisign public key in repo; private key → BLOCKERS)
+- [x] PDF engine in its own process (crash isolation, ADR)
+- [x] Crash-safe autosave
+- [x] Windows installer (FEEDBACK F5): NSIS target (no MSI/WiX default dialog) with own header and sidebar images in Iris and the Sheer icon
+- [x] Installers: DMG, NSIS (WebView2 bootstrapper); Windows .pdf association via OpenWithProgids, default handler only on opt-in
+- [x] Signed opt-in updater (minisign public key in repo; private key → BLOCKERS)
 - [ ] Full security-reviewer audit, docs/SECURITY.md finalized
 - [ ] Signing/notarization guide in docs/BLOCKERS.md
 - [ ] Politur M7
