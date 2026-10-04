@@ -360,6 +360,9 @@ pub enum LibraryError {
     NotFound,
     /// The key store gave something unusable, or the system has no randomness.
     Key,
+    /// The OS keychain cannot be used now (missing, refused, failed, timed out), so nothing could be stored. A save says so
+    /// instead of keeping the entry in memory and losing it at exit (ADR-107).
+    Keychain,
     /// The file could not be read or written.
     Io(io::Error),
 }
@@ -373,6 +376,7 @@ impl From<LibraryError> for AppError {
             LibraryError::Full => AppError::limit("signatures", MAX_PER_ROLE as u64),
             LibraryError::NotFound => AppError::not_found("signature"),
             LibraryError::Key => AppError::new(ErrorCode::Internal),
+            LibraryError::Keychain => AppError::invalid("keychain"),
             LibraryError::Io(error) => AppError::from(error),
         }
     }
@@ -620,7 +624,7 @@ impl Library {
             art,
         };
         let info = ItemInfo::from(&item);
-        self.change(|items| {
+        self.change(false, |items| {
             if items.iter().filter(|other| other.role == role).count() >= MAX_PER_ROLE {
                 return Err(LibraryError::Full);
             }
@@ -633,7 +637,7 @@ impl Library {
     /// Renames an entry.
     pub fn rename(&self, id: &str, name: &str) -> Result<(), LibraryError> {
         let name = clean_name(name).ok_or(LibraryError::Invalid("name"))?;
-        self.change(|items| {
+        self.change(true, |items| {
             let item = find_mut(items, id)?;
             item.name = name;
             Ok(())
@@ -642,7 +646,7 @@ impl Library {
 
     /// Removes an entry.
     pub fn delete(&self, id: &str) -> Result<(), LibraryError> {
-        self.change(|items| {
+        self.change(true, |items| {
             let at = items
                 .iter()
                 .position(|item| item.id == id)
@@ -738,13 +742,17 @@ impl Library {
     }
 
     /// Applies `edit` to the entries wherever they are, and stores the result: encrypted into the file, or in the session.
+    /// `session_ok` is false for a call that adds something: without a usable keychain it fails with [`LibraryError::Keychain`]
+    /// instead of keeping the new entry in memory only (ADR-107).
     fn change(
         &self,
+        session_ok: bool,
         edit: impl FnOnce(&mut Vec<Item>) -> Result<(), LibraryError>,
     ) -> Result<(), LibraryError> {
         let mut session = self.lock();
         match self.load()? {
             Loaded::Locked => Err(LibraryError::Locked),
+            Loaded::Session if !session_ok => Err(LibraryError::Keychain),
             Loaded::Session => edit(&mut session),
             Loaded::Stored { key, mut items } => {
                 edit(&mut items)?;
@@ -756,9 +764,12 @@ impl Library {
                 // The key is created only now that there is something to protect.
                 match self.keychain.key_or_create() {
                     Ok(key) => self.write(&key, &items),
-                    Err(KeyError::Unavailable | KeyError::Unreadable) => {
+                    Err(KeyError::Unavailable | KeyError::Unreadable) if session_ok => {
                         *session = items;
                         Ok(())
+                    }
+                    Err(KeyError::Unavailable | KeyError::Unreadable) => {
+                        Err(LibraryError::Keychain)
                     }
                     Err(KeyError::Invalid) => Err(LibraryError::Key),
                 }
@@ -1192,31 +1203,25 @@ mod tests {
     }
 
     #[test]
-    fn a_missing_keychain_keeps_entries_for_the_session_and_writes_nothing() {
+    fn a_missing_keychain_says_so_on_save_and_writes_nothing() {
         let dir = TempDir::new();
         let lib = Library::new(
             dir.path().join(DIRECTORY).join(FILE_NAME),
             Keychain::unavailable(),
         );
         assert_eq!(lib.list().unwrap().status, Status::Unavailable);
-        let saved = lib.save(Role::Signature, "tmp", art()).unwrap();
-        let listing = lib.list().unwrap();
-        assert_eq!(listing.status, Status::Unavailable);
-        assert_eq!(listing.items, vec![saved.clone()]);
-        lib.rename(&saved.id, "renamed").unwrap();
-        assert_eq!(lib.source(&saved.id).unwrap().id, saved.id);
-        // Caps hold in the session too.
-        for n in 1..MAX_PER_ROLE {
-            lib.save(Role::Signature, &format!("s{n}"), art()).unwrap();
-        }
+        // Not kept in memory only and lost at exit: the caller is told.
         assert!(matches!(
-            lib.save(Role::Signature, "x", art()),
-            Err(LibraryError::Full)
+            lib.save(Role::Signature, "tmp", art()),
+            Err(LibraryError::Keychain)
         ));
-        lib.delete(&saved.id).unwrap();
-        assert!(!dir.path().join(DIRECTORY).exists(), "nothing on disk");
-        lib.forget_all().unwrap();
         assert!(lib.list().unwrap().items.is_empty());
+        assert!(!dir.path().join(DIRECTORY).exists(), "nothing on disk");
+        assert_eq!(
+            AppError::from(LibraryError::Keychain).code(),
+            ErrorCode::InvalidArgument
+        );
+        lib.forget_all().unwrap();
     }
 
     #[test]
@@ -1229,7 +1234,10 @@ mod tests {
         let path = dir.path().join(DIRECTORY).join(FILE_NAME);
         let before = std::fs::read(&path).unwrap();
         let lib = Library::new(path.clone(), Keychain::unavailable());
-        lib.save(Role::Signature, "session", art()).unwrap();
+        assert!(matches!(
+            lib.save(Role::Signature, "session", art()),
+            Err(LibraryError::Keychain)
+        ));
         assert_eq!(std::fs::read(&path).unwrap(), before);
     }
 
@@ -1311,7 +1319,10 @@ mod tests {
         let before = std::fs::read(&path).unwrap();
         let lib = Library::new(path.clone(), Keychain::new(Box::new(Failing)));
         assert_eq!(lib.list().unwrap().status, Status::Unavailable);
-        lib.save(Role::Signature, "session", art()).unwrap();
+        assert!(matches!(
+            lib.save(Role::Signature, "session", art()),
+            Err(LibraryError::Keychain)
+        ));
         assert_eq!(std::fs::read(&path).unwrap(), before);
         // A corrupt key, on the other hand, locks.
         store.put(Some(vec![1, 2, 3]));
@@ -1389,6 +1400,46 @@ mod tests {
         assert_eq!(lib.list().unwrap().items.len(), 1);
         lib.forget_all().unwrap();
         lib.forget_all().unwrap();
+    }
+
+    /// A restart: every in-memory object is dropped, a new keychain and library are built over the same file and the same store.
+    #[test]
+    fn a_saved_signature_is_listed_after_a_simulated_restart() {
+        let dir = TempDir::new();
+        let store = MemoryStore::default();
+        let saved = library(&dir, &store)
+            .save(Role::Signature, "Kept", art())
+            .unwrap();
+        let again = library(&dir, &store).list().unwrap();
+        assert_eq!(again.status, Status::Ready);
+        assert_eq!(again.items, vec![saved.clone()]);
+        assert_eq!(library(&dir, &store).source(&saved.id).unwrap().art, art());
+    }
+
+    /// The same with the real OS store (and `DeadlineStore`). Run explicitly: `cargo test real_keychain -- --ignored`.
+    #[test]
+    #[ignore = "touches the real OS credential store; run explicitly (CI does)"]
+    fn real_keychain_library_survives_a_restart() {
+        let dir = TempDir::new();
+        let mut tag = [0u8; 8];
+        getrandom::fill(&mut tag).unwrap();
+        let tag: String = tag.iter().map(|b| format!("{b:02x}")).collect();
+        let service = format!("app.sheer.desktop.test-lib-{tag}");
+        let path = dir.path().join(DIRECTORY).join(FILE_NAME);
+        // Removes the credential when the test ends, also on a panic.
+        let _cleanup =
+            crate::storage::keychain::testutil::Cleanup(Keychain::platform_for_service(&service));
+        let first = Library::new(path.clone(), Keychain::platform_for_service(&service));
+        let saved = first.save(Role::Signature, "Kept", art());
+        drop(first);
+        let second = Library::new(path.clone(), Keychain::platform_for_service(&service));
+        let listing = second.list();
+        let cleaned = second.forget_all();
+        let saved = saved.unwrap();
+        let listing = listing.unwrap();
+        assert_eq!(listing.status, Status::Ready);
+        assert_eq!(listing.items, vec![saved]);
+        cleaned.unwrap();
     }
 
     #[test]

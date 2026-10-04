@@ -316,3 +316,43 @@ fn a_document_that_forbids_printing_is_refused() {
     assert!(check_print_permission(Some(PermissionSet::from_list(&[Permission::Print]))).is_ok());
     assert!(check_print_permission(None).is_ok());
 }
+
+/// The print document has visible content (ADR-107): what the print surface paints is the JPEG of each frame, so a frame that decodes
+/// back to a blank sheet would print as one on every platform (macOS CI runs this too). A page with a dark block on white paper must
+/// come back with white paper and dark ink, and a frame whose pixels are all one value is what "blank" means.
+#[test]
+fn a_frame_decodes_back_to_visible_content_not_a_blank_sheet() {
+    let (w, h) = (64u32, 96u32);
+    let mut pixels = vec![255u8; (w * h * 3) as usize];
+    for y in 30..60 {
+        for x in 10..50 {
+            let at = ((y * w + x) * 3) as usize;
+            pixels[at..at + 3].copy_from_slice(&[20, 20, 20]);
+        }
+    }
+    let page = RasterPage {
+        pixels: RasterPixels::Rgb8(pixels),
+        width: w,
+        height: h,
+    };
+    let frame = encode_page(page, PrintOrientation::Portrait, true).unwrap();
+    let decoded = image::load_from_memory_with_format(&frame[16..], image::ImageFormat::Jpeg)
+        .unwrap()
+        .to_luma8();
+    assert_eq!(decoded.dimensions(), (w, h));
+    let dark = decoded.pixels().filter(|p| p.0[0] < 80).count();
+    let white = decoded.pixels().filter(|p| p.0[0] > 200).count();
+    assert!(dark > 800, "ink is visible: {dark}");
+    assert!(white > 2_000, "paper is white: {white}");
+    // A sheet of one value has no content: the check above would fail on it.
+    let blank = RasterPage {
+        pixels: RasterPixels::Rgb8(vec![255; (w * h * 3) as usize]),
+        width: w,
+        height: h,
+    };
+    let frame = encode_page(blank, PrintOrientation::Portrait, true).unwrap();
+    let decoded = image::load_from_memory_with_format(&frame[16..], image::ImageFormat::Jpeg)
+        .unwrap()
+        .to_luma8();
+    assert_eq!(decoded.pixels().filter(|p| p.0[0] < 80).count(), 0);
+}

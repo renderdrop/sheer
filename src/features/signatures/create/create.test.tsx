@@ -170,6 +170,51 @@ describe('signature sheet', () => {
     expect(sig.saveDraftSignature).not.toHaveBeenCalled();
   });
 
+  it('fresh profile: Create before the library status has answered (slow keychain) still saves', async () => {
+    // The first keychain access can take long (macOS asks the user, Windows may scan): list_signatures has not answered yet while the
+    // user already draws and presses Create. Before ADR-107 the save was skipped silently and the draft was placed unsaved.
+    let answer: (value: unknown) => void = () => undefined;
+    lib.listSignatures.mockReturnValue(new Promise((resolve) => (answer = resolve)));
+    sig.saveDraftSignature.mockResolvedValue({ id: 'b'.repeat(32) });
+    const { user } = setup(<SignatureSheetHost />);
+    let result: unknown = 'pending';
+    act(() => {
+      void openSignatureSheet('signature').then((ref) => {
+        result = ref;
+      });
+    });
+    await user.type(await screen.findByRole('textbox'), 'Ada');
+    const create = screen.getByRole('button', { name: 'Create' });
+    await waitFor(() => expect(create.getAttribute('aria-disabled')).toBeNull());
+    await user.click(create);
+    await waitFor(() => expect(result).toEqual({ type: 'library', id: 'b'.repeat(32) }));
+    expect(sig.saveDraftSignature).toHaveBeenCalledWith(7, 'Ada');
+    answer({ status: 'ready', items: [] });
+  });
+
+  it('a save that the keychain refuses shows a message and keeps the sheet open', async () => {
+    sig.saveDraftSignature.mockRejectedValue({
+      code: 'invalid_argument',
+      key: 'error.invalid_argument',
+      retryable: false,
+      params: { what: 'keychain' },
+    });
+    const { user } = setup(<SignatureSheetHost />);
+    let result: unknown = 'pending';
+    act(() => {
+      void openSignatureSheet('signature').then((ref) => {
+        result = ref;
+      });
+    });
+    await user.type(await screen.findByRole('textbox'), 'Ada');
+    const create = screen.getByRole('button', { name: 'Create' });
+    await waitFor(() => expect(create.getAttribute('aria-disabled')).toBeNull());
+    await user.click(create);
+    const alert = await screen.findByText(/Not saved: the system keychain/);
+    expect(alert.getAttribute('role')).toBe('alert');
+    expect(result).toBe('pending');
+  });
+
   it('Cancel resolves with null', async () => {
     const { user } = setup(<SignatureSheetHost />);
     let result: unknown = 'pending';

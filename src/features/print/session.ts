@@ -20,8 +20,17 @@ export const usePrintSurface = create<{ frames: readonly SurfaceFrame[]; printin
   frames: [],
 }));
 
+/** How long the frames stay after the native dialog was told to print (ADR-107): the time its pages need to be laid out and spooled. */
+export const PRINT_GRACE_MS = 30_000;
+/** The longest the frames are kept when no `afterprint` ever comes. */
+export const PRINT_LINGER_MS = 5 * 60_000;
+
+let pendingCleanup: { stop: () => void } | null = null;
+
 /** Revokes every blob URL and empties the surface. */
 export function clearSurface(): void {
+  pendingCleanup?.stop();
+  pendingCleanup = null;
   for (const frame of usePrintSurface.getState().frames) URL.revokeObjectURL(frame.url);
   usePrintSurface.setState({ frames: [] });
 }
@@ -65,20 +74,50 @@ export async function fetchFrames(
 
 /** Puts the frames on the surface and waits until every image is decoded, so the print does not start on blank sheets. */
 export async function stageFrames(frames: readonly SurfaceFrame[]): Promise<void> {
+  // Frames of an earlier print that are still waiting for their cleanup go now.
+  clearSurface();
   flushSync(() => usePrintSurface.setState({ frames }));
   const images = Array.from(document.querySelectorAll<HTMLImageElement>('[data-print-surface] > img'));
   await Promise.all(images.map((image) => (typeof image.decode === 'function' ? image.decode() : Promise.resolve())));
 }
 
-/** Opens the print dialog, and when it returns drops the set and the blob URLs. Failures go to the banner. */
+/**
+ * Clears the surface once the print is over: shortly after `afterprint`, or after [`PRINT_LINGER_MS`] at the latest.
+ * `Webview::print()` returns when the dialog is *opened*, not when it is done: on macOS (WKWebView) it is a sheet that lays out
+ * and paints the page after the user confirms, so a surface emptied at once prints blank pages (ADR-107).
+ */
+function clearWhenPrinted(): void {
+  pendingCleanup?.stop();
+  const timers: ReturnType<typeof setTimeout>[] = [];
+  const onAfterPrint = () => {
+    timers.push(setTimeout(clearSurface, PRINT_GRACE_MS));
+  };
+  window.addEventListener('afterprint', onAfterPrint, { once: true });
+  timers.push(setTimeout(clearSurface, PRINT_LINGER_MS));
+  pendingCleanup = {
+    stop: () => {
+      window.removeEventListener('afterprint', onAfterPrint);
+      timers.forEach(clearTimeout);
+    },
+  };
+}
+
+/**
+ * Opens the print dialog. A dialog that failed to open drops the surface at once and shows the banner; one that opened leaves the
+ * frames in place until the print is over (see [`clearWhenPrinted`]). The set in the backend is released right away: the pages
+ * are blob URLs by now.
+ */
 export async function handOver(printId: number): Promise<void> {
   usePrintSurface.setState({ printing: true });
+  let opened = false;
   try {
     await openPrintDialog(printId);
+    opened = true;
   } catch (caught) {
     useUi.getState().showBanner(toAppError(caught));
   } finally {
-    clearSurface();
+    if (opened) clearWhenPrinted();
+    else clearSurface();
     usePrintSurface.setState({ printing: false });
     await releasePrint(printId).catch(() => undefined);
   }

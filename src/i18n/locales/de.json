@@ -428,6 +428,7 @@
   "error.limit_exceeded.searches": "Es laufen zu viele Suchen. Gleich noch einmal versuchen.",
   "error.invalid_argument.textBox": "Dieser Text enthält ein Zeichen, das die Schrift nicht darstellen kann.",
   "error.invalid_argument.image": "Dieses Bild kann nicht verwendet werden. Wähle eine PNG- oder JPEG-Datei.",
+  "error.invalid_argument.keychain": "Nicht gespeichert: Der System-Schlüsselbund ist nicht erreichbar oder hat den Zugriff verweigert. Prüfe die Schlüsselbund-Berechtigung und versuche es erneut.",
   "error.invalid_argument.crop": "Dieser Zuschnitt ist nicht möglich: Jede Seite muss mindestens 72 × 72 Punkt innerhalb ihres Seitenbereichs behalten.",
   "error.invalid_argument.redaction": "Diese Markierungen können nicht angewendet werden.",
   "error.invalid_argument.password": "Dieses Kennwort ist ungültig. Verwende 1 bis 127 Zeichen ohne Steuerzeichen.",

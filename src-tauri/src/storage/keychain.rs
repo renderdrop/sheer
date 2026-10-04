@@ -89,6 +89,12 @@ impl Keychain {
         Self::with_deadline(platform_store(), DEADLINE)
     }
 
+    /// The platform store under another service name (the real-store round-trip test only).
+    #[cfg(test)]
+    pub(crate) fn platform_for_service(service: &str) -> Self {
+        Self::with_deadline(platform_store_for(service), DEADLINE)
+    }
+
     /// `store` with every call limited to `deadline`.
     pub fn with_deadline(store: Box<dyn SecretStore>, deadline: Duration) -> Self {
         Self::new(Box::new(DeadlineStore::new(store, deadline)))
@@ -248,24 +254,31 @@ impl SecretStore for EntryStore {
 /// The entry of the library key in `store`.
 fn entry_in(
     store: &dyn keyring_core::api::CredentialStoreApi,
+    service: &str,
 ) -> Result<EntryStore, keyring_core::Error> {
     Ok(EntryStore {
-        entry: store.build(SERVICE, USER, None)?,
+        entry: store.build(service, USER, None)?,
     })
 }
 
-#[cfg(windows)]
 fn platform_store() -> Box<dyn SecretStore> {
-    match windows_native_keyring_store::Store::new().and_then(|store| entry_in(store.as_ref())) {
+    platform_store_for(SERVICE)
+}
+
+#[cfg(windows)]
+fn platform_store_for(service: &str) -> Box<dyn SecretStore> {
+    match windows_native_keyring_store::Store::new()
+        .and_then(|store| entry_in(store.as_ref(), service))
+    {
         Ok(store) => Box::new(store),
         Err(_) => Box::new(UnavailableStore),
     }
 }
 
 #[cfg(target_os = "macos")]
-fn platform_store() -> Box<dyn SecretStore> {
+fn platform_store_for(service: &str) -> Box<dyn SecretStore> {
     match apple_native_keyring_store::keychain::Store::new()
-        .and_then(|store| entry_in(store.as_ref()))
+        .and_then(|store| entry_in(store.as_ref(), service))
     {
         Ok(store) => Box::new(store),
         Err(_) => Box::new(UnavailableStore),
@@ -274,7 +287,7 @@ fn platform_store() -> Box<dyn SecretStore> {
 
 /// Linux builds are for development only: no store.
 #[cfg(not(any(windows, target_os = "macos")))]
-fn platform_store() -> Box<dyn SecretStore> {
+fn platform_store_for(_service: &str) -> Box<dyn SecretStore> {
     let _ = entry_in;
     Box::new(UnavailableStore)
 }
@@ -308,6 +321,15 @@ pub(crate) mod testutil {
         }
     }
 
+    /// Forgets the key of a test service when dropped.
+    pub(crate) struct Cleanup(pub Keychain);
+
+    impl Drop for Cleanup {
+        fn drop(&mut self) {
+            let _ = self.0.forget();
+        }
+    }
+
     impl SecretStore for MemoryStore {
         fn get(&self) -> Result<Option<Zeroizing<Vec<u8>>>, StoreError> {
             Ok(self.peek().map(Zeroizing::new))
@@ -325,7 +347,7 @@ pub(crate) mod testutil {
 
 #[cfg(test)]
 mod tests {
-    use super::testutil::MemoryStore;
+    use super::testutil::{Cleanup, MemoryStore};
     use super::*;
 
     #[test]
@@ -421,6 +443,33 @@ mod tests {
             store.keychain().existing_key().unwrap_err(),
             KeyError::Invalid
         );
+    }
+
+    /// Real OS credential store round trip (Credential Manager on Windows, Keychain on macOS). Run explicitly:
+    /// `cargo test platform_store_round_trip -- --ignored`. Uses a unique service name and removes it afterwards.
+    #[test]
+    #[ignore = "touches the real OS credential store; run explicitly (CI does)"]
+    fn platform_store_round_trip() {
+        let mut tag = [0u8; 8];
+        getrandom::fill(&mut tag).unwrap();
+        let tag: String = tag.iter().map(|b| format!("{b:02x}")).collect();
+        let service = format!("app.sheer.desktop.test-{tag}");
+        let first = Keychain::platform_for_service(&service);
+        // Removes the credential when the test ends, also on a panic.
+        let _cleanup = Cleanup(Keychain::platform_for_service(&service));
+        assert_eq!(first.existing_key().unwrap(), None);
+        let key = first.key_or_create().unwrap();
+        // A new instance (a restart) reads the same key.
+        let again = Keychain::platform_for_service(&service);
+        let read = again.existing_key();
+        let same = matches!(&read, Ok(Some(k)) if **k == *key);
+        let cleaned = first.forget();
+        assert!(
+            same,
+            "the key must survive a new keychain instance: {read:?}"
+        );
+        cleaned.unwrap();
+        assert_eq!(again.existing_key().unwrap(), None);
     }
 
     /// A store that never answers (until released).

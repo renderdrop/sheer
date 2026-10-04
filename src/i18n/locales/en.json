@@ -428,6 +428,7 @@
   "error.limit_exceeded.searches": "Too many searches are running. Try again in a moment.",
   "error.invalid_argument.textBox": "This text contains a character the font cannot show.",
   "error.invalid_argument.image": "This image cannot be used. Choose a PNG or JPEG file.",
+  "error.invalid_argument.keychain": "Not saved: the system keychain is unavailable or refused access. Check the keychain permission and try again.",
   "error.invalid_argument.crop": "That crop is not possible: each page must keep at least 72 × 72 points inside its page area.",
   "error.invalid_argument.redaction": "These marks cannot be applied.",
   "error.invalid_argument.password": "That password is not valid. Use 1 to 127 characters without control characters.",

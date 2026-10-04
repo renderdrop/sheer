@@ -97,6 +97,13 @@ jobs:
       - name: Check
         run: npm run check
 
+      # ADR-107: the signature library key against the real OS store (Windows Credential Manager, macOS Keychain on the runner), under
+      # unique service names that the tests remove again. A keychain that cannot be reached on a runner fails the job on purpose.
+      - name: Real credential store round trip
+        if: ${{ !cancelled() }}
+        working-directory: src-tauri
+        run: cargo test --lib -- --ignored platform_store_round_trip real_keychain_library_survives_a_restart
+
       - name: Build debug bundles (unsigned)
         if: env.FULL_RUN == 'true'
         run: npm run tauri -- build --debug

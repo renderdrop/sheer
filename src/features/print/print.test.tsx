@@ -14,7 +14,7 @@ import { useRedact } from '../redact/store';
 import { setup } from '../../test/render';
 import { PrintDialog } from './PrintDialog';
 import { PrintSurface } from './PrintSurface';
-import { usePrintSurface } from './session';
+import { clearSurface, handOver, PRINT_GRACE_MS, PRINT_LINGER_MS, stageFrames, usePrintSurface } from './session';
 
 const print = vi.hoisted(() => ({
   preparePrint: vi.fn(),
@@ -52,6 +52,7 @@ beforeEach(() => {
   resetDocuments();
   useDocuments.getState().add(DOC);
   useUi.setState({ printOpen: true, banner: null });
+  clearSurface();
   usePrintSurface.setState({ frames: [] });
   for (const fn of [...Object.values(print), ...Object.values(jobs)]) fn.mockReset();
   print.getPrintPage.mockResolvedValue(frame);
@@ -98,9 +99,40 @@ describe('the print flow', () => {
     expect(seen).toBe(2);
     expect(HTMLImageElement.prototype.decode).toHaveBeenCalledTimes(2);
     expect(print.openPrintDialog).toHaveBeenCalledWith(9);
+    expect(useUi.getState().printOpen).toBe(false);
+    // The native dialog returns when it is opened (macOS: a sheet that paints after the user confirms): the pages stay until the
+    // print is over, otherwise WKWebView prints blank sheets (ADR-107).
+    expect(usePrintSurface.getState().frames).toHaveLength(2);
+    expect(document.querySelectorAll('[data-print-surface] > img')).toHaveLength(2);
+    expect(revoked).toEqual([]);
+    vi.useFakeTimers();
+    try {
+      act(() => {
+        window.dispatchEvent(new Event('afterprint'));
+        vi.advanceTimersByTime(PRINT_GRACE_MS);
+      });
+    } finally {
+      vi.useRealTimers();
+    }
     expect(revoked).toEqual(created);
     expect(usePrintSurface.getState().frames).toEqual([]);
-    expect(useUi.getState().printOpen).toBe(false);
+  });
+
+  it('drops frames that nobody printed after the linger time', async () => {
+    print.openPrintDialog.mockResolvedValue('webview');
+    await stageFrames([{ url: 'blob:test/linger', width: 100, height: 140 }]);
+    vi.useFakeTimers();
+    try {
+      await handOver(9);
+      expect(usePrintSurface.getState().frames).toHaveLength(1);
+      act(() => {
+        vi.advanceTimersByTime(PRINT_LINGER_MS);
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+    expect(usePrintSurface.getState().frames).toEqual([]);
+    expect(revoked).toEqual(['blob:test/linger']);
   });
 
   it('sends the range and the options, and releases even when the dialog fails', async () => {

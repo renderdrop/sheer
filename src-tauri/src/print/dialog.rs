@@ -5,6 +5,9 @@
 //! on macOS) and answer the `webview` route. The `system` route stays in the contract for the day `unsafe` is allowed for this one
 //! call (see BLOCKERS / ADR-049 §4).
 
+//! `Webview::print()` returns when the dialog is opened, not when printing is done (macOS: a sheet that paints the page after the user
+//! confirms). The caller therefore keeps the print surface in the page until `afterprint` (ADR-107); nothing here waits.
+
 use tauri::WebviewWindow;
 
 use super::PrintRoute;

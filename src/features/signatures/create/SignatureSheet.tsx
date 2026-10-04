@@ -187,7 +187,8 @@ function SheetBody({ id, kind }: { id: number; kind: SignatureRole }) {
   };
 
   const libraryOk = status === 'ready';
-  const willSave = save && libraryOk;
+  // Until the status is known the box counts as usable: a keychain that then turns out to fail is reported by the save itself.
+  const willSave = save && status !== 'locked' && status !== 'unavailable';
   const hasTyped = typed.draft !== null && text.trim() !== '';
   const ready = canCreate({ tab, strokes: strokes.length, typed: hasTyped, image: image !== null, busy });
 
@@ -358,7 +359,7 @@ function SheetBody({ id, kind }: { id: number; kind: SignatureRole }) {
         {tab === 'draw' && <p className="m-0 mt-2 text-sm text-text-muted">{t('sign.keyboardHint')}</p>}
       </div>
 
-      <p role="alert" className="m-0 mt-2 h-4 text-sm text-error-text">
+      <p role="alert" className="m-0 mt-2 min-h-4 text-sm text-error-text">
         {createProblem}
       </p>
       <div className="mt-2 flex items-center gap-2">
