@@ -1107,3 +1107,224 @@ fn the_close_request_is_held_back_in_rust_not_by_the_page() {
     assert!(sources.contains("state.has_open_documents()"));
     assert!(sources.contains("events.request_close()"));
 }
+/// Every `.rs` file under `src/`, as (path relative to `src-tauri`, with forward slashes; text), cut at the first `#[cfg(test)]`
+/// (the unit tests sit at the end of a file and may print and use whatever they need).
+fn production_sources() -> Vec<(String, String)> {
+    fn walk(dir: &std::path::Path, out: &mut Vec<PathBuf>) {
+        for entry in fs::read_dir(dir).unwrap() {
+            let path = entry.unwrap().path();
+            if path.is_dir() {
+                walk(&path, out);
+            } else if path.extension().is_some_and(|e| e == "rs") {
+                out.push(path);
+            }
+        }
+    }
+    let mut files = Vec::new();
+    walk(&root().join("src"), &mut files);
+    files
+        .into_iter()
+        .map(|path| {
+            let name = path
+                .strip_prefix(root())
+                .unwrap()
+                .to_string_lossy()
+                .replace('\\', "/");
+            let text = fs::read_to_string(&path).unwrap();
+            let production = text.split("#[cfg(test)]").next().unwrap().to_owned();
+            (name, production)
+        })
+        .collect()
+}
+
+/// T8: the main window is built in code with a navigation guard and a new-window refusal, from windows the config declares with
+/// `create: false`, and the dev server the guard accepts is the one the config names.
+#[test]
+fn the_webview_can_only_navigate_to_the_app_origin() {
+    let navigation = read("src/security/navigation.rs");
+    assert!(navigation.contains(".on_navigation(|url| allows(url, cfg!(debug_assertions)))"));
+    assert!(navigation.contains(".on_new_window(|_, _| NewWindowResponse::Deny)"));
+    assert!(read("src/lib.rs").contains("security::navigation::create_windows(app)?"));
+    // The dev origin is only accepted in a debug build, and is the config's devUrl.
+    let dev_url = config()["build"]["devUrl"].as_str().unwrap().to_owned();
+    assert_eq!(dev_url, "http://localhost:1420");
+    assert!(navigation.contains("DEV_HOST: &str = \"localhost\""));
+    assert!(navigation.contains("DEV_PORT: u16 = 1420"));
+    // Every window of the base config and of every platform file is left to `create_windows`, or it would exist without the guards.
+    let mut configs = vec![config()];
+    for platform in platform_names() {
+        configs.push(serde_json::from_str(&read(&format!("tauri.{platform}.conf.json"))).unwrap());
+    }
+    for config in configs {
+        for window in config["app"]["windows"].as_array().into_iter().flatten() {
+            assert_eq!(window["create"], Value::Bool(false), "{window}");
+        }
+    }
+}
+
+/// The index just after the parenthesis that closes the call whose argument list opens at `open` (strings are skipped).
+fn call_end(text: &str, open: usize) -> usize {
+    let (mut depth, mut in_string, mut escaped) = (0_u32, false, false);
+    for (offset, c) in text[open..].char_indices() {
+        match (in_string, c) {
+            (true, _) if escaped => escaped = false,
+            (true, '\\') => escaped = true,
+            (true, '"') => in_string = false,
+            (true, _) => {}
+            (false, '"') => in_string = true,
+            (false, '(') => depth += 1,
+            (false, ')') => {
+                depth -= 1;
+                if depth == 0 {
+                    return open + offset + 1;
+                }
+            }
+            _ => {}
+        }
+    }
+    text.len()
+}
+
+/// D6: no log call in production code formats anything but an error value, a reason code or a fixed text. Document content (names,
+/// text, paths) must never reach `eprintln!`/`println!`/`dbg!`; the detail of an error is logged only through `AppError::log`
+/// (debug level only). A new call that formats something else has to be added here, with its reason.
+#[test]
+fn log_calls_format_no_document_strings() {
+    const MACROS: [&str; 5] = ["eprintln!", "eprint!", "println!", "print!", "dbg!"];
+    // Arguments that are known not to carry document content.
+    const ALLOWED_ARGS: [&str; 7] = [
+        "error",
+        "reason",
+        "error.kind()",
+        "error.code()",
+        "index + 1",
+        "self.code",
+        "detail",
+    ];
+    let mut found = 0;
+    for (file, text) in production_sources() {
+        for mac in MACROS {
+            for (start, _) in text.match_indices(mac) {
+                let before = text[..start].chars().next_back();
+                if before.is_some_and(|c| c.is_alphanumeric() || c == '_') {
+                    continue; // `print!` inside `eprint!`: the longer name has its own entry
+                }
+                let line_start = text[..start].rfind('\n').map_or(0, |i| i + 1);
+                if text[line_start..start].trim_start().starts_with("//") {
+                    continue;
+                }
+                let end = call_end(&text, start + mac.len());
+                let call = &text[start..end - 1];
+                found += 1;
+                // Inline `{name}` / `{name:?}` placeholders, then the trailing arguments.
+                let mut args: Vec<String> = Vec::new();
+                let mut rest = call;
+                while let Some(open) = rest.find('{') {
+                    let Some(close) = rest[open..].find('}') else {
+                        break;
+                    };
+                    let inner = &rest[open + 1..open + close];
+                    if !inner.is_empty() {
+                        args.push(inner.split(':').next().unwrap().trim().to_owned());
+                    }
+                    rest = &rest[open + close + 1..];
+                }
+                if let Some((_, after)) = call.rsplit_once("\",") {
+                    args.extend(
+                        after
+                            .split(',')
+                            .map(|arg| arg.trim().to_owned())
+                            .filter(|arg| !arg.is_empty()),
+                    );
+                }
+                for arg in args {
+                    // The child's stderr relay, gated on the detail level (checked below).
+                    let relay = file == "src/engine/transport.rs" && arg == "text.trim_end()";
+                    assert!(
+                        ALLOWED_ARGS.contains(&arg.as_str()) || relay,
+                        "{file}: a log call formats `{arg}`, which may be document content: {call}"
+                    );
+                }
+            }
+        }
+    }
+    assert!(
+        found >= 5,
+        "the scan found {found} log calls: the pattern is broken"
+    );
+    let transport = read("src/engine/transport.rs");
+    let relay = transport.find("sheer-engine: {}").unwrap();
+    let gate = transport.find("detail_logging_enabled()").unwrap();
+    assert!(
+        gate < relay && relay - gate < 200,
+        "the engine's stderr is relayed only at detail level"
+    );
+}
+
+/// D6: the default level hides the detail of an error (the opt-in is `SHEER_LOG=debug` or a debug build), and no logging crate that
+/// could write to a file or the network is a dependency.
+#[test]
+fn logging_is_local_stderr_with_detail_opt_in() {
+    let error = read("src/error.rs");
+    assert!(error.contains("(Some(detail), true) => eprintln!"));
+    assert!(error.contains("debug_build || env_level == Some(\"debug\")"));
+    let manifest = read("Cargo.toml");
+    for logger in ["tracing", "log", "env_logger", "sentry", "tauri-plugin-log"] {
+        let declared = manifest.lines().any(|line| {
+            line.strip_prefix(logger)
+                .is_some_and(|rest| rest.trim_start().starts_with('=') || rest.starts_with('.'))
+        });
+        assert!(!declared, "{logger} is a logging dependency");
+    }
+}
+
+/// P4: nothing in the app opens or extracts an embedded file (attachment). The PDFium and lopdf attachment APIs, and the names of the
+/// structures, appear nowhere in production code outside this allowlist (empty today).
+#[test]
+fn no_code_path_opens_or_extracts_embedded_files() {
+    const FORBIDDEN: [&str; 8] = [
+        "FPDFDoc_GetAttachment",
+        "FPDFDoc_AddAttachment",
+        "FPDFDoc_DeleteAttachment",
+        "FPDFAttachment_",
+        ".attachments()",
+        "EmbeddedFile",
+        "/FileAttachment",
+        "FPDFAnnot_GetFileAttachment",
+    ];
+    const ALLOWLIST: [&str; 0] = [];
+    for (file, text) in production_sources() {
+        if ALLOWLIST.contains(&file.as_str()) {
+            continue;
+        }
+        for word in FORBIDDEN {
+            assert!(
+                !text.contains(word),
+                "{file} uses `{word}`: embedded files must never be opened or extracted (P4)"
+            );
+        }
+    }
+}
+
+/// The recent-preview command takes a recents id and nothing else: the path comes from the backend list, the file name in the cache from
+/// a hash of that path, the read is capped and checked, and the document the preview is made from is one the user opened.
+#[test]
+fn the_thumbnail_commands_take_no_path_from_the_webview() {
+    let source = read("src/commands/thumbnails.rs");
+    let command = source
+        .split("pub async fn get_recent_thumbnail(")
+        .nth(1)
+        .unwrap()
+        .split(')')
+        .next()
+        .unwrap();
+    assert!(
+        command.contains("recent_id: u32") && !command.contains("path"),
+        "{command}"
+    );
+    // `cache_thumbnail` is a method of the state, not a command: nothing registers it with the webview.
+    assert!(!read("src/lib.rs").contains("cache_thumbnail"));
+    assert!(source.contains("self.registry.kind(id) != Some(DocKind::User)"));
+    let thumbs = read("src/storage/thumbs.rs");
+    assert!(thumbs.contains("MAX_THUMB_BYTES + 1") && thumbs.contains("is_thumb_frame(&bytes)"));
+}

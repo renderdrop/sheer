@@ -4,6 +4,7 @@
     "windows": [
       {
         "label": "main",
+        "create": false,
         "title": "Sheer",
         "width": 1100,
         "height": 800,

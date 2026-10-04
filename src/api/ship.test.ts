@@ -39,7 +39,6 @@ const INTERNAL = { code: 'internal', key: 'error.internal', retryable: false };
 const ENTRY = {
   id: 3,
   displayName: 'a.pdf',
-  folder: 'Taxes',
   savedAt: '2026-10-04T10:00:00Z',
   pageCount: 2,
   original: 'changed',
@@ -50,7 +49,7 @@ describe('recovery commands', () => {
     invokeMock.mockResolvedValueOnce([ENTRY, { ...ENTRY, id: 4, folder: null, path: 'C:\\secret.pdf' }]);
     const entries = await listRecoveries();
     expect(invokeMock).toHaveBeenCalledWith('list_recoveries', undefined);
-    expect(entries).toStrictEqual([ENTRY, { ...ENTRY, id: 4, folder: null }]);
+    expect(entries).toStrictEqual([ENTRY, { ...ENTRY, id: 4 }]);
   });
 
   it('treats a malformed record as an internal error', async () => {
@@ -60,7 +59,7 @@ describe('recovery commands', () => {
     }
     invokeMock.mockResolvedValueOnce({ not: 'a list' });
     await expect(listRecoveries()).rejects.toMatchObject({ code: 'internal' });
-    expect(parseRecoveryEntry({ ...ENTRY, folder: 5 })).toBeNull();
+    expect(parseRecoveryEntry({ ...ENTRY, pageCount: 'x' })).toBeNull();
   });
 
   it('restores through the open path and discards by id', async () => {

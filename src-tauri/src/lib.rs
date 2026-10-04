@@ -109,6 +109,9 @@ pub fn run() -> Result<(), AppError> {
             // with `subscribe_menu`. Nothing is installed on Windows.
             app.manage(Arc::new(MenuBridge::new()));
             menu::install(app.handle());
+            // The window, with the navigation and new-window guards (SECURITY T8). Before the startup file below, which looks
+            // the window up.
+            security::navigation::create_windows(app)?;
             // A file the app was started with (Windows: the double-clicked file is on the command line) opens now, while
             // the window loads; its result waits for the UI.
             sources::open_startup_arguments(app.handle());

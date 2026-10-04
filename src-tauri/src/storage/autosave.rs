@@ -15,7 +15,7 @@ use std::collections::{HashMap, HashSet};
 use std::fs::{self, File, OpenOptions};
 use std::io;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
@@ -94,7 +94,6 @@ struct Dead {
 pub struct RecoveryView {
     pub id: u32,
     pub display_name: String,
-    pub folder: Option<String>,
     pub saved_at: u64,
     pub page_count: u32,
     pub original: OriginalState,
@@ -161,6 +160,9 @@ pub struct Autosave {
     inner: Mutex<Inner>,
     saves: AtomicU32,
     running: AtomicBool,
+    /// An upper bound of the bytes in the store: every write adds what it changes, deletions are not subtracted. Only when it
+    /// would put the store over its cap is the real size measured (a walk of the directory) and this value reset to it.
+    store_estimate: AtomicU64,
 }
 
 /// While alive, no autosave write starts (a save is running).
@@ -247,6 +249,14 @@ fn pdf_len(dir: &Path, n: u32) -> Option<u64> {
         .then_some(metadata.len())
 }
 
+/// The size of a regular file, 0 when there is none.
+fn file_len(path: &Path) -> u64 {
+    fs::symlink_metadata(path)
+        .ok()
+        .filter(|metadata| metadata.is_file())
+        .map_or(0, |metadata| metadata.len())
+}
+
 fn store_bytes(root: &Path) -> u64 {
     fn walk(directory: &Path, depth: u32) -> u64 {
         let Ok(entries) = fs::read_dir(directory) else {
@@ -313,6 +323,8 @@ fn scan(root: &Path, own: &Path, now: SystemTime) -> Vec<Dead> {
         let Some(lock) = take_dead_lock(&dir, now) else {
             continue;
         };
+        // A crash in the middle of a snapshot write leaves its hidden temp file here (SECURITY D1).
+        super::atomic::sweep_stale_temp_files(&dir);
         let mut kept = 0;
         for n in record_numbers(&dir) {
             match (read_manifest(&dir, n), pdf_len(&dir, n)) {
@@ -415,8 +427,12 @@ impl Autosave {
             }),
             saves: AtomicU32::new(0),
             running: AtomicBool::new(false),
+            store_estimate: AtomicU64::new(0),
         };
         autosave.enforce_store_cap(0);
+        autosave
+            .store_estimate
+            .store(store_bytes(&autosave.root), Ordering::Relaxed);
         Ok(autosave)
     }
 
@@ -588,9 +604,22 @@ impl Autosave {
             return Ok(Written::TooLarge);
         }
         self.lock().too_large.remove(&snapshot.id);
-        self.enforce_store_cap(len);
-        if store_bytes(&self.root) + len > limits::AUTOSAVE_STORE_MAX {
-            return Err(AppError::limit("autosave", limits::AUTOSAVE_STORE_MAX));
+        let (pdf, manifest_path) = self.own_paths(snapshot.id);
+        let replaced = file_len(&pdf) + file_len(&manifest_path);
+        if self
+            .store_estimate
+            .load(Ordering::Relaxed)
+            .saturating_sub(replaced)
+            + len
+            > limits::AUTOSAVE_STORE_MAX
+        {
+            // The estimate may be high (deletions are not counted): measure before refusing anything.
+            self.enforce_store_cap(len);
+            let actual = store_bytes(&self.root);
+            self.store_estimate.store(actual, Ordering::Relaxed);
+            if actual.saturating_sub(replaced) + len > limits::AUTOSAVE_STORE_MAX {
+                return Err(AppError::limit("autosave", limits::AUTOSAVE_STORE_MAX));
+            }
         }
         let original = snapshot.original.and_then(|path| {
             let metadata = fs::metadata(path).ok()?;
@@ -615,9 +644,12 @@ impl Autosave {
             json = serde_json::to_vec(&manifest)
                 .map_err(|error| AppError::logged(ErrorCode::Internal, error))?;
         }
-        let (pdf, manifest_path) = self.own_paths(snapshot.id);
         write_atomic(&pdf, snapshot.bytes)?;
         write_atomic(&manifest_path, &json)?;
+        self.store_estimate.fetch_add(
+            (len + json.len() as u64).saturating_sub(replaced),
+            Ordering::Relaxed,
+        );
         let mut inner = self.lock();
         if let Some(track) = inner.tracks.get_mut(&snapshot.id) {
             track.written_rev = Some(snapshot.rev);
@@ -693,16 +725,6 @@ impl Autosave {
             .map(|record| RecoveryView {
                 id: record.id,
                 display_name: record.manifest.display_name.clone(),
-                folder: record
-                    .manifest
-                    .original
-                    .as_ref()
-                    .and_then(|original| original.path.parent())
-                    .and_then(Path::file_name)
-                    .map(|name| {
-                        sanitize_text(&name.to_string_lossy(), limits::MAX_DISPLAY_NAME_CHARS)
-                    })
-                    .filter(|name| !name.is_empty()),
                 saved_at: record.manifest.saved_at,
                 page_count: record.manifest.page_count,
                 original: original_state(record.manifest.original.as_ref()),

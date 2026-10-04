@@ -4,7 +4,7 @@ import { toAppError } from './errors';
 
 /*
  * Crash recovery (docs/ARCHITECTURE.md section 5, "Ship (M7)", ADR-053 section 2; commands/recovery.rs). Every record is named by a
- * session-scoped id: the UI never learns a path, only the document's name and the name of its folder.
+ * session-scoped id: the UI never learns a path, only the document's name.
  */
 
 /** Names one recovery record for this session; not stable across runs. */
@@ -17,8 +17,6 @@ export type OriginState = (typeof ORIGIN_STATES)[number];
 export interface RecoveryEntry {
   id: RecoveryId;
   displayName: string;
-  /** The name of the folder the original was in; `null` when unknown. */
-  folder: string | null;
   /** ISO 8601. */
   savedAt: string;
   pageCount: number;
@@ -37,12 +35,11 @@ const count = (value: unknown, max = 0xffff_ffff): value is number =>
 /** One entry from an answer; `null` if it is not one. Extra keys are dropped. */
 export function parseRecoveryEntry(value: unknown): RecoveryEntry | null {
   if (typeof value !== 'object' || value === null) return null;
-  const { id, displayName, folder, savedAt, pageCount, original } = value as Record<string, unknown>;
+  const { id, displayName, savedAt, pageCount, original } = value as Record<string, unknown>;
   if (
     !count(id) ||
     typeof displayName !== 'string' ||
     displayName.length > MAX_TEXT ||
-    !(folder === null || (typeof folder === 'string' && folder.length <= MAX_TEXT)) ||
     typeof savedAt !== 'string' ||
     savedAt.length > 64 ||
     Number.isNaN(Date.parse(savedAt)) ||
@@ -51,7 +48,7 @@ export function parseRecoveryEntry(value: unknown): RecoveryEntry | null {
   ) {
     return null;
   }
-  return { id, displayName, folder, savedAt, pageCount, original: original as OriginState };
+  return { id, displayName, savedAt, pageCount, original: original as OriginState };
 }
 
 /** The documents a crashed session left behind, newest first. Empty when there are none. */

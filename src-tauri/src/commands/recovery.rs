@@ -38,8 +38,6 @@ const TICK: Duration = Duration::from_secs(5);
 pub struct RecoveryEntry {
     pub id: RecoveryId,
     pub display_name: String,
-    /// The last component of the folder the original was in; `None` when unknown.
-    pub folder: Option<String>,
     /// ISO 8601, UTC.
     pub saved_at: String,
     pub page_count: u32,
@@ -205,7 +203,6 @@ impl AppState {
             .map(|view| RecoveryEntry {
                 id: view.id,
                 display_name: view.display_name,
-                folder: view.folder,
                 saved_at: super::annotations::iso8601_utc(view.saved_at),
                 page_count: view.page_count,
                 original: view.original,
@@ -295,9 +292,13 @@ pub fn start_autosave(app: &AppHandle) {
             std::thread::sleep(TICK);
             let round = state.clone();
             // A panic in one round must not end autosave for the session.
-            let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(move || {
+            let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(move || {
                 round.autosave_tick(Instant::now())
             }));
+            if outcome.is_err() {
+                // The payload is not logged: it could carry document text. The panic hook has printed the location.
+                AppError::logged(ErrorCode::Internal, "autosave round panicked").log();
+            }
         });
     if let Err(error) = timer {
         AppError::logged(ErrorCode::Internal, error).log();
@@ -406,14 +407,13 @@ mod tests {
         let entry = RecoveryEntry {
             id: 3,
             display_name: "a.pdf".into(),
-            folder: Some("Taxes".into()),
             saved_at: "2026-10-04T10:00:00Z".into(),
             page_count: 2,
             original: OriginalState::Changed,
         };
         assert_eq!(
             serde_json::to_value(entry).unwrap(),
-            json!({ "id": 3, "displayName": "a.pdf", "folder": "Taxes", "savedAt": "2026-10-04T10:00:00Z", "pageCount": 2, "original": "changed" })
+            json!({ "id": 3, "displayName": "a.pdf", "savedAt": "2026-10-04T10:00:00Z", "pageCount": 2, "original": "changed" })
         );
     }
 }

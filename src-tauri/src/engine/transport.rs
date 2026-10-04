@@ -450,8 +450,11 @@ fn forward_log(stderr: std::process::ChildStderr) {
                 }
             }
         }
-        let text = String::from_utf8_lossy(&line);
-        eprintln!("sheer-engine: {}", text.trim_end());
+        // The child's own diagnostics (a panic message can quote what it was parsing): detail level only (SECURITY D6).
+        if crate::error::detail_logging_enabled() {
+            let text = String::from_utf8_lossy(&line);
+            eprintln!("sheer-engine: {}", text.trim_end());
+        }
     }
 }
 

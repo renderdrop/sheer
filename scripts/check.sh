@@ -5,7 +5,7 @@
 # The full output of a failed step is kept under the directory printed at the end.
 #
 # Steps: PDFium fetch, version sync, tsc, eslint, prettier, vitest, cargo fmt, clippy -D warnings, cargo test,
-#        cargo deny, cargo audit, npm audit, network-crate guard, updater-scope guard, PDF-library import guard, secret scan.
+#        cargo deny, cargo audit, npm audit, network-crate guard, updater-scope guard, PDF-library import guard, secret scan, bundle URL guard.
 set -uo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -187,6 +187,33 @@ guard_secrets() {
   esac
 }
 
+# SECURITY T2: the built bundle names no remote host except XML namespace identifiers (never fetched) and the error-code page that
+# React's production build prints inside a message (text, never loaded; the CSP allows no remote host anyway). Takes the bundle
+# directory as an argument. Prints the host only, never the surrounding code.
+DIST_URL_ALLOWED='^(www\.w3\.org|react\.dev)$'
+
+guard_dist_urls() {
+  local dir="${1:-dist}" hosts host rc=0
+  if [ ! -d "$dir" ]; then
+    echo "error: no bundle at $dir"
+    return 1
+  fi
+  hosts="$(grep -rhoE --binary-files=without-match 'https?://[A-Za-z0-9.-]+' "$dir" | sed -E 's#^https?://##' | sort -u)"
+  for host in $hosts; do
+    if ! printf '%s' "$host" | grep -qE "$DIST_URL_ALLOWED"; then
+      echo "error: remote URL host '$host' in the bundle ($dir)"
+      rc=1
+    fi
+  done
+  return "$rc"
+}
+
+build_and_guard_dist() {
+  local out="$LOG_DIR/dist"
+  npx --no-install vite build --outDir "$out" --emptyOutDir || return 1
+  guard_dist_urls "$out"
+}
+
 # `source scripts/check.sh` with SHEER_CHECK_SOURCE_ONLY=1 only defines the functions (src-tauri/tests/updater_scope.rs).
 if [ "${SHEER_CHECK_SOURCE_ONLY:-}" = 1 ]; then return 0 2>/dev/null || exit 0; fi
 
@@ -213,6 +240,7 @@ step "guard: network crates" guard_network_crates
 step "guard: updater scope" guard_updater_scope
 step "guard: pdf imports" guard_pdf_imports
 step "guard: secrets" guard_secrets
+step "guard: bundle urls" build_and_guard_dist
 
 if [ "${#FAILED[@]}" -eq 0 ]; then
   rm -rf "$LOG_DIR"

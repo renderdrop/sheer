@@ -145,7 +145,7 @@ impl Pump {
     }
 
     /// The first child, before the first job needs it. Not counted against the restart budget; a failure is retried (and counted)
-    /// by the first job.
+    /// by the first job. Confirmed (M7): the unbudgeted spawn is one extra start at most, a wedge or crash after it is counted.
     fn start(&mut self) {
         match (self.spawn)() {
             Ok(transport) => self.transport = Some(transport),

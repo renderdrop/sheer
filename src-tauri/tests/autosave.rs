@@ -133,6 +133,35 @@ fn a_session_that_is_alive_is_not_recovered_and_a_dead_one_is() {
 }
 
 #[test]
+fn the_startup_sweeps_the_stale_temp_files_of_a_dead_session_and_keeps_fresh_ones() {
+    let scratch = Scratch::new("temp-sweep");
+    let root = scratch.app_data().join("autosave");
+    let dead = root.join("dead");
+    put_record(
+        &dead,
+        1,
+        &manifest(now_secs() - 60, "a.pdf"),
+        Some(b"%PDF-1.4 a"),
+    );
+    // The names write_atomic gives: a crashed run (other pid) left one old and one fresh temp file.
+    let stale = dead.join(".1.pdf.4242.3.tmp");
+    let fresh = dead.join(".1.json.4242.4.tmp");
+    std::fs::write(&stale, b"half").unwrap();
+    std::fs::write(&fresh, b"half").unwrap();
+    std::fs::File::options()
+        .write(true)
+        .open(&stale)
+        .unwrap()
+        .set_modified(std::time::SystemTime::now() - Duration::from_secs(2 * 60 * 60))
+        .unwrap();
+    let auto = Autosave::start(&scratch.app_data()).unwrap();
+    assert_eq!(auto.list().len(), 1);
+    assert!(!stale.exists(), "an old temp file is a leftover");
+    assert!(fresh.exists(), "a recent one may belong to a running write");
+    assert!(dead.join("1.pdf").is_file() && dead.join("1.json").is_file());
+}
+
+#[test]
 fn records_older_than_the_retention_are_swept_and_fresh_ones_kept() {
     let scratch = Scratch::new("retention");
     let root = scratch.app_data().join("autosave");
@@ -250,7 +279,6 @@ fn the_original_state_follows_the_file_and_no_path_is_listed() {
     drop(first);
     let auto = Autosave::start(&scratch.app_data()).unwrap();
     let entry = auto.list().remove(0);
-    assert_eq!(entry.folder.as_deref(), Some("Taxes"));
     assert_eq!(entry.original, OriginalState::Unchanged);
     std::fs::write(&original, b"%PDF-1.4 two, longer").unwrap();
     assert_eq!(auto.list()[0].original, OriginalState::Changed);

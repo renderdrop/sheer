@@ -299,7 +299,7 @@ fn io_code(error: &io::Error) -> ErrorCode {
 }
 
 /// Details (paths, OS messages) are logged only in debug builds or with `SHEER_LOG=debug` (SECURITY I4, D6).
-fn detail_logging_enabled() -> bool {
+pub(crate) fn detail_logging_enabled() -> bool {
     static ENABLED: OnceLock<bool> = OnceLock::new();
     *ENABLED.get_or_init(|| {
         detail_logging_for(
