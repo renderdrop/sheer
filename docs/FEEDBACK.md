@@ -209,7 +209,8 @@ mock where no Mac is at hand (ADR-104). After A and B: designer acceptance of th
 - [ ] B7. Typed signature: remove the three current fonts. Collect 8–10 OFL fonts from Google Fonts in the style "thin monoline signature
       with long loops" (candidates: Mea Culpa, Ms Madi, Hurricane, Island Moments, Qwitcher Grypen, Birthstone, Love Light, Petemoss,
       Whisper, Waterfall — check each file's licence), render the name "Dijana Kornelsen" in all of them as
-      `docs/review/signature-fonts.png`. The owner picks five; until then ship all
+      `docs/review/signature-fonts.png`. The owner picks five; until then ship all. **Owner pick (2026-10-05):** Ms Madi (default),
+      Hurricane, Birthstone — in this order; the other seven are not shipped; umlauts and ß checked by the owner
 - [ ] B8. Outline: without bookmarks, derive an outline heuristically from font size and weight, marked "derived"
 - [ ] B9. Comments as margin bubbles: when comments exist, a margin column appears to the right of the page; each bubble at the height of
       its anchor with avatar initial, name, date, text, reply field, resolve — model: the owner's yellow note bubble image. The left panel

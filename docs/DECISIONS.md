@@ -1969,3 +1969,34 @@ milestones v1.3–v1.8, each starting with a designer spec (and an architect ADR
 loop does not pick them before v1.2.0 is tagged.
 
 **Consequences.** R5 starts only after the B items and the mode-layout designer acceptance. B7 ships 8–10 fonts until the owner picks five.
+
+## ADR-106 — F15 A5/A6/A7: comments width, images-to-PDF reads, Enter confirms
+
+**A6 cause.** `HeldImage::reopen()` used `File::try_clone()`, whose duplicate shares the file offset with the original (Windows `DuplicateHandle`, Unix `dup`). The list (`declared_size`), up to four concurrent thumbnail decodes, a re-mounted thumbnail and the job all did `seek(0)` + read on handles of the same file, so one reader could move another's position: truncated or empty reads, decode errors, thumbnails that never load, pages missing (counted as `skipped`). **Fix.** Batch images are read with positional reads (`seek_read` on Windows, `read_at` on Unix) in `HeldImage::read_limited` / `declared_size`, which never use the shared offset; the job (`Inputs::read`) and the preview use it. `reopen()` is test-only now. Size and pixel caps are unchanged (20 MiB file, 8192 px side, 40 MP, stored 4096 px). Errors per image stay visible: the list marks an unreadable image and blocks Create until it is removed; the job reports skipped images in a toast.
+
+**A5.** Card text wraps at spaces (`overflow-wrap: break-word`, not `anywhere`) with `hyphens: auto` for the UI language; only overlong tokens break. The 200 px sidebar is too narrow for a card (icon, type, menu, text), so while the Comments tab shows, the sidebar is at least `COMMENTS_PANEL_MIN` = 280 px (`panelWidthFor`, `src/lib/layout.ts`); the stored width is untouched, the other tabs keep it. `limits.rs` does not mirror panel widths.
+
+**A7.** `isConfirmKey` (Enter, no Shift, no IME composition incl. keyCode 229) confirms: note body closes the popover (commits), note reply and comment compose/reply post, own-reply edits commit. Shift+Enter is a line break. Ctrl/Cmd+Enter keep working as Enter. The free-text box editor on the page keeps Enter as a newline (not in A7).
+
+## ADR-107 — F15 A9/A10: library saves never fall back silently; print surface outlives `Webview::print()`
+
+**A9 cause.** The key and file logic is correct with a real store: a Rust round trip against Windows Credential Manager (new `Keychain`/`Library` after a drop, see the `--ignored` tests) lists the saved entry. What lost signatures was the fallback: when the keychain failed for one call (`Unreadable`: access refused or a platform failure, as on an unsigned macOS build) or timed out (`Unavailable`), `Library::save` kept the entry in memory and answered success, so the sheet closed as if it had saved and the entry was gone at exit. The sheet also treated "status not known yet" as "do not save" and sent the draft without saving. **Fix.** `save` now fails with `invalid_argument` / `what: "keychain"` when no usable keychain exists (rename and delete still act on the session, which can no longer hold entries); the sheet saves unless the status is `locked` or `unavailable` and shows `error.invalid_argument.keychain` (en, de) in its alert line. Tests: `a_saved_signature_is_listed_after_a_simulated_restart` (mock), `a_missing_keychain_says_so_on_save_and_writes_nothing`, the sheet test for the message, and two `#[ignore]` real-store tests (`platform_store_round_trip`, `real_keychain_library_survives_a_restart`) that CI runs on `windows-latest` and `macos-latest` under unique service names they delete.
+
+**A10 cause.** The surface already prints decoded `<img>` frames, not canvases. wry's macOS `print()` runs the print operation as a sheet with `setCanSpawnSeparateThread(true)` and returns at once, so `handOver` revoked the blob URLs and emptied the surface before WKWebView laid out and painted the page: blank sheets. **Fix.** After a dialog that opened, the frames stay (`afterprint` plus 30 s, at the latest 5 min, or the next print) before they are revoked; a dialog that failed to open clears at once. No new unsafe code, no CSP or capability change. **Test.** `print_set::a_frame_decodes_back_to_visible_content_not_a_blank_sheet` (runs on both CI OSes), the session tests for the lifetime. A real macOS print preview is not automated; the owner's "Save as PDF" on the next pre-release is the final check.
+
+## ADR-108 — F15 block B design decisions (DESIGN §3.5, MOTION spells 19–22)
+
+**Status:** accepted (2026-10-05). Source: designer spec for F15 B; owner pick for B7.
+
+**Decision.** (1) B3: mode tabs are a segmented control inside one continuous Sand bar with the tool row (a yellow underline on Sand is
+1.02:1 and fails the 3:1 rule); the active segment is White with a Stone border and Ink label, the active tool keeps Solar plus a 1 px Ink
+hairline. The Sand bar overrides DESIGN §1.2/§2.8 for this bar only. (2) B9: comment margin column 240 px, 16 px from the page; fit
+widths subtract 256 px while it is shown; below 360 px of free page width it collapses to 32 px avatar markers; bubbles stack 8 px apart;
+leader line only on hover/focus. (3) B12 is a trial and an explicit exception to BRAND §18, DESIGN §5 and MOTION rule 5; the designer
+runs the legibility test of DESIGN §3.5 and records the verdict (keep / 0.04 / remove) here. (4) B7: the owner picked three typed
+signature fonts, in this order: **Ms Madi (default), Hurricane, Birthstone** (OFL-1.1, no Reserved Font Name, google/fonts `ofl/`);
+Dancing Script, Great Vibes and Alex Brush are removed, the other seven candidates are not shipped. Existing saved typed signatures keep
+their stored outlines (vector paths, ADR-051); a stored font id that no longer exists falls back to Ms Madi when re-typed.
+
+**Consequences.** The B wave builds from DESIGN §3.5; B3 gets a before/after screenshot (`review/f15/b3-before.png` taken from the
+installed beta).
