@@ -1,7 +1,7 @@
 # STATE
 phase: M7
 version: 0.9.0
-current_item: M7 W3 running: accessibility pass | recents thumbnails | i18n complete | signing guide + SECURITY.md; review of M7 UI wave. Then Politur M7, fps zoom/panel slide measurement, milestone end (tester, full security audit, annot-smoke, csp gate, print gate, designer), v1.0.0 per DoD §8.6 + stop condition 1 (DONE)
+current_item: M7 last wave running: security politur (T8 navigation guard, D1/D6/P4/T2, thumbnail command) | accessibility part 2 (F6 regions, live regions, forced colors) | UI minors + CSP gate coverage | fps zoom/panel measurement. Then milestone end: tester, full security audit, annot-smoke, csp gate, print gate, designer, CI, v1.0.0, DONE
 last_completed: v0.9.0 (tag on 4706a0b; candidate CI 37170218415 green on Windows + macOS; release built)
 loop_count_this_session: 0
 open_blockers: 2 (B-001 UI never seen on a Mac, macOS keychain untested; B-002 code signing)
