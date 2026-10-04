@@ -35,6 +35,10 @@ export const TOOLS = [
   'textBox',
   'image',
   'crop',
+  // v1.2 Lesen mode (FEEDBACK F14, ADR-102): pan by drag, text-only selection, the magnifier lens.
+  'hand',
+  'textSelect',
+  'magnifier',
 ] as const;
 export type ToolId = (typeof TOOLS)[number];
 

@@ -172,6 +172,9 @@ describe('shortcuts per platform', () => {
     'tool-textBox': { macos: 'E', windows: 'E' },
     'tool-image': { macos: 'I', windows: 'I' },
     'tool-crop': { macos: 'K', windows: 'K' },
+    'tool-hand': { macos: null, windows: null },
+    'tool-textSelect': { macos: null, windows: null },
+    'tool-magnifier': { macos: null, windows: null },
   };
 
   it('resolve to the platform modifier and the platform chip', () => {

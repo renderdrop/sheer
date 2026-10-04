@@ -5,6 +5,9 @@ import {
   ChevronUp,
   Combine,
   Crop,
+  Hand,
+  ScanSearch,
+  TextSelect,
   Stamp,
   FileArchive,
   FileImage,
@@ -186,6 +189,10 @@ const TOOL_ACTIONS: readonly ActionDef[] = (
     ['textBox', 'e', TextCursor, 'insert.text'],
     ['image', 'i', ImagePlus, 'insert.image'],
     ['crop', 'k', Crop, 'crop.tool'],
+    // v1.2 Lesen mode (FEEDBACK F14): no single-letter keys; Z held is the magnifier gesture (DESIGN v2 3.2).
+    ['hand', undefined, Hand, 'tools.hand'],
+    ['textSelect', undefined, TextSelect, 'tools.textSelect'],
+    ['magnifier', undefined, ScanSearch, 'tools.magnifier'],
   ] as const satisfies readonly (readonly [ToolId, string | undefined, LucideIcon, PlainKey])[]
 ).map(([tool, key, icon, labelKey]): ActionDef => ({
   id: `tool-${tool}`,
@@ -199,7 +206,8 @@ const TOOL_ACTIONS: readonly ActionDef[] = (
         ? { default: { key }, alternates: [{ key: 'n' }] }
         : { default: { key } },
   group: 'tools',
-  menuBar: tool !== 'form',
+  // The F14 Lesen tools live in the mode tool row only (the menus list modes, DESIGN v2 3.2).
+  menuBar: tool !== 'form' && tool !== 'hand' && tool !== 'textSelect' && tool !== 'magnifier',
   enabled: needsDocument,
   // The key makes the tool active and leaves it so; it is not the toolbar's click, which also releases an active tool.
   run: () => {
