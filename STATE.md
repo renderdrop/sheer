@@ -1,7 +1,7 @@
 # STATE
 phase: M7
 version: 0.9.0
-current_item: M7 Polish and ship — ADR for engine process isolation and updater first, then backend wave (ADR-038); Politur M7 last
+current_item: M7 W0 seams (ADR-053) + onboarding/tips running; v0.9.0 release commit 4706a0b pushed, tag waits for its CI run (37170218415) to be green on both platforms. Then W1 B1 engine process | B2 autosave | B3 updater | B4 packaging/CSP/bench
 last_completed: M6 Convert and output released as v0.9.0 (tag v0.9.0)
 loop_count_this_session: 0
 open_blockers: 2 (B-001 UI never seen on a Mac, macOS keychain untested; B-002 code signing)
