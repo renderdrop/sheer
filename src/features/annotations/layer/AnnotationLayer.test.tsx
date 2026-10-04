@@ -333,7 +333,7 @@ describe('resizing', () => {
       type: 'updateAnnotation',
       id: 1,
       patch: { box: { x: 10, y: 10, w: 50, h: 30 } },
-      coalesce: 'resize:1',
+      coalesce: 'resize.1', // the backend accepts only [A-Za-z0-9._-] in a key
     });
   });
 });
@@ -387,7 +387,7 @@ describe('keyboard', () => {
       type: 'updateAnnotation',
       id: 1,
       patch: { box: { x: 10, y: 10, w: 41, h: 21 } },
-      coalesce: 'resize:1',
+      coalesce: 'resize.1', // the backend accepts only [A-Za-z0-9._-] in a key
     });
   });
 

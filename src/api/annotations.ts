@@ -653,6 +653,8 @@ const KINDS: readonly string[] = [
   'rect',
   'ellipse',
   'line',
+  'signature',
+  'mark',
   'opaque',
 ] satisfies AnnotationKind[];
 

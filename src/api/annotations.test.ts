@@ -273,6 +273,13 @@ describe('list_document_annotations', () => {
     expect(invokeMock).toHaveBeenCalledWith('list_document_annotations', { docId: 4 });
   });
 
+  it('accepts the Fill & Sign marks and signatures among the comments (F11)', async () => {
+    const kinds = ['highlight', 'note', 'freeText', 'ink', 'rect', 'ellipse', 'line', 'mark', 'signature', 'opaque'];
+    invokeMock.mockResolvedValueOnce(kinds.map((kind, id) => ({ ...summary, id, kind })));
+    const listed = await listDocumentAnnotations(4);
+    expect(listed.map((s) => s.kind)).toStrictEqual(kinds);
+  });
+
   it('rejects an answer of the wrong shape', async () => {
     for (const bad of [[{ ...summary, kind: 'nope' }], [{ ...summary, color: [1, 2] }], [{ id: 1 }], 'x']) {
       invokeMock.mockResolvedValueOnce(bad);

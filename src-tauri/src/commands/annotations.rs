@@ -348,7 +348,14 @@ impl AppState {
             }
             let listed = self.model(id, |state| Ok(state.list(page)))?;
             let room = limits::MAX_ANNOTATIONS_PER_DOC.saturating_sub(summaries.len());
-            summaries.extend(listed.iter().take(room).map(AnnotationSummary::of));
+            // Text boxes, images and redaction marks are page content or model-only objects, not comments: not listed.
+            summaries.extend(
+                listed
+                    .iter()
+                    .filter(|a| a.body.is_written_as_annotation())
+                    .take(room)
+                    .map(AnnotationSummary::of),
+            );
         }
         Ok(summaries)
     }
@@ -599,6 +606,35 @@ mod tests {
         );
     }
 
+    #[test]
+    fn the_document_list_has_marks_and_signatures_but_no_text_boxes_images_or_redaction_marks() {
+        let (state, id, _) = state_with_import(1, vec![]);
+        let page = |kind: serde_json::Value| {
+            let mut draft = json!({"pageId": 0, "color": [10, 20, 30]});
+            for (key, value) in kind.as_object().unwrap() {
+                draft[key] = value.clone();
+            }
+            state
+                .apply_command(
+                    id,
+                    command(json!({"type": "createAnnotation", "draft": draft})),
+                )
+                .unwrap();
+        };
+        let b = json!({"x": 10.0, "y": 10.0, "w": 40.0, "h": 40.0});
+        page(json!({"kind": "mark", "box": b, "glyph": "check"}));
+        page(json!({"kind": "note", "at": {"x": 5.0, "y": 5.0}, "icon": "note", "contents": "hi"}));
+        page(
+            json!({"kind": "textBox", "box": b, "text": "page text", "font": "sans", "fontSize": 12.0, "align": "left"}),
+        );
+        let kinds: Vec<_> = state
+            .list_document_annotations(id)
+            .unwrap()
+            .iter()
+            .map(|s| s.kind)
+            .collect();
+        assert_eq!(kinds, ["mark", "note"]);
+    }
     #[test]
     fn a_page_or_document_that_does_not_exist_is_refused_before_the_engine_is_asked() {
         let (state, id, asked) = state_with_import(2, vec![imported("Ink")]);

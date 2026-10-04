@@ -108,7 +108,7 @@ export function useInteraction(params: InteractionParams): Interaction {
           type: 'updateAnnotation',
           id: d.id,
           patch: patchOf(next),
-          coalesce: `resize:${d.id}`,
+          coalesce: `resize.${d.id}`,
         });
       }
     }
