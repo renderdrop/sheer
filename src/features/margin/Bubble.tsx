@@ -75,7 +75,17 @@ export interface BubbleProps {
   onSelect: (thread: Thread) => void;
 }
 
-function Reply({ docId, reply, now, locale }: { docId: number; reply: AnnotationSummary; now: number; locale: string }) {
+function Reply({
+  docId,
+  reply,
+  now,
+  locale,
+}: {
+  docId: number;
+  reply: AnnotationSummary;
+  now: number;
+  locale: string;
+}) {
   const t = useT();
   const full = useAnnotations((state) => state.byDoc[docId]?.byId[reply.id]);
   const author = reply.author ?? t('note.unknownAuthor');

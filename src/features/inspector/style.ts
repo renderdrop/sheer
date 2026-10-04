@@ -76,7 +76,8 @@ export function loadStoredColours(
     const stored = (parsed as Record<string, unknown>)[kind];
     let color = migrateColour(stored, paletteNameOf(kind), fallback);
     // A colour the user applied in "More colours" is kept (DESIGN 3.5 B5) as long as it is in the recent list.
-    if (color === fallback) color = custom.find((known) => Array.isArray(stored) && sameRgb(known, stored as unknown as Rgb)) ?? fallback;
+    if (color === fallback)
+      color = custom.find((known) => Array.isArray(stored) && sameRgb(known, stored as unknown as Rgb)) ?? fallback;
     if (color !== fallback) out[kind] = { color };
   }
   return out;

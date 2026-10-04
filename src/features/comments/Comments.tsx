@@ -105,7 +105,11 @@ export function CommentsList({ docId, entry }: { docId: number; entry: Ready }) 
     card: tokenPx('--comments-card-estimate', HEIGHT_FALLBACK.card) + tokenPx('--space-2', 8),
   }));
   const threads = useMemo(
-    () => sortThreads(filterThreads(entry.threads, view.filter, (pageId) => pageNumberOf(docId, pageId)), view.order),
+    () =>
+      sortThreads(
+        filterThreads(entry.threads, view.filter, (pageId) => pageNumberOf(docId, pageId)),
+        view.order,
+      ),
     [entry.threads, view.filter, view.order, docId],
   );
   const rows = useMemo(() => buildRows(threads, view.order), [threads, view.order]);
