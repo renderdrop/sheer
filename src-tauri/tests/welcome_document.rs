@@ -44,15 +44,12 @@ const K: f64 = 0.5523;
 const EM: f64 = 0.55;
 
 type Rgb = [u8; 3];
-const IRIS_50: Rgb = [0xF4, 0xF5, 0xFF];
-const IRIS_100: Rgb = [0xE1, 0xE2, 0xFF];
-const IRIS_200: Rgb = [0xC9, 0xCA, 0xFF];
-const IRIS_300: Rgb = [0x8E, 0x8E, 0xF2];
-const IRIS_500: Rgb = [0x5B, 0x5B, 0xD6];
-const IRIS_700: Rgb = [0x3A, 0x3A, 0xAB];
-const INK: Rgb = [0x1C, 0x1C, 0x2E];
-const INK_60: Rgb = [0x5F, 0x60, 0x72];
-const INK_30: Rgb = [0xB4, 0xB5, 0xC4];
+const SAND: Rgb = [0xF6, 0xF5, 0xF1];
+const RULE: Rgb = [0xE5, 0xE5, 0xE1];
+const STONE: Rgb = [0x8A, 0x8A, 0x86];
+const SOLAR: Rgb = [0xFF, 0xF8, 0x4D];
+const INK: Rgb = [0x0F, 0x0F, 0x0F];
+const INK_60: Rgb = [0x6F, 0x6F, 0x6B];
 const WHITE: Rgb = [0xFF, 0xFF, 0xFF];
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -257,6 +254,8 @@ fn plan(manifest: &Manifest) -> Vec<Kind> {
 /// Drawing content of one page, in PDF operators.
 struct Canvas {
     ops: String,
+    /// What a `SAND` block is filled with: Sand on the neutral task pages, White on the Sand brand page.
+    block: Rgb,
 }
 
 fn num(value: f64) -> String {
@@ -283,7 +282,10 @@ fn flip(y: f64) -> f64 {
 
 impl Canvas {
     fn new() -> Self {
-        Self { ops: String::new() }
+        Self {
+            ops: String::new(),
+            block: SAND,
+        }
     }
 
     fn raw(&mut self, ops: &str) {
@@ -343,6 +345,7 @@ impl Canvas {
 
     /// A card: fill and a 1 pt stroke.
     fn card(&mut self, rect: Rect, r: f64, fill: Rgb, stroke: Rgb) {
+        let fill = if fill == SAND { self.block } else { fill };
         self.raw(&format!("{} rg {} RG 1 w", rgb(fill), rgb(stroke)));
         self.rounded_rect(rect, r);
         self.raw("B");
@@ -368,12 +371,34 @@ impl Canvas {
         self.polyline(
             &[(cx - 12.0, cy - 6.0), (cx, cy + 6.0), (cx + 12.0, cy - 6.0)],
             2.5,
-            IRIS_500,
+            INK,
         );
     }
 
     fn line(&mut self, x0: f64, x1: f64, y: f64, width: f64, color: Rgb) {
         self.polyline(&[(x0, y), (x1, y)], width, color);
+    }
+
+    /// A line of display text: `tracking` em of letter spacing (negative is tighter), `Tc` in text space.
+    #[allow(clippy::too_many_arguments)]
+    fn display(
+        &mut self,
+        font: u8,
+        size: f64,
+        x: f64,
+        y: f64,
+        color: Rgb,
+        tracking: f64,
+        text: &str,
+    ) {
+        self.raw(&format!(
+            "BT /F{font} {} Tf {} Tc {} rg {} Td {} Tj 0 Tc ET",
+            num(size),
+            num(tracking * size),
+            rgb(color),
+            Self::point(x, y),
+            win_ansi(text)
+        ));
     }
 
     /// One line of text, `font` 1 (Helvetica) or 2 (Helvetica-Bold), with its baseline at `y`.
@@ -453,24 +478,23 @@ impl Doc<'_> {
         title: &str,
         instruction: &str,
     ) {
-        // The band: one axial shading, clipped to the rounded rect.
-        canvas.raw("q");
+        let brand = position == 1;
+        if brand {
+            // The only brand moment: a Sand page with a soft Solar glow (one radial shading, centre in the lower right).
+            canvas.block = WHITE;
+            canvas.raw(&format!(
+                "q {} rg 0 0 {} {} re f /Sh1 sh Q",
+                rgb(SAND),
+                num(PAGE_WIDTH),
+                num(PAGE_HEIGHT)
+            ));
+        }
+        // Chip.
+        canvas.raw(&format!("{} rg", rgb(if brand { WHITE } else { SAND })));
         canvas.rounded_rect(
             Rect {
                 x: MARGIN,
                 y: 48.0,
-                w: CONTENT,
-                h: 128.0,
-            },
-            24.0,
-        );
-        canvas.raw("W n /Sh1 sh Q");
-        // Chip.
-        canvas.raw(&format!("{} rg", rgb(IRIS_100)));
-        canvas.rounded_rect(
-            Rect {
-                x: 72.0,
-                y: 72.0,
                 w: 120.0,
                 h: 24.0,
             },
@@ -478,20 +502,25 @@ impl Doc<'_> {
         );
         canvas.raw("f");
         assert_fits(chip, 10.0, 96.0);
-        canvas.text(2, 10.0, 84.0, 88.0, IRIS_700, chip);
-        // Badge: the printed page number, centred (Helvetica digits are 556/1000 em).
-        canvas.fill_circle(512.0, 84.0, 20.0, WHITE);
+        canvas.text(2, 10.0, 60.0, 64.0, INK, chip);
+        // The printed page number, right aligned (Helvetica digits are 556/1000 em).
         let digits = position.to_string();
-        let width = 0.556 * 20.0 * digits.len() as f64;
-        canvas.text(2, 20.0, 512.0 - width / 2.0, 91.0, IRIS_700, &digits);
-        // Title and instruction.
-        assert_fits(title, 28.0, 456.0);
-        canvas.text(2, 28.0, 72.0, 152.0, WHITE, title);
+        let width = 0.556 * 12.0 * digits.len() as f64;
+        canvas.text(1, 12.0, MARGIN + CONTENT - width, 64.0, INK_60, &digits);
+        // Title: light display type on the brand page, a plain heading on a task page.
+        if brand {
+            assert_fits(title, 40.0, 504.0);
+            canvas.display(1, 40.0, MARGIN, 140.0, INK, -0.04, title);
+        } else {
+            assert_fits(title, 28.0, 504.0);
+            canvas.display(2, 28.0, MARGIN, 140.0, INK, -0.02, title);
+            canvas.line(MARGIN, MARGIN + CONTENT, 168.0, 1.0, RULE);
+        }
         for (index, line) in wrap(instruction, 56).iter().enumerate() {
-            canvas.text(1, 16.0, MARGIN, 216.0 + 24.0 * index as f64, INK, line);
+            canvas.text(1, 16.0, MARGIN, 208.0 + 24.0 * index as f64, INK, line);
         }
         // Footer.
-        canvas.line(MARGIN, MARGIN + CONTENT, 752.0, 1.0, INK_30);
+        canvas.line(MARGIN, MARGIN + CONTENT, 752.0, 1.0, RULE);
         let footer = self.strings.with(
             "welcomePdf.footer",
             &[
@@ -514,8 +543,8 @@ impl Doc<'_> {
                 h,
             },
             16.0,
-            IRIS_50,
-            IRIS_200,
+            SAND,
+            RULE,
         );
         assert_fits(label, 14.0, 360.0);
         canvas.text(2, 14.0, 72.0, y + 32.0, INK, label);
@@ -543,11 +572,11 @@ impl Doc<'_> {
             if id == "open" {
                 // Done: the file opened by itself.
                 let cy = (y + bottom) / 2.0;
-                canvas.fill_circle(516.0, cy, 12.0, IRIS_500);
+                canvas.fill_circle(516.0, cy, 12.0, SOLAR);
                 canvas.polyline(
                     &[(510.0, cy), (514.0, cy + 4.5), (522.0, cy - 5.0)],
                     2.0,
-                    WHITE,
+                    INK,
                 );
             }
             y = bottom + 24.0;
@@ -577,8 +606,8 @@ impl Doc<'_> {
                 h,
             },
             16.0,
-            IRIS_50,
-            IRIS_200,
+            SAND,
+            RULE,
         );
         for (index, line) in lines.iter().enumerate() {
             canvas.text(
@@ -616,13 +645,13 @@ impl Doc<'_> {
             &title,
             &s.t("welcomePdf.p2.text"),
         );
-        canvas.card(target, 16.0, IRIS_50, IRIS_200);
+        canvas.card(target, 16.0, SAND, RULE);
         // Three lines of 5 pt: unreadable at 100 %.
         let lines = wrap(&s.t("welcomePdf.p2.small"), 32);
         assert!(lines.len() <= 3, "{lines:?}");
         // The dashed target frame, 176 x 48, centred in the block (centre 300, 328).
         let (cx, cy) = (target.x + target.w / 2.0, target.y + target.h / 2.0);
-        canvas.raw(&format!("{} RG 1 w [4 4] 0 d", rgb(IRIS_300)));
+        canvas.raw(&format!("{} RG 1 w [4 4] 0 d", rgb(INK_60)));
         canvas.rounded_rect(
             Rect {
                 x: cx - 88.0,
@@ -665,7 +694,7 @@ impl Doc<'_> {
             .step("highlight")
             .target
             .expect("the highlight step has a target");
-        canvas.card(sentence, 16.0, IRIS_50, IRIS_200);
+        canvas.card(sentence, 16.0, SAND, RULE);
         canvas.text(1, 16.0, 72.0, 282.0, INK, &s.t("welcomePdf.p3.sentence"));
         let mut bottom = sentence.y + sentence.h;
         if self.manifest.shipped("comment") {
@@ -681,7 +710,7 @@ impl Doc<'_> {
                 w: CONTENT,
                 h: 96.0,
             };
-            canvas.card(block, 16.0, IRIS_50, IRIS_200);
+            canvas.card(block, 16.0, SAND, RULE);
             let label = format!(
                 "{} {}",
                 self.manifest.number("comment"),
@@ -698,10 +727,10 @@ impl Doc<'_> {
             );
             // The spot: a ring and a dot, centred in the target.
             let (cx, cy) = (spot.x + spot.w / 2.0, spot.y + spot.h / 2.0);
-            canvas.raw(&format!("{} RG 2 w", rgb(IRIS_500)));
+            canvas.raw(&format!("{} RG 2 w", rgb(INK)));
             canvas.circle_path(cx, cy, 12.0);
             canvas.raw("S");
-            canvas.fill_circle(cx, cy, 4.0, IRIS_500);
+            canvas.fill_circle(cx, cy, 4.0, SOLAR);
             bottom = y + block.h;
         }
         if self.manifest.shipped("reorder") {
@@ -717,8 +746,8 @@ impl Doc<'_> {
                     h,
                 },
                 16.0,
-                IRIS_50,
-                IRIS_200,
+                SAND,
+                RULE,
             );
             for (index, line) in lines.iter().enumerate() {
                 canvas.text(1, 12.0, 72.0, y + 32.0 + 16.0 * index as f64, INK_60, line);
@@ -755,7 +784,7 @@ impl Doc<'_> {
                 .step("sign")
                 .target
                 .expect("the sign step has a target");
-            canvas.raw(&format!("{} RG 1 w [4 4] 0 d", rgb(IRIS_300)));
+            canvas.raw(&format!("{} RG 1 w [4 4] 0 d", rgb(INK_60)));
             canvas.rounded_rect(frame, 8.0);
             canvas.raw("S [] 0 d");
             canvas.line(
@@ -763,7 +792,7 @@ impl Doc<'_> {
                 frame.x + frame.w - 24.0,
                 frame.y + 72.0,
                 1.0,
-                INK_30,
+                STONE,
             );
             canvas.text(
                 1,
@@ -830,8 +859,8 @@ impl Doc<'_> {
                 h,
             },
             16.0,
-            IRIS_50,
-            IRIS_200,
+            SAND,
+            RULE,
         );
         canvas.text(
             2,
@@ -856,8 +885,8 @@ impl Doc<'_> {
                 h,
             },
             16.0,
-            IRIS_50,
-            IRIS_200,
+            SAND,
+            RULE,
         );
         for (index, line) in restart.iter().enumerate() {
             canvas.text(1, 12.0, 72.0, y + 32.0 + 16.0 * index as f64, INK_60, line);
@@ -886,8 +915,8 @@ impl Doc<'_> {
                 h,
             },
             16.0,
-            IRIS_50,
-            IRIS_200,
+            SAND,
+            RULE,
         );
         canvas.text(
             2,
@@ -995,14 +1024,11 @@ fn generate(lang: Lang) -> (Vec<u8>, Vec<String>) {
         .object(
             5,
             &format!(
-                "<< /ShadingType 2 /ColorSpace /DeviceRGB /Coords [{} {} {} {}] \
-                 /Function << /FunctionType 2 /Domain [0 1] /C0 [{}] /C1 [{}] /N 1 >> /Extend [true true] >>",
-                num(MARGIN),
-                num(flip(48.0)),
-                num(MARGIN + CONTENT),
-                num(flip(176.0)),
-                rgb(IRIS_500),
-                rgb(IRIS_700)
+                "<< /ShadingType 3 /ColorSpace /DeviceRGB /Coords [520 {} 0 520 {} 400]                  /Function << /FunctionType 2 /Domain [0 1] /C0 [{}] /C1 [{}] /N 2.6 >> /Extend [false true] >>",
+                num(flip(740.0)),
+                num(flip(740.0)),
+                rgb(SOLAR),
+                rgb(SAND)
             ),
         )
         .object(
@@ -1118,9 +1144,9 @@ fn an_edition_is_five_pages_in_m7_and_has_no_images_annotations_links_actions_or
         assert!(text.contains(&format!("/Lang ({})", lang.bcp47())));
         assert!(text.contains("/Info 6 0 R"));
         assert_eq!(
-            text.matches("/ShadingType 2").count(),
+            text.matches("/ShadingType 3").count(),
             1,
-            "one axial shading"
+            "one radial shading"
         );
         assert_eq!(text.matches("/Type /Page ").count(), 5);
     }

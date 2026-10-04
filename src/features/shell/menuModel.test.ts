@@ -48,7 +48,7 @@ describe('the Windows menus built from menu.json', () => {
   it('keep Settings, Exit, Full Screen and About for Windows', () => {
     expect(labels('file')).toEqual(expect.arrayContaining(['Settings…', 'Exit']));
     expect(labels('view')).toContain('Full Screen');
-    expect(labels('help')).toEqual(['Welcome Tour', 'Show Tips Again', '-', 'About Sheer']);
+    expect(labels('help')).toEqual(['Welcome Tour', 'Show Tips Again', '-', 'About sheer.']);
   });
 
   it('take shortcuts from the registry, so the menu and the keys cannot differ', () => {

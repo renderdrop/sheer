@@ -150,7 +150,7 @@ describe('Settings and About, from the toolbar row', () => {
     expect(popover.className).toContain('bg-panel border border-border-subtle shadow-floating');
     await waitFor(() =>
       expect(document.activeElement).toBe(
-        within(within(popover).getByRole('radiogroup', { name: 'Theme' })).getByRole('radio', {
+        within(within(popover).getByRole('radiogroup', { name: 'Language' })).getByRole('radio', {
           name: 'System',
           checked: true,
         }),
@@ -169,7 +169,7 @@ describe('Settings and About, from the toolbar row', () => {
   it('the About command opens the dialog; Esc closes it', async () => {
     const { user } = setup(<Toolbar hasDocument={false} />);
     act(() => void runAction('about'));
-    const dialog = await screen.findByRole('dialog', { name: 'About Sheer' });
+    const dialog = await screen.findByRole('dialog', { name: 'About sheer.' });
     expect(within(dialog).getByText('Version 1.2.3')).not.toBeNull();
     await user.keyboard('{Escape}');
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
@@ -178,7 +178,7 @@ describe('Settings and About, from the toolbar row', () => {
   it('while the dialog is open the shortcuts of the app are off: Ctrl+Comma does not open the popover over it', async () => {
     setup(<Toolbar hasDocument={false} />);
     act(() => useAboutDialog.getState().setOpen(true));
-    const dialog = await screen.findByRole('dialog', { name: 'About Sheer' });
+    const dialog = await screen.findByRole('dialog', { name: 'About sheer.' });
     fireEvent.keyDown(within(dialog).getByRole('button', { name: 'Close' }), { key: ',', ctrlKey: true });
     expect(useSettingsPopover.getState().open).toBe(false);
     expect(screen.getAllByRole('dialog')).toHaveLength(1);
