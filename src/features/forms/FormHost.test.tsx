@@ -101,7 +101,7 @@ describe('the form host', () => {
         <FormPill />
       </>,
     );
-    expect(await screen.findByText('This document has fields you can fill in.')).toBeTruthy();
+    expect(await screen.findByText(/Form detected – 3 fields/)).toBeTruthy();
     expect(screen.getByText('Form')).toBeTruthy();
     expect(forms.getFormFields).toHaveBeenCalledWith(1);
   });
@@ -127,19 +127,15 @@ describe('the form host', () => {
     expect(screen.queryByText('Form')).toBeNull();
   });
 
-  it('the banner toggles the highlight and closes for the session', async () => {
+  it('the banner closes for the session', async () => {
     const { user } = setup(<FormHost />);
-    const toggle = await screen.findByRole('button', { name: 'Highlight fields' });
-    expect(toggle.getAttribute('aria-pressed')).toBe('true');
-    await user.click(toggle);
-    expect(useForms.getState().highlight).toBe(false);
-    expect(screen.getByRole('button', { name: 'Highlight fields' }).getAttribute('aria-pressed')).toBe('false');
+    await screen.findByText(/Form detected/);
     await user.click(screen.getByRole('button', { name: 'Dismiss' }));
-    await waitFor(() => expect(screen.queryByText('This document has fields you can fill in.')).toBeNull());
+    await waitFor(() => expect(screen.queryByText(/Form detected/)).toBeNull());
     expect(useForms.getState().bannerDismissed[1]).toBe(true);
   });
 
-  it('Go to first empty field focuses it', async () => {
+  it('Go to first field focuses the first one', async () => {
     const { user } = setup(
       <>
         <FormHost />
@@ -147,15 +143,15 @@ describe('the form host', () => {
       </>,
     );
     await screen.findByRole('textbox', { name: 'field2' });
-    await user.click(screen.getByRole('button', { name: 'Go to first empty field' }));
-    await waitFor(() => expect((document.activeElement as HTMLElement).getAttribute('aria-label')).toBe('field2'));
+    await user.click(screen.getByRole('button', { name: 'Go to first field' }));
+    await waitFor(() => expect((document.activeElement as HTMLElement).getAttribute('aria-label')).toBe('field1'));
   });
 
   it('the banner shows again for another document, not twice for the same one', async () => {
     render(<FormHost />);
-    await screen.findByText('This document has fields you can fill in.');
+    await screen.findByText(/Form detected/);
     act(() => useForms.getState().dismissBanner(1));
-    await waitFor(() => expect(screen.queryByText('This document has fields you can fill in.')).toBeNull());
+    await waitFor(() => expect(screen.queryByText(/Form detected/)).toBeNull());
     expect(useForms.getState().bannerDismissed[2]).toBeUndefined();
   });
 });

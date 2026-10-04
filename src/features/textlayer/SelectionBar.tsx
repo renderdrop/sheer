@@ -1,9 +1,8 @@
-import { Copy, Highlighter, MessageSquarePlus } from 'lucide-react';
 import { motion } from 'motion/react';
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type RefObject } from 'react';
 import { createPortal } from 'react-dom';
 
-import { Button, IconButton } from '../../components';
+import { Button } from '../../components';
 import { usePopoverMotion } from '../../components/motion';
 import { overlayOffset } from '../../components/tokens';
 import { useT } from '../../i18n';
@@ -63,7 +62,7 @@ export interface SelectionBarProps {
 }
 
 /**
- * The bar over a text selection (DESIGN 3.59 section 1): Add comment, Highlight, Copy. It appears when the selection has settled
+ * The bar over a text selection (DESIGN 3.59 section 1): Highlight, Comment, Copy (DESIGN v2 3.2). It appears when the selection has settled
  * (150 ms after the pointer, 300 ms after the last key), never takes the focus, and hides when the selection goes, the tool changes,
  * Esc is pressed, or the selection scrolls out of the canvas. Primary+Shift+M adds a comment while it shows.
  */
@@ -173,35 +172,24 @@ export function SelectionBar({ docId, region }: SelectionBarProps) {
       }}
       // Taking a pointer on the bar must not collapse the selection it acts on.
       onPointerDown={(event) => event.preventDefault()}
-      className="bg-panel border border-border-subtle shadow-floating fixed z-popover flex h-control-lg items-center gap-1 rounded-panel p-1 text-md text-text"
+      className="bg-panel border border-border-subtle shadow-floating fixed z-popover flex h-control-md items-center gap-1 rounded-md p-1 text-md text-text"
     >
       <Button
         size="sm"
         variant="ghost"
-        icon={MessageSquarePlus}
-        aria-keyshortcuts="Control+Shift+M Meta+Shift+M"
-        onClick={add}
-      >
-        {t('comments.add')}
-      </Button>
-      <span aria-hidden="true" className="h-icon-16 border-0 border-s border-solid border-divider" />
-      <IconButton
-        size="sm"
-        icon={Highlighter}
-        label={t('annot.type.highlight')}
-        keyShortcuts="H"
-        tooltipSide="top"
         onClick={() => {
           setRects(null);
           void markSelection(docId, 'highlight');
         }}
-      />
-      <IconButton
+      >
+        {t('selection.mark')}
+      </Button>
+      <Button size="sm" variant="ghost" aria-keyshortcuts="Control+Shift+M Meta+Shift+M" onClick={add}>
+        {t('selection.comment')}
+      </Button>
+      <Button
         size="sm"
-        icon={Copy}
-        label={t('menu.edit.copy')}
-        keyShortcuts="Control+C Meta+C"
-        tooltipSide="top"
+        variant="ghost"
         onClick={() => {
           // The `copy` event puts the page's own text on the clipboard (`copySelection`).
           if (!document.execCommand('copy')) {
@@ -209,7 +197,9 @@ export function SelectionBar({ docId, region }: SelectionBarProps) {
           }
           setRects(null);
         }}
-      />
+      >
+        {t('selection.copy')}
+      </Button>
     </motion.div>,
     document.body,
   );

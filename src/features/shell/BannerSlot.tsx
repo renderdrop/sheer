@@ -3,6 +3,7 @@ import { RecoveryBanner } from '../recovery/RecoveryBanner';
 import { RedactBanner } from '../redact/RedactBanner';
 import { UpdateBannerRow } from '../update/UpdateBanner';
 import { FormHost } from '../forms/FormHost';
+import { useBannerWinner } from './bannerPriority';
 import { BannerRow, XfaBannerRow } from './Banner';
 
 /**
@@ -11,15 +12,19 @@ import { BannerRow, XfaBannerRow } from './Banner';
  * slot above its body.
  */
 export function BannerSlot() {
+  const winner = useBannerWinner();
   return (
     <div data-region="banner" data-slot="banner" className="flex min-w-0 flex-col">
-      <BannerRow />
-      <RecoveryBanner />
-      <XfaBannerRow />
       <RedactBanner />
       <FormHost />
-      <DropBannerRow />
-      <UpdateBannerRow />
+      {/* The other notices queue behind the redact band and the form banner; they stay mounted, so nothing is lost. */}
+      <div className={winner === 'other' ? 'flex min-w-0 flex-col' : 'hidden'}>
+        <BannerRow />
+        <RecoveryBanner />
+        <XfaBannerRow />
+        <DropBannerRow />
+        <UpdateBannerRow />
+      </div>
     </div>
   );
 }

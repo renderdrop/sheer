@@ -2,7 +2,7 @@ import { announce } from '../../components';
 import { translators } from '../../i18n';
 import { useLocaleStore } from '../../i18n/store';
 import { useUi } from '../../stores/ui';
-import { activeDocId, focusFirstEmpty } from './focus';
+import { activeDocId, focusFirstEmpty, focusFirstField } from './focus';
 import { useForms } from './store';
 
 /**
@@ -31,4 +31,10 @@ export function runNextField(): void {
   const docId = activeDocId();
   if (docId === null) return;
   if (!focusFirstEmpty(docId)) announce(translators[useLocaleStore.getState().locale]('form.allFilled'));
+}
+
+/** The form banner's link: focus the first field. */
+export function runFirstField(): void {
+  const docId = activeDocId();
+  if (docId !== null) focusFirstField(docId);
 }

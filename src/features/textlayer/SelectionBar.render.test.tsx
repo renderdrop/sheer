@@ -1,0 +1,61 @@
+// @vitest-environment jsdom
+import { act, fireEvent, render, screen } from '@testing-library/react';
+import { MotionGlobalConfig } from 'motion/react';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+
+import { useUi } from '../../stores/ui';
+import { SelectionBar, POINTER_SETTLE_MS } from './SelectionBar';
+
+const mark = vi.hoisted(() => vi.fn().mockResolvedValue(true));
+const comment = vi.hoisted(() => vi.fn().mockResolvedValue(undefined));
+vi.mock('../annotations/create/fromSelection', () => ({ markSelection: mark }));
+vi.mock('./comment', () => ({ addCommentFromSelection: comment }));
+vi.mock('./selection', () => ({ hasTextSelection: () => true }));
+
+MotionGlobalConfig.skipAnimations = true;
+
+beforeEach(() => {
+  vi.useFakeTimers();
+  mark.mockClear();
+  comment.mockClear();
+  useUi.setState({ activeTool: 'select' });
+  const rect = { top: 200, bottom: 220, left: 50, right: 150, width: 100, height: 20 } as DOMRect;
+  vi.spyOn(window, 'getSelection').mockReturnValue({
+    rangeCount: 1,
+    getRangeAt: () => ({ getClientRects: () => [rect] }),
+    toString: () => 'text',
+  } as unknown as Selection);
+});
+
+async function open() {
+  const el = document.createElement('div');
+  el.getBoundingClientRect = () => ({ top: 0, bottom: 600, left: 0, right: 800 }) as DOMRect;
+  const region = { current: el };
+  render(<SelectionBar docId={1} region={region} />);
+  act(() => {
+    document.dispatchEvent(new Event('selectionchange'));
+    vi.advanceTimersByTime(POINTER_SETTLE_MS + 400);
+  });
+}
+
+describe('the selection popover', () => {
+  it('offers Highlight, Comment and Copy; Highlight marks the selection', async () => {
+    await open();
+    const bar = screen.getByRole('toolbar');
+    expect([...bar.querySelectorAll('button')].map((b) => b.textContent)).toEqual(['Highlight', 'Comment', 'Copy']);
+    fireEvent.click(screen.getByRole('button', { name: 'Highlight' }));
+    expect(mark).toHaveBeenCalledWith(1, 'highlight');
+    expect(screen.queryByRole('toolbar')).toBeNull();
+  });
+
+  it('Comment starts the comment flow and Esc closes the popover', async () => {
+    await open();
+    fireEvent.click(screen.getByRole('button', { name: 'Comment' }));
+    expect(comment).toHaveBeenCalledWith(1);
+    await open();
+    act(() => {
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+    });
+    expect(screen.queryByRole('toolbar')).toBeNull();
+  });
+});

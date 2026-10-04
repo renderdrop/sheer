@@ -1,14 +1,15 @@
-import { Info, X } from 'lucide-react';
+import { FileText, X } from 'lucide-react';
 import { AnimatePresence, motion } from 'motion/react';
 import { useEffect } from 'react';
 
-import { Button, IconButton } from '../../components';
+import { IconButton } from '../../components';
 import { Icon } from '../../components/Icon';
 import { useRevealMotion } from '../../components/motion';
 import { useT } from '../../i18n';
 import { selectActiveDocument, selectActiveId, useDocuments } from '../../stores/documents';
 import { FlattenDialog } from './FlattenDialog';
-import { runNextField } from './actions';
+import { useBannerWinner, useFormBannerWanted } from '../shell/bannerPriority';
+import { runFirstField } from './actions';
 import { useForms } from './store';
 
 /** Whether the document may have a form to read: its flags say so (a document without them is asked). */
@@ -38,41 +39,39 @@ function useFormEffects(): void {
 }
 
 /**
- * The info banner of a document with fields (DESIGN 3.58, banner 3.12): once per document and session, with the highlight toggle, Go to first empty
- * field and a close button. It pushes the content down like the other banners.
+ * The form banner (DESIGN v2 3.2, 4): Sand, 16 side padding, file-text icon, "Form detected – n fields", a link to the first
+ * field and a 28 close button. Fields are live without a tool. Once per document and session; it yields to the redact band.
  */
 function FormBannerRow() {
   const t = useT();
   const motionProps = useRevealMotion();
   const docId = useDocuments(selectActiveId);
-  const has = useForms((state) => docId !== null && (state.byDoc[docId]?.fields.length ?? 0) > 0);
-  const dismissed = useForms((state) => docId !== null && state.bannerDismissed[docId] === true);
-  const highlight = useForms((state) => state.highlight);
+  const count = useForms((state) => (docId === null ? 0 : (state.byDoc[docId]?.fields.length ?? 0)));
+  const wanted = useFormBannerWanted();
+  const show = useBannerWinner() === 'form' && wanted;
   return (
     <AnimatePresence initial={false}>
-      {has && !dismissed && (
+      {show && (
         <motion.div key="form" {...motionProps} className="shrink-0">
           <div className="px-2 pb-2">
             <div
               role="status"
-              className="bg-panel border border-border-subtle shadow-floating flex min-h-banner-min items-center gap-2 rounded-panel py-2 pe-2 ps-4"
+              data-banner="form"
+              className="t-label flex min-h-control-lg items-center gap-2 rounded-md bg-subtle py-1 pe-1 ps-4 text-text"
             >
               <span className="shrink-0 text-text">
-                <Icon icon={Info} />
+                <Icon icon={FileText} />
               </span>
-              <span className="min-w-0 flex-auto">{t('form.banner')}</span>
-              <Button
-                variant="secondary"
-                size="sm"
-                aria-pressed={highlight}
-                className="aria-pressed:bg-selected"
-                onClick={() => useForms.getState().setHighlight(!highlight)}
-              >
-                {t('form.highlight')}
-              </Button>
-              <Button variant="ghost" size="sm" onClick={runNextField}>
-                {t('form.next')}
-              </Button>
+              <span className="min-w-0 flex-auto">
+                {t('banner.form', { count })} ·{' '}
+                <button
+                  type="button"
+                  className="cursor-pointer border-0 bg-transparent p-0 [font:inherit] text-text underline"
+                  onClick={runFirstField}
+                >
+                  {t('banner.formFirst')}
+                </button>
+              </span>
               <IconButton
                 label={t('action.dismiss')}
                 icon={X}

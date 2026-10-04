@@ -122,7 +122,24 @@ describe('the pending banner', () => {
     expect(screen.getByRole('status').textContent).toContain('2 redaction marks are not applied yet.');
     fireEvent.click(screen.getByRole('button', { name: 'Review' }));
     expect(useUi.getState().redactMode).toBe(true);
-    await waitFor(() => expect(screen.queryByRole('status')).toBeNull());
+    await waitFor(() => expect(screen.queryByText(/not applied yet/)).toBeNull());
+  });
+});
+
+describe('the redact band', () => {
+  it('shows in the mode, Cancel keeps the marks, Apply opens the dialog, and it hides the pending notice', async () => {
+    seed(mark(1, 0));
+    render(<RedactBanner />);
+    expect(screen.getByRole('status').textContent).toContain('1 redaction marks');
+    act(() => useUi.getState().setRedactMode(true));
+    const band = document.querySelector('[data-banner="redact"]');
+    expect(band?.textContent).toContain('Redaction is permanent');
+    await waitFor(() => expect(screen.queryByText(/not applied yet/)).toBeNull());
+    fireEvent.click(screen.getByRole('button', { name: 'Apply' }));
+    expect(useRedact.getState().applyOpen).toBe(true);
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    expect(useUi.getState().redactMode).toBe(false);
+    expect(Object.keys(useRedact.getState().marks[DOC] ?? {})).toEqual(['1']);
   });
 });
 

@@ -53,3 +53,11 @@ export function focusFirstEmpty(docId: number): boolean {
 export function activeDocId(): number | null {
   return selectActiveId(useDocuments.getState());
 }
+
+/** The link of the form banner (DESIGN v2 3.2): focus the first field in tab order. `false` when there is none. */
+export function focusFirstField(docId: number): boolean {
+  const stop = stopsOf(docId)[0];
+  if (stop === undefined) return false;
+  focusStop(docId, stop);
+  return true;
+}
