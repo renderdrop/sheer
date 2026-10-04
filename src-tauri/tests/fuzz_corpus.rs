@@ -218,7 +218,9 @@ fn wedge_then_recovery(name: &'static str, bytes: Vec<u8>) {
     eprintln!("{name}: {codes:?}");
     assert!(!codes.contains(&ErrorCode::Internal), "{name}: {codes:?}");
     let good = fixtures::outline();
-    let after = exercise(&state, "after-the-wedge.pdf", &good);
+    // One file per test: the wedge tests run in parallel in one process, and a shared temp name collided on Windows
+    // while the other test's engine still held the file open.
+    let after = exercise(&state, &format!("after-{name}"), &good);
     assert!(
         after.is_empty(),
         "the engine did not recover after {name}: {after:?}"
