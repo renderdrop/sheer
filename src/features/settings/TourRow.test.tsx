@@ -3,6 +3,7 @@ import { act, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { openWelcomeDocument, type DocumentInfo } from '../../api/documents';
+import { EMPTY_HISTORY, useAnnotations } from '../../stores/annotations';
 import { useDocuments } from '../../stores/documents';
 import { useView } from '../../stores/view';
 import { setup } from '../../test/render';
@@ -21,12 +22,14 @@ const openWelcomeMock = vi.mocked(openWelcomeDocument);
 const documentsInitial = useDocuments.getState();
 const viewInitial = useView.getState();
 const tourInitial = useTour.getState();
+const annotationsInitial = useAnnotations.getState();
 const WELCOME: DocumentInfo = { id: 7, pageCount: 4, displayName: 'Welcome', kind: 'welcome' };
 
 beforeEach(() => {
   useDocuments.setState({ ...documentsInitial }, true);
   useView.setState({ ...viewInitial }, true);
   useTour.setState({ ...tourInitial }, true);
+  useAnnotations.setState({ ...annotationsInitial }, true);
   useSettingsPopover.setState({ open: false });
   openWelcomeMock.mockReset();
   openWelcomeMock.mockResolvedValue({ type: 'opened', document: WELCOME });
@@ -61,16 +64,43 @@ describe('the Welcome tour row', () => {
     expect(screen.getByRole('button', { name: 'Restart tour' })).toBeTruthy();
   });
 
-  it('closes the popover with focus on More, closes the open document and opens the welcome document', async () => {
+  it('closes the popover with focus on More, keeps the dirty document and opens the welcome document in a new tab', async () => {
     const { user } = setup(<Fixture />);
     useView.getState().open(3, 2);
     useDocuments.getState().add({ id: 3, pageCount: 2, displayName: 'a.pdf', kind: 'user' });
+    useAnnotations.setState({
+      byDoc: {
+        3: { rev: 1, byId: {}, loaded: {}, removed: {}, history: { ...EMPTY_HISTORY, canUndo: true, dirty: true } },
+      },
+    });
+    openWelcomeMock.mockImplementation(() => {
+      useView.getState().open(WELCOME.id, WELCOME.pageCount);
+      useDocuments.getState().add(WELCOME);
+      return Promise.resolve({ type: 'opened', document: WELCOME });
+    });
     act(() => openSettings());
     await user.click(screen.getByRole('button', { name: 'Start tour' }));
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
     expect(document.activeElement).toBe(screen.getByRole('button', { name: 'More' }));
-    expect(useDocuments.getState().byId[3]).toBeUndefined();
+    expect(useAnnotations.getState().byDoc[3]?.history).toMatchObject({ dirty: true, canUndo: true });
+    expect(useDocuments.getState().byId[3]).toBeDefined();
+    expect(useDocuments.getState().activeId).toBe(WELCOME.id);
+    expect(useDocuments.getState().order).toEqual([3, WELCOME.id]);
     expect(openWelcomeMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('activates an open welcome tab and restarts the tour there without opening another', async () => {
+    const { user } = setup(<Fixture />);
+    useView.getState().open(WELCOME.id, WELCOME.pageCount);
+    useDocuments.getState().add(WELCOME);
+    useView.getState().open(3, 2);
+    useDocuments.getState().add({ id: 3, pageCount: 2, displayName: 'a.pdf', kind: 'user' });
+    act(() => openSettings());
+    await user.click(screen.getByRole('button', { name: 'Start tour' }));
+    await waitFor(() => expect(useDocuments.getState().activeId).toBe(WELCOME.id));
+    expect(openWelcomeMock).not.toHaveBeenCalled();
+    expect(useTour.getState()).toMatchObject({ docId: WELCOME.id, index: 0 });
+    expect(useDocuments.getState().byId[3]).toBeDefined();
   });
 });
 

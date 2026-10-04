@@ -29,6 +29,11 @@ export function DrawPad({ strokes, onStrokes, colour, initials }: DrawPadProps) 
   const live = useRef<{ pointerId: number; buffer: InkSample[] } | null>(null);
   const livePath = useRef<SVGPathElement>(null);
   const frame = useRef<number | null>(null);
+  /** The finished strokes as of the latest write, so two strokes closed before a re-render still both stay. */
+  const strokesRef = useRef(strokes);
+  useEffect(() => {
+    strokesRef.current = strokes;
+  }, [strokes]);
   /** Only whether a stroke is in progress is state; the growing outline is written to the DOM once per frame. */
   const [drawing, setDrawing] = useState(false);
 
@@ -67,12 +72,26 @@ export function DrawPad({ strokes, onStrokes, colour, initials }: DrawPadProps) 
     }
     cancelFrame();
     paintLive([]);
-    if (current.buffer.length > 0) onStrokes([...strokes, current.buffer]);
+    if (current.buffer.length > 0) {
+      strokesRef.current = [...strokesRef.current, current.buffer];
+      onStrokes(strokesRef.current);
+    }
     setDrawing(false);
   };
 
   const onDown = (event: PointerEvent<HTMLDivElement>) => {
-    if (event.button !== 0 || live.current !== null) return;
+    if (event.button !== 0) return;
+    const stale = live.current;
+    // A pen-up that never arrived must not glue the next stroke onto the old one: close the old stroke first.
+    if (stale !== null) {
+      if (stale.pointerId !== event.pointerId) return;
+      live.current = null;
+      cancelFrame();
+      if (stale.buffer.length > 0) {
+        strokesRef.current = [...strokesRef.current, stale.buffer];
+        onStrokes(strokesRef.current);
+      }
+    }
     event.preventDefault();
     if (typeof pad.current?.setPointerCapture === 'function') pad.current.setPointerCapture(event.pointerId);
     const buffer: InkSample[] = [sampleOf(event)];
@@ -84,6 +103,11 @@ export function DrawPad({ strokes, onStrokes, colour, initials }: DrawPadProps) 
   const onMove = (event: PointerEvent<HTMLDivElement>) => {
     const current = live.current;
     if (current === null || current.pointerId !== event.pointerId) return;
+    // A mouse that moves with no button down has lifted: the stroke is over, hovering is not drawing.
+    if (event.pointerType === 'mouse' && event.buttons === 0) {
+      finish(event);
+      return;
+    }
     const native = event.nativeEvent;
     const batch = typeof native.getCoalescedEvents === 'function' ? native.getCoalescedEvents() : [];
     for (const item of batch.length > 0 ? batch : [native]) {
@@ -108,6 +132,7 @@ export function DrawPad({ strokes, onStrokes, colour, initials }: DrawPadProps) 
       onPointerMove={onMove}
       onPointerUp={finish}
       onPointerCancel={finish}
+      onLostPointerCapture={finish}
       className={`${PAD_SURFACE} h-sig-slot ${initials ? 'w-sig-pad-initials' : 'w-sig-pad'} max-w-full cursor-crosshair touch-none select-none`}
     >
       <span

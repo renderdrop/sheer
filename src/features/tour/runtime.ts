@@ -8,7 +8,7 @@ import { readSlots, usePages } from '../../stores/pages';
 import { useSettings } from '../../stores/settings';
 import { useUi } from '../../stores/ui';
 import { useView } from '../../stores/view';
-import { adoptOpenOutcomes, useViewer } from '../viewer/useViewer';
+import { adoptOpenOutcomes } from '../viewer/useViewer';
 import { isSatisfied, settleDelay, type Baseline, type StepFacts } from './engine';
 import { useTour } from './store';
 import { SHIPPED_STEPS, pageIdOfKind, type TourStep } from './steps';
@@ -169,14 +169,14 @@ export async function restartTour(): Promise<void> {
   // The popover closes with focus on More, where the settings live (DESIGN 3.14).
   document.querySelector<HTMLElement>('[data-toolbar-item="more"]')?.focus({ preventScroll: true });
   useTour.getState().end('restart');
-  // Welcome documents that are open already go first; the backend would close its own anyway.
+  // Never closes anything: the welcome document opens in a new tab beside the open ones, so unsaved work stays. A welcome tab that
+  // is open already is activated and the tour restarts there.
   const documents = useDocuments.getState();
-  for (const id of documents.order) {
-    if (documents.byId[id]?.kind === 'welcome') {
-      useDocuments.getState().setActive(id);
-      useViewer.getState().close();
-    }
+  const existing = documents.order.find((id) => documents.byId[id]?.kind === 'welcome');
+  if (existing !== undefined) {
+    documents.setActive(existing);
+    startTour(existing);
+    return;
   }
-  if (useDocuments.getState().activeId !== null) useViewer.getState().close();
   await openWelcome();
 }
