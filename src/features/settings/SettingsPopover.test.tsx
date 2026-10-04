@@ -218,7 +218,7 @@ describe('the settings popover', () => {
     expect(updateSettingsMock).toHaveBeenLastCalledWith({ language: 'de' });
     // Tab at the last control wraps to the first: the popover keeps focus inside.
     await waitFor(() => expect(checked('Language')).toBe('Deutsch'));
-    // The author name field is the fourth stop, Manage signatures the fifth, the Welcome tour row's button the sixth and the last one.
+    // The author name field is the fourth stop, Manage signatures the fifth, the Help row's two buttons the sixth and the seventh (the last one).
     await user.tab();
     expect(document.activeElement).toBe(within(popover()).getByRole('textbox', { name: 'Author name' }));
     await user.tab();
@@ -226,9 +226,11 @@ describe('the settings popover', () => {
     await user.tab();
     expect(document.activeElement).toBe(within(popover()).getByRole('button', { name: 'Start tour' }));
     await user.tab();
+    expect(document.activeElement).toBe(within(popover()).getByRole('button', { name: 'Show tips again' }));
+    await user.tab();
     expect(document.activeElement).toBe(choose('Theme', 'Light'));
     await user.tab({ shift: true });
-    expect(document.activeElement).toBe(within(popover()).getByRole('button', { name: 'Start tour' }));
+    expect(document.activeElement).toBe(within(popover()).getByRole('button', { name: 'Show tips again' }));
   });
 
   it('shows the error when the backend refuses a change, and no error while all is well', async () => {

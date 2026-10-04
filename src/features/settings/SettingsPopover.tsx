@@ -6,6 +6,7 @@ import { errorText, useT, type Language, type PlainKey } from '../../i18n';
 import { useSettings } from '../../stores/settings';
 import { SegmentedControl, type SegmentOption } from './SegmentedControl';
 import { openSignatureLibrary } from '../signatures/library';
+import { resetTips } from '../tips/runtime';
 import { restartTour } from '../tour/runtime';
 import { useTour } from '../tour/store';
 import { useSettingsPopover } from './state';
@@ -53,10 +54,13 @@ function ToolbarAnchor({ attach, open }: { attach: (element: HTMLElement | null)
 function Setting({
   label,
   hint,
+  live = false,
   children,
 }: {
   label: string;
   hint?: string;
+  /** The hint is a polite live region (its text changes after an action). */
+  live?: boolean;
   children: (labelId: string) => ReactNode;
 }) {
   const labelId = useId();
@@ -66,21 +70,48 @@ function Setting({
         {label}
       </span>
       {children(labelId)}
-      {hint !== undefined && <p className="m-0 text-sm text-text-muted">{hint}</p>}
+      {hint !== undefined && (
+        <p aria-live={live ? 'polite' : undefined} className="m-0 text-sm text-text-muted">
+          {hint}
+        </p>
+      )}
     </div>
   );
 }
 
-/** The welcome tour row (DESIGN 3.14): starts it, or restarts it while it runs; the popover closes and the welcome document opens fresh. */
-function TourRow() {
+/**
+ * The Help row (DESIGN 3.14 Restart, 3.47): the welcome tour (start, or restart while it runs; the popover closes and the welcome
+ * document opens fresh) and "Show tips again". The second is aria-disabled while no tip has been seen; its press is confirmed by
+ * the hint, read politely.
+ */
+function HelpRow() {
   const t = useT();
   const running = useTour((state) => state.docId !== null);
+  const seen = useSettings((state) => state.tipsSeen?.length ?? 0);
+  const [done, setDone] = useState(false);
+  const empty = seen === 0;
   return (
-    <Setting label={t('settings.tour')} hint={t('settings.tour.hint')}>
+    <Setting label={t('settings.help')} hint={done ? t('settings.tips.resetDone') : t('settings.tour.hint')} live>
       {(labelId) => (
-        <Button variant="secondary" size="sm" aria-describedby={labelId} onClick={() => void restartTour()}>
-          {running ? t('settings.tour.restart') : t('settings.tour.start')}
-        </Button>
+        <div className="flex flex-wrap gap-1">
+          <Button variant="secondary" size="sm" aria-describedby={labelId} onClick={() => void restartTour()}>
+            {running ? t('settings.tour.restart') : t('settings.tour.start')}
+          </Button>
+          <Button
+            variant="secondary"
+            size="sm"
+            aria-describedby={labelId}
+            disabled={empty}
+            focusableWhenDisabled
+            onClick={() => {
+              if (empty) return;
+              setDone(true);
+              void resetTips();
+            }}
+          >
+            {t('settings.tips.reset')}
+          </Button>
+        </div>
       )}
     </Setting>
   );
@@ -194,7 +225,7 @@ function SettingsForm() {
       </Setting>
       <AuthorRow />
       <SignaturesRow />
-      <TourRow />
+      <HelpRow />
       {error !== null && (
         <p role="alert" className="m-0 text-sm text-error-text">
           {errorText(t, error)}

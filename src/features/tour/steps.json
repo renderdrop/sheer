@@ -1,6 +1,9 @@
 {
   "version": 1,
-  "page": { "width": 600, "height": 800 },
+  "page": {
+    "width": 600,
+    "height": 800
+  },
   "steps": [
     {
       "id": "open",
@@ -8,7 +11,9 @@
       "ships": "M1",
       "shipped": true,
       "detect": "auto",
-      "anchor": { "a": "status-file-name" }
+      "anchor": {
+        "a": "status-file-name"
+      }
     },
     {
       "id": "navigate",
@@ -16,7 +21,9 @@
       "ships": "M1",
       "shipped": true,
       "detect": "auto",
-      "anchor": { "a": "status-page-button" }
+      "anchor": {
+        "a": "status-page-button"
+      }
     },
     {
       "id": "zoom",
@@ -24,49 +31,106 @@
       "ships": "M1",
       "shipped": true,
       "detect": "auto",
-      "anchor": { "a": "toolbar-zoom-in" },
-      "target": { "x": 48, "y": 248, "w": 504, "h": 160 }
+      "anchor": {
+        "a": "toolbar-zoom-in"
+      },
+      "target": {
+        "x": 48,
+        "y": 248,
+        "w": 504,
+        "h": 160
+      }
     },
     {
       "id": "highlight",
       "page": "M",
       "ships": "M2",
-      "shipped": false,
+      "shipped": true,
       "detect": "auto",
-      "anchor": { "a": "tool-highlight", "b": "target" },
-      "target": { "x": 48, "y": 248, "w": 504, "h": 56 }
+      "anchor": {
+        "a": "tool-highlight",
+        "b": "target"
+      },
+      "target": {
+        "x": 48,
+        "y": 248,
+        "w": 504,
+        "h": 56
+      },
+      "quad": {
+        "x": 72,
+        "y": 268,
+        "w": 288,
+        "h": 18
+      }
     },
     {
       "id": "comment",
       "page": "M",
       "ships": "M2",
-      "shipped": false,
+      "shipped": true,
       "detect": "auto",
-      "anchor": { "a": "tool-comment", "b": "target" },
-      "target": { "x": 468, "y": 380, "w": 24, "h": 24 }
+      "anchor": {
+        "a": "tool-note",
+        "b": "target"
+      },
+      "target": {
+        "x": 468,
+        "y": 380,
+        "w": 24,
+        "h": 24
+      }
     },
     {
       "id": "sign",
       "page": "S",
       "ships": "M4",
-      "shipped": false,
+      "shipped": true,
       "detect": "auto",
-      "anchor": { "a": "tool-signature", "b": "target" },
-      "target": { "x": 48, "y": 248, "w": 288, "h": 96 }
+      "anchor": {
+        "a": "tool-signature",
+        "b": "target"
+      },
+      "target": {
+        "x": 48,
+        "y": 248,
+        "w": 288,
+        "h": 96
+      }
     },
     {
       "id": "reorder",
       "page": "S",
       "ships": "M3",
-      "shipped": false,
+      "shipped": true,
       "detect": "auto",
-      "anchor": { "a": "thumbnails-toggle", "b": "thumbnail-S" }
+      "anchor": {
+        "a": "left-panel",
+        "b": "thumbnail-S"
+      },
+      "from": 4,
+      "to": 3
     }
   ],
   "closingShortcuts": [
-    { "id": "open", "ships": "M1", "keyKey": "welcomePdf.key.open", "actionKey": "welcomePdf.keyAction.open" },
-    { "id": "zoom", "ships": "M1", "keyKey": "welcomePdf.key.zoom", "actionKey": "welcomePdf.keyAction.zoom" },
-    { "id": "page", "ships": "M1", "keyKey": "welcomePdf.key.page", "actionKey": "welcomePdf.keyAction.page" },
+    {
+      "id": "open",
+      "ships": "M1",
+      "keyKey": "welcomePdf.key.open",
+      "actionKey": "welcomePdf.keyAction.open"
+    },
+    {
+      "id": "zoom",
+      "ships": "M1",
+      "keyKey": "welcomePdf.key.zoom",
+      "actionKey": "welcomePdf.keyAction.zoom"
+    },
+    {
+      "id": "page",
+      "ships": "M1",
+      "keyKey": "welcomePdf.key.page",
+      "actionKey": "welcomePdf.keyAction.page"
+    },
     {
       "id": "settings",
       "ships": "M1",

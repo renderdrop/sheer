@@ -44,7 +44,7 @@ describe('the coach mark', () => {
     expect(region.getAttribute('aria-modal')).toBeNull();
     expect(region.hasAttribute('aria-live')).toBe(false);
     expect(region.contains(document.activeElement)).toBe(false);
-    expect(screen.getByText('Step 1 of 3')).toBeTruthy();
+    expect(screen.getByText('Step 1 of 7')).toBeTruthy();
   });
 
   it('describes its anchor by the instruction while the step is on, and lets go of it after', async () => {
@@ -73,7 +73,7 @@ describe('the coach mark', () => {
     expect(useTour.getState().hidden).toBe(true);
     await act(async () => undefined);
     expect(screen.queryByRole('region')).toBeNull();
-    const pill = screen.getByRole('button', { name: /Welcome tour, step 1 of 3/ });
+    const pill = screen.getByRole('button', { name: /Welcome tour, step 1 of 7/ });
     expect(pill.getAttribute('aria-expanded')).toBe('false');
     await user.click(pill);
     expect(useTour.getState().hidden).toBe(false);

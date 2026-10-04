@@ -3,6 +3,7 @@ import { useEffect } from 'react';
 import { announce } from '../../components';
 import { useT } from '../../i18n';
 import { useSettings } from '../../stores/settings';
+import { TipHost } from '../tips/TipHost';
 import { CoachMark } from './CoachMark';
 import { bindTour, maybeFirstLaunch } from './runtime';
 import { SHIPPED_STEPS } from './steps';
@@ -29,9 +30,14 @@ export function TourEffects() {
   useEffect(() => {
     const step = docId === null ? undefined : SHIPPED_STEPS[index];
     if (step === undefined) return;
-    const { title, text } = stepText(t, step.id);
+    const { title, text } = stepText(t, step);
     announce(t('tour.announce', { step: index + 1, total: SHIPPED_STEPS.length, title, text }));
   }, [docId, index, t]);
 
-  return <CoachMark />;
+  return (
+    <>
+      <CoachMark />
+      <TipHost />
+    </>
+  );
 }

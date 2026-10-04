@@ -8,8 +8,10 @@ import { usePopoverMotion } from '../../components/motion';
 import { tokenPx } from '../../components/tokens';
 import { useFloatingPosition } from '../../components/useFloatingPosition';
 import { useT } from '../../i18n';
-import { resolveAnchor, type ResolvedAnchor } from './anchors';
-import { SHIPPED_STEPS } from './steps';
+import { readSlots, usePages } from '../../stores/pages';
+import { resolveAnchor, type AnchorSpec, type ResolvedAnchor } from './anchors';
+import { usePlace } from './place';
+import { SHIPPED_STEPS, pageIdOfKind, type TourStep } from './steps';
 import { useTour } from './store';
 import { stepText } from './text';
 
@@ -111,13 +113,22 @@ function useAnchor(name: string | undefined): ResolvedAnchor | null {
       });
     find();
     window.addEventListener('resize', find);
-    // The toolbar collapses and restores items after its own resize pass; look again once that has settled.
-    const observer = new MutationObserver(find);
-    const toolbar = document.querySelector('[role="toolbar"]');
-    if (toolbar !== null) observer.observe(toolbar, { childList: true, subtree: true });
+    // The toolbar collapses and restores items after its own resize pass, and a panel mounts its thumbnails after it opens: look
+    // again once the DOM has settled (at most once per frame).
+    let frame = 0;
+    const observer = new MutationObserver(() => {
+      if (frame === 0) {
+        frame = requestAnimationFrame(() => {
+          frame = 0;
+          find();
+        });
+      }
+    });
+    observer.observe(document.body, { childList: true, subtree: true });
     return () => {
       window.removeEventListener('resize', find);
       observer.disconnect();
+      cancelAnimationFrame(frame);
     };
   }, [name]);
   return name === undefined ? null : anchor;
@@ -166,6 +177,57 @@ function Ring({ anchor, ringRef }: { anchor: HTMLElement; ringRef: RefObject<HTM
   );
 }
 
+/** Where the card sits next to a canvas target: below it, flipping when there is no room. */
+const TARGET_SPEC: AnchorSpec = { selector: '', side: 'bottom', align: 'center' };
+
+/**
+ * Phase b on the canvas: an invisible fixed box over the step's target rect on its page, following scroll, zoom and panel slides
+ * every frame (DESIGN 3.14). `null` while the page is not on screen (the card then stays at the tool).
+ */
+function useCanvasTarget(docId: number | null, step: TourStep | undefined, active: boolean): HTMLElement | null {
+  const [element, setElement] = useState<HTMLElement | null>(null);
+  const stepId = step?.id;
+  useLayoutEffect(() => {
+    const target = step?.target;
+    const pageId = step === undefined ? null : pageIdOfKind(SHIPPED_STEPS, step.page);
+    if (!active || docId === null || target === undefined || pageId === null) return;
+    const node = document.createElement('div');
+    node.setAttribute('aria-hidden', 'true');
+    node.dataset.tourTarget = '';
+    Object.assign(node.style, { position: 'fixed', pointerEvents: 'none', visibility: 'hidden' });
+    document.body.append(node);
+    let frame = 0;
+    let shown = false;
+    const place = () => {
+      const index = readSlots(docId).findIndex((slot) => slot.id === pageId);
+      const page = index < 0 ? null : document.querySelector<HTMLElement>(`[data-page="${index + 1}"]`);
+      const widthPt = usePages.getState().byDoc[docId]?.[index]?.[0];
+      if (page === null || widthPt === undefined || widthPt <= 0) {
+        if (shown) setElement(null);
+        shown = false;
+      } else {
+        const box = page.getBoundingClientRect();
+        const scale = box.width / widthPt;
+        node.style.left = `${box.left + target.x * scale}px`;
+        node.style.top = `${box.top + target.y * scale}px`;
+        node.style.width = `${target.w * scale}px`;
+        node.style.height = `${target.h * scale}px`;
+        if (!shown) setElement(node);
+        shown = true;
+      }
+      frame = requestAnimationFrame(place);
+    };
+    place();
+    return () => {
+      cancelAnimationFrame(frame);
+      node.remove();
+      setElement(null);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- the step is read through its id; its geometry never changes
+  }, [active, docId, stepId]);
+  return active ? element : null;
+}
+
 interface CardProps {
   anchor: ResolvedAnchor;
 }
@@ -189,7 +251,7 @@ function Card({ anchor }: CardProps) {
   const step = SHIPPED_STEPS[index];
   const total = SHIPPED_STEPS.length;
   const done = phase === 'done';
-  const { title, text } = stepText(t, step?.id ?? '');
+  const { title, text } = stepText(t, step);
   const anchorEl = anchor.element;
 
   useFloatingPosition({
@@ -292,13 +354,18 @@ export function CoachMark() {
   const hidden = useTour((state) => state.hidden);
   const ringRef = useRef<HTMLDivElement>(null);
   const step = docId === null ? undefined : SHIPPED_STEPS[index];
-  const anchor = useAnchor(step?.anchor.a);
+  const place = usePlace(step);
+  const canvasTarget = useCanvasTarget(docId, step, place?.canvasTarget === true);
+  // While the canvas target is not there (page off screen), the tool stays the anchor.
+  const named = useAnchor(place === null ? undefined : place.canvasTarget ? step?.anchor.a : place.name);
+  const anchor: ResolvedAnchor | null =
+    canvasTarget === null ? named : { element: canvasTarget, spec: TARGET_SPEC, inMore: false };
   const yielding = useOverlayOpen(step !== undefined);
 
   // The success moment: the ring pulses and the status bar announces it; the last one also points at the closing page.
   useEffect(() => {
     if (phase !== 'done' || step === undefined) return;
-    const { title } = stepText(t, step.id);
+    const { title } = stepText(t, step);
     const closing = index + 1 >= SHIPPED_STEPS.length ? ` ${t('tour.toClosing')}` : '';
     if (ringRef.current !== null) pulse(ringRef.current, t('tour.done', { title }) + closing);
   }, [phase, step, index, t]);

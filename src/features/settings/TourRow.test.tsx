@@ -6,6 +6,7 @@ import { openWelcomeDocument, type DocumentInfo } from '../../api/documents';
 import { useDocuments } from '../../stores/documents';
 import { useView } from '../../stores/view';
 import { setup } from '../../test/render';
+import { useSettings } from '../../stores/settings';
 import { useTour } from '../tour/store';
 import { SettingsPopover } from './SettingsPopover';
 import { openSettings, useSettingsPopover } from './state';
@@ -53,7 +54,7 @@ describe('the Welcome tour row', () => {
   it('offers Start tour with its hint, and Restart tour while a tour runs', () => {
     setup(<Fixture />);
     act(() => openSettings());
-    expect(screen.getByText('Welcome tour')).toBeTruthy();
+    expect(screen.getByText('Help')).toBeTruthy();
     expect(screen.getByText('Opens the welcome document.')).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Start tour' })).toBeTruthy();
     act(() => useTour.getState().start(1));
@@ -70,5 +71,33 @@ describe('the Welcome tour row', () => {
     expect(document.activeElement).toBe(screen.getByRole('button', { name: 'More' }));
     expect(useDocuments.getState().byId[3]).toBeUndefined();
     expect(openWelcomeMock).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('the Show tips again button', () => {
+  const settingsInitial = useSettings.getState();
+  afterEach(() => useSettings.setState({ ...settingsInitial }, true));
+
+  it('is aria-disabled while no tip was seen, and does nothing then', async () => {
+    const update = vi.fn(() => Promise.resolve());
+    useSettings.setState({ ...settingsInitial, update, tipsSeen: [] }, true);
+    const { user } = setup(<Fixture />);
+    act(() => openSettings());
+    const button = screen.getByRole('button', { name: 'Show tips again' });
+    expect(button.getAttribute('aria-disabled')).toBe('true');
+    await user.click(button);
+    expect(update).not.toHaveBeenCalled();
+  });
+
+  it('clears the seen tips and says so politely in the hint', async () => {
+    const update = vi.fn(() => Promise.resolve());
+    useSettings.setState({ ...settingsInitial, update, tipsSeen: ['draw', 'crop'] }, true);
+    const { user } = setup(<Fixture />);
+    act(() => openSettings());
+    const hint = screen.getByText('Opens the welcome document.');
+    expect(hint.getAttribute('aria-live')).toBe('polite');
+    await user.click(screen.getByRole('button', { name: 'Show tips again' }));
+    expect(update).toHaveBeenCalledWith({ tipsSeen: [] });
+    expect(screen.getByText('Tips will show again.').getAttribute('aria-live')).toBe('polite');
   });
 });

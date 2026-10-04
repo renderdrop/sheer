@@ -3,10 +3,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { updateSettings, type Settings } from '../../api/app';
 import { openWelcomeDocument, type DocumentInfo } from '../../api/documents';
+import type { Annotation } from '../../api/annotations';
+import { EMPTY_HISTORY, useAnnotations } from '../../stores/annotations';
 import { useDocuments } from '../../stores/documents';
+import { usePages } from '../../stores/pages';
 import { useSettings } from '../../stores/settings';
 import { useView } from '../../stores/view';
-import { HOLD_MS, NAVIGATE_SETTLE_MS } from './engine';
+import { HOLD_MS, NAVIGATE_SETTLE_MS, SIGN_SETTLE_MS } from './engine';
 import { LAUNCH_SETTLE_MS, OPEN_SETTLE_MS, bindTour, maybeFirstLaunch, resetFirstLaunch } from './runtime';
 import { useTour } from './store';
 
@@ -26,6 +29,8 @@ const settingsInitial = useSettings.getState();
 const documentsInitial = useDocuments.getState();
 const viewInitial = useView.getState();
 const tourInitial = useTour.getState();
+const annotationsInitial = useAnnotations.getState();
+const pagesInitial = usePages.getState();
 
 const WELCOME: DocumentInfo = { id: 1, pageCount: 4, displayName: 'Welcome', kind: 'welcome' };
 const USER: DocumentInfo = { id: 2, pageCount: 3, displayName: 'a.pdf', kind: 'user' };
@@ -44,6 +49,8 @@ beforeEach(() => {
   useDocuments.setState({ ...documentsInitial }, true);
   useView.setState({ ...viewInitial }, true);
   useTour.setState({ ...tourInitial }, true);
+  useAnnotations.setState({ ...annotationsInitial }, true);
+  usePages.setState({ ...pagesInitial }, true);
   updateSettingsMock.mockReset();
   updateSettingsMock.mockImplementation((patch) => {
     const { glass, theme, language, leftPanelWidth, welcomeTour, authorName, authorPrompt } = useSettings.getState();
@@ -89,8 +96,47 @@ describe('starting', () => {
 });
 
 describe('the steps', () => {
-  it('runs Open, Navigate and Zoom with a success moment between them, then ends', () => {
+  /** Puts annotations into the replica of the welcome document, as a change set would. */
+  function annotate(...annotations: Annotation[]) {
+    const byId = Object.fromEntries(annotations.map((annotation) => [annotation.id, annotation]));
+    useAnnotations.setState({
+      byDoc: { 1: { rev: 1, byId, loaded: {}, removed: {}, history: EMPTY_HISTORY } },
+    });
+  }
+  const base = {
+    color: [0, 0, 0],
+    opacity: 1,
+    contents: '',
+    author: null,
+    modified: null,
+    inReplyTo: null,
+    locked: false,
+    sync: 'new',
+  } as const;
+  const markup = (id: number, pageId: number, x: number, w: number): Annotation => ({
+    ...base,
+    id,
+    pageId,
+    rect: { x, y: 268, w, h: 18 },
+    kind: 'highlight',
+    quads: [
+      [
+        { x, y: 268 },
+        { x: x + w, y: 268 },
+        { x, y: 286 },
+        { x: x + w, y: 286 },
+      ],
+    ],
+  });
+  const slots = (order: number[]) =>
+    usePages.getState().setSlots(
+      1,
+      order.map((id) => ({ id, width: 600, height: 800, rotation: 0, rev: 0, label: null, origin: 'file' as const })),
+    );
+
+  it('runs all seven steps with a success moment between them, then ends', () => {
     show(WELCOME);
+    slots([0, 1, 2, 3, 4]);
     vi.advanceTimersByTime(OPEN_SETTLE_MS);
     expect(tour().phase).toBe('done');
     vi.advanceTimersByTime(HOLD_MS);
@@ -109,6 +155,58 @@ describe('the steps', () => {
     useView.getState().setZoom(1, 0.9);
     expect(tour().phase).toBe('waiting');
     useView.getState().setZoom(1, 1.1);
+    expect(tour().phase).toBe('done');
+    vi.advanceTimersByTime(HOLD_MS);
+    expect(tour()).toMatchObject({ index: 3, phase: 'waiting' });
+
+    // Highlight: too little of the sentence does not count, half of it does.
+    annotate(markup(1, 2, 72, 60));
+    expect(tour().phase).toBe('waiting');
+    annotate(markup(1, 2, 72, 150));
+    expect(tour().phase).toBe('done');
+    vi.advanceTimersByTime(HOLD_MS);
+    expect(tour()).toMatchObject({ index: 4, phase: 'waiting' });
+
+    // Note: a note near the dot, on page M.
+    annotate(markup(1, 2, 72, 150), {
+      ...base,
+      id: 2,
+      pageId: 2,
+      rect: { x: 480, y: 392, w: 24, h: 24 },
+      kind: 'note',
+      at: { x: 481, y: 393 },
+      icon: 'note',
+    });
+    expect(tour().phase).toBe('done');
+    vi.advanceTimersByTime(HOLD_MS);
+    expect(tour()).toMatchObject({ index: 5, phase: 'waiting' });
+
+    // Sign: placed outside the frame first, then dragged in; it counts once it has settled.
+    const signature = (x: number): Annotation => ({
+      ...base,
+      id: 3,
+      pageId: 3,
+      rect: { x, y: 260, w: 120, h: 40 },
+      kind: 'signature',
+      box: { x, y: 260, w: 120, h: 40 },
+      role: 'signature',
+      art: { type: 'asset', assetId: 1, aspect: 3 },
+    });
+    annotate(signature(400));
+    vi.advanceTimersByTime(SIGN_SETTLE_MS * 2);
+    expect(tour().phase).toBe('waiting');
+    annotate(signature(80));
+    vi.advanceTimersByTime(SIGN_SETTLE_MS - 1);
+    expect(tour().phase).toBe('waiting');
+    vi.advanceTimersByTime(1);
+    expect(tour().phase).toBe('done');
+    vi.advanceTimersByTime(HOLD_MS);
+    expect(tour()).toMatchObject({ index: 6, phase: 'waiting' });
+
+    // Reorder: page S above page M, whatever moved it.
+    slots([0, 1, 2, 4, 3]);
+    expect(tour().phase).toBe('waiting');
+    slots([0, 1, 3, 2, 4]);
     expect(tour().phase).toBe('done');
     vi.advanceTimersByTime(HOLD_MS);
     expect(tour().phase).toBe('finishing');

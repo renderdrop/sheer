@@ -134,6 +134,9 @@ struct Step {
     page: String,
     ships: String,
     target: Option<Rect>,
+    /// Reorder: the thumbnail positions in the edition (the page at `from` goes above the page at `to`).
+    from: Option<usize>,
+    to: Option<usize>,
 }
 
 #[derive(Clone, Copy)]
@@ -169,6 +172,8 @@ fn manifest() -> Manifest {
             id: text(&step["id"]),
             page: text(&step["page"]),
             ships: text(&step["ships"]),
+            from: step["from"].as_u64().map(|n| n as usize),
+            to: step["to"].as_u64().map(|n| n as usize),
             target: step.get("target").map(|rect| Rect {
                 x: rect["x"].as_f64().unwrap(),
                 y: rect["y"].as_f64().unwrap(),
@@ -644,6 +649,155 @@ impl Doc<'_> {
         title
     }
 
+    /// Page M (steps Highlight and Note): the sentence in its frame, the spot for the note, and the order hint when Reorder ships.
+    fn markup(&self, canvas: &mut Canvas, position: usize) -> String {
+        let s = self.strings;
+        let title = s.t("welcomePdf.p3.title");
+        self.frame(
+            canvas,
+            position,
+            &self.chip(&self.manifest.numbers_on("M")),
+            &title,
+            &s.t("welcomePdf.p3.text"),
+        );
+        let sentence = self
+            .manifest
+            .step("highlight")
+            .target
+            .expect("the highlight step has a target");
+        canvas.card(sentence, 16.0, IRIS_50, IRIS_200);
+        canvas.text(1, 16.0, 72.0, 282.0, INK, &s.t("welcomePdf.p3.sentence"));
+        let mut bottom = sentence.y + sentence.h;
+        if self.manifest.shipped("comment") {
+            let spot = self
+                .manifest
+                .step("comment")
+                .target
+                .expect("the comment step has a target");
+            let y = bottom + 24.0;
+            let block = Rect {
+                x: MARGIN,
+                y,
+                w: CONTENT,
+                h: 96.0,
+            };
+            canvas.card(block, 16.0, IRIS_50, IRIS_200);
+            let label = format!(
+                "{} {}",
+                self.manifest.number("comment"),
+                s.t("tour.step.comment.title")
+            );
+            canvas.text(2, 14.0, 72.0, y + 32.0, INK, &label);
+            canvas.text(
+                1,
+                12.0,
+                72.0,
+                y + 56.0,
+                INK_60,
+                &s.t("tour.step.comment.text"),
+            );
+            // The spot: a ring and a dot, centred in the target.
+            let (cx, cy) = (spot.x + spot.w / 2.0, spot.y + spot.h / 2.0);
+            canvas.raw(&format!("{} RG 2 w", rgb(IRIS_500)));
+            canvas.circle_path(cx, cy, 12.0);
+            canvas.raw("S");
+            canvas.fill_circle(cx, cy, 4.0, IRIS_500);
+            bottom = y + block.h;
+        }
+        if self.manifest.shipped("reorder") {
+            let n = self.manifest.number("reorder").to_string();
+            let lines = wrap(&s.with("welcomePdf.order", &[("n", n)]), 64);
+            let y = bottom + 24.0;
+            let h = 32.0 + 16.0 * (lines.len() as f64 - 1.0) + 24.0;
+            canvas.card(
+                Rect {
+                    x: MARGIN,
+                    y,
+                    w: CONTENT,
+                    h,
+                },
+                16.0,
+                IRIS_50,
+                IRIS_200,
+            );
+            for (index, line) in lines.iter().enumerate() {
+                canvas.text(1, 12.0, 72.0, y + 32.0 + 16.0 * index as f64, INK_60, line);
+            }
+        }
+        title
+    }
+
+    /// Page S (steps Sign and Reorder): the signature frame, then the reorder task.
+    fn sign_and_sort(&self, canvas: &mut Canvas, position: usize) -> String {
+        let s = self.strings;
+        let signs = self.manifest.shipped("sign");
+        let title = if signs {
+            s.t("welcomePdf.sign.title")
+        } else {
+            s.t("tour.step.reorder.title")
+        };
+        let instruction = if signs {
+            s.t("welcomePdf.sign.text")
+        } else {
+            self.reorder_text()
+        };
+        self.frame(
+            canvas,
+            position,
+            &self.chip(&self.manifest.numbers_on("S")),
+            &title,
+            &instruction,
+        );
+        let mut bottom = 248.0;
+        if signs {
+            let frame = self
+                .manifest
+                .step("sign")
+                .target
+                .expect("the sign step has a target");
+            canvas.raw(&format!("{} RG 1 w [4 4] 0 d", rgb(IRIS_300)));
+            canvas.rounded_rect(frame, 8.0);
+            canvas.raw("S [] 0 d");
+            canvas.line(
+                frame.x + 24.0,
+                frame.x + frame.w - 24.0,
+                frame.y + 72.0,
+                1.0,
+                INK_30,
+            );
+            canvas.text(
+                1,
+                9.0,
+                frame.x + 24.0,
+                frame.y + 88.0,
+                INK_60,
+                &s.t("welcomePdf.sign.label"),
+            );
+            bottom = frame.y + frame.h + 48.0;
+        }
+        if self.manifest.shipped("reorder") && signs {
+            let label = format!(
+                "{} {}",
+                self.manifest.number("reorder"),
+                s.t("tour.step.reorder.title")
+            );
+            self.task_block(canvas, bottom, &label, &self.reorder_text());
+        }
+        title
+    }
+
+    /// The reorder instruction with its two thumbnail positions from `steps.json`.
+    fn reorder_text(&self) -> String {
+        let step = self.manifest.step("reorder");
+        self.strings.with(
+            "tour.step.reorder.text",
+            &[
+                ("from", step.from.expect("reorder has from").to_string()),
+                ("to", step.to.expect("reorder has to").to_string()),
+            ],
+        )
+    }
+
     fn closing(&self, canvas: &mut Canvas, position: usize) -> String {
         let s = self.strings;
         let title = s.t("welcomePdf.end.title");
@@ -779,15 +933,29 @@ fn generate(lang: Lang) -> (Vec<u8>, Vec<String>) {
     let mut contents = Vec::new();
     for (index, &kind) in kinds.iter().enumerate() {
         let position = index + 1;
+        // With Reorder shipped M and S print each other's number: dragging S above M puts the printed numbers in order.
+        let printed = match kind {
+            Kind::Markup
+                if manifest.shipped("reorder")
+                    && kinds.get(index + 1) == Some(&Kind::SignAndSort) =>
+            {
+                position + 1
+            }
+            Kind::SignAndSort
+                if manifest.shipped("reorder") && index > 0 && kinds[index - 1] == Kind::Markup =>
+            {
+                position - 1
+            }
+            _ => position,
+        };
         let mut canvas = Canvas::new();
         let title = match kind {
             Kind::Welcome => doc.welcome(&mut canvas, position),
             Kind::Navigate => doc.navigate(&mut canvas, position),
             Kind::Zoom => doc.zoom(&mut canvas, position),
             Kind::Closing => doc.closing(&mut canvas, position),
-            Kind::Markup | Kind::SignAndSort => panic!(
-                "{kind:?} has no drawing yet: it comes with the tool that ships it (ADR-023), with its target frame from steps.json"
-            ),
+            Kind::Markup => doc.markup(&mut canvas, printed),
+            Kind::SignAndSort => doc.sign_and_sort(&mut canvas, printed),
         };
         titles.push(title);
         contents.push(canvas.ops);
@@ -911,14 +1079,20 @@ fn the_committed_welcome_documents_are_what_the_generator_makes() {
 }
 
 #[test]
-fn an_edition_is_four_pages_in_m1_and_has_no_images_annotations_links_actions_or_scripts() {
+fn an_edition_is_five_pages_in_m7_and_has_no_images_annotations_links_actions_or_scripts() {
     assert_eq!(
         plan(&manifest()),
-        [Kind::Welcome, Kind::Navigate, Kind::Zoom, Kind::Closing]
+        [
+            Kind::Welcome,
+            Kind::Zoom,
+            Kind::Markup,
+            Kind::SignAndSort,
+            Kind::Closing
+        ]
     );
     for lang in Lang::ALL {
         let (bytes, titles) = generate(lang);
-        assert_eq!(titles.len(), 4);
+        assert_eq!(titles.len(), 5);
         assert!(bytes.starts_with(b"%PDF-1.7\n") && bytes.ends_with(b"%%EOF\n"));
         assert!(bytes.len() < 32 * 1024, "{lang:?} is {} bytes", bytes.len());
         let text = String::from_utf8_lossy(&bytes);
@@ -948,7 +1122,7 @@ fn an_edition_is_four_pages_in_m1_and_has_no_images_annotations_links_actions_or
             1,
             "one axial shading"
         );
-        assert_eq!(text.matches("/Type /Page ").count(), 4);
+        assert_eq!(text.matches("/Type /Page ").count(), 5);
     }
 }
 
@@ -1010,14 +1184,14 @@ fn open_welcome(state: &AppState, lang: Lang) -> DocumentInfo {
 }
 
 #[test]
-fn pdfium_opens_each_edition_with_four_pages_and_the_titles_in_text_and_outline() {
+fn pdfium_opens_each_edition_with_five_pages_and_the_titles_in_text_and_outline() {
     let Some(state) = state() else { return };
     let _serial = serial();
     for lang in Lang::ALL {
         let (_, titles) = generate(lang);
         let info = open_welcome(state, lang);
         assert_eq!(info.kind, DocKind::Welcome);
-        assert_eq!(info.page_count, 4, "{lang:?}");
+        assert_eq!(info.page_count, 5, "{lang:?}");
         for (index, title) in (0u32..).zip(&titles) {
             let layer = state.text_layer(info.id, PageId::new(index)).unwrap();
             assert!(

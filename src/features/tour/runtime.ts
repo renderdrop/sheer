@@ -2,17 +2,37 @@ import { closeSettings } from '../settings/state';
 import { openWelcomeDocument } from '../../api/documents';
 import { toAppError } from '../../api/errors';
 import { DURATION } from '../../lib/motion';
+import { useAnnotations } from '../../stores/annotations';
 import { useDocuments } from '../../stores/documents';
+import { readSlots, usePages } from '../../stores/pages';
 import { useSettings } from '../../stores/settings';
 import { useUi } from '../../stores/ui';
 import { useView } from '../../stores/view';
 import { adoptOpenOutcomes, useViewer } from '../viewer/useViewer';
-import { isSatisfied, settleDelay, type Baseline } from './engine';
+import { isSatisfied, settleDelay, type Baseline, type StepFacts } from './engine';
 import { useTour } from './store';
-import { SHIPPED_STEPS } from './steps';
+import { SHIPPED_STEPS, pageIdOfKind, type TourStep } from './steps';
 
 /** The Open step ends once the first frame has faded in (MOTION 4.6: the page's entrance, base + slow). */
 export const OPEN_SETTLE_MS = (DURATION.base + DURATION.slow) * 1000;
+
+/** What the document-reading steps look at: the tour document's annotations and page order, with the step's geometry. */
+export function readFacts(docId: number, step: TourStep): StepFacts {
+  const byId = useAnnotations.getState().byDoc[docId]?.byId ?? {};
+  const pageOrder = readSlots(docId).map((slot) => slot.id);
+  // Page ids are the file positions of the edition as shipped (a thumbnail position p is page id p - 1).
+  const moves = step.from === undefined ? undefined : step.from - 1;
+  const above = step.to === undefined ? undefined : step.to - 1;
+  return {
+    annotations: Object.values(byId),
+    pageOrder,
+    pageId: pageIdOfKind(SHIPPED_STEPS, step.page),
+    ...(step.target === undefined ? {} : { target: step.target }),
+    ...(step.quad === undefined ? {} : { quad: step.quad }),
+    ...(moves === undefined ? {} : { moves }),
+    ...(above === undefined ? {} : { above }),
+  };
+}
 
 /**
  * Connects the tour to the app: starts it when a welcome document opens (writing `welcomeTour: shown` as it does), ends it when
@@ -39,7 +59,7 @@ export function bindTour(): () => void {
     const step = SHIPPED_STEPS[index];
     const view = reading();
     if (docId === null || phase !== 'waiting' || step === undefined || view === null) return;
-    if (!isSatisfied(step.id, view, baseline)) return;
+    if (!isSatisfied(step.id, view, baseline, readFacts(docId, step))) return;
     const delay = atStart ? 0 : settleDelay(step.id);
     if (delay === 0) useTour.getState().complete();
     else timer = setTimeout(() => evaluate(true), delay);
@@ -67,6 +87,9 @@ export function bindTour(): () => void {
   });
 
   const stopView = useView.subscribe(() => evaluate(false));
+  // Annotations (a highlight, a note, a signature placed or dragged) and the page order (any input that moves a page).
+  const stopAnnotations = useAnnotations.subscribe(() => evaluate(false));
+  const stopPages = usePages.subscribe(() => evaluate(false));
 
   const stopDocuments = useDocuments.subscribe((state, previous) => {
     const tour = useTour.getState();
@@ -84,6 +107,8 @@ export function bindTour(): () => void {
     clearTimeout(openTimer);
     stopTour();
     stopView();
+    stopAnnotations();
+    stopPages();
     stopDocuments();
   };
 }
