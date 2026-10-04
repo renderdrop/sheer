@@ -19,6 +19,8 @@ pub mod pagetree;
 pub mod prescan;
 pub mod produce;
 pub mod redact;
+pub mod redact_content;
+pub mod redact_image;
 pub mod save;
 
 pub use prescan::load_untrusted;

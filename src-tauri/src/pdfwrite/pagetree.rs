@@ -103,7 +103,7 @@ fn resolve_dict<'a>(doc: &'a Document, object: &'a Object) -> Option<&'a Diction
 }
 
 /// The attributes a page inherits from its ancestors, written into its own dictionary so that it can move to another parent.
-fn materialize_inherited(doc: &Document, dict: &mut Dictionary) {
+pub(super) fn materialize_inherited(doc: &Document, dict: &mut Dictionary) {
     const INHERITED: [&[u8]; 4] = [b"Resources", b"MediaBox", b"CropBox", b"Rotate"];
     for key in INHERITED {
         if dict.has(key) {
@@ -480,6 +480,29 @@ fn import_page(
         copied: *budget,
     };
     let new_page = copier.copy_page(page_id, dict)?;
+    *budget = copier.copied;
+    Ok(new_page)
+}
+
+/// Copies page `page` of `src` into `target` with `dict` as its dictionary and `overrides` standing in for objects (ADR-055: the
+/// redacted page, its changed forms and images). The new page's object number comes back; `/Parent` is the caller's.
+pub(super) fn copy_page_with(
+    src: &Document,
+    page: ObjectId,
+    dict: Dictionary,
+    overrides: HashMap<ObjectId, Object>,
+    target: &mut Document,
+    budget: &mut usize,
+) -> Result<ObjectId, AppError> {
+    let mut copier = Copier {
+        src,
+        target,
+        map: HashMap::new(),
+        queue: Vec::new(),
+        overrides,
+        copied: *budget,
+    };
+    let new_page = copier.copy_page(page, dict)?;
     *budget = copier.copied;
     Ok(new_page)
 }

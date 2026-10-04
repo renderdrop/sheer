@@ -1,40 +1,34 @@
-//! The pages true redaction leaves behind (ADR-047 §3).
+//! The pages true redaction leaves behind (ADR-055, which supersedes the raster page of ADR-047 §3).
 //!
-//! A redacted page is a picture of the page with the marked areas filled black: [`raster_page`] makes a one-page PDF of it, the save
-//! puts that page where the original was, and [`finish`] scrubs what still held content of the original (the structure tree with its
-//! `/ActualText`, fields whose widgets were on the page) and writes a new `/ID`. The original page itself is never copied: a Full save
-//! only carries what the page tree reaches (`pagetree::compact`).
+//! A redacted page is the original page without what lay under the marks ([`super::redact_content`]): the text, vectors and images
+//! outside the marks are still the page's own. The save puts that one-page PDF where the original was, and [`finish`] scrubs what
+//! still held content of the original (the structure tree with its `/ActualText`, fields whose widgets were on the page) and writes
+//! a new `/ID`. The original page itself is never copied: a Full save only carries what the page tree reaches (`pagetree::compact`).
 
 use std::collections::HashSet;
-use std::io::Write;
+use std::sync::Arc;
 
-use flate2::write::ZlibEncoder;
-use flate2::Compression;
-use image::{codecs::jpeg::JpegEncoder, ExtendedColorType};
-use lopdf::{Dictionary, Document, Object, ObjectId, Stream, StringFormat};
+use lopdf::{Document, Object, ObjectId, StringFormat};
 
+use super::pagetree::on_big_stack;
 use super::prescan::load_untrusted;
+use super::redact_content::{redacted_blank, redacted_page};
 use crate::error::{AppError, ErrorCode};
 use crate::limits;
-
-/// The name of the picture in the `/XObject` resources of a raster page. It is how a save finds the redacted pages again.
-const RASTER_NAME: &[u8] = b"SheerRaster";
-
-/// JPEG quality of a colour raster (ADR-047 §3).
-const JPEG_QUALITY: u8 = 90;
+use crate::model::geometry::Rect;
 
 /// Most nodes of the form tree [`scrub`] looks at (a hostile file may make it as large as it likes).
 const MAX_FIELD_NODES: usize = 100_000;
 const MAX_FIELD_DEPTH: usize = 16;
 
-/// The bitmap of a page as PDFium drew it, with the marks filled in black.
+/// A bitmap as PDFium drew it (page export, print).
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum RasterPixels {
     Rgb8(Vec<u8>),
     Gray8(Vec<u8>),
 }
 
-/// A rendered page for [`raster_page`].
+/// A rendered page.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct RasterPage {
     pub pixels: RasterPixels,
@@ -60,6 +54,81 @@ impl RasterPage {
     }
 }
 
+/// A parsed plain PDF the pages of one redaction job come from (the file, an import source or an earlier redacted page), parsed once.
+#[derive(Clone)]
+pub struct PdfSource {
+    doc: Arc<Document>,
+    pages: Arc<Vec<ObjectId>>,
+}
+
+impl PdfSource {
+    /// Parses `bytes` on a thread with a big stack. An encrypted file is `unsupported_feature` (decrypt it first).
+    pub fn parse(bytes: Vec<u8>) -> Result<Self, AppError> {
+        on_big_stack(move || {
+            let doc = load_untrusted(&bytes)?;
+            if doc.is_encrypted() {
+                return Err(AppError::new(ErrorCode::UnsupportedFeature));
+            }
+            let pages: Vec<ObjectId> = doc.get_pages().into_values().collect();
+            Ok(Self {
+                doc: Arc::new(doc),
+                pages: Arc::new(pages),
+            })
+        })
+    }
+
+    /// The one-page PDF of page `index` of the file without what lies under `burn` ([`redacted_page`]).
+    pub fn redact_page(
+        &self,
+        index: u32,
+        shown: [f32; 4],
+        rotation: u16,
+        burn: Vec<Rect>,
+    ) -> Result<Vec<u8>, AppError> {
+        let object = usize::try_from(index)
+            .ok()
+            .and_then(|index| self.pages.get(index))
+            .copied()
+            .ok_or(AppError::invalid("redaction"))?;
+        let doc = self.doc.clone();
+        on_big_stack(move || redacted_page(&doc, object, shown, rotation, &burn))
+    }
+}
+
+/// The one-page PDF of a blank page with the marks painted black ([`redacted_blank`]), on a thread with a big stack.
+pub fn redact_blank(size: [f32; 2], rotation: u16, burn: Vec<Rect>) -> Result<Vec<u8>, AppError> {
+    on_big_stack(move || redacted_blank(size, rotation, &burn))
+}
+
+/// The decoded content of page `index` of a saved file (for the tests).
+pub fn page_content_of(bytes: &[u8], index: usize) -> Result<String, AppError> {
+    let doc = load_untrusted(bytes)?;
+    let page = doc
+        .get_pages()
+        .into_values()
+        .nth(index)
+        .ok_or(AppError::invalid("page"))?;
+    Ok(String::from_utf8_lossy(&doc.get_page_content(page)).into_owned())
+}
+
+/// The decoded samples of every image object of a saved file (for the tests).
+pub fn images_of(bytes: &[u8]) -> Result<Vec<Vec<u8>>, AppError> {
+    let doc = load_untrusted(bytes)?;
+    Ok(doc
+        .objects
+        .values()
+        .filter_map(|object| object.as_stream().ok())
+        .filter(|stream| {
+            stream
+                .dict
+                .get(b"Subtype")
+                .and_then(Object::as_name)
+                .is_ok_and(|name| name == b"Image")
+        })
+        .filter_map(|stream| stream.decompressed_content().ok())
+        .collect())
+}
+
 fn failed(detail: impl std::fmt::Display) -> AppError {
     AppError::logged(ErrorCode::SaveFailed, detail)
 }
@@ -68,145 +137,10 @@ fn lopdf_error(error: impl std::fmt::Display) -> AppError {
     failed(format!("lopdf: {error}"))
 }
 
-fn name(text: &[u8]) -> Object {
-    Object::Name(text.to_vec())
-}
-
-fn number(value: f32) -> Object {
-    Object::Real(value)
-}
-
-/// Builds a one-page PDF in memory: MediaBox = `size_pt`, the page's `/Rotate`, one image (DeviceGray Flate if every pixel is grey,
-/// else DeviceRGB JPEG q90), no text, no annotations. The picture is drawn to cover the page; `img` is the page *before* its rotation.
-pub fn raster_page(img: RasterPage, size_pt: [f32; 2], rotate: u16) -> Result<Vec<u8>, AppError> {
-    let RasterPage {
-        pixels,
-        width,
-        height,
-    } = img;
-    let (w, h) = (u64::from(width), u64::from(height));
-    if w == 0
-        || h == 0
-        || w * h > limits::MAX_REDACT_PIXELS
-        || width.max(height) > limits::MAX_REDACT_SIDE_PX
-    {
-        return Err(AppError::limit("redactPage", limits::MAX_REDACT_PIXELS));
-    }
-    if !size_pt.iter().all(|side| side.is_finite() && *side > 0.0) || !rotate.is_multiple_of(90) {
-        return Err(AppError::invalid("page"));
-    }
-    // A colour picture that turns out to be grey is stored as grey: the same page, a fifth of the bytes.
-    let pixels = match pixels {
-        RasterPixels::Rgb8(rgb) => RasterPage::from_rgb(rgb, width, height).pixels,
-        grey => grey,
-    };
-    let mut dict = Dictionary::new();
-    dict.set("Type", name(b"XObject"));
-    dict.set("Subtype", name(b"Image"));
-    dict.set("Width", Object::Integer(i64::from(width)));
-    dict.set("Height", Object::Integer(i64::from(height)));
-    dict.set("BitsPerComponent", Object::Integer(8));
-    let data = match &pixels {
-        RasterPixels::Gray8(gray) => {
-            if gray.len() as u64 != w * h {
-                return Err(AppError::invalid("page"));
-            }
-            dict.set("ColorSpace", name(b"DeviceGray"));
-            dict.set("Filter", name(b"FlateDecode"));
-            let mut encoder = ZlibEncoder::new(Vec::new(), Compression::default());
-            encoder.write_all(gray).map_err(failed)?;
-            encoder.finish().map_err(failed)?
-        }
-        RasterPixels::Rgb8(rgb) => {
-            if rgb.len() as u64 != w * h * 3 {
-                return Err(AppError::invalid("page"));
-            }
-            dict.set("ColorSpace", name(b"DeviceRGB"));
-            dict.set("Filter", name(b"DCTDecode"));
-            let mut out = Vec::new();
-            JpegEncoder::new_with_quality(&mut out, JPEG_QUALITY)
-                .encode(rgb, width, height, ExtendedColorType::Rgb8)
-                .map_err(failed)?;
-            out
-        }
-    };
-
-    let mut doc = Document::with_version("1.5");
-    let mut image = Stream::new(dict, data);
-    image.allows_compression = false;
-    let image_id = doc.add_object(image);
-    let content = format!(
-        "q {:.3} 0 0 {:.3} 0 0 cm /{} Do Q",
-        size_pt[0],
-        size_pt[1],
-        String::from_utf8_lossy(RASTER_NAME)
-    );
-    let mut content_stream = Stream::new(Dictionary::new(), content.into_bytes());
-    content_stream.allows_compression = false;
-    let content_id = doc.add_object(content_stream);
-
-    let pages_id = doc.new_object_id();
-    let mut xobjects = Dictionary::new();
-    xobjects.set(RASTER_NAME, Object::Reference(image_id));
-    let mut resources = Dictionary::new();
-    resources.set("XObject", Object::Dictionary(xobjects));
-    let mut page = Dictionary::new();
-    page.set("Type", name(b"Page"));
-    page.set("Parent", Object::Reference(pages_id));
-    page.set(
-        "MediaBox",
-        Object::Array(vec![
-            Object::Integer(0),
-            Object::Integer(0),
-            number(size_pt[0]),
-            number(size_pt[1]),
-        ]),
-    );
-    page.set("Resources", Object::Dictionary(resources));
-    page.set("Contents", Object::Reference(content_id));
-    if !rotate.is_multiple_of(360) {
-        page.set("Rotate", Object::Integer(i64::from(rotate % 360)));
-    }
-    let page_id = doc.add_object(page);
-    let mut pages = Dictionary::new();
-    pages.set("Type", name(b"Pages"));
-    pages.set("Kids", Object::Array(vec![Object::Reference(page_id)]));
-    pages.set("Count", Object::Integer(1));
-    doc.objects.insert(pages_id, Object::Dictionary(pages));
-    let mut catalog = Dictionary::new();
-    catalog.set("Type", name(b"Catalog"));
-    catalog.set("Pages", Object::Reference(pages_id));
-    let catalog_id = doc.add_object(catalog);
-    doc.trailer.set("Root", Object::Reference(catalog_id));
-
-    let mut out = Vec::new();
-    doc.save_to(&mut out).map_err(lopdf_error)?;
-    Ok(out)
-}
-
-/// Whether `page` is a raster page made by [`raster_page`].
-fn is_raster_page(doc: &Document, page: ObjectId) -> bool {
-    let Ok(dict) = doc.get_dictionary(page) else {
-        return false;
-    };
-    let Some(resources) = resolve_dict(doc, dict.get(b"Resources").ok()) else {
-        return false;
-    };
-    resolve_dict(doc, resources.get(b"XObject").ok())
-        .is_some_and(|xobjects| xobjects.has(RASTER_NAME))
-}
-
-fn resolve_dict<'a>(doc: &'a Document, object: Option<&'a Object>) -> Option<&'a Dictionary> {
-    let mut current = object?;
-    for _ in 0..8 {
-        match current {
-            Object::Reference(id) => current = doc.get_object(*id).ok()?,
-            Object::Dictionary(dict) => return Some(dict),
-            Object::Stream(stream) => return Some(&stream.dict),
-            _ => return None,
-        }
-    }
-    None
+/// Whether `page` was made by `redact_content` (it carries its marker).
+fn is_redacted_page(doc: &Document, page: ObjectId) -> bool {
+    doc.get_dictionary(page)
+        .is_ok_and(|dict| dict.has(super::redact_content::MARKER))
 }
 
 fn resolve_array(doc: &Document, object: &Object) -> Option<Vec<Object>> {
@@ -221,11 +155,11 @@ fn resolve_array(doc: &Document, object: &Object) -> Option<Vec<Object>> {
     None
 }
 
-/// The pages of `doc` that [`raster_page`] made.
+/// The pages of `doc` that `redact_content` made.
 pub fn redacted_pages(doc: &Document) -> Vec<ObjectId> {
     doc.get_pages()
         .into_values()
-        .filter(|page| is_raster_page(doc, *page))
+        .filter(|page| is_redacted_page(doc, *page))
         .collect()
 }
 
@@ -254,7 +188,13 @@ pub fn scrub(
     }
     for page in redacted {
         if let Ok(dict) = doc.get_dictionary_mut(*page) {
-            for key in [&b"Thumb"[..], b"PieceInfo", b"StructParents", b"Metadata"] {
+            for key in [
+                &b"Thumb"[..],
+                b"PieceInfo",
+                b"StructParents",
+                b"Metadata",
+                super::redact_content::MARKER,
+            ] {
                 dict.remove(key);
             }
         }
@@ -580,95 +520,46 @@ pub fn audit(bytes: &[u8], needles: &[Vec<u8>]) -> Result<Audit, AppError> {
 
 #[cfg(test)]
 mod tests {
+    use std::io::Write;
+
+    use flate2::write::ZlibEncoder;
+    use flate2::Compression;
+    use lopdf::{Dictionary, Stream};
+
     use super::*;
 
-    fn gray(width: u32, height: u32, value: u8) -> RasterPage {
-        RasterPage {
-            pixels: RasterPixels::Gray8(vec![value; (width * height) as usize]),
-            width,
-            height,
+    fn name(text: &[u8]) -> Object {
+        Object::Name(text.to_vec())
+    }
+
+    #[test]
+    fn a_page_with_the_marker_is_a_redacted_page_and_finish_removes_the_marker() {
+        let (mut doc, page) = form_doc();
+        assert!(redacted_pages(&doc).is_empty());
+        if let Ok(dict) = doc.get_dictionary_mut(page) {
+            dict.set(
+                crate::pdfwrite::redact_content::MARKER.to_vec(),
+                Object::Boolean(true),
+            );
         }
+        assert_eq!(redacted_pages(&doc), vec![page]);
+        let mut bytes = Vec::new();
+        doc.save_to(&mut bytes).unwrap();
+        let out = finish(bytes, false, false).unwrap();
+        let again = load_untrusted(&out).unwrap();
+        assert!(redacted_pages(&again).is_empty(), "the marker is gone");
     }
 
     #[test]
-    fn a_grey_raster_is_a_flate_gray_page_with_the_size_and_rotation() {
-        let bytes = raster_page(gray(20, 10, 200), [100.0, 50.0], 90).unwrap();
-        let doc = crate::pdfwrite::prescan::load_untrusted(&bytes).unwrap();
-        let pages = doc.get_pages();
-        assert_eq!(pages.len(), 1);
-        let page = doc.get_dictionary(*pages.values().next().unwrap()).unwrap();
-        assert_eq!(page.get(b"Rotate").unwrap().as_i64().unwrap(), 90);
-        let media = page.get(b"MediaBox").unwrap().as_array().unwrap();
-        assert_eq!(media[2].as_float().unwrap(), 100.0);
-        assert!(page.get(b"Annots").is_err());
-        let image = doc
-            .objects
-            .values()
-            .find_map(|object| match object {
-                Object::Stream(stream)
-                    if stream
-                        .dict
-                        .get(b"Subtype")
-                        .and_then(Object::as_name)
-                        .is_ok_and(|n| n == b"Image") =>
-                {
-                    Some(stream)
-                }
-                _ => None,
-            })
-            .unwrap();
-        assert_eq!(
-            image.dict.get(b"ColorSpace").unwrap().as_name().unwrap(),
-            b"DeviceGray"
-        );
-        assert_eq!(
-            image.dict.get(b"Filter").unwrap().as_name().unwrap(),
-            b"FlateDecode"
-        );
-        let pixels = image.decompressed_content().unwrap();
-        assert_eq!(pixels, vec![200; 200]);
-        assert_eq!(redacted_pages(&doc).len(), 1);
-    }
-
-    #[test]
-    fn a_colour_raster_is_a_jpeg_and_a_grey_looking_rgb_one_is_grey() {
-        let mut rgb = vec![0u8; 8 * 8 * 3];
-        rgb[0] = 255;
-        let colour = RasterPage {
-            pixels: RasterPixels::Rgb8(rgb),
-            width: 8,
-            height: 8,
-        };
-        let bytes = raster_page(colour, [8.0, 8.0], 0).unwrap();
-        let text = String::from_utf8_lossy(&bytes);
-        assert!(text.contains("DCTDecode") && text.contains("DeviceRGB"));
-        assert!(!text.contains("/Rotate"));
+    fn a_grey_looking_rgb_picture_is_stored_as_grey() {
         let grey_rgb = RasterPage::from_rgb(vec![7u8; 8 * 8 * 3], 8, 8);
         assert!(matches!(grey_rgb.pixels, RasterPixels::Gray8(ref g) if g.len() == 64));
-    }
-
-    #[test]
-    fn a_raster_that_does_not_fit_is_refused() {
-        let bad = RasterPage {
-            pixels: RasterPixels::Gray8(vec![0; 3]),
-            width: 4,
-            height: 4,
-        };
-        assert!(raster_page(bad, [10.0, 10.0], 0).is_err());
-        assert!(raster_page(gray(4, 4, 0), [f32::NAN, 10.0], 0).is_err());
-        assert!(raster_page(gray(4, 4, 0), [10.0, 10.0], 45).is_err());
-        let huge = RasterPage {
-            pixels: RasterPixels::Gray8(Vec::new()),
-            width: 5_000,
-            height: 5_000,
-        };
-        assert!(raster_page(huge, [10.0, 10.0], 0).is_err());
-        let wide = RasterPage {
-            pixels: RasterPixels::Gray8(vec![0; 4_097]),
-            width: 4_097,
-            height: 1,
-        };
-        assert!(raster_page(wide, [10.0, 10.0], 0).is_err(), "the side cap");
+        let mut rgb = vec![0u8; 8 * 8 * 3];
+        rgb[0] = 255;
+        assert!(matches!(
+            RasterPage::from_rgb(rgb, 8, 8).pixels,
+            RasterPixels::Rgb8(_)
+        ));
     }
 
     /// A document with a catalog that has the structure tree, a form of two fields (`on` is on the page, `off` is on no page) and a page.

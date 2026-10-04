@@ -33,7 +33,7 @@ pub enum PageSource {
     Blank,
     /// Page `index` of an import source.
     Imported { source: SourceId, index: u32 },
-    /// A page that true redaction replaced by a raster (ADR-047 §3): a one-page PDF made by `pdfwrite::redact::raster_page`, held in
+    /// A page that true redaction made again without what the marks covered (ADR-055): a one-page PDF made by `pdfwrite::redact_content`, held in
     /// memory until the save. The page keeps its id.
     Redacted { bytes: std::sync::Arc<[u8]> },
 }

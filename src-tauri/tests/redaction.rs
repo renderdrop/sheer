@@ -489,13 +489,18 @@ fn without_remove_metadata_hidden_data_stays_and_the_job_says_so() {
     assert_eq!(warnings, vec![Warning::HiddenDataKept]);
     state.save_in_place(id, SaveAck::default()).unwrap();
     let out = std::fs::read(&path).unwrap();
-    // What was on the page is gone: its text, the link, the field.
-    let page_things: Vec<Vec<u8>> = ["Account", "example.com", "acct"]
+    // What was under the mark or is an annotation of the page is gone: the link and the field. The text around the mark stays text.
+    let page_things: Vec<Vec<u8>> = ["example.com", "acct"]
         .iter()
         .map(|t| t.as_bytes().to_vec())
         .collect();
     let gone = redact::audit(&out, &page_things).unwrap();
     assert!(gone.leaks.is_empty(), "page content left: {:?}", gone.leaks);
+    let words = state.text_layer(id, PageId::new(0)).unwrap().text;
+    assert!(
+        words.contains("Account") && words.contains("here"),
+        "{words:?}"
+    );
     // The document-level data was kept on purpose, so the secret is still in it.
     let kept = redact::audit(&out, &spellings()).unwrap();
     assert!(!kept.leaks.is_empty());
@@ -545,4 +550,196 @@ fn a_redacting_save_deletes_the_backups_of_its_target() {
     assert!(!saved.backup_created);
     assert!(!seeded.exists(), "the backup of the target is gone");
     assert!(other.exists(), "another file's backup is not touched");
+}
+
+// --- surgical redaction (ADR-055) ----------------------------------------------------------------------------------------
+
+/// Where `needle` is in the text layer of a page, as one page-space box.
+fn find_box(state: &AppState, id: DocumentId, needle: &str) -> [f32; 4] {
+    let layer = state.text_layer(id, PageId::new(0)).unwrap();
+    let units: Vec<u16> = layer.text.encode_utf16().collect();
+    let wanted: Vec<u16> = needle.encode_utf16().collect();
+    let at = units
+        .windows(wanted.len())
+        .position(|window| window == &wanted[..])
+        .expect("the text layer has the needle");
+    let mut rect = [f32::MAX, f32::MAX, f32::MIN, f32::MIN];
+    for unit in at..at + wanted.len() {
+        let b = &layer.boxes[unit * 4..unit * 4 + 4];
+        rect[0] = rect[0].min(b[0]);
+        rect[1] = rect[1].min(b[1]);
+        rect[2] = rect[2].max(b[0] + b[2]);
+        rect[3] = rect[3].max(b[1] + b[3]);
+    }
+    [rect[0], rect[1], rect[2] - rect[0], rect[3] - rect[1]]
+}
+
+/// One page: a sentence line, a horizontal line and a grey 10 x 10 picture drawn at 100 x 100 pt, both crossing the area mark.
+fn surgical_fixture() -> Vec<u8> {
+    let content = format!(
+        "{}1 w 72 600 m 540 600 l S\nq 100 0 0 100 250 560 cm /Im1 Do Q\n",
+        text_line(
+            12,
+            72,
+            700,
+            "Alpha one stays. SECRETSENTENCE goes. Omega three stays."
+        )
+    );
+    let mut builder = PdfBuilder::new();
+    builder
+        .object(
+            1,
+            "<< /Type /Catalog /Pages 2 0 R >>",
+        )
+        .object(2, "<< /Type /Pages /Kids [10 0 R] /Count 1 >>")
+        .object(
+            3,
+            "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>",
+        )
+        .object(
+            10,
+            "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 11 0 R \
+             /Resources << /Font << /F1 3 0 R >> /XObject << /Im1 12 0 R >> >> >>",
+        )
+        .stream(11, "", content.as_bytes())
+        .stream(
+            12,
+            "/Type /XObject /Subtype /Image /Width 10 /Height 10 /BitsPerComponent 8 /ColorSpace /DeviceGray",
+            &[200u8; 100],
+        );
+    builder.finish(1)
+}
+
+fn content_of(bytes: &[u8]) -> String {
+    redact::page_content_of(bytes, 0).unwrap()
+}
+
+#[test]
+fn redaction_is_surgical_the_rest_of_the_page_stays_text_vector_and_picture() {
+    let Some(state) = state() else { return };
+    let scratch = Scratch::new("surgical");
+    let path = scratch.file("s.pdf");
+    std::fs::write(&path, surgical_fixture()).unwrap();
+    let id = state.open_path(path.clone()).unwrap().expect("loaded").id;
+
+    let before = state.text_layer(id, PageId::new(0)).unwrap().text;
+    let sentence = find_box(state, id, "SECRETSENTENCE goes.");
+    // The second mark: an area over the line and the corner of the picture (page space: from the top left; user y 560..620).
+    let area = [200.0, 792.0 - 620.0, 100.0, 60.0];
+    state
+        .apply_command(id, mark_command(0, &[sentence, area]))
+        .unwrap();
+    let opts = RedactOptions {
+        pages: None,
+        remove_metadata: false,
+    };
+    assert!(matches!(
+        run_redaction(state, id, &opts),
+        JobEvent::Done { .. }
+    ));
+    state.save_in_place(id, SaveAck::default()).unwrap();
+
+    // PDFium on the saved file: the other sentences are text, the redacted one has not a glyph left.
+    let again = state.open_path(path.clone()).unwrap().expect("loaded").id;
+    let after = state.text_layer(again, PageId::new(0)).unwrap().text;
+    assert!(after.contains("Alpha one stays."), "{after:?}");
+    assert!(after.contains("Omega three stays."), "{after:?}");
+    for gone in ["SECRET", "SENTENCE", "goes"] {
+        assert!(!after.contains(gone), "{gone} is still in {after:?}");
+    }
+    let removed = "SECRETSENTENCE goes.".chars().count();
+    let lost = before.chars().count() - after.chars().count();
+    assert!(
+        (removed..=removed + 2).contains(&lost),
+        "only the marked glyphs are gone: {lost} of {removed}"
+    );
+    // The page is still page 0 of an unrotated Letter page; the kept words are where they were.
+    let kept = find_box(state, again, "Omega three stays.");
+    let kept_before = {
+        let layer_before = before.find("Omega three stays.").is_some();
+        assert!(layer_before);
+        kept
+    };
+    assert!(
+        kept_before[0] > sentence[0] + sentence[2],
+        "to the right of the mark"
+    );
+
+    // The line is cut, the picture is blacked out only where the area was, and nothing is a page-sized picture.
+    let out = std::fs::read(&path).unwrap();
+    let content = content_of(&out);
+    assert!(content.contains("200 600 l"), "{content}");
+    assert!(content.contains("300 600 m"), "{content}");
+    assert!(!content.contains("72 600 m 540 600 l"), "{content}");
+    let images = redact::images_of(&out).unwrap();
+    assert_eq!(images.len(), 1, "one picture, the original is gone");
+    assert_eq!(images[0].len(), 100, "still 10 x 10: not a page raster");
+    assert!(images[0].contains(&0) && images[0].contains(&200));
+    // The picture's lower left corner (pixel row 9, column 0) is under the area (x 250..300, y 560..620 of 560..660).
+    assert_eq!(images[0][90], 0);
+    assert_eq!(images[0][9], 200, "the top right is untouched");
+}
+
+/// One page with `extra` entries in its dictionary and a sentence line; redacts `SECRETWORD gone.` and checks the saved file.
+fn redact_sentence_on(name: &str, extra: &str) {
+    let Some(state) = state() else { return };
+    let scratch = Scratch::new(name);
+    let mut builder = PdfBuilder::new();
+    builder
+        .object(1, "<< /Type /Catalog /Pages 2 0 R >>")
+        .object(2, "<< /Type /Pages /Kids [10 0 R] /Count 1 >>")
+        .object(
+            3,
+            "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>",
+        )
+        .object(
+            10,
+            &format!(
+                "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] {extra} /Contents 11 0 R \
+                 /Resources << /Font << /F1 3 0 R >> >> >>"
+            ),
+        )
+        .stream(
+            11,
+            "",
+            text_line(14, 150, 650, "Keep this. SECRETWORD gone. Keep that.").as_bytes(),
+        );
+    let path = scratch.file("p.pdf");
+    std::fs::write(&path, builder.finish(1)).unwrap();
+    let id = state.open_path(path.clone()).unwrap().expect("loaded").id;
+    let before = state.text_layer(id, PageId::new(0)).unwrap().text;
+    let target = find_box(state, id, "SECRETWORD gone.");
+    state.apply_command(id, mark_command(0, &[target])).unwrap();
+    let opts = RedactOptions {
+        pages: None,
+        remove_metadata: false,
+    };
+    assert!(matches!(
+        run_redaction(state, id, &opts),
+        JobEvent::Done { .. }
+    ));
+    state.save_in_place(id, SaveAck::default()).unwrap();
+    let again = state.open_path(path).unwrap().expect("loaded").id;
+    let after = state.text_layer(again, PageId::new(0)).unwrap().text;
+    assert!(after.contains("Keep this."), "{name}: {after:?}");
+    assert!(after.contains("Keep that."), "{name}: {after:?}");
+    for gone in ["SECRET", "WORD", "gone"] {
+        assert!(!after.contains(gone), "{name}: {gone} in {after:?}");
+    }
+    let removed = "SECRETWORD gone.".chars().count();
+    let lost = before.chars().count() - after.chars().count();
+    assert!(
+        (removed..=removed + 2).contains(&lost),
+        "{name}: {lost} of {removed}"
+    );
+}
+
+#[test]
+fn a_rotated_page_is_redacted_where_the_text_is() {
+    redact_sentence_on("rot90", "/Rotate 90");
+}
+
+#[test]
+fn a_page_with_an_offset_crop_box_is_redacted_where_the_text_is() {
+    redact_sentence_on("crop", "/CropBox [100 100 500 700]");
 }

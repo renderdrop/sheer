@@ -530,6 +530,14 @@ pub const MAX_REDACT_SIDE_PX: u32 = 4_096;
 /// below `MIN_REDACT_DPI`) until the bitmap fits both `MAX_REDACT_SIDE_PX` per side and `MAX_REDACT_PIXELS` in total (16 MP, at most
 /// 64 MB of RGBA per page), and a page that cannot fit at the lowest dpi fails the job instead of being rastered coarser.
 pub const MAX_REDACT_PIXELS: u64 = 16_000_000;
+/// Surgical redaction of one page (ADR-055): decoded content of the page and of each form XObject, operators in all, form nesting, the
+/// pixels of an image that is decoded to be blacked out, rectangles per page, and the work (rectangle tests) one page may cost.
+pub const MAX_REDACT_CONTENT_BYTES: usize = 24 * 1024 * 1024;
+pub const MAX_REDACT_OPS: usize = 6_000_000;
+pub const MAX_REDACT_FORM_DEPTH: usize = 8;
+pub const MAX_REDACT_IMAGE_PIXELS: u64 = 100_000_000;
+pub const MAX_REDACT_RECTS_PER_PAGE: usize = 20_000;
+pub const MAX_REDACT_WORK: u64 = 2_000_000_000;
 /// A password in bytes after SASLprep.
 pub const MIN_NEW_PASSWORD_BYTES: usize = 1;
 pub const MAX_NEW_PASSWORD_BYTES: usize = 127;

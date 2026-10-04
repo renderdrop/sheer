@@ -280,7 +280,7 @@ impl EventSink for Collect {
 }
 
 #[test]
-fn marks_alone_write_no_mark_and_an_applied_redaction_is_a_raster() {
+fn marks_alone_write_no_mark_and_an_applied_redaction_is_surgical() {
     let Some(state) = state() else { return };
     let scratch = Scratch::new("redact");
     let id = open(state, &scratch, &secret_pdf());
@@ -314,12 +314,12 @@ fn marks_alone_write_no_mark_and_an_applied_redaction_is_a_raster() {
     let content = page_content(&bytes, 0);
     assert!(
         !content.contains("Tj"),
-        "the redacted page has no text: {content}"
+        "the redacted page shows no marked text: {content}"
     );
     assert!(!bytes.windows(SECRET.len()).any(|w| w == SECRET.as_bytes()));
     assert!(
-        content.contains("Do"),
-        "the page is a raster now: {content}"
+        content.contains(" re") && !content.contains("Do"),
+        "the page is still content with a black box, not a raster: {content}"
     );
     assert_eq!(annotation_count(&bytes), 0);
 }

@@ -1,4 +1,4 @@
-//! True redaction (ARCHITECTURE §5 "Edit and protect", ADR-047 §3). owned by package C.
+//! True redaction (ARCHITECTURE §5 "Edit and protect", ADR-047 §3, made surgical by ADR-055). owned by package C.
 //!
 //! | Command | Arguments | Returns |
 //! |---|---|---|
@@ -6,6 +6,7 @@
 //!
 //! The marks are made with `apply_command` (`markRedactions`, or `createAnnotation` of kind `redactMark`).
 
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use tauri::ipc::Channel;
@@ -14,21 +15,93 @@ use tauri::State;
 use super::annotations::Revert;
 use super::jobs::{channel_sink, jobs, EventSink, JobDone, JobEvent, JobId, JobRegistry};
 use super::{blocking, AppState};
+use crate::documents::intake;
 use crate::documents::sources::SourceBytes;
 use crate::documents::DocumentId;
-use crate::error::{AppError, UiError};
-use crate::limits;
-use crate::model::redaction::{self, Raster, RedactOptions};
+use crate::error::{AppError, ErrorCode, UiError};
+use crate::model::page::{PageSource, SourceId};
+use crate::model::redaction::{self, PageWork, Raster, RedactOptions};
 use crate::pdfwrite::produce::{Control, Phase, Warning};
-use crate::pdfwrite::redact::raster_page;
+use crate::pdfwrite::redact::{redact_blank, PdfSource};
+use crate::pdfwrite::{crypt, pagetree};
 
-/// Most bytes of raster pages one job holds before the step is made (a page is up to a few megabytes as a JPEG).
-const MAX_RASTER_BYTES: u64 = 512 * 1024 * 1024;
+/// Most bytes of redacted pages one job holds before the step is made.
+const MAX_REDACTED_BYTES: u64 = 512 * 1024 * 1024;
+
+/// The files the pages of one job come from, each parsed once.
+#[derive(Default)]
+struct Parsed {
+    file: Option<PdfSource>,
+    imported: HashMap<SourceId, PdfSource>,
+}
 
 impl AppState {
-    /// Starts the redaction job of document `id` (see the module documentation): per marked page PDFium draws it, the marks are filled
-    /// black in the bitmap, and a one-page PDF of the bitmap is added to the engine's copy; then one model step swaps the slots. Nothing
-    /// is changed before every page is drawn, so a cancel or a failure leaves the document as it was.
+    /// The one-page PDF of `page` without what lies under its marks (ADR-055).
+    fn redact_one(
+        &self,
+        id: DocumentId,
+        parsed: &mut Parsed,
+        page: &PageWork,
+    ) -> Result<Vec<u8>, AppError> {
+        let burn = page.burn.clone();
+        let source = match &page.source {
+            PageSource::Blank => return redact_blank(page.size, page.rotation, burn),
+            PageSource::Redacted { bytes } => PdfSource::parse(bytes.to_vec())?,
+            PageSource::File { .. } => match &parsed.file {
+                Some(source) => source.clone(),
+                None => {
+                    let source = PdfSource::parse(self.plain_original(id)?)?;
+                    parsed.file = Some(source.clone());
+                    source
+                }
+            },
+            PageSource::Imported { source, .. } => match parsed.imported.get(source) {
+                Some(parsed_source) => parsed_source.clone(),
+                None => {
+                    let bytes: Arc<SourceBytes> =
+                        self.sources.pinned(id, *source).ok_or_else(|| {
+                            AppError::logged(ErrorCode::SaveFailed, "an import source is gone")
+                        })?;
+                    let parsed_source = PdfSource::parse(bytes.bytes.to_vec())?;
+                    parsed.imported.insert(*source, parsed_source.clone());
+                    parsed_source
+                }
+            },
+        };
+        let index = match &page.source {
+            PageSource::File { index } | PageSource::Imported { index, .. } => *index,
+            _ => 0,
+        };
+        source.redact_page(index, page.shown, page.rotation, burn)
+    }
+
+    /// The file the document was opened from as it is on disk, as a plain file (a protected one is decrypted with the session's
+    /// password). A file that changed since it was opened is `needs_confirmation`: its pages are not the ones the engine shows.
+    fn plain_original(&self, id: DocumentId) -> Result<Vec<u8>, AppError> {
+        let info = self.info(id).ok_or(AppError::not_found("document"))?;
+        let path = self
+            .registry
+            .path(id)
+            .ok_or(AppError::not_found("document"))?;
+        let (bytes, fingerprint) = super::save::read_all(intake::admit(&path)?)?;
+        if super::save::fingerprint_changed(self.registry.fingerprint(id), fingerprint) {
+            return Err(AppError::needs_confirmation("fileChangedOnDisk"));
+        }
+        if info.flags.encrypted {
+            let session = self.session_password(id);
+            let (plain, _) = pagetree::on_big_stack(move || {
+                crypt::decrypt_for_rewrite(&bytes, session.as_ref().map(|secret| secret.as_str()))
+            })?;
+            return Ok(plain);
+        }
+        Ok(bytes)
+    }
+}
+
+impl AppState {
+    /// Starts the redaction job of document `id` (see the module documentation): per marked page its content is read from the file
+    /// and written again without what lies under the marks (ADR-055), as a one-page PDF that is added to the engine's copy; then one
+    /// model step swaps the slots. Nothing is changed before every page is made, so a cancel or a failure leaves the document as it was.
     pub fn start_redaction(
         &self,
         jobs: &Arc<JobRegistry>,
@@ -47,19 +120,14 @@ impl AppState {
             let total = u32::try_from(work.len()).unwrap_or(u32::MAX);
             let mut made: Vec<(usize, Vec<u8>)> = Vec::with_capacity(work.len());
             let mut held = 0u64;
+            let mut parsed = Parsed::default();
             for (position, page) in work.iter().enumerate() {
                 ctx.check()?;
                 ctx.progress(Phase::Redact, u32::try_from(position).unwrap_or(0), total);
-                let bitmap = state.engine.render_for_redaction(
-                    id,
-                    page.engine_index,
-                    limits::REDACT_DPI,
-                    page.burn.clone(),
-                )?;
-                let bytes = raster_page(bitmap, page.size, page.rotation)?;
+                let bytes = state.redact_one(id, &mut parsed, page)?;
                 held += bytes.len() as u64;
-                if held > MAX_RASTER_BYTES {
-                    return Err(AppError::limit("redaction", MAX_RASTER_BYTES));
+                if held > MAX_REDACTED_BYTES {
+                    return Err(AppError::limit("redaction", MAX_REDACTED_BYTES));
                 }
                 made.push((position, bytes));
             }

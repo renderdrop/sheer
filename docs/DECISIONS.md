@@ -1778,3 +1778,67 @@ installers only. The alternative stays local signing with `scripts/sign-update.s
 (`style-src 'self'`) on the empty state, settings and all toolbar buttons; React and Motion style props use the CSSOM, which `style-src` does not
 block, so no `'unsafe-inline'` and no source change was needed. The gate is a milestone DoD step. The Windows-only "Make Sheer the default PDF app"
 row in Settings calls `open_default_apps_settings`; it is hidden on macOS and when the platform is unknown.
+
+## ADR-056 — Tools stay active; tool options do not refit the zoom (F11)
+
+**Decision.** (1) After creating an annotation (markup, note, text comment, draw, shapes, sign marks and signatures, insert text and image) the tool stays active until Esc or the Select tool; the one-shot release in the layers is gone (`toolLocked` remains for the toolbar lock state). The Add image tool keeps its chosen image armed for the next click. (2) A fit mode (fit width, fit page) refits only when the user resizes the window or toggles a panel explicitly. The canvas resize caused by the tool-options inspector opening or closing because the tool changed keeps zoom and scroll position (`features/viewer/fitHold.ts`: armed by such a tool change, spent by the next canvas size report, 1.5 s timeout). (3) Overlay layers pass the page element's size in CSS px to `overlayBox` (was points, which shifted previews by (pxPerPt - 1) * size / 2).
+
+## ADR-057 — Comments panel lists marks and signatures as typed entries (F11-C)
+
+**Decision.** `list_document_annotations` summarizes every annotation that is written to the file (`is_written_as_annotation`), so the Fill & Sign marks (check, cross, dot, date, initials) and signature stamps appear in the Comments panel as their own entries with an icon and the type label (`annot.type.mark`, `annot.type.signature`, en/de, already in the catalogs) and can be filtered by type. Text boxes, images and redaction marks (ADR-047) are page content or model-only objects and are skipped deliberately. The cause of "Comments could not be read" was the frontend summary parser, whose kind allow-list lacked `signature` and `mark`: one such annotation made the whole answer malformed. Also fixed (F11 item 4): the resize command sent the coalesce key `resize:<id>`, but the backend only accepts `[A-Za-z0-9._-]`, so every resize and keyboard resize was refused with `invalid_argument`; the key is now `resize.<id>`.
+
+## ADR-058 — v1.1 "Structure and comfort": hub, tools-only toolbar, menu bar, Word-style comments (DESIGN §3.54–§3.60)
+
+**Status:** accepted (2026-10-04). Source: FEEDBACK F12 items 1–5. Numbered after ADR-055–057, reserved by parallel packages.
+
+**Decision.** (1) The empty state becomes a tool hub: eight G1 cards (Open, Merge, Split, Compress, Images to PDF, Sign, Redact, Fill
+form) in a 4-column grid above the unchanged recents; each card runs Rust's file dialog and lands in a defined mode (Split → Organize +
+Split dialog, Fill form → first field or the Fill section of Fill & Sign). (2) The toolbar holds seven tools only (Select, Highlight,
+Comment, Draw, Shapes, Fill & Sign, Redact) in one centred glass card, labelled when it fits; the Form tool, More, overflow and toolbar
+Undo/Redo go; zoom moves to the status bar; the two panel toggles stay as handles. (3) Commands move to File / Edit / View / Tools /
+Help: native on macOS (existing muda menu plus Tools), an **in-window menu bar in the Windows caption row** rendered from the same
+`menu.json` and registry; a native Win32 menu is rejected because it needs native decorations (ADR-014) and cannot follow the theme.
+This supersedes ADR-016 item 4. (4) The inspector is context only (mode, selection, then tool options of tools that have them) and
+auto-opens at every width ≥ 960. (5) Form fields are always live with a notice banner; Flatten in File; marks and text sit in the Fill
+section of the Fill & Sign popover. (6) Comments: a selection bar offers "Add comment" (Highlight with contents); cards show type tile +
+label, quote, body, author, time, replies and review state written as PDF `/StateModel /Review` replies. (7) Typed signatures use three
+bundled SIL OFL 1.1 fonts (Dancing Script, Great Vibes, Alex Brush), unmodified, chosen on preview cards; OFL-1.1 is allowed for fonts
+only; Homemade Apple is removed (supersedes ADR-042 (1)).
+
+**Consequences.** New registry actions and `menu.*` keys; `menu.json` gains Tools and Help items and a Windows renderer; tour anchors
+for removed toolbar items (Pages, Form) move to the sidebar or Tools menu; the comments list switches to measured virtualization;
+`docs/LICENSES.md` gains three font entries and the allowlist note.
+
+## ADR-055 — Surgical redaction (F11-A)
+
+**Status:** accepted (2026-10-04). Supersedes ADR-047 §3 option (b) "raster the affected page". Source: FEEDBACK F11 item 1, owner override.
+
+**Context.** The raster page made the whole page a picture: no selectable or searchable text after a redaction of one sentence. The owner
+also saw a black bar over the bottom of the page after the first redaction (`review/owner/f11-redact-bar.png`).
+
+**Decision.** (1) Redaction rewrites the page's content (`pdfwrite/redact_content.rs`, `redact_image.rs`) and never rasters a page.
+Text: per glyph from the font widths (`/Widths`, `/W`, standard 14 metrics for Helvetica, Times-Roman, Courier), box from the text
+matrix and CTM and the descriptor's ascent and descent; a glyph that touches a mark is not written and its advance becomes a `TJ` number so
+the rest keeps its place; a font with unknown widths (no `/Widths`, bold or italic standard faces, a CMap other than Identity-H) is cut per
+show operator. Paths: straight strokes are cut at the marks, fills of axis-aligned rectangles have the marks cut out, any other painted
+path that touches a mark is dropped, clips are kept. Images and inline images: the covered pixels (and of the `SMask`) are zeroed and the
+image is written again (Flate raw, JPEG q90 for JPEG); anything undecodable is dropped. Forms are copied and cut recursively (depth 8,
+cycles dropped), shadings are painted through a clip without the marks, annotations of the page are not carried (the model drops them
+as before), `BDC` property lists (except `/OC`) become `BMC`, `DP`/`MP` go, and a black rectangle is drawn for every mark. The
+original entries of replaced XObjects are removed from the resources, so nothing of the covered pixels is left in the file. (2) Fail
+safe: odd operands of a show operator drop it, an unreadable form or image is dropped, a page whose content does not parse is refused
+(`damaged_file`); never a raster. Limits (`MAX_REDACT_*`): 24 MiB decoded content per stream, 6 M operators, 20 000 marks per page,
+2 G rectangle tests, 100 MP per decoded image. (3) The pipeline is unchanged: the job reads the page from the file on disk (decrypted
+with the session password; changed on disk is `needs_confirmation`), an import source or the old redacted page, writes a one-page PDF
+(MediaBox from the origin, `/Rotate`, a private marker key that `finish` removes), appends it to the engine copy, and one model step swaps
+the slot (`PageSource::Redacted`). Save, scrub, undo are as in ADR-047. `engine::redact` (bitmap) stays in the tree for page export
+reuse and is no longer called by redaction.
+
+**Bar (F11 1a).** Most likely cause (not reproduced without the window): a region of the old bitmap that PDFium did not draw (the bitmap starts zeroed, so black): the page was
+drawn into a bitmap of another aspect than the one the burn and the raster page assumed. It cannot occur now: no bitmap exists, the only
+black is one rectangle per mark, each clamped to the shown box, and marks that are not numbers, empty or outside are ignored
+(`user_rects`, unit test `marks_that_are_not_numbers_or_outside_the_page_are_ignored`).
+
+**Consequences.** Text outside the marks stays text in Sheer and other viewers. Residual (SECURITY D4): font programs and `/ToUnicode`
+maps keep the subset's glyphs; shading definitions stay; fonts without widths lose whole show operators. `apply_redactions` keeps its
+signature; `PageWork` gains `source` and `shown`; `pdfwrite::redact::raster_page` is removed.

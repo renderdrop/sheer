@@ -424,7 +424,9 @@ pub struct SavePlan { /* .. */ content: Vec<(PageId, Vec<ContentObject>)>, crops
                       protection: Option<PendingProtection>, metadata: Option<MetadataChange>, keep_encryption: bool }
 // pdfwrite entry points
 pub fn content::burn(doc: &mut Document /* Full, or IncrementalDocument::new_document */, page: ObjectId, objs: &[ContentObject], assets: &AssetStore) -> Result<(), AppError>;
-pub fn redact::raster_page(img: RasterPage /* RGB8 or Gray8, w, h */, size_pt: [f32; 2], rotate: u16) -> Result<Vec<u8>, AppError>;
+// ADR-055 (supersedes raster_page): the page again without what lies under the marks; burn = page space, from the top left of the shown box
+pub fn redact_content::redacted_page(src: &Document, page: ObjectId, shown: [f32; 4], rotation: u16, burn: &[Rect]) -> Result<Vec<u8>, AppError>;
+pub fn redact_content::redacted_blank(size: [f32; 2], rotation: u16, burn: &[Rect]) -> Result<Vec<u8>, AppError>;   // + redact_image.rs (pixels of one image)
 pub fn redact::scrub(doc: &mut Document, redacted: &[ObjectId]) -> Result<(), AppError>;   // StructTreeRoot, MarkInfo, Thumb, PieceInfo, orphan fields, new /ID
 pub fn crypt::encrypt_r6(doc: &mut Document, p: &PendingProtection) -> Result<(), AppError>;
 pub fn crypt::read_protection(bytes: &[u8], password: Option<&Secret>) -> Result<ProtectionRead, AppError>;
@@ -484,8 +486,11 @@ Wrappers: `src/api/content.ts` (`insertImageDialog`, `getAssetPreview`), `pages.
 - *Crop.* `CropPages` validates every page first (≥ 72 × 72 pt, inside the MediaBox), then mirrors (`Job::SetCropBox`), then shifts the
   page's annotations, content objects and widget rects by the origin change; inverse = the old crops + the reverse shift. Saving writes
   `/CropBox` in the re-appended page dict (ADR-036 §5 path).
-- *Redaction.* `apply_redactions`: snapshot of the marked pages → per page `RenderForRedaction` (200 dpi, ≤ 4 096 px, ≤ 16 MP, ≥ 72 dpi)
-  → `raster_page` → engine append (Control) → one model step (`redact.apply`) swapping slots to `Redacted`. A page that changed while the job
+- *Redaction (ADR-055, surgical; ADR-047 §3 raster dropped).* `apply_redactions`: snapshot of the marked pages (`PageWork` carries `source` and `shown`) → per page the
+  content is read from the file (decrypted with the session password if needed; a file changed on disk is `needs_confirmation`), the import source or the old
+  redacted page and written again by `redact_content::redacted_page` (text cut per glyph with a `TJ` kerning gap, strokes cut, rectangle fills holed, images
+  blacked out in the covered pixels, forms copied and cut, shadings clipped, annotations not carried, a black rectangle per mark; limits `MAX_REDACT_*`)
+  → engine append (Control) → one model step (`redact.apply`) swapping slots to `Redacted`. A page that changed while the job
   ran (`rev`) fails the job. Text layer, search and links read the slot's engine page, which has no text. A save with any `Redacted` slot is
   Full + `scrub`, `backupCreated: false`, and `storage::backup::forget_target(path)` deletes that file's backups.
 - *Protection.* A save with `SavePlan.protection` is Full: `Protect` → `crypt::encrypt_r6` (V5, `Aes256CryptFilter`, file key from

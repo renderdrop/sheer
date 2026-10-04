@@ -1,8 +1,9 @@
 //! Redaction marks as the model has them (ADR-047 §3).
 //!
 //! A mark is an annotation of kind `redactMark` that lives in the model only: undoable, never written to the file, never imported,
-//! never in the comments list. Applying them is a job (`engine::redact`) that swaps the marked pages for raster pages: the job reads
-//! what to burn with [`snapshot`], and the model step is [`plan`] (a [`DocCommand::RestoreRedaction`], which is its own inverse).
+//! never in the comments list. Applying them is a job (`commands::redact`) that swaps the marked pages for the same pages without what
+//! lies under the marks (`pdfwrite::redact_content`, ADR-055): the job reads what to remove with [`snapshot`], and the model step is
+//! [`plan`] (a [`DocCommand::RestoreRedaction`], which is its own inverse).
 
 use std::collections::{BTreeSet, HashSet};
 use std::sync::Arc;
@@ -130,7 +131,7 @@ pub(crate) fn mark(
 
 // --- Applying the marks ----------------------------------------------------------------------------------------------
 
-/// What the job needs to know about one page it rasters, taken when it starts.
+/// What the job needs to know about one page it redacts, taken when it starts.
 #[derive(Debug, Clone, PartialEq)]
 pub struct PageWork {
     pub page_id: PageId,
@@ -140,6 +141,9 @@ pub struct PageWork {
     /// Width and height in points before the rotation (the crop size), and the `/Rotate`.
     pub size: [f32; 2],
     pub rotation: u16,
+    /// Where the page's content comes from, and the box it shows (crop or MediaBox) in user space.
+    pub source: PageSource,
+    pub shown: [f32; 4],
     /// The rectangles to fill black, page space (one per quad of every mark on the page).
     pub burn: Vec<Rect>,
 }
@@ -195,6 +199,8 @@ pub fn snapshot(state: &DocState, pages: Option<&[PageId]>) -> Result<Vec<PageWo
             rev: slot.rev,
             size: slot.size,
             rotation: slot.rotation,
+            source: slot.source.clone(),
+            shown: slot.shown_box(),
             burn,
         });
     }
@@ -207,14 +213,14 @@ pub fn snapshot(state: &DocState, pages: Option<&[PageId]>) -> Result<Vec<PageWo
     Ok(work)
 }
 
-/// A rastered page: what the job made for one [`PageWork`], already added to the engine's copy as `engine_index`.
+/// A redacted page: what the job made for one [`PageWork`], already added to the engine's copy as `engine_index`.
 #[derive(Debug, Clone)]
 pub struct Raster {
     pub page_id: PageId,
     /// The `rev` the page had when the job started.
     pub rev: u32,
     pub engine_index: u32,
-    /// The one-page PDF (`pdfwrite::redact::raster_page`).
+    /// The one-page PDF (`pdfwrite::redact_content::redacted_page`).
     pub bytes: Arc<[u8]>,
 }
 
