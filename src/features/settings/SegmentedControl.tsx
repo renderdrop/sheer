@@ -1,6 +1,6 @@
 import type { KeyboardEvent } from 'react';
 
-import { CONTROL_BASE, ICON_BUTTON_VARIANTS } from '../../components/controlStyles';
+import { CONTROL_BASE } from '../../components/controlStyles';
 import { cx } from '../../components/cx';
 import { isOwnEvent, itemsOf, rovingTarget } from '../../components/roving';
 
@@ -59,7 +59,7 @@ export function SegmentedControl<Value extends string>({
       role="radiogroup"
       aria-labelledby={labelledBy}
       onKeyDown={onKeyDown}
-      className="flex h-control-lg gap-1 rounded-button border border-divider p-1"
+      className="flex rounded-md bg-subtle p-half"
     >
       {options.map((option, index) => {
         const selected = option.value === value;
@@ -76,9 +76,11 @@ export function SegmentedControl<Value extends string>({
             }}
             className={cx(
               CONTROL_BASE,
-              'min-w-0 flex-1 basis-0 rounded-sm px-2 text-md',
-              // The look of a toggle: rest, hover and pressed (a segment is never disabled), selected with its ring and forced-colors cue.
-              ICON_BUTTON_VARIANTS.toggle[selected ? 'on' : 'off'],
+              // The segmented look of DESIGN v2 §4 (as `Segmented`): the chosen segment White with a Stone border, the others muted.
+              'h-control-sm min-w-0 flex-1 basis-0 rounded-sm border px-3 text-md',
+              selected
+                ? 'border-control-border bg-surface-solid font-medium text-text forced-colors:border-accent'
+                : 'border-transparent font-normal text-text-muted not-aria-disabled:enabled:hover:text-text',
             )}
           >
             <span className="truncate">{option.label}</span>

@@ -10,7 +10,7 @@ import {
   type ReactNode,
 } from 'react';
 
-import { Button, IconButton, Menu, Popover } from '../../components';
+import { Button, IconButton, Menu, Popover, Checkbox } from '../../components';
 import { Icon } from '../../components/Icon';
 import { tokenPx } from '../../components/tokens';
 import { useT, type PlainKey } from '../../i18n';
@@ -489,9 +489,7 @@ function FilterGroup<T extends string>({
       <legend className="p-0 pb-1 text-sm font-semibold text-text-muted">{legend}</legend>
       {values.map((value) => (
         <label key={value} className="flex min-h-control-sm cursor-pointer items-center gap-2 text-md">
-          <input
-            type="checkbox"
-            className="accent-accent"
+          <Checkbox
             checked={chosen.includes(value)}
             onChange={(event) =>
               onChange(event.target.checked ? [...chosen, value] : chosen.filter((other) => other !== value))

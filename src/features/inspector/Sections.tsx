@@ -1,8 +1,8 @@
-import { Check, ChevronDown } from 'lucide-react';
+import { ChevronDown } from 'lucide-react';
 import { useId, useState, type KeyboardEvent, type ReactNode } from 'react';
 
 import type { LineEnd, Rgb } from '../../api/annotations';
-import { Field, Icon, IconButton, Menu, Slider } from '../../components';
+import { Field, IconButton, Menu, Slider } from '../../components';
 import { cx } from '../../components/cx';
 import { useT } from '../../i18n';
 import { PALETTE, paletteEntry, rgbToCss } from './palette';
@@ -40,18 +40,14 @@ function Labelled({
   );
 }
 
-const SWATCH =
-  'group relative flex size-swatch shrink-0 cursor-pointer items-center justify-center rounded-pill border border-control-border aria-disabled:cursor-not-allowed';
-
 function swatchOption(rgb: Rgb, label: string, bg: string | null, check: string): RadioOption<string> {
   return {
     value: rgb.join(','),
     label,
     swatch: true,
-    className: cx(SWATCH, bg ?? undefined, check),
+    className: cx(bg ?? undefined, check),
     // A colour from the file is data, not a design colour: it can only be set inline.
     style: bg === null ? { backgroundColor: rgbToCss(rgb) } : undefined,
-    children: <Icon icon={Check} size={16} className="invisible group-aria-checked:visible" />,
   };
 }
 

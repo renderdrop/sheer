@@ -1,7 +1,7 @@
 import { SquareSlash } from 'lucide-react';
 import type { ReactNode } from 'react';
 
-import { Button, Icon } from '../../components';
+import { Button, Icon, Checkbox } from '../../components';
 import { useT } from '../../i18n';
 import { selectActiveId, useDocuments } from '../../stores/documents';
 import { useUi } from '../../stores/ui';
@@ -34,9 +34,7 @@ function RedactBody({ docId }: { docId: number }) {
       <div className="flex flex-col gap-2">
         {count === 0 ? <Empty /> : <MarksList docId={docId} marks={marks} />}
         <label className="flex min-h-control-sm cursor-pointer items-center gap-2 text-md">
-          <input
-            type="checkbox"
-            className="accent-accent"
+          <Checkbox
             checked={removeMetadata}
             onChange={(event) => useRedact.getState().setRemoveMetadata(event.target.checked)}
           />

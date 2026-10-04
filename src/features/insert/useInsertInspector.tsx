@@ -1,7 +1,7 @@
 import { useId, type ReactNode } from 'react';
 
 import type { StdFont, TextAlign } from '../../api/annotations';
-import { Button, PanelSection } from '../../components';
+import { Button, PanelSection, Checkbox } from '../../components';
 import { cx } from '../../components/cx';
 import { useT, type PlainKey } from '../../i18n';
 import { selectActiveId, useDocuments } from '../../stores/documents';
@@ -94,12 +94,7 @@ function LockAspect() {
   const setLock = useInsert((s) => s.setLockAspect);
   return (
     <label className="flex min-h-control-sm cursor-pointer items-center gap-2 text-md">
-      <input
-        type="checkbox"
-        className="accent-accent"
-        checked={lock}
-        onChange={(event) => setLock(event.target.checked)}
-      />
+      <Checkbox checked={lock} onChange={(event) => setLock(event.target.checked)} />
       <span className="min-w-0 flex-1">{t('insert.lockAspect')}</span>
     </label>
   );

@@ -1,6 +1,6 @@
-import { CircleAlert, TriangleAlert, X } from 'lucide-react';
+import { CircleAlert, TriangleAlert, X, type LucideIcon } from 'lucide-react';
 import { AnimatePresence, motion, useIsPresent } from 'motion/react';
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 
 import { IconButton } from '../../components';
 import { cx } from '../../components/cx';
@@ -12,13 +12,44 @@ import { selectActiveDocument, useDocuments } from '../../stores/documents';
 import { useUi } from '../../stores/ui';
 import type { AppError } from '../../api/errors';
 
+export interface BannerBoxProps {
+  role: 'alert' | 'status';
+  /** `danger` only for redaction and errors (DESIGN 4): danger border, icon and text. */
+  variant?: 'neutral' | 'danger';
+  icon: LucideIcon;
+  dismissLabel: string;
+  onDismiss: () => void;
+  children: ReactNode;
+}
+
+/** The box of a banner (DESIGN 4): Sand, at least 40 high, 16 icon, `.t-label`, close button 28. */
+export function BannerBox({ role, variant = 'neutral', icon, dismissLabel, onDismiss, children }: BannerBoxProps) {
+  const danger = variant === 'danger';
+  return (
+    <div
+      role={role}
+      data-variant={variant}
+      className={cx(
+        't-label flex min-h-control-lg items-center gap-2 rounded-md border bg-subtle py-1 pe-1 ps-3',
+        danger ? 'border-error-text text-error-text' : 'border-transparent text-text',
+      )}
+    >
+      <span className={cx('shrink-0', danger ? 'text-error-icon' : 'text-text')}>
+        <Icon icon={icon} />
+      </span>
+      <span className="min-w-0 flex-auto">{children}</span>
+      <IconButton label={dismissLabel} icon={X} size="sm" onClick={onDismiss} />
+    </div>
+  );
+}
+
 export interface BannerProps {
   error: AppError;
   onDismiss: () => void;
 }
 
 /**
- * The banner row (DESIGN 3.12): G1, at least 48 high, radius 16, padding 8 8 8 16. An error is persistent until it is
+ * The banner row (DESIGN 4): Sand, at least 40 high, radius md, DESIGN 4. An error is persistent until it is
  * dismissed or resolved, never a toast, and announced as an alert. It pushes the content down instead of covering it.
  *
  * It opens and closes with height and opacity over 250 ms (opacity only under reduced motion). The closing needs an
@@ -40,16 +71,15 @@ export function Banner({ error, onDismiss }: BannerProps) {
       className={cx('shrink-0', moving || !present ? 'overflow-hidden' : 'overflow-visible')}
     >
       <div className="px-2 pb-2">
-        <div
+        <BannerBox
           role="alert"
-          className="bg-panel border border-border-subtle shadow-floating flex min-h-banner-min items-center gap-2 rounded-panel py-2 pe-2 ps-4"
+          variant="danger"
+          icon={CircleAlert}
+          dismissLabel={t('action.dismiss')}
+          onDismiss={onDismiss}
         >
-          <span className="shrink-0 text-error-text">
-            <Icon icon={CircleAlert} />
-          </span>
-          <span className="min-w-0 flex-auto text-error-text">{errorText(t, error)}</span>
-          <IconButton label={t('action.dismiss')} icon={X} size="sm" onClick={onDismiss} />
-        </div>
+          {errorText(t, error)}
+        </BannerBox>
       </div>
     </motion.div>
   );
@@ -90,21 +120,15 @@ export function XfaBannerRow() {
       {show && (
         <motion.div key="xfa" {...motionProps} className="shrink-0">
           <div className="px-2 pb-2">
-            <div
+            <BannerBox
               role="status"
-              className="bg-panel border border-border-subtle shadow-floating flex min-h-banner-min items-center gap-2 rounded-panel py-2 pe-2 ps-4"
+              variant="neutral"
+              icon={TriangleAlert}
+              dismissLabel={t('xfa.dismiss')}
+              onDismiss={() => useUi.getState().dismissXfa(activeId)}
             >
-              <span className="shrink-0 text-text">
-                <Icon icon={TriangleAlert} />
-              </span>
-              <span className="min-w-0 flex-auto text-text">{t('xfa.message', { app: APP_NAME })}</span>
-              <IconButton
-                label={t('xfa.dismiss')}
-                icon={X}
-                size="sm"
-                onClick={() => useUi.getState().dismissXfa(activeId)}
-              />
-            </div>
+              {t('xfa.message', { app: APP_NAME })}
+            </BannerBox>
           </div>
         </motion.div>
       )}

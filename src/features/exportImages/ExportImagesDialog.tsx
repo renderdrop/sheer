@@ -9,7 +9,7 @@ import {
   type ImageExportOptions,
 } from '../../api/exportImages';
 import type { JobEvent } from '../../api/jobs';
-import { Button, Field, Icon, Slider } from '../../components';
+import { Button, Field, Icon, Slider, Checkbox } from '../../components';
 import { formatNumber, useLocale, useT } from '../../i18n';
 import { selectActiveDocument, useDocuments } from '../../stores/documents';
 import { useSlots } from '../../stores/pages';
@@ -362,12 +362,7 @@ function ExportImagesModal() {
                 />
               </div>
               <label className="flex min-h-control-md cursor-pointer items-center gap-2">
-                <input
-                  type="checkbox"
-                  checked={annotations}
-                  onChange={(event) => setAnnotations(event.target.checked)}
-                  className="accent-accent"
-                />
+                <Checkbox checked={annotations} onChange={(event) => setAnnotations(event.target.checked)} />
                 {t('exportImg.annotations')}
               </label>
               <p role="status" aria-live="polite" className="m-0 min-h-6 text-sm text-text-muted">

@@ -1,6 +1,6 @@
 import type { CSSProperties, KeyboardEvent, ReactNode } from 'react';
 
-import { Tooltip } from '../../components';
+import { Swatch, Tooltip } from '../../components';
 import { isOwnEvent, itemsOf, rovingTarget } from '../../components/roving';
 
 export interface RadioOption<Value extends string | number> {
@@ -11,7 +11,7 @@ export interface RadioOption<Value extends string | number> {
   className: string;
   style?: CSSProperties;
   children?: ReactNode;
-  /** Extra attribute `data-swatch` for colour swatches (forced-colors rules). */
+  /** Render a `Swatch` (DESIGN 2.7): `className` then only holds the fill and check colour classes; `children` are ignored. */
   swatch?: boolean;
 }
 
@@ -66,6 +66,25 @@ export function RadioRow<Value extends string | number>({
     >
       {options.map((option, index) => {
         const checked = option.value === value;
+        const tabIndex = checked || (!hasChecked && index === 0) ? 0 : -1;
+        const choose = () => {
+          if (!disabled && !checked) onChange(option.value);
+        };
+        if (option.swatch === true) {
+          return (
+            <Tooltip key={option.value} label={option.label} side="bottom">
+              <Swatch
+                label={option.label}
+                checked={checked}
+                aria-disabled={disabled ? true : undefined}
+                tabIndex={tabIndex}
+                onClick={choose}
+                style={option.style}
+                className={option.className}
+              />
+            </Tooltip>
+          );
+        }
         return (
           <Tooltip key={option.value} label={option.label} side="bottom">
             <button
@@ -74,11 +93,8 @@ export function RadioRow<Value extends string | number>({
               aria-checked={checked}
               aria-label={option.label}
               aria-disabled={disabled ? true : undefined}
-              data-swatch={option.swatch === true ? '' : undefined}
-              tabIndex={checked || (!hasChecked && index === 0) ? 0 : -1}
-              onClick={() => {
-                if (!disabled && !checked) onChange(option.value);
-              }}
+              tabIndex={tabIndex}
+              onClick={choose}
               style={option.style}
               className={option.className}
             >

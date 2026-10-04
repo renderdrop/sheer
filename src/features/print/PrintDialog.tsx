@@ -5,7 +5,7 @@ import { useEffect, useId, useRef, useState } from 'react';
 import { toAppError, type AppError } from '../../api/errors';
 import type { PageSelection } from '../../api/pageSelection';
 import { preparePrint, releasePrint } from '../../api/print';
-import { Button, Field, Icon } from '../../components';
+import { Button, Field, Icon, Checkbox } from '../../components';
 import { useT } from '../../i18n';
 import { selectActiveDocument, useDocuments } from '../../stores/documents';
 import { useUi } from '../../stores/ui';
@@ -173,9 +173,7 @@ function PrintModal() {
       <div className="relative mt-4">
         <div className={busy ? 'invisible' : ''} inert={busy ? true : undefined}>
           <label className="flex min-h-control-sm cursor-pointer items-center gap-2 text-md">
-            <input
-              type="checkbox"
-              className="accent-accent"
+            <Checkbox
               checked={annotations}
               aria-describedby={`${id}-hint`}
               onChange={(event) => {

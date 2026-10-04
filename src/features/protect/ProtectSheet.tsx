@@ -12,7 +12,7 @@ import {
   type Permission,
   type ProtectionInfo,
 } from '../../api/protection';
-import { Button, Field, Icon, IconButton } from '../../components';
+import { Button, Field, Icon, IconButton, Checkbox } from '../../components';
 import { cx } from '../../components/cx';
 import { APP_NAME } from '../../config/app';
 import { useT } from '../../i18n';
@@ -280,9 +280,7 @@ function ProtectModal({ docId }: { docId: number }) {
 
         <section className="flex flex-col">
           <label className="flex min-h-control-sm cursor-pointer items-center gap-2 text-md">
-            <input
-              type="checkbox"
-              className="accent-accent"
+            <Checkbox
               checked={requireOpen}
               data-autofocus=""
               onChange={(event) => setRequireOpen(event.target.checked)}
@@ -323,9 +321,7 @@ function ProtectModal({ docId }: { docId: number }) {
         <section className="mt-4 flex flex-col border-t border-divider pt-4">
           {PERMISSIONS.map((permission) => (
             <label key={permission} className="flex min-h-control-sm cursor-pointer items-center gap-2 text-md">
-              <input
-                type="checkbox"
-                className="accent-accent"
+              <Checkbox
                 checked={allow.includes(permission)}
                 onChange={(event) => toggle(permission, event.target.checked)}
               />

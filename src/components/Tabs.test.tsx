@@ -193,12 +193,12 @@ describe('Tabs disabled edge cases', () => {
 });
 
 describe('Tabs forced colors', () => {
-  it('gives the selected fill a border cue, because its ring is a box-shadow that forced colors drops', () => {
+  it('gives the selected underline a border cue, because its ring is a box-shadow that forced colors drops', () => {
     setup(<Demo />);
     const indicator = document.querySelector('[role="tab"][aria-selected="true"] > span[aria-hidden="true"]');
     expect(indicator).not.toBeNull();
     const classes = (indicator?.className ?? '').split(/\s+/);
-    expect(classes).toContain('inset-ring-accent');
+    expect(classes).toContain('bg-accent');
     for (const cue of SELECTED_FORCED_COLORS.split(' ')) expect(classes, cue).toContain(cue);
   });
 });

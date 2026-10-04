@@ -99,12 +99,12 @@ describe('the banner row (DESIGN 3.12)', () => {
     expect(screen.getByRole('alert').textContent).not.toContain('damaged');
   });
 
-  it('is in the flow of the page, at least 48 high, with its gutters inside the element that animates the height', () => {
+  it('is in the flow of the page, at least 40 high, with its gutters inside the element that animates the height', () => {
     const { container } = setup(<BannerRow />);
     act(() => useUi.getState().showBanner(DAMAGED));
     const alert = screen.getByRole('alert');
-    expect(alert.className).toContain('min-h-banner-min');
-    expect(alert.className).toContain('bg-panel border border-border-subtle shadow-floating');
+    expect(alert.className).toContain('min-h-control-lg');
+    expect(alert.className).toContain('bg-subtle');
     const row = container.firstElementChild;
     expect(row?.className).toContain('shrink-0');
     expect(row?.contains(alert)).toBe(true);

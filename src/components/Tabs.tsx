@@ -111,10 +111,7 @@ function Indicator({ layoutId }: { layoutId: string }) {
       {...(reduce
         ? { initial: { opacity: 0 }, animate: { opacity: 1 }, transition: spring(DURATION.fast) }
         : { layoutId, transition: SPRING.base })}
-      className={cx(
-        'absolute inset-0 rounded-button bg-selected inset-ring-1 inset-ring-accent',
-        SELECTED_FORCED_COLORS,
-      )}
+      className={cx('absolute inset-x-0 bottom-0 h-half bg-accent', SELECTED_FORCED_COLORS)}
     />
   );
 }
@@ -141,13 +138,10 @@ export function Tab({ value, label, icon, shortcut, keyShortcuts, disabled = fal
           if (!disabled) select(value);
         }}
         className={cx(
-          'relative flex h-full min-w-0 flex-1 cursor-pointer items-center justify-center rounded-button',
+          'relative flex h-full min-w-0 flex-1 cursor-pointer items-center justify-center',
           PRESS_MOTION,
           'aria-disabled:cursor-not-allowed aria-disabled:text-text-disabled',
-          selected
-            ? 'text-text'
-            : 'text-text not-aria-disabled:hover:bg-control-hover not-aria-disabled:active:bg-control-pressed',
-          'not-aria-disabled:active:scale-(--scale-press)',
+          selected ? 'font-medium text-text' : 'font-normal text-text-muted not-aria-disabled:hover:text-text',
         )}
       >
         {selected && <Indicator layoutId={`${baseId}-indicator`} />}

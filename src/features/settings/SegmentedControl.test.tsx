@@ -141,17 +141,15 @@ describe('SegmentedControl', () => {
     expect(onChange).not.toHaveBeenCalled();
   });
 
-  it('has the pressed state on every segment, the chosen one too, as the toggle button has it (DESIGN 3.0)', () => {
+  it('shares the press scale of every control; hover only changes the text of the segments not chosen', () => {
     setup(<Demo initial="dark" />);
     for (const name of ['System', 'Light', 'Dark']) {
-      const classes = radio(name).className.split(' ');
-      expect(classes, name).toContain('not-aria-disabled:enabled:active:bg-control-pressed');
-      // The press scale comes with the shared base of every control.
-      expect(classes, name).toContain('not-aria-disabled:enabled:active:scale-(--scale-press)');
+      expect(radio(name).className.split(' '), name).toContain(
+        'not-aria-disabled:enabled:active:scale-(--scale-press)',
+      );
     }
-    // Hover is for the segments that are not chosen; the chosen one keeps its selected look.
-    expect(radio('Light').className).toContain('not-aria-disabled:enabled:hover:bg-control-hover');
-    expect(radio('Dark').className).not.toContain('hover:bg-control-hover');
+    expect(radio('Light').className).toContain('not-aria-disabled:enabled:hover:text-text');
+    expect(radio('Dark').className).not.toContain('hover:text-text');
   });
 
   it('carries the forced-colors cue of the selected look on the chosen segment only', () => {
@@ -162,11 +160,12 @@ describe('SegmentedControl', () => {
 
   it('shows the selected look on the checked radio only, in tokens', () => {
     setup(<Demo initial="dark" />);
-    expect(radio('Dark').className).toContain('bg-selected');
-    expect(radio('Dark').className).toContain('text-text');
-    expect(radio('Light').className).not.toContain('bg-selected');
-    // The track and the segments are concentric: 12 px outside with 4 px padding, 8 px inside.
-    expect(screen.getByRole('radiogroup').className).toContain('rounded-button');
+    expect(radio('Dark').className).toContain('bg-surface-solid');
+    expect(radio('Dark').className).toContain('border-control-border');
+    expect(radio('Light').className).not.toContain('bg-surface-solid');
+    expect(radio('Light').className).toContain('text-text-muted');
+    // DESIGN v2 §4: a Sand track (radius md, 2 px padding) around segments of radius sm.
+    expect(screen.getByRole('radiogroup').className).toContain('bg-subtle');
     expect(radio('Light').className).toContain('rounded-sm');
   });
 });

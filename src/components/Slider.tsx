@@ -196,14 +196,10 @@ export function Slider({
             aria-disabled={disabled ? true : undefined}
             data-dragging={isDragging ? 'true' : undefined}
             onKeyDown={onKeyDown}
-            // Thumb: 16 px white disc with a hairline border and the level-1 shadow. It grows by `--scale-thumb` on hover
-            // and drag; reduced motion sets that token to 1, so the thumb stays still without a branch here.
+            // Thumb (DESIGN 2.5): 16 px Solar disc with a 2 px Ink border; it never scales, not even while dragging.
             className={cx(
-              'absolute top-1/2 size-4 -translate-x-1/2 -translate-y-1/2 rounded-pill border bg-page shadow-standard',
-              'transition-[scale] duration-fast',
-              disabled
-                ? 'border-text-disabled'
-                : 'border-control-border group-hover:scale-(--scale-thumb) data-[dragging=true]:scale-(--scale-thumb)',
+              'absolute top-1/2 size-4 -translate-x-1/2 -translate-y-1/2 rounded-pill border-2',
+              disabled ? 'border-text-disabled bg-fill-disabled' : 'border-text bg-accent',
             )}
             style={{ insetInlineStart: `${percent}%` }}
           />

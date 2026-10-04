@@ -5,7 +5,7 @@ import { useEffect, useId, useState } from 'react';
 import { exportPdf, type PdfExportOptions } from '../../api/exportPdf';
 import type { JobWarning } from '../../api/jobs';
 import type { SaveAck } from '../../api/save';
-import { Button, Icon } from '../../components';
+import { Button, Icon, Checkbox } from '../../components';
 import { useT } from '../../i18n';
 import { selectActiveDocument, selectActiveId, useDocuments } from '../../stores/documents';
 import { useUi } from '../../stores/ui';
@@ -148,9 +148,7 @@ function ExportModal({ docId }: { docId: number }) {
         </div>
         <div className="mt-2 flex flex-col">
           <label className="flex min-h-control-sm cursor-pointer items-center gap-2 text-md has-disabled:cursor-not-allowed has-disabled:text-text-disabled">
-            <input
-              type="checkbox"
-              className="accent-accent"
+            <Checkbox
               checked={canEdit && removeMetadata}
               disabled={run.running || !canEdit}
               aria-describedby={edited}

@@ -15,7 +15,7 @@ import {
   type SignatureRef,
   type TypedFont,
 } from '../../../api/signatures';
-import { Button, Field, Icon, Tab, TabList, TabPanel, Tabs } from '../../../components';
+import { Button, Field, Icon, Tab, TabList, TabPanel, Tabs, Checkbox } from '../../../components';
 import { cx } from '../../../components/cx';
 import { errorText, useT, type Translate } from '../../../i18n';
 import { useSettings } from '../../../stores/settings';
@@ -39,8 +39,6 @@ import { loadFont, rememberItemFont, saveFont, SIGNATURE_FONTS } from './fonts';
 import { ArtPreview, PAD_SURFACE } from './Previews';
 import { lastSignatureColour, rememberSignatureColour, settleSignatureSheet } from './store';
 
-const SWATCH =
-  'group relative flex size-swatch shrink-0 cursor-pointer items-center justify-center rounded-pill border border-control-border aria-disabled:cursor-not-allowed';
 const COLOURS: readonly SigColour[] = ['black', 'blue'];
 
 function colourOptions(t: Translate): RadioOption<SigColour>[] {
@@ -52,10 +50,7 @@ function colourOptions(t: Translate): RadioOption<SigColour>[] {
         value: id,
         label: t(entry.nameKey),
         swatch: true,
-        className: cx(SWATCH, entry.bg, entry.check),
-        children: (
-          <span aria-hidden="true" className="invisible size-2 rounded-pill bg-current group-aria-checked:visible" />
-        ),
+        className: cx(entry.bg, entry.check),
       },
     ];
   });
@@ -380,9 +375,7 @@ function SheetBody({ id, kind }: { id: number; kind: SignatureRole }) {
             libraryOk ? 'cursor-pointer' : 'cursor-not-allowed text-text-disabled',
           )}
         >
-          <input
-            type="checkbox"
-            className="accent-accent"
+          <Checkbox
             checked={willSave}
             aria-disabled={!libraryOk ? true : undefined}
             aria-describedby={!libraryOk && status !== null ? libId : undefined}
