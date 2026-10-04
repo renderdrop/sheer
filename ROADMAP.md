@@ -242,7 +242,7 @@ Order as in the brief. Each phase ends with one designer round on Tauri-window s
 - [x] R1.2 — App icon "s." in three variants, measured optical centering (< 1 %), platform icons via `tauri icon`
 - [x] R1.3 — Installer art (NSIS header/sidebar) in brand mode
 - [x] R1.4 — Welcome PDF "Welcome to sheer." in the new layout
-- [ ] R1.5 — About dialog, README head, release-notes template; APP_NAME "sheer." in UI text
+- [x] R1.5 — About dialog, README head, release-notes template; APP_NAME "sheer." in UI text
 - [ ] R1 acceptance — icons in Explorer, word mark in Home, installer built locally, designer round
 - [ ] R2.1 — Home: left navigation (Home, Recent, Starred, Tools), hero (Sand, glow, display type, search with `/`, yellow open button)
 - [ ] R2.2 — Recent cards (thumbnail, name, relative time, context menu: Open, Star, Show in Explorer, Remove), max 12 + "Show all"; Starred list
@@ -254,8 +254,8 @@ Order as in the brief. Each phase ends with one designer round on Tauri-window s
 - [ ] R3.3 — Canvas (#EFEFEC, page shadow, 24 px gap) and right tool sidebar with progressive disclosure (inspector panel removed)
 - [ ] R3.4 — Form banner, selection popover (Highlight · Comment · Copy), comments tab (filter, resolved), redact mode (red band, Apply)
 - [ ] R3 acceptance — annot-smoke 16/16, old ⋯-menu → new place table (ADR), screenshot vs moodboard, designer round
-- [ ] R4.1 — Buttons, icon buttons, inputs, dropdowns, popovers, dialogs, toasts, tooltips with kbd
-- [ ] R4.2 — Tabs, segmented control, toggle, checkbox, slider, skeletons, banner, dropzone
+- [x] R4.1 — Buttons, icon buttons, inputs, dropdowns, popovers, dialogs, toasts, tooltips with kbd
+- [x] R4.2 — Tabs, segmented control, toggle, checkbox, slider, skeletons, banner, dropzone
 - [ ] R4.3 — Highlight/ink palette (Solar default + Mint, Sky, Rose, Lavender); signature sheet (Sand pad, baseline not in the path, ink Ink/Blue)
 - [ ] R4.4 — /dev/components page (dev builds only) and contrast script (text ≥ 4.5:1, UI ≥ 3:1)
 - [ ] R4 acceptance — contrast script green, designer round
@@ -271,5 +271,6 @@ Order as in the brief. Each phase ends with one designer round on Tauri-window s
   - (R0b reviews, minor) LICENSES objc2-app-kit row stale (transitive only); settings.rs RETIRED_KEYS comment says "first write" (startup rewrite); brandRules comment stripper eats `//` inside strings; brandRules non-vacuity check wants a minimum file count; `--font-display` duplicates `--font-sans`; Surface.tsx spreads `rest` after `data-surface`; WorkSurface wraps only panel/canvas/inspector (wrap the whole editor in R3); SolarGlow `drop` needs an opacity variable (R5 spell 4); tauri.conf backgroundColor hex outside tokens (record in DECISIONS)
   - (welcome review, minor) page 1 glow runs under the footer; page 3 highlight card has no Solar cue; task-page headings in Helvetica-Bold (BRAND: no bold headings) — use regular; top-right page number duplicates the footer
   - (R0 designer, minor) welcome PDF could embed Inter instead of Helvetica; "Strg+O" key badge outline should be `--color-border`; yellow-outline toggles (left-panel button, sidebar tab) fail 3:1 — Solar fill + Ink, Ink focus ring (R4 primitives)
+  - (wave 3 reviews, minor) controlStyles tests cover only the forced-colors cue (assert the §4 state matrix); Secondary button lacks `active:bg-pressed`; Menu items still use `bg-control-hover/pressed` (move to `bg-subtle/pressed`, then drop those tokens and `--color-accent-pressed`); icon-button `sm` square is control-sm; Toggle knob travel asymmetric (`translate-x-5`); Dropzone/Skeleton without tests, Dropzone doc comment has a hex; Segmented Up/Down remap undocumented; Tabs leftover PRESS_MOTION; word-mark kerning without variation deltas; Wordmark.tsx duplicates the SVG path (guarded by a test); README prose still says "Sheer"; banners stack without a cap (BannerSlot); EditorLayout module-level `placements` map → useMemo; StatusBar.tsx, `--status-name-max`, `--toolbar-row-height`, `leftAutoCollapsed` possibly dead after wave 4
   - (P-A review, minor) legacy alias block still carries v1.1 `--annot-*` hex values (remove with the §1.4 palette migration, R4.3); rename `--color-surface-solid`; `text-accent` left in IconButton.tsx (yellow on Ink); legacy `--spacing-*` slot aliases (hub, logo, caption) go with R2/R3; `--panel-*` 192/248/400 and `--inspector-width` 288 keep v1.1 values until R3 (Rust limits.rs + layout tests)
 - [ ] R7 — Screenshot series docs/review/v1.2, designer review vs BRAND §2, smoke, gates, audits, CI green, CHANGELOG, tag v1.2.0
