@@ -12,8 +12,13 @@ export interface SurfaceFrame {
   height: number;
 }
 
-/** The frames the print surface shows (DESIGN 3.44). Empty except while a print runs. */
-export const usePrintSurface = create<{ frames: readonly SurfaceFrame[] }>()(() => ({ frames: [] }));
+/**
+ * The frames the print surface shows (DESIGN 3.44). Empty except while a print runs. `printing` is true while the system print
+ * dialog is open, so a second print cannot replace the surface under it.
+ */
+export const usePrintSurface = create<{ frames: readonly SurfaceFrame[]; printing?: boolean }>()(() => ({
+  frames: [],
+}));
 
 /** Revokes every blob URL and empties the surface. */
 export function clearSurface(): void {
@@ -67,12 +72,14 @@ export async function stageFrames(frames: readonly SurfaceFrame[]): Promise<void
 
 /** Opens the print dialog, and when it returns drops the set and the blob URLs. Failures go to the banner. */
 export async function handOver(printId: number): Promise<void> {
+  usePrintSurface.setState({ printing: true });
   try {
     await openPrintDialog(printId);
   } catch (caught) {
     useUi.getState().showBanner(toAppError(caught));
   } finally {
     clearSurface();
+    usePrintSurface.setState({ printing: false });
     await releasePrint(printId).catch(() => undefined);
   }
 }

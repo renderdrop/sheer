@@ -82,7 +82,7 @@ function ExportModal({ docId }: { docId: number }) {
   const option = (value: Annotations, label: string, hint: string) => ({
     value,
     label,
-    describedBy: `${id}-hint`,
+    describedBy: `${id}-hint-${value}`,
     content: <span>{label}</span>,
     hint,
   });
@@ -142,7 +142,7 @@ function ExportModal({ docId }: { docId: number }) {
             look="segmented"
             disabled={run.running || !canEdit}
           />
-          <p id={`${id}-hint`} className="m-0 text-sm text-text-muted">
+          <p id={`${id}-hint-${shownAnnotations}`} className="m-0 text-sm text-text-muted">
             {hint}
           </p>
         </div>

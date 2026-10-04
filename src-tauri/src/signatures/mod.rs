@@ -23,7 +23,7 @@ use serde::{Deserialize, Serialize};
 use crate::error::AppError;
 use crate::model::annotation::SignatureRole;
 use crate::model::ids::AssetId;
-pub use vector::DrawCmd;
+pub use vector::{DrawCmd, Outlines};
 
 /// Drafts kept at once; the oldest is dropped (ADR-041 §6).
 pub const MAX_DRAFTS: usize = 16;

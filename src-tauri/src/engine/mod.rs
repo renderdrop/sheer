@@ -907,7 +907,7 @@ impl Engine {
         annotations: bool,
         rotate_quarter: u8,
     ) -> Result<RasterPage, AppError> {
-        self.call(limits::RENDER_TIMEOUT, Rank::BACKGROUND, |reply| {
+        self.call(limits::EXPORT_RENDER_TIMEOUT, Rank::BACKGROUND, |reply| {
             Job::RenderExport {
                 doc,
                 engine_index,

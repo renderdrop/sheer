@@ -117,7 +117,7 @@ describe('the dialog', () => {
 
   it('runs a job and closes with a toast', async () => {
     api.exportImages.mockImplementation((_doc: number, _opts: unknown, onEvent: (e: JobEvent) => void) => {
-      queueMicrotask(() => onEvent(done(10, ['dpiLowered'])));
+      queueMicrotask(() => onEvent(done(10)));
       return Promise.resolve({ type: 'started', jobId: 7 });
     });
     const { user } = await open();
@@ -130,7 +130,57 @@ describe('the dialog', () => {
       annotations: true,
     });
     expect(useUi.getState().toast?.message).toContain('10 images saved');
-    expect(useUi.getState().toast?.message).toContain('lower resolution');
+  });
+
+  it('says a lowered resolution in the dialog with Done, not in the toast', async () => {
+    api.exportImages.mockImplementation((_doc: number, _opts: unknown, onEvent: (e: JobEvent) => void) => {
+      queueMicrotask(() => onEvent(done(10, ['dpiLowered'])));
+      return Promise.resolve({ type: 'started', jobId: 7 });
+    });
+    const { user } = await open();
+    await user.click(screen.getByRole('button', { name: 'Export…' }));
+    expect(await screen.findByText('Some large pages are exported at a lower resolution.')).toBeTruthy();
+    expect(useUi.getState().exportImagesOpen).toBe(true);
+    await user.click(screen.getByRole('button', { name: 'Done' }));
+    expect(useUi.getState().exportImagesOpen).toBe(false);
+  });
+
+  it('names the file in the toast for a single page', async () => {
+    api.exportImages.mockImplementation((_doc: number, _opts: unknown, onEvent: (e: JobEvent) => void) => {
+      queueMicrotask(() => onEvent(done(1)));
+      return Promise.resolve({ type: 'started', jobId: 7 });
+    });
+    const { user } = await open();
+    await user.click(screen.getByRole('radio', { name: 'Current page' }));
+    await user.click(screen.getByRole('button', { name: 'Export…' }));
+    await waitFor(() => expect(useUi.getState().exportImagesOpen).toBe(false));
+    expect(useUi.getState().toast?.message).toBe('Saved A-p01.png');
+  });
+
+  it('steps the custom dpi with the arrows, ten at a time with Shift', async () => {
+    const { user } = await open();
+    await user.click(screen.getByRole('radio', { name: 'Custom' }));
+    const field = screen.getByRole('textbox', { name: 'Custom resolution in dpi' }) as HTMLInputElement;
+    await user.click(field);
+    await user.keyboard('{ArrowUp}');
+    expect(field.value).toBe('151');
+    await user.keyboard('{Shift>}{ArrowUp}{/Shift}');
+    expect(field.value).toBe('161');
+    await user.keyboard('{Shift>}{ArrowDown}{/Shift}{ArrowDown}');
+    expect(field.value).toBe('150');
+  });
+
+  it('remembers format, resolution and quality', async () => {
+    const { user } = await open();
+    await user.click(screen.getByRole('radio', { name: 'JPEG' }));
+    await user.click(screen.getByRole('radio', { name: '300' }));
+    expect(JSON.stringify(Object.values(globalThis.localStorage))).toMatch(/300/);
+    act(() => useUi.getState().setExportImagesOpen(false));
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    act(() => useUi.getState().setExportImagesOpen(true));
+    await screen.findByRole('dialog');
+    expect(screen.getByRole('radio', { name: 'JPEG' }).getAttribute('aria-checked')).toBe('true');
+    expect(screen.getByRole('radio', { name: '300' }).getAttribute('aria-checked')).toBe('true');
   });
 
   it('returns to the form when the folder dialog is cancelled', async () => {
@@ -168,6 +218,7 @@ describe('the dialog', () => {
     expect(api.resolveExportConflicts.mock.calls[0]?.slice(0, 2)).toEqual([4, 'cancel']);
     await screen.findByRole('button', { name: 'Export…' });
     expect(useUi.getState().exportImagesOpen).toBe(true);
+    await waitFor(() => expect(screen.getByRole('radio', { name: 'PNG' })).toBe(document.activeElement));
   });
 
   it('stops a running job and says how many files were written', async () => {

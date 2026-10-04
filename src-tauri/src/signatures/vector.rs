@@ -141,6 +141,77 @@ impl<'de> Deserialize<'de> for DrawCmd {
     }
 }
 
+/// The `outlines` argument of `create_drawn_signature`: strokes of commands. Deserializing counts while it visits, so a payload with
+/// more than [`MAX_PATHS`] strokes or [`MAX_COMMANDS`] commands is refused before it is held in memory (`normalize` checks again).
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct Outlines(pub Vec<Vec<DrawCmd>>);
+
+struct OutlinesVisitor;
+
+impl<'de> Visitor<'de> for OutlinesVisitor {
+    type Value = Outlines;
+
+    fn expecting(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str("a list of paths, each a list of path commands")
+    }
+
+    fn visit_seq<A: SeqAccess<'de>>(self, mut seq: A) -> Result<Outlines, A::Error> {
+        let mut paths: Vec<Vec<DrawCmd>> = Vec::new();
+        let mut total = 0usize;
+        while let Some(path) = seq.next_element_seed(PathSeed {
+            budget: MAX_COMMANDS,
+            used: &mut total,
+        })? {
+            if paths.len() >= MAX_PATHS {
+                return Err(de::Error::custom("too many paths"));
+            }
+            paths.push(path);
+        }
+        Ok(Outlines(paths))
+    }
+}
+
+/// One path whose commands count against what is left of the budget.
+struct PathSeed<'a> {
+    budget: usize,
+    used: &'a mut usize,
+}
+
+impl<'de> de::DeserializeSeed<'de> for PathSeed<'_> {
+    type Value = Vec<DrawCmd>;
+
+    fn deserialize<D: Deserializer<'de>>(self, deserializer: D) -> Result<Self::Value, D::Error> {
+        struct Commands<'a>(PathSeed<'a>);
+        impl<'de> Visitor<'de> for Commands<'_> {
+            type Value = Vec<DrawCmd>;
+
+            fn expecting(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+                f.write_str("a list of path commands")
+            }
+
+            fn visit_seq<A: SeqAccess<'de>>(self, mut seq: A) -> Result<Vec<DrawCmd>, A::Error> {
+                let PathSeed { budget, used } = self.0;
+                let mut commands = Vec::new();
+                while let Some(command) = seq.next_element::<DrawCmd>()? {
+                    *used += 1;
+                    if *used > budget {
+                        return Err(de::Error::custom("too many path commands"));
+                    }
+                    commands.push(command);
+                }
+                Ok(commands)
+            }
+        }
+        deserializer.deserialize_seq(Commands(self))
+    }
+}
+
+impl<'de> Deserialize<'de> for Outlines {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        deserializer.deserialize_seq(OutlinesVisitor)
+    }
+}
+
 /// Legacy art (before 0.8.1) was filled polygons: they become `M`, `L`... `Z` paths. A polygon is one entry; if there are more than
 /// [`MAX_PATHS`] they are grouped (one `f` fills them all anyway, so the picture does not change).
 pub fn from_polygons(polygons: &[Vec<[f32; 2]>]) -> Vec<Vec<DrawCmd>> {
@@ -413,6 +484,24 @@ mod tests {
             ]])),
             ErrorCode::InvalidArgument
         );
+    }
+
+    #[test]
+    fn the_deserializer_refuses_too_many_paths_or_commands_while_reading() {
+        let path = r#"[["M",0,0],["L",1,1]]"#;
+        let ok = format!("[{}]", vec![path; MAX_PATHS].join(","));
+        assert_eq!(
+            serde_json::from_str::<Outlines>(&ok).unwrap().0.len(),
+            MAX_PATHS
+        );
+        let many = format!("[{}]", vec![path; MAX_PATHS + 1].join(","));
+        assert!(serde_json::from_str::<Outlines>(&many).is_err());
+        let long = format!(
+            "[[[\"M\",0,0],{}]]",
+            vec![r#"["L",1,1]"#; MAX_COMMANDS].join(",")
+        );
+        assert!(serde_json::from_str::<Outlines>(&long).is_err());
+        assert!(serde_json::from_str::<Outlines>(r#"[[["Q"]]]"#).is_err());
     }
 
     #[test]

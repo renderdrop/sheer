@@ -23,10 +23,10 @@ use crate::documents::DocumentId;
 use crate::error::{AppError, ErrorCode, UiError};
 use crate::model::annotation::SignatureRole;
 use crate::model::ids::AssetId;
-use crate::signatures::DrawCmd;
 use crate::signatures::{
     convert, preview_frame, raster, typed, vector, Art, DraftId, SignatureArt, SignatureDraft,
 };
+use crate::signatures::{DrawCmd, Outlines};
 use crate::storage::signatures::ItemInfo;
 
 /// The fonts a typed signature can use (one, ADR-042).
@@ -208,10 +208,10 @@ impl AppState {
 pub async fn create_drawn_signature(
     state: State<'_, AppState>,
     role: SignatureRole,
-    outlines: Vec<Vec<DrawCmd>>,
+    outlines: Outlines,
 ) -> Result<SignatureDraft, UiError> {
     let state = state.inner().clone();
-    blocking(move || state.create_drawn_signature(role, &outlines)).await
+    blocking(move || state.create_drawn_signature(role, &outlines.0)).await
 }
 
 /// A typed signature or initials.

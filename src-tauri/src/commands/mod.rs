@@ -1016,14 +1016,15 @@ mod tests {
         let state = AppState::new(engine);
         let id = locked_id(&state.open_paths(vec![pdf(&dir, "a.pdf")])[0]);
 
-        let started = std::time::Instant::now();
+        // Each of the free tries on its own: a busy machine slows the sum down, but none of them waits the delay.
         for _ in 0..limits::FREE_PASSWORD_ATTEMPTS {
+            let started = std::time::Instant::now();
             assert!(state.unlock(id, wrong()).is_err());
+            assert!(
+                started.elapsed() < limits::PASSWORD_RETRY_DELAY,
+                "the first three tries are not slowed down"
+            );
         }
-        assert!(
-            started.elapsed() < limits::PASSWORD_RETRY_DELAY,
-            "the first three tries are not slowed down"
-        );
         // The fourth waits, whatever the password; so does the right one.
         let fourth = std::time::Instant::now();
         assert!(state.unlock(id, wrong()).is_err());

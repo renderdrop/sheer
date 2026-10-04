@@ -20,7 +20,7 @@ use crate::commands::AppState;
 use crate::documents::{DocumentId, PageId};
 use crate::engine::encode::{FRAME_HEADER_BYTES, FRAME_MAGIC};
 use crate::error::{AppError, ErrorCode};
-use crate::export::snapshot::{self, EngineDocRef};
+use crate::export::snapshot::{EngineDocRef, SnapshotGuard};
 use crate::limits;
 use crate::model::protection::{Permission, PermissionSet};
 use crate::model::ranges::{parse_ranges, PageSelection};
@@ -130,6 +130,8 @@ pub fn resolve_pages(
             found
         }
     };
+    // Ranges may come in any order and overlap: print each page once, in document order.
+    positions.sort_unstable();
     positions.dedup();
     if positions.is_empty() {
         return Err(invalid());
@@ -267,13 +269,32 @@ pub fn prepare(
     state.check_may_print(doc)?;
     let order = state.print_page_order(doc)?;
     let max_pages = opts.quality.max_pages();
-    let positions = resolve_pages(&opts.pages, &order, max_pages)?;
+    resolve_pages(&opts.pages, &order, max_pages)?; // fail fast; the job resolves again against its snapshot
     let opts = opts.clone();
     let state = state.clone();
     crate::commands::jobs::jobs().start(sink, move |ctx| {
         ctx.progress(Phase::Snapshot, 0, 1);
-        let snap = snapshot::current(&state, doc)?;
+        // The page order and the snapshot must describe the same state: take the order before and after the snapshot and retry
+        // when an edit slipped in between.
+        let mut attempt = 0;
+        let (guard, order, positions) = loop {
+            let before = state.print_page_order(doc)?;
+            let guard = SnapshotGuard::current(&state, doc)?;
+            let after = state.print_page_order(doc)?;
+            if before == after {
+                let positions = resolve_pages(&opts.pages, &after, max_pages)?;
+                break (guard, after, positions);
+            }
+            attempt += 1;
+            if attempt >= 3 {
+                return Err(AppError::logged(
+                    ErrorCode::Internal,
+                    "the document kept changing while the print snapshot was taken",
+                ));
+            }
+        };
         ctx.progress(Phase::Snapshot, 1, 1);
+        let snap = guard.snapshot();
         // A live document is addressed by engine index; a snapshot holds the pages in the current order.
         let indices: Vec<u32> = match snap.engine {
             EngineDocRef::Live(_) => positions
@@ -289,12 +310,7 @@ pub fn prepare(
         let result = build_set(&indices, max_pages, &opts, ctx, |index| {
             engine.render_export(snap.engine, index, opts.quality.dpi(), opts.annotations, 0)
         });
-        if let EngineDocRef::Snapshot(id) = snap.engine {
-            // Best effort: the outcome of the job matters more than the close.
-            if let Err(error) = engine.close_snapshot(id) {
-                error.log();
-            }
-        }
+        drop(guard);
         let builder = result?;
         let pages = u32::try_from(builder.len()).unwrap_or(u32::MAX);
         let print_id = sets().insert(doc, builder);
@@ -327,7 +343,8 @@ pub fn page(_state: &AppState, print_id: u32, index: u32) -> Result<Vec<u8>, App
     sets().frame(print_id, index).map(|frame| frame.to_vec())
 }
 
-/// Opens the print dialog for a complete set; the main window only.
+/// Opens the print dialog for a complete set; the main window only. The label check is not unit-tested: a `WebviewWindow` needs a
+/// running Tauri runtime (no mock-runtime feature is enabled), so only the capability grant is tested (`security_baseline`).
 pub fn open_dialog(
     _state: &AppState,
     window: &WebviewWindow,
@@ -366,5 +383,26 @@ mod tests {
             serde_json::to_value(PrintRoute::System).unwrap(),
             serde_json::json!("system")
         );
+    }
+
+    #[test]
+    fn ranges_in_any_order_print_each_page_once_in_document_order() {
+        let order: Vec<(PageId, u32)> = (0..10).map(|i| (PageId::new(i), i)).collect();
+        let ranges = PageSelection::Ranges {
+            text: "5-6, 1-2, 2-3".to_owned(),
+        };
+        assert_eq!(
+            resolve_pages(&ranges, &order, 100).unwrap(),
+            vec![0, 1, 2, 4, 5]
+        );
+    }
+
+    #[test]
+    fn a_300_dpi_page_stays_within_the_export_pixel_cap() {
+        for (w, h) in [(612.0, 792.0), (2384.0, 3370.0), (14_400.0, 14_400.0)] {
+            if let Some(fit) = crate::export::images::fit(w, h, limits::PRINT_DPI_HIGH) {
+                assert!(u64::from(fit.width) * u64::from(fit.height) <= limits::MAX_EXPORT_PIXELS);
+            }
+        }
     }
 }

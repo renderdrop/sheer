@@ -235,7 +235,7 @@ fn serve<'a>(
         Job::OpenSnapshot { bytes, reply } => {
             let result = guarded(|| {
                 let id = SnapshotId::fresh();
-                snapshot::open(pdfium, snapshots, id, &bytes)?;
+                snapshot::open(pdfium, snapshots, id, bytes)?;
                 Ok(id)
             });
             answer(reply, result, None, documents, crashed);

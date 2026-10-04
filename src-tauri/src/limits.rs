@@ -248,6 +248,8 @@ pub const MAX_LANGUAGE_TAG_LEN: usize = 35;
 pub const OPEN_TIMEOUT: Duration = Duration::from_secs(20);
 /// Deadline for rendering one page (ADR-002 §8).
 pub const RENDER_TIMEOUT: Duration = Duration::from_secs(10);
+/// One export or print page render (bigger bitmaps than the viewer's, drawn at `Background` priority).
+pub const EXPORT_RENDER_TIMEOUT: Duration = Duration::from_secs(60);
 /// Deadline for control jobs that only release resources (close).
 pub const CONTROL_TIMEOUT: Duration = Duration::from_secs(5);
 /// Pending jobs before a new one is refused with `engine_timeout` unless it outranks the lowest queued one, which is then
@@ -560,6 +562,12 @@ pub const MAX_CONFLICT_NAMES: usize = 5;
 /// Images of one images to PDF job and of one dropped batch.
 pub const MAX_IMAGES_PER_PDF: usize = 500;
 pub const MAX_IMAGE_BATCH: usize = MAX_IMAGES_PER_PDF;
+/// Long side of an image batch thumbnail (`get_image_batch_preview`), in pixels.
+pub const MIN_BATCH_PREVIEW_PX: u16 = 16;
+pub const MAX_BATCH_PREVIEW_PX: u16 = 512;
+/// Cached thumbnails per batch, and the longest file name `list_image_batch` returns (characters).
+pub const MAX_BATCH_PREVIEWS: usize = 1_000;
+pub const MAX_BATCH_NAME_CHARS: usize = 120;
 /// How long a dropped image batch is kept.
 pub const IMAGE_BATCH_TTL: Duration = Duration::from_secs(10 * 60);
 /// Sum of the stored (re-encoded) images of one images to PDF job.
@@ -580,7 +588,7 @@ pub const MAX_SNAPSHOT_BYTES: u64 = 1024 * 1024 * 1024;
 pub const MAX_PRINT_PAGES: usize = 2_000;
 pub const MAX_PRINT_PAGES_HIGH: usize = 300;
 pub const MAX_PRINT_SET_BYTES: usize = 768 * 1024 * 1024;
-pub const MAX_PRINT_SETS: usize = 4;
+pub const MAX_PRINT_SETS: usize = 2;
 pub const PRINT_SET_TTL: Duration = Duration::from_secs(10 * 60);
 /// Print render dpi per quality and the JPEG quality of the frames.
 pub const PRINT_DPI_STANDARD: f32 = 150.0;
@@ -929,13 +937,14 @@ mod tests {
         assert_eq!(EXPORT_TICKET_TTL.as_secs(), 300);
         assert_eq!(MAX_IMAGES_PER_PDF, 500);
         assert_eq!(IMAGE_BATCH_TTL.as_secs(), 600);
+        assert_eq!((MIN_BATCH_PREVIEW_PX, MAX_BATCH_PREVIEW_PX), (16, 512));
         assert_eq!(MAX_IMAGES_PDF_STORED_BYTES, 1 << 30);
         assert_eq!((MIN_IMAGE_MARGIN_PT, MAX_IMAGE_MARGIN_PT), (0.0, 72.0));
         assert_eq!((MIN_IMAGE_PAGE_PT, MAX_IMAGE_PAGE_PT), (72.0, 14_400.0));
         assert_eq!(MAX_SNAPSHOT_BYTES, 1 << 30);
         assert_eq!((MAX_PRINT_PAGES, MAX_PRINT_PAGES_HIGH), (2_000, 300));
         assert_eq!(MAX_PRINT_SET_BYTES, 768 * 1024 * 1024);
-        assert_eq!(MAX_PRINT_SETS, 4);
+        assert_eq!(MAX_PRINT_SETS, 2);
         const _: () = assert!(MAX_PRINT_PAGES_HIGH <= MAX_PRINT_PAGES);
         const _: () =
             assert!(MAX_EXPORT_SIDE_PX as u64 * MAX_EXPORT_SIDE_PX as u64 >= MAX_EXPORT_PIXELS);
@@ -945,5 +954,6 @@ mod tests {
     fn deadlines_are_ordered_by_job_weight() {
         const _: () = assert!(CONTROL_TIMEOUT.as_secs() < RENDER_TIMEOUT.as_secs());
         const _: () = assert!(RENDER_TIMEOUT.as_secs() <= OPEN_TIMEOUT.as_secs());
+        const _: () = assert!(RENDER_TIMEOUT.as_secs() <= EXPORT_RENDER_TIMEOUT.as_secs());
     }
 }

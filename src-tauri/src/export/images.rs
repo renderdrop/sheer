@@ -14,7 +14,7 @@ use tauri::WebviewWindow;
 use tauri_plugin_dialog::DialogExt;
 
 use super::names::{export_stem, image_names, image_stems, ImageExt};
-use super::snapshot::{self, EngineDocRef};
+use super::snapshot::{EngineDocRef, SnapshotGuard};
 use crate::commands::jobs::{create_unique, jobs, EventSink, JobDone, JobId, JobRegistry};
 use crate::commands::AppState;
 use crate::documents::{intake, DocumentId, PageId};
@@ -402,6 +402,20 @@ pub fn encode(page: &RasterPage, format: ImageFormat, quality: u8) -> Result<Vec
 
 // --- The job ------------------------------------------------------------------------------------------------------
 
+/// Before a replace starts: every target is a regular file or absent. Nothing is half replaced because the fifth name is a folder.
+fn preflight_replace(folder: &Path, plan: &Plan) -> Result<(), AppError> {
+    for name in plan.names() {
+        match std::fs::symlink_metadata(folder.join(name)) {
+            Ok(meta) if meta.is_file() => {}
+            Ok(_) => return Err(AppError::invalid("path")),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => return Err(write_error(error)),
+        }
+    }
+    Ok(())
+}
+
+/// Runs on the job's own thread (never the async runtime), so rendering waits, encoding and writing do not block the UI's IPC.
 fn run(
     state: &AppState,
     plan: &Plan,
@@ -409,18 +423,12 @@ fn run(
     policy: Policy,
     ctx: &dyn Control,
 ) -> Result<JobDone, AppError> {
-    let snapshot = snapshot::current(state, plan.doc)?;
-    let (doc, opened) = match snapshot.bytes {
-        Some(bytes) => {
-            let id = state.engine().open_snapshot(bytes)?;
-            (EngineDocRef::Snapshot(id), Some(id))
-        }
-        None => (snapshot.engine, None),
-    };
-    let result = render_all(state, plan, doc, folder, policy, ctx);
-    if let Some(id) = opened {
-        let _ = state.engine().close_snapshot(id);
+    if policy == Policy::Replace {
+        preflight_replace(folder, plan)?;
     }
+    let guard = SnapshotGuard::current(state, plan.doc)?;
+    let result = render_all(state, plan, guard.engine(), folder, policy, ctx);
+    drop(guard);
     let (outputs, bytes) = result?;
     Ok(JobDone {
         outputs,
@@ -767,5 +775,43 @@ mod tests {
         assert!(take(first).is_none(), "replaced by the newer ticket");
         assert!(take(second).is_some());
         assert!(take(second).is_none());
+    }
+
+    fn scratch(name: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!("sheer-imgout-{}-{name}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    #[test]
+    fn a_replace_is_refused_up_front_when_any_target_is_not_a_file() {
+        let docs = facts(&[[100.0, 100.0], [100.0, 100.0]]);
+        let plan = prepare(&docs, &opts(PageSelection::All, 72.0)).unwrap();
+        let dir = scratch("preflight");
+        assert!(preflight_replace(&dir, &plan).is_ok());
+        let names = plan.names();
+        std::fs::write(dir.join(&names[0]), b"old").unwrap();
+        assert!(preflight_replace(&dir, &plan).is_ok());
+        std::fs::create_dir(dir.join(&names[1])).unwrap();
+        assert!(preflight_replace(&dir, &plan).is_err());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn write_atomic_replaces_a_link_and_leaves_its_target_alone() {
+        let dir = scratch("link");
+        let (target, link) = (dir.join("target"), dir.join("page.png"));
+        std::fs::write(&target, b"precious").unwrap();
+        std::os::unix::fs::symlink(&target, &link).unwrap();
+        atomic::write_atomic(&link, b"new").unwrap();
+        assert_eq!(std::fs::read(&target).unwrap(), b"precious");
+        assert_eq!(std::fs::read(&link).unwrap(), b"new");
+        assert!(!std::fs::symlink_metadata(&link)
+            .unwrap()
+            .file_type()
+            .is_symlink());
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

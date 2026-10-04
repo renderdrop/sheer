@@ -2,6 +2,7 @@
 
 use std::collections::HashMap;
 use std::io::Cursor;
+use std::sync::Arc;
 
 use pdfium_render::prelude::*;
 
@@ -18,10 +19,10 @@ pub(super) fn open<'a>(
     pdfium: &'a Pdfium,
     snapshots: &mut Snapshots<'a>,
     id: SnapshotId,
-    bytes: &[u8],
+    bytes: Arc<[u8]>,
 ) -> Result<(), AppError> {
     let document = pdfium
-        .load_pdf_from_reader(Cursor::new(bytes.to_vec()), None)
+        .load_pdf_from_reader(Cursor::new(bytes), None)
         .map_err(|error| AppError::logged(ErrorCode::DamagedFile, format!("snapshot: {error}")))?;
     let pages = u32::try_from(document.pages().len())
         .map_err(|_| AppError::logged(ErrorCode::DamagedFile, "negative page count"))?;

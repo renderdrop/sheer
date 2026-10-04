@@ -76,6 +76,8 @@ function ExportImagesModal() {
   const [settled, setSettled] = useState({ rangeText, dpiText });
   const [annotations, setAnnotations] = useState(true);
   const [conflict, setConflict] = useState<Conflict | null>(null);
+  const [lowered, setLowered] = useState(false);
+  const single = useRef<string | null>(null);
   const run = useJobRun();
   const encoded = useRef(0);
   const body = useRef<HTMLDivElement>(null);
@@ -85,10 +87,12 @@ function ExportImagesModal() {
     return () => clearTimeout(timer);
   }, [rangeText, dpiText]);
 
-  // Initial focus: Format (the chosen segment).
+  // Initial focus: Format (the chosen segment); back there when the conflict step resolves.
+  const showingForm = conflict === null;
   useEffect(() => {
+    if (!showingForm) return;
     body.current?.querySelector<HTMLElement>('[role="radio"][aria-checked="true"]')?.focus({ preventScroll: true });
-  }, []);
+  }, [showingForm]);
 
   const live = settled.rangeText === rangeText && settled.dpiText === dpiText;
   const pages = useMemo(
@@ -139,10 +143,15 @@ function ExportImagesModal() {
   };
 
   const finishWith = (event: Extract<JobEvent, { type: 'done' }>) => {
-    close();
-    const base = t('exportImg.done', { count: event.outputs });
-    const message = event.warnings.includes('dpiLowered') ? `${base} ${t('exportImg.capped')}` : base;
+    const name = single.current;
+    const message =
+      event.outputs === 1 && name !== null
+        ? t('exportImg.doneFile', { name })
+        : t('exportImg.done', { count: event.outputs });
     useUi.getState().showToast({ message });
+    // A lowered resolution is said in the dialog (info icon), which then waits for Done.
+    if (event.warnings.includes('dpiLowered')) setLowered(true);
+    else close();
   };
 
   /** Wraps the listener: counts the pages written and, when the user stopped the job, closes with the toast that says how many. */
@@ -167,6 +176,11 @@ function ExportImagesModal() {
       annotations,
     };
     encoded.current = 0;
+    const only = pages.ok && pages.indices.length === 1 ? (pages.indices[0] ?? 0) + 1 : null;
+    single.current =
+      only !== null && doc !== null
+        ? `${doc.displayName.replace(/.pdf$/i, '')}-p${String(only).padStart(String(slots.length).length, '0')}.${format === 'png' ? 'png' : 'jpg'}`
+        : null;
     run.start(async (onEvent) => {
       const start = await exportImages(docId, opts, watch(onEvent));
       if (start.type === 'started') return start.jobId;
@@ -219,7 +233,14 @@ function ExportImagesModal() {
         className="flex flex-col"
       >
         <ModalHeader id={`${id}-title`} icon={<Icon icon={FileImage} />} title={t('exportImg.title')} />
-        {conflict !== null ? (
+        {lowered ? (
+          <p role="status" className="m-0 mt-2 flex items-start gap-0-5 text-md text-text-muted">
+            <span className="shrink-0">
+              <Icon icon={Info} size={12} />
+            </span>
+            {t('exportImg.capped')}
+          </p>
+        ) : conflict !== null ? (
           <div className="mt-2 flex flex-col gap-1" role="group" aria-labelledby={`${id}-conflict`}>
             <h3 id={`${id}-conflict`} className="m-0 text-md font-semibold">
               {t('exportImg.conflictTitle')}
@@ -320,9 +341,11 @@ function ExportImagesModal() {
                   )}
                 </div>
               </div>
-              <div aria-disabled={format === 'png' ? true : undefined}>
+              <div role="group" aria-labelledby={`${id}-quality`} aria-disabled={format === 'png' ? true : undefined}>
                 <div className="mb-0-5 flex items-baseline gap-1">
-                  <span className="text-sm font-semibold text-text-muted">{t('exportImg.quality')}</span>
+                  <span id={`${id}-quality`} className="text-sm font-semibold text-text-muted">
+                    {t('exportImg.quality')}
+                  </span>
                   {format === 'png' && <span className="text-sm text-text-muted">{t('exportImg.pngLossless')}</span>}
                 </div>
                 <Slider
@@ -345,7 +368,7 @@ function ExportImagesModal() {
                   onChange={(event) => setAnnotations(event.target.checked)}
                   className="accent-accent"
                 />
-                {t('copy.annotations')}
+                {t('exportImg.annotations')}
               </label>
               <p role="status" aria-live="polite" className="m-0 min-h-3 text-sm text-text-muted">
                 {estimate !== null &&
@@ -383,10 +406,16 @@ function ExportImagesModal() {
           )}
         </div>
         <div className="mt-1 flex items-center justify-end gap-1">
-          <Button variant="secondary" onClick={cancel}>
-            {t('output.cancel')}
-          </Button>
-          {conflict !== null ? (
+          {lowered ? (
+            <Button variant="primary" data-autofocus="" onClick={close}>
+              {t('copy.close')}
+            </Button>
+          ) : (
+            <Button variant="secondary" onClick={cancel}>
+              {t('output.cancel')}
+            </Button>
+          )}
+          {lowered ? null : conflict !== null ? (
             <>
               <Button variant="secondary" onClick={() => resolve('replace')}>
                 {t('exportImg.replace')}

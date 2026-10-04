@@ -1,4 +1,4 @@
-import { Printer } from 'lucide-react';
+import { Info, Printer } from 'lucide-react';
 import { AnimatePresence } from 'motion/react';
 import { useEffect, useId, useRef, useState } from 'react';
 
@@ -10,13 +10,14 @@ import { useT } from '../../i18n';
 import { selectActiveDocument, useDocuments } from '../../stores/documents';
 import { useUi } from '../../stores/ui';
 import { useView } from '../../stores/view';
+import { marksOf, useRedact } from '../redact/store';
 import { JobError, Spinner } from '../jobs/JobFooter';
 import { Modal, ModalHeader } from '../jobs/Modal';
 import { ProgressBar } from '../jobs/ProgressBar';
 import { RadioGroup } from '../jobs/RadioGroup';
 import { parseRanges } from '../jobs/ranges';
 import { useJobRun } from '../jobs/useJobRun';
-import { clearSurface, fetchFrames, handOver, stageFrames } from './session';
+import { clearSurface, fetchFrames, handOver, stageFrames, usePrintSurface } from './session';
 
 type Pages = 'all' | 'current' | 'range';
 type Quality = 'standard' | 'high';
@@ -50,6 +51,8 @@ function PrintModal() {
   const docId = doc?.id ?? null;
   const total = doc?.pageCount ?? 0;
   const pageIndex = useView((state) => (docId === null ? 0 : (state.byDoc[docId]?.pageIndex ?? 0)));
+  const hasMarks = useRedact((state) => marksOf(state, docId).length > 0);
+  const printing = usePrintSurface((state) => state.printing === true);
   const permissions = doc?.flags?.permissions;
   const allowed = permissions === undefined || permissions === null || permissions.includes('print');
 
@@ -74,7 +77,7 @@ function PrintModal() {
   const busy = run.running || loading !== null;
   const rangeValid = pages !== 'range' || (rangeText.trim() !== '' && parseRanges(rangeText, total) !== null);
   const rangeInvalid = pages === 'range' && rangeText.trim() !== '' && !rangeValid;
-  const canGo = allowed && docId !== null && rangeValid && !busy;
+  const canGo = allowed && docId !== null && rangeValid && !busy && !printing;
 
   const finishSet = (printId: number) => {
     clearSurface();
@@ -94,7 +97,9 @@ function PrintModal() {
         preparePrint(docId, { pages: selection, annotations, quality, autoRotate: true, paper: 'portrait' }, onEvent),
       async (event) => {
         const set = event.print;
-        if (set === null || set === undefined) {
+        if (set === null || set === undefined || set.pages < 1) {
+          // Never hand over a blank print; a set with no pages is dropped.
+          if (set !== null && set !== undefined) releasePrint(set.printId).catch(() => undefined);
           if (live.current) setError(toAppError(null));
           return;
         }
@@ -247,6 +252,14 @@ function PrintModal() {
         </p>
       )}
       <JobError error={error ?? run.error} />
+      <div className="flex min-h-3 items-center gap-0-5 text-sm text-text-muted">
+        {hasMarks && (
+          <>
+            <Icon icon={Info} size={12} />
+            <p className="m-0">{t('output.pendingRedact')}</p>
+          </>
+        )}
+      </div>
       <div className="mt-2 flex items-center justify-end gap-1">
         <Button variant="secondary" onClick={cancel}>
           {t('output.cancel')}

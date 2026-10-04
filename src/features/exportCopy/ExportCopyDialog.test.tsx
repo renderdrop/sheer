@@ -13,10 +13,8 @@ import { ExportCopyDialog, canEditCopy, effectiveOptions, exportWarnings } from 
 
 const api = vi.hoisted(() => ({ exportPdf: vi.fn() }));
 vi.mock('../../api/exportPdf', () => api);
-vi.mock('../../api/jobs', async (importOriginal) => ({
-  ...(await importOriginal<object>()),
-  cancelJob: vi.fn().mockResolvedValue(undefined),
-}));
+const cancelJob = vi.hoisted(() => vi.fn());
+vi.mock('../../api/jobs', async (importOriginal) => ({ ...(await importOriginal<object>()), cancelJob }));
 
 MotionGlobalConfig.skipAnimations = true;
 
@@ -53,6 +51,7 @@ function open(info: DocumentInfo = doc()) {
 
 beforeEach(() => {
   api.exportPdf.mockReset();
+  cancelJob.mockReset().mockResolvedValue(undefined);
 });
 
 describe('helpers', () => {
@@ -101,6 +100,37 @@ describe('ExportCopyDialog', () => {
     await waitFor(() => expect(api.exportPdf).toHaveBeenCalled());
     expect(useUi.getState().exportCopyOpen).toBe(true);
     expect(useUi.getState().toast).toBeNull();
+  });
+
+  it('enables Save again after Save As is cancelled', async () => {
+    api.exportPdf.mockResolvedValue(null);
+    const { user } = open();
+    await user.click(screen.getByRole('button', { name: 'Save copy…' }));
+    await waitFor(() => expect(api.exportPdf).toHaveBeenCalled());
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Save copy…' }).getAttribute('aria-disabled')).not.toBe('true'),
+    );
+  });
+
+  it('cancels the running job on Escape', async () => {
+    api.exportPdf.mockResolvedValue(7);
+    const { user } = open();
+    await user.click(screen.getByRole('button', { name: 'Save copy…' }));
+    await waitFor(() => expect(api.exportPdf).toHaveBeenCalled());
+    await screen.findByRole('button', { name: 'Exporting…' });
+    await user.keyboard('{Escape}');
+    await waitFor(() => expect(cancelJob).toHaveBeenCalledWith(7));
+    expect(useUi.getState().exportCopyOpen).toBe(true);
+  });
+
+  it('gives each option its own hint id', () => {
+    open();
+    const ids = ['Keep', 'Flatten', 'Remove'].map((name) =>
+      screen.getByRole('radio', { name }).getAttribute('aria-describedby'),
+    );
+    expect(new Set(ids).size).toBe(3);
+    const current = ids[0] ?? '';
+    expect(document.getElementById(current)?.textContent).toBe('Comments and markup stay editable in the copy.');
   });
 
   it('disables the options without the edit permission and explains why', async () => {

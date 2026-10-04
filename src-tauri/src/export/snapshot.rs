@@ -54,6 +54,11 @@ pub fn current(app: &AppState, doc: DocumentId) -> Result<Snapshot, AppError> {
             engine: EngineDocRef::Live(doc),
         });
     };
+    open_bytes(app, bytes)
+}
+
+/// Opens `bytes` in the engine as a snapshot. When the engine refuses them nothing was opened, so there is nothing to close.
+pub fn open_bytes(app: &AppState, bytes: Arc<[u8]>) -> Result<Snapshot, AppError> {
     let id = app.engine().open_snapshot(Arc::clone(&bytes))?;
     Ok(Snapshot {
         bytes: Some(bytes),
@@ -68,10 +73,16 @@ pub fn current_bytes(app: &AppState, doc: DocumentId) -> Result<Option<Arc<[u8]>
         return Ok(None);
     }
     let bytes = app.snapshot_bytes(doc)?;
-    if u64::try_from(bytes.len()).map_or(true, |len| len > limits::MAX_SNAPSHOT_BYTES) {
-        return Err(AppError::limit("snapshot", limits::MAX_SNAPSHOT_BYTES));
-    }
+    check_size(bytes.len(), limits::MAX_SNAPSHOT_BYTES)?;
     Ok(Some(Arc::from(bytes)))
+}
+
+/// `limit_exceeded` `snapshot` when `len` bytes are more than `max`.
+fn check_size(len: usize, max: u64) -> Result<(), AppError> {
+    if u64::try_from(len).map_or(true, |len| len > max) {
+        return Err(AppError::limit("snapshot", max));
+    }
+    Ok(())
 }
 
 /// A [`Snapshot`] that closes its engine document when dropped: the job that ends, fails or is cancelled leaves nothing behind.
@@ -178,6 +189,39 @@ mod tests {
         let snapshot = current(&state, doc).unwrap();
         assert!(snapshot.bytes.is_none());
         assert_eq!(snapshot.engine, EngineDocRef::Live(doc));
+        assert!(closed.lock().map(|l| l.is_empty()).unwrap_or(false));
+    }
+
+    #[test]
+    fn a_snapshot_over_the_cap_is_refused() {
+        assert!(check_size(10, 10).is_ok());
+        let error = check_size(11, 10).unwrap_err();
+        assert_eq!(error.code(), crate::error::ErrorCode::LimitExceeded);
+        assert_eq!(
+            limits::MAX_SNAPSHOT_BYTES,
+            1024 * 1024 * 1024,
+            "the cap the job uses"
+        );
+    }
+
+    #[test]
+    fn nothing_is_left_to_close_when_the_engine_refuses_the_bytes() {
+        let closed = Arc::new(Mutex::new(Vec::new()));
+        let seen = Arc::clone(&closed);
+        let (state, _doc) = state_with_pages(1, move |job| match job {
+            Job::OpenSnapshot { reply, .. } => {
+                let _ = reply.send(Err(AppError::new(crate::error::ErrorCode::DamagedFile)));
+            }
+            Job::CloseSnapshot { id, reply } => {
+                if let Ok(mut list) = seen.lock() {
+                    list.push(id);
+                }
+                let _ = reply.send(Ok(()));
+            }
+            _ => {}
+        });
+        let error = open_bytes(&state, Arc::from(&b"junk"[..])).unwrap_err();
+        assert_eq!(error.code(), crate::error::ErrorCode::DamagedFile);
         assert!(closed.lock().map(|l| l.is_empty()).unwrap_or(false));
     }
 }
