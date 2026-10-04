@@ -166,6 +166,8 @@ The Stop hook picks the first open `- [ ]` line, so order matters. Scope: `docs/
   - (v1.1) crop units from the OS measurement system
   - (from M6 backend reviews) print: global byte cap across sets (or MAX_PRINT_SETS 2), sort+dedup range pages, take order and snapshot together (SnapshotGuard), confirm per-page pixel cap at 300 dpi, test open_dialog's main-window check; images out: no-follow open on replace, preflight all names before replace, longer timeout for export renders, encode on the blocking pool; snapshot: tests for burned content, crops, redaction rasters, no marks, encrypted original, size cap, guard on engine open error, loud skip when PDFium is missing in CI, avoid the extra bytes copy; images in: cap live batches, drop handles beyond the cap while sniffing, log skip reasons, re-check target_is_open at publish
   - (from F10 security review, low) DrawCmd payload count guard in the deserializer
+  - (flaky) commands::tests::after_the_third_wrong_password_each_try_waits_in_rust failed once under the full suite: time each of the first three tries, not their sum
+  - (from M6 UI) print: pending-redaction note (output.pendingRedact); export images: quality control aria-disabled for PNG; menu items cannot show output.notAllowed
 
 ## M7 — Polish and ship (v1.0.0)
 
