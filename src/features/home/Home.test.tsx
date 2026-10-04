@@ -164,3 +164,18 @@ describe('Home', () => {
     expect(screen.getAllByRole('button', { name: /^File \d+\.pdf/ })).toHaveLength(13);
   });
 });
+
+describe('Home empty state', () => {
+  it('fills the column, focuses the Ghost open button first, and styles the nav in Ink', async () => {
+    api.listRecents.mockResolvedValue([]);
+    const { container } = setup(<Home platform="windows" />);
+    const button = await screen.findByRole('button', { name: 'Or open' });
+    // The first Tab stop of a fresh window is Open (v1.1 behaviour, Shell tests); its ring is the keyboard focus cue.
+    expect(document.activeElement).toBe(button);
+    const area = container.querySelector('[data-home-empty]');
+    expect(area?.className).toContain('flex-1');
+    expect(area?.className).toContain('p-8');
+    expect(container.querySelector('[data-home-nav] svg')?.parentElement?.className).toContain('text-ink');
+    expect(screen.getByRole('button', { name: 'Home' }).className).toContain('text-ink');
+  });
+});

@@ -66,7 +66,7 @@ function EmptyHome({ opening, platform, onOpen }: { opening: boolean; platform: 
     <section
       aria-label={t('home.empty.title')}
       data-home-empty=""
-      className="relative flex min-h-full flex-col items-center justify-center overflow-hidden rounded-xl bg-subtle p-10 text-center"
+      className="relative flex min-h-full flex-1 flex-col items-center justify-center overflow-hidden rounded-xl bg-subtle p-8 text-center"
     >
       <SolarGlow variant="empty" />
       <h1 className="t-display relative m-0 text-text">{t('home.empty.title')}</h1>
@@ -186,7 +186,8 @@ export function Home({ platform }: HomeProps) {
       <main className="relative min-w-0 flex-auto overflow-auto rounded-ss-xl bg-surface-solid home-main">
         <div
           className={cx(
-            'mx-auto flex min-h-full max-w-(--home-content-max) flex-col transition-opacity [transition-duration:var(--motion-base)]',
+            'mx-auto flex min-h-full flex-col transition-opacity [transition-duration:var(--motion-base)]',
+            showEmpty ? 'w-full' : 'max-w-(--home-content-max)',
             drop.shown ? 'opacity-0' : 'opacity-100',
           )}
           inert={drop.shown || undefined}

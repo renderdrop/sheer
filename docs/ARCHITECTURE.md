@@ -877,6 +877,7 @@ The Windows in-window menu bar and the status bar are gone (`src/features/topbar
 | File | Settings | More ⋯, Primary+, |
 | File | Exit | caption close button |
 | Edit | Undo, Redo | top bar icon buttons, Primary+Z / Primary+Shift+Z |
+| Edit | Copy, Cut, Paste (annotations) | Primary+C / Primary+X / Primary+V on the selected annotation (keyboard, not menu actions) |
 | Edit | Find | Search button (opens the Search tab of the page sidebar), Primary+F |
 | Edit | Find next / previous | Search tab, Primary+G / Primary+Shift+G, F3 |
 | Edit | Add comment, Delete | selection popover, Primary+Shift+M, Delete |

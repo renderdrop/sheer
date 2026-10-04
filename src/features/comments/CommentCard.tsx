@@ -259,7 +259,7 @@ export const CommentCard = memo(function CommentCard({
             collapsed ? 'line-clamp-1' : 'line-clamp-2',
           )}
         >
-          <span id={`${ids}-q`} className={cx(highlight && quote !== null && quote !== undefined && 'bg-accent/45')}>
+          <span id={`${ids}-q`} className={cx(highlight && quote !== null && quote !== undefined && 'bg-hl-excerpt')}>
             {excerpt}
           </span>
         </span>

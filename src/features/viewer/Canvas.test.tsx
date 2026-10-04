@@ -49,7 +49,7 @@ describe('Canvas (DESIGN 2)', () => {
     const { container } = setup(<Canvas {...props()} />);
     const slot = container.querySelector('main');
     expect(slot?.className).toContain('bg-page-area');
-    expect(slot?.className).toContain('rounded-panel');
+    expect(slot?.className).not.toContain('rounded');
     expect(slot?.className).toContain('isolate');
     expect(slot?.className).not.toContain('glass');
     expect(region().className).toContain('p-canvas-gutter');

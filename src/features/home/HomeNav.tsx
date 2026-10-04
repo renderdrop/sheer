@@ -36,7 +36,7 @@ export function HomeNav({ section, onSection }: { section: HomeSection; onSectio
       data-home-nav=""
       className="flex w-(--home-nav-width) shrink-0 flex-col bg-app pb-4"
     >
-      <div className="flex h-(--home-nav-row-height) items-center px-5 text-text-muted">
+      <div className="flex h-(--home-nav-row-height) items-center px-5 text-ink">
         <Wordmark className="h-6" />
       </div>
       <div {...roving.groupProps} className="mt-4 flex flex-col gap-1 px-3">
@@ -50,7 +50,7 @@ export function HomeNav({ section, onSection }: { section: HomeSection; onSectio
               tabIndex={roving.tabIndexOf(row.id)}
               aria-current={active ? 'page' : undefined}
               onClick={() => onSection(row.id)}
-              className={cx(ROW, active && 'bg-subtle font-semibold')}
+              className={cx(ROW, active && 'bg-subtle font-semibold text-ink')}
             >
               <Icon icon={row.icon} size={18} />
               {t(row.labelKey)}

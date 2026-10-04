@@ -309,7 +309,7 @@ export function Canvas({
     <main
       data-action-scope="canvas"
       style={style}
-      className={cx('relative isolate min-h-0 min-w-0 overflow-hidden rounded-panel bg-page-area', className)}
+      className={cx('relative isolate min-h-0 min-w-0 overflow-hidden bg-page-area', className)}
     >
       <div
         ref={setRegion}

@@ -31,6 +31,8 @@
   --color-subtle: var(--surface-subtle);
   --color-pressed: var(--surface-pressed);
   --color-page-area: var(--surface-page-area);
+  /* Solar at the highlight alpha behind a quoted highlight in the comments list (DESIGN v2 3.2). */
+  --color-hl-excerpt: rgba(255, 248, 77, 0.45);
   --color-border-subtle: var(--color-border);
   --color-border-control: var(--color-stone);
   /* Scrollbar thumb on a transparent track (DESIGN 1.11). */
@@ -66,6 +68,9 @@
   --color-backdrop: var(--scrim);
   /* The glyph on the Windows close button's hover (--win-close-hover). */
   --color-on-close: var(--color-white);
+  --color-band-danger: var(--color-danger); /* the redact band (DESIGN v2 3.2): the one red surface */
+  --color-on-danger: var(--color-white);
+  --color-on-danger-hover: var(--on-danger-hover);
 
   /* Document layer: pages are white (DESIGN 1.3, last rows). */
   --color-page: var(--surface-page);
@@ -302,8 +307,10 @@
   --scrim: rgba(15, 15, 15, 0.12); /* the modal backdrop, no blur */
   --page-shadow: var(--shadow-floating);
   --win-close-hover: var(--color-danger);
+  --on-danger-hover: rgba(255, 255, 255, 0.16); /* hover of a Ghost button on the danger band */
 
   /* Highlight and stroke palette, document content (DESIGN 1.4). Highlights are drawn at 45 % with mix-blend-mode: multiply. */
+  --hl-opacity: 0.45; /* the alpha of a highlight (DESIGN v2 1.4) */
   --hl-solar: #fff84d;
   --hl-mint: #7debb5;
   --hl-sky: #a3deff;
@@ -471,29 +478,25 @@
   --spacing-hub-tile-compact: var(--hub-tile-compact);
   --spacing-logo-hub: var(--logo-hub);
   --spacing-logo-hub-slot: var(--logo-hub-slot);
-  /* Annotation colours of v1.1 (ADR-029): the Okabe-Ito eight, still read by the annotation UI until the §1.4 palette lands. */
-  --color-annot-yellow: var(--annot-yellow);
-  --color-annot-orange: var(--annot-orange);
-  --color-annot-vermillion: var(--annot-vermillion);
-  --color-annot-purple: var(--annot-purple);
-  --color-annot-blue: var(--annot-blue);
-  --color-annot-sky: var(--annot-sky);
-  --color-annot-green: var(--annot-green);
-  --color-annot-black: var(--annot-black);
+  /* Highlight, stroke and signature-ink palette (DESIGN v2 1.4): document content, the same in both themes. */
+  --color-hl-solar: var(--hl-solar);
+  --color-hl-mint: var(--hl-mint);
+  --color-hl-sky: var(--hl-sky);
+  --color-hl-rose: var(--hl-rose);
+  --color-hl-lavender: var(--hl-lavender);
+  --color-stroke-solar: var(--stroke-solar);
+  --color-stroke-mint: var(--stroke-mint);
+  --color-stroke-sky: var(--stroke-sky);
+  --color-stroke-rose: var(--stroke-rose);
+  --color-stroke-lavender: var(--stroke-lavender);
+  --color-stroke-ink: var(--stroke-ink);
+  --color-ink-signature: var(--ink-signature);
 }
 
 :root {
   --scale-thumb: 1;
   --toolbar-row-height: var(--topbar-height);
   --tabs-row-height: 32px;
-  --annot-yellow: #f0e442;
-  --annot-orange: #e69f00;
-  --annot-vermillion: #d55e00;
-  --annot-purple: #cc79a7;
-  --annot-blue: #0072b2;
-  --annot-sky: #56b4e9;
-  --annot-green: #009e73;
-  --annot-black: #000000;
   --hub-max-width: 880px;
   --hub-card-min: 200px;
   --hub-card-height: 144px;
