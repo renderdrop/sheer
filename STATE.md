@@ -1,12 +1,12 @@
 # STATE
-phase: M7 (release candidate 1.0.0)
+phase: done
 version: 1.0.0
-current_item: tag v1.0.0 on the release commit once its CI run is green on both platforms, then .claude/state/DONE (stop condition 1)
-last_completed: M7 Polish and ship — all ROADMAP items [x]; tester PASS, full security audit PASS, annot-smoke 16/16, CSP gate 0/0, print gate ok, designer PASS
+current_item: none — v1.0.0 released (tag v1.0.0 on 6babe5f). Further work only on the product owner's request (FEEDBACK.md, v1.1 backlog in ROADMAP.md).
+last_completed: M7 Polish and ship → v1.0.0 (6babe5f)
 loop_count_this_session: 0
-open_blockers: 2 (B-001 UI never seen on a Mac, macOS keychain untested; B-002 code signing)
-notes: Repository renderdrop/sheer is public (ADR-046). CI: every push to main runs Windows + macOS (docs-only skipped); tags run only release.yml. Read CI once per milestone, never wait (ADR-030).
-  M5 close: tester PASS, security PASS (medium fixed: import_warnings capability + declared-vs-granted test), designer PASS, CI 37159379280 green on both platforms, local debug build ok.
-  FEEDBACK (product owner) before ROADMAP (§14). Push after every commit. Designer review: one round, only blockers → fix.
-  Window review: scripts/ui (docs/UI_REVIEW.md); the doc-tab close button and the window close share the label "Schließen" — target the tab's own button.
-  Run `npm run check` from Git Bash. Rust in ~/.cargo/bin.
+open_blockers: 3 human-only (B-001 macOS UI never seen on a Mac; B-002 code signing/notarization; B-005 updater minisign key) — see docs/BLOCKERS.md incl. the signing guide
+notes: Final report. All ROADMAP items M1–M7 are [x]; FEEDBACK F1–F10 done. v1.0.0 DoD: npm run check green (17 steps; check.sh caps cargo test jobs, os error 1455), tauri build --debug ok, CI run 37178695107 green on Windows + macOS, tester PASS, full security audit PASS (0 critical/high), designer PASS (no blockers), annot-smoke 16/16, CSP gate 0/0 (stub + attach), print gate ok, fuzz corpus green, manifests at 1.0.0, CHANGELOG 1.0.0.
+  Releases 0.8.0, 0.8.1, 0.9.0 built by release.yml; v1.0.0 release run started by the tag push. Installers are unsigned until B-002; the updater refuses to run until the owner replaces src-tauri/updater/minisign.pub (B-005).
+  v1.1 backlog: Unicode fonts for inserted text, editing existing text, JPEG pass-through, reveal in folder, native vector printing, disabled-icon contrast decision, menu tooltips, client-side estimate.
+  .claude/state/DONE is set (stop condition 1). To resume: delete it, add items to docs/FEEDBACK.md or ROADMAP.md.
+  Run `npm run check` from Git Bash. Rust in ~/.cargo/bin. Window checks: docs/UI_REVIEW.md (annot-smoke, csp, print gate).
