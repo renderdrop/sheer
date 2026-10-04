@@ -172,12 +172,12 @@ The Stop hook picks the first open `- [ ]` line, so order matters. Scope: `docs/
 
 - [x] CSP hardening (from M4 security, low): style-src unsafe-inline replaced by nonces/classes
 - [x] Performance budget: 500-page PDF opens < 1 s, 60 fps scrolling (benchmark); thumbnail list fast scroll (one 34 ms frame at 120 px/frame, F3); scroll-height compression beyond the browser element limit (≈ 8k pages at 400 %), memory-aware cache budget
-- [ ] Accessibility pass (WCAG 2.2 AA analog, screen reader labels, focus order)
+- [x] Accessibility pass (WCAG 2.2 AA analog, screen reader labels, focus order)
 - [x] Recents rows with a 32 × 40 first-page thumbnail (DESIGN §3.11), cached locally at close, no paths to the UI (M1 review minor, deferred)
 - [x] i18n de/en complete
 - [x] Per-tool tips (onboarding = welcome-document tour, FEEDBACK F4)
 - [x] Onboarding steps (F4, moved here by ADR-030): "Highlight" + "Comment", "Reorder pages", "Drag a signature" pages of the welcome document with coach marks + success moment; flip `shipped` in steps.json and regenerate both PDFs
-- [ ] fps measurement in the Tauri window (`node scripts/ui/cdp.mjs fps`, moved here by ADR-030): 60 fps idle, scroll, zoom, panel slide
+- [x] fps measurement in the Tauri window (`node scripts/ui/cdp.mjs fps`, moved here by ADR-030): 60 fps idle, scroll, zoom, panel slide
 - [x] PDF engine in its own process (crash isolation, ADR)
 - [x] Crash-safe autosave
 - [x] Windows installer (FEEDBACK F5): NSIS target (no MSI/WiX default dialog) with own header and sidebar images in Iris and the Sheer icon
@@ -185,7 +185,7 @@ The Stop hook picks the first open `- [ ]` line, so order matters. Scope: `docs/
 - [x] Signed opt-in updater (minisign public key in repo; private key → BLOCKERS)
 - [ ] Full security-reviewer audit, docs/SECURITY.md finalized
 - [x] Signing/notarization guide in docs/BLOCKERS.md
-- [ ] Politur M7
+- [x] Politur M7
   - (from M6 design review, minor) recent rows: page thumbnail (32×40) instead of the generic icon tile, or update §3.11; dark-mode text looks heavier than light (same weight? ClearType?); horizontal overlay scrollbar over the page edge: bottom inset or track tint; disabled toolbar icons on the light empty state very low contrast
   - (from M6 UI) menu items cannot show output.notAllowed (v1.1 unless cheap); export images estimate is client-side
   - (from M7 backend reviews, minor) autosave: track store size incrementally (done: upper-bound estimate, measured only near the cap); log timer panics (done); RecoveryView.folder (done: dropped); a Recovered document always counts as unsaved on close; engine: first spawn not counted against the budget (confirmed, comment in `engine/pump.rs`: one extra spawn at most, its failure is retried and counted); replay failure strikes only the replayed document
@@ -195,6 +195,9 @@ The Stop hook picks the first open `- [ ]` line, so order matters. Scope: `docs/
 See `docs/FEATURES.md` → "Later".
 
 ## v1.1 backlog (ADR-030)
+
+- [~] Disabled menu items show why (output.notAllowed tooltip) — menus cannot show tooltips (from M6 UI)
+- [~] Export-as-images size estimate from a Rust sample render instead of client-side (from M6 UI)
 
 - [~] v1.1-Backlog — Should/Could items moved out of M2–M7 (Tempo level 2); not part of v1.0, not picked by the loop
   - Stamps (Approved, Draft, …) (Should, was M4)
