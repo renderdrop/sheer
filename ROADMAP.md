@@ -279,3 +279,48 @@ Order as in the brief. Each phase ends with one designer round on Tauri-window s
   - (tour review, minor) tour mode switch leaves redactMode armed; `organize:` prefix special case in modeOfAnchor; Toggle width as a calc of two tokens → `--toggle-width`; macOS restartTour focus fallback untested; drop the `[role=toolbar]` settings anchor and the LAST_RESORT special cases
   - (P-A review, minor) legacy alias block still carries v1.1 `--annot-*` hex values (remove with the §1.4 palette migration, R4.3); rename `--color-surface-solid`; `text-accent` left in IconButton.tsx (yellow on Ink); legacy `--spacing-*` slot aliases (hub, logo, caption) go with R2/R3; `--panel-*` 192/248/400 and `--inspector-width` 288 keep v1.1 values until R3 (Rust limits.rs + layout tests)
 - [ ] R7 — Screenshot series docs/review/v1.2, designer review vs BRAND §2, smoke, gates, audits, CI green, CHANGELOG, tag v1.2.0
+
+## Feature milestones after v1.2 (FEEDBACK F15 C, ADR-104)
+
+Each milestone starts with a designer spec (DESIGN section + acceptance criteria) before any implementation; architect review where a
+new engine capability or dependency is needed. Not picked by the loop before v1.2.0 is tagged.
+
+### v1.3 "Citations"
+- [ ] v1.3 spec — designer spec (citation annotation, metadata sheet, export formats, tag manager)
+- [ ] v1.3.1 — Select text → "Cite" creates a citation annotation with page number
+- [ ] v1.3.2 — Title, author, year read from the PDF (Info dict / XMP / first-page heuristic), editable per document
+- [ ] v1.3.3 — Export in APA, MLA, Chicago, DIN ISO 690 to the clipboard and as the document's citation list
+- [ ] v1.3.4 — Own categories/tags with colour for comments and citations
+- [ ] v1.3 acceptance — installed build with the mouse, designer round, tag v1.3.0
+
+### v1.4 "Certificate signature"
+- [ ] v1.4 spec — designer spec + architect ADR (crates for CMS/PAdES-B, licence check, key storage)
+- [ ] v1.4.1 — Sign with an imported (.p12/.pfx) or self-generated certificate (PAdES-B)
+- [ ] v1.4.2 — Visible seal with name and date; the document is read-only afterwards
+- [ ] v1.4.3 — Signature validation in Sheer; clear notice that trust needs an external certificate
+- [ ] v1.4 acceptance — security-reviewer, installed build with the mouse, designer round, tag v1.4.0
+
+### v1.5 "Edit text"
+- [ ] v1.5 spec — designer spec + architect ADR (content-stream text editing with embedded fonts, fallback font matching)
+- [ ] v1.5.1 — Edit existing text line- and paragraph-wise with embedded fonts
+- [ ] v1.5.2 — Otherwise the closest system font, with a notice; no reflow across pages
+- [ ] v1.5 acceptance — installed build with the mouse, designer round, tag v1.5.0
+
+### v1.6 "Smart links"
+- [ ] v1.6 spec — designer spec (detection hints, back navigation)
+- [ ] v1.6.1 — Detect footnote numbers and jump (with Back)
+- [ ] v1.6.2 — Link tables of contents; references like "see p. 12" and "Fig. 3"
+- [ ] v1.6.3 — Literature references "(Müller 2019)" to the bibliography entry; heuristic, with a notice, never destructive
+- [ ] v1.6 acceptance — installed build with the mouse, designer round, tag v1.6.0
+
+### v1.7 "Scan & OCR"
+- [ ] v1.7 spec — designer spec + architect ADR (Windows OCR / Apple Vision without unsafe code or via a sidecar)
+- [ ] v1.7.1 — Invisible text layer for photos and scans (searchable, copyable, highlightable), de/en, OS OCR preferred
+- [ ] v1.7.2 — Option: take text over as editable paragraphs (no formatting claim)
+- [ ] v1.7 acceptance — security-reviewer, installed build with the mouse, designer round, tag v1.7.0
+
+### v1.8 "Context help"
+- [ ] v1.8 spec — designer spec (tip slots, clip format, frequency rules)
+- [ ] v1.8.1 — Short tips with 3-second clips at the right moments (first highlight, first form, first signature, Pages mode),
+      recorded from the app, at most one per situation, can be switched off
+- [ ] v1.8 acceptance — installed build with the mouse, designer round, tag v1.8.0

@@ -1948,3 +1948,24 @@ as an update; installed betas update to the next stable release (1.2.0 > 1.2.0-b
 `[1.2.0-beta.1]` section; the final `[1.2.0]` section will repeat the full milestone notes.
 
 **Consequences.** Checkpoint builds are reproducible from a tag; the v1.2.0 milestone tag is unaffected.
+
+## ADR-104 — F15 beta feedback: order, acceptance method, follow-up milestones
+
+**Status:** accepted (2026-10-04). Source: owner feedback F15 on v1.2.0-beta.1 (Windows and macOS).
+
+**Context.** The owner tested the beta on both platforms, confirmed the mode layout (ADR-102), closed B-001 and listed ten bugs (A),
+twelve shell refinements (B) and six follow-up milestones (C). Every item must be accepted in the installed build with the mouse; this
+machine is Windows only.
+
+**Decision.** (1) Order: A (bug patch) → B (shell polish) → designer acceptance of the mode layout → R5 → R6 → Politur v1.2 → R7 / v1.2.0.
+A and B items live in `docs/FEEDBACK.md` F15 (the Stop hook reads it first); they are built as packages of four disjoint implementers
+(ADR-030) with one reviewer each. (2) Acceptance: a local NSIS build (`npm run tauri build`) is installed and each item is driven with the
+real OS cursor (`scripts/ui/mouse.ps1`), screenshots in `review/f15/` (not tracked). macOS-only behaviour (A9 keychain, A10 print) is
+accepted through code paths that are shared with Windows plus a CI test on `macos-latest` (keychain round trip through the platform store
+or its mock; the macOS print document rendered back with visible ink); the owner's "Save as PDF" in the Mac print dialog is the final
+check on the next pre-release. (3) No version bump for the patch; the next tag stays v1.2.0 (a pre-release v1.2.0-beta.2 only on the
+owner's request). (4) "Done" is removed (B1): F14's "File menu and Done" list now lives in the File menu only. (5) C becomes ROADMAP
+milestones v1.3–v1.8, each starting with a designer spec (and an architect ADR where a new engine capability or crate is needed); the
+loop does not pick them before v1.2.0 is tagged.
+
+**Consequences.** R5 starts only after the B items and the mode-layout designer acceptance. B7 ships 8–10 fonts until the owner picks five.
