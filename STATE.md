@@ -1,7 +1,7 @@
 # STATE
 phase: M6
 version: 0.8.0
-current_item: M6 backend wave running (ADR-049 §6): A images out | B images in | C snapshot + export copy | D print; W0 ab39ee6, Politur M6 UI 7ccfe48. Then UI seams + UI wave per DESIGN §3.41–§3.45, print gate in the window review
+current_item: FEEDBACK first: F9 done (c77300e); F10 vector signatures running (backend + frontend, ADR-051); then window acceptance (200 % screenshot, saved PDF at 400 %), annot-smoke, tag v0.8.1 (includes the not-yet-exposed M6 backend). Then M6 UI seams + UI wave
 last_completed: M5 Edit and protect released as v0.8.0 (tag v0.8.0)
 loop_count_this_session: 0
 open_blockers: 2 (B-001 UI never seen on a Mac, macOS keychain untested; B-002 code signing)
