@@ -151,8 +151,9 @@ mod tests {
         });
         assert_eq!(slow.unwrap_err().code(), ErrorCode::EngineTimeout);
         assert_eq!(with_deadline(Duration::from_secs(5), || Ok(2)).unwrap(), 2);
+        // A long deadline: with RUST_BACKTRACE set (CI), resolving the panic's backtrace can take seconds on Windows.
         let panicked: Result<u8, _> =
-            with_deadline(Duration::from_secs(5), || panic!("hostile file"));
+            with_deadline(Duration::from_secs(120), || panic!("hostile file"));
         assert_eq!(panicked.unwrap_err().code(), ErrorCode::Internal);
     }
 }
