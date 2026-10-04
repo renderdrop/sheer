@@ -55,13 +55,13 @@ export interface FormsState {
   byDoc: Readonly<Record<number, DocForm>>;
   /** The subtle tint over fillable widgets (DESIGN 3.32, setting `formHighlight`, on by default). */
   highlight: boolean;
-  /** The info banner was closed (it comes once per session). */
-  bannerDismissed: boolean;
+  /** Documents whose info banner was closed: it comes once per document and session (DESIGN 3.58). */
+  bannerDismissed: Readonly<Record<number, true>>;
   focusRequest: FocusRequest | null;
   flattenOpen: boolean;
 
   setHighlight: (on: boolean) => void;
-  dismissBanner: () => void;
+  dismissBanner: (docId: number) => void;
   requestFocus: (docId: number, key: string) => void;
   clearFocus: () => void;
   setFlattenOpen: (open: boolean) => void;
@@ -93,7 +93,7 @@ function withValues(fields: readonly FormField[], states: readonly FieldState[])
 export const useForms = create<FormsState>()((set, get) => ({
   byDoc: {},
   highlight: loadHighlight(),
-  bannerDismissed: false,
+  bannerDismissed: {},
   focusRequest: null,
   flattenOpen: false,
 
@@ -101,7 +101,7 @@ export const useForms = create<FormsState>()((set, get) => ({
     set({ highlight });
     saveHighlight(highlight);
   },
-  dismissBanner: () => set({ bannerDismissed: true }),
+  dismissBanner: (docId) => set((state) => ({ bannerDismissed: { ...state.bannerDismissed, [docId]: true } })),
   requestFocus: (docId, key) => set({ focusRequest: { docId, key, at: Date.now() } }),
   clearFocus: () => set((state) => (state.focusRequest === null ? state : { focusRequest: null })),
   setFlattenOpen: (flattenOpen) => set({ flattenOpen }),

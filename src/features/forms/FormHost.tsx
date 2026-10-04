@@ -1,16 +1,14 @@
 import { Info, X } from 'lucide-react';
 import { AnimatePresence, motion } from 'motion/react';
-import { useEffect, useRef } from 'react';
+import { useEffect } from 'react';
 
-import { Button, IconButton, announce } from '../../components';
+import { Button, IconButton } from '../../components';
 import { Icon } from '../../components/Icon';
 import { useRevealMotion } from '../../components/motion';
-import { translators, useT } from '../../i18n';
-import { useLocaleStore } from '../../i18n/store';
+import { useT } from '../../i18n';
 import { selectActiveDocument, selectActiveId, useDocuments } from '../../stores/documents';
-import { useUi } from '../../stores/ui';
 import { FlattenDialog } from './FlattenDialog';
-import { focusFirstEmpty } from './focus';
+import { runNextField } from './actions';
 import { useForms } from './store';
 
 /** Whether the document may have a form to read: its flags say so (a document without them is asked). */
@@ -18,16 +16,10 @@ function mayHaveForm(flags: { hasForms: boolean } | undefined): boolean {
   return flags === undefined || flags.hasForms;
 }
 
-/**
- * Loads the form of the active document, forgets those of closed ones, and runs the Form tool: choosing it (F) focuses the first
- * empty field, or says that every field is filled in (DESIGN 3.32, ADR-042).
- */
+/** Loads the form of the active document and forgets those of closed ones. Fields are always live (DESIGN 3.58): no tool to enter. */
 function useFormEffects(): void {
   const docId = useDocuments(selectActiveId);
   const flags = useDocuments((state) => selectActiveDocument(state)?.flags);
-  const tool = useUi((state) => state.activeTool);
-  const status = useForms((state) => (docId === null ? undefined : state.byDoc[docId]?.status));
-  const jumped = useRef(false);
   const may = mayHaveForm(flags);
 
   useEffect(() => {
@@ -43,28 +35,18 @@ function useFormEffects(): void {
       }),
     [],
   );
-
-  useEffect(() => {
-    if (tool !== 'form') {
-      jumped.current = false;
-      return;
-    }
-    if (jumped.current || docId === null || status !== 'ready') return;
-    jumped.current = true;
-    if (!focusFirstEmpty(docId)) announce(translators[useLocaleStore.getState().locale]('form.allFilled'));
-  }, [tool, docId, status]);
 }
 
 /**
- * The info banner of a document with fields (DESIGN 3.32, banner 3.12): once per session, with the highlight toggle and a close
- * button. It pushes the content down like the other banners.
+ * The info banner of a document with fields (DESIGN 3.58, banner 3.12): once per document and session, with the highlight toggle, Go to first empty
+ * field and a close button. It pushes the content down like the other banners.
  */
 function FormBannerRow() {
   const t = useT();
   const motionProps = useRevealMotion();
   const docId = useDocuments(selectActiveId);
   const has = useForms((state) => docId !== null && (state.byDoc[docId]?.fields.length ?? 0) > 0);
-  const dismissed = useForms((state) => state.bannerDismissed);
+  const dismissed = useForms((state) => docId !== null && state.bannerDismissed[docId] === true);
   const highlight = useForms((state) => state.highlight);
   return (
     <AnimatePresence initial={false}>
@@ -88,11 +70,14 @@ function FormBannerRow() {
               >
                 {t('form.highlight')}
               </Button>
+              <Button variant="ghost" size="sm" onClick={runNextField}>
+                {t('form.next')}
+              </Button>
               <IconButton
                 label={t('action.dismiss')}
                 icon={X}
                 size="sm"
-                onClick={() => useForms.getState().dismissBanner()}
+                onClick={() => docId !== null && useForms.getState().dismissBanner(docId)}
               />
             </div>
           </div>

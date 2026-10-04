@@ -169,7 +169,7 @@ fn every_kind_is_saved_with_an_appearance_and_pdfium_reads_it_back() {
         )
         .unwrap();
     let typed = state
-        .create_typed_signature(SignatureRole::Initials, "A.L.", TypedFont::HomemadeApple)
+        .create_typed_signature(SignatureRole::Initials, "A.L.", TypedFont::DancingScript)
         .unwrap();
     let SignatureArt::Vector { paths, .. } = &typed.art else {
         panic!("typed art is vector")
@@ -430,7 +430,7 @@ fn a_typed_signature_has_outlines_and_bad_text_is_refused() {
         .create_typed_signature(
             SignatureRole::Signature,
             "Grace Hopper",
-            TypedFont::HomemadeApple,
+            TypedFont::DancingScript,
         )
         .unwrap();
     let SignatureArt::Vector { w, h, paths } = draft.art else {
@@ -439,7 +439,7 @@ fn a_typed_signature_has_outlines_and_bad_text_is_refused() {
     assert!(w > h && !paths.is_empty());
     for text in ["", "a\u{0}b", "\u{4E2D}"] {
         assert!(state
-            .create_typed_signature(SignatureRole::Signature, text, TypedFont::HomemadeApple)
+            .create_typed_signature(SignatureRole::Signature, text, TypedFont::DancingScript)
             .is_err());
     }
 }
@@ -628,7 +628,7 @@ fn a_saved_typed_signature_is_smooth_at_400_percent() {
     let scratch = Scratch::new("smooth");
     let (id, path) = open(state, &scratch, "doc.pdf", &blank());
     let typed = state
-        .create_typed_signature(SignatureRole::Signature, "Sheer", TypedFont::HomemadeApple)
+        .create_typed_signature(SignatureRole::Signature, "Sheer", TypedFont::DancingScript)
         .unwrap();
     let SignatureArt::Vector { w, h, paths } = typed.art.clone() else {
         panic!("typed art is vector")

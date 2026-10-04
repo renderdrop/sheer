@@ -11,7 +11,9 @@ import {
   MAX_TYPED_CHARS,
   saveDraftSignature,
   type SignatureDraft,
+  type SignatureArt,
   type SignatureRef,
+  type TypedFont,
 } from '../../../api/signatures';
 import { Button, Field, Icon, Tab, TabList, TabPanel, Tabs } from '../../../components';
 import { cx } from '../../../components/cx';
@@ -32,6 +34,8 @@ import {
   type SigColour,
   type SigTab,
 } from './model';
+import { FontPicker } from './FontPicker';
+import { loadFont, rememberItemFont, saveFont, SIGNATURE_FONTS } from './fonts';
 import { ArtPreview, PAD_SURFACE } from './Previews';
 import { lastSignatureColour, rememberSignatureColour, settleSignatureSheet } from './store';
 
@@ -66,7 +70,13 @@ function discard(id: number) {
  * The typed draft for `text`: the backend makes the outlines of the bundled font; a failed or stale call changes nothing. A draft that
  * is replaced, and the one left when the sheet closes (unless it was handed out: `kept`), is discarded.
  */
-function useTypedDraft(role: SignatureRole, text: string, active: boolean, kept: RefObject<number | null>) {
+function useTypedDraft(
+  role: SignatureRole,
+  text: string,
+  font: TypedFont,
+  active: boolean,
+  kept: RefObject<number | null>,
+) {
   const [held] = useState(() => ({ id: null as number | null }));
   const [draft, setDraft] = useState<SignatureDraft | null>(null);
   const [glyph, setGlyph] = useState(false);
@@ -78,7 +88,7 @@ function useTypedDraft(role: SignatureRole, text: string, active: boolean, kept:
     if (value === '') return;
     let cancelled = false;
     const timer = window.setTimeout(() => {
-      createTypedSignature(role, value)
+      createTypedSignature(role, value, font)
         .then((made) => {
           if (cancelled) {
             discard(made.id);
@@ -104,7 +114,7 @@ function useTypedDraft(role: SignatureRole, text: string, active: boolean, kept:
       cancelled = true;
       window.clearTimeout(timer);
     };
-  }, [role, text, active, held]);
+  }, [role, text, font, active, held]);
 
   useEffect(
     () => () => {
@@ -133,7 +143,23 @@ function SheetBody({ id, kind }: { id: number; kind: SignatureRole }) {
   const [failure, setFailure] = useState<AppError | null>(null);
   const body = useRef<HTMLDivElement>(null);
   const kept = useRef<number | null>(null);
-  const typed = useTypedDraft(kind, text, tab === 'type', kept);
+  const [font, setFont] = useState<TypedFont>(loadFont);
+  // The style cards preview the name (or the placeholder) in every font; the chosen font's draft is the one that is made.
+  const shown = text.trim() === '' ? t('sign.typePlaceholder') : text;
+  const typedByFont = {
+    dancingScript: useTypedDraft(kind, shown, 'dancingScript', tab === 'type', kept),
+    greatVibes: useTypedDraft(kind, shown, 'greatVibes', tab === 'type', kept),
+    alexBrush: useTypedDraft(kind, shown, 'alexBrush', tab === 'type', kept),
+  };
+  const typed = typedByFont[font];
+  const arts = Object.fromEntries(SIGNATURE_FONTS.map(({ id }) => [id, typedByFont[id].draft?.art ?? null])) as Record<
+    TypedFont,
+    SignatureArt | null
+  >;
+  const chooseFont = (next: TypedFont) => {
+    setFont(next);
+    saveFont(next);
+  };
   // The imported picture is a backend draft like the typed one: a replaced one, and the one left at close (unless handed out), is discarded.
   const imageRef = useRef<SignatureDraft | null>(null);
   useEffect(() => {
@@ -198,6 +224,7 @@ function SheetBody({ id, kind }: { id: number; kind: SignatureRole }) {
             ? text.trim()
             : t(kind === 'initials' ? 'sign.nameInitials' : 'sign.nameSignature');
         const item = await saveDraftSignature(draft.id, Array.from(name).slice(0, 64).join(''));
+        if (tab === 'type') rememberItemFont(item.id, font);
         ref = { type: 'library', id: item.id };
       }
       // A draft that goes out as the answer must outlive the sheet.
@@ -270,7 +297,7 @@ function SheetBody({ id, kind }: { id: number; kind: SignatureRole }) {
           <TabPanel value="draw" className="flex h-sig-slot justify-center">
             <DrawPad strokes={strokes} onStrokes={setStrokes} colour={colour} initials={initials} />
           </TabPanel>
-          <TabPanel value="type" className="flex h-sig-slot flex-col gap-1">
+          <TabPanel value="type" className="flex min-h-sig-slot flex-col gap-1">
             <label htmlFor={typeId} className="sr-only">
               {t('sign.typeLabel')}
             </label>
@@ -285,9 +312,14 @@ function SheetBody({ id, kind }: { id: number; kind: SignatureRole }) {
               onChange={(event) => setText(event.target.value)}
               className="w-full!"
             />
-            <div className={`${PAD_SURFACE} min-h-0 flex-auto p-1`} role="img" aria-label={t('sign.preview')}>
-              {hasTyped && typed.draft !== null && <ArtPreview draft={typed.draft} colour={colour} />}
-            </div>
+            <FontPicker
+              label={t('sign.font')}
+              value={font}
+              onChange={chooseFont}
+              arts={arts}
+              colour={colour}
+              empty={text.trim() === ''}
+            />
             <p id={noteId} role="status" className="m-0 h-2 truncate text-sm text-error-text">
               {typeProblem}
             </p>

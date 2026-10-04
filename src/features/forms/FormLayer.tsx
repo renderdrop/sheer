@@ -129,7 +129,7 @@ export const FormLayer = memo(function FormLayer({
   }, [placed]);
 
   if (!ready || placed.length === 0 || !activeDocument) return null;
-  const active = tool === 'select' || tool === 'form';
+  const active = tool === 'select' || tool === 'form' || tool === 'signature';
   const box = overlayBox(boxWidth, boxHeight, page, pxPerPt, total);
   const style = { ...box, transformOrigin: 'center', '--page-scale': pxPerPt } as CSSProperties;
 

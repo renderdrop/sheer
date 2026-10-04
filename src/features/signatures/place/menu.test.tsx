@@ -39,7 +39,8 @@ describe('Sign menu wiring', () => {
     const first = ids();
     rerender();
     expect(ids()).toEqual(first);
-    expect(first.slice(0, 2)).toEqual(['add-signature', 'add-initials']);
+    expect(first.slice(0, 3)).toEqual(['sec-sign', 'add-signature', 'add-initials']);
+    expect(first).toContain('fill');
   });
 
   it('plugs create and place into the library; place arms the entry', () => {

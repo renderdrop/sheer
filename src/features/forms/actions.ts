@@ -1,7 +1,8 @@
+import { announce } from '../../components';
 import { translators } from '../../i18n';
 import { useLocaleStore } from '../../i18n/store';
 import { useUi } from '../../stores/ui';
-import { activeDocId } from './focus';
+import { activeDocId, focusFirstEmpty } from './focus';
 import { useForms } from './store';
 
 /**
@@ -20,4 +21,14 @@ export function runFlatten(): void {
     }
     useForms.getState().setFlattenOpen(true);
   });
+}
+
+/**
+ * Go to first empty field (the form banner's button, DESIGN 3.58; replaces the Form tool's F): focuses it, or says that every field is
+ * filled in. The Flatten action stays `runFlatten` (File menu, §3.56).
+ */
+export function runNextField(): void {
+  const docId = activeDocId();
+  if (docId === null) return;
+  if (!focusFirstEmpty(docId)) announce(translators[useLocaleStore.getState().locale]('form.allFilled'));
 }

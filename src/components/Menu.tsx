@@ -53,6 +53,8 @@ export interface MenuItemSpec {
 export interface MenuSeparatorSpec {
   type: 'separator';
   id: string;
+  /** A section header under the divider (DESIGN 3.58): not focusable, no divider when it is the first entry. */
+  label?: string;
 }
 
 export type MenuEntry = MenuItemSpec | MenuSeparatorSpec;
@@ -236,9 +238,21 @@ export function MenuList({ entries, onActivate, onTab, onBack }: MenuListProps) 
   return (
     <>
       <div role="presentation" className="flex flex-col" onKeyDown={onKeyDown}>
-        {entries.map((entry) => {
+        {entries.map((entry, index) => {
           if (entry.type === 'separator') {
-            return <div key={entry.id} role="separator" className="my-0-5 h-hairline bg-divider" />;
+            const line = <div role="separator" className="my-0-5 h-hairline bg-divider" />;
+            if (entry.label === undefined) return <div key={entry.id}>{line}</div>;
+            return (
+              <div key={entry.id} role="presentation">
+                {index > 0 && line}
+                <div
+                  role="presentation"
+                  className="flex h-control-sm items-center px-1 text-sm font-semibold text-text-muted"
+                >
+                  {entry.label}
+                </div>
+              </div>
+            );
           }
           const hasSubmenu = entry.submenu !== undefined;
           const onClick = (event: MouseEvent<HTMLButtonElement>) => {

@@ -1,5 +1,5 @@
-//! Typed signatures (ADR-041 §6, ADR-042, ADR-051 §3): a name laid out with the bundled Homemade Apple font (Apache-2.0, Font Diner;
-//! the file and its license are in `resources/fonts/`) and turned into path commands with `skrifa`: quadratic segments are raised
+//! Typed signatures (ADR-041 §6, ADR-051 §3, ADR-058/059): a name laid out with one of three bundled SIL OFL 1.1 fonts (Dancing Script,
+//! Great Vibes, Alex Brush; files and `OFL-*.txt` in `resources/fonts/`) and turned into path commands with `skrifa`: quadratic segments are raised
 //! exactly to cubic, cubic ones kept, nothing is flattened. This is the only module that uses `skrifa`.
 //! The font is compiled in: no path to read at run time, no system fonts, no font in the PDF.
 
@@ -11,7 +11,28 @@ use super::vector::DrawCmd;
 use super::{vector, Art};
 use crate::error::{AppError, ErrorCode};
 
-const FONT: &[u8] = include_bytes!("../../resources/fonts/HomemadeApple-Regular.ttf");
+use serde::Deserialize;
+
+/// The fonts a typed signature can use (DESIGN 3.60): SIL OFL 1.1, unmodified, compiled in.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum TypedFont {
+    DancingScript,
+    GreatVibes,
+    AlexBrush,
+}
+
+impl TypedFont {
+    pub const ALL: [TypedFont; 3] = [Self::DancingScript, Self::GreatVibes, Self::AlexBrush];
+
+    fn bytes(self) -> &'static [u8] {
+        match self {
+            Self::DancingScript => include_bytes!("../../resources/fonts/DancingScript.ttf"),
+            Self::GreatVibes => include_bytes!("../../resources/fonts/GreatVibes-Regular.ttf"),
+            Self::AlexBrush => include_bytes!("../../resources/fonts/AlexBrush-Regular.ttf"),
+        }
+    }
+}
 /// Characters of a typed signature.
 pub const MAX_CHARS: usize = 64;
 
@@ -94,14 +115,14 @@ fn font_failed(detail: impl std::fmt::Display) -> AppError {
     AppError::logged(ErrorCode::Internal, format!("signature font: {detail}"))
 }
 
-/// The art of `text` in Homemade Apple. `invalid_argument`: `text` (empty, over [`MAX_CHARS`] characters, a control character, or
+/// The art of `text` in `font`. `invalid_argument`: `text` (empty, over [`MAX_CHARS`] characters, a control character, or
 /// nothing visible in it) or `glyph` (the font has no glyph for a character).
-pub fn outlines(text: &str) -> Result<Art, AppError> {
+pub fn outlines(text: &str, font: TypedFont) -> Result<Art, AppError> {
     let count = text.chars().count();
     if count == 0 || count > MAX_CHARS || text.chars().any(char::is_control) {
         return Err(AppError::invalid("text"));
     }
-    let font = FontRef::new(FONT).map_err(font_failed)?;
+    let font = FontRef::new(font.bytes()).map_err(font_failed)?;
     let charmap = font.charmap();
     let glyphs = font.outline_glyphs();
     let metrics = font.glyph_metrics(Size::unscaled(), LocationRef::new(&[]));
@@ -138,9 +159,27 @@ mod tests {
             .unwrap_or(ErrorCode::Internal)
     }
 
+    const D: TypedFont = TypedFont::DancingScript;
+
+    #[test]
+    fn every_font_has_outlines_with_curves() {
+        for font in TypedFont::ALL {
+            let Art::Vector { paths, .. } = outlines("Ada Lovelace", font).unwrap() else {
+                panic!("not vector")
+            };
+            assert!(!paths.is_empty(), "{font:?}");
+            assert!(
+                paths.iter().flatten().any(|c| matches!(c, DrawCmd::C(..))),
+                "{font:?} has curves"
+            );
+        }
+    }
+
     #[test]
     fn a_name_has_outlines() {
-        let Art::Vector { w, h, paths } = outlines("Ada Lovelace").unwrap() else {
+        let Art::Vector { w, h, paths } =
+            outlines("Ada Lovelace", TypedFont::DancingScript).unwrap()
+        else {
             panic!("not vector")
         };
         assert_eq!(h, vector::UNIT_HEIGHT);
@@ -171,15 +210,15 @@ mod tests {
 
     #[test]
     fn bad_text_is_refused() {
-        assert_eq!(code(outlines("")), ErrorCode::InvalidArgument);
-        assert_eq!(code(outlines("   ")), ErrorCode::InvalidArgument);
-        assert_eq!(code(outlines("a\nb")), ErrorCode::InvalidArgument);
+        assert_eq!(code(outlines("", D)), ErrorCode::InvalidArgument);
+        assert_eq!(code(outlines("   ", D)), ErrorCode::InvalidArgument);
+        assert_eq!(code(outlines("a\nb", D)), ErrorCode::InvalidArgument);
         assert_eq!(
-            code(outlines(&"a".repeat(MAX_CHARS + 1))),
+            code(outlines(&"a".repeat(MAX_CHARS + 1), D)),
             ErrorCode::InvalidArgument
         );
-        assert!(outlines(&"Hy".repeat(MAX_CHARS / 2)).is_ok());
+        assert!(outlines(&"Hy".repeat(MAX_CHARS / 2), D).is_ok());
         // No glyph for a character outside the font's coverage.
-        assert_eq!(code(outlines("\u{4E2D}")), ErrorCode::InvalidArgument);
+        assert_eq!(code(outlines("\u{4E2D}", D)), ErrorCode::InvalidArgument);
     }
 }

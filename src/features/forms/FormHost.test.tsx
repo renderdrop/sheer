@@ -71,7 +71,7 @@ beforeEach(() => {
     displayName: 'a.pdf',
     flags: { encrypted: false, xfa: false, hasForms: true, signed: false },
   });
-  useForms.setState({ byDoc: {}, bannerDismissed: false, flattenOpen: false, focusRequest: null, highlight: true });
+  useForms.setState({ byDoc: {}, bannerDismissed: {}, flattenOpen: false, focusRequest: null, highlight: true });
   useUi.setState({ activeTool: 'select', toolLocked: false, toast: null });
   forms.getFormFields
     .mockReset()
@@ -136,37 +136,27 @@ describe('the form host', () => {
     expect(screen.getByRole('button', { name: 'Highlight fields' }).getAttribute('aria-pressed')).toBe('false');
     await user.click(screen.getByRole('button', { name: 'Dismiss' }));
     await waitFor(() => expect(screen.queryByText('This document has fields you can fill in.')).toBeNull());
-    expect(useForms.getState().bannerDismissed).toBe(true);
+    expect(useForms.getState().bannerDismissed[1]).toBe(true);
   });
 
-  it('the Form tool focuses the first empty field', async () => {
-    render(
+  it('Go to first empty field focuses it', async () => {
+    const { user } = setup(
       <>
         <FormHost />
         <FormLayer {...layer} />
       </>,
     );
     await screen.findByRole('textbox', { name: 'field2' });
-    act(() => useUi.getState().selectTool('form'));
+    await user.click(screen.getByRole('button', { name: 'Go to first empty field' }));
     await waitFor(() => expect((document.activeElement as HTMLElement).getAttribute('aria-label')).toBe('field2'));
   });
 
-  it('the Form tool says when every field is filled in', async () => {
-    forms.getFormFields.mockResolvedValue({
-      fields: [textField(1, 'a', 0)],
-      hasScripts: false,
-      xfa: 'none',
-      needAppearances: false,
-    });
-    render(
-      <>
-        <FormHost />
-        <FormLayer {...layer} />
-      </>,
-    );
-    await screen.findByRole('textbox', { name: 'field1' });
-    act(() => useUi.getState().selectTool('form'));
-    await waitFor(() => expect(document.activeElement).toBe(document.body));
+  it('the banner shows again for another document, not twice for the same one', async () => {
+    render(<FormHost />);
+    await screen.findByText('This document has fields you can fill in.');
+    act(() => useForms.getState().dismissBanner(1));
+    await waitFor(() => expect(screen.queryByText('This document has fields you can fill in.')).toBeNull());
+    expect(useForms.getState().bannerDismissed[2]).toBeUndefined();
   });
 });
 

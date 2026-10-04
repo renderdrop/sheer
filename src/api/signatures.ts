@@ -22,7 +22,7 @@ export const MAX_PREVIEW_PX = 1024;
 
 export type { PathCmd };
 
-export type TypedFont = 'homemadeApple';
+export type TypedFont = 'dancingScript' | 'greatVibes' | 'alexBrush';
 
 export type SignatureArt =
   | { type: 'vector'; w: number; h: number; paths: readonly (readonly PathCmd[])[] }
@@ -93,7 +93,7 @@ export async function createDrawnSignature(
 export async function createTypedSignature(
   role: SignatureRole,
   text: string,
-  font: TypedFont = 'homemadeApple',
+  font: TypedFont = 'dancingScript',
 ): Promise<SignatureDraft> {
   return need(parseSignatureDraft(await call<unknown>('create_typed_signature', { role, text, font })));
 }

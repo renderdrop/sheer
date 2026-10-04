@@ -41,7 +41,7 @@ export function tabFrom(docId: number, field: number, direction: 1 | -1): boolea
   return true;
 }
 
-/** The Form tool (F): focus the first empty field. `false` when every field is filled in (or there are none). */
+/** Go to first empty field (the form banner's button, DESIGN 3.58): focus it. `false` when every field is filled in (or there are none). */
 export function focusFirstEmpty(docId: number): boolean {
   const stop = firstEmptyStop(stopsOf(docId));
   if (stop === null) return false;

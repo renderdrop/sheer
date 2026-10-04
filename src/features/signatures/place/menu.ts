@@ -76,14 +76,14 @@ const libraryEntry = (item: LibraryItem): MenuEntry => ({
  * The entries of the menu, made while it renders. This is a hook on purpose: the toolbar calls the item's `menu` as a hook
  * (toolbarEntries.ts, `menu: useSignMenuEntries`), so it must be called unconditionally and in the same order every render
  * (the test renders it through `renderHook`). It reads the library when the menu opens.
- * Signatures come first, then initials, each group ending in its "Add" row; then the Fill and Sign items.
+ * Section Sign (DESIGN 3.58): signatures, then initials, each group ending in its "Add" row; section Fill: the Fill and Sign items.
  */
 export function useSignMenuEntries(): readonly MenuEntry[] {
   const t = useT();
   const library = useLibrary();
   const items = library?.status === 'locked' ? [] : (library?.items ?? []);
   const of = (role: SignatureRole) => items.filter((item) => item.role === role);
-  const entries: MenuEntry[] = [];
+  const entries: MenuEntry[] = [{ type: 'separator', id: 'sec-sign', label: t('sign.section.sign') }];
   for (const role of ['signature', 'initials'] as const) {
     entries.push(...of(role).map(libraryEntry), {
       id: `add-${role}`,
@@ -94,7 +94,7 @@ export function useSignMenuEntries(): readonly MenuEntry[] {
   }
   const mark = (glyph: 'check' | 'cross' | 'dot') => () => armItem({ type: 'mark', glyph });
   entries.push(
-    { type: 'separator', id: 'fill' },
+    { type: 'separator', id: 'fill', label: t('sign.section.fill') },
     { id: 'date', label: t('sign.date'), icon: Calendar, onSelect: () => armItem({ type: 'date' }) },
     { id: 'text', label: t('sign.text'), icon: Type, onSelect: () => armItem({ type: 'text' }) },
     { id: 'check', label: t('sign.check'), icon: Check, onSelect: mark('check') },

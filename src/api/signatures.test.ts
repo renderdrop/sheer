@@ -78,7 +78,7 @@ describe('commands', () => {
     expect(invokeMock).toHaveBeenCalledWith('create_typed_signature', {
       role: 'signature',
       text: 'Ada',
-      font: 'homemadeApple',
+      font: 'dancingScript',
     });
   });
   it('sends the drawn outlines as path commands', async () => {

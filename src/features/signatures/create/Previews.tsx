@@ -13,13 +13,22 @@ export const PAD_SURFACE =
 const RASTER_PREVIEW_PX = 1024;
 
 /** Vector art as one filled path (nonzero rule), scaled to fit. */
-export function VectorPreview({ art, colour }: { art: Extract<SignatureArt, { type: 'vector' }>; colour: SigColour }) {
+/** `inherit`: the colour comes from the parent (`currentColor`), for the style cards' faint placeholder. */
+export function VectorPreview({
+  art,
+  colour,
+  inherit = false,
+}: {
+  art: Extract<SignatureArt, { type: 'vector' }>;
+  colour: SigColour;
+  inherit?: boolean;
+}) {
   return (
     <svg
       viewBox={`0 0 ${art.w} ${art.h}`}
       preserveAspectRatio="xMidYMid meet"
       aria-hidden="true"
-      className={`size-full ${INK_CLASS[colour]}`}
+      className={`size-full ${inherit ? '' : INK_CLASS[colour]}`}
     >
       <path d={pathData(art.paths)} fill="currentColor" fillRule="nonzero" />
     </svg>
