@@ -1,8 +1,10 @@
 import { subscribeApp, type AppEvent } from '../../api/app';
 import type { DocumentInfo } from '../../api/documents';
 import { handleImagesDropped } from '../imagesToPdf/imagesDropped';
+import { announceEngineRestart } from '../recovery/engineRestart';
 import { appDropBatch } from '../jobs/dropBatch';
 import { requestQuit } from '../save/quit';
+import { useUpdate } from '../update/store';
 import { useUi } from '../../stores/ui';
 import { noteHoverEnded, noteOpenedFromApp } from './openTransition';
 import { adoptOpenOutcomes } from './useViewer';
@@ -17,6 +19,10 @@ export function handleAppEvent(event: AppEvent): void {
     useUi.getState().setDropHover(event.active);
   } else if (event.type === 'closeRequested') {
     void requestQuit();
+  } else if (event.type === 'updateAvailable') {
+    useUpdate.getState().offer(event.info);
+  } else if (event.type === 'engineRestarted') {
+    announceEngineRestart(event.lost);
   } else if (event.type === 'imagesDropped') {
     // The Create PDF from images offer for the dropped batch (DESIGN 3.43, U2).
     handleImagesDropped(event);

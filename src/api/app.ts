@@ -4,6 +4,7 @@ import { LANGUAGES, type Language } from '../i18n/locale';
 import { call } from './call';
 import { parseOpenOutcome, type OpenOutcome } from './documents';
 import { toAppError } from './errors';
+import { parseUpdateInfo, type UpdateInfo } from './update';
 
 /** Wire names of the backend's `Platform` (src-tauri/src/platform/mod.rs). */
 export const PLATFORMS = ['macos', 'windows', 'linux'] as const;
@@ -289,18 +290,34 @@ export type AppEvent =
   | { type: 'dropHover'; active: boolean }
   | { type: 'closeRequested' }
   | { type: 'imagesDropped'; batch: number; count: number; skipped: number }
+  /** The PDF engine process was restarted; `lost` are the documents that could not be brought back and answer `engine_crashed` until reopened (ADR-053). */
+  | { type: 'engineRestarted'; lost: number[] }
+  /** The automatic update check found a newer version (ADR-053 section 3). */
+  | { type: 'updateAvailable'; info: UpdateInfo }
   | OpenOutcome;
 
 /** A pushed event from a channel message; `null` if the message is not one. */
 export function parseAppEvent(message: unknown): AppEvent | null {
   if (typeof message !== 'object' || message === null) return null;
-  const { type, active, batch, count, skipped } = message as {
+  const { type, active, batch, count, skipped, lost } = message as {
     type?: unknown;
     active?: unknown;
     batch?: unknown;
     count?: unknown;
     skipped?: unknown;
+    lost?: unknown;
   };
+  if (type === 'engineRestarted') {
+    return Array.isArray(lost) &&
+      lost.length <= 4096 &&
+      lost.every((id) => typeof id === 'number' && Number.isInteger(id) && id >= 0)
+      ? { type, lost: lost as number[] }
+      : null;
+  }
+  if (type === 'updateAvailable') {
+    const info = parseUpdateInfo((message as { info?: unknown }).info);
+    return info === null ? null : { type, info };
+  }
   if (type === 'closeRequested') return { type };
   if (type === 'dropHover') return typeof active === 'boolean' ? { type, active } : null;
   if (type === 'imagesDropped') {

@@ -846,7 +846,7 @@ update/state.rs      UpdateState { pending: Mutex<Option<Update + bytes>> }; ins
 ```
 
 `Cargo.toml`: `tauri-plugin-updater = { version = "2", default-features = false, features = ["native-tls", "system-proxy", "zip"] }`.
-`tauri.conf.json`: `bundle.createUpdaterArtifacts: true`, `plugins.updater.windows.installMode: "passive"`; no capability names `updater:*`.
+`tauri.conf.json`: no updater entry (the plugin config is added in code by `update::configure`); `createUpdaterArtifacts` is set only by `release.yml`'s `--config` override when the secret `TAURI_SIGNING_PRIVATE_KEY` exists (ADR-053 amendment); no capability names `updater:*`.
 
 **W0 seams as landed.** `DocKind::Recovered` is a unit variant (wire `"recovered"`); the original path/name live in the registry entry (B2), so the enum stays `Copy`. `update::plugin()` is an empty plugin named `sheer-update` until B3 swaps in `tauri-plugin-updater`; `AutosaveStatus` lives in `storage/autosave.rs` (`DocumentInfo.autosave` and the `AppEvent` additions `engineRestarted` / `updateAvailable` are added by B2 / B1 / B3). Settings `updates` and `skippedVersion` are optional in `src/api/app.ts` until F2 reads them. Commands stubbed with `AppError::not_yet()`: all of `commands/{recovery,update}.rs` and `open_default_apps_settings`.
 

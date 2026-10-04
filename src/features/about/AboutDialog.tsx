@@ -10,6 +10,7 @@ import { APP_NAME } from '../../config/app';
 import { useT } from '../../i18n';
 import { useSettings } from '../../stores/settings';
 import logoUrl from '../../../assets/brand/logo.svg';
+import { AboutUpdate } from '../update/AboutUpdate';
 import { useAboutDialog } from './state';
 
 const close = (): void => useAboutDialog.getState().setOpen(false);
@@ -85,6 +86,9 @@ function AboutModal() {
         </div>
         <p className="m-0 text-md">{t('about.license')}</p>
         <p className="m-0 text-sm text-text-muted">{t('about.privacy')}</p>
+        <div className="flex w-full flex-col items-center gap-1">
+          <AboutUpdate />
+        </div>
         <div className="flex flex-wrap items-center justify-center gap-1">
           {/* A placeholder until the licence notices ship with the app (ADR-010, item 8): focusable and announced, but it does nothing. */}
           <Tooltip label={soon}>

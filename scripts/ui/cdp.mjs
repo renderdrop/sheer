@@ -1,5 +1,5 @@
 // Dev only. Drives the running dev app over CDP (127.0.0.1:9222). Node 22 built-ins only.
-// Usage: node scripts/ui/cdp.mjs eval <js> | theme light|dark|system | fps <ms> [--during <js>]
+// Usage: node scripts/ui/cdp.mjs eval <js> | theme light|dark|system | fps <ms> [--during <js>] | csp [--attach]
 //   | record <ms> --out review/x.png [--during <js>] [--delay <ms>] [--scale 0.5]
 import { writeFileSync, mkdirSync } from 'node:fs';
 import { crc32 } from 'node:zlib';
@@ -160,6 +160,14 @@ async function record(cdp, rest) {
 }
 
 const [cmd, ...rest] = process.argv.slice(2);
+if (cmd === 'csp') {
+  // The release-CSP gate: its own module; needs the dev app only with --attach.
+  await (await import('./csp.mjs')).runCsp(rest).catch((e) => {
+    console.error(String(e.message ?? e));
+    process.exitCode = 1;
+  });
+  process.exit();
+}
 const cdp = await connect();
 try {
   if (cmd === 'eval') {

@@ -1767,3 +1767,14 @@ Artwork outputs live in `src-tauri/installer/` (not `icons/installer/` as DESIGN
 rasteriser, system ImageMagick). The DMG gets the 660 x 400 PNG only (Tauri takes one file). Universal macOS: `fetch-pdfium.sh mac-universal`
 fetches both slices and the bundle carries both directories; each slice loads its own (`PLATFORM_DIR`), no lipo of PDFium. CSP: markup grep
 found no `style="`, `<style` or `innerHTML` in `src/` or `index.html`, so release `style-src 'self'` applies; the runtime proof is the F4 `cdp.mjs csp` gate.
+
+**ADR-053 amendment (updater artifacts, B3 review).** No config sets `bundle.createUpdaterArtifacts` (Tauri refuses it without the signing key).
+`release.yml` passes `--config '{"bundle":{"createUpdaterArtifacts":true}}'` and the key envs only when the repository secret
+`TAURI_SIGNING_PRIVATE_KEY` exists (the check is a `!= ''` expression, the secret is never echoed); it then uploads the NSIS `.exe.sig` and the
+macOS `*.app.tar.gz` (+ `.sig`) and the publish job writes `latest.json` (`scripts/latest-json.mjs`). Without the secret the release is unsigned
+installers only. The alternative stays local signing with `scripts/sign-update.sh`. This supersedes "CI builds artifacts unsigned" in section 3.
+
+**ADR-053 amendment (F4, CSP sweep).** `node scripts/ui/cdp.mjs csp` (see `docs/UI_REVIEW.md`) found 0 violations of the release CSP
+(`style-src 'self'`) on the empty state, settings and all toolbar buttons; React and Motion style props use the CSSOM, which `style-src` does not
+block, so no `'unsafe-inline'` and no source change was needed. The gate is a milestone DoD step. The Windows-only "Make Sheer the default PDF app"
+row in Settings calls `open_default_apps_settings`; it is hidden on macOS and when the platform is unknown.

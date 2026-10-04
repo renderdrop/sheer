@@ -1,5 +1,5 @@
 import { call } from './call';
-import { parseOpenOutcome, type OpenOutcome } from './documents';
+import { AUTOSAVE_STATUSES, parseOpenOutcome, type AutosaveStatus, type OpenOutcome } from './documents';
 import { toAppError } from './errors';
 
 /*
@@ -25,9 +25,7 @@ export interface RecoveryEntry {
   original: OriginState;
 }
 
-/** Whether autosave covers a document now (`DocumentInfo.autosave`, backend `AutosaveStatus`). */
-export const AUTOSAVE_STATUSES = ['on', 'offEncrypted', 'offTooLarge', 'clean'] as const;
-export type AutosaveStatus = (typeof AUTOSAVE_STATUSES)[number];
+export { AUTOSAVE_STATUSES, type AutosaveStatus };
 
 /** The most records one answer holds: a session leaves at most one per open document. */
 const MAX_ENTRIES = 256;

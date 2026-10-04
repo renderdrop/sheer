@@ -125,7 +125,8 @@ export function TabStrip() {
       >
         {names.map(({ id, name }) => {
           const selected = id === activeId;
-          const edited = byId[id]?.kind !== 'welcome' && isDirty({ byDoc: annotationsByDoc }, id);
+          const recovered = byId[id]?.kind === 'recovered';
+          const edited = byId[id]?.kind !== 'welcome' && (recovered || isDirty({ byDoc: annotationsByDoc }, id));
           return (
             <motion.div
               key={id}
@@ -148,7 +149,7 @@ export function TabStrip() {
                   type="button"
                   role="tab"
                   aria-selected={selected}
-                  aria-description={edited ? t('tabs.edited') : undefined}
+                  aria-description={recovered ? t('recover.recovered') : edited ? t('tabs.edited') : undefined}
                   tabIndex={selected ? 0 : -1}
                   data-id={id}
                   onClick={() => useDocuments.getState().setActive(id)}

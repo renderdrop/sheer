@@ -15,11 +15,9 @@
   "action.previousTab": "Previous tab",
   "action.settings": "Settings…",
   "action.about": "About",
-
   "shortcut.ctrl": "Ctrl",
   "shortcut.shift": "Shift",
   "shortcut.alt": "Alt",
-
   "toolbar.label": "Tools",
   "toolbar.group.panels": "Panels",
   "toolbar.group.select": "Select",
@@ -40,7 +38,6 @@
   "toolbar.zoomOut": "Zoom out",
   "toolbar.zoomIn": "Zoom in",
   "toolbar.zoomLevel": "Zoom level",
-
   "leftPanel.label": "Left panel",
   "leftPanel.views": "Left panel views",
   "leftPanel.resize": "Resize left panel",
@@ -72,10 +69,8 @@
   "comments.retry": "Try again",
   "comments.noText": "No text",
   "leftPanel.empty.search": "Search results appear here.",
-
   "thumbnails.list": "Page thumbnails",
   "thumbnails.page": "Page {page}",
-
   "outline.list": "Document outline",
   "outline.collapseAll": "Collapse all",
   "outline.untitled": "Untitled",
@@ -85,7 +80,6 @@
   "outline.loading": "Loading outline",
   "outline.error": "The outline could not be read.",
   "outline.retry": "Try again",
-
   "inspector.label": "Inspector",
   "inspector.title": "Tool options",
   "inspector.empty": "Nothing selected",
@@ -134,12 +128,10 @@
   "author.prompt.skip": "Skip",
   "author.prompt.invalid": "Use at most {max} characters, without line breaks.",
   "author.prompt.placeholder": "Name (optional)",
-
   "canvas.region": "Document",
   "canvas.noPages": "This document has no pages.",
   "canvas.pageImage": "Page {page} of {total}",
   "canvas.dropToOpen": "Drop to open",
-
   "action.undo": "Undo",
   "action.redo": "Redo",
   "action.find": "Find",
@@ -176,7 +168,6 @@
   "rotate.left": "Rotate left",
   "rotate.reset": "Reset rotation",
   "rotate.announce": "View rotated {deg}°",
-
   "menu.edit.find": "Find…",
   "menu.edit.findNext": "Find Next",
   "menu.edit.findPrevious": "Find Previous",
@@ -193,7 +184,6 @@
   "status.go": "Go",
   "status.zoomMenu": "Zoom",
   "status.page": "Page {page} of {total}",
-
   "emptyState.title": "Open a PDF",
   "emptyState.hint": "Drop a file anywhere in this window or choose one.",
   "emptyState.recent": "Recent",
@@ -207,7 +197,6 @@
   "emptyState.recentRemoved": "Removed {name} from recent files",
   "emptyState.recentCleared": "Recent files cleared",
   "toast.undo": "Undo",
-
   "tabs.label": "Open documents",
   "tabs.close": "Close {name}",
   "tabs.all": "All open documents",
@@ -225,7 +214,6 @@
   "save.discard": "Don't Save",
   "save.cancel": "Cancel",
   "save.failed": "Couldn't save \"{name}\".",
-
   "password.title": "Password required",
   "password.body": "\"{name}\" is protected. Enter its password to open it.",
   "password.label": "Password",
@@ -234,20 +222,17 @@
   "password.cancel": "Cancel",
   "password.open": "Open",
   "password.checking": "Checking the password",
-
   "window.controls": "Window controls",
   "window.minimize": "Minimize",
   "window.maximize": "Maximize",
   "window.restore": "Restore",
   "window.close": "Close",
-
   "component.more": "More",
   "component.locked": "Locked",
   "component.lockedNote": "Locked · Esc to release",
   "component.collapsed": "Collapsed",
   "component.splitterValue.one": "{count} pixel",
   "component.splitterValue.other": "{count} pixels",
-
   "settings.title": "Settings",
   "settings.theme": "Theme",
   "settings.theme.system": "System",
@@ -264,7 +249,6 @@
   "settings.tour.start": "Start tour",
   "settings.tour.restart": "Restart tour",
   "settings.tour.hint": "Opens the welcome document.",
-
   "about.title": "About {app}",
   "about.version": "Version {version}",
   "about.license": "Open source under AGPL-3.0-or-later",
@@ -272,7 +256,6 @@
   "about.licenses": "Third-party licenses",
   "about.licensesSoon": "Coming soon",
   "about.close": "Close",
-
   "menu.app.about": "About {app}",
   "menu.app.settings": "Settings…",
   "menu.app.services": "Services",
@@ -314,7 +297,6 @@
   "menu.window.previousTab": "Show Previous Tab",
   "menu.window.bringAllToFront": "Bring All to Front",
   "menu.help": "Help",
-
   "error.invalid_argument": "That request was not valid.",
   "error.limit_exceeded": "A size or count limit was reached.",
   "error.not_found": "That item is no longer available.",
@@ -373,15 +355,12 @@
   "error.invalid_argument.pageSelection": "That page selection is not valid.",
   "error.needs_confirmation.rewriteEncrypted": "Saving rewrites this protected file in full. Continue?",
   "error.unsupported_feature.notYet": "This is not available yet.",
-
   "link.confirm.title": "Open this link?",
   "link.confirm.message": "{app} will open this address with another app:\n\n{url}\n\nOnly continue if you trust this document.",
   "link.confirm.open": "Open link",
   "link.confirm.cancel": "Cancel",
-
   "xfa.message": "This form uses XFA, which {app} can't show. You see its fallback pages, which may be incomplete.",
   "xfa.dismiss": "Dismiss",
-
   "doc.welcomeName": "Welcome to {app}.pdf",
   "tour.region": "Welcome tour",
   "tour.pill": "Tour {step} / {total}",
@@ -464,7 +443,6 @@
   "welcomePdf.sign.title": "Sign and sort",
   "welcomePdf.sign.text": "Sign in the frame, then move this page up.",
   "welcomePdf.sign.label": "Signature",
-
   "toolbar.tool.note": "Note",
   "toolbar.tool.text": "Text comment",
   "toolbar.tool.text.hint": "Floating note on the page – stays a comment",
@@ -517,7 +495,6 @@
   "organize.truncated.other": "{count} annotations of the inserted pages cannot be edited here (limit reached). They stay in the file.",
   "organize.moved": "Moved to position {n}",
   "annotation.create": "Create annotation",
-
   "action.merge": "Merge files…",
   "action.split": "Split…",
   "action.extractPages": "Extract pages…",
@@ -666,7 +643,9 @@
   "lib.manage": "Manage signatures…",
   "settings.signatures": "Signatures",
   "settings.signatures.hint": "Rename or remove saved signatures and initials.",
-
+  "settings.defaultApp": "Default PDF app",
+  "settings.defaultApp.hint": "Open Windows settings to choose {app} for PDF files.",
+  "settings.defaultApp.button": "Make {app} the default PDF app…",
   "toolbar.group.edit": "Edit",
   "menu.file.protect": "Protect…",
   "menu.file.props": "Document Properties…",
@@ -906,5 +885,53 @@
   "menu.file.imagesToPdf": "Create PDF From Images…",
   "menu.file.exportCopy": "Export Copy…",
   "menu.file.exportImages": "Export Images…",
-  "menu.file.print": "Print…"
+  "menu.file.print": "Print…",
+  "recover.title": "{app} closed unexpectedly",
+  "recover.body.one": "Unsaved changes in {count} document can be restored.",
+  "recover.body.other": "Unsaved changes in {count} documents can be restored.",
+  "recover.meta": "Last change {time}",
+  "recover.restore": "Restore",
+  "recover.discard": "Discard",
+  "recover.restoreAll": "Restore all",
+  "recover.discardAll": "Discard all",
+  "recover.later": "Decide later",
+  "recover.asCopy": "The file changed or is missing; restores as a copy.",
+  "recover.copyName": "{name} (recovered)",
+  "recover.failed": "Couldn’t restore this document.",
+  "recover.restored": "Restored: {name}",
+  "recover.discarded": "Changes to {name} discarded",
+  "recover.discardedAll.one": "Changes to {count} document discarded",
+  "recover.discardedAll.other": "Changes to {count} documents discarded",
+  "recover.undo": "Undo",
+  "recover.region": "Recovered documents",
+  "recover.rows": "Documents to restore",
+  "recover.recovered": "Recovered",
+  "engine.restarted": "The document engine restarted.",
+  "engine.restartedLost": "The document engine restarted. Open again: {names}",
+  "settings.updates": "Updates",
+  "settings.updates.off": "Off",
+  "settings.updates.on": "On",
+  "settings.updates.hint": "Off by default. When on, the app asks GitHub once a day whether a newer version exists. GitHub sees your IP address and this app version, nothing else.",
+  "about.checkUpdates": "Check for updates",
+  "update.checkNow": "Check now",
+  "update.checking": "Checking for updates…",
+  "update.upToDate": "You have the newest version.",
+  "update.foundNewer": "A newer version is available.",
+  "update.checkFailed": "The check did not work. Try again later.",
+  "update.unconfigured": "Updates are not configured for this build.",
+  "update.available": "Version {version} is available.",
+  "update.details": "Details",
+  "update.hideDetails": "Hide details",
+  "update.notes": "Release notes",
+  "update.noNotes": "No release notes.",
+  "update.download": "Download",
+  "update.downloading": "Downloading version {version}…",
+  "update.verifying": "Verifying the download…",
+  "update.ready": "The update is ready. It installs when the app quits.",
+  "update.restart": "Restart to update",
+  "update.skip": "Skip this version",
+  "update.later": "Later",
+  "update.retry": "Try again",
+  "update.failedDownload": "The download did not finish.",
+  "update.failedVerify": "The download could not be verified and was deleted."
 }

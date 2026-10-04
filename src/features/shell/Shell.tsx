@@ -18,12 +18,14 @@ import { PasswordDialog } from '../password/PasswordDialog';
 import { ProtectSheet } from '../protect/ProtectSheet';
 import { PropertiesDialog } from '../properties/PropertiesDialog';
 import { RedactApplyDialog } from '../redact/RedactApplyDialog';
+import { RecoveryBanner } from '../recovery/RecoveryBanner';
 import { RedactBanner } from '../redact/RedactBanner';
 import { UnsavedDialog } from '../save/UnsavedDialog';
 import { TabStrip } from '../tabs/TabStrip';
 import { CanvasSlot } from '../organize/CanvasSlot';
 import { TourEffects } from '../tour/TourEffects';
 import { ViewerEffects } from '../viewer/useViewer';
+import { UpdateBannerRow } from '../update/UpdateBanner';
 import { BannerRow, XfaBannerRow } from './Banner';
 import { ToastLayer } from './Toast';
 import { CaptionBar } from './CaptionBar';
@@ -128,10 +130,12 @@ export function Shell() {
       <PrintDialog />
       <ExportCopyDialog />
       <BannerRow />
+      <RecoveryBanner />
       <XfaBannerRow />
       <RedactBanner />
       <FormHost />
       <DropBannerRow />
+      <UpdateBannerRow />
       <MainGrid structure={structure}>
         {/* The empty state fades out on its own (it stays in its slot, inert, until it is gone) while the document comes in. */}
         <AnimatePresence initial={false}>

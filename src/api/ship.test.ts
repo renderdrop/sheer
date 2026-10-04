@@ -92,6 +92,13 @@ describe('recovery commands', () => {
       kind: 'recovered',
     });
   });
+
+  it('reads DocumentInfo.autosave and refuses an unknown status', () => {
+    const base = { id: 1, pageCount: 1, displayName: 'x' };
+    expect(parseDocumentInfo({ ...base, autosave: 'offTooLarge' })).toMatchObject({ autosave: 'offTooLarge' });
+    expect(parseDocumentInfo(base)?.autosave).toBeUndefined();
+    expect(parseDocumentInfo({ ...base, autosave: 'maybe' })).toBeNull();
+  });
 });
 
 describe('update commands', () => {

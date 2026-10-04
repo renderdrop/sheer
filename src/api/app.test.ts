@@ -540,6 +540,13 @@ describe('subscribeApp', () => {
 });
 
 describe('parseAppEvent', () => {
+  it('reads engineRestarted with the lost document ids', () => {
+    expect(parseAppEvent({ type: 'engineRestarted', lost: [1, 4] })).toEqual({ type: 'engineRestarted', lost: [1, 4] });
+    expect(parseAppEvent({ type: 'engineRestarted', lost: [] })).toEqual({ type: 'engineRestarted', lost: [] });
+    expect(parseAppEvent({ type: 'engineRestarted', lost: [-1] })).toBeNull();
+    expect(parseAppEvent({ type: 'engineRestarted' })).toBeNull();
+  });
+
   it('reads the three events and nothing else', () => {
     expect(parseAppEvent({ type: 'dropHover', active: false })).toEqual({ type: 'dropHover', active: false });
     expect(parseAppEvent({ type: 'opened', document: { id: 0, pageCount: 1, displayName: '' } })).toEqual({

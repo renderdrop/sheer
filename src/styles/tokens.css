@@ -179,6 +179,7 @@
   --spacing-sig-thumb-w: var(--sig-thumb-w);
   --spacing-sig-thumb-h: var(--sig-thumb-h);
   --spacing-lib-list: var(--lib-list-max);
+  --spacing-recover-list: var(--recover-list-max);
   /* Signature creation pad (DESIGN 3.33): w-sig-pad, w-sig-pad-initials, h-sig-slot. */
   --spacing-sig-pad: var(--sig-pad-width);
   --spacing-sig-pad-initials: var(--sig-pad-width-initials);
@@ -403,6 +404,7 @@
   --grid-thumb: 160px; /* organize grid: the thumbnail box, 96 to 256 in steps of 32 (DESIGN 3.28); the user's choice is set inline */
   --sig-thumb-w: 120px; /* library preview chip (DESIGN 3.35, --sig-thumb-lg) */
   --sig-thumb-h: 40px;
+  --recover-list-max: 128px; /* recovery banner (DESIGN 3.50): three 40 px rows and their 4 px gaps, then it scrolls */
   --lib-list-max: 360px; /* six 56 px rows and their 4 px gaps */
   --insert-marker: 2px; /* organize grid: the insertion marker's width */
 

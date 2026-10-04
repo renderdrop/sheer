@@ -12,7 +12,7 @@ import { useSave } from './state';
 export function needsSavePrompt(docId: number): boolean {
   const document = useDocuments.getState().byId[docId];
   if (document === undefined || document.kind === 'welcome') return false;
-  return isDirty(useAnnotations.getState(), docId);
+  return document.kind === 'recovered' || isDirty(useAnnotations.getState(), docId);
 }
 
 /** What a save changed: the annotations are clean, the document may have another name, and the pages are drawn again from the new file. */
@@ -71,7 +71,9 @@ export async function saveNow(docId: number, as = false): Promise<boolean> {
   save.setSaving(docId, true);
   try {
     await askAuthorOnce(docId);
-    const welcome = useDocuments.getState().byId[docId]?.kind === 'welcome';
+    // A recovered document has no file to write to (DESIGN 3.50): Save is Save As, like the welcome document.
+    const kind = useDocuments.getState().byId[docId]?.kind;
+    const welcome = kind === 'welcome' || kind === 'recovered';
     const run = async (ack?: SaveAck): Promise<SaveResult | null> => {
       if (as || welcome) return saveDocumentAs(docId, ack);
       try {

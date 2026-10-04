@@ -2,7 +2,7 @@
 import { act, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { updateSettings, type Settings } from '../../api/app';
+import { openDefaultAppsSettings, updateSettings, type Settings } from '../../api/app';
 import { Popover } from '../../components';
 import { bindLocaleToSettings } from '../../i18n/bind';
 import { useLocaleStore } from '../../i18n/store';
@@ -14,6 +14,7 @@ import { openSettings, useSettingsPopover } from './state';
 vi.mock('../../api/app', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../api/app')>()),
   updateSettings: vi.fn(),
+  openDefaultAppsSettings: vi.fn(() => Promise.resolve()),
 }));
 
 const updateSettingsMock = vi.mocked(updateSettings);
@@ -75,6 +76,25 @@ const checked = (name: string) =>
     .getAllByRole('radio')
     .find((radio) => radio.getAttribute('aria-checked') === 'true')?.textContent;
 const choose = (name: string, option: string) => within(group(name)).getByRole('radio', { name: option });
+
+describe('the default PDF app row', () => {
+  const button = () => within(popover()).queryByRole('button', { name: /default PDF app/ });
+
+  it('opens the OS page on Windows', async () => {
+    useSettings.setState({ platform: 'windows' });
+    const { user } = setup(<Fixture />);
+    act(() => openSettings());
+    await user.click(button() as HTMLElement);
+    expect(openDefaultAppsSettings).toHaveBeenCalledOnce();
+  });
+
+  it('is hidden on macOS and when the platform is unknown', () => {
+    useSettings.setState({ platform: 'macos' });
+    setup(<Fixture />);
+    act(() => openSettings());
+    expect(button()).toBeNull();
+  });
+});
 
 describe('the settings popover', () => {
   it('is closed until the settings action opens it', () => {
@@ -223,6 +243,8 @@ describe('the settings popover', () => {
     expect(document.activeElement).toBe(within(popover()).getByRole('textbox', { name: 'Author name' }));
     await user.tab();
     expect(document.activeElement).toBe(within(popover()).getByRole('button', { name: 'Manage signatures…' }));
+    await user.tab();
+    expect(document.activeElement).toBe(choose('Updates', 'Off'));
     await user.tab();
     expect(document.activeElement).toBe(within(popover()).getByRole('button', { name: 'Start tour' }));
     await user.tab();

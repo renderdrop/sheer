@@ -154,15 +154,20 @@ describe('the About dialog', () => {
       expect(document.activeElement).toBe(close());
     });
 
-    it('is trapped: Tab and Shift+Tab cycle between the two buttons and never reach the app behind', async () => {
+    it('is trapped: Tab and Shift+Tab cycle between the three buttons and never reach the app behind', async () => {
       const { user } = setup(<Fixture />);
       act(() => openAbout());
+      const check = screen.getByRole('button', { name: 'Check for updates' });
+      await user.tab();
+      expect(document.activeElement).toBe(check);
       await user.tab();
       expect(document.activeElement).toBe(licenses());
       await user.tab();
       expect(document.activeElement).toBe(close());
       await user.tab({ shift: true });
       expect(document.activeElement).toBe(licenses());
+      await user.tab({ shift: true });
+      expect(document.activeElement).toBe(check);
       await user.tab({ shift: true });
       expect(document.activeElement).toBe(close());
     });

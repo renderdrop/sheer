@@ -27,6 +27,10 @@ export interface DocFlags {
 export const DOC_KINDS = ['user', 'welcome', 'recovered'] as const;
 export type DocKind = (typeof DOC_KINDS)[number];
 
+/** Whether autosave covers a document now (`DocumentInfo.autosave`, backend `AutosaveStatus`). */
+export const AUTOSAVE_STATUSES = ['on', 'offEncrypted', 'offTooLarge', 'clean'] as const;
+export type AutosaveStatus = (typeof AUTOSAVE_STATUSES)[number];
+
 /** Result of opening a document. `id` is opaque; the frontend never sees file paths. */
 export interface DocumentInfo {
   id: number;
@@ -43,6 +47,8 @@ export interface DocumentInfo {
   flags?: DocFlags;
   /** `welcome` for the tour's sample, which is read-only. Optional in the type like `flags`; the backend always sends it. */
   kind?: DocKind;
+  /** Whether autosave covers the document now (ADR-053 section 2). Optional like `flags`; the backend always sends it. */
+  autosave?: AutosaveStatus;
 }
 
 /** A whole number from 0 up to `max`: the id and the page count are `u32` in the backend. */
@@ -82,12 +88,13 @@ export function parseDocFlags(value: unknown): DocFlags | null {
  */
 export function parseDocumentInfo(value: unknown): DocumentInfo | null {
   if (typeof value !== 'object' || value === null) return null;
-  const { id, pageCount, displayName, flags, kind } = value as {
+  const { id, pageCount, displayName, flags, kind, autosave } = value as {
     id?: unknown;
     pageCount?: unknown;
     displayName?: unknown;
     flags?: unknown;
     kind?: unknown;
+    autosave?: unknown;
   };
   if (!isCount(id) || !isCount(pageCount, MAX_PAGES) || typeof displayName !== 'string') return null;
   const info: DocumentInfo = { id, pageCount, displayName };
@@ -95,6 +102,10 @@ export function parseDocumentInfo(value: unknown): DocumentInfo | null {
     // A kind that is there and unknown is not a document of ours.
     if (!DOC_KINDS.includes(kind as DocKind)) return null;
     info.kind = kind as DocKind;
+  }
+  if (autosave !== undefined) {
+    if (!AUTOSAVE_STATUSES.includes(autosave as AutosaveStatus)) return null;
+    info.autosave = autosave as AutosaveStatus;
   }
   if (flags === undefined) return info;
   const parsed = parseDocFlags(flags);

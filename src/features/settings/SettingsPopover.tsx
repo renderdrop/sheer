@@ -1,7 +1,9 @@
 import { useId, useLayoutEffect, useState, type ReactNode } from 'react';
 
 import { Button, Field, Popover } from '../../components';
-import { AUTHOR_NAME_MAX, isAuthorName, type GlassMode, type ThemeMode } from '../../api/app';
+import { AUTHOR_NAME_MAX, isAuthorName, openDefaultAppsSettings, type GlassMode, type ThemeMode } from '../../api/app';
+import { APP_NAME } from '../../config/app';
+import type { AppError } from '../../api/errors';
 import { errorText, useT, type Language, type PlainKey } from '../../i18n';
 import { useSettings } from '../../stores/settings';
 import { SegmentedControl, type SegmentOption } from './SegmentedControl';
@@ -9,6 +11,7 @@ import { openSignatureLibrary } from '../signatures/library';
 import { resetTips } from '../tips/runtime';
 import { restartTour } from '../tour/runtime';
 import { useTour } from '../tour/store';
+import { UpdateRow } from '../update/UpdateRow';
 import { useSettingsPopover } from './state';
 
 /** The values of each setting with the catalog key of their text, in the order the segments show them. */
@@ -132,6 +135,41 @@ function SignaturesRow() {
 }
 
 /**
+ * The default PDF app row: opens the OS page where the user picks the app (Windows only; macOS has no such page, so the row
+ * is hidden there and wherever the platform is unknown). A failure is shown in the popover's alert line.
+ */
+function DefaultAppRow() {
+  const t = useT();
+  const platform = useSettings((state) => state.platform);
+  const [error, setError] = useState<AppError | null>(null);
+  if (platform !== 'windows') return null;
+  return (
+    <Setting label={t('settings.defaultApp')} hint={t('settings.defaultApp.hint', { app: APP_NAME })}>
+      {(labelId) => (
+        <div className="flex flex-col gap-1">
+          <Button
+            variant="secondary"
+            size="sm"
+            aria-describedby={labelId}
+            onClick={() => {
+              setError(null);
+              openDefaultAppsSettings().catch((e: AppError) => setError(e));
+            }}
+          >
+            {t('settings.defaultApp.button', { app: APP_NAME })}
+          </Button>
+          {error !== null && (
+            <p role="alert" className="m-0 text-sm text-error-text">
+              {errorText(t, error)}
+            </p>
+          )}
+        </div>
+      )}
+    </Setting>
+  );
+}
+
+/**
  * The author name row (DESIGN 3.25): the name put on the notes and markup the user adds. Saved when the field is left or Enter is
  * pressed; an invalid text is not saved and the field goes back to the saved name; empty is allowed (no author, ADR-034). Esc reverts the typing.
  */
@@ -225,6 +263,10 @@ function SettingsForm() {
       </Setting>
       <AuthorRow />
       <SignaturesRow />
+      <DefaultAppRow />
+      <Setting label={t('settings.updates')} hint={t('settings.updates.hint')}>
+        {(labelId) => <UpdateRow labelId={labelId} />}
+      </Setting>
       <HelpRow />
       {error !== null && (
         <p role="alert" className="m-0 text-sm text-error-text">

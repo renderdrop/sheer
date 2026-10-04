@@ -67,3 +67,41 @@ Highlight on text, Note (click, type in the popover), Text comment (click, type,
 hit-testing (a layer under a `pointer-events-none` parent is dead in the window and green in vitest, FEEDBACK F9), so this run is a
 required step before a milestone tag. Only tool selection and arming the Sign item use the stores; everything else is real input.
 Stop the dev window afterwards (`taskkill /F /IM sheer.exe`): a running exe blocks `cargo test` on Windows.
+
+## Performance budget (M7 F3, ADR-053 section 4)
+
+Targets: a 500-page PDF shows its first page in under 1 s; scrolling holds 60 fps (p95 frame time at most 20 ms).
+
+Procedure (Tauri dev window, debug build, so a release build is only faster):
+
+1. `node scripts/ui/gen-pdf.mjs <scratch>/p500.pdf 500` (not committed), then `node scripts/ui/dev.mjs` in the background.
+2. Open it with `src-tauri/target/debug/sheer.exe <scratch>/p500.pdf` (single-instance forwards the path to the running window).
+3. Time to first page: in-page poll for `[data-page="1"] img` loaded, against the launch time.
+4. Scroll: `node scripts/ui/cdp.mjs fps 3300 --during "<script>"`, where the script sets `scrollTop` of `.overflow-auto` (the canvas region) from a rAF loop over 3 s.
+5. Stop the window: `taskkill //F //IM sheer.exe`.
+
+Result (2026-10-04, Windows 11, debug build, 500 Letter pages, region 632 px high, 497 208 px of content):
+
+| Scenario | p50 | p95 | min fps | avg fps |
+| --- | --- | --- | --- | --- |
+| Scroll 6 000 px/s (about 7 pages/s) | 16.7 ms | 16.8 ms | 59.5 | 60.0 |
+| Fling 60 000 px/s (about 70 pages/s) | 16.7 ms | 16.7 ms | 59.5 | 60.0 |
+| Whole document in 3 s (500 pages) | 16.7 ms | 16.8 ms | 59.2 | 60.0 |
+
+Time to first page: about 190 ms from launching the forwarding process to the first page image loaded (includes the second process start and the engine round trip).
+
+Both targets are met. Unit budgets guard the frontend paths (`src/features/viewer/layout.perf.test.ts`: 500 and 5 000 pages, metrics build under 50 ms, under 0.5 ms per scroll frame, at most 24 mounted pages; `src/engine/renderCache.test.ts`: cache stays within its byte budget over 500 pages).
+
+## CSP gate (milestone DoD)
+
+```
+npm run build
+node scripts/ui/cdp.mjs csp            # exit code 1 on any violation
+node scripts/ui/cdp.mjs csp --attach   # dev app with a PDF open: records inline-style writes the release CSP would block
+```
+Serves `dist/` with the release CSP (`style-src 'self'`, from `tauri.conf.json`) in headless Edge or Chrome with a stub backend and
+collects `securitypolicyviolation` events across the empty state, the settings popover and every toolbar button. `--attach` covers
+the surfaces that need a real document (it records `setAttribute('style')` and `<style>` elements; read `window.__csp` afterwards).
+`CSP_SELFTEST=1` injects a known violation to prove the gate catches it. A milestone tag needs `violations=0` from both runs.
+Style props set by React and Motion go through the CSSOM and are allowed; inline `style="..."` markup, `<style>` elements and
+`setAttribute('style', ...)` are not: use classes or CSS variables set with `element.style.setProperty`.

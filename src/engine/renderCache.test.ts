@@ -689,4 +689,11 @@ describe('defaults', () => {
     cache.clear();
     expect(revoke).toHaveBeenCalledWith('blob:real');
   });
+
+  it('stays within its budget while a 500-page document is scrolled through', () => {
+    const { cache } = makeCache(MIN_BUDGET_BYTES);
+    for (let page = 0; page < 500; page += 1) cache.put({ docId: 1, page, rev: 0, bucket: 1 }, image(2 * MIB));
+    expect(cache.bytes).toBeLessThanOrEqual(MIN_BUDGET_BYTES);
+    expect(cache.size).toBeLessThanOrEqual(MIN_BUDGET_BYTES / (2 * MIB));
+  });
 });
