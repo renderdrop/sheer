@@ -3,13 +3,13 @@ import { useEffect, useLayoutEffect, useRef, type KeyboardEvent } from 'react';
 import { createPortal } from 'react-dom';
 
 import { Button, Tooltip } from '../../components';
+import { Wordmark } from '../../components/Wordmark';
 import { DISMISS_PRIORITY, registerDismissLayer } from '../../components/dismiss';
 import { cycleTab } from '../../components/focusTrap';
 import { DURATION, useFade, usePopoverMotion } from '../../components/motion';
 import { APP_NAME } from '../../config/app';
 import { useT } from '../../i18n';
 import { useSettings } from '../../stores/settings';
-import logoUrl from '../../../assets/brand/logo.svg';
 import { AboutUpdate } from '../update/AboutUpdate';
 import { useAboutDialog } from './state';
 
@@ -79,9 +79,11 @@ function AboutModal() {
         onKeyDown={onKeyDown}
         className="bg-panel border border-border-subtle shadow-floating flex w-popover-max max-w-full flex-col items-center gap-4 rounded-card p-6 text-center text-text outline-none"
       >
-        <img src={logoUrl} alt="" draggable={false} className="size-16 shrink-0" />
-        <div className="flex flex-col items-center">
-          <h2 className="m-0 font-display text-xl">{APP_NAME}</h2>
+        <div className="flex flex-col items-center gap-2">
+          <h2 className="m-0 text-text">
+            <Wordmark className="block h-10 w-auto shrink-0" />
+          </h2>
+          <p className="m-0 text-sm text-text-muted">{t('about.claim')}</p>
           {version !== null && <p className="m-0 text-sm text-text-muted">{t('about.version', { version })}</p>}
         </div>
         <p className="m-0 text-md">{t('about.license')}</p>
@@ -106,7 +108,7 @@ function AboutModal() {
 }
 
 /**
- * The About dialog (DESIGN 3.13): a modal on a solid surface with `--shadow-3` at `--z-modal`, over a backdrop. Logo, name and
+ * The About dialog (DESIGN 3.13): a modal on a solid surface with `--shadow-3` at `--z-modal`, over a backdrop. The word mark, claim and
  * version, the licence, the privacy promise and the (not yet working) third-party licences entry. Focus is trapped, Esc, the
  * Close button and a press on the backdrop close it, and focus goes back to where it was. Mounted once, with the toolbar; the
  * `about` action opens it through `useAboutDialog`.

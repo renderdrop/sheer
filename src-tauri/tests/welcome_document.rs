@@ -48,6 +48,23 @@ const SAND: Rgb = [0xF6, 0xF5, 0xF1];
 const RULE: Rgb = [0xE5, 0xE5, 0xE1];
 const STONE: Rgb = [0x8A, 0x8A, 0x86];
 const SOLAR: Rgb = [0xFF, 0xF8, 0x4D];
+/// The glow of page 1 is capped at this alpha (Solar over Sand) ...
+const GLOW_ALPHA: f64 = 0.85;
+/// ... and has faded out at this share of its radius, so the footer is not on full Solar.
+const GLOW_FADE: f64 = 0.55;
+const GLOW_RADIUS: f64 = 400.0;
+
+/// Solar at `GLOW_ALPHA` over Sand, as an opaque colour (the shading has no alpha).
+fn glow_core() -> Rgb {
+    let mix = |sand: u8, solar: u8| {
+        (f64::from(sand) * (1.0 - GLOW_ALPHA) + f64::from(solar) * GLOW_ALPHA).round() as u8
+    };
+    [
+        mix(SAND[0], SOLAR[0]),
+        mix(SAND[1], SOLAR[1]),
+        mix(SAND[2], SOLAR[2]),
+    ]
+}
 const INK: Rgb = [0x0F, 0x0F, 0x0F];
 const INK_60: Rgb = [0x6F, 0x6F, 0x6B];
 const WHITE: Rgb = [0xFF, 0xFF, 0xFF];
@@ -513,7 +530,7 @@ impl Doc<'_> {
             canvas.display(1, 40.0, MARGIN, 140.0, INK, -0.04, title);
         } else {
             assert_fits(title, 28.0, 504.0);
-            canvas.display(2, 28.0, MARGIN, 140.0, INK, -0.02, title);
+            canvas.display(1, 28.0, MARGIN, 140.0, INK, -0.035, title);
             canvas.line(MARGIN, MARGIN + CONTENT, 168.0, 1.0, RULE);
         }
         for (index, line) in wrap(instruction, 56).iter().enumerate() {
@@ -547,7 +564,7 @@ impl Doc<'_> {
             RULE,
         );
         assert_fits(label, 14.0, 360.0);
-        canvas.text(2, 14.0, 72.0, y + 32.0, INK, label);
+        canvas.text(1, 14.0, 72.0, y + 32.0, INK, label);
         for (index, line) in lines.iter().enumerate() {
             canvas.text(1, 12.0, 72.0, y + 56.0 + 16.0 * index as f64, INK_60, line);
         }
@@ -716,7 +733,7 @@ impl Doc<'_> {
                 self.manifest.number("comment"),
                 s.t("tour.step.comment.title")
             );
-            canvas.text(2, 14.0, 72.0, y + 32.0, INK, &label);
+            canvas.text(1, 14.0, 72.0, y + 32.0, INK, &label);
             canvas.text(
                 1,
                 12.0,
@@ -1024,10 +1041,11 @@ fn generate(lang: Lang) -> (Vec<u8>, Vec<String>) {
         .object(
             5,
             &format!(
-                "<< /ShadingType 3 /ColorSpace /DeviceRGB /Coords [520 {} 0 520 {} 400]                  /Function << /FunctionType 2 /Domain [0 1] /C0 [{}] /C1 [{}] /N 2.6 >> /Extend [false true] >>",
+                "<< /ShadingType 3 /ColorSpace /DeviceRGB /Coords [520 {} 0 520 {} {}]                  /Function << /FunctionType 2 /Domain [0 1] /C0 [{}] /C1 [{}] /N 2.6 >> /Extend [false true] >>",
                 num(flip(740.0)),
                 num(flip(740.0)),
-                rgb(SOLAR),
+                num(GLOW_RADIUS * GLOW_FADE),
+                rgb(glow_core()),
                 rgb(SAND)
             ),
         )

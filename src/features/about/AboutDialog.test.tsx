@@ -94,14 +94,14 @@ describe('the About dialog', () => {
     expect(backdrop.className).toContain('bg-backdrop');
   });
 
-  it('shows the logo, the name, the version, the licence and the privacy promise', () => {
+  it('shows the word mark, the claim, the version, the licence and the privacy promise, and no logo tile', () => {
     setup(<Fixture />);
     act(() => openAbout());
-    const logo = dialog().querySelector('img');
-    expect(logo?.getAttribute('src')).toMatch(/svg/);
-    // The logo is decoration: the name next to it says what it is.
-    expect(logo?.getAttribute('alt')).toBe('');
-    expect(within(dialog()).getByRole('heading', { level: 2 }).textContent).toBe(APP_NAME);
+    expect(dialog().querySelector('img')).toBeNull();
+    // The word mark is the name: an image "sheer." inside the heading.
+    const heading = within(dialog()).getByRole('heading', { level: 2 });
+    expect(within(heading).getByRole('img', { name: APP_NAME })).not.toBeNull();
+    expect(within(dialog()).getByText('PDFs made simple')).not.toBeNull();
     expect(within(dialog()).getByText('Version 1.2.3')).not.toBeNull();
     expect(within(dialog()).getByText('Open source under AGPL-3.0-or-later')).not.toBeNull();
     expect(within(dialog()).getByText(/offline, without telemetry/)).not.toBeNull();

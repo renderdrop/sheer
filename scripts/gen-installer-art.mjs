@@ -9,8 +9,6 @@ import { Resvg } from '@resvg/resvg-js';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const out = join(root, 'src-tauri', 'installer');
-const logo = readFileSync(join(root, 'assets', 'brand', 'logo.svg'), 'utf8');
-const logoInner = logo.replace(/^[\s\S]*?<svg[^>]*>/, '').replace(/<\/svg>\s*$/, '');
 
 // Brand mode (BRAND 5, 7): Sand ground, one Solar glow, the word mark in Ink. No screenshots, no text elements.
 const SAND = '#F6F5F1';

@@ -183,6 +183,8 @@ jobs:
           cd ..
 
           {
+            echo "## sheer. ${version}"
+            echo
             echo "> **Unsigned installers.** These builds are not code-signed or notarized, so Windows SmartScreen and macOS Gatekeeper"
             echo "> will warn on first start. Verify the download against \`SHA256SUMS.txt\`."
             echo "> Why and what is needed to sign: [docs/BLOCKERS.md (B-002)](https://github.com/${GH_REPO}/blob/${RELEASE_TAG}/docs/BLOCKERS.md)."
@@ -195,9 +197,9 @@ jobs:
           if [[ "$version" == 0.* ]]; then flags+=(--prerelease); fi
 
           if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
-            gh release edit "$RELEASE_TAG" --title "Sheer $version" --notes-file notes.md "${flags[@]}"
+            gh release edit "$RELEASE_TAG" --title "sheer. $version" --notes-file notes.md "${flags[@]}"
             gh release upload "$RELEASE_TAG" artifacts/* --clobber
           else
             # --verify-tag: fail instead of creating a tag that does not exist.
-            gh release create "$RELEASE_TAG" artifacts/* --verify-tag --title "Sheer $version" --notes-file notes.md "${flags[@]}"
+            gh release create "$RELEASE_TAG" artifacts/* --verify-tag --title "sheer. $version" --notes-file notes.md "${flags[@]}"
           fi

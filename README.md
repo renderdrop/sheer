@@ -1,10 +1,6 @@
 <p align="center">
-  <img src="assets/brand/logo.svg" width="96" height="96" alt="Sheer logo">
+  <img src="assets/brand/wordmark.svg" width="320" alt="sheer. PDFs made simple">
 </p>
-
-<h1 align="center">Sheer</h1>
-
-<p align="center"><em>Sheer clarity for your documents.</em></p>
 
 Sheer is a simple, fast and beautiful desktop PDF app for **macOS and Windows**.
 It is open source and runs **entirely on your device**: no account, no login, no cloud, no telemetry.

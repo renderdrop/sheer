@@ -75,16 +75,15 @@ describe('the language setting', () => {
     setup(<Shell />);
     // jsdom reports "en-US": "system" is English.
     expect(html.lang).toBe('en');
-    expect(screen.getByRole('toolbar', { name: 'Tools' })).not.toBeNull();
     expect(screen.getByRole('heading', { level: 1, name: 'What would you like to do?' })).not.toBeNull();
     expect(screen.getByRole('button', { name: 'Open' })).not.toBeNull();
 
     chooseLanguage('de');
     expect(html.lang).toBe('de');
-    expect(screen.getByRole('toolbar', { name: 'Werkzeuge' })).not.toBeNull();
+    expect(screen.getByRole('group', { name: 'Fenstersteuerung' })).not.toBeNull();
     expect(screen.getByRole('heading', { level: 1, name: 'Was möchten Sie tun?' })).not.toBeNull();
     expect(screen.getByRole('button', { name: 'Öffnen' })).not.toBeNull();
-    expect(screen.queryByRole('toolbar', { name: 'Tools' })).toBeNull();
+    expect(screen.queryByRole('group', { name: 'Window controls' })).toBeNull();
     expect(screen.queryByText('Open a PDF')).toBeNull();
 
     chooseLanguage('en');
@@ -108,9 +107,9 @@ describe('the language setting', () => {
     expect(screen.getByRole('heading', { level: 1, name: 'What would you like to do?' })).not.toBeNull();
   });
 
-  it('the shortcut chips follow the language on Windows, and the announced shortcuts stay canonical', async () => {
+  it('the shortcut chips follow the language on Windows, and the announced shortcuts stay canonical', () => {
     act(() => useSettings.setState({ platform: 'windows' }));
-    const { user } = setup(<Shell />);
+    setup(<Shell />);
     const open = () => screen.getByRole('button', { name: /^(Open|Öffnen)$/ });
     expect(screen.getByText('Ctrl+O')).not.toBeNull();
 
@@ -119,13 +118,8 @@ describe('the language setting', () => {
     expect(screen.queryByText('Ctrl+O')).toBeNull();
     expect(open().getAttribute('aria-keyshortcuts')).toBe('Control+O');
 
-    // The in-window menu bar of Windows (DESIGN 3.56).
-    await user.click(screen.getByRole('menuitem', { name: 'Datei' }));
-    const item = within(screen.getByRole('menu')).getByRole('menuitem', { name: /Öffnen…/ });
-    expect(item.textContent).toContain('Strg+O');
-
     chooseLanguage('en');
-    expect(screen.getByRole('menuitem', { name: /Open…/ }).textContent).toContain('Ctrl+O');
+    expect(screen.getByText('Ctrl+O')).not.toBeNull();
   });
 
   it('on macOS the chips are the same symbols in both languages', () => {
@@ -137,8 +131,10 @@ describe('the language setting', () => {
     expect(screen.queryByText(/Strg|Ctrl/)).toBeNull();
   });
 
-  it('the toolbar, its menus and tooltips follow the language', () => {
-    setup(<Shell />);
+  it('the toolbar, its menus and tooltips follow the language', async () => {
+    const { user } = setup(<Shell />);
+    await user.click(screen.getByRole('button', { name: 'Open' }));
+    await screen.findByRole('img', { name: /^Page 1 of/ });
     chooseLanguage('de');
     const toolbar = screen.getByRole('toolbar', { name: 'Werkzeuge' });
     for (const name of [
@@ -161,7 +157,7 @@ describe('the language setting', () => {
     await user.click(screen.getByRole('button', { name: 'Open' }));
     await screen.findByRole('img', { name: /^Page 1 of/ });
     const separator = screen.getByRole('separator', { name: 'Resize left panel' });
-    expect(separator.getAttribute('aria-valuetext')).toBe('248 pixels');
+    expect(separator.getAttribute('aria-valuetext')).toBe('200 pixels');
 
     chooseLanguage('de');
     expect(screen.getByRole('img', { name: 'Seite 1 von 120' })).not.toBeNull();
@@ -169,7 +165,7 @@ describe('the language setting', () => {
     expect(screen.getByRole('separator', { name: 'Breite der Seitenleiste ändern' })).not.toBeNull();
     expect(
       screen.getByRole('separator', { name: 'Breite der Seitenleiste ändern' }).getAttribute('aria-valuetext'),
-    ).toBe('248 Pixel');
+    ).toBe('200 Pixel');
     expect(screen.getByRole('region', { name: 'Dokument' })).not.toBeNull();
     for (const tab of ['Seiten', 'Gliederung', 'Kommentare', 'Suche']) {
       expect(screen.getByRole('tab', { name: tab }), tab).not.toBeNull();

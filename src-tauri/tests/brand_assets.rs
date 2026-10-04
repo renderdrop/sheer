@@ -1,6 +1,6 @@
 //! The brand assets (REDESIGN_BRIEF R1.1/R1.2, BRAND 7 and 8): the word mark and the app icon as SVG, with glyph outlines instead of text.
 //!
-//! The outlines come from Inter (variable, `wght` 500; `assets/brand/fonts/InterVariable.ttf`, SIL OFL 1.1, tooling only, never shipped)
+//! The outlines come from Inter (variable, `wght` 500, `opsz` 32 plus the font's `kern` pair adjustments from GPOS; `assets/brand/fonts/InterVariable.ttf`, SIL OFL 1.1, tooling only, never shipped)
 //! through `skrifa`. The files `assets/brand/{wordmark,wordmark-secondary,wordmark-mono,icon,icon-light,icon-simple}.svg` are committed;
 //! the first test fails when they differ from this generator. After changing the generator, rewrite them with
 //!
@@ -19,8 +19,10 @@ use std::path::PathBuf;
 
 use skrifa::instance::Size;
 use skrifa::outline::{DrawSettings, OutlinePen};
+use skrifa::raw::tables::gpos::{ExtensionSubtable, PairPos, PositionLookup};
+use skrifa::raw::types::{GlyphId16, Tag};
 use skrifa::raw::TableProvider;
-use skrifa::{FontRef, MetadataProvider};
+use skrifa::{FontRef, GlyphId, MetadataProvider};
 
 const INK: &str = "#0F0F0F";
 const MIST: &str = "#DDE2EA";
@@ -28,6 +30,8 @@ const SAND: &str = "#F6F5F1";
 const SOLAR: &str = "#FFF84D";
 
 const WEIGHT: f32 = 500.0;
+/// Optical size of Inter's `opsz` axis: the display cut (tighter spacing, finer details) at 32.
+const OPTICAL_SIZE: f32 = 32.0;
 /// Tracking of the word mark and of the icon's "s.", in em.
 const TRACKING: f64 = -0.045;
 /// Tracking of the claim, in em.
@@ -222,6 +226,81 @@ fn n(value: f64) -> String {
     }
 }
 
+/// The `kern` adjustment of the glyph pair from GPOS PairPos (formats 1 and 2, directly or through extensions), in font units.
+/// Variation deltas of the value records are not applied: the values are those of the default master.
+fn kern(font: &FontRef, left: GlyphId, right: GlyphId) -> f64 {
+    let Ok(gpos) = font.gpos() else { return 0.0 };
+    let (Ok(features), Ok(lookups)) = (gpos.feature_list(), gpos.lookup_list()) else {
+        return 0.0;
+    };
+    let mut indices = Vec::new();
+    for record in features.feature_records() {
+        if record.feature_tag() == Tag::new(b"kern") {
+            if let Ok(feature) = record.feature(features.offset_data()) {
+                for i in feature.lookup_list_indices() {
+                    if !indices.contains(&i.get()) {
+                        indices.push(i.get());
+                    }
+                }
+            }
+        }
+    }
+    let (Ok(left), Ok(right)) = (GlyphId16::try_from(left), GlyphId16::try_from(right)) else {
+        return 0.0;
+    };
+    let mut total = 0.0;
+    for index in indices {
+        let Ok(lookup) = lookups.lookups().get(usize::from(index)) else {
+            continue;
+        };
+        let mut subtables = Vec::new();
+        match lookup {
+            PositionLookup::Pair(l) => {
+                subtables.extend(l.subtables().iter().filter_map(Result::ok));
+            }
+            PositionLookup::Extension(l) => {
+                for sub in l.subtables().iter().filter_map(Result::ok) {
+                    if let ExtensionSubtable::Pair(e) = sub {
+                        subtables.extend(e.extension().ok());
+                    }
+                }
+            }
+            _ => {}
+        }
+        for sub in subtables {
+            if let Some(value) = pair_value(&sub, left, right) {
+                total += value;
+                break;
+            }
+        }
+    }
+    total
+}
+
+/// The first glyph's x advance adjustment when the subtable covers the pair.
+fn pair_value(sub: &PairPos, left: GlyphId16, right: GlyphId16) -> Option<f64> {
+    match sub {
+        PairPos::Format1(f) => {
+            let at = f.coverage().ok()?.get(left)?;
+            let set = f.pair_sets().get(at as usize).ok()?;
+            for record in set.pair_value_records().iter().filter_map(Result::ok) {
+                if record.second_glyph() == right {
+                    return Some(f64::from(record.value_record1().x_advance().unwrap_or(0)));
+                }
+            }
+            None
+        }
+        PairPos::Format2(f) => {
+            f.coverage().ok()?.get(left)?;
+            let c1 = f.class_def1().ok()?.get(left);
+            let c2 = f.class_def2().ok()?.get(right);
+            let row = f.class1_records().get(usize::from(c1)).ok()?;
+            let cell = row.class2_records().get(usize::from(c2)).ok()?;
+            Some(f64::from(cell.value_record1().x_advance().unwrap_or(0)))
+        }
+    }
+}
+
 struct Typeface {
     data: Vec<u8>,
 }
@@ -255,7 +334,9 @@ impl Typeface {
     /// `text` at `wght` 500 with `tracking` em after each character but the last, in em units.
     fn line(&self, text: &str, tracking: f64) -> Line {
         let font = FontRef::new(&self.data).unwrap();
-        let location = font.axes().location([("wght", WEIGHT)]);
+        let location = font
+            .axes()
+            .location([("wght", WEIGHT), ("opsz", OPTICAL_SIZE)]);
         let upem = f64::from(font.head().unwrap().units_per_em());
         let charmap = font.charmap();
         let outlines = font.outline_glyphs();
@@ -263,6 +344,7 @@ impl Typeface {
         let count = text.chars().count();
         let mut x = 0.0;
         let mut glyphs = Vec::new();
+        let mut pens = Vec::new();
         for (index, c) in text.chars().enumerate() {
             let id = charmap
                 .map(c)
@@ -282,7 +364,14 @@ impl Typeface {
             x += advance;
             if index + 1 < count {
                 x += tracking * upem;
+                if let Some(next) = text.chars().nth(index + 1).and_then(|n| charmap.map(n)) {
+                    x += kern(&font, id, next);
+                }
             }
+            pens.push(x);
+        }
+        if std::env::var_os("BRAND_LOG").is_some() {
+            println!("{text:?} pen positions after each glyph (font units, upem {upem}): {pens:?}");
         }
         // `x` is the pen position; the glyph coordinates were divided by `upem` above.
         Line { glyphs }
@@ -397,7 +486,7 @@ fn icon(face: &Typeface, variant: Variant) -> String {
         Variant::Standard => (
             format!(
                 "<defs>\n<linearGradient id=\"bg\" gradientUnits=\"userSpaceOnUse\" x1=\"0\" y1=\"0\" x2=\"{e}\" y2=\"{e}\"><stop offset=\"0\" stop-color=\"{MIST}\"/><stop offset=\"1\" stop-color=\"{SAND}\"/></linearGradient>\n\
-                 <radialGradient id=\"glow\" gradientUnits=\"userSpaceOnUse\" cx=\"819\" cy=\"870\" r=\"820\"><stop offset=\"0\" stop-color=\"{SOLAR}\" stop-opacity=\".95\"/><stop offset=\".22\" stop-color=\"{SOLAR}\" stop-opacity=\".55\"/><stop offset=\".55\" stop-color=\"{SOLAR}\" stop-opacity=\"0\"/></radialGradient>\n</defs>"
+                 <radialGradient id=\"glow\" gradientUnits=\"userSpaceOnUse\" cx=\"614\" cy=\"1024\" r=\"900\" gradientTransform=\"translate(614 1024) scale(1 .8) translate(-614 -1024)\"><stop offset=\"0\" stop-color=\"{SOLAR}\" stop-opacity=\".95\"/><stop offset=\".3\" stop-color=\"{SOLAR}\" stop-opacity=\".5\"/><stop offset=\".7\" stop-color=\"{SOLAR}\" stop-opacity=\"0\"/></radialGradient>\n</defs>"
             ),
             format!(
                 "<rect width=\"{e}\" height=\"{e}\" rx=\"{r}\" fill=\"url(#bg)\"/>\n<rect width=\"{e}\" height=\"{e}\" rx=\"{r}\" fill=\"url(#glow)\"/>"
