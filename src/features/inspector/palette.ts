@@ -1,60 +1,124 @@
 import type { Annotation, Rgb } from '../../api/annotations';
 
 /**
- * The annotation palette (DESIGN 3.24, ADR-029): the eight Okabe-Ito colours, the same in both themes because annotation colours are
- * document content on a white page. `rgb` is what the model stores; `bg` and `check` are static class names (Tailwind must see them
- * whole) of the `--annot-*` tokens, which hold the same values.
+ * The annotation palettes (DESIGN v2 1.4, 2.7): document content, the same in both themes because annotation colours sit on a white
+ * page. Highlights use the five `--hl-*` tints, strokes (pen, shapes, text colour) Ink and the four `--stroke-*` colours, and Solar
+ * only ever as a fill. `rgb` is what the model stores; `bg` and `check` are static class names (Tailwind must see them whole) of the
+ * tokens, which hold the same values.
  */
+export type PaletteName = 'highlight' | 'stroke' | 'fill' | 'signature';
+
 export interface PaletteColour {
-  id: 'yellow' | 'orange' | 'vermillion' | 'purple' | 'blue' | 'sky' | 'green' | 'black';
+  id: 'solar' | 'mint' | 'sky' | 'rose' | 'lavender' | 'ink' | 'solarFill' | 'signatureInk';
   rgb: Rgb;
   bg: string;
   /** The check mark: white on the dark swatches, ink on the light ones. */
   check: string;
   nameKey:
-    | 'colour.yellow'
-    | 'colour.orange'
-    | 'colour.vermillion'
-    | 'colour.purple'
-    | 'colour.blue'
+    | 'colour.solar'
+    | 'colour.mint'
     | 'colour.sky'
-    | 'colour.green'
-    | 'colour.black';
+    | 'colour.rose'
+    | 'colour.lavender'
+    | 'colour.ink'
+    | 'colour.solarFill'
+    | 'colour.signatureInk';
 }
 
 const WHITE = 'text-page';
-const INK = 'text-annot-black';
+const INK = 'text-ink';
 
-export const PALETTE: readonly PaletteColour[] = [
-  { id: 'yellow', rgb: [240, 228, 66], bg: 'bg-annot-yellow', check: INK, nameKey: 'colour.yellow' },
-  { id: 'orange', rgb: [230, 159, 0], bg: 'bg-annot-orange', check: INK, nameKey: 'colour.orange' },
-  { id: 'vermillion', rgb: [213, 94, 0], bg: 'bg-annot-vermillion', check: INK, nameKey: 'colour.vermillion' },
-  { id: 'purple', rgb: [204, 121, 167], bg: 'bg-annot-purple', check: INK, nameKey: 'colour.purple' },
-  { id: 'blue', rgb: [0, 114, 178], bg: 'bg-annot-blue', check: WHITE, nameKey: 'colour.blue' },
-  { id: 'sky', rgb: [86, 180, 233], bg: 'bg-annot-sky', check: INK, nameKey: 'colour.sky' },
-  { id: 'green', rgb: [0, 158, 115], bg: 'bg-annot-green', check: INK, nameKey: 'colour.green' },
-  { id: 'black', rgb: [0, 0, 0], bg: 'bg-annot-black', check: WHITE, nameKey: 'colour.black' },
+export const HIGHLIGHT_PALETTE: readonly PaletteColour[] = [
+  { id: 'solar', rgb: [255, 248, 77], bg: 'bg-hl-solar', check: INK, nameKey: 'colour.solar' },
+  { id: 'mint', rgb: [125, 235, 181], bg: 'bg-hl-mint', check: INK, nameKey: 'colour.mint' },
+  { id: 'sky', rgb: [163, 222, 255], bg: 'bg-hl-sky', check: INK, nameKey: 'colour.sky' },
+  { id: 'rose', rgb: [255, 199, 215], bg: 'bg-hl-rose', check: INK, nameKey: 'colour.rose' },
+  { id: 'lavender', rgb: [220, 207, 255], bg: 'bg-hl-lavender', check: INK, nameKey: 'colour.lavender' },
 ];
 
-const byId = (id: PaletteColour['id']): Rgb => PALETTE.find((colour) => colour.id === id)?.rgb ?? [0, 0, 0];
+export const STROKE_PALETTE: readonly PaletteColour[] = [
+  { id: 'ink', rgb: [15, 15, 15], bg: 'bg-stroke-ink', check: WHITE, nameKey: 'colour.ink' },
+  { id: 'mint', rgb: [31, 158, 106], bg: 'bg-stroke-mint', check: WHITE, nameKey: 'colour.mint' },
+  { id: 'sky', rgb: [61, 143, 209], bg: 'bg-stroke-sky', check: WHITE, nameKey: 'colour.sky' },
+  { id: 'rose', rgb: [225, 92, 134], bg: 'bg-stroke-rose', check: WHITE, nameKey: 'colour.rose' },
+  { id: 'lavender', rgb: [146, 120, 230], bg: 'bg-stroke-lavender', check: WHITE, nameKey: 'colour.lavender' },
+];
 
-/** The defaults of DESIGN 3.24: Highlight yellow, Underline and Strikethrough vermillion, Note yellow, Text black, Draw and Shapes blue. */
+/** Solar is a fill only: it is not a stroke colour, and the picker says so in its name. */
+export const SOLAR_FILL: PaletteColour = {
+  id: 'solarFill',
+  rgb: [255, 248, 77],
+  bg: 'bg-stroke-solar',
+  check: INK,
+  nameKey: 'colour.solarFill',
+};
+
+/** What a fill (a note) offers: Solar, then the strokes. */
+export const FILL_PALETTE: readonly PaletteColour[] = [SOLAR_FILL, ...STROKE_PALETTE];
+
+/** The ink of a signature: Ink or the one blue of the interface, `--ink-signature`. */
+export const SIGNATURE_PALETTE: readonly PaletteColour[] = [
+  { id: 'ink', rgb: [15, 15, 15], bg: 'bg-stroke-ink', check: WHITE, nameKey: 'colour.ink' },
+  { id: 'signatureInk', rgb: [31, 58, 147], bg: 'bg-ink-signature', check: WHITE, nameKey: 'colour.signatureInk' },
+];
+
+export const PALETTES: Readonly<Record<PaletteName, readonly PaletteColour[]>> = {
+  highlight: HIGHLIGHT_PALETTE,
+  stroke: STROKE_PALETTE,
+  fill: FILL_PALETTE,
+  signature: SIGNATURE_PALETTE,
+};
+
+/** The kinds of annotation that have the highlight palette. */
+export const paletteNameOf = (kind: string): PaletteName =>
+  kind === 'highlight' ? 'highlight' : kind === 'note' ? 'fill' : kind === 'signature' ? 'signature' : 'stroke';
+
+const first = (palette: readonly PaletteColour[]): Rgb => palette[0]?.rgb ?? [15, 15, 15];
+
+/** The defaults: Highlight Solar, everything drawn Ink, Note Solar (a fill). */
 export const DEFAULT_COLOURS = {
-  highlight: byId('yellow'),
-  underline: byId('vermillion'),
-  strikeout: byId('vermillion'),
-  note: byId('yellow'),
-  freeText: byId('black'),
-  ink: byId('blue'),
-  shape: byId('blue'),
+  highlight: first(HIGHLIGHT_PALETTE),
+  underline: first(STROKE_PALETTE),
+  strikeout: first(STROKE_PALETTE),
+  note: first(FILL_PALETTE),
+  freeText: first(STROKE_PALETTE),
+  ink: first(STROKE_PALETTE),
+  shape: first(STROKE_PALETTE),
 } as const;
+
+/** Highlights are drawn at this opacity (with `mix-blend-mode: multiply`) and saved as /CA with it. */
+export const HIGHLIGHT_OPACITY = 0.45;
 
 export function sameRgb(a: Rgb, b: Rgb): boolean {
   return a[0] === b[0] && a[1] === b[1] && a[2] === b[2];
 }
 
-export function paletteEntry(rgb: Rgb): PaletteColour | undefined {
-  return PALETTE.find((colour) => sameRgb(colour.rgb, rgb));
+/** The entry of `rgb` in a palette. */
+export function paletteEntry(
+  rgb: Rgb,
+  palette: PaletteName | readonly PaletteName[] = 'stroke',
+): PaletteColour | undefined {
+  const names = typeof palette === 'string' ? [palette] : palette;
+  for (const name of names) {
+    const found = PALETTES[name].find((colour) => sameRgb(colour.rgb, rgb));
+    if (found !== undefined) return found;
+  }
+  return undefined;
+}
+
+/** A stored colour that is not in the palette of its kind (a colour of an old file): it gets the extra "Custom" swatch. */
+export function isCustomColour(rgb: Rgb, palette: PaletteName): boolean {
+  return paletteEntry(rgb, palette) === undefined;
+}
+
+/** A persisted last-used colour that is no longer in the palette of its kind (the Okabe-Ito of v1.1) becomes the default. */
+export function migrateColour(value: unknown, palette: PaletteName, fallback: Rgb): Rgb {
+  if (!Array.isArray(value) || value.length !== 3 || !value.every((n) => Number.isInteger(n) && n >= 0 && n <= 255)) {
+    return fallback;
+  }
+  // Checked above: exactly three integer bytes.
+  const rgb = value as unknown as Rgb;
+  return paletteEntry(rgb, palette) === undefined ? fallback : rgb;
 }
 
 /** The CSS colour of a colour that came from a file. The values are bytes (the parser guarantees 0 to 255). */
@@ -65,17 +129,19 @@ export function rgbToCss(rgb: Rgb): string {
 /** How many colours "Recent" shows. */
 export const RECENT_MAX = 4;
 
-/**
- * "Recent" (ADR-029): the last colours found in the file (by id, newest first) that are not in the palette, without repeats. A file may
- * hold any colour; the palette holds eight. Annotations of the fill are not colours of the annotation and do not count.
- */
+/** The colours found in the file (newest first) that are in no palette, without repeats. */
 export function recentColours(annotations: Iterable<Annotation>): Rgb[] {
   const sorted = [...annotations].sort((a, b) => b.id - a.id);
   const found: Rgb[] = [];
   for (const annotation of sorted) {
     if (annotation.kind === 'opaque') continue;
     const colour = annotation.color;
-    if (paletteEntry(colour) !== undefined || found.some((known) => sameRgb(known, colour))) continue;
+    if (
+      paletteEntry(colour, ['highlight', 'stroke', 'fill', 'signature']) !== undefined ||
+      found.some((known) => sameRgb(known, colour))
+    ) {
+      continue;
+    }
     found.push(colour);
     if (found.length === RECENT_MAX) break;
   }

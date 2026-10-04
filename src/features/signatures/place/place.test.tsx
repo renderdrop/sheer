@@ -55,11 +55,11 @@ describe('sizes and drafts', () => {
     const box = { x: 1, y: 2, w: 3, h: 4 };
     expect(markDraft(0, box, 'check')).toMatchObject({ kind: 'mark', glyph: 'check' });
     expect(textDraft(0, box, ['x'])).toMatchObject({ kind: 'freeText', fontSize: 12, lines: ['x'] });
-    expect(signatureDraft(0, box, 'initials', { assetId: 4, aspect: 2 }, 'blue')).toMatchObject({
+    expect(signatureDraft(0, box, 'initials', { assetId: 4, aspect: 2 }, 'signature')).toMatchObject({
       kind: 'signature',
       role: 'initials',
       art: { type: 'asset', assetId: 4, aspect: 2 },
-      color: [0, 114, 178],
+      color: [31, 58, 147],
     });
   });
 

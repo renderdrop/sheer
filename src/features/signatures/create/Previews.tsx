@@ -4,11 +4,14 @@ import { getSignaturePreview, type SignatureArt, type SignatureRef } from '../..
 import { useT } from '../../../i18n';
 import { isVector, pathData, type SigColour } from './model';
 
-export const INK_CLASS: Readonly<Record<SigColour, string>> = { black: 'text-annot-black', blue: 'text-annot-blue' };
+export const INK_CLASS: Readonly<Record<SigColour, string>> = {
+  ink: 'text-stroke-ink',
+  signature: 'text-ink-signature',
+};
 
-/** The surface of the pad and of the previews: a document surface, white in both themes (DESIGN 3.33). */
+/** The surface of the pad and of the previews: Sand, the only tinted slot of the white sheet (DESIGN v2 4). */
 export const PAD_SURFACE =
-  'relative overflow-hidden rounded-button border border-divider bg-page forced-colors:border-text';
+  'relative overflow-hidden rounded-button border border-divider bg-sand forced-colors:border-text';
 
 const RASTER_PREVIEW_PX = 1024;
 

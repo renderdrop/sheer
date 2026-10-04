@@ -156,7 +156,7 @@ export function useInsertInspector(): { title: string; body: ReactNode; footer?:
               />
             </PanelSection>
             <PanelSection>
-              <ColourSection colour={shared([object.color])} recent={[]} disabled={disabled} onChange={change} />
+              <ColourSection colour={shared([object.color])} disabled={disabled} onChange={change} />
             </PanelSection>
             {deleteButton}
           </>
@@ -194,7 +194,7 @@ export function useInsertInspector(): { title: string; body: ReactNode; footer?:
             <FontSizeSection fontSize={shared([style.fontSize])} disabled={false} onChange={change} />
           </PanelSection>
           <PanelSection>
-            <ColourSection colour={shared([style.color])} recent={[]} disabled={false} onChange={change} />
+            <ColourSection colour={shared([style.color])} disabled={false} onChange={change} />
           </PanelSection>
         </>
       ) : (

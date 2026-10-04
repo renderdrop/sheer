@@ -17,7 +17,7 @@ function Harness() {
     seen.strokes = next;
     setStrokes(next);
   };
-  return <DrawPad strokes={strokes} onStrokes={update} colour="black" initials={false} />;
+  return <DrawPad strokes={strokes} onStrokes={update} colour="ink" initials={false} />;
 }
 
 const line = (y: number): [number, number][] => [
@@ -66,6 +66,7 @@ describe('the draw pad', () => {
     const guide = container.querySelector('span[aria-hidden="true"].border-t');
     expect(guide).not.toBeNull();
     expect(guide?.closest('svg')).toBeNull();
+    expect(guide?.getAttribute('style')).toContain('75%');
     const [done, live] = Array.from(container.querySelectorAll('svg path'));
     expect(live?.getAttribute('d')).toBe('');
     // One filled outline for the one stroke, exactly what the exporter makes, and nothing else.

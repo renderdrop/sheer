@@ -27,7 +27,7 @@ function ink(id: number, extra: Record<string, unknown> = {}): Annotation {
     id,
     pageId: 0,
     rect: { x: 0, y: 0, w: 10, h: 10 },
-    color: [0, 114, 178],
+    color: [15, 15, 15],
     opacity: 1,
     contents: '',
     author: null,
@@ -98,8 +98,8 @@ describe('the inspector with a selection', () => {
     load([ink(1)], [1]);
     setup(<Inspector />);
     expect(screen.getByRole('heading', { name: 'Drawing' })).not.toBeNull();
-    expect(swatch('Blue').getAttribute('aria-checked')).toBe('true');
-    expect(swatch('Yellow').getAttribute('aria-checked')).toBe('false');
+    expect(swatch('Ink').getAttribute('aria-checked')).toBe('true');
+    expect(swatch('Mint').getAttribute('aria-checked')).toBe('false');
     // Draw has the line width presets and an opacity slider.
     expect(screen.getAllByRole('radio', { name: /pt$/ })).toHaveLength(4);
     expect(screen.getByRole('slider', { name: 'Opacity' })).not.toBeNull();
@@ -107,32 +107,30 @@ describe('the inspector with a selection', () => {
 
   it('applies a colour as one update command', async () => {
     load([ink(1)], [1]);
-    applyMock.mockResolvedValue(changes([ink(1, { color: [213, 94, 0] })]));
+    applyMock.mockResolvedValue(changes([ink(1, { color: [225, 92, 134] })]));
     const { user } = setup(<Inspector />);
-    await user.click(swatch('Vermillion'));
-    expect(applyMock).toHaveBeenCalledWith(1, { type: 'updateAnnotation', id: 1, patch: { color: [213, 94, 0] } });
-    await waitFor(() => expect(swatch('Vermillion').getAttribute('aria-checked')).toBe('true'));
+    await user.click(swatch('Rose'));
+    expect(applyMock).toHaveBeenCalledWith(1, { type: 'updateAnnotation', id: 1, patch: { color: [225, 92, 134] } });
+    await waitFor(() => expect(swatch('Rose').getAttribute('aria-checked')).toBe('true'));
   });
 
   it('chooses with the arrow keys like a radio group (wrapping)', async () => {
     load([ink(1)], [1]);
     applyMock.mockResolvedValue(changes([ink(1)]));
     const { user } = setup(<Inspector />);
-    swatch('Blue').focus();
+    swatch('Ink').focus();
     await user.keyboard('{ArrowRight}');
     expect(applyMock).toHaveBeenLastCalledWith(1, {
       type: 'updateAnnotation',
       id: 1,
-      patch: { color: [86, 180, 233] },
+      patch: { color: [31, 158, 106] },
     });
-    await user.keyboard('{Home}');
+    await user.keyboard('{End}');
     expect(applyMock).toHaveBeenLastCalledWith(1, {
       type: 'updateAnnotation',
       id: 1,
-      patch: { color: [240, 228, 66] },
+      patch: { color: [146, 120, 230] },
     });
-    await user.keyboard('{End}');
-    expect(applyMock).toHaveBeenLastCalledWith(1, { type: 'updateAnnotation', id: 1, patch: { color: [0, 0, 0] } });
   });
 
   it('sets the line width of the selection', async () => {
@@ -152,7 +150,7 @@ describe('the inspector with a selection', () => {
     for (const radio of within(screen.getByRole('radiogroup', { name: /Colour/ })).getAllByRole('radio')) {
       expect(radio.getAttribute('aria-checked')).toBe('false');
     }
-    await user.click(swatch('Green'));
+    await user.click(swatch('Mint'));
     const command = applyMock.mock.calls[0]?.[1];
     expect(command).toMatchObject({ type: 'batch', label: 'annotation.update' });
   });
@@ -176,17 +174,23 @@ describe('the inspector with a selection', () => {
     expect(applyMock).toHaveBeenCalledWith(1, { type: 'updateAnnotation', id: 1, patch: { fontSize: 144 } });
   });
 
-  it('lists a colour of the file that is not in the palette under Recent', () => {
+  it('shows a colour of the file that is not in the palette as one extra Custom swatch', () => {
     load([ink(1, { color: [1, 2, 3] })], [1]);
     setup(<Inspector />);
-    expect(screen.getByText('Recent')).not.toBeNull();
-    expect(screen.getByRole('radio', { name: 'Colour 1, 2, 3' }).getAttribute('aria-checked')).toBe('true');
+    expect(screen.getByRole('radio', { name: 'Custom' }).getAttribute('aria-checked')).toBe('true');
+    expect(screen.getAllByRole('radio', { name: /^(Ink|Mint|Sky|Rose|Lavender|Custom)$/ })).toHaveLength(6);
+  });
+
+  it('shows no Custom swatch for a palette colour', () => {
+    load([ink(1)], [1]);
+    setup(<Inspector />);
+    expect(screen.queryByRole('radio', { name: 'Custom' })).toBeNull();
   });
 
   it('does nothing for a locked annotation', async () => {
     load([ink(1, { locked: true })], [1]);
     const { user } = setup(<Inspector />);
-    await user.click(swatch('Green'));
+    await user.click(swatch('Mint'));
     expect(applyMock).not.toHaveBeenCalled();
   });
 
@@ -194,9 +198,9 @@ describe('the inspector with a selection', () => {
     load([ink(1)], [1]);
     applyMock.mockRejectedValue({ code: 'internal', key: 'error.internal', retryable: false });
     const { user } = setup(<Inspector />);
-    await user.click(swatch('Green'));
+    await user.click(swatch('Mint'));
     await waitFor(() => expect(useUi.getState().banner).not.toBeNull());
-    expect(useAnnotations.getState().byDoc[1]?.byId[1]).toMatchObject({ color: [0, 114, 178] });
+    expect(useAnnotations.getState().byDoc[1]?.byId[1]).toMatchObject({ color: [15, 15, 15] });
   });
 });
 
@@ -212,9 +216,9 @@ describe('the inspector without a selection', () => {
     act(() => useUi.getState().selectTool('draw'));
     const { user } = setup(<Inspector />);
     expect(screen.getByRole('heading', { name: 'Tool options: Draw' })).not.toBeNull();
-    await user.click(swatch('Green'));
+    await user.click(swatch('Mint'));
     expect(applyMock).not.toHaveBeenCalled();
-    expect(useStyleStore.getState().overrides.ink).toEqual({ color: [0, 158, 115] });
+    expect(useStyleStore.getState().overrides.ink).toEqual({ color: [31, 158, 106] });
   });
 
   it('has the line end only for the arrow tool', () => {

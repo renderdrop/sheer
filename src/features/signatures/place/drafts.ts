@@ -3,6 +3,7 @@ import { MAX_SIGNATURE_ASPECT, MIN_SIGNATURE_ASPECT } from '../../../api/annotat
 import type { SignatureRole } from '../../../api/library';
 import type { Point, Rect } from '../../../api/wire';
 import { boxInPage } from '../../annotations/create/geometry';
+import { SIGNATURE_PALETTE } from '../../inspector/palette';
 import type { PlaceItem } from './store';
 
 /** The sizes and drafts of what the Sign tool places (DESIGN 3.34), all in page space (points). */
@@ -19,8 +20,9 @@ const LINE_HEIGHT = 1.2;
 const CHAR_WIDTH_SHARE = 0.6;
 
 const BLACK: Rgb = [0, 0, 0];
-/** The palette's blue (ADR-029), the other ink of a drawn or typed signature. */
-const BLUE: Rgb = [0, 114, 178];
+/** Ink (`--stroke-ink`) and the one blue of the interface (`--ink-signature`), the two inks of a drawn or typed signature. */
+const INK: Rgb = SIGNATURE_PALETTE[0]?.rgb ?? BLACK;
+const SIGNATURE_BLUE: Rgb = SIGNATURE_PALETTE[1]?.rgb ?? BLACK;
 
 /** The size of an item's box, in points. A signature is never wider than the page (it shrinks, the aspect kept). */
 export function itemSize(item: PlaceItem, page: readonly [number, number], dateText = ''): { w: number; h: number } {
@@ -81,7 +83,7 @@ export function signatureDraft(
   box: Rect,
   role: SignatureRole,
   art: { assetId: number; aspect: number },
-  ink: 'black' | 'blue' = 'black',
+  ink: 'ink' | 'signature' = 'ink',
 ): AnnotationDraft {
   return {
     kind: 'signature',
@@ -89,7 +91,7 @@ export function signatureDraft(
     box,
     role,
     art: { type: 'asset', assetId: art.assetId, aspect: art.aspect },
-    color: ink === 'blue' ? BLUE : BLACK,
+    color: ink === 'signature' ? SIGNATURE_BLUE : INK,
     opacity: 1,
   };
 }

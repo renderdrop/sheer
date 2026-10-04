@@ -9,7 +9,7 @@ import { Swatch } from './Swatch';
 describe('Swatch', () => {
   it('is a 24 px round radio, named, with a check that only shows while chosen', async () => {
     const onClick = vi.fn();
-    const { user, getByRole } = setup(<Swatch label="Blue" checked fillClass="bg-annot-blue" onClick={onClick} />);
+    const { user, getByRole } = setup(<Swatch label="Blue" checked fillClass="bg-stroke-sky" onClick={onClick} />);
     const swatch = getByRole('radio', { name: 'Blue' });
     expect(swatch.getAttribute('aria-checked')).toBe('true');
     expect(swatch.hasAttribute('data-swatch')).toBe(true);

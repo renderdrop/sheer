@@ -4,7 +4,9 @@ import { MotionGlobalConfig } from 'motion/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { setup } from '../../../test/render';
-import { SignatureSheetHost, openSignatureSheet } from '.';
+import { SignatureSheetHost, lastSignatureColour, openSignatureSheet } from '.';
+import { signatureDraft } from '../place/drafts';
+import { migrateInk, rememberSignatureColour } from './store';
 import { canCreate, initialsOf, MOUSE_PRESSURE, pathData, samplePressure, typePrefill } from './model';
 
 const lib = vi.hoisted(() => ({ listSignatures: vi.fn() }));
@@ -234,5 +236,34 @@ describe('signature sheet', () => {
     await waitFor(() => expect(create.getAttribute('aria-disabled')).toBeNull());
     await user.click(create);
     await waitFor(() => expect(sig.discardSignatureDraft).toHaveBeenCalledWith(21));
+  });
+
+  it('passes the chosen ink on: the Signature blue swatch becomes the colour of the placed draft', async () => {
+    window.localStorage.setItem('sheer.signatureTab', 'type');
+    window.localStorage.removeItem('sheer.signatureInk');
+    const { user } = setup(<SignatureSheetHost />);
+    act(() => {
+      void openSignatureSheet('signature');
+    });
+    expect((await screen.findByRole('radio', { name: 'Ink' })).getAttribute('aria-checked')).toBe('true');
+    await user.type(screen.getByRole('textbox'), 'Ada');
+    await user.click(screen.getByRole('radio', { name: 'Signature blue' }));
+    const create = screen.getByRole('button', { name: 'Create' });
+    await waitFor(() => expect(create.getAttribute('aria-disabled')).toBeNull());
+    await user.click(create);
+    await waitFor(() => expect(lastSignatureColour()).toBe('signature'));
+    expect(
+      signatureDraft(0, { x: 0, y: 0, w: 1, h: 1 }, 'signature', { assetId: 1, aspect: 2 }, lastSignatureColour()),
+    ).toMatchObject({
+      color: [31, 58, 147],
+    });
+    rememberSignatureColour('ink');
+  });
+
+  it('migrates a stored ink that no longer exists to Ink', () => {
+    expect(migrateInk('blue')).toBe('ink');
+    expect(migrateInk('black')).toBe('ink');
+    expect(migrateInk(null)).toBe('ink');
+    expect(migrateInk('signature')).toBe('signature');
   });
 });

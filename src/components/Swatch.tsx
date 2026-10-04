@@ -8,7 +8,7 @@ export interface SwatchProps extends Omit<ComponentProps<'button'>, 'role' | 'ar
   /** Accessible name (colour name). */
   label: string;
   checked: boolean;
-  /** Fill as a class (`bg-annot-yellow`). A colour of the document that has no token goes in `style`. */
+  /** Fill as a class (`bg-hl-solar`). A colour of the document that has no token goes in `style`. */
   fillClass?: string;
   style?: CSSProperties;
   /** Text colour of the check, for contrast on the fill. Default Ink. */

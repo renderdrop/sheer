@@ -5,8 +5,8 @@ import { inkOutline, pathToD, type InkSample } from '../ink';
 import { INK_CLASS, PAD_SURFACE } from './Previews';
 import { PAD_WIDTH_PX, samplePressure, type SigColour } from './model';
 
-/** Where the baseline sits, in percent of the pad height. */
-const BASELINE_PCT = 72;
+/** Where the 1 px Stone baseline sits (a guide of its own, never part of the path or the export), in percent of the pad height. */
+const BASELINE_PCT = 75;
 /** A stroke keeps at most this many samples (a pad stroke is a few hundred). */
 const MAX_SAMPLES = 4000;
 
@@ -138,7 +138,7 @@ export function DrawPad({ strokes, onStrokes, colour, initials }: DrawPadProps) 
       <span
         aria-hidden="true"
         style={{ top: `${BASELINE_PCT}%` }}
-        className="absolute inset-x-4 border-t border-divider"
+        className="absolute inset-x-4 border-t border-control-border"
       />
       {empty && (
         <span

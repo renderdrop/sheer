@@ -6,11 +6,11 @@ import { useCropInspector } from '../crop/useCropInspector';
 import { FormOptions } from '../forms/FormOptions';
 import { useInsertInspector } from '../insert/useInsertInspector';
 import { useRedactInspector } from '../redact/useRedactInspector';
+import { paletteNameOf } from './palette';
 import { ColourSection, FontSizeSection, LineEndSection, OpacitySection, StrokeSection } from './Sections';
 import { useInspectorModel, type InspectorModel } from './useInspectorModel';
 
 /** The ink of a drawn or typed signature (DESIGN 3.33). */
-const INK_COLOURS: readonly string[] = ['black', 'blue'];
 
 const KIND_KEYS: Readonly<Record<AnnotationKind, PlainKey>> = {
   highlight: 'annot.type.highlight',
@@ -54,21 +54,19 @@ export function useInspectorTitle(model: InspectorModel): string {
   }
 }
 
+const subjectName = (model: Exclude<InspectorModel, { mode: 'empty' }>): string =>
+  model.subject.type === 'kind' ? model.subject.kind : model.subject.type === 'tool' ? model.subject.tool : '';
+
 /** The option sections of the model, stacked 12 apart (DESIGN v2 3.2 disclosure). */
 export function InspectorBody({ model }: { model: InspectorModel }) {
   if (model.mode === 'empty') return null;
-  const { sections, values, recent, change } = model;
+  const { sections, values, change } = model;
   const disabled = !model.editable;
   const common = { disabled, onChange: change };
   return (
     <div className="flex flex-col gap-3">
       {sections.includes('colour') && (
-        <ColourSection
-          {...common}
-          colour={values.color}
-          recent={recent}
-          only={model.subject.type === 'kind' && model.subject.kind === 'signature' ? INK_COLOURS : undefined}
-        />
+        <ColourSection {...common} colour={values.color} palette={paletteNameOf(subjectName(model))} />
       )}
       {sections.includes('stroke') && <StrokeSection {...common} width={values.width} />}
       {sections.includes('fontSize') && <FontSizeSection {...common} fontSize={values.fontSize} />}

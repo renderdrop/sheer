@@ -13,6 +13,8 @@ export interface ModalProps {
   labelledBy: string;
   /** Tailwind width class from the tokens: `w-sheet` or `w-dialog-md`. */
   width: 'w-sheet' | 'w-sheet-wide' | 'w-dialog-md';
+  /** `white`: a white sheet (the signature sheet) instead of the Sand dialog surface. */
+  surface?: 'sand' | 'white';
   /** Esc and a press on the backdrop. */
   onClose: () => void;
   children: ReactNode;
@@ -23,7 +25,7 @@ export interface ModalProps {
  * to where it was. It is rendered inside an `AnimatePresence`, which keeps it until its exit has played. The first element with
  * `data-autofocus` takes focus.
  */
-export function Modal({ labelledBy, width, onClose, children }: ModalProps) {
+export function Modal({ labelledBy, width, surface = 'sand', onClose, children }: ModalProps) {
   const present = useIsPresent();
   const dialog = useRef<HTMLDivElement>(null);
   const backdropMotion = useFade(DURATION.base, DURATION.fast);
@@ -72,7 +74,7 @@ export function Modal({ labelledBy, width, onClose, children }: ModalProps) {
         aria-labelledby={labelledBy}
         tabIndex={-1}
         onKeyDown={onKeyDown}
-        className={`border border-border-subtle bg-subtle shadow-floating flex ${width} max-w-full flex-col rounded-dialog p-6 text-text outline-none`}
+        className={`border border-border-subtle ${surface === 'white' ? 'bg-card' : 'bg-subtle'} shadow-floating flex ${width} max-w-full flex-col rounded-dialog p-6 text-text outline-none`}
       >
         {children}
       </motion.div>

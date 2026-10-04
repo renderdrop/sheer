@@ -5,7 +5,7 @@ import type { LineEnd, Rgb } from '../../api/annotations';
 import { Field, IconButton, Menu, Slider } from '../../components';
 import { cx } from '../../components/cx';
 import { useT } from '../../i18n';
-import { PALETTE, paletteEntry, rgbToCss } from './palette';
+import { isCustomColour, PALETTES, rgbToCss, type PaletteName } from './palette';
 import { RadioRow, type RadioOption } from './RadioRow';
 import type { Shared } from './properties';
 import { FONT_SIZE_RANGE, FONT_SIZES, OPACITY_RANGE, STROKE_PRESETS, type AnnotationStyle } from './style';
@@ -55,53 +55,15 @@ function luminance([r, g, b]: Rgb): number {
   return (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
 }
 
-function RecentRow({
-  recent,
-  current,
-  disabled,
-  onChoose,
-}: {
-  recent: readonly Rgb[];
-  current: string | null;
-  disabled: boolean;
-  onChoose: (value: string) => void;
-}) {
-  const t = useT();
-  return (
-    <Labelled label={t('inspector.recent')}>
-      {(labelId) => (
-        <RadioRow
-          labelledBy={labelId}
-          value={current}
-          disabled={disabled}
-          onChange={onChoose}
-          className="flex flex-wrap gap-2"
-          options={recent.map((rgb) =>
-            // Ink on a light colour of the file, white on a dark one.
-            swatchOption(
-              rgb,
-              t('inspector.recentColour', { r: rgb[0], g: rgb[1], b: rgb[2] }),
-              null,
-              luminance(rgb) > 0.4 ? 'text-annot-black' : 'text-page',
-            ),
-          )}
-        />
-      )}
-    </Labelled>
-  );
-}
-
 export function ColourSection({
   colour,
-  recent,
   disabled,
   onChange,
-  only,
+  palette = 'stroke',
 }: SectionProps & {
   colour: Shared<Rgb>;
-  recent: readonly Rgb[];
-  /** Offer only these palette colours (ink of a signature: black or blue, DESIGN 3.33). */
-  only?: readonly string[];
+  /** Which palette to offer (DESIGN v2 1.4): highlights, strokes (default), fills, or the ink of a signature. */
+  palette?: PaletteName;
 }) {
   const t = useT();
   const current = colour.value === null ? null : colour.value.join(',');
@@ -109,25 +71,24 @@ export function ColourSection({
     const [r, g, b] = value.split(',').map(Number);
     if (r !== undefined && g !== undefined && b !== undefined) void onChange({ color: [r, g, b] });
   };
-  const recentRow = recent.filter((rgb) => paletteEntry(rgb) === undefined);
+  const options = PALETTES[palette].map((entry) => swatchOption(entry.rgb, t(entry.nameKey), entry.bg, entry.check));
+  // A stored colour outside the palette (an old file) shows as one extra "Custom" swatch, so the state is never invisible.
+  if (colour.value !== null && isCustomColour(colour.value, palette)) {
+    options.push(
+      swatchOption(colour.value, t('colour.custom'), null, luminance(colour.value) > 0.4 ? 'text-ink' : 'text-page'),
+    );
+  }
   return (
     <Labelled label={t('inspector.colour')} mixed={colour.mixed}>
       {(labelId) => (
-        <>
-          <RadioRow
-            labelledBy={labelId}
-            value={current}
-            disabled={disabled}
-            onChange={choose}
-            className="flex flex-wrap gap-2"
-            options={PALETTE.filter((entry) => only === undefined || only.includes(entry.id)).map((entry) =>
-              swatchOption(entry.rgb, t(entry.nameKey), entry.bg, entry.check),
-            )}
-          />
-          {only === undefined && recentRow.length > 0 && (
-            <RecentRow recent={recentRow} current={current} disabled={disabled} onChoose={choose} />
-          )}
-        </>
+        <RadioRow
+          labelledBy={labelId}
+          value={current}
+          disabled={disabled}
+          onChange={choose}
+          className="flex flex-wrap gap-2"
+          options={options}
+        />
       )}
     </Labelled>
   );

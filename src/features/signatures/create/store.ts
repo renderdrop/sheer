@@ -17,12 +17,32 @@ interface SheetState {
 export const useSignatureSheet = create<SheetState>()(() => ({ request: null }));
 
 let nextId = 0;
-let lastColour: SigColour = 'black';
+const INK_KEY = 'sheer.signatureInk';
+
+/** The stored ink; one that no longer exists (the blue of v1.1, or garbage) becomes the default, Ink. */
+export function migrateInk(value: unknown): SigColour {
+  return value === 'signature' ? 'signature' : 'ink';
+}
+
+function readInk(): SigColour {
+  try {
+    return migrateInk(localStorage.getItem(INK_KEY));
+  } catch {
+    return 'ink';
+  }
+}
+
+let lastColour: SigColour = readInk();
 
 /** The ink colour chosen last in the sheet: the art is a shape, so the colour is applied where it is placed. */
 export const lastSignatureColour = (): SigColour => lastColour;
 export const rememberSignatureColour = (colour: SigColour): void => {
   lastColour = colour;
+  try {
+    localStorage.setItem(INK_KEY, colour);
+  } catch {
+    // Storage may be unavailable; the ink then lasts for the session.
+  }
 };
 
 /**

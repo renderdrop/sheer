@@ -20,7 +20,7 @@ import { cx } from '../../../components/cx';
 import { errorText, useT, type Translate } from '../../../i18n';
 import { useSettings } from '../../../stores/settings';
 import type { InkSample } from '../ink';
-import { PALETTE } from '../../inspector/palette';
+import { SIGNATURE_PALETTE } from '../../inspector/palette';
 import { RadioRow, type RadioOption } from '../../inspector/RadioRow';
 import { Modal, ModalHeader } from '../../jobs/Modal';
 import { DrawPad } from './DrawPad';
@@ -39,21 +39,14 @@ import { loadFont, rememberItemFont, saveFont, SIGNATURE_FONTS } from './fonts';
 import { ArtPreview, PAD_SURFACE } from './Previews';
 import { lastSignatureColour, rememberSignatureColour, settleSignatureSheet } from './store';
 
-const COLOURS: readonly SigColour[] = ['black', 'blue'];
-
 function colourOptions(t: Translate): RadioOption<SigColour>[] {
-  return COLOURS.flatMap((id) => {
-    const entry = PALETTE.find((colour) => colour.id === id);
-    if (entry === undefined) return [];
-    return [
-      {
-        value: id,
-        label: t(entry.nameKey),
-        swatch: true,
-        className: cx(entry.bg, entry.check),
-      },
-    ];
-  });
+  const ids: readonly SigColour[] = ['ink', 'signature'];
+  return SIGNATURE_PALETTE.map((entry, index) => ({
+    value: ids[index] ?? 'ink',
+    label: t(entry.nameKey),
+    swatch: true,
+    className: cx(entry.bg, entry.check),
+  }));
 }
 
 /** Frees a draft in the backend; a failure is of no interest (the store keeps only the last few anyway). */
@@ -275,7 +268,7 @@ function SheetBody({ id, kind }: { id: number; kind: SignatureRole }) {
   const createProblem = failure !== null ? errorText(t, failure) : '';
 
   return (
-    <Modal labelledBy={titleId} width="w-sheet-wide" onClose={() => settleSignatureSheet(id, null)}>
+    <Modal labelledBy={titleId} width="w-sheet-wide" surface="white" onClose={() => settleSignatureSheet(id, null)}>
       <ModalHeader
         id={titleId}
         icon={<Icon icon={Signature} />}

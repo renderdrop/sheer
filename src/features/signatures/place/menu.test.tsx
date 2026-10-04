@@ -62,7 +62,7 @@ describe('Sign menu wiring', () => {
   it('places with the ink colour chosen in the sheet', async () => {
     const apply = vi.fn(() => Promise.resolve({ upserted: [], removed: [], rev: 1 }));
     useAnnotations.setState({ apply } as never);
-    rememberSignatureColour('blue');
+    rememberSignatureColour('signature');
     await placeItem(
       1,
       0,
@@ -72,8 +72,8 @@ describe('Sign menu wiring', () => {
     );
     expect(apply).toHaveBeenCalledWith(
       1,
-      expect.objectContaining({ draft: expect.objectContaining({ color: [0, 114, 178] }) }),
+      expect.objectContaining({ draft: expect.objectContaining({ color: [31, 58, 147] }) }),
     );
-    rememberSignatureColour('black');
+    rememberSignatureColour('ink');
   });
 });

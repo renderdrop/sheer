@@ -5,8 +5,8 @@ import { inkPaths, pathToD, type InkSample, type PathCmd } from '../ink';
 /** The ways to make a signature (DESIGN 3.33). */
 export type SigTab = 'draw' | 'type' | 'image';
 
-/** The ink colours of the pad: the black and blue of the annotation palette (DESIGN 3.24). */
-export type SigColour = 'black' | 'blue';
+/** The ink of a signature: Ink or `--ink-signature` (DESIGN v2 1.4). */
+export type SigColour = 'ink' | 'signature';
 
 /** Nominal stroke width of the pad in px; velocity and pressure move it between 0.45 and 1.5 times (see `../ink`). */
 export const PAD_WIDTH_PX = 3;

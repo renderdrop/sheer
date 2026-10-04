@@ -1,17 +1,16 @@
 import type { AnnotationDraft, LineEnd, Rgb, Stroke } from '../../../api/annotations';
 import type { Point, Quad } from '../../../api/wire';
 import type { CreationKind } from '../../../stores/tools';
+import { DEFAULT_COLOURS, HIGHLIGHT_OPACITY } from '../../inspector/palette';
 import { boxFromPoints, boxInPage, clampToPage, constrainSquare, snapAngle } from './geometry';
 import { strokeOutline, toPoints, type Sample } from './ink';
 
 /** The annotation drafts a creation makes (one `createAnnotation` command each), and the style they start from. */
 
-/** The Okabe-Ito colours of ADR-029; annotation colours are document content, the same in both themes. */
+/** The default colours of DESIGN v2 1.4: Solar for highlights and notes (a fill), Ink for everything drawn. */
 export const PALETTE = {
-  yellow: [240, 228, 66],
-  vermillion: [213, 94, 0],
-  blue: [0, 114, 178],
-  black: [0, 0, 0],
+  solar: DEFAULT_COLOURS.highlight,
+  ink: DEFAULT_COLOURS.ink,
 } as const satisfies Record<string, Rgb>;
 
 export interface CreationStyle {
@@ -28,7 +27,7 @@ export interface CreationStyle {
 /** What a new annotation of a kind looks like until the inspector says otherwise. */
 export function defaultStyle(kind: CreationKind): CreationStyle {
   const base: CreationStyle = {
-    color: PALETTE.vermillion,
+    color: PALETTE.ink,
     opacity: 1,
     width: 2,
     fill: null,
@@ -38,13 +37,13 @@ export function defaultStyle(kind: CreationKind): CreationStyle {
   };
   switch (kind) {
     case 'highlight':
-      return { ...base, color: PALETTE.yellow, opacity: 0.4 };
+      return { ...base, color: PALETTE.solar, opacity: HIGHLIGHT_OPACITY };
     case 'note':
-      return { ...base, color: PALETTE.yellow };
+      return { ...base, color: PALETTE.solar };
     case 'freeText':
-      return { ...base, color: PALETTE.black, width: 0 };
+      return { ...base, color: PALETTE.ink, width: 0 };
     case 'ink':
-      return { ...base, color: PALETTE.blue };
+      return { ...base, color: PALETTE.ink };
     default:
       return base;
   }
