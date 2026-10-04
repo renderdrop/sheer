@@ -1534,3 +1534,30 @@ pass-through, v1.1). Exported image names never carry document metadata. Not in 
 (`src/api/print.ts`); `parse_ranges` reports more than 1 000 ranges as `limit_exceeded` `outputs`, so package A maps selection errors to
 `pageSelection` itself; `AppState` gains `engine()` and `has_unsaved_changes()` because its fields are private to `commands`.
 `export::snapshot::current` answers `Live` for a clean document and `notYet` for a dirty one until package C lands.
+
+## ADR-051 — Vector signatures with real curves (FEEDBACK F10)
+
+**Status:** accepted (2026-10-04). Amends ADR-041 §3–§5 (signature art), ADR-042. Product-owner blocker for v1.0, ships with v0.8.1.
+
+**Context.** Placed signatures look pixelated when zoomed. Drawn and typed art were already vector, but as polygons: typed glyph curves were
+linearised to 12 segments, drawn strokes were perfect-freehand outline polygons simplified by the backend; image art was capped at 1 600 px;
+the pad was 512×192 CSS px without device-pixel-ratio scaling.
+
+**Decision.**
+1. **Art = path commands, not polygons.** `VectorArt.paths: PathCmd[][]` with `PathCmd = ['M',x,y] | ['L',x,y] | ['C',x1,y1,x2,y2,x,y] | ['Z']`,
+   art space 1 000 units high, y down, nonzero fill. The appearance stream writes them 1:1 as `m`/`l`/`c`/`h` and `f`; the app renders
+   them as one SVG `<path d>` per subpath (crisp at any zoom and DPR). Limits: ≤ 64 subpaths, ≤ 20 000 commands, finite coordinates in
+   −100..=1 100 × −100..=(width+100), validated in Rust.
+2. **Drawn:** one algorithm, in the UI (`src/features/signatures/ink`): pointer samples `{x,y,t,pressure}` → Catmull-Rom centreline
+   (centripetal, α = 0.5) → width from velocity (fast = thin, slow = thick, clamped 0.45–1.5× nominal, eased) and pressure when the pen
+   reports it → closed outline as cubic Béziers with round caps. The live preview uses the same function, so what is drawn is what is
+   saved. `create_drawn_signature` takes the Bézier outline paths (pad pixels), Rust validates, trims, normalises to art space; it no
+   longer simplifies.
+3. **Typed:** skrifa outlines are emitted as curves: quadratic segments raised exactly to cubic, cubic kept; no linearisation.
+4. **Image:** near-white becomes transparent with a soft ramp (luminance 225→245 → alpha 1→0, no halo); stored at up to 3 000 px on the
+   long side (no upscaling), so at the default placed width (≈ 2 in) it embeds at ≥ 300 dpi; the ghost/inline preview frame is 1 024 px.
+5. **Pad:** ≥ 600×200 CSS px (initials 200×200), canvas backing store scaled by `devicePixelRatio`, real-time smoothing, a "New" (clear) button.
+6. **Selection frame and handles** follow DESIGN §3 selection rules (rounded handles, Iris ring), not square boxes.
+
+**Consequences.** Library entries saved before 0.8.1 hold polygons: they load as `L` paths (still vector) and look as before; re-creating
+them gives curves. Acceptance: window screenshot at 200 % with smooth edges; the saved PDF rendered at 400 %.
