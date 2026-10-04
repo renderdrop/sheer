@@ -33,7 +33,7 @@ describe('the catalogs', () => {
   });
 
   // Messages that are a word and two numbers, the same in both languages (DESIGN 3.14 `tour.pill`, 3.31 `compress.estimate`).
-  const SAME_IN_BOTH = new Set(['tour.pill', 'compress.estimate']);
+  const SAME_IN_BOTH = new Set(['tour.pill', 'compress.estimate', 'img2pdf.meta']);
 
   it('every message is a non-empty string, and no German text is left as the English one by accident', () => {
     for (const locale of LOCALES) {

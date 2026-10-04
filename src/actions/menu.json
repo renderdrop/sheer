@@ -38,6 +38,16 @@
           "requiresDocument": true
         },
         { "separator": true },
+        { "action": "images-to-pdf", "label": "menu.file.imagesToPdf" },
+        { "action": "export-copy", "label": "menu.file.exportCopy", "requiresDocument": true },
+        {
+          "action": "export-images",
+          "label": "menu.file.exportImages",
+          "accelerator": "CmdOrCtrl+Shift+E",
+          "requiresDocument": true
+        },
+        { "action": "print", "label": "menu.file.print", "accelerator": "CmdOrCtrl+P", "requiresDocument": true },
+        { "separator": true },
         { "action": "merge-files", "label": "menu.file.merge", "requiresDocument": true },
         { "action": "split-document", "label": "menu.file.split", "requiresDocument": true },
         { "action": "extract-pages", "label": "menu.file.extractPages", "requiresDocument": true },

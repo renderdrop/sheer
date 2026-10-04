@@ -1,6 +1,6 @@
 import { DEFAULT_ZOOM, MAX_ZOOM, MIN_ZOOM } from '../lib/zoom';
 import { historyOf, useAnnotations } from '../stores/annotations';
-import { useDocuments } from '../stores/documents';
+import { selectActiveDocument, useDocuments } from '../stores/documents';
 import { useView } from '../stores/view';
 
 /**
@@ -16,7 +16,18 @@ export interface ActionState {
   /** The active document's history has a step to take back or to do again (the `annotations` store). */
   canUndo: boolean;
   canRedo: boolean;
+  /**
+   * The document's permissions allow printing and copying (DESIGN 3.41, 3.39). Optional so a state without them means allowed
+   * (`mayPrint`, `mayCopy`); `readActionState` fills them from the active document.
+   */
+  canPrint?: boolean;
+  canCopy?: boolean;
 }
+
+/** Whether the state allows printing (absent: yes). */
+export const mayPrint = (state: ActionState): boolean => state.canPrint !== false;
+/** Whether the state allows exporting content as images (absent: yes). */
+export const mayCopy = (state: ActionState): boolean => state.canCopy !== false;
 
 /** The state before a document is open. */
 export const NO_DOCUMENT: Readonly<ActionState> = {
@@ -31,6 +42,7 @@ export const NO_DOCUMENT: Readonly<ActionState> = {
 export function readActionState(): ActionState {
   const docId = useDocuments.getState().activeId;
   if (docId === null) return NO_DOCUMENT;
+  const permissions = selectActiveDocument(useDocuments.getState())?.flags?.permissions ?? null;
   const zoom = useView.getState().byDoc[docId]?.zoom ?? DEFAULT_ZOOM;
   const history = historyOf(useAnnotations.getState(), docId);
   return {
@@ -39,5 +51,7 @@ export function readActionState(): ActionState {
     zoomAtMax: zoom >= MAX_ZOOM,
     canUndo: history.canUndo,
     canRedo: history.canRedo,
+    canPrint: permissions === null || permissions.includes('print'),
+    canCopy: permissions === null || permissions.includes('copy'),
   };
 }

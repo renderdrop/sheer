@@ -8,6 +8,10 @@ import { chromeFor, detectPlatform } from '../../lib/platform';
 import { useSettings } from '../../stores/settings';
 import { useUi } from '../../stores/ui';
 import { setMenuState } from '../../api/recents';
+import { ExportCopyDialog } from '../exportCopy/ExportCopyDialog';
+import { ExportImagesDialog } from '../exportImages/ExportImagesDialog';
+import { ImagesToPdfDialog } from '../imagesToPdf/ImagesToPdfDialog';
+import { PrintDialog } from '../print/PrintDialog';
 import { FormHost } from '../forms/FormHost';
 import { DropBannerRow, JobsHost } from '../jobs/JobsHost';
 import { PasswordDialog } from '../password/PasswordDialog';
@@ -119,6 +123,10 @@ export function Shell() {
       <ProtectSheet />
       <PropertiesDialog />
       <RedactApplyDialog />
+      <ExportImagesDialog />
+      <ImagesToPdfDialog />
+      <PrintDialog />
+      <ExportCopyDialog />
       <BannerRow />
       <XfaBannerRow />
       <RedactBanner />

@@ -6,7 +6,10 @@ import {
   Crop,
   Stamp,
   FileArchive,
+  FileImage,
   FileOutput,
+  Images,
+  Printer,
   Scissors,
   File,
   FileText,
@@ -66,7 +69,7 @@ import { useTools } from '../stores/tools';
 import { useUi, type ToolId } from '../stores/ui';
 import { runHistoryStep } from './history';
 import { formatBinding, resolveBinding, type Binding, type Shortcuts } from './shortcut';
-import type { ActionState } from './state';
+import { mayCopy, mayPrint, type ActionState } from './state';
 
 /** The action of each tool of the toolbar: it makes the tool the active one. */
 export type ToolActionId = `tool-${ToolId}`;
@@ -110,10 +113,14 @@ export type ActionId =
   | 'redact'
   | 'protect'
   | 'document-properties'
+  | 'images-to-pdf'
+  | 'export-copy'
+  | 'export-images'
+  | 'print'
   | ToolActionId;
 
 /** Actions of one group sit together in the More menu, with a separator between groups. */
-export type ActionGroup = 'file' | 'edit' | 'view' | 'page' | 'panels' | 'tools' | 'app';
+export type ActionGroup = 'file' | 'output' | 'edit' | 'view' | 'page' | 'panels' | 'tools' | 'app';
 
 /**
  * A command of the app: what the toolbar, the More menu, the macOS menu bar and the keyboard all run. It is defined once, here;
@@ -238,6 +245,50 @@ export const ACTIONS: readonly ActionDef[] = [
     menuBar: true,
     enabled: needsDocument,
     run: () => saveActive(true),
+  },
+  // The output group (DESIGN 3.41): after Save As, divider above and below; each opens a dialog (src/features/{imagesToPdf,exportCopy,exportImages,print}).
+  {
+    id: 'images-to-pdf',
+    labelKey: 'img2pdf.menu',
+    icon: Images,
+    group: 'output',
+    more: true,
+    menuBar: true,
+    enabled: () => true,
+    run: () => useUi.getState().setImagesToPdfOpen(true),
+  },
+  {
+    id: 'export-copy',
+    labelKey: 'copy.menu',
+    icon: FileOutput,
+    group: 'output',
+    more: true,
+    menuBar: true,
+    enabled: needsDocument,
+    run: () => useUi.getState().setExportCopyOpen(true),
+  },
+  {
+    id: 'export-images',
+    labelKey: 'exportImg.menu',
+    icon: FileImage,
+    shortcut: { default: { key: 'e', mods: ['primary', 'shift'] } },
+    group: 'output',
+    more: true,
+    menuBar: true,
+    // Copying content out is a permission (DESIGN 3.39); the item stays focusable and the dialog says why ('output.notAllowed').
+    enabled: (state) => state.hasDocument && mayCopy(state),
+    run: () => useUi.getState().setExportImagesOpen(true),
+  },
+  {
+    id: 'print',
+    labelKey: 'print.menu',
+    icon: Printer,
+    shortcut: { default: primary('p') },
+    group: 'output',
+    more: true,
+    menuBar: true,
+    enabled: (state) => state.hasDocument && mayPrint(state),
+    run: () => useUi.getState().setPrintOpen(true),
   },
   {
     id: 'merge-files',

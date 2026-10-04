@@ -52,6 +52,11 @@ export interface UiState {
   /** The Protect sheet (DESIGN 3.39) and the Document properties dialog (DESIGN 3.40) are open. */
   protectOpen: boolean;
   propsOpen: boolean;
+  /** The M6 output dialogs are open (DESIGN 3.41 to 3.45): Export as images (U1), Create PDF from images (U2), Print (U3), Export a copy (U4). */
+  exportImagesOpen: boolean;
+  imagesToPdfOpen: boolean;
+  printOpen: boolean;
+  exportCopyOpen: boolean;
   /** The pointer drags a file over the window (set from Rust later, M1). Only the look of the drop zone follows it. */
   dropHover: boolean;
   /** A failed action that needs the user's attention: the banner row shows it until it is dismissed. */
@@ -74,6 +79,10 @@ export interface UiState {
   setRedactMode: (on: boolean) => void;
   setProtectOpen: (open: boolean) => void;
   setPropsOpen: (open: boolean) => void;
+  setExportImagesOpen: (open: boolean) => void;
+  setImagesToPdfOpen: (open: boolean) => void;
+  setPrintOpen: (open: boolean) => void;
+  setExportCopyOpen: (open: boolean) => void;
   setDropHover: (active: boolean) => void;
   showBanner: (error: AppError) => void;
   dismissBanner: () => void;
@@ -98,6 +107,10 @@ export const useUi = create<UiState>()((set, get) => ({
   redactMode: false,
   protectOpen: false,
   propsOpen: false,
+  exportImagesOpen: false,
+  imagesToPdfOpen: false,
+  printOpen: false,
+  exportCopyOpen: false,
   dropHover: false,
   banner: null,
   xfaDismissed: [],
@@ -115,6 +128,10 @@ export const useUi = create<UiState>()((set, get) => ({
   setRedactMode: (redactMode) => set({ redactMode }),
   setProtectOpen: (protectOpen) => set({ protectOpen }),
   setPropsOpen: (propsOpen) => set({ propsOpen }),
+  setExportImagesOpen: (exportImagesOpen) => set({ exportImagesOpen }),
+  setImagesToPdfOpen: (imagesToPdfOpen) => set({ imagesToPdfOpen }),
+  setPrintOpen: (printOpen) => set({ printOpen }),
+  setExportCopyOpen: (exportCopyOpen) => set({ exportCopyOpen }),
   setDropHover: (dropHover) => set({ dropHover }),
   showBanner: (banner) => set({ banner }),
   dismissBanner: () => set({ banner: null }),

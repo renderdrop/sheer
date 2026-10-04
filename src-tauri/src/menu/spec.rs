@@ -22,7 +22,7 @@ const DE_JSON: &str = include_str!("../../../src/i18n/locales/de.json");
 /// [`is_action_id`] is the only gate between a menu event and the channel, so an id that is not listed here (a system item,
 /// something a future layout names by mistake) never reaches the webview. A test keeps it equal to the layout, and the
 /// frontend's `src/actions/menu.test.ts` keeps the layout equal to its registry.
-pub const ACTION_IDS: [&str; 36] = [
+pub const ACTION_IDS: [&str; 40] = [
     "settings",
     "open",
     "close-document",
@@ -59,6 +59,10 @@ pub const ACTION_IDS: [&str; 36] = [
     "protect",
     "document-properties",
     "redact",
+    "images-to-pdf",
+    "export-copy",
+    "export-images",
+    "print",
 ];
 
 /// Whether `id` is a command the menu bar may send to the UI.
@@ -486,13 +490,13 @@ mod tests {
     }
 
     #[test]
-    fn the_commands_that_work_without_a_document_are_open_and_settings_only() {
+    fn the_commands_that_work_without_a_document_are_open_images_to_pdf_and_settings_only() {
         let free: BTreeSet<&str> = actions()
             .into_iter()
             .filter(|action| !action.requires_document)
             .map(|action| action.action.as_str())
             .collect();
-        assert_eq!(free, BTreeSet::from(["open", "settings"]));
+        assert_eq!(free, BTreeSet::from(["images-to-pdf", "open", "settings"]));
     }
 
     // --- the accelerators ---------------------------------------------------------------------------------------

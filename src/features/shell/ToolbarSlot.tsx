@@ -70,6 +70,11 @@ export const ToolbarSlot = memo(function ToolbarSlot({
   const zoomAtMax = useDocViewValue(docId, (view) => view.zoom >= MAX_ZOOM);
   const scrollMode = useDocViewValue(docId, (view) => view.scrollMode);
   const canUndo = useAnnotations((state) => historyOf(state, docId).canUndo);
+  const permissions = useDocuments((state) =>
+    docId === null ? null : (state.byId[docId]?.flags?.permissions ?? null),
+  );
+  const canPrint = permissions === null || permissions.includes('print');
+  const canCopy = permissions === null || permissions.includes('copy');
   const canRedo = useAnnotations((state) => historyOf(state, docId).canRedo);
 
   const { entries, moreItems } = useMemo(
@@ -78,7 +83,7 @@ export const ToolbarSlot = memo(function ToolbarSlot({
         {
           t,
           platform,
-          action: { hasDocument, zoomAtMin, zoomAtMax, canUndo, canRedo },
+          action: { hasDocument, zoomAtMin, zoomAtMax, canUndo, canRedo, canPrint, canCopy },
           scrollMode,
           activeTool,
           readOnly,
@@ -107,6 +112,8 @@ export const ToolbarSlot = memo(function ToolbarSlot({
       zoomAtMax,
       canUndo,
       canRedo,
+      canPrint,
+      canCopy,
       scrollMode,
     ],
   );

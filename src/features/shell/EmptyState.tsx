@@ -6,6 +6,7 @@ import { PILL, SELECTED_FORCED_COLORS } from '../../components/controlStyles';
 import { cx } from '../../components/cx';
 import { isOwnEvent, itemsOf, rovingTarget } from '../../components/roving';
 import { useT } from '../../i18n';
+import { EmptyStateImagesButton } from '../imagesToPdf/EmptyStateImagesButton';
 
 /** One row of the recent files list (M1 brings the row itself: thumbnail, name, folder and age, remove). */
 export interface RecentRow {
@@ -136,6 +137,7 @@ export function EmptyState({
           </Button>
           {openShortcut !== '' && <span className={PILL}>{openShortcut}</span>}
         </div>
+        <EmptyStateImagesButton />
       </section>
       {recents.length > 0 && (
         <section aria-labelledby="recent-heading" className="mt-3 flex flex-col gap-1">

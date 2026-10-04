@@ -292,6 +292,8 @@ describe('readActionState', () => {
       zoomAtMax: false,
       canUndo: false,
       canRedo: false,
+      canPrint: true,
+      canCopy: true,
     });
   });
 });

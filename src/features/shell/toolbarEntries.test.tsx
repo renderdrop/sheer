@@ -223,6 +223,12 @@ describe('the toolbar of DESIGN 3.3 and ADR-011 section 6', () => {
         'close-document',
         'save',
         'save-as',
+        'output:before',
+        'images-to-pdf',
+        'export-copy',
+        'export-images',
+        'print',
+        'file:before',
         'merge-files',
         'split-document',
         'extract-pages',
@@ -257,6 +263,8 @@ describe('the toolbar of DESIGN 3.3 and ADR-011 section 6', () => {
         'about',
       ]);
       expect(moreItems.filter((entry) => entry.type === 'separator').map((entry) => entry.id)).toEqual([
+        'output:before',
+        'file:before',
         'edit:before',
         'view:before',
         'page:before',
@@ -298,12 +306,12 @@ describe('the toolbar of DESIGN 3.3 and ADR-011 section 6', () => {
       expect(entryOf(moreItems, 'about').shortcut).toBeUndefined();
     });
 
-    it('without a document only Open, Settings and About can be chosen', () => {
+    it('without a document only Open, Create PDF from images, Settings and About can be chosen', () => {
       const { moreItems } = buildToolbar(state({ action: NO_DOCUMENT }), actions());
       const enabled = moreItems
         .filter((entry) => entry.type !== 'separator' && entry.disabled !== true)
         .map((entry) => entry.id);
-      expect(enabled).toEqual(['open', 'settings', 'about']);
+      expect(enabled).toEqual(['open', 'images-to-pdf', 'settings', 'about']);
     });
 
     it('is built by buildMoreItems alone, and follows the language and the platform', () => {

@@ -256,6 +256,10 @@ describe('Shell with a document', () => {
         'Close documentCtrl+W',
         'SaveCtrl+S',
         'Save As…Ctrl+Shift+S',
+        'Create PDF from images…',
+        'Export a copy…',
+        'Export as images…Ctrl+Shift+E',
+        'Print…Ctrl+P',
         'Merge files…',
         'Split…',
         'Extract pages…',
@@ -358,7 +362,7 @@ describe('Shell with a document', () => {
         .getAllByRole('menuitem')
         .filter((item) => item.getAttribute('aria-disabled') !== 'true')
         .map((item) => item.textContent);
-      expect(enabled).toEqual(['Open…Ctrl+O', 'Settings…Ctrl+,', 'About']);
+      expect(enabled).toEqual(['Open…Ctrl+O', 'Create PDF from images…', 'Settings…Ctrl+,', 'About']);
     });
 
     it('Ctrl+W closes the document and the empty state comes back; Ctrl+W without one does nothing', async () => {

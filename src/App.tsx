@@ -1,6 +1,7 @@
 import { Suspense, lazy, useSyncExternalStore } from 'react';
 
 import { Shell } from './features/shell/Shell';
+import { PrintSurface } from './features/print/PrintSurface';
 
 /**
  * Dev-only component showcase at `#showcase` (src/components/showcase). `import.meta.env.DEV` is a build-time constant,
@@ -26,5 +27,10 @@ export function App() {
       </Suspense>
     );
   }
-  return <Shell />;
+  return (
+    <>
+      <Shell />
+      <PrintSurface />
+    </>
+  );
 }

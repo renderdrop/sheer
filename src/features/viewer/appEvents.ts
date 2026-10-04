@@ -1,5 +1,6 @@
 import { subscribeApp, type AppEvent } from '../../api/app';
 import type { DocumentInfo } from '../../api/documents';
+import { handleImagesDropped } from '../imagesToPdf/imagesDropped';
 import { appDropBatch } from '../jobs/dropBatch';
 import { requestQuit } from '../save/quit';
 import { useUi } from '../../stores/ui';
@@ -17,7 +18,8 @@ export function handleAppEvent(event: AppEvent): void {
   } else if (event.type === 'closeRequested') {
     void requestQuit();
   } else if (event.type === 'imagesDropped') {
-    // Package B (ADR-049): the Create PDF from images offer for the dropped batch.
+    // The Create PDF from images offer for the dropped batch (DESIGN 3.43, U2).
+    handleImagesDropped(event);
   } else {
     // A document that opens right after the drag left the window was dropped: the preview card falls and becomes its page (MOTION 4.5).
     if (event.type === 'opened') {

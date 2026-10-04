@@ -690,82 +690,18 @@ fn second_instance_forwarding_is_windows_only_and_registered_first() {
 #[test]
 fn build_script_declares_exactly_the_granted_commands() {
     let build = read("build.rs");
-    let commands = [
-        "open_document_dialog",
-        "open_welcome_document",
-        "unlock_document",
-        "list_recents",
-        "remove_recent",
-        "open_recent",
-        "restore_recent",
-        "locate_recent",
-        "set_menu_state",
-        "render_page",
-        "set_viewport",
-        "get_pages",
-        "get_outline",
-        "get_text_layer",
-        "search",
-        "cancel_search",
-        "get_page_links",
-        "open_link",
-        "list_annotations",
-        "list_document_annotations",
-        "import_warnings",
-        "apply_command",
-        "get_form_fields",
-        "pick_pdf_sources",
-        "release_source",
-        "undo",
-        "redo",
-        "save_document",
-        "save_document_as",
-        "extract_pages",
-        "split_document",
-        "merge_documents",
-        "compress_document",
-        "flatten_document",
-        "estimate_compression",
-        "cancel_job",
-        "close_document",
-        "app_ready",
-        "get_settings",
-        "update_settings",
-        "watch_transparency",
-        "subscribe_menu",
-        "subscribe_app",
-        "clear_signature_library",
-        "get_library_signature",
-        "delete_signature",
-        "rename_signature",
-        "save_library_signature",
-        "list_signatures",
-        "use_signature",
-        "get_signature_preview",
-        "discard_signature_draft",
-        "save_draft_signature",
-        "import_signature_image",
-        "create_typed_signature",
-        "create_drawn_signature",
-        "insert_image_dialog",
-        "get_asset_preview",
-        "apply_redactions",
-        "get_protection",
-        "stage_protection",
-        "stage_unprotection",
-        "get_metadata",
-        "export_images",
-        "resolve_export_conflicts",
-        "images_to_pdf",
-        "release_image_batch",
-        "export_pdf",
-        "prepare_print",
-        "get_print_page",
-        "open_print_dialog",
-        "release_print",
-    ];
+    // The list is read from build.rs itself, so a command cannot be declared without a grant, a handler and a permission file.
+    let marker = ".commands(&[";
+    let start = build.find(marker).expect("build.rs declares the commands") + marker.len();
+    let end = start + build[start..].find(']').expect("the command list ends");
+    let commands: Vec<&str> = build[start..end].split('"').skip(1).step_by(2).collect();
+    assert!(
+        commands.len() > 60,
+        "the scan found too few commands: {}",
+        commands.len()
+    );
     let handlers = read("src/lib.rs");
-    for command in commands {
+    for command in &commands {
         assert!(build.contains(&format!("\"{command}\"")), "{command}");
         // Declared and granted but not registered would fail at run time with "command not found".
         assert!(
@@ -782,7 +718,7 @@ fn build_script_declares_exactly_the_granted_commands() {
     }
     // Every declared command is also granted: a command without its `allow-` entry is denied at runtime.
     let capability = read("capabilities/default.json");
-    for command in commands {
+    for command in &commands {
         let permission = format!("\"allow-{}\"", command.replace('_', "-"));
         assert!(
             capability.contains(&permission),

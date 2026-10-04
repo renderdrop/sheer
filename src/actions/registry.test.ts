@@ -55,6 +55,10 @@ describe('the registry', () => {
       'redact',
       'protect',
       'document-properties',
+      'images-to-pdf',
+      'export-copy',
+      'export-images',
+      'print',
       'toggle-left-panel',
       'toggle-inspector',
       'settings',
@@ -120,6 +124,10 @@ describe('shortcuts per platform', () => {
     redact: { macos: null, windows: null },
     protect: { macos: null, windows: null },
     'document-properties': { macos: null, windows: null },
+    'images-to-pdf': { macos: null, windows: null },
+    'export-copy': { macos: null, windows: null },
+    'export-images': { macos: '⇧⌘E', windows: 'Ctrl+Shift+E' },
+    print: { macos: '⌘P', windows: 'Ctrl+P' },
     'toggle-left-panel': { macos: '⌥⌘1', windows: 'F4' },
     'toggle-inspector': { macos: '⌥⌘I', windows: 'Shift+F4' },
     settings: { macos: '⌘,', windows: 'Ctrl+,' },
@@ -233,8 +241,8 @@ describe('enabled', () => {
   const enabledIds = (state: ActionState): ActionId[] =>
     ACTIONS.filter((action) => action.enabled(state)).map((action) => action.id);
 
-  it('without a document only Open, Settings and About can run', () => {
-    expect(enabledIds(NO_DOCUMENT)).toEqual(['open', 'settings', 'about']);
+  it('without a document only Open, Create PDF from images, Settings and About can run', () => {
+    expect(enabledIds(NO_DOCUMENT)).toEqual(['open', 'images-to-pdf', 'settings', 'about']);
   });
 
   it('with a document everything can run, except a zoom step that is at its limit', () => {
@@ -264,6 +272,10 @@ describe('where an action is listed', () => {
       'file:close-document',
       'file:save',
       'file:save-as',
+      'output:images-to-pdf',
+      'output:export-copy',
+      'output:export-images',
+      'output:print',
       'file:merge-files',
       'file:split-document',
       'file:extract-pages',
