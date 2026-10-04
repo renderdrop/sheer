@@ -19,7 +19,7 @@ use sheer_lib::error::ErrorCode;
 use sheer_lib::export::from_images::{
     start_job, ImageSource, ImagesToPdfOptions, Inputs, Orientation, PaperSize,
 };
-use sheer_lib::pdfwrite::produce::Warning;
+use sheer_lib::pdfwrite::produce::{Phase, Warning};
 
 struct Scratch(PathBuf);
 
@@ -436,4 +436,74 @@ fn a_batch_is_listed_previewed_extended_and_read_in_the_chosen_order() {
         near(outcome.pages[1], [100.0, 200.0]);
     }
     image_batch::batches().release(first.batch);
+}
+
+/// Opens `path` as a document when the job reports the start of the write (before the file is built).
+struct OpenAtWrite {
+    state: &'static AppState,
+    path: PathBuf,
+    inner: Collect,
+}
+
+impl EventSink for OpenAtWrite {
+    fn send(&self, event: JobEvent) {
+        if matches!(
+            event,
+            JobEvent::Progress {
+                phase: Phase::Write,
+                done: 0,
+                ..
+            }
+        ) {
+            self.state.open_path(self.path.clone()).unwrap();
+        }
+        self.inner.send(event);
+    }
+}
+
+#[test]
+fn a_target_opened_while_the_job_runs_is_not_replaced() {
+    let Some(state) = state() else { return };
+    let scratch = Scratch::new("raced");
+    let image = scratch.write("a.png", &png(20, 10, None));
+    // Any valid PDF will do as the file that gets opened in between.
+    let seed = run(
+        state,
+        &scratch,
+        Inputs::Paths(vec![image.clone()]),
+        &options(PaperSize::Fit, Orientation::Auto, 0.0),
+        "seed.pdf",
+    );
+    assert!(seed.is_ok());
+    let target = scratch.file("target.pdf");
+    std::fs::copy(scratch.file("seed.pdf"), &target).unwrap();
+    let before = std::fs::read(&target).unwrap();
+    let jobs = Arc::new(JobRegistry::new());
+    let (tx, receiver) = mpsc::channel();
+    let sink = Arc::new(OpenAtWrite {
+        state,
+        path: target.clone(),
+        inner: Collect(Mutex::new(tx)),
+    });
+    start_job(
+        state,
+        &jobs,
+        Inputs::Paths(vec![image]),
+        &options(PaperSize::A4, Orientation::Auto, 0.0),
+        &target,
+        "Sheer",
+        sink,
+    )
+    .unwrap();
+    match finish(&receiver) {
+        JobEvent::Failed(error) => {
+            assert_eq!(serde_json::to_value(&error).unwrap()["code"], "io_in_use");
+        }
+        other => panic!("unexpected {other:?}"),
+    }
+    assert_eq!(
+        std::fs::read(&target).unwrap(),
+        before,
+        "the file is untouched"
+    );
 }

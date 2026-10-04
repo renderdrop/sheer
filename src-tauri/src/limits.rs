@@ -562,6 +562,8 @@ pub const MAX_CONFLICT_NAMES: usize = 5;
 /// Images of one images to PDF job and of one dropped batch.
 pub const MAX_IMAGES_PER_PDF: usize = 500;
 pub const MAX_IMAGE_BATCH: usize = MAX_IMAGES_PER_PDF;
+/// Image batches held at once; adding one more lets the oldest go (its handles are closed).
+pub const MAX_LIVE_IMAGE_BATCHES: usize = 8;
 /// Long side of an image batch thumbnail (`get_image_batch_preview`), in pixels.
 pub const MIN_BATCH_PREVIEW_PX: u16 = 16;
 pub const MAX_BATCH_PREVIEW_PX: u16 = 512;

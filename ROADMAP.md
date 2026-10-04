@@ -162,15 +162,15 @@ The Stop hook picks the first open `- [ ]` line, so order matters. Scope: `docs/
 - [ ] Politur M6
   - (from M5 design review, major) page gutter at 100 %: the horizontal scrollbar sits right under the page
   - (from M5 design review, minor) DESIGN §1.11/§3.11 still say logo 160 in a 184 slot (tokens: 104/128 on short windows); empty state top-heavy at 800 px (equal top/bottom padding); dark canvas around the page near-black vs window background (§1.10); thumbnail panel bottom padding
-  - (from M4 security, low) style-src unsafe-inline (nonces/classes)
   - (v1.1) crop units from the OS measurement system
-  - (from M6 backend reviews; print, images out and snapshot DONE, only "images in" remains, package U2b) print: global byte cap across sets (or MAX_PRINT_SETS 2), sort+dedup range pages, take order and snapshot together (SnapshotGuard), confirm per-page pixel cap at 300 dpi, test open_dialog's main-window check; images out: no-follow open on replace, preflight all names before replace, longer timeout for export renders, encode on the blocking pool; snapshot: tests for burned content, crops, redaction rasters, no marks, encrypted original, size cap, guard on engine open error, loud skip when PDFium is missing in CI, avoid the extra bytes copy; images in: cap live batches, drop handles beyond the cap while sniffing, log skip reasons, re-check target_is_open at publish
+  - [x] (from M6 backend reviews; all DONE) print: global byte cap across sets (or MAX_PRINT_SETS 2), sort+dedup range pages, take order and snapshot together (SnapshotGuard), confirm per-page pixel cap at 300 dpi, test open_dialog's main-window check; images out: no-follow open on replace, preflight all names before replace, longer timeout for export renders, encode on the blocking pool; snapshot: tests for burned content, crops, redaction rasters, no marks, encrypted original, size cap, guard on engine open error, loud skip when PDFium is missing in CI, avoid the extra bytes copy; images in: cap live batches, drop handles beyond the cap while sniffing, log skip reasons, re-check target_is_open at publish
   - [x] (from F10 security review, low) DrawCmd payload count guard in the deserializer
   - [x] (flaky) commands::tests::after_the_third_wrong_password_each_try_waits_in_rust failed once under the full suite: time each of the first three tries, not their sum
-  - (from M6 UI) print: pending-redaction note (output.pendingRedact); export images: quality control aria-disabled for PNG; menu items cannot show output.notAllowed
+  - [x] (from M6 UI) print: pending-redaction note (output.pendingRedact); export images: quality control aria-disabled for PNG; menu items cannot show output.notAllowed (v1.1)
 
 ## M7 — Polish and ship (v1.0.0)
 
+- [ ] CSP hardening (from M4 security, low): style-src unsafe-inline replaced by nonces/classes
 - [ ] Performance budget: 500-page PDF opens < 1 s, 60 fps scrolling (benchmark); thumbnail list fast scroll (one 34 ms frame at 120 px/frame, F3); scroll-height compression beyond the browser element limit (≈ 8k pages at 400 %), memory-aware cache budget
 - [ ] Accessibility pass (WCAG 2.2 AA analog, screen reader labels, focus order)
 - [ ] Recents rows with a 32 × 40 first-page thumbnail (DESIGN §3.11), cached locally at close, no paths to the UI (M1 review minor, deferred)

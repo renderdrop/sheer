@@ -114,14 +114,14 @@ pub struct ImageBatch {
     pub images: Vec<HeldImage>,
 }
 
-/// Opens `path` as a dropped file (a plain local spelling, a regular file) and says what it is. The handle is positioned at the start.
-pub fn sniff(path: &Path) -> Option<(File, Dropped)> {
+/// Opens `path` as a dropped file; the refusal is static text (no path, no name) for the local log.
+fn sniff_checked(path: &Path) -> Result<(File, Dropped), &'static str> {
     if !crate::documents::intake::spelling_is_plain(path) {
-        return None;
+        return Err("not a plain local path");
     }
-    let mut file = crate::storage::open_without_blocking(path).ok()?;
-    if !file.metadata().ok()?.is_file() {
-        return None;
+    let mut file = crate::storage::open_without_blocking(path).map_err(|_| "cannot be opened")?;
+    if !file.metadata().map_err(|_| "no metadata")?.is_file() {
+        return Err("not a regular file");
     }
     let mut head = [0u8; 1024];
     let mut filled = 0;
@@ -129,11 +129,24 @@ pub fn sniff(path: &Path) -> Option<(File, Dropped)> {
         match file.read(&mut head[filled..]) {
             Ok(0) => break,
             Ok(n) => filled += n,
-            Err(_) => return None,
+            Err(_) => return Err("cannot be read"),
         }
     }
-    file.seek(SeekFrom::Start(0)).ok()?;
-    Some((file, classify_head(&head[..filled])))
+    file.seek(SeekFrom::Start(0))
+        .map_err(|_| "cannot be rewound")?;
+    Ok((file, classify_head(&head[..filled])))
+}
+
+/// Opens `path` as a dropped file (a plain local spelling, a regular file) and says what it is. The handle is positioned at the start.
+/// The reason for a refusal goes to the local log, without path or name.
+pub fn sniff(path: &Path) -> Option<(File, Dropped)> {
+    match sniff_checked(path) {
+        Ok(found) => Some(found),
+        Err(reason) => {
+            eprintln!("sheer: dropped file skipped: {reason}");
+            None
+        }
+    }
 }
 
 fn digits_of(it: &mut std::iter::Peekable<std::str::Chars<'_>>) -> String {
@@ -220,12 +233,30 @@ impl ImageBatches {
         held.retain(|h| now.duration_since(h.at) < limits::IMAGE_BATCH_TTL);
     }
 
+    /// Makes room for one more batch: the oldest go, and with them their handles.
+    fn evict(held: &mut Vec<Held>) {
+        let over = (held.len() + 1).saturating_sub(limits::MAX_LIVE_IMAGE_BATCHES);
+        if over > 0 {
+            held.drain(..over.min(held.len()));
+        }
+    }
+
+    #[cfg(test)]
+    fn live(&self) -> usize {
+        self.inner
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .held
+            .len()
+    }
+
     /// Holds `batch` (images from the drop, already in order) and returns its id. At most `MAX_IMAGE_BATCH` images are kept.
     pub fn add(&self, mut batch: ImageBatch) -> u32 {
         batch.images.truncate(limits::MAX_IMAGE_BATCH);
         let mut inner = self.inner.lock().unwrap_or_else(PoisonError::into_inner);
         let now = Instant::now();
         Self::purge(&mut inner.held, now);
+        Self::evict(&mut inner.held);
         inner.last = inner.last.wrapping_add(1);
         let id = inner.last;
         inner.held.push(Held {
@@ -332,9 +363,19 @@ pub fn sort_drop(paths: Vec<PathBuf>) -> Sorted {
     let mut pdfs = Vec::new();
     let mut images: Vec<(PathBuf, File)> = Vec::new();
     let mut others = Vec::new();
+    let mut too_many = 0usize;
     for path in paths {
         match sniff(&path) {
-            Some((file, Dropped::Image)) => images.push((path, file)),
+            Some((file, Dropped::Image)) => {
+                if images.len() < limits::MAX_IMAGE_BATCH {
+                    images.push((path, file));
+                } else {
+                    // Over the cap: the handle is closed at once, not held until the end of the drop.
+                    drop(file);
+                    too_many += 1;
+                    eprintln!("sheer: dropped file skipped: over the batch limit");
+                }
+            }
             Some((_, Dropped::Pdf)) => pdfs.push(path),
             _ => others.push(path),
         }
@@ -349,8 +390,6 @@ pub fn sort_drop(paths: Vec<PathBuf>) -> Sorted {
     images.sort_by(|a, b| {
         natural_cmp(&file_name_of(&a.0), &file_name_of(&b.0)).then_with(|| a.0.cmp(&b.0))
     });
-    let too_many = images.len().saturating_sub(limits::MAX_IMAGE_BATCH);
-    images.truncate(limits::MAX_IMAGE_BATCH);
     let skipped = others.len() + too_many;
     Sorted {
         pdfs,
@@ -477,6 +516,54 @@ mod tests {
             .append(Some(id + 100), vec![make("c.png")])
             .unwrap()
             .is_none());
+    }
+
+    #[test]
+    fn the_oldest_live_batch_is_evicted_and_its_handles_closed() {
+        let dir = TempDir::new();
+        let path = dir.path().join("a.png");
+        std::fs::write(&path, b"\x89PNG\r\n\x1a\nabc").unwrap();
+        let batches = ImageBatches::new();
+        let add = || {
+            let image = HeldImage::new(&path, File::open(&path).unwrap());
+            batches.add(ImageBatch {
+                images: vec![image],
+            })
+        };
+        let first = add();
+        let weak = Arc::downgrade(&batches.get(first).unwrap());
+        let mut last = first;
+        for _ in 0..limits::MAX_LIVE_IMAGE_BATCHES {
+            last = add();
+        }
+        assert_eq!(batches.live(), limits::MAX_LIVE_IMAGE_BATCHES);
+        assert!(batches.get(first).is_none());
+        assert!(batches.get(last).is_some());
+        assert!(weak.upgrade().is_none(), "the evicted handles are gone");
+    }
+
+    #[test]
+    fn a_drop_over_the_cap_keeps_only_the_cap_and_counts_the_rest() {
+        let dir = TempDir::new();
+        let paths: Vec<PathBuf> = (0..limits::MAX_IMAGE_BATCH + 3)
+            .map(|i| {
+                let path = dir.path().join(format!("i{i}.png"));
+                std::fs::write(&path, b"\x89PNG\r\n\x1a\nabc").unwrap();
+                path
+            })
+            .collect();
+        let sorted = sort_drop(paths);
+        assert_eq!(sorted.images.len(), limits::MAX_IMAGE_BATCH);
+        assert_eq!(sorted.skipped, 3);
+    }
+
+    #[test]
+    fn a_refusal_has_a_reason_without_path_or_name() {
+        let dir = TempDir::new();
+        let missing = dir.path().join("secret-name.png");
+        let reason = sniff_checked(&missing).err().unwrap();
+        assert!(!reason.contains("secret"));
+        assert_eq!(sniff_checked(dir.path()).err(), Some("not a regular file"));
     }
 
     #[test]

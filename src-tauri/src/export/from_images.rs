@@ -353,6 +353,8 @@ fn run(
                 if error.code() == ErrorCode::Cancelled {
                     return Err(error);
                 }
+                // The code only above debug level: no path, no name.
+                eprintln!("sheer: image {} skipped: {}", index + 1, error.code());
                 skipped += 1;
             }
         }
@@ -371,6 +373,8 @@ fn run(
     drop(pages);
     ctx.check()?;
     let after = bytes.len() as u64;
+    // A tab may have opened the target while the job ran.
+    ensure_target_free(state, target)?;
     let opened = state.publish(target, &bytes)?;
     ctx.progress(Phase::Write, 1, 1);
     Ok(JobDone {
@@ -387,6 +391,14 @@ fn run(
         skipped,
         print: None,
     })
+}
+
+/// `io_in_use` when `target` is the file of an open document; checked at the start and again just before the write.
+pub fn ensure_target_free(state: &AppState, target: &std::path::Path) -> Result<(), AppError> {
+    if state.target_is_open(target) {
+        return Err(AppError::new(ErrorCode::IoInUse));
+    }
+    Ok(())
 }
 
 /// Starts the job on `jobs` for `inputs` and the Save As choice `target` (checked here: a plain local path, not an open document).
@@ -407,9 +419,7 @@ pub fn start_job(
         return Err(AppError::limit("images", limits::MAX_IMAGES_PER_PDF as u64));
     }
     let target = intake::admit_target(target)?;
-    if state.target_is_open(&target) {
-        return Err(AppError::new(ErrorCode::IoInUse));
-    }
+    ensure_target_free(state, &target)?;
     let (state, opts, producer) = (state.clone(), *opts, producer.to_owned());
     registry.start(sink, move |ctx| {
         run(ctx, &state, &inputs, &opts, &target, &producer)
