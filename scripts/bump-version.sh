@@ -3,6 +3,7 @@
 # (CLAUDE.md, ORCHESTRATOR_PROMPT 8.3 step 5).
 #
 #   scripts/bump-version.sh X.Y.Z     write X.Y.Z to every file below
+#   scripts/bump-version.sh X.Y.Z-pre a SemVer pre-release (e.g. 1.2.0-beta.1): dot-separated alphanumeric identifiers
 #   scripts/bump-version.sh --check   fail unless every file already carries the same version
 #
 # Files: package.json, package-lock.json (root entry), src-tauri/Cargo.toml ([package]),
@@ -136,7 +137,7 @@ set_lock_crate_version() { # version
 
 # --- main ------------------------------------------------------------------------------------------------------
 
-[ $# -eq 1 ] || die "usage: scripts/bump-version.sh X.Y.Z | --check"
+[ $# -eq 1 ] || die "usage: scripts/bump-version.sh X.Y.Z[-pre] | --check"
 
 for f in "$PACKAGE_JSON" "$PACKAGE_LOCK" "$CARGO_TOML" "$CARGO_LOCK" "$TAURI_CONF"; do
   [ -f "$f" ] || die "missing $f"
@@ -149,8 +150,9 @@ if [ "$1" = "--check" ]; then
 fi
 
 NEW="$1"
-if ! [[ "$NEW" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
-  die "'$NEW' is not a plain X.Y.Z version"
+# X.Y.Z with an optional SemVer pre-release; no build metadata (+...), which Cargo and the bundlers treat inconsistently.
+if ! [[ "$NEW" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z]+(\.[0-9A-Za-z]+)*)?$ ]]; then
+  die "'$NEW' is not an X.Y.Z or X.Y.Z-pre version"
 fi
 
 # Only touch files whose version differs, so a no-op bump never rewrites (or races with edits to) a file.

@@ -193,8 +193,8 @@ jobs:
           } > notes.md
 
           flags=()
-          # Versions before 1.0 are pre-releases.
-          if [[ "$version" == 0.* ]]; then flags+=(--prerelease); fi
+          # Versions before 1.0 and SemVer pre-releases (1.2.0-beta.1) are pre-releases, so GitHub never marks them "Latest".
+          if [[ "$version" == 0.* || "$version" == *-* ]]; then flags+=(--prerelease); fi
 
           if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
             gh release edit "$RELEASE_TAG" --title "sheer. $version" --notes-file notes.md "${flags[@]}"

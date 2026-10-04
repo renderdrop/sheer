@@ -1935,3 +1935,16 @@ R5 (motion) only after the owner's feedback.
 **Consequences.** The wave 4 tool sidebar (`src/features/tools/`) is replaced, not polished; the wave 5 fix package drops its sidebar
 items. The v1.2 command map (ARCHITECTURE §12) is redone for the menu bar. `ui.inspector`/`toolSidebarCollapsed` lose their meaning
 and are removed with the shell package.
+
+## ADR-103 — SemVer pre-releases (v1.2.0-beta.1 for the owner checkpoint)
+
+**Status:** accepted (2026-10-04). Owner request: publish the checkpoint state as pre-release v1.2.0-beta.1 through the release
+workflow so the macOS DMG is on GitHub; `.claude/state/STOP` stays set.
+
+**Decision.** (1) `scripts/bump-version.sh` accepts `X.Y.Z-pre` (dot-separated alphanumeric identifiers), still no build metadata.
+(2) `release.yml` marks every version with a pre-release suffix as a GitHub pre-release (as before for `0.*`), so it is never "Latest".
+(3) The updater reads `/releases/latest/download/latest.json`, which GitHub never resolves to a pre-release, so a beta is never offered
+as an update; installed betas update to the next stable release (1.2.0 > 1.2.0-beta.1 in SemVer). (4) CHANGELOG gets a
+`[1.2.0-beta.1]` section; the final `[1.2.0]` section will repeat the full milestone notes.
+
+**Consequences.** Checkpoint builds are reproducible from a tag; the v1.2.0 milestone tag is unaffected.

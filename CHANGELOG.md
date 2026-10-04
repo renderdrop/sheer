@@ -6,6 +6,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.2.0-beta.1] - 2026-10-04
+
+Pre-release of v1.2 "sheer." for the owner checkpoint (ADR-102): the redesign as of the checkpoint, before motion (R5), onboarding (R6) and the final acceptance (R7). Unsigned.
+
 v1.2 "sheer." redesign, in progress (docs/REDESIGN_BRIEF.md, ADR-100 to ADR-102).
 
 ### Changed
