@@ -1,8 +1,8 @@
 # STATE
 phase: v1.2 Redesign "sheer." (docs/REDESIGN_BRIEF.md, ADR-100, wave plan ADR-101)
 version: 1.1.0
-current_item: wave 3 running — S shell skeleton, C1 R4.1 primitives, C2 R4.2 primitives, F1 brand fixes + R1.5
-last_completed: R0 accepted (designer PASS, 4465aa8); B1, R1.1–R1.4 done
+current_item: wave 4 running — W-Home (R2), W-TopBar (R3.1), W-Tools (R3.3), W-Sidebar (R3.2 + canvas + comments tab)
+last_completed: wave 3 (shell skeleton 91b7869, R4.1/R4.2 primitives, R1.5 + brand fixes)
 loop_count_this_session: 0
 open_blockers: 3 human-only (B-001, B-002, B-005)
 notes: Next wave 4 fills the skeleton slots: Home (R2), top bar (R3.1), tool sidebar (R3.3), page sidebar + canvas (R3.2).
