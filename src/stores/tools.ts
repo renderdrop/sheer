@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 
-import type { LineEnd, Rgb } from '../api/annotations';
+import type { LineEnd, Rgb, TextAlign } from '../api/annotations';
 import type { ToolId } from './ui';
 
 /**
@@ -24,6 +24,8 @@ const STORAGE_KEY = 'sheer.toolVariants';
 const DEFAULTS_KEY = 'sheer.toolDefaults';
 const KINDS: readonly CreationKind[] = [...MARKUP_VARIANTS, 'note', 'freeText', 'ink', ...SHAPE_VARIANTS];
 const HEADS: readonly LineEnd[] = ['none', 'openArrow', 'closedArrow'];
+const ALIGNS: readonly TextAlign[] = ['left', 'center', 'right'];
+const isColour = (c: unknown): c is Rgb => Array.isArray(c) && c.length === 3 && c.every(isByte);
 
 const isByte = (n: unknown): n is number => typeof n === 'number' && Number.isInteger(n) && n >= 0 && n <= 255;
 const isNum = (n: unknown, min: number, max: number): n is number =>
@@ -36,9 +38,17 @@ export function parseDefaults(raw: unknown): KindDefaults {
   for (const kind of KINDS) {
     const entry = (raw as Record<string, unknown>)[kind];
     if (typeof entry !== 'object' || entry === null) continue;
-    const { color, opacity, width, fontSize, head } = entry as Record<string, unknown>;
+    const { color, opacity, width, fontSize, head, align, border, borderWidth, borderColor, fillOn, fillColor } =
+      entry as Record<string, unknown>;
     const value: { -readonly [K in keyof KindDefault]: KindDefault[K] } = {};
-    if (Array.isArray(color) && color.length === 3 && color.every(isByte)) value.color = color as unknown as Rgb;
+    if (isColour(color)) value.color = color;
+    const knownAlign = ALIGNS.find((a) => a === align);
+    if (knownAlign !== undefined) value.align = knownAlign;
+    if (typeof border === 'boolean') value.border = border;
+    if (isNum(borderWidth, 0.5, 72)) value.borderWidth = borderWidth;
+    if (isColour(borderColor)) value.borderColor = borderColor;
+    if (typeof fillOn === 'boolean') value.fillOn = fillOn;
+    if (isColour(fillColor)) value.fillColor = fillColor;
     if (isNum(opacity, 0.1, 1)) value.opacity = opacity;
     if (isNum(width, 0.5, 72)) value.width = width;
     if (isNum(fontSize, 6, 144)) value.fontSize = fontSize;
@@ -75,6 +85,13 @@ export interface KindDefault {
   width?: number;
   fontSize?: number;
   head?: LineEnd;
+  /** Text comment (DESIGN 3.5 B4): alignment, border on/off with its width and colour, fill on/off with its colour. */
+  align?: TextAlign;
+  border?: boolean;
+  borderWidth?: number;
+  borderColor?: Rgb;
+  fillOn?: boolean;
+  fillColor?: Rgb;
 }
 
 export type KindDefaults = Readonly<Partial<Record<CreationKind, KindDefault>>>;

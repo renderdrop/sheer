@@ -21,6 +21,7 @@ import {
   type CreationStyle,
 } from './drafts';
 import { reportRefusal } from './refusal';
+import { textStyleOf } from './textStyle';
 import { boxFromPoints, clampToPage, isDrag } from './geometry';
 import {
   INK_JOIN_MS,
@@ -125,7 +126,11 @@ function ActiveLayer({
   const nextPreview = useRef<(() => Preview | null) | null>(null);
   const [preview, setPreview] = useState<Preview | null>(null);
   const chosen = useAnnotationStyle(kind);
-  const style: CreationStyle = useMemo(() => ({ ...defaultStyle(kind), ...chosen }), [kind, chosen]);
+  const textDefaults = useTools((state) => state.defaults.freeText);
+  const style: CreationStyle = useMemo(
+    () => ({ ...defaultStyle(kind), ...chosen, ...(kind === 'freeText' ? textStyleOf(textDefaults) : {}) }),
+    [kind, chosen, textDefaults],
+  );
 
   const rotation = normalizeRotation(transform.rotation);
   const page = useMemo(() => [pageBox.width, pageBox.height] as const, [pageBox.width, pageBox.height]);

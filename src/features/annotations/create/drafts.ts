@@ -1,8 +1,9 @@
-import type { AnnotationDraft, LineEnd, Rgb, Stroke } from '../../../api/annotations';
+import type { AnnotationDraft, LineEnd, Rgb, Stroke, TextAlign } from '../../../api/annotations';
 import type { Point, Quad } from '../../../api/wire';
 import type { CreationKind } from '../../../stores/tools';
 import { DEFAULT_COLOURS, HIGHLIGHT_OPACITY } from '../../inspector/palette';
 import { boxFromPoints, boxInPage, clampToPage, constrainSquare, snapAngle } from './geometry';
+import { FREE_TEXT_MIN_WIDTH, boxHeight, startX } from './freeTextLayout';
 import { strokeOutline, toPoints, type Sample } from './ink';
 
 /** The annotation drafts a creation makes (one `createAnnotation` command each), and the style they start from. */
@@ -22,6 +23,10 @@ export interface CreationStyle {
   dashed: boolean;
   fontSize: number;
   head: LineEnd;
+  /** Text comment only: the alignment of its lines, its border (0 is none) and the border's colour. `fill` is its background. */
+  align: TextAlign;
+  borderWidth: number;
+  borderColor: Rgb;
 }
 
 /** What a new annotation of a kind looks like until the inspector says otherwise. */
@@ -34,6 +39,9 @@ export function defaultStyle(kind: CreationKind): CreationStyle {
     dashed: false,
     fontSize: 12,
     head: 'none',
+    align: 'left',
+    borderWidth: 0,
+    borderColor: PALETTE.ink,
   };
   switch (kind) {
     case 'highlight':
@@ -49,7 +57,7 @@ export function defaultStyle(kind: CreationKind): CreationStyle {
   }
 }
 
-/** The size of a free text box made by a click, in points. */
+/** The size of a free text box made by dragging when the drag is too small to be one, in points. */
 export const FREE_TEXT_SIZE = { w: 160, h: 36 } as const;
 /** Where a note's icon is anchored relative to the click: the icon is 20 pt, centred on the click. */
 export const NOTE_HALF_PT = 10;
@@ -74,7 +82,11 @@ export function noteDraft(
   return { kind: 'note', pageId, at: p, icon: 'comment', color: style.color, opacity: 1 };
 }
 
-/** A free text box from a click (default size) or a drag; the text is empty and the editor fills it. */
+/**
+ * A free text box from a click or a drag; the text is empty and the editor fills it (DESIGN 3.5 B4). A click puts the box's top-left at
+ * the click, 24 pt wide and one line high; it grows while the user types. If less than 96 pt is left to the page's right edge the box
+ * moves left. A drag makes the box the size of the drag.
+ */
 export function freeTextDraft(
   pageId: number,
   from: Point,
@@ -86,7 +98,13 @@ export function freeTextDraft(
   const box =
     dragged !== null && dragged.w >= 8 && dragged.h >= 8
       ? boxInPage({ x: dragged.x, y: dragged.y }, dragged.w, dragged.h, page[0], page[1])
-      : boxInPage(from, FREE_TEXT_SIZE.w, FREE_TEXT_SIZE.h, page[0], page[1]);
+      : boxInPage(
+          { x: startX(from.x, page[0]), y: from.y },
+          FREE_TEXT_MIN_WIDTH,
+          boxHeight(1, style.fontSize),
+          page[0],
+          page[1],
+        );
   return {
     kind: 'freeText',
     pageId,
@@ -94,7 +112,9 @@ export function freeTextDraft(
     lines: [],
     fontSize: style.fontSize,
     fill: style.fill,
-    borderWidth: 0,
+    borderWidth: style.borderWidth,
+    borderColor: style.borderWidth > 0 ? style.borderColor : null,
+    align: style.align,
     color: style.color,
     opacity: 1,
   };

@@ -8,7 +8,9 @@
 use std::fmt::Write as _;
 
 use super::coords::Mapper;
-use crate::model::annotation::{Annotation, AnnotationBody, LineEnd, NoteIcon, Rgb, Stroke};
+use crate::model::annotation::{
+    Annotation, AnnotationBody, LineEnd, NoteIcon, Rgb, Stroke, TextAlign,
+};
 use crate::model::geometry::{Point, Quad};
 use crate::signatures::{marks, Art, DrawCmd};
 
@@ -225,6 +227,35 @@ pub fn win_ansi(c: char) -> u8 {
     }
 }
 
+/// Advance widths of Helvetica (Adobe AFM, 1/1000 em) for the printable ASCII characters 0x20 to 0x7E.
+const HELVETICA_WIDTHS: [u16; 95] = [
+    278, 278, 355, 556, 556, 889, 667, 191, 333, 333, 389, 584, 278, 333, 278, 278, 556, 556, 556,
+    556, 556, 556, 556, 556, 556, 556, 278, 278, 584, 584, 584, 556, 1015, 667, 667, 722, 722, 667,
+    611, 778, 722, 278, 500, 667, 556, 833, 722, 778, 667, 778, 722, 667, 611, 722, 667, 944, 667,
+    667, 611, 278, 278, 278, 469, 556, 333, 556, 556, 500, 556, 556, 278, 556, 556, 222, 222, 500,
+    222, 833, 556, 556, 556, 556, 333, 500, 278, 556, 500, 722, 500, 500, 500, 334, 260, 334, 584,
+];
+
+/// The width of `text` in Helvetica at `font_size` points. Characters the table does not hold count as 556 (the width of most
+/// accented Latin letters); the free text's alignment needs no more than that.
+pub fn helvetica_width(text: &str, font_size: f32) -> f32 {
+    let units: u32 = text
+        .chars()
+        .map(|c| match win_ansi(c) {
+            byte @ 0x20..=0x7E => u32::from(HELVETICA_WIDTHS[usize::from(byte - 0x20)]),
+            _ => 556,
+        })
+        .sum();
+    units as f32 * font_size / 1000.0
+}
+
+/// The inset of a free text's lines from its box, in points (DESIGN 3.5 B4: padding 4 pt).
+pub const FREE_TEXT_PAD_PT: f32 = 4.0;
+
+/// Where the first baseline sits below the top of the text area, as a share of the font size: half the leading left over by
+/// Helvetica's ascent and descent, plus the ascent, which is where the editor's line box puts it.
+const FREE_TEXT_BASELINE: f32 = 0.86;
+
 /// `text` as a PDF literal string in WinAnsi, for a `Tj`.
 fn literal(text: &str) -> String {
     let mut out = String::from("(");
@@ -379,6 +410,8 @@ pub fn build_with(
             font_size,
             fill,
             border_width,
+            align,
+            border_color,
         } => {
             let [x0, y0, x1, y1] = m.rect(*bounds);
             if let Some(fill) = fill {
@@ -393,7 +426,7 @@ pub fn build_with(
                 );
             }
             if *border_width > 0.0 {
-                stroke_color(&mut c, annotation.color);
+                stroke_color(&mut c, border_color.unwrap_or(annotation.color));
                 let half = border_width / 2.0;
                 let _ = writeln!(
                     c,
@@ -407,7 +440,7 @@ pub fn build_with(
             }
             if lines.iter().any(|line| !line.is_empty()) {
                 uses_font = true;
-                let pad = border_width + 2.0;
+                let pad = FREE_TEXT_PAD_PT;
                 // The box clips the text, as the overlay's does.
                 let _ = writeln!(
                     c,
@@ -419,16 +452,21 @@ pub fn build_with(
                 );
                 fill_color(&mut c, annotation.color);
                 let leading = font_size * 1.2;
-                let _ = writeln!(
-                    c,
-                    "BT\n/{FONT_NAME} {} Tf\n{} TL\n{} {} Td",
-                    num(*font_size),
-                    num(leading),
-                    num(x0 + pad),
-                    num(y1 - pad - font_size * 0.8)
-                );
-                for line in lines {
-                    let _ = writeln!(c, "{} Tj\nT*", literal(line));
+                let _ = writeln!(c, "BT\n/{FONT_NAME} {} Tf", num(*font_size));
+                for (n, line) in lines.iter().enumerate() {
+                    let spare = (x1 - x0 - 2.0 * pad - helvetica_width(line, *font_size)).max(0.0);
+                    let inset = match align {
+                        TextAlign::Left => 0.0,
+                        TextAlign::Center => spare / 2.0,
+                        TextAlign::Right => spare,
+                    };
+                    let _ = writeln!(
+                        c,
+                        "1 0 0 1 {} {} Tm\n{} Tj",
+                        num(x0 + pad + inset),
+                        num(y1 - pad - font_size * FREE_TEXT_BASELINE - leading * n as f32),
+                        literal(line)
+                    );
                 }
                 c.push_str("ET\n");
             }
@@ -698,6 +736,8 @@ mod tests {
                 font_size: 12.0,
                 fill: Some(Rgb([255, 255, 255])),
                 border_width: 1.0,
+                align: TextAlign::Left,
+                border_color: None,
             },
             rect(72.0, 100.0, 200.0, 40.0),
         );

@@ -55,7 +55,16 @@ const BODIES: Record<string, Record<string, unknown>> = {
   underline: { kind: 'underline', quads: [QUAD] },
   strikeout: { kind: 'strikeout', quads: [QUAD] },
   note: { kind: 'note', at: POINT, icon: 'comment' },
-  freeText: { kind: 'freeText', box: RECT, lines: ['a', 'b'], fontSize: 12, fill: null, borderWidth: 0 },
+  freeText: {
+    kind: 'freeText',
+    box: RECT,
+    lines: ['a', 'b'],
+    fontSize: 12,
+    fill: [255, 248, 77],
+    borderWidth: 1,
+    align: 'center',
+    borderColor: [31, 158, 106],
+  },
   ink: { kind: 'ink', strokes: [{ points: [POINT], outline: [POINT, POINT, POINT] }], width: 2 },
   rect: { kind: 'rect', box: RECT, width: 1, fill: [1, 2, 3], dashed: true },
   ellipse: { kind: 'ellipse', box: RECT, width: 1, fill: null, dashed: false },
@@ -70,6 +79,13 @@ describe('parseAnnotation', () => {
   it.each(Object.keys(BODIES))('reads a %s with its geometry', (kind) => {
     const wire = common(BODIES[kind] ?? {});
     expect(parseAnnotation(wire)).toStrictEqual(wire);
+  });
+
+  it('reads a free text from before alignment and border colour existed as left and without a border colour', () => {
+    const old = common({ kind: 'freeText', box: RECT, lines: ['a'], fontSize: 12, fill: null, borderWidth: 0 });
+    expect(parseAnnotation(old)).toMatchObject({ align: 'left', borderColor: null });
+    expect(parseAnnotation(common({ ...BODIES.freeText, align: 'justify' }))).toBeNull();
+    expect(parseAnnotation(common({ ...BODIES.freeText, borderColor: [1, 2] }))).toBeNull();
   });
 
   it('drops keys that are not part of an annotation', () => {

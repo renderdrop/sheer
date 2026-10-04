@@ -5,6 +5,7 @@ import type { Point, Rect } from '../../../api/wire';
 import { rgbToCss } from '../../inspector/palette';
 import { MarkShape, SignatureShape } from '../../signatures/place/SignatureShape';
 import { quadBox } from '../../viewer/transform';
+import { FREE_TEXT_PAD, textWidth } from '../create/freeTextLayout';
 
 /**
  * The look of every annotation kind in page space (DESIGN 3.23), as SVG. The colors are the document's own (annotation colors
@@ -19,7 +20,9 @@ const NOTE_GLYPH_INSET = 0.2;
 /** The line height of free text, as a multiple of the font size. */
 const LINE_HEIGHT = 1.2;
 /** The inset of free text from its box, in points. */
-const TEXT_PAD_PT = 2;
+const TEXT_PAD_PT = FREE_TEXT_PAD;
+/** The first baseline below the top of the text area, in times the font size (the same as the appearance stream and the editor). */
+const BASELINE = 0.86;
 const ARROW_LENGTH_FACTOR = 4;
 const ARROW_MIN_PT = 6;
 /** The share of a markup's height at which the strike-out runs, and the underline's width as a share of the height. */
@@ -147,19 +150,31 @@ export const Shape = memo(function Shape({ a, docId }: { a: Annotation; docId?: 
             width={a.box.w}
             height={a.box.h}
             fill={a.fill === null ? 'none' : rgbToCss(a.fill)}
-            stroke={a.borderWidth > 0 ? color : 'none'}
+            stroke={
+              a.borderWidth > 0
+                ? a.borderColor === null || a.borderColor === undefined
+                  ? color
+                  : rgbToCss(a.borderColor)
+                : 'none'
+            }
             strokeWidth={a.borderWidth}
           />
           <text fill={color} fontFamily="Helvetica, Arial, sans-serif" fontSize={a.fontSize}>
-            {a.lines.map((line, i) => (
-              <tspan
-                key={i}
-                x={a.box.x + TEXT_PAD_PT}
-                y={a.box.y + TEXT_PAD_PT + a.fontSize * (1 + i * LINE_HEIGHT) * 0.92}
-              >
-                {line}
-              </tspan>
-            ))}
+            {a.lines.map((line, i) => {
+              // Where the line starts, as the appearance stream places it: by the width Helvetica gives the line.
+              const room = a.box.w - 2 * TEXT_PAD_PT;
+              const spare = Math.max(0, room - textWidth(line, a.fontSize));
+              const inset = a.align === 'center' ? spare / 2 : a.align === 'right' ? spare : 0;
+              return (
+                <tspan
+                  key={i}
+                  x={a.box.x + TEXT_PAD_PT + inset}
+                  y={a.box.y + TEXT_PAD_PT + a.fontSize * (BASELINE + i * LINE_HEIGHT)}
+                >
+                  {line}
+                </tspan>
+              );
+            })}
           </text>
         </g>
       );

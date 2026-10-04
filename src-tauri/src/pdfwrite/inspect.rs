@@ -18,6 +18,12 @@ pub struct Summary {
     pub is_reply: bool,
     /// `/CA`, the constant opacity.
     pub opacity: Option<f32>,
+    /// `/Q`, the quadding of a free text.
+    pub quadding: Option<i64>,
+    /// `/DA`, the default appearance string of a free text.
+    pub default_appearance: Option<String>,
+    /// `/BS /W`, the border width.
+    pub border_width: Option<f32>,
 }
 
 fn numbers(doc: &Document, dict: &Dictionary, key: &[u8]) -> Vec<f32> {
@@ -71,6 +77,20 @@ pub fn list_annotations(bytes: &[u8]) -> Result<Vec<Summary>, AppError> {
                 quad_points: numbers(&doc, dict, b"QuadPoints"),
                 is_reply: matches!(dict.get(b"IRT"), Ok(Object::Reference(_))),
                 opacity: dict.get(b"CA").and_then(Object::as_float).ok(),
+                quadding: dict.get(b"Q").and_then(Object::as_i64).ok(),
+                default_appearance: match dict.get(b"DA") {
+                    Ok(Object::String(bytes, _)) => {
+                        Some(String::from_utf8_lossy(bytes).into_owned())
+                    }
+                    _ => None,
+                },
+                border_width: dict
+                    .get(b"BS")
+                    .and_then(|style| doc.dereference(style).map(|(_, o)| o))
+                    .and_then(Object::as_dict)
+                    .and_then(|style| style.get(b"W"))
+                    .and_then(Object::as_float)
+                    .ok(),
             });
         }
     }

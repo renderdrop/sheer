@@ -4,6 +4,8 @@ import { useT } from '../../i18n';
 import { isOwnEvent, itemsOf, rovingTarget } from '../../components/roving';
 import { applyChange, changeKind, deleteSelection, openComment } from './actions';
 import {
+  AlignControl,
+  BorderControl,
   ColourControl,
   CommentControl,
   DeleteControl,
@@ -15,6 +17,7 @@ import {
   MARKUP_KINDS,
   OpacityControl,
   StrokeControl,
+  TextFillControl,
 } from './Controls';
 import { controlsOf, valuesOf, type MiniObject } from './model';
 
@@ -85,7 +88,12 @@ export function MiniBar({ docId, objects, ref, onReturn }: MiniBarProps) {
   };
 
   const nodes: ReactNode[] = [];
-  const add = (key: string, node: ReactNode) => nodes.push(<Fragment key={key}>{node}</Fragment>);
+  // The fill sits right beside the border, without a divider (DESIGN 3.5 B4).
+  const joined = new Set<number>();
+  const add = (key: string, node: ReactNode) => {
+    if (key === 'textFill') joined.add(nodes.length);
+    nodes.push(<Fragment key={key}>{node}</Fragment>);
+  };
   for (const control of controls) {
     switch (control) {
       case 'colourHighlight':
@@ -131,6 +139,22 @@ export function MiniBar({ docId, objects, ref, onReturn }: MiniBarProps) {
           <FontSizeControl value={values.fontSize} disabled={locked} onChange={(fontSize) => change({ fontSize })} />,
         );
         break;
+      case 'align':
+        add(control, <AlignControl value={values.align} disabled={locked} onChange={(align) => change({ align })} />);
+        break;
+      case 'textBorder':
+        add(
+          control,
+          <BorderControl
+            value={{ width: values.borderWidth, colour: values.borderColour }}
+            disabled={locked}
+            onChange={change}
+          />,
+        );
+        break;
+      case 'textFill':
+        add(control, <TextFillControl value={values.fill} disabled={locked} onChange={(fill) => change({ fill })} />);
+        break;
       case 'comment':
         add(
           control,
@@ -163,7 +187,9 @@ export function MiniBar({ docId, objects, ref, onReturn }: MiniBarProps) {
       }}
       className="pointer-events-auto flex h-control-lg items-center gap-1 rounded-md border border-border-subtle bg-surface-solid p-1 shadow-floating"
     >
-      {nodes.flatMap((node, index) => (index === 0 ? [node] : [<Divider key={`d${index}`} />, node]))}
+      {nodes.flatMap((node, index) =>
+        index === 0 || joined.has(index) ? [node] : [<Divider key={`d${index}`} />, node],
+      )}
       {nodes.length > 0 && <Divider />}
       <DeleteControl
         label={t('minibar.delete')}

@@ -18,9 +18,10 @@ use crate::error::AppError;
 use crate::limits;
 use crate::model::annotation::{
     normalize_angle, rotated_bounds, AnnotationBody, Imported, NoteIcon, PdfOrigin, Rgb,
-    SignatureArtRef, SignatureRole, MIN_SIGNATURE_SIDE_PT,
+    SignatureArtRef, SignatureRole, TextAlign, MIN_SIGNATURE_SIDE_PT,
 };
 use crate::model::geometry::{PageBox, Point, Quad, Rect};
+use crate::pdfwrite::appearance::FREE_TEXT_PAD_PT;
 use crate::signatures::marks::{parse_name, split_turn, Named, Turn};
 
 /// Colour of a highlight that has none; any other annotation without a colour is black.
@@ -81,6 +82,72 @@ fn path_colors(annotation: &PdfPageAnnotation<'_>) -> (Option<Rgb>, Option<Rgb>)
     // (`FPDFAnnot_GetColor`, then the page-object fallback) crash the worker for the second kind, and the handle cannot tell the two
     // apart, so they are not called: the colour is the default of the kind.
     (stroke, fill)
+}
+
+/// What the appearance of a free text says about its look (ADR-110). PDFium has no accessor for `/DA`, `/Q` or `/BS` and the
+/// appearance carries all of them (ours, and any other writer's): the text objects give size, colour and where the lines sit in the
+/// box (left, centred or right), the stroked path gives the border.
+struct FreeTextLook {
+    font_size: f32,
+    color: Option<Rgb>,
+    border_width: f32,
+    border_color: Option<Rgb>,
+    align: TextAlign,
+}
+
+fn free_text_look(annotation: &PdfPageAnnotation<'_>, left: f32, right: f32) -> FreeTextLook {
+    let mut look = FreeTextLook {
+        font_size: DEFAULT_FONT_SIZE_PT,
+        color: None,
+        border_width: 0.0,
+        border_color: None,
+        align: TextAlign::Left,
+    };
+    let (mut sized, mut border) = (false, false);
+    // Gaps of each line to the box's left and right edge, and whether every line fits one of the alignments.
+    let (mut all_left, mut all_right, mut any_line) = (true, true, false);
+    for object in annotation.objects().iter().take(256) {
+        if let Some(text) = object.as_text_object() {
+            if !sized {
+                let size = text.scaled_font_size().value;
+                if size.is_finite()
+                    && (limits::MIN_FONT_SIZE_PT..=limits::MAX_FONT_SIZE_PT).contains(&size)
+                {
+                    look.font_size = size;
+                }
+                look.color = text.fill_color().ok().map(|color| rgb(&color));
+                sized = true;
+            }
+            // A text object with no extent (an empty string) says nothing about the alignment.
+            if let Ok(bounds) = text
+                .bounds()
+                .map_err(|_| ())
+                .and_then(|b| (b.width().value > 0.0).then_some(b).ok_or(()))
+            {
+                let slack = 2.0 + 0.1 * look.font_size;
+                let gap_left = bounds.left().value - left;
+                let gap_right = right - bounds.right().value;
+                any_line = true;
+                all_left &= (gap_left - FREE_TEXT_PAD_PT).abs() <= slack;
+                all_right &= (gap_right - FREE_TEXT_PAD_PT).abs() <= slack;
+            }
+        } else if let Some(path) = object.as_path_object() {
+            if !border && path.is_stroked().unwrap_or(false) {
+                let width = path.stroke_width().map_or(0.0, |w| w.value);
+                if width.is_finite() && width > 0.0 && width <= limits::MAX_ANNOT_STROKE_PT {
+                    look.border_width = width;
+                    look.border_color = path.stroke_color().ok().map(|color| rgb(&color));
+                    border = true;
+                }
+            }
+        }
+    }
+    look.align = match (any_line, all_left, all_right) {
+        (false, ..) | (_, true, _) => TextAlign::Left,
+        (_, false, true) => TextAlign::Right,
+        _ => TextAlign::Center,
+    };
+    look
 }
 
 /// The quads of a text markup, in page space. A markup without usable quads covers its rectangle.
@@ -216,24 +283,29 @@ fn read_one(
             },
             stroke.or(fill).unwrap_or(DEFAULT_MARKUP),
         ),
-        PdfPageAnnotationType::FreeText => (
-            AnnotationBody::FreeText {
-                bounds: rect,
-                lines: contents
-                    .split('\n')
-                    .take(limits::MAX_FREE_TEXT_LINES)
-                    .map(|line| {
-                        line.chars()
-                            .take(limits::MAX_FREE_TEXT_LINE_CHARS)
-                            .collect()
-                    })
-                    .collect(),
-                font_size: DEFAULT_FONT_SIZE_PT,
-                fill,
-                border_width: 0.0,
-            },
-            stroke.unwrap_or(BLACK),
-        ),
+        PdfPageAnnotationType::FreeText => {
+            let look = free_text_look(annotation, bounds.left().value, bounds.right().value);
+            (
+                AnnotationBody::FreeText {
+                    bounds: rect,
+                    lines: contents
+                        .split('\n')
+                        .take(limits::MAX_FREE_TEXT_LINES)
+                        .map(|line| {
+                            line.chars()
+                                .take(limits::MAX_FREE_TEXT_LINE_CHARS)
+                                .collect()
+                        })
+                        .collect(),
+                    font_size: look.font_size,
+                    fill,
+                    border_width: look.border_width,
+                    align: look.align,
+                    border_color: look.border_color,
+                },
+                look.color.unwrap_or(BLACK),
+            )
+        }
         PdfPageAnnotationType::Square => (
             AnnotationBody::Rect {
                 bounds: rect,

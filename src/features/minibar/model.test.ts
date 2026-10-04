@@ -35,7 +35,7 @@ describe('controlsOf (DESIGN v2 3.3 table)', () => {
     ]);
     expect(
       controlsOf([make(1, { kind: 'freeText', box: {}, lines: [], fontSize: 12, fill: null, borderWidth: 0 })]),
-    ).toEqual(['colourStroke', 'fontSize']);
+    ).toEqual(['colourStroke', 'fontSize', 'align', 'textBorder', 'textFill']);
     expect(controlsOf([ink(1)])).toEqual(['colourStroke', 'strokeWidth', 'opacity']);
     expect(controlsOf([rect(1)])).toEqual(['colourStroke', 'strokeWidth', 'opacity', 'fill']);
     expect(controlsOf([make(1, { kind: 'mark', box: {}, glyph: 'check' })])).toEqual(['kindMark']);

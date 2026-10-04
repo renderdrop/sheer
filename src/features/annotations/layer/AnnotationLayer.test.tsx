@@ -224,9 +224,11 @@ describe('selection', () => {
     await act(async () => {
       fireEvent.keyDown(field, { key: 'Escape' });
     });
+    // The box grew with the text (DESIGN 3.5 B4): it is part of the same patch.
+    const grown: unknown = expect.objectContaining({ x: 10, y: 150 });
     expect(mocked.applyCommand).toHaveBeenCalledWith(
       1,
-      expect.objectContaining({ type: 'updateAnnotation', id: 5, patch: { lines: ['Hallo Welt'] } }),
+      expect.objectContaining({ type: 'updateAnnotation', id: 5, patch: { lines: ['Hallo Welt'], box: grown } }),
     );
     expect(screen.queryByRole('textbox')).toBeNull();
   });
@@ -579,5 +581,58 @@ describe('moving in every tool and turning (ADR-105)', () => {
     expect(sent.id).toBe(5);
     expect(sent.patch.angle % 15).toBe(0);
     expect(sent.patch.angle).toBeGreaterThan(0);
+  });
+});
+
+describe('text comment (DESIGN 3.5 B4)', () => {
+  function click(container: HTMLElement) {
+    const surface = container.querySelector<HTMLElement>('[data-creation-layer]');
+    if (surface === null) throw new Error('no creation layer');
+    surface.getBoundingClientRect = () =>
+      ({ left: 0, top: 0, width: 200, height: 400, right: 200, bottom: 400, x: 0, y: 0, toJSON: () => '' }) as DOMRect;
+    fireEvent.pointerDown(surface, { button: 0, clientX: 160, clientY: 300, pointerId: 1 });
+    fireEvent.pointerUp(surface, { button: 0, clientX: 160, clientY: 300, pointerId: 1 });
+  }
+
+  it('one click makes the box and puts the caret in it, with no double-click; typing grows the box', async () => {
+    useUi.setState({ activeTool: 'text' });
+    const made = box(9, 10, 20, 'new', {
+      kind: 'freeText',
+      box: { x: 10, y: 20, w: 24, h: 22.4 },
+      rect: { x: 10, y: 20, w: 24, h: 22.4 },
+      lines: [],
+      fontSize: 12,
+      fill: null,
+      borderWidth: 0,
+      align: 'left',
+      borderColor: null,
+    } as Partial<Annotation>);
+    mocked.applyCommand.mockResolvedValue({ ...empty, upserted: [made] });
+    const { container } = render(<AnnotationLayer {...props()} />);
+    click(container);
+    await act(async () => undefined);
+    expect(mocked.applyCommand).toHaveBeenCalledWith(
+      1,
+      expect.objectContaining({
+        type: 'createAnnotation',
+        draft: expect.objectContaining({
+          kind: 'freeText',
+          lines: [],
+          box: expect.objectContaining({ x: 0, y: 150, w: 24 }),
+        }),
+      }),
+    );
+    const field = (await screen.findByRole('textbox')) as HTMLTextAreaElement;
+    expect(document.activeElement).toBe(field);
+    expect(field.placeholder).toBe('Type…');
+    // Short text: the box hugs it (to the right); a long one stops at the page's limit and grows downward.
+    const narrow = Number.parseFloat(field.style.width);
+    fireEvent.change(field, { target: { value: 'Hi there' } });
+    const wider = Number.parseFloat(field.style.width);
+    expect(wider).toBeGreaterThan(narrow);
+    fireEvent.change(field, { target: { value: 'Hi there '.repeat(30) } });
+    const wrapped = Number.parseFloat(field.style.height);
+    expect(Number.parseFloat(field.style.width)).toBeLessThanOrEqual(96);
+    expect(wrapped).toBeGreaterThan(40);
   });
 });

@@ -53,3 +53,14 @@ export { Segmented, type SegmentedOption, type SegmentedProps } from './Segmente
 export { Skeleton, type SkeletonProps } from './Skeleton';
 export { Swatch, type SwatchProps } from './Swatch';
 export { Toggle, type ToggleProps } from './Toggle';
+export { ColourPopover, type ColourEntry, type ColourPopoverProps } from './ColourPopover';
+export {
+  RECENT_COLOURS_MAX,
+  RECENT_IN_ROW,
+  contrastOnWhite,
+  parseHex,
+  pushRecent,
+  sameColour,
+  toHex,
+  type Rgb3,
+} from './colour';

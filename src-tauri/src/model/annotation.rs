@@ -170,9 +170,10 @@ pub enum StdFont {
 }
 
 /// Horizontal alignment of a text box.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum TextAlign {
+    #[default]
     Left,
     Center,
     Right,
@@ -214,6 +215,12 @@ pub enum AnnotationBody {
         font_size: f32,
         fill: Option<Rgb>,
         border_width: f32,
+        /// `/Q`: how each line sits in the box (ADR-110).
+        #[serde(default)]
+        align: TextAlign,
+        /// Colour of the border; `None` draws it in the text colour (what older drafts and files have).
+        #[serde(default)]
+        border_color: Option<Rgb>,
     },
     Ink {
         strokes: Vec<Stroke>,
@@ -394,6 +401,8 @@ pub struct AnnotationPatch {
     #[serde(default, deserialize_with = "nullable")]
     pub fill: Option<Option<Rgb>>,
     pub border_width: Option<f32>,
+    /// The border colour of a free text (ADR-110).
+    pub border_color: Option<Rgb>,
     pub strokes: Option<Vec<Stroke>>,
     pub width: Option<f32>,
     pub dashed: Option<bool>,
@@ -900,6 +909,7 @@ impl Annotation {
             font_size,
             fill,
             border_width,
+            border_color,
             strokes,
             width,
             dashed,
@@ -923,6 +933,7 @@ impl Annotation {
             font_size.is_some(),
             fill.is_some(),
             border_width.is_some(),
+            border_color.is_some(),
             strokes.is_some(),
             width.is_some(),
             dashed.is_some(),
@@ -963,12 +974,19 @@ impl Annotation {
                 font_size: f,
                 fill: fl,
                 border_width: bw,
+                align: al,
+                border_color: bc,
             } => {
                 set(b, bounds, &mut used);
                 set(l, lines, &mut used);
                 set(f, font_size, &mut used);
                 set(fl, fill, &mut used);
                 set(bw, border_width, &mut used);
+                set(al, align, &mut used);
+                if let Some(color) = border_color {
+                    *bc = Some(*color);
+                    used(true);
+                }
             }
             AnnotationBody::Ink {
                 strokes: s,
@@ -1429,6 +1447,8 @@ mod tests {
             font_size: 12.0,
             fill: None,
             border_width: 0.0,
+            align: TextAlign::Left,
+            border_color: None,
         };
         assert!(
             free.check(Rect {

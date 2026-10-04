@@ -310,6 +310,7 @@ export const AnnotationLayer = memo(function AnnotationLayer({
                 docId={docId}
                 annotation={editedText}
                 scale={1}
+                pageWidth={page[0]}
                 isNew={editing?.fresh ?? false}
                 onDone={() => setEditing(null)}
               />

@@ -275,15 +275,23 @@ describe('the free text editor', () => {
     expect(field.style.fontSize).toBe('24px');
   });
 
-  it('commits on Esc: Enter is a newline', async () => {
+  it('commits on Esc; Shift+Enter breaks the line', async () => {
     const { user, onDone } = renderEditor(['hello']);
-    await user.keyboard('{Enter}world{Escape}');
+    await user.keyboard('{Shift>}{Enter}{/Shift}world{Escape}');
     await waitFor(() => expect(onDone).toHaveBeenCalled());
-    expect(applyMock).toHaveBeenCalledWith(1, {
-      type: 'updateAnnotation',
-      id: 1,
-      patch: { lines: ['hello', 'world'] },
+    // Two lines need more than the 36 pt high box: the box grows downward in the same patch.
+    const patch: unknown = expect.objectContaining({
+      lines: ['hello', 'world'],
+      box: expect.objectContaining({ w: 160 }),
     });
+    expect(applyMock).toHaveBeenCalledWith(1, { type: 'updateAnnotation', id: 1, patch });
+  });
+
+  it('commits on Enter (DESIGN 3.5 B4)', async () => {
+    const { user, onDone } = renderEditor(['hello']);
+    await user.keyboard('!{Enter}');
+    await waitFor(() => expect(onDone).toHaveBeenCalled());
+    expect(applyMock).toHaveBeenCalledWith(1, { type: 'updateAnnotation', id: 1, patch: { lines: ['hello!'] } });
   });
 
   it('commits on blur (a click outside)', async () => {

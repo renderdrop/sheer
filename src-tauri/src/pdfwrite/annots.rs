@@ -15,7 +15,7 @@ use lopdf::{Dictionary, Object, ObjectId, Stream, StringFormat};
 use super::appearance::{self, num, Appearance, FONT_NAME, GS_NAME, IMAGE_NAME};
 use super::coords::Mapper;
 use crate::model::annotation::{
-    Annotation, AnnotationBody, LineEnd, NoteIcon, Rgb, SignatureArtRef, SignatureRole,
+    Annotation, AnnotationBody, LineEnd, NoteIcon, Rgb, SignatureArtRef, SignatureRole, TextAlign,
 };
 use crate::model::ids::AssetId;
 use crate::signatures::{marks, raster, Art};
@@ -254,25 +254,42 @@ pub fn annotation_dict(
             font_size,
             fill,
             border_width,
+            align,
+            border_color,
             ..
         } => {
             dict.set("Subtype", name("FreeText"));
             let [r, g, b] = annotation.color.0.map(|channel| f32::from(channel) / 255.0);
+            // The text colour is the fill colour of `/DA`, the border colour its stroke colour (ADR-110).
+            let [br, bg, bb] = border_color
+                .unwrap_or(annotation.color)
+                .0
+                .map(|channel| f32::from(channel) / 255.0);
             dict.set(
                 "DA",
                 Object::String(
                     format!(
-                        "/{FONT_NAME} {} Tf {} {} {} rg",
+                        "/{FONT_NAME} {} Tf {} {} {} rg {} {} {} RG",
                         num(*font_size),
                         num(r),
                         num(g),
-                        num(b)
+                        num(b),
+                        num(br),
+                        num(bg),
+                        num(bb)
                     )
                     .into_bytes(),
                     StringFormat::Literal,
                 ),
             );
-            dict.set("Q", 0);
+            dict.set(
+                "Q",
+                match align {
+                    TextAlign::Left => 0,
+                    TextAlign::Center => 1,
+                    TextAlign::Right => 2,
+                },
+            );
             dict.set("BS", border_style(*border_width, false));
             // The background of a free text is its `/C`.
             if let Some(fill) = fill {

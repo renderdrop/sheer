@@ -4,7 +4,8 @@ import { create } from 'zustand';
 import type { LineEnd, Rgb } from '../../api/annotations';
 import { creationKind, useTools, type CreationKind } from '../../stores/tools';
 import { useUi } from '../../stores/ui';
-import { DEFAULT_COLOURS, HIGHLIGHT_OPACITY, migrateColour, paletteNameOf } from './palette';
+import { readRecent } from '../../stores/recentColours';
+import { DEFAULT_COLOURS, HIGHLIGHT_OPACITY, migrateColour, paletteNameOf, sameRgb } from './palette';
 
 /**
  * The style a new annotation gets (DESIGN 3.24): what the inspector's tool options edit while no annotation is selected. One style per
@@ -57,7 +58,10 @@ const COLOUR_KEY = 'sheer.styleColours';
  * The last-used colour per kind from the previous session. One that is no longer in the palette of its kind (the Okabe-Ito colours of
  * v1.1, or garbage) is dropped, so the kind falls back to its default.
  */
-export function loadStoredColours(raw: string | null): Partial<Record<CreationKind, Partial<AnnotationStyle>>> {
+export function loadStoredColours(
+  raw: string | null,
+  custom: readonly Rgb[] = [],
+): Partial<Record<CreationKind, Partial<AnnotationStyle>>> {
   if (raw === null) return {};
   let parsed: unknown;
   try {
@@ -69,7 +73,10 @@ export function loadStoredColours(raw: string | null): Partial<Record<CreationKi
   const out: Partial<Record<CreationKind, Partial<AnnotationStyle>>> = {};
   for (const kind of Object.keys(DEFAULT_STYLES) as CreationKind[]) {
     const fallback = DEFAULT_STYLES[kind].color;
-    const color = migrateColour((parsed as Record<string, unknown>)[kind], paletteNameOf(kind), fallback);
+    const stored = (parsed as Record<string, unknown>)[kind];
+    let color = migrateColour(stored, paletteNameOf(kind), fallback);
+    // A colour the user applied in "More colours" is kept (DESIGN 3.5 B5) as long as it is in the recent list.
+    if (color === fallback) color = custom.find((known) => Array.isArray(stored) && sameRgb(known, stored as unknown as Rgb)) ?? fallback;
     if (color !== fallback) out[kind] = { color };
   }
   return out;
@@ -77,7 +84,7 @@ export function loadStoredColours(raw: string | null): Partial<Record<CreationKi
 
 function readColours(): StyleStoreState['overrides'] {
   try {
-    return loadStoredColours(localStorage.getItem(COLOUR_KEY));
+    return loadStoredColours(localStorage.getItem(COLOUR_KEY), readRecent());
   } catch {
     return {};
   }

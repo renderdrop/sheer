@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 
 import { MAX_ANNOT_CONTENTS_CHARS, MAX_FREE_TEXT_LINES, type Annotation } from '../../../api/annotations';
 import { toAppError } from '../../../api/errors';
@@ -6,7 +6,8 @@ import { useT } from '../../../i18n';
 import { useAnnotations } from '../../../stores/annotations';
 import { useUi } from '../../../stores/ui';
 import { rgbToCss } from '../../inspector/palette';
-import { useAutosize } from './useAutosize';
+import { FREE_TEXT_LEADING, FREE_TEXT_MIN_WIDTH, FREE_TEXT_PAD, layoutText } from '../create/freeTextLayout';
+import { isConfirmKey } from './confirmKey';
 
 /** Helvetica is the only face in M2 (ADR-029); the stack names its metric-compatible neighbours for systems without it. */
 const HELVETICA = 'Helvetica, "Helvetica Neue", Arial, "Liberation Sans", sans-serif';
@@ -20,6 +21,8 @@ export interface FreeTextEditorProps {
   annotation: FreeText;
   /** Screen pixels per point of the page (zoom × device scale): the box and the font are scaled by it. */
   scale: number;
+  /** The page's width in points: the box grows to the right with the text up to what is left of it (DESIGN 3.5 B4). */
+  pageWidth?: number;
   /** The annotation was just created by the Text tool: if it is left empty it is taken back without an undo step. */
   isNew?: boolean;
   /** Called after the edit ended (committed, or removed because empty). */
@@ -36,17 +39,33 @@ export function linesOf(text: string): string[] {
 }
 
 /**
- * The inline editor of a free text (DESIGN 3.25): a textarea in the page's annotation layer exactly over the box (the layer positions
- * this component; it fills the box's rectangle in `scale`d pixels), the font size × zoom, a 1 px dashed `--color-doc-select` outline,
- * the width fixed and the height growing with the text. It takes focus when it appears. Enter is a newline. Esc and a click outside
- * (blur) commit; an empty text removes the annotation. Primary+Z inside is the field's own undo (the shortcuts ignore text fields).
+ * The inline editor of a free text (DESIGN 3.5 B4): a textarea in the page's annotation layer exactly over the box (the layer positions
+ * this component; it fills the box's rectangle in `scale`d pixels), the font size × zoom, a 1 px dashed `--color-doc-select` outline.
+ * A box that was just made by a click hugs its text: it grows to the right up to the maximum width, then wraps and grows downward; an
+ * existing box keeps its size unless the text needs more. The alignment, border and fill of the annotation show while typing. It takes
+ * focus when it appears. Enter and Esc and a click outside (blur) commit, Shift+Enter breaks the line; an empty text removes the
+ * annotation. Primary+Z inside is the field's own undo (the shortcuts ignore text fields).
  */
-export function FreeTextEditor({ docId, annotation, scale, isNew = false, onDone }: FreeTextEditorProps) {
+export function FreeTextEditor({
+  docId,
+  annotation,
+  scale,
+  pageWidth = Infinity,
+  isNew = false,
+  onDone,
+}: FreeTextEditorProps) {
   const t = useT();
   const ref = useRef<HTMLTextAreaElement | null>(null);
   const [text, setText] = useState(textOf(annotation.lines));
   const done = useRef(false);
-  useAutosize(ref, text);
+  // The box as the edit started: growth starts from it (the live annotation's box changes when the mini bar changes something).
+  const [start, setStart] = useState(annotation.box);
+  // A box a click made is 24 pt wide: it hugs the text. One that was dragged or already existed keeps its size.
+  const keep = !(isNew && annotation.box.w <= FREE_TEXT_MIN_WIDTH + 0.01);
+  const layout = useMemo(
+    () => layoutText(text, annotation.fontSize, start, pageWidth, keep),
+    [text, annotation.fontSize, start, pageWidth, keep],
+  );
 
   // Another annotation in the same editor starts a new edit: it can end (once) again with its own text.
   const editedId = useRef(annotation.id);
@@ -55,7 +74,8 @@ export function FreeTextEditor({ docId, annotation, scale, isNew = false, onDone
     editedId.current = annotation.id;
     done.current = false;
     setText(textOf(annotation.lines));
-  }, [annotation.id, annotation.lines]);
+    setStart(annotation.box);
+  }, [annotation.id, annotation.lines, annotation.box]);
 
   useLayoutEffect(() => {
     const element = ref.current;
@@ -69,7 +89,11 @@ export function FreeTextEditor({ docId, annotation, scale, isNew = false, onDone
   const finish = () => {
     if (done.current) return;
     done.current = true;
-    const lines = linesOf(text);
+    // What is stored is what is seen: the lines as they wrap in the box, and the box that holds them.
+    const lines = layout.lines.slice(0, MAX_FREE_TEXT_LINES);
+    const boxChanged = (['x', 'y', 'w', 'h'] as const).some(
+      (key) => Math.abs(layout.box[key] - annotation.box[key]) > 0.01,
+    );
     const state = useAnnotations.getState();
     const report = (caught: unknown) => useUi.getState().showBanner(toAppError(caught));
     const settle = async () => {
@@ -78,8 +102,12 @@ export function FreeTextEditor({ docId, annotation, scale, isNew = false, onDone
           const history = state.byDoc[docId]?.history;
           if (isNew && history?.canUndo === true && history.undoLabel === LABEL_CREATE) await state.undo(docId);
           else await state.apply(docId, { type: 'deleteAnnotations', ids: [annotation.id] });
-        } else if (textOf(lines) !== textOf(annotation.lines)) {
-          await state.apply(docId, { type: 'updateAnnotation', id: annotation.id, patch: { lines } });
+        } else if (textOf(lines) !== textOf(annotation.lines) || boxChanged) {
+          await state.apply(docId, {
+            type: 'updateAnnotation',
+            id: annotation.id,
+            patch: boxChanged ? { lines, box: layout.box } : { lines },
+          });
         }
       } catch (caught) {
         report(caught);
@@ -89,6 +117,13 @@ export function FreeTextEditor({ docId, annotation, scale, isNew = false, onDone
   };
 
   const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
+    if (isConfirmKey(event)) {
+      // Enter commits (Shift+Enter breaks the line).
+      event.preventDefault();
+      event.stopPropagation();
+      finish();
+      return;
+    }
     if (event.key === 'Escape') {
       // Commits; the Esc is for this editor, not for the selection or the tool below.
       event.preventDefault();
@@ -97,7 +132,8 @@ export function FreeTextEditor({ docId, annotation, scale, isNew = false, onDone
     }
   };
 
-  const { box } = annotation;
+  const { box } = layout;
+  const border = annotation.borderWidth > 0 ? rgbToCss(annotation.borderColor ?? annotation.color) : null;
   return (
     <textarea
       ref={ref}
@@ -106,25 +142,31 @@ export function FreeTextEditor({ docId, annotation, scale, isNew = false, onDone
       value={text}
       rows={1}
       spellCheck
+      placeholder={t('textComment.placeholder')}
       onChange={(event) => setText(event.target.value)}
       onBlur={finish}
       onKeyDown={onKeyDown}
-      // The box in screen pixels; the colour and size are those of the annotation, which are data. The height is at least the box's.
+      // The box in screen pixels; the colours, size, alignment and border are those of the annotation, which are data.
       style={{
         position: 'absolute',
         left: box.x * scale,
         top: box.y * scale,
         width: box.w * scale,
-        minHeight: box.h * scale,
+        height: box.h * scale,
+        padding: FREE_TEXT_PAD * scale,
         fontFamily: HELVETICA,
         fontSize: annotation.fontSize * scale,
-        lineHeight: 'var(--free-text-line-height)',
+        lineHeight: FREE_TEXT_LEADING,
+        textAlign: annotation.align ?? 'left',
         color: rgbToCss(annotation.color),
-        // Editing text that is on the page already: the paper covers the old rendering so the text is not seen twice.
-        backgroundColor: isNew ? 'transparent' : 'var(--color-doc-paper)',
+        // The border sits inside the box as the appearance stream draws it; the dashed outline is the editor's own.
+        boxShadow: border === null ? undefined : `inset 0 0 0 ${annotation.borderWidth * scale}px ${border}`,
+        // A fill is the box's background. Text that is on the page already: the paper covers the old rendering so it is not seen twice.
+        backgroundColor:
+          annotation.fill === null ? (isNew ? 'transparent' : 'var(--color-doc-paper)') : rgbToCss(annotation.fill),
         opacity: annotation.opacity,
       }}
-      className="m-0 box-border resize-none overflow-hidden border border-dashed border-doc-select p-0 outline-none"
+      className="m-0 box-border resize-none overflow-hidden border-0 outline-1 -outline-offset-1 outline-dashed outline-doc-select placeholder:text-text-muted"
     />
   );
 }

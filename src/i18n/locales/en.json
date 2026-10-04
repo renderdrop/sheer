@@ -382,6 +382,7 @@
   "menu.view.scrollContinuous": "Continuous Scrolling",
   "menu.view.scrollSingle": "Single Page",
   "menu.view.scrollSpread": "Two Pages",
+  "menu.view.marginComments": "Comments in Margin",
   "menu.view.nextPage": "Next Page",
   "menu.view.previousPage": "Previous Page",
   "menu.view.fullscreen": "Enter Full Screen",

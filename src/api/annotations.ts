@@ -95,7 +95,20 @@ export interface AnnotationCommon {
 export type AnnotationBody =
   | { kind: 'highlight' | 'underline' | 'strikeout'; quads: readonly Quad[] }
   | { kind: 'note'; at: Point; icon: NoteIcon }
-  | { kind: 'freeText'; box: Rect; lines: readonly string[]; fontSize: number; fill: Rgb | null; borderWidth: number }
+  | {
+      kind: 'freeText';
+      box: Rect;
+      lines: readonly string[];
+      fontSize: number;
+      /** The opaque background (`/C`), `null` for none. */
+      fill: Rgb | null;
+      /** 0 is no border. */
+      borderWidth: number;
+      /** How each line sits in the box (`/Q`); the backend always sends it, a draft may leave it out (left). */
+      align?: TextAlign;
+      /** The border's colour; `null` or missing draws it in the text colour. */
+      borderColor?: Rgb | null;
+    }
   | { kind: 'ink'; strokes: readonly Stroke[]; width: number }
   | { kind: 'rect' | 'ellipse'; box: Rect; width: number; fill: Rgb | null; dashed: boolean }
   | { kind: 'line'; from: Point; to: Point; width: number; head: LineEnd; tail: LineEnd }
@@ -187,6 +200,8 @@ export interface AnnotationPatch {
   fontSize?: number;
   fill?: Rgb | null;
   borderWidth?: number;
+  /** The border colour of a free text. */
+  borderColor?: Rgb;
   strokes?: readonly Stroke[];
   width?: number;
   dashed?: boolean;
@@ -394,9 +409,14 @@ function parseBody(value: Record<string, unknown>): AnnotationBody | null {
       const box = parseRect(value.box);
       const { lines, fontSize, borderWidth } = value;
       const fill = parseOptionalRgb(value.fill);
+      const borderColor = parseOptionalRgb(value.borderColor ?? null);
+      // A file from before the alignment existed has none: left.
+      const align = value.align ?? 'left';
       if (
         box === null ||
         fill === undefined ||
+        borderColor === undefined ||
+        !TEXT_ALIGNS.has(align) ||
         !Array.isArray(lines) ||
         lines.length > MAX_FREE_TEXT_LINES ||
         !(lines as unknown[]).every((line) => typeof line === 'string') ||
@@ -404,7 +424,16 @@ function parseBody(value: Record<string, unknown>): AnnotationBody | null {
         !isWidth(borderWidth)
       )
         return null;
-      return { kind, box, lines: lines as string[], fontSize, fill, borderWidth };
+      return {
+        kind,
+        box,
+        lines: lines as string[],
+        fontSize,
+        fill,
+        borderWidth,
+        align: align as TextAlign,
+        borderColor,
+      };
     }
     case 'ink': {
       const strokes = parseStrokes(value.strokes);

@@ -142,7 +142,7 @@ close_document(doc_id: DocId, discard: Option<bool>) -> ()            // dirty &
 save_document(doc_id: DocId, ack: SaveAck) -> SaveResult
 save_document_as(doc_id: DocId, opts: SaveAsOptions, ack: SaveAck) -> Option<SaveResult>  // None = cancelled
 revert_document(doc_id: DocId) -> DocumentInfo
-get_outline(doc_id: DocId) -> Vec<OutlineNode>       // ≤ 10 000 nodes, depth ≤ 32, title ≤ 512 chars sanitized like a display name; a target is a page id and y, or none; a cycle in the file ends where it comes back
+get_outline(doc_id: DocId) -> Vec<OutlineNode>       // ≤ 10 000 nodes, depth ≤ 32, title ≤ 512 chars sanitized like a display name; a target is a page id and y, or none; a cycle in the file ends where it comes back; node = { title, target, children, derived }; `derived` is true on every node when the file has no bookmarks and the tree was made from headings (ADR-113: ≤ 200 entries, ≤ 3 levels, titles ≤ 200 chars)
 // render
 render_page(req: RenderRequest) -> tauri::ipc::Response   // frame, ADR-002 §6: the whole page or one 1024 px tile; `cancelled` if withdrawn while queued
 set_viewport(doc_id: DocId, hint: ViewportHint) -> ()      // cancels queued renders of pages that left the viewport, re-ranks the rest (ADR-018)
@@ -154,6 +154,7 @@ cancel_search(search_id: u32) -> ()                                  // an unkno
 get_page_links(doc_id: DocId, page_id: PageId) -> Vec<LinkInfo>     // ≤ 1 000, `Interactive` priority
 open_link(doc_id: DocId, page_id: PageId, link_index: u32) -> ()    // URL re-read in Rust, shown in a native dialog from Rust, then opened by Rust; http, https, mailto
 // edit (ADR-003)
+// F15 B4 (ADR-110): a FreeText body also carries `align` (left|center|right) and `borderColor` (Rgb|null); `AnnotationPatch.borderColor` sets it; saved as /Q, /DA (rg + RG), /BS /W, /C
 list_annotations(doc_id: DocId, page_id: PageId) -> Vec<Annotation>   // by id, ≤ 2 000; the first call for a page reads it from the file (`Interactive`), later calls answer from the model
 list_document_annotations(doc_id: DocId) -> Vec<AnnotationSummary>   // {id, pageId, kind, color, contents (≤ 240 chars), author, modified, inReplyTo} + optional `state` (review state of a reply: none|accepted|rejected|cancelled|completed) and `detail` (mark glyph check|cross|dot, signature role signature|initials; ADR-057), ≤ 20 000, by page then id; reads unread pages at `Background`; for the comments panel (`features/comments`)
 get_annotation_quote(doc_id: DocId, annotation_id: AnnotId) -> Option<String>   // text under a highlight/underline/strikeout: characters whose centre is in a quad, whitespace collapsed, ≤ 280 chars (… last if cut); null for other kinds; not_found for an unknown id. F12-P4, DESIGN 3.59

@@ -6,8 +6,9 @@ import type {
   DocCommand,
   MarkGlyph,
   Rgb,
+  TextAlign,
 } from '../../api/annotations';
-import type { CreationKind } from '../../stores/tools';
+import type { CreationKind, KindDefault } from '../../stores/tools';
 import { LABEL_CHANGE, shared, widthOf, type Shared } from '../inspector/properties';
 import { sameRgb, HIGHLIGHT_OPACITY } from '../inspector/palette';
 import type { AnnotationStyle } from '../inspector/style';
@@ -16,7 +17,7 @@ import type { AnnotationStyle } from '../inspector/style';
 export type MiniObject = Annotation | ContentAnnotation;
 
 /** The groups of selection that have the same controls (DESIGN v2 3.3 table). */
-export type BarKind = 'markup' | 'note' | 'text' | 'stroke' | 'shape' | 'mark' | 'plain';
+export type BarKind = 'markup' | 'note' | 'text' | 'freeText' | 'stroke' | 'shape' | 'mark' | 'plain';
 
 /** The controls of the bar; Löschen is always last and not listed. */
 export type ControlId =
@@ -26,6 +27,9 @@ export type ControlId =
   | 'kindMark'
   | 'comment'
   | 'fontSize'
+  | 'align'
+  | 'textBorder'
+  | 'textFill'
   | 'strokeWidth'
   | 'opacity'
   | 'fill';
@@ -40,6 +44,9 @@ const ORDER: readonly ControlId[] = [
   'opacity',
   'fill',
   'fontSize',
+  'align',
+  'textBorder',
+  'textFill',
   'comment',
 ];
 
@@ -52,6 +59,7 @@ export function barKindOf(object: MiniObject): BarKind | null {
     case 'note':
       return 'note';
     case 'freeText':
+      return 'freeText';
     case 'textBox':
       return 'text';
     case 'ink':
@@ -76,6 +84,7 @@ const CONTROLS: Readonly<Record<BarKind, readonly ControlId[]>> = {
   markup: ['colourHighlight', 'kindMarkup', 'comment'],
   note: ['colourHighlight', 'comment'],
   text: ['colourStroke', 'fontSize'],
+  freeText: ['colourStroke', 'fontSize', 'align', 'textBorder', 'textFill'],
   stroke: ['colourStroke', 'strokeWidth', 'opacity'],
   shape: ['colourStroke', 'strokeWidth', 'opacity', 'fill'],
   mark: ['kindMark'],
@@ -98,7 +107,12 @@ export interface MiniValues {
   width: Shared<number>;
   opacity: Shared<number>;
   fontSize: Shared<number>;
+  /** The fill of a shape or a text comment. */
   fill: Shared<Rgb | null>;
+  /** Text comment: the alignment, the border width (0 is none) and the border colour (the text colour if it has none). */
+  align: Shared<TextAlign>;
+  borderWidth: Shared<number>;
+  borderColour: Shared<Rgb>;
   /** The markup kind or mark glyph. */
   kind: Shared<string>;
 }
@@ -120,18 +134,32 @@ export function valuesOf(objects: readonly MiniObject[]): MiniValues {
     opacity: shared(numbers((o) => Math.round(o.opacity * 100) / 100)),
     fontSize: shared(numbers((o) => (o.kind === 'freeText' || o.kind === 'textBox' ? o.fontSize : null))),
     fill: shared(
-      objects.flatMap((o) => (o.kind === 'rect' || o.kind === 'ellipse' ? [o.fill] : [])),
+      objects.flatMap((o) => (o.kind === 'rect' || o.kind === 'ellipse' || o.kind === 'freeText' ? [o.fill] : [])),
       (a, b) => (a === null || b === null ? a === b : sameRgb(a, b)),
+    ),
+    align: shared(objects.flatMap((o) => (o.kind === 'freeText' ? [o.align ?? 'left'] : []))),
+    borderWidth: shared(numbers((o) => (o.kind === 'freeText' ? o.borderWidth : null))),
+    borderColour: shared(
+      objects.flatMap((o) => (o.kind === 'freeText' ? [o.borderColor ?? o.color] : [])),
+      sameRgb,
     ),
     kind: shared(objects.map((o) => (o.kind === 'mark' ? o.glyph : o.kind))),
   };
 }
 
-/** A change made in the bar: the style fields of the inspector plus the fill of a shape. */
-export type MiniChange = Partial<AnnotationStyle> & { fill?: Rgb | null };
+/** A change made in the bar: the style fields of the inspector plus the fill of a shape or text comment, and the text comment's own. */
+export type MiniChange = Partial<AnnotationStyle> & {
+  fill?: Rgb | null;
+  align?: TextAlign;
+  /** 0 switches the border off. */
+  borderWidth?: number;
+  borderColor?: Rgb;
+};
 
 /** The font sizes of the bar's dropdown (DESIGN v2 3.3: 8 to 72 pt). */
-export const MINI_FONT_SIZES = [8, 9, 10, 11, 12, 14, 16, 18, 20, 24, 28, 32, 36, 48, 60, 72] as const;
+export const MINI_FONT_SIZES = [8, 9, 10, 11, 12, 14, 16, 18, 24, 32, 48, 72] as const;
+/** What the font size field accepts when typed (DESIGN 3.5 B4). */
+export const MINI_FONT_SIZE_RANGE = { min: 6, max: 144 } as const;
 export const MINI_STROKES = [0.5, 1, 2, 4, 8] as const;
 export const MINI_OPACITIES = [25, 50, 75, 100] as const;
 
@@ -140,11 +168,17 @@ export function patchOf(object: MiniObject, change: MiniChange): AnnotationPatch
   const kind = barKindOf(object);
   const patch: { -readonly [K in keyof AnnotationPatch]: AnnotationPatch[K] } = {};
   if (kind === null || kind === 'mark' || kind === 'plain') return patch;
+  const text = kind === 'text' || kind === 'freeText';
   if (change.color !== undefined) patch.color = change.color;
   if (change.opacity !== undefined && (kind === 'stroke' || kind === 'shape')) patch.opacity = change.opacity;
   if (change.width !== undefined && (kind === 'stroke' || kind === 'shape')) patch.width = change.width;
-  if (change.fill !== undefined && kind === 'shape') patch.fill = change.fill;
-  if (change.fontSize !== undefined && kind === 'text') patch.fontSize = change.fontSize;
+  if (change.fill !== undefined && (kind === 'shape' || kind === 'freeText')) patch.fill = change.fill;
+  if (change.fontSize !== undefined && text) patch.fontSize = change.fontSize;
+  if (kind === 'freeText') {
+    if (change.align !== undefined) patch.align = change.align;
+    if (change.borderWidth !== undefined) patch.borderWidth = change.borderWidth;
+    if (change.borderColor !== undefined) patch.borderColor = change.borderColor;
+  }
   return patch;
 }
 
@@ -187,6 +221,27 @@ export function defaultOf(object: MiniObject, change: MiniChange): Partial<Annot
   if (patch.opacity !== undefined) out.opacity = patch.opacity;
   if (patch.width !== undefined) out.width = patch.width;
   if (patch.fontSize !== undefined) out.fontSize = patch.fontSize;
+  return Object.keys(out).length === 0 ? null : out;
+}
+
+/**
+ * What a change to a text comment sets as the default of the next one (DESIGN 3.5 B4, 3.3): the alignment, the border (on with its
+ * width and colour, or off) and the fill (on with its colour, or off). `null` when the change has none of them.
+ */
+export function textDefaultOf(object: MiniObject, change: MiniChange): KindDefault | null {
+  if (object.kind !== 'freeText') return null;
+  const patch = patchOf(object, change);
+  const out: { -readonly [K in keyof KindDefault]?: KindDefault[K] } = {};
+  if (patch.align !== undefined) out.align = patch.align;
+  if (patch.borderWidth !== undefined) {
+    out.border = patch.borderWidth > 0;
+    if (patch.borderWidth > 0) out.borderWidth = patch.borderWidth;
+  }
+  if (patch.borderColor !== undefined) out.borderColor = patch.borderColor;
+  if (patch.fill !== undefined) {
+    out.fillOn = patch.fill !== null;
+    if (patch.fill !== null) out.fillColor = patch.fill;
+  }
   return Object.keys(out).length === 0 ? null : out;
 }
 

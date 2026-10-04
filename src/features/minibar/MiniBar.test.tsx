@@ -364,3 +364,68 @@ describe('keyboard', () => {
     expect(hint).toContain('F6');
   });
 });
+
+describe('text comment (DESIGN 3.5 B4, B5)', () => {
+  const text = (extra: Record<string, unknown> = {}) =>
+    make(1, 'freeText', {
+      box: { x: 0, y: 0, w: 100, h: 30 },
+      lines: ['a'],
+      fontSize: 12,
+      fill: null,
+      borderWidth: 0,
+      align: 'left',
+      borderColor: null,
+      ...extra,
+    });
+  const patchSent = () => (applyMock.mock.calls.at(-1)?.[1] as { patch: Record<string, unknown> }).patch;
+
+  async function mount(extra: Record<string, unknown> = {}) {
+    load([text(extra)], [1]);
+    scene = canvas({ 1: OVER });
+    return setup(<MiniBarSlot />);
+  }
+
+  it('align sets /Q and becomes the default of the next text comment', async () => {
+    const { user } = await mount();
+    await user.click(screen.getByRole('radio', { name: 'Centre' }));
+    expect(patchSent()).toEqual({ align: 'center' });
+    await waitFor(() => expect(useTools.getState().defaults.freeText?.align).toBe('center'));
+  });
+
+  it('the border toggle switches it on at 1 pt in Ink, and off again', async () => {
+    const { user } = await mount();
+    await user.click(screen.getByRole('button', { name: 'Border' }));
+    expect(patchSent()).toEqual({ borderWidth: 1, borderColor: [15, 15, 15] });
+    await waitFor(() => expect(useTools.getState().defaults.freeText).toMatchObject({ border: true, borderWidth: 1 }));
+  });
+
+  it('the border menu sets the width and the colour', async () => {
+    const { user } = await mount({ borderWidth: 1 });
+    await user.click(screen.getByRole('button', { name: 'Border options' }));
+    await user.click(await screen.findByRole('radio', { name: '2 pt' }));
+    expect(patchSent()).toEqual({ borderWidth: 2 });
+  });
+
+  it('the fill toggle sets an opaque Solar fill and clears it', async () => {
+    const { user } = await mount();
+    await user.click(screen.getByRole('button', { name: 'Fill' }));
+    expect(patchSent()).toEqual({ fill: [255, 248, 77] });
+    await waitFor(() => expect(useTools.getState().defaults.freeText).toMatchObject({ fillOn: true }));
+  });
+
+  it('a typed font size from 6 to 144 applies on Enter and is cut to the range', async () => {
+    const { user } = await mount();
+    const field = screen.getByRole('textbox', { name: 'Font size' });
+    await user.clear(field);
+    await user.type(field, '200{Enter}');
+    expect(patchSent()).toEqual({ fontSize: 144 });
+  });
+
+  it('shows a custom colour of the recent list beside the palette and More colours', async () => {
+    const { useRecentColours } = await import('../../stores/recentColours');
+    useRecentColours.setState({ colours: [[1, 2, 3]] });
+    await mount();
+    expect(screen.getByRole('radio', { name: '#010203' })).not.toBeNull();
+    expect(screen.getByRole('button', { name: 'More colours' })).not.toBeNull();
+  });
+});

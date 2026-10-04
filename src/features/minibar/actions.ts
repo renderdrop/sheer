@@ -5,12 +5,21 @@ import { announce } from '../../components';
 import { translators } from '../../i18n';
 import { useLocaleStore } from '../../i18n/store';
 import { useAnnotations } from '../../stores/annotations';
+import { useTools } from '../../stores/tools';
 import { useUi } from '../../stores/ui';
 import { jumpTo } from '../comments/actions';
 import { useInsert } from '../insert/store';
 import { useStyleStore } from '../inspector/style';
 import { useRedact } from '../redact/store';
-import { changeCommand, creationKindOf, defaultOf, kindCommand, type MiniChange, type MiniObject } from './model';
+import {
+  changeCommand,
+  creationKindOf,
+  defaultOf,
+  kindCommand,
+  textDefaultOf,
+  type MiniChange,
+  type MiniObject,
+} from './model';
 
 /** Runs a command; an error is shown as the banner and answered with `null`. */
 async function run(docId: number, command: DocCommand): Promise<ChangeSet | null> {
@@ -35,6 +44,8 @@ export async function applyChange(docId: number, objects: readonly MiniObject[],
     const kind = creationKindOf(object);
     const style = defaultOf(object, change);
     if (kind !== null && style !== null) useStyleStore.getState().set(kind, style);
+    const text = textDefaultOf(object, change);
+    if (text !== null) useTools.getState().setDefault('freeText', text);
     if (object.kind === 'textBox' && style !== null) {
       useInsert.getState().setStyle({
         ...(style.color === undefined ? {} : { color: style.color }),

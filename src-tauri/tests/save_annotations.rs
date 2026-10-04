@@ -896,3 +896,137 @@ fn accepted_and_rejected_states_survive_a_save_and_a_reopen() {
         assert_eq!(status.state, Some(expected));
     }
 }
+
+/// What the quadding, the default appearance and the border width of the (only) free text of a saved file say.
+fn free_text_entries(bytes: &[u8]) -> (i64, String, f32) {
+    let found = list_annotations(bytes).unwrap();
+    let free = found
+        .iter()
+        .find(|s| s.subtype == "FreeText")
+        .expect("a free text in the file");
+    (
+        free.quadding.unwrap(),
+        free.default_appearance.clone().unwrap(),
+        free.border_width.unwrap(),
+    )
+}
+
+#[test]
+fn every_free_text_property_is_saved_in_the_file_and_read_back_on_reopen() {
+    let Some(state) = state() else { return };
+    let cases: [(&str, serde_json::Value, i64); 3] = [
+        ("left", json!("left"), 0),
+        ("center", json!("center"), 1),
+        ("right", json!("right"), 2),
+    ];
+    for (name, align, q) in cases {
+        let scratch = Scratch::new(&format!("free-{name}"));
+        let (id, path) = open(state, &scratch, "doc.pdf", &base());
+        let made = create(
+            state,
+            id,
+            json!({"pageId": 0, "kind": "freeText", "color": [200, 30, 30],
+                "box": {"x": 300.0, "y": 140.0, "w": 220.0, "h": 60.0},
+                "lines": ["Hi", "A longer second line"], "fontSize": 18.0,
+                "fill": [255, 255, 0], "borderWidth": 2.0, "borderColor": [0, 0, 255], "align": align}),
+        );
+        state.save_in_place(id, SaveAck::default()).unwrap();
+        let (found_q, da, w) = free_text_entries(&read(&path));
+        assert_eq!(found_q, q, "{name}: /Q");
+        assert!(da.contains("/Helv 18 Tf"), "{da}");
+        assert!(da.contains("rg"), "{da}");
+        assert!(da.contains("0 0 1 RG"), "border colour in /DA: {da}");
+        assert!((w - 2.0).abs() < 0.01, "{name}: /BS /W {w}");
+
+        let copy = scratch.file("copy.pdf");
+        std::fs::copy(&path, &copy).unwrap();
+        let reopened = state.open_path(copy).unwrap().expect("loaded").id;
+        let listed = state.list_annotations(reopened, PageId::new(0)).unwrap();
+        let back = listed
+            .iter()
+            .find(|a| matches!(a.body, AnnotationBody::FreeText { .. }))
+            .unwrap();
+        assert_eq!(back.color.0, [200, 30, 30], "{name}: text colour");
+        let AnnotationBody::FreeText {
+            lines,
+            font_size,
+            fill,
+            border_width,
+            align: got_align,
+            border_color,
+            ..
+        } = &back.body
+        else {
+            unreachable!()
+        };
+        assert_eq!(lines[0], "Hi");
+        assert!((font_size - 18.0).abs() < 0.1, "{name}: size {font_size}");
+        assert_eq!(fill.map(|c| c.0), Some([255, 255, 0]), "{name}: fill");
+        assert!(
+            (border_width - 2.0).abs() < 0.1,
+            "{name}: border {border_width}"
+        );
+        assert_eq!(
+            border_color.map(|c| c.0),
+            Some([0, 0, 255]),
+            "{name}: border colour"
+        );
+        assert_eq!(
+            serde_json::to_value(got_align).unwrap(),
+            align,
+            "{name}: alignment"
+        );
+        let _ = made;
+    }
+}
+
+#[test]
+fn a_free_text_without_border_or_fill_reads_back_without_them_and_a_change_is_written() {
+    let Some(state) = state() else { return };
+    let scratch = Scratch::new("free-plain");
+    let (id, path) = open(state, &scratch, "doc.pdf", &base());
+    let made = create(
+        state,
+        id,
+        json!({"pageId": 0, "kind": "freeText", "color": [15, 15, 15],
+            "box": {"x": 300.0, "y": 140.0, "w": 200.0, "h": 40.0},
+            "lines": ["Plain"], "fontSize": 12.0, "fill": null, "borderWidth": 0.0}),
+    );
+    state.save_in_place(id, SaveAck::default()).unwrap();
+    // A later change of every property is written over the old appearance and survives another reopen.
+    state
+        .apply_command(
+            id,
+            command(json!({"type": "updateAnnotation", "id": made.id, "patch": {
+                "align": "right", "fontSize": 24.0, "borderWidth": 1.0, "borderColor": [225, 92, 134], "fill": [220, 207, 255]}})),
+        )
+        .unwrap();
+    state.save_in_place(id, SaveAck::default()).unwrap();
+    let (q, da, _) = free_text_entries(&read(&path));
+    assert_eq!(q, 2);
+    assert!(da.contains("/Helv 24 Tf"));
+    let copy = scratch.file("copy.pdf");
+    std::fs::copy(&path, &copy).unwrap();
+    let reopened = state.open_path(copy).unwrap().expect("loaded").id;
+    let listed = state.list_annotations(reopened, PageId::new(0)).unwrap();
+    let AnnotationBody::FreeText {
+        font_size,
+        fill,
+        border_width,
+        align,
+        border_color,
+        ..
+    } = &listed
+        .iter()
+        .find(|a| matches!(a.body, AnnotationBody::FreeText { .. }))
+        .unwrap()
+        .body
+    else {
+        unreachable!()
+    };
+    assert!((font_size - 24.0).abs() < 0.1);
+    assert_eq!(fill.map(|c| c.0), Some([220, 207, 255]));
+    assert!((border_width - 1.0).abs() < 0.1);
+    assert_eq!(border_color.map(|c| c.0), Some([225, 92, 134]));
+    assert_eq!(serde_json::to_value(align).unwrap(), json!("right"));
+}

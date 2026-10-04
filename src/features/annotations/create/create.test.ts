@@ -169,7 +169,11 @@ describe('drafts', () => {
   it('places a note on the page and a free text box with empty text', () => {
     expect(noteDraft(0, { x: -4, y: 900 }, PAGE, style)).toMatchObject({ kind: 'note', at: { x: 0, y: 800 } });
     const click = freeTextDraft(0, { x: 100, y: 100 }, null, PAGE, defaultStyle('freeText'));
-    expect(click).toMatchObject({ kind: 'freeText', lines: [], box: { x: 100, y: 100, w: 160, h: 36 } });
+    // A click puts the top-left at the click: 24 pt wide, one 12 pt line high plus the padding (DESIGN 3.5 B4).
+    expect(click).toMatchObject({ kind: 'freeText', lines: [], box: { x: 100, y: 100, w: 24, h: 22.4 } });
+    // Less than 96 pt to the right of the click: the box moves left to get it, 12 pt short of the page edge.
+    const near = freeTextDraft(0, { x: 590, y: 100 }, null, PAGE, defaultStyle('freeText'));
+    expect(near).toMatchObject({ box: { x: PAGE[0] - 12 - 96 } });
     const dragged = freeTextDraft(0, { x: 100, y: 100 }, { x: 300, y: 160 }, PAGE, defaultStyle('freeText'));
     expect(dragged).toMatchObject({ box: { w: 200, h: 60 } });
   });
