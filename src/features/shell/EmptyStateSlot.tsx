@@ -9,6 +9,8 @@ import { useT } from '../../i18n';
 import { DURATION, useFade } from '../../components/motion';
 import { SPRING } from '../../lib/motion';
 import { useUi } from '../../stores/ui';
+import { runHubCard } from '../hub/run';
+import { useHub } from '../hub/intent';
 import { DropCard } from '../viewer/DropCard';
 import { useTransition } from '../viewer/openTransition';
 import { useViewer } from '../viewer/useViewer';
@@ -58,9 +60,12 @@ export function EmptyStateSlot({ platform, style }: { platform: Platform | null;
   const recents = useRecents();
   // Leaving (a document opened): the slot fades out where it is, and takes no input while it does.
   const present = useIsPresent();
-  const { exit } = useFade(DURATION.base, DURATION.base);
+  const { initial, animate, exit } = useFade(DURATION.base, DURATION.base);
+  const busyCard = useHub((state) => state.busy);
   return (
     <motion.div
+      initial={initial}
+      animate={animate}
       exit={exit}
       style={style}
       inert={!present || undefined}
@@ -72,7 +77,8 @@ export function EmptyStateSlot({ platform, style }: { platform: Platform | null;
           openKeyShortcuts={openKey?.aria ?? ''}
           opening={opening}
           onOpen={() => void runAction('open')}
-          dropActive={dropActive}
+          busyCard={busyCard}
+          onRunCard={(card) => void runHubCard(card)}
           recents={recents.rows}
           onClearRecents={recents.clear}
         />

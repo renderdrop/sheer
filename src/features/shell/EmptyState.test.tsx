@@ -1,8 +1,9 @@
 // @vitest-environment jsdom
-import { act, fireEvent, screen } from '@testing-library/react';
+import { act, screen, within } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
 import { setup } from '../../test/render';
+import { HUB_CARDS } from '../hub/cards';
 import { EmptyState, type EmptyStateProps } from './EmptyState';
 
 const props = (overrides: Partial<EmptyStateProps> = {}): EmptyStateProps => ({
@@ -10,32 +11,43 @@ const props = (overrides: Partial<EmptyStateProps> = {}): EmptyStateProps => ({
   openKeyShortcuts: 'Control+O Meta+O',
   opening: false,
   onOpen: vi.fn(),
+  onRunCard: vi.fn(),
   ...overrides,
 });
 
-describe('EmptyState (DESIGN 3.11)', () => {
-  it('puts the initial focus on the Open button, the keyboard path', () => {
+const NAMES = ['Open', 'Merge', 'Split', 'Compress', 'Images to PDF', 'Sign', 'Redact', 'Fill form'];
+
+describe('the start page tool hub (DESIGN 3.54)', () => {
+  it('shows the title and the eight cards as a group of buttons named by their titles', () => {
     setup(<EmptyState {...props()} />);
-    expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Open…' }));
+    expect(screen.getByRole('heading', { level: 1, name: 'What would you like to do?' })).not.toBeNull();
+    const group = screen.getByRole('group', { name: 'Tools' });
+    expect(
+      within(group)
+        .getAllByRole('button')
+        .map((button) => button.textContent?.slice(0, 3)),
+    ).toHaveLength(8);
+    for (const name of NAMES) expect(within(group).getByRole('button', { name })).not.toBeNull();
+    expect(HUB_CARDS).toHaveLength(8);
   });
 
-  it('shows the card: a heading, the hint, the primary Open button with its shortcut chip', () => {
-    setup(<EmptyState {...props({ openShortcut: '⌘O' })} />);
-    expect(screen.getByRole('heading', { level: 1, name: 'Open a PDF' })).not.toBeNull();
-    expect(screen.getByText('Drop a file anywhere in this window or choose one.')).not.toBeNull();
-    expect(screen.getByText('⌘O')).not.toBeNull();
-    expect(screen.getByRole('button', { name: 'Open…' }).getAttribute('aria-keyshortcuts')).toBe('Control+O Meta+O');
+  it('describes each card with its hint and puts the initial focus on the primary Open card', () => {
+    setup(<EmptyState {...props()} />);
+    const open = screen.getByRole('button', { name: 'Open' });
+    expect(document.activeElement).toBe(open);
+    expect(open.getAttribute('aria-keyshortcuts')).toBe('Control+O Meta+O');
+    const hint = document.getElementById(open.getAttribute('aria-describedby') ?? '');
+    expect(hint?.textContent).toBe('Choose a PDF or drop it anywhere in this window.');
+    expect(screen.getByText('Ctrl+O')).not.toBeNull();
+    expect(screen.getAllByText('Several files')).toHaveLength(2); // Merge and Images to PDF
   });
 
-  it('has a decorative floating logo in its own slot, and no icon tile in the card', () => {
+  it('has a decorative floating logo in its own slot', () => {
     const { container } = setup(<EmptyState {...props()} />);
     const slot = container.querySelector('[data-logo-slot]');
     expect(slot?.getAttribute('aria-hidden')).toBe('true');
-    const logo = slot?.querySelector('img');
-    expect(logo?.getAttribute('alt')).toBe('');
-    expect(logo?.className).toContain('logo-float');
-    // Only the ghost images button (DESIGN 3.43) carries an icon.
-    expect(container.querySelectorAll('[data-drop-zone] svg')).toHaveLength(1);
+    expect(slot?.querySelector('img')?.getAttribute('alt')).toBe('');
+    expect(slot?.querySelector('img')?.className).toContain('logo-float');
     expect(slot?.contains(document.activeElement)).toBe(false);
   });
 
@@ -51,31 +63,81 @@ describe('EmptyState (DESIGN 3.11)', () => {
     hidden.mockRestore();
   });
 
-  it('Open calls the open handler: with the mouse, Enter and Space', async () => {
+  it('Open calls the open handler, every other card its own id: with the mouse, Enter and Space', async () => {
     const onOpen = vi.fn();
-    const { user } = setup(<EmptyState {...props({ onOpen })} />);
-    const open = screen.getByRole('button', { name: 'Open…' });
-    await user.click(open);
+    const onRunCard = vi.fn();
+    const { user } = setup(<EmptyState {...props({ onOpen, onRunCard })} />);
+    await user.click(screen.getByRole('button', { name: 'Open' }));
     await user.keyboard('{Enter}');
     await user.keyboard(' ');
     expect(onOpen).toHaveBeenCalledTimes(3);
+    for (const name of NAMES.slice(1)) await user.click(screen.getByRole('button', { name }));
+    expect(onRunCard.mock.calls.map(([id]) => id)).toEqual([
+      'merge',
+      'split',
+      'compress',
+      'images',
+      'sign',
+      'redact',
+      'fill',
+    ]);
+    await user.keyboard('{Enter}');
+    expect(onRunCard).toHaveBeenLastCalledWith('fill');
   });
 
-  it('while a document is opening the button says so, does nothing and keeps the focus', async () => {
+  it('one tab stop: Tab leaves the grid, arrows rove in the order of the cards, Home and End jump', async () => {
+    const { user } = setup(<EmptyState {...props()} />);
+    const buttons = screen.getAllByRole('button').filter((button) => button.hasAttribute('data-hub-card'));
+    expect(buttons.filter((button) => button.tabIndex === 0)).toHaveLength(1);
+    await user.keyboard('{ArrowRight}');
+    expect(document.activeElement).toBe(buttons[1]);
+    expect(buttons[1]?.tabIndex).toBe(0);
+    expect(buttons[0]?.tabIndex).toBe(-1);
+    await user.keyboard('{End}');
+    expect(document.activeElement).toBe(buttons[7]);
+    await user.keyboard('{ArrowRight}');
+    expect(document.activeElement).toBe(buttons[7]);
+    await user.keyboard('{Home}');
+    expect(document.activeElement).toBe(buttons[0]);
+  });
+
+  it('a busy card is aria-busy with a spinner, the others are aria-disabled and do nothing', async () => {
+    const onRunCard = vi.fn();
+    const { user } = setup(<EmptyState {...props({ onRunCard, busyCard: 'split' })} />);
+    const split = screen.getByRole('button', { name: 'Split' });
+    expect(split.getAttribute('aria-busy')).toBe('true');
+    expect(split.querySelector('.animate-spin')).not.toBeNull();
+    const merge = screen.getByRole('button', { name: 'Merge' });
+    expect(merge.getAttribute('aria-disabled')).toBe('true');
+    expect(merge.getAttribute('aria-busy')).toBeNull();
+    await user.click(merge);
+    expect(onRunCard).not.toHaveBeenCalled();
+  });
+
+  it('while a document is opening Open shows busy, keeps its focus and does nothing', async () => {
     const onOpen = vi.fn();
     const { user } = setup(<EmptyState {...props({ onOpen, opening: true })} />);
-    const button = screen.getByRole('button', { name: 'Opening…' });
-    expect(document.activeElement).toBe(button);
-    expect(button.getAttribute('aria-disabled')).toBe('true');
-    await user.click(button);
+    const open = screen.getByRole('button', { name: 'Open' });
+    expect(document.activeElement).toBe(open);
+    expect(open.getAttribute('aria-busy')).toBe('true');
+    expect(open.getAttribute('aria-disabled')).toBe('true');
+    await user.click(open);
     await user.keyboard('{Enter}');
     expect(onOpen).not.toHaveBeenCalled();
+  });
+
+  it('the compact rule is a height media query and hides the hint only visually', () => {
+    setup(<EmptyState {...props()} />);
+    const open = screen.getByRole('button', { name: 'Open' });
+    expect(open.className).toContain('[@media(max-height:800px)]:h-hub-compact');
+    const hint = document.getElementById(open.getAttribute('aria-describedby') ?? '');
+    expect(hint?.className).toContain('[@media(max-height:800px)]:sr-only');
   });
 
   it('omits the recents section entirely while there are none', () => {
     setup(<EmptyState {...props()} />);
     expect(screen.queryByRole('heading', { level: 2, name: 'Recent' })).toBeNull();
-    expect(screen.getAllByRole('button')).toHaveLength(2); // Open and the ghost images button
+    expect(screen.getAllByRole('button')).toHaveLength(8);
   });
 
   describe('the privacy footer (DESIGN 3.11: omitted when there are no recents)', () => {
@@ -100,38 +162,8 @@ describe('EmptyState (DESIGN 3.11)', () => {
         />,
       );
       expect(screen.getByText(FOOTER)).not.toBeNull();
-      expect(screen.queryByText('Files you open appear here.')).toBeNull();
       const rows = screen.getAllByRole('listitem');
       expect(rows.map((row) => row.textContent)).toEqual(['Report.pdf', 'Invoice.pdf']);
-    });
-  });
-
-  describe('the drop zone is visual only', () => {
-    it('at rest it says "Open a PDF" and has no drop look', () => {
-      const { container } = setup(<EmptyState {...props()} />);
-      expect(container.querySelector('[data-drop-zone]')?.hasAttribute('data-drop-active')).toBe(false);
-      expect(screen.queryByText('Drop to open')).toBeNull();
-    });
-
-    it('while a file is dragged over, the title says "Drop to open" and the card takes the selected look', () => {
-      const { container } = setup(<EmptyState {...props({ dropActive: true })} />);
-      expect(screen.getByRole('heading', { level: 1, name: 'Drop to open' })).not.toBeNull();
-      const zone = container.querySelector('[data-drop-zone]');
-      expect(zone?.getAttribute('data-drop-active')).toBe('true');
-      // The 2 px accent ring over the selected fill is a decorative layer, not part of the content.
-      expect(zone?.querySelector('[aria-hidden="true"].inset-ring-accent')).not.toBeNull();
-    });
-
-    it('does not read what is dropped: no handler in the webview looks at the payload (SECURITY I2)', () => {
-      const { container } = setup(<EmptyState {...props()} />);
-      const zone = container.querySelector('[data-drop-zone]');
-      expect(zone).not.toBeNull();
-      const dataTransfer = { files: [], items: [], types: ['Files'], getData: vi.fn() };
-      const drop = new Event('drop', { bubbles: true, cancelable: true });
-      Object.defineProperty(drop, 'dataTransfer', { value: dataTransfer });
-      if (zone !== null) fireEvent(zone, drop);
-      // Rust takes the OS drop (dragDropEnabled); the page neither reads nor handles it.
-      expect(dataTransfer.getData).not.toHaveBeenCalled();
     });
   });
 });

@@ -2,11 +2,10 @@ import { useEffect, useState, type KeyboardEvent, type ReactNode } from 'react';
 
 import logoUrl from '../../../assets/brand/logo.svg';
 import { Button } from '../../components';
-import { PILL, SELECTED_FORCED_COLORS } from '../../components/controlStyles';
-import { cx } from '../../components/cx';
 import { isOwnEvent, itemsOf, rovingTarget } from '../../components/roving';
 import { useT } from '../../i18n';
-import { EmptyStateImagesButton } from '../imagesToPdf/EmptyStateImagesButton';
+import type { HubCardId } from '../hub/cards';
+import { ToolHub } from '../hub/ToolHub';
 
 /** One row of the recent files list (M1 brings the row itself: thumbnail, name, folder and age, remove). */
 export interface RecentRow {
@@ -22,11 +21,10 @@ export interface EmptyStateProps {
   /** A document is being opened: the button says so and does nothing, but keeps its focus. */
   opening: boolean;
   onOpen: () => void;
-  /**
-   * A file is dragged over the window: the card takes the selected look (fill and a 2 px accent ring) and the title says
-   * "Drop to open". Visual only: the drop itself is handled by Rust (M1), the webview never sees a dropped file or its path.
-   */
-  dropActive?: boolean;
+  /** The hub card whose dialog or open runs now; Open also shows busy while `opening`. */
+  busyCard?: HubCardId | null;
+  /** A card other than Open was activated (Open is `onOpen`). */
+  onRunCard?: (card: HubCardId) => void;
   /** The recent files, at most 8 (DESIGN 3.11). Empty until the recents list lands (M1). */
   recents?: readonly RecentRow[];
   /** Empties the recent files list (the ghost Clear button beside the heading). */
@@ -56,17 +54,20 @@ function usePageHidden(): boolean {
   return hidden;
 }
 
-/** The logo slot: nothing else sits in it, so the 8 px float stays inside. Decorative, never a tab stop. */
+/** The header logo slot (DESIGN 3.54): 64 x 64, the logo 48 floating inside it. Decorative, never a tab stop. */
 function LogoSlot() {
   const paused = usePageHidden() ? '' : undefined;
   return (
     <div
       aria-hidden="true"
       data-logo-slot=""
-      className="pointer-events-none relative h-logo-slot w-full shrink-0 overflow-hidden"
+      className="pointer-events-none relative h-logo-hub-slot w-logo-hub-slot shrink-0 overflow-hidden"
     >
-      <div className="absolute inset-x-0 bottom-0-5 flex justify-center">
-        <div data-paused={paused} className="logo-ground" />
+      <div className="absolute inset-x-0 bottom-0 flex justify-center">
+        <div
+          data-paused={paused}
+          className="logo-ground [--logo-ground-height:var(--logo-hub-ground-height)] [--logo-ground-width:var(--logo-hub-ground-width)]"
+        />
       </div>
       <div className="absolute inset-x-0 top-1 flex justify-center">
         <img
@@ -74,7 +75,7 @@ function LogoSlot() {
           alt=""
           draggable={false}
           data-paused={paused}
-          className="logo-float size-logo-hero select-none"
+          className="logo-float size-logo-hub select-none"
         />
       </div>
     </div>
@@ -82,65 +83,39 @@ function LogoSlot() {
 }
 
 /**
- * The empty state (DESIGN 3.11), shown while no document is open: a centred column, at most 560 wide.
+ * The start page (DESIGN 3.54), shown while no document is open: a centred column, at most 880 wide, padding 32.
  *
- * 1. The logo slot (ADR-020): the full logo floating in a row of its own (`size-logo-hero` in `h-logo-slot`), decorative.
- * 2. The drop card, 24 below: G1, radius 24, padding 40, "Open a PDF", the hint, and the primary large "Open…" button
- *    with the shortcut as a pill badge (no icon tile: the logo replaces it). Initial focus is on that button, the keyboard path (dropping is
- *    pointer-only).
- * 3. Recent files, 32 px below: a heading, then the rows; the whole section is omitted while there are none (DESIGN 3.11). The footer "Recent files and their previews are stored only on this device." belongs to the rows and is left out with
- *    them: a note about a list that is not there would only say that something is stored.
+ * 1. Header: the logo slot, 16, the title. 2. The tool grid, 24 below (`ToolHub`). 3. Recent files, 32 below (DESIGN 3.11 item 3,
+ * 3.48 unchanged); the whole section is omitted while there are none. The column scrolls as one region when the window is short.
  */
 export function EmptyState({
   openShortcut,
   openKeyShortcuts,
   opening,
   onOpen,
-  dropActive = false,
+  busyCard = null,
+  onRunCard,
   recents = [],
   onClearRecents,
 }: EmptyStateProps) {
   const t = useT();
   return (
-    <main className="my-auto mx-auto flex w-full max-w-empty-max flex-col py-2">
-      <LogoSlot />
-      <section
-        data-drop-zone=""
-        data-drop-active={dropActive ? 'true' : undefined}
-        className="glass-1 relative mt-2 flex flex-col items-center gap-1 rounded-card p-4 text-center"
-      >
-        {dropActive && (
-          // The drag-over look: the selected fill and a 2 px inset accent ring over the glass (DESIGN 3.0, 3.11).
-          <span
-            aria-hidden="true"
-            className={cx(
-              'pointer-events-none absolute inset-0 rounded-card bg-selected inset-ring-2 inset-ring-accent',
-              SELECTED_FORCED_COLORS,
-            )}
-          />
-        )}
-        <h1 className="relative m-0 font-display text-xl">
-          {dropActive ? t('canvas.dropToOpen') : t('emptyState.title')}
-        </h1>
-        <p className="relative m-0 text-text-muted">{t('emptyState.hint')}</p>
-        <div className="relative mt-2 flex items-center gap-1">
-          <Button
-            variant="primary"
-            size="lg"
-            autoFocus
-            disabled={opening}
-            focusableWhenDisabled
-            aria-keyshortcuts={openKeyShortcuts}
-            onClick={onOpen}
-          >
-            {opening ? t('action.opening') : t('action.open')}
-          </Button>
-          {openShortcut !== '' && <span className={PILL}>{openShortcut}</span>}
-        </div>
-        <EmptyStateImagesButton />
-      </section>
+    <main className="mx-auto my-auto flex w-full max-w-hub-max flex-col p-4">
+      <header className="flex items-center gap-2">
+        <LogoSlot />
+        <h1 className="m-0 font-display text-xl text-text">{t('hub.title')}</h1>
+      </header>
+      <div className="mt-3">
+        <ToolHub
+          openShortcut={openShortcut}
+          openKeyShortcuts={openKeyShortcuts}
+          busy={busyCard ?? (opening ? 'open' : null)}
+          opening={opening}
+          onRun={(card) => (card === 'open' ? onOpen() : onRunCard?.(card))}
+        />
+      </div>
       {recents.length > 0 && (
-        <section aria-labelledby="recent-heading" className="mt-3 flex flex-col gap-1">
+        <section aria-labelledby="recent-heading" className="mt-4 flex flex-col gap-1">
           <div className="flex items-center justify-between">
             <h2 id="recent-heading" className="m-0 text-sm font-semibold text-text-muted">
               {t('emptyState.recent')}

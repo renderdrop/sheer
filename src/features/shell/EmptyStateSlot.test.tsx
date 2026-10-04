@@ -45,7 +45,7 @@ afterEach(() => {
   reset();
 });
 
-const openButton = () => screen.getByRole('button', { name: 'Open…' });
+const openButton = () => screen.getByRole('button', { name: 'Open' });
 
 describe('the empty state in its slot', () => {
   it('shows the platform shortcut of Open from the registry', () => {
@@ -81,21 +81,22 @@ describe('the empty state in its slot', () => {
     expect(run).toHaveBeenCalledTimes(2);
   });
 
-  it('says "Opening…" while a document is being opened and refuses a second click (the viewer guards it)', async () => {
-    let finish: (info: DocumentInfo | null) => void = () => undefined;
+  it('shows the Open card busy while a document is being opened and refuses a second click (the viewer guards it)', async () => {
+    let finish: (info: DocumentInfo[]) => void = () => undefined;
     documentsApi.openDocumentDialog.mockReturnValueOnce(
-      new Promise<DocumentInfo | null>((resolve) => {
+      new Promise<DocumentInfo[]>((resolve) => {
         finish = resolve;
       }),
     );
     const { user } = setup(<EmptyStateSlot platform="windows" />);
     await user.click(openButton());
-    const busy = screen.getByRole('button', { name: 'Opening…' });
+    const busy = openButton();
+    expect(busy.getAttribute('aria-busy')).toBe('true');
     expect(busy.getAttribute('aria-disabled')).toBe('true');
     await user.click(busy);
     expect(documentsApi.openDocumentDialog).toHaveBeenCalledTimes(1);
-    await act(async () => finish(null));
-    expect(screen.getByRole('button', { name: 'Open…' })).not.toBeNull();
+    await act(async () => finish([]));
+    expect(openButton().getAttribute('aria-busy')).toBeNull();
   });
 });
 
