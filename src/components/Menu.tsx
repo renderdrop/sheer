@@ -72,9 +72,9 @@ const SUBMENU_OPEN_DELAY = 200;
 const SUBMENU_CLOSE_DELAY = 300;
 
 const ITEM =
-  'flex h-control-md w-full cursor-pointer items-center gap-2 rounded-sm px-2 text-start text-md ' +
+  'flex h-(--space-8) w-full cursor-pointer items-center gap-2 rounded-sm px-2 text-start text-md ' +
   PRESS_MOTION +
-  ' aria-disabled:cursor-not-allowed aria-disabled:text-text-disabled ' +
+  ' aria-disabled:cursor-not-allowed aria-disabled:opacity-(--opacity-disabled) ' +
   'not-aria-disabled:hover:bg-control-hover not-aria-disabled:focus-visible:bg-control-hover not-aria-disabled:active:bg-control-pressed not-aria-disabled:active:scale-(--scale-press) ' +
   'not-aria-disabled:aria-expanded:bg-control-hover';
 
@@ -283,7 +283,7 @@ export function MenuList({ entries, onActivate, onTab, onBack }: MenuListProps) 
               onClick={onClick}
               onPointerEnter={(event) => onItemEnter(event, entry)}
               onPointerLeave={(event) => onItemLeave(event, entry)}
-              className={`${ITEM} ${entry.checked === true ? 'text-text' : 'text-text'}`}
+              className={`${ITEM} text-text`}
             >
               {reserveIcon &&
                 (entry.checked === true ? (
@@ -299,9 +299,7 @@ export function MenuList({ entries, onActivate, onTab, onBack }: MenuListProps) 
               {hasSubmenu ? (
                 <Icon icon={ChevronRight} className="text-text-muted rtl:-scale-x-100" />
               ) : (
-                entry.shortcut !== undefined && (
-                  <span className="shrink-0 text-sm text-text-muted">{entry.shortcut}</span>
-                )
+                entry.shortcut !== undefined && <span className="shrink-0 t-caption">{entry.shortcut}</span>
               )}
             </button>
           );
@@ -426,7 +424,7 @@ function SubmenuSurface({
         tabIndex={-1}
         onKeyDown={onKeyDown}
         style={{ transformOrigin: side === 'left' ? 'right top' : 'left top' }}
-        className={`bg-panel border border-border-subtle shadow-floating min-h-0 overflow-auto rounded-panel p-2 text-md text-text outline-none ${POPOVER_WIDTHS}`}
+        className={`bg-panel border border-border-subtle shadow-floating min-h-0 overflow-auto rounded-button p-1 text-md text-text outline-none ${POPOVER_WIDTHS}`}
       >
         <MenuList entries={entries} onActivate={onActivate} onTab={onTab} onBack={back} />
       </motion.div>

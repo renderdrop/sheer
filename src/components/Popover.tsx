@@ -270,7 +270,7 @@ function Surface({ id, label, role, anchor, side, align, focusRequest, onClose, 
         tabIndex={-1}
         onKeyDown={onKeyDown}
         style={{ transformOrigin: originOf(side, align) }}
-        className={`bg-panel border border-border-subtle shadow-floating min-h-0 overflow-auto rounded-panel p-2 text-md text-text outline-none ${POPOVER_WIDTHS}`}
+        className={`bg-panel border border-border-subtle shadow-floating min-h-0 overflow-auto rounded-button p-4 text-md text-text outline-none ${POPOVER_WIDTHS}`}
       >
         <PopoverScope.Provider value={id}>{children}</PopoverScope.Provider>
       </motion.div>

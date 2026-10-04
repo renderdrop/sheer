@@ -72,7 +72,7 @@ export function Modal({ labelledBy, width, onClose, children }: ModalProps) {
         aria-labelledby={labelledBy}
         tabIndex={-1}
         onKeyDown={onKeyDown}
-        className={`bg-panel border border-border-subtle shadow-floating flex ${width} max-w-full flex-col rounded-card p-6 text-text outline-none`}
+        className={`border border-border-subtle bg-subtle shadow-floating flex ${width} max-w-full flex-col rounded-dialog p-6 text-text outline-none`}
       >
         {children}
       </motion.div>
@@ -81,14 +81,12 @@ export function Modal({ labelledBy, width, onClose, children }: ModalProps) {
   );
 }
 
-/** Tile and title of a dialog (DESIGN 3.19): a 32 accent tile with the icon, then the heading. */
+/** Tile and title of a dialog (DESIGN 3.19): an Ink icon, then the heading. */
 export function ModalHeader({ id, icon, title }: { id: string; icon: ReactNode; title: string }) {
   return (
     <div className="flex items-center gap-2">
-      <span className="flex size-control-md shrink-0 items-center justify-center rounded-sm bg-tile text-tile-icon">
-        {icon}
-      </span>
-      <h2 id={id} className="m-0 font-display text-xl">
+      <span className="flex size-control-md shrink-0 items-center justify-center text-text">{icon}</span>
+      <h2 id={id} className="t-h3 m-0">
         {title}
       </h2>
     </div>

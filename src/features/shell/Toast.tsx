@@ -12,7 +12,7 @@ import { useUi, type Toast } from '../../stores/ui';
 export const TOAST_MS = 4000;
 export const TOAST_ACTION_MS = 8000;
 
-/** The toast (DESIGN 3.12): G2, 40 high, 240 to 400 wide; an accent icon in a 32 tile, the message, an optional ghost action. */
+/** The toast (DESIGN 4): White, border, radius md, floating, 40 high, Ink label, an optional Ghost action; the icon is Ink. */
 function ToastView({ toast }: { toast: Toast }) {
   const { action } = toast;
   const reduce = useReducedMotion() === true;
@@ -38,12 +38,10 @@ function ToastView({ toast }: { toast: Toast }) {
       onMouseLeave={arm}
       onFocus={hold}
       onBlur={arm}
-      className="bg-panel border border-border-subtle shadow-floating pointer-events-auto flex h-toast min-w-toast-min max-w-toast-max items-center gap-2 rounded-panel py-1 pe-3 ps-1"
+      className="bg-panel border border-border-subtle shadow-floating pointer-events-auto flex h-toast min-w-toast-min max-w-toast-max items-center gap-2 rounded-button px-3"
     >
-      <span className="flex size-control-md shrink-0 items-center justify-center rounded-button bg-tile text-tile-icon">
-        <Icon icon={Check} />
-      </span>
-      <span className="min-w-0 flex-auto truncate text-md">{toast.message}</span>
+      <Icon icon={Check} className="shrink-0 text-text" />
+      <span className="min-w-0 flex-auto truncate t-label">{toast.message}</span>
       {action !== undefined && (
         <Button
           variant="ghost"
@@ -61,13 +59,13 @@ function ToastView({ toast }: { toast: Toast }) {
 }
 
 /**
- * The toast slot: the bottom centre of the window, 16 above the status bar, at `--z-toast`. The layer takes no pointer itself, so
+ * The toast slot: the bottom centre of the window, 24 from the window edge, at `--z-toast`. The layer takes no pointer itself, so
  * it never covers what is under it; one toast at a time.
  */
 export function ToastLayer() {
   const toast = useUi((state) => state.toast);
   return (
-    <div className="pointer-events-none fixed inset-x-0 bottom-[calc(var(--status-height)+var(--space-4))] z-toast flex justify-center">
+    <div className="pointer-events-none fixed inset-x-0 bottom-(--space-6) z-toast flex justify-center">
       <div role="status" className="sr-only">
         {toast?.message}
       </div>

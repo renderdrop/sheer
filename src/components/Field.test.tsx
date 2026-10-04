@@ -53,10 +53,10 @@ describe('Field (DESIGN 3.7)', () => {
   it('has the states of a control through tokens: the border, disabled, invalid; the focus ring is the global one', () => {
     const { getByLabelText } = setup(<Field aria-label="A" />);
     const classes = getByLabelText('A').className;
-    expect(classes).toContain('border-control-border');
+    expect(classes).toContain('border-border-subtle');
+    expect(classes).toContain('border-b-control-border');
     expect(classes).toContain('bg-surface-solid');
-    expect(classes).toContain('disabled:border-divider');
-    expect(classes).toContain('disabled:text-text-disabled');
+    expect(classes).toContain('disabled:opacity-(--opacity-disabled)');
     expect(classes).toContain('aria-invalid:border-error-icon');
     // No class of its own for the focus ring, and none that removes the global one.
     expect(classes).not.toMatch(/outline|ring/);

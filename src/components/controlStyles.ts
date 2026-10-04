@@ -37,22 +37,18 @@ export type ButtonSize = 'sm' | 'md' | 'lg';
 
 /** `min-w-16` is 64 px: the spacing token `--space-16` (DESIGN 3.1 minimum width). */
 export const BUTTON_SIZES: Record<ButtonSize, string> = {
-  sm: 'h-control-sm min-w-16 gap-2 rounded-sm px-2 text-sm',
-  md: 'h-control-md min-w-16 gap-2 rounded-button px-3 text-md',
-  lg: 'h-control-lg min-w-16 gap-2 rounded-button px-4 text-md',
+  sm: 'h-control-sm min-w-16 gap-2 rounded-sm px-3 t-label',
+  md: 'h-control-md min-w-16 gap-2 rounded-button px-4 t-label',
+  lg: 'h-control-lg min-w-16 gap-2 rounded-button px-4 t-label',
 };
 
+/** Disabled (DESIGN 4): `--opacity-disabled` on the whole control, fills unchanged. */
+const DISABLED = 'disabled:opacity-(--opacity-disabled) aria-disabled:opacity-(--opacity-disabled)';
+
 export const BUTTON_VARIANTS: Record<ButtonVariant, string> = {
-  primary:
-    'bg-accent text-on-accent not-aria-disabled:enabled:hover:bg-accent-hover not-aria-disabled:enabled:active:bg-accent-pressed ' +
-    'disabled:bg-fill-disabled disabled:text-text-disabled aria-disabled:bg-fill-disabled aria-disabled:text-text-disabled',
-  secondary:
-    'border border-control-border bg-surface-solid text-text not-aria-disabled:enabled:hover:bg-control-hover ' +
-    'not-aria-disabled:enabled:active:bg-control-pressed disabled:border-divider disabled:text-text-disabled ' +
-    'aria-disabled:border-divider aria-disabled:text-text-disabled',
-  ghost:
-    'bg-transparent text-text not-aria-disabled:enabled:hover:bg-control-hover not-aria-disabled:enabled:active:bg-control-pressed ' +
-    'disabled:text-text-disabled aria-disabled:text-text-disabled',
+  primary: `bg-accent text-on-accent not-aria-disabled:enabled:hover:bg-accent-hover ${DISABLED}`,
+  secondary: `bg-subtle text-text not-aria-disabled:enabled:hover:bg-pressed ${DISABLED}`,
+  ghost: `bg-transparent text-text not-aria-disabled:enabled:hover:bg-subtle not-aria-disabled:enabled:active:bg-pressed ${DISABLED}`,
 };
 
 export type IconButtonVariant = 'plain' | 'toggle' | 'tool';
@@ -64,42 +60,32 @@ export const ICON_BUTTON_SIZES: Record<IconButtonSize, { square: string; text: s
   sm: { square: 'size-control-sm rounded-sm', text: 'h-control-sm min-w-control-sm rounded-sm px-1' },
 };
 
-/** The two looks a button has besides rest: `off`, and `on` (toggle: selected, tool: active fill). */
+const ICON_REST = `bg-transparent text-text not-aria-disabled:enabled:hover:bg-subtle not-aria-disabled:enabled:active:bg-pressed ${DISABLED}`;
+
+/** The looks besides rest: toggle on = Sand + Ink icon; tool on = Solar fill + Ink (DESIGN 2.3). */
 export const ICON_BUTTON_VARIANTS: Record<IconButtonVariant, { off: string; on: string }> = {
-  plain: {
-    off:
-      'bg-transparent text-text not-aria-disabled:enabled:hover:bg-control-hover not-aria-disabled:enabled:active:bg-control-pressed ' +
-      'disabled:text-text-disabled aria-disabled:text-text-disabled',
-    on: '',
-  },
+  plain: { off: ICON_REST, on: '' },
   toggle: {
-    off:
-      'bg-transparent text-text not-aria-disabled:enabled:hover:bg-control-hover not-aria-disabled:enabled:active:bg-control-pressed ' +
-      'disabled:text-text-disabled aria-disabled:text-text-disabled',
-    on:
-      `bg-selected text-text inset-ring-1 inset-ring-accent ${SELECTED_FORCED_COLORS} not-aria-disabled:enabled:active:bg-control-pressed ` +
-      'disabled:text-text-disabled aria-disabled:text-text-disabled',
+    off: ICON_REST,
+    on: `bg-subtle text-text ${SELECTED_FORCED_COLORS} not-aria-disabled:enabled:active:bg-pressed ${DISABLED}`,
   },
   tool: {
-    off:
-      'bg-transparent text-text not-aria-disabled:enabled:hover:bg-control-hover not-aria-disabled:enabled:active:bg-control-pressed ' +
-      'disabled:text-text-disabled aria-disabled:text-text-disabled',
-    on:
-      'bg-accent text-on-accent not-aria-disabled:enabled:hover:bg-accent-hover not-aria-disabled:enabled:active:bg-accent-pressed ' +
-      'disabled:bg-fill-disabled disabled:text-text-disabled aria-disabled:bg-fill-disabled aria-disabled:text-text-disabled',
+    off: ICON_REST,
+    on: `bg-accent text-on-accent not-aria-disabled:enabled:hover:bg-accent-hover ${DISABLED}`,
   },
 };
 
 export type FieldSize = 'sm' | 'md';
 
 /**
- * The number field (DESIGN 3.7): 56 wide (`--field-width`), radius 8, a hairline control border on the solid surface,
- * numbers tabular. Disabled takes the divider border and the disabled text color. An invalid value (`aria-invalid`) takes the
- * error icon's color for the border. The focus ring is the global `:focus-visible` outline.
+ * The text and number field (DESIGN 4, 2.9): White, radius md, padding-x 12. Border subtle on three sides, the bottom edge
+ * Stone; hover turns the bottom edge Ink. Invalid (`aria-invalid`) takes the danger border. Disabled: `--opacity-disabled`.
+ * The focus ring is the global `:focus-visible` ring.
  */
 export const FIELD_BASE =
-  'w-field shrink-0 rounded-sm border border-control-border bg-surface-solid px-2 text-text tabular-nums ' +
-  'disabled:border-divider disabled:text-text-disabled aria-invalid:border-error-icon';
+  'w-field shrink-0 rounded-button border border-border-subtle border-b-control-border bg-surface-solid px-3 text-text ' +
+  'tabular-nums placeholder:text-text-muted not-disabled:hover:border-b-text disabled:opacity-(--opacity-disabled) ' +
+  'aria-invalid:border-error-icon transition-colors [transition-duration:var(--motion-fast)]';
 
 /** `sm` 24 high in the slider's row, `md` 32 high in a form (a popover). */
 export const FIELD_SIZES: Record<FieldSize, string> = {

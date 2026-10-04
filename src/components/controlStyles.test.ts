@@ -11,15 +11,9 @@ describe('the on look of an icon button under forced colors', () => {
     expect(cue).toEqual(['forced-colors:border-(length:--focus-width)', 'forced-colors:border-accent']);
   });
 
-  it('a look that is drawn with the box-shadow ring also carries the cue, so it survives forced colors', () => {
-    const ringed = Object.keys(ICON_BUTTON_VARIANTS).filter((name) =>
-      classesOf(name as keyof typeof ICON_BUTTON_VARIANTS).includes('inset-ring-1'),
-    );
-    expect(ringed).toContain('toggle');
-    for (const name of ringed) {
-      const classes = classesOf(name as keyof typeof ICON_BUTTON_VARIANTS);
-      for (const cue of SELECTED_FORCED_COLORS.split(' ')) expect(classes, `${name}: ${cue}`).toContain(cue);
-    }
+  it('the toggle on look carries the cue (Sand fill is dropped by forced colors), so it survives them', () => {
+    const classes = classesOf('toggle');
+    for (const cue of SELECTED_FORCED_COLORS.split(' ')) expect(classes, cue).toContain(cue);
   });
 
   it('the cue is not an outline, which the focus ring owns', () => {

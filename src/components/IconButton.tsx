@@ -25,9 +25,9 @@ export interface IconButtonProps extends Omit<ComponentProps<'button'>, Managed>
   children?: ReactNode;
   /** `plain` action, `toggle` (selected look) or `tool` (accent fill when on). Default `plain`. */
   variant?: IconButtonVariant;
-  /** `md` 32 (radius 12) or `sm` 24 (radius 8). Default `md`. */
+  /** `md` 36 or `sm` 28. Default `md`. */
   size?: IconButtonSize;
-  /** Icon size: 16 by default, 20 for toolbar tools. */
+  /** Icon size: 18 by default, 20 for large tools. */
   iconSize?: IconSize;
   /** Toggle and tool state; also sets `aria-pressed`. Leave `undefined` for plain actions. */
   pressed?: boolean;
@@ -62,7 +62,7 @@ export function IconButton({
   children,
   variant = 'plain',
   size = 'md',
-  iconSize = 16,
+  iconSize = 18,
   pressed,
   active = false,
   locked = false,
