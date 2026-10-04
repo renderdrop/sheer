@@ -2,7 +2,7 @@
 //!
 //! The webview has no event permission (SECURITY T3, ADR-013): it can neither listen to events nor emit them. A push reaches
 //! it on a `tauri::ipc::Channel` that it handed over itself as the argument of a command (`subscribe_app`), like
-//! `watch_transparency` and `subscribe_menu`. The messages are typed [`AppEvent`]s and carry no path: a file dropped on the
+//! `subscribe_menu`. The messages are typed [`AppEvent`]s and carry no path: a file dropped on the
 //! window or opened by the OS is opened by the backend, and the UI hears of it only as `opened` with the document's id, page
 //! count and display name, or as `openFailed` with an error code.
 //!

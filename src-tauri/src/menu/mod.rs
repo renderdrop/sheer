@@ -7,7 +7,7 @@
 //!
 //! **To the UI.** A choice in the menu is a [`MenuEvent`] with the item's id. The webview has no event permission
 //! (SECURITY T3, ADR-013), so the id reaches it on a `tauri::ipc::Channel<String>` that the UI handed over with the
-//! `subscribe_menu` command, like `watch_transparency`. The only things that are ever sent are ids of [`spec::ACTION_IDS`]:
+//! `subscribe_menu` command. The only things that are ever sent are ids of [`spec::ACTION_IDS`]:
 //! [`MenuBridge::forward`] drops every other id (the system items, which AppKit handles itself, and anything unexpected). The
 //! UI in turn runs only ids it has an action for, so neither side trusts the other.
 //!

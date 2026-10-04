@@ -47,7 +47,6 @@
     "allow-app-ready",
     "allow-get-settings",
     "allow-update-settings",
-    "allow-watch-transparency",
     "allow-subscribe-menu",
     "allow-subscribe-app",
     "allow-clear-signature-library",

@@ -24,7 +24,7 @@
 //! | `list_recents`, `remove_recent`, `open_recent` | none; `recentId`; `recentId` | `{ id, displayName, folder, lastOpened, missing }[]` (at most 50, no paths; `folder` is the parent folder's name); nothing; the open event of the file (`opened`, `needsPassword` or `openFailed`) |
 //! | `get_recent_thumbnail` | `recentId` | an `SHR1` frame (PNG, at most 64 x 80 px) of the first page; `not_found` when there is none, see [`thumbnails`] |
 //! | `set_menu_state` | `hasDocument: boolean` | nothing; the macOS menu bar greys the commands that need a document |
-//! | `app_ready`, `get_settings`, `update_settings`, `watch_transparency`, `subscribe_menu`, `subscribe_app` | see [`app`] | see [`app`] |
+//! | `app_ready`, `get_settings`, `update_settings`, `subscribe_menu`, `subscribe_app` | see [`app`] | see [`app`] |
 //!
 //! A frame is at most 4096 x 4096 pixels (all bounds in `limits.rs`); a page that is larger at its zoom bucket is asked for
 //! as 1024 px tiles. A `pageId` is the page's position until M3 (identity mapping). The frontend never sees file paths: a

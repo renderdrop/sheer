@@ -70,37 +70,6 @@ function Row({ label, children }: { label: string; children: ReactNode }) {
   );
 }
 
-/** Theme and glass switches for looking at every state in every mode. They set the same attributes the settings store sets. */
-function ModeSwitches() {
-  const set = (name: 'theme' | 'transparency', value: string | null) => {
-    if (value === null) delete document.documentElement.dataset[name];
-    else document.documentElement.dataset[name] = value;
-  };
-  return (
-    <div className="flex flex-wrap items-center gap-4">
-      <Row label="Theme">
-        <Button size="sm" onClick={() => set('theme', null)}>
-          Auto
-        </Button>
-        <Button size="sm" onClick={() => set('theme', 'light')}>
-          Light
-        </Button>
-        <Button size="sm" onClick={() => set('theme', 'dark')}>
-          Dark
-        </Button>
-      </Row>
-      <Row label="Glass">
-        <Button size="sm" onClick={() => set('transparency', null)}>
-          Auto
-        </Button>
-        <Button size="sm" onClick={() => set('transparency', 'reduced')}>
-          Solid
-        </Button>
-      </Row>
-    </div>
-  );
-}
-
 function Buttons() {
   const variants = ['primary', 'secondary', 'ghost'] as const;
   const sizes = ['sm', 'md', 'lg'] as const;
@@ -563,11 +532,8 @@ export default function Showcase() {
       <header className="showcase-header flex flex-wrap items-center gap-4">
         <div>
           <h1 className="showcase-title font-display">Components</h1>
-          <p className="text-text-muted">
-            Dev only. Tab through everything; try reduced motion and reduced transparency in DevTools.
-          </p>
+          <p className="text-text-muted">Dev only. Tab through everything; try reduced motion in DevTools.</p>
         </div>
-        <ModeSwitches />
       </header>
       <ToolbarDemo />
       <Buttons />

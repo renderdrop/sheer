@@ -53,8 +53,8 @@ beforeEach(() => {
   usePages.setState({ ...pagesInitial }, true);
   updateSettingsMock.mockReset();
   updateSettingsMock.mockImplementation((patch) => {
-    const { glass, theme, language, leftPanelWidth, welcomeTour, authorName, authorPrompt } = useSettings.getState();
-    const current: Settings = { glass, theme, language, leftPanelWidth, welcomeTour, authorName, authorPrompt };
+    const { language, leftPanelWidth, welcomeTour, authorName, authorPrompt } = useSettings.getState();
+    const current: Settings = { language, leftPanelWidth, welcomeTour, authorName, authorPrompt };
     return Promise.resolve({ ...current, ...patch });
   });
   openWelcomeMock.mockReset();

@@ -91,8 +91,8 @@ describe('bindLocaleToSettings', () => {
     bind(root, 'de-DE');
     let changes = 0;
     const stop = useLocaleStore.subscribe(() => (changes += 1));
-    useSettings.setState({ theme: 'dark' });
-    useSettings.setState({ glass: 'solid' });
+    useSettings.setState({ authorName: 'Ada' });
+    useSettings.setState({ leftPanelWidth: 300 });
     stop();
     expect(changes).toBe(0);
     expect(useLocaleStore.getState().locale).toBe('de');

@@ -60,10 +60,7 @@ same-file = "1.0.6"
 windows-native-keyring-store = "1.1"
 tauri-plugin-single-instance = "2.5.2"
 
-# macOS only: the "Reduce transparency" accessibility flag (src/platform/macos.rs). Already part of the build through
-# Tauri/wry; only the two features used are enabled here.
 [target.'cfg(target_os = "macos")'.dependencies]
-objc2-app-kit = { version = "0.3.2", default-features = false, features = ["std", "NSWorkspace", "NSAccessibility"] }
 # Keychain store for keyring-core (MIT OR Apache-2.0); holds the signature library key (storage/keychain.rs).
 apple-native-keyring-store = { version = "1.0", default-features = false, features = ["keychain"] }
 

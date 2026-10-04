@@ -56,7 +56,6 @@ fn main() {
         "app_ready",
         "get_settings",
         "update_settings",
-        "watch_transparency",
         "subscribe_menu",
         "subscribe_app",
         "clear_signature_library",

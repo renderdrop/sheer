@@ -44,7 +44,7 @@ signatures/      M4, engine-free and lopdf-free: vector (validate, trim, normali
 storage/         atomic (temp + fsync + rename) · backup · settings · app_dirs · signatures (M4: library.bin, XChaCha20-Poly1305) · keychain (M4: `SecretStore` over keyring-core) · autosave (M7)
 security/        links (http/https/mailto allowlist, `SafeUrl`) · names (display-name sanitizer; today `documents::sanitize_text`)
 menu/            macOS menu bar (ADR-016): mod (MenuBridge: the channel to the UI, the id allowlist, build + rebuild on a language change) · spec (layout of src/actions/menu.json, texts of the UI catalogs, ACTION_IDS)
-platform/        macos (reduced transparency flag) · windows
+platform/        windows
 ```
 
 Import rules, checked by a CI grep:
@@ -69,7 +69,7 @@ i18n/         locales/en.json + de.json (flat dotted keys, pure JSON, identical 
 styles/tokens.css
 ```
 
-Only `src/api/call.ts` calls `invoke`: it turns every rejection into an `AppError`, and the typed wrappers (`src/api/app.ts`, `documents.ts`, …) go through it. Everything else imports the wrappers. The window has no event permission (SECURITY T3), so the frontend never calls `listen` or `emit`, and `src/api/app.test.ts` fails on any import of `@tauri-apps/api/event`. Backend pushes (§6) reach it through a `Channel` that a wrapper in `src/api/` passes to a command (`watchTransparency` → `watch_transparency`; the settings store consumes it. `subscribeMenu` → `subscribe_menu`; `src/actions/menuBridge.ts` consumes it. `subscribeApp` → `subscribe_app`; `src/features/viewer/appEvents.ts` consumes it: the drop overlay follows `dropHover`, `opened` and `openFailed` go to `adoptOpenOutcomes`, the same function that takes the answer of the open dialog).
+Only `src/api/call.ts` calls `invoke`: it turns every rejection into an `AppError`, and the typed wrappers (`src/api/app.ts`, `documents.ts`, …) go through it. Everything else imports the wrappers. The window has no event permission (SECURITY T3), so the frontend never calls `listen` or `emit`, and `src/api/app.test.ts` fails on any import of `@tauri-apps/api/event`. Backend pushes (§6) reach it through a `Channel` that a wrapper in `src/api/` passes to a command (`subscribeMenu` → `subscribe_menu`; `src/actions/menuBridge.ts` consumes it. `subscribeApp` → `subscribe_app`; `src/features/viewer/appEvents.ts` consumes it: the drop overlay follows `dropHover`, `opened` and `openFailed` go to `adoptOpenOutcomes`, the same function that takes the answer of the open dialog).
 
 **Commands and keys.** A command is an action of `src/actions/registry.ts` and nothing else defines one. The toolbar's items (name, icon, shortcut chip, `aria-keyshortcuts`, enabled), the More menu, the global key handler and the macOS menu bar's commands are all derived from it or run through `runAction(id)`, which refuses an unknown id and a disabled action: there is no second shortcut table. A shortcut is a canonical binding (`{ key, mods }`, `primary` = Cmd on macOS and Ctrl elsewhere, a different one on macOS where research says so), resolved per platform. The key handler (`keys.ts`) takes no key from a text field or an event that is already handled, runs a bare printable key (the tool letters) only while focus is inside the canvas (`data-action-scope="canvas"`), and takes the browser's meaning away from every key it binds. `enabled` reads flags (`hasDocument`, the two zoom limits), not the zoom or the page, so the toolbar keeps its render isolation (ADR-015).
 
@@ -118,10 +118,9 @@ All commands are `async` and return `Result<T, UiError>`. Bounds come from `limi
 
 ```rust
 // app
-app_ready() -> AppBootstrap                          // platform, reducedTransparency, version
-get_settings() -> Settings                           // { glass: "auto" | "solid", theme: "system" | "light" | "dark", language: "system" | "en" | "de", leftPanelWidth: 192..=400 }
-update_settings(patch: SettingsPatch) -> Settings    // patch { glass?, theme?, language?, leftPanelWidth? }; unknown key, enum value or width outside the range → invalid_argument (what: "settings")
-watch_transparency(on_change: Channel<bool>) -> ()   // each change of the OS "Reduce transparency" flag, as a bare bool; one receiver, a new call replaces it
+app_ready() -> AppBootstrap                          // platform, paper, version
+get_settings() -> Settings                           // { language: "system" | "en" | "de", leftPanelWidth: 192..=400 }
+update_settings(patch: SettingsPatch) -> Settings    // patch { language?, leftPanelWidth? }; unknown key, enum value or width outside the range → invalid_argument (what: "settings")
 subscribe_menu(on_action: Channel<String>, system_language: Option<String>) -> ()
                                                      // each command chosen in the macOS menu bar, as the bare id of the item (kebab-case, `menu::spec::ACTION_IDS` only: system items and any other id are dropped in Rust); one receiver, a new call replaces it; system_language = navigator.language, for the menu's labels while language is "system" (a malformed tag counts as unknown); a no-op listener on Windows, which has no menu bar
 subscribe_app(on_event: Channel<AppEvent>) -> ()
@@ -187,9 +186,9 @@ struct DocumentInfo  { doc_id: DocId, display_name: String, kind: DocKind, pages
 enum   DocKind       { User, Welcome }   // serde lowercase; Welcome = the bundled tour sample (ADR-023): read-only, `save_document` answers `read_only` (the UI offers Save As), `close_document` discards without `unsaved_changes`, never a recent
 struct PageSlotInfo  { id: PageId, width: f32, height: f32 /* pt, unrotated CropBox */, rotation: u16, rev: u32, label: Option<String> }
 struct SaveResult    { rev: u64, mode: SaveMode /* Incremental | Full */, backup_created: bool, document: DocumentInfo, changes: ChangeSet }   // ADR-033: `document` = the document as it is now (Save As renames it, the welcome document becomes a user document), `changes` = the annotations as `clean` and an empty history
-struct AppBootstrap  { platform: Platform /* macos | windows | linux */, reduced_transparency: bool, version: &'static str }
+struct AppBootstrap  { platform: Platform /* macos | windows | linux */, version: &'static str }
 enum   AppEvent      { DropHover { active: bool }, Opened { document: DocumentInfo }, OpenFailed { code, key, retryable, params? } }  // wire: `{ "type": "dropHover" | "opened" | "openFailed", ..fields }`, camelCase; OpenFailed carries the error of §7 flat and names no file; no variant has room for a path
-struct Settings      { glass: GlassMode /* Auto | Solid */, theme: ThemeMode /* System | Light | Dark */, language: Language /* System | En | De */, left_panel_width: PanelWidth, welcome_tour: WelcomeTour /* Pending | Shown */, author_name: AuthorName /* "" or ≤128 chars, sanitized, no control chars; default "" (ADR-034) */, author_prompt: AuthorPrompt /* Pending | Done */ }   // serde lowercase values; `welcomeTour` default pending (missing or invalid → pending), the UI writes `shown` before it calls `open_welcome_document` on first launch (ADR-023)
+struct Settings      { language: Language /* System | En | De */, left_panel_width: PanelWidth, welcome_tour: WelcomeTour /* Pending | Shown */, author_name: AuthorName /* "" or ≤128 chars, sanitized, no control chars; default "" (ADR-034) */, author_prompt: AuthorPrompt /* Pending | Done */ }   // serde lowercase values; `welcomeTour` default pending (missing or invalid → pending), the UI writes `shown` before it calls `open_welcome_document` on first launch (ADR-023)
 ```
 
 **Menu bar.** On macOS `menu::install` builds the menu bar at startup from `src/actions/menu.json` (App, File, Edit with the system items, View, Window, Help; the labels are the `menu.*` keys of `src/i18n/locales/*.json`, compiled in with `include_str!`) and `.on_menu_event` hands each chosen item to `MenuBridge::forward`, which sends it on the channel of `subscribe_menu` if `menu::spec::is_action_id` allows it. `update_settings` rebuilds the menu when `language` changes (`menu::refresh`, on the main thread); "system" uses the language `subscribe_menu` reported. Windows has no menu bar (ADR-016): nothing is installed there. Open runs like every other command: the menu sends `open`, the UI calls `open_document_dialog`. The menu is not synchronised with the UI's state (items are not greyed without a document): `runAction` refuses a command that cannot run, which is all the menu needs.
@@ -197,17 +196,13 @@ struct Settings      { glass: GlassMode /* Auto | Solid */, theme: ThemeMode /* 
 **Settings.** `storage::settings` keeps the settings in memory and in `<app data dir>/settings.json`. A missing, oversized (> 64 KiB), damaged
 or hand-edited file never blocks start: only a regular file is read (its type is taken from the opened handle, not from the path, and on Unix it is opened
 `O_NONBLOCK` so a FIFO cannot hang the start), and each field that is invalid falls back to its default. `update_settings`
-takes the patch as raw JSON, validates all of it first (an object that passes a `deny_unknown_fields` struct, so at most `glass`, `theme`, `language`, `leftPanelWidth`, `welcomeTour`, `authorName` and `authorPrompt`, with
+takes the patch as raw JSON, validates all of it first (an object that passes a `deny_unknown_fields` struct, so at most `language`, `leftPanelWidth`, `welcomeTour`, `authorName` and `authorPrompt`, with
 known enum values) and writes it with `storage::atomic::write_atomic`: a temp file `.settings.json.<pid>.<n>.tmp` (process id and a per-process counter, so no two
 writers share one) is created with `create_new` (a name that is taken is skipped, never written through; mode `0600` on Unix, directories `0700`), fsynced,
 renamed over the file, and the directory is fsynced on Unix. At startup `sweep_stale_temp_files` removes the temp files of that exact name pattern that a crash left in the data directory and that are older than an hour. Only after the write succeeds does the
 in-memory copy change, so a failed write leaves memory and disk in agreement. Updates are serialised by a writer lock that is held across the
 write; the lock that guards the in-memory copy is not, so `get_settings` never waits for the disk.
-`reducedTransparency` is the macOS "Reduce transparency" flag (`NSWorkspace.accessibilityDisplayShouldReduceTransparency`, `platform::macos`);
-elsewhere it is `false` and CSS `prefers-reduced-transparency` covers the platform. The frontend turns settings and flag into
-`html[data-theme]` and `html[data-transparency="reduced"]` (`src/stores/settings.ts`, DESIGN §1). On macOS the flag is live: when the window gains
-focus (the setting is changed in System Settings, so the app was in the background) `platform::on_window_event` re-reads it and, if it changed,
-sends the new value over the channel the UI opened with `watch_transparency` (§5, §6), which the settings store mirrors. Startup does not wait for the backend: `src/main.tsx` renders with the defaults at
+The light-only redesign (ADR-100) removed the `glass` and `theme` keys: a file that still has them loads, and `drop_retired_keys` rewrites it once at startup so they are gone. Startup does not wait for the backend: `src/main.tsx` renders with the defaults at
 once and `loadSettings` applies the stored settings when they arrive (after 3 s without an answer the defaults stay and a late answer still applies).
 
 **Read commands** (`engine::{outline, text, search, links, space}`, `commands::{outline, text, search, links}`, ADR-019). Each is one engine job per
@@ -677,9 +672,7 @@ type AutosaveStatus = 'on' | 'offEncrypted' | 'offTooLarge' | 'clean';   // Docu
 ## 6. Pushes (Rust → UI, never with paths)
 
 The webview has no event permission (SECURITY T3): it cannot `listen` to or `emit` events. A push reaches it as a message on a `tauri::ipc::Channel` that the
-UI passes to a command, like `search(.., on_event: Channel<SearchEvent>)`. Four are implemented: `search` sends `hits`, `progress`, `done` and `failed` (§5) for one search, one channel per search, so a message belongs to the search whose channel it came on; `watch_transparency(on_change: Channel<bool>)` sends
-each change of the macOS "Reduce transparency" flag (checked when the window gains focus) as a bare bool; a value that already differs from what `app_ready`
-reported is sent on subscribing. `subscribe_menu(on_action: Channel<String>, ..)` sends the id of each macOS menu command (`menu:action {id}` below, as a bare string) from the allowlist.
+UI passes to a command, like `search(.., on_event: Channel<SearchEvent>)`. Three are implemented: `search` sends `hits`, `progress`, `done` and `failed` (§5) for one search, one channel per search, so a message belongs to the search whose channel it came on. `subscribe_menu(on_action: Channel<String>, ..)` sends the id of each macOS menu command (`menu:action {id}` below, as a bare string) from the allowlist.
 `subscribe_app(on_event: Channel<AppEvent>)` sends the typed `AppEvent`s of `events.rs` (`dropHover { active }`, `opened { document }`, `openFailed { code, .. }`; shapes in §5). They are the events
 `drop:hover` and `doc:opened` of the original plan, as channel messages: `dropHover` while files are dragged over the window (`WindowEvent::DragDrop`: enter shows, leave or drop hides; moving over it does nothing), and
 `opened` or `openFailed` for each file a drop, the OS (file association) or a second launch asked the app to open, sent as soon as that file is open. The open dialog's answer has the same two shapes, so the UI has one parser.

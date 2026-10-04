@@ -6,7 +6,7 @@ import { openDefaultAppsSettings, updateSettings, type Settings } from '../../ap
 import { Popover } from '../../components';
 import { bindLocaleToSettings } from '../../i18n/bind';
 import { useLocaleStore } from '../../i18n/store';
-import { bindSettingsToRoot, useSettings } from '../../stores/settings';
+import { useSettings } from '../../stores/settings';
 import { setup } from '../../test/render';
 import { SettingsPopover } from './SettingsPopover';
 import { openSettings, useSettingsPopover } from './state';
@@ -23,10 +23,8 @@ const settingsInitial = useSettings.getState();
 /** The backend's answer: the settings with the patch applied (what `update_settings` returns). */
 function answerWithPatch() {
   updateSettingsMock.mockImplementation((patch) => {
-    const { glass, theme, language, leftPanelWidth, authorName } = useSettings.getState();
+    const { language, leftPanelWidth, authorName } = useSettings.getState();
     const current: Settings = {
-      glass,
-      theme,
       language,
       leftPanelWidth,
       authorName,
@@ -47,8 +45,6 @@ beforeEach(() => {
 afterEach(() => {
   useSettings.setState({ ...settingsInitial }, true);
   useSettingsPopover.setState({ open: false });
-  document.documentElement.removeAttribute('data-theme');
-  document.documentElement.removeAttribute('data-transparency');
 });
 
 /** A toolbar with a More button, which is what the popover anchors to, and the popover. */
@@ -104,40 +100,24 @@ describe('the settings popover', () => {
     expect(popover()).not.toBeNull();
   });
 
-  it('shows Theme, Glass and Language as labelled segmented controls with the saved values checked', () => {
-    useSettings.setState({ theme: 'dark', glass: 'solid', language: 'de' });
+  it('shows Language as a labelled segmented control with the saved value checked, and no theme or glass control', () => {
+    useSettings.setState({ language: 'de' });
     setup(<Fixture />);
     act(() => openSettings());
-    expect(
-      within(group('Theme'))
-        .getAllByRole('radio')
-        .map((radio) => radio.textContent),
-    ).toEqual(['System', 'Light', 'Dark']);
-    expect(
-      within(group('Glass'))
-        .getAllByRole('radio')
-        .map((radio) => radio.textContent),
-    ).toEqual(['Auto', 'Solid']);
     expect(
       within(group('Language'))
         .getAllByRole('radio')
         .map((radio) => radio.textContent),
     ).toEqual(['System', 'English', 'Deutsch']);
-    expect(checked('Theme')).toBe('Dark');
-    expect(checked('Glass')).toBe('Solid');
     expect(checked('Language')).toBe('Deutsch');
+    expect(within(popover()).queryByRole('radiogroup', { name: 'Theme' })).toBeNull();
+    expect(within(popover()).queryByRole('radiogroup', { name: 'Glass' })).toBeNull();
   });
 
-  it('explains what Solid does', () => {
+  it('takes focus on the checked language, the first control, when it opens', () => {
     setup(<Fixture />);
     act(() => openSettings());
-    expect(within(popover()).getByText(/Solid always uses opaque surfaces/)).not.toBeNull();
-  });
-
-  it('takes focus on the checked theme, the first control, when it opens', () => {
-    setup(<Fixture />);
-    act(() => openSettings());
-    expect(document.activeElement).toBe(choose('Theme', 'System'));
+    expect(document.activeElement).toBe(choose('Language', 'System'));
   });
 
   it('hangs from the toolbar: it is a G2 popover, and focus goes back to the More button on Esc', async () => {
@@ -173,39 +153,13 @@ describe('the settings popover', () => {
     expect(useSettingsPopover.getState().open).toBe(false);
   });
 
-  it('saves a theme choice through update_settings and shows it at once', async () => {
+  it('saves a language choice through update_settings and shows it at once', async () => {
     const { user } = setup(<Fixture />);
     act(() => openSettings());
-    await user.click(choose('Theme', 'Dark'));
-    expect(updateSettingsMock).toHaveBeenCalledExactlyOnceWith({ theme: 'dark' });
-    await waitFor(() => expect(checked('Theme')).toBe('Dark'));
-    expect(useSettings.getState().theme).toBe('dark');
-  });
-
-  it('saves the glass choice, and the root follows: Solid sets data-transparency, Auto removes it', async () => {
-    const unbind = bindSettingsToRoot(document.documentElement);
-    const { user } = setup(<Fixture />);
-    act(() => openSettings());
-    await user.click(choose('Glass', 'Solid'));
-    expect(updateSettingsMock).toHaveBeenLastCalledWith({ glass: 'solid' });
-    await waitFor(() => expect(document.documentElement.getAttribute('data-transparency')).toBe('reduced'));
-    await user.click(choose('Glass', 'Auto'));
-    expect(updateSettingsMock).toHaveBeenLastCalledWith({ glass: 'auto' });
-    await waitFor(() => expect(document.documentElement.hasAttribute('data-transparency')).toBe(false));
-    unbind();
-  });
-
-  it('applies the theme to the root: Dark and Light override the OS, System leaves it to the OS', async () => {
-    const unbind = bindSettingsToRoot(document.documentElement);
-    const { user } = setup(<Fixture />);
-    act(() => openSettings());
-    await user.click(choose('Theme', 'Dark'));
-    await waitFor(() => expect(document.documentElement.getAttribute('data-theme')).toBe('dark'));
-    await user.click(choose('Theme', 'Light'));
-    await waitFor(() => expect(document.documentElement.getAttribute('data-theme')).toBe('light'));
-    await user.click(choose('Theme', 'System'));
-    await waitFor(() => expect(document.documentElement.hasAttribute('data-theme')).toBe(false));
-    unbind();
+    await user.click(choose('Language', 'English'));
+    expect(updateSettingsMock).toHaveBeenCalledExactlyOnceWith({ language: 'en' });
+    await waitFor(() => expect(checked('Language')).toBe('English'));
+    expect(useSettings.getState().language).toBe('en');
   });
 
   it('switches the language at once, popover included: choosing Deutsch makes it German', async () => {
@@ -216,29 +170,19 @@ describe('the settings popover', () => {
     expect(updateSettingsMock).toHaveBeenCalledExactlyOnceWith({ language: 'de' });
     await waitFor(() => expect(screen.getByRole('dialog', { name: 'Einstellungen' })).not.toBeNull());
     const german = screen.getByRole('dialog', { name: 'Einstellungen' });
-    expect(within(german).getByRole('radiogroup', { name: 'Erscheinungsbild' })).not.toBeNull();
     expect(within(german).getByRole('radiogroup', { name: 'Sprache' })).not.toBeNull();
     expect(document.documentElement.getAttribute('lang')).toBe('de');
     unbind();
   });
 
-  it('is operable from the keyboard: arrows choose, Tab moves between the three controls and wraps inside the popover', async () => {
+  it('is operable from the keyboard: arrows choose, Tab moves between the controls and wraps inside the popover', async () => {
     const { user } = setup(<Fixture />);
     act(() => openSettings());
     await user.keyboard('{ArrowRight}');
-    expect(updateSettingsMock).toHaveBeenLastCalledWith({ theme: 'light' });
-    await waitFor(() => expect(checked('Theme')).toBe('Light'));
-    await user.tab();
-    expect(document.activeElement).toBe(choose('Glass', 'Auto'));
-    await user.keyboard('{ArrowRight}');
-    expect(updateSettingsMock).toHaveBeenLastCalledWith({ glass: 'solid' });
-    await user.tab();
-    expect(document.activeElement).toBe(choose('Language', 'System'));
-    await user.keyboard('{ArrowLeft}');
-    expect(updateSettingsMock).toHaveBeenLastCalledWith({ language: 'de' });
+    expect(updateSettingsMock).toHaveBeenLastCalledWith({ language: 'en' });
+    await waitFor(() => expect(checked('Language')).toBe('English'));
     // Tab at the last control wraps to the first: the popover keeps focus inside.
-    await waitFor(() => expect(checked('Language')).toBe('Deutsch'));
-    // The author name field is the fourth stop, Manage signatures the fifth, the Help row's two buttons the sixth and the seventh (the last one).
+    // The author name field is the second stop, Manage signatures the third, the Help row's two buttons the fifth and the sixth (the last one).
     await user.tab();
     expect(document.activeElement).toBe(within(popover()).getByRole('textbox', { name: 'Author name' }));
     await user.tab();
@@ -250,7 +194,7 @@ describe('the settings popover', () => {
     await user.tab();
     expect(document.activeElement).toBe(within(popover()).getByRole('button', { name: 'Show tips again' }));
     await user.tab();
-    expect(document.activeElement).toBe(choose('Theme', 'Light'));
+    expect(document.activeElement).toBe(choose('Language', 'English'));
     await user.tab({ shift: true });
     expect(document.activeElement).toBe(within(popover()).getByRole('button', { name: 'Show tips again' }));
   });
@@ -264,12 +208,12 @@ describe('the settings popover', () => {
     const { user } = setup(<Fixture />);
     act(() => openSettings());
     expect(within(popover()).queryByRole('alert')).toBeNull();
-    await user.click(choose('Theme', 'Dark'));
+    await user.click(choose('Language', 'Deutsch'));
     expect((await within(popover()).findByRole('alert')).textContent).toBe('That setting is not valid.');
-    expect(checked('Theme')).toBe('System');
-    await user.click(choose('Theme', 'Light'));
+    expect(checked('Language')).toBe('System');
+    await user.click(choose('Language', 'English'));
     await waitFor(() => expect(within(popover()).queryByRole('alert')).toBeNull());
-    expect(checked('Theme')).toBe('Light');
+    expect(checked('Language')).toBe('English');
   });
 
   it('is one popover at a time: opening another popover closes it', async () => {

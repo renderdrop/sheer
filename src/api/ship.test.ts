@@ -156,8 +156,6 @@ describe('update commands', () => {
 
 describe('the updater settings', () => {
   const BASE = {
-    glass: 'auto',
-    theme: 'system',
     language: 'system',
     leftPanelWidth: 248,
     welcomeTour: 'pending',

@@ -8,21 +8,17 @@ import { invoke } from '@tauri-apps/api/core';
 
 import { PANEL } from '../components/tokens';
 import {
-  GLASS_MODES,
   LANGUAGES,
   LEFT_PANEL_WIDTH,
-  THEME_MODES,
   appReady,
   getSettings,
   parseAppEvent,
   parseBootstrap,
   parseMenuMessage,
   parseSettings,
-  parseTransparencyMessage,
   subscribeApp,
   subscribeMenu,
   updateSettings,
-  watchTransparency,
 } from './app';
 
 /** A `Channel` that keeps its handler, so a test can play the backend by calling `onmessage`. */
@@ -41,30 +37,33 @@ beforeEach(() => {
 
 describe('parseSettings', () => {
   it('accepts every combination of known values', () => {
-    for (const glass of GLASS_MODES) {
-      for (const theme of THEME_MODES) {
-        for (const language of LANGUAGES) {
-          const settings = {
-            glass,
-            theme,
-            language,
-            leftPanelWidth: 248,
-            welcomeTour: 'pending',
-            authorName: 'Author',
-            authorPrompt: 'pending',
-          };
-          expect(parseSettings(settings)).toEqual(settings);
-        }
-      }
+    for (const language of LANGUAGES) {
+      const settings = {
+        language,
+        leftPanelWidth: 248,
+        welcomeTour: 'pending',
+        authorName: 'Author',
+        authorPrompt: 'pending',
+      };
+      expect(parseSettings(settings)).toEqual(settings);
     }
+  });
+
+  it('ignores the retired theme and glass keys of an older file', () => {
+    const settings = {
+      language: 'system',
+      leftPanelWidth: 248,
+      welcomeTour: 'pending',
+      authorName: '',
+      authorPrompt: 'pending',
+    };
+    expect(parseSettings({ ...settings, glass: 'solid', theme: 'dark' })).toEqual(settings);
   });
 
   it('accepts the whole range of the left panel width and nothing outside it', () => {
     for (const leftPanelWidth of [LEFT_PANEL_WIDTH.min, 193, 320, LEFT_PANEL_WIDTH.max]) {
       expect(
         parseSettings({
-          glass: 'auto',
-          theme: 'system',
           language: 'system',
           leftPanelWidth,
           welcomeTour: 'shown',
@@ -91,8 +90,6 @@ describe('parseSettings', () => {
     ]) {
       expect(
         parseSettings({
-          glass: 'auto',
-          theme: 'system',
           language: 'system',
           leftPanelWidth: bad,
           welcomeTour: 'pending',
@@ -116,48 +113,25 @@ describe('parseSettings', () => {
       7,
       [],
       {},
-      { glass: 'auto' },
-      { theme: 'system' },
-      { glass: 'Auto', theme: 'system' },
+      { language: 'system' },
+      { language: 'system', leftPanelWidth: 248, welcomeTour: 'pending', authorName: 'Author', authorPrompt: 'sunny' },
       {
-        glass: 'auto',
-        theme: 'dim',
-        language: 'system',
-        leftPanelWidth: 248,
-        welcomeTour: 'pending',
-        authorName: 'Author',
-        authorPrompt: 'pending',
-      },
-      {
-        glass: 1,
-        theme: 'system',
-        language: 'system',
-        leftPanelWidth: 248,
-        welcomeTour: 'pending',
-        authorName: 'Author',
-        authorPrompt: 'pending',
-      },
-      {
-        glass: 'auto',
-        theme: 'system',
         language: 'system',
         leftPanelWidth: 248,
         welcomeTour: 'done',
         authorName: 'Author',
         authorPrompt: 'pending',
       },
-      { glass: 'auto', theme: 'system', language: 'system', leftPanelWidth: 248 },
+      { language: 'system', leftPanelWidth: 248 },
       // A language that is not one of the three wire names: a tag, another case, another language.
       ...['de-DE', 'DE', 'fr', '', null, 1].map((language) => ({
-        glass: 'auto',
-        theme: 'system',
         language,
         leftPanelWidth: 248,
       })),
       // Without the width or the language, or with an older shape of the settings.
-      { glass: 'auto', theme: 'system', leftPanelWidth: 248 },
-      { glass: 'auto', theme: 'system', language: 'system' },
-      { glass: 'auto', theme: 'system' },
+      { leftPanelWidth: 248 },
+      { language: 'system' },
+      {},
     ]) {
       expect(parseSettings(bad)).toBeNull();
     }
@@ -166,8 +140,6 @@ describe('parseSettings', () => {
   it('drops unknown keys', () => {
     expect(
       parseSettings({
-        glass: 'solid',
-        theme: 'light',
         language: 'de',
         leftPanelWidth: 300,
         welcomeTour: 'shown',
@@ -176,8 +148,6 @@ describe('parseSettings', () => {
         extra: '<img src=x>',
       }),
     ).toEqual({
-      glass: 'solid',
-      theme: 'light',
       language: 'de',
       leftPanelWidth: 300,
       welcomeTour: 'shown',
@@ -189,36 +159,30 @@ describe('parseSettings', () => {
 
 describe('parseBootstrap', () => {
   it('accepts the backend shape', () => {
-    expect(parseBootstrap({ platform: 'macos', reducedTransparency: true, version: '0.2.0' })).toEqual({
+    expect(parseBootstrap({ platform: 'macos', version: '0.2.0' })).toEqual({
       platform: 'macos',
-      reducedTransparency: true,
       version: '0.2.0',
       authorSuggestion: '',
       paper: 'a4',
     });
-    expect(
-      parseBootstrap({ platform: 'windows', reducedTransparency: false, version: '1', paper: 'letter' }),
-    ).toMatchObject({
+    expect(parseBootstrap({ platform: 'windows', version: '1', paper: 'letter' })).toMatchObject({
       paper: 'letter',
     });
-    expect(
-      parseBootstrap({ platform: 'windows', reducedTransparency: false, version: '1', paper: 'a3' }),
-    ).toMatchObject({
+    expect(parseBootstrap({ platform: 'windows', version: '1', paper: 'a3' })).toMatchObject({
       paper: 'a4',
     });
-    expect(
-      parseBootstrap({ platform: 'macos', reducedTransparency: true, version: '0.2.0', authorSuggestion: 'user' }),
-    ).toMatchObject({ authorSuggestion: 'user' });
+    expect(parseBootstrap({ platform: 'macos', version: '0.2.0', authorSuggestion: 'user' })).toMatchObject({
+      authorSuggestion: 'user',
+    });
   });
 
   it('rejects other platforms, types and shapes', () => {
     for (const bad of [
       null,
       {},
-      { platform: 'macos', reducedTransparency: true },
-      { platform: 'beos', reducedTransparency: false, version: '1' },
-      { platform: 'windows', reducedTransparency: 'yes', version: '1' },
-      { platform: 'windows', reducedTransparency: false, version: 1 },
+      { platform: 'macos' },
+      { platform: 'beos', version: '1' },
+      { platform: 'windows', version: 1 },
     ]) {
       expect(parseBootstrap(bad)).toBeNull();
     }
@@ -227,13 +191,11 @@ describe('parseBootstrap', () => {
 
 describe('commands', () => {
   it('app_ready and get_settings take no arguments', async () => {
-    invokeMock.mockResolvedValueOnce({ platform: 'windows', reducedTransparency: false, version: '0.2.0' });
+    invokeMock.mockResolvedValueOnce({ platform: 'windows', version: '0.2.0' });
     await expect(appReady()).resolves.toMatchObject({ platform: 'windows' });
     expect(invokeMock).toHaveBeenLastCalledWith('app_ready', undefined);
 
     invokeMock.mockResolvedValueOnce({
-      glass: 'auto',
-      theme: 'system',
       language: 'system',
       leftPanelWidth: 248,
       welcomeTour: 'pending',
@@ -241,8 +203,6 @@ describe('commands', () => {
       authorPrompt: 'pending',
     });
     await expect(getSettings()).resolves.toEqual({
-      glass: 'auto',
-      theme: 'system',
       language: 'system',
       leftPanelWidth: 248,
       welcomeTour: 'pending',
@@ -254,28 +214,24 @@ describe('commands', () => {
 
   it('update_settings sends only the patch and returns the settings after the update', async () => {
     invokeMock.mockResolvedValueOnce({
-      glass: 'solid',
-      theme: 'system',
       language: 'system',
       leftPanelWidth: 248,
       welcomeTour: 'pending',
       authorName: 'Author',
       authorPrompt: 'pending',
     });
-    await expect(updateSettings({ glass: 'solid' })).resolves.toEqual({
-      glass: 'solid',
-      theme: 'system',
+    await expect(updateSettings({ language: 'de' })).resolves.toEqual({
       language: 'system',
       leftPanelWidth: 248,
       welcomeTour: 'pending',
       authorName: 'Author',
       authorPrompt: 'pending',
     });
-    expect(invokeMock).toHaveBeenCalledWith('update_settings', { patch: { glass: 'solid' } });
+    expect(invokeMock).toHaveBeenCalledWith('update_settings', { patch: { language: 'de' } });
   });
 
   it('turns a malformed answer into the generic error', async () => {
-    invokeMock.mockResolvedValueOnce({ glass: 'frosted', theme: 'system' });
+    invokeMock.mockResolvedValueOnce({});
     await expect(getSettings()).rejects.toEqual({ code: 'internal', key: 'error.internal', retryable: false });
     invokeMock.mockResolvedValueOnce(null);
     await expect(appReady()).rejects.toMatchObject({ code: 'internal' });
@@ -288,52 +244,10 @@ describe('commands', () => {
       retryable: false,
       params: { what: 'settings' },
     });
-    await expect(updateSettings({ theme: 'dark' })).rejects.toMatchObject({
+    await expect(updateSettings({ language: 'de' })).rejects.toMatchObject({
       code: 'invalid_argument',
       params: { what: 'settings' },
     });
-  });
-});
-
-describe('watchTransparency', () => {
-  /** The channel the command was given: what the backend would send on. */
-  const channelOf = (): { onmessage: (message: unknown) => void } => {
-    const args = invokeMock.mock.calls.at(-1)?.[1] as { onChange: { onmessage: (message: unknown) => void } };
-    return args.onChange;
-  };
-
-  it('hands the backend a channel and passes on every flag it sends', async () => {
-    invokeMock.mockResolvedValueOnce(undefined);
-    const onChange = vi.fn();
-    await watchTransparency(onChange);
-    expect(invokeMock).toHaveBeenCalledTimes(1);
-    expect(invokeMock.mock.calls[0]?.[0]).toBe('watch_transparency');
-    expect(Object.keys(invokeMock.mock.calls[0]?.[1] ?? {})).toEqual(['onChange']);
-
-    channelOf().onmessage(true);
-    channelOf().onmessage(false);
-    expect(onChange.mock.calls).toEqual([[true], [false]]);
-  });
-
-  it('ignores anything that is not a boolean', async () => {
-    invokeMock.mockResolvedValueOnce(undefined);
-    const onChange = vi.fn();
-    await watchTransparency(onChange);
-    for (const bad of [null, undefined, 'true', 0, 1, {}, { reduced: true }, [true]]) channelOf().onmessage(bad);
-    expect(onChange).not.toHaveBeenCalled();
-  });
-
-  it('rejects with an AppError when the backend refuses', async () => {
-    invokeMock.mockRejectedValueOnce(new Error('command watch_transparency not allowed'));
-    await expect(watchTransparency(vi.fn())).rejects.toMatchObject({ code: 'internal' });
-  });
-
-  it('reads a message as the bare flag', () => {
-    expect(parseTransparencyMessage(true)).toBe(true);
-    expect(parseTransparencyMessage(false)).toBe(false);
-    for (const bad of [null, undefined, 'false', 0, {}, { reduced: true }]) {
-      expect(parseTransparencyMessage(bad), JSON.stringify(bad)).toBeNull();
-    }
   });
 });
 

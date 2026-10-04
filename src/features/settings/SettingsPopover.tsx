@@ -1,7 +1,7 @@
 import { useId, useLayoutEffect, useState, type ReactNode } from 'react';
 
 import { Button, Field, Popover } from '../../components';
-import { AUTHOR_NAME_MAX, isAuthorName, openDefaultAppsSettings, type GlassMode, type ThemeMode } from '../../api/app';
+import { AUTHOR_NAME_MAX, isAuthorName, openDefaultAppsSettings } from '../../api/app';
 import { APP_NAME } from '../../config/app';
 import type { AppError } from '../../api/errors';
 import { errorText, useT, type Language, type PlainKey } from '../../i18n';
@@ -15,15 +15,6 @@ import { UpdateRow } from '../update/UpdateRow';
 import { useSettingsPopover } from './state';
 
 /** The values of each setting with the catalog key of their text, in the order the segments show them. */
-const THEMES: readonly { value: ThemeMode; labelKey: PlainKey }[] = [
-  { value: 'system', labelKey: 'settings.theme.system' },
-  { value: 'light', labelKey: 'settings.theme.light' },
-  { value: 'dark', labelKey: 'settings.theme.dark' },
-];
-const GLASS: readonly { value: GlassMode; labelKey: PlainKey }[] = [
-  { value: 'auto', labelKey: 'settings.glass.auto' },
-  { value: 'solid', labelKey: 'settings.glass.solid' },
-];
 const LANGUAGE_CHOICES: readonly { value: Language; labelKey: PlainKey }[] = [
   { value: 'system', labelKey: 'settings.language.system' },
   { value: 'en', labelKey: 'settings.language.en' },
@@ -217,12 +208,8 @@ function AuthorRow() {
 /** The settings as segmented controls and the author field; each choice is saved and applied at once (the store answers `update_settings`). */
 function SettingsForm() {
   const t = useT();
-  const theme = useSettings((state) => state.theme);
-  const glass = useSettings((state) => state.glass);
   const language = useSettings((state) => state.language);
   const error = useSettings((state) => state.error);
-  const setTheme = useSettings((state) => state.setTheme);
-  const setGlass = useSettings((state) => state.setGlass);
   const setLanguage = useSettings((state) => state.setLanguage);
 
   const options = <Value extends string>(
@@ -231,26 +218,6 @@ function SettingsForm() {
 
   return (
     <div className="flex flex-col gap-4 p-2">
-      <Setting label={t('settings.theme')}>
-        {(labelId) => (
-          <SegmentedControl
-            labelledBy={labelId}
-            value={theme}
-            options={options(THEMES)}
-            onChange={(v) => void setTheme(v)}
-          />
-        )}
-      </Setting>
-      <Setting label={t('settings.glass')} hint={t('settings.glass.hint')}>
-        {(labelId) => (
-          <SegmentedControl
-            labelledBy={labelId}
-            value={glass}
-            options={options(GLASS)}
-            onChange={(v) => void setGlass(v)}
-          />
-        )}
-      </Setting>
       <Setting label={t('settings.language')}>
         {(labelId) => (
           <SegmentedControl
@@ -278,7 +245,7 @@ function SettingsForm() {
 }
 
 /**
- * The settings popover (DESIGN 3.13): theme, glass and language as segmented controls in a G2 Popover under the toolbar.
+ * The settings popover (DESIGN 3.13): language as segmented controls in a G2 Popover under the toolbar.
  * It opens from the `settings` action, whichever way it was run (Ctrl or Cmd and comma, More, the macOS menu bar), through
  * `useSettingsPopover`. Mounted once, with the toolbar.
  */

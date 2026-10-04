@@ -1,7 +1,7 @@
 //! User settings: a small JSON file in the app data directory, mirrored in memory.
 //!
 //! Wire shape (camelCase, enum values lowercase):
-//! `{ "glass": "auto" | "solid", "theme": "system" | "light" | "dark", "language": "system" | "en" | "de",
+//! `{ "language": "system" | "en" | "de",
 //! "leftPanelWidth": 192..=400, "welcomeTour": "pending" | "shown", "authorName": 0..=128 chars, sanitized (ADR-034), no control
 //! characters, "authorPrompt": "pending" | "done", "updates": "off" | "on", "skippedVersion": null | version string (ADR-053) }`.
 //!
@@ -18,6 +18,7 @@
 use std::fs::File;
 use std::io::{self, Read};
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Mutex, MutexGuard, PoisonError};
 
 use serde::{Deserialize, Deserializer, Serialize};
@@ -30,25 +31,6 @@ use crate::storage::open_without_blocking;
 
 /// File name inside the app data directory.
 pub const FILE_NAME: &str = "settings.json";
-
-/// "Glass: Auto / Solid" (DESIGN §1). `Solid` forces the opaque surfaces; `Auto` follows the OS and the browser.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
-pub enum GlassMode {
-    #[default]
-    Auto,
-    Solid,
-}
-
-/// Colour theme (DESIGN §1). `System` follows the OS.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
-pub enum ThemeMode {
-    #[default]
-    System,
-    Light,
-    Dark,
-}
 
 /// Interface language. `System` follows the OS language (the frontend resolves it: `de*` is German, everything else English);
 /// `En` and `De` are the two shipped translations (`src/i18n/locales`).
@@ -271,12 +253,14 @@ impl<'de> Deserialize<'de> for TipsSeen {
     }
 }
 
+/// Keys that older versions wrote (colour theme and glass mode went away with the light-only redesign, ADR-100). They are
+/// ignored on reading and dropped from the file by the first write.
+const RETIRED_KEYS: [&str; 2] = ["glass", "theme"];
+
 /// Every persisted setting. Add a field here, to [`SettingsPatch`] and to `src/api/app.ts` together.
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Settings {
-    pub glass: GlassMode,
-    pub theme: ThemeMode,
     pub language: Language,
     pub left_panel_width: PanelWidth,
     pub welcome_tour: WelcomeTour,
@@ -295,14 +279,6 @@ impl Settings {
             return Self::default();
         };
         Self {
-            glass: map
-                .get("glass")
-                .and_then(|value| GlassMode::deserialize(value).ok())
-                .unwrap_or_default(),
-            theme: map
-                .get("theme")
-                .and_then(|value| ThemeMode::deserialize(value).ok())
-                .unwrap_or_default(),
             language: map
                 .get("language")
                 .and_then(|value| Language::deserialize(value).ok())
@@ -341,8 +317,6 @@ impl Settings {
     /// These settings with every field the patch names replaced.
     pub fn apply(self, patch: SettingsPatch) -> Self {
         Self {
-            glass: patch.glass.unwrap_or(self.glass),
-            theme: patch.theme.unwrap_or(self.theme),
             language: patch.language.unwrap_or(self.language),
             left_panel_width: patch.left_panel_width.unwrap_or(self.left_panel_width),
             welcome_tour: patch.welcome_tour.unwrap_or(self.welcome_tour),
@@ -360,10 +334,6 @@ impl Settings {
 #[derive(Debug, Clone, PartialEq, Eq, Default, Deserialize)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
 pub struct SettingsPatch {
-    #[serde(default, deserialize_with = "present")]
-    pub glass: Option<GlassMode>,
-    #[serde(default, deserialize_with = "present")]
-    pub theme: Option<ThemeMode>,
     #[serde(default, deserialize_with = "present")]
     pub language: Option<Language>,
     #[serde(default, deserialize_with = "present")]
@@ -414,13 +384,19 @@ pub struct SettingsStore {
     /// Serialises `update`: one writer at a time keeps the file in the same order as memory. This is the lock that is
     /// held across fsync and rename.
     writer: Mutex<()>,
+    /// The file on disk still holds a retired key (see [`RETIRED_KEYS`]); cleared by the next successful write.
+    stale: AtomicBool,
 }
 
 impl SettingsStore {
     /// Loads the settings at `path`. Never fails; see the module docs.
     pub fn load(path: PathBuf) -> Self {
+        let mut stale = false;
         let current = match read_bounded(&path) {
-            Ok(bytes) => Settings::from_stored(&bytes),
+            Ok(bytes) => {
+                stale = has_retired_keys(&bytes);
+                Settings::from_stored(&bytes)
+            }
             // First start: nothing stored yet.
             Err(error) if error.kind() == io::ErrorKind::NotFound => Settings::default(),
             Err(error) => {
@@ -432,7 +408,21 @@ impl SettingsStore {
             path,
             current: Mutex::new(current),
             writer: Mutex::new(()),
+            stale: AtomicBool::new(stale),
         }
+    }
+
+    /// Rewrites the file when it still holds a retired key, so the keys are gone after the first start. Nothing happens
+    /// otherwise. A failed write is returned and the next start tries again.
+    pub fn drop_retired_keys(&self) -> Result<(), AppError> {
+        let _writer = self.writer.lock().unwrap_or_else(PoisonError::into_inner);
+        if !self.stale.load(Ordering::Acquire) {
+            return Ok(());
+        }
+        let bytes = to_file_bytes(&self.get())?;
+        write_atomic(&self.path, &bytes)?;
+        self.stale.store(false, Ordering::Release);
+        Ok(())
     }
 
     /// The current settings. Never waits for a write in progress: it answers with the last persisted state.
@@ -457,10 +447,8 @@ impl SettingsStore {
         let current = self.get();
         let next = current.clone().apply(patch);
         if next != current {
-            let mut bytes = serde_json::to_vec_pretty(&next)
-                .map_err(|error| AppError::logged(ErrorCode::Internal, error))?;
-            bytes.push(b'\n');
-            persist(&bytes)?;
+            persist(&to_file_bytes(&next)?)?;
+            self.stale.store(false, Ordering::Release);
             *self.lock() = next.clone();
         }
         Ok(next)
@@ -471,6 +459,19 @@ impl SettingsStore {
     fn lock(&self) -> MutexGuard<'_, Settings> {
         self.current.lock().unwrap_or_else(PoisonError::into_inner)
     }
+}
+
+/// The pretty JSON of `settings` with a final newline.
+fn to_file_bytes(settings: &Settings) -> Result<Vec<u8>, AppError> {
+    let mut bytes = serde_json::to_vec_pretty(settings)
+        .map_err(|error| AppError::logged(ErrorCode::Internal, error))?;
+    bytes.push(b'\n');
+    Ok(bytes)
+}
+
+/// Whether stored bytes are a JSON object that names a retired key.
+fn has_retired_keys(bytes: &[u8]) -> bool {
+    matches!(serde_json::from_slice::<Value>(bytes), Ok(Value::Object(map)) if RETIRED_KEYS.iter().any(|key| map.contains_key(*key)))
 }
 
 /// Reads at most `MAX_SETTINGS_FILE_BYTES` of a regular file; a longer file is reported as invalid data instead of
@@ -532,11 +533,9 @@ mod tests {
     fn settings_serialize_with_lowercase_enum_values() {
         assert_eq!(
             serde_json::to_value(Settings::default()).unwrap(),
-            json!({ "glass": "auto", "theme": "system", "language": "system", "leftPanelWidth": 248, "welcomeTour": "pending", "authorName": "", "authorPrompt": "pending", "updates": "off", "skippedVersion": null, "tipsSeen": [] })
+            json!({ "language": "system", "leftPanelWidth": 248, "welcomeTour": "pending", "authorName": "", "authorPrompt": "pending", "updates": "off", "skippedVersion": null, "tipsSeen": [] })
         );
         let settings = Settings {
-            glass: GlassMode::Solid,
-            theme: ThemeMode::Dark,
             language: Language::De,
             left_panel_width: PanelWidth::new(320).unwrap(),
             welcome_tour: WelcomeTour::Shown,
@@ -548,7 +547,7 @@ mod tests {
         };
         assert_eq!(
             serde_json::to_value(settings).unwrap(),
-            json!({ "glass": "solid", "theme": "dark", "language": "de", "leftPanelWidth": 320, "welcomeTour": "shown", "authorName": "Ada Lovelace", "authorPrompt": "done", "updates": "on", "skippedVersion": "1.2.3-rc.1", "tipsSeen": ["textBox"] })
+            json!({ "language": "de", "leftPanelWidth": 320, "welcomeTour": "shown", "authorName": "Ada Lovelace", "authorPrompt": "done", "updates": "on", "skippedVersion": "1.2.3-rc.1", "tipsSeen": ["textBox"] })
         );
     }
 
@@ -560,7 +559,7 @@ mod tests {
         let patched = Settings::default().apply(patch(json!({ "welcomeTour": "shown" })).unwrap());
         assert_eq!(patched.welcome_tour, WelcomeTour::Shown);
         // Another field leaves it alone.
-        let other = patched.apply(patch(json!({ "theme": "dark" })).unwrap());
+        let other = patched.apply(patch(json!({ "language": "de" })).unwrap());
         assert_eq!(other.welcome_tour, WelcomeTour::Shown);
     }
 
@@ -694,28 +693,6 @@ mod tests {
 
     #[test]
     fn a_patch_accepts_every_valid_value() {
-        for (name, glass) in [("auto", GlassMode::Auto), ("solid", GlassMode::Solid)] {
-            assert_eq!(
-                patch(json!({ "glass": name })).unwrap(),
-                SettingsPatch {
-                    glass: Some(glass),
-                    ..SettingsPatch::default()
-                }
-            );
-        }
-        for (name, theme) in [
-            ("system", ThemeMode::System),
-            ("light", ThemeMode::Light),
-            ("dark", ThemeMode::Dark),
-        ] {
-            assert_eq!(
-                patch(json!({ "theme": name })).unwrap(),
-                SettingsPatch {
-                    theme: Some(theme),
-                    ..SettingsPatch::default()
-                }
-            );
-        }
         for (name, language) in [
             ("system", Language::System),
             ("en", Language::En),
@@ -730,11 +707,8 @@ mod tests {
             );
         }
         assert_eq!(
-            patch(json!({ "glass": "solid", "theme": "light", "language": "en", "leftPanelWidth": 296 }))
-                .unwrap(),
+            patch(json!({ "language": "en", "leftPanelWidth": 296 })).unwrap(),
             SettingsPatch {
-                glass: Some(GlassMode::Solid),
-                theme: Some(ThemeMode::Light),
                 language: Some(Language::En),
                 left_panel_width: PanelWidth::new(296),
                 welcome_tour: None,
@@ -920,7 +894,7 @@ mod tests {
     fn a_patch_rejects_unknown_keys_and_non_objects() {
         assert_eq!(rejected(json!({ "colour": "red" })), INVALID_SETTINGS);
         assert_eq!(
-            rejected(json!({ "glass": "auto", "../x": 1 })),
+            rejected(json!({ "updates": "off", "../x": 1 })),
             INVALID_SETTINGS
         );
         for bad in [
@@ -942,9 +916,7 @@ mod tests {
         // Every key beyond the four known ones is unknown, so a patch with more than four keys never passes. The check
         // stops at the first unknown key: a huge object is refused without being walked.
         assert_eq!(
-            rejected(
-                json!({ "glass": "solid", "theme": "dark", "language": "de", "leftPanelWidth": 248, "extra": 1 })
-            ),
+            rejected(json!({ "language": "de", "leftPanelWidth": 248, "extra": 1 })),
             INVALID_SETTINGS
         );
         let huge: serde_json::Map<String, Value> =
@@ -957,7 +929,7 @@ mod tests {
             "glass ",
             "",
             "theme\0",
-            "glass.theme",
+            "glass.language",
             "LeftPanelWidth",
             "Language",
         ] {
@@ -980,16 +952,16 @@ mod tests {
     #[test]
     fn apply_replaces_only_the_named_fields() {
         let base = Settings {
-            glass: GlassMode::Solid,
-            theme: ThemeMode::Dark,
+            updates: UpdatesMode::On,
+            language: Language::De,
             ..Settings::default()
         };
-        let only_theme = patch(json!({ "theme": "light" })).unwrap();
+        let only_theme = patch(json!({ "language": "en" })).unwrap();
         assert_eq!(
             base.clone().apply(only_theme),
             Settings {
-                glass: GlassMode::Solid,
-                theme: ThemeMode::Light,
+                updates: UpdatesMode::On,
+                language: Language::En,
                 ..Settings::default()
             }
         );
@@ -1033,13 +1005,13 @@ mod tests {
         let dir = TempDir::new();
         fs::write(
             dir.path().join(FILE_NAME),
-            r#"{"glass":"frosted","theme":"dark","leftPanelWidth":9999,"future":{"x":1}}"#,
+            r#"{"glass":"frosted","language":"de","leftPanelWidth":9999,"future":{"x":1}}"#,
         )
         .unwrap();
         assert_eq!(
             store_in(&dir).get(),
             Settings {
-                theme: ThemeMode::Dark,
+                language: Language::De,
                 ..Settings::default()
             }
         );
@@ -1077,18 +1049,18 @@ mod tests {
         let padding = " ".repeat(usize::try_from(limits::MAX_SETTINGS_FILE_BYTES).unwrap());
         fs::write(
             dir.path().join(FILE_NAME),
-            format!(r#"{{"theme":"dark"}}{padding}"#),
+            format!(r#"{{"language":"de"}}{padding}"#),
         )
         .unwrap();
         assert_eq!(store_in(&dir).get(), Settings::default());
         // Exactly at the limit is still read.
-        let padding = " ".repeat(usize::try_from(limits::MAX_SETTINGS_FILE_BYTES).unwrap() - 16);
+        let padding = " ".repeat(usize::try_from(limits::MAX_SETTINGS_FILE_BYTES).unwrap() - 17);
         fs::write(
             dir.path().join(FILE_NAME),
-            format!(r#"{{"theme":"dark"}}{padding}"#),
+            format!(r#"{{"language":"de"}}{padding}"#),
         )
         .unwrap();
-        assert_eq!(store_in(&dir).get().theme, ThemeMode::Dark);
+        assert_eq!(store_in(&dir).get().language, Language::De);
     }
 
     // --- updating and persisting ---
@@ -1098,16 +1070,11 @@ mod tests {
         let dir = TempDir::new();
         let store = store_in(&dir);
         let updated = store
-            .update(
-                patch(json!({ "glass": "solid", "theme": "dark", "language": "de", "leftPanelWidth": 280 }))
-                    .unwrap(),
-            )
+            .update(patch(json!({ "language": "de", "leftPanelWidth": 280 })).unwrap())
             .unwrap();
         assert_eq!(
             updated,
             Settings {
-                glass: GlassMode::Solid,
-                theme: ThemeMode::Dark,
                 language: Language::De,
                 left_panel_width: PanelWidth::new(280).unwrap(),
                 welcome_tour: WelcomeTour::Pending,
@@ -1125,7 +1092,7 @@ mod tests {
             serde_json::from_slice(&fs::read(dir.path().join(FILE_NAME)).unwrap()).unwrap();
         assert_eq!(
             stored,
-            json!({ "glass": "solid", "theme": "dark", "language": "de", "leftPanelWidth": 280, "welcomeTour": "pending", "authorName": "", "authorPrompt": "pending", "updates": "off", "skippedVersion": null, "tipsSeen": [] })
+            json!({ "language": "de", "leftPanelWidth": 280, "welcomeTour": "pending", "authorName": "", "authorPrompt": "pending", "updates": "off", "skippedVersion": null, "tipsSeen": [] })
         );
     }
 
@@ -1134,16 +1101,16 @@ mod tests {
         let dir = TempDir::new();
         let store = store_in(&dir);
         store
-            .update(patch(json!({ "theme": "light" })).unwrap())
+            .update(patch(json!({ "language": "en" })).unwrap())
             .unwrap();
         let updated = store
-            .update(patch(json!({ "glass": "solid" })).unwrap())
+            .update(patch(json!({ "updates": "on" })).unwrap())
             .unwrap();
         assert_eq!(
             updated,
             Settings {
-                glass: GlassMode::Solid,
-                theme: ThemeMode::Light,
+                updates: UpdatesMode::On,
+                language: Language::En,
                 ..Settings::default()
             }
         );
@@ -1154,7 +1121,7 @@ mod tests {
     fn writing_leaves_only_the_settings_file_behind() {
         let dir = TempDir::new();
         store_in(&dir)
-            .update(patch(json!({ "theme": "dark" })).unwrap())
+            .update(patch(json!({ "language": "de" })).unwrap())
             .unwrap();
         let names: Vec<_> = fs::read_dir(dir.path())
             .unwrap()
@@ -1169,7 +1136,7 @@ mod tests {
         let store = store_in(&dir);
         store.update(SettingsPatch::default()).unwrap();
         store
-            .update(patch(json!({ "theme": "system" })).unwrap())
+            .update(patch(json!({ "language": "system" })).unwrap())
             .unwrap();
         assert!(!dir.path().join(FILE_NAME).exists());
     }
@@ -1184,7 +1151,7 @@ mod tests {
         let store = SettingsStore::load(path);
         assert_eq!(store.get(), Settings::default());
         let error = store
-            .update(patch(json!({ "theme": "dark" })).unwrap())
+            .update(patch(json!({ "language": "de" })).unwrap())
             .unwrap_err();
         assert_ne!(error.code(), ErrorCode::InvalidArgument);
         assert_eq!(store.get(), Settings::default());
@@ -1263,10 +1230,10 @@ mod tests {
     fn a_symlink_to_a_regular_file_is_read() {
         let dir = TempDir::new();
         let real = dir.path().join("real.json");
-        fs::write(&real, br#"{"theme":"dark"}"#).unwrap();
+        fs::write(&real, br#"{"language":"de"}"#).unwrap();
         let link = dir.path().join(FILE_NAME);
         std::os::unix::fs::symlink(&real, &link).unwrap();
-        assert_eq!(SettingsStore::load(link).get().theme, ThemeMode::Dark);
+        assert_eq!(SettingsStore::load(link).get().language, Language::De);
     }
 
     // --- hardening: unknown keys, odd files, the whole path from the webview to the file ---
@@ -1283,9 +1250,9 @@ mod tests {
         // Nothing stored yet: a rejected patch must not create the file either.
         for bad in [
             json!({ "colour": "red" }),
-            json!({ "theme": "dark", "colour": "red" }),
-            json!({ "glass": "solid", "theme": "dark", "extra": null }),
-            json!({ "theme": "neon" }),
+            json!({ "language": "de", "colour": "red" }),
+            json!({ "updates": "on", "language": "de", "extra": null }),
+            json!({ "language": "neon" }),
             json!(["theme", "dark"]),
         ] {
             let error = apply_json(&store, bad).unwrap_err();
@@ -1295,27 +1262,27 @@ mod tests {
         assert_eq!(store.get(), Settings::default());
 
         // With a stored file: the same, byte for byte.
-        apply_json(&store, json!({ "theme": "light" })).unwrap();
+        apply_json(&store, json!({ "language": "en" })).unwrap();
         let before = fs::read(dir.path().join(FILE_NAME)).unwrap();
         let error =
-            apply_json(&store, json!({ "glass": "solid", "theme": "dark", "x": 1 })).unwrap_err();
+            apply_json(&store, json!({ "updates": "on", "language": "de", "x": 1 })).unwrap_err();
         assert_eq!(error.code(), ErrorCode::InvalidArgument);
         assert_eq!(fs::read(dir.path().join(FILE_NAME)).unwrap(), before);
-        assert_eq!(store.get().theme, ThemeMode::Light);
-        assert_eq!(store.get().glass, GlassMode::Auto);
+        assert_eq!(store.get().language, Language::En);
+        assert_eq!(store.get().updates, UpdatesMode::Off);
     }
 
     #[test]
     fn the_stored_file_holds_exactly_the_five_settings_as_json_with_a_final_newline() {
         let dir = TempDir::new();
         let store = store_in(&dir);
-        apply_json(&store, json!({ "glass": "solid" })).unwrap();
+        apply_json(&store, json!({ "updates": "on" })).unwrap();
         let bytes = fs::read(dir.path().join(FILE_NAME)).unwrap();
         assert_eq!(bytes.last(), Some(&b'\n'));
         let stored: Value = serde_json::from_slice(&bytes).unwrap();
         assert_eq!(
             stored,
-            json!({ "glass": "solid", "theme": "system", "language": "system", "leftPanelWidth": 248, "welcomeTour": "pending", "authorName": "", "authorPrompt": "pending", "updates": "off", "skippedVersion": null, "tipsSeen": [] })
+            json!({ "language": "system", "leftPanelWidth": 248, "welcomeTour": "pending", "authorName": "", "authorPrompt": "pending", "updates": "on", "skippedVersion": null, "tipsSeen": [] })
         );
     }
 
@@ -1327,7 +1294,7 @@ mod tests {
         apply_json(&store, json!({ "language": "de" })).unwrap();
         assert_eq!(store_in(&dir).get().language, Language::De);
         // A partial update of another field keeps the language.
-        apply_json(&store, json!({ "glass": "solid" })).unwrap();
+        apply_json(&store, json!({ "updates": "on" })).unwrap();
         assert_eq!(store_in(&dir).get().language, Language::De);
 
         for (contents, expected) in [
@@ -1340,7 +1307,6 @@ mod tests {
             (r#"{"language":null}"#, Language::System),
             (r#"{"language":["de"]}"#, Language::System),
             (r#"{"Language":"de"}"#, Language::System),
-            (r#"{"theme":"dark"}"#, Language::System),
         ] {
             let dir = TempDir::new();
             fs::write(dir.path().join(FILE_NAME), contents).unwrap();
@@ -1355,7 +1321,7 @@ mod tests {
             r#"{"glass":1,"theme":{"x":"dark"}}"#,
             r#"{"Glass":"solid","THEME":"dark"}"#,
             r#"{"glass":"Solid","theme":"DARK"}"#,
-            r#"{"settings":{"glass":"solid","theme":"dark"}}"#,
+            r#"{"settings":{"updates":"on","language":"de"}}"#,
             r#"{"LeftPanelWidth":300}"#,
         ] {
             let dir = TempDir::new();
@@ -1369,7 +1335,7 @@ mod tests {
         let dir = TempDir::new();
         fs::write(
             dir.path().join(FILE_NAME),
-            r#"{"glass":"solid","theme":"dark"} trailing"#,
+            r#"{"updates":"on","language":"de"} trailing"#,
         )
         .unwrap();
         assert_eq!(store_in(&dir).get(), Settings::default());
@@ -1379,10 +1345,10 @@ mod tests {
     fn a_file_one_byte_over_the_limit_is_not_read() {
         let dir = TempDir::new();
         let limit = usize::try_from(limits::MAX_SETTINGS_FILE_BYTES).unwrap();
-        let mut bytes = br#"{"theme":"dark"}"#.to_vec();
+        let mut bytes = br#"{"language":"de"}"#.to_vec();
         bytes.resize(limit, b' ');
         fs::write(dir.path().join(FILE_NAME), &bytes).unwrap();
-        assert_eq!(store_in(&dir).get().theme, ThemeMode::Dark);
+        assert_eq!(store_in(&dir).get().language, Language::De);
         bytes.push(b' ');
         fs::write(dir.path().join(FILE_NAME), &bytes).unwrap();
         assert_eq!(store_in(&dir).get(), Settings::default());
@@ -1393,14 +1359,14 @@ mod tests {
         let dir = TempDir::new();
         fs::write(dir.path().join(FILE_NAME), b"not json").unwrap();
         let store = store_in(&dir);
-        apply_json(&store, json!({ "theme": "dark" })).unwrap();
-        assert_eq!(store_in(&dir).get().theme, ThemeMode::Dark);
+        apply_json(&store, json!({ "language": "de" })).unwrap();
+        assert_eq!(store_in(&dir).get().language, Language::De);
 
         let nested = dir.path().join("first").join("run").join(FILE_NAME);
         let store = SettingsStore::load(nested.clone());
         assert_eq!(store.get(), Settings::default());
-        apply_json(&store, json!({ "glass": "solid" })).unwrap();
-        assert_eq!(SettingsStore::load(nested).get().glass, GlassMode::Solid);
+        apply_json(&store, json!({ "updates": "on" })).unwrap();
+        assert_eq!(SettingsStore::load(nested).get().updates, UpdatesMode::On);
     }
 
     #[cfg(unix)]
@@ -1445,7 +1411,7 @@ mod tests {
             let store = Arc::clone(&store);
             thread::spawn(move || {
                 store.update_with(
-                    patch(json!({ "theme": "dark" })).unwrap(),
+                    patch(json!({ "language": "de" })).unwrap(),
                     held_open(started_sender, release),
                 )
             })
@@ -1470,7 +1436,7 @@ mod tests {
         release_sender.send(()).unwrap();
         let updated = writer.join().unwrap().unwrap();
         reader.join().unwrap();
-        assert_eq!(updated.theme, ThemeMode::Dark);
+        assert_eq!(updated.language, Language::De);
         assert_eq!(store.get(), updated);
     }
 
@@ -1484,7 +1450,7 @@ mod tests {
             let store = Arc::clone(&store);
             thread::spawn(move || {
                 store.update_with(
-                    patch(json!({ "theme": "dark" })).unwrap(),
+                    patch(json!({ "language": "de" })).unwrap(),
                     held_open(started_sender, release),
                 )
             })
@@ -1495,7 +1461,7 @@ mod tests {
         let second = {
             let store = Arc::clone(&store);
             thread::spawn(move || {
-                let result = store.update(patch(json!({ "glass": "solid" })).unwrap());
+                let result = store.update(patch(json!({ "updates": "on" })).unwrap());
                 let _ = done_sender.send(());
                 result
             })
@@ -1507,8 +1473,8 @@ mod tests {
         first.join().unwrap().unwrap();
         let both = second.join().unwrap().unwrap();
         let expected = Settings {
-            glass: GlassMode::Solid,
-            theme: ThemeMode::Dark,
+            updates: UpdatesMode::On,
+            language: Language::De,
             ..Settings::default()
         };
         assert_eq!(both, expected);
@@ -1521,7 +1487,7 @@ mod tests {
         let dir = TempDir::new();
         let store = store_in(&dir);
         let error = store
-            .update_with(patch(json!({ "theme": "dark" })).unwrap(), |_| {
+            .update_with(patch(json!({ "language": "de" })).unwrap(), |_| {
                 Err(io::Error::from(io::ErrorKind::PermissionDenied))
             })
             .unwrap_err();
@@ -1529,8 +1495,67 @@ mod tests {
         assert_eq!(store.get(), Settings::default());
         // The writer lock was released: a later update goes through.
         let updated = store
-            .update(patch(json!({ "theme": "light" })).unwrap())
+            .update(patch(json!({ "language": "en" })).unwrap())
             .unwrap();
-        assert_eq!(updated.theme, ThemeMode::Light);
+        assert_eq!(updated.language, Language::En);
+    }
+
+    // --- retired keys (light-only redesign, ADR-100) ---
+
+    #[test]
+    fn a_file_with_the_retired_theme_and_glass_keys_loads_and_loses_them_at_startup() {
+        let dir = TempDir::new();
+        let path = dir.path().join(FILE_NAME);
+        fs::write(
+            &path,
+            br#"{"glass":"solid","theme":"dark","language":"de"}"#,
+        )
+        .unwrap();
+        let store = store_in(&dir);
+        assert_eq!(store.get().language, Language::De);
+        store.drop_retired_keys().unwrap();
+        let stored: Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+        let object = stored.as_object().unwrap();
+        assert!(!object.contains_key("glass") && !object.contains_key("theme"));
+        assert_eq!(object["language"], "de");
+        // Nothing is left to do the second time, and nothing is rewritten.
+        let before = fs::read(&path).unwrap();
+        store.drop_retired_keys().unwrap();
+        assert_eq!(fs::read(&path).unwrap(), before);
+    }
+
+    #[test]
+    fn a_file_without_retired_keys_is_not_touched_at_startup() {
+        let dir = TempDir::new();
+        let path = dir.path().join(FILE_NAME);
+        let text = br#"{"language":"de"}"#;
+        fs::write(&path, text).unwrap();
+        store_in(&dir).drop_retired_keys().unwrap();
+        assert_eq!(fs::read(&path).unwrap(), text);
+        // A missing file stays missing.
+        let empty = TempDir::new();
+        store_in(&empty).drop_retired_keys().unwrap();
+        assert!(!empty.path().join(FILE_NAME).exists());
+    }
+
+    #[test]
+    fn the_first_update_also_drops_the_retired_keys() {
+        let dir = TempDir::new();
+        let path = dir.path().join(FILE_NAME);
+        fs::write(&path, br#"{"theme":"light"}"#).unwrap();
+        let store = store_in(&dir);
+        store
+            .update(patch(json!({ "language": "en" })).unwrap())
+            .unwrap();
+        let text = fs::read_to_string(&path).unwrap();
+        assert!(!text.contains("theme"));
+        store.drop_retired_keys().unwrap();
+        assert_eq!(fs::read_to_string(&path).unwrap(), text);
+    }
+
+    #[test]
+    fn the_retired_keys_are_not_valid_in_a_patch() {
+        assert_eq!(rejected(json!({ "theme": "dark" })), INVALID_SETTINGS);
+        assert_eq!(rejected(json!({ "glass": "solid" })), INVALID_SETTINGS);
     }
 }

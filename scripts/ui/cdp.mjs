@@ -1,5 +1,5 @@
 // Dev only. Drives the running dev app over CDP (127.0.0.1:9222). Node 22 built-ins only.
-// Usage: node scripts/ui/cdp.mjs eval <js> | theme light|dark|system | fps <ms> [--during <js>] | csp [--attach]
+// Usage: node scripts/ui/cdp.mjs eval <js> | fps <ms> [--during <js>] | csp [--attach]
 //   | record <ms> --out review/x.png [--during <js>] [--delay <ms>] [--scale 0.5]
 import { writeFileSync, mkdirSync } from 'node:fs';
 import { crc32 } from 'node:zlib';
@@ -173,16 +173,6 @@ try {
   if (cmd === 'eval') {
     const v = await cdp.evaluate(rest.join(' '));
     if (v !== undefined) console.log(typeof v === 'string' ? v : JSON.stringify(v, null, 2));
-  } else if (cmd === 'theme') {
-    const mode = rest[0];
-    if (!['light', 'dark', 'system'].includes(mode)) throw new Error('theme light|dark|system');
-    // Vite may serve several instances of the store (HMR adds ?t=... URLs); set the theme on every one,
-    // so the instance the app is bound to is always included.
-    await cdp.evaluate(
-      `Promise.all([...new Set(['/src/stores/settings.ts', ...performance.getEntriesByType('resource').map((e) => e.name).filter((n) => n.includes('/src/stores/settings.ts'))])].map((u) => import(u).then((m) => m.useSettings.getState().setTheme(${JSON.stringify(mode)}))))`,
-    );
-    await new Promise((r) => setTimeout(r, 400));
-    console.log(`theme=${mode}`);
   } else if (cmd === 'fps') {
     const ms = Number(rest[0] ?? 2000);
     const di = rest.indexOf('--during');
@@ -205,7 +195,7 @@ try {
     await record(cdp, rest);
   } else {
     throw new Error(
-      'commands: eval <js> | theme light|dark|system | fps <ms> [--during <js>] | record <ms> --out <png> [--during <js>] [--delay <ms>] [--scale 0.5]',
+      'commands: eval <js> | fps <ms> [--during <js>] | record <ms> --out <png> [--during <js>] [--delay <ms>] [--scale 0.5]',
     );
   }
 } catch (e) {

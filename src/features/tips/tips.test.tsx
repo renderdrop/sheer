@@ -33,9 +33,8 @@ beforeEach(() => {
   useTips.setState({ current: null });
   updateSettingsMock.mockReset();
   updateSettingsMock.mockImplementation((patch) => {
-    const { glass, theme, language, leftPanelWidth, welcomeTour, authorName, authorPrompt, tipsSeen } =
-      useSettings.getState();
-    const current: Settings = { glass, theme, language, leftPanelWidth, welcomeTour, authorName, authorPrompt };
+    const { language, leftPanelWidth, welcomeTour, authorName, authorPrompt, tipsSeen } = useSettings.getState();
+    const current: Settings = { language, leftPanelWidth, welcomeTour, authorName, authorPrompt };
     return Promise.resolve({ ...current, ...(tipsSeen === undefined ? {} : { tipsSeen }), ...patch });
   });
 });

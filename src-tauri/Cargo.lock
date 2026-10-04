@@ -3916,7 +3916,6 @@ dependencies = [
  "minisign",
  "minisign-verify",
  "muda",
- "objc2-app-kit",
  "pdfium-render",
  "png 0.18.1",
  "same-file",

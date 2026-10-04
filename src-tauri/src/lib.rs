@@ -30,7 +30,6 @@ use crate::engine::Engine;
 use crate::error::{AppError, ErrorCode};
 use crate::events::AppEvents;
 use crate::menu::MenuBridge;
-use crate::platform::TransparencyWatch;
 use crate::storage::recents::{self, RecentsStore};
 use crate::storage::settings::{self, SettingsStore};
 
@@ -92,19 +91,17 @@ pub fn run() -> Result<(), AppError> {
                     .with_thumbnails(thumbs)
                     .with_data_dir(data_dir.clone()),
             );
-            app.manage(Arc::new(SettingsStore::load(
-                data_dir.join(settings::FILE_NAME),
-            )));
+            let settings_store = Arc::new(SettingsStore::load(data_dir.join(settings::FILE_NAME)));
+            // A file from before the light-only redesign still names `theme`/`glass`: one write at startup removes them.
+            if let Err(error) = settings_store.drop_retired_keys() {
+                error.log();
+            }
+            app.manage(settings_store);
             // The signature library: encrypted in the app data directory, its key in the OS keychain (SECURITY D2). Nothing is
             // read or written until the UI asks.
             app.manage(commands::library::LibraryState::new(
                 storage::signatures::Library::in_data_dir(&data_dir),
             ));
-            // The OS "Reduce transparency" flag as the UI first sees it; later changes go to the channel the UI opens with
-            // `watch_transparency`.
-            app.manage(Arc::new(TransparencyWatch::new(
-                platform::reduced_transparency(),
-            )));
             // The macOS menu bar, in the language of the settings; its commands reach the UI on the channel the UI opens
             // with `subscribe_menu`. Nothing is installed on Windows.
             app.manage(Arc::new(MenuBridge::new()));
@@ -120,10 +117,8 @@ pub fn run() -> Result<(), AppError> {
             Ok(())
         })
         .on_menu_event(menu::on_menu_event)
-        // Re-reads that flag when the window gains focus (see `platform::on_window_event`), and takes files dropped on the
-        // window (see `sources::on_window_event`).
+        // Takes files dropped on the window (see `sources::on_window_event`).
         .on_window_event(|window, event| {
-            platform::on_window_event(window, event);
             sources::on_window_event(window, event);
             // Losing focus is a moment to write what autosave has not written yet (ADR-053 section 2).
             if matches!(event, tauri::WindowEvent::Focused(false)) {
@@ -203,7 +198,6 @@ pub fn run() -> Result<(), AppError> {
             commands::app::app_ready,
             commands::app::get_settings,
             commands::app::update_settings,
-            commands::app::watch_transparency,
             commands::app::subscribe_menu,
             commands::app::subscribe_app,
             commands::library::clear_signature_library,

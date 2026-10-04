@@ -42,8 +42,8 @@ const PROBE = `(() => {
 })();`;
 
 const STUB = `(() => {
-  const settings = { glass: 'auto', theme: 'system', language: 'en', leftPanelWidth: 248, welcomeTour: 'shown', authorName: '', authorPrompt: 'done' };
-  const boot = { platform: 'windows', reducedTransparency: false, version: '0.0.0', authorSuggestion: '', paper: 'a4' };
+  const settings = { language: 'en', leftPanelWidth: 248, welcomeTour: 'shown', authorName: '', authorPrompt: 'done' };
+  const boot = { platform: 'windows', version: '0.0.0', authorSuggestion: '', paper: 'a4' };
   const doc = { id: 1, pageCount: 2, displayName: 'stub.pdf', kind: 'user', autosave: 'on', flags: { encrypted: false, xfa: false, hasForms: false, signed: false, permissions: null } };
   const slots = [1, 2].map((id) => ({ id, width: 612, height: 792, rotation: 0, rev: 0, label: null, origin: 'file' }));
   const update = { version: '9.9.9', date: null, notes: 'Stub release notes' };

@@ -2,10 +2,9 @@
 //!
 //! | Command | Arguments | Returns |
 //! |---|---|---|
-//! | `app_ready` | none | `AppBootstrap { platform, reducedTransparency, version, authorSuggestion }` |
-//! | `get_settings` | none | `Settings { glass, theme, language, leftPanelWidth, welcomeTour, authorName, authorPrompt, updates, skippedVersion }` |
-//! | `update_settings` | `patch: { glass?, theme?, language?, leftPanelWidth?, welcomeTour?, authorName?, authorPrompt?, updates?, skippedVersion? }` | the settings after the update |
-//! | `watch_transparency` | `onChange: Channel<boolean>` | nothing; the channel then carries each change of the OS "Reduce transparency" flag |
+//! | `app_ready` | none | `AppBootstrap { platform, paper, version, authorSuggestion }` |
+//! | `get_settings` | none | `Settings { language, leftPanelWidth, welcomeTour, authorName, authorPrompt, updates, skippedVersion }` |
+//! | `update_settings` | `patch: { language?, leftPanelWidth?, welcomeTour?, authorName?, authorPrompt?, updates?, skippedVersion? }` | the settings after the update |
 //! | `subscribe_menu` | `onAction: Channel<string>`, `systemLanguage?: string` | nothing; the channel then carries the id of each command chosen in the macOS menu bar |
 //! | `subscribe_app` | `onEvent: Channel<AppEvent>` | nothing; the channel then carries the backend's pushes (`dropHover`, `opened`, `openFailed`, see `events::AppEvent`), first those that waited for it |
 //! | `open_default_apps_settings` | none | nothing (Windows: opens the default-apps page; macOS: `unsupported_feature`); stub until M7 package B4 |
@@ -24,7 +23,7 @@ use super::blocking;
 use crate::error::{AppError, UiError};
 use crate::events::{AppEvent, AppEvents};
 use crate::menu::{self, MenuBridge};
-use crate::platform::{self, Paper, Platform, TransparencyWatch};
+use crate::platform::{self, Paper, Platform};
 use crate::storage::settings::{AuthorName, Settings, SettingsPatch, SettingsStore};
 
 /// What the frontend asks once at startup.
@@ -32,8 +31,6 @@ use crate::storage::settings::{AuthorName, Settings, SettingsPatch, SettingsStor
 #[serde(rename_all = "camelCase")]
 pub struct AppBootstrap {
     pub platform: Platform,
-    /// The OS "reduce transparency" flag (macOS only for now; `false` elsewhere).
-    pub reduced_transparency: bool,
     pub version: &'static str,
     /// The OS account name, only as a suggestion for the author prompt (ADR-034); never stored. Empty when unknown.
     pub author_suggestion: String,
@@ -46,7 +43,6 @@ impl AppBootstrap {
     pub fn current() -> Self {
         Self {
             platform: platform::current(),
-            reduced_transparency: platform::reduced_transparency(),
             version: env!("CARGO_PKG_VERSION"),
             author_suggestion: AuthorName::os_suggestion(),
             paper: platform::paper_default(),
@@ -54,7 +50,7 @@ impl AppBootstrap {
     }
 }
 
-/// Platform, accessibility flags and version for the first render.
+/// Platform, paper and version for the first render.
 #[tauri::command]
 pub async fn app_ready() -> Result<AppBootstrap, UiError> {
     blocking(|| Ok(AppBootstrap::current())).await
@@ -88,24 +84,6 @@ pub async fn update_settings(
 #[tauri::command]
 pub async fn open_default_apps_settings(_app: AppHandle) -> Result<(), UiError> {
     blocking(|| Err::<(), _>(AppError::not_yet())).await
-}
-
-/// Starts pushing changes of the OS "Reduce transparency" flag to `on_change` (on macOS, when the window regains focus;
-/// elsewhere the flag never changes). A value that already differs from what `app_ready` reported is sent at once.
-///
-/// This is how the backend reaches the UI without any event permission: the channel is an argument the UI hands over,
-/// and each message is a bare boolean. A second call replaces the first channel. See [`TransparencyWatch`].
-#[tauri::command]
-pub async fn watch_transparency(
-    watch: State<'_, Arc<TransparencyWatch>>,
-    on_change: Channel<bool>,
-) -> Result<(), UiError> {
-    let watch = Arc::clone(watch.inner());
-    blocking(move || {
-        watch.subscribe(on_change, platform::reduced_transparency());
-        Ok(())
-    })
-    .await
 }
 
 /// Starts sending the commands chosen in the macOS menu bar to `on_action`, each as the bare id of the item (`open`,
@@ -154,19 +132,9 @@ mod tests {
         let object = value.as_object().unwrap();
         let mut keys: Vec<&str> = object.keys().map(String::as_str).collect();
         keys.sort_unstable();
-        assert_eq!(
-            keys,
-            [
-                "authorSuggestion",
-                "paper",
-                "platform",
-                "reducedTransparency",
-                "version"
-            ]
-        );
+        assert_eq!(keys, ["authorSuggestion", "paper", "platform", "version"]);
         assert!(["macos", "windows", "linux"].contains(&object["platform"].as_str().unwrap()));
         assert!(["a4", "letter"].contains(&object["paper"].as_str().unwrap()));
-        assert!(object["reducedTransparency"].is_boolean());
         assert_eq!(object["version"], env!("CARGO_PKG_VERSION"));
     }
 

@@ -17,7 +17,7 @@ use serde_json::{json, Value};
 use sheer_lib::error::ErrorCode;
 use sheer_lib::storage::atomic::write_atomic;
 use sheer_lib::storage::settings::{
-    GlassMode, Language, Settings, SettingsPatch, SettingsStore, ThemeMode, FILE_NAME,
+    Language, Settings, SettingsPatch, SettingsStore, UpdatesMode, FILE_NAME,
 };
 
 /// A scratch directory under the system temp dir, removed on drop.
@@ -68,9 +68,9 @@ fn names(directory: &Path) -> Vec<String> {
 #[test]
 fn a_patch_with_one_valid_and_one_invalid_field_is_rejected_whole() {
     for bad in [
-        json!({ "glass": "solid", "theme": "neon" }),
-        json!({ "theme": "dark", "glass": "frosted" }),
-        json!({ "glass": "solid", "theme": "dark", "extra": true }),
+        json!({ "updates": "on", "language": "neon" }),
+        json!({ "language": "de", "updates": "maybe" }),
+        json!({ "updates": "on", "language": "de", "extra": true }),
     ] {
         let error = SettingsPatch::from_value(&bad).unwrap_err();
         assert_eq!(error.code(), ErrorCode::InvalidArgument, "{bad}");
@@ -82,7 +82,7 @@ fn a_rejected_patch_never_reaches_the_file() {
     let dir = TempDir::new();
     let store = SettingsStore::load(dir.settings_file());
     // The command validates first (`SettingsPatch::from_value(..)?`), so `update` is never called with a bad patch.
-    assert!(SettingsPatch::from_value(&json!({ "glass": "solid", "theme": "neon" })).is_err());
+    assert!(SettingsPatch::from_value(&json!({ "updates": "on", "language": "neon" })).is_err());
     assert_eq!(store.get(), Settings::default());
     assert!(!dir.settings_file().exists());
 }
@@ -96,8 +96,8 @@ fn an_unknown_language_is_rejected_whole_and_the_saved_language_stays() {
 
     for bad in [
         json!({ "language": "fr" }),
-        json!({ "theme": "dark", "language": "de-DE" }),
-        json!({ "glass": "solid", "language": "DE" }),
+        json!({ "language": "de-DE" }),
+        json!({ "updates": "on", "language": "DE" }),
         json!({ "language": null }),
         json!({ "language": ["de"] }),
         json!({ "language": "" }),
@@ -108,7 +108,6 @@ fn an_unknown_language_is_rejected_whole_and_the_saved_language_stays() {
 
     // A rejected patch changed neither the memory nor the file.
     assert_eq!(store.get().language, Language::De);
-    assert_eq!(store.get().theme, ThemeMode::System);
     assert_eq!(fs::read(dir.settings_file()).unwrap(), before);
     assert_eq!(
         SettingsStore::load(dir.settings_file()).get().language,
@@ -133,11 +132,11 @@ fn a_leftover_temp_file_from_a_crash_is_never_written_through_or_reused() {
         fs::write(dir.path().join(name), b"half a wri").unwrap();
     }
 
-    write_atomic(&dir.settings_file(), b"{\"theme\":\"dark\"}\n").unwrap();
+    write_atomic(&dir.settings_file(), b"{\"language\":\"de\"}\n").unwrap();
 
     assert_eq!(
         fs::read(dir.settings_file()).unwrap(),
-        b"{\"theme\":\"dark\"}\n"
+        b"{\"language\":\"de\"}\n"
     );
     for name in &leftovers {
         assert_eq!(fs::read(dir.path().join(name)).unwrap(), b"half a wri");
@@ -151,18 +150,18 @@ fn a_leftover_temp_file_from_a_crash_is_never_written_through_or_reused() {
 #[test]
 fn a_leftover_temp_file_does_not_stop_the_app_from_starting() {
     let dir = TempDir::new();
-    fs::write(dir.settings_file(), br#"{"glass":"solid","theme":"light"}"#).unwrap();
+    fs::write(dir.settings_file(), br#"{"updates":"on","language":"en"}"#).unwrap();
     fs::write(
         dir.path().join(format!(".{FILE_NAME}.tmp")),
-        b"{\"theme\":\"da",
+        b"{\"language\":\"de",
     )
     .unwrap();
     // Only the real file is read, never the temp file.
     assert_eq!(
         SettingsStore::load(dir.settings_file()).get(),
         Settings {
-            glass: GlassMode::Solid,
-            theme: ThemeMode::Light,
+            updates: UpdatesMode::On,
+            language: Language::En,
             ..Settings::default()
         }
     );
@@ -171,20 +170,20 @@ fn a_leftover_temp_file_does_not_stop_the_app_from_starting() {
 #[test]
 fn a_write_that_fails_leaves_memory_untouched_and_no_temp_file_behind() {
     let dir = TempDir::new();
-    fs::write(dir.settings_file(), br#"{"glass":"auto","theme":"dark"}"#).unwrap();
+    fs::write(dir.settings_file(), br#"{"updates":"off","language":"de"}"#).unwrap();
     let store = SettingsStore::load(dir.settings_file());
-    assert_eq!(store.get().theme, ThemeMode::Dark);
+    assert_eq!(store.get().language, Language::De);
 
     // A non-empty directory has taken the place of the file: the temp file is written, then the rename fails.
     fs::remove_file(dir.settings_file()).unwrap();
     fs::create_dir(dir.settings_file()).unwrap();
     fs::write(dir.settings_file().join("child"), b"x").unwrap();
     let error = store
-        .update(patch(json!({ "theme": "light" })))
+        .update(patch(json!({ "language": "en" })))
         .unwrap_err();
 
     assert_ne!(error.code(), ErrorCode::InvalidArgument);
-    assert_eq!(store.get().theme, ThemeMode::Dark);
+    assert_eq!(store.get().language, Language::De);
     assert_eq!(names(dir.path()), [FILE_NAME]);
     assert_eq!(fs::read(dir.settings_file().join("child")).unwrap(), b"x");
 }
@@ -193,31 +192,31 @@ fn a_write_that_fails_leaves_memory_untouched_and_no_temp_file_behind() {
 fn stored_values_of_the_wrong_type_fall_back_field_by_field() {
     let cases: [(&str, Settings); 5] = [
         (
-            r#"{"glass":5,"theme":"light"}"#,
+            r#"{"updates":5,"language":"en"}"#,
             Settings {
-                glass: GlassMode::Auto,
-                theme: ThemeMode::Light,
+                updates: UpdatesMode::Off,
+                language: Language::En,
                 ..Settings::default()
             },
         ),
         (
-            r#"{"glass":"solid","theme":null}"#,
+            r#"{"updates":"on","language":null}"#,
             Settings {
-                glass: GlassMode::Solid,
-                theme: ThemeMode::System,
+                updates: UpdatesMode::On,
+                language: Language::System,
                 ..Settings::default()
             },
         ),
         (
-            r#"{"glass":["solid"],"theme":{"dark":true}}"#,
+            r#"{"updates":["on"],"language":{"de":true}}"#,
             Settings::default(),
         ),
-        (r#"{"glass":"Solid","theme":"DARK"}"#, Settings::default()),
+        (r#"{"updates":"On","language":"DE"}"#, Settings::default()),
         (
-            r#"{"theme":"dark"}"#,
+            r#"{"language":"de"}"#,
             Settings {
-                glass: GlassMode::Auto,
-                theme: ThemeMode::Dark,
+                updates: UpdatesMode::Off,
+                language: Language::De,
                 ..Settings::default()
             },
         ),
@@ -240,10 +239,10 @@ fn a_missing_data_directory_is_created_on_the_first_update() {
     let store = SettingsStore::load(path.clone());
     assert_eq!(store.get(), Settings::default());
 
-    store.update(patch(json!({ "glass": "solid" }))).unwrap();
+    store.update(patch(json!({ "updates": "on" }))).unwrap();
 
     assert!(path.is_file());
-    assert_eq!(SettingsStore::load(path).get().glass, GlassMode::Solid);
+    assert_eq!(SettingsStore::load(path).get().updates, UpdatesMode::On);
 }
 
 #[test]
@@ -253,12 +252,12 @@ fn the_next_update_repairs_a_damaged_file() {
     let store = SettingsStore::load(dir.settings_file());
     assert_eq!(store.get(), Settings::default());
 
-    store.update(patch(json!({ "theme": "dark" }))).unwrap();
+    store.update(patch(json!({ "language": "de" }))).unwrap();
 
     let stored: Value = serde_json::from_slice(&fs::read(dir.settings_file()).unwrap()).unwrap();
     assert_eq!(
         stored,
-        json!({ "glass": "auto", "theme": "dark", "language": "system", "leftPanelWidth": 248, "welcomeTour": "pending", "authorName": "", "authorPrompt": "pending", "updates": "off", "skippedVersion": null, "tipsSeen": [] })
+        json!({ "language": "de", "leftPanelWidth": 248, "welcomeTour": "pending", "authorName": "", "authorPrompt": "pending", "updates": "off", "skippedVersion": null, "tipsSeen": [] })
     );
     assert_eq!(names(dir.path()), [FILE_NAME]);
 }
@@ -273,10 +272,10 @@ fn concurrent_updates_always_leave_a_complete_file_that_matches_memory() {
             let store = Arc::clone(&store);
             thread::spawn(move || {
                 for round in 0..10 {
-                    let theme = ["system", "light", "dark"][(worker + round) % 3];
-                    let glass = ["auto", "solid"][(worker + round) % 2];
+                    let language = ["system", "en", "de"][(worker + round) % 3];
+                    let updates = ["off", "on"][(worker + round) % 2];
                     store
-                        .update(patch(json!({ "theme": theme, "glass": glass })))
+                        .update(patch(json!({ "language": language, "updates": updates })))
                         .unwrap();
                 }
             })
@@ -302,16 +301,16 @@ fn a_directory_at_the_settings_path_is_damaged_data_not_a_crash() {
     let store = SettingsStore::load(dir.settings_file());
     assert_eq!(store.get(), Settings::default());
     // Writing cannot succeed either (the directory is in the way), and says so instead of changing memory.
-    assert!(store.update(patch(json!({ "theme": "dark" }))).is_err());
+    assert!(store.update(patch(json!({ "language": "de" }))).is_err());
     assert_eq!(store.get(), Settings::default());
 }
 
 #[test]
 fn a_null_value_is_not_the_same_as_leaving_a_key_out() {
-    // `{"theme": null}` must not pass as "no change": a present key holds a valid value or the patch is refused.
+    // `{"language": null}` must not pass as "no change": a present key holds a valid value or the patch is refused.
     for bad in [
-        json!({ "theme": null }),
-        json!({ "glass": null, "theme": "dark" }),
+        json!({ "language": null }),
+        json!({ "updates": null, "language": "de" }),
     ] {
         let error = SettingsPatch::from_value(&bad).unwrap_err();
         assert_eq!(error.code(), ErrorCode::InvalidArgument, "{bad}");
@@ -327,7 +326,7 @@ fn the_settings_file_and_a_new_data_directory_are_private_to_the_user() {
     let data_dir = dir.path().join("app-data");
     let path = data_dir.join(FILE_NAME);
     let store = SettingsStore::load(path.clone());
-    store.update(patch(json!({ "glass": "solid" }))).unwrap();
+    store.update(patch(json!({ "updates": "on" }))).unwrap();
 
     let mode = |path: &Path| fs::metadata(path).unwrap().permissions().mode() & 0o777;
     assert_eq!(mode(&data_dir), 0o700);
@@ -361,7 +360,7 @@ fn the_panel_width_survives_a_restart_and_a_bad_width_changes_nothing() {
         json!({ "leftPanelWidth": 4000 }),
         json!({ "leftPanelWidth": "wide" }),
         json!({ "leftPanelWidth": 300.5 }),
-        json!({ "leftPanelWidth": 300, "theme": "neon" }),
+        json!({ "leftPanelWidth": 300, "language": "neon" }),
     ] {
         let error = SettingsPatch::from_value(&bad).unwrap_err();
         assert_eq!(error.code(), ErrorCode::InvalidArgument, "{bad}");

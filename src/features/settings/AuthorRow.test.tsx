@@ -21,10 +21,8 @@ beforeEach(() => {
   useSettingsPopover.setState({ open: false });
   updateSettingsMock.mockReset();
   updateSettingsMock.mockImplementation((patch) => {
-    const { glass, theme, language, leftPanelWidth, authorName } = useSettings.getState();
+    const { language, leftPanelWidth, authorName } = useSettings.getState();
     const current: Settings = {
-      glass,
-      theme,
       language,
       leftPanelWidth,
       authorName,

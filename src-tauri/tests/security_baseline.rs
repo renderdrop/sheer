@@ -439,7 +439,6 @@ fn capabilities_grant_only_the_app_commands_and_the_window_chrome_to_the_main_wi
         "allow-app-ready",
         "allow-get-settings",
         "allow-update-settings",
-        "allow-watch-transparency",
         "allow-subscribe-menu",
         "allow-subscribe-app",
         "allow-use-signature",
@@ -496,7 +495,7 @@ fn capabilities_grant_only_the_app_commands_and_the_window_chrome_to_the_main_wi
 
 /// The webview can neither listen to events nor emit them. `listen` would let it hear `tauri://drag-drop`, whose payload
 /// is the dropped file paths (SECURITY I2), and `emit` would let it speak as the backend. Backend-to-UI pushes use a
-/// `Channel` argument of a command instead (`watch_transparency`, `subscribe_menu`), which needs no permission.
+/// `Channel` argument of a command instead (`subscribe_menu`), which needs no permission.
 #[test]
 fn the_webview_has_no_event_permissions() {
     let default = read("capabilities/default.json");

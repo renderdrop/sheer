@@ -15,11 +15,9 @@ Stop with Ctrl+C, or `taskkill /F /IM sheer.exe` and then end the vite/tauri pro
 
 ```
 node scripts/ui/cdp.mjs eval "document.title"
-node scripts/ui/cdp.mjs theme dark            # light | dark | system, via the app's settings store
 node scripts/ui/cdp.mjs fps 2000              # frame time p50/p95, min and avg fps from rAF
 node scripts/ui/cdp.mjs fps 3000 --during "window.scrollBy(0, 4000)"
 ```
-`theme` imports every served instance of `/src/stores/settings.ts` (Vite HMR can create several) and sets the theme on each.
 
 ## Capture (PowerShell)
 
@@ -95,7 +93,7 @@ Both targets are met. Unit budgets guard the frontend paths (`src/features/viewe
 ### Interaction frame pacing (M7, 2026-10-04)
 
 Same setup (Tauri dev window, debug build, WebView2, rAF frame times over 3 s via `cdp.mjs fps 3000 --during`). Interactions are real shortcuts
-dispatched on `window` (Ctrl+Plus/Minus, Ctrl+2/Ctrl+0, F4, Shift+F4); the theme goes through the settings store. Zoom, fit and panel
+dispatched on `window` (Ctrl+Plus/Minus, Ctrl+2/Ctrl+0, F4, Shift+F4). Zoom, fit and panel
 changes were verified to take effect (page width 756 to 898 px, fit width, fit page, canvas width 828 to 1006 to 532 px).
 
 | Scenario (500 pages and text.pdf alike) | p50 | p95 | min fps |

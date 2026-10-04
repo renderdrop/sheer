@@ -16,7 +16,7 @@ use std::thread;
 use std::time::{Duration, SystemTime};
 
 use sheer_lib::storage::atomic::{sweep_stale_temp_files, write_atomic, STALE_TEMP_AGE};
-use sheer_lib::storage::settings::{Settings, SettingsStore, ThemeMode, FILE_NAME};
+use sheer_lib::storage::settings::{Language, Settings, SettingsStore, FILE_NAME};
 
 /// A process id that is not this one: what a crashed earlier run of the app left in the name.
 const OTHER_PID: u32 = 4242;
@@ -126,7 +126,7 @@ fn link_file(target: &Path, link: &Path) -> bool {
 fn old_leftovers_go_and_the_settings_file_survives_even_when_it_is_old() {
     let dir = TempDir::new();
     let own = std::process::id();
-    let settings = aged(&dir.join(FILE_NAME), br#"{"theme":"dark"}"#, 30 * DAY);
+    let settings = aged(&dir.join(FILE_NAME), br#"{"language":"de"}"#, 30 * DAY);
     let stale_of_another_run = aged(
         &dir.join(&leftover_name(FILE_NAME, OTHER_PID, 3)),
         b"half a wri",
@@ -150,12 +150,12 @@ fn old_leftovers_go_and_the_settings_file_survives_even_when_it_is_old() {
     assert!(!stale_of_this_pid.exists());
     assert!(young.exists());
     assert!(almost_stale.exists());
-    assert_eq!(fs::read(&settings).unwrap(), br#"{"theme":"dark"}"#);
+    assert_eq!(fs::read(&settings).unwrap(), br#"{"language":"de"}"#);
     // The app starts from what is left and reads the real file, as it does after the sweep in `lib.rs`.
     assert_eq!(
         SettingsStore::load(settings).get(),
         Settings {
-            theme: ThemeMode::Dark,
+            language: Language::De,
             ..Settings::default()
         }
     );

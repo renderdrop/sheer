@@ -3,8 +3,6 @@ import { describe, expect, it } from 'vitest';
 import { AUTHOR_NAME_MAX, isAuthorName, parseSettings } from './app';
 
 const base = {
-  glass: 'auto',
-  theme: 'system',
   language: 'system',
   leftPanelWidth: 248,
   welcomeTour: 'pending',
