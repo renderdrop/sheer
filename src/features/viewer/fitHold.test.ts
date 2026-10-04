@@ -1,24 +1,29 @@
 import { describe, expect, it } from 'vitest';
 
-import { armFitHold, consumeFitHold, opensToolInspector } from './fitHold';
+import { armFitHold, consumeFitHold, dropFitHold, inspectorFlipped } from './fitHold';
 
-const base = { activeTool: 'select', inspector: 'auto', leftPanelCollapsed: false, leftPanelWidth: 240 };
+const off = { inspectorReserved: false, inspectorVisible: false };
+const on = { inspectorReserved: true, inspectorVisible: true };
 
 describe('fit hold (ADR-056)', () => {
-  it('flags a tool change that opens or closes the tool inspector, not a panel toggle or a tool-to-tool switch', () => {
-    expect(opensToolInspector(base, { ...base, activeTool: 'highlight' })).toBe(true);
-    expect(opensToolInspector({ ...base, activeTool: 'note' }, base)).toBe(true);
-    expect(opensToolInspector({ ...base, activeTool: 'note' }, { ...base, activeTool: 'draw' })).toBe(false);
-    expect(opensToolInspector(base, { ...base, activeTool: 'pages' })).toBe(false);
-    expect(opensToolInspector(base, { ...base, activeTool: 'note', inspector: 'open' })).toBe(false);
-    expect(opensToolInspector(base, { ...base, activeTool: 'note', leftPanelCollapsed: true })).toBe(false);
+  it('flags an inspector slot flip only', () => {
+    expect(inspectorFlipped(off, on)).toBe(true);
+    expect(inspectorFlipped(on, off)).toBe(true);
+    expect(inspectorFlipped(on, on)).toBe(false);
+    expect(inspectorFlipped(off, off)).toBe(false);
   });
 
-  it('holds for the next size report only, and times out', () => {
-    armFitHold(1000);
-    expect(consumeFitHold(1100)).toBe(true);
-    expect(consumeFitHold(1200)).toBe(false);
-    armFitHold(1000);
-    expect(consumeFitHold(5000)).toBe(false);
+  it('holds for the next size report only, with no timer', () => {
+    armFitHold(1000, 700);
+    expect(consumeFitHold(1000, 700)).toBe(true);
+    expect(consumeFitHold(1000, 700)).toBe(false);
+  });
+
+  it('does not hold when the window itself changed size or the hold was dropped', () => {
+    armFitHold(1000, 700);
+    expect(consumeFitHold(1200, 700)).toBe(false);
+    armFitHold(1000, 700);
+    dropFitHold();
+    expect(consumeFitHold(1000, 700)).toBe(false);
   });
 });

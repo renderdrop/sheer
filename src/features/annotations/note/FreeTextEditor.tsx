@@ -120,9 +120,11 @@ export function FreeTextEditor({ docId, annotation, scale, isNew = false, onDone
         fontSize: annotation.fontSize * scale,
         lineHeight: 'var(--free-text-line-height)',
         color: rgbToCss(annotation.color),
+        // Editing text that is on the page already: the paper covers the old rendering so the text is not seen twice.
+        backgroundColor: isNew ? 'transparent' : 'var(--color-doc-paper)',
         opacity: annotation.opacity,
       }}
-      className="m-0 box-border resize-none overflow-hidden border border-dashed border-doc-select bg-transparent p-0 outline-none"
+      className="m-0 box-border resize-none overflow-hidden border border-dashed border-doc-select p-0 outline-none"
     />
   );
 }

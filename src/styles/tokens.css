@@ -76,6 +76,7 @@
   --color-doc-crop-shade: rgba(15, 16, 32, 0.5);
   --crop-stroke: 2px;
   --color-doc-ink: #1c1c2e; /* ink drawn on the paper over an annotation's own colour (the note glyph, DESIGN 3.25); paper stays white in both themes */
+  --color-doc-paper: #ffffff; /* the page paper under an inline editor of existing text; white in both themes */
   --color-doc-text-select: rgba(91, 91, 214, 0.3);
   --color-doc-hit: rgba(91, 91, 214, 0.28);
   /* Annotations on the canvas (DESIGN 3.23): the hover outline, and the size of a resize handle in px. */

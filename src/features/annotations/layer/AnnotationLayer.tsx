@@ -56,10 +56,11 @@ interface FrameProps {
   withHandles: boolean;
   pageNumber: number;
   api: Handlers;
+  onEdit: (a: Annotation) => void;
 }
 
 /** The focusable frame of one annotation: its tab stop, its accessible name, and its selection chrome. */
-const Frame = memo(function Frame({ a, view, selected, hovered, withHandles, pageNumber, api }: FrameProps) {
+const Frame = memo(function Frame({ a, view, selected, hovered, withHandles, pageNumber, api, onEdit }: FrameProps) {
   const t = useT();
   const type = t(`annot.type.${a.kind}`);
   const text = a.contents.trim().slice(0, NAME_TEXT_CHARS);
@@ -81,7 +82,14 @@ const Frame = memo(function Frame({ a, view, selected, hovered, withHandles, pag
       style={{ left: rect.x, top: rect.y, width: rect.w, height: rect.h }}
       onFocus={() => api.onItemFocus(a)}
       onBlur={api.onItemBlur}
-      onKeyDown={(event) => api.onItemKeyDown(a, event)}
+      onKeyDown={(event) => {
+        if (event.key === 'Enter' && event.target === event.currentTarget && a.kind === 'freeText') {
+          event.preventDefault();
+          onEdit(a);
+          return;
+        }
+        api.onItemKeyDown(a, event);
+      }}
     >
       <span data-annot-box="" aria-hidden="true" />
       <span data-annot-ring="" aria-hidden="true" />
@@ -139,7 +147,7 @@ export const AnnotationLayer = memo(function AnnotationLayer({
   const selectActive = useUi((state) => state.activeTool === 'select');
   const [hover, setHover] = useState<number | null>(null);
   /** The annotation the Text or Note tool just made: its editor (free text) or popover (note) is open until it is done. */
-  const [editing, setEditing] = useState<{ id: number; kind: 'freeText' | 'note' } | null>(null);
+  const [editing, setEditing] = useState<{ id: number; kind: 'freeText' | 'note'; fresh: boolean } | null>(null);
   const [anchor, setAnchor] = useState<HTMLElement | null>(null);
   const editingId = editing?.id;
   useEffect(() => {
@@ -170,6 +178,11 @@ export const AnnotationLayer = memo(function AnnotationLayer({
     window.addEventListener('pointerdown', onDown);
     return () => window.removeEventListener('pointerdown', onDown);
   }, [selectionKey, docId]);
+
+  /** Double-click (or Enter) on a free text opens its inline editor. */
+  const edit = (a: Annotation) => {
+    if (a.kind === 'freeText' && !a.locked) setEditing({ id: a.id, kind: 'freeText', fresh: false });
+  };
 
   const items = useMemo(() => readingOrder(list.filter((a) => a.kind !== 'opaque' || hasExtent(a.rect))), [list]);
 
@@ -231,6 +244,7 @@ export const AnnotationLayer = memo(function AnnotationLayer({
                       data-annot-hit={a.id}
                       style={{ pointerEvents: 'all', cursor: canMove(a) ? 'move' : 'default' }}
                       onPointerDown={(event) => handlers.onItemPointerDown(a, event)}
+                      onDoubleClick={() => edit(a)}
                       onPointerEnter={() => setHover(a.id)}
                       onPointerLeave={() => setHover((current) => (current === a.id ? null : current))}
                     >
@@ -251,6 +265,7 @@ export const AnnotationLayer = memo(function AnnotationLayer({
               withHandles={only && selectActive}
               pageNumber={pageIndex + 1}
               api={handlers}
+              onEdit={edit}
             />
           ))}
         </div>
@@ -261,14 +276,20 @@ export const AnnotationLayer = memo(function AnnotationLayer({
           transform={{ pxPerPt, rotation: total }}
           onCreated={(created) => {
             if (created.kind === 'freeText' || created.kind === 'note')
-              setEditing({ id: created.id, kind: created.kind });
+              setEditing({ id: created.id, kind: created.kind, fresh: true });
           }}
         />
         {editedText?.kind === 'freeText' && (
           // The group is in page space and scaled as a whole, so the editor works at scale 1; it takes the pointer itself.
           <div className="absolute" style={style}>
             <div data-annot-keep="" className="pointer-events-auto contents">
-              <FreeTextEditor docId={docId} annotation={editedText} scale={1} isNew onDone={() => setEditing(null)} />
+              <FreeTextEditor
+                docId={docId}
+                annotation={editedText}
+                scale={1}
+                isNew={editing?.fresh ?? false}
+                onDone={() => setEditing(null)}
+              />
             </div>
           </div>
         )}

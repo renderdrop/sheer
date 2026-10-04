@@ -209,6 +209,27 @@ describe('selection', () => {
     expect(selected()).toEqual([3]);
   });
 
+  it('a double-click on a free text opens its editor; on a rectangle it does not; Esc commits the new text', async () => {
+    const text = box(5, 10, 150, 'clean', { kind: 'freeText', lines: ['Hallo'], fontSize: 12 } as Partial<Annotation>);
+    seed([box(1, 10, 10), text]);
+    const { container } = render(<AnnotationLayer {...props()} />);
+    const hit = (id: number) => container.querySelector(`[data-annot-hit="${id}"]`) as Element;
+    fireEvent.doubleClick(hit(1));
+    expect(screen.queryByRole('textbox')).toBeNull();
+    fireEvent.doubleClick(hit(5));
+    const field = screen.getByRole('textbox') as HTMLTextAreaElement;
+    expect(field.value).toBe('Hallo');
+    fireEvent.change(field, { target: { value: 'Hallo Welt' } });
+    await act(async () => {
+      fireEvent.keyDown(field, { key: 'Escape' });
+    });
+    expect(mocked.applyCommand).toHaveBeenCalledWith(
+      1,
+      expect.objectContaining({ type: 'updateAnnotation', id: 5, patch: { lines: ['Hallo Welt'] } }),
+    );
+    expect(screen.queryByRole('textbox')).toBeNull();
+  });
+
   it('shows eight handles for the only selected box and none for two', () => {
     const { container } = render(<AnnotationLayer {...props()} />);
     act(() => useAnnotations.getState().select(1, [1]));

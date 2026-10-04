@@ -1,46 +1,65 @@
+import { useAnnotations } from '../../stores/annotations';
 import { useUi } from '../../stores/ui';
+import { readShellStructure } from '../shell/useShellStructure';
 
 /**
- * ADR-056: choosing or ending a tool opens or closes the tool-options inspector, which resizes the canvas. That resize must not
- * refit a fit mode (zoom and scroll stay where the user left them); only a window resize or an explicit panel toggle refits.
- * The hold is armed by such a tool change and spent by the next canvas size report (or when it times out).
+ * ADR-056: the inspector opening or closing (tool options OR a selection) resizes the canvas. That resize must not refit a
+ * fit mode (zoom and scroll stay where they are, so the point under the cursor stays put); only a window resize or an
+ * explicit left-panel change refits. The hold has an explicit reason, not a timer: it is armed by a store change that flips
+ * the inspector slot while the window size is unchanged, spent by the next canvas size report, and dropped by a window resize
+ * or a left-panel change (so it can never swallow a real resize).
  */
-const HOLD_MS = 1500;
-let until = 0;
+interface Hold {
+  windowWidth: number;
+  windowHeight: number;
+}
 
-const hasToolOptions = (tool: string): boolean => tool !== 'select' && tool !== 'pages';
+let hold: Hold | null = null;
 
-/** True when the change from `previous` to `next` only opens or closes the inspector for tool options. */
-export function opensToolInspector(
-  previous: { activeTool: string; inspector: unknown; leftPanelCollapsed: boolean; leftPanelWidth: number },
-  next: { activeTool: string; inspector: unknown; leftPanelCollapsed: boolean; leftPanelWidth: number },
+/** True when the inspector slot flipped between two structures. */
+export function inspectorFlipped(
+  previous: { inspectorReserved: boolean; inspectorVisible: boolean },
+  next: { inspectorReserved: boolean; inspectorVisible: boolean },
 ): boolean {
-  return (
-    previous.activeTool !== next.activeTool &&
-    hasToolOptions(previous.activeTool) !== hasToolOptions(next.activeTool) &&
-    previous.inspector === next.inspector &&
-    previous.leftPanelCollapsed === next.leftPanelCollapsed &&
-    previous.leftPanelWidth === next.leftPanelWidth
-  );
+  return previous.inspectorReserved !== next.inspectorReserved || previous.inspectorVisible !== next.inspectorVisible;
 }
 
-export function armFitHold(now = Date.now()): void {
-  until = now + HOLD_MS;
+export function armFitHold(windowWidth = window.innerWidth, windowHeight = window.innerHeight): void {
+  hold = { windowWidth, windowHeight };
 }
 
-/** Whether the size report that is arriving is the result of a tool change (spends the hold). */
-export function consumeFitHold(now = Date.now()): boolean {
-  const held = now < until;
-  until = 0;
+export function dropFitHold(): void {
+  hold = null;
+}
+
+/** Whether the size report that is arriving is the result of an inspector change (spends the hold). */
+export function consumeFitHold(windowWidth = window.innerWidth, windowHeight = window.innerHeight): boolean {
+  const held = hold !== null && hold.windowWidth === windowWidth && hold.windowHeight === windowHeight;
+  hold = null;
   return held;
 }
 
 let watching = false;
-/** Starts watching the ui store for tool changes (once). */
+/** Starts watching the stores for inspector changes (once). */
 export function watchToolInspector(): void {
-  if (watching) return;
+  if (watching || typeof window === 'undefined') return;
   watching = true;
+  let last = readShellStructure();
+  const update = (): void => {
+    const next = readShellStructure();
+    if (inspectorFlipped(last, next)) armFitHold();
+    last = next;
+  };
   useUi.subscribe((state, previous) => {
-    if (opensToolInspector(previous, state)) armFitHold();
+    if (state.leftPanelCollapsed !== previous.leftPanelCollapsed || state.leftPanelWidth !== previous.leftPanelWidth)
+      dropFitHold();
+    update();
+  });
+  useAnnotations.subscribe((state, previous) => {
+    if (state.selectedIds !== previous.selectedIds) update();
+  });
+  window.addEventListener('resize', () => {
+    dropFitHold();
+    last = readShellStructure();
   });
 }
