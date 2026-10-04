@@ -8,6 +8,7 @@ import { setup } from '../../test/render';
 import { useViewer } from '../viewer/useViewer';
 import { resetViewer, showDocument } from '../viewer/viewer.testutil';
 import { Comments, LOADING_SHOWN_AFTER_MS } from './Comments';
+import { NO_FILTER } from './model';
 import { useComments } from './store';
 import { clearQuotes } from './useQuote';
 
@@ -146,8 +147,10 @@ describe('Comments cards', () => {
     ]);
     expect(cards()).toHaveLength(2);
     expect(cards()[0]?.textContent).toContain('Resolved');
-    expect(cards()[0]?.textContent).not.toContain('Text 1');
-    await user.click(screen.getByRole('switch', { name: 'Open only' }));
+    // Collapsed to the header: the first line (the text) shows, the actions do not.
+    expect(within(cards()[0] as HTMLElement).queryByRole('button', { name: 'Delete' })).toBeNull();
+    await user.click(screen.getByRole('button', { name: 'Filter' }));
+    await user.click(screen.getByRole('radio', { name: 'Open' }));
     expect(cards()).toHaveLength(1);
     expect(cards()[0]?.textContent).toContain('Text 3');
   });
@@ -318,26 +321,62 @@ describe('Comments cards', () => {
     expect(apply).not.toHaveBeenCalled();
   });
 
-  it('sorts, filters by author and resets', async () => {
+  it('sorts by author and date from the sort menu and remembers the order', async () => {
     const { user } = await shown();
-    await user.click(screen.getByRole('button', { name: 'All types' }));
-    await user.click(screen.getByRole('menuitemcheckbox', { name: 'Newest first' }));
+    await user.click(screen.getByRole('button', { name: 'Sort comments' }));
+    await user.click(screen.getByRole('menuitemcheckbox', { name: 'Date, newest first' }));
     expect(useComments.getState().views[1]?.order).toBe('newest');
-    await user.click(screen.getByRole('button', { name: 'All types' }));
-    await user.click(screen.getByRole('menuitemcheckbox', { name: 'No author' }));
+    await user.click(screen.getByRole('button', { name: 'Sort comments' }));
+    await user.click(screen.getByRole('menuitemcheckbox', { name: 'Author A–Z' }));
+    expect(useComments.getState().views[1]?.order).toBe('author');
+    expect(window.localStorage.getItem('comments.sort')).toBe('author');
+  });
+
+  it('filters by author in the popover, counts it, and resets', async () => {
+    const { user } = await shown([summary(1), summary(2, { author: 'Bob', pageId: 1 }), summary(3, { author: null, pageId: 2 })]);
+    await user.click(screen.getByRole('button', { name: 'Filter' }));
+    await user.click(screen.getByRole('checkbox', { name: 'No author' }));
     expect(cards()).toHaveLength(1);
-    expect(screen.getByText('1 of 2')).toBeTruthy();
-    act(() => useComments.getState().setFilter(1, { kinds: ['ink'], authors: [], statuses: [] }));
-    await user.click(screen.getByRole('button', { name: 'Reset filter' }));
+    expect(screen.getByText('1 of 3')).toBeTruthy();
+    await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Reset' }));
+    expect(cards()).toHaveLength(3);
+  });
+
+  it('filters by type group and by page range', async () => {
+    const { user } = await shown([
+      summary(1, { kind: 'ink', contents: 'a', pageId: 0 }),
+      summary(2, { kind: 'note', pageId: 1 }),
+      summary(3, { kind: 'rect', contents: 'c', pageId: 2 }),
+    ]);
+    await user.click(screen.getByRole('button', { name: 'Filter' }));
+    await user.click(screen.getByRole('checkbox', { name: 'Shape' }));
+    expect(cards()).toHaveLength(1);
+    await user.click(screen.getByRole('checkbox', { name: 'Shape' }));
+    expect(cards()).toHaveLength(3);
+    act(() => useComments.getState().setFilter(1, { ...NO_FILTER, pages: { from: 2, to: 3 } }));
     expect(cards()).toHaveLength(2);
+  });
+
+  it('has a compact filter button whose label is not cut', async () => {
+    await shown();
+    const button = screen.getByRole('button', { name: 'Filter' });
+    expect(button.textContent).toContain('Filter');
+    expect(button.querySelector('.truncate')).toBeNull();
   });
 
   it('says nothing matches, with a reset', async () => {
     const { user } = await shown();
-    act(() => useComments.getState().setFilter(1, { kinds: ['ink'], authors: [], statuses: [] }));
-    expect(screen.getByText('No comments match the filter.')).toBeTruthy();
+    act(() => useComments.getState().setFilter(1, { ...NO_FILTER, kinds: ['ink'] }));
+    expect(screen.getByText('No comments match these filters.')).toBeTruthy();
     await user.click(screen.getByRole('button', { name: 'Reset filter' }));
     expect(cards()).toHaveLength(2);
+  });
+
+  it('puts the focus in the reply field when Reply is clicked', async () => {
+    const { user } = await shown();
+    const card = cards()[0] as HTMLElement;
+    await user.click(within(card).getByRole('button', { name: 'Reply' }));
+    expect(document.activeElement).toBe(within(card).getByRole('textbox', { name: 'Write a reply' }));
   });
 
   it('reads the list again when the annotations change', async () => {

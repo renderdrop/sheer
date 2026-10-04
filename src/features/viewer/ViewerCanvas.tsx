@@ -13,6 +13,9 @@ import type { PageSlotInfo } from '../../api/pages';
 import { DEFAULT_PAGE_SIZE, readSlots, sizesFor, useSlots, usePages } from '../../stores/pages';
 import { useUi } from '../../stores/ui';
 import { useDocView, useView } from '../../stores/view';
+import { MarginColumn } from '../margin/MarginColumn';
+import { useMarginPrefs } from '../margin/store';
+import { useBubbleThreads } from '../margin/useBubbles';
 import { OpenClone } from './OpenClone';
 import { entranceFor, finishTransition, isFresh, resolveFresh, useTransition, type SourceRect } from './openTransition';
 import { Canvas } from './Canvas';
@@ -99,6 +102,11 @@ export function ViewerCanvas({ style }: { style?: CSSProperties }) {
   const nextPage = useViewer((state) => state.nextPage);
   const previousPage = useViewer((state) => state.previousPage);
   const dropActive = useUi((state) => state.dropHover);
+  // The comment margin (DESIGN 3.5 B9): when the document has comments with text or replies, in every mode but Seiten.
+  const marginPref = useMarginPrefs((state) => state.enabled);
+  const editorMode = useUi((state) => state.mode);
+  const bubbleThreads = useBubbleThreads(docId);
+  const marginOn = marginPref && editorMode !== 'pages' && bubbleThreads.length > 0;
   const ratio = useDevicePixelRatio();
   const scrollerRef = useRef<HTMLDivElement | null>(null);
   const setRegion = useCallback((region: HTMLDivElement | null) => {
@@ -401,6 +409,19 @@ export function ViewerCanvas({ style }: { style?: CSSProperties }) {
       paged={paged}
       onPageTurn={turn}
       onRegion={setRegion}
+      margin={marginOn}
+      renderMargin={(mode) =>
+        layout !== null && docId !== null ? (
+          <MarginColumn
+            docId={docId}
+            layout={layout}
+            threads={bubbleThreads}
+            mode={mode}
+            drawnSizes={drawnSizes}
+            rotation={view.rotation}
+          />
+        ) : null
+      }
       dropActive={dropActive}
     >
       {layout !== null &&

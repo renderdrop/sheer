@@ -1,4 +1,4 @@
-import { CircleAlert, ListFilter, LoaderCircle, MessagesSquare } from 'lucide-react';
+import { CircleAlert, LoaderCircle, MessagesSquare } from 'lucide-react';
 import {
   useCallback,
   useEffect,
@@ -10,12 +10,10 @@ import {
   type ReactNode,
 } from 'react';
 
-import { Button, Menu, Toggle, type MenuEntry } from '../../components';
-import { cx } from '../../components/cx';
-import type { AnnotationSummary } from '../../api/annotations';
+import { Button } from '../../components';
 import { Icon } from '../../components/Icon';
 import { tokenPx } from '../../components/tokens';
-import { useT, type PlainKey } from '../../i18n';
+import { useT } from '../../i18n';
 import { useAnnotations } from '../../stores/annotations';
 import { selectActiveId, useDocuments } from '../../stores/documents';
 import { pageNumberOf } from '../../stores/pages';
@@ -23,38 +21,28 @@ import { deleteThread, jumpTo } from './actions';
 import { CommentCard } from './CommentCard';
 import {
   NO_FILTER,
-  SORT_ORDERS,
   buildRows,
-  facets,
   filterThreads,
   isFiltering,
   offsetsOf,
   sortThreads,
   windowOf,
-  type Filter,
   type Row,
-  type SortOrder,
   type Thread,
 } from './model';
 import { DEFAULT_VIEW, useComments, type CommentsEntry } from './store';
-import { kindInfo } from './typeInfo';
+import { CommentsFilter } from './CommentsFilter';
+import { REFRESH_DELAY_MS, useCommentsData } from './useCommentsData';
 
 /** The loading state shows nothing for this long. */
 export const LOADING_SHOWN_AFTER_MS = 300;
-/** A change of the annotations refreshes the list this long after the last one (typing in a note changes it per key). */
-export const REFRESH_DELAY_MS = 200;
+export { REFRESH_DELAY_MS };
 /** Pixels mounted beyond the viewport on each side. */
 const OVERSCAN_PX = 256;
 /** The relative times of the cards are fresh to the minute. */
 const CLOCK_MS = 60_000;
 
 const HEIGHT_FALLBACK = { group: 24, card: 112 } as const;
-
-const SORT_LABELS: Record<SortOrder, PlainKey> = {
-  page: 'comments.byPage',
-  newest: 'comments.newest',
-  oldest: 'comments.oldest',
-};
 
 function Message({ children }: { children: ReactNode }) {
   return <div className="flex flex-col items-center gap-2 p-6 text-center">{children}</div>;
@@ -117,8 +105,8 @@ export function CommentsList({ docId, entry }: { docId: number; entry: Ready }) 
     card: tokenPx('--comments-card-estimate', HEIGHT_FALLBACK.card) + tokenPx('--space-2', 8),
   }));
   const threads = useMemo(
-    () => sortThreads(filterThreads(entry.threads, view.filter), view.order),
-    [entry.threads, view.filter, view.order],
+    () => sortThreads(filterThreads(entry.threads, view.filter, (pageId) => pageNumberOf(docId, pageId)), view.order),
+    [entry.threads, view.filter, view.order, docId],
   );
   const rows = useMemo(() => buildRows(threads, view.order), [threads, view.order]);
 
@@ -344,7 +332,13 @@ export function CommentsList({ docId, entry }: { docId: number; entry: Ready }) 
   return (
     <>
       {isFiltering(view.filter) && (
-        <p className="t-caption m-0 px-3 pb-1">{t('comments.filtered', { shown: threads.length, total })}</p>
+        <p className="t-caption m-0 flex items-center gap-1 px-3 pb-1">
+          <span>{t('comments.filtered', { shown: threads.length, total })}</span>
+          <span aria-hidden="true">·</span>
+          <Button size="sm" variant="ghost" onClick={() => useComments.getState().setFilter(docId, NO_FILTER)}>
+            {t('comments.resetShort')}
+          </Button>
+        </p>
       )}
       <div
         ref={scrollerRef}
@@ -414,18 +408,8 @@ export function CommentsList({ docId, entry }: { docId: number; entry: Ready }) 
 function CommentsView({ docId }: { docId: number }) {
   const t = useT();
   const entry = useComments((state) => state.byDoc[docId]);
-  const rev = useAnnotations((state) => state.byDoc[docId]?.rev ?? 0);
   // Live from the change sets: the list is read again once the changes have settled. The first read is at once.
-  const first = useRef(true);
-  useEffect(() => {
-    if (first.current) {
-      first.current = false;
-      useComments.getState().load(docId);
-      return;
-    }
-    const timer = window.setTimeout(() => useComments.getState().load(docId), REFRESH_DELAY_MS);
-    return () => window.clearTimeout(timer);
-  }, [docId, rev]);
+  useCommentsData(docId, true);
 
   if (entry === undefined || entry.status === 'loading') return <Loading />;
   if (entry.status === 'error') {
@@ -454,7 +438,7 @@ function CommentsView({ docId }: { docId: number }) {
   }
   return (
     <>
-      <FilterRow docId={docId} summaries={entry.summaries} />
+      <CommentsFilter docId={docId} summaries={entry.summaries} />
       <CommentsList docId={docId} entry={entry} />
     </>
   );
@@ -466,74 +450,4 @@ export function Comments() {
   const docId = useDocuments(selectActiveId);
   if (docId === null) return <p className="m-0 text-sm text-text-muted">{t('leftPanel.empty.comments')}</p>;
   return <CommentsView key={docId} docId={docId} />;
-}
-
-/**
- * The filter row (DESIGN v2 3.2), 36 high: a type menu (the kinds, the authors and the sort order of the list; a check marks a chosen
- * one) and the "Open only" switch. Choosing none of a group shows all of it.
- */
-function FilterRow({ docId, summaries }: { docId: number; summaries: readonly AnnotationSummary[] }) {
-  const t = useT();
-  const view = useComments((state) => state.views[docId]) ?? DEFAULT_VIEW;
-  const options = useMemo(() => facets(summaries), [summaries]);
-  const { filter } = view;
-  const onlyOpen = filter.statuses.length === 1 && filter.statuses[0] === 'open';
-  const toggle = <T,>(chosen: readonly T[], value: T): T[] =>
-    chosen.includes(value) ? chosen.filter((other) => other !== value) : [...chosen, value];
-  const set = (next: Partial<Filter>) => useComments.getState().setFilter(docId, { ...filter, ...next });
-  const entries: MenuEntry[] = [
-    { type: 'separator', id: 'h-type', label: t('comments.type') },
-    ...options.kinds.map((kind) => ({
-      id: `kind-${kind}`,
-      label: t(kindInfo(kind).key),
-      checked: filter.kinds.includes(kind),
-      onSelect: () => set({ kinds: toggle(filter.kinds, kind) }),
-    })),
-    { type: 'separator', id: 'h-author', label: t('comments.author') },
-    ...options.authors.map((author) => ({
-      id: `author-${author}`,
-      label: author === '' ? t('comments.noAuthor') : author,
-      checked: filter.authors.includes(author),
-      onSelect: () => set({ authors: toggle(filter.authors, author) }),
-    })),
-    { type: 'separator', id: 'h-sort', label: t('comments.sort') },
-    ...SORT_ORDERS.map((order) => ({
-      id: `sort-${order}`,
-      label: t(SORT_LABELS[order]),
-      checked: view.order === order,
-      onSelect: () => useComments.getState().setOrder(docId, order),
-    })),
-  ];
-  const typeCount = filter.kinds.length;
-  return (
-    <div className="flex h-control-md shrink-0 items-center gap-2 px-3">
-      <Menu
-        label={t('comments.filter')}
-        side="bottom"
-        align="start"
-        entries={entries}
-        trigger={(trigger) => (
-          <Button
-            {...trigger}
-            size="sm"
-            variant="ghost"
-            icon={ListFilter}
-            className={cx('min-w-0 flex-1 justify-start', isFiltering(filter) && 'font-semibold')}
-          >
-            <span className="truncate">
-              {typeCount === 0 ? t('comments.allTypes') : t('comments.typeCount', { n: typeCount })}
-            </span>
-          </Button>
-        )}
-      />
-      <label className="flex shrink-0 cursor-pointer items-center gap-2">
-        <span className="t-caption">{t('comments.onlyOpen')}</span>
-        <Toggle
-          checked={onlyOpen}
-          onCheckedChange={(on) => set({ statuses: on ? ['open'] : [] })}
-          aria-label={t('comments.onlyOpen')}
-        />
-      </label>
-    </div>
-  );
 }

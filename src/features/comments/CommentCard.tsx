@@ -13,9 +13,10 @@ import { isConfirmKey } from '../annotations/note/confirmKey';
 import { isOwnReply, useOwnReplies } from '../annotations/note/ownReplies';
 import { useAutosize } from '../annotations/note/useAutosize';
 import { deleteThread, discardNew, postReply, run, setReviewState } from './actions';
-import type { Status, Thread } from './model';
+import { firstLine, type Status, type Thread } from './model';
 import { useComments } from './store';
 import { relativeTime } from './time';
+import { useCommentHover } from './useCommentsData';
 import { isTextMarkup, typeOf } from './typeInfo';
 import { useQuote } from './useQuote';
 
@@ -144,6 +145,7 @@ export const CommentCard = memo(function CommentCard({
   const { root, replies, status } = thread;
   const ids = useId();
   const full: Annotation | undefined = useAnnotations((state) => state.byDoc[docId]?.byId[root.id]);
+  const hovered = useCommentHover((state) => state.hovered === root.id);
   const editing = useComments((state) => state.editing[docId]);
   const isEditing = editing?.id === root.id;
   const info = typeOf(root);
@@ -155,6 +157,8 @@ export const CommentCard = memo(function CommentCard({
   const [expanded, setExpanded] = useState(false);
   const collapsed = done && !expanded;
   const [replying, setReplying] = useState(false);
+  // "Reply" opens the field and the field takes the focus (the button had it).
+  const focusReply = useRef(false);
   const canEdit = full !== undefined && !full.locked && TEXT_KINDS.has(root.kind);
   const canDelete = root.kind !== 'opaque';
 
@@ -208,6 +212,12 @@ export const CommentCard = memo(function CommentCard({
   const [reply, setReply] = useState('');
   const replyRef = useRef<HTMLTextAreaElement | null>(null);
   useAutosize(replyRef, reply);
+  const showReplyField = (selected || replying) && !isEditing;
+  useEffect(() => {
+    if (!focusReply.current || replyRef.current === null) return;
+    focusReply.current = false;
+    replyRef.current.focus({ preventScroll: true });
+  });
   const sendReply = () => {
     const body = reply.trim();
     if (body === '') return;
@@ -227,13 +237,17 @@ export const CommentCard = memo(function CommentCard({
   const review = (next: 'completed' | 'accepted' | 'rejected' | 'none') => () =>
     void setReviewState(docId, root.id, root.pageId, next);
   const copy = () => void navigator.clipboard?.writeText(text).catch(() => undefined);
+  const quoted = quote !== null && quote !== undefined ? t('comments.quote', { text: quote }) : null;
+  // The first line is the comment's text; without text the quote; without either the type (DESIGN 3.5 B9).
+  const lead = firstLine(text, quoted);
+  const excerpt = lead !== '' ? lead : t(info.key);
+  // A text that fits the two clamped lines is the header alone; a longer one also shows whole below it.
+  const longText = text.includes('\n') || text.length > 80;
+  const quoteBelow = text.trim() !== '' && quoted !== null;
+  const showReply = showReplyField;
   const describedBy =
-    [quote !== null && quote !== undefined ? `${ids}-q` : null, text !== '' ? `${ids}-b` : null]
-      .filter((id) => id !== null)
-      .join(' ') || undefined;
-
-  const excerpt = quote !== null && quote !== undefined ? t('comments.quote', { text: quote }) : t(info.key);
-  const showReply = (selected || replying) && !isEditing;
+    [quoteBelow ? `${ids}-q` : null, text !== '' && longText ? `${ids}-b` : null].filter((id) => id !== null).join(' ') ||
+    undefined;
   const footerTime = [author === '' ? t('comments.noAuthor') : author, time, t('comments.page', { n: page })]
     .filter((part) => part !== '')
     .join(' · ');
@@ -248,11 +262,14 @@ export const CommentCard = memo(function CommentCard({
       aria-current={selected ? 'true' : undefined}
       tabIndex={tabStop ? 0 : -1}
       onClick={onClick}
+      onPointerEnter={() => useCommentHover.getState().hover(root.id)}
+      onPointerLeave={() => useCommentHover.getState().hover(null)}
       className={cx(
         'bg-panel box-border flex cursor-pointer flex-col gap-2 rounded-md border p-3 focus-visible:outline-2 focus-visible:outline-offset-0 focus-visible:outline-focus',
         'transition-colors duration-fast motion-reduce:transition-none',
         'forced-colors:bg-[Canvas] forced-colors:text-[CanvasText]',
         selected ? 'border-accent' : 'border-border-subtle hover:border-control-border',
+        !selected && hovered && 'border-control-border',
         done && 'opacity-60',
       )}
     >
@@ -267,9 +284,8 @@ export const CommentCard = memo(function CommentCard({
             collapsed ? 'line-clamp-1' : 'line-clamp-2',
           )}
         >
-          <span id={`${ids}-q`} className={cx(highlight && quote !== null && quote !== undefined && 'bg-hl-excerpt')}>
-            {excerpt}
-          </span>
+          {lead !== '' && <span className="sr-only">{t(info.key)}: </span>}
+          <span className={cx(highlight && text.trim() === '' && quoted !== null && 'bg-hl-excerpt')}>{excerpt}</span>
         </span>
         {done && (
           <IconButton
@@ -318,6 +334,14 @@ export const CommentCard = memo(function CommentCard({
 
       {!collapsed && (
         <>
+          {quoteBelow && !isEditing && (
+            <p
+              id={`${ids}-q`}
+              className={cx('t-caption m-0 line-clamp-2 text-text [overflow-wrap:break-word]', highlight && 'bg-hl-excerpt')}
+            >
+              {quoted}
+            </p>
+          )}
           {isEditing ? (
             <textarea
               ref={bodyRef}
@@ -332,7 +356,8 @@ export const CommentCard = memo(function CommentCard({
               onKeyDown={onBodyKeyDown}
             />
           ) : (
-            text !== '' && (
+            text !== '' &&
+            longText && (
               <p id={`${ids}-b`} className="t-body m-0 whitespace-pre-wrap text-text [overflow-wrap:break-word]">
                 {text}
               </p>
@@ -359,6 +384,9 @@ export const CommentCard = memo(function CommentCard({
                   onClick={() => {
                     onActivate(thread);
                     setReplying(true);
+                    // A field that is already there takes the focus now, one that opens with this click when it is in.
+                    if (replyRef.current !== null) replyRef.current.focus({ preventScroll: true });
+                    else focusReply.current = true;
                   }}
                 >
                   {t('note.reply')}

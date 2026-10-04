@@ -9,6 +9,7 @@ import {
   MessageSquareQuote,
   MoveUpRight,
   PenLine,
+  Shapes,
   Signature,
   Square,
   StickyNote,
@@ -21,6 +22,7 @@ import {
 
 import type { AnnotationKind, AnnotationSummary } from '../../api/annotations';
 import type { PlainKey } from '../../i18n';
+import type { TypeGroup } from './model';
 
 /** What an annotation is called and drawn as in the panel (DESIGN 3.59, "Type labels"): an icon and a word, never colour alone. */
 export interface TypeInfo {
@@ -69,3 +71,15 @@ export function typeOf(summary: Pick<AnnotationSummary, 'kind' | 'detail' | 'con
 /** The text markups: they have a quote. */
 export const isTextMarkup = (kind: AnnotationKind): boolean =>
   kind === 'highlight' || kind === 'underline' || kind === 'strikeout';
+
+/** The type groups of the filter (DESIGN 3.5 B10): a subtly distinct Lucide icon each. */
+const GROUP: Record<TypeGroup, TypeInfo> = {
+  highlight: { key: 'comments.group.highlight', icon: Highlighter },
+  note: { key: 'comments.group.note', icon: StickyNote },
+  drawing: { key: 'comments.group.drawing', icon: PenLine },
+  shape: { key: 'comments.group.shape', icon: Shapes },
+  signature: { key: 'comments.group.signature', icon: Signature },
+  quote: { key: 'comments.group.quote', icon: MessageSquareQuote },
+};
+
+export const groupInfo = (group: TypeGroup): TypeInfo => GROUP[group];

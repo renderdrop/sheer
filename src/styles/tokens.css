@@ -1160,3 +1160,20 @@
     transition: none;
   }
 }
+
+/* F15 B9–B10 */
+:root {
+  --margin-gap: 16px; /* page edge to the comment column */
+  --margin-width: 240px; /* comment column */
+  --margin-width-compact: 32px; /* avatar markers when the page would get less than 360 px */
+  --margin-stack-gap: 8px; /* between bubbles */
+  --margin-free-min: 360px; /* free page width below which the column collapses */
+  --margin-marker: 24px; /* avatar marker in the compact column */
+  --note-bubble: var(--accent); /* the note-paper bubble */
+  --note-bubble-resolved: var(--color-surface-solid);
+}
+
+/* F15 B4–B5 */
+:root {
+  --colour-popover-inner: calc(240px - 2 * var(--space-4)); /* inside the popover's padding */
+}

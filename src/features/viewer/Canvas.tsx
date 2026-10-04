@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState, type CSSProperties, type Reac
 import { cx } from '../../components/cx';
 import { useT } from '../../i18n';
 import { SPRING } from '../../lib/motion';
+import { marginMetrics, marginSlot, type MarginMode } from '../margin/layout';
 import { DropCard } from './DropCard';
 import type { ScrollPosition, Viewport } from './layout';
 import { canvasPadding } from './model';
@@ -79,6 +80,14 @@ export interface CanvasProps {
   onPageTurn?: (direction: 1 | -1) => void;
   /** Gets the scroll region when it mounts and `null` when it goes away, for whoever scrolls it (the viewer puts the zoom's anchor where it belongs). */
   onRegion?: (region: HTMLDivElement | null) => void;
+  /**
+   * The comment margin takes a column right of the pages (DESIGN 3.5 B9): the viewport that is reported is the region's width minus
+   * the column's slot (256 px, or 48 px when the page would get less than 360), so fits and the layout see the width the pages have.
+   * The content is as much wider as the slot.
+   */
+  margin?: boolean;
+  /** The margin's column, drawn inside the content once the canvas knows which one it is (full or compact). */
+  renderMargin?: (mode: Exclude<MarginMode, 'off'>) => ReactNode;
   /** A file is dragged over the window (visual only). */
   dropActive?: boolean;
   className?: string;
@@ -111,6 +120,8 @@ export function Canvas({
   paged = false,
   onPageTurn,
   onRegion,
+  margin = false,
+  renderMargin,
   dropActive = false,
   className,
   style,
@@ -120,6 +131,9 @@ export function Canvas({
   const contentRef = useRef<HTMLDivElement | null>(null);
   const syncRef = useRef<(() => void) | null>(null);
   const [scrolled, setScrolled] = useState(false);
+  /** The slot the margin takes of the content's width, as of the last reported size. */
+  const [reserve, setReserve] = useState(0);
+  const reserveRef = useRef(0);
   // The listeners are attached once and read the latest props from here, so a new callback does not detach and attach them.
   const latest = useRef({ onWheelZoom, onPinch, paged, onPageTurn, fitScale });
   useEffect(() => {
@@ -193,6 +207,12 @@ export function Canvas({
     const region = regionRef.current;
     if (region === null || onViewport === undefined) return;
     const pad = canvasPadding();
+    /** The size of the region as the layout is to see it: the margin's slot is not the pages'. */
+    const sized = (width: number, height: number): { size: Viewport; slot: number } => {
+      const slot = marginSlot(width, margin).reserve;
+      return { size: { width: Math.max(0, width - slot), height }, slot };
+    };
+    let currentSlot = 0;
     /** The size last handed on, and the size now (they differ while a track animation holds the report back). */
     let reported: Viewport | null = null;
     let current: Viewport | null = null;
@@ -210,7 +230,7 @@ export function Canvas({
         width: reported.width,
         height: reported.height,
         scrollLeft: region.scrollLeft,
-        contentWidth: content.offsetWidth,
+        contentWidth: content.offsetWidth - reserveRef.current,
         originX: box.left + pad + reported.width / 2 - at.left,
         originY: box.top + pad + reported.height / 2 - at.top,
       };
@@ -246,19 +266,25 @@ export function Canvas({
         anchor = { x: box.left + pad + viewX - at.left, y: box.top + pad + viewY - at.top, viewX, viewY };
       }
       reported = size;
+      reserveRef.current = currentSlot;
+      setReserve(currentSlot);
       onViewport(size, anchor);
     };
 
     const observer = new ResizeObserver((entries) => {
       const box = entries.at(-1)?.contentRect;
       if (box === undefined) return;
-      current = { width: Math.floor(box.width), height: Math.floor(box.height) };
+      const next = sized(Math.floor(box.width), Math.floor(box.height));
+      current = next.size;
+      currentSlot = next.slot;
       if (isLayoutAnimating() && reported !== null) {
         begin();
         if (freeze !== null) follow(current, freeze);
         return;
       }
       reported = current;
+      reserveRef.current = currentSlot;
+      setReserve(currentSlot);
       onViewport(current);
     });
     observer.observe(region);
@@ -266,11 +292,15 @@ export function Canvas({
     // that was held back or missed would leave the layout wider than the region (a horizontal bar, a page off centre).
     syncRef.current = () => {
       if (isLayoutAnimating() || freeze !== null || reported === null) return;
-      const width = Math.floor(region.clientWidth - 2 * pad);
+      const raw = Math.floor(region.clientWidth - 2 * pad);
       const height = Math.floor(region.clientHeight - 2 * pad);
-      if (width <= 0 || height <= 0 || (width === reported.width && height === reported.height)) return;
-      current = { width, height };
+      const { size, slot } = sized(raw, height);
+      if (raw <= 0 || height <= 0 || (size.width === reported.width && size.height === reported.height)) return;
+      current = size;
+      currentSlot = slot;
       reported = current;
+      reserveRef.current = slot;
+      setReserve(slot);
       onViewport(current);
     };
     const stop = subscribeLayoutAnimating(() => {
@@ -290,7 +320,7 @@ export function Canvas({
         content.style.transformOrigin = '';
       }
     };
-  }, [onViewport]);
+  }, [onViewport, margin]);
 
   // After every layout of the content: is the size the layout was made for still the region's?
   useEffect(() => {
@@ -332,9 +362,10 @@ export function Canvas({
             data-canvas-content=""
             className="relative m-auto flex-none"
             // The tour's card may ask for scroll height after the last page; a margin does not touch the viewport.
-            style={{ width: content.width, height: content.height, marginBottom: 'var(--canvas-extra-scroll, 0px)' }}
+            style={{ width: content.width + reserve, height: content.height, marginBottom: 'var(--canvas-extra-scroll, 0px)' }}
           >
             {children}
+            {reserve > 0 && renderMargin?.(reserve > marginMetrics().gap + marginMetrics().compact ? 'full' : 'compact')}
           </div>
         ) : null}
       </div>

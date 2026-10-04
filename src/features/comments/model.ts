@@ -6,8 +6,33 @@ import type { AnnotationKind, AnnotationSummary, ReviewState } from '../../api/a
  * a document with 20 000 annotations costs a few passes.
  */
 
-export type SortOrder = 'page' | 'newest' | 'oldest';
-export const SORT_ORDERS: readonly SortOrder[] = ['page', 'newest', 'oldest'];
+export type SortOrder = 'page' | 'newest' | 'oldest' | 'author';
+/** The orders the sort menu offers (DESIGN 3.5 B10); `oldest` stays valid for a stored view. */
+export const SORT_ORDERS: readonly SortOrder[] = ['page', 'newest', 'author'];
+
+/** The types of the filter (DESIGN 3.5 B10): several kinds fold into one, a text markup with a comment is a quote. */
+export type TypeGroup = 'highlight' | 'note' | 'drawing' | 'shape' | 'signature' | 'quote';
+export const TYPE_GROUPS: readonly TypeGroup[] = ['highlight', 'note', 'drawing', 'shape', 'signature', 'quote'];
+
+/** The filter type of a summary: a text markup with text is a quote, ink a drawing, rect/ellipse/line a shape. */
+export function groupOf(summary: Pick<AnnotationSummary, 'kind' | 'contents'>): TypeGroup {
+  switch (summary.kind) {
+    case 'highlight':
+    case 'underline':
+    case 'strikeout':
+      return summary.contents.trim() === '' ? 'highlight' : 'quote';
+    case 'ink':
+      return 'drawing';
+    case 'rect':
+    case 'ellipse':
+    case 'line':
+      return 'shape';
+    case 'signature':
+      return 'signature';
+    default:
+      return 'note';
+  }
+}
 
 /** The status of a comment (DESIGN 3.59): the review state its newest state reply gives it. */
 export type Status = 'open' | 'resolved' | 'accepted' | 'rejected';
@@ -46,12 +71,31 @@ export interface Filter {
   authors: readonly string[];
   /** Statuses to show; empty means all. */
   statuses: readonly Status[];
+  /** Type groups to show; empty or missing means all. */
+  groups?: readonly TypeGroup[];
+  /** Page numbers (1-based, inclusive) to show; missing means all. */
+  pages?: { from: number; to: number } | null;
 }
 
-export const NO_FILTER: Filter = { kinds: [], authors: [], statuses: [] };
+export const NO_FILTER: Filter = { kinds: [], authors: [], statuses: [], groups: [], pages: null };
 
 export const isFiltering = (filter: Filter) =>
-  filter.kinds.length > 0 || filter.authors.length > 0 || filter.statuses.length > 0;
+  filter.kinds.length > 0 ||
+  filter.authors.length > 0 ||
+  filter.statuses.length > 0 ||
+  (filter.groups?.length ?? 0) > 0 ||
+  (filter.pages ?? null) !== null;
+
+/** How many kinds of restriction are on (the count chip of the filter button). */
+export function activeFilterCount(filter: Filter): number {
+  return (
+    (filter.kinds.length > 0 ? 1 : 0) +
+    ((filter.groups?.length ?? 0) > 0 ? 1 : 0) +
+    (filter.authors.length > 0 ? 1 : 0) +
+    (filter.statuses.length > 0 ? 1 : 0) +
+    ((filter.pages ?? null) !== null ? 1 : 0)
+  );
+}
 
 /**
  * A date of the file as milliseconds: ISO 8601 (what the app writes) or a PDF date (`D:YYYYMMDDHHmmSS` with an optional zone).
@@ -131,22 +175,50 @@ export function buildThreads(summaries: readonly AnnotationSummary[]): Thread[] 
 
 const matches = (summary: AnnotationSummary, filter: Filter) =>
   (filter.kinds.length === 0 || filter.kinds.includes(summary.kind)) &&
+  (filter.groups === undefined || filter.groups.length === 0 || filter.groups.includes(groupOf(summary))) &&
   (filter.authors.length === 0 || filter.authors.includes(summary.author ?? ''));
 
-/** The threads whose status is wanted and of which any member passes the kind and author filter. */
-export function filterThreads(threads: readonly Thread[], filter: Filter): Thread[] {
+/**
+ * The threads whose status is wanted, whose page is in the range (`pageNumberOf` gives the 1-based number of a page id) and of
+ * which any member passes the kind, type and author filter.
+ */
+export function filterThreads(
+  threads: readonly Thread[],
+  filter: Filter,
+  pageNumberOf: (pageId: number) => number = (pageId) => pageId + 1,
+): Thread[] {
   if (!isFiltering(filter)) return [...threads];
-  return threads.filter(
-    (thread) =>
+  const range = filter.pages ?? null;
+  return threads.filter((thread) => {
+    if (range !== null) {
+      const page = pageNumberOf(thread.root.pageId);
+      if (page < Math.min(range.from, range.to) || page > Math.max(range.from, range.to)) return false;
+    }
+    return (
       (filter.statuses.length === 0 || filter.statuses.includes(thread.status)) &&
-      (matches(thread.root, filter) || thread.replies.some((r) => matches(r, filter))),
-  );
+      (matches(thread.root, filter) || thread.replies.some((r) => matches(r, filter)))
+    );
+  });
+}
+
+/** The first line of a card (DESIGN 3.5 B9): the comment text, else the quote, else empty (the caller then shows the type). */
+export function firstLine(text: string, quote: string | null | undefined): string {
+  const own = text.trim();
+  return own !== '' ? own : (quote ?? '');
 }
 
 export function sortThreads(threads: readonly Thread[], order: SortOrder): Thread[] {
   const sorted = [...threads];
   if (order === 'page') {
     sorted.sort((a, b) => a.root.pageId - b.root.pageId || a.root.id - b.root.id);
+  } else if (order === 'author') {
+    // No author goes last.
+    sorted.sort((a, b) => {
+      const x = a.root.author ?? '';
+      const y = b.root.author ?? '';
+      if ((x === '') !== (y === '')) return x === '' ? 1 : -1;
+      return x.localeCompare(y) || a.root.id - b.root.id;
+    });
   } else {
     const sign = order === 'newest' ? -1 : 1;
     // Threads without a date go last either way.
@@ -159,16 +231,26 @@ export function sortThreads(threads: readonly Thread[], order: SortOrder): Threa
 }
 
 /** The kinds and authors present, for the filter popover. Kinds in the order of first appearance; authors sorted, `''` first. */
-export function facets(summaries: readonly AnnotationSummary[]): { kinds: AnnotationKind[]; authors: string[] } {
+export function facets(summaries: readonly AnnotationSummary[]): {
+  kinds: AnnotationKind[];
+  groups: TypeGroup[];
+  authors: string[];
+} {
   const kinds = new Set<AnnotationKind>();
+  const groups = new Set<TypeGroup>();
   const authors = new Set<string>();
   for (const s of summaries) {
     // A review-state reply is not a comment of its own.
     if (s.state !== undefined) continue;
     kinds.add(s.kind);
+    groups.add(groupOf(s));
     authors.add(s.author ?? '');
   }
-  return { kinds: [...kinds], authors: [...authors].sort((a, b) => a.localeCompare(b)) };
+  return {
+    kinds: [...kinds],
+    groups: TYPE_GROUPS.filter((group) => groups.has(group)),
+    authors: [...authors].sort((a, b) => a.localeCompare(b)),
+  };
 }
 
 export type Row =

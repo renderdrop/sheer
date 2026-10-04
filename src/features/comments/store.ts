@@ -3,7 +3,7 @@ import { create } from 'zustand';
 import { listDocumentAnnotations, type AnnotationSummary } from '../../api/annotations';
 import { toAppError, type AppError } from '../../api/errors';
 import { useDocuments } from '../../stores/documents';
-import { NO_FILTER, buildThreads, type Filter, type SortOrder, type Thread } from './model';
+import { NO_FILTER, SORT_ORDERS, buildThreads, type Filter, type SortOrder, type Thread } from './model';
 
 /** What the comments of one document are: being fetched (first time), there (maybe being refreshed), or failed. */
 export type CommentsEntry =
@@ -17,7 +17,30 @@ export interface CommentsView {
   filter: Filter;
 }
 
+const SORT_KEY = 'comments.sort';
+
+/** The sort order is a preference of the app (DESIGN 3.5 B10, UI storage `comments.sort`); the filters are per document and session. */
+function storedOrder(): SortOrder {
+  try {
+    const raw = globalThis.localStorage?.getItem(SORT_KEY) ?? '';
+    return SORT_ORDERS.find((order) => order === raw) ?? 'page';
+  } catch {
+    return 'page';
+  }
+}
+
+function storeOrder(order: SortOrder): void {
+  try {
+    globalThis.localStorage?.setItem(SORT_KEY, order);
+  } catch {
+    // A full or blocked storage keeps the order for this session only.
+  }
+}
+
 export const DEFAULT_VIEW: CommentsView = { order: 'page', filter: NO_FILTER };
+
+/** The view of a document that has none yet: its filter is empty, the order is the stored one. */
+export const initialView = (): CommentsView => ({ order: storedOrder(), filter: NO_FILTER });
 
 /** The card whose text is being edited. A `fresh` one was just made by Add comment: cancelling it takes it back. */
 export interface Editing {
@@ -83,7 +106,7 @@ export function mergeReady(
 
 export const useComments = create<CommentsState>()((set, get) => {
   const patchView = (docId: number, change: (view: CommentsView) => CommentsView) =>
-    set((state) => ({ views: { ...state.views, [docId]: change(state.views[docId] ?? DEFAULT_VIEW) } }));
+    set((state) => ({ views: { ...state.views, [docId]: change(state.views[docId] ?? initialView()) } }));
 
   return {
     byDoc: {},
@@ -92,6 +115,8 @@ export const useComments = create<CommentsState>()((set, get) => {
     load: (docId) => {
       const token = nextToken++;
       const before = get().byDoc[docId];
+      // A document's first view starts from the stored sort order.
+      if (get().views[docId] === undefined) set((state) => ({ views: { ...state.views, [docId]: initialView() } }));
       // A list that is on screen is replaced when the new one arrives; the first load (or one after an error) shows the loading state.
       if (before === undefined || before.status === 'error') {
         set((state) => ({ byDoc: { ...state.byDoc, [docId]: { status: 'loading', token } } }));
@@ -114,7 +139,10 @@ export const useComments = create<CommentsState>()((set, get) => {
         },
       );
     },
-    setOrder: (docId, order) => patchView(docId, (view) => ({ ...view, order })),
+    setOrder: (docId, order) => {
+      storeOrder(order);
+      patchView(docId, (view) => ({ ...view, order }));
+    },
     setFilter: (docId, filter) => patchView(docId, (view) => ({ ...view, filter })),
     startEdit: (docId, id, fresh) => set((state) => ({ editing: { ...state.editing, [docId]: { id, fresh } } })),
     stopEdit: (docId) => set((state) => ({ editing: { ...state.editing, [docId]: null } })),

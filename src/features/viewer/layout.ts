@@ -203,6 +203,13 @@ export class PageLayout {
     return this.metrics.pageCount;
   }
 
+  /** The width of the widest row that is shown (the pages' own width, without the room around them), px. */
+  get pagesWidth(): number {
+    if (this.isEmpty) return 0;
+    if (this.paged) return this.rowWidth(this.firstRow);
+    return this.metrics.widestSinglePt * this.scale;
+  }
+
   /** Whether any page is in the layout. */
   get isEmpty(): boolean {
     return this.lastRow < this.firstRow;

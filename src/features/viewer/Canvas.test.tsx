@@ -389,6 +389,17 @@ describe('Canvas (DESIGN 2)', () => {
       expect(onViewport.mock.calls).toEqual([[{ width: 816, height: 528 }], [{ width: 1000, height: 600 }]]);
     });
 
+    it('reports the width minus the margin slot (256, or 48 under 360 of free page width) and widens the content by it', () => {
+      const { report } = fakeObserver();
+      const onViewport = vi.fn();
+      setup(<Canvas {...props({ onViewport, margin: true, content: { width: 700, height: 900 } })} />);
+      act(() => void report(1000, 600));
+      act(() => void report(600, 600));
+      expect(onViewport.mock.calls).toEqual([[{ width: 744, height: 600 }], [{ width: 552, height: 600 }]]);
+      const content = document.querySelector<HTMLElement>('[data-canvas-content]');
+      expect(content?.style.width).toBe('748px');
+    });
+
     it('holds the size back while the grid slides, scales the content for a fit, and commits the final size once', () => {
       const { report } = fakeObserver();
       const onViewport = vi.fn();
