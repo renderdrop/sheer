@@ -85,21 +85,25 @@ impl RemoteFile {
 
 impl Read for RemoteFile {
     fn read(&mut self, buffer: &mut [u8]) -> io::Result<usize> {
-        if buffer.is_empty() || self.position >= self.len {
-            return Ok(0);
+        // The buffer is filled across block borders: PDFium's file callback (pdfium-render) calls `read` once and takes a short
+        // count for the whole block, so a read that ends at a border would leave the rest of its buffer unread (a JPEG that is
+        // grey from there on). Short only at the end of the file.
+        let mut filled = 0;
+        while filled < buffer.len() && self.position < self.len {
+            let number = self.position / BLOCK;
+            let within = usize::try_from(self.position % BLOCK)
+                .map_err(|_| io::Error::from(io::ErrorKind::InvalidInput))?;
+            let block = self.block(number)?;
+            let Some(available) = block.get(within..).filter(|rest| !rest.is_empty()) else {
+                // The file ended earlier than its length said (it shrank): the end of the file.
+                break;
+            };
+            let n = available.len().min(buffer.len() - filled);
+            buffer[filled..filled + n].copy_from_slice(&available[..n]);
+            filled += n;
+            self.position += n as u64;
         }
-        let number = self.position / BLOCK;
-        let within = usize::try_from(self.position % BLOCK)
-            .map_err(|_| io::Error::from(io::ErrorKind::InvalidInput))?;
-        let block = self.block(number)?;
-        let Some(available) = block.get(within..).filter(|rest| !rest.is_empty()) else {
-            // The file ended earlier than its length said (it shrank): the end of the file.
-            return Ok(0);
-        };
-        let n = available.len().min(buffer.len());
-        buffer[..n].copy_from_slice(&available[..n]);
-        self.position += n as u64;
-        Ok(n)
+        Ok(filled)
     }
 }
 
@@ -195,6 +199,17 @@ mod tests {
         assert!(file.seek(SeekFrom::Current(-2000)).is_err());
         assert_eq!(file.seek(SeekFrom::Start(5000)).unwrap(), 5000);
         assert_eq!(file.read(&mut [0u8; 4]).unwrap(), 0);
+    }
+
+    #[test]
+    fn one_read_across_a_block_border_is_not_short() {
+        let (mut file, source) = remote(limits::REMOTE_BLOCK_BYTES * 3);
+        let start = limits::REMOTE_BLOCK_BYTES - 10;
+        file.seek(SeekFrom::Start(start as u64)).unwrap();
+        // A single `read`, like PDFium's file callback: it must return everything asked for.
+        let mut buffer = vec![0u8; limits::REMOTE_BLOCK_BYTES + 100];
+        assert_eq!(file.read(&mut buffer).unwrap(), buffer.len());
+        assert_eq!(buffer, source.bytes[start..start + buffer.len()]);
     }
 
     #[test]
