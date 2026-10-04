@@ -5,6 +5,12 @@ import { MotionGlobalConfig } from 'motion/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { DocumentInfo } from '../api/documents';
+import { openAbout, useAboutDialog } from '../features/about/state';
+import { RecoveryBanner } from '../features/recovery/RecoveryBanner';
+import { useRecovery } from '../features/recovery/store';
+import { useSave } from '../features/save/state';
+import { useUpdate } from '../features/update/store';
+import { UpdateBannerRow } from '../features/update/UpdateBanner';
 import { PasswordDialog } from '../features/password/PasswordDialog';
 import { requestPassword, usePassword } from '../features/password/state';
 import { Shell } from '../features/shell/Shell';
@@ -34,6 +40,19 @@ const windowApi = vi.hoisted(() => ({
   isWindowFullscreen: vi.fn(),
 }));
 
+const recentsApi = vi.hoisted(() => ({
+  listRecents: vi.fn(),
+  getRecentThumbnail: vi.fn(),
+  setMenuState: vi.fn(),
+  openRecent: vi.fn(),
+  removeRecent: vi.fn(),
+  restoreRecent: vi.fn(),
+  locateRecent: vi.fn(),
+}));
+const recoveryApi = vi.hoisted(() => ({ listRecoveries: vi.fn(), restoreRecovery: vi.fn(), discardRecovery: vi.fn() }));
+
+vi.mock('../api/recents', () => recentsApi);
+vi.mock('../api/recovery', () => recoveryApi);
 vi.mock('../api/documents', () => documentsApi);
 vi.mock('../api/render', () => renderApi);
 vi.mock('../api/window', () => windowApi);
@@ -50,6 +69,10 @@ beforeEach(() => {
   useViewer.setState({ viewport: { width: 900, height: 700 } });
   useSettings.setState({ ...settingsInitial, platform: null }, true);
   usePassword.setState({ queue: [] });
+  recentsApi.listRecents.mockReset().mockResolvedValue([]);
+  recentsApi.getRecentThumbnail.mockReset().mockResolvedValue({ data: new Uint8Array([1]), width: 60, height: 80 });
+  recentsApi.setMenuState.mockReset().mockResolvedValue(undefined);
+  recoveryApi.listRecoveries.mockReset().mockResolvedValue([]);
   documentsApi.openDocumentDialog.mockReset().mockResolvedValue([opened(REPORT)]);
   documentsApi.closeDocument.mockReset().mockResolvedValue(undefined);
   renderApi.renderPage.mockReset().mockResolvedValue({ data: new Uint8Array([1]), width: 816, height: 1056 });
@@ -98,5 +121,52 @@ describe('axe rules on the main surfaces (DESIGN 3.52)', () => {
     act(() => requestPassword(4, 'Secret.pdf'));
     const dialog = await screen.findByRole('dialog');
     expect(await violations(dialog)).toEqual([]);
+  });
+
+  it('the About dialog has no violations', async () => {
+    setup(<Shell />);
+    act(() => openAbout());
+    const dialog = await screen.findByRole('dialog');
+    expect(await violations(dialog)).toEqual([]);
+    act(() => useAboutDialog.getState().setOpen(false));
+  });
+
+  it('the unsaved-changes dialog has no violations', async () => {
+    const { user } = setup(<Shell />);
+    await user.click(screen.getByRole('button', { name: 'Open…' }));
+    await screen.findByRole('img', { name: /^Page 1 of/ });
+    act(() => useSave.getState().setPrompt(1));
+    const dialog = await screen.findByRole('dialog');
+    expect(await violations(dialog)).toEqual([]);
+    act(() => useSave.getState().setPrompt(null));
+  });
+
+  it('the recents list, with a preview, has no violations and every control is named', async () => {
+    recentsApi.listRecents.mockResolvedValue([
+      { id: 1, displayName: 'First.pdf', folder: 'Reports', lastOpened: 1, missing: false },
+      { id: 2, displayName: 'Gone.pdf', folder: '', lastOpened: 1, missing: true },
+    ]);
+    const { container } = setup(<Shell />);
+    await screen.findByText('First.pdf');
+    expect(screen.getAllByRole('button', { name: /First.pdf/ })).toHaveLength(2);
+    expect(screen.getAllByRole('button', { name: /Gone.pdf/ })).toHaveLength(3);
+    expect(await violations(container)).toEqual([]);
+  });
+
+  it('the error, recovery and update banners have no violations', async () => {
+    recoveryApi.listRecoveries.mockResolvedValue([
+      { id: 1, displayName: 'doc.pdf', savedAt: '2026-10-01T10:00:00Z', pageCount: 2, original: 'unchanged' },
+    ]);
+    useRecovery.setState({ entries: [], hidden: false, busy: [], failed: [] });
+    useUpdate.setState({ info: { version: '1.2.0', date: null, notes: 'Fixes' }, phase: 'available', hidden: false });
+    const { container } = setup(
+      <div>
+        <RecoveryBanner />
+        <UpdateBannerRow />
+      </div>,
+    );
+    await screen.findByRole('group');
+    expect(await violations(container)).toEqual([]);
+    act(() => useUpdate.setState({ info: null }));
   });
 });

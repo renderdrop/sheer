@@ -90,7 +90,26 @@ Result (2026-10-04, Windows 11, debug build, 500 Letter pages, region 632 px hig
 
 Time to first page: about 190 ms from launching the forwarding process to the first page image loaded (includes the second process start and the engine round trip).
 
-Both targets are met. Unit budgets guard the frontend paths (`src/features/viewer/layout.perf.test.ts`: 500 and 5 000 pages, metrics build under 50 ms, under 0.5 ms per scroll frame, at most 24 mounted pages; `src/engine/renderCache.test.ts`: cache stays within its byte budget over 500 pages).
+Both targets are met. Unit budgets guard the frontend paths (`src/features/viewer/layout.perf.test.ts`: 500 and 5 000 pages, at most 24 mounted pages (strict); the timing asserts are deliberately generous, 1 s build and 8 ms per scroll frame, so shared CI runners do not flake; `src/engine/renderCache.test.ts`: cache stays within its byte budget over 500 pages).
+
+### Interaction frame pacing (M7, 2026-10-04)
+
+Same setup (Tauri dev window, debug build, WebView2, rAF frame times over 3 s via `cdp.mjs fps 3000 --during`). Interactions are real shortcuts
+dispatched on `window` (Ctrl+Plus/Minus, Ctrl+2/Ctrl+0, F4, Shift+F4); the theme goes through the settings store. Zoom, fit and panel
+changes were verified to take effect (page width 756 to 898 px, fit width, fit page, canvas width 828 to 1006 to 532 px).
+
+| Scenario (500 pages and text.pdf alike) | p50 | p95 | min fps |
+| --- | --- | --- | --- |
+| Idle, 3 s | 16.7 ms | 16.7-16.8 ms | 58.8-59.5 |
+| Zoom: 5 steps in, 5 steps out (every 250 ms) | 16.7 ms | 16.7-16.8 ms | 59.2-59.5 |
+| Fit width / fit page toggled 6 times | 16.7 ms | 16.8 ms | 59.5 (one 34 ms frame in a first run) |
+| Left panel open/close, 4 times | 16.7 ms | 16.8 ms | 59.2-59.5 |
+| Inspector open/close, 4 times | 16.7 ms | 16.7-16.8 ms | 57.8-59.5 |
+| Theme dark/light, 4 switches | 16.7 ms | 16.7-16.8 ms | 58.8-59.5 |
+
+All scenarios hold 60 fps (p95 at most 16.8 ms, target 20 ms); no fix was needed. The webview caps rAF at the display rate, so a p95 of
+16.7 ms means "no frame missed", not headroom. Isolated single frames of 30 ms or more can occur when a render or a rebuild runs in the background.
+Note: `tauri dev` restarts the app when any file under `src-tauri` changes, so measure while no Rust work is in progress.
 
 ## CSP gate (milestone DoD)
 
@@ -100,8 +119,8 @@ node scripts/ui/cdp.mjs csp            # exit code 1 on any violation
 node scripts/ui/cdp.mjs csp --attach   # dev app with a PDF open: records inline-style writes the release CSP would block
 ```
 Serves `dist/` with the release CSP (`style-src 'self'`, from `tauri.conf.json`) in headless Edge or Chrome with a stub backend and
-collects `securitypolicyviolation` events across the empty state, the settings popover and every toolbar button. `--attach` covers
-the surfaces that need a real document (it records `setAttribute('style')` and `<style>` elements; read `window.__csp` afterwards).
-`CSP_SELFTEST=1` injects a known violation to prove the gate catches it. A milestone tag needs `violations=0` from both runs.
+collects `securitypolicyviolation` events. The stub backend opens a stub document (a 1x1 PNG render frame for each page), returns one recovery record and an update offer, and the run exercises the settings popover, the update details, the More-menu dialogs (export images, export copy, print, protect, properties), the tool keys, the inspector toggle, the Sign menu and every toolbar button. `--attach` covers
+what the stub cannot (real pages, forms, the signature sheet content; it records `setAttribute('style')` and `<style>` elements; read `window.__csp` afterwards).
+`CSP_SELFTEST=1` injects a known violation to prove the gate catches it. A milestone tag needs `violations=0` from both runs. DoD step for `--attach`: start `node scripts/ui/dev.mjs`, open a PDF, run the annotation tools, the output dialogs and the signature sheet by hand (or `annot-smoke.mjs`), then run `node scripts/ui/cdp.mjs csp --attach` against that window (the dev CSP stays, the probe logs what the release CSP would block) and read `window.__csp` with `cdp.mjs eval "JSON.stringify(window.__csp)"`; it must be empty.
 Style props set by React and Motion go through the CSSOM and are allowed; inline `style="..."` markup, `<style>` elements and
 `setAttribute('style', ...)` are not: use classes or CSS variables set with `element.style.setProperty`.

@@ -23,7 +23,6 @@ vi.mock('../viewer/useViewer', () => ({ adoptOpenOutcomes: vi.fn() }));
 const entry = (id: number, extra: Partial<RecoveryEntry> = {}): RecoveryEntry => ({
   id,
   displayName: `doc${id}.pdf`,
-  folder: null,
   savedAt: `2026-10-01T10:00:0${9 - id}Z`,
   pageCount: 2,
   original: 'unchanged',

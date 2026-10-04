@@ -31,6 +31,7 @@ import { ToastLayer } from './Toast';
 import { CaptionBar } from './CaptionBar';
 import { EmptyStateSlot } from './EmptyStateSlot';
 import { useWindowState } from './hooks';
+import { useRegionCycling } from './regions';
 import { InspectorSlot } from './Inspector';
 import { LeftPanelSlot } from './LeftPanel';
 import { LeftPanelSplitter, MainGrid } from './MainGrid';
@@ -77,6 +78,7 @@ export function Shell() {
   const windowState = useWindowState(chrome);
   const structure = useShellStructure();
   const leftPanelId = useId();
+  useRegionCycling();
 
   // Esc releases the active tool back to Select (DESIGN 2.3). Tooltips and popovers handle Esc before this sees it.
   useEffect(() => {
@@ -129,13 +131,16 @@ export function Shell() {
       <ImagesToPdfDialog />
       <PrintDialog />
       <ExportCopyDialog />
-      <BannerRow />
-      <RecoveryBanner />
-      <XfaBannerRow />
-      <RedactBanner />
-      <FormHost />
-      <DropBannerRow />
-      <UpdateBannerRow />
+      {/* One F6 stop for every banner (DESIGN 2.3); the wrapper adds no box of its own. */}
+      <div data-region="banner" className="contents">
+        <BannerRow />
+        <RecoveryBanner />
+        <XfaBannerRow />
+        <RedactBanner />
+        <FormHost />
+        <DropBannerRow />
+        <UpdateBannerRow />
+      </div>
       <MainGrid structure={structure}>
         {/* The empty state fades out on its own (it stays in its slot, inert, until it is gone) while the document comes in. */}
         <AnimatePresence initial={false}>

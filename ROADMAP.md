@@ -188,7 +188,7 @@ The Stop hook picks the first open `- [ ]` line, so order matters. Scope: `docs/
 - [ ] Politur M7
   - (from M6 design review, minor) recent rows: page thumbnail (32×40) instead of the generic icon tile, or update §3.11; dark-mode text looks heavier than light (same weight? ClearType?); horizontal overlay scrollbar over the page edge: bottom inset or track tint; disabled toolbar icons on the light empty state very low contrast
   - (from M6 UI) menu items cannot show output.notAllowed (v1.1 unless cheap); export images estimate is client-side
-  - (from M7 backend reviews, minor) autosave: track store size incrementally; log timer panics; RecoveryView.folder reveals a folder name (confirm or drop); a Recovered document always counts as unsaved on close; engine: first spawn not counted against the budget (confirm); replay failure strikes only the replayed document
+  - (from M7 backend reviews, minor) autosave: track store size incrementally (done: upper-bound estimate, measured only near the cap); log timer panics (done); RecoveryView.folder (done: dropped); a Recovered document always counts as unsaved on close; engine: first spawn not counted against the budget (confirmed, comment in `engine/pump.rs`: one extra spawn at most, its failure is retried and counted); replay failure strikes only the replayed document
 
 ## Later (post-1.0, not scheduled)
 

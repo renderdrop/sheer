@@ -322,7 +322,7 @@ export function Canvas({
           setScrolled(region.scrollTop > 0);
           onScroll?.({ left: region.scrollLeft, top: region.scrollTop });
         }}
-        className="flex size-full scroll-pt-canvas-gutter overflow-auto p-canvas-gutter [overflow-anchor:none] [scrollbar-gutter:stable]"
+        className="flex size-full scroll-pt-canvas-gutter overflow-auto p-canvas-gutter [overflow-anchor:none] [scrollbar-gutter:stable] [&::-webkit-scrollbar-track]:bg-canvas [&::-webkit-scrollbar-corner]:bg-canvas"
       >
         {pageCount === 0 ? (
           <p className="m-auto text-text-muted">{t('canvas.noPages')}</p>

@@ -1,6 +1,6 @@
 import { CircleAlert, Download, X } from 'lucide-react';
 import { AnimatePresence, motion } from 'motion/react';
-import { useState } from 'react';
+import { useId, useState } from 'react';
 
 import { Button, IconButton } from '../../components';
 import { Icon } from '../../components/Icon';
@@ -17,6 +17,7 @@ import { useUpdate } from './store';
  */
 export function UpdateBannerRow() {
   const t = useT();
+  const notesId = useId();
   const motionProps = useRevealMotion();
   const info = useUpdate((state) => state.info);
   const phase = useUpdate((state) => state.phase);
@@ -64,7 +65,7 @@ export function UpdateBannerRow() {
                       variant="secondary"
                       size="sm"
                       aria-expanded={details}
-                      aria-controls="update-notes"
+                      aria-controls={notesId}
                       onClick={() => setDetails((open) => !open)}
                     >
                       {details ? t('update.hideDetails') : t('update.details')}
@@ -96,7 +97,7 @@ export function UpdateBannerRow() {
               )}
               {phase === 'available' && details && info !== null && (
                 <pre
-                  id="update-notes"
+                  id={notesId}
                   tabIndex={0}
                   aria-label={t('update.notes')}
                   className="m-0 me-1 max-h-lib-list overflow-auto whitespace-pre-wrap rounded-sm bg-surface-strong p-1 font-sans text-sm text-text"

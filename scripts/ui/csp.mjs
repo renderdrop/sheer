@@ -42,18 +42,42 @@ const PROBE = `(() => {
 })();`;
 
 const STUB = `(() => {
-  const settings = { glass: 'auto', theme: 'system', language: 'system', leftPanelWidth: 248, welcomeTour: 'shown', authorName: '', authorPrompt: 'done' };
+  const settings = { glass: 'auto', theme: 'system', language: 'en', leftPanelWidth: 248, welcomeTour: 'shown', authorName: '', authorPrompt: 'done' };
   const boot = { platform: 'windows', reducedTransparency: false, version: '0.0.0', authorSuggestion: '', paper: 'a4' };
+  const doc = { id: 1, pageCount: 2, displayName: 'stub.pdf', kind: 'user', autosave: 'on', flags: { encrypted: false, xfa: false, hasForms: false, signed: false, permissions: null } };
+  const slots = [1, 2].map((id) => ({ id, width: 612, height: 792, rotation: 0, rev: 0, label: null, origin: 'file' }));
+  const update = { version: '9.9.9', date: null, notes: 'Stub release notes' };
+  const recovery = [{ id: 1, displayName: 'crashed.pdf', savedAt: '2026-01-01T00:00:00Z', pageCount: 3, original: 'unchanged' }];
+  // A valid 1x1 PNG in a render frame (SHR1 header, format 1, little-endian size): the page image the viewer paints.
+  const png = Uint8Array.from(atob('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=='), (c) => c.charCodeAt(0));
+  const frame = new Uint8Array(16 + png.length);
+  frame.set([0x53, 0x48, 0x52, 0x31, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0]);
+  frame.set(png, 16);
+  const callbacks = new Map();
   let cb = 0;
+  const push = (channel, index, message) => callbacks.get(channel.id)?.({ index, message });
   window.__TAURI_INTERNALS__ = {
     metadata: { currentWindow: { label: 'main' }, currentWebview: { windowLabel: 'main', label: 'main' } },
-    transformCallback: () => ++cb,
-    unregisterCallback: () => {},
+    transformCallback: (fn) => { callbacks.set(++cb, fn); return cb; },
+    unregisterCallback: (id) => callbacks.delete(id),
     convertFileSrc: (p) => p,
-    invoke: async (cmd) => {
+    invoke: async (cmd, args) => {
       if (cmd === 'app_ready') return boot;
       if (cmd === 'get_settings' || cmd === 'update_settings') return settings;
       if (cmd === 'list_recents' || cmd === 'recent_files') return [];
+      if (cmd === 'list_recoveries') return recovery;
+      if (cmd === 'check_for_update') return update;
+      if (cmd === 'get_pages') return slots;
+      if (cmd === 'render_page') return frame.buffer.slice(0);
+      if (cmd === 'set_viewport' || cmd === 'set_menu_state') return undefined;
+      if (cmd === 'subscribe_app') {
+        // Opens the stub document and offers the update, as the backend pushes them after launch.
+        setTimeout(() => {
+          push(args.onEvent, 0, { type: 'opened', document: doc });
+          push(args.onEvent, 1, { type: 'updateAvailable', info: update });
+        }, 300);
+        return undefined;
+      }
       throw { code: 'unsupported_feature', message: 'stub backend' };
     },
   };
@@ -109,17 +133,54 @@ async function exercise(c) {
     c.send('Input.dispatchKeyEvent', {
       type: 'keyDown',
       key: k,
-      code: k === ',' ? 'Comma' : k,
+      code: k === ',' ? 'Comma' : /^[a-z]$/i.test(k) ? 'Key' + k.toUpperCase() : k,
       modifiers: mods,
-      windowsVirtualKeyCode: k === 'Escape' ? 27 : k.charCodeAt(0),
+      windowsVirtualKeyCode: k === 'Escape' ? 27 : k === 'F4' ? 115 : k.toUpperCase().charCodeAt(0),
     });
-  await sleep(800); // empty state
+  const click = (js) =>
+    c.evaluate(`(() => { const el = (${js}); if (el && !el.disabled) el.click(); return !!el; })()`);
+  const more = `document.querySelector('[data-toolbar-item="more"]')`;
+  const item = (name) =>
+    `[...document.querySelectorAll('[role^="menuitem"]')].find((i) => (i.textContent ?? '').toLowerCase().includes('${name}'))`;
+  await sleep(1200); // empty state, then the stub document, the recovery banner and the update banner arrive
   if (process.env.CSP_SELFTEST)
     await c.evaluate(
       "document.head.insertAdjacentHTML('beforeend', '<style>a{}</style>'); document.body.insertAdjacentHTML('beforeend', '<i style=\"color:red\">x</i>')",
     );
   await key(',', 2); // Ctrl+, opens the settings popover
   await sleep(300);
+  await key('Escape');
+  const surfaces = [];
+  if (await click(`[...document.querySelectorAll('button')].find((b) => /details/i.test(b.textContent ?? ''))`))
+    surfaces.push('update details');
+  await sleep(200);
+  for (const name of ['export as images', 'export a copy', 'print', 'protect', 'document properties']) {
+    await click(more);
+    await sleep(250);
+    const found = await click(item(name));
+    await sleep(500);
+    if (found) surfaces.push(name);
+    await key('Escape');
+    await sleep(200);
+    await key('Escape');
+  }
+  // Tool selection (the letters need the canvas focused) and the inspector toggle.
+  await c.evaluate("document.querySelector('[data-page]')?.closest('[tabindex]')?.focus?.()");
+  for (const tool of ['h', 'n', 't', 'd', 'r', 'v']) {
+    await key(tool);
+    await sleep(150);
+  }
+  surfaces.push('tools');
+  await key('F4', 8); // Shift+F4 toggles the inspector
+  await sleep(400);
+  surfaces.push('inspector');
+  // The signature sheet: the Sign toolbar item opens its menu, the first entry opens the sheet.
+  await click(`document.querySelector('[data-toolbar-item="signature"]')`);
+  await sleep(300);
+  if (await click(`document.querySelector('[role^="menuitem"]')`)) surfaces.push('signature menu');
+  await sleep(500);
+  await key('Escape');
+  await sleep(200);
   await key('Escape');
   const count = await c.evaluate(`document.querySelectorAll('[role="toolbar"] button').length`);
   for (let i = 0; i < count; i++) {
@@ -130,7 +191,8 @@ async function exercise(c) {
     await key('Escape');
   }
   await sleep(300);
-  return count;
+  const pages = await c.evaluate("document.querySelectorAll('[data-page]').length");
+  return { count, surfaces, pages };
 }
 
 export async function runCsp(args) {
@@ -185,11 +247,13 @@ export async function runCsp(args) {
       await c.send('Page.addScriptToEvaluateOnNewDocument', { source: STUB + PROBE });
       await c.send('Page.navigate', { url: `http://127.0.0.1:${PORT + 1}/` });
     }
-    const buttons = await exercise(c);
+    const { count: buttons, surfaces, pages } = await exercise(c);
     const found = JSON.parse(await c.evaluate('JSON.stringify(window.__csp || [])'));
     const seen = new Set();
     const unique = found.filter((f) => !seen.has(JSON.stringify(f)) && seen.add(JSON.stringify(f)));
-    console.log(`csp: exercised empty state, settings, ${buttons} toolbar buttons; violations=${unique.length}`);
+    console.log(
+      `csp: ${pages} page frames, settings, ${buttons} toolbar buttons, [${surfaces.join(', ')}]; violations=${unique.length}`,
+    );
     for (const f of unique)
       console.log(' -', f.kind, f.directive ?? '', f.blocked ?? '', JSON.stringify(f.sample), f.source);
     process.exitCode = unique.length > 0 ? 1 : 0;

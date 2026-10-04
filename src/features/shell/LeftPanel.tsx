@@ -53,6 +53,7 @@ export const LeftPanel = memo(function LeftPanel({ id }: LeftPanelProps) {
     // The wrapper of Tabs is `display: contents`, so the panel itself is the grid item.
     <Tabs value={tab} onValueChange={selectTab} className="contents">
       <Panel
+        data-region="left"
         id={id}
         label={t('leftPanel.label')}
         header={

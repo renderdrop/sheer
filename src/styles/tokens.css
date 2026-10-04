@@ -703,6 +703,7 @@
     font-weight: var(--font-weight-normal);
     line-height: var(--text-md--line-height);
     font-variant-numeric: tabular-nums;
+    -webkit-font-smoothing: antialiased; /* light-on-dark text renders heavier with default smoothing on macOS; same weight tokens in both themes */
   }
 
   /* DESIGN 1.11: the ::-webkit-scrollbar recipe in both webviews, no arrow buttons. Forced colors keeps native bars.

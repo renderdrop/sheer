@@ -1,4 +1,3 @@
-import { toAppError } from '../../api/errors';
 import {
   discardRecovery,
   listRecoveries,
@@ -41,8 +40,7 @@ export async function restoreOne(entry: RecoveryEntry): Promise<boolean> {
       useUi.getState().showToast({ message: tr()('recover.restored', { name }) });
     }
     return true;
-  } catch (caught) {
-    toAppError(caught);
+  } catch {
     useRecovery.getState().setFailed(entry.id, true);
     return false;
   } finally {

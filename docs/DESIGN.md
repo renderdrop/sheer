@@ -1922,18 +1922,18 @@ verify both appearances in the B-001 macOS check.
 
 Checklist, run per screen (empty state, document, organize, crop, redact, each dialog) in both themes, glass and solid:
 
-| # | Check | Where |
-|---|---|---|
-| 1 | Focus order: toolbar → coach card or tip → tabs → banner (incl. recovery, update) → left panel → splitter → canvas → annotations → inspector → status bar; F6 restores each region's focus; dialogs take the initial focus their section names and return it to the trigger | §2.3, 3.14, 3.47, 3.49, 3.50, all dialogs |
-| 2 | Names: every IconButton `aria-label` = tooltip; segmented controls are named radiogroups; thumbnails "Page n of m"; progress `aria-valuetext`; banners `role` per §3.12 | §3.2, 3.9, 3.10, 3.11, 3.13, 3.28, 3.33, 3.41–3.45 |
-| 3 | Contrast per §4. Disabled toolbar icons (M6 review): `--opacity-disabled` goes; icons use `--color-icon-disabled` (≥ 3:1 on G1, §4), so the toolbar reads without a document; state also via `aria-disabled` and the tooltip reason | §3.3, 3.22, 3.36 |
-| 4 | Reduced motion: every MOTION §4 row and §3.46–3.50 follow RM fade; float off | all |
-| 5 | Forced colors: new surfaces `Canvas` + `CanvasText`, rings `Highlight`, thumbnail chips bordered | §3.47–3.50 |
-| 6 | Targets ≥ 24 (2.5.8): recents `x`, tip `x`, recovery buttons | §3.11, 3.47, 3.50 |
-| 7 | One polite live region (status bar); `alert` only for errors; no announcement faster than 1 s | §3.10, 3.42 |
-| 8 | A key path for every pointer action: reorder (Alt+↑/↓), place (Enter), crop rect, drop (Open), tour steps | §3.23, 3.28, 3.34, 3.37, 3.46 |
-| 9 | `<html lang>` follows the UI language; every key exists in en and de (`i18n` parity test) | i18n |
-| 10 | Text weight (M6 review): same weights in both themes; macOS uses `-webkit-font-smoothing: antialiased` in both; Windows unchanged | §1.5 |
+| # | Check | Where | Status |
+|---|---|---|---|
+| 1 | Focus order: toolbar → coach card or tip → tabs → banner (incl. recovery, update) → left panel → splitter → canvas → annotations → inspector → status bar; F6 restores each region's focus; dialogs take the initial focus their section names and return it to the trigger | §2.3, 3.14, 3.47, 3.49, 3.50, all dialogs | Done: F6 / Shift+F6 cycles the regions (`features/shell/regions.ts`, tested); dialogs return focus (tested per dialog) |
+| 2 | Names: every IconButton `aria-label` = tooltip; segmented controls are named radiogroups; thumbnails "Page n of m"; progress `aria-valuetext`; banners `role` per §3.12 | §3.2, 3.9, 3.10, 3.11, 3.13, 3.28, 3.33, 3.41–3.45 | Done: IconButton `label` is required by type; recents rows named by file name + folder + age, preview `alt=""` (decorative, the row names the file) |
+| 3 | Contrast per §4. Disabled toolbar icons (M6 review): `--opacity-disabled` goes; icons use `--color-icon-disabled` (≥ 3:1 on G1, §4), so the toolbar reads without a document; state also via `aria-disabled` and the tooltip reason | §3.3, 3.22, 3.36 | Done (part 1) |
+| 4 | Reduced motion: every MOTION §4 row and §3.46–3.50 follow RM fade; float off | all | Done (token tests) |
+| 5 | Forced colors: new surfaces `Canvas` + `CanvasText`, rings `Highlight`, thumbnail chips bordered | §3.47–3.50 | Done: system colors in `tokens.css` forced-colors blocks |
+| 6 | Targets ≥ 24 (2.5.8): recents `x`, tip `x`, recovery buttons | §3.11, 3.47, 3.50 | Done (part 1) |
+| 7 | One polite live region (status bar); `alert` only for errors; no announcement faster than 1 s | §3.10, 3.42 | Done: toast = persistent `role=status`; errors `role=alert` |
+| 8 | A key path for every pointer action: reorder (Alt+↑/↓), place (Enter), crop rect, drop (Open), tour steps | §3.23, 3.28, 3.34, 3.37, 3.46 | Done |
+| 9 | `<html lang>` follows the UI language; every key exists in en and de (`i18n` parity test) | i18n | Done (parity test) |
+| 10 | Text weight (M6 review): same weights in both themes; macOS uses `-webkit-font-smoothing: antialiased` in both; Windows unchanged | §1.5 | Done |
 
 **Tokens (new, §3.46–§3.52):** `--list-thumb-w` 32, `--list-thumb-h` 40, `--color-icon-disabled` (ink-50 both themes; forced colors
 `GrayText`); removed `--opacity-disabled`. The tip reuses the coach card's width.

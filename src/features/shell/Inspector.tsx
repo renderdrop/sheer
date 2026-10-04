@@ -14,7 +14,7 @@ export const Inspector = memo(function Inspector() {
   const t = useT();
   const { title, body } = useInspector();
   return (
-    <Panel label={t('inspector.label')} title={title}>
+    <Panel data-region="inspector" label={t('inspector.label')} title={title}>
       {body}
     </Panel>
   );
