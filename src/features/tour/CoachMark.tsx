@@ -9,7 +9,8 @@ import { tokenPx } from '../../components/tokens';
 import { useFloatingPosition } from '../../components/useFloatingPosition';
 import { useT } from '../../i18n';
 import { readSlots, usePages } from '../../stores/pages';
-import { resolveAnchor, type AnchorSpec, type ResolvedAnchor } from './anchors';
+import { useUi } from '../../stores/ui';
+import { modeOfAnchor, resolveAnchor, type AnchorSpec, type ResolvedAnchor } from './anchors';
 import { usePlace } from './place';
 import { SHIPPED_STEPS, pageIdOfKind, type TourStep } from './steps';
 import { useTour } from './store';
@@ -106,10 +107,13 @@ function useAnchor(name: string | undefined): ResolvedAnchor | null {
   const [anchor, setAnchor] = useState<ResolvedAnchor | null>(null);
   useLayoutEffect(() => {
     if (name === undefined) return;
+    // The tools live in their mode's tool row (ADR-102): go to the mode of the anchor before it is looked up.
+    const mode = modeOfAnchor(name);
+    if (mode !== null) useUi.getState().setMode(mode);
     const find = () =>
       setAnchor((previous) => {
         const next = resolveAnchor(name);
-        return previous?.element === next?.element && previous?.inMore === next?.inMore ? previous : next;
+        return previous?.element === next?.element ? previous : next;
       });
     find();
     window.addEventListener('resize', find);
@@ -327,7 +331,6 @@ function Card({ anchor }: CardProps) {
         </h2>
         <p id={textId} className="m-0 text-md">
           {text}
-          {anchor.inMore ? ` ${t('tour.inMore')}` : ''}
         </p>
         {!done && (
           <div className="flex h-6 items-center">
@@ -358,8 +361,7 @@ export function CoachMark() {
   const canvasTarget = useCanvasTarget(docId, step, place?.canvasTarget === true);
   // While the canvas target is not there (page off screen), the tool stays the anchor.
   const named = useAnchor(place === null ? undefined : place.canvasTarget ? step?.anchor.a : place.name);
-  const anchor: ResolvedAnchor | null =
-    canvasTarget === null ? named : { element: canvasTarget, spec: TARGET_SPEC, inMore: false };
+  const anchor: ResolvedAnchor | null = canvasTarget === null ? named : { element: canvasTarget, spec: TARGET_SPEC };
   const yielding = useOverlayOpen(step !== undefined);
 
   // The success moment: the ring pulses and the status bar announces it; the last one also points at the closing page.

@@ -21,7 +21,7 @@ describe('Toggle', () => {
     const onChange = vi.fn();
     const { user, getByRole } = setup(<Toggle aria-label="x" checked disabled onCheckedChange={onChange} />);
     const toggle = getByRole('switch');
-    expect(toggle.className).toContain('w-9');
+    expect(toggle.className).toContain('w-[calc(var(--spacing-8)+var(--spacing-1))]');
     expect(toggle.className).toContain('h-5');
     await user.click(toggle);
     expect(onChange).not.toHaveBeenCalled();

@@ -467,7 +467,6 @@
   "tour.done": "Erledigt: {title}",
   "tour.complete": "Tour abgeschlossen",
   "tour.toClosing": "Die letzte Seite zeigt Tipps und Tastenkürzel.",
-  "tour.inMore": "Sie finden es unter Mehr.",
   "tour.skipped": "Tour übersprungen. Neustart in den Einstellungen.",
   "tour.closed": "Tour beendet. Neustart in den Einstellungen.",
   "tour.step.open.title": "PDF öffnen",

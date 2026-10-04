@@ -24,7 +24,7 @@ export function Toggle({ checked, onCheckedChange, className, disabled, onClick,
         if (!event.defaultPrevented) onCheckedChange(!checked);
       }}
       className={cx(
-        'relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-pill border p-0',
+        'relative inline-flex h-5 w-[calc(var(--spacing-8)+var(--spacing-1))] shrink-0 cursor-pointer items-center rounded-pill border p-0',
         'transition-[background-color,border-color] duration-fast',
         'disabled:cursor-not-allowed disabled:opacity-(--opacity-disabled)',
         checked ? 'border-text bg-accent' : 'border-control-border bg-subtle not-disabled:hover:bg-pressed',

@@ -47,7 +47,7 @@ afterEach(() => {
   useSettingsPopover.setState({ open: false });
 });
 
-/** A toolbar with a More button, which is what the popover anchors to, and the popover. */
+/** A menu title, which is what the popover anchors to, and the popover. */
 function Fixture() {
   return (
     <>
@@ -55,8 +55,8 @@ function Fixture() {
         <button type="button" data-toolbar-item="left-panel">
           panel
         </button>
-        <button type="button" data-toolbar-item="more">
-          More
+        <button type="button" data-menubar-item="file">
+          File
         </button>
       </div>
       <button type="button">elsewhere</button>
@@ -120,17 +120,17 @@ describe('the settings popover', () => {
     expect(document.activeElement).toBe(choose('Language', 'System'));
   });
 
-  it('hangs from the toolbar: it is a G2 popover, and focus goes back to the More button on Esc', async () => {
+  it('hangs from the toolbar: it is a G2 popover, and focus goes back to the menu title on Esc', async () => {
     const { user } = setup(<Fixture />);
     act(() => openSettings());
     expect(popover().className).toContain('bg-panel border border-border-subtle shadow-floating');
     await user.keyboard('{Escape}');
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
     expect(useSettingsPopover.getState().open).toBe(false);
-    expect(document.activeElement).toBe(screen.getByRole('button', { name: 'More' }));
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: 'File' }));
   });
 
-  it('falls back to the toolbar itself when there is no More button', async () => {
+  it('falls back to the toolbar itself when there is no menu title', async () => {
     const { user } = setup(
       <>
         <div role="toolbar" aria-label="Tools" tabIndex={0} />

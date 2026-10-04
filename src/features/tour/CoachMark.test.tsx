@@ -110,22 +110,7 @@ describe('the coach mark', () => {
     );
   });
 
-  it('points at More and says so when the zoom button has moved into the overflow', async () => {
-    setup(
-      <>
-        <button type="button" data-toolbar-item="more">
-          More
-        </button>
-        <CoachMark />
-      </>,
-    );
-    act(() => useTour.getState().start(1));
-    act(() => useTour.setState({ index: 2 }));
-    const region = await screen.findByRole('region', { name: 'Zoom in' });
-    expect(region.textContent).toContain('You find it under More.');
-  });
-
-  it('falls back to the status bar when the anchor and More are both missing, so Skip stays reachable', async () => {
+  it('falls back to the status bar when the anchor is missing, so Skip stays reachable', async () => {
     setup(
       <>
         <span data-tour-anchor="status-page-button">1 / 4</span>
@@ -134,8 +119,7 @@ describe('the coach mark', () => {
     );
     act(() => useTour.getState().start(1));
     act(() => useTour.setState({ index: 2 }));
-    const region = await screen.findByRole('region', { name: 'Zoom in' });
-    expect(region.textContent).not.toContain('You find it under More.');
+    await screen.findByRole('region', { name: 'Zoom in' });
     expect(screen.getByRole('button', { name: 'Skip tour' })).toBeTruthy();
   });
 

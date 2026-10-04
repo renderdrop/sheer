@@ -27,7 +27,7 @@ function useAnchor(id: TipId): ResolvedAnchor | null {
     const find = () =>
       setAnchor((previous) => {
         const next = resolveToolbarItem(toolbarItemOf(id));
-        return previous?.element === next?.element && previous?.inMore === next?.inMore ? previous : next;
+        return previous?.element === next?.element ? previous : next;
       });
     find();
     window.addEventListener('resize', find);

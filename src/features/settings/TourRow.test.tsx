@@ -44,8 +44,8 @@ function Fixture() {
   return (
     <>
       <div role="toolbar" aria-label="Tools">
-        <button type="button" data-toolbar-item="more">
-          More
+        <button type="button" data-menubar-item="file">
+          File
         </button>
       </div>
       <SettingsPopover />
@@ -64,7 +64,7 @@ describe('the Welcome tour row', () => {
     expect(screen.getByRole('button', { name: 'Restart tour' })).toBeTruthy();
   });
 
-  it('closes the popover with focus on More, keeps the dirty document and opens the welcome document in a new tab', async () => {
+  it('closes the popover with focus on the menu title, keeps the dirty document and opens the welcome document in a new tab', async () => {
     const { user } = setup(<Fixture />);
     useView.getState().open(3, 2);
     useDocuments.getState().add({ id: 3, pageCount: 2, displayName: 'a.pdf', kind: 'user' });
@@ -81,7 +81,7 @@ describe('the Welcome tour row', () => {
     act(() => openSettings());
     await user.click(screen.getByRole('button', { name: 'Start tour' }));
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
-    expect(document.activeElement).toBe(screen.getByRole('button', { name: 'More' }));
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: 'File' }));
     expect(useAnnotations.getState().byDoc[3]?.history).toMatchObject({ dirty: true, canUndo: true });
     expect(useDocuments.getState().byId[3]).toBeDefined();
     expect(useDocuments.getState().activeId).toBe(WELCOME.id);

@@ -11,7 +11,6 @@ import { TIP_IDS, mayShow, tipFor, tipOfTool, toolbarItemOf, withSeen } from './
 import { bindTips, maybeShowTip, resetSession, resetTips } from './runtime';
 import { useTips } from './store';
 import { Tip } from './Tip';
-import { TipHost } from './TipHost';
 
 vi.mock('../../api/app', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../api/app')>()),
@@ -172,9 +171,6 @@ function Fixture() {
         <button type="button" data-toolbar-item="draw">
           Draw
         </button>
-        <button type="button" data-toolbar-item="more">
-          More
-        </button>
       </div>
       <div data-action-scope="canvas">
         <div role="region" tabIndex={-1} aria-label="Canvas" />
@@ -221,21 +217,5 @@ describe('the tip card', () => {
     });
     await waitFor(() => expect(useTips.getState().current).toBeNull());
     document.querySelector('[role="menu"]')?.remove();
-  });
-
-  it('points at More when its tool is in overflow', async () => {
-    setup(
-      <>
-        <div role="toolbar" aria-label="Tools">
-          <button type="button" data-toolbar-item="more">
-            More
-          </button>
-        </div>
-        <TipHost />
-      </>,
-    );
-    act(() => useTips.getState().show('draw'));
-    await screen.findByRole('region', { name: 'Tip' });
-    expect(screen.getByRole('button', { name: 'More' }).hasAttribute('aria-describedby')).toBe(true);
   });
 });

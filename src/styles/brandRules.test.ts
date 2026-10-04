@@ -79,6 +79,19 @@ const badWeights = (text: string, kind: Kind): string[] => {
   return found;
 };
 
+/**
+ * The numeric steps of the spacing scale, read from tokens.css (`--spacing-4` makes `p-4` a class). Tailwind drops a
+ * spacing/size utility whose step is not a token, silently: wave 6 shipped `px-2.5` and `h-0.5` that rendered nothing.
+ */
+const TOKENS_CSS = readFileSync(fileURLToPath(new URL('./tokens.css', import.meta.url)), 'utf8');
+export const SPACING_STEPS = new Set(
+  [...TOKENS_CSS.matchAll(/--spacing-(\d+(?:\.\d+)?)\s*:/g)].map((match) => match[1] ?? ''),
+);
+const SPACING_UTILITY =
+  /(?<![\w-])-?(?:p[xytblrse]?|m[xytblrse]?|gap(?:-[xy])?|space-[xy]|inset(?:-[xy])?|top|right|bottom|left|start|end|size|min-w|min-h|w|h)-(\d+(?:\.\d+)?)(?![\w.[/-])/g;
+const badSpacingSteps = (text: string): string[] =>
+  [...text.matchAll(SPACING_UTILITY)].filter((match) => !SPACING_STEPS.has(match[1] ?? '')).map((match) => match[0]);
+
 export const RULES: Rule[] = [
   { name: 'no backdrop-filter (no glass)', applies: anywhere, find: grep(/backdrop-(?:filter|blur)|backdropFilter/) },
   { name: 'no prefers-color-scheme (light only)', applies: anywhere, find: grep(/prefers-color-scheme/) },
@@ -100,6 +113,7 @@ export const RULES: Rule[] = [
     find: grep(/\b(?:duration|delay|transitionDuration|transitionDelay)\s*[:=]\s*\{?\s*['"`]?\d/),
   },
   { name: 'no font-weight above 600', applies: anywhere, find: badWeights },
+  { name: 'spacing utilities only use --spacing-* steps', applies: anywhere, find: badSpacingSteps },
 ];
 
 const SRC = fileURLToPath(new URL('..', import.meta.url));
@@ -222,5 +236,17 @@ describe('every rule catches a violation and accepts the sanctioned form', () =>
     expect(hits('font-weight', '.a { font-weight: 600; }')).toBe(0);
     expect(hits('font-weight', '@font-face { font-weight: 100 900; }')).toBe(0);
     expect(hits('font-weight', 'className="font-semibold font-medium"', 'ts')).toBe(0);
+  });
+
+  it('spacing steps', () => {
+    expect(SPACING_STEPS.has('4')).toBe(true);
+    expect(SPACING_STEPS.has('2.5')).toBe(false);
+    expect(hits('spacing utilities', 'className="px-2.5"', 'ts')).toBe(1);
+    expect(hits('spacing utilities', 'className="h-0.5 gap-1.5"', 'ts')).toBe(2);
+    expect(hits('spacing utilities', 'className="-mt-7 size-9 inset-x-14"', 'ts')).toBe(3);
+    expect(
+      hits('spacing utilities', 'className="px-2 gap-4 h-0 -mt-2 w-full size-icon-16 w-1/2 h-control-md"', 'ts'),
+    ).toBe(0);
+    expect(hits('spacing utilities', 'className="text-md top-[3px] max-w-96"', 'ts')).toBe(0);
   });
 });

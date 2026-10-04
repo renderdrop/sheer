@@ -467,7 +467,6 @@
   "tour.done": "Done: {title}",
   "tour.complete": "Tour complete",
   "tour.toClosing": "The last page has tips and shortcuts.",
-  "tour.inMore": "You find it under More.",
   "tour.skipped": "Tour skipped. Start it again in Settings.",
   "tour.closed": "Tour ended. Start it again in Settings.",
   "tour.step.open.title": "Open a PDF",

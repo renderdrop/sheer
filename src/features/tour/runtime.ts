@@ -166,8 +166,10 @@ export function resetFirstLaunch(): void {
  */
 export async function restartTour(): Promise<void> {
   closeSettings();
-  // The popover closes with focus on More, where the settings live (DESIGN 3.14).
-  document.querySelector<HTMLElement>('[data-toolbar-item="more"]')?.focus({ preventScroll: true });
+  // The popover closes with focus on the Datei menu title (Windows) or the top bar's first control, where the settings live (DESIGN 3.14).
+  document
+    .querySelector<HTMLElement>('[data-menubar-item], [data-slot="topbar"] button')
+    ?.focus({ preventScroll: true });
   useTour.getState().end('restart');
   // Never closes anything: the welcome document opens in a new tab beside the open ones, so unsaved work stays. A welcome tab that
   // is open already is activated and the tour restarts there.
