@@ -333,7 +333,11 @@ describe('Comments cards', () => {
   });
 
   it('filters by author in the popover, counts it, and resets', async () => {
-    const { user } = await shown([summary(1), summary(2, { author: 'Bob', pageId: 1 }), summary(3, { author: null, pageId: 2 })]);
+    const { user } = await shown([
+      summary(1),
+      summary(2, { author: 'Bob', pageId: 1 }),
+      summary(3, { author: null, pageId: 2 }),
+    ]);
     await user.click(screen.getByRole('button', { name: 'Filter' }));
     await user.click(screen.getByRole('checkbox', { name: 'No author' }));
     expect(cards()).toHaveLength(1);

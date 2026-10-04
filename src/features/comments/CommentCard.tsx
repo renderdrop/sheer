@@ -246,8 +246,9 @@ export const CommentCard = memo(function CommentCard({
   const quoteBelow = text.trim() !== '' && quoted !== null;
   const showReply = showReplyField;
   const describedBy =
-    [quoteBelow ? `${ids}-q` : null, text !== '' && longText ? `${ids}-b` : null].filter((id) => id !== null).join(' ') ||
-    undefined;
+    [quoteBelow ? `${ids}-q` : null, text !== '' && longText ? `${ids}-b` : null]
+      .filter((id) => id !== null)
+      .join(' ') || undefined;
   const footerTime = [author === '' ? t('comments.noAuthor') : author, time, t('comments.page', { n: page })]
     .filter((part) => part !== '')
     .join(' · ');
@@ -337,7 +338,10 @@ export const CommentCard = memo(function CommentCard({
           {quoteBelow && !isEditing && (
             <p
               id={`${ids}-q`}
-              className={cx('t-caption m-0 line-clamp-2 text-text [overflow-wrap:break-word]', highlight && 'bg-hl-excerpt')}
+              className={cx(
+                't-caption m-0 line-clamp-2 text-text [overflow-wrap:break-word]',
+                highlight && 'bg-hl-excerpt',
+              )}
             >
               {quoted}
             </p>
