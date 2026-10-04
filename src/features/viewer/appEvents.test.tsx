@@ -126,7 +126,7 @@ describe('in the window', () => {
     ).not.toBeNull();
     expect(container.querySelector('[data-drop-overlay]')).toBeNull();
     act(() => handleAppEvent(hover(false)));
-    expect(screen.getByText('What would you like to do?')).not.toBeNull();
+    expect(screen.getByText('Drop a PDF here.')).not.toBeNull();
   });
 
   it('a file dragged over a document shows the overlay over the canvas, and it goes with the drag', async () => {
@@ -174,7 +174,8 @@ describe('in the window', () => {
     expect(screen.queryByRole('region', { name: 'Document' })).toBeNull();
     act(() => handleAppEvent(opened(REPORT)));
     expect(screen.getByRole('region', { name: 'Document' })).not.toBeNull();
-    expect(screen.getByRole('tablist', { name: 'Open documents' }).textContent).toContain('Report.pdf');
+    // One document: its name is in the top bar (the tabs show from two on).
+    expect(document.querySelector('[data-slot="topbar"]')?.textContent).toContain('Report.pdf');
   });
 });
 

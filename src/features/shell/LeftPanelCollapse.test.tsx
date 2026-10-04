@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { act, fireEvent, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, screen, waitFor } from '@testing-library/react';
 import { MotionGlobalConfig } from 'motion/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -67,8 +67,10 @@ afterEach(() => {
   useSettings.setState(settingsInitial, true);
 });
 
-const toolbar = () => screen.getByRole('toolbar', { name: 'Tools' });
-const tool = (name: string) => within(toolbar()).getByRole('button', { name });
+/** The page sidebar's own collapse chevron; a collapsed sidebar comes back by F4 or the splitter (DESIGN v2 3.2). */
+const collapseButton = () => screen.getByRole('button', { name: 'Hide page sidebar' });
+const toggleLeft = () => fireEvent.keyDown(window, { key: 'F4' });
+const toggleTools = () => fireEvent.keyDown(window, { key: 'F4', shiftKey: true });
 const panel = () => screen.queryByRole('complementary', { name: 'Left panel' });
 /** The element that fades and sits in the grid: around the panel and the `display: contents` element of its tabs. */
 const frameOf = (aside: HTMLElement) => aside.parentElement?.parentElement as HTMLElement;
@@ -78,7 +80,7 @@ const advance = (ms: number) =>
   });
 
 async function openDocument(user: ReturnType<typeof setup>['user']) {
-  await user.click(screen.getByRole('button', { name: 'Open' }));
+  await user.click(screen.getByRole('button', { name: /^(Or open|Open)$/ }));
   await screen.findByRole('img', { name: /^Page 1 of/ });
 }
 
@@ -95,13 +97,13 @@ describe('the columns', () => {
     const open = tracks(grid);
     expect(open.slice(0, 2)).toEqual([`${PANEL.default}px`, 'var(--splitter-width)']);
 
-    await user.click(tool('Left panel'));
+    await user.click(collapseButton());
     const shut = tracks(grid);
     expect(shut).toHaveLength(open.length);
     expect(shut.slice(0, 2)).toEqual(['var(--spacing-0)', 'var(--splitter-width)']);
     expect(shut.slice(1)).toEqual(open.slice(1));
 
-    await user.click(tool('Left panel'));
+    toggleLeft();
     expect(tracks(grid)).toEqual(open);
   });
 
@@ -152,7 +154,7 @@ describe('the columns', () => {
     expect(grid.getAttribute('data-inspector')).toBe('open');
 
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
-    fireEvent.click(tool('Inspector'));
+    toggleTools();
     expect(grid.getAttribute('data-inspector')).toBe('closed');
     expect(grid.getAttribute('data-animating')).toBe('inspector');
     expect(grid.className).toContain(TRANSITION);
@@ -218,7 +220,7 @@ describe('the panel fades while it goes (animations run here)', () => {
     const frame = frameOf(screen.getByRole('complementary', { name: 'Left panel' }));
     expect(frame.hasAttribute('inert')).toBe(false);
 
-    await user.click(tool('Left panel'));
+    await user.click(collapseButton());
     expect(panel()).not.toBeNull();
     expect(frame.hasAttribute('inert')).toBe(true);
     await waitFor(() => expect(panel()).toBeNull(), { timeout: 2000 });
@@ -229,7 +231,7 @@ describe('the panel fades while it goes (animations run here)', () => {
     const { user } = setup(<Shell />);
     await openDocument(user);
     const column = frameOf(screen.getByRole('complementary', { name: 'Left panel' })).style.gridColumn;
-    await user.click(tool('Left panel'));
+    await user.click(collapseButton());
     await waitFor(() => expect(panel()).toBeNull(), { timeout: 2000 });
     // The opacity the frame has when it enters the page: read after the click, a busy machine has drawn frames of the fade already.
     let opacityOnEntry: string | undefined;
@@ -242,7 +244,7 @@ describe('the panel fades while it goes (animations run here)', () => {
       }
     });
     watch.observe(document.body, { childList: true, subtree: true });
-    await user.click(tool('Left panel'));
+    await user.keyboard('{F4}');
     watch.disconnect();
     const frame = frameOf(screen.getByRole('complementary', { name: 'Left panel' }));
     expect(opacityOnEntry).toBe('0');
@@ -254,8 +256,8 @@ describe('the panel fades while it goes (animations run here)', () => {
   it('is restored in the middle of fading out without a second panel', async () => {
     const { user } = setup(<Shell />);
     await openDocument(user);
-    await user.click(tool('Left panel'));
-    await user.click(tool('Left panel'));
+    await user.click(collapseButton());
+    toggleLeft();
     await waitFor(() => expect(screen.getAllByRole('complementary', { name: 'Left panel' })).toHaveLength(1), {
       timeout: 2000,
     });

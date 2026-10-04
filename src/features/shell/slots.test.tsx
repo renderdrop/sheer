@@ -87,12 +87,13 @@ describe('HomeSlot', () => {
 });
 
 describe('ToolSidebarSlot', () => {
-  it('shows the inspector as the sidebar and a single toggle button as the rail', () => {
+  it('shows the tool sidebar, and the rail of tool icons when it is not visible', () => {
     const style = { gridColumn: 4 };
     const { rerender } = setup(<ToolSidebarSlot visible style={style} />);
     expect(screen.getByRole('complementary', { name: 'Inspector' })).not.toBeNull();
+    expect(screen.getByRole('heading', { name: 'Tools' })).not.toBeNull();
     rerender(<ToolSidebarSlot visible={false} style={style} />);
     expect(screen.queryByRole('complementary', { name: 'Inspector' })).toBeNull();
-    expect(within(screen.getByRole('group', { name: 'Inspector' })).getAllByRole('button')).toHaveLength(1);
+    expect(within(screen.getByRole('group', { name: 'Inspector' })).getAllByRole('button')).toHaveLength(11);
   });
 });

@@ -65,22 +65,36 @@ afterEach(() => {
   useSettings.setState(settingsInitial, true);
 });
 
-const toolbar = () => screen.getByRole('toolbar', { name: 'Tools' });
+/** The tool sidebar (a complementary region) or, below 1100 wide, its rail (a group): both are the region "Inspector". */
+const toolRegion = () => document.querySelector<HTMLElement>('[data-region="inspector"]') as HTMLElement;
 const layout = (container: HTMLElement) =>
   container.querySelector('[data-layout]')?.getAttribute('data-layout') ??
   (container.querySelector('[data-slot="home"]') === null ? undefined : 'empty');
-const tool = (name: string) => within(toolbar()).getByRole('button', { name });
-const status = () => within(screen.getByRole('contentinfo', { name: 'Status' }));
-/** The tab strip of the top bar: it has the name of every open document. */
-const tabs = () => screen.getByRole('tablist', { name: 'Open documents' });
+const tool = (name: string) => within(toolRegion()).getByRole('button', { name });
+/** The page sidebar's collapse chevron; F4 and Shift+F4 are the way back and the way to the rail (the command map, ARCHITECTURE 12). */
+const collapseLeft = () => screen.getByRole('button', { name: 'Hide page sidebar' });
+const pressF4 = (shiftKey = false) => fireEvent.keyDown(window, { key: 'F4', shiftKey });
+/** The top bar: zoom and page live there since v1.2 (no status bar). */
+const topbarElement = () => document.querySelector<HTMLElement>('[data-slot="topbar"]') as HTMLElement;
+const status = () => within(topbarElement());
+const pageField = () => status().getByRole('textbox', { name: 'Go to page' }) as HTMLInputElement;
+/** "3 / 12": the field's value and the total beside it. */
+const pageTextNow = () => `${pageField().value} ${pageField().parentElement?.textContent ?? ''}`;
+/** The left of the top bar: the file name, or with two or more documents the tabs; it has the name of every open document. */
+const tabs = () => topbarElement();
+const toolPressed = (name: string) => tool(name).getAttribute('aria-pressed');
 const readout = () => status().getByRole('button', { name: /Zoom level/ });
-const zoomButton = (name: string) => status().getByRole('button', { name });
+/** Opens the zoom menu and chooses an item by its name. */
+const zoomItem = async (user: ReturnType<typeof setup>['user'], name: string) => {
+  await user.click(readout());
+  await user.click(within(screen.getByRole('menu')).getByRole('menuitem', { name: new RegExp(name) }));
+};
 /** The Windows platform. */
 const windows = () => useSettings.setState({ platform: 'windows' });
 
 /** Opens the document through the empty state's Open button and waits for the first page to arrive. */
 async function openDocument(user: ReturnType<typeof setup>['user']) {
-  await user.click(screen.getByRole('button', { name: 'Open' }));
+  await user.click(screen.getByRole('button', { name: /^(Or open|Open)$/ }));
   await screen.findByRole('img', { name: /^Page 1 of/ });
 }
 
@@ -88,7 +102,7 @@ describe('Shell without a document (DESIGN 2, 3.11)', () => {
   it('shows the empty state alone in the main row, on the page background', () => {
     const { container } = setup(<Shell />);
     expect(layout(container)).toBe('empty');
-    expect(screen.getByRole('heading', { level: 1, name: 'What would you like to do?' })).not.toBeNull();
+    expect(screen.getByRole('heading', { level: 1, name: 'Drop a PDF here.' })).not.toBeNull();
     expect(screen.queryByRole('complementary')).toBeNull();
     expect(screen.queryByRole('separator', { name: 'Resize left panel' })).toBeNull();
     expect(container.querySelector('[role="region"][aria-label="Document"]')).toBeNull();
@@ -96,7 +110,7 @@ describe('Shell without a document (DESIGN 2, 3.11)', () => {
 
   it('the initial focus is on Open', () => {
     setup(<Shell />);
-    expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Open' }));
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: /^(Or open|Open)$/ }));
   });
 
   it('Home has no toolbar, no sidebars and no status bar: the editor owns them', () => {
@@ -117,7 +131,7 @@ describe('Shell without a document (DESIGN 2, 3.11)', () => {
   it('Open calls the open dialog', async () => {
     documentsApi.openDocumentDialog.mockResolvedValue([]);
     const { user } = setup(<Shell />);
-    await user.click(screen.getByRole('button', { name: 'Open' }));
+    await user.click(screen.getByRole('button', { name: /^(Or open|Open)$/ }));
     expect(documentsApi.openDocumentDialog).toHaveBeenCalledTimes(1);
   });
 
@@ -130,7 +144,7 @@ describe('Shell without a document (DESIGN 2, 3.11)', () => {
 });
 
 describe('Shell with a document', () => {
-  it('shows the left panel, the splitter, the canvas with the page and the status bar', async () => {
+  it('shows the left panel, the splitter, the canvas with the page and the top bar', async () => {
     const { container, user } = setup(<Shell />);
     await openDocument(user);
     expect(layout(container)).toBe('document');
@@ -138,17 +152,16 @@ describe('Shell with a document', () => {
     expect(screen.getByRole('separator', { name: 'Resize left panel' })).not.toBeNull();
     expect(screen.getByRole('region', { name: 'Document' })).not.toBeNull();
     expect(tabs().textContent).toContain('Quarterly report.pdf');
-    const status = screen.getByRole('contentinfo', { name: 'Status' });
-    expect(within(status).getByRole('button', { name: /Go to page/ }).textContent).toBe('1 / 120');
-    expect(within(status).getByRole('button', { name: /Zoom level/ }).textContent).toBe(`100${NBSP}%`);
+    expect(pageTextNow()).toBe('1 / 120');
+    expect(readout().textContent).toBe(`100${NBSP}%`);
   });
 
   it('the tools are enabled and Select is the active one', async () => {
     const { user } = setup(<Shell />);
     await openDocument(user);
-    expect(tool('Highlight').hasAttribute('aria-disabled')).toBe(false);
-    expect(tool('Select').getAttribute('aria-pressed')).toBe('true');
-    expect(tool('Highlight').getAttribute('aria-pressed')).toBe('false');
+    expect(tool('Markup').hasAttribute('aria-disabled')).toBe(false);
+    expect(toolPressed('Select')).toBe('true');
+    expect(toolPressed('Markup')).toBe('false');
   });
 
   it('another document opens beside the first and is the one shown; closing it brings the first back', async () => {
@@ -176,7 +189,7 @@ describe('Shell with a document', () => {
       retryable: false,
     });
     const { user } = setup(<Shell />);
-    await user.click(screen.getByRole('button', { name: 'Open' }));
+    await user.click(screen.getByRole('button', { name: /^(Or open|Open)$/ }));
     const alert = await screen.findByRole('alert');
     expect(alert.textContent).toContain('This PDF is damaged and could not be displayed.');
     await user.click(within(alert).getByRole('button', { name: 'Dismiss' }));
@@ -196,16 +209,15 @@ describe('Shell with a document', () => {
       expect(readout().textContent).toBe(`100${NBSP}%`);
     });
 
-    it('the status bar buttons and the zoom menu change it too', async () => {
+    it('the zoom menu changes it too', async () => {
       const { user } = setup(<Shell />);
       await openDocument(user);
-      await user.click(zoomButton('Zoom in'));
+      await zoomItem(user, 'Zoom in');
       expect(readout().textContent).toBe(`108${NBSP}%`);
-      await user.click(zoomButton('Zoom out'));
+      await zoomItem(user, 'Zoom out');
       expect(readout().textContent).toBe(`100${NBSP}%`);
-      await user.click(readout());
-      await user.click(within(screen.getByRole('menu')).getByRole('menuitemcheckbox', { name: `200${NBSP}%` }));
-      expect(readout().textContent).toBe(`200${NBSP}%`);
+      await zoomItem(user, 'Fit width');
+      expect(useView.getState().byDoc[1]?.zoom).not.toBe(1);
     });
 
     it('is a view of the document: it does not touch another document', async () => {
@@ -217,8 +229,7 @@ describe('Shell with a document', () => {
   });
 
   describe('commands (the action registry)', () => {
-    const pageText = () =>
-      within(screen.getByRole('contentinfo')).getByRole('button', { name: /Go to page/ }).textContent;
+    const pageText = pageTextNow;
 
     it('the status bar shows the page the scroll position is on', async () => {
       const { user } = setup(<Shell />);
@@ -238,7 +249,7 @@ describe('Shell with a document', () => {
       const { user } = setup(<Shell />);
       await openDocument(user);
       fireEvent.keyDown(window, { key: 'w', ctrlKey: true });
-      expect(await screen.findByRole('heading', { level: 1, name: 'What would you like to do?' })).not.toBeNull();
+      expect(await screen.findByRole('heading', { level: 1, name: 'Drop a PDF here.' })).not.toBeNull();
       expect(documentsApi.closeDocument).toHaveBeenCalledTimes(1);
       fireEvent.keyDown(window, { key: 'w', ctrlKey: true });
       expect(documentsApi.closeDocument).toHaveBeenCalledTimes(1);
@@ -256,27 +267,29 @@ describe('Shell with a document', () => {
       expect(pageText()).toBe('2 / 120');
     });
 
-    it('F4 hides and shows the left panel, and the toolbar toggle follows', async () => {
+    it('F4 hides and shows the left panel, and the store follows', async () => {
       const { user } = setup(<Shell />);
       await openDocument(user);
-      expect(tool('Left panel').getAttribute('aria-pressed')).toBe('true');
-      fireEvent.keyDown(window, { key: 'F4' });
-      expect(tool('Left panel').getAttribute('aria-pressed')).toBe('false');
+      expect(useUi.getState().leftPanelCollapsed).toBe(false);
+      pressF4();
+      expect(useUi.getState().leftPanelCollapsed).toBe(true);
       // The panel fades out first and is gone once it has.
       await waitFor(() => expect(screen.queryByRole('complementary', { name: 'Left panel' })).toBeNull());
-      fireEvent.keyDown(window, { key: 'F4' });
-      expect(tool('Left panel').getAttribute('aria-pressed')).toBe('true');
+      pressF4();
+      expect(useUi.getState().leftPanelCollapsed).toBe(false);
       expect(screen.getByRole('complementary', { name: 'Left panel' })).not.toBeNull();
     });
 
-    it('Shift+F4 makes the tool sidebar the rail and brings it back, and the toolbar toggle follows', async () => {
+    it('Shift+F4 makes the tool sidebar the rail and brings it back', async () => {
       const { user } = setup(<Shell />);
       await openDocument(user);
-      expect(tool('Inspector').getAttribute('aria-pressed')).toBe('true');
-      fireEvent.keyDown(window, { key: 'F4', shiftKey: true });
-      expect(tool('Inspector').getAttribute('aria-pressed')).toBe('false');
-      fireEvent.keyDown(window, { key: 'F4', shiftKey: true });
-      expect(tool('Inspector').getAttribute('aria-pressed')).toBe('true');
+      expect(screen.getByRole('complementary', { name: 'Inspector' })).not.toBeNull();
+      pressF4(true);
+      expect(useUi.getState().inspector).toBe('closed');
+      expect(screen.queryByRole('complementary', { name: 'Inspector' })).toBeNull();
+      expect(screen.getByRole('group', { name: 'Inspector' })).not.toBeNull();
+      pressF4(true);
+      expect(screen.getByRole('complementary', { name: 'Inspector' })).not.toBeNull();
     });
 
     it('Ctrl+2 and Ctrl+0 fit the page to the canvas once it is measured, and the readout follows', async () => {
@@ -295,40 +308,39 @@ describe('Shell with a document', () => {
     it('a tool letter selects the tool only while the canvas has the focus', async () => {
       const { user } = setup(<Shell />);
       await openDocument(user);
-      expect(tool('Select').getAttribute('aria-pressed')).toBe('true');
+      expect(toolPressed('Select')).toBe('true');
       fireEvent.keyDown(window, { key: 'h' });
       fireEvent.keyDown(tool('Select'), { key: 'h' });
-      expect(tool('Select').getAttribute('aria-pressed')).toBe('true');
+      expect(toolPressed('Select')).toBe('true');
       const canvas = screen.getByRole('region', { name: 'Document' });
       canvas.focus();
       await user.keyboard('h');
-      expect(tool('Highlight').getAttribute('aria-pressed')).toBe('true');
+      expect(toolPressed('Markup')).toBe('true');
       await user.keyboard('d');
-      expect(tool('Draw').getAttribute('aria-pressed')).toBe('true');
-      expect(tool('Highlight').getAttribute('aria-pressed')).toBe('false');
+      expect(toolPressed('Draw')).toBe('true');
+      expect(toolPressed('Markup')).toBe('false');
       await user.keyboard('v');
-      expect(tool('Select').getAttribute('aria-pressed')).toBe('true');
+      expect(toolPressed('Select')).toBe('true');
     });
 
     it('typing in the Go to page field never takes a shortcut: letters and Ctrl+plus stay with the field', async () => {
       const { user } = setup(<Shell />);
       await openDocument(user);
-      await user.click(within(screen.getByRole('contentinfo')).getByRole('button', { name: /Go to page/ }));
-      const field = screen.getByLabelText('Page number');
+      const field = pageField();
+      await user.click(field);
       await user.keyboard('h');
       fireEvent.keyDown(field, { key: '+', ctrlKey: true });
       fireEvent.keyDown(field, { key: 'w', ctrlKey: true });
-      expect(tool('Select').getAttribute('aria-pressed')).toBe('true');
+      expect(toolPressed('Select')).toBe('true');
       expect(readout().textContent).toBe(`100${NBSP}%`);
       expect(activeDocument()).not.toBeNull();
     });
 
-    it('the tools and the panel toggles show their keys in their tooltips', async () => {
+    it('the top bar buttons show their keys in their tooltips', async () => {
       const { user } = setup(<Shell />);
       await openDocument(user);
-      expect(tool('Highlight').getAttribute('aria-keyshortcuts')).toBe('H');
-      expect(tool('Left panel').getAttribute('aria-keyshortcuts')).toBe('F4');
-      expect(tool('Redact').getAttribute('aria-keyshortcuts')).toBe('X');
+      expect(status().getByRole('button', { name: 'Undo' }).getAttribute('aria-keyshortcuts')).toBe('Control+Z');
+      expect(status().getByRole('button', { name: 'Find' }).getAttribute('aria-keyshortcuts')).toBe('Control+F');
     });
   });
 
@@ -348,7 +360,7 @@ describe('Shell with a document', () => {
       thumbnails?.focus();
       await user.keyboard('{ArrowRight}');
       expect(useUi.getState().leftPanelTab).toBe('outline');
-      expect(screen.getByRole('heading', { name: 'Outline' })).not.toBeNull();
+      expect(screen.getByRole('tabpanel', { name: 'Outline' })).not.toBeNull();
       await user.keyboard('{End}');
       expect(useUi.getState().leftPanelTab).toBe('search');
     });
@@ -376,19 +388,18 @@ describe('Shell with a document', () => {
       await user.keyboard('{Enter}');
       await waitFor(() => expect(screen.queryByRole('complementary', { name: 'Left panel' })).toBeNull());
       expect(splitter.getAttribute('aria-valuenow')).toBe('0');
-      expect(tool('Left panel').getAttribute('aria-pressed')).toBe('false');
+      expect(useUi.getState().leftPanelCollapsed).toBe(true);
       await user.keyboard('{Enter}');
       expect(screen.getByRole('complementary', { name: 'Left panel' })).not.toBeNull();
     });
 
-    it('the toolbar toggle shows and hides it', async () => {
+    it('the collapse chevron hides it, and F4 shows it again', async () => {
       const { user } = setup(<Shell />);
       await openDocument(user);
-      expect(tool('Left panel').getAttribute('aria-pressed')).toBe('true');
-      await user.click(tool('Left panel'));
+      await user.click(collapseLeft());
       expect(useUi.getState().leftPanelCollapsed).toBe(true);
       await waitFor(() => expect(screen.queryByRole('complementary', { name: 'Left panel' })).toBeNull());
-      await user.click(tool('Left panel'));
+      pressF4();
       expect(screen.getByRole('complementary', { name: 'Left panel' })).not.toBeNull();
     });
 
@@ -401,19 +412,20 @@ describe('Shell with a document', () => {
   });
 
   describe('collapse rules (DESIGN 2)', () => {
-    it('from 1100 the tool sidebar is there with its content, the toggle makes it the rail and back (DESIGN v2 3.2)', async () => {
-      const { user } = setup(<Shell />);
+    it('from 1100 the tool sidebar is there with its content, Shift+F4 makes it the rail and back (DESIGN v2 3.2)', async () => {
+      const { container, user } = setup(<Shell />);
       await openDocument(user);
       expect(screen.getByRole('complementary', { name: 'Inspector' })).not.toBeNull();
-      expect(tool('Inspector').getAttribute('aria-pressed')).toBe('true');
-      await user.click(tool('Highlight'));
-      expect(screen.getByRole('heading', { name: 'Tool options: Highlight' })).not.toBeNull();
-      await user.click(tool('Inspector'));
+      await user.click(tool('Markup'));
+      // The active tool's options open right under its row.
+      expect(container.querySelector('[data-tool-panel="highlight"]')).not.toBeNull();
+      pressF4(true);
       expect(screen.queryByRole('complementary', { name: 'Inspector' })).toBeNull();
-      expect(tool('Inspector').getAttribute('aria-pressed')).toBe('false');
-      // The rail keeps a button that opens it again.
-      const rail = screen.getByRole('group', { name: 'Inspector' });
-      await user.click(within(rail).getByRole('button', { name: 'Inspector' }));
+      expect(container.querySelector('[data-tool-panel]')).toBeNull();
+      // The rail keeps the tool icons, and the active one stays pressed.
+      expect(screen.getByRole('group', { name: 'Inspector' })).not.toBeNull();
+      expect(toolPressed('Markup')).toBe('true');
+      pressF4(true);
       expect(screen.getByRole('complementary', { name: 'Inspector' })).not.toBeNull();
     });
 
@@ -426,19 +438,19 @@ describe('Shell with a document', () => {
       expect(container.querySelector<HTMLElement>('[data-layout]')?.style.gridTemplateColumns).toContain(
         'var(--tool-rail-width)',
       );
-      await user.click(tool('Highlight'));
+      await user.click(tool('Markup'));
       expect(screen.queryByRole('complementary', { name: 'Inspector' })).toBeNull();
       resizeTo(1100);
       expect(screen.getByRole('complementary', { name: 'Inspector' })).not.toBeNull();
     });
 
-    it('the toggle opens the sidebar below 1100 too, and the rail again', async () => {
+    it('Shift+F4 opens the sidebar below 1100 too, and the rail again', async () => {
       resizeTo(1000);
       const { user } = setup(<Shell />);
       await openDocument(user);
-      await user.click(tool('Inspector'));
+      pressF4(true);
       expect(screen.getByRole('complementary', { name: 'Inspector' })).not.toBeNull();
-      await user.click(tool('Inspector'));
+      pressF4(true);
       expect(screen.queryByRole('complementary', { name: 'Inspector' })).toBeNull();
     });
 
@@ -448,9 +460,8 @@ describe('Shell with a document', () => {
       const { user } = setup(<Shell />);
       await openDocument(user);
       expect(screen.getByRole('complementary', { name: 'Left panel' })).not.toBeNull();
-      await user.click(tool('Inspector'));
+      pressF4(true);
       await waitFor(() => expect(screen.queryByRole('complementary', { name: 'Left panel' })).toBeNull());
-      expect(tool('Left panel').getAttribute('aria-pressed')).toBe('false');
       // The user did not collapse it: the layout did, so growing the window brings it back.
       expect(useUi.getState().leftPanelCollapsed).toBe(false);
       resizeTo(1300);
@@ -468,22 +479,24 @@ describe('Shell with a document', () => {
   });
 
   describe('tools', () => {
-    it('a click activates a tool and a second click goes back to Select', async () => {
+    it('a click activates a tool, it stays active on a second click, and the Select row goes back (ADR-056)', async () => {
       const { user } = setup(<Shell />);
       await openDocument(user);
       await user.click(tool('Draw'));
-      expect(tool('Draw').getAttribute('aria-pressed')).toBe('true');
-      expect(tool('Select').getAttribute('aria-pressed')).toBe('false');
+      expect(toolPressed('Draw')).toBe('true');
+      expect(toolPressed('Select')).toBe('false');
       await user.click(tool('Draw'));
-      expect(tool('Select').getAttribute('aria-pressed')).toBe('true');
+      expect(toolPressed('Draw')).toBe('true');
+      await user.click(tool('Select'));
+      expect(toolPressed('Select')).toBe('true');
+      expect(toolPressed('Draw')).toBe('false');
     });
 
-    it('a double click locks a tool and Esc releases it back to Select', async () => {
+    it('Esc releases the active tool back to Select', async () => {
       const { user } = setup(<Shell />);
       await openDocument(user);
-      await user.dblClick(tool('Comment'));
-      expect(useUi.getState()).toMatchObject({ activeTool: 'note', toolLocked: true });
-      expect(tool('Comment').getAttribute('aria-description')).toBe('Locked');
+      await user.click(tool('Comment'));
+      expect(useUi.getState().activeTool).toBe('note');
       await user.keyboard('{Escape}');
       expect(useUi.getState()).toMatchObject({ activeTool: 'select', toolLocked: false });
     });
@@ -491,7 +504,7 @@ describe('Shell with a document', () => {
     it('Esc closes an open menu first and leaves the tool alone', async () => {
       const { user } = setup(<Shell />);
       await openDocument(user);
-      await user.click(tool('Highlight'));
+      await user.click(tool('Markup'));
       await user.click(readout());
       expect(screen.getByRole('menu')).not.toBeNull();
       await user.keyboard('{Escape}');
@@ -612,8 +625,8 @@ describe('Shell without a document: edge cases', () => {
   it('a cancelled dialog leaves the empty state as it was: no banner, Open is ready again and keeps the focus', async () => {
     documentsApi.openDocumentDialog.mockResolvedValue([]);
     const { container, user } = setup(<Shell />);
-    await user.click(screen.getByRole('button', { name: 'Open' }));
-    const open = await screen.findByRole('button', { name: 'Open' });
+    await user.click(screen.getByRole('button', { name: /^(Or open|Open)$/ }));
+    const open = await screen.findByRole('button', { name: /^(Or open|Open)$/ });
     expect(open.hasAttribute('aria-disabled')).toBe(false);
     expect(layout(container)).toBe('empty');
     expect(screen.queryByRole('alert')).toBeNull();
@@ -629,21 +642,21 @@ describe('Shell without a document: edge cases', () => {
       }),
     );
     const { user } = setup(<Shell />);
-    await user.click(screen.getByRole('button', { name: 'Open' }));
-    const opening = screen.getByRole('button', { name: 'Open' });
+    await user.click(screen.getByRole('button', { name: /^(Or open|Open)$/ }));
+    const opening = screen.getByRole('button', { name: /^(Or open|Open)$/ });
     expect(opening.getAttribute('aria-busy')).toBe('true');
     await user.click(opening);
     await user.keyboard('{Enter}');
     fireEvent.keyDown(window, { key: 'o', ctrlKey: true });
     expect(documentsApi.openDocumentDialog).toHaveBeenCalledTimes(1);
     await act(async () => finish(null));
-    expect(await screen.findByRole('button', { name: 'Open' })).not.toBeNull();
+    expect(await screen.findByRole('button', { name: /^(Or open|Open)$/ })).not.toBeNull();
   });
 
   it('the initial focus is on Open with the Windows caption row above it too (its buttons are no tab stops)', () => {
     useSettings.setState({ platform: 'windows' });
     setup(<Shell />);
-    expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Open' }));
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: /^(Or open|Open)$/ }));
   });
 
   it('the zoom keys do nothing and break nothing without a document', () => {
@@ -678,12 +691,11 @@ describe('Shell with a document: edge cases', () => {
   it('a document without pages: zoom in the top bar, no page button, no render', async () => {
     documentsApi.openDocumentDialog.mockResolvedValue([opened({ id: 4, pageCount: 0, displayName: 'Empty.pdf' })]);
     const { container, user } = setup(<Shell />);
-    await user.click(screen.getByRole('button', { name: 'Open' }));
+    await user.click(screen.getByRole('button', { name: /^(Or open|Open)$/ }));
     expect(await screen.findByText('This document has no pages.')).not.toBeNull();
     expect(layout(container)).toBe('document');
-    const status = screen.getByRole('contentinfo', { name: 'Status' });
-    expect(within(status).queryByRole('button', { name: /Go to page/ })).toBeNull();
-    expect(within(status).getByRole('button', { name: /Zoom level/ }).textContent).toBe(`100${NBSP}%`);
+    expect(pageField().disabled).toBe(true);
+    expect(readout().textContent).toBe(`100${NBSP}%`);
     expect(tabs().textContent).toContain('Empty.pdf');
     await act(async () => {
       await new Promise((resolve) => setTimeout(resolve, 150));
@@ -694,13 +706,10 @@ describe('Shell with a document: edge cases', () => {
   it('Go to page takes the first and the last page, and a number outside the document is refused by the field', async () => {
     const { user } = setup(<Shell />);
     await openDocument(user);
-    const status = screen.getByRole('contentinfo', { name: 'Status' });
-    const pageButton = () => within(status).getByRole('button', { name: /Go to page/ });
     const goTo = async (typed: string) => {
-      await user.click(pageButton());
-      const field = screen.getByLabelText('Page number');
-      await user.clear(field);
-      await user.type(field, typed);
+      await user.click(pageField());
+      await user.clear(pageField());
+      await user.type(pageField(), typed);
       await user.keyboard('{Enter}');
     };
     for (const [typed, shown] of [
@@ -709,14 +718,14 @@ describe('Shell with a document: edge cases', () => {
       ['42', '42 / 120'],
     ] as const) {
       await goTo(typed);
-      expect(pageButton().textContent, typed).toBe(shown);
+      expect(pageTextNow(), typed).toBe(shown);
     }
-    // The number field has min 1 and max 120, so 0 and 121 never leave the form: the page stays, the popover stays open.
+    // 0 and 121 are refused: the page stays and the field is marked.
     for (const typed of ['0', '121']) {
       await goTo(typed);
-      expect(pageButton().textContent, typed).toBe('42 / 120');
-      expect(screen.getByRole('dialog', { name: 'Go to page' })).not.toBeNull();
+      expect(pageField().getAttribute('aria-invalid'), typed).toBe('true');
       await user.keyboard('{Escape}');
+      expect(pageTextNow(), typed).toBe('42 / 120');
     }
   });
 
@@ -753,8 +762,8 @@ describe('Shell with a document: edge cases', () => {
       useUi.setState({ leftPanelWidth: 320 });
       const { user } = setup(<Shell />);
       await openDocument(user);
-      await user.click(tool('Left panel'));
-      await user.click(tool('Left panel'));
+      await user.click(collapseLeft());
+      pressF4();
       expect(useUi.getState().leftPanelWidth).toBe(320);
       expect(screen.getByRole('separator', { name: 'Resize left panel' }).getAttribute('aria-valuenow')).toBe('320');
     });
@@ -788,7 +797,7 @@ describe('Shell with a document: edge cases', () => {
       useUi.setState({ leftPanelWidth: 400 });
       const { user } = setup(<Shell />);
       await openDocument(user);
-      await user.click(tool('Left panel'));
+      await user.click(collapseLeft());
       expect(useUi.getState().leftPanelCollapsed).toBe(true);
       resizeTo(1500);
       await waitFor(() => expect(screen.queryByRole('complementary', { name: 'Left panel' })).toBeNull());

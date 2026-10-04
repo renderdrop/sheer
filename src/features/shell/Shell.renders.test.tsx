@@ -22,10 +22,10 @@ import { Shell } from './Shell';
  * Render counts (the shell must not re-render for what changes often). Three counters, each at a seam where a parent's render
  * reaches a child:
  * - `shell`: the shell calls `useShellStructure` once per render, so the wrapper below counts the shell's renders.
- * - `toolbar`: the toolbar row, counted when its parent renders it (its own state changes do not pass this wrapper).
- * - `leftPanel`: the Panel primitive with the left panel's name, counted the same way.
+ * - `tools`: the tool sidebar and its rail; both ask `rowOfState` once per render, so that is the seam.
+ * - `leftPanel`: the Tabs primitive, which only the page sidebar uses in these tests, counted the same way.
  */
-const renders = vi.hoisted(() => ({ shell: 0, toolbar: 0, leftPanel: 0 }));
+const renders = vi.hoisted(() => ({ shell: 0, tools: 0, leftPanel: 0 }));
 
 vi.mock('./useShellStructure', async (importOriginal) => {
   const actual = await importOriginal<typeof import('./useShellStructure')>();
@@ -38,26 +38,25 @@ vi.mock('./useShellStructure', async (importOriginal) => {
   };
 });
 
-vi.mock('./ToolbarRow', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('./ToolbarRow')>();
-  const { createElement } = await import('react');
+vi.mock('../tools/rows', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../tools/rows')>();
   return {
     ...actual,
-    ToolbarRow: (props: ComponentProps<typeof actual.ToolbarRow>) => {
-      renders.toolbar += 1;
-      return createElement(actual.ToolbarRow, props);
+    rowOfState: (...args: Parameters<typeof actual.rowOfState>) => {
+      renders.tools += 1;
+      return actual.rowOfState(...args);
     },
   };
 });
 
-vi.mock('../../components/Panel', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('../../components/Panel')>();
+vi.mock('../../components/Tabs', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../components/Tabs')>();
   const { createElement } = await import('react');
   return {
     ...actual,
-    Panel: (props: ComponentProps<typeof actual.Panel>) => {
-      if (props.label === 'Left panel') renders.leftPanel += 1;
-      return createElement(actual.Panel, props);
+    Tabs: (props: ComponentProps<typeof actual.Tabs>) => {
+      renders.leftPanel += 1;
+      return createElement(actual.Tabs, props);
     },
   };
 });
@@ -113,7 +112,7 @@ beforeEach(() => {
   URL.revokeObjectURL = vi.fn();
   resizeTo(1100);
   renders.shell = 0;
-  renders.toolbar = 0;
+  renders.tools = 0;
   renders.leftPanel = 0;
 });
 
@@ -121,15 +120,25 @@ afterEach(() => {
   reset();
 });
 
-const toolbar = () => screen.getByRole('toolbar', { name: 'Tools' });
-const tool = (name: string) => within(toolbar()).getByRole('button', { name });
+/** The tool sidebar (or its rail): the region "Inspector". */
+const toolRegion = () => document.querySelector<HTMLElement>('[data-region="inspector"]') as HTMLElement;
+const tool = (name: string) => within(toolRegion()).getByRole('button', { name });
+const collapseLeft = () => screen.getByRole('button', { name: 'Hide page sidebar' });
+const pressF4 = () => fireEvent.keyDown(window, { key: 'F4' });
 const counts = () => ({ ...renders });
-const statusButton = (name: string | RegExp) =>
-  within(screen.getByRole('contentinfo', { name: 'Status' })).getByRole('button', { name });
+/** The top bar holds zoom and page (v1.2). */
+const topbar = () => within(document.querySelector<HTMLElement>('[data-slot="topbar"]') as HTMLElement);
+const statusButton = (name: string | RegExp) => topbar().getByRole('button', { name });
+const pageField = () => topbar().getByRole('textbox', { name: 'Go to page' }) as HTMLInputElement;
+const pageTextNow = () => `${pageField().value} ${pageField().parentElement?.textContent ?? ''}`;
+const zoomItem = async (user: ReturnType<typeof setup>['user'], name: string) => {
+  await user.click(statusButton(/Zoom level/));
+  await user.click(within(screen.getByRole('menu')).getByRole('menuitem', { name: new RegExp(name) }));
+};
 
 /** Opens a document and waits until its first page is shown and the viewer is idle, so the counts start from rest. */
 async function openAndSettle(user: ReturnType<typeof setup>['user']) {
-  await user.click(screen.getByRole('button', { name: 'Open' }));
+  await user.click(screen.getByRole('button', { name: /^(Or open|Open)$/ }));
   await screen.findByRole('img', { name: /^Page 1 of/ });
   await waitFor(() => expect(useViewer.getState().rendering).toBe(false));
 }
@@ -149,20 +158,20 @@ async function settleRender() {
 }
 
 describe('the counters', () => {
-  it('count the shell, the toolbar and the left panel once when the window opens with a document', async () => {
+  it('count the shell, the tool sidebar and the left panel once when the window opens with a document', async () => {
     const { user } = setup(<Shell />);
     await openAndSettle(user);
     expect(renders.shell).toBeGreaterThan(0);
-    expect(renders.toolbar).toBeGreaterThan(0);
+    expect(renders.tools).toBeGreaterThan(0);
     expect(renders.leftPanel).toBeGreaterThan(0);
   });
 
-  it('see a re-render where there should be one: a tool change renders the toolbar, a tab change the left panel', async () => {
+  it('see a re-render where there should be one: a tool change renders the tool sidebar, a tab change the left panel', async () => {
     const { user } = setup(<Shell />);
     await openAndSettle(user);
     const before = counts();
-    await user.click(tool('Highlight'));
-    expect(renders.toolbar).toBeGreaterThan(before.toolbar);
+    await user.click(tool('Markup'));
+    expect(renders.tools).toBeGreaterThan(before.tools);
     // The tool sidebar is there with or without a tool: no structure change, no render of the shell.
     expect(renders.shell).toBe(before.shell);
     expect(renders.leftPanel).toBe(before.leftPanel);
@@ -170,20 +179,18 @@ describe('the counters', () => {
     const afterTool = counts();
     await user.click(screen.getByRole('tab', { name: 'Outline' }));
     expect(renders.leftPanel).toBeGreaterThan(afterTool.leftPanel);
-    expect(renders.toolbar).toBe(afterTool.toolbar);
+    expect(renders.tools).toBe(afterTool.tools);
     expect(renders.shell).toBe(afterTool.shell);
   });
 });
 
-describe('what changes often does not render the shell, the toolbar or the left panel', () => {
-  it('a zoom step by key, wheel, status bar button, menu and store, while the readout follows', async () => {
+describe('what changes often does not render the shell, the tool sidebar or the left panel', () => {
+  it('a zoom step by key, wheel, menu and store, while the readout follows', async () => {
     const { user } = setup(<Shell />);
     await openAndSettle(user);
     const before = counts();
     const readout = () => statusZoom();
-    const statusZoom = () =>
-      within(screen.getByRole('contentinfo', { name: 'Status' })).getByRole('button', { name: /Zoom level/ })
-        .textContent;
+    const statusZoom = () => statusButton(/Zoom level/).textContent;
 
     fireEvent.keyDown(window, { key: '+', ctrlKey: true });
     expect(readout()).toBe(`108${NBSP}%`);
@@ -191,10 +198,8 @@ describe('what changes often does not render the shell, the toolbar or the left 
     fireEvent.wheel(screen.getByRole('region', { name: 'Document' }), { deltaY: -100, ctrlKey: true });
     expect(readout()).not.toBe(`108${NBSP}%`);
 
-    await user.click(statusButton('Zoom in'));
-    await user.click(statusButton(/Zoom level/));
-    await user.click(within(screen.getByRole('menu')).getByRole('menuitemcheckbox', { name: `200${NBSP}%` }));
-    expect(readout()).toBe(`200${NBSP}%`);
+    await zoomItem(user, 'Zoom in');
+    expect(readout()).not.toBe(`200${NBSP}%`);
 
     act(() => useView.getState().setZoom(REPORT.id, 1.5));
     expect(readout()).toBe(`150${NBSP}%`);
@@ -205,43 +210,44 @@ describe('what changes often does not render the shell, the toolbar or the left 
     expect(counts()).toEqual(before);
   });
 
-  it('the status bar zoom menu opens with the current zoom checked', async () => {
+  it('the zoom menu has the scroll mode checked', async () => {
     const { user } = setup(<Shell />);
     await openAndSettle(user);
-    act(() => useView.getState().setZoom(REPORT.id, 2));
     await user.click(statusButton(/Zoom level/));
     const menu = screen.getByRole('menu', { name: 'Zoom' });
     const checked = within(menu).getAllByRole('menuitemcheckbox', { checked: true });
-    expect(checked.map((item) => item.textContent)).toEqual([`200${NBSP}%`]);
+    expect(checked.map((item) => item.textContent)).toEqual(['Continuous scrolling']);
   });
 
-  it('the zoom limits render the status bar and never the shell, the toolbar or the left panel', async () => {
+  it('the zoom limits render the top bar and never the shell, the tool sidebar or the left panel', async () => {
     const { user } = setup(<Shell />);
     await openAndSettle(user);
-    expect(statusButton('Zoom in').hasAttribute('aria-disabled')).toBe(false);
     const before = counts();
     act(() => useView.getState().setZoom(REPORT.id, MAX_ZOOM));
-    expect(statusButton('Zoom in').getAttribute('aria-disabled')).toBe('true');
-    act(() => useView.getState().setZoom(REPORT.id, MAX_ZOOM - 1));
-    expect(statusButton('Zoom in').hasAttribute('aria-disabled')).toBe(false);
-    expect(counts()).toEqual(before);
+    await user.click(statusButton(/Zoom level/));
+    expect(
+      within(screen.getByRole('menu'))
+        .getByRole('menuitem', { name: /Zoom in/ })
+        .getAttribute('aria-disabled'),
+    ).toBe('true');
+    await user.keyboard('{Escape}');
+    // The limit is a flag of the action state, which the tool sidebar follows too; the shell and the page sidebar do not.
+    expect(renders.shell).toBe(before.shell);
+    expect(renders.leftPanel).toBe(before.leftPanel);
   });
 
-  it('a change of page, by Go to page or by the store, while the status bar follows', async () => {
+  it('a change of page, by Go to page or by the store, while the top bar follows', async () => {
     const { user } = setup(<Shell />);
     await openAndSettle(user);
     const before = counts();
-    const status = screen.getByRole('contentinfo', { name: 'Status' });
-    const pageButton = () => within(status).getByRole('button', { name: /Go to page/ });
-
     act(() => useViewer.getState().goToPage(5));
-    expect(pageButton().textContent).toBe('6 / 120');
-    await user.click(pageButton());
-    const field = screen.getByLabelText('Page number');
+    expect(pageTextNow()).toBe('6 / 120');
+    const field = pageField();
+    await user.click(field);
     await user.clear(field);
     await user.type(field, '42');
     await user.keyboard('{Enter}');
-    expect(pageButton().textContent).toBe('42 / 120');
+    expect(pageTextNow()).toBe('42 / 120');
     // The canvas is virtualized: the pages around the one that was gone to are mounted, not one.
     expect(screen.getAllByRole('img', { name: /^Page \d+ of 120$/ }).length).toBeGreaterThan(0);
 
@@ -256,7 +262,7 @@ describe('what changes often does not render the shell, the toolbar or the left 
     await openAndSettle(user);
     const before = counts();
     act(() => useViewer.setState({ rendering: true }));
-    expect(within(screen.getByRole('contentinfo', { name: 'Status' })).getByText('Rendering…')).not.toBeNull();
+    expect(screen.getByText('Rendering…')).not.toBeNull();
     act(() => useViewer.setState({ rendering: false }));
     expect(counts()).toEqual(before);
   });
@@ -308,7 +314,7 @@ describe('what changes often does not render the shell, the toolbar or the left 
     expect(counts()).toEqual(before);
   });
 
-  it('a window resize within a regime, and not even the one that crosses 1280 (nothing changes there any more) renders the toolbar or the left panel', async () => {
+  it('a window resize within a regime, and not even the one that crosses 1280 (nothing changes there any more) renders the tool sidebar or the left panel', async () => {
     const { user } = setup(<Shell />);
     await openAndSettle(user);
     const before = counts();
@@ -325,15 +331,15 @@ describe('what changes often does not render the shell, the toolbar or the left 
     expect(counts()).toEqual(wide);
   });
 
-  it('the left panel collapsing renders the toolbar once, for its toggle, and the panel goes', async () => {
+  it('the left panel collapsing renders the shell once and not the tool sidebar, and the panel goes', async () => {
     const { user } = setup(<Shell />);
     await openAndSettle(user);
     const before = counts();
-    await user.click(tool('Left panel'));
-    expect(tool('Left panel').getAttribute('aria-pressed')).toBe('false');
+    await user.click(collapseLeft());
+    expect(useUi.getState().leftPanelCollapsed).toBe(true);
     await waitFor(() => expect(screen.queryByRole('complementary', { name: 'Left panel' })).toBeNull());
     expect(renders.shell).toBe(before.shell + 1);
-    expect(renders.toolbar).toBeGreaterThan(before.toolbar);
+    expect(renders.tools).toBe(before.tools);
     expect(renders.leftPanel).toBe(before.leftPanel);
   });
 });
@@ -348,7 +354,7 @@ describe('the animation of the left panel (250 ms) renders nothing', () => {
     const before = counts();
     const grid = container.querySelector<HTMLElement>('[data-layout]');
 
-    await user.click(tool('Left panel'));
+    await user.click(collapseLeft());
     expect(grid?.hasAttribute('data-animating')).toBe(true);
     await waitFor(() => expect(screen.queryByRole('complementary', { name: 'Left panel' })).toBeNull());
     await pastTheAnimation();
@@ -366,13 +372,13 @@ describe('the animation of the left panel (250 ms) renders nothing', () => {
   it('restoring: the shell renders once, the panel is made once, and nothing renders when the animation ends', async () => {
     const { container, user } = setup(<Shell />);
     await openAndSettle(user);
-    await user.click(tool('Left panel'));
+    await user.click(collapseLeft());
     await waitFor(() => expect(screen.queryByRole('complementary', { name: 'Left panel' })).toBeNull());
     await pastTheAnimation();
     const before = counts();
     const grid = container.querySelector<HTMLElement>('[data-layout]');
 
-    await user.click(tool('Left panel'));
+    pressF4();
     expect(grid?.hasAttribute('data-animating')).toBe(true);
     expect(screen.getByRole('complementary', { name: 'Left panel' })).not.toBeNull();
     await pastTheAnimation();
@@ -405,13 +411,13 @@ describe('the animation of the left panel renders nothing with the animations re
     await openAndSettle(user);
     const before = counts();
 
-    await user.click(tool('Left panel'));
+    await user.click(collapseLeft());
     await gone();
     await pastTheAnimation();
     expect(renders.shell).toBe(before.shell + 1);
     expect(renders.leftPanel).toBe(before.leftPanel);
 
-    await user.click(tool('Left panel'));
+    pressF4();
     await waitFor(() => expect(useUi.getState().leftPanelCollapsed).toBe(false));
     await pastTheAnimation();
     expect(screen.getByRole('complementary', { name: 'Left panel' })).not.toBeNull();
@@ -426,8 +432,8 @@ describe('the animation of the left panel renders nothing with the animations re
     await openAndSettle(user);
     const before = counts();
 
-    await user.click(tool('Left panel'));
-    await user.click(tool('Left panel'));
+    await user.click(collapseLeft());
+    pressF4();
     await pastTheAnimation();
 
     expect(renders.shell).toBe(before.shell + 2);
@@ -467,31 +473,31 @@ describe('a language switch', () => {
     try {
       const before = counts();
       chooseLanguage('de');
-      // The switch took effect: the toolbar renders again, with German text.
-      expect(screen.getByRole('toolbar', { name: 'Werkzeuge' })).not.toBeNull();
-      expect(renders.toolbar).toBeGreaterThan(before.toolbar);
+      // The switch took effect: the tool sidebar renders again, with German text.
+      expect(within(toolRegion()).getByRole('heading', { name: 'Werkzeuge' })).not.toBeNull();
+      expect(renders.tools).toBeGreaterThan(before.tools);
       expect(renders.shell).toBe(before.shell);
 
       const german = counts();
       chooseLanguage('en');
-      expect(screen.getByRole('toolbar', { name: 'Tools' })).not.toBeNull();
-      expect(renders.toolbar).toBeGreaterThan(german.toolbar);
+      expect(within(toolRegion()).getByRole('heading', { name: 'Tools' })).not.toBeNull();
+      expect(renders.tools).toBeGreaterThan(german.tools);
       expect(renders.shell).toBe(before.shell);
     } finally {
       unbind();
     }
   });
 
-  it('does not render the shell in the empty state either', () => {
+  it('does not render the shell on Home either', () => {
     setup(<Shell />);
     const unbind = bindLocaleToSettings(document.documentElement);
     try {
       const before = counts();
       chooseLanguage('de');
-      expect(screen.getByRole('heading', { level: 1, name: 'Was möchten Sie tun?' })).not.toBeNull();
+      expect(screen.getByRole('heading', { level: 1, name: 'PDF hier ablegen.' })).not.toBeNull();
       expect(renders.shell).toBe(before.shell);
       chooseLanguage('en');
-      expect(screen.getByRole('heading', { level: 1, name: 'What would you like to do?' })).not.toBeNull();
+      expect(screen.getByRole('heading', { level: 1, name: 'Drop a PDF here.' })).not.toBeNull();
       expect(renders.shell).toBe(before.shell);
     } finally {
       unbind();
@@ -499,8 +505,8 @@ describe('a language switch', () => {
   });
 });
 
-describe('the empty state', () => {
-  it('a window without a document renders the shell and the toolbar only for what they show', () => {
+describe('Home', () => {
+  it('a window without a document renders the shell only for what it shows', () => {
     setup(<Shell />);
     const before = counts();
     act(() => useUi.getState().setLeftPanelWidth(300));
