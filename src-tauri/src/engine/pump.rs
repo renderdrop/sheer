@@ -256,6 +256,8 @@ impl Pump {
                 Ok(transport) => self.transport = Some(transport),
                 Err(error) => {
                     eprintln!("sheer: the engine process did not restart: {error:?}");
+                    // No sleep: each retry burns one of the budget's ENGINE_RESTART_BUDGET starts, so the loop is bounded and
+                    // a failing spawn ends in engine_unavailable within moments rather than spinning.
                     continue 'spawn;
                 }
             }

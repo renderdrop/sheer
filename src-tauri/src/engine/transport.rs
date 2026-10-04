@@ -121,6 +121,9 @@ pub struct ChildSpec {
     pub files: Arc<FileTable>,
 }
 
+/// The only variables of the parent that reach a child (besides the protocol gate).
+const CHILD_ENV_ALLOWED: [&str; 4] = ["SystemRoot", "windir", "TEMP", "TMP"];
+
 /// What the reader thread tells the call that waits.
 enum Event {
     Frame(Frame),
@@ -146,11 +149,24 @@ impl ChildTransport {
     pub fn spawn(spec: &ChildSpec) -> Result<Self, TransportError> {
         let mut command = Command::new(&spec.exe);
         command
+            // The child starts from nothing: it needs no secret of the parent's environment.
+            .env_clear()
             .arg(wire::CHILD_FLAG)
             .env(wire::CHILD_ENV, "1")
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
+        // What the OS runtime of a child needs (the Windows loader and CRT look for the system root); nothing else passes.
+        for name in CHILD_ENV_ALLOWED {
+            if let Some(value) = std::env::var_os(name) {
+                command.env(name, value);
+            }
+        }
+        // The kill hook exists only in builds with debug assertions (`wire::WireRequest::Crash`).
+        #[cfg(debug_assertions)]
+        if let Some(value) = std::env::var_os("SHEER_ENGINE_TEST_HOOKS") {
+            command.env("SHEER_ENGINE_TEST_HOOKS", value);
+        }
         #[cfg(windows)]
         {
             // CREATE_NO_WINDOW: a child of a windowed app must not open a console.

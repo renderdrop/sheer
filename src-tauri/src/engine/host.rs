@@ -522,3 +522,15 @@ fn raster(page: RasterPage) -> (WireReply, Blob) {
         Blob::Owned(pixels),
     )
 }
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn the_release_profile_keeps_debug_assertions_off_so_the_kill_hook_is_not_compiled() {
+        // The `Crash` request and its handler are `cfg(debug_assertions)`; a release profile that switched them on would ship them.
+        let manifest = include_str!("../../Cargo.toml");
+        let release = manifest.split("[profile.release]").nth(1).unwrap_or("");
+        let section = release.split("\n[").next().unwrap_or("");
+        assert!(!section.contains("debug-assertions"), "{section}");
+    }
+}
