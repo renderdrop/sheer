@@ -183,7 +183,7 @@ The Stop hook picks the first open `- [ ]` line, so order matters. Scope: `docs/
 - [x] Windows installer (FEEDBACK F5): NSIS target (no MSI/WiX default dialog) with own header and sidebar images in Iris and the Sheer icon
 - [x] Installers: DMG, NSIS (WebView2 bootstrapper); Windows .pdf association via OpenWithProgids, default handler only on opt-in
 - [x] Signed opt-in updater (minisign public key in repo; private key → BLOCKERS)
-- [ ] Full security-reviewer audit, docs/SECURITY.md finalized
+- [x] Full security-reviewer audit, docs/SECURITY.md finalized
 - [x] Signing/notarization guide in docs/BLOCKERS.md
 - [x] Politur M7
   - (from M6 design review, minor) recent rows: page thumbnail (32×40) instead of the generic icon tile, or update §3.11; dark-mode text looks heavier than light (same weight? ClearType?); horizontal overlay scrollbar over the page edge: bottom inset or track tint; disabled toolbar icons on the light empty state very low contrast
@@ -195,6 +195,10 @@ The Stop hook picks the first open `- [ ]` line, so order matters. Scope: `docs/
 See `docs/FEATURES.md` → "Later".
 
 ## v1.1 backlog (ADR-030)
+
+- [~] Disabled vs. enabled toolbar icons hard to tell apart in light theme (ink-50 vs ink-60; ≥ 3:1 rule for disabled) — design decision, e.g. darker enabled icons (M7 design review, major)
+- [~] Empty state with the recovery banner on short windows: show 2 recents rows so none is cut off (M7 design review)
+- [~] Dark-mode small text looks heavier (Windows ClearType on dark) — recheck against §3.52 #10 (M7 design review)
 
 - [~] Disabled menu items show why (output.notAllowed tooltip) — menus cannot show tooltips (from M6 UI)
 - [~] Export-as-images size estimate from a Rust sample render instead of client-side (from M6 UI)

@@ -10,9 +10,9 @@ Sheer is a simple, fast and beautiful desktop PDF app for **macOS and Windows**.
 It is open source and runs **entirely on your device**: no account, no login, no cloud, no telemetry.
 
 > [!WARNING]
-> **Status: pre-release, unsigned, not for productive use.** Sheer is at version 0.x and under active development.
-> Installers are not code-signed or notarized, so Windows SmartScreen and macOS Gatekeeper will warn. Files, settings and
-> formats may change between versions. Keep a copy of any PDF you open with it. See [ROADMAP.md](ROADMAP.md) for progress.
+> **Status: 1.0, unsigned installers.** All planned features are in. The installers are not code-signed or notarized yet, so
+> Windows SmartScreen and macOS Gatekeeper warn on first start ([docs/BLOCKERS.md](docs/BLOCKERS.md), B-002); the opt-in updater
+> needs the release key (B-005). The macOS build has not been tried on a Mac by a person yet (B-001). Keep a copy of important PDFs.
 
 ## Features by milestone
 
@@ -24,7 +24,7 @@ It is open source and runs **entirely on your device**: no account, no login, no
 | M4 Forms and signature | 0.7.0 | done | Fill AcroForms, flatten, signatures (draw, type, image) with initials and date, Fill & Sign for flat forms, signature library encrypted at rest |
 | M5 Edit and protect | 0.8.0 | done | Text boxes and images, crop, true redaction, password protection (AES-256), metadata |
 | M6 Convert and output | 0.9.0 | done | PDF to PNG/JPG, images to PDF, print, export with or without annotations |
-| M7 Polish and ship | 1.0.0 | planned | Performance, accessibility, crash-safe autosave, signed installers, opt-in signed updater |
+| M7 Polish and ship | 1.0.0 | done | Performance, accessibility, crash-safe autosave, installers (unsigned, B-002), opt-in signed updater |
 
 Everything runs offline. Digital (certificate) signatures are not part of 1.0; signatures are visual.
 

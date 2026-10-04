@@ -231,7 +231,9 @@ step "vitest" npm run --silent test
 
 step "cargo fmt" cargo fmt --manifest-path "$MANIFEST" --check
 step "cargo clippy" cargo clippy --manifest-path "$MANIFEST" --locked --all-targets -- -D warnings
-step "cargo test" cargo test --manifest-path "$MANIFEST" --locked
+# Linking ~40 integration-test binaries with full debug info in parallel can exhaust the commit limit on Windows
+# (os error 1455); SHEER_TEST_JOBS caps the build jobs (default 4).
+step "cargo test" cargo test --manifest-path "$MANIFEST" --locked --jobs "${SHEER_TEST_JOBS:-4}"
 step "cargo deny" cargo_deny
 step "cargo audit" cargo audit --file src-tauri/Cargo.lock
 step "npm audit" npm audit --audit-level=high

@@ -6,6 +6,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-10-04
+
+M7 — Polish and ship.
+
+### Added
+
+- The PDF engine runs in its own process: a crash or hang in a hostile file restarts the engine and reopens your documents instead of closing the app; a file that crashes it twice is shut out.
+- Crash-safe autosave: unsaved work is kept on this device (never for password-protected files) and offered back on the next start; restored documents are saved with Save As.
+- Opt-in updater, off by default: checks GitHub Releases only when you turn it on or click "Check for updates", verifies the signature before installing, installs when you quit. Builds without the release key say so and never contact the network.
+- Welcome tour with all seven steps and one short tip per tool on first use; restart both under Settings → Help.
+- Recent files show a small first-page preview (never for password-protected files).
+- Windows installer with Sheer artwork, per-user install, listed under "Open with" for PDFs without taking over the default; "Make Sheer the default PDF app…" in Settings. macOS: universal DMG.
+- Keyboard: F6 / Shift+F6 cycles toolbar, side panel, page area, inspector and status bar.
+
+### Changed
+
+- Release builds forbid inline styles (CSP style-src 'self') and refuse navigation away from the app.
+- Accessibility pass: disabled toolbar icons use a contrast-checked colour, tab strip roles fixed, automated accessibility checks for the main surfaces.
+- German typography and a glossary for consistent terms.
+- Measured in the app window: a 500-page PDF shows its first page in about 190 ms; scrolling, zoom and panels hold 60 fps.
+
+### Security
+
+- Full release audit passed (0 critical/high); docs/SECURITY.md lists every measure with its evidence and the accepted residual risks.
+- Installers are still unsigned (docs/BLOCKERS.md B-002, signing guide included); the updater needs the owner's release key (B-005).
+
 ## [0.9.0] - 2026-10-04
 
 M6 — Convert and output.
