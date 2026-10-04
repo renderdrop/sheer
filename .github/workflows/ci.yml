@@ -21,7 +21,9 @@ permissions:
 # ADR-045: a manual start has its own group, so a push to the same ref no longer cancels it (and it no longer cancels the push run).
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.event_name == 'workflow_dispatch' && 'manual' || 'auto' }}-${{ github.ref }}
-  cancel-in-progress: true
+  # ADR-052: runs on main are never cancelled (every commit gets a finished result on both platforms); pull requests and manual
+  # runs still cancel their own older run.
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 env:
   CARGO_INCREMENTAL: '0'

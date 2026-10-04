@@ -1,8 +1,8 @@
 # STATE
-phase: M6
-version: 0.8.1
-current_item: M6 UI committed (06a7ef7). Running: U2b image list/thumbnails/reorder (backend+UI), reviews U1/U3/U4. Then U2 review, tick M6, Politur M6, milestone end (tester, security, annot-smoke, print gate, designer, CI, 0.9.0)
-last_completed: v0.8.1 — FEEDBACK F9 (annotation input) + F10 (vector signatures) for the owner re-test; M6 backend on main (8972856)
+phase: M7
+version: 0.9.0
+current_item: M7 Polish and ship — ADR for engine process isolation and updater first, then backend wave (ADR-038); Politur M7 last
+last_completed: M6 Convert and output released as v0.9.0 (tag v0.9.0)
 loop_count_this_session: 0
 open_blockers: 2 (B-001 UI never seen on a Mac, macOS keychain untested; B-002 code signing)
 notes: Repository renderdrop/sheer is public (ADR-046). CI: every push to main runs Windows + macOS (docs-only skipped); tags run only release.yml. Read CI once per milestone, never wait (ADR-030).

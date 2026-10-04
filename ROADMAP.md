@@ -185,6 +185,9 @@ The Stop hook picks the first open `- [ ]` line, so order matters. Scope: `docs/
 - [ ] Signed opt-in updater (minisign public key in repo; private key → BLOCKERS)
 - [ ] Full security-reviewer audit, docs/SECURITY.md finalized
 - [ ] Signing/notarization guide in docs/BLOCKERS.md
+- [ ] Politur M7
+  - (from M6 design review, minor) recent rows: page thumbnail (32×40) instead of the generic icon tile, or update §3.11; dark-mode text looks heavier than light (same weight? ClearType?); horizontal overlay scrollbar over the page edge: bottom inset or track tint; disabled toolbar icons on the light empty state very low contrast
+  - (from M6 UI) menu items cannot show output.notAllowed (v1.1 unless cheap); export images estimate is client-side
 
 ## Later (post-1.0, not scheduled)
 

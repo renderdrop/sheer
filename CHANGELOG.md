@@ -6,6 +6,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-10-04
+
+M6 — Convert and output.
+
+### Added
+
+- Export as images (Ctrl/Cmd+Shift+E): PNG or JPEG, page range, DPI presets or custom (36–600), JPEG quality, with or without annotations; files named after the document, never after text inside it; existing files: replace, keep both or cancel.
+- Create PDF from images: pick or drop PNG/JPEG images, reorder them with thumbnails, page size (fit, A4, Letter; the default follows the system region), orientation and margin; the new PDF opens in a tab. Also on the start screen.
+- Print (Ctrl/Cmd+P): choose pages, annotations and quality, then the system print preview takes over; nothing is written to disk.
+- Export a copy: keep, flatten or remove annotations, optionally remove metadata; the open file stays unchanged.
+- Output always includes unsaved edits (an in-memory snapshot); unapplied redaction marks are never output.
+
+### Changed
+
+- Canvas gutter at 100 %, centred start screen, lighter dark canvas, thumbnail bottom inset.
+- CI: runs on main are no longer cancelled by the next push (ADR-052).
+
+### Security
+
+- Output paths only come from system dialogs; replace never follows links; writes are atomic; print and image batches are held in memory with caps and expiry; copy, print and edit permissions of restricted files are enforced.
+- New dependency: sys-locale (MIT OR Apache-2.0) for the default paper size.
+
 ## [0.8.1] - 2026-10-04
 
 Fixes from the product owner's test of 0.8.0 (FEEDBACK F9, F10).

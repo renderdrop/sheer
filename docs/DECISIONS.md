@@ -1565,3 +1565,17 @@ the pad was 512×192 CSS px without device-pixel-ratio scaling.
 
 **Consequences.** Library entries saved before 0.8.1 hold polygons: they load as `L` paths (still vector) and look as before; re-creating
 them gives curves. Acceptance: window screenshot at 200 % with smooth edges; the saved PDF rendered at 400 %.
+
+## ADR-052 — CI runs on main are never cancelled
+
+**Status:** accepted (2026-10-04). Amends ADR-045 (concurrency) and ADR-046.
+
+**Context.** With `cancel-in-progress: true`, each push to `main` cancelled the previous run. During a milestone the orchestrator pushes
+every few minutes, so between `a4d53c8` and the M6 release candidate no run on `main` finished at all, and the DoD ("last finished run on
+main green on both platforms") could not be read. Public-repository runners are free (ADR-046).
+
+**Decision.** `cancel-in-progress` is false for `refs/heads/main` and stays true for pull requests and manual runs. Runs on main queue
+per group; every commit gets a finished result.
+
+**Consequences.** More runner time, no cost. Results arrive later during bursts; the milestone-end read (ADR-030) looks at the newest
+finished run.
