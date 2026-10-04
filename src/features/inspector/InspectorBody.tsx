@@ -1,6 +1,3 @@
-import { SlidersHorizontal } from 'lucide-react';
-
-import { Icon, PanelSection } from '../../components';
 import { useT, type PlainKey } from '../../i18n';
 import type { AnnotationKind } from '../../api/annotations';
 import type { CreationKind } from '../../stores/tools';
@@ -57,74 +54,51 @@ export function useInspectorTitle(model: InspectorModel): string {
   }
 }
 
-/** Nothing selected and no tool that has options (DESIGN 3.24, empty state per 3.15). */
-function EmptyState() {
-  const t = useT();
-  return (
-    <div className="flex flex-col items-center gap-2 p-4 text-center">
-      <span className="flex size-control-md items-center justify-center rounded-sm bg-tile text-tile-icon">
-        <Icon icon={SlidersHorizontal} size={24} />
-      </span>
-      <span className="text-md font-semibold">{t('inspector.empty')}</span>
-      <span className="text-sm text-text-muted">{t('inspector.emptyHint')}</span>
-    </div>
-  );
-}
-
-/** The sections of the inspector for the model; the shell's `Inspector` puts it in the panel. */
+/** The option sections of the model, stacked 12 apart (DESIGN v2 3.2 disclosure). */
 export function InspectorBody({ model }: { model: InspectorModel }) {
-  if (model.mode === 'empty') return <EmptyState />;
+  if (model.mode === 'empty') return null;
   const { sections, values, recent, change } = model;
   const disabled = !model.editable;
   const common = { disabled, onChange: change };
   return (
-    <>
+    <div className="flex flex-col gap-3">
       {sections.includes('colour') && (
-        <PanelSection>
-          <ColourSection
-            {...common}
-            colour={values.color}
-            recent={recent}
-            only={model.subject.type === 'kind' && model.subject.kind === 'signature' ? INK_COLOURS : undefined}
-          />
-        </PanelSection>
+        <ColourSection
+          {...common}
+          colour={values.color}
+          recent={recent}
+          only={model.subject.type === 'kind' && model.subject.kind === 'signature' ? INK_COLOURS : undefined}
+        />
       )}
-      {sections.includes('stroke') && (
-        <PanelSection>
-          <StrokeSection {...common} width={values.width} />
-        </PanelSection>
-      )}
-      {sections.includes('fontSize') && (
-        <PanelSection>
-          <FontSizeSection {...common} fontSize={values.fontSize} />
-        </PanelSection>
-      )}
-      {sections.includes('lineEnd') && (
-        <PanelSection>
-          <LineEndSection {...common} head={values.head} />
-        </PanelSection>
-      )}
-      {sections.includes('opacity') && (
-        <PanelSection>
-          <OpacitySection {...common} opacity={values.opacity} />
-        </PanelSection>
-      )}
-    </>
+      {sections.includes('stroke') && <StrokeSection {...common} width={values.width} />}
+      {sections.includes('fontSize') && <FontSizeSection {...common} fontSize={values.fontSize} />}
+      {sections.includes('lineEnd') && <LineEndSection {...common} head={values.head} />}
+      {sections.includes('opacity') && <OpacitySection {...common} opacity={values.opacity} />}
+    </div>
   );
 }
 
-/** The inspector's content from the stores. */
-export function useInspector(): { title: string; body: React.ReactNode } {
+export interface InspectorContent {
+  title: string;
+  /** `null`: nothing to show (no selection, and the active tool has no options). */
+  body: React.ReactNode;
+  /** The tool's own options: the title is only for assistive technology. */
+  quiet: boolean;
+}
+
+/** The options content from the stores: the mode panels and the insert tools first, then the selection, then the tool's options. */
+export function useInspector(): InspectorContent {
   const t = useT();
   const model = useInspectorModel();
   const title = useInspectorTitle(model);
   // The M5 modes and tools bring their own inspector (DESIGN 3.36 to 3.38); each is `null` while it is not active.
   const own = [useCropInspector(), useRedactInspector(), useInsertInspector()].find((entry) => entry !== null);
   const formTool = useUi((state) => state.activeTool === 'form');
-  if (own !== undefined) return own;
+  if (own !== undefined) return { title: own.title, body: own.body, quiet: false };
   // The Form tool has options of its own (DESIGN 3.32): the highlight toggle and Flatten.
   if (model.mode === 'empty' && formTool) {
-    return { title: t('inspector.toolOptions', { tool: t('toolbar.tool.form') }), body: <FormOptions /> };
+    return { title: t('inspector.toolOptions', { tool: t('toolbar.tool.form') }), body: <FormOptions />, quiet: false };
   }
-  return { title, body: <InspectorBody model={model} /> };
+  if (model.mode === 'empty') return { title, body: null, quiet: true };
+  return { title, body: <InspectorBody model={model} />, quiet: model.mode === 'tool' };
 }

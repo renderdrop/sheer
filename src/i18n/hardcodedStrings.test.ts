@@ -158,7 +158,7 @@ describe('the UI sources', () => {
     const names = files.map((file) => relative(SRC, file).split(sep).join('/'));
     expect(names).toContain('features/shell/Banner.tsx');
     expect(names).toContain('components/IconButton.tsx');
-    expect(names).toContain('features/shell/toolbarEntries.ts');
+    expect(names).toContain('features/tools/panels.tsx');
     expect(names.filter((name) => name.includes('showcase') || /\.test\./.test(name))).toEqual([]);
   });
 

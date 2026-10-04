@@ -63,7 +63,7 @@ import { stepHit } from '../features/search/jump';
 import { organizeActive, rotateOrganized } from '../features/organize/actions';
 import { openSearch } from '../features/search/commands';
 import { openSettings } from '../features/settings/state';
-import { useGoToPage } from '../features/shell/goToState';
+import { useGoToPage } from '../features/topbar/goToState';
 import { readShellStructure } from '../features/shell/useShellStructure';
 import { runCompress, runExtract, runMerge, runSplit } from '../features/jobs/actions';
 import { saveActive } from '../features/save/commands';
@@ -585,7 +585,7 @@ export const ACTIONS: readonly ActionDef[] = [
     group: 'page',
     menuBar: true,
     enabled: needsDocument,
-    // The status bar's popover opens with the page field selected (src/features/shell/StatusBar).
+    // The top bar's page field is focused and selected (src/features/topbar/CenterCluster).
     run: () => useGoToPage.getState().setOpen(true),
   },
   {

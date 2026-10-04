@@ -11,7 +11,7 @@ import { usePages } from '../../stores/pages';
 import { useUi } from '../../stores/ui';
 import { useView } from '../../stores/view';
 import { setup } from '../../test/render';
-import { Inspector } from '../shell/Inspector';
+import { ToolSidebar as Inspector } from '../tools';
 import { setFileRotation } from '../viewer/fileRotation';
 import { fitsAll, sizesDiffer, targetPages } from './actions';
 import { CropLayer } from './CropLayer';

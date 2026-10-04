@@ -9,7 +9,7 @@ import { useDocuments } from '../../stores/documents';
 import { useTools } from '../../stores/tools';
 import { useUi } from '../../stores/ui';
 import { setup } from '../../test/render';
-import { Inspector } from '../shell/Inspector';
+import { ToolSidebar as Inspector } from '../tools';
 import { useStyleStore } from './style';
 
 vi.mock('../../api/annotations', async (importOriginal) => ({
@@ -204,8 +204,7 @@ describe('the inspector without a selection', () => {
   it('shows the empty state with Select', () => {
     load([ink(1)], []);
     setup(<Inspector />);
-    expect(screen.getByText('Nothing selected')).not.toBeNull();
-    expect(screen.getByText(/pick a tool/)).not.toBeNull();
+    expect(screen.getByText(/Click an annotation/)).not.toBeNull();
   });
 
   it('edits the style of the active tool, not an annotation', async () => {
