@@ -61,3 +61,4 @@ Pushing a `v*` tag runs `.github/workflows/release.yml`: it builds an unsigned W
 (arm64, the runner architecture) and attaches them, plus `SHA256SUMS.txt`, to a GitHub Release whose notes are that version's
 `CHANGELOG.md` section. Versions before 1.0 are marked pre-release. To build an existing tag later (the workflow never creates or
 moves tags): `gh workflow run release.yml -f tag=v0.4.0`. See ADR-031 in `docs/DECISIONS.md`.
+The builds are unsigned until a human sets up certificates: see the [signing and notarization guide](docs/BLOCKERS.md#signing-and-notarization-guide-b-001-b-002-b-005). What is and is not protected: [docs/SECURITY.md](docs/SECURITY.md) (checklist and residual risks).
