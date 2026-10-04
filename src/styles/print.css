@@ -1,0 +1,47 @@
+/*
+ * Print (DESIGN 3.44, ADR-050). On screen the print surface takes no layout slot. Under @media print every app element is hidden and
+ * only the surface shows: one frame per sheet, no margin added by us, each frame scaled to the sheet (its own size comes from the
+ * frame's aspect ratio, set inline).
+ */
+[data-print-surface] {
+  display: none;
+}
+
+@media print {
+  @page {
+    margin: 0;
+  }
+
+  html,
+  body {
+    margin: 0;
+    padding: 0;
+    background: none;
+  }
+
+  body > :not(#root),
+  #root > :not([data-print-surface]) {
+    display: none !important;
+  }
+
+  [data-print-surface] {
+    display: block;
+    margin: 0;
+    padding: 0;
+  }
+
+  [data-print-surface] > img {
+    display: block;
+    width: 100%;
+    height: 100vh;
+    margin: 0;
+    padding: 0;
+    object-fit: contain;
+    break-after: page;
+    break-inside: avoid;
+  }
+
+  [data-print-surface] > img:last-child {
+    break-after: auto;
+  }
+}

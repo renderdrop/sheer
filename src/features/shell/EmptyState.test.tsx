@@ -34,7 +34,8 @@ describe('EmptyState (DESIGN 3.11)', () => {
     const logo = slot?.querySelector('img');
     expect(logo?.getAttribute('alt')).toBe('');
     expect(logo?.className).toContain('logo-float');
-    expect(container.querySelector('[data-drop-zone] svg')).toBeNull();
+    // Only the ghost images button (DESIGN 3.43) carries an icon.
+    expect(container.querySelectorAll('[data-drop-zone] svg')).toHaveLength(1);
     expect(slot?.contains(document.activeElement)).toBe(false);
   });
 
@@ -74,7 +75,7 @@ describe('EmptyState (DESIGN 3.11)', () => {
   it('omits the recents section entirely while there are none', () => {
     setup(<EmptyState {...props()} />);
     expect(screen.queryByRole('heading', { level: 2, name: 'Recent' })).toBeNull();
-    expect(screen.getAllByRole('button')).toHaveLength(1);
+    expect(screen.getAllByRole('button')).toHaveLength(2); // Open and the ghost images button
   });
 
   describe('the privacy footer (DESIGN 3.11: omitted when there are no recents)', () => {
