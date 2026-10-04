@@ -436,9 +436,9 @@ fit, recents scroll).
    "Open…" and, 8 right, the shortcut as a pill badge ("⌘O"/"Ctrl+O", §1.10); 16 below, the ghost md
    "Create PDF from images…" (M6, §3.43).
 3. **Recents**, 32 below: header "Recent" (meta 600) + ghost sm "Clear"; ≤ 8 rows (3 when the viewport is ≤ 860 high, `empty-recents`), 56 h, radius 12, padding 8:
-   thumbnail 32 × 40 | name over meta "Folder · 2 h ago" | sm `x` (on hover/focus, `tabindex=-1`). Missing file:
-   `file-x` in warning-icon, "File not found"; activation offers Locate… / Remove. Footer meta: "Recent files are
-   stored only on this device." Omitted when empty.
+   thumbnail 32 × 40 (states §3.48) | name over meta "Folder · 2 h ago" | sm `x` (on hover/focus, `tabindex=-1`). Missing file:
+   `file-x` in warning-icon, "File not found"; activation offers Locate… / Remove. Footer meta: `recents.privacy` (§3.48).
+   Omitted when empty.
 
 Native drag-over: selected fill + 2 px inset accent ring, title "Drop to open"; with a document open, a G2 overlay inset
 8 px in the canvas slot (`--z-drag`). Keys: initial focus Open; recents roving Up/Down, Enter opens, Delete removes,
@@ -1731,6 +1731,213 @@ Footer: secondary `output.cancel`, primary `copy.go` → Rust Save As, default n
 
 **Tokens:** none new; §3.41–§3.45 reuse `--dialog-width`, `--dialog-width-md`, `--sheet-width`, §3.28 drag tokens and §3.30's bar.
 
+### 3.46 Welcome tour: remaining steps (M7, F4)
+
+**Purpose:** ship steps 4–7 of §3.14 (Highlight, Comment, Sign, Reorder). `shipped` flips to true for all four; the edition becomes
+W · Z · M [4] · S [3] · E (5 pages, §3.14 Editions); both PDFs are regenerated. Everything not listed here stays as §3.14.
+
+- **Step 5** anchors the Note tool (C): §3.22 named the tool "Note", so `tour.step.comment.*` says Note.
+- **Step 6 (sign).** Phase a anchors Signature (S). While its popover, the creation sheet (§3.33, offered by `sign.add` when the
+  library is empty) or the library is open, the card is hidden and the ring stays (§3.14 coexistence). Create or a popover item arms
+  placement: phase b anchors the signature frame. Complete when a signature or initials has its centre in the frame, by placement
+  **or by dragging** a placed one there (pointerup, or keyboard nudges once they settle, §3.23).
+- **Step 7 (reorder).** Phase a anchors the left-panel toggle while the panel is collapsed, else the Thumbnails tab; phase b the
+  thumbnail of page S. Organize mode (P) counts too: completion reads the page order, whatever moved it (drag, Alt+↑/↓, Move up). The
+  success pulse sits on the moved thumbnail.
+- **Tips** (§3.47) are suppressed while a tour runs; tools used in the tour are not marked as seen.
+- **Restart** stays in Settings; the row becomes `settings.help` with two buttons (§3.47).
+
+| Key | en | de |
+|---|---|---|
+| `tour.step.comment.title` / `.text` | Add a note / Choose Note, then click the dot. | Notiz hinzufügen / Wählen Sie Notiz und klicken Sie auf den Punkt. |
+| `tour.step.reorder.text` | Open Thumbnails and drag page {from} above page {to}. | Öffnen Sie Miniaturen und ziehen Sie Seite {from} über Seite {to}. |
+
+`{from}`/`{to}` are the thumbnail positions (4 and 3 in the M7 edition), filled from `steps.json` by the UI and the generator.
+
+### 3.47 Tool tips (M7, F4)
+
+**Purpose:** the first time a tool becomes active, one short tip says the one thing that is not obvious. Never twice.
+
+**Trigger.** A tool turns active (any input) and its id is not in the setting `tipsSeen` (tool ids, ≤ 32), no tour runs, and no
+coach card or other tip is visible. The id is written to `tipsSeen` *before* the tip shows (as `welcomeTour`, §3.14), so a crash
+cannot repeat it. Tools with a tip: highlight, note, text, draw, shapes, sign, pages, insertText, crop, redact.
+
+**Anatomy.** The coach-mark card (§3.14) in a compact form: G2 (solid mode `--surface-solid`), radius 16, width 304, padding 16, one
+row, gap 8: `lightbulb` 16 in a 32 tile (radius 8) | tip text `--text-md` (≤ 90 characters en) | sm IconButton `x` `tip.dismiss`.
+No title, no ring, no footer. Beak and placement as a §3.14 toolbar anchor (below the tool, 8 gap); a tool in overflow anchors More.
+
+**Slot and layer:** `--z-popover`, clamped to the canvas slot inset 8; it covers page content only.
+
+**States.** entering (opacity + scale .96 from the beak side, base) · shown · exiting (opacity, fast). It goes for good on `x`, Esc
+inside it, releasing or changing the tool, or when a popover, menu or dialog opens. No timeout (WCAG 2.2.1).
+
+**Keyboard.** Never takes focus. While shown it is the F6 stop after the toolbar (like the coach card). Esc inside dismisses and
+returns focus to the canvas; Esc elsewhere follows §2.3 (releasing the tool also removes the tip).
+
+**Accessibility.** `role="region"`, `aria-label` `tip.region`; the text goes once to the status bar's polite live region
+(`tip.announce`); the tool gets `aria-describedby` → the text while shown. Forced colors as the coach card. Reduced motion: RM fade.
+
+**Settings.** The tour row (§3.14 Restart) becomes label `settings.help` over two secondary sm buttons: `settings.tour.start` /
+`.restart` and `settings.tips.reset` (`aria-disabled` while `tipsSeen` is empty; after a press, the hint reads
+`settings.tips.resetDone`, polite).
+
+| Key | en | de |
+|---|---|---|
+| `tip.region` / `.dismiss` / `.announce` | Tip / Dismiss tip / Tip: {text} | Tipp / Tipp ausblenden / Tipp: {text} |
+| `tip.highlight` | Drag across text. Press H again for Underline or Strikethrough. | Über Text ziehen. H erneut drücken für Unterstreichen oder Durchstreichen. |
+| `tip.note` | Click where the note belongs. Replies appear under Comments. | Klicken Sie dorthin, wo die Notiz hingehört. Antworten stehen unter Kommentare. |
+| `tip.text` | Click to place a text box; drag to set its width. | Klicken platziert ein Textfeld, Ziehen legt die Breite fest. |
+| `tip.draw` | Strokes drawn within a second become one drawing. | Striche innerhalb einer Sekunde werden eine Zeichnung. |
+| `tip.shapes` | Hold Shift to keep proportions. Press R to switch the shape. | Umschalt hält die Proportionen. R wechselt die Form. |
+| `tip.sign` | Saved signatures stay encrypted on this device. | Gespeicherte Unterschriften bleiben verschlüsselt auf diesem Gerät. |
+| `tip.pages` | Drag to reorder. Shift or {mod} selects several pages. | Zum Ordnen ziehen. Umschalt oder {mod} wählt mehrere Seiten. |
+| `tip.insertText` | Added text becomes page content, not a comment. | Hinzugefügter Text wird Seiteninhalt, kein Kommentar. |
+| `tip.crop` | Drag the edges, or type exact margins in the panel. | Kanten ziehen oder genaue Ränder im Bereich eingeben. |
+| `tip.redact` | Marks stay reviewable until you apply them. | Markierungen bleiben prüfbar, bis Sie sie anwenden. |
+| `settings.help` | Help | Hilfe |
+| `settings.tips.reset` / `.resetDone` | Show tips again / Tips will show again. | Tipps erneut zeigen / Tipps werden wieder gezeigt. |
+
+### 3.48 Recents thumbnails (M7; amends §3.11)
+
+**Purpose:** recognise a file at a glance. The row stays 56 h, padding 8; its leading slot is 32 × 40 (`--list-thumb-w` /
+`--list-thumb-h`, new; §3.43 uses them too), radius 4.
+
+| State | Treatment |
+|---|---|
+| image | first page, rendered by Rust at close and after Save into the app cache (64 × 80 px for DPR 2), keyed by the recents id; the UI fetches it by id (SHR1), never by path. White chip, `object-fit: contain` (landscape letterboxed on white), 1 px inset `--color-divider`, no shadow. The file's `/Rotate` applies, view rotation does not |
+| placeholder | no cache yet, loading or failed: `--color-tile` fill, `file-text` 16 in `--color-tile-icon`, centred |
+| protected | encrypted documents are never cached (a decrypted page must not land on disk): tile with `lock` 16 |
+| missing | tile with `file-x` 16 in `--color-warning-icon` (3.12 on the tile), meta `File not found` as §3.11 |
+
+The image fades in over the placeholder (base, MOTION §4.3); a cached image at mount shows without a fade; reduced motion: same
+(opacity). The thumbnail stays the §4.6 clone source. Remove deletes its cached image once the Undo window ends; Clear deletes all.
+`alt=""` (the row's name says it). Forced colors: chip `Canvas` + 1 px `CanvasText`. Hover, focus and keys: §3.11 unchanged.
+
+| Key | en | de |
+|---|---|---|
+| `recents.privacy` | Recent files and their previews are stored only on this device. | Zuletzt verwendete Dateien und ihre Vorschauen werden nur auf diesem Gerät gespeichert. |
+
+### 3.49 Updater (M7)
+
+**Purpose:** opt-in, signed updates; the only feature that uses the network (rule 4). Off by default.
+
+**Settings row** `settings.updates` (meta 600) over a segmented control `settings.updates.off` · `.on` (§3.13) and the meta hint
+`settings.updates.hint`. When On, 8 below: status meta (`role=status`: `update.upToDate`, `update.checking` + 12 spinner, or
+`update.checkFailed` in `--color-error-text`) | spacer | ghost sm `update.checkNow`. Switching On checks at once.
+
+**Check.** Only while On: once per 24 h, 10 s after startup. An automatic check that fails is silent (logged locally).
+
+**Notice.** Info banner (§3.12): `download` 16 tile, `update.available`, secondary sm `update.details` (opens the dialog), ghost sm
+`update.later`. Later hides it until the next launch. It ranks below every document banner. Never a dialog by itself.
+
+**Dialog** (§3.19 recipe, 400 w): `download` tile | `update.title`; meta `update.current`; release notes from the signed manifest as
+plain text nodes (≤ 2000 chars) in a §3.21 box (≤ 8 lines, scrolls). Footer: ghost `update.skip` (leading; stores the skipped
+version) · secondary `update.notNow` · primary `update.install` (initial focus).
+
+| State | Treatment (body keeps its height; the notes yield to the §3.41 bar) |
+|---|---|
+| downloading | determinate bar, meta `update.downloading`; secondary becomes `output.cancel` (deletes the partial file) |
+| verifying | indeterminate bar, `update.verifying` (minisign check in Rust) |
+| ready | tile crossfades to `check` (fast); `update.ready`; primary `update.restart`, secondary `update.restartLater`. Restart runs the quit flow (§3.27; Cancel stops it). Later: the banner reads `update.readyBanner` with secondary sm `update.restart` |
+| download failed | error line slot (16, reserved, `role=alert`): `circle-alert` 12 + `update.failedDownload`; primary becomes `update.retry` |
+| not verified | `update.failedVerify`; only secondary `update.close`; this version is not offered again this session |
+| install failed | next start, old version: error banner `update.failedInstall`, dismissible |
+
+**Keyboard / A11y.** Dialog keys as §3.19; banner is an F6 region. Bar `role=progressbar` + `aria-valuetext`; ready is announced
+politely. **Motion:** banner §3.12, dialog as About; reduced motion opacity only.
+
+| Key | en | de |
+|---|---|---|
+| `settings.updates` / `.off` / `.on` | Updates / Off / Check automatically | Updates / Aus / Automatisch prüfen |
+| `settings.updates.hint` | Contacts GitHub once a day. GitHub sees your IP address and app version; nothing else is sent. | Kontaktiert einmal täglich GitHub. GitHub sieht Ihre IP-Adresse und App-Version, sonst wird nichts gesendet. |
+| `update.checkNow` / `.checking` / `.upToDate` / `.checkFailed` | Check now / Checking… / {app} is up to date. / Couldn't reach GitHub. | Jetzt prüfen / Prüfe… / {app} ist aktuell. / GitHub nicht erreichbar. |
+| `update.available` / `.details` / `.later` | {app} {version} is available. / Details / Later | {app} {version} ist verfügbar. / Details / Später |
+| `update.title` / `.current` | Update to {version} / You have {current}. | Auf {version} aktualisieren / Installiert: {current}. |
+| `update.skip` / `.notNow` / `.install` | Skip this version / Not now / Download and install | Diese Version überspringen / Nicht jetzt / Laden und installieren |
+| `update.downloading` / `.verifying` | Downloading {done} of {total} / Checking signature… | Lade {done} von {total} / Prüfe Signatur… |
+| `update.ready` / `.restart` / `.restartLater` | Ready to install. / Restart to update / Later | Bereit zur Installation. / Neu starten und aktualisieren / Später |
+| `update.readyBanner` | Update ready. It installs when {app} restarts. | Update bereit. Es wird beim Neustart von {app} installiert. |
+| `update.failedDownload` / `.retry` | Download failed. Check your connection. / Try again | Download fehlgeschlagen. Verbindung prüfen. / Erneut versuchen |
+| `update.failedVerify` / `.close` | The download couldn't be verified and was deleted. Nothing changed. / Close | Der Download ließ sich nicht prüfen und wurde gelöscht. Nichts wurde geändert. / Schließen |
+| `update.failedInstall` | The update couldn't be installed. {app} is unchanged. | Das Update ließ sich nicht installieren. {app} ist unverändert. |
+
+### 3.50 Crash recovery (M7)
+
+**Purpose:** after an unexpected exit, offer the autosaved unsaved work per document. Never blocking: the app is usable at once, and
+documents from the launch open as usual.
+
+**Slot.** The banner row (§2), as a **recovery banner**: G1, radius 16, padding 8, not per tab. It outranks warning and info and
+yields only to an error (then returns). Height = header 32 + 8 + rows; at most 3 rows visible, then the list scrolls inside.
+
+**Anatomy.**
+- Header: `life-buoy` 16 in a 32 tile (radius 8) | `recover.title` `--text-md` 600 over meta `recover.body` | spacer | with ≥ 2
+  rows ghost sm `recover.discardAll` · secondary sm `recover.restoreAll` | sm `x` `recover.later`.
+- Rows 40, radius 8, padding 0 8, indented 40 (aligned with the text): name `--text-md` (middle-truncated) + meta `recover.meta` |
+  spacer | ghost sm `recover.discard` · secondary sm `recover.restore`.
+
+| State | Treatment |
+|---|---|
+| default | as above |
+| restoring | Restore shows a 16 spinner, row `aria-busy` |
+| restored | the document opens (or activates) edited (tab dot, "Edited"); history starts at the recovered state; "Edited" pulses (MOTION §4.7, `recover.restored`); the row leaves |
+| as copy | source missing or changed on disk: meta `recover.asCopy`; it opens untitled as `recover.copyName`, Save → Save As |
+| failed | `circle-alert` 12 + `recover.failed` (`--color-error-text`, `role=alert`); Discard stays |
+| discarded | the row leaves; toast `recover.discarded` + `recover.undo` (8 s); the record is deleted when the toast ends |
+
+`x` (Later) hides the banner for this session; unresolved records stay for the next launch (retention: ADR-053). The banner goes
+when its last row goes.
+
+**Keyboard.** Never takes focus on appearing; F6 region; DOM order = visual order; Esc does not dismiss (§3.12).
+**Accessibility.** `role="region"`, `aria-labelledby` the title; title + body announced once (polite); rows `role=group` named by
+the document. **Motion.** Banner row slow in, base out (MOTION §4.2); a leaving row fades (fast), then the row height changes in
+one step (only `grid-template-rows` animates). Reduced motion: RM fade, heights at once. Forced colors as §3.12.
+
+| Key | en | de |
+|---|---|---|
+| `recover.title` | {app} closed unexpectedly | {app} wurde unerwartet beendet |
+| `recover.body` | {n, plural, one {Unsaved changes in 1 document can be restored.} other {Unsaved changes in # documents can be restored.}} | {n, plural, one {Ungespeicherte Änderungen in 1 Dokument können wiederhergestellt werden.} other {Ungespeicherte Änderungen in # Dokumenten können wiederhergestellt werden.}} |
+| `recover.meta` | Last change {time} | Letzte Änderung {time} |
+| `recover.restore` / `.discard` / `.restoreAll` / `.discardAll` / `.later` | Restore / Discard / Restore all / Discard all / Decide later | Wiederherstellen / Verwerfen / Alle wiederherstellen / Alle verwerfen / Später entscheiden |
+| `recover.asCopy` / `.copyName` | The file changed or is missing; restores as a copy. / {name} (recovered) | Die Datei wurde geändert oder fehlt; wird als Kopie wiederhergestellt. / {name} (wiederhergestellt) |
+| `recover.failed` / `.restored` | Couldn't restore this document. / Restored: {name} | Dokument ließ sich nicht wiederherstellen. / Wiederhergestellt: {name} |
+| `recover.discarded` / `.undo` | Changes to {name} discarded / Undo | Änderungen an {name} verworfen / Rückgängig |
+
+### 3.51 Installer and disk-image artwork (M7, F5)
+
+**Rules.** Generated from `assets/brand/logo.svg` by a deterministic script; outputs committed under `src-tauri/icons/installer/`.
+**No text** in any bitmap: NSIS and Finder print the name in their own localized UI, so the art stays language-free and APP_NAME and
+the trademark keep one source. Light only (classic Win32 wizard pages are light). Colours from §1.1/§1.10 only, flattened (no alpha).
+
+| Asset | Size, format | Composition |
+|---|---|---|
+| NSIS header (`headerImage`) | 150 × 57, BMP 24-bit | `#FFFFFF` (the wizard's header strip); full-colour logo 40 × 40 at x 102, y 8; nothing else |
+| NSIS sidebar (`sidebarImage`, welcome and finish pages) | 164 × 314, BMP 24-bit | `--bg-gradient` light (135°, `#E1E2FF` → `#F4F5FF`) + field a scaled to an ellipse 240 × 120 at 8 % 0 % (`rgba(142,142,242,.32)`) + field c 160 × 160 at 0 % 100 % (`rgba(201,202,255,.40)`); logo 96 × 96 at x 34, y 72; ground shadow 80 × 6 centred at (82, 180), `--ground-shadow` light |
+| Installer icon | `.ico` | the app icon, unchanged |
+| DMG background | 660 × 400 + @2x 1320 × 800, PNG | gradient + field a (720 × 240 at 8 % 0 %) + field c, as the app window; Finder icon size 128; app at centre (180, 184), Applications alias at (480, 184); between them a Lucide-style `chevron-right` 16 × 32, 3 px round stroke, `#8E8EF2` (iris-300), on the icons' centre line; window 660 × 400, no toolbar |
+
+Rendered at exact pixel size (no scaling; NSIS stretches on high-DPI, accepted). Finder icon labels follow the system appearance:
+verify both appearances in the B-001 macOS check.
+
+### 3.52 Accessibility pass (M7)
+
+Checklist, run per screen (empty state, document, organize, crop, redact, each dialog) in both themes, glass and solid:
+
+| # | Check | Where |
+|---|---|---|
+| 1 | Focus order: toolbar → coach card or tip → tabs → banner (incl. recovery, update) → left panel → splitter → canvas → annotations → inspector → status bar; F6 restores each region's focus; dialogs take the initial focus their section names and return it to the trigger | §2.3, 3.14, 3.47, 3.49, 3.50, all dialogs |
+| 2 | Names: every IconButton `aria-label` = tooltip; segmented controls are named radiogroups; thumbnails "Page n of m"; progress `aria-valuetext`; banners `role` per §3.12 | §3.2, 3.9, 3.10, 3.11, 3.13, 3.28, 3.33, 3.41–3.45 |
+| 3 | Contrast per §4. Disabled toolbar icons (M6 review): `--opacity-disabled` goes; icons use `--color-icon-disabled` (≥ 3:1 on G1, §4), so the toolbar reads without a document; state also via `aria-disabled` and the tooltip reason | §3.3, 3.22, 3.36 |
+| 4 | Reduced motion: every MOTION §4 row and §3.46–3.50 follow RM fade; float off | all |
+| 5 | Forced colors: new surfaces `Canvas` + `CanvasText`, rings `Highlight`, thumbnail chips bordered | §3.47–3.50 |
+| 6 | Targets ≥ 24 (2.5.8): recents `x`, tip `x`, recovery buttons | §3.11, 3.47, 3.50 |
+| 7 | One polite live region (status bar); `alert` only for errors; no announcement faster than 1 s | §3.10, 3.42 |
+| 8 | A key path for every pointer action: reorder (Alt+↑/↓), place (Enter), crop rect, drop (Open), tour steps | §3.23, 3.28, 3.34, 3.37, 3.46 |
+| 9 | `<html lang>` follows the UI language; every key exists in en and de (`i18n` parity test) | i18n |
+| 10 | Text weight (M6 review): same weights in both themes; macOS uses `-webkit-font-smoothing: antialiased` in both; Windows unchanged | §1.5 |
+
+**Tokens (new, §3.46–§3.52):** `--list-thumb-w` 32, `--list-thumb-h` 40, `--color-icon-disabled` (ink-50 both themes; forced colors
+`GrayText`); removed `--opacity-disabled`. The tip reuses the coach card's width.
+
 ## 4. Contrast verification
 
 Worst points (ADR-020): `--surface` over the darkest field point (light `#C6C7FB` → glass `rgb(229,229,254)`; dark
@@ -1756,6 +1963,7 @@ Worst points (ADR-020): `--surface` over the darkest field point (light `#C6C7FB
 | tooltip text / keys | 16.73 / 6.82 | 13.62 / 5.55 |
 | white glyph on close hover | 5.66 | 5.66 |
 | disabled on solid (exempt) | 3.88 | 2.71 |
+| `--color-icon-disabled` on G1 worst point / fallback (§3.52) | 3.13 / 3.66 | 3.75 / 4.17 |
 
 Document layer: iris-500 on white page 5.37. **Fails, never use:** white on iris-400 3.51, `#D98A1F` text 2.76, ink-60
 on iris-200 3.93, iris-500 text on canvas 4.45, iris-300 text in light 2.88, success-icon on light glass 2.73,

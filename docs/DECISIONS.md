@@ -1579,3 +1579,183 @@ per group; every commit gets a finished result.
 
 **Consequences.** More runner time, no cost. Results arrive later during bursts; the milestone-end read (ADR-030) looks at the newest
 finished run.
+
+## ADR-053 — Polish and ship (M7): engine process, autosave, updater, budget, installers, CSP
+
+**Status:** accepted (2026-10-04). Amends ADR-002 §8–§9, ADR-004 §6, ADR-005 (CSP), ADR-028 (respawn), ADR-031 (release). SECURITY P6,
+T6, D5, S6. Signatures: ARCHITECTURE §5 "Ship (M7)" and §11.
+
+**Context.** Open M7 items: engine crash isolation, crash-safe autosave, signed opt-in updater, a measured performance budget, real
+installers, and `style-src 'unsafe-inline'`. A PDFium segfault or wedge (`/XStep`, self-calling Form XObject) takes the app down or
+leaks a thread (ADR-028, `MAX_RESPAWNS = 3`). Rules: no unsafe, permissive deps, offline except the updater, typed `Result`s.
+
+### 1. PDF engine in its own process
+
+**Options.** (a) Sidecar binary `src/bin/sheer-engine.rs` as Tauri `externalBin` (ADR-002 §9): a second binary per target triple
+(`-aarch64-apple-darwin` names, `lipo` for universal), a second signed and notarized Mach-O, version skew possible. (b) **The same
+executable with a mode flag**: one binary to sign, notarize and update, nothing new to bundle; the child never builds Tauri, so no webview
+starts. (c) Keep the thread: segfaults stay fatal.
+
+**Decision: (b).**
+1. **Entry.** `main.rs`: `if let Some(code) = sheer_lib::engine_child_main() { std::process::exit(code) }` before `sheer_lib::run()`.
+   Child mode needs both `argv[1] == "--sheer-engine"` and env `SHEER_ENGINE_PROTOCOL=1`; a file path from an association can never equal
+   the flag (Windows passes a full path). Single-instance is registered in `run()` only, so the child never forwards itself.
+2. **Spawn.** `std::process::Command::new(current_exe())`, stdin/stdout piped, stderr piped into the parent log (one line per entry,
+   ≤ 4 KiB); Windows `CommandExt::creation_flags(CREATE_NO_WINDOW)`. The child ends on stdin EOF, so it dies with the parent on both
+   OSes without job objects. Spawned eagerly at startup on a background thread (handshake ≤ 5 s) so the first open does not pay for it.
+3. **Wire** (`engine/wire.rs`): frame = `u32 LE len | u8 kind | u32 LE seq | u32 LE header_len | header | blob`. Header = postcard
+   (MIT OR Apache-2.0, serde, new dep) of `WireRequest`/`WireReply`; bulk bytes (frames, rasters, snapshot and source bytes, file reads)
+   travel raw in `blob`. No sockets, no named pipes of our own. Handshake: `Hello { protocol: 1, library: PathBuf, version }` →
+   `Ready { pdfium: bool }`.
+4. **The child is less trusted than the parent.** Every reply is hostile input: the parent checks `len` against the cap for the
+   pending request's kind *before* allocating (render ≤ `MAX_FRAME_BYTES`, raster ≤ export cap, header ≤ 16 MiB), checks `seq`, and
+   re-sanitizes sizes (`limits::sanitize_page_size`) and counts. A violation kills the child (`protocol_violation`, logged).
+5. **Files without paths** (`engine/remote_file.rs`, `engine/files.rs`). Handles cannot cross processes without unsafe, and reopening
+   by path would break "open once, judge the handle". The parent keeps the intake handle in `FileTable` (`HashMap<FileToken, File>`);
+   PDFium in the child reads through `RemoteFile: Read + Seek`, which sends `ReadAt { token, offset, len ≤ 1 MiB }` and keeps a 256 KiB
+   × 64 block cache per document. The parent's reader thread answers `ReadAt` directly (`FileExt::seek_read` / `read_at`), never via the
+   queue. `Release` drops the handle in the parent too, so `ReplaceFile` still works on Windows. The child opens no file except the
+   PDFium library (CI grep: no `std::fs` in `engine/{host,remote_file}.rs`).
+6. **Queue mapping.** `queue.rs` is unchanged and stays in the parent. The `sheer-pdfium` thread becomes `sheer-engine-pump`
+   (`engine/pump.rs`): it pops a `Request`, turns `Job` into `WireRequest` (reply channel and `Confirm` stay local; `Confirm` runs in the
+   parent on `Opened`, and a `false` sends `Close`), sends it, waits ≤ `run_deadline`, writes `SizeCache` from `Opened`/`Reopened`, and
+   answers the waiters. One job in flight, as today. `worker::serve` moves behind `engine/host.rs` (the child loop), unchanged in
+   substance. `set_viewport`, dedupe and cancellation still act on the parent queue. `Transport` is a trait with `ChildTransport`
+   (release) and `InProcessTransport` (the current thread worker: unit tests and `with_handler` doubles).
+7. **Restart and replay** (`engine/ledger.rs`). Death = stdout EOF, read error, exit, protocol violation, or a deadline overrun (the
+   parent kills the child: `Child::kill`; this replaces `Engine::recover`, `MAX_RESPAWNS` and the leaked threads). The in-flight job gets
+   `engine_crashed`; its document gets a strike. A new child is started and every open document is replayed at Control rank before
+   queued work: `Reopen` from its `FileTable` handle (password from the registry), then its ledger in order: `AppendBlank`,
+   `AppendPages(source, pages)`, `Truncate`, net rotations, net crop boxes, net hidden set; live snapshots reopen from the export job's
+   `Arc<[u8]>` (parent assigns `SnapshotId`). Re-read sizes must equal the old ones, else that document is lost. Two strikes =
+   quarantined: not replayed, `engine_crashed` until closed. Budget: 5 restarts per 10 min (`limits::ENGINE_RESTART_BUDGET`), then
+   `engine_unavailable` until app restart. The UI hears `AppEvent::EngineRestarted { lost: Vec<DocumentId> }` on the app channel.
+8. **Save without an engine.** ADR-004 step 6 (PDFium test open) becomes best-effort: lopdf re-parse is mandatory, the PDFium check is
+   skipped and logged when the engine is unavailable, so the user can always save.
+9. **Tests.** Unit tests keep `InProcessTransport` (no change to `shared_engine`). New `tests/engine_process.rs` runs the real child via
+   `env!("CARGO_BIN_EXE_sheer")`: open/render parity, kill mid-render → replay with rotations and hidden annotations intact, oversized
+   reply length → kill, strike → quarantine, restart budget. A `Crash` wire request exists only under `cfg(debug_assertions)` and env
+   `SHEER_ENGINE_TEST_HOOKS=1`. The two `#[ignore]`d wedge corpus cases are enabled; `fuzz_corpus.rs` runs through the child with a 15 s
+   per-file deadline.
+
+Sandboxing the child (macOS `sandbox_init`, Windows AppContainer) needs unsafe or new native deps: v1.1, recorded as P6 residual.
+
+### 2. Crash-safe autosave
+
+**Options.** (a) The ADR-004 §6 JSON of model state: `DocState` is not serializable today (history, import bookkeeping, form model,
+content objects), replay would have to be deterministic against lazy page imports, and imported sources live only in memory. (b)
+**Snapshot bytes** from the M6 seam (`pdfwrite::save::write_to_memory`): the document with its edits and nothing else (D5 read
+literally), recovered by the ordinary open path.
+
+**Decision: (b); amends ADR-004 §6.**
+- **What.** `storage/autosave.rs` writes `<n>.pdf` (snapshot, Full) plus `<n>.json` = `{ v: 1, original: { path, len, mtime }, displayName,
+  pageCount, savedAt, appVersion }`. No passwords, no history, no UI state. Original path is app-data-only, like recents.
+- **Where.** `$APPDATA/autosave/<session-uuid>/`, dir 0700, files 0600 (`storage::atomic`), Windows inherits the profile ACL. The
+  session holds `lock` via `File::try_lock` (std ≥ 1.89, safe) for its lifetime.
+- **Cadence.** Dirty documents only: 30 s after the last change, at most every 120 s while editing continues, and on window blur;
+  Background on the blocking pool, one at a time, never during a save. Skipped (status `offTooLarge`) if the snapshot exceeds 512 MiB;
+  total store ≤ 2 GiB (oldest session purged).
+- **Encrypted.** Never written: a snapshot is unencrypted and re-encrypting would put a key-derived copy on disk. Skipped for files
+  that are encrypted *and* for documents with a pending protection change (status `offEncrypted`, shown in the status bar). v1.1 may
+  add keep-encrypted via `pdfwrite::crypt`.
+- **Recovery trigger.** At startup `storage::autosave::scan` lists session dirs whose `lock` can be taken (dead sessions). The UI calls
+  `list_recoveries` once after `subscribe_app`; a non-empty answer shows the recovery banner-row variant (ADR-054 §5): name, folder name,
+  time; Recover / Discard (undoable 8 s: the UI calls `discard_recovery` after the window) / Decide later (records kept). Recover opens the snapshot through `intake::admit` as `DocKind::Recovered { original }`: Save
+  acts as Save As, defaulting to the original folder and name (like `DocKind::Welcome`), with a banner if the original changed or is gone.
+- **Cleanup.** Deleted on successful save, on close (saved or discarded), on Discard, and for the whole session on normal quit;
+  dead sessions older than 14 days are purged at startup.
+
+### 3. Signed opt-in updater
+
+- **Crate.** `tauri-plugin-updater` 2.x (MIT OR Apache-2.0), `default-features = false, features = ["native-tls", "system-proxy",
+  "zip"]`: SChannel / Security.framework instead of rustls with webpki-roots (CDLA-Permissive), `zip` for the macOS tar.gz. Verified with
+  `minisign-verify` (MIT).
+- **Keys.** Public key `src-tauri/updater/minisign.pub`, embedded by `include_str!`. While it is the placeholder, the updater reports
+  `unsupported_feature` and the setting is hidden. Private key and password: never in repo or CI (T6) → BLOCKERS. CI builds artifacts with
+  `createUpdaterArtifacts: true` unsigned; the maintainer runs `scripts/sign-update.sh` locally (`tauri signer sign`) and uploads `.sig`
+  files and `latest.json`.
+- **Endpoint.** Exactly `https://github.com/renderdrop/sheer/releases/latest/download/latest.json`; no URL templates, so the request
+  carries no version or identifier. HTTPS only (insecure transport never enabled; pinned by a test).
+- **Opt-in.** Setting `updates: "off" | "on"` defaults to `"off"` (plus `skippedVersion`, ADR-054 §4); when on, one check per 24 h after
+  startup, failures silent. "Check for updates" in About is an explicit per-click consent. The package is downloaded and verified first
+  (a bad signature deletes it); installing happens only after the normal quit flow has resolved every dirty document, then Windows runs
+  NSIS in `passive` mode and macOS swaps the bundle; restart via `AppHandle::restart` (no process plugin).
+- **The only network module.** `src-tauri/src/update/` is the only code naming `tauri_plugin_updater`; it registers the plugin
+  (`update::plugin()`) and owns all requests. `check.sh` keeps `NETWORK_ALLOWED_PARENTS=(tauri-plugin-updater)` and adds
+  `guard_updater_scope` (grep: `tauri_plugin_updater` only under `src/update/`). No capability grants `updater:*`
+  (`security_baseline.rs` pin), so the webview cannot call the plugin. Requests are Rust-side: CSP `connect-src` is unchanged.
+
+### 4. Performance budget
+
+- **Backend bench** `src-tauri/tests/perf_open.rs` (`#[ignore]`, `npm run bench`, Windows CI job, non-blocking for one milestone then
+  blocking): generates 500-page text-heavy and image-heavy PDFs with lopdf into a temp dir, child engine pre-spawned; median of 5. Pass:
+  admit → page sizes ≤ 400 ms; admit → first Visible frame of page 1 at 100 % ≤ 1 000 ms; `get_page_sizes` ≤ 2 ms.
+- **UI** `node scripts/ui/cdp.mjs fps <idle|scroll|zoom|panel|thumbs>` (WebView2 CDP, ADR-021) injects a rAF recorder, drives the
+  scenario 10 s on the 500-page fixture. Pass: mean ≥ 58 fps, p95 frame ≤ 20 ms, ≤ 1 frame > 34 ms per scenario (F3; thumbs at 120
+  px/frame). macOS is checked manually (Safari timeline); no CDP.
+- **Hot spots to measure first.** Box/rotation read per page at open (may load every page: make lazy if > 100 ms); pipe hop for frames
+  (≈ 1–3 ms each); main-thread PNG decode (use `img.decode()` before swap); `layout.ts` recomputing all rows per scroll (prefix sums,
+  binary search); thumbnail mounts during fling (placeholder until settled).
+- **Scroll compression.** Above 16 M CSS px of document height the spacer is capped and `layout.ts` maps scrollTop ↔ document offset by a
+  ratio (`toVirtual`/`fromVirtual`), with anchors in document space. **Cache budget:** 256 MB default; `navigator.deviceMemory` ≤ 4 →
+  128 MB, ≥ 16 → 512 MB; trimmed to 50 % when the window is hidden.
+
+### 5. Installers
+
+- **Windows: NSIS only**, `installMode: "currentUser"` (no admin), `languages: ["English", "German"]`, `headerImage`
+  (150×57) and `sidebarImage` (164×314) BMPs in Iris with the Sheer mark, sources `src-tauri/installer/*.svg`. WebView2:
+  `downloadBootstrapper`, silent (Windows 11 ships the runtime; offline Windows 10 needs the Evergreen runtime: documented).
+- **.pdf without stealing.** `tauri.windows.conf.json` sets `bundle.fileAssociations: []` (Tauri's NSIS macro writes the `.pdf`
+  default). `src-tauri/installer/hooks.nsh` (`installerHooks`): POSTINSTALL writes HKCU `Software\Classes\Sheer.Document.pdf` (open
+  command `"$INSTDIR\sheer.exe" "%1"`, icon), `Software\Classes\.pdf\OpenWithProgids\Sheer.Document.pdf`, `Capabilities\FileAssociations`
+  + `RegisteredApplications`, then `SHChangeNotify`; PREUNINSTALL removes exactly these. Default handler only on opt-in: Settings →
+  "Make default PDF app" opens `ms-settings:defaultapps?registeredAppUser=Sheer` (constant URL, Windows only).
+- **macOS: DMG**, `rank: Alternate` kept, **universal** binary (`universal-apple-darwin`; `fetch-pdfium.sh` fetches both slices): one
+  artifact, one updater entry for `darwin-aarch64` and `darwin-x86_64`, at the cost of ≈ +15 MB.
+
+### 6. CSP hardening
+
+Inline *style attributes in markup* are what `'unsafe-inline'` permits; React and Motion set styles through CSSOM (`element.style`,
+WAAPI), which CSP does not govern; Tailwind 4 and Vite emit CSS files in release; Tauri adds hashes for its own injected code.
+**Decision:** release CSP becomes `style-src 'self'`; devCsp keeps `'unsafe-inline'` (Vite HMR injects `<style>`). Gate:
+`scripts/ui/cdp.mjs csp` walks every surface of the release-CSP build and fails on any `securitypolicyviolation`; the offenders to fix are
+markup `style="…"` (SVG assets, `dangerouslySetInnerHTML`) and runtime `<style>` injection. `security_baseline.rs` pins the absence of
+`'unsafe-inline'` in the release CSP. Fallback only if a dependency cannot be fixed: a hash source, never `'unsafe-inline'`.
+
+### Wave plan
+
+- **W0 seams (one package).** `engine/wire.rs` (types, codec, caps; serde derives on payload types), `Transport` trait +
+  `InProcessTransport` behind `Engine` (no behaviour change), `engine/files.rs`, `engine_child_main` stub returning `None`, `limits` consts,
+  `DocKind::Recovered`, settings keys `updates`, `skippedVersion`, lib.rs hook calls (`autosave::start`, `update::plugin`) as internal no-ops.
+- **W1 backend, disjoint.** B1 engine process: `engine/{transport,pump,host,remote_file,ledger}.rs`, `engine/mod.rs`, `main.rs`,
+  `events.rs`, `tests/engine_process.rs`, `tests/fuzz_corpus.rs`. B2 autosave: `storage/autosave.rs`, `commands/recovery.rs`,
+  `documents/` (Recovered), save/close hooks in `commands/save.rs`. B3 updater: `update/`, `commands/update.rs`, `Cargo.toml`,
+  `updater/minisign.pub`, `scripts/{check,sign-update}.sh`, `docs/BLOCKERS.md`. B4 packaging, CSP, bench: `tauri.conf.json`,
+  `tauri.windows.conf.json`, `installer/`, `.github/workflows/release.yml`, `scripts/fetch-pdfium.sh`, `tests/{security_baseline,perf_open}.rs`.
+- **W2 frontend.** F1 recovery banner + engine-restart toast + Recovered Save As (`src/features/recovery/`, `api/recovery.ts`,
+  `appEvents.ts`). F2 updater UI (`src/features/update/`, `api/update.ts`, Settings, About). F3 performance (`viewer/layout.ts`,
+  `engine/renderCache.ts`, thumbnails, `scripts/ui/cdp.mjs fps`). F4 CSP sweep + default-app button. Accessibility, i18n, tips,
+  onboarding and recents thumbnails follow as W3.
+
+**Consequences.** A crash or wedge costs one restart and a replay instead of the app. Frames pay one pipe copy. Autosave writes up to
+512 MiB per dirty document per cycle; encrypted documents have no crash protection in v1.0. Updates need a manual local signing step
+per release. The sidecar of ADR-002 §9 is not built.
+
+## ADR-054 — M7 UI decisions (DESIGN §3.46–§3.52)
+
+**Status:** accepted (2026-10-04). Engine, autosave format, retention and updater transport defer to ADR-053 (M7 architecture).
+
+**Decision.** (1) Tour: all seven steps ship; Sign completes by placing or dragging into the frame; Reorder completes on page order from
+any input (thumbnails or Organize); the reorder string takes `{from}`/`{to}` from `steps.json` (the old "page 4 above page 5" did not
+match the 5-page edition). Step 5 says "Note" (the tool's name since §3.22). (2) Tool tips reuse the coach-card anatomy in a compact
+form, one per tool, marked seen *before* showing, no timeout, suppressed during the tour; Settings gains a Help row (restart tour,
+show tips again). (3) Recents thumbnails are rendered by Rust at close/save into the app cache and fetched by id; encrypted documents
+are never cached; the privacy footer names previews. (4) Updater: Off by default, segmented Off/On in Settings with a hint that names
+GitHub and what it sees; automatic check failures are silent; "update available" is an info banner, never a dialog; install only via
+restart through the normal quit flow; a failed signature deletes the download and offers no retry. (5) Crash recovery is a banner-row
+variant, not a modal sheet, so nothing blocks; it ranks below errors and above warnings; discard is undoable for 8 s; "Decide later"
+keeps the records. (6) Installer and DMG artwork carry no text (language-free, single trademark source), light only, generated from
+`logo.svg`. (7) Disabled toolbar icons drop the 50 % opacity for a new `--color-icon-disabled` (ink-50 both themes, ≥ 3:1 on G1).
+
+**Consequences.** New tokens `--list-thumb-w/-h`, `--color-icon-disabled`; `--opacity-disabled` removed. Settings gains
+`tipsSeen`, `updates`, `skippedVersion`. Finder label legibility on the DMG is verified with B-001.

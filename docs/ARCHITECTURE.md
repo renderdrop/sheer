@@ -12,7 +12,10 @@ menu item or shortcut.
 |---|---|---|
 | Tauri main | event loop, windows, menu, drag-drop/open events | PDF work, blocking IO |
 | tokio tasks | `async` commands: validate → registry → engine | PDFium calls |
-| `sheer-pdfium` | `Pdfium`, open `PdfDocument`s, `ReplaceFile` | lopdf |
+| `sheer-pdfium` | until M7 B1: `Pdfium`, open `PdfDocument`s, `ReplaceFile`; afterwards only in `InProcessTransport` (unit tests) | lopdf |
+| `sheer-engine-pump` (M7) | the parent side of the engine process: queue → wire → child, deadlines, restart + replay (§11) | PDFium, lopdf |
+| `sheer-engine-reader` (M7) | reads child frames: answers `ReadAt` from `FileTable`, hands replies to the pump | PDFium |
+| engine child process (M7) | `sheer --sheer-engine`: `Pdfium`, `PdfDocument`s, one job at a time (§11) | files (except the PDFium library), Tauri, network |
 | `sheer-watchdog` | job deadlines | — |
 | blocking pool | lopdf save, backup, recents, autosave, page jobs (extract, split, merge, compress; ≤ 2) | PDFium |
 
@@ -617,6 +620,51 @@ and treats a wrong shape as `internal`. UI (ADR-050) in `features/convert/` and 
   (remove keeps links and widgets, strip leaves no `/Info` or `/Metadata`, encrypted copy reopens with its password, source untouched),
   `tests/print_set.rs` (caps, release on close, frames decode).
 
+### Ship (M7) (ADR-053; `engine/{wire,transport,pump,host,remote_file,files,ledger}.rs`, `storage/autosave.rs`, `update/`, `commands/{recovery,update,app}.rs`)
+
+```rust
+// commands/recovery.rs: every answer names records by a session-scoped id, never by path
+async fn list_recoveries(state) -> Result<Vec<RecoveryEntry>, UiError>;
+async fn restore_recovery(state, id: RecoveryId) -> Result<OpenOutcome, UiError>;  // opens as DocKind::Recovered
+async fn discard_recovery(state, id: RecoveryId) -> Result<(), UiError>;
+async fn discard_all_recoveries(state) -> Result<u32, UiError>;                    // how many were removed
+
+// commands/update.rs: the only commands that reach the network, and only through update/
+async fn check_for_update(app, state) -> Result<Option<UpdateInfo>, UiError>;      // unsupported_feature while the key is the placeholder
+async fn download_update(app, state, on_event: Channel<UpdateEvent>) -> Result<(), UiError>; // download + verify, keeps the package in memory
+async fn install_update_on_quit(state) -> Result<(), UiError>;                     // marks it; the quit flow installs after dirty docs resolve
+async fn skip_update_version(state, version: String) -> Result<(), UiError>;       // ≤ 32 chars, semver checked
+
+// commands/app.rs
+async fn open_default_apps_settings(app) -> Result<(), UiError>;                   // Windows: ms-settings deep link; macOS: unsupported_feature
+```
+
+```ts
+type RecoveryId = number;
+interface RecoveryEntry { id: RecoveryId; displayName: string; folder: string | null; savedAt: string /* ISO 8601 */;
+  pageCount: number; original: 'unchanged' | 'changed' | 'missing'; }
+interface UpdateInfo { version: string; date: string | null; notes: string /* plain text, ≤ 4 KiB, control/bidi chars stripped */ }
+type UpdateEvent =
+  | { kind: 'progress'; downloaded: number; total: number | null }
+  | { kind: 'verified' }                       // ready; install happens on quit
+  | { kind: 'failed'; code: ErrorCode };       // a bad signature deletes the download (ADR-054 §4)
+type AutosaveStatus = 'on' | 'offEncrypted' | 'offTooLarge' | 'clean';   // DocumentInfo.autosave
+// AppEvent gains: { kind: 'engineRestarted'; lost: DocId[] } and { kind: 'updateAvailable'; info: UpdateInfo } (automatic check only)
+```
+
+- *Settings.* `updates: 'off' | 'on'` (default `'off'`), `skippedVersion: string | null`, `lastUpdateCheck` (Rust-only, not sent).
+- *Limits* (`limits.rs`): `ENGINE_HANDSHAKE_TIMEOUT` 5 s; `ENGINE_RESTART_BUDGET` 5 per 10 min; `ENGINE_STRIKES` 2; `WIRE_HEADER_MAX`
+  16 MiB; `READ_AT_MAX` 1 MiB; remote block cache 64 × 256 KiB per document; `AUTOSAVE_DEBOUNCE` 30 s, `AUTOSAVE_MAX_INTERVAL` 120 s,
+  `AUTOSAVE_DOC_MAX` 512 MiB, `AUTOSAVE_STORE_MAX` 2 GiB, `AUTOSAVE_RETENTION` 14 days; `UPDATE_CHECK_INTERVAL` 24 h; update package
+  ≤ 256 MiB, notes ≤ 4 KiB.
+- *Errors.* New `what`: `engine` (`engine_crashed` after quarantine), `autosave` (`io_*` while writing: logged, never a banner), `recovery`
+  (`not_found`), `update` (`unsupported_feature` placeholder key, `damaged_file` bad signature, `internal` for any network or
+  HTTP failure, details logged only), `updateVersion` (`invalid_argument`). Each with `error.<code>.<what>` in en and de.
+- *Tests.* `tests/engine_process.rs`, `tests/autosave.rs` (no file for encrypted or pending-protection docs; 0600; deleted on save and
+  close; dead-session scan via `try_lock`; Recovered saves as Save As), `tests/updater_scope.rs` (endpoint is the one HTTPS constant,
+  no `updater:` capability, plugin named only in `update/`), `tests/perf_open.rs` (`#[ignore]`), `security_baseline.rs` (release CSP
+  without `'unsafe-inline'`, NSIS hooks never write the `.pdf` default value).
+
 ## 6. Pushes (Rust → UI, never with paths)
 
 The webview has no event permission (SECURITY T3): it cannot `listen` to or `emit` events. A push reaches it as a message on a `tauri::ipc::Channel` that the
@@ -707,3 +755,98 @@ The spike layout (`lib.rs`, `main.rs`, `error.rs`, `engine/`, `commands/`, `docu
 | returns `String` errors | switch to `AppError` → `UiError` |
 | has sync commands | make them `async` |
 | addresses pages by index | address them by `PageId` (stable ids, mapped to engine indices: ADR-036) |
+
+## 11. Engine process, autosave, updater, packaging (M7, ADR-053)
+
+### 11.1 Engine process
+
+```
+main.rs                  if let Some(code) = sheer_lib::engine_child_main() { std::process::exit(code) }  // before run()
+engine/wire.rs           WireRequest / WireReply (serde, postcard header) · Frame codec · per-kind blob caps · Hello / Ready
+engine/transport.rs      trait Transport · ChildTransport (spawn, handshake, kill, stderr → log) · InProcessTransport (tests)
+engine/pump.rs           thread sheer-engine-pump: Queue → Transport, deadlines, SizeCache writes, Confirm, restart + replay
+engine/files.rs          FileTable: FileToken → File (the intake handle; parent only)
+engine/remote_file.rs    RemoteFile: Read + Seek over ReadAt, 64 × 256 KiB block cache (child only)
+engine/ledger.rs         per document: the PDFium-copy mutations to replay; strikes; quarantine
+engine/host.rs           child loop: read frame → worker::serve → write frame; exits on stdin EOF
+engine/worker.rs         unchanged serving code, now called by host.rs and InProcessTransport
+```
+
+```rust
+pub fn engine_child_main() -> Option<i32>;   // Some only for argv[1] == "--sheer-engine" && env SHEER_ENGINE_PROTOCOL == "1"
+
+pub(crate) trait Transport: Send {
+    fn call(&mut self, request: WireRequest, blob: Blob, deadline: Instant) -> Result<(WireReply, Blob), TransportError>;
+    fn kill(&mut self);
+}
+pub(crate) enum TransportError { Timeout, Died, Protocol(&'static str) }   // all three end in a restart
+pub(crate) enum Blob { None, Shared(Arc<[u8]>), Owned(Vec<u8>) }
+
+#[derive(Serialize, Deserialize)]
+pub(crate) enum WireRequest {
+    Open { id: DocumentId, file: FileToken, password: Option<WireSecret> }, // WireSecret: zeroized on drop, redacting Debug
+    Reopen { id: DocumentId, source: WireSource },                           // File(FileToken) | FileWithPassword(..) | Bytes (blob)
+    Render { key: RenderKey },
+    Outline { id: DocumentId }, TextLayer { id: DocumentId, page_index: u32 }, PageLinks { id: DocumentId, page_index: u32 },
+    ImportAnnotations { id: DocumentId, page_index: u32 },
+    SetAnnotationsHidden { id: DocumentId, hide: Vec<(u32, u32)>, show: Vec<(u32, u32)> },
+    SearchPage { id: DocumentId, page_index: u32, spec: SearchSpec, limit: u32 },
+    SetPageRotations { id: DocumentId, items: Vec<(u32, u16)> }, SetCropBox { id: DocumentId, engine_index: u32, crop: [f32; 4] },
+    RenderForRedaction { id: DocumentId, engine_index: u32, dpi: f32, burn: Vec<Rect> },
+    OpenSnapshot { id: SnapshotId /* parent-assigned */ },                   // bytes in blob
+    CloseSnapshot { id: SnapshotId },
+    RenderExport { doc: EngineDocRef, engine_index: u32, dpi: f32, annotations: bool, rotate_quarter: u8 },
+    AppendBlankPage { id: DocumentId, size: [f32; 2] }, TruncatePages { id: DocumentId, keep: u32, total: u32 },
+    AppendPages { id: DocumentId, pages: Vec<u32> },                         // source bytes in blob
+    Release { id: DocumentId, snapshot: bool }, Close { id: DocumentId },
+    #[cfg(debug_assertions)] Crash,                                           // honoured only with SHEER_ENGINE_TEST_HOOKS=1
+}
+// Child → parent, besides replies: ReadAt { token: FileToken, offset: u64, len: u32 } (answered with ReadData in the blob).
+// Opened / Reopened replies carry pages, sizes, rotations, boxes and flags; the pump writes them into SizeCache.
+```
+
+- **Flow.** `Engine::call` is unchanged for callers (same `Rank`, timeouts, `Refused`). The pump pops a `Request`, keeps its reply
+  channel, sends the wire form, and waits until `run_deadline`. `Confirm` runs in the parent on `Opened`; `false` → `Close`.
+- **Restart.** On `TransportError`: kill, answer the in-flight job `engine_crashed`, strike its document, start a child, replay every
+  open, non-quarantined document from `ledger` at Control rank (Reopen from `FileTable`, appended pages, truncations, net rotations, net
+  crops, net hidden set, live snapshots), compare sizes, then resume the queue. Lost documents → `AppEvent::EngineRestarted { lost }`.
+  The UI bumps the render generation (frames re-requested) and shows a banner "Reopen" for each lost document.
+- **Budget.** 5 restarts per 10 min, then `engine_unavailable` until app restart (save still works: lopdf only, ADR-053 §1.8).
+- **Guards.** CI grep: no `std::fs`/`File::open` in `engine/{host,remote_file}.rs`; `pdfium_render` still only in `engine/`.
+
+### 11.2 Autosave and recovery (`storage/autosave.rs`)
+
+```rust
+pub struct Autosave { dir: PathBuf /* $APPDATA/autosave/<session-uuid> */, lock: File, pending: Mutex<HashMap<DocumentId, Instant>> }
+impl Autosave {
+    pub fn start(app_data: &Path) -> Result<Self, AppError>;                 // creates 0700 dir, takes `lock` with File::try_lock
+    pub fn note_change(&self, id: DocumentId);                               // called from apply/undo/redo ChangeSets
+    pub fn status(&self, doc: &DocumentEntry) -> AutosaveStatus;
+    pub fn write(&self, state: &AppState, id: DocumentId) -> Result<(), AppError>; // snapshot::current → write_atomic <n>.pdf + <n>.json
+    pub fn forget(&self, id: DocumentId);                                    // save success, close
+    pub fn scan(app_data: &Path) -> Result<Vec<Recovery>, AppError>;         // dead sessions only; purges > 14 days and > 2 GiB
+}
+```
+
+A timer task (tokio interval 5 s) picks documents whose debounce or max interval elapsed and runs `write` on the blocking pool, one at a
+time, skipping during a save. Window blur triggers the same check. Normal quit removes the session dir.
+
+### 11.3 Updater (`update/`)
+
+```
+update/mod.rs        plugin() -> TauriPlugin (pubkey from include_str!("../../updater/minisign.pub")); ENDPOINT const; check(); download()
+update/state.rs      UpdateState { pending: Mutex<Option<Update + bytes>> }; install_on_quit flag read by the quit flow in sources.rs
+```
+
+`Cargo.toml`: `tauri-plugin-updater = { version = "2", default-features = false, features = ["native-tls", "system-proxy", "zip"] }`.
+`tauri.conf.json`: `bundle.createUpdaterArtifacts: true`, `plugins.updater.windows.installMode: "passive"`; no capability names `updater:*`.
+
+### 11.4 Packaging
+
+- `tauri.conf.json` `bundle.windows.nsis`: `installMode: "currentUser"`, `languages: ["English", "German"]`, `headerImage:
+  "installer/nsis-header.bmp"`, `sidebarImage: "installer/nsis-sidebar.bmp"`, `installerIcon: "icons/icon.ico"`, `installerHooks:
+  "installer/hooks.nsh"`; `bundle.windows.webviewInstallMode: { type: "downloadBootstrapper", silent: true }`.
+- `tauri.windows.conf.json`: `bundle.fileAssociations: []` (the hooks register `OpenWithProgids` instead).
+- macOS: `--target universal-apple-darwin`, DMG; `fetch-pdfium.sh --universal` fetches `mac-x64` and `mac-arm64`; `library_path`
+  picks the slice's directory at compile time (unchanged).
+- Release CSP: `style-src 'self'`; devCsp unchanged.
