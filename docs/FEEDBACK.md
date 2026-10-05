@@ -248,3 +248,20 @@ Owner: CI on `main` red since run #61, five runs, also on docs commits. Stop v1.
 - [x] `paths-ignore` works: every run in question came from a push that also carried code; a docs-only push (893ce34) started no run (ADR-120 context).
 - [x] Rule + ADR-120: `scripts/ci-status.sh` at every loop start, red = fix first, CI green in every package's DoD (ORCHESTRATOR_PROMPT §2 rule 12, §8.4 step 0/7, §9; CLAUDE.md rule 12).
 - [x] main green on both platforms (run #67, 7380b68: Windows and macOS success)
+
+## F17 — UI quality after the owner test (2026-10-05, patch v1.4.2)
+
+Owner test of v1.4.1. Acceptance only in the installed build (not the dev window), at 960×640 and 1280×800. Release v1.4.2 with a report.
+
+- [ ] F17.0a Signing lock choice is remembered and shown visibly on every signing (reverses ADR-123 "never remembered").
+- [x] F17.0b glib Dependabot alert dismissed as "not used" (2026-10-05, alert #1; Linux-only GTK chain).
+- [ ] F17.1 Deleting a highlight with Del breaks the comment cards (frame offset, leftovers). Fix; tests for delete by key, context menu and card.
+- [ ] F17.2 In Lesen the active tool is not Solar-filled like in the other modes. Unify.
+- [ ] F17.3 Mini bar: stroke width "0,5 pt" wraps. Segmented control with fixed width, tabular figures, never wraps.
+- [ ] F17.4 Custom colour: hex field and "Übernehmen" overlap. New two-row popover: palette on top, hex field full width below with a confirm check inside the field; min width 240 px.
+- [ ] F17.5 Shape recognition while drawing is unreliable. Rename to "Formen automatisch begradigen"; on release test the stroke against circle, ellipse, rectangle, line, arrow (tolerance 12 %), morph in 150 ms on a hit, undo reverts; switch in the mini bar, default on. Test with 20 sample strokes.
+- [ ] F17.6 Tool row: no "…" on tool labels (menus only). All labels fit fully at 960 px; otherwise shorten labels or switch to icons with tooltips from a threshold — never truncate.
+- [ ] F17.7 Crop popover scrolls and cuts off buttons. Global rule for all popovers and dialogs: size to content; if it does not fit the viewport it becomes a dialog or is repositioned; internal scroll only for lists, never for forms and buttons. Crop itself more compact: four fields in one row, page choice as a segmented control.
+- [ ] F17.8 Tips, notices and coach marks cover input fields. One shared positioning engine (collision detection, flip, shift) for all tooltips, tips, coach marks and popovers; notices never over inputs or buttons, only one visible at a time. Audit every existing notice and document it as a screenshot series.
+- [ ] F17.9 Thumbnails: headings and bold text become black blocks. Render thumbnails at 2–3× target resolution and downscale with a high-quality filter (Lanczos or area averaging), text antialiasing on; before/after screenshot with a bold heading.
+- [ ] F17.10 New DoD gate: every popover and dialog is checked automatically at 960×640 for overflow, cut-off buttons and overlap (DOM check); violations are blockers.

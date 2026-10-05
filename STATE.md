@@ -1,7 +1,7 @@
 # STATE
 phase: v1.4.1 patch "Politur v1.2–v1.4 + CI runtime" released (tag v1.4.1)
 version: 1.4.1 (tag v1.4.1)
-current_item: SESSION TOPIC v1.4.1 CLOSED (ADR-122) — report docs/reports/2026-10-05-v1.4.1-politur-ci.md, STOP set. Next topic from the owner (suggested: v1.5 "Edit text" spec)
+current_item: SESSION TOPIC F17 "UI quality after owner test" → v1.4.2 (ADR-124). Wave 1: D spec §3.9, F17.9 thumbnails, F17.1 delete cards, F17.5 shape logic, F17.10 DOM gate. Wave 2 after spec: positioning engine + surface rule (F17.7/8), mini bar + colour + crop + shape switch (F17.3/4/5/7), tool row + Lesen + lock memory (F17.0a/2/6). Then gate, notice audit series, installed-build acceptance 960×640 + 1280×800, v1.4.2
 last_completed: v1.4.1 Politur + CI runtime (ADR-123)
 loop_count_this_session: 0
 open_blockers: 2 human-only (B-002, B-005)

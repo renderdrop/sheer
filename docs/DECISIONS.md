@@ -2360,3 +2360,21 @@ signature data, and the encrypted library has no settings slot; adding one would
 is closed as working as specified. (c) The early recent preview (S5) renders page 1 of a newly opened user document; T2 routes it through
 one bounded worker. (d) Not reproducible from code (S3/S6): page 2 flush at 960 px and the inspector refit — they are checked in the
 installed build at acceptance; a reproduced defect is fixed there, otherwise the items are closed.
+
+## ADR-124 — F17 "UI quality after the owner test" (patch v1.4.2)
+
+**Status:** accepted (2026-10-05). Source: owner message opening this session; items in docs/FEEDBACK.md F17.
+
+**Decisions.** (1) The signing lock choice is remembered (last choice, per device, settings store) and shown visibly on every signing:
+the sign sheet always shows the current lock; for an approval signature it shows the document's existing lock read-only. This replaces
+ADR-123 "never remembered". (2) One positioning engine (`useFloatingPosition` grown into a shared module) places every tooltip, tip, coach
+mark and popover: collision detection against the viewport and against "protected" elements (inputs, buttons, the active tool), flip,
+shift; a notice never covers an input or a button, and a notice queue shows at most one at a time. (3) Global surface rule: popovers and
+dialogs size to their content; if a popover does not fit the viewport it is repositioned, else rendered as a dialog; only lists scroll
+internally, never forms or button rows. (4) Thumbnails render at 2–3× the target size and are downscaled with an area-averaging (box)
+filter in Rust (no new dependency unless the `image` crate is already in the lock), text antialiasing on. (5) Shape straightening is a
+pure TS module (`features/draw` or annotations ink) classifying a finished stroke as circle, ellipse, rectangle, line or arrow with a 12 %
+tolerance; a hit morphs in 150 ms and is one undo step. (6) New DoD gate (ORCHESTRATOR_PROMPT §8.6, docs/UI_REVIEW.md): a CDP script opens
+every registered popover and dialog at 960×640 in the dev window and fails on overflow, cut-off buttons, internal scroll of non-lists or
+overlap; violations are blockers. A dev-only surface registry (stripped from release builds) lets the script open each surface.
+(7) Acceptance for this topic runs only in the installed release build (NSIS, Windows) at 960×640 and 1280×800.
