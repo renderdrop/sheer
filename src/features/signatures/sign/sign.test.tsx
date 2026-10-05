@@ -143,7 +143,7 @@ describe('the signing flow (DESIGN 3.8 S3)', () => {
     });
     const button = await screen.findByRole('button', { name: 'Sign and save as…' });
     expect((button as HTMLButtonElement).disabled).toBe(true);
-    expect(screen.getByText(/2029-01-01/)).not.toBeNull();
+    expect(screen.getByText(/Jan 1, 2029/)).not.toBeNull(); // locale date, not ISO
     expect(signDocument).not.toHaveBeenCalled();
   });
 

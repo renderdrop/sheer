@@ -208,6 +208,8 @@
      (600 is reserved for state cues). */
   --font-sans: "Inter", "Helvetica Neue", Helvetica, Arial, sans-serif;
   --font-display: "Inter", "Helvetica Neue", Helvetica, Arial, sans-serif;
+  --font-mono:
+    ui-monospace, "SF Mono", "Cascadia Mono", Menlo, Consolas, "Liberation Mono", monospace; /* fingerprints (DESIGN 3.8 L4) */
   --default-font-family: var(--font-sans);
   --font-weight-normal: 400;
   --font-weight-medium: 500;

@@ -4,13 +4,14 @@ import { useEffect, useId, useMemo, useState } from 'react';
 
 import { SEAL_LOCATION_MAX, SEAL_REASON_MAX, type SignLock } from '../../../api/signing';
 import { announce, Button, Field, Icon, Radio } from '../../../components';
-import { useT } from '../../../i18n';
+import { useLocale, useT } from '../../../i18n';
 import type { PlainKey } from '../../../i18n/catalog';
 import { errorText } from '../../../i18n/errors';
 import { isDirty, useAnnotations } from '../../../stores/annotations';
 import { useDocuments } from '../../../stores/documents';
 import { useUi } from '../../../stores/ui';
 import { Modal, ModalHeader } from '../../jobs/Modal';
+import { formatDay } from '../certs/model';
 import { canSign, useIdentities } from './identities';
 import { signWithCertificate } from './run';
 import { SealPreview, sealDate } from './SealPreview';
@@ -66,6 +67,7 @@ function LockChoice({
 /** The confirmation sheet of the certificate signing flow (DESIGN 3.8 S3 steps 2 to 4). */
 function SignSheet() {
   const t = useT();
+  const locale = useLocale();
   const id = useId();
   const box = useCertSign((state) => state.box);
   const certId = useCertSign((state) => state.identityId);
@@ -137,10 +139,10 @@ function SignSheet() {
             ))}
           </select>
           {identity !== undefined && (
-            <span className={`t-caption ${expired ? 'text-error-text' : 'text-text-muted'}`}>
+            <span className={`t-caption mt-2 ${expired ? 'text-error-text' : 'text-text-muted'}`}>
               {expired
-                ? t('cert.expired', { date: identity.notAfter.slice(0, 10) })
-                : t('cert.validUntil', { date: identity.notAfter.slice(0, 10) })}
+                ? t('cert.expired', { date: formatDay(locale, identity.notAfter) })
+                : t('cert.validUntil', { date: formatDay(locale, identity.notAfter) })}
             </span>
           )}
         </label>
@@ -181,7 +183,7 @@ function SignSheet() {
           <p className="t-caption m-0 text-text-muted">{t('sign.cert.notQualified')}</p>
         </div>
       </div>
-      <div className="mt-4 flex min-h-4 items-start text-sm text-error-text">
+      <div className={`flex items-start text-sm text-error-text ${failure === null ? '' : 'mt-4'}`}>
         {failure !== null && (
           <p role="alert" className="m-0 flex items-start gap-1">
             <span className="shrink-0">
@@ -191,7 +193,7 @@ function SignSheet() {
           </p>
         )}
       </div>
-      <div className="mt-4 flex items-center justify-end gap-2">
+      <div className="mt-6 flex items-center justify-end gap-2">
         <Button variant="secondary" disabled={busy} onClick={close}>
           {t('save.cancel')}
         </Button>

@@ -151,7 +151,13 @@ function CertRow({ item, selected, onDelete }: RowProps) {
             </dd>
           </dl>
           <div>
-            <Button variant="secondary" size="sm" icon={Download} onClick={() => void exportCertificate(item.id)}>
+            <Button
+              variant="secondary"
+              size="sm"
+              icon={Download}
+              className="bg-card! border border-border"
+              onClick={() => void exportCertificate(item.id)}
+            >
               {t('cert.export')}
             </Button>
           </div>
