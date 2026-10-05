@@ -1,2 +1,9 @@
 export { SignatureLibraryDialog } from './SignatureLibraryDialog';
-export { closeSignatureLibrary, openSignatureLibrary, setLibraryHandlers, type LibraryHandlers } from './state';
+export {
+  closeSignatureLibrary,
+  openSignatureLibrary,
+  setLibraryHandlers,
+  setLibraryTab,
+  type LibraryHandlers,
+  type LibraryTab,
+} from './state';

@@ -25,8 +25,13 @@ export interface LibraryHandlers {
   place?: (item: LibraryItem) => void;
 }
 
+/** The tabs of the dialog (DESIGN 3.8 S2). */
+export type LibraryTab = 'signatures' | 'certificates';
+
 export interface SignatureLibraryState {
   open: boolean;
+  /** The tab shown; kept after closing, so Manage Signatures reopens on the last tab used this session. */
+  tab: LibraryTab;
   status: LibraryStatus;
   items: readonly LibraryItem[];
   /** The list has been asked for at least once since the dialog opened. */
@@ -39,6 +44,7 @@ export interface SignatureLibraryState {
 
 export const useSignatureLibrary = create<SignatureLibraryState>()(() => ({
   open: false,
+  tab: 'signatures',
   status: 'ready',
   items: [],
   loaded: false,
@@ -72,10 +78,15 @@ export async function refreshLibrary(): Promise<void> {
   }
 }
 
-/** Opens the library dialog (DESIGN 3.35): from the settings popover, the Sign popover's "Manage…" and More. */
-export function openSignatureLibrary(): void {
+/** Switches the tab of the open dialog. */
+export function setLibraryTab(tab: LibraryTab): void {
+  set({ tab });
+}
+
+/** Opens the library dialog (DESIGN 3.35): from the settings popover, the Sign popover's "Manage…" and More. Without `tab` the last one. */
+export function openSignatureLibrary(tab?: LibraryTab): void {
   closeSettings();
-  set({ open: true, loaded: false });
+  set({ open: true, loaded: false, ...(tab === undefined ? {} : { tab }) });
   void refreshLibrary();
 }
 
