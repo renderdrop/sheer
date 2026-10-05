@@ -1,11 +1,11 @@
 # STATE
-phase: v1.2 Redesign "sheer." — owner feedback F15 (docs/FEEDBACK.md, ADR-104): A bug patch → B shell polish → mode-layout designer acceptance → R5 → v1.2.0
+phase: v1.2 Redesign "sheer." — owner feedback F15 (docs/FEEDBACK.md, ADR-104): A + B built and accepted with the mouse; designer acceptance of the mode layout running; then R5 → R6 → Politur v1.2 → R7 / v1.2.0
 version: 1.2.0-beta.1 (pre-release, tag v1.2.0-beta.1, ADR-103)
-current_item: F15 A acceptance in the installed build + B wave 1 (P-B2 B4/B5 ADR-110, P-B3 B6/B7 ADR-111, P-B4 B9/B10 ADR-112) + A11 save-hang fix (ADR-109)
-last_completed: A1–A10 fixes, A6 engine short-read fix, B1–B3 (19f4345)
+current_item: F15 "Then" — designer acceptance of the mode layout (B3 before/after, B12 legibility verdict in ADR-108 (3)); screenshots review/f15/design/ (not tracked)
+last_completed: F15 A1–A11, B1–B2, B4–B11 accepted in the installed build (f20063a); engine fixes ADR-106 addendum (short reads) and ADR-115 (wire deserialisation)
 loop_count_this_session: 0
 open_blockers: 2 human-only (B-002, B-005)
-notes: Accepted with the mouse in the installed build: A1, A4, A7, A8 placement upright + rotate handle, A9 (Windows: library survives restart).
-  Re-check after the next build: A2/A3 (overlay multiply), A5 (panel frame width), A6 (grey bottom → engine reads), A8 save/reopen, A10 print (Windows), A11.
-  Then B wave 2: B8 outline, B11 arrow + shape recognition, B12 canvas drift. Minors: images-to-PDF orientation segments collide; signature menu thumbs overlap rows.
-  Installed app: %LOCALAPPDATA%\Sheer\sheer.exe; helpers in the session scratchpad (keys.ps1, wheel.ps1). Do not run the dev window while agents run cargo/vitest.
+notes: Owner re-check on the Mac: A10 "Save as PDF" in the print dialog (next pre-release). Signature fonts per owner: Ms Madi, Hurricane, Birthstone.
+  Acceptance helpers in the session scratchpad (keys.ps1, wheel.ps1, shotsize.ps1 with -ClientW/-ClientH). Never run the dev window while agents run cargo/vitest;
+  stop it with taskkill sheer.exe + Stop-Process on tauri.js/vite.js only (do not match "vite" broadly — it kills vitest runs).
+  Minors of the F15 rounds are in ROADMAP "Politur v1.2".
