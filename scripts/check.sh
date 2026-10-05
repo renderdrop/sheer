@@ -199,9 +199,9 @@ guard_secrets() {
 }
 
 # SECURITY T2: the built bundle names no remote host except XML namespace identifiers (never fetched) and the error-code page that
-# React's production build prints inside a message (text, never loaded; the CSP allows no remote host anyway). Takes the bundle
-# directory as an argument. Prints the host only, never the surrounding code.
-DIST_URL_ALLOWED='^(www\.w3\.org|react\.dev)$'
+# React's production build prints inside a message, and the DOI resolver that formatted references print (ADR-119; text, never loaded;
+# the CSP allows no remote host anyway). Takes the bundle directory as an argument. Prints the host only, never the surrounding code.
+DIST_URL_ALLOWED='^(www\.w3\.org|react\.dev|doi\.org)$'
 
 guard_dist_urls() {
   local dir="${1:-dist}" hosts host rc=0

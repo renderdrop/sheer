@@ -1,0 +1,68 @@
+{
+  "book": {
+    "kind": "book",
+    "authors": [
+      { "family": "Müller", "given": "Anna Maria" },
+      { "family": "Schmidt", "given": "Peter" }
+    ],
+    "title": "Citing well",
+    "year": "2021",
+    "edition": "2",
+    "publisher": "Iris Press",
+    "place": "Berlin",
+    "doi": "10.1000/book.1"
+  },
+  "article": {
+    "kind": "article",
+    "authors": [{ "family": "Müller", "given": "Anna Maria" }],
+    "title": "On quotations",
+    "year": "2020",
+    "containerTitle": "Journal of Sources",
+    "volume": "12",
+    "issue": "3",
+    "pages": "101-118",
+    "doi": "10.1000/art.2"
+  },
+  "chapter": {
+    "kind": "chapter",
+    "authors": [
+      { "family": "Müller", "given": "Anna Maria" },
+      { "family": "Schmidt", "given": "Peter" },
+      { "family": "Weber", "given": "Jean-Paul" }
+    ],
+    "title": "Quoting in chapters",
+    "year": "2019",
+    "containerTitle": "The Handbook of Sources",
+    "pages": "45-67",
+    "edition": "3",
+    "publisher": "Iris Press",
+    "place": "Hamburg"
+  },
+  "report": {
+    "kind": "report",
+    "authors": [{ "family": "Statistisches Amt", "given": "" }],
+    "title": "Annual report",
+    "year": "2022",
+    "publisher": "Statistisches Amt",
+    "place": "Wiesbaden",
+    "url": "https://example.org/report.pdf"
+  },
+  "webPage": {
+    "kind": "webPage",
+    "authors": [{ "family": "Schmidt", "given": "Peter" }],
+    "title": "How to cite a page",
+    "year": "2023",
+    "containerTitle": "Example Site",
+    "url": "https://example.org/cite",
+    "accessed": "2024-05-03"
+  },
+  "thesis": {
+    "kind": "thesis",
+    "authors": [{ "family": "Müller", "given": "Anna Maria" }],
+    "title": "A study of quotations",
+    "year": "2018",
+    "publisher": "Universität Leipzig",
+    "place": "Leipzig",
+    "url": "https://example.org/thesis"
+  }
+}

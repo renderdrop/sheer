@@ -8,7 +8,7 @@ import { describe, expect, it } from 'vitest';
 import { catalogs } from './catalog';
 
 /**
- * No user-visible English text may be hardcoded in src/features and src/components (the showcase and the tests aside):
+ * No user-visible English text may be hardcoded in src/features and src/components (the showcase, the tests and their `.test.data.ts` files aside):
  * every text comes from a catalog through `t(...)`. The scan parses the sources and looks at the places where text
  * reaches the user: JSX text, JSX attributes that carry a name or a description (`aria-label`, `title`, `label`, ...),
  * string literals in `{...}` as JSX children, and object properties of the same kind (`label: '...'` in a toolbar entry).
@@ -102,7 +102,7 @@ function sourceFiles(directory: string): string[] {
   return readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
     const path = join(directory, entry.name);
     if (entry.isDirectory()) return entry.name === 'showcase' ? [] : sourceFiles(path);
-    return /\.tsx?$/.test(entry.name) && !/\.test\.tsx?$/.test(entry.name) ? [path] : [];
+    return /\.tsx?$/.test(entry.name) && !/\.test(\.data)?\.tsx?$/.test(entry.name) ? [path] : [];
   });
 }
 
