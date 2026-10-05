@@ -73,11 +73,18 @@ export function TabStrip() {
   const overflowing = useOverflow(strip, order.length);
   useTabCycleKeys();
 
-  // Keep the active tab in view.
+  // Keep the whole active tab (with its close button) in view. Runs again when the strip starts overflowing: the overflow menu
+  // narrows the strip after a new tab mounted, which left the new tab's end clipped (v1.4.1 acceptance).
   useEffect(() => {
-    const active = strip.current?.querySelector<HTMLElement>('[role="tab"][aria-selected="true"]');
-    active?.scrollIntoView?.({ inline: 'nearest', block: 'nearest' });
-  }, [activeId]);
+    const list = strip.current;
+    const active = list?.querySelector<HTMLElement>('[role="tab"][aria-selected="true"]');
+    const item = list && active ? Array.from(list.children).find((child) => child.contains(active)) : undefined;
+    if (!list || !item) return;
+    const box = item.getBoundingClientRect();
+    const view = list.getBoundingClientRect();
+    if (box.right > view.right) list.scrollLeft += box.right - view.right;
+    else if (box.left < view.left) list.scrollLeft -= view.left - box.left;
+  }, [activeId, order.length, overflowing]);
 
   const names = useMemo(
     () =>

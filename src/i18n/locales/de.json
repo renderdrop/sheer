@@ -1418,6 +1418,7 @@
   "sigs.row.location": "Ort",
   "sigs.row.lock": "Sperre",
   "sigs.locks": "Sperrt das Dokument gegen Änderungen",
+  "sigs.locksForms": "Erlaubt nur noch Formulare ausfüllen und weitere Signaturen",
   "sigs.certExpiredAtSigning": "Das Zertifikat war zur angegebenen Zeit nicht gültig.",
   "sigs.showOnPage": "Auf der Seite zeigen",
   "sigs.invisible": "Kein sichtbares Siegel",

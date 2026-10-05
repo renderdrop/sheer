@@ -1418,6 +1418,7 @@
   "sigs.row.location": "Location",
   "sigs.row.lock": "Lock",
   "sigs.locks": "Locks the document against changes",
+  "sigs.locksForms": "Allows only filling in forms and further signatures",
   "sigs.certExpiredAtSigning": "The certificate was not valid at the stated time.",
   "sigs.showOnPage": "Show on page",
   "sigs.invisible": "No visible seal",

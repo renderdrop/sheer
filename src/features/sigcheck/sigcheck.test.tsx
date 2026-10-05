@@ -303,6 +303,18 @@ describe('several signatures and later additions (AC 17, 19, 20)', () => {
     expect((await screen.findByRole('dialog')).textContent).toContain('Covers version 1 of 2 of this file');
   });
 
+  it('names the lock of a certification: no changes for P=1, forms and signatures for P=2 (ADR-123)', async () => {
+    api.validateSignatures.mockResolvedValue(
+      report([sig({ kind: { type: 'certification', p: 1 } }), sig({ kind: { type: 'certification', p: 2 } })]),
+    );
+    render(<Host />);
+    await screen.findByRole('status');
+    act(() => openSignaturesDialog(1));
+    const text = (await screen.findByRole('dialog')).textContent ?? '';
+    expect(text).toContain('Locks the document against changes');
+    expect(text).toContain('Allows only filling in forms and further signatures');
+  });
+
   it('the last version says it covers the whole file; the footer reads Show on page, View signed version, Trust (L3, L7, AC 33)', async () => {
     const first = sig({
       index: 0,

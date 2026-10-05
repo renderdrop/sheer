@@ -187,7 +187,11 @@ function SignatureCard({ docId, sig, total, revisions, onTrust, busy }: CardProp
 
       {sig.reason !== null && sig.reason !== '' && <Row label={t('sigs.row.reason')}>{clean(sig.reason)}</Row>}
       {sig.location !== null && sig.location !== '' && <Row label={t('sigs.row.location')}>{clean(sig.location)}</Row>}
-      {locks && <Row label={t('sigs.row.lock')}>{t('sigs.locks')}</Row>}
+      {locks && (
+        <Row label={t('sigs.row.lock')}>
+          {t(sig.kind.type === 'certification' && sig.kind.p === 2 ? 'sigs.locksForms' : 'sigs.locks')}
+        </Row>
+      )}
 
       <div className="flex flex-wrap items-center gap-2">
         {widget !== null ? (

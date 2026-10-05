@@ -620,6 +620,7 @@ New tokens (§1.2): `--seal-width` 192 pt and `--seal-height` 64 pt (default sea
 | `sigs.identity` | Not checked against a trust list: the certificate is self-signed or from an unknown issuer. If it matters, compare the fingerprint with the signer. | Nicht mit einer Vertrauensliste abgeglichen: Das Zertifikat ist selbst erstellt oder von einem unbekannten Aussteller. Vergleiche bei Bedarf den Fingerabdruck mit der unterzeichnenden Person. |
 | `sigs.number` / `.signedAt` | Signature {n} of {total} / Signed at (time from the signer's computer) | Signatur {n} von {total} / Signiert am (Zeit vom Computer der unterzeichnenden Person) |
 | `sigs.covers` / `.locks` | Covers version {n} of {total} of this file / Locks the document against changes | Umfasst Version {n} von {total} dieser Datei / Sperrt das Dokument gegen Änderungen |
+| `sigs.locksForms` | Allows only filling in forms and further signatures (certification P=2, ADR-123) | Erlaubt nur noch Formulare ausfüllen und weitere Signaturen |
 | `sigs.certExpiredAtSigning` | The certificate was not valid at the stated time. | Das Zertifikat war zur angegebenen Zeit nicht gültig. |
 | `sigs.showOnPage` / `.invisible` | Show on page / No visible seal | Auf der Seite zeigen / Kein sichtbares Siegel |
 | `sigs.error.damaged` / `.method` / `.limits` | The signature data is damaged. / Uses a method {app} can't check. / Too large or complex to check safely. | Die Signaturdaten sind beschädigt. / Nutzt ein Verfahren, das {app} nicht prüfen kann. / Zu groß oder zu komplex für eine sichere Prüfung. |
