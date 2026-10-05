@@ -248,10 +248,12 @@ pub fn decode(file: &[u8], password: &str, flight: &InFlight) -> Result<Decoded,
     std::thread::Builder::new()
         .name("sheer-p12".into())
         .spawn(move || {
-            // A panic in the decoder drops the sender: the receiver then reports a disconnect. The permit is given back when the
-            // thread ends, however it ends.
-            let _permit = permit;
-            let _ = sender.send(decode_now(&file, &password));
+            // A panic in the decoder drops the sender: the receiver then reports a disconnect, and the unwinding closure gives
+            // the permit back. Otherwise the permit goes back before the answer: a caller that imports again right after this
+            // answer must find the slot free (CI runs #73, a race on slow runners).
+            let result = decode_now(&file, &password);
+            drop(permit);
+            let _ = sender.send(result);
         })
         .map_err(|_| P12Error::Invalid)?;
     receiver
@@ -431,6 +433,18 @@ mod tests {
         );
         // A well-formed shell with a MAC that cannot verify is "not this password", never an identity.
         assert!(decode(&pfx(1, &[]), "pw", &flight).is_err());
+    }
+
+    #[test]
+    fn decodes_right_after_each_other_never_find_the_slot_taken() {
+        // The permit goes back before the answer, so back-to-back decodes are never Busy, however the threads are scheduled.
+        let flight = InFlight::default();
+        for _ in 0..200 {
+            assert_ne!(
+                decode(&pfx(1, &[]), "pw", &flight).err(),
+                Some(P12Error::Busy)
+            );
+        }
     }
 
     #[test]

@@ -484,7 +484,8 @@ fn garbage_truncations_and_flipped_bytes_never_panic_or_import() {
     );
     // The untouched file still imports (the loop did not poison the store).
     let ticket = ids.begin_import(good, "good.p12".into()).expect("ticket");
-    ids.import(ticket.ticket, &secret("pw")).expect("import");
+    ids.import(ticket.ticket, &secret("pw"))
+        .unwrap_or_else(|error| panic!("the untouched file did not import: {error:?}"));
 }
 
 #[test]
