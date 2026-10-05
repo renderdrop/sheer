@@ -149,7 +149,6 @@ export function buildMenuEntries(menuId: string, context: MenuContext): MenuEntr
         // Nothing to open when there are no recent files.
         disabled: submenu.length === 0,
         submenu,
-        onSelect: () => undefined,
       });
       return;
     }

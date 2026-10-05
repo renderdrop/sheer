@@ -31,18 +31,24 @@ export interface ResolvedAnchor {
   spec: AnchorSpec;
 }
 
+const specOf = (name: string): AnchorSpec | undefined => ANCHORS[name] ?? pageAnchor(name);
+
+/** The tool row: the card never sits over its tools, so it is placed below it (`useFloatingPosition` `clearOf`). */
+export const TOOL_ROW = '[data-slot="tool-row"]';
+
 /** Anchors that name a page: the thumbnail in the left panel, the cell of the Organize grid. */
 function pageAnchor(name: string): AnchorSpec | undefined {
   const [kind, id] = name.split(':');
   if (id === undefined || !/^\d+$/.test(id)) return undefined;
   if (kind === 'thumbnail') return { selector: `[data-thumb-page="${id}"]`, side: 'right', align: 'center' };
-  if (kind === 'organize') return { selector: `[data-page-id="${id}"][data-index]`, side: 'bottom', align: 'center' };
+  if (kind === 'organize')
+    return { selector: `[data-page-id="${id}"][data-index]`, side: 'bottom', align: 'center', mode: 'pages' };
   return undefined;
 }
 
 /** The element a step's anchor names, if it is on screen. */
 export function resolveAnchor(name: string): ResolvedAnchor | null {
-  const spec = ANCHORS[name] ?? pageAnchor(name);
+  const spec = specOf(name);
   if (spec === undefined) return null;
   const found = document.querySelector<HTMLElement>(spec.selector);
   if (found !== null) return { element: found, spec };
@@ -56,14 +62,14 @@ export function resolveAnchor(name: string): ResolvedAnchor | null {
 }
 
 const LAST_RESORT: readonly AnchorSpec[] = [
-  ANCHORS['topbar-page-field'] as AnchorSpec,
-  ANCHORS['topbar-file-name'] as AnchorSpec,
+  { selector: '[data-tour-anchor="topbar-page-field"]', side: 'bottom', align: 'center' },
+  { selector: '[data-tour-anchor="topbar-file-name"]', side: 'bottom', align: 'start' },
   { selector: '[data-canvas-content]', side: 'bottom', align: 'center' },
 ];
 
 /** The mode a step's anchor lives in, or `null` when it is in every mode (the top bar, the sidebar toggle). */
 export function modeOfAnchor(name: string): Mode | null {
-  return ANCHORS[name]?.mode ?? (name.startsWith('organize:') ? 'pages' : null);
+  return specOf(name)?.mode ?? null;
 }
 
 /** The toolbar item of a tool: where a tool tip points (DESIGN 3.47). */

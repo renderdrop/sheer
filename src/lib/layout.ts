@@ -57,8 +57,6 @@ export interface ShellStructure {
   mode: 'empty' | 'document';
   /** The page sidebar is not shown: by the user's choice, below 860 px or because the canvas would be narrower than 360 px. */
   leftCollapsed: boolean;
-  /** Collapsed by the layout alone (the user did not ask for it). It returns when the window grows. */
-  leftAutoCollapsed: boolean;
   /** The editor has the menu row above the top bar (Windows). */
   menuRow: boolean;
 }
@@ -90,7 +88,6 @@ const NO_ROOM = 'var(--spacing-0)';
 const EMPTY_STRUCTURE: ShellStructure = {
   mode: 'empty',
   leftCollapsed: true,
-  leftAutoCollapsed: false,
   menuRow: false,
 };
 
@@ -116,12 +113,10 @@ export function shellStructure(input: LayoutInput): ShellStructure {
   const panelWidth = panelWidthFor(input.panelWidth, input.leftTab);
   const width = widthOf(input);
   const canvasWithLeft = width - panelWidth - LAYOUT.splitter;
-  const leftAutoCollapsed =
-    !input.panelCollapsed && (width < LAYOUT.leftCollapseBelow || canvasWithLeft < LAYOUT.canvasMin);
+  const collapsedByLayout = width < LAYOUT.leftCollapseBelow || canvasWithLeft < LAYOUT.canvasMin;
   return {
     mode: 'document',
-    leftCollapsed: input.panelCollapsed || leftAutoCollapsed,
-    leftAutoCollapsed,
+    leftCollapsed: input.panelCollapsed || collapsedByLayout,
     menuRow: input.menuRow === true,
   };
 }

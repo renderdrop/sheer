@@ -122,15 +122,26 @@ export function SelectionBar({ docId, region }: SelectionBarProps) {
     };
   }, [select, docId, region, settle]);
 
-  // Esc at the selection level hides the bar (the text keys clear the selection too).
+  // Esc at the selection level hides the bar (the text keys clear the selection too). Tab from the canvas (or with nothing focused)
+  // goes to the bar first, though it sits at the end of the body in the DOM; Tab inside it moves on as usual.
   useEffect(() => {
     if (rects === null) return;
     const onKey = (event: KeyboardEvent) => {
       if (event.key === 'Escape') setRects(null);
+      else if (event.key === 'Tab' && !event.shiftKey && !event.altKey && !event.ctrlKey && !event.metaKey) {
+        const bar = barRef.current;
+        const from = event.target;
+        const inCanvas = from === document.body || (from instanceof Node && region.current?.contains(from) === true);
+        if (bar === null || !inCanvas || bar.contains(document.activeElement)) return;
+        const first = bar.querySelector<HTMLElement>('button:not(:disabled)');
+        if (first === null) return;
+        event.preventDefault();
+        first.focus({ preventScroll: true });
+      }
     };
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
-  }, [rects]);
+  }, [rects, region]);
 
   const readOnly = docId !== null && isReadOnlyDocument(docId);
   const cite = useCallback(() => {

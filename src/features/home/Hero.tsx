@@ -87,9 +87,9 @@ export function Hero({ query, onQuery, searchRef, opening, platform, onOpen, onO
           aria-keyshortcuts="/"
           autoComplete="off"
           spellCheck={false}
-          className="h-control-xl! w-full! ps-10! pe-10!"
+          className="h-control-xl! w-full! border-b-border-subtle! ps-10! pe-10!"
         />
-        <kbd className="t-caption pointer-events-none absolute end-3 top-1/2 flex h-5 min-w-5 -translate-y-1/2 items-center justify-center rounded-sm border border-border-subtle bg-subtle px-1 font-medium tabular-nums text-text">
+        <kbd className="t-caption pointer-events-none absolute end-3 top-1/2 flex h-5 min-w-5 -translate-y-1/2 items-center justify-center rounded-sm border border-border bg-subtle px-1 font-medium tabular-nums text-text">
           /
         </kbd>
       </div>

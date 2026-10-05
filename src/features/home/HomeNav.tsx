@@ -17,11 +17,11 @@ const ROWS: readonly { id: HomeSection; icon: LucideIcon; labelKey: PlainKey }[]
 ];
 
 const ROW =
-  't-label flex h-control-md w-full cursor-pointer items-center gap-3 rounded-md px-3 text-start transition-colors [transition-duration:var(--motion-fast)] hover:bg-subtle active:bg-pressed';
+  't-label flex h-control-md w-full cursor-pointer items-center gap-3 rounded-md px-3 text-start transition-colors [transition-duration:var(--motion-fast)] not-aria-[current=page]:hover:bg-subtle active:bg-pressed';
 
 /**
  * The navigation of Home (DESIGN v2 3.1): Canvas, 200 wide; the word mark in a 48 row, then the rows Home, Zuletzt, Markiert and
- * Werkzeuge (the active one `bg-subtle` with Ink 600), and the Settings row at the bottom, 16 from its end. No Shared, no Trash (ADR-100).
+ * Werkzeuge (the active one `bg-subtle` with Ink 600, and only that one: a hover tint on it would leave two Sand rows), and the Settings row at the bottom, 16 from its end. No Shared, no Trash (ADR-100).
  * The four rows are one tab stop; arrows move between them.
  */
 export function HomeNav({ section, onSection }: { section: HomeSection; onSection: (section: HomeSection) => void }) {

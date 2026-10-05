@@ -4,6 +4,7 @@ import { actionOf, actionShortcut, type ActionId } from '../../actions/registry'
 import type { ActionState } from '../../actions/state';
 import type { Platform } from '../../api/app';
 import type { Translate } from '../../i18n';
+import { formatZoomStatus } from './format';
 
 export interface EntryContext {
   t: Translate;
@@ -35,7 +36,7 @@ export function zoomEntries(ctx: EntryContext, scrollMode: string): MenuEntry[] 
   return [
     commandEntry('zoom-in', ctx),
     commandEntry('zoom-out', ctx),
-    commandEntry('actual-size', ctx, { label: '100\u00a0%' }),
+    commandEntry('actual-size', ctx, { label: formatZoomStatus(1, ctx.t.locale) }),
     commandEntry('fit-width', ctx),
     commandEntry('fit-page', ctx),
     separator('zoom-sep-scroll', ctx.t('topbar.section.scroll')),

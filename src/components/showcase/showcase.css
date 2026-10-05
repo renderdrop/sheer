@@ -291,3 +291,20 @@
   flex-wrap: wrap;
   gap: var(--space-4);
 }
+
+/* The swatch demo's fills, the stroke palette of the document (DESIGN v2 1.4). */
+.showcase-swatch-ink {
+  background-color: var(--stroke-ink);
+}
+
+.showcase-swatch-solar {
+  background-color: var(--stroke-solar);
+}
+
+.showcase-swatch-mint {
+  background-color: var(--stroke-mint);
+}
+
+.showcase-swatch-sky {
+  background-color: var(--stroke-sky);
+}

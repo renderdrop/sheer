@@ -5,6 +5,7 @@ import { useLocaleStore } from '../../i18n/store';
 import { useUi } from '../../stores/ui';
 import { focusFirstEmpty } from '../forms/focus';
 import { useForms } from '../forms/store';
+import { focusToolItem } from '../modes/switch';
 import { openCompress, openSplit } from '../jobs/state';
 import { enterRedactMode } from '../redact/actions';
 import type { HubCardId } from './cards';
@@ -35,30 +36,10 @@ export const useHub = create<HubState>()((set) => ({
   setPending: (pending) => set({ pending }),
 }));
 
-/** The tool-row item of the signature (DESIGN v2 3.2): the Sign intent lands on it, in Ausfüllen & Signieren. */
-export const SIGN_ITEM_SELECTOR = '[data-toolbar-item="signature"]';
-/** How long an intent waits for something that mounts or loads after the open (the tool-row item). */
-export const INTENT_WAIT_MS = 2000;
-const POLL_MS = 40;
-
-/** Resolves with the element once it exists, or `null` after `INTENT_WAIT_MS`. */
-export function waitForElement(selector: string): Promise<HTMLElement | null> {
-  return new Promise((resolve) => {
-    const started = Date.now();
-    const look = (): void => {
-      const found = document.querySelector<HTMLElement>(selector);
-      if (found !== null) resolve(found);
-      else if (Date.now() - started >= INTENT_WAIT_MS) resolve(null);
-      else setTimeout(look, POLL_MS);
-    };
-    look();
-  });
-}
-
 /** Lands in Ausfüllen & Signieren with the focus on the Signatur item. */
 async function landOnSignature(): Promise<void> {
   useUi.getState().setMode('fill');
-  (await waitForElement(SIGN_ITEM_SELECTOR))?.focus({ preventScroll: true });
+  await focusToolItem('signature');
 }
 
 async function fillForm(docId: number): Promise<void> {

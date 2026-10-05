@@ -48,10 +48,11 @@ export interface MenuItemSpec {
   /**
    * Makes the item open a submenu with these entries (DESIGN 3.5) instead of running a command: it shows a chevron instead of
    * a shortcut, `aria-haspopup` and `aria-expanded`, and opens on Right, Enter, Space, a click or after a short hover. A
-   * submenu may have submenus. `onSelect` is not called for such an item (give it a no-op).
+   * submenu may have submenus. Such an item has no `onSelect`: there is nothing to run.
    */
   submenu?: readonly MenuEntry[];
-  onSelect: () => void;
+  /** Runs when the item is chosen; left out on an item with a `submenu`. */
+  onSelect?: () => void;
 }
 
 export interface MenuSeparatorSpec {
@@ -270,7 +271,7 @@ export function MenuList({ entries, onActivate, onTab, onBack }: MenuListProps) 
               return;
             }
             onActivate();
-            entry.onSelect();
+            entry.onSelect?.();
           };
           return (
             <button

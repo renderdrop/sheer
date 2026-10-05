@@ -9,7 +9,7 @@ import { tokenPx } from '../../components/tokens';
 import { useFloatingPosition } from '../../components/useFloatingPosition';
 import { useT } from '../../i18n';
 import { readSlots, usePages } from '../../stores/pages';
-import { resolveAnchor, type AnchorSpec, type ResolvedAnchor } from './anchors';
+import { TOOL_ROW, resolveAnchor, type AnchorSpec, type ResolvedAnchor } from './anchors';
 import { usePlace } from './place';
 import { SHIPPED_STEPS, pageIdOfKind, type TourStep } from './steps';
 import { useTour } from './store';
@@ -269,6 +269,7 @@ function Card({ anchor }: CardProps) {
     side: anchor.spec.side,
     align: anchor.spec.align,
     clampTo: { selector: CANVAS_SCROLLER, inset: tokenPx('--space-4', 16) },
+    clearOf: TOOL_ROW,
   });
   useCanvasClearance(positioner, card, present);
 

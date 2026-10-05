@@ -31,7 +31,6 @@ function moreEntries(slots: readonly SlotDef[]): MenuEntry[] {
     return {
       ...base,
       submenu: slot.variants.map(asEntry),
-      onSelect: () => undefined,
     };
   });
 }

@@ -106,10 +106,10 @@ export function ButtonStates() {
 }
 
 const SWATCHES = [
-  ['ink', 'Ink', 'var(--stroke-ink)'],
-  ['solar', 'Solar', 'var(--stroke-solar)'],
-  ['mint', 'Mint', 'var(--stroke-mint)'],
-  ['sky', 'Sky', 'var(--stroke-sky)'],
+  ['ink', 'Ink'],
+  ['solar', 'Solar'],
+  ['mint', 'Mint'],
+  ['sky', 'Sky'],
 ] as const;
 
 export function FormControls() {
@@ -193,11 +193,11 @@ export function FormControls() {
         </Labelled>
         <Labelled label="swatches: Stone ring, selected = Ink ring + check">
           <div role="radiogroup" aria-label="Colour" className="flex gap-2">
-            {SWATCHES.map(([id, name, fill]) => (
+            {SWATCHES.map(([id, name]) => (
               <Swatch
                 key={id}
                 label={name}
-                style={{ backgroundColor: fill }}
+                className={`showcase-swatch-${id}`}
                 checked={color === id}
                 checkClass={id === 'ink' ? 'text-white' : undefined}
                 onClick={() => setColor(id)}

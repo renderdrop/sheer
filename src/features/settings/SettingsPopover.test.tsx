@@ -172,17 +172,17 @@ describe('the settings popover', () => {
     expect(document.activeElement).toBe(screen.getByRole('button', { name: 'File' }));
   });
 
-  it('falls back to the toolbar itself when there is no menu title', async () => {
+  it('falls back to the Home strip when there is no menu title or top bar', async () => {
     const { user } = setup(
       <>
-        <div role="toolbar" aria-label="Tools" tabIndex={0} />
+        <div data-slot="home-strip" role="group" aria-label="Home" tabIndex={0} />
         <SettingsPopover />
       </>,
     );
     act(() => openSettings());
     await user.keyboard('{Escape}');
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
-    expect(document.activeElement).toBe(screen.getByRole('toolbar'));
+    expect(document.activeElement).toBe(screen.getByRole('group', { name: 'Home' }));
   });
 
   it('stays open when the shortcut is typed again, and closes on an outside click', async () => {

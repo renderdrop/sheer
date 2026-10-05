@@ -344,7 +344,21 @@ impl AppState {
         self.refresh_permissions(id);
         self.refresh_signature_lock(id);
         self.note_recent(kind, &canonical);
+        self.cache_thumbnail_later(id, kind);
         Ok(self.info(id).map_or(Opened::Pending, Opened::Ready))
+    }
+
+    /// Makes the recents preview of a document just opened off the open's path (the first page render waits for the engine), so a
+    /// file that is never closed cleanly (a crash, a kill) still has one. Best effort; `close_document` and a save refresh it.
+    fn cache_thumbnail_later(&self, id: DocumentId, kind: DocKind) {
+        if kind != DocKind::User || self.thumbs.is_none() || self.recents.is_none() {
+            return;
+        }
+        let state = self.clone();
+        // A failure to start the thread only means no early preview.
+        let _ = std::thread::Builder::new()
+            .name("recent-preview".into())
+            .spawn(move || state.cache_thumbnail(id));
     }
 
     /// Gives the password the user typed for the document `id` that waits for it (`Opened::Locked`) and returns the document once it
@@ -611,15 +625,21 @@ where
 pub async fn open_document_dialog(
     window: WebviewWindow,
     state: State<'_, AppState>,
+    single: Option<bool>,
 ) -> Result<Vec<AppEvent>, UiError> {
     let state = state.inner().clone();
     blocking(move || {
-        let picked = window
+        let dialog = window
             .dialog()
             .file()
             .set_parent(&window)
-            .add_filter("PDF", &["pdf"])
-            .blocking_pick_files();
+            .add_filter("PDF", &["pdf"]);
+        // `single`: the dialog of a tool that works on one file lets the user pick only one (no file is opened to be closed again).
+        let picked = if single == Some(true) {
+            dialog.blocking_pick_file().map(|file| vec![file])
+        } else {
+            dialog.blocking_pick_files()
+        };
         let Some(picked) = picked else {
             return Ok(Vec::new());
         };

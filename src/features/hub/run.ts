@@ -1,4 +1,4 @@
-import { closeDocument, openDocumentDialog, type DocumentInfo, type OpenOutcome } from '../../api/documents';
+import { openDocumentDialog, type DocumentInfo, type OpenOutcome } from '../../api/documents';
 import { toAppError } from '../../api/errors';
 import { useUi } from '../../stores/ui';
 import { useJobs } from '../jobs/state';
@@ -23,16 +23,15 @@ function startMerge(outcomes: readonly OpenOutcome[]): void {
 }
 
 /**
- * One-file cards: the first file opens as a tab; any more the dialog returned are closed again (the dialog is Rust's and
- * multi-select), then the card's intent runs (resolves when it is done).
+ * One-file cards: the dialog lets the user pick one file (`single`), which opens as a tab, then the card's intent runs (resolves when
+ * it is done).
  */
 function startSingle(card: HubCardId, outcomes: readonly OpenOutcome[]): Promise<void> {
-  const [first, ...extra] = openedOf(outcomes);
+  const [first] = openedOf(outcomes);
   if (first === undefined) {
     adoptOpenOutcomes(outcomes);
     return Promise.resolve();
   }
-  for (const document of extra) closeDocument(document.id, true).catch(() => undefined);
   adoptOpenOutcomes([...othersOf(outcomes), { type: 'opened', document: first }]);
   const intent = HUB_CARDS.find((candidate) => candidate.id === card)?.intent ?? null;
   if (intent !== null) {
@@ -66,7 +65,7 @@ export async function runHubCard(card: HubCardId): Promise<void> {
     useViewer.setState({ opening: true });
     useUi.getState().dismissBanner();
     try {
-      const outcomes = await openDocumentDialog();
+      const outcomes = await openDocumentDialog({ single: card !== 'merge' });
       if (outcomes.length === 0) return;
       if (card === 'merge') startMerge(outcomes);
       else after = startSingle(card, outcomes);

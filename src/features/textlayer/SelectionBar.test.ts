@@ -17,6 +17,16 @@ describe('placeBar', () => {
     expect(place).toEqual({ left: 100, top: 48, below: true });
   });
 
+  it('keeps the bar inside the left edge of the canvas', () => {
+    const place = placeBar({ first: { top: 200, left: -30 }, last: { bottom: 220 } }, canvas, bar, 8);
+    expect(place?.left).toBe(8);
+  });
+
+  it('never leaves the bottom of the canvas when it had to flip below a selection at the end', () => {
+    const place = placeBar({ first: { top: 4, left: 100 }, last: { bottom: 598 } }, canvas, bar, 8);
+    expect(place).toEqual({ left: 100, top: 600 - 8 - 40, below: true });
+  });
+
   it('is hidden when the selection scrolled out', () => {
     expect(placeBar({ first: { top: 900, left: 0 }, last: { bottom: 920 } }, canvas, bar, 8)).toBeNull();
   });

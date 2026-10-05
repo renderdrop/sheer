@@ -22,12 +22,11 @@ const LANGUAGE_CHOICES: readonly { value: Language; labelKey: PlainKey }[] = [
   { value: 'de', labelKey: 'settings.language.de' },
 ];
 
-/** Where the popover is anchored: Home's Settings row, else the Datei menu title or the top bar's first control, else the toolbar, else (Home has no toolbar) the Home strip. */
+/** Where the popover is anchored: Home's Settings row, else the Datei menu title or the top bar's first control, else the Home strip. */
 const ANCHORS = [
   '[data-home-settings]',
   '[data-menubar-item]',
   '[data-slot="topbar"] button',
-  '[role="toolbar"]',
   '[data-slot="home-strip"]',
 ];
 
@@ -42,7 +41,7 @@ function findAnchor(): HTMLElement | null {
 /**
  * Hands the popover an anchor that lives elsewhere. The Popover takes its anchor from the trigger it renders, and this
  * popover has no trigger of its own: the command is chosen in More, or typed as a shortcut with focus anywhere. So the
- * "trigger" renders nothing and gives the popover the toolbar's own button when the popover opens, which is also where
+ * "trigger" renders nothing and gives the popover the menu bar's or top bar's own button when the popover opens, which is also where
  * focus returns on close.
  */
 function ToolbarAnchor({ attach, open }: { attach: (element: HTMLElement | null) => void; open: boolean }): null {

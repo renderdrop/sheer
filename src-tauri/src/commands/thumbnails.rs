@@ -1,4 +1,4 @@
-//! The first-page previews of the recent files (DESIGN 3.48, ADR-054 (3)). Made when a document is closed and after it is saved, kept in
+//! The first-page previews of the recent files (DESIGN 3.48, ADR-054 (3)). Made after a document opened, when it is closed and after it is saved, kept in
 //! the app cache directory (`storage::thumbs`), and fetched by the recents `id`; no path comes from or goes to the webview.
 //!
 //! | Command | Arguments | Returns |

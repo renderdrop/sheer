@@ -106,7 +106,7 @@ describe('useShellStructure', () => {
     expect(renders()).toBe(before);
     // Below 860 the window collapses the page sidebar by itself.
     resizeTo(859);
-    expect(result.current).toMatchObject({ leftCollapsed: true, leftAutoCollapsed: true });
+    expect(result.current).toMatchObject({ leftCollapsed: true });
   });
 
   it('Windows has the menu row, the other platforms none', () => {
@@ -127,7 +127,7 @@ describe('useShellStructure', () => {
     expect(result.current.leftCollapsed).toBe(false);
     const first = renders();
     resizeTo(850);
-    expect(result.current).toMatchObject({ leftCollapsed: true, leftAutoCollapsed: true });
+    expect(result.current).toMatchObject({ leftCollapsed: true });
     expect(renders()).toBe(first + 1);
   });
 
@@ -136,7 +136,7 @@ describe('useShellStructure', () => {
     openDocument();
     expect(readShellStructure().mode).toBe('document');
     resizeTo(800);
-    expect(readShellStructure().leftAutoCollapsed).toBe(true);
+    expect(readShellStructure().leftCollapsed).toBe(true);
     useUi.setState({ leftPanelCollapsed: true });
     expect(readShellStructure().leftCollapsed).toBe(true);
     useUi.setState({ view: 'home' });

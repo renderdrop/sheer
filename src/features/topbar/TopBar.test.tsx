@@ -3,6 +3,7 @@ import { act, fireEvent, screen, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { useDocuments } from '../../stores/documents';
+import { usePages } from '../../stores/pages';
 import { resetDocuments } from '../../stores/documents.testutil';
 import { useUi } from '../../stores/ui';
 import { useView } from '../../stores/view';
@@ -33,6 +34,7 @@ function open(...names: string[]): void {
 beforeEach(() => {
   resetDocuments();
   useView.setState({ byDoc: {} });
+  usePages.setState({ slotsByDoc: {} });
   useUi.getState().setView('editor');
   save.saveNow.mockReset().mockResolvedValue(true);
   goToPage.mockReset();
@@ -62,6 +64,24 @@ describe('the top bar', () => {
     setup(<TopBar trafficLightInset={false} />);
     fireEvent.doubleClick(bar().getByText('Report.pdf'));
     expect(save.saveActive).toHaveBeenCalledWith(true);
+  });
+
+  it('shows the page label with its position built from one string, "(n / N)", when the file has labels', () => {
+    open('Report.pdf');
+    const slots = Array.from({ length: 12 }, (_, id) => ({
+      id,
+      width: 612,
+      height: 792,
+      rotation: 0 as const,
+      rev: 0,
+      label: id === 0 ? 'i' : String(id),
+      origin: 'file' as const,
+    }));
+    act(() => usePages.setState({ slotsByDoc: { 1: slots } }));
+    setup(<TopBar trafficLightInset={false} />);
+    const field = bar().getByRole('textbox', { name: 'Go to page' }) as HTMLInputElement;
+    expect(field.value).toBe('i');
+    expect(field.parentElement?.textContent).toBe('(1 / 12)');
   });
 
   it('the page field goes to the typed page, refuses a wrong one, and the go-to-page action focuses it', async () => {

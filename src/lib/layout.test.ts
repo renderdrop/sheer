@@ -88,7 +88,6 @@ describe('the page sidebar', () => {
     const open = layout();
     const collapsed = layout({ panelCollapsed: true });
     expect(collapsed.leftCollapsed).toBe(true);
-    expect(collapsed.leftAutoCollapsed).toBe(false);
     expect(collapsed.tracks[0]).toEqual({ slot: 'left', size: 'var(--spacing-0)' });
     expect(collapsed.tracks.map((track) => track.slot)).toEqual(open.tracks.map((track) => track.slot));
     expect(collapsed.column).toEqual(open.column);
@@ -104,7 +103,7 @@ describe('the page sidebar', () => {
   });
 
   it('collapses by itself below 860 px (exact), and comes back when the window grows', () => {
-    expect(shellStructure({ ...base, windowWidth: 859 }).leftAutoCollapsed).toBe(true);
+    expect(shellStructure({ ...base, windowWidth: 859 }).leftCollapsed).toBe(true);
     expect(shellStructure({ ...base, windowWidth: 860 }).leftCollapsed).toBe(false);
   });
 
@@ -112,14 +111,8 @@ describe('the page sidebar', () => {
     // 960 - 320 - 8 = 632 fits; at 860 (the lowest width where the sidebar stays) 860 - 320 - 8 = 532 fits too, so only a wide
     // sidebar in a narrow window can trip the rule: 860 - 492 - 8 = 360 is the edge, but the sidebar is at most 320.
     const input: LayoutInput = { ...base, windowWidth: 860, panelWidth: 320 };
-    expect(shellStructure(input).leftAutoCollapsed).toBe(false);
-    expect(shellStructure({ ...input, windowWidth: 859 }).leftAutoCollapsed).toBe(true);
-  });
-
-  it('a sidebar the user collapsed is not reported as auto-collapsed', () => {
-    const structure = shellStructure({ ...base, windowWidth: 800, panelCollapsed: true });
-    expect(structure.leftCollapsed).toBe(true);
-    expect(structure.leftAutoCollapsed).toBe(false);
+    expect(shellStructure(input).leftCollapsed).toBe(false);
+    expect(shellStructure({ ...input, windowWidth: 859 }).leftCollapsed).toBe(true);
   });
 
   it('every sidebar width fits the minimum window', () => {

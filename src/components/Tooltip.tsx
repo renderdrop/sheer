@@ -289,7 +289,7 @@ function Bubble({
         <span className="flex items-center gap-2">
           <span>{label}</span>
           {shortcut !== undefined && (
-            <kbd className="inline-flex h-(--space-5) min-w-(--space-5) items-center justify-center rounded-sm border border-border-subtle bg-subtle px-1 font-sans text-xs font-medium text-tooltip-text tabular-nums">
+            <kbd className="inline-flex h-(--space-5) min-w-(--space-5) items-center justify-center rounded-sm border border-border bg-subtle px-1 font-sans text-xs font-medium text-tooltip-text tabular-nums">
               {shortcut}
             </kbd>
           )}

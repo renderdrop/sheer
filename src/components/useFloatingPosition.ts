@@ -22,6 +22,11 @@ interface Options {
    * px from its edges, on top of the window margin. Looked up on every placement, so a slot that appears later is honoured.
    */
   clampTo?: { selector: string; inset: number };
+  /**
+   * An element the floating box must not cover while it sits below its anchor: it is moved down to clear this element's bottom
+   * edge (the tour card below the top bar must not hide the tool row). Ignored when the element is not there or lies above.
+   */
+  clearOf?: string;
 }
 
 /**
@@ -44,6 +49,7 @@ export function useFloatingPosition({
   offset,
   crossOffset,
   clampTo,
+  clearOf,
 }: Options): void {
   const clampSelector = clampTo?.selector;
   const clampInset = clampTo?.inset;
@@ -88,8 +94,16 @@ export function useFloatingPosition({
           box.left + slot.clientLeft + slot.clientWidth - (clampInset ?? 0) - floating.getBoundingClientRect().width;
         x = Math.max(low, Math.min(x, Math.max(low, high)));
       }
+      let y = placed.y;
+      const avoid =
+        clearOf === undefined || placed.side !== 'bottom' ? null : document.querySelector<HTMLElement>(clearOf);
+      if (avoid !== null) {
+        const below = avoid.getBoundingClientRect().bottom + gap;
+        const own = floating.getBoundingClientRect().height;
+        if (below > y && below + own <= viewport.height - gap) y = below;
+      }
       const left = `${x}px`;
-      const top = `${placed.y}px`;
+      const top = `${y}px`;
       if (left !== written.left) {
         floating.style.left = left;
         written.left = left;
@@ -128,5 +142,5 @@ export function useFloatingPosition({
       observer.disconnect();
       cancelAnimationFrame(frame);
     };
-  }, [source, floatingRef, active, side, align, offset, crossOffset, clampSelector, clampInset]);
+  }, [source, floatingRef, active, side, align, offset, crossOffset, clampSelector, clampInset, clearOf]);
 }

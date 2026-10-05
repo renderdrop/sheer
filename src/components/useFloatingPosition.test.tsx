@@ -44,6 +44,7 @@ beforeEach(() => {
   vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: HTMLElement) {
     rectReads += 1;
     if (this.dataset.slot !== undefined) return rect(50, 0, 310, 500);
+    if (this.dataset.avoid !== undefined) return rect(0, 0, 500, 200);
     return this.tagName === 'BUTTON' ? anchorRect : rect(0, 0, 200, 100);
   });
 });
@@ -53,15 +54,23 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-function Harness({ active = true }: { active?: boolean }) {
+function Harness({ active = true, clearOf }: { active?: boolean; clearOf?: string }) {
   const anchor = useRef<HTMLButtonElement>(null);
   const floating = useRef<HTMLDivElement>(null);
-  useFloatingPosition({ anchor, floatingRef: floating, active, side: 'bottom', align: 'start' });
+  useFloatingPosition({
+    anchor,
+    floatingRef: floating,
+    active,
+    side: 'bottom',
+    align: 'start',
+    ...(clearOf === undefined ? {} : { clearOf }),
+  });
   return (
     <>
       <button ref={anchor} type="button">
         anchor
       </button>
+      <div data-avoid="" />
       <div ref={floating} data-testid="floating">
         <div data-testid="inner" />
       </div>
@@ -79,6 +88,11 @@ describe('useFloatingPosition', () => {
     // DESIGN 3.5: the window height minus the margin on both sides (jsdom's window is 768 px high).
     expect(floating.style.maxHeight).toBe(`${window.innerHeight - 16}px`);
     expect(requestFrame).not.toHaveBeenCalled();
+  });
+
+  it('sits below the element it must clear when the anchor is above its bottom edge', () => {
+    const { getByTestId } = render(<Harness clearOf="[data-avoid]" />);
+    expect(getByTestId('floating').style.top).toBe('208px');
   });
 
   it('does nothing while it is not active', () => {

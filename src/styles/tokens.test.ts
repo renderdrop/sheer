@@ -447,7 +447,7 @@ describe('widths and the left panel (DESIGN 1.3)', () => {
       expect(token(name), name).toBeUndefined();
       expect(legacy.has(name), name).toBe(true);
     }
-    expect(legacy.get('--toolbar-row-height')).toBe('var(--topbar-height)');
+    expect(legacy.has('--toolbar-row-height')).toBe(false);
     expect(legacyStart).toBeGreaterThan(-1);
   });
 });
@@ -767,7 +767,7 @@ describe('the rest of src/ uses tokens only', () => {
     for (const file of files.filter((candidate) => candidate.endsWith('.tsx'))) {
       const text = readFileSync(file, 'utf8');
       expect(text, file).not.toMatch(/-\[[^\]]*\d(px|rem|em)\b[^\]]*\]/);
-      // A share of a parent is a token too (max-w-status-name), not max-w-[40%].
+      // A share of a parent is a token too, not max-w-[40%].
       expect(text, file).not.toMatch(/-\[[^\]]*\d%[^\]]*\]/);
       expect(text, file).not.toMatch(/-\[#/);
     }

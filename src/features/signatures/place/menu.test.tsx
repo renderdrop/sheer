@@ -29,7 +29,7 @@ describe('Sign menu wiring', () => {
     const { result } = renderHook(() => useSignMenuEntries());
     const manage = result.current.find((entry) => entry.type !== 'separator' && entry.id === 'manage');
     expect(manage).toBeDefined();
-    if (manage !== undefined && manage.type !== 'separator') manage.onSelect();
+    if (manage !== undefined && manage.type !== 'separator') manage.onSelect?.();
     expect(useSignatureLibrary.getState().open).toBe(true);
   });
 

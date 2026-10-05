@@ -37,12 +37,7 @@ function subscribe(notify: () => void): () => void {
 }
 
 function sameStructure(a: ShellStructure, b: ShellStructure): boolean {
-  return (
-    a.mode === b.mode &&
-    a.leftCollapsed === b.leftCollapsed &&
-    a.leftAutoCollapsed === b.leftAutoCollapsed &&
-    a.menuRow === b.menuRow
-  );
+  return a.mode === b.mode && a.leftCollapsed === b.leftCollapsed && a.menuRow === b.menuRow;
 }
 
 /**

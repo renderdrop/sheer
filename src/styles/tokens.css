@@ -153,7 +153,7 @@
   --spacing-popover-max: var(--popover-max);
   --spacing-tooltip-max: var(--tooltip-max);
   --spacing-splitter: var(--splitter-width);
-  /* Layout slots: h-topbar, h-mode-row, h-tool-row, h-minibar, min-h-banner-min, max-w-status-name, w-caption-button,
+  /* Layout slots: h-topbar, h-mode-row, h-tool-row, h-minibar, min-h-banner-min, w-caption-button,
      ps-chrome-inset, min-w-canvas-min, max-w-empty-max and h-scrim. */
   --spacing-topbar: var(--topbar-height);
   --spacing-menubar: var(--menubar-height);
@@ -178,7 +178,6 @@
   /* R6-A */
   --spacing-progress: var(--progress-height);
   --spacing-comments-dot: var(--comments-dot);
-  --spacing-status-name: var(--status-name-max);
   --spacing-caption-button: var(--caption-button-width);
   --spacing-chrome-inset: var(--chrome-inset-mac);
   --spacing-canvas-min: var(--canvas-min);
@@ -423,7 +422,6 @@
   --tool-row-height: 48px; /* the tool row under them */
   --minibar-height: 40px; /* the properties mini bar (DESIGN v2 3.3) */
   --banner-min-height: 40px;
-  --status-name-max: 40%; /* the file name's share of the status bar */
   --caption-button-width: 46px;
   --chrome-inset-mac: 80px; /* leading inset of the top bar for the macOS traffic lights; 8 in full screen */
   --free-text-line-height: 1.2; /* the line height of a free text, in times its font size: the editor matches the written file */
@@ -536,7 +534,6 @@
 /* legacy aliases — removed in R7 (ADR-100) */
 /* DEPRECATED (POL-2): the --spacing-* aliases are replaced by the BRAND names (--space-*, --control-*, ...). */
 @theme static {
-  --spacing-toolbar-row: var(--toolbar-row-height);
   --spacing-tabs-row: var(--tabs-row-height);
   --spacing-hub-max: var(--hub-max-width);
   --spacing-hub-card: var(--hub-card-height);
@@ -562,7 +559,6 @@
 
 :root {
   --scale-thumb: 1;
-  --toolbar-row-height: var(--topbar-height);
   --tabs-row-height: 32px;
   --hub-max-width: 880px;
   --hub-card-min: 200px;
@@ -1112,16 +1108,6 @@
 
   [data-form-control]:focus-visible {
     outline-color: Highlight;
-  }
-}
-
-/* The recent files of the empty state: three rows are enough in a short window. 860 px is the viewport height at which an 800 px
-   high window (caption, toolbar and status bar taken off, about 700 px of scroller) stops fitting the full list: ROADMAP Politur M5. */
-@utility empty-recents {
-  @media (max-height: 860px) {
-    & > li:nth-child(n + 4) {
-      display: none;
-    }
   }
 }
 

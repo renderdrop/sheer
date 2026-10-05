@@ -96,7 +96,7 @@ export function revealRecent(recentId: number): Promise<void> {
 }
 
 /**
- * The preview of a recent file: its first page as a PNG frame of at most 64 x 80 px, made by the backend when the file was closed or
+ * The preview of a recent file: its first page as a PNG frame of at most 64 x 80 px, made by the backend after the file opened, and when it was closed or
  * saved (never for a file with a password). Rejects with `not_found` when there is none (the row shows its placeholder).
  */
 export async function getRecentThumbnail(recentId: number): Promise<RenderFrame> {

@@ -14,21 +14,6 @@ import { LeftPanelSplitter, MainGrid } from './MainGrid';
 import { TopBarSlot } from './TopBarSlot';
 import { LEFT_PANEL_ID } from './ids';
 
-const placements = new Map<number | undefined, CSSProperties>();
-
-/**
- * `grid-column` for a slot, as an object that is the same one every time for the same column, which is what lets the memoized
- * panels skip a render when the structure changes around them (there are at most four columns, so the map stays small).
- */
-function placement(column: number | undefined): CSSProperties {
-  let style = placements.get(column);
-  if (style === undefined) {
-    style = { gridColumn: column };
-    placements.set(column, style);
-  }
-  return style;
-}
-
 export interface EditorLayoutProps {
   structure: ShellStructure;
   platform: Platform | null;
@@ -45,16 +30,12 @@ export interface EditorLayoutProps {
  */
 export function EditorLayout({ structure, platform, trafficLightInset }: EditorLayoutProps) {
   const leftPanelId = LEFT_PANEL_ID;
-  // Where each slot sits depends on the structure alone, not on the panel's width.
-  const slots = useMemo(() => {
-    const { column } = shellTracks(structure, PANEL.default);
-    return {
-      left: placement(column.left),
-      splitter: placement(column.splitter),
-      canvas: placement(column.canvas),
-    };
-  }, [structure]);
-  const rows = useMemo(() => shellTracks(structure, PANEL.default).rows, [structure]);
+  // Where each slot sits depends on the structure alone, not on the panel's width. Each placement is its own memo on its column, so the
+  // memoized panels get the same style object and skip a render when the structure changes around them.
+  const { column, rows } = useMemo(() => shellTracks(structure, PANEL.default), [structure]);
+  const left = useMemo<CSSProperties>(() => ({ gridColumn: column.left }), [column.left]);
+  const splitter = useMemo<CSSProperties>(() => ({ gridColumn: column.splitter }), [column.splitter]);
+  const canvas = useMemo<CSSProperties>(() => ({ gridColumn: column.canvas }), [column.canvas]);
 
   return (
     <WorkSurface data-slot="editor" style={{ gridTemplateRows: rows }} className="grid min-h-0 flex-auto">
@@ -68,10 +49,10 @@ export function EditorLayout({ structure, platform, trafficLightInset }: EditorL
       <ModeRow />
       <ToolRow />
       <MainGrid structure={structure}>
-        <LeftPanelSlot present={!structure.leftCollapsed} id={leftPanelId} style={slots.left} />
-        <LeftPanelSplitter controls={leftPanelId} collapsed={structure.leftCollapsed} style={slots.splitter} />
+        <LeftPanelSlot present={!structure.leftCollapsed} id={leftPanelId} style={left} />
+        <LeftPanelSplitter controls={leftPanelId} collapsed={structure.leftCollapsed} style={splitter} />
         <div
-          style={slots.canvas}
+          style={canvas}
           className="relative grid min-h-0 min-w-0 grid-cols-[minmax(0,1fr)] grid-rows-[auto_minmax(0,1fr)]"
         >
           <BannerSlot />

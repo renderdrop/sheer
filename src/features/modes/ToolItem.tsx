@@ -15,15 +15,16 @@ import type { SlotDef, VariantDef } from './model';
 const MAIN =
   'flex h-control-md shrink-0 cursor-pointer items-center gap-2 rounded-md t-label font-medium text-text ' +
   'transition-colors duration-fast aria-disabled:cursor-not-allowed aria-disabled:opacity-(--opacity-disabled) ' +
-  'not-aria-disabled:hover:bg-panel not-aria-disabled:active:bg-control-pressed not-aria-disabled:active:scale-(--scale-press) ' +
-  'data-[on=true]:font-semibold not-aria-disabled:data-[on=true]:hover:bg-accent-hover';
+  'not-aria-disabled:hover:bg-panel not-aria-disabled:not-data-[on=true]:active:bg-pressed not-aria-disabled:active:scale-(--scale-press) ' +
+  'data-[on=true]:font-semibold not-aria-disabled:data-[on=true]:hover:bg-accent-hover not-aria-disabled:data-[on=true]:active:bg-accent-hover';
 
 /** The chevron part of a split item: 20 wide, its own tab stop. */
 const CHEVRON =
   'flex h-control-md w-icon-20 shrink-0 cursor-pointer items-center justify-center rounded-e-md text-text transition-colors duration-fast ' +
   'aria-disabled:cursor-not-allowed aria-disabled:opacity-(--opacity-disabled) ' +
-  'not-aria-disabled:hover:bg-panel not-aria-disabled:aria-expanded:bg-panel ' +
-  'group-data-[on=true]:not-aria-disabled:hover:bg-accent-hover group-data-[on=true]:not-aria-disabled:aria-expanded:bg-accent-hover';
+  'not-aria-disabled:hover:bg-panel not-aria-disabled:aria-expanded:bg-panel not-aria-disabled:active:bg-pressed ' +
+  'group-data-[on=true]:not-aria-disabled:hover:bg-accent-hover group-data-[on=true]:not-aria-disabled:aria-expanded:bg-accent-hover ' +
+  'group-data-[on=true]:not-aria-disabled:active:bg-accent-hover';
 
 const VARIANT =
   'flex h-(--space-8) w-full cursor-pointer items-center gap-2 rounded-sm px-2 text-start text-md text-text ' +

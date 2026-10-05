@@ -144,7 +144,7 @@ describe('the Windows menus built from menu.json', () => {
     const draw = entries.find((entry) => entry.id === 'mode-comment');
     if (draw === undefined || draw.type === 'separator') throw new Error('no Comment');
     expect(draw.checked).toBe(true);
-    draw.onSelect();
+    draw.onSelect?.();
     expect(run).toHaveBeenCalledWith('mode-comment');
   });
 });

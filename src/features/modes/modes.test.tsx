@@ -14,6 +14,7 @@ import { useOrganize } from '../organize/store';
 import { usePages } from '../../stores/pages';
 import { usePlacement } from '../signatures/place/store';
 import { ModeRow, ToolRow, switchMode } from '.';
+import { focusToolItem, TOOL_ITEM_WAIT_MS } from './switch';
 import { handleModeKey } from './useModeEffects';
 
 vi.mock('../../api/signing', async (importOriginal) => ({
@@ -195,6 +196,28 @@ describe('the keys 1 to 5', () => {
     for (const target of targets) {
       const event = press('4', {}, target);
       expect(event.defaultPrevented).toBe(false);
+    }
+    expect(useUi.getState().mode).toBe('read');
+  });
+
+  it('are left to a list and to the radios of a group (every selector of the list that owns digits)', () => {
+    setup(
+      <div>
+        <Rows />
+        <div role="listbox" aria-label="pages">
+          <div role="option" aria-selected="true" tabIndex={0}>
+            page
+          </div>
+        </div>
+        <div role="radiogroup" aria-label="choice">
+          <button role="radio" aria-checked="true">
+            radio
+          </button>
+        </div>
+      </div>,
+    );
+    for (const target of [screen.getByRole('option'), screen.getByRole('radio')]) {
+      expect(press('3', {}, target).defaultPrevented).toBe(false);
     }
     expect(useUi.getState().mode).toBe('read');
   });
@@ -761,5 +784,26 @@ describe('the segmented mode tabs (DESIGN 3.5 B3)', () => {
     expect(container.querySelector('[data-slot="mode-row"]')?.className).toContain('bg-subtle');
     expect(container.querySelector('[data-slot="tool-row"]')?.className).toContain('bg-subtle');
     expect(tab('Read').getAttribute('aria-controls')).toBe('mode-tool-row');
+  });
+});
+
+describe('focusToolItem', () => {
+  it('focuses the item once it mounts, and gives up when it never does', async () => {
+    vi.useFakeTimers();
+    try {
+      const found = focusToolItem('later');
+      const button = document.createElement('button');
+      button.dataset.toolbarItem = 'later';
+      setTimeout(() => document.body.append(button), 100);
+      await vi.advanceTimersByTimeAsync(200);
+      expect(await found).toBe(true);
+      expect(document.activeElement).toBe(button);
+      button.remove();
+      const missing = focusToolItem('never');
+      await vi.advanceTimersByTimeAsync(TOOL_ITEM_WAIT_MS + 100);
+      expect(await missing).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

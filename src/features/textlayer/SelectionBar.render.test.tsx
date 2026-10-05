@@ -89,4 +89,34 @@ describe('the selection popover', () => {
     });
     expect(screen.queryByRole('toolbar')).toBeNull();
   });
+
+  it('is the first Tab stop from the canvas, though it sits at the end of the body', async () => {
+    await open();
+    const tab = new KeyboardEvent('keydown', { key: 'Tab', bubbles: true, cancelable: true });
+    act(() => {
+      document.body.dispatchEvent(tab);
+    });
+    expect(tab.defaultPrevented).toBe(true);
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Highlight' }));
+    // Inside the bar, Tab moves on by itself.
+    const inside = new KeyboardEvent('keydown', { key: 'Tab', bubbles: true, cancelable: true });
+    act(() => {
+      document.activeElement?.dispatchEvent(inside);
+    });
+    expect(inside.defaultPrevented).toBe(false);
+  });
+
+  it('flips below a selection at the top of the canvas and grows from its top edge', async () => {
+    const rect = { top: 10, bottom: 30, left: 50, right: 150, width: 100, height: 20 } as DOMRect;
+    vi.spyOn(window, 'getSelection').mockReturnValue({
+      rangeCount: 1,
+      getRangeAt: () => ({ getClientRects: () => [rect] }),
+      toString: () => 'text',
+    } as unknown as Selection);
+    await open();
+    const bar = screen.getByRole('toolbar');
+    expect(bar.style.transformOrigin).toBe('top left');
+    // 8 below the last line (the gap is the overlay offset).
+    expect(Number.parseFloat(bar.style.top)).toBeGreaterThan(30);
+  });
 });

@@ -165,12 +165,13 @@ export function parseOpenOutcome(value: unknown): OpenOutcome | null {
 const MAX_OUTCOMES = 33;
 
 /**
- * Shows the native open dialog, where several files can be chosen, and resolves to how each went, in the order the dialog gave
+ * Shows the native open dialog, where several files can be chosen (one only with `single`), and resolves to how each went, in the order the dialog gave
  * them; empty if the user cancels. An answer that does not have the documented shape is an internal error, like a malformed
  * frame: the viewer and the status bar rely on a name and a page count.
  */
-export async function openDocumentDialog(): Promise<OpenOutcome[]> {
-  const answer = await call<unknown>('open_document_dialog');
+export async function openDocumentDialog(options: { single?: boolean } = {}): Promise<OpenOutcome[]> {
+  // `single`: the dialog lets the user pick one file (the tools that work on one document).
+  const answer = await call<unknown>('open_document_dialog', options.single === true ? { single: true } : undefined);
   if (!Array.isArray(answer) || answer.length > MAX_OUTCOMES) throw toAppError(null);
   const outcomes: OpenOutcome[] = [];
   for (const item of answer as unknown[]) {
