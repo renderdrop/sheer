@@ -179,6 +179,39 @@ pub struct AppState {
     data_dir: Option<Arc<PathBuf>>,
     /// The crash-safe autosave of this session (ADR-053 section 2); set once by `storage::autosave::start`, empty in most tests.
     autosave: Arc<std::sync::OnceLock<Arc<crate::storage::autosave::Autosave>>>,
+    /// The early recent previews waiting for their render (see [`PreviewQueue`]).
+    previews: Arc<PreviewQueue>,
+}
+
+/// Jobs the preview queue holds at most; more are dropped.
+const PREVIEW_QUEUE: usize = 8;
+
+/// The one worker that makes the early recents previews of documents just opened. The thread starts with the first job and the
+/// jobs carry their own state, so the queue never keeps a state alive on its own.
+#[derive(Default)]
+struct PreviewQueue {
+    sender: std::sync::OnceLock<Option<std::sync::mpsc::SyncSender<(AppState, DocumentId)>>>,
+}
+
+impl PreviewQueue {
+    /// Queues the preview of `id`; dropped when the queue is full or the worker could not start.
+    fn submit(&self, state: AppState, id: DocumentId) {
+        let sender = self.sender.get_or_init(|| {
+            let (tx, rx) = std::sync::mpsc::sync_channel::<(AppState, DocumentId)>(PREVIEW_QUEUE);
+            std::thread::Builder::new()
+                .name("recent-preview".into())
+                .spawn(move || {
+                    for (state, id) in rx {
+                        state.cache_thumbnail(id);
+                    }
+                })
+                .ok()
+                .map(|_| tx)
+        });
+        if let Some(sender) = sender {
+            let _ = sender.try_send((state, id));
+        }
+    }
 }
 
 impl AppState {
@@ -196,6 +229,7 @@ impl AppState {
             thumbs: None,
             data_dir: None,
             autosave: Arc::new(std::sync::OnceLock::new()),
+            previews: Arc::new(PreviewQueue::default()),
         }
     }
 
@@ -354,11 +388,8 @@ impl AppState {
         if kind != DocKind::User || self.thumbs.is_none() || self.recents.is_none() {
             return;
         }
-        let state = self.clone();
-        // A failure to start the thread only means no early preview.
-        let _ = std::thread::Builder::new()
-            .name("recent-preview".into())
-            .spawn(move || state.cache_thumbnail(id));
+        // One long-lived worker renders them one after the other; a full queue drops the job (no early preview, nothing else).
+        self.previews.submit(self.clone(), id);
     }
 
     /// Gives the password the user typed for the document `id` that waits for it (`Opened::Locked`) and returns the document once it
@@ -635,29 +666,48 @@ pub async fn open_document_dialog(
             .set_parent(&window)
             .add_filter("PDF", &["pdf"]);
         // `single`: the dialog of a tool that works on one file lets the user pick only one (no file is opened to be closed again).
-        let picked = if single == Some(true) {
-            dialog.blocking_pick_file().map(|file| vec![file])
-        } else {
-            dialog.blocking_pick_files()
-        };
+        let picked = pick(
+            single,
+            dialog,
+            |dialog| dialog.blocking_pick_file(),
+            |dialog| dialog.blocking_pick_files(),
+        );
         let Some(picked) = picked else {
             return Ok(Vec::new());
         };
-        // Taken one past the limit, so `open_paths` can tell that there were too many without holding thousands of paths.
-        let paths = picked
-            .into_iter()
-            .take(limits::MAX_OPEN_BATCH + 1)
-            .filter_map(|file| match file.into_path() {
-                Ok(path) => Some(path),
-                Err(error) => {
-                    AppError::logged(ErrorCode::Internal, error).log();
-                    None
-                }
-            })
-            .collect();
-        Ok(state.open_paths(paths))
+        Ok(state.open_paths(picked_paths(picked)))
     })
     .await
+}
+
+/// The choice of the open dialog: one pick when `single` is `Some(true)`, else any number. `None` is a cancelled dialog.
+fn pick<D, F>(
+    single: Option<bool>,
+    dialog: D,
+    one: impl FnOnce(D) -> Option<F>,
+    many: impl FnOnce(D) -> Option<Vec<F>>,
+) -> Option<Vec<F>> {
+    if single == Some(true) {
+        one(dialog).map(|file| vec![file])
+    } else {
+        many(dialog)
+    }
+}
+
+/// The paths of what was picked, taken one past the limit so `open_paths` can tell that there were too many without holding
+/// thousands of paths.
+fn picked_paths(picked: Vec<tauri_plugin_dialog::FilePath>) -> Vec<PathBuf> {
+    picked
+        .into_iter()
+        .take(limits::MAX_OPEN_BATCH + 1)
+        .filter_map(|file| match file.into_path() {
+            Ok(path) => Some(path),
+            Err(error) => {
+                AppError::logged(ErrorCode::Internal, error).log();
+                None
+            }
+        })
+        .collect()
 }
 
 /// The file of the welcome document in the resource directory (`tauri.conf.json` `bundle.resources`), per interface language.
@@ -1359,6 +1409,38 @@ mod tests {
             .open_path(paths[limits::MAX_OPEN_DOCUMENTS].clone())
             .unwrap()
             .is_some());
+    }
+
+    #[test]
+    fn a_single_pick_gives_one_outcome_and_a_cancel_none() {
+        let dir = TempDir::new();
+        let (engine, _) = loading_engine(1);
+        let state = AppState::new(engine);
+        let file = || tauri_plugin_dialog::FilePath::Path(pdf(&dir, "one.pdf"));
+        let more = || Some(vec![file(), file()]);
+        let picked = pick(Some(true), (), |()| Some(file()), |()| more()).unwrap();
+        assert_eq!(picked.len(), 1);
+        assert_eq!(state.open_paths(picked_paths(picked)).len(), 1);
+        // Not single: the dialog's list is taken as it is; a cancel is `None` either way.
+        assert_eq!(
+            pick(None, (), |()| Some(file()), |()| more())
+                .unwrap()
+                .len(),
+            2
+        );
+        assert!(pick(Some(true), (), |()| None::<u8>, |()| Some(vec![1])).is_none());
+    }
+
+    #[test]
+    fn the_preview_queue_drops_jobs_when_full_and_never_panics() {
+        let (engine, _) = loading_engine(1);
+        let state = AppState::new(engine);
+        for _ in 0..PREVIEW_QUEUE * 4 {
+            state.previews.submit(
+                state.clone(),
+                serde_json::from_value::<DocumentId>(1.into()).unwrap(),
+            );
+        }
     }
 
     #[test]
