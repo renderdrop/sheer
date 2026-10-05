@@ -150,7 +150,11 @@ export const CommentCard = memo(function CommentCard({
   const isEditing = editing?.id === root.id;
   const info = typeOf(root);
   const quote = useQuote(docId, root.id, isTextMarkup(root.kind));
-  const text = full?.contents ?? root.contents;
+  // A text comment keeps its text in its lines; it is the first line like any comment's text.
+  const text =
+    full?.kind === 'freeText' && full.contents.trim() === ''
+      ? full.lines.join(String.fromCharCode(10))
+      : (full?.contents ?? root.contents);
   const author = root.author ?? '';
   const done = status !== 'open' && !selected && !isEditing;
   // A done card shows its excerpt line only, until the user expands it (DESIGN v2 3.2).
@@ -381,7 +385,7 @@ export const CommentCard = memo(function CommentCard({
               <p className="t-caption m-0 truncate" title={root.modified ?? undefined}>
                 {footerTime}
               </p>
-              <div className="flex items-center gap-1">
+              <div className="flex flex-wrap items-center gap-1">
                 <Button
                   size="sm"
                   variant="ghost"

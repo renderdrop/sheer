@@ -212,13 +212,15 @@ export const Bubble = memo(
           'forced-colors:border forced-colors:bg-[Canvas] forced-colors:text-[CanvasText]',
         )}
       >
-        <header className="flex h-6 items-center gap-2">
+        <header className="flex min-h-6 items-start gap-2">
           <Avatar author={root.author} size="md" />
-          <span id={`${ids}-n`} className="t-label min-w-0 flex-1 truncate text-text">
-            {name}
-          </span>
-          <span className="t-caption shrink-0 text-text" title={root.modified ?? undefined}>
-            {date}
+          <span className="flex min-w-0 flex-1 flex-col">
+            <span id={`${ids}-n`} className="t-label truncate text-text">
+              {name}
+            </span>
+            <span className="t-caption truncate text-text" title={root.modified ?? undefined}>
+              {date}
+            </span>
           </span>
           <IconButton
             size="sm"

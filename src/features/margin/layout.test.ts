@@ -89,3 +89,10 @@ describe('bubble header', () => {
     expect(bubbleDate(null, 'en', now)).toBe('');
   });
 });
+
+describe('marginSlot beside a wide page', () => {
+  it('is compact when the whole column would not fit beside the page at its zoom', () => {
+    expect(marginSlot(940, true, MARGIN_FALLBACK, 816).mode).toBe('compact');
+    expect(marginSlot(940, true, MARGIN_FALLBACK, 684).mode).toBe('full');
+  });
+});

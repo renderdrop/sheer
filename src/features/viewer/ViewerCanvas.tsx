@@ -149,6 +149,18 @@ export function ViewerCanvas({ style }: { style?: CSSProperties }) {
     [fit, metrics, pageIndex, gap, zoom],
   );
 
+  // A fit holds for every size the canvas takes, whatever changed it (the window, a panel that a tab switch widened, the comment
+  // margin's slot): when a new size leaves the zoom off its fit (a report that raced with another one), it is fitted again.
+  useEffect(() => {
+    const { fit: mode, zoom: now } = useView.getState().byDoc[docId ?? -1] ?? {};
+    if (docId === null || viewport === null || mode === undefined || mode === 'none' || now === undefined) return;
+    if (isFresh(docId) || useViewer.getState().viewport !== viewport) return;
+    const target = fitZoomFor(mode, metrics, useView.getState().byDoc[docId]?.pageIndex ?? 0, viewport, gap);
+    if (target !== null && Math.abs(clampZoom(target) - now) > 1e-6) useView.getState().setFit(docId, mode, clampZoom(target), null);
+    // Only a new size asks for this: scrolling to a page of another width must not move the zoom.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [viewport]);
+
   // A turn of the view crossfades the canvas (base); pages never spin. Reduced motion: at once. Another document is not a turn.
   const shownRotation = useRef({ docId, rotation: view.rotation });
   useLayoutEffect(() => {
@@ -411,6 +423,7 @@ export function ViewerCanvas({ style }: { style?: CSSProperties }) {
       onPageTurn={turn}
       onRegion={setRegion}
       margin={marginOn}
+      pageWidth={layout?.pagesWidth}
       renderMargin={(mode) =>
         layout !== null && docId !== null ? (
           <MarginColumn

@@ -86,6 +86,8 @@ export interface CanvasProps {
    * The content is as much wider as the slot.
    */
   margin?: boolean;
+  /** The width of the pages at the current zoom: the column is compact when it would not fit beside them. */
+  pageWidth?: number;
   /** The margin's column, drawn inside the content once the canvas knows which one it is (full or compact). */
   renderMargin?: (mode: Exclude<MarginMode, 'off'>) => ReactNode;
   /** A file is dragged over the window (visual only). */
@@ -121,6 +123,7 @@ export function Canvas({
   onPageTurn,
   onRegion,
   margin = false,
+  pageWidth,
   renderMargin,
   dropActive = false,
   className,
@@ -135,9 +138,9 @@ export function Canvas({
   const [reserve, setReserve] = useState(0);
   const reserveRef = useRef(0);
   // The listeners are attached once and read the latest props from here, so a new callback does not detach and attach them.
-  const latest = useRef({ onWheelZoom, onPinch, paged, onPageTurn, fitScale });
+  const latest = useRef({ onWheelZoom, onPinch, paged, onPageTurn, fitScale, pageWidth });
   useEffect(() => {
-    latest.current = { onWheelZoom, onPinch, paged, onPageTurn, fitScale };
+    latest.current = { onWheelZoom, onPinch, paged, onPageTurn, fitScale, pageWidth };
   });
 
   useEffect(() => {
@@ -209,7 +212,7 @@ export function Canvas({
     const pad = canvasPadding();
     /** The size of the region as the layout is to see it: the margin's slot is not the pages'. */
     const sized = (width: number, height: number): { size: Viewport; slot: number } => {
-      const slot = marginSlot(width, margin).reserve;
+      const slot = marginSlot(width, margin, marginMetrics(), latest.current.pageWidth).reserve;
       return { size: { width: Math.max(0, width - slot), height }, slot };
     };
     let currentSlot = 0;
