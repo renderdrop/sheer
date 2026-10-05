@@ -480,13 +480,13 @@ describe('Kommentieren', () => {
     const toggle = await screen.findByRole('switch', { name: 'Recognise shapes when you pause' });
     expect(toggle.getAttribute('aria-checked')).toBe('true');
     await user.click(toggle);
-    expect(useTools.getState().recogniseShapes).toBe(false);
+    expect(useTools.getState().straightenShapes).toBe(false);
     expect(globalThis.localStorage.getItem('sheer.tools.shapeRecognition')).toBe('0');
     expect(screen.getByRole('switch', { name: 'Recognise shapes when you pause' }).getAttribute('aria-checked')).toBe(
       'false',
     );
     await user.click(screen.getByRole('switch', { name: 'Recognise shapes when you pause' }));
-    expect(useTools.getState().recogniseShapes).toBe(true);
+    expect(useTools.getState().straightenShapes).toBe(true);
   });
 
   it('Formen is a split item with the four shapes and the colour row in one popover', async () => {

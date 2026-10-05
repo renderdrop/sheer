@@ -109,6 +109,21 @@ All scenarios hold 60 fps (p95 at most 16.8 ms, target 20 ms); no fix was needed
 16.7 ms means "no frame missed", not headroom. Isolated single frames of 30 ms or more can occur when a render or a rebuild runs in the background.
 Note: `tauri dev` restarts the app when any file under `src-tauri` changes, so measure while no Rust work is in progress.
 
+## Surface gate (milestone DoD, F17.10)
+
+```
+node scripts/ui/dev.mjs                      # in one terminal
+node scripts/ui/surface-gate.mjs [--wide]    # exit code 1 on any violation; --wide adds 1280x800; --only <text> filters
+```
+Sets the viewport to 960x640 (CDP `Emulation.setDeviceMetricsOverride`), opens `tests/fixtures/text.pdf`, then opens every dialog and
+sheet from the dev-only registry `window.__sheerSurfaces` (`src/dev/surfaces.ts`, imported by `main.tsx` behind `import.meta.env.DEV`;
+`check.sh` fails the bundle guard if a release bundle names it) and every popover or menu trigger on screen (`aria-haspopup`, once per mode).
+Per surface four checks, printed as a table: inside (the rect lies in the viewport), clipped (no button/input/select/textarea is cut by an
+overflow ancestor or the viewport), scroll (no internal scroll except in `role=list|listbox|grid|tree` or `data-scroll="list"`), overlap
+(no tooltip, tip or coach mark under it; a popover covers no control outside it; modals cover the inert app by design). Violations are
+blockers. A new dialog or sheet needs an entry in the registry; a new popover is found by its trigger. The pure checks live in
+`scripts/ui/surface-checks.mjs` (unit tests: `surface-checks.test.ts`). Stop the dev window afterwards (`taskkill /F /IM sheer.exe`).
+
 ## CSP gate (milestone DoD)
 
 ```

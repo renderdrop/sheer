@@ -274,10 +274,19 @@ guard_dist_urls() {
   return "$rc"
 }
 
+# F17.10: the dev-only surface registry (src/dev/surfaces.ts) must not reach a release bundle.
+guard_dist_dev() {
+  local dir="${1:-dist}"
+  if grep -rl --binary-files=without-match '__sheerSurfaces' "$dir" >/dev/null 2>&1; then
+    echo "error: the dev surface registry is in the bundle ($dir)"
+    return 1
+  fi
+}
+
 build_and_guard_dist() {
   local out="$LOG_DIR/dist"
   npx --no-install vite build --outDir "$out" --emptyOutDir || return 1
-  guard_dist_urls "$out"
+  guard_dist_urls "$out" && guard_dist_dev "$out"
 }
 
 # `source scripts/check.sh` with SHEER_CHECK_SOURCE_ONLY=1 only defines the functions (src-tauri/tests/updater_scope.rs).

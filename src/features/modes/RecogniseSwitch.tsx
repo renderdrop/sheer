@@ -12,8 +12,8 @@ import { useTools } from '../../stores/tools';
 export function RecogniseSwitch({ className }: { className?: string }) {
   const t = useT();
   const labelId = useId();
-  const on = useTools((state) => state.recogniseShapes);
-  const set = useTools((state) => state.setRecogniseShapes);
+  const on = useTools((state) => state.straightenShapes);
+  const set = useTools((state) => state.setStraightenShapes);
   return (
     <div className={cx('flex items-center justify-between gap-3', className)}>
       <span id={labelId} className="t-label text-text">

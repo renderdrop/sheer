@@ -43,3 +43,5 @@ void watchNativeMenu();
 // Files dropped on the window, opened by the OS or given at startup arrive over a channel too (and the drop overlay follows
 // the drag), so the window never hears a path.
 void watchAppEvents();
+// Dev only: the surface registry of the UI gate (scripts/ui/surface-gate.mjs); not in the release bundle.
+if (import.meta.env.DEV) void import('./dev/surfaces');
