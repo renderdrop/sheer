@@ -97,6 +97,8 @@ export interface TabProps {
   keyShortcuts?: string;
   /** Stays focusable (`aria-disabled`) but cannot be selected. */
   disabled?: boolean;
+  /** Shows the label next to the icon (a labelled tab; the default tab is icon-only with the label as tooltip). */
+  showLabel?: boolean;
 }
 
 /**
@@ -117,7 +119,7 @@ function Indicator({ layoutId }: { layoutId: string }) {
 }
 
 /** One icon tab (DESIGN 3.6). */
-export function Tab({ value, label, icon, shortcut, keyShortcuts, disabled = false }: TabProps) {
+export function Tab({ value, label, icon, shortcut, keyShortcuts, disabled = false, showLabel = false }: TabProps) {
   const { value: selectedValue, select, baseId } = useTabs();
   const selected = selectedValue === value;
 
@@ -145,7 +147,10 @@ export function Tab({ value, label, icon, shortcut, keyShortcuts, disabled = fal
         )}
       >
         {selected && <Indicator layoutId={`${baseId}-indicator`} />}
-        <Icon icon={icon} className="relative" />
+        <span className="relative flex min-w-0 items-center gap-2">
+          <Icon icon={icon} />
+          {showLabel && <span className="t-label truncate">{label}</span>}
+        </span>
       </button>
     </Tooltip>
   );

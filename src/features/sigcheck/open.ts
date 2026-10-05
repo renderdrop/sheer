@@ -1,3 +1,4 @@
+import { useDocuments } from '../../stores/documents';
 import { useSigcheck } from './store';
 
 /**
@@ -5,7 +6,10 @@ import { useSigcheck } from './store';
  * the report). Used by the File menu, the banner's Details and the seals on the page.
  */
 export function openSignaturesDialog(docId: number, index?: number): void {
-  useSigcheck.getState().openDialog(docId, index ?? null);
+  // The tab of a signed version asks about the file it was opened from, while that is open (the signatures live there).
+  const source = useSigcheck.getState().sources[docId];
+  const target = source !== undefined && useDocuments.getState().byId[source] !== undefined ? source : docId;
+  useSigcheck.getState().openDialog(target, index ?? null);
 }
 
 /** Closes the Signatures dialog. */

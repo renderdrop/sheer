@@ -111,7 +111,9 @@ export const FormLayer = memo(function FormLayer({
   const fields = useForms((state) => state.byDoc[docId]?.fields) ?? NONE;
   const highlight = useForms((state) => state.highlight);
   const tool = useUi((state) => state.activeTool);
-  const documentReadOnly = useDocuments((state) => state.byId[docId]?.kind === 'welcome');
+  const documentReadOnly = useDocuments(
+    (state) => state.byId[docId]?.kind === 'welcome' || state.byId[docId]?.signatureLock === 'locked',
+  );
   const placed = useMemo(() => widgetsOn(fields, pageIndex), [fields, pageIndex]);
   const activeDocument = useDocuments(selectActiveId) === docId;
 

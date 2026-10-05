@@ -1,3 +1,4 @@
+import type { PageSlotInfo } from '../../api/pages';
 import type { Quad } from '../../api/wire';
 import type { SignatureInfo, SignatureReport } from '../../api/signing';
 
@@ -50,13 +51,20 @@ export const identityUnchecked = (sigs: readonly SignatureInfo[]): boolean =>
 
 /**
  * A widget rectangle as the file writes it (`[llx lly urx ury]`: origin bottom left, y up) as a box of page space (origin top left,
- * y down), for the unrotated page `pageHeight` points high.
+ * y down), for the unrotated page `pageHeight` points high. `origin` is the lower left corner of the page box (CropBox, else MediaBox)
+ * in file space, subtracted before the flip.
  */
 export function sealBox(
   rect: { x: number; y: number; w: number; h: number },
   pageHeight: number,
+  origin: { x: number; y: number } = { x: 0, y: 0 },
 ): { x: number; y: number; w: number; h: number } {
-  return { x: rect.x, y: pageHeight - rect.y - rect.h, w: rect.w, h: rect.h };
+  return { x: rect.x - origin.x, y: pageHeight - (rect.y - origin.y) - rect.h, w: rect.w, h: rect.h };
+}
+
+/** The lower left corner of a page's crop in file space (the MediaBox is taken to start at 0, 0; the crop margins are measured from it). */
+export function boxOriginOf(slot: Pick<PageSlotInfo, 'crop'> | undefined): { x: number; y: number } {
+  return { x: slot?.crop?.left ?? 0, y: slot?.crop?.bottom ?? 0 };
 }
 
 /** The seal as a quad for the viewer's jump (page space, y down). */

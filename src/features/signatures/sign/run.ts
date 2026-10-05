@@ -5,6 +5,7 @@ import { tokenPx } from '../../../components/tokens';
 import { renderCache } from '../../../engine/renderCache';
 import { useAnnotations } from '../../../stores/annotations';
 import { useDocuments } from '../../../stores/documents';
+import { checkSignatures, useSigcheck } from '../../sigcheck/store';
 import { adoptOpenOutcomes } from '../../viewer/useViewer';
 import type { SealBox } from './store';
 
@@ -65,6 +66,9 @@ export async function signWithCertificate(input: SignInput): Promise<SignOutcome
       useDocuments.setState((state) => ({ byId: { ...state.byId, [box.docId]: result.document } }));
       renderCache.dropDocument(box.docId);
       renderCache.admit(box.docId);
+      // The old check described the file before signing: forget it (and a closed banner) and check the signed file now.
+      useSigcheck.getState().remove(box.docId);
+      void checkSignatures(box.docId, true);
     } else {
       adoptOpenOutcomes([{ type: 'opened', document: result.document }]);
     }

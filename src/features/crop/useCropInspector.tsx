@@ -107,7 +107,11 @@ function CropInspectorBody() {
   const target = useCropTarget();
   const scope = useCrop((state) => state.scope);
   const range = useCrop((state) => state.range);
-  const readOnly = useDocuments((state) => (target === null ? false : state.byId[target.docId]?.kind === 'welcome'));
+  const readOnly = useDocuments((state) =>
+    target === null
+      ? false
+      : state.byId[target.docId]?.kind === 'welcome' || state.byId[target.docId]?.signatureLock === 'locked',
+  );
   const [badSides, setBadSides] = useState<ReadonlySet<Side>>(new Set());
   const rangeId = useId();
   const errorId = useId();

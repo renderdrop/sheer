@@ -18,7 +18,7 @@ import { useUi } from '../../stores/ui';
 import { launchJump } from '../viewer/openTransition';
 import { useViewer } from '../viewer/useViewer';
 import { useDevicePixelRatio } from '../viewer/useDevicePixelRatio';
-import { deletePages, dropPages, isReadOnly, moveByKeys } from './commands';
+import { deletePages, dropPages, moveByKeys, useIsReadOnly } from './commands';
 import {
   arrowTarget,
   cellOrigin,
@@ -116,7 +116,7 @@ export function OrganizeGrid({ docId, scheduler }: OrganizeGridProps) {
   const pending = useRef<Pending | null>(null);
   const pointer = useRef({ x: 0, y: 0 });
   const wantFocus = useRef<number | null>(null);
-  const readOnly = isReadOnly(docId);
+  const readOnly = useIsReadOnly(docId);
 
   const count = slots.length;
   const ids = useMemo(() => slots.map((slot) => slot.id), [slots]);

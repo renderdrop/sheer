@@ -1,14 +1,15 @@
 import { toAppError } from '../../api/errors';
 import { openSignedRevision, saveUnsignedCopy } from '../../api/signing';
-import { DEFAULT_PAGE_SIZE, positionOf, sizesFor, usePages } from '../../stores/pages';
+import { DEFAULT_PAGE_SIZE, positionOf, readSlots, sizesFor, usePages } from '../../stores/pages';
 import { useUi } from '../../stores/ui';
 import { useView } from '../../stores/view';
 import { fileRotationOf } from '../viewer/fileRotation';
 import { unrotatedSize } from '../viewer/transform';
 import { adoptOpenOutcomes } from '../viewer/useViewer';
 import { jumpToHit } from '../search/jump';
-import { useSigcheck } from './store';
-import { rectQuad, sealBox } from './summary';
+import { closeSignaturesDialog } from './open';
+import { checkSignatures, useSigcheck } from './store';
+import { boxOriginOf, rectQuad, sealBox } from './summary';
 
 /** How long "Show on page" keeps the seal outlined when motion is reduced to a hold (`--hold-outline`). */
 export const SHOWN_MS = 1000;
@@ -27,7 +28,15 @@ export async function makeEditableCopy(docId: number): Promise<void> {
 /** Opens what signature `index` covers as a read-only document in a new tab. */
 export async function viewSignedVersion(docId: number, index: number): Promise<void> {
   try {
-    adoptOpenOutcomes([await openSignedRevision(docId, index)]);
+    const outcome = await openSignedRevision(docId, index);
+    // The view carries the report of the file it was opened from, so the banner and the seal outline say what changed.
+    if (outcome.type === 'opened') {
+      if (useSigcheck.getState().byDoc[docId]?.status !== 'ready') await checkSignatures(docId);
+      const entry = useSigcheck.getState().byDoc[docId];
+      if (entry?.status === 'ready') useSigcheck.getState().link(outcome.document.id, docId, entry.report);
+    }
+    closeSignaturesDialog();
+    adoptOpenOutcomes([outcome]);
   } catch (error) {
     useUi.getState().showBanner(toAppError(error));
   }
@@ -44,7 +53,13 @@ export function showOnPage(
   const sizes = view === undefined ? [] : sizesFor(usePages.getState(), docId, view.pageCount);
   const drawn = sizes[positionOf(docId, widget.pageId) ?? -1] ?? DEFAULT_PAGE_SIZE;
   const page = unrotatedSize(drawn, fileRotationOf(docId, widget.pageId));
-  jumpToHit(docId, { index: -1, page: widget.pageId, quads: [rectQuad(sealBox(widget.rect, page[1]))] });
+  jumpToHit(docId, {
+    index: -1,
+    page: widget.pageId,
+    quads: [
+      rectQuad(sealBox(widget.rect, page[1], boxOriginOf(readSlots(docId).find((slot) => slot.id === widget.pageId)))),
+    ],
+  });
   useSigcheck.getState().show({ docId, index });
   window.clearTimeout(shownTimer);
   shownTimer = window.setTimeout(() => useSigcheck.getState().show(null), SHOWN_MS);

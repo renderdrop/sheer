@@ -3,6 +3,7 @@ import { cleanup, render } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import type { SignatureInfo } from '../../api/signing';
+import { usePages } from '../../stores/pages';
 import { useDocuments } from '../../stores/documents';
 import { resetDocuments } from '../../stores/documents.testutil';
 import { forgetFileRotations, setFileRotation } from '../viewer/fileRotation';
@@ -51,6 +52,7 @@ beforeEach(() => {
 });
 afterEach(() => {
   cleanup();
+  usePages.setState({ slotsByDoc: {} });
   forgetFileRotations(1);
 });
 
@@ -77,11 +79,24 @@ describe('SealLayer mapping', () => {
     expect(group?.style.width).toBe('612px');
   });
 
-  // BUG: the seal rect is the raw /Rect (file space) and sealBox only flips y; a CropBox whose origin is not (0, 0) is not subtracted,
-  // so the overlay sits off by the crop origin. Needs a crop-origin offset in the report or in SealLayer (product code).
-  it.skip('subtracts a CropBox origin (50, 50) from the seal rect', () => {
+  it('subtracts a CropBox origin (50, 50) from the seal rect', () => {
+    usePages.getState().setSlots(1, [
+      {
+        id: 0,
+        width: 512,
+        height: 692,
+        rotation: 0,
+        rev: 0,
+        label: null,
+        origin: 'file',
+        media: { width: 612, height: 792 },
+        crop: { top: 50, right: 50, bottom: 50, left: 50 },
+      },
+    ]);
     const { container } = layer(0, 512, 692);
     const button = container.querySelector<HTMLElement>('[data-seal="0"]');
     expect(button?.style.left).toBe('22px');
+    // 692 - (700 - 50) - 60
+    expect(button?.style.top).toBe('-18px');
   });
 });

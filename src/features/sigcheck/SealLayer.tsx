@@ -3,12 +3,13 @@ import { memo, useMemo, useState, type CSSProperties, type FC } from 'react';
 import { Tooltip } from '../../components';
 import { useT } from '../../i18n';
 import { selectActiveId, useDocuments } from '../../stores/documents';
+import { useSlots } from '../../stores/pages';
 import { fileRotationOf } from '../viewer/fileRotation';
 import type { PageLayerProps } from '../viewer/pageLayer';
 import { normalizeRotation, overlayBox, swapsSides, totalRotation, unrotatedSize } from '../viewer/transform';
 import { openSignaturesDialog } from './open';
 import { useSigcheck } from './store';
-import { clean, isBad, sealBox, signerName, stateOf, type SigState } from './summary';
+import { boxOriginOf, clean, isBad, sealBox, signerName, stateOf, type SigState } from './summary';
 
 function stateWord(t: ReturnType<typeof useT>, state: SigState): string {
   if (state === 'intact') return t('sigs.state.intact');
@@ -37,6 +38,7 @@ export const SealLayer: FC<PageLayerProps> = memo(function SealLayer({
   const activeDocument = useDocuments(selectActiveId) === docId;
   const entry = useSigcheck((state) => state.byDoc[docId]);
   const shown = useSigcheck((state) => state.shown);
+  const slots = useSlots(docId);
   const [active, setActive] = useState<number | null>(null);
 
   const seals = useMemo(
@@ -67,7 +69,7 @@ export const SealLayer: FC<PageLayerProps> = memo(function SealLayer({
       <div role="group" className="absolute" style={style}>
         {seals.map((sig) => {
           if (sig.widget === null) return null;
-          const box = sealBox(sig.widget.rect, page[1]);
+          const box = sealBox(sig.widget.rect, page[1], boxOriginOf(slots.find((slot) => slot.id === pageIndex)));
           const state = stateOf(sig);
           const name = signerName(sig);
           const word = stateWord(t, state);

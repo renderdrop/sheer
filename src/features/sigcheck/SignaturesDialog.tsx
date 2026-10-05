@@ -22,13 +22,27 @@ import { clean, isBad, laterKeys, signerName, stateOf, type SigState } from './s
 /** The app's root element: inert while the dialog is open. */
 const APP_ROOT_ID = 'root';
 
-/** "2026-10-05T14:05:00+02:00" as the locale's date and time, then the offset the signer wrote. */
+/** The offset of this computer's time zone at `date`, "+02:00". */
+function localOffset(date: Date): string {
+  const minutes = -date.getTimezoneOffset();
+  const abs = Math.abs(minutes);
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${minutes < 0 ? '-' : '+'}${pad(Math.floor(abs / 60))}:${pad(abs % 60)}`;
+}
+
+/** "2026-10-05T12:29:00Z" as this computer's local date and time with its offset, like the seal: "05.10.2026, 14:29 +02:00". */
 export function formatClaimed(iso: string, locale: string): string {
   const date = new Date(iso);
-  const offset = /(Z|[+-]\d{2}:\d{2})$/.exec(iso)?.[1] ?? '';
   if (Number.isNaN(date.getTime())) return clean(iso);
-  const text = new Intl.DateTimeFormat(locale, { dateStyle: 'medium', timeStyle: 'short' }).format(date);
-  return offset === '' ? text : `${text} ${offset === 'Z' ? 'UTC' : offset}`;
+  const text = new Intl.DateTimeFormat(locale, {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
+  }).format(date);
+  return `${text} ${localOffset(date)}`;
 }
 
 function Row({ label, children }: { label?: string; children: ReactNode }) {
@@ -84,6 +98,8 @@ function SignatureCard({ docId, sig, total, onTrust, busy }: CardProps) {
     sig.claimedTime !== null &&
     (new Date(sig.claimedTime) < new Date(cert.notBefore) || new Date(sig.claimedTime) > new Date(cert.notAfter));
   const canView = sig.coverage.type === 'earlierRevision' || state !== 'intact';
+  // Trusting is offered only for a signature that checks out and is intact: never for a changed, broken or unchecked one.
+  const canTrust = sig.cryptographic === 'valid' && (state === 'intact' || state === 'later');
   const widget = sig.widget;
   const locks = sig.kind.type === 'certification' && sig.kind.p !== 3;
 
@@ -101,18 +117,23 @@ function SignatureCard({ docId, sig, total, onTrust, busy }: CardProps) {
           <span className="t-caption text-text-muted">{t('sigs.number', { n: sig.index + 1, total })}</span>
           <span className="t-title truncate">{signerName(sig)}</span>
         </div>
-        <span className={`t-label shrink-0 font-semibold ${bad ? 'text-danger' : ''}`}>{word(state)}</span>
+        <span
+          className={`t-label shrink-0 ${bad ? 'text-danger' : ''}`}
+          style={{ fontWeight: 'var(--font-weight-semibold)' }}
+        >
+          {word(state)}
+        </span>
       </div>
 
       {sig.claimedTime !== null && <Row label={t('sigs.signedAt')}>{formatClaimed(sig.claimedTime, locale)}</Row>}
 
       {errorText !== null && broken ? (
-        <Row>{errorText}</Row>
+        <Row label={t('sigs.row.content')}>{errorText}</Row>
       ) : (
-        <Row>
+        <Row label={t('sigs.row.content')}>
           <span className={bad ? 'font-semibold' : ''}>{word(state)}</span>
           {sig.coverage.type === 'earlierRevision'
-            ? `. ${t('sigs.covers', { n: sig.coverage.revision, total: sig.coverage.revision + 1 })}`
+            ? `. ${t('sigs.coversVersion', { n: sig.coverage.revision })}`
             : `. ${local.wholeFile}`}
         </Row>
       )}
@@ -148,23 +169,19 @@ function SignatureCard({ docId, sig, total, onTrust, busy }: CardProps) {
               />
             </span>
           </Row>
-          <p className="t-body m-0">
+          <Row label={t('sigs.row.identity')}>
             {sig.trust === 'ownIdentity'
               ? local.own
               : sig.trust === 'trustedByYou'
                 ? local.trusted
                 : t('sigs.identity')}
-          </p>
+          </Row>
         </>
       )}
 
-      {sig.reason !== null && sig.reason !== '' && (
-        <Row label="">{t('seal.reason', { reason: clean(sig.reason) })}</Row>
-      )}
-      {sig.location !== null && sig.location !== '' && (
-        <Row label="">{t('seal.location', { location: clean(sig.location) })}</Row>
-      )}
-      {locks && <Row label="">{t('sigs.locks')}</Row>}
+      {sig.reason !== null && sig.reason !== '' && <Row label={t('sigs.row.reason')}>{clean(sig.reason)}</Row>}
+      {sig.location !== null && sig.location !== '' && <Row label={t('sigs.row.location')}>{clean(sig.location)}</Row>}
+      {locks && <Row label={t('sigs.row.lock')}>{t('sigs.locks')}</Row>}
 
       <div className="flex flex-wrap items-center gap-2">
         {widget !== null ? (
@@ -179,7 +196,7 @@ function SignatureCard({ docId, sig, total, onTrust, busy }: CardProps) {
             {local.viewSigned}
           </Button>
         )}
-        {cert !== null && sig.trust !== 'ownIdentity' && (
+        {cert !== null && sig.trust !== 'ownIdentity' && (sig.trust === 'trustedByYou' || canTrust) && (
           <Button
             variant="ghost"
             size="sm"

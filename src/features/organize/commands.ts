@@ -3,6 +3,7 @@ import { toAppError } from '../../api/errors';
 import { translators } from '../../i18n';
 import { useLocaleStore } from '../../i18n/store';
 import { useDocuments } from '../../stores/documents';
+import { isSignatureLocked } from '../lock/useSignatureLock';
 import { useUi } from '../../stores/ui';
 import { isNoopMove, keyboardMove, toIndexFor } from './grid';
 import {
@@ -25,9 +26,16 @@ export function targetsOf(docId: number): number[] {
   return slots.filter((slot) => live.has(slot.id)).map((slot) => slot.id);
 }
 
-/** The tour's sample (and any document that cannot change) is read-only: the page commands do nothing there. */
+/** The tour's sample and a document locked by a certifying signature are read-only: the page commands do nothing there. */
 export function isReadOnly(docId: number): boolean {
-  return useDocuments.getState().byId[docId]?.kind === 'welcome';
+  return useDocuments.getState().byId[docId]?.kind === 'welcome' || isSignatureLocked(docId);
+}
+
+/** `isReadOnly`, followed: the grid draws again when a signature locks the document. */
+export function useIsReadOnly(docId: number): boolean {
+  return useDocuments(
+    (state) => state.byId[docId]?.kind === 'welcome' || state.byId[docId]?.signatureLock === 'locked',
+  );
 }
 
 function fail(error: unknown): void {

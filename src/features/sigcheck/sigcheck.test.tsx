@@ -6,9 +6,10 @@ import type { SignatureInfo, SignatureReport } from '../../api/signing';
 import { useDocuments } from '../../stores/documents';
 import { resetDocuments } from '../../stores/documents.testutil';
 import { useBannerWinner } from '../shell/bannerPriority';
+import { viewSignedVersion } from './actions';
 import { openSignaturesDialog } from './open';
 import { SigBanner } from './SigBanner';
-import { SignaturesDialog } from './SignaturesDialog';
+import { formatClaimed, SignaturesDialog } from './SignaturesDialog';
 import { resetSigcheck, useSigcheck } from './store';
 import { clean, stateOf, worstOf } from './summary';
 
@@ -298,6 +299,53 @@ describe('several signatures and later additions (AC 17, 19, 20)', () => {
     render(<Host />);
     await screen.findByRole('status');
     act(() => openSignaturesDialog(1));
-    expect((await screen.findByRole('dialog')).textContent).toContain('Covers version 1 of 2 of this file');
+    expect((await screen.findByRole('dialog')).textContent).toContain('Covers version 1 of this file');
+  });
+});
+
+describe('signed version tabs and trust', () => {
+  const later = sig({
+    coverage: {
+      type: 'earlierRevision',
+      revision: 1,
+      later: { signatures: false, formFill: false, annotations: false, other: true },
+      verdict: 'disallowed',
+    },
+  });
+
+  it('a signed-version tab carries the report of its source: the banner wins over the form banner and says changed', async () => {
+    api.validateSignatures.mockResolvedValue(report([later]));
+    api.openSignedRevision.mockResolvedValue({
+      type: 'opened',
+      document: { id: 2, pageCount: 1, displayName: 'a (signed).pdf', kind: 'signedRevision' },
+    });
+    render(<Host />);
+    await screen.findByRole('status');
+    await viewSignedVersion(1, 0);
+    act(() => {
+      useDocuments.getState().add({ id: 2, pageCount: 1, displayName: 'a (signed).pdf', kind: 'signedRevision' });
+      useDocuments.getState().setActive(2);
+    });
+    const banner = await screen.findByRole('status');
+    expect(banner.getAttribute('data-state')).toBe('changed');
+    expect(screen.getByTestId('winner').textContent).toBe('signature');
+    // The dialog that opened the view is closed; Details on the view asks about the source file.
+    expect(useSigcheck.getState().dialog).toBeNull();
+    act(() => openSignaturesDialog(2));
+    expect(useSigcheck.getState().dialog?.docId).toBe(1);
+  });
+
+  it('offers trust only for a valid, intact signature', async () => {
+    api.validateSignatures.mockResolvedValue(report([later, sig({ index: 1, cryptographic: 'invalid' })]));
+    render(<Host />);
+    await screen.findByRole('status');
+    act(() => openSignaturesDialog(1));
+    await screen.findByRole('dialog');
+    expect(screen.queryByText('Trust this signer')).toBeNull();
+  });
+
+  it('shows times in local time with the local offset', () => {
+    const text = formatClaimed('2026-10-05T12:29:00Z', 'en');
+    expect(text).toMatch(/^10\/05\/2026, \d{2}:\d{2} [+-]\d{2}:\d{2}$/);
   });
 });

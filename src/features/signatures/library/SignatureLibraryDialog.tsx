@@ -262,8 +262,8 @@ function LibraryModal() {
           className="flex min-h-0 flex-1 flex-col gap-4"
         >
           <TabList label={t('lib.title')}>
-            <Tab value="signatures" label={t('lib.tab.signatures')} icon={Signature} />
-            <Tab value="certificates" label={t('lib.tab.certificates')} icon={KeyRound} />
+            <Tab value="signatures" label={t('lib.tab.signatures')} icon={Signature} showLabel />
+            <Tab value="certificates" label={t('lib.tab.certificates')} icon={KeyRound} showLabel />
           </TabList>
           <TabPanel value="certificates" className="min-h-0 flex-1 flex-col gap-4 outline-none [&:not([hidden])]:flex">
             <CertificatesTab onClose={closeSignatureLibrary} />

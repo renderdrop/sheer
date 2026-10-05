@@ -5,6 +5,7 @@ import { translators } from '../../i18n';
 import { useLocaleStore } from '../../i18n/store';
 import { useAnnotations } from '../../stores/annotations';
 import { useDocuments } from '../../stores/documents';
+import { isSignatureLocked } from '../lock/useSignatureLock';
 import { readSlots } from '../../stores/pages';
 import { useUi } from '../../stores/ui';
 import { pageIndices, parseRanges } from '../jobs/ranges';
@@ -51,9 +52,9 @@ export function sizesDiffer(pages: readonly PageSlotInfo[]): boolean {
   return pages.some((page) => size(page) !== size(first));
 }
 
-/** The tour's sample cannot change. */
+/** The tour's sample and a document locked by a certifying signature cannot change. */
 function isReadOnly(docId: number): boolean {
-  return useDocuments.getState().byId[docId]?.kind === 'welcome';
+  return useDocuments.getState().byId[docId]?.kind === 'welcome' || isSignatureLocked(docId);
 }
 
 /**

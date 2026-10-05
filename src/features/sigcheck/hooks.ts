@@ -21,13 +21,17 @@ function useAfter(flag: boolean, ms: number): boolean {
   return flag && late;
 }
 
-/** Whether the active document has a signed signature field that is worth checking (the read-only view of a signed revision is not). */
+/**
+ * Whether the active document has a signature state to show: a signed file, or the read-only view of a signed revision, which
+ * carries the report of the file it was opened from (it is not checked itself: its own bytes are whole, the file is what changed).
+ */
 export function useActiveSigned(): number | null {
   const docId = useDocuments(selectActiveId);
-  const signed = useDocuments((state) => {
-    const document = selectActiveDocument(state);
-    return document !== null && document.flags?.signed === true && document.kind !== 'signedRevision';
-  });
+  const kind = useDocuments((state) => selectActiveDocument(state)?.kind);
+  const signed = useDocuments((state) => selectActiveDocument(state)?.flags?.signed === true);
+  const carried = useSigcheck((state) => docId !== null && state.byDoc[docId] !== undefined);
+  if (docId === null) return null;
+  if (kind === 'signedRevision') return carried ? docId : null;
   return signed ? docId : null;
 }
 

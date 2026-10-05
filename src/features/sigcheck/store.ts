@@ -12,10 +12,13 @@ interface SigcheckState {
   byDoc: Record<number, CheckEntry>;
   /** Documents whose banner was closed; for this session of the tab only. */
   dismissed: Record<number, true>;
+  /** Signed-version tabs: the document each was opened from (its report is carried over, so a changed file never looks clean). */
+  sources: Record<number, number>;
   /** The Signatures dialog: the document and the signature whose card it scrolls to. */
   dialog: { docId: number; index: number | null } | null;
   /** The seal the page shows as picked by "Show on page". */
   shown: { docId: number; index: number } | null;
+  link: (revisionId: number, sourceId: number, report: SignatureReport) => void;
   begin: (docId: number) => void;
   setReport: (docId: number, report: SignatureReport) => void;
   fail: (docId: number, error: AppError) => void;
@@ -29,8 +32,14 @@ interface SigcheckState {
 export const useSigcheck = create<SigcheckState>()((set) => ({
   byDoc: {},
   dismissed: {},
+  sources: {},
   dialog: null,
   shown: null,
+  link: (revisionId, sourceId, report) =>
+    set((state) => ({
+      byDoc: { ...state.byDoc, [revisionId]: { status: 'ready', report } },
+      sources: { ...state.sources, [revisionId]: sourceId },
+    })),
   begin: (docId) => set((state) => ({ byDoc: { ...state.byDoc, [docId]: { status: 'checking' } } })),
   setReport: (docId, report) => set((state) => ({ byDoc: { ...state.byDoc, [docId]: { status: 'ready', report } } })),
   fail: (docId, error) => set((state) => ({ byDoc: { ...state.byDoc, [docId]: { status: 'failed', error } } })),
@@ -38,11 +47,14 @@ export const useSigcheck = create<SigcheckState>()((set) => ({
     set((state) => {
       const byDoc = { ...state.byDoc };
       const dismissed = { ...state.dismissed };
+      const sources = { ...state.sources };
       delete byDoc[docId];
       delete dismissed[docId];
+      delete sources[docId];
       return {
         byDoc,
         dismissed,
+        sources,
         dialog: state.dialog?.docId === docId ? null : state.dialog,
         shown: state.shown?.docId === docId ? null : state.shown,
       };
@@ -75,5 +87,5 @@ export async function checkSignatures(docId: number, force = false): Promise<voi
 /** Resets the store (tests). */
 export function resetSigcheck(): void {
   running.clear();
-  useSigcheck.setState({ byDoc: {}, dismissed: {}, dialog: null, shown: null });
+  useSigcheck.setState({ byDoc: {}, dismissed: {}, sources: {}, dialog: null, shown: null });
 }
