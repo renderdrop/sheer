@@ -42,9 +42,9 @@ describe('the top bar', () => {
   it('shows the file name with the tour anchors, and tabs from two documents on', () => {
     open('Report.pdf');
     setup(<TopBar trafficLightInset={false} />);
-    expect(bar().getByText('Report.pdf').getAttribute('data-tour-anchor')).toBe('status-file-name');
+    expect(bar().getByText('Report.pdf').getAttribute('data-tour-anchor')).toBe('topbar-file-name');
     expect(bar().queryByRole('tablist')).toBeNull();
-    expect(document.querySelector('[data-tour-anchor="status-page-button"]')).not.toBeNull();
+    expect(document.querySelector('[data-tour-anchor="topbar-page-field"]')).not.toBeNull();
     expect(document.querySelector('[data-toolbar-item="zoom-in"]')).not.toBeNull();
     act(() => open('Other.pdf'));
     expect(bar().getByRole('tablist', { name: 'Open documents' })).not.toBeNull();

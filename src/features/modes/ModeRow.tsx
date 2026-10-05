@@ -72,6 +72,7 @@ export const ModeRow = memo(function ModeRow() {
                 role="tab"
                 id={`mode-tab-${id}`}
                 data-mode={id}
+                data-tour-anchor={id === 'comment' || id === 'fill' ? `mode-${id}` : undefined}
                 aria-selected={selected}
                 aria-controls={TOOL_ROW_ID}
                 aria-keyshortcuts={keyOfMode(id)}

@@ -91,7 +91,7 @@ function PageField() {
     }
   };
   return (
-    <div data-tour-anchor="status-page-button" className="flex items-center gap-2">
+    <div data-tour-anchor="topbar-page-field" className="flex items-center gap-2">
       <Field
         ref={input}
         type="text"

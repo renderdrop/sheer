@@ -25,7 +25,7 @@ function FileTitle() {
       className="flex min-w-0 max-w-[calc(var(--space-24)*2+var(--space-12)*2)] items-center gap-2 ps-2"
       onDoubleClick={() => void runAction('save-as')}
     >
-      <span data-tour-anchor="status-file-name" className="t-label min-w-0 truncate" title={shown}>
+      <span data-tour-anchor="topbar-file-name" className="t-label min-w-0 truncate" title={shown}>
         {shown}
       </span>
     </div>

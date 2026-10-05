@@ -1,20 +1,20 @@
-import { AnimatePresence, motion, useIsPresent } from 'motion/react';
+import { AnimatePresence, motion, useIsPresent, useReducedMotion } from 'motion/react';
 import { Check, X } from 'lucide-react';
 import { useEffect, useId, useLayoutEffect, useRef, useState, type KeyboardEvent, type RefObject } from 'react';
 import { createPortal } from 'react-dom';
 
 import { Button, Icon, IconButton, pulse } from '../../components';
-import { usePopoverMotion } from '../../components/motion';
+import { DURATION, usePopoverMotion } from '../../components/motion';
 import { tokenPx } from '../../components/tokens';
 import { useFloatingPosition } from '../../components/useFloatingPosition';
 import { useT } from '../../i18n';
 import { readSlots, usePages } from '../../stores/pages';
-import { useUi } from '../../stores/ui';
-import { modeOfAnchor, resolveAnchor, type AnchorSpec, type ResolvedAnchor } from './anchors';
+import { resolveAnchor, type AnchorSpec, type ResolvedAnchor } from './anchors';
 import { usePlace } from './place';
 import { SHIPPED_STEPS, pageIdOfKind, type TourStep } from './steps';
 import { useTour } from './store';
 import { stepText } from './text';
+import { useStepParams } from './useStepParams';
 
 /** The id of the card, for the pill's `aria-controls`. */
 export const COACH_MARK_ID = 'tour-coach-mark';
@@ -107,9 +107,6 @@ function useAnchor(name: string | undefined): ResolvedAnchor | null {
   const [anchor, setAnchor] = useState<ResolvedAnchor | null>(null);
   useLayoutEffect(() => {
     if (name === undefined) return;
-    // The tools live in their mode's tool row (ADR-102): go to the mode of the anchor before it is looked up.
-    const mode = modeOfAnchor(name);
-    if (mode !== null) useUi.getState().setMode(mode);
     const find = () =>
       setAnchor((previous) => {
         const next = resolveAnchor(name);
@@ -251,11 +248,18 @@ function Card({ anchor }: CardProps) {
   const focusCard = useTour((state) => state.focusCard);
   const hide = useTour((state) => state.hide);
   const skip = useTour((state) => state.skip);
+  const next = useTour((state) => state.next);
+  const back = useTour((state) => state.back);
   const clearFocusRequest = useTour((state) => state.clearFocusRequest);
   const step = SHIPPED_STEPS[index];
   const total = SHIPPED_STEPS.length;
   const done = phase === 'done';
-  const { title, text } = stepText(t, step);
+  const last = index + 1 >= total;
+  /** Completed steps over the total: a skipped step fills the bar all the same (DESIGN 3.6). */
+  const filled = index + (done ? 1 : 0);
+  const params = useStepParams();
+  const { title, text } = stepText(t, step, params);
+  const reduce = useReducedMotion() === true;
   const anchorEl = anchor.element;
 
   useFloatingPosition({
@@ -268,10 +272,10 @@ function Card({ anchor }: CardProps) {
   });
   useCanvasClearance(positioner, card, present);
 
-  // The pill's Enter shows the card and focuses its first control; it never takes focus on appearing otherwise.
+  // The pill's Enter shows the card and focuses Next; it never takes focus on appearing otherwise.
   useLayoutEffect(() => {
     if (!focusCard) return;
-    card.current?.querySelector<HTMLElement>('button')?.focus({ preventScroll: true });
+    card.current?.querySelector<HTMLElement>('[data-tour-next]')?.focus({ preventScroll: true });
     clearFocusRequest();
   }, [focusCard, clearFocusRequest]);
 
@@ -311,34 +315,49 @@ function Card({ anchor }: CardProps) {
           const from = event.relatedTarget;
           if (from instanceof HTMLElement && !card.current?.contains(from)) lastFocus.current = from;
         }}
-        className="bg-panel border border-border-subtle shadow-floating flex w-popover-max max-w-full flex-col gap-2 rounded-panel p-4 text-md text-text"
+        className="bg-panel border border-control-border shadow-floating flex w-popover-max max-w-full flex-col rounded-panel p-4 text-md text-text"
       >
-        <div className="flex h-6 items-center gap-2">
+        <div aria-hidden="true" className="bg-track h-progress w-full overflow-hidden rounded-pill">
+          <motion.div
+            data-tour-progress=""
+            className="bg-accent h-full w-full origin-left rounded-pill"
+            initial={false}
+            animate={{ scaleX: filled / total }}
+            transition={{ duration: reduce ? 0 : DURATION.base, ease: [0.2, 0, 0, 1] }}
+          />
+        </div>
+        <div className="mt-3 flex h-6 items-center gap-2">
           <span
-            data-done={done ? '' : undefined}
-            className={`inline-flex h-6 items-center gap-1 rounded-pill px-2 text-xs tabular-nums transition-colors ${
-              done ? 'bg-accent text-on-accent' : 'bg-tile text-tile-icon'
-            }`}
+            data-tour-count=""
+            aria-label={t('tour.stepOf', { step: index + 1, total })}
+            className="t-caption text-text-muted tabular-nums"
           >
-            {done ? <Icon icon={Check} size={16} /> : null}
-            {t('tour.stepOf', { step: index + 1, total })}
+            {t('tour.count', { step: index + 1, total })}
           </span>
           <span className="flex-auto" />
           <IconButton label={t('tour.hide')} icon={X} size="sm" onClick={hide} />
         </div>
-        <h2 id={titleId} className="m-0 text-md font-semibold">
+        <h2 id={titleId} className="t-title m-0 mt-2 flex items-center gap-1 text-text">
+          {done ? <Icon icon={Check} size={16} /> : null}
           {done ? t('tour.done', { title }) : title}
         </h2>
-        <p id={textId} className="m-0 text-md">
+        <p id={textId} className="t-body m-0 mt-1 text-text">
           {text}
         </p>
-        {!done && (
-          <div className="flex h-6 items-center">
-            <Button variant="ghost" size="sm" onClick={skip} className="ms-[calc(-1*var(--spacing-2))]">
-              {t('tour.skip')}
+        <div className="mt-4 flex h-control-sm items-center">
+          <Button variant="ghost" size="sm" onClick={skip} className="ms-[calc(-1*var(--spacing-3))]">
+            {t('tour.skip')}
+          </Button>
+          <span className="flex-auto" />
+          <div className="flex items-center gap-2">
+            <Button variant="secondary" size="sm" disabled={index === 0} focusableWhenDisabled onClick={back}>
+              {t('tour.back')}
+            </Button>
+            <Button variant="primary" size="sm" data-tour-next="" onClick={next}>
+              {last ? t('tour.finish') : t('tour.next')}
             </Button>
           </div>
-        )}
+        </div>
       </motion.section>
     </div>
   );
@@ -355,6 +374,8 @@ export function CoachMark() {
   const index = useTour((state) => state.index);
   const phase = useTour((state) => state.phase);
   const hidden = useTour((state) => state.hidden);
+  const paused = useTour((state) => state.paused);
+  const params = useStepParams();
   const ringRef = useRef<HTMLDivElement>(null);
   const step = docId === null ? undefined : SHIPPED_STEPS[index];
   const place = usePlace(step);
@@ -367,12 +388,13 @@ export function CoachMark() {
   // The success moment: the ring pulses and the status bar announces it; the last one also points at the closing page.
   useEffect(() => {
     if (phase !== 'done' || step === undefined) return;
-    const { title } = stepText(t, step);
+    const { title } = stepText(t, step, params);
     const closing = index + 1 >= SHIPPED_STEPS.length ? ` ${t('tour.toClosing')}` : '';
     if (ringRef.current !== null) pulse(ringRef.current, t('tour.done', { title }) + closing);
-  }, [phase, step, index, t]);
+  }, [phase, step, index, t, params]);
 
-  if (step === undefined || anchor === null || phase === 'finishing') return null;
+  // Paused (another tab is in front): card and ring are hidden, the pill keeps the count.
+  if (step === undefined || anchor === null || phase === 'finishing' || paused) return null;
   return createPortal(
     <>
       <Ring key={step.id} anchor={anchor.element} ringRef={ringRef} />

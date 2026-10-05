@@ -10,7 +10,7 @@ import type { Rect } from './steps';
 export const NAVIGATE_SETTLE_MS = 500;
 
 /** How long the "done" card is held before the next step (or the end) follows, ms. */
-export const HOLD_MS = 1200;
+export const HOLD_MS = 600;
 
 /** What the engine knows of the document's view. */
 export interface ViewReading {

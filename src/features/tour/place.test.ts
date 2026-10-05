@@ -8,7 +8,13 @@ const step = (id: string) => {
   if (found === undefined) throw new Error(id);
   return found;
 };
-const idle: PhaseInputs = { activeTool: 'select', armed: false, panelCollapsed: false, tab: 'thumbnails' };
+const idle: PhaseInputs = {
+  mode: 'comment',
+  activeTool: 'select',
+  armed: false,
+  panelCollapsed: false,
+  tab: 'thumbnails',
+};
 
 describe('the coach mark phases', () => {
   it('anchors Highlight and Note at the tool, then at the canvas target while the tool is active', () => {
@@ -25,18 +31,25 @@ describe('the coach mark phases', () => {
   });
 
   it('moves Sign to the frame only once something is armed', () => {
-    expect(placeOf(step('sign'), { ...idle, activeTool: 'signature' })).toEqual({
+    expect(placeOf(step('sign'), { ...idle, mode: 'fill', activeTool: 'signature' })).toEqual({
       name: 'tool-signature',
       canvasTarget: false,
     });
-    expect(placeOf(step('sign'), { ...idle, activeTool: 'signature', armed: true })).toEqual({
+    expect(placeOf(step('sign'), { ...idle, mode: 'fill', activeTool: 'signature', armed: true })).toEqual({
       name: 'target',
       canvasTarget: true,
     });
   });
 
+  it('anchors the mode segment first while the tool' + "'" + 's mode is not on', () => {
+    expect(placeOf(step('highlight'), { ...idle, mode: 'read' }).name).toBe('mode-comment');
+    expect(placeOf(step('comment'), { ...idle, mode: 'read' }).name).toBe('mode-comment');
+    expect(placeOf(step('comment'), idle).name).toBe('tool-note');
+    expect(placeOf(step('sign'), idle).name).toBe('mode-fill');
+  });
+
   it('walks Reorder from the panel toggle, to the Thumbnails tab, to the thumbnail of page S (page id 3)', () => {
-    expect(placeOf(step('reorder'), { ...idle, panelCollapsed: true }).name).toBe('left-panel');
+    expect(placeOf(step('reorder'), { ...idle, panelCollapsed: true }).name).toBe('sidebar-toggle');
     expect(placeOf(step('reorder'), { ...idle, tab: 'outline' }).name).toBe('thumbnails-tab');
     expect(placeOf(step('reorder'), idle).name).toBe('thumbnail:3');
     // Organize mode shows the pages as a grid: the step points at its cell.
@@ -44,6 +57,6 @@ describe('the coach mark phases', () => {
   });
 
   it('keeps the plain anchor of the first three steps', () => {
-    expect(placeOf(step('zoom'), idle)).toEqual({ name: 'toolbar-zoom-in', canvasTarget: false });
+    expect(placeOf(step('zoom'), idle)).toEqual({ name: 'topbar-zoom', canvasTarget: false });
   });
 });

@@ -172,6 +172,8 @@
   --spacing-banner-min: var(--banner-min-height);
   --spacing-search-row: var(--search-row-height);
   --spacing-search-progress: var(--search-progress-height);
+  /* R6-A */
+  --spacing-progress: var(--progress-height);
   --spacing-comments-dot: var(--comments-dot);
   --spacing-status-name: var(--status-name-max);
   --spacing-caption-button: var(--caption-button-width);
@@ -395,6 +397,8 @@
   --outline-indent-max: 64px;
   --search-row-height: 48px; /* search panel: a hit row; the page header row is --control-sm */
   --search-progress-height: 2px; /* search panel: the progress pill bar */
+  /* R6-A */
+  --progress-height: 4px; /* coach mark progress bar (DESIGN 3.6) */
   --comments-group-height: 24px; /* comments panel rows: page header, thread root, reply */
   --comments-root-height: 64px;
   --comments-reply-height: 48px;

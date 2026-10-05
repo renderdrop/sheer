@@ -11,17 +11,19 @@ export interface AnchorSpec {
 }
 
 export const ANCHORS: Readonly<Record<string, AnchorSpec>> = {
-  // Toolbar: below the toolbar, centred on the anchor.
-  'toolbar-zoom-in': { selector: '[data-toolbar-item="zoom-in"]', side: 'bottom', align: 'center' },
-  // The tools of steps 4 to 6, and the thumbnails of step 7 (DESIGN 3.46).
+  // Top bar (DESIGN 3.6): the card sits below the anchor.
+  'topbar-file-name': { selector: '[data-tour-anchor="topbar-file-name"]', side: 'bottom', align: 'start' },
+  'topbar-page-field': { selector: '[data-tour-anchor="topbar-page-field"]', side: 'bottom', align: 'center' },
+  'topbar-zoom': { selector: '[data-toolbar-item="zoom-in"]', side: 'bottom', align: 'center' },
+  // Mode segments: phase 0 of the tool steps, until the user enters the mode.
+  'mode-comment': { selector: '[data-tour-anchor="mode-comment"]', side: 'bottom', align: 'center' },
+  'mode-fill': { selector: '[data-tour-anchor="mode-fill"]', side: 'bottom', align: 'center' },
+  // The tools of steps 4 to 6, and the sidebar and thumbnails of step 7.
   'tool-highlight': { selector: '[data-toolbar-item="highlight"]', side: 'bottom', align: 'center', mode: 'comment' },
   'tool-note': { selector: '[data-toolbar-item="note"]', side: 'bottom', align: 'center', mode: 'comment' },
   'tool-signature': { selector: '[data-toolbar-item="signature"]', side: 'bottom', align: 'center', mode: 'fill' },
-  'left-panel': { selector: '[data-toolbar-item="left-panel"]', side: 'bottom', align: 'start' },
+  'sidebar-toggle': { selector: '[data-sidebar-toggle]', side: 'bottom', align: 'start' },
   'thumbnails-tab': { selector: '[role="tab"][data-value="thumbnails"]', side: 'bottom', align: 'start' },
-  // Status bar: the card's bottom edge on the bar's top, aligned to the anchor's leading (file name) or trailing (page) edge.
-  'status-file-name': { selector: '[data-tour-anchor="status-file-name"]', side: 'top', align: 'start' },
-  'status-page-button': { selector: '[data-tour-anchor="status-page-button"]', side: 'top', align: 'end' },
 };
 
 export interface ResolvedAnchor {
@@ -44,7 +46,7 @@ export function resolveAnchor(name: string): ResolvedAnchor | null {
   if (spec === undefined) return null;
   const found = document.querySelector<HTMLElement>(spec.selector);
   if (found !== null) return { element: found, spec };
-  // Nothing of the anchor is on screen (narrow window, hidden bar): the card sits at the status bar, or else the canvas centre,
+  // Nothing of the anchor is on screen (narrow window, hidden bar): the card sits at the page field, then the file name, or else the canvas centre,
   // so the step stays readable and Skip stays reachable.
   for (const last of LAST_RESORT) {
     const element = document.querySelector<HTMLElement>(last.selector);
@@ -54,12 +56,12 @@ export function resolveAnchor(name: string): ResolvedAnchor | null {
 }
 
 const LAST_RESORT: readonly AnchorSpec[] = [
-  { selector: '[data-tour-anchor="status-page-button"]', side: 'top', align: 'end' },
-  { selector: '[data-tour-anchor="status-file-name"]', side: 'top', align: 'start' },
+  ANCHORS['topbar-page-field'] as AnchorSpec,
+  ANCHORS['topbar-file-name'] as AnchorSpec,
   { selector: '[data-canvas-content]', side: 'bottom', align: 'center' },
 ];
 
-/** The mode a step's anchor lives in, or `null` when it is in every mode (the top bar, the status bar, the left panel). */
+/** The mode a step's anchor lives in, or `null` when it is in every mode (the top bar, the sidebar toggle). */
 export function modeOfAnchor(name: string): Mode | null {
   return ANCHORS[name]?.mode ?? (name.startsWith('organize:') ? 'pages' : null);
 }

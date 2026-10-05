@@ -8,10 +8,14 @@ export interface StepTextSource {
 }
 
 /** The title and the instruction of a step, from the `tour.step.<id>.*` messages (the welcome document uses the same ones). */
-export function stepText(t: Translate, step: StepTextSource | undefined): { title: string; text: string } {
+export function stepText(
+  t: Translate,
+  step: StepTextSource | undefined,
+  extra: { mod?: string } = {},
+): { title: string; text: string } {
   const id = step?.id ?? '';
   const title = `tour.step.${id}.title`;
   const text = `tour.step.${id}.text`;
-  const params = { from: step?.from ?? 0, to: step?.to ?? 0 };
+  const params = { from: step?.from ?? 0, to: step?.to ?? 0, mod: extra.mod ?? '' };
   return { title: isPlainKey(title) ? t(title) : '', text: isPlainKey(text) ? t(text, params) : '' };
 }

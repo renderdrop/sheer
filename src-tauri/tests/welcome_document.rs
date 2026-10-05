@@ -134,7 +134,8 @@ impl Strings {
             .catalog
             .get(key)
             .unwrap_or_else(|| panic!("the catalog lacks {key}"))
-            .replace("{app}", &self.app);
+            .replace("{app}", &self.app)
+            .replace("{mod}", "Ctrl/Cmd");
         for (name, value) in params {
             text = text.replace(&format!("{{{name}}}"), value);
         }

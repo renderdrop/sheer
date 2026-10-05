@@ -2,7 +2,7 @@ import { closeSettings } from '../settings/state';
 import { openWelcomeDocument } from '../../api/documents';
 import { toAppError } from '../../api/errors';
 import { DURATION } from '../../lib/motion';
-import { useAnnotations } from '../../stores/annotations';
+import { isDirty, useAnnotations } from '../../stores/annotations';
 import { useDocuments } from '../../stores/documents';
 import { readSlots, usePages } from '../../stores/pages';
 import { useSettings } from '../../stores/settings';
@@ -36,7 +36,7 @@ export function readFacts(docId: number, step: TourStep): StepFacts {
 
 /**
  * Connects the tour to the app: starts it when a welcome document opens (writing `welcomeTour: shown` as it does), ends it when
- * that document is closed or another one opens over it, and completes each step when its condition holds (DESIGN 3.14). Returns
+ * that document is closed, pauses it while another tab is in front, and completes each step when its condition holds (DESIGN 3.14). Returns
  * the function that disconnects it. Mounted once (`TourEffects`).
  */
 export function bindTour(): () => void {
@@ -55,10 +55,10 @@ export function bindTour(): () => void {
   /** Checks the running step. At a step's start a state that is true already counts at once; later it has to settle. */
   const evaluate = (atStart: boolean) => {
     clearTimeout(timer);
-    const { docId, index, phase } = useTour.getState();
+    const { docId, index, phase, paused } = useTour.getState();
     const step = SHIPPED_STEPS[index];
     const view = reading();
-    if (docId === null || phase !== 'waiting' || step === undefined || view === null) return;
+    if (docId === null || paused || phase !== 'waiting' || step === undefined || view === null) return;
     if (!isSatisfied(step.id, view, baseline, readFacts(docId, step))) return;
     const delay = atStart ? 0 : settleDelay(step.id);
     if (delay === 0) useTour.getState().complete();
@@ -93,9 +93,12 @@ export function bindTour(): () => void {
 
   const stopDocuments = useDocuments.subscribe((state, previous) => {
     const tour = useTour.getState();
-    // Close mid-tour, or another document opened over the sample: the tour ends, nothing resumes.
-    if (tour.docId !== null && (state.byId[tour.docId] === undefined || state.activeId !== tour.docId)) {
-      tour.end('closed');
+    // The welcome tab closed mid-tour: the tour ends. Another tab in front only pauses it; coming back to the welcome tab resumes
+    // (DESIGN 3.6 tab rule, F11-7: the tour never closes, replaces or saves another document).
+    if (tour.docId !== null) {
+      if (state.byId[tour.docId] === undefined) tour.end('closed');
+      else if (state.activeId === tour.docId) tour.resume();
+      else tour.pause();
     }
     for (const info of Object.values(state.byId)) {
       if (info.kind === 'welcome' && previous.byId[info.id] === undefined) startTour(info.id);
@@ -171,10 +174,12 @@ export async function restartTour(): Promise<void> {
     .querySelector<HTMLElement>('[data-menubar-item], [data-slot="topbar"] button')
     ?.focus({ preventScroll: true });
   useTour.getState().end('restart');
-  // Never closes anything: the welcome document opens in a new tab beside the open ones, so unsaved work stays. A welcome tab that
-  // is open already is activated and the tour restarts there.
+  // Never closes anything: the welcome document opens in a new tab beside the open ones, so unsaved work stays (F11-7). A welcome
+  // tab that is open already is reused only while it has no edits; otherwise a fresh one opens.
   const documents = useDocuments.getState();
-  const existing = documents.order.find((id) => documents.byId[id]?.kind === 'welcome');
+  const existing = documents.order.find(
+    (id) => documents.byId[id]?.kind === 'welcome' && !isDirty(useAnnotations.getState(), id),
+  );
   if (existing !== undefined) {
     documents.setActive(existing);
     startTour(existing);

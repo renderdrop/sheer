@@ -162,7 +162,7 @@ export function TabStrip() {
                     />
                   )}
                   <span
-                    data-tour-anchor={selected ? 'status-file-name' : undefined}
+                    data-tour-anchor={selected ? 'topbar-file-name' : undefined}
                     className={cx('t-label min-w-0 flex-1 truncate', selected && 'font-medium')}
                   >
                     {middleTruncate(name)}

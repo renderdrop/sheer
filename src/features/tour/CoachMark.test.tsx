@@ -10,16 +10,16 @@ import { TourPill } from './TourPill';
 
 const tourInitial = useTour.getState();
 
-/** The status bar's anchors and the toolbar's zoom button, as the shell renders them, plus the coach mark and the pill. */
+/** The top bar's anchors and the zoom button, as the shell renders them, plus the coach mark and the pill. */
 function Fixture() {
   return (
     <>
-      <button type="button" data-toolbar-item="zoom-in">
+      <button type="button" data-toolbar-item="zoom-in" aria-label="Zoom menu">
         +
       </button>
       <button type="button">elsewhere</button>
       <footer>
-        <span data-tour-anchor="status-file-name">Welcome.pdf</span>
+        <span data-tour-anchor="topbar-file-name">Welcome.pdf</span>
         <TourPill />
       </footer>
       <CoachMark />
@@ -44,14 +44,14 @@ describe('the coach mark', () => {
     expect(region.getAttribute('aria-modal')).toBeNull();
     expect(region.hasAttribute('aria-live')).toBe(false);
     expect(region.contains(document.activeElement)).toBe(false);
-    expect(screen.getByText('Step 1 of 7')).toBeTruthy();
+    expect(document.querySelector('[data-tour-count]')?.getAttribute('aria-label')).toBe('Step 1 of 7');
   });
 
   it('describes its anchor by the instruction while the step is on, and lets go of it after', async () => {
     setup(<Fixture />);
     act(() => useTour.getState().start(1));
     const region = await screen.findByRole('region');
-    const anchor = document.querySelector('[data-tour-anchor="status-file-name"]');
+    const anchor = document.querySelector('[data-tour-anchor="topbar-file-name"]');
     const describedBy = anchor?.getAttribute('aria-describedby') ?? '';
     expect(document.getElementById(describedBy)?.textContent).toContain('This file opened by itself');
     expect(region.getAttribute('aria-labelledby')).not.toBe('');
@@ -78,8 +78,8 @@ describe('the coach mark', () => {
     await user.click(pill);
     expect(useTour.getState().hidden).toBe(false);
     await screen.findByRole('region');
-    // The pill's activation puts focus on the card's first control.
-    expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Hide hint' }));
+    // The pill's activation puts focus on Next.
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Next' }));
   });
 
   it('hides with the x button and ends with Skip, leaving nothing behind', async () => {
@@ -96,24 +96,22 @@ describe('the coach mark', () => {
     expect(screen.queryByRole('button', { name: /Welcome tour, step/ })).toBeNull();
   });
 
-  it('shows the done state without actions', async () => {
+  it('shows the done state with the check and the full bar', async () => {
     setup(<Fixture />);
     act(() => useTour.getState().start(1));
     await screen.findByRole('region');
     act(() => useTour.getState().complete());
     expect(await screen.findByRole('heading', { name: 'Done: Open a PDF' })).toBeTruthy();
-    expect(screen.queryByRole('button', { name: 'Skip tour' })).toBeNull();
-    // The success moment tints the chip and the card is a solid surface.
-    expect(document.querySelector('[data-done]')?.className).toContain('bg-accent');
+    expect(document.querySelector('h2 svg')).not.toBeNull();
     expect(document.querySelector('[data-tour-card]')?.className).toContain(
-      'bg-panel border border-border-subtle shadow-floating',
+      'bg-panel border border-control-border shadow-floating',
     );
   });
 
-  it('falls back to the status bar when the anchor is missing, so Skip stays reachable', async () => {
+  it('falls back to the page field when the anchor is missing, so Skip stays reachable', async () => {
     setup(
       <>
-        <span data-tour-anchor="status-page-button">1 / 4</span>
+        <span data-tour-anchor="topbar-page-field">1 / 4</span>
         <CoachMark />
       </>,
     );
@@ -133,6 +131,58 @@ describe('the coach mark', () => {
     act(() => useTour.getState().start(1));
     act(() => useTour.setState({ index: 2 }));
     expect(await screen.findByRole('region', { name: 'Zoom in' })).toBeTruthy();
+  });
+
+  it('has Hide, Skip, Back, Next in tab order; Back is disabled on step 1', async () => {
+    setup(<Fixture />);
+    act(() => useTour.getState().start(1));
+    await screen.findByRole('region');
+    const names = Array.from(document.querySelectorAll('[data-tour-card] button')).map(
+      (b) => b.textContent || b.getAttribute('aria-label'),
+    );
+    expect(names).toEqual(['Hide hint', 'Skip tour', 'Back', 'Next']);
+    expect(screen.getByRole('button', { name: 'Back' }).getAttribute('aria-disabled')).toBe('true');
+  });
+
+  it('moves with Next and Back by keyboard, and says Finish on the last step', async () => {
+    const { user } = setup(<Fixture />);
+    act(() => useTour.getState().start(1));
+    await screen.findByRole('region');
+    const next = screen.getByRole('button', { name: 'Next' });
+    act(() => next.focus());
+    await user.keyboard('{Enter}');
+    expect(useTour.getState().index).toBe(1);
+    await user.click(screen.getByRole('button', { name: 'Back' }));
+    expect(useTour.getState().index).toBe(0);
+    act(() => useTour.setState({ index: 6 }));
+    expect(await screen.findByRole('button', { name: 'Finish' })).toBeTruthy();
+  });
+
+  it('shows the count and a progress bar that fills with the steps', async () => {
+    setup(<Fixture />);
+    act(() => useTour.getState().start(1));
+    await screen.findByRole('region');
+    const bar = document.querySelector<HTMLElement>('[data-tour-progress]');
+    expect(bar?.parentElement?.getAttribute('aria-hidden')).toBe('true');
+    expect(bar?.parentElement?.className).toContain('h-progress');
+    act(() => useTour.getState().next());
+    await act(async () => undefined);
+    expect(document.querySelector('[data-tour-count]')?.textContent).toBe('2 / 7');
+    expect(useTour.getState().index).toBe(1);
+  });
+
+  it('is hidden while paused, and the pill shows the count with the paused label', async () => {
+    const { user } = setup(<Fixture />);
+    act(() => useTour.getState().start(1));
+    await screen.findByRole('region');
+    act(() => useTour.getState().pause());
+    await act(async () => undefined);
+    expect(screen.queryByRole('region')).toBeNull();
+    expect(document.querySelector('[data-tour-ring]')).toBeNull();
+    const pill = screen.getByRole('button', { name: /Welcome tour paused/ });
+    await user.click(pill);
+    expect(useTour.getState().paused).toBe(false);
+    await screen.findByRole('region');
   });
 
   describe('the clearance under the card', () => {
@@ -156,10 +206,10 @@ describe('the coach mark', () => {
         </>
       );
     }
-    // The status bar's anchors sit at the bottom of the window, so the card is placed above them.
+    // The anchors sit at the bottom of the window, so the card is placed above them.
     beforeEach(() => {
       vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: HTMLElement) {
-        const at = this.hasAttribute('data-tour-anchor') ? 700 : 0;
+        const at = this.hasAttribute('data-tour-anchor') ? 750 : 0;
         return {
           left: 0,
           top: at,

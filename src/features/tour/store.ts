@@ -23,6 +23,10 @@ export interface TourState {
   phase: TourPhase;
   /** The card is hidden (Esc, the x button); the pill stays. */
   hidden: boolean;
+  /** Another tab is in front: card and ring are hidden, the pill shows the count (DESIGN 3.6 tab rule). */
+  paused: boolean;
+  /** Indices of the steps that came true (Back shows them in the done phase). */
+  done: readonly number[];
   /** The pill asked for the card: its first control takes focus when it appears (cleared by the card). */
   focusCard: boolean;
 
@@ -32,6 +36,12 @@ export interface TourState {
   /** Shows the hidden card; `focus` moves focus to its first control once it is there (the pill's Enter). */
   show: (focus?: boolean) => void;
   clearFocusRequest: () => void;
+  pause: () => void;
+  resume: () => void;
+  /** Next advances at once, also on a step that was not done (it counts as skipped); after the last step the tour finishes. */
+  next: () => void;
+  /** Back to the previous step in its last phase; nothing in the document is undone. No-op on the first step. */
+  back: () => void;
   toggle: () => void;
   /** The current step's condition came true: success moment, then the next step, or the end after the last. */
   complete: () => void;
@@ -40,13 +50,37 @@ export interface TourState {
   end: (reason: EndReason) => void;
 }
 
-const IDLE = { docId: null, index: 0, phase: 'waiting', hidden: false, focusCard: false } as const;
+const IDLE = {
+  docId: null,
+  index: 0,
+  phase: 'waiting',
+  hidden: false,
+  paused: false,
+  done: [],
+  focusCard: false,
+} as const;
 
 let hold: ReturnType<typeof setTimeout> | undefined;
 
 /** Announces a message that ends a tour, in the language of the UI. */
 function say(key: 'tour.skipped' | 'tour.closed'): void {
   announce(translators[useLocaleStore.getState().locale](key));
+}
+
+/** Goes to the next step in its remembered phase, or finishes after the last one (the pill says "Tour complete", then the tour is over). */
+function advance(docId: number): void {
+  const now = useTour.getState();
+  if (now.docId !== docId) return;
+  if (now.index + 1 < SHIPPED_STEPS.length) {
+    useTour.setState({
+      index: now.index + 1,
+      phase: now.done.includes(now.index + 1) ? 'done' : 'waiting',
+      hidden: false,
+    });
+    return;
+  }
+  useTour.setState({ phase: 'finishing' });
+  hold = setTimeout(() => useTour.getState().end('complete'), HOLD_MS);
 }
 
 export const useTour = create<TourState>()((set, get) => ({
@@ -64,22 +98,29 @@ export const useTour = create<TourState>()((set, get) => ({
   clearFocusRequest: () => set((state) => (state.focusCard ? { focusCard: false } : state)),
   toggle: () => (get().hidden ? get().show(true) : get().hide()),
 
+  pause: () => set((state) => (state.docId === null || state.paused ? state : { paused: true })),
+  resume: () => set((state) => (state.paused ? { paused: false } : state)),
+
   complete: () => {
     const { docId, phase } = get();
     if (docId === null || phase !== 'waiting') return;
-    set({ phase: 'done' });
+    set((state) => ({ phase: 'done', done: [...state.done, state.index] }));
     clearTimeout(hold);
-    hold = setTimeout(() => {
-      const now = get();
-      if (now.docId !== docId) return;
-      if (now.index + 1 < SHIPPED_STEPS.length) {
-        set({ index: now.index + 1, phase: 'waiting', hidden: false });
-        return;
-      }
-      // After the last step the pill says so (DESIGN 3.14), then the tour is over.
-      set({ phase: 'finishing' });
-      hold = setTimeout(() => get().end('complete'), HOLD_MS);
-    }, HOLD_MS);
+    hold = setTimeout(() => advance(docId), HOLD_MS);
+  },
+
+  next: () => {
+    const { docId, phase } = get();
+    if (docId === null || phase === 'finishing') return;
+    clearTimeout(hold);
+    advance(docId);
+  },
+
+  back: () => {
+    const { docId, index, phase, done } = get();
+    if (docId === null || phase === 'finishing' || index === 0) return;
+    clearTimeout(hold);
+    set({ index: index - 1, phase: done.includes(index - 1) ? 'done' : 'waiting', hidden: false });
   },
 
   skip: () => get().end('skipped'),

@@ -10,7 +10,7 @@ import { usePages } from '../../stores/pages';
 import { useSettings } from '../../stores/settings';
 import { useView } from '../../stores/view';
 import { HOLD_MS, NAVIGATE_SETTLE_MS, SIGN_SETTLE_MS } from './engine';
-import { LAUNCH_SETTLE_MS, OPEN_SETTLE_MS, bindTour, maybeFirstLaunch, resetFirstLaunch } from './runtime';
+import { LAUNCH_SETTLE_MS, OPEN_SETTLE_MS, bindTour, maybeFirstLaunch, resetFirstLaunch, restartTour } from './runtime';
 import { useTour } from './store';
 
 vi.mock('../../api/app', async (importOriginal) => ({
@@ -241,10 +241,12 @@ describe('ending', () => {
     expect(tour().docId).toBeNull();
   });
 
-  it('ends when another document opens over it', () => {
+  it('pauses when another tab comes forward and resumes when the welcome tab returns', () => {
     show(WELCOME);
     show(USER);
-    expect(tour().docId).toBeNull();
+    expect(tour()).toMatchObject({ docId: 1, paused: true });
+    useDocuments.getState().setActive(1);
+    expect(tour().paused).toBe(false);
   });
 
   it('ends on skip and leaves the document open', () => {
@@ -318,5 +320,35 @@ describe('first launch', () => {
     await run;
     expect(openWelcomeMock).not.toHaveBeenCalled();
     expect(updateSettingsMock).toHaveBeenCalledWith({ welcomeTour: 'shown' });
+  });
+});
+
+describe('restarting', () => {
+  const edit = (id: number) =>
+    useAnnotations.setState({
+      byDoc: { [id]: { rev: 1, byId: {}, loaded: {}, removed: {}, history: { ...EMPTY_HISTORY, dirty: true } } },
+    });
+
+  it('opens the welcome document in a new tab and leaves a tab with unsaved work untouched', async () => {
+    show(USER);
+    edit(2);
+    await restartTour();
+    expect(openWelcomeMock).toHaveBeenCalledTimes(1);
+    expect(useDocuments.getState().order).toEqual([2, 1]);
+    expect(useDocuments.getState().byId[2]).toBeDefined();
+    expect(useAnnotations.getState().byDoc[2]?.history.dirty).toBe(true);
+    expect(tour()).toMatchObject({ docId: 1, index: 0 });
+  });
+
+  it('reuses an open welcome tab without edits, but opens a fresh one when it has edits', async () => {
+    show(WELCOME);
+    show(USER);
+    await restartTour();
+    expect(openWelcomeMock).not.toHaveBeenCalled();
+    expect(useDocuments.getState().activeId).toBe(1);
+    edit(1);
+    show(USER);
+    await restartTour();
+    expect(openWelcomeMock).toHaveBeenCalledTimes(1);
   });
 });

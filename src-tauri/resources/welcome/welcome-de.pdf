@@ -40,7 +40,7 @@ endobj
 << /Type /Page /Parent 2 0 R /MediaBox [0 0 600 800] /Contents 21 0 R /Resources << /Font << /F1 3 0 R /F2 4 0 R >> /Shading << /Sh1 5 0 R >> >> >>
 endobj
 21 0 obj
-<<  /Length 1963 >>
+<<  /Length 1974 >>
 stream
 q 0.9647 0.9608 0.9451 rg 0 0 600 800 re f /Sh1 sh Q
 1 1 1 rg
@@ -68,7 +68,7 @@ f
 64 432 m 536 432 l 544.8368 432 552 424.8368 552 416 c 552 368 l 552 359.1632 544.8368 352 536 352 c 64 352 l 55.1632 352 48 359.1632 48 368 c 48 416 l 48 424.8368 55.1632 432 64 432 c h
 B
 BT /F1 14 Tf 0.0588 0.0588 0.0588 rg 72 400 Td (2 Zu Seite 2) Tj ET
-BT /F1 12 Tf 0.4353 0.4353 0.4196 rg 72 376 Td (Scrollen Sie nach unten oder dr\374cken Sie Bild\240ab.) Tj ET
+BT /F1 12 Tf 0.4353 0.4353 0.4196 rg 72 376 Td (Scrolle nach unten, dr\374cke Bild ab oder tippe 2 ins Seitenfeld.) Tj ET
 0.0588 0.0588 0.0588 RG 2.5 w 1 J 1 j
 288 322 m 300 310 l 312 322 l S
 
@@ -108,7 +108,7 @@ endobj
 << /Type /Page /Parent 2 0 R /MediaBox [0 0 600 800] /Contents 25 0 R /Resources << /Font << /F1 3 0 R /F2 4 0 R >> /Shading << /Sh1 5 0 R >> >> >>
 endobj
 25 0 obj
-<<  /Length 2278 >>
+<<  /Length 2297 >>
 stream
 0.9647 0.9608 0.9451 rg
 60 752 m 156 752 l 162.6276 752 168 746.6276 168 740 c 168 740 l 168 733.3724 162.6276 728 156 728 c 60 728 l 53.3724 728 48 733.3724 48 740 c 48 740 l 48 746.6276 53.3724 752 60 752 c h
@@ -130,7 +130,7 @@ BT /F1 16 Tf 0.0588 0.0588 0.0588 rg 72 518 Td (Gute Dokumente sind kurz, klar u
 64 472 m 536 472 l 544.8368 472 552 464.8368 552 456 c 552 392 l 552 383.1632 544.8368 376 536 376 c 64 376 l 55.1632 376 48 383.1632 48 392 c 48 456 l 48 464.8368 55.1632 472 64 472 c h
 B
 BT /F1 14 Tf 0.0588 0.0588 0.0588 rg 72 440 Td (5 Notiz hinzuf\374gen) Tj ET
-BT /F1 12 Tf 0.4353 0.4353 0.4196 rg 72 416 Td (W\344hlen Sie Notiz und klicken Sie auf den Punkt.) Tj ET
+BT /F1 12 Tf 0.4353 0.4353 0.4196 rg 72 416 Td (W\344hle Notiz und klicke auf den Punkt. Die Notiz erscheint am Rand.) Tj ET
 0.0588 0.0588 0.0588 RG 2 w
 480 420 m 480 420 l 486.6276 420 492 414.6276 492 408 c 492 408 l 492 401.3724 486.6276 396 480 396 c 480 396 l 473.3724 396 468 401.3724 468 408 c 468 408 l 468 414.6276 473.3724 420 480 420 c h
 S
@@ -148,7 +148,7 @@ endobj
 << /Type /Page /Parent 2 0 R /MediaBox [0 0 600 800] /Contents 27 0 R /Resources << /Font << /F1 3 0 R /F2 4 0 R >> /Shading << /Sh1 5 0 R >> >> >>
 endobj
 27 0 obj
-<<  /Length 1543 >>
+<<  /Length 1612 >>
 stream
 0.9647 0.9608 0.9451 rg
 60 752 m 156 752 l 162.6276 752 168 746.6276 168 740 c 168 740 l 168 733.3724 162.6276 728 156 728 c 60 728 l 53.3724 728 48 733.3724 48 740 c 48 740 l 48 746.6276 53.3724 752 60 752 c h
@@ -169,10 +169,11 @@ S [] 0 d
 72 480 m 312 480 l S
 BT /F1 9 Tf 0.4353 0.4353 0.4196 rg 72 464 Td (Unterschrift) Tj ET
 0.9647 0.9608 0.9451 rg 0.898 0.898 0.8824 RG 1 w
-64 408 m 536 408 l 544.8368 408 552 400.8368 552 392 c 552 344 l 552 335.1632 544.8368 328 536 328 c 64 328 l 55.1632 328 48 335.1632 48 344 c 48 392 l 48 400.8368 55.1632 408 64 408 c h
+64 408 m 536 408 l 544.8368 408 552 400.8368 552 392 c 552 328 l 552 319.1632 544.8368 312 536 312 c 64 312 l 55.1632 312 48 319.1632 48 328 c 48 392 l 48 400.8368 55.1632 408 64 408 c h
 B
 BT /F1 14 Tf 0.0588 0.0588 0.0588 rg 72 376 Td (7 Seiten ordnen) Tj ET
-BT /F1 12 Tf 0.4353 0.4353 0.4196 rg 72 352 Td (\326ffnen Sie Miniaturen und ziehen Sie Seite 4 \374ber Seite 3.) Tj ET
+BT /F1 12 Tf 0.4353 0.4353 0.4196 rg 72 352 Td (\326ffne in der Seitenleiste den Tab Seiten und ziehe Seite 4 \374ber) Tj ET
+BT /F1 12 Tf 0.4353 0.4353 0.4196 rg 72 336 Td (Seite 3.) Tj ET
 
 endstream
 endobj
@@ -245,16 +246,16 @@ xref
 0000000000 65535 f 
 0000001589 00000 n 
 0000001753 00000 n 
-0000003770 00000 n 
-0000003934 00000 n 
-0000005465 00000 n 
-0000005629 00000 n 
-0000007961 00000 n 
-0000008125 00000 n 
-0000009722 00000 n 
-0000009886 00000 n 
+0000003781 00000 n 
+0000003945 00000 n 
+0000005476 00000 n 
+0000005640 00000 n 
+0000007991 00000 n 
+0000008155 00000 n 
+0000009821 00000 n 
+0000009985 00000 n 
 trailer
 << /Size 30 /Root 1 0 R /Info 6 0 R >>
 startxref
-12694
+12793
 %%EOF

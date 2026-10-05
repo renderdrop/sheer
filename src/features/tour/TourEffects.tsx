@@ -9,6 +9,7 @@ import { bindTour, maybeFirstLaunch } from './runtime';
 import { SHIPPED_STEPS } from './steps';
 import { useTour } from './store';
 import { stepText } from './text';
+import { useStepParams } from './useStepParams';
 
 /**
  * The welcome tour's work with no UI of its own, plus the coach mark: connects the engine to the stores, opens the welcome
@@ -19,6 +20,7 @@ export function TourEffects() {
   const t = useT();
   const docId = useTour((state) => state.docId);
   const index = useTour((state) => state.index);
+  const params = useStepParams();
 
   useEffect(() => bindTour(), []);
 
@@ -30,9 +32,9 @@ export function TourEffects() {
   useEffect(() => {
     const step = docId === null ? undefined : SHIPPED_STEPS[index];
     if (step === undefined) return;
-    const { title, text } = stepText(t, step);
+    const { title, text } = stepText(t, step, params);
     announce(t('tour.announce', { step: index + 1, total: SHIPPED_STEPS.length, title, text }));
-  }, [docId, index, t]);
+  }, [docId, index, t, params]);
 
   return (
     <>

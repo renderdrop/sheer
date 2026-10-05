@@ -40,7 +40,7 @@ endobj
 << /Type /Page /Parent 2 0 R /MediaBox [0 0 600 800] /Contents 21 0 R /Resources << /Font << /F1 3 0 R /F2 4 0 R >> /Shading << /Sh1 5 0 R >> >> >>
 endobj
 21 0 obj
-<<  /Length 1840 >>
+<<  /Length 1866 >>
 stream
 q 0.9647 0.9608 0.9451 rg 0 0 600 800 re f /Sh1 sh Q
 1 1 1 rg
@@ -67,7 +67,7 @@ f
 64 448 m 536 448 l 544.8368 448 552 440.8368 552 432 c 552 384 l 552 375.1632 544.8368 368 536 368 c 64 368 l 55.1632 368 48 375.1632 48 384 c 48 432 l 48 440.8368 55.1632 448 64 448 c h
 B
 BT /F1 14 Tf 0.0588 0.0588 0.0588 rg 72 416 Td (2 Go to page 2) Tj ET
-BT /F1 12 Tf 0.4353 0.4353 0.4196 rg 72 392 Td (Scroll down or press Page Down.) Tj ET
+BT /F1 12 Tf 0.4353 0.4353 0.4196 rg 72 392 Td (Scroll down, press Page Down or type 2 in the page field.) Tj ET
 0.0588 0.0588 0.0588 RG 2.5 w 1 J 1 j
 288 338 m 300 326 l 312 338 l S
 
@@ -107,7 +107,7 @@ endobj
 << /Type /Page /Parent 2 0 R /MediaBox [0 0 600 800] /Contents 25 0 R /Resources << /Font << /F1 3 0 R /F2 4 0 R >> /Shading << /Sh1 5 0 R >> >> >>
 endobj
 25 0 obj
-<<  /Length 2236 >>
+<<  /Length 2268 >>
 stream
 0.9647 0.9608 0.9451 rg
 60 752 m 156 752 l 162.6276 752 168 746.6276 168 740 c 168 740 l 168 733.3724 162.6276 728 156 728 c 60 728 l 53.3724 728 48 733.3724 48 740 c 48 740 l 48 746.6276 53.3724 752 60 752 c h
@@ -129,7 +129,7 @@ BT /F1 16 Tf 0.0588 0.0588 0.0588 rg 72 518 Td (Good documents are short, clear 
 64 472 m 536 472 l 544.8368 472 552 464.8368 552 456 c 552 392 l 552 383.1632 544.8368 376 536 376 c 64 376 l 55.1632 376 48 383.1632 48 392 c 48 456 l 48 464.8368 55.1632 472 64 472 c h
 B
 BT /F1 14 Tf 0.0588 0.0588 0.0588 rg 72 440 Td (5 Add a note) Tj ET
-BT /F1 12 Tf 0.4353 0.4353 0.4196 rg 72 416 Td (Choose Note, then click the dot.) Tj ET
+BT /F1 12 Tf 0.4353 0.4353 0.4196 rg 72 416 Td (Choose Note, then click the dot. The note appears in the margin.) Tj ET
 0.0588 0.0588 0.0588 RG 2 w
 480 420 m 480 420 l 486.6276 420 492 414.6276 492 408 c 492 408 l 492 401.3724 486.6276 396 480 396 c 480 396 l 473.3724 396 468 401.3724 468 408 c 468 408 l 468 414.6276 473.3724 420 480 420 c h
 S
@@ -147,7 +147,7 @@ endobj
 << /Type /Page /Parent 2 0 R /MediaBox [0 0 600 800] /Contents 27 0 R /Resources << /Font << /F1 3 0 R /F2 4 0 R >> /Shading << /Sh1 5 0 R >> >> >>
 endobj
 27 0 obj
-<<  /Length 1491 >>
+<<  /Length 1504 >>
 stream
 0.9647 0.9608 0.9451 rg
 60 752 m 156 752 l 162.6276 752 168 746.6276 168 740 c 168 740 l 168 733.3724 162.6276 728 156 728 c 60 728 l 53.3724 728 48 733.3724 48 740 c 48 740 l 48 746.6276 53.3724 752 60 752 c h
@@ -171,7 +171,7 @@ BT /F1 9 Tf 0.4353 0.4353 0.4196 rg 72 464 Td (Signature) Tj ET
 64 408 m 536 408 l 544.8368 408 552 400.8368 552 392 c 552 344 l 552 335.1632 544.8368 328 536 328 c 64 328 l 55.1632 328 48 335.1632 48 344 c 48 392 l 48 400.8368 55.1632 408 64 408 c h
 B
 BT /F1 14 Tf 0.0588 0.0588 0.0588 rg 72 376 Td (7 Put pages in order) Tj ET
-BT /F1 12 Tf 0.4353 0.4353 0.4196 rg 72 352 Td (Open Thumbnails and drag page 4 above page 3.) Tj ET
+BT /F1 12 Tf 0.4353 0.4353 0.4196 rg 72 352 Td (Open the sidebar's Pages tab and drag page 4 above page 3.) Tj ET
 
 endstream
 endobj
@@ -244,16 +244,16 @@ xref
 0000000000 65535 f 
 0000001501 00000 n 
 0000001665 00000 n 
-0000003559 00000 n 
-0000003723 00000 n 
-0000005210 00000 n 
-0000005374 00000 n 
-0000007664 00000 n 
-0000007828 00000 n 
-0000009373 00000 n 
-0000009537 00000 n 
+0000003585 00000 n 
+0000003749 00000 n 
+0000005236 00000 n 
+0000005400 00000 n 
+0000007722 00000 n 
+0000007886 00000 n 
+0000009444 00000 n 
+0000009608 00000 n 
 trailer
 << /Size 30 /Root 1 0 R /Info 6 0 R >>
 startxref
-12255
+12326
 %%EOF
