@@ -344,6 +344,7 @@ new engine capability or dependency is needed. Not picked by the loop before v1.
 ## Politur backlog (minors not tied to a milestone)
 
 - [ ] Politur backlog — picked between feature milestones when a wave has a free slot
+  - (v1.4 review) the signature report lacks the total revision count, so the dialog says "Covers version n of this file" instead of "n of N" (backend: add the total to SignatureReport)
   - (v1.4 designer round, minors) certificate menu items without radio state/email caption, all with the stamp icon; Export certificate button indented out of the grid and not in §3.8; trust and signed-version buttons need a spec line; signed file name "{name} (signiert)" vs §3.8 "{name} – signiert"; create form without a heading; document tab titles cut to unreadable stubs; fingerprint not grouped in blocks of 4
   - (v1.4 acceptance, minors) seal placeholder has no resize handles (drag to redraw); the save dialog opens in the last-used folder (it once proposed the repo's tests/fixtures)
   - (owner 2026-10-05) „Deutsche Zitierweise (Fußnoten-Stil)“ as a fifth citation style — specify only after owner feedback (no spec, no build before that)
