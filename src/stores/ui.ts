@@ -24,6 +24,8 @@ export type LeftPanelTab = (typeof LEFT_PANEL_TABS)[number];
 export const TOOLS = [
   'select',
   'highlight',
+  // v1.3 Citations (DESIGN 3.7 C2): drag across text to make a citation.
+  'cite',
   'note',
   'text',
   'draw',
@@ -54,6 +56,7 @@ export function modeOfTool(tool: ToolId): Mode | null {
     case 'magnifier':
       return 'read';
     case 'highlight':
+    case 'cite':
     case 'note':
     case 'text':
     case 'draw':

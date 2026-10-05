@@ -1,5 +1,8 @@
 import { Fragment, useLayoutEffect, useRef, type KeyboardEvent, type ReactNode, type Ref } from 'react';
 
+import { copyCitation } from '../citations/exportActions';
+import { requestCitationFocus } from '../citations/store';
+import { TagPickerButton } from '../tags/TagPicker';
 import { useT } from '../../i18n';
 import { isOwnEvent, itemsOf, rovingTarget } from '../../components/roving';
 import { applyChange, changeKind, deleteSelection, openComment } from './actions';
@@ -8,6 +11,7 @@ import {
   BorderControl,
   ColourControl,
   CommentControl,
+  CopyCitationControl,
   DeleteControl,
   Divider,
   EndsControl,
@@ -17,6 +21,7 @@ import {
   MARK_KINDS,
   MARKUP_KINDS,
   OpacityControl,
+  OpenCitationControl,
   StrokeControl,
   TextFillControl,
 } from './Controls';
@@ -64,6 +69,8 @@ export function MiniBar({ docId, objects, ref, onReturn }: MiniBarProps) {
   useLayoutEffect(() => {
     const root = own.current;
     if (root === null) return;
+    // The Tags picker is another feature's button: it takes part in the roving focus like the bar's own controls.
+    root.querySelector('[data-mb-tags] button')?.setAttribute('data-mb-item', '');
     const items = itemsOf(root, ITEMS);
     const active = stop.current !== null && items.includes(stop.current) ? stop.current : items[0];
     for (const item of items) item.tabIndex = item === active ? 0 : -1;
@@ -89,10 +96,10 @@ export function MiniBar({ docId, objects, ref, onReturn }: MiniBarProps) {
   };
 
   const nodes: ReactNode[] = [];
-  // The fill sits right beside the border, without a divider (DESIGN 3.5 B4).
+  // The fill sits right beside the border, and Copy citation beside Open citation, without a divider (DESIGN 3.5 B4, 3.7 C4).
   const joined = new Set<number>();
   const add = (key: string, node: ReactNode) => {
-    if (key === 'textFill') joined.add(nodes.length);
+    if (key === 'textFill' || key === 'copyCitation') joined.add(nodes.length);
     nodes.push(<Fragment key={key}>{node}</Fragment>);
   };
   for (const control of controls) {
@@ -164,6 +171,37 @@ export function MiniBar({ docId, objects, ref, onReturn }: MiniBarProps) {
         break;
       case 'textFill':
         add(control, <TextFillControl value={values.fill} disabled={locked} onChange={(fill) => change({ fill })} />);
+        break;
+      case 'openCitation':
+        add(
+          control,
+          <OpenCitationControl
+            label={t('citation.open')}
+            onOpen={() => {
+              if (only !== undefined) requestCitationFocus(only.id);
+            }}
+          />,
+        );
+        break;
+      case 'copyCitation':
+        add(
+          control,
+          <CopyCitationControl
+            label={t('citation.copy')}
+            onCopy={() => {
+              if (only !== undefined) void copyCitation(docId, only.id);
+            }}
+          />,
+        );
+        break;
+      case 'tags':
+        // The picker's own button joins the bar's arrow-key stops (marked in the layout effect below); it is disabled on a read-only document.
+        add(
+          control,
+          <span data-mb-tags="" className="contents">
+            <TagPickerButton docId={docId} annotIds={objects.map((object) => object.id)} size="sm" />
+          </span>,
+        );
         break;
       case 'comment':
         add(

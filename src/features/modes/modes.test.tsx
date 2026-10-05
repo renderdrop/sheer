@@ -337,8 +337,25 @@ describe('Kommentieren', () => {
 
   it('has the F14 slots in order, each colour tool with a chevron part', () => {
     setup(<Rows />);
-    expect(slotNames()).toEqual(['Highlight', 'Underline', 'Strikethrough', 'Note', 'Text comment', 'Draw', 'Shapes']);
-    expect(names().filter((name) => name?.startsWith('Options'))).toHaveLength(7);
+    expect(slotNames()).toEqual([
+      'Highlight',
+      'Underline',
+      'Strikethrough',
+      'Cite',
+      'Note',
+      'Text comment',
+      'Draw',
+      'Shapes',
+    ]);
+    expect(names().filter((name) => name?.startsWith('Options'))).toHaveLength(8);
+  });
+
+  it('Cite is slot 4: a colour tool with the key Q, and the Cite tool is active after a click', async () => {
+    const { user } = setup(<Rows />);
+    expect(slotNames()[3]).toBe('Cite');
+    await user.click(item('Cite'));
+    expect(useUi.getState().activeTool).toBe('cite');
+    expect(item('Cite').getAttribute('aria-pressed')).toBe('true');
   });
 
   it('the three markup slots are the markup tool with a variant', async () => {
@@ -677,6 +694,15 @@ describe('the overflow', () => {
     expect(item('Select').querySelector('[data-label]')).not.toBeNull();
     expect(item('Hand').getAttribute('aria-label')).toBe('Hand');
     expect(screen.queryByRole('button', { name: 'More' })).toBeNull();
+  });
+
+  it('Kommentieren keeps all eight tools icon-only at step 2, without Mehr (DESIGN 3.7 C2, AC 2)', () => {
+    act(() => switchMode('comment'));
+    widths.client = 8 * 36 + 120;
+    setup(<Rows />);
+    expect(screen.getByRole('toolbar').getAttribute('data-fit')).toBe('2');
+    expect(screen.queryByRole('button', { name: 'More' })).toBeNull();
+    expect(item('Cite').getAttribute('aria-label')).toBe('Cite');
   });
 
   it('step 3: items leave from the right into Mehr, never the active tool, and Mehr lists them', async () => {

@@ -10,6 +10,8 @@ import { rgbToCss } from '../../inspector/palette';
 import { useAnnotationStyle } from '../../inspector/style';
 import { loadLayer, peekLayer } from '../../textlayer/cache';
 import { EndHead } from '../layer/shapes';
+import { CITE_RULE_PT, strokePartner } from '../layer/citation';
+import { createCitationDrafts } from '../../citations/store';
 import { overlayBox, swapsSides, viewToPage, normalizeRotation } from '../../viewer/transform';
 import {
   defaultStyle,
@@ -57,7 +59,7 @@ export interface CreationLayerProps {
 type Preview =
   | {
       type: 'quads';
-      kind: 'highlight' | 'underline' | 'strikeout';
+      kind: 'highlight' | 'citation' | 'underline' | 'strikeout';
       quads: readonly Quad[];
       color: Rgb;
       opacity: number;
@@ -283,7 +285,8 @@ function ActiveLayer({
   );
 
   useEffect(() => {
-    if (kind === 'highlight' || kind === 'underline' || kind === 'strikeout') void loadLayer(docId, pageIndex);
+    if (kind === 'highlight' || kind === 'citation' || kind === 'underline' || kind === 'strikeout')
+      void loadLayer(docId, pageIndex);
   }, [kind, docId, pageIndex]);
 
   const cancel = useCallback(() => {
@@ -322,7 +325,7 @@ function ActiveLayer({
     };
   }, [cancel]);
 
-  const isMarkup = kind === 'highlight' || kind === 'underline' || kind === 'strikeout';
+  const isMarkup = kind === 'highlight' || kind === 'citation' || kind === 'underline' || kind === 'strikeout';
 
   const showInk = useCallback(
     (current: readonly Sample[]) => {
@@ -526,13 +529,13 @@ function ActiveLayer({
     const end = toPage(event) ?? d.last;
     const dragged = d.moved || isDrag(d.start, end);
     show(null);
-    if (kind === 'highlight' && dragged && d.index !== null) {
+    if ((kind === 'highlight' || kind === 'citation') && dragged && d.index !== null) {
       // The strip stays for one dry pulse (MOTION spell 5) while the real highlight is made, then goes.
       const quads = quadsForDragIndexed(d.index, d.start, end);
       const pulse = !prefersReducedMotion();
       setPreview({
         type: 'quads',
-        kind: 'highlight',
+        kind,
         quads,
         color: style.color,
         opacity: pulse ? Math.min(1, style.opacity * markerPeakRatio()) : style.opacity,
@@ -548,6 +551,13 @@ function ActiveLayer({
       );
     }
     switch (kind) {
+      case 'citation':
+        if (!dragged || d.index === null) return;
+        // A citation is made by the backend, which reads the quote from the page text (ADR-119).
+        void createCitationDrafts(docId, [
+          { pageId: pageIndex, quads: quadsForDragIndexed(d.index, d.start, end), color: style.color },
+        ]);
+        return;
       case 'highlight':
       case 'underline':
       case 'strikeout':
@@ -626,6 +636,7 @@ function previewOf(
 ): Preview | null {
   switch (kind) {
     case 'highlight':
+    case 'citation':
     case 'underline':
     case 'strikeout':
       return index === null
@@ -684,16 +695,16 @@ function PreviewShape({ preview, onDryEnd }: { preview: Preview; onDryEnd?: () =
     case 'quads':
       return (
         <g
-          data-marker-trail={preview.kind === 'highlight' ? '' : undefined}
+          data-marker-trail={preview.kind === 'highlight' || preview.kind === 'citation' ? '' : undefined}
           data-marker-dry={preview.dry}
           onAnimationEnd={preview.dry === 'pulse' ? onDryEnd : undefined}
-          style={{ mixBlendMode: preview.kind === 'highlight' ? 'multiply' : 'normal' }}
+          style={{ mixBlendMode: preview.kind === 'highlight' || preview.kind === 'citation' ? 'multiply' : 'normal' }}
         >
           {preview.quads.map((q, i) => {
             const [tl, , , br] = q;
             const key = `${i}:${tl.x}:${tl.y}`;
-            if (preview.kind === 'highlight') {
-              return (
+            if (preview.kind === 'highlight' || preview.kind === 'citation') {
+              const fill = (
                 <rect
                   key={key}
                   x={tl.x}
@@ -703,6 +714,21 @@ function PreviewShape({ preview, onDryEnd }: { preview: Preview; onDryEnd?: () =
                   fill={cssOf(preview.color)}
                   fillOpacity={preview.opacity}
                 />
+              );
+              if (preview.kind === 'highlight') return fill;
+              // A citation's strip has the rule too (DESIGN 3.7 C1): 1 pt at the baseline in the stroke partner.
+              return (
+                <g key={key}>
+                  {fill}
+                  <line
+                    x1={tl.x}
+                    x2={br.x}
+                    y1={br.y - CITE_RULE_PT / 2}
+                    y2={br.y - CITE_RULE_PT / 2}
+                    stroke={cssOf(strokePartner(preview.color))}
+                    strokeWidth={CITE_RULE_PT}
+                  />
+                </g>
               );
             }
             const y = preview.kind === 'underline' ? br.y - UNDERLINE_INSET_PT : (tl.y + br.y) / 2;

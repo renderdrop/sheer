@@ -29,6 +29,7 @@ const KIND_KEYS: Readonly<Record<AnnotationKind, PlainKey>> = {
 
 const TOOL_KEYS: Readonly<Record<CreationKind, PlainKey>> = {
   highlight: 'tool.highlight',
+  citation: 'citation.cite',
   underline: 'tool.underline',
   strikeout: 'tool.strike',
   note: 'tool.note',

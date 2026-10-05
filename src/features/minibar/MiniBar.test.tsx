@@ -20,6 +20,14 @@ vi.mock('../../api/annotations', async (importOriginal) => ({
 }));
 const applyMock = vi.mocked(api.applyCommand);
 
+const copyCitation = vi.hoisted(() => vi.fn().mockResolvedValue(undefined));
+vi.mock('../citations/exportActions', () => ({ copyCitation }));
+vi.mock('../tags/TagPicker', () => ({
+  TagPickerButton: ({ annotIds }: { annotIds: readonly number[] }) => (
+    <button type="button" aria-label="Tags" data-ids={annotIds.join(',')} />
+  ),
+}));
+
 const annotationsInitial = useAnnotations.getState();
 const documentsInitial = useDocuments.getState();
 const toolsInitial = useTools.getState();
@@ -437,5 +445,49 @@ describe('text comment (DESIGN 3.5 B4, B5)', () => {
     await mount();
     expect(screen.getByRole('radio', { name: '#010203' })).not.toBeNull();
     expect(screen.getByRole('button', { name: 'More colours' })).not.toBeNull();
+  });
+});
+
+describe('the citation row (DESIGN 3.7 C4)', () => {
+  const citation = (id: number) =>
+    make(id, 'highlight', { quads: [], color: [220, 207, 255], opacity: 0.45, cite: { quote: 'a quote' } });
+
+  it('has swatches, Open citation, Copy citation, Tags and Delete, and no markup kind or comment control', () => {
+    load([citation(1)], [1]);
+    scene = canvas({ 1: OVER });
+    setup(<MiniBarSlot />);
+    const names = [...screen.getByRole('toolbar').querySelectorAll('button')].map((button) =>
+      button.getAttribute('aria-label'),
+    );
+    expect(names).toContain('Open citation');
+    expect(names).toContain('Copy citation');
+    expect(names).toContain('Tags');
+    expect(names.at(-1)).toBe('Delete');
+    expect(names).not.toContain('Comment');
+    expect(screen.getByRole('toolbar', { name: /Properties:/ })).not.toBeNull();
+  });
+
+  it('Open citation asks the margin to focus the bubble, Copy citation copies it', async () => {
+    const { requestCitationFocus, onCitationFocus } = await import('../citations/store');
+    const seen: number[] = [];
+    const off = onCitationFocus((id) => seen.push(id));
+    load([citation(7)], [7]);
+    scene = canvas({ 7: OVER });
+    setup(<MiniBarSlot />);
+    fireEvent.click(screen.getByRole('button', { name: 'Open citation' }));
+    expect(seen).toEqual([7]);
+    fireEvent.click(screen.getByRole('button', { name: 'Copy citation' }));
+    expect(copyCitation).toHaveBeenCalledWith(1, 7);
+    off();
+    requestCitationFocus(1);
+    expect(seen).toEqual([7]);
+  });
+
+  it('a plain highlight keeps its row', () => {
+    load([make(1, 'highlight', { quads: [] })], [1]);
+    scene = canvas({ 1: OVER });
+    setup(<MiniBarSlot />);
+    expect(screen.queryByRole('button', { name: 'Open citation' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Comment' })).not.toBeNull();
   });
 });

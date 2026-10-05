@@ -17,7 +17,8 @@ import type { AnnotationStyle } from '../inspector/style';
 export type MiniObject = Annotation | ContentAnnotation;
 
 /** The groups of selection that have the same controls (DESIGN v2 3.3 table). */
-export type BarKind = 'markup' | 'note' | 'text' | 'freeText' | 'stroke' | 'arrow' | 'shape' | 'mark' | 'plain';
+export type BarKind =
+  'markup' | 'citation' | 'note' | 'text' | 'freeText' | 'stroke' | 'arrow' | 'shape' | 'mark' | 'plain';
 
 /** The controls of the bar; Löschen is always last and not listed. */
 export type ControlId =
@@ -26,6 +27,9 @@ export type ControlId =
   | 'kindMarkup'
   | 'kindMark'
   | 'comment'
+  | 'openCitation'
+  | 'copyCitation'
+  | 'tags'
   | 'fontSize'
   | 'align'
   | 'textBorder'
@@ -50,6 +54,9 @@ const ORDER: readonly ControlId[] = [
   'textBorder',
   'textFill',
   'comment',
+  'openCitation',
+  'copyCitation',
+  'tags',
 ];
 
 /** A line with a head at either end is an arrow (DESIGN 3.5 B11). */
@@ -59,6 +66,8 @@ const hasEnd = (line: { head: string; tail?: string }): boolean =>
 export function barKindOf(object: MiniObject): BarKind | null {
   switch (object.kind) {
     case 'highlight':
+      // A highlight with a quote is a citation (ADR-119): it has its own row (DESIGN 3.7 C4).
+      return object.cite === undefined ? 'markup' : 'citation';
     case 'underline':
     case 'strikeout':
       return 'markup';
@@ -90,6 +99,7 @@ export function barKindOf(object: MiniObject): BarKind | null {
 
 const CONTROLS: Readonly<Record<BarKind, readonly ControlId[]>> = {
   markup: ['colourHighlight', 'kindMarkup', 'comment'],
+  citation: ['colourHighlight', 'openCitation', 'copyCitation', 'tags'],
   note: ['colourHighlight', 'comment'],
   text: ['colourStroke', 'fontSize'],
   freeText: ['colourStroke', 'fontSize', 'align', 'textBorder', 'textFill'],
@@ -106,7 +116,9 @@ export function controlsOf(objects: readonly MiniObject[]): readonly ControlId[]
   if (kinds.length === 0 || kinds.some((kind) => kind === null)) return [];
   const lists = kinds.map((kind) => (kind === null ? [] : CONTROLS[kind]));
   return ORDER.filter(
-    (control) => (control !== 'comment' || objects.length === 1) && lists.every((list) => list.includes(control)),
+    (control) =>
+      ((control !== 'comment' && control !== 'openCitation' && control !== 'copyCitation') || objects.length === 1) &&
+      lists.every((list) => list.includes(control)),
   );
 }
 
@@ -225,6 +237,7 @@ export function changeCommand(objects: readonly MiniObject[], change: MiniChange
 export function creationKindOf(object: MiniObject): CreationKind | null {
   switch (object.kind) {
     case 'highlight':
+      return object.cite === undefined ? 'highlight' : 'citation';
     case 'underline':
     case 'strikeout':
     case 'note':

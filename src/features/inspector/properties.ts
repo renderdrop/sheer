@@ -36,6 +36,8 @@ export function sectionsOfTool(kind: CreationKind): readonly Section[] {
       return sectionsOfKind('line');
     case 'line':
       return sectionsOfKind('line').filter((section) => section !== 'lineEnd');
+    case 'citation':
+      return sectionsOfKind('highlight');
     default:
       return sectionsOfKind(kind);
   }

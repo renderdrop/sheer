@@ -7,6 +7,7 @@ import type { Annotation, ChangeSet } from '../../../api/annotations';
 import { usePulseMessage } from '../../../components';
 import { EMPTY_HISTORY, useAnnotations } from '../../../stores/annotations';
 import { useUi } from '../../../stores/ui';
+import { rgbToCss } from '../../inspector/palette';
 import { forgetFileRotations, setFileRotation } from '../../viewer/fileRotation';
 import { AnnotationLayer, type AnnotationLayerProps } from './AnnotationLayer';
 
@@ -130,6 +131,30 @@ describe('rendering', () => {
     expect(blend?.querySelectorAll('rect')).toHaveLength(1);
     // The rectangle is still in the shape layer; the highlight is not.
     expect(container.querySelectorAll('[data-annot-layer] svg > g > rect:not([fill="transparent"])')).toHaveLength(1);
+  });
+
+  it('draws a citation with its 1 pt rule in the stroke partner of the fill, a plain highlight without', () => {
+    const quad = [
+      { x: 10, y: 10 },
+      { x: 50, y: 10 },
+      { x: 10, y: 20 },
+      { x: 50, y: 20 },
+    ];
+    seed([
+      box(1, 10, 10, 'new', {
+        kind: 'highlight',
+        quads: [quad],
+        color: [220, 207, 255],
+        cite: { quote: 'q' },
+      } as unknown as Partial<Annotation>),
+      box(2, 60, 10, 'new', { kind: 'highlight', quads: [quad] } as unknown as Partial<Annotation>),
+    ]);
+    const { container } = render(<AnnotationLayer {...props()} />);
+    const rules = container.querySelectorAll('[data-annot-blend] [data-cite-rule]');
+    expect(rules).toHaveLength(1);
+    expect(rules[0]?.getAttribute('stroke-width')).toBe('1');
+    expect(rules[0]?.getAttribute('stroke')).toBe(rgbToCss([146, 120, 230]));
+    expect(rules[0]?.querySelector('line')?.getAttribute('y1')).toBe('19.5');
   });
 
   it('has no blend layer without a drawn highlight', () => {

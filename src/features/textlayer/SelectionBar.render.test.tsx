@@ -10,6 +10,12 @@ const mark = vi.hoisted(() => vi.fn().mockResolvedValue(true));
 const comment = vi.hoisted(() => vi.fn().mockResolvedValue(undefined));
 vi.mock('../annotations/create/fromSelection', () => ({ markSelection: mark }));
 vi.mock('./comment', () => ({ addCommentFromSelection: comment }));
+const cite = vi.hoisted(() => vi.fn().mockResolvedValue(41));
+const readOnly = vi.hoisted(() => ({ on: false }));
+vi.mock('../citations/store', () => ({
+  createCitationFromSelection: cite,
+  isReadOnlyDocument: () => readOnly.on,
+}));
 vi.mock('./selection', () => ({ hasTextSelection: () => true }));
 
 MotionGlobalConfig.skipAnimations = true;
@@ -18,6 +24,8 @@ beforeEach(() => {
   vi.useFakeTimers();
   mark.mockClear();
   comment.mockClear();
+  cite.mockClear();
+  readOnly.on = false;
   useUi.setState({ activeTool: 'select' });
   const rect = { top: 200, bottom: 220, left: 50, right: 150, width: 100, height: 20 } as DOMRect;
   vi.spyOn(window, 'getSelection').mockReturnValue({
@@ -39,13 +47,36 @@ async function open() {
 }
 
 describe('the selection popover', () => {
-  it('offers Highlight, Comment and Copy; Highlight marks the selection', async () => {
+  it('offers Highlight, Cite, Comment and Copy; Highlight marks the selection', async () => {
     await open();
     const bar = screen.getByRole('toolbar');
-    expect([...bar.querySelectorAll('button')].map((b) => b.textContent)).toEqual(['Highlight', 'Comment', 'Copy']);
+    expect([...bar.querySelectorAll('button')].map((b) => b.textContent)).toEqual([
+      'Highlight',
+      'Cite',
+      'Comment',
+      'Copy',
+    ]);
     fireEvent.click(screen.getByRole('button', { name: 'Highlight' }));
     expect(mark).toHaveBeenCalledWith(1, 'highlight');
     expect(screen.queryByRole('toolbar')).toBeNull();
+  });
+
+  it('Cite makes a citation of the selection, names its shortcut, and closes the bar', async () => {
+    await open();
+    const button = screen.getByRole('button', { name: 'Cite' });
+    expect(button.getAttribute('aria-keyshortcuts')).toBe('Control+Shift+C Meta+Shift+C');
+    fireEvent.click(button);
+    expect(cite).toHaveBeenCalledWith(1);
+    expect(screen.queryByRole('toolbar')).toBeNull();
+  });
+
+  it('Cite is disabled on a read-only document and does nothing', async () => {
+    readOnly.on = true;
+    await open();
+    const button = screen.getByRole('button', { name: 'Cite' });
+    expect(button.getAttribute('aria-disabled')).toBe('true');
+    fireEvent.click(button);
+    expect(cite).not.toHaveBeenCalled();
   });
 
   it('Comment starts the comment flow and Esc closes the popover', async () => {

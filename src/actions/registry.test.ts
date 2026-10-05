@@ -16,6 +16,7 @@ const WITH_DOCUMENT: ActionState = {
   zoomAtMax: false,
   canUndo: true,
   canRedo: true,
+  hasCitations: true,
 };
 
 describe('the registry', () => {
@@ -68,6 +69,9 @@ describe('the registry', () => {
       'fullscreen',
       'delete-selection',
       'add-comment',
+      'cite-selection',
+      'copy-citation-list',
+      'save-citation-list',
       'sidebar-tab-pages',
       'sidebar-tab-outline',
       'sidebar-tab-comments',
@@ -155,6 +159,7 @@ describe('shortcuts per platform', () => {
     about: { macos: null, windows: null },
     'tool-select': { macos: 'V', windows: 'V' },
     'tool-highlight': { macos: 'H', windows: 'H' },
+    'tool-cite': { macos: 'Q', windows: 'Q' },
     'tool-note': { macos: 'C', windows: 'C' },
     'tool-text': { macos: 'T', windows: 'T' },
     'tool-draw': { macos: 'D', windows: 'D' },
@@ -165,6 +170,9 @@ describe('shortcuts per platform', () => {
     fullscreen: { macos: 'F11', windows: 'F11' },
     'delete-selection': { macos: null, windows: null },
     'add-comment': { macos: '⇧⌘M', windows: 'Ctrl+Shift+M' },
+    'cite-selection': { macos: '⇧⌘C', windows: 'Ctrl+Shift+C' },
+    'copy-citation-list': { macos: null, windows: null },
+    'save-citation-list': { macos: null, windows: null },
     'sidebar-tab-pages': { macos: null, windows: null },
     'sidebar-tab-outline': { macos: null, windows: null },
     'sidebar-tab-comments': { macos: null, windows: null },

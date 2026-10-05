@@ -35,6 +35,7 @@ const BASE = { opacity: 1, width: 2, fontSize: 12, head: 'none', bothEnds: false
 /** The defaults of every kind a tool creates. */
 export const DEFAULT_STYLES: Readonly<Record<CreationKind, AnnotationStyle>> = {
   highlight: { ...BASE, opacity: HIGHLIGHT_OPACITY, color: DEFAULT_COLOURS.highlight },
+  citation: { ...BASE, opacity: HIGHLIGHT_OPACITY, color: DEFAULT_COLOURS.citation },
   underline: { ...BASE, color: DEFAULT_COLOURS.underline },
   strikeout: { ...BASE, color: DEFAULT_COLOURS.strikeout },
   note: { ...BASE, color: DEFAULT_COLOURS.note },

@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 
 import type { ActionState } from '../../actions/state';
+import { useCitations } from '../citations/store';
 import { MAX_ZOOM, MIN_ZOOM } from '../../lib/zoom';
 import { historyOf, useAnnotations } from '../../stores/annotations';
 import { selectActiveId, useDocuments } from '../../stores/documents';
@@ -23,8 +24,11 @@ export function useActionState(): ActionState {
   const canPrint = permissions === null || permissions.includes('print');
   const canCopy = permissions === null || permissions.includes('copy');
   const hasDocument = docId !== null;
+  // The list is read for the menu's Copy and Save Citation List, and kept live by the change sets.
+  const hasCitations = useCitations(docId).length > 0;
+  const readOnly = useDocuments((state) => (docId === null ? false : state.byId[docId]?.kind === 'welcome'));
   return useMemo(
-    () => ({ hasDocument, zoomAtMin, zoomAtMax, canUndo, canRedo, canPrint, canCopy }),
-    [hasDocument, zoomAtMin, zoomAtMax, canUndo, canRedo, canPrint, canCopy],
+    () => ({ hasDocument, zoomAtMin, zoomAtMax, canUndo, canRedo, canPrint, canCopy, hasCitations, readOnly }),
+    [hasDocument, zoomAtMin, zoomAtMax, canUndo, canRedo, canPrint, canCopy, hasCitations, readOnly],
   );
 }

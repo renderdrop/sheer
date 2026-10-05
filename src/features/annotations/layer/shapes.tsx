@@ -6,6 +6,7 @@ import { rgbToCss } from '../../inspector/palette';
 import { MarkShape, SignatureShape } from '../../signatures/place/SignatureShape';
 import { quadBox } from '../../viewer/transform';
 import { FREE_TEXT_PAD, textWidth } from '../create/freeTextLayout';
+import { CITE_RULE_PT, strokePartner } from './citation';
 
 /**
  * The look of every annotation kind in page space (DESIGN 3.23), as SVG. The colors are the document's own (annotation colors
@@ -87,12 +88,24 @@ export const Shape = memo(function Shape({ a, docId }: { a: Annotation; docId?: 
       return <MarkShape a={a} />;
     case 'highlight':
       return (
-        <g fill={color} opacity={a.opacity}>
-          {a.quads.map((q, i) => {
-            const b = quadBox(q);
-            return <rect key={i} x={b.x} y={b.y} width={b.w} height={b.h} />;
-          })}
-        </g>
+        <>
+          <g fill={color} opacity={a.opacity}>
+            {a.quads.map((q, i) => {
+              const b = quadBox(q);
+              return <rect key={i} x={b.x} y={b.y} width={b.w} height={b.h} />;
+            })}
+          </g>
+          {a.cite === undefined ? null : (
+            // A citation also has the rule (DESIGN 3.7 C1), so the cue does not rely on colour.
+            <g data-cite-rule="" stroke={rgbToCss(strokePartner(a.color))} strokeWidth={CITE_RULE_PT} fill="none">
+              {a.quads.map((q, i) => {
+                const b = quadBox(q);
+                const y = b.y + b.h - CITE_RULE_PT / 2;
+                return <line key={i} x1={b.x} x2={b.x + b.w} y1={y} y2={y} />;
+              })}
+            </g>
+          )}
+        </>
       );
     case 'underline':
     case 'strikeout':

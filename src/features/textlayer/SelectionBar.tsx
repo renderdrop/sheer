@@ -2,11 +2,12 @@ import { motion } from 'motion/react';
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type RefObject } from 'react';
 import { createPortal } from 'react-dom';
 
-import { Button } from '../../components';
+import { Button, Tooltip } from '../../components';
 import { usePopoverMotion } from '../../components/motion';
 import { overlayOffset } from '../../components/tokens';
 import { useT } from '../../i18n';
 import { useUi } from '../../stores/ui';
+import { createCitationFromSelection, isReadOnlyDocument } from '../citations/store';
 import { markSelection } from '../annotations/create/fromSelection';
 import { onAddComment } from '../../actions/commentIntent';
 import { addCommentFromSelection } from './comment';
@@ -63,7 +64,7 @@ export interface SelectionBarProps {
 }
 
 /**
- * The bar over a text selection (DESIGN 3.59 section 1): Highlight, Comment, Copy (DESIGN v2 3.2). It appears when the selection has settled
+ * The bar over a text selection (DESIGN 3.59 section 1): Highlight, Cite, Comment, Copy (DESIGN v2 3.2, 3.7 C2). It appears when the selection has settled
  * (150 ms after the pointer, 300 ms after the last key), never takes the focus, and hides when the selection goes, the tool changes,
  * Esc is pressed, or the selection scrolls out of the canvas. Primary+Shift+M adds a comment while it shows.
  */
@@ -131,6 +132,13 @@ export function SelectionBar({ docId, region }: SelectionBarProps) {
     return () => document.removeEventListener('keydown', onKey);
   }, [rects]);
 
+  const readOnly = docId !== null && isReadOnlyDocument(docId);
+  const cite = useCallback(() => {
+    if (docId === null || isReadOnlyDocument(docId)) return;
+    setRects(null);
+    void createCitationFromSelection(docId);
+  }, [docId]);
+
   const add = useCallback(() => {
     if (docId === null) return;
     setRects(null);
@@ -185,6 +193,18 @@ export function SelectionBar({ docId, region }: SelectionBarProps) {
       >
         {t('selection.mark')}
       </Button>
+      <Tooltip label={readOnly ? t('tool.readOnly') : t('citation.cite')} disabled={!readOnly}>
+        <Button
+          size="sm"
+          variant="ghost"
+          disabled={readOnly}
+          focusableWhenDisabled
+          aria-keyshortcuts="Control+Shift+C Meta+Shift+C"
+          onClick={cite}
+        >
+          {t('citation.cite')}
+        </Button>
+      </Tooltip>
       <Button size="sm" variant="ghost" aria-keyshortcuts="Control+Shift+M Meta+Shift+M" onClick={add}>
         {t('selection.comment')}
       </Button>

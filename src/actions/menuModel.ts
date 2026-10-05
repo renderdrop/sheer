@@ -101,7 +101,7 @@ export function barMenuSpecs(): readonly { id: string; labelKey: string; accessK
 
 function isEnabled(action: ActionDef, context: MenuContext): boolean {
   if (!action.enabled(context.state)) return false;
-  return action.id !== 'add-comment' || context.hasTextSelection;
+  return (action.id !== 'add-comment' && action.id !== 'cite-selection') || context.hasTextSelection;
 }
 
 /** Drops a separator that starts or ends the list or follows another one. */

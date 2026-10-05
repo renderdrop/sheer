@@ -30,6 +30,7 @@ import {
   Signature,
   Square,
   SquareSlash,
+  Quote,
   Strikethrough,
   TextCursor,
   TextSelect,
@@ -201,7 +202,7 @@ const lesen: Maker = (inputs) => {
 };
 
 const kommentieren: Maker = (inputs) => {
-  const { t, activeTool, markup, shapes } = inputs;
+  const { t, activeTool, markup, shapes, readOnly } = inputs;
   const markupSlot = (variant: MarkupVariant, label: string, icon: LucideIcon): SlotDef => ({
     id: variant === 'strikeout' ? 'strikeout' : variant,
     label,
@@ -245,6 +246,18 @@ const kommentieren: Maker = (inputs) => {
     markupSlot('highlight', t('modes.tool.highlight'), Highlighter),
     markupSlot('underline', t('modes.tool.underline'), Underline),
     markupSlot('strikeout', t('modes.tool.strike'), Strikethrough),
+    // Slot 4 (DESIGN 3.7 C2): a colour tool (swatch row in the chevron menu), key Q. Not on a read-only document (AC 22).
+    {
+      id: 'cite',
+      label: t('citation.cite'),
+      icon: Quote,
+      kind: 'tool',
+      on: activeTool === 'cite',
+      actionId: 'tool-cite',
+      disabledReason: readOnly ? t('tool.readOnly') : undefined,
+      colour: { kinds: ['citation'] },
+      run: () => choose('cite'),
+    },
     plain('note', 'note', t('modes.tool.note'), StickyNote, 'tool-note'),
     plain('text', 'freeText', t('modes.tool.freeText'), MessageSquareText, 'tool-text'),
     { ...plain('draw', 'draw', t('modes.tool.draw'), PenLine, 'tool-draw'), recogniseSwitch: true },

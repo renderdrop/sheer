@@ -1,5 +1,6 @@
 import { DEFAULT_ZOOM, MAX_ZOOM, MIN_ZOOM } from '../lib/zoom';
 import { historyOf, useAnnotations } from '../stores/annotations';
+import { citationCount } from '../features/citations/store';
 import { selectActiveDocument, useDocuments } from '../stores/documents';
 import { useView } from '../stores/view';
 
@@ -22,6 +23,10 @@ export interface ActionState {
    */
   canPrint?: boolean;
   canCopy?: boolean;
+  /** The active document has citations (File: Copy and Save Citation List; absent: none). */
+  hasCitations?: boolean;
+  /** The active document cannot be changed (the tour's sample); absent: it can. */
+  readOnly?: boolean;
 }
 
 /** Whether the state allows printing (absent: yes). */
@@ -53,5 +58,7 @@ export function readActionState(): ActionState {
     canRedo: history.canRedo,
     canPrint: permissions === null || permissions.includes('print'),
     canCopy: permissions === null || permissions.includes('copy'),
+    hasCitations: citationCount(docId) > 0,
+    readOnly: selectActiveDocument(useDocuments.getState())?.kind === 'welcome',
   };
 }

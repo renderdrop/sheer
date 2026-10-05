@@ -289,6 +289,8 @@ describe('readActionState', () => {
       canRedo: false,
       canPrint: true,
       canCopy: true,
+      hasCitations: false,
+      readOnly: false,
     });
   });
 });

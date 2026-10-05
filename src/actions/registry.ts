@@ -1,6 +1,7 @@
 import {
   BookOpen,
   House,
+  Quote,
   ChevronDown,
   ChevronUp,
   Combine,
@@ -55,6 +56,8 @@ import {
 import type { Platform } from '../api/app';
 import { closeWindow } from '../api/window';
 import { runFlatten } from '../features/forms/actions';
+import { copyCitationList, saveCitationList } from '../features/citations/exportActions';
+import { createCitationFromSelection } from '../features/citations/store';
 import { useForms } from '../features/forms/store';
 import { useMarginPrefs } from '../features/margin/store';
 import { openSignatureLibrary } from '../features/signatures/library';
@@ -136,6 +139,9 @@ export type ActionId =
   | 'fullscreen'
   | 'delete-selection'
   | 'add-comment'
+  | 'cite-selection'
+  | 'copy-citation-list'
+  | 'save-citation-list'
   | 'sidebar-tab-pages'
   | 'sidebar-tab-outline'
   | 'sidebar-tab-comments'
@@ -181,6 +187,8 @@ const TOOL_ACTIONS: readonly ActionDef[] = (
   [
     ['select', 'v', MousePointer2, 'toolbar.tool.select'],
     ['highlight', 'h', Highlighter, 'toolbar.tool.highlight'],
+    // v1.3 Citations (DESIGN 3.7 C2): Q is free; Primary+Shift+C is the Cite Selection action.
+    ['cite', 'q', Quote, 'citation.cite'],
     ['note', 'c', MessageSquare, 'toolbar.tool.comment'],
     ['text', 't', Type, 'toolbar.tool.text'],
     ['draw', 'd', PenLine, 'toolbar.tool.draw'],
@@ -771,6 +779,42 @@ export const ACTIONS: readonly ActionDef[] = [
     enabled: needsDocument,
     // The selection bar of the comments feature answers (`onAddComment`); without a text selection nothing happens.
     run: requestAddComment,
+  },
+  {
+    id: 'cite-selection',
+    labelKey: 'menu.edit.cite',
+    icon: Quote,
+    shortcut: { default: { key: 'c', mods: ['primary', 'shift'] } },
+    group: 'edit',
+    menuBar: true,
+    // The menu adds the text selection (as for Add comment); a read-only document cites nothing (AC 22).
+    enabled: (state) => state.hasDocument && state.readOnly !== true,
+    run: () => {
+      const docId = useDocuments.getState().activeId;
+      if (docId !== null) void createCitationFromSelection(docId);
+    },
+  },
+  {
+    id: 'copy-citation-list',
+    labelKey: 'menu.file.copyCitationList',
+    group: 'file',
+    menuBar: true,
+    enabled: (state) => state.hasDocument && state.hasCitations === true,
+    run: () => {
+      const docId = useDocuments.getState().activeId;
+      if (docId !== null) void copyCitationList(docId);
+    },
+  },
+  {
+    id: 'save-citation-list',
+    labelKey: 'menu.file.saveCitationList',
+    group: 'file',
+    menuBar: true,
+    enabled: (state) => state.hasDocument && state.hasCitations === true,
+    run: () => {
+      const docId = useDocuments.getState().activeId;
+      if (docId !== null) void saveCitationList(docId);
+    },
   },
   {
     id: 'form-highlight',

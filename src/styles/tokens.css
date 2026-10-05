@@ -343,6 +343,11 @@
   --stroke-rose: #e15c86;
   --stroke-lavender: #9278e6;
   --stroke-ink: #0f0f0f;
+  --citation-default: var(--hl-lavender); /* first-run citation fill (DESIGN 3.7 C1) */
+  --chip-height: 20px; /* tag chips (DESIGN 3.7 C6) */
+  --tag-dot: 8px; /* colour dot in tag chips and menus (DESIGN 3.7 C6) */
+  --preview-min-height: 64px; /* formatted reference preview (DESIGN 3.7 C7) */
+  --tag-picker-width: 240px; /* tag picker popover (DESIGN 3.7 C6) */
   --ink-signature: #1f3a93; /* the only blue */
 
   /* Glows (DESIGN 5, BRAND 5): brand surfaces only. Solar at most 0.95 alpha; Mist is the counter-light at 20% 10%. */
@@ -858,6 +863,11 @@
 
 /* The overlay is its own stacking context (z-index + transform), so a blend inside it only meets its transparent backdrop: the whole
    overlay multiplies onto the page image, which keeps the glyphs under hits and the selection dark and readable (F15 A2/A3). */
+/* A citation card's quote behind its own document colour (DESIGN 3.7 C8): `--cite-fill` holds the RGB channels. */
+[data-cite-fill] {
+  background-color: rgb(var(--cite-fill) / var(--hl-opacity));
+}
+
 [data-page-overlay] {
   mix-blend-mode: multiply;
 }

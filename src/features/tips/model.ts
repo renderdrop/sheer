@@ -4,6 +4,7 @@ import type { ToolId } from '../../stores/ui';
 /** The tools that have a first-use tip (DESIGN 3.47), by the id stored in the setting `tipsSeen`. */
 export const TIP_IDS = [
   'highlight',
+  'cite',
   'note',
   'text',
   'draw',
@@ -46,6 +47,7 @@ export function toolbarItemOf(id: TipId): string {
 export function tipOfTool(tool: ToolId): TipId | null {
   switch (tool) {
     case 'highlight':
+    case 'cite':
     case 'note':
     case 'text':
     case 'draw':

@@ -111,6 +111,16 @@
           "requiresDocument": true
         },
         {
+          "action": "copy-citation-list",
+          "label": "menu.file.copyCitationList",
+          "requiresDocument": true
+        },
+        {
+          "action": "save-citation-list",
+          "label": "menu.file.saveCitationList",
+          "requiresDocument": true
+        },
+        {
           "separator": true
         },
         {
@@ -191,6 +201,12 @@
           "action": "add-comment",
           "label": "menu.edit.addComment",
           "accelerator": "CmdOrCtrl+Shift+M",
+          "requiresDocument": true
+        },
+        {
+          "action": "cite-selection",
+          "label": "menu.edit.cite",
+          "accelerator": "CmdOrCtrl+Shift+C",
           "requiresDocument": true
         },
         {

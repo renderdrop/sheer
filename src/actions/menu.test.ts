@@ -211,3 +211,37 @@ describe('the labels of the menu bar', () => {
     }
   });
 });
+
+describe('the citation commands (DESIGN 3.7 C2)', () => {
+  const order = (menuId: string): string[] =>
+    (menus.find((menu) => menu.id === menuId)?.items ?? []).flatMap((item) => ('action' in item ? [item.action] : []));
+
+  it('Cite Selection follows Add Comment in Edit, with Primary+Shift+C', () => {
+    const edit = order('edit');
+    expect(edit.indexOf('cite-selection')).toBe(edit.indexOf('add-comment') + 1);
+    expect(getAction('cite-selection')?.shortcut?.default).toEqual({ key: 'c', mods: ['primary', 'shift'] });
+  });
+
+  it('Copy and Save Citation List follow Document Properties in File, and need a citation', () => {
+    const file = order('file');
+    const at = file.indexOf('document-properties');
+    expect(file.slice(at + 1, at + 3)).toEqual(['copy-citation-list', 'save-citation-list']);
+    for (const id of ['copy-citation-list', 'save-citation-list'] as const) {
+      expect(getAction(id)?.enabled({ ...NO_DOCUMENT, hasDocument: true })).toBe(false);
+      expect(getAction(id)?.enabled({ ...NO_DOCUMENT, hasDocument: true, hasCitations: true })).toBe(true);
+    }
+  });
+
+  it('Cite Selection is off on a read-only document', () => {
+    expect(getAction('cite-selection')?.enabled({ ...NO_DOCUMENT, hasDocument: true })).toBe(true);
+    expect(getAction('cite-selection')?.enabled({ ...NO_DOCUMENT, hasDocument: true, readOnly: true })).toBe(false);
+  });
+
+  it('has the same three labels in English (Title Case) and German', () => {
+    for (const key of ['menu.edit.cite', 'menu.file.copyCitationList', 'menu.file.saveCitationList'] as const) {
+      expect(catalogs.en[key], key).toBeTruthy();
+      expect(catalogs.de[key], key).toBeTruthy();
+    }
+    expect(catalogs.en['menu.edit.cite']).toBe('Cite Selection');
+  });
+});

@@ -6,8 +6,10 @@ import {
   ChevronDown,
   Circle,
   Highlighter,
+  Copy,
   MessageSquare,
   PaintBucket,
+  Quote,
   Square,
   Strikethrough,
   Trash2,
@@ -235,6 +237,16 @@ export function CommentControl({ label, disabled, onOpen }: { label: string; dis
       className={SQUARE}
     />
   );
+}
+
+/** "Open citation" (DESIGN 3.7 C4): focuses the citation's bubble in the margin. */
+export function OpenCitationControl({ label, onOpen }: { label: string; onOpen: () => void }) {
+  return <IconButton {...ITEM} icon={Quote} label={label} onClick={onOpen} className={SQUARE} />;
+}
+
+/** "Copy citation" (DESIGN 3.7 C4): the quote and its short citation go to the clipboard. */
+export function CopyCitationControl({ label, onCopy }: { label: string; onCopy: () => void }) {
+  return <IconButton {...ITEM} icon={Copy} label={label} onClick={onCopy} className={SQUARE} />;
 }
 
 export function DeleteControl({ label, disabled, onDelete }: DisabledProps & { label: string; onDelete: () => void }) {

@@ -79,6 +79,8 @@ describe('the Windows menus built from menu.json', () => {
       'Flatten Form…',
       'Protect…',
       'Document Properties…',
+      'Copy Citation List',
+      'Save Citation List…',
       '-',
       'Print…',
       'Close Document',

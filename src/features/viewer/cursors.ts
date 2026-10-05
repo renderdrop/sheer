@@ -19,6 +19,7 @@ export const CURSOR_HOTSPOTS: Readonly<Record<CursorKind, readonly [number, numb
 export function cursorForTool(tool: ToolId): CursorKind | undefined {
   switch (tool) {
     case 'highlight':
+    case 'cite':
       return 'marker';
     case 'draw':
       return 'pen';

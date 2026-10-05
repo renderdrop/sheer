@@ -18,11 +18,12 @@ export type ShapeVariant = (typeof SHAPE_VARIANTS)[number];
 export type ToolFamily = 'highlight' | 'shapes';
 
 /** What a creation tool makes: the annotation kinds of the model, with the shapes' arrow as a line with an arrow head. */
-export type CreationKind = MarkupVariant | 'note' | 'freeText' | 'ink' | 'rect' | 'ellipse' | 'line' | 'arrow';
+export type CreationKind =
+  MarkupVariant | 'citation' | 'note' | 'freeText' | 'ink' | 'rect' | 'ellipse' | 'line' | 'arrow';
 
 const STORAGE_KEY = 'sheer.toolVariants';
 const DEFAULTS_KEY = 'sheer.toolDefaults';
-const KINDS: readonly CreationKind[] = [...MARKUP_VARIANTS, 'note', 'freeText', 'ink', ...SHAPE_VARIANTS];
+const KINDS: readonly CreationKind[] = [...MARKUP_VARIANTS, 'citation', 'note', 'freeText', 'ink', ...SHAPE_VARIANTS];
 const HEADS: readonly LineEnd[] = ['none', 'openArrow', 'closedArrow'];
 const ALIGNS: readonly TextAlign[] = ['left', 'center', 'right'];
 const isColour = (c: unknown): c is Rgb => Array.isArray(c) && c.length === 3 && c.every(isByte);
@@ -200,6 +201,8 @@ export function creationKind(tool: ToolId, tools: Pick<ToolsState, 'markup' | 's
   switch (tool) {
     case 'highlight':
       return tools.markup;
+    case 'cite':
+      return 'citation';
     case 'note':
       return 'note';
     case 'text':

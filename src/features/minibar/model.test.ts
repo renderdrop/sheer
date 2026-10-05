@@ -154,3 +154,26 @@ describe('kindCommand and creationKindOf', () => {
     expect(creationKindOf(make(1, { kind: 'signature' }))).toBeNull();
   });
 });
+
+describe('a citation in the mini bar (DESIGN 3.7 C4)', () => {
+  const citation = (id: number) => highlight(id, { cite: { quote: 'q' } });
+
+  it('has swatches, Open citation, Copy citation and Tags; a plain highlight has none of the last three', () => {
+    expect(controlsOf([citation(1)])).toEqual(['colourHighlight', 'openCitation', 'copyCitation', 'tags']);
+    expect(controlsOf([highlight(1)])).toEqual(['colourHighlight', 'kindMarkup', 'comment']);
+  });
+
+  it('several citations share the swatches and Tags only', () => {
+    expect(controlsOf([citation(1), citation(2)])).toEqual(['colourHighlight', 'tags']);
+  });
+
+  it('is never turned into another kind, and its colour is the default of the citation kind', () => {
+    expect(creationKindOf(citation(1))).toBe('citation');
+    expect(creationKindOf(highlight(1))).toBe('highlight');
+    expect(changeCommand([citation(1)], { color: [125, 235, 181] })).toEqual({
+      type: 'updateAnnotation',
+      id: 1,
+      patch: { color: [125, 235, 181] },
+    });
+  });
+});

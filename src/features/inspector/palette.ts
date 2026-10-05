@@ -71,13 +71,21 @@ export const PALETTES: Readonly<Record<PaletteName, readonly PaletteColour[]>> =
 
 /** The kinds of annotation that have the highlight palette. */
 export const paletteNameOf = (kind: string): PaletteName =>
-  kind === 'highlight' ? 'highlight' : kind === 'note' ? 'fill' : kind === 'signature' ? 'signature' : 'stroke';
+  kind === 'highlight' || kind === 'citation'
+    ? 'highlight'
+    : kind === 'note'
+      ? 'fill'
+      : kind === 'signature'
+        ? 'signature'
+        : 'stroke';
 
 const first = (palette: readonly PaletteColour[]): Rgb => palette[0]?.rgb ?? [15, 15, 15];
 
 /** The defaults: Highlight Solar, everything drawn Ink, Note Solar (a fill). */
 export const DEFAULT_COLOURS = {
   highlight: first(HIGHLIGHT_PALETTE),
+  /** A citation starts Lavender (`--citation-default`, DESIGN 3.7 C1), so it differs from a plain highlight at first sight. */
+  citation: HIGHLIGHT_PALETTE[4]?.rgb ?? first(HIGHLIGHT_PALETTE),
   underline: first(STROKE_PALETTE),
   strikeout: first(STROKE_PALETTE),
   note: first(FILL_PALETTE),
