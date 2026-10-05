@@ -49,6 +49,8 @@ Additions (BRAND §9, §23 and this spec): `--space-5` 20, `--space-10` 40, `--s
 | `--tag-dot` | 8px (colour dot in tag chips and tag menus, §3.7) |
 | `--citation-default` | `--hl-lavender` #DCCFFF (first-run citation fill; its underline is `--stroke-lavender`, §3.7) |
 | `--preview-min-height` | 64px (formatted reference preview, §3.7) |
+| `--seal-width` / `--seal-height` | 192 / 64 pt (default certificate seal box on the page, §3.8) |
+| `--seal-min-width` / `--seal-min-height` | 120 / 40 pt (smallest seal box, §3.8) |
 
 Pages use `--shadow-floating` (brief: two shadows only; BRAND §18's page shadow is not added).
 
@@ -532,6 +534,124 @@ Datei → Copy/Save Citation List run the same commands without the popover. Err
 22. A document whose permissions forbid changes disables Zitieren and tag assignment with the read-only tooltip, shows Reference fields read-only, and still exports.
 23. With reduced motion on, creating a citation and opening popovers only fade.
 24. No new surface covers the selection, the mini bar or a page at 960 × 640 and 1280 × 800.
+
+### 3.8 v1.4 Certificate signature (ADR-121)
+
+Binding for v1.4.1–v1.4.3. Crypto, storage and file structure are ADR-121's (PAdES B-B, self-generated or imported .p12/.pfx keys in the OS keychain, DocMDP, local validation without network or trust list); this section defines looks, slots, keys and strings. The ADR-102 layout stays: **no new mode, no new left-panel tab, no new grid track**. New surfaces reuse slots §3 already has: one tool slot, a tab in the existing Signatures dialog, a confirm dialog, the banner slot and a Signatures dialog. Light only. Wording rule: the UI never says "qualified", "legally binding", "verified identity" or names eIDAS levels as a property of these signatures; the confirm dialog says plainly that it is not a qualified signature (CLAUDE.md rule 5). No Adobe terms ("Digital ID", "Certify", blue ribbon).
+
+New tokens (§1.2): `--seal-width` 192 pt and `--seal-height` 64 pt (default seal box; 72 pt with a reason), `--seal-min-width` 120 pt and `--seal-min-height` 40 pt. On-page colours are not new tokens: the seal uses `--color-ink`, `--color-stone`, `--text-secondary`; Rust holds them as named constants and a test compares them with `tokens.css`.
+
+**S1 Entry point (v1.4.1).** Ausfüllen & Signieren gets its own slot, last: **Text · Häkchen · Kreuz · Punkt · Datum · Signatur · Initialen · Zertifikat** (8 = the §3.2 maximum; at 960 overflow step 2 suffices, no "Mehr"). Why not a Signatur variant: a certificate signature is irreversible and locks the file; hiding it in a split menu next to visual signatures invites confusing the two, and the visual signature keeps its simple meaning.
+- Item: icon `stamp`, label `cert.tool`, tooltip `cert.tool.tooltip`. Split item (§3.2): main part activates with the last used certificate; the 20-wide chevron opens a Menu: certificates as radio items (name + `.t-caption` email), divider, "New certificate…", "Manage certificates…". **No tool letter** (an accidental key must never start an irreversible flow).
+- No certificate yet: activating the tool opens the Signatures dialog on its Certificates tab (S2, empty state); after create/import the tool is active.
+- Disabled (0.4, tooltip says why): document locked by a certifying signature (S5, `cert.locked.tool`), permissions forbid signing (`tool.readOnly`), keychain unavailable (`cert.keychainMissing`), XFA form.
+- Werkzeuge → "Manage Signatures…" stays; it opens the same dialog on the last tab used this session.
+
+**S2 Certificate manager** (tab in the existing Signatures dialog, `SignatureLibraryDialog`; one place for everything kept in the keychain). The header gains Tabs (§4, 36): **Signatures** (today's content) · **Certificates**. Dialog width `--sheet-width` 560, max height window − 64, tab body scrolls, header/tabs/footer stay.
+- **List:** rows 56, radius md, padding-x 12, gap 4, hover Sand: `key-round` 20 Ink · 12 · name `.t-label` (ellipsis) over `.t-caption` "Self-generated · valid until 10/2029" or "Imported · issued by {issuer} · valid until …" (expired: `triangle-alert` 16 + `cert.expired`, Ink) · right: Details chevron 28 (expands in place) · Delete `trash-2` 28. Expanded details: two-column label/value grid (`.t-caption` / `.t-body`, `tabular-nums`): Name, Email, Organisation, Issuer, Serial number, Valid (from–to), SHA-256 fingerprint (pairs of hex grouped by 4, wraps, Copy icon button 28), Stored (`cert.stored`). Max 16 certificates (`cert.limit`; Create and Import disabled).
+- **Footer of the tab:** Secondary "Create certificate…" · Secondary "Import .p12 or .pfx…" (left), Secondary "Close" (right). No Primary in list view (nothing to commit).
+- **Create** (the tab body swaps to a form; Back Ghost `arrow-left` 28 returns): Name (required, 1–64), Email (optional, validated on blur), Organisation (optional, ≤ 64), caption `cert.createNote`. Footer: Secondary Cancel · Primary "Create". Creating: button label `cert.creating` after `--saving-delay`; done: back to the list, the new row selected and announced (`cert.created`).
+- **Import:** Rust open dialog (.p12, .pfx; the frontend never sees the path or bytes); cancelled = nothing. Then the form shows the file's name (no path) and a password Input with a show/hide icon button 28 (`eye` / `eye-off`), focus in the field. Primary "Import". Errors under the field (§4 input error, `aria-invalid`): `cert.errPassword`, `cert.errFile`, `cert.duplicate`, `cert.errAlgorithm`. An expired certificate imports with the warning caption; it cannot sign (S3).
+- **Delete:** inline confirm in the row (row turns Sand, text `cert.deleteConfirm`, Ghost Cancel · Secondary "Delete" in danger text). No undo (the keychain item is gone); focus moves to the next row or the empty state.
+- **Empty:** centred `key-round` 24 Text-secondary, `cert.empty` `.t-title`, `cert.emptyHint` `.t-caption`, the two footer buttons. **Keychain unavailable:** a 32 Sand info row (as B8, `info` 16) `cert.keychainMissing`, Create/Import disabled; never kept in memory only (ADR-107).
+- Keyboard: Tabs roving (Left/Right); list is `role="list"`, Tab reaches Details then Delete per row; Enter on Details toggles `aria-expanded`; Esc closes a form (back to list), then the dialog, focus returns to the opener.
+
+**S3 Signing flow (v1.4.1).**
+1. **Place.** With Zertifikat active: drag a box on a page, or click = `--seal-width` × `--seal-height` centred on the click (clamped inside the page, 12 pt inset). Cursor crosshair (spell 12). The placeholder draws the real seal preview (S4) with a 1px Ink dashed outline and handles; aspect free, minimum `--seal-min-*`. Keyboard: Enter on the canvas places it centred on the visible part of the current page; arrows move 1 pt, Shift+arrows 10 pt. Release (or Enter) opens the confirm dialog.
+2. **Confirm** (Dialog §4, Sand, `--dialog-width-md`, title `.t-h3` `sign.cert.title`), top to bottom, gap 16: **Signer** dropdown 36 (certificates; caption issuer · valid until; expired/not yet valid: danger caption `cert.expired`, Primary disabled) · **Reason** Input (≤ 128, placeholder `sign.cert.reasonPlaceholder`) · **Location** Input (≤ 64) · seal preview on White, radius sm, live as fields change (`aria-hidden`; the fields carry the content) · notice block (White on the Sand dialog), radius md, padding 12, `lock` 16 Ink + `sign.cert.lockNotice` `.t-label` Ink 500, then `.t-caption` lines: `sign.cert.unsaved` (only with unsaved edits), `sign.cert.existing` (only when the file already has signatures), `sign.cert.notQualified` (always). Footer: Secondary Cancel · Primary `sign.cert.submit`.
+3. **Save: always a new file.** Primary opens the Rust save dialog, default name `sign.cert.fileName` next to the original. Why not in place: signing is irreversible and the original stays the editable copy, so "how do I change it?" has an answer without any extra command. Choosing the open file's own path is allowed after the OS overwrite prompt; then this tab reloads as the signed file. Otherwise the signed file opens in a **new tab** that becomes active; the original tab keeps its state (its unsaved edits stay unsaved there).
+4. **Progress and result.** Primary shows `sign.cert.signing` after `--saving-delay`, dialog inputs disabled; the OS may show its own keychain prompt. Success: dialog closes, toast `sign.cert.done`, polite announcement. Failure: the dialog stays, inline danger caption above the footer (`sign.cert.keychainDenied`, `sign.cert.failed`) and Primary becomes "Try again". Save dialog cancelled: back to the confirm dialog, nothing written.
+- Cancel (or Esc) closes the dialog and keeps the placeholder selected: move/resize it, Enter reopens the dialog, Esc or Delete discards it. Switching mode or tool discards it. The placeholder never enters the document or the undo stack.
+
+**S4 Seal look (v1.4.2).** The seal is the signature field's appearance stream, so every viewer shows the same picture; PDFium renders it in the app. Transparent background (sits on form lines like ink), 0.75 pt Stone frame, radius 4 pt, padding 8 pt. Left: Lucide `shield-check` 20 pt Ink (stroke 1.75, as vectors). 8 pt gap. Text column, Inter subset embedded: name 11/14 pt 500 Ink · `seal.signed` 8/10 pt Ink · date "2026-10-05 14:05 +02:00" 8/10 pt Text-secondary, tabular numerals (ISO form, readable in every locale) · optional `seal.reason` 8/10 pt Text-secondary. Language = UI language at signing. Smaller boxes scale the text down to 6 pt, then drop the reason line, then ellipsis the name; the date and "Digitally signed" are never dropped. No colour carries meaning (prints in greyscale). The on-page seal never shows validity: that is the app's job (S6), so a copied or altered seal cannot fake a status.
+
+**S5 Read-only state (v1.4.2).** Applies to any file whose certifying signature allows no changes (ours always does), whoever signed it.
+- **Banner slot** (§3.2, 40): the signature banner (S6) plus, right, Ghost 28 `cert.editableCopy`. Priority in the single slot: redact band > signature banner > form banner.
+- **Save status** (§3.5 B1) new state: `lock` 16 Text-secondary + `save.status.signed`, `aria-disabled`, tooltip `cert.locked.tool`.
+- **Disabled** (0.4, tooltip `cert.locked.tool`): every tool in Kommentieren, Ausfüllen & Signieren (incl. Zertifikat), Seiten and Bearbeiten; Zitieren and tag assignment; form fields (read-only, no focus ring change); thumbnail drag; Undo/Redo; Datei Save, Compress, Flatten form, Protect, Export copy; Document properties shows read-only fields (C5 rule). Mode tabs stay usable so people can look.
+- **Still works:** Lesen tools, text selection, Copy, Search, Print, Export images, citation list export, Save As (byte-identical copy, signature stays valid).
+- **Editable copy:** Rust save dialog, default `cert.editableName`; writes a copy without signature fields or seals (`cert.editableNote` as dialog message), opens it in a new tab. The signed file is never modified.
+- Signed but not locked (others' approval signatures): v1.1 behaviour stays (edits allowed, saving asks to confirm `breaksSignature`); the banner shows only the status.
+
+**S6 Validation (v1.4.3).** Runs in Rust after open for every file with ≥ 1 signed signature field; empty signature fields are ignored. Every signature is hostile input: strings are cleaned (control and bidi-override characters removed, 128 chars max, ellipsis) before display.
+- **Banner** (Sand, §4 Banner): icon 16 + `.t-label` Ink + Ghost 28 "Details" (opens the Signatures dialog) + close 28 (hides for this tab's session). Text: subject (`sigs.banner.one` or `.many`) · worst state of all signatures · `sigs.identity.short`. Icons and state: intact `shield-check` Ink; later additions `shield-check` Ink + `.later`; changed `shield-alert` `--color-danger` + state word 600; can't be checked `shield-x` `--color-danger` + 600. The words carry the state; colour only repeats it (§2). Below 1100 window width the identity part moves into the banner's tooltip. While checking: `sigs.checking`, shown after `--saving-delay`.
+- **Signatures dialog** (Dialog §4, `--sheet-width` 560, title `sigs.title`, max height window − 64, body scrolls; Datei → `menu.file.signatures` after Document Properties…, enabled only for signed files; banner Details; Enter or click on a seal widget opens it scrolled to that card). Cards in signing order, White, border, radius md, padding 16, gap 12:
+  - Header: state icon 20 · `sigs.number` `.t-caption` over signer `.t-title` (ellipsis) · state `.t-label` 600 right.
+  - Rows (label `.t-caption` / value `.t-body`): Signed at (`sigs.signedAt`, locale date + time + offset); Content (`sigs.state.*` sentence, plus `sigs.covers` when later versions exist); Identity (`sigs.identity`, always shown, also for imported certificates); Certificate: issuer, valid from–to (`sigs.certExpiredAtSigning` when the claimed time is outside), fingerprint + Copy 28; Reason, Location (only when present); Lock (`sigs.locks` when certifying).
+  - Footer of a card: Ghost 28 `sigs.showOnPage` (spell 8 to the seal; invisible signature: `.t-caption` `sigs.invisible` instead).
+  - Error card (malformed, unsupported algorithm, over limits, timeout): same header with `shield-x`, state `sigs.state.unknown`, one row with the reason (`sigs.error.*`), other rows only where readable. One broken signature never hides the others.
+- **Seal on the page** (in-app only): hover/focus shows the §2.1 outline pair and tooltip "{name} · {state}"; changed or unknown adds a 2px `--color-danger` outline (overlay, like redaction marks). Seal widgets are buttons in the page Tab order, `aria-label` `sigs.aria`.
+- Dialog footer: Secondary Close; when locked also Ghost `cert.editableCopy`. Keyboard: Tab through cards' controls in order; Esc closes and returns focus.
+
+**Motion.** Reused only: §4 dialog and tab motion, spell 8 (Show on page), spell 12 (cursor), toast as built. No pulse on signing, no animated seal, no success check draw (save status is not involved). Reduced motion: fades `--motion-fast` as those rows. **Layout check:** dialogs are modal over the scrim (allowed); the banner sits in its slot so pages never move under it; at 960 × 640 the dialogs fit at 576 max height with scrolling bodies; the placeholder stays inside its page.
+
+| Key | en | de |
+|---|---|---|
+| `cert.tool` / `.tool.tooltip` | Certificate / Sign with a certificate | Zertifikat / Mit Zertifikat signieren |
+| `cert.menu.new` / `.manage` | New certificate… / Manage certificates… | Neues Zertifikat… / Zertifikate verwalten… |
+| `lib.tab.signatures` / `.certificates` | Signatures / Certificates | Signaturen / Zertifikate |
+| `cert.create` / `.import` | Create certificate… / Import .p12 or .pfx… | Zertifikat erstellen… / .p12 oder .pfx importieren… |
+| `cert.name` / `.email` / `.org` | Name / Email (optional) / Organisation (optional) | Name / E-Mail (optional) / Organisation (optional) |
+| `cert.createNote` | Valid for 3 years. The private key stays in this device's keychain. | 3 Jahre gültig. Der private Schlüssel bleibt im Schlüsselspeicher dieses Geräts. |
+| `cert.creating` / `.created` | Creating… / Certificate “{name}” created | Wird erstellt… / Zertifikat „{name}“ erstellt |
+| `cert.password` / `.show` / `.hide` | Password of the file / Show password / Hide password | Passwort der Datei / Passwort zeigen / Passwort verbergen |
+| `cert.errPassword` / `.errFile` | Wrong password. / This file holds no usable certificate with a private key. | Falsches Passwort. / Diese Datei enthält kein nutzbares Zertifikat mit privatem Schlüssel. |
+| `cert.duplicate` / `.errAlgorithm` | This certificate is already in the list. / This key type isn't supported. | Dieses Zertifikat ist schon in der Liste. / Dieser Schlüsseltyp wird nicht unterstützt. |
+| `cert.selfSigned` / `.imported` / `.validUntil` | Self-generated / Imported · issued by {issuer} / valid until {date} | Selbst erstellt / Importiert · ausgestellt von {issuer} / gültig bis {date} |
+| `cert.expired` / `.notYetValid` | Expired on {date} / Valid from {date} | Abgelaufen am {date} / Gültig ab {date} |
+| `cert.field.issuer` / `.serial` / `.validity` / `.fingerprint` | Issuer / Serial number / Valid / SHA-256 fingerprint | Aussteller / Seriennummer / Gültig / SHA-256-Fingerabdruck |
+| `cert.stored` / `.copyFingerprint` | Stored in the system keychain on this device / Copy fingerprint | Im Schlüsselspeicher dieses Geräts / Fingerabdruck kopieren |
+| `cert.delete` / `.deleteConfirm` | Delete certificate / Delete “{name}” from this device? Files already signed stay signed, but you can't sign with it again. | Zertifikat löschen / „{name}“ von diesem Gerät löschen? Signierte Dateien bleiben signiert, aber du kannst damit nicht mehr signieren. |
+| `cert.empty` / `.emptyHint` | No certificates yet. / Create one here or import a .p12 or .pfx file. | Noch keine Zertifikate. / Hier eines erstellen oder eine .p12- oder .pfx-Datei importieren. |
+| `cert.limit` / `.keychainMissing` | Up to 16 certificates. / Certificates need the system keychain, which isn't available. | Höchstens 16 Zertifikate. / Zertifikate brauchen den Schlüsselspeicher des Systems; er ist nicht verfügbar. |
+| `sign.cert.title` / `.signer` / `.reason` / `.location` | Sign with certificate / Signer / Reason (optional) / Location (optional) | Mit Zertifikat signieren / Unterzeichnet von / Grund (optional) / Ort (optional) |
+| `sign.cert.reasonPlaceholder` | e.g. I approve this document | z. B. Ich gebe dieses Dokument frei |
+| `sign.cert.lockNotice` | After signing, this document can no longer be edited. Make all changes first. | Nach dem Signieren lässt sich das Dokument nicht mehr bearbeiten. Nimm alle Änderungen vorher vor. |
+| `sign.cert.unsaved` / `.existing` | Your unsaved changes are included. / The existing signatures stay valid. | Deine ungespeicherten Änderungen werden übernommen. / Die vorhandenen Signaturen bleiben gültig. |
+| `sign.cert.notQualified` | This shows the file hasn't changed since signing. It is not a qualified electronic signature. | Sie zeigt, dass die Datei seit dem Signieren unverändert ist. Sie ist keine qualifizierte elektronische Signatur. |
+| `sign.cert.submit` / `.signing` / `.fileName` | Sign and save as… / Signing… / {name} – signed | Signieren und speichern unter… / Wird signiert… / {name} – signiert |
+| `sign.cert.done` / `.failed` / `.keychainDenied` | Signed copy saved as {file} / Couldn't sign. {reason} / The system didn't allow access to the key. | Signierte Kopie gespeichert als {file} / Signieren fehlgeschlagen. {reason} / Das System hat den Zugriff auf den Schlüssel verweigert. |
+| `seal.signed` / `.reason` | Digitally signed / Reason: {reason} | Digital signiert / Grund: {reason} |
+| `save.status.signed` / `cert.locked.tool` | Signed / Signed and locked. Make an editable copy to change it. | Signiert / Signiert und gesperrt. Für Änderungen eine bearbeitbare Kopie anlegen. |
+| `cert.editableCopy` / `.editableName` / `.editableNote` | Make editable copy… / {name} – editable / The copy has no signatures. | Bearbeitbare Kopie… / {name} – bearbeitbar / Die Kopie enthält keine Signaturen. |
+| `menu.file.signatures` / `sigs.title` / `.details` | Signatures… / Signatures / Details | Signaturen… / Signaturen / Details |
+| `sigs.checking` / `.banner.one` / `.banner.many` | Checking signatures… / Signed by {name} / {count} signatures | Signaturen werden geprüft… / Signiert von {name} / {count} Signaturen |
+| `sigs.state.intact` / `.later` | Unchanged since signing / Unchanged; additions were made after signing | Seit dem Signieren unverändert / Unverändert; danach wurde etwas ergänzt |
+| `sigs.state.changed` / `.unknown` | Changed after signing / Can't be checked | Nach dem Signieren verändert / Nicht prüfbar |
+| `sigs.identity.short` | identity not verified | Identität nicht geprüft |
+| `sigs.identity` | Not checked against a trust list: the certificate is self-signed or from an unknown issuer. If it matters, compare the fingerprint with the signer. | Nicht mit einer Vertrauensliste abgeglichen: Das Zertifikat ist selbst erstellt oder von einem unbekannten Aussteller. Vergleiche bei Bedarf den Fingerabdruck mit der unterzeichnenden Person. |
+| `sigs.number` / `.signedAt` | Signature {n} of {total} / Signed at (time from the signer's computer) | Signatur {n} von {total} / Signiert am (Zeit vom Computer der unterzeichnenden Person) |
+| `sigs.covers` / `.locks` | Covers version {n} of {total} of this file / Locks the document against changes | Umfasst Version {n} von {total} dieser Datei / Sperrt das Dokument gegen Änderungen |
+| `sigs.certExpiredAtSigning` | The certificate was not valid at the stated time. | Das Zertifikat war zur angegebenen Zeit nicht gültig. |
+| `sigs.showOnPage` / `.invisible` | Show on page / No visible seal | Auf der Seite zeigen / Kein sichtbares Siegel |
+| `sigs.error.damaged` / `.method` / `.limits` | The signature data is damaged. / Uses a method {app} can't check. / Too large or complex to check safely. | Die Signaturdaten sind beschädigt. / Nutzt ein Verfahren, das {app} nicht prüfen kann. / Zu groß oder zu komplex für eine sichere Prüfung. |
+| `sigs.aria` | Signature by {name}, {state}. Show details | Signatur von {name}, {state}. Details anzeigen |
+
+**Acceptance (installed build, mouse only unless a key is named).**
+1. Ausfüllen & Signieren shows eight tools with Zertifikat last; at 960 × 640 all eight are visible icon-only, no "Mehr".
+2. With no certificate, clicking Zertifikat opens the Signatures dialog on Certificates with the empty state and both buttons.
+3. Create certificate with only a name adds a row "Self-generated · valid until …"; an invalid email shows the error caption.
+4. Import a .p12/.pfx: a wrong password shows "Wrong password." under the field; the right one adds an "Imported · issued by …" row; importing it again shows the duplicate error.
+5. Details expands a row with issuer, validity and fingerprint; Copy fingerprint fills the clipboard.
+6. Delete asks inline; confirming removes the row; the dialog reopened after an app restart still lists the remaining certificates.
+7. The Zertifikat chevron lists certificates, New certificate… and Manage certificates….
+8. Dragging on a page shows the seal preview; releasing opens the confirm dialog with signer, reason, location, the lock notice and the not-qualified line.
+9. Cancel keeps the placeholder; it can be moved and resized; Esc removes it and nothing is added to Undo.
+10. An expired certificate as signer shows the expired caption and disables the Primary.
+11. Sign and save as… opens a save dialog with "{name} – signed"; after saving the signed file opens in a new tab, the original tab is unchanged.
+12. The seal shows name, "Digitally signed", date and the reason; the same seal appears in another PDF viewer and on a greyscale print.
+13. The signed tab shows the banner "Signed by … · Unchanged since signing · identity not verified" and the save status "Signed".
+14. In the signed tab every editing tool, form field, thumbnail drag, Undo and Datei → Save are disabled with the locked tooltip; search, copy, print and Save As work.
+15. Make editable copy… saves a copy without signatures that opens editable in a new tab.
+16. Datei → Signatures… and the banner's Details open the dialog with signer, signed at, content, identity sentence, certificate, reason, location and lock rows.
+17. A file signed twice shows "2 signatures" and two cards in order; Show on page scrolls to each seal.
+18. Changing a byte in a signed file (test fixture) shows "Changed after signing" in the banner, card and a red seal outline.
+19. A file with a damaged signature and a valid one shows one "Can't be checked" card with its reason and one intact card; the app stays responsive.
+20. A file with additions after signing shows "Unchanged; additions were made after signing" and "Covers version 1 of 2".
+21. Clicking a seal opens the dialog at its card; Tab reaches seals, Enter opens them.
+22. With the keychain unavailable, Zertifikat is disabled with its tooltip and the Certificates tab shows the info row.
+23. With reduced motion on, dialogs, tabs and Show on page only fade or jump.
+24. No new surface covers a page, the selection or the mini bar at 960 × 640 and 1280 × 800; the banner never overlaps page 1.
 
 ## 4. Components (R4)
 

@@ -732,6 +732,75 @@ function toClipboard(blocks: StyledBlock[]): { text: string; html: string };   /
 - *Limits* (`limits.rs`): `CITE_QUOTE_MAX` 2 000, `CITE_DRAFTS_MAX` 64, `CITATIONS_MAX` 20 000, `TAGS_MAX` 64, `TAG_NAME_MAX` 40, `TAGS_PER_ANNOT` 8, `PAGE_LABEL_MAX` 64, XMP depth 32 / 200 000 events, `CITATION_EXPORT_MAX` 4 MiB.
 - *Errors.* New `what`: `citation`, `bibliography`, `tags`, `citationExport`; each with `error.<code>.<what>` in en and de.
 
+### Certificate signatures (v1.4, ADR-121; `pdfsig/{mod,types,identity,p12,certgen,cms_build,ess,verify,revisions,coverage}.rs`, `pdfwrite/{sigread,sign,seal,unsign}.rs`, `model/{sig_policy,doc_state}.rs`, `storage/{identities,trust,keychain}.rs`, `commands/{identities,sign,sig_validate,unsigned_copy,pages,save}.rs`)
+
+Import rule (CI grep): `der`, `spki`, `pkcs8`, `x509_cert`, `cms`, `rsa`, `p256`, `p384`, `sha1`, `p12_keystore` appear only in `pdfsig/`, which has no engine and no lopdf code. Private keys, PKCS#12 bytes and paths never cross IPC. All of these commands run on the blocking pool.
+
+```rust
+// commands/identities.rs (v1.4.1)
+list_signing_identities() -> SigningIdentities              // status like the signature library; ≤ 8 items
+create_signing_identity(spec: NewIdentitySpec) -> SigningIdentityInfo   // ECDSA P-256, self-signed, 3 years; keychain missing → keychain_unavailable; 8 items → limit_exceeded
+pick_identity_file() -> Option<IdentityImportTicket>        // Rust open dialog (.p12/.pfx), ≤ 256 KiB held in memory; None = cancelled; one ticket at a time, 10 min
+import_signing_identity(ticket: u32, password: Secret) -> SigningIdentityInfo   // wrong → password_incorrect (1 s delay from the 4th try, ticket dropped after 5);
+                                                            // no single key + matching cert → invalid_argument `identityFile`; other key types → unsupported_feature `signingKey`
+discard_identity_import(ticket: u32) -> ()                  // an unknown ticket is not an error
+delete_signing_identity(identity_id: String) -> ()          // 32 lowercase hex; unknown → not_found
+export_signing_certificate(identity_id: String) -> bool     // Rust save dialog, `<CN>.cer` (DER, public certificate only); false = cancelled
+// commands/sign.rs (v1.4.1, v1.4.2)
+sign_document(doc_id: DocId, request: SignRequest) -> Option<SaveResult>
+    // Rust save dialog (default `<stem> (signed).pdf`, the same file allowed), None = cancelled. PAdES B-B, one appended revision, never Full.
+    // dirty → unsaved_changes; file changed → needs_confirmation fileChangedOnDisk; encrypted → unsupported_feature `signEncrypted`; XFA → unsupported_feature `xfa`;
+    // DocMDP P=1 → read_only `certified`; expired identity → invalid_argument `identityExpired`. The result is re-admitted; history empty
+save_unsigned_copy(doc_id: DocId) -> Option<AppEvent>      // Rust save dialog; Full rewrite without /Perms, signature values, dictionaries and signed widgets; `opened` (a new user document)
+// commands/sig_validate.rs (v1.4.3)
+validate_signatures(doc_id: DocId) -> SignatureReport       // ≤ 32 signatures, 60 s; cached in DocState until reload
+open_signed_revision(doc_id: DocId, signature: u32) -> AppEvent   // bytes [0, b+c) as DocKind::SignedRevision (read-only, never a recent); `opened` | `openFailed`
+set_signer_trust(doc_id: DocId, signature: u32, trusted: bool) -> SignatureReport   // pins/unpins the signer cert's SHA-256 read in Rust; ≤ 256 pins
+list_trusted_signers() -> Vec<TrustedSigner>
+remove_trusted_signer(fingerprint: String) -> ()            // 64 lowercase hex; unknown → not_found
+// changed
+apply_command(..)       // a command the lock does not allow → read_only `signed` (fillAndSign: setFieldValue only; annotateFillAndSign: + annotation commands; locked: none)
+save_document(..)       // a signed document saves Incremental only; anything that needs Full → read_only `signed`
+get_document_info(..)   // DocumentInfo gains `signatureLock`; DocKind gains `SignedRevision`
+// pdfwrite / pdfsig
+pub fn sigread::scan_fields(doc: &Document) -> Result<SigScan { fields: Vec<SigField>, doc_mdp: Option<u8> }, AppError>;   // W0, bounded
+pub fn sigread::revisions(bytes: &[u8]) -> Result<Vec<u64> /* revision end offsets */, AppError>;   // startxref /Prev chain, ≤ 64
+pub fn sign::prepare(original: &[u8], doc: &Document, plan: &SignPlan) -> Result<Prepared { bytes: Vec<u8>, gap: Range<usize> }, AppError>;  // placeholders patched
+pub fn seal::appearance(spec: &SealSpec, art: Option<&Art>) -> Result<Stream, AppError>;
+pub fn pdfsig::cms_build::sign(digest: &[u8; 32], identity: &UnlockedIdentity) -> Result<Vec<u8> /* DER ContentInfo */, AppError>;
+pub fn pdfsig::verify::check(sig: &RawSignature, ranges: &mut dyn Read) -> SignatureCheck;   // never panics out (catch_unwind in the caller)
+```
+
+```ts
+type KeyKind = { type: 'ecP256' } | { type: 'ecP384' } | { type: 'rsa'; bits: number };
+interface CertName { commonName: string; organization: string | null; email: string | null }   // display-name filter, ≤ 128 each
+interface CertSummary { subject: CertName; issuer: CertName; selfSigned: boolean; notBefore: string; notAfter: string /* ISO 8601 */;
+  serialHex: string /* ≤ 64 */; fingerprintSha256: string /* 64 hex */ }
+interface SigningIdentityInfo extends CertSummary { id: string /* 32 hex */; source: 'generated' | 'imported'; key: KeyKind; chainLength: number; expired: boolean }
+interface SigningIdentities { status: 'ready' | 'empty' | 'unavailable' | 'locked'; items: SigningIdentityInfo[] }
+interface NewIdentitySpec { name: string /* 1..=64 */; email: string | null /* ≤ 254 */; organization: string | null /* ≤ 64 */ }
+interface IdentityImportTicket { ticket: number; displayName: string }
+interface SealPlacement { pageId: PageId; rect: Rect /* page space, ≥ 72×24 pt, inside the CropBox */ }
+interface SignRequest { identityId: string; placement: SealPlacement | null /* null = invisible */; art: SignatureRef | null;
+  reason: string | null /* ≤ 128 */; location: string | null /* ≤ 64 */; lock: 'allowFillAndSign' | 'noChanges' /* P=2 | P=1; certification only */ }
+type SignatureLock = 'none' | 'fillAndSign' | 'annotateFillAndSign' | 'locked';
+type LaterChanges = { signatures: boolean; formFill: boolean; annotations: boolean; other: boolean };
+interface SignatureInfo {
+  index: number; fieldName: string /* ≤ 512 */; kind: { type: 'certification'; p: 1 | 2 | 3 } | { type: 'approval' } | { type: 'docTimestamp' };
+  subFilter: 'etsiCadesDetached' | 'adbePkcs7Detached' | 'adbePkcs7Sha1' | 'etsiRfc3161' | 'other';
+  signer: CertSummary | null; claimedTime: string | null /* /M, else signing-time; always "claimed" */; reason: string | null; location: string | null;
+  cryptographic: 'valid' | 'invalid' | 'unsupportedAlgorithm' | 'malformed' | 'unverifiable'; weakAlgorithm: boolean; timestampPresent: boolean;
+  coverage: { type: 'wholeFile' } | { type: 'earlierRevision'; revision: number; later: LaterChanges; verdict: 'allowed' | 'disallowed' };
+  certValidAtClaimedTime: boolean; trust: 'ownIdentity' | 'trustedByYou' | 'notTrusted'; widget: { pageId: PageId; rect: Rect } | null }
+interface SignatureReport { signatures: SignatureInfo[]; truncated: boolean; lock: SignatureLock }
+interface TrustedSigner { fingerprint: string; commonName: string; added: string }
+```
+
+- *Format.* `/SubFilter /ETSI.CAdES.detached`. Signed attributes: content-type, message-digest and signing-certificate-v2; no signing-time. ByteRange placeholders are fixed width. `/Contents` ≤ 64 KiB. The first signature certifies (DocMDP P=2 by default), later ones approve.
+- *Storage.* `<app data>/signing/identities.bin` (`"SHID"`, XChaCha20-Poly1305, key in the keychain as `signing-identities-key-v1`), `<app data>/signing/trusted.json` (fingerprints only).
+- *Validation.* Main process, lopdf + `pdfsig`, not the PDFium child. Steps i–vii of ADR-121 §4. Trust is never claimed without a local pin, and every report shows the external-check notice.
+- *Errors.* New `what`: `signEncrypted`, `certified`, `signed`, `identityFile`, `signingKey`, `identityExpired`, `identities`, `signature`; each with `error.<code>.<what>` in en and de.
+
 ## 6. Pushes (Rust → UI, never with paths)
 
 The webview has no event permission (SECURITY T3): it cannot `listen` to or `emit` events. A push reaches it as a message on a `tauri::ipc::Channel` that the

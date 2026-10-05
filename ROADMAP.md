@@ -309,7 +309,7 @@ new engine capability or dependency is needed. Not picked by the loop before v1.
   - (2026-10-05, round 2 after FIX A–D d15cac3, ed59df9, 94444b6, c2efc5e) all 24 AC pass: whole-line selection, rule kept after save/reopen, Year 88, Reference button on an empty Comments tab, error toast with alert icon, locator in aria labels, page-1 DOI offered. AC 20 round-1 failure was test timing (the 8 s action toast had expired between automation calls); a real click within its lifetime restores definition and assignments. Remaining: tester, security-reviewer, designer round, tag v1.3.0.
 
 ### v1.4 "Certificate signature"
-- [ ] v1.4 spec — designer spec + architect ADR (crates for CMS/PAdES-B, licence check, key storage)
+- [x] v1.4 spec — designer spec + architect ADR (crates for CMS/PAdES-B, licence check, key storage) (2026-10-05: DESIGN §3.8 with 24 AC, ADR-121 + orchestrator amendment on stable crates; cut W0 → B1–B4 → F1–F4)
 - [ ] v1.4.1 — Sign with an imported (.p12/.pfx) or self-generated certificate (PAdES-B)
 - [ ] v1.4.2 — Visible seal with name and date; the document is read-only afterwards
 - [ ] v1.4.3 — Signature validation in Sheer; clear notice that trust needs an external certificate

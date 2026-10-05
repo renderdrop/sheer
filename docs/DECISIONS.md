@@ -2190,3 +2190,106 @@ tool row. That is wrong: they are in the Werkzeuge menu only (Politur v1.2).
 5. `paths-ignore` stays as it is. To keep docs-only commits cheap, push them on their own when convenient; a mixed push runs CI, which is correct.
 
 **Consequences.** One `gh` call per loop (a few seconds, no waiting). ORCHESTRATOR_PROMPT §2 rule 12, §8.4 step 0 and step 7, §9 "CI-Status", and CLAUDE.md rule 12 carry the rule. When `gh` is offline the loop notes it in STATE.md and continues.
+
+## ADR-121 — Certificate signatures (milestone v1.4): PAdES B-B, signing identities, validation, signed-document lock
+
+**Status:** accepted (2026-10-05). Scope: ROADMAP v1.4.1 to v1.4.3. Signatures: ARCHITECTURE §5 "Certificate signatures (v1.4, ADR-121)". UI: DESIGN §3.8 (designer, in parallel).
+
+**Context.** Visual signatures (ADR-041/105) are `/Stamp` annotations and carry no cryptography. `DocFlags.signed` comes from PDFium (best effort, only for documents with a form). Today a signed document plus a page change asks `breaksSignature`. Saves append a revision through lopdf `IncrementalDocument`; Full saves are used only for clean copies, encryption and redaction. `storage/keychain.rs` keeps one 32-byte key in the OS store (keyring-core). Windows Credential Manager caps a credential blob at 2 560 bytes. `Cargo.lock` already has lopdf's RustCrypto generation: `sha2` 0.11.0, `digest` 0.11.3, `const-oid` 0.10.2, `cipher` 0.5, `aes` 0.9, `cbc` 0.2, `rand` 0.10, `hmac` 0.12, `pbkdf2` 0.12, `time` 0.3, `jiff` 0.2, `zeroize`. It has no ASN.1, X.509, CMS or public-key crate (`openssl` is in the lock for Linux only, through the updater). State on crates.io (2026-10): `der` 0.8, `spki` 0.8, `pkcs8` 0.11, `x509-cert` 0.3, `p256`/`p384` 0.14 are stable. `cms` exists only as 0.3.0-pre.2; 0.2.3 belongs to the 2024 `der` 0.7 generation. `rsa` is 0.10.0-rc.18, with 0.9.10 as the latest stable. Every `rsa` version carries RUSTSEC-2023-0071 (Marvin timing side channel, no fix). `p12-keystore` 0.3.2 (MIT OR Apache-2.0) builds on `cms` 0.3-pre, `pkcs12` 0.2-pre, `pkcs5` 0.8 and `x509-parser` 0.18. `rcgen` needs `ring` or `aws-lc-rs` (C/asm) for its keys.
+
+**Options and decisions.**
+
+1. **Format: PAdES B-B, incremental only.**
+   - *Options.* (a) `adbe.pkcs7.sha1`: deprecated, rejected. (b) `adbe.pkcs7.detached`: legacy, not PAdES, rejected. (c) **Chosen: `/SubFilter /ETSI.CAdES.detached`**, `/Filter /Adobe.PPKLite`.
+   - *CMS.* SignedData v1, detached `id-data`, exactly one SignerInfo (`issuerAndSerialNumber`). Signed attributes are exactly content-type, message-digest (SHA-256) and signing-certificate-v2 (`ESSCertIDv2`, SHA-256 of the signer certificate). There is no signing-time attribute: EN 319 142-1 forbids it for PAdES, and the claimed time is `/M`. No unsigned attributes (no TSA, offline). Algorithms: `ecdsa-with-SHA256` for P-256, `ecdsa-with-SHA384` for P-384, `sha256WithRSAEncryption` (PKCS#1 v1.5, the most widely validated) for RSA. Certificates: the signer and the imported chain, ≤ 8.
+   - *ByteRange.* `[0 a b c]`, written as fixed-width placeholders (10 digits, space-padded) and patched after serialisation. The placeholder is found once, in the appended bytes only.
+   - *Placeholder size.* `/Contents` is a zero-filled hex string of `round_up(chain DER + max signature + 1 536, 1 024)` bytes, capped at `SIG_CONTENTS_MAX` 64 KiB. Without a timestamp the size is deterministic up to a few bytes.
+   - *Revision.* The signed file is the current file's bytes unchanged plus one appended revision, written by `IncrementalDocument` like every save. It holds the signature dictionary as an uncompressed object (never in an object stream), a merged field and widget (`/FT /Sig /T (Signature<n>)`, first free n), a new version of the page with `/Annots`, `/AcroForm` with `/Fields` and `/SigFlags 3`, and the catalog with `/Perms` when certifying. Never Full, and no earlier object is re-serialised.
+   - *Preconditions.* The document is clean (`unsaved_changes`), its fingerprint is unchanged (`needs_confirmation fileChangedOnDisk`), it is not encrypted (`unsupported_feature signEncrypted`: the crypt writer cannot leave `/Contents` unencrypted yet) and it has no XFA (`unsupported_feature xfa`).
+   - *Target.* A Rust save dialog, default `<stem> (signed).pdf`. The same file is allowed (atomic replace, existing backup rule). The open document is then re-admitted from the target, as after Save As.
+   - *DocMDP.* The first signature of a document is a certification signature (`/Reference` with DocMDP, catalog `/Perms /DocMDP`). The default is **P=2** (form fill and further signatures allowed, so a second party can countersign). The option "no changes" sets **P=1**. A document that is already signed gets an approval signature: only one certification is allowed. An existing P=1 refuses with `read_only` (`certified`).
+   - *Sheer's lock.* `SignatureLock` is derived from the file: `none`; `fillAndSign` (P=2, or approval signatures only); `annotateFillAndSign` (P=3); `locked` (P=1). `apply_command` refuses every command the lock does not allow with `read_only` (`signed`). A save of a signed document is Incremental only. To edit beyond the lock, `save_unsigned_copy` does a Full rewrite of the current state without `/Perms`, signature values, signature dictionaries and signed-signature widgets (a seal on an unsigned copy would mislead), and opens the result. The `breaksSignature` confirmation stays only for `flags.signed` documents whose fields the scan cannot read.
+2. **Crates: pure-Rust RustCrypto, the generation already in the lock.**
+   - *Chosen.* `der` 0.8, `spki` 0.8, `pkcs8` 0.11, `x509-cert` 0.3 (feature `builder`), `cms` **=0.3.0-pre.2** (`default-features = false`, types only; Sheer builds and signs SignedData itself), `rsa` **=0.10.0-rc.18** (`default-features = false`), `p256` and `p384` 0.14 (`ecdsa`), `sha2` 0.11 and `jiff` 0.2 (both already in the lock, now direct), `sha1` 0.11 (verifies legacy signatures, which are flagged weak) and `p12-keystore` 0.3.2.
+   - *Rejected.* `openssl` (C toolchain and system library). `ring` and `aws-lc-rs` (C/asm builds). `rcgen` (needs one of those). The `cms` 0.2 generation (a second `der`/`digest` generation from 2024). In-house CMS types (about 600 lines, more risk than a pinned pre-release).
+   - *Pre-releases* are pinned with `=`. A ROADMAP ticket moves to `cms` 0.3.0 and `rsa` 0.10.0 once they are released.
+   - *RUSTSEC-2023-0071* goes into `deny.toml` `ignore` with a reason. Sheer never decrypts with RSA. A private key is used only on an explicit local action, with no network timing oracle. The default self-generated key is P-256 (constant time), so only imported RSA identities ever use an RSA private key.
+   - *Guards.* No C toolchain: `check.sh` asserts that `cargo tree -i {ring,aws-lc-rs,openssl}` is empty for the desktop targets outside the updater. Import rule: these crates appear only in `src-tauri/src/pdfsig/`, which is free of engine and lopdf code.
+   - *Fallback (two-attempt rule).* If `p12-keystore` fails `cargo deny` or pulls `ring`, B1 decodes PKCS#12 itself on `pkcs12` 0.2-pre, `pkcs5`, `des`, `hmac` and `sha1`.
+3. **Keys.**
+   - *Self-generated key: ECDSA P-256.* RSA-3072 was rejected: key generation takes seconds in pure Rust, it puts the Marvin-flagged crate on the default path, and its `/Contents` is three times larger. P-256 is validated by every maintained validator (Acrobat/Reader, Foxit, PDF-XChange, pyHanko, EU DSS). Viewers from before about 2012 may answer "unsupported algorithm"; accepted.
+   - *Certificate* (made with the `x509-cert` builder). Self-signed v3. Serial of 16 random bytes, positive. Valid from now − 5 min for 3 years. Subject `CN` = name (1..=64 chars, display-name filter, default `Settings.authorName`), optional `O` (≤ 64), optional e-mail (≤ 254) as `emailAddress` and SAN `rfc822Name`. Extensions: basicConstraints CA=false (critical), keyUsage digitalSignature + contentCommitment (critical), EKU id-kp-documentSigning (RFC 9336) + emailProtection, SKI.
+   - *Storage.* `<app data>/signing/identities.bin` = `"SHID" | 0x01 | nonce[24] | XChaCha20-Poly1305(postcard)` with the header as AAD (the same scheme as `library.bin`). Per identity it holds: id, label, chain DER, PKCS#8 DER private key, source, created. A separate 32-byte key sits in the keychain under user `signing-identities-key-v1`, so deleting one key never locks the other store. Neither the PKCS#12 blob nor a per-identity key goes into the keychain: a chain or an RSA-4096 key exceeds the 2 560-byte Windows blob, and one item per identity multiplies the macOS access prompts. Status works like the library (`empty`, `ready`, `unavailable`, `locked`). ≤ 8 identities, file ≤ 1 MiB. Never written in plaintext. No key bytes, PKCS#12 bytes or password are ever sent to the webview, which sees only `SigningIdentityInfo`.
+   - *The .p12 password is asked once, at import, and never stored.* It arrives as a `Secret` (zeroized), decrypts the file and is dropped; the key is re-wrapped as PKCS#8 inside the envelope. It is not asked again per use: storing the password amounts to storing the key, and asking per use would mean keeping the PKCS#12 blob, which adds nothing against an attacker who already runs as the user (R15). The guard against an unintended signature is the sign confirmation (DESIGN §3.8).
+   - *Import.* A Rust open dialog (`.p12`, `.pfx`), file ≤ 256 KiB, held in memory under a ticket (one at a time, 10 min). The file must hold exactly one private key with a matching certificate (equal public keys), else `invalid_argument` (`identityFile`). Accepted keys: RSA 2048..=4096, EC P-256 or P-384; anything else is `unsupported_feature` (`signingKey`). Encryption: PBES2 AES, plus legacy PBES1 3DES/RC2 (decrypt only). KDF and MAC iterations ≤ 2 000 000, checked before decrypting where the crate allows; otherwise a 30 s budget. From the 4th wrong password on, each try waits 1 s; the ticket is dropped after 5.
+   - *Zeroize.* PKCS#8 bytes and decrypted envelopes in `Zeroizing`; key types `ZeroizeOnDrop`. A key lives for one sign call only. An expired identity refuses to sign (`invalid_argument`, `identityExpired`).
+4. **Validation runs in the main process (blocking pool), not in the PDFium child.**
+   - *Why.* PDFium exposes `/Contents`, `/ByteRange` and the time of each signature, but nothing about revisions or object changes. The child reads files only through `ReadAt`, so hashing up to 2 GiB over the wire would double the IO. The new parsers are safe Rust (`der`, lopdf), with no C, so the crash-isolation reason for the child does not apply. Each check runs under `catch_unwind` with a 60 s budget.
+   - *Modules.* `pdfwrite/sigread.rs` (lopdf: fields, signature dictionaries, DocMDP, the object set of each revision) and `pdfsig/verify.rs`.
+   - *Steps per signature.*
+     - (i) SubFilter ∈ {`ETSI.CAdES.detached`, `adbe.pkcs7.detached`, `adbe.pkcs7.sha1`}. `ETSI.RFC3161` is reported as a document timestamp, unverified. Anything else is `unsupportedAlgorithm`.
+     - (ii) ByteRange: exactly 4 non-negative integers `[0 a b c]` with a < b and b + c ≤ file length. The gap `[a, b)` must be exactly the `<hex>` token of the `/Contents` of the dictionary the field references, found by a bounded tokenizer from that object's xref offset (the object must be uncompressed). b + c must be the end of a revision on the `startxref`/`/Prev` chain (`%%EOF` plus EOL). Otherwise `malformed`.
+     - (iii) Decoded `/Contents` ≤ 512 KiB. CMS: ContentInfo/SignedData, exactly one SignerInfo, ≤ 32 certificates, ≤ 64 signed attributes, each value ≤ 64 KiB. Typed decoding only, BER accepted, `Any` never recursed.
+     - (iv) The two ranges are hashed streaming from the intake handle (64 KiB buffer) and compared with message-digest. The signature over the DER signed attributes is verified with the signer certificate's key: RSA PKCS#1 v1.5 or PSS, ECDSA P-256 or P-384, SHA-256/384/512. SHA-1 is verified but `weakAlgorithm`. signing-certificate-v2, if present, must match the signer certificate.
+     - (v) Signer: `selfSigned`, and the certificate's validity at the claimed time. No chain is built.
+     - (vi) Time: `/M`, else the CMS signing-time attribute, always labelled "claimed by the signer". A timestamp token is reported as present but not verified.
+     - (vii) Coverage: the objects new or changed in later revisions are classified as `signatures` (signature dictionaries and fields, `/AcroForm` `/Fields`/`/SigFlags`, `/Perms`, DSS, `/Annots` gaining a signature widget), `formFill` (`/V`, `/AS`, `/AP` of existing non-signature fields), `annotations`, or `other` (everything else, including page content, resources, fonts and an object redefined as another type). The verdict against DocMDP is `allowed` or `disallowed`.
+   - *Caps.* ≤ 32 signatures, ≤ 64 revisions, ≤ 200 000 changed objects; past a cap the rest is `unverifiable`.
+   - *Trust.* No trust list, OCSP, CRL or AIA fetch (rule 4). The status is `notTrusted`, always with the notice that trust needs the certificate checked externally. Opt-in local pins: `<app data>/signing/trusted.json` (≤ 256 SHA-256 fingerprints of signer certificates + CN, atomic write) → `trustedByYou`. Sheer's own identities → `ownIdentity`. A pin is taken in Rust from the document, never from the UI. CA bundles, AATL and EUTL are rejected (network or stale; chain building and revocation are a separate product).
+   - *`open_signed_revision`* opens the bytes `[0, b + c)` as a read-only document (`DocKind::SignedRevision`), so the user sees exactly what was signed. This is the remedy for shadow attacks.
+   - *Caching.* The report stays in `DocState` until the document is reloaded.
+5. **Seal appearance.**
+   - *Builder.* `pdfwrite/seal.rs` builds the widget's `/AP /N`: optional art from a `SignatureRef` (vector paths or image XObject as in ADR-041) in the left 40 %, then text lines. The label "Digitally signed by" comes from i18n `seal.*` in the settings language. Then the CN, the date `YYYY-MM-DD HH:mm ±hh:mm` (local offset via `jiff`, the same instant as `/M`), and optionally Reason (≤ 128) and Location (≤ 64).
+   - *Text.* Helvetica (std14, WinAnsi), sized to fit between 6 and 12 pt. A character outside WinAnsi is folded (NFKD, marks dropped), else drawn as `?`. `/Name` keeps the full Unicode name (UTF-16BE).
+   - *Widget.* Colours and sizes are DESIGN §3.8 constants. Box ≥ 72 × 24 pt and inside the CropBox. Page `/Rotate` is countered by `/Matrix` (ADR-105). `/F` Print | Locked.
+   - *Invisible signature.* `placement: null` writes `/Rect [0 0 0 0]` on the first page.
+   - *Placement.* The UI reuses the visual-signature placement flow (move and scale, no turn) as a transient draft that is never a `DocCommand`.
+6. **Undo: signing is a terminal save, not a command.** Its precondition is a clean document, so no pending edit is lost. On success it returns `SaveResult` with an empty history and the document reopened from the signed file. A cancel or a failure leaves the file and the model untouched (atomic write). A signature cannot be undone. The way back is the original file (the dialog defaults to a new name) or `save_unsigned_copy`.
+7. **Threats and what the validator reports.**
+   - *Key extraction.* Envelope plus keychain key, zeroize, redacting `Debug`, never logged, never sent over IPC. Anyone running as the user can sign with the key (R15).
+   - *Universal signature forgery and signature wrapping* (empty or null `/Contents`, ByteRange moved or overlapping): step (ii) → `malformed`.
+   - *Incremental-saving attacks:* step (vii) → `disallowed` with the change classes.
+   - *Shadow attacks* (hide, replace, hide-and-replace): changes inside allowed classes are still listed ("annotations added after signing"), never called harmless, and "View signed version" shows the signed revision.
+   - *Hostile PKCS#12:* size and iteration caps.
+   - *No URL from a certificate is ever fetched* (AIA and CRL distribution points are ignored).
+8. **Package cut (ORCHESTRATOR §8.4; green CI per package, ADR-120).**
+   - **W0 seams (sequential):**
+     - `limits.rs` consts; `Cargo.toml` with all the crates above (one owner, so no package conflicts on it); `deny.toml` ignore; `docs/LICENSES.md` rows.
+     - `pdfsig/{mod,types}.rs` and wire types; `DocumentInfo.signatureLock`; `DocKind::SignedRevision`.
+     - A real `pdfwrite/sigread::scan_fields` (small; B2–B4 need it).
+     - Every new command as a `not_yet` stub in `lib.rs`, `build.rs` and capabilities.
+     - `src/api/signing.ts` parsers; i18n keys `sign.*`, `seal.*`, `sigcheck.*`.
+   - **Backend wave (4, disjoint):**
+     - **B1 identities:** `pdfsig/{identity,p12,certgen}.rs`, `storage/{identities,keychain}.rs`, `commands/identities.rs`, `tests/identities.rs`.
+     - **B2 signer:** `pdfsig/{cms_build,ess}.rs`, `pdfwrite/{sign,seal}.rs`, `commands/sign.rs` (`sign_document`), `tests/sign_roundtrip.rs` (CMS decoded and verified in the test; PDFium reopens the file; earlier bytes identical).
+     - **B3 validator:** `pdfsig/{verify,revisions,coverage}.rs`, `pdfwrite/sigread.rs` (revision diff), `storage/trust.rs`, `commands/sig_validate.rs`, `tests/sig_validate.rs` (hostile corpus generated in the test: USF, ISA, SWA, shadow hide/replace, truncated and BER CMS, oversized `/Contents`).
+     - **B4 lock and copy:** `model/{sig_policy,doc_state}.rs`, the gate in `commands/pages.rs::apply_command`, `commands/save.rs` (Incremental only), `pdfwrite/unsign.rs`, `commands/unsigned_copy.rs`, `tests/sig_lock.rs`.
+   - **Frontend wave (4):**
+     - **F1** Settings → Signing certificates (list, create, import with the password dialog, delete, export `.cer`, trusted signers).
+     - **F2** sign flow in Fill & Sign (identity picker, seal placement, reason/location, lock option, confirmation).
+     - **F3** signatures panel (status per signature, trust notice, View signed version, Trust this signer).
+     - **F4** lock UX (actions' `enabled` reads `signatureLock`, banner with "Save unsigned copy", modes disabled).
+
+**Consequences.**
+- New crates (LICENSES.md rows, all `MIT OR Apache-2.0` unless noted): `der`, `spki`, `pkcs8`, `x509-cert`, `cms` (pre), `rsa` (rc), `p256`, `p384`, `sha1`, `p12-keystore` (MIT/Apache-2.0). Now direct, already in the lock: `sha2`, `jiff` (Unlicense OR MIT). Transitive: `ecdsa`, `elliptic-curve`, `primeorder`, `sec1`, `rfc6979`, `ff`, `group`, `crypto-bigint`, `signature`, `pkcs1`, `pkcs5`, `pkcs12`, `des`, `rc2`, `x509-parser`, `asn1-rs`, `der-parser`, `oid-registry`, `nom`, `rusticata-macros`, `data-encoding` (all MIT and/or Apache-2.0; W0 confirms each with `cargo deny` on the three desktop targets).
+- `deny.toml`: `ignore = [{ id = "RUSTSEC-2023-0071", reason = "ADR-121 §2" }]`.
+- Limits: `SIG_CONTENTS_MAX` 64 KiB (write) and 512 KiB (read), `SIG_CHAIN_MAX` 8, `SIG_CMS_CERTS_MAX` 32, `SIG_ATTRS_MAX` 64, `SIGS_PER_DOC_MAX` 32, `SIG_REVISIONS_MAX` 64, `SIG_DIFF_OBJECTS_MAX` 200 000, `SIG_VALIDATE_TIMEOUT` 60 s, `IDENTITIES_MAX` 8, `IDENTITY_FILE_MAX` 256 KiB, `P12_ITER_MAX` 2 000 000, `TRUSTED_SIGNERS_MAX` 256, seal reason 128 / location 64.
+- Documents signed elsewhere become read-only in Sheer per `SignatureLock` (behaviour change, CHANGELOG). Fill and countersign still work under P=2.
+- SECURITY.md rows (security-reviewer before v1.4.0):
+  - I16 identities: create, list, delete, export `.cer` (public only, Rust save dialog).
+  - I17 import: `pick_identity_file` + `import_signing_identity` + `discard_identity_import` (Rust dialog, ticket, `Secret`, caps, attempt delay).
+  - I18 `sign_document` (preconditions, dialog in Rust, Incremental only, no key over IPC).
+  - I19 `validate_signatures` + `open_signed_revision`.
+  - I20 `set_signer_trust` / `list_trusted_signers` / `remove_trusted_signer` (fingerprint taken from the document).
+  - I21 `save_unsigned_copy` + the `apply_command` lock.
+  - P21 signature dictionary and ByteRange parsing (§4 ii).
+  - P22 CMS and X.509 decode (§4 iii).
+  - P23 PKCS#12 decode (size and iteration caps).
+  - P24 revision diff (caps; shadow attacks reported, not hidden).
+  - D9 `identities.bin` envelope + keychain key; D10 `trusted.json`.
+  - S7 crypto crates pure Rust, the `ring`/`aws-lc-rs`/`openssl` guard, pre-release pins.
+  - R14 RUSTSEC-2023-0071 accepted.
+  - R15 the user's session can sign without a password.
+  - R16 no revocation and no TSA; trust only by local pin.
+
+**Orchestrator amendment (2026-10-05, before W0).** Crates: W0 first tries the stable RustCrypto line — `cms` 0.2, `x509-cert` 0.2, `der` 0.7, `spki` 0.7, `pkcs8` 0.10, `rsa` 0.9, `p256`/`p384` 0.13, `sha1`/`sha2` 0.10 — and a `p12-keystore` release that builds on it; a duplicate `digest`/`sha2` next to the 0.11 line already in the lock is acceptable. The pinned pre-releases above (`cms =0.3.0-pre.2`, `rsa =0.10.0-rc.18`, the 0.8/0.11 family) are used only if a needed API is missing in the stable line; W0 records which one and why in this ADR. RUSTSEC-2023-0071 applies to both lines (no fixed `rsa`); the deny.toml ignore and SECURITY R14 stay. Signing writes a new file (DESIGN §3.8): the original bytes plus one appended revision, so the "one appended revision only" rule above holds for the new file.
