@@ -6,7 +6,10 @@ import type { CacheEntry, RenderCache } from './renderCache';
  * is `undefined`, the last one it had is returned with a URL of its own, so the old bitmap stays up until a new one has been
  * decoded and takes over (no blank frame, no skeleton). `undefined` while `entry` is there, or when there never was one.
  */
-export function useLastImage(cache: RenderCache, entry: CacheEntry | undefined): { key: string; src: string } | undefined {
+export function useLastImage(
+  cache: RenderCache,
+  entry: CacheEntry | undefined,
+): { key: string; src: string } | undefined {
   const [last, setLast] = useState<CacheEntry | undefined>(entry);
   if (entry !== undefined && entry !== last) setLast(entry);
   const lostEntry = entry === undefined ? last : undefined;

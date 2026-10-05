@@ -416,11 +416,14 @@ export const PageView = memo(function PageView({
     >
       <div className="absolute" style={surface}>
         {/* Until the first image of the page has faded in, the Skeleton (spell 15) stands for it, in the page's aspect ratio. */}
-        {standIn === undefined && lost === undefined && (exact === undefined || covered !== exact) && tileEntries.length === 0 && (
-          <div className="absolute inset-0">
-            <Skeleton className="size-full" />
-          </div>
-        )}
+        {standIn === undefined &&
+          lost === undefined &&
+          (exact === undefined || covered !== exact) &&
+          tileEntries.length === 0 && (
+            <div className="absolute inset-0">
+              <Skeleton className="size-full" />
+            </div>
+          )}
         {standIn === undefined && lost !== undefined && (
           <FadeImage key="lost" src={lost.src} style={whole} instant over="first" />
         )}

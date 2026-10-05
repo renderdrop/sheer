@@ -215,12 +215,7 @@ export const ThumbnailItem = memo(function ThumbnailItem({
         className="pointer-events-none absolute inset-x-0 top-0 flex select-none flex-col items-center gap-2"
         style={{ transform: `translateY(${top}px)`, height }}
       >
-        <ThumbnailCard
-          pageId={pageId}
-          width={thumbWidth}
-          height={thumbHeight}
-          image={shownImage}
-        />
+        <ThumbnailCard pageId={pageId} width={thumbWidth} height={thumbHeight} image={shownImage} />
         <span className="inline-flex h-4 min-w-6 items-center justify-center rounded-pill px-2 text-xs tabular-nums text-text-muted">
           {index + 1}
         </span>
@@ -256,12 +251,7 @@ export const ThumbnailItem = memo(function ThumbnailItem({
           : {}),
       }}
     >
-      <ThumbnailCard
-        pageId={pageId}
-        width={thumbWidth}
-        height={thumbHeight}
-        image={shownImage}
-      />
+      <ThumbnailCard pageId={pageId} width={thumbWidth} height={thumbHeight} image={shownImage} />
       <span
         aria-hidden="true"
         className={cx(
