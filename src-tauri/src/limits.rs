@@ -709,6 +709,60 @@ pub const STYLED_RUNS_MAX: usize = 64;
 /// Longest run of a styled block in characters.
 pub const STYLED_RUN_CHARS_MAX: usize = 4_000;
 
+// --- Certificate signatures (ADR-121) ---------------------------------------------------------------------------
+
+/// Largest `/Contents` Sheer writes (the placeholder is `round_up(chain + signature + 1 536, 1 024)` bytes, never more than this).
+pub const SIG_CONTENTS_MAX: usize = 64 * 1024;
+/// Largest decoded `/Contents` a validation reads.
+pub const SIG_CONTENTS_READ_MAX: usize = 512 * 1024;
+/// Most certificates Sheer puts into a signature (the signer and the imported chain).
+pub const SIG_CHAIN_MAX: usize = 8;
+/// Most certificates a CMS blob read by a validation may carry.
+pub const SIG_CMS_CERTS_MAX: usize = 32;
+/// Most signed attributes of one SignerInfo that are read.
+pub const SIG_ATTRS_MAX: usize = 64;
+/// Longest value of one signed attribute, in bytes.
+pub const SIG_ATTR_VALUE_MAX: usize = 64 * 1024;
+/// Most signature fields a document is scanned or validated for; the rest is `unverifiable`.
+pub const SIGS_PER_DOC_MAX: usize = 32;
+/// Most revisions (`startxref` / `/Prev` chain) walked.
+pub const SIG_REVISIONS_MAX: usize = 64;
+/// Most objects the revision diff compares; past it the rest is `unverifiable`.
+pub const SIG_DIFF_OBJECTS_MAX: usize = 200_000;
+/// Time budget of `validate_signatures`.
+pub const SIG_VALIDATE_TIMEOUT: Duration = Duration::from_secs(60);
+/// Longest field name that is read or sent, in characters.
+pub const SIG_FIELD_NAME_MAX: usize = 512;
+/// Longest `/Reason` of a seal (written), in characters.
+pub const SEAL_REASON_MAX: usize = 128;
+/// Longest `/Location` of a seal (written), in characters.
+pub const SEAL_LOCATION_MAX: usize = 64;
+/// Longest text of a signature dictionary that is read for the UI (`/Reason`, `/Location`, `/Name`), in characters.
+pub const SIG_TEXT_READ_MAX: usize = 256;
+/// Most objects the field scan follows through `/AcroForm` `/Fields` and `/Kids`, and the deepest nesting.
+pub const SIG_SCAN_NODES_MAX: usize = 20_000;
+pub const SIG_SCAN_DEPTH_MAX: usize = 32;
+/// Most signing identities in the store, and the largest `identities.bin`.
+pub const IDENTITIES_MAX: usize = 8;
+pub const IDENTITIES_FILE_MAX: usize = 1 << 20;
+/// Largest `.p12` / `.pfx` file `pick_identity_file` holds.
+pub const IDENTITY_FILE_MAX: usize = 256 * 1024;
+/// Most KDF or MAC iterations a PKCS#12 file may ask for.
+pub const P12_ITER_MAX: u64 = 2_000_000;
+/// Time budget of one PKCS#12 decode when the iteration count cannot be checked before decrypting.
+pub const P12_DECODE_BUDGET: Duration = Duration::from_secs(30);
+/// How long a picked identity file waits for its password.
+pub const IDENTITY_TICKET_TTL: Duration = Duration::from_secs(600);
+/// Wrong passwords before the file is dropped; from the 4th each try waits `IDENTITY_PASSWORD_DELAY`.
+pub const IDENTITY_PASSWORD_TRIES: u8 = 5;
+pub const IDENTITY_PASSWORD_DELAY: Duration = Duration::from_secs(1);
+/// Most pinned signer certificates (`trusted.json`).
+pub const TRUSTED_SIGNERS_MAX: usize = 256;
+/// Bounds of the text of a new identity's certificate subject, in characters.
+pub const IDENTITY_NAME_MAX: usize = 64;
+pub const IDENTITY_ORG_MAX: usize = 64;
+pub const IDENTITY_EMAIL_MAX: usize = 254;
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1096,5 +1150,24 @@ mod tests {
         const _: () = assert!(CONTROL_TIMEOUT.as_secs() < RENDER_TIMEOUT.as_secs());
         const _: () = assert!(RENDER_TIMEOUT.as_secs() <= OPEN_TIMEOUT.as_secs());
         const _: () = assert!(RENDER_TIMEOUT.as_secs() <= EXPORT_RENDER_TIMEOUT.as_secs());
+    }
+
+    #[test]
+    fn signature_limits_match_adr_121() {
+        assert_eq!(
+            (SIG_CONTENTS_MAX, SIG_CONTENTS_READ_MAX),
+            (64 << 10, 512 << 10)
+        );
+        assert_eq!(
+            (SIG_CHAIN_MAX, SIG_CMS_CERTS_MAX, SIG_ATTRS_MAX),
+            (8, 32, 64)
+        );
+        assert_eq!((SIGS_PER_DOC_MAX, SIG_REVISIONS_MAX), (32, 64));
+        assert_eq!(SIG_DIFF_OBJECTS_MAX, 200_000);
+        assert_eq!(SIG_VALIDATE_TIMEOUT.as_secs(), 60);
+        assert_eq!((IDENTITIES_MAX, IDENTITY_FILE_MAX), (8, 256 << 10));
+        assert_eq!((P12_ITER_MAX, TRUSTED_SIGNERS_MAX), (2_000_000, 256));
+        assert_eq!((SEAL_REASON_MAX, SEAL_LOCATION_MAX), (128, 64));
+        const _: () = assert!(SIG_CONTENTS_MAX <= SIG_CONTENTS_READ_MAX);
     }
 }

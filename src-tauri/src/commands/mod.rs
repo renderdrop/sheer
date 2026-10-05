@@ -40,6 +40,7 @@ pub mod content;
 pub mod export_images;
 pub mod export_pdf;
 pub mod forms;
+pub mod identities;
 pub mod images_pdf;
 pub mod jobs;
 pub mod library;
@@ -55,9 +56,12 @@ pub mod redact;
 pub mod render;
 pub mod save;
 pub mod search;
+pub mod sig_validate;
+pub mod sign;
 pub mod signatures;
 pub mod text;
 pub mod thumbnails;
+pub mod unsigned_copy;
 pub mod update;
 
 use std::collections::HashSet;
@@ -1750,7 +1754,8 @@ mod tests {
                             "flags",
                             "id",
                             "kind",
-                            "pageCount"
+                            "pageCount",
+                            "signatureLock"
                         ]
                     );
                     assert_eq!(message["document"]["displayName"], "good-name-9090.pdf");

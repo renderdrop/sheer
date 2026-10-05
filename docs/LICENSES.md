@@ -279,3 +279,18 @@ All checked with `cargo deny` per shipped target (x86_64-pc-windows-msvc, aarch6
 ## v1.3 package C2 (bibliography, ADR-119 item 5)
 
 - `quick-xml` 0.42.0 (MIT, tafia/quick-xml), `default-features = false`: direct dependency now (already in the build at the same version through `plist`, no new crate). Pull parser for the XMP packet of `pdfwrite/bibliography.rs`, read only; a DocType event, depth over 32, over 200 000 events and a packet over 4 MiB abort the read.
+
+## v1.4 package W0 (certificate signatures, ADR-121)
+
+Pure-Rust RustCrypto on the stable line (ADR-121 addendum); named in `src-tauri/src/pdfsig/` only. `cargo deny` passes on the three desktop targets; `ring`, `aws-lc-rs` and `openssl` are not in the desktop graph. `deny.toml` and `.cargo/audit.toml` ignore RUSTSEC-2023-0071 (`rsa`, SECURITY R14).
+
+- `der` 0.7 (Apache-2.0 OR MIT, RustCrypto/formats), features `alloc`, `derive`, `oid`, `std`: ASN.1 DER types for the ESS attribute and typed CMS decoding.
+- `spki` 0.7 (Apache-2.0 OR MIT, RustCrypto/formats): SubjectPublicKeyInfo.
+- `pkcs8` 0.10 (Apache-2.0 OR MIT, RustCrypto/formats), features `alloc`, `std`, `pkcs5`: private keys inside the identity envelope.
+- `x509-cert` 0.2 (Apache-2.0 OR MIT, RustCrypto/formats), feature `builder`: reads certificates and builds the self-signed one.
+- `cms` 0.2 (Apache-2.0 OR MIT, RustCrypto/formats), features `builder`, `std`: SignedData types and builder. Pulls `aes`, `cbc`, `cipher`, `sha3`, `keccak`, `signature`.
+- `rsa` 0.9 (Apache-2.0 OR MIT, RustCrypto): verifies RSA signatures and signs with imported RSA identities. RUSTSEC-2023-0071 accepted.
+- `p256` 0.13, `p384` 0.13 (Apache-2.0 OR MIT, RustCrypto), features `arithmetic`, `ecdsa`, `pkcs8`, `std`: ECDSA. Pull `ecdsa`, `elliptic-curve`, `primeorder`, `sec1`, `rfc6979`, `ff`, `group`, `crypto-bigint` 0.5.
+- `sha1` 0.10 (MIT OR Apache-2.0, RustCrypto/hashes): verifies legacy signatures (reported weak). `sha2` 0.10: SHA-256/384/512 for the stable line, next to the 0.11 lopdf uses.
+- `jiff` 0.2 (Unlicense OR MIT, BurntSushi), direct now (already in the build): local UTC offset and ISO 8601 times.
+- `p12-keystore` 0.2 (MIT OR Apache-2.0, ancwrd1), default `pbes1`: decodes PKCS#12 (PBES2 AES, legacy 3DES/RC2). Pulls `pkcs12` 0.1, `pkcs5` 0.7, `des`, `rc2`, `x509-parser` 0.18, `asn1-rs`, `der-parser`, `oid-registry`, `nom`, `rusticata-macros`, `hex`.

@@ -12,6 +12,7 @@ pub mod export;
 pub mod limits;
 pub mod menu;
 pub mod model;
+pub mod pdfsig;
 pub mod pdfwrite;
 pub mod platform;
 pub mod print;
@@ -155,6 +156,20 @@ pub fn run() -> Result<(), AppError> {
             commands::citations::list_citations,
             commands::bibliography::get_bibliography,
             commands::citation_export::save_citation_list,
+            commands::identities::list_signing_identities,
+            commands::identities::create_signing_identity,
+            commands::identities::pick_identity_file,
+            commands::identities::import_signing_identity,
+            commands::identities::discard_identity_import,
+            commands::identities::delete_signing_identity,
+            commands::identities::export_signing_certificate,
+            commands::sign::sign_document,
+            commands::unsigned_copy::save_unsigned_copy,
+            commands::sig_validate::validate_signatures,
+            commands::sig_validate::open_signed_revision,
+            commands::sig_validate::set_signer_trust,
+            commands::sig_validate::list_trusted_signers,
+            commands::sig_validate::remove_trusted_signer,
             commands::pages::apply_command,
             commands::forms::get_form_fields,
             commands::content::insert_image_dialog,

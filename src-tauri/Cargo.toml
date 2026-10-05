@@ -50,6 +50,19 @@ keyring-core = "1.0"
 tauri-plugin-updater = { version = "2", default-features = false, features = ["native-tls", "zip"] }
 minisign-verify = "0.2"
 base64 = "0.22"
+# Certificate signatures (ADR-121; named in pdfsig/ only, SECURITY S7): pure-Rust RustCrypto, stable line. All MIT OR Apache-2.0.
+der = { version = "0.7", default-features = false, features = ["alloc", "derive", "oid", "std"] }
+spki = { version = "0.7", default-features = false, features = ["alloc", "std"] }
+pkcs8 = { version = "0.10", default-features = false, features = ["alloc", "std", "pkcs5"] }
+x509-cert = { version = "0.2", default-features = false, features = ["builder", "hazmat", "std"] }
+cms = { version = "0.2", default-features = false, features = ["builder", "std"] }
+rsa = { version = "0.9", default-features = false, features = ["std", "sha2"] }
+p256 = { version = "0.13", default-features = false, features = ["alloc", "arithmetic", "ecdsa", "pem", "pkcs8", "std"] }
+p384 = { version = "0.13", default-features = false, features = ["alloc", "arithmetic", "ecdsa", "pem", "pkcs8", "std"] }
+sha1 = "0.10"
+sha2 = "0.10"
+jiff = "0.2"
+p12-keystore = "0.2"
 
 # Windows only: opening another PDF from the file manager starts another process; this hands its command line to the running
 # window and ends it (src/sources.rs). Local only (a named mutex and a window message): no network. macOS routes files to the

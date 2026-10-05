@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-discard-identity-import"
+description = "Enables the discard_identity_import command without any pre-configured scope."
+commands.allow = ["discard_identity_import"]
+
+[[permission]]
+identifier = "deny-discard-identity-import"
+description = "Denies the discard_identity_import command without any pre-configured scope."
+commands.deny = ["discard_identity_import"]

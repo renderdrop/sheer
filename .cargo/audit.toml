@@ -1,0 +1,5 @@
+# cargo audit, run from the repository root by scripts/check.sh. Mirrors the one ignore in deny.toml.
+[advisories]
+# RUSTSEC-2023-0071 (rsa, Marvin timing side channel, no fixed release): Sheer never decrypts with RSA, signing is local on an
+# explicit user action with no network timing oracle, and the default key is ECDSA P-256 (ADR-121 section 2, SECURITY R14).
+ignore = ["RUSTSEC-2023-0071"]

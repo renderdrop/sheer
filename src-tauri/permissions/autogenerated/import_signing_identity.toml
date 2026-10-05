@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-import-signing-identity"
+description = "Enables the import_signing_identity command without any pre-configured scope."
+commands.allow = ["import_signing_identity"]
+
+[[permission]]
+identifier = "deny-import-signing-identity"
+description = "Denies the import_signing_identity command without any pre-configured scope."
+commands.deny = ["import_signing_identity"]

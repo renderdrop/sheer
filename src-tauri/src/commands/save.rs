@@ -408,10 +408,12 @@ impl AppState {
     pub fn save_in_place(&self, id: DocumentId, ack: SaveAck) -> Result<SaveResult, AppError> {
         // Before anything else is looked at, let alone opened for writing.
         // A recovered document has no file of its own yet: Save acts as Save As (ADR-053 section 2).
-        if self
-            .info(id)
-            .is_some_and(|info| matches!(info.kind, DocKind::Welcome | DocKind::Recovered))
-        {
+        if self.info(id).is_some_and(|info| {
+            matches!(
+                info.kind,
+                DocKind::Welcome | DocKind::Recovered | DocKind::SignedRevision
+            )
+        }) {
             return Err(AppError::new(ErrorCode::ReadOnly));
         }
         let _guard = self.autosave_save_guard();
@@ -794,6 +796,7 @@ impl AppState {
                 kind: DocKind::User,
                 flags: crate::documents::DocFlags::default(),
                 autosave: crate::storage::autosave::AutosaveStatus::Clean,
+                signature_lock: crate::pdfsig::types::SignatureLock::None,
             }),
             changes,
         }

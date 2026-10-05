@@ -23,9 +23,13 @@ export interface DocFlags {
   permissions?: readonly Permission[] | null;
 }
 
-/** Where a document comes from (src-tauri/src/documents/mod.rs, `DocKind`): `welcome` is the bundled tour sample (ADR-023), `recovered` is a crash-recovery snapshot (ADR-053), `user` is every file the user opened. */
-export const DOC_KINDS = ['user', 'welcome', 'recovered'] as const;
+/** Where a document comes from (src-tauri/src/documents/mod.rs, `DocKind`): `welcome` is the bundled tour sample (ADR-023), `recovered` is a crash-recovery snapshot (ADR-053), `signedRevision` is the read-only view of what a signature covers (ADR-121), `user` is every file the user opened. */
+export const DOC_KINDS = ['user', 'welcome', 'recovered', 'signedRevision'] as const;
 export type DocKind = (typeof DOC_KINDS)[number];
+
+/** What the signatures of a file allow the user to change (`DocumentInfo.signatureLock`, ADR-121 section 1; backend `SignatureLock`). */
+export const SIGNATURE_LOCKS = ['none', 'fillAndSign', 'annotateFillAndSign', 'locked'] as const;
+export type SignatureLock = (typeof SIGNATURE_LOCKS)[number];
 
 /** Whether autosave covers a document now (`DocumentInfo.autosave`, backend `AutosaveStatus`). */
 export const AUTOSAVE_STATUSES = ['on', 'offEncrypted', 'offTooLarge', 'clean'] as const;
@@ -49,6 +53,8 @@ export interface DocumentInfo {
   kind?: DocKind;
   /** Whether autosave covers the document now (ADR-053 section 2). Optional like `flags`; the backend always sends it. */
   autosave?: AutosaveStatus;
+  /** What the signatures of the file allow (ADR-121). Optional like `flags`; the backend always sends it, `none` for a file that is not signed. */
+  signatureLock?: SignatureLock;
 }
 
 /** A whole number from 0 up to `max`: the id and the page count are `u32` in the backend. */
@@ -88,13 +94,14 @@ export function parseDocFlags(value: unknown): DocFlags | null {
  */
 export function parseDocumentInfo(value: unknown): DocumentInfo | null {
   if (typeof value !== 'object' || value === null) return null;
-  const { id, pageCount, displayName, flags, kind, autosave } = value as {
+  const { id, pageCount, displayName, flags, kind, autosave, signatureLock } = value as {
     id?: unknown;
     pageCount?: unknown;
     displayName?: unknown;
     flags?: unknown;
     kind?: unknown;
     autosave?: unknown;
+    signatureLock?: unknown;
   };
   if (!isCount(id) || !isCount(pageCount, MAX_PAGES) || typeof displayName !== 'string') return null;
   const info: DocumentInfo = { id, pageCount, displayName };
@@ -106,6 +113,10 @@ export function parseDocumentInfo(value: unknown): DocumentInfo | null {
   if (autosave !== undefined) {
     if (!AUTOSAVE_STATUSES.includes(autosave as AutosaveStatus)) return null;
     info.autosave = autosave as AutosaveStatus;
+  }
+  if (signatureLock !== undefined) {
+    if (!SIGNATURE_LOCKS.includes(signatureLock as SignatureLock)) return null;
+    info.signatureLock = signatureLock as SignatureLock;
   }
   if (flags === undefined) return info;
   const parsed = parseDocFlags(flags);

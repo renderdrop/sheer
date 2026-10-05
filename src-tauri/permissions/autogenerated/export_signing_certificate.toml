@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-export-signing-certificate"
+description = "Enables the export_signing_certificate command without any pre-configured scope."
+commands.allow = ["export_signing_certificate"]
+
+[[permission]]
+identifier = "deny-export-signing-certificate"
+description = "Denies the export_signing_certificate command without any pre-configured scope."
+commands.deny = ["export_signing_certificate"]

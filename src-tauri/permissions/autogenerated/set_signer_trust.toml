@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-set-signer-trust"
+description = "Enables the set_signer_trust command without any pre-configured scope."
+commands.allow = ["set_signer_trust"]
+
+[[permission]]
+identifier = "deny-set-signer-trust"
+description = "Denies the set_signer_trust command without any pre-configured scope."
+commands.deny = ["set_signer_trust"]

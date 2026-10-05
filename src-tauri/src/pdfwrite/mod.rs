@@ -26,6 +26,7 @@ pub mod redact_image;
 pub mod reviews;
 pub mod save;
 pub mod sheer_keys;
+pub mod sigread;
 
 pub use prescan::load_untrusted;
 pub use save::{append_annotations, validate, Built, Change, Plan, SavePlan};

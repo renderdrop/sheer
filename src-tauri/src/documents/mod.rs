@@ -18,6 +18,7 @@ use serde::{Deserialize, Serialize};
 use crate::error::{AppError, ErrorCode};
 use crate::limits;
 use crate::model::protection::PermissionSet;
+use crate::pdfsig::types::SignatureLock;
 use crate::storage::autosave::AutosaveStatus;
 
 /// Opaque handle for an open document. Serialized as a plain number.
@@ -82,6 +83,10 @@ pub enum DocKind {
     /// A crash-recovery snapshot opened from the autosave store (ADR-053 §2): Save acts as Save As, like `Welcome`, but proposes the
     /// original folder and name (kept in the registry entry, not here: this enum stays `Copy` and a plain word on the wire).
     Recovered,
+    /// The bytes `[0, b + c)` a signature covers, opened read-only to see exactly what was signed (ADR-121 section 4): Save acts as Save As,
+    /// never a recent. On the wire `signedRevision`, the one kind that is not a plain lowercase word.
+    #[serde(rename = "signedRevision")]
+    SignedRevision,
 }
 
 /// What the frontend learns about a document it just opened.
@@ -97,6 +102,8 @@ pub struct DocumentInfo {
     pub flags: DocFlags,
     /// Whether autosave covers the document now (ADR-053 section 2); the registry says `clean`, `AppState` fills in the rest.
     pub autosave: AutosaveStatus,
+    /// What the signatures of the file allow the user to change (ADR-121 section 1); `none` for a document that is not signed.
+    pub signature_lock: SignatureLock,
 }
 
 /// The name of the file at `path` as the UI may show it: the last path component only (the frontend never learns
@@ -384,6 +391,7 @@ impl Registry {
             kind: entry.kind,
             flags: entry.flags,
             autosave: AutosaveStatus::Clean,
+            signature_lock: SignatureLock::None,
         })
     }
 
@@ -842,10 +850,11 @@ mod tests {
                 permissions: None,
             },
             autosave: AutosaveStatus::On,
+            signature_lock: SignatureLock::None,
         };
         assert_eq!(
             serde_json::to_string(&info).unwrap(),
-            r#"{"id":0,"pageCount":3,"displayName":"a.pdf","kind":"user","flags":{"encrypted":true,"xfa":false,"hasForms":true,"signed":false,"permissions":null},"autosave":"on"}"#
+            r#"{"id":0,"pageCount":3,"displayName":"a.pdf","kind":"user","flags":{"encrypted":true,"xfa":false,"hasForms":true,"signed":false,"permissions":null},"autosave":"on","signatureLock":"none"}"#
         );
     }
 
@@ -972,6 +981,7 @@ mod tests {
                 kind: DocKind::User,
                 flags: DocFlags::default(),
                 autosave: AutosaveStatus::Clean,
+                signature_lock: SignatureLock::None,
             })
         );
         registry.remove(id);

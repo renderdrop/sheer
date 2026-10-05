@@ -305,7 +305,7 @@ mod tests {
         let event = AppEvent::opened(document("a.pdf", 3));
         assert_eq!(
             serde_json::to_string(&event).unwrap(),
-            r#"{"type":"opened","document":{"id":0,"pageCount":3,"displayName":"a.pdf","kind":"user","flags":{"encrypted":false,"xfa":false,"hasForms":false,"signed":false,"permissions":null},"autosave":"clean"}}"#
+            r#"{"type":"opened","document":{"id":0,"pageCount":3,"displayName":"a.pdf","kind":"user","flags":{"encrypted":false,"xfa":false,"hasForms":false,"signed":false,"permissions":null},"autosave":"clean","signatureLock":"none"}}"#
         );
     }
 

@@ -28,7 +28,8 @@ export interface SaveResult {
   changes: ChangeSet;
 }
 
-function parseSaveResult(value: unknown): SaveResult | null {
+/** Validates a save result; `null` if it is not one. Extra keys are dropped. */
+export function parseSaveResult(value: unknown): SaveResult | null {
   if (typeof value !== 'object' || value === null) return null;
   const { rev, mode, backupCreated, document, changes } = value as Record<string, unknown>;
   const parsedDocument = parseDocumentInfo(document);

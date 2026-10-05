@@ -10,7 +10,8 @@ version = 2
 unmaintained = "all"
 unsound = "all"
 yanked = "deny"
-ignore = []
+# RUSTSEC-2023-0071 (rsa, Marvin timing side channel, no fixed release in any line): Sheer never decrypts with RSA; the private key signs locally on an explicit user action with no network timing oracle; the default key is ECDSA P-256 (ADR-121 section 2, SECURITY R14).
+ignore = [{ id = "RUSTSEC-2023-0071", reason = "ADR-121 section 2, SECURITY R14: no RSA decryption, local signing only" }]
 
 [licenses]
 version = 2

@@ -127,6 +127,45 @@ guard_network_crates() {
   [ "$ok" -eq 1 ]
 }
 
+# ADR-121 section 2, SECURITY S7: the certificate crypto is pure Rust. No C-backed provider (ring, aws-lc-rs, openssl) may be part of the
+# desktop build outside the updater, and the crypto crates may be named only in src-tauri/src/pdfsig/ (comment lines are ignored).
+CRYPTO_BANNED=(ring aws-lc-rs openssl)
+CRYPTO_PATTERN='(^|[^A-Za-z0-9_])(der|spki|pkcs8|x509_cert|cms|rsa|p256|p384|sha1|p12_keystore)::'
+
+guard_crypto_crates() {
+  local target crate packages root ok=1 hits
+  local prune=()
+  for root in "${NETWORK_ALLOWED_ROOTS[@]}"; do
+    prune+=(--prune "$root")
+  done
+  for target in "${DESKTOP_TARGETS[@]}"; do
+    if ! packages="$(cargo tree --manifest-path "$MANIFEST" --locked --all-features -e normal,build       --target "$target" --prefix none --format '{p}' "${prune[@]}" 2>&1)"; then
+      echo "error: cargo tree failed for $target:"
+      printf '%s
+' "$packages"
+      return 1
+    fi
+    for crate in "${CRYPTO_BANNED[@]}"; do
+      if printf '%s
+' "$packages" | grep -q "^$crate v"; then
+        echo "error: C-backed crypto crate '$crate' is part of the $target build outside the updater"
+        ok=0
+      fi
+    done
+  done
+  hits="$(
+    grep -rnE --include='*.rs' "$CRYPTO_PATTERN" src-tauri/src 2>/dev/null |
+      grep -vE '^src-tauri/src/pdfsig/' |
+      grep -vE '^[^:]+:[0-9]+:[[:space:]]*//'
+  )"
+  if [ -n "$hits" ]; then
+    printf '%s
+' "$hits" | sed 's|^|error: crypto crate named outside pdfsig/: |'
+    ok=0
+  fi
+  [ "$ok" -eq 1 ]
+}
+
 # The updater and HTTP crates may be named in code only under src-tauri/src/update/ (comment lines are ignored). Takes the source
 # directory as an argument so the test (src-tauri/tests/updater_scope.rs) can point it at a scratch tree.
 UPDATER_SCOPE_PATTERN='(^|[^A-Za-z0-9_])(tauri_plugin_updater|tauri_plugin_http|tauri_plugin_websocket|reqwest|hyper|ureq|tungstenite|minisign_verify)([^A-Za-z0-9_]|$)'
@@ -251,6 +290,7 @@ step "npm audit" npm audit --audit-level=high
 
 step "guard: network crates" guard_network_crates
 step "guard: updater scope" guard_updater_scope
+step "guard: crypto crates" guard_crypto_crates
 step "guard: pdf imports" guard_pdf_imports
 step "guard: secrets" guard_secrets
 step "guard: bundle urls" build_and_guard_dist
