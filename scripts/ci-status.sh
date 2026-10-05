@@ -8,9 +8,11 @@ if ! command -v gh >/dev/null 2>&1; then
   exit 2
 fi
 
-run="$(gh run list --workflow CI --branch main --status completed --limit 1 \
-  --json databaseId,number,conclusion,headSha,displayTitle \
-  --jq '.[0] | "\(.databaseId)\t\(.number)\t\(.conclusion)\t\(.headSha[0:7])\t\(.displayTitle)"' 2>/dev/null)"
+# The newest completed run among the last 20, picked here: the server-side status filter was seen returning an old run
+# (2026-10-05: run #47 instead of #70).
+run="$(gh run list --workflow CI --branch main --limit 20 \
+  --json databaseId,number,status,conclusion,headSha,displayTitle \
+  --jq '[.[] | select(.status == "completed")] | sort_by(-.number) | .[0] // empty | "\(.databaseId)\t\(.number)\t\(.conclusion)\t\(.headSha[0:7])\t\(.displayTitle)"' 2>/dev/null)"
 if [ -z "$run" ]; then
   echo "ci: unknown (no completed run on main, or gh is offline)"
   exit 2
