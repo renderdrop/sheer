@@ -207,14 +207,37 @@ describe('the lock choice (DESIGN 3.8 L1, AC 25 to 27)', () => {
     expect(none.checked).toBe(true);
   });
 
-  it('remembers the choice per device: a new sheet starts with the last one', async () => {
+  it('remembers the choice per device only after a completed signing: a new sheet starts with it', async () => {
+    signDocument.mockResolvedValue(signed);
+    const { user } = setup(<SignDialogHost />);
+    ready();
+    await user.click(await screen.findByRole('radio', { name: /^Fill in forms/ }));
+    await user.click(screen.getByRole('button', { name: 'Sign and save as…' }));
+    await waitFor(() => expect(screen.queryByRole('radiogroup')).toBeNull());
+    expect(localStorage.getItem('sheer.sign.lock')).toBe('allowFillAndSign');
+    ready();
+    expect(((await screen.findByRole('radio', { name: /^Fill in forms/ })) as HTMLInputElement).checked).toBe(true);
+  });
+
+  it('forgets a choice made in a cancelled sheet', async () => {
     const { user } = setup(<SignDialogHost />);
     ready();
     await user.click(await screen.findByRole('radio', { name: /^Fill in forms/ }));
     await user.click(screen.getByRole('button', { name: 'Cancel' }));
     await waitFor(() => expect(screen.queryByRole('radiogroup')).toBeNull());
+    expect(localStorage.getItem('sheer.sign.lock')).toBeNull();
     act(() => useCertSign.getState().openDialog());
-    expect(((await screen.findByRole('radio', { name: /^Fill in forms/ })) as HTMLInputElement).checked).toBe(true);
+    expect(((await screen.findByRole('radio', { name: /^No changes/ })) as HTMLInputElement).checked).toBe(true);
+  });
+
+  it('forgets a choice when the signing fails', async () => {
+    signDocument.mockRejectedValue({ kind: 'io' });
+    const { user } = setup(<SignDialogHost />);
+    ready();
+    await user.click(await screen.findByRole('radio', { name: /^Fill in forms/ }));
+    await user.click(screen.getByRole('button', { name: 'Sign and save as…' }));
+    await waitFor(() => expect(signDocument).toHaveBeenCalled());
+    expect(localStorage.getItem('sheer.sign.lock')).toBeNull();
   });
 
   it('shows no choice for a signature on an already signed file and signs with "No changes"', async () => {

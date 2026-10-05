@@ -22,7 +22,7 @@ const LOCKS: readonly { value: SignLock; label: PlainKey; help: PlainKey }[] = [
   { value: 'allowFillAndSign', label: 'sign.cert.lockForms', help: 'sign.cert.lockFormsHelp' },
 ] as const;
 
-/** The last lock choice is a preference of the device (ADR-124), kept in UI storage like the citation style. */
+/** The lock of the last completed signing is a preference of the device (ADR-124 addendum 3), kept in UI storage like the citation style. */
 export const LOCK_KEY = 'sheer.sign.lock';
 
 function readLock(): SignLock {
@@ -132,6 +132,8 @@ function SignSheet() {
       setFailure(t('sign.cert.failed', { reason: errorText(t, outcome.error) }));
       return;
     }
+    // Remembered only once a signature is written; a cancelled or failed signing keeps the last completed choice.
+    if (certifies) writeLock(lock);
     const file = outcome.result.document.displayName;
     useCertSign.getState().reset();
     useUi.getState().releaseTool();
@@ -193,10 +195,7 @@ function SignSheet() {
           {certifies && (
             <LockChoice
               value={lock}
-              onChange={(next) => {
-                setLock(next);
-                writeLock(next);
-              }}
+              onChange={setLock}
               disabled={busy}
             />
           )}

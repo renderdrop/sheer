@@ -2398,3 +2398,9 @@ overlap check uses the visible part of a control), and `role=menu` is a list (Q7
 other handles remain draggable. Protecting them against the popover made it fall back to a modal dialog at 960 × 640, which
 blocked dragging. This matches Q8 (popovers protect their anchor, the active tool, pressed toggles and the focused input).
 The draw tip now describes straightening on release ("hold before release" was the old recogniser).
+
+**ADR-124 addendum 3 (owner, 2026-10-06).** The signing lock choice is remembered only after a completed signing. Changing the radio
+no longer writes the preference; a cancelled sheet, a cancelled save dialog or a failed signing keeps the last completed choice.
+The F17.9 thumbnail fix was re-checked with the owner's real files (four municipal bylaws, Word 2010 and Distiller): rendered
+directly at 96 and 160 px, headings and bold runs become solid black bars; with 3× + box downscale they read as grey text
+(before/after montage and an installed-build screenshot in review/v1.5-spike/, not tracked).
