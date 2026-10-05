@@ -2317,3 +2317,23 @@ UI places follow DESIGN §3.8, not the working names of the frontend cut above: 
 **ADR-122 addendum (owner, 2026-10-05).** Session reports are written in German, as an exception to rule 6 (CLAUDE.md rule 6, ORCHESTRATOR_PROMPT §15 format headings in German). The v1.3 report stays as written.
 
 **ADR-120 correction (owner, 2026-10-05, after runs #71–#74 stayed red).** The CI check moves from the loop start to **before every push** (ORCHESTRATOR §8.4 step 7). Before a push: (a) if `STATE.md` `ci_log` names an own run that was still running at the last push, read it first (`scripts/ci-status.sh <run-id>`; exit 3 = still running); red → fix first; (b) otherwise read the last completed run (`scripts/ci-status.sh`); red and caused by an own commit → fix first; (c) an own run still running → push anyway and note it. Never wait for a run. After every package commit `STATE.md` `ci_log` gets a line "<commit> <package> → run #<n> (<id>)" with the result added when it is read, so a red run maps to its commit. Points 1–2 of the decision above are replaced; point 3 (green CI in every package's DoD) stays. The red runs #71–#74 had two causes, both in tests: two PDFium command tests binding the engine twice in one process (aaabac2) and the .p12 decode slot released after the answer (72316ba); `scripts/check.sh` now also prints a Rust panic's message line (b050ada).
+
+## ADR-123 — Owner decisions on the v1.4 report; session "Politur v1.2–v1.4 + CI runtime" (v1.4.1)
+
+**Status:** accepted (2026-10-05). Source: product-owner message opening this session.
+
+**Decisions (owner).** (1) Signing offers a choice for a certification signature: **"No changes"** (DocMDP P=1, the default) or
+**"Fill in forms and allow further signatures"** (P=2). This reverses the P=2 default of ADR-121 section 2: `SignLock::default()` becomes
+`NoChanges`. The choice is shown only when the signature certifies (the document has no signature yet); an approval signature has no choice.
+The last choice is not remembered (every signature starts at "No changes"). (2) Files certified elsewhere stay locked according to their
+DocMDP level (confirmed, no change). (3) Self-generated identities stay ECDSA P-256, 3 years (confirmed).
+
+**Scope of the session.** All open items of the "Politur backlog" (the v1.2, v1.3 and v1.4 leftovers), the DocMDP choice and CI runtime,
+released as v1.4.1. The fifth citation style stays parked (needs owner feedback, ADR-119 addendum 3).
+
+**CI runtime target.** Each CI job on `main` finishes in under 15 minutes (run #78: Windows 26 min, macOS 17 min, `npm run check` 20/15 min
+of that, Windows cache save 5 min). Levers, in this order: per-step timings in `check.sh`; platform-independent steps (tsc, eslint,
+prettier, vitest, bundle guard, npm audit, cargo deny/audit, guards) run once in a separate Linux job, the Windows/macOS matrix keeps
+fmt, clippy and cargo test (platform `cfg` code must still be linted and tested on both); dev/test profile with reduced debug info;
+a Rust cache that stores dependencies only; fewer integration-test binaries if linking still dominates. Release builds stay in
+`release.yml` only. The DoD "CI green on Windows and macOS" now means: all jobs of the run green (the Linux job included).

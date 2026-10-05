@@ -1,7 +1,7 @@
 # STATE
 phase: v1.4.0 "Certificate signature" released (tag v1.4.0, CI #77 green, GitHub release with DMG + NSIS)
 version: 1.4.0 (tag v1.4.0)
-current_item: SESSION TOPIC v1.4 CLOSED (ADR-122) — report docs/reports/2026-10-05-v1.4-zertifikatsignatur.md, STOP set. Next session: topic from the owner's first message (suggested: Politur + macOS acceptance); no v1.5 without it
+current_item: SESSION TOPIC "Politur v1.2–v1.4 + CI runtime" → v1.4.1 (ADR-123). Wave 1: D (designer §3.8 lines) → S1 signing; S2 citations/comments; S3 page labels/viewer/tabs; S4 CI runtime. Wave 2: S5 tokens + home/shell + R7 (+ CI test consolidation if still needed)
 last_completed: v1.4 Certificate signature (tag v1.4.0)
 loop_count_this_session: 0
 open_blockers: 2 human-only (B-002, B-005)
