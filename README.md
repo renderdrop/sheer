@@ -2,7 +2,7 @@
   <img src="assets/brand/wordmark.svg" width="320" alt="sheer. PDFs made simple">
 </p>
 
-Sheer is a simple, fast and beautiful desktop PDF app for **macOS and Windows**.
+sheer. is a simple, fast and beautiful desktop PDF app for **macOS and Windows**.
 It is open source and runs **entirely on your device**: no account, no login, no cloud, no telemetry.
 
 > [!WARNING]
@@ -41,7 +41,7 @@ npm run check         # full quality gate (types, lint, tests, clippy, cargo-den
 
 ## Privacy
 
-Sheer never opens a network connection on its own. The only exception is the optional, opt-in update check.
+sheer. never opens a network connection on its own. The only exception is the optional, opt-in update check.
 
 ## License
 

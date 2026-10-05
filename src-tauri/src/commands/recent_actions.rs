@@ -219,10 +219,22 @@ mod tests {
             ErrorCode::NotFound
         );
         store.record(Path::new(r"\\host\share\x.pdf"));
-        for entry in state.list_recents() {
-            if entry.display_name == "x.pdf" {
-                assert!(state.reveal_recent_with(entry.id, |_| Ok(())).is_err());
-            }
+        let network: Vec<_> = state
+            .list_recents()
+            .into_iter()
+            .filter(|entry| entry.display_name.ends_with("x.pdf"))
+            .collect();
+        if cfg!(windows) {
+            // Windows never stores a network spelling (`storable`), so there is nothing to reveal.
+            assert!(network.is_empty(), "a UNC path is not recorded");
+        } else {
+            // Elsewhere the same text is an ordinary (missing) file name: the entry is stored and still refused.
+            assert_eq!(
+                network.len(),
+                1,
+                "the entry exists, so the check is not vacuous"
+            );
+            assert!(state.reveal_recent_with(network[0].id, |_| Ok(())).is_err());
         }
         let list = state.list_recents();
         let find = |name: &str| list.iter().find(|e| e.display_name == name).unwrap().id;

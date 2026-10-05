@@ -877,10 +877,12 @@ Windows has the in-window menu row again (`features/shell/MenuRowSlot.tsx`: `Men
 | Delete, Add comment | Bearbeiten menu, selection popover, Delete, Primary+Shift+M |
 | Zoom, fits, scroll modes, rotate, go to page, next / previous page and tab, sidebar toggle and tabs, full screen | Ansicht menu (no "Eigenschaften" item), zoom dropdown, page field, tabs, F11 |
 | Lesen, Kommentieren, Ausfüllen & Signieren, Seiten, Bearbeiten | Werkzeuge menu (radio items, hint 1 to 5), the mode row, keys 1 to 5 |
-| Highlight form fields, Manage signatures | Werkzeuge menu, tool row of Ausfüllen & Signieren |
+| Highlight form fields, Manage signatures | Werkzeuge menu only (the Ausfüllen & Signieren tool row has no buttons for them) |
 | Tools (select, highlight, comment, draw, shapes, signature, redact, pages, text box, image, crop, Lesen tools) | The tool row of their mode (F14 table, DESIGN §3.2), tool letters |
 | Welcome tour, Reset tips, About | Hilfe menu (About Windows only); the tour pill shows progress |
 
 Keyboard of the menu row (DESIGN §3.2): Alt alone or F10 focuses Datei and shows the mnemonics; Alt plus the access letter opens a menu (never with Ctrl, which is AltGr); Left/Right switch menus, Down/Enter/Space open, Esc closes and then returns focus. ARIA `menubar`, `menuitem`, `menuitemradio` for the modes.
 
 Zoom and page text are in the top bar centre; the polite live regions (save, render, settled page, success pulses) are `topbar/LiveRegions.tsx`.
+
+UI preferences that live in the webview's `localStorage` (never document content, paths or anything Rust needs; each is read defensively and falls back to a default): `sheer.exportImages`, `sheer.formHighlight`, `sheer.organizeThumb2`, `sheer.signatureInk`, `sheer.signatureItemFonts`, `sheer.signatureTab`, `sheer.styleColours`, `sheer.toolDefaults`, `sheer.toolVariants`, `sheer.tools.recentColors`, `sheer.tools.shapeRecognition`, `signatureFont`, `comments.sort`, `margin.comments`, `compress.preset`, `img2pdf.options`, `print.annotations`, `print.quality`. Persistent app settings (language, theme, recents) are Rust's (`storage/settings.rs`), not here.

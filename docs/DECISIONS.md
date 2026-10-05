@@ -28,7 +28,7 @@ design language, tech stack, repo layout, subagents, hooks, phases, versioning a
    not as empty stubs in Phase 0.
 6. **Toolchain pins.** Node `22.23.1` (`.nvmrc`, matches the dev machine), Rust `1.99.0` (`rust-toolchain.toml`).
 7. **Brand reference.** The provided design file `Sheer — Logo & Farbe.html` is the human-supplied brand reference
-   (moved from the repo root to `assets/brand/` before publication, ADR-045). `assets/brand/logo.svg` (Appendix A) remains the single logo source.
+   (moved from the repo root to `assets/brand/` before publication, ADR-045). The brand sources are now `assets/brand/icon*.svg` and `wordmark*.svg` (`logo.svg` and the HTML reference were deleted in Politur v1.3, nothing referenced them).
 
 **Consequences.** Everything below builds on these constraints. Any further deviation needs its own ADR.
 
@@ -2123,3 +2123,12 @@ tool row. That is wrong: they are in the Werkzeuge menu only (Politur v1.2).
 ## ADR-117 — Fill & Sign on the welcome document; the annotation smoke is repeatable (F15 acceptance)
 
 **Finding.** `scripts/ui/annot-smoke.mjs` failed rows (check mark, date, later signature) on the welcome document and, in a second run, on text.pdf. Cause: a press on an existing movable annotation moves it instead of placing a new one (ADR-105, `onGrab` first); the open documents keep the annotations of the previous run, so the click spots were occupied and the count did not grow. The product behaves as designed; the test was not repeatable. **Fix.** The smoke deletes the document's annotations before each suite. **Decision.** Fill & Sign tools (Text, marks, Date, Signature, Initials) are enabled on the welcome document (the tour document; v1.8 R6 "first signature"); Save becomes Save As as before. Pages tools stay read-only there (`modes.readOnly`). Open: the tour's "first form" needs form fields enabled on the welcome document (`FormLayer` `documentReadOnly`); decide with R6.
+
+## ADR-118 — Politur v1.3 package P13-1 (backend, scripts, docs)
+
+1. **`tauri.conf.json` `backgroundColor` is `#FAFAF8` = `--color-canvas` (light).** It is the colour of the native window before the webview paints, so start-up shows the app canvas and not a white flash. It is the one place a token value is spelled as hex outside `tokens.css` (the config cannot read CSS); change both together.
+2. **Welcome PDF stays on Helvetica (no Inter embed).** `PdfBuilder` writes the standard-14 fonts; embedding Inter needs a TrueType subset (`FontFile2`), a width table and a different "does it fit" model (`EM`, `wrap`), for a cosmetic gain on a sample document. Not done; revisit only with a font-subsetting dependency.
+3. **No Open Recent in the macOS menu bar.** It needs a dynamic submenu that is rebuilt on every recents change and item ids that map to recents without a path crossing to the webview; that is a new IPC surface for little gain (Home shows recents). Windows keeps its in-window submenu.
+4. **English menu labels stay in Title Case** (`menu.*` keys of en.json), as macOS menus are written and `menu.test.ts` checks; a sentence-case pass was reverted at integration. German is unchanged.
+5. **`redact.pending` is a plural group** (`.one` / `.other`, `{count}`) in en and de.
+6. **`assets/brand/logo.svg` is deleted;** `gen-installer-art.mjs` already reads `wordmark-secondary.svg`. ADR-000 item 7 now names the current brand sources.

@@ -501,10 +501,14 @@ impl Doc<'_> {
             // The only brand moment: a Sand page with a soft Solar glow (one radial shading, centre in the lower right).
             canvas.block = WHITE;
             canvas.raw(&format!(
-                "q {} rg 0 0 {} {} re f /Sh1 sh Q",
+                "q {} rg 0 0 {} {} re f Q q 0 {} {} {} re W n /Sh1 sh Q",
                 rgb(SAND),
                 num(PAGE_WIDTH),
-                num(PAGE_HEIGHT)
+                num(PAGE_HEIGHT),
+                // The glow stops at the footer rule (y 752 from the top): the footer sits on plain Sand.
+                num(PAGE_HEIGHT - 752.0),
+                num(PAGE_WIDTH),
+                num(752.0)
             ));
         }
         // Chip.
@@ -521,10 +525,7 @@ impl Doc<'_> {
         canvas.raw("f");
         assert_fits(chip, 10.0, 96.0);
         canvas.text(2, 10.0, 60.0, 64.0, INK, chip);
-        // The printed page number, right aligned (Helvetica digits are 556/1000 em).
-        let digits = position.to_string();
-        let width = 0.556 * 12.0 * digits.len() as f64;
-        canvas.text(1, 12.0, MARGIN + CONTENT - width, 64.0, INK_60, &digits);
+        // The page number is in the footer only (no second one top right).
         // Title: light display type on the brand page, a plain heading on a task page.
         if brand {
             assert_fits(title, 40.0, 504.0);
@@ -713,7 +714,21 @@ impl Doc<'_> {
             .target
             .expect("the highlight step has a target");
         canvas.card(sentence, 16.0, SAND, RULE);
-        canvas.text(1, 16.0, 72.0, 282.0, INK, &s.t("welcomePdf.p3.sentence"));
+        // The Solar cue: the sentence sits on a highlighter band (what the Highlight task makes).
+        let sentence_text = s.t("welcomePdf.p3.sentence");
+        let band = (0.5 * 16.0 * sentence_text.chars().count() as f64 + 8.0).min(CONTENT - 48.0);
+        canvas.raw(&format!("{} rg", rgb(SOLAR)));
+        canvas.rounded_rect(
+            Rect {
+                x: 68.0,
+                y: 266.0,
+                w: band,
+                h: 24.0,
+            },
+            4.0,
+        );
+        canvas.raw("f");
+        canvas.text(1, 16.0, 72.0, 282.0, INK, &sentence_text);
         let mut bottom = sentence.y + sentence.h;
         if self.manifest.shipped("comment") {
             let spot = self
@@ -881,7 +896,7 @@ impl Doc<'_> {
             RULE,
         );
         canvas.text(
-            2,
+            1,
             14.0,
             72.0,
             y + 32.0,
@@ -937,7 +952,7 @@ impl Doc<'_> {
             RULE,
         );
         canvas.text(
-            2,
+            1,
             14.0,
             72.0,
             y + 32.0,

@@ -233,7 +233,7 @@ Columns: **nav 200** | **main 1fr** (White). Main padding 32 (48 from 1440 wide)
 
 **Canvas** (`--surface-page-area`): padding 24, page gap 24, pages White + `--shadow-floating`. No glow, no gradient. **Banner slot**: a 40-high row at the top of the canvas column (0 when empty; a second 40 row below it holds the docked mini bar, §3.3), so pages never sit under it:
 - Form banner: Sand, padding-x 16, file-text icon 16, "Formular erkannt – 12 Felder · Zum ersten Feld" (link Ink underlined), close icon button 28.
-- Redact band: `--color-danger`, white text 13/500 "Schwärzen ist endgültig", right: Ghost "Abbrechen" (white text, hover `--on-danger-hover` rgba(255,255,255,0.16)) and Primary "Anwenden". Marks preview as 2px danger outline + 12 % fill + hatch; applied = Ink fill.
+- Redact band: `--color-danger`, white text 13/500 "Schwärzen ist endgültig", right: Button variant `ghostOnDanger` "Abbrechen" (white text, hover `--on-danger-hover` rgba(255,255,255,0.16)) and variant `onDanger` "Anwenden" (White fill, danger text; never the Solar primary on red). Marks preview as 2px danger outline + 12 % fill + hatch; applied = Ink fill.
 
 **Selection popover:** over a text selection, 8 above (flips below), White, border, radius md, `--shadow-floating`, padding 4, height 36: Ghost buttons Markieren · Kommentieren · Kopieren (gap 4). Esc closes. Keyboard unchanged from v1.1 §3.59. It follows the mini bar's placement rules (§3.3).
 
