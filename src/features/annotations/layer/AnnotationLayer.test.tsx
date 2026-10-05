@@ -636,3 +636,46 @@ describe('text comment (DESIGN 3.5 B4)', () => {
     expect(wrapped).toBeGreaterThan(40);
   });
 });
+
+describe('spell 7: undo and redo fade the item', () => {
+  const history = { ...EMPTY_HISTORY };
+  const fading = (mode: string) => document.querySelectorAll(`[data-undo-fade="${mode}"]`);
+
+  it('an item that an undo removes stays one fade as a ghost, fading out, then goes', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    render(<AnnotationLayer {...props()} />);
+    mocked.undo.mockResolvedValue({ ...empty, rev: 2, removed: [1], history });
+    await act(async () => {
+      await useAnnotations.getState().undo(1);
+    });
+    expect(frame(1)).toBeNull();
+    expect(fading('out')).toHaveLength(1);
+    expect(fading('out')[0]?.querySelector('rect')).not.toBeNull();
+    // It settles into its end state (opacity 0, scale 0.98 by the stylesheet) after its first frame.
+    expect(fading('out')[0]?.hasAttribute('data-settled')).toBe(true);
+    act(() => void vi.advanceTimersByTime(130));
+    expect(fading('out')).toHaveLength(0);
+  });
+
+  it('a plain delete (not an undo) makes no ghost', async () => {
+    render(<AnnotationLayer {...props()} />);
+    await act(async () => {
+      useAnnotations.getState().applyChanges(1, { ...empty, rev: 2, removed: [1], history });
+    });
+    expect(fading('out')).toHaveLength(0);
+  });
+
+  it('an item that a redo brings back fades in from its start state, then is plain', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    render(<AnnotationLayer {...props()} />);
+    mocked.redo.mockResolvedValue({ ...empty, rev: 2, upserted: [box(4, 40, 150)], history });
+    await act(async () => {
+      await useAnnotations.getState().redo(1);
+    });
+    expect(fading('in')).toHaveLength(1);
+    expect(fading('in')[0]?.querySelector('rect')).not.toBeNull();
+    act(() => void vi.advanceTimersByTime(130));
+    expect(fading('in')).toHaveLength(0);
+    expect(frame(4)).not.toBeNull();
+  });
+});

@@ -33,6 +33,7 @@ import {
   type GridSpacing,
   type Insertion,
 } from './grid';
+import { useDeleteGhosts } from '../thumbnails/ghosts';
 import { OrganizeCell } from './OrganizeCell';
 import { DragCard } from './DragCard';
 import { readSlots, useSlots } from './source';
@@ -151,6 +152,20 @@ export function OrganizeGrid({ docId, scheduler }: OrganizeGridProps) {
     if (measured && count > 0) set.add(focusIndex);
     return [...set].sort((a, b) => a - b);
   }, [range, measured, count, focusIndex]);
+
+  // A deleted page leaves as a ghost at its old place (MOTION spell 9); the cells that follow slide with their transform transition.
+  const { ghosts } = useDeleteGhosts(slots, (slot, index) => {
+    const origin = cellOrigin(metrics, index);
+    return {
+      slot,
+      index,
+      left: origin.left,
+      top: origin.top,
+      thumb,
+      width: metrics.cellWidth,
+      height: metrics.cellHeight,
+    };
+  });
 
   const reveal = useCallback(
     (index: number) => {
@@ -505,6 +520,28 @@ export function OrganizeGrid({ docId, scheduler }: OrganizeGridProps) {
             />
           );
         })}
+        {ghosts.map((ghost) => (
+          <OrganizeCell
+            key={`gone-${ghost.id}`}
+            ghost
+            docId={docId}
+            slot={ghost.data.slot}
+            index={ghost.data.index}
+            total={count}
+            left={ghost.data.left}
+            top={ghost.data.top}
+            thumb={ghost.data.thumb}
+            width={ghost.data.width}
+            height={ghost.data.height}
+            pixelRatio={pixelRatio}
+            selected={false}
+            tabStop={false}
+            active={false}
+            dragged={false}
+            pulseKey={0}
+            scheduler={scheduler}
+          />
+        ))}
         {marker !== null && (
           <div
             aria-hidden="true"

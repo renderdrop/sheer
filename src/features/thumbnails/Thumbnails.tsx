@@ -16,6 +16,8 @@ import {
   type ListAnchor,
   type ThumbnailSpacing,
 } from './layout';
+import { useDeleteGhosts } from './ghosts';
+import { PageIndicator } from './PageIndicator';
 import { ThumbnailItem } from './ThumbnailItem';
 
 /** The most cells mounted at once, in view or around it: a bound for a list whose thumbnails are tiny. */
@@ -206,6 +208,21 @@ export function ThumbnailList({ docId, pageCount, scheduler }: ThumbnailListProp
     [docId, reveal, track],
   );
 
+  // A deleted page leaves as a ghost at its old place (MOTION spell 9); its neighbours slide into place.
+  const { ghosts, moving } = useDeleteGhosts(slots, (slot, index) =>
+    index < layout.count
+      ? {
+          index,
+          rev: slot.rev,
+          top: layout.top(index),
+          height: layout.cellHeight(index),
+          width: layout.thumbnailSize(index).width,
+          thumbHeight: layout.thumbnailSize(index).height,
+          widthPt: (sizes[index] ?? DEFAULT_PAGE_SIZE)[0],
+        }
+      : null,
+  );
+
   // The tab stop is mounted wherever it is: the current page, unless that is in the mounted range already.
   const current = useView((state) => {
     const page = state.byDoc[docId]?.pageIndex ?? 0;
@@ -307,13 +324,14 @@ export function ThumbnailList({ docId, pageCount, scheduler }: ThumbnailListProp
           }
         }}
         className="relative"
+        data-sliding={moving ? '' : undefined}
         style={{ height: layout.height }}
       >
         {mounted.map((index) => {
           const size = layout.thumbnailSize(index);
           return (
             <ThumbnailItem
-              key={index}
+              key={slots[index]?.id ?? index}
               docId={docId}
               index={index}
               pageId={slots[index]?.id ?? index}
@@ -332,6 +350,28 @@ export function ThumbnailList({ docId, pageCount, scheduler }: ThumbnailListProp
             />
           );
         })}
+        {ghosts.map((ghost) => (
+          <ThumbnailItem
+            key={`gone-${ghost.id}`}
+            ghost
+            docId={docId}
+            index={ghost.data.index}
+            pageId={ghost.id}
+            pageRev={ghost.data.rev}
+            pageCount={pageCount}
+            top={ghost.data.top}
+            height={ghost.data.height}
+            thumbWidth={ghost.data.width}
+            thumbHeight={ghost.data.thumbHeight}
+            widthPt={ghost.data.widthPt}
+            pixelRatio={pixelRatio}
+            active={false}
+            focusStop={null}
+            onActivate={activate}
+            scheduler={scheduler}
+          />
+        ))}
+        {measured && <PageIndicator docId={docId} layout={layout} viewportHeight={box.height} />}
       </div>
     </div>
   );

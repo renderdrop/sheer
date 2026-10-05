@@ -339,3 +339,85 @@ describe('CreationLayer text markup preview (F11)', () => {
     );
   });
 });
+
+describe('spell 5: the marker trail', () => {
+  const reduced = { on: false };
+  const frames: FrameRequestCallback[] = [];
+  const flush = () => act(() => frames.splice(0).forEach((cb) => cb(0)));
+  beforeEach(() => {
+    reduced.on = false;
+    frames.length = 0;
+    vi.stubGlobal('requestAnimationFrame', (cb: FrameRequestCallback) => frames.push(cb));
+    vi.stubGlobal('cancelAnimationFrame', () => undefined);
+    vi.stubGlobal('matchMedia', (query: string) => ({ matches: reduced.on && query.includes('reduce') }));
+    useAnnotations.setState({ apply: vi.fn(() => Promise.resolve({ upserted: [], removed: [], rev: 1 })) } as never);
+    useTools.getState().setMarkup('highlight');
+    useUi.setState({ activeTool: 'highlight', toolLocked: true });
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+    useUi.setState({ activeTool: 'select', toolLocked: false });
+    vi.unstubAllGlobals();
+  });
+
+  function drag() {
+    const view = render(<CreationLayer {...props} transform={{ pxPerPt: 2, rotation: 0 }} />);
+    const surface = view.container.querySelector<HTMLElement>('[data-creation-layer]');
+    if (surface === null) throw new Error('no layer');
+    surface.getBoundingClientRect = () =>
+      ({
+        left: 30,
+        top: 40,
+        width: 1200,
+        height: 1600,
+        right: 1230,
+        bottom: 1640,
+        x: 30,
+        y: 40,
+        toJSON: () => '',
+      }) as DOMRect;
+    fireEvent.pointerDown(surface, { button: 0, clientX: 134, clientY: 252, pointerId: 1 });
+    return surface;
+  }
+  const strip = (surface: HTMLElement) => surface.querySelector<SVGGElement>('[data-marker-trail]');
+
+  it('follows the selection rectangles live while dragging, and grows with the pointer', () => {
+    const surface = drag();
+    fireEvent.pointerMove(surface, { clientX: 155, clientY: 252, pointerId: 1 });
+    flush();
+    const narrow = Number(strip(surface)?.querySelector('rect')?.getAttribute('width'));
+    expect(narrow).toBeGreaterThan(0);
+    expect(strip(surface)?.getAttribute('style')).toContain('multiply');
+    fireEvent.pointerMove(surface, { clientX: 176, clientY: 252, pointerId: 1 });
+    flush();
+    expect(Number(strip(surface)?.querySelector('rect')?.getAttribute('width'))).toBeGreaterThan(narrow);
+    expect(strip(surface)?.hasAttribute('data-marker-dry')).toBe(false);
+  });
+
+  it('dries once on release (peak alpha, pulse), then the strip is replaced by the real highlight', () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    const surface = drag();
+    fireEvent.pointerMove(surface, { clientX: 176, clientY: 252, pointerId: 1 });
+    flush();
+    const live = Number(strip(surface)?.querySelector('rect')?.getAttribute('fill-opacity'));
+    fireEvent.pointerUp(surface, { button: 0, clientX: 176, clientY: 252, pointerId: 1 });
+    expect(strip(surface)?.getAttribute('data-marker-dry')).toBe('pulse');
+    expect(Number(strip(surface)?.querySelector('rect')?.getAttribute('fill-opacity'))).toBeCloseTo(
+      (live * 0.55) / 0.45,
+    );
+    act(() => void vi.advanceTimersByTime(130));
+    expect(strip(surface)).toBeNull();
+  });
+
+  it('under reduced motion the strip keeps its live look until replaced: no dry pulse', () => {
+    reduced.on = true;
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    const surface = drag();
+    fireEvent.pointerMove(surface, { clientX: 176, clientY: 252, pointerId: 1 });
+    flush();
+    const live = strip(surface)?.querySelector('rect')?.getAttribute('fill-opacity');
+    fireEvent.pointerUp(surface, { button: 0, clientX: 176, clientY: 252, pointerId: 1 });
+    expect(strip(surface)?.getAttribute('data-marker-dry')).toBe('still');
+    expect(strip(surface)?.querySelector('rect')?.getAttribute('fill-opacity')).toBe(live);
+  });
+});

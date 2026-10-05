@@ -7,6 +7,7 @@ import { imageKey, type ImageId } from '../../engine/renderCache';
 import { renderScheduler, type RenderScheduler } from '../../engine/renderScheduler';
 import { useT } from '../../i18n';
 import { CSS_PX_PER_PT } from '../../lib/zoom';
+import { useSettled } from '../thumbnails/motion';
 import { THUMBNAIL_ASK_DELAY_MS } from '../thumbnails/ThumbnailItem';
 import type { Slot } from './source';
 
@@ -49,6 +50,8 @@ export interface OrganizeCellProps {
   pulseKey: number;
   /** The document cannot be changed (the welcome document): the cell says so (`aria-disabled`); selecting still works. */
   readOnly?: boolean;
+  /** The page was deleted: the cell leaves (rotates 6 degrees and fades out, MOTION spell 9) and takes no input. */
+  ghost?: boolean;
   scheduler?: RenderScheduler;
 }
 
@@ -75,6 +78,7 @@ export const OrganizeCell = memo(function OrganizeCell({
   dragged,
   pulseKey,
   readOnly = false,
+  ghost = false,
   scheduler = renderScheduler,
 }: OrganizeCellProps) {
   const t = useT();
@@ -121,23 +125,33 @@ export const OrganizeCell = memo(function OrganizeCell({
     pulse(pageRef.current, '');
   }, [pulseKey]);
 
+  const ghostRef = useRef<HTMLDivElement | null>(null);
+  const settled = useSettled(ghostRef, ghost);
   const label = slot.label ?? String(index + 1);
   const number = slot.label !== null && slot.label !== String(index + 1) ? `${slot.label} · ${index + 1}` : label;
 
   return (
     <div
-      role="option"
-      id={`organize-${docId}-${page}`}
-      aria-selected={selected}
-      aria-disabled={readOnly ? true : undefined}
-      aria-label={t('organize.page', { label: slot.label ?? String(index + 1), n: index + 1, total })}
-      aria-posinset={index + 1}
-      aria-setsize={total}
-      data-page-id={page}
-      data-index={index}
-      tabIndex={tabStop ? 0 : -1}
+      ref={ghostRef}
+      {...(ghost
+        ? { 'aria-hidden': true, 'data-delete-ghost': settled ? 'out' : 'in' }
+        : {
+            role: 'option',
+            id: `organize-${docId}-${page}`,
+            'aria-selected': selected,
+            'aria-disabled': readOnly ? true : undefined,
+            'aria-label': t('organize.page', { label: slot.label ?? String(index + 1), n: index + 1, total }),
+            'aria-posinset': index + 1,
+            'aria-setsize': total,
+            'data-page-id': page,
+            'data-index': index,
+            tabIndex: tabStop ? 0 : -1,
+          })}
       className={cx(
-        'group absolute start-0 top-0 flex touch-none cursor-pointer select-none flex-col items-center gap-2 rounded-sm p-1 transition-[transform,opacity,background-color] duration-base ease-out',
+        'group absolute start-0 top-0 flex select-none flex-col items-center gap-2 rounded-sm p-1',
+        ghost
+          ? 'pointer-events-none'
+          : 'touch-none cursor-pointer transition-[transform,opacity,background-color] duration-base ease-out',
         dragged && 'opacity-40',
       )}
       style={{ transform: `translate(${left}px, ${top}px)`, width, height }}

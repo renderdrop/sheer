@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useState, useSyncExternalStore } from 'react';
+import { memo, useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
 
 import { bucketFor } from '../../engine/buckets';
 import { imageKey, type ImageId } from '../../engine/renderCache';
@@ -7,6 +7,8 @@ import { cx } from '../../components/cx';
 import { useT } from '../../i18n';
 import { CSS_PX_PER_PT } from '../../lib/zoom';
 import { useView } from '../../stores/view';
+import { isOpeningNow, staggerDelayMs } from '../viewer/openTransition';
+import { useSettled } from './motion';
 
 /**
  * How long a thumbnail that is in view waits before it asks for its image: scrolling fast through a long document passes
@@ -59,6 +61,34 @@ function ThumbnailImage({ src }: { src: string }) {
 }
 
 /**
+ * The thumbnail card (DESIGN v2 2.2, 3.2): White, a 1 px border (Stone on hover), radius sm. The current page's 2 px Solar border is
+ * not part of it: it is one element of the list that travels between cards (MOTION spell 2, `PageIndicator`).
+ */
+function ThumbnailCard({
+  pageId,
+  width,
+  height,
+  image,
+}: {
+  pageId: number;
+  width: number;
+  height: number;
+  image: { key: string; src: string } | null;
+}) {
+  return (
+    <div
+      className="pulse-target box-border shrink-0 rounded-sm border border-border-subtle bg-page [--pulse-radius:var(--radius-sm)] group-hover:border-control-border"
+      data-thumb-page={pageId}
+      style={{ width, height }}
+    >
+      <div className="relative size-full overflow-hidden rounded-sm">
+        {image !== null && <ThumbnailImage key={image.key} src={image.src} />}
+      </div>
+    </div>
+  );
+}
+
+/**
  * Everything is a number, a string or a flag, never an object: the list builds its layout anew whenever its width changes, and a
  * prop that is a new object each time would make the memoization below worthless.
  */
@@ -88,6 +118,8 @@ export interface ThumbnailItemProps {
    */
   focusStop: boolean | null;
   onActivate: (index: number) => void;
+  /** The page was deleted: the cell leaves (rotates 6 degrees and fades out, MOTION spell 9) and takes no input. */
+  ghost?: boolean;
   /** The scheduler and its cache; the app's by default. */
   scheduler?: RenderScheduler;
 }
@@ -118,11 +150,17 @@ export const ThumbnailItem = memo(function ThumbnailItem({
   active,
   focusStop,
   onActivate,
+  ghost = false,
   scheduler = renderScheduler,
 }: ThumbnailItemProps) {
   const t = useT();
   const { cache } = scheduler;
-  const selected = useView((state) => state.byDoc[docId]?.pageIndex === index);
+  const current = useView((state) => state.byDoc[docId]?.pageIndex === index);
+  const selected = current && !ghost;
+  const cellRef = useRef<HTMLDivElement | null>(null);
+  // Spell 3: a cell that mounts while its document is opening fades in, staggered (never on a page change: F15 A1).
+  const [entrance] = useState(() => !ghost && isOpeningNow(docId));
+  const settled = useSettled(cellRef, ghost || entrance);
   const bucket = bucketFor(thumbWidth / (widthPt * CSS_PX_PER_PT), pixelRatio);
   // What this cell pins in the cache: its own object, so it does not release what another cell or page holds.
   const [owner] = useState(() => ({}));
@@ -164,8 +202,31 @@ export const ThumbnailItem = memo(function ThumbnailItem({
 
   const tabStop = focusStop ?? selected;
 
+  if (ghost) {
+    return (
+      <div
+        ref={cellRef}
+        aria-hidden="true"
+        data-delete-ghost={settled ? 'out' : 'in'}
+        className="pointer-events-none absolute inset-x-0 top-0 flex select-none flex-col items-center gap-2"
+        style={{ transform: `translateY(${top}px)`, height }}
+      >
+        <ThumbnailCard
+          pageId={pageId}
+          width={thumbWidth}
+          height={thumbHeight}
+          image={shown === undefined ? null : { key: shown.key, src: cache.urlOf(shown) }}
+        />
+        <span className="inline-flex h-4 min-w-6 items-center justify-center rounded-pill px-2 text-xs tabular-nums text-text-muted">
+          {index + 1}
+        </span>
+      </div>
+    );
+  }
+
   return (
     <div
+      ref={cellRef}
       role="option"
       aria-selected={selected}
       aria-current={selected ? 'page' : undefined}
@@ -175,23 +236,28 @@ export const ThumbnailItem = memo(function ThumbnailItem({
       data-index={index}
       tabIndex={tabStop ? 0 : -1}
       onClick={() => onActivate(index)}
-      className={cx('group absolute inset-x-0 flex cursor-pointer select-none flex-col items-center gap-2 rounded-sm')}
-      style={{ top, height }}
+      className={cx(
+        'group absolute inset-x-0 top-0 flex cursor-pointer select-none flex-col items-center gap-2 rounded-sm',
+      )}
+      data-thumb-cell=""
+      data-thumb-entrance={entrance ? '' : undefined}
+      style={{
+        transform: `translateY(${top}px)`,
+        height,
+        ...(entrance
+          ? {
+              opacity: settled ? 1 : 0,
+              transition: `opacity var(--motion-slow) var(--ease-out) ${staggerDelayMs(index)}ms`,
+            }
+          : {}),
+      }}
     >
-      <div
-        // The thumbnail card (DESIGN v2 2.2, 3.2): White, a 1 px border (Stone on hover), radius sm; the current page has a 2 px Solar
-        // border (the number's chip below is the Ink partner of that cue). The border box keeps the size: the border is inside it.
-        className={cx(
-          'pulse-target box-border shrink-0 rounded-sm border bg-page [--pulse-radius:var(--radius-sm)]',
-          selected ? 'border-2 border-accent' : 'border-border-subtle group-hover:border-control-border',
-        )}
-        data-thumb-page={pageId}
-        style={{ width: thumbWidth, height: thumbHeight }}
-      >
-        <div className="relative size-full overflow-hidden rounded-sm">
-          {shown !== undefined && <ThumbnailImage key={shown.key} src={cache.urlOf(shown)} />}
-        </div>
-      </div>
+      <ThumbnailCard
+        pageId={pageId}
+        width={thumbWidth}
+        height={thumbHeight}
+        image={shown === undefined ? null : { key: shown.key, src: cache.urlOf(shown) }}
+      />
       <span
         aria-hidden="true"
         className={cx(

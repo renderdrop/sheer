@@ -1,9 +1,19 @@
-import { memo, useEffect, useMemo, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from 'react';
+import {
+  memo,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+  type PointerEvent as ReactPointerEvent,
+  type ReactNode,
+} from 'react';
 
 import type { Annotation } from '../../../api/annotations';
 import type { Point } from '../../../api/wire';
 import { useT } from '../../../i18n';
 import { annotationsOnPage, useAnnotations, type AnnotationsState } from '../../../stores/annotations';
+import { useSettled } from '../../thumbnails/motion';
 import { PlacementLayer } from '../../signatures/place/PlacementLayer';
 import { fileRotationOf } from '../../viewer/fileRotation';
 import { useEffectiveTool } from '../../viewer/lesen';
@@ -22,6 +32,22 @@ import {
 } from '../selection/geometry';
 import { useInteraction, type Handlers } from '../selection/useInteraction';
 import { HitShape, Shape, hasExtent } from './shapes';
+import { useUndoFades } from './useUndoFades';
+
+/**
+ * MOTION spell 7: an item that an undo removed stays as a ghost that fades out (scale 0.98), an item that an undo or a redo brought
+ * back fades in from 0.98. `data-undo-fade` carries the direction; tokens.css has the transitions (reduced motion: opacity only).
+ */
+function UndoFade({ mode, children }: { mode?: 'in' | 'out'; children: ReactNode }) {
+  const ref = useRef<SVGGElement | null>(null);
+  const settled = useSettled(ref, mode !== undefined);
+  if (mode === undefined) return <>{children}</>;
+  return (
+    <g ref={ref} data-undo-fade={mode} data-settled={settled ? '' : undefined}>
+      {children}
+    </g>
+  );
+}
 
 export interface AnnotationLayerProps {
   docId: number;
@@ -161,6 +187,7 @@ export const AnnotationLayer = memo(function AnnotationLayer({
     () => new Set(selectionKey === '' ? [] : selectionKey.split(',').map(Number)),
     [selectionKey],
   );
+  const { leaving, entering } = useUndoFades(docId, pageIndex, list);
   const selectActive = useEffectiveTool() === 'select';
   const [hover, setHover] = useState<number | null>(null);
   /** The annotation the Text or Note tool just made: its editor (free text) or popover (note) is open until it is done. */
@@ -168,6 +195,7 @@ export const AnnotationLayer = memo(function AnnotationLayer({
   const [anchor, setAnchor] = useState<HTMLElement | null>(null);
   const editingId = editing?.id;
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- the anchor is a DOM element that exists only after the frame rendered
     setAnchor(
       editingId === undefined ? null : document.querySelector<HTMLElement>(`[data-annot-frame="${editingId}"]`),
     );
@@ -221,10 +249,12 @@ export const AnnotationLayer = memo(function AnnotationLayer({
   // Highlights are drawn in their own layer that multiplies with the page bitmap: a blend only reaches the bitmap from a sibling
   // of the page's surface, not from inside a layer that is a stacking context of its own (the transformed group below).
   const highlights = items.filter((a) => a.kind === 'highlight' && isDrawn(a));
+  const gone = leaving.filter((a) => !list.some((b) => b.id === a.id));
+  const goneHighlights = gone.filter((a) => a.kind === 'highlight');
 
   return (
     <>
-      {highlights.length > 0 && (
+      {(highlights.length > 0 || goneHighlights.length > 0) && (
         <div
           data-annot-blend=""
           aria-hidden="true"
@@ -238,7 +268,14 @@ export const AnnotationLayer = memo(function AnnotationLayer({
               className="pointer-events-none absolute inset-0 overflow-visible"
             >
               {highlights.map((a) => (
-                <Shape key={a.id} a={preview.get(a.id) ?? a} />
+                <UndoFade key={a.id} mode={entering.has(a.id) ? 'in' : undefined}>
+                  <Shape a={preview.get(a.id) ?? a} />
+                </UndoFade>
+              ))}
+              {goneHighlights.map((a) => (
+                <UndoFade key={`gone-${a.id}`} mode="out">
+                  <Shape a={a} />
+                </UndoFade>
               ))}
             </svg>
           </div>
@@ -260,7 +297,11 @@ export const AnnotationLayer = memo(function AnnotationLayer({
               const drawn = a.kind !== 'highlight' && isDrawn(a);
               return (
                 <g key={a.id} data-annot-item={a.id}>
-                  {drawn && <Shape a={view} docId={docId} />}
+                  {drawn && (
+                    <UndoFade mode={entering.has(a.id) ? 'in' : undefined}>
+                      <Shape a={view} docId={docId} />
+                    </UndoFade>
+                  )}
                   {selectActive && (
                     <g
                       data-annot-hit={a.id}
@@ -276,6 +317,13 @@ export const AnnotationLayer = memo(function AnnotationLayer({
                 </g>
               );
             })}
+            {gone
+              .filter((a) => a.kind !== 'highlight')
+              .map((a) => (
+                <UndoFade key={`gone-${a.id}`} mode="out">
+                  <Shape a={a} docId={docId} />
+                </UndoFade>
+              ))}
           </svg>
           {items.map((a) => (
             <Frame

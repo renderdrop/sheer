@@ -13,6 +13,7 @@ import {
 import { applyFieldStates } from '../features/forms/store';
 import { applyContentChanges, removeContent } from '../features/insert/store';
 import { usePages } from './pages';
+import { emitUndoCue } from './undoCue';
 
 /**
  * The UI's replica of each open document's annotations (ARCHITECTURE section 8, `annotations`). The backend owns the model and the
@@ -163,12 +164,14 @@ export const useAnnotations = create<AnnotationsState>()((set, get) => ({
 
   undo: async (docId) => {
     const changes = await undoStep(docId);
+    emitUndoCue(docId, 'undo', changes);
     get().applyChanges(docId, changes);
     return changes;
   },
 
   redo: async (docId) => {
     const changes = await redoStep(docId);
+    emitUndoCue(docId, 'redo', changes);
     get().applyChanges(docId, changes);
     return changes;
   },

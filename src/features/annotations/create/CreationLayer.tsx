@@ -38,6 +38,7 @@ import {
 import { buildTextIndex, quadsForDragIndexed, type TextIndex } from './markup';
 import { HOLD_STILL_PX, holdShapeMs, recognise, snapFor, snapTo, type Recognised, type Snap } from './recognise';
 import { MAX_INK_STROKES } from '../../../api/annotations';
+import { prefersReducedMotion, tokenMs } from '../../thumbnails/motion';
 
 export interface CreationLayerProps {
   docId: number;
@@ -60,6 +61,8 @@ type Preview =
       quads: readonly Quad[];
       color: Rgb;
       opacity: number;
+      /** Spell 5: the pointer is released; the strip dries (opacity pulse) until the real highlight replaces it. */
+      dry?: 'pulse' | 'still';
     }
   | { type: 'box'; shape: 'rect' | 'ellipse' | 'freeText'; box: Rect; color: Rgb; width: number }
   | { type: 'line'; from: Point; to: Point; head: LineEnd; tail: LineEnd; color: Rgb; width: number }
@@ -90,6 +93,9 @@ interface Drag {
 }
 
 const cssOf = rgbToCss;
+
+/** Spell 5: the dry pulse's peak over its rest alpha (--marker-peak 0.55 over --marker-rest 0.45 in tokens.css). */
+const MARKER_PEAK_RATIO = 0.55 / 0.45;
 
 /** The dash of the outline of a free text box being dragged, in points. */
 const BOX_DASH = '4 3';
@@ -137,6 +143,8 @@ function ActiveLayer({
   /** The pen held still on a stroke: after the hold time it may snap to a shape (DESIGN 3.5 B11). */
   const holdTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const frame = useRef<number | null>(null);
+  /** Spell 5: how long the dried strip stays under the real highlight. */
+  const dryTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const nextPreview = useRef<(() => Preview | null) | null>(null);
   const showInkRef = useRef<(current: readonly Sample[]) => void>(() => undefined);
   const [preview, setPreview] = useState<Preview | null>(null);
@@ -167,6 +175,8 @@ function ActiveLayer({
 
   /** Drops a preview that is waiting for its frame, and shows `now` at once. */
   const show = useCallback((now: Preview | null) => {
+    if (dryTimer.current !== null) clearTimeout(dryTimer.current);
+    dryTimer.current = null;
     if (frame.current !== null) cancelAnimationFrame(frame.current);
     frame.current = null;
     nextPreview.current = null;
@@ -259,6 +269,7 @@ function ActiveLayer({
     () => () => {
       if (frame.current !== null) cancelAnimationFrame(frame.current);
       if (holdTimer.current !== null) clearTimeout(holdTimer.current);
+      if (dryTimer.current !== null) clearTimeout(dryTimer.current);
       if (pending.current.length > 0) flushRef.current();
     },
     [],
@@ -508,6 +519,26 @@ function ActiveLayer({
     const end = toPage(event) ?? d.last;
     const dragged = d.moved || isDrag(d.start, end);
     show(null);
+    if (kind === 'highlight' && dragged && d.index !== null) {
+      // The strip stays for one dry pulse (MOTION spell 5) while the real highlight is made, then goes.
+      const quads = quadsForDragIndexed(d.index, d.start, end);
+      const pulse = !prefersReducedMotion();
+      setPreview({
+        type: 'quads',
+        kind: 'highlight',
+        quads,
+        color: style.color,
+        opacity: pulse ? Math.min(1, style.opacity * MARKER_PEAK_RATIO) : style.opacity,
+        dry: pulse ? 'pulse' : 'still',
+      });
+      dryTimer.current = setTimeout(
+        () => {
+          dryTimer.current = null;
+          setPreview(null);
+        },
+        tokenMs('--motion-fast', 120),
+      );
+    }
     switch (kind) {
       case 'highlight':
       case 'underline':
@@ -552,7 +583,7 @@ function ActiveLayer({
       data-creation-layer=""
       data-tool={kind}
       style={{ zIndex: 'var(--z-canvas-annotations)' }}
-      className={`pointer-events-auto absolute inset-0 touch-none select-none ${isMarkup ? 'cursor-text' : 'cursor-crosshair'}`}
+      className={`pointer-events-auto absolute inset-0 touch-none select-none`}
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}
@@ -644,7 +675,11 @@ function PreviewShape({ preview }: { preview: Preview }) {
   switch (preview.type) {
     case 'quads':
       return (
-        <g style={{ mixBlendMode: preview.kind === 'highlight' ? 'multiply' : 'normal' }}>
+        <g
+          data-marker-trail={preview.kind === 'highlight' ? '' : undefined}
+          data-marker-dry={preview.dry}
+          style={{ mixBlendMode: preview.kind === 'highlight' ? 'multiply' : 'normal' }}
+        >
           {preview.quads.map((q, i) => {
             const [tl, , , br] = q;
             const key = `${i}:${tl.x}:${tl.y}`;

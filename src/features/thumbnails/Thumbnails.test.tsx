@@ -216,7 +216,10 @@ describe('virtualization', () => {
     expect(mounted()).toEqual([...mounted()].sort((a, b) => a - b));
     for (const element of options()) {
       const index = Number(element.dataset.index);
-      expect(Number.parseFloat(element.style.top)).toBeCloseTo(layout.top(index), 3);
+      expect(Number.parseFloat(/translateY\(([\d.]+)px\)/.exec(element.style.transform)?.[1] ?? 'NaN')).toBeCloseTo(
+        layout.top(index),
+        3,
+      );
       expect(Number.parseFloat(element.style.height)).toBeCloseTo(layout.cellHeight(index), 3);
     }
   });

@@ -93,7 +93,7 @@ describe('the cell', () => {
     expect(cell.getAttribute('aria-posinset')).toBe('3');
     expect(cell.getAttribute('aria-setsize')).toBe('12');
     expect(cell.textContent).toBe('3');
-    expect(cell.style.top).toBe('100px');
+    expect(cell.style.transform).toBe('translateY(100px)');
     expect(cell.style.height).toBe('235px');
   });
 
@@ -129,12 +129,11 @@ describe('the current page', () => {
     setup(item(scheduler));
     expect(option().getAttribute('aria-selected')).toBe('false');
     expect(option().hasAttribute('aria-current')).toBe(false);
-    expect(option().firstElementChild?.className).not.toContain('border-accent');
     act(() => useView.getState().setPage(1, 2));
     expect(option().getAttribute('aria-selected')).toBe('true');
     expect(option().getAttribute('aria-current')).toBe('page');
-    // The ring around the thumbnail is the cue that does not depend on the color of the fill.
-    expect(option().firstElementChild?.className).toContain('border-accent');
+    // The 2 px Solar ring is one element of the list (PageIndicator), not part of the cell.
+    expect(option().firstElementChild?.className).not.toContain('border-accent');
     act(() => useView.getState().setPage(1, 5));
     expect(option().getAttribute('aria-selected')).toBe('false');
   });

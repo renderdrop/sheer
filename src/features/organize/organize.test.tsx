@@ -447,3 +447,26 @@ describe('OrganizeBar', () => {
     expect(useOrganize.getState().thumb).toBeLessThan(before);
   });
 });
+
+describe('spell 9: delete page in the grid', () => {
+  it('leaves a ghost at the old place that fades out; the neighbours keep their cells and move up; the ghost is then gone', async () => {
+    renderGrid();
+    const cell = (id: number) => document.querySelector<HTMLElement>(`[role="option"][data-page-id="${id}"]`);
+    const placeOfThree = cell(3)?.style.transform;
+    const placeOfTwo = cell(2)?.style.transform;
+    act(() => useOrganize.getState().setSelection(DOC, { selected: [2], focus: 2 }));
+    await act(async () => {
+      await deletePages(DOC);
+    });
+    const ghost = document.querySelector<HTMLElement>('[data-delete-ghost]');
+    expect(ghost).not.toBeNull();
+    expect(ghost?.getAttribute('role')).toBeNull();
+    expect(ghost?.getAttribute('aria-hidden')).toBe('true');
+    expect(ghost?.style.transform).toBe(placeOfTwo);
+    // The cell of page 3 is the same element and sits where page 2 sat: its transform transition is the slide.
+    expect(cell(3)?.style.transform).toBe(placeOfTwo);
+    expect(cell(3)?.style.transform).not.toBe(placeOfThree);
+    expect(screen.getAllByRole('option')).toHaveLength(5);
+    await waitFor(() => expect(document.querySelector('[data-delete-ghost]')).toBeNull());
+  });
+});
