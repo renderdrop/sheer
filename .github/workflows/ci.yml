@@ -1,7 +1,7 @@
 name: CI
 
-# ADR-046 (public repository): every push to main and every pull request runs checks + tests on Windows and macOS and
-# skips docs-only changes. Tag pushes run only release.yml. The unsigned debug bundles are built on a manual start only.
+# ADR-046 (public repository): every push to main and every pull request runs the checks (Linux job) and the Rust build + tests (Windows, macOS) and
+# skips docs-only changes (ADR-123: split so that each job stays under 15 minutes). Tag pushes run only release.yml. The unsigned debug bundles are built on a manual start only.
 on:
   push:
     branches: [main]
@@ -33,10 +33,45 @@ env:
   FULL_RUN: ${{ github.event_name == 'workflow_dispatch' }}
 
 jobs:
-  check:
-    name: check${{ github.event_name == 'workflow_dispatch' && ' + debug build' || '' }} (${{ matrix.os }})
+  # ADR-123: the platform-independent gates run once, on Linux (no Rust compile: cargo tree/deny/audit only resolve the lockfile).
+  web:
+    name: web checks (ubuntu-latest)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      # Installs exactly what rust-toolchain.toml pins (channel, profile, components).
+      - name: Install Rust toolchain
+        run: rustup toolchain install
+
+      # Exact versions (the ones `npm run check` is developed against), so a new release cannot change the gate
+      # between two CI runs. Bump together with the local install.
+      - uses: taiki-e/install-action@83ac0ad63c0167e6f06796fab0fce28db1bf3db0 # v2.87.22
+        with:
+          tool: cargo-deny@0.20.2,cargo-audit@0.22.2
+
+      - name: Install npm dependencies
+        run: npm ci --prefer-offline --no-audit --no-fund
+
+      - name: Check (web part)
+        run: SHEER_CHECK_PART=web npm run check
+
+  native:
+    name: rust${{ github.event_name == 'workflow_dispatch' && ' + debug build' || '' }} (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 60
+    timeout-minutes: 45
     strategy:
       fail-fast: false
       matrix:
@@ -55,7 +90,9 @@ jobs:
         if: runner.os == 'Windows'
         run: echo 'C:\Program Files\Git\bin' >> "$GITHUB_PATH"
 
+      # Node is only needed for the manual debug bundle (the frontend build); the Rust gates do not use it.
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        if: env.FULL_RUN == 'true'
         with:
           node-version-file: .nvmrc
           cache: npm
@@ -64,22 +101,12 @@ jobs:
       - name: Install Rust toolchain
         run: rustup toolchain install
 
-      # Exact versions (the ones `npm run check` is developed against), so a new release cannot change the gate
-      # between two CI runs. Bump together with the local install.
-      - uses: taiki-e/install-action@83ac0ad63c0167e6f06796fab0fce28db1bf3db0 # v2.87.22
+      # Dependencies only (rust-cache drops the workspace's own artifacts before saving), and saved on main only: a pull request
+      # restores but never writes (ADR-123).
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
         with:
-          tool: cargo-deny@0.20.2,cargo-audit@0.22.2
-
-      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: |
-            ~/.cargo/registry/index
-            ~/.cargo/registry/cache
-            ~/.cargo/git/db
-            src-tauri/target
-          key: cargo-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('rust-toolchain.toml', 'src-tauri/Cargo.lock') }}
-          restore-keys: |
-            cargo-${{ runner.os }}-${{ runner.arch }}-
+          workspaces: src-tauri
+          save-if: ${{ github.ref == 'refs/heads/main' }}
 
       # The pinned PDFium binary (the script re-verifies its SHA256 against the pin before using a cached copy).
       - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
@@ -88,14 +115,12 @@ jobs:
           key: pdfium-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/fetch-pdfium.sh') }}
 
       - name: Install npm dependencies
+        if: env.FULL_RUN == 'true'
         run: npm ci --prefer-offline --no-audit --no-fund
 
       # Pinned release, SHA256-verified (scripts/fetch-pdfium.sh). Never downloaded at runtime.
-      - name: Fetch PDFium
-        run: npm run fetch-pdfium
-
-      - name: Check
-        run: npm run check
+      - name: Check (Rust part - PDFium fetch, fmt, clippy, test)
+        run: SHEER_CHECK_PART=rust bash scripts/check.sh
 
       # ADR-107: the signature library key against the real OS store (Windows Credential Manager, macOS Keychain on the runner), under
       # unique service names that the tests remove again. A keychain that cannot be reached on a runner fails the job on purpose.

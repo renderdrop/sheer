@@ -2337,3 +2337,12 @@ prettier, vitest, bundle guard, npm audit, cargo deny/audit, guards) run once in
 fmt, clippy and cargo test (platform `cfg` code must still be linted and tested on both); dev/test profile with reduced debug info;
 a Rust cache that stores dependencies only; fewer integration-test binaries if linking still dominates. Release builds stay in
 `release.yml` only. The DoD "CI green on Windows and macOS" now means: all jobs of the run green (the Linux job included).
+
+**Addendum 1 (package S4, CI runtime).** Implemented: `scripts/check.sh` prints `ok  <step>  <n>s` per step and takes
+`SHEER_CHECK_PART=all|web|rust` (default `all`, so local `npm run check` is unchanged). `ci.yml` has two jobs: `web` (ubuntu-latest:
+version sync, tsc, eslint, prettier, vitest, cargo deny/audit, npm audit, all guards, bundle URL guard; no Rust compile) and `native`
+(Windows/macOS matrix: PDFium fetch, fmt, clippy, cargo test, keychain round trip; Node only for the manual debug bundle). The Rust cache
+is `Swatinem/rust-cache` v2.9.2 (MIT, pinned by SHA; dependencies only, workspace artifacts are dropped before saving), saved on `main`
+only. `[profile.dev|test]` use `debug = "line-tables-only"`, dependencies `debug = false` (panics keep file:line). `release.yml` is
+unchanged (it builds once per target; no duplicated work). Open: if linking the 46 integration-test binaries still dominates, merge
+them into a few `tests/<group>/main.rs` binaries in a later wave (touches `src-tauri/tests`).

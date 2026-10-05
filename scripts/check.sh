@@ -4,6 +4,10 @@
 # Runs all steps even when one fails and prints only the failing steps, each with its first three errors.
 # The full output of a failed step is kept under the directory printed at the end.
 #
+# SHEER_CHECK_PART selects the steps: `all` (default, what `npm run check` runs locally), `web` (platform-independent: version sync,
+# tsc, eslint, prettier, vitest, audits, guards; no Rust compile; the Linux CI job) or `rust` (PDFium fetch, fmt, clippy, cargo test;
+# the Windows/macOS CI matrix, ADR-123). Every step prints its duration.
+#
 # Steps: PDFium fetch, version sync, tsc, eslint, prettier, vitest, cargo fmt, clippy -D warnings, cargo test,
 #        cargo deny, cargo audit, npm audit, network-crate guard, updater-scope guard, PDF-library import guard, secret scan, bundle URL guard.
 set -uo pipefail
@@ -19,6 +23,13 @@ MANIFEST="src-tauri/Cargo.toml"
 LOG_DIR="$(mktemp -d)"
 FAILED=()
 TOTAL=0
+PART="${SHEER_CHECK_PART:-all}"
+case "$PART" in all | web | rust) ;; *)
+  echo "check: SHEER_CHECK_PART must be all, web or rust (got '$PART')"
+  exit 2
+  ;;
+esac
+want() { [ "$PART" = all ] || [ "$PART" = "$1" ]; }
 
 # --- reporting -------------------------------------------------------------------------------------------------
 
@@ -81,12 +92,14 @@ step() {
   local name="$1"
   shift
   TOTAL=$((TOTAL + 1))
-  local log="$LOG_DIR/$TOTAL-${name//[^A-Za-z0-9]/-}.log"
+  local log="$LOG_DIR/$TOTAL-${name//[^A-Za-z0-9]/-}.log" started="$SECONDS" secs
   if "$@" >"$log" 2>&1; then
+    printf 'ok    %s  %ss\n' "$name" "$((SECONDS - started))"
     return 0
   fi
+  secs=$((SECONDS - started))
   FAILED+=("$name")
-  echo "FAIL  $name"
+  echo "FAIL  $name  ${secs}s"
   first_errors "$log"
   if [ "$name" = vitest ]; then unhandled_block "$log"; fi
 }
@@ -274,35 +287,42 @@ if [ "${SHEER_CHECK_SOURCE_ONLY:-}" = 1 ]; then return 0 2>/dev/null || exit 0; 
 
 # --- run -------------------------------------------------------------------------------------------------------
 
-# PDFium must be unpacked before any cargo step: tauri-build checks the bundled resources. The script is a no-op
+# PDFium must be unpacked before any cargo step that builds: tauri-build checks the bundled resources. The script is a no-op
 # when the pinned build is already there.
-step "fetch-pdfium" bash scripts/fetch-pdfium.sh
-step "version sync" bash scripts/bump-version.sh --check
+if want rust; then step "fetch-pdfium" bash scripts/fetch-pdfium.sh; fi
+if want web; then step "version sync" bash scripts/bump-version.sh --check; fi
 
-step "tsc" npm run --silent typecheck
-step "eslint" npm run --silent lint
-step "prettier" npm run --silent format:check
-step "vitest" npm run --silent test
+if want web; then
+  step "tsc" npm run --silent typecheck
+  step "eslint" npm run --silent lint
+  step "prettier" npm run --silent format:check
+  step "vitest" npm run --silent test
+fi
 
-step "cargo fmt" cargo fmt --manifest-path "$MANIFEST" --check
-step "cargo clippy" cargo clippy --manifest-path "$MANIFEST" --locked --all-targets -- -D warnings
-# Linking ~40 integration-test binaries with full debug info in parallel can exhaust the commit limit on Windows
-# (os error 1455); SHEER_TEST_JOBS caps the build jobs (default 4).
-step "cargo test" cargo test --manifest-path "$MANIFEST" --locked --jobs "${SHEER_TEST_JOBS:-4}"
-step "cargo deny" cargo_deny
-step "cargo audit" cargo audit --file src-tauri/Cargo.lock
-step "npm audit" npm audit --audit-level=high
+if want rust; then
+  step "cargo fmt" cargo fmt --manifest-path "$MANIFEST" --check
+  step "cargo clippy" cargo clippy --manifest-path "$MANIFEST" --locked --all-targets -- -D warnings
+  # Linking ~40 integration-test binaries in parallel can exhaust the commit limit on Windows (os error 1455);
+  # SHEER_TEST_JOBS caps the build jobs (default 4).
+  step "cargo test" cargo test --manifest-path "$MANIFEST" --locked --jobs "${SHEER_TEST_JOBS:-4}"
+fi
 
-step "guard: network crates" guard_network_crates
-step "guard: updater scope" guard_updater_scope
-step "guard: crypto crates" guard_crypto_crates
-step "guard: pdf imports" guard_pdf_imports
-step "guard: secrets" guard_secrets
-step "guard: bundle urls" build_and_guard_dist
+if want web; then
+  step "cargo deny" cargo_deny
+  step "cargo audit" cargo audit --file src-tauri/Cargo.lock
+  step "npm audit" npm audit --audit-level=high
+
+  step "guard: network crates" guard_network_crates
+  step "guard: updater scope" guard_updater_scope
+  step "guard: crypto crates" guard_crypto_crates
+  step "guard: pdf imports" guard_pdf_imports
+  step "guard: secrets" guard_secrets
+  step "guard: bundle urls" build_and_guard_dist
+fi
 
 if [ "${#FAILED[@]}" -eq 0 ]; then
   rm -rf "$LOG_DIR"
-  echo "check: all $TOTAL steps passed"
+  echo "check: all $TOTAL steps passed ($PART, ${SECONDS}s)"
   exit 0
 fi
 

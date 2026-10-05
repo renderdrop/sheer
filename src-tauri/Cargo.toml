@@ -95,6 +95,20 @@ muda = { version = "0.20.0", default-features = false }
 [profile.release]
 panic = "unwind"
 
+# ADR-123: dev/test builds keep file and line for panics and backtraces but no variable-level debug info (smaller objects, faster
+# links); dependencies carry no debug info at all. Release is untouched.
+[profile.dev]
+debug = "line-tables-only"
+
+[profile.dev.package."*"]
+debug = false
+
+[profile.test]
+debug = "line-tables-only"
+
+[profile.test.package."*"]
+debug = false
+
 [lints.rust]
 unsafe_code = "forbid"
 
