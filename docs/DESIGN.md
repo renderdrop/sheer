@@ -20,7 +20,7 @@ Sources: `docs/REDESIGN_BRIEF.md` (binding), `docs/BRAND.md` (only truth for tok
 | `--color-border` | #E5E5E1 | | |
 | `--color-white` | #FFFFFF | | |
 
-Additions (BRAND §9, §23 and this spec): `--space-5` 20, `--space-10` 40, `--space-20` 80, `--space-24` 96; `--radius-dialog` 16 (BRAND §9 modals); `--radius-pill` 999 (toggles, filter chips, the round "+" button only); `--color-stone` #8A8A86 (control boundaries, 3.47:1 on white, 3.18:1 on Sand); `--color-danger` #C8321F (5.34:1 on white, 4.89:1 on Sand). Grid base is 4 px.
+Additions (BRAND §9, §23 and this spec): `--space-5` 20, `--space-10` 40, `--space-20` 80, `--space-24` 96; `--radius-dialog` 16 (BRAND §9 modals); `--radius-pill` 999 (toggles, filter chips, tag chips §3.7, the round "+" button only); `--color-stone` #8A8A86 (control boundaries, 3.47:1 on white, 3.18:1 on Sand); `--color-danger` #C8321F (5.34:1 on white, 4.89:1 on Sand). Grid base is 4 px.
 
 ### 1.2 Semantic tokens (brief R0.1)
 
@@ -45,6 +45,10 @@ Additions (BRAND §9, §23 and this spec): `--space-5` 20, `--space-10` 40, `--s
 | `--scrim` | rgba(15,15,15,0.12) (modal backdrop, no blur) |
 | `--motion-fast/base/slow` | 120 / 160 / 180ms; exits `--motion-*-exit` 80 / 120 / 140ms |
 | `--ease-out` | cubic-bezier(0.2, 0, 0, 1) |
+| `--chip-height` | 20px (tag chips, §3.7) |
+| `--tag-dot` | 8px (colour dot in tag chips and tag menus, §3.7) |
+| `--citation-default` | `--hl-lavender` #DCCFFF (first-run citation fill; its underline is `--stroke-lavender`, §3.7) |
+| `--preview-min-height` | 64px (formatted reference preview, §3.7) |
 
 Pages use `--shadow-floating` (brief: two shadows only; BRAND §18's page shadow is not added).
 
@@ -394,6 +398,140 @@ Keys: `tour.step.navigate.text`, `.zoom.text`, `.highlight.text`, `.comment.text
 | sign, pages, insertText, redact | as built | unchanged |
 
 **New i18n keys** (en / de): `tour.count` "{step} / {total}" (both); `tour.back` Back / Zurück; `tour.finish` Finish / Abschließen; `tour.pillPaused` "Welcome tour paused. Return to the welcome document" / "Willkommenstour pausiert. Zurück zum Willkommensdokument"; `settings.tour` Tour & tips / Tour & Tipps; `settings.about` About / Über. Obsolete: `settings.help`, `settings.signatures`, `settings.signatures.hint`. Token addition: `--progress-height` 4.
+
+### 3.7 v1.3 Citations (ADR-119)
+
+Binding for v1.3.1–v1.3.4. The data model, storage and file formats are ADR-119's; this section defines looks, slots, keys and strings. The ADR-102 mode layout stays: **no new mode, no new left-panel tab, no new grid track**. New surfaces are popovers, a dialog tab and margin bubbles, all slots §3 already has. New tokens: §1.2 (`--chip-height`, `--tag-dot`, `--citation-default`, `--preview-min-height`). Light only, as the file header says.
+
+**Alignment with ADR-119 (orchestrator):** tags are global (one list in settings, shared by all documents; assignments travel in the file). A selection across pages creates one citation per page with a shared group: each page gets its own highlight and bubble, the Comments tab lists them as adjacent cards, and the formatted citation and the citation list join a group's pages into one locator ("pp. 12–13" / "S. 12–13"). Save list… also offers RIS (.ris) and BibTeX (.bib), which hold the reference only (`reference.format.ris` / `.bib`: "RIS (reference managers)" / "RIS (Literaturverwaltung)", "BibTeX" / "BibTeX"). Component and file names in the ADR package cut follow this section (margin bubble, Reference tab, export popover), not the ADR's working names.
+
+**C1 Citation look.** A citation is a text-markup annotation with two cues, so it never relies on colour (§2):
+1. **Fill** from the highlight palette (§1.4, 45 % multiply); first run `--citation-default` (Lavender), then last used (§3.3 defaults, kind `citation`). Why Lavender: Solar is the plain highlight's default, so the two differ at first sight without a hue outside §1.4.
+2. **Underline**: a 1 pt solid rule at each line's baseline in the fill's stroke partner (`--stroke-lavender` #9278E6, 3.3:1 on white; Mint/Sky/Rose likewise; Solar or a custom fill gets Ink). It is part of the appearance, so the cue survives print and other readers. A plain highlight has no rule; an underline annotation has no fill.
+3. In the app: a White margin bubble with a `quote` icon (C3); type icon `quote` in the Comments tab.
+
+**C2 Entry points** (all act on the current text selection, or create one by dragging):
+- **Selection popover** (§3.2): Markieren · **Zitieren** · Kommentieren · Kopieren (Ghost, gap 4; height 36 unchanged). `aria-keyshortcuts` Primary+Shift+C.
+- **Tool**: Kommentieren row slot 4, **Hervorheben° · Unterstreichen° · Durchstreichen° · Zitieren° · Notiz° · Textkommentar° · Zeichnen° · Formen°** (8 = the §3.2 maximum; at 960 overflow step 2 suffices). Icon `quote`, colour tool (split chevron + highlight swatch row), key **Q** (free; canvas scope like the other tool letters). Drag across text = MOTION spell 5 in the citation colour plus the rule; cursor = marker (spell 12). Tooltip tip id `cite`: "Drag across a passage. The citation and its page go to the margin." / "Über eine Passage ziehen. Zitat und Seite erscheinen am Rand."
+- **Shortcut** Primary+Shift+C (free in the registry; never Primary+Shift+Q, which logs out on macOS).
+- **Menu**: Bearbeiten → "Cite Selection" after "Add Comment" (disabled without a text selection). Datei → "Copy Citation List" and "Save Citation List…" after "Document Properties…".
+- Result: the selection clears, the bubble enters (spell 22, new bubble), focus stays on the canvas, a polite announcement `citation.added`. No toast. One undo step (spell 7). Selection with no extractable text (scan, image): nothing is created, toast `citation.noText`.
+
+**C3 Citation bubble** (margin column, B9 slot and collision rules; the margin now shows when ≥ 1 citation exists, View → Comments in margin covers both). White, `--border-subtle`, radius lg with top-left radius sm, `--shadow-standard`, padding 12, gap 8, width `--margin-width`.
+- **Header 24:** `quote` 16 Ink · 8 · page label `.t-label` Ink "p. 12" / "S. 12" (`citation.page`; the PDF's page label when the file defines labels, e.g. "p. xii", else the page number) · right, icon buttons 28: Tags (`tag`), Copy citation (`copy`), ⋯ (Add comment, Edit reference…, Delete).
+- **Quote** `.t-body` Ink in locale quotation marks (“…” / „…“), 4 lines then "More" (`comment.more`).
+- **Short citation** `.t-caption` Text-secondary (4.98:1 on White) in the current style, e.g. APA "(Müller, 2021, p. 12)", DIN "(Müller 2021, S. 12)". "p."/"S." follow the UI language. Missing author or year renders the style's own fallback ("n.d." / "o. J.") plus a link-button "Add reference details" (`citation.addDetails`, Ink underlined) that opens C5 on the Reference tab.
+- **Chips row** (C6), then the optional comment and replies exactly as B9 (divider rgba(15,15,15,0.12) above). Selected: 1px Ink ring + `--shadow-floating`. Leader as B9.
+- **Narrow margin:** the 24 marker is White, 1px Stone ring, `quote` 14 Ink (instead of the avatar); click/Enter opens the bubble as the B9 popover.
+- **Keyboard:** in the B9 `role="list"`; `aria-label` `citation.aria`. Tab inside: Tags, Copy, ⋯, "More", "Add reference details". Copy writes quote + short citation (`citation.copied` toast).
+
+**C4 Mini bar row** (adds to §3.3). Citation: highlight swatches · Open citation (`quote`, focuses the bubble) · Copy citation (`copy`) · divider · Tags (`tag`) · Löschen. The Tags button (C6) also joins the highlight/underline/strike, Notiz, Textkommentar, Ink/line/arrow and rectangle/ellipse rows, before Löschen with a divider; never for fill marks, signatures, images, redaction marks.
+
+**C5 Reference (document metadata).** Opens in the existing Document properties dialog (Datei → Document Properties…, Bearbeiten mode "Metadaten…", C3 "Add reference details", C7 "Edit reference…"), so no new surface. The dialog gains Tabs (§4, 36) under the header: **General** (today's content, unchanged) · **Reference**; width `--sheet-width` 560 (was `--dialog-width-md`); max height window − 64, the tab body scrolls, header, tabs and footer stay. The footer (Cancel · Apply) is shared; Apply writes both tabs as one undo step and sets the save status to Edited (B1). The last tab is not remembered; entry points that name Reference open it.
+- **Order:** Type dropdown (book · article · chapter · report · web page · thesis; default from the heuristic, else article) · Title · Authors · Year (field 88, `tabular-nums`) · type fields (table) · Preview (as C7, style from storage).
+- **Authors:** ordered list, rows 36, gap 8: `grip-vertical` 16 drag handle (Text-secondary, cursor grab) · Family name · Given name (two inputs, 1fr each, gap 8) · Remove `x` 28. An empty given name means an organisation. Below: Ghost "Add author" (`plus`), focuses the new row's family field. Reorder: drag the grip (rows jump, no animation, so no new spell) or Alt+Up/Down inside a row's input; announces `ref.authorMoved`.
+- **Source captions:** right of each label, `.t-caption` Text-secondary: "from the file" (Info/XMP), "from page 1" (first-page heuristic), "edited" (user value). Edited fields with a file value show a 28 `rotate-ccw` icon button "Use the value from the file". No caption for empty fields.
+- **States:** loading = skeleton inputs (spell 15). Nothing found or extraction failed = a 32 Sand info row (as B8, `info` 16) `ref.nothingFound`, all fields empty and editable. Validation on blur (§4 input error): year 4 digits, DOI starts "10.", URL http(s) only; invalid values block Apply with `aria-invalid`. Read-only or permission-restricted document: inputs render as read-only text with caption `tool.readOnly`; preview and export (C7) still work. Encrypted files: only after unlocking (as built); the same rules apply.
+
+| Type | Fields after Year (labels `ref.*`) |
+|---|---|
+| Book | Edition · Publisher · Place · DOI · URL |
+| Article | Journal · Volume · Issue · Pages · DOI · URL |
+| Chapter | Book title · Pages · Edition · Publisher · Place · DOI |
+| Report | Institution · Place · DOI · URL |
+| Web page | Website · URL · Accessed (date input, default empty) |
+| Thesis | Institution · Place · URL |
+
+Accessed also appears for any type once URL is filled. Values of fields hidden by a type switch are kept until Apply and dropped then.
+
+**C6 Tags.** Coloured categories for comments and citations. Colours: the five §1.4 highlight swatches only (no custom, no B5 "More colours"); tags may share a colour.
+- **Chip:** White, `--border-subtle`, `--radius-pill`, height `--chip-height`, padding-x 8, gap 4: dot `--tag-dot` in the tag colour with a 1px Stone ring (§2.7; Solar on white is decorative, the name carries the meaning) + name 12/16 Ink, max 120, ellipsis. White fill keeps chips legible on Solar note bubbles. Bubbles and Comments-tab cards show up to 3 chips, then a "+2" chip (`tags.more`) with the rest in its tooltip.
+- **Tag picker** (Tags buttons in C3, C4, card ⋯): Popover 240, padding 4: search input 32 "Find or create tag" (shown always) · checkbox menu items 32 (dot + name + check) · "Create “{name}”" item when the text matches no tag (next palette colour in order) · divider · "Manage tags…". Toggling applies at once, one undo step each. Keyboard: focus starts in the input, Down enters the list, Space toggles, Esc closes and returns focus.
+- **Tag manager** (from "Manage tags…" in the picker and the C8 filter popover; replaces the opener in the same anchor): Popover 320, padding 16, title `.t-title` "Tags". Rows 36, gap 4: swatch button 24 (Menu with the five swatches, §2.7) · name input 32 (borderless until hover/focus, then §2.9) · usage count `.t-caption` `tabular-nums` · Delete `trash-2` 28. Footer Ghost "New tag" (`plus`, adds a row with the name focused). Name: 1–32 chars, unique ignoring case (`tags.duplicate`), empty on blur reverts; max 24 tags (`tags.limit`, New tag disabled). Delete removes the tag from every annotation using it, one undo step, toast `tags.deleted` + Undo. Empty: `.t-caption` `tags.empty` + New tag. Scope (app or document) per ADR-119; on a read-only document assignment is disabled (`tool.readOnly` tooltip).
+
+**C7 Reference popover (export).** The B10 filter row becomes: Filter (flex-1) · **Reference** icon button 28 `book-marked` (tooltip `reference.button`) · sort 28. Popover width = panel − 16, max 320, padding 16, gap 12, top to bottom:
+1. "Citation style" `.t-label` + dropdown 36 full width: APA 7 · MLA 9 · Chicago (author-date) · DIN ISO 690. UI storage **`sheer.citations.style`**; first run DIN ISO 690 when the UI is German, else APA 7. Changing it updates every short citation in bubbles and cards.
+2. Preview: label `.t-caption` "Preview", box Sand, radius sm, padding 12, min height `--preview-min-height`, `.t-body` Ink, 24 hanging indent, italics as the style requires, `aria-live="polite"`. Missing title/author/year: `.t-caption` `triangle-alert` 16 Ink + `reference.missing`.
+3. Secondary 32 "Copy reference" (toast `reference.copied`).
+4. Divider; "Citation list" `.t-label` + count `.t-caption` (`reference.count`); row: Secondary 32 "Copy list" · Secondary 32 "Save list…" (native save dialog, filters .txt / .html / .md per ADR-119, default name "{file name} – citations", last format in **`sheer.citations.format`**). List = reference, then every citation in page order (page label, quote, short citation). No citations: both disabled (tooltip and caption `reference.empty`).
+5. Ghost "Edit reference…" opens C5 on Reference.
+Datei → Copy/Save Citation List run the same commands without the popover. Errors (toasts, `triangle-alert` Ink + Ghost "Try again"): `reference.saveFailed`, `reference.copyFailed`. A file that forbids copying text: lists and Copy citation leave quotes out, toast `reference.quotesLeftOut`. Keyboard: Tab order = style, preview (not focusable), Copy reference, Copy list, Save list, Edit reference; Esc closes and returns focus to the button.
+
+**C8 Comments tab.** Citations live here (no fifth tab: the four 36 tabs fill the 48 header at 200 width, and citations are annotations with the same filter, sort and jump needs). Card: type icon `quote`, quote (2 lines, citation fill 45 % behind), short citation `.t-caption`, chips; actions Copy citation, Löschen (Ghost 28); click = spell 8. Filter popover (B10): Type gains **Citation** (`quote`); the old "Quote" type (comments made from a selection) is renamed "Comment on text" / "Kommentar am Text" with icon `message-square-quote`, so "Zitat" means citations only. New group **Tags** after Author: checkboxes dot + name + count, plus "No tag"; shown when ≥ 1 tag exists; Ghost "Manage tags…" at its end. Empty-tab hint `comments.emptyHint` gains citations.
+
+**Motion.** Reused only: spell 5 (Zitieren drag), 7 (undo), 8 (card jump), 15 (skeleton), 22 (bubble enter/re-stack), §3.6 popover/tab motion. Reduced motion: as those rows. Author reorder and chips: no animation.
+
+| Key | en | de |
+|---|---|---|
+| `citation.cite` | Cite | Zitieren |
+| `menu.edit.cite` | Cite Selection | Auswahl zitieren |
+| `menu.file.copyCitationList` / `.saveCitationList` | Copy Citation List / Save Citation List… | Zitatliste kopieren / Zitatliste speichern… |
+| `citation.added` | Citation added, page {page} | Zitat hinzugefügt, Seite {page} |
+| `citation.noText` | No text could be read here, so no citation was added. | Hier ließ sich kein Text lesen, daher wurde kein Zitat angelegt. |
+| `citation.page` | p. {label} | S. {label} |
+| `citation.copy` / `.copied` | Copy citation / Citation copied | Zitat kopieren / Zitat kopiert |
+| `citation.open` / `.editReference` | Open citation / Edit reference… | Zitat öffnen / Quellenangabe bearbeiten… |
+| `citation.addDetails` | Add reference details | Angaben ergänzen |
+| `citation.aria` | Citation, page {page} | Zitat, Seite {page} |
+| `tip.cite` | (C2) | (C2) |
+| `comments.group.citation` / `.quote` (changed) | Citation / Comment on text | Zitat / Kommentar am Text |
+| `props.tab.general` / `.reference` | General / Reference | Allgemein / Quellenangabe |
+| `ref.type` + `.book/.article/.chapter/.report/.web/.thesis` | Type: Book, Journal article, Book chapter, Report, Web page, Thesis | Art: Buch, Zeitschriftenartikel, Buchkapitel, Bericht, Webseite, Abschlussarbeit |
+| `ref.title` / `.authors` / `.year` | Title / Authors / Year | Titel / Verfasser / Jahr |
+| `ref.family` / `.given` | Family name / Given name | Nachname / Vorname |
+| `ref.addAuthor` / `.removeAuthor` | Add author / Remove author | Person hinzufügen / Person entfernen |
+| `ref.authorMoved` | Author {n} of {total} | Person {n} von {total} |
+| `ref.journal` / `.bookTitle` / `.website` | Journal / Book title / Website | Zeitschrift / Buchtitel / Website |
+| `ref.volume` / `.issue` / `.pages` / `.edition` | Volume / Issue / Pages / Edition | Band / Heft / Seiten / Auflage |
+| `ref.publisher` / `.institution` / `.place` | Publisher / Institution / Place | Verlag / Institution / Ort |
+| `ref.doi` / `.url` / `.accessed` | DOI / URL / Accessed | DOI / URL / Abgerufen am |
+| `ref.source.file` / `.page1` / `.edited` | from the file / from page 1 / edited | aus der Datei / von Seite 1 / bearbeitet |
+| `ref.restore` | Use the value from the file | Wert aus der Datei verwenden |
+| `ref.nothingFound` | Nothing found in the file. Fill in what you know. | In der Datei nichts gefunden. Ergänze, was du weißt. |
+| `ref.invalid.year` / `.doi` / `.url` | Use a 4-digit year. / A DOI starts with 10. / Use an address starting with http:// or https://. | Vierstellige Jahreszahl eingeben. / Eine DOI beginnt mit 10. / Adresse mit http:// oder https:// eingeben. |
+| `reference.button` | Reference and citation list | Quellenangabe und Zitatliste |
+| `reference.style` + `.apa/.mla/.chicago/.din` | Citation style: APA 7, MLA 9, Chicago (author-date), DIN ISO 690 | Zitierstil: APA 7, MLA 9, Chicago (Autor-Jahr), DIN ISO 690 |
+| `reference.preview` / `.missing` | Preview / Some details are missing. | Vorschau / Einige Angaben fehlen. |
+| `reference.copy` / `.copied` | Copy reference / Reference copied | Quellenangabe kopieren / Quellenangabe kopiert |
+| `reference.list` / `.count.one` / `.count.other` | Citation list / {count} citation / {count} citations | Zitatliste / {count} Zitat / {count} Zitate |
+| `reference.copyList` / `.saveList` | Copy list / Save list… | Liste kopieren / Liste speichern… |
+| `reference.listCopied` / `.listSaved` | Citation list copied / Citation list saved | Zitatliste kopiert / Zitatliste gespeichert |
+| `reference.empty` | No citations yet. Select text and choose Cite. | Noch keine Zitate. Text markieren und Zitieren wählen. |
+| `reference.format.txt/.html/.md` | Plain text / Web page (HTML) / Markdown | Text / Webseite (HTML) / Markdown |
+| `reference.saveFailed` | The citation list could not be saved. | Die Zitatliste konnte nicht gespeichert werden. |
+| `reference.copyFailed` | Could not copy to the clipboard. | Kopieren in die Zwischenablage fehlgeschlagen. |
+| `reference.quotesLeftOut` | This file does not allow copying text, so quotes were left out. | Diese Datei erlaubt kein Kopieren von Text, daher fehlen die Zitate. |
+| `tags.title` / `.assign` / `.none` | Tags / Tags / No tag | Tags / Tags / Ohne Tag |
+| `tags.find` / `.create` | Find or create tag / Create “{name}” | Tag suchen oder anlegen / „{name}“ anlegen |
+| `tags.manage` / `.new` / `.name` / `.colour` / `.delete` | Manage tags… / New tag / Tag name / Colour / Delete tag | Tags verwalten… / Neuer Tag / Tag-Name / Farbe / Tag löschen |
+| `tags.deleted` / `.empty` / `.more` | Tag “{name}” deleted / No tags yet. / +{n} | Tag „{name}“ gelöscht / Noch keine Tags. / +{n} |
+| `tags.duplicate` / `.limit` | A tag with this name exists. / Up to 24 tags. | Diesen Tag gibt es schon. / Höchstens 24 Tags. |
+
+**Acceptance (installed build, mouse only unless a key is named).**
+1. Selecting text shows Markieren · Zitieren · Kommentieren · Kopieren; Zitieren creates a Lavender fill with a darker 1 pt underline and a White margin bubble with `quote`, the quote and "p. N".
+2. Kommentieren mode shows eight tools with Zitieren fourth; at 960 × 640 all eight are visible icon-only, no "Mehr".
+3. Dragging across text with Zitieren creates a citation; its chevron swatch row changes the colour of the next one and the underline follows the colour.
+4. Primary+Shift+C and Bearbeiten → Cite Selection create a citation from a selection; both are disabled without one.
+5. A document with page labels shows the label ("p. xii"), not the index.
+6. Clicking the citation selects it and shows the C4 mini bar; Löschen removes it and Undo restores it.
+7. Copy citation (bubble, mini bar, card) puts quote + short citation in the clipboard and shows a toast.
+8. Datei → Document Properties… shows General and Reference tabs; Reference shows prefilled fields with "from the file" or "from page 1" captions.
+9. Editing a field changes its caption to "edited" with a restore button; restoring brings back the file value.
+10. Authors can be added, removed and reordered by dragging the grip; the preview follows.
+11. Switching Type changes the visible fields per the C5 table; Apply marks the document Edited; saving and reopening keeps every value.
+12. A file without metadata shows the "Nothing found" row and empty, editable fields.
+13. An invalid year, DOI or URL shows the error caption and disables Apply.
+14. The Reference button in the Comments filter row opens the popover; switching style updates the preview and every short citation at once.
+15. The chosen style survives an app restart.
+16. Copy reference, Copy list and Save list… (.txt, .html, .md) produce the reference and all citations in page order; the files open in a text editor and a browser.
+17. With no citations, Copy list and Save list are disabled with the empty caption.
+18. Saving to a write-protected folder shows the "could not be saved" toast with Try again.
+19. A tag created from the picker appears as a chip on the bubble and the Comments card; the mini bar Tags button assigns the same tag.
+20. Manage tags renames, recolours (five swatches only) and deletes a tag; chips update; Undo restores a deleted tag.
+21. The filter popover offers Citation as a type and a Tags group; filtering by a tag shows only matching cards with "n of m · Reset".
+22. A document whose permissions forbid changes disables Zitieren and tag assignment with the read-only tooltip, shows Reference fields read-only, and still exports.
+23. With reduced motion on, creating a citation and opening popovers only fade.
+24. No new surface covers the selection, the mini bar or a page at 960 × 640 and 1280 × 800.
 
 ## 4. Components (R4)
 

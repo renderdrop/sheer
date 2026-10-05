@@ -299,7 +299,7 @@ Each milestone starts with a designer spec (DESIGN section + acceptance criteria
 new engine capability or dependency is needed. Not picked by the loop before v1.2.0 is tagged.
 
 ### v1.3 "Citations"
-- [ ] v1.3 spec — designer spec (citation annotation, metadata sheet, export formats, tag manager)
+- [x] v1.3 spec — designer spec (citation annotation, metadata sheet, export formats, tag manager) (2026-10-05: DESIGN §3.7 with 24 acceptance criteria, ADR-119 data model + commands + package cut W0 → C1–C4 → F1–F4)
 - [ ] v1.3.1 — Select text → "Cite" creates a citation annotation with page number
 - [ ] v1.3.2 — Title, author, year read from the PDF (Info dict / XMP / first-page heuristic), editable per document
 - [ ] v1.3.3 — Export in APA, MLA, Chicago, DIN ISO 690 to the clipboard and as the document's citation list

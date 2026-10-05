@@ -672,6 +672,66 @@ type AutosaveStatus = 'on' | 'offEncrypted' | 'offTooLarge' | 'clean';   // Docu
   no `updater:` capability, plugin named only in `update/`), `tests/perf_open.rs` (`#[ignore]`), `security_baseline.rs` (release CSP
   without `'unsafe-inline'`, NSIS hooks never write the `.pdf` default value).
 
+### Citations (v1.3, ADR-119; `model/{annotation,quote,tags,bibliography,command,doc_state}.rs`, `pdfwrite/{annots,sheer_keys,bibliography}.rs`, `engine/{page_labels,first_page}.rs`, `export/citations.rs`, `storage/settings.rs`, `commands/{citations,bibliography,citation_export,annotations,app,save}.rs`)
+
+```rust
+// commands/citations.rs
+create_citations(doc_id: DocId, drafts: Vec<CitationDraft>) -> ChangeSet   // ≤ 64 drafts, one page each (unique); Rust reads the page text (Interactive), quote = text under the quads (model::quote, ≤ 2 000 chars), one Batch `citation.create`, shared group id if > 1; empty quote → invalid_argument `citation`; `edit` permission gated
+list_citations(doc_id: DocId) -> Vec<CitationInfo>   // ≤ 20 000, page order then position; reads unread pages at Background; first call runs Job::PageLabels (cached); locator resolved now
+// commands/bibliography.rs
+get_bibliography(doc_id: DocId) -> BibliographyInfo  // first call: Info + XMP + /SHR_Bib (blocking pool, load_untrusted, 30 s) then Job::FirstPageHints only for empty title/authors/year; then from DocState.bibliography
+apply_command(doc_id, DocCommand::SetBibliography { record: BibRecord }) -> ChangeSet   // one undo step `bibliography.set`; ChangeSet.doc gains "bibliography"; written by the next save
+// commands/citation_export.rs
+save_citation_list(doc_id: DocId, format: CitationFileFormat, blocks: Vec<StyledBlock>, style: CitationStyle) -> bool
+                                                     // Rust save dialog, default name `<stem> - citations (<style>).<ext>` via export::names; txt|html|md written from `blocks` with Rust escaping;
+                                                     // ris|bib written from the stored BibRecord (blocks must be empty); atomic write; false = cancelled; ≤ 20 000 blocks, ≤ 4 MiB of text
+// commands/annotations.rs (changed)
+get_annotation_quote(..) -> Option<String>           // a citation answers its stored quote, cut to 280
+list_document_annotations(..) -> Vec<AnnotationSummary>   // summary gains `tags: Vec<String>`, `cite: bool`
+// commands/app.rs (changed)
+update_settings(patch: SettingsPatch) -> Settings    // patch gains `tags?: TagDef[]` (replaces the list; ≤ 64, names 1..=40 chars unique case-insensitive, colour ∈ TAG_PALETTE) else invalid_argument (what: "tags")
+// engine jobs
+Job::PageLabels { engine_index: u32 } -> Vec<Option<String>>   // Background; PdfPage::label(), ≤ 64 chars, display-name filter; 2 s budget → all None
+Job::FirstPageHints { engine_index: u32 } -> FirstPageHints { title: Option<String>, year: Option<String>, doi: Option<String> }   // page 1, ≤ 20 000 chars, 1 s
+// pdfwrite
+pub fn sheer_keys::read_page(bytes: &[u8], page_index: u32) -> Result<HashMap<u32, SheerKeys { cite: Option<Cite>, tags: Vec<String> }>, AppError>;
+pub fn bibliography::read(doc: &Document) -> Result<BibRead { record: Option<BibRecord>, xmp: BibFields, info: BibFields }, AppError>;
+pub fn bibliography::write(doc: &mut IncrementalDocument, record: &BibRecord) -> Result<(), AppError>;   // after metadata::write; edits the newest /Info
+```
+
+```rust
+struct Cite            { quote: String /* 1..=2 000 */, group: Option<String> /* 8 hex */ }        // Annotation.cite (Highlight only), file: /SHR_Cite << /V 1 /Q /G >>
+// Annotation gains: cite: Option<Cite>, tags: Vec<String> /* ≤ 8 */   (serde default; file: /SHR_Tags [(name) …])
+// AnnotationPatch gains: tags: Option<Vec<String>>, quote: Option<String> /* citation only */
+struct CitationDraft   { page_id: PageId, quads: Vec<Quad> /* 1..=512 */, color: Rgb, contents: String /* ≤ 32 768 */, tags: Vec<String> }
+struct CitationInfo    { id: AnnotId, page_id: PageId, locator: String /* label or position+1 */, quote: String, contents: String, tags: Vec<String>, group: Option<String>, color: Rgb }
+enum   BibKind         { Book, Article, Chapter, Report, WebPage, Thesis }        // serde camelCase
+struct Person          { family: String, given: String }                         // ≤ 256 chars each
+struct BibRecord       { kind: BibKind, authors: Vec<Person> /* ≤ 32 */, title, year /* ≤ 16 */, container_title, volume, issue, pages, edition,
+                         publisher, place, doi /* ≤ 256 */, url /* ≤ 2 048, never opened */, accessed /* YYYY-MM-DD */ : Option<String> each }   // file: /SHR_Bib in /Info
+enum   BibSource       { User, Xmp, Info, Heuristic, None }
+struct BibliographyInfo { record: BibRecord /* merged */, sources: HashMap<BibField, BibSource>, pending: bool, dropped_by_strip: bool }
+struct TagDef          { name: String, color: Rgb }                              // Settings.tags: Vec<TagDef>
+enum   CitationStyle   { Apa7, Mla9, Chicago17AuthorDate, DinIso690 }
+enum   CitationFileFormat { Txt, Html, Md, Ris, Bib }
+struct StyledBlock     { runs: Vec<Run { text: String, italic: bool }> /* ≤ 64 runs, ≤ 4 000 chars per run */ }
+```
+
+```ts
+// src/features/citations/format/ (pure; golden tests)
+type CitationStyle = 'apa7' | 'mla9' | 'chicago17AuthorDate' | 'dinIso690';
+function formatReference(r: BibRecord, s: CitationStyle, lang: 'en' | 'de'): StyledBlock;
+function formatInText(r: BibRecord, c: CitationInfo[] /* one group */, s: CitationStyle, lang: 'en' | 'de'): StyledBlock;
+function formatCitationList(r: BibRecord, cs: CitationInfo[], s: CitationStyle, lang: 'en' | 'de'): StyledBlock[];  // reference, then quote + in-text locator (+ comment) per group
+function toClipboard(blocks: StyledBlock[]): { text: string; html: string };   // HTML escaped, <i> for italic only
+```
+
+- *Import.* After the engine reads a page, `read_page_file(.., sheer_keys::read_page)` merges `cite` and `tags` like the review links. A Highlight with a valid `/SHR_Cite /V 1` is a citation; anything else is a plain highlight with no error. Strings pass the display-name filter and the caps.
+- *Write.* `annots::annotation_dict` sets or removes `/SHR_Cite` and `/SHR_Tags` from the model. On a page whose keys could not be read, it keeps the existing `SHR_*` keys. `/Contents` is only ever the comment.
+- *Save.* `SavePlan.bibliography: Option<BibRecord>` → `bibliography::write` after `metadata::write` (incremental). It is skipped with a pending strip (`dropped_by_strip`).
+- *Limits* (`limits.rs`): `CITE_QUOTE_MAX` 2 000, `CITE_DRAFTS_MAX` 64, `CITATIONS_MAX` 20 000, `TAGS_MAX` 64, `TAG_NAME_MAX` 40, `TAGS_PER_ANNOT` 8, `PAGE_LABEL_MAX` 64, XMP depth 32 / 200 000 events, `CITATION_EXPORT_MAX` 4 MiB.
+- *Errors.* New `what`: `citation`, `bibliography`, `tags`, `citationExport`; each with `error.<code>.<what>` in en and de.
+
 ## 6. Pushes (Rust → UI, never with paths)
 
 The webview has no event permission (SECURITY T3): it cannot `listen` to or `emit` events. A push reaches it as a message on a `tauri::ipc::Channel` that the
@@ -717,6 +777,8 @@ Codes: `invalid_argument`, `limit_exceeded`, `not_found`, `not_a_pdf`, `damaged_
 | `ui` | left panel tab/width/collapsed, inspector mode, active tool (moves to `tools` in M2), drop-hover flag, error banner, dialogs, toasts, engine status | UI, events |
 | `settings` | mirror of Rust settings | `get_settings`/`update_settings` |
 | `recents` | `RecentEntry[]` | `list_recents`/`remove_recent` |
+| `citations` (`features/citations/store.ts`, ADR-119) | per doc: `bibliography` (`BibliographyInfo`, reloaded when a ChangeSet's `doc` has `bibliography`), `citations` (`CitationInfo[]`, refetched debounced after a ChangeSet that touches a citation), load token (dropped on close); global: chosen style (`localStorage` `sheer.citations.style`, default `apa7`) | `get_bibliography`/`list_citations`, ChangeSet |
+| `settings` (changed) | also mirrors `tags: TagDef[]`; the tag editor writes through `update_settings` | `update_settings` |
 
 Rules:
 - Stores hold no pixels. The render cache (`renderCache`, with its scheduler) and the text cache are module singletons.
