@@ -131,6 +131,20 @@ describe('the signing flow (DESIGN 3.8 S3)', () => {
     expect(useCertSign.getState().dialog).toBe(true);
   });
 
+  it('an expired identity cannot sign: the button is off and the date is shown (AC 10)', async () => {
+    setup(<SignDialogHost />);
+    act(() => {
+      useIdentities.setState({ status: 'ready', items: [{ ...ada, expired: true }] });
+      useCertSign.getState().activate(ada.id);
+      useCertSign.getState().setBox({ docId: 1, pageIndex: 0, rect: { x: 10, y: 10, w: 192, h: 64 } });
+      useCertSign.getState().openDialog();
+    });
+    const button = await screen.findByRole('button', { name: 'Sign and save as…' });
+    expect((button as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.getByText(/2029-01-01/)).not.toBeNull();
+    expect(signDocument).not.toHaveBeenCalled();
+  });
+
   it('Cancel closes the sheet and keeps the placeholder', async () => {
     const { user } = setup(<SignDialogHost />);
     ready();

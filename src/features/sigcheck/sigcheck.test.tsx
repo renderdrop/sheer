@@ -258,3 +258,46 @@ describe('the Signatures dialog', () => {
     expect(dialog.querySelector('[data-sig-card]')).toBeNull();
   });
 });
+
+describe('several signatures and later additions (AC 17, 19, 20)', () => {
+  it('lists two signatures in file order with their numbers', async () => {
+    api.validateSignatures.mockResolvedValue(
+      report([sig({ index: 0 }), sig({ index: 1, fieldName: 'Sig2', signer: cert('Grace Hopper') })]),
+    );
+    render(<Host />);
+    await screen.findByRole('status');
+    act(() => openSignaturesDialog(1));
+    const text = (await screen.findByRole('dialog')).textContent ?? '';
+    expect(text).toContain('Signature 1 of 2');
+    expect(text).toContain('Signature 2 of 2');
+    expect(text.indexOf('Ada Lovelace')).toBeLessThan(text.indexOf('Grace Hopper'));
+  });
+
+  it('shows one damaged and one valid signature side by side', async () => {
+    api.validateSignatures.mockResolvedValue(
+      report([sig({ index: 0, cryptographic: 'malformed', signer: null }), sig({ index: 1, fieldName: 'Sig2' })]),
+    );
+    render(<Host />);
+    await screen.findByRole('status');
+    act(() => openSignaturesDialog(1));
+    const dialog = await screen.findByRole('dialog');
+    expect(dialog.textContent).toContain('The signature data is damaged.');
+    expect(dialog.textContent).toContain('Ada Lovelace');
+  });
+
+  it('says which version an earlier signature covers', async () => {
+    const later = sig({
+      coverage: {
+        type: 'earlierRevision',
+        revision: 1,
+        later: { signatures: false, formFill: false, annotations: true, other: false },
+        verdict: 'allowed',
+      },
+    });
+    api.validateSignatures.mockResolvedValue(report([later]));
+    render(<Host />);
+    await screen.findByRole('status');
+    act(() => openSignaturesDialog(1));
+    expect((await screen.findByRole('dialog')).textContent).toContain('Covers version 1 of 2 of this file');
+  });
+});
