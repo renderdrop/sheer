@@ -99,8 +99,13 @@ fn child_engine() -> Option<&'static Engine> {
         .as_ref()
 }
 
+/// The two render tests decode four big JPEGs each; run in parallel on a slow CI runner (debug build, 3 cores) the in-process
+/// open could hit the engine deadline. They take turns.
+static SERIAL: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
 #[test]
 fn big_jpegs_render_to_their_last_rows_in_process() {
+    let _turn = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
     if let Some(engine) = engine() {
         check(engine, 9001);
     }
@@ -110,6 +115,7 @@ fn big_jpegs_render_to_their_last_rows_in_process() {
 /// come back short, and the rest of a big JPEG was grey).
 #[test]
 fn big_jpegs_render_to_their_last_rows_through_the_engine_child() {
+    let _turn = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
     if let Some(engine) = child_engine() {
         check(engine, 9002);
     }
@@ -136,7 +142,7 @@ fn check(engine: &Engine, doc: u32) {
     assert_eq!(
         engine
             .open(id, File::open(&file.0).unwrap(), |_| true)
-            .unwrap(),
+            .unwrap_or_else(|error| panic!("open failed: {error:?}")),
         sizes.len() as u32
     );
     for (page, &(w, h)) in sizes.iter().enumerate() {
