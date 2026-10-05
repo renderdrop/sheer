@@ -340,6 +340,13 @@ pub struct Annotation {
     pub state: Option<ReviewState>,
     pub locked: bool,
     pub sync: Sync,
+    /// Set on a citation (a Highlight with `/SHR_Cite`, ADR-119); `null` for any other annotation. Old data and old engine
+    /// messages have no such key.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cite: Option<super::quote::Cite>,
+    /// Tag names (`/SHR_Tags`, at most `limits::TAGS_PER_ANNOT`), see `model::tags`.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub tags: Vec<String>,
     #[serde(flatten)]
     pub body: AnnotationBody,
 }
@@ -415,6 +422,10 @@ pub struct AnnotationPatch {
     pub align: Option<TextAlign>,
     /// The turn of a signature or a mark (ADR-105), in degrees.
     pub angle: Option<f32>,
+    /// Replaces the tag names (ADR-119; coalesce key `tags`). Not applied yet: package C1.
+    pub tags: Option<Vec<String>>,
+    /// Replaces the quote of a citation, 1..=`CITE_QUOTE_MAX` characters (ADR-119). Not applied yet: package C1.
+    pub quote: Option<String>,
 }
 
 /// Where an annotation sits in the PDF it was imported from. Rust only; the UI never sees it.
@@ -862,6 +873,8 @@ impl Annotation {
             state: draft.state,
             locked: draft.locked,
             sync: Sync::New,
+            cite: None,
+            tags: Vec::new(),
             body: draft.body.clone(),
         };
         if draft.state.is_some()
@@ -883,6 +896,10 @@ impl Annotation {
     /// This annotation with `patch` applied and `modified` set to `now`, validated. A field that does not belong to the kind is
     /// `invalid_argument` (`patch`).
     pub fn patched(&self, patch: &AnnotationPatch, now: &str) -> Result<Self, AppError> {
+        // Package C1 applies `tags` and `quote`; until then a patch that carries them changes nothing and is refused.
+        if patch.tags.is_some() || patch.quote.is_some() {
+            return Err(AppError::not_yet());
+        }
         let mut next = self.clone();
         if let Some(color) = patch.color {
             next.color = color;
@@ -1100,6 +1117,8 @@ impl Annotation {
             state: None,
             locked: imported.locked,
             sync: Sync::Clean,
+            cite: None,
+            tags: Vec::new(),
             body: imported.body.clone(),
         };
         annotation.normalize().ok()?;

@@ -355,6 +355,18 @@ impl Executor {
                 let links = links.iter().map(WireLink::from_link).collect();
                 (WireReply::PageLinks(links), Blob::None)
             }
+            R::PageLabels { id } => {
+                let labels = self.ask(|reply| Job::PageLabels { id, reply })?;
+                (WireReply::PageLabels(labels), Blob::None)
+            }
+            R::FirstPageHints { id, engine_index } => {
+                let hints = self.ask(|reply| Job::FirstPageHints {
+                    id,
+                    engine_index,
+                    reply,
+                })?;
+                (WireReply::FirstPageHints(hints), Blob::None)
+            }
             R::ImportAnnotations { id, page_index } => {
                 let found = self.ask(|reply| Job::ImportAnnotations {
                     id,

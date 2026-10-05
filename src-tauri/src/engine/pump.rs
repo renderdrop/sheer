@@ -514,6 +514,43 @@ impl Pump {
                 );
                 let _ = reply.send(result);
             }
+            Job::PageLabels { id, reply } => {
+                let result = self.on_doc(
+                    id,
+                    WireRequest::PageLabels { id },
+                    Blob::None,
+                    deadline,
+                    |reply, _| match reply {
+                        WireReply::PageLabels(labels)
+                            if labels.len() <= limits::PAGE_LABELS_PAGES_MAX as usize
+                                && labels.iter().flatten().all(|label| {
+                                    label.chars().count() <= limits::PAGE_LABEL_MAX
+                                }) =>
+                        {
+                            Some(labels)
+                        }
+                        _ => None,
+                    },
+                );
+                let _ = reply.send(result);
+            }
+            Job::FirstPageHints {
+                id,
+                engine_index,
+                reply,
+            } => {
+                let result = self.on_doc(
+                    id,
+                    WireRequest::FirstPageHints { id, engine_index },
+                    Blob::None,
+                    deadline,
+                    |reply, _| match reply {
+                        WireReply::FirstPageHints(hints) => Some(hints),
+                        _ => None,
+                    },
+                );
+                let _ = reply.send(result);
+            }
             Job::ImportAnnotations {
                 id,
                 page_index,

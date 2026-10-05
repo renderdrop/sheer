@@ -46,6 +46,8 @@ pub enum ImportWarning {
 pub enum DocPart {
     Metadata,
     Protection,
+    /// The bibliographic record (ADR-119): the UI re-reads `get_bibliography`.
+    Bibliography,
 }
 
 /// An annotation in the state, with what only Rust knows about it.
@@ -162,6 +164,11 @@ pub struct DocState {
     pub(super) pending_protection: Option<Ticket>,
     /// The metadata as read from the file and as the session has it, and a staged removal (ADR-047 §5).
     pub(super) metadata: MetadataState,
+    /// The page labels by file page index, once `Job::PageLabels` has run (ADR-119); `None` before. An entry is `None` for a page
+    /// without a label.
+    pub page_labels: Option<Vec<Option<String>>>,
+    /// The bibliographic record the session has (ADR-119).
+    pub bibliography: super::bibliography::BibliographyState,
 }
 
 /// Bytes of the strings an imported annotation brings.
@@ -225,6 +232,8 @@ impl DocState {
             secrets: SecretSlots::default(),
             pending_protection: None,
             metadata: MetadataState::default(),
+            page_labels: None,
+            bibliography: super::bibliography::BibliographyState::default(),
         }
     }
 

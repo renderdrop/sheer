@@ -658,6 +658,57 @@ pub const UPDATE_NOTES_MAX: usize = 4 * 1024;
 /// Longest version string accepted by `skip_update_version` and the `skippedVersion` setting, in characters.
 pub const UPDATE_VERSION_MAX_CHARS: usize = 32;
 
+// --- Citations (ADR-119) ----------------------------------------------------------------------------------------
+
+/// Longest quote of a citation in characters (`/SHR_Cite /Q`, `AnnotationPatch.quote`).
+pub const CITE_QUOTE_MAX: usize = 2_000;
+/// Most drafts one `create_citations` call takes (one per page).
+pub const CITE_DRAFTS_MAX: usize = 64;
+/// Most citations `list_citations` returns for one document.
+pub const CITATIONS_MAX: usize = 20_000;
+/// Most tag definitions in `Settings.tags`.
+pub const TAGS_MAX: usize = 64;
+/// Longest tag name in characters.
+pub const TAG_NAME_MAX: usize = 40;
+/// Most tags on one annotation (`/SHR_Tags`).
+pub const TAGS_PER_ANNOT: usize = 8;
+/// Most authors of a bibliographic record.
+pub const BIB_AUTHORS_MAX: usize = 32;
+/// Longest family or given name of an author, in characters.
+pub const BIB_PERSON_MAX: usize = 256;
+/// Longest text field of a bibliographic record, in characters (title, container, publisher, ...).
+pub const BIB_FIELD_MAX: usize = 1_000;
+/// Longest year field ("2020a", "n.d.").
+pub const BIB_YEAR_MAX: usize = 16;
+/// Longest DOI.
+pub const BIB_DOI_MAX: usize = 256;
+/// Longest URL of a record. It is never opened.
+pub const BIB_URL_MAX: usize = 2_048;
+/// Longest title the first-page heuristic returns, in characters.
+pub const BIB_HEURISTIC_TITLE_MAX: usize = 300;
+/// Deepest element nesting the XMP read accepts.
+pub const BIB_XMP_DEPTH_MAX: usize = 32;
+/// Most events the XMP read processes.
+pub const BIB_XMP_EVENTS_MAX: usize = 200_000;
+/// Most characters of page 1 the first-page heuristic looks at.
+pub const BIB_FIRST_PAGE_CHARS_MAX: usize = 20_000;
+/// Time budget of the first-page heuristic.
+pub const BIB_FIRST_PAGE_BUDGET: Duration = Duration::from_secs(1);
+/// Longest page label in characters.
+pub const PAGE_LABEL_MAX: usize = 64;
+/// Most pages `Job::PageLabels` reads labels of.
+pub const PAGE_LABELS_PAGES_MAX: u32 = 50_000;
+/// Time budget of `Job::PageLabels`; when it runs out every label is `None`.
+pub const PAGE_LABELS_BUDGET: Duration = Duration::from_secs(2);
+/// Most text `save_citation_list` writes, in bytes.
+pub const CITATION_EXPORT_MAX: usize = 4 * 1024 * 1024;
+/// Most blocks `save_citation_list` takes.
+pub const CITATION_EXPORT_BLOCKS_MAX: usize = 20_000;
+/// Most runs of one styled block.
+pub const STYLED_RUNS_MAX: usize = 64;
+/// Longest run of a styled block in characters.
+pub const STYLED_RUN_CHARS_MAX: usize = 4_000;
+
 #[cfg(test)]
 mod tests {
     use super::*;

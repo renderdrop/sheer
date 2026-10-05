@@ -2,6 +2,7 @@ import { Channel } from '@tauri-apps/api/core';
 
 import { LANGUAGES, type Language } from '../i18n/locale';
 import { call } from './call';
+import { parseTagDefs, type TagDef } from './cite';
 import { parseOpenOutcome, type OpenOutcome } from './documents';
 import { toAppError } from './errors';
 import { parseUpdateInfo, type UpdateInfo } from './update';
@@ -47,6 +48,8 @@ export interface Settings {
   skippedVersion?: string | null;
   /** The page sidebar is collapsed (DESIGN v2 3.2). Absent until the backend knows the field; absent means open. */
   pageSidebarCollapsed?: boolean;
+  /** The tag definitions, shared by all documents (ADR-119; at most `TAGS_MAX`). Absent until the backend knows the field. */
+  tags?: readonly TagDef[];
 }
 
 /** Wire names of the backend's `UpdatesMode` (storage/settings.rs, ADR-053). */
@@ -132,6 +135,7 @@ export function parseSettings(value: unknown): Settings | null {
     updates,
     skippedVersion,
     pageSidebarCollapsed,
+    tags,
   } = value as {
     language?: unknown;
     leftPanelWidth?: unknown;
@@ -142,7 +146,9 @@ export function parseSettings(value: unknown): Settings | null {
     updates?: unknown;
     skippedVersion?: unknown;
     pageSidebarCollapsed?: unknown;
+    tags?: unknown;
   };
+  const parsedTags = parseTagDefs(tags);
   const parsedPrompt = oneOf(AUTHOR_PROMPT_STATES, authorPrompt);
   const parsedLanguage = oneOf(LANGUAGES, language);
   const parsedTour = oneOf(WELCOME_TOUR_STATES, welcomeTour);
@@ -173,6 +179,7 @@ export function parseSettings(value: unknown): Settings | null {
     ...(parsedUpdates === null ? {} : { updates: parsedUpdates }),
     ...(parsedSkipped === undefined ? {} : { skippedVersion: parsedSkipped }),
     ...(typeof pageSidebarCollapsed === 'boolean' ? { pageSidebarCollapsed } : {}),
+    ...(parsedTags === null ? {} : { tags: parsedTags }),
   };
 }
 

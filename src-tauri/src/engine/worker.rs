@@ -168,6 +168,17 @@ fn serve<'a>(
             });
             answer(reply, result, Some(id), documents, crashed);
         }
+        // Package C3 reads the labels (`PdfPage::label()`) and the first-page hints; until then there are none.
+        Job::PageLabels { id, reply } => {
+            let result = read_job(documents, crashed, id, |_| Ok(Vec::new()));
+            answer(reply, result, Some(id), documents, crashed);
+        }
+        Job::FirstPageHints { id, reply, .. } => {
+            let result = read_job(documents, crashed, id, |_| {
+                Ok(crate::model::bibliography::FirstPageHints::default())
+            });
+            answer(reply, result, Some(id), documents, crashed);
+        }
         Job::ImportAnnotations {
             id,
             page_index,

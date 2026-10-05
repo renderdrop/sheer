@@ -1,4 +1,6 @@
 import { call } from './call';
+import { parseCite, parseTagNames, type Cite } from './cite';
+import type { SetBibliographyCommand } from './citations';
 import { toAppError } from './errors';
 import { parseFieldStates, type FieldState, type SetFieldValueCommand } from './forms';
 import type { SignatureRole } from './library';
@@ -90,6 +92,10 @@ export interface AnnotationCommon {
   state?: ReviewState;
   locked: boolean;
   sync: SyncState;
+  /** Set on a citation (a highlight with a quote, ADR-119); absent on every other annotation. */
+  cite?: Cite;
+  /** The tag names of the annotation (at most 8); absent when none. */
+  tags?: readonly string[];
 }
 
 export type AnnotationBody =
@@ -215,6 +221,10 @@ export interface AnnotationPatch {
   align?: TextAlign;
   /** The turn of a signature or a mark in degrees, clockwise on the page (ADR-105). */
   angle?: number;
+  /** Replaces the tag names (at most 8; ADR-119). Coalesce key `tags`. */
+  tags?: readonly string[];
+  /** Replaces the quote of a citation (1 to 2 000 characters; ADR-119). A patch for another kind is refused. */
+  quote?: string;
 }
 
 /**
@@ -235,10 +245,12 @@ export type DocCommand =
   | { type: 'markRedactions'; marks: readonly RedactMarkSpec[] }
   /** Edits the metadata written at the next save (ADR-047). */
   | { type: 'setMetadata'; patch: MetadataPatch }
-  | { type: 'removeMetadata' };
+  | { type: 'removeMetadata' }
+  /** Sets the bibliographic record written at the next save (ADR-119). */
+  | SetBibliographyCommand;
 
 /** What else a command changed besides annotations, pages and fields: the UI reads it again with `getMetadata` or `getProtection`. */
-export type DocPart = 'metadata' | 'protection';
+export type DocPart = 'metadata' | 'protection' | 'bibliography';
 
 /** What the UI needs for its Undo and Redo commands. */
 export interface HistoryState {
@@ -342,7 +354,7 @@ function parseSignatureArt(value: unknown): SignatureArtRef | null {
 const STD_FONTS: ReadonlySet<unknown> = new Set<StdFont>(['sans', 'serif', 'mono']);
 const TEXT_ALIGNS: ReadonlySet<unknown> = new Set<TextAlign>(['left', 'center', 'right']);
 const REDACT_SOURCES: ReadonlySet<unknown> = new Set<RedactSource>(['text', 'area']);
-const DOC_PARTS: ReadonlySet<unknown> = new Set<DocPart>(['metadata', 'protection']);
+const DOC_PARTS: ReadonlySet<unknown> = new Set<DocPart>(['metadata', 'protection', 'bibliography']);
 const CONTENT_KINDS: ReadonlySet<unknown> = new Set<ContentKind>(['textBox', 'image', 'redactMark']);
 
 function parseContentBody(value: Record<string, unknown>): ContentBody | null {
@@ -486,6 +498,9 @@ function parseWith<Body>(
   const rect = parseRect(value.rect);
   const color = parseRgb(value.color);
   const body = parseBodyOf(value);
+  // The file is the source of both: a cite record that does not fit reads as a plain highlight, an odd tag is dropped.
+  const cite = parseCite(value.cite);
+  const tags = parseTagNames(value.tags);
   if (
     !isUint(id) ||
     !isUint(pageId) ||
@@ -517,6 +532,8 @@ function parseWith<Body>(
     locked,
     sync: sync as SyncState,
     ...(state === undefined ? {} : { state: state as ReviewState }),
+    ...(cite === null ? {} : { cite }),
+    ...(tags.length === 0 ? {} : { tags }),
     ...body,
   };
 }
@@ -592,7 +609,7 @@ export function parseChangeSet(value: unknown): ChangeSet | null {
   if (
     !(
       doc === undefined ||
-      (Array.isArray(doc) && doc.length <= 2 && (doc as unknown[]).every((part) => DOC_PARTS.has(part)))
+      (Array.isArray(doc) && doc.length <= 3 && (doc as unknown[]).every((part) => DOC_PARTS.has(part)))
     ) ||
     !isUint(rev, Number.MAX_SAFE_INTEGER) ||
     history === null ||
@@ -699,6 +716,10 @@ export interface AnnotationSummary {
   state?: ReviewState;
   /** A mark's glyph (`check`, `cross`, `dot`), a signature's role (`signature`, `initials`), `arrow` for a line with an end. */
   detail?: string;
+  /** The tag names (ADR-119); absent when none. */
+  tags?: readonly string[];
+  /** A citation (ADR-119); absent otherwise. */
+  cite?: true;
 }
 
 const KINDS: readonly string[] = [
@@ -719,6 +740,7 @@ const KINDS: readonly string[] = [
 function parseSummary(value: unknown): AnnotationSummary | null {
   if (!isRecord(value)) return null;
   const { id, pageId, kind, color, contents, author, modified, inReplyTo, state, detail } = value;
+  const tags = parseTagNames(value.tags);
   if (
     !(state === undefined || REVIEW_STATES.includes(state as ReviewState)) ||
     !(detail === undefined || (typeof detail === 'string' && detail.length <= 16)) ||
@@ -747,6 +769,8 @@ function parseSummary(value: unknown): AnnotationSummary | null {
     inReplyTo,
     ...(state === undefined ? {} : { state: state as ReviewState }),
     ...(detail === undefined ? {} : { detail }),
+    ...(tags.length === 0 ? {} : { tags }),
+    ...(value.cite === true ? { cite: true as const } : {}),
   };
 }
 

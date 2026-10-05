@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-list-citations"
+description = "Enables the list_citations command without any pre-configured scope."
+commands.allow = ["list_citations"]
+
+[[permission]]
+identifier = "deny-list-citations"
+description = "Denies the list_citations command without any pre-configured scope."
+commands.deny = ["list_citations"]

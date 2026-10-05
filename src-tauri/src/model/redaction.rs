@@ -104,6 +104,8 @@ pub(crate) fn mark(
             state: None,
             locked: false,
             sync: AnnotSync::New,
+            cite: None,
+            tags: Vec::new(),
             body: AnnotationBody::RedactMark {
                 quads: spec.quads.clone(),
                 source: spec.source,

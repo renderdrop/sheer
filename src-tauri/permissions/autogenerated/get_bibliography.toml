@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-get-bibliography"
+description = "Enables the get_bibliography command without any pre-configured scope."
+commands.allow = ["get_bibliography"]
+
+[[permission]]
+identifier = "deny-get-bibliography"
+description = "Denies the get_bibliography command without any pre-configured scope."
+commands.deny = ["get_bibliography"]

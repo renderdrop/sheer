@@ -62,6 +62,8 @@ pub struct SavePlan {
     pub metadata: Option<MetadataChange>,
     /// The document is encrypted and stays so: the Full rewrite keeps its own `/Encrypt` and file key (package D).
     pub keep_encryption: bool,
+    /// The bibliographic record to write as `/SHR_Bib` after the metadata (ADR-119, package C2); skipped with a pending strip.
+    pub bibliography: Option<crate::model::bibliography::BibRecord>,
 }
 
 impl SavePlan {
@@ -73,6 +75,7 @@ impl SavePlan {
             && self.protection.is_none()
             && self.metadata.is_none()
             && !self.keep_encryption
+            && self.bibliography.is_none()
     }
 
     /// The save is a whole new file, no update on top of the original (ADR-047): redaction (no earlier revision may survive), a change

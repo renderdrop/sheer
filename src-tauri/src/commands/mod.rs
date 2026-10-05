@@ -33,6 +33,9 @@
 
 pub mod annotations;
 pub mod app;
+pub mod bibliography;
+pub mod citation_export;
+pub mod citations;
 pub mod content;
 pub mod export_images;
 pub mod export_pdf;

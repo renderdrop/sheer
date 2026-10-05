@@ -741,6 +741,8 @@ mod tests {
             state: None,
             locked: false,
             sync: Sync::Clean,
+            cite: None,
+            tags: Vec::new(),
             body: AnnotationBody::Signature {
                 bounds: Rect {
                     x: 0.0,

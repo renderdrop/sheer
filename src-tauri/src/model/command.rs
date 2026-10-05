@@ -14,6 +14,7 @@ use serde::Deserialize;
 use super::annotation::{
     Annotation, AnnotationBody, AnnotationDraft, AnnotationPatch, SignatureArtRef,
 };
+use super::bibliography::BibRecord;
 use super::doc_state::{Delta, DocState, Entry, Slot, Stamp};
 use super::form::{FieldId, FieldUndo, FieldValue};
 use super::ids::AnnotId;
@@ -99,6 +100,8 @@ pub enum DocCommand {
     SetMetadata { patch: MetadataPatch },
     /// Stages the removal of all metadata, written by the next (full) save.
     RemoveMetadata,
+    /// Sets the bibliographic record written at the next save (ADR-119; label `bibliography.set`). Not applied yet: package C2.
+    SetBibliography { record: BibRecord },
     /// Puts the given content back into the given ids. The inverse of every command; not accepted from the UI.
     #[serde(skip_deserializing)]
     Restore { slots: Vec<Slot> },
@@ -154,6 +157,7 @@ pub const LABEL_PROTECT_SET: &str = "protect.set";
 pub const LABEL_PROTECT_REMOVE: &str = "protect.remove";
 pub const LABEL_METADATA_SET: &str = "metadata.set";
 pub const LABEL_METADATA_REMOVE: &str = "metadata.remove";
+pub const LABEL_BIBLIOGRAPHY_SET: &str = "bibliography.set";
 
 fn is_key(text: &str) -> bool {
     !text.is_empty()
@@ -187,6 +191,7 @@ impl DocCommand {
             Self::SetProtection { .. } => LABEL_PROTECT_SET.to_owned(),
             Self::SetMetadata { .. } => LABEL_METADATA_SET.to_owned(),
             Self::RemoveMetadata => LABEL_METADATA_REMOVE.to_owned(),
+            Self::SetBibliography { .. } => LABEL_BIBLIOGRAPHY_SET.to_owned(),
             Self::SetRotations { .. }
             | Self::ReorderPages { .. }
             | Self::RemovePages { .. }
@@ -205,6 +210,7 @@ impl DocCommand {
                 | Self::SetProtection { .. }
                 | Self::SetMetadata { .. }
                 | Self::RemoveMetadata
+                | Self::SetBibliography { .. }
                 | Self::DeletePages { .. }
                 | Self::MovePages { .. }
                 | Self::InsertBlankPage { .. }
@@ -312,6 +318,8 @@ impl DocCommand {
                 }
             }
             Self::SetProtection { .. } | Self::RemoveMetadata => Ok(()),
+            // Package C2 validates the record.
+            Self::SetBibliography { .. } => Ok(()),
             Self::SetMetadata { patch } => patch.check(),
             Self::UpdateAnnotation { coalesce, .. } => match coalesce {
                 Some(key) if !is_key(key) => Err(AppError::invalid("coalesce")),
@@ -464,6 +472,8 @@ impl DocCommand {
             }
             Self::SetMetadata { patch } => metadata::set(state, patch, &mut delta)?,
             Self::RemoveMetadata => metadata::remove(state, &mut delta)?,
+            // Nothing changes and nothing enters the history until package C2 fills this in.
+            Self::SetBibliography { .. } => return Err(AppError::not_yet()),
             // The engine makes the pages first (`commands::pages`); the model alone cannot.
             Self::InsertBlankPage { .. } | Self::InsertPages { .. } => {
                 return Err(AppError::invalid("command"))
@@ -1586,5 +1596,32 @@ mod tests {
         let made = state.execute(text_box, &stamp(1)).unwrap();
         assert!(made.upserted[0].body.is_content());
         assert!(made.upserted[0].rect.h > 12.0);
+    }
+}
+
+#[cfg(test)]
+mod bibliography_seam_tests {
+    use serde_json::json;
+
+    use super::*;
+    use crate::error::ErrorCode;
+
+    #[test]
+    fn set_bibliography_parses_and_changes_nothing_until_package_c2() {
+        let command: DocCommand = serde_json::from_value(json!({
+            "type": "setBibliography",
+            "record": {"kind": "book", "title": "T", "authors": [{"family": "A"}]}
+        }))
+        .unwrap();
+        assert_eq!(command.label(), "bibliography.set");
+        assert!(command.is_page_command());
+        let mut state = DocState::new(1);
+        let stamp = Stamp {
+            modified: "D:20260101000000Z".to_owned(),
+            now_ms: 0,
+        };
+        let error = state.execute(command, &stamp).unwrap_err();
+        assert_eq!(error.code(), ErrorCode::UnsupportedFeature);
+        assert!(!state.is_dirty());
     }
 }

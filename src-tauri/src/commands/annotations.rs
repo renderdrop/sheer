@@ -58,6 +58,10 @@ pub struct AnnotationSummary {
     /// What a `mark`, `signature` or `line` is: `check`, `cross`, `dot`; `signature`, `initials`; `arrow` (a line with an end) (ADR-057).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub detail: Option<&'static str>,
+    /// The tag names of the annotation (ADR-119).
+    pub tags: Vec<String>,
+    /// The annotation is a citation (ADR-119).
+    pub cite: bool,
 }
 
 fn kind_of(body: &AnnotationBody) -> &'static str {
@@ -139,6 +143,8 @@ impl AnnotationSummary {
             in_reply_to: annotation.in_reply_to,
             state: annotation.state,
             detail: detail_of(&annotation.body),
+            tags: annotation.tags.clone(),
+            cite: annotation.cite.is_some(),
         }
     }
 }

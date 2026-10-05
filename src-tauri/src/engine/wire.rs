@@ -369,6 +369,13 @@ pub enum WireRequest {
         id: DocumentId,
         page_index: u32,
     },
+    PageLabels {
+        id: DocumentId,
+    },
+    FirstPageHints {
+        id: DocumentId,
+        engine_index: u32,
+    },
     ImportAnnotations {
         id: DocumentId,
         page_index: u32,
@@ -529,6 +536,8 @@ pub enum WireReply {
     Outline(Vec<OutlineItem>),
     TextLayer(TextPage),
     PageLinks(Vec<WireLink>),
+    PageLabels(Vec<Option<String>>),
+    FirstPageHints(crate::model::bibliography::FirstPageHints),
     Annotations(Vec<Imported>),
     /// `SetAnnotationsHidden`, `SetPageRotations`, `SetCropBox`, `CloseSnapshot`, `TruncatePages`, `Release` without snapshot, `Close`.
     Done,

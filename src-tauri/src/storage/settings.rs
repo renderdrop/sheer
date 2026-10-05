@@ -273,6 +273,8 @@ pub struct Settings {
     pub tips_seen: TipsSeen,
     /// The page sidebar is collapsed (DESIGN v2 3.2).
     pub page_sidebar_collapsed: bool,
+    /// The tag definitions (ADR-119), shared by all documents. Package C4 validates them (`limits::TAGS_MAX`, names, palette).
+    pub tags: Vec<crate::model::tags::TagDef>,
 }
 
 impl Settings {
@@ -319,6 +321,10 @@ impl Settings {
                 .get("pageSidebarCollapsed")
                 .and_then(Value::as_bool)
                 .unwrap_or_default(),
+            tags: map
+                .get("tags")
+                .and_then(|value| Vec::<crate::model::tags::TagDef>::deserialize(value).ok())
+                .unwrap_or_default(),
         }
     }
 
@@ -336,6 +342,7 @@ impl Settings {
             page_sidebar_collapsed: patch
                 .page_sidebar_collapsed
                 .unwrap_or(self.page_sidebar_collapsed),
+            tags: patch.tags.unwrap_or(self.tags),
         }
     }
 }
@@ -363,6 +370,9 @@ pub struct SettingsPatch {
     pub tips_seen: Option<TipsSeen>,
     #[serde(default, deserialize_with = "present")]
     pub page_sidebar_collapsed: Option<bool>,
+    /// Replaces the tag list (ADR-119).
+    #[serde(default, deserialize_with = "present")]
+    pub tags: Option<Vec<crate::model::tags::TagDef>>,
 }
 
 /// A field that is present must hold a valid value. Plain `Option` would read `null` as "absent" and accept it.
@@ -546,7 +556,7 @@ mod tests {
     fn settings_serialize_with_lowercase_enum_values() {
         assert_eq!(
             serde_json::to_value(Settings::default()).unwrap(),
-            json!({ "language": "system", "leftPanelWidth": 200, "welcomeTour": "pending", "authorName": "", "authorPrompt": "pending", "updates": "off", "skippedVersion": null, "tipsSeen": [], "pageSidebarCollapsed": false })
+            json!({ "language": "system", "leftPanelWidth": 200, "welcomeTour": "pending", "authorName": "", "authorPrompt": "pending", "updates": "off", "skippedVersion": null, "tipsSeen": [], "pageSidebarCollapsed": false, "tags": [] })
         );
         let settings = Settings {
             language: Language::De,
@@ -558,10 +568,11 @@ mod tests {
             skipped_version: SkippedVersion::new("1.2.3-rc.1").unwrap(),
             tips_seen: TipsSeen::new(&["textBox".to_owned()]).unwrap(),
             page_sidebar_collapsed: true,
+            tags: Vec::new(),
         };
         assert_eq!(
             serde_json::to_value(settings).unwrap(),
-            json!({ "language": "de", "leftPanelWidth": 320, "welcomeTour": "shown", "authorName": "Ada Lovelace", "authorPrompt": "done", "updates": "on", "skippedVersion": "1.2.3-rc.1", "tipsSeen": ["textBox"], "pageSidebarCollapsed": true })
+            json!({ "language": "de", "leftPanelWidth": 320, "welcomeTour": "shown", "authorName": "Ada Lovelace", "authorPrompt": "done", "updates": "on", "skippedVersion": "1.2.3-rc.1", "tipsSeen": ["textBox"], "pageSidebarCollapsed": true, "tags": [] })
         );
     }
 
@@ -732,6 +743,7 @@ mod tests {
                 skipped_version: None,
                 tips_seen: None,
                 page_sidebar_collapsed: None,
+                tags: None,
             }
         );
     }
@@ -1111,6 +1123,7 @@ mod tests {
                 skipped_version: SkippedVersion::default(),
                 tips_seen: TipsSeen::default(),
                 page_sidebar_collapsed: false,
+                tags: Vec::new(),
             }
         );
         assert_eq!(store.get(), updated);
@@ -1120,7 +1133,7 @@ mod tests {
             serde_json::from_slice(&fs::read(dir.path().join(FILE_NAME)).unwrap()).unwrap();
         assert_eq!(
             stored,
-            json!({ "language": "de", "leftPanelWidth": 280, "welcomeTour": "pending", "authorName": "", "authorPrompt": "pending", "updates": "off", "skippedVersion": null, "tipsSeen": [], "pageSidebarCollapsed": false })
+            json!({ "language": "de", "leftPanelWidth": 280, "welcomeTour": "pending", "authorName": "", "authorPrompt": "pending", "updates": "off", "skippedVersion": null, "tipsSeen": [], "pageSidebarCollapsed": false, "tags": [] })
         );
     }
 
@@ -1310,7 +1323,7 @@ mod tests {
         let stored: Value = serde_json::from_slice(&bytes).unwrap();
         assert_eq!(
             stored,
-            json!({ "language": "system", "leftPanelWidth": 200, "welcomeTour": "pending", "authorName": "", "authorPrompt": "pending", "updates": "on", "skippedVersion": null, "tipsSeen": [], "pageSidebarCollapsed": false })
+            json!({ "language": "system", "leftPanelWidth": 200, "welcomeTour": "pending", "authorName": "", "authorPrompt": "pending", "updates": "on", "skippedVersion": null, "tipsSeen": [], "pageSidebarCollapsed": false, "tags": [] })
         );
     }
 

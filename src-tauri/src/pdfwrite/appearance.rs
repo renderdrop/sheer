@@ -648,6 +648,8 @@ mod tests {
             state: None,
             locked: false,
             sync: Sync::New,
+            cite: None,
+            tags: Vec::new(),
             body,
         }
     }

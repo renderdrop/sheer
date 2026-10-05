@@ -57,6 +57,7 @@ use crate::error::{AppError, ErrorCode};
 use crate::export::snapshot::{EngineDocRef, SnapshotId};
 use crate::limits;
 use crate::model::annotation::Imported;
+use crate::model::bibliography::FirstPageHints;
 use crate::model::geometry::{Quad, Rect};
 use crate::model::page::BoxesRead;
 use crate::pdfwrite::redact::RasterPage;
@@ -205,6 +206,17 @@ pub(crate) enum Job {
         page_index: u32,
         reply: Reply<TextPage>,
     },
+    /// The page labels of every file page, one entry per page (ADR-119; `None` for a page without a label). Package C3 fills it in.
+    PageLabels {
+        id: DocumentId,
+        reply: Reply<Vec<Option<String>>>,
+    },
+    /// What the first page tells about title, year and DOI (ADR-119). Package C3 fills it in.
+    FirstPageHints {
+        id: DocumentId,
+        engine_index: u32,
+        reply: Reply<FirstPageHints>,
+    },
     /// The links of one page (`links`).
     PageLinks {
         id: DocumentId,
@@ -341,6 +353,12 @@ impl Job {
                 let _ = reply.send(Err(error));
             }
             Job::PageLinks { reply, .. } => {
+                let _ = reply.send(Err(error));
+            }
+            Job::PageLabels { reply, .. } => {
+                let _ = reply.send(Err(error));
+            }
+            Job::FirstPageHints { reply, .. } => {
                 let _ = reply.send(Err(error));
             }
             Job::ImportAnnotations { reply, .. } => {
@@ -835,6 +853,28 @@ impl Engine {
             Job::PageLinks {
                 id,
                 page_index,
+                reply,
+            }
+        })
+    }
+
+    /// The label of every page of the file (ADR-119); empty until package C3 fills in the job.
+    pub fn page_labels(&self, id: DocumentId) -> Result<Vec<Option<String>>, AppError> {
+        self.call(limits::TEXT_TIMEOUT, Rank::BACKGROUND, |reply| {
+            Job::PageLabels { id, reply }
+        })
+    }
+
+    /// Title, year and DOI found on page `engine_index` (ADR-119); all `None` until package C3 fills in the job.
+    pub fn first_page_hints(
+        &self,
+        id: DocumentId,
+        engine_index: u32,
+    ) -> Result<FirstPageHints, AppError> {
+        self.call(limits::TEXT_TIMEOUT, Rank::BACKGROUND, |reply| {
+            Job::FirstPageHints {
+                id,
+                engine_index,
                 reply,
             }
         })

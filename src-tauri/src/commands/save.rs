@@ -224,6 +224,8 @@ pub(super) fn save_plan_of(state: &DocState, pages: &PagePlan, keep_encryption: 
             .map(|(_, pending)| pending.clone()),
         metadata: state.metadata().change(),
         keep_encryption,
+        // Package C2 fills this from `DocState.bibliography`.
+        bibliography: None,
     }
 }
 

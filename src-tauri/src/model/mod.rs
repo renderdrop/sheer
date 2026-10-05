@@ -7,6 +7,7 @@
 //! UI changes annotations only by sending a [`command::DocCommand`], and [`doc_state::DocState`] answers with the delta.
 
 pub mod annotation;
+pub mod bibliography;
 pub mod command;
 pub mod doc_state;
 pub mod find;
@@ -18,6 +19,8 @@ pub mod metadata;
 pub mod page;
 pub mod page_ops;
 pub mod protection;
+pub mod quote;
 pub mod ranges;
 pub mod reading;
 pub mod redaction;
+pub mod tags;
