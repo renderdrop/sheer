@@ -259,7 +259,8 @@ fn read_one(
             AnnotationBody::Highlight {
                 quads: quads_of(annotation, page_box, rect),
             },
-            stroke.or(fill).unwrap_or(DEFAULT_MARKUP),
+            // The fill is the colour; a citation's appearance also has a stroked rule.
+            fill.or(stroke).unwrap_or(DEFAULT_MARKUP),
         ),
         PdfPageAnnotationType::Underline => (
             AnnotationBody::Underline {

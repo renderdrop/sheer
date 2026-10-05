@@ -20,6 +20,28 @@ pub const GS_NAME: &str = "GS";
 pub const FONT_NAME: &str = "Helv";
 /// The name of the image of a signature in the form's resources.
 pub const IMAGE_NAME: &str = "Im0";
+/// The name of the opaque, normal-blend graphics state of a citation's rule in the form's resources.
+pub const RULE_GS_NAME: &str = "GSR";
+
+/// The width of a citation's rule in points (DESIGN 3.7 C1).
+const CITE_RULE_PT: f32 = 1.0;
+/// Ink, the rule of Solar and of a custom fill.
+const CITE_INK: Rgb = Rgb([15, 15, 15]);
+/// The highlight fills that have a stroke partner (Mint, Sky, Rose, Lavender), and the partner (the same mapping as the layer's `strokePartner`).
+const CITE_PARTNERS: [(Rgb, Rgb); 4] = [
+    (Rgb([125, 235, 181]), Rgb([31, 158, 106])),
+    (Rgb([163, 222, 255]), Rgb([61, 143, 209])),
+    (Rgb([255, 199, 215]), Rgb([225, 92, 134])),
+    (Rgb([220, 207, 255]), Rgb([146, 120, 230])),
+];
+
+/// The colour of the rule of a citation with fill `fill`.
+fn cite_rule_color(fill: Rgb) -> Rgb {
+    CITE_PARTNERS
+        .iter()
+        .find(|(f, _)| *f == fill)
+        .map_or(CITE_INK, |(_, s)| *s)
+}
 
 /// A circle drawn with four Bézier curves: the distance of the control points from the ends, as a part of the radius.
 const KAPPA: f32 = 0.552_284_8;
@@ -35,6 +57,8 @@ pub struct Appearance {
     /// Whether `/GS` is in the content (opacity below 1, or the multiply blend of a highlight).
     pub uses_state: bool,
     pub multiply: bool,
+    /// Whether `/GSR` (opaque, normal blend) is in the content: the rule of a citation.
+    pub uses_rule_state: bool,
     /// Whether `/Helv` is in the content.
     pub uses_font: bool,
 }
@@ -153,6 +177,31 @@ fn toward(p: Point, towards: Point, by: f32) -> Point {
         x: p.x + (towards.x - p.x) / length * by,
         y: p.y + (towards.y - p.y) / length * by,
     }
+}
+
+/// The rule of a citation (DESIGN 3.7 C1): a solid line along the bottom edge of each quad (inset by half its width), in the stroke partner of
+/// the fill, at full opacity and normal blend (its own graphics state, not the multiplied fill's). A quad that is not finite is skipped.
+/// Whether anything was written (then `/GSR` is needed).
+fn cite_rules(out: &mut String, m: Mapper, quads: &[Quad], fill: Rgb) -> bool {
+    let mut body = String::new();
+    for quad in quads {
+        if quad.iter().any(|p| !p.x.is_finite() || !p.y.is_finite()) {
+            continue;
+        }
+        let half = CITE_RULE_PT / 2.0;
+        move_to(&mut body, m, toward(quad[2], quad[0], half));
+        line_to(&mut body, m, toward(quad[3], quad[1], half));
+        body.push_str("S\n");
+    }
+    if body.is_empty() {
+        return false;
+    }
+    let _ = writeln!(out, "q\n/{RULE_GS_NAME} gs");
+    stroke_color(out, cite_rule_color(fill));
+    let _ = writeln!(out, "{} w", num(CITE_RULE_PT));
+    out.push_str(&body);
+    out.push_str("Q\n");
+    true
 }
 
 fn dash(out: &mut String, dashed: bool) {
@@ -335,6 +384,7 @@ pub fn build_with(
     };
     let mut c = String::new();
     let mut multiply = false;
+    let mut uses_rule_state = false;
     let mut uses_font = false;
     c.push_str("q\n");
     match &annotation.body {
@@ -344,6 +394,9 @@ pub fn build_with(
             for quad in quads {
                 quad_path(&mut c, m, quad);
                 c.push_str("f\n");
+            }
+            if annotation.cite.is_some() {
+                uses_rule_state = cite_rules(&mut c, m, quads, annotation.color);
             }
         }
         AnnotationBody::Underline { quads } => {
@@ -621,6 +674,7 @@ pub fn build_with(
         content: c,
         uses_state,
         multiply,
+        uses_rule_state,
         uses_font,
     };
     Some((ap, uses_image))
@@ -701,6 +755,56 @@ mod tests {
         assert!(ap.content.contains("72 712 m"));
         assert!(ap.content.contains("172 700 l"));
         assert!(ap.content.contains("f\n"));
+    }
+
+    #[test]
+    fn a_citation_adds_an_opaque_rule_at_the_baseline_in_the_stroke_partner() {
+        let quad = [
+            Point { x: 72.0, y: 80.0 },
+            Point { x: 172.0, y: 80.0 },
+            Point { x: 72.0, y: 92.0 },
+            Point { x: 172.0, y: 92.0 },
+        ];
+        let body = AnnotationBody::Highlight { quads: vec![quad] };
+        let mut a = annotation(body.clone(), rect(72.0, 80.0, 100.0, 12.0));
+        a.color = Rgb([220, 207, 255]);
+        let plain = build(&a, mapper()).unwrap();
+        assert!(!plain.uses_rule_state && !plain.content.contains("RG"));
+        a.cite = Some(crate::model::quote::Cite {
+            quote: "q".into(),
+            group: None,
+        });
+        let ap = build(&a, mapper()).unwrap();
+        assert!(ap.uses_rule_state && ap.multiply);
+        // 146/255 = 0.573, 120/255 = 0.471, 230/255 = 0.902; the bottom edge at y 700, inset by half a point.
+        assert!(ap.content.contains("/GSR gs\n0.573 0.471 0.902 RG\n1 w\n"));
+        assert!(ap.content.contains("72 700.5 m\n172 700.5 l\nS\n"));
+        // The fill comes first, the rule after it.
+        assert!(ap.content.find("f\n") < ap.content.find("RG"));
+        // Solar and a custom fill get Ink.
+        a.color = Rgb([255, 248, 77]);
+        let solar = build(&a, mapper()).unwrap();
+        assert!(solar.content.contains("0.059 0.059 0.059 RG"));
+    }
+
+    #[test]
+    fn a_citation_with_hostile_quads_does_not_panic_and_skips_what_is_not_finite() {
+        let p = |x: f32, y: f32| Point { x, y };
+        let quads = vec![
+            [p(f32::NAN, 0.0), p(1.0, 0.0), p(0.0, 1.0), p(1.0, 1.0)],
+            [p(1.0, 1.0); 4],
+            [p(1e30, 1e30), p(-1e30, 1e30), p(1e30, -1e30), p(0.0, 0.0)],
+        ];
+        let mut a = annotation(
+            AnnotationBody::Highlight { quads },
+            rect(0.0, 0.0, 10.0, 10.0),
+        );
+        a.cite = Some(crate::model::quote::Cite {
+            quote: "q".into(),
+            group: None,
+        });
+        let ap = build(&a, mapper()).unwrap();
+        assert!(ap.content.matches("S\n").count() == 2);
     }
 
     #[test]

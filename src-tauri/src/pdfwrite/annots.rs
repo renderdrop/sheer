@@ -12,7 +12,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use lopdf::{Dictionary, Object, ObjectId, Stream, StringFormat};
 
-use super::appearance::{self, num, Appearance, FONT_NAME, GS_NAME, IMAGE_NAME};
+use super::appearance::{self, num, Appearance, FONT_NAME, GS_NAME, IMAGE_NAME, RULE_GS_NAME};
 use super::coords::Mapper;
 use crate::model::annotation::{
     Annotation, AnnotationBody, LineEnd, NoteIcon, Rgb, SignatureArtRef, SignatureRole, TextAlign,
@@ -537,14 +537,25 @@ pub fn appearance_stream_with(ap: &Appearance, opacity: f32, image: Option<Objec
         dict.set("Matrix", numbers(&matrix));
     }
     let mut resources = Dictionary::new();
-    if ap.uses_state {
-        let mut state = Dictionary::new();
-        state.set("Type", name("ExtGState"));
-        state.set("CA", real(opacity));
-        state.set("ca", real(opacity));
-        state.set("BM", name(if ap.multiply { "Multiply" } else { "Normal" }));
+    if ap.uses_state || ap.uses_rule_state {
         let mut states = Dictionary::new();
-        states.set(GS_NAME, Object::Dictionary(state));
+        if ap.uses_state {
+            let mut state = Dictionary::new();
+            state.set("Type", name("ExtGState"));
+            state.set("CA", real(opacity));
+            state.set("ca", real(opacity));
+            state.set("BM", name(if ap.multiply { "Multiply" } else { "Normal" }));
+            states.set(GS_NAME, Object::Dictionary(state));
+        }
+        if ap.uses_rule_state {
+            // A citation's rule is opaque and not multiplied.
+            let mut state = Dictionary::new();
+            state.set("Type", name("ExtGState"));
+            state.set("CA", real(1.0));
+            state.set("ca", real(1.0));
+            state.set("BM", name("Normal"));
+            states.set(RULE_GS_NAME, Object::Dictionary(state));
+        }
         resources.set("ExtGState", Object::Dictionary(states));
     }
     if ap.uses_font {

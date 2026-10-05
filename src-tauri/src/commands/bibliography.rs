@@ -4,8 +4,8 @@
 //! |---|---|---|
 //! | `get_bibliography` | `docId: number` | the `BibliographyInfo`: the merged record and where each field came from |
 //!
-//! The first call reads the file (`/SHR_Bib`, XMP, Info; blocking pool, `load_untrusted`, 30 s) and, if the title, the authors or the
-//! year is still empty, asks the engine for the first-page hints; the model keeps what it read until a save. Later calls answer from
+//! The first call reads the file (`/SHR_Bib`, XMP, Info; blocking pool, `load_untrusted`, 30 s) and, if the title, the authors, the
+//! year or the DOI is still empty, asks the engine for the first-page hints; the model keeps what it read until a save. Later calls answer from
 //! the model. The record is changed with `apply_command` (`DocCommand::SetBibliography`) and written by the next save.
 
 use std::panic::{catch_unwind, AssertUnwindSafe};
@@ -50,25 +50,7 @@ impl AppState {
             hints: None,
         };
         // The heuristic runs only for what is still empty; a failing job is no hints (the answer stays usable).
-        let wanted = |layers: &BibLayers| {
-            let title = layers
-                .file
-                .as_ref()
-                .and_then(|r| r.title.as_ref())
-                .or(layers.xmp.title.as_ref())
-                .or(layers.info.title.as_ref());
-            let authors = layers.file.as_ref().is_some_and(|r| !r.authors.is_empty())
-                || !layers.xmp.authors.is_empty()
-                || !layers.info.authors.is_empty();
-            let year = layers
-                .file
-                .as_ref()
-                .and_then(|r| r.year.as_ref())
-                .or(layers.xmp.year.as_ref())
-                .or(layers.info.year.as_ref());
-            title.is_none() || !authors || year.is_none()
-        };
-        if wanted(&layers) {
+        if hints_wanted(&layers) {
             layers.hints = Some(self.engine.first_page_hints(id, 0).unwrap_or_default());
         }
         self.model(id, |state| {
@@ -80,6 +62,32 @@ impl AppState {
             Ok(answer(state))
         })
     }
+}
+
+/// Whether the first-page heuristic is worth running: a field it can fill (title, authors, year, DOI) is still empty.
+fn hints_wanted(layers: &BibLayers) -> bool {
+    let title = layers
+        .file
+        .as_ref()
+        .and_then(|r| r.title.as_ref())
+        .or(layers.xmp.title.as_ref())
+        .or(layers.info.title.as_ref());
+    let authors = layers.file.as_ref().is_some_and(|r| !r.authors.is_empty())
+        || !layers.xmp.authors.is_empty()
+        || !layers.info.authors.is_empty();
+    let year = layers
+        .file
+        .as_ref()
+        .and_then(|r| r.year.as_ref())
+        .or(layers.xmp.year.as_ref())
+        .or(layers.info.year.as_ref());
+    let doi = layers
+        .file
+        .as_ref()
+        .and_then(|r| r.doi.as_ref())
+        .or(layers.xmp.doi.as_ref())
+        .or(layers.info.doi.as_ref());
+    title.is_none() || !authors || year.is_none() || doi.is_none()
 }
 
 fn answer(state: &DocState) -> BibliographyInfo {
@@ -173,6 +181,22 @@ fn with_deadline<T: Send + 'static>(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_first_page_is_read_while_the_doi_is_empty_even_if_the_rest_is_full() {
+        use crate::model::bibliography::Person;
+        let mut layers = BibLayers::default();
+        assert!(hints_wanted(&layers));
+        layers.info.title = Some("T".into());
+        layers.info.authors = vec![Person {
+            family: "A".into(),
+            given: "B".into(),
+        }];
+        layers.info.year = Some("2020".into());
+        assert!(hints_wanted(&layers), "no DOI: the page may print one");
+        layers.info.doi = Some("10.1000/x".into());
+        assert!(!hints_wanted(&layers));
+    }
 
     #[test]
     fn a_second_read_of_a_document_waits_for_none_and_is_refused_while_one_runs() {
