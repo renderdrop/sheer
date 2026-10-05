@@ -27,8 +27,36 @@ export function useActionState(): ActionState {
   // The list is read for the menu's Copy and Save Citation List, and kept live by the change sets.
   const hasCitations = useCitations(docId).length > 0;
   const readOnly = useDocuments((state) => (docId === null ? false : state.byId[docId]?.kind === 'welcome'));
+  // The same lock as `readActionState` (DESIGN 3.8 S5), so the in-window menu and the shortcuts agree.
+  const lock = useDocuments((state) => (docId === null ? 'none' : (state.byId[docId]?.signatureLock ?? 'none')));
+  const signatureLocked = lock === 'locked';
+  const signed = lock !== 'none';
   return useMemo(
-    () => ({ hasDocument, zoomAtMin, zoomAtMax, canUndo, canRedo, canPrint, canCopy, hasCitations, readOnly }),
-    [hasDocument, zoomAtMin, zoomAtMax, canUndo, canRedo, canPrint, canCopy, hasCitations, readOnly],
+    () => ({
+      hasDocument,
+      zoomAtMin,
+      zoomAtMax,
+      canUndo,
+      canRedo,
+      canPrint,
+      canCopy,
+      hasCitations,
+      readOnly,
+      signatureLocked,
+      signed,
+    }),
+    [
+      hasDocument,
+      zoomAtMin,
+      zoomAtMax,
+      canUndo,
+      canRedo,
+      canPrint,
+      canCopy,
+      hasCitations,
+      readOnly,
+      signatureLocked,
+      signed,
+    ],
   );
 }
