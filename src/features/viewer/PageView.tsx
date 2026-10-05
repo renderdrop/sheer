@@ -5,6 +5,7 @@ import { toAppError } from '../../api/errors';
 import type { RenderPriority } from '../../api/render';
 import { planPage, tilesIn, TILE_SIZE_PX, tileRect, type PagePlan, type TileIndex } from '../../engine/buckets';
 import { imageKey, type CacheEntry, type ImageId } from '../../engine/renderCache';
+import { useLastImage } from '../../engine/useLastImage';
 import { renderScheduler, type RenderScheduler } from '../../engine/renderScheduler';
 import { useT } from '../../i18n';
 import { tokenPx } from '../../components/tokens';
@@ -256,10 +257,13 @@ export const PageView = memo(function PageView({
   const wholeId: ImageId = { docId, page: pageId, rev, slotRev, bucket: wholeBucket };
   const exact = cache.get(imageKey(wholeId));
   // What the cache had when the page mounted shows without a fade; what arrives later fades in (MOTION 4.3).
-  const [atMount] = useState(() => new Set<string>(exact === undefined ? [] : [exact.key]));
+  // By entry, not by key: after a save the same key holds a new image, and that one must fade in over the old.
+  const [atMount] = useState(() => new Set<CacheEntry>(exact === undefined ? [] : [exact]));
   // The exact image covers the stand-in only once it has decoded and faded in (below), so the page is never blank in between.
-  const [covered, setCovered] = useState<string | null>(exact?.key ?? null);
-  const standIn = exact === undefined || covered !== exact.key ? standInFor(wholeBucket, exact?.key) : undefined;
+  const [covered, setCovered] = useState<CacheEntry | null>(exact ?? null);
+  const standIn = exact === undefined || covered !== exact ? standInFor(wholeBucket, exact?.key) : undefined;
+  // A save drops the document's images: what was on screen stays (under the new one) until that has been decoded.
+  const lost = useLastImage(cache, exact !== undefined && covered === exact ? exact : standIn);
   const tileEntries = tiles.flatMap((tile) => {
     const entry = cache.get(imageKey({ ...wholeId, bucket: plan.bucket, tile }));
     return entry === undefined ? [] : [{ tile, entry }];
@@ -339,7 +343,7 @@ export const PageView = memo(function PageView({
       key={entry.key}
       src={cache.urlOf(entry)}
       style={style}
-      instant={shownAlready || atMount.has(entry.key)}
+      instant={shownAlready || atMount.has(entry)}
       over={over}
       onShown={onShown}
     />
@@ -412,14 +416,17 @@ export const PageView = memo(function PageView({
     >
       <div className="absolute" style={surface}>
         {/* Until the first image of the page has faded in, the Skeleton (spell 15) stands for it, in the page's aspect ratio. */}
-        {standIn === undefined && (exact === undefined || covered !== exact.key) && tileEntries.length === 0 && (
+        {standIn === undefined && lost === undefined && (exact === undefined || covered !== exact) && tileEntries.length === 0 && (
           <div className="absolute inset-0">
             <Skeleton className="size-full" />
           </div>
         )}
+        {standIn === undefined && lost !== undefined && (
+          <FadeImage key="lost" src={lost.src} style={whole} instant over="first" />
+        )}
         {standIn !== undefined && image(standIn, whole, 'first', undefined, true)}
         {exact !== undefined &&
-          image(exact, whole, standIn === undefined ? 'first' : 'sharp', () => setCovered(exact.key))}
+          image(exact, whole, standIn === undefined && lost === undefined ? 'first' : 'sharp', () => setCovered(exact))}
         {tileEntries.map(({ tile, entry }) => {
           const rect = tileRect(plan, tile);
           return image(

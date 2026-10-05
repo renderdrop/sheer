@@ -2,6 +2,7 @@ import { memo, useCallback, useEffect, useRef, useState, useSyncExternalStore } 
 
 import { bucketFor } from '../../engine/buckets';
 import { imageKey, type ImageId } from '../../engine/renderCache';
+import { useLastImage } from '../../engine/useLastImage';
 import { renderScheduler, type RenderScheduler } from '../../engine/renderScheduler';
 import { cx } from '../../components/cx';
 import { useT } from '../../i18n';
@@ -180,6 +181,9 @@ export const ThumbnailItem = memo(function ThumbnailItem({
   // Until the right size is there, any image of the page does: the canvas's, or a thumbnail of another size.
   const shown = exact ?? cache.best(docId, pageId, 0, bucket, undefined, pageRev);
   const shownKey = shown?.key ?? '';
+  // A save drops the document's images: the old thumbnail stays until the new one is there.
+  const lost = useLastImage(cache, shown);
+  const shownImage = shown === undefined ? (lost ?? null) : { key: shown.key, src: cache.urlOf(shown) };
 
   // The image this cell shows is not evicted while it does. (An effect: the cache is outside React, and pins are its state.)
   useEffect(() => {
@@ -215,7 +219,7 @@ export const ThumbnailItem = memo(function ThumbnailItem({
           pageId={pageId}
           width={thumbWidth}
           height={thumbHeight}
-          image={shown === undefined ? null : { key: shown.key, src: cache.urlOf(shown) }}
+          image={shownImage}
         />
         <span className="inline-flex h-4 min-w-6 items-center justify-center rounded-pill px-2 text-xs tabular-nums text-text-muted">
           {index + 1}
@@ -256,7 +260,7 @@ export const ThumbnailItem = memo(function ThumbnailItem({
         pageId={pageId}
         width={thumbWidth}
         height={thumbHeight}
-        image={shown === undefined ? null : { key: shown.key, src: cache.urlOf(shown) }}
+        image={shownImage}
       />
       <span
         aria-hidden="true"

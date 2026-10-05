@@ -251,6 +251,15 @@ export class RenderCache {
     return url;
   }
 
+  /** A URL of its own for a blob: it outlives the entry (evicted or dropped) until `releaseUrl`. */
+  leaseUrl(blob: Blob): string {
+    return this.createUrl(blob);
+  }
+
+  releaseUrl(url: string): void {
+    this.revokeUrl(url);
+  }
+
   /**
    * Sets what `owner` shows: those entries are kept whatever the budget says, until the owner pins something else or
    * releases them. One owner per mounted page.

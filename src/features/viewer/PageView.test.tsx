@@ -323,6 +323,41 @@ describe('a cache that was emptied under a mounted page (a save loads the file a
   });
 });
 
+describe('the picture across a save (the cache is emptied and the page rendered anew)', () => {
+  it('keeps the old image mounted, without a skeleton, until the new one has loaded', async () => {
+    const { scheduler, pending, cache, revoked } = fixture();
+    put(cache, 2);
+    setup(view(scheduler));
+    const before = images();
+    expect(before).toHaveLength(1);
+    await act(async () => {
+      cache.dropDocument(1);
+      cache.admit(1);
+    });
+    // The cache lost the image: the page still shows it (under a URL of its own), and there is no skeleton.
+    expect(images()).toHaveLength(1);
+    expect(page().querySelector('[data-skeleton], .skeleton, [aria-busy]')).toBeNull();
+    const old = images()[0] as HTMLImageElement;
+    expect(old.getAttribute('src')).not.toBeNull();
+    await act(async () => {
+      pending[0]?.resolve(frame());
+      await Promise.resolve();
+    });
+    // The new one is in, not loaded yet: both are mounted, the old one is still there.
+    expect(images()).toHaveLength(2);
+    expect(images()).toContain(old);
+    const fresh = images().find((image) => image !== old) as HTMLImageElement;
+    expect(fresh.style.opacity).toBe('0');
+    expect(revoked).not.toContain(old.getAttribute('src'));
+    fireEvent.load(fresh);
+    act(() => {
+      vi.advanceTimersByTime(200);
+    });
+    expect(images()).toEqual([fresh]);
+    expect(revoked).toContain(old.getAttribute('src'));
+  });
+});
+
 describe('a failure', () => {
   it('shows the error in the banner, once for pages that fail alike, and a page that renders afterwards clears it', async () => {
     const { scheduler, pending } = fixture();
