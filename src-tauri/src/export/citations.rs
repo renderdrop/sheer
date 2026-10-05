@@ -133,10 +133,17 @@ pub fn check_blocks(blocks: &[StyledBlock]) -> Result<(), AppError> {
 
 // --- Blocks to txt, html, md -------------------------------------------------------------------------------------------
 
-/// A control character becomes a space (a block is one paragraph, so a line break is none either).
+/// A control character, and the line and paragraph separators (U+2028, U+2029), become a space (a block is one paragraph, so a line
+/// break is none either).
 fn plain(text: &str) -> String {
     text.chars()
-        .map(|c| if c.is_control() { ' ' } else { c })
+        .map(|c| {
+            if c.is_control() || matches!(c, '\u{2028}' | '\u{2029}') {
+                ' '
+            } else {
+                c
+            }
+        })
         .collect()
 }
 
@@ -731,6 +738,10 @@ mod tests {
             block(&[("e", false)]),
         ]);
         assert_eq!(out, "a <b> & c d \n\ne\n");
+        // A line or paragraph separator would be a line break for a reader of the file.
+        let separated = [block(&[("x\u{2028}y\u{2029}z", false)])];
+        assert_eq!(to_text(&separated), "x y z\n");
+        assert_eq!(to_markdown(&separated), "x y z\n");
     }
 
     #[test]

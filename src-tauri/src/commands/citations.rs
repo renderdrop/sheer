@@ -92,15 +92,13 @@ impl AppState {
         )
     }
 
-    /// The page labels by file page index: from the model if they were read, else asked of the engine once (its failure, or a job
-    /// that has no answer yet, leaves every locator to fall back to the position).
+    /// The page labels by file page index: from the model if they were read, else asked of the engine once. A failed job is cached as
+    /// no labels (every locator falls back to the position) until the next save, so a list does not retry it.
     fn page_labels(&self, id: DocumentId) -> Result<Vec<Option<String>>, AppError> {
         if let Some(labels) = self.model(id, |state| Ok(state.page_labels.clone()))? {
             return Ok(labels);
         }
-        let Ok(labels) = self.engine.page_labels(id) else {
-            return Ok(Vec::new());
-        };
+        let labels = self.engine.page_labels(id).unwrap_or_default();
         self.model(id, |state| {
             state.page_labels = Some(labels.clone());
             Ok(())
@@ -113,11 +111,13 @@ impl AppState {
     pub fn list_citations(&self, id: DocumentId) -> Result<Vec<CitationInfo>, AppError> {
         let order = self.registry.page_order(id)?;
         let labels = self.page_labels(id)?;
+        let unread = self.unread_pages(id, &order)?;
+        let keys = self.prefetch_keys(id, &unread)?;
         let mut out: Vec<CitationInfo> = Vec::new();
         for (position, (page, index)) in order.into_iter().enumerate() {
             if !self.model(id, |state| Ok(state.is_imported(page)))? {
                 let items = self.engine.import_annotations_background(id, index)?;
-                self.import_read(id, page, index, items)?;
+                self.import_read_prefetched(id, page, index, items, &keys)?;
             }
             let mut found: Vec<_> = self
                 .model(id, |state| Ok(state.list(page)))?
@@ -131,8 +131,11 @@ impl AppState {
                     .then(a.rect.x.total_cmp(&b.rect.x))
                     .then(a.id.cmp(&b.id))
             });
+            // The PDF label is the label of a page of the file; a blank, imported or redacted page has none (ADR-119 section 2).
+            let from_file = self.model(id, |state| Ok(state.is_file_page(page)))?;
             let locator = usize::try_from(index)
                 .ok()
+                .filter(|_| from_file)
                 .and_then(|i| labels.get(i))
                 .and_then(|label| label.clone())
                 .filter(|label| !label.trim().is_empty())
@@ -277,6 +280,105 @@ mod tests {
         );
     }
 
+    #[test]
+    fn only_a_page_of_the_file_has_its_pdf_label_a_blank_or_imported_one_has_its_position() {
+        use crate::model::page::{NewPage, PageSource};
+        let (state, id) = state(vec![Some("iv".into()), Some("v".into()), Some("vi".into())]);
+        // A blank page first, then an imported page whose engine index would pick the label "v" of file page 1.
+        state
+            .apply_command(
+                id,
+                DocCommand::AddPages {
+                    label: "pages.insertBlank".to_owned(),
+                    at: 0,
+                    pages: vec![NewPage {
+                        source: PageSource::Blank,
+                        engine_index: 0,
+                        rotation: 0,
+                        size: [100.0, 100.0],
+                        media: [0.0, 0.0, 100.0, 100.0],
+                        annotations: None,
+                    }],
+                },
+            )
+            .unwrap();
+        state
+            .apply_command(
+                id,
+                DocCommand::AddPages {
+                    label: "pages.insert".to_owned(),
+                    at: 2,
+                    pages: vec![NewPage {
+                        source: PageSource::Imported {
+                            source: serde_json::from_value(json!(1)).unwrap(),
+                            index: 0,
+                        },
+                        engine_index: 1,
+                        rotation: 0,
+                        size: [100.0, 100.0],
+                        media: [0.0, 0.0, 100.0, 100.0],
+                        annotations: Some(Vec::new()),
+                    }],
+                },
+            )
+            .unwrap();
+        // Page ids: file pages 0, 1, 2; the blank one is 3 and the imported one 4. Order: 3, 0, 4, 1, 2.
+        let order: Vec<u32> = state
+            .registry
+            .page_order(id)
+            .unwrap()
+            .iter()
+            .map(|(page, _)| page.get())
+            .collect();
+        assert_eq!(order, [3, 0, 4, 1, 2]);
+        state
+            .create_citations(id, drafts(json!([draft(3, 0.0, 50.0)])))
+            .unwrap();
+        state
+            .create_citations(id, drafts(json!([draft(4, 0.0, 50.0)])))
+            .unwrap();
+        state
+            .create_citations(id, drafts(json!([draft(0, 0.0, 50.0)])))
+            .unwrap();
+        state
+            .create_citations(id, drafts(json!([draft(1, 0.0, 50.0)])))
+            .unwrap();
+        let locators: Vec<_> = state
+            .list_citations(id)
+            .unwrap()
+            .into_iter()
+            .map(|c| c.locator)
+            .collect();
+        assert_eq!(locators, ["1", "iv", "3", "v"]);
+    }
+
+    #[test]
+    fn a_failed_labels_job_is_asked_once_until_the_next_save() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        use std::sync::Arc;
+        let asked = Arc::new(AtomicUsize::new(0));
+        let counter = Arc::clone(&asked);
+        let (state, id) = state_with_pages(2, move |job| match job {
+            Job::TextLayer { reply, .. } => {
+                let _ = reply.send(Ok(page()));
+            }
+            Job::ImportAnnotations { reply, .. } => {
+                let _ = reply.send(Ok(Vec::new()));
+            }
+            Job::PageLabels { reply, .. } => {
+                counter.fetch_add(1, Ordering::SeqCst);
+                let _ = reply.send(Err(AppError::new(ErrorCode::EngineTimeout)));
+            }
+            _ => {}
+        });
+        state
+            .create_citations(id, drafts(json!([draft(1, 0.0, 50.0)])))
+            .unwrap();
+        for _ in 0..3 {
+            assert_eq!(state.list_citations(id).unwrap()[0].locator, "2");
+        }
+        assert_eq!(asked.load(Ordering::SeqCst), 1);
+    }
     #[test]
     fn drafts_that_do_not_fit_are_refused() {
         let (state, id) = state(Vec::new());

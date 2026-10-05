@@ -170,6 +170,9 @@ pub struct DocState {
     pub page_labels: Option<Vec<Option<String>>>,
     /// The bibliographic record the session has (ADR-119).
     pub bibliography: super::bibliography::BibliographyState,
+    /// The pages (ids) read from the file whose Sheer keys could not be read (an encrypted file, a read that failed): their annotations
+    /// keep the `/SHR_Cite` and `/SHR_Tags` the file has when they are saved (ADR-119).
+    keys_unread: HashSet<u32>,
 }
 
 /// Bytes of the strings an imported annotation brings.
@@ -235,6 +238,7 @@ impl DocState {
             metadata: MetadataState::default(),
             page_labels: None,
             bibliography: super::bibliography::BibliographyState::default(),
+            keys_unread: HashSet::new(),
         }
     }
 
@@ -327,6 +331,7 @@ impl DocState {
             } else {
                 // A page of the file now: its annotations are read from the file like those of any page.
                 self.imported.remove(&slot.id.get());
+                self.keys_unread.remove(&slot.id.get());
             }
             slot.source = PageSource::File { index: position };
             slot.engine_index = position;
@@ -373,6 +378,8 @@ impl DocState {
         self.metadata = MetadataState::default();
         // The record a save wrote is in the file now (a removal of the metadata dropped it): it is read again.
         self.bibliography = super::bibliography::BibliographyState::default();
+        // The labels were keyed by the old file's page indices (and a failed read was cached): the engine is asked again.
+        self.page_labels = None;
         delta.doc.insert(DocPart::Bibliography);
         delta.doc.insert(DocPart::Metadata);
         delta.doc.insert(DocPart::Protection);
@@ -735,7 +742,13 @@ impl DocState {
 
     /// Gives the annotations of `page` that were just read from the file (still `Clean`) the `/SHR_Cite` and `/SHR_Tags` the file has,
     /// by position in the page's annotations (ADR-119, `pdfwrite::sheer_keys`). Not a change: no revision, no history.
-    pub fn apply_sheer_keys(&mut self, page: PageId, keys: &HashMap<u32, SheerKeys>) {
+    /// `None`: the keys could not be read (the page's annotations keep the keys the file has when saved, see [`DocState::keys_known`]).
+    pub fn apply_sheer_keys(&mut self, page: PageId, keys: Option<&HashMap<u32, SheerKeys>>) {
+        let Some(keys) = keys else {
+            self.keys_unread.insert(page.get());
+            return;
+        };
+        self.keys_unread.remove(&page.get());
         if keys.is_empty() {
             return;
         }
@@ -756,6 +769,19 @@ impl DocState {
                     .apply_file_keys(found.cite.as_ref(), &found.tags);
             }
         }
+    }
+
+    /// Whether `page` is a page of the file as it is (its PDF page label is then the page's label); a blank, imported or redacted page is
+    /// not.
+    pub fn is_file_page(&self, page: PageId) -> bool {
+        self.slot(page)
+            .is_some_and(|slot| matches!(slot.source, PageSource::File { .. }))
+    }
+
+    /// Whether the model knows the Sheer keys of the annotations of `page`: false for a page read from the file whose keys could not be
+    /// read; the writer then leaves the keys the file has as they are.
+    pub fn keys_known(&self, page: PageId) -> bool {
+        !self.keys_unread.contains(&page.get())
     }
 
     /// What the reading of the file's annotations left out so far, by page (pages that are gone are not listed).

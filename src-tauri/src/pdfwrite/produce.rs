@@ -873,6 +873,7 @@ pub fn plan_for_output(plan: &Plan, documents: &[u32], base: u32) -> Vec<Plan> {
                     }
                 }
             }
+            out.keys_unread.clone_from(&plan.keys_unread);
             out.known = plan
                 .known
                 .iter()

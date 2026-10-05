@@ -9,7 +9,7 @@
 //! the model. The record is changed with `apply_command` (`DocCommand::SetBibliography`) and written by the next save.
 
 use std::panic::{catch_unwind, AssertUnwindSafe};
-use std::sync::mpsc;
+use std::sync::{mpsc, Mutex, PoisonError};
 use std::thread;
 use std::time::Duration;
 
@@ -37,7 +37,7 @@ impl AppState {
             .registry
             .path(id)
             .ok_or(AppError::not_found("document"))?;
-        let read = with_deadline(limits::METADATA_READ_TIMEOUT, move || {
+        let read = with_deadline(id, limits::METADATA_READ_TIMEOUT, move || {
             let (bytes, _) = read_all(intake::admit(&path)?)?;
             let (doc, _) = crypt::load_decrypted(&bytes, session.as_ref().map(|s| s.as_str()))?;
             drop(bytes);
@@ -103,17 +103,53 @@ pub async fn get_bibliography(
     blocking(move || state.get_bibliography(doc_id)).await
 }
 
+/// The documents whose bibliography is being read by a thread of [`with_deadline`] (the thread outlives a caller that gave up).
+static READING: Mutex<Vec<DocumentId>> = Mutex::new(Vec::new());
+
+/// Held by the reading thread of one document; the entry goes when the thread ends, however it ends.
+struct Reading(DocumentId);
+
+impl Reading {
+    /// `None` while a read of `id` is still running.
+    fn begin(id: DocumentId) -> Option<Self> {
+        let mut reading = READING.lock().unwrap_or_else(PoisonError::into_inner);
+        if reading.contains(&id) {
+            return None;
+        }
+        reading.push(id);
+        Some(Self(id))
+    }
+}
+
+impl Drop for Reading {
+    fn drop(&mut self) {
+        READING
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .retain(|other| *other != self.0);
+    }
+}
+
 /// Runs `work` on a thread of its own (with the stack the save thread has) and stops waiting after `timeout` (`engine_timeout`); a panic
-/// is `internal`. The thread ends by itself, and its answer is dropped.
+/// is `internal`. The thread ends by itself, and its answer is dropped. At most one such thread runs per document: a call while one is
+/// still running is `engine_timeout` at once, so slow reads cannot pile up threads.
 fn with_deadline<T: Send + 'static>(
+    id: DocumentId,
     timeout: Duration,
     work: impl FnOnce() -> Result<T, AppError> + Send + 'static,
 ) -> Result<T, AppError> {
+    let Some(reading) = Reading::begin(id) else {
+        return Err(AppError::logged(
+            ErrorCode::EngineTimeout,
+            "the bibliography of the document is still being read",
+        ));
+    };
     let (sender, receiver) = mpsc::channel();
     let spawned = thread::Builder::new()
         .name("sheer-bibliography".into())
         .stack_size(limits::SAVE_STACK_BYTES)
         .spawn(move || {
+            let _reading = reading;
             let result = catch_unwind(AssertUnwindSafe(work)).unwrap_or_else(|_| {
                 Err(AppError::logged(
                     ErrorCode::Internal,
@@ -132,4 +168,48 @@ fn with_deadline<T: Send + 'static>(
             "reading the bibliography took too long",
         )
     })?
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_second_read_of_a_document_waits_for_none_and_is_refused_while_one_runs() {
+        let id: DocumentId = serde_json::from_value(serde_json::json!(4_000_001)).unwrap();
+        let other: DocumentId = serde_json::from_value(serde_json::json!(4_000_002)).unwrap();
+        let (release, gate) = mpsc::channel::<()>();
+        let (started, running) = mpsc::channel::<()>();
+        let first = thread::spawn(move || {
+            with_deadline(id, Duration::from_millis(100), move || {
+                let _ = started.send(());
+                let _ = gate.recv();
+                Ok(1)
+            })
+        });
+        running.recv().unwrap();
+        // The first call gave up after its deadline, but its thread still runs: no second thread for the document.
+        assert_eq!(
+            first.join().unwrap().unwrap_err().code(),
+            ErrorCode::EngineTimeout
+        );
+        let refused = with_deadline(id, Duration::from_secs(5), || Ok(2)).unwrap_err();
+        assert_eq!(refused.code(), ErrorCode::EngineTimeout);
+        // Another document is not held up.
+        assert_eq!(
+            with_deadline(other, Duration::from_secs(5), || Ok(3)).unwrap(),
+            3
+        );
+        // When the thread ends the document can be read again.
+        release.send(()).unwrap();
+        let mut done = false;
+        for _ in 0..200 {
+            if with_deadline(id, Duration::from_secs(5), || Ok(4)).is_ok() {
+                done = true;
+                break;
+            }
+            thread::sleep(Duration::from_millis(10));
+        }
+        assert!(done);
+    }
 }

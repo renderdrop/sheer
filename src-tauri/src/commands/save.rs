@@ -165,6 +165,9 @@ pub(super) fn plan_with_origins(
         }
         if let Some(origin) = &origin {
             plan.known.push((annotation.id, origin.clone()));
+            if !state.keys_known(annotation.page_id) {
+                plan.keys_unread.insert(annotation.id);
+            }
         }
         // Text boxes and images are burned in, redaction marks are never written (ADR-047): neither is an annotation of the file.
         let to_write = !annotation.is_opaque()
@@ -741,6 +744,18 @@ impl AppState {
         // The pages of the file are the pages of the document now, in this order: engine page i is page i, and what was held for the
         // inserts is in the file.
         self.registry.set_page_count(id, expected)?;
+        // The ids of the pages survive the save (they are not renumbered), so the registry keeps the ids the model has: engine page i is
+        // the page at position i, whatever its id.
+        self.model(id, |state| {
+            self.registry.set_pages(
+                id,
+                state
+                    .pages()
+                    .iter()
+                    .map(|slot| (slot.id, slot.engine_index)),
+            );
+            Ok(())
+        })?;
         self.sources.unpin_all(id);
         // The saved first page is the preview of the recents row (what a redaction took out is not in it: it is drawn from the saved file).
         self.cache_thumbnail(id);

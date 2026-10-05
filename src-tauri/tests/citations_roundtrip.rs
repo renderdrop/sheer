@@ -12,15 +12,18 @@ use std::sync::OnceLock;
 
 use serde_json::json;
 use sheer_lib::commands::save::SaveAck;
-use sheer_lib::commands::AppState;
+use sheer_lib::commands::{AppState, Opened};
 use sheer_lib::documents::{DocumentId, PageId};
 use sheer_lib::engine::{self, Engine};
 use sheer_lib::error::ErrorCode;
 use sheer_lib::model::command::DocCommand;
+use sheer_lib::model::protection::{Permission, PermissionSet};
 use sheer_lib::model::quote::CitationDraft;
-use sheer_lib::pdfwrite::sheer_keys;
+use sheer_lib::pdfwrite::{crypt, sheer_keys};
+use sheer_lib::security::secret::{PendingProtection, Secret};
 use support::fixtures::{add_pages, page_id, Page};
-use support::PdfBuilder;
+use support::{text_line, PdfBuilder};
+use zeroize::Zeroizing;
 
 struct Scratch(PathBuf);
 
@@ -395,5 +398,125 @@ fn the_keys_of_an_annotation_the_writer_did_not_read_or_does_not_know_stay() {
     assert!(
         saved.windows(11).any(|w| w == b"/SHR_Future"),
         "a key the model does not know is kept"
+    );
+}
+
+fn command(value: serde_json::Value) -> DocCommand {
+    serde_json::from_value(value).unwrap()
+}
+
+/// Three pages that each say the same line (baseline 700), labelled i, ii, iii.
+fn labelled() -> Vec<u8> {
+    let mut builder = PdfBuilder::new();
+    let line = text_line(14, 72, 700, "The quick brown fox jumps over the lazy dog.");
+    add_pages(
+        &mut builder,
+        &[Page::new(&line), Page::new(&line), Page::new(&line)],
+    );
+    builder.object(
+        1,
+        "<< /Type /Catalog /Pages 2 0 R /PageLabels << /Nums [0 << /S /r >>] >> >>",
+    );
+    builder.finish(1)
+}
+
+#[test]
+fn page_labels_follow_the_pages_after_a_save_that_moved_them() {
+    let Some(state) = state() else { return };
+    let scratch = Scratch::new("labels");
+    let path = write(&scratch, "labelled.pdf", &labelled());
+    let id = open(state, path);
+    let on = |page: u32| json!({"pageId": page, "quads": [quad(60.0, 75.0, 400.0, 25.0)], "color": [255, 248, 77]});
+    for page in [0, 2] {
+        state
+            .create_citations(id, drafts(json!([on(page)])))
+            .unwrap();
+    }
+    let locators = |state: &AppState| -> Vec<String> {
+        state
+            .list_citations(id)
+            .unwrap()
+            .into_iter()
+            .map(|c| c.locator)
+            .collect()
+    };
+    assert_eq!(locators(state), ["i", "iii"]);
+
+    // Page 0 goes: the cited page 2 is the second page of the document, and the cache of the labels is by file page.
+    state
+        .apply_command(id, command(json!({"type": "deletePages", "pages": [0]})))
+        .unwrap();
+    assert_eq!(
+        locators(state),
+        ["iii"],
+        "before the save the file is as it was"
+    );
+    state.save_in_place(id, SaveAck::default()).unwrap();
+    let fresh = state.engine().page_labels(id).unwrap();
+    let expected = fresh
+        .get(1)
+        .cloned()
+        .flatten()
+        .unwrap_or_else(|| "2".to_owned());
+    assert_ne!(
+        expected, "iii",
+        "the page is the second page of the file now"
+    );
+    assert_eq!(locators(state), [expected]);
+}
+
+fn secret(text: &str) -> Secret {
+    Secret::new(text).unwrap()
+}
+
+#[test]
+fn an_edited_annotation_of_an_encrypted_file_keeps_its_keys() {
+    let Some(state) = state() else { return };
+    let scratch = Scratch::new("encrypted");
+    let keys = "/SHR_Cite << /V 1 /Q (Kept quote) >> /SHR_Tags [(keep)]";
+    let pending = PendingProtection::Protect {
+        open: Some(secret("open-pw")),
+        owner: secret("owner-pw"),
+        allow: PermissionSet::from_list(&[Permission::Print, Permission::Edit]),
+    };
+    let bytes = crypt::encrypt_bytes(&with_keys(keys), &pending).unwrap();
+    let path = scratch.file("enc.pdf");
+    std::fs::write(&path, bytes).unwrap();
+    let id = match state.open_outcome(path.clone()).unwrap() {
+        Opened::Locked { id, .. } => {
+            state
+                .unlock(id, Zeroizing::new("open-pw".to_owned()))
+                .unwrap()
+                .id
+        }
+        Opened::Ready(info) => info.id,
+        Opened::Pending => panic!("pending"),
+    };
+    let listed = state.list_annotations(id, PageId::new(0)).unwrap();
+    assert_eq!(listed.len(), 1);
+    state
+        .apply_command(
+            id,
+            command(json!({"type": "updateAnnotation", "id": listed[0].id,
+                "patch": {"color": [10, 20, 30]}})),
+        )
+        .unwrap();
+    state
+        .save_in_place(
+            id,
+            SaveAck {
+                rewrite_encrypted: true,
+                ..SaveAck::default()
+            },
+        )
+        .unwrap();
+    let written = std::fs::read(&path).unwrap();
+    assert!(crypt::testing::is_encrypted(&written));
+    let (doc, _) = crypt::load_decrypted(&written, Some("open-pw")).unwrap();
+    let kept = &sheer_keys::read_pages_of(&doc, &[0])[&0];
+    assert_eq!(kept[&0].tags, ["keep"]);
+    assert_eq!(
+        kept[&0].cite.as_ref().map(|c| c.quote.as_str()),
+        Some("Kept quote")
     );
 }

@@ -36,6 +36,9 @@ use crate::pdfwrite::lines::{self, LineRead};
 use crate::pdfwrite::reviews::{self, ReviewLink};
 use crate::pdfwrite::sheer_keys::{self, SheerKeys};
 
+/// The Sheer keys of several pages: by page index, then by annotation position.
+type KeysByPage = HashMap<u32, HashMap<u32, SheerKeys>>;
+
 /// Longest excerpt of an annotation's contents in a summary, in characters.
 pub const SUMMARY_EXCERPT_CHARS: usize = 240;
 
@@ -128,13 +131,13 @@ fn read_page_file<T: Send + 'static>(
         .unwrap_or_else(|_| Ok(HashMap::new()))
 }
 
-/// Reads the Sheer keys of page `page_index` of the file at `path` on a thread of its own, with a deadline. A file that cannot be read or
-/// parsed again has no keys (its page is listed without them; a save of it fails anyway); a read that does not finish is
-/// `engine_timeout`, and the page stays unread so the next list tries again (the writer must not rewrite what it did not read).
+/// The Sheer keys of the pages `page_indices` of the file at `path`, read in one pass (one parse) on a thread of its own, with a
+/// deadline. `None` when the file cannot be read or parsed again, or the reader panicked (the keys are unknown: a save leaves the ones the
+/// file has); a read that does not finish is `engine_timeout`, and the pages stay unread so the next list tries again.
 fn read_keys_file(
     path: std::path::PathBuf,
-    page_index: u32,
-) -> Result<HashMap<u32, SheerKeys>, AppError> {
+    page_indices: Vec<u32>,
+) -> Result<Option<KeysByPage>, AppError> {
     let (sender, receiver) = std::sync::mpsc::channel();
     let spawned = std::thread::Builder::new()
         .name("sheer-keys".into())
@@ -142,13 +145,13 @@ fn read_keys_file(
         .spawn(move || {
             let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                 let (bytes, _) = super::save::read_all(crate::documents::intake::admit(&path)?)?;
-                sheer_keys::read_page(&bytes, page_index)
+                sheer_keys::read_pages(&bytes, &page_indices)
             }))
-            .unwrap_or_else(|_| Ok(HashMap::new()));
-            let _ = sender.send(result.unwrap_or_default());
+            .unwrap_or_else(|_| Err(AppError::new(crate::error::ErrorCode::Internal)));
+            let _ = sender.send(result.ok());
         });
     if spawned.is_err() {
-        return Ok(HashMap::new());
+        return Ok(None);
     }
     receiver
         .recv_timeout(limits::FORM_READ_TIMEOUT)
@@ -438,38 +441,94 @@ impl AppState {
         page_index: u32,
         items: Vec<crate::model::annotation::Imported>,
     ) -> Result<(), AppError> {
+        let keys = self.sheer_keys(id, page_index, &items)?;
+        self.import_with_keys(id, page, page_index, items, keys)
+    }
+
+    /// [`AppState::import_read`] for a page of a list that read the keys of all its unread pages at once (`prefetch_keys`).
+    pub(super) fn import_read_prefetched(
+        &self,
+        id: DocumentId,
+        page: PageId,
+        page_index: u32,
+        items: Vec<crate::model::annotation::Imported>,
+        prefetched: &Option<KeysByPage>,
+    ) -> Result<(), AppError> {
+        let keys = prefetched
+            .as_ref()
+            .map(|all| all.get(&page_index).cloned().unwrap_or_default());
+        self.import_with_keys(id, page, page_index, items, keys)
+    }
+
+    fn import_with_keys(
+        &self,
+        id: DocumentId,
+        page: PageId,
+        page_index: u32,
+        items: Vec<crate::model::annotation::Imported>,
+        keys: Option<HashMap<u32, SheerKeys>>,
+    ) -> Result<(), AppError> {
         let items = self.lift_lines(id, page_index, items);
         let links = self.review_links(id, page_index, &items);
-        let keys = self.sheer_keys(id, page_index, &items)?;
         self.model(id, |state| {
             if !state.is_imported(page) {
                 state.import_page_linked(page, &items, &links);
-                state.apply_sheer_keys(page, &keys);
+                state.apply_sheer_keys(page, keys.as_ref());
             }
             Ok(())
         })
     }
 
+    /// The engine indices of the pages of `order` the model has not read yet.
+    pub(super) fn unread_pages(
+        &self,
+        id: DocumentId,
+        order: &[(PageId, u32)],
+    ) -> Result<Vec<u32>, AppError> {
+        self.model(id, |state| {
+            Ok(order
+                .iter()
+                .filter(|(page, _)| !state.is_imported(*page))
+                .map(|(_, index)| *index)
+                .collect())
+        })
+    }
+
+    /// The Sheer keys of the pages `unread` of the file in one pass (one parse), for the lists that read every page: `None` when they
+    /// cannot be read (an encrypted document, a file that cannot be parsed again), `engine_timeout` when the read takes too long.
+    pub(super) fn prefetch_keys(
+        &self,
+        id: DocumentId,
+        unread: &[u32],
+    ) -> Result<Option<KeysByPage>, AppError> {
+        if unread.is_empty() {
+            return Ok(Some(HashMap::new()));
+        }
+        let readable = self.info(id).is_some_and(|info| !info.flags.encrypted);
+        let Some(path) = self.registry.path(id).filter(|_| readable) else {
+            return Ok(None);
+        };
+        read_keys_file(path, unread.to_vec())
+    }
+
     /// The citation records and tags the file has for the annotations of a page (see `pdfwrite::sheer_keys`). Only a page with an
-    /// annotation the model can tag is looked at; an encrypted document or a file that cannot be parsed again has none. A read that
-    /// takes too long is `engine_timeout`.
+    /// annotation the model can tag is looked at (the others have none); `None` for an encrypted document or a file that cannot be
+    /// parsed again: their keys are unknown, and a save leaves the ones the file has. A read that takes too long is `engine_timeout`.
     fn sheer_keys(
         &self,
         id: DocumentId,
         page_index: u32,
         items: &[crate::model::annotation::Imported],
-    ) -> Result<HashMap<u32, SheerKeys>, AppError> {
+    ) -> Result<Option<HashMap<u32, SheerKeys>>, AppError> {
         let taggable = items
             .iter()
             .any(|item| !matches!(item.body, AnnotationBody::Opaque { .. }));
-        let readable = self.info(id).is_some_and(|info| !info.flags.encrypted);
-        if !taggable || !readable {
-            return Ok(HashMap::new());
+        if !taggable {
+            return Ok(Some(HashMap::new()));
         }
-        let Some(path) = self.registry.path(id) else {
-            return Ok(HashMap::new());
-        };
-        read_keys_file(path, page_index)
+        Ok(self
+            .prefetch_keys(id, &[page_index])?
+            .map(|mut all| all.remove(&page_index).unwrap_or_default()))
     }
 
     /// Makes the `Line` annotations of the file that PDFium lists as opaque into lines the model can edit (`pdfwrite::lines`). Only a
@@ -539,10 +598,13 @@ impl AppState {
         id: DocumentId,
     ) -> Result<Vec<AnnotationSummary>, AppError> {
         let mut summaries = Vec::new();
-        for (page, index) in self.registry.page_order(id)? {
+        let order = self.registry.page_order(id)?;
+        let unread = self.unread_pages(id, &order)?;
+        let keys = self.prefetch_keys(id, &unread)?;
+        for (page, index) in order {
             if !self.model(id, |state| Ok(state.is_imported(page)))? {
                 let items = self.engine.import_annotations_background(id, index)?;
-                self.import_read(id, page, index, items)?;
+                self.import_read_prefetched(id, page, index, items, &keys)?;
             }
             let listed = self.model(id, |state| Ok(state.list(page)))?;
             let room = limits::MAX_ANNOTATIONS_PER_DOC.saturating_sub(summaries.len());

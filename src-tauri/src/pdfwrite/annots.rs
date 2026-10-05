@@ -178,6 +178,7 @@ pub fn annotation_dict(
     nm: &str,
     links: &Links,
     base: Option<Dictionary>,
+    keys_known: bool,
 ) -> Option<Dictionary> {
     let mut dict = base.unwrap_or_default();
     // The appearance of a signature read from the file is the file's: a move or a scale changes only its `/Rect`.
@@ -218,7 +219,7 @@ pub fn annotation_dict(
     }
     dict.set("Type", name("Annot"));
     // The citation record and the tags (ADR-119); an annotation the model does not write returns below before they matter.
-    super::sheer_keys::write(&mut dict, annotation);
+    super::sheer_keys::write(&mut dict, annotation, keys_known);
     let rect = m.rect(annotation.rect);
     let mut flags = FLAG_PRINT;
     if annotation.locked {

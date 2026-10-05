@@ -108,12 +108,32 @@ pub fn quote_of(text: &str, boxes: &[f32], quads: &[Quad], cap: usize) -> String
     out
 }
 
-/// A quote of a citation (`/SHR_Cite /Q`, a patch): 1..=`CITE_QUOTE_MAX` characters, no control characters but line breaks and tabs.
+/// A quote of a citation (`/SHR_Cite /Q`, a patch) as it is stored: line ends (`\r\n`, `\r`) become `\n`, a tab becomes a space.
+/// Quotes can span lines, so `\n` stays; every other control character is for [`check_quote`] to refuse.
+pub fn normalize_quote(quote: &str) -> String {
+    let mut out = String::with_capacity(quote.len());
+    let mut chars = quote.chars().peekable();
+    while let Some(c) = chars.next() {
+        match c {
+            '\r' => {
+                if chars.peek() == Some(&'\n') {
+                    chars.next();
+                }
+                out.push('\n');
+            }
+            '\t' => out.push(' '),
+            other => out.push(other),
+        }
+    }
+    out
+}
+
+/// A normalised quote ([`normalize_quote`]) of a citation: 1..=`CITE_QUOTE_MAX` characters, no control character but `\n`.
 pub fn check_quote(quote: &str) -> Result<(), AppError> {
     let mut count = 0usize;
     for c in quote.chars() {
         count += 1;
-        if count > limits::CITE_QUOTE_MAX || (c.is_control() && !matches!(c, '\t' | '\n' | '\r')) {
+        if count > limits::CITE_QUOTE_MAX || (c.is_control() && c != '\n') {
             return Err(AppError::invalid("quote"));
         }
     }
@@ -222,6 +242,10 @@ mod tests {
         assert!(check_quote("").is_err());
         assert!(check_quote("  \n ").is_err());
         assert!(check_quote("bell\u{7}").is_err());
+        // Of the controls only the line feed stays; the others are normalised first (or refused).
+        assert!(check_quote("a\tb").is_err() && check_quote("a\rb").is_err());
+        assert_eq!(normalize_quote("a\r\nb\rc\td\ne"), "a\nb\nc d\ne");
+        assert!(check_quote(&normalize_quote("a\r\nb\tc")).is_ok());
         assert!(check_quote(&"x".repeat(limits::CITE_QUOTE_MAX)).is_ok());
         assert!(check_quote(&"x".repeat(limits::CITE_QUOTE_MAX + 1)).is_err());
     }

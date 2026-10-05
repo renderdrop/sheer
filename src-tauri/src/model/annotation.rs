@@ -932,14 +932,14 @@ impl Annotation {
         self.tags = super::tags::clean_names_lenient(tags.iter().cloned());
         self.cite = cite
             .filter(|_| matches!(self.body, AnnotationBody::Highlight { .. }))
-            .filter(|cite| super::quote::check_quote(&cite.quote).is_ok())
             .map(|cite| super::quote::Cite {
-                quote: cite.quote.clone(),
+                quote: super::quote::normalize_quote(&cite.quote),
                 group: cite
                     .group
                     .clone()
                     .filter(|group| super::quote::is_group_id(group)),
-            });
+            })
+            .filter(|cite| super::quote::check_quote(&cite.quote).is_ok());
     }
 
     /// Whether the user may change or delete it.
@@ -960,8 +960,9 @@ impl Annotation {
                 .cite
                 .as_mut()
                 .ok_or_else(|| AppError::invalid("patch"))?;
-            super::quote::check_quote(quote).map_err(|_| AppError::invalid("patch"))?;
-            cite.quote.clone_from(quote);
+            let quote = super::quote::normalize_quote(quote);
+            super::quote::check_quote(&quote).map_err(|_| AppError::invalid("patch"))?;
+            cite.quote = quote;
         }
         if let Some(color) = patch.color {
             next.color = color;

@@ -42,6 +42,8 @@ pub enum Change {
 pub struct Plan {
     pub changes: Vec<Change>,
     pub known: Vec<(AnnotId, PdfOrigin)>,
+    /// The annotations whose Sheer keys the model could not read (an encrypted file): their keys in the file stay as they are.
+    pub keys_unread: HashSet<AnnotId>,
     /// The art the signatures of the changes refer to (`DocState.assets`).
     pub assets: HashMap<AssetId, Arc<Art>>,
 }
@@ -419,9 +421,14 @@ pub fn append_annotations(original: Vec<u8>, plan: &Plan) -> Result<Built, AppEr
                 page: page_id,
                 reply_to,
             };
-            let Some(mut dict) =
-                annots::annotation_dict(annotation, mapper, &name, &links, target.base.clone())
-            else {
+            let Some(mut dict) = annots::annotation_dict(
+                annotation,
+                mapper,
+                &name,
+                &links,
+                target.base.clone(),
+                !plan.keys_unread.contains(&annotation.id),
+            ) else {
                 continue;
             };
             if let Some(ap) = annots::write_appearance(

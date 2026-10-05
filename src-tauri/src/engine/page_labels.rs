@@ -12,14 +12,11 @@ use super::space::{load_page, page_count};
 use crate::error::AppError;
 use crate::limits;
 
-/// A label as the UI may show it: control characters removed, white space at the ends trimmed, at most
-/// [`limits::PAGE_LABEL_MAX`] characters (cut on a character boundary). An empty result is no label.
+/// A label as the UI may show it: control and format characters removed (bidi overrides and isolates included, as
+/// `documents::sanitize_text` does for every string of a file), white space at the ends trimmed, at most [`limits::PAGE_LABEL_MAX`]
+/// characters (cut on a character boundary). An empty result is no label.
 pub(super) fn sanitize_label(raw: &str) -> Option<String> {
-    let clean: String = raw
-        .chars()
-        .filter(|c| !c.is_control())
-        .take(limits::PAGE_LABEL_MAX)
-        .collect();
+    let clean = crate::documents::sanitize_text(raw, limits::PAGE_LABEL_MAX);
     let clean = clean.trim();
     (!clean.is_empty()).then(|| clean.to_owned())
 }
@@ -66,7 +63,12 @@ mod tests {
     fn controls_are_stripped_and_the_ends_trimmed() {
         assert_eq!(sanitize_label("  iv "), Some("iv".to_owned()));
         assert_eq!(sanitize_label("A\u{0}-\u{7}3\n"), Some("A-3".to_owned()));
-        assert_eq!(sanitize_label("\u{202e}x"), Some("\u{202e}x".to_owned()));
+        // Bidi overrides, isolates and other format characters are removed (as in the bibliography).
+        assert_eq!(
+            sanitize_label("\u{202e}x\u{2066}y\u{200b}"),
+            Some("xy".to_owned())
+        );
+        assert_eq!(sanitize_label("\u{202a}\u{2069}"), None);
         assert_eq!(sanitize_label(""), None);
         assert_eq!(sanitize_label(" \t\u{1}"), None);
     }

@@ -62,7 +62,11 @@ fn read_cite(doc: &Document, dict: &Dictionary) -> Option<Cite> {
         Object::Integer(1) => {}
         _ => return None,
     }
-    let quote = string_of(doc, cite.get(b"Q").ok()?, limits::CITE_QUOTE_MAX)?;
+    let quote = quote::normalize_quote(&string_of(
+        doc,
+        cite.get(b"Q").ok()?,
+        limits::CITE_QUOTE_MAX,
+    )?);
     quote::check_quote(&quote).ok()?;
     let group = cite
         .get(b"G")
@@ -86,24 +90,50 @@ fn read_tags(doc: &Document, dict: &Dictionary) -> Vec<String> {
     )
 }
 
+/// The Sheer keys of the annotations of the pages `page_indices` of `bytes` (parsed once), by page index, then by position (only
+/// annotations that have any). A page that is not in the file is absent.
+pub fn read_pages(
+    bytes: &[u8],
+    page_indices: &[u32],
+) -> Result<HashMap<u32, HashMap<u32, SheerKeys>>, AppError> {
+    let doc = super::prescan::load_untrusted(bytes)?;
+    Ok(read_pages_of(&doc, page_indices))
+}
+
+/// [`read_pages`] of a document that is loaded already (a decrypted one, say).
+pub fn read_pages_of(
+    doc: &Document,
+    page_indices: &[u32],
+) -> HashMap<u32, HashMap<u32, SheerKeys>> {
+    let pages = doc.get_pages();
+    let mut out = HashMap::new();
+    for &page_index in page_indices {
+        if let Some(page_id) = pages.get(&page_index.saturating_add(1)) {
+            out.insert(page_index, read_one(doc, *page_id));
+        }
+    }
+    out
+}
+
 /// The Sheer keys of the annotations of page `page_index` of `bytes`, by position (only those that have any).
 pub fn read_page(bytes: &[u8], page_index: u32) -> Result<HashMap<u32, SheerKeys>, AppError> {
-    let doc = super::prescan::load_untrusted(bytes)?;
-    let pages = doc.get_pages();
-    let Some(page_id) = pages.get(&page_index.saturating_add(1)) else {
-        return Ok(HashMap::new());
+    Ok(read_pages(bytes, &[page_index])?
+        .remove(&page_index)
+        .unwrap_or_default())
+}
+
+fn read_one(doc: &Document, page_id: ObjectId) -> HashMap<u32, SheerKeys> {
+    let Ok(page) = doc.get_dictionary(page_id) else {
+        return HashMap::new();
     };
-    let Ok(page) = doc.get_dictionary(*page_id) else {
-        return Ok(HashMap::new());
-    };
-    let entries: Vec<&Object> = match page.get(b"Annots").ok().and_then(|a| resolve(&doc, a)) {
+    let entries: Vec<&Object> = match page.get(b"Annots").ok().and_then(|a| resolve(doc, a)) {
         Some(Object::Array(array)) => array.iter().take(limits::MAX_ANNOTS_ARRAY).collect(),
-        _ => return Ok(HashMap::new()),
+        _ => return HashMap::new(),
     };
     let mut keys = HashMap::new();
     let mut position = 0u32;
     for entry in entries {
-        let Some(Object::Dictionary(dict)) = resolve(&doc, entry) else {
+        let Some(Object::Dictionary(dict)) = resolve(doc, entry) else {
             continue;
         };
         if is_popup(dict) {
@@ -113,24 +143,28 @@ pub fn read_page(bytes: &[u8], page_index: u32) -> Result<HashMap<u32, SheerKeys
             matches!(dict.get(b"Subtype"), Ok(Object::Name(name)) if name == b"Highlight");
         let found = SheerKeys {
             cite: if is_highlight {
-                read_cite(&doc, dict)
+                read_cite(doc, dict)
             } else {
                 None
             },
-            tags: read_tags(&doc, dict),
+            tags: read_tags(doc, dict),
         };
         if found.cite.is_some() || !found.tags.is_empty() {
             keys.insert(position, found);
         }
         position = position.saturating_add(1);
     }
-    Ok(keys)
+    keys
 }
 
 /// Sets `/SHR_Cite` and `/SHR_Tags` of `dict` from `annotation`, and takes them off where the model has none (the user removed them).
-pub fn write(dict: &mut Dictionary, annotation: &Annotation) {
-    dict.remove(b"SHR_Cite");
-    dict.remove(b"SHR_Tags");
+/// With `keys_known` false (the model could not read the keys of this annotation: an encrypted file) the keys the file has stay, and the
+/// model only sets what it has.
+pub fn write(dict: &mut Dictionary, annotation: &Annotation, keys_known: bool) {
+    if keys_known {
+        dict.remove(b"SHR_Cite");
+        dict.remove(b"SHR_Tags");
+    }
     if let (Some(cite), AnnotationBody::Highlight { .. }) = (&annotation.cite, &annotation.body) {
         let mut record = Dictionary::new();
         record.set("V", Object::Integer(1));
@@ -317,7 +351,7 @@ mod tests {
             body: AnnotationBody::Highlight { quads: vec![] },
         };
         let mut dict = dictionary! {"Subtype" => "Highlight"};
-        write(&mut dict, &annotation);
+        write(&mut dict, &annotation, true);
         let bytes = file(vec![dict.clone()]);
         let read = read_page(&bytes, 0).unwrap();
         assert_eq!(read[&0].cite, annotation.cite);
@@ -328,7 +362,24 @@ mod tests {
             icon: crate::model::annotation::NoteIcon::Note,
         };
         annotation.tags.clear();
-        write(&mut dict, &annotation);
+        write(&mut dict, &annotation, true);
         assert!(!dict.has(b"SHR_Cite") && !dict.has(b"SHR_Tags"));
+        // Keys that were never read stay; the model only adds what it has.
+        let mut kept = dictionary! {"Subtype" => "Highlight", "SHR_Tags" => vec![s("keep")],
+        "SHR_Cite" => cite(1.into(), s("q"), None)};
+        write(&mut kept, &annotation, false);
+        assert!(kept.has(b"SHR_Cite") && kept.has(b"SHR_Tags"));
+        write(&mut kept, &annotation, true);
+        assert!(!kept.has(b"SHR_Cite") && !kept.has(b"SHR_Tags"));
+    }
+
+    #[test]
+    fn several_pages_are_read_from_one_load() {
+        let bytes = file(vec![
+            dictionary! {"Subtype" => "Underline", "SHR_Tags" => vec![s("x")]},
+        ]);
+        let read = read_pages(&bytes, &[0, 5]).unwrap();
+        assert_eq!(read[&0][&0].tags, ["x"]);
+        assert!(!read.contains_key(&5));
     }
 }
