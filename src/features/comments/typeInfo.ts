@@ -5,6 +5,7 @@ import {
   Dot,
   Highlighter,
   Minus,
+  Quote,
   MessageSquare,
   MessageSquareQuote,
   MoveUpRight,
@@ -52,8 +53,9 @@ export const kindInfo = (kind: AnnotationKind): TypeInfo => KIND[kind];
  * The type of an annotation: a highlight with text is a Comment, a mark is its glyph (check mark, cross, dot), signature or
  * initials, a line with an end an arrow. The detail comes from the Rust summary (ADR-057).
  */
-export function typeOf(summary: Pick<AnnotationSummary, 'kind' | 'detail' | 'contents'>): TypeInfo {
+export function typeOf(summary: Pick<AnnotationSummary, 'kind' | 'detail' | 'contents' | 'cite'>): TypeInfo {
   const { kind, detail } = summary;
+  if (summary.cite === true) return { key: 'comments.group.citation', icon: Quote };
   if (kind === 'highlight' && summary.contents.trim() !== '')
     return { key: 'annot.type.comment', icon: MessageSquareQuote };
   if (kind === 'mark') {
@@ -74,6 +76,7 @@ export const isTextMarkup = (kind: AnnotationKind): boolean =>
 
 /** The type groups of the filter (DESIGN 3.5 B10): a subtly distinct Lucide icon each. */
 const GROUP: Record<TypeGroup, TypeInfo> = {
+  citation: { key: 'comments.group.citation', icon: Quote },
   highlight: { key: 'comments.group.highlight', icon: Highlighter },
   note: { key: 'comments.group.note', icon: StickyNote },
   drawing: { key: 'comments.group.drawing', icon: PenLine },

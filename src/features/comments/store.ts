@@ -64,6 +64,9 @@ export interface CommentsState {
 
 let nextToken = 1;
 
+const sameTags = (a: readonly string[] = [], b: readonly string[] = []): boolean =>
+  a.length === b.length && a.every((name, i) => name === b[i]);
+
 const sameSummary = (a: AnnotationSummary, b: AnnotationSummary): boolean =>
   a.id === b.id &&
   a.pageId === b.pageId &&
@@ -74,6 +77,8 @@ const sameSummary = (a: AnnotationSummary, b: AnnotationSummary): boolean =>
   a.inReplyTo === b.inReplyTo &&
   a.state === b.state &&
   a.detail === b.detail &&
+  a.cite === b.cite &&
+  sameTags(a.tags, b.tags) &&
   a.color[0] === b.color[0] &&
   a.color[1] === b.color[1] &&
   a.color[2] === b.color[2];

@@ -1,7 +1,17 @@
-import { ChevronDown, CircleCheck, CircleX, Ellipsis, ThumbsUp, type LucideIcon } from 'lucide-react';
-import { memo, useEffect, useId, useRef, useState, type KeyboardEvent, type MouseEvent } from 'react';
+import { ChevronDown, CircleCheck, CircleX, Copy, Ellipsis, ThumbsUp, type LucideIcon } from 'lucide-react';
+import {
+  memo,
+  useEffect,
+  useId,
+  useRef,
+  useState,
+  type CSSProperties,
+  type KeyboardEvent,
+  type MouseEvent,
+} from 'react';
 
 import { MAX_ANNOT_CONTENTS_CHARS, type Annotation } from '../../api/annotations';
+import type { CitationInfo } from '../../api/citations';
 import { Button, IconButton, Menu } from '../../components';
 import { cx } from '../../components/cx';
 import { Icon } from '../../components/Icon';
@@ -9,6 +19,9 @@ import { useT, type PlainKey } from '../../i18n';
 import { useAnnotations } from '../../stores/annotations';
 import { pageNumberOf } from '../../stores/pages';
 import { useSettings } from '../../stores/settings';
+import { copyCitation } from '../citations/exportActions';
+import { TagChips } from '../tags/TagChips';
+import { TagPickerButton } from '../tags/TagPicker';
 import { isConfirmKey } from '../annotations/note/confirmKey';
 import { isOwnReply, useOwnReplies } from '../annotations/note/ownReplies';
 import { useAutosize } from '../annotations/note/useAutosize';
@@ -19,6 +32,7 @@ import { relativeTime } from './time';
 import { useCommentHover } from './useCommentsData';
 import { isTextMarkup, typeOf } from './typeInfo';
 import { useQuote } from './useQuote';
+import { CitationLine } from './CitationLine';
 
 /** The text areas of a card: the look of a Field (DESIGN 3.7) over several lines. */
 export const CARD_TEXTAREA =
@@ -130,6 +144,8 @@ export interface CommentCardProps {
   /** Now in ms, for the relative times. */
   now: number;
   onActivate: (thread: Thread) => void;
+  /** The record of a citation card (its full quote and page label); absent until the citation list is read. */
+  citation?: CitationInfo;
 }
 
 /** One comment card (DESIGN 3.59): type, quote, text, author and time, status, replies, and for the selected one the reply footer. */
@@ -140,6 +156,7 @@ export const CommentCard = memo(function CommentCard({
   tabStop,
   now,
   onActivate,
+  citation,
 }: CommentCardProps) {
   const t = useT();
   const { root, replies, status } = thread;
@@ -149,7 +166,10 @@ export const CommentCard = memo(function CommentCard({
   const editing = useComments((state) => state.editing[docId]);
   const isEditing = editing?.id === root.id;
   const info = typeOf(root);
-  const quote = useQuote(docId, root.id, isTextMarkup(root.kind));
+  const isCite = root.cite === true;
+  const quote = useQuote(docId, root.id, isTextMarkup(root.kind) && !isCite);
+  const tagNames = full?.tags ?? root.tags ?? [];
+  const locator = citation?.locator ?? String(pageNumberOf(docId, root.pageId));
   // A text comment keeps its text in its lines; it is the first line like any comment's text.
   const text =
     full?.kind === 'freeText' && full.contents.trim() === ''
@@ -243,11 +263,11 @@ export const CommentCard = memo(function CommentCard({
   const copy = () => void navigator.clipboard?.writeText(text).catch(() => undefined);
   const quoted = quote !== null && quote !== undefined ? t('comments.quote', { text: quote }) : null;
   // The first line is the comment's text; without text the quote; without either the type (DESIGN 3.5 B9).
-  const lead = firstLine(text, quoted);
+  const lead = isCite ? (citation?.quote ?? '') : firstLine(text, quoted);
   const excerpt = lead !== '' ? lead : t(info.key);
   // A text that fits the two clamped lines is the header alone; a longer one also shows whole below it.
-  const longText = root.kind !== 'freeText' && (text.includes('\n') || text.length > 80);
-  const quoteBelow = text.trim() !== '' && quoted !== null;
+  const longText = root.kind !== 'freeText' && (isCite || text.includes('\n') || text.length > 80);
+  const quoteBelow = !isCite && text.trim() !== '' && quoted !== null;
   const showReply = showReplyField;
   const describedBy =
     [quoteBelow ? `${ids}-q` : null, text !== '' && longText ? `${ids}-b` : null]
@@ -290,7 +310,15 @@ export const CommentCard = memo(function CommentCard({
           )}
         >
           {lead !== '' && <span className="sr-only">{t(info.key)}: </span>}
-          <span className={cx(highlight && text.trim() === '' && quoted !== null && 'bg-hl-excerpt')}>{excerpt}</span>
+          <span
+            className={cx(highlight && !isCite && text.trim() === '' && quoted !== null && 'bg-hl-excerpt')}
+            // The citation's own colour at --hl-opacity behind its quote (DESIGN 3.7 C8): a colour of the document, handed to the
+            // `data-cite-fill` rule of tokens.css as RGB channels.
+            data-cite-fill={isCite ? '' : undefined}
+            style={isCite ? ({ '--cite-fill': root.color.join(' ') } as CSSProperties) : undefined}
+          >
+            {excerpt}
+          </span>
         </span>
         {done && (
           <IconButton
@@ -389,26 +417,56 @@ export const CommentCard = memo(function CommentCard({
             </div>
           ) : (
             <>
-              <p className="t-caption m-0 truncate" title={root.modified ?? undefined}>
-                {footerTime}
-              </p>
+              {isCite ? (
+                <CitationLine docId={docId} locator={locator} />
+              ) : (
+                <p className="t-caption m-0 truncate" title={root.modified ?? undefined}>
+                  {footerTime}
+                </p>
+              )}
+              {tagNames.length > 0 && <TagChips names={[...tagNames]} />}
               <div className="flex flex-wrap items-center gap-1">
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  onClick={() => {
-                    onActivate(thread);
-                    setReplying(true);
-                    // A field that is already there takes the focus now, one that opens with this click when it is in.
-                    if (replyRef.current !== null) replyRef.current.focus({ preventScroll: true });
-                    else focusReply.current = true;
-                  }}
-                >
-                  {t('note.reply')}
-                </Button>
-                <Button size="sm" variant="ghost" onClick={review(status === 'open' ? 'completed' : 'none')}>
-                  {status === 'open' ? t('comments.resolve') : t('comments.reopen')}
-                </Button>
+                {isCite ? (
+                  <Button size="sm" variant="ghost" icon={Copy} onClick={() => void copyCitation(docId, root.id)}>
+                    {t('citation.copy')}
+                  </Button>
+                ) : (
+                  <>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => {
+                        onActivate(thread);
+                        setReplying(true);
+                        // A field that is already there takes the focus now, one that opens with this click when it is in.
+                        if (replyRef.current !== null) replyRef.current.focus({ preventScroll: true });
+                        else focusReply.current = true;
+                      }}
+                    >
+                      {t('note.reply')}
+                    </Button>
+                    <Button size="sm" variant="ghost" onClick={review(status === 'open' ? 'completed' : 'none')}>
+                      {status === 'open' ? t('comments.resolve') : t('comments.reopen')}
+                    </Button>
+                  </>
+                )}
+                {canDelete && <TagPickerButton docId={docId} annotIds={[root.id]} />}
+                {isCite && (
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    disabled={!canDelete}
+                    onClick={() =>
+                      void deleteThread(docId, [
+                        root.id,
+                        ...replies.map((r) => r.id),
+                        ...thread.states.map((s) => s.id),
+                      ])
+                    }
+                  >
+                    {t('comments.delete')}
+                  </Button>
+                )}
               </div>
             </>
           )}

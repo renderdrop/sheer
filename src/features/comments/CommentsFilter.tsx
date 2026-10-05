@@ -1,16 +1,22 @@
 import { ArrowDownUp, ListFilter } from 'lucide-react';
-import { useMemo, type ReactNode } from 'react';
+import { useMemo, useState, type ReactNode } from 'react';
 
 import { Button, Checkbox, Field, IconButton, Menu, Popover, Radio, Segmented, type MenuEntry } from '../../components';
 import type { AnnotationSummary } from '../../api/annotations';
 import { Icon } from '../../components/Icon';
 import { useT, type PlainKey } from '../../i18n';
 import { useDocView } from '../../stores/view';
+import { ReferenceButton } from '../citations/ReferencePopover';
+import { TagDot } from '../tags/palette';
+import { useTags } from '../tags/store';
+import { TagManager } from '../tags/TagManager';
 import {
   NO_FILTER,
+  NO_TAG,
   SORT_ORDERS,
   activeFilterCount,
   facets,
+  tagCounts,
   type Filter,
   type SortOrder,
   type Status,
@@ -55,8 +61,9 @@ function pageChoice(filter: Filter, current: number): PageChoice {
 }
 
 /**
- * The filter row (DESIGN 3.5 B10), 36 high: a "Filter" ghost button that opens the filter popover (type, author, page, status;
- * a count chip when it filters) and a sort icon button with its menu (page, date, author).
+ * The filter row (DESIGN 3.5 B10, 3.7 C7), 36 high: a "Filter" ghost button that opens the filter popover (type, author, tags, page, status;
+ * a count chip when it filters), the Reference button and a sort icon button with its menu (page, date, author). "Manage tags…" in the
+ * popover replaces its content with the tag manager (C6) in the same anchor.
  */
 export function CommentsFilter({ docId, summaries }: { docId: number; summaries: readonly AnnotationSummary[] }) {
   const t = useT();
@@ -64,6 +71,10 @@ export function CommentsFilter({ docId, summaries }: { docId: number; summaries:
   const current = useDocView(docId).pageIndex + 1;
   const pageCount = useDocView(docId).pageCount;
   const options = useMemo(() => facets(summaries), [summaries]);
+  const tags = useTags();
+  const counts = useMemo(() => tagCounts(summaries), [summaries]);
+  const [managing, setManaging] = useState(false);
+  const chosenTags = view.filter.tags ?? [];
   const { filter } = view;
   const set = (next: Partial<Filter>) => useComments.getState().setFilter(docId, { ...filter, ...next });
   const count = activeFilterCount(filter);
@@ -103,6 +114,9 @@ export function CommentsFilter({ docId, summaries }: { docId: number; summaries:
         label={t('comments.filterPanel')}
         side="bottom"
         align="start"
+        onOpenChange={(open) => {
+          if (!open) setManaging(false);
+        }}
         trigger={(trigger) => (
           <Button
             {...trigger}
@@ -126,100 +140,141 @@ export function CommentsFilter({ docId, summaries }: { docId: number; summaries:
           </Button>
         )}
       >
-        {({ close }) => (
-          <div className="flex min-w-0 flex-col gap-3">
-            <Group title={t('comments.type')}>
-              {options.groups.map((group: TypeGroup) => {
-                const info = groupInfo(group);
-                return (
-                  <label key={group} className="flex cursor-pointer items-center gap-2 text-md">
+        {({ close }) =>
+          managing ? (
+            <TagManager docId={docId} />
+          ) : (
+            <div className="flex min-w-0 flex-col gap-3">
+              <Group title={t('comments.type')}>
+                {options.groups.map((group: TypeGroup) => {
+                  const info = groupInfo(group);
+                  return (
+                    <label key={group} className="flex cursor-pointer items-center gap-2 text-md">
+                      <Checkbox
+                        checked={groups.includes(group)}
+                        onChange={() => set({ groups: toggle(groups, group) })}
+                      />
+                      <Icon icon={info.icon} size={16} className="text-text-muted" />
+                      <span className="min-w-0 truncate">{t(info.key)}</span>
+                    </label>
+                  );
+                })}
+              </Group>
+              {options.authors.length > 1 && (
+                <Group title={t('comments.author')}>
+                  {options.authors.map((author) => (
+                    <label key={author} className="flex cursor-pointer items-center gap-2 text-md">
+                      <Checkbox
+                        checked={filter.authors.includes(author)}
+                        onChange={() => set({ authors: toggle(filter.authors, author) })}
+                      />
+                      <span className="min-w-0 truncate">{author === '' ? t('comments.noAuthor') : author}</span>
+                    </label>
+                  ))}
+                </Group>
+              )}
+              {tags.length > 0 && (
+                <Group title={t('tags.title')}>
+                  {tags.map((tag) => (
+                    <label key={tag.name} className="flex cursor-pointer items-center gap-2 text-md">
+                      <Checkbox
+                        checked={chosenTags.some((name) => name.toLowerCase() === tag.name.toLowerCase())}
+                        onChange={() =>
+                          set({
+                            tags: chosenTags.some((name) => name.toLowerCase() === tag.name.toLowerCase())
+                              ? chosenTags.filter((name) => name.toLowerCase() !== tag.name.toLowerCase())
+                              : [...chosenTags, tag.name],
+                          })
+                        }
+                      />
+                      <TagDot color={tag.color} />
+                      <span className="min-w-0 flex-1 truncate">{tag.name}</span>
+                      <span className="t-caption tabular-nums">{counts.byName.get(tag.name.toLowerCase()) ?? 0}</span>
+                    </label>
+                  ))}
+                  <label className="flex cursor-pointer items-center gap-2 text-md">
                     <Checkbox
-                      checked={groups.includes(group)}
-                      onChange={() => set({ groups: toggle(groups, group) })}
+                      checked={chosenTags.includes(NO_TAG)}
+                      onChange={() => set({ tags: toggle(chosenTags, NO_TAG) })}
                     />
-                    <Icon icon={info.icon} size={16} className="text-text-muted" />
-                    <span className="min-w-0 truncate">{t(info.key)}</span>
+                    <span className="min-w-0 flex-1 truncate">{t('tags.none')}</span>
+                    <span className="t-caption tabular-nums">{counts.none}</span>
                   </label>
-                );
-              })}
-            </Group>
-            {options.authors.length > 1 && (
-              <Group title={t('comments.author')}>
-                {options.authors.map((author) => (
-                  <label key={author} className="flex cursor-pointer items-center gap-2 text-md">
-                    <Checkbox
-                      checked={filter.authors.includes(author)}
-                      onChange={() => set({ authors: toggle(filter.authors, author) })}
+                  <div className="flex justify-start">
+                    <Button size="sm" variant="ghost" onClick={() => setManaging(true)}>
+                      {t('tags.manage')}
+                    </Button>
+                  </div>
+                </Group>
+              )}
+              <Group title={t('comments.pageFilter')}>
+                {pageOptions.map((option) => (
+                  <label key={option.value} className="flex cursor-pointer items-center gap-2 text-md">
+                    <Radio
+                      name={`comments-page-${docId}`}
+                      checked={choice === option.value}
+                      onChange={() => setPage(option.value)}
                     />
-                    <span className="min-w-0 truncate">{author === '' ? t('comments.noAuthor') : author}</span>
+                    <span>{option.label}</span>
+                    {option.value === 'range' && (
+                      <span className="ms-auto flex items-center gap-1">
+                        <Field
+                          size="sm"
+                          type="number"
+                          min={1}
+                          max={pageCount}
+                          aria-label={t('comments.pageFrom')}
+                          disabled={choice !== 'range'}
+                          value={range.from}
+                          className="w-12"
+                          onChange={(event) =>
+                            set({ pages: { ...range, from: clamp(event.target.value, range.from) } })
+                          }
+                        />
+                        <span aria-hidden="true">–</span>
+                        <Field
+                          size="sm"
+                          type="number"
+                          min={1}
+                          max={pageCount}
+                          aria-label={t('comments.pageTo')}
+                          disabled={choice !== 'range'}
+                          value={range.to}
+                          className="w-12"
+                          onChange={(event) => set({ pages: { ...range, to: clamp(event.target.value, range.to) } })}
+                        />
+                      </span>
+                    )}
                   </label>
                 ))}
               </Group>
-            )}
-            <Group title={t('comments.pageFilter')}>
-              {pageOptions.map((option) => (
-                <label key={option.value} className="flex cursor-pointer items-center gap-2 text-md">
-                  <Radio
-                    name={`comments-page-${docId}`}
-                    checked={choice === option.value}
-                    onChange={() => setPage(option.value)}
-                  />
-                  <span>{option.label}</span>
-                  {option.value === 'range' && (
-                    <span className="ms-auto flex items-center gap-1">
-                      <Field
-                        size="sm"
-                        type="number"
-                        min={1}
-                        max={pageCount}
-                        aria-label={t('comments.pageFrom')}
-                        disabled={choice !== 'range'}
-                        value={range.from}
-                        className="w-12"
-                        onChange={(event) => set({ pages: { ...range, from: clamp(event.target.value, range.from) } })}
-                      />
-                      <span aria-hidden="true">–</span>
-                      <Field
-                        size="sm"
-                        type="number"
-                        min={1}
-                        max={pageCount}
-                        aria-label={t('comments.pageTo')}
-                        disabled={choice !== 'range'}
-                        value={range.to}
-                        className="w-12"
-                        onChange={(event) => set({ pages: { ...range, to: clamp(event.target.value, range.to) } })}
-                      />
-                    </span>
-                  )}
-                </label>
-              ))}
-            </Group>
-            <Group title={t('comments.status')}>
-              <Segmented<StatusChoice>
-                label={t('comments.status')}
-                value={statusChoice(filter)}
-                options={statusOptions}
-                onValueChange={(value) => set({ statuses: value === 'all' ? [] : [value as Status] })}
-              />
-            </Group>
-            <div className="flex justify-end">
-              <Button
-                size="sm"
-                variant="ghost"
-                disabled={count === 0}
-                focusableWhenDisabled
-                onClick={() => {
-                  useComments.getState().setFilter(docId, NO_FILTER);
-                  close('select');
-                }}
-              >
-                {t('comments.resetShort')}
-              </Button>
+              <Group title={t('comments.status')}>
+                <Segmented<StatusChoice>
+                  label={t('comments.status')}
+                  value={statusChoice(filter)}
+                  options={statusOptions}
+                  onValueChange={(value) => set({ statuses: value === 'all' ? [] : [value as Status] })}
+                />
+              </Group>
+              <div className="flex justify-end">
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  disabled={count === 0}
+                  focusableWhenDisabled
+                  onClick={() => {
+                    useComments.getState().setFilter(docId, NO_FILTER);
+                    close('select');
+                  }}
+                >
+                  {t('comments.resetShort')}
+                </Button>
+              </div>
             </div>
-          </div>
-        )}
+          )
+        }
       </Popover>
+      <ReferenceButton docId={docId} />
       <Menu
         label={t('comments.sortMenu')}
         side="bottom"

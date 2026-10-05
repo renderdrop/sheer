@@ -11,11 +11,20 @@ export type SortOrder = 'page' | 'newest' | 'oldest' | 'author';
 export const SORT_ORDERS: readonly SortOrder[] = ['page', 'newest', 'author'];
 
 /** The types of the filter (DESIGN 3.5 B10): several kinds fold into one, a text markup with a comment is a quote. */
-export type TypeGroup = 'highlight' | 'note' | 'drawing' | 'shape' | 'signature' | 'quote';
-export const TYPE_GROUPS: readonly TypeGroup[] = ['highlight', 'note', 'drawing', 'shape', 'signature', 'quote'];
+export type TypeGroup = 'citation' | 'highlight' | 'note' | 'drawing' | 'shape' | 'signature' | 'quote';
+export const TYPE_GROUPS: readonly TypeGroup[] = [
+  'citation',
+  'highlight',
+  'note',
+  'drawing',
+  'shape',
+  'signature',
+  'quote',
+];
 
-/** The filter type of a summary: a text markup with text is a quote, ink a drawing, rect/ellipse/line a shape. */
-export function groupOf(summary: Pick<AnnotationSummary, 'kind' | 'contents'>): TypeGroup {
+/** The filter type of a summary: a citation (ADR-119) is a citation, a text markup with text is a comment on text, ink a drawing, rect/ellipse/line a shape. */
+export function groupOf(summary: Pick<AnnotationSummary, 'kind' | 'contents' | 'cite'>): TypeGroup {
+  if (summary.cite === true) return 'citation';
   switch (summary.kind) {
     case 'highlight':
     case 'underline':
@@ -73,17 +82,23 @@ export interface Filter {
   statuses: readonly Status[];
   /** Type groups to show; empty or missing means all. */
   groups?: readonly TypeGroup[];
+  /** Tag names to show, any of them (ignoring case); `NO_TAG` stands for annotations without a tag. Empty or missing means all. */
+  tags?: readonly string[];
   /** Page numbers (1-based, inclusive) to show; missing means all. */
   pages?: { from: number; to: number } | null;
 }
 
-export const NO_FILTER: Filter = { kinds: [], authors: [], statuses: [], groups: [], pages: null };
+/** The entry of `Filter.tags` for annotations that have no tag (a real tag name is never empty). */
+export const NO_TAG = '';
+
+export const NO_FILTER: Filter = { kinds: [], authors: [], statuses: [], groups: [], tags: [], pages: null };
 
 export const isFiltering = (filter: Filter) =>
   filter.kinds.length > 0 ||
   filter.authors.length > 0 ||
   filter.statuses.length > 0 ||
   (filter.groups?.length ?? 0) > 0 ||
+  (filter.tags?.length ?? 0) > 0 ||
   (filter.pages ?? null) !== null;
 
 /** How many kinds of restriction are on (the count chip of the filter button). */
@@ -92,6 +107,7 @@ export function activeFilterCount(filter: Filter): number {
     (filter.kinds.length > 0 ? 1 : 0) +
     ((filter.groups?.length ?? 0) > 0 ? 1 : 0) +
     (filter.authors.length > 0 ? 1 : 0) +
+    ((filter.tags?.length ?? 0) > 0 ? 1 : 0) +
     (filter.statuses.length > 0 ? 1 : 0) +
     ((filter.pages ?? null) !== null ? 1 : 0)
   );
@@ -173,6 +189,15 @@ export function buildThreads(summaries: readonly AnnotationSummary[]): Thread[] 
   });
 }
 
+/** Any of the wanted tags (ignoring case), or no tag at all when `NO_TAG` is wanted. */
+function matchesTags(summary: Pick<AnnotationSummary, 'tags'>, wanted: readonly string[] | undefined): boolean {
+  if (wanted === undefined || wanted.length === 0) return true;
+  const own = summary.tags ?? [];
+  if (own.length === 0) return wanted.includes(NO_TAG);
+  const lower = new Set(wanted.map((name) => name.toLowerCase()));
+  return own.some((name) => lower.has(name.toLowerCase()));
+}
+
 const matches = (summary: AnnotationSummary, filter: Filter) =>
   (filter.kinds.length === 0 || filter.kinds.includes(summary.kind)) &&
   (filter.groups === undefined || filter.groups.length === 0 || filter.groups.includes(groupOf(summary))) &&
@@ -196,6 +221,8 @@ export function filterThreads(
     }
     return (
       (filter.statuses.length === 0 || filter.statuses.includes(thread.status)) &&
+      // The tags are the root's: a reply of a tagged comment is not "no tag".
+      matchesTags(thread.root, filter.tags) &&
       (matches(thread.root, filter) || thread.replies.some((r) => matches(r, filter)))
     );
   });
@@ -231,6 +258,19 @@ export function sortThreads(threads: readonly Thread[], order: SortOrder): Threa
 }
 
 /** The kinds and authors present, for the filter popover. Kinds in the order of first appearance; authors sorted, `''` first. */
+/** How many comments (roots) carry each tag, by lower-case name, and how many carry none. */
+export function tagCounts(summaries: readonly AnnotationSummary[]): { byName: Map<string, number>; none: number } {
+  const byName = new Map<string, number>();
+  let none = 0;
+  for (const s of summaries) {
+    if (s.state !== undefined || s.inReplyTo !== null) continue;
+    const own = s.tags ?? [];
+    if (own.length === 0) none += 1;
+    for (const name of own) byName.set(name.toLowerCase(), (byName.get(name.toLowerCase()) ?? 0) + 1);
+  }
+  return { byName, none };
+}
+
 export function facets(summaries: readonly AnnotationSummary[]): {
   kinds: AnnotationKind[];
   groups: TypeGroup[];

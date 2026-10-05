@@ -17,6 +17,7 @@ import { useT } from '../../i18n';
 import { useAnnotations } from '../../stores/annotations';
 import { selectActiveId, useDocuments } from '../../stores/documents';
 import { pageNumberOf } from '../../stores/pages';
+import { useCitations } from '../citations/store';
 import { deleteThread, jumpTo } from './actions';
 import { CommentCard } from './CommentCard';
 import {
@@ -113,6 +114,10 @@ export function CommentsList({ docId, entry }: { docId: number; entry: Ready }) 
     [entry.threads, view.filter, view.order, docId],
   );
   const rows = useMemo(() => buildRows(threads, view.order), [threads, view.order]);
+  // The records of the citations (full quote, page label); only read when the document has a citation.
+  const hasCitations = useMemo(() => entry.summaries.some((s) => s.cite === true), [entry.summaries]);
+  const citationList = useCitations(hasCitations ? docId : null);
+  const citationById = useMemo(() => new Map(citationList.map((c) => [c.id, c])), [citationList]);
 
   const scrollerRef = useRef<HTMLDivElement | null>(null);
   const [box, setBox] = useState(0);
@@ -398,6 +403,7 @@ export function CommentsList({ docId, entry }: { docId: number; entry: Ready }) 
                     tabStop={tabKey === row.key}
                     now={now}
                     onActivate={activate}
+                    citation={citationById.get(row.thread.root.id)}
                   />
                 </div>
               </Slot>
