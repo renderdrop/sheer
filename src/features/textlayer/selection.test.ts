@@ -80,6 +80,13 @@ describe('selection to text', () => {
     expect(resolveBoundary(document.body, 0)).toBeNull();
   });
 
+  it('resolves a boundary beyond the end of a run to the run end', () => {
+    const layer = mountLayer(1, PAGES[0] as string);
+    const first = layer.children[0] as Element;
+    expect(resolveBoundary(first.firstChild as Node, 999)).toEqual({ page: 1, index: 10 });
+    expect(resolveBoundary(first.firstChild as Node, -4)).toEqual({ page: 1, index: 0 });
+  });
+
   it('copies the characters between the boundaries, with the line break of the page', () => {
     const layer = mountLayer(0, PAGES[0] as string);
     const [first, second] = [...layer.children];

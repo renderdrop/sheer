@@ -4,6 +4,7 @@ import type { TextLayer } from '../../api/text';
 import { SearchHits } from '../search/SearchHits';
 import { fileRotationOf, hasFileRotation } from '../viewer/fileRotation';
 import { normalizeRotation, overlayBox, swapsSides, totalRotation, unrotatedSize } from '../viewer/transform';
+import { letterSpacingFor } from './fit';
 import { measureTextWidth } from './measure';
 import { runsOf, type Run } from './runs';
 import { LAYER_ATTRIBUTE } from './selection';
@@ -25,8 +26,8 @@ export interface PageOverlayProps {
   interactive: boolean;
 }
 
-/** A transparent span for a run: positioned in page space, sized to its run, stretched to the width of the glyphs it covers. */
-const RunSpan = memo(function RunSpan({ run, scaleX }: { run: Run; scaleX: number }) {
+/** A transparent span for a run: positioned in page space, sized to its run, fitted by letter spacing (a transform breaks the caret) to the width of the glyphs it covers. */
+const RunSpan = memo(function RunSpan({ run, spacing }: { run: Run; spacing: number }) {
   const style: CSSProperties = {
     left: run.x,
     top: run.y,
@@ -34,8 +35,7 @@ const RunSpan = memo(function RunSpan({ run, scaleX }: { run: Run; scaleX: numbe
     fontSize: run.h,
     lineHeight: `${run.h}px`,
     color: 'transparent',
-    transformOrigin: '0 0',
-    transform: scaleX === 1 ? undefined : `scaleX(${scaleX})`,
+    letterSpacing: spacing === 0 ? undefined : `${spacing}px`,
   };
   return (
     <span
@@ -49,18 +49,8 @@ const RunSpan = memo(function RunSpan({ run, scaleX }: { run: Run; scaleX: numbe
   );
 });
 
-/** Narrower or wider than the glyphs by less than this share is left as it is. */
-const SCALE_TOLERANCE = 0.01;
-const SCALE_MIN = 0.1;
-const SCALE_MAX = 10;
-
-function scalesOf(runs: readonly Run[]): number[] {
-  return runs.map((run) => {
-    const natural = measureTextWidth(run.text, run.h);
-    if (natural === null || natural <= 0) return 1;
-    const scale = Math.min(SCALE_MAX, Math.max(SCALE_MIN, run.w / natural));
-    return Math.abs(scale - 1) < SCALE_TOLERANCE ? 1 : scale;
-  });
+function spacingsOf(runs: readonly Run[]): number[] {
+  return runs.map((run) => letterSpacingFor(measureTextWidth(run.text, run.h), run.w, run.text.length, run.h));
 }
 
 /** The spans of one page's text, in content order. Real DOM text, so a screen reader reads it and the browser selects it. */
@@ -74,7 +64,7 @@ const TextRuns = memo(function TextRuns({
   interactive: boolean;
 }) {
   const runs = useMemo(() => runsOf(layer), [layer]);
-  const scales = useMemo(() => scalesOf(runs), [runs]);
+  const spacings = useMemo(() => spacingsOf(runs), [runs]);
   return (
     <div
       {...{ [LAYER_ATTRIBUTE]: '' }}
@@ -84,7 +74,7 @@ const TextRuns = memo(function TextRuns({
       style={{ pointerEvents: interactive ? 'auto' : 'none' }}
     >
       {runs.map((run, i) => (
-        <RunSpan key={run.start} run={run} scaleX={scales[i] ?? 1} />
+        <RunSpan key={run.start} run={run} spacing={spacings[i] ?? 0} />
       ))}
     </div>
   );
