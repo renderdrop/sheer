@@ -5,6 +5,7 @@ import { createPortal } from 'react-dom';
 
 import { Button, Icon, IconButton, pulse } from '../../components';
 import { DURATION, usePopoverMotion } from '../../components/motion';
+import { useNoticeSlot } from '../../components/notices';
 import { tokenPx } from '../../components/tokens';
 import { useFloatingPosition } from '../../components/useFloatingPosition';
 import { useT } from '../../i18n';
@@ -268,6 +269,7 @@ function Card({ anchor }: CardProps) {
     active: present,
     side: anchor.spec.side,
     align: anchor.spec.align,
+    kind: 'coach',
     clampTo: { selector: CANVAS_SCROLLER, inset: tokenPx('--space-4', 16) },
     clearOf: TOOL_ROW,
   });
@@ -385,6 +387,9 @@ export function CoachMark() {
   const named = useAnchor(place === null ? undefined : place.canvasTarget ? step?.anchor.a : place.name);
   const anchor: ResolvedAnchor | null = canvasTarget === null ? named : { element: canvasTarget, spec: TARGET_SPEC };
   const yielding = useOverlayOpen(step !== undefined);
+  const wanted = step !== undefined && anchor !== null && phase !== 'finishing' && !paused && !hidden && !yielding;
+  // One notice at a time (DESIGN 3.9 Q8): an info toast or a tip never shows beside the card; an error toast takes the slot.
+  const slot = useNoticeSlot('coach', 'coach', wanted);
 
   // The success moment: the ring pulses and the status bar announces it; the last one also points at the closing page.
   useEffect(() => {
@@ -399,7 +404,7 @@ export function CoachMark() {
   return createPortal(
     <>
       <Ring key={step.id} anchor={anchor.element} ringRef={ringRef} />
-      <AnimatePresence>{!hidden && !yielding && <Card key={step.id} anchor={anchor} />}</AnimatePresence>
+      <AnimatePresence>{slot && <Card key={step.id} anchor={anchor} />}</AnimatePresence>
     </>,
     document.body,
   );

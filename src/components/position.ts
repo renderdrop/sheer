@@ -73,6 +73,100 @@ function crossStart(align: Align, anchorStart: number, anchorSize: number, float
   }
 }
 
+/** The kinds of floating surface the one engine places (DESIGN 3.9 Q8). */
+export type FloatingKind = 'tooltip' | 'popover' | 'menu' | 'coach' | 'tip';
+
+/** Gap from the anchor per kind in px (Q8): tooltip, popover, menu and tip 8, coach mark 12. */
+export function gapOf(kind: FloatingKind): number {
+  return kind === 'coach' ? 12 : 8;
+}
+
+export interface Candidate {
+  side: Side;
+  align: Align;
+}
+
+/** The side the other axis ends with when the preferred alignment does not fit: start becomes end and the reverse. */
+function otherAlign(align: Align): Align {
+  return align === 'start' ? 'end' : align === 'end' ? 'start' : 'center';
+}
+
+/**
+ * Placement order (Q8). Tooltip: top, bottom, right, left. Popover and menu: bottom-start, bottom-end, top-start, top-end,
+ * right, left. Coach mark and tip: the preferred side, its opposite, the remaining two. A preferred side other than the
+ * default starts the order there with the same rules.
+ */
+export function candidatesFor(kind: FloatingKind, side: Side, align: Align): Candidate[] {
+  const opposite = OPPOSITE[side];
+  const rest = (isVertical(side) ? (['right', 'left'] as const) : (['top', 'bottom'] as const)).filter(
+    (candidate) => candidate !== side,
+  );
+  if (kind === 'popover' || kind === 'menu') {
+    const second = otherAlign(align);
+    const list: Candidate[] = [{ side, align }];
+    if (second !== align && isVertical(side)) list.push({ side, align: second });
+    list.push({ side: opposite, align });
+    if (second !== align && isVertical(side)) list.push({ side: opposite, align: second });
+    for (const remaining of rest) list.push({ side: remaining, align: isVertical(remaining) ? align : 'start' });
+    return list;
+  }
+  return [side, opposite, ...rest].map((candidate) => ({ side: candidate, align }));
+}
+
+export function intersects(a: Rect, b: Rect): boolean {
+  const overlapX = Math.min(a.left + a.width, b.left + b.width) - Math.max(a.left, b.left);
+  const overlapY = Math.min(a.top + a.height, b.top + b.height) - Math.max(a.top, b.top);
+  return overlapX > 0.5 && overlapY > 0.5;
+}
+
+export interface PlacementInput {
+  anchor: Rect;
+  floating: Size;
+  viewport: Size;
+  kind: FloatingKind;
+  side: Side;
+  align: Align;
+  offset: number;
+  /** Viewport inset (8). */
+  margin: number;
+  crossOffset?: number;
+  /** Rects the surface must not intersect. Empty rects (no area) never collide. */
+  protectedRects: readonly Rect[];
+}
+
+/**
+ * Walks the candidates in order (`candidatesFor`). Per candidate: the main axis must fit inside the inset (the flip is the
+ * next candidate on the opposite side), then the element is shifted along the edge to stay inside the inset, then it is
+ * tested against the protected rects. The first candidate without a collision wins. `null` when none does: a popover then
+ * becomes a dialog, a tooltip or tip is not shown, a notice waits.
+ */
+export function computePlacement(input: PlacementInput): PositionResult | null {
+  const { anchor, floating, viewport, offset, margin, crossOffset = 0 } = input;
+  const maxX = viewport.width - margin - floating.width;
+  const maxY = viewport.height - margin - floating.height;
+  // Larger than the viewport minus the inset: no candidate can hold it.
+  if (maxX < margin || maxY < margin) return null;
+  for (const { side, align } of candidatesFor(input.kind, input.side, input.align)) {
+    let x: number;
+    let y: number;
+    if (isVertical(side)) {
+      x = crossStart(align, anchor.left, anchor.width, floating.width) + crossOffset;
+      y = side === 'bottom' ? anchor.top + anchor.height + offset : anchor.top - offset - floating.height;
+      if (y < margin - 0.01 || y > maxY + 0.01) continue;
+      x = clamp(x, margin, maxX);
+    } else {
+      y = crossStart(align, anchor.top, anchor.height, floating.height) + crossOffset;
+      x = side === 'right' ? anchor.left + anchor.width + offset : anchor.left - offset - floating.width;
+      if (x < margin - 0.01 || x > maxX + 0.01) continue;
+      y = clamp(y, margin, maxY);
+    }
+    const box: Rect = { left: x, top: y, width: floating.width, height: floating.height };
+    if (input.protectedRects.some((rect) => intersects(box, rect))) continue;
+    return { x, y, side };
+  }
+  return null;
+}
+
 /**
  * Top-left corner (viewport coordinates) for a `position: fixed` element. The preferred side is used when the element
  * fits there; otherwise the opposite side if it has more room. Along the other axis the element is shifted to stay

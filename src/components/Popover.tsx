@@ -15,6 +15,7 @@ import {
 } from 'react';
 import { createPortal } from 'react-dom';
 
+import { Modal } from '../features/jobs/Modal';
 import { DISMISS_PRIORITY, registerDismissLayer } from './dismiss';
 import { cycleTab, TAB_STOPS } from './focusTrap';
 import { useControllableState } from './hooks';
@@ -228,7 +229,28 @@ function originOf(side: Side, align: Align): string {
   }
 }
 
-function Surface({
+/**
+ * The global surface rule (DESIGN 3.9 Q7): a popover sizes to its content, and one that fits no placement inside the
+ * viewport minus the inset (Q8) renders as a dialog with the same content and the trigger's label as title. Menus
+ * are lists: they scroll inside and are never turned into a dialog.
+ */
+function Surface(props: SurfaceProps) {
+  const [asDialog, setAsDialog] = useState(false);
+  const titleId = useId();
+  if (asDialog) {
+    return (
+      <Modal labelledBy={titleId} width="w-dialog-md" onClose={() => props.onClose('escape')}>
+        <h2 id={titleId} className="t-h3 m-0 mb-4">
+          {props.label}
+        </h2>
+        <PopoverScope.Provider value={props.id}>{props.children}</PopoverScope.Provider>
+      </Modal>
+    );
+  }
+  return <FloatingSurface {...props} onNoFit={props.role === 'dialog' ? () => setAsDialog(true) : undefined} />;
+}
+
+function FloatingSurface({
   id,
   label,
   role,
@@ -239,13 +261,22 @@ function Surface({
   focusRequest,
   parent,
   onClose,
+  onNoFit,
   children,
-}: SurfaceProps) {
+}: SurfaceProps & { onNoFit: (() => void) | undefined }) {
   const positioner = useRef<HTMLDivElement>(null);
   const surface = useRef<HTMLDivElement>(null);
   const present = useIsPresent();
   const motionProps = usePopoverMotion();
-  useFloatingPosition({ anchor, floatingRef: positioner, active: present, side, align });
+  useFloatingPosition({
+    anchor,
+    floatingRef: positioner,
+    active: present,
+    side,
+    align,
+    kind: role === 'menu' ? 'menu' : 'popover',
+    onNoFit,
+  });
 
   // Initial focus: the first or last menu item, the first control of a dialog, else the popover itself.
   useLayoutEffect(() => {
@@ -307,7 +338,7 @@ function Surface({
           transformOrigin: originOf(side, align),
           ...(width === undefined ? {} : { width, minWidth: width, maxWidth: width }),
         }}
-        className={`bg-panel border border-border-subtle shadow-floating min-h-0 overflow-auto rounded-button p-4 text-md text-text outline-none ${POPOVER_WIDTHS}`}
+        className={`bg-panel border border-border-subtle shadow-floating min-h-0 ${role === 'menu' ? 'overflow-auto' : ''} rounded-button p-4 text-md text-text outline-none ${POPOVER_WIDTHS}`}
       >
         <PopoverScope.Provider value={id}>{children}</PopoverScope.Provider>
       </motion.div>

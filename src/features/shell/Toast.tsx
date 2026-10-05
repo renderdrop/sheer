@@ -5,6 +5,7 @@ import { useCallback, useEffect, useRef } from 'react';
 import { Button } from '../../components';
 import { Icon } from '../../components/Icon';
 import { TWEEN } from '../../components/motion';
+import { useNoticeSlot } from '../../components/notices';
 import { tokenPx } from '../../components/tokens';
 import { useUi, type Toast } from '../../stores/ui';
 
@@ -67,6 +68,8 @@ function ToastView({ toast }: { toast: Toast }) {
  */
 export function ToastLayer() {
   const toast = useUi((state) => state.toast);
+  // One notice at a time (DESIGN 3.9 Q8): an error toast takes the slot at once, any other waits behind it and the coach mark.
+  const shown = useNoticeSlot(`toast-${toast?.id ?? 0}`, toast?.tone === 'error' ? 'error' : 'info', toast !== null);
   return (
     <div className="pointer-events-none fixed inset-x-0 bottom-(--space-6) z-toast flex justify-center">
       <div role="status" className="sr-only">
@@ -74,7 +77,7 @@ export function ToastLayer() {
       </div>
       {/* "wait": a toast that replaces another does not sit beside the one still fading out (a doubled copy in the flex row). */}
       <AnimatePresence initial={false} mode="wait">
-        {toast !== null && <ToastView key={toast.id} toast={toast} />}
+        {toast !== null && shown && <ToastView key={toast.id} toast={toast} />}
       </AnimatePresence>
     </div>
   );

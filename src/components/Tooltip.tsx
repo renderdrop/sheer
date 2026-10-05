@@ -267,7 +267,7 @@ function Bubble({
 }: BubbleProps) {
   const ref = useRef<HTMLDivElement>(null);
   const present = useIsPresent();
-  useFloatingPosition({ anchor: wrapper, floatingRef: ref, active: present, side, align: 'center' });
+  useFloatingPosition({ anchor: wrapper, floatingRef: ref, active: present, side, align: 'center', kind: 'tooltip' });
   // A neighbour's tooltip is simply there (no fade in); reduced motion keeps the fade.
   const skipEnter = instantEnter && !reduce;
 

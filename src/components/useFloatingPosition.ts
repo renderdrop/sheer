@@ -1,7 +1,16 @@
-import { useLayoutEffect, type RefObject } from 'react';
+import { useEffect, useLayoutEffect, useRef, type RefObject } from 'react';
 
-import { computePosition, type Align, type Side } from './position';
-import { overlayOffset } from './tokens';
+import {
+  computePlacement,
+  computePosition,
+  gapOf,
+  type Align,
+  type FloatingKind,
+  type PositionResult,
+  type Side,
+} from './position';
+import { protectedRects } from './protect';
+import { overlayOffset, tokenPx } from './tokens';
 
 /** The element to stay next to: the element itself (kept in state) or a ref to it. A `display: contents` element stands for its first child. */
 export type AnchorSource = HTMLElement | null | RefObject<HTMLElement | null>;
@@ -27,6 +36,16 @@ interface Options {
    * edge (the tour card below the top bar must not hide the tool row). Ignored when the element is not there or lies above.
    */
   clearOf?: string;
+  /**
+   * The engine of DESIGN 3.9 Q8: placement order per kind, flip, shift and collision with protected elements (see
+   * `protectedRects`). Without a kind the legacy flip-and-clamp placement runs.
+   */
+  kind?: FloatingKind;
+  /**
+   * Called when no candidate fits (Q8). A popover turns itself into a dialog here. Without it a tooltip and a tip become
+   * invisible until they fit again, and every other kind takes the best geometric placement.
+   */
+  onNoFit?: () => void;
 }
 
 /**
@@ -50,7 +69,13 @@ export function useFloatingPosition({
   crossOffset,
   clampTo,
   clearOf,
+  kind,
+  onNoFit,
 }: Options): void {
+  const onNoFitRef = useRef(onNoFit);
+  useEffect(() => {
+    onNoFitRef.current = onNoFit;
+  });
   const clampSelector = clampTo?.selector;
   const clampInset = clampTo?.inset;
   useLayoutEffect(() => {
@@ -62,7 +87,7 @@ export function useFloatingPosition({
 
     // Cached for as long as this positioning lasts: a token does not change while a popover is open.
     const gap = overlayOffset();
-    const written = { maxHeight: '', left: '', top: '', side: '' };
+    const written = { maxHeight: '', left: '', top: '', side: '', visibility: '' };
 
     const update = () => {
       const viewport = {
@@ -75,16 +100,63 @@ export function useFloatingPosition({
         floating.style.maxHeight = maxHeight;
         written.maxHeight = maxHeight;
       }
-      const placed = computePosition({
-        anchor: anchor.getBoundingClientRect(),
-        floating: floating.getBoundingClientRect(),
-        viewport,
-        side,
-        align,
-        offset: offset ?? gap,
-        margin: gap,
-        crossOffset,
-      });
+      const anchorBox = anchor.getBoundingClientRect();
+      const floatingBox = floating.getBoundingClientRect();
+      let placed: PositionResult | null;
+      if (kind === undefined) {
+        placed = computePosition({
+          anchor: anchorBox,
+          floating: floatingBox,
+          viewport,
+          side,
+          align,
+          offset: offset ?? gap,
+          margin: gap,
+          crossOffset,
+        });
+      } else {
+        placed = computePlacement({
+          anchor: anchorBox,
+          // The content's own height: the max-height above clamps the box, but a popover that is taller does not fit.
+          floating: { width: floatingBox.width, height: Math.max(floatingBox.height, floating.scrollHeight) },
+          viewport,
+          kind,
+          side,
+          align,
+          offset: offset ?? (kind === 'coach' ? tokenPx('--space-3', gapOf(kind)) : gap),
+          margin: gap,
+          crossOffset,
+          protectedRects: protectedRects(kind, anchor, floating),
+        });
+        if (placed === null) {
+          if (onNoFitRef.current !== undefined) {
+            onNoFitRef.current();
+            return;
+          }
+          if (kind === 'tooltip' || kind === 'tip') {
+            // Not shown (Q8): the surface keeps its box but is invisible, and is tried again on every layout change.
+            if (written.visibility !== 'hidden') {
+              floating.style.visibility = 'hidden';
+              written.visibility = 'hidden';
+            }
+            return;
+          }
+          placed = computePosition({
+            anchor: anchorBox,
+            floating: floatingBox,
+            viewport,
+            side,
+            align,
+            offset: offset ?? gap,
+            margin: gap,
+            crossOffset,
+          });
+        }
+        if (written.visibility !== '') {
+          floating.style.visibility = '';
+          written.visibility = '';
+        }
+      }
       let x = placed.x;
       const slot = clampSelector === undefined ? null : document.querySelector<HTMLElement>(clampSelector);
       if (slot !== null) {
@@ -142,5 +214,5 @@ export function useFloatingPosition({
       observer.disconnect();
       cancelAnimationFrame(frame);
     };
-  }, [source, floatingRef, active, side, align, offset, crossOffset, clampSelector, clampInset, clearOf]);
+  }, [source, floatingRef, active, side, align, offset, crossOffset, clampSelector, clampInset, clearOf, kind]);
 }

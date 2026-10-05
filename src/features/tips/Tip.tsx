@@ -5,6 +5,7 @@ import { createPortal } from 'react-dom';
 
 import { Icon, IconButton, announce } from '../../components';
 import { usePopoverMotion } from '../../components/motion';
+import { useNoticeSlot } from '../../components/notices';
 import { tokenPx } from '../../components/tokens';
 import { useFloatingPosition } from '../../components/useFloatingPosition';
 import { useT } from '../../i18n';
@@ -103,6 +104,7 @@ function Card({ id, anchor }: { id: TipId; anchor: ResolvedAnchor }) {
     active: present,
     side: 'bottom',
     align: 'center',
+    kind: 'tip',
     clampTo: { selector: CANVAS_SCROLLER, inset: tokenPx('--space-2', 8) },
   });
 
@@ -162,8 +164,12 @@ export function Tip() {
 function TipBody({ id }: { id: TipId | null }) {
   const anchor = useAnchor(id ?? 'highlight');
   useDismissOnOverlay(id !== null);
+  // One notice at a time (DESIGN 3.9 Q8): the tip waits in the queue behind a toast or the coach mark.
+  const shown = useNoticeSlot('tip', 'tip', id !== null && anchor !== null);
   return createPortal(
-    <AnimatePresence>{id !== null && anchor !== null && <Card key={id} id={id} anchor={anchor} />}</AnimatePresence>,
+    <AnimatePresence>
+      {shown && id !== null && anchor !== null && <Card key={id} id={id} anchor={anchor} />}
+    </AnimatePresence>,
     document.body,
   );
 }

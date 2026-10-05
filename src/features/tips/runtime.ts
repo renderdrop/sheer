@@ -7,9 +7,23 @@ import { useTips } from './store';
 /** Tips already decided on in this session: the setting may fail to write (or not exist yet), and a tip must still never repeat. */
 const session = new Set<string>();
 
+/** Tips wait this long after the last input lost focus. */
+export const TIP_IDLE_MS = 2000;
+const INPUT = 'input, textarea, select, [contenteditable=""], [contenteditable="true"]';
+let lastInputBlur = Number.NEGATIVE_INFINITY;
+let retry: ReturnType<typeof setTimeout> | undefined;
+
+/** Milliseconds a tip still has to wait for the inputs to rest; 0 when none has focus and none had it in the last 2 s. */
+export function inputIdleWait(now = Date.now()): number {
+  if (document.activeElement?.matches(INPUT) === true) return TIP_IDLE_MS;
+  return Math.max(0, lastInputBlur + TIP_IDLE_MS - now);
+}
+
 /** For tests: forgets the session's tips and its count. */
 export function resetSession(): void {
   session.clear();
+  lastInputBlur = Number.NEGATIVE_INFINITY;
+  clearTimeout(retry);
   useTips.getState().resetSession();
 }
 
@@ -35,6 +49,13 @@ export async function maybeShowTip(): Promise<void> {
     tipVisible: useTips.getState().current !== null,
   };
   if (!mayShow(id, context)) return;
+  // A tip waits until no input has had focus for 2 s (DESIGN 3.9 Q8); it is asked for again then.
+  const wait = inputIdleWait();
+  if (wait > 0) {
+    clearTimeout(retry);
+    retry = setTimeout(() => void maybeShowTip(), wait);
+    return;
+  }
   session.add(id);
   await settings.update({ tipsSeen: withSeen(context.seen, id) });
   // The tool may have been released while the write was in flight: then there is nothing to point at.
@@ -67,7 +88,13 @@ export function bindTips(): () => void {
   const stopSettings = useSettings.subscribe((state, previous) => {
     if (state.loaded && !previous.loaded) void maybeShowTip();
   });
+  const onFocusOut = (event: FocusEvent) => {
+    if (event.target instanceof Element && event.target.matches(INPUT)) lastInputBlur = Date.now();
+  };
+  document.addEventListener('focusout', onFocusOut);
   return () => {
+    document.removeEventListener('focusout', onFocusOut);
+    clearTimeout(retry);
     stopUi();
     stopTour();
     stopSettings();
