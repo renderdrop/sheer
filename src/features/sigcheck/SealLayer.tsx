@@ -8,7 +8,7 @@ import type { PageLayerProps } from '../viewer/pageLayer';
 import { normalizeRotation, overlayBox, swapsSides, totalRotation, unrotatedSize } from '../viewer/transform';
 import { openSignaturesDialog } from './open';
 import { useSigcheck } from './store';
-import { clean, isBad, signerName, stateOf, type SigState } from './summary';
+import { clean, isBad, sealBox, signerName, stateOf, type SigState } from './summary';
 
 function stateWord(t: ReturnType<typeof useT>, state: SigState): string {
   if (state === 'intact') return t('sigs.state.intact');
@@ -66,8 +66,8 @@ export const SealLayer: FC<PageLayerProps> = memo(function SealLayer({
     <div data-seal-layer="" className="pointer-events-none absolute inset-0 z-canvas-annotations">
       <div role="group" className="absolute" style={style}>
         {seals.map((sig) => {
-          const widget = sig.widget;
-          if (widget === null) return null;
+          if (sig.widget === null) return null;
+          const box = sealBox(sig.widget.rect, page[1]);
           const state = stateOf(sig);
           const name = signerName(sig);
           const word = stateWord(t, state);
@@ -85,10 +85,10 @@ export const SealLayer: FC<PageLayerProps> = memo(function SealLayer({
                 aria-label={t('sigs.aria', { name, state: word })}
                 className="pointer-events-auto absolute cursor-pointer appearance-none border-0 bg-transparent p-0"
                 style={{
-                  left: widget.rect.x,
-                  top: widget.rect.y,
-                  width: widget.rect.w,
-                  height: widget.rect.h,
+                  left: box.x,
+                  top: box.y,
+                  width: box.w,
+                  height: box.h,
                   boxShadow: outlines.length > 0 ? outlines.join(', ') : undefined,
                   outline: on ? `calc(var(--hairline) / ${scale}) solid var(--color-ink)` : 'none',
                   outlineOffset: `calc(var(--focus-width) / ${scale})`,

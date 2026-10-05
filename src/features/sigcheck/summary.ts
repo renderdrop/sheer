@@ -48,6 +48,17 @@ export const signaturesOf = (report: SignatureReport | undefined): readonly Sign
 export const identityUnchecked = (sigs: readonly SignatureInfo[]): boolean =>
   sigs.some((sig) => sig.signer !== null && sig.trust === 'notTrusted');
 
+/**
+ * A widget rectangle as the file writes it (`[llx lly urx ury]`: origin bottom left, y up) as a box of page space (origin top left,
+ * y down), for the unrotated page `pageHeight` points high.
+ */
+export function sealBox(
+  rect: { x: number; y: number; w: number; h: number },
+  pageHeight: number,
+): { x: number; y: number; w: number; h: number } {
+  return { x: rect.x, y: pageHeight - rect.y - rect.h, w: rect.w, h: rect.h };
+}
+
 /** The seal as a quad for the viewer's jump (page space, y down). */
 export function rectQuad(rect: { x: number; y: number; w: number; h: number }): Quad {
   return [

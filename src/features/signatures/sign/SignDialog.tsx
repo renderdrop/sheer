@@ -90,6 +90,7 @@ function SignSheet() {
         <label className="flex flex-col gap-1">
           <span className="t-label">{t('sign.cert.reason')}</span>
           <Field
+            className="w-full!"
             value={reason}
             maxLength={SEAL_REASON_MAX}
             disabled={busy}
@@ -100,6 +101,7 @@ function SignSheet() {
         <label className="flex flex-col gap-1">
           <span className="t-label">{t('sign.cert.location')}</span>
           <Field
+            className="w-full!"
             value={location}
             maxLength={SEAL_LOCATION_MAX}
             disabled={busy}

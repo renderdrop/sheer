@@ -1380,6 +1380,7 @@
   "sign.cert.keychainDenied": "The system didn't allow access to the key.",
   "seal.signed": "Digitally signed",
   "seal.reason": "Reason: {reason}",
+  "seal.location": "Location: {location}",
   "save.status.signed": "Signed",
   "cert.locked.tool": "Signed and locked. Make an editable copy to change it.",
   "cert.editableCopy": "Make editable copy…",

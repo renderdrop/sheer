@@ -12,7 +12,7 @@
 
 use std::path::Path;
 
-use tauri::{State, WebviewWindow};
+use tauri::{Manager, State, WebviewWindow};
 use tauri_plugin_dialog::DialogExt;
 
 use super::jobs::file_stem;
@@ -81,6 +81,11 @@ pub async fn save_unsigned_copy(
     doc_id: DocumentId,
 ) -> Result<Option<AppEvent>, UiError> {
     let state = state.inner().clone();
+    // The suggested name follows the UI language, like the signed file's (`commands::sign`).
+    let suffix = match crate::menu::ui_locale(window.app_handle()) {
+        crate::menu::spec::MenuLocale::De => "unsigniert",
+        crate::menu::spec::MenuLocale::En => "unsigned",
+    };
     blocking(move || {
         let info = state.info(doc_id).ok_or(AppError::not_found("document"))?;
         let mut dialog = window
@@ -90,7 +95,7 @@ pub async fn save_unsigned_copy(
             .add_filter("PDF", &["pdf"]);
         if !info.display_name.is_empty() {
             dialog =
-                dialog.set_file_name(format!("{} (unsigned).pdf", file_stem(&info.display_name)));
+                dialog.set_file_name(format!("{} ({suffix}).pdf", file_stem(&info.display_name)));
         }
         let Some(chosen) = dialog.blocking_save_file() else {
             return Ok(None);

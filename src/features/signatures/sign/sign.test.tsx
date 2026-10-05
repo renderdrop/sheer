@@ -89,6 +89,9 @@ describe('the signing flow (DESIGN 3.8 S3)', () => {
     expect(await screen.findByText(/not a qualified electronic signature/)).not.toBeNull();
     await user.type(screen.getByLabelText('Reason (optional)'), 'I approve');
     await user.type(screen.getByLabelText('Location (optional)'), 'Berlin');
+    for (const label of ['Reason (optional)', 'Location (optional)']) {
+      expect(screen.getByLabelText(label).className).toContain('w-full!');
+    }
     await user.click(screen.getByRole('button', { name: 'Sign and save as…' }));
     await waitFor(() => expect(signDocument).toHaveBeenCalled());
     expect(signDocument).toHaveBeenCalledWith(1, {

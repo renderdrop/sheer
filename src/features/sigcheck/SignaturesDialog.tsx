@@ -161,7 +161,9 @@ function SignatureCard({ docId, sig, total, onTrust, busy }: CardProps) {
       {sig.reason !== null && sig.reason !== '' && (
         <Row label="">{t('seal.reason', { reason: clean(sig.reason) })}</Row>
       )}
-      {sig.location !== null && sig.location !== '' && <Row label="">{clean(sig.location)}</Row>}
+      {sig.location !== null && sig.location !== '' && (
+        <Row label="">{t('seal.location', { location: clean(sig.location) })}</Row>
+      )}
       {locks && <Row label="">{t('sigs.locks')}</Row>}
 
       <div className="flex flex-wrap items-center gap-2">
