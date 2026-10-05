@@ -1,6 +1,6 @@
 import { AnimatePresence } from 'motion/react';
 import { UserRound } from 'lucide-react';
-import { useEffect, useId, useRef, useState } from 'react';
+import { useCallback, useEffect, useId, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 
 import { AUTHOR_NAME_MAX, isAuthorName } from '../../api/app';
@@ -34,7 +34,8 @@ function Modal() {
     }
     end(name === '' ? null : name);
   };
-  const skip = (): void => end(null);
+  // Stable, so the Esc layer registers once per showing and not per keystroke; `end` only reads the stores.
+  const skip = useCallback((): void => end(null), []);
 
   return (
     <DialogShell
@@ -47,6 +48,7 @@ function Modal() {
           <Field
             ref={input}
             data-autofocus=""
+            className="w-full!"
             aria-label={t('author.prompt.label')}
             autoComplete="off"
             spellCheck={false}

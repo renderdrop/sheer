@@ -66,6 +66,24 @@ describe('the author prompt in the app shell (ADR-109)', () => {
     expect(useSave.getState().saving[1]).not.toBe(true);
   });
 
+  it('Esc and the backdrop continue the save exactly once', async () => {
+    const { user } = setup(<Shell />);
+    const first = saveNow(1);
+    await screen.findByRole('dialog');
+    await user.keyboard('{Escape}');
+    expect(await first).toBe(true);
+    expect(api.saveDocument).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+
+    useSettings.setState({ authorName: '', authorPrompt: 'pending' });
+    useAnnotations.getState().applyChanges(1, { ...changes, rev: 9 });
+    const second = saveNow(1);
+    const dialog = await screen.findByRole('dialog');
+    await user.pointer({ keys: '[MouseLeft]', target: dialog.parentElement as HTMLElement });
+    expect(await second).toBe(true);
+    expect(api.saveDocument).toHaveBeenCalledTimes(2);
+  });
+
   it('Confirm continues to the save and stores the name', async () => {
     const { user } = setup(<Shell />);
     const pending = saveNow(1);
