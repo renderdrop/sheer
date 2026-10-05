@@ -35,6 +35,12 @@ interface Box {
 
 const box = (rect: DOMRect): Box => ({ left: rect.left, top: rect.top, width: rect.width, height: rect.height });
 
+/** Calls `onEnd` when the animation finishes; a cancelled one (retarget in mid-glide) is not an end. */
+function watchEnd(animation: Animation, onEnd: (() => void) | undefined): void {
+  if (onEnd === undefined) return;
+  void animation.finished.then(onEnd, () => undefined);
+}
+
 /**
  * FLIP for one shared element (MOTION spells 1, 18, 21): the element already sits at its final geometry (set here as
  * left/top/width/height, never animated); the animation is only `transform` from the previous visual box to the identity.
@@ -45,8 +51,9 @@ export function flipTo(
   from: Box | null,
   to: Box,
   durationMs: number,
-  options: { fade?: boolean } = {},
+  options: { fade?: boolean; onEnd?: () => void } = {},
 ): void {
+  const { onEnd } = options;
   const running = element.getAnimations?.() ?? [];
   for (const animation of running) animation.cancel();
   element.style.transformOrigin = '0 0';
@@ -55,26 +62,35 @@ export function flipTo(
   element.style.width = `${to.width}px`;
   element.style.height = `${to.height}px`;
   element.style.translate = `${to.left}px ${to.top}px`;
-  if (typeof element.animate !== 'function' || from === null || prefersReducedMotion() || durationMs <= 0) return;
+  if (typeof element.animate !== 'function' || from === null || prefersReducedMotion() || durationMs <= 0) {
+    onEnd?.();
+    return;
+  }
   const moved =
     Math.abs(from.left - to.left) > 0.5 ||
     Math.abs(from.top - to.top) > 0.5 ||
     Math.abs(from.width - to.width) > 0.5 ||
     Math.abs(from.height - to.height) > 0.5;
-  if (!moved) return;
+  if (!moved) {
+    onEnd?.();
+    return;
+  }
   const timing = { duration: durationMs, easing: EASE_OUT } as const;
   if (options.fade === true) {
-    element.animate([{ opacity: 0 }, { opacity: 1 }], timing);
+    watchEnd(element.animate([{ opacity: 0 }, { opacity: 1 }], timing), onEnd);
     return;
   }
   const sx = to.width === 0 ? 1 : from.width / to.width;
   const sy = to.height === 0 ? 1 : from.height / to.height;
-  element.animate(
-    [
-      { transform: `translate(${from.left - to.left}px, ${from.top - to.top}px) scale(${sx}, ${sy})` },
-      { transform: 'none' },
-    ],
-    timing,
+  watchEnd(
+    element.animate(
+      [
+        { transform: `translate(${from.left - to.left}px, ${from.top - to.top}px) scale(${sx}, ${sy})` },
+        { transform: 'none' },
+      ],
+      timing,
+    ),
+    onEnd,
   );
 }
 
@@ -94,6 +110,8 @@ export function useGlidePill(
   selector: string,
   activeKey: string | null,
   durationToken: '--motion-fast' | '--motion-base',
+  /** Called when a glide to a new `activeKey` ends, and at once when it is placed without one (label weight swap). */
+  onGlideEnd?: () => void,
 ): RefObject<HTMLSpanElement | null> {
   const pill = useRef<HTMLSpanElement>(null);
   const last = useRef<string | null>(null);
@@ -123,7 +141,9 @@ export function useGlidePill(
         ? null
         : { ...from, left: from.left - origin.left - host.clientLeft, top: from.top - origin.top - host.clientTop };
     element.style.opacity = '1';
-    flipTo(element, fromLocal, to, tokenMs(durationToken, durationToken === '--motion-fast' ? 120 : 160));
+    flipTo(element, fromLocal, to, tokenMs(durationToken, durationToken === '--motion-fast' ? 120 : 160), {
+      onEnd: last.current !== activeKey ? onGlideEnd : undefined,
+    });
     last.current = activeKey;
   });
 

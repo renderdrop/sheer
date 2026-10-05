@@ -32,7 +32,8 @@ export const CONTROL_BASE =
   PRESS_MOTION +
   ' not-aria-disabled:enabled:active:scale-(--scale-press) disabled:cursor-not-allowed aria-disabled:cursor-not-allowed';
 
-export type ButtonVariant = 'primary' | 'secondary' | 'ghost';
+/** `onDanger` and `ghostOnDanger` are for the red redact band only (DESIGN 3.2): White fill + danger text, and White text. */
+export type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'onDanger' | 'ghostOnDanger';
 export type ButtonSize = 'sm' | 'md' | 'lg';
 
 /** `min-w-16` is 64 px: the spacing token `--space-16` (DESIGN 3.1 minimum width). */
@@ -49,6 +50,8 @@ export const BUTTON_VARIANTS: Record<ButtonVariant, string> = {
   primary: `bg-accent text-on-accent not-aria-disabled:enabled:hover:bg-accent-hover ${DISABLED}`,
   secondary: `bg-subtle text-text not-aria-disabled:enabled:hover:bg-pressed not-aria-disabled:enabled:active:bg-pressed ${DISABLED}`,
   ghost: `bg-transparent text-text not-aria-disabled:enabled:hover:bg-subtle not-aria-disabled:enabled:active:bg-pressed ${DISABLED}`,
+  onDanger: `bg-on-danger text-band-danger not-aria-disabled:enabled:hover:bg-subtle not-aria-disabled:enabled:active:bg-pressed ${DISABLED}`,
+  ghostOnDanger: `bg-transparent text-on-danger not-aria-disabled:enabled:hover:bg-on-danger-hover not-aria-disabled:enabled:active:bg-on-danger-hover ${DISABLED}`,
 };
 
 export type IconButtonVariant = 'plain' | 'toggle' | 'tool';
@@ -83,7 +86,7 @@ export type FieldSize = 'sm' | 'md';
  * The focus ring is the global `:focus-visible` ring.
  */
 export const FIELD_BASE =
-  'w-field shrink-0 rounded-button border border-border-subtle border-b-control-border bg-surface-solid px-3 text-text ' +
+  'w-field shrink-0 rounded-button border border-border-subtle border-b-control-border bg-surface px-3 text-text ' +
   'tabular-nums placeholder:text-text-muted not-disabled:hover:border-b-text disabled:opacity-(--opacity-disabled) ' +
   'aria-invalid:border-error-icon transition-colors [transition-duration:var(--motion-fast)]';
 

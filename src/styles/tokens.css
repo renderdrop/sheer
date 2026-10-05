@@ -47,7 +47,9 @@
   --color-on-accent: var(--on-accent);
   --color-focus: var(--accent);
   --color-control-border: var(--color-stone);
+  /* DEPRECATED (POL-2): use bg-subtle / --surface-subtle. Remaining users are pinned in tokens.test.ts. */
   --color-control-hover: var(--color-sand);
+  /* DEPRECATED (POL-2): use bg-pressed / --surface-pressed. */
   --color-control-pressed: var(--surface-pressed);
   --color-selected: var(--color-sand);
   --color-fill-disabled: var(--color-sand);
@@ -63,6 +65,7 @@
   --color-error-text: var(--color-danger);
   --color-surface: var(--color-white);
   --color-surface-strong: var(--color-white);
+  /* DEPRECATED (POL-2): use --color-surface (White). */
   --color-surface-solid: var(--color-white);
   --color-backdrop: var(--scrim);
   /* The glyph on the Windows close button's hover (--win-close-hover). */
@@ -503,9 +506,23 @@
   --z-modal: 300;
   --z-tooltip: 400;
   --z-drag: 500;
+  /* Home measures (DESIGN v2 3.1, Politur v1.3) */
+  --home-nav-width: 200px;
+  --home-content-max: 1120px;
+  --home-hero-min: 280px;
+  --home-search-max: 480px;
+  --home-card-height: 76px;
+  --home-tile-width: 40px;
+  --home-tile-height: 52px;
+  --home-row-height: 56px;
+  --home-plus: 48px;
+  --home-nav-row-height: 48px;
+  --home-actions-clear: 72px;
+  --home-card-min: 208px;
 }
 
 /* legacy aliases — removed in R7 (ADR-100) */
+/* DEPRECATED (POL-2): the --spacing-* aliases are replaced by the BRAND names (--space-*, --control-*, ...). */
 @theme static {
   --spacing-toolbar-row: var(--toolbar-row-height);
   --spacing-tabs-row: var(--tabs-row-height);

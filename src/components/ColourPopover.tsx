@@ -74,7 +74,7 @@ export function ColourPopover({
             aria-disabled={disabled ? true : undefined}
             data-colour-more=""
             className={cx(
-              'relative mx-1 flex size-swatch shrink-0 cursor-pointer items-center justify-center rounded-pill border border-control-border bg-surface-solid text-text',
+              'relative mx-1 flex size-swatch shrink-0 cursor-pointer items-center justify-center rounded-pill border border-control-border bg-surface text-text',
               'hover:border-text aria-disabled:cursor-not-allowed aria-disabled:opacity-(--opacity-disabled)',
               "before:absolute before:-inset-1 before:content-['']",
             )}

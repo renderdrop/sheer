@@ -791,3 +791,88 @@ describe('rotate handle offset (ADR-105)', () => {
     expect(main).toContain(`--annot-rotate-offset: ${ROTATE_OFFSET_PT}px;`);
   });
 });
+
+/**
+ * Deprecated tokens (POL-2): no new file may adopt them, and the list of remaining users only shrinks. When a file is
+ * migrated, delete it from the list; when a list is empty, delete the token from tokens.css.
+ */
+describe('deprecated tokens: remaining users', () => {
+  const rel = (file: string): string => file.slice(SRC.length).replaceAll('\\', '/');
+  const files = sources(SRC);
+  const users = (pattern: RegExp): string[] =>
+    files
+      .filter((file) => pattern.test(readFileSync(file, 'utf8')))
+      .map(rel)
+      .sort();
+
+  const REMAINING: Record<string, { pattern: RegExp; files: string[] }> = {
+    'control-hover': {
+      pattern: /control-hover/,
+      files: [
+        'features/insert/useInsertInspector.tsx',
+        'features/inspector/Sections.tsx',
+        'features/jobs/RadioGroup.tsx',
+        'features/modes/ToolItem.tsx',
+        'features/outline/Outline.tsx',
+        'features/recovery/RecoveryBanner.tsx',
+        'features/redact/MarksList.tsx',
+        'features/search/Search.tsx',
+        'features/shell/CaptionBar.tsx',
+        'features/shell/MenuBar.tsx',
+        'features/signatures/library/SignatureLibraryDialog.tsx',
+        'features/tabs/TabStrip.tsx',
+        'features/topbar/SaveStatus.tsx',
+      ],
+    },
+    'control-pressed': {
+      pattern: /control-pressed/,
+      files: [
+        'features/jobs/RadioGroup.tsx',
+        'features/modes/ToolItem.tsx',
+        'features/outline/Outline.tsx',
+        'features/redact/MarksList.tsx',
+        'features/search/Search.tsx',
+        'features/shell/CaptionBar.tsx',
+        'features/shell/MenuBar.tsx',
+        'features/topbar/SaveStatus.tsx',
+      ],
+    },
+    'surface-solid': {
+      pattern: /surface-solid/,
+      files: [
+        'features/home/Home.tsx',
+        'features/home/RecentCard.tsx',
+        'features/home/RecentThumb.tsx',
+        'features/imagesToPdf/ImageList.tsx',
+        'features/jobs/MergeSheet.tsx',
+        'features/margin/Bubble.tsx',
+        'features/minibar/Controls.tsx',
+        'features/minibar/MiniBar.tsx',
+        'features/settings/SegmentedControl.tsx',
+        'features/viewer/DropCard.tsx',
+        'features/viewer/OpenClone.tsx',
+      ],
+    },
+    // hub/logo/toolbar-row/tabs-row aliases (var or Tailwind utility): no user is left, so the aliases can be deleted.
+    'spacing alias': {
+      pattern:
+        /--spacing-(hub|logo|toolbar-row|tabs-row)|(?<![w-])(?:min-|max-)?[wh]-(?:hub-[a-z-]+|logo-hub[a-z-]*|toolbar-row|tabs-row)(?![w-])/,
+      files: [],
+    },
+  };
+
+  for (const [name, { pattern, files: expected }] of Object.entries(REMAINING)) {
+    it(`${name}: only the listed files still use it`, () => {
+      const actual = users(pattern);
+      // Parallel migrations may remove users: only an unlisted new user (or a stale entry that is gone) fails.
+      expect(actual.filter((file) => !expected.includes(file))).toEqual([]);
+    });
+  }
+
+  it('src/components no longer uses any deprecated token', () => {
+    const inComponents = (['control-hover', 'control-pressed', 'surface-solid'] as const).flatMap((name) =>
+      users(REMAINING[name]?.pattern ?? /^$/).filter((file) => file.startsWith('components/')),
+    );
+    expect(inComponents).toEqual([]);
+  });
+});

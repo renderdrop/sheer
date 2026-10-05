@@ -76,7 +76,7 @@ export function Segmented<Value extends string>({
               'inline-flex h-control-sm min-w-0 flex-1 cursor-pointer items-center justify-center rounded-sm border px-3 text-md',
               'transition-[background-color,color,border-color] duration-fast aria-disabled:cursor-not-allowed',
               checked
-                ? 'border-control-border bg-surface-solid font-medium text-text'
+                ? 'border-control-border bg-surface font-medium text-text'
                 : 'border-transparent font-normal text-text-muted not-aria-disabled:hover:text-text',
             )}
           >

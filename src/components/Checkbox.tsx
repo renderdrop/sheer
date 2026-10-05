@@ -9,7 +9,7 @@ type InputProps = Omit<ComponentProps<'input'>, 'type' | 'size'>;
 /** Wrapper of the box and its mark; `peer` lets the mark follow the native input's state. */
 const WRAP = 'relative inline-flex size-4 shrink-0 items-center justify-center';
 const BOX =
-  'peer m-0 size-4 shrink-0 cursor-pointer appearance-none border bg-surface-solid ' +
+  'peer m-0 size-4 shrink-0 cursor-pointer appearance-none border bg-surface ' +
   'border-control-border not-disabled:hover:border-text checked:border-text checked:bg-accent ' +
   'disabled:cursor-not-allowed disabled:opacity-(--opacity-disabled) aria-disabled:cursor-not-allowed ' +
   'transition-[background-color,border-color] duration-fast';

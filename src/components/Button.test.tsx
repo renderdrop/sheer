@@ -147,3 +147,18 @@ describe('Button disabled edge cases', () => {
     expect(getByRole('button').hasAttribute('disabled')).toBe(false);
   });
 });
+
+describe('Button on the danger band', () => {
+  it('onDanger is White with danger text, never the Solar fill', () => {
+    const { getByRole } = setup(<Button variant="onDanger">Apply</Button>);
+    const classes = getByRole('button').className;
+    expect(classes).toContain('bg-on-danger');
+    expect(classes).toContain('text-band-danger');
+    expect(classes).not.toContain('bg-accent');
+  });
+
+  it('ghostOnDanger is White text with the on-danger hover', () => {
+    const { getByRole } = setup(<Button variant="ghostOnDanger">Cancel</Button>);
+    expect(getByRole('button').className).toContain('hover:bg-on-danger-hover');
+  });
+});

@@ -55,7 +55,7 @@ describe('Field (DESIGN 3.7)', () => {
     const classes = getByLabelText('A').className;
     expect(classes).toContain('border-border-subtle');
     expect(classes).toContain('border-b-control-border');
-    expect(classes).toContain('bg-surface-solid');
+    expect(classes).toContain('bg-surface');
     expect(classes).toContain('disabled:opacity-(--opacity-disabled)');
     expect(classes).toContain('aria-invalid:border-error-icon');
     // No class of its own for the focus ring, and none that removes the global one.
