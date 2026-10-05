@@ -6,14 +6,24 @@
 //! the walk is iterative, every object is visited once, the number of nodes, the depth, the number of fields, the length of names and
 //! texts and the size of a ByteRange are capped (`limits::SIG_*`), and the document comes from `load_untrusted`.
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
+use std::io::Read;
+use std::panic::{catch_unwind, AssertUnwindSafe};
+use std::time::Instant;
 
 use lopdf::{Dictionary, Document, Object, ObjectId};
 
 use super::forms::decode_text;
+use crate::documents::sanitize_text;
 use crate::error::{AppError, ErrorCode};
 use crate::limits;
-use crate::pdfsig::types::{SigField, SigScan};
+use crate::pdfsig::coverage::{self, Change, Kind};
+use crate::pdfsig::revisions as chain;
+use crate::pdfsig::types::{
+    Coverage, Cryptographic, LaterChanges, SigField, SigScan, SignatureInfo, SignatureKind,
+    SignatureLock, SubFilter, Trust,
+};
+use crate::pdfsig::verify::{self, RawSignature};
 
 /// Most numbers of a `/ByteRange` that are kept: a real one has four.
 const BYTE_RANGE_MAX: usize = 16;
@@ -279,6 +289,847 @@ fn entry<'a>(doc: &'a Document, dict: &'a Dictionary, key: &[u8]) -> Option<&'a 
 
 fn dict_of<'a>(doc: &'a Document, dict: &'a Dictionary, key: &[u8]) -> Option<&'a Dictionary> {
     entry(doc, dict, key)?.as_dict().ok()
+}
+
+// --- Validation (ADR-121 section 4) ----------------------------------------------------------------------------------------
+
+/// The revision ends of a file (`pdfsig::revisions`): at most `limits::SIG_REVISIONS_MAX`, else `limit_exceeded` (`revisions`).
+pub fn revisions(bytes: &[u8]) -> Result<Vec<u64>, AppError> {
+    let (ends, truncated) = chain::revision_ends(bytes);
+    if truncated {
+        return Err(AppError::limit(
+            "revisions",
+            limits::SIG_REVISIONS_MAX as u64,
+        ));
+    }
+    Ok(ends)
+}
+
+/// One signature as validated, with what the command layer needs besides the wire type.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Validated {
+    /// The wire value; `widget` is `None` here (the command layer maps `page_index` to a page id).
+    pub info: SignatureInfo,
+    /// SHA-256 of the signer certificate (what a pin holds), 64 lowercase hex digits.
+    pub fingerprint: Option<String>,
+    /// The page of the seal in the file (0-based) and its rectangle `[llx lly urx ury]` (normalized); `None` for an invisible one.
+    pub page_index: Option<u32>,
+    pub rect: Option<[f32; 4]>,
+    /// `b + c` of a signature whose layout holds: the end of the bytes it covers.
+    pub signed_end: Option<u64>,
+}
+
+/// The validated signatures of a file.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Validation {
+    pub signatures: Vec<Validated>,
+    pub truncated: bool,
+    pub lock: SignatureLock,
+}
+
+/// Validates every signature of `bytes` (a file as it is on disk). An encrypted file is `unsupported_feature`. Past `deadline` the
+/// signatures not yet looked at are `unverifiable` and the result `truncated`. Never panics: each signature runs under `catch_unwind`.
+pub fn validate_bytes(bytes: &[u8], deadline: Instant) -> Result<Validation, AppError> {
+    let doc = super::load_untrusted(bytes)?;
+    if doc.is_encrypted() {
+        return Err(AppError::new(ErrorCode::UnsupportedFeature));
+    }
+    let scan = scan_fields(&doc)?;
+    let (ends, ends_truncated) = chain::revision_ends(bytes);
+    let pages: HashMap<ObjectId, u32> = doc
+        .get_pages()
+        .into_iter()
+        .map(|(number, id)| (id, number.saturating_sub(1)))
+        .collect();
+    let mut prefixes: HashMap<u64, Option<Document>> = HashMap::new();
+    let mut truncated = scan.truncated;
+    let mut signatures = Vec::new();
+    for field in scan.fields.iter().filter(|field| field.signed) {
+        let index = u32::try_from(signatures.len()).unwrap_or(u32::MAX);
+        if Instant::now() >= deadline {
+            truncated = true;
+            signatures.push(skeleton(
+                index,
+                field,
+                scan.doc_mdp,
+                Cryptographic::Unverifiable,
+            ));
+            continue;
+        }
+        let env = Env {
+            bytes,
+            doc: &doc,
+            ends: &ends,
+            ends_truncated,
+            pages: &pages,
+            doc_mdp: scan.doc_mdp,
+        };
+        let one = catch_unwind(AssertUnwindSafe(|| {
+            validate_one(&env, index, field, &mut prefixes)
+        }))
+        .unwrap_or_else(|_| skeleton(index, field, scan.doc_mdp, Cryptographic::Malformed));
+        signatures.push(one);
+    }
+    let lock = if signatures.is_empty() {
+        SignatureLock::None
+    } else {
+        SignatureLock::from_doc_mdp(scan.doc_mdp)
+    };
+    Ok(Validation {
+        signatures,
+        truncated,
+        lock,
+    })
+}
+
+struct Env<'a> {
+    bytes: &'a [u8],
+    doc: &'a Document,
+    ends: &'a [u64],
+    ends_truncated: bool,
+    pages: &'a HashMap<ObjectId, u32>,
+    doc_mdp: Option<u8>,
+}
+
+fn kind_of_field(field: &SigField) -> SignatureKind {
+    if field.doc_timestamp {
+        SignatureKind::DocTimestamp
+    } else if let Some(p) = field.cert_p {
+        SignatureKind::Certification { p }
+    } else {
+        SignatureKind::Approval
+    }
+}
+
+/// The report entry of a signature with nothing verified: what the field claims and `verdict`.
+fn skeleton(
+    index: u32,
+    field: &SigField,
+    doc_mdp: Option<u8>,
+    verdict: Cryptographic,
+) -> Validated {
+    let _ = doc_mdp;
+    let sub_filter = field
+        .sub_filter
+        .as_deref()
+        .map_or(SubFilter::Other, |name| {
+            SubFilter::from_name(name.as_bytes())
+        });
+    Validated {
+        info: SignatureInfo {
+            index,
+            field_name: sanitize_text(&field.name, limits::SIG_FIELD_NAME_MAX),
+            kind: kind_of_field(field),
+            sub_filter,
+            signer: None,
+            claimed_time: field
+                .signed_at
+                .as_deref()
+                .and_then(verify::parse_pdf_date)
+                .map(|(iso, _)| iso),
+            reason: field
+                .reason
+                .as_deref()
+                .map(|t| sanitize_text(t, limits::SIG_TEXT_READ_MAX)),
+            location: field
+                .location
+                .as_deref()
+                .map(|t| sanitize_text(t, limits::SIG_TEXT_READ_MAX)),
+            cryptographic: verdict,
+            weak_algorithm: false,
+            timestamp_present: sub_filter == SubFilter::EtsiRfc3161,
+            coverage: Coverage::WholeFile,
+            cert_valid_at_claimed_time: false,
+            trust: Trust::NotTrusted,
+            widget: None,
+        },
+        fingerprint: None,
+        page_index: None,
+        rect: None,
+        signed_end: None,
+    }
+}
+
+fn validate_one(
+    env: &Env<'_>,
+    index: u32,
+    field: &SigField,
+    prefixes: &mut HashMap<u64, Option<Document>>,
+) -> Validated {
+    let mut out = skeleton(index, field, env.doc_mdp, Cryptographic::Malformed);
+    let (page_index, rect) = seal_place(env, field);
+    out.page_index = page_index;
+    out.rect = rect;
+    let sub_filter = out.info.sub_filter;
+    // Step (ii): the layout of the ByteRange and the /Contents gap.
+    let layout = match field.byte_range.as_deref() {
+        Some(range) => chain::check_layout(env.bytes, range, env.ends, env.ends_truncated),
+        None => Err(Cryptographic::Malformed),
+    };
+    let layout = match layout {
+        Ok(layout) => layout,
+        Err(verdict) => {
+            out.info.cryptographic = verdict;
+            return out;
+        }
+    };
+    out.signed_end = Some(layout.end());
+    let (Ok(a), Ok(b), Ok(end)) = (
+        usize::try_from(layout.a),
+        usize::try_from(layout.b),
+        usize::try_from(layout.end()),
+    ) else {
+        return out;
+    };
+    // The token in the gap is the dictionary's own /Contents (a decoy elsewhere cannot verify: the real one would be hashed).
+    let contents = match chain::gap_hex(env.bytes, &layout) {
+        Ok(contents) => contents,
+        Err(verdict) => {
+            out.info.cryptographic = verdict;
+            return out;
+        }
+    };
+    let own = sig_contents(env.doc, field);
+    if own.as_deref() != Some(contents.as_slice()) || contents.iter().all(|byte| *byte == 0) {
+        // Empty, null or somebody else's /Contents: universal signature forgery and wrapping end here.
+        return out;
+    }
+    // Steps (iii) to (vi).
+    let claimed = field.signed_at.as_deref().and_then(verify::parse_pdf_date);
+    let mut ranges = (&env.bytes[..a]).chain(&env.bytes[b..end]);
+    let checked = verify::check(
+        &RawSignature {
+            sub_filter,
+            contents: &contents,
+            claimed_unix: claimed.as_ref().map(|(_, unix)| *unix),
+        },
+        &mut ranges,
+    );
+    out.info.cryptographic = checked.cryptographic;
+    out.info.weak_algorithm = checked.weak_algorithm;
+    out.info.signer = checked.signer;
+    out.info.timestamp_present |= checked.timestamp_present;
+    out.info.cert_valid_at_claimed_time = checked.cert_valid_at_claimed_time;
+    out.info.claimed_time = claimed.map(|(iso, _)| iso).or(checked.cms_signing_time);
+    out.fingerprint = checked.signer_fingerprint;
+    // Step (vii): coverage.
+    out.info.coverage = coverage_of(env, layout.end(), prefixes);
+    out
+}
+
+/// Whether the signed revision is the whole file, else what was changed after it.
+fn coverage_of(env: &Env<'_>, end: u64, prefixes: &mut HashMap<u64, Option<Document>>) -> Coverage {
+    let Ok(at) = usize::try_from(end) else {
+        return Coverage::WholeFile;
+    };
+    let rest = env.bytes.get(at..).unwrap_or(&[]);
+    if rest.iter().all(|b| b.is_ascii_whitespace() || *b == 0) {
+        return Coverage::WholeFile;
+    }
+    let revision = env
+        .ends
+        .iter()
+        .position(|e| *e >= end)
+        .map_or(1, |i| u32::try_from(i + 1).unwrap_or(u32::MAX));
+    let prefix = prefixes.entry(end).or_insert_with(|| {
+        // The signed bytes have to be a document of their own (the same pre-scan as every file).
+        super::load_untrusted(&env.bytes[..at]).ok()
+    });
+    let later = match prefix {
+        Some(old) => {
+            let diff = catch_unwind(AssertUnwindSafe(|| revision_diff(old, env.doc)));
+            match diff {
+                Ok(diff) => {
+                    let mut later = diff.later;
+                    // Bytes after the signed revision that change nothing visible in the object set are still not the signed file.
+                    let nothing = later.is_empty();
+                    later.other |= diff.truncated || nothing;
+                    later
+                }
+                Err(_) => LaterChanges::OTHER,
+            }
+        }
+        None => LaterChanges::OTHER,
+    };
+    Coverage::EarlierRevision {
+        revision,
+        later,
+        verdict: coverage::verdict(later, env.doc_mdp),
+    }
+}
+
+/// The decoded `/Contents` of the signature dictionary of `field`, as lopdf read it.
+fn sig_contents(doc: &Document, field: &SigField) -> Option<Vec<u8>> {
+    let dict = doc.get_dictionary(field.object?).ok()?;
+    let value = match dict.get(b"V").ok()? {
+        Object::Reference(target) => doc.get_dictionary(*target).ok()?,
+        Object::Dictionary(inline) => inline,
+        _ => return None,
+    };
+    match value.get(b"Contents").ok()? {
+        Object::String(bytes, _) => Some(bytes.clone()),
+        _ => None,
+    }
+}
+
+/// The page (0-based, in the file) and the normalized rectangle of a visible seal.
+fn seal_place(env: &Env<'_>, field: &SigField) -> (Option<u32>, Option<[f32; 4]>) {
+    let rect = field.rect.and_then(|[x0, y0, x1, y1]| {
+        let (left, right) = (x0.min(x1), x0.max(x1));
+        let (bottom, top) = (y0.min(y1), y0.max(y1));
+        (right > left && top > bottom).then_some([left, bottom, right, top])
+    });
+    if rect.is_none() {
+        return (None, None);
+    }
+    let page = field
+        .page
+        .and_then(|id| env.pages.get(&id).copied())
+        .or_else(|| {
+            // Without /P the page is the one whose /Annots lists the widget.
+            let widget = field.object?;
+            env.pages.iter().find_map(|(page, index)| {
+                let dict = env.doc.get_dictionary(*page).ok()?;
+                match entry(env.doc, dict, b"Annots")? {
+                    Object::Array(items) => items
+                        .iter()
+                        .take(limits::SIG_SCAN_NODES_MAX)
+                        .any(|item| item.as_reference().is_ok_and(|id| id == widget))
+                        .then_some(*index),
+                    _ => None,
+                }
+            })
+        });
+    (page, rect)
+}
+
+// --- The revision diff ---------------------------------------------------------------------------------------------------
+
+/// What differs between the signed revision and the file now.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct Diff {
+    pub later: LaterChanges,
+    /// More than `limits::SIG_DIFF_OBJECTS_MAX` objects changed: the rest was not classified.
+    pub truncated: bool,
+}
+
+/// What the rules need to know about the shape of a document.
+struct Shape<'a> {
+    doc: &'a Document,
+    catalog: Option<ObjectId>,
+    acroform: Option<ObjectId>,
+    pages: HashSet<ObjectId>,
+    annots_arrays: HashSet<ObjectId>,
+    fields_arrays: HashSet<ObjectId>,
+}
+
+impl<'a> Shape<'a> {
+    fn new(doc: &'a Document) -> Self {
+        let catalog = doc
+            .trailer
+            .get(b"Root")
+            .ok()
+            .and_then(|root| root.as_reference().ok());
+        let catalog_dict = catalog.and_then(|id| doc.get_dictionary(id).ok());
+        let acroform = catalog_dict
+            .and_then(|c| c.get(b"AcroForm").ok())
+            .and_then(|a| a.as_reference().ok());
+        let pages: HashSet<ObjectId> = doc.get_pages().into_values().collect();
+        let annots_arrays = pages
+            .iter()
+            .filter_map(|id| doc.get_dictionary(*id).ok())
+            .filter_map(|page| page.get(b"Annots").ok()?.as_reference().ok())
+            .collect();
+        let fields_arrays = acroform
+            .and_then(|id| doc.get_dictionary(id).ok())
+            .and_then(|form| form.get(b"Fields").ok()?.as_reference().ok())
+            .into_iter()
+            .collect();
+        Self {
+            doc,
+            catalog,
+            acroform,
+            pages,
+            annots_arrays,
+            fields_arrays,
+        }
+    }
+
+    fn kind(&self, id: ObjectId, object: &Object) -> Kind {
+        if Some(id) == self.catalog {
+            return Kind::Catalog;
+        }
+        if Some(id) == self.acroform {
+            return Kind::AcroForm;
+        }
+        if self.pages.contains(&id) {
+            return Kind::Page;
+        }
+        if self.annots_arrays.contains(&id) {
+            return Kind::AnnotsArray;
+        }
+        if self.fields_arrays.contains(&id) {
+            return Kind::FieldsArray;
+        }
+        match object {
+            Object::Dictionary(dict) => self.dict_kind(dict),
+            _ => Kind::Other,
+        }
+    }
+
+    fn dict_kind(&self, dict: &Dictionary) -> Kind {
+        let type_is = |name: &[u8]| matches!(entry(self.doc, dict, b"Type"), Some(Object::Name(t)) if t == name);
+        if type_is(b"Sig")
+            || type_is(b"DocTimeStamp")
+            || (dict.has(b"ByteRange") && dict.has(b"Contents") && dict.has(b"SubFilter"))
+        {
+            return Kind::SigValue;
+        }
+        let widget =
+            matches!(entry(self.doc, dict, b"Subtype"), Some(Object::Name(t)) if t == b"Widget");
+        if widget || dict.has(b"FT") || dict.has(b"T") {
+            return if self.is_sig_field(dict) {
+                Kind::SigField
+            } else {
+                Kind::FormField
+            };
+        }
+        if dict.has(b"Subtype") && dict.has(b"Rect") {
+            return Kind::Annot;
+        }
+        Kind::Other
+    }
+
+    fn is_sig_field(&self, dict: &Dictionary) -> bool {
+        let mut current = dict;
+        for _ in 0..limits::SIG_SCAN_DEPTH_MAX {
+            if let Some(Object::Name(ft)) = entry(self.doc, current, b"FT") {
+                return ft == b"Sig";
+            }
+            match current
+                .get(b"Parent")
+                .ok()
+                .and_then(|p| p.as_reference().ok())
+                .and_then(|id| self.doc.get_dictionary(id).ok())
+            {
+                Some(parent) => current = parent,
+                None => return false,
+            }
+        }
+        false
+    }
+
+    fn is_widget(&self, dict: &Dictionary) -> bool {
+        matches!(entry(self.doc, dict, b"Subtype"), Some(Object::Name(t)) if t == b"Widget")
+    }
+
+    /// The entries of an array value (an indirect array is followed once).
+    fn entries(&self, value: Option<&'a Object>) -> Vec<&'a Object> {
+        match value {
+            Some(Object::Array(items)) => items.iter().collect(),
+            Some(Object::Reference(id)) => match self.doc.objects.get(id) {
+                Some(Object::Array(items)) => items.iter().collect(),
+                _ => Vec::new(),
+            },
+            _ => Vec::new(),
+        }
+    }
+}
+
+fn object_dict(object: &Object) -> Option<&Dictionary> {
+    match object {
+        Object::Dictionary(dict) => Some(dict),
+        Object::Stream(stream) => Some(&stream.dict),
+        _ => None,
+    }
+}
+
+/// The keys whose value differs between two dictionaries (a key present on one side only counts), except `skip`.
+fn differing_keys(old: &Dictionary, new: &Dictionary, skip: &[&[u8]]) -> Vec<Vec<u8>> {
+    let mut keys: Vec<Vec<u8>> = Vec::new();
+    for (key, value) in new.iter() {
+        if !skip.contains(&key.as_slice()) && old.get(key).ok() != Some(value) {
+            keys.push(key.clone());
+        }
+    }
+    for (key, _) in old.iter() {
+        if !skip.contains(&key.as_slice()) && !new.has(key) {
+            keys.push(key.clone());
+        }
+    }
+    keys
+}
+
+/// Entries that were added to and removed from an array, by reference; an inline entry that differs counts as both.
+fn array_delta<'a>(
+    old: &[&'a Object],
+    new: &[&'a Object],
+) -> (Vec<ObjectId>, Vec<ObjectId>, bool /* inline differs */) {
+    let old_refs: HashSet<ObjectId> = old.iter().filter_map(|o| o.as_reference().ok()).collect();
+    let new_refs: HashSet<ObjectId> = new.iter().filter_map(|o| o.as_reference().ok()).collect();
+    let inline = |items: &[&Object]| -> Vec<Object> {
+        items
+            .iter()
+            .filter(|o| o.as_reference().is_err())
+            .map(|o| (*o).clone())
+            .collect()
+    };
+    let inline_differs = inline(old) != inline(new);
+    let added = new
+        .iter()
+        .filter_map(|o| o.as_reference().ok())
+        .filter(|id| !old_refs.contains(id))
+        .collect();
+    let removed = old
+        .iter()
+        .filter_map(|o| o.as_reference().ok())
+        .filter(|id| !new_refs.contains(id))
+        .collect();
+    (added, removed, inline_differs)
+}
+
+/// What a change of the `/Annots` array of a page is, from its entries.
+fn annots_change(
+    old: &Shape<'_>,
+    new: &Shape<'_>,
+    old_value: Option<&Object>,
+    new_value: Option<&Object>,
+) -> LaterChanges {
+    let (old_items, new_items) = (old.entries(old_value), new.entries(new_value));
+    if old_items.len().max(new_items.len()) > limits::SIG_SCAN_NODES_MAX {
+        return LaterChanges::OTHER;
+    }
+    let (added, removed, inline) = array_delta(&old_items, &new_items);
+    let mut out = if inline {
+        LaterChanges::OTHER
+    } else {
+        LaterChanges::default()
+    };
+    for id in added {
+        out = out.merge(match new.doc.get_dictionary(id) {
+            Ok(dict) => {
+                let widget = new.is_widget(dict);
+                coverage::added_annotation(widget, widget && new.is_sig_field(dict))
+            }
+            Err(_) => LaterChanges::OTHER,
+        });
+    }
+    for id in removed {
+        out = out.merge(match old.doc.get_dictionary(id) {
+            Ok(dict) => coverage::removed_annotation(old.dict_kind(dict) == Kind::Annot),
+            Err(_) => LaterChanges::OTHER,
+        });
+    }
+    out
+}
+
+/// What a change of the AcroForm's `/Fields` array is, from its entries.
+fn fields_change(
+    old: &Shape<'_>,
+    new: &Shape<'_>,
+    old_value: Option<&Object>,
+    new_value: Option<&Object>,
+) -> LaterChanges {
+    let (old_items, new_items) = (old.entries(old_value), new.entries(new_value));
+    if old_items.len().max(new_items.len()) > limits::SIG_SCAN_NODES_MAX {
+        return LaterChanges::OTHER;
+    }
+    let (added, removed, inline) = array_delta(&old_items, &new_items);
+    let mut out = if inline || !removed.is_empty() {
+        LaterChanges::OTHER
+    } else {
+        LaterChanges::default()
+    };
+    for id in added {
+        out = out.merge(match new.doc.get_dictionary(id) {
+            Ok(dict) => coverage::added_field(new.is_sig_field(dict)),
+            Err(_) => LaterChanges::OTHER,
+        });
+    }
+    out
+}
+
+/// What the AcroForm dictionary changing from `old_form` (none: there was no form) to `new_form` is.
+fn acroform_change(
+    old: &Shape<'_>,
+    new: &Shape<'_>,
+    old_form: Option<&Dictionary>,
+    new_form: &Dictionary,
+) -> LaterChanges {
+    let empty = Dictionary::new();
+    let old_form = old_form.unwrap_or(&empty);
+    let keys = differing_keys(old_form, new_form, &[b"Fields"]);
+    let mut out = coverage::classify(
+        Kind::AcroForm,
+        Some(Kind::AcroForm),
+        &Change::Changed { keys },
+        false,
+    );
+    if old_form.get(b"Fields").ok() != new_form.get(b"Fields").ok() {
+        out = out.merge(fields_change(
+            old,
+            new,
+            old_form.get(b"Fields").ok(),
+            new_form.get(b"Fields").ok(),
+        ));
+    }
+    out
+}
+
+fn form_dict<'a>(shape: &Shape<'a>) -> Option<&'a Dictionary> {
+    let catalog = shape.doc.get_dictionary(shape.catalog?).ok()?;
+    dict_of(shape.doc, catalog, b"AcroForm")
+}
+
+/// The objects an annotation's appearance owns that are new or are the appearance streams themselves, with the class of the annotation.
+fn claim_appearances(
+    shape: &Shape<'_>,
+    old: &Document,
+    dict: &Dictionary,
+    class: LaterChanges,
+    claims: &mut HashMap<ObjectId, LaterChanges>,
+) {
+    let Some(Object::Dictionary(ap)) = entry(shape.doc, dict, b"AP") else {
+        return;
+    };
+    let mut direct: Vec<ObjectId> = Vec::new();
+    for value in ap.iter().map(|(_, v)| v) {
+        match value {
+            Object::Reference(id) => direct.push(*id),
+            Object::Dictionary(states) => {
+                direct.extend(states.iter().filter_map(|(_, v)| v.as_reference().ok()));
+            }
+            _ => {}
+        }
+    }
+    claim_from(shape, old, direct, class, claims, true);
+}
+
+/// Claims `roots` (when `roots_always`) and, down to depth 4 and 256 objects, the new objects they reference.
+fn claim_from(
+    shape: &Shape<'_>,
+    old: &Document,
+    roots: Vec<ObjectId>,
+    class: LaterChanges,
+    claims: &mut HashMap<ObjectId, LaterChanges>,
+    roots_always: bool,
+) {
+    let mut queue: Vec<(ObjectId, usize)> = roots.into_iter().map(|id| (id, 0)).collect();
+    let mut seen: HashSet<ObjectId> = HashSet::new();
+    while let Some((id, depth)) = queue.pop() {
+        if seen.len() >= 256 || !seen.insert(id) {
+            continue;
+        }
+        let is_new = !old.objects.contains_key(&id);
+        if is_new || (roots_always && depth == 0) {
+            claims
+                .entry(id)
+                .and_modify(|c| *c = c.merge(class))
+                .or_insert(class);
+        }
+        if depth >= 4 {
+            continue;
+        }
+        let Some(object) = shape.doc.objects.get(&id) else {
+            continue;
+        };
+        let Some(dict) = object_dict(object) else {
+            continue;
+        };
+        for (_, value) in dict.iter() {
+            collect_refs(value, &mut |next| queue.push((next, depth + 1)), 0);
+        }
+    }
+}
+
+fn collect_refs(value: &Object, push: &mut dyn FnMut(ObjectId), depth: usize) {
+    if depth > 8 {
+        return;
+    }
+    match value {
+        Object::Reference(id) => push(*id),
+        Object::Array(items) => items
+            .iter()
+            .take(limits::SIG_SCAN_NODES_MAX)
+            .for_each(|item| collect_refs(item, push, depth + 1)),
+        Object::Dictionary(dict) => dict
+            .iter()
+            .for_each(|(_, v)| collect_refs(v, push, depth + 1)),
+        _ => {}
+    }
+}
+
+/// Classifies what changed between `old` (the signed revision) and `new` (the file now), by `pdfsig::coverage`'s rules. Never panics
+/// and never recurses on file data; at most `limits::SIG_DIFF_OBJECTS_MAX` changed objects are classified (then `truncated`).
+pub fn revision_diff(old: &Document, new: &Document) -> Diff {
+    let (old_shape, new_shape) = (Shape::new(old), Shape::new(new));
+    let mut diff = Diff::default();
+    let mut later = LaterChanges::default();
+    // A different catalog, or a security handler that appeared or changed, is a different document.
+    if old.trailer.get(b"Root").ok() != new.trailer.get(b"Root").ok()
+        || old.trailer.get(b"Encrypt").ok() != new.trailer.get(b"Encrypt").ok()
+    {
+        later.other = true;
+    }
+    let mut claims: HashMap<ObjectId, LaterChanges> = HashMap::new();
+    let mut deferred: Vec<ObjectId> = Vec::new();
+    let mut changed = 0usize;
+    for (id, object) in &new.objects {
+        if is_structural(object) {
+            continue;
+        }
+        let old_object = old.objects.get(id);
+        if old_object == Some(object) {
+            continue;
+        }
+        changed += 1;
+        if changed > limits::SIG_DIFF_OBJECTS_MAX {
+            diff.truncated = true;
+            break;
+        }
+        let kind = new_shape.kind(*id, object);
+        let before = old_object.map(|o| old_shape.kind(*id, o));
+        let new_dict = object_dict(object);
+        let old_dict = old_object.and_then(object_dict);
+        match kind {
+            Kind::AcroForm => {
+                let Some(new_form) = new_dict else {
+                    later.other = true;
+                    continue;
+                };
+                later = later.merge(acroform_change(
+                    &old_shape,
+                    &new_shape,
+                    form_dict(&old_shape),
+                    new_form,
+                ));
+            }
+            Kind::AnnotsArray | Kind::FieldsArray => {
+                // A new array is the owner's business (the page's or the form's key that points to it).
+                if let Some(old_object) = old_object {
+                    later = later.merge(if kind == Kind::AnnotsArray {
+                        annots_change(&old_shape, &new_shape, Some(old_object), Some(object))
+                    } else {
+                        fields_change(&old_shape, &new_shape, Some(old_object), Some(object))
+                    });
+                }
+            }
+            Kind::Page | Kind::Catalog => {
+                let (Some(new_dict), Some(old_dict)) = (new_dict, old_dict) else {
+                    later.other = true;
+                    continue;
+                };
+                if before != Some(kind) {
+                    later.other = true;
+                    continue;
+                }
+                let contextual: &[u8] = if kind == Kind::Page {
+                    b"Annots"
+                } else {
+                    b"AcroForm"
+                };
+                let keys = differing_keys(old_dict, new_dict, &[contextual]);
+                later = later.merge(coverage::classify(
+                    kind,
+                    before,
+                    &Change::Changed { keys },
+                    false,
+                ));
+                if old_dict.get(contextual).ok() != new_dict.get(contextual).ok() {
+                    later = later.merge(if kind == Kind::Page {
+                        annots_change(
+                            &old_shape,
+                            &new_shape,
+                            old_dict.get(b"Annots").ok(),
+                            new_dict.get(b"Annots").ok(),
+                        )
+                    } else {
+                        match form_dict(&new_shape) {
+                            Some(form) => {
+                                acroform_change(&old_shape, &new_shape, form_dict(&old_shape), form)
+                            }
+                            None => LaterChanges::OTHER,
+                        }
+                    });
+                }
+            }
+            _ => {
+                let change = match (old_object, new_dict, old_dict) {
+                    (None, _, _) => Change::New,
+                    (Some(_), Some(new_dict), Some(old_dict)) => Change::Changed {
+                        keys: differing_keys(old_dict, new_dict, &[]),
+                    },
+                    // A stream or another value that changed in place.
+                    (Some(_), _, _) => Change::Changed {
+                        keys: vec![b"*".to_vec()],
+                    },
+                };
+                let had_value = old_dict.is_some_and(|d| d.has(b"V"));
+                let class = coverage::classify(kind, before, &change, had_value);
+                if kind == Kind::Other {
+                    if before.is_some_and(|b| b != Kind::Other) {
+                        later.other = true;
+                    } else {
+                        deferred.push(*id);
+                    }
+                    continue;
+                }
+                later = later.merge(class);
+                if before.is_none_or(|b| b == kind) {
+                    if let Some(dict) = new_dict {
+                        match kind {
+                            Kind::Annot | Kind::FormField | Kind::SigField if !class.other => {
+                                claim_appearances(&new_shape, old, dict, class, &mut claims);
+                            }
+                            Kind::SigValue if !class.other => {
+                                let refs = {
+                                    let mut found = Vec::new();
+                                    for (_, value) in dict.iter() {
+                                        collect_refs(value, &mut |r| found.push(r), 0);
+                                    }
+                                    found
+                                };
+                                claim_from(&new_shape, old, refs, class, &mut claims, false);
+                            }
+                            _ => {}
+                        }
+                    }
+                }
+            }
+        }
+    }
+    // Objects of no known kind are `other` unless a changed annotation or signature owns them.
+    for id in deferred {
+        later = later.merge(claims.get(&id).copied().unwrap_or(LaterChanges::OTHER));
+    }
+    // What the signed revision had and the file does not.
+    if !diff.truncated {
+        for (id, object) in &old.objects {
+            if is_structural(object) || new.objects.contains_key(id) {
+                continue;
+            }
+            later = later.merge(coverage::classify(
+                old_shape.kind(*id, object),
+                Some(old_shape.kind(*id, object)),
+                &Change::Removed,
+                false,
+            ));
+        }
+    }
+    diff.later = later;
+    if diff.truncated {
+        diff.later.other = true;
+    }
+    diff
+}
+
+/// Cross-reference and object streams are the file's own bookkeeping, not content.
+fn is_structural(object: &Object) -> bool {
+    matches!(
+        object,
+        Object::Stream(stream)
+            if matches!(stream.dict.get(b"Type"), Ok(Object::Name(t)) if t == b"XRef" || t == b"ObjStm")
+    )
 }
 
 #[cfg(test)]
