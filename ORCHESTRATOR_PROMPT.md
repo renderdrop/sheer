@@ -41,6 +41,7 @@ Erfolgsmaßstab: Ein Nutzer öffnet die App, versteht sie ohne Anleitung, erledi
 10. **Eigener Code ist Open Source:** Lizenz `AGPL-3.0-or-later` (Datei `LICENSE`), Name und Logo bleiben Marke (`TRADEMARK.md`). Beiträge Dritter nur mit DCO-Sign-off. Das ist mit permissiven Dependencies kompatibel; Regel 2 bleibt für Dependencies unverändert.
 11. **Security ist Teil der Definition of Done.** Kein Milestone-Tag ohne bestandenen `security-reviewer`-Durchlauf (Abschnitt 13). Jede PDF-Datei ist feindlicher Input.
 12. **CI vor jedem Push (ADR-120, korrigiert).** Vor jedem Push liest du den letzten abgeschlossenen CI-Lauf auf `main` (`bash scripts/ci-status.sh`, nie warten). Rot und von einem eigenen Commit = erst beheben, dann pushen. Ist der Lauf des letzten eigenen Pushs noch nicht fertig, trotzdem pushen, den Lauf merken (`STATE.md`) und beim nächsten Push zuerst dessen Ergebnis lesen (`bash scripts/ci-status.sh <run-id>`). CI grün ist Teil der Definition of Done jedes Pakets.
+13. **Testdateien und Screenshots (ADR-126).** Test-PDFs stammen ausschließlich aus `review/owner/` oder werden selbst generiert (Skripte im Repo, Ausgabe unter `review/`); andere Ordner des Rechners werden nie durchsucht oder gelesen. Screenshots nur per Fensterabgriff der App (Capture des Sheer-Fensters über sein Handle), nie vom Bildschirm.
 
 ---
 

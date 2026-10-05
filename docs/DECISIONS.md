@@ -2467,3 +2467,27 @@ and nothing else. Whole-line switching re-sets text the user did not touch (its 
 positioned segments, as the spike showed); per-glyph mixing puts single foreign glyphs into a word, which reads as an error. Word
 scope keeps the untouched prefix and suffix byte-identical (§2) and contains the visual break to what the user typed. Accent: DESIGN.md
 maps the brief's "Iris" to Solar (ADR-100); that stands.
+
+**ADR-125 addendum 2 — owner decisions (2026-10-06, session v1.5.1).** The owner confirmed both open questions of the phase-1
+report: (1) Arimo, Tinos and Cousine (Regular, Bold, Italic, Bold Italic; Apache-2.0) are bundled; system fonts are never read.
+(2) The fallback covers only the changed words (addendum 1). Status of ADR-125: **accepted**.
+
+## ADR-126 — Test files and screenshots: owner folder or self-generated, window capture only
+
+**Status:** accepted (2026-10-06, owner instruction, session v1.5.1).
+
+**Context.** Acceptance runs and corpus gates need real PDFs and screenshots. Looking for PDFs elsewhere on the owner's machine
+(Downloads, Documents, program folders) reads private data that was never handed over; a full-screen capture can record other
+windows, notifications and private content.
+
+**Decision.**
+1. Test PDFs come **only** from `review/owner/` (handed over by the owner; `review/owner/corpus/` for corpus gates) or are
+   **generated** by scripts in this repo (output under `review/`, untracked). No other folder of the machine is listed, searched
+   or read for test material — not to find files, not to find tools' sample documents.
+2. Screenshots are taken **only by capturing the app's own window** (by its window handle, e.g. `PrintWindow`/
+   `CGWindowListCreateImage` for the Sheer window), never from the screen or a screen region.
+3. `ORCHESTRATOR_PROMPT.md` §2 rule 13 and `CLAUDE.md` rule 13 carry this; briefs for acceptance and gate packages repeat it.
+
+**Consequences.** Corpus gates that need producer variety (Word, LaTeX, Ghostscript) generate their files; if a producer is not
+installed, the gate records the gap instead of borrowing files. Window capture may miss OS-drawn overlays (native dialogs) — those
+are checked by their own window handle or not at all.
