@@ -166,6 +166,8 @@ Yellow never carries information alone. Each yellow state has an Ink partner:
 8. **Tabs (document, sidebar, sheet):** active = Ink text/icon 500 + 2px Solar underline; inactive = Text-secondary 400.
 9. **Text inputs:** subtle border on three sides, bottom edge Stone (3.47:1).
 10. **Selected (non-tool) rows, menus, segmented control:** Sand + check icon or a Stone 1px border on the active segment.
+11. **Search hits (`--color-doc-hit`, `--color-doc-hit-active`):** Solar at 70 % (active: 100 %), drawn with `mix-blend-mode: multiply`, so the glyphs stay Ink on yellow (>= 12:1); the active hit adds a 2px `--color-doc-select` (Ink) outline, so it never relies on the stronger fill.
+12. **Text selection (`--color-doc-text-select`):** Solar at 35 % multiplied over the page; the glyphs stay Ink (>= 15:1). The selection is also shown by the browser's selection range and the selection popover, not by colour alone.
 
 Text ≥ 4.5:1 everywhere, UI ≥ 3:1. The contrast script checks every pair in this section.
 

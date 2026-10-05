@@ -88,6 +88,11 @@ export function skipUpdateVersion(version: string): Promise<void> {
   return call<void>('skip_update_version', { version });
 }
 
+/** Whether the updater can run (the embedded key is real). A cheap local probe: no network. Settings shows Updates only when true. */
+export async function updaterConfigured(): Promise<boolean> {
+  return (await call<unknown>('updater_configured')) === true;
+}
+
 /** The signing key is still the placeholder, so the updater cannot run and the Updates setting stays hidden (BLOCKERS B-005). */
 export function isUpdaterUnconfigured(error: AppError): boolean {
   return error.code === 'unsupported_feature' && error.params?.what === 'updater_unconfigured';

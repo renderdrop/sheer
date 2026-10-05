@@ -1,4 +1,4 @@
-import { useId, useLayoutEffect, useState, type ReactNode } from 'react';
+import { useEffect, useId, useLayoutEffect, useState, type ReactNode } from 'react';
 
 import { Button, Field, Popover } from '../../components';
 import { AUTHOR_NAME_MAX, isAuthorName } from '../../api/app';
@@ -191,8 +191,11 @@ function SettingsForm() {
   const language = useSettings((state) => state.language);
   const error = useSettings((state) => state.error);
   const setLanguage = useSettings((state) => state.setLanguage);
-  // ADR-053: an updater without its signing key shows no Updates group at all.
-  const updaterUnconfigured = useUpdate((state) => state.check === 'unconfigured');
+  // ADR-053: an updater without its signing key shows no Updates group at all, and none until the local probe has answered.
+  const updaterReady = useUpdate((state) => state.configured === true && state.check !== 'unconfigured');
+  useEffect(() => {
+    void useUpdate.getState().probe();
+  }, []);
 
   const options = <Value extends string>(
     choices: readonly { value: Value; labelKey: PlainKey }[],
@@ -213,7 +216,7 @@ function SettingsForm() {
       </Setting>
       <AuthorRow />
       <Setting label={t('settings.drawing')}>{() => <RecogniseSwitch />}</Setting>
-      {!updaterUnconfigured && (
+      {updaterReady && (
         <Setting label={t('settings.updates')} hint={t('settings.updates.hint')}>
           {(labelId) => <UpdateRow labelId={labelId} />}
         </Setting>

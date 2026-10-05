@@ -6,6 +6,7 @@
 //! | `check_for_update` | none | `UpdateInfo` or `null` (up to date); `unsupported_feature` while the signing key is the placeholder. The user's click: it works with the setting off |
 //! | `download_update` | `onEvent: Channel<UpdateEvent>` | nothing; downloads and verifies, keeps the package in memory; a bad signature is `damaged_file` and drops it |
 //! | `install_update_on_quit` | none | nothing; marks it, the quit hook installs after dirty documents resolve |
+//! | `updater_configured` | none | `boolean`: the embedded signing key is a real one (no network, no state; false while it is the placeholder) |
 //! | `skip_update_version` | `version: string` | nothing; at most 32 characters, version characters only |
 
 use std::sync::Arc;
@@ -52,6 +53,12 @@ pub async fn install_update_on_quit(state: State<'_, Arc<UpdateState>>) -> Resul
     mark_install_on_quit(&state).map_err(UiError::from)
 }
 
+/// Whether the updater can run at all: the embedded public key is real. Reads only the compiled-in key file; no network, no state.
+#[tauri::command]
+pub async fn updater_configured() -> Result<bool, UiError> {
+    Ok(update::configured_key().is_ok())
+}
+
 /// Does not offer `version` again.
 #[tauri::command]
 pub async fn skip_update_version(
@@ -66,6 +73,11 @@ pub async fn skip_update_version(
 mod tests {
     use super::*;
     use crate::error::ErrorCode;
+
+    #[test]
+    fn the_shipped_placeholder_key_is_not_configured() {
+        assert!(update::configured_key().is_err());
+    }
 
     #[test]
     fn installing_needs_a_verified_package() {

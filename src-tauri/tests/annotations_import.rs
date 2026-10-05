@@ -218,6 +218,65 @@ fn an_appearance_without_objects_and_format_characters_are_survived() {
     state.close_document(info.id).unwrap();
 }
 
+/// The border of an imported free text comes from the first stroked path of its appearance (ADR-110): several strokes, a fill-only
+/// path and an unreasonable width each give what the first reasonable stroke says, or none.
+#[test]
+fn a_free_text_border_is_the_first_reasonable_stroke_of_its_appearance() {
+    let Some(state) = state() else { return };
+    let mut builder = PdfBuilder::new();
+    add_pages(
+        &mut builder,
+        &[Page::new("").with("/Annots [100 0 R 101 0 R 102 0 R]")],
+    );
+    let page = support::fixtures::page_id(0);
+    let aps: [(u32, &[u8]); 3] = [
+        (
+            103,
+            b"2 w 1 0 0 RG 0 0 100 40 re S 5 w 0 0 1 RG 5 5 90 30 re S",
+        ),
+        (104, b"0 1 0 rg 0 0 100 40 re f"),
+        (
+            105,
+            b"900 w 1 0 0 RG 0 0 100 40 re S 3 w 0 0 1 RG 5 5 90 30 re S",
+        ),
+    ];
+    for (n, content) in aps {
+        builder.stream(
+            n,
+            "/Type /XObject /Subtype /Form /BBox [0 0 100 40]",
+            content,
+        );
+    }
+    for (n, ap) in [(100u32, 103u32), (101, 104), (102, 105)] {
+        let y = 600 - (n - 100) * 60;
+        builder.object(
+            n,
+            &format!("<< /Type /Annot /Subtype /FreeText /Rect [72 {y} 172 {top}] /Contents (Text) /DA (/Helv 12 Tf 0 g) /AP << /N {ap} 0 R >> /P {page} 0 R >>", top = y + 40),
+        );
+    }
+    builder.object(1, "<< /Type /Catalog /Pages 2 0 R >>");
+    let file = TempFile::write("freetext-aps.pdf", &builder.finish(1));
+    let info = state.open_path(file.0.clone()).unwrap().expect("loaded");
+    let listed = state.list_annotations(info.id, PageId::new(0)).unwrap();
+    assert_eq!(listed.len(), 3);
+    let border = |annotation: &Annotation| match &annotation.body {
+        AnnotationBody::FreeText {
+            border_width,
+            border_color,
+            ..
+        } => (*border_width, *border_color),
+        other => panic!("not free text: {other:?}"),
+    };
+    // Two strokes: the first one is the border.
+    assert_eq!(border(&listed[0]), (2.0, Some(Rgb([255, 0, 0]))));
+    // Fill only: no border.
+    assert_eq!(border(&listed[1]), (0.0, None));
+    // A first stroke of 900 pt is not a border; the next reasonable one is.
+    let (width, _) = border(&listed[2]);
+    assert!(width == 0.0 || width == 3.0, "{width}");
+    state.close_document(info.id).unwrap();
+}
+
 fn square_page(with_square: bool) -> Vec<u8> {
     let mut builder = PdfBuilder::new();
     let annots = if with_square { "/Annots [100 0 R]" } else { "" };

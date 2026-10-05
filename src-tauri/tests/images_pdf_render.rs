@@ -25,7 +25,11 @@ fn engine() -> Option<&'static Engine> {
         .get_or_init(|| {
             let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("pdfium");
             let library = engine::library_path(&root);
-            library.is_file().then(|| Engine::start(library))
+            if !library.is_file() {
+                eprintln!("SKIPPED: PDFium is not fetched ({} not found); the images-to-PDF render test did not run", library.display());
+                return None;
+            }
+            Some(Engine::start(library))
         })
         .as_ref()
 }
@@ -86,9 +90,11 @@ fn child_engine() -> Option<&'static Engine> {
         .get_or_init(|| {
             let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("pdfium");
             let library = engine::library_path(&root);
-            library.is_file().then(|| {
-                Engine::start_process(library, PathBuf::from(env!("CARGO_BIN_EXE_sheer")), None)
-            })
+            if !library.is_file() {
+                eprintln!("SKIPPED: PDFium is not fetched ({} not found); the images-to-PDF child test did not run", library.display());
+                return None;
+            }
+            Some(Engine::start_process(library, PathBuf::from(env!("CARGO_BIN_EXE_sheer")), None))
         })
         .as_ref()
 }

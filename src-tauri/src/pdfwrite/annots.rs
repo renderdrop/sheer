@@ -448,8 +448,24 @@ pub fn named_with_turn(annotation: &Annotation, name: &str) -> String {
     marks::with_turn(name, turn)
 }
 
+/// Whether the appearance of `annotation` is a stream already in the file (a signature of `SignatureArtRef::File`): its turn lives in
+/// that stream's `/Matrix`, so the name may only claim a turn when [`turned_file_appearance`] could write it.
+pub fn has_file_appearance(annotation: &Annotation) -> bool {
+    matches!(
+        &annotation.body,
+        AnnotationBody::Signature {
+            art: SignatureArtRef::File,
+            ..
+        }
+    )
+}
+
+/// Largest absolute `/BBox` value of a file appearance that is turned: a hostile one would turn into huge or non-finite matrix values.
+const MAX_FILE_BBOX: f32 = 1e6;
+
 /// The appearance of a signature whose art is in the file, turned by the annotation's angle: the file's own form stream, copied with a
-/// new `/Matrix` (ADR-105), for the caller to add. `None` when the annotation has no such appearance, or nothing about it changes (no turn now, none before).
+/// new `/Matrix` (ADR-105), for the caller to add. `None` when the annotation has no such appearance, nothing about it changes (no turn now,
+/// none before), or its `/BBox` is not four finite numbers within ±[`MAX_FILE_BBOX`]; the caller then drops the turn from the name too.
 pub fn turned_file_appearance(
     annotation: &Annotation,
     prev: &lopdf::Document,
@@ -487,6 +503,12 @@ pub fn turned_file_appearance(
         .filter_map(|v| v.as_float().ok())
         .collect();
     let bbox: [f32; 4] = corners.try_into().ok()?;
+    if bbox
+        .iter()
+        .any(|v| !v.is_finite() || v.abs() > MAX_FILE_BBOX)
+    {
+        return None;
+    }
     let mut copy = stream.clone();
     match appearance::turn_matrix(bbox, *angle) {
         Some(matrix) => copy.dict.set("Matrix", numbers(&matrix)),
@@ -672,6 +694,109 @@ mod tests {
         assert_eq!(a.len(), 32);
         assert!(a.bytes().all(|c| c.is_ascii_hexdigit()));
         assert_ne!(a, b);
+    }
+
+    /// A previous revision with one page-less form XObject (`/BBox` as given) and the annotation base that points at it.
+    fn file_signature_fixture(bbox: &str) -> (lopdf::Document, Dictionary) {
+        let mut prev = lopdf::Document::with_version("1.7");
+        let mut dict = Dictionary::new();
+        dict.set("Type", name("XObject"));
+        dict.set("Subtype", name("Form"));
+        dict.set(
+            "BBox",
+            Object::Array(
+                bbox.split_whitespace()
+                    .map(|v| Object::Real(v.parse::<f32>().unwrap_or(f32::NAN)))
+                    .collect(),
+            ),
+        );
+        let form = prev.add_object(Stream::new(dict, b"q Q".to_vec()));
+        let mut normal = Dictionary::new();
+        normal.set("N", Object::Reference(form));
+        let mut base = Dictionary::new();
+        base.set("AP", Object::Dictionary(normal));
+        (prev, base)
+    }
+
+    fn file_signature(angle: f32) -> Annotation {
+        use crate::documents::PageId;
+        use crate::model::annotation::{Rgb, SignatureRole, Sync};
+        use crate::model::geometry::Rect;
+        use crate::model::ids::AnnotId;
+        Annotation {
+            id: AnnotId::new(1),
+            page_id: PageId::new(0),
+            rect: Rect {
+                x: 0.0,
+                y: 0.0,
+                w: 100.0,
+                h: 40.0,
+            },
+            color: Rgb([0, 0, 0]),
+            opacity: 1.0,
+            contents: String::new(),
+            author: None,
+            modified: None,
+            in_reply_to: None,
+            state: None,
+            locked: false,
+            sync: Sync::Clean,
+            body: AnnotationBody::Signature {
+                bounds: Rect {
+                    x: 0.0,
+                    y: 0.0,
+                    w: 100.0,
+                    h: 40.0,
+                },
+                role: SignatureRole::Signature,
+                art: SignatureArtRef::File,
+                angle,
+            },
+        }
+    }
+
+    #[test]
+    fn a_file_signature_is_turned_by_matrix_and_a_page_rotation_turns_it_the_other_way() {
+        let (prev, base) = file_signature_fixture("0 0 100 40");
+        // A page shown turned by /Rotate 90 gets the signature turned by -90 so it stands upright (ADR-105): the matrix is the
+        // counter-clockwise quarter turn about the centre (50, 20), which stays where it is.
+        let stream = turned_file_appearance(&file_signature(-90.0), &prev, &base).unwrap();
+        let matrix: Vec<f32> = stream
+            .dict
+            .get(b"Matrix")
+            .unwrap()
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|v| v.as_float().unwrap())
+            .collect();
+        let [a, b, c, d, e, f] = <[f32; 6]>::try_from(matrix).unwrap();
+        assert!(
+            a.abs() < 1e-5 && (b - 1.0).abs() < 1e-5 && (c + 1.0).abs() < 1e-5 && d.abs() < 1e-5
+        );
+        assert!((a * 50.0 + c * 20.0 + e - 50.0).abs() < 1e-3);
+        assert!((b * 50.0 + d * 20.0 + f - 20.0).abs() < 1e-3);
+    }
+
+    #[test]
+    fn a_file_signature_with_a_hostile_or_broken_bbox_is_not_turned() {
+        for bbox in [
+            "0 0 100 40 7",
+            "0 0 100",
+            "0 0 1000001 40",
+            "-2000000 0 100 40",
+            "0 0 nan 40",
+        ] {
+            let (prev, base) = file_signature_fixture(bbox);
+            assert!(
+                turned_file_appearance(&file_signature(45.0), &prev, &base).is_none(),
+                "{bbox}"
+            );
+        }
+        // Nothing to write for no turn and no old matrix.
+        let (prev, base) = file_signature_fixture("0 0 100 40");
+        assert!(turned_file_appearance(&file_signature(0.0), &prev, &base).is_none());
+        assert!(has_file_appearance(&file_signature(0.0)));
     }
 
     #[test]

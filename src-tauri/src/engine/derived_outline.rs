@@ -68,6 +68,10 @@ fn read_page(
     let Ok(page_box) = page_box(&page) else {
         return true;
     };
+    // Building a page's text layer is the one step the character loop cannot interrupt: no new page after the budget is spent.
+    if started.elapsed() > limits::DERIVED_OUTLINE_BUDGET {
+        return false;
+    }
     let Ok(text_page) = page.text() else {
         return true;
     };
@@ -78,6 +82,8 @@ fn read_page(
     let mut first: Option<usize> = None;
     let mut page_lines = 0usize;
     let mut read = 0usize;
+    // Characters in `text` (a running count: `chars().count()` per character would be quadratic in a long line).
+    let mut line_chars = 0usize;
 
     // `flush` closes the current line.
     let mut lines: Vec<Line> = Vec::new();
@@ -144,6 +150,7 @@ fn read_page(
         }
         if matches!(character.c, '\n' | '\r') {
             flush(&mut text, &mut sizes, &mut first, reading, &mut lines);
+            line_chars = 0;
             page_lines += 1;
             if page_lines >= limits::MAX_DERIVED_LINES_PER_PAGE {
                 break;
@@ -153,6 +160,7 @@ fn read_page(
         if character.c.is_whitespace() {
             if !text.is_empty() && !text.ends_with(' ') {
                 text.push(' ');
+                line_chars += 1;
             }
             continue;
         }
@@ -163,8 +171,9 @@ fn read_page(
             continue;
         };
         first.get_or_insert(character.first);
-        if text.chars().count() < limits::MAX_DERIVED_TITLE_CHARS * 4 {
+        if line_chars < limits::MAX_DERIVED_TITLE_CHARS * 4 {
             text.push(character.c);
+            line_chars += 1;
         }
         match sizes.iter_mut().find(|(known, _)| *known == size) {
             Some((_, count)) => *count += 1,
@@ -558,6 +567,27 @@ mod tests {
         long_lines.push(line(0, 60.0, 20.0, false, &"w".repeat(300)));
         let long = entries(&reading(long_lines));
         assert!(one_line(&long[0].title).chars().count() <= limits::MAX_DERIVED_TITLE_CHARS);
+    }
+
+    /// Font sizes come from the file: NaN, zero, negative, infinite and huge ones make no key, so no line is read with them.
+    #[test]
+    fn hostile_font_sizes_make_no_size_key() {
+        for size in [
+            f32::NAN,
+            f32::INFINITY,
+            f32::NEG_INFINITY,
+            0.0,
+            -0.0,
+            -12.0,
+            2_000.0,
+            1e30,
+            f32::MAX,
+        ] {
+            assert_eq!(size_key(size), None, "{size}");
+        }
+        assert_eq!(size_key(0.01), Some(0));
+        assert_eq!(size_key(12.0), Some(24));
+        assert_eq!(size_key(1_999.9), Some(4_000));
     }
 
     #[test]

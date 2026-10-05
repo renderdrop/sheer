@@ -376,7 +376,7 @@ impl From<LibraryError> for AppError {
             LibraryError::Full => AppError::limit("signatures", MAX_PER_ROLE as u64),
             LibraryError::NotFound => AppError::not_found("signature"),
             LibraryError::Key => AppError::new(ErrorCode::Internal),
-            LibraryError::Keychain => AppError::invalid("keychain"),
+            LibraryError::Keychain => AppError::new(ErrorCode::KeychainUnavailable),
             LibraryError::Io(error) => AppError::from(error),
         }
     }
@@ -1219,7 +1219,7 @@ mod tests {
         assert!(!dir.path().join(DIRECTORY).exists(), "nothing on disk");
         assert_eq!(
             AppError::from(LibraryError::Keychain).code(),
-            ErrorCode::InvalidArgument
+            ErrorCode::KeychainUnavailable
         );
         lib.forget_all().unwrap();
     }

@@ -19,6 +19,11 @@ vi.mock('../../api/app', async (importOriginal) => ({
   updateSettings: vi.fn(),
 }));
 
+vi.mock('../../api/update', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../api/update')>()),
+  updaterConfigured: vi.fn(() => Promise.resolve(true)),
+}));
+
 vi.mock('../tour/runtime', () => ({ restartTour: vi.fn(() => Promise.resolve()) }));
 
 const updateSettingsMock = vi.mocked(updateSettings);
@@ -42,7 +47,7 @@ function answerWithPatch() {
 beforeEach(() => {
   useSettings.setState({ ...settingsInitial }, true);
   useSettingsPopover.setState({ open: false });
-  useUpdate.setState({ check: 'idle' });
+  useUpdate.setState({ check: 'idle', configured: true });
   updateSettingsMock.mockReset();
   answerWithPatch();
 });
@@ -92,12 +97,21 @@ describe('the settings panel (DESIGN 3.6)', () => {
     expect(within(popover()).queryByRole('button', { name: /default PDF app/ })).toBeNull();
   });
 
-  it('hides the whole Updates group while the updater is unconfigured', () => {
-    useUpdate.setState({ check: 'unconfigured' });
+  it('hides the Updates group from the first open until the probe says the updater is configured', async () => {
+    useUpdate.setState({ configured: null });
     setup(<Fixture />);
     act(() => openSettings());
     expect(labels()).toEqual(['Language', 'Author name', 'Drawing', 'Tour & tips', 'About']);
-    expect(within(popover()).queryByRole('radiogroup', { name: 'Updates' })).toBeNull();
+    await waitFor(() => expect(labels()).toContain('Updates'));
+    expect(within(popover()).getByRole('switch', { name: 'Updates' }).getAttribute('aria-checked')).toBe('false');
+  });
+
+  it('hides the whole Updates group while the updater is unconfigured', () => {
+    useUpdate.setState({ check: 'unconfigured', configured: false });
+    setup(<Fixture />);
+    act(() => openSettings());
+    expect(labels()).toEqual(['Language', 'Author name', 'Drawing', 'Tour & tips', 'About']);
+    expect(within(popover()).queryByRole('switch', { name: 'Updates' })).toBeNull();
     useUpdate.setState({ check: 'idle' });
   });
 
@@ -217,7 +231,7 @@ describe('the settings popover', () => {
     };
     expect(await tab()).toBe(within(popover()).getByRole('textbox', { name: 'Author name' }));
     expect(await tab()).toBe(within(popover()).getByRole('switch', { name: 'Recognise shapes when you pause' }));
-    expect(await tab()).toBe(choose('Updates', 'Off'));
+    expect(await tab()).toBe(within(popover()).getByRole('switch', { name: 'Updates' }));
     expect(await tab()).toBe(within(popover()).getByRole('button', { name: 'Start tour' }));
     expect(await tab()).toBe(within(popover()).getByRole('button', { name: 'Show tips again' }));
     expect(await tab()).toBe(within(popover()).getByRole('button', { name: 'About sheer.' }));

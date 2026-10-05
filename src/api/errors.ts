@@ -23,6 +23,7 @@ export const ERROR_CODES = [
   'engine_crashed',
   'engine_unavailable',
   'cancelled',
+  'keychain_unavailable',
   'internal',
 ] as const;
 

@@ -98,6 +98,7 @@ fn main() {
         "download_update",
         "install_update_on_quit",
         "skip_update_version",
+        "updater_configured",
         "open_default_apps_settings",
     ]);
     if let Err(error) =

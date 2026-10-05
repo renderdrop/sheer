@@ -93,7 +93,12 @@ impl Read for RemoteFile {
             let number = self.position / BLOCK;
             let within = usize::try_from(self.position % BLOCK)
                 .map_err(|_| io::Error::from(io::ErrorKind::InvalidInput))?;
-            let block = self.block(number)?;
+            let block = match self.block(number) {
+                Ok(block) => block,
+                // What was copied is real: report it, and the failure comes again with the next read (nothing was cached for it).
+                Err(_) if filled > 0 => break,
+                Err(error) => return Err(error),
+            };
             let Some(available) = block.get(within..).filter(|rest| !rest.is_empty()) else {
                 // The file ended earlier than its length said (it shrank): the end of the file.
                 break;
@@ -210,6 +215,44 @@ mod tests {
         let mut buffer = vec![0u8; limits::REMOTE_BLOCK_BYTES + 100];
         assert_eq!(file.read(&mut buffer).unwrap(), buffer.len());
         assert_eq!(buffer, source.bytes[start..start + buffer.len()]);
+    }
+
+    /// Serves the first block and fails every other read.
+    struct Flaky(Memory);
+
+    impl ReadSource for Flaky {
+        fn read_at(&self, token: FileToken, offset: u64, len: u32) -> io::Result<Vec<u8>> {
+            if offset == 0 {
+                self.0.read_at(token, offset, len)
+            } else {
+                Err(io::Error::from(io::ErrorKind::BrokenPipe))
+            }
+        }
+
+        fn len(&self, token: FileToken) -> io::Result<u64> {
+            self.0.len(token)
+        }
+    }
+
+    #[test]
+    fn a_read_that_fails_after_a_partial_copy_returns_what_it_copied() {
+        let size = limits::REMOTE_BLOCK_BYTES * 2;
+        let bytes: Vec<u8> = (0..size).map(|n| (n % 251) as u8).collect();
+        let source = Arc::new(Flaky(Memory {
+            bytes: bytes.clone(),
+            reads: AtomicUsize::new(0),
+        }));
+        let mut file = RemoteFile::open(source, token()).unwrap();
+        file.seek(SeekFrom::Start((limits::REMOTE_BLOCK_BYTES - 10) as u64))
+            .unwrap();
+        let mut buffer = [0u8; 100];
+        assert_eq!(file.read(&mut buffer).unwrap(), 10);
+        assert_eq!(
+            buffer[..10],
+            bytes[limits::REMOTE_BLOCK_BYTES - 10..limits::REMOTE_BLOCK_BYTES]
+        );
+        // The next read, which starts at the failing block, is the error.
+        assert!(file.read(&mut buffer).is_err());
     }
 
     #[test]

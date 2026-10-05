@@ -50,6 +50,9 @@ export interface Settings {
 }
 
 /** Wire names of the backend's `UpdatesMode` (storage/settings.rs, ADR-053). */
+/** Largest drop position the backend sends, in logical px either way (`sources.rs::logical` clamps to it). */
+const DROP_COORD_MAX = 32_768;
+
 export const UPDATES_MODES = ['off', 'on'] as const;
 export type UpdatesMode = (typeof UPDATES_MODES)[number];
 
@@ -283,7 +286,9 @@ export function parseAppEvent(message: unknown): AppEvent | null {
   if (type === 'dropHover') {
     if (typeof active !== 'boolean') return null;
     const { x, y } = message as { x?: unknown; y?: unknown };
-    const coord = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
+    // Whole logical px within ±32768, like the backend sends them (`sources.rs::logical`): anything else is dropped, not clamped.
+    const coord = (v: unknown): v is number =>
+      typeof v === 'number' && Number.isInteger(v) && Math.abs(v) <= DROP_COORD_MAX;
     return coord(x) && coord(y) ? { type, active, x, y } : { type, active };
   }
   if (type === 'imagesDropped') {

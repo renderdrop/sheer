@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-updater-configured"
+description = "Enables the updater_configured command without any pre-configured scope."
+commands.allow = ["updater_configured"]
+
+[[permission]]
+identifier = "deny-updater-configured"
+description = "Denies the updater_configured command without any pre-configured scope."
+commands.deny = ["updater_configured"]

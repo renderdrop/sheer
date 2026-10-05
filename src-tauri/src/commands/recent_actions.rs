@@ -4,7 +4,7 @@
 //! | Command | Arguments | Returns |
 //! |---|---|---|
 //! | `restore_recent` | `recentId: number` | `boolean`: the entry was put back where it was (false: not removed in this run, or listed again) |
-//! | `set_recent_starred` | `recentId: number`, `starred: boolean` | nothing; unknown id: `not_found` |
+//! | `set_recent_starred` | `recentId: number`, `starred: boolean` | nothing; unknown id: `not_found`; star refused (49 cap): `limit_exceeded` |
 //! | `reveal_recent` | `recentId: number` | nothing; unknown id or file gone: `not_found` |
 //! | `locate_recent` | `recentId: number` | `boolean`: the user chose a file and the entry points to it now (false: cancelled, or unknown id) |
 
@@ -22,11 +22,22 @@ impl AppState {
             .is_some_and(|recents| recents.restore(id))
     }
 
-    /// Stars or unstars recent file `id`; `not_found` for an id that is not listed (or a refused star, see `RecentsStore::set_starred`).
+    /// Stars or unstars recent file `id`; `not_found` for an id that is not listed ; a refused star (stars full, see `RecentsStore::set_starred`) is `limit_exceeded`.
     pub fn set_recent_starred(&self, id: u32, starred: bool) -> Result<(), AppError> {
-        match &self.recents {
-            Some(recents) if recents.set_starred(id, starred) => Ok(()),
-            _ => Err(AppError::not_found("recent")),
+        let Some(recents) = &self.recents else {
+            return Err(AppError::not_found("recent"));
+        };
+        if recents.set_starred(id, starred) {
+            return Ok(());
+        }
+        // A listed entry whose star was refused: the stars are full (`limit_exceeded`); otherwise the id is unknown.
+        if recents.path_of(id).is_some() {
+            Err(AppError::limit(
+                "recentStars",
+                (crate::limits::MAX_RECENTS - 1) as u64,
+            ))
+        } else {
+            Err(AppError::not_found("recent"))
         }
     }
 
@@ -42,7 +53,9 @@ impl AppState {
             .as_ref()
             .and_then(|recents| recents.path_of(id))
             .ok_or(AppError::not_found("recent"))?;
-        if !crate::storage::recents::storable(&path) || !matches!(path.try_exists(), Ok(true)) {
+        // A regular file only (not a directory or device); `metadata` follows links like opening does.
+        let is_file = std::fs::metadata(&path).is_ok_and(|meta| meta.is_file());
+        if !crate::storage::recents::storable(&path) || !is_file {
             return Err(AppError::not_found("recent"));
         }
         reveal(&path).map_err(|error| AppError::logged(ErrorCode::Internal, error))
@@ -193,11 +206,33 @@ mod tests {
         std::fs::write(&there, b"%PDF-1.4\n").unwrap();
         store.record(&there);
         store.record(&abs("gone.pdf"));
+        // A directory behind a listed path and a network spelling are refused as well.
+        let folder = dir.join("folder.pdf");
+        std::fs::create_dir_all(&folder).unwrap();
+        store.record(&folder);
+        let folder_id = state.list_recents()[0].id;
+        assert_eq!(
+            state
+                .reveal_recent_with(folder_id, |_| Ok(()))
+                .unwrap_err()
+                .code(),
+            ErrorCode::NotFound
+        );
+        store.record(Path::new(r"\\host\share\x.pdf"));
+        for entry in state.list_recents() {
+            if entry.display_name == "x.pdf" {
+                assert!(state.reveal_recent_with(entry.id, |_| Ok(())).is_err());
+            }
+        }
         let list = state.list_recents();
-        let (gone, here) = (list[0].id, list[1].id);
+        let find = |name: &str| list.iter().find(|e| e.display_name == name).unwrap().id;
+        let (gone, here) = (find("gone.pdf"), find("there.pdf"));
 
         assert!(state.set_recent_starred(here, true).is_ok());
-        assert!(state.list_recents()[1].starred);
+        assert!(state
+            .list_recents()
+            .iter()
+            .any(|e| e.id == here && e.starred));
         assert_eq!(
             state.set_recent_starred(777, true).unwrap_err().code(),
             ErrorCode::NotFound

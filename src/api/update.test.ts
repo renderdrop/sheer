@@ -2,7 +2,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { toAppError } from './errors';
-import { checkForUpdate, isUpdaterUnconfigured, parseUpdateEvent, parseUpdateInfo } from './update';
+import { checkForUpdate, isUpdaterUnconfigured, parseUpdateEvent, parseUpdateInfo, updaterConfigured } from './update';
 
 vi.mock('@tauri-apps/api/core', () => ({ invoke: vi.fn(), Channel: class {} }));
 
@@ -24,6 +24,16 @@ describe('the placeholder-key refusal', () => {
     expect(isUpdaterUnconfigured(toAppError({ code: 'unsupported_feature', params: { what: 'xfa' } }))).toBe(false);
     expect(isUpdaterUnconfigured(toAppError({ code: 'unsupported_feature' }))).toBe(false);
     expect(isUpdaterUnconfigured(toAppError({ code: 'internal' }))).toBe(false);
+  });
+});
+
+describe('the local updater probe', () => {
+  it('asks only the probe command and is true only for a real true', async () => {
+    invokeMock.mockResolvedValueOnce(true);
+    expect(await updaterConfigured()).toBe(true);
+    expect(invokeMock).toHaveBeenLastCalledWith('updater_configured', undefined);
+    invokeMock.mockResolvedValueOnce('yes');
+    expect(await updaterConfigured()).toBe(false);
   });
 });
 

@@ -92,6 +92,8 @@ error_codes! {
     EngineUnavailable => "engine_unavailable", retryable: false;
     /// The request was withdrawn before it ran (a queued render whose page left the viewport, ADR-002 §3). The UI stays silent.
     Cancelled => "cancelled", retryable: false;
+    /// The system keychain is unavailable or refused access, so a signature cannot be stored (ADR-107).
+    KeychainUnavailable => "keychain_unavailable", retryable: true;
     /// Anything else. Details are in the local log.
     Internal => "internal", retryable: false;
 }

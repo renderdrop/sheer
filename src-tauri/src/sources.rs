@@ -112,9 +112,10 @@ fn logical(physical: f64, scale: f64) -> i32 {
 fn over_is_due() -> bool {
     static LAST: Mutex<Option<Instant>> = Mutex::new(None);
     let now = Instant::now();
-    let Ok(mut last) = LAST.lock() else {
-        return false;
-    };
+    // The lock guards one timestamp: a poisoned one is still good (a stopped throttle would silence the drop glow for the run).
+    let mut last = LAST
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     if last.is_some_and(|at| now.duration_since(at) < Duration::from_millis(16)) {
         return false;
     }

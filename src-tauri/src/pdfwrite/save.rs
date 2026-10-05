@@ -396,7 +396,15 @@ pub fn append_annotations(original: Vec<u8>, plan: &Plan) -> Result<Built, AppEr
                 .and_then(|origin| origin.name.clone())
                 .unwrap_or_else(|| annots::new_name(annotation));
             // A turned signature or mark carries its turn and box in its name, so a reload can give them back (ADR-105).
-            let name = annots::named_with_turn(annotation, &name);
+            let mut name = annots::named_with_turn(annotation, &name);
+            // The turn of a signature whose art is in the file lives in that stream's /Matrix; when it cannot be written (no stream, a
+            // /BBox that is not usable) the name must not claim it either, or a reload would show a turn the page does not have.
+            let turned_stream = target.base.as_ref().and_then(|base| {
+                annots::turned_file_appearance(annotation, inc.get_prev_documents(), base)
+            });
+            if turned_stream.is_none() && annots::has_file_appearance(annotation) {
+                name = crate::signatures::marks::with_turn(&name, None);
+            }
             let reply_to = annotation.in_reply_to.and_then(|parent| {
                 targets.get(&parent).map(|t| t.id).or_else(|| {
                     let prev = inc.get_prev_documents();
@@ -423,9 +431,7 @@ pub fn append_annotations(original: Vec<u8>, plan: &Plan) -> Result<Built, AppEr
                 let mut normal = Dictionary::new();
                 normal.set("N", Object::Reference(ap));
                 dict.set("AP", Object::Dictionary(normal));
-            } else if let Some(stream) = target.base.as_ref().and_then(|base| {
-                annots::turned_file_appearance(annotation, inc.get_prev_documents(), base)
-            }) {
+            } else if let Some(stream) = turned_stream {
                 let ap = inc.new_document.add_object(stream);
                 let mut normal = Dictionary::new();
                 normal.set("N", Object::Reference(ap));

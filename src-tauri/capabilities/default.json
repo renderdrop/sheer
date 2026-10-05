@@ -90,6 +90,7 @@
     "allow-download-update",
     "allow-install-update-on-quit",
     "allow-skip-update-version",
+    "allow-updater-configured",
     "allow-open-default-apps-settings",
     "core:window:allow-minimize",
     "core:window:allow-toggle-maximize",

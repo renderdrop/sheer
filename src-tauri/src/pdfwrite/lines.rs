@@ -55,6 +55,8 @@ fn width_of(doc: &Document, dict: &Dictionary) -> f32 {
         .and_then(|style| doc.dereference(style).map(|(_, o)| o))
         .and_then(Object::as_dict)
         .and_then(|style| style.get(b"W"))
+        // `/BS` and its `/W` may be indirect objects.
+        .and_then(|width| doc.dereference(width).map(|(_, o)| o))
         .and_then(Object::as_float)
         .ok();
     let width = from_style
@@ -254,6 +256,54 @@ mod tests {
         assert_eq!(read.ends, [LineEnd::None, LineEnd::OpenArrow]);
         assert_eq!(read.width, 3.0);
         assert!(read_page(&bytes, 4).unwrap().is_empty());
+    }
+
+    #[test]
+    fn width_and_endings_follow_references_and_a_single_ending_name() {
+        let mut doc = Document::with_version("1.7");
+        let width = doc.add_object(Object::Real(4.0));
+        let style = doc.add_object(dictionary! {"W" => width});
+        let le = doc.add_object(Object::Name(b"ClosedArrow".to_vec()));
+        let dict = dictionary! {"Subtype" => "Line", "L" => reals([0.0, 0.0, 10.0, 10.0]), "Rect" => reals([0.0, 0.0, 10.0, 10.0]),
+        "BS" => style, "LE" => le};
+        let read = read_line(&doc, &dict).unwrap();
+        assert_eq!(read.width, 4.0);
+        assert_eq!(read.ends, [LineEnd::ClosedArrow; 2]);
+        // A /W that is not a number, zero or huge falls back to 1 or the cap.
+        for (bad, expected) in [
+            (Object::Name(b"x".to_vec()), 1.0),
+            (Object::Real(0.0), 1.0),
+            (Object::Real(1e9), limits::MAX_ANNOT_STROKE_PT),
+            (Object::Real(f32::NAN), 1.0),
+        ] {
+            let dict = dictionary! {"Subtype" => "Line", "L" => reals([0.0, 0.0, 10.0, 10.0]),
+            "Rect" => reals([0.0, 0.0, 10.0, 10.0]), "BS" => dictionary! {"W" => bad}};
+            assert_eq!(read_line(&doc, &dict).unwrap().width, expected);
+        }
+    }
+
+    #[test]
+    fn a_hostile_l_array_leaves_the_line_opaque() {
+        let doc = Document::with_version("1.7");
+        let rect = reals([0.0, 0.0, 10.0, 10.0]);
+        let hostile = [
+            // Too short, wrong types, out of range, infinite, a loop of its own size.
+            Object::Array(vec![Object::Real(1.0); 3]),
+            Object::Array(vec![Object::string_literal("a"); 4]),
+            reals([0.0, 0.0, 1e12, 1.0]),
+            reals([f32::INFINITY, 0.0, 1.0, 1.0]),
+            Object::Array(Vec::new()),
+            Object::Null,
+            Object::Integer(7),
+        ];
+        for l in hostile {
+            let dict = dictionary! {"Subtype" => "Line", "L" => l, "Rect" => rect.clone()};
+            assert!(read_line(&doc, &dict).is_none());
+        }
+        // More than four numbers are read as the first four; a huge array is cut at eight values.
+        let long = Object::Array((0..10_000).map(|n| Object::Integer(n % 5)).collect());
+        let dict = dictionary! {"Subtype" => "Line", "L" => long, "Rect" => rect};
+        assert!(read_line(&doc, &dict).is_some());
     }
 
     #[test]

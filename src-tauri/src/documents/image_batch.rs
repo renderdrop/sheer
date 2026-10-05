@@ -128,6 +128,12 @@ fn read_at(file: &File, buf: &mut [u8], offset: u64) -> std::io::Result<usize> {
     {
         std::os::unix::fs::FileExt::read_at(file, buf, offset)
     }
+    #[cfg(not(any(windows, unix)))]
+    {
+        // No positional read on this target: nothing can be read, so the file is reported as unreadable (the app ships for Windows and macOS only).
+        let _ = (file, buf, offset);
+        Err(std::io::Error::from(std::io::ErrorKind::Unsupported))
+    }
 }
 
 /// Fills `buf` from the start of the file as far as the file goes; the number of bytes read.

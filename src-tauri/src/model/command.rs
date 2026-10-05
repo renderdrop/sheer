@@ -671,6 +671,41 @@ mod tests {
 
     // --- create, update, delete, move ---
 
+    /// ADR-115: opaque and file-art bodies deserialize (the engine child's replies carry them) but the UI cannot create them, alone or
+    /// inside a batch (which then rolls back what ran before).
+    #[test]
+    fn opaque_and_file_art_drafts_are_refused_alone_and_in_a_batch() {
+        let drafts = [
+            json!({"pageId": 0, "kind": "opaque", "subtype": "Ink", "color": [0, 0, 0]}),
+            json!({"pageId": 0, "kind": "opaque", "subtype": "x".repeat(10_000), "color": [0, 0, 0]}),
+            json!({"pageId": 0, "kind": "signature", "box": {"x": 10.0, "y": 10.0, "w": 100.0, "h": 40.0},
+                   "role": "signature", "art": {"type": "file"}, "color": [0, 0, 0]}),
+        ];
+        for draft in drafts {
+            let single = cmd(json!({"type": "createAnnotation", "draft": draft.clone()}));
+            let mut state = state();
+            assert_eq!(
+                code(state.execute(single, &stamp(0))),
+                ErrorCode::InvalidArgument
+            );
+            assert!(state.list(PageId::new(0)).is_empty());
+
+            let batch = cmd(json!({"type": "batch", "label": "b", "commands": [
+                {"type": "createAnnotation", "draft": draft_json(0, 10.0)},
+                {"type": "createAnnotation", "draft": draft},
+            ]}));
+            assert_eq!(
+                code(state.execute(batch, &stamp(1))),
+                ErrorCode::InvalidArgument
+            );
+            assert!(
+                state.list(PageId::new(0)).is_empty(),
+                "the batch is rolled back"
+            );
+            assert!(!state.history_state().dirty);
+        }
+    }
+
     #[test]
     fn create_adds_an_annotation_with_a_fresh_id_and_reports_it_with_the_history() {
         let mut state = state();
@@ -1055,6 +1090,69 @@ mod tests {
     }
 
     // --- imported annotations ---
+
+    /// A file whose notes reply to each other in a circle (A to B to A, or to themselves) must not hang or lose a note: the
+    /// delete cascade and the undo end, and every note is listed once.
+    #[test]
+    fn an_irt_cycle_in_a_file_does_not_hang_the_cascade() {
+        use crate::model::annotation::{NoteIcon, ReviewState};
+        use crate::model::geometry::Point;
+        use crate::pdfwrite::reviews::ReviewLink;
+        use std::collections::HashMap;
+        let mut state = state();
+        let note = |index: u32| {
+            let mut item = imported("n", false);
+            item.origin.annot_index = index;
+            item.body = AnnotationBody::Note {
+                at: Point { x: 10.0, y: 10.0 },
+                icon: NoteIcon::Comment,
+            };
+            item.rect = Rect {
+                x: 10.0,
+                y: 10.0,
+                w: 20.0,
+                h: 20.0,
+            };
+            item
+        };
+        let items = [note(0), note(1), note(2)];
+        let links = HashMap::from([
+            (
+                0,
+                ReviewLink {
+                    reply_to: Some(1),
+                    state: Some(ReviewState::Completed),
+                },
+            ),
+            (
+                1,
+                ReviewLink {
+                    reply_to: Some(0),
+                    state: None,
+                },
+            ),
+            (
+                2,
+                ReviewLink {
+                    reply_to: Some(2),
+                    state: None,
+                },
+            ),
+        ]);
+        assert_eq!(state.import_page_linked(PageId::new(0), &items, &links), 3);
+        let listed = state.list(PageId::new(0));
+        assert_eq!(listed.len(), 3);
+        let first = listed.iter().map(|a| a.id).min().unwrap();
+        let removed = state
+            .execute(
+                cmd(json!({"type": "deleteAnnotations", "ids": [first.get()]})),
+                &stamp(0),
+            )
+            .unwrap();
+        assert!(removed.removed.len() <= 3);
+        state.undo(&stamp(1)).unwrap();
+        assert_eq!(state.list(PageId::new(0)).len(), 3);
+    }
 
     #[test]
     fn imported_annotations_are_clean_listed_once_and_do_not_touch_the_history() {

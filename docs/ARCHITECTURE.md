@@ -321,7 +321,7 @@ create_drawn_signature(role: SignatureRole, outlines: Vec<Vec<PathCmd>>) -> Sign
 create_typed_signature(role: SignatureRole, text: String, font: TypedFont) -> SignatureDraft  // 1..=64 chars, no control chars
 import_signature_image(role: SignatureRole, remove_background: bool) -> Option<SignatureDraft> // Rust open dialog (PNG, JPEG); None = cancelled
 list_signatures() -> SignatureLibrary
-save_signature(draft_id: DraftId) -> SignatureItem    // keychain missing, refused or timed out → invalid_argument (what: "keychain"), never kept in memory only (ADR-107); locked → invalid_argument (what: "library"); 32 items → limit_exceeded
+save_signature(draft_id: DraftId) -> SignatureItem    // keychain missing, refused or timed out → keychain_unavailable, never kept in memory only (ADR-107); locked → invalid_argument (what: "library"); 32 items → limit_exceeded
 delete_signature(item_id: String) -> ()               // 32 lowercase hex; unknown → not_found
 clear_signature_library() -> ()                       // deletes library.bin and the keychain entry; the way out of `locked`
 get_signature_preview(art: SignatureRef, max_px: u16 /* 16..=1024 */) -> tauri::ipc::Response   // SHR1 PNG frame of raster art
@@ -640,6 +640,7 @@ async fn check_for_update(app, state) -> Result<Option<UpdateInfo>, UiError>;   
 async fn download_update(app, state, on_event: Channel<UpdateEvent>) -> Result<(), UiError>; // download + verify, keeps the package in memory
 async fn install_update_on_quit(state) -> Result<(), UiError>;                     // marks it; the quit flow installs after dirty docs resolve
 async fn skip_update_version(state, version: String) -> Result<(), UiError>;       // ≤ 32 chars, semver checked
+async fn updater_configured() -> Result<bool, UiError>;                            // is the embedded key real; no network, no state (Settings → Updates visibility)
 
 // commands/app.rs
 async fn open_default_apps_settings(app) -> Result<(), UiError>;                   // Windows: ms-settings deep link; macOS: unsupported_feature
@@ -701,7 +702,7 @@ or debug text.
 Codes: `invalid_argument`, `limit_exceeded`, `not_found`, `not_a_pdf`, `damaged_file`, `too_large`, `unsupported_feature`,
 `password_required`, `password_incorrect`, `unsaved_changes`, `needs_confirmation` (`reason`: `breaksSignature`, `fileChangedOnDisk`,
 `rewriteEncrypted`), `save_failed`, `io_permission_denied`, `io_not_found`, `io_in_use`, `io_disk_full`, `engine_timeout`,
-`engine_crashed`, `engine_unavailable`, `cancelled` (UI stays silent), `internal`.
+`engine_crashed`, `engine_unavailable`, `cancelled` (UI stays silent), `keychain_unavailable`, `internal`.
 
 ## 8. Zustand stores (`src/stores/`)
 

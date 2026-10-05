@@ -255,7 +255,8 @@ impl<'de> Deserialize<'de> for TipsSeen {
 
 /// Keys that older versions wrote (colour theme and glass mode went away with the light-only redesign, ADR-100; the tool
 /// sidebar and with it its collapse flag went away with the mode tabs, ADR-102). They are
-/// ignored on reading and dropped from the file by the first write.
+/// ignored on reading and dropped from the file by the startup rewrite (`SettingsStore::drop_retired_keys`, called at start for a file that still holds one;
+/// a failed one is tried again at the next start).
 const RETIRED_KEYS: [&str; 3] = ["glass", "theme", "toolSidebarCollapsed"];
 
 /// Every persisted setting. Add a field here, to [`SettingsPatch`] and to `src/api/app.ts` together.

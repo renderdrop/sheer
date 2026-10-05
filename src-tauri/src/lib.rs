@@ -176,6 +176,7 @@ pub fn run() -> Result<(), AppError> {
             commands::update::download_update,
             commands::update::install_update_on_quit,
             commands::update::skip_update_version,
+            commands::update::updater_configured,
             commands::app::open_default_apps_settings,
             commands::print::prepare_print,
             commands::print::get_print_page,

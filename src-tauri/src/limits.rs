@@ -78,7 +78,8 @@ pub const MAX_DERIVED_CHARS_PER_PAGE: usize = 50_000;
 pub const MAX_DERIVED_CHARS: usize = 3_000_000;
 pub const MAX_DERIVED_LINES_PER_PAGE: usize = 400;
 pub const MAX_DERIVED_LINES: usize = 100_000;
-pub const DERIVED_OUTLINE_BUDGET: Duration = Duration::from_secs(3);
+/// Wall time for deriving an outline; the worker is blocked meanwhile (a heavy page is checked before its text layer is built too).
+pub const DERIVED_OUTLINE_BUDGET: Duration = Duration::from_secs(1);
 /// Most characters of one page's text layer (UTF-16 code units, which is what JavaScript counts). A page with more is cut there and
 /// the layer says so (`truncated`).
 pub const MAX_TEXT_CHARS: usize = 200_000;

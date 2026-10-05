@@ -461,6 +461,20 @@ describe('parseAppEvent', () => {
     expect(parseAppEvent({ type: 'engineRestarted' })).toBeNull();
   });
 
+  it('takes a drop position only as whole px within +-32768', () => {
+    const at = (x: number, y: number) => parseAppEvent({ type: 'dropHover', active: true, x, y });
+    expect(at(10, -20)).toEqual({ type: 'dropHover', active: true, x: 10, y: -20 });
+    expect(at(32768, -32768)).toEqual({ type: 'dropHover', active: true, x: 32768, y: -32768 });
+    for (const [x, y] of [
+      [1.5, 2],
+      [32769, 0],
+      [0, -1e9],
+      [Number.NaN, 1],
+    ] as [number, number][]) {
+      expect(at(x, y)).toEqual({ type: 'dropHover', active: true });
+    }
+  });
+
   it('reads the three events and nothing else', () => {
     expect(parseAppEvent({ type: 'dropHover', active: false })).toEqual({ type: 'dropHover', active: false });
     expect(parseAppEvent({ type: 'opened', document: { id: 0, pageCount: 1, displayName: '' } })).toEqual({

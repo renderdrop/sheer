@@ -124,8 +124,8 @@ impl RecentsStore {
                 display_name: display_name(&item.path),
                 folder: item.path.parent().map(display_name).unwrap_or_default(),
                 last_opened: item.last_opened,
-                // A file that cannot be examined (permissions) is not reported gone: opening it says what is wrong.
                 starred: item.starred,
+                // A file that cannot be examined (permissions) is not reported gone: opening it says what is wrong.
                 missing: position < MAX_EXISTENCE_CHECKS
                     && storable(&item.path)
                     && matches!(item.path.try_exists(), Ok(false)),

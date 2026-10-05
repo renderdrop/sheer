@@ -26,10 +26,15 @@ fn is_popup(dict: &Dictionary) -> bool {
     matches!(dict.get(b"Subtype"), Ok(Object::Name(name)) if name == b"Popup")
 }
 
+/// Longest `/State` or `/StateModel` that is read: the words of the Review and Marked models are far shorter, so a longer string is not one
+/// and is not even copied.
+const MAX_STATE_BYTES: usize = 16;
+
 fn text(doc: &Document, dict: &Dictionary, key: &[u8]) -> Option<Vec<u8>> {
     match doc.dereference(dict.get(key).ok()?).ok()?.1 {
-        Object::String(bytes, _) => Some(bytes.clone()),
-        Object::Name(bytes) => Some(bytes.clone()),
+        Object::String(bytes, _) | Object::Name(bytes) if bytes.len() <= MAX_STATE_BYTES => {
+            Some(bytes.clone())
+        }
         _ => None,
     }
 }
@@ -85,6 +90,12 @@ pub fn read_page(bytes: &[u8], page_index: u32) -> Result<HashMap<u32, ReviewLin
                 text(&doc, dict, b"State").and_then(|s| ReviewState::from_pdf(&s))
             }
             Some(_) => None,
+        };
+        // A `/StateModel` too long to be read is not the Review model either.
+        let state = if model.is_none() && dict.has(b"StateModel") {
+            None
+        } else {
+            state
         };
         if reply_to.is_some() || state.is_some() {
             links.insert(position, ReviewLink { reply_to, state });
@@ -151,5 +162,45 @@ mod tests {
         );
         assert_eq!(links.get(&3), None, "a link that points nowhere is dropped");
         assert!(read_page(&bytes, 5).unwrap().is_empty());
+    }
+
+    #[test]
+    fn a_state_string_longer_than_a_state_word_is_ignored() {
+        let long = Object::String(vec![b'C'; 5_000_000 / 100], lopdf::StringFormat::Literal);
+        let bytes = file(vec![
+            dictionary! {"Subtype" => "Highlight"},
+            dictionary! {"Subtype" => "Text", "IRT" => Object::Reference((2, 0)), "State" => long.clone()},
+            dictionary! {"Subtype" => "Text", "IRT" => Object::Reference((2, 0)), "StateModel" => long, "State" => Object::string_literal("Completed")},
+        ]);
+        let links = read_page(&bytes, 0).unwrap();
+        // Both still reply; neither gives a state.
+        assert_eq!(
+            links.get(&1),
+            Some(&ReviewLink {
+                reply_to: Some(0),
+                state: None
+            })
+        );
+        assert_eq!(
+            links.get(&2),
+            Some(&ReviewLink {
+                reply_to: Some(0),
+                state: None
+            })
+        );
+    }
+
+    #[test]
+    fn replies_that_point_at_each_other_are_read_as_they_are() {
+        // A (1) replies to B (2) and B to A; a third replies to itself. The reader only reports the links (the model ends cycles).
+        let bytes = file(vec![
+            dictionary! {"Subtype" => "Text", "IRT" => Object::Reference((3, 0))},
+            dictionary! {"Subtype" => "Text", "IRT" => Object::Reference((2, 0))},
+            dictionary! {"Subtype" => "Text", "IRT" => Object::Reference((4, 0))},
+        ]);
+        let links = read_page(&bytes, 0).unwrap();
+        assert_eq!(links.get(&0).and_then(|l| l.reply_to), Some(1));
+        assert_eq!(links.get(&1).and_then(|l| l.reply_to), Some(0));
+        assert_eq!(links.get(&2), None, "a reply to itself is no reply");
     }
 }
