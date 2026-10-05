@@ -332,6 +332,67 @@ Mini bar (replaces the Textkommentar row in §3.3): text colour (B5) · font siz
 
 B12 canvas drift: removed after the legibility test (ADR-108 (3)).
 
+### 3.6 R6 onboarding, tour, settings, tips
+
+Binding for R6 (brief R6). A delta on the built `src/features/tour`, `settings`, `tips`: v1.1 behaviour (DESIGN v1.1 §3.14, §3.47) stays unless changed here. Coach mark and tip join §3's list of floating surfaces; they never cover their anchor, the canvas target, a selection or the mini bar (when the mini bar appears, they re-place to the anchor's other side, else dock bottom-right of the canvas, inset 16). WorkSurface: no glow, no scrim (§5's "coach marks' backdrop" does not exist; the tour is non-modal).
+
+**Coach mark anatomy.** White (`--surface-panel`), `--border-control` (Stone), `--radius-lg`, `--shadow-floating`, width `--popover-max` 320 (max: canvas − 32), padding 16, no arrow. Top to bottom:
+1. **Progress bar**, full card width inside the padding: track #E5E5E1 (`--color-track`), fill Solar, height **`--progress-height` 4** (new token), `--radius-pill`; fill = completed steps / total. Decorative (`aria-hidden`); the count carries the information (§2).
+2. **Header row 24**, 12 below the bar: count "2 / 7" `.t-caption` Text-secondary, `tabular-nums` (`tour.count`, `aria-label` = `tour.stepOf`); right: Hide icon button 28 (`x`, `tour.hide`).
+3. **Title** `.t-title` Ink, 8 below; done phase: `check` 16 Ink + `tour.done`.
+4. **Body** `.t-body` Ink, 4 below, max 4 lines (texts are written to fit).
+5. **Footer row 28**, 16 below: left Ghost "Skip tour" (`tour.skip`); right, gap 8: Secondary "Back" (`tour.back`), Primary "Next" (`tour.next`; last step "Finish", `tour.finish`). All size 28 (`--control-sm`), `.t-label`.
+
+**States.** Waiting: Next advances without doing the step (the step counts as skipped, the bar fills anyway). Done: the bar fills to the step, title shows the check, the card auto-advances after `--hold-check` 600 as built; Next advances at once. Back: disabled (0.4, `aria-disabled`) on step 1; else shows the previous step in its last phase (done stays done; nothing in the document is undone). Finishing: card goes, pill says "Tour complete" (as built). Store gains `next()` and `back()`.
+
+**Placement.** Gap 8 (`--space-2`) between card and anchor, no arrow. Top bar anchors: below, `align` as the anchor table. Tool tier and mode segments: below, centred. Sidebar toggle: below, start. Thumbnails: right, centred. Canvas targets: below, flip above, never over the target. Clamped inside the canvas scroller, inset 16 (as built, incl. `--canvas-extra-scroll`). An anchor moved into "Mehr" ⋯ anchors the ⋯ item; nothing on screen → the page field, then the canvas centre. **Anchor ring:** §2.1 pair (1px Ink + 2px Solar outline, offset 2) on the anchor; success = opacity 1→0.4→1, 2 × `--motion-fast`.
+
+**Keyboard and ARIA.** `role="region"` labelled by the title; never takes focus when it appears; each new step is announced politely (`tour.announce`). Tab order: Hide, Skip, Back, Next. Enter on the pill shows the card and focuses Next. Esc inside hides the card and returns focus (as built). The anchor gets `aria-describedby` = body (as built).
+
+**Motion.** Card enter: opacity + `--scale-enter`, `--motion-slow`; exit `--motion-slow-exit`; steps re-key (exit then enter). Bar fill: `scaleX` from the start edge, `--motion-base`. Reduced motion: card fades `--motion-fast`, bar jumps, no ring pulse (ring stays static).
+
+**Steps** (7, unchanged order; anchors renamed because the status bar is gone, ADR-102/108). Anchors in the top bar switch from `side: top` to `bottom`; the auto mode switch in `useAnchor` goes: the step first anchors the mode segment until the user enters the mode.
+
+| Step | Anchor change | New text (en / de) |
+|---|---|---|
+| open | `status-file-name` → `topbar-file-name` (file name or active tab, bottom/start) | unchanged |
+| navigate | `status-page-button` → `topbar-page-field` (bottom/center) | "Scroll down, press Page Down or type 2 in the page field." / "Scrolle nach unten, drücke Bild ab oder tippe 2 ins Seitenfeld." |
+| zoom | `toolbar-zoom-in` → `topbar-zoom` (zoom dropdown, same selector) | "Press {mod} and + or pick a level in the zoom menu." / "Drücke {mod} und + oder wähle eine Stufe im Zoom-Menü." |
+| highlight | phase 0 `mode-comment` (segment, `data-tour-anchor="mode-comment"`), then `tool-highlight` | "Switch to Comment (2), choose Highlight, then drag across the sentence in the frame." / "Wechsle zu Kommentieren (2), wähle Hervorheben und ziehe über den Satz im Rahmen." |
+| comment | `tool-note` (mode already Comment, else `mode-comment`) | "Choose Note, then click the dot. The note appears in the margin." / "Wähle Notiz und klicke auf den Punkt. Die Notiz erscheint am Rand." |
+| sign | phase 0 `mode-fill`, then `tool-signature` | "Switch to Fill & Sign (3), choose Signature, then drag it into the frame." / "Wechsle zu Ausfüllen & Signieren (3), wähle Signatur und ziehe sie in den Rahmen." |
+| reorder | `left-panel` (`[data-toolbar-item="left-panel"]`, **no longer exists**) → `sidebar-toggle` (`[data-sidebar-toggle]`); then Pages tab, thumbnail S; in Seiten mode the grid card (as built) | "Open the sidebar's Pages tab and drag page {from} above page {to}." / "Öffne in der Seitenleiste den Tab Seiten und ziehe Seite {from} über Seite {to}." |
+
+Keys: `tour.step.navigate.text`, `.zoom.text`, `.highlight.text`, `.comment.text`, `.sign.text`, `.reorder.text` change in place. `LAST_RESORT` uses `topbar-page-field`, then `topbar-file-name` (both bottom). No step targets "Fertig" or the save status.
+
+**Tab rule** (F11-7 kept). The tour always runs in its own welcome tab and never closes, replaces or saves another document. Restart: reuse an open welcome tab only if it has no edits; otherwise open a fresh welcome tab. **Change:** activating another tab no longer ends the tour; it **pauses** (card and ring hidden, pill shows "2 / 7" with `pause` 16); clicking the pill re-activates the welcome tab and resumes. Closing the welcome tab ends the tour (`tour.closed`, as built).
+
+**Tour pill.** Right cluster of the top bar: Undo · Redo · Search, 12 gap, pill, padding-right 16 (Fertig's slot closed, §3.5 B1). Height 28, `--radius-pill` (added to its allowed uses), Sand fill, padding-x 10, gap 4, `compass` 16 Ink + "Tour 2 / 7" `.t-caption` Ink 500 `tabular-nums` (`tour.pill`). Below 1100 window width: "2 / 7" only, `aria-label` keeps the full text. States: hover #E5E5E1; pressed 0.98; card shown (`aria-expanded=true`) adds a 1px Stone border; paused `pause` icon, `tour.pillPaused` label; finishing `check` + "Tour complete". Exists only while a tour runs. Enter: opacity + 8 px rise `--motion-slow` (reduced: opacity, fast).
+
+**Settings panel.** Popover (§4), 320 wide, padding 16, max height window − 32 (scrolls inside), anchored as built, Ctrl/Cmd+, opens. Title `.t-title` "Settings" (`settings.title`). Groups top to bottom, gap 16; each = label `.t-label` Ink 500, control 8 below, hint `.t-caption` 4 below:
+1. **Language** (`settings.language`): Segmented System / English / Deutsch.
+2. **Author name** (`settings.author`): Input 36, hint as built.
+3. **Drawing** (`settings.drawing`): Toggle "Recognise shapes when you pause" (§3.5 B11).
+4. **Updates** (`settings.updates`): opt-in Toggle + status as built; the **whole group is not rendered** while the updater is unconfigured (ADR-053).
+5. **Tour & tips** (`settings.tour` "Tour & tips" / "Tour & Tipps"): Secondary "Restart tour" / "Start tour" (as built) + Ghost "Show tips again"; hint live.
+6. **About** (`settings.about` "About" / "Über"), after a 1px #E5E5E1 divider (16 above/below): `.t-caption` "sheer. · Version 1.2.0" (`APP_NAME` + `about.version`), Ghost "About sheer." (`about.title`) opens the About dialog.
+
+**Removed:** Signatures row (Werkzeuge → Signaturen verwalten holds it), Default PDF app row (moves to Hilfe on Windows, same key `settings.defaultApp.button`). No theme, no glass, no density option; a test asserts the six group labels and nothing else. Keyboard: Tab follows group order; Esc closes and returns focus to the anchor.
+
+**Tips.** White, `--border-subtle`, `--radius-lg`, `--shadow-floating`, max width 280, padding 12, gap 8: `lightbulb` 16 Ink (the Sand tile goes) · text `.t-body` Ink · Hide icon button 28 (`tip.dismiss`). Slot: 8 below the tool item in the tool tier (⋯ when in Mehr), centred, clamped inside the canvas scroller inset 8. Rules: each tip shows **once ever** (written to `tipsSeen` before it shows, as built); **at most 3 per session** (new: a session counter in `runtime.ts`; "Show tips again" clears `tipsSeen` but not the cap); never while a tour runs or is paused; never while a coach mark, menu, dialog or popover is open; goes when its tool is released. No timeout. Motion: as the coach mark card; reduced: opacity fast.
+
+| Tip id | Tool | Text change (en / de) |
+|---|---|---|
+| highlight | Hervorheben | "Drag across text. Underline and Strikethrough sit next to it." / "Über den Text ziehen. Unterstreichen und Durchstreichen liegen daneben." |
+| note | Notiz | "Click where the note belongs. Reply to it in the margin." / "Dort klicken, wo die Notiz hingehört. Antworten am Rand." |
+| text | Textkommentar | "Click and type. The box grows as you write; Shift+Enter adds a line." / "Klicken und tippen. Das Feld wächst mit; Umschalt+Enter fügt eine Zeile ein." |
+| draw | Zeichnen | "Pause before you let go to turn a stroke into a shape." / "Vor dem Loslassen kurz innehalten macht aus dem Strich eine Form." |
+| shapes | Formen | "Hold Shift to keep proportions. More shapes are in the arrow menu." / "Umschalt hält die Proportionen. Weitere Formen im Pfeilmenü." |
+| crop | Zuschneiden | "Drag the edges of the frame to crop." / "Zum Zuschneiden die Kanten des Rahmens ziehen." |
+| sign, pages, insertText, redact | as built | unchanged |
+
+**New i18n keys** (en / de): `tour.count` "{step} / {total}" (both); `tour.back` Back / Zurück; `tour.finish` Finish / Abschließen; `tour.pillPaused` "Welcome tour paused. Return to the welcome document" / "Willkommenstour pausiert. Zurück zum Willkommensdokument"; `settings.tour` Tour & tips / Tour & Tipps; `settings.about` About / Über. Obsolete: `settings.help`, `settings.signatures`, `settings.signatures.hint`. Token addition: `--progress-height` 4.
+
 ## 4. Components (R4)
 
 States apply to all: hover ≤ background/border/icon colour change; pressed scale 0.98 at most; focus = `--ring-focus` (keyboard only); disabled = `--opacity-disabled`, no pointer events, tooltip still explains why.
