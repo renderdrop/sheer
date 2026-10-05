@@ -63,6 +63,16 @@ first_errors() {
   printf '%s\n' "$hits" | sed 's/^/    /'
 }
 
+# Vitest reports an error outside any test (a timer or promise that outlives its test) as an "Unhandled Error" block that the
+# generic first-errors view cuts off. Prints the first ~30 lines of that block.
+unhandled_block() {
+  local log="$1"
+  tr -d '' <"$log" | awk '
+    /Unhandled (Errors?|Rejections?)/ && !on { on = 1 }
+    on && n < 30 { print; n++ }
+  ' | cut -c1-220 | sed 's/^/    /'
+}
+
 # step <name> <command...>: run quietly, remember the failure, show the first errors.
 step() {
   local name="$1"
@@ -75,6 +85,7 @@ step() {
   FAILED+=("$name")
   echo "FAIL  $name"
   first_errors "$log"
+  if [ "$name" = vitest ]; then unhandled_block "$log"; fi
 }
 
 # --- guards ----------------------------------------------------------------------------------------------------

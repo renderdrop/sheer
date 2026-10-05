@@ -54,6 +54,8 @@ export function pulseAnnotation(id: number): void {
   const reduced = reducedMotion();
   let tries = 0;
   const look = () => {
+    // The environment may be gone by the time a frame runs (a test that ended, a closed window).
+    if (typeof window === 'undefined' || typeof document === 'undefined') return;
     const frame = document.querySelector<HTMLElement>(`[data-annot-frame="${id}"]`);
     if (frame !== null) {
       if (reduced) {
@@ -122,6 +124,7 @@ export function jumpToAnnotation(docId: number, id: number, pageId?: number): vo
     .loadPage(docId, page)
     .catch(() => undefined)
     .then(() => {
+      if (typeof window === 'undefined') return;
       const annotation = useAnnotations.getState().byDoc[docId]?.byId[id] ?? known;
       const position = positionOf(docId, page) ?? page;
       if (annotation === undefined) useViewer.getState().goToPage(position);

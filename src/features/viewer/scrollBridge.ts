@@ -106,12 +106,17 @@ export function waitForJumpEnd(then: () => void, fallbackMs: number): void {
   const fire = () => {
     if (done) return;
     done = true;
-    window.clearTimeout(timer);
+    if (typeof window !== 'undefined') window.clearTimeout(timer);
     if (jumpWaiter === fire) jumpWaiter = null;
     then();
   };
   const timer = window.setTimeout(fire, fallbackMs);
   jumpWaiter = fire;
+}
+
+/** Drops the waiter without firing it (a test ends, the viewer goes away). */
+export function cancelJumpWait(): void {
+  jumpWaiter = null;
 }
 
 export function endJump(): void {

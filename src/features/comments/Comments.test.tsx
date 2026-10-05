@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AnnotationSummary } from '../../api/annotations';
 import { EMPTY_HISTORY, useAnnotations } from '../../stores/annotations';
 import { setup } from '../../test/render';
+import { cancelJumpWait } from '../viewer/scrollBridge';
 import { useViewer } from '../viewer/useViewer';
 import { resetViewer, showDocument } from '../viewer/viewer.testutil';
 import { Comments, LOADING_SHOWN_AFTER_MS } from './Comments';
@@ -62,9 +63,14 @@ beforeEach(() => {
   showDocument({ id: 1, pageCount: 5, displayName: 'Book.pdf' });
 });
 
-afterEach(() => {
-  vi.unstubAllGlobals();
+afterEach(async () => {
   vi.useRealTimers();
+  // Let a comment jump finish its timers (scroll wait, pulse frames) before the environment goes away.
+  cancelJumpWait();
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  });
+  vi.unstubAllGlobals();
   delete (HTMLElement.prototype as { clientHeight?: number }).clientHeight;
 });
 
