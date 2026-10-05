@@ -314,6 +314,7 @@ new engine capability or dependency is needed. Not picked by the loop before v1.
 - [ ] v1.4.2 — Visible seal with name and date; the document is read-only afterwards
 - [ ] v1.4.3 — Signature validation in Sheer; clear notice that trust needs an external certificate
 - [ ] v1.4 acceptance — security-reviewer, installed build with the mouse, designer round, tag v1.4.0
+  - (2026-10-05, installed NSIS build, Windows) round 1 + 2 by mouse: AC 1, 2, 3, 5, 6, 7, 8, 11, 13, 14, 15, 16, 18, 21, 24 pass (after fixes: in-window menu lock 0b43d34, seal overlay offset + field widths + labels 0bab7a6); not by mouse (tests only): AC 4 import, 9 move/resize (no resize handles), 10 expired, 12 other viewer/print, 17 two signatures, 19 damaged, 20 additions after signing, 22 keychain unavailable, 23 reduced motion. Security review FAIL (1 high) fixed in c6956df. CI: #71 sig_validate env, #73 p12 decode race (72316ba).
 
 ### v1.5 "Edit text"
 - [ ] v1.5 spec — designer spec + architect ADR (content-stream text editing with embedded fonts, fallback font matching)
