@@ -1,15 +1,16 @@
 # STATE
-phase: v1.5 Phase 1 feasibility done (no release, no tag)
+phase: v1.5.1 (session topic "v1.5.1 Text bearbeiten – Zeile bearbeiten", ADR-122)
 version: 1.4.2 (tag v1.4.2)
-current_item: SESSION TOPIC v1.5 Phase 1 CLOSED (ADR-122) — report docs/reports/2026-10-06-v1.5-phase1-text-machbarkeit.md, STOP set. Recommendation: go for v1.5.1
+current_item: pre-fix split buttons (owner) + W0 seam running; then wave 1 backend B1 walker/lines/mapping · B2 fonts/fallback · B3 splice/save · B4 model/commands/refusals; wave 2 F1 tool+edit box · F2 mini bar/popover/notice · F3 refusals/a11y/undo · F4 gate (corpus ≥30, click ≥90 %, footer case); release v1.5.0-beta.1
 last_completed: v1.5 spec (ADR-125, ARCHITECTURE §13, DESIGN §3.10) + spike pdfwrite/textedit (not IPC-registered; corpus review/v1.5-spike/, not tracked)
-loop_count_this_session: 0
-open_blockers: 2 human-only (B-002, B-005)
+loop_count_this_session: 1
+open_blockers: 4 (B-002, B-005 human-only; B-006 recovery pre-task denied by classifier; B-007 corpus producers unknown)
 notes: ADR-120: every loop starts with `bash scripts/ci-status.sh` (last completed run on main, never wait); red = fix first. v1.4 W0 2a1e3f3 (stable RustCrypto line), seam 586feeb. Release v1.3.0 published.
   Owner re-check on the Mac after v1.2.0: A10 "Save as PDF" in the print dialog. Screenshot series docs/review/v1.2/ (not tracked), motion recordings docs/review/v1.2/motion/.
   After v1.2.0: "Politur v1.3" (ROADMAP, carried minors), then the v1.3 "Citations" spec. Never run the dev window while agents run cargo/vitest;
   stop it with taskkill sheer.exe + Stop-Process on tauri.js/vite.js only. Acceptance helpers in the session scratchpad (keys.ps1, wheel.ps1, shotsize.ps1, dnd.ps1 with topmost guard).
 ci_log: (ADR-120 corrected — package commit → CI run; result filled in at the next push)
+  - 6d01605 docs ADR-126 + ADR-125 accepted → not pushed yet (docs only)
   - eae482b lock choice after completed signing → run #90 (37381290387) red: prettier on SignDialog.tsx → fixed f6a0228
   - f6a0228..5e7331c prettier fix + ADR-125 docs + textedit spike → run #91 (37385569465) GREEN
   - 9b60ae8..4a70409 F17 wave 1 (spec, F17.9, F17.1, F17.5 logic, F17.10 gate) → run #85 (37356243921) GREEN
