@@ -2068,3 +2068,54 @@ installed beta).
 - **Cause:** not a PDFium or engine panic. `SignatureArtRef::File` and `AnnotationBody::Opaque` were `#[serde(skip_deserializing)]` ("only an import makes one"). The child serialised them in its `Annotations` reply, the parent could not deserialise the reply (`malformed header`), treated the child as failed and restarted it. In-process tests never hit this. Any page with a reopened stamp of ours (art "in the file") or a kind the model leaves opaque restarted the engine; the restart reopened the document and the pages then rendered only partly.
 - **Fix:** both variants deserialize now. The UI boundary already refuses them (`Annotation::from_draft`: `kind` / `art` invalid). The parent logs the class and column of an undecodable reply (never the serde message, which can quote document text); a panic in the child was and is logged with its reason by `guard::guarded`.
 - **Tests:** `tests/engine_child_annotations.rs` (create FreeText, Text, turned stamp, save, close, reopen through the child: no restart, three pages render, angle kept); `annots-turned-stamp-and-opaque-kinds.pdf` in the hostile corpus, whose exercise now lists annotations.
+
+## ADR-116 — Old ⋯ menu and moved entries → their v1.2 place (R3 acceptance)
+
+**Status:** accepted (2026-10-05). Closes the R3 item "old ⋯-menu → new place table". v1.1.0 shipped no ⋯ menu: ADR-058 (2) had
+already moved it into the File/Edit/View/Tools/Help bar. So "old ⋯" = the v1.0 More menu (ADR-016, -029, -042, -048, -050) plus the
+wave-4 top-bar Export/More (it held the File commands while Windows had no menu row, ADR-100 (1)). Also listed: v1.1 toolbar, hub,
+status bar and inspector entries that moved. Built from those ADRs and CHANGELOG [1.0.0]–[1.1.0], not from `git show v1.1.0`. Targets:
+`src/actions/menu.json`, `src/features/modes/useSlots.tsx`, `src/features/home/ToolRows.tsx`, DESIGN v2 §3.2, FEEDBACK F14.
+
+| Item | Was | v1.2 place |
+|---|---|---|
+| Open | More; v1.1 File, hub card | Datei; Home "+" and hero; empty state "Oder öffnen"; Primary+O |
+| Save | More; v1.1 File; wave-4 Fertig | Datei; save status next to the file name (B1); Primary+S |
+| Save As | More; v1.1 File | Datei; double-click the file name |
+| Export a copy | More; v1.1 File; wave-4 top-bar Export | Datei |
+| Export as images | More; v1.1 File; wave-4 Export | Datei; Primary+Shift+E; Home tool row |
+| Create PDF from images | More; v1.1 File, hub card | Datei; Home tool row |
+| Print | More; v1.1 File | Datei; Primary+P |
+| Flatten form | More, Form tool options; v1.1 File | Datei |
+| Protect | More; v1.1 File | Datei; Bearbeiten mode "Schützen" |
+| Document properties | More; v1.1 File | Datei; Bearbeiten mode "Metadaten" |
+| Compress | v1.1 File, hub card | Datei; Seiten mode; Home tool row |
+| Settings | More; v1.1 File (Win) / app menu (mac) | Datei (Windows), app menu (macOS), Home nav "Einstellungen" |
+| About | More; v1.1 Help | Hilfe (Windows), app menu (macOS) |
+| Scroll modes (3) | More; v1.1 View | Ansicht |
+| Undo / Redo | toolbar, overflowing into More; v1.1 Edit | top bar; Bearbeiten menu |
+| Pages / Organize (P) | toolbar, first into More; v1.1 Tools | Seiten mode "Ordnen"; key P |
+| Merge, Split | v1.1 Tools, hub cards | Seiten mode; Home tool row |
+| Extract pages | v1.1 Tools | Seiten mode "Extrahieren" |
+| Insert text, Add image, Crop (E, I, K) | toolbar Edit cluster, collapsing into More | Bearbeiten mode; keys unchanged |
+| Redact (X) | More; v1.1 toolbar, hub card | Bearbeiten mode "Schwärzen"; Home tool row (lands in mode 5) |
+| Select (V) | v1.1 toolbar | Lesen "Auswahl"; Esc in every mode |
+| Highlight (H, variants) | v1.1 toolbar | Kommentieren: Hervorheben · Unterstreichen · Durchstreichen |
+| Comment (C/N: note, text) | v1.1 toolbar | Kommentieren: Notiz · Textkommentar |
+| Draw (D), Shapes (R) | v1.1 toolbar | Kommentieren: Zeichnen · Formen [Rechteck/Ellipse/Linie/Pfeil] |
+| Fill & Sign (S; marks, text, date) | v1.1 toolbar, hub cards Sign / Fill form | Ausfüllen & Signieren mode; Home tool row (lands in mode 3) |
+| Form tool (F) | v1.0 toolbar / More | removed in v1.1 (fields always live, banner); action kept for the hub |
+| Highlight form fields | Form tool options; v1.1 Tools | Werkzeuge menu |
+| Manage signatures | v1.1 Tools | Werkzeuge menu; Signatur/Initialen chevron "Neue …" |
+| Tool items in the Tools menu | v1.1 Tools | removed from menus (tool row + letters); Werkzeuge lists the five modes |
+| Zoom | v1.1 status bar | top-bar zoom dropdown; Ansicht |
+| Page indicator | v1.1 status bar | top-bar page field; Ansicht "Go to page" |
+| Left panel toggle | v1.1 handle | top-bar button, sidebar grip (B2), Ansicht |
+| Inspector toggle / View "Eigenschaften" | v1.1 handle, View | removed: properties mini bar on selection (ADR-102 (3)) |
+| Find | v1.1 Edit, sidebar | top-bar Search; Lesen "Suche"; sidebar tab; Bearbeiten menu |
+| Rotate view | v1.1 View | Ansicht; Lesen "Drehen" |
+| Wave-4 More ⋯ | top bar | removed; contents in Datei/Ansicht (DESIGN §3.4 item 3) |
+| Wave-4 Fertig | top bar | removed (ADR-104 (4)); save status + Datei |
+
+**Gaps.** None without a place. ARCHITECTURE §12 says Highlight form fields and Manage signatures are also in the Ausfüllen & Signieren
+tool row. That is wrong: they are in the Werkzeuge menu only (Politur v1.2).

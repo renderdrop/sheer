@@ -243,7 +243,7 @@ Order as in the brief. Each phase ends with one designer round on Tauri-window s
 - [x] R1.3 — Installer art (NSIS header/sidebar) in brand mode
 - [x] R1.4 — Welcome PDF "Welcome to sheer." in the new layout
 - [x] R1.5 — About dialog, README head, release-notes template; APP_NAME "sheer." in UI text
-- [ ] R1 acceptance — icons in Explorer, word mark in Home, installer built locally, designer round
+- [x] R1 acceptance — icons in Explorer, word mark in Home, installer built locally, designer round (2026-10-05: installed exe + Start menu shortcut show "s.", Home word mark, NSIS built, F15 designer round PASS)
 - [x] R2.1 — Home: left navigation (Home, Recent, Starred, Tools), hero (Sand, glow, display type, search with `/`, yellow open button)
 - [x] R2.2 — Recent cards (thumbnail, name, relative time, context menu: Open, Star, Show in Explorer, Remove), max 12 + "Show all"; Starred list
 - [x] R2.3 — Tools view (rows): file dialog → editor in the matching mode
@@ -259,7 +259,7 @@ Order as in the brief. Each phase ends with one designer round on Tauri-window s
 - [x] R4.2 — Tabs, segmented control, toggle, checkbox, slider, skeletons, banner, dropzone
 - [x] R4.3 — Highlight/ink palette (Solar default + Mint, Sky, Rose, Lavender); signature sheet (Sand pad, baseline not in the path, ink Ink/Blue)
 - [x] R4.4 — /dev/components page (dev builds only) and contrast script (text ≥ 4.5:1, UI ≥ 3:1)
-- [ ] R4 acceptance — contrast script green, designer round
+- [x] R4 acceptance — contrast script green, designer round (2026-10-05: src/styles/contrast.test.ts green in npm run check 17/17, F15 designer round PASS)
 - [x] Owner checkpoint — local installer build, then STOP for owner feedback (ADR-102); R5 only after it (686caf0)
 - [ ] R5.1 — Spells 1–6 (tool pill, page indicator, document open, drop zone, marker trail, saved check)
 - [ ] R5.2 — Spells 7–12 (undo, comment jump, delete page, app start, ambient glow, tool cursors)
@@ -282,6 +282,7 @@ Order as in the brief. Each phase ends with one designer round on Tauri-window s
   - (F15 acceptance + B reviews, minor) images-to-PDF orientation segments collide ("AutomatischHochformat"); signature menu thumbnails overflow their rows; mini bar of a selected note stays visible after a mode switch; tooltips linger after a click (Hervorheben H); SaveStatus failed tooltip without "Retry"/kbd, no aria-live for save states, redundant `max-save-label:sr-only`; author prompt `skip` closure re-registers the Esc layer per keystroke, no Esc/backdrop test, two hosts would duplicate ids; ink lag test bound looser than ADR-111's 10 px at 1000 px/s; CHANGELOG v1.2 line for the new signature fonts; margin marker 24 px inside the 32 px column (confirm §3.5), MarginColumn subscribes `byId` whole; derived outline: PDFium `page.text()` outside the budget check, ~3 s worker stall on big docs (budget 1 s?), `chars().count()` per char, rows `text-text-muted` vs Text-secondary; FreeText import: several stroked paths / fill-only path untested; ARCHITECTURE has no UI-storage line for `sheer.tools.recentColors`; RemoteFile::read returns Err after a partial copy (return Ok(filled)); images_pdf_render child test silently passes without PDFium; lines.rs: /BS /W not dereferenced, no hostile /L or single-name /LE test; derived_outline: confirm unwraps are test-only, fuzz case for NaN/zero/huge font sizes; ADR-115: DocCommand test sending an opaque or File-art draft (also inside Batch), cap Opaque subtype length in from_draft
   - (F15 designer round, majors) comment cards: "Löschen" wraps onto a second action line (+32 px per card) — one action row or Löschen into ⋯ (src/features/comments card); Bearbeiten tool row shows split chevrons on Text einfügen, Bild einfügen, Zuschneiden, Schwärzen although F14/§3.2 give them no variants (tool-row config); Seiten mode keeps the zoom field enabled ("81 %") — §3.2 says disabled there
   - (F15 designer round, minors) bubble "unbekannter Au…" vs cards "Kein Autor" — one string; bubble reply field shows a scrollbar/resize stub; Seiten size field "96 p›" clipped and the slider row has no defined slot; Home nav: Start and Werkzeuge both Sand (stale hover/focus); at 960 px page 2 sits flush against the canvas edge (no padding); at 160 % the margin column runs past the right edge until scrolled
+  - (R2/R3 moodboard round) minors: Home hero glow is clipped inside the Sand card and reads as a mostly linear Mist→yellow sweep (BRAND §3: diffuse light, partly past the container); 6 of 8 recent cards show the placeholder tile, not a first-page preview (the moodboard shows thumbnails); hero search field has a heavier bottom edge than the 1 px subtle border; the solid-Solar margin bubble is the largest yellow area in the editor (§26: the PDF stays the focus, so consider White + Solar edge); ARCHITECTURE §12 wrongly puts Highlight form fields/Manage signatures in the Fill tool row (ADR-116)
 - [ ] R7 — Screenshot series docs/review/v1.2, designer review vs BRAND §2, smoke, gates, audits, CI green, CHANGELOG, tag v1.2.0
 
 ## Feature milestones after v1.2 (FEEDBACK F15 C, ADR-104)
