@@ -693,6 +693,79 @@ Polish only; S1–S6 stay valid where not overridden here. No new tokens.
 32. The placeholder has 8 handles, each grabbable within 24 px; it never shrinks below 120 × 40 pt; Alt(+Shift)+arrows resize it and announce the size.
 33. A file with later additions shows "Covers version 1 of 2 of this file" on the first card and "Covers the whole file" on the last.
 
+### 3.9 F17 UI quality (v1.4.2, ADR-124)
+
+Overrides §3.2, §3.3, §3.6 and §3.8 L1 where stated. One new token: `--motion-morph` 150ms.
+
+**Q1 Lock row (F17.0a, overrides L1 "never remembered" and "row absent").** The row is always present in the S3 confirm dialog, same slot.
+- *Certifying signature:* L1 radio group; preselected = last choice (settings store `signing.lastLock`, per device; first run "No changes"). Confirming writes the choice; cancelling does not.
+- *Approval signature:* read-only block, no radios, not a Tab stop: group label `sign.cert.lock`, then `lock` 16 Text-secondary + 8 + `.t-body` stating the document's existing lock (`sigs.locks`, `sigs.locksForms`, or `sign.cert.lockNoneSet`), then `.t-caption` `sign.cert.lockExisting`. Read in order by screen readers (plain text, not `aria-disabled` controls).
+
+**Q2 Active tool (F17.2).** One rule for all five modes: an item of kind *tool* with `aria-pressed="true"` gets Solar fill + Ink 600 label + `--tool-active-edge`; *toggles* get the §3.5 toggle style; *actions* never stay filled. In Lesen, Auswahl, Hand, Textauswahl and Lupe are kind *tool*, so entering Lesen shows Auswahl filled. Drehen and Suche are actions. Holding Z (temporary lens) does not move the fill.
+
+**Q3 Stroke width (F17.3).** Segmented control (§4) in the mini bar: track 32 high, padding 2, segments 28 high, **fixed width 36 each**, values **0.5 · 1 · 2 · 4 · 8** (number only, locale decimal: de "0,5"), `tabular-nums`, `white-space: nowrap`. Unit as one `.t-caption` "pt" 4 after the track. Width 5 × 36 + 4 = 184 + unit, constant across locales. Each segment `aria-label` `mini.strokePt` ("{n} pt"); radiogroup keyboard (one Tab stop, Left/Right). A custom width from an older file shows no segment selected; the tooltip names the value.
+
+**Q4 Custom colour popover (F17.4).** Popover, width **min 240**, max 280, padding 16, gap 12, two rows:
+1. Palette: §1.4 swatches + up to 6 recent custom colours, 24 in 32 hit areas, wraps by row of 6 (192 ≤ 208 inner).
+2. Hex field, full width, 32 high: inner left 8 a 16 preview swatch (live, 1px Stone ring), "#" Text-secondary, input (6 chars, `tabular-nums`, uppercase on blur); inner right 4 an icon button 24 `check` (`color.apply`), field padding-right 32 so text never runs under it. No separate button.
+- States: valid = check enabled; empty/invalid = check 0.4 `aria-disabled`; after Enter or blur with invalid text: `--color-danger` border + `.t-caption` danger `color.hexInvalid` 4 below (the popover grows; nothing overlaps), `aria-invalid`, `aria-describedby`.
+- Accepts 3 or 6 hex digits, leading "#" and spaces stripped on paste.
+- Keyboard: opens with focus on the current swatch; Tab order palette → field → check. Enter in the field confirms if valid (applies, closes, focus to the anchor); Esc closes without applying.
+
+**Q5 Straighten shapes (F17.5).** Switch (§4 toggle, `--radius-pill`) in the Zeichnen mini bar, own group after stroke width (divider before it; Löschen stays last when a stroke is selected), label `.t-label` `draw.straighten`, tooltip `draw.straightenHelp`. Default **on**, stored in the `tools` store. On release with a hit the raw path interpolates to the fitted shape in `--motion-morph` with `--ease-out`; polite announcement `draw.straightened`. Undo after a morph restores the raw stroke (the morph is its own step). Reduced motion: the fitted shape replaces the stroke without interpolation; the announcement stays.
+
+**Q6 Tool row (F17.6, extends §3.2 overflow).** Tool labels never use `text-overflow: ellipsis` and never clip; "…" appears only in menu item labels that open a dialog. Measure, do not guess: required width = sum of each item's intrinsic width (icon 18 + 6 + label `scrollWidth` at `nowrap`, + padding 20, + chevron part where present) + gaps + padding 32; available = the toolbar's `clientWidth`. If required > available, step 2 applies (inactive items icon-only 36 with tooltip; the active tool keeps its label). No shortened-label list (no abbreviations to translate). Re-measure on resize (ResizeObserver), font load, language change and mode change; return to step 1 only when 8 px wider than required (hysteresis, no flicker).
+
+**Q7 Surface rule (F17.7, overrides §3.6 Settings "scrolls inside" and §3.8 "scrolling bodies").**
+- Popovers and dialogs size to content (width within their range, height = content).
+- A popover that fits no placement (Q8) within the viewport − 8 inset renders as a modal dialog with the same content, the anchor's label as title, max width 480.
+- A dialog fits within viewport − 32 at 960 × 640 by design; only lists (`role` list, listbox, menu, tree, grid, or `data-scroll="list"`) scroll internally, with max height. Forms, headers and button rows never scroll; footers stay visible.
+- **Crop popover:** width 320, padding 16, gap 16. Row 1: group label `crop.margins` ("Margins ({unit})"), then four fields in one row, order Left · Top · Right · Bottom, each 64 wide (label `.t-caption` above, number input 32, `tabular-nums`, right-aligned), gap 8 (4 × 64 + 3 × 8 = 280 ≤ 288). Row 2: Segmented full width (288), three segments 94: `crop.pages.current` · `crop.pages.all` · `crop.pages.range`; "Range" reveals a full-width range field 32 below (popover grows). Row 3: footer right-aligned, Secondary Cancel + Primary `crop.apply`, gap 8.
+
+**Q8 Positioning engine (F17.8).** One module places tooltips, tips, coach marks, popovers, menus and the mini bar.
+- Gaps from the anchor: tooltip 8, popover/menu 8, mini bar 8 (§3.3), coach mark 12; viewport inset 8.
+- Placement order: tooltip top → bottom → right → left; popover/menu bottom-start → bottom-end → top-start → top-end → right → left; coach mark: its preferred side → opposite → remaining; mini bar per §3.3.
+- Per candidate: **flip** to the opposite side if it overflows, then **shift** along the edge to stay inside the inset, then test collisions; first candidate with no collision wins.
+- **Protected rects:** the anchor, focused element, all visible inputs, textareas, selects, contenteditables, buttons and toolbar items, the active tool, the current selection with handles. Notices (tips, coach marks, toasts) may not intersect any. Popovers and menus may not intersect the anchor, the active tool or the focused input. Tooltips may not cover their anchor or a focused input.
+- No placement: popover → dialog (Q7); tooltip → not shown; notice → waits in the queue (re-tested on layout change).
+- **Notice queue:** at most one notice visible. Priority: 1 error toast, 2 coach mark (active tour), 3 info/success toast, 4 tip. Only an error preempts a visible notice (which returns to the queue head). FIFO within a priority. Tips wait until no input has focus for 2 s; a queued item whose context is gone is dropped.
+
+**Q9 DOM gate (F17.10).** Run per registered surface at 960 × 640, en and de, light; tolerance 1 px. Violations are blockers.
+1. *Overflow:* the surface rect leaves the viewport, or a descendant rect leaves the surface rect, or a non-list element has `scrollWidth > clientWidth`.
+2. *Cut-off button:* a button, `[role=button]`, input or link is not fully inside the viewport and every clipping ancestor, or its label has `scrollWidth > clientWidth` (includes ellipsis).
+3. *Internal scroll violation:* an element with computed `overflow-y` auto/scroll and `scrollHeight > clientHeight` that is not a list (Q7 roles).
+4. *Overlap:* two interactive non-nested elements intersect; or two floating surfaces intersect; or a floating surface intersects a protected rect (Q8) outside itself. Modal dialogs over their scrim are exempt.
+
+**Strings.**
+
+| Key | en | de |
+|---|---|---|
+| `sign.cert.lockExisting` | Set by the first signature; it cannot be changed. | Von der ersten Signatur festgelegt; nicht änderbar. |
+| `sign.cert.lockNoneSet` | No lock: the file can still be changed | Keine Sperre: die Datei lässt sich noch ändern |
+| `mini.strokePt` | {n} pt | {n} pt |
+| `color.custom` / `color.hex` | Custom colour / Hex colour | Eigene Farbe / Hex-Farbe |
+| `color.apply` | Apply colour | Farbe übernehmen |
+| `color.hexInvalid` | Enter 3 or 6 hex digits, e.g. 3A7BFF. | 3 oder 6 Hex-Ziffern eingeben, z. B. 3A7BFF. |
+| `draw.straighten` | Straighten shapes automatically | Formen automatisch begradigen |
+| `draw.straightenHelp` | Turns rough circles, ellipses, rectangles, lines and arrows into clean shapes when you let go. Undo restores your stroke. | Macht beim Loslassen aus groben Kreisen, Ellipsen, Rechtecken, Linien und Pfeilen saubere Formen. Rückgängig stellt den Strich wieder her. |
+| `draw.straightened` | Straightened to {shape} | Zu {shape} begradigt |
+| `crop.margins` | Margins ({unit}) | Ränder ({unit}) |
+| `crop.pages.current` / `.all` / `.range` | This page / All pages / Range | Diese Seite / Alle Seiten / Bereich |
+| `crop.apply` | Crop | Zuschneiden |
+
+**Acceptance (F17, installed release build, 960 × 640 and 1280 × 800).**
+F-AC 1. A second certifying signature preselects the lock chosen last time; cancelling does not change it.
+F-AC 2. An approval signature on a P=2 file shows the read-only lock text and no radios; Tab skips it.
+F-AC 3. In all five modes the active tool is Solar-filled with the hairline; entering Lesen shows Auswahl filled.
+F-AC 4. Stroke width shows five 36-wide segments on one line in en and de; "0,5" in de.
+F-AC 5. The custom colour popover is ≥ 240 wide; the check sits inside the field; Enter applies a valid hex, Esc closes, invalid hex shows the danger caption without overlap.
+F-AC 6. The straighten switch is on by default; a drawn rough circle morphs in 150 ms; Undo restores the stroke; with reduced motion it swaps instantly.
+F-AC 7. No tool label ends in "…" or is clipped at 960 in de; when labels do not fit, inactive items are icon-only with tooltips and the active tool keeps its label.
+F-AC 8. The crop popover shows four fields in one row and the page segmented control without scrolling; buttons fully visible.
+F-AC 9. No tip, coach mark or toast covers an input, button or the active tool; only one notice is visible at a time.
+F-AC 10. A popover that cannot fit opens as a dialog; Settings at 960 × 640 does not scroll its form.
+F-AC 11. The DOM gate passes for every registered surface; any violation fails the run.
+
 ## 4. Components (R4)
 
 States apply to all: hover ≤ background/border/icon colour change; pressed scale 0.98 at most; focus = `--ring-focus` (keyboard only); disabled = `--opacity-disabled`, no pointer events, tooltip still explains why.
