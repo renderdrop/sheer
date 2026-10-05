@@ -64,7 +64,7 @@ const MarkRow = memo(function MarkRow({ docId, mark, index, row, top, selected, 
         'group absolute inset-x-0 box-border flex h-search-row cursor-pointer select-none items-center gap-2 rounded-sm p-2 text-sm',
         selected
           ? 'bg-selected forced-colors:outline-2 forced-colors:outline-[Highlight]'
-          : 'hover:bg-control-hover active:bg-control-pressed',
+          : 'hover:bg-subtle active:bg-pressed',
       )}
       style={{ top }}
     >

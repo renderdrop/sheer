@@ -35,7 +35,7 @@ function Row({ entry }: { entry: RecoveryEntry }) {
         aria-label={entry.displayName}
         aria-busy={busy}
         aria-describedby={metaId}
-        className="flex h-control-lg items-center gap-2 rounded-button ps-10 pe-2 hover:bg-control-hover"
+        className="flex h-control-lg items-center gap-2 rounded-button ps-10 pe-2 hover:bg-subtle"
       >
         <div className="min-w-0 flex-auto">
           <div className="truncate text-md" title={entry.displayName}>

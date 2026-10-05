@@ -185,7 +185,7 @@ export function Home({ platform }: HomeProps) {
   return (
     <div data-home-body="" className="relative flex min-h-0 flex-auto">
       <HomeNav section={section} onSection={setSection} />
-      <main className="relative min-w-0 flex-auto overflow-auto rounded-ss-xl bg-surface-solid home-main">
+      <main className="relative min-w-0 flex-auto overflow-auto rounded-ss-xl bg-surface home-main">
         <div
           className={cx(
             'mx-auto flex min-h-full flex-col transition-opacity [transition-duration:var(--motion-base)]',

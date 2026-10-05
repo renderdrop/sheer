@@ -98,7 +98,7 @@ export function RadioGroup<Value extends string>({
               LOOKS[look],
               selected
                 ? `bg-accent text-text ${SELECTED_FORCED_COLORS}`
-                : 'bg-transparent text-text not-disabled:hover:bg-control-hover not-disabled:active:bg-control-pressed',
+                : 'bg-transparent text-text not-disabled:hover:bg-subtle not-disabled:active:bg-pressed',
               'not-disabled:active:scale-(--scale-press)',
             )}
           >

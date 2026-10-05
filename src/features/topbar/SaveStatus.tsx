@@ -145,7 +145,7 @@ export function SaveStatus() {
           : shown === 'saved' || shown === 'saving' || shown === 'signed'
             ? 'text-text-muted'
             : 'text-text',
-        inert ? 'cursor-default' : 'cursor-pointer hover:bg-control-hover active:bg-control-pressed',
+        inert ? 'cursor-default' : 'cursor-pointer hover:bg-subtle active:bg-pressed',
       )}
     >
       {shown === 'saved' &&

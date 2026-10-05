@@ -222,7 +222,7 @@ export function KindControl({
                 'inline-flex size-control-sm cursor-pointer items-center justify-center rounded-sm border transition-[background-color,color,border-color] duration-fast',
                 'aria-disabled:cursor-not-allowed aria-disabled:opacity-(--opacity-disabled)',
                 checked
-                  ? 'border-control-border bg-surface-solid text-text'
+                  ? 'border-control-border bg-surface text-text'
                   : 'border-transparent text-text-muted not-aria-disabled:hover:text-text',
               )}
             >

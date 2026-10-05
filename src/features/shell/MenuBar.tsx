@@ -79,7 +79,7 @@ function BarMenu({
           onPointerEnter={onHover}
           className={cx(
             'h-control-sm shrink-0 cursor-default rounded-sm bg-transparent px-2 t-label font-normal text-inherit transition-colors',
-            'hover:bg-control-hover aria-expanded:bg-control-pressed',
+            'hover:bg-subtle aria-expanded:bg-pressed',
           )}
         >
           <Title label={label} access={access} show={altHeld} />

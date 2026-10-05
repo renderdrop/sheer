@@ -275,6 +275,17 @@ describe('Tooltip groups and lingering (MOTION spell 16)', () => {
     await gone();
   });
 
+  it('hides on scroll anywhere', async () => {
+    const { getAllByRole } = render(two);
+    const [first] = getAllByRole('button');
+    if (first === undefined) throw new Error('button missing');
+    fireEvent.pointerEnter(first);
+    advance(400);
+    expect(openTooltip()).not.toBeNull();
+    fireEvent.scroll(document.body);
+    await gone();
+  });
+
   it('keeps the same delays under reduced motion (it only fades)', () => {
     const original = window.matchMedia;
     window.matchMedia = (query: string) =>

@@ -21,7 +21,7 @@ export const BODY_LINES = 6;
 /** A reply field grows to this many lines, then scrolls. */
 export const REPLY_MAX = { maxHeight: 'calc(4lh + 2 * var(--spacing-1))' } as const;
 export const FIELD =
-  'block w-full resize-none rounded-sm border border-control-border bg-surface-solid px-2 py-1 text-sm text-text ' +
+  'block w-full resize-none rounded-sm border border-control-border bg-surface px-2 py-1 text-sm text-text ' +
   'placeholder:text-text-muted';
 
 function Avatar({ author, size }: { author: string | null; size: 'md' | 'sm' }) {
@@ -30,7 +30,7 @@ function Avatar({ author, size }: { author: string | null; size: 'md' | 'sm' }) 
     <span
       aria-hidden="true"
       className={cx(
-        'inline-flex shrink-0 items-center justify-center rounded-pill bg-text font-medium text-surface-solid',
+        'inline-flex shrink-0 items-center justify-center rounded-pill bg-text font-medium text-surface',
         size === 'md' ? 'size-6 text-xs' : 'size-5 text-xs',
       )}
     >
@@ -63,9 +63,7 @@ export const Marker = forwardRef<
       onFocus={onFocus}
       className={cx(
         'inline-flex size-6 cursor-pointer items-center justify-center rounded-pill p-0 text-xs font-medium',
-        citation
-          ? 'border border-solid border-control-border bg-surface-solid text-text'
-          : 'border-0 bg-text text-surface-solid',
+        citation ? 'border border-solid border-control-border bg-surface text-text' : 'border-0 bg-text text-surface',
         'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus',
         selected && 'outline-2 outline-offset-2 outline-text',
       )}

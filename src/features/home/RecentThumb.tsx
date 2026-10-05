@@ -33,7 +33,7 @@ export function RecentThumb({ id, missing }: { id: number; missing: boolean }) {
   return (
     <span
       data-recent-tile=""
-      className="relative flex h-(--home-tile-height) w-(--home-tile-width) shrink-0 items-center justify-center overflow-hidden rounded-sm border border-border-subtle bg-surface-solid text-text-muted"
+      className="relative flex h-(--home-tile-height) w-(--home-tile-width) shrink-0 items-center justify-center overflow-hidden rounded-sm border border-border-subtle bg-surface text-text-muted"
     >
       <SolarGlow variant="card" />
       <span className="relative">
@@ -47,7 +47,7 @@ export function RecentThumb({ id, missing }: { id: number; missing: boolean }) {
           draggable={false}
           onLoad={() => setLoaded(true)}
           className={cx(
-            'absolute inset-0 size-full bg-surface-solid object-contain transition-opacity duration-base',
+            'absolute inset-0 size-full bg-surface object-contain transition-opacity duration-base',
             loaded ? 'opacity-100' : 'opacity-0',
           )}
         />

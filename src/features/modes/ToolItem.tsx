@@ -28,7 +28,7 @@ const CHEVRON =
 
 const VARIANT =
   'flex h-(--space-8) w-full cursor-pointer items-center gap-2 rounded-sm px-2 text-start text-md text-text ' +
-  'hover:bg-control-hover aria-disabled:cursor-not-allowed aria-disabled:opacity-(--opacity-disabled) aria-checked:font-semibold';
+  'hover:bg-subtle aria-disabled:cursor-not-allowed aria-disabled:opacity-(--opacity-disabled) aria-checked:font-semibold';
 
 export interface ToolItemProps {
   slot: SlotDef;

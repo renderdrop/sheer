@@ -47,10 +47,6 @@
   --color-on-accent: var(--on-accent);
   --color-focus: var(--accent);
   --color-control-border: var(--color-stone);
-  /* DEPRECATED (POL-2): use bg-subtle / --surface-subtle. Remaining users are pinned in tokens.test.ts. */
-  --color-control-hover: var(--color-sand);
-  /* DEPRECATED (POL-2): use bg-pressed / --surface-pressed. */
-  --color-control-pressed: var(--surface-pressed);
   --color-selected: var(--color-sand);
   --color-fill-disabled: var(--color-sand);
   --color-track: var(--surface-pressed);
@@ -65,8 +61,6 @@
   --color-error-text: var(--color-danger);
   --color-surface: var(--color-white);
   --color-surface-strong: var(--color-white);
-  /* DEPRECATED (POL-2): use --color-surface (White). */
-  --color-surface-solid: var(--color-white);
   --color-backdrop: var(--scrim);
   /* The glyph on the Windows close button's hover (--win-close-hover). */
   --color-on-close: var(--color-white);
@@ -532,16 +526,7 @@
 }
 
 /* legacy aliases — removed in R7 (ADR-100) */
-/* DEPRECATED (POL-2): the --spacing-* aliases are replaced by the BRAND names (--space-*, --control-*, ...). */
 @theme static {
-  --spacing-tabs-row: var(--tabs-row-height);
-  --spacing-hub-max: var(--hub-max-width);
-  --spacing-hub-card: var(--hub-card-height);
-  --spacing-hub-compact: var(--hub-card-compact);
-  --spacing-hub-tile: var(--hub-tile);
-  --spacing-hub-tile-compact: var(--hub-tile-compact);
-  --spacing-logo-hub: var(--logo-hub);
-  --spacing-logo-hub-slot: var(--logo-hub-slot);
   /* Highlight, stroke and signature-ink palette (DESIGN v2 1.4): document content, the same in both themes. */
   --color-hl-solar: var(--hl-solar);
   --color-hl-mint: var(--hl-mint);
@@ -601,8 +586,6 @@
     --color-border-subtle: ButtonBorder;
     --color-border-control: ButtonBorder;
     --color-control-border: ButtonBorder;
-    --color-control-hover: Canvas;
-    --color-control-pressed: Canvas;
     --color-selected: Canvas;
     --color-fill-disabled: Canvas;
     --color-track: GrayText;
@@ -617,7 +600,6 @@
     --color-error-text: CanvasText;
     --color-surface: Canvas;
     --color-surface-strong: Canvas;
-    --color-surface-solid: Canvas;
     --color-on-close: HighlightText;
     /* Document layer: the translucent fills would be replaced or dropped, so selection and search hits become the
        system Highlight. It is opaque, so a box in this color needs an outline or a text color of its own (HighlightText). */
@@ -1209,10 +1191,10 @@
   --margin-free-min: 360px; /* free page width below which the column collapses */
   --margin-marker: 24px; /* avatar marker in the compact column */
   --note-bubble: var(
-    --color-surface-solid
+    --color-surface
   ); /* POL-4: White paper; the Solar edge below carries the note colour (DESIGN 3.5, §26) */
   --note-bubble-edge: var(--accent);
-  --note-bubble-resolved: var(--color-surface-solid);
+  --note-bubble-resolved: var(--color-surface);
 }
 
 /* F15 B4–B5 */

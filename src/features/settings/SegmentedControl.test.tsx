@@ -160,9 +160,9 @@ describe('SegmentedControl', () => {
 
   it('shows the selected look on the checked radio only, in tokens', () => {
     setup(<Demo initial="dark" />);
-    expect(radio('Dark').className).toContain('bg-surface-solid');
+    expect(radio('Dark').className).toContain('bg-surface');
     expect(radio('Dark').className).toContain('border-control-border');
-    expect(radio('Light').className).not.toContain('bg-surface-solid');
+    expect(radio('Light').className).not.toContain('bg-surface');
     expect(radio('Light').className).toContain('text-text-muted');
     // DESIGN v2 §4: a Sand track (radius md, 2 px padding) around segments of radius sm.
     expect(screen.getByRole('radiogroup').className).toContain('bg-subtle');

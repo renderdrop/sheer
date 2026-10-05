@@ -115,7 +115,7 @@ const OutlineRow = memo(function OutlineRow({
           'absolute inset-x-0 flex h-control-md cursor-pointer select-none items-center gap-1 rounded-sm pe-2 text-md',
           selected
             ? 'bg-selected forced-colors:outline-2 forced-colors:outline-[Highlight]'
-            : 'hover:bg-control-hover active:bg-control-pressed',
+            : 'hover:bg-subtle active:bg-pressed',
           muted ? 'text-text-muted forced-colors:text-[GrayText]' : derived ? 'text-text-muted' : 'text-text',
         )}
         style={{

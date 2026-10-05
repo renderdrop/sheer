@@ -74,8 +74,6 @@ Tailwind names stay where listed, so markup changes only where the row says "ren
 | `--color-on-accent` | Ink |
 | `--color-focus` | `--accent` (always drawn with the Ink hairline, §2) |
 | `--color-control-border` | Stone |
-| `--color-control-hover` | Sand |
-| `--color-control-pressed` | #E5E5E1 |
 | `--color-selected` | Sand (plus a non-colour cue, §2) |
 | `--color-fill-disabled` | Sand |
 | `--color-track` | #E5E5E1 |

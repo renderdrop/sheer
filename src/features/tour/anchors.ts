@@ -62,10 +62,10 @@ export function resolveAnchor(name: string): ResolvedAnchor | null {
 }
 
 const LAST_RESORT: readonly AnchorSpec[] = [
-  { selector: '[data-tour-anchor="topbar-page-field"]', side: 'bottom', align: 'center' },
-  { selector: '[data-tour-anchor="topbar-file-name"]', side: 'bottom', align: 'start' },
+  ANCHORS['topbar-page-field'],
+  ANCHORS['topbar-file-name'],
   { selector: '[data-canvas-content]', side: 'bottom', align: 'center' },
-];
+].filter((spec): spec is AnchorSpec => spec !== undefined);
 
 /** The mode a step's anchor lives in, or `null` when it is in every mode (the top bar, the sidebar toggle). */
 export function modeOfAnchor(name: string): Mode | null {

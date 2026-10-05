@@ -32,7 +32,7 @@ function CaptionButton({ label, icon, onClick, danger = false }: CaptionButtonPr
         CAPTION_BUTTON,
         danger
           ? 'hover:bg-win-close hover:text-on-close active:bg-win-close active:text-on-close'
-          : 'hover:bg-control-hover active:bg-control-pressed',
+          : 'hover:bg-subtle active:bg-pressed',
       )}
     >
       <Icon icon={icon} />

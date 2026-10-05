@@ -211,7 +211,7 @@ function MergeModal({ held }: { held: readonly DocumentInfo[] | null }) {
               data-key={entry.key}
               tabIndex={entry.key === tabStop ? 0 : -1}
               onKeyDown={(event) => onRowKey(event, index)}
-              className={`flex ${rowHeight} items-center gap-2 rounded-card border border-divider bg-surface-solid px-2 ${
+              className={`flex ${rowHeight} items-center gap-2 rounded-card border border-divider bg-surface px-2 ${
                 drag?.key === entry.key ? 'opacity-60' : ''
               }`}
             >

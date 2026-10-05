@@ -152,11 +152,14 @@ export function Tooltip({ label, shortcut, note, side = 'bottom', disabled = fal
     document.addEventListener('pointermove', onMove, { passive: true });
     document.documentElement.addEventListener('mouseleave', onAway);
     window.addEventListener('blur', onAway);
+    // Any scroll moves the anchor from under the tooltip (scroll does not bubble: capture catches nested scrollers).
+    document.addEventListener('scroll', onAway, { capture: true, passive: true });
     document.addEventListener('visibilitychange', onAway);
     return () => {
       document.removeEventListener('pointermove', onMove);
       document.documentElement.removeEventListener('mouseleave', onAway);
       window.removeEventListener('blur', onAway);
+      document.removeEventListener('scroll', onAway, { capture: true });
       document.removeEventListener('visibilitychange', onAway);
     };
   }, [open, id, hideNow]);

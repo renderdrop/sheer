@@ -42,7 +42,7 @@ import { selectionOf, useOrganize } from './store';
 /** Pixels the pointer must travel from a page before a drag begins (DESIGN 3.28). */
 export const DRAG_THRESHOLD_PX = 4;
 /** How long after the last change of the grid's width the cells slide again. */
-const RESIZE_SETTLE_MS = 120;
+const CELL_SLIDE_RESUME_MS = 120;
 /** Within this many px of the scroller's top or bottom edge a drag scrolls it. */
 const EDGE_PX = 48;
 const MAX_SCROLL_PER_FRAME = 24;
@@ -142,7 +142,7 @@ export function OrganizeGrid({ docId, scheduler }: OrganizeGridProps) {
         if (previous.width !== next.width) {
           setResizing(true);
           if (resizeTimer.current !== null) clearTimeout(resizeTimer.current);
-          resizeTimer.current = setTimeout(() => setResizing(false), RESIZE_SETTLE_MS);
+          resizeTimer.current = setTimeout(() => setResizing(false), CELL_SLIDE_RESUME_MS);
         }
         return next;
       });

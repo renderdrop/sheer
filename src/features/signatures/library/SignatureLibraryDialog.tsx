@@ -129,7 +129,7 @@ function LibraryRow({ item, deleted, session, tabStop, editing, onEdit, onFocusR
       onFocus={(event) => {
         if (event.target === event.currentTarget) onFocusRow();
       }}
-      className="flex items-center gap-2 rounded-button p-2 hover:bg-control-hover focus-within:bg-control-hover"
+      className="flex items-center gap-2 rounded-button p-2 hover:bg-subtle focus-within:bg-subtle"
     >
       <SignaturePreview item={item} />
       <div className="flex min-w-0 flex-1 flex-col">

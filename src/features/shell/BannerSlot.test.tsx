@@ -1,12 +1,12 @@
 // @vitest-environment jsdom
-import { act, screen } from '@testing-library/react';
+import { act, renderHook, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { useDocuments } from '../../stores/documents';
 import { resetDocuments } from '../../stores/documents.testutil';
 import { useUi } from '../../stores/ui';
 import { setup } from '../../test/render';
-import { BannerSlot, MAX_NOTICES, queuedCount } from './BannerSlot';
+import { BannerSlot, MAX_NOTICES, queuedCount, useChildCount } from './BannerSlot';
 
 const uiInitial = useUi.getState();
 
@@ -22,6 +22,21 @@ afterEach(() => {
 });
 
 describe('queuedCount', () => {
+  it('counts only the children with content, not empty wrappers', async () => {
+    const host = document.createElement('div');
+    host.append(document.createElement('div'));
+    const full = document.createElement('div');
+    full.textContent = 'notice';
+    host.append(full);
+    const { result } = renderHook(() => useChildCount({ current: host }));
+    expect(result.current).toBe(1);
+    await act(async () => {
+      host.append(Object.assign(document.createElement('div'), { textContent: 'two' }));
+      await Promise.resolve();
+    });
+    expect(result.current).toBe(2);
+  });
+
   it('counts every notice behind a higher banner and only the ones past the cap otherwise', () => {
     expect(queuedCount(3, 'redact')).toBe(3);
     expect(queuedCount(1, 'form')).toBe(1);

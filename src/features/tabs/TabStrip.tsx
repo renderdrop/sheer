@@ -137,7 +137,7 @@ export function TabStrip() {
               animate={{ opacity: 1, transition: SPRING.fast }}
               className={cx(
                 'group/tab relative flex h-control-sm min-w-tab-min max-w-tab-max flex-1 items-center rounded-sm ps-2 pe-1',
-                selected ? 'text-text' : 'text-text-muted hover:bg-control-hover hover:text-text',
+                selected ? 'text-text' : 'text-text-muted hover:bg-subtle hover:text-text',
               )}
               onAuxClick={(event: MouseEvent) => {
                 if (event.button === 1) {

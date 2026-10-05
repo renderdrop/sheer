@@ -96,7 +96,7 @@ export function ColourSection({
 
 const SEGMENT =
   'flex h-control-md min-w-0 flex-1 basis-0 cursor-pointer items-center justify-center rounded-sm text-md aria-disabled:cursor-not-allowed ' +
-  'hover:bg-control-hover aria-checked:bg-selected aria-checked:text-text';
+  'hover:bg-subtle aria-checked:bg-selected aria-checked:text-text';
 const SEGMENTS = 'flex gap-1 rounded-button border border-divider p-1';
 
 export function StrokeSection({ width, disabled, onChange }: SectionProps & { width: Shared<number> }) {

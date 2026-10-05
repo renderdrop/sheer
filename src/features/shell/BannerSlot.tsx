@@ -15,16 +15,16 @@ import { BannerRow, XfaBannerRow } from './Banner';
 /** How many of the other notices show at once; the rest wait behind them and are counted in a line below (DESIGN v2 3.2). */
 export const MAX_NOTICES = 2;
 
-/** The number of children of an element, kept up to date (the notices that are mounted are its children; an absent one renders nothing). */
-function useChildCount(ref: RefObject<HTMLElement | null>): number {
+/** The number of children of an element that have content, kept up to date (an absent notice may leave an empty wrapper; it is not counted). */
+export function useChildCount(ref: RefObject<HTMLElement | null>): number {
   const [count, setCount] = useState(0);
   useLayoutEffect(() => {
     const element = ref.current;
     if (element === null) return;
-    const read = () => setCount(element.children.length);
+    const read = () => setCount([...element.children].filter((child) => !child.matches(':empty')).length);
     read();
     const observer = new MutationObserver(read);
-    observer.observe(element, { childList: true });
+    observer.observe(element, { childList: true, subtree: true });
     return () => observer.disconnect();
   }, [ref]);
   return count;

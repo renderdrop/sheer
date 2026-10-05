@@ -70,7 +70,7 @@ const HitRow = memo(function HitRow({ hit, top, row, snippet, active, tabStop, o
         'absolute inset-x-0 box-border flex h-search-row cursor-pointer select-none items-center rounded-sm p-2 text-sm',
         active
           ? 'bg-selected forced-colors:outline-2 forced-colors:outline-[Highlight]'
-          : 'hover:bg-control-hover active:bg-control-pressed',
+          : 'hover:bg-subtle active:bg-pressed',
       )}
       style={{ top }}
     >

@@ -90,7 +90,7 @@ describe('CaptionBar (DESIGN 2.2, Windows)', () => {
     const close = screen.getByRole('button', { name: 'Close' });
     expect(close.className).toContain('hover:bg-win-close');
     expect(close.className).toContain('hover:text-on-close');
-    expect(screen.getByRole('button', { name: 'Minimize' }).className).toContain('hover:bg-control-hover');
+    expect(screen.getByRole('button', { name: 'Minimize' }).className).toContain('hover:bg-subtle');
   });
 
   it('the buttons are 46 wide and as high as the 56 strip through the layout tokens', () => {

@@ -12,7 +12,7 @@ const FILE_KIND = 'PDF';
 /** The sheet of the preview card: a white page with a file tile and the format. The clone of the opening transition draws it too. */
 export function DropCardFace() {
   return (
-    <div className="flex size-full flex-col items-center justify-center gap-2 rounded-sm bg-surface-solid text-text-muted">
+    <div className="flex size-full flex-col items-center justify-center gap-2 rounded-sm bg-surface text-text-muted">
       <Icon icon={FileText} size={24} />
       <span className="text-sm">{FILE_KIND}</span>
     </div>

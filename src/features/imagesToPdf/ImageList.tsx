@@ -232,7 +232,7 @@ export function ImageList({ batch, entries, onChange, failed, onFail, disabled }
               data-index={entry.index}
               tabIndex={entry.index === tabStop ? 0 : -1}
               onKeyDown={(event) => onRowKey(event, position)}
-              className={`flex ${ROW} items-center gap-2 rounded-card border border-divider bg-surface-solid px-2 ${
+              className={`flex ${ROW} items-center gap-2 rounded-card border border-divider bg-surface px-2 ${
                 drag?.index === entry.index ? 'opacity-60' : ''
               }`}
             >

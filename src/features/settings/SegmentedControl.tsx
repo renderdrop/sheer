@@ -79,7 +79,7 @@ export function SegmentedControl<Value extends string>({
               // The segmented look of DESIGN v2 §4 (as `Segmented`): the chosen segment White with a Stone border, the others muted.
               'h-control-sm min-w-0 flex-1 basis-0 rounded-sm border px-3 text-md',
               selected
-                ? 'border-control-border bg-surface-solid font-medium text-text forced-colors:border-accent'
+                ? 'border-control-border bg-surface font-medium text-text forced-colors:border-accent'
                 : 'border-transparent font-normal text-text-muted not-aria-disabled:enabled:hover:text-text',
             )}
           >

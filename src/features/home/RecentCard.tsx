@@ -88,7 +88,7 @@ export function RecentCard({
   return (
     <li
       data-recent-card=""
-      className="group/card relative h-(--home-card-height) rounded-md border border-border-subtle bg-surface-solid transition-colors [transition-duration:var(--motion-fast)] hover:bg-subtle focus-within:bg-subtle"
+      className="group/card relative h-(--home-card-height) rounded-md border border-border-subtle bg-surface transition-colors [transition-duration:var(--motion-fast)] hover:bg-subtle focus-within:bg-subtle"
     >
       <button
         type="button"
