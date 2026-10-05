@@ -1,8 +1,8 @@
 # STATE
-phase: v1.4.1 patch "Politur v1.2–v1.4 + CI runtime" released (tag v1.4.1)
-version: 1.4.1 (tag v1.4.1)
-current_item: SESSION TOPIC F17 "UI quality after owner test" → v1.4.2 (ADR-124). Wave 1: D spec §3.9, F17.9 thumbnails, F17.1 delete cards, F17.5 shape logic, F17.10 DOM gate. Wave 2 after spec: positioning engine + surface rule (F17.7/8), mini bar + colour + crop + shape switch (F17.3/4/5/7), tool row + Lesen + lock memory (F17.0a/2/6). Then gate, notice audit series, installed-build acceptance 960×640 + 1280×800, v1.4.2
-last_completed: v1.4.1 Politur + CI runtime (ADR-123)
+phase: v1.4.2 patch "F17 UI quality" released (tag v1.4.2)
+version: 1.4.2 (tag v1.4.2)
+current_item: SESSION TOPIC F17 CLOSED (ADR-122) — report docs/reports/2026-10-05-v1.4.2-f17-ui-qualitaet.md, STOP set. Next topic from the owner
+last_completed: F17 UI quality after the owner test (ADR-124)
 loop_count_this_session: 0
 open_blockers: 2 human-only (B-002, B-005)
 notes: ADR-120: every loop starts with `bash scripts/ci-status.sh` (last completed run on main, never wait); red = fix first. v1.4 W0 2a1e3f3 (stable RustCrypto line), seam 586feeb. Release v1.3.0 published.
@@ -11,7 +11,9 @@ notes: ADR-120: every loop starts with `bash scripts/ci-status.sh` (last complet
   stop it with taskkill sheer.exe + Stop-Process on tauri.js/vite.js only. Acceptance helpers in the session scratchpad (keys.ps1, wheel.ps1, shotsize.ps1, dnd.ps1 with topmost guard).
 ci_log: (ADR-120 corrected — package commit → CI run; result filled in at the next push)
   - 9b60ae8..4a70409 F17 wave 1 (spec, F17.9, F17.1, F17.5 logic, F17.10 gate) → run #85 (37356243921) GREEN
-  - e92336c..81b0533 DoD gate + F17 wave 2 (engine, minibar/colour/morph, modes/crop, lock memory) → run #86 (37360039469) pending
+  - e92336c..81b0533 DoD gate + F17 wave 2 → run #86 (37360039469) GREEN
+  - 14cfe8a..1551ad3 gate alignment + dialog fixes → run #87 (37365237817) Windows job cancelled by the runner after 15 min (no failing step; web + macOS green), covered by #88
+  - 7a87c23 acceptance round 1 fixes → run #88 (37372013180) GREEN
   - e61e9e9 v1.4 backend B1–B4 → run #71 (37302935989) red: sig_validate command tests bound PDFium twice → fixed aaabac2
   - 02f5650 v1.4 frontend F1–F4 + glue → run #73 (37308405639) red: .p12 decode slot race → fixed 72316ba
   - 0bab7a6 v1.4 acceptance fixes → run #74 (37313577074) red: same PDFium test cause (aaabac2 not yet in)

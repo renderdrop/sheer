@@ -6,6 +6,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.4.2] - 2026-10-05
+
+Patch "F17 — UI quality after the owner test" (docs/FEEDBACK.md F17, ADR-124, DESIGN §3.9).
+
+### Added
+- "Straighten shapes automatically" (on by default): on release a stroke that matches a circle, ellipse, rectangle, line or arrow
+  morphs into that shape in 150 ms; Ctrl+Z brings the raw stroke back. Switch in the stroke mini bar.
+- The sign sheet remembers the last lock choice and always shows the lock; an approval signature shows the document's lock read-only.
+
+### Changed
+- One positioning engine for tooltips, tips, coach marks, popovers and the mini bar: notices never cover inputs or buttons, only one
+  notice is visible at a time, a popover that does not fit becomes a dialog.
+- Popovers and dialogs size to their content and fit 960 × 640 without inner scrolling (properties, export images, certificate
+  signing, menus, crop, redact, about, settings); only lists scroll.
+- Stroke width is a fixed segmented control (0,5 · 1 · 2 · 4 · 8 pt); the custom colour popover has the palette on top and a
+  full-width hex field with the confirm check inside it.
+- Crop popover: four margin fields in one row, page choice as a segmented control.
+- The active tool is Solar-filled in every mode, including Lesen; tool labels never end in "…" or get cut — narrow windows show
+  icons with tooltips.
+- Thumbnails render at 3× and are box-downscaled.
+
+### Fixed
+- Deleting a highlight no longer leaves stale card heights or hover state in the comments panel.
+
+### Internal
+- New DoD gate `scripts/ui/surface-gate.mjs`: every popover, dialog, the mini bar and each coach step checked at 960 × 640 and
+  1280 × 800, en and de, for overflow, cut-off controls, inner scroll and overlap.
+- glib Dependabot alert dismissed as not used (Linux-only GTK chain).
+
 ## [1.4.1] - 2026-10-05
 
 Patch "Politur v1.2–v1.4 + CI runtime" (ADR-123).

@@ -59,3 +59,66 @@ describe('selection protection', () => {
     expect(rects.map((r) => r.left).sort((a, b) => a - b)).toEqual([0, 90, 100]);
   });
 });
+
+describe('crop handles (data-protect="notice")', () => {
+  function scene() {
+    const anchor = box(document.createElement('button'), 0, 0);
+    const handle = box(document.createElement('span'), 100, 100, 8, 8);
+    handle.setAttribute('data-protect', 'notice');
+    document.body.append(anchor, handle);
+    return anchor;
+  }
+
+  it('are protected for a coach mark and a tip', () => {
+    const anchor = scene();
+    for (const kind of ['coach', 'tip'] as const) {
+      expect(protectedRects(kind, anchor, document.createElement('div')).map((r) => r.left)).toContain(100);
+    }
+  });
+
+  it('are not protected for a popover or a menu, so the crop popover may sit over them', () => {
+    const anchor = scene();
+    for (const kind of ['popover', 'menu'] as const) {
+      expect(protectedRects(kind, anchor, document.createElement('div')).map((r) => r.left)).toEqual([0]);
+    }
+  });
+
+  it('are skipped when they have no box or lie inside the floating surface', () => {
+    const anchor = box(document.createElement('button'), 0, 0);
+    const hidden = box(document.createElement('span'), 50, 50, 0, 0);
+    hidden.setAttribute('data-protect', 'notice');
+    const floating = document.createElement('div');
+    const inside = box(document.createElement('span'), 70, 70, 8, 8);
+    inside.setAttribute('data-protect', 'notice');
+    floating.append(inside);
+    document.body.append(anchor, hidden, floating);
+    expect(protectedRects('coach', anchor, floating).map((r) => r.left)).toEqual([0]);
+  });
+});
+
+describe('selected annotation frame for popovers', () => {
+  function frameOf(pressed: boolean) {
+    const frame = box(document.createElement('div'), 100, 100);
+    frame.setAttribute('data-annot-frame', '1');
+    frame.setAttribute('aria-pressed', String(pressed));
+    return frame;
+  }
+
+  it('is protected even without handles, and an unpressed frame is not', () => {
+    const anchor = box(document.createElement('button'), 0, 0);
+    const frame = frameOf(true);
+    document.body.append(anchor, frame);
+    expect(protectedRects('popover', anchor, document.createElement('div')).map((r) => r.left)).toEqual([0, 100]);
+    frame.setAttribute('aria-pressed', 'false');
+    expect(protectedRects('popover', anchor, document.createElement('div')).map((r) => r.left)).toEqual([0]);
+  });
+
+  it('is left out when the popover itself sits inside the frame', () => {
+    const anchor = box(document.createElement('button'), 0, 0);
+    const frame = frameOf(true);
+    const floating = document.createElement('div');
+    frame.append(floating);
+    document.body.append(anchor, frame);
+    expect(protectedRects('popover', anchor, floating).map((r) => r.left)).toEqual([0]);
+  });
+});

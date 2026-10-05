@@ -574,3 +574,76 @@ describe('recognise: F17.5 sample strokes', () => {
     expect(morph.to).toBe(shape);
   });
 });
+
+describe('recognise: F17 acceptance, direction and tilt', () => {
+  const shaftTo = (x0: number, x1: number, seed: number): Point[] =>
+    along(
+      [
+        { x: x0, y: 100 },
+        { x: x1, y: 100 },
+      ],
+      4,
+      0.5,
+      random(seed),
+    );
+  const tilted = (degrees: number): Point[] =>
+    turn(rectCorners(0, 0, 160, 90), degrees).map((p) => ({ x: p.x + 100, y: p.y + 100 }));
+
+  it('takes an arrow drawn right to left for an arrow whose tip is on the left', () => {
+    const hook = along(
+      [
+        { x: 20, y: 100 },
+        { x: 44, y: 88 },
+        { x: 20, y: 100 },
+        { x: 44, y: 112 },
+      ],
+      4,
+      0.4,
+      random(202),
+    );
+    const shape = recognise([...shaftTo(220, 20, 201), ...hook.slice(1)]);
+    expect(shape?.kind).toBe('arrow');
+    if (shape?.kind === 'arrow') {
+      expect(shape.to.x).toBeCloseTo(20, -1);
+      expect(shape.from.x).toBeCloseTo(220, -1);
+    }
+  });
+
+  it('takes a plain stroke drawn right to left for a line, not an arrow', () => {
+    const shape = recognise(shaftTo(220, 20, 203));
+    expect(shape?.kind).toBe('line');
+    if (shape?.kind === 'line') expect(shape.from.x).toBeGreaterThan(shape.to.x);
+  });
+
+  it('does not take a right-to-left arrow whose hook is as long as the shaft for an arrow', () => {
+    const hook = along(
+      [
+        { x: 20, y: 100 },
+        { x: 120, y: 40 },
+        { x: 20, y: 100 },
+        { x: 120, y: 160 },
+      ],
+      4,
+      0.4,
+      random(205),
+    );
+    expect(recognise([...shaftTo(220, 20, 204), ...hook.slice(1)])?.kind).not.toBe('arrow');
+  });
+
+  it('takes a rectangle turned by 10 degrees for a rectangle of about its size', () => {
+    const shape = recognise(along(tilted(10), 5, 0.6, random(206)));
+    expect(shape?.kind).toBe('rect');
+    if (shape?.kind === 'rect') {
+      expect(shape.box.w).toBeGreaterThan(150);
+      expect(shape.box.h).toBeGreaterThan(80);
+    }
+  });
+
+  it('takes the same rectangle turned the other way (-10 degrees) for a rectangle too', () => {
+    expect(recognise(along(tilted(-10), 5, 0.6, random(207)))?.kind).toBe('rect');
+  });
+
+  it('does not take a rectangle turned by 35 degrees for an axis-aligned rectangle', () => {
+    expect(recognise(along(tilted(35), 5, 0.6, random(208)))?.kind).not.toBe('rect');
+  });
+});

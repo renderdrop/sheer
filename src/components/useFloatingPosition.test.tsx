@@ -31,6 +31,7 @@ function runFrame(): void {
 /** Where the mocked anchor is. A test moves it between frames. */
 let anchorRect: DOMRect;
 let rectReads: number;
+let blockerRect: DOMRect;
 
 beforeEach(() => {
   frames = new Map();
@@ -41,10 +42,12 @@ beforeEach(() => {
   vi.stubGlobal('cancelAnimationFrame', cancelFrame);
   anchorRect = rect(100, 100, 40, 32);
   rectReads = 0;
+  blockerRect = rect(0, 0, 0, 0);
   vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: HTMLElement) {
     rectReads += 1;
     if (this.dataset.slot !== undefined) return rect(50, 0, 310, 500);
     if (this.dataset.avoid !== undefined) return rect(0, 0, 500, 200);
+    if (this.dataset.blocker !== undefined) return blockerRect;
     return this.tagName === 'BUTTON' ? anchorRect : rect(0, 0, 200, 100);
   });
 });
@@ -186,6 +189,69 @@ describe('useFloatingPosition', () => {
     expect(observer.takeRecords().length).toBeGreaterThan(0);
     expect(floating.style.top).toBe('240px');
     observer.disconnect();
+  });
+
+  describe('a notice that does not fit (DESIGN 3.9 Q8)', () => {
+    function Notice() {
+      const anchor = useRef<HTMLButtonElement>(null);
+      const floating = useRef<HTMLDivElement>(null);
+      useFloatingPosition({
+        anchor,
+        floatingRef: floating,
+        active: true,
+        side: 'bottom',
+        align: 'start',
+        kind: 'coach',
+      });
+      return (
+        <>
+          <button ref={anchor} type="button">
+            anchor
+          </button>
+          <div data-blocker="" role="button" tabIndex={0} />
+          <div ref={floating} data-testid="floating" />
+        </>
+      );
+    }
+    const coversAll = () => rect(0, 0, 5000, 5000);
+    const free = () => rect(0, 0, 0, 0);
+    const retry = () => {
+      fireEvent.scroll(window);
+      runFrame();
+    };
+
+    it('is hidden while no candidate fits and shown again when space frees', () => {
+      blockerRect = coversAll();
+      const { getByTestId } = render(<Notice />);
+      const floating = getByTestId('floating');
+      expect(floating.style.visibility).toBe('hidden');
+      blockerRect = free();
+      retry();
+      expect(floating.style.visibility).toBe('');
+      expect(floating.style.left).not.toBe('');
+    });
+
+    it('stays hidden for as long as the space is taken, however often it is tried', () => {
+      blockerRect = coversAll();
+      const { getByTestId } = render(<Notice />);
+      retry();
+      retry();
+      retry();
+      expect(getByTestId('floating').style.visibility).toBe('hidden');
+      expect(getByTestId('floating').style.left).toBe('');
+    });
+
+    it('hides again when the space is taken once more after it was shown', () => {
+      const { getByTestId } = render(<Notice />);
+      const floating = getByTestId('floating');
+      expect(floating.style.visibility).toBe('');
+      blockerRect = coversAll();
+      retry();
+      expect(floating.style.visibility).toBe('hidden');
+      blockerRect = free();
+      retry();
+      expect(floating.style.visibility).toBe('');
+    });
   });
 
   describe('clampTo', () => {

@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { act, screen, waitFor } from '@testing-library/react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { SaveResult } from '../../../api/save';
 import type { SigningIdentityInfo } from '../../../api/signing';
@@ -258,5 +258,41 @@ describe('the seal resize geometry (DESIGN 3.8 L6, AC 32)', () => {
     expect(resizeBy(rect, 1, 1, 1, 0, PAGE)).toEqual({ x: 100, y: 100, w: 201, h: 80 });
     expect(resizeBy(rect, 1, 1, 0, 10, PAGE)).toEqual({ x: 100, y: 100, w: 200, h: 90 });
     expect(resizeBy(rect, 1, 1, -100, -100, PAGE)).toEqual({ x: 100, y: 100, w: 120, h: 40 });
+  });
+});
+
+describe('the lock memory when storage fails (ADR-124)', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+    localStorage.removeItem('sheer.sign.lock');
+  });
+
+  it('starts at "No changes" when reading storage throws', async () => {
+    vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {
+      throw new DOMException('blocked', 'SecurityError');
+    });
+    setup(<SignDialogHost />);
+    ready();
+    expect(((await screen.findByRole('radio', { name: /^No changes/ })) as HTMLInputElement).checked).toBe(true);
+  });
+
+  it('still takes the choice for this sheet when writing storage throws', async () => {
+    signDocument.mockResolvedValue(signed);
+    vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+      throw new DOMException('full', 'QuotaExceededError');
+    });
+    const { user } = setup(<SignDialogHost />);
+    ready();
+    await user.click(await screen.findByRole('radio', { name: /^Fill in forms/ }));
+    await user.click(screen.getByRole('button', { name: 'Sign and save as…' }));
+    await waitFor(() => expect(signDocument).toHaveBeenCalled());
+    expect(signDocument.mock.calls[0]?.[1]).toMatchObject({ lock: 'allowFillAndSign' });
+  });
+
+  it('starts at "No changes" for a stored value that is not a known lock', async () => {
+    localStorage.setItem('sheer.sign.lock', 'everything');
+    setup(<SignDialogHost />);
+    ready();
+    expect(((await screen.findByRole('radio', { name: /^No changes/ })) as HTMLInputElement).checked).toBe(true);
   });
 });

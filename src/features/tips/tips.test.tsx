@@ -232,7 +232,9 @@ describe('the tip card', () => {
     expect(screen.queryByRole('region', { name: 'Tip' })).toBeNull();
     act(() => useTips.getState().show('draw'));
     const card = await screen.findByRole('region', { name: 'Tip' });
-    expect(card.textContent).toContain('Circles, rectangles, lines and arrows straighten when you let go. Ctrl+Z brings the stroke back.');
+    expect(card.textContent).toContain(
+      'Circles, rectangles, lines and arrows straighten when you let go. Ctrl+Z brings the stroke back.',
+    );
     const tool = screen.getByRole('button', { name: 'Draw' });
     expect(tool.getAttribute('aria-describedby')).toBe(card.querySelector('p')?.id);
     expect(document.activeElement).toBe(document.body);

@@ -347,6 +347,10 @@ new engine capability or dependency is needed. Not picked by the loop before v1.
 - [x] DocMDP choice when signing — "No changes" (default, P=1) or "Fill in forms and allow further signatures" (P=2) (a3cf54a; accepted by mouse 2026-10-05: /P 2 written, field fillable after signing, lock row names P=2)
 - [x] CI runtime < 15 min per job — web/native split, dependency-only cache, slimmer debug info (f15da4a, f299c4a; runs #81/#82: Windows 9–10, macOS 5–7, web 4 min)
 
+## F17 "UI quality after the owner test" (v1.4.2, ADR-124)
+
+- [x] F17 — ten points of docs/FEEDBACK.md F17 plus the lock memory and the glib alert (2026-10-05: accepted in the installed build at 960 × 640 and 1280 × 800, surface gate 1560/1560, security PASS, designer FIX → majors/minors below)
+
 ## Politur backlog (minors not tied to a milestone)
 
 - [ ] Politur backlog — picked between feature milestones when a wave has a free slot
@@ -355,4 +359,8 @@ new engine capability or dependency is needed. Not picked by the loop before v1.
   - (v1.4.1) save dialogs without a document (jobs, citation export, certificate export) still open in the last-used folder
   - (v1.4.1) seal resize handles verified by tests only, not by mouse; recovery list first row "Wiederherstellen" without fill (hover state, designer minor 5)
   - (v1.4.1, low) recent-preview worker: a failed worker spawn is not retried; queue-full test asserts no panic only
-  - (security, low) Dependabot alert glib VariantStrIter (Linux-only GTK chain, not shipped; ignored in deny.toml with reason)
+  - (v1.4.2 designer, major) crop popover at 960 × 640 covers the recovery panel (layout, not floating) — close or collapse banners while a tool popover is open, or protect them for popovers
+  - (v1.4.2 designer, minor) colour popover sits ~2 px above the mini bar (measure the 8 px gap from the bar edge); selection frame style differs (yellow outer frame after undo vs Ink only)
+  - (v1.4.2 review, minor) coach-mark re-test misses attribute-only changes; body MutationObserver while a notice is shown (exclude the canvas subtree, cap); MiniBar fit effect without deps; isControlLabel helper unused; protect selector comment
+  - (v1.4.2 security, low) assert the 3× thumbnail size against `limits`; use the PDFium bitmap stride; second marker for the dev-registry bundle guard
+  - (v1.4.2) 834397b does not type-check alone (store rename landed in 4a70409; pushed history, not rewritten)
