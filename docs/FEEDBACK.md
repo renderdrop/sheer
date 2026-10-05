@@ -178,15 +178,15 @@ mock where no Mac is at hand (ADR-104). After A and B: designer acceptance of th
 
 ### A — Bugs (patch, before everything else)
 
-- [ ] A1. Clicking a page in the left sidebar plays a fly-in animation that stacks on repeated clicks. Spell 3 runs only when a document
+- [x] A1. Clicking a page in the left sidebar plays a fly-in animation that stacks on repeated clicks. Spell 3 runs only when a document
       opens, never on a page change
-- [ ] A2. Search hits are grey → Solar yellow with multiply, text stays readable; the current hit stronger
-- [ ] A3. Text selection is grey → Solar yellow 35 %
-- [ ] A4. A text comment cannot be moved after creation while its tool is active; moving stutters. Dragging existing annotations is
+- [x] A2. Search hits are grey → Solar yellow with multiply, text stays readable; the current hit stronger
+- [x] A3. Text selection is grey → Solar yellow 35 %
+- [x] A4. A text comment cannot be moved after creation while its tool is active; moving stutters. Dragging existing annotations is
       allowed in every tool
 - [ ] A5. Comments panel breaks mid-word ("Textkomme/ntar"); cards too narrow
-- [ ] A6. Images to PDF: images do not load or only partly. Reproduce with 10 JPGs and fix
-- [ ] A7. Note and comment: Enter confirms, Shift+Enter inserts a line break
+- [x] A6. Images to PDF: images do not load or only partly. Reproduce with 10 JPGs and fix
+- [x] A7. Note and comment: Enter confirms, Shift+Enter inserts a line break
 - [ ] A8. In a rotated view, signatures and marks are placed rotated with the page. Placement follows the screen orientation (rotate the
       annotation against the view rotation). Plus a rotate handle on placed signatures
 - [ ] A9. "Save to library" does not save on Windows or macOS. Check keychain access (Windows Credential Manager, macOS Keychain)
@@ -195,31 +195,31 @@ mock where no Mac is at hand (ADR-104). After A and B: designer acceptance of th
 - [ ] A10. Printing on macOS gives blank pages (Windows works; drag and drop on the Mac works). Likely `Webview::print()` in WKWebView
       does not render the canvas pages; switch the macOS print path to rendered page images or hand a PDF to the system print dialog.
       Acceptance: "Save as PDF" in the Mac print dialog with visible content
-- [ ] A11. (found in the acceptance) Saving a document with annotations does nothing while the author name is empty: the author
+- [x] A11. (found in the acceptance) Saving a document with annotations does nothing while the author name is empty: the author
       prompt (ADR-034) lost its slot in the v1.2 layout, so the save waits forever (ADR-109)
 
 ### B — Shell polish (before R5)
 
-- [ ] B1. Remove the "Done" button. Instead a save status next to the file name ("Saved" / dot for unsaved), Ctrl+S
-- [ ] B2. Sidebar: visible collapse/expand grip on its edge plus a top-bar button; "View → Sidebar" stays
+- [x] B1. Remove the "Done" button. Instead a save status next to the file name ("Saved" / dot for unsaved), Ctrl+S
+- [x] B2. Sidebar: visible collapse/expand grip on its edge plus a top-bar button; "View → Sidebar" stays
 - [ ] B3. Mode tabs look lost between top bar and tool row. Designer: tabs and tool row as one continuous bar on a Sand background,
       tabs as a segmented control or with a clear yellow underline; before/after screenshot
-- [ ] B4. Text comment: a click places it and typing starts at once, no double-click; the box grows with the text; mini bar with align
+- [x] B4. Text comment: a click places it and typing starts at once, no double-click; the box grows with the text; mini bar with align
       left/centre/right, font size, border on/off, fill on/off
-- [ ] B5. Colours in the mini bar: token palette plus a custom hex value with an input field and "recently used"
-- [ ] B6. Drawn signature: stronger smoothing (One Euro filter), minimum stroke width, stroke width by speed
-- [ ] B7. Typed signature: remove the three current fonts. Collect 8–10 OFL fonts from Google Fonts in the style "thin monoline signature
+- [x] B5. Colours in the mini bar: token palette plus a custom hex value with an input field and "recently used"
+- [x] B6. Drawn signature: stronger smoothing (One Euro filter), minimum stroke width, stroke width by speed
+- [x] B7. Typed signature: remove the three current fonts. Collect 8–10 OFL fonts from Google Fonts in the style "thin monoline signature
       with long loops" (candidates: Mea Culpa, Ms Madi, Hurricane, Island Moments, Qwitcher Grypen, Birthstone, Love Light, Petemoss,
       Whisper, Waterfall — check each file's licence), render the name "Dijana Kornelsen" in all of them as
       `docs/review/signature-fonts.png`. The owner picks five; until then ship all. **Owner pick (2026-10-05):** Ms Madi (default),
       Hurricane, Birthstone — in this order; the other seven are not shipped; umlauts and ß checked by the owner
-- [ ] B8. Outline: without bookmarks, derive an outline heuristically from font size and weight, marked "derived"
+- [x] B8. Outline: without bookmarks, derive an outline heuristically from font size and weight, marked "derived"
 - [ ] B9. Comments as margin bubbles: when comments exist, a margin column appears to the right of the page; each bubble at the height of
       its anchor with avatar initial, name, date, text, reply field, resolve — model: the owner's yellow note bubble image. The left panel
       stays a list and shows the comment text as the first line, not just the type
 - [ ] B10. Comments panel: filter by type (highlight, note, drawing, shape, signature, quote), author, page, open/resolved; sort by page,
       date, author; type icons subtly distinct
-- [ ] B11. Shapes: add an arrow. Freehand shape recognition: a roughly drawn shape plus a short hold snaps to circle, ellipse, rectangle,
+- [x] B11. Shapes: add an arrow. Freehand shape recognition: a roughly drawn shape plus a short hold snaps to circle, ellipse, rectangle,
       line or arrow (like Apple Notes); can be switched off
 - [ ] B12. Canvas background: very faint, slowly drifting Solar shapes (≤ 6 % opacity) only between the pages, never under them. The
       designer decides after a legibility test whether it stays
