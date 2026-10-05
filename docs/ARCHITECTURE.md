@@ -1017,3 +1017,110 @@ Keyboard of the menu row (DESIGN §3.2): Alt alone or F10 focuses Datei and show
 Zoom and page text are in the top bar centre; the polite live regions (save, render, settled page, success pulses) are `topbar/LiveRegions.tsx`.
 
 UI preferences that live in the webview's `localStorage` (never document content, paths or anything Rust needs; each is read defensively and falls back to a default): `sheer.exportImages`, `sheer.formHighlight`, `sheer.organizeThumb2`, `sheer.signatureInk`, `sheer.signatureItemFonts`, `sheer.signatureTab`, `sheer.styleColours`, `sheer.toolDefaults`, `sheer.toolVariants`, `sheer.tools.recentColors`, `sheer.tools.shapeRecognition`, `signatureFont`, `comments.sort`, `margin.comments`, `compress.preset`, `img2pdf.options`, `print.annotations`, `print.quality`. Persistent app settings (language, theme, recents) are Rust's (`storage/settings.rs`), not here.
+
+## 13. Text editing (v1.5, ADR-125; phase 1 = feasibility, no UI)
+
+Modules: `pdfwrite/ops_walk.rs` (shared walker, from `redact_content.rs`), `pdfwrite/text_lines.rs` (runs → lines → paragraphs),
+`pdfwrite/text_fonts.rs` (font dict → `FontMap`), `pdfwrite/text_splice.rs` (offset lexer + splice), `pdfwrite/text_save.rs`
+(incremental write), `fontprog/` (engine-free, lopdf-free: `skrifa` glyph tables, Type1 eexec scan, `cmap` (ToUnicode parser),
+`fallback` (bundled fonts, `subsetter`)), `model/text_edit.rs`, `engine/text.rs` (+ char origins), `commands/text_edit.rs`.
+Import rules unchanged: lopdf only in `pdfwrite/`, PDFium only in `engine/`.
+
+### 13.1 Operator walk (`ops_walk.rs`)
+
+State: `Gs { ctm, text: TextState { font, size, tc, tw, tz, tl, ts, tr }, .. }` on a `q/Q` stack (≤ `MAX_STATE_DEPTH` 512);
+`Tm`/`Tlm` inside `BT…ET`. `Td` sets `Tlm = translate(tx,ty)·Tlm`; `TD` also `TL = -ty`; `T*` = `0 -TL Td`; `'` = `T*` + `Tj`;
+`"` = set `Tw`,`Tc` + `'`. Each shown glyph advances `tx = ((w0 − Tj/1000)·Tfs + Tc + Tw·[single-byte code 32]) · Tz`; `Ts` raises
+without moving the baseline. Output per glyph: `GlyphPos { op: OpRef, byte: Range<u32>, code: u32, origin: [f64; 2] /* page */,
+adv: f64, size_eff: f64, dir: [f64; 2] }`, grouped into `Run { ops: Range<OpRef>, font: FontKey, glyphs }` (a run ends at
+`Tf`, `Tm`, `Td`-family, `ET`, a state change or a gap). Form XObjects are walked (depth ≤ `MAX_REDACT_FORM_DEPTH`, cycle set) for
+mapping and collision checks only; their runs carry `in_form: true` and are not editable. Budgets as redaction: `MAX_REDACT_OPS`,
+`MAX_REDACT_WORK`, `MAX_REDACT_CONTENT_BYTES`.
+
+### 13.2 Lines, paragraphs, mapping (`text_lines.rs`)
+
+- *Line:* runs with parallel `dir` (≤ 1°), baseline offset (minus `Ts`) ≤ 0.2 × size, horizontal gap from the previous run's end
+  ≤ 3 × the font's space width (else a new line segment: table cells, columns). Order = baseline, then x along `dir`.
+- *Paragraph:* consecutive lines, same font family and size (± 10 %), baseline step equal (± 15 %, ≤ 1.6 × size), left edges within
+  1 pt (or right edges / centres for that alignment). `justified` = inner lines' right edges within 1 pt and word gaps vary.
+- *Mapping:* `engine/text.rs` already reads every char once; it also keeps `CharGeom { utf16: u32, unicode: u32, origin: [f32; 2],
+  size: f32, generated: bool }` (pdfium-render `origin()`, `is_generated()`; never over IPC). Probe: char at the clicked UTF-16 index →
+  nearest walker glyph whose origin is within 0.3 × size and whose Unicode (via `FontMap`) matches; generated chars resolve to their
+  neighbour. A miss is `unmapped`. The same match yields an *observed* code→Unicode table, used when `ToUnicode` is missing.
+
+### 13.3 Fonts (`text_fonts.rs`, `fontprog/`)
+
+```rust
+pub struct FontMap { kind: FontKind, embedded: Option<ProgramKind>, subset: bool /* "ABCDEF+" */, to_code: HashMap<char, Code>,
+                     widths: WidthSource, glyphs: GlyphSet, space_code: Option<Code> }
+pub enum FontKind { Simple, Type0IdentityH, Type3 /* refuse */, Type0Other /* refuse */ }
+pub enum ProgramKind { TrueType, Cff, OpenTypeCff, Type1 }
+```
+- *Simple:* code → glyph name by `/Encoding` (base WinAnsi/MacRoman/Standard/font built-in) + `/Differences`; name → Unicode by AGL
+  (+ `uniXXXX`, `uXXXXX`); `ToUnicode` wins when present. Width = `/Widths[code − FirstChar]`, else std14 AFM (`content/std14.rs`,
+  grown to all 14). Glyph present: TrueType → `cmap` (3,0)/(1,0)/(3,1) lookup gid ≠ 0; CFF → charset has the name; Type1 → name in
+  `/CharStrings`; non-embedded → code in encoding with width > 0.
+- *Type0 Identity-H:* Unicode → CID by reversing `ToUnicode` (several CIDs for one char: the one used most on the page), else the
+  observed table; CID → GID by `/CIDToGIDMap` (Identity or stream, ≤ 128 KiB); GID < `numGlyphs` and outline non-empty; width from `W`/`DW`.
+- *Type3, other CMaps, vertical:* read for mapping only.
+- A char is `ok` if code + glyph + width exist; else `missing`. Any missing → whole line in the fallback (ADR-125 §3).
+- *Fallback:* `fontprog::fallback::pick(flags, weight, name) -> Face` over the 12 bundled Arimo/Tinos/Cousine faces; written as
+  Type0/Identity-H, `CIDFontType2`, `FontFile2` subset, `W`, `ToUnicode`; one font object per (face, document save), glyphs unioned.
+
+### 13.4 Rewrite, undo, save
+
+- *Splice:* `text_splice::lex(stream) -> Vec<Tok { op, args: Range<u32> }>` (inline images skipped by `BI…ID…EI` with a length check;
+  doubt → the whole stream is re-encoded via lopdf). Diff old/new glyph strings (common prefix/suffix in Unicode); the first changed show-op
+  gets the new codes as one `TJ` (prefix kerning kept, no new kerning), later changed show-ops on the line become empty `[] TJ`.
+  Fallback lines are written as `/SheerFn s Tf [..] TJ /Orig s Tf` (no `q/Q` inside `BT`), so later ops see the original font.
+- *Width:* `delta = new_adv − old_adv`. `keepStart`: nothing else moves (segments placed by `Td`/`Tm` keep their place; consecutive
+  show-ops shift with the text position); a collision with the next segment or beyond the paragraph's right edge → warning
+  `overflow`. `squeeze`: `Tz` = max(85 %, old/new) around the line. Justified: `delta` spread over the line's word gaps as `TJ` numbers.
+  `paragraph` scope (v1.5.2): greedy re-break with the run's font, same baselines and left edge, refuse if more lines are needed.
+- *Model:* `DocCommand::EditTextLine { page_id, key: LineKey, text, fit, scope }`; `DocState.text_edits: HashMap<PageId,
+  Vec<TextEdit>>` replayed over the original stream (each key is resolved against the state after the edits before it). Inverse = pop.
+  Preview: `pdfwrite` builds the one-page PDF, the engine swaps it in (the ADR-055 `Redacted` path, new variant `PageSource::TextEdited
+  { bytes }`); text layer and search read it.
+- *Save:* incremental (`IncrementalDocument`): per page one new content stream (same object id if only this page uses it, else a new
+  object), new font objects, page `/Resources` materialised if inherited or shared. `SavePlan.text_edits`. Never Full because of text.
+
+### 13.5 Commands and shapes
+
+```rust
+// commands/text_edit.rs (blocking pool, lopdf; DocId only, never a path)
+text_edit_probe(doc_id: DocId, page_id: PageId, unit: u32 /* UTF-16 index into TextLayer.text */) -> TextLineInfo
+text_edit_lines(doc_id: DocId, page_id: PageId) -> PageTextLines          // ≤ 5 000 lines; for keyboard navigation
+apply_command(doc_id: DocId, command: DocCommand /* + EditTextLine */) -> ChangeSet   // ChangeSet.pages carries the swapped slot
+// engine
+Job::PageChars { engine_index: u32 } -> Vec<CharGeom>                     // Interactive; cached with the text layer
+// pdfwrite
+pub fn ops_walk::walk(src: &Document, page: ObjectId, budget: &mut Budget, sink: &mut dyn WalkSink) -> Result<(), AppError>;
+pub fn text_lines::lines(src: &Document, page: ObjectId, chars: &[CharGeom]) -> Result<PageLines, AppError>;
+pub fn text_splice::replay(src: &Document, page: ObjectId, edits: &[TextEdit], fonts: &FallbackStore) -> Result<Rewritten, AppError>;
+pub fn text_save::write(doc: &mut IncrementalDocument, page: ObjectId, r: &Rewritten) -> Result<(), AppError>;
+```
+```ts
+interface LineKey { rev: number /* page edit revision */; line: number }
+interface TextLineInfo { key: LineKey; text: string /* ≤ 2 000 */; box: Rect; paragraph: number; justified: boolean;
+  font: { name: string /* display filter, subset tag removed */; size: number; embedded: boolean };
+  editable: { type: 'same' } | { type: 'fallback'; face: 'sans' | 'serif' | 'mono' } | { type: 'no'; reason: TextEditRefusal } }
+type TextEditRefusal = 'signed' | 'permission' | 'type3' | 'invisible' | 'clip' | 'vertical' | 'cmap' | 'inForm' | 'actualText'
+  | 'script' | 'notFileSource' | 'unmapped' | 'tooComplex';
+interface EditTextLine { type: 'editTextLine'; pageId: PageId; key: LineKey; text: string; fit: 'keepStart' | 'squeeze';
+  scope: 'line' | 'paragraph' }
+// ChangeSet.warnings gains 'textOverflow' | 'fontFallback'
+```
+The probe cannot know the new text, so `apply_command` re-checks: a line that needs the fallback answers `fontFallback` in
+`ChangeSet.warnings` (the UI's notice names the original font); the edit stays one undo step.
+
+### 13.6 Limits and security
+
+`limits.rs`: line text ≤ 2 000 chars; ≤ 10 000 edits per document, ≤ 500 per page; font program ≤ 32 MiB, glyphs ≤ 65 535;
+`ToUnicode` ≤ 1 MiB, ≤ 100 000 mappings, `bfrange` span ≤ 65 536, destination ≤ 16 UTF-16 units; `Differences` ≤ 256 codes;
+`W` ≤ 65 536 entries; `CIDToGIDMap` ≤ 128 KiB; probe ≤ 5 s, replay ≤ 30 s. Every PDF is hostile: font programs are parsed only by
+`skrifa`/`read-fonts` (safe Rust, bounds-checked) and our Type1 scan (bounded, no charstring execution), in the blocking pool under
+`catch_unwind` with the deadline; nothing is rasterised or hinted in the main process. Cycles in fonts, encodings and forms are cut by
+visited sets; the generated subset is re-parsed with `skrifa` before it is written. Refusals are typed (`unsupported_feature`,
+`what: "textEdit"`, `params.reason`), never panics. Signed/certified: checked from `sigread::scan_fields` at probe and at apply.
+Tests: `tests/text_edit.rs` (corpus: same-font edit renders identical outside the line box, extracted text equals the new text,
+undo restores byte-identical stream, refusals per class, hostile fonts fuzz-seeded from `tests/fixtures/hostile/`).

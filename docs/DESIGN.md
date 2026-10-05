@@ -766,6 +766,104 @@ F-AC 9. No tip, coach mark or toast covers an input, button or the active tool; 
 F-AC 10. A popover that cannot fit opens as a dialog; Settings at 960 × 640 does not scroll its form.
 F-AC 11. The DOM gate passes for every registered surface; any violation fails the run.
 
+### 3.10 v1.5 Edit existing text (ADR-125)
+
+Spec only; text model, font handling and the content-stream rewrite are ADR-125's. The ADR-102 layout stays: **no new mode, panel tab or grid track**. New surfaces reuse existing slots: one tool slot, the mini bar (§3.3), a popover, tooltips and the notice queue (§3.9 Q8). Light only, flat (header of this file): the brief's "Iris" maps to the single accent Solar, always paired with Ink (§2); there is no glass, so no glass fallback is needed, and no dark theme. Only semantic tokens are used, so a later theme needs no changes here. The edit box takes no new token. Two new tokens: `--edit-hover-outline` (1px Stone, offset 2 pt) and `--fallback-underline` (1px dotted Text-secondary, 2 pt below the baseline).
+
+**E1 Entry.** In Bearbeiten, a new first slot **Text bearbeiten** (`text-cursor-input`, `editText.tool`, tooltip `editText.tooltip`) gives **Text bearbeiten · Text einfügen · Bild einfügen · Zuschneiden · Schwärzen · Schützen… · Metadaten…** (7 ≤ 8; Q6 measures). It is a tool (Q2 fill) with no tool letter, released by Esc as in §3.2. Its first use shows the tip `editText.tip` (§3.6 rules).
+- **Hover** over editable text: the line's box (union of its glyph boxes, Rust) gets `--edit-hover-outline`, radius 2. Cursor `text`. Only one line is outlined at a time. Nothing else on the page changes.
+- **Click** on a line: it becomes editable in place with the caret at the nearest glyph boundary to the click. **Double-click** selects a word (Unicode word boundaries), **triple-click** the line. Dragging selects within the line.
+- **Commit:** Enter, a click outside the box, a mode or tool switch, Ctrl/Cmd+S (commit, then save, B1). **Cancel:** Esc (first press; a second Esc releases the tool). Clicking another line commits the current one and opens that one.
+- **Tab / Shift+Tab** commit and open the next or previous editable line in reading order (Rust order: page, then paragraph, then line), continuing onto the next page. Refused lines are skipped. The target scrolls into view (spell 8, unanimated with reduced motion).
+- **What you see while typing** is the final result: Rust re-renders the line in its real font (debounced 60 ms), and an app-drawn caret and selection sit over the preview. The original glyphs are hidden under the box, never shown twice.
+
+**E2 Line and paragraph.** Rust groups text into **lines** (same baseline ± 0.2 em, same direction, gaps < 1 em) and **paragraphs**: consecutive lines with the same font size ± 0.5 pt, the same left edge ± 2 pt (or the same right edge or centre for right-aligned or centred text) and line pitch ≤ 1.6 × size. A blank gap, an indent change or a size change starts a new paragraph.
+- **Visible boundary:** while a line is being edited, its paragraph shows a 2 pt Stone rule 4 pt left of the paragraph's lines, spanning their full height (`aria-hidden`). A single-line paragraph shows no rule. This is the only paragraph cue. Hover stays per line.
+- **Growth (line mode, default):** the box keeps the detected alignment anchor (left, right or centre) and its height. Width follows the text instantly. Free width ends at the **limit** = min(the paragraph's widest line right edge, the next text or image object on that baseline − 4 pt, the page crop box − 12 pt).
+- **Reflow (optional, per edit):** the mini bar toggle **Umbrechen** (`editText.reflow`), shown only for paragraphs of 2 or more lines. When on, words past the limit move to the next line of the same paragraph, and following lines re-wrap. The paragraph may add one line below only if the gap to the next object (or the crop box − 12 pt) is ≥ the line pitch. It never moves other paragraphs and **never crosses a page**. The default is off. The last choice is kept in the `tools` store.
+- **Overflow** (past the limit, line mode or reflow without room): the glyphs past the limit stay visible. A 2px `--color-danger` vertical marker sits at the limit, and the overflowing part sits on the redaction hatch at 12 % (`--color-doc-redact-fill`). The mini bar shows `editText.overflow` ("{n} pt too wide") in danger text with a `triangle-alert` 16 icon. Commit is still allowed (the text is written as typed and may touch its neighbours). The overflow state is announced once, politely.
+
+**E3 Mini bar while editing** (§3.3 placement: above → below → docked, never over the box or its paragraph rule). Height 40, padding 4, gap 4. In order: **Font** Ghost 32 (`type` 16 + fixed label `editText.font`, no font name in the button, so it never ellipsises (Q9)). A fallback adds `triangle-alert` 16 before the label. · Size read-out `.t-caption` "11 pt" `tabular-nums` (read-only in v1.5) · divider · **Umbrechen** toggle (§2.4, only when multi-line) · divider · overflow caption (only when overflowing) · Cancel icon button 32 `x` (`editText.cancel`) · Commit icon button 32 `check` (`editText.commit`). Löschen is absent: to delete text, delete the characters; an empty line commits as removed.
+- **Font popover** (Q8 popover, 280 wide, sizes to content): rows (label `.t-caption` / value `.t-body`): Font (`editText.font.original`: PostScript name, cleaned per S6 string rules) · Status (`.embedded` / `.subset` / `.notEmbedded`) · Substitute (`editText.font.fallback`: bundled family name, only if used) · Characters in substitute (`editText.font.count`, `tabular-nums`). Esc closes and returns focus to the button.
+
+**E4 Fallback font.** Two cases, both decided by Rust when the edit opens and on each preview:
+1. **Font not embedded:** the whole line is drawn in the metric-closest bundled substitute (ADR-125 decides the fonts).
+2. **Glyph missing from the embedded subset:** the changed words (word boundaries around every edited character) use the substitute; untouched words of the line keep the original font and bytes (ADR-125 addendum 1).
+- **Marking:** characters set in the substitute get `--fallback-underline` (dotted, a shape cue, not colour) while editing and while hovering that line later in this session. In-app only, never written to the PDF.
+- **Notice:** one info notice (§3.9 queue, priority 3), White tip anatomy (§3.6) with `info` 16. Its text is `editText.notice.notEmbedded` or `editText.notice.missingGlyphs` ({chars} lists up to 5 distinct characters, then "…" plus the count). It is anchored to the mini bar's Font button. The protected rects add the edit box, the paragraph rule and the whole mini bar, so it can never cover the box or an input. If it doesn't fit, it waits in the queue (Q8). The `triangle-alert` on the Font button and the popover keep the information either way. Shown once per line edit and case. It goes on commit or cancel, or with its Hide button (`tip.dismiss`). Never a modal.
+
+**E5 Refusals.** Non-editable text gives no edit box. Hover shows a 1px dashed Stone outline around the run and cursor `not-allowed`. A tooltip (Q8, 8 above, never over a focused input) explains why after the normal tooltip delay. A click shows the same tooltip at once and announces it politely. Nothing is queued as a notice.
+
+| Case (Rust detects) | Hover outline | Tooltip key |
+|---|---|---|
+| Invisible OCR layer over a scan (render mode 3) | yes | `editText.refuse.ocr` |
+| Type3 fonts | yes | `editText.refuse.type3` |
+| Text drawn as outlines (paths, no text objects) | none (no text to find); click on the shape | `editText.refuse.outlined` (only when a page-level heuristic finds glyph-like paths, otherwise nothing) |
+| Text inside an image | none; click on an image | `editText.refuse.image` |
+| Rotated by other than 0/90/180/270°, skewed, vertical writing mode | yes | `editText.refuse.rotated` |
+| Font with no Unicode map (no ToUnicode, unknown encoding) | yes | `editText.refuse.encoding` |
+| Form field values, annotations, text comments | none (other tools own them) | none |
+
+**Document-level:** a certifying lock (S5) disables the tool with `cert.locked.tool`. A file whose permissions forbid editing uses `tool.readOnly`. A file with others' approval signatures can be edited, and the first commit shows the existing `breaksSignature` confirm, once per tab session. A page without any editable text shows `editText.noText` as a tooltip on the first click.
+
+**E6 States.**
+
+| State | Look |
+|---|---|
+| Default (tool active, no pointer) | page as is |
+| Hover | `--edit-hover-outline` on the line |
+| Focus (keyboard, not editing) | §2.1 pair (1px Ink + 2px Solar, offset 2) on the line |
+| Active (editing) | §2.1 pair, paragraph rule, caret Ink 1px, selection `--color-doc-text-select`, mini bar |
+| Disabled | tool 0.4 with tooltip (E5). On the page: dashed Stone outline |
+| Busy (commit writing, > `--saving-delay`) | box keeps the pair, caret hidden, input blocked, mini bar caption `editText.busy`, `aria-busy` |
+| Error (commit failed) | 2px `--color-danger` outline replaces the pair, the text stays editable, mini bar caption `editText.error` with a Retry icon button 32 (`rotate-ccw`), announced assertively |
+
+**E7 Keyboard.** With the tool active and the canvas focused, Tab and Shift+Tab move the focus outline line by line (reading order), and Enter or F2 opens the line with the caret at its end. In the box: Left/Right/Home/End, Shift to select, Ctrl/Cmd+Left/Right by word, Ctrl/Cmd+A selects the line. Up/Down go to the start or end of the line, or move between lines when reflow is on. Shift+Enter is ignored (no new paragraphs in v1.5). Ctrl/Cmd+Z/Y inside the box undo typing in the box only; with no typing left to undo they do nothing (they never reach document undo while editing). F6 moves to the mini bar (§3.3), and Esc in the mini bar returns to the box. Digits 1–5 don't switch mode inside the box (contenteditable rule, §3.2).
+
+**E8 Accessibility.** The box is `role="textbox"`, with `aria-multiline` true only with reflow and `aria-label` `editText.aria.line` (page, line). Its `aria-describedby` covers the keys hint and, when present, the substitute and overflow state. A polite live region announces start (`editText.announce.start`), commit, cancel, substitute (`.announce.fallback`), overflow and refusals. Errors are assertive. Text is exposed as real characters (the preview raster is `aria-hidden`). The dotted underline has a text equivalent in the Font popover and in the announcement. Hit areas are at least 24 px high regardless of zoom: small lines get an invisible padded hit box, so the outline itself stays the line's size.
+
+**E9 Undo.** One document undo step per committed line, labelled `editText.undo` ("Edit text"). A reflowed paragraph is one step. Tab to the next line commits one step per line. Cancel and unchanged commits create no step. Undo restores the original objects byte-for-byte (Rust keeps them) and selects nothing. Spell 7 applies.
+
+**E10 Motion.** Hover outline fades in `--motion-fast` (out `--motion-fast-exit`). The edit box, its growth and reflow change instantly (text must never lag the caret). The mini bar works per §3.3, the notice per §3.6, the scroll per spell 8. Reduced motion: the outline appears without the fade, the scroll jumps, and the mini bar and notice only fade.
+
+**E11 Layout check (960 × 640, Q9).** Registered surfaces: the mini bar in edit state with all controls and the overflow caption (de widest: about 420 ≤ 752 canvas), the Font popover, the fallback notice and each refusal tooltip. The gate runs in en and de. The notice must not intersect the edit box, the paragraph rule or the mini bar. The mini bar docks when a line sits at the top and bottom of a short viewport. Nothing scrolls except the canvas.
+
+| Key | en | de |
+|---|---|---|
+| `editText.tool` / `.tooltip` | Edit text / Edit existing text in place | Text bearbeiten / Vorhandenen Text direkt bearbeiten |
+| `editText.tip` | Click a line to edit it. Tab goes to the next line, Esc cancels. | Zeile anklicken und bearbeiten. Tab springt zur nächsten Zeile, Esc bricht ab. |
+| `editText.font` / `.font.original` | Font / Font | Schrift / Schrift |
+| `editText.font.embedded` / `.subset` / `.notEmbedded` | Embedded / Embedded (subset) / Not embedded | Eingebettet / Eingebettet (Teilmenge) / Nicht eingebettet |
+| `editText.font.fallback` / `.count` | Substitute / Characters in substitute | Ersatzschrift / Zeichen in Ersatzschrift |
+| `editText.notice.notEmbedded` | This font isn't in the file. The line uses {font} instead, so it may look slightly different. | Diese Schrift ist nicht in der Datei. Die Zeile nutzt stattdessen {font} und kann leicht abweichen. |
+| `editText.notice.missingGlyphs` | {chars} aren't in the file's font. They use {font} and are underlined with dots. | {chars} fehlen in der Schrift der Datei. Sie nutzen {font} und sind gepunktet unterstrichen. |
+| `editText.reflow` | Wrap in paragraph | Umbrechen |
+| `editText.overflow` | {n} pt too wide | {n} pt zu breit |
+| `editText.cancel` / `.commit` | Cancel (Esc) / Apply (Enter) | Abbrechen (Esc) / Übernehmen (Enter) |
+| `editText.busy` / `.error` | Applying… / Couldn't change the line. | Wird übernommen… / Zeile konnte nicht geändert werden. |
+| `editText.undo` | Edit text | Text bearbeiten |
+| `editText.aria.line` | Line {line} on page {page} | Zeile {line} auf Seite {page} |
+| `editText.announce.start` | Editing. Enter applies, Escape cancels. | Bearbeiten. Enter übernimmt, Escape bricht ab. |
+| `editText.announce.committed` / `.cancelled` | Line changed / Change discarded | Zeile geändert / Änderung verworfen |
+| `editText.announce.fallback` | {n} characters use a substitute font | {n} Zeichen in Ersatzschrift |
+| `editText.refuse.ocr` | This text was recognised from a scan and can't be edited. | Dieser Text wurde aus einem Scan erkannt und lässt sich nicht bearbeiten. |
+| `editText.refuse.type3` | This text uses a drawn font and can't be edited. | Dieser Text nutzt eine gezeichnete Schrift und lässt sich nicht bearbeiten. |
+| `editText.refuse.outlined` | This text was converted to shapes and can't be edited. | Dieser Text wurde in Formen umgewandelt und lässt sich nicht bearbeiten. |
+| `editText.refuse.image` | This is part of an image, not text. | Das ist Teil eines Bildes, kein Text. |
+| `editText.refuse.rotated` | Slanted or vertical text can't be edited yet. | Schräger oder senkrechter Text lässt sich noch nicht bearbeiten. |
+| `editText.refuse.encoding` | The file doesn't say which characters this text is. | Die Datei gibt nicht an, welche Zeichen dieser Text sind. |
+| `editText.noText` | No editable text on this page. | Kein bearbeitbarer Text auf dieser Seite. |
+
+**Acceptance (installed release build, 960 × 640 and 1280 × 800).**
+E-AC 1. Bearbeiten shows Text bearbeiten first. Hovering a line outlines only that line.
+E-AC 2. A click puts the caret where clicked, a double-click selects a word, Enter applies, Esc restores the original, and Tab opens the next line.
+E-AC 3. Typing past the limit shows the danger marker and "{n} pt too wide". With Umbrechen on, words move to the next line, and no text ever moves to another page.
+E-AC 4. A non-embedded font and a missing glyph each show one notice that never covers the box or the mini bar. Substitute characters are dotted-underlined, and the Font popover names both fonts.
+E-AC 5. OCR, Type3, image, rotated and unmapped text show their refusal tooltips. A locked file disables the tool.
+E-AC 6. Each applied line is one Undo step. Undo restores the original exactly.
+E-AC 7. A screen reader announces editing, applied, cancelled and substitute states.
+E-AC 8. With reduced motion, nothing animates except fades. The DOM gate passes in en and de.
+
 ## 4. Components (R4)
 
 States apply to all: hover ≤ background/border/icon colour change; pressed scale 0.98 at most; focus = `--ring-focus` (keyboard only); disabled = `--opacity-disabled`, no pointer events, tooltip still explains why.

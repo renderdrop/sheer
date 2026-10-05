@@ -2404,3 +2404,66 @@ no longer writes the preference; a cancelled sheet, a cancelled save dialog or a
 The F17.9 thumbnail fix was re-checked with the owner's real files (four municipal bylaws, Word 2010 and Distiller): rendered
 directly at 96 and 160 px, headings and bold runs become solid black bars; with 3× + box downscale they read as grey text
 (before/after montage and an installed-build screenshot in review/v1.5-spike/, not tracked).
+
+## ADR-125 — Editing existing text (v1.5)
+
+**Status:** proposed (2026-10-06), phase 1 = feasibility; no UI. The parallel lopdf spike (word replacement on 10 real PDFs: Word,
+LaTeX, InDesign, OCR, form) is reconciled in the session report; its numbers may move thresholds here, not the structure.
+Design in ARCHITECTURE.md §13.
+
+**Context.** Users expect to fix a typo in a PDF's own text, not cover it with a text box. PDF has no "text": content streams position
+glyph codes of fonts that are often subsetted, re-encoded or not embedded. PDFium (`engine/`) knows characters and boxes but cannot write
+content streams; lopdf (`pdfwrite/`) can, and `pdfwrite/redact_content.rs` already walks text operators with a bounded graphics state
+(ADR-055). Save must stay incremental (signed and large documents), undo must be a `DocCommand`.
+
+**Options.**
+(A) Cover with a filled rectangle + a new text box. Rejected as "editing": the old text stays extractable and searchable.
+(B) Whole-page rewrite through PDFium (`FPDFText`/`FPDFPageObj_*` edit API, `FPDFPage_GenerateContent`). Rejected: regenerates the whole
+content stream (loses marked content, structure, compression, byte identity), runs in the engine child that must stay read-mostly, and
+cannot do incremental updates.
+(C) Surgical lopdf rewrite of only the show-operators of one line, glyphs mapped through the original font, fallback font only when the
+original cannot show a character. **Chosen.**
+
+**Decisions.**
+1. *Reading.* One walker (extracted from `redact_content.rs` into `pdfwrite/ops_walk.rs`, shared with redaction) yields positioned glyph
+   runs per page (all text-state operators, `q/Q`, `cm`, Form XObjects read-only). Runs group into lines, lines into paragraphs by
+   geometry (§13.2). The UI's click (a UTF-16 index of `TextLayer`) maps to a run by **geometry, not index**: PDFium char origin +
+   Unicode matched against walker glyph origins (PDFium's index includes generated spaces and line breaks, so indices never align).
+2. *Writing.* A line edit is a glyph-level diff: unchanged prefix and suffix keep their bytes and `TJ` kerning; only the changed span's
+   show-operators are spliced (own offset-tracking lexer; every other byte of the stream stays identical). The line start never moves.
+   Width delta: default `keepStart` (end moves, collision with a later positioned segment of the same line is a warning); option
+   `squeeze` (`Tz` down to 85 %); justified lines re-distribute the delta into word gaps via `TJ` numbers. No reflow across lines in
+   v1.5.1; v1.5.2 adds `scope: paragraph` (re-break within the paragraph, same baselines, never more lines than before).
+3. *Fonts.* The original font is used when every new character has a code in its encoding, a glyph in its program and a width. Detection
+   per font kind in §13.3. Missing glyph → the **whole edited line** switches to a fallback (per-glyph mixing rejected: mixed faces read
+   as errors). Embedded font programs are **never modified** (no glyph added to a subset, no `/Differences` grown).
+4. *Fallback.* Bundled Arimo / Tinos / Cousine (Regular, Bold, Italic, Bold Italic; **Apache-2.0**, metric-compatible with
+   Helvetica/Arial, Times, Courier), chosen by `/Flags` (Serif, FixedPitch, Italic), `/FontWeight`/`/StemV` and `BaseFont` name hints,
+   embedded as a subset (`subsetter`) Type0/Identity-H font with `ToUnicode` and `W`. A non-embedded font keeps its own reference while every
+   character is encodable (WinAnsi/`Differences`) and has a `/Widths` entry. System fonts are never read (non-deterministic, embedding
+   rights via `fsType`, files outside our scope). The user is told whenever a fallback is used, naming the original font.
+5. *Crates.* `skrifa` 0.48 (MIT OR Apache-2.0, present) reads TrueType/OpenType/bare CFF (`read-fonts`); `subsetter` (MIT OR Apache-2.0)
+   subsets the fallback only. Type1 (`FontFile`): own bounded eexec decrypt + `/CharStrings` name scan (no charstring execution). No
+   other font crate; no hinting, no shaping (Latin, Greek, Cyrillic only; complex scripts and RTL refuse).
+6. *Never.* Type3 fonts, invisible text (`Tr 3`/`7`: OCR layers over scans), clip modes (`Tr 4–7`), vertical writing, non-Identity
+   CMaps, outlined text, text in images, text inside Form XObjects or annotation appearances (v1.5.1), runs under `/ActualText`, pages
+   whose slot is not `PageSource::File`, signed or certified documents (any signature field with a value → `read_only` `signed`, no
+   matter the lock), documents without `edit` permission. Tagged PDF: marked content and MCIDs around the run are kept, the structure
+   tree is not touched.
+7. *Model and save.* `DocCommand::EditTextLine` holds a stable line key and the new text; `DocState.text_edits` keeps an ordered list per
+   page, replayed over the original stream (undo = pop, deterministic). Preview = one-page PDF from the replay swapped in like a redacted
+   page; save = incremental update: new content stream object for that page (same object id unless shared), new fallback font objects,
+   a page-local `/Resources` if it was inherited or shared.
+
+**Consequences.** Real typos in Word/LaTeX/InDesign exports become fixable without white-out; subsetted fonts often force the fallback
+for new characters (expected and announced). The walker refactor touches redaction: its tests are the regression guard. New bundled
+fonts (~5 MB, Apache-2.0) and one crate go to `docs/LICENSES.md`. Phase 1 exit criteria: on the spike corpus, the walker+mapper finds the
+clicked line on ≥ 90 % of probes in non-OCR files, a same-font edit renders pixel-identical outside the line's box, and every refusal
+class in 6 is detected, not crashed into. Failing that, v1.5 ships white-out + text box only and this ADR is superseded.
+
+**ADR-125 addendum 1 — fallback scope (orchestrator, 2026-10-06).** ADR-125 §3 ("whole edited line") and DESIGN §3.10 E4 ("only the
+missing characters") disagreed. Decision: the fallback covers the **changed words** — the word span around every edited character —
+and nothing else. Whole-line switching re-sets text the user did not touch (its widths change, so it can collide with later absolutely
+positioned segments, as the spike showed); per-glyph mixing puts single foreign glyphs into a word, which reads as an error. Word
+scope keeps the untouched prefix and suffix byte-identical (§2) and contains the visual break to what the user typed. Accent: DESIGN.md
+maps the brief's "Iris" to Solar (ADR-100); that stands.
