@@ -7,8 +7,16 @@
 //!
 //! Package W0 holds [`types`] only; the other modules join with the packages B1 to B3.
 
+pub mod certgen;
+pub mod cms_build;
+pub mod coverage;
+pub mod ess;
+pub mod identity;
 pub mod material;
+pub mod p12;
+pub mod revisions;
 pub mod types;
+pub mod verify;
 
 #[cfg(test)]
 mod crypto_seam {

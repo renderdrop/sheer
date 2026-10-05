@@ -23,4 +23,5 @@ pub mod quote;
 pub mod ranges;
 pub mod reading;
 pub mod redaction;
+pub mod sig_policy;
 pub mod tags;

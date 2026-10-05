@@ -396,30 +396,24 @@ fn an_annotation_without_a_name_is_found_again_behind_a_dropped_widget() {
 }
 
 #[test]
-fn a_page_change_in_a_signed_file_asks_first_and_writes_nothing_until_agreed() {
+fn a_page_change_in_a_signed_file_is_refused_and_writes_nothing() {
     let Some(state) = state() else { return };
     let scratch = Scratch::new("signed");
     let id = open(state, &scratch, "s.pdf", &support::fixtures::signed());
-    state
+    let error = state
         .apply_command(
             id,
             cmd(json!({"type": "rotatePages", "pages": [0], "quarterTurns": 1})),
         )
-        .unwrap();
+        .unwrap_err();
+    assert_eq!(error.code(), ErrorCode::ReadOnly);
     let before = std::fs::read(scratch.file("s.pdf")).unwrap();
-    let error = state.save_in_place(id, SaveAck::default()).unwrap_err();
-    assert_eq!(error.code(), ErrorCode::NeedsConfirmation);
+    state.save_in_place(id, SaveAck::default()).unwrap();
     assert_eq!(std::fs::read(scratch.file("s.pdf")).unwrap(), before);
-    let ack = SaveAck {
-        break_signature: true,
-        ..SaveAck::default()
-    };
-    state.save_in_place(id, ack).unwrap();
-    assert!(std::fs::read(scratch.file("s.pdf")).unwrap().len() > before.len());
 }
 
 #[test]
-fn a_clean_copy_of_a_signed_file_asks_first_and_an_unchanged_signed_file_saves_without_asking() {
+fn a_clean_copy_of_a_signed_file_is_refused_and_an_unchanged_signed_file_saves() {
     let Some(state) = state() else { return };
     let scratch = Scratch::new("signed-copy");
     let id = open(state, &scratch, "s.pdf", &support::fixtures::signed());
@@ -431,7 +425,7 @@ fn a_clean_copy_of_a_signed_file_asks_first_and_an_unchanged_signed_file_saves_w
             SaveAsOptions { clean_copy: true },
         )
         .unwrap_err();
-    assert_eq!(error.code(), ErrorCode::NeedsConfirmation);
+    assert_eq!(error.code(), ErrorCode::ReadOnly);
     assert!(!scratch.file("c.pdf").exists());
     state.save_in_place(id, SaveAck::default()).unwrap();
 }

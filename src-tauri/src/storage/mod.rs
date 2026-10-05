@@ -4,11 +4,13 @@
 pub mod atomic;
 pub mod autosave;
 pub mod backup;
+pub mod identities;
 pub mod keychain;
 mod open;
 pub mod recents;
 pub mod settings;
 pub mod signatures;
 pub mod thumbs;
+pub mod trust;
 
 pub(crate) use open::open_without_blocking;

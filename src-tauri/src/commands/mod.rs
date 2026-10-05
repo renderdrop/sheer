@@ -330,6 +330,7 @@ impl AppState {
                     // The deadline passed, but the engine had finished loading and had recorded the document just before: it
                     // is open, and is told as such.
                     Abandoned::Loaded(_) => {
+                        self.refresh_signature_lock(id);
                         self.note_recent(kind, &canonical);
                         Ok(self.info(id).map_or(Opened::Pending, Opened::Ready))
                     }
@@ -339,6 +340,7 @@ impl AppState {
             }
         }
         self.refresh_permissions(id);
+        self.refresh_signature_lock(id);
         self.note_recent(kind, &canonical);
         Ok(self.info(id).map_or(Opened::Pending, Opened::Ready))
     }
@@ -415,6 +417,7 @@ impl AppState {
         path: &std::path::Path,
     ) -> Result<DocumentInfo, AppError> {
         self.refresh_permissions(id);
+        self.refresh_signature_lock(id);
         self.note_recent(kind, path);
         self.info(id).ok_or(AppError::not_found("document"))
     }

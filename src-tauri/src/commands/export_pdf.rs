@@ -77,7 +77,7 @@ impl AppState {
     ) -> Result<String, AppError> {
         let info = self.info(id).ok_or(AppError::not_found("document"))?;
         if opts.changes_content() {
-            self.check_may_edit(id)?;
+            self.check_permission(id)?;
         }
         if info.flags.encrypted && !ack.rewrite_encrypted {
             return Err(AppError::needs_confirmation("rewriteEncrypted"));

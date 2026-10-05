@@ -36,7 +36,8 @@ use crate::model::doc_state::{ChangeSet, DocState};
 use crate::model::ids::AnnotId;
 use crate::model::page::SourceId;
 use crate::model::page_ops::PagePlan;
-use crate::pdfwrite::{self, crypt, pagetree, Built, Change, Plan, SavePlan};
+use crate::pdfsig::types::SignatureLock;
+use crate::pdfwrite::{self, crypt, pagetree, sigread, Built, Change, Plan, SavePlan};
 use crate::security::secret::PendingProtection;
 use crate::storage::{atomic, backup};
 use zeroize::Zeroizing;
@@ -401,6 +402,55 @@ pub(super) fn read_all(admitted: Admitted) -> Result<(Vec<u8>, Option<Fingerprin
     Ok((bytes, fingerprint))
 }
 
+/// Largest file whose signatures are read for the lock; a larger one with a signature is `locked` (the safe side).
+const LOCK_SCAN_MAX_BYTES: u64 = 512 * 1024 * 1024;
+
+/// Whether the stream holds the token `/ByteRange`: a signature dictionary cannot be without it (it is never in an object stream), so a
+/// file without it has no signature and is not parsed for the lock. Reads in 64 KiB blocks.
+pub(super) fn has_byte_range<R: Read>(mut reader: R) -> std::io::Result<bool> {
+    const TOKEN: &[u8] = b"/ByteRange";
+    let mut buffer = vec![0u8; 64 * 1024 + TOKEN.len()];
+    let mut kept = 0usize;
+    loop {
+        let read = reader.read(&mut buffer[kept..])?;
+        if read == 0 {
+            return Ok(false);
+        }
+        let end = kept + read;
+        if buffer[..end].windows(TOKEN.len()).any(|w| w == TOKEN) {
+            return Ok(true);
+        }
+        // Keep the tail, so a token across two blocks is found.
+        let tail = (TOKEN.len() - 1).min(end);
+        buffer.copy_within(end - tail..end, 0);
+        kept = tail;
+    }
+}
+
+/// The lock of the file at `path` (see [`AppState::refresh_signature_lock`]).
+pub(super) fn signature_lock_of_file(path: &Path) -> SignatureLock {
+    let Ok(Admitted { mut file, .. }) = intake::admit(path) else {
+        return SignatureLock::None;
+    };
+    if !matches!(has_byte_range(&mut file), Ok(true)) {
+        return SignatureLock::None;
+    }
+    let len = file.metadata().map_or(u64::MAX, |meta| meta.len());
+    if len > LOCK_SCAN_MAX_BYTES {
+        return SignatureLock::Locked;
+    }
+    let mut bytes = Vec::new();
+    if std::io::Seek::seek(&mut file, std::io::SeekFrom::Start(0)).is_err()
+        || file.read_to_end(&mut bytes).is_err()
+    {
+        return SignatureLock::None;
+    }
+    match sigread::scan_bytes(&bytes) {
+        Ok(scan) => crate::model::sig_policy::lock_of(&scan),
+        Err(_) => SignatureLock::None,
+    }
+}
+
 impl AppState {
     /// Saves document `id` into the file it was opened from (primary+S). The welcome document is `read_only`: it is a bundled resource,
     /// and a save that wrote into the app's resources would be a write outside the user's files (SECURITY D1); the UI turns the answer
@@ -576,6 +626,11 @@ impl AppState {
             && would_write
             && !matches!(extras.protection, Some(PendingProtection::Remove));
         let full = clean_copy || extras.requires_full();
+        // A signed document is only ever extended (ADR-121 section 1): a full rewrite or a change of the pages would break the signatures
+        // the file carries. The way to such changes is `save_unsigned_copy`.
+        if info.signature_lock != SignatureLock::None && (full || page_changes) {
+            return Err(AppError::read_only("signed"));
+        }
         let writes = !plan.changes.is_empty()
             || page_changes
             || full
@@ -596,7 +651,11 @@ impl AppState {
             None => session.clone(),
         };
         // Changes to the pages are not among the changes a signature allows (ADR-036 §5), and a new file is not the signed one.
-        if (page_changes || full) && info.flags.signed && !ack.break_signature {
+        if (page_changes || full)
+            && info.flags.signed
+            && info.signature_lock == SignatureLock::None
+            && !ack.break_signature
+        {
             return Err(AppError::needs_confirmation("breaksSignature"));
         }
         if !writes && target.is_none() {
@@ -743,6 +802,7 @@ impl AppState {
         // The file the document is now opens with the new password, if the save changed it (the reopen above used it).
         self.note_session_password(id, reopen_password);
         self.refresh_permissions(id);
+        self.refresh_signature_lock(id);
         // The pages of the file are the pages of the document now, in this order: engine page i is page i, and what was held for the
         // inserts is in the file.
         self.registry.set_page_count(id, expected)?;
@@ -768,6 +828,17 @@ impl AppState {
             warnings,
             mode,
         ))
+    }
+
+    /// Reads what the signatures of the file of `id` allow and records it (ADR-121 section 1), for a document just opened, unlocked or
+    /// saved. A document signed elsewhere is locked as well. Best effort: a file that cannot be read or is encrypted has no lock here (a
+    /// signed encrypted file keeps the `breaksSignature` confirmation).
+    pub(super) fn refresh_signature_lock(&self, id: DocumentId) {
+        let Some(path) = self.registry.path(id) else {
+            return;
+        };
+        self.registry
+            .set_signature_lock(id, signature_lock_of_file(&path));
     }
 
     /// Whether the file `id` was opened from is no longer what it was (or cannot be looked at: not knowing counts as changed).
@@ -1012,5 +1083,22 @@ mod tests {
             std::thread::sleep(std::time::Duration::from_millis(10));
         }
         assert!(free, "the slot is given back when the thread ends");
+    }
+}
+
+#[cfg(test)]
+mod lock_scan_tests {
+    use super::has_byte_range;
+
+    #[test]
+    fn the_token_is_found_across_block_edges_and_absent_otherwise() {
+        let token = b"/ByteRange [0 1 2 3]";
+        for offset in [0usize, 5, 65_535, 65_536, 65_540, 131_071, 200_000] {
+            let mut data = vec![b'x'; 300_000];
+            data[offset..offset + token.len()].copy_from_slice(token);
+            assert!(has_byte_range(&data[..]).unwrap(), "offset {offset}");
+        }
+        assert!(!has_byte_range(&vec![b'x'; 300_000][..]).unwrap());
+        assert!(!has_byte_range(&b"/Byte"[..]).unwrap());
     }
 }

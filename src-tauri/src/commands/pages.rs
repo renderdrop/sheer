@@ -30,6 +30,8 @@ use crate::model::command::{DocCommand, LABEL_INSERT_BLANK, LABEL_INSERT_PAGES};
 use crate::model::doc_state::ChangeSet;
 use crate::model::page::{NewPage, PageSlotInfo, PageSource, SourceId};
 use crate::model::protection::Permission;
+use crate::model::sig_policy;
+use crate::pdfsig::types::SignatureLock;
 use crate::pdfwrite::pagetree;
 
 /// One PDF the user chose to take pages from.
@@ -83,7 +85,13 @@ impl AppState {
     ) -> Result<ChangeSet, AppError> {
         command.check_shape()?;
         // A file opened with the open password of a restricted file keeps its restrictions (ADR-047 §4): no `edit`, no edit command.
-        self.check_may_edit(id)?;
+        self.check_permission(id)?;
+        // A signed document only takes the commands its signatures allow (ADR-121 section 1): refused before the engine is touched.
+        let lock = self
+            .info(id)
+            .ok_or(AppError::not_found("document"))?
+            .signature_lock;
+        sig_policy::check(lock, &command)?;
         match command {
             DocCommand::InsertBlankPage { at, width, height } => {
                 let base = self.model(id, |state| {
@@ -161,8 +169,23 @@ impl AppState {
         }
     }
 
-    /// `read_only` (`permission`) when the document's permissions forbid editing it (`DocFlags.permissions`), else nothing.
+    /// `read_only` when the document may not be edited as a whole: its permissions forbid it ([`AppState::check_permission`]) or it is signed
+    /// (`signed`, ADR-121 section 1). For the editors that are not a `DocCommand` (content objects, redaction,
+    /// protection, citations); `apply_command` judges each command against the lock itself.
     pub(super) fn check_may_edit(&self, id: DocumentId) -> Result<(), AppError> {
+        self.check_permission(id)?;
+        match self
+            .info(id)
+            .ok_or(AppError::not_found("document"))?
+            .signature_lock
+        {
+            SignatureLock::None => Ok(()),
+            _ => Err(AppError::read_only("signed")),
+        }
+    }
+
+    /// `read_only` (`permission`) when the document's permissions forbid editing it (`DocFlags.permissions`), else nothing.
+    pub(super) fn check_permission(&self, id: DocumentId) -> Result<(), AppError> {
         let info = self.info(id).ok_or(AppError::not_found("document"))?;
         match info.flags.permissions {
             Some(allowed) if !allowed.contains(Permission::Edit) => {

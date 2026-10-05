@@ -103,6 +103,10 @@ pub fn run() -> Result<(), AppError> {
             app.manage(commands::library::LibraryState::new(
                 storage::signatures::Library::in_data_dir(&data_dir),
             ));
+            // The signing identities (ADR-121): encrypted in the app data directory, their key in the OS keychain (SECURITY D9).
+            app.manage(commands::identities::IdentitiesState::new(
+                commands::identities::Identities::in_data_dir(&data_dir),
+            ));
             // The macOS menu bar, in the language of the settings; its commands reach the UI on the channel the UI opens
             // with `subscribe_menu`. Nothing is installed on Windows.
             app.manage(Arc::new(MenuBridge::new()));

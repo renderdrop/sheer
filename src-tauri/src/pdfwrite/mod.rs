@@ -25,8 +25,11 @@ pub mod redact_content;
 pub mod redact_image;
 pub mod reviews;
 pub mod save;
+pub mod seal;
 pub mod sheer_keys;
+pub mod sign;
 pub mod sigread;
+pub mod unsign;
 
 pub use prescan::load_untrusted;
 pub use save::{append_annotations, validate, Built, Change, Plan, SavePlan};

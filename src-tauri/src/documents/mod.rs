@@ -234,6 +234,8 @@ struct Entry {
     fingerprint: Option<Fingerprint>,
     /// The original was copied to the backup folder in this session (ADR-004 §3: only the first save does it).
     backed_up: bool,
+    /// What the signatures of the file allow (ADR-121 section 1); read from the file when it is opened or saved.
+    signature_lock: SignatureLock,
 }
 
 #[derive(Debug, Default)]
@@ -278,6 +280,7 @@ impl Inner {
                 locked: None,
                 fingerprint: None,
                 backed_up: false,
+                signature_lock: SignatureLock::None,
             },
         );
         Ok(id)
@@ -391,7 +394,7 @@ impl Registry {
             kind: entry.kind,
             flags: entry.flags,
             autosave: AutosaveStatus::Clean,
-            signature_lock: SignatureLock::None,
+            signature_lock: entry.signature_lock,
         })
     }
 
@@ -496,6 +499,13 @@ impl Registry {
         match inner.entries.get(&id) {
             Some(entry) if entry.locked.is_some() => inner.entries.remove(&id).is_some(),
             _ => false,
+        }
+    }
+
+    /// Records what the signatures of the file allow (ADR-121 section 1). A no-op for an unknown id.
+    pub fn set_signature_lock(&self, id: DocumentId, lock: SignatureLock) {
+        if let Some(entry) = self.lock().entries.get_mut(&id) {
+            entry.signature_lock = lock;
         }
     }
 
