@@ -18,6 +18,7 @@
 //! If it cannot be loaded, the worker stays alive and answers every job with `engine_unavailable`.
 
 mod derived_outline;
+pub mod downscale;
 pub mod encode;
 mod export;
 pub mod files;
@@ -1348,6 +1349,108 @@ mod tests {
         let frame = render(engine, id, 1, 4).unwrap();
         let (info, _) = decode(&frame);
         assert_eq!((info.width, info.height), (400, 200));
+        engine.close(id).unwrap();
+    }
+
+    /// A one-page PDF with a bold 56 pt heading in the top band (Helvetica-Bold, a base font PDFium has built in).
+    fn heading_pdf() -> Vec<u8> {
+        let content = "BT /F1 56 Tf 40 700 Td (Heading Bold) Tj ET";
+        let objects = [
+            "<< /Type /Catalog /Pages 2 0 R >>".to_string(),
+            "<< /Type /Pages /Kids [3 0 R] /Count 1 >>".to_string(),
+            "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 4 0 R \
+             /Resources << /Font << /F1 5 0 R >> >> >>"
+                .to_string(),
+            format!(
+                "<< /Length {} >>\nstream\n{content}\nendstream",
+                content.len()
+            ),
+            "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>".to_string(),
+        ];
+        let mut out = b"%PDF-1.4\n".to_vec();
+        let mut offsets = Vec::new();
+        for (index, body) in objects.iter().enumerate() {
+            offsets.push(out.len());
+            out.extend_from_slice(format!("{} 0 obj\n{body}\nendobj\n", index + 1).as_bytes());
+        }
+        let xref = out.len();
+        out.extend_from_slice(
+            format!("xref\n0 {}\n0000000000 65535 f \n", objects.len() + 1).as_bytes(),
+        );
+        for offset in offsets {
+            out.extend_from_slice(format!("{offset:010} 00000 n \n").as_bytes());
+        }
+        out.extend_from_slice(
+            format!(
+                "trailer\n<< /Size {} /Root 1 0 R >>\nstartxref\n{xref}\n%%EOF\n",
+                objects.len() + 1
+            )
+            .as_bytes(),
+        );
+        out
+    }
+
+    #[test]
+    fn a_bold_heading_thumbnail_is_grey_not_a_solid_block() {
+        let Some(engine) = shared_engine() else {
+            return;
+        };
+        let dir = crate::storage::atomic::testutil::TempDir::new();
+        let path = dir.path().join("heading.pdf");
+        std::fs::write(&path, heading_pdf()).unwrap();
+        let id = new_id();
+        engine
+            .open(id, File::open(&path).unwrap(), |_| true)
+            .unwrap();
+        // The size of the recents preview (bucket -13: about 64 x 83 pixels).
+        let frame = render(engine, id, 0, -13).unwrap();
+        let (info, pixels) = decode(&frame);
+        assert!(info.width <= 80 && info.height <= 100);
+        if let Ok(review) = std::env::var("SHEER_REVIEW_DIR") {
+            let tag = if downscale::SUPERSAMPLE_FACTOR > 1 {
+                "after"
+            } else {
+                "before"
+            };
+            std::fs::create_dir_all(&review).unwrap();
+            std::fs::write(
+                PathBuf::from(review).join(format!("thumb-heading-{tag}.png")),
+                encode::split_frame(&frame).2,
+            )
+            .unwrap();
+        }
+        // The heading band: PDF y 690..756 is rows 3.8..10.7 at 0.105 px/pt. Count near-black and mid-grey pixels in it.
+        let (mut dark, mut grey, mut total) = (0usize, 0usize, 0usize);
+        for y in 3..11 {
+            for x in 0..info.width as usize {
+                let value = pixel(&info, &pixels, x, y)[0];
+                total += 1;
+                dark += usize::from(value < 40);
+                grey += usize::from((60..200).contains(&value));
+            }
+        }
+        let ink = |i: &png::OutputInfo, p: &[u8]| {
+            p.chunks(i.line_size)
+                .take(i.height as usize)
+                .map(|r| {
+                    r[..i.width as usize * 3]
+                        .iter()
+                        .map(|v| 255 - u64::from(*v))
+                        .sum::<u64>()
+                })
+                .sum::<u64>() as f64
+                / f64::from(i.width * i.height * 3)
+        };
+        let (ri, rp) = decode(&render(engine, id, 0, 7).unwrap());
+        // The mean ink of the thumbnail stays near that of a 3.4 px/pt reference render (no heavier "blocks").
+        let (thumb_ink, reference_ink) = (ink(&info, &pixels), ink(&ri, &rp));
+        assert!(
+            thumb_ink < reference_ink * 1.15,
+            "{thumb_ink} vs {reference_ink}"
+        );
+        assert!(grey > 0, "no antialiased grey in the heading band");
+        // Averaged strokes stay far from solid: well under a tenth of the band is near-black.
+        assert!(dark * 10 < total, "{dark} of {total} pixels are near-black");
         engine.close(id).unwrap();
     }
 

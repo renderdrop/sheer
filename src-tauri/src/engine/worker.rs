@@ -6,6 +6,7 @@ use std::sync::Arc;
 
 use pdfium_render::prelude::*;
 
+use super::downscale;
 use super::guard::{guarded, Health};
 use super::queue::{RenderKey, Requests};
 use super::sizes::{PageSizes, SizeCache};
@@ -560,38 +561,62 @@ fn render(document: &PdfDocument<'_>, key: RenderKey) -> Result<Vec<u8>, AppErro
         limits::page_pixel_size(page.width().value, page.height().value, scale)?;
     let region = limits::render_region((page_width, page_height), key.tile)?;
 
+    // A small whole-page render (a thumbnail) is drawn at SUPERSAMPLE_FACTOR times its size and averaged down (F17.9): PDFium at
+    // the target size alone turns bold text into solid blocks. Tiles and page views are drawn directly. At most 3 x 320 pixels a
+    // side, so far inside the render limits.
+    let supersample =
+        key.tile.is_none() && page_width.max(page_height) <= downscale::SUPERSAMPLE_MAX_SIDE_PX;
+    let factor = if supersample {
+        downscale::SUPERSAMPLE_FACTOR
+    } else {
+        1
+    };
+    let (draw_w, draw_h) = (region.width * factor, region.height * factor);
+
     // The page is laid out at its full size, shifted so that the region's top left corner is the bitmap's; the bitmap is the
     // region and PDFium draws nothing outside it. BGR with PDFium's reverse-byte-order flag yields RGB rows, which PNG takes
-    // as they are.
+    // as they are. Text, image and path smoothing are set explicitly: they make small text grey instead of black.
     let config = PdfRenderConfig::new()
-        .set_target_size(to_i32(page_width)?, to_i32(page_height)?)
+        .set_target_size(to_i32(page_width * factor)?, to_i32(page_height * factor)?)
         .set_origin(-to_i32(region.x)?, -to_i32(region.y)?)
         .set_format(PdfBitmapFormat::BGR)
-        .set_reverse_byte_order(true);
-    let mut bitmap = PdfBitmap::empty(
-        to_i32(region.width)?,
-        to_i32(region.height)?,
-        PdfBitmapFormat::BGR,
-    )
-    .map_err(|error| AppError::logged(ErrorCode::Internal, format!("{error:?}")))?;
+        .set_reverse_byte_order(true)
+        .set_text_smoothing(true)
+        .set_image_smoothing(true)
+        .set_path_smoothing(true);
+    let mut bitmap = PdfBitmap::empty(to_i32(draw_w)?, to_i32(draw_h)?, PdfBitmapFormat::BGR)
+        .map_err(|error| AppError::logged(ErrorCode::Internal, format!("{error:?}")))?;
     page.render_into_bitmap_with_config(&mut bitmap, &config)
         .map_err(|error| AppError::logged(ErrorCode::Internal, format!("{error:?}")))?;
 
     let (rendered_w, rendered_h) = (bitmap.width(), bitmap.height());
-    if (rendered_w, rendered_h) != (to_i32(region.width)?, to_i32(region.height)?) {
+    if (rendered_w, rendered_h) != (to_i32(draw_w)?, to_i32(draw_h)?) {
         return Err(AppError::logged(
             ErrorCode::Internal,
-            format!(
-                "bitmap is {rendered_w}x{rendered_h}, expected {}x{}",
-                region.width, region.height
-            ),
+            format!("bitmap is {rendered_w}x{rendered_h}, expected {draw_w}x{draw_h}"),
         ));
     }
     let raw = bitmap.as_raw_bytes();
     drop(bitmap);
     drop(page);
 
-    let stride = raw.len() / region.height as usize;
+    let stride = raw.len() / draw_h as usize;
+    if supersample {
+        let small = downscale::box_downscale(
+            &raw,
+            (draw_w as usize, draw_h as usize),
+            stride,
+            3,
+            (region.width as usize, region.height as usize),
+        )
+        .ok_or_else(|| AppError::logged(ErrorCode::Internal, "thumbnail downscale failed"))?;
+        return encode::encode_frame(
+            region.width,
+            region.height,
+            region.width as usize * 3,
+            &small,
+        );
+    }
     encode::encode_frame(region.width, region.height, stride, &raw)
 }
 
