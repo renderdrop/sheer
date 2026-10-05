@@ -133,6 +133,7 @@ impl AppState {
             signatures,
             truncated: validation.truncated,
             lock: validation.lock,
+            revision_count: validation.revision_count,
         }
     }
 

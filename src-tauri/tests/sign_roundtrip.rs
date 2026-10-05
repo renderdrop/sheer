@@ -17,6 +17,7 @@ use der::{Decode, Encode};
 use p256::ecdsa::signature::Verifier;
 use p256::pkcs8::DecodePublicKey;
 use sha2::{Digest, Sha256};
+use sheer_lib::commands::save::SaveAck;
 use sheer_lib::commands::sign::SignJob;
 use sheer_lib::commands::AppState;
 use sheer_lib::documents::DocumentId;
@@ -29,7 +30,7 @@ use sheer_lib::pdfsig::material::{SignerKey, SignerMaterial};
 use sheer_lib::pdfsig::types::{SealPlacement, SignLock, SignRequest, SignatureLock};
 use sheer_lib::pdfwrite::sign::{self, SignPlan, Stamp};
 use sheer_lib::pdfwrite::{load_untrusted, sigread};
-use support::fixtures::{add_pages, Page};
+use support::fixtures::{add_pages, page_id, Page};
 use support::PdfBuilder;
 use x509_cert::builder::{Builder, CertificateBuilder, Profile};
 use x509_cert::name::Name;
@@ -562,4 +563,72 @@ fn a_dirty_document_and_a_changed_file_are_refused_and_nothing_is_written() {
         .unwrap_err();
     assert_eq!(error.code(), ErrorCode::UnsavedChanges);
     assert!(!target.exists());
+}
+
+/// One page and a text field `name` in an AcroForm.
+fn form_fixture() -> Vec<u8> {
+    let mut builder = PdfBuilder::new();
+    add_pages(
+        &mut builder,
+        &[Page::new("BT /F1 14 Tf 72 700 Td (Form) Tj ET").with("/Annots [100 0 R]")],
+    );
+    let page = page_id(0);
+    builder.object(
+        100,
+        &format!(
+            "<< /Type /Annot /Subtype /Widget /FT /Tx /T (name) /V (Ada) /Rect [72 500 272 520] /P {page} 0 R >>"
+        ),
+    );
+    builder.object(
+        1,
+        "<< /Type /Catalog /Pages 2 0 R /AcroForm << /Fields [100 0 R] >> >>",
+    );
+    builder.finish(1)
+}
+
+/// ADR-123: a certification signature with P=2 (the "fill in forms" choice) allows form entries and a second signature, and nothing else.
+#[test]
+fn p2_allows_form_fill_and_a_second_signature_but_no_other_edit() {
+    let Some(state) = state() else { return };
+    let scratch = Scratch::new("p2");
+    let id = open(state, &scratch, "f.pdf", &form_fixture());
+    let path = scratch.file("f.pdf");
+    let first = state
+        .sign_into(id, &path, job(state, id, false, SignLock::AllowFillAndSign))
+        .unwrap();
+    assert_eq!(first.document.id, id);
+    assert_eq!(first.document.signature_lock, SignatureLock::FillAndSign);
+
+    let field = state
+        .get_form_fields(id)
+        .unwrap()
+        .fields
+        .iter()
+        .find(|f| f.name == "name")
+        .map(|f| f.id.get())
+        .expect("field");
+    let fill: sheer_lib::model::command::DocCommand = serde_json::from_value(serde_json::json!(
+        {"type": "setFieldValue", "field": field, "value": {"type": "text", "text": "Grace"}}
+    ))
+    .unwrap();
+    state.apply_command(id, fill).unwrap();
+    let rotate: sheer_lib::model::command::DocCommand = serde_json::from_value(
+        serde_json::json!({"type": "rotatePages", "pages": [0], "quarterTurns": 1}),
+    )
+    .unwrap();
+    assert_eq!(
+        state.apply_command(id, rotate).unwrap_err().code(),
+        ErrorCode::ReadOnly
+    );
+
+    // The entry is saved as an increment, then a second signature is allowed.
+    state.save_in_place(id, SaveAck::default()).unwrap();
+    let second_path = scratch.file("f2.pdf");
+    let second = state
+        .sign_into(id, &second_path, job(state, id, false, SignLock::NoChanges))
+        .unwrap();
+    assert_eq!(second.document.signature_lock, SignatureLock::FillAndSign);
+    let bytes = std::fs::read(&second_path).unwrap();
+    assert_eq!(sigread::scan_bytes(&bytes).unwrap().fields.len(), 2);
+    verify(&bytes, 1);
 }

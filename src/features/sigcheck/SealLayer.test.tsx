@@ -48,7 +48,7 @@ beforeEach(() => {
   resetDocuments();
   resetSigcheck();
   useDocuments.getState().add({ id: 1, pageCount: 1, displayName: 'a.pdf' });
-  useSigcheck.getState().setReport(1, { signatures: [signature], truncated: false, lock: 'none' });
+  useSigcheck.getState().setReport(1, { signatures: [signature], truncated: false, lock: 'none', revisionCount: 1 });
 });
 afterEach(() => {
   cleanup();

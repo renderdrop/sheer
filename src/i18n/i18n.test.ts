@@ -53,6 +53,7 @@ describe('the catalogs', () => {
     'img2pdf.meta',
     'home.hero.title',
     'reference.style.din',
+    'cert.placeholder.size',
   ]);
 
   it('every message is a non-empty string, and no German text is left as the English one by accident', () => {

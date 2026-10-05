@@ -118,8 +118,9 @@ pub struct SealPlacement {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum SignLock {
-    #[default]
     AllowFillAndSign,
+    /// The default (ADR-123): nothing may change after signing.
+    #[default]
     NoChanges,
 }
 
@@ -298,6 +299,8 @@ pub struct SignatureReport {
     /// A cap (`limits::SIGS_PER_DOC_MAX`, revisions, objects) cut the report short.
     pub truncated: bool,
     pub lock: SignatureLock,
+    /// The number of revisions of the file (1 for a file never saved incrementally); the "N" of "version n of N".
+    pub revision_count: u32,
 }
 
 /// A pinned signer certificate (`trusted.json`).
@@ -369,7 +372,7 @@ mod tests {
         let request: SignRequest = serde_json::from_value(json!({ "identityId": "00" }))
             .expect("defaults fill the optional parts");
         assert_eq!(request.placement, None);
-        assert_eq!(request.lock, SignLock::AllowFillAndSign);
+        assert_eq!(request.lock, SignLock::NoChanges);
         assert!(
             serde_json::from_value::<SignRequest>(json!({ "identityId": "a", "key": 1 })).is_err()
         );

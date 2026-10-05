@@ -325,6 +325,8 @@ pub struct Validation {
     pub signatures: Vec<Validated>,
     pub truncated: bool,
     pub lock: SignatureLock,
+    /// How many revisions the file has (the `startxref` chain, capped), for "version n of N".
+    pub revision_count: u32,
 }
 
 /// Validates every signature of `bytes` (a file as it is on disk). An encrypted file is `unsupported_feature`. Past `deadline` the
@@ -380,6 +382,7 @@ pub fn validate_bytes(bytes: &[u8], deadline: Instant) -> Result<Validation, App
         signatures,
         truncated,
         lock,
+        revision_count: u32::try_from(ends.len()).unwrap_or(u32::MAX),
     })
 }
 

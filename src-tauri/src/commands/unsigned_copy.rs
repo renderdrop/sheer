@@ -97,6 +97,9 @@ pub async fn save_unsigned_copy(
             dialog =
                 dialog.set_file_name(format!("{} ({suffix}).pdf", file_stem(&info.display_name)));
         }
+        if let Some(folder) = state.source_dir(doc_id) {
+            dialog = dialog.set_directory(folder);
+        }
         let Some(chosen) = dialog.blocking_save_file() else {
             return Ok(None);
         };

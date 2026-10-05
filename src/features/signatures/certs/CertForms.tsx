@@ -34,9 +34,14 @@ function useAfterDelay(on: boolean): boolean {
   return late;
 }
 
-function Back({ onClick }: { onClick: () => void }) {
+function Back({ onClick, title }: { onClick: () => void; title?: string }) {
   const t = useT();
-  return <IconButton size="sm" icon={ArrowLeft} label={t('copy.back')} onClick={onClick} className="self-start" />;
+  return (
+    <div className="flex items-center gap-2">
+      <IconButton size="sm" icon={ArrowLeft} label={t('copy.back')} onClick={onClick} className="self-start" />
+      {title !== undefined && <h3 className="t-title m-0">{title}</h3>}
+    </div>
+  );
 }
 
 interface FormProps {
@@ -91,7 +96,7 @@ export function CreateForm({ onBack, onCreated }: FormProps & { onCreated: (info
   return (
     <form onSubmit={submit} noValidate className="flex min-h-0 flex-1 flex-col gap-4">
       <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto">
-        <Back onClick={onBack} />
+        <Back onClick={onBack} title={t('cert.createTitle')} />
         <label className="flex flex-col gap-1 text-sm text-text-muted" htmlFor={`${ids}-name`}>
           {t('cert.name')}
         </label>

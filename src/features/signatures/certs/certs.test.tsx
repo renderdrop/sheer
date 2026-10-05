@@ -133,14 +133,17 @@ describe('certificate manager', () => {
     expect(screen.getByRole('button', { name: 'Create certificate…' }).getAttribute('aria-disabled')).toBe('true');
   });
 
-  it('expands details with the grouped fingerprint', async () => {
+  it('expands details with the fingerprint in blocks of four hex pairs and the Export button', async () => {
     const { user } = await openWith([identity(1)]);
     const toggle = screen.getByRole('button', { name: 'Details' });
     expect(toggle.getAttribute('aria-expanded')).toBe('false');
     await user.click(toggle);
     expect(toggle.getAttribute('aria-expanded')).toBe('true');
     expect(screen.getByText('SHA-256 fingerprint')).toBeTruthy();
-    expect(screen.getByText(/^(?:a{4} ){15}aaa1$/)).toBeTruthy();
+    expect(document.querySelector('[data-fingerprint]')?.textContent).toBe(
+      `${Array(7).fill('AA:AA:AA:AA').join(' ')} AA:AA:AA:A1`,
+    );
+    expect(screen.getByRole('button', { name: 'Export certificate…' })).toBeTruthy();
   });
 
   it('creates a certificate with only a name and selects the new row', async () => {
@@ -148,6 +151,7 @@ describe('certificate manager', () => {
     vi.mocked(createSigningIdentity).mockResolvedValue(created);
     const { user } = await openWith([], 'empty');
     await user.click(screen.getByRole('button', { name: 'Create certificate…' }));
+    expect(screen.getByRole('heading', { name: 'New certificate' })).toBeTruthy();
     await user.type(screen.getByLabelText('Name'), '  Ada  ');
     await user.click(screen.getByRole('button', { name: 'Create' }));
     expect(createSigningIdentity).toHaveBeenCalledWith({ name: 'Ada', email: null, organization: null });

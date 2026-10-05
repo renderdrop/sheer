@@ -1016,8 +1016,8 @@ pub async fn save_document_as(
             };
             dialog = dialog.set_file_name(name);
         }
-        // A recovered document proposes the folder its original was in (known to Rust only).
-        if let Some(folder) = state.autosave_original_dir(doc_id) {
+        // The folder of the source file (a recovered document: of its original), known to Rust only.
+        if let Some(folder) = state.source_dir(doc_id) {
             dialog = dialog.set_directory(folder);
         }
         let Some(chosen) = dialog.blocking_save_file() else {

@@ -41,6 +41,8 @@ export interface MenuItemSpec {
   checked?: boolean;
   /** With `checked`: one of a group of exclusive choices, so the role is `menuitemradio`. */
   radio?: boolean;
+  /** A second line under the label, Text-secondary (DESIGN 3.8 L2): the row grows to 48. */
+  caption?: string;
   /** Stays focusable (`aria-disabled`, DESIGN 3.0) but does nothing. */
   disabled?: boolean;
   /**
@@ -79,6 +81,7 @@ const ITEM =
   ' aria-disabled:cursor-not-allowed aria-disabled:opacity-(--opacity-disabled) ' +
   'not-aria-disabled:hover:bg-subtle not-aria-disabled:focus-visible:bg-subtle not-aria-disabled:active:bg-pressed not-aria-disabled:active:scale-(--scale-press) ' +
   'not-aria-disabled:aria-expanded:bg-subtle';
+const ITEM_TALL = ITEM.replace('h-(--space-8)', 'h-(--space-12)');
 
 /** The submenu that is open in a list: which item opened it, and how often focus was asked to go into it. */
 interface OpenSubmenu {
@@ -287,7 +290,7 @@ export function MenuList({ entries, onActivate, onTab, onBack }: MenuListProps) 
               onClick={onClick}
               onPointerEnter={(event) => onItemEnter(event, entry)}
               onPointerLeave={(event) => onItemLeave(event, entry)}
-              className={`${ITEM} text-text`}
+              className={`${entry.caption === undefined ? ITEM : ITEM_TALL} text-text`}
             >
               {reserveIcon &&
                 (entry.checked === true ? (
@@ -299,7 +302,14 @@ export function MenuList({ entries, onActivate, onTab, onBack }: MenuListProps) 
                 ) : (
                   <span aria-hidden="true" className="size-icon-16 shrink-0" />
                 ))}
-              <span className="flex-auto truncate">{entry.label}</span>
+              {entry.caption === undefined ? (
+                <span className="flex-auto truncate">{entry.label}</span>
+              ) : (
+                <span className="flex min-w-0 flex-auto flex-col">
+                  <span className="t-label truncate">{entry.label}</span>
+                  <span className="t-caption truncate text-text-muted">{entry.caption}</span>
+                </span>
+              )}
               {hasSubmenu ? (
                 <Icon icon={ChevronRight} className="text-text-muted rtl:-scale-x-100" />
               ) : (

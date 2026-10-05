@@ -160,6 +160,8 @@ export interface SignatureReport {
   /** A cap cut the report short. */
   truncated: boolean;
   lock: SignatureLock;
+  /** The number of revisions of the file (at least 1): the "N" of "version n of N". */
+  revisionCount: number;
 }
 
 export interface TrustedSigner {
@@ -377,8 +379,16 @@ export function parseSignatureInfo(value: unknown): SignatureInfo | null {
 /** Validates a signature report; `null` if it is not one (more than 32 signatures included). */
 export function parseSignatureReport(value: unknown): SignatureReport | null {
   if (!isRecord(value)) return null;
-  const { signatures, truncated, lock } = value;
+  const { signatures, truncated, lock, revisionCount } = value;
   if (!Array.isArray(signatures) || signatures.length > SIGS_PER_DOC_MAX || typeof truncated !== 'boolean') return null;
+  if (
+    typeof revisionCount !== 'number' ||
+    !Number.isInteger(revisionCount) ||
+    revisionCount < 0 ||
+    revisionCount > 1000
+  ) {
+    return null;
+  }
   if (!oneOf(SIGNATURE_LOCKS, lock)) return null;
   const parsed: SignatureInfo[] = [];
   for (const item of signatures as unknown[]) {
@@ -386,7 +396,7 @@ export function parseSignatureReport(value: unknown): SignatureReport | null {
     if (info === null) return null;
     parsed.push(info);
   }
-  return { signatures: parsed, truncated, lock };
+  return { signatures: parsed, truncated, lock, revisionCount: Math.max(1, revisionCount) };
 }
 
 /** Validates a pinned signer; `null` if it is not one. Extra keys are dropped. */

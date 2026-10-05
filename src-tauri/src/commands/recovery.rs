@@ -74,6 +74,18 @@ impl AppState {
         self.autosave.get().map(Autosave::begin_save)
     }
 
+    /// The folder a save dialog for a copy of `id` opens in (ADR-123): the folder of the file the document came from, for a recovered
+    /// document the folder of its original. `None` (the dialog's own last folder) when it is unknown or gone. Never sent to the UI.
+    pub(super) fn source_dir(&self, id: DocumentId) -> Option<PathBuf> {
+        let own = self
+            .info(id)
+            .filter(|info| info.kind == crate::documents::DocKind::User)
+            .and_then(|_| self.registry.path(id))
+            .and_then(|path| path.parent().map(PathBuf::from));
+        own.or_else(|| self.autosave_original_dir(id))
+            .filter(|dir| dir.is_dir())
+    }
+
     /// The folder a recovered document's original was in, for the Save As dialog; never sent to the UI.
     pub(super) fn autosave_original_dir(&self, id: DocumentId) -> Option<PathBuf> {
         self.autosave.get()?.original_dir(id)

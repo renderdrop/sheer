@@ -51,11 +51,16 @@ export function modeAfterKey(current: Mode, key: string): Mode | null {
 export interface VariantDef {
   id: string;
   label: string;
-  icon: LucideIcon;
+  /** None: the check column of a radio variant is its marker. */
+  icon?: LucideIcon;
   /** A decorative element in the icon's place (a signature preview). */
   leading?: ReactNode;
   /** Shown as chosen. */
   on?: boolean;
+  /** One of an exclusive group: the menu item is a `menuitemradio` with `aria-checked` even when it is off. */
+  radio?: boolean;
+  /** A second line under the label (Text-secondary). */
+  caption?: string;
   disabled?: boolean;
   run: () => void;
 }

@@ -84,7 +84,7 @@ const SIGNATURE = {
   trust: 'ownIdentity',
   widget: { pageId: 0, rect: RECT },
 };
-const REPORT = { signatures: [SIGNATURE], truncated: false, lock: 'fillAndSign' };
+const REPORT = { signatures: [SIGNATURE], truncated: false, lock: 'fillAndSign', revisionCount: 2 };
 
 const SAVE_RESULT = {
   rev: 1,

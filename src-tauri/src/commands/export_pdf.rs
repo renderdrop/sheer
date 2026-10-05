@@ -51,12 +51,15 @@ impl AppState {
         sink: Arc<dyn EventSink>,
     ) -> Result<Option<JobId>, AppError> {
         let stem = self.check_export(id, opts, ack)?;
-        let dialog = window
+        let mut dialog = window
             .dialog()
             .file()
             .set_parent(window)
             .add_filter("PDF", &["pdf"])
             .set_file_name(format!("{stem} copy.pdf"));
+        if let Some(folder) = self.source_dir(id) {
+            dialog = dialog.set_directory(folder);
+        }
         let Some(chosen) = dialog.blocking_save_file() else {
             return Ok(None);
         };

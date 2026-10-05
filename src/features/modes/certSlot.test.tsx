@@ -26,9 +26,14 @@ vi.mock('../../api/signing', async (importOriginal) => ({
 let mockItems: SigningIdentityInfo[] = [];
 
 const name = (commonName: string) => ({ commonName, organization: null, email: null });
-const identity = (id: string, commonName: string, expired = false): SigningIdentityInfo => ({
+const identity = (
+  id: string,
+  commonName: string,
+  expired = false,
+  email: string | null = null,
+): SigningIdentityInfo => ({
   id,
-  subject: name(commonName),
+  subject: { ...name(commonName), email },
   issuer: name(commonName),
   selfSigned: true,
   notBefore: '2026-01-01T00:00:00Z',
@@ -84,17 +89,22 @@ describe('the Zertifikat slot (DESIGN 3.8 S1)', () => {
   });
 
   it('lists the certificates, then New and Manage; choosing one turns the tool on with it', async () => {
-    mockItems = [identity('1'.repeat(32), 'Ada'), identity('2'.repeat(32), 'Bo', true)];
+    mockItems = [identity('1'.repeat(32), 'Ada', false, 'ada@example.org'), identity('2'.repeat(32), 'Bo', true)];
     const { user } = setup(<Rows />);
     await waitFor(() => expect(useIdentities.getState().items).toHaveLength(2));
     await user.click(item('Options for Certificate'));
     const menu = await screen.findByRole('menu');
+    // L2: identities are radios (the check marks the active one, the email is the second line), the commands are plain items.
+    const radios = within(menu).getAllByRole('menuitemradio');
+    expect(radios.map((entry) => entry.textContent)).toEqual(['Adaada@example.org', 'Bo']);
+    expect(radios.map((entry) => entry.getAttribute('aria-checked'))).toEqual(['true', 'false']);
+    expect(within(radios[0] as HTMLElement).getByText('ada@example.org').className).toContain('text-text-muted');
     expect(
       within(menu)
         .getAllByRole('menuitem')
         .map((entry) => entry.textContent),
-    ).toEqual(['Ada', 'Bo', 'New certificate…', 'Manage certificates…']);
-    await user.click(within(menu).getByRole('menuitem', { name: 'Ada' }));
+    ).toEqual(['New certificate…', 'Manage certificates…']);
+    await user.click(within(menu).getByRole('menuitemradio', { name: /^Ada/ }));
     expect(useCertSign.getState()).toMatchObject({ active: true, identityId: '1'.repeat(32) });
     expect(useUi.getState().activeTool).toBe('signature');
     expect(item('Certificate').getAttribute('aria-pressed')).toBe('true');

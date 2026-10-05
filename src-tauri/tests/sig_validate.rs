@@ -1002,6 +1002,8 @@ fn the_commands_validate_open_the_signed_revision_and_pin_a_signer() {
     assert_eq!(report.signatures.len(), 2);
     assert_eq!(report.lock, SignatureLock::FillAndSign);
     assert!(!report.truncated);
+    // The file the dialog says "version n of N" about: the base, two signatures and the form entries are revisions.
+    assert!(report.revision_count >= 3, "{}", report.revision_count);
     assert!(report
         .signatures
         .iter()

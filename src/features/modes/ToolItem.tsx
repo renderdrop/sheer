@@ -37,12 +37,17 @@ export interface ToolItemProps {
   stop: string;
 }
 
-const asEntry = (variant: VariantDef): MenuEntry => ({
+export const asEntry = (variant: VariantDef): MenuEntry => ({
   id: variant.id,
   label: variant.label,
   ...(variant.icon === undefined ? {} : { icon: variant.icon }),
   ...(variant.leading === undefined ? {} : { leading: variant.leading }),
-  ...(variant.on === true ? { checked: true } : {}),
+  ...(variant.radio === true
+    ? { checked: variant.on === true, radio: true }
+    : variant.on === true
+      ? { checked: true }
+      : {}),
+  ...(variant.caption === undefined ? {} : { caption: variant.caption }),
   ...(variant.disabled === true ? { disabled: true } : {}),
   onSelect: variant.run,
 });
@@ -176,7 +181,7 @@ export function ToolItem({ slot, iconOnly, stop }: ToolItemProps) {
                       }}
                       className={VARIANT}
                     >
-                      <Icon icon={variant.icon} />
+                      {variant.icon !== undefined && <Icon icon={variant.icon} />}
                       {variant.label}
                     </button>
                   ))}

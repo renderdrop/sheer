@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
 
 import type { Point, Rect } from '../../../api/wire';
+import { announce } from '../../../components';
 import { useT } from '../../../i18n';
 import { useUi } from '../../../stores/ui';
 import { clampToPage, isDrag } from '../../annotations/create/geometry';
 import { normalizeRotation, overlayBox, swapsSides, viewToPage } from '../../viewer/transform';
-import { boxAtClick, boxFromDrag, nudge } from './geometry';
+import { SEAL_HANDLES, boxAtClick, boxFromDrag, nudge, resizeBy, resizeTo } from './geometry';
 import { useIdentities } from './identities';
 import { sealDate } from './SealPreview';
 import { useCertSign } from './store';
@@ -23,6 +24,26 @@ export interface CertPlacementLayerProps {
 const OUTLINE_PT = 1;
 const DASH = '4 3';
 const SCROLL_SURFACE = '[role="region"]';
+/** The visual and the pointer size of a resize handle, in CSS px (DESIGN 3.8 L6). */
+const HANDLE_PX = 8;
+const HANDLE_HIT_PX = 24;
+
+type Handle = (typeof SEAL_HANDLES)[number];
+
+/** The resize cursor of a handle, seen on screen: a quarter turn swaps the axes. */
+function handleCursor({ hx, hy }: Handle, quarter: boolean): string {
+  const diagonal = hx !== 0 && hy !== 0;
+  if (diagonal) return hx * hy > 0 !== quarter ? 'nwse-resize' : 'nesw-resize';
+  return (hx !== 0) !== quarter ? 'ew-resize' : 'ns-resize';
+}
+
+/** The unit step of an arrow key on the screen. */
+const ARROWS: Record<string, { x: number; y: number } | undefined> = {
+  ArrowLeft: { x: -1, y: 0 },
+  ArrowRight: { x: 1, y: 0 },
+  ArrowUp: { x: 0, y: -1 },
+  ArrowDown: { x: 0, y: 1 },
+};
 
 /**
  * The layer that places the seal of a certificate signature on one page (DESIGN 3.8 S3 step 1). It takes the pointer only while the
@@ -42,6 +63,7 @@ function ActiveLayer({ docId, pageIndex, pageBox, transform }: CertPlacementLaye
   const certId = useCertSign((state) => state.identityId);
   const identities = useIdentities((state) => state.items);
   const [drag, setDrag] = useState<{ from: Point; to: Point } | null>(null);
+  const [resizing, setResizing] = useState<Handle | null>(null);
   const rotation = normalizeRotation(transform.rotation);
   const page = useMemo(() => [pageBox.width, pageBox.height] as const, [pageBox.width, pageBox.height]);
   const viewW = swapsSides(rotation) ? page[1] : page[0];
@@ -75,11 +97,23 @@ function ActiveLayer({ docId, pageIndex, pageBox, transform }: CertPlacementLaye
     setDrag({ from: at, to: at });
   };
   const onPointerMove = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (resizing !== null) {
+      const at = toPage(event);
+      const current = useCertSign.getState().box;
+      if (at !== null && current !== null) {
+        useCertSign.getState().setBox({ ...current, rect: resizeTo(current.rect, resizing.hx, resizing.hy, at, page) });
+      }
+      return;
+    }
     if (drag === null) return;
     const at = toPage(event);
     if (at !== null) setDrag({ from: drag.from, to: at });
   };
   const onPointerUp = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (resizing !== null) {
+      setResizing(null);
+      return;
+    }
     if (drag === null) return;
     const at = toPage(event) ?? drag.to;
     setDrag(null);
@@ -101,7 +135,28 @@ function ActiveLayer({ docId, pageIndex, pageBox, transform }: CertPlacementLaye
         useUi.getState().releaseTool();
         return;
       }
-      if (event.ctrlKey || event.metaKey || event.altKey) return;
+      if (event.ctrlKey || event.metaKey) return;
+      const arrow = ARROWS[event.key];
+      if (event.altKey) {
+        // Alt+arrows resize from the bottom-right corner, Alt+Shift by 10 pt (L6): Right and Down grow, Left and Up shrink.
+        if (arrow === undefined || box === null || !mine) return;
+        event.preventDefault();
+        const step = event.shiftKey ? 10 : 1;
+        const origin = viewToPage({ x: 0, y: 0 }, page, rotation);
+        const delta = viewToPage({ x: arrow.x * step, y: arrow.y * step }, page, rotation);
+        const corner = viewToPage({ x: 1, y: 1 }, page, rotation);
+        const rect = resizeBy(
+          box.rect,
+          corner.x >= origin.x ? 1 : -1,
+          corner.y >= origin.y ? 1 : -1,
+          delta.x - origin.x,
+          delta.y - origin.y,
+          page,
+        );
+        useCertSign.getState().setBox({ ...box, rect });
+        announce(t('cert.placeholder.size', { w: Math.round(rect.w), h: Math.round(rect.h) }));
+        return;
+      }
       if (event.key === 'Enter') {
         if (box !== null) {
           if (!mine) return;
@@ -160,10 +215,12 @@ function ActiveLayer({ docId, pageIndex, pageBox, transform }: CertPlacementLaye
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}
-      onPointerCancel={() => setDrag(null)}
+      onPointerCancel={() => {
+        setDrag(null);
+        setResizing(null);
+      }}
     >
       <svg
-        aria-hidden="true"
         className="pointer-events-none absolute overflow-visible"
         width={overlay.width}
         height={overlay.height}
@@ -171,7 +228,7 @@ function ActiveLayer({ docId, pageIndex, pageBox, transform }: CertPlacementLaye
         style={{ left: overlay.left, top: overlay.top, transform: overlay.transform, transformOrigin: 'center' }}
       >
         {shown !== null && (
-          <g data-seal-placeholder="" aria-label={t('cert.tool')}>
+          <g data-seal-placeholder="" role="group" aria-label={t('cert.placeholder.aria')}>
             <rect
               x={shown.x}
               y={shown.y}
@@ -195,6 +252,48 @@ function ActiveLayer({ docId, pageIndex, pageBox, transform }: CertPlacementLaye
                   {date}
                 </text>
               </>
+            )}
+            {mine && drag === null && (
+              <g data-seal-handles="">
+                {SEAL_HANDLES.map((handle) => {
+                  const unit = 1 / transform.pxPerPt;
+                  const cx = shown.x + ((handle.hx + 1) * shown.w) / 2;
+                  const cy = shown.y + ((handle.hy + 1) * shown.h) / 2;
+                  const key = `${handle.hx}:${handle.hy}`;
+                  return (
+                    <g key={key} data-seal-handle={key}>
+                      <rect
+                        x={cx - (HANDLE_PX * unit) / 2}
+                        y={cy - (HANDLE_PX * unit) / 2}
+                        width={HANDLE_PX * unit}
+                        height={HANDLE_PX * unit}
+                        rx={2 * unit}
+                        fill="var(--color-white)"
+                        stroke="var(--color-ink)"
+                        strokeWidth={unit}
+                      />
+                      <rect
+                        x={cx - (HANDLE_HIT_PX * unit) / 2}
+                        y={cy - (HANDLE_HIT_PX * unit) / 2}
+                        width={HANDLE_HIT_PX * unit}
+                        height={HANDLE_HIT_PX * unit}
+                        fill="transparent"
+                        style={{
+                          pointerEvents: 'all',
+                          cursor: handleCursor(handle, rotation === 90 || rotation === 270),
+                        }}
+                        onPointerDown={(event) => {
+                          if (event.button !== 0) return;
+                          event.stopPropagation();
+                          event.preventDefault();
+                          (event.target as Element).setPointerCapture?.(event.pointerId);
+                          setResizing(handle);
+                        }}
+                      />
+                    </g>
+                  );
+                })}
+              </g>
             )}
           </g>
         )}

@@ -1,4 +1,4 @@
-import { ChevronDown, Copy, Info, KeyRound, Trash2, TriangleAlert } from 'lucide-react';
+import { ChevronDown, Copy, Download, Info, KeyRound, Trash2, TriangleAlert } from 'lucide-react';
 import { useEffect, useId, useState } from 'react';
 
 import { toAppError } from '../../../api/errors';
@@ -12,6 +12,7 @@ import { Button, Icon, IconButton, announce } from '../../../components';
 import { DISMISS_PRIORITY, registerDismissLayer } from '../../../components/dismiss';
 import { useLocale, useT } from '../../../i18n';
 import { CreateForm, ImportForm } from './CertForms';
+import { Fingerprint, fingerprintPlain } from './Fingerprint';
 import { formatDay, formatMonth, groupHex, notYetValid, certErrorText } from './model';
 import {
   addImported,
@@ -89,7 +90,7 @@ function CertRow({ item, selected, onDelete }: RowProps) {
 
   const copy = () => {
     // The OS clipboard is local; failing to write it (no permission) is not worth a message.
-    void navigator.clipboard?.writeText(item.fingerprintSha256).then(
+    void navigator.clipboard?.writeText(fingerprintPlain(item.fingerprintSha256)).then(
       () => announce(t('text.copied')),
       () => undefined,
     );
@@ -145,16 +146,16 @@ function CertRow({ item, selected, onDelete }: RowProps) {
             </Detail>
             <dt className="text-sm text-text-muted">{t('cert.field.fingerprint')}</dt>
             <dd className="m-0 flex min-w-0 items-start gap-2">
-              <span className="min-w-0 flex-1 break-all text-md tabular-nums">{groupHex(item.fingerprintSha256)}</span>
+              <Fingerprint hex={item.fingerprintSha256} />
               <IconButton size="sm" icon={Copy} label={t('cert.copyFingerprint')} onClick={copy} />
             </dd>
           </dl>
-          <p className="m-0 text-sm text-text-muted">{t('cert.stored')}</p>
           <div>
-            <Button variant="secondary" size="sm" onClick={() => void exportCertificate(item.id)}>
+            <Button variant="secondary" size="sm" icon={Download} onClick={() => void exportCertificate(item.id)}>
               {t('cert.export')}
             </Button>
           </div>
+          <p className="m-0 text-sm text-text-muted">{t('cert.stored')}</p>
         </div>
       )}
     </li>

@@ -1,5 +1,5 @@
 import { AnimatePresence, motion, useIsPresent } from 'motion/react';
-import { Copy } from 'lucide-react';
+import { BadgeCheck, BadgeX, Copy, History, ScanEye } from 'lucide-react';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 
@@ -12,6 +12,7 @@ import { DURATION, useFade, usePopoverMotion } from '../../components/motion';
 import { APP_NAME } from '../../config/app';
 import { useLocale, useT } from '../../i18n';
 import { useDocuments } from '../../stores/documents';
+import { Fingerprint, fingerprintPlain } from '../signatures/certs/Fingerprint';
 import { makeEditableCopy, showOnPage, viewSignedVersion } from './actions';
 import { useLocal } from './hooks';
 import { closeSignaturesDialog } from './open';
@@ -70,12 +71,14 @@ interface CardProps {
   docId: number;
   sig: SignatureInfo;
   total: number;
+  /** How many revisions the file has, the N of "version n of N". */
+  revisions: number;
   onTrust: (sig: SignatureInfo, trusted: boolean) => void;
   busy: boolean;
 }
 
 /** One signature (DESIGN v1.4 S6): state icon and word, signer, claimed time, coverage, later changes, certificate, actions. */
-function SignatureCard({ docId, sig, total, onTrust, busy }: CardProps) {
+function SignatureCard({ docId, sig, total, revisions, onTrust, busy }: CardProps) {
   const t = useT();
   const locale = useLocale();
   const local = useLocal();
@@ -97,7 +100,8 @@ function SignatureCard({ docId, sig, total, onTrust, busy }: CardProps) {
     cert !== null &&
     sig.claimedTime !== null &&
     (new Date(sig.claimedTime) < new Date(cert.notBefore) || new Date(sig.claimedTime) > new Date(cert.notAfter));
-  const canView = sig.coverage.type === 'earlierRevision' || state !== 'intact';
+  // The signed version is offered only when later versions exist (DESIGN 3.8 L3).
+  const canView = sig.coverage.type === 'earlierRevision';
   // Trusting is offered only for a signature that checks out and is intact: never for a changed, broken or unchecked one.
   const canTrust = sig.cryptographic === 'valid' && (state === 'intact' || state === 'later');
   const widget = sig.widget;
@@ -133,7 +137,7 @@ function SignatureCard({ docId, sig, total, onTrust, busy }: CardProps) {
         <Row label={t('sigs.row.content')}>
           <span className={bad ? 'font-semibold' : ''}>{word(state)}</span>
           {sig.coverage.type === 'earlierRevision'
-            ? `. ${t('sigs.coversVersion', { n: sig.coverage.revision })}`
+            ? `. ${t('sigs.covers', { n: sig.coverage.revision, total: Math.max(revisions, sig.coverage.revision) })}`
             : `. ${local.wholeFile}`}
         </Row>
       )}
@@ -160,12 +164,14 @@ function SignatureCard({ docId, sig, total, onTrust, busy }: CardProps) {
           </Row>
           <Row label={t('cert.field.fingerprint')}>
             <span className="flex items-start gap-1">
-              <code className="min-w-0 flex-1 break-all font-mono text-sm">{cert.fingerprintSha256}</code>
+              <Fingerprint hex={cert.fingerprintSha256} />
               <IconButton
                 label={t('cert.copyFingerprint')}
                 icon={Copy}
                 size="sm"
-                onClick={() => void navigator.clipboard?.writeText(cert.fingerprintSha256).catch(() => undefined)}
+                onClick={() =>
+                  void navigator.clipboard?.writeText(fingerprintPlain(cert.fingerprintSha256)).catch(() => undefined)
+                }
               />
             </span>
           </Row>
@@ -185,14 +191,14 @@ function SignatureCard({ docId, sig, total, onTrust, busy }: CardProps) {
 
       <div className="flex flex-wrap items-center gap-2">
         {widget !== null ? (
-          <Button variant="ghost" size="sm" onClick={() => showOnPage(docId, sig.index, widget)}>
+          <Button variant="ghost" size="sm" icon={ScanEye} onClick={() => showOnPage(docId, sig.index, widget)}>
             {t('sigs.showOnPage')}
           </Button>
         ) : (
           <span className="t-caption text-text-muted">{t('sigs.invisible')}</span>
         )}
         {canView && !broken && (
-          <Button variant="ghost" size="sm" onClick={() => void viewSignedVersion(docId, sig.index)}>
+          <Button variant="ghost" size="sm" icon={History} onClick={() => void viewSignedVersion(docId, sig.index)}>
             {local.viewSigned}
           </Button>
         )}
@@ -200,6 +206,7 @@ function SignatureCard({ docId, sig, total, onTrust, busy }: CardProps) {
           <Button
             variant="ghost"
             size="sm"
+            icon={sig.trust === 'trustedByYou' ? BadgeX : BadgeCheck}
             disabled={busy}
             focusableWhenDisabled
             onClick={() => onTrust(sig, sig.trust !== 'trustedByYou')}
@@ -329,6 +336,7 @@ function Modal({ docId, index }: { docId: number; index: number | null }) {
                   docId={docId}
                   sig={sig}
                   total={sigs.length}
+                  revisions={entry?.status === 'ready' ? entry.report.revisionCount : sigs.length}
                   onTrust={onTrust}
                   busy={busy}
                 />

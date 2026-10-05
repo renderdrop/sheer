@@ -5,7 +5,7 @@
 //! | `sign_document` | `docId: number`, `request: SignRequest` | `SaveResult \| null` (`null` = the save dialog was cancelled) |
 //!
 //! PAdES B-B: the file is the current one plus ONE appended revision (`pdfwrite::sign`), written to a new file the user picks in a Rust
-//! save dialog (default `<stem> (signed).pdf`; the open file itself is allowed, atomically). Never a Full save, and the original bytes
+//! save dialog (default `<stem> – signed.pdf`, in the source folder; the open file itself is allowed, atomically). Never a Full save, and the original bytes
 //! stay byte-identical. The key is read for this one call (`commands::identities::signer_material`) and never crosses IPC (SECURITY I18).
 //!
 //! The document must be clean (`unsaved_changes`), unchanged on disk (`needs_confirmation` `fileChangedOnDisk`), not encrypted
@@ -63,14 +63,14 @@ fn words(locale: MenuLocale) -> Words {
     }
 }
 
-/// The name the save dialog proposes: `<stem> (signed).pdf`.
+/// The name the save dialog proposes: `<stem> â signed.pdf` (en dash, DESIGN 3.8 L5).
 fn default_file_name(display_name: &str, locale: MenuLocale) -> String {
     let stem = display_name
         .strip_suffix(".pdf")
         .or_else(|| display_name.strip_suffix(".PDF"))
         .unwrap_or(display_name);
     let stem = if stem.is_empty() { "Document" } else { stem };
-    format!("{stem} ({}).pdf", words(locale).file_suffix)
+    format!("{stem} – {}.pdf", words(locale).file_suffix)
 }
 
 /// What [`AppState::sign_into`] needs besides the document: everything that was decided or looked up before.
@@ -376,12 +376,15 @@ pub async fn sign_document(
         // Refused before the user is asked for a file.
         state.check_signable(doc_id, &request)?;
         let info = state.info(doc_id).ok_or(AppError::not_found("document"))?;
-        let dialog = window
+        let mut dialog = window
             .dialog()
             .file()
             .set_parent(&window)
             .add_filter("PDF", &["pdf"])
             .set_file_name(default_file_name(&info.display_name, locale));
+        if let Some(folder) = state.source_dir(doc_id) {
+            dialog = dialog.set_directory(folder);
+        }
         let Some(chosen) = dialog.blocking_save_file() else {
             return Ok(None);
         };
@@ -412,15 +415,15 @@ mod tests {
     fn the_dialog_proposes_the_stem_with_signed_in_the_language() {
         assert_eq!(
             default_file_name("Report.pdf", MenuLocale::En),
-            "Report (signed).pdf"
+            "Report – signed.pdf"
         );
         assert_eq!(
             default_file_name("Bericht", MenuLocale::De),
-            "Bericht (signiert).pdf"
+            "Bericht – signiert.pdf"
         );
         assert_eq!(
             default_file_name(".pdf", MenuLocale::En),
-            "Document (signed).pdf"
+            "Document – signed.pdf"
         );
     }
 }

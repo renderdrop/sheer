@@ -10,7 +10,7 @@ import { useUi } from '../../stores/ui';
 import { FIT_START, hiddenIds, MODE_LABEL, tighter, type Fit, type SlotDef } from './model';
 import { TOOL_ROW_ID } from './ModeRow';
 import { focusCanvas } from './switch';
-import { ToolItem } from './ToolItem';
+import { asEntry, ToolItem } from './ToolItem';
 import { useModeSlots } from './useSlots';
 
 const MORE =
@@ -30,15 +30,7 @@ function moreEntries(slots: readonly SlotDef[]): MenuEntry[] {
     if (slot.variants === undefined) return { ...base, onSelect: slot.run };
     return {
       ...base,
-      submenu: slot.variants.map((variant): MenuEntry => ({
-        id: variant.id,
-        label: variant.label,
-        icon: variant.icon,
-        ...(variant.leading === undefined ? {} : { leading: variant.leading }),
-        ...(variant.on === true ? { checked: true } : {}),
-        ...(variant.disabled === true ? { disabled: true } : {}),
-        onSelect: variant.run,
-      })),
+      submenu: slot.variants.map(asEntry),
       onSelect: () => undefined,
     };
   });

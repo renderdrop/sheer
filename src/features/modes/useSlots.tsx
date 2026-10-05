@@ -20,6 +20,8 @@ import {
   Minus,
   MousePointer2,
   MoveUpRight,
+  Plus,
+  Settings2,
   PenLine,
   RotateCcw,
   RotateCw,
@@ -164,7 +166,7 @@ function family(
   return {
     ...base,
     label,
-    icon: current.icon,
+    icon: current.icon ?? Dot,
     variants: wrapped,
     run: () => {
       remember(base.id, current.id);
@@ -354,13 +356,17 @@ function zertifikat(inputs: Inputs): SlotDef {
     ...identities.map((identity): VariantDef => ({
       id: `cert-${identity.id}`,
       label: identity.subject.commonName,
-      icon: Stamp,
-      on: certActive && chosen?.id === identity.id,
+      // The check column marks the active identity (DESIGN 3.8 L2); the email is the second line.
+      radio: true,
+      on: chosen?.id === identity.id,
+      ...(identity.subject.email === null || identity.subject.email === '' ? {} : { caption: identity.subject.email }),
       disabled: !canSign(identity),
       run: () => useCertSign.getState().activate(identity.id),
     })),
-    { id: 'cert-new', label: t('cert.menu.new'), icon: Stamp, run: manage },
-    ...(identities.length === 0 ? [] : [{ id: 'cert-manage', label: t('cert.menu.manage'), icon: Stamp, run: manage }]),
+    { id: 'cert-new', label: t('cert.menu.new'), icon: Plus, run: manage },
+    ...(identities.length === 0
+      ? []
+      : [{ id: 'cert-manage', label: t('cert.menu.manage'), icon: Settings2, run: manage }]),
   ];
   let disabledReason: string | undefined;
   if (readOnly) disabledReason = t('tool.readOnly');

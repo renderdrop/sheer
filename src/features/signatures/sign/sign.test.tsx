@@ -9,7 +9,7 @@ import { useDocuments } from '../../../stores/documents';
 import { resetDocuments } from '../../../stores/documents.testutil';
 import { useUi } from '../../../stores/ui';
 import { setup } from '../../../test/render';
-import { boxAtClick, boxFromDrag, keepInside, nudge } from './geometry';
+import { boxAtClick, boxFromDrag, keepInside, nudge, resizeBy, resizeTo } from './geometry';
 import { useIdentities } from './identities';
 import { SignDialogHost } from './SignDialog';
 import { useCertSign } from './store';
@@ -159,5 +159,83 @@ describe('the signing flow (DESIGN 3.8 S3)', () => {
     ready();
     const button = await screen.findByRole('button', { name: 'Sign and save as…' });
     expect((button as HTMLButtonElement).disabled).toBe(true);
+  });
+});
+
+describe('the lock choice (DESIGN 3.8 L1, AC 25 to 27)', () => {
+  it('starts at "No changes" for an unsigned file, switches the notice and sends the choice', async () => {
+    signDocument.mockResolvedValue(signed);
+    const { user } = setup(<SignDialogHost />);
+    ready();
+    const group = await screen.findByRole('radiogroup', { name: 'Allowed after signing' });
+    const none = screen.getByRole('radio', { name: /^No changes/ }) as HTMLInputElement;
+    const forms = screen.getByRole('radio', {
+      name: /^Fill in forms and allow further signatures/,
+    }) as HTMLInputElement;
+    expect(group).not.toBeNull();
+    expect([none.checked, forms.checked]).toEqual([true, false]);
+    expect(none.getAttribute('aria-describedby')).not.toBeNull();
+    expect(screen.getByText(/can no longer be edited/)).not.toBeNull();
+    await user.click(forms);
+    expect(screen.getByText(/only form entries and further signatures can be added/)).not.toBeNull();
+    expect(screen.queryByText(/can no longer be edited/)).toBeNull();
+    await user.click(screen.getByRole('button', { name: 'Sign and save as…' }));
+    await waitFor(() => expect(signDocument).toHaveBeenCalled());
+    expect(signDocument.mock.calls[0]?.[1]).toMatchObject({ lock: 'allowFillAndSign' });
+  });
+
+  it('is one tab stop and the arrows move and choose', async () => {
+    const { user } = setup(<SignDialogHost />);
+    ready();
+    const none = (await screen.findByRole('radio', { name: /^No changes/ })) as HTMLInputElement;
+    none.focus();
+    await user.keyboard('{ArrowDown}');
+    expect((screen.getByRole('radio', { name: /^Fill in forms/ }) as HTMLInputElement).checked).toBe(true);
+    await user.keyboard('{ArrowUp}');
+    expect(none.checked).toBe(true);
+  });
+
+  it('never remembers the choice: a new sheet starts at "No changes"', async () => {
+    const { user } = setup(<SignDialogHost />);
+    ready();
+    await user.click(await screen.findByRole('radio', { name: /^Fill in forms/ }));
+    await user.click(screen.getByRole('button', { name: 'Cancel' }));
+    await waitFor(() => expect(screen.queryByRole('radiogroup')).toBeNull());
+    act(() => useCertSign.getState().openDialog());
+    expect(((await screen.findByRole('radio', { name: /^No changes/ })) as HTMLInputElement).checked).toBe(true);
+  });
+
+  it('shows no choice for a signature on an already signed file and signs with "No changes"', async () => {
+    signDocument.mockResolvedValue(signed);
+    resetDocuments();
+    act(() =>
+      useDocuments.getState().add({ id: 1, pageCount: 3, displayName: 'a.pdf', flags: { signed: true } as never }),
+    );
+    const { user } = setup(<SignDialogHost />);
+    ready();
+    await screen.findByRole('button', { name: 'Sign and save as…' });
+    expect(screen.queryByRole('radiogroup')).toBeNull();
+    await user.click(screen.getByRole('button', { name: 'Sign and save as…' }));
+    await waitFor(() => expect(signDocument).toHaveBeenCalled());
+    expect(signDocument.mock.calls[0]?.[1]).toMatchObject({ lock: 'noChanges' });
+  });
+});
+
+describe('the seal resize geometry (DESIGN 3.8 L6, AC 32)', () => {
+  const rect = { x: 100, y: 100, w: 200, h: 80 };
+  it('a corner or edge handle moves only its own edges and never goes below the minimum', () => {
+    expect(resizeTo(rect, 1, 1, { x: 400, y: 300 }, PAGE)).toEqual({ x: 100, y: 100, w: 300, h: 200 });
+    expect(resizeTo(rect, -1, 0, { x: 50, y: 999 }, PAGE)).toEqual({ x: 50, y: 100, w: 250, h: 80 });
+    expect(resizeTo(rect, 1, 1, { x: 101, y: 101 }, PAGE)).toEqual({ x: 100, y: 100, w: 120, h: 40 });
+    expect(resizeTo(rect, -1, -1, { x: 299, y: 179 }, PAGE)).toEqual({ x: 180, y: 140, w: 120, h: 40 });
+  });
+  it('stops at the 12 pt inset of the page', () => {
+    expect(resizeTo(rect, 1, 1, { x: 9999, y: 9999 }, PAGE)).toEqual({ x: 100, y: 100, w: 500, h: 680 });
+    expect(resizeTo(rect, -1, -1, { x: -5, y: -5 }, PAGE)).toEqual({ x: 12, y: 12, w: 288, h: 168 });
+  });
+  it('the keyboard grows from the bottom-right corner (Right and Down grow, Left and Up shrink)', () => {
+    expect(resizeBy(rect, 1, 1, 1, 0, PAGE)).toEqual({ x: 100, y: 100, w: 201, h: 80 });
+    expect(resizeBy(rect, 1, 1, 0, 10, PAGE)).toEqual({ x: 100, y: 100, w: 200, h: 90 });
+    expect(resizeBy(rect, 1, 1, -100, -100, PAGE)).toEqual({ x: 100, y: 100, w: 120, h: 40 });
   });
 });
