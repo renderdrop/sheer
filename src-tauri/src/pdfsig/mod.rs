@@ -7,6 +7,7 @@
 //!
 //! Package W0 holds [`types`] only; the other modules join with the packages B1 to B3.
 
+pub mod material;
 pub mod types;
 
 #[cfg(test)]
