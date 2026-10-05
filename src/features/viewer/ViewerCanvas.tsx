@@ -156,7 +156,8 @@ export function ViewerCanvas({ style }: { style?: CSSProperties }) {
     if (docId === null || viewport === null || mode === undefined || mode === 'none' || now === undefined) return;
     if (isFresh(docId) || useViewer.getState().viewport !== viewport) return;
     const target = fitZoomFor(mode, metrics, useView.getState().byDoc[docId]?.pageIndex ?? 0, viewport, gap);
-    if (target !== null && Math.abs(clampZoom(target) - now) > 1e-6) useView.getState().setFit(docId, mode, clampZoom(target), null);
+    if (target !== null && Math.abs(clampZoom(target) - now) > 1e-6)
+      useView.getState().setFit(docId, mode, clampZoom(target), null);
     // Only a new size asks for this: scrolling to a page of another width must not move the zoom.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [viewport]);
