@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
-# ADR-120: the CI state of main at the start of every loop. Reads the last COMPLETED run of the CI workflow on main and never
-# waits for a running one. Exit 0 = green, 1 = red (failed jobs and steps are listed), 2 = unknown (gh missing, offline, no run).
+# ADR-120 (corrected): the CI state of main, read before every push and never waited for.
+#   scripts/ci-status.sh            the last COMPLETED run of the CI workflow on main
+#   scripts/ci-status.sh <run-id>   one remembered run (the own last push, from STATE.md `ci_log`): green, red or still running
+# Exit 0 = green, 1 = red (failed jobs and steps are listed), 2 = unknown (gh missing, offline, no run), 3 = still running.
 set -u
 
 if ! command -v gh >/dev/null 2>&1; then
@@ -8,20 +10,35 @@ if ! command -v gh >/dev/null 2>&1; then
   exit 2
 fi
 
-# The newest completed run among the last 20, picked here: the server-side status filter was seen returning an old run
-# (2026-10-05: run #47 instead of #70).
-run="$(gh run list --workflow CI --branch main --limit 20 \
-  --json databaseId,number,status,conclusion,headSha,displayTitle \
-  --jq '[.[] | select(.status == "completed")] | sort_by(-.number) | .[0] // empty | "\(.databaseId)\t\(.number)\t\(.conclusion)\t\(.headSha[0:7])\t\(.displayTitle)"' 2>/dev/null)"
-if [ -z "$run" ]; then
-  echo "ci: unknown (no completed run on main, or gh is offline)"
-  exit 2
+if [ $# -ge 1 ]; then
+  run="$(gh run view "$1" --json databaseId,number,status,conclusion,headSha,displayTitle \
+    --jq '"\(.databaseId)|\(.number)|\(.status)|\(.conclusion)|\(.headSha[0:7])|\(.displayTitle)"' 2>/dev/null)"
+  if [ -z "$run" ]; then
+    echo "ci: unknown (run $1 not found, or gh is offline)"
+    exit 2
+  fi
+  # "|" and not a tab: read collapses empty whitespace fields (an unfinished run has no conclusion); the title is the last field.
+  IFS='|' read -r id number status conclusion sha title <<<"$run"
+  if [ "$status" != "completed" ]; then
+    echo "ci: running — run #$number ($sha) $title (not waited for)"
+    exit 3
+  fi
+else
+  # The newest completed run among the last 20, picked here: the server-side status filter was seen returning an old run
+  # (2026-10-05: run #47 instead of #70).
+  run="$(gh run list --workflow CI --branch main --limit 20 \
+    --json databaseId,number,status,conclusion,headSha,displayTitle \
+    --jq '[.[] | select(.status == "completed")] | sort_by(-.number) | .[0] // empty | "\(.databaseId)|\(.number)|\(.conclusion)|\(.headSha[0:7])|\(.displayTitle)"' 2>/dev/null)"
+  if [ -z "$run" ]; then
+    echo "ci: unknown (no completed run on main, or gh is offline)"
+    exit 2
+  fi
+  IFS='|' read -r id number conclusion sha title <<<"$run"
 fi
 
-IFS=$'\t' read -r id number conclusion sha title <<<"$run"
 running="$(gh run list --workflow CI --branch main --status in_progress --limit 1 --json number --jq '.[0].number // empty' 2>/dev/null)"
 note=""
-[ -n "$running" ] && note=" (run #$running still running, not waited for)"
+[ -n "$running" ] && [ "$running" != "$number" ] && note=" (run #$running still running, not waited for)"
 
 if [ "$conclusion" = "success" ]; then
   echo "ci: green — run #$number ($sha) $title$note"

@@ -6,8 +6,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+v1.4 "Certificate signature" (FEEDBACK F15 C, DESIGN §3.8, ADR-121).
+
+### Added
+- Sign with a certificate: the new Zertifikat tool (last in Ausfüllen & Signieren) places a visible seal and writes a PAdES B-B signature into a new file ("{name} (signiert)"); the original stays editable. The confirmation says plainly that this is not a qualified electronic signature.
+- Certificates: create a self-signed certificate (ECDSA P-256, 3 years) or import a .p12/.pfx; managed in a Certificates tab of the Signatures dialog (details, fingerprint, export, delete). Private keys stay encrypted with a key held in the system keychain and never reach the window.
+- Validation of every signed PDF on open: a banner and a Signatures dialog with signer, signing time, whether the file changed after signing, what the signature covers, and a plain note that the identity is not checked against a trust list; "View signed version" opens exactly what was signed; signers can be trusted locally.
+- Signed documents are locked as their certification allows: editing tools, page commands, form fields and Save are disabled, Save As keeps the signature, and "Make editable copy…" writes an unsigned copy.
+
 ### Changed
 - The default citation style is APA 7 in every UI language; the last chosen style is kept (owner decision).
+- Documents signed elsewhere are now read-only in Sheer according to their certification level.
+
+### Security
+- Hostile signed files are bounded (ByteRange, /Contents size, CMS depth, revision diff, time budgets); changes hidden behind cross-reference or object-stream objects count as changes.
 
 ## [1.3.0] - 2026-10-05
 
