@@ -1,8 +1,8 @@
 # STATE
-phase: v1.4.0 "Certificate signature" released (tag v1.4.0, CI #77 green, GitHub release with DMG + NSIS)
-version: 1.4.0 (tag v1.4.0)
-current_item: SESSION TOPIC "Politur v1.2–v1.4 + CI runtime" → v1.4.1 (ADR-123). Wave 1 done (D ca65274, S4 f15da4a, S3 b4a067b, S2 c043bc9, S1 a3cf54a; all reviewer PASS, security PASS). Wave 2 done (S8 f299c4a, S6 4d253b6, S7 01f7e6e, S5 c57ae11; all PASS, security PASS). Wave 3 running: T1 tokens + home/tooltip leftovers, T2 preview worker. Then tester, installed-build acceptance, designer round, v1.4.1
-last_completed: v1.4 Certificate signature (tag v1.4.0)
+phase: v1.4.1 patch "Politur v1.2–v1.4 + CI runtime" released (tag v1.4.1)
+version: 1.4.1 (tag v1.4.1)
+current_item: v1.4.1 tagged; release run, report docs/reports/2026-10-05-v1.4.1-politur-ci.md, then STOP (ADR-122). Next topic from the owner (suggested v1.5 "Edit text" spec or macOS acceptance)
+last_completed: v1.4.1 Politur + CI runtime (ADR-123)
 loop_count_this_session: 0
 open_blockers: 2 human-only (B-002, B-005)
 notes: ADR-120: every loop starts with `bash scripts/ci-status.sh` (last completed run on main, never wait); red = fix first. v1.4 W0 2a1e3f3 (stable RustCrypto line), seam 586feeb. Release v1.3.0 published.
@@ -19,4 +19,6 @@ ci_log: (ADR-120 corrected — package commit → CI run; result filled in at th
   - 935610d/54f1533 ci-status superseded handling → run #78 (37322052934) GREEN
   - f15da4a S4 CI split → run #79 (37335964661) GREEN — web 4 min, macOS 12 min, Windows 14 min (cold rust-cache)
   - b4a067b/c043bc9/a3cf54a S3+S2+S1 → run #80 (37337924918) red: snapshot test raced the save build slot (Windows) → fixed 19ab8e6
-  - 19ab8e6..c57ae11 save fix + S8 + S6 + S7 + S5 → run #81 (37342811054) pending
+  - 19ab8e6..c57ae11 save fix + S8 + S6 + S7 + S5 → run #81 (37342811054) GREEN — Windows 9, macOS 5, web 4 min
+  - d80dce9/0da31a0 T2 + T1 → run #82 (37345921685) GREEN
+  - b97cd93/85f8bb5 test + acceptance fixes → run #83 (37348558262) GREEN

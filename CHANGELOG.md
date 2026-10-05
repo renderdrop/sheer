@@ -6,7 +6,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-Patch v1.4.1 "Politur v1.2–v1.4 + CI runtime" (ADR-123).
+## [1.4.1] - 2026-10-05
+
+Patch "Politur v1.2–v1.4 + CI runtime" (ADR-123).
 
 ### Added
 - Signing a document that has no signature yet offers a choice: "No changes" (default) or "Fill in forms and allow further signatures".
@@ -22,7 +24,8 @@ Patch v1.4.1 "Politur v1.2–v1.4 + CI runtime" (ADR-123).
 - Comment and citation cards keep one action row; the mini bar shows the five citation colours only; exported citation lists carry the UI language.
 - Comment group headers use page labels; the reference popover follows the panel width; the margin column stays inside the window at high zoom.
 - Redaction band buttons and the print dialog follow the colour rules (white sheet, Solar selection); tooltips close on scroll.
-- Tab titles keep at least eight characters with an ellipsis; no horizontal scrollbar when the page fits.
+- Tab titles keep at least eight characters with an ellipsis, and a newly opened tab scrolls fully into view; no horizontal scrollbar when the page fits.
+- The signature details name the lock of a form-fill certification ("Allows only filling in forms and further signatures"); fingerprints use a monospace font.
 
 ### Fixed
 - A second save started right after the first one could be refused ("an earlier save is still being built").
