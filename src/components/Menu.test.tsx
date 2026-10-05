@@ -246,6 +246,14 @@ describe('Menu submenus (DESIGN 3.5): keyboard', () => {
     expect(share.getAttribute('aria-expanded')).toBe('false');
     expect(onSelect).not.toHaveBeenCalled();
   });
+  it('sizes to its widest item (no cap that cuts labels) and scrolls inside when the window is short (Q7, Q9)', async () => {
+    const { user, getByRole } = setup(<Demo />);
+    await user.click(getByRole('button', { name: 'Menu' }));
+    const menu = getByRole('menu', { name: 'Actions' });
+    expect(menu.className).toContain('w-max');
+    expect(menu.className).not.toContain('max-w-popover-max');
+    expect(menu.className).toContain('overflow-y-auto');
+  });
 });
 
 describe('Menu submenus (DESIGN 3.5): surface and pointer', () => {

@@ -65,6 +65,13 @@ describe('the password prompt', () => {
     expect(screen.getByRole('button', { name: 'Show password' }).getAttribute('aria-pressed')).toBe('true');
   });
 
+  it('marks the eye as an in-field adornment of the password field (surface gate)', () => {
+    setup(<Fixture />);
+    act(() => requestPassword(4, 'A.pdf'));
+    const eye = screen.getByRole('button', { name: 'Show password' });
+    expect(eye.closest('[data-adornment]')?.parentElement?.contains(field())).toBe(true);
+  });
+
   it('sends the password once per attempt, opens the document and clears the prompt', async () => {
     const info = { id: 4, pageCount: 2, displayName: 'A.pdf' };
     api.unlockDocument.mockResolvedValue(info);

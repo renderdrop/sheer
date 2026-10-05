@@ -215,6 +215,7 @@ function ColourPanel({
           />
           <IconButton
             icon={Check}
+            data-adornment=""
             label={t('color.apply')}
             size="sm"
             disabled={parsed === null}

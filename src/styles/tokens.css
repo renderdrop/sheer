@@ -503,6 +503,10 @@
     360px,
     calc(100dvh - 340px)
   ); /* six 56 px rows and their 4 px gaps; shorter windows keep the footer visible */
+  /* Tool options in a popover (DESIGN 3.9 Q7): the content width inside the popover's own 16 px padding and 1 px border. The crop popover is the
+     full 320 (4 fields of 64 and 3 gaps of 8 = 280 fit its 286); the others size to content between the minimum and that cap. */
+  --options-inner-max: calc(var(--popover-max) - 2 * var(--space-4) - 2 * var(--hairline));
+  --options-inner-min: calc(var(--popover-min) + var(--space-4));
   --insert-marker: 2px; /* organize grid: the insertion marker's width */
 
   /* Elevation: the only z-index values (DESIGN 1.7). 1 to 4 are local to the canvas, which isolates itself. */

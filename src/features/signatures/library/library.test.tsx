@@ -109,6 +109,13 @@ describe('the signature library', () => {
     expect(list?.contains(within(dialog()).getByRole('button', { name: 'Close' }))).toBe(false);
   });
 
+  it('the list element clips its rows with its own overflow (Q7)', async () => {
+    await openWith({ status: 'ready', items: [item(1), item(2)] });
+    const list = dialog().querySelector('[data-scroll="list"]');
+    expect(list?.className).toContain('overflow-y-auto');
+    expect(list?.className).toContain('max-h-lib-list');
+  });
+
   it('lists entries per kind with a vector preview and a placeholder for raster art', async () => {
     await openWith({
       status: 'ready',

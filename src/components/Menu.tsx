@@ -22,7 +22,7 @@ import { Icon } from './Icon';
 import { PRESS_MOTION } from './controlStyles';
 import { usePopoverMotion } from './motion';
 import { ownedBy, PopoverScope } from './popoverScope';
-import { POPOVER_WIDTHS, Popover, type PopoverProps } from './Popover';
+import { MENU_WIDTHS, Popover, type PopoverProps } from './Popover';
 import type { Side } from './position';
 import { isOwnEvent, itemsOf, rovingTarget } from './roving';
 import { overlayOffset } from './tokens';
@@ -439,7 +439,7 @@ function SubmenuSurface({
         tabIndex={-1}
         onKeyDown={onKeyDown}
         style={{ transformOrigin: side === 'left' ? 'right top' : 'left top' }}
-        className={`bg-panel border border-border-subtle shadow-floating min-h-0 overflow-auto rounded-button p-1 text-md text-text outline-none ${POPOVER_WIDTHS}`}
+        className={`bg-panel border border-border-subtle shadow-floating min-h-0 overflow-y-auto overflow-x-hidden rounded-button p-1 text-md text-text outline-none ${MENU_WIDTHS}`}
       >
         <MenuList entries={entries} onActivate={onActivate} onTab={onTab} onBack={back} />
       </motion.div>

@@ -56,7 +56,11 @@ export function Segmented<Value extends string>({
       aria-label={label}
       aria-disabled={disabled ? true : undefined}
       onKeyDown={onKeyDown}
-      className={cx('inline-flex rounded-md bg-subtle p-half', disabled && 'opacity-(--opacity-disabled)', className)}
+      className={cx(
+        'inline-flex max-w-full flex-wrap rounded-md bg-subtle p-half',
+        disabled && 'opacity-(--opacity-disabled)',
+        className,
+      )}
     >
       {options.map((option, index) => {
         const checked = option.value === value;
@@ -73,7 +77,7 @@ export function Segmented<Value extends string>({
               if (!off && !checked) onValueChange(option.value);
             }}
             className={cx(
-              'inline-flex h-control-sm min-w-0 flex-1 cursor-pointer items-center justify-center rounded-sm border px-3 text-md',
+              'inline-flex h-control-sm min-w-fit flex-auto shrink-0 cursor-pointer whitespace-nowrap items-center justify-center rounded-sm border px-3 text-md',
               'transition-[background-color,color,border-color] duration-fast aria-disabled:cursor-not-allowed',
               checked
                 ? 'border-control-border bg-surface font-medium text-text'

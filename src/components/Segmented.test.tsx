@@ -34,4 +34,13 @@ describe('Segmented', () => {
     await user.click(getByRole('radio', { name: 'Three' }));
     expect(getByRole('radio', { name: 'Three' }).getAttribute('aria-checked')).toBe('true');
   });
+
+  it('segments keep their whole label and wrap to a second row instead of cutting it', () => {
+    const { getByRole, getAllByRole } = setup(<Demo />);
+    expect(getByRole('radiogroup', { name: 'Pick' }).className).toContain('flex-wrap');
+    for (const radio of getAllByRole('radio')) {
+      expect(radio.className).toContain('whitespace-nowrap');
+      expect(radio.className).toContain('min-w-fit');
+    }
+  });
 });

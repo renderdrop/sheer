@@ -2378,3 +2378,17 @@ tolerance; a hit morphs in 150 ms and is one undo step. (6) New DoD gate (ORCHES
 every registered popover and dialog at 960×640 in the dev window and fails on overflow, cut-off buttons, internal scroll of non-lists or
 overlap; violations are blockers. A dev-only surface registry (stripped from release builds) lets the script open each surface.
 (7) Acceptance for this topic runs only in the installed release build (NSIS, Windows) at 960×640 and 1280×800.
+
+### ADR-124 addendum 1 — gate refinements (G3, 2026-10-05)
+
+Three refinements of the surface gate (`scripts/ui/surface-checks.mjs`), none of which relaxes a rule for a real defect:
+(a) **Label cut** measures only elements that carry visible text. Visually hidden text (sr-only: `clip: rect(0,0,0,0)`, `clip-path: inset(50%)`,
+a box of 1 px or less) is ignored (`isVisuallyHidden`). The colour swatch "label is cut (26 > 22)" was not sr-only: it is the invisible hit-area
+pseudo-element (`before:-inset-1`) of an icon-only control, which counts as scrollable overflow, so icon-only controls without text are no
+label either (the descendant-rect check still catches real overflow).
+(b) **In-field adornments** (the eye of the password field, the check of the hex field), marked `data-adornment` inside their field wrapper,
+are not overlaps with that field's input; any other control still is.
+(c) **Menu-bar menus** (`role=menu` opened from `role=menubar`) follow the OS menu convention: they may cover the toolbar and the active tool
+below them but never their own anchor (the engine protects only the anchor for them, and holds a menu's height to the roomier side of its
+anchor so it cannot slide over it). Also: rows scrolled out of a list or cut by an overflow ancestor do not overlap what lies there (the
+overlap check uses the visible part of a control), and `role=menu` is a list (Q7) in the page selector as in the spec.

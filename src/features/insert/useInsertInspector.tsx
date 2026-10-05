@@ -21,9 +21,9 @@ const FONTS: readonly { value: StdFont; key: PlainKey }[] = [
 ];
 
 const SEGMENT =
-  'flex h-control-md min-w-0 flex-1 basis-0 cursor-pointer items-center justify-center rounded-sm px-2 text-md aria-disabled:cursor-not-allowed ' +
+  'flex h-control-md min-w-fit flex-auto shrink-0 whitespace-nowrap cursor-pointer items-center justify-center rounded-sm px-2 text-md aria-disabled:cursor-not-allowed ' +
   'hover:bg-subtle aria-checked:bg-selected aria-checked:text-text';
-const SEGMENTS = 'flex gap-1 rounded-button border border-divider p-1';
+const SEGMENTS = 'flex flex-wrap gap-1 rounded-button border border-divider p-1';
 
 function FontSection({ font, onChange }: { font: StdFont; onChange: (font: StdFont) => void }) {
   const t = useT();
@@ -42,7 +42,7 @@ function FontSection({ font, onChange }: { font: StdFont; onChange: (font: StdFo
           value: entry.value,
           label: t(entry.key),
           className: cx(SEGMENT),
-          children: <span className="truncate">{t(entry.key)}</span>,
+          children: <span>{t(entry.key)}</span>,
         }))}
       />
     </div>
@@ -81,7 +81,7 @@ function AlignSection({
           label: t(entry.key),
           disabled,
           className: cx(SEGMENT),
-          children: <span className="truncate">{t(entry.key)}</span>,
+          children: <span>{t(entry.key)}</span>,
         }))}
       />
     </div>

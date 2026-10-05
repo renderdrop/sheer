@@ -726,15 +726,15 @@ Overrides §3.2, §3.3, §3.6 and §3.8 L1 where stated. One new token: `--motio
 - Gaps from the anchor: tooltip 8, popover/menu 8, mini bar 8 (§3.3), coach mark 12; viewport inset 8.
 - Placement order: tooltip top → bottom → right → left; popover/menu bottom-start → bottom-end → top-start → top-end → right → left; coach mark: its preferred side → opposite → remaining; mini bar per §3.3.
 - Per candidate: **flip** to the opposite side if it overflows, then **shift** along the edge to stay inside the inset, then test collisions; first candidate with no collision wins.
-- **Protected rects:** the anchor, focused element, all visible inputs, textareas, selects, contenteditables, buttons and toolbar items, the active tool, the current selection with handles. Notices (tips, coach marks, toasts) may not intersect any. Popovers and menus may not intersect the anchor, the active tool or the focused input. Tooltips may not cover their anchor or a focused input.
+- **Protected rects:** the anchor, focused element, all visible inputs, textareas, selects, contenteditables, buttons and toolbar items, the active tool, the current selection with handles. Notices (tips, coach marks, toasts) may not intersect any. Popovers and menus may not intersect the anchor, the active tool, pressed toggles (`aria-pressed=true`) or the focused input. Exception (ADR-124 addendum 1): a dropdown of the in-window menu bar (`role=menu` opened from `role=menubar`) follows OS menu conventions and may cover the tool row and the active tool below it, never its own anchor. Tooltips may not cover their anchor or a focused input.
 - No placement: popover → dialog (Q7); tooltip → not shown; notice → waits in the queue (re-tested on layout change).
 - **Notice queue:** at most one notice visible. Priority: 1 error toast, 2 coach mark (active tour), 3 info/success toast, 4 tip. Only an error preempts a visible notice (which returns to the queue head). FIFO within a priority. Tips wait until no input has focus for 2 s; a queued item whose context is gone is dropped.
 
 **Q9 DOM gate (F17.10).** Run per registered surface at 960 × 640, en and de, light; tolerance 1 px. Violations are blockers.
 1. *Overflow:* the surface rect leaves the viewport, or a descendant rect leaves the surface rect, or a non-list element has `scrollWidth > clientWidth`.
-2. *Cut-off button:* a button, `[role=button]`, input or link is not fully inside the viewport and every clipping ancestor, or its label has `scrollWidth > clientWidth` (includes ellipsis).
+2. *Cut-off button:* a button, `[role=button]`, input or link is not fully inside the viewport and every clipping ancestor, or its visible label text has `scrollWidth > clientWidth` (includes ellipsis); visually hidden text (sr-only: clip/clip-path, 1 px boxes) and decorative hit-area pseudo-elements are not labels. A control scrolled out of view inside a fully visible list is not cut off.
 3. *Internal scroll violation:* an element with computed `overflow-y` auto/scroll and `scrollHeight > clientHeight` that is not a list (Q7 roles).
-4. *Overlap:* two interactive non-nested elements intersect; or two floating surfaces intersect; or a floating surface intersects a protected rect (Q8) outside itself. Modal dialogs over their scrim are exempt.
+4. *Overlap:* two interactive non-nested elements intersect; or two floating surfaces intersect; or a floating surface intersects a protected rect (Q8) outside itself. Intersections use the visible part of each element (clipped by its scrolling ancestors). In-field adornments (`data-adornment`, e.g. the password eye or the hex confirm check) inside their field wrapper are not overlaps. Modal dialogs over their scrim are exempt; menu-bar dropdowns per Q8.
 
 **Strings.**
 

@@ -94,13 +94,20 @@ export function useFloatingPosition({
         width: document.documentElement.clientWidth || window.innerWidth,
         height: window.innerHeight,
       };
-      // DESIGN 3.5: max height is the window minus the margin on both sides; the popover scrolls inside.
-      const maxHeight = `${Math.max(0, viewport.height - 2 * gap)}px`;
+      const anchorBox = anchor.getBoundingClientRect();
+      // DESIGN 3.5: max height is the window minus the margin on both sides; the popover scrolls inside. A menu is a list that
+      // scrolls (Q7) and never covers its anchor, so it is also held to the room on the roomier side of the anchor.
+      let room = viewport.height - 2 * gap;
+      if (kind === 'menu') {
+        const below = viewport.height - anchorBox.bottom - 2 * gap;
+        const above = anchorBox.top - 2 * gap;
+        room = Math.min(room, Math.max(below, above));
+      }
+      const maxHeight = `${Math.max(0, room)}px`;
       if (maxHeight !== written.maxHeight) {
         floating.style.maxHeight = maxHeight;
         written.maxHeight = maxHeight;
       }
-      const anchorBox = anchor.getBoundingClientRect();
       const floatingBox = floating.getBoundingClientRect();
       let placed: PositionResult | null;
       if (kind === undefined) {

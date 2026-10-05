@@ -14,6 +14,20 @@ export function checkInViewport(r, vp) {
 }
 
 /**
+ * Visually hidden text (ADR-124 addendum 1 a): the sr-only pattern (clip rect(0,0,0,0), clip-path inset(50%) / inset(100%),
+ * or a box of 1 px or less) is for assistive technology only, so it is no label and cannot be cut. Runs inside the page too
+ * (the gate injects its source), so it uses nothing but its argument.
+ * @param {{clip?:string,clipPath?:string,width:number,height:number}} s computed style values and the box size
+ */
+export function isVisuallyHidden(s) {
+  const clip = (s.clip ?? '').replace(/\s+/g, '');
+  const path = (s.clipPath ?? '').replace(/\s+/g, '');
+  if (/^rect\(0(px)?,0(px)?,0(px)?,0(px)?\)$/.test(clip)) return true;
+  if (/^inset\((50|100)%\)$/.test(path)) return true;
+  return s.width <= 1 && s.height <= 1;
+}
+
+/**
  * Q9.2 cut-off: a control not fully inside the viewport and every clipping ancestor, or whose label is wider than its box
  * (ellipsis included). A control in a list scroller is measured against the clips outside the list; the page adds the list itself
  * as a control, so a row scrolled out of a fully visible list is no violation.
@@ -86,7 +100,9 @@ export function overlap(a, b) {
 
 /**
  * Q9.4 first clause: two interactive elements that are not nested intersect. `parents` lists the ids of the controls containing one.
- * @param {{id:number,name:string,rect:object,parents:number[]}[]} controls
+ * An in-field adornment (the eye of a password field, the check of the hex field; marked `data-adornment`) sits inside its field on
+ * purpose (ADR-124 addendum 1 b): `adornment` is the id of its field wrapper and `field` the wrapper an input sits in.
+ * @param {{id:number,name:string,rect:object,parents:number[],adornment?:number,field?:number}[]} controls
  */
 export function checkControlOverlap(controls) {
   const out = [];
@@ -95,16 +111,19 @@ export function checkControlOverlap(controls) {
       const a = controls[i];
       const b = controls[j];
       if (a.parents.includes(b.id) || b.parents.includes(a.id)) continue;
+      if (a.adornment !== undefined && a.adornment === b.field) continue;
+      if (b.adornment !== undefined && b.adornment === a.field) continue;
       if (overlap(a.rect, b.rect)) out.push(`${a.name} overlaps ${b.name}`);
     }
   return out;
 }
 
 /**
- * Q8/Q9.4 by surface kind. `modal`: exempt from the app behind it (inert under a scrim). `popover` (menus too): may not intersect
- * its anchor, the active tool or the focused input (the protected rects with role anchor/active/focus); other controls below it
+ * Q8/Q9.4 by surface kind. `modal`: exempt from the app behind it (inert under a scrim). `menubar` (ADR-124 addendum 1 c): a menu
+ * opened from the menu bar follows the OS menu convention: it may cover the toolbar and the active tool below it, but never its
+ * own anchor. `popover` (menus too): may not intersect its anchor, the active tool or the focused input (the protected rects with role anchor/active/focus); other controls below it
  * are allowed. Every kind: no other floating surface (tooltip, tip, coach mark, toast).
- * @param {'modal'|'popover'} kind
+ * @param {'modal'|'popover'|'menubar'} kind
  * @param {object} surface rect
  * @param {{name:string,rect:object}[]} layers
  * @param {{name:string,rect:object,role:'anchor'|'active'|'focus'|'other'}[]} protectedRects
@@ -112,9 +131,10 @@ export function checkControlOverlap(controls) {
 export function checkOverlap(kind, surface, layers, protectedRects) {
   const out = [];
   for (const l of layers) if (overlap(surface, l.rect)) out.push(`overlaps ${l.name}`);
-  if (kind === 'popover')
+  if (kind === 'popover' || kind === 'menubar')
     for (const p of protectedRects)
-      if (p.role !== 'other' && overlap(surface, p.rect)) out.push(`covers ${p.role} ${p.name}`);
+      if ((kind === 'popover' ? p.role !== 'other' : p.role === 'anchor') && overlap(surface, p.rect))
+        out.push(`covers ${p.role} ${p.name}`);
   return out;
 }
 

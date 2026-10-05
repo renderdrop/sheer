@@ -213,6 +213,12 @@ interface SurfaceProps {
 // 200 to 320 px wide (DESIGN 3.5): `--popover-min` and `--popover-max`. A submenu has the same width.
 export const POPOVER_WIDTHS = 'min-w-popover-min max-w-popover-max';
 
+/**
+ * A menu sizes to its widest item (label and shortcut), never to the 320 cap, so no label is truncated (Q9.2); only the window
+ * limits it (viewport minus the inset on both sides). Items of a menu are one line each.
+ */
+export const MENU_WIDTHS = 'min-w-popover-min w-max max-w-[calc(100vw-var(--space-4))]';
+
 /** Where the entrance scales from: the corner nearest the trigger. */
 function originOf(side: Side, align: Align): string {
   const horizontal = align === 'end' ? 'right' : align === 'center' ? 'center' : 'left';
@@ -340,7 +346,7 @@ function FloatingSurface({
           transformOrigin: originOf(side, align),
           ...(width === undefined ? {} : { width, minWidth: width, maxWidth: width }),
         }}
-        className={`bg-panel border border-border-subtle shadow-floating min-h-0 ${role === 'menu' ? 'overflow-auto' : ''} rounded-button p-4 text-md text-text outline-none ${POPOVER_WIDTHS}`}
+        className={`bg-panel border border-border-subtle shadow-floating min-h-0 rounded-button text-md text-text outline-none ${role === 'menu' ? `overflow-y-auto overflow-x-hidden p-4 ${MENU_WIDTHS}` : `p-4 ${POPOVER_WIDTHS}`}`}
       >
         <PopoverScope.Provider value={id}>{children}</PopoverScope.Provider>
       </motion.div>

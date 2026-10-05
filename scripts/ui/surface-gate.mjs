@@ -20,6 +20,7 @@ import {
   checkNotice,
   checkOverlap,
   checkScroll,
+  isVisuallyHidden,
   rowsFor,
 } from './surface-checks.mjs';
 
@@ -70,7 +71,11 @@ const escape = async () => {
 /** Runs inside the page. Everything comes back as plain data; the verdicts are the pure functions of surface-checks.mjs. */
 const PAGE = `(() => {
   const SURFACES = '[role="dialog"],[role="alertdialog"],[role="menu"]';
-  const LIST = '[role="list"],[role="listbox"],[role="grid"],[role="tree"],[data-scroll="list"]';
+  const LIST = '[role="list"],[role="listbox"],[role="menu"],[role="grid"],[role="tree"],[data-scroll="list"]';
+  const hidden = ${isVisuallyHidden.toString()};
+  // Visible text of an element: its own text nodes, unless the element or an ancestor up to root is visually hidden (sr-only).
+  const hiddenEl = (e, root) => { for (let p = e; p; p = p.parentElement) { const s = getComputedStyle(p), r = p.getBoundingClientRect(); if (hidden({ clip: s.clip, clipPath: s.clipPath, width: r.width, height: r.height })) return true; if (p === root) break; } return false; };
+  const hasText = (e, root) => [...e.childNodes].some((n) => n.nodeType === 3 && n.textContent.trim() !== '') && !hiddenEl(e, root);
   const CONTROLS = 'button,input,select,textarea,[role="button"]';
   const R = (r) => ({ left: r.left, top: r.top, right: r.right, bottom: r.bottom });
   const visible = (el) => {
@@ -96,6 +101,8 @@ const PAGE = `(() => {
       const el = found.sort((a, b) => area(b) - area(a))[0];
       const rect = R(el.getBoundingClientRect());
       const modal = el.getAttribute('aria-modal') === 'true' || !!el.closest('[aria-modal="true"]');
+      // ADR-124 addendum 1 c: a menu opened from the menu bar (role=menubar) follows the OS menu convention.
+      const menubar = el.getAttribute('role') === 'menu' && !!document.querySelector('[role="menubar"] [aria-controls="' + el.id + '"]');
       const onlyBig = (c) => { const r = c.getBoundingClientRect(); return r.width > 2 && r.height > 2; };
       const clipsOf = (c) => {
         const clips = [];
@@ -109,26 +116,58 @@ const PAGE = `(() => {
       const labelOf = (c) => {
         if (['INPUT', 'TEXTAREA', 'SELECT'].includes(c.tagName)) return null;
         for (const e of [c, ...c.querySelectorAll('*')]) {
-          if (e instanceof SVGElement || getComputedStyle(e).display === 'inline') continue;
+          // Only elements that carry visible text have a label to cut; sr-only text and the invisible hit-area pseudo-element of an icon-only control do not.
+          if (e instanceof SVGElement || getComputedStyle(e).display === 'inline' || !hasText(e, c)) continue;
           if (e.clientWidth > 2 && e.scrollWidth > e.clientWidth + 1) return { scrollWidth: e.scrollWidth, clientWidth: e.clientWidth };
         }
         return null;
       };
       const ctrl = [...el.querySelectorAll(CONTROLS + ',a[href]')].filter((c) => visible(c) && onlyBig(c));
-      const controls = ctrl.map((c) => ({ name: name(c), rect: R(c.getBoundingClientRect()), clips: clipsOf(c), label: labelOf(c) }));
-      for (const l of new Set(ctrl.map((c) => c.closest(LIST)).filter((l) => l && l !== el && visible(l))))
+      // A row of a list scrolled out of it is no cut-off (the list itself is checked below); its rect is held inside the list's.
+      const inList = (c) => {
+        const r = R(c.getBoundingClientRect());
+        const l = c.closest(LIST);
+        if (!l) return r;
+        const b = l.getBoundingClientRect();
+        const k = { left: Math.max(r.left, b.left), top: Math.max(r.top, b.top), right: Math.min(r.right, b.right), bottom: Math.min(r.bottom, b.bottom) };
+        return k.right < k.left || k.bottom < k.top ? R(b) : k;
+      };
+      const controls = ctrl.map((c) => ({ name: name(c), rect: inList(c), clips: clipsOf(c), label: labelOf(c) }));
+      for (const l of new Set(ctrl.map((c) => c.closest(LIST)).filter((l) => l && visible(l))))
         controls.push({ name: name(l), rect: R(l.getBoundingClientRect()), clips: clipsOf(l), label: null });
-      const interactive = ctrl.map((c, id) => ({
-        id, name: name(c), rect: R(c.getBoundingClientRect()),
-        parents: ctrl.flatMap((o, j) => (o !== c && o.contains(c) ? [j] : [])),
-      }));
+      // ADR-124 addendum 1 b: a control inside [data-adornment] sits in its field on purpose; the field wrapper is the adornment's parent.
+      const wrappers = new Map();
+      const wid = (w) => { if (!wrappers.has(w)) wrappers.set(w, wrappers.size); return wrappers.get(w); };
+      // The part of a control that can be seen and clicked: a row scrolled out of its list (or cut by any overflow ancestor) does not overlap what lies there.
+      const seen = (c) => {
+        const r = R(c.getBoundingClientRect());
+        for (let p = c.parentElement; p && p !== document.body; p = p.parentElement) {
+          const s = getComputedStyle(p);
+          if (s.overflowX === 'visible' && s.overflowY === 'visible') continue;
+          const b = p.getBoundingClientRect();
+          r.left = Math.max(r.left, b.left); r.top = Math.max(r.top, b.top);
+          r.right = Math.min(r.right, b.right); r.bottom = Math.min(r.bottom, b.bottom);
+        }
+        return r.right < r.left || r.bottom < r.top ? { left: 0, top: 0, right: 0, bottom: 0 } : r;
+      };
+      const interactive = ctrl.map((c, id) => {
+        const adorn = c.closest('[data-adornment]');
+        const isField = ['INPUT', 'TEXTAREA', 'SELECT'].includes(c.tagName);
+        return {
+          id, name: name(c), rect: seen(c),
+          parents: ctrl.flatMap((o, j) => (o !== c && o.contains(c) ? [j] : [])),
+          adornment: adorn?.parentElement ? wid(adorn.parentElement) : undefined,
+          field: isField && c.parentElement ? wid(c.parentElement) : undefined,
+        };
+      });
       const all = [el, ...el.querySelectorAll('*')].filter((c) => !(c instanceof SVGElement) && visible(c));
       const plain = all.filter((c) => !['TEXTAREA', 'INPUT', 'SELECT'].includes(c.tagName));
       const containers = plain
         .filter((c) => { const s = getComputedStyle(c); return s.overflowY === 'auto' || s.overflowY === 'scroll'; })
         .map((c) => ({ name: name(c), scrollHeight: c.scrollHeight, clientHeight: c.clientHeight, overflowY: getComputedStyle(c).overflowY, isList: !!c.closest(LIST) }));
+      // An icon-only control may carry an invisible hit-area pseudo-element (before:-inset-1) that counts as overflow; it has no label to cut.
       const wide = plain
-        .filter((c) => getComputedStyle(c).display !== 'inline' && c.clientWidth > 2)
+        .filter((c) => getComputedStyle(c).display !== 'inline' && c.clientWidth > 2 && !(c.matches(CONTROLS) && !hasText(c, c) && !c.querySelector('*:not(svg):not(svg *)')))
         .map((c) => ({ name: name(c), scrollWidth: c.scrollWidth, clientWidth: c.clientWidth, isList: !!c.closest(LIST) }));
       const descendants = all.filter((c) => c !== el && !c.closest(LIST) && onlyBig(c) && getComputedStyle(c).position !== 'fixed')
         .map((c) => ({ name: name(c), rect: R(c.getBoundingClientRect()) }));
@@ -150,7 +189,7 @@ const PAGE = `(() => {
           : c === focus && typing(c) ? 'focus' : 'other';
         protectedRects.push({ name: name(c), rect: R(c.getBoundingClientRect()), role });
       }
-      return { rect, modal, controls, interactive, containers, wide, descendants, layers, protectedRects, vp: { w: innerWidth, h: innerHeight } };
+      return { rect, modal, menubar, controls, interactive, containers, wide, descendants, layers, protectedRects, vp: { w: innerWidth, h: innerHeight } };
     },
     triggers() {
       document.querySelectorAll('[data-gate-trigger]').forEach((e) => e.removeAttribute('data-gate-trigger'));
@@ -172,7 +211,7 @@ const verdict = (id, m) =>
     clipped: checkClipped(m.controls, m.vp),
     scroll: checkScroll(m.containers),
     overlap: [
-      ...checkOverlap(m.modal ? 'modal' : 'popover', m.rect, m.layers, m.protectedRects),
+      ...checkOverlap(m.modal ? 'modal' : m.menubar ? 'menubar' : 'popover', m.rect, m.layers, m.protectedRects),
       ...checkControlOverlap(m.interactive),
       ...m.layers.flatMap((l) => checkNotice(l, m.protectedRects)),
     ],

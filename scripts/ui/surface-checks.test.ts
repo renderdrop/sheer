@@ -100,4 +100,31 @@ describe('surface gate checks', () => {
     expect(rows[0]).toEqual({ surface: 'about', check: 'inside', result: 'PASS' });
     expect(rows[1].result).toBe('FAIL a; b; c (+1)');
   });
+
+  it('ignores visually hidden (sr-only) text, not visible text (ADR-124 addendum 1 a)', () => {
+    const box = { width: 80, height: 20 };
+    expect(c.isVisuallyHidden({ ...box, clip: 'rect(0px, 0px, 0px, 0px)' })).toBe(true);
+    expect(c.isVisuallyHidden({ ...box, clipPath: 'inset(50%)' })).toBe(true);
+    expect(c.isVisuallyHidden({ width: 1, height: 1 })).toBe(true);
+    expect(c.isVisuallyHidden({ ...box, clip: 'auto', clipPath: 'none' })).toBe(false);
+    expect(c.isVisuallyHidden({ ...box })).toBe(false);
+  });
+
+  it('an in-field adornment overlapping its own field is no overlap; another control still is', () => {
+    const input = { id: 0, name: 'input', rect: r(10, 10, 200, 42), parents: [], field: 7 };
+    const eye = { id: 1, name: 'eye', rect: r(170, 14, 196, 38), parents: [], adornment: 7 };
+    const other = { id: 2, name: 'other', rect: r(180, 20, 240, 50), parents: [] };
+    expect(c.checkControlOverlap([input, eye])).toEqual([]);
+    expect(c.checkControlOverlap([input, eye, other])).toEqual(['input overlaps other', 'eye overlaps other']);
+    expect(c.checkControlOverlap([{ ...input, field: 8 }, eye])).toEqual(['input overlaps eye']);
+  });
+
+  it('a menu-bar menu may cover the toolbar and the active tool but never its anchor (ADR-124 addendum 1 c)', () => {
+    const menu = r(10, 40, 200, 600);
+    const active = { name: 'Select', rect: r(20, 60, 80, 90), role: 'active' };
+    const anchor = { name: 'File', rect: r(0, 20, 50, 50), role: 'anchor' };
+    expect(c.checkOverlap('menubar', menu, [], [active])).toEqual([]);
+    expect(c.checkOverlap('menubar', menu, [], [active, anchor])).toEqual(['covers anchor File']);
+    expect(c.checkOverlap('menubar', menu, [{ name: 'tip', rect: r(20, 100, 60, 120) }], [])).toEqual(['overlaps tip']);
+  });
 });

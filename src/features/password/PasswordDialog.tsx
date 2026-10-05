@@ -152,7 +152,7 @@ function PasswordModal({ request }: { request: PasswordRequest }) {
               }}
               className="w-full! pe-8!"
             />
-            <span className="absolute inset-y-0 end-1 flex items-center">
+            <span data-adornment="" className="absolute inset-y-0 end-1 flex items-center">
               <IconButton
                 size="sm"
                 label={t('password.show')}

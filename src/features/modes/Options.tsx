@@ -8,13 +8,21 @@ import { useRedactInspector } from '../redact/useRedactInspector';
  * the sidebar, unchanged; it is `null` while the tool or mode is not on.
  */
 export function CropOptions() {
-  return <div className="w-popover-max p-4">{useCropInspector()?.body}</div>;
+  return <div className="w-(--options-inner-max)">{useCropInspector()?.body}</div>;
 }
 
 export function InsertOptions() {
-  return <div className="flex w-popover-min flex-col gap-3 p-4">{useInsertInspector()?.body}</div>;
+  return (
+    <div className="flex w-max min-w-(--options-inner-min) max-w-(--options-inner-max) flex-col gap-3">
+      {useInsertInspector()?.body}
+    </div>
+  );
 }
 
 export function RedactOptions() {
-  return <div className="flex w-popover-min flex-col gap-3 p-4">{useRedactInspector()?.body}</div>;
+  return (
+    <div className="flex w-max min-w-(--options-inner-min) max-w-(--options-inner-max) flex-col gap-3">
+      {useRedactInspector()?.body}
+    </div>
+  );
 }

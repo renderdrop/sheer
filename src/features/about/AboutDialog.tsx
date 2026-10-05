@@ -78,7 +78,7 @@ function AboutModal() {
         aria-label={t('about.title', { app: APP_NAME })}
         tabIndex={-1}
         onKeyDown={onKeyDown}
-        className="bg-panel border border-border-subtle shadow-floating flex w-popover-max max-w-full flex-col items-center gap-4 rounded-card p-6 text-center text-text outline-none"
+        className="bg-panel border border-border-subtle shadow-floating flex w-dialog max-w-full flex-col items-center gap-4 rounded-card p-6 text-center text-text outline-none"
       >
         <div className="flex flex-col items-center gap-2">
           <h2 className="m-0 text-text">

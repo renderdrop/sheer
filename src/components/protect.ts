@@ -2,7 +2,8 @@ import type { FloatingKind, Rect } from './position';
 
 /**
  * Protected elements (DESIGN 3.9 Q8). A floating surface may not cover them. They are found, never registered:
- * - `data-protect` on any element (the active tool, the selection handles): protected for every kind.
+ * - `data-protect` on any element (the active tool, the selection handles) and every pressed toggle button (the active tool, a shown
+ *   panel): protected for every kind.
  * - `data-protect="notice"`: protected for notices only (tips and coach marks).
  * - the focused element when it is an input, textarea, select or contenteditable.
  * - for notices also every visible input, textarea, select, contenteditable, button, `[role=button]` and toolbar item.
@@ -28,9 +29,14 @@ export function protectedRects(kind: FloatingKind, anchor: Element, floating: El
     found.add(element);
   };
   add(anchor);
+  // A menu of the menu bar follows the operating system's menu convention: it may cover the toolbar and the active tool below
+  // it, but never its own title.
+  if (kind === 'menu' && anchor.closest('[role="menubar"]') !== null) return [...found].flatMap((e) => rectOf(e) ?? []);
   const focused = document.activeElement;
   if (focused !== null && focused.matches(TEXT_FIELDS)) add(focused);
-  for (const element of document.querySelectorAll('[data-protect], [data-toolbar-item][aria-pressed="true"]')) {
+  for (const element of document.querySelectorAll(
+    '[data-protect], [data-toolbar-item][aria-pressed="true"], button[aria-pressed="true"]',
+  )) {
     if (element.getAttribute('data-protect') !== 'notice' || isNotice(kind)) add(element);
   }
   if (isNotice(kind)) {
