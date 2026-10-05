@@ -368,3 +368,39 @@ fn the_panel_width_survives_a_restart_and_a_bad_width_changes_nothing() {
     assert_eq!(fs::read(dir.settings_file()).unwrap(), before);
     assert_eq!(store.get().left_panel_width.get(), 300);
 }
+
+#[test]
+fn tag_definitions_are_validated_stored_and_repaired_on_load() {
+    use sheer_lib::model::tags::TAG_PALETTE;
+
+    let tag = |name: &str, index: usize| json!({ "name": name, "color": TAG_PALETTE[index].0 });
+    let dir = TempDir::new();
+    let store = SettingsStore::load(dir.settings_file());
+    let patch = |value: Value| SettingsPatch::from_value(&value);
+
+    // A bad list is refused whole and leaves no file behind.
+    for bad in [
+        json!([tag("Same", 0), tag("SAME", 1)]),
+        json!([{ "name": "x", "color": [0, 0, 0] }]),
+        json!([tag("", 0)]),
+    ] {
+        let error = patch(json!({ "tags": bad })).unwrap_err();
+        assert_eq!(error.code(), ErrorCode::InvalidArgument);
+    }
+    assert!(!dir.settings_file().exists());
+
+    store
+        .update(patch(json!({ "tags": [tag(" Methods ", 0), tag("Theory", 3)] })).unwrap())
+        .unwrap();
+    let again = SettingsStore::load(dir.settings_file()).get();
+    assert_eq!(again.tags.len(), 2);
+    assert_eq!(again.tags[0].name, "Methods");
+
+    // A hand-edited file with a bad entry loses that entry only.
+    let edited = json!({ "language": "de", "tags": [tag("Ok", 1), { "name": "bad", "color": [9, 9, 9] }, tag("ok", 2)] });
+    fs::write(dir.settings_file(), edited.to_string()).unwrap();
+    let loaded = SettingsStore::load(dir.settings_file()).get();
+    assert_eq!(loaded.language, Language::De);
+    assert_eq!(loaded.tags.len(), 1);
+    assert_eq!(loaded.tags[0].name, "Ok");
+}

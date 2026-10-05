@@ -10,11 +10,12 @@
 //!   hold. Only a regular file is read (a directory, FIFO or device at the path counts as damaged), judged on the opened
 //!   handle and not on the path, and the open never waits (`O_NONBLOCK`); never more than
 //!   `limits::MAX_SETTINGS_FILE_BYTES` of it is read.
-//! - **Updating** validates the whole patch first (unknown keys, unknown enum values and a width outside the range are
+//! - **Updating** validates the whole patch first (a bad `tags` list is `invalid_argument` with `what: "tags"`; unknown keys, unknown enum values and a width outside the range are
 //!   `invalid_argument` with `what: "settings"`), then writes atomically and only then changes the in-memory copy, so a
 //!   failed write leaves memory and disk in agreement. Updates are serialised, but reads are not: `get` never waits for
 //!   the disk.
 
+use std::collections::HashSet;
 use std::fs::File;
 use std::io::{self, Read};
 use std::path::{Path, PathBuf};
@@ -26,6 +27,7 @@ use serde_json::Value;
 
 use crate::error::{AppError, ErrorCode};
 use crate::limits;
+use crate::model::tags::{TagDef, TAG_PALETTE};
 use crate::storage::atomic::write_atomic;
 use crate::storage::open_without_blocking;
 
@@ -259,6 +261,70 @@ impl<'de> Deserialize<'de> for TipsSeen {
 /// a failed one is tried again at the next start).
 const RETIRED_KEYS: [&str; 3] = ["glass", "theme", "toolSidebarCollapsed"];
 
+/// One tag definition as it is stored (ADR-119): the name without invisible characters, trimmed, 1..=`limits::TAG_NAME_MAX`
+/// characters and no control character; the colour one of [`TAG_PALETTE`]. `None` for anything else.
+fn clean_tag(tag: &TagDef) -> Option<TagDef> {
+    let name = sanitize_author(&tag.name);
+    let valid = !name.is_empty()
+        && name.chars().count() <= limits::TAG_NAME_MAX
+        && !name.chars().any(char::is_control)
+        && TAG_PALETTE.contains(&tag.color);
+    valid.then_some(TagDef {
+        name,
+        color: tag.color,
+    })
+}
+
+/// The list of tag definitions of a patch: every entry valid, names unique ignoring case, at most `limits::TAGS_MAX`. `None` if any
+/// rule is broken (the patch is then refused whole).
+pub fn validate_tags(tags: &[TagDef]) -> Option<Vec<TagDef>> {
+    if tags.len() > limits::TAGS_MAX {
+        return None;
+    }
+    let mut seen = HashSet::new();
+    let mut kept = Vec::with_capacity(tags.len());
+    for tag in tags {
+        let tag = clean_tag(tag)?;
+        if !seen.insert(tag.name.to_lowercase()) {
+            return None;
+        }
+        kept.push(tag);
+    }
+    Some(kept)
+}
+
+/// The tag definitions of a stored file: an entry that is not valid or repeats a name (ignoring case) is dropped, and so is everything
+/// after the `limits::TAGS_MAX`-th valid one. Never fails.
+fn stored_tags(value: &Value) -> Vec<TagDef> {
+    let Value::Array(entries) = value else {
+        return Vec::new();
+    };
+    let mut seen = HashSet::new();
+    let mut kept = Vec::new();
+    for entry in entries {
+        if kept.len() >= limits::TAGS_MAX {
+            break;
+        }
+        let Some(tag) = TagDef::deserialize(entry).ok().as_ref().and_then(clean_tag) else {
+            continue;
+        };
+        if seen.insert(tag.name.to_lowercase()) {
+            kept.push(tag);
+        }
+    }
+    kept
+}
+
+/// A tag list in a patch must pass [`validate_tags`].
+fn tags_present<'de, D: Deserializer<'de>>(
+    deserializer: D,
+) -> Result<Option<Vec<TagDef>>, D::Error> {
+    let tags = Vec::<TagDef>::deserialize(deserializer)?;
+    validate_tags(&tags)
+        .map(Some)
+        .ok_or_else(|| serde::de::Error::custom("tags not valid"))
+}
+
 /// Every persisted setting. Add a field here, to [`SettingsPatch`] and to `src/api/app.ts` together.
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -273,8 +339,8 @@ pub struct Settings {
     pub tips_seen: TipsSeen,
     /// The page sidebar is collapsed (DESIGN v2 3.2).
     pub page_sidebar_collapsed: bool,
-    /// The tag definitions (ADR-119), shared by all documents. Package C4 validates them (`limits::TAGS_MAX`, names, palette).
-    pub tags: Vec<crate::model::tags::TagDef>,
+    /// The tag definitions (ADR-119), shared by all documents. Validated by [`validate_tags`] (patch) and `stored_tags` (file).
+    pub tags: Vec<TagDef>,
 }
 
 impl Settings {
@@ -321,10 +387,7 @@ impl Settings {
                 .get("pageSidebarCollapsed")
                 .and_then(Value::as_bool)
                 .unwrap_or_default(),
-            tags: map
-                .get("tags")
-                .and_then(|value| Vec::<crate::model::tags::TagDef>::deserialize(value).ok())
-                .unwrap_or_default(),
+            tags: map.get("tags").map(stored_tags).unwrap_or_default(),
         }
     }
 
@@ -371,8 +434,8 @@ pub struct SettingsPatch {
     #[serde(default, deserialize_with = "present")]
     pub page_sidebar_collapsed: Option<bool>,
     /// Replaces the tag list (ADR-119).
-    #[serde(default, deserialize_with = "present")]
-    pub tags: Option<Vec<crate::model::tags::TagDef>>,
+    #[serde(default, deserialize_with = "tags_present")]
+    pub tags: Option<Vec<TagDef>>,
 }
 
 /// A field that is present must hold a valid value. Plain `Option` would read `null` as "absent" and accept it.
@@ -393,7 +456,16 @@ impl SettingsPatch {
         if !value.is_object() {
             return Err(AppError::invalid("settings"));
         }
-        Self::deserialize(value).map_err(|_| AppError::invalid("settings"))
+        Self::deserialize(value).map_err(|_| {
+            // A bad tag list is named, so the UI can say which part of the request it refused (ADR-119).
+            let bad_tags = value.get("tags").is_some_and(|tags| {
+                Vec::<TagDef>::deserialize(tags)
+                    .ok()
+                    .and_then(|list| validate_tags(&list))
+                    .is_none()
+            });
+            AppError::invalid(if bad_tags { "tags" } else { "settings" })
+        })
     }
 }
 
@@ -1014,6 +1086,125 @@ mod tests {
             }
         );
         assert_eq!(base.clone().apply(SettingsPatch::default()), base);
+    }
+
+    // --- tag definitions (ADR-119) ---
+
+    fn tag(name: &str, palette_index: usize) -> Value {
+        json!({ "name": name, "color": TAG_PALETTE[palette_index].0 })
+    }
+
+    #[test]
+    fn a_tag_patch_is_validated_and_names_are_trimmed() {
+        let patch = SettingsPatch::from_value(
+            &json!({ "tags": [tag("  Methods\u{200B} ", 0), tag("Théorie", 4)] }),
+        )
+        .unwrap();
+        let tags = patch.tags.unwrap();
+        assert_eq!(tags[0].name, "Methods");
+        assert_eq!(tags[1].name, "Théorie");
+        assert!(SettingsPatch::from_value(&json!({ "tags": [] }))
+            .unwrap()
+            .tags
+            .unwrap()
+            .is_empty());
+        let longest = "ä".repeat(limits::TAG_NAME_MAX);
+        assert!(SettingsPatch::from_value(&json!({ "tags": [tag(&longest, 1)] })).is_ok());
+        let exact: Vec<Value> = (0..limits::TAGS_MAX)
+            .map(|n| tag(&format!("t{n}"), n % 5))
+            .collect();
+        assert!(SettingsPatch::from_value(&json!({ "tags": exact })).is_ok());
+    }
+
+    #[test]
+    fn a_bad_tag_list_is_refused_whole_as_invalid_tags() {
+        let too_long = "a".repeat(limits::TAG_NAME_MAX + 1);
+        let many: Vec<Value> = (0..=limits::TAGS_MAX)
+            .map(|n| tag(&format!("t{n}"), 0))
+            .collect();
+        let bad_lists = [
+            json!([tag("", 0)]),
+            json!([tag("   ", 0)]),
+            json!([tag("\u{200B}", 0)]),
+            json!([tag(&too_long, 0)]),
+            json!([tag("a\nb", 0)]),
+            json!([tag("a\u{0}", 0)]),
+            json!([tag("a\u{7f}", 0)]),
+            json!([tag("Same", 0), tag("same", 1)]),
+            json!([tag("Straße", 0), tag("STRASSE", 1), tag("straße", 2)]),
+            json!([{ "name": "x", "color": [1, 2, 3] }]),
+            json!([{ "name": "x", "color": [255, 248, 78] }]),
+            json!([{ "name": "x" }]),
+            json!([{ "name": 5, "color": TAG_PALETTE[0].0 }]),
+            json!(many),
+            json!(null),
+            json!("tag"),
+            json!({ "name": "x" }),
+        ];
+        for bad in bad_lists {
+            assert_eq!(
+                rejected(json!({ "tags": bad.clone() })),
+                r#"{"code":"invalid_argument","key":"error.invalid_argument","retryable":false,"params":{"what":"tags"}}"#,
+                "{bad}"
+            );
+        }
+        // Another bad field still says "settings".
+        assert_eq!(
+            rejected(json!({ "language": "x", "tags": [] })),
+            INVALID_SETTINGS
+        );
+    }
+
+    #[test]
+    fn stored_tags_drop_invalid_entries_and_never_fail_the_load() {
+        let too_long = "a".repeat(limits::TAG_NAME_MAX + 1);
+        let stored = json!({
+            "language": "de",
+            "tags": [
+                tag("Keep", 0), tag("keep", 1), tag(&too_long, 2), tag("a\nb", 0), tag(" Trim ", 3),
+                { "name": "x", "color": [1, 2, 3] }, 7, null, { "color": TAG_PALETTE[0].0 }, tag("Last", 4)
+            ]
+        })
+        .to_string();
+        let settings = Settings::from_stored(stored.as_bytes());
+        assert_eq!(settings.language, Language::De);
+        let names: Vec<&str> = settings.tags.iter().map(|tag| tag.name.as_str()).collect();
+        assert_eq!(names, ["Keep", "Trim", "Last"]);
+        // Not a list: no tags, the other fields stay.
+        for stored in [
+            r#"{"language":"de","tags":"x"}"#,
+            r#"{"language":"de","tags":{}}"#,
+            r#"{"language":"de","tags":null}"#,
+        ] {
+            let settings = Settings::from_stored(stored.as_bytes());
+            assert!(settings.tags.is_empty());
+            assert_eq!(settings.language, Language::De);
+        }
+        // More than the limit: the first TAGS_MAX valid ones are kept.
+        let many: Vec<Value> = (0..limits::TAGS_MAX + 10)
+            .map(|n| tag(&format!("t{n}"), 0))
+            .collect();
+        let settings = Settings::from_stored(json!({ "tags": many }).to_string().as_bytes());
+        assert_eq!(settings.tags.len(), limits::TAGS_MAX);
+        assert_eq!(settings.tags[0].name, "t0");
+    }
+
+    #[test]
+    fn tags_are_persisted_replaced_and_kept_by_other_updates() {
+        let dir = TempDir::new();
+        let store = store_in(&dir);
+        apply_json(&store, json!({ "tags": [tag("A", 0), tag("B", 1)] })).unwrap();
+        assert_eq!(store_in(&dir).get().tags.len(), 2);
+        apply_json(&store, json!({ "language": "en" })).unwrap();
+        assert_eq!(store_in(&dir).get().tags.len(), 2);
+        let before = fs::read(dir.path().join(FILE_NAME)).unwrap();
+        assert!(apply_json(&store, json!({ "tags": [tag("A", 0), tag("a", 1)] })).is_err());
+        assert_eq!(fs::read(dir.path().join(FILE_NAME)).unwrap(), before);
+        apply_json(&store, json!({ "tags": [tag("C", 2)] })).unwrap();
+        let tags = store_in(&dir).get().tags;
+        assert_eq!(tags.len(), 1);
+        assert_eq!(tags[0].name, "C");
+        assert_eq!(tags[0].color, TAG_PALETTE[2]);
     }
 
     // --- loading ---
