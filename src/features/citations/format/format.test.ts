@@ -112,6 +112,15 @@ describe('short citations', () => {
     expect(formatShortCitation(record, 'xii', 'apa7', 'en')).toBe('(Müller, 2021, p. xii)');
   });
 
+  it('formats a group locator in all four styles, with hyphen or en dash, in both languages', () => {
+    for (const loc of ['12-13', '12–13']) {
+      expect(formatShortCitation(record, loc, 'apa7', 'en')).toBe('(Müller, 2021, pp. 12–13)');
+      expect(formatShortCitation(record, loc, 'dinIso690', 'de')).toBe('(Müller 2021, S. 12–13)');
+      expect(formatShortCitation(record, loc, 'chicago17AuthorDate', 'en')).toBe('(Müller 2021, 12–13)');
+      expect(formatShortCitation(record, loc, 'mla9', 'en')).toBe('(Müller 12–13)');
+    }
+  });
+
   it('names two and three authors', () => {
     const two = { ...record, authors: [record.authors[0]!, { family: 'Schmidt', given: 'P' }] };
     const three = { ...two, authors: [...two.authors, { family: 'Weber', given: 'W' }] };

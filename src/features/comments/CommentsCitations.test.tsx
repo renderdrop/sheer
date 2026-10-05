@@ -178,6 +178,15 @@ describe('comments filter', () => {
     expect(screen.getAllByRole('dialog')).toHaveLength(1);
   });
 
+  it('places the Reference button above the empty Comments state', async () => {
+    listDocumentAnnotations.mockResolvedValue([]);
+    listCitations.mockResolvedValue([]);
+    setup(<Comments />);
+    const empty = await screen.findByText('No comments yet');
+    const button = screen.getByRole('button', { name: 'Reference and citation list' });
+    expect(button.compareDocumentPosition(empty) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
   it('puts the Reference button between Filter and sort', async () => {
     await shown();
     const row = screen.getByRole('button', { name: /^Filter/u }).parentElement as HTMLElement;
