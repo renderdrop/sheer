@@ -467,6 +467,16 @@ describe('the citation row (DESIGN 3.7 C4)', () => {
     expect(screen.getByRole('toolbar', { name: /Properties:/ })).not.toBeNull();
   });
 
+  it('shows exactly the five highlight swatches, even beside a recent custom colour', async () => {
+    const { useRecentColours } = await import('../../stores/recentColours');
+    useRecentColours.setState({ colours: [[1, 2, 3]] });
+    load([citation(1)], [1]);
+    scene = canvas({ 1: OVER });
+    setup(<MiniBarSlot />);
+    expect(screen.getAllByRole('radio')).toHaveLength(5);
+    expect(screen.queryByRole('radio', { name: '#010203' })).toBeNull();
+  });
+
   it('Open citation asks the margin to focus the bubble, Copy citation copies it', async () => {
     const { requestCitationFocus, onCitationFocus } = await import('../citations/store');
     const seen: number[] = [];

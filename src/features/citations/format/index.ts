@@ -30,6 +30,13 @@ export function formatReference(record: BibRecord, style: CitationStyle, lang: L
   return { runs: fitRuns(STYLES[style].reference(record, lang)) };
 }
 
+/** Whether the record has no title, no author and no year at all: the preview then shows nothing but the missing caption. */
+export function isReferenceBlank(record: BibRecord | undefined): boolean {
+  if (record === undefined) return true;
+  const named = record.authors.some((p) => clean(p.family) !== '' || clean(p.given) !== '');
+  return clean(record.title) === '' && clean(record.year) === '' && !named;
+}
+
 /** Whether the record lacks a title, an author or a year (the preview then says so). */
 export function isReferenceIncomplete(record: BibRecord | undefined): boolean {
   if (record === undefined) return true;

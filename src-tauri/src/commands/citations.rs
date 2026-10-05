@@ -94,7 +94,7 @@ impl AppState {
 
     /// The page labels by file page index: from the model if they were read, else asked of the engine once. A failed job is cached as
     /// no labels (every locator falls back to the position) until the next save, so a list does not retry it.
-    fn page_labels(&self, id: DocumentId) -> Result<Vec<Option<String>>, AppError> {
+    pub(crate) fn page_labels(&self, id: DocumentId) -> Result<Vec<Option<String>>, AppError> {
         if let Some(labels) = self.model(id, |state| Ok(state.page_labels.clone()))? {
             return Ok(labels);
         }

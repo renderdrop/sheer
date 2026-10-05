@@ -20,7 +20,7 @@ const lang = (): 'en' | 'de' => (useLocaleStore.getState().locale === 'de' ? 'de
 
 function toast(message: string, retry?: () => void, error = false): void {
   const t = tr();
-  const tone = error ? ({ tone: 'error' } as const) : {};
+  const tone = error ? ({ tone: 'alert' } as const) : {};
   useUi
     .getState()
     .showToast(
@@ -166,7 +166,7 @@ export async function saveCitationList(docId: number): Promise<void> {
       toast(tr()('reference.saveFailed'), undefined, true);
       return;
     }
-    const saved = await saveCitationListFile(docId, format, blocks, style);
+    const saved = await saveCitationListFile(docId, format, blocks, style, lang());
     if (saved) toast(tr()('reference.listSaved'));
   } catch {
     toast(tr()('reference.saveFailed'), retry, true);

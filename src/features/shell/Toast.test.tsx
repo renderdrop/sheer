@@ -28,6 +28,18 @@ describe('the toast (DESIGN 3.12)', () => {
     expect(screen.getByRole('status').textContent).toBe('');
   });
 
+  it('the alert tone shows the triangle-alert in Ink, the error tone the circle-alert in Danger', () => {
+    setup(<ToastLayer />, { advanceTimers: (ms) => void vi.advanceTimersByTime(ms) });
+    act(() => useUi.getState().showToast({ message: 'No text', tone: 'alert' }));
+    const icon = document.querySelector('[data-toast] svg');
+    expect(icon?.getAttribute('class')).toContain('lucide-triangle-alert');
+    expect(icon?.getAttribute('class')).not.toContain('text-error-text');
+    act(() => useUi.getState().showToast({ message: 'Failed', tone: 'error' }));
+    return waitFor(() =>
+      expect(document.querySelector('[data-toast] svg')?.getAttribute('class')).toContain('lucide-circle-alert'),
+    );
+  });
+
   it('stays 8 s with an action, and the action runs once and closes it', async () => {
     const run = vi.fn();
     const { user } = setup(<ToastLayer />, { advanceTimers: (ms) => void vi.advanceTimersByTime(ms) });

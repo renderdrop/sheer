@@ -118,6 +118,7 @@ export function MiniBar({ docId, objects, ref, onReturn }: MiniBarProps) {
             }
             value={values.color}
             disabled={locked}
+            fixed={control === 'colourHighlight' && objects.every((o) => o.cite !== undefined)}
             onChange={(color) => change({ color })}
           />,
         );

@@ -16,7 +16,7 @@ import { tokenPx } from '../../components/tokens';
 import { useT } from '../../i18n';
 import { useAnnotations } from '../../stores/annotations';
 import { selectActiveId, useDocuments } from '../../stores/documents';
-import { pageNumberOf } from '../../stores/pages';
+import { pageNumberOf, useSlots } from '../../stores/pages';
 import { ReferenceButton } from '../citations/ReferencePopover';
 import { useCitations } from '../citations/store';
 import { deleteThread, jumpTo } from './actions';
@@ -34,6 +34,7 @@ import {
 } from './model';
 import { DEFAULT_VIEW, useComments, type CommentsEntry } from './store';
 import { CommentsFilter } from './CommentsFilter';
+import { pageLabelOf } from './pageLabel';
 import { REFRESH_DELAY_MS, useCommentsData } from './useCommentsData';
 
 /** The loading state shows nothing for this long. */
@@ -78,11 +79,16 @@ function Slot({
   top,
   measure,
   children,
+  ...aria
 }: {
   rowKey: string;
   top: number;
   measure: { observe: (element: HTMLElement) => () => void };
   children: ReactNode;
+  role?: 'listitem';
+  'aria-hidden'?: true;
+  'aria-posinset'?: number;
+  'aria-setsize'?: number;
 }) {
   const ref = useRef<HTMLDivElement | null>(null);
   useLayoutEffect(() => {
@@ -90,7 +96,7 @@ function Slot({
     return element === null ? undefined : measure.observe(element);
   }, [measure]);
   return (
-    <div ref={ref} data-row-key={rowKey} className="absolute inset-x-0 box-border pb-2" style={{ top }}>
+    <div ref={ref} data-row-key={rowKey} className="absolute inset-x-0 box-border pb-2" style={{ top }} {...aria}>
       {children}
     </div>
   );
@@ -102,6 +108,8 @@ export function CommentsList({ docId, entry }: { docId: number; entry: Ready }) 
   const view = useComments((state) => state.views[docId]) ?? DEFAULT_VIEW;
   const editing = useComments((state) => state.editing[docId]);
   const selectedIds = useAnnotations((state) => state.selectedIds[docId]);
+  // Page labels and numbers follow the page order: the headers render again when it changes.
+  useSlots(docId);
   const [base] = useState(() => ({
     group: tokenPx('--comments-group-height', HEIGHT_FALLBACK.group) + tokenPx('--space-2', 8),
     card: tokenPx('--comments-card-estimate', HEIGHT_FALLBACK.card) + tokenPx('--space-2', 8),
@@ -386,30 +394,33 @@ export function CommentsList({ docId, entry }: { docId: number; entry: Ready }) 
             const top = offsets[i] as number;
             if (row.type === 'group') {
               return (
-                <Slot key={row.key} rowKey={row.key} top={top} measure={tracker}>
-                  <div
-                    aria-hidden="true"
-                    className="flex h-control-sm items-center px-1 text-sm font-semibold text-text-muted"
-                  >
-                    {t('search.page', { n: pageNumberOf(docId, row.pageId) })}
+                <Slot key={row.key} rowKey={row.key} top={top} measure={tracker} aria-hidden>
+                  <div className="flex h-control-sm items-center px-1 text-sm font-semibold text-text-muted">
+                    {t('comments.page', { n: pageLabelOf(docId, row.pageId) })}
                   </div>
                 </Slot>
               );
             }
             const selected = selectedRoot === row.thread.root.id;
             return (
-              <Slot key={row.key} rowKey={row.key} top={top} measure={tracker}>
-                <div role="listitem" aria-posinset={row.posinset} aria-setsize={row.setsize}>
-                  <CommentCard
-                    docId={docId}
-                    thread={row.thread}
-                    selected={selected}
-                    tabStop={tabKey === row.key}
-                    now={now}
-                    onActivate={activate}
-                    citation={citationById.get(row.thread.root.id)}
-                  />
-                </div>
+              <Slot
+                key={row.key}
+                rowKey={row.key}
+                top={top}
+                measure={tracker}
+                role="listitem"
+                aria-posinset={row.posinset}
+                aria-setsize={row.setsize}
+              >
+                <CommentCard
+                  docId={docId}
+                  thread={row.thread}
+                  selected={selected}
+                  tabStop={tabKey === row.key}
+                  now={now}
+                  onActivate={activate}
+                  citation={citationById.get(row.thread.root.id)}
+                />
               </Slot>
             );
           })}

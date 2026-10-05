@@ -17,7 +17,6 @@ import { cx } from '../../components/cx';
 import { Icon } from '../../components/Icon';
 import { useT, type PlainKey } from '../../i18n';
 import { useAnnotations } from '../../stores/annotations';
-import { pageNumberOf } from '../../stores/pages';
 import { useSettings } from '../../stores/settings';
 import { copyCitation } from '../citations/exportActions';
 import { TagChips } from '../tags/TagChips';
@@ -28,6 +27,7 @@ import { useAutosize } from '../annotations/note/useAutosize';
 import { deleteThread, discardNew, postReply, run, setReviewState } from './actions';
 import { firstLine, type Status, type Thread } from './model';
 import { useComments } from './store';
+import { pageLabelOf } from './pageLabel';
 import { relativeTime } from './time';
 import { useCommentHover } from './useCommentsData';
 import { isTextMarkup, typeOf } from './typeInfo';
@@ -169,7 +169,7 @@ export const CommentCard = memo(function CommentCard({
   const isCite = root.cite === true;
   const quote = useQuote(docId, root.id, isTextMarkup(root.kind) && !isCite);
   const tagNames = full?.tags ?? root.tags ?? [];
-  const locator = citation?.locator ?? String(pageNumberOf(docId, root.pageId));
+  const locator = citation?.locator ?? pageLabelOf(docId, root.pageId);
   // A text comment keeps its text in its lines; it is the first line like any comment's text.
   const text =
     full?.kind === 'freeText' && full.contents.trim() === ''
@@ -257,7 +257,7 @@ export const CommentCard = memo(function CommentCard({
 
   const statusPill = status === 'open' ? null : STATUS_PILL[status];
   const time = relativeTime(root.modified, t.locale, now);
-  const page = pageNumberOf(docId, root.pageId);
+  const page = pageLabelOf(docId, root.pageId);
   const review = (next: 'completed' | 'accepted' | 'rejected' | 'none') => () =>
     void setReviewState(docId, root.id, root.pageId, next);
   const copy = () => void navigator.clipboard?.writeText(text).catch(() => undefined);
@@ -293,7 +293,8 @@ export const CommentCard = memo(function CommentCard({
         'bg-panel box-border flex cursor-pointer flex-col gap-2 rounded-md border p-3 focus-visible:outline-2 focus-visible:outline-offset-0 focus-visible:outline-focus',
         'transition-colors duration-fast motion-reduce:transition-none',
         'forced-colors:bg-[Canvas] forced-colors:text-[CanvasText]',
-        selected ? 'border-accent' : 'border-border-subtle hover:border-control-border',
+        // Solar alone is 1.12:1 on white (DESIGN 2): the selected card also has the Ink ring.
+        selected ? 'border-accent ring-1 ring-text' : 'border-border-subtle hover:border-control-border',
         !selected && hovered && 'border-control-border',
         done && 'opacity-60',
       )}
@@ -451,22 +452,6 @@ export const CommentCard = memo(function CommentCard({
                   </>
                 )}
                 {canDelete && <TagPickerButton docId={docId} annotIds={[root.id]} />}
-                {isCite && (
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    disabled={!canDelete}
-                    onClick={() =>
-                      void deleteThread(docId, [
-                        root.id,
-                        ...replies.map((r) => r.id),
-                        ...thread.states.map((s) => s.id),
-                      ])
-                    }
-                  >
-                    {t('comments.delete')}
-                  </Button>
-                )}
               </div>
             </>
           )}

@@ -1,5 +1,5 @@
 import { BookMarked, ChevronDown, TriangleAlert } from 'lucide-react';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 
 import {
   CITATION_FILE_FORMATS,
@@ -9,12 +9,14 @@ import {
   type CitationStyle,
 } from '../../api/citations';
 import { Button, IconButton, Icon, Menu, Skeleton, type MenuEntry } from '../../components';
+import { cx } from '../../components/cx';
 import { Popover } from '../../components/Popover';
+import { tokenPx } from '../../components/tokens';
 import { useT, type PlainKey } from '../../i18n';
 import { openReferenceDetails } from '../properties/openReference';
 import { useBibliography } from './bibliography';
 import { copyCitationList, copyReference, saveCitationList } from './exportActions';
-import { formatReference, isReferenceIncomplete } from './format';
+import { formatReference, isReferenceBlank, isReferenceIncomplete } from './format';
 import { useCitationFormat, useCitationStyle } from './style';
 
 const STYLE_KEYS: Record<CitationStyle, PlainKey> = {
@@ -31,6 +33,14 @@ const FORMAT_KEYS: Record<CitationFileFormat, PlainKey> = {
   ris: 'reference.format.ris',
   bib: 'reference.format.bib',
 };
+
+/** The popover is as wide as the left panel it opens from, less 16 (DESIGN 3.7 C7); elsewhere the default range. */
+export function popoverWidthIn(anchor: HTMLElement | null): number | undefined {
+  const panel = anchor?.closest<HTMLElement>('[data-region="left"]');
+  return panel === null || panel === undefined
+    ? undefined
+    : panel.getBoundingClientRect().width - tokenPx('--space-4', 16);
+}
 
 /** The document id (the backend's opaque number). */
 type DocId = number;
@@ -65,7 +75,9 @@ function ReferenceBody({
   docId,
   close,
   onEditReference,
+  constrained,
 }: {
+  constrained: boolean;
   docId: DocId;
   close: () => void;
   onEditReference: () => void;
@@ -81,6 +93,7 @@ function ReferenceBody({
     [info, style, lang],
   );
   const incomplete = info !== undefined && isReferenceIncomplete(info.record);
+  const blank = info !== undefined && isReferenceBlank(info.record);
   const empty = count === 0;
   const unknown = count === undefined;
 
@@ -101,7 +114,7 @@ function ReferenceBody({
   const emptyTip = empty ? t('reference.empty') : undefined;
 
   return (
-    <div className="flex w-popover-max max-w-full flex-col gap-3">
+    <div className={cx('flex flex-col gap-3', constrained ? 'w-full' : 'w-popover-max max-w-full')}>
       <div className="flex flex-col gap-1">
         <span className="t-label text-text">{t('reference.style')}</span>
         <Menu
@@ -129,7 +142,7 @@ function ReferenceBody({
           <div className="ps-6 -indent-6">
             {block === undefined ? (
               <Skeleton shape="line" className="w-full" />
-            ) : (
+            ) : blank ? null : (
               block.runs.map((run, index) =>
                 run.italic ? <i key={index}>{run.text}</i> : <span key={index}>{run.text}</span>,
               )
@@ -219,14 +232,38 @@ function ReferenceBody({
 export function ReferenceButton({ docId, onEditReference }: ReferenceButtonProps) {
   const t = useT();
   const edit = onEditReference ?? (() => openReferenceDetails(docId));
+  const anchor = useRef<HTMLElement | null>(null);
+  const [width, setWidth] = useState<number | undefined>(undefined);
   return (
     <Popover
       label={t('reference.button')}
       side="bottom"
       align="end"
-      trigger={(trigger) => <IconButton {...trigger} size="sm" icon={BookMarked} label={t('reference.button')} />}
+      width={width}
+      onOpenChange={(open) => {
+        if (open) setWidth(popoverWidthIn(anchor.current));
+      }}
+      trigger={(trigger) => (
+        <IconButton
+          {...trigger}
+          ref={(element) => {
+            anchor.current = element;
+            trigger.ref(element);
+          }}
+          size="sm"
+          icon={BookMarked}
+          label={t('reference.button')}
+        />
+      )}
     >
-      {({ close }) => <ReferenceBody docId={docId} close={() => close('select')} onEditReference={edit} />}
+      {({ close }) => (
+        <ReferenceBody
+          constrained={width !== undefined}
+          docId={docId}
+          close={() => close('select')}
+          onEditReference={edit}
+        />
+      )}
     </Popover>
   );
 }

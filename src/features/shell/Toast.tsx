@@ -1,4 +1,4 @@
-import { Check, CircleAlert } from 'lucide-react';
+import { Check, CircleAlert, TriangleAlert } from 'lucide-react';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import { useCallback, useEffect, useRef } from 'react';
 
@@ -41,7 +41,7 @@ function ToastView({ toast }: { toast: Toast }) {
       className="bg-panel border border-border-subtle shadow-floating pointer-events-auto flex min-h-toast min-w-toast-min max-w-toast-max items-center gap-2 rounded-button px-3 py-2"
     >
       <Icon
-        icon={toast.tone === 'error' ? CircleAlert : Check}
+        icon={toast.tone === 'error' ? CircleAlert : toast.tone === 'alert' ? TriangleAlert : Check}
         className={toast.tone === 'error' ? 'shrink-0 text-error-text' : 'shrink-0 text-text'}
       />
       <span className="min-w-0 flex-auto t-label">{toast.message}</span>
@@ -72,7 +72,10 @@ export function ToastLayer() {
       <div role="status" className="sr-only">
         {toast?.message}
       </div>
-      <AnimatePresence initial={false}>{toast !== null && <ToastView key={toast.id} toast={toast} />}</AnimatePresence>
+      {/* "wait": a toast that replaces another does not sit beside the one still fading out (a doubled copy in the flex row). */}
+      <AnimatePresence initial={false} mode="wait">
+        {toast !== null && <ToastView key={toast.id} toast={toast} />}
+      </AnimatePresence>
     </div>
   );
 }

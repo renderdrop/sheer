@@ -177,10 +177,24 @@ pub fn escape_html(text: &str) -> String {
 
 /// A complete HTML document: one `<p>` per block, italic runs in `<i>`. It holds no script, style or link, and a CSP that forbids all.
 pub fn to_html(blocks: &[StyledBlock]) -> String {
-    let mut out = String::from(
-        "<!DOCTYPE html>\n<html>\n<head>\n<meta charset=\"utf-8\">\n\
+    to_html_in(blocks, None)
+}
+
+/// The language code and the title of an export document: `de`, or else `en` (whatever the UI sent that is neither).
+fn html_lang(lang: Option<&str>) -> (&'static str, &'static str) {
+    match lang {
+        Some(code) if code.eq_ignore_ascii_case("de") => ("de", "Literaturverzeichnis"),
+        _ => ("en", "References"),
+    }
+}
+
+/// [`to_html`] with the document language (`<html lang>`) and the title in that language.
+pub fn to_html_in(blocks: &[StyledBlock], lang: Option<&str>) -> String {
+    let (code, title) = html_lang(lang);
+    let mut out = format!(
+        "<!DOCTYPE html>\n<html lang=\"{code}\">\n<head>\n<meta charset=\"utf-8\">\n\
          <meta http-equiv=\"Content-Security-Policy\" content=\"default-src 'none'\">\n\
-         <title>References</title>\n</head>\n<body>\n",
+         <title>{title}</title>\n</head>\n<body>\n"
     );
     for block in blocks {
         out.push_str("<p>");
@@ -284,10 +298,19 @@ pub fn render_blocks(
     format: CitationFileFormat,
     blocks: &[StyledBlock],
 ) -> Result<String, AppError> {
+    render_blocks_in(format, blocks, None)
+}
+
+/// [`render_blocks`] with the UI language for the HTML document.
+pub fn render_blocks_in(
+    format: CitationFileFormat,
+    blocks: &[StyledBlock],
+    lang: Option<&str>,
+) -> Result<String, AppError> {
     check_blocks(blocks)?;
     match format {
         CitationFileFormat::Txt => Ok(to_text(blocks)),
-        CitationFileFormat::Html => Ok(to_html(blocks)),
+        CitationFileFormat::Html => Ok(to_html_in(blocks, lang)),
         CitationFileFormat::Md => Ok(to_markdown(blocks)),
         CitationFileFormat::Ris | CitationFileFormat::Bib => Err(AppError::invalid("format")),
     }
@@ -568,6 +591,16 @@ pub fn render(
     blocks: &[StyledBlock],
     record: Option<&BibRecord>,
 ) -> Result<String, AppError> {
+    render_in(format, blocks, record, None)
+}
+
+/// [`render`] with the UI language for the HTML document.
+pub fn render_in(
+    format: CitationFileFormat,
+    blocks: &[StyledBlock],
+    record: Option<&BibRecord>,
+    lang: Option<&str>,
+) -> Result<String, AppError> {
     let text = if format.from_record() {
         if !blocks.is_empty() {
             return Err(AppError::invalid("blocks"));
@@ -582,7 +615,7 @@ pub fn render(
         if blocks.is_empty() {
             return Err(AppError::invalid("blocks"));
         }
-        render_blocks(format, blocks)?
+        render_blocks_in(format, blocks, lang)?
     };
     if text.len() > limits::CITATION_EXPORT_MAX {
         return Err(AppError::too_large(
@@ -652,7 +685,18 @@ pub fn write_list(
     blocks: &[StyledBlock],
     record: Option<&BibRecord>,
 ) -> Result<PathBuf, AppError> {
-    let text = render(format, blocks, record)?;
+    write_list_in(target, format, blocks, record, None)
+}
+
+/// [`write_list`] with the UI language for the HTML document.
+pub fn write_list_in(
+    target: &Path,
+    format: CitationFileFormat,
+    blocks: &[StyledBlock],
+    record: Option<&BibRecord>,
+    lang: Option<&str>,
+) -> Result<PathBuf, AppError> {
+    let text = render_in(format, blocks, record, lang)?;
     let target = admit_target(target, format)?;
     write_atomic(&target, text.as_bytes()).map_err(|error| {
         let error = AppError::from(error);
@@ -749,6 +793,14 @@ mod tests {
         assert_eq!(to_text(&[]), "\n");
         assert_eq!(to_markdown(&[]), "\n");
         assert!(to_html(&[]).contains("<body>\n</body>"));
+        let de = to_html_in(&[], Some("de"));
+        assert!(
+            de.contains("<html lang=\"de\">") && de.contains("<title>Literaturverzeichnis</title>")
+        );
+        let other = to_html_in(&[], Some("\"><script>"));
+        assert!(
+            other.contains("<html lang=\"en\">") && other.contains("<title>References</title>")
+        );
         // The command never writes an empty list.
         assert!(render(CitationFileFormat::Txt, &[], None).is_err());
     }

@@ -10,8 +10,8 @@ export interface Toast {
   /** Changes with every toast, so one that replaces another starts its lifetime over. */
   id: number;
   message: string;
-  /** `error` shows the alert icon instead of the check. */
-  tone?: 'error';
+  /** `error` shows the circle-alert (Danger), `alert` the triangle-alert in Ink (DESIGN 3.7), instead of the check. */
+  tone?: 'error' | 'alert';
   action?: { label: string; run: () => void };
 }
 

@@ -2,7 +2,7 @@
 //!
 //! | Command | Arguments | Returns |
 //! |---|---|---|
-//! | `save_citation_list` | `docId`, `format: txt\|html\|md\|ris\|bib`, `blocks: StyledBlock[]`, `style: CitationStyle` | `boolean`: `false` if the save dialog was cancelled |
+//! | `save_citation_list` | `docId`, `format: txt\|html\|md\|ris\|bib`, `blocks: StyledBlock[]`, `style: CitationStyle`, `lang?: 'en'\|'de'` (HTML `<html lang>` and title) | `boolean`: `false` if the save dialog was cancelled |
 //!
 //! The UI sends typed blocks, never markup; Rust escapes them for the format (`export::citations`). `ris` and `bib` are made from the
 //! stored bibliographic record and take no blocks. The save dialog is Rust's, the file is written atomically, and no path goes back.
@@ -33,6 +33,7 @@ impl AppState {
         id: DocumentId,
         format: CitationFileFormat,
         blocks: &[StyledBlock],
+        lang: Option<&str>,
     ) -> Result<(String, Option<BibRecord>), AppError> {
         let info = self.info(id).ok_or(AppError::not_found("document"))?;
         let record = if format.from_record() {
@@ -41,7 +42,7 @@ impl AppState {
             None
         };
         // Builds the text once to apply every check; the file is made again after the dialog (the lists are small).
-        citations::render(format, blocks, record.as_ref())?;
+        citations::render_in(format, blocks, record.as_ref(), lang)?;
         Ok((file_stem(&info.display_name), record))
     }
 
@@ -53,8 +54,9 @@ impl AppState {
         format: CitationFileFormat,
         blocks: &[StyledBlock],
         style: CitationStyle,
+        lang: Option<&str>,
     ) -> Result<bool, AppError> {
-        let (stem, record) = self.check_citation_list(id, format, blocks)?;
+        let (stem, record) = self.check_citation_list(id, format, blocks, lang)?;
         let dialog = window
             .dialog()
             .file()
@@ -67,7 +69,7 @@ impl AppState {
         let path = chosen
             .into_path()
             .map_err(|error| AppError::logged(ErrorCode::Internal, error))?;
-        self.write_citation_list(&path, format, blocks, record.as_ref())?;
+        self.write_citation_list(&path, format, blocks, record.as_ref(), lang)?;
         Ok(true)
     }
 
@@ -78,12 +80,13 @@ impl AppState {
         format: CitationFileFormat,
         blocks: &[StyledBlock],
         record: Option<&BibRecord>,
+        lang: Option<&str>,
     ) -> Result<(), AppError> {
         let target = citations::admit_target(target, format)?;
         if self.registry.is_open_path(&target) {
             return Err(AppError::invalid("exportTarget"));
         }
-        citations::write_list(&target, format, blocks, record)?;
+        citations::write_list_in(&target, format, blocks, record, lang)?;
         Ok(())
     }
 }
@@ -97,7 +100,11 @@ pub async fn save_citation_list(
     format: CitationFileFormat,
     blocks: Vec<StyledBlock>,
     style: CitationStyle,
+    lang: Option<String>,
 ) -> Result<bool, UiError> {
     let state = state.inner().clone();
-    blocking(move || state.save_citation_list_dialog(&window, doc_id, format, &blocks, style)).await
+    blocking(move || {
+        state.save_citation_list_dialog(&window, doc_id, format, &blocks, style, lang.as_deref())
+    })
+    .await
 }

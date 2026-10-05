@@ -134,9 +134,9 @@ describe('citation cards', () => {
     expect(inCard.getByText('Citation:', { exact: false })).toBeTruthy();
     await user.click(inCard.getByRole('button', { name: 'Copy citation' }));
     expect(copyCitation).toHaveBeenCalledWith(1, 1);
-    // A citation has Copy and Delete, not Reply.
+    // A citation has Copy, not Reply; Delete lives in the ⋯ menu, so the action row stays one row.
     expect(inCard.queryByRole('button', { name: 'Reply' })).toBeNull();
-    expect(inCard.getByRole('button', { name: 'Delete' })).toBeTruthy();
+    expect(inCard.queryByRole('button', { name: 'Delete' })).toBeNull();
   });
 
   it('shows chips on a normal card', async () => {

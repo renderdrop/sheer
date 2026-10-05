@@ -17,6 +17,7 @@ import {
   formatCitationList,
   formatReference,
   formatShortCitation,
+  isReferenceBlank,
   isReferenceIncomplete,
 } from './index';
 
@@ -245,6 +246,15 @@ describe('text and HTML', () => {
     ]);
     expect(html).not.toContain('<img');
     expect(html).toContain('&lt;img');
+  });
+});
+
+describe('isReferenceBlank', () => {
+  it('is true only without title, author and year', () => {
+    expect(isReferenceBlank(undefined)).toBe(true);
+    expect(isReferenceBlank({ ...FIXTURES.book, title: '', authors: [], year: null })).toBe(true);
+    expect(isReferenceBlank({ ...FIXTURES.book, authors: [], year: null })).toBe(false);
+    expect(isReferenceBlank(FIXTURES.book)).toBe(false);
   });
 });
 

@@ -196,6 +196,20 @@ describe('Comments cards', () => {
     await vi.waitFor(() => expect(useAnnotations.getState().selectedIds[1]).toEqual([3]));
   });
 
+  it('marks the selected card with the Ink ring besides the Solar border', async () => {
+    const { user } = await shown();
+    await user.click(cards()[0] as HTMLElement);
+    await vi.waitFor(() => expect(cards()[0]?.className).toContain('ring-text'));
+    expect(cards()[0]?.className).toContain('border-accent');
+    expect(cards()[1]?.className).not.toContain('ring-text');
+  });
+
+  it('names the group headers with the page label like the cards (p. 1), not Page 1', async () => {
+    await shown();
+    expect(screen.queryByText(/^Page \d/u)).toBeNull();
+    expect(screen.getAllByText(/^p\. \d/u).length).toBeGreaterThan(0);
+  });
+
   it('walks the cards with the arrow keys', async () => {
     const { user } = await shown();
     (cards()[0] as HTMLElement).focus();

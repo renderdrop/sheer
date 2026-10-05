@@ -78,7 +78,15 @@ export function ColourRow({
   disabled,
   onChange,
   roving = true,
-}: DisabledProps & { palette: PaletteName; value: Shared<Rgb>; onChange: (rgb: Rgb) => void; roving?: boolean }) {
+  fixed = false,
+}: DisabledProps & {
+  palette: PaletteName;
+  value: Shared<Rgb>;
+  onChange: (rgb: Rgb) => void;
+  roving?: boolean;
+  /** Only the palette's own swatches: no custom or recent colour beside them (the citation row, DESIGN 3.7 C4). */
+  fixed?: boolean;
+}) {
   const t = useT();
   const recent = useRecentColours((state) => state.colours);
   const item = roving ? ITEM : {};
@@ -86,10 +94,12 @@ export function ColourRow({
   const pick = (rgb: Rgb) => {
     if (!disabled) onChange(rgb);
   };
-  const customs: Rgb[] = [
-    ...(custom === null ? [] : [custom]),
-    ...recent.filter((rgb) => isCustomColour(rgb, palette) && (custom === null || !sameRgb(rgb, custom))),
-  ].slice(0, RECENT_IN_ROW);
+  const customs: Rgb[] = fixed
+    ? []
+    : [
+        ...(custom === null ? [] : [custom]),
+        ...recent.filter((rgb) => isCustomColour(rgb, palette) && (custom === null || !sameRgb(rgb, custom))),
+      ].slice(0, RECENT_IN_ROW);
   const entries: ColourEntry[] = PALETTES[palette].map((entry) => ({
     id: entry.id,
     rgb: entry.rgb,
@@ -150,7 +160,7 @@ export function ColourRow({
 
 /** The colour control of a bar: the swatch row in a group. */
 export function ColourControl(
-  props: DisabledProps & { palette: PaletteName; value: Shared<Rgb>; onChange: (rgb: Rgb) => void },
+  props: DisabledProps & { palette: PaletteName; value: Shared<Rgb>; onChange: (rgb: Rgb) => void; fixed?: boolean },
 ) {
   const t = useT();
   return (

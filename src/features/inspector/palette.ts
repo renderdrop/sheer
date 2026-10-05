@@ -94,7 +94,7 @@ export const DEFAULT_COLOURS = {
   shape: first(STROKE_PALETTE),
 } as const;
 
-/** Highlights are drawn at this opacity (with `mix-blend-mode: multiply`) and saved as /CA with it. */
+/** The alpha written into a highlight. It is the value of the `--hl-opacity` token (a test keeps the two equal): annotation data cannot read CSS. */
 export const HIGHLIGHT_OPACITY = 0.45;
 
 export function sameRgb(a: Rgb, b: Rgb): boolean {

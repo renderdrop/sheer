@@ -157,7 +157,7 @@ export async function createCitationDrafts(docId: number, drafts: readonly Citat
   } catch (caught) {
     const error = toAppError(caught);
     if (error.code === 'invalid_argument' && error.params?.what === 'citation') {
-      useUi.getState().showToast({ message: t('citation.noText') });
+      useUi.getState().showToast({ message: t('citation.noText'), tone: 'alert' });
     } else if (error.code === 'read_only') {
       useUi.getState().showToast({ message: t('annot.refused.readOnly') });
     } else {

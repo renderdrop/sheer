@@ -9,7 +9,9 @@ export function useAutosize(ref: RefObject<HTMLTextAreaElement | null>, value: s
     const element = ref.current;
     if (element === null) return;
     element.style.height = 'auto';
-    element.style.height = `${element.scrollHeight}px`;
+    // scrollHeight leaves the border out: with it the field is two pixels short and would show a scrollbar for nothing.
+    const border = element.offsetHeight - element.clientHeight;
+    element.style.height = `${element.scrollHeight + border}px`;
     // Scrolls only when the CSS max height clamps it (no scrollbar stub below that).
     element.style.overflowY = element.scrollHeight > element.clientHeight + 1 ? 'auto' : 'hidden';
   }, [ref, value]);

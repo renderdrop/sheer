@@ -321,9 +321,10 @@ export function NotePopover({ docId, noteId, anchor, open, onClose, isNew = fals
     >
       <div className="flex w-note flex-col gap-2">
         <div className="flex h-control-md items-center gap-2">
-          <span className="min-w-0 truncate text-md font-semibold">{author}</span>
+          <span className="min-w-0 flex-auto truncate text-md font-semibold" title={author}>
+            {author}
+          </span>
           <span className="shrink-0 text-sm text-text-muted">{date}</span>
-          <span className="flex-auto" />
           <IconButton size="sm" icon={Copy} label={t('note.copy')} onClick={copy} />
           <IconButton size="sm" icon={Trash2} label={t('note.delete')} onClick={remove} />
           <IconButton size="sm" icon={X} label={t('note.close')} onClick={() => close()} />

@@ -298,8 +298,10 @@ export async function saveCitationList(
   format: CitationFileFormat,
   blocks: readonly StyledBlock[],
   style: CitationStyle,
+  /** The UI language: the HTML file's `<html lang>` and title. */
+  lang?: 'en' | 'de',
 ): Promise<boolean> {
-  const saved = await call<unknown>('save_citation_list', { docId, format, blocks, style });
+  const saved = await call<unknown>('save_citation_list', { docId, format, blocks, style, lang });
   if (typeof saved !== 'boolean') throw toAppError(null);
   return saved;
 }

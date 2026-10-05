@@ -59,6 +59,8 @@ export interface PopoverProps {
   /** Default `bottom`, aligned to the start of the trigger. Flips when it does not fit (DESIGN 3.5). */
   side?: Side;
   align?: Align;
+  /** A fixed outer width in px (it overrides the 200 to 320 range), for a popover that must fit a region such as the left panel. */
+  width?: number;
   children: ReactNode | ((api: PopoverApi) => ReactNode);
 }
 
@@ -90,6 +92,7 @@ export function Popover({
   onOpenChange,
   side = 'bottom',
   align = 'start',
+  width,
   children,
 }: PopoverProps) {
   const id = useId();
@@ -176,6 +179,7 @@ export function Popover({
               anchor={anchor}
               side={side}
               align={align}
+              width={width}
               focusRequest={focusRequest}
               parent={parent}
               onClose={close}
@@ -197,6 +201,7 @@ interface SurfaceProps {
   anchor: HTMLElement | null;
   side: Side;
   align: Align;
+  width: number | undefined;
   focusRequest: FocusRequest;
   /** The popover this one is rendered in: a click in this one is a click in that one. */
   parent: string | null;
@@ -223,7 +228,19 @@ function originOf(side: Side, align: Align): string {
   }
 }
 
-function Surface({ id, label, role, anchor, side, align, focusRequest, parent, onClose, children }: SurfaceProps) {
+function Surface({
+  id,
+  label,
+  role,
+  anchor,
+  side,
+  align,
+  width,
+  focusRequest,
+  parent,
+  onClose,
+  children,
+}: SurfaceProps) {
   const positioner = useRef<HTMLDivElement>(null);
   const surface = useRef<HTMLDivElement>(null);
   const present = useIsPresent();
@@ -286,7 +303,10 @@ function Surface({ id, label, role, anchor, side, align, focusRequest, parent, o
         aria-label={label}
         tabIndex={-1}
         onKeyDown={onKeyDown}
-        style={{ transformOrigin: originOf(side, align) }}
+        style={{
+          transformOrigin: originOf(side, align),
+          ...(width === undefined ? {} : { width, minWidth: width, maxWidth: width }),
+        }}
         className={`bg-panel border border-border-subtle shadow-floating min-h-0 overflow-auto rounded-button p-4 text-md text-text outline-none ${POPOVER_WIDTHS}`}
       >
         <PopoverScope.Provider value={id}>{children}</PopoverScope.Provider>

@@ -682,7 +682,7 @@ list_citations(doc_id: DocId) -> Vec<CitationInfo>   // ≤ 20 000, page order t
 get_bibliography(doc_id: DocId) -> BibliographyInfo  // first call: Info + XMP + /SHR_Bib (blocking pool, load_untrusted, 30 s) then Job::FirstPageHints only for empty title/authors/year; then from DocState.bibliography
 apply_command(doc_id, DocCommand::SetBibliography { record: BibRecord }) -> ChangeSet   // one undo step `bibliography.set`; ChangeSet.doc gains "bibliography"; written by the next save
 // commands/citation_export.rs
-save_citation_list(doc_id: DocId, format: CitationFileFormat, blocks: Vec<StyledBlock>, style: CitationStyle) -> bool
+save_citation_list(doc_id: DocId, format: CitationFileFormat, blocks: Vec<StyledBlock>, style: CitationStyle, lang: Option<String>) -> bool
                                                      // Rust save dialog, default name `<stem> - citations (<style>).<ext>` via export::names; txt|html|md written from `blocks` with Rust escaping;
                                                      // ris|bib written from the stored BibRecord (blocks must be empty); atomic write; false = cancelled; ≤ 20 000 blocks, ≤ 4 MiB of text
 // commands/annotations.rs (changed)

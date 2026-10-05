@@ -178,14 +178,14 @@ export function ReferenceForm({ info, draft, onChange, readOnly, preview }: Refe
     Object.keys(info.sources).every((field) => info.sources[field as keyof typeof info.sources] === 'none');
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex flex-col gap-4 pt-4">
       {readOnly && (
         <p role="status" className="t-caption m-0 text-text-muted">
           {t('tool.readOnly')}
         </p>
       )}
       {nothing && (
-        <div className="flex min-h-8 items-center gap-2 rounded-sm bg-subtle px-2">
+        <div className="flex min-h-8 shrink-0 items-center gap-2 rounded-sm border border-border-subtle bg-subtle px-2">
           <Icon icon={Info} size={16} />
           <span className="t-caption">{t('ref.nothingFound')}</span>
         </div>
