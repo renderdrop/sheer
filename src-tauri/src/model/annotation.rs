@@ -370,6 +370,12 @@ pub struct AnnotationDraft {
     pub state: Option<ReviewState>,
     #[serde(default)]
     pub locked: bool,
+    /// Tag names (ADR-119), validated like a patch.
+    #[serde(default)]
+    pub tags: Vec<String>,
+    /// Makes a Highlight a citation. Rust only (`create_citations` takes the quote from the page text): never read from the UI.
+    #[serde(default, skip_deserializing)]
+    pub cite: Option<super::quote::Cite>,
     #[serde(flatten)]
     pub body: AnnotationBody,
 }
@@ -422,9 +428,9 @@ pub struct AnnotationPatch {
     pub align: Option<TextAlign>,
     /// The turn of a signature or a mark (ADR-105), in degrees.
     pub angle: Option<f32>,
-    /// Replaces the tag names (ADR-119; coalesce key `tags`). Not applied yet: package C1.
+    /// Replaces the tag names (ADR-119; coalesce key `tags`): 0..=`TAGS_PER_ANNOT` names, see `model::tags::clean_names`.
     pub tags: Option<Vec<String>>,
-    /// Replaces the quote of a citation, 1..=`CITE_QUOTE_MAX` characters (ADR-119). Not applied yet: package C1.
+    /// Replaces the quote of a citation, 1..=`CITE_QUOTE_MAX` characters (ADR-119); `invalid_argument` (`patch`) on anything else.
     pub quote: Option<String>,
 }
 
@@ -818,6 +824,7 @@ impl Annotation {
         if self.in_reply_to == Some(self.id) {
             return Err(AppError::invalid("inReplyTo"));
         }
+        self.check_citation()?;
         if let AnnotationBody::Signature { angle, .. } | AnnotationBody::Mark { angle, .. } =
             &mut self.body
         {
@@ -873,8 +880,8 @@ impl Annotation {
             state: draft.state,
             locked: draft.locked,
             sync: Sync::New,
-            cite: None,
-            tags: Vec::new(),
+            cite: draft.cite.clone(),
+            tags: super::tags::clean_names(&draft.tags)?,
             body: draft.body.clone(),
         };
         if draft.state.is_some()
@@ -888,6 +895,53 @@ impl Annotation {
         Ok(annotation)
     }
 
+    /// The cite record and the tags are well formed: only a Highlight is a citation (a quote of 1..=`CITE_QUOTE_MAX` characters, a group
+    /// of 8 hex characters if any), and an opaque annotation has no tags (the model does not change it).
+    fn check_citation(&self) -> Result<(), AppError> {
+        if let Some(cite) = &self.cite {
+            if !matches!(self.body, AnnotationBody::Highlight { .. }) {
+                return Err(AppError::invalid("cite"));
+            }
+            super::quote::check_quote(&cite.quote).map_err(|_| AppError::invalid("quote"))?;
+            if cite
+                .group
+                .as_deref()
+                .is_some_and(|group| !super::quote::is_group_id(group))
+            {
+                return Err(AppError::invalid("cite"));
+            }
+        }
+        if self.tags.len() > limits::TAGS_PER_ANNOT {
+            return Err(AppError::invalid("tags"));
+        }
+        for tag in &self.tags {
+            let length = tag.chars().count();
+            if length == 0 || length > limits::TAG_NAME_MAX || tag.chars().any(char::is_control) {
+                return Err(AppError::invalid("tags"));
+            }
+        }
+        Ok(())
+    }
+
+    /// Gives an annotation just read from the file what its `/SHR_Cite` and `/SHR_Tags` say (ADR-119). The file is hostile input: what
+    /// does not pass is left out (a quote of the wrong length, a cite on something that is not a Highlight, tags on an opaque one).
+    pub fn apply_file_keys(&mut self, cite: Option<&super::quote::Cite>, tags: &[String]) {
+        if self.is_opaque() {
+            return;
+        }
+        self.tags = super::tags::clean_names_lenient(tags.iter().cloned());
+        self.cite = cite
+            .filter(|_| matches!(self.body, AnnotationBody::Highlight { .. }))
+            .filter(|cite| super::quote::check_quote(&cite.quote).is_ok())
+            .map(|cite| super::quote::Cite {
+                quote: cite.quote.clone(),
+                group: cite
+                    .group
+                    .clone()
+                    .filter(|group| super::quote::is_group_id(group)),
+            });
+    }
+
     /// Whether the user may change or delete it.
     pub fn is_opaque(&self) -> bool {
         self.body.is_opaque()
@@ -896,11 +950,19 @@ impl Annotation {
     /// This annotation with `patch` applied and `modified` set to `now`, validated. A field that does not belong to the kind is
     /// `invalid_argument` (`patch`).
     pub fn patched(&self, patch: &AnnotationPatch, now: &str) -> Result<Self, AppError> {
-        // Package C1 applies `tags` and `quote`; until then a patch that carries them changes nothing and is refused.
-        if patch.tags.is_some() || patch.quote.is_some() {
-            return Err(AppError::not_yet());
-        }
         let mut next = self.clone();
+        if let Some(tags) = &patch.tags {
+            next.tags = super::tags::clean_names(tags)?;
+        }
+        if let Some(quote) = &patch.quote {
+            // Only a citation has a quote.
+            let cite = next
+                .cite
+                .as_mut()
+                .ok_or_else(|| AppError::invalid("patch"))?;
+            super::quote::check_quote(quote).map_err(|_| AppError::invalid("patch"))?;
+            cite.quote.clone_from(quote);
+        }
         if let Some(color) = patch.color {
             next.color = color;
         }
@@ -1761,5 +1823,123 @@ mod tests {
             code(note.patched(&turn(json!(10.0)), "t")),
             ErrorCode::InvalidArgument
         );
+    }
+
+    fn patch(value: serde_json::Value) -> AnnotationPatch {
+        serde_json::from_value(value).expect("a patch")
+    }
+
+    fn cited(page: u32) -> Annotation {
+        let mut draft = highlight(page);
+        draft.cite = Some(super::super::quote::Cite {
+            quote: "the quote".to_owned(),
+            group: Some("0a1b2c3d".to_owned()),
+        });
+        Annotation::from_draft(AnnotId::new(1), &draft, "t").unwrap()
+    }
+
+    #[test]
+    fn a_draft_brings_tags_but_never_a_cite_from_the_wire() {
+        let draft: AnnotationDraft = serde_json::from_value(json!({
+            "pageId": 0, "kind": "highlight", "color": [1, 2, 3], "quads": [[{"x":1.0,"y":1.0},{"x":5.0,"y":1.0},{"x":1.0,"y":3.0},{"x":5.0,"y":3.0}]],
+            "tags": [" a ", "A", "b"], "cite": {"quote": "forged"}
+        }))
+        .unwrap();
+        assert!(draft.cite.is_none(), "the UI cannot set a quote");
+        let a = Annotation::from_draft(AnnotId::new(1), &draft, "t").unwrap();
+        assert_eq!(a.tags, ["a", "b"]);
+        let mut bad = highlight(0);
+        bad.tags = vec![String::new()];
+        assert_eq!(
+            code(Annotation::from_draft(AnnotId::new(1), &bad, "t")),
+            ErrorCode::InvalidArgument
+        );
+        // A cite is only for a Highlight and needs a quote.
+        let mut note = highlight(0);
+        note.body = AnnotationBody::Note {
+            at: pt(1.0, 1.0),
+            icon: NoteIcon::Note,
+        };
+        note.cite = cited(0).cite;
+        assert!(Annotation::from_draft(AnnotId::new(1), &note, "t").is_err());
+        let mut empty = highlight(0);
+        empty.cite = Some(super::super::quote::Cite {
+            quote: " ".to_owned(),
+            group: None,
+        });
+        assert!(Annotation::from_draft(AnnotId::new(1), &empty, "t").is_err());
+    }
+
+    #[test]
+    fn a_patch_sets_tags_and_the_quote_of_a_citation_and_refuses_what_does_not_fit() {
+        let a = cited(0);
+        let tagged = a
+            .patched(
+                &patch(json!({"tags": ["x", "X", "y"], "quote": "new"})),
+                "t2",
+            )
+            .unwrap();
+        assert_eq!(tagged.tags, ["x", "y"]);
+        assert_eq!(tagged.cite.as_ref().map(|c| c.quote.as_str()), Some("new"));
+        assert_eq!(
+            tagged.cite.and_then(|c| c.group).as_deref(),
+            Some("0a1b2c3d")
+        );
+        // No quote on a plain highlight, an empty or too long quote, a bad tag list.
+        let plain = Annotation::from_draft(AnnotId::new(2), &highlight(0), "t").unwrap();
+        assert_eq!(
+            code(plain.patched(&patch(json!({"quote": "x"})), "t")),
+            ErrorCode::InvalidArgument
+        );
+        assert!(plain.patched(&patch(json!({"tags": ["ok"]})), "t").is_ok());
+        for quote in [String::new(), "x".repeat(2001)] {
+            assert_eq!(
+                code(a.patched(&patch(json!({"quote": quote})), "t")),
+                ErrorCode::InvalidArgument
+            );
+        }
+        assert!(a
+            .patched(&patch(json!({"quote": "x".repeat(2000)})), "t")
+            .is_ok());
+        let nine: Vec<String> = (0..9).map(|n| format!("t{n}")).collect();
+        assert_eq!(
+            code(a.patched(&patch(json!({"tags": nine})), "t")),
+            ErrorCode::InvalidArgument
+        );
+        assert_eq!(
+            code(a.patched(&patch(json!({"tags": ["x".repeat(41)]})), "t")),
+            ErrorCode::InvalidArgument
+        );
+    }
+
+    #[test]
+    fn what_a_file_says_is_applied_with_bounds() {
+        let cite = super::super::quote::Cite {
+            quote: "q".to_owned(),
+            group: Some("nothex!!".to_owned()),
+        };
+        let mut a = Annotation::from_draft(AnnotId::new(1), &highlight(0), "t").unwrap();
+        a.apply_file_keys(
+            Some(&cite),
+            &["a".to_owned(), "A".to_owned(), String::new()],
+        );
+        assert_eq!(a.tags, ["a"]);
+        assert_eq!(a.cite.as_ref().map(|c| c.quote.as_str()), Some("q"));
+        assert_eq!(a.cite.and_then(|c| c.group), None, "a bad group is dropped");
+        // Not a highlight: no cite; opaque: nothing at all.
+        let mut note = Annotation::from_draft(AnnotId::new(1), &highlight(0), "t").unwrap();
+        note.body = AnnotationBody::Note {
+            at: pt(1.0, 1.0),
+            icon: NoteIcon::Note,
+        };
+        note.apply_file_keys(Some(&cite), &["t".to_owned()]);
+        assert!(note.cite.is_none() && note.tags == ["t"]);
+        let mut opaque = note.clone();
+        opaque.body = AnnotationBody::Opaque {
+            subtype: "Stamp".to_owned(),
+        };
+        opaque.tags.clear();
+        opaque.apply_file_keys(Some(&cite), &["t".to_owned()]);
+        assert!(opaque.cite.is_none() && opaque.tags.is_empty());
     }
 }
