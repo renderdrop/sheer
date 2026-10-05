@@ -545,7 +545,21 @@ impl Pump {
                     Blob::None,
                     deadline,
                     |reply, _| match reply {
-                        WireReply::FirstPageHints(hints) => Some(hints),
+                        // The reply of a child is checked, not trusted: over its caps it is refused.
+                        WireReply::FirstPageHints(hints)
+                            if hints.title.as_deref().is_none_or(|t| {
+                                t.chars().count() <= limits::BIB_HEURISTIC_TITLE_MAX
+                            }) && hints
+                                .year
+                                .as_deref()
+                                .is_none_or(|y| y.chars().count() <= limits::BIB_YEAR_MAX)
+                                && hints
+                                    .doi
+                                    .as_deref()
+                                    .is_none_or(|d| d.chars().count() <= limits::BIB_DOI_MAX) =>
+                        {
+                            Some(hints)
+                        }
                         _ => None,
                     },
                 );

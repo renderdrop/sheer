@@ -11,8 +11,8 @@ use super::queue::{RenderKey, Requests};
 use super::sizes::{PageSizes, SizeCache};
 use super::space::page_count;
 use super::{
-    encode, export, import, links, outline, pages, redact, search, snapshot, text, Confirm, Job,
-    ReopenSource, Reply,
+    encode, export, first_page, import, links, outline, page_labels, pages, redact, search,
+    snapshot, text, Confirm, Job, ReopenSource, Reply,
 };
 use crate::documents::{DocFlags, DocumentId};
 use crate::error::{AppError, ErrorCode};
@@ -168,14 +168,18 @@ fn serve<'a>(
             });
             answer(reply, result, Some(id), documents, crashed);
         }
-        // Package C3 reads the labels (`PdfPage::label()`) and the first-page hints; until then there are none.
+        // The printed labels and the first-page hints (ADR-119).
         Job::PageLabels { id, reply } => {
-            let result = read_job(documents, crashed, id, |_| Ok(Vec::new()));
+            let result = read_job(documents, crashed, id, page_labels::read_labels);
             answer(reply, result, Some(id), documents, crashed);
         }
-        Job::FirstPageHints { id, reply, .. } => {
-            let result = read_job(documents, crashed, id, |_| {
-                Ok(crate::model::bibliography::FirstPageHints::default())
+        Job::FirstPageHints {
+            id,
+            engine_index,
+            reply,
+        } => {
+            let result = read_job(documents, crashed, id, |document| {
+                first_page::read_hints(document, engine_index)
             });
             answer(reply, result, Some(id), documents, crashed);
         }

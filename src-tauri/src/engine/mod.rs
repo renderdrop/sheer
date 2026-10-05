@@ -21,12 +21,14 @@ mod derived_outline;
 pub mod encode;
 mod export;
 pub mod files;
+mod first_page;
 mod guard;
 pub mod host;
 mod import;
 mod ledger;
 mod links;
 mod outline;
+mod page_labels;
 mod pages;
 mod pump;
 pub mod queue;
@@ -858,14 +860,15 @@ impl Engine {
         })
     }
 
-    /// The label of every page of the file (ADR-119); empty until package C3 fills in the job.
+    /// The label of every page of the file (ADR-119), by file index, each at most `PAGE_LABEL_MAX` characters. Empty for more than `PAGE_LABELS_PAGES_MAX` pages;
+    /// all `None` when the 2 s budget ran out or the file has no labels.
     pub fn page_labels(&self, id: DocumentId) -> Result<Vec<Option<String>>, AppError> {
         self.call(limits::TEXT_TIMEOUT, Rank::BACKGROUND, |reply| {
             Job::PageLabels { id, reply }
         })
     }
 
-    /// Title, year and DOI found on page `engine_index` (ADR-119); all `None` until package C3 fills in the job.
+    /// Title, year and DOI found on page `engine_index` (ADR-119); `None` for what it does not find.
     pub fn first_page_hints(
         &self,
         id: DocumentId,
