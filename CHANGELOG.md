@@ -6,6 +6,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+Patch v1.4.1 "Politur v1.2–v1.4 + CI runtime" (ADR-123).
+
+### Added
+- Signing a document that has no signature yet offers a choice: "No changes" (default) or "Fill in forms and allow further signatures".
+- Page labels from the PDF (i, ii, 1, 2 …) in the thumbnails and the page field; the page field accepts a label.
+- The signature dialog says which version of how many ("version n of N") a signature covers.
+- The seal placeholder has eight resize handles; Alt(+Shift)+arrow keys resize it.
+- More than two notices at once show "n more notices" instead of hiding them.
+
+### Changed
+- Save dialogs for signed copies, Save As, editable copies and exports open in the document's folder.
+- Signed copies are named "{name} – signiert" / "{name} – signed".
+- Certificate menu with a check for the active certificate and its email; fingerprints in blocks of four; Export in the certificate details.
+- Comment and citation cards keep one action row; the mini bar shows the five citation colours only; exported citation lists carry the UI language.
+- Comment group headers use page labels; the reference popover follows the panel width; the margin column stays inside the window at high zoom.
+- Redaction band buttons and the print dialog follow the colour rules (white sheet, Solar selection); tooltips close on scroll.
+- Tab titles keep at least eight characters with an ellipsis; no horizontal scrollbar when the page fits.
+
+### Fixed
+- A second save started right after the first one could be refused ("an earlier save is still being built").
+- Recent-file previews are written right after opening, through one background worker.
+
+### Internal
+- CI: platform-independent checks in one Linux job, Rust on Windows/macOS with a dependency-only cache and slimmer debug info; each job now finishes in under 15 minutes (Windows 9, macOS 5, web 4 with a warm cache).
+
 ## [1.4.0] - 2026-10-05
 
 v1.4 "Certificate signature" (FEEDBACK F15 C, DESIGN §3.8, ADR-121).
