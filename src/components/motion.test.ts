@@ -7,8 +7,8 @@ import {
   DURATION,
   ENTER_SCALE,
   JUMP_ANIMATE_MAX_VIEWPORTS,
+  EASE_OUT,
   SPRING,
-  SPRING_BOUNCE,
   ZOOM_INERTIA_CAP,
   ZOOM_INERTIA_S,
   ZOOM_SNAP_BAND,
@@ -34,18 +34,14 @@ describe('motion presets match tokens.css', () => {
     expect(Number.parseFloat(token('--scale-enter'))).toBe(ENTER_SCALE);
   });
 
-  it('the one spring: bounce .15 at the three visual durations', () => {
-    expect(SPRING_BOUNCE).toBe(0.15);
+  it('one curve, no spring (MOTION v2 rule 1): ease-out tweens at the three durations', () => {
+    expect(token('--ease-out')).toBe(`cubic-bezier(${EASE_OUT.join(', ')})`);
     for (const [name, seconds] of Object.entries(DURATION)) {
-      expect(SPRING[name as keyof typeof SPRING], name).toEqual({
-        type: 'spring',
-        bounce: 0.15,
-        visualDuration: seconds,
-      });
+      expect(SPRING[name as keyof typeof SPRING], name).toEqual({ type: 'tween', ease: EASE_OUT, duration: seconds });
     }
   });
 
   it('zoom and scroll constants of MOTION 6', () => {
-    expect([ZOOM_SNAP_BAND, ZOOM_INERTIA_S, ZOOM_INERTIA_CAP, JUMP_ANIMATE_MAX_VIEWPORTS]).toEqual([0.08, 0.1, 1.5, 2]);
+    expect([ZOOM_SNAP_BAND, ZOOM_INERTIA_S, ZOOM_INERTIA_CAP, JUMP_ANIMATE_MAX_VIEWPORTS]).toEqual([0.03, 0.1, 1.5, 2]);
   });
 });
