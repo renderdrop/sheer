@@ -2175,3 +2175,18 @@ tool row. That is wrong: they are in the Werkzeuge menu only (Politur v1.2).
 - F3: Apply writes metadata and the record as two undo steps (the backend refuses `setMetadata` and `setBibliography` in one batch). Restore works for fields whose loaded source is XMP, Info or page 1; a field already stored as edited has no file value to restore.
 - F4: the Tags filter is OR within the group and AND with the other groups; renaming or deleting a tag updates every open document except the welcome sample (one undo step per document); the delete toast's Undo restores the definition and the removed assignments in documents still open. Tag names are 1–40 chars (DESIGN aligned).
 - Integration: a citation card's quote takes its document colour through `[data-cite-fill]` + `--cite-fill` (RGB channels set per element) at `--hl-opacity`; new tokens `--chip-height` 20, `--tag-dot` 8, `--preview-min-height` 64, `--tag-picker-width` 240.
+
+## ADR-120 — CI first: read main's CI at every loop start; green CI is part of every package's DoD
+
+**Status:** accepted (2026-10-05, owner instruction). Supersedes the CI part of ADR-030 ("read CI once per milestone").
+
+**Context.** CI on `main` was red for five runs in a row (#61–#65) without anyone noticing, because CI was read only at a milestone end. One cause, macOS only: `commands::recent_actions::tests::starring_by_id_and_revealing_only_what_exists` (strengthened in Politur v1.3, 446a6d9) recorded `\host\share\x.pdf`, which is a relative path on Unix; `storage::recents::storable` never records a relative path, so the "not vacuous" assertion found no entry. Windows (where the spelling is a UNC path that is refused before storing) stayed green. The owner also saw docs commits (`docs(decisions): ADR-119 addendum…`) start CI and suspected that `paths-ignore` no longer works. It does: `paths-ignore` (`**/*.md`, `docs/**`) is evaluated over the whole push (old head..new head), and each of those runs came from a push that also carried code (34, 43, 30, 107 and 1 non-doc files); the run only shows the title of the push's last commit. A docs-only push (893ce34) started no run.
+
+**Decision.**
+1. At the start of every loop the orchestrator runs `bash scripts/ci-status.sh`: it reads the last *completed* run of the CI workflow on `main` and never waits for a running one (exit 0 green, 1 red with the failed jobs and steps, 2 unknown).
+2. Red = fix first: `gh run view <id> --log-failed`, find the cause per platform, fix, push. No new package starts while the last completed run is red.
+3. Green CI is part of the Definition of Done of every package, not only of a milestone. The package's own push is checked at the next loop start (rule 1), so nobody waits on a running run.
+4. The test fix: on non-Windows the network spelling is recorded as an absolute (missing) path under the test's temp directory, built as text because `Path::join` would read the leading backslashes as a separator on Windows (clippy).
+5. `paths-ignore` stays as it is. To keep docs-only commits cheap, push them on their own when convenient; a mixed push runs CI, which is correct.
+
+**Consequences.** One `gh` call per loop (a few seconds, no waiting). ORCHESTRATOR_PROMPT §2 rule 12, §8.4 step 0 and step 7, §9 "CI-Status", and CLAUDE.md rule 12 carry the rule. When `gh` is offline the loop notes it in STATE.md and continues.

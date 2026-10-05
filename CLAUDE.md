@@ -24,6 +24,7 @@ Work is orchestrated autonomously per `ORCHESTRATOR_PROMPT.md`; resume state liv
 9. No Claude Code mods, plugins or MCP servers.
 10. Own code is AGPL-3.0-or-later; name + logo are trademarks (`TRADEMARK.md`); DCO sign-off for contributions.
 11. Security is part of done: `security-reviewer` PASS before every milestone tag. Every PDF is hostile input.
+12. CI first (ADR-120): at the start of every loop read the last completed CI run on main (`bash scripts/ci-status.sh`, never wait). Red = fix first, no new package. Green CI is part of every package's DoD.
 
 ## Code
 

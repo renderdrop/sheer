@@ -40,6 +40,7 @@ Erfolgsmaßstab: Ein Nutzer öffnet die App, versteht sie ohne Anleitung, erledi
 9. **Keine Mods, keine zusätzlichen Plugins, keine MCP-Server** für Claude Code installieren. Settings-Hooks (Abschnitt 7) reichen. Mods verändern Claude Code selbst, nicht das Produkt — das ist hier Token-Verschwendung.
 10. **Eigener Code ist Open Source:** Lizenz `AGPL-3.0-or-later` (Datei `LICENSE`), Name und Logo bleiben Marke (`TRADEMARK.md`). Beiträge Dritter nur mit DCO-Sign-off. Das ist mit permissiven Dependencies kompatibel; Regel 2 bleibt für Dependencies unverändert.
 11. **Security ist Teil der Definition of Done.** Kein Milestone-Tag ohne bestandenen `security-reviewer`-Durchlauf (Abschnitt 13). Jede PDF-Datei ist feindlicher Input.
+12. **CI zuerst (ADR-120).** Am Anfang jedes Loops liest du den letzten abgeschlossenen CI-Lauf auf `main` (`bash scripts/ci-status.sh`, nie warten). Rot = zuerst Fix, kein neues Paket. CI grün ist Teil der Definition of Done jedes Pakets, nicht nur des Milestones.
 
 ---
 
@@ -128,7 +129,7 @@ Abweichung erlaubt, wenn der Spike in Phase 2 scheitert oder die Lizenzprüfung 
 └── .github/workflows/ci.yml
 ```
 
-`CLAUDE.md` bleibt unter 60 Zeilen: Projekt in 3 Sätzen, die Befehle (`npm run check`, `npm run tauri dev`, `cargo test`), die 11 Regeln aus Abschnitt 2 in Kurzform, Verweis auf `docs/DESIGN.md`, `docs/ARCHITECTURE.md` und `docs/SECURITY.md`. Nichts anderes — jede Zeile dort kostet in jedem Turn Tokens.
+`CLAUDE.md` bleibt unter 60 Zeilen: Projekt in 3 Sätzen, die Befehle (`npm run check`, `npm run tauri dev`, `cargo test`), die 12 Regeln aus Abschnitt 2 in Kurzform, Verweis auf `docs/DESIGN.md`, `docs/ARCHITECTURE.md` und `docs/SECURITY.md`. Nichts anderes — jede Zeile dort kostet in jedem Turn Tokens.
 
 ---
 
@@ -441,13 +442,14 @@ Synthese (du, Opus): `docs/FEATURES.md` — Tabelle: Feature | Nutzer-Nutzen | M
 5. `scripts/check.sh` (`npm run check` = typecheck + lint + vitest + `cargo clippy -D warnings` + `cargo test` + `cargo deny check` + `npm audit --audit-level=high`), `scripts/bump-version.sh` (synchronisiert `package.json`, `src-tauri/Cargo.toml`, `src-tauri/tauri.conf.json`), CI-Workflow (macOS + Windows, inkl. Dependabot-Konfiguration). Commit, Tag `v0.2.0`.
 
 ### 8.4 Der Feature-Loop (paketweise, ab Phase 3)
+0. **Loop-Start = CI-Status (ADR-120):** `bash scripts/ci-status.sh` liest den letzten abgeschlossenen CI-Lauf auf `main` und wartet nie auf einen laufenden. **Rot** (Exit 1) → zuerst Fix: `gh run view <id> --log-failed`, Ursache pro Plattform finden, beheben, committen, pushen; kein neues Paket, solange der letzte abgeschlossene Lauf rot ist. **Unbekannt** (Exit 2, offline) → Blocker-Notiz in `STATE.md`, weiterarbeiten.
 1. **Pakete schneiden (Milestone-Start):** Du schneidest die offenen Punkte des Milestones in **vier** disjunkte Arbeitspakete (ADR-030; bei Abhängigkeiten in Wellen zu je vier) (disjunkt = keine gemeinsamen Dateien). Die Paketliste mit Punkten und Dateibereichen steht in `STATE.md`. Braucht ein Paket eine neue UI-Oberfläche, die `docs/DESIGN.md` nicht abdeckt, holst du vorher eine `designer`-Spec. **Ab M4 (ADR-038):** zuerst eine Welle Rust-Backend-Pakete (`backend-implementer`, maxTurns 160); Frontend-Pakete starten erst, wenn die Command-Signaturen im Code liegen (registrierte Commands + typisierte `src/api/*`-Wrapper committet). Keine Platzhalter-APIs.
 2. **Brief pro Paket** (≤ 300 Wörter): Punkte, Dateibereich, Akzeptanzkriterien, Verbote.
 3. **Parallel bauen:** je Paket ein `implementer`, immer vier gleichzeitig, im gemeinsamen Arbeitsbaum, nur in den eigenen Dateien. Er baut, schreibt Unit-Tests und führt `npm run check` selbst aus.
 4. **Ein Loop = ein Paket.** Ist ein Paket fertig: einmal `reviewer` auf `git diff -- <Dateibereich>` → PASS/FIX.
 5. **Max. eine FIX-Runde:** FIX → einmal zurück an den `implementer`, nur mit blocker/major-Issues; danach kein Re-Review. Bleibt etwas offen, entscheidest du: akzeptieren mit Ticket in `ROADMAP.md` oder deskopen (Eintrag in `DECISIONS.md`). Alle Minors landen im **Politur-Ticket** des Milestones: eine Checkbox `- [ ] Politur Mx` in `ROADMAP.md`, die Minors als eingerückte Liste darunter.
 6. **Security nur bei Bedarf:** Berührt das Paket `tauri.conf.json`, `capabilities/`, IPC-Commands, Dateizugriff (inkl. Links/Anhänge) oder PDF-Parsing → zusätzlich `security-reviewer`. FAIL muss behoben werden und zählt nicht als FIX-Runde.
-7. **Commit pro Paket** (Conventional Commits, nur die Paketdateien stagen), Checkboxen in `ROADMAP.md` auf `[x]`, `STATE.md` aktualisieren, `CHANGELOG.md` unter „Unreleased“ ergänzen. Zwischen den Paketen misst, filmst und prüfst du nichts live.
+7. **Commit pro Paket** (Conventional Commits, nur die Paketdateien stagen), Checkboxen in `ROADMAP.md` auf `[x]`, `STATE.md` aktualisieren, `CHANGELOG.md` unter „Unreleased“ ergänzen. Ein Paket ist erst fertig, wenn der CI-Lauf seines Pushs grün ist (DoD pro Paket, ADR-120); das prüft der nächste Loop-Start (Schritt 0), rot geht vor jedes neue Paket. Zwischen den Paketen misst, filmst und prüfst du nichts live.
 8. **Milestone-Ende** (alle Pakete committet, Politur-Ticket als letztes Paket abgearbeitet): einmal `tester` (`npm run check` + fehlende Tests), einmal vollständiger `security-reviewer`, Tauri-Fenster-Abnahme nach `docs/UI_REVIEW.md`, dann **eine** `designer`-Review-Runde mit genau vier Screenshots (Light/Dark × Leerzustand/Dokument). **Nur `blocker`** lösen ein Fix-Paket aus; major und minor gehen ins Politur-Ticket des nächsten Milestones (ADR-030). Keine zweite Designer-Runde. Einmal den CI-Status lesen (8.6). Danach Definition of Done (8.6) prüfen, Version bumpen, Tag, `CHANGELOG`-Release-Abschnitt.
 
 ### 8.5 Milestone-Vorschlag (nach der Recherche anpassen, nicht blind übernehmen)
@@ -471,7 +473,7 @@ Alle Checkboxen `[x]` · `npm run check` grün · `npm run tauri build --debug` 
 - `CHANGELOG.md` nach Keep a Changelog; „Unreleased“ wird bei jedem Milestone-Tag zum Release-Abschnitt.
 - Version wird **nur** über `scripts/bump-version.sh` geändert.
 - **Nach jedem Commit:** `git push origin main --tags`. Schlägt der Push fehl (Netz, Auth), Blocker in `docs/BLOCKERS.md` festhalten und weiterarbeiten; beim nächsten Commit erneut pushen.
-- **CI-Status:** nur **einmal pro Milestone** prüfen, am Milestone-Ende (`gh run list --branch main --limit 3`), **nie auf einen laufenden Run warten** (ADR-030). Ist der letzte abgeschlossene Run rot → `gh run view <id> --log-failed`, Ursache beheben (Teil des Milestone-Abschlusses).
+- **CI-Status (ADR-120, ersetzt die Einmal-pro-Milestone-Regel von ADR-030):** am Anfang **jedes** Loops `bash scripts/ci-status.sh` — letzter abgeschlossener Lauf auf `main`, **nie auf einen laufenden Run warten**. Rot → `gh run view <id> --log-failed`, Ursache pro Plattform beheben, bevor ein neues Paket startet. `paths-ignore` (`**/*.md`, `docs/**`) wirkt auf den ganzen Push: ein Push mit Doku- *und* Code-Commits läuft, und der Lauf trägt den Titel des letzten Commits.
 
 ---
 

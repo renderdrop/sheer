@@ -218,7 +218,17 @@ mod tests {
                 .code(),
             ErrorCode::NotFound
         );
-        store.record(Path::new(r"\\host\share\x.pdf"));
+        // Elsewhere the spelling is only file-name text, and a relative path is never recorded (`storable`): put it under
+        // the absolute temp directory so the entry is stored there.
+        let network_spelling = if cfg!(windows) {
+            std::path::PathBuf::from(r"\\host\share\x.pdf")
+        } else {
+            // Appended as text: `join` reads the leading backslashes as a separator when clippy checks on Windows.
+            let mut spelled = dir.clone().into_os_string();
+            spelled.push(r"/\\host\share\x.pdf");
+            std::path::PathBuf::from(spelled)
+        };
+        store.record(&network_spelling);
         let network: Vec<_> = state
             .list_recents()
             .into_iter()
