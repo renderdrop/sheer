@@ -157,15 +157,14 @@ guard_crypto_crates() {
     prune+=(--prune "$root")
   done
   for target in "${DESKTOP_TARGETS[@]}"; do
-    if ! packages="$(cargo tree --manifest-path "$MANIFEST" --locked --all-features -e normal,build       --target "$target" --prefix none --format '{p}' "${prune[@]}" 2>&1)"; then
+    if ! packages="$(cargo tree --manifest-path "$MANIFEST" --locked --all-features -e normal,build \
+      --target "$target" --prefix none --format '{p}' "${prune[@]}" 2>&1)"; then
       echo "error: cargo tree failed for $target:"
-      printf '%s
-' "$packages"
+      printf '%s\n' "$packages"
       return 1
     fi
     for crate in "${CRYPTO_BANNED[@]}"; do
-      if printf '%s
-' "$packages" | grep -q "^$crate v"; then
+      if printf '%s\n' "$packages" | grep -q "^$crate v"; then
         echo "error: C-backed crypto crate '$crate' is part of the $target build outside the updater"
         ok=0
       fi
@@ -177,8 +176,7 @@ guard_crypto_crates() {
       grep -vE '^[^:]+:[0-9]+:[[:space:]]*//'
   )"
   if [ -n "$hits" ]; then
-    printf '%s
-' "$hits" | sed 's|^|error: crypto crate named outside pdfsig/: |'
+    printf '%s\n' "$hits" | sed 's|^|error: crypto crate named outside pdfsig/: |'
     ok=0
   fi
   [ "$ok" -eq 1 ]

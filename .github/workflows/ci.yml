@@ -1,7 +1,7 @@
 name: CI
 
 # ADR-046 (public repository): every push to main and every pull request runs the checks (Linux job) and the Rust build + tests (Windows, macOS) and
-# skips docs-only changes (ADR-123: split so that each job stays under 15 minutes). Tag pushes run only release.yml. The unsigned debug bundles are built on a manual start only.
+# skips docs-only changes (ADR-123: split so that each job targets 15 minutes; the timeouts of 20 / 25 minutes are the hard stop). Tag pushes run only release.yml. The unsigned debug bundles are built on a manual start only.
 on:
   push:
     branches: [main]
@@ -21,7 +21,7 @@ permissions:
 # ADR-045: a manual start has its own group, so a push to the same ref no longer cancels it (and it no longer cancels the push run).
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.event_name == 'workflow_dispatch' && 'manual' || 'auto' }}-${{ github.ref }}
-  # ADR-052: runs on main are never cancelled (every commit gets a finished result on both platforms); pull requests and manual
+  # ADR-052: runs on main are never cancelled (every commit gets a finished result in all jobs); pull requests and manual
   # runs still cancel their own older run.
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
@@ -37,7 +37,7 @@ jobs:
   web:
     name: web checks (ubuntu-latest)
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 20
     defaults:
       run:
         shell: bash
@@ -52,9 +52,13 @@ jobs:
           node-version-file: .nvmrc
           cache: npm
 
-      # Installs exactly what rust-toolchain.toml pins (channel, profile, components).
-      - name: Install Rust toolchain
-        run: rustup toolchain install
+      # Minimal toolchain (no clippy/rustfmt: this job only resolves the lockfile). rust-toolchain.toml lists those components, so
+      # the channel is read from it, installed explicitly, and selected through RUSTUP_TOOLCHAIN (which overrides the file).
+      - name: Install Rust toolchain (minimal)
+        run: |
+          channel="$(sed -n 's/^channel *= *"\(.*\)"/\1/p' rust-toolchain.toml)"
+          rustup toolchain install "$channel" --profile minimal --no-self-update
+          echo "RUSTUP_TOOLCHAIN=$channel" >> "$GITHUB_ENV"
 
       # Exact versions (the ones `npm run check` is developed against), so a new release cannot change the gate
       # between two CI runs. Bump together with the local install.
@@ -71,7 +75,7 @@ jobs:
   native:
     name: rust${{ github.event_name == 'workflow_dispatch' && ' + debug build' || '' }} (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 45
+    timeout-minutes: 25
     strategy:
       fail-fast: false
       matrix:

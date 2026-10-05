@@ -2346,3 +2346,10 @@ is `Swatinem/rust-cache` v2.9.2 (MIT, pinned by SHA; dependencies only, workspac
 only. `[profile.dev|test]` use `debug = "line-tables-only"`, dependencies `debug = false` (panics keep file:line). `release.yml` is
 unchanged (it builds once per target; no duplicated work). Open: if linking the 46 integration-test binaries still dominates, merge
 them into a few `tests/<group>/main.rs` binaries in a later wave (touches `src-tauri/tests`).
+
+**Addendum 2 (package S8, CI follow-up).** Run #79 (cold cache): web 4 min, macOS 12 min, Windows 14 min, so the 15-minute target is met;
+the integration-test consolidation is not needed now (revisit if a job exceeds 15 min). Timeouts are now 20 min (web) and 25 min (native).
+The web job installs a minimal toolchain (no clippy/rustfmt; channel read from `rust-toolchain.toml`, selected via `RUSTUP_TOOLCHAIN`). A bare
+`cargo deny check` now passes: `deny.toml` ignores the Linux-only GTK advisories RUSTSEC-2024-0429 (glib) and RUSTSEC-2024-0370
+(proc-macro-error) with reasons (not shipped; `check.sh` still scopes cargo deny to the desktop targets) and allows the permissive
+`Apache-2.0 WITH LLVM-exception` (target-lexicon). `guard_crypto_crates` formatting aligned with `guard_network_crates`.

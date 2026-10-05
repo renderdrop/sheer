@@ -11,17 +11,23 @@ unmaintained = "all"
 unsound = "all"
 yanked = "deny"
 # RUSTSEC-2023-0071 (rsa, Marvin timing side channel, no fixed release in any line): Sheer never decrypts with RSA; the private key signs locally on an explicit user action with no network timing oracle; the default key is ECDSA P-256 (ADR-121 section 2, SECURITY R14).
-ignore = [{ id = "RUSTSEC-2023-0071", reason = "ADR-121 section 2, SECURITY R14: no RSA decryption, local signing only" }]
+# RUSTSEC-2024-0429 (glib) and RUSTSEC-2024-0370 (proc-macro-error) come in through the Linux-only GTK stack. Sheer ships no Linux build and scripts/check.sh scopes cargo deny to the desktop targets; the entries only let a bare `cargo deny check` pass (ADR-123 addendum 2).
+ignore = [
+  { id = "RUSTSEC-2023-0071", reason = "ADR-121 section 2, SECURITY R14: no RSA decryption, local signing only" },
+  { id = "RUSTSEC-2024-0429", reason = "glib via the Linux-only GTK stack; not shipped, not in the Windows/macOS graph" },
+  { id = "RUSTSEC-2024-0370", reason = "proc-macro-error via the Linux-only GTK stack (build-time macro); not shipped" },
+]
 
 [licenses]
 version = 2
 confidence-threshold = 0.93
 # Permissive allowlist. Entries beyond the six named in rule 2 are documented in ADR-000. Only licenses a shipped target uses are listed
-# (an allowance nobody uses is a hole for later): add BSD-2-Clause, BSL-1.0 or Apache-2.0 WITH LLVM-exception back when a dependency needs one.
+# (an allowance nobody uses is a hole for later): add BSD-2-Clause or BSL-1.0 back when a dependency needs one.
 allow = [
   "MIT",
   "MIT-0",
   "Apache-2.0",
+  "Apache-2.0 WITH LLVM-exception", # target-lexicon; permissive
   "BSD-3-Clause",
   "ISC",
   "MPL-2.0",
