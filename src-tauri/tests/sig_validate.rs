@@ -965,10 +965,6 @@ impl Drop for Scratch {
     }
 }
 
-/// The command tests each start a PDFium engine in this process; PDFium is not thread-safe, so they take turns (as in
-/// images_pdf_render.rs). In parallel they failed to open their file on the two-core CI runners (runs #71, #74).
-static SERIAL: std::sync::Mutex<()> = std::sync::Mutex::new(());
-
 fn app(data: &std::path::Path) -> Option<AppState> {
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("pdfium");
     let library = engine::library_path(&root);
@@ -985,9 +981,6 @@ fn app(data: &std::path::Path) -> Option<AppState> {
 
 #[test]
 fn the_commands_validate_open_the_signed_revision_and_pin_a_signer() {
-    let _turn = SERIAL
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner());
     let scratch = Scratch::new("commands");
     let data = scratch.0.join("data");
     let Some(state) = app(&data) else {
@@ -1079,23 +1072,18 @@ fn the_commands_validate_open_the_signed_revision_and_pin_a_signer() {
         .set_signer_trust_with(info.id, 0, false, std::collections::HashSet::new)
         .unwrap();
     assert_eq!(unpinned.signatures[0].trust, Trust::NotTrusted);
+
+    a_signature_that_does_not_verify_cannot_be_pinned(&state, &scratch.0);
 }
 
-#[test]
-fn a_signature_that_does_not_verify_cannot_be_pinned() {
-    let _turn = SERIAL
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner());
-    let scratch = Scratch::new("nopin");
-    let data = scratch.0.join("data");
-    let Some(state) = app(&data) else {
-        return;
-    };
+/// Part of the command test above: PDFium binds once per test process, so the command tests share one engine (a second
+/// `Engine::start` in the same process answers `EngineUnavailable`; in parallel this failed CI runs #71 and #74).
+fn a_signature_that_does_not_verify_cannot_be_pinned(state: &AppState, scratch: &std::path::Path) {
     let keys = Keys::p256(7);
     let mut signed = certify(&base_pdf(), &keys, 2, &Options::default());
     let at = find(&signed, b"0 0 1 rg");
     signed[at] = b'1';
-    let path = scratch.0.join("tampered.pdf");
+    let path = scratch.join("tampered.pdf");
     std::fs::write(&path, &signed).unwrap();
     let info = state
         .open_path(path)
