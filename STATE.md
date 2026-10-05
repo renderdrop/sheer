@@ -1,8 +1,8 @@
 # STATE
-phase: v1.2.0 released — Politur v1.3 done; next: v1.3 "Citations" spec
-version: 1.2.0 (tag v1.2.0)
-current_item: v1.3 milestone end — tester, full security-reviewer and designer round running; then bump 1.3.0 and tag (CI must be green first, ADR-120)
-last_completed: Politur v1.3 (446a6d9, 1656ac6, af7091d; reviewer PASS)
+phase: v1.3.0 "Citations" — release commit pushed; tag after its CI run is green (ADR-120)
+version: 1.3.0 (tag v1.3.0 pending CI)
+current_item: tag v1.3.0 once CI on the release commit is green; next: v1.4 spec (designer + architect ADR)
+last_completed: v1.3 Citations — 24/24 AC in the installed build, tester/security/designer PASS
 loop_count_this_session: 0
 open_blockers: 2 human-only (B-002, B-005)
 notes: ADR-120: every loop starts with `bash scripts/ci-status.sh` (last completed run on main, never wait); red = fix first. v1.3 acceptance round 2 in progress after the FIX packages A–D (d15cac3, ed59df9, 94444b6, c2efc5e): selection to line end OK, rule after reopen OK; still to re-test: tag-delete undo (console hooked), Year field, Reference from empty Comments, error toast, aria labels. v1.3 W0 + C1–C4 + F1–F4 committed; security-reviewer PASS on the backend.
