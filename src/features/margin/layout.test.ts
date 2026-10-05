@@ -5,6 +5,7 @@ import {
   anchorOf,
   bubbleDate,
   columnLeft,
+  columnX,
   initialOf,
   marginSlot,
   placeBubbles,
@@ -94,5 +95,14 @@ describe('marginSlot beside a wide page', () => {
   it('is compact when the whole column would not fit beside the page at its zoom', () => {
     expect(marginSlot(940, true, MARGIN_FALLBACK, 816).mode).toBe('compact');
     expect(marginSlot(940, true, MARGIN_FALLBACK, 684).mode).toBe('full');
+  });
+});
+
+describe('columnX', () => {
+  it('starts 16 px right of the page itself, not of the widest page', () => {
+    // t3.pdf at 100 %: viewport 892, a 816 px page centred in a 1056 px wide stack (left 120).
+    expect(columnX({ left: 120, width: 816 }, 16)).toBe(952);
+    // The widest page (1056 px, left 0) keeps its own edge.
+    expect(columnX({ left: 0, width: 1056 }, 16)).toBe(1072);
   });
 });

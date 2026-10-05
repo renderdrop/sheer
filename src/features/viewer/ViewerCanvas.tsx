@@ -424,7 +424,8 @@ export function ViewerCanvas({ style }: { style?: CSSProperties }) {
       onPageTurn={turn}
       onRegion={setRegion}
       margin={marginOn}
-      pageWidth={layout?.pagesWidth}
+      // In a fit the slot is decided by the viewport alone (the page is sized for it); at a fixed zoom by what fits beside the page.
+      pageWidth={fit === 'none' ? layout?.pagesWidth : undefined}
       renderMargin={(mode) =>
         layout !== null && docId !== null ? (
           <MarginColumn

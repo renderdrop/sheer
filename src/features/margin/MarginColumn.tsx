@@ -20,7 +20,7 @@ import { readViewRect, subscribeViewRect } from '../viewer/scrollBridge';
 import type { PageLayout } from '../viewer/layout';
 import type { Rotation } from '../viewer/transform';
 import { Bubble, Marker } from './Bubble';
-import { anchorOf, columnLeft, marginMetrics, placeBubbles, visibleBubbles, type MarginMode } from './layout';
+import { anchorOf, columnX, marginMetrics, placeBubbles, visibleBubbles, type MarginMode } from './layout';
 
 /** A bubble before it is measured. */
 const ESTIMATE_PX = 120;
@@ -41,6 +41,8 @@ interface Item {
   id: number;
   anchor: number;
   right: number;
+  /** Where its column starts: 16 px right of its own page (a narrower page has its bubbles closer to it). */
+  x: number;
 }
 
 /**
@@ -80,10 +82,16 @@ export function MarginColumn({ docId, layout, threads, mode, drawnSizes, rotatio
       if (position === null || box === null) continue;
       const rect = byId?.[thread.root.id]?.rect ?? null;
       const anchor = anchorOf(box, layout.scale, rect, drawnSizes[position] ?? [0, 0], rotation);
-      placed.push({ thread, id: thread.root.id, anchor: anchor.top, right: anchor.right });
+      placed.push({
+        thread,
+        id: thread.root.id,
+        anchor: anchor.top,
+        right: anchor.right,
+        x: columnX(box, metrics.gap),
+      });
     }
     return placed.sort((a, b) => a.anchor - b.anchor || a.id - b.id);
-  }, [threads, layout, byId, drawnSizes, rotation, docId]);
+  }, [threads, layout, byId, drawnSizes, rotation, docId, metrics.gap]);
 
   // Measured heights, one observer for the mounted bubbles.
   const [heights, setHeights] = useState<ReadonlyMap<number, number>>(() => new Map());
@@ -141,7 +149,7 @@ export function MarginColumn({ docId, layout, threads, mode, drawnSizes, rotatio
     [items, heights, compact, metrics.stack, pinned],
   );
 
-  const left = columnLeft(layout.width, layout.pagesWidth, metrics.gap);
+  const slotWidth = layout.width + metrics.gap + (compact ? metrics.compact : metrics.width);
   const overscan = Math.max(0, view.bottom - view.top);
   const shown = useMemo(() => {
     const set = new Set(visibleBubbles(tops, sizes, view.top - overscan, view.bottom + overscan));
@@ -222,18 +230,18 @@ export function MarginColumn({ docId, layout, threads, mode, drawnSizes, rotatio
           setFocusId(null);
       }}
       className="pointer-events-none absolute top-0 z-canvas-annotations"
-      style={{ left, width: compact ? metrics.compact : metrics.width, height: layout.height }}
+      style={{ left: 0, width: slotWidth, height: layout.height }}
     >
       {showLeader && leaderItem !== null && (
         <svg
           aria-hidden="true"
           className="pointer-events-none absolute overflow-visible"
-          style={{ left: 0, top: 0, width: 1, height: 1 }}
+          style={{ left: leaderItem.x, top: 0, width: 1, height: 1 }}
         >
           <line
             x1={0}
             y1={leaderTop + metrics.stack}
-            x2={leaderItem.right - left}
+            x2={leaderItem.right - leaderItem.x}
             y2={leaderItem.anchor}
             className="stroke-control-border"
             strokeWidth={1}
@@ -253,7 +261,7 @@ export function MarginColumn({ docId, layout, threads, mode, drawnSizes, rotatio
               role="listitem"
               data-item={item.id}
               className="pointer-events-auto absolute"
-              style={{ top, left: (metrics.compact - metrics.marker) / 2 }}
+              style={{ top, left: item.x + (metrics.compact - metrics.marker) / 2 }}
             >
               <Marker
                 id={item.id}
@@ -291,8 +299,8 @@ export function MarginColumn({ docId, layout, threads, mode, drawnSizes, rotatio
             role="listitem"
             data-item={item.id}
             ref={measure}
-            className="pointer-events-auto absolute inset-x-0"
-            style={{ top }}
+            className="pointer-events-auto absolute"
+            style={{ top, left: item.x, width: metrics.width }}
           >
             <Bubble
               docId={docId}

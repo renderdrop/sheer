@@ -246,7 +246,7 @@ export const CommentCard = memo(function CommentCard({
   const lead = firstLine(text, quoted);
   const excerpt = lead !== '' ? lead : t(info.key);
   // A text that fits the two clamped lines is the header alone; a longer one also shows whole below it.
-  const longText = text.includes('\n') || text.length > 80;
+  const longText = root.kind !== 'freeText' && (text.includes('\n') || text.length > 80);
   const quoteBelow = text.trim() !== '' && quoted !== null;
   const showReply = showReplyField;
   const describedBy =

@@ -159,3 +159,8 @@ export function anchorOf(
   const view = boxToView(rect, page, rotation);
   return { top: box.top + view.y * scale, right: box.left + (view.x + view.w) * scale };
 }
+
+/** Where a page's bubbles start: its own right edge plus the gap (a page narrower than the widest has them close to it). */
+export function columnX(box: { left: number; width: number }, gap: number): number {
+  return box.left + box.width + gap;
+}
