@@ -30,6 +30,7 @@ import {
   Signature,
   Square,
   SquareSlash,
+  Stamp,
   Quote,
   Strikethrough,
   TextCursor,
@@ -49,6 +50,8 @@ import { runAction } from '../../actions/dispatch';
 import type { ActionId } from '../../actions/registry';
 import { listSignatures, type LibraryItem, type SignatureRole } from '../../api/library';
 import { useT, type Translate } from '../../i18n';
+import type { SigningIdentityInfo, StoreStatus } from '../../api/signing';
+import { isDirty, useAnnotations } from '../../stores/annotations';
 import { selectActiveId, useDocuments } from '../../stores/documents';
 import { useTools, type MarkupVariant, type ShapeVariant } from '../../stores/tools';
 import { useUi, type Mode, type ToolId } from '../../stores/ui';
@@ -56,7 +59,11 @@ import { deletePages, insertBlank, insertFromFile, rotatePages } from '../organi
 import { useSlots as usePageSlots } from '../organize/source';
 import { selectionOf, useOrganize } from '../organize/store';
 import { runCompress, runExtract, runMerge, runSplit } from '../jobs/actions';
+import { useSignatureLock } from '../lock/useSignatureLock';
+import { openCertificateManager } from '../signatures/certs/open';
 import { armItem, createAndArm } from '../signatures/place/menu';
+import { canSign, useSigningIdentities } from '../signatures/sign/identities';
+import { useCertSign } from '../signatures/sign/store';
 import { usePlacement, type PlaceItem } from '../signatures/place/store';
 import { CropOptions, InsertOptions, RedactOptions } from './Options';
 import { SignaturePreview } from '../signatures/library/SignaturePreview';
@@ -126,6 +133,13 @@ interface Inputs {
   pageCount: number;
   last: Readonly<Record<string, string>>;
   library: readonly LibraryItem[];
+  /** Certificate signing (DESIGN 3.8 S1): the identities, the store's state, the chosen identity and whether the tool is on. */
+  identities: readonly SigningIdentityInfo[];
+  certStatus: StoreStatus | 'unknown';
+  certId: string | null;
+  certActive: boolean;
+  /** The document has changes that are not saved: signing needs a saved file. */
+  dirty: boolean;
 }
 
 type Maker = (inputs: Inputs) => SlotDef[];
@@ -323,8 +337,47 @@ const ausfuellen: Maker = (inputs) => {
     item('date', t('modes.tool.date'), Calendar, { type: 'date' }, armed?.type === 'date'),
     roleSlot('signature', Signature, t('modes.tool.signature'), t('modes.tool.newSignature')),
     roleSlot('initials', FileSignature, t('modes.tool.initials'), t('modes.tool.newInitials')),
+    zertifikat(inputs),
   ];
 };
+
+/**
+ * The eighth slot of Ausfüllen & Signieren (DESIGN 3.8 S1): a certificate signature, kept apart from the visual ones because it is
+ * irreversible. No tool letter. The main part activates with the last used certificate; with none it opens the manager.
+ */
+function zertifikat(inputs: Inputs): SlotDef {
+  const { t, identities, certStatus, certId, certActive, dirty, readOnly } = inputs;
+  const usable = identities.filter(canSign);
+  const chosen = usable.find((identity) => identity.id === certId) ?? usable[0];
+  const manage = () => openCertificateManager('certificates');
+  const variants: VariantDef[] = [
+    ...identities.map((identity): VariantDef => ({
+      id: `cert-${identity.id}`,
+      label: identity.subject.commonName,
+      icon: Stamp,
+      on: certActive && chosen?.id === identity.id,
+      disabled: !canSign(identity),
+      run: () => useCertSign.getState().activate(identity.id),
+    })),
+    { id: 'cert-new', label: t('cert.menu.new'), icon: Stamp, run: manage },
+    ...(identities.length === 0 ? [] : [{ id: 'cert-manage', label: t('cert.menu.manage'), icon: Stamp, run: manage }]),
+  ];
+  let disabledReason: string | undefined;
+  if (readOnly) disabledReason = t('tool.readOnly');
+  else if (certStatus === 'unavailable') disabledReason = t('cert.keychainMissing');
+  else if (dirty && chosen !== undefined) disabledReason = t('error.unsaved_changes');
+  return {
+    id: 'certificate',
+    label: t('cert.tool'),
+    icon: Stamp,
+    kind: 'tool',
+    on: certActive,
+    hint: t('cert.tool.tooltip'),
+    disabledReason,
+    variants,
+    run: () => (chosen === undefined ? manage() : useCertSign.getState().activate(chosen.id)),
+  };
+}
 
 const seiten: Maker = (inputs) => {
   const { t, docId, readOnly, selectedPages, pageCount, activeTool } = inputs;
@@ -482,24 +535,56 @@ export function useModeSlots(mode: Mode): readonly SlotDef[] {
   const pageCount = usePageSlots(docId).length;
   const last = useLastVariant((state) => state.last);
   const library = useLibraryItems(mode === 'fill');
-  return useMemo(
-    () =>
-      MAKERS[mode]({
-        t,
-        activeTool,
-        redactMode,
-        markup,
-        shapes,
-        armed,
-        docId,
-        readOnly,
-        selectedPages,
-        pageCount,
-        last,
-        library,
-      }),
-    [mode, t, activeTool, redactMode, markup, shapes, armed, docId, readOnly, selectedPages, pageCount, last, library],
-  );
+  const { status: certStatus, items: identities } = useSigningIdentities(mode === 'fill');
+  const certId = useCertSign((state) => state.identityId);
+  const certActive = useCertSign((state) => state.active);
+  const dirty = useAnnotations((state) => isDirty(state, docId));
+  const locked = useSignatureLock(docId ?? undefined).locked;
+  return useMemo(() => {
+    const slots = MAKERS[mode]({
+      t,
+      activeTool,
+      redactMode,
+      markup,
+      shapes,
+      armed,
+      docId,
+      readOnly,
+      selectedPages,
+      pageCount,
+      last,
+      library,
+      identities,
+      certStatus,
+      certId,
+      certActive,
+      dirty,
+    });
+    // A certifying signature locks every tool but Lesen (DESIGN 3.8 S5): each slot says why with the same tooltip.
+    return locked && mode !== 'read'
+      ? slots.map((slot) => ({ ...slot, disabledReason: t('cert.locked.tool') }))
+      : slots;
+  }, [
+    mode,
+    t,
+    activeTool,
+    redactMode,
+    markup,
+    shapes,
+    armed,
+    docId,
+    readOnly,
+    selectedPages,
+    pageCount,
+    last,
+    library,
+    identities,
+    certStatus,
+    certId,
+    certActive,
+    dirty,
+    locked,
+  ]);
 }
 
 /** For tests: the slots of a mode from explicit inputs. */

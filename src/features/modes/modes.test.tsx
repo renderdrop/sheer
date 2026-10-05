@@ -16,6 +16,11 @@ import { usePlacement } from '../signatures/place/store';
 import { ModeRow, ToolRow, switchMode } from '.';
 import { handleModeKey } from './useModeEffects';
 
+vi.mock('../../api/signing', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../api/signing')>()),
+  listSigningIdentities: vi.fn().mockResolvedValue({ status: 'empty', items: [] }),
+}));
+
 vi.mock('../../api/library', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../api/library')>()),
   listSignatures: vi.fn().mockResolvedValue({ status: 'ready', items: [] }),
@@ -476,10 +481,10 @@ describe('Ausfüllen & Signieren', () => {
     act(() => switchMode('fill'));
   });
 
-  it('has Text, Häkchen, Kreuz, Punkt, Datum, Signatur and Initialen, with no slot for form fields', async () => {
+  it('has Text, Häkchen, Kreuz, Punkt, Datum, Signatur, Initialen and Zertifikat, with no slot for form fields', async () => {
     setup(<Rows />);
     await waitFor(() => expect(names()).toContain('Signature'));
-    expect(slotNames()).toEqual(['Text', 'Check', 'Cross', 'Dot', 'Date', 'Signature', 'Initials']);
+    expect(slotNames()).toEqual(['Text', 'Check', 'Cross', 'Dot', 'Date', 'Signature', 'Initials', 'Certificate']);
   });
 
   it('a mark is armed and makes the Sign tool the active one', async () => {
