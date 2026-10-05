@@ -102,6 +102,13 @@ describe('the signature library', () => {
     expect(within(dialog()).getByText('Stored encrypted on this device.')).not.toBeNull();
   });
 
+  it('marks the scrolling list as a list and keeps the buttons outside it (Q7)', async () => {
+    await openWith({ status: 'ready', items: [item(1), item(2)] });
+    const list = dialog().querySelector('[data-scroll="list"]');
+    expect(list).not.toBeNull();
+    expect(list?.contains(within(dialog()).getByRole('button', { name: 'Close' }))).toBe(false);
+  });
+
   it('lists entries per kind with a vector preview and a placeholder for raster art', async () => {
     await openWith({
       status: 'ready',

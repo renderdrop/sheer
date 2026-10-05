@@ -191,29 +191,34 @@ function PropertiesModal({ docId, pageCount, readOnly }: { docId: number; pageCo
           >
             {tab === 'general' ? (
               <>
-                {EDITABLE.map(([key, label], index) => (
-                  <div key={key} className="flex flex-col gap-1">
-                    <label htmlFor={`${id}-f-${key}`} className="text-sm font-semibold">
-                      {t(label)}
-                    </label>
-                    <Field
-                      id={`${id}-f-${key}`}
-                      type="text"
-                      value={fields?.[key] ?? ''}
-                      readOnly={removing || fields === null}
-                      maxLength={MAX_METADATA_FIELD_CHARS}
-                      autoComplete="off"
-                      spellCheck={false}
-                      data-autofocus={index === 0 ? '' : undefined}
-                      onChange={(event) => {
-                        const { value } = event.target;
-                        setFields((current) => (current === null ? current : { ...current, [key]: value }));
-                      }}
-                      className="w-full!"
-                    />
-                  </div>
-                ))}
-                <dl className="m-0 grid grid-cols-[max-content_1fr] gap-x-4 gap-y-1 border-t border-divider pt-4">
+                <div data-testid="props-fields" className="grid grid-cols-2 gap-x-4 gap-y-3">
+                  {EDITABLE.map(([key, label], index) => (
+                    <div key={key} className="flex min-w-0 flex-col gap-1">
+                      <label htmlFor={`${id}-f-${key}`} className="text-sm font-semibold">
+                        {t(label)}
+                      </label>
+                      <Field
+                        id={`${id}-f-${key}`}
+                        type="text"
+                        value={fields?.[key] ?? ''}
+                        readOnly={removing || fields === null}
+                        maxLength={MAX_METADATA_FIELD_CHARS}
+                        autoComplete="off"
+                        spellCheck={false}
+                        data-autofocus={index === 0 ? '' : undefined}
+                        onChange={(event) => {
+                          const { value } = event.target;
+                          setFields((current) => (current === null ? current : { ...current, [key]: value }));
+                        }}
+                        className="w-full!"
+                      />
+                    </div>
+                  ))}
+                </div>
+                <dl
+                  data-testid="props-facts"
+                  className="m-0 grid grid-cols-[max-content_1fr_max-content_1fr] gap-x-4 gap-y-1 border-t border-divider pt-3"
+                >
                   {rows.map(([label, value]) => (
                     <Fragment key={label}>
                       <dt className="text-sm text-text-muted">{label}</dt>

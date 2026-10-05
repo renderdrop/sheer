@@ -140,84 +140,88 @@ function SignSheet() {
   };
 
   return (
-    <Modal labelledBy={`${id}-title`} width="w-dialog-md" onClose={() => !busy && close()}>
+    <Modal labelledBy={`${id}-title`} width="w-sheet-wide" onClose={() => !busy && close()}>
       <ModalHeader id={`${id}-title`} icon={<Icon icon={Lock} />} title={t('sign.cert.title')} />
-      <div className="mt-4 flex flex-col gap-4">
-        <label className="flex flex-col gap-1">
-          <span className="t-label">{t('sign.cert.signer')}</span>
-          <select
-            data-autofocus=""
-            value={signerId}
-            disabled={busy}
-            onChange={(event) => setSignerId(event.target.value)}
-            className="h-control-lg rounded-button border border-border bg-card px-2 text-md text-text"
-          >
-            {identities.map((entry) => (
-              <option key={entry.id} value={entry.id} disabled={!canSign(entry)}>
-                {entry.subject.commonName}
-              </option>
-            ))}
-          </select>
-          {identity !== undefined && (
-            <span className={`t-caption mt-2 ${expired ? 'text-error-text' : 'text-text-muted'}`}>
-              {expired
-                ? t('cert.expired', { date: formatDay(locale, identity.notAfter) })
-                : t('cert.validUntil', { date: formatDay(locale, identity.notAfter) })}
-            </span>
-          )}
-        </label>
-        <label className="flex flex-col gap-1">
-          <span className="t-label">{t('sign.cert.reason')}</span>
-          <Field
-            className="w-full!"
-            value={reason}
-            maxLength={SEAL_REASON_MAX}
-            disabled={busy}
-            placeholder={t('sign.cert.reasonPlaceholder')}
-            onChange={(event) => setReason(event.target.value)}
-          />
-        </label>
-        <label className="flex flex-col gap-1">
-          <span className="t-label">{t('sign.cert.location')}</span>
-          <Field
-            className="w-full!"
-            value={location}
-            maxLength={SEAL_LOCATION_MAX}
-            disabled={busy}
-            onChange={(event) => setLocation(event.target.value)}
-          />
-        </label>
-        {certifies && (
-          <LockChoice
-            value={lock}
-            onChange={(next) => {
-              setLock(next);
-              writeLock(next);
-            }}
-            disabled={busy}
-          />
-        )}
-        {document?.flags?.signed === true && (
-          <p className="t-body m-0 flex items-start gap-2" data-testid="existing-lock">
-            <span className="shrink-0">
-              <Icon icon={Lock} size={16} />
-            </span>
-            <span className="flex flex-col">
-              <span className="t-label">{t('sign.cert.lock')}</span>
-              <span>
-                {t(
-                  document.signatureLock === 'locked'
-                    ? 'sigs.locks'
-                    : document.signatureLock === 'none' || document.signatureLock === undefined
-                      ? 'sign.cert.lockOpen'
-                      : 'sigs.locksForms',
-                )}
+      <div data-testid="sign-body" className="mt-4 grid grid-cols-2 items-start gap-x-6 gap-y-4">
+        <div className="flex min-w-0 flex-col gap-4">
+          <label className="flex flex-col gap-1">
+            <span className="t-label">{t('sign.cert.signer')}</span>
+            <select
+              data-autofocus=""
+              value={signerId}
+              disabled={busy}
+              onChange={(event) => setSignerId(event.target.value)}
+              className="h-control-lg rounded-button border border-border bg-card px-2 text-md text-text"
+            >
+              {identities.map((entry) => (
+                <option key={entry.id} value={entry.id} disabled={!canSign(entry)}>
+                  {entry.subject.commonName}
+                </option>
+              ))}
+            </select>
+            {identity !== undefined && (
+              <span className={`t-caption mt-2 ${expired ? 'text-error-text' : 'text-text-muted'}`}>
+                {expired
+                  ? t('cert.expired', { date: formatDay(locale, identity.notAfter) })
+                  : t('cert.validUntil', { date: formatDay(locale, identity.notAfter) })}
               </span>
-            </span>
-          </p>
-        )}
-        <SealPreview name={identity?.subject.commonName ?? ''} date={date} reason={reason} />
-        <div className="flex flex-col gap-1 rounded-card bg-card p-3">
+            )}
+          </label>
+          <label className="flex flex-col gap-1">
+            <span className="t-label">{t('sign.cert.reason')}</span>
+            <Field
+              className="w-full!"
+              value={reason}
+              maxLength={SEAL_REASON_MAX}
+              disabled={busy}
+              placeholder={t('sign.cert.reasonPlaceholder')}
+              onChange={(event) => setReason(event.target.value)}
+            />
+          </label>
+          <label className="flex flex-col gap-1">
+            <span className="t-label">{t('sign.cert.location')}</span>
+            <Field
+              className="w-full!"
+              value={location}
+              maxLength={SEAL_LOCATION_MAX}
+              disabled={busy}
+              onChange={(event) => setLocation(event.target.value)}
+            />
+          </label>
+        </div>
+        <div className="flex min-w-0 flex-col gap-4">
+          {certifies && (
+            <LockChoice
+              value={lock}
+              onChange={(next) => {
+                setLock(next);
+                writeLock(next);
+              }}
+              disabled={busy}
+            />
+          )}
+          {document?.flags?.signed === true && (
+            <p className="t-body m-0 flex items-start gap-2" data-testid="existing-lock">
+              <span className="shrink-0">
+                <Icon icon={Lock} size={16} />
+              </span>
+              <span className="flex flex-col">
+                <span className="t-label">{t('sign.cert.lock')}</span>
+                <span>
+                  {t(
+                    document.signatureLock === 'locked'
+                      ? 'sigs.locks'
+                      : document.signatureLock === 'none' || document.signatureLock === undefined
+                        ? 'sign.cert.lockOpen'
+                        : 'sigs.locksForms',
+                  )}
+                </span>
+              </span>
+            </p>
+          )}
+          <SealPreview name={identity?.subject.commonName ?? ''} date={date} reason={reason} />
+        </div>
+        <div data-testid="sign-notice" className="col-span-2 flex flex-col gap-1 rounded-card bg-card p-3">
           <p className="t-label m-0 flex items-start gap-2 text-text">
             <span className="shrink-0">
               <Icon icon={Lock} size={16} />

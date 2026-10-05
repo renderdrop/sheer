@@ -290,6 +290,8 @@ function FloatingSurface({
       target = element.querySelector<HTMLElement>('[data-autofocus]') ?? itemsOf(element, TAB_STOPS)[0];
     }
     (target ?? element).focus({ preventScroll: true });
+    // A long menu scrolls inside (Q7): the first or last item that took focus is brought into view.
+    if (role === 'menu') target?.scrollIntoView?.({ block: 'nearest' });
   }, [role, focusRequest]);
 
   useEffect(() => {

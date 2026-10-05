@@ -499,7 +499,10 @@
   --seal-min-height: 40px;
   --lens-size: 160px; /* POL-4: magnifier lens diameter (Magnifier.tsx LENS_SIZE) */
   --recover-list-max: 128px; /* recovery banner: three 40 px rows and their 4 px gaps, then it scrolls */
-  --lib-list-max: 360px; /* six 56 px rows and their 4 px gaps */
+  --lib-list-max: min(
+    360px,
+    calc(100dvh - 340px)
+  ); /* six 56 px rows and their 4 px gaps; shorter windows keep the footer visible */
   --insert-marker: 2px; /* organize grid: the insertion marker's width */
 
   /* Elevation: the only z-index values (DESIGN 1.7). 1 to 4 are local to the canvas, which isolates itself. */

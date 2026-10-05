@@ -84,6 +84,14 @@ beforeEach(() => {
 });
 
 describe('the signing flow (DESIGN 3.8 S3)', () => {
+  it('uses two columns with the notice below and the buttons outside the body (Q7)', async () => {
+    setup(<SignDialogHost />);
+    ready();
+    const body = await screen.findByTestId('sign-body');
+    expect(body.className).toContain('grid-cols-2');
+    expect(screen.getByTestId('sign-notice').className).toContain('col-span-2');
+    expect(body.contains(screen.getByRole('button', { name: 'Sign and save as…' }))).toBe(false);
+  });
   it('shows the plain notice, then signs with the placement, reason and location and opens a new tab', async () => {
     signDocument.mockResolvedValue(signed);
     const { user } = setup(<SignDialogHost />);

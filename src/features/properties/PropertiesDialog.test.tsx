@@ -121,6 +121,13 @@ describe('rules', () => {
 });
 
 describe('the Document properties dialog', () => {
+  it('lays the fields and facts out in two columns so the panel never scrolls (Q7)', async () => {
+    setup(<Fixture />);
+    await loaded();
+    expect(screen.getByTestId('props-fields').className).toContain('grid-cols-2');
+    expect(screen.getByTestId('props-facts').className).toContain('grid-cols-[max-content_1fr_max-content_1fr]');
+  });
+
   it('shows file text as text and the read-only values', async () => {
     setup(<Fixture />);
     await loaded();

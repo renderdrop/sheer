@@ -304,7 +304,11 @@ function LibraryModal() {
                 )}
               </div>
             ) : (
-              <div onKeyDown={onListKeyDown} className="flex max-h-lib-list flex-col gap-2 overflow-y-auto">
+              <div
+                data-scroll="list"
+                onKeyDown={onListKeyDown}
+                className="flex max-h-lib-list min-h-0 flex-col gap-2 overflow-y-auto"
+              >
                 {ROLES.map((role) => {
                   const rows = items.filter((item) => item.role === role);
                   if (rows.length === 0 && !loaded) return null;

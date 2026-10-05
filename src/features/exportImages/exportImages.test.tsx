@@ -101,6 +101,15 @@ describe('the dialog', () => {
     return view;
   };
 
+  it('puts the options in two columns and keeps the footer buttons outside them (Q7)', async () => {
+    await open();
+    const options = screen.getByTestId('export-options');
+    expect(options.className).toContain('grid-cols-2');
+    const go = screen.getByRole('button', { name: 'Export…' });
+    expect(options.contains(go)).toBe(false);
+    expect(screen.getByRole('dialog').className).toContain('w-sheet-wide');
+  });
+
   it('focuses the format first and shows the estimate', async () => {
     await open();
     expect(screen.getByRole('radio', { name: 'PNG' })).toBe(document.activeElement);

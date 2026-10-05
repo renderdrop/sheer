@@ -224,7 +224,7 @@ function ExportImagesModal() {
   const labelClass = 'mb-1 text-sm font-semibold text-text-muted';
 
   return (
-    <Modal labelledBy={`${id}-title`} width="w-dialog-md" onClose={cancel}>
+    <Modal labelledBy={`${id}-title`} width="w-sheet-wide" onClose={cancel}>
       <form
         onSubmit={(event) => {
           event.preventDefault();
@@ -257,24 +257,54 @@ function ExportImagesModal() {
           </div>
         ) : (
           <div ref={body} className="relative mt-4">
-            <div className={`flex flex-col gap-4 ${busy ? 'invisible' : ''}`} inert={busy ? true : undefined}>
-              <div>
-                <div className={labelClass}>{t('exportImg.format')}</div>
-                <RadioGroup
-                  label={t('exportImg.format')}
-                  look="segmented"
-                  orientation="horizontal"
-                  value={format}
-                  onChange={(value) => {
-                    setFormat(value);
-                    remember({ format: value });
-                  }}
-                  options={(['png', 'jpeg'] as const).map((value) => ({
-                    value,
-                    label: FORMAT_NAMES[value],
-                    content: FORMAT_NAMES[value],
-                  }))}
-                />
+            <div
+              data-testid="export-options"
+              className={`grid grid-cols-2 gap-x-6 gap-y-3 ${busy ? 'invisible' : ''}`}
+              inert={busy ? true : undefined}
+            >
+              <div className="flex min-w-0 flex-col gap-3">
+                <div>
+                  <div className={labelClass}>{t('exportImg.format')}</div>
+                  <RadioGroup
+                    label={t('exportImg.format')}
+                    look="segmented"
+                    orientation="horizontal"
+                    value={format}
+                    onChange={(value) => {
+                      setFormat(value);
+                      remember({ format: value });
+                    }}
+                    options={(['png', 'jpeg'] as const).map((value) => ({
+                      value,
+                      label: FORMAT_NAMES[value],
+                      content: FORMAT_NAMES[value],
+                    }))}
+                  />
+                </div>
+                <div role="group" aria-labelledby={`${id}-quality`} aria-disabled={format === 'png' ? true : undefined}>
+                  <div className="mb-1 flex items-baseline gap-2">
+                    <span id={`${id}-quality`} className="text-sm font-semibold text-text-muted">
+                      {t('exportImg.quality')}
+                    </span>
+                    {format === 'png' && <span className="text-sm text-text-muted">{t('exportImg.pngLossless')}</span>}
+                  </div>
+                  <Slider
+                    label={t('exportImg.quality')}
+                    hideLabel
+                    min={QUALITY_MIN}
+                    max={QUALITY_MAX}
+                    step={1}
+                    value={quality}
+                    disabled={format === 'png'}
+                    format={(value) => t('exportImg.qualityValue', { n: value })}
+                    onValueChange={setQuality}
+                    onValueCommit={(value) => remember({ quality: value })}
+                  />
+                </div>
+                <label className="flex min-h-control-md cursor-pointer items-center gap-2">
+                  <Checkbox checked={annotations} onChange={(event) => setAnnotations(event.target.checked)} />
+                  {t('exportImg.annotations')}
+                </label>
               </div>
               <div>
                 <div className={labelClass}>{t('exportImg.pages')}</div>
@@ -306,7 +336,7 @@ function ExportImagesModal() {
                   )}
                 </div>
               </div>
-              <div>
+              <div className="col-span-2">
                 <div className={labelClass}>{t('exportImg.resolution')}</div>
                 <div className="flex items-center gap-2">
                   <RadioGroup
@@ -341,31 +371,7 @@ function ExportImagesModal() {
                   )}
                 </div>
               </div>
-              <div role="group" aria-labelledby={`${id}-quality`} aria-disabled={format === 'png' ? true : undefined}>
-                <div className="mb-1 flex items-baseline gap-2">
-                  <span id={`${id}-quality`} className="text-sm font-semibold text-text-muted">
-                    {t('exportImg.quality')}
-                  </span>
-                  {format === 'png' && <span className="text-sm text-text-muted">{t('exportImg.pngLossless')}</span>}
-                </div>
-                <Slider
-                  label={t('exportImg.quality')}
-                  hideLabel
-                  min={QUALITY_MIN}
-                  max={QUALITY_MAX}
-                  step={1}
-                  value={quality}
-                  disabled={format === 'png'}
-                  format={(value) => t('exportImg.qualityValue', { n: value })}
-                  onValueChange={setQuality}
-                  onValueCommit={(value) => remember({ quality: value })}
-                />
-              </div>
-              <label className="flex min-h-control-md cursor-pointer items-center gap-2">
-                <Checkbox checked={annotations} onChange={(event) => setAnnotations(event.target.checked)} />
-                {t('exportImg.annotations')}
-              </label>
-              <p role="status" aria-live="polite" className="m-0 min-h-6 text-sm text-text-muted">
+              <p role="status" aria-live="polite" className="col-span-2 m-0 min-h-6 text-sm text-text-muted">
                 {estimate !== null &&
                   t('exportImg.estimateSize', {
                     images: t('exportImg.estimate', { count: estimate.count }),
