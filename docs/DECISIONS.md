@@ -2311,3 +2311,7 @@ UI places follow DESIGN §3.8, not the working names of the frontend cut above: 
 5. This session (2026-10-05): the topic is v1.4 "Certificate signature", already running. Two reports: the v1.3 report written afterwards (`docs/reports/2026-10-05-v1.3-zitate.md`), and the v1.4 report after its GitHub release; then STOP, no v1.5.
 
 **Consequences.** The Stop hook (`continue-loop.sh`) stays as it is: the STOP file ends the loop, and §15 rule 1 keeps it from pulling in a new topic. Reports give the owner one page per topic instead of the transcript.
+
+**ADR-119 addendum 3 (owner decisions on the v1.3 report, 2026-10-05).** Chicago stays author-date. The default citation style is APA 7 in every UI language (no longer DIN for German); the last chosen style is kept (`sheer.citations.style`). Reference data stays inside the PDF (`/SHR_Bib`) — confirmed. A fifth style, "Deutsche Zitierweise (Fußnoten-Stil)", is noted in the Politur backlog; it is specified only after owner feedback.
+
+**ADR-122 addendum (owner, 2026-10-05).** Session reports are written in German, as an exception to rule 6 (CLAUDE.md rule 6, ORCHESTRATOR_PROMPT §15 format headings in German). The v1.3 report stays as written.

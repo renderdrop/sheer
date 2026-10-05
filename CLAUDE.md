@@ -18,7 +18,7 @@ Work is orchestrated autonomously per `ORCHESTRATOR_PROMPT.md`; resume state liv
 3. No Adobe branding, icons, names, screenshots or layout copies.
 4. Local only: no backend, login, accounts, telemetry, cloud AI or network (except the opt-in updater module).
 5. Signatures: visual (draw/type/image) + optional self-signed digital later. No eIDAS QES.
-6. English for code, commits, docs, tests. UI strings via i18n (en, de).
+6. English for code, commits, docs, tests. UI strings via i18n (en, de). Exception: session reports in `docs/reports/` are German (ADR-122).
 7. Token discipline beats perfection. Finished > perfect.
 8. Nothing overlaps in the UI; every surface has a slot in the layout grid.
 9. No Claude Code mods, plugins or MCP servers.

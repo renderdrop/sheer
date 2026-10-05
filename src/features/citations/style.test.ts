@@ -5,7 +5,7 @@ import { useLocaleStore } from '../../i18n/store';
 import {
   FORMAT_KEY,
   STYLE_KEY,
-  defaultStyleFor,
+  DEFAULT_STYLE,
   getCitationFormat,
   getCitationStyle,
   setCitationFormat,
@@ -20,12 +20,11 @@ beforeEach(() => {
 });
 
 describe('citation preferences', () => {
-  it('starts with DIN for German and APA otherwise', () => {
-    expect(defaultStyleFor('de')).toBe('dinIso690');
-    expect(defaultStyleFor('en')).toBe('apa7');
+  it('starts with APA 7 in every UI language', () => {
+    expect(DEFAULT_STYLE).toBe('apa7');
     expect(getCitationStyle()).toBe('apa7');
     useLocaleStore.setState({ locale: 'de' });
-    expect(getCitationStyle()).toBe('dinIso690');
+    expect(getCitationStyle()).toBe('apa7');
   });
 
   it('keeps a chosen style over the language and writes it to storage', () => {

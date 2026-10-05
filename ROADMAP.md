@@ -343,6 +343,7 @@ new engine capability or dependency is needed. Not picked by the loop before v1.
 ## Politur backlog (minors not tied to a milestone)
 
 - [ ] Politur backlog — picked between feature milestones when a wave has a free slot
+  - (owner 2026-10-05) „Deutsche Zitierweise (Fußnoten-Stil)“ as a fifth citation style — specify only after owner feedback (no spec, no build before that)
   - (v1.3 designer round, majors) comment/citation cards wrap Löschen onto its own row (+32 px per card; one action row or Löschen into ⋯); the mini bar colour row shows a sixth dark-green swatch outside the C4 five-swatch set
   - (v1.3 designer round, minors) Reference popover ~320 wide instead of panel − 16 (spills past the panel edge); selected card has a Solar border only, no Ink cue (§2); citation bubble top-left corner not radius sm, no leader line; Reference "nothing found" row without its own fill on the Sand dialog, empty hint leaves out citations; empty reference preview shows "(o. J.)." instead of only the missing caption; error toast icon is a Danger circle-alert where §3.7 asks triangle-alert in Ink; reply field shows a stray scrollbar; document tab title cut without an ellipsis at 960 ("Willk")
   - (v1.3 security, low) a bare `cargo deny check` fails on the Linux-only GTK advisories and the target-lexicon LLVM-exception licence (check.sh scopes them): add a deny.toml note/entry so ad-hoc runs pass

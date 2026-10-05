@@ -6,19 +6,17 @@ import {
   type CitationFileFormat,
   type CitationStyle,
 } from '../../api/citations';
-import { useLocale, type Locale } from '../../i18n';
-import { useLocaleStore } from '../../i18n/store';
 
 /**
  * The citation style and the last save format are preferences of the app (DESIGN 3.7 C7, UI storage `sheer.citations.style` and
- * `sheer.citations.format`), not of a document. Until the user chooses, the style follows the UI language: DIN ISO 690 for German,
- * else APA 7.
+ * `sheer.citations.format`), not of a document. Until the user chooses, the style is APA 7 in every UI
+ * language (owner decision 2026-10-05); the last chosen style is kept.
  */
 export const STYLE_KEY = 'sheer.citations.style';
 export const FORMAT_KEY = 'sheer.citations.format';
 
-/** The style a first run starts with. */
-export const defaultStyleFor = (locale: Locale): CitationStyle => (locale === 'de' ? 'dinIso690' : 'apa7');
+/** The style a first run starts with, whatever the UI language. */
+export const DEFAULT_STYLE: CitationStyle = 'apa7';
 
 function read<T extends string>(key: string, allowed: readonly T[]): T | undefined {
   try {
@@ -49,7 +47,7 @@ export const useCitationPrefs = create<PrefsState>()(() => ({
 
 /** The style in use: the stored one, else the default of the UI language. */
 export function getCitationStyle(): CitationStyle {
-  return useCitationPrefs.getState().style ?? defaultStyleFor(useLocaleStore.getState().locale);
+  return useCitationPrefs.getState().style ?? DEFAULT_STYLE;
 }
 
 export function setCitationStyle(style: CitationStyle): void {
@@ -60,8 +58,7 @@ export function setCitationStyle(style: CitationStyle): void {
 /** `const [style, setStyle] = useCitationStyle()`; every short citation that uses it follows a change. */
 export function useCitationStyle(): [CitationStyle, (style: CitationStyle) => void] {
   const stored = useCitationPrefs((state) => state.style);
-  const locale = useLocale();
-  return [stored ?? defaultStyleFor(locale), setCitationStyle];
+  return [stored ?? DEFAULT_STYLE, setCitationStyle];
 }
 
 /** The format the last save used. */

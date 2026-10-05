@@ -6,6 +6,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- The default citation style is APA 7 in every UI language; the last chosen style is kept (owner decision).
+
 ## [1.3.0] - 2026-10-05
 
 v1.3 "Citations" (FEEDBACK F15 C, DESIGN §3.7, ADR-119).
