@@ -317,9 +317,10 @@ new engine capability or dependency is needed. Not picked by the loop before v1.
   - (2026-10-05, installed NSIS build, Windows) round 1 + 2 by mouse: AC 1, 2, 3, 5, 6, 7, 8, 11, 13, 14, 15, 16, 18, 21, 24 pass (after fixes: in-window menu lock 0b43d34, seal overlay offset + field widths + labels 0bab7a6); not by mouse (tests only): AC 4 import, 9 move/resize (no resize handles), 10 expired, 12 other viewer/print, 17 two signatures, 19 damaged, 20 additions after signing, 22 keychain unavailable, 23 reduced motion. Security review FAIL (1 high) fixed in c6956df. CI: #71 sig_validate env, #73 p12 decode race (72316ba).
 
 ### v1.5 "Edit text"
-- [ ] v1.5 spec — designer spec + architect ADR (content-stream text editing with embedded fonts, fallback font matching)
+- [x] v1.5 spec — designer spec + architect ADR (content-stream text editing with embedded fonts, fallback font matching) (ADR-125, ARCHITECTURE §13, DESIGN §3.10; feasibility spike pdfwrite/textedit, report docs/reports/2026-10-06-v1.5-phase1-text-machbarkeit.md)
 - [ ] v1.5.1 — Edit existing text line- and paragraph-wise with embedded fonts
-- [ ] v1.5.2 — Otherwise the closest system font, with a notice; no reflow across pages
+- [ ] v1.5.2 — Otherwise a bundled fallback (Arimo/Tinos/Cousine, ADR-125 §4, changed words only) with a notice; paragraph reflow, never across pages
+  - spike carry-overs: stream order ≠ reading order (form footers), glyph-outline check in the font program, right/centre-aligned runs, cumulative decoded-bytes budget across Form XObjects + visited-form cycle check, corpus ≥ 30 files and click-mapping ≥ 90 % gate
 - [ ] v1.5 acceptance — installed build with the mouse, designer round, tag v1.5.0
 
 ### v1.6 "Smart links"

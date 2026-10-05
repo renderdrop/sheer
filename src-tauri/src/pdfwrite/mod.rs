@@ -29,6 +29,7 @@ pub mod seal;
 pub mod sheer_keys;
 pub mod sign;
 pub mod sigread;
+pub mod textedit;
 pub mod unsign;
 
 pub use prescan::load_untrusted;
