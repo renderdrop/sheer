@@ -330,9 +330,11 @@ export const AnnotationLayer = memo(function AnnotationLayer({
               key={a.id}
               a={a}
               view={preview.get(a.id) ?? a}
-              selected={selectedHere.has(a.id)}
+              // While its editor is open a text comment shows only the editor's own outline: the frame keeps the size the box had
+              // when it was made and would sit as a stale box inside the growing text (R7 designer review).
+              selected={selectedHere.has(a.id) && !(editing?.kind === 'freeText' && editing.id === a.id)}
               hovered={hover === a.id && selectActive}
-              withHandles={only && selectActive}
+              withHandles={only && selectActive && !(editing?.kind === 'freeText' && editing.id === a.id)}
               pageNumber={pageIndex + 1}
               api={handlers}
               onEdit={edit}
