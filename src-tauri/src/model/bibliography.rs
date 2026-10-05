@@ -1,10 +1,17 @@
 //! The bibliographic record of a document (ADR-119 section 4): shapes, the model's session state, and what the first-page heuristic finds.
 //!
-//! Seam of package W0; package C2 fills in validation, the command, and the merge with Info and XMP.
+//! Validation, the merge of the layers (user record, XMP, Info, first page) and the undoable command live here; the file side is
+//! `pdfwrite::bibliography`.
 
 use std::collections::HashMap;
 
 use serde::{Deserialize, Serialize};
+
+use super::command::DocCommand;
+use super::doc_state::{Delta, DocPart, DocState};
+use crate::documents::sanitize_text;
+use crate::error::AppError;
+use crate::limits;
 
 /// The kind of work a record describes.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -122,13 +129,367 @@ pub struct FirstPageHints {
     pub doi: Option<String>,
 }
 
+/// What a file says about its bibliographic record, layer by layer (read once by `get_bibliography`).
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct BibLayers {
+    /// The file's own `/SHR_Bib`, if it has a valid one.
+    pub file: Option<BibRecord>,
+    /// What the XMP packet says (`kind` is not used).
+    pub xmp: BibRecord,
+    /// What `/Info` says (`kind` is not used).
+    pub info: BibRecord,
+    /// What the first-page heuristic found, once it ran (it runs only for an empty title, authors or year).
+    pub hints: Option<FirstPageHints>,
+}
+
 /// The record as the session has it (`DocState.bibliography`).
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct BibliographyState {
-    /// The merged record once `get_bibliography` has read the file; `None` before.
+    /// The merged record, kept current by `get_bibliography` and `SetBibliography`; `None` until the file is read.
     pub record: Option<BibRecord>,
-    /// Set by `DocCommand::SetBibliography`, cleared by a save: the record the next save writes.
+    /// Where each field of `record` comes from.
+    pub sources: HashMap<BibField, BibSource>,
+    /// What the file says; `None` until `get_bibliography` has read it.
+    pub layers: Option<BibLayers>,
+    /// Set by `DocCommand::SetBibliography`, cleared by a save: the user record the next save writes.
     pub pending: Option<BibRecord>,
+}
+
+impl BibliographyState {
+    /// The user's record as the session has it: the staged one, else the file's, else an empty one.
+    pub fn user(&self) -> BibRecord {
+        self.pending
+            .clone()
+            .or_else(|| self.layers.as_ref().and_then(|layers| layers.file.clone()))
+            .unwrap_or_default()
+    }
+
+    /// The user's record exists (staged or in the file) and is not empty.
+    pub fn has_user(&self) -> bool {
+        self.user() != BibRecord::default()
+    }
+
+    /// Something is staged for the next save.
+    pub fn is_pending(&self) -> bool {
+        self.pending.is_some()
+    }
+
+    /// Computes `record` and `sources` again from the layers and the staged record.
+    pub fn refresh(&mut self) {
+        let Some(layers) = &self.layers else {
+            return;
+        };
+        let user = self.user();
+        let user = (user != BibRecord::default()).then_some(&user);
+        let (record, sources) = merge(user, &layers.xmp, &layers.info, layers.hints.as_ref());
+        self.record = Some(record);
+        self.sources = sources;
+    }
+}
+
+fn is_clean_text(text: &str) -> bool {
+    sanitize_text(text, usize::MAX) == text
+}
+
+fn check_text(text: &Option<String>, max: usize) -> Result<(), AppError> {
+    let Some(text) = text else {
+        return Ok(());
+    };
+    if text.chars().count() > max {
+        return Err(AppError::limit("bibliography", max as u64));
+    }
+    if !is_clean_text(text) {
+        return Err(AppError::invalid("bibliography"));
+    }
+    Ok(())
+}
+
+fn days_in_month(year: u32, month: u32) -> u32 {
+    match month {
+        1 | 3 | 5 | 7 | 8 | 10 | 12 => 31,
+        4 | 6 | 9 | 11 => 30,
+        _ if year.is_multiple_of(4) && (!year.is_multiple_of(100) || year.is_multiple_of(400)) => {
+            29
+        }
+        _ => 28,
+    }
+}
+
+/// `YYYY-MM-DD` with a real calendar date.
+pub fn is_iso_date(text: &str) -> bool {
+    let bytes = text.as_bytes();
+    if bytes.len() != 10 || bytes[4] != b'-' || bytes[7] != b'-' {
+        return false;
+    }
+    let digits = |range: std::ops::Range<usize>| -> Option<u32> {
+        let part = text.get(range)?;
+        if part.bytes().all(|b| b.is_ascii_digit()) {
+            part.parse().ok()
+        } else {
+            None
+        }
+    };
+    match (digits(0..4), digits(5..7), digits(8..10)) {
+        (Some(year), Some(month), Some(day)) => {
+            (1..=12).contains(&month) && day >= 1 && day <= days_in_month(year, month)
+        }
+        _ => false,
+    }
+}
+
+/// A DOI in its bare form: `10.` and a registrant, a slash and a suffix, no white space.
+pub fn is_doi_shape(text: &str) -> bool {
+    text.starts_with("10.")
+        && text.contains('/')
+        && !text.chars().any(|c| c.is_whitespace() || c.is_control())
+}
+
+/// A web address in shape only (it is never opened): `http://` or `https://`, a host, no white space.
+pub fn is_url_shape(text: &str) -> bool {
+    let rest = text
+        .strip_prefix("https://")
+        .or_else(|| text.strip_prefix("http://"));
+    rest.is_some_and(|rest| {
+        !rest.is_empty() && !text.chars().any(|c| c.is_whitespace() || c.is_control())
+    })
+}
+
+impl BibRecord {
+    /// Checks what the UI sent: lengths (`limit_exceeded`), control and format characters, the year, the date, and the shape of the
+    /// DOI and the address (`invalid_argument`, `what: "bibliography"`).
+    pub fn check(&self) -> Result<(), AppError> {
+        if self.authors.len() > limits::BIB_AUTHORS_MAX {
+            return Err(AppError::limit(
+                "bibliography",
+                limits::BIB_AUTHORS_MAX as u64,
+            ));
+        }
+        for person in &self.authors {
+            for part in [&person.family, &person.given] {
+                if part.chars().count() > limits::BIB_PERSON_MAX {
+                    return Err(AppError::limit(
+                        "bibliography",
+                        limits::BIB_PERSON_MAX as u64,
+                    ));
+                }
+                if !is_clean_text(part) {
+                    return Err(AppError::invalid("bibliography"));
+                }
+            }
+        }
+        for text in [
+            &self.title,
+            &self.container_title,
+            &self.volume,
+            &self.issue,
+            &self.pages,
+            &self.edition,
+            &self.publisher,
+            &self.place,
+        ] {
+            check_text(text, limits::BIB_FIELD_MAX)?;
+        }
+        check_text(&self.year, limits::BIB_YEAR_MAX)?;
+        check_text(&self.doi, limits::BIB_DOI_MAX)?;
+        check_text(&self.url, limits::BIB_URL_MAX)?;
+        check_text(&self.accessed, limits::BIB_YEAR_MAX)?;
+        let filled = |text: &Option<String>| -> Option<String> {
+            text.as_deref()
+                .map(str::trim)
+                .filter(|text| !text.is_empty())
+                .map(str::to_owned)
+        };
+        if filled(&self.doi).is_some_and(|doi| !is_doi_shape(&doi)) {
+            return Err(AppError::invalid("bibliography"));
+        }
+        if filled(&self.url).is_some_and(|url| !is_url_shape(&url)) {
+            return Err(AppError::invalid("bibliography"));
+        }
+        if filled(&self.accessed).is_some_and(|date| !is_iso_date(&date)) {
+            return Err(AppError::invalid("bibliography"));
+        }
+        Ok(())
+    }
+
+    /// The record with every text trimmed, an empty text as `None` and an author with no name left out.
+    pub fn normalized(&self) -> Self {
+        let tidy = |text: &Option<String>| {
+            text.as_deref()
+                .map(str::trim)
+                .filter(|text| !text.is_empty())
+                .map(str::to_owned)
+        };
+        Self {
+            kind: self.kind,
+            authors: self
+                .authors
+                .iter()
+                .map(|person| Person {
+                    family: person.family.trim().to_owned(),
+                    given: person.given.trim().to_owned(),
+                })
+                .filter(|person| !person.family.is_empty() || !person.given.is_empty())
+                .collect(),
+            title: tidy(&self.title),
+            year: tidy(&self.year),
+            container_title: tidy(&self.container_title),
+            volume: tidy(&self.volume),
+            issue: tidy(&self.issue),
+            pages: tidy(&self.pages),
+            edition: tidy(&self.edition),
+            publisher: tidy(&self.publisher),
+            place: tidy(&self.place),
+            doi: tidy(&self.doi),
+            url: tidy(&self.url),
+            accessed: tidy(&self.accessed),
+        }
+    }
+}
+
+/// The first non-empty value of `layers`, strongest first, with the source it came from.
+fn pick(layers: [(&Option<String>, BibSource); 4]) -> (Option<String>, BibSource) {
+    for (value, source) in layers {
+        if let Some(value) = value.as_ref().filter(|value| !value.is_empty()) {
+            return (Some(value.clone()), source);
+        }
+    }
+    (None, BibSource::None)
+}
+
+/// Merges the layers per field, strongest first: the user's record, XMP, Info, the first-page heuristic. An empty field of a layer
+/// does not count. The record is what the UI shows; `sources` says where each field came from (`none` for an empty one).
+pub fn merge(
+    user: Option<&BibRecord>,
+    xmp: &BibRecord,
+    info: &BibRecord,
+    hints: Option<&FirstPageHints>,
+) -> (BibRecord, HashMap<BibField, BibSource>) {
+    let mut sources = HashMap::new();
+    let empty = BibRecord::default();
+    let u = user.unwrap_or(&empty);
+    let none: Option<String> = None;
+    let hint = |value: Option<&Option<String>>| value.cloned().flatten();
+    let hint_title = hint(hints.map(|h| &h.title));
+    let hint_year = hint(hints.map(|h| &h.year));
+    let hint_doi = hint(hints.map(|h| &h.doi));
+    let mut field = |field: BibField,
+                     u: &Option<String>,
+                     x: &Option<String>,
+                     i: &Option<String>,
+                     h: &Option<String>| {
+        let (value, source) = pick([
+            (u, BibSource::User),
+            (x, BibSource::Xmp),
+            (i, BibSource::Info),
+            (h, BibSource::Heuristic),
+        ]);
+        sources.insert(field, source);
+        value
+    };
+    let title = field(
+        BibField::Title,
+        &u.title,
+        &xmp.title,
+        &info.title,
+        &hint_title,
+    );
+    let year = field(BibField::Year, &u.year, &xmp.year, &info.year, &hint_year);
+    let doi = field(BibField::Doi, &u.doi, &xmp.doi, &info.doi, &hint_doi);
+    let container_title = field(
+        BibField::ContainerTitle,
+        &u.container_title,
+        &xmp.container_title,
+        &info.container_title,
+        &none,
+    );
+    let volume = field(
+        BibField::Volume,
+        &u.volume,
+        &xmp.volume,
+        &info.volume,
+        &none,
+    );
+    let issue = field(BibField::Issue, &u.issue, &xmp.issue, &info.issue, &none);
+    let pages = field(BibField::Pages, &u.pages, &xmp.pages, &info.pages, &none);
+    let edition = field(
+        BibField::Edition,
+        &u.edition,
+        &xmp.edition,
+        &info.edition,
+        &none,
+    );
+    let publisher = field(
+        BibField::Publisher,
+        &u.publisher,
+        &xmp.publisher,
+        &info.publisher,
+        &none,
+    );
+    let place = field(BibField::Place, &u.place, &xmp.place, &info.place, &none);
+    let url = field(BibField::Url, &u.url, &xmp.url, &info.url, &none);
+    let accessed = field(
+        BibField::Accessed,
+        &u.accessed,
+        &xmp.accessed,
+        &info.accessed,
+        &none,
+    );
+    let (authors, author_source) = if !u.authors.is_empty() {
+        (u.authors.clone(), BibSource::User)
+    } else if !xmp.authors.is_empty() {
+        (xmp.authors.clone(), BibSource::Xmp)
+    } else if !info.authors.is_empty() {
+        (info.authors.clone(), BibSource::Info)
+    } else {
+        (Vec::new(), BibSource::None)
+    };
+    sources.insert(BibField::Authors, author_source);
+    sources.insert(
+        BibField::Kind,
+        if user.is_some() {
+            BibSource::User
+        } else {
+            BibSource::None
+        },
+    );
+    let record = BibRecord {
+        kind: u.kind,
+        authors,
+        title,
+        year,
+        container_title,
+        volume,
+        issue,
+        pages,
+        edition,
+        publisher,
+        place,
+        doi,
+        url,
+        accessed,
+    };
+    (record, sources)
+}
+
+/// Runs `DocCommand::SetBibliography`: stages `record` as the user's record (equal to the file's: nothing staged) and returns the
+/// command that puts the previous one back. The file must have been read (`get_bibliography`).
+pub(crate) fn set(
+    state: &mut DocState,
+    record: &BibRecord,
+    delta: &mut Delta,
+) -> Result<DocCommand, AppError> {
+    record.check()?;
+    let bib = &mut state.bibliography;
+    let Some(layers) = &bib.layers else {
+        return Err(AppError::invalid("bibliography"));
+    };
+    let previous = bib.user();
+    let clean = layers.file.clone().unwrap_or_default();
+    let next = record.normalized();
+    bib.pending = (next != clean).then_some(next);
+    bib.refresh();
+    delta.doc.insert(DocPart::Bibliography);
+    Ok(DocCommand::SetBibliography { record: previous })
 }
 
 #[cfg(test)]

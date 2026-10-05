@@ -275,3 +275,7 @@ All checked with `cargo deny` per shipped target (x86_64-pc-windows-msvc, aarch6
 ## v1.2 R0.2 (Inter, ADR-059, ADR-100)
 
 - Inter variable 5.3.0 (OFL-1.1, The Inter Project Authors), files `inter-latin-wght-normal.woff2` and `inter-latin-ext-wght-normal.woff2` taken from the npm package `@fontsource-variable/inter` (`npm pack`, not a dependency), in `src/assets/fonts/` with `Inter-OFL.txt`. Font file only, never a crate; `font-src 'self'` covers it.
+
+## v1.3 package C2 (bibliography, ADR-119 item 5)
+
+- `quick-xml` 0.42.0 (MIT, tafia/quick-xml), `default-features = false`: direct dependency now (already in the build at the same version through `plist`, no new crate). Pull parser for the XMP packet of `pdfwrite/bibliography.rs`, read only; a DocType event, depth over 32, over 200 000 events and a packet over 4 MiB abort the read.

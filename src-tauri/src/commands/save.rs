@@ -224,8 +224,12 @@ pub(super) fn save_plan_of(state: &DocState, pages: &PagePlan, keep_encryption: 
             .map(|(_, pending)| pending.clone()),
         metadata: state.metadata().change(),
         keep_encryption,
-        // Package C2 fills this from `DocState.bibliography`.
-        bibliography: None,
+        // The staged record is dropped by a staged removal of the metadata (`pdfwrite::apply_extras` skips it too).
+        bibliography: if state.metadata().strip {
+            None
+        } else {
+            state.bibliography.pending.clone()
+        },
     }
 }
 

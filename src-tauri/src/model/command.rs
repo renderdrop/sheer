@@ -100,7 +100,7 @@ pub enum DocCommand {
     SetMetadata { patch: MetadataPatch },
     /// Stages the removal of all metadata, written by the next (full) save.
     RemoveMetadata,
-    /// Sets the bibliographic record written at the next save (ADR-119; label `bibliography.set`). Not applied yet: package C2.
+    /// Sets the bibliographic record written at the next save (ADR-119; label `bibliography.set`).
     SetBibliography { record: BibRecord },
     /// Puts the given content back into the given ids. The inverse of every command; not accepted from the UI.
     #[serde(skip_deserializing)]
@@ -318,8 +318,7 @@ impl DocCommand {
                 }
             }
             Self::SetProtection { .. } | Self::RemoveMetadata => Ok(()),
-            // Package C2 validates the record.
-            Self::SetBibliography { .. } => Ok(()),
+            Self::SetBibliography { record } => record.check(),
             Self::SetMetadata { patch } => patch.check(),
             Self::UpdateAnnotation { coalesce, .. } => match coalesce {
                 Some(key) if !is_key(key) => Err(AppError::invalid("coalesce")),
@@ -472,8 +471,9 @@ impl DocCommand {
             }
             Self::SetMetadata { patch } => metadata::set(state, patch, &mut delta)?,
             Self::RemoveMetadata => metadata::remove(state, &mut delta)?,
-            // Nothing changes and nothing enters the history until package C2 fills this in.
-            Self::SetBibliography { .. } => return Err(AppError::not_yet()),
+            Self::SetBibliography { record } => {
+                super::bibliography::set(state, record, &mut delta)?
+            }
             // The engine makes the pages first (`commands::pages`); the model alone cannot.
             Self::InsertBlankPage { .. } | Self::InsertPages { .. } => {
                 return Err(AppError::invalid("command"))
@@ -1600,28 +1600,90 @@ mod tests {
 }
 
 #[cfg(test)]
-mod bibliography_seam_tests {
+mod bibliography_tests {
     use serde_json::json;
 
     use super::*;
     use crate::error::ErrorCode;
+    use crate::model::bibliography::{BibLayers, BibSource, BibliographyState};
+    use crate::model::doc_state::DocPart;
+
+    fn stamp() -> Stamp {
+        Stamp {
+            modified: "D:20260101000000Z".to_owned(),
+            now_ms: 0,
+        }
+    }
+
+    fn set(title: &str) -> DocCommand {
+        serde_json::from_value(json!({
+            "type": "setBibliography",
+            "record": {"kind": "book", "title": title, "authors": [{"family": "A"}]}
+        }))
+        .unwrap()
+    }
+
+    fn read_state() -> DocState {
+        let mut state = DocState::new(1);
+        state.bibliography = BibliographyState {
+            layers: Some(BibLayers::default()),
+            ..BibliographyState::default()
+        };
+        state
+    }
 
     #[test]
-    fn set_bibliography_parses_and_changes_nothing_until_package_c2() {
-        let command: DocCommand = serde_json::from_value(json!({
-            "type": "setBibliography",
-            "record": {"kind": "book", "title": "T", "authors": [{"family": "A"}]}
-        }))
-        .unwrap();
+    fn the_command_needs_the_file_read_first() {
+        let command = set("T");
         assert_eq!(command.label(), "bibliography.set");
         assert!(command.is_page_command());
         let mut state = DocState::new(1);
-        let stamp = Stamp {
-            modified: "D:20260101000000Z".to_owned(),
-            now_ms: 0,
-        };
-        let error = state.execute(command, &stamp).unwrap_err();
-        assert_eq!(error.code(), ErrorCode::UnsupportedFeature);
+        let error = state.execute(command, &stamp()).unwrap_err();
+        assert_eq!(error.code(), ErrorCode::InvalidArgument);
+        assert!(!state.is_dirty());
+    }
+
+    #[test]
+    fn a_set_is_one_undoable_step_that_marks_the_document_dirty() {
+        let mut state = read_state();
+        let changes = state.execute(set("T"), &stamp()).unwrap();
+        assert!(state.is_dirty());
+        assert!(changes.doc.contains(&DocPart::Bibliography));
+        let bib = &state.bibliography;
+        assert!(bib.is_pending());
+        assert_eq!(bib.record.as_ref().unwrap().title.as_deref(), Some("T"));
+        assert_eq!(
+            bib.sources[&crate::model::bibliography::BibField::Title],
+            BibSource::User
+        );
+        state.execute(set("U"), &stamp()).unwrap();
+        state.undo(&stamp()).unwrap();
+        assert_eq!(state.bibliography.user().title.as_deref(), Some("T"));
+        state.undo(&stamp()).unwrap();
+        assert!(!state.bibliography.is_pending());
+        assert!(!state.is_dirty());
+        assert_eq!(state.bibliography.record.as_ref().unwrap().title, None);
+        state.redo(&stamp()).unwrap();
+        assert_eq!(state.bibliography.user().title.as_deref(), Some("T"));
+    }
+
+    #[test]
+    fn a_bad_record_is_refused_before_anything_changes() {
+        let mut state = read_state();
+        for record in [
+            json!({"title": "a\u{7}b"}),
+            json!({"year": "12345678901234567"}),
+            json!({"accessed": "2026-02-30"}),
+            json!({"doi": "not a doi"}),
+            json!({"url": "javascript:alert(1)"}),
+            json!({"authors": (0..33).map(|_| json!({"family": "A"})).collect::<Vec<_>>()}),
+            json!({"title": "x".repeat(1_001)}),
+        ] {
+            let command = DocCommand::SetBibliography {
+                record: serde_json::from_value(record.clone()).unwrap(),
+            };
+            assert!(state.execute(command, &stamp()).is_err(), "{record}");
+        }
         assert!(!state.is_dirty());
     }
 }

@@ -19,6 +19,7 @@ use crate::documents::PageId;
 use crate::error::AppError;
 use crate::limits;
 use crate::pdfwrite::reviews::ReviewLink;
+use crate::pdfwrite::sheer_keys::SheerKeys;
 use crate::security::secret::{PendingProtection, SecretSlots, Ticket};
 
 /// What a command needs to know about the moment it runs.
@@ -370,6 +371,9 @@ impl DocState {
         self.secrets.clear();
         self.pending_protection = None;
         self.metadata = MetadataState::default();
+        // The record a save wrote is in the file now (a removal of the metadata dropped it): it is read again.
+        self.bibliography = super::bibliography::BibliographyState::default();
+        delta.doc.insert(DocPart::Bibliography);
         delta.doc.insert(DocPart::Metadata);
         delta.doc.insert(DocPart::Protection);
         self.history.clear();
@@ -726,6 +730,31 @@ impl DocState {
             entry.annotation.state = link.state;
             self.track(&entry, true);
             self.entries.insert(id, entry);
+        }
+    }
+
+    /// Gives the annotations of `page` that were just read from the file (still `Clean`) the `/SHR_Cite` and `/SHR_Tags` the file has,
+    /// by position in the page's annotations (ADR-119, `pdfwrite::sheer_keys`). Not a change: no revision, no history.
+    pub fn apply_sheer_keys(&mut self, page: PageId, keys: &HashMap<u32, SheerKeys>) {
+        if keys.is_empty() {
+            return;
+        }
+        for entry in self.entries.values_mut() {
+            if entry.tombstone || entry.annotation.page_id != page {
+                continue;
+            }
+            let Some(found) = entry
+                .persisted
+                .as_ref()
+                .and_then(|origin| keys.get(&origin.annot_index))
+            else {
+                continue;
+            };
+            if entry.annotation.sync == Sync::Clean {
+                entry
+                    .annotation
+                    .apply_file_keys(found.cite.as_ref(), &found.tags);
+            }
         }
     }
 

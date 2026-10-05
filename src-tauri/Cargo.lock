@@ -3918,6 +3918,7 @@ dependencies = [
  "muda",
  "pdfium-render",
  "png 0.18.1",
+ "quick-xml",
  "same-file",
  "serde",
  "serde_json",

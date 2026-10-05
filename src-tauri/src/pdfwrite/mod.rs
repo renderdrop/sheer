@@ -4,6 +4,7 @@
 
 pub mod annots;
 pub mod appearance;
+pub mod bibliography;
 pub mod compress;
 pub mod content;
 pub mod coords;
@@ -24,6 +25,24 @@ pub mod redact_content;
 pub mod redact_image;
 pub mod reviews;
 pub mod save;
+pub mod sheer_keys;
 
 pub use prescan::load_untrusted;
-pub use save::{append_annotations, apply_extras, validate, Built, Change, Plan, SavePlan};
+pub use save::{append_annotations, validate, Built, Change, Plan, SavePlan};
+
+/// Writes what [`SavePlan`] holds on top of `bytes` (see `save::apply_extras`), then the bibliographic record as `/SHR_Bib` in an
+/// incremental `/Info` (ADR-119). A pending removal of the metadata drops the record: it is not written.
+pub fn apply_extras(bytes: Vec<u8>, plan: &SavePlan) -> Result<Vec<u8>, crate::error::AppError> {
+    let bytes = save::apply_extras(bytes, plan)?;
+    match &plan.bibliography {
+        Some(record)
+            if !matches!(
+                plan.metadata,
+                Some(crate::model::metadata::MetadataChange::Strip)
+            ) =>
+        {
+            bibliography::apply(bytes, record)
+        }
+        _ => Ok(bytes),
+    }
+}

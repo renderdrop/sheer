@@ -36,6 +36,8 @@ image = { version = "0.25", default-features = false, features = ["jpeg", "png"]
 # Glyph outlines of the bundled signature font (signatures/typed.rs only). MIT OR Apache-2.0, googlefonts/fontations, forbid(unsafe_code).
 skrifa = "0.48"
 flate2 = "1"
+# XMP read of the bibliographic record (pdfwrite/bibliography.rs only): a pull parser, already in the build through plist. MIT, tafia/quick-xml.
+quick-xml = { version = "0.42.0", default-features = false }
 # The OS region (BCP 47 locale name) for the paper default A4 or Letter (platform::paper_default); the Win32 and CoreFoundation calls need unsafe, which our code forbids. MIT OR Apache-2.0.
 sys-locale = "0.3"
 # Signature library (ADR-041 section 7, storage/{keychain,signatures}.rs). XChaCha20-Poly1305 (Apache-2.0 OR MIT, RustCrypto); random key
