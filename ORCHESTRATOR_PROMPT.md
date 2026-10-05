@@ -506,6 +506,7 @@ notes: <max 5 Zeilen, nur was die nächste Session wissen muss>
 2. **Loop-Obergrenze** (`CC_MAX_LOOPS`) erreicht → `STATE.md` aktualisieren, stoppen. Nächste Session macht weiter.
 3. **Not-Aus** `.claude/state/STOP` existiert.
 4. **Alles blockiert:** Jeder offene ROADMAP-Punkt hängt an etwas, das nur ein Mensch lösen kann (z. B. Signing-Zertifikate, Apple-Developer-Account) → `docs/BLOCKERS.md` vollständig, `STATE.md` erklärt es, stoppen. Vorher wird **jede** nicht blockierte Arbeit erledigt.
+5. **Thema abgeschlossen** (Abschnitt 15, ADR-122): Bericht in `docs/reports/`, `.claude/state/STOP` anlegen, stoppen.
 
 Niemals stoppen, um eine Frage zu stellen. Niemals stoppen wegen Unsicherheit.
 
@@ -561,9 +562,19 @@ Niemals stoppen, um eine Frage zu stellen. Niemals stoppen wegen Unsicherheit.
 
 ## 14. Start
 
-Beginne jetzt. Prüfe, ob `STATE.md` existiert. Wenn nein: Phase 0. Wenn ja: lies `STATE.md`, die nächsten fünf offenen Punkte in `ROADMAP.md` und die letzten drei Einträge in `docs/DECISIONS.md`, dann setze den Feature-Loop beim `current_item` fort. Keine Zusammenfassung an den Nutzer, keine Rückfrage — arbeiten.
+Beginne jetzt. Lies das Thema aus der ersten Nachricht („Thema: …“, Abschnitt 15), lösche `.claude/state/STOP` und lies den CI-Status (ADR-120). Prüfe, ob `STATE.md` existiert. Wenn nein: Phase 0. Wenn ja: lies `STATE.md`, die nächsten fünf offenen Punkte in `ROADMAP.md` und die letzten drei Einträge in `docs/DECISIONS.md`, dann setze den Feature-Loop beim `current_item` fort. Keine Zusammenfassung an den Nutzer, keine Rückfrage — arbeiten.
 
 Existiert `docs/FEEDBACK.md` mit offenen Punkten, haben diese Vorrang vor der Roadmap; erledigte Punkte als [x] markieren.
+
+---
+
+## 15. Sitzungsmodus: ein Thema pro Sitzung (ADR-122)
+
+1. **Thema:** Jede Sitzung bearbeitet genau **ein** Thema, das die erste Nachricht mit „Thema: …“ benennt: ein Milestone, ein Feedback-Block oder ein Patch. Andere ROADMAP-Punkte werden in dieser Sitzung nicht begonnen, auch wenn der Stop-Hook sie nennt.
+2. **Start:** Du löschst `.claude/state/STOP` selbst, liest `bash scripts/ci-status.sh` (ADR-120) und arbeitest am Thema.
+3. **Abgeschlossen** ist das Thema, wenn (a) seine Definition of Done erfüllt ist, (b) CI auf `main` grün ist und (c) bei Nutzer-sichtbaren Änderungen ein Release oder Pre-Release auf GitHub liegt.
+4. **Abschluss:** `docs/reports/<JJJJ-MM-TT>-<thema>.md` nach dem Format unten schreiben, committen und pushen, `.claude/state/STOP` anlegen, stoppen. Kein neues Thema beginnen. Den fertigen Bericht gibst du zusätzlich als letzte Chat-Nachricht aus.
+5. **Berichtsformat** (höchstens 400 Wörter, Englisch wie alle Docs, Regel 6): **Topic and result** (zwei Sätze) · **Delivered** (Stichpunkte, nur Nutzer-sichtbares) · **Accepted in the installed build** (was per Maus geprüft wurde, Plattformen) · **Not accepted** (was nur Tests oder nur eine Plattform gesehen haben) · **Open** (Bugs, Minors, Blocker, je mit Einschätzung small/medium/large) · **Decisions for the owner** (Fragen, die nur ein Mensch beantworten kann) · **Usage** (Loops, Laufzeit) · **Suggested next topic** (mit Begründung).
 
 ---
 

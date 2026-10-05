@@ -2296,3 +2296,18 @@ tool row. That is wrong: they are in the Werkzeuge menu only (Politur v1.2).
 UI places follow DESIGN §3.8, not the working names of the frontend cut above: certificates are managed in a Certificates tab of the existing Signatures dialog (Werkzeuge → Manage Signatures…, not Settings); validation shows in the banner slot and the Signatures dialog (Datei → Signatures…, the banner's Details, a click on a seal); the sign tool is the eighth, letter-less slot "Zertifikat" of the Fill & Sign row.
 
 **W0 addendum (2026-10-05, crates).** The stable RustCrypto line was enough, so no pre-release is pinned: `der` 0.7.10, `spki` 0.7, `pkcs8` 0.10, `x509-cert` 0.2.5 (`builder`, `hazmat` for `Profile::Manual`), `cms` 0.2.3 (`builder`), `rsa` 0.9.10, `p256`/`p384` 0.13 (`ecdsa`, `pem` is what makes `VerifyingKey: EncodePublicKey`), `sha1`/`sha2` 0.10, `jiff` 0.2 and `p12-keystore` 0.2.1 (it builds on `cms` 0.2, `pkcs12` 0.1, `pkcs5` 0.7). A test in `pdfsig/mod.rs` builds a self-signed P-256 certificate, a detached ECDSA SignedData with an external digest and an `ESSCertIDv2` attribute (own `der` derive types), and verifies it; the cms builder adds content-type and message-digest itself (a second copy is refused), so B2 adds only signing-certificate-v2. A duplicate `sha2`/`digest` 0.10 next to lopdf's 0.11 is accepted. `cargo deny` passes on all three desktop targets and `ring`, `aws-lc-rs` and `openssl` are not in the desktop graph (guard `guard_crypto_crates` in `scripts/check.sh`, which also keeps the crypto crates inside `pdfsig/`). RUSTSEC-2023-0071 is ignored in `deny.toml` and in `.cargo/audit.toml` (cargo audit reads that file; SECURITY R14). The 0.3/0.8/0.11 pre-release plan of section 2 is dropped; the ROADMAP ticket to move to it is not needed until a stable `cms` 0.3 ships.
+
+## ADR-122 — Session mode: one topic per session, closed with a report and STOP
+
+**Status:** accepted (2026-10-05, owner instruction). Extends ORCHESTRATOR_PROMPT §12 (stop condition 5), §14 (start) and adds §15.
+
+**Context.** The autonomous loop ran from one ROADMAP item into the next (v1.2 → Politur v1.3 → v1.3 → v1.4) without a point where the owner sees a result, and the Stop hook always names the next open item.
+
+**Decision.**
+1. Every session works on exactly one topic, named by the first message as "Thema: …": a milestone, a feedback block or a patch. Other ROADMAP items are not started in that session, whatever the Stop hook names.
+2. At the start the orchestrator deletes `.claude/state/STOP` itself and reads the CI state (ADR-120).
+3. A topic is closed when its Definition of Done holds, CI on `main` is green, and — for user-visible changes — a release or pre-release is on GitHub.
+4. Then `docs/reports/<YYYY-MM-DD>-<topic>.md` is written (format in §15: topic and result, delivered, accepted in the installed build, not accepted, open with size, decisions for the owner, usage, suggested next topic; at most 400 words; English like all docs, rule 6), committed and pushed; `.claude/state/STOP` is created and the session stops without starting a new topic. The report is also the last chat message.
+5. This session (2026-10-05): the topic is v1.4 "Certificate signature", already running. Two reports: the v1.3 report written afterwards (`docs/reports/2026-10-05-v1.3-zitate.md`), and the v1.4 report after its GitHub release; then STOP, no v1.5.
+
+**Consequences.** The Stop hook (`continue-loop.sh`) stays as it is: the STOP file ends the loop, and §15 rule 1 keeps it from pulling in a new topic. Reports give the owner one page per topic instead of the transcript.
