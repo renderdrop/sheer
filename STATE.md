@@ -1,7 +1,7 @@
 # STATE
 phase: v1.2.0 released — Politur v1.3 done; next: v1.3 "Citations" spec
 version: 1.2.0 (tag v1.2.0)
-current_item: CI red on macOS since #61 (owner F16): fixed in 7380b68, waiting for run #67 to be green; v1.3 work paused until main is green (ADR-120)
+current_item: v1.3 acceptance round 2 (resumes after F16; main green since run #67)
 last_completed: Politur v1.3 (446a6d9, 1656ac6, af7091d; reviewer PASS)
 loop_count_this_session: 0
 open_blockers: 2 human-only (B-002, B-005)

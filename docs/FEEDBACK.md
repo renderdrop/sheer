@@ -247,4 +247,4 @@ Owner: CI on `main` red since run #61, five runs, also on docs commits. Stop v1.
 - [x] Fix: 7380b68 (absolute spelling on non-Windows).
 - [x] `paths-ignore` works: every run in question came from a push that also carried code; a docs-only push (893ce34) started no run (ADR-120 context).
 - [x] Rule + ADR-120: `scripts/ci-status.sh` at every loop start, red = fix first, CI green in every package's DoD (ORCHESTRATOR_PROMPT §2 rule 12, §8.4 step 0/7, §9; CLAUDE.md rule 12).
-- [ ] main green on both platforms (run #67)
+- [x] main green on both platforms (run #67, 7380b68: Windows and macOS success)
