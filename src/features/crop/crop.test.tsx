@@ -129,6 +129,23 @@ describe('the inspector', () => {
     expect(screen.queryByRole('button', { name: 'Apply' })).toBeNull();
   });
 
+  it('is compact (DESIGN Q7): four fields in one row in the order Left, Top, Right, Bottom, a segmented page choice, no scroll', () => {
+    const { container } = setup(<Inspector />);
+    act(() => useUi.getState().selectTool('crop'));
+    const row = container.querySelector('[data-crop-fields]');
+    expect(row?.className).toContain('grid-cols-4');
+    expect(Array.from(row?.querySelectorAll('label') ?? []).map((label) => label.textContent)).toEqual([
+      'Left',
+      'Top',
+      'Right',
+      'Bottom',
+    ]);
+    expect(screen.getByRole('radiogroup', { name: 'Apply to' })).not.toBeNull();
+    expect(screen.getAllByRole('radio').map((radio) => radio.textContent)).toEqual(['This page', 'All pages', 'Range']);
+    expect(container.innerHTML).not.toMatch(/overflow-(y-)?(auto|scroll)/);
+    for (const name of ['Reset', 'Cancel', 'Apply']) expect(screen.getByRole('button', { name })).not.toBeNull();
+  });
+
   it('applies the margins to the current page as one command and ends the mode', async () => {
     const { user } = setup(<Inspector />);
     act(() => useUi.getState().selectTool('crop'));
@@ -155,7 +172,7 @@ describe('the inspector', () => {
 
     applyMock.mockClear();
     act(() => useUi.getState().selectTool('crop'));
-    await user.click(screen.getByRole('radio', { name: 'Pages' }));
+    await user.click(screen.getByRole('radio', { name: 'Range' }));
     const range = screen.getByRole('textbox', { name: 'Pages' });
     await user.type(range, '9');
     expect(range.getAttribute('aria-invalid')).toBe('true');

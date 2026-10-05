@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { MODES } from '../../stores/ui';
-import { FIT_START, hiddenIds, keyOfMode, modeAfterKey, modeOfKey, tighter } from './model';
+import { FIT_START, fitOnResize, hiddenIds, keyOfMode, modeAfterKey, modeOfKey, tighter } from './model';
 
 describe('the keys of the modes', () => {
   it('1 to 5 are Lesen, Kommentieren, Ausfüllen & Signieren, Seiten, Bearbeiten', () => {
@@ -42,5 +42,25 @@ describe('the three-step overflow', () => {
     expect([...hiddenIds(ids, 'e', 2)]).toEqual(['d', 'c']);
     expect([...hiddenIds(ids, 'a', 10)]).toEqual(['e', 'd', 'c', 'b']);
     expect(hiddenIds(ids, null, 0).size).toBe(0);
+  });
+});
+
+describe('fitOnResize (DESIGN Q6 hysteresis)', () => {
+  const two = { step: 2, hidden: 0 } as const;
+  const three = { step: 3, hidden: 2 } as const;
+
+  it('keeps step 1 and a shrinking row as they are', () => {
+    expect(fitOnResize(FIT_START, null, 500, 600)).toBe(FIT_START);
+    expect(fitOnResize(two, 700, 600, 650)).toBe(two);
+  });
+
+  it('returns to step 1 only when 8 px wider than the full row needs', () => {
+    expect(fitOnResize(two, 700, 707, 690)).toBe(two);
+    expect(fitOnResize(two, 700, 708, 690)).toEqual(FIT_START);
+  });
+
+  it('a growing row at step 3 gives items back through step 2', () => {
+    expect(fitOnResize(three, 700, 500, 450)).toEqual(two);
+    expect(fitOnResize(three, 700, 450, 450)).toBe(three);
   });
 });

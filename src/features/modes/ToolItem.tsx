@@ -13,18 +13,21 @@ import type { SlotDef, VariantDef } from './model';
 
 /** The main part of an item (DESIGN v2 3.2): 36 high, radius md, icon 18 + 6 + label; the active tool is Solar with Ink 600 (2.3). */
 const MAIN =
-  'flex h-control-md shrink-0 cursor-pointer items-center gap-2 rounded-md t-label font-medium text-text ' +
+  'flex h-control-md shrink-0 cursor-pointer items-center gap-2 whitespace-nowrap rounded-md t-label font-medium text-text ' +
   'transition-colors duration-fast aria-disabled:cursor-not-allowed aria-disabled:opacity-(--opacity-disabled) ' +
   'not-aria-disabled:hover:bg-panel not-aria-disabled:not-data-[on=true]:active:bg-pressed not-aria-disabled:active:scale-(--scale-press) ' +
-  'data-[on=true]:font-semibold not-aria-disabled:data-[on=true]:hover:bg-accent-hover not-aria-disabled:data-[on=true]:active:bg-accent-hover';
+  'data-[on=true]:font-semibold data-[on=true]:text-ink not-aria-disabled:data-[on=true]:hover:bg-accent-hover not-aria-disabled:data-[on=true]:active:bg-accent-hover';
 
 /** The chevron part of a split item: 20 wide, its own tab stop. */
 const CHEVRON =
   'flex h-control-md w-icon-20 shrink-0 cursor-pointer items-center justify-center rounded-e-md text-text transition-colors duration-fast ' +
   'aria-disabled:cursor-not-allowed aria-disabled:opacity-(--opacity-disabled) ' +
   'not-aria-disabled:hover:bg-panel not-aria-disabled:aria-expanded:bg-panel not-aria-disabled:active:bg-pressed ' +
-  'group-data-[on=true]:not-aria-disabled:hover:bg-accent-hover group-data-[on=true]:not-aria-disabled:aria-expanded:bg-accent-hover ' +
+  'group-data-[on=true]:text-ink group-data-[on=true]:not-aria-disabled:hover:bg-accent-hover group-data-[on=true]:not-aria-disabled:aria-expanded:bg-accent-hover ' +
   'group-data-[on=true]:not-aria-disabled:active:bg-accent-hover';
+
+/** The one active-tool rule of all five modes (DESIGN Q2): Solar fill, Ink label and the hairline; a split item wears it as a whole. */
+const ACTIVE = 'data-[on=true]:bg-accent data-[on=true]:shadow-(--tool-active-edge)';
 
 const VARIANT =
   'flex h-(--space-8) w-full cursor-pointer items-center gap-2 rounded-sm px-2 text-start text-md text-text ' +
@@ -101,7 +104,7 @@ export function ToolItem({ slot, iconOnly, stop }: ToolItemProps) {
         slot.run();
         if (pop !== undefined) pop.onClick(event);
       }}
-      className={cx(MAIN, iconOnly ? 'w-control-md justify-center' : 'px-3', split && 'rounded-e-none')}
+      className={cx(MAIN, iconOnly ? 'w-control-md justify-center' : 'px-3', split ? 'rounded-e-none' : ACTIVE)}
     >
       <Icon icon={slot.icon} size={18} />
       {!iconOnly && <span data-label="">{slot.label}</span>}
@@ -160,7 +163,7 @@ export function ToolItem({ slot, iconOnly, stop }: ToolItemProps) {
   );
 
   return (
-    <div data-split={slot.id} data-on={slot.on} className="group flex shrink-0 rounded-md">
+    <div data-split={slot.id} data-on={slot.on} className={cx('group flex shrink-0 rounded-md', ACTIVE)}>
       {tipped}
       {slot.colour === undefined ? (
         <Menu label={optionsLabel} disabled={off} entries={(slot.variants ?? []).map(asEntry)} trigger={trigger} />

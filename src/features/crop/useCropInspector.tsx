@@ -1,7 +1,7 @@
 import { useId, useState, type KeyboardEvent, type ReactNode } from 'react';
 
 import type { PageCrop } from '../../api/pages';
-import { Button, Field, PanelSection } from '../../components';
+import { Button, Field } from '../../components';
 import { useLocale, useT, type PlainKey } from '../../i18n';
 import { useDocuments } from '../../stores/documents';
 import { useUi } from '../../stores/ui';
@@ -11,12 +11,12 @@ import { isValid, pageSideOf, type Side } from './geometry';
 import { keyOf, useCrop, useCropTarget, type CropTarget, type Scope } from './store';
 import { STEP, formatMargin, parseMargin, ptToUnit, unitFor, unitToPt, type Unit } from './units';
 
-/** The margins in the order of the grid (DESIGN 3.37): the sides as they are on screen. */
+/** The margins in the order of the row (DESIGN Q7): Left, Top, Right, Bottom, the sides as they are on screen. */
 const GRID: readonly { side: Side; label: PlainKey }[] = [
-  { side: 'top', label: 'crop.top' },
-  { side: 'bottom', label: 'crop.bottom' },
   { side: 'left', label: 'crop.left' },
+  { side: 'top', label: 'crop.top' },
   { side: 'right', label: 'crop.right' },
+  { side: 'bottom', label: 'crop.bottom' },
 ];
 
 interface MarginFieldProps {
@@ -76,12 +76,14 @@ function MarginField({ target, viewSide, label, unit, onValidity }: MarginFieldP
   };
 
   return (
-    <div className="flex flex-col gap-1">
-      <label htmlFor={id} className="text-sm font-semibold text-text-muted">
+    <div className="flex min-w-0 flex-col gap-1">
+      <label htmlFor={id} className="t-caption text-text-muted">
         {label}
       </label>
-      <div className="flex items-center gap-1">
+      <div className="flex items-center">
         <Field
+          tight
+          align="end"
           id={id}
           inputMode="decimal"
           autoComplete="off"
@@ -93,9 +95,8 @@ function MarginField({ target, viewSide, label, unit, onValidity }: MarginFieldP
             if (draft !== null) commit(parseMargin(draft, unit));
           }}
           onKeyDown={onKeyDown}
-          className="min-w-0 flex-auto"
+          className="min-w-0 flex-auto tabular-nums"
         />
-        <span className="text-sm text-text-muted">{unit}</span>
       </div>
     </div>
   );
@@ -150,81 +151,77 @@ function CropInspectorBody() {
 
   const options: { value: Scope; label: string; content: ReactNode }[] = (
     [
-      ['current', 'crop.current'],
-      ['all', 'crop.all'],
-      ['range', 'crop.range'],
+      ['current', 'crop.pages.current'],
+      ['all', 'crop.pages.all'],
+      ['range', 'crop.pages.range'],
     ] as const
   ).map(([value, key]) => ({ value, label: t(key), content: t(key) }));
 
   return (
-    // The footer sticks to the foot of the scrolling body, so it stays at the panel foot (the panel has no footer slot of its own).
-    <div className="flex min-h-full flex-col" onKeyDown={onKeyDown}>
-      <div className="flex-auto">
-        <PanelSection label={t('crop.margins')}>
-          <div key={target.slot.id} className="grid grid-cols-2 gap-2">
-            {GRID.map(({ side, label }) => (
-              <MarginField
-                key={side}
-                target={target}
-                viewSide={side}
-                label={t(label)}
-                unit={unit}
-                onValidity={onValidity}
-              />
-            ))}
-          </div>
-          <div className="mt-1 flex min-h-4 items-center text-sm text-error-text" role="status">
-            {tooSmall && <p className="m-0">{t('crop.tooSmall')}</p>}
-          </div>
-        </PanelSection>
-        <PanelSection label={t('crop.applyTo')}>
-          <RadioGroup
-            label={t('crop.applyTo')}
-            value={scope}
-            options={options}
-            onChange={(next) => useCrop.getState().setScope(next)}
-            orientation="vertical"
-            look="plain"
-          />
-          {scope === 'range' && (
-            <div className="mt-1 flex flex-col gap-1">
-              <Field
-                id={rangeId}
-                autoComplete="off"
-                spellCheck={false}
-                aria-label={t('crop.range')}
-                aria-invalid={rangeInvalid && range.trim() !== '' ? true : undefined}
-                aria-describedby={rangeInvalid ? errorId : undefined}
-                placeholder={t('crop.rangePlaceholder')}
-                value={range}
-                onChange={(event) => useCrop.getState().setRange(event.target.value)}
-                className="w-full"
-              />
-              <div className="flex min-h-4 items-center text-sm text-error-text">
-                {rangeInvalid && range.trim() !== '' && (
-                  <p id={errorId} className="m-0">
-                    {t('split.invalid', { n: target.slots.length })}
-                  </p>
-                )}
-              </div>
-            </div>
-          )}
-          {pages !== null && sizesDiffer(pages) && <p className="m-0 text-sm text-text-muted">{t('crop.sizes')}</p>}
-        </PanelSection>
-        <PanelSection>
-          <p className="m-0 text-sm text-text-muted">{t('crop.hides')}</p>
-        </PanelSection>
+    <div className="flex flex-col gap-4" onKeyDown={onKeyDown}>
+      <div role="group" aria-label={t('crop.margins', { unit })} className="flex flex-col gap-2">
+        <div className="flex items-center justify-between gap-2">
+          <span className="t-label font-semibold text-text">{t('crop.margins', { unit })}</span>
+          <Button
+            size="sm"
+            disabled={!canReset}
+            focusableWhenDisabled
+            onClick={() => void resetCrop(target.docId, target.slot)}
+          >
+            {t('crop.reset')}
+          </Button>
+        </div>
+        <div key={target.slot.id} data-crop-fields="" className="grid grid-cols-4 gap-2">
+          {GRID.map(({ side, label }) => (
+            <MarginField
+              key={side}
+              target={target}
+              viewSide={side}
+              label={t(label)}
+              unit={unit}
+              onValidity={onValidity}
+            />
+          ))}
+        </div>
+        <div className="flex items-center text-sm text-error-text" role="status">
+          {tooSmall && <p className="m-0">{t('crop.tooSmall')}</p>}
+        </div>
       </div>
-      <div className="sticky bottom-0 -mx-2 -mb-2 mt-2 flex items-center gap-2 border-t border-divider bg-surface-strong p-2">
-        <Button
-          size="sm"
-          disabled={!canReset}
-          focusableWhenDisabled
-          onClick={() => void resetCrop(target.docId, target.slot)}
-        >
-          {t('crop.reset')}
-        </Button>
-        <span className="flex-auto" />
+      <div className="flex flex-col gap-2">
+        <RadioGroup
+          label={t('crop.applyTo')}
+          value={scope}
+          options={options}
+          onChange={(next) => useCrop.getState().setScope(next)}
+          orientation="horizontal"
+          look="segmented"
+          className="flex w-full"
+        />
+        {scope === 'range' && (
+          <div className="flex flex-col gap-1">
+            <Field
+              id={rangeId}
+              autoComplete="off"
+              spellCheck={false}
+              aria-label={t('crop.range')}
+              aria-invalid={rangeInvalid && range.trim() !== '' ? true : undefined}
+              aria-describedby={rangeInvalid ? errorId : undefined}
+              placeholder={t('crop.rangePlaceholder')}
+              value={range}
+              onChange={(event) => useCrop.getState().setRange(event.target.value)}
+              className="w-full"
+            />
+            {rangeInvalid && range.trim() !== '' && (
+              <p id={errorId} className="m-0 text-sm text-error-text">
+                {t('split.invalid', { n: target.slots.length })}
+              </p>
+            )}
+          </div>
+        )}
+        {pages !== null && sizesDiffer(pages) && <p className="m-0 text-sm text-text-muted">{t('crop.sizes')}</p>}
+      </div>
+      <p className="m-0 text-sm text-text-muted">{t('crop.hides')}</p>
+      <div className="flex items-center justify-end gap-2">
         <Button size="sm" onClick={cancelCrop}>
           {t('crop.cancel')}
         </Button>

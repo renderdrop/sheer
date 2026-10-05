@@ -118,6 +118,21 @@ export function tighter(fit: Fit, movable: number): Fit | null {
   return fit.hidden < movable ? { step: 3, hidden: fit.hidden + 1 } : null;
 }
 
+/** DESIGN Q6: the row returns to a wider step only when it is this much wider than the full row needs (no flicker). */
+export const FIT_HYSTERESIS = 8;
+
+/**
+ * The fit after the row's width changed from `previous` to `width`. `need` is the measured width of the row at step 1 (null while
+ * unknown). A row at a tighter step goes back to step 1 only when `width >= need + 8`; a growing row at step 3 gives items back
+ * (step 2, re-measured before the next paint); a shrinking row keeps its fit (the measurement tightens it if it still overflows).
+ */
+export function fitOnResize(fit: Fit, need: number | null, width: number, previous: number): Fit {
+  if (fit.step === 1) return fit;
+  if (need !== null && width >= need + FIT_HYSTERESIS) return FIT_START;
+  if (fit.step === 3 && width > previous) return { step: 2, hidden: 0 };
+  return fit;
+}
+
 /** The ids that left into "Mehr": `hidden` items from the right, skipping the active tool. */
 export function hiddenIds(ids: readonly string[], activeId: string | null, hidden: number): ReadonlySet<string> {
   const out = new Set<string>();

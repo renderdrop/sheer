@@ -7,7 +7,7 @@ import { useGlidePill } from '../../components/glide';
 import { isOwnEvent, itemsOf, rovingTarget } from '../../components/roving';
 import { useT } from '../../i18n';
 import { useUi } from '../../stores/ui';
-import { FIT_START, hiddenIds, MODE_LABEL, tighter, type Fit, type SlotDef } from './model';
+import { FIT_START, fitOnResize, hiddenIds, MODE_LABEL, tighter, type Fit, type SlotDef } from './model';
 import { TOOL_ROW_ID } from './ModeRow';
 import { focusCanvas } from './switch';
 import { asEntry, ToolItem } from './ToolItem';
@@ -54,11 +54,23 @@ export const ToolRow = memo(function ToolRow() {
   const signature = slots.map((slot) => `${slot.id}:${slot.label}:${slot.on ? 1 : 0}`).join('|');
   // A font that loads late changes the widths of the labels: the fit starts over then, too.
   const [fonts, setFonts] = useState(0);
-  const key = `${mode}|${width}|${fonts}|${signature}`;
-  const [fit, setFit] = useState<{ value: Fit; key: string }>({ value: FIT_START, key });
-  // Another width or other slots start the fit over (derived during render, like the main grid's `seen`).
-  if (fit.key !== key) setFit({ value: FIT_START, key });
-  const current = fit.key === key ? fit.value : FIT_START;
+  const key = `${mode}|${fonts}|${signature}`;
+  // `need`: the row's measured width at step 1, the basis of the 8 px hysteresis (DESIGN Q6).
+  const [fit, setFit] = useState<{ value: Fit; key: string; need: number | null; width: number }>({
+    value: FIT_START,
+    key,
+    need: null,
+    width,
+  });
+  // Other slots, labels, a mode or a font start the fit over; a new width moves it by the hysteresis rule (derived during render).
+  let current = fit.value;
+  if (fit.key !== key) {
+    current = FIT_START;
+    setFit({ value: FIT_START, key, need: null, width });
+  } else if (fit.width !== width) {
+    current = fitOnResize(fit.value, fit.need, width, fit.width);
+    setFit({ ...fit, value: current, width });
+  }
 
   useEffect(() => {
     const element = row.current;
@@ -86,7 +98,7 @@ export const ToolRow = memo(function ToolRow() {
     if (element === null || element.scrollWidth <= element.clientWidth) return;
     const next = tighter(current, movable);
     // eslint-disable-next-line react-hooks/set-state-in-effect -- the fit is a measurement of the laid-out row
-    if (next !== null) setFit({ value: next, key });
+    if (next !== null) setFit({ ...fit, value: next, need: current.step === 1 ? element.scrollWidth : fit.need });
   });
 
   // Spell 1: the Solar fill is one element that glides to the active item (a direct child: the split group or the button).

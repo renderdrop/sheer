@@ -477,15 +477,15 @@ describe('Kommentieren', () => {
   it('Zeichnen has the shape recognition switch at the bottom of its menu, on by default, and it is the stored setting', async () => {
     const { user } = setup(<Rows />);
     await user.click(item('Options for Draw'));
-    const toggle = await screen.findByRole('switch', { name: 'Recognise shapes when you pause' });
+    const toggle = await screen.findByRole('switch', { name: 'Straighten shapes automatically' });
     expect(toggle.getAttribute('aria-checked')).toBe('true');
     await user.click(toggle);
     expect(useTools.getState().straightenShapes).toBe(false);
     expect(globalThis.localStorage.getItem('sheer.tools.shapeRecognition')).toBe('0');
-    expect(screen.getByRole('switch', { name: 'Recognise shapes when you pause' }).getAttribute('aria-checked')).toBe(
+    expect(screen.getByRole('switch', { name: 'Straighten shapes automatically' }).getAttribute('aria-checked')).toBe(
       'false',
     );
-    await user.click(screen.getByRole('switch', { name: 'Recognise shapes when you pause' }));
+    await user.click(screen.getByRole('switch', { name: 'Straighten shapes automatically' }));
     expect(useTools.getState().straightenShapes).toBe(true);
   });
 
@@ -768,6 +768,38 @@ describe('the overflow', () => {
     widths.client = 2000;
     setup(<Rows />);
     expect(screen.getByRole('toolbar').getAttribute('data-fit')).toBe('1');
+  });
+});
+
+describe('the active tool and the labels (DESIGN Q2, Q6)', () => {
+  it('one rule for all modes: the active tool carries the Solar fill, the Ink label and the hairline, split or not', () => {
+    for (const mode of ['read', 'comment'] as const) {
+      act(() => switchMode(mode));
+      act(() => useUi.getState().selectTool(mode === 'read' ? 'hand' : 'draw'));
+      const { container, unmount } = setup(<Rows />);
+      const on = container.querySelector('[data-slot="tool-row"] [data-on="true"]');
+      expect(on).not.toBeNull();
+      expect(on?.className).toContain('data-[on=true]:bg-accent');
+      expect(on?.className).toContain('shadow-(--tool-active-edge)');
+      unmount();
+    }
+    act(() => switchMode('read'));
+    act(() => useUi.getState().releaseTool());
+    setup(<Rows />);
+    expect(item('Select').className).toContain('data-[on=true]:bg-accent');
+    expect(item('Select').getAttribute('aria-pressed')).toBe('true');
+  });
+
+  it('tool labels never truncate or use an ellipsis', () => {
+    const { container } = setup(<Rows />);
+    const labels = Array.from(container.querySelectorAll('[data-label]'));
+    expect(labels.length).toBeGreaterThan(0);
+    for (const label of labels) {
+      expect(label.className).not.toMatch(/truncate|text-ellipsis|overflow-hidden/);
+      expect(label.textContent).not.toMatch(/…|\.\.\./);
+      expect(label.parentElement?.className).toContain('whitespace-nowrap');
+      expect(label.parentElement?.className).not.toMatch(/truncate|text-ellipsis/);
+    }
   });
 });
 
