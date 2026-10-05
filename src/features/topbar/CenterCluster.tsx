@@ -6,6 +6,7 @@ import { Button, Field, Icon, Menu } from '../../components';
 import { useT } from '../../i18n';
 import { selectActiveId, useDocuments } from '../../stores/documents';
 import { useSettings } from '../../stores/settings';
+import { useUi } from '../../stores/ui';
 import { useDocView } from '../../stores/view';
 import { FIND_KEYS_ATTRIBUTE } from '../search/commands';
 import { useActionState } from '../shell/useActionState';
@@ -21,6 +22,8 @@ function ZoomMenu() {
   const state = useActionState();
   const docId = useDocuments(selectActiveId);
   const { zoom, opening, scrollMode } = useDocView(docId);
+  // Seiten shows the page grid: zoom is disabled there (DESIGN 3.2).
+  const gridMode = useUi((state) => state.mode) === 'pages';
   const value = formatZoomStatus(opening ? Number.NaN : zoom, t.locale);
   const entries = useMemo(() => zoomEntries({ t, platform, state }, scrollMode), [t, platform, state, scrollMode]);
   return (
@@ -34,7 +37,7 @@ function ZoomMenu() {
           {...trigger}
           data-toolbar-item="zoom-in"
           variant="ghost"
-          disabled={!state.hasDocument}
+          disabled={!state.hasDocument || gridMode}
           focusableWhenDisabled
           aria-label={Number.isFinite(zoom) ? `${value} · ${t('toolbar.zoomLevel')}` : t('toolbar.zoomLevel')}
           className="w-[calc(var(--space-12)+var(--space-10))]! justify-between px-3! tabular-nums"
@@ -91,9 +94,10 @@ function PageField() {
     }
   };
   return (
-    <div data-tour-anchor="topbar-page-field" className="flex items-center gap-2">
+    <div className="flex items-center gap-2">
       <Field
         ref={input}
+        data-tour-anchor="topbar-page-field"
         type="text"
         inputMode="numeric"
         autoComplete="off"

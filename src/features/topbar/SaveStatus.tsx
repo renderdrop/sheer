@@ -109,7 +109,7 @@ export function SaveStatus() {
   const shownLabel = t(`save.status.${shown}`);
   const tip =
     status === 'failed' && failed !== null
-      ? { label: errorText(t, failed) }
+      ? { label: errorText(t, failed), note: t('save.retry'), shortcut: shortcut?.label }
       : status === 'edited' || status === 'new'
         ? { label: t('save.save'), shortcut: shortcut?.label }
         : null;
@@ -164,6 +164,9 @@ export function SaveStatus() {
   );
   return (
     <span className="ms-1 flex shrink-0 items-center">
+      <span role="status" className="sr-only">
+        {shownLabel}
+      </span>
       {tip === null ? button : <Tooltip {...tip}>{button}</Tooltip>}
     </span>
   );

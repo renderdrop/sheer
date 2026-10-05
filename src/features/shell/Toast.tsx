@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef } from 'react';
 
 import { Button } from '../../components';
 import { Icon } from '../../components/Icon';
-import { SPRING } from '../../components/motion';
+import { TWEEN } from '../../components/motion';
 import { tokenPx } from '../../components/tokens';
 import { useUi, type Toast } from '../../stores/ui';
 
@@ -32,8 +32,8 @@ function ToastView({ toast }: { toast: Toast }) {
       // The toast never takes focus; the persistent live region of the layer says it (a region added with its text is often missed).
       data-toast=""
       initial={{ opacity: 0, y: reduce ? 0 : tokenPx('--offset-enter', 8) }}
-      animate={{ opacity: 1, y: 0, transition: SPRING.base }}
-      exit={{ opacity: 0, transition: SPRING.fast }}
+      animate={{ opacity: 1, y: 0, transition: TWEEN.slow }}
+      exit={{ opacity: 0, transition: TWEEN.base }}
       onMouseEnter={hold}
       onMouseLeave={arm}
       onFocus={hold}

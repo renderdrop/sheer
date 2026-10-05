@@ -1,5 +1,5 @@
 import { ChevronDown } from 'lucide-react';
-import { useRef, type KeyboardEvent } from 'react';
+import { useRef, type KeyboardEvent, type ReactElement } from 'react';
 
 import { shortcutFor } from '../../actions/registry';
 import { Icon, Menu, Popover, Tooltip, type MenuEntry } from '../../components';
@@ -53,8 +53,11 @@ export function ToolItem({ slot, iconOnly, stop }: ToolItemProps) {
   const platform = useSettings((state) => state.platform) ?? detectPlatform();
   const chevron = useRef<HTMLButtonElement>(null);
   const off = slot.disabledReason !== undefined;
-  const split = slot.variants !== undefined || slot.colour !== undefined || slot.Options !== undefined;
   const found = slot.actionId === undefined ? undefined : shortcutFor(slot.actionId, platform, t);
+
+  // A tool whose only extra is its own options has no chevron part (DESIGN 3.2: no variants): the main part opens them.
+  const optionsOnly = slot.Options !== undefined && slot.variants === undefined && slot.colour === undefined;
+  const split = !optionsOnly && (slot.variants !== undefined || slot.colour !== undefined);
 
   const onMainKey = (event: KeyboardEvent<HTMLButtonElement>) => {
     // Alt+Down opens the variants of a split item.
@@ -64,8 +67,16 @@ export function ToolItem({ slot, iconOnly, stop }: ToolItemProps) {
     }
   };
 
-  const main = (
+  const mainButton = (pop?: Parameters<Parameters<typeof Popover>[0]['trigger']>[0]) => (
     <button
+      {...(pop === undefined
+        ? {}
+        : {
+            ref: pop.ref,
+            'aria-haspopup': pop['aria-haspopup'],
+            'aria-expanded': pop['aria-expanded'],
+            'aria-controls': pop['aria-controls'],
+          })}
       type="button"
       data-toolbar-item={slot.id}
       data-roving={slot.id}
@@ -75,9 +86,14 @@ export function ToolItem({ slot, iconOnly, stop }: ToolItemProps) {
       aria-keyshortcuts={found?.aria}
       aria-label={iconOnly ? slot.label : undefined}
       tabIndex={stop === slot.id ? 0 : -1}
-      onKeyDown={onMainKey}
-      onClick={() => {
-        if (!off) slot.run();
+      onKeyDown={(event) => {
+        onMainKey(event);
+        if (pop !== undefined && !off && event.altKey && event.key === 'ArrowDown') pop.onKeyDown(event);
+      }}
+      onClick={(event) => {
+        if (off) return;
+        slot.run();
+        if (pop !== undefined) pop.onClick(event);
       }}
       className={cx(MAIN, iconOnly ? 'w-control-md justify-center' : 'px-3', split && 'rounded-e-none')}
     >
@@ -87,21 +103,32 @@ export function ToolItem({ slot, iconOnly, stop }: ToolItemProps) {
   );
 
   const note = slot.disabledReason ?? slot.hint;
-  const tipped = (
+  const tip = (child: ReactElement) => (
     <Tooltip
       label={slot.label}
       shortcut={found?.label}
       note={note}
       disabled={!iconOnly && found === undefined && note === undefined}
     >
-      {main}
+      {child}
     </Tooltip>
   );
+  if (optionsOnly && slot.Options !== undefined) {
+    return (
+      <Popover
+        label={t('modes.options', { tool: slot.label })}
+        disabled={off}
+        trigger={(props) => tip(mainButton(props))}
+      >
+        <slot.Options />
+      </Popover>
+    );
+  }
+  const tipped = tip(mainButton());
   if (!split) return tipped;
 
   const optionsLabel = t('modes.options', { tool: slot.label });
-  // A tool's own options are there while the tool is on.
-  const chevronOff = off || (slot.Options !== undefined && !slot.on);
+  const chevronOff = off;
   const trigger = (props: Parameters<Parameters<typeof Popover>[0]['trigger']>[0]) => (
     <button
       {...props}
@@ -129,11 +156,7 @@ export function ToolItem({ slot, iconOnly, stop }: ToolItemProps) {
   return (
     <div data-split={slot.id} data-on={slot.on} className="group flex shrink-0 rounded-md">
       {tipped}
-      {slot.Options !== undefined ? (
-        <Popover label={optionsLabel} disabled={chevronOff} trigger={trigger}>
-          <slot.Options />
-        </Popover>
-      ) : slot.colour === undefined ? (
+      {slot.colour === undefined ? (
         <Menu label={optionsLabel} disabled={off} entries={(slot.variants ?? []).map(asEntry)} trigger={trigger} />
       ) : (
         <Popover label={optionsLabel} disabled={off} trigger={trigger}>

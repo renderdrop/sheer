@@ -34,6 +34,8 @@ export interface HeroProps {
   opening: boolean;
   platform: Platform | null;
   onOpen: () => void;
+  /** Enter in the search opens the first hit. */
+  onOpenFirst?: () => void;
 }
 
 /**
@@ -41,7 +43,7 @@ export interface HeroProps {
  * `.t-display`, 24 below it the search field (44 high, at most 480 wide, `/` as key chip), and the round Solar "+" (Open) 24 from
  * the top and the end. Text over the glow is Ink.
  */
-export function Hero({ query, onQuery, searchRef, opening, platform, onOpen }: HeroProps) {
+export function Hero({ query, onQuery, searchRef, opening, platform, onOpen, onOpenFirst }: HeroProps) {
   const t = useT();
   const openKey = shortcutFor('open', platform, t);
   return (
@@ -68,6 +70,16 @@ export function Hero({ query, onQuery, searchRef, opening, platform, onOpen }: H
               event.preventDefault();
               event.stopPropagation();
               onQuery('');
+            } else if (event.key === 'ArrowDown') {
+              // Down leads to the first hit.
+              const first = document.querySelector<HTMLElement>('[data-home-body] .home-card-grid [data-roving-id]');
+              if (first !== null) {
+                event.preventDefault();
+                first.focus();
+              }
+            } else if (event.key === 'Enter' && onOpenFirst !== undefined) {
+              event.preventDefault();
+              onOpenFirst();
             }
           }}
           placeholder={t('home.search.placeholder')}

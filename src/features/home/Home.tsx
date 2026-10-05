@@ -119,6 +119,7 @@ export function Home({ platform }: HomeProps) {
     body = <EmptyHome opening={opening} platform={platform} onOpen={open} />;
   } else if (section === 'home') {
     const shown = matches.slice(0, HOME_RECENT_LIMIT);
+    const first = shown[0];
     body = (
       <>
         <Hero
@@ -128,6 +129,7 @@ export function Home({ platform }: HomeProps) {
           opening={opening}
           platform={platform}
           onOpen={open}
+          onOpenFirst={first === undefined ? undefined : () => recents.open(first, null)}
         />
         {recents.loaded && (
           <section aria-labelledby={ids.recent} className="mt-10 flex flex-col gap-4">
@@ -144,7 +146,7 @@ export function Home({ platform }: HomeProps) {
               {t('home.nav.recent')}
             </SectionHead>
             {shown.length > 0 ? (
-              <CardGrid entries={shown} recents={recents} platform={platform} label={t('emptyState.recentList')} />
+              <CardGrid entries={shown} recents={recents} platform={platform} label={t('home.recentList')} />
             ) : (
               <p className="t-body m-0 text-text-muted">{t('home.noMatch')}</p>
             )}
@@ -170,7 +172,7 @@ export function Home({ platform }: HomeProps) {
         {section === 'tools' ? (
           <ToolRows />
         ) : list.length > 0 ? (
-          <CardGrid entries={list} recents={recents} platform={platform} label={t('emptyState.recentList')} />
+          <CardGrid entries={list} recents={recents} platform={platform} label={t('home.recentList')} />
         ) : (
           <p className="t-body m-0 text-text-muted">
             {recents.loaded ? (section === 'starred' ? t('home.empty.starred') : t('home.empty.recent')) : ''}

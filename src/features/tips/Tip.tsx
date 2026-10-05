@@ -133,7 +133,7 @@ function Card({ id, anchor }: { id: TipId; anchor: ResolvedAnchor }) {
         aria-label={t('tip.region')}
         data-tip-card=""
         onKeyDown={onKeyDown}
-        className="bg-panel border border-border-subtle shadow-floating flex w-popover-max max-w-full items-center gap-2 rounded-panel p-4 text-md text-text"
+        className="bg-panel border border-border-subtle shadow-floating flex w-(--note-width) max-w-full items-center gap-2 rounded-panel p-3 text-md text-text"
       >
         <Icon icon={Lightbulb} size={16} className="text-text" />
         <p id={textId} className="m-0 min-w-0 flex-1 text-md">
