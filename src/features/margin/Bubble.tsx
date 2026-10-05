@@ -1,4 +1,4 @@
-import { Check, Ellipsis, RotateCcw, User } from 'lucide-react';
+import { Check, Ellipsis, Quote, RotateCcw, User } from 'lucide-react';
 import { forwardRef, memo, useEffect, useId, useRef, useState, type KeyboardEvent } from 'react';
 
 import { MAX_ANNOT_CONTENTS_CHARS, type AnnotationSummary } from '../../api/annotations';
@@ -19,8 +19,8 @@ import { bubbleDate, initialOf } from './layout';
 /** The body shows this many lines, then "More". */
 export const BODY_LINES = 6;
 /** A reply field grows to this many lines, then scrolls. */
-const REPLY_MAX = { maxHeight: 'calc(4lh + 2 * var(--spacing-1))' } as const;
-const FIELD =
+export const REPLY_MAX = { maxHeight: 'calc(4lh + 2 * var(--spacing-1))' } as const;
+export const FIELD =
   'block w-full resize-none rounded-sm border border-control-border bg-surface-solid px-2 py-1 text-sm text-text ' +
   'placeholder:text-text-muted';
 
@@ -39,11 +39,19 @@ function Avatar({ author, size }: { author: string | null; size: 'md' | 'sm' }) 
   );
 }
 
-/** The avatar marker of the compact column (24 px). */
+/** The avatar marker of the compact column (24 px); a citation's is White with a Stone ring and the `quote` icon (DESIGN 3.7 C3). */
 export const Marker = forwardRef<
   HTMLButtonElement,
-  { id: number; author: string | null; label: string; selected: boolean; onClick: () => void; onFocus?: () => void }
->(function Marker({ id, author, label, selected, onClick, onFocus }, ref) {
+  {
+    id: number;
+    author: string | null;
+    label: string;
+    selected: boolean;
+    citation?: boolean;
+    onClick: () => void;
+    onFocus?: () => void;
+  }
+>(function Marker({ id, author, label, selected, citation = false, onClick, onFocus }, ref) {
   const initial = initialOf(author);
   return (
     <button
@@ -54,12 +62,15 @@ export const Marker = forwardRef<
       onClick={onClick}
       onFocus={onFocus}
       className={cx(
-        'inline-flex size-6 cursor-pointer items-center justify-center rounded-pill border-0 bg-text p-0 text-xs font-medium text-surface-solid',
+        'inline-flex size-6 cursor-pointer items-center justify-center rounded-pill p-0 text-xs font-medium',
+        citation
+          ? 'border border-solid border-control-border bg-surface-solid text-text'
+          : 'border-0 bg-text text-surface-solid',
         'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus',
         selected && 'outline-2 outline-offset-2 outline-text',
       )}
     >
-      {initial === '' ? <Icon icon={User} size={16} /> : initial}
+      {citation ? <Icon icon={Quote} size={16} /> : initial === '' ? <Icon icon={User} size={16} /> : initial}
     </button>
   );
 });
@@ -75,7 +86,7 @@ export interface BubbleProps {
   onSelect: (thread: Thread) => void;
 }
 
-function Reply({
+export function Reply({
   docId,
   reply,
   now,

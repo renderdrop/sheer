@@ -5,11 +5,12 @@ import type { Thread } from '../comments/model';
 import { useCommentsData } from '../comments/useCommentsData';
 
 /**
- * Whether a thread has a bubble in the margin (DESIGN 3.5 B9): comment text or replies. A text comment's own text is not a bubble
+ * Whether a thread has a bubble in the margin (DESIGN 3.5 B9): comment text or replies; a citation always has one (DESIGN 3.7 C3). A text comment's own text is not a bubble
  * (it is on the page), and a comment that cannot be edited by this app (`opaque`) has none either.
  */
 export function hasBubble(thread: Thread): boolean {
   const { root } = thread;
+  if (root.cite !== undefined) return true;
   if (root.kind === 'freeText' || root.kind === 'opaque') return false;
   return root.contents.trim() !== '' || thread.replies.length > 0;
 }

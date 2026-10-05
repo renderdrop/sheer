@@ -13,20 +13,27 @@ import { useShallow } from 'zustand/react/shallow';
 import type { PageSize } from '../../api/render';
 import { useT } from '../../i18n';
 import { useAnnotations } from '../../stores/annotations';
-import { positionOf } from '../../stores/pages';
+import { pageNumberOf, positionOf } from '../../stores/pages';
 import { jumpToAnnotation } from '../viewer/jump';
 import type { Thread } from '../comments/model';
 import { useCommentHover } from '../comments/useCommentsData';
 import { readViewRect, subscribeViewRect } from '../viewer/scrollBridge';
 import type { PageLayout } from '../viewer/layout';
 import type { Rotation } from '../viewer/transform';
-import { Bubble, Marker } from './Bubble';
+import { Bubble, Marker, type BubbleProps } from './Bubble';
+import { CitationBubble } from './CitationBubble';
+import { onCitationFocus } from '../citations/store';
 import { newRestackState, restack } from './restack';
 import { anchorOf, columnX, marginMetrics, placeBubbles, visibleBubbles, type MarginMode } from './layout';
 
 /** A bubble before it is measured. */
 const ESTIMATE_PX = 120;
 const CLOCK_MS = 60_000;
+
+/** A thread's bubble: a citation has its own (DESIGN 3.7 C3), everything else is a comment bubble. */
+function Shown(props: BubbleProps) {
+  return props.thread.root.cite === undefined ? <Bubble {...props} /> : <CitationBubble {...props} />;
+}
 
 export interface MarginColumnProps {
   docId: number;
@@ -200,6 +207,18 @@ export function MarginColumn({ docId, layout, threads, mode, drawnSizes, rotatio
     }
   });
 
+  // "Open citation" in the mini bar: focus that bubble (the popover of its marker in the compact column).
+  useEffect(
+    () =>
+      onCitationFocus((annotId) => {
+        if (!threads.some((thread) => thread.root.id === annotId)) return;
+        pendingFocus.current = annotId;
+        setFocusId(annotId);
+        if (mode === 'compact') setOpenId(annotId);
+      }),
+    [threads, mode],
+  );
+
   const select = useCallback(
     (thread: Thread) => {
       jumpToAnnotation(docId, thread.root.id, thread.root.pageId);
@@ -290,7 +309,12 @@ export function MarginColumn({ docId, layout, threads, mode, drawnSizes, rotatio
               <Marker
                 id={item.id}
                 author={item.thread.root.author}
-                label={t('margin.marker', { author: name })}
+                citation={item.thread.root.cite !== undefined}
+                label={
+                  item.thread.root.cite === undefined
+                    ? t('margin.marker', { author: name })
+                    : t('citation.aria', { page: String(pageNumberOf(docId, item.thread.root.pageId)) })
+                }
                 selected={selected || open}
                 onFocus={() => setFocusId(item.id)}
                 onClick={() => {
@@ -303,7 +327,7 @@ export function MarginColumn({ docId, layout, threads, mode, drawnSizes, rotatio
                   className="absolute"
                   style={{ top: 0, right: metrics.marker + metrics.stack, width: metrics.width }}
                 >
-                  <Bubble
+                  <Shown
                     docId={docId}
                     thread={item.thread}
                     selected
@@ -327,7 +351,7 @@ export function MarginColumn({ docId, layout, threads, mode, drawnSizes, rotatio
             className="pointer-events-auto absolute"
             style={{ top, left: item.x, width: metrics.width }}
           >
-            <Bubble
+            <Shown
               docId={docId}
               thread={item.thread}
               selected={selected}
