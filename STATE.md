@@ -1,7 +1,7 @@
 # STATE
 phase: v1.4.1 patch "Politur v1.2–v1.4 + CI runtime" released (tag v1.4.1)
 version: 1.4.1 (tag v1.4.1)
-current_item: v1.4.1 tagged; release run, report docs/reports/2026-10-05-v1.4.1-politur-ci.md, then STOP (ADR-122). Next topic from the owner (suggested v1.5 "Edit text" spec or macOS acceptance)
+current_item: SESSION TOPIC v1.4.1 CLOSED (ADR-122) — report docs/reports/2026-10-05-v1.4.1-politur-ci.md, STOP set. Next topic from the owner (suggested: v1.5 "Edit text" spec)
 last_completed: v1.4.1 Politur + CI runtime (ADR-123)
 loop_count_this_session: 0
 open_blockers: 2 human-only (B-002, B-005)
@@ -22,3 +22,4 @@ ci_log: (ADR-120 corrected — package commit → CI run; result filled in at th
   - 19ab8e6..c57ae11 save fix + S8 + S6 + S7 + S5 → run #81 (37342811054) GREEN — Windows 9, macOS 5, web 4 min
   - d80dce9/0da31a0 T2 + T1 → run #82 (37345921685) GREEN
   - b97cd93/85f8bb5 test + acceptance fixes → run #83 (37348558262) GREEN
+  - 7e834b8 release v1.4.1 → run #84 (37350514711) GREEN — tagged v1.4.1, release run 37350514517 success (DMG + NSIS)
