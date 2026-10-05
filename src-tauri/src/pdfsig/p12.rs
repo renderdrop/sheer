@@ -9,7 +9,8 @@
 //! The password is borrowed for the one call and never copied into an error. The decoded key is handed out in a [`Zeroizing`] buffer
 //! (the crate's own copy inside its key store cannot be wiped from here).
 
-use std::sync::mpsc;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{mpsc, Arc};
 
 use p12_keystore::KeyStore;
 use zeroize::Zeroizing;
@@ -23,6 +24,30 @@ pub enum P12Error {
     WrongPassword,
     /// Not a PKCS#12 file this module can read, a cap was exceeded, or it does not hold exactly one key with its certificate.
     Invalid,
+    /// Another decode is still running (the file itself is not judged).
+    Busy,
+}
+
+/// Whether a decode thread is alive.
+#[derive(Clone, Default)]
+pub struct InFlight(Arc<AtomicBool>);
+
+/// The right to run the decode; given back on drop.
+pub struct Permit(Arc<AtomicBool>);
+
+impl InFlight {
+    fn acquire(&self) -> Option<Permit> {
+        self.0
+            .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+            .ok()
+            .map(|_| Permit(Arc::clone(&self.0)))
+    }
+}
+
+impl Drop for Permit {
+    fn drop(&mut self) {
+        self.0.store(false, Ordering::Release);
+    }
 }
 
 /// What a decoded file holds: the leaf certificate first, then the chain as the file has it; the private key as PKCS#8 DER.
@@ -135,15 +160,14 @@ impl Scan {
             if self.nodes > SCAN_NODES_MAX {
                 return Err(P12Error::Invalid);
             }
+            // A constructed element the walker cannot read might hide a key derivation: fail closed, never skip it.
             if item.tag == 0x30 {
-                if let Some(children) = parse_all(item.content) {
-                    check_algorithm(&children)?;
-                    self.walk(&children, depth + 1)?;
-                }
+                let children = parse_all(item.content).ok_or(P12Error::Invalid)?;
+                check_algorithm(&children)?;
+                self.walk(&children, depth + 1)?;
             } else if item.constructed() {
-                if let Some(children) = parse_all(item.content) {
-                    self.walk(&children, depth + 1)?;
-                }
+                let children = parse_all(item.content).ok_or(P12Error::Invalid)?;
+                self.walk(&children, depth + 1)?;
             } else if item.tag == 0x04 && item.content.first() == Some(&0x30) {
                 // The content of a ContentInfo is an OCTET STRING that holds more DER.
                 if let Some(children) = parse_all(item.content) {
@@ -158,12 +182,16 @@ impl Scan {
 /// `children` is the content of a SEQUENCE: if it is `AlgorithmIdentifier { kdf-oid, SEQUENCE { .. INTEGER iterations .. } }`, the
 /// count must be within the cap.
 fn check_algorithm(children: &[Tlv<'_>]) -> Result<(), P12Error> {
-    let [oid, params, ..] = children else {
+    let Some(oid) = children.first() else {
         return Ok(());
     };
-    if oid.tag != 0x06 || params.tag != 0x30 || !is_kdf_oid(oid.content) {
+    if oid.tag != 0x06 || !is_kdf_oid(oid.content) {
         return Ok(());
     }
+    // A key derivation without readable parameters is not one the cap can be applied to.
+    let Some(params) = children.get(1).filter(|params| params.tag == 0x30) else {
+        return Err(P12Error::Invalid);
+    };
     let Some(inner) = parse_all(params.content) else {
         return Err(P12Error::Invalid);
     };
@@ -208,15 +236,21 @@ pub fn scan_iterations(file: &[u8]) -> Result<(), P12Error> {
 
 /// Decodes `file` with `password`: exactly one private key with the certificate that belongs to it. `scan_iterations` runs first, then
 /// the decode under the time budget.
-pub fn decode(file: &[u8], password: &str) -> Result<Decoded, P12Error> {
+/// One decode at a time per `flight`: a decode that ran out of budget keeps its thread (it cannot be stopped), so without this a
+/// stream of imports would stack up threads that each hold a copy of the file and the password. A second call while one runs is
+/// [`P12Error::Busy`].
+pub fn decode(file: &[u8], password: &str, flight: &InFlight) -> Result<Decoded, P12Error> {
     scan_iterations(file)?;
+    let permit = flight.acquire().ok_or(P12Error::Busy)?;
     let file = file.to_vec();
     let password = Zeroizing::new(password.to_owned());
     let (sender, receiver) = mpsc::channel();
     std::thread::Builder::new()
         .name("sheer-p12".into())
         .spawn(move || {
-            // A panic in the decoder drops the sender: the receiver then reports a disconnect.
+            // A panic in the decoder drops the sender: the receiver then reports a disconnect. The permit is given back when the
+            // thread ends, however it ends.
+            let _permit = permit;
             let _ = sender.send(decode_now(&file, &password));
         })
         .map_err(|_| P12Error::Invalid)?;
@@ -390,8 +424,66 @@ mod tests {
 
     #[test]
     fn decoding_garbage_is_invalid_not_a_panic() {
-        assert_eq!(decode(b"junk", "pw").err(), Some(P12Error::Invalid));
+        let flight = InFlight::default();
+        assert_eq!(
+            decode(b"junk", "pw", &flight).err(),
+            Some(P12Error::Invalid)
+        );
         // A well-formed shell with a MAC that cannot verify is "not this password", never an identity.
-        assert!(decode(&pfx(1, &[]), "pw").is_err());
+        assert!(decode(&pfx(1, &[]), "pw", &flight).is_err());
+    }
+
+    #[test]
+    fn a_second_decode_while_one_runs_is_busy_and_the_slot_comes_back() {
+        let flight = InFlight::default();
+        let held = flight.acquire().expect("free");
+        assert!(flight.acquire().is_none());
+        assert_eq!(
+            decode(&pfx(1, &[]), "pw", &flight).err(),
+            Some(P12Error::Busy)
+        );
+        // A file the pre-scan refuses is judged before the slot is looked at.
+        assert_eq!(
+            decode(b"junk", "pw", &flight).err(),
+            Some(P12Error::Invalid)
+        );
+        drop(held);
+        assert!(flight.acquire().is_some());
+        // A decode that ends (here: with an error) gives the slot back.
+        let _ = decode(&pfx(1, &[]), "pw", &flight);
+        let mut free = false;
+        for _ in 0..200 {
+            if let Some(permit) = flight.acquire() {
+                drop(permit);
+                free = true;
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+        assert!(free);
+    }
+
+    #[test]
+    fn key_derivations_the_scan_cannot_read_fail_closed() {
+        // A KDF identifier without parameters, or with parameters that are not a SEQUENCE.
+        let bare = tlv(0x30, &tlv(0x06, &PBKDF2));
+        assert_eq!(
+            scan_iterations(&pfx(1, &tlv(0x30, &bare))),
+            Err(P12Error::Invalid)
+        );
+        let odd = tlv(
+            0x30,
+            &tlv(0x30, &[tlv(0x06, &PBKDF2), tlv(0x04, &[1, 2, 3])].concat()),
+        );
+        assert_eq!(scan_iterations(&pfx(1, &odd)), Err(P12Error::Invalid));
+        // A SEQUENCE inside the DER whose content has an indefinite length (so no iteration count can be read).
+        let hidden = tlv(
+            0x30,
+            &tlv(0x30, &[0x30, 0x80, 0x02, 0x01, 0x01, 0x00, 0x00]),
+        );
+        assert_eq!(scan_iterations(&pfx(1, &hidden)), Err(P12Error::Invalid));
+        // The same for a constructed context element.
+        let context = tlv(0x30, &tlv(0xa0, &[0x30, 0x80, 0x00, 0x00]));
+        assert_eq!(scan_iterations(&pfx(1, &context)), Err(P12Error::Invalid));
     }
 }

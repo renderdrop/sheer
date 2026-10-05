@@ -128,9 +128,11 @@ guard_network_crates() {
 }
 
 # ADR-121 section 2, SECURITY S7: the certificate crypto is pure Rust. No C-backed provider (ring, aws-lc-rs, openssl) may be part of the
-# desktop build outside the updater, and the crypto crates may be named only in src-tauri/src/pdfsig/ (comment lines are ignored).
+# desktop build outside the updater, and the crypto crates (direct and transitive names) may be named only in src-tauri/src/pdfsig/ (comment
+# lines are ignored). src-tauri/tests is excluded on purpose: the integration tests build and verify real signatures and name the crates
+# (they are not part of the shipped binary).
 CRYPTO_BANNED=(ring aws-lc-rs openssl)
-CRYPTO_PATTERN='(^|[^A-Za-z0-9_])(der|spki|pkcs8|x509_cert|cms|rsa|p256|p384|sha1|p12_keystore)::'
+CRYPTO_PATTERN='(^|[^A-Za-z0-9_])(der|spki|pkcs8|x509_cert|cms|rsa|p256|p384|sha1|p12_keystore|ecdsa|elliptic_curve|pkcs1|pkcs5|pkcs12|x509_parser|signature|crypto_bigint|const_oid|pbkdf2|primeorder|rfc6979|rc2|des|cbc|hmac)::'
 
 guard_crypto_crates() {
   local target crate packages root ok=1 hits

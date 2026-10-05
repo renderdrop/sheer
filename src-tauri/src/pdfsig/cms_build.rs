@@ -188,7 +188,7 @@ pub fn sign(digest: &[u8; 32], material: &SignerMaterial) -> Result<Vec<u8>, App
             assemble::<_, p384::ecdsa::DerSignature>(key, digest, material)
         }
         SignerKey::Rsa(key) => {
-            let key = rsa::pkcs1v15::SigningKey::<Sha256>::new((**key).clone());
+            let key = BlindedRsa(rsa::pkcs1v15::SigningKey::<Sha256>::new((**key).clone()));
             assemble::<_, rsa::pkcs1v15::Signature>(&key, digest, material)
         }
     }));
@@ -197,6 +197,64 @@ pub fn sign(digest: &[u8; 32], material: &SignerMaterial) -> Result<Vec<u8>, App
         return Err(failed("the signature is larger than its placeholder"));
     }
     Ok(blob)
+}
+
+/// An RSA signing key whose `Signer` is the randomized one: the plain `rsa` `Signer` runs the private operation without blinding, which
+/// leaks timing. The blinding factor comes from the OS (`getrandom`). Still not constant time (SECURITY R14).
+struct BlindedRsa(rsa::pkcs1v15::SigningKey<Sha256>);
+
+/// The OS as a blinding source. A failed read is remembered, and the signature that used it is refused.
+struct OsBlinding {
+    failed: bool,
+}
+
+impl rsa::rand_core::RngCore for OsBlinding {
+    fn next_u32(&mut self) -> u32 {
+        let mut bytes = [0u8; 4];
+        self.fill_bytes(&mut bytes);
+        u32::from_le_bytes(bytes)
+    }
+    fn next_u64(&mut self) -> u64 {
+        let mut bytes = [0u8; 8];
+        self.fill_bytes(&mut bytes);
+        u64::from_le_bytes(bytes)
+    }
+    fn fill_bytes(&mut self, dest: &mut [u8]) {
+        if getrandom::fill(dest).is_err() {
+            self.failed = true;
+        }
+    }
+    fn try_fill_bytes(&mut self, dest: &mut [u8]) -> Result<(), rsa::rand_core::Error> {
+        self.fill_bytes(dest);
+        Ok(())
+    }
+}
+
+impl rsa::rand_core::CryptoRng for OsBlinding {}
+
+impl Keypair for BlindedRsa {
+    type VerifyingKey = rsa::pkcs1v15::VerifyingKey<Sha256>;
+    fn verifying_key(&self) -> Self::VerifyingKey {
+        self.0.verifying_key()
+    }
+}
+
+impl DynSignatureAlgorithmIdentifier for BlindedRsa {
+    fn signature_algorithm_identifier(&self) -> spki::Result<AlgorithmIdentifierOwned> {
+        self.0.signature_algorithm_identifier()
+    }
+}
+
+impl Signer<rsa::pkcs1v15::Signature> for BlindedRsa {
+    fn try_sign(&self, msg: &[u8]) -> Result<rsa::pkcs1v15::Signature, rsa::signature::Error> {
+        use rsa::signature::RandomizedSigner;
+        let mut rng = OsBlinding { failed: false };
+        let signature = self.0.try_sign_with_rng(&mut rng, msg)?;
+        if rng.failed {
+            return Err(rsa::signature::Error::new());
+        }
+        Ok(signature)
+    }
 }
 
 fn assemble<S, Sig>(
@@ -469,6 +527,14 @@ mod tests {
             info.signature_algorithm.oid.to_string(),
             "1.2.840.113549.1.1.11"
         );
+        // The blinded operation gives the same (deterministic PKCS#1 v1.5) signature as the plain one.
+        let plain = {
+            use rsa::signature::{SignatureEncoding as _, Signer as _};
+            let attrs = info.signed_attrs.as_ref().ok_or("attrs")?;
+            let signature: Signature = signing.sign(&attrs.to_der()?);
+            signature.to_vec()
+        };
+        assert_eq!(info.signature.as_bytes(), plain.as_slice());
         let attrs = info.signed_attrs.as_ref().ok_or("attrs")?;
         let signature = Signature::try_from(info.signature.as_bytes())?;
         let verifying: VerifyingKey<Sha256> = signing.verifying_key();

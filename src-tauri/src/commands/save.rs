@@ -405,11 +405,14 @@ pub(super) fn read_all(admitted: Admitted) -> Result<(Vec<u8>, Option<Fingerprin
 /// Largest file whose signatures are read for the lock; a larger one with a signature is `locked` (the safe side).
 const LOCK_SCAN_MAX_BYTES: u64 = 512 * 1024 * 1024;
 
-/// Whether the stream holds the token `/ByteRange`: a signature dictionary cannot be without it (it is never in an object stream), so a
-/// file without it has no signature and is not parsed for the lock. Reads in 64 KiB blocks.
+/// Whether the stream holds the token `/ByteRange`, also written with `#xx` name escapes (`/Byte#52ange` is the same name to a PDF
+/// reader): a signature dictionary cannot be without it (it is never in an object stream), so a file without it has no signature and is
+/// not parsed for the lock. Reads in 64 KiB blocks.
 pub(super) fn has_byte_range<R: Read>(mut reader: R) -> std::io::Result<bool> {
     const TOKEN: &[u8] = b"/ByteRange";
-    let mut buffer = vec![0u8; 64 * 1024 + TOKEN.len()];
+    // Every character of the name may be written as three bytes.
+    const TAIL: usize = TOKEN.len() * 3;
+    let mut buffer = vec![0u8; 64 * 1024 + TAIL];
     let mut kept = 0usize;
     loop {
         let read = reader.read(&mut buffer[kept..])?;
@@ -417,23 +420,63 @@ pub(super) fn has_byte_range<R: Read>(mut reader: R) -> std::io::Result<bool> {
             return Ok(false);
         }
         let end = kept + read;
-        if buffer[..end].windows(TOKEN.len()).any(|w| w == TOKEN) {
+        let plain = &buffer[..end];
+        if plain.windows(TOKEN.len()).any(|w| w == TOKEN)
+            || unescape_names(plain)
+                .windows(TOKEN.len())
+                .any(|w| w == TOKEN)
+        {
             return Ok(true);
         }
         // Keep the tail, so a token across two blocks is found.
-        let tail = (TOKEN.len() - 1).min(end);
+        let tail = TAIL.min(end);
         buffer.copy_within(end - tail..end, 0);
         kept = tail;
     }
 }
 
-/// The lock of the file at `path` (see [`AppState::refresh_signature_lock`]).
+/// `bytes` with every `#xx` (two hex digits) replaced by the byte it stands for.
+fn unescape_names(bytes: &[u8]) -> Vec<u8> {
+    let hex = |b: u8| char::from(b).to_digit(16);
+    let mut out = Vec::with_capacity(bytes.len());
+    let mut at = 0;
+    while at < bytes.len() {
+        if bytes[at] == b'#' {
+            if let (Some(hi), Some(lo)) = (
+                bytes.get(at + 1).copied().and_then(hex),
+                bytes.get(at + 2).copied().and_then(hex),
+            ) {
+                out.push(u8::try_from(hi * 16 + lo).unwrap_or(b'#'));
+                at += 3;
+                continue;
+            }
+        }
+        out.push(bytes[at]);
+        at += 1;
+    }
+    out
+}
+
+/// The lock of a file that holds the token `/ByteRange`: what its signatures allow, and the strictest lock when they cannot be read
+/// (encrypted, damaged or hostile: a signature may be in there, and not knowing must not unlock).
+pub(super) fn lock_of_bytes(bytes: &[u8]) -> SignatureLock {
+    match sigread::scan_bytes(bytes) {
+        Ok(scan) => crate::model::sig_policy::lock_of(&scan),
+        Err(_) => SignatureLock::Locked,
+    }
+}
+
+/// The lock of the file at `path` (see [`AppState::refresh_signature_lock`]). A file that cannot be opened has none (nothing is known
+/// about it); one that holds the token `/ByteRange` and cannot be read or scanned is `locked`.
 pub(super) fn signature_lock_of_file(path: &Path) -> SignatureLock {
     let Ok(Admitted { mut file, .. }) = intake::admit(path) else {
         return SignatureLock::None;
     };
-    if !matches!(has_byte_range(&mut file), Ok(true)) {
-        return SignatureLock::None;
+    match has_byte_range(&mut file) {
+        Ok(false) => return SignatureLock::None,
+        Ok(true) => {}
+        // Could not even look: it may have one.
+        Err(_) => return SignatureLock::Locked,
     }
     let len = file.metadata().map_or(u64::MAX, |meta| meta.len());
     if len > LOCK_SCAN_MAX_BYTES {
@@ -443,12 +486,9 @@ pub(super) fn signature_lock_of_file(path: &Path) -> SignatureLock {
     if std::io::Seek::seek(&mut file, std::io::SeekFrom::Start(0)).is_err()
         || file.read_to_end(&mut bytes).is_err()
     {
-        return SignatureLock::None;
+        return SignatureLock::Locked;
     }
-    match sigread::scan_bytes(&bytes) {
-        Ok(scan) => crate::model::sig_policy::lock_of(&scan),
-        Err(_) => SignatureLock::None,
-    }
+    lock_of_bytes(&bytes)
 }
 
 impl AppState {
@@ -1088,7 +1128,8 @@ mod tests {
 
 #[cfg(test)]
 mod lock_scan_tests {
-    use super::has_byte_range;
+    use super::{has_byte_range, lock_of_bytes, signature_lock_of_file};
+    use crate::pdfsig::types::SignatureLock;
 
     #[test]
     fn the_token_is_found_across_block_edges_and_absent_otherwise() {
@@ -1100,5 +1141,39 @@ mod lock_scan_tests {
         }
         assert!(!has_byte_range(&vec![b'x'; 300_000][..]).unwrap());
         assert!(!has_byte_range(&b"/Byte"[..]).unwrap());
+    }
+
+    #[test]
+    fn an_escaped_name_is_the_token_too_even_across_block_edges() {
+        for token in [
+            &b"/Byte#52ange"[..],
+            b"/#42yteRange",
+            b"/#42#79#74#65#52#61#6e#67#65",
+        ] {
+            for offset in [0usize, 65_530, 65_536, 131_000] {
+                let mut data = vec![b'x'; 300_000];
+                data[offset..offset + token.len()].copy_from_slice(token);
+                assert!(has_byte_range(&data[..]).unwrap(), "{token:?} at {offset}");
+            }
+        }
+        assert!(!has_byte_range(&b"/Byte#5ange #zz"[..]).unwrap());
+    }
+
+    #[test]
+    fn a_signature_that_cannot_be_read_locks_the_file_instead_of_freeing_it() {
+        // A file with the token that is not a document (damaged, or encrypted: the same refusal).
+        assert_eq!(
+            lock_of_bytes(b"%PDF-1.7\n/ByteRange [0 1 2 3]\ngarbage"),
+            SignatureLock::Locked
+        );
+        let dir = std::env::temp_dir().join(format!("sheer-lock-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let hostile = dir.join("hostile.pdf");
+        std::fs::write(&hostile, b"%PDF-1.7\n/Byte#52ange [0 1 2 3]\ngarbage").unwrap();
+        assert_eq!(signature_lock_of_file(&hostile), SignatureLock::Locked);
+        let plain = dir.join("plain.pdf");
+        std::fs::write(&plain, b"%PDF-1.7\ngarbage without the name").unwrap();
+        assert_eq!(signature_lock_of_file(&plain), SignatureLock::None);
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

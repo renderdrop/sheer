@@ -52,6 +52,10 @@ impl AppState {
         }
         let snapshot = self.snapshot_bytes(id)?;
         let bytes = unsign::strip_signatures(snapshot)?;
+        // The result has to be a document before it replaces anything.
+        crate::pdfwrite::load_untrusted(&bytes)?;
+        // Only a file this call made may be taken back (a chosen file that was already there is the user's).
+        let existed = target.exists();
         atomic::replace_atomic(&target, &bytes)?;
         let opened = self
             .open_as(target.clone(), DocKind::User, None)
@@ -60,7 +64,7 @@ impl AppState {
                     .into_event()
                     .ok_or_else(|| AppError::new(ErrorCode::Internal))
             });
-        if opened.is_err() {
+        if opened.is_err() && !existed {
             // What was written does not open: it is not left behind as a copy the user would trust.
             let _ = std::fs::remove_file(&target);
         }

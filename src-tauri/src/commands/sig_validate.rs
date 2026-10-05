@@ -168,12 +168,23 @@ impl AppState {
                     AppEvent::open_failed(AppError::new(ErrorCode::DamagedFile))
                 }
                 Ok(Opened::Pending) => AppEvent::open_failed(AppError::new(ErrorCode::Internal)),
-                Err(error) => {
-                    let _ = std::fs::remove_file(&target);
-                    AppEvent::open_failed(error)
-                }
+                // The file is content-addressed: another tab may be showing the very same one, so it is never deleted here. An
+                // orphan is swept at the next start (and by age).
+                Err(error) => AppEvent::open_failed(error),
             },
         )
+    }
+
+    /// Deletes the file of a signed revision whose tab closed, unless another open document is that file. Only files this module
+    /// writes (its own folder, `signed-*.pdf`) are ever touched. Best effort: a file still held open is swept at the next start.
+    pub(super) fn forget_signed_revision(&self, path: &std::path::Path) {
+        let folder = self.revision_folder();
+        if path.parent() == Some(folder.as_path())
+            && is_revision_name(path)
+            && !self.registry.is_open_path(path)
+        {
+            let _ = std::fs::remove_file(path);
+        }
     }
 
     fn revision_folder(&self) -> PathBuf {
@@ -258,25 +269,44 @@ fn now_iso() -> String {
     jiff::Timestamp::now().to_string()
 }
 
-/// Deletes files of the folder that were last written more than [`REVISION_FILE_TTL`] ago. Best effort.
-fn sweep_old(folder: &std::path::Path) {
+/// Whether `path` is named like a file this module writes.
+fn is_revision_name(path: &std::path::Path) -> bool {
+    path.file_name().is_some_and(|name| {
+        let name = name.to_string_lossy();
+        name.starts_with("signed-") && name.ends_with(".pdf")
+    })
+}
+
+/// Deletes files of the folder that were last written more than `ttl` ago (zero: all of them). Best effort.
+fn sweep_older_than(folder: &std::path::Path, ttl: Duration) {
     let Ok(entries) = std::fs::read_dir(folder) else {
         return;
     };
     let now = SystemTime::now();
     for entry in entries.flatten() {
-        let old = entry
-            .metadata()
-            .ok()
-            .and_then(|m| m.modified().ok())
-            .and_then(|modified| now.duration_since(modified).ok())
-            .is_some_and(|age| age > REVISION_FILE_TTL);
-        let name = entry.file_name();
-        let ours = name.to_string_lossy();
-        if old && ours.starts_with("signed-") && ours.ends_with(".pdf") {
+        let old = ttl.is_zero()
+            || entry
+                .metadata()
+                .ok()
+                .and_then(|m| m.modified().ok())
+                .and_then(|modified| now.duration_since(modified).ok())
+                .is_some_and(|age| age > ttl);
+        if old && is_revision_name(&entry.path()) {
             let _ = std::fs::remove_file(entry.path());
         }
     }
+}
+
+fn sweep_old(folder: &std::path::Path) {
+    sweep_older_than(folder, REVISION_FILE_TTL);
+}
+
+/// At start no tab of an earlier run is left, so no signed revision of one is needed: all of them go (the data directory is `dir`).
+pub(super) fn sweep_revisions_at_start(dir: &std::path::Path) {
+    sweep_older_than(
+        &dir.join(trust::DIR_NAME).join(REVISION_DIR),
+        Duration::ZERO,
+    );
 }
 
 /// The fingerprints of the user's own identities (empty when the store is unavailable: that only means `trustedByYou` or `notTrusted`).
@@ -362,5 +392,18 @@ mod tests {
         assert_eq!(trust_of(&"a".repeat(64), &pins, &own), Trust::OwnIdentity);
         assert_eq!(trust_of(&"b".repeat(64), &pins, &own), Trust::TrustedByYou);
         assert_eq!(trust_of(&"c".repeat(64), &pins, &own), Trust::NotTrusted);
+    }
+
+    #[test]
+    fn the_start_sweep_takes_only_signed_revision_files() {
+        let dir = std::env::temp_dir().join(format!("sheer-rev-sweep-{}", std::process::id()));
+        let folder = dir.join(trust::DIR_NAME).join(REVISION_DIR);
+        std::fs::create_dir_all(&folder).unwrap();
+        std::fs::write(folder.join("signed-aa.pdf"), b"x").unwrap();
+        std::fs::write(folder.join("keep.txt"), b"x").unwrap();
+        sweep_revisions_at_start(&dir);
+        assert!(!folder.join("signed-aa.pdf").exists());
+        assert!(folder.join("keep.txt").exists());
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

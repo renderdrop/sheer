@@ -312,12 +312,19 @@ impl AppState {
 
     /// The signed file is a new one: written atomically, then opened as a document of its own. The original document is not touched.
     fn sign_to_new_file(&self, target: &Path, signed: &[u8]) -> Result<SaveResult, AppError> {
+        // Known before anything is written: only a file this call made may be taken back.
+        let existed = target.exists();
+        // The bytes are a checked PDF before they go anywhere (the caller validated them); they land through a temp file in the
+        // target's folder and a rename, so a failed write leaves an existing target as it was.
         atomic::replace_atomic(target, signed)
             .map_err(|error| AppError::logged(ErrorCode::SaveFailed, error))?;
         let document = match self.open_path(PathBuf::from(target)) {
             Ok(Some(document)) => document,
             other => {
-                let _ = std::fs::remove_file(target);
+                // A file the user chose that was already there is never deleted: it is theirs, and complete.
+                if !existed {
+                    let _ = std::fs::remove_file(target);
+                }
                 return Err(match other {
                     Err(error) => error,
                     _ => AppError::logged(ErrorCode::SaveFailed, "the signed file did not open"),

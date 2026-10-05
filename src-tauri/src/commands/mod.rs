@@ -216,6 +216,8 @@ impl AppState {
     /// This state with `directory` as the app data directory: the first save over a file puts a copy of the original in its `backups` folder.
     #[must_use]
     pub fn with_data_dir(mut self, directory: PathBuf) -> Self {
+        // Signed revisions of an earlier run have no tab any more.
+        sig_validate::sweep_revisions_at_start(&directory);
         self.data_dir = Some(Arc::new(directory));
         self
     }
@@ -533,8 +535,12 @@ impl AppState {
         self.autosave_forget(id);
         // A document that still waits for its password was never loaded: cancelling its prompt forgets it.
         self.registry.remove_locked(id);
+        // A signed revision is a file of this app's own, made for the tab: it goes with the tab.
+        let revision = (self.registry.kind(id) == Some(DocKind::SignedRevision))
+            .then(|| self.registry.path(id))
+            .flatten();
         self.registry.begin_close(id);
-        match self.release_closing_checked() {
+        let result = match self.release_closing_checked() {
             // This document is still waiting for its release: that is the answer.
             Err(error) if self.registry.closing().contains(&id) => Err(error),
             // An older one could not be released; it is none of this call's business, and is tried again later.
@@ -543,7 +549,11 @@ impl AppState {
                 Ok(())
             }
             Ok(()) => Ok(()),
+        };
+        if let Some(path) = revision {
+            self.forget_signed_revision(&path);
         }
+        result
     }
 
     /// Asks the engine to release every document marked as closing, oldest first, and forgets each one the engine confirms.

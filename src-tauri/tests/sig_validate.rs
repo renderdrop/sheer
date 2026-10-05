@@ -991,7 +991,10 @@ fn the_commands_validate_open_the_signed_revision_and_pin_a_signer() {
     let both = fill_form(&approve(&first, &Keys::p256(11), 9, 10));
     let path = scratch.0.join("doc.pdf");
     std::fs::write(&path, &both).unwrap();
-    let info = state.open_path(path).unwrap().expect("loaded");
+    let info = state
+        .open_path(path)
+        .unwrap_or_else(|error| panic!("open failed: {error:?}"))
+        .expect("loaded");
 
     let report = state
         .validate_signatures_with(info.id, std::collections::HashSet::new)
@@ -1084,7 +1087,10 @@ fn a_signature_that_does_not_verify_cannot_be_pinned() {
     signed[at] = b'1';
     let path = scratch.0.join("tampered.pdf");
     std::fs::write(&path, &signed).unwrap();
-    let info = state.open_path(path).unwrap().expect("loaded");
+    let info = state
+        .open_path(path)
+        .unwrap_or_else(|error| panic!("open failed: {error:?}"))
+        .expect("loaded");
     let error = state
         .set_signer_trust_with(info.id, 0, true, std::collections::HashSet::new)
         .unwrap_err();

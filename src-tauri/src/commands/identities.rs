@@ -60,6 +60,8 @@ pub struct Identities {
     store: IdentityStore,
     pending: Mutex<Option<Pending>>,
     next_ticket: AtomicU32,
+    /// One p12 decode at a time (see `p12::decode`).
+    decoding: p12::InFlight,
 }
 
 /// How long the next password try has to wait: nothing for the first three wrong ones, then `IDENTITY_PASSWORD_DELAY` after the last.
@@ -109,6 +111,7 @@ impl Identities {
             store,
             pending: Mutex::new(None),
             next_ticket: AtomicU32::new(1),
+            decoding: p12::InFlight::default(),
         }
     }
 
@@ -213,8 +216,13 @@ impl Identities {
         if !wait.is_zero() {
             std::thread::sleep(wait);
         }
-        let decoded = match p12::decode(&pending.bytes, password.expose()) {
+        let decoded = match p12::decode(&pending.bytes, password.expose(), &self.decoding) {
             Ok(decoded) => decoded,
+            // Another decode is still running (one that outlived its budget keeps its thread): the file stays for a later try.
+            Err(p12::P12Error::Busy) => {
+                self.keep_pending(pending);
+                return Err(AppError::new(ErrorCode::IoInUse));
+            }
             Err(p12::P12Error::WrongPassword) => {
                 pending.wrong += 1;
                 pending.last_wrong = Some(Instant::now());

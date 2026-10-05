@@ -357,6 +357,7 @@ pub fn validate_bytes(bytes: &[u8], deadline: Instant) -> Result<Validation, App
             continue;
         }
         let env = Env {
+            deadline,
             bytes,
             doc: &doc,
             ends: &ends,
@@ -382,7 +383,29 @@ pub fn validate_bytes(bytes: &[u8], deadline: Instant) -> Result<Validation, App
     })
 }
 
+/// How many revision prefixes are kept parsed at once (each is a whole document).
+const PREFIX_CACHE_MAX: usize = 4;
+
+/// A reader that fails once `deadline` has passed, so hashing a huge file cannot outlive the time budget.
+struct Timed<R> {
+    inner: R,
+    deadline: Instant,
+}
+
+impl<R: std::io::Read> std::io::Read for Timed<R> {
+    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+        if Instant::now() >= self.deadline {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::TimedOut,
+                "validation deadline passed",
+            ));
+        }
+        self.inner.read(buf)
+    }
+}
+
 struct Env<'a> {
+    deadline: Instant,
     bytes: &'a [u8],
     doc: &'a Document,
     ends: &'a [u64],
@@ -496,7 +519,10 @@ fn validate_one(
     }
     // Steps (iii) to (vi).
     let claimed = field.signed_at.as_deref().and_then(verify::parse_pdf_date);
-    let mut ranges = (&env.bytes[..a]).chain(&env.bytes[b..end]);
+    let mut ranges = Timed {
+        inner: (&env.bytes[..a]).chain(&env.bytes[b..end]),
+        deadline: env.deadline,
+    };
     let checked = verify::check(
         &RawSignature {
             sub_filter,
@@ -531,13 +557,26 @@ fn coverage_of(env: &Env<'_>, end: u64, prefixes: &mut HashMap<u64, Option<Docum
         .iter()
         .position(|e| *e >= end)
         .map_or(1, |i| u32::try_from(i + 1).unwrap_or(u32::MAX));
-    let prefix = prefixes.entry(end).or_insert_with(|| {
+    if !prefixes.contains_key(&end) {
+        // Parsing cannot be interrupted: past the deadline it is not started.
+        if Instant::now() >= env.deadline {
+            return Coverage::EarlierRevision {
+                revision,
+                later: LaterChanges::OTHER,
+                verdict: coverage::verdict(LaterChanges::OTHER, env.doc_mdp),
+            };
+        }
+        if prefixes.len() >= PREFIX_CACHE_MAX {
+            prefixes.clear();
+        }
         // The signed bytes have to be a document of their own (the same pre-scan as every file).
-        super::load_untrusted(&env.bytes[..at]).ok()
-    });
-    let later = match prefix {
+        prefixes.insert(end, super::load_untrusted(&env.bytes[..at]).ok());
+    }
+    let later = match prefixes.get(&end).and_then(Option::as_ref) {
         Some(old) => {
-            let diff = catch_unwind(AssertUnwindSafe(|| revision_diff(old, env.doc)));
+            let diff = catch_unwind(AssertUnwindSafe(|| {
+                revision_diff(old, env.doc, env.deadline)
+            }));
             match diff {
                 Ok(diff) => {
                     let mut later = diff.later;
@@ -961,7 +1000,7 @@ fn collect_refs(value: &Object, push: &mut dyn FnMut(ObjectId), depth: usize) {
 
 /// Classifies what changed between `old` (the signed revision) and `new` (the file now), by `pdfsig::coverage`'s rules. Never panics
 /// and never recurses on file data; at most `limits::SIG_DIFF_OBJECTS_MAX` changed objects are classified (then `truncated`).
-pub fn revision_diff(old: &Document, new: &Document) -> Diff {
+pub fn revision_diff(old: &Document, new: &Document, deadline: Instant) -> Diff {
     let (old_shape, new_shape) = (Shape::new(old), Shape::new(new));
     let mut diff = Diff::default();
     let mut later = LaterChanges::default();
@@ -974,11 +1013,20 @@ pub fn revision_diff(old: &Document, new: &Document) -> Diff {
     let mut claims: HashMap<ObjectId, LaterChanges> = HashMap::new();
     let mut deferred: Vec<ObjectId> = Vec::new();
     let mut changed = 0usize;
-    for (id, object) in &new.objects {
-        if is_structural(object) {
-            continue;
+    for (visited, (id, object)) in new.objects.iter().enumerate() {
+        if visited % 256 == 0 && Instant::now() >= deadline {
+            diff.truncated = true;
+            break;
         }
         let old_object = old.objects.get(id);
+        if is_structural(object) {
+            // Bookkeeping streams are skipped only when they are new or replace bookkeeping: a stream typed /XRef or /ObjStm
+            // that overwrites a content object is content changing under a disguise.
+            if old_object.is_some_and(|o| !is_structural(o)) {
+                later.other = true;
+            }
+            continue;
+        }
         if old_object == Some(object) {
             continue;
         }
@@ -1136,6 +1184,7 @@ fn is_structural(object: &Object) -> bool {
 mod tests {
     use super::*;
     use lopdf::dictionary;
+    use std::time::Duration;
 
     /// A one-page document with an AcroForm whose fields are built by `f`; returns the document and the page id.
     fn document(build: impl FnOnce(&mut Document, ObjectId) -> Vec<Object>) -> Document {
@@ -1189,6 +1238,93 @@ mod tests {
             field.set("V", value);
         }
         doc.add_object(field).into()
+    }
+
+    fn with_content() -> (Document, ObjectId) {
+        let mut doc = document(|_, _| Vec::new());
+        let content = doc.add_object(lopdf::Stream::new(Dictionary::new(), b"0 0 m".to_vec()));
+        (doc, content)
+    }
+
+    #[test]
+    fn a_content_stream_overwritten_as_xref_or_objstm_is_other_at_every_level() {
+        use crate::pdfsig::types::Verdict;
+        for kind in ["XRef", "ObjStm"] {
+            let (old, content) = with_content();
+            let mut new = old.clone();
+            new.objects.insert(
+                content,
+                Object::Stream(lopdf::Stream::new(
+                    dictionary! { "Type" => kind },
+                    b"evil".to_vec(),
+                )),
+            );
+            let diff = revision_diff(&old, &new, Instant::now() + Duration::from_secs(60));
+            assert!(diff.later.other, "{kind} shadow");
+            for p in [None, Some(1), Some(2), Some(3)] {
+                assert_eq!(
+                    coverage::verdict(diff.later, p),
+                    Verdict::Disallowed,
+                    "{kind} at {p:?}"
+                );
+            }
+            // A new bookkeeping stream under a fresh id stays invisible.
+            let mut fresh = old.clone();
+            let id = fresh.new_object_id();
+            fresh.objects.insert(
+                id,
+                Object::Stream(lopdf::Stream::new(
+                    dictionary! { "Type" => kind },
+                    b"x".to_vec(),
+                )),
+            );
+            let diff = revision_diff(&old, &fresh, Instant::now() + Duration::from_secs(60));
+            assert!(!diff.later.other, "{kind} bookkeeping");
+        }
+    }
+
+    #[test]
+    fn an_expired_deadline_cuts_the_diff_the_hash_and_the_prefix_parse() {
+        let (old, content) = with_content();
+        let mut new = old.clone();
+        new.objects.insert(
+            content,
+            Object::Stream(lopdf::Stream::new(Dictionary::new(), b"other".to_vec())),
+        );
+        let past = Instant::now() - Duration::from_secs(1);
+        let diff = revision_diff(&old, &new, past);
+        assert!(diff.truncated && diff.later.other);
+        let mut reader = Timed {
+            inner: &b"abc"[..],
+            deadline: past,
+        };
+        let mut buf = [0u8; 3];
+        assert!(std::io::Read::read(&mut reader, &mut buf).is_err());
+    }
+
+    #[test]
+    fn the_prefix_cache_is_capped() {
+        let mut bytes = Vec::new();
+        let mut doc = document(|_, _| Vec::new());
+        doc.save_to(&mut bytes).unwrap();
+        let mut trailing = bytes.clone();
+        trailing.extend_from_slice(b"\n% junk");
+        let scan = crate::pdfwrite::load_untrusted(&bytes).unwrap();
+        let env = Env {
+            deadline: Instant::now() + Duration::from_secs(60),
+            bytes: &trailing,
+            doc: &scan,
+            ends: &[],
+            ends_truncated: false,
+            pages: &HashMap::new(),
+            doc_mdp: None,
+        };
+        let mut prefixes = HashMap::new();
+        for end in 0..(PREFIX_CACHE_MAX as u64 * 3) {
+            let end = bytes.len() as u64 - end.min(bytes.len() as u64 - 1);
+            let _ = coverage_of(&env, end, &mut prefixes);
+            assert!(prefixes.len() <= PREFIX_CACHE_MAX);
+        }
     }
 
     #[test]
