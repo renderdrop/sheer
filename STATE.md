@@ -14,3 +14,5 @@ ci_log: (ADR-120 corrected — package commit → CI run; result filled in at th
   - 02f5650 v1.4 frontend F1–F4 + glue → run #73 (37308405639) red: .p12 decode slot race → fixed 72316ba
   - 0bab7a6 v1.4 acceptance fixes → run #74 (37313577074) red: same PDFium test cause (aaabac2 not yet in)
   - 2965255 v1.4 milestone fixes + both test fixes → run #75 (37318631427) running at the last push
+  - 7819d74 ADR-120 correction → run #76 (37320320065) superseded (cancelled while pending; #77 covers it)
+  - bb93286 release v1.4.0 → run #77 (37320534094) pending at push; hold further pushes until it runs (a new push would supersede it)
