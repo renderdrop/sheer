@@ -97,6 +97,11 @@ function report(caught: unknown): void {
   useUi.getState().showBanner(toAppError(caught));
 }
 
+/** The error to show when a settings write did not stick: the one the store kept, or a generic internal one. */
+function settingsFailure(): unknown {
+  return useSettings.getState().error ?? { code: 'internal', key: 'error.internal', retryable: true };
+}
+
 /** The documents the rewrite covers: every open one except the welcome sample (read-only). */
 function openDocumentIds(): number[] {
   const { order, byId } = useDocuments.getState();
@@ -185,9 +190,13 @@ export async function deleteTag(name: string): Promise<boolean> {
       run: () => {
         void (async () => {
           const now = currentTags();
-          if (now.some((tag) => sameName(tag.name, name)) || now.length >= TAGS_MAX) return;
-          const restored = [...now.slice(0, index), def, ...now.slice(index)];
-          if (!(await persist(restored))) return;
+          // A definition that is back already (re-created by hand) is kept as it is; the assignments below still come back.
+          if (!now.some((tag) => sameName(tag.name, name))) {
+            if (now.length >= TAGS_MAX) return report(settingsFailure());
+            const restored = [...now.slice(0, index), def, ...now.slice(index)];
+            // One retry: a settings write of another feature that overtook ours drops our answer, not our write.
+            if (!(await persist(restored)) && !(await persist(restored))) return report(settingsFailure());
+          }
           for (const { docId, ids } of touched) {
             if (useDocuments.getState().byId[docId] === undefined) continue;
             try {

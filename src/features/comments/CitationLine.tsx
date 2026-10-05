@@ -12,9 +12,6 @@ export function CitationLine({ docId, locator }: { docId: number; locator: strin
   const [style] = useCitationStyle();
   const { info } = useBibliography(docId);
   const short = formatShortCitation(info?.record, locator, style, t.locale);
-  return (
-    <p className="t-caption m-0 truncate">
-      {[short, t('citation.page', { label: locator })].filter((part) => part !== '').join(' · ')}
-    </p>
-  );
+  // The short citation already carries the locator ("(Schmidt, 2021, S. 1)"); the page label stands alone only without one.
+  return <p className="t-caption m-0 truncate">{short !== '' ? short : t('citation.page', { label: locator })}</p>;
 }

@@ -98,6 +98,14 @@ describe('Comments states', () => {
     expect(await screen.findByText('No comments yet')).toBeTruthy();
   });
 
+  it('keeps the Reference button reachable without comments', async () => {
+    listDocumentAnnotations.mockResolvedValue([]);
+    const { user } = setup(<Comments />);
+    await screen.findByText('No comments yet');
+    await user.click(screen.getByRole('button', { name: 'Reference and citation list' }));
+    expect(screen.getByRole('dialog')).toBeTruthy();
+  });
+
   it('shows an error with a retry', async () => {
     listDocumentAnnotations.mockRejectedValueOnce(new Error('boom')).mockResolvedValueOnce(LIST);
     const { user } = setup(<Comments />);

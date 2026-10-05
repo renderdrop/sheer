@@ -62,6 +62,21 @@ describe('filter and sort', () => {
     expect(filterThreads(threads, { kinds: [], authors: [], statuses: [] })).toHaveLength(3);
   });
 
+  it('sorts the citations of a page in reading order, then the rest by id', () => {
+    const list = buildThreads([
+      item(1, { pageId: 0 }),
+      item(2, { pageId: 0 }),
+      item(3, { pageId: 0 }),
+      item(4, { pageId: 1 }),
+    ]);
+    // The citation list says 3 is above 2; 1 is no citation.
+    const reading = new Map([
+      [3, 0],
+      [2, 1],
+    ]);
+    expect(sortThreads(list, 'page', reading).map((t) => t.root.id)).toEqual([3, 2, 1, 4]);
+  });
+
   it('sorts by page, newest and oldest, undated last', () => {
     expect(sortThreads(threads, 'page').map((t) => t.root.id)).toEqual([2, 4, 1]);
     expect(sortThreads(threads, 'newest').map((t) => t.root.id)).toEqual([2, 1, 4]);

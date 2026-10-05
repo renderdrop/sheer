@@ -157,6 +157,35 @@ describe('tag store', () => {
   });
 });
 
+describe('tag delete Undo', () => {
+  it('restores the definition and the assignments after the toast action, even when the first write is overtaken', async () => {
+    seedTags([{ name: 'Pruefen', color: SOLAR }]);
+    listDocumentAnnotations.mockResolvedValue([summary(7, ['Pruefen'])]);
+    expect(await deleteTag('Pruefen')).toBe(true);
+    expect(stored.tags).toEqual([]);
+    const toast = useUi.getState().toast;
+    listDocumentAnnotations.mockResolvedValue([summary(7, [])]);
+    // A settings write of another feature overtakes the Undo write: its answer is dropped by the store.
+    let first = true;
+    updateSettings.mockImplementation((patch: Partial<Settings>) => {
+      const before = stored;
+      stored = { ...stored, ...patch };
+      if (first) {
+        first = false;
+        void useSettings.getState().update({ tipsSeen: [] });
+        return Promise.resolve(before);
+      }
+      return Promise.resolve(stored);
+    });
+    act(() => toast?.action?.run());
+    await waitFor(() => expect(stored.tags).toEqual([{ name: 'Pruefen', color: SOLAR }]));
+    await waitFor(() => expect(currentTags().map((t) => t.name)).toEqual(['Pruefen']));
+    await waitFor(() =>
+      expect(apply).toHaveBeenLastCalledWith(1, { type: 'updateAnnotation', id: 7, patch: { tags: ['Pruefen'] } }),
+    );
+  });
+});
+
 describe('TagChips', () => {
   it('shows a chip per tag, three at most, then +n with the rest in the tooltip', () => {
     seedTags([{ name: 'A', color: SOLAR }]);

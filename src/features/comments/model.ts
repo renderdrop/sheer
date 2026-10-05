@@ -234,10 +234,24 @@ export function firstLine(text: string, quote: string | null | undefined): strin
   return own !== '' ? own : (quote ?? '');
 }
 
-export function sortThreads(threads: readonly Thread[], order: SortOrder): Thread[] {
+/**
+ * `reading` ranks the citations in reading order (page, top to bottom, left to right: the order of `list_citations`), by annotation id. The
+ * Page order uses it within a page: ranked citations first in that order, then the rest by id.
+ */
+export function sortThreads(
+  threads: readonly Thread[],
+  order: SortOrder,
+  reading?: ReadonlyMap<number, number>,
+): Thread[] {
   const sorted = [...threads];
   if (order === 'page') {
-    sorted.sort((a, b) => a.root.pageId - b.root.pageId || a.root.id - b.root.id);
+    const rank = (thread: Thread): number => reading?.get(thread.root.id) ?? Number.POSITIVE_INFINITY;
+    sorted.sort((a, b) => {
+      if (a.root.pageId !== b.root.pageId) return a.root.pageId - b.root.pageId;
+      const x = rank(a);
+      const y = rank(b);
+      return x === y ? a.root.id - b.root.id : x < y ? -1 : 1;
+    });
   } else if (order === 'author') {
     // No author goes last.
     sorted.sort((a, b) => {

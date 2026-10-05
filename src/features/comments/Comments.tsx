@@ -17,6 +17,7 @@ import { useT } from '../../i18n';
 import { useAnnotations } from '../../stores/annotations';
 import { selectActiveId, useDocuments } from '../../stores/documents';
 import { pageNumberOf } from '../../stores/pages';
+import { ReferenceButton } from '../citations/ReferencePopover';
 import { useCitations } from '../citations/store';
 import { deleteThread, jumpTo } from './actions';
 import { CommentCard } from './CommentCard';
@@ -105,19 +106,22 @@ export function CommentsList({ docId, entry }: { docId: number; entry: Ready }) 
     group: tokenPx('--comments-group-height', HEIGHT_FALLBACK.group) + tokenPx('--space-2', 8),
     card: tokenPx('--comments-card-estimate', HEIGHT_FALLBACK.card) + tokenPx('--space-2', 8),
   }));
+  // The records of the citations (full quote, page label); only read when the document has a citation.
+  const hasCitations = useMemo(() => entry.summaries.some((s) => s.cite === true), [entry.summaries]);
+  const citationList = useCitations(hasCitations ? docId : null);
+  const citationById = useMemo(() => new Map(citationList.map((c) => [c.id, c])), [citationList]);
+  // The list of the citations is in reading order; the Page sort follows it within a page.
+  const reading = useMemo(() => new Map(citationList.map((c, i) => [c.id, i])), [citationList]);
   const threads = useMemo(
     () =>
       sortThreads(
         filterThreads(entry.threads, view.filter, (pageId) => pageNumberOf(docId, pageId)),
         view.order,
+        reading,
       ),
-    [entry.threads, view.filter, view.order, docId],
+    [entry.threads, view.filter, view.order, docId, reading],
   );
   const rows = useMemo(() => buildRows(threads, view.order), [threads, view.order]);
-  // The records of the citations (full quote, page label); only read when the document has a citation.
-  const hasCitations = useMemo(() => entry.summaries.some((s) => s.cite === true), [entry.summaries]);
-  const citationList = useCitations(hasCitations ? docId : null);
-  const citationById = useMemo(() => new Map(citationList.map((c) => [c.id, c])), [citationList]);
 
   const scrollerRef = useRef<HTMLDivElement | null>(null);
   const [box, setBox] = useState(0);
@@ -437,13 +441,19 @@ function CommentsView({ docId }: { docId: number }) {
   }
   if (entry.summaries.length === 0) {
     return (
-      <Message>
-        <span className="flex size-control-md items-center justify-center rounded-sm bg-tile text-tile-icon">
-          <Icon icon={MessagesSquare} />
-        </span>
-        <span className="text-md font-semibold">{t('comments.empty')}</span>
-        <span className="text-sm text-text-muted">{t('comments.emptyHint')}</span>
-      </Message>
+      <>
+        {/* The Reference popover (C7) stays reachable without comments; its own empty caption says there is nothing to list. */}
+        <div className="flex h-control-md shrink-0 items-center justify-end gap-1 px-3">
+          <ReferenceButton docId={docId} />
+        </div>
+        <Message>
+          <span className="flex size-control-md items-center justify-center rounded-sm bg-tile text-tile-icon">
+            <Icon icon={MessagesSquare} />
+          </span>
+          <span className="text-md font-semibold">{t('comments.empty')}</span>
+          <span className="text-sm text-text-muted">{t('comments.emptyHint')}</span>
+        </Message>
+      </>
     );
   }
   return (
