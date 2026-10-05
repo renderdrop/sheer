@@ -1,7 +1,7 @@
 # STATE
 phase: v1.2.0 released — next: Politur v1.3, then v1.3 "Citations" (spec first)
 version: 1.2.0 (tag v1.2.0)
-current_item: Politur v1.3 (ROADMAP)
+current_item: Politur v1.3 — P13-1 backend/docs/welcome, P13-2 components/tokens, P13-3 home/shell/tour, P13-4 viewer/annotations/print
 last_completed: v1.2.0 — F15 + redesign R0–R7 (tag v1.2.0)
 loop_count_this_session: 0
 open_blockers: 2 human-only (B-002, B-005)
