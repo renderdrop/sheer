@@ -124,7 +124,7 @@ Tailwind names stay where listed, so markup changes only where the row says "ren
 | `--toolbar-row-height` | rename `--topbar-height` 56 |
 | `--inspector-width` | removed (ADR-102); add `--menubar-height` 32, `--mode-row-height` 40, `--tool-row-height` 48, `--minibar-height` 40, `--caption-button-width` 46 |
 | `--panel-min/default/max` | 200 / 200 / 320 (`--panel-collapse-below` 144 unchanged) |
-| `--tab-min/max` | 96 / 200 |
+| `--tab-min/max` | 128 / 200 |
 | everything else (z-layers, dialog/sheet widths, toast sizes, handles, search/comment row heights, signature sizes) | unchanged |
 
 ### 1.4 Highlight and ink palette (document content)
@@ -652,6 +652,47 @@ New tokens (§1.2): `--seal-width` 192 pt and `--seal-height` 64 pt (default sea
 22. With the keychain unavailable, Zertifikat is disabled with its tooltip and the Certificates tab shows the info row.
 23. With reduced motion on, dialogs, tabs and Show on page only fade or jump.
 24. No new surface covers a page, the selection or the mini bar at 960 × 640 and 1280 × 800; the banner never overlaps page 1.
+
+#### §3.8 addendum v1.4.1 (ADR-123)
+
+Polish only; S1–S6 stay valid where not overridden here. No new tokens.
+
+**L1 Lock choice (S3 confirm dialog).** Shown only when the signature certifies (the document has no signed signature yet); for an approval signature the row is absent (not disabled). Control: **radio group**, not Segmented: the second label is long and the options need a sentence each, which a 32-high segment cannot hold. Slot: in the dialog's 16-gap column after Location, before the seal preview. Anatomy: group label `.t-label` `sign.cert.lock`, then two rows (min 36, gap 4, §4 radio 16 + 8 + `.t-body` label over `.t-caption` helper, helper wraps under the label, not under the radio). Default "No changes" on every open (never remembered). The notice block follows the choice: P=1 keeps `sign.cert.lockNotice`; P=2 shows `sign.cert.lockNoticeForms`. Keyboard: `role="radiogroup"` with `aria-labelledby` the group label; one Tab stop, Up/Down (and Left/Right) move and select, Space selects; each radio `aria-describedby` its helper. Disabled with the other inputs while signing.
+
+**L2 Certificate menu (S1 chevron).** Items are `menuitemradio`, `aria-checked` on the active identity; checked = §2 rule 10 (check icon 16 left, others reserve the 16 slot). Each item: name `.t-label` over email `.t-caption` Text-secondary (row 48; no email = single line 32, no empty caption). Icons: identities none (the check column is their marker); "New certificate…" `plus`; "Manage certificates…" `settings-2`. `stamp` stays on the tool item only.
+
+**L3 Grid for the extra buttons.** All sit on the parent's content edge, never indented past it.
+- **Export certificate** (`cert.export`): in the expanded row details (S2), last line of the label/value grid, spanning both columns, left-aligned with the label column; Secondary 28, icon `download`, 8 below the fingerprint row.
+- **Trust / Remove trust** (`sigcheck.trust` / `.untrust`) and **View signed version** (`sigcheck.viewSigned`): in the Signatures dialog card footer (S6), one row, left-aligned to the card's 16 padding, gap 8, in this order: Show on page · View signed version · Trust. All Ghost 28; icons `scan-eye`, `history`, `badge-check` (untrust: `badge-x`). View signed version only when later versions exist. At narrow widths the row wraps onto a second line (gap 8), never overflows.
+
+**L4 Create-identity form.** Heading `.t-title` `cert.createTitle` on the Back button's row (Back 28 · 8 · heading), the form 16 below. Fingerprints everywhere (details, cards, trust list) render as uppercase hex pairs, blocks of 4 pairs separated by a space, pairs joined by ":" inside a block (`AB:CD:EF:01 23:45:67:89 …`), monospace stack, `tabular-nums`, wrap only between blocks. Copy copies the plain colon form without spaces.
+
+**L5 File name.** Settled: `sign.cert.fileName` = "{name} – signed" / "{name} – signiert" (en dash U+2013, spaces both sides, extension appended by Rust). Unchanged from S3; any other variant in code is a bug.
+
+**L6 Seal placeholder handles.** 8 handles (4 corners, 4 edge midpoints), visual 8 × 8, White fill, 1px Ink border, radius 2; hit area 24 × 24 centred (pointer only, doesn't widen the box). Minimum `--seal-min-width` × `--seal-min-height`; drags clamp there and at the page's 12 pt inset. Cursors: matching resize cursors. Keyboard (placeholder focused): arrows move 1 pt, Shift+arrows 10 pt (S3); **Alt+arrows** resize from the bottom-right corner by 1 pt, **Alt+Shift+arrows** by 10 pt (Right/Down grow, Left/Up shrink). Placeholder is `role="group"` with `aria-label` `cert.placeholder.aria`, size announced politely after a keyboard resize (`cert.placeholder.size`). No motion; reduced motion unaffected.
+
+**L7 Version wording.** Card Content row: `sigs.covers` "Covers version {n} of {total} of this file" only when later versions exist; the last version says `sigcheck.wholeFile` "Covers the whole file". `sigs.coversVersion` is dropped.
+
+| Key | en | de |
+|---|---|---|
+| `sign.cert.lock` | Allowed after signing | Nach dem Signieren erlaubt |
+| `sign.cert.lockNone` / `.lockNoneHelp` | No changes / Nobody can change the file, add form entries or sign it again. | Keine Änderungen / Niemand kann die Datei ändern, Formulare ausfüllen oder erneut signieren. |
+| `sign.cert.lockForms` / `.lockFormsHelp` | Fill in forms and allow further signatures / Others can fill in form fields and add their signatures; everything else stays locked. | Formulare ausfüllen und weitere Signaturen zulassen / Andere können Formularfelder ausfüllen und signieren; alles andere bleibt gesperrt. |
+| `sign.cert.lockNoticeForms` | After signing, only form entries and further signatures can be added. Make all other changes first. | Nach dem Signieren lassen sich nur noch Formulare ausfüllen und weitere Signaturen hinzufügen. Nimm alle anderen Änderungen vorher vor. |
+| `cert.createTitle` | New certificate | Neues Zertifikat |
+| `cert.placeholder.aria` / `.size` | Seal position. Arrows move, Alt+arrows resize. / {w} × {h} pt | Siegelposition. Pfeiltasten verschieben, Alt+Pfeiltasten ändern die Größe. / {w} × {h} pt |
+| `sigs.covers` / `sigcheck.wholeFile` | Covers version {n} of {total} of this file / Covers the whole file | Umfasst Version {n} von {total} dieser Datei / Umfasst die ganze Datei |
+
+**Acceptance (addendum).**
+25. Signing an unsigned file shows "Allowed after signing" with "No changes" selected; signing an already signed file shows no lock choice.
+26. Choosing "Fill in forms…" changes the notice; the signed file allows form filling and a second signature, while editing tools stay disabled.
+27. Reopening the dialog always starts at "No changes"; Up/Down switch the options with one Tab stop.
+28. The Zertifikat chevron shows a check on the active identity, its email under the name, and `plus` / `settings-2` icons on the two commands.
+29. Export certificate, Show on page, View signed version and Trust align with their container's content edge at 960 × 640 and 1280 × 800; nothing indents or overflows.
+30. The Create form shows the heading "New certificate"; every fingerprint reads in blocks of four hex pairs.
+31. The save dialog proposes "{name} – signed" (de: "{name} – signiert").
+32. The placeholder has 8 handles, each grabbable within 24 px; it never shrinks below 120 × 40 pt; Alt(+Shift)+arrows resize it and announce the size.
+33. A file with later additions shows "Covers version 1 of 2 of this file" on the first card and "Covers the whole file" on the last.
 
 ## 4. Components (R4)
 
