@@ -8,19 +8,21 @@ export const DURATION = { fast: 0.12, base: 0.16, slow: 0.18 } as const;
 /** `--ease-out` (cubic-bezier(0.2, 0, 0, 1)) for JS tweens; tokens.test.ts watches the token. */
 export const EASE_OUT = [0.2, 0, 0, 1] as const;
 
-/**
- * An ease-out tween of the given duration in seconds (MOTION v2 rule 1: one curve, no spring, no overshoot). The names `spring` and
- * `SPRING` are kept from v1.1 (ADR-022) so call sites stay unchanged; they are tweens now.
- */
-export function spring(duration: number): Transition {
+/** An ease-out tween of the given duration in seconds (MOTION v2 rule 1: one curve, no spring, no overshoot). */
+export function tween(duration: number): Transition {
   return { type: 'tween', ease: EASE_OUT, duration };
 }
 
-export const SPRING = {
-  fast: spring(DURATION.fast),
-  base: spring(DURATION.base),
-  slow: spring(DURATION.slow),
+export const TWEEN = {
+  fast: tween(DURATION.fast),
+  base: tween(DURATION.base),
+  slow: tween(DURATION.slow),
 } as const;
+
+/** @deprecated v1.1 name (ADR-022) kept so files of other packages compile; use `tween`. */
+export const spring = tween;
+/** @deprecated use `TWEEN`. */
+export const SPRING = TWEEN;
 
 /** Start scale of an entering popover or dialog (`--scale-enter`). */
 export const ENTER_SCALE = 0.98;

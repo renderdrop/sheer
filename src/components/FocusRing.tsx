@@ -73,10 +73,9 @@ export function FocusRing() {
       flipTo(element, from, to, tokenMs('--motion-base', 160), { fade: far });
     };
 
-    const onFocusIn = (event: FocusEvent) => {
+    const focusTo = (next: HTMLElement | null) => {
       window.clearTimeout(settle);
       cancelAnimationFrame(frame);
-      const next = event.target instanceof HTMLElement ? event.target : null;
       if (next === null || next === document.body || !isFocusVisible(next)) {
         hide();
         return;
@@ -92,6 +91,16 @@ export function FocusRing() {
         target = next;
         place(true, previous);
       });
+    };
+
+    const onFocusIn = (event: FocusEvent) => focusTo(event.target instanceof HTMLElement ? event.target : null);
+
+    // A pointer press hides the ring while focus stays put; the next navigation key brings it back (keyboard modality returns).
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (target !== null || event.ctrlKey || event.metaKey || event.altKey) return;
+      if (!/^(Tab|Arrow[A-Za-z]+|Home|End|PageUp|PageDown)$/.test(event.key)) return;
+      const active = document.activeElement;
+      if (active instanceof HTMLElement && active !== document.body) focusTo(active);
     };
 
     const onFocusOut = (event: FocusEvent) => {
@@ -113,12 +122,14 @@ export function FocusRing() {
     document.addEventListener('focusin', onFocusIn, true);
     document.addEventListener('focusout', onFocusOut, true);
     document.addEventListener('pointerdown', onPointerDown, true);
+    document.addEventListener('keydown', onKeyDown, true);
     window.addEventListener('scroll', reposition, { capture: true, passive: true });
     window.addEventListener('resize', reposition);
     return () => {
       document.removeEventListener('focusin', onFocusIn, true);
       document.removeEventListener('focusout', onFocusOut, true);
       document.removeEventListener('pointerdown', onPointerDown, true);
+      document.removeEventListener('keydown', onKeyDown, true);
       window.removeEventListener('scroll', reposition, true);
       window.removeEventListener('resize', reposition);
       window.clearTimeout(settle);

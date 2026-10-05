@@ -17,8 +17,8 @@
 export const SELECTED_FORCED_COLORS = 'forced-colors:border-(length:--focus-width) forced-colors:border-accent';
 
 /**
- * Hover and press response (MOTION 4.1), one spring curve: fills and colours change in --motion-fast; the press scales down
- * in fast (the active rule below) and springs back in base on release. Reduced motion resets `--scale-press` to 1, so only
+ * Hover and press response (MOTION 4.1), one ease-out curve: fills and colours change in --motion-fast; the press scales down
+ * in fast (the active rule below) and eases back in base on release. Reduced motion resets `--scale-press` to 1, so only
  * the fill remains. Shared by buttons, toolbar items, tabs, segments and menu items.
  */
 export const PRESS_MOTION =
@@ -47,7 +47,7 @@ const DISABLED = 'disabled:opacity-(--opacity-disabled) aria-disabled:opacity-(-
 
 export const BUTTON_VARIANTS: Record<ButtonVariant, string> = {
   primary: `bg-accent text-on-accent not-aria-disabled:enabled:hover:bg-accent-hover ${DISABLED}`,
-  secondary: `bg-subtle text-text not-aria-disabled:enabled:hover:bg-pressed ${DISABLED}`,
+  secondary: `bg-subtle text-text not-aria-disabled:enabled:hover:bg-pressed not-aria-disabled:enabled:active:bg-pressed ${DISABLED}`,
   ghost: `bg-transparent text-text not-aria-disabled:enabled:hover:bg-subtle not-aria-disabled:enabled:active:bg-pressed ${DISABLED}`,
 };
 

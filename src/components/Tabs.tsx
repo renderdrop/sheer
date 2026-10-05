@@ -2,11 +2,11 @@ import type { LucideIcon } from 'lucide-react';
 import { motion, useReducedMotion } from 'motion/react';
 import { createContext, useContext, useId, type KeyboardEvent, type ReactNode } from 'react';
 
-import { PRESS_MOTION, SELECTED_FORCED_COLORS } from './controlStyles';
+import { SELECTED_FORCED_COLORS } from './controlStyles';
 import { cx } from './cx';
 import { Icon } from './Icon';
-import { DURATION, spring } from '../lib/motion';
-import { SPRING } from './motion';
+import { DURATION, tween } from '../lib/motion';
+import { TWEEN } from './motion';
 import { isOwnEvent, itemsOf, rovingTarget } from './roving';
 import { Tooltip } from './Tooltip';
 
@@ -100,7 +100,7 @@ export interface TabProps {
 }
 
 /**
- * The selected fill. With motion it slides to the next tab (`transform`, base spring) through a shared layout id;
+ * The selected fill. With motion it slides to the next tab (`transform`, base tween) through a shared layout id;
  * under reduced motion no transform is used and the new fill just fades in.
  */
 function Indicator({ layoutId }: { layoutId: string }) {
@@ -109,8 +109,8 @@ function Indicator({ layoutId }: { layoutId: string }) {
     <motion.span
       aria-hidden="true"
       {...(reduce
-        ? { initial: { opacity: 0 }, animate: { opacity: 1 }, transition: spring(DURATION.fast) }
-        : { layoutId, transition: SPRING.base })}
+        ? { initial: { opacity: 0 }, animate: { opacity: 1 }, transition: tween(DURATION.fast) }
+        : { layoutId, transition: TWEEN.base })}
       className={cx('absolute inset-x-0 bottom-0 h-half bg-accent', SELECTED_FORCED_COLORS)}
     />
   );
@@ -139,7 +139,7 @@ export function Tab({ value, label, icon, shortcut, keyShortcuts, disabled = fal
         }}
         className={cx(
           'relative flex h-full min-w-0 flex-1 cursor-pointer items-center justify-center',
-          PRESS_MOTION,
+          'transition-colors [transition-duration:var(--motion-fast)]',
           'aria-disabled:cursor-not-allowed aria-disabled:text-text-disabled',
           selected ? 'font-medium text-text' : 'font-normal text-text-muted not-aria-disabled:hover:text-text',
         )}

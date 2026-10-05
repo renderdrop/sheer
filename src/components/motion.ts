@@ -1,12 +1,12 @@
 import { useReducedMotion, type TargetAndTransition } from 'motion/react';
 
-import { DURATION, ENTER_SCALE, SPRING, spring } from '../lib/motion';
+import { DURATION, ENTER_SCALE, SPRING, TWEEN, tween } from '../lib/motion';
 
 /**
- * Motion presets (MOTION 1 to 3). Every animation is the one spring from `src/lib/motion.ts`; an exit is one step shorter than
+ * Motion presets (MOTION 1 to 3). Every animation is the one tween from `src/lib/motion.ts`; an exit is one step shorter than
  * its enter and opacity only. Reduced motion: opacity only, enter base, exit fast.
  */
-export { DURATION, ENTER_SCALE, SPRING };
+export { DURATION, ENTER_SCALE, SPRING, TWEEN };
 
 export interface EnterExit {
   initial: TargetAndTransition;
@@ -17,8 +17,8 @@ export interface EnterExit {
 function fade(inSeconds: number, outSeconds: number): EnterExit {
   return {
     initial: { opacity: 0 },
-    animate: { opacity: 1, transition: spring(inSeconds) },
-    exit: { opacity: 0, transition: spring(outSeconds) },
+    animate: { opacity: 1, transition: tween(inSeconds) },
+    exit: { opacity: 0, transition: tween(outSeconds) },
   };
 }
 
@@ -34,8 +34,8 @@ export function usePopoverMotion(): EnterExit {
   if (reduce) return fade(DURATION.base, DURATION.fast);
   return {
     initial: { opacity: 0, scale: ENTER_SCALE },
-    animate: { opacity: 1, scale: 1, transition: SPRING.base },
-    exit: { opacity: 0, transition: SPRING.fast },
+    animate: { opacity: 1, scale: 1, transition: TWEEN.base },
+    exit: { opacity: 0, transition: TWEEN.fast },
   };
 }
 
@@ -52,8 +52,8 @@ export function useRevealMotion(): EnterExit {
   if (reduce) return fade(DURATION.base, DURATION.fast);
   return {
     initial: { height: 0, opacity: 0 },
-    animate: { height: 'auto', opacity: 1, transition: SPRING.slow },
-    exit: { height: 0, opacity: 0, transition: SPRING.base },
+    animate: { height: 'auto', opacity: 1, transition: TWEEN.slow },
+    exit: { height: 0, opacity: 0, transition: TWEEN.base },
   };
 }
 

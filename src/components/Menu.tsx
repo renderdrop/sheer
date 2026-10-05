@@ -77,8 +77,8 @@ const ITEM =
   'flex h-(--space-8) w-full cursor-pointer items-center gap-2 rounded-sm px-2 text-start text-md ' +
   PRESS_MOTION +
   ' aria-disabled:cursor-not-allowed aria-disabled:opacity-(--opacity-disabled) ' +
-  'not-aria-disabled:hover:bg-control-hover not-aria-disabled:focus-visible:bg-control-hover not-aria-disabled:active:bg-control-pressed not-aria-disabled:active:scale-(--scale-press) ' +
-  'not-aria-disabled:aria-expanded:bg-control-hover';
+  'not-aria-disabled:hover:bg-subtle not-aria-disabled:focus-visible:bg-subtle not-aria-disabled:active:bg-pressed not-aria-disabled:active:scale-(--scale-press) ' +
+  'not-aria-disabled:aria-expanded:bg-subtle';
 
 /** The submenu that is open in a list: which item opened it, and how often focus was asked to go into it. */
 interface OpenSubmenu {

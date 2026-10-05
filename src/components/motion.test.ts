@@ -3,12 +3,13 @@ import { fileURLToPath } from 'node:url';
 
 import { describe, expect, it } from 'vitest';
 
+import { EASE_OUT as GLIDE_EASE } from './glide';
 import {
   DURATION,
   ENTER_SCALE,
   JUMP_ANIMATE_MAX_VIEWPORTS,
   EASE_OUT,
-  SPRING,
+  TWEEN,
   ZOOM_INERTIA_CAP,
   ZOOM_INERTIA_S,
   ZOOM_SNAP_BAND,
@@ -37,8 +38,19 @@ describe('motion presets match tokens.css', () => {
   it('one curve, no spring (MOTION v2 rule 1): ease-out tweens at the three durations', () => {
     expect(token('--ease-out')).toBe(`cubic-bezier(${EASE_OUT.join(', ')})`);
     for (const [name, seconds] of Object.entries(DURATION)) {
-      expect(SPRING[name as keyof typeof SPRING], name).toEqual({ type: 'tween', ease: EASE_OUT, duration: seconds });
+      expect(TWEEN[name as keyof typeof TWEEN], name).toEqual({ type: 'tween', ease: EASE_OUT, duration: seconds });
     }
+  });
+
+  it('the CSS-string curve of glide.ts and the fallbacks of glide/Tooltip follow the tokens', () => {
+    expect(GLIDE_EASE).toBe(token('--ease-out'));
+    const tooltip = readFileSync(fileURLToPath(new URL('./Tooltip.tsx', import.meta.url)), 'utf8');
+    const ms = (value: string) => Number.parseFloat(value);
+    expect(tooltip).toContain(`tokenMs('--tooltip-delay', ${ms(token('--tooltip-delay'))})`);
+    expect(tooltip).toContain(`tokenMs('--tooltip-leave', ${ms(token('--tooltip-leave'))})`);
+    expect(tooltip).toContain(`FAST_EXIT = ${ms(token('--motion-fast-exit')) / 1000}`);
+    const focusRing = readFileSync(fileURLToPath(new URL('./FocusRing.tsx', import.meta.url)), 'utf8');
+    expect(focusRing).toContain(`tokenMs('--motion-base', ${ms(token('--motion-base'))})`);
   });
 
   it('zoom and scroll constants of MOTION 6', () => {

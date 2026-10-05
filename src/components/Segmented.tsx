@@ -38,6 +38,7 @@ export function Segmented<Value extends string>({
     if (disabled || !isOwnEvent(group, event) || event.altKey || event.ctrlKey || event.metaKey) return;
     const radios = itemsOf(group, '[role="radio"]');
     const current = radios.findIndex((radio) => radio.contains(event.target as Node));
+    // A segmented control is one horizontal row: Up and Down act as Left and Right (the radio-group convention), so no key is dead.
     const key = event.key === 'ArrowUp' ? 'ArrowLeft' : event.key === 'ArrowDown' ? 'ArrowRight' : event.key;
     const target = rovingTarget(key, current, radios.length, { orientation: 'horizontal', wrap: true });
     if (target === null) return;

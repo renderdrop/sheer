@@ -21,9 +21,18 @@ describe('Toggle', () => {
     const onChange = vi.fn();
     const { user, getByRole } = setup(<Toggle aria-label="x" checked disabled onCheckedChange={onChange} />);
     const toggle = getByRole('switch');
-    expect(toggle.className).toContain('w-[calc(var(--spacing-8)+var(--spacing-1))]');
+    expect(toggle.className).toContain('w-(--toggle-width)');
     expect(toggle.className).toContain('h-5');
     await user.click(toggle);
     expect(onChange).not.toHaveBeenCalled();
+  });
+});
+
+describe('Toggle knob travel', () => {
+  it('on: 20 px, so the 12 px knob has the same 2 px gap on both sides of the 34 px inner track', () => {
+    const { getByRole } = setup(<Toggle aria-label="x" checked onCheckedChange={() => undefined} />);
+    const knob = getByRole('switch').firstElementChild as HTMLElement;
+    expect(knob.className).toContain('translate-x-5');
+    expect(knob.className).not.toContain('translate-x-4');
   });
 });

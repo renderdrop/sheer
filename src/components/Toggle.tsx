@@ -8,7 +8,7 @@ export interface ToggleProps extends Omit<ComponentProps<'button'>, 'role' | 'ar
 }
 
 /**
- * A switch (DESIGN 4, 2.4): 36 x 20 pill. Off: Sand track, Stone border, Text-secondary knob. On: Ink border and knob.
+ * A switch (DESIGN 4, 2.4): 36 x 20 pill (`--toggle-width`); the knob is 12 with a 2 px gap either side (travel 20). Off: Sand track, Stone border, Text-secondary knob. On: Ink border and knob.
  * The name comes from `aria-label` or `aria-labelledby`. Space and Enter toggle (native button).
  */
 export function Toggle({ checked, onCheckedChange, className, disabled, onClick, ...rest }: ToggleProps) {
@@ -24,7 +24,7 @@ export function Toggle({ checked, onCheckedChange, className, disabled, onClick,
         if (!event.defaultPrevented) onCheckedChange(!checked);
       }}
       className={cx(
-        'relative inline-flex h-5 w-[calc(var(--spacing-8)+var(--spacing-1))] shrink-0 cursor-pointer items-center rounded-pill border p-0',
+        'relative inline-flex h-5 w-(--toggle-width) shrink-0 cursor-pointer items-center rounded-pill border p-0',
         'transition-[background-color,border-color] duration-fast',
         'disabled:cursor-not-allowed disabled:opacity-(--opacity-disabled)',
         checked ? 'border-text bg-accent' : 'border-control-border bg-subtle not-disabled:hover:bg-pressed',
@@ -35,7 +35,7 @@ export function Toggle({ checked, onCheckedChange, className, disabled, onClick,
         aria-hidden="true"
         className={cx(
           'pointer-events-none block size-3 rounded-pill transition-[translate] duration-fast',
-          checked ? 'translate-x-4 bg-text' : 'translate-x-half bg-text-muted',
+          checked ? 'translate-x-5 bg-text' : 'translate-x-half bg-text-muted',
         )}
       />
     </button>

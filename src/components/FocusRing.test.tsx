@@ -184,4 +184,24 @@ describe('FocusRing (MOTION spell 18)', () => {
     expect(block).toContain(':focus-visible[data-focus-owned]');
     expect(block.slice(0, 700)).not.toContain(':root[data-focus-glide]');
   });
+
+  it('a pointer press hides the ring; the next navigation key brings it back on the focused element', async () => {
+    render(<Page />);
+    await focus('a');
+    act(() => document.dispatchEvent(new Event('pointerdown', { bubbles: true })));
+    expect(ring()?.style.opacity).toBe('0');
+    act(() => {
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
+    });
+    await frame();
+    expect(ring()?.style.opacity).toBe('1');
+  });
+
+  it('forced colors: the shadow ring is dropped and a transparent outline (system Highlight there) carries it', () => {
+    const css = readFileSync('src/styles/tokens.css', 'utf8');
+    const forced = css.slice(css.indexOf('@media (forced-colors: active)'));
+    expect(forced.slice(0, 1500)).toContain('--ring-focus: 0 0 transparent');
+    render(<Page />);
+    expect(ring()?.className).toContain('outline-transparent');
+  });
 });

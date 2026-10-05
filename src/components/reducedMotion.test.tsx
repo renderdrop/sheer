@@ -5,7 +5,7 @@ import { useState } from 'react';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { openTooltip, setup } from '../test/render';
-import { DURATION, ENTER_SCALE, SPRING, useFade, usePanelFade, usePopoverMotion, useRevealMotion } from './motion';
+import { DURATION, ENTER_SCALE, TWEEN, useFade, usePanelFade, usePopoverMotion, useRevealMotion } from './motion';
 import { Popover } from './Popover';
 import { Tab, TabList, Tabs } from './Tabs';
 import { Tooltip } from './Tooltip';
@@ -80,15 +80,15 @@ describe('motion presets under reduced motion', () => {
     expect(result.current.initial).toEqual({ opacity: 0 });
     expect(transformKeys(result.current.animate)).toEqual([]);
     expect(transformKeys(result.current.exit)).toEqual([]);
-    expect(result.current.animate.transition).toEqual(SPRING.base);
-    expect(result.current.exit.transition).toEqual(SPRING.fast);
+    expect(result.current.animate.transition).toEqual(TWEEN.base);
+    expect(result.current.exit.transition).toEqual(TWEEN.fast);
   });
 
   it('the tooltip fade keeps to opacity and uses the enter base and exit fast whatever timings it is asked for', () => {
     const { result } = renderHook(() => useFade(DURATION.slow, DURATION.base));
     expect(transformKeys(result.current.initial)).toEqual([]);
-    expect(result.current.animate.transition).toEqual(SPRING.base);
-    expect(result.current.exit.transition).toEqual(SPRING.fast);
+    expect(result.current.animate.transition).toEqual(TWEEN.base);
+    expect(result.current.exit.transition).toEqual(TWEEN.fast);
   });
 
   it('the banner row only fades: no height, enter base, exit fast', () => {
@@ -96,8 +96,8 @@ describe('motion presets under reduced motion', () => {
     expect(result.current.initial).toEqual({ opacity: 0 });
     expect(transformKeys(result.current.animate)).toEqual([]);
     expect(transformKeys(result.current.exit)).toEqual([]);
-    expect(result.current.animate.transition).toEqual(SPRING.base);
-    expect(result.current.exit.transition).toEqual(SPRING.fast);
+    expect(result.current.animate.transition).toEqual(TWEEN.base);
+    expect(result.current.exit.transition).toEqual(TWEEN.fast);
   });
 
   it('the left panel only fades: enter base, exit fast, with nothing but its opacity in the target', () => {
@@ -105,8 +105,8 @@ describe('motion presets under reduced motion', () => {
     expect(result.current.initial).toEqual({ opacity: 0 });
     expect(transformKeys(result.current.animate)).toEqual([]);
     expect(transformKeys(result.current.exit)).toEqual([]);
-    expect(result.current.animate.transition).toEqual(SPRING.base);
-    expect(result.current.exit.transition).toEqual(SPRING.fast);
+    expect(result.current.animate.transition).toEqual(TWEEN.base);
+    expect(result.current.exit.transition).toEqual(TWEEN.fast);
   });
 
   it('control: without the preference the left panel fades slow in and base out, in step with its grid track', () => {
@@ -114,8 +114,8 @@ describe('motion presets under reduced motion', () => {
     const { result } = renderHook(() => usePanelFade());
     expect(result.current.initial).toEqual({ opacity: 0 });
     expect(transformKeys(result.current.animate)).toEqual([]);
-    expect(result.current.animate.transition).toEqual(SPRING.slow);
-    expect(result.current.exit.transition).toEqual(SPRING.base);
+    expect(result.current.animate.transition).toEqual(TWEEN.slow);
+    expect(result.current.exit.transition).toEqual(TWEEN.base);
   });
 
   it('control: without the preference the banner row moves its height with its opacity, slow in and base out', () => {
@@ -124,8 +124,8 @@ describe('motion presets under reduced motion', () => {
     expect(result.current.initial).toEqual({ height: 0, opacity: 0 });
     expect(result.current.animate).toMatchObject({ height: 'auto', opacity: 1 });
     expect(result.current.exit).toMatchObject({ height: 0, opacity: 0 });
-    expect(result.current.animate.transition).toEqual(SPRING.slow);
-    expect(result.current.exit.transition).toEqual(SPRING.base);
+    expect(result.current.animate.transition).toEqual(TWEEN.slow);
+    expect(result.current.exit.transition).toEqual(TWEEN.base);
   });
 
   it('control: without the preference the popover does scale in from the entrance scale', () => {

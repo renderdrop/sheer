@@ -10,7 +10,7 @@ export interface DropzoneProps {
 }
 
 /**
- * A drop target (DESIGN 4): 1 px dashed #E5E5E1, radius lg, Sand. While a drag is over it the border turns Stone. The text inside
+ * A drop target (DESIGN 4): 1 px dashed Divider, radius lg, Sand. While a drag is over it the border turns Stone. The text inside
  * is the cue; colour only confirms it. It does not read files itself.
  */
 export function Dropzone({ children, onDropFiles, className }: DropzoneProps) {

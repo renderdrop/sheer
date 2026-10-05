@@ -5,6 +5,7 @@ import { createPortal } from 'react-dom';
 import { DISMISS_PRIORITY, registerDismissLayer } from './dismiss';
 import { tokenMs } from './glide';
 import { isFocusVisible } from './hooks';
+import { EASE_OUT } from '../lib/motion';
 import { DURATION } from './motion';
 import type { Side } from './position';
 import { useFloatingPosition } from './useFloatingPosition';
@@ -17,7 +18,7 @@ const WARM_WINDOW = 300;
 /** `--motion-fast-exit` in seconds (src/lib/motion.ts has no exit durations). */
 const FAST_EXIT = 0.08;
 /** `--ease-out`. */
-const EASE: [number, number, number, number] = [0.2, 0, 0, 1];
+const EASE: [number, number, number, number] = [...EASE_OUT];
 /** One group is one toolbar, tab list or region: moving to a neighbour in it shows the next tooltip at once, without a fade. */
 const GROUP = '[role="toolbar"], [role="tablist"], [data-tooltip-group], [data-region]';
 
