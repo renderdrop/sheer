@@ -327,6 +327,24 @@ describe('straighten switch (DESIGN 3.9 Q5)', () => {
     expect(useTools.getState().straightenShapes).toBe(false);
     expect(toggle.getAttribute('aria-checked')).toBe('false');
   });
+
+  it('collapses to a named icon toggle when the bar is wider than the window minus 16 (no truncation)', async () => {
+    load([ink(1)], [1]);
+    scene = canvas({ 1: OVER });
+    const width = vi.spyOn(HTMLElement.prototype, 'scrollWidth', 'get').mockReturnValue(1200);
+    const inner = vi.spyOn(window, 'innerWidth', 'get').mockReturnValue(960);
+    try {
+      const { user } = setup(<MiniBarSlot />);
+      expect(screen.queryByRole('switch')).toBeNull();
+      const toggle = screen.getByRole('button', { name: 'Straighten shapes automatically' });
+      expect(toggle.getAttribute('aria-pressed')).toBe('true');
+      await user.click(toggle);
+      expect(useTools.getState().straightenShapes).toBe(false);
+    } finally {
+      width.mockRestore();
+      inner.mockRestore();
+    }
+  });
 });
 
 describe('changes', () => {

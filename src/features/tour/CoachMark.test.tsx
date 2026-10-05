@@ -133,6 +133,19 @@ describe('the coach mark', () => {
     expect(await screen.findByRole('region', { name: 'Zoom in' })).toBeTruthy();
   });
 
+  it('wraps its footer instead of letting a button leave the card, on the last step too (longest label)', async () => {
+    setup(<Fixture />);
+    act(() => useTour.getState().start(1));
+    await screen.findByRole('region');
+    act(() => useTour.setState({ index: 6 }));
+    const finish = await screen.findByRole('button', { name: 'Finish' });
+    const footer = finish.parentElement?.parentElement;
+    expect(footer?.className).toContain('flex-wrap');
+    expect(footer?.className.split(' ')).not.toContain('h-control-sm');
+    for (const button of footer?.querySelectorAll('button') ?? [])
+      expect(button.className).toContain('whitespace-nowrap');
+  });
+
   it('has Hide, Skip, Back, Next in tab order; Back is disabled on step 1', async () => {
     setup(<Fixture />);
     act(() => useTour.getState().start(1));

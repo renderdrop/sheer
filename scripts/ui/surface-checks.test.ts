@@ -128,3 +128,19 @@ describe('surface gate checks', () => {
     expect(c.checkOverlap('menubar', menu, [{ name: 'tip', rect: r(20, 100, 60, 120) }], [])).toEqual(['overlaps tip']);
   });
 });
+
+describe('checkLabelWrap (control label wraps)', () => {
+  it('passes one-line labels, also at exactly 1.5 lines', () => {
+    expect(c.checkLabelWrap([{ name: 'button "Apply"', height: 16, lineHeight: 16 }])).toEqual([]);
+    expect(c.checkLabelWrap([{ name: 'button "Edge"', height: 24, lineHeight: 16 }])).toEqual([]);
+  });
+
+  it('flags a label whose text box is taller than 1.5 lines', () => {
+    const wrapped = { name: 'button "Diese Seite"', height: 32, lineHeight: 16 };
+    expect(c.checkLabelWrap([wrapped])).toEqual(['button "Diese Seite" label wraps (32.0 > 1.5 x 16.0)']);
+  });
+
+  it('ignores a label without a line height', () => {
+    expect(c.checkLabelWrap([{ name: 'x', height: 40, lineHeight: 0 }])).toEqual([]);
+  });
+});

@@ -143,6 +143,18 @@ export function checkNotice(notice, protectedRects) {
   return protectedRects.filter((p) => overlap(notice.rect, p.rect)).map((p) => `${notice.name} covers ${p.name}`);
 }
 
+/**
+ * Control label wraps: the text box of a button's (or other control's) label is taller than 1.5 lines. Controls are one line by
+ * design (DESIGN Q3, Q7): a label that wraps means the control is too narrow. `height` is the bounding height of the label's text
+ * (a Range over its text nodes, no padding), `lineHeight` its computed line height in px.
+ * @param {{name:string,height:number,lineHeight:number}[]} labels
+ */
+export function checkLabelWrap(labels) {
+  return labels
+    .filter((l) => l.lineHeight > 0 && l.height > 1.5 * l.lineHeight)
+    .map((l) => `${l.name} label wraps (${l.height.toFixed(1)} > 1.5 x ${l.lineHeight.toFixed(1)})`);
+}
+
 /** One table row per check of a surface. */
 export function rowsFor(id, results) {
   return Object.entries(results).map(([check, v]) => ({

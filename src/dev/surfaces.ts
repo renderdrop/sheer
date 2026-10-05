@@ -3,6 +3,10 @@
 // Every entry opens one dialog or sheet through its store or action, never through new behaviour. Popovers that hang on a trigger
 // button (`aria-haspopup`) are found by the gate itself.
 import { openAbout, useAboutDialog } from '../features/about/state';
+import { useAnnotations } from '../stores/annotations';
+import { pageIdAt } from '../stores/pages';
+import { SHIPPED_STEPS } from '../features/tour/steps';
+import { useTour } from '../features/tour/store';
 import { useForms } from '../features/forms/store';
 import { closeSheet, openCompress, openMerge, openSplit } from '../features/jobs/state';
 import { usePassword } from '../features/password/state';
@@ -44,8 +48,70 @@ function flag(id: string, set: (open: boolean) => void): DevSurface {
   };
 }
 
+const sleep = (ms: number): Promise<void> => new Promise((done) => setTimeout(done, ms));
+
+/** An ink annotation on the open document, selected in Kommentieren, so the mini bar shows. Returns its id. */
+async function selectInk(): Promise<number | null> {
+  const docId = activeId();
+  ui().setMode('comment');
+  const pageId = pageIdAt(docId, 0);
+  if (pageId === null) return null;
+  const points = [
+    { x: 100, y: 300 },
+    { x: 160, y: 330 },
+    { x: 220, y: 300 },
+  ];
+  const changes = await useAnnotations.getState().apply(docId, {
+    type: 'createAnnotation',
+    draft: { kind: 'ink', pageId, color: [15, 15, 15], width: 2, strokes: [{ points, outline: points }] },
+  });
+  const id = changes.upserted[0]?.id ?? null;
+  if (id !== null) useAnnotations.getState().select(docId, [id]);
+  for (let i = 0; i < 20 && document.querySelector('[data-minibar]') === null; i++) await sleep(100);
+  return id;
+}
+
+async function removeInk(id: number | null): Promise<void> {
+  const docId = activeId();
+  useAnnotations.getState().clearSelection(docId);
+  if (id !== null) await useAnnotations.getState().apply(docId, { type: 'deleteAnnotations', ids: [id] });
+}
+
+/** The ink mini bar (create, select) and its colour popover, and each coach mark step: floating surfaces that are no dialog. */
+function floatingSurfaces(): DevSurface[] {
+  let ink: number | null = null;
+  const bar: DevSurface = {
+    id: 'minibar-ink',
+    open: async () => {
+      ink = await selectInk();
+    },
+    close: () => removeInk(ink),
+  };
+  const colour: DevSurface = {
+    id: 'minibar-ink-colour',
+    open: async () => {
+      ink = await selectInk();
+      // Only the popover is new: the gate takes its snapshot after the bar is there.
+      (window as unknown as { __gate?: { mark: () => void } }).__gate?.mark();
+      document.querySelector<HTMLElement>('[data-minibar] [data-colour-more]')?.click();
+    },
+    close: () => removeInk(ink),
+  };
+  const steps = SHIPPED_STEPS.map((_, index): DevSurface => ({
+    id: `coach-step-${index + 1}`,
+    open: () => {
+      useTour.getState().start(activeId());
+      useTour.setState({ index });
+      return none();
+    },
+    close: () => useTour.getState().end('closed'),
+  }));
+  return [bar, colour, ...steps];
+}
+
 export function buildSurfaces(): DevSurface[] {
   return [
+    ...floatingSurfaces(),
     { id: 'settings', open: () => (openSettings(), none()), close: closeSettings },
     {
       id: 'about',

@@ -230,6 +230,49 @@ function useCanvasTarget(docId: number | null, step: TourStep | undefined, activ
   return active ? element : null;
 }
 
+/**
+ * The page content a step refers to (its `quad`, else its `target`) is protected from the card (DESIGN 3.9 Q8, "the card avoids the
+ * rect of its target content"): an invisible box over it marked `data-protect="notice"`, which the engine finds like any protected
+ * element. It follows scroll and zoom every frame; it is not there while the page is off screen.
+ */
+function useContentProtect(docId: number | null, step: TourStep | undefined, active: boolean): void {
+  const stepId = step?.id;
+  useLayoutEffect(() => {
+    const rect = step?.quad ?? step?.target;
+    const pageId = step === undefined ? null : pageIdOfKind(SHIPPED_STEPS, step.page);
+    if (!active || docId === null || rect === undefined || pageId === null) return;
+    const node = document.createElement('div');
+    node.setAttribute('aria-hidden', 'true');
+    node.dataset.protect = 'notice';
+    Object.assign(node.style, { position: 'fixed', pointerEvents: 'none', visibility: 'hidden' });
+    document.body.append(node);
+    let frame = 0;
+    const place = () => {
+      const index = readSlots(docId).findIndex((slot) => slot.id === pageId);
+      const page = index < 0 ? null : document.querySelector<HTMLElement>(`[data-page="${index + 1}"]`);
+      const widthPt = usePages.getState().byDoc[docId]?.[index]?.[0];
+      if (page === null || widthPt === undefined || widthPt <= 0) {
+        node.style.width = '0px';
+        node.style.height = '0px';
+      } else {
+        const box = page.getBoundingClientRect();
+        const scale = box.width / widthPt;
+        node.style.left = `${box.left + rect.x * scale}px`;
+        node.style.top = `${box.top + rect.y * scale}px`;
+        node.style.width = `${rect.w * scale}px`;
+        node.style.height = `${rect.h * scale}px`;
+      }
+      frame = requestAnimationFrame(place);
+    };
+    place();
+    return () => {
+      cancelAnimationFrame(frame);
+      node.remove();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- the step is read through its id; its geometry never changes
+  }, [active, docId, stepId]);
+}
+
 interface CardProps {
   anchor: ResolvedAnchor;
 }
@@ -347,12 +390,11 @@ function Card({ anchor }: CardProps) {
         <p id={textId} className="t-body m-0 mt-1 text-text">
           {text}
         </p>
-        <div className="mt-4 flex h-control-sm items-center">
+        <div className="mt-4 flex min-h-control-sm flex-wrap items-center justify-between gap-x-2 gap-y-2">
           <Button variant="ghost" size="sm" onClick={skip} className="ms-[calc(-1*var(--spacing-3))]">
             {t('tour.skip')}
           </Button>
-          <span className="flex-auto" />
-          <div className="flex items-center gap-2">
+          <div className="ms-auto flex items-center gap-2">
             <Button variant="secondary" size="sm" disabled={index === 0} focusableWhenDisabled onClick={back}>
               {t('tour.back')}
             </Button>
@@ -383,6 +425,7 @@ export function CoachMark() {
   const step = docId === null ? undefined : SHIPPED_STEPS[index];
   const place = usePlace(step);
   const canvasTarget = useCanvasTarget(docId, step, place?.canvasTarget === true);
+  useContentProtect(docId, step, step !== undefined);
   // While the canvas target is not there (page off screen), the tool stays the anchor.
   const named = useAnchor(place === null ? undefined : place.canvasTarget ? step?.anchor.a : place.name);
   const anchor: ResolvedAnchor | null = canvasTarget === null ? named : { element: canvasTarget, spec: TARGET_SPEC };

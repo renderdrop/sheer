@@ -14,6 +14,7 @@ import {
   Strikethrough,
   Trash2,
   Underline,
+  WandSparkles,
   X,
   type LucideIcon,
 } from 'lucide-react';
@@ -447,11 +448,26 @@ export function StrokeControl({
 }
 
 /** "Straighten shapes automatically" (DESIGN 3.9 Q5): the switch of the drawing bar, the one stored choice of the tools store. */
-export function StraightenControl() {
+export function StraightenControl({ compact = false }: { compact?: boolean }) {
   const t = useT();
   const on = useTools((state) => state.straightenShapes);
   const set = useTools((state) => state.setStraightenShapes);
   const labelId = useId();
+  // Too narrow for the label (DESIGN 3.3 / Q9 no truncation): the switch becomes an icon toggle; name and help stay in the tooltip.
+  if (compact) {
+    return (
+      <IconButton
+        {...ITEM}
+        icon={WandSparkles}
+        variant="toggle"
+        pressed={on}
+        label={t('draw.straighten')}
+        hint={t('draw.straightenHelp')}
+        onClick={() => set(!on)}
+        className={SQUARE}
+      />
+    );
+  }
   return (
     <Tooltip label={t('draw.straightenHelp')}>
       <div role="group" aria-labelledby={labelId} className="flex shrink-0 items-center gap-2">

@@ -173,15 +173,14 @@ function ColourPanel({
         {shown.map((rgb, index) => swatch(rgb, palette.length + index, `#${toHex(rgb)}`))}
       </div>
       <div className="flex flex-col gap-1">
-        <div className="relative w-full">
-          <span
-            aria-hidden="true"
-            data-colour-preview=""
-            className="absolute start-2 top-1/2 size-4 -translate-y-1/2 rounded-pill border border-control-border"
-            style={{ backgroundColor: parsed === null ? 'transparent' : css(parsed) }}
-          />
-          <span aria-hidden="true" className="absolute start-8 top-1/2 -translate-y-1/2 text-md text-text-muted">
-            #
+        <div className="relative flex h-control-md w-full items-center">
+          <span aria-hidden="true" className="pointer-events-none absolute inset-y-0 start-2 flex items-center gap-1">
+            <span
+              data-colour-preview=""
+              className="size-4 shrink-0 rounded-pill border border-control-border"
+              style={{ backgroundColor: parsed === null ? 'transparent' : css(parsed) }}
+            />
+            <span className="text-md text-text-muted">#</span>
           </span>
           <input
             id={hexId}
@@ -213,16 +212,16 @@ function ColourPanel({
               'w-full min-w-0 ps-12 pe-8 uppercase',
             )}
           />
-          <IconButton
-            icon={Check}
-            data-adornment=""
-            label={t('color.apply')}
-            size="sm"
-            disabled={parsed === null}
-            focusableWhenDisabled
-            onClick={apply}
-            className="absolute end-1 top-1/2 size-6! -translate-y-1/2"
-          />
+          <span data-adornment="" className="absolute inset-y-0 end-1 flex items-center">
+            <IconButton
+              icon={Check}
+              label={t('color.apply')}
+              size="sm"
+              disabled={parsed === null}
+              focusableWhenDisabled
+              onClick={apply}
+            />
+          </span>
         </div>
         {(invalid || low) && (
           <p

@@ -1,5 +1,5 @@
 import { motion, useReducedMotion } from 'motion/react';
-import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState, type RefObject } from 'react';
 import { createPortal } from 'react-dom';
 
 import { cx } from '../../components/cx';
@@ -98,6 +98,33 @@ function usePressed(): boolean {
     };
   }, []);
   return pressed;
+}
+
+const OVERLAYS = '[role="menu"], [role="dialog"], [aria-modal="true"]';
+
+/**
+ * True while a popover, menu or dialog that the bar did not open is on screen (the crop popover, a tool's options, a dialog): no two
+ * floating surfaces may overlap (DESIGN Q8/Q9), so the bar steps aside. What the bar's own controls opened (a colour popover, a
+ * dropdown) is found through the trigger's `aria-controls` and keeps the bar. Overlays are direct children of the body.
+ */
+function useForeignOverlay(barRef: RefObject<HTMLElement | null>): boolean {
+  const [foreign, setForeign] = useState(false);
+  useEffect(() => {
+    const update = () => {
+      const bar = barRef.current;
+      const open = Array.from(document.querySelectorAll<HTMLElement>(OVERLAYS)).filter(
+        (overlay) =>
+          !(bar?.contains(overlay) ?? false) &&
+          (overlay.id === '' || bar?.querySelector(`[aria-controls="${CSS.escape(overlay.id)}"]`) === null),
+      );
+      setForeign(open.length > 0);
+    };
+    update();
+    const observer = new MutationObserver(update);
+    observer.observe(document.body, { childList: true });
+    return () => observer.disconnect();
+  }, [barRef]);
+  return foreign;
 }
 
 const same = (a: Placement | null, b: Placement | null): boolean =>
@@ -206,7 +233,8 @@ function MiniBarHost({ docId, objects }: { docId: number; objects: readonly Mini
     return () => setDocked(false);
   }, [docked, setDocked]);
 
-  const visible = placement !== null && !pressed;
+  const foreign = useForeignOverlay(barRef);
+  const visible = placement !== null && !pressed && !foreign;
   useEffect(() => {
     shown.current = visible;
   }, [visible]);

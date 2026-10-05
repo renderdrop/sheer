@@ -2,6 +2,8 @@
 import { act, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import de from '../../i18n/locales/de.json';
+import en from '../../i18n/locales/en.json';
 import { useAnnotations } from '../../stores/annotations';
 import { useDocuments } from '../../stores/documents';
 import { resetDocuments } from '../../stores/documents.testutil';
@@ -560,16 +562,16 @@ describe('Seiten', () => {
 
   it('has Ordnen, Drehen, Löschen, Einfügen, Extrahieren, Teilen, Zusammenführen and Komprimieren: eight slots', () => {
     setup(<Rows />);
-    expect(slotNames()).toEqual(['Arrange', 'Rotate', 'Delete', 'Insert', 'Extract…', 'Split…', 'Merge…', 'Compress…']);
+    expect(slotNames()).toEqual(['Arrange', 'Rotate', 'Delete', 'Insert', 'Extract', 'Split', 'Merge', 'Compress']);
   });
 
   it('page actions are disabled until a card is selected, then enabled; Löschen keeps one page', () => {
     setup(<Rows />);
-    for (const name of ['Rotate', 'Delete', 'Extract…']) {
+    for (const name of ['Rotate', 'Delete', 'Extract']) {
       expect(item(name).getAttribute('aria-disabled')).toBe('true');
     }
     act(() => useOrganize.getState().setSelection(1, { selected: [0], focus: 0 }));
-    for (const name of ['Rotate', 'Delete', 'Extract…']) {
+    for (const name of ['Rotate', 'Delete', 'Extract']) {
       expect(item(name).hasAttribute('aria-disabled')).toBe(false);
     }
     act(() => useOrganize.getState().setSelection(1, { selected: [0, 1, 2, 3, 4, 5], focus: 0 }));
@@ -579,7 +581,7 @@ describe('Seiten', () => {
 
   it('Teilen, Zusammenführen, Komprimieren and Einfügen need no selection', () => {
     setup(<Rows />);
-    for (const name of ['Split…', 'Merge…', 'Compress…', 'Insert']) {
+    for (const name of ['Split', 'Merge', 'Compress', 'Insert']) {
       expect(item(name).hasAttribute('aria-disabled')).toBe(false);
     }
   });
@@ -631,7 +633,7 @@ describe('Bearbeiten', () => {
 
   it('has Text einfügen, Bild einfügen, Zuschneiden, Schwärzen, Schützen and Metadaten', () => {
     setup(<Rows />);
-    expect(slotNames()).toEqual(['Add text', 'Add image', 'Crop', 'Redact', 'Protect…', 'Metadata…']);
+    expect(slotNames()).toEqual(['Add text', 'Add image', 'Crop', 'Redact', 'Protect', 'Metadata']);
   });
 
   it('the tools select their tool ids, Schwärzen turns the mode on and stays on', async () => {
@@ -652,11 +654,11 @@ describe('Bearbeiten', () => {
 
   it('Schützen and Metadaten open their dialogs', async () => {
     const { user } = setup(<Rows />);
-    await user.click(item('Protect…'));
+    await user.click(item('Protect'));
     expect(useUi.getState().protectOpen).toBe(true);
-    await user.click(item('Metadata…'));
+    await user.click(item('Metadata'));
     expect(useUi.getState().propsOpen).toBe(true);
-    expect(item('Protect…').hasAttribute('aria-pressed')).toBe(false);
+    expect(item('Protect').hasAttribute('aria-pressed')).toBe(false);
   });
 
   it('a mode switch keeps the redaction mode on until Anwenden or Abbrechen', async () => {
@@ -790,15 +792,28 @@ describe('the active tool and the labels (DESIGN Q2, Q6)', () => {
     expect(item('Select').getAttribute('aria-pressed')).toBe('true');
   });
 
-  it('tool labels never truncate or use an ellipsis', () => {
-    const { container } = setup(<Rows />);
-    const labels = Array.from(container.querySelectorAll('[data-label]'));
-    expect(labels.length).toBeGreaterThan(0);
+  it('tool labels never truncate or use an ellipsis, in every mode', () => {
+    const labels: Element[] = [];
+    for (const mode of ['read', 'comment', 'fill', 'pages', 'edit'] as const) {
+      act(() => switchMode(mode));
+      const { container, unmount } = setup(<Rows />);
+      labels.push(
+        ...Array.from(container.querySelectorAll('[data-label]')).map((label) => label.cloneNode(true) as Element),
+      );
+      unmount();
+    }
+    expect(labels.length).toBeGreaterThan(20);
     for (const label of labels) {
       expect(label.className).not.toMatch(/truncate|text-ellipsis|overflow-hidden/);
       expect(label.textContent).not.toMatch(/…|\.\.\./);
-      expect(label.parentElement?.className).toContain('whitespace-nowrap');
-      expect(label.parentElement?.className).not.toMatch(/truncate|text-ellipsis/);
+    }
+  });
+
+  it('no tool label of the catalogs ends in an ellipsis (only variant items that open a dialog may)', () => {
+    for (const [locale, catalog] of Object.entries({ en, de }) as [string, Record<string, string>][]) {
+      const keys = Object.keys(catalog).filter((key) => key.startsWith('modes.tool.') && key !== 'modes.tool.fromFile');
+      expect(keys.length).toBeGreaterThan(20);
+      for (const key of keys) expect(catalog[key], `${locale} ${key}`).not.toMatch(/(…|\.\.\.)\s*$/);
     }
   });
 });

@@ -1,4 +1,4 @@
-import { Fragment, useLayoutEffect, useRef, type KeyboardEvent, type ReactNode, type Ref } from 'react';
+import { Fragment, useLayoutEffect, useRef, useState, type KeyboardEvent, type ReactNode, type Ref } from 'react';
 
 import { copyCitation } from '../citations/exportActions';
 import { requestCitationFocus } from '../citations/store';
@@ -29,6 +29,9 @@ import {
 import { controlsOf, valuesOf, type MiniObject } from './model';
 
 const ITEMS = '[data-mb-item]';
+/** The viewport inset on each side (DESIGN Q8). */
+const MARGIN = 8;
+const CANVAS = '[data-action-scope="canvas"] > [role="region"]';
 
 /** The name of the selection's type for the toolbar label: one object's type, or the number of objects. */
 export function useSelectionType(objects: readonly MiniObject[]): string {
@@ -64,6 +67,9 @@ export function MiniBar({ docId, objects, ref, onReturn }: MiniBarProps) {
   const values = valuesOf(objects);
   const locked = objects.some((object) => object.locked);
   const [only] = objects;
+  // The bar never leaves the viewport (inset 8): when its full width does not fit, the straighten switch collapses to an icon.
+  const [compact, setCompact] = useState(false);
+  const fullWidth = useRef(0);
   const change = (patch: Parameters<typeof applyChange>[2]) => void applyChange(docId, objects, patch);
 
   // One tab stop: the control focus was last on, else the first.
@@ -75,6 +81,30 @@ export function MiniBar({ docId, objects, ref, onReturn }: MiniBarProps) {
     const items = itemsOf(root, ITEMS);
     const active = stop.current !== null && items.includes(stop.current) ? stop.current : items[0];
     for (const item of items) item.tabIndex = item === active ? 0 : -1;
+  });
+
+  useLayoutEffect(() => {
+    const root = own.current;
+    if (root === null) return;
+    const fit = () => {
+      // The bar is clamped to the canvas column, which is narrower than the window beside the side panel.
+      const canvas = document.querySelector(CANVAS)?.getBoundingClientRect().width;
+      const available =
+        Math.min(window.innerWidth, canvas === undefined || canvas === 0 ? Infinity : canvas) - 2 * MARGIN;
+      if (!compact) {
+        fullWidth.current = root.scrollWidth;
+        if (root.scrollWidth > available + 1) setCompact(true);
+      } else if (available >= fullWidth.current + 8) setCompact(false);
+    };
+    fit();
+    window.addEventListener('resize', fit);
+    const canvas = document.querySelector(CANVAS);
+    const observer = typeof ResizeObserver === 'function' && canvas !== null ? new ResizeObserver(fit) : null;
+    if (canvas !== null) observer?.observe(canvas);
+    return () => {
+      window.removeEventListener('resize', fit);
+      observer?.disconnect();
+    };
   });
 
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
@@ -141,7 +171,7 @@ export function MiniBar({ docId, objects, ref, onReturn }: MiniBarProps) {
         add(control, <StrokeControl value={values.width} disabled={locked} onChange={(width) => change({ width })} />);
         break;
       case 'straighten':
-        add(control, <StraightenControl />);
+        add(control, <StraightenControl compact={compact} />);
         break;
       case 'opacity':
         add(
@@ -238,7 +268,7 @@ export function MiniBar({ docId, objects, ref, onReturn }: MiniBarProps) {
         const item = event.target instanceof Element ? event.target.closest<HTMLElement>(ITEMS) : null;
         if (item !== null) stop.current = item;
       }}
-      className="pointer-events-auto flex h-control-lg items-center gap-1 rounded-md border border-border-subtle bg-surface p-1 shadow-floating"
+      className="pointer-events-auto flex h-control-lg max-w-[calc(100vw-var(--space-4))] items-center gap-1 rounded-md border border-border-subtle bg-surface p-1 shadow-floating"
     >
       {nodes.flatMap((node, index) =>
         index === 0 || joined.has(index) ? [node] : [<Divider key={`d${index}`} />, node],

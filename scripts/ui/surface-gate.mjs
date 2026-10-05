@@ -5,6 +5,8 @@
 //   scroll   no container with overflow-y auto/scroll and scrollHeight > clientHeight + 1 (lists excepted: role list|listbox|menu|tree|grid or data-scroll="list")
 //   overlap  Q8: a popover/menu may not cover its anchor, the active tool or the focused input (other controls below are fine); no two floating
 //            surfaces intersect; notices may not cover any protected rect; modals cover the inert app by design
+//   wrap     no control label (button, radio, .t-label) is taller than 1.5 lines (the label wraps)
+// Also registered: the ink mini bar, its colour popover and every coach mark step (floating surfaces that are no dialog).
 // Runs once per UI language (en, then de, via the locale store). Disabled triggers are logged SKIP.
 // Surfaces: the dev registry `window.__sheerSurfaces` (src/dev/surfaces.ts: dialogs, sheets) and every popover/menu trigger on screen
 // (`aria-haspopup`), swept in each mode. Usage: node scripts/ui/surface-gate.mjs [--wide] [--only <substring>]   exit 1 on any violation.
@@ -17,6 +19,7 @@ import {
   checkDescendants,
   checkHScroll,
   checkInViewport,
+  checkLabelWrap,
   checkNotice,
   checkOverlap,
   checkScroll,
@@ -70,7 +73,8 @@ const escape = async () => {
 
 /** Runs inside the page. Everything comes back as plain data; the verdicts are the pure functions of surface-checks.mjs. */
 const PAGE = `(() => {
-  const SURFACES = '[role="dialog"],[role="alertdialog"],[role="menu"]';
+  // The mini bar (toolbar) and the coach mark card (region) are floating surfaces of their own: registry entries open them.
+  const SURFACES = '[role="dialog"],[role="alertdialog"],[role="menu"],[data-minibar],[data-tour-card]';
   const LIST = '[role="list"],[role="listbox"],[role="menu"],[role="grid"],[role="tree"],[data-scroll="list"]';
   const hidden = ${isVisuallyHidden.toString()};
   // Visible text of an element: its own text nodes, unless the element or an ancestor up to root is visually hidden (sr-only).
@@ -103,6 +107,8 @@ const PAGE = `(() => {
       const modal = el.getAttribute('aria-modal') === 'true' || !!el.closest('[aria-modal="true"]');
       // ADR-124 addendum 1 c: a menu opened from the menu bar (role=menubar) follows the OS menu convention.
       const menubar = el.getAttribute('role') === 'menu' && !!document.querySelector('[role="menubar"] [aria-controls="' + el.id + '"]');
+      // A mini bar and a coach mark are floating, not modal; a coach mark is a notice (Q8): it may not touch any protected rect.
+      const kind = el.hasAttribute('data-tour-card') ? 'notice' : el.hasAttribute('data-minibar') ? 'bar' : null;
       const onlyBig = (c) => { const r = c.getBoundingClientRect(); return r.width > 2 && r.height > 2; };
       const clipsOf = (c) => {
         const clips = [];
@@ -160,6 +166,20 @@ const PAGE = `(() => {
           field: isField && c.parentElement ? wid(c.parentElement) : undefined,
         };
       });
+      // Control label wraps: the text of a button, radio or .t-label must stay on one line (a Range over its text nodes).
+      const wraps = [...el.querySelectorAll(CONTROLS + ',.t-label')].filter((c) => visible(c) && !['INPUT', 'TEXTAREA', 'SELECT'].includes(c.tagName)).flatMap((c) => {
+        const out = [];
+        for (const e of [c, ...c.querySelectorAll('*')]) {
+          if (e instanceof SVGElement || !hasText(e, c)) continue;
+          const range = document.createRange();
+          range.selectNodeContents(e);
+          const box = range.getBoundingClientRect();
+          const s = getComputedStyle(e);
+          const lh = parseFloat(s.lineHeight);
+          out.push({ name: name(c), height: box.height, lineHeight: Number.isNaN(lh) ? parseFloat(s.fontSize) * 1.2 : lh });
+        }
+        return out;
+      });
       const all = [el, ...el.querySelectorAll('*')].filter((c) => !(c instanceof SVGElement) && visible(c));
       const plain = all.filter((c) => !['TEXTAREA', 'INPUT', 'SELECT'].includes(c.tagName));
       const containers = plain
@@ -189,7 +209,12 @@ const PAGE = `(() => {
           : c === focus && typing(c) ? 'focus' : 'other';
         protectedRects.push({ name: name(c), rect: R(c.getBoundingClientRect()), role });
       }
-      return { rect, modal, menubar, controls, interactive, containers, wide, descendants, layers, protectedRects, vp: { w: innerWidth, h: innerHeight } };
+      // The selection with its handles (the mini bar may not cover it) and the page content a tour step points at (a card avoids it).
+      for (const c of document.querySelectorAll('[data-annot-frame],[data-annot-handle],[data-protect="notice"]')) {
+        if (el.contains(c) || !onlyBig(c)) continue;
+        protectedRects.push({ name: name(c), rect: R(c.getBoundingClientRect()), role: c.hasAttribute('data-protect') ? 'other' : 'active' });
+      }
+      return { kind, wraps, rect, modal, menubar, controls, interactive, containers, wide, descendants, layers, protectedRects, vp: { w: innerWidth, h: innerHeight } };
     },
     triggers() {
       document.querySelectorAll('[data-gate-trigger]').forEach((e) => e.removeAttribute('data-gate-trigger'));
@@ -210,10 +235,13 @@ const verdict = (id, m) =>
     inside: [...checkInViewport(m.rect, m.vp), ...checkDescendants(m.rect, m.descendants), ...checkHScroll(m.wide)],
     clipped: checkClipped(m.controls, m.vp),
     scroll: checkScroll(m.containers),
+    wrap: checkLabelWrap(m.wraps),
     overlap: [
       ...checkOverlap(m.modal ? 'modal' : m.menubar ? 'menubar' : 'popover', m.rect, m.layers, m.protectedRects),
       ...checkControlOverlap(m.interactive),
       ...m.layers.flatMap((l) => checkNotice(l, m.protectedRects)),
+      // A coach mark is a notice: it may not touch any protected rect (Q8).
+      ...(m.kind === 'notice' ? checkNotice({ name: 'coach mark', rect: m.rect }, m.protectedRects) : []),
     ],
   });
 
