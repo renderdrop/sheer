@@ -1,7 +1,7 @@
 # STATE
 phase: v1.3.0 released (tag v1.3.0, CI #68 green) — next: v1.4 "Certificate signature"
 version: 1.3.0 (tag v1.3.0)
-current_item: v1.4 backend wave B1 identities, B2 signer+seal, B3 validator, B4 lock+unsigned copy (ADR-121); then F1–F4
+current_item: SESSION TOPIC (ADR-122): v1.4 Certificate signature — backend wave B1–B4 built (uncommitted, check pending), then F1–F4, acceptance, release v1.4.0, report docs/reports/<date>-v1.4-zertifikatsignatur.md, STOP; no v1.5
 last_completed: v1.3 Citations — 24/24 AC in the installed build, tester/security/designer PASS
 loop_count_this_session: 0
 open_blockers: 2 human-only (B-002, B-005)
