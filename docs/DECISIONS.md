@@ -2392,3 +2392,9 @@ are not overlaps with that field's input; any other control still is.
 below them but never their own anchor (the engine protects only the anchor for them, and holds a menu's height to the roomier side of its
 anchor so it cannot slide over it). Also: rows scrolled out of a list or cut by an overflow ancestor do not overlap what lies there (the
 overlap check uses the visible part of a control), and `role=menu` is a list (Q7) in the page selector as in the spec.
+
+**ADR-124 addendum 2 (acceptance round 2, 2026-10-05).** The crop frame's handles are protected against notices only
+(`data-protect="notice"`), not against the crop popover: the popover is the crop tool's own options and stays non-modal, so the
+other handles remain draggable. Protecting them against the popover made it fall back to a modal dialog at 960 × 640, which
+blocked dragging. This matches Q8 (popovers protect their anchor, the active tool, pressed toggles and the focused input).
+The draw tip now describes straightening on release ("hold before release" was the old recogniser).

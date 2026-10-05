@@ -541,7 +541,7 @@
   "tip.highlight": "Über den Text ziehen. Unterstreichen und Durchstreichen liegen daneben.",
   "tip.note": "Dort klicken, wo die Notiz hingehört. Antworten am Rand.",
   "tip.text": "Klicken und tippen. Das Feld wächst mit; Umschalt+Enter fügt eine Zeile ein.",
-  "tip.draw": "Vor dem Loslassen kurz innehalten macht aus dem Strich eine Form.",
+  "tip.draw": "Kreise, Rechtecke, Linien und Pfeile werden beim Loslassen begradigt. Strg+Z holt den Strich zurück.",
   "tip.shapes": "Umschalt hält die Proportionen. Weitere Formen im Pfeilmenü.",
   "tip.sign": "Gespeicherte Unterschriften bleiben verschlüsselt auf diesem Gerät.",
   "tip.pages": "Zum Ordnen ziehen. Umschalt oder {mod} wählt mehrere Seiten.",

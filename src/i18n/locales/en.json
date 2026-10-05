@@ -541,7 +541,7 @@
   "tip.highlight": "Drag across text. Underline and Strikethrough sit next to it.",
   "tip.note": "Click where the note belongs. Reply to it in the margin.",
   "tip.text": "Click and type. The box grows as you write; Shift+Enter adds a line.",
-  "tip.draw": "Pause before you let go to turn a stroke into a shape.",
+  "tip.draw": "Circles, rectangles, lines and arrows straighten when you let go. Ctrl+Z brings the stroke back.",
   "tip.shapes": "Hold Shift to keep proportions. More shapes are in the arrow menu.",
   "tip.sign": "Saved signatures stay encrypted on this device.",
   "tip.pages": "Drag to reorder. Shift or {mod} selects several pages.",
