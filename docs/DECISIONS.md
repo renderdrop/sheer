@@ -2353,3 +2353,10 @@ The web job installs a minimal toolchain (no clippy/rustfmt; channel read from `
 `cargo deny check` now passes: `deny.toml` ignores the Linux-only GTK advisories RUSTSEC-2024-0429 (glib) and RUSTSEC-2024-0370
 (proc-macro-error) with reasons (not shipped; `check.sh` still scopes cargo deny to the desktop targets) and allows the permissive
 `Apache-2.0 WITH LLVM-exception` (target-lexicon). `guard_crypto_crates` formatting aligned with `guard_network_crates`.
+
+**Addendum 3 (orchestrator, wave 2 results).** (a) The typed-signature font choice stays in `localStorage`: it is a font name, not
+signature data, and the encrypted library has no settings slot; adding one would change the library format for no protection gain.
+(b) Redact mode survives a mode switch, as the existing tour/mode test specifies; the backlog item "tour: redactMode after a mode switch"
+is closed as working as specified. (c) The early recent preview (S5) renders page 1 of a newly opened user document; T2 routes it through
+one bounded worker. (d) Not reproducible from code (S3/S6): page 2 flush at 960 px and the inspector refit — they are checked in the
+installed build at acceptance; a reproduced defect is fixed there, otherwise the items are closed.

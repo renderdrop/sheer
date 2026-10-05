@@ -1,7 +1,7 @@
 # STATE
 phase: v1.4.0 "Certificate signature" released (tag v1.4.0, CI #77 green, GitHub release with DMG + NSIS)
 version: 1.4.0 (tag v1.4.0)
-current_item: SESSION TOPIC "Politur v1.2–v1.4 + CI runtime" → v1.4.1 (ADR-123). Wave 1: D (designer §3.8 lines) → S1 signing; S2 citations/comments; S3 page labels/viewer/tabs; S4 CI runtime. Wave 2: S5 tokens + home/shell + R7 (+ CI test consolidation if still needed)
+current_item: SESSION TOPIC "Politur v1.2–v1.4 + CI runtime" → v1.4.1 (ADR-123). Wave 1 done (D ca65274, S4 f15da4a, S3 b4a067b, S2 c043bc9, S1 a3cf54a; all reviewer PASS, security PASS). Wave 2 done (S8 f299c4a, S6 4d253b6, S7 01f7e6e, S5 c57ae11; all PASS, security PASS). Wave 3 running: T1 tokens + home/tooltip leftovers, T2 preview worker. Then tester, installed-build acceptance, designer round, v1.4.1
 last_completed: v1.4 Certificate signature (tag v1.4.0)
 loop_count_this_session: 0
 open_blockers: 2 human-only (B-002, B-005)
@@ -17,3 +17,6 @@ ci_log: (ADR-120 corrected — package commit → CI run; result filled in at th
   - 7819d74 ADR-120 correction → run #76 (37320320065) superseded (cancelled while pending; #77 covers it)
   - bb93286 release v1.4.0 → run #77 (37320534094) GREEN — tagged v1.4.0, release run 37327757014 success
   - 935610d/54f1533 ci-status superseded handling → run #78 (37322052934) GREEN
+  - f15da4a S4 CI split → run #79 (37335964661) GREEN — web 4 min, macOS 12 min, Windows 14 min (cold rust-cache)
+  - b4a067b/c043bc9/a3cf54a S3+S2+S1 → run #80 (37337924918) red: snapshot test raced the save build slot (Windows) → fixed 19ab8e6
+  - 19ab8e6..c57ae11 save fix + S8 + S6 + S7 + S5 → run #81 (37342811054) pending
