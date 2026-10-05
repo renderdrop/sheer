@@ -1,5 +1,5 @@
 // Dev only. Drives the running dev app over CDP (127.0.0.1:9222). Node 22 built-ins only.
-// Usage: node scripts/ui/cdp.mjs eval <js> | fps <ms> [--during <js>] | csp [--attach]
+// Usage: node scripts/ui/cdp.mjs [--reduced] eval <js> | fps <ms> [--during <js>] | csp [--attach]
 //   | record <ms> --out review/x.png [--during <js>] [--delay <ms>] [--scale 0.5]
 import { writeFileSync, mkdirSync } from 'node:fs';
 import { crc32 } from 'node:zlib';
@@ -160,6 +160,9 @@ async function record(cdp, rest) {
 }
 
 const [cmd, ...rest] = process.argv.slice(2);
+// `--reduced` (anywhere): emulate prefers-reduced-motion: reduce for this CDP session (R5 acceptance twins, MOTION rule 7).
+const reducedAt = rest.indexOf('--reduced');
+if (reducedAt >= 0) rest.splice(reducedAt, 1);
 if (cmd === 'csp') {
   // The release-CSP gate: its own module; needs the dev app only with --attach.
   await (await import('./csp.mjs')).runCsp(rest).catch((e) => {
@@ -169,6 +172,9 @@ if (cmd === 'csp') {
   process.exit();
 }
 const cdp = await connect();
+if (reducedAt >= 0) {
+  await cdp.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-motion', value: 'reduce' }] });
+}
 try {
   if (cmd === 'eval') {
     const v = await cdp.evaluate(rest.join(' '));
