@@ -346,9 +346,11 @@ fn build_with<T: Send + 'static>(
         .name("sheer-save".into())
         .stack_size(limits::SAVE_STACK_BYTES)
         .spawn(move || {
-            let _slot = slot;
             let result = catch_unwind(AssertUnwindSafe(work))
                 .unwrap_or_else(|_| Err(AppError::logged(ErrorCode::Internal, "saving panicked")));
+            // The work is done: give the slot back before the answer, so a caller that saves again right after it is not refused
+            // (CI run #80: a second snapshot raced the first thread's drop).
+            drop(slot);
             // The caller may have given up.
             let _ = sender.send(result);
         });
