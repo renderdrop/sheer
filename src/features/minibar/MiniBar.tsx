@@ -102,7 +102,13 @@ export function MiniBar({ docId, objects, ref, onReturn }: MiniBarProps) {
         add(
           control,
           <ColourControl
-            palette={control === 'colourHighlight' ? 'highlight' : 'stroke'}
+            palette={
+              control === 'colourHighlight'
+                ? objects.every((o) => o.kind === 'note')
+                  ? 'fill'
+                  : 'highlight'
+                : 'stroke'
+            }
             value={values.color}
             disabled={locked}
             onChange={(color) => change({ color })}

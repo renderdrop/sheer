@@ -125,6 +125,14 @@ describe('oneEuro', () => {
     expect(MOUSE_FILTER.minCutoff).toBeLessThan(PEN_FILTER.minCutoff);
   });
 
+  it('lags by about 10 px at 1000 px/s (ADR-111)', () => {
+    const steady = Array.from({ length: 60 }, (_, i) => ({ x: i * 8, y: 0, t: i * 8, pressure: 0.5 }));
+    const out = oneEuro(steady, MOUSE_FILTER);
+    const lag = steady[steady.length - 1]!.x - (out[out.length - 1]?.x ?? 0);
+    expect(lag).toBeGreaterThan(0);
+    expect(lag).toBeLessThan(15);
+  });
+
   it('keeps the first sample exact and the lag of a fast stroke bounded', () => {
     const fast = Array.from({ length: 60 }, (_, i) => ({ x: i * 16, y: 0, t: i * 8, pressure: 0.5 }));
     const out = oneEuro(fast, MOUSE_FILTER);

@@ -263,7 +263,11 @@ export const PageView = memo(function PageView({
   const [covered, setCovered] = useState<CacheEntry | null>(exact ?? null);
   const standIn = exact === undefined || covered !== exact ? standInFor(wholeBucket, exact?.key) : undefined;
   // A save drops the document's images: what was on screen stays (under the new one) until that has been decoded.
-  const lost = useLastImage(cache, exact !== undefined && covered === exact ? exact : standIn);
+  const lost = useLastImage(
+    cache,
+    exact !== undefined && covered === exact ? exact : standIn,
+    swapsSides(rotation) ? height / width : width / height,
+  );
   const tileEntries = tiles.flatMap((tile) => {
     const entry = cache.get(imageKey({ ...wholeId, bucket: plan.bucket, tile }));
     return entry === undefined ? [] : [{ tile, entry }];

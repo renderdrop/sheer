@@ -107,7 +107,7 @@ function PageField() {
         aria-label={t('status.goToPage')}
         aria-invalid={invalid || undefined}
         disabled={pageCount === 0}
-        className="w-12! px-2! tabular-nums"
+        className="w-field! px-2! tabular-nums"
         value={draft ?? String(pageIndex + 1)}
         onChange={(event) => {
           setDraft(event.target.value);

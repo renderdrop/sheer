@@ -1,22 +1,9 @@
-/* Layout measures of Home (DESIGN v2 3.1). They live here, next to the only component that uses them, and name the spec's numbers once. */
-[data-slot="home"] {
-  --home-nav-width: 200px;
-  --home-content-max: 1120px;
-  --home-hero-min: 280px;
-  --home-search-max: 480px;
-  --home-card-height: 76px;
-  --home-tile-width: 40px;
-  --home-tile-height: 52px;
-  --home-row-height: 56px;
-  --home-plus: 48px;
-  --home-nav-row-height: 48px;
-  --home-actions-clear: 72px;
-}
+/* Home layout classes; its measures (--home-*) are tokens (P13-3). */
 
 /* The card grid: as many columns of at least 208 as fit, gap 16. */
 .home-card-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(208px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(var(--home-card-min), 1fr));
   gap: var(--space-4);
 }
 

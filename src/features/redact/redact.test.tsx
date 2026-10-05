@@ -130,7 +130,7 @@ describe('the redact band', () => {
   it('shows in the mode, Cancel keeps the marks, Apply opens the dialog, and it hides the pending notice', async () => {
     seed(mark(1, 0));
     render(<RedactBanner />);
-    expect(screen.getByRole('status').textContent).toContain('1 redaction marks');
+    expect(screen.getByRole('status').textContent).toContain('1 redaction mark is');
     act(() => useUi.getState().setRedactMode(true));
     const band = document.querySelector('[data-banner="redact"]');
     expect(band?.textContent).toContain('Redaction is permanent');

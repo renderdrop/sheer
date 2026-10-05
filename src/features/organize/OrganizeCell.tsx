@@ -188,7 +188,7 @@ export const OrganizeCell = memo(function OrganizeCell({
         aria-hidden="true"
         className={cx(
           'inline-flex h-(--pill-height) min-w-6 items-center justify-center rounded-pill px-2 text-xs tabular-nums',
-          selected ? 'bg-accent font-semibold text-on-accent' : 'text-text-muted',
+          selected ? 'bg-accent font-semibold text-on-accent' : 'text-text',
         )}
       >
         {number}

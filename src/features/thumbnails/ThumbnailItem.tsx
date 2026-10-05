@@ -185,7 +185,7 @@ export const ThumbnailItem = memo(function ThumbnailItem({
   const shown = exact ?? cache.best(docId, pageId, 0, bucket, undefined, pageRev);
   const shownKey = shown?.key ?? '';
   // A save drops the document's images: the old thumbnail stays until the new one is there.
-  const lost = useLastImage(cache, shown);
+  const lost = useLastImage(cache, shown, thumbWidth / thumbHeight);
   const shownImage = shown === undefined ? (lost ?? null) : { key: shown.key, src: cache.urlOf(shown) };
 
   // The image this cell shows is not evicted while it does. (An effect: the cache is outside React, and pins are its state.)
@@ -219,7 +219,7 @@ export const ThumbnailItem = memo(function ThumbnailItem({
         style={{ transform: `translateY(${top}px)`, height }}
       >
         <ThumbnailCard pageId={pageId} width={thumbWidth} height={thumbHeight} image={shownImage} />
-        <span className="inline-flex h-4 min-w-6 items-center justify-center rounded-pill px-2 text-xs tabular-nums text-text-muted">
+        <span className="inline-flex h-4 min-w-6 items-center justify-center rounded-pill px-2 text-xs tabular-nums text-text">
           {index + 1}
         </span>
       </div>
@@ -259,7 +259,7 @@ export const ThumbnailItem = memo(function ThumbnailItem({
         aria-hidden="true"
         className={cx(
           'inline-flex h-4 min-w-6 items-center justify-center rounded-pill px-2 text-xs tabular-nums',
-          selected ? 'bg-accent font-semibold text-on-accent' : 'text-text-muted',
+          selected ? 'bg-accent font-semibold text-on-accent' : 'text-text',
         )}
       >
         {index + 1}

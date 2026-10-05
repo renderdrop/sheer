@@ -61,7 +61,9 @@ export const ToolRow = memo(function ToolRow() {
 
   const activeId = slots.find((slot) => slot.on)?.id ?? null;
   const signature = slots.map((slot) => `${slot.id}:${slot.label}:${slot.on ? 1 : 0}`).join('|');
-  const key = `${mode}|${width}|${signature}`;
+  // A font that loads late changes the widths of the labels: the fit starts over then, too.
+  const [fonts, setFonts] = useState(0);
+  const key = `${mode}|${width}|${fonts}|${signature}`;
   const [fit, setFit] = useState<{ value: Fit; key: string }>({ value: FIT_START, key });
   // Another width or other slots start the fit over (derived during render, like the main grid's `seen`).
   if (fit.key !== key) setFit({ value: FIT_START, key });
@@ -76,6 +78,14 @@ export const ToolRow = memo(function ToolRow() {
     });
     observer.observe(element);
     return () => observer.disconnect();
+  }, []);
+
+  useEffect(() => {
+    const set = typeof document === 'undefined' ? undefined : (document.fonts as FontFaceSet | undefined);
+    if (set === undefined) return;
+    const again = () => setFonts((n) => n + 1);
+    set.addEventListener('loadingdone', again);
+    return () => set.removeEventListener('loadingdone', again);
   }, []);
 
   const movable = slots.length - (activeId === null ? 0 : 1);

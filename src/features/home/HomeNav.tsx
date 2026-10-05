@@ -21,7 +21,7 @@ const ROW =
 
 /**
  * The navigation of Home (DESIGN v2 3.1): Canvas, 200 wide; the word mark in a 48 row, then the rows Home, Zuletzt, Markiert and
- * Werkzeuge (the active one Sand with Ink 600), and the Settings row at the bottom, 16 from its end. No Shared, no Trash (ADR-100).
+ * Werkzeuge (the active one `bg-subtle` with Ink 600), and the Settings row at the bottom, 16 from its end. No Shared, no Trash (ADR-100).
  * The four rows are one tab stop; arrows move between them.
  */
 export function HomeNav({ section, onSection }: { section: HomeSection; onSection: (section: HomeSection) => void }) {

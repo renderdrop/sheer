@@ -19,7 +19,7 @@ export function OrganizeBar() {
         min={GRID_THUMB.min}
         max={GRID_THUMB.max}
         step={GRID_THUMB.step}
-        unit="px"
+        format={(value) => String(value)}
         onValueChange={(value) => useOrganize.getState().setThumb(value)}
       />
     </div>

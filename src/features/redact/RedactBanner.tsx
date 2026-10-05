@@ -97,7 +97,7 @@ function RedactPending() {
               <span className="shrink-0 text-text">
                 <Icon icon={TriangleAlert} />
               </span>
-              <span className="min-w-0 flex-auto text-text">{t('redact.pending', { n: count })}</span>
+              <span className="min-w-0 flex-auto text-text">{t('redact.pending', { count })}</span>
               <Button variant="secondary" size="sm" onClick={enterRedactMode}>
                 {t('redact.review')}
               </Button>

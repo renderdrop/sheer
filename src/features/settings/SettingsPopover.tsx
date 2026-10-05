@@ -143,7 +143,7 @@ function AuthorRow() {
           spellCheck={false}
           maxLength={AUTHOR_NAME_MAX}
           placeholder={t('settings.author.placeholder')}
-          style={{ width: '100%' }}
+          className="w-full!"
           // While there is typing to cancel, the first Esc is the field's (it reverts); the next one closes the popover.
           data-keep-escape={text !== null ? '' : undefined}
           value={text ?? saved}

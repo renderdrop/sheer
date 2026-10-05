@@ -66,7 +66,7 @@ function view(scheduler: RenderScheduler, overrides: Partial<PageViewProps> = {}
 function put(cache: RenderCache, bucket: number, tile?: readonly [number, number], bytes = 10) {
   const blob = new Blob([new Uint8Array(Math.min(bytes, 100))]);
   Object.defineProperty(blob, 'size', { value: bytes });
-  return cache.put({ docId: 1, page: 4, rev: 0, bucket, tile }, { blob, width: 100, height: 100 });
+  return cache.put({ docId: 1, page: 4, rev: 0, bucket, tile }, { blob, width: 102, height: 132 });
 }
 
 const page = () => screen.getByRole('img', { name: 'Page 5 of 12' });

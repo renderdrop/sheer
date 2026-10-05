@@ -48,8 +48,7 @@ export function Splash() {
       data-splash=""
       data-leaving={phase === 'leaving' ? '' : undefined}
       aria-hidden="true"
-      className="pointer-events-auto fixed inset-0 flex items-center justify-center overflow-hidden bg-(--color-canvas)"
-      style={{ zIndex: 'var(--z-modal)' }}
+      className="pointer-events-auto fixed inset-0 z-modal flex items-center justify-center overflow-hidden bg-(--color-canvas)"
     >
       <div data-splash-glow="" className="pointer-events-none absolute inset-0" style={{ willChange: 'opacity' }}>
         <SolarGlow variant="splash" />

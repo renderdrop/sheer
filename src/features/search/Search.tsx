@@ -450,7 +450,7 @@ function SearchView({ docId }: { docId: number }) {
   }
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
+    <div className="flex min-h-0 flex-1 flex-col px-3">
       <div className="relative shrink-0">
         <span className="pointer-events-none absolute inset-y-0 start-2 flex items-center text-text-muted">
           <Icon icon={SearchIcon} />
@@ -501,38 +501,40 @@ function SearchView({ docId }: { docId: number }) {
           pressed={entry.wholeWord}
           onClick={() => store.setOptions(docId, { wholeWord: !entry.wholeWord })}
         />
+        <span className="ms-auto flex gap-1">
+          {hasHits && (
+            <IconButton
+              size="sm"
+              icon={SquareSlash}
+              label={t('redact.searchAll')}
+              onClick={() => void redactSearchResults(docId)}
+            />
+          )}
+          <IconButton
+            size="sm"
+            icon={ChevronUp}
+            label={t('search.previous')}
+            disabled={!hasHits}
+            focusableWhenDisabled
+            onClick={() => stepHit(-1)}
+          />
+          <IconButton
+            size="sm"
+            icon={ChevronDown}
+            label={t('search.next')}
+            disabled={!hasHits}
+            focusableWhenDisabled
+            onClick={() => stepHit(1)}
+          />
+        </span>
       </div>
-      <div className="relative flex h-control-md shrink-0 items-center gap-1 text-sm text-text-muted">
-        <span aria-hidden="true" className="min-w-0 flex-1 truncate tabular-nums">
+      <div className="relative flex min-h-control-md shrink-0 items-center gap-1 py-1 text-sm text-text-muted">
+        <span aria-hidden="true" className="min-w-0 flex-1 break-words tabular-nums">
           {statusText(t, entry)}
         </span>
         <span role="status" className="sr-only">
           {live}
         </span>
-        {hasHits && (
-          <IconButton
-            size="sm"
-            icon={SquareSlash}
-            label={t('redact.searchAll')}
-            onClick={() => void redactSearchResults(docId)}
-          />
-        )}
-        <IconButton
-          size="sm"
-          icon={ChevronUp}
-          label={t('search.previous')}
-          disabled={!hasHits}
-          focusableWhenDisabled
-          onClick={() => stepHit(-1)}
-        />
-        <IconButton
-          size="sm"
-          icon={ChevronDown}
-          label={t('search.next')}
-          disabled={!hasHits}
-          focusableWhenDisabled
-          onClick={() => stepHit(1)}
-        />
         {running && entry.progress !== null && (
           <div
             aria-hidden="true"
