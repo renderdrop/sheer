@@ -311,8 +311,12 @@ impl Transport for ChildTransport {
         if frame.kind != FrameKind::Reply || frame.seq != seq {
             return Err(TransportError::Protocol("unexpected frame"));
         }
-        let reply: WireReply = serde_json::from_slice(&frame.header)
-            .map_err(|_| TransportError::Protocol("malformed header"))?;
+        let reply: WireReply = serde_json::from_slice(&frame.header).map_err(|error| {
+            // The class and position only: the message of a serde error can quote document text.
+            let reason = (error.classify(), error.column());
+            eprintln!("sheer: undecodable engine reply (class, column): {reason:?}");
+            TransportError::Protocol("malformed header")
+        })?;
         check_blob(&reply, frame.blob.len())?;
         Ok((reply, Blob::Owned(frame.blob)))
     }

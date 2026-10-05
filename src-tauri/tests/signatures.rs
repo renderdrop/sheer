@@ -509,11 +509,8 @@ fn a_signature_needs_a_live_asset_and_a_sane_box() {
         (10.0, 10.0, 80.0, 40.0),
     );
     from_file["art"] = json!({"type": "file"});
-    // It does not even parse: only an import makes art "in the file".
-    assert!(serde_json::from_value::<DocCommand>(
-        json!({"type": "createAnnotation", "draft": from_file})
-    )
-    .is_err());
+    // It parses (the engine child's replies carry it, ADR-115) but only an import makes art "in the file": the command is refused.
+    assert_eq!(apply(from_file), Some(ErrorCode::InvalidArgument));
     assert_eq!(
         apply(signature_draft(
             "signature",

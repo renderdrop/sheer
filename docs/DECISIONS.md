@@ -2056,3 +2056,9 @@ installed beta).
 - **Undo:** release creates the ink stroke, then one batch swaps it for the shape, so one undo returns the stroke.
 - **Setting:** `tools.shapeRecognition` in UI storage (`sheer.tools.shapeRecognition`), default on; Settings > Drawing and the Zeichnen split menu.
 - `Popover`: a popover rendered inside another no longer closes it (colour popover in split menus).
+
+## ADR-115 — Engine child replies must decode every annotation kind (F15 acceptance blocker)
+
+- **Cause:** not a PDFium or engine panic. `SignatureArtRef::File` and `AnnotationBody::Opaque` were `#[serde(skip_deserializing)]` ("only an import makes one"). The child serialised them in its `Annotations` reply, the parent could not deserialise the reply (`malformed header`), treated the child as failed and restarted it. In-process tests never hit this. Any page with a reopened stamp of ours (art "in the file") or a kind the model leaves opaque restarted the engine; the restart reopened the document and the pages then rendered only partly.
+- **Fix:** both variants deserialize now. The UI boundary already refuses them (`Annotation::from_draft`: `kind` / `art` invalid). The parent logs the class and column of an undecodable reply (never the serde message, which can quote document text); a panic in the child was and is logged with its reason by `guard::guarded`.
+- **Tests:** `tests/engine_child_annotations.rs` (create FreeText, Text, turned stamp, save, close, reopen through the child: no restart, three pages render, angle kept); `annots-turned-stamp-and-opaque-kinds.pdf` in the hostile corpus, whose exercise now lists annotations.

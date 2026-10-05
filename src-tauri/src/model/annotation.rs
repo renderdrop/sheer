@@ -155,8 +155,8 @@ pub enum MarkGlyph {
 pub enum SignatureArtRef {
     /// Art of the document's asset store (`signatures::AssetStore`); the aspect ratio is width over height.
     Asset { asset_id: AssetId, aspect: f32 },
-    /// The appearance that is in the file already: kept as it is. Only an import makes one.
-    #[serde(skip_deserializing)]
+    /// The appearance that is in the file already: kept as it is. Only an import makes one. It does deserialize: the engine
+    /// child's replies carry it (ADR-115); `Annotation::from_draft` refuses it from the UI.
     File,
 }
 
@@ -292,8 +292,8 @@ pub enum AnnotationBody {
         source: RedactSource,
     },
     /// An annotation of a kind the model does not edit (ink and lines from other programs, stamps, squiggly, ...): listed so it can be
-    /// shown and selected, never changed or deleted. Only an import makes one.
-    #[serde(skip_deserializing)]
+    /// shown and selected, never changed or deleted. Only an import makes one (it does deserialize, for the engine
+    /// child's replies, ADR-115; `Annotation::from_draft` refuses it from the UI).
     Opaque {
         subtype: String,
     },
@@ -1184,7 +1184,12 @@ mod tests {
         let parsed = serde_json::from_value::<AnnotationDraft>(json!({
             "pageId": 0, "kind": "opaque", "subtype": "Ink", "color": [0, 0, 0]
         }));
-        assert!(parsed.is_err());
+        // It parses (ADR-115: the engine child's replies carry it); making an annotation of it is refused.
+        let parsed = parsed.unwrap();
+        assert_eq!(
+            code(Annotation::from_draft(AnnotId::new(1), &parsed, "t")),
+            ErrorCode::InvalidArgument
+        );
         let draft = AnnotationDraft {
             body: AnnotationBody::Opaque {
                 subtype: "Ink".into(),
@@ -1666,11 +1671,16 @@ mod tests {
             code(Annotation::from_draft(AnnotId::new(1), &from_file, "t")),
             ErrorCode::InvalidArgument
         );
-        assert!(serde_json::from_value::<AnnotationDraft>(json!({
+        // It parses (the engine child's replies carry it, ADR-115) and is refused by the draft check.
+        let parsed: AnnotationDraft = serde_json::from_value(json!({
             "pageId": 0, "kind": "signature", "color": [0, 0, 0], "role": "signature",
             "box": {"x": 1.0, "y": 1.0, "w": 10.0, "h": 10.0}, "art": {"type": "file"}
         }))
-        .is_err());
+        .unwrap();
+        assert_eq!(
+            code(Annotation::from_draft(AnnotId::new(1), &parsed, "t")),
+            ErrorCode::InvalidArgument
+        );
     }
 
     #[test]

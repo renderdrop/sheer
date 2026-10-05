@@ -131,6 +131,12 @@ fn exercise(state: &AppState, name: &str, bytes: &[u8]) -> Vec<ErrorCode> {
     }
     note(state.text_layer(id, page).map(drop).map_err(|e| e.code()));
     note(state.page_links(id, page).map(drop).map_err(|e| e.code()));
+    note(
+        state
+            .list_annotations(id, page)
+            .map(drop)
+            .map_err(|e| e.code()),
+    );
     note(state.close_document(id).map_err(|e| e.code()));
     errors
 }
@@ -155,6 +161,12 @@ fn every_malformed_file_ends_in_a_document_or_a_typed_error_never_a_panic_or_a_h
             !codes.contains(&ErrorCode::Internal),
             "{name}: an internal error is a bug the file found: {codes:?}"
         );
+        if name.starts_with("annots-") {
+            assert!(
+                !codes.contains(&ErrorCode::EngineCrashed),
+                "{name}: the engine must report our own annotations: {codes:?}"
+            );
+        }
     }
     // The engine is still alive and still right after all of that.
     let good = fixtures::outline();

@@ -632,6 +632,40 @@ pub fn all() -> Vec<(&'static str, Vec<u8>)> {
         ),
     );
 
+    // --- annotations the child reports back (ADR-115) ----------------------------------------------------------------
+    // A stamp of ours that is turned (a /NM turn suffix and a /Matrix), a stamp of another program, and kinds the model leaves opaque.
+    add(
+        "annots-turned-stamp-and-opaque-kinds.pdf",
+        build(
+            "/Annots [30 0 R 31 0 R 32 0 R 33 0 R]",
+            &text_line(18, 72, 700, "stamps"),
+            "",
+            |builder| {
+                builder.object(
+                    30,
+                    "<< /Type /Annot /Subtype /Stamp /Rect [454.74 414.27 609.79 616.18] /NM (sheer-sig-0ff12c1c34e2999da51a958bf4056163-r30466-22057-3600) /F 4 /AP << /N 34 0 R >> >>",
+                );
+                builder.object(
+                    31,
+                    "<< /Type /Annot /Subtype /Stamp /Rect [10 10 90 40] /AP << /N 34 0 R >> >>",
+                );
+                builder.object(
+                    32,
+                    "<< /Type /Annot /Subtype /Squiggly /Rect [72 700 172 712] /QuadPoints [72 712 172 712 72 700 172 700] >>",
+                );
+                builder.object(
+                    33,
+                    "<< /Type /Annot /Subtype /Caret /Rect [200 200 220 220] >>",
+                );
+                builder.stream(
+                    34,
+                    "/Type /XObject /Subtype /Form /BBox [0 0 220 36] /Matrix [0.57 -0.82 0.82 0.57 0 0]",
+                    b"0 0 220 36 re f",
+                );
+            },
+        ),
+    );
+
     // --- encryption, object streams ----------------------------------------------------------------------------------
     add("encrypt-dictionary-nonsense.pdf", {
         let mut builder = skeleton("");
