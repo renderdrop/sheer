@@ -965,6 +965,10 @@ impl Drop for Scratch {
     }
 }
 
+/// The command tests each start a PDFium engine in this process; PDFium is not thread-safe, so they take turns (as in
+/// images_pdf_render.rs). In parallel they failed to open their file on the two-core CI runners (runs #71, #74).
+static SERIAL: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
 fn app(data: &std::path::Path) -> Option<AppState> {
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("pdfium");
     let library = engine::library_path(&root);
@@ -981,6 +985,9 @@ fn app(data: &std::path::Path) -> Option<AppState> {
 
 #[test]
 fn the_commands_validate_open_the_signed_revision_and_pin_a_signer() {
+    let _turn = SERIAL
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
     let scratch = Scratch::new("commands");
     let data = scratch.0.join("data");
     let Some(state) = app(&data) else {
@@ -1076,6 +1083,9 @@ fn the_commands_validate_open_the_signed_revision_and_pin_a_signer() {
 
 #[test]
 fn a_signature_that_does_not_verify_cannot_be_pinned() {
+    let _turn = SERIAL
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
     let scratch = Scratch::new("nopin");
     let data = scratch.0.join("data");
     let Some(state) = app(&data) else {

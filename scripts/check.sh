@@ -53,7 +53,10 @@ first_errors() {
   hits="$(
     printf '%s\n' "$cleaned" | awk '
       /^[ \t]*--> / && NR == last + 1 { loc = $0; sub(/^[ \t]*--> /, "", loc); entries[n] = entries[n] "  @ " loc; next }
-      $0 ~ ENVIRON["ERROR_PATTERN"] { entries[++n] = $0; last = NR }
+      # Rust prints the panic message on the line after "panicked at": keep it with its location (CI runs #71-#74 showed only
+      # a backtrace frame).
+      NR == panic + 1 && panic > 0 { msg = $0; sub(/^[ \t]+/, "", msg); entries[n] = entries[n] " " msg; panic = 0; next }
+      $0 ~ ENVIRON["ERROR_PATTERN"] { entries[++n] = $0; last = NR; if ($0 ~ /panicked at/) panic = NR }
       END { for (i = 1; i <= n && shown < 3; i++) if (!seen[entries[i]]++) { print entries[i]; shown++ } }
     '
   )"
