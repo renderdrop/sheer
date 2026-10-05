@@ -192,13 +192,7 @@ function SignSheet() {
           </label>
         </div>
         <div className="flex min-w-0 flex-col gap-4">
-          {certifies && (
-            <LockChoice
-              value={lock}
-              onChange={setLock}
-              disabled={busy}
-            />
-          )}
+          {certifies && <LockChoice value={lock} onChange={setLock} disabled={busy} />}
           {document?.flags?.signed === true && (
             <p className="t-body m-0 flex items-start gap-2" data-testid="existing-lock">
               <span className="shrink-0">
