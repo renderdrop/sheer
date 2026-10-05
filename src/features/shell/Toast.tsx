@@ -1,4 +1,4 @@
-import { Check } from 'lucide-react';
+import { Check, CircleAlert } from 'lucide-react';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import { useCallback, useEffect, useRef } from 'react';
 
@@ -38,10 +38,13 @@ function ToastView({ toast }: { toast: Toast }) {
       onMouseLeave={arm}
       onFocus={hold}
       onBlur={arm}
-      className="bg-panel border border-border-subtle shadow-floating pointer-events-auto flex h-toast min-w-toast-min max-w-toast-max items-center gap-2 rounded-button px-3"
+      className="bg-panel border border-border-subtle shadow-floating pointer-events-auto flex min-h-toast min-w-toast-min max-w-toast-max items-center gap-2 rounded-button px-3 py-2"
     >
-      <Icon icon={Check} className="shrink-0 text-text" />
-      <span className="min-w-0 flex-auto truncate t-label">{toast.message}</span>
+      <Icon
+        icon={toast.tone === 'error' ? CircleAlert : Check}
+        className={toast.tone === 'error' ? 'shrink-0 text-error-text' : 'shrink-0 text-text'}
+      />
+      <span className="min-w-0 flex-auto t-label">{toast.message}</span>
       {action !== undefined && (
         <Button
           variant="ghost"

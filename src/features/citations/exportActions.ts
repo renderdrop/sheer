@@ -18,11 +18,16 @@ import { getCitationFormat, getCitationStyle } from './style';
 const tr = (): Translate => translators[useLocaleStore.getState().locale];
 const lang = (): 'en' | 'de' => (useLocaleStore.getState().locale === 'de' ? 'de' : 'en');
 
-function toast(message: string, retry?: () => void): void {
+function toast(message: string, retry?: () => void, error = false): void {
   const t = tr();
+  const tone = error ? ({ tone: 'error' } as const) : {};
   useUi
     .getState()
-    .showToast(retry === undefined ? { message } : { message, action: { label: t('comments.retry'), run: retry } });
+    .showToast(
+      retry === undefined
+        ? { message, ...tone }
+        : { message, ...tone, action: { label: t('comments.retry'), run: retry } },
+    );
 }
 
 /** Whether the file forbids copying text: the quotes then stay out of whatever goes to the clipboard or a file. */
@@ -61,7 +66,7 @@ export async function writeClipboard(text: string, html: string): Promise<boolea
 
 async function copyBlocks(blocks: readonly StyledBlock[], done: string, retry: () => void): Promise<void> {
   const ok = await writeClipboard(blocksToPlainText(blocks), blocksToHtml(blocks));
-  toast(ok ? done : tr()('reference.copyFailed'), ok ? undefined : retry);
+  toast(ok ? done : tr()('reference.copyFailed'), ok ? undefined : retry, !ok);
 }
 
 /** The record, the citations and the settings that a list is made of. */
@@ -85,9 +90,13 @@ export async function copyCitation(docId: number, annotId: number): Promise<void
       void copyCitation(docId, annotId);
     });
   } catch {
-    toast(tr()('reference.copyFailed'), () => {
-      void copyCitation(docId, annotId);
-    });
+    toast(
+      tr()('reference.copyFailed'),
+      () => {
+        void copyCitation(docId, annotId);
+      },
+      true,
+    );
   }
 }
 
@@ -99,9 +108,13 @@ export async function copyReference(docId: number): Promise<void> {
       void copyReference(docId);
     });
   } catch {
-    toast(tr()('reference.copyFailed'), () => {
-      void copyReference(docId);
-    });
+    toast(
+      tr()('reference.copyFailed'),
+      () => {
+        void copyReference(docId);
+      },
+      true,
+    );
   }
 }
 
@@ -122,9 +135,13 @@ export async function copyCitationList(docId: number): Promise<void> {
       },
     );
   } catch {
-    toast(tr()('reference.copyFailed'), () => {
-      void copyCitationList(docId);
-    });
+    toast(
+      tr()('reference.copyFailed'),
+      () => {
+        void copyCitationList(docId);
+      },
+      true,
+    );
   }
 }
 
@@ -146,12 +163,12 @@ export async function saveCitationList(docId: number): Promise<void> {
     }
     const blocks = format === 'ris' || format === 'bib' ? [] : formatCitationList(record, citations, style, lang());
     if (!fitsCitationExport(blocks)) {
-      toast(tr()('reference.saveFailed'));
+      toast(tr()('reference.saveFailed'), undefined, true);
       return;
     }
     const saved = await saveCitationListFile(docId, format, blocks, style);
     if (saved) toast(tr()('reference.listSaved'));
   } catch {
-    toast(tr()('reference.saveFailed'), retry);
+    toast(tr()('reference.saveFailed'), retry, true);
   }
 }

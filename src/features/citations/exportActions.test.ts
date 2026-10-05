@@ -153,7 +153,9 @@ describe('save', () => {
     api.saveCitationList.mockRejectedValueOnce({ code: 'io' });
     await saveCitationList(1);
     expect(toast()?.message).toBe('The citation list could not be saved.');
+    expect(toast()?.tone).toBe('error');
     toast()?.action?.run();
     await vi.waitFor(() => expect(toast()?.message).toBe('Citation list saved'));
+    expect(toast()?.tone).toBeUndefined();
   });
 });

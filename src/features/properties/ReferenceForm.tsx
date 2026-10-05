@@ -215,7 +215,7 @@ export function ReferenceForm({ info, draft, onChange, readOnly, preview }: Refe
       </div>
       {textField('title')}
       <Authors info={info} draft={draft} onChange={onChange} readOnly={readOnly} loaded={loaded} />
-      {textField('year', 'w-[calc(var(--space-20)+var(--space-2))]')}
+      {textField('year', 'w-year!')}
       {visibleFields(draft.kind, draft.text.url).map((field) =>
         textField(field, 'w-full', field === 'accessed' ? 'date' : 'text'),
       )}

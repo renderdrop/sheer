@@ -5,11 +5,13 @@ import { clampPanelWidth } from '../lib/layout';
 import { useDocuments } from './documents';
 import { useSettings } from './settings';
 
-/** A toast (DESIGN 3.12): a confirmation with, at most, one action. Errors never toast. */
+/** A toast (DESIGN 3.12): a confirmation with, at most, one action. Errors toast only with `tone: 'error'` (alert icon). */
 export interface Toast {
   /** Changes with every toast, so one that replaces another starts its lifetime over. */
   id: number;
   message: string;
+  /** `error` shows the alert icon instead of the check. */
+  tone?: 'error';
   action?: { label: string; run: () => void };
 }
 

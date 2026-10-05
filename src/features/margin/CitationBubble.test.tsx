@@ -120,7 +120,7 @@ describe('which threads have a bubble', () => {
 describe('the citation bubble', () => {
   it('shows the page label, the quote in quotation marks and the short citation', () => {
     column('full', [cite(1)]);
-    const bubble = screen.getByRole('article', { name: 'Citation, page p. xii' });
+    const bubble = screen.getByRole('article', { name: 'Citation, page xii' });
     expect(within(bubble).getByText('p. xii')).toBeTruthy();
     expect(bubble.textContent).toContain('“A sentence worth keeping.”');
     expect(bubble.textContent).toContain('(Müller, 2021, p. xii)');
@@ -156,7 +156,7 @@ describe('the citation bubble', () => {
   it('falls back to the page number without a label and shows a comment', () => {
     useCitationStore.setState({ byDoc: { 1: [] } });
     column('full', [cite(1, { contents: 'My note' })]);
-    const bubble = screen.getByRole('article', { name: 'Citation, page p. 1' });
+    const bubble = screen.getByRole('article', { name: 'Citation, page 1' });
     expect(bubble.textContent).toContain('My note');
   });
 
@@ -179,9 +179,9 @@ describe('the citation bubble', () => {
   it('collapses to a quote marker that opens the bubble', async () => {
     const { user } = column('compact', [cite(1)]);
     expect(screen.queryByRole('article')).toBeNull();
-    const marker = screen.getByRole('button', { name: 'Citation, page 1' });
+    const marker = screen.getByRole('button', { name: 'Citation, page xii' });
     expect(marker.querySelector('svg')).not.toBeNull();
     await user.click(marker);
-    expect(screen.getByRole('article', { name: 'Citation, page p. xii' })).toBeTruthy();
+    expect(screen.getByRole('article', { name: 'Citation, page xii' })).toBeTruthy();
   });
 });

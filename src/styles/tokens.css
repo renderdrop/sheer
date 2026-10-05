@@ -144,6 +144,7 @@
   /* Widths of the specs: w-field (slider number field, zoom readout), min-w-slider-min, min-w-popover-min, max-w-popover-max,
      max-w-tooltip-max, and w-splitter (the gutter beside the left panel). */
   --spacing-field: var(--field-width);
+  --spacing-year: var(--year-field);
   --spacing-slider-min: var(--slider-min);
   /* Inspector swatches and the note popover: size-swatch, w-note. */
   --spacing-swatch: var(--swatch-size);
@@ -388,6 +389,7 @@
   /* Widths (DESIGN 1.3). The panel values are mirrored as numbers in components/tokens.ts (PANEL). */
   --toggle-width: 36px; /* Toggle track; the knob is 12 with a 2 px gap, travel 20 */
   --field-width: 56px; /* slider number field and zoom readout */
+  --year-field: 88px; /* Reference tab Year input: four digits, "2020a" and "o. J." fit (DESIGN 3.7 C5) */
   --slider-min: 120px;
   --swatch-size: 24px;
   --note-icon: 24px;

@@ -22,7 +22,7 @@ import type { PageLayout } from '../viewer/layout';
 import type { Rotation } from '../viewer/transform';
 import { Bubble, Marker, type BubbleProps } from './Bubble';
 import { CitationBubble } from './CitationBubble';
-import { onCitationFocus } from '../citations/store';
+import { onCitationFocus, useCitations } from '../citations/store';
 import { newRestackState, restack } from './restack';
 import { anchorOf, columnX, marginMetrics, placeBubbles, visibleBubbles, type MarginMode } from './layout';
 
@@ -62,6 +62,7 @@ interface Item {
  */
 export function MarginColumn({ docId, layout, threads, mode, drawnSizes, rotation }: MarginColumnProps) {
   const t = useT();
+  const citations = useCitations(docId);
   const metrics = marginMetrics();
   // Only the anchors of the shown roots (a shallow list), not the whole annotation map.
   const rects = useAnnotations(
@@ -313,7 +314,11 @@ export function MarginColumn({ docId, layout, threads, mode, drawnSizes, rotatio
                 label={
                   item.thread.root.cite === undefined
                     ? t('margin.marker', { author: name })
-                    : t('citation.aria', { page: String(pageNumberOf(docId, item.thread.root.pageId)) })
+                    : t('citation.aria', {
+                        page:
+                          citations.find((c) => c.id === item.id)?.locator ??
+                          String(pageNumberOf(docId, item.thread.root.pageId)),
+                      })
                 }
                 selected={selected || open}
                 onFocus={() => setFocusId(item.id)}
