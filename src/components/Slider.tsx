@@ -208,8 +208,10 @@ export function Slider({
       <Field
         size="sm"
         align="end"
-        // px-2: the sm field is 56 wide, and a value with a unit ("100 %") must not be cut by the 12 px padding.
-        className="px-2!"
+        tight
+        // px-2: the sm field is 56 wide, and a value with a unit ("100 %") must not be cut by the 12 px padding. A longer text
+        // ("160 px") widens the slot (its characters plus the padding) instead of being clipped; the slot never gets narrower.
+        style={{ width: `max(var(--field-width), calc(${(draft ?? text(value)).length}ch + var(--space-4)))` }}
         id={fieldId}
         type="text"
         inputMode="decimal"

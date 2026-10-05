@@ -24,7 +24,15 @@ import { Bubble, Marker, type BubbleProps } from './Bubble';
 import { CitationBubble } from './CitationBubble';
 import { onCitationFocus, useCitations } from '../citations/store';
 import { newRestackState, restack } from './restack';
-import { anchorOf, columnX, marginMetrics, placeBubbles, visibleBubbles, type MarginMode } from './layout';
+import {
+  anchorOf,
+  clampColumnX,
+  columnX,
+  marginMetrics,
+  placeBubbles,
+  visibleBubbles,
+  type MarginMode,
+} from './layout';
 
 /** A bubble before it is measured. */
 const ESTIMATE_PX = 120;
@@ -165,6 +173,10 @@ export function MarginColumn({ docId, layout, threads, mode, drawnSizes, rotatio
     [items, heights, compact, metrics.stack, pinned],
   );
 
+  // A page wider than the canvas (zoom 160 %) has its column right of the page, beyond the viewport: it is kept inside what the
+  // viewport shows, over the page's edge, rather than reached only by scrolling (DESIGN 3.5 B9).
+  const columnWidth = compact ? metrics.compact : metrics.width;
+  const xOf = (item: Item) => clampColumnX(item.x, view, columnWidth);
   const slotWidth = layout.width + metrics.gap + (compact ? metrics.compact : metrics.width);
   const overscan = Math.max(0, view.bottom - view.top);
   const shown = useMemo(() => {
@@ -279,12 +291,12 @@ export function MarginColumn({ docId, layout, threads, mode, drawnSizes, rotatio
         <svg
           aria-hidden="true"
           className="pointer-events-none absolute overflow-visible"
-          style={{ left: leaderItem.x, top: 0, width: 1, height: 1 }}
+          style={{ left: xOf(leaderItem), top: 0, width: 1, height: 1 }}
         >
           <line
             x1={0}
             y1={leaderTop + metrics.stack}
-            x2={leaderItem.right - leaderItem.x}
+            x2={leaderItem.right - xOf(leaderItem)}
             y2={leaderItem.anchor}
             className="stroke-control-border"
             strokeWidth={1}
@@ -305,7 +317,7 @@ export function MarginColumn({ docId, layout, threads, mode, drawnSizes, rotatio
               data-item={item.id}
               data-top={top}
               className="pointer-events-auto absolute"
-              style={{ top, left: item.x + (metrics.compact - metrics.marker) / 2 }}
+              style={{ top, left: xOf(item) + (metrics.compact - metrics.marker) / 2 }}
             >
               <Marker
                 id={item.id}
@@ -353,8 +365,9 @@ export function MarginColumn({ docId, layout, threads, mode, drawnSizes, rotatio
             data-item={item.id}
             data-top={top}
             ref={measure}
+            onFocus={() => setFocusId(item.id)}
             className="pointer-events-auto absolute"
-            style={{ top, left: item.x, width: metrics.width }}
+            style={{ top, left: xOf(item), width: metrics.width }}
           >
             <Shown
               docId={docId}

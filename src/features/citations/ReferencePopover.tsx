@@ -234,6 +234,15 @@ export function ReferenceButton({ docId, onEditReference }: ReferenceButtonProps
   const edit = onEditReference ?? (() => openReferenceDetails(docId));
   const anchor = useRef<HTMLElement | null>(null);
   const [width, setWidth] = useState<number | undefined>(undefined);
+  const [open, setOpen] = useState(false);
+  // The width follows the panel while the popover is open (a splitter drag or a collapse changes it).
+  useEffect(() => {
+    const panel = open ? anchor.current?.closest<HTMLElement>('[data-region="left"]') : null;
+    if (panel === null || panel === undefined || typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver(() => setWidth(popoverWidthIn(anchor.current)));
+    observer.observe(panel);
+    return () => observer.disconnect();
+  }, [open]);
   return (
     <Popover
       label={t('reference.button')}
@@ -241,6 +250,7 @@ export function ReferenceButton({ docId, onEditReference }: ReferenceButtonProps
       align="end"
       width={width}
       onOpenChange={(open) => {
+        setOpen(open);
         if (open) setWidth(popoverWidthIn(anchor.current));
       }}
       trigger={(trigger) => (

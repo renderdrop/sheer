@@ -41,9 +41,9 @@ import { selectionOf, useOrganize } from './store';
 
 /** Pixels the pointer must travel from a page before a drag begins (DESIGN 3.28). */
 export const DRAG_THRESHOLD_PX = 4;
-/** Within this many px of the scroller's top or bottom edge a drag scrolls it. */
 /** How long after the last change of the grid's width the cells slide again. */
 const RESIZE_SETTLE_MS = 120;
+/** Within this many px of the scroller's top or bottom edge a drag scrolls it. */
 const EDGE_PX = 48;
 const MAX_SCROLL_PER_FRAME = 24;
 

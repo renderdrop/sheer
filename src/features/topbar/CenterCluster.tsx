@@ -112,7 +112,8 @@ function PageField() {
         aria-label={t('status.goToPage')}
         aria-invalid={invalid || undefined}
         disabled={pageCount === 0}
-        className="w-field! px-2! tabular-nums"
+        tight
+        className="tabular-nums"
         value={draft ?? shown}
         onChange={(event) => {
           setDraft(event.target.value);
@@ -124,7 +125,7 @@ function PageField() {
       />
       <span className="t-label text-text-muted tabular-nums">
         {hasLabels
-          ? `(${pageIndex + 1} ${formatPageTotal(pageCount, t.locale)})`
+          ? t('status.pageOfLabelled', { page: pageIndex + 1, total: formatPageTotal(pageCount, t.locale) })
           : formatPageTotal(pageCount, t.locale)}
       </span>
     </div>

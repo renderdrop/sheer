@@ -164,3 +164,13 @@ export function anchorOf(
 export function columnX(box: { left: number; width: number }, gap: number): number {
   return box.left + box.width + gap;
 }
+
+/**
+ * Keeps a column that would end right of the viewport inside it (a page wider than the canvas has its column beyond the edge until
+ * scrolled). `view` is the part of the content that is shown; before it is known nothing is moved. The column never goes left of
+ * the viewport's left edge, and never right of where it was.
+ */
+export function clampColumnX(x: number, view: { left: number; right: number }, width: number): number {
+  if (!(view.right > view.left)) return x;
+  return Math.min(x, Math.max(view.left, view.right - width));
+}

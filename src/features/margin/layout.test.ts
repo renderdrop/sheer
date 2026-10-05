@@ -5,6 +5,7 @@ import {
   anchorOf,
   bubbleDate,
   columnLeft,
+  clampColumnX,
   columnX,
   initialOf,
   marginSlot,
@@ -104,5 +105,16 @@ describe('columnX', () => {
     expect(columnX({ left: 120, width: 816 }, 16)).toBe(952);
     // The widest page (1056 px, left 0) keeps its own edge.
     expect(columnX({ left: 0, width: 1056 }, 16)).toBe(1072);
+  });
+});
+
+describe('clampColumnX', () => {
+  it('keeps a column that would end past the viewport inside it', () => {
+    expect(clampColumnX(1400, { left: 0, right: 900 }, 240)).toBe(660);
+    expect(clampColumnX(1400, { left: 500, right: 600 }, 240)).toBe(500);
+  });
+  it('leaves a column that fits, and an unknown viewport, alone', () => {
+    expect(clampColumnX(600, { left: 0, right: 900 }, 240)).toBe(600);
+    expect(clampColumnX(1400, { left: 0, right: 0 }, 240)).toBe(1400);
   });
 });

@@ -105,6 +105,14 @@ describe('the cell', () => {
     expect(cell.getAttribute('aria-posinset')).toBe('3');
   });
 
+  it('truncates a long page label inside the cell instead of widening the pill', () => {
+    const { scheduler } = fixture();
+    setup(item(scheduler, { label: 'Appendix B, supplementary material' }));
+    const pill = screen.getByRole('option').querySelector<HTMLElement>('span[aria-hidden]') as HTMLElement;
+    expect(pill.className).toContain('truncate');
+    expect(pill.className).toContain('max-w-full');
+  });
+
   it('has a placeholder of the size of the page before any image is there', () => {
     const { scheduler } = fixture();
     setup(item(scheduler, { thumbWidth: 120, thumbHeight: 90 }));

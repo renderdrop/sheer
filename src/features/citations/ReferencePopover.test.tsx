@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { screen, waitFor } from '@testing-library/react';
+import { act, screen, waitFor } from '@testing-library/react';
 import { MotionGlobalConfig } from 'motion/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -120,5 +120,43 @@ describe('ReferenceButton', () => {
     await user.keyboard('{Escape}');
     await waitFor(() => expect(screen.queryByRole('button', { name: 'Edit reference…' })).toBeNull());
     expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Reference and citation list' }));
+  });
+});
+
+describe('the width while open', () => {
+  it('follows the panel it opens from when that is resized', async () => {
+    let notify: () => void = () => undefined;
+    vi.stubGlobal(
+      'ResizeObserver',
+      class {
+        constructor(callback: () => void) {
+          notify = callback;
+        }
+        observe(): void {}
+        disconnect(): void {}
+      },
+    );
+    let panelWidth = 300;
+    const rect = vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (
+      this: HTMLElement,
+    ) {
+      const width = this.dataset.region === 'left' ? panelWidth : 0;
+      return { width, height: 0, top: 0, left: 0, right: width, bottom: 0, x: 0, y: 0, toJSON: () => ({}) };
+    });
+    try {
+      await open(
+        <div data-region="left">
+          <ReferenceButton docId={1} />
+        </div>,
+      );
+      const surface = () => document.querySelector<HTMLElement>('[style*="max-width"]');
+      await waitFor(() => expect(surface()?.style.maxWidth).toBe('284px'));
+      panelWidth = 260;
+      act(() => notify());
+      await waitFor(() => expect(surface()?.style.maxWidth).toBe('244px'));
+    } finally {
+      rect.mockRestore();
+      vi.unstubAllGlobals();
+    }
   });
 });

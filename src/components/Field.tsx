@@ -8,6 +8,8 @@ export interface FieldProps extends Omit<ComponentProps<'input'>, 'size'> {
   size?: FieldSize;
   /** Where the text sits. `end` for a number beside a slider, `start` otherwise. Default `start`. */
   align?: 'start' | 'end';
+  /** 8 px side padding instead of 12: the 56 wide slot of a value with a unit or a page number. */
+  tight?: boolean;
 }
 
 /**
@@ -15,6 +17,16 @@ export interface FieldProps extends Omit<ComponentProps<'input'>, 'size'> {
  * the look of the design system, so it takes every input attribute (`type`, `min`, `max`, `value`, `ref`, ...). It has no
  * label of its own: name it with a `<label>` around it or `htmlFor`, or `aria-label`.
  */
-export function Field({ size = 'md', align = 'start', className, ...rest }: FieldProps) {
-  return <input {...rest} className={cx(FIELD_BASE, FIELD_SIZES[size], align === 'end' && 'text-end', className)} />;
+export function Field({ size = 'md', align = 'start', tight = false, className, ...rest }: FieldProps) {
+  return (
+    <input
+      {...rest}
+      className={cx(
+        tight ? FIELD_BASE.replace('px-3', 'px-2') : FIELD_BASE,
+        FIELD_SIZES[size],
+        align === 'end' && 'text-end',
+        className,
+      )}
+    />
+  );
 }
