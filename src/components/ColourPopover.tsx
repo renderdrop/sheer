@@ -183,7 +183,7 @@ function ColourPanel({
             className="size-swatch shrink-0 rounded-pill border border-control-border"
             style={{ backgroundColor: parsed === null ? 'transparent' : css(parsed) }}
           />
-          <div className="flex min-w-0 flex-1 items-center">
+          <div className="flex min-w-0 items-center">
             <span aria-hidden="true" className="pe-1 text-md text-text-muted">
               #
             </span>
@@ -208,7 +208,11 @@ function ColourPanel({
                   apply();
                 }
               }}
-              className={cx(FIELD_BASE.replace('w-field ', ''), FIELD_SIZES.md, 'min-w-0 flex-1 uppercase')}
+              className={cx(
+                FIELD_BASE.replace('w-field ', ''),
+                FIELD_SIZES.md,
+                'w-(--hex-field-width) min-w-0 px-2! uppercase',
+              )}
             />
           </div>
           <Button variant="primary" disabled={parsed === null} onClick={apply}>

@@ -1220,6 +1220,7 @@
 
 /* F15 B4–B5 */
 :root {
+  --hex-field-width: calc(7ch + 2 * var(--space-2)); /* six digits in tabular numerals plus the field padding (B5) */
   --colour-popover-inner: calc(240px - 2 * var(--space-4)); /* inside the popover's padding */
 }
 

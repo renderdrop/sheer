@@ -298,6 +298,8 @@ export const AnnotationLayer = memo(function AnnotationLayer({
           transform={{ pxPerPt, rotation: total }}
           grab={grab}
           onCreated={(created) => {
+            // The new text comment is selected, so its mini bar shows at once (DESIGN 3.3: whenever something is selected).
+            if (created.kind === 'freeText') useAnnotations.getState().select(docId, [created.id]);
             if (created.kind === 'freeText' || created.kind === 'note')
               setEditing({ id: created.id, kind: created.kind, fresh: true });
           }}
