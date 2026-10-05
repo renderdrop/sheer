@@ -14,6 +14,7 @@ ci_log: (ADR-120 corrected — package commit → CI run; result filled in at th
   - e92336c..81b0533 DoD gate + F17 wave 2 → run #86 (37360039469) GREEN
   - 14cfe8a..1551ad3 gate alignment + dialog fixes → run #87 (37365237817) Windows job cancelled by the runner after 15 min (no failing step; web + macOS green), covered by #88
   - 7a87c23 acceptance round 1 fixes → run #88 (37372013180) GREEN
+  - ee79220 release v1.4.2 → run #89 (37378345637) GREEN (web 4, macOS 5, Windows 9 min) — tagged v1.4.2, release run 37378345719 success
   - e61e9e9 v1.4 backend B1–B4 → run #71 (37302935989) red: sig_validate command tests bound PDFium twice → fixed aaabac2
   - 02f5650 v1.4 frontend F1–F4 + glue → run #73 (37308405639) red: .p12 decode slot race → fixed 72316ba
   - 0bab7a6 v1.4 acceptance fixes → run #74 (37313577074) red: same PDFium test cause (aaabac2 not yet in)
