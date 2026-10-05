@@ -6,9 +6,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-Owner feedback F15 on v1.2.0-beta.1 (docs/FEEDBACK.md, ADR-104 to ADR-115).
+## [1.2.0] - 2026-10-05
+
+v1.2 "sheer.": the new design (docs/REDESIGN_BRIEF.md, ADR-100 to ADR-102), the owner feedback on v1.2.0-beta.1 (FEEDBACK F15, ADR-104 to ADR-117), motion v2 (R5) and onboarding (R6). Unsigned installers (BLOCKERS B-002).
+
+### Changed
+- New brand: word mark "sheer.", app icon "s.", Solar Yellow on Canvas/Sand/Mist, flat surfaces, Inter, light only (theme and glass settings removed).
+- Home: navigation (Home, Recent, Starred, Tools), hero with search over recent files (`/`, arrow keys), recent cards with star and "Show in Explorer/Finder", tool rows, a drop-a-PDF state whose glow follows the dragged file.
+- Editor: top bar with file name or tabs, save status ("Saved", edited dot, retry), sidebar toggle, zoom, page, undo/redo, search; one Sand bar with segmented mode tabs Read · Comment · Fill & Sign · Pages · Edit (keys 1–5) and a tool row per mode (FEEDBACK F14); a properties mini bar above the selection; the Windows menu row with all output commands in File; no right inspector panel and no Done button.
+- Highlights default to Solar at 45 % multiply with Mint, Sky, Rose, Lavender; strokes Ink plus four tones; search hits and text selection in Solar with readable text.
+- Motion v2: one ease-out curve and three durations, no springs; the active tool and mode glide, a keyboard focus ring glides between controls, tooltip groups, page indicator travel, marker trail, undo fades, page delete, comment jump, zoom snap, skeleton shimmer, splash and ambient glow; every spell has a reduced-motion variant.
+- Onboarding: tour with new coach marks (progress bar, step count), a tour pill that pauses on tab switches, the welcome document always in a new tab; settings reduced to language, author, drawing, updates, tour and about; tool tips in the new style, at most three per session.
+- Mode tabs and tool row form one Sand bar with segmented tabs. Search hits and text selection are Solar yellow and keep the text readable. Enter confirms notes and comments, Shift+Enter breaks the line. Annotations can be dragged in every tool. The Comments panel is wider.
+- The author name is asked in a dialog on the first save of an annotated document.
 
 ### Added
+- Favourites for recent files; reveal a recent file in the file manager.
+- Read tools: hand (pan), text selection, magnifier (hold Z).
 - Save status next to the file name (Saved / edited dot / saving / failed with retry) instead of the Done button; sidebar toggle in the top bar and a grip on the sidebar edge.
 - Comment margin: bubbles beside the page at the height of their anchor (avatar, name, date, text, reply, resolve), compact markers when narrow; View → Comments in Margin. Comments panel filter (type, page, status) and sort; the comment text is the first line of a card.
 - Text comment: one click places it and typing starts; the box grows with the text; mini bar with alignment, font size, border and fill. Colour control with a hex field and recently used colours, also in the tool menus.
@@ -17,16 +31,13 @@ Owner feedback F15 on v1.2.0-beta.1 (docs/FEEDBACK.md, ADR-104 to ADR-115).
 - Rotate handle on placed signatures and stamps; signatures and marks are placed upright in a rotated view.
 - Typed signature fonts Ms Madi (default), Hurricane and Birthstone; drawn signatures smoothed with a One Euro filter and speed-dependent width.
 
-### Changed
-- Mode tabs and tool row form one Sand bar with segmented tabs. Search hits and text selection are Solar yellow and keep the text readable. Enter confirms notes and comments, Shift+Enter breaks the line. Annotations can be dragged in every tool. The Comments panel is wider.
-- The author name is asked in a dialog on the first save of an annotated document.
-
 ### Fixed
 - Large images in PDFs rendered half grey (engine reads crossing a 256 KiB block were short); images to PDF reads each image at its own offsets.
 - Reopening a saved file with a placed signature or an unsupported annotation restarted the engine.
 - Saving an annotated document did nothing while the author name was empty.
 - "Save to library" no longer drops a signature silently; a keychain failure is shown. macOS printing keeps the page images alive until the print sheet has rendered them.
 - Clicking a page thumbnail no longer plays the document-open animation.
+- No white flash of the page and its thumbnail after a save.
 
 ## [1.2.0-beta.1] - 2026-10-04
 

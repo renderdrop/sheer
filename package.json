@@ -1,7 +1,7 @@
 {
   "name": "sheer",
   "private": true,
-  "version": "1.2.0-beta.1",
+  "version": "1.2.0",
   "license": "AGPL-3.0-or-later",
   "type": "module",
   "engines": {
