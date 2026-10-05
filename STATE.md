@@ -1,7 +1,7 @@
 # STATE
 phase: v1.3.0 released (tag v1.3.0, CI #68 green) — next: v1.4 "Certificate signature"
 version: 1.3.0 (tag v1.3.0)
-current_item: SESSION TOPIC (ADR-122): v1.4 Certificate signature — backend B1–B4 committed (77a2fe8..e61e9e9); frontend F1 certs, F2 sign flow, F3 validation, F4 lock+actions running; backend reviewer + security-reviewer running. Then acceptance, release v1.4.0, report, STOP; no v1.5
+current_item: SESSION TOPIC (ADR-122): v1.4 — all packages committed (backend + security FIX c6956df, F1–F4 + glue 02f5650); CI #71 red (sig_validate command test, open_path Err in CI only) → waiting for the run on 02f5650 (prints the error); NSIS build for acceptance; then release v1.4.0, German report, STOP
 last_completed: v1.3 Citations — 24/24 AC in the installed build, tester/security/designer PASS
 loop_count_this_session: 0
 open_blockers: 2 human-only (B-002, B-005)
