@@ -1,14 +1,14 @@
 import { useId, useLayoutEffect, useState, type ReactNode } from 'react';
 
 import { Button, Field, Popover } from '../../components';
-import { AUTHOR_NAME_MAX, isAuthorName, openDefaultAppsSettings } from '../../api/app';
+import { AUTHOR_NAME_MAX, isAuthorName } from '../../api/app';
 import { APP_NAME } from '../../config/app';
-import type { AppError } from '../../api/errors';
 import { errorText, useT, type Language, type PlainKey } from '../../i18n';
 import { useSettings } from '../../stores/settings';
 import { RecogniseSwitch } from '../modes/RecogniseSwitch';
 import { SegmentedControl, type SegmentOption } from './SegmentedControl';
-import { openSignatureLibrary } from '../signatures/library';
+import { openAbout } from '../about/state';
+import { useUpdate } from '../update/store';
 import { resetTips } from '../tips/runtime';
 import { restartTour } from '../tour/runtime';
 import { useTour } from '../tour/store';
@@ -67,12 +67,12 @@ function Setting({
   const labelId = useId();
   return (
     <div className="flex flex-col gap-2">
-      <span id={labelId} className="text-sm font-semibold text-text-muted">
+      <span id={labelId} className="t-label text-text">
         {label}
       </span>
       {children(labelId)}
       {hint !== undefined && (
-        <p aria-live={live ? 'polite' : undefined} className="m-0 text-sm text-text-muted">
+        <p aria-live={live ? 'polite' : undefined} className="t-caption m-0 text-text-muted">
           {hint}
         </p>
       )}
@@ -92,14 +92,14 @@ function HelpRow() {
   const [done, setDone] = useState(false);
   const empty = seen === 0;
   return (
-    <Setting label={t('settings.help')} hint={done ? t('settings.tips.resetDone') : t('settings.tour.hint')} live>
+    <Setting label={t('settings.tour')} hint={done ? t('settings.tips.resetDone') : t('settings.tour.hint')} live>
       {(labelId) => (
         <div className="flex flex-wrap gap-2">
           <Button variant="secondary" size="sm" aria-describedby={labelId} onClick={() => void restartTour()}>
             {running ? t('settings.tour.restart') : t('settings.tour.start')}
           </Button>
           <Button
-            variant="secondary"
+            variant="ghost"
             size="sm"
             aria-describedby={labelId}
             disabled={empty}
@@ -112,55 +112,6 @@ function HelpRow() {
           >
             {t('settings.tips.reset')}
           </Button>
-        </div>
-      )}
-    </Setting>
-  );
-}
-
-/** The signature library row (DESIGN 3.35): the popover closes and the library dialog opens. */
-function SignaturesRow() {
-  const t = useT();
-  return (
-    <Setting label={t('settings.signatures')} hint={t('settings.signatures.hint')}>
-      {(labelId) => (
-        <Button variant="secondary" size="sm" aria-describedby={labelId} onClick={() => openSignatureLibrary()}>
-          {t('lib.manage')}
-        </Button>
-      )}
-    </Setting>
-  );
-}
-
-/**
- * The default PDF app row: opens the OS page where the user picks the app (Windows only; macOS has no such page, so the row
- * is hidden there and wherever the platform is unknown). A failure is shown in the popover's alert line.
- */
-function DefaultAppRow() {
-  const t = useT();
-  const platform = useSettings((state) => state.platform);
-  const [error, setError] = useState<AppError | null>(null);
-  if (platform !== 'windows') return null;
-  return (
-    <Setting label={t('settings.defaultApp')} hint={t('settings.defaultApp.hint', { app: APP_NAME })}>
-      {(labelId) => (
-        <div className="flex flex-col gap-2">
-          <Button
-            variant="secondary"
-            size="sm"
-            aria-describedby={labelId}
-            onClick={() => {
-              setError(null);
-              openDefaultAppsSettings().catch((e: AppError) => setError(e));
-            }}
-          >
-            {t('settings.defaultApp.button', { app: APP_NAME })}
-          </Button>
-          {error !== null && (
-            <p role="alert" className="m-0 text-sm text-error-text">
-              {errorText(t, error)}
-            </p>
-          )}
         </div>
       )}
     </Setting>
@@ -212,19 +163,44 @@ function AuthorRow() {
   );
 }
 
+/** The About group, after a divider: name and version, and the button that opens the About dialog (it closes this popover). */
+function AboutRow() {
+  const t = useT();
+  const version = useSettings((state) => state.version);
+  const labelId = useId();
+  return (
+    <div className="flex flex-col gap-2 border-t border-border-subtle pt-4">
+      <span id={labelId} className="t-label text-text">
+        {t('settings.about')}
+      </span>
+      <p className="t-caption m-0 text-text-muted">
+        {version !== null ? `${APP_NAME} · ${t('about.version', { version })}` : APP_NAME}
+      </p>
+      <div>
+        <Button variant="ghost" size="sm" aria-describedby={labelId} onClick={() => openAbout()}>
+          {t('about.title', { app: APP_NAME })}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 /** The settings as segmented controls and the author field; each choice is saved and applied at once (the store answers `update_settings`). */
 function SettingsForm() {
   const t = useT();
   const language = useSettings((state) => state.language);
   const error = useSettings((state) => state.error);
   const setLanguage = useSettings((state) => state.setLanguage);
+  // ADR-053: an updater without its signing key shows no Updates group at all.
+  const updaterUnconfigured = useUpdate((state) => state.check === 'unconfigured');
 
   const options = <Value extends string>(
     choices: readonly { value: Value; labelKey: PlainKey }[],
   ): SegmentOption<Value>[] => choices.map((choice) => ({ value: choice.value, label: t(choice.labelKey) }));
 
   return (
-    <div className="flex flex-col gap-4 p-2">
+    <div className="flex flex-col gap-4">
+      <h2 className="t-title m-0 text-text">{t('settings.title')}</h2>
       <Setting label={t('settings.language')}>
         {(labelId) => (
           <SegmentedControl
@@ -237,14 +213,15 @@ function SettingsForm() {
       </Setting>
       <AuthorRow />
       <Setting label={t('settings.drawing')}>{() => <RecogniseSwitch />}</Setting>
-      <SignaturesRow />
-      <DefaultAppRow />
-      <Setting label={t('settings.updates')} hint={t('settings.updates.hint')}>
-        {(labelId) => <UpdateRow labelId={labelId} />}
-      </Setting>
+      {!updaterUnconfigured && (
+        <Setting label={t('settings.updates')} hint={t('settings.updates.hint')}>
+          {(labelId) => <UpdateRow labelId={labelId} />}
+        </Setting>
+      )}
       <HelpRow />
+      <AboutRow />
       {error !== null && (
-        <p role="alert" className="m-0 text-sm text-error-text">
+        <p role="alert" className="t-caption m-0 text-error-text">
           {errorText(t, error)}
         </p>
       )}

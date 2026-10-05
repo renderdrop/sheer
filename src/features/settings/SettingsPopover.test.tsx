@@ -2,20 +2,24 @@
 import { act, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { openDefaultAppsSettings, updateSettings, type Settings } from '../../api/app';
+import { updateSettings, type Settings } from '../../api/app';
 import { Popover } from '../../components';
 import { bindLocaleToSettings } from '../../i18n/bind';
 import { useLocaleStore } from '../../i18n/store';
 import { useSettings } from '../../stores/settings';
 import { setup } from '../../test/render';
 import { SettingsPopover } from './SettingsPopover';
+import { useAboutDialog } from '../about/state';
+import { useUpdate } from '../update/store';
+import { restartTour } from '../tour/runtime';
 import { openSettings, useSettingsPopover } from './state';
 
 vi.mock('../../api/app', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../api/app')>()),
   updateSettings: vi.fn(),
-  openDefaultAppsSettings: vi.fn(() => Promise.resolve()),
 }));
+
+vi.mock('../tour/runtime', () => ({ restartTour: vi.fn(() => Promise.resolve()) }));
 
 const updateSettingsMock = vi.mocked(updateSettings);
 const settingsInitial = useSettings.getState();
@@ -38,6 +42,7 @@ function answerWithPatch() {
 beforeEach(() => {
   useSettings.setState({ ...settingsInitial }, true);
   useSettingsPopover.setState({ open: false });
+  useUpdate.setState({ check: 'idle' });
   updateSettingsMock.mockReset();
   answerWithPatch();
 });
@@ -73,22 +78,45 @@ const checked = (name: string) =>
     .find((radio) => radio.getAttribute('aria-checked') === 'true')?.textContent;
 const choose = (name: string, option: string) => within(group(name)).getByRole('radio', { name: option });
 
-describe('the default PDF app row', () => {
-  const button = () => within(popover()).queryByRole('button', { name: /default PDF app/ });
+describe('the settings panel (DESIGN 3.6)', () => {
+  const labels = () =>
+    [...popover().querySelectorAll('span.t-label')]
+      .map((el) => el.textContent)
+      .filter((text) => text !== 'Recognise shapes when you pause');
 
-  it('opens the OS page on Windows', async () => {
-    useSettings.setState({ platform: 'windows' });
-    const { user } = setup(<Fixture />);
-    act(() => openSettings());
-    await user.click(button() as HTMLElement);
-    expect(openDefaultAppsSettings).toHaveBeenCalledOnce();
-  });
-
-  it('is hidden on macOS and when the platform is unknown', () => {
-    useSettings.setState({ platform: 'macos' });
+  it('has the groups in order and nothing else', () => {
     setup(<Fixture />);
     act(() => openSettings());
-    expect(button()).toBeNull();
+    expect(labels()).toEqual(['Language', 'Author name', 'Drawing', 'Updates', 'Tour & tips', 'About']);
+    expect(within(popover()).queryByText('Signatures')).toBeNull();
+    expect(within(popover()).queryByRole('button', { name: /default PDF app/ })).toBeNull();
+  });
+
+  it('hides the whole Updates group while the updater is unconfigured', () => {
+    useUpdate.setState({ check: 'unconfigured' });
+    setup(<Fixture />);
+    act(() => openSettings());
+    expect(labels()).toEqual(['Language', 'Author name', 'Drawing', 'Tour & tips', 'About']);
+    expect(within(popover()).queryByRole('radiogroup', { name: 'Updates' })).toBeNull();
+    useUpdate.setState({ check: 'idle' });
+  });
+
+  it('restarts the tour through the tour runtime', async () => {
+    const { user } = setup(<Fixture />);
+    act(() => openSettings());
+    await user.click(within(popover()).getByRole('button', { name: 'Start tour' }));
+    expect(restartTour).toHaveBeenCalledOnce();
+  });
+
+  it('opens the About dialog and closes the popover', async () => {
+    useSettings.setState({ version: '1.2.0' });
+    const { user } = setup(<Fixture />);
+    act(() => openSettings());
+    expect(within(popover()).getByText('sheer. · Version 1.2.0')).not.toBeNull();
+    await user.click(within(popover()).getByRole('button', { name: 'About sheer.' }));
+    expect(useAboutDialog.getState().open).toBe(true);
+    expect(useSettingsPopover.getState().open).toBe(false);
+    useAboutDialog.setState({ open: false });
   });
 });
 
@@ -182,25 +210,20 @@ describe('the settings popover', () => {
     expect(updateSettingsMock).toHaveBeenLastCalledWith({ language: 'en' });
     await waitFor(() => expect(checked('Language')).toBe('English'));
     // Tab at the last control wraps to the first: the popover keeps focus inside.
-    // The author name field is the second stop, the shape recognition switch the third, Manage signatures the fourth, the Help row's two buttons the sixth and the seventh (the last one).
-    await user.tab();
-    expect(document.activeElement).toBe(within(popover()).getByRole('textbox', { name: 'Author name' }));
-    await user.tab();
-    expect(document.activeElement).toBe(
-      within(popover()).getByRole('switch', { name: 'Recognise shapes when you pause' }),
-    );
-    await user.tab();
-    expect(document.activeElement).toBe(within(popover()).getByRole('button', { name: 'Manage signatures…' }));
-    await user.tab();
-    expect(document.activeElement).toBe(choose('Updates', 'Off'));
-    await user.tab();
-    expect(document.activeElement).toBe(within(popover()).getByRole('button', { name: 'Start tour' }));
-    await user.tab();
-    expect(document.activeElement).toBe(within(popover()).getByRole('button', { name: 'Show tips again' }));
-    await user.tab();
-    expect(document.activeElement).toBe(choose('Language', 'English'));
+    // Order: Language, author name, shape switch, Updates, Start tour, Show tips again, Ghost About button (the last), then wrap.
+    const tab = async () => {
+      await user.tab();
+      return document.activeElement;
+    };
+    expect(await tab()).toBe(within(popover()).getByRole('textbox', { name: 'Author name' }));
+    expect(await tab()).toBe(within(popover()).getByRole('switch', { name: 'Recognise shapes when you pause' }));
+    expect(await tab()).toBe(choose('Updates', 'Off'));
+    expect(await tab()).toBe(within(popover()).getByRole('button', { name: 'Start tour' }));
+    expect(await tab()).toBe(within(popover()).getByRole('button', { name: 'Show tips again' }));
+    expect(await tab()).toBe(within(popover()).getByRole('button', { name: 'About sheer.' }));
+    expect(await tab()).toBe(choose('Language', 'English'));
     await user.tab({ shift: true });
-    expect(document.activeElement).toBe(within(popover()).getByRole('button', { name: 'Show tips again' }));
+    expect(document.activeElement).toBe(within(popover()).getByRole('button', { name: 'About sheer.' }));
   });
 
   it('shows the error when the backend refuses a change, and no error while all is well', async () => {

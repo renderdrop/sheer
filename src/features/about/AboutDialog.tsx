@@ -1,3 +1,4 @@
+import { DefaultAppRow } from '../settings/DefaultAppRow';
 import { AnimatePresence, motion, useIsPresent } from 'motion/react';
 import { useEffect, useLayoutEffect, useRef, type KeyboardEvent } from 'react';
 import { createPortal } from 'react-dom';
@@ -90,6 +91,7 @@ function AboutModal() {
         <p className="m-0 text-sm text-text-muted">{t('about.privacy')}</p>
         <div className="flex w-full flex-col items-center gap-2">
           <AboutUpdate />
+          <DefaultAppRow />
         </div>
         <div className="flex flex-wrap items-center justify-center gap-2">
           {/* A placeholder until the licence notices ship with the app (ADR-010, item 8): focusable and announced, but it does nothing. */}

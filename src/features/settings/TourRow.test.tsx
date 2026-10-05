@@ -57,7 +57,7 @@ describe('the Welcome tour row', () => {
   it('offers Start tour with its hint, and Restart tour while a tour runs', () => {
     setup(<Fixture />);
     act(() => openSettings());
-    expect(screen.getByText('Help')).toBeTruthy();
+    expect(screen.getByText('Tour & tips')).toBeTruthy();
     expect(screen.getByText('Opens the welcome document.')).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Start tour' })).toBeTruthy();
     act(() => useTour.getState().start(1));
