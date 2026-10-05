@@ -165,6 +165,8 @@ describe('the signing flow (DESIGN 3.8 S3)', () => {
 });
 
 describe('the lock choice (DESIGN 3.8 L1, AC 25 to 27)', () => {
+  beforeEach(() => localStorage.removeItem('sheer.sign.lock'));
+
   it('starts at "No changes" for an unsigned file, switches the notice and sends the choice', async () => {
     signDocument.mockResolvedValue(signed);
     const { user } = setup(<SignDialogHost />);
@@ -197,14 +199,14 @@ describe('the lock choice (DESIGN 3.8 L1, AC 25 to 27)', () => {
     expect(none.checked).toBe(true);
   });
 
-  it('never remembers the choice: a new sheet starts at "No changes"', async () => {
+  it('remembers the choice per device: a new sheet starts with the last one', async () => {
     const { user } = setup(<SignDialogHost />);
     ready();
     await user.click(await screen.findByRole('radio', { name: /^Fill in forms/ }));
     await user.click(screen.getByRole('button', { name: 'Cancel' }));
     await waitFor(() => expect(screen.queryByRole('radiogroup')).toBeNull());
     act(() => useCertSign.getState().openDialog());
-    expect(((await screen.findByRole('radio', { name: /^No changes/ })) as HTMLInputElement).checked).toBe(true);
+    expect(((await screen.findByRole('radio', { name: /^Fill in forms/ })) as HTMLInputElement).checked).toBe(true);
   });
 
   it('shows no choice for a signature on an already signed file and signs with "No changes"', async () => {
@@ -217,6 +219,7 @@ describe('the lock choice (DESIGN 3.8 L1, AC 25 to 27)', () => {
     ready();
     await screen.findByRole('button', { name: 'Sign and save as…' });
     expect(screen.queryByRole('radiogroup')).toBeNull();
+    expect(screen.getByTestId('existing-lock').textContent).toContain('Allowed after signing');
     await user.click(screen.getByRole('button', { name: 'Sign and save as…' }));
     await waitFor(() => expect(signDocument).toHaveBeenCalled());
     expect(signDocument.mock.calls[0]?.[1]).toMatchObject({ lock: 'noChanges' });

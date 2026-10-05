@@ -22,6 +22,26 @@ const LOCKS: readonly { value: SignLock; label: PlainKey; help: PlainKey }[] = [
   { value: 'allowFillAndSign', label: 'sign.cert.lockForms', help: 'sign.cert.lockFormsHelp' },
 ] as const;
 
+/** The last lock choice is a preference of the device (ADR-124), kept in UI storage like the citation style. */
+export const LOCK_KEY = 'sheer.sign.lock';
+
+function readLock(): SignLock {
+  try {
+    const raw = globalThis.localStorage?.getItem(LOCK_KEY);
+    return LOCKS.find((option) => option.value === raw)?.value ?? 'noChanges';
+  } catch {
+    return 'noChanges';
+  }
+}
+
+function writeLock(lock: SignLock): void {
+  try {
+    globalThis.localStorage?.setItem(LOCK_KEY, lock);
+  } catch {
+    // Storage blocked: the choice lasts for this session.
+  }
+}
+
 /**
  * What a certification signature allows afterwards (DESIGN 3.8 L1): two radios with a helper sentence each. Native radios give one
  * tab stop, the arrows move and choose, Space chooses.
@@ -77,7 +97,7 @@ function SignSheet() {
   const [signerId, setSignerId] = useState(certId ?? identities.find(canSign)?.id ?? '');
   const [reason, setReason] = useState('');
   const [location, setLocation] = useState('');
-  const [lock, setLock] = useState<SignLock>('noChanges');
+  const [lock, setLock] = useState<SignLock>(readLock);
   const [busy, setBusy] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
   const identity = identities.find((entry) => entry.id === signerId);
@@ -167,7 +187,35 @@ function SignSheet() {
             onChange={(event) => setLocation(event.target.value)}
           />
         </label>
-        {certifies && <LockChoice value={lock} onChange={setLock} disabled={busy} />}
+        {certifies && (
+          <LockChoice
+            value={lock}
+            onChange={(next) => {
+              setLock(next);
+              writeLock(next);
+            }}
+            disabled={busy}
+          />
+        )}
+        {document?.flags?.signed === true && (
+          <p className="t-body m-0 flex items-start gap-2" data-testid="existing-lock">
+            <span className="shrink-0">
+              <Icon icon={Lock} size={16} />
+            </span>
+            <span className="flex flex-col">
+              <span className="t-label">{t('sign.cert.lock')}</span>
+              <span>
+                {t(
+                  document.signatureLock === 'locked'
+                    ? 'sigs.locks'
+                    : document.signatureLock === 'none' || document.signatureLock === undefined
+                      ? 'sign.cert.lockOpen'
+                      : 'sigs.locksForms',
+                )}
+              </span>
+            </span>
+          </p>
+        )}
         <SealPreview name={identity?.subject.commonName ?? ''} date={date} reason={reason} />
         <div className="flex flex-col gap-1 rounded-card bg-card p-3">
           <p className="t-label m-0 flex items-start gap-2 text-text">
