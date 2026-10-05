@@ -1997,7 +1997,13 @@ loop does not pick them before v1.2.0 is tagged.
 hairline. The Sand bar overrides DESIGN §1.2/§2.8 for this bar only. (2) B9: comment margin column 240 px, 16 px from the page; fit
 widths subtract 256 px while it is shown; below 360 px of free page width it collapses to 32 px avatar markers; bubbles stack 8 px apart;
 leader line only on hover/focus. (3) B12 is a trial (its switch is localStorage `canvas.drift`, no UI: designer/dev only; clearance 40 px covers the page shadow reach of 38 px) and an explicit exception to BRAND §18, DESIGN §5 and MOTION rule 5; the designer
-runs the legibility test of DESIGN §3.5 and records the verdict (keep / 0.04 / remove) here. (4) B7: the owner picked three typed
+runs the legibility test of DESIGN §3.5 and records the verdict (keep / 0.04 / remove) here. **Verdict (designer, 2026-10-05):
+remove.** Pairs `review/f15/design/b12-*`: at fit width and 100 % the gaps are too small for a shape (on = off, no gain); where a
+shape shows (50 %, 1920 × 1080 left gap) it reads as a smudge with visible concentric banding and a straight cut at the clearance
+mask, noticed at first look (test step 4 fails). Page edge, shadow and bubbles were unaffected and p95 stayed 16.8 ms, but 0.04
+keeps the banding and the cut, so lowering does not fix it. Action: delete `src/features/canvasDrift/` and its mount, the
+`--gap-shape-*` tokens and the drift keyframes in `tokens.css`, MOTION spell 19 and the B12 paragraph of DESIGN §3.5 (marked
+removed); `canvas.drift` in localStorage is then ignored. BRAND §18 / DESIGN §5 / MOTION rule 5 apply again without exception. (4) B7: the owner picked three typed
 signature fonts, in this order: **Ms Madi (default), Hurricane, Birthstone** (OFL-1.1, no Reserved Font Name, google/fonts `ofl/`);
 Dancing Script, Great Vibes and Alex Brush are removed, the other seven candidates are not shipped. Existing saved typed signatures keep
 their stored outlines (vector paths, ADR-051); a stored font id that no longer exists falls back to Ms Madi when re-typed.

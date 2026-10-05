@@ -716,9 +716,6 @@ describe('Tailwind theme', () => {
       '--form-tint',
       '--form-text',
       '--canvas-extra-scroll',
-      '--dx',
-      '--dy',
-      '--delay',
     ]);
     const unknown = [...used].filter(
       (name) => !defined.has(name) && !local.has(name) && !/^--(tw|logo-ground)-/.test(name),
