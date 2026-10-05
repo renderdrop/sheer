@@ -10,5 +10,7 @@ export function useAutosize(ref: RefObject<HTMLTextAreaElement | null>, value: s
     if (element === null) return;
     element.style.height = 'auto';
     element.style.height = `${element.scrollHeight}px`;
+    // Scrolls only when the CSS max height clamps it (no scrollbar stub below that).
+    element.style.overflowY = element.scrollHeight > element.clientHeight + 1 ? 'auto' : 'hidden';
   }, [ref, value]);
 }

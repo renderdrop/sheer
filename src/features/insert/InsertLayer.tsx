@@ -247,18 +247,13 @@ function ReadyLayer({
 
   const only = selectedId !== null && (extraIds?.length ?? 0) === 0;
   return (
-    <div
-      data-insert-layer=""
-      className="pointer-events-none absolute inset-0 z-canvas-annotations"
-      style={placing ? { cursor: tool === 'textBox' ? 'crosshair' : 'copy' } : undefined}
-    >
+    <div data-insert-layer="" className="pointer-events-none absolute inset-0 z-canvas-annotations">
       {placing && (
         <div
           ref={surface}
           data-insert-surface=""
           data-tool={tool}
           className="pointer-events-auto absolute inset-0 touch-none select-none"
-          style={{ cursor: tool === 'textBox' ? 'crosshair' : 'copy' }}
           onPointerDown={onSurfaceDown}
           onPointerMove={onSurfaceMove}
           onPointerUp={onSurfaceUp}

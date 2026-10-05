@@ -97,11 +97,65 @@ describe('the lens', () => {
     expect(LENS_ZOOM).toBe(2);
   });
 
+  const region = () => {
+    const element = document.createElement('div');
+    const page = document.createElement('div');
+    page.dataset.page = '1';
+    element.append(page);
+    document.body.append(element);
+    Object.defineProperty(element, 'clientWidth', { value: 400 });
+    Object.defineProperty(element, 'clientHeight', { value: 400 });
+    element.getBoundingClientRect = () => ({ left: 0, top: 0, width: 400, height: 400 }) as DOMRect;
+    page.getBoundingClientRect = () => ({ left: 0, top: 0, width: 200, height: 200 }) as DOMRect;
+    return { element, page };
+  };
+  const move = (target: Element, x: number, y: number) =>
+    act(() => {
+      const event = new Event('pointermove', { bubbles: true }) as Event & { clientX: number; clientY: number };
+      event.clientX = x;
+      event.clientY = y;
+      target.dispatchEvent(event);
+    });
+
+  it('fades in over a page, out when the pointer leaves, and is gone with the tool', () => {
+    const { element, page } = region();
+    useUi.setState({ activeTool: 'magnifier' });
+    const { unmount } = render(<Magnifier region={{ current: element }} />);
+    const lens = document.body.querySelector<HTMLElement>('[data-magnifier]') as HTMLElement;
+    move(page, 50, 50);
+    expect(lens.hasAttribute('data-shown')).toBe(true);
+    act(() => {
+      element.dispatchEvent(new Event('pointerleave'));
+    });
+    expect(lens.hasAttribute('data-shown')).toBe(false);
+    move(page, 60, 60);
+    expect(lens.hasAttribute('data-shown')).toBe(true);
+    act(() => useUi.setState({ activeTool: 'select' }));
+    expect(lens.hasAttribute('data-shown')).toBe(false);
+    unmount();
+    element.remove();
+  });
+
+  it('opens at the last pointer place when Z is pressed without a move', () => {
+    const { element, page } = region();
+    render(<Magnifier region={{ current: element }} />);
+    const lens = document.body.querySelector<HTMLElement>('[data-magnifier]') as HTMLElement;
+    move(page, 50, 50);
+    expect(lens.hasAttribute('data-shown')).toBe(false);
+    const original = document.elementFromPoint;
+    document.elementFromPoint = () => page;
+    act(() => useLesen.setState({ zHeld: true }));
+    document.elementFromPoint = original;
+    expect(lens.hasAttribute('data-shown')).toBe(true);
+    element.remove();
+  });
+
   it('is aria-hidden, takes no pointer and starts hidden', () => {
     render(<Magnifier region={{ current: null }} />);
     const lens = document.body.querySelector<HTMLElement>('[data-magnifier]');
     expect(lens?.getAttribute('aria-hidden')).toBe('true');
-    expect(lens?.style.opacity).toBe('0');
+    expect(lens?.hasAttribute('data-shown')).toBe(false);
+    expect(lens?.getAttribute('style')).toBeNull();
     expect(lens?.className).toContain('pointer-events-none');
   });
 });

@@ -7,6 +7,7 @@ import {
   installUpdateOnQuit,
   isUpdaterUnconfigured,
   skipUpdateVersion,
+  updaterConfigured,
   type UpdateInfo,
 } from '../../api/update';
 import { useSettings } from '../../stores/settings';
@@ -26,6 +27,10 @@ export interface UpdateState {
   /** "Later" hides the banner until the next launch. */
   hidden: boolean;
   check: CheckStatus;
+  /** The embedded signing key is real (a local probe, no network); `null` until the probe answered. Settings shows Updates only when `true`. */
+  configured: boolean | null;
+  /** Asks the backend once per session whether the updater can run; a failed probe counts as not configured. */
+  probe: () => Promise<void>;
   /** Versions whose signature check failed: not offered again this session. */
   rejected: readonly string[];
   /** An automatic check (a push) found a newer version. Ignores a skipped or rejected version. */
@@ -45,6 +50,7 @@ const initial = {
   progress: { downloaded: 0, total: null },
   hidden: false,
   check: 'idle' as CheckStatus,
+  configured: null as boolean | null,
 };
 
 let latestCheck = 0;
@@ -52,6 +58,17 @@ let latestCheck = 0;
 export const useUpdate = create<UpdateState>()((set, get) => ({
   ...initial,
   rejected: [],
+
+  probe: async () => {
+    if (get().configured !== null) return;
+    let configured = false;
+    try {
+      configured = await updaterConfigured();
+    } catch {
+      // Not configured as far as the UI can tell: the group stays hidden.
+    }
+    set({ configured, ...(configured ? {} : { check: 'unconfigured' as CheckStatus }) });
+  },
 
   offer: (info) => {
     const state = get();

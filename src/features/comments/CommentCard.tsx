@@ -330,6 +330,13 @@ export const CommentCard = memo(function CommentCard({
             { id: 'reopen', label: t('comments.reopen'), disabled: status === 'open', onSelect: review('none') },
             { type: 'separator', id: 'copy-sep' },
             { id: 'copy', label: t('comments.copyText'), disabled: text === '', onSelect: copy },
+            {
+              id: 'delete',
+              label: t('comments.delete'),
+              disabled: !canDelete,
+              onSelect: () =>
+                void deleteThread(docId, [root.id, ...replies.map((r) => r.id), ...thread.states.map((s) => s.id)]),
+            },
           ]}
           trigger={(trigger) => (
             <IconButton {...trigger} size="sm" icon={Ellipsis} label={t('comments.more')} tooltipSide="bottom" />
@@ -401,16 +408,6 @@ export const CommentCard = memo(function CommentCard({
                 </Button>
                 <Button size="sm" variant="ghost" onClick={review(status === 'open' ? 'completed' : 'none')}>
                   {status === 'open' ? t('comments.resolve') : t('comments.reopen')}
-                </Button>
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  disabled={!canDelete}
-                  onClick={() =>
-                    void deleteThread(docId, [root.id, ...replies.map((r) => r.id), ...thread.states.map((s) => s.id)])
-                  }
-                >
-                  {t('comments.delete')}
                 </Button>
               </div>
             </>

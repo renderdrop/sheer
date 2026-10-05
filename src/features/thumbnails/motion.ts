@@ -10,6 +10,13 @@ export function tokenMs(name: string, fallback: number): number {
   return Number.isFinite(value) && raw.endsWith('ms') && value >= 0 ? value : fallback;
 }
 
+/** A unitless number token (`--marker-rest` is `0.45`) from the document; `fallback` when there is no stylesheet (tests). */
+export function tokenNumber(name: string, fallback: number): number {
+  if (typeof document === 'undefined') return fallback;
+  const value = Number.parseFloat(getComputedStyle(document.documentElement).getPropertyValue(name).trim());
+  return Number.isFinite(value) && value > 0 ? value : fallback;
+}
+
 /** Whether the user asked for reduced motion (MOTION 1.7). Read at the moment of use, so a change applies to the next action. */
 export function prefersReducedMotion(): boolean {
   return typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches === true;

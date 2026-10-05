@@ -4,6 +4,7 @@ import { bucketFor } from '../../engine/buckets';
 import { imageKey, type ImageId } from '../../engine/renderCache';
 import { useLastImage } from '../../engine/useLastImage';
 import { renderScheduler, type RenderScheduler } from '../../engine/renderScheduler';
+import { Skeleton } from '../../components';
 import { cx } from '../../components/cx';
 import { useT } from '../../i18n';
 import { CSS_PX_PER_PT } from '../../lib/zoom';
@@ -83,6 +84,8 @@ function ThumbnailCard({
       style={{ width, height }}
     >
       <div className="relative size-full overflow-hidden rounded-sm">
+        {/* Sand on a White page would not show: the block sits on the page-area tone so that the band reads (MOTION spell 15). */}
+        {image === null && <Skeleton className="size-full rounded-none bg-page-area!" />}
         {image !== null && <ThumbnailImage key={image.key} src={image.src} />}
       </div>
     </div>

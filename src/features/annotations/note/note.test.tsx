@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { act, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import * as api from '../../../api/annotations';
@@ -208,6 +208,18 @@ describe('the note popover', () => {
       }),
     });
     await waitFor(() => expect(field.value).toBe(''));
+  });
+
+  it('leaves an Enter that belongs to an IME composition alone (body and reply)', () => {
+    load([note(1, { contents: 'x' })]);
+    render();
+    for (const name of ['Note text', 'Write a reply']) {
+      const field = screen.getByRole('textbox', { name });
+      fireEvent.change(field, { target: { value: 'にほん' } });
+      fireEvent.keyDown(field, { key: 'Enter', isComposing: true });
+      fireEvent.keyDown(field, { key: 'Enter', keyCode: 229 });
+    }
+    expect(applyMock).not.toHaveBeenCalled();
   });
 
   it('keeps the reply button aria-disabled while the reply is empty', async () => {

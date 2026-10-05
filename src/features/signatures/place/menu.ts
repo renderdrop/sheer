@@ -67,7 +67,7 @@ const libraryEntry = (item: LibraryItem): MenuEntry => ({
   id: `lib-${item.id}`,
   label: item.name,
   icon: Signature,
-  leading: createElement(SignaturePreview, { item }),
+  leading: createElement(SignaturePreview, { item, compact: true }),
   onSelect: () =>
     armItem({ type: 'signature', role: item.role, ref: { type: 'library', id: item.id }, aspect: item.aspect }),
 });

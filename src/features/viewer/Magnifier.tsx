@@ -2,6 +2,7 @@ import { useReducedMotion } from 'motion/react';
 import { useEffect, useRef, type RefObject } from 'react';
 import { createPortal } from 'react-dom';
 
+import { cx } from '../../components/cx';
 import { useUi } from '../../stores/ui';
 import { useLesen } from './lesen';
 import { animationsOff } from './zoomMotion';
@@ -61,6 +62,14 @@ export function Magnifier({ region }: { region: RefObject<HTMLElement | null> })
   const lens = useRef<HTMLDivElement | null>(null);
   const content = useRef<HTMLDivElement | null>(null);
   const armed = (tool === 'magnifier' || zHeld) && !spaceHand;
+  const lastPointer = useRef<{ clientX: number; clientY: number } | null>(null);
+  useEffect(() => {
+    const remember = (event: PointerEvent) => {
+      lastPointer.current = { clientX: event.clientX, clientY: event.clientY };
+    };
+    window.addEventListener('pointermove', remember, { passive: true });
+    return () => window.removeEventListener('pointermove', remember);
+  }, []);
 
   useEffect(() => {
     const element = region.current;
@@ -69,23 +78,23 @@ export function Magnifier({ region }: { region: RefObject<HTMLElement | null> })
     if (!armed || element === null || lensElement === null || holder === null) return;
     let shown = '';
     let visible = false;
+    // The fade is CSS (class and data attribute), so the reduced-motion rule owns it.
     const show = (on: boolean) => {
       if (on === visible) return;
       visible = on;
-      lensElement.style.opacity = on ? '1' : '0';
-      lensElement.style.transition = reduce
-        ? 'none'
-        : `opacity var(${on ? '--motion-fast' : '--motion-fast-exit'}) var(--ease-out)`;
+      if (on) lensElement.setAttribute('data-shown', '');
+      else lensElement.removeAttribute('data-shown');
     };
-    const update = (event: PointerEvent) => {
+    const update = (event: { clientX: number; clientY: number; target: EventTarget | null }) => {
       const box = element.getBoundingClientRect();
       const inside =
         event.clientX >= box.left &&
         event.clientX < box.left + element.clientWidth &&
         event.clientY >= box.top &&
         event.clientY < box.top + element.clientHeight;
+      // The pointer's target is the element under it (the lens takes no pointer events), so no hit test per move.
       const hit = inside
-        ? pageAt(document.elementFromPoint(event.clientX, event.clientY), event.clientX, event.clientY)
+        ? pageAt(event.target instanceof Element ? event.target : null, event.clientX, event.clientY)
         : null;
       // The tool shows the lens over a page only; Z holds it anywhere on the canvas.
       if (!inside || (hit === null && !useLesen.getState().zHeld)) {
@@ -127,6 +136,9 @@ export function Magnifier({ region }: { region: RefObject<HTMLElement | null> })
     const onLeaveDocument = (event: MouseEvent) => {
       if (event.relatedTarget === null) show(false);
     };
+    // Z pressed (or the tool chosen) without a move: the lens opens at the last place the pointer was.
+    const last = lastPointer.current;
+    if (last !== null) update({ ...last, target: document.elementFromPoint(last.clientX, last.clientY) });
     window.addEventListener('pointermove', update, { passive: true });
     element.addEventListener('pointerleave', leave);
     document.addEventListener('mouseout', onLeaveDocument);
@@ -134,24 +146,21 @@ export function Magnifier({ region }: { region: RefObject<HTMLElement | null> })
       window.removeEventListener('pointermove', update);
       element.removeEventListener('pointerleave', leave);
       document.removeEventListener('mouseout', onLeaveDocument);
-      lensElement.style.opacity = '0';
+      lensElement.removeAttribute('data-shown');
       holder.replaceChildren();
     };
-  }, [armed, region, reduce]);
+  }, [armed, region]);
 
   return createPortal(
     <div
       ref={lens}
       aria-hidden="true"
       data-magnifier=""
-      className="pointer-events-none fixed left-0 top-0 z-drag overflow-hidden rounded-full border border-solid bg-page-area shadow-floating"
-      style={{
-        width: LENS_SIZE,
-        height: LENS_SIZE,
-        opacity: 0,
-        borderColor: 'var(--color-ink)',
-        boxSizing: 'border-box',
-      }}
+      className={cx(
+        'pointer-events-none fixed left-0 top-0 z-drag box-border size-(--lens-size) overflow-hidden rounded-full border border-solid border-ink bg-page-area opacity-0 shadow-floating',
+        'duration-(--motion-fast-exit) ease-out data-shown:opacity-100 data-shown:duration-fast motion-reduce:transition-none',
+        reduce ? 'transition-none' : 'transition-opacity',
+      )}
     >
       <div ref={content} className="absolute inset-0" />
     </div>,

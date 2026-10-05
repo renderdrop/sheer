@@ -44,7 +44,6 @@
   --color-icon-disabled: var(--color-stone);
   --color-accent: var(--accent);
   --color-accent-hover: var(--accent-bright);
-  --color-accent-pressed: var(--accent);
   --color-on-accent: var(--on-accent);
   --color-focus: var(--accent);
   --color-control-border: var(--color-stone);
@@ -80,9 +79,9 @@
   --color-doc-ink: var(--color-ink); /* ink drawn on the paper over an annotation's own colour (the note glyph) */
   --color-doc-paper: var(--color-white); /* the page paper under an inline editor of existing text */
   --color-doc-text-select: color-mix(in srgb, var(--hl-solar) 35%, transparent);
+  /* search hits are drawn with mix-blend-mode: multiply; the active hit is stronger and adds a 2px Ink outline */
   --color-doc-hit: color-mix(in srgb, var(--hl-solar) 70%, transparent);
   --color-doc-hit-active: var(--hl-solar);
-  /* drawn with mix-blend-mode: multiply; the active hit adds a 2px Ink outline */
   --color-doc-hover: var(--color-stone);
   --color-doc-field: rgba(221, 226, 234, 0.6);
   --color-doc-field-hover: var(--color-mist);
@@ -379,6 +378,7 @@
   --icon-stroke: 1.75px;
 
   /* Widths (DESIGN 1.3). The panel values are mirrored as numbers in components/tokens.ts (PANEL). */
+  --toggle-width: 36px; /* Toggle track; the knob is 12 with a 2 px gap, travel 20 */
   --field-width: 56px; /* slider number field and zoom readout */
   --slider-min: 120px;
   --swatch-size: 24px;
@@ -484,6 +484,10 @@
   --grid-thumb: 160px; /* organize grid: the thumbnail box, 96 to 256 in steps of 32; the user's choice is set inline */
   --sig-thumb-w: 120px; /* library preview chip */
   --sig-thumb-h: 40px;
+  /* POL-4: the chip inside a menu row (a 32 px row, so 24 px high) */
+  --sig-thumb-menu-w: 72px;
+  --sig-thumb-menu-h: 24px;
+  --lens-size: 160px; /* POL-4: magnifier lens diameter (Magnifier.tsx LENS_SIZE) */
   --recover-list-max: 128px; /* recovery banner: three 40 px rows and their 4 px gaps, then it scrolls */
   --lib-list-max: 360px; /* six 56 px rows and their 4 px gaps */
   --insert-marker: 2px; /* organize grid: the insertion marker's width */
@@ -567,7 +571,6 @@
     --color-icon-disabled: GrayText;
     --color-accent: Highlight;
     --color-accent-hover: Highlight;
-    --color-accent-pressed: Highlight;
     --color-on-accent: HighlightText;
     --color-focus: Highlight;
     --color-border-subtle: ButtonBorder;
@@ -1185,7 +1188,10 @@
   --margin-stack-gap: 8px; /* between bubbles */
   --margin-free-min: 360px; /* free page width below which the column collapses */
   --margin-marker: 24px; /* avatar marker in the compact column */
-  --note-bubble: var(--accent); /* the note-paper bubble */
+  --note-bubble: var(
+    --color-surface-solid
+  ); /* POL-4: White paper; the Solar edge below carries the note colour (DESIGN 3.5, §26) */
+  --note-bubble-edge: var(--accent);
   --note-bubble-resolved: var(--color-surface-solid);
 }
 
@@ -1317,7 +1323,7 @@
   }
 }
 /* Spell 12: SVG cursors over the page, 32 units drawn at 2x (16 CSS px); hotspots in CSS px, mirrored in features/viewer/cursors.ts. */
-[data-cursor="marker"] :is([data-page], [data-creation-layer]) {
+[data-cursor="marker"] :is([data-page], [data-creation-layer], [data-insert-surface]) {
   cursor:
     url("../assets/cursors/marker.svg") 2 14,
     text;
@@ -1325,7 +1331,7 @@
     image-set(url("../assets/cursors/marker.svg") 2x) 2 14,
     text;
 }
-[data-cursor="pen"] :is([data-page], [data-creation-layer]) {
+[data-cursor="pen"] :is([data-page], [data-creation-layer], [data-insert-surface]) {
   cursor:
     url("../assets/cursors/pen.svg") 2 14,
     crosshair;
@@ -1333,7 +1339,7 @@
     image-set(url("../assets/cursors/pen.svg") 2x) 2 14,
     crosshair;
 }
-[data-cursor="crosshair"] :is([data-page], [data-creation-layer]) {
+[data-cursor="crosshair"] :is([data-page], [data-creation-layer], [data-insert-surface]) {
   cursor:
     url("../assets/cursors/crosshair.svg") 8 8,
     crosshair;
@@ -1341,7 +1347,7 @@
     image-set(url("../assets/cursors/crosshair.svg") 2x) 8 8,
     crosshair;
 }
-[data-cursor="text"] :is([data-page], [data-creation-layer]) {
+[data-cursor="text"] :is([data-page], [data-creation-layer], [data-insert-surface]) {
   cursor:
     url("../assets/cursors/text.svg") 8 8,
     text;
@@ -1354,6 +1360,12 @@
    the transforms (the global rule keeps opacity transitions, --scale-enter is 1 and --rotate-delete is 0 there). */
 [data-thumb-indicator][data-mode="travel"] {
   transition: transform var(--motion-base) var(--ease-out);
+}
+/* POL-4: the border takes the next thumbnail's size on the way (it no longer snaps to it at the start of the travel). */
+[data-thumb-indicator][data-mode="travel"] > div {
+  transition:
+    width var(--motion-base) var(--ease-out),
+    height var(--motion-base) var(--ease-out);
 }
 [data-thumb-indicator][data-mode="fade"] {
   transition: opacity var(--motion-base) var(--ease-out);
@@ -1384,7 +1396,7 @@
   }
 }
 [data-marker-dry="pulse"] {
-  animation: marker-dry var(--motion-fast) var(--ease-out);
+  animation: marker-dry var(--motion-fast) var(--ease-out) forwards; /* holds the rest alpha until animationend removes the strip */
 }
 /* Undo fades (spell 7): out in --motion-fast-exit, in over --motion-fast, both from or to 0.98. */
 [data-undo-fade] {
@@ -1410,4 +1422,11 @@
 [data-undo-fade="in"]:not([data-settled]) {
   opacity: 0;
   transform: scale(var(--scale-enter));
+}
+
+/* POL-3: the tour anchor ring is the focus pair (Ink hairline + Solar band, DESIGN 3.6), held fully visible. */
+[data-tour-ring]::after {
+  border: none;
+  box-shadow: var(--ring-focus);
+  opacity: 1;
 }

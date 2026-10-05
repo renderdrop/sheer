@@ -2,6 +2,7 @@ import { ImageOff } from 'lucide-react';
 
 import type { LibraryItem } from '../../../api/library';
 import { Icon } from '../../../components';
+import { cx } from '../../../components/cx';
 import { useT } from '../../../i18n';
 import { pathToD } from '../ink';
 
@@ -12,13 +13,16 @@ export const pathData = pathToD;
  * hairline border (`CanvasText` under forced colors). Vector art is drawn as an SVG fitted in the chip; a raster entry has no
  * preview from the backend yet, so the chip shows a placeholder glyph.
  */
-export function SignaturePreview({ item }: { item: LibraryItem }) {
+export function SignaturePreview({ item, compact = false }: { item: LibraryItem; compact?: boolean }) {
   const t = useT();
   const art = item.preview !== null && 'vector' in item.preview ? item.preview.vector : null;
   return (
     <span
       data-lib-preview=""
-      className="flex h-sig-thumb-h w-sig-thumb-w shrink-0 items-center justify-center overflow-hidden rounded-sm border border-divider bg-page px-1 forced-colors:border-text"
+      className={cx(
+        'flex shrink-0 items-center justify-center overflow-hidden rounded-sm border border-divider bg-page px-1 forced-colors:border-text',
+        compact ? 'h-(--sig-thumb-menu-h) w-(--sig-thumb-menu-w)' : 'h-sig-thumb-h w-sig-thumb-w',
+      )}
     >
       {art !== null ? (
         <svg

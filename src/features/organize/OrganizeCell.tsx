@@ -1,5 +1,6 @@
 import { memo, useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
 
+import { Skeleton } from '../../components';
 import { cx } from '../../components/cx';
 import { pulse } from '../../components/SuccessPulse';
 import { bucketFor } from '../../engine/buckets';
@@ -166,6 +167,7 @@ export const OrganizeCell = memo(function OrganizeCell({
           )}
           style={{ width: size.width, height: size.height }}
         >
+          {shown === undefined && <Skeleton className="size-full rounded-none bg-page-area!" />}
           {shown !== undefined && (
             <img
               key={shown.key}

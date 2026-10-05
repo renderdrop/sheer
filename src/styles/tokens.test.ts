@@ -189,7 +189,6 @@ describe('semantic tokens and the role layer (DESIGN 1.2, 1.3)', () => {
     '--color-icon-disabled': 'var(--color-stone)',
     '--color-accent': 'var(--accent)',
     '--color-accent-hover': 'var(--accent-bright)',
-    '--color-accent-pressed': 'var(--accent)',
     '--color-on-accent': 'var(--on-accent)',
     '--color-focus': 'var(--accent)',
     '--color-control-border': 'var(--color-stone)',

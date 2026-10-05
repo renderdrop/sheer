@@ -8,6 +8,7 @@ import {
   useSyncExternalStore,
   type KeyboardEvent,
 } from 'react';
+import { useShallow } from 'zustand/react/shallow';
 
 import type { PageSize } from '../../api/render';
 import { useT } from '../../i18n';
@@ -55,7 +56,13 @@ interface Item {
 export function MarginColumn({ docId, layout, threads, mode, drawnSizes, rotation }: MarginColumnProps) {
   const t = useT();
   const metrics = marginMetrics();
-  const byId = useAnnotations((state) => state.byDoc[docId]?.byId);
+  // Only the anchors of the shown roots (a shallow list), not the whole annotation map.
+  const rects = useAnnotations(
+    useShallow((state) => {
+      const byId = state.byDoc[docId]?.byId;
+      return threads.map((thread) => byId?.[thread.root.id]?.rect ?? null);
+    }),
+  );
   const selectedFirst = useAnnotations((state) => state.selectedIds[docId]?.[0]);
   const view = useSyncExternalStore(subscribeViewRect, readViewRect);
   const [now, setNow] = useState(() => Date.now());
@@ -77,11 +84,11 @@ export function MarginColumn({ docId, layout, threads, mode, drawnSizes, rotatio
 
   const items = useMemo<Item[]>(() => {
     const placed: Item[] = [];
-    for (const thread of threads) {
+    for (const [index, thread] of threads.entries()) {
       const position = positionOf(docId, thread.root.pageId);
       const box = position === null ? null : layout.box(position);
       if (position === null || box === null) continue;
-      const rect = byId?.[thread.root.id]?.rect ?? null;
+      const rect = rects[index] ?? null;
       const anchor = anchorOf(box, layout.scale, rect, drawnSizes[position] ?? [0, 0], rotation);
       placed.push({
         thread,
@@ -92,7 +99,7 @@ export function MarginColumn({ docId, layout, threads, mode, drawnSizes, rotatio
       });
     }
     return placed.sort((a, b) => a.anchor - b.anchor || a.id - b.id);
-  }, [threads, layout, byId, drawnSizes, rotation, docId, metrics.gap]);
+  }, [threads, layout, rects, drawnSizes, rotation, docId, metrics.gap]);
 
   // Measured heights, one observer for the mounted bubbles.
   const [heights, setHeights] = useState<ReadonlyMap<number, number>>(() => new Map());

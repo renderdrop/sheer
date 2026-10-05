@@ -7,6 +7,7 @@ import type { Annotation, ChangeSet } from '../../api/annotations';
 import { EMPTY_HISTORY, useAnnotations } from '../../stores/annotations';
 import { useDocuments } from '../../stores/documents';
 import { useTools } from '../../stores/tools';
+import { useUi } from '../../stores/ui';
 import { setup } from '../../test/render';
 import { DEFAULT_STYLES, useStyleStore } from '../inspector/style';
 import { useMiniBarDock } from './dock';
@@ -92,6 +93,7 @@ const rectOf = ({ left, top, width, height }: Rect): DOMRect =>
 
 /** The canvas (100 to 700 high) and the frames of the selected annotations, as the layers draw them. */
 function canvas(frames: Record<number, Rect>) {
+  useUi.setState({ mode: 'comment' });
   const scope = document.createElement('div');
   scope.dataset.actionScope = 'canvas';
   const region = document.createElement('div');
@@ -157,6 +159,14 @@ describe('visibility', () => {
     setup(<MiniBarSlot />);
     expect(screen.getByRole('toolbar', { name: 'Properties: Drawing' })).not.toBeNull();
     expect(motionOf()?.hasAttribute('inert')).toBe(false);
+  });
+
+  it('is gone in Seiten, but shows in Lesen (Select picks annotations there)', () => {
+    load([ink(1)], [1]);
+    scene = canvas({ 1: OVER });
+    useUi.setState({ mode: 'pages' });
+    setup(<MiniBarSlot />);
+    expect(bar()).toBeNull();
   });
 
   it('names several objects by their number', () => {

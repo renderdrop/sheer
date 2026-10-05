@@ -405,7 +405,22 @@ describe('spell 5: the marker trail', () => {
     expect(Number(strip(surface)?.querySelector('rect')?.getAttribute('fill-opacity'))).toBeCloseTo(
       (live * 0.55) / 0.45,
     );
-    act(() => void vi.advanceTimersByTime(130));
+    // The pulse ends the strip with its animationend; the timer is only the fallback.
+    // React listens to the vendor-prefixed name in jsdom (no AnimationEvent).
+    act(() => {
+      for (const type of ['animationend', 'webkitAnimationEnd'])
+        strip(surface)?.dispatchEvent(new Event(type, { bubbles: true }));
+    });
+    expect(strip(surface)).toBeNull();
+  });
+
+  it('falls back to a timer when no animationend comes', () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    const surface = drag();
+    fireEvent.pointerMove(surface, { clientX: 176, clientY: 252, pointerId: 1 });
+    flush();
+    fireEvent.pointerUp(surface, { button: 0, clientX: 176, clientY: 252, pointerId: 1 });
+    act(() => void vi.advanceTimersByTime(400));
     expect(strip(surface)).toBeNull();
   });
 

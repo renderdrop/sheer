@@ -194,10 +194,9 @@ describe('signature sheet', () => {
 
   it('a save that the keychain refuses shows a message and keeps the sheet open', async () => {
     sig.saveDraftSignature.mockRejectedValue({
-      code: 'invalid_argument',
-      key: 'error.invalid_argument',
-      retryable: false,
-      params: { what: 'keychain' },
+      code: 'keychain_unavailable',
+      key: 'error.keychain_unavailable',
+      retryable: true,
     });
     const { user } = setup(<SignatureSheetHost />);
     let result: unknown = 'pending';

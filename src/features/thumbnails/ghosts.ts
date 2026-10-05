@@ -24,15 +24,15 @@ export function useDeleteGhosts<S extends { id: number }, T>(
   /** The neighbours slide for `--motion-base` after a removal: the list's cells transition their position only then. */
   const [moving, setMoving] = useState(false);
   const moveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const before = useRef<{ slots: readonly S[]; describe: (slot: S, index: number) => T | null } | null>(null);
+  const lastSlots = useRef(slots);
+  const lastDescribe = useRef(describe);
   const timers = useRef(new Set<ReturnType<typeof setTimeout>>());
 
-  // Every render: the closure of the render that still had the pages is what `describe` is made from.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+  // When the slots change: `lastDescribe` is still the closure of the last render that had the pages (it is replaced by the effect below).
   useLayoutEffect(() => {
-    const previous = before.current;
-    before.current = { slots, describe };
-    if (previous === null || previous.slots === slots) return;
+    const previous = { slots: lastSlots.current, describe: lastDescribe.current };
+    lastSlots.current = slots;
+    if (previous.slots === slots) return;
     const alive = new Set(slots.map((slot) => slot.id));
     const gone: Ghost<T>[] = [];
     previous.slots.forEach((slot, index) => {
@@ -64,6 +64,11 @@ export function useDeleteGhosts<S extends { id: number }, T>(
       tokenMs('--motion-base-exit', 120),
     );
     timers.current.add(timer);
+  }, [slots]);
+
+  // Every render, after the one above (effects run in order): the closure of the render that has the pages now.
+  useLayoutEffect(() => {
+    lastDescribe.current = describe;
   });
 
   useLayoutEffect(

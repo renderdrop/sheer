@@ -38,7 +38,7 @@ import {
 import { buildTextIndex, quadsForDragIndexed, type TextIndex } from './markup';
 import { HOLD_STILL_PX, holdShapeMs, recognise, snapFor, snapTo, type Recognised, type Snap } from './recognise';
 import { MAX_INK_STROKES } from '../../../api/annotations';
-import { prefersReducedMotion, tokenMs } from '../../thumbnails/motion';
+import { prefersReducedMotion, tokenMs, tokenNumber } from '../../thumbnails/motion';
 
 export interface CreationLayerProps {
   docId: number;
@@ -94,8 +94,8 @@ interface Drag {
 
 const cssOf = rgbToCss;
 
-/** Spell 5: the dry pulse's peak over its rest alpha (--marker-peak 0.55 over --marker-rest 0.45 in tokens.css). */
-const MARKER_PEAK_RATIO = 0.55 / 0.45;
+/** Spell 5: the dry pulse's peak over its rest alpha, read from `--marker-peak` over `--marker-rest` (the spec values without a stylesheet). */
+const markerPeakRatio = (): number => tokenNumber('--marker-peak', 0.55) / tokenNumber('--marker-rest', 0.45);
 
 /** The dash of the outline of a free text box being dragged, in points. */
 const BOX_DASH = '4 3';
@@ -171,6 +171,13 @@ function ActiveLayer({
       nextPreview.current = null;
       if (build !== null) setPreview(build());
     });
+  }, []);
+
+  /** The dry pulse is over: the strip goes (the real highlight is already there). */
+  const endDry = useCallback(() => {
+    if (dryTimer.current !== null) clearTimeout(dryTimer.current);
+    dryTimer.current = null;
+    setPreview(null);
   }, []);
 
   /** Drops a preview that is waiting for its frame, and shows `now` at once. */
@@ -528,7 +535,7 @@ function ActiveLayer({
         kind: 'highlight',
         quads,
         color: style.color,
-        opacity: pulse ? Math.min(1, style.opacity * MARKER_PEAK_RATIO) : style.opacity,
+        opacity: pulse ? Math.min(1, style.opacity * markerPeakRatio()) : style.opacity,
         dry: pulse ? 'pulse' : 'still',
       });
       dryTimer.current = setTimeout(
@@ -536,7 +543,8 @@ function ActiveLayer({
           dryTimer.current = null;
           setPreview(null);
         },
-        tokenMs('--motion-fast', 120),
+        // The dry pulse ends the strip (animationend); this is the fallback should that event not come.
+        tokenMs('--motion-fast', 120) * 3,
       );
     }
     switch (kind) {
@@ -597,7 +605,7 @@ function ActiveLayer({
         viewBox={`0 0 ${page[0]} ${page[1]}`}
         style={{ left: box.left, top: box.top, transform: box.transform, transformOrigin: 'center' }}
       >
-        {preview === null ? null : <PreviewShape preview={preview} />}
+        {preview === null ? null : <PreviewShape preview={preview} onDryEnd={endDry} />}
       </svg>
     </div>
   );
@@ -671,13 +679,14 @@ function previewOfDraft(
   }
 }
 
-function PreviewShape({ preview }: { preview: Preview }) {
+function PreviewShape({ preview, onDryEnd }: { preview: Preview; onDryEnd?: () => void }) {
   switch (preview.type) {
     case 'quads':
       return (
         <g
           data-marker-trail={preview.kind === 'highlight' ? '' : undefined}
           data-marker-dry={preview.dry}
+          onAnimationEnd={preview.dry === 'pulse' ? onDryEnd : undefined}
           style={{ mixBlendMode: preview.kind === 'highlight' ? 'multiply' : 'normal' }}
         >
           {preview.quads.map((q, i) => {

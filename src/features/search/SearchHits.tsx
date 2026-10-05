@@ -3,7 +3,7 @@ import { memo } from 'react';
 import { quadBox } from '../viewer/transform';
 import { useSearch, type Hit } from './store';
 
-/** The rectangles of one hit, in page space. Highlights: `--color-doc-hit`; the active hit adds an outline (tokens.css). */
+/** The rectangles of one hit, in page space. Highlights: `--color-doc-hit` (Solar 70 %); the active hit has the stronger fill `--color-doc-hit-active` (full Solar) and an outline (tokens.css). */
 const HitBoxes = memo(function HitBoxes({ hit, active }: { hit: Hit; active: boolean }) {
   return (
     <>

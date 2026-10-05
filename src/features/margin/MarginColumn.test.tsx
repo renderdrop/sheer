@@ -90,7 +90,7 @@ describe('MarginColumn', () => {
     column('full', [summary(1), summary(2, { author: null })]);
     expect(screen.getByRole('list', { name: 'Comments in margin' })).toBeTruthy();
     expect(screen.getByRole('article', { name: 'Note by Ann, page 1' })).toBeTruthy();
-    expect(screen.getByRole('article', { name: 'Note by unknown author, page 1' })).toBeTruthy();
+    expect(screen.getByRole('article', { name: 'Note by No author, page 1' })).toBeTruthy();
   });
 
   it('shows the avatar initial, the text, the replies and a reply field', () => {

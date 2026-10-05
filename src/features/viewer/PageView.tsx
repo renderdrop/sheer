@@ -421,7 +421,7 @@ export const PageView = memo(function PageView({
           (exact === undefined || covered !== exact) &&
           tileEntries.length === 0 && (
             <div className="absolute inset-0">
-              <Skeleton className="size-full" />
+              <Skeleton className="size-full rounded-none bg-page-area!" />
             </div>
           )}
         {standIn === undefined && lost !== undefined && (

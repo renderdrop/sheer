@@ -104,9 +104,8 @@ function Reply({
 }
 
 /**
- * A comment bubble of the margin (DESIGN 3.5 B9, the note paper): Solar, radius lg with a small top-left corner, header with
- * avatar, name, date, resolve and options; the text (6 lines then "More"), the replies and a reply field. Resolved: White, subtle
- * border, 60 %, collapsed to the header and the first line.
+ * A comment bubble of the margin (DESIGN 3.5 B9): White with a Solar edge (the least loud tone, §26), header with avatar, name,
+ * date, resolve and options; the text (6 lines then "More"), the replies and a reply field. Resolved: subtle border, 60 %, collapsed.
  */
 export const Bubble = memo(
   forwardRef<HTMLElement, BubbleProps>(function Bubble(
@@ -206,7 +205,9 @@ export const Bubble = memo(
           'box-border flex w-full cursor-pointer flex-col gap-2 rounded-lg rounded-tl-sm p-3 text-text',
           'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus',
           'transition-shadow duration-fast motion-reduce:transition-none',
-          resolved ? 'border border-border-subtle bg-(--note-bubble-resolved) opacity-60' : 'bg-(--note-bubble)',
+          resolved
+            ? 'border border-border-subtle bg-(--note-bubble-resolved) opacity-60'
+            : 'border border-(--note-bubble-edge) bg-(--note-bubble)',
           selected ? 'shadow-floating ring-1 ring-text' : 'shadow-standard',
           hovered && !selected && 'shadow-floating',
           'forced-colors:border forced-colors:bg-[Canvas] forced-colors:text-[CanvasText]',
@@ -322,7 +323,7 @@ export const Bubble = memo(
             rows={1}
             maxLength={MAX_ANNOT_CONTENTS_CHARS}
             value={reply}
-            className={cx(FIELD, 'h-8 overflow-auto')}
+            className={cx(FIELD, 'h-8 overflow-hidden')}
             style={REPLY_MAX}
             onChange={(event) => setReply(event.target.value)}
             onKeyDown={(event) => {

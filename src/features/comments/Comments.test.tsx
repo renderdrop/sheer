@@ -148,7 +148,7 @@ describe('Comments cards', () => {
     expect(cards()).toHaveLength(2);
     expect(cards()[0]?.textContent).toContain('Resolved');
     // Collapsed to the header: the first line (the text) shows, the actions do not.
-    expect(within(cards()[0] as HTMLElement).queryByRole('button', { name: 'Delete' })).toBeNull();
+    expect(within(cards()[0] as HTMLElement).queryByRole('button', { name: 'Reply' })).toBeNull();
     await user.click(screen.getByRole('button', { name: 'Filter' }));
     await user.click(screen.getByRole('radio', { name: 'Open' }));
     expect(cards()).toHaveLength(1);
@@ -159,12 +159,12 @@ describe('Comments cards', () => {
     const { user } = await shown([summary(1), summary(2, { inReplyTo: 1, state: 'completed', contents: '' })]);
     const card = cards()[0] as HTMLElement;
     expect(card.className).toContain('opacity-60');
-    expect(within(card).queryByRole('button', { name: 'Delete' })).toBeNull();
+    expect(within(card).queryByRole('button', { name: 'Reply' })).toBeNull();
     await user.click(within(card).getByRole('button', { name: 'Show comment' }));
-    expect(within(card).getByRole('button', { name: 'Delete' })).toBeTruthy();
+    expect(within(card).getByRole('button', { name: 'Reply' })).toBeTruthy();
     expect(card.textContent).toContain('Text 1');
     await user.click(within(card).getByRole('button', { name: 'Hide comment' }));
-    expect(within(card).queryByRole('button', { name: 'Delete' })).toBeNull();
+    expect(within(card).queryByRole('button', { name: 'Reply' })).toBeNull();
   });
 
   it('jumps, selects and keeps the focus on the card on Enter and click', async () => {
@@ -309,6 +309,17 @@ describe('Comments cards', () => {
     const { user } = await shown();
     (cards()[0] as HTMLElement).focus();
     await user.keyboard('{Delete}');
+    expect(apply).toHaveBeenCalledWith(1, { type: 'deleteAnnotations', ids: [1, 2] });
+  });
+
+  it('deletes from the ⋯ menu of the card (no Delete button in the action row)', async () => {
+    const apply = vi.fn().mockResolvedValue(undefined);
+    useAnnotations.setState({ apply } as never);
+    const { user } = await shown();
+    const card = cards()[0] as HTMLElement;
+    expect(within(card).queryByRole('button', { name: 'Delete' })).toBeNull();
+    await user.click(within(card).getByRole('button', { name: 'Comment options' }));
+    await user.click(screen.getByRole('menuitem', { name: 'Delete' }));
     expect(apply).toHaveBeenCalledWith(1, { type: 'deleteAnnotations', ids: [1, 2] });
   });
 

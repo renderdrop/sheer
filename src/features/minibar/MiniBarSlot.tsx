@@ -3,6 +3,7 @@ import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from
 import { createPortal } from 'react-dom';
 
 import { cx } from '../../components/cx';
+import { useUi } from '../../stores/ui';
 import { useT } from '../../i18n';
 import { DURATION, spring } from '../../lib/motion';
 import { useMiniBarDock } from './dock';
@@ -157,16 +158,34 @@ function MiniBarHost({ docId, objects }: { docId: number; objects: readonly Mini
     setPlacement((old) => (same(old, local) ? old : local));
   }, [objects, hintId]);
 
-  // Placed before paint, then kept with the page: scroll, zoom and layout move the selection without an event of ours, so the
-  // positions are read again every frame (cheap: a few rects, and a state change only when one moved), unanimated.
+  // Placed before paint, then kept with the page: scroll and window resize, size changes of the canvas or the selection and
+  // new or removed nodes in the canvas re-measure (coalesced to one read per frame, unanimated); a drag ends with the release.
   useLayoutEffect(() => {
     measure();
-    let frame = requestAnimationFrame(function tick() {
-      measure();
-      frame = requestAnimationFrame(tick);
-    });
+    let frame = 0;
+    const schedule = () => {
+      if (frame !== 0) return;
+      frame = requestAnimationFrame(() => {
+        frame = 0;
+        measure();
+      });
+    };
+    document.addEventListener('scroll', schedule, true);
+    window.addEventListener('resize', schedule);
+    const resize = typeof ResizeObserver === 'function' ? new ResizeObserver(schedule) : null;
+    const mutation = typeof MutationObserver === 'function' ? new MutationObserver(schedule) : null;
+    const canvas = document.querySelector(CANVAS);
+    if (canvas !== null) {
+      resize?.observe(canvas);
+      mutation?.observe(canvas, { childList: true, subtree: true });
+    }
+    for (const element of selectionElements(objects)) resize?.observe(element);
     return () => {
       cancelAnimationFrame(frame);
+      document.removeEventListener('scroll', schedule, true);
+      window.removeEventListener('resize', schedule);
+      resize?.disconnect();
+      mutation?.disconnect();
       for (const element of selectionElements(objects)) {
         const el = focusTargetOf(element);
         const ids = (el.getAttribute('aria-describedby') ?? '').split(/\s+/).filter((id) => id !== '' && id !== hintId);
@@ -175,6 +194,11 @@ function MiniBarHost({ docId, objects }: { docId: number; objects: readonly Mini
       }
     };
   }, [measure, objects, hintId]);
+
+  // The bar comes back after a drag or resize: read the new position then.
+  useEffect(() => {
+    if (!pressed) measure();
+  }, [pressed, measure]);
 
   const docked = placement?.mode === 'dock' && target !== null;
   useEffect(() => {
@@ -262,7 +286,9 @@ function MiniBarHost({ docId, objects }: { docId: number; objects: readonly Mini
  */
 export function MiniBarSlot() {
   const { docId, objects } = useMiniSelection();
-  if (docId === null || objects.length === 0) return null;
+  const mode = useUi((s) => s.mode);
+  // Seiten has no canvas selection (leaving it clears it); a stale one shows no bar.
+  if (docId === null || objects.length === 0 || mode === 'pages') return null;
   const signature = objects.map((object) => barKindOf(object)).join();
   return <MiniBarHost key={`${docId}:${signature}:${objects.length}`} docId={docId} objects={objects} />;
 }
