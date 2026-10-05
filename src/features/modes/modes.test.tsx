@@ -720,8 +720,11 @@ describe('the overflow', () => {
 describe('the segmented mode tabs (DESIGN 3.5 B3)', () => {
   it('the selected segment is White with a Stone border and Ink 500, the others are not; the bar is Sand', () => {
     const { container } = setup(<Rows />);
-    expect(tab('Read').className).toContain('aria-selected:bg-panel');
-    expect(tab('Read').className).toContain('aria-selected:border-control-border');
+    // The White fill and the Stone border are the shared glide pill (spell 21), not the segment.
+    const pill = container.querySelector('[data-glide-pill="mode"]');
+    expect(pill?.className).toContain('bg-panel');
+    expect(pill?.className).toContain('border-control-border');
+    expect(tab('Read').className).toContain('aria-selected:font-medium');
     expect(tab('Read').getAttribute('aria-selected')).toBe('true');
     expect(tab('Edit').getAttribute('aria-selected')).toBe('false');
     expect(container.querySelector('[data-slot="mode-row"]')?.className).toContain('bg-subtle');

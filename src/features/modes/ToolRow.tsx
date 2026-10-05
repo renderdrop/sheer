@@ -3,6 +3,7 @@ import { memo, useEffect, useLayoutEffect, useRef, useState, type FocusEvent, ty
 
 import { Icon, Menu, Tooltip, type MenuEntry } from '../../components';
 import { cx } from '../../components/cx';
+import { useGlidePill } from '../../components/glide';
 import { isOwnEvent, itemsOf, rovingTarget } from '../../components/roving';
 import { useT } from '../../i18n';
 import { useUi } from '../../stores/ui';
@@ -87,6 +88,9 @@ export const ToolRow = memo(function ToolRow() {
     if (next !== null) setFit({ value: next, key });
   });
 
+  // Spell 1: the Solar fill is one element that glides to the active item (a direct child: the split group or the button).
+  const pill = useGlidePill(row, ':scope > [data-on="true"]', activeId, '--motion-base');
+
   const left =
     current.step === 3
       ? hiddenIds(
@@ -138,9 +142,16 @@ export const ToolRow = memo(function ToolRow() {
       onKeyDown={onKeyDown}
       onFocus={onFocus}
       className={cx(
-        'bg-subtle flex h-tool-row min-w-0 items-center gap-1 overflow-hidden border-b border-border-subtle px-4',
+        'bg-subtle relative isolate flex h-tool-row min-w-0 items-center gap-1 overflow-hidden border-b border-border-subtle px-4',
       )}
     >
+      <span
+        ref={pill}
+        aria-hidden="true"
+        data-glide-pill="tool"
+        className="pointer-events-none absolute start-0 top-0 -z-10 rounded-md bg-accent shadow-(--tool-active-edge)"
+        style={{ opacity: 0 }}
+      />
       {visible.map((slot) => (
         <ToolItem key={slot.id} slot={slot} iconOnly={current.step >= 2 && !slot.on} stop={tabStop} />
       ))}

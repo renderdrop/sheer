@@ -139,7 +139,7 @@ describe('IconButton tooltip', () => {
     act(() => getByRole('button').focus());
     expect(openTooltip()).toBeNull();
     act(() => {
-      vi.advanceTimersByTime(300);
+      vi.advanceTimersByTime(400);
     });
     const tooltip = openTooltip();
     expect(tooltip?.textContent).toContain('Draw');

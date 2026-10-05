@@ -34,10 +34,10 @@ function Anchor({ onClick }: { onClick?: () => void }) {
 }
 
 describe('Tooltip opening', () => {
-  it('opens after 500 ms of hover, as role=tooltip hidden from the accessibility tree', () => {
+  it('opens after 400 ms of hover, as role=tooltip hidden from the accessibility tree', () => {
     const { getByRole } = render(<Anchor />);
     fireEvent.pointerEnter(getByRole('button'));
-    advance(499);
+    advance(399);
     expect(openTooltip()).toBeNull();
     advance(1);
     const tooltip = openTooltip();
@@ -47,10 +47,10 @@ describe('Tooltip opening', () => {
     expect(tooltip?.querySelector('kbd')?.textContent).toBe('H');
   });
 
-  it('opens after 300 ms on keyboard focus', () => {
+  it('opens after 400 ms on keyboard focus', () => {
     const { getByRole } = render(<Anchor />);
     act(() => getByRole('button').focus());
-    advance(299);
+    advance(399);
     expect(openTooltip()).toBeNull();
     advance(1);
     expect(openTooltip()).not.toBeNull();
@@ -65,22 +65,22 @@ describe('Tooltip opening', () => {
     expect(openTooltip()).toBeNull();
   });
 
-  it('opens at once when another tooltip is open or closed less than 300 ms ago', async () => {
+  it('opens at once when a neighbour in the same toolbar is open or closed less than 300 ms ago', async () => {
     const { getAllByRole } = render(
-      <>
+      <div role="toolbar" aria-label="Group">
         <Tooltip label="First">
           <button type="button">A</button>
         </Tooltip>
         <Tooltip label="Second">
           <button type="button">B</button>
         </Tooltip>
-      </>,
+      </div>,
     );
     const [first, second] = getAllByRole('button');
     if (first === undefined || second === undefined) throw new Error('buttons missing');
 
     fireEvent.pointerEnter(first);
-    advance(500);
+    advance(400);
     fireEvent.pointerLeave(first);
     advance(50); // first is still in its grace period
     fireEvent.pointerEnter(second);
@@ -103,7 +103,7 @@ describe('Tooltip opening', () => {
     advance(400);
     fireEvent.pointerEnter(second);
     expect(openTooltip()).toBeNull();
-    advance(500);
+    advance(400);
     expect(openTooltip()).not.toBeNull();
   });
 
@@ -128,7 +128,7 @@ describe('Tooltip closing', () => {
   it('hides 100 ms after the pointer leaves the anchor', async () => {
     const { getByRole } = render(<Anchor />);
     fireEvent.pointerEnter(getByRole('button'));
-    advance(500);
+    advance(400);
     fireEvent.pointerLeave(getByRole('button'));
     advance(99);
     expect(openTooltip()).not.toBeNull();
@@ -139,7 +139,7 @@ describe('Tooltip closing', () => {
   it('stays while the pointer is on the tooltip itself (hoverable) and hides when it leaves', async () => {
     const { getByRole } = render(<Anchor />);
     fireEvent.pointerEnter(getByRole('button'));
-    advance(500);
+    advance(400);
     fireEvent.pointerLeave(getByRole('button'));
     advance(50);
     const tooltip = openTooltip();
@@ -155,7 +155,7 @@ describe('Tooltip closing', () => {
   it('hides on blur', async () => {
     const { getByRole } = render(<Anchor />);
     act(() => getByRole('button').focus());
-    advance(300);
+    advance(400);
     expect(openTooltip()).not.toBeNull();
     act(() => getByRole('button').blur());
     await gone();
@@ -165,7 +165,7 @@ describe('Tooltip closing', () => {
     const onClick = vi.fn();
     const { getByRole } = render(<Anchor onClick={onClick} />);
     fireEvent.pointerEnter(getByRole('button'));
-    advance(500);
+    advance(400);
     fireEvent.pointerDown(getByRole('button'));
     fireEvent.click(getByRole('button'));
     expect(onClick).toHaveBeenCalledTimes(1);
@@ -177,7 +177,7 @@ describe('Tooltip closing', () => {
     document.addEventListener('keydown', seen);
     const { getByRole } = render(<Anchor />);
     fireEvent.pointerEnter(getByRole('button'));
-    advance(500);
+    advance(400);
     fireEvent.keyDown(getByRole('button'), { key: 'Escape' });
     expect(seen).not.toHaveBeenCalled();
     await gone();
@@ -191,10 +191,110 @@ describe('Tooltip closing', () => {
   it('does not reopen after Esc while the pointer rests on the anchor', async () => {
     const { getByRole } = render(<Anchor />);
     fireEvent.pointerEnter(getByRole('button'));
-    advance(500);
+    advance(400);
     fireEvent.keyDown(document.body, { key: 'Escape' });
     await gone();
     advance(2000);
     expect(openTooltip()).toBeNull();
+  });
+});
+
+describe('Tooltip groups and lingering (MOTION spell 16)', () => {
+  const two = (
+    <div role="toolbar" aria-label="Tools">
+      <Tooltip label="First">
+        <button type="button">A</button>
+      </Tooltip>
+      <Tooltip label="Second">
+        <button type="button">B</button>
+      </Tooltip>
+    </div>
+  );
+
+  it('shows the neighbour at once while one is open, with the first one gone and one tooltip only', async () => {
+    const { getAllByRole } = render(two);
+    const [first, second] = getAllByRole('button');
+    if (first === undefined || second === undefined) throw new Error('buttons missing');
+    fireEvent.pointerEnter(first);
+    advance(400);
+    expect(openTooltip()?.textContent).toContain('First');
+    fireEvent.pointerLeave(first);
+    fireEvent.pointerEnter(second);
+    await vi.waitFor(() => expect(document.querySelectorAll('[role="tooltip"]')).toHaveLength(1));
+    expect(openTooltip()?.textContent).toContain('Second');
+  });
+
+  it('keeps the full delay across groups', () => {
+    const { getAllByRole } = render(
+      <>
+        <div role="toolbar" aria-label="One">
+          <Tooltip label="First">
+            <button type="button">A</button>
+          </Tooltip>
+        </div>
+        <div role="toolbar" aria-label="Two">
+          <Tooltip label="Second">
+            <button type="button">B</button>
+          </Tooltip>
+        </div>
+      </>,
+    );
+    const [first, second] = getAllByRole('button');
+    if (first === undefined || second === undefined) throw new Error('buttons missing');
+    fireEvent.pointerEnter(first);
+    advance(400);
+    fireEvent.pointerLeave(first);
+    fireEvent.pointerEnter(second);
+    advance(399);
+    expect(document.querySelector('[role="tooltip"]')?.textContent ?? '').not.toContain('Second');
+    advance(1);
+    expect(document.body.textContent).toContain('Second');
+  });
+
+  it('hides when the pointer is elsewhere without a leave event on the anchor (no lingering)', async () => {
+    const { getAllByRole } = render(two);
+    const [first] = getAllByRole('button');
+    if (first === undefined) throw new Error('button missing');
+    fireEvent.pointerEnter(first);
+    advance(400);
+    expect(openTooltip()).not.toBeNull();
+    fireEvent.pointerMove(document.body);
+    advance(99);
+    expect(openTooltip()).not.toBeNull();
+    advance(1);
+    await gone();
+  });
+
+  it('hides when the window loses focus', async () => {
+    const { getAllByRole } = render(two);
+    const [first] = getAllByRole('button');
+    if (first === undefined) throw new Error('button missing');
+    fireEvent.pointerEnter(first);
+    advance(400);
+    fireEvent.blur(window);
+    await gone();
+  });
+
+  it('keeps the same delays under reduced motion (it only fades)', () => {
+    const original = window.matchMedia;
+    window.matchMedia = (query: string) =>
+      ({
+        matches: query.includes('prefers-reduced-motion'),
+        media: query,
+        addEventListener: () => undefined,
+        removeEventListener: () => undefined,
+        addListener: () => undefined,
+        removeListener: () => undefined,
+      }) as unknown as MediaQueryList;
+    try {
+      const { getByRole } = render(<Anchor />);
+      fireEvent.pointerEnter(getByRole('button'));
+      advance(399);
+      expect(openTooltip()).toBeNull();
+      advance(1);
+      expect(openTooltip()).not.toBeNull();
+    } finally {
+      window.matchMedia = original;
+    }
   });
 });

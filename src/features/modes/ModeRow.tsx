@@ -1,7 +1,8 @@
-import { memo, type KeyboardEvent } from 'react';
+import { memo, useRef, type KeyboardEvent } from 'react';
 
 import { Tooltip } from '../../components';
 import { cx } from '../../components/cx';
+import { useGlidePill } from '../../components/glide';
 import { isOwnEvent } from '../../components/roving';
 import { useT } from '../../i18n';
 import { MODES, useUi, type Mode } from '../../stores/ui';
@@ -19,8 +20,7 @@ export const TOOL_ROW_ID = 'mode-tool-row';
 const SEGMENT =
   'flex h-segment cursor-pointer items-center gap-0 whitespace-nowrap rounded-sm border border-transparent px-3 t-label text-text-muted ' +
   'transition-colors duration-fast hover:bg-segment-hover hover:text-text ' +
-  'aria-selected:border-control-border aria-selected:bg-panel aria-selected:font-medium aria-selected:text-text ' +
-  'aria-selected:hover:bg-panel';
+  'aria-selected:font-medium aria-selected:text-text aria-selected:hover:bg-transparent';
 
 /**
  * The mode row (DESIGN v2 3.2, ADR-102): Lesen, Kommentieren, Ausfüllen & Signieren, Seiten, Bearbeiten as a segmented control (DESIGN 3.5 B3) on the Sand bar it shares with the tool row, 40 high. Left and
@@ -31,6 +31,8 @@ export const ModeRow = memo(function ModeRow() {
   const t = useT();
   const mode = useUi((state) => state.mode);
   useModeEffects();
+  const track = useRef<HTMLDivElement>(null);
+  const pill = useGlidePill(track, '[role="tab"][aria-selected="true"]', mode, '--motion-fast');
 
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     if (!isOwnEvent(event.currentTarget, event) || event.altKey || event.ctrlKey || event.metaKey) return;
@@ -50,7 +52,17 @@ export const ModeRow = memo(function ModeRow() {
       onKeyDown={onKeyDown}
       className="bg-subtle flex h-mode-row min-w-0 items-center px-4"
     >
-      <div className="flex h-control-sm min-w-0 items-center gap-[calc(var(--space-1)/2)] rounded-md p-[calc(var(--space-1)/2)] shadow-(--segment-track-edge)">
+      <div
+        ref={track}
+        className="relative isolate flex h-control-sm min-w-0 items-center gap-[calc(var(--space-1)/2)] rounded-md p-[calc(var(--space-1)/2)] shadow-(--segment-track-edge)"
+      >
+        <span
+          ref={pill}
+          aria-hidden="true"
+          data-glide-pill="mode"
+          className="pointer-events-none absolute start-0 top-0 -z-10 rounded-sm border border-control-border bg-panel"
+          style={{ opacity: 0 }}
+        />
         {MODES.map((id: Mode) => {
           const selected = id === mode;
           return (
