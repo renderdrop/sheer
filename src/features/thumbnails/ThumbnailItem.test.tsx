@@ -97,6 +97,14 @@ describe('the cell', () => {
     expect(cell.style.height).toBe('235px');
   });
 
+  it('shows the PDF page label in place of the number, and names the option by it', () => {
+    const { scheduler } = fixture();
+    setup(item(scheduler, { label: 'iii' }));
+    const cell = screen.getByRole('option', { name: 'Page iii' });
+    expect(cell.textContent).toBe('iii');
+    expect(cell.getAttribute('aria-posinset')).toBe('3');
+  });
+
   it('has a placeholder of the size of the page before any image is there', () => {
     const { scheduler } = fixture();
     setup(item(scheduler, { thumbWidth: 120, thumbHeight: 90 }));

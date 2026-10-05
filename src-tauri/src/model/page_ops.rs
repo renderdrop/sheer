@@ -149,6 +149,15 @@ impl PagePlan {
     }
 }
 
+/// Whether the labels of a file say more than the page number: PDFium answers "1", "2", ... for a file without `/PageLabels`, and a
+/// label that is only the original number would be wrong once pages are moved.
+fn has_real_labels(labels: &[Option<String>]) -> bool {
+    labels
+        .iter()
+        .enumerate()
+        .any(|(i, l)| l.as_deref().is_some_and(|l| l != (i + 1).to_string()))
+}
+
 impl DocState {
     /// The pages in order.
     pub fn pages(&self) -> &[PageSlot] {
@@ -157,7 +166,21 @@ impl DocState {
 
     /// What the UI is told about the pages, in order.
     pub fn page_infos(&self) -> Vec<PageSlotInfo> {
-        self.pages.iter().map(PageSlot::info).collect()
+        let labels = self.page_labels.as_deref().filter(|l| has_real_labels(l));
+        self.pages
+            .iter()
+            .map(|slot| {
+                let mut info = slot.info();
+                if let (Some(labels), PageSource::File { index }) = (labels, &slot.source) {
+                    info.label = usize::try_from(*index)
+                        .ok()
+                        .and_then(|i| labels.get(i))
+                        .and_then(|label| label.clone())
+                        .filter(|label| !label.trim().is_empty());
+                }
+                info
+            })
+            .collect()
     }
 
     /// The slot of a page.
@@ -943,5 +966,24 @@ mod tests {
         assert_eq!(at(&state), (22.0, 70.0));
         state.undo(&stamp()).unwrap();
         assert_eq!(at(&state), (72.0, 100.0));
+    }
+
+    #[test]
+    fn labels_follow_the_file_pages_and_plain_numbers_are_none() {
+        let mut state = DocState::new(3);
+        state.page_labels = Some(vec![Some("i".into()), Some("ii".into()), Some("1".into())]);
+        let labels: Vec<_> = state.page_infos().into_iter().map(|i| i.label).collect();
+        assert_eq!(
+            labels,
+            vec![
+                Some("i".to_owned()),
+                Some("ii".to_owned()),
+                Some("1".to_owned())
+            ]
+        );
+        state.page_labels = Some(vec![Some("1".into()), Some("2".into()), Some("3".into())]);
+        assert!(state.page_infos().iter().all(|i| i.label.is_none()));
+        state.page_labels = None;
+        assert!(state.page_infos().iter().all(|i| i.label.is_none()));
     }
 }

@@ -208,6 +208,8 @@ export function Slider({
       <Field
         size="sm"
         align="end"
+        // px-2: the sm field is 56 wide, and a value with a unit ("100 %") must not be cut by the 12 px padding.
+        className="px-2!"
         id={fieldId}
         type="text"
         inputMode="decimal"

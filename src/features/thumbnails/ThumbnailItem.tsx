@@ -103,6 +103,8 @@ export interface ThumbnailItemProps {
   /** The page's id and its revision (`PageSlotInfo`): the cell shows the page that sits at `index`, whichever it is. Default: the file's page. */
   pageId?: number;
   pageRev?: number;
+  /** The page's PDF page label (`PageSlotInfo.label`), shown in place of the number; empty: the number. */
+  label?: string;
   pageCount: number;
   /** Where the cell sits in the list and how tall it is, in px. */
   top: number;
@@ -144,6 +146,7 @@ export const ThumbnailItem = memo(function ThumbnailItem({
   index,
   pageId = index,
   pageRev = 0,
+  label = '',
   pageCount,
   top,
   height,
@@ -208,6 +211,7 @@ export const ThumbnailItem = memo(function ThumbnailItem({
   }, [active, scheduler, cache, docId, pageId, pageRev, bucket, version]);
 
   const tabStop = focusStop ?? selected;
+  const shownLabel = label === '' ? String(index + 1) : label;
 
   if (ghost) {
     return (
@@ -220,7 +224,7 @@ export const ThumbnailItem = memo(function ThumbnailItem({
       >
         <ThumbnailCard pageId={pageId} width={thumbWidth} height={thumbHeight} image={shownImage} />
         <span className="inline-flex h-4 min-w-6 items-center justify-center rounded-pill px-2 text-xs tabular-nums text-text">
-          {index + 1}
+          {shownLabel}
         </span>
       </div>
     );
@@ -232,7 +236,7 @@ export const ThumbnailItem = memo(function ThumbnailItem({
       role="option"
       aria-selected={selected}
       aria-current={selected ? 'page' : undefined}
-      aria-label={t('thumbnails.page', { page: index + 1 })}
+      aria-label={t('thumbnails.page', { page: shownLabel })}
       aria-posinset={index + 1}
       aria-setsize={pageCount}
       data-index={index}
@@ -262,7 +266,7 @@ export const ThumbnailItem = memo(function ThumbnailItem({
           selected ? 'bg-accent font-semibold text-on-accent' : 'text-text',
         )}
       >
-        {index + 1}
+        {shownLabel}
       </span>
     </div>
   );

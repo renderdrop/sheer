@@ -13,6 +13,7 @@ export function OrganizeBar() {
   return (
     <div className="flex h-control-lg shrink-0 items-center justify-end px-4">
       <Slider
+        className="shrink-0"
         label={t('organize.size')}
         hideLabel
         value={thumb}

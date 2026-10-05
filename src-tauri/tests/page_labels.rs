@@ -134,3 +134,37 @@ fn page_one_gives_title_year_and_doi() {
     assert!(state.engine().first_page_hints(id, 9).is_err());
     state.close_document(id).unwrap();
 }
+
+#[test]
+fn get_pages_fills_the_label_of_every_page_from_the_file() {
+    let Some(state) = state() else { return };
+    let bytes = document(
+        &blank(4),
+        "/PageLabels << /Nums [0 << /S /r >> 2 << /S /D >> ] >>",
+    );
+    let (id, _file) = open(state, "labels-pages.pdf", &bytes);
+    let labels: Vec<Option<String>> = state
+        .pages(id)
+        .unwrap()
+        .into_iter()
+        .map(|page| page.label)
+        .collect();
+    let expected: Vec<Option<String>> = ["i", "ii", "1", "2"]
+        .iter()
+        .map(|s| Some((*s).to_owned()))
+        .collect();
+    assert_eq!(labels, expected);
+    state.close_document(id).unwrap();
+}
+
+#[test]
+fn get_pages_has_no_labels_for_a_file_without_them() {
+    let Some(state) = state() else { return };
+    let (id, _file) = open(state, "no-labels-pages.pdf", &document(&blank(3), ""));
+    assert!(state
+        .pages(id)
+        .unwrap()
+        .iter()
+        .all(|page| page.label.is_none()));
+    state.close_document(id).unwrap();
+}

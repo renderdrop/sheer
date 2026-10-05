@@ -6,13 +6,11 @@ import { useTips } from './store';
 
 /** Tips already decided on in this session: the setting may fail to write (or not exist yet), and a tip must still never repeat. */
 const session = new Set<string>();
-/** Tips shown in this session; capped by `MAX_TIPS_PER_SESSION` and not reset by "Show tips again". */
-let shown = 0;
 
 /** For tests: forgets the session's tips and its count. */
 export function resetSession(): void {
   session.clear();
-  shown = 0;
+  useTips.getState().resetSession();
 }
 
 /** Whether the tool or mode of the tip is still the one that is on. */
@@ -32,7 +30,7 @@ export async function maybeShowTip(): Promise<void> {
     loaded: settings.loaded,
     seen: settings.tipsSeen ?? [],
     session,
-    shownCount: shown,
+    shownCount: useTips.getState().shownCount,
     tourRunning: useTour.getState().docId !== null,
     tipVisible: useTips.getState().current !== null,
   };
@@ -41,7 +39,6 @@ export async function maybeShowTip(): Promise<void> {
   await settings.update({ tipsSeen: withSeen(context.seen, id) });
   // The tool may have been released while the write was in flight: then there is nothing to point at.
   if (stillOn(id) && useTour.getState().docId === null && useTips.getState().current === null) {
-    shown += 1;
     useTips.getState().show(id);
   }
 }

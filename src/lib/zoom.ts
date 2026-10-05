@@ -41,6 +41,14 @@ export function stepZoom(zoom: number, direction: 1 | -1): number {
  */
 export const FIT_SCROLLBAR_PX = 16;
 
+/**
+ * A fit zoom rounded DOWN to a thousandth: the zoom is stored and applied with limited precision, and rounding to nearest could make a
+ * page that fits a fraction of a pixel too wide, which brings a horizontal scrollbar. The epsilon keeps an exact fit exact.
+ */
+export function floorFit(zoom: number): number {
+  return clampZoom(Math.floor(zoom * 1000 + 1e-6) / 1000);
+}
+
 function isPositive(value: number): boolean {
   return Number.isFinite(value) && value > 0;
 }
@@ -51,7 +59,7 @@ function isPositive(value: number): boolean {
  */
 export function fitWidthZoom(viewportWidthPx: number, pageWidthPt: number): number | null {
   if (!isPositive(viewportWidthPx) || !isPositive(pageWidthPt)) return null;
-  return clampZoom(Math.max(0, viewportWidthPx - FIT_SCROLLBAR_PX) / (pageWidthPt * CSS_PX_PER_PT));
+  return floorFit(Math.max(0, viewportWidthPx - FIT_SCROLLBAR_PX) / (pageWidthPt * CSS_PX_PER_PT));
 }
 
 /**
@@ -66,7 +74,7 @@ export function fitPageZoom(
   pageHeightPt: number,
 ): number | null {
   if (![viewportWidthPx, viewportHeightPx, pageWidthPt, pageHeightPt].every(isPositive)) return null;
-  return clampZoom(
+  return floorFit(
     Math.min(viewportWidthPx / (pageWidthPt * CSS_PX_PER_PT), viewportHeightPx / (pageHeightPt * CSS_PX_PER_PT)),
   );
 }

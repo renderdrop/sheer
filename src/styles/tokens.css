@@ -433,7 +433,7 @@
   --scrollbar-size: 8px;
   --scrollbar-inset: 2px;
   --empty-max-width: 560px; /* the empty state's column */
-  --tab-min: 96px;
+  --tab-min: 128px;
   --tab-max: 200px;
   --dialog-width: 400px; /* the password prompt */
   --sheet-width: 560px; /* the merge sheet */

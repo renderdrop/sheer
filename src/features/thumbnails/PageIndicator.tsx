@@ -1,3 +1,4 @@
+import { useIsPresent } from 'motion/react';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 
 import { useView } from '../../stores/view';
@@ -61,9 +62,17 @@ export function PageIndicator({ docId, layout, viewportHeight }: Props) {
     return () => clearTimeout(timer);
   }, [n, live]);
 
+  // While the sidebar slides out the list is in a clipped, shrinking slot: the indicator keeps its last size and place instead of following it.
+  const present = useIsPresent();
+  const measured = layout.count > 0 ? layout.thumbnailSize(index) : { width: 0, height: 0 };
+  const [frozen, setFrozen] = useState({ top, width: measured.width, height: measured.height });
+  if (present && (frozen.top !== top || frozen.width !== measured.width || frozen.height !== measured.height)) {
+    setFrozen({ top, width: measured.width, height: measured.height });
+  }
   if (layout.count === 0) return null;
-  const size = layout.thumbnailSize(index);
-  const mode: Mode = state.live ? state.mode : 'still';
+  const size = present ? measured : frozen;
+  const placeTop = present ? top : frozen.top;
+  const mode: Mode = state.live && present ? state.mode : 'still';
   return (
     <div
       ref={ref}
@@ -71,7 +80,7 @@ export function PageIndicator({ docId, layout, viewportHeight }: Props) {
       data-thumb-indicator=""
       data-mode={mode}
       className="pointer-events-none absolute inset-x-0 top-0 flex justify-center"
-      style={{ transform: `translateY(${top}px)` }}
+      style={{ transform: `translateY(${placeTop}px)`, ...(present ? {} : { transition: 'none' }) }}
     >
       <div
         className="box-border rounded-sm border-2 border-accent"

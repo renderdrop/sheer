@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { formatPageTotal, formatZoomStatus, parsePageInput } from './format';
+import { formatPageTotal, formatZoomStatus, pageLabelOf, parsePageInput, parsePageTarget } from './format';
 
 describe('top bar formats', () => {
   it('formats the page total and the zoom', () => {
@@ -18,5 +18,23 @@ describe('top bar formats', () => {
     expect(parsePageInput('2x', 12)).toBeNull();
     expect(parsePageInput('', 12)).toBeNull();
     expect(parsePageInput('1234567', 12)).toBeNull();
+  });
+});
+
+describe('page labels in the page field', () => {
+  const labels = ['i', 'ii', '1', '2', null];
+  it('shows the label, else the number', () => {
+    expect(pageLabelOf('ii', 1)).toBe('ii');
+    expect(pageLabelOf(null, 4)).toBe('5');
+    expect(pageLabelOf('  ', 0)).toBe('1');
+  });
+  it('goes to a typed label before a number', () => {
+    expect(parsePageTarget('II', 5, labels)).toBe(1);
+    expect(parsePageTarget('1', 5, labels)).toBe(2);
+    expect(parsePageTarget('5', 5, labels)).toBe(4);
+    expect(parsePageTarget('3', 5, labels)).toBe(2);
+    expect(parsePageTarget('zz', 5, labels)).toBeNull();
+    expect(parsePageTarget('', 5, labels)).toBeNull();
+    expect(parsePageTarget('4', 5, [])).toBe(3);
   });
 });

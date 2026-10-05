@@ -7,7 +7,7 @@ import { phaseOf } from './SolarGlow';
 afterEach(() => vi.restoreAllMocks());
 
 describe('ambient glow (MOTION spell 11)', () => {
-  it('pauses while the document is hidden or the window unfocused and resumes after', () => {
+  it('pauses while the document is hidden and resumes after; focus and blur do not matter', () => {
     let hidden = false;
     let focused = true;
     vi.spyOn(document, 'hidden', 'get').mockImplementation(() => hidden);
@@ -23,7 +23,7 @@ describe('ambient glow (MOTION spell 11)', () => {
     expect(root.getAttribute('data-ambient')).toBeNull();
     focused = false;
     window.dispatchEvent(new Event('blur'));
-    expect(root.getAttribute('data-ambient')).toBe('paused');
+    expect(root.getAttribute('data-ambient')).toBeNull();
     focused = true;
     window.dispatchEvent(new Event('focus'));
     expect(root.getAttribute('data-ambient')).toBeNull();
@@ -32,7 +32,7 @@ describe('ambient glow (MOTION spell 11)', () => {
   });
 
   it('is reference counted and leaves no attribute behind', () => {
-    vi.spyOn(document, 'hasFocus').mockReturnValue(false);
+    vi.spyOn(document, 'hidden', 'get').mockReturnValue(true);
     const a = watchAmbient();
     const b = watchAmbient();
     expect(document.documentElement.getAttribute('data-ambient')).toBe('paused');

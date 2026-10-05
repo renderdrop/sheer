@@ -42,6 +42,8 @@ import { selectionOf, useOrganize } from './store';
 /** Pixels the pointer must travel from a page before a drag begins (DESIGN 3.28). */
 export const DRAG_THRESHOLD_PX = 4;
 /** Within this many px of the scroller's top or bottom edge a drag scrolls it. */
+/** How long after the last change of the grid's width the cells slide again. */
+const RESIZE_SETTLE_MS = 120;
 const EDGE_PX = 48;
 const MAX_SCROLL_PER_FRAME = 24;
 
@@ -104,6 +106,10 @@ export function OrganizeGrid({ docId, scheduler }: OrganizeGridProps) {
   const [spacing] = useState(readSpacing);
   const scroller = useRef<HTMLDivElement | null>(null);
   const [box, setBox] = useState({ width: 0, height: 0 });
+  // The grid's width is changing (the sidebar slides, the window is dragged): the cells follow it at once. Their slide is for a change of the order, and
+  // a slide on top of a changing width makes them cross each other mid-FLIP.
+  const [resizing, setResizing] = useState(false);
+  const resizeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [scrollTop, setScrollTop] = useState(0);
   const [drag, setDrag] = useState<Drag | null>(null);
   const [insertion, setInsertion] = useState<Insertion | null>(null);
@@ -131,10 +137,21 @@ export function OrganizeGrid({ docId, scheduler }: OrganizeGridProps) {
     if (region === null) return;
     const observer = new ResizeObserver(() => {
       const next = { width: region.clientWidth, height: region.clientHeight };
-      setBox((previous) => (previous.width === next.width && previous.height === next.height ? previous : next));
+      setBox((previous) => {
+        if (previous.width === next.width && previous.height === next.height) return previous;
+        if (previous.width !== next.width) {
+          setResizing(true);
+          if (resizeTimer.current !== null) clearTimeout(resizeTimer.current);
+          resizeTimer.current = setTimeout(() => setResizing(false), RESIZE_SETTLE_MS);
+        }
+        return next;
+      });
     });
     observer.observe(region);
-    return () => observer.disconnect();
+    return () => {
+      observer.disconnect();
+      if (resizeTimer.current !== null) clearTimeout(resizeTimer.current);
+    };
   }, []);
 
   // The focus is always a page that exists (a delete or an undo may have taken it).
@@ -516,6 +533,7 @@ export function OrganizeGrid({ docId, scheduler }: OrganizeGridProps) {
               dragged={draggedSet.has(slot.id)}
               pulseKey={pulseState.ids.includes(slot.id) ? pulseState.nonce : 0}
               readOnly={readOnly}
+              slide={!resizing}
               scheduler={scheduler}
             />
           );

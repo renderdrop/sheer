@@ -1,10 +1,10 @@
 /**
- * Ambient glow pause (MOTION spell 11): the drift and the splash breathe loops stop while the window is hidden or unfocused. One
+ * Ambient glow pause (MOTION spell 11): the drift and the splash breathe loops stop while the document is hidden (visibility only: Tauri focus events do not pause the glow). One
  * attribute on the root (`data-ambient="paused"`) is what the CSS reads, so no glow re-renders. Reference counted: the first
  * glow that mounts installs the listeners, the last one that unmounts removes them.
  */
 export function ambientPaused(doc: Document): boolean {
-  return doc.hidden || !doc.hasFocus();
+  return doc.hidden;
 }
 
 let users = 0;
@@ -16,15 +16,10 @@ function install(doc: Document): () => void {
     if (ambientPaused(doc)) root.setAttribute('data-ambient', 'paused');
     else root.removeAttribute('data-ambient');
   };
-  const view = doc.defaultView;
   doc.addEventListener('visibilitychange', apply);
-  view?.addEventListener('blur', apply);
-  view?.addEventListener('focus', apply);
   apply();
   return () => {
     doc.removeEventListener('visibilitychange', apply);
-    view?.removeEventListener('blur', apply);
-    view?.removeEventListener('focus', apply);
     root.removeAttribute('data-ambient');
   };
 }

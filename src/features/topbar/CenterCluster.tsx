@@ -7,12 +7,13 @@ import { useT } from '../../i18n';
 import { selectActiveId, useDocuments } from '../../stores/documents';
 import { useSettings } from '../../stores/settings';
 import { useUi } from '../../stores/ui';
+import { useSlots } from '../../stores/pages';
 import { useDocView } from '../../stores/view';
 import { FIND_KEYS_ATTRIBUTE } from '../search/commands';
 import { useActionState } from '../shell/useActionState';
 import { useViewer } from '../viewer/useViewer';
 import { zoomEntries } from './entries';
-import { formatPageTotal, formatZoomStatus, parsePageInput } from './format';
+import { formatPageTotal, formatZoomStatus, pageLabelOf, parsePageTarget } from './format';
 import { useGoToPage } from './goToState';
 
 /** The zoom dropdown, 88 x 36: the value (tabular) and a chevron; it opens zoom, scroll mode and view rotation. */
@@ -58,6 +59,10 @@ function PageField() {
   const t = useT();
   const docId = useDocuments(selectActiveId);
   const { pageIndex, pageCount } = useDocView(docId);
+  const slots = useSlots(docId);
+  const labels = useMemo(() => slots.map((slot) => slot.label), [slots]);
+  const hasLabels = labels.some((label) => label !== null);
+  const shown = pageLabelOf(slots[pageIndex]?.label, pageIndex);
   const goToPage = useViewer((state) => state.goToPage);
   const requested = useGoToPage((state) => state.open);
   const setRequested = useGoToPage((state) => state.setOpen);
@@ -83,7 +88,7 @@ function PageField() {
       event.currentTarget.blur();
     } else if (event.key === 'Enter') {
       event.preventDefault();
-      const page = parsePageInput(draft ?? String(pageIndex + 1), pageCount);
+      const page = parsePageTarget(draft ?? shown, pageCount, labels);
       if (page === null) {
         setInvalid(true);
         return;
@@ -99,7 +104,7 @@ function PageField() {
         ref={input}
         data-tour-anchor="topbar-page-field"
         type="text"
-        inputMode="numeric"
+        inputMode={hasLabels ? 'text' : 'numeric'}
         autoComplete="off"
         spellCheck={false}
         {...{ [FIND_KEYS_ATTRIBUTE]: '' }}
@@ -108,7 +113,7 @@ function PageField() {
         aria-invalid={invalid || undefined}
         disabled={pageCount === 0}
         className="w-field! px-2! tabular-nums"
-        value={draft ?? String(pageIndex + 1)}
+        value={draft ?? shown}
         onChange={(event) => {
           setDraft(event.target.value);
           setInvalid(false);
@@ -117,7 +122,11 @@ function PageField() {
         onBlur={reset}
         onKeyDown={onKeyDown}
       />
-      <span className="t-label text-text-muted tabular-nums">{formatPageTotal(pageCount, t.locale)}</span>
+      <span className="t-label text-text-muted tabular-nums">
+        {hasLabels
+          ? `(${pageIndex + 1} ${formatPageTotal(pageCount, t.locale)})`
+          : formatPageTotal(pageCount, t.locale)}
+      </span>
     </div>
   );
 }

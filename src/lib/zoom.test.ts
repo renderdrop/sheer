@@ -9,6 +9,7 @@ import {
   MIN_ZOOM,
   clampZoom,
   fitPageZoom,
+  floorFit,
   fitWidthZoom,
   formatZoom,
   stepZoom,
@@ -42,6 +43,21 @@ describe('zoom steps', () => {
 });
 
 describe('fit zoom', () => {
+  it('rounds down so a fitted page is never wider than the viewport', () => {
+    expect(floorFit(0.97319)).toBe(0.973);
+    expect(floorFit(1)).toBe(1);
+    for (const [viewport, page] of [
+      [800, 595],
+      [957, 612],
+      [1233, 841.9],
+    ] as const) {
+      const zoom = fitWidthZoom(viewport, page) ?? 0;
+      expect(page * CSS_PX_PER_PT * zoom).toBeLessThanOrEqual(viewport - FIT_SCROLLBAR_PX);
+      const whole = fitPageZoom(viewport, 5000, page, 792) ?? 0;
+      expect(page * CSS_PX_PER_PT * whole).toBeLessThanOrEqual(viewport);
+    }
+  });
+
   // A US Letter page (612 x 792 pt) is 816 x 1056 CSS px at 100 %.
   it('fit width fills the width less the scrollbar allowance', () => {
     expect(fitWidthZoom(816 + FIT_SCROLLBAR_PX, 612)).toBeCloseTo(1);

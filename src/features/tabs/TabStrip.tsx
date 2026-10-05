@@ -14,9 +14,12 @@ import { closeTab, cycleTab } from './nav';
 
 /** Names longer than this are cut in the middle, so both the start and the extension stay readable. */
 export const MAX_TAB_CHARS = 28;
+/** A name is never cut below this many characters (counting the ellipsis): no unreadable stubs. */
+export const MIN_TAB_CHARS = 8;
 
 /** `name` shortened in the middle to at most `max` characters (counting the ellipsis). */
-export function middleTruncate(name: string, max = MAX_TAB_CHARS): string {
+export function middleTruncate(name: string, requested = MAX_TAB_CHARS): string {
+  const max = Math.max(MIN_TAB_CHARS, requested);
   const chars = Array.from(name);
   if (chars.length <= max) return name;
   const keep = max - 1;
@@ -56,7 +59,7 @@ function useOverflow(strip: React.RefObject<HTMLDivElement | null>, count: numbe
 }
 
 /**
- * The document tabs (DESIGN v2 3.2, 2.8), in the top bar from two open documents on: 28 high, 96 to 200 wide, the close x on hover or for the active tab, the active tab in Ink with a 2 px Solar underline. Click
+ * The document tabs (DESIGN v2 3.2, 2.8), in the top bar from two open documents on: 28 high, 128 to 200 wide, the close x on hover or for the active tab, the active tab in Ink with a 2 px Solar underline. Click
  * selects, middle click or the x closes, Left and Right move with automatic activation, Delete closes the focused tab. The strip
  * scrolls when the tabs reach their minimum width and then offers a menu of all documents. No drag reorder in M1.
  */

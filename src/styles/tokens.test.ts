@@ -357,7 +357,7 @@ describe('widths and the left panel (DESIGN 1.3)', () => {
     '--splitter-width': '8px',
     '--outline-indent': '16px',
     '--outline-indent-max': '64px',
-    '--tab-min': '96px',
+    '--tab-min': '128px',
     '--tab-max': '200px',
     '--dialog-width': '400px',
     '--toast-height': '40px',

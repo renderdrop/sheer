@@ -53,6 +53,8 @@ export interface OrganizeCellProps {
   readOnly?: boolean;
   /** The page was deleted: the cell leaves (rotates 6 degrees and fades out, MOTION spell 9) and takes no input. */
   ghost?: boolean;
+  /** The cell slides to a new place (default); false while the grid's width is changing, so the cells follow it without crossing. */
+  slide?: boolean;
   scheduler?: RenderScheduler;
 }
 
@@ -80,6 +82,7 @@ export const OrganizeCell = memo(function OrganizeCell({
   pulseKey,
   readOnly = false,
   ghost = false,
+  slide = true,
   scheduler = renderScheduler,
 }: OrganizeCellProps) {
   const t = useT();
@@ -152,7 +155,12 @@ export const OrganizeCell = memo(function OrganizeCell({
         'group absolute start-0 top-0 flex select-none flex-col items-center gap-2 rounded-sm p-1',
         ghost
           ? 'pointer-events-none'
-          : 'touch-none cursor-pointer transition-[transform,opacity,background-color] duration-base ease-out',
+          : cx(
+              'touch-none cursor-pointer ease-out',
+              slide
+                ? 'transition-[transform,opacity,background-color] duration-base'
+                : 'transition-[opacity,background-color] duration-base',
+            ),
         dragged && 'opacity-40',
       )}
       style={{ transform: `translate(${left}px, ${top}px)`, width, height }}

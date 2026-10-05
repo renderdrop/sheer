@@ -13,7 +13,8 @@ const FADE_SHARE = 0.6;
 export function usePanelSlide(side: 'start' | 'end', width: number): EnterExit {
   const reduce = useReducedMotion() === true;
   const fade = usePanelFade();
-  if (reduce) return fade;
+  // The track changes in one step under reduced motion: a panel that still fades out would leave an empty column for those frames, so it goes at once.
+  if (reduce) return { ...fade, exit: { opacity: 0, transition: spring(0) } };
   const from = (side === 'start' ? -1 : 1) * width;
   return {
     initial: { x: from, opacity: 0 },

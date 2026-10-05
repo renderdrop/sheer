@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import type { PageSize } from '../../api/render';
-import { CSS_PX_PER_PT, FIT_SCROLLBAR_PX, MAX_ZOOM, MIN_ZOOM } from '../../lib/zoom';
+import { CSS_PX_PER_PT, FIT_SCROLLBAR_PX, MAX_ZOOM, MIN_ZOOM, floorFit } from '../../lib/zoom';
 import {
   EMPTY_WINDOW,
   MAX_MOUNTED_PAGES,
@@ -701,7 +701,7 @@ describe('fit width and fit page follow the size of the viewport', () => {
       for (const width of [500, 640, 800, 1000, 1280, 1600, 1920]) {
         const zoom = fitZoomFor('width', metrics, 0, { width, height: 900 }, GAP);
         const wanted = (width - gap - FIT_SCROLLBAR_PX) / (rowPt * CSS_PX_PER_PT);
-        expect(zoom, `${mode} at ${width}`).toBeCloseTo(Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, wanted)), 9);
+        expect(zoom, `${mode} at ${width}`).toBeCloseTo(floorFit(wanted), 9);
       }
     }
   });
@@ -712,9 +712,9 @@ describe('fit width and fit page follow the size of the viewport', () => {
     const zoom = height / (792 * CSS_PX_PER_PT);
     const crossover = 612 * CSS_PX_PER_PT * zoom;
     expect(fitZoomFor('page', metrics, 0, { width: crossover - 40, height }, GAP) ?? 0).toBeLessThan(zoom);
-    expect(fitZoomFor('page', metrics, 0, { width: crossover, height }, GAP)).toBeCloseTo(zoom, 9);
-    expect(fitZoomFor('page', metrics, 0, { width: crossover + 400, height }, GAP)).toBeCloseTo(zoom, 9);
-    expect(fitZoomFor('page', metrics, 0, { width: 100_000, height }, GAP)).toBeCloseTo(zoom, 9);
+    expect(fitZoomFor('page', metrics, 0, { width: crossover, height }, GAP)).toBeCloseTo(zoom, 2);
+    expect(fitZoomFor('page', metrics, 0, { width: crossover + 400, height }, GAP)).toBeCloseTo(zoom, 2);
+    expect(fitZoomFor('page', metrics, 0, { width: 100_000, height }, GAP)).toBeCloseTo(zoom, 2);
   });
 
   it('is made again, not kept, when the window is resized to nothing and back', () => {

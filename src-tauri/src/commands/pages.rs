@@ -72,6 +72,8 @@ fn read_source(path: &std::path::Path) -> Result<(Vec<u8>, String), AppError> {
 impl AppState {
     /// The pages of document `id` in their current order.
     pub fn pages(&self, id: DocumentId) -> Result<Vec<PageSlotInfo>, AppError> {
+        // The labels are read once (a failed read is cached as none) so `page_infos` can fill `label` from the model.
+        let _ = self.page_labels(id);
         self.model(id, |state| Ok(state.page_infos()))
     }
 

@@ -6,7 +6,7 @@ import { resetDocuments } from '../../stores/documents.testutil';
 import { useDocuments } from '../../stores/documents';
 import { setup } from '../../test/render';
 import { cycleTab } from './nav';
-import { MAX_TAB_CHARS, middleTruncate, TabStrip } from './TabStrip';
+import { MAX_TAB_CHARS, MIN_TAB_CHARS, middleTruncate, TabStrip } from './TabStrip';
 
 const closeSpy = vi.hoisted(() => vi.fn());
 vi.mock('../viewer/useViewer', () => ({
@@ -36,6 +36,13 @@ beforeEach(() => {
 });
 
 describe('middleTruncate', () => {
+  it('never cuts below a readable minimum and keeps an ellipsis', () => {
+    const cut = middleTruncate('Willkommen-Dokument.pdf', 2);
+    expect(Array.from(cut)).toHaveLength(MIN_TAB_CHARS);
+    expect(cut).toContain('…');
+    expect(cut.endsWith('pdf')).toBe(true);
+  });
+
   it('keeps short names and cuts long ones in the middle, keeping the end', () => {
     expect(middleTruncate('a.pdf')).toBe('a.pdf');
     const long = `${'x'.repeat(40)}-final.pdf`;

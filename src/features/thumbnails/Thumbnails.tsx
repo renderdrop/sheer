@@ -214,6 +214,7 @@ export function ThumbnailList({ docId, pageCount, scheduler }: ThumbnailListProp
       ? {
           index,
           rev: slot.rev,
+          label: slot.label ?? '',
           top: layout.top(index),
           height: layout.cellHeight(index),
           width: layout.thumbnailSize(index).width,
@@ -336,6 +337,7 @@ export function ThumbnailList({ docId, pageCount, scheduler }: ThumbnailListProp
               index={index}
               pageId={slots[index]?.id ?? index}
               pageRev={slots[index]?.rev ?? 0}
+              label={slots[index]?.label ?? ''}
               pageCount={pageCount}
               top={layout.top(index)}
               height={layout.cellHeight(index)}
@@ -358,6 +360,7 @@ export function ThumbnailList({ docId, pageCount, scheduler }: ThumbnailListProp
             index={ghost.data.index}
             pageId={ghost.id}
             pageRev={ghost.data.rev}
+            label={ghost.data.label}
             pageCount={pageCount}
             top={ghost.data.top}
             height={ghost.data.height}
