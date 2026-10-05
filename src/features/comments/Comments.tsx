@@ -27,6 +27,7 @@ import {
   filterThreads,
   isFiltering,
   offsetsOf,
+  pruneHeights,
   sortThreads,
   windowOf,
   type Row,
@@ -182,11 +183,26 @@ export function CommentsList({ docId, entry }: { docId: number; entry: Ready }) 
     [],
   );
 
+  // A row that is gone (a deleted comment, an emptied page) takes its measured height with it: nothing may be placed by it later.
+  const liveKeys = useMemo(
+    () => new Set(entry.threads.flatMap((th) => [`a${th.root.id}`, `g${th.root.pageId}`])),
+    [entry.threads],
+  );
+  const prunedHeights = pruneHeights(heights, liveKeys);
+  if (prunedHeights !== heights) setHeights(prunedHeights);
+
   const offsets = useMemo(
     () => offsetsOf(rows, (row) => heights.get(row.key) ?? (row.type === 'group' ? base.group : base.card)),
     [rows, base, heights],
   );
   const rowIndexOf = useMemo(() => new Map(rows.map((row, i) => [row.key, i])), [rows]);
+
+  // A shorter list (a delete) makes the browser clamp the scroll position: the mounted window follows what is really shown.
+  const totalHeight = offsets[offsets.length - 1];
+  useLayoutEffect(() => {
+    const region = scrollerRef.current;
+    if (region !== null && region.scrollTop !== scrollTop) setScrollTop(region.scrollTop);
+  }, [totalHeight]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     const region = scrollerRef.current;

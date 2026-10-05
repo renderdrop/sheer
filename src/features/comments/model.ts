@@ -360,3 +360,17 @@ export function windowOf(
   while (last + 1 < count && (offsets[last + 1] as number) < to) last += 1;
   return { first, last };
 }
+
+/** The measured heights without the rows that are gone (a deleted card or an emptied page); the same map when nothing is. */
+export function pruneHeights(
+  heights: ReadonlyMap<string, number>,
+  keep: ReadonlySet<string>,
+): ReadonlyMap<string, number> {
+  let next: Map<string, number> | null = null;
+  for (const key of heights.keys()) {
+    if (keep.has(key)) continue;
+    next ??= new Map(heights);
+    next.delete(key);
+  }
+  return next ?? heights;
+}

@@ -148,6 +148,15 @@ export function MarginColumn({ docId, layout, threads, mode, drawnSizes, rotatio
 
   const [focusId, setFocusId] = useState<number | null>(null);
   const [openId, setOpenId] = useState<number | null>(null);
+  // A deleted comment takes its measured height and any focus or open state with it; nothing stale pins or places the others.
+  const liveIds = new Set(items.map((item) => item.id));
+  for (const id of heights.keys()) {
+    if (liveIds.has(id)) continue;
+    setHeights(new Map([...heights].filter(([key]) => liveIds.has(key))));
+    break;
+  }
+  if (focusId !== null && !liveIds.has(focusId)) setFocusId(null);
+  if (openId !== null && !liveIds.has(openId)) setOpenId(null);
   const selectedRoot = useMemo(() => {
     if (selectedFirst === undefined) return null;
     return (

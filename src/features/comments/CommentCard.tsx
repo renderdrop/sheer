@@ -165,6 +165,13 @@ export const CommentCard = memo(function CommentCard({
   const hovered = useCommentHover((state) => state.hovered === root.id);
   const editing = useComments((state) => state.editing[docId]);
   const isEditing = editing?.id === root.id;
+  // A card that goes away under the pointer never gets its pointer leave: it must not stay the hovered comment.
+  useEffect(
+    () => () => {
+      if (useCommentHover.getState().hovered === root.id) useCommentHover.getState().hover(null);
+    },
+    [root.id],
+  );
   const info = typeOf(root);
   const isCite = root.cite === true;
   const quote = useQuote(docId, root.id, isTextMarkup(root.kind) && !isCite);

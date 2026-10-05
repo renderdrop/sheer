@@ -1,7 +1,17 @@
 import { describe, expect, it } from 'vitest';
 
 import type { AnnotationSummary } from '../../api/annotations';
-import { buildRows, buildThreads, facets, filterThreads, offsetsOf, parseDate, sortThreads, windowOf } from './model';
+import {
+  buildRows,
+  buildThreads,
+  facets,
+  filterThreads,
+  offsetsOf,
+  parseDate,
+  pruneHeights,
+  sortThreads,
+  windowOf,
+} from './model';
 
 const item = (id: number, over: Partial<AnnotationSummary> = {}): AnnotationSummary => ({
   id,
@@ -147,5 +157,19 @@ describe('mark and signature summaries (F11)', () => {
 
   it('keeps authorless marks out of an author filter', () => {
     expect(filterThreads(threads, { kinds: ['mark'], authors: ['Ann'], statuses: [] })).toEqual([]);
+  });
+});
+
+describe('pruneHeights', () => {
+  it('drops the heights of rows that are gone and keeps the map when none is', () => {
+    const heights = new Map([
+      ['a1', 100],
+      ['a2', 140],
+      ['g0', 24],
+    ]);
+    const kept = pruneHeights(heights, new Set(['a1', 'g0']));
+    expect([...kept.keys()]).toEqual(['a1', 'g0']);
+    expect(heights.has('a2')).toBe(true);
+    expect(pruneHeights(kept, new Set(['a1', 'g0', 'a9']))).toBe(kept);
   });
 });
