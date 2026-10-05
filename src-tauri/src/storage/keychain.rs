@@ -23,6 +23,9 @@ use zeroize::Zeroizing;
 pub const SERVICE: &str = "app.sheer.desktop";
 /// User name of the credential: the key of the library, version 1.
 pub const USER: &str = "signature-library-key-v1";
+/// User name of the credential that holds the key of the signing identities (ADR-121 section 3): a separate item, so deleting one key
+/// never locks the other store.
+pub const IDENTITIES_USER: &str = "signing-identities-key-v1";
 /// How long one call to the OS store may take.
 pub const DEADLINE: Duration = Duration::from_secs(60);
 /// Length of the key in bytes.
@@ -86,13 +89,18 @@ impl Keychain {
     /// The store of this platform (Keychain on macOS, Credential Manager on Windows), each call under the [`DEADLINE`]. Anywhere
     /// else, or when the store cannot be opened, the keychain is unavailable.
     pub fn platform() -> Self {
-        Self::with_deadline(platform_store(), DEADLINE)
+        Self::with_deadline(platform_store_for(SERVICE, USER), DEADLINE)
+    }
+
+    /// The store of this platform for the key of the signing identities ([`IDENTITIES_USER`]).
+    pub fn platform_identities() -> Self {
+        Self::with_deadline(platform_store_for(SERVICE, IDENTITIES_USER), DEADLINE)
     }
 
     /// The platform store under another service name (the real-store round-trip test only).
     #[cfg(test)]
     pub(crate) fn platform_for_service(service: &str) -> Self {
-        Self::with_deadline(platform_store_for(service), DEADLINE)
+        Self::with_deadline(platform_store_for(service, USER), DEADLINE)
     }
 
     /// `store` with every call limited to `deadline`.
@@ -255,20 +263,17 @@ impl SecretStore for EntryStore {
 fn entry_in(
     store: &dyn keyring_core::api::CredentialStoreApi,
     service: &str,
+    user: &str,
 ) -> Result<EntryStore, keyring_core::Error> {
     Ok(EntryStore {
-        entry: store.build(service, USER, None)?,
+        entry: store.build(service, user, None)?,
     })
 }
 
-fn platform_store() -> Box<dyn SecretStore> {
-    platform_store_for(SERVICE)
-}
-
 #[cfg(windows)]
-fn platform_store_for(service: &str) -> Box<dyn SecretStore> {
+fn platform_store_for(service: &str, user: &str) -> Box<dyn SecretStore> {
     match windows_native_keyring_store::Store::new()
-        .and_then(|store| entry_in(store.as_ref(), service))
+        .and_then(|store| entry_in(store.as_ref(), service, user))
     {
         Ok(store) => Box::new(store),
         Err(_) => Box::new(UnavailableStore),
@@ -276,9 +281,9 @@ fn platform_store_for(service: &str) -> Box<dyn SecretStore> {
 }
 
 #[cfg(target_os = "macos")]
-fn platform_store_for(service: &str) -> Box<dyn SecretStore> {
+fn platform_store_for(service: &str, user: &str) -> Box<dyn SecretStore> {
     match apple_native_keyring_store::keychain::Store::new()
-        .and_then(|store| entry_in(store.as_ref(), service))
+        .and_then(|store| entry_in(store.as_ref(), service, user))
     {
         Ok(store) => Box::new(store),
         Err(_) => Box::new(UnavailableStore),
@@ -287,7 +292,7 @@ fn platform_store_for(service: &str) -> Box<dyn SecretStore> {
 
 /// Linux builds are for development only: no store.
 #[cfg(not(any(windows, target_os = "macos")))]
-fn platform_store_for(_service: &str) -> Box<dyn SecretStore> {
+fn platform_store_for(_service: &str, _user: &str) -> Box<dyn SecretStore> {
     let _ = entry_in;
     Box::new(UnavailableStore)
 }
