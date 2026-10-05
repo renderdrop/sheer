@@ -300,12 +300,13 @@ new engine capability or dependency is needed. Not picked by the loop before v1.
 
 ### v1.3 "Citations"
 - [x] v1.3 spec — designer spec (citation annotation, metadata sheet, export formats, tag manager) (2026-10-05: DESIGN §3.7 with 24 acceptance criteria, ADR-119 data model + commands + package cut W0 → C1–C4 → F1–F4)
-- [ ] v1.3.1 — Select text → "Cite" creates a citation annotation with page number
-- [ ] v1.3.2 — Title, author, year read from the PDF (Info dict / XMP / first-page heuristic), editable per document
-- [ ] v1.3.3 — Export in APA, MLA, Chicago, DIN ISO 690 to the clipboard and as the document's citation list
-- [ ] v1.3.4 — Own categories/tags with colour for comments and citations
+- [x] v1.3.1 — Select text → "Cite" creates a citation annotation with page number (C1 dfcc0a8, F2 97cba77, rule in the appearance d15cac3; accepted in the installed build 2026-10-05)
+- [x] v1.3.2 — Title, author, year read from the PDF (Info dict / XMP / first-page heuristic), editable per document (C2 376d226, C3 df3e989, F3 885d219; accepted in the installed build 2026-10-05)
+- [x] v1.3.3 — Export in APA, MLA, Chicago, DIN ISO 690 to the clipboard and as the document's citation list (C4 ee64647, F1 3bffd59; accepted in the installed build 2026-10-05)
+- [x] v1.3.4 — Own categories/tags with colour for comments and citations (C4 ee64647, F4 40851fa, 94444b6; accepted in the installed build 2026-10-05)
 - [ ] v1.3 acceptance — installed build with the mouse, designer round, tag v1.3.0
   - (2026-10-05, round 1 in the installed NSIS build, zitate.pdf with labels i, ii, 1, 2) passed: AC 1–19, 21, 22 (aria-disabled on the welcome sample), 24 (960×640, 1280×800); AC 23 by code + tests. Failed → acceptance FIX A–D: AC 20 tag-delete undo restores nothing; citation underline lost after save/reopen (appearance stream has the fill only); Year field 56 px clips "2021"; Reference popover unreachable without comments; plus minors (error toast with a check icon, aria "Seite S. i", card order within a page, page shown twice on cards, page-1 DOI not offered when Info is complete) and the text-layer selection that ends ~10 % early on scaled spans (non-embedded fonts; cuts quotes).
+  - (2026-10-05, round 2 after FIX A–D d15cac3, ed59df9, 94444b6, c2efc5e) all 24 AC pass: whole-line selection, rule kept after save/reopen, Year 88, Reference button on an empty Comments tab, error toast with alert icon, locator in aria labels, page-1 DOI offered. AC 20 round-1 failure was test timing (the 8 s action toast had expired between automation calls); a real click within its lifetime restores definition and assignments. Remaining: tester, security-reviewer, designer round, tag v1.3.0.
 
 ### v1.4 "Certificate signature"
 - [ ] v1.4 spec — designer spec + architect ADR (crates for CMS/PAdES-B, licence check, key storage)

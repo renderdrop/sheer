@@ -6,6 +6,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+v1.3 "Citations" (FEEDBACK F15 C, DESIGN §3.7, ADR-119).
+
+### Added
+- Cite: select text and choose Zitieren (selection popover, Kommentieren tool row, Ctrl/Cmd+Shift+C, Edit → Cite Selection). A citation is a highlight with a 1 pt rule in the fill's stroke colour, a margin bubble with the quote, the printed page label (/PageLabels) and the short citation; a selection across pages makes one citation per page in one undo step.
+- Reference: Document Properties gets a Reference tab (type, title, ordered authors, year and type-dependent fields), prefilled from XMP, the Info dictionary and page 1 (title, year, DOI) with "from the file" / "from page 1" / "edited" captions; saved in the PDF.
+- Styles: APA 7, MLA 9, Chicago (author-date) and DIN ISO 690, in English or German terms. Copy a citation, the reference or the whole citation list (plain text + HTML), or save the list as .txt, .html, .md, .ris or .bib.
+- Tags: own coloured tags (five palette colours, up to 64) for comments and citations, assigned from the bubble, the card and the mini bar, managed in one popover (rename, recolour, delete with undo), filterable in the Comments tab together with the new Citation type.
+- `scripts/ci-status.sh`: the CI state of main at the start of every loop (ADR-120).
+
+### Changed
+- The Comments tab orders cards within a page in reading order and shows the Reference button also when a document has no comments.
+- Error toasts show an alert icon and wrap their text.
+
+### Fixed
+- Text selection on documents with non-embedded fonts ended about 10 % short of the pointer (runs are fitted with letter-spacing instead of a scale transform).
+- After deleting a page and saving, annotation lists came back empty until the document was reopened (the registry kept stale page ids).
+- macOS CI: the recents reveal test recorded a relative network spelling that is never stored (runs #61–#66).
+
 ## [1.2.0] - 2026-10-05
 
 v1.2 "sheer.": the new design (docs/REDESIGN_BRIEF.md, ADR-100 to ADR-102), the owner feedback on v1.2.0-beta.1 (FEEDBACK F15, ADR-104 to ADR-117), motion v2 (R5) and onboarding (R6). Unsigned installers (BLOCKERS B-002).
