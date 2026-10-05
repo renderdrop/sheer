@@ -1,7 +1,7 @@
 # STATE
-phase: v1.3.0 released (tag v1.3.0, CI #68 green) — next: v1.4 "Certificate signature"
-version: 1.3.0 (tag v1.3.0)
-current_item: SESSION TOPIC (ADR-122): v1.4 — acceptance done (15/24 by mouse, rest tests); milestone-end reviewer, designer, tester running; CI #74 (race fix) pending. Then bump 1.4.0, CHANGELOG, tag after green CI, release, German report docs/reports/2026-10-05-v1.4-zertifikatsignatur.md, STOP
+phase: v1.4.0 "Certificate signature" — release commit pushed; tag after CI green (ADR-120)
+version: 1.4.0 (tag pending CI)
+current_item: SESSION TOPIC (ADR-122): v1.4 — release commit; next: read runs #75/#76 and the release commit run, tag v1.4.0 when green, release, German report docs/reports/2026-10-05-v1.4-zertifikatsignatur.md, STOP; no v1.5
 last_completed: v1.3 Citations — 24/24 AC in the installed build, tester/security/designer PASS
 loop_count_this_session: 0
 open_blockers: 2 human-only (B-002, B-005)

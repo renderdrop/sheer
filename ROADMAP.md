@@ -310,10 +310,10 @@ new engine capability or dependency is needed. Not picked by the loop before v1.
 
 ### v1.4 "Certificate signature"
 - [x] v1.4 spec — designer spec + architect ADR (crates for CMS/PAdES-B, licence check, key storage) (2026-10-05: DESIGN §3.8 with 24 AC, ADR-121 + orchestrator amendment on stable crates; cut W0 → B1–B4 → F1–F4)
-- [ ] v1.4.1 — Sign with an imported (.p12/.pfx) or self-generated certificate (PAdES-B)
-- [ ] v1.4.2 — Visible seal with name and date; the document is read-only afterwards
-- [ ] v1.4.3 — Signature validation in Sheer; clear notice that trust needs an external certificate
-- [ ] v1.4 acceptance — security-reviewer, installed build with the mouse, designer round, tag v1.4.0
+- [x] v1.4.1 — Sign with an imported (.p12/.pfx) or self-generated certificate (PAdES-B) (B1 77a2fe8, B2 803d06d, F1 70ce2db, F2 6ceb72e; accepted in the installed build 2026-10-05)
+- [x] v1.4.2 — Visible seal with name and date; the document is read-only afterwards (B2 803d06d, B4 e61e9e9, F4 febe0b8, 0b43d34, 3726216; accepted in the installed build 2026-10-05)
+- [x] v1.4.3 — Signature validation in Sheer; clear notice that trust needs an external certificate (B3 5b8da6a, F3 434b920, c6956df, 3726216; accepted in the installed build 2026-10-05)
+- [x] v1.4 acceptance — security-reviewer, installed build with the mouse, designer round, tag v1.4.0 (2026-10-05: security FAIL→fixed c6956df; reviewer + designer FIX→fixed 3726216, blocker re-checked by mouse; tester PASS)
   - (2026-10-05, installed NSIS build, Windows) round 1 + 2 by mouse: AC 1, 2, 3, 5, 6, 7, 8, 11, 13, 14, 15, 16, 18, 21, 24 pass (after fixes: in-window menu lock 0b43d34, seal overlay offset + field widths + labels 0bab7a6); not by mouse (tests only): AC 4 import, 9 move/resize (no resize handles), 10 expired, 12 other viewer/print, 17 two signatures, 19 damaged, 20 additions after signing, 22 keychain unavailable, 23 reduced motion. Security review FAIL (1 high) fixed in c6956df. CI: #71 sig_validate env, #73 p12 decode race (72316ba).
 
 ### v1.5 "Edit text"
