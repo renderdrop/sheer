@@ -263,15 +263,14 @@ const kommentieren: Maker = (inputs) => {
 };
 
 const ausfuellen: Maker = (inputs) => {
-  const { t, armed, readOnly, library } = inputs;
-  const reason = readOnly ? t('modes.readOnly') : undefined;
+  const { t, armed, library } = inputs;
+  // Fill and Sign stays usable on the welcome document (ADR-117): it is the tour document, and Save becomes Save As.
   const item = (id: string, label: string, icon: LucideIcon, place: PlaceItem, on: boolean): SlotDef => ({
     id,
     label,
     icon,
     kind: 'tool',
     on,
-    disabledReason: reason,
     run: () => armItem(place),
   });
   const mark = (glyph: 'check' | 'cross' | 'dot', label: string, icon: LucideIcon): SlotDef =>
@@ -295,7 +294,6 @@ const ausfuellen: Maker = (inputs) => {
       icon,
       kind: 'tool',
       on: armed?.type === 'signature' && armed.role === role,
-      disabledReason: reason,
       variants,
       // The main part places the first saved item, or starts a new one when there is none.
       run: () =>

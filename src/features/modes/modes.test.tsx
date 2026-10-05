@@ -487,13 +487,14 @@ describe('Ausfüllen & Signieren', () => {
     ).toEqual(['New signature']);
   });
 
-  it('is disabled in a read-only sample, and stays focusable', () => {
+  it('stays usable on the welcome document: marks, date and signature are not disabled (ADR-117)', () => {
     resetDocuments();
     openDocument(7, 'welcome');
     act(() => switchMode('fill'));
     setup(<Rows />);
-    expect(item('Cross').getAttribute('aria-disabled')).toBe('true');
-    expect(item('Cross').tabIndex).toBeLessThanOrEqual(0);
+    for (const name of ['Check', 'Cross', 'Dot', 'Date', 'Signature']) {
+      expect(item(name).getAttribute('aria-disabled')).not.toBe('true');
+    }
   });
 });
 

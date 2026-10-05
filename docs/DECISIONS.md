@@ -2119,3 +2119,7 @@ status bar and inspector entries that moved. Built from those ADRs and CHANGELOG
 
 **Gaps.** None without a place. ARCHITECTURE §12 says Highlight form fields and Manage signatures are also in the Ausfüllen & Signieren
 tool row. That is wrong: they are in the Werkzeuge menu only (Politur v1.2).
+
+## ADR-117 — Fill & Sign on the welcome document; the annotation smoke is repeatable (F15 acceptance)
+
+**Finding.** `scripts/ui/annot-smoke.mjs` failed rows (check mark, date, later signature) on the welcome document and, in a second run, on text.pdf. Cause: a press on an existing movable annotation moves it instead of placing a new one (ADR-105, `onGrab` first); the open documents keep the annotations of the previous run, so the click spots were occupied and the count did not grow. The product behaves as designed; the test was not repeatable. **Fix.** The smoke deletes the document's annotations before each suite. **Decision.** Fill & Sign tools (Text, marks, Date, Signature, Initials) are enabled on the welcome document (the tour document; v1.8 R6 "first signature"); Save becomes Save As as before. Pages tools stay read-only there (`modes.readOnly`). Open: the tour's "first form" needs form fields enabled on the welcome document (`FormLayer` `documentReadOnly`); decide with R6.

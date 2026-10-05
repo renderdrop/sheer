@@ -136,7 +136,20 @@ async function openFile(label, open, match) {
   return d;
 }
 
+/**
+ * Deletes every annotation of the active document. A press on an existing movable annotation moves it instead of placing a new one
+ * (ADR-105), so leftovers of an earlier run at the click spots would make rows fail; the open documents (the welcome document is
+ * reused) keep their annotations between runs.
+ */
+async function clearAnnotations() {
+  await ev(`(async()=>{const d=(await ${S.docs}).useDocuments.getState();const s=(await ${S.ann}).useAnnotations.getState();
+    const ids=Object.keys(s.byDoc[d.activeId]?.byId??{}).map(Number);
+    if(ids.length) await s.apply(d.activeId,{type:'deleteAnnotations',ids})})()`);
+  await sleep(300);
+}
+
 async function suite(doc) {
+  await clearAnnotations();
   const box = await pageBox();
   // Fractions of the part of the page that is on screen: CDP mouse events outside the viewport hit nothing.
   const visible = Math.min(box.height, (await ev('window.innerHeight')) - box.top - 24);
