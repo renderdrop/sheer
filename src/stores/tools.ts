@@ -228,6 +228,7 @@ export function toolNameKey(
 ):
   | 'tool.highlight'
   | 'tool.underline'
+  | 'tool.cite'
   | 'tool.strike'
   | 'tool.note'
   | 'tool.text'
