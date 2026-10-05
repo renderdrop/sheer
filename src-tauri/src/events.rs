@@ -23,7 +23,7 @@ use crate::limits;
 ///
 /// | `type` | other fields | when |
 /// |---|---|---|
-/// | `dropHover` | `active: boolean` | a drag with files entered (`true`) or left, was cancelled or ended in a drop (`false`) |
+/// | `dropHover` | `active: boolean`, `x?`, `y?`: integers | a drag with files entered (`true`) or left, was cancelled or ended in a drop (`false`); while it is over the window `x`, `y` (logical px from the window's top-left, at most one message per frame) follow the cursor for the drop glow |
 /// | `opened` | `document: { id, pageCount, displayName, flags }` | a document was opened, or an open one was asked for again |
 /// | `needsPassword` | `id`, `displayName` | the file is encrypted and needs its user password (ADR-026): it waits under `id` for `unlock_document`, or for `close_document` when the user cancels; never the path |
 /// | `closeRequested` | none | the window or the app is asked to close while a document is open: the UI asks about unsaved changes, closes the documents and closes the window itself (ADR-029 §7) |
@@ -42,6 +42,11 @@ use crate::limits;
 pub enum AppEvent {
     DropHover {
         active: bool,
+        /// Where the cursor is, in logical px from the window's top-left (only while `active`, at most one per frame).
+        #[serde(skip_serializing_if = "Option::is_none")]
+        x: Option<i32>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        y: Option<i32>,
     },
     Opened {
         document: DocumentInfo,
@@ -277,11 +282,20 @@ mod tests {
     #[test]
     fn a_hover_is_a_type_and_a_flag() {
         assert_eq!(
-            serde_json::to_string(&AppEvent::DropHover { active: true }).unwrap(),
+            serde_json::to_string(&AppEvent::DropHover {
+                active: true,
+                x: None,
+                y: None
+            })
+            .unwrap(),
             r#"{"type":"dropHover","active":true}"#
         );
         assert_eq!(
-            json(&AppEvent::DropHover { active: false }),
+            json(&AppEvent::DropHover {
+                active: false,
+                x: None,
+                y: None
+            }),
             serde_json::json!({ "type": "dropHover", "active": false })
         );
     }
@@ -336,9 +350,17 @@ mod tests {
         let events = AppEvents::new();
         let (channel, log) = recording();
         events.subscribe(channel);
-        events.publish(AppEvent::DropHover { active: true });
+        events.publish(AppEvent::DropHover {
+            active: true,
+            x: None,
+            y: None,
+        });
         events.publish(AppEvent::opened(document("a.pdf", 1)));
-        events.publish(AppEvent::DropHover { active: false });
+        events.publish(AppEvent::DropHover {
+            active: false,
+            x: None,
+            y: None,
+        });
         let types: Vec<String> = seen(&log)
             .iter()
             .map(|text| {
@@ -378,7 +400,11 @@ mod tests {
     #[test]
     fn a_hover_is_never_kept_for_later() {
         let events = AppEvents::new();
-        events.publish(AppEvent::DropHover { active: true });
+        events.publish(AppEvent::DropHover {
+            active: true,
+            x: None,
+            y: None,
+        });
         assert_eq!(events.waiting(), 0);
         let (channel, log) = recording();
         events.subscribe(channel);
@@ -392,7 +418,11 @@ mod tests {
         let (second, second_log) = recording();
         events.subscribe(first);
         events.subscribe(second);
-        events.publish(AppEvent::DropHover { active: true });
+        events.publish(AppEvent::DropHover {
+            active: true,
+            x: None,
+            y: None,
+        });
         assert!(seen(&first_log).is_empty());
         assert_eq!(seen(&second_log).len(), 1);
     }
@@ -401,7 +431,11 @@ mod tests {
     fn a_receiver_that_cannot_be_reached_does_not_lose_open_results() {
         let events = AppEvents::new();
         events.subscribe(Channel::new(|_| Err(tauri::Error::WebviewNotFound)));
-        events.publish(AppEvent::DropHover { active: true });
+        events.publish(AppEvent::DropHover {
+            active: true,
+            x: None,
+            y: None,
+        });
         events.publish(AppEvent::opened(document("a.pdf", 1)));
         // The hover is gone, the opened document waits for the page that comes back.
         assert_eq!(events.waiting(), 1);

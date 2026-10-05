@@ -1699,8 +1699,22 @@ mod tests {
             .iter()
             .map(|event| serde_json::to_value(event).unwrap())
             .collect();
-        wire.push(serde_json::to_value(AppEvent::DropHover { active: true }).unwrap());
-        wire.push(serde_json::to_value(AppEvent::DropHover { active: false }).unwrap());
+        wire.push(
+            serde_json::to_value(AppEvent::DropHover {
+                active: true,
+                x: None,
+                y: None,
+            })
+            .unwrap(),
+        );
+        wire.push(
+            serde_json::to_value(AppEvent::DropHover {
+                active: false,
+                x: None,
+                y: None,
+            })
+            .unwrap(),
+        );
         let keys = |value: &serde_json::Value| -> Vec<String> {
             let mut keys: Vec<String> = value.as_object().unwrap().keys().cloned().collect();
             keys.sort();

@@ -1,12 +1,10 @@
 import { type Annotation, type DocCommand, type ReviewState } from '../../api/annotations';
 import { toAppError } from '../../api/errors';
 import { useAnnotations } from '../../stores/annotations';
-import { positionOf } from '../../stores/pages';
 import { useSettings } from '../../stores/settings';
 import { useUi } from '../../stores/ui';
 import { markOwnReply } from '../annotations/note/ownReplies';
-import { useViewer } from '../viewer/useViewer';
-import { flashAnnotation } from './flash';
+import { jumpToAnnotation } from '../viewer/jump';
 
 /** The step label of a create; a new comment cancelled right away takes it back with Undo instead of adding a delete. */
 export const LABEL_CREATE = 'annotation.create';
@@ -104,13 +102,5 @@ export async function discardNew(docId: number, id: number): Promise<void> {
 
 /** Jumps to an annotation: its page comes into view, it is selected on the canvas and its spot flashes. Focus stays where it is. */
 export function jumpTo(docId: number, pageId: number, id: number): void {
-  useViewer.getState().goToPage(positionOf(docId, pageId) ?? pageId);
-  const store = useAnnotations.getState();
-  void store
-    .loadPage(docId, pageId)
-    .catch(() => undefined)
-    .then(() => {
-      store.select(docId, [id]);
-      flashAnnotation(id);
-    });
+  jumpToAnnotation(docId, id, pageId);
 }

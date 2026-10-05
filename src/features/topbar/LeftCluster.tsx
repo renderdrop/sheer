@@ -4,7 +4,7 @@ import { ChevronLeft, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
 import { runAction } from '../../actions/dispatch';
 import { currentPlatform } from '../../actions/keys';
 import { actionOf, actionShortcut } from '../../actions/registry';
-import { IconButton } from '../../components';
+import { Icon, IconButton } from '../../components';
 import { useT } from '../../i18n';
 import { selectActiveDocument, useDocuments } from '../../stores/documents';
 import { useUi } from '../../stores/ui';
@@ -43,6 +43,21 @@ function useWindowWidth(): number {
   return width;
 }
 
+/** The two glyphs of the toggle on top of each other: the one for the state fades in, the other out (MOTION spell 14, fast). */
+export function ToggleGlyphs({ open }: { open: boolean }) {
+  const layer = 'col-start-1 row-start-1 transition-opacity duration-fast ease-out';
+  return (
+    <span aria-hidden="true" data-toggle-glyphs={open ? 'close' : 'open'} className="grid place-items-center">
+      <span className={`${layer} ${open ? 'opacity-100' : 'opacity-0'}`}>
+        <Icon icon={PanelLeftClose} size={18} />
+      </span>
+      <span className={`${layer} ${open ? 'opacity-0' : 'opacity-100'}`}>
+        <Icon icon={PanelLeftOpen} size={18} />
+      </span>
+    </span>
+  );
+}
+
 /** The page sidebar toggle (DESIGN 3.5 B2): the same action as View > Sidebar and the splitter grip, pressed while the sidebar is open. */
 function SidebarToggle() {
   const t = useT();
@@ -54,7 +69,6 @@ function SidebarToggle() {
   const shortcut = actionShortcut(action, platform, t);
   return (
     <IconButton
-      icon={open ? PanelLeftClose : PanelLeftOpen}
       label={t(open ? 'sidebar.hide' : 'sidebar.show')}
       shortcut={shortcut?.label}
       keyShortcuts={shortcut?.aria}
@@ -62,7 +76,9 @@ function SidebarToggle() {
       aria-controls={LEFT_PANEL_ID}
       data-sidebar-toggle=""
       onClick={() => void runAction('toggle-left-panel')}
-    />
+    >
+      <ToggleGlyphs open={open} />
+    </IconButton>
   );
 }
 

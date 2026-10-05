@@ -13,13 +13,14 @@ import type { PageSize } from '../../api/render';
 import { useT } from '../../i18n';
 import { useAnnotations } from '../../stores/annotations';
 import { positionOf } from '../../stores/pages';
-import { flashAnnotation } from '../comments/flash';
+import { jumpToAnnotation } from '../viewer/jump';
 import type { Thread } from '../comments/model';
 import { useCommentHover } from '../comments/useCommentsData';
 import { readViewRect, subscribeViewRect } from '../viewer/scrollBridge';
 import type { PageLayout } from '../viewer/layout';
 import type { Rotation } from '../viewer/transform';
 import { Bubble, Marker } from './Bubble';
+import { newRestackState, restack } from './restack';
 import { anchorOf, columnX, marginMetrics, placeBubbles, visibleBubbles, type MarginMode } from './layout';
 
 /** A bubble before it is measured. */
@@ -165,6 +166,22 @@ export function MarginColumn({ docId, layout, threads, mode, drawnSizes, rotatio
   const tabId = focusId ?? selectedRoot ?? items[0]?.id ?? null;
 
   const rootRef = useRef<HTMLDivElement | null>(null);
+  // Re-stack motion (MOTION spell 22): after each layout, bubbles that moved slide, a new one fades in; zoom and scroll never animate.
+  const restackRef = useRef(newRestackState());
+  const geometry = `${layout.scale}|${layout.width}|${mode}|${rotation}`;
+  useLayoutEffect(() => {
+    const root = rootRef.current;
+    if (root === null) return;
+    const reduce =
+      typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    restack(
+      root,
+      restackRef.current,
+      geometry,
+      items.map((item) => item.id),
+      reduce,
+    );
+  }, [tops, shown, geometry, items]);
   const pendingFocus = useRef<number | null>(null);
   useLayoutEffect(() => {
     const wanted = pendingFocus.current;
@@ -178,8 +195,7 @@ export function MarginColumn({ docId, layout, threads, mode, drawnSizes, rotatio
 
   const select = useCallback(
     (thread: Thread) => {
-      useAnnotations.getState().select(docId, [thread.root.id]);
-      flashAnnotation(thread.root.id);
+      jumpToAnnotation(docId, thread.root.id, thread.root.pageId);
     },
     [docId],
   );
@@ -260,6 +276,7 @@ export function MarginColumn({ docId, layout, threads, mode, drawnSizes, rotatio
               key={item.id}
               role="listitem"
               data-item={item.id}
+              data-top={top}
               className="pointer-events-auto absolute"
               style={{ top, left: item.x + (metrics.compact - metrics.marker) / 2 }}
             >
@@ -298,6 +315,7 @@ export function MarginColumn({ docId, layout, threads, mode, drawnSizes, rotatio
             key={item.id}
             role="listitem"
             data-item={item.id}
+            data-top={top}
             ref={measure}
             className="pointer-events-auto absolute"
             style={{ top, left: item.x, width: metrics.width }}

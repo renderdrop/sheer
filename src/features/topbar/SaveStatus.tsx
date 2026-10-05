@@ -7,6 +7,7 @@ import { currentPlatform } from '../../actions/keys';
 import { shortcutFor } from '../../actions/registry';
 import { Icon, Tooltip } from '../../components';
 import { SPRING } from '../../components/motion';
+import { EASE_OUT } from '../../lib/motion';
 import { cx } from '../../components/cx';
 import { errorText, useT } from '../../i18n';
 import { selectActiveId, useDocuments } from '../../stores/documents';
@@ -16,6 +17,9 @@ import { useActiveEdited } from './useEdited';
 
 /** "Saving…" shows only when a save takes longer than this (`--saving-delay`, MOTION spell 6). */
 export const SAVING_DELAY_MS = 200;
+
+/** `--motion-check` (a test keeps them equal): the check draws in 240 ms, the one duration above 180 (MOTION spell 6). */
+export const CHECK_DRAW_S = 0.24;
 
 /** `true` once `on` has been true for `delay` ms; false at once when it ends. */
 function useAfter(on: boolean, delay: number): boolean {
@@ -31,10 +35,13 @@ function useAfter(on: boolean, delay: number): boolean {
   return on && late;
 }
 
-/** The Lucide check that draws itself by `stroke-dashoffset` (MOTION spell 6); under reduced motion it fades in. */
-function DrawnCheck() {
+/**
+ * The Saved glyph (MOTION spell 6): the Ink dot that was there fades out (fast) on the check's spot while the Lucide check draws
+ * itself by `stroke-dashoffset` (`pathLength`). Under reduced motion the check fades in and the dot fades out, both fast.
+ */
+function DrawnCheck({ fromDot }: { fromDot: boolean }) {
   const reduce = useReducedMotion() === true;
-  return (
+  const check = (
     <motion.svg
       aria-hidden="true"
       focusable="false"
@@ -50,9 +57,28 @@ function DrawnCheck() {
     >
       <motion.path
         d="M20 6 9 17l-5-5"
-        {...(reduce ? {} : { initial: { pathLength: 0 }, animate: { pathLength: 1 }, transition: SPRING.slow })}
+        {...(reduce
+          ? {}
+          : {
+              initial: { pathLength: 0 },
+              animate: { pathLength: 1 },
+              transition: { duration: CHECK_DRAW_S, ease: EASE_OUT },
+            })}
       />
     </motion.svg>
+  );
+  if (!fromDot) return check;
+  return (
+    <span className="relative inline-flex shrink-0">
+      {check}
+      <motion.span
+        aria-hidden="true"
+        data-dot-out=""
+        initial={{ opacity: 1 }}
+        animate={{ opacity: 0, transition: SPRING.fast }}
+        className="absolute inset-0 m-auto size-[calc(var(--space-1)+var(--space-1)/2)] rounded-pill bg-text"
+      />
+    </span>
   );
 }
 
@@ -109,7 +135,7 @@ export function SaveStatus() {
       )}
     >
       {shown === 'saved' &&
-        (justSaved ? <DrawnCheck key="drawn" /> : <Icon icon={Check} size={16} className="text-text-muted" />)}
+        (justSaved ? <DrawnCheck key="drawn" fromDot /> : <Icon icon={Check} size={16} className="text-text-muted" />)}
       {shown === 'failed' && <Icon icon={TriangleAlert} size={16} />}
       {(shown === 'edited' || shown === 'new') && (
         <span
@@ -118,9 +144,22 @@ export function SaveStatus() {
           className="size-[calc(var(--space-1)+var(--space-1)/2)] shrink-0 rounded-pill bg-text"
         />
       )}
-      <span aria-hidden="true" className="max-save-label:sr-only">
-        {shownLabel}
-      </span>
+      {shown === 'saved' && justSaved ? (
+        <motion.span
+          key="saved-text"
+          aria-hidden="true"
+          data-saved-text=""
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1, transition: SPRING.fast }}
+          className="max-save-label:sr-only"
+        >
+          {shownLabel}
+        </motion.span>
+      ) : (
+        <span aria-hidden="true" className="max-save-label:sr-only">
+          {shownLabel}
+        </span>
+      )}
     </button>
   );
   return (

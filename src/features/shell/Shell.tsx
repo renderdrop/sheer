@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 
 import { ActionKeys } from '../../actions/keys';
+import { FocusRing } from '../../components/FocusRing';
 import { chromeFor, detectPlatform } from '../../lib/platform';
 import { useSettings } from '../../stores/settings';
 import { useUi } from '../../stores/ui';
@@ -26,6 +27,7 @@ import { ToastLayer } from './Toast';
 import { CaptionBar } from './CaptionBar';
 import { EditorLayout } from './EditorLayout';
 import { HomeSlot } from './HomeSlot';
+import { Splash } from './Splash';
 import { useViewSync, useWindowState } from './hooks';
 import { useRegionCycling } from './regions';
 import { useShellStructure } from './useShellStructure';
@@ -106,6 +108,8 @@ export function Shell() {
         <HomeSlot platform={platform} trafficLightInset={trafficLightInset} captionControls={captionControls} />
       )}
       <ToastLayer />
+      <Splash />
+      <FocusRing />
     </div>
   );
 }

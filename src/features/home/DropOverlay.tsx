@@ -6,6 +6,7 @@ import { SPRING } from '../../lib/motion';
 import { useUi } from '../../stores/ui';
 import { DropCard } from '../viewer/DropCard';
 import { useTransition } from '../viewer/openTransition';
+import { DropGlow } from './dropGlow';
 
 /** After the drag left the window the card stays this long: a drop that is accepted lets it fall (MOTION 4.5); otherwise it fades out. */
 export const DROP_HOLD_MS = 250;
@@ -55,8 +56,11 @@ export function DropOverlay({ falling }: { falling: boolean }) {
       exit={{ opacity: 0, transition: SPRING.fast }}
       className="pointer-events-none absolute inset-0 z-drag flex flex-col items-center justify-center gap-6"
     >
-      <DropCard falling={falling} />
-      <p className="t-h3 m-0">{t('canvas.dropToOpen')}</p>
+      <DropGlow />
+      <div className="relative">
+        <DropCard falling={falling} />
+      </div>
+      <p className="t-h3 relative m-0">{t('canvas.dropToOpen')}</p>
     </motion.div>
   );
 }

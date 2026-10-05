@@ -454,16 +454,26 @@
   --breathe: 2000ms; /* spell 10 */
   --drift: 60s; /* spell 11 */
   --splash-max: 1500ms; /* spell 10 */
+  --glow-phase: 0; /* R5-D: start of a glow in the --drift loop as a fraction of it, set inline per glow */
+  --splash-wordmark: 40px; /* R5-D */
   /* Holds, not animations. */
   --hold-check: 600ms; /* spell 6 */
   --tooltip-leave: 100ms; /* spell 16 */
   --hold-outline: 1000ms; /* spell 8, reduced motion */
   --hold-shape: 500ms; /* spell 20, F15 B11 */
+  /* R5-B (spells 15 and 8) */
+  --shimmer-band: color-mix(in srgb, var(--color-white) 60%, transparent); /* the sweeping band: White at 60 % */
+  --shimmer-slant: 110deg; /* 20 deg off the vertical, as a gradient angle */
+  --outline-jump: 2px; /* reduced-motion marker of a comment jump: 2 px Ink for --hold-outline */
   /* Transform amounts of states and entrances. Reduced motion resets them (section 5). */
   --scale-press: 0.98;
   --scale-enter: 0.98;
   --scale-lift: 1.02; /* drag preview card */
   --offset-enter: 8px;
+  /* R5-C */
+  --rotate-delete: 6deg; /* spell 9: the only rotation */
+  --marker-rest: 0.45; /* spell 5: dry pulse alpha, rest and peak */
+  --marker-peak: 0.55;
   --pulse-opacity: 0.6; /* success pulse ring (MOTION 4.7) */
   --drag-card-width: 160px;
   --drag-card-height: 208px;
@@ -603,6 +613,7 @@
     --scale-enter: 1;
     --scale-lift: 1;
     --offset-enter: 0px;
+    --rotate-delete: 0deg;
   }
 
   *,
@@ -1204,4 +1215,195 @@
   [data-snap-in] {
     animation: none;
   }
+}
+
+/* R5-D: spells 4, 10, 11 (drop glow, splash, ambient drift). Loops run on the glow's own layer and pause with the window. */
+@keyframes glow-drift {
+  0% {
+    transform: translate3d(-2.5%, -2.5%, 0);
+  }
+
+  25% {
+    transform: translate3d(2.5%, -1%, 0);
+  }
+
+  50% {
+    transform: translate3d(2.5%, 2.5%, 0);
+  }
+
+  75% {
+    transform: translate3d(-1%, 2.5%, 0);
+  }
+
+  100% {
+    transform: translate3d(-2.5%, -2.5%, 0);
+  }
+}
+
+@keyframes splash-breathe {
+  0%,
+  100% {
+    opacity: 0.6;
+  }
+
+  50% {
+    opacity: 0.9;
+  }
+}
+
+[data-glow] {
+  animation: glow-drift var(--drift) var(--ease-out) infinite;
+  animation-delay: calc(var(--drift) * var(--glow-phase) * -1);
+}
+
+[data-splash-glow] {
+  opacity: 0.75; /* the reduced-motion value; the loop below replaces it */
+  animation: splash-breathe var(--breathe) var(--ease-out) infinite;
+}
+
+[data-ambient="paused"] [data-glow],
+[data-ambient="paused"] [data-splash-glow] {
+  animation-play-state: paused;
+}
+
+[data-splash] {
+  opacity: 1;
+  transition: opacity var(--motion-slow) var(--ease-out);
+}
+
+[data-splash][data-leaving] {
+  opacity: 0;
+}
+
+/*
+ * R5-A: the focus ring overlay (MOTION spell 18) draws the ring for the element it owns (data-focus-owned); any other focus
+ * keeps the native ring. Forced colors: the transparent outline of both the element and the overlay becomes Highlight.
+ */
+:focus-visible[data-focus-owned]:not([tabindex="-1"], [data-annot-frame], [data-crop-rect], [data-form-control]) {
+  box-shadow: none;
+}
+
+/* R5-B: spell 15 (skeleton shimmer, MOTION 2), spell 12 (cursors, MOTION 2), spell 8 (comment jump outline, reduced motion). */
+[data-skeleton] {
+  position: relative;
+  overflow: hidden;
+}
+/* The band is a static gradient on its own layer; only its transform moves (linear, loops are the exception to ease-out). */
+[data-skeleton]::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(var(--shimmer-slant), transparent 35%, var(--shimmer-band) 50%, transparent 65%);
+  transform: translateX(-100%);
+  will-change: transform;
+  animation: skeleton-sweep var(--shimmer) linear infinite;
+}
+[data-skeleton][data-paused]::after {
+  animation-play-state: paused;
+}
+@keyframes skeleton-sweep {
+  to {
+    transform: translateX(100%);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  [data-skeleton]::after {
+    animation: none;
+    display: none;
+  }
+}
+/* Spell 12: SVG cursors over the page, 32 units drawn at 2x (16 CSS px); hotspots in CSS px, mirrored in features/viewer/cursors.ts. */
+[data-cursor="marker"] :is([data-page], [data-creation-layer]) {
+  cursor:
+    url("../assets/cursors/marker.svg") 2 14,
+    text;
+  cursor:
+    image-set(url("../assets/cursors/marker.svg") 2x) 2 14,
+    text;
+}
+[data-cursor="pen"] :is([data-page], [data-creation-layer]) {
+  cursor:
+    url("../assets/cursors/pen.svg") 2 14,
+    crosshair;
+  cursor:
+    image-set(url("../assets/cursors/pen.svg") 2x) 2 14,
+    crosshair;
+}
+[data-cursor="crosshair"] :is([data-page], [data-creation-layer]) {
+  cursor:
+    url("../assets/cursors/crosshair.svg") 8 8,
+    crosshair;
+  cursor:
+    image-set(url("../assets/cursors/crosshair.svg") 2x) 8 8,
+    crosshair;
+}
+[data-cursor="text"] :is([data-page], [data-creation-layer]) {
+  cursor:
+    url("../assets/cursors/text.svg") 8 8,
+    text;
+  cursor:
+    image-set(url("../assets/cursors/text.svg") 2x) 8 8,
+    text;
+}
+
+/* R5-C: spells 2, 5, 7, 9 (page indicator, marker trail, undo fade, delete page). Transform and opacity only; reduced motion drops
+   the transforms (the global rule keeps opacity transitions, --scale-enter is 1 and --rotate-delete is 0 there). */
+[data-thumb-indicator][data-mode="travel"] {
+  transition: transform var(--motion-base) var(--ease-out);
+}
+[data-thumb-indicator][data-mode="fade"] {
+  transition: opacity var(--motion-base) var(--ease-out);
+}
+[data-sliding] > [data-thumb-cell] {
+  transition: transform var(--motion-base) var(--ease-out);
+}
+[data-delete-ghost] {
+  opacity: 1;
+  rotate: 0deg;
+  transition:
+    opacity var(--motion-base-exit) var(--ease-out),
+    rotate var(--motion-base-exit) var(--ease-out);
+}
+[data-delete-ghost="out"] {
+  opacity: 0;
+  rotate: var(--rotate-delete);
+}
+/* The dry pulse of the marker strip (spell 5): its alpha goes 0.45 to 0.55 to 0.45 once, on release. The rects are drawn at the peak
+   alpha and the group's opacity (animated) holds them down to the rest alpha; CreationLayer mirrors the ratio. */
+@keyframes marker-dry {
+  0%,
+  100% {
+    opacity: calc(var(--marker-rest) / var(--marker-peak));
+  }
+  50% {
+    opacity: 1;
+  }
+}
+[data-marker-dry="pulse"] {
+  animation: marker-dry var(--motion-fast) var(--ease-out);
+}
+/* Undo fades (spell 7): out in --motion-fast-exit, in over --motion-fast, both from or to 0.98. */
+[data-undo-fade] {
+  transform-box: fill-box;
+  transform-origin: center;
+}
+[data-undo-fade="out"] {
+  opacity: 1;
+  transition:
+    opacity var(--motion-fast-exit) var(--ease-out),
+    transform var(--motion-fast-exit) var(--ease-out);
+}
+[data-undo-fade="out"][data-settled] {
+  opacity: 0;
+  transform: scale(var(--scale-enter));
+}
+[data-undo-fade="in"] {
+  opacity: 1;
+  transition:
+    opacity var(--motion-fast) var(--ease-out),
+    transform var(--motion-fast) var(--ease-out);
+}
+[data-undo-fade="in"]:not([data-settled]) {
+  opacity: 0;
+  transform: scale(var(--scale-enter));
 }

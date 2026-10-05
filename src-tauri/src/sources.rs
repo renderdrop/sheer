@@ -18,7 +18,8 @@
 
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
 
 use tauri::{AppHandle, DragDropEvent, Manager, RunEvent, Runtime, Window, WindowEvent};
 
@@ -28,13 +29,15 @@ use crate::error::{AppError, ErrorCode};
 use crate::events::{AppEvent, AppEvents};
 
 /// What the app does about a drag-and-drop event.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 enum Drag {
     /// Show or hide the drop overlay.
     Hover(bool),
     /// Hide the overlay and open these files.
     Drop(Vec<PathBuf>),
-    /// Nothing: the pointer only moves while files are over the window.
+    /// The pointer moved over the window (physical px).
+    Over(f64, f64),
+    /// Nothing.
     Ignore,
 }
 
@@ -42,6 +45,7 @@ fn classify(event: &DragDropEvent) -> Drag {
     match event {
         DragDropEvent::Enter { paths, .. } if !paths.is_empty() => Drag::Hover(true),
         DragDropEvent::Leave => Drag::Hover(false),
+        DragDropEvent::Over { position } => Drag::Over(position.x, position.y),
         DragDropEvent::Drop { paths, .. } => Drag::Drop(paths.clone()),
         _ => Drag::Ignore,
     }
@@ -63,13 +67,59 @@ pub fn on_window_event<R: Runtime>(window: &Window<R>, event: &WindowEvent) {
         return;
     };
     match classify(drag) {
-        Drag::Hover(active) => publish(app, AppEvent::DropHover { active }),
+        Drag::Hover(active) => publish(
+            app,
+            AppEvent::DropHover {
+                active,
+                x: None,
+                y: None,
+            },
+        ),
         Drag::Drop(paths) => {
-            publish(app, AppEvent::DropHover { active: false });
+            publish(
+                app,
+                AppEvent::DropHover {
+                    active: false,
+                    x: None,
+                    y: None,
+                },
+            );
             spawn_open(app, paths, deliver_drop);
+        }
+        Drag::Over(x, y) => {
+            if over_is_due() {
+                let scale = window.scale_factor().unwrap_or(1.0).max(0.1);
+                publish(
+                    app,
+                    AppEvent::DropHover {
+                        active: true,
+                        x: Some(logical(x, scale)),
+                        y: Some(logical(y, scale)),
+                    },
+                );
+            }
         }
         Drag::Ignore => {}
     }
+}
+
+/// A physical coordinate as whole logical px, clamped to a sane range.
+fn logical(physical: f64, scale: f64) -> i32 {
+    (physical / scale).round().clamp(-32768.0, 32768.0) as i32
+}
+
+/// At most one position per frame (about 16 ms): the page only draws once per frame anyway.
+fn over_is_due() -> bool {
+    static LAST: Mutex<Option<Instant>> = Mutex::new(None);
+    let now = Instant::now();
+    let Ok(mut last) = LAST.lock() else {
+        return false;
+    };
+    if last.is_some_and(|at| now.duration_since(at) < Duration::from_millis(16)) {
+        return false;
+    }
+    *last = Some(now);
+    true
 }
 
 /// `RunEvent` hook: macOS asks the app to open files (a double click in Finder, "Open With", `open file.pdf`, a file dropped
@@ -250,11 +300,12 @@ mod tests {
     }
 
     #[test]
-    fn moving_over_the_window_changes_nothing() {
+    fn moving_over_the_window_reports_the_position() {
         assert_eq!(
             classify(&DragDropEvent::Over { position: at() }),
-            Drag::Ignore
+            Drag::Over(10.0, 20.0)
         );
+        assert_eq!(logical(300.0, 1.5), 200);
     }
 
     #[test]

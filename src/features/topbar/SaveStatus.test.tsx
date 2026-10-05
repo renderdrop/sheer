@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { readFileSync } from 'node:fs';
 import { act, screen, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -7,7 +8,7 @@ import { resetDocuments } from '../../stores/documents.testutil';
 import { useUi } from '../../stores/ui';
 import { setup } from '../../test/render';
 import { useSave } from '../save/state';
-import { SaveStatus, SAVING_DELAY_MS } from './SaveStatus';
+import { CHECK_DRAW_S, SaveStatus, SAVING_DELAY_MS } from './SaveStatus';
 
 const edit = vi.hoisted(() => ({ edited: false }));
 vi.mock('./useEdited', () => ({ useActiveEdited: () => edit.edited }));
@@ -84,5 +85,26 @@ describe('the save status (DESIGN 3.5 B1)', () => {
     expect(within(button()).queryByText('Saved')).not.toBeNull();
     expect(button().querySelector('[data-drawn-check]')).not.toBeNull();
     expect(screen.queryByRole('button', { name: 'Edited' })).toBeNull();
+  });
+});
+
+describe('Saved motion (MOTION spell 6)', () => {
+  it('right after a save: the dot fades out, the check is drawn and "Saved" fades in', () => {
+    setup(<SaveStatus />);
+    act(() => useSave.setState({ saved: 1 }));
+    expect(button().querySelector('[data-drawn-check]')).not.toBeNull();
+    expect(button().querySelector('[data-dot-out]')).not.toBeNull();
+    expect(button().querySelector('[data-saved-text]')?.textContent).toBe('Saved');
+  });
+
+  it('at rest: a plain check and no dot', () => {
+    setup(<SaveStatus />);
+    expect(button().querySelector('[data-drawn-check]')).toBeNull();
+    expect(button().querySelector('[data-dot-out]')).toBeNull();
+  });
+
+  it('the check draws in --motion-check (240 ms)', () => {
+    const css = readFileSync('src/styles/tokens.css', 'utf8');
+    expect(css).toContain(`--motion-check: ${Math.round(CHECK_DRAW_S * 1000)}ms;`);
   });
 });

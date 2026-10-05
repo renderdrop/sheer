@@ -248,7 +248,7 @@ export async function subscribeMenu(onAction: (id: string) => void, systemLangua
  * opened by the OS: file association, a second launch). The messages carry no path, only what the UI may know about a file.
  */
 export type AppEvent =
-  | { type: 'dropHover'; active: boolean }
+  | { type: 'dropHover'; active: boolean; x?: number; y?: number }
   | { type: 'closeRequested' }
   | { type: 'imagesDropped'; batch: number; count: number; skipped: number }
   /** The PDF engine process was restarted; `lost` are the documents that could not be brought back and answer `engine_crashed` until reopened (ADR-053). */
@@ -280,7 +280,12 @@ export function parseAppEvent(message: unknown): AppEvent | null {
     return info === null ? null : { type, info };
   }
   if (type === 'closeRequested') return { type };
-  if (type === 'dropHover') return typeof active === 'boolean' ? { type, active } : null;
+  if (type === 'dropHover') {
+    if (typeof active !== 'boolean') return null;
+    const { x, y } = message as { x?: unknown; y?: unknown };
+    const coord = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
+    return coord(x) && coord(y) ? { type, active, x, y } : { type, active };
+  }
   if (type === 'imagesDropped') {
     const whole = (value: unknown): value is number =>
       typeof value === 'number' && Number.isInteger(value) && value >= 0;
