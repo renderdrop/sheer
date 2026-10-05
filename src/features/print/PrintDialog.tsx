@@ -168,7 +168,7 @@ function PrintModal() {
       : t('print.title');
 
   return (
-    <Modal labelledBy={`${id}-title`} width="w-dialog-md" onClose={cancel}>
+    <Modal labelledBy={`${id}-title`} width="w-dialog-md" surface="white" onClose={cancel}>
       <ModalHeader id={`${id}-title`} icon={<Icon icon={Printer} />} title={t('print.title')} />
       <div className="relative mt-4">
         <div className={busy ? 'invisible' : ''} inert={busy ? true : undefined}>

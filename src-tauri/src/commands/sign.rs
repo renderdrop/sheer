@@ -63,7 +63,7 @@ fn words(locale: MenuLocale) -> Words {
     }
 }
 
-/// The name the save dialog proposes: `<stem> â signed.pdf` (en dash, DESIGN 3.8 L5).
+/// The name the save dialog proposes: `<stem> – signed.pdf` (en dash, DESIGN 3.8 L5).
 fn default_file_name(display_name: &str, locale: MenuLocale) -> String {
     let stem = display_name
         .strip_suffix(".pdf")

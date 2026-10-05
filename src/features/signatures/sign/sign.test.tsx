@@ -77,7 +77,9 @@ beforeEach(() => {
   signDocument.mockReset();
   useAnnotations.setState({ ...annotationsInitial }, true);
   resetDocuments();
-  act(() => useDocuments.getState().add({ id: 1, pageCount: 3, displayName: 'a.pdf' }));
+  act(() =>
+    useDocuments.getState().add({ id: 1, pageCount: 3, displayName: 'a.pdf', flags: { signed: false } as never }),
+  );
   useCertSign.getState().reset();
 });
 
@@ -218,6 +220,14 @@ describe('the lock choice (DESIGN 3.8 L1, AC 25 to 27)', () => {
     await user.click(screen.getByRole('button', { name: 'Sign and save as…' }));
     await waitFor(() => expect(signDocument).toHaveBeenCalled());
     expect(signDocument.mock.calls[0]?.[1]).toMatchObject({ lock: 'noChanges' });
+  });
+  it('shows no choice while it is unknown whether the file is signed', async () => {
+    resetDocuments();
+    act(() => useDocuments.getState().add({ id: 1, pageCount: 3, displayName: 'a.pdf' }));
+    setup(<SignDialogHost />);
+    ready();
+    await screen.findByRole('button', { name: 'Sign and save as…' });
+    expect(screen.queryByRole('radiogroup')).toBeNull();
   });
 });
 

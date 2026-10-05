@@ -89,8 +89,8 @@ function SignSheet() {
 
   if (box === null) return null;
   const expired = identity !== undefined && !canSign(identity);
-  // Only the first signature certifies; for an approval signature there is no choice (DESIGN 3.8 L1).
-  const certifies = document?.flags?.signed !== true;
+  // Only the first signature certifies, and only when the document is known to be unsigned; for an approval signature there is no choice (DESIGN 3.8 L1).
+  const certifies = document?.flags?.signed === false;
   const ready = identity !== undefined && !expired && !dirty && !busy;
 
   const submit = async () => {

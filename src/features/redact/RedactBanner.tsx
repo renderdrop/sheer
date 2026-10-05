@@ -12,8 +12,8 @@ import { useRedact } from './store';
 import { useRedactHost } from './useRedactHost';
 
 /**
- * The redact band (DESIGN v2 3.2, 4): in the banner slot while the mode is on, `--color-danger` with white text. Cancel (Ghost)
- * leaves the mode and keeps the marks; Apply (Primary) opens the apply dialog (ADR-055). Red appears only here and for errors.
+ * The redact band (DESIGN v2 3.2, 4): in the banner slot while the mode is on, `--color-danger` with white text. Cancel (ghostOnDanger)
+ * leaves the mode and keeps the marks; Apply (onDanger: White on the red band) opens the apply dialog (ADR-055). Red appears only here and for errors.
  */
 function RedactBand() {
   const t = useT();
@@ -35,16 +35,11 @@ function RedactBand() {
                 <Icon icon={TriangleAlert} />
               </span>
               <span className="min-w-0 flex-auto text-md font-medium">{t('redact.band')}</span>
-              <Button
-                variant="ghost"
-                size="sm"
-                className="text-on-danger not-aria-disabled:enabled:hover:bg-on-danger-hover"
-                onClick={endRedactMode}
-              >
+              <Button variant="ghostOnDanger" size="sm" onClick={endRedactMode}>
                 {t('redact.bandCancel')}
               </Button>
               <Button
-                variant="primary"
+                variant="onDanger"
                 size="sm"
                 disabled={count === 0}
                 focusableWhenDisabled

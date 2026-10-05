@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointer
 
 import type { Point, Rect } from '../../../api/wire';
 import { announce } from '../../../components';
+import { tokenPx } from '../../../components/tokens';
 import { useT } from '../../../i18n';
 import { useUi } from '../../../stores/ui';
 import { clampToPage, isDrag } from '../../annotations/create/geometry';
@@ -24,9 +25,12 @@ export interface CertPlacementLayerProps {
 const OUTLINE_PT = 1;
 const DASH = '4 3';
 const SCROLL_SURFACE = '[role="region"]';
-/** The visual and the pointer size of a resize handle, in CSS px (DESIGN 3.8 L6). */
-const HANDLE_PX = 8;
-const HANDLE_HIT_PX = 24;
+/** The visual and the pointer size of a resize handle, in CSS px (DESIGN 3.8 L6), from --handle-size and --space-6. */
+const HANDLE_PX = tokenPx('--handle-size', 8);
+const HANDLE_HIT_PX = tokenPx('--space-6', 24);
+/** Corner radius of the placeholder outline (--space-1) and of a handle knob (a quarter of its size). */
+const OUTLINE_RADIUS_PT = tokenPx('--space-1', 4);
+const HANDLE_RADIUS_RATIO = 0.25;
 
 type Handle = (typeof SEAL_HANDLES)[number];
 
@@ -234,7 +238,7 @@ function ActiveLayer({ docId, pageIndex, pageBox, transform }: CertPlacementLaye
               y={shown.y}
               width={shown.w}
               height={shown.h}
-              rx={4}
+              rx={OUTLINE_RADIUS_PT}
               fill="none"
               stroke="var(--color-ink)"
               strokeWidth={OUTLINE_PT}
@@ -267,7 +271,7 @@ function ActiveLayer({ docId, pageIndex, pageBox, transform }: CertPlacementLaye
                         y={cy - (HANDLE_PX * unit) / 2}
                         width={HANDLE_PX * unit}
                         height={HANDLE_PX * unit}
-                        rx={2 * unit}
+                        rx={HANDLE_PX * HANDLE_RADIUS_RATIO * unit}
                         fill="var(--color-white)"
                         stroke="var(--color-ink)"
                         strokeWidth={unit}

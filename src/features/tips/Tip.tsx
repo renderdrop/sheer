@@ -17,11 +17,19 @@ import { useTips } from './store';
 /** The canvas's scroller: the slot the tip stays inside (the coach mark's, DESIGN 3.47 "Slot and layer"). */
 const CANVAS_SCROLLER = '[data-action-scope="canvas"] > [role="region"]';
 
+/** The red redact band in the banner slot. */
+const REDACT_BAND = '[data-banner="redact"]';
+
 /** Popovers, menus and dialogs are portaled to the body; the tip goes when one opens after it. */
 const OVERLAYS = '[role="menu"], [role="dialog"], [aria-modal="true"]';
 
 /** The tool item to point at (the pressed one of a family), else the ⋯ button when the row moved it into More. */
 function resolveTipAnchor(id: TipId): ResolvedAnchor | null {
+  // Redact mode has a red band under the toolbar: the tip sits below the band, never over its label.
+  if (id === 'redact') {
+    const band = document.querySelector<HTMLElement>(REDACT_BAND);
+    if (band !== null) return { element: band, spec: { selector: REDACT_BAND, side: 'bottom', align: 'center' } };
+  }
   const found = toolbarItemsOf(id)
     .map((item) => resolveToolbarItem(item))
     .filter((anchor): anchor is ResolvedAnchor => anchor !== null);
