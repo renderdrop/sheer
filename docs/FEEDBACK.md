@@ -184,7 +184,7 @@ mock where no Mac is at hand (ADR-104). After A and B: designer acceptance of th
 - [x] A3. Text selection is grey → Solar yellow 35 %
 - [x] A4. A text comment cannot be moved after creation while its tool is active; moving stutters. Dragging existing annotations is
       allowed in every tool
-- [ ] A5. Comments panel breaks mid-word ("Textkomme/ntar"); cards too narrow
+- [x] A5. Comments panel breaks mid-word ("Textkomme/ntar"); cards too narrow
 - [x] A6. Images to PDF: images do not load or only partly. Reproduce with 10 JPGs and fix
 - [x] A7. Note and comment: Enter confirms, Shift+Enter inserts a line break
 - [x] A8. In a rotated view, signatures and marks are placed rotated with the page. Placement follows the screen orientation (rotate the
@@ -219,10 +219,10 @@ engine's file reader returned short reads at 256 KiB block borders (large images
       `docs/review/signature-fonts.png`. The owner picks five; until then ship all. **Owner pick (2026-10-05):** Ms Madi (default),
       Hurricane, Birthstone — in this order; the other seven are not shipped; umlauts and ß checked by the owner
 - [x] B8. Outline: without bookmarks, derive an outline heuristically from font size and weight, marked "derived"
-- [ ] B9. Comments as margin bubbles: when comments exist, a margin column appears to the right of the page; each bubble at the height of
+- [x] B9. Comments as margin bubbles: when comments exist, a margin column appears to the right of the page; each bubble at the height of
       its anchor with avatar initial, name, date, text, reply field, resolve — model: the owner's yellow note bubble image. The left panel
       stays a list and shows the comment text as the first line, not just the type
-- [ ] B10. Comments panel: filter by type (highlight, note, drawing, shape, signature, quote), author, page, open/resolved; sort by page,
+- [x] B10. Comments panel: filter by type (highlight, note, drawing, shape, signature, quote), author, page, open/resolved; sort by page,
       date, author; type icons subtly distinct
 - [x] B11. Shapes: add an arrow. Freehand shape recognition: a roughly drawn shape plus a short hold snaps to circle, ellipse, rectangle,
       line or arrow (like Apple Notes); can be switched off
