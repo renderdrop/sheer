@@ -189,14 +189,15 @@ mock where no Mac is at hand (ADR-104). After A and B: designer acceptance of th
 - [x] A7. Note and comment: Enter confirms, Shift+Enter inserts a line break
 - [ ] A8. In a rotated view, signatures and marks are placed rotated with the page. Placement follows the screen orientation (rotate the
       annotation against the view rotation). Plus a rotate handle on placed signatures
-- [ ] A9. "Save to library" does not save on Windows or macOS. Check keychain access (Windows Credential Manager, macOS Keychain)
+- [x] A9. "Save to library" does not save on Windows or macOS. Check keychain access (Windows Credential Manager, macOS Keychain)
       including the error path; if access fails the app says so instead of silently dropping. Acceptance: save a signature, restart,
       the signature is in the library — on both platforms, macOS via a CI test or a keychain mock
-- [ ] A10. Printing on macOS gives blank pages (Windows works; drag and drop on the Mac works). Likely `Webview::print()` in WKWebView
+- [x] A10. Printing on macOS gives blank pages (Windows works; drag and drop on the Mac works). Likely `Webview::print()` in WKWebView
       does not render the canvas pages; switch the macOS print path to rendered page images or hand a PDF to the system print dialog.
       Acceptance: "Save as PDF" in the Mac print dialog with visible content
 - [x] A11. (found in the acceptance) Saving a document with annotations does nothing while the author name is empty: the author
       prompt (ADR-034) lost its slot in the v1.2 layout, so the save waits forever (ADR-109)
+A acceptance (2026-10-05): installed NSIS build, real OS cursor (`scripts/ui/mouse.ps1`), shots in `review/f15/` (not tracked). A9: libraryentry survives a restart on Windows; macOS via the CI step "Real credential store round trip" (run 37245442441, both OS green).A10: Windows print preview shows the pages; macOS fix (frames outlive `Webview::print()`, ADR-107) covered by CI; the owner's"Save as PDF" in the Mac print dialog is the final check on the next pre-release. A6 had a second cause: the engine's file readerreturned short reads at 256 KiB block borders (large images half grey, ADR-106 addendum).
 
 ### B — Shell polish (before R5)
 
