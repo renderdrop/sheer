@@ -244,6 +244,8 @@ export function toolNameKey(
         : tools.markup === 'underline'
           ? 'tool.underline'
           : 'tool.strike';
+    case 'cite':
+      return 'tool.cite';
     case 'note':
       return 'tool.note';
     case 'text':
