@@ -11,7 +11,7 @@ import { useT } from '../../i18n';
 import { modifierLabel } from '../../lib/shortcuts';
 import { useSettings } from '../../stores/settings';
 import { resolveToolbarItem, type ResolvedAnchor } from '../tour/anchors';
-import { toolbarItemOf, type TipId } from './model';
+import { toolbarItemsOf, type TipId } from './model';
 import { useTips } from './store';
 
 /** The canvas's scroller: the slot the tip stays inside (the coach mark's, DESIGN 3.47 "Slot and layer"). */
@@ -20,13 +20,22 @@ const CANVAS_SCROLLER = '[data-action-scope="canvas"] > [role="region"]';
 /** Popovers, menus and dialogs are portaled to the body; the tip goes when one opens after it. */
 const OVERLAYS = '[role="menu"], [role="dialog"], [aria-modal="true"]';
 
+/** The tool item to point at (the pressed one of a family), else the ⋯ button when the row moved it into More. */
+function resolveTipAnchor(id: TipId): ResolvedAnchor | null {
+  const found = toolbarItemsOf(id)
+    .map((item) => resolveToolbarItem(item))
+    .filter((anchor): anchor is ResolvedAnchor => anchor !== null);
+  const pressed = found.find((anchor) => anchor.element.getAttribute('aria-pressed') === 'true');
+  return pressed ?? found[0] ?? resolveToolbarItem('overflow');
+}
+
 /** The toolbar item of the tip, looked up again after a resize, since the toolbar may move it into More. */
 function useAnchor(id: TipId): ResolvedAnchor | null {
   const [anchor, setAnchor] = useState<ResolvedAnchor | null>(null);
   useLayoutEffect(() => {
     const find = () =>
       setAnchor((previous) => {
-        const next = resolveToolbarItem(toolbarItemOf(id));
+        const next = resolveTipAnchor(id);
         return previous?.element === next?.element ? previous : next;
       });
     find();
@@ -126,9 +135,7 @@ function Card({ id, anchor }: { id: TipId; anchor: ResolvedAnchor }) {
         onKeyDown={onKeyDown}
         className="bg-panel border border-border-subtle shadow-floating flex w-popover-max max-w-full items-center gap-2 rounded-panel p-4 text-md text-text"
       >
-        <span className="flex size-control-md shrink-0 items-center justify-center rounded-sm bg-tile text-tile-icon">
-          <Icon icon={Lightbulb} size={16} />
-        </span>
+        <Icon icon={Lightbulb} size={16} className="text-text" />
         <p id={textId} className="m-0 min-w-0 flex-1 text-md">
           {text}
         </p>

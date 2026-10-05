@@ -16,16 +16,30 @@ export const TIP_IDS = [
 ] as const;
 export type TipId = (typeof TIP_IDS)[number];
 
-/** The toolbar item a tip points at (the tool's id there), where it differs from the tip id. */
-export function toolbarItemOf(id: TipId): string {
+/** At most this many tips show in one session (DESIGN 3.6); "Show tips again" does not lift it. */
+export const MAX_TIPS_PER_SESSION = 3;
+
+/** The tool-row items a tip may point at, best first: the slot ids of the F15 tool row (they differ from the tip ids). */
+export function toolbarItemsOf(id: TipId): readonly string[] {
   switch (id) {
     case 'sign':
-      return 'signature';
+      return ['signature'];
     case 'insertText':
-      return 'textBox';
+      return ['textBox'];
+    case 'text':
+      return ['freeText'];
+    case 'pages':
+      return ['organize'];
+    case 'highlight':
+      return ['highlight', 'underline', 'strikeout'];
     default:
-      return id;
+      return [id];
   }
+}
+
+/** The first tool-row item a tip points at. */
+export function toolbarItemOf(id: TipId): string {
+  return toolbarItemsOf(id)[0] ?? id;
 }
 
 /** The tip of a tool that has one (the Markup and Shapes variants share their family's tip). */
@@ -62,6 +76,8 @@ export interface TipContext {
   tourRunning: boolean;
   /** A tip is visible already. */
   tipVisible: boolean;
+  /** Tips shown so far in this session. */
+  shownCount?: number;
 }
 
 /** Whether the tip may show now: unseen, no tour, nothing else visible (DESIGN 3.47 Trigger). */
@@ -70,6 +86,7 @@ export function mayShow(id: TipId, context: TipContext): boolean {
     context.loaded &&
     !context.tourRunning &&
     !context.tipVisible &&
+    (context.shownCount ?? 0) < MAX_TIPS_PER_SESSION &&
     !context.seen.includes(id) &&
     !context.session.has(id)
   );

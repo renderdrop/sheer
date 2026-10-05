@@ -55,6 +55,8 @@ describe('the seen-state logic', () => {
     expect(tipFor({ activeTool: 'crop', redactMode: false })).toBe('crop');
     expect(toolbarItemOf('sign')).toBe('signature');
     expect(toolbarItemOf('draw')).toBe('draw');
+    expect(toolbarItemOf('text')).toBe('freeText');
+    expect(toolbarItemOf('pages')).toBe('organize');
   });
 
   it('shows an unseen tip once settings are known, with no tour and no other tip', () => {
@@ -180,13 +182,57 @@ function Fixture() {
   );
 }
 
+describe('the session cap', () => {
+  it('shows at most three tips per session, even after "show tips again"', async () => {
+    for (const tool of ['highlight', 'note', 'text'] as const) {
+      useUi.setState({ activeTool: tool });
+      await maybeShowTip();
+      expect(useTips.getState().current).toBe(tool);
+      useTips.getState().dismiss();
+    }
+    useUi.setState({ activeTool: 'draw' });
+    await maybeShowTip();
+    expect(useTips.getState().current).toBeNull();
+    await resetTips();
+    await maybeShowTip();
+    expect(useTips.getState().current).toBeNull();
+    expect(mayShow('draw', { ...context, shownCount: 3 })).toBe(false);
+    expect(mayShow('draw', { ...context, shownCount: 2 })).toBe(true);
+  });
+
+  it('fires each trigger once: every tool of the spec shows its tip a single time', async () => {
+    for (const tool of ['highlight', 'note', 'text'] as const) {
+      useUi.setState({ activeTool: tool });
+      await maybeShowTip();
+      useTips.getState().dismiss();
+      await maybeShowTip();
+      expect(useTips.getState().current).toBeNull();
+    }
+    expect(useSettings.getState().tipsSeen).toEqual(['highlight', 'note', 'text']);
+  });
+
+  it('stays quiet while a tour is paused or running, and keeps the cap untouched', async () => {
+    useTour.getState().start(1);
+    useTour.getState().hide();
+    for (const tool of ['highlight', 'note', 'text', 'draw'] as const) {
+      useUi.setState({ activeTool: tool });
+      await maybeShowTip();
+    }
+    expect(useTips.getState().current).toBeNull();
+    useTour.getState().end('skipped');
+    useUi.setState({ activeTool: 'crop' });
+    await maybeShowTip();
+    expect(useTips.getState().current).toBe('crop');
+  });
+});
+
 describe('the tip card', () => {
   it('is a labelled region with the text, describes its tool, never takes focus, and dismisses with x', async () => {
     const { user } = setup(<Fixture />);
     expect(screen.queryByRole('region', { name: 'Tip' })).toBeNull();
     act(() => useTips.getState().show('draw'));
     const card = await screen.findByRole('region', { name: 'Tip' });
-    expect(card.textContent).toContain('Strokes drawn within a second become one drawing.');
+    expect(card.textContent).toContain('Pause before you let go to turn a stroke into a shape.');
     const tool = screen.getByRole('button', { name: 'Draw' });
     expect(tool.getAttribute('aria-describedby')).toBe(card.querySelector('p')?.id);
     expect(document.activeElement).toBe(document.body);
