@@ -20,20 +20,79 @@ describe('surface gate checks', () => {
     expect(c.checkClipped([ok, cut, off], vp)).toEqual(['Save is clipped', 'Close is clipped']);
   });
 
-  it('allows internal scroll in lists only', () => {
+  it('flags a label wider than its button (ellipsis)', () => {
+    const b = { name: 'Save', rect: r(20, 20, 80, 50), clips: [], label: { scrollWidth: 70, clientWidth: 50 } };
+    expect(c.checkClipped([b], vp)).toEqual(['Save label is cut (70 > 50)']);
+    expect(c.checkClipped([{ ...b, label: { scrollWidth: 51, clientWidth: 50 } }], vp)).toEqual([]);
+  });
+
+  it('a row scrolled out of a visible list is no cut-off; a cut list is', () => {
+    // the page measures the row without the list's clip and adds the list as a control of its own
+    const row = { name: 'row 40', rect: r(20, 20, 80, 50), clips: [r(0, 0, 400, 400)] };
+    const list = { name: 'ul', rect: r(10, 10, 300, 300), clips: [r(0, 0, 400, 400)] };
+    expect(c.checkClipped([row, list], vp)).toEqual([]);
+    expect(c.checkClipped([{ ...list, rect: r(10, 10, 300, 500) }], vp)).toEqual(['ul is clipped']);
+  });
+
+  it('allows internal scroll in lists only, and only for overflow auto/scroll', () => {
     const items = [
-      { name: 'div.body', scrollHeight: 500, clientHeight: 300, isList: false },
-      { name: 'ul.items', scrollHeight: 500, clientHeight: 300, isList: true },
-      { name: 'div.fit', scrollHeight: 301, clientHeight: 300, isList: false },
+      { name: 'div.body', scrollHeight: 500, clientHeight: 300, overflowY: 'auto', isList: false },
+      { name: 'ul.items', scrollHeight: 500, clientHeight: 300, overflowY: 'auto', isList: true },
+      { name: 'div.fit', scrollHeight: 301, clientHeight: 300, overflowY: 'scroll', isList: false },
+      { name: 'label', scrollHeight: 16, clientHeight: 1, overflowY: 'hidden', isList: false },
     ];
     expect(c.checkScroll(items)).toEqual(['div.body scrolls inside (500 > 300)']);
   });
 
-  it('flags overlap with layers and outside controls, not a mere touch', () => {
-    const s = r(100, 100, 300, 300);
-    expect(c.checkOverlap(s, [{ name: 'tip', rect: r(250, 250, 400, 400) }], [])).toEqual(['overlaps tip']);
-    expect(c.checkOverlap(s, [], [{ name: 'Zoom', rect: r(300, 100, 340, 130) }])).toEqual([]);
-    expect(c.checkOverlap(s, [], [{ name: 'Zoom', rect: r(280, 120, 340, 150) }])).toEqual(['covers Zoom']);
+  it('flags sideways overflow of non-lists and descendants leaving the surface', () => {
+    const els = [
+      { name: 'div.row', scrollWidth: 400, clientWidth: 300, isList: false },
+      { name: 'ul', scrollWidth: 400, clientWidth: 300, isList: true },
+    ];
+    expect(c.checkHScroll(els)).toEqual(['div.row overflows sideways (400 > 300)']);
+    const d = [{ name: 'btn', rect: r(90, 90, 120, 120) }];
+    expect(c.checkDescendants(r(0, 0, 100, 100), d)).toEqual(['btn leaves the surface']);
+    expect(c.checkDescendants(r(0, 0, 100, 100), [{ name: 'in', rect: r(0, 0, 100, 100) }])).toEqual([]);
+  });
+
+  it('flags two non-nested interactive elements that intersect', () => {
+    const a = { id: 0, name: 'a', rect: r(0, 0, 100, 40), parents: [] };
+    const inner = { id: 1, name: 'inner', rect: r(10, 10, 50, 30), parents: [0] };
+    const b = { id: 2, name: 'b', rect: r(90, 10, 140, 30), parents: [] };
+    expect(c.checkControlOverlap([a, inner])).toEqual([]);
+    expect(c.checkControlOverlap([a, inner, b])).toEqual(['a overlaps b']);
+  });
+
+  it('lets a menu or popover cover toolbar buttons below it, but not its anchor, the active tool or the focused input', () => {
+    const menu = r(100, 40, 300, 240);
+    const below = { name: 'Zoom', rect: r(120, 100, 180, 130), role: 'other' };
+    expect(c.checkOverlap('popover', menu, [], [below])).toEqual([]);
+    const anchor = { name: 'Options', rect: r(150, 30, 200, 60), role: 'anchor' };
+    const active = { name: 'Draw', rect: r(210, 100, 260, 130), role: 'active' };
+    const focus = { name: 'input', rect: r(110, 200, 190, 230), role: 'focus' };
+    expect(c.checkOverlap('popover', menu, [], [anchor, active, focus])).toEqual([
+      'covers anchor Options',
+      'covers active Draw',
+      'covers focus input',
+    ]);
+  });
+
+  it('exempts a modal over its scrim but not floating layers; surfaces may not intersect each other', () => {
+    const modal = r(100, 100, 500, 400);
+    const below = { name: 'Zoom', rect: r(120, 120, 180, 150), role: 'anchor' };
+    expect(c.checkOverlap('modal', modal, [], [below])).toEqual([]);
+    expect(c.checkOverlap('modal', modal, [{ name: 'tip', rect: r(450, 350, 600, 450) }], [])).toEqual([
+      'overlaps tip',
+    ]);
+    expect(c.checkOverlap('popover', r(0, 0, 50, 50), [{ name: 'tooltip', rect: r(60, 0, 90, 20) }], [])).toEqual([]);
+  });
+
+  it('flags a notice that covers an input or any other protected rect', () => {
+    const tip = { name: 'tip', rect: r(100, 100, 300, 160) };
+    const input = { name: 'input "Name"', rect: r(120, 140, 280, 172), role: 'other' };
+    const far = { name: 'button', rect: r(400, 100, 460, 130), role: 'other' };
+    expect(c.checkNotice(tip, [input, far])).toEqual(['tip covers input "Name"']);
+    expect(c.checkNotice(tip, [far])).toEqual([]);
   });
 
   it('builds one row per check', () => {

@@ -2,14 +2,26 @@
 // Sets the viewport to 960x640 (plus 1280x800 with --wide), opens tests/fixtures/text.pdf, then opens every surface and checks it:
 //   inside   the surface lies inside the viewport
 //   clipped  no button/input/select/textarea inside it is cut by an overflow ancestor or by the viewport
-//   scroll   no container inside it scrolls internally (lists excepted: role list|listbox|grid|tree or data-scroll="list")
-//   overlap  it does not sit on a tooltip/tip/coach mark, nor cover a control outside it (modals cover the inert app by design)
+//   scroll   no container with overflow-y auto/scroll and scrollHeight > clientHeight + 1 (lists excepted: role list|listbox|menu|tree|grid or data-scroll="list")
+//   overlap  Q8: a popover/menu may not cover its anchor, the active tool or the focused input (other controls below are fine); no two floating
+//            surfaces intersect; notices may not cover any protected rect; modals cover the inert app by design
+// Runs once per UI language (en, then de, via the locale store). Disabled triggers are logged SKIP.
 // Surfaces: the dev registry `window.__sheerSurfaces` (src/dev/surfaces.ts: dialogs, sheets) and every popover/menu trigger on screen
 // (`aria-haspopup`), swept in each mode. Usage: node scripts/ui/surface-gate.mjs [--wide] [--only <substring>]   exit 1 on any violation.
 import { spawn } from 'node:child_process';
 import { resolve } from 'node:path';
 
-import { checkClipped, checkInViewport, checkOverlap, checkScroll, rowsFor } from './surface-checks.mjs';
+import {
+  checkClipped,
+  checkControlOverlap,
+  checkDescendants,
+  checkHScroll,
+  checkInViewport,
+  checkNotice,
+  checkOverlap,
+  checkScroll,
+  rowsFor,
+} from './surface-checks.mjs';
 
 const BASE = `http://127.0.0.1:${process.env.CDP_PORT ?? 9222}`;
 const root = resolve(import.meta.dirname, '..', '..');
@@ -19,6 +31,7 @@ const args = process.argv.slice(2);
 const only = args.includes('--only') ? args[args.indexOf('--only') + 1] : '';
 const sizes = [{ w: 960, h: 640 }, ...(args.includes('--wide') ? [{ w: 1280, h: 800 }] : [])];
 let current = sizes[0];
+let lang = 'en';
 
 const targets = await (await fetch(`${BASE}/json`)).json();
 const page = targets.find((t) => t.type === 'page' && !t.url.startsWith('devtools:'));
@@ -83,48 +96,70 @@ const PAGE = `(() => {
       const el = found.sort((a, b) => area(b) - area(a))[0];
       const rect = R(el.getBoundingClientRect());
       const modal = el.getAttribute('aria-modal') === 'true' || !!el.closest('[aria-modal="true"]');
-      const controls = [...el.querySelectorAll(CONTROLS)]
-        .filter((c) => visible(c) && !c.closest(LIST))
-        .filter((c) => { const r = c.getBoundingClientRect(); return r.width > 2 && r.height > 2; })
-        .map((c) => {
-          const clips = [];
-          for (let p = c.parentElement; p && p !== document.documentElement; p = p.parentElement) {
-            const s = getComputedStyle(p);
-            if (s.overflowX !== 'visible' || s.overflowY !== 'visible') clips.push(R(p.getBoundingClientRect()));
-          }
-          return { name: name(c), rect: R(c.getBoundingClientRect()), clips };
-        });
-      const containers = [el, ...el.querySelectorAll('*')]
-        .filter((c) => !['TEXTAREA', 'INPUT', 'SELECT'].includes(c.tagName))
-        .filter((c) => { const s = getComputedStyle(c); return visible(c) && (s.overflowY !== 'visible' || s.overflowX !== 'visible'); })
-        .map((c) => ({ name: name(c), scrollHeight: c.scrollHeight, clientHeight: c.clientHeight, isList: !!c.closest(LIST) }));
-      const layers = [...document.querySelectorAll('[role="tooltip"],[role="region"]')]
+      const onlyBig = (c) => { const r = c.getBoundingClientRect(); return r.width > 2 && r.height > 2; };
+      const clipsOf = (c) => {
+        const clips = [];
+        for (let p = c.parentElement; p && p !== document.documentElement; p = p.parentElement) {
+          if (p.matches(LIST)) continue; // a list scrolls by design; the list itself is checked as a control below
+          const s = getComputedStyle(p);
+          if (s.overflowX !== 'visible' || s.overflowY !== 'visible') clips.push(R(p.getBoundingClientRect()));
+        }
+        return clips;
+      };
+      const labelOf = (c) => {
+        if (['INPUT', 'TEXTAREA', 'SELECT'].includes(c.tagName)) return null;
+        for (const e of [c, ...c.querySelectorAll('*')]) {
+          if (e instanceof SVGElement || getComputedStyle(e).display === 'inline') continue;
+          if (e.clientWidth > 2 && e.scrollWidth > e.clientWidth + 1) return { scrollWidth: e.scrollWidth, clientWidth: e.clientWidth };
+        }
+        return null;
+      };
+      const ctrl = [...el.querySelectorAll(CONTROLS + ',a[href]')].filter((c) => visible(c) && onlyBig(c));
+      const controls = ctrl.map((c) => ({ name: name(c), rect: R(c.getBoundingClientRect()), clips: clipsOf(c), label: labelOf(c) }));
+      for (const l of new Set(ctrl.map((c) => c.closest(LIST)).filter((l) => l && l !== el && visible(l))))
+        controls.push({ name: name(l), rect: R(l.getBoundingClientRect()), clips: clipsOf(l), label: null });
+      const interactive = ctrl.map((c, id) => ({
+        id, name: name(c), rect: R(c.getBoundingClientRect()),
+        parents: ctrl.flatMap((o, j) => (o !== c && o.contains(c) ? [j] : [])),
+      }));
+      const all = [el, ...el.querySelectorAll('*')].filter((c) => !(c instanceof SVGElement) && visible(c));
+      const plain = all.filter((c) => !['TEXTAREA', 'INPUT', 'SELECT'].includes(c.tagName));
+      const containers = plain
+        .filter((c) => { const s = getComputedStyle(c); return s.overflowY === 'auto' || s.overflowY === 'scroll'; })
+        .map((c) => ({ name: name(c), scrollHeight: c.scrollHeight, clientHeight: c.clientHeight, overflowY: getComputedStyle(c).overflowY, isList: !!c.closest(LIST) }));
+      const wide = plain
+        .filter((c) => getComputedStyle(c).display !== 'inline' && c.clientWidth > 2)
+        .map((c) => ({ name: name(c), scrollWidth: c.scrollWidth, clientWidth: c.clientWidth, isList: !!c.closest(LIST) }));
+      const descendants = all.filter((c) => c !== el && !c.closest(LIST) && onlyBig(c) && getComputedStyle(c).position !== 'fixed')
+        .map((c) => ({ name: name(c), rect: R(c.getBoundingClientRect()) }));
+      const layerEls = [...document.querySelectorAll('[role="tooltip"],[role="region"]')]
         .filter((l) => visible(l) && !el.contains(l) && !l.contains(el))
         .filter((l) => {
           const s = getComputedStyle(l);
           return l.getAttribute('role') === 'tooltip' || ((s.position === 'fixed' || s.position === 'absolute') && area(l) < innerWidth * innerHeight / 2);
-        })
-        .map((l) => ({ name: name(l), rect: R(l.getBoundingClientRect()) }));
-      const outside = [];
-      if (!modal) {
-        const sr = el.getBoundingClientRect();
-        for (const c of document.querySelectorAll(CONTROLS + ',a[href]')) {
-          if (el.contains(c) || !visible(c) || c.getAttribute('aria-expanded') === 'true' || c.closest(SURFACES)) continue;
-          const r = c.getBoundingClientRect();
-          const l = Math.max(r.left, sr.left), rr = Math.min(r.right, sr.right);
-          const t = Math.max(r.top, sr.top), b = Math.min(r.bottom, sr.bottom);
-          if (rr <= l || b <= t) continue;
-          // Covered for real: the topmost thing at the middle of the shared area belongs to the surface.
-          const top = document.elementFromPoint((l + rr) / 2, (t + b) / 2);
-          if (top && el.contains(top)) outside.push({ name: name(c), rect: R(r) });
-        }
+        });
+      const layers = layerEls.map((l) => ({ name: name(l), rect: R(l.getBoundingClientRect()) }));
+      // Q8 protected rects: the anchor, the active tool and the focused input matter for a popover; every visible control for a notice.
+      const protectedRects = [];
+      const focus = document.activeElement;
+      const typing = (e) => e && (['INPUT', 'TEXTAREA', 'SELECT'].includes(e.tagName) || e.isContentEditable);
+      for (const c of document.querySelectorAll(CONTROLS + ',[contenteditable="true"],[data-toolbar-item]')) {
+        if (el.contains(c) || !visible(c) || !onlyBig(c) || layerEls.some((l) => l.contains(c))) continue;
+        const role = el.id && c.getAttribute('aria-controls') === el.id ? 'anchor'
+          : c.getAttribute('aria-pressed') === 'true' || c.getAttribute('data-on') === 'true' ? 'active'
+          : c === focus && typing(c) ? 'focus' : 'other';
+        protectedRects.push({ name: name(c), rect: R(c.getBoundingClientRect()), role });
       }
-      return { rect, modal, controls, containers, layers, outside, vp: { w: innerWidth, h: innerHeight } };
+      return { rect, modal, controls, interactive, containers, wide, descendants, layers, protectedRects, vp: { w: innerWidth, h: innerHeight } };
     },
     triggers() {
-      return [...document.querySelectorAll('[aria-haspopup]:not([aria-haspopup="false"])')]
-        .filter((t) => visible(t) && !t.disabled && !t.closest(SURFACES))
-        .map((t, i) => { t.setAttribute('data-gate-trigger', String(i)); return { i, name: name(t) }; });
+      document.querySelectorAll('[data-gate-trigger]').forEach((e) => e.removeAttribute('data-gate-trigger'));
+      const all = [...document.querySelectorAll('[aria-haspopup]:not([aria-haspopup="false"])')].filter((t) => visible(t) && !t.closest(SURFACES));
+      return all.map((t, i) => {
+        t.setAttribute('data-gate-trigger', String(i));
+        const off = t.disabled || t.getAttribute('aria-disabled') === 'true';
+        return { i, name: name(t), off };
+      });
     },
   };
   return true;
@@ -133,16 +168,20 @@ const PAGE = `(() => {
 const rows = [];
 const verdict = (id, m) =>
   rowsFor(id, {
-    inside: checkInViewport(m.rect, m.vp),
+    inside: [...checkInViewport(m.rect, m.vp), ...checkDescendants(m.rect, m.descendants), ...checkHScroll(m.wide)],
     clipped: checkClipped(m.controls, m.vp),
     scroll: checkScroll(m.containers),
-    overlap: checkOverlap(m.rect, m.layers, m.outside),
+    overlap: [
+      ...checkOverlap(m.modal ? 'modal' : 'popover', m.rect, m.layers, m.protectedRects),
+      ...checkControlOverlap(m.interactive),
+      ...m.layers.flatMap((l) => checkNotice(l, m.protectedRects)),
+    ],
   });
 
 /** Opens with `open`, waits for the animation, measures, closes. */
 async function probe(id, open, close) {
   if (only && !id.includes(only)) return;
-  const tag = `${id} @${current.w}x${current.h}`;
+  const tag = `${lang} ${id} @${current.w}x${current.h}`;
   try {
     await ev(`window.__gate.mark()`);
     await open();
@@ -185,6 +224,12 @@ async function sweepRegistry() {
 async function sweepTriggers(label) {
   for (const t of await ev(`window.__gate.triggers()`)) {
     const el = `document.querySelector('[data-gate-trigger="${t.i}"]`;
+    if (t.off) {
+      if (!only || t.name.includes(only)) {
+        console.log(`SKIP popover:${lang}:${label}:${t.name} @${current.w}x${current.h} (disabled trigger)`);
+      }
+      continue;
+    }
     await probe(
       `popover:${label}:${t.name}`,
       () => ev(`${el}')?.click()`),
@@ -230,11 +275,18 @@ try {
     const vp = await ev(`({ w: innerWidth, h: innerHeight })`);
     if (vp.w !== size.w || vp.h !== size.h)
       rows.push({ surface: `viewport ${size.w}x${size.h}`, check: 'size', result: `FAIL got ${vp.w}x${vp.h}` });
-    await sweepRegistry();
-    for (const mode of modes) {
-      await ev(`(async()=>{(await ${store('stores/ui.ts')}).useUi.getState().setMode(${JSON.stringify(mode)})})()`);
-      await sleep(400);
-      await sweepTriggers(mode);
+    // Q9: en and de, each on its own pass.
+    for (lang of ['en', 'de']) {
+      await ev(
+        `(async()=>{(await ${store('i18n/store.ts')}).useLocaleStore.getState().setLocale(${JSON.stringify(lang)})})()`,
+      );
+      await sleep(500);
+      await sweepRegistry();
+      for (const mode of modes) {
+        await ev(`(async()=>{(await ${store('stores/ui.ts')}).useUi.getState().setMode(${JSON.stringify(mode)})})()`);
+        await sleep(400);
+        await sweepTriggers(mode);
+      }
     }
   }
 } catch (e) {
