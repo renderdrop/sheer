@@ -238,3 +238,13 @@ engine's file reader returned short reads at 256 KiB block borders (large images
 
 - [x] Designer acceptance of the mode layout (after A and B): PASS 2026-10-05, no blockers, B3 accepted, B12 removed; majors/minors in
       ROADMAP "Politur v1.2". R5 and v1.2.0 continue in ROADMAP v1.2
+
+## F16 — CI red on main since run #61 (2026-10-05)
+
+Owner: CI on `main` red since run #61, five runs, also on docs commits. Stop v1.3 features until clarified: fetch logs, find the cause per platform, fix until main is green; check why docs commits trigger CI (`paths-ignore`). New rule + ADR: every loop starts by reading the CI status of the last completed run on main (no waiting); red = fix first, no new package; green CI is part of every package's DoD.
+
+- [x] Logs and cause: macOS only, one test (`recent_actions::tests::starring_by_id_and_revealing_only_what_exists`, a relative UNC spelling on Unix is never stored); Windows green.
+- [x] Fix: 7380b68 (absolute spelling on non-Windows).
+- [x] `paths-ignore` works: every run in question came from a push that also carried code; a docs-only push (893ce34) started no run (ADR-120 context).
+- [x] Rule + ADR-120: `scripts/ci-status.sh` at every loop start, red = fix first, CI green in every package's DoD (ORCHESTRATOR_PROMPT §2 rule 12, §8.4 step 0/7, §9; CLAUDE.md rule 12).
+- [ ] main green on both platforms (run #67)
