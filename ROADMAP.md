@@ -265,7 +265,7 @@ Order as in the brief. Each phase ends with one designer round on Tauri-window s
 - [x] R5.2 — Spells 7–12 (undo, comment jump, delete page, app start, ambient glow, tool cursors)
 - [x] R5.3 — Spells 13–18 (magnifier, sidebar chevrons, skeletons, tooltip groups, zoom snap, focus ring)
 - [x] R5 acceptance — recordings, fps p95 ≤ 16.8 ms, reduced-motion variants, designer round (2026-10-05: 21 spells recorded with reduced twins in docs/review/v1.2/motion/ (not tracked), p95 16.8 ms (spell 22: 16.9 ms, 60 Hz noise), spells 4/8/10/16 checked with real OS input, save flash fixed (4adb568), designer PASS)
-- [ ] R6 — Tour coach marks + tour pill, welcome in a new tab, settings reduced, tool tips (max three per session)
+- [x] R6 — Tour coach marks + tour pill, welcome in a new tab, settings reduced, tool tips (max three per session)
 - [ ] R6 acceptance — designer round
 - [ ] Politur v1.2 — reviewer/designer minors of v1.2 plus the still-valid items of "v1.2 polish" above
   - (B1 review/security, minor) reveal: test that a UNC/network recent is refused; `metadata().is_file()` before reveal (+ SECURITY I5 clause); `starred` field order under the `missing` comment in recents.rs; a refused star (49 cap) needs its own error code or a quiet tooltip, not `not_found`
