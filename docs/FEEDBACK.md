@@ -226,8 +226,9 @@ engine's file reader returned short reads at 256 KiB block borders (large images
       date, author; type icons subtly distinct
 - [x] B11. Shapes: add an arrow. Freehand shape recognition: a roughly drawn shape plus a short hold snaps to circle, ellipse, rectangle,
       line or arrow (like Apple Notes); can be switched off
-- [ ] B12. Canvas background: very faint, slowly drifting Solar shapes (≤ 6 % opacity) only between the pages, never under them. The
-      designer decides after a legibility test whether it stays
+- [x] B12. Canvas background: very faint, slowly drifting Solar shapes (≤ 6 % opacity) only between the pages, never under them. The
+      designer decides after a legibility test whether it stays. **Result:** removed after the test (rings and mask edges noticed at
+      first glance; ADR-108 (3))
 
 ### C — Feature milestones after v1.2 (each a ROADMAP ticket with a designer spec before implementation)
 
@@ -235,4 +236,5 @@ engine's file reader returned short reads at 256 KiB block borders (large images
 
 ### Then
 
-- [ ] Designer acceptance of the mode layout (after A and B), then R5, then v1.2.0 (ROADMAP v1.2)
+- [x] Designer acceptance of the mode layout (after A and B): PASS 2026-10-05, no blockers, B3 accepted, B12 removed; majors/minors in
+      ROADMAP "Politur v1.2". R5 and v1.2.0 continue in ROADMAP v1.2

@@ -6,6 +6,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+Owner feedback F15 on v1.2.0-beta.1 (docs/FEEDBACK.md, ADR-104 to ADR-115).
+
+### Added
+- Save status next to the file name (Saved / edited dot / saving / failed with retry) instead of the Done button; sidebar toggle in the top bar and a grip on the sidebar edge.
+- Comment margin: bubbles beside the page at the height of their anchor (avatar, name, date, text, reply, resolve), compact markers when narrow; View → Comments in Margin. Comments panel filter (type, page, status) and sort; the comment text is the first line of a card.
+- Text comment: one click places it and typing starts; the box grows with the text; mini bar with alignment, font size, border and fill. Colour control with a hex field and recently used colours, also in the tool menus.
+- Shapes: arrow; freehand shapes snap to circle, ellipse, rectangle, line or arrow after a short pause (can be switched off).
+- Outline derived from heading sizes for PDFs without bookmarks, marked "derived".
+- Rotate handle on placed signatures and stamps; signatures and marks are placed upright in a rotated view.
+- Typed signature fonts Ms Madi (default), Hurricane and Birthstone; drawn signatures smoothed with a One Euro filter and speed-dependent width.
+
+### Changed
+- Mode tabs and tool row form one Sand bar with segmented tabs. Search hits and text selection are Solar yellow and keep the text readable. Enter confirms notes and comments, Shift+Enter breaks the line. Annotations can be dragged in every tool. The Comments panel is wider.
+- The author name is asked in a dialog on the first save of an annotated document.
+
+### Fixed
+- Large images in PDFs rendered half grey (engine reads crossing a 256 KiB block were short); images to PDF reads each image at its own offsets.
+- Reopening a saved file with a placed signature or an unsupported annotation restarted the engine.
+- Saving an annotated document did nothing while the author name was empty.
+- "Save to library" no longer drops a signature silently; a keychain failure is shown. macOS printing keeps the page images alive until the print sheet has rendered them.
+- Clicking a page thumbnail no longer plays the document-open animation.
+
 ## [1.2.0-beta.1] - 2026-10-04
 
 Pre-release of v1.2 "sheer." for the owner checkpoint (ADR-102): the redesign as of the checkpoint, before motion (R5), onboarding (R6) and the final acceptance (R7). Unsigned.
