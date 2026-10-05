@@ -7,7 +7,8 @@ import { planPage, tilesIn, TILE_SIZE_PX, tileRect, type PagePlan, type TileInde
 import { imageKey, type CacheEntry, type ImageId } from '../../engine/renderCache';
 import { renderScheduler, type RenderScheduler } from '../../engine/renderScheduler';
 import { useT } from '../../i18n';
-import { DURATION, ENTER_SCALE, FADE_END_SLACK_MS, SPRING } from '../../lib/motion';
+import { tokenPx } from '../../components/tokens';
+import { DURATION, EASE_OUT, FADE_END_SLACK_MS } from '../../lib/motion';
 import { pageRevOf, useAnnotations } from '../../stores/annotations';
 import { AnnotationLayer } from '../annotations/layer/AnnotationLayer';
 import { CropLayer } from '../crop/CropLayer';
@@ -73,10 +74,11 @@ export interface PageViewProps {
   /** The scheduler and its cache; the app's by default. */
   scheduler?: RenderScheduler;
   /**
-   * How the page appears when it mounts (MOTION 4.6): `scale` is the first page of a document that opened without a source to fly
-   * from (opacity and scale .96 to 1, slow); `fade` is the first page under a clone (opacity, slow). Read once, at mount.
+   * How the page appears when it mounts (MOTION 4.6): `rise` is the first page of a document that opened without a source to fly
+   * from (opacity, and 8 px (`--offset-enter`) up, slow, ease-out); `fade` is the first page under a clone (opacity, slow). Reduced
+   * motion: both are a fast fade without offset. Read once, at mount.
    */
-  entrance?: 'scale' | 'fade';
+  entrance?: 'rise' | 'fade';
   /**
    * The view rotation in degrees (DESIGN 3.20). `width` and `height` are the box as it is shown, so with a quarter turn they are
    * the page's sides swapped; `widthPt` and `heightPt` stay the page as it is drawn (the file's rotation applied).
@@ -130,14 +132,15 @@ function parseTiles(key: string): TileIndex[] {
 
 const FILL = 'absolute max-w-none select-none';
 
-const FADE_MS = { first: DURATION.base * 1000, sharp: DURATION.fast * 1000 } as const;
+// The bitmap replaces the skeleton, or a stand-in, with a fast fade (MOTION spell 15).
+const FADE_MS = { first: DURATION.fast * 1000, sharp: DURATION.fast * 1000 } as const;
 
 interface FadeImageProps {
   src: string;
   style: object;
   /** Shown at full opacity from the start: it was in the cache when the page mounted (no fade, MOTION 4.3). */
   instant: boolean;
-  /** `first`: the image fades over the placeholder (base); `sharp`: it fades over a stand-in (fast). */
+  /** `first`: the image fades over the skeleton (fast); `sharp`: it fades over a stand-in (fast). */
   over: 'first' | 'sharp';
   /** The image has faded in completely: what it covered can go. */
   onShown?: () => void;
@@ -368,13 +371,13 @@ export const PageView = memo(function PageView({
   useLayoutEffect(() => {
     const element = pageRef.current;
     if (element === null || entering === undefined) return;
-    const scaled = entering === 'scale' && !reduce;
+    const rising = entering === 'rise' && !reduce;
     const controls = animate(
       element,
-      scaled ? { opacity: [0, 1], scale: [ENTER_SCALE, 1] } : { opacity: [0, 1] },
-      reduce ? SPRING.base : SPRING.slow,
+      rising ? { opacity: [0, 1], y: [tokenPx('--offset-enter', 8), 0] } : { opacity: [0, 1] },
+      { duration: reduce ? DURATION.fast : DURATION.slow, ease: EASE_OUT },
     );
-    element.style.willChange = scaled ? 'transform, opacity' : 'opacity';
+    element.style.willChange = rising ? 'transform, opacity' : 'opacity';
     controls.then(
       () => {
         element.style.willChange = '';
@@ -408,8 +411,8 @@ export const PageView = memo(function PageView({
       style={{ left, top, width, height }}
     >
       <div className="absolute" style={surface}>
-        {/* Until the first image of the page is there, a static Skeleton (DESIGN v2 4) stands for it. */}
-        {standIn === undefined && exact === undefined && tileEntries.length === 0 && (
+        {/* Until the first image of the page has faded in, the Skeleton (spell 15) stands for it, in the page's aspect ratio. */}
+        {standIn === undefined && (exact === undefined || covered !== exact.key) && tileEntries.length === 0 && (
           <div className="absolute inset-0">
             <Skeleton className="size-full" />
           </div>

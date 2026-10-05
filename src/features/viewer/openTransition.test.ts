@@ -50,7 +50,7 @@ describe('a dropped file', () => {
     beginOpening(1);
     expect(useTransition.getState().active).toBeNull();
     // No source: the first page scales in.
-    expect(entranceFor(1)).toBe('scale');
+    expect(entranceFor(1)).toBe('rise');
   });
 
   it('forgets a source that nobody used', () => {

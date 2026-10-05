@@ -5,7 +5,8 @@ import type { PageSize } from '../../api/render';
 import { bucketFor, planPage } from '../../engine/buckets';
 import { imageKey } from '../../engine/renderCache';
 import { renderScheduler } from '../../engine/renderScheduler';
-import { JUMP_ANIMATE_MAX_VIEWPORTS, SPRING } from '../../lib/motion';
+import { EASE_OUT, JUMP_ANIMATE_MAX_VIEWPORTS, SPRING } from '../../lib/motion';
+import { jumpDurationMs } from './jump';
 import { clampZoom } from '../../lib/zoom';
 import { pageRevOf, useAnnotations } from '../../stores/annotations';
 import { selectActiveId, useDocuments } from '../../stores/documents';
@@ -19,7 +20,8 @@ import { useBubbleThreads } from '../margin/useBubbles';
 import { OpenClone } from './OpenClone';
 import { entranceFor, finishTransition, isFresh, resolveFresh, useTransition, type SourceRect } from './openTransition';
 import { Canvas } from './Canvas';
-import { useLesenKeys } from './lesen';
+import { cursorForTool } from './cursors';
+import { useEffectiveTool, useLesenKeys } from './lesen';
 import { Magnifier } from './Magnifier';
 import { usePan } from './usePan';
 import {
@@ -44,7 +46,7 @@ import { useFindKeys } from '../search/commands';
 import { SelectionBar } from '../textlayer/SelectionBar';
 import { useTextCopy, useTextKeys } from '../textlayer/useTextSelection';
 import { BUCKET_SETTLE_MS, PageView } from './PageView';
-import { consumeJump, publishViewRect, registerScrollSource } from './scrollBridge';
+import { consumeJump, endJump, publishViewRect, registerScrollSource } from './scrollBridge';
 import { useDevicePixelRatio } from './useDevicePixelRatio';
 import { cancelZoomMotion, settleZoomMotion, useViewer } from './useViewer';
 import { animationsOff, registerZoomSurface } from './zoomMotion';
@@ -123,6 +125,7 @@ export function ViewerCanvas({ style }: { style?: CSSProperties }) {
   useFindKeys();
   useTextKeys(scrollerRef, docId);
   useLesenKeys();
+  const tool = useEffectiveTool();
   usePan(scrollerRef);
 
   const { zoom, scrollMode, pageIndex, pageCount, anchor } = view;
@@ -297,10 +300,12 @@ export function ViewerCanvas({ style }: { style?: CSSProperties }) {
       const distance = Math.abs(target.top - region.scrollTop);
       const near = distance > 1 && distance <= JUMP_ANIMATE_MAX_VIEWPORTS * region.clientHeight;
       if (jump && !changed && !paged && !reduce && near) {
-        // Up to two viewports away the jump is carried by the spring (slow); farther, and for reduced motion, it is at once.
+        // Up to two viewports away the jump is eased out over a time that grows with the distance, capped at --motion-scroll-max
+        // (spell 8); farther, and for reduced motion, it is at once.
         setScrolling(true);
         scrollAnim.current = animate(region.scrollTop, target.top, {
-          ...SPRING.slow,
+          duration: jumpDurationMs(distance, region.clientHeight) / 1000,
+          ease: EASE_OUT,
           onUpdate: (value: number) => {
             region.scrollTop = value;
           },
@@ -309,11 +314,13 @@ export function ViewerCanvas({ style }: { style?: CSSProperties }) {
             setScrolling(false);
             pinRef.current = pinned ? { page: wanted.page, top: region.scrollTop } : null;
             useView.getState().reportPage(docId, wanted.page);
+            endJump();
           },
         });
       } else {
         region.scrollTop = target.top;
         pinRef.current = pinned ? { page: wanted.page, top: region.scrollTop } : null;
+        if (jump) endJump();
       }
       if (anchor !== null) useView.getState().consumeAnchor(docId);
     }
@@ -438,6 +445,7 @@ export function ViewerCanvas({ style }: { style?: CSSProperties }) {
         ) : null
       }
       dropActive={dropActive}
+      cursor={cursorForTool(tool)}
     >
       {layout !== null &&
         docId !== null &&

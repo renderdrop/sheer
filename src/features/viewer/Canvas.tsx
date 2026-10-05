@@ -92,6 +92,8 @@ export interface CanvasProps {
   renderMargin?: (mode: Exclude<MarginMode, 'off'>) => ReactNode;
   /** A file is dragged over the window (visual only). */
   dropActive?: boolean;
+  /** The cursor over the pages (`data-cursor`, MOTION spell 12); tokens.css draws it. */
+  cursor?: string;
   className?: string;
   style?: CSSProperties;
 }
@@ -126,6 +128,7 @@ export function Canvas({
   pageWidth,
   renderMargin,
   dropActive = false,
+  cursor,
   className,
   style,
 }: CanvasProps) {
@@ -341,6 +344,7 @@ export function Canvas({
   return (
     <main
       data-action-scope="canvas"
+      data-cursor={cursor}
       style={style}
       className={cx('relative isolate min-h-0 min-w-0 overflow-hidden bg-page-area', className)}
     >

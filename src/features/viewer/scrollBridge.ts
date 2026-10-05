@@ -93,3 +93,29 @@ export function consumeJump(): boolean {
   jumpMarkedAt = Number.NEGATIVE_INFINITY;
   return was;
 }
+
+/**
+ * Whoever started a jump (a comment click) waits for the scroll to end before the pulse: the canvas calls `endJump` when an
+ * animated jump has finished or an instant one has landed. `waitForJumpEnd` also fires after `fallbackMs`, so a jump that never
+ * scrolled (the target was already in view, a user scroll cancelled it) still pulses. One waiter at a time; a newer one replaces it.
+ */
+let jumpWaiter: (() => void) | null = null;
+
+export function waitForJumpEnd(then: () => void, fallbackMs: number): void {
+  let done = false;
+  const fire = () => {
+    if (done) return;
+    done = true;
+    window.clearTimeout(timer);
+    if (jumpWaiter === fire) jumpWaiter = null;
+    then();
+  };
+  const timer = window.setTimeout(fire, fallbackMs);
+  jumpWaiter = fire;
+}
+
+export function endJump(): void {
+  const waiter = jumpWaiter;
+  jumpWaiter = null;
+  waiter?.();
+}

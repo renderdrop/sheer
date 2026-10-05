@@ -25,14 +25,18 @@ describe('snapZoom', () => {
     { zoom: 0.8, fit: 'page' as const },
   ];
 
-  it('takes a fit step within 8 % (log) and keeps the fit mode of it', () => {
-    expect(snapZoom(1.05, stops)).toEqual({ zoom: 1, fit: 'none' });
-    expect(snapZoom(1.45, stops)).toEqual({ zoom: 1.4, fit: 'width' });
-    expect(snapZoom(0.77, stops)).toEqual({ zoom: 0.8, fit: 'page' });
+  it('takes each target within +-3 % and keeps the fit mode of it', () => {
+    expect(snapZoom(1.02, stops)).toEqual({ zoom: 1, fit: 'none' });
+    expect(snapZoom(0.98, stops)).toEqual({ zoom: 1, fit: 'none' });
+    expect(snapZoom(1.4 * 1.03, stops)).toEqual({ zoom: 1.4, fit: 'width' });
+    expect(snapZoom(0.8 * 0.97, stops)).toEqual({ zoom: 0.8, fit: 'page' });
   });
 
-  it('leaves a zoom that is far from every step alone', () => {
+  it('keeps a zoom outside the bands exactly', () => {
+    expect(snapZoom(1.031, stops)).toEqual({ zoom: 1.031, fit: 'none' });
+    expect(snapZoom(0.969, stops)).toEqual({ zoom: 0.969, fit: 'none' });
     expect(snapZoom(1.2, stops)).toEqual({ zoom: 1.2, fit: 'none' });
+    expect(snapZoom(0.8 * 1.04, stops)).toEqual({ zoom: 0.8 * 1.04, fit: 'none' });
   });
 });
 
@@ -96,15 +100,15 @@ describe('the zoom motion', () => {
 
   it('scales the content around the pointer while a gesture runs, and commits once, snapped, when it stops', () => {
     const motion = createZoomMotion(host);
-    motion.gesture(1.02, { x: 200, y: 50 });
-    motion.gesture(1.03, { x: 200, y: 50 });
+    motion.gesture(1.01, { x: 200, y: 50 });
+    motion.gesture(1.015, { x: 200, y: 50 });
     // The origin is a point of the content: the pointer plus the scroll position.
     expect(content.style.transformOrigin).toBe('210px 150px');
-    expect(content.style.transform).toBe(`scale(${1.02 * 1.03})`);
+    expect(content.style.transform).toBe(`scale(${1.01 * 1.015})`);
     expect(content.style.willChange).toBe('transform');
     expect(commits).toEqual([]);
     vi.advanceTimersByTime(GESTURE_IDLE_MS);
-    // 1.05 is within the band of 100 %: the zoom snaps to it. Reduced motion commits at once.
+    // 1.025 is within the band of 100 %: the zoom snaps to it. Reduced motion commits at once.
     expect(commits).toHaveLength(1);
     expect(commits[0]?.[0]).toBe(1);
     expect(commits[0]?.[1]).toBe('none');
@@ -123,7 +127,7 @@ describe('the zoom motion', () => {
 
   it('commits a fit step as a fit mode', () => {
     const motion = createZoomMotion(host);
-    motion.gesture(1.45, { x: 0, y: 0 });
+    motion.gesture(1.42, { x: 0, y: 0 });
     vi.advanceTimersByTime(GESTURE_IDLE_MS);
     expect(commits[0]?.slice(0, 2)).toEqual([1.4, 'width']);
   });
@@ -142,6 +146,18 @@ describe('the zoom motion', () => {
     const motion = createZoomMotion(host);
     motion.animateTo(0.8, 'page', 'slow');
     expect(commits[0]?.slice(0, 2)).toEqual([0.8, 'page']);
+  });
+
+  it('snaps a slider value at gesture end: inside the band to the target, outside kept exactly', () => {
+    const motion = createZoomMotion(host);
+    motion.snapTo(1.025);
+    expect(commits[0]?.slice(0, 2)).toEqual([1, 'none']);
+    motion.settle();
+    motion.snapTo(0.79);
+    expect(commits[1]?.slice(0, 2)).toEqual([0.8, 'page']);
+    motion.settle();
+    motion.snapTo(1.2);
+    expect(commits[2]?.slice(0, 2)).toEqual([1.2, 'none']);
   });
 
   it('settle is safe when nothing runs', () => {

@@ -293,7 +293,7 @@ export const useViewer = create<ViewerState>()((set, get) => {
       if (active() !== null) motion.step(direction);
     },
     setZoom: (zoom) => {
-      if (active() !== null) motion.animateTo(zoom, 'none', 'base');
+      if (active() !== null) motion.snapTo(zoom);
     },
     resetZoom: () => {
       if (active() !== null) motion.animateTo(DEFAULT_ZOOM, 'none', 'slow');

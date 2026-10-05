@@ -49,12 +49,29 @@ const openedAt = new Map<number, number>();
 /** How long after it opened a document's first page still makes its entrance when it mounts. */
 export const ENTRANCE_WINDOW_MS = 2000;
 
-/** How the first page of `docId` appears if it mounts now (MOTION 4.6): under a clone it only fades, else it scales in. */
-export function entranceFor(docId: number): 'scale' | 'fade' | undefined {
+/** How the first page of `docId` appears if it mounts now (MOTION spell 3): under a clone it only fades, else it rises 8 px while it fades in. */
+export function entranceFor(docId: number): 'rise' | 'fade' | undefined {
   const at = openedAt.get(docId);
   if (at === undefined || performance.now() - at > ENTRANCE_WINDOW_MS) return undefined;
   const active = useTransition.getState().active;
-  return active?.kind === 'open' && active.docId === docId ? 'fade' : 'scale';
+  return active?.kind === 'open' && active.docId === docId ? 'fade' : 'rise';
+}
+
+/** At most this many thumbnails are staggered (spell 3); the rest appear with the last of them. */
+export const STAGGER_MAX = 10;
+/** `--stagger` in ms. */
+export const STAGGER_MS = 20;
+
+/** The delay of thumbnail `index` (zero-based) in the opening of a document: 20 ms apart, the 11th and later with the 10th. */
+export function staggerDelayMs(index: number): number {
+  if (!Number.isFinite(index) || index <= 0) return 0;
+  return Math.min(Math.trunc(index), STAGGER_MAX - 1) * STAGGER_MS;
+}
+
+/** Whether `docId` is in its opening (its first frame has not been long on screen): only then thumbnails make an entrance. */
+export function isOpeningNow(docId: number): boolean {
+  const at = openedAt.get(docId);
+  return at !== undefined && performance.now() - at <= ENTRANCE_WINDOW_MS;
 }
 
 export function setPendingSource(source: OpenSource): void {

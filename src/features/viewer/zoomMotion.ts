@@ -1,6 +1,13 @@
 import { MotionGlobalConfig, animate, type AnimationPlaybackControls } from 'motion/react';
 
-import { SPRING, ZOOM_INERTIA_CAP, ZOOM_INERTIA_S, ZOOM_SAMPLE_WINDOWS, ZOOM_SNAP_BAND } from '../../lib/motion';
+import {
+  DURATION,
+  EASE_OUT,
+  ZOOM_INERTIA_CAP,
+  ZOOM_INERTIA_S,
+  ZOOM_SAMPLE_WINDOWS,
+  ZOOM_SNAP_BAND,
+} from '../../lib/motion';
 import { MIN_ZOOM, MAX_ZOOM, ZOOM_STEPS, clampZoom } from '../../lib/zoom';
 import type { FitMode } from '../../stores/view';
 import type { ScrollPosition } from './layout';
@@ -44,6 +51,8 @@ export const GESTURE_IDLE_MS = 90;
 const VELOCITY_WINDOW_MS = 100;
 const MIN_DISTANCE = 1e-4;
 const STOP_EPSILON = 1e-6;
+/** Float slack on the edge of the snap band (1.03 / 1 - 1 is 0.030000000000000027). */
+const SNAP_EPSILON = 1e-9;
 
 /** The next stop in `direction`: the presets and the fit zooms, in one list. */
 export function nextStop(from: number, direction: 1 | -1, extra: readonly number[]): number {
@@ -58,15 +67,15 @@ interface Stop {
 }
 
 /**
- * Where an inertia that would end at `target` ends: on a fit step (fit width, fit page, 100 %) if it lies within the snap band
- * (log), else at `target` itself.
+ * Where a zoom gesture that would end at `target` ends (MOTION spell 17): on a fit step (fit width, fit page, 100 %) if it lies
+ * within the snap band (+-3 %), else at `target` itself, exactly.
  */
 export function snapZoom(target: number, stops: readonly Stop[]): Stop {
   let best: Stop | null = null;
   let bestDistance = ZOOM_SNAP_BAND;
   for (const stop of stops) {
-    const distance = Math.abs(Math.log(target / stop.zoom));
-    if (distance <= bestDistance) {
+    const distance = Math.abs(target / stop.zoom - 1);
+    if (distance <= bestDistance + SNAP_EPSILON) {
       best = stop;
       bestDistance = distance;
     }
@@ -90,6 +99,8 @@ export interface ZoomMotion {
   step: (direction: 1 | -1, focus?: ZoomPoint) => void;
   /** To a zoom (a fit, 100 %, the menu) around `focus` or the middle of the viewport. */
   animateTo: (zoom: number, fit: FitMode, duration: 'base' | 'slow', focus?: ZoomPoint) => void;
+  /** A zoom from the slider or the zoom field, at gesture end: snaps to 100 %, fit width or fit page within +-3 % (spell 17). */
+  snapTo: (zoom: number, focus?: ZoomPoint) => void;
   /** The layout of the committed zoom is in the DOM: the transform goes. Safe to call at any time. */
   settle: () => void;
   /** Drops a zoom in flight without committing it (another document is shown, the canvas goes): no commit, no transform. */
@@ -111,9 +122,6 @@ export function createZoomMotion(host: ZoomMotionHost): ZoomMotion {
   let controls: AnimationPlaybackControls | null = null;
   let idle: number | undefined;
   let samples: [number, number][] = [];
-  let lastU = 0;
-  let lastAt = 0;
-  let speed = 0;
 
   const fitStops = (): Stop[] => {
     const { width, page } = host.fitStops();
@@ -168,7 +176,6 @@ export function createZoomMotion(host: ZoomMotionHost): ZoomMotion {
     origin = null;
     wanted = null;
     samples = [];
-    speed = 0;
   };
 
   const begin = (focus: ZoomPoint) => {
@@ -180,8 +187,6 @@ export function createZoomMotion(host: ZoomMotionHost): ZoomMotion {
     const scroll = host.scroll();
     origin = { x: focus.x + scroll.left, y: focus.y + scroll.top };
     samples = [];
-    speed = 0;
-    lastU = 0;
   };
 
   /** The viewport point of the origin now (it follows the scroll position, the point of the content stays). */
@@ -199,8 +204,8 @@ export function createZoomMotion(host: ZoomMotionHost): ZoomMotion {
     window.requestAnimationFrame(settle);
   };
 
-  /** Carries the scale from where it is to `target`, from its present speed. */
-  const run = (target: Stop, duration: 'base' | 'slow', velocity: number) => {
+  /** Carries the scale from where it is to `target` (ease-out, MOTION 1.1); a new target retargets from the present scale. */
+  const run = (target: Stop, duration: 'base' | 'slow') => {
     stop();
     wanted = target;
     const to = Math.log(clampZoom(target.zoom) / base);
@@ -211,16 +216,10 @@ export function createZoomMotion(host: ZoomMotionHost): ZoomMotion {
       commit(target);
       return;
     }
-    lastU = from;
-    lastAt = performance.now();
     controls = animate(from, to, {
-      ...SPRING[duration],
-      velocity,
+      duration: DURATION[duration],
+      ease: EASE_OUT,
       onUpdate: (u: number) => {
-        const now = performance.now();
-        if (now > lastAt) speed = ((u - lastU) / (now - lastAt)) * 1000;
-        lastU = u;
-        lastAt = now;
         scale = Math.exp(u);
         apply();
       },
@@ -239,7 +238,7 @@ export function createZoomMotion(host: ZoomMotionHost): ZoomMotion {
     const projected = clampZoom(base * Math.exp(logNow + delta));
     const target = snapZoom(projected, fitStops());
     // Reduced motion commits the snapped value at once; so does a spring that has nowhere to go.
-    run({ zoom: clampZoom(target.zoom), fit: target.fit }, 'slow', delta === 0 ? 0 : velocityOf(samples));
+    run({ zoom: clampZoom(target.zoom), fit: target.fit }, 'base');
   };
 
   return {
@@ -267,7 +266,7 @@ export function createZoomMotion(host: ZoomMotionHost): ZoomMotion {
       const from = wanted?.zoom ?? base * scale;
       const zoom = nextStop(from, direction, extra);
       const fit = fitStops().find((entry) => Math.abs(entry.zoom - zoom) < STOP_EPSILON && entry.fit !== 'none');
-      run({ zoom, fit: fit?.fit ?? 'none' }, 'base', speed);
+      run({ zoom, fit: fit?.fit ?? 'none' }, 'base');
     },
     animateTo: (zoom, fit, duration, focus) => {
       if (host.content() === null) {
@@ -275,7 +274,16 @@ export function createZoomMotion(host: ZoomMotionHost): ZoomMotion {
         return;
       }
       begin(focusOr(focus));
-      run({ zoom: clampZoom(zoom), fit }, duration, speed);
+      run({ zoom: clampZoom(zoom), fit }, duration);
+    },
+    snapTo: (zoom, focus) => {
+      const target = snapZoom(clampZoom(zoom), fitStops());
+      if (host.content() === null) {
+        host.commit(clampZoom(target.zoom), target.fit, focus);
+        return;
+      }
+      begin(focusOr(focus));
+      run({ zoom: clampZoom(target.zoom), fit: target.fit }, 'base');
     },
     settle,
     cancel,

@@ -5,6 +5,7 @@ import { announceEngineRestart } from '../recovery/engineRestart';
 import { appDropBatch } from '../jobs/dropBatch';
 import { requestQuit } from '../save/quit';
 import { useUpdate } from '../update/store';
+import { noteDropPoint } from '../home/dropPoint';
 import { useUi } from '../../stores/ui';
 import { noteHoverEnded, noteOpenedFromApp } from './openTransition';
 import { adoptOpenOutcomes } from './useViewer';
@@ -15,6 +16,10 @@ const showOpened = (document: DocumentInfo): void => adoptOpenOutcomes([{ type: 
 export function handleAppEvent(event: AppEvent): void {
   if (event.type === 'dropHover') {
     if (!event.active && useUi.getState().dropHover) noteHoverEnded();
+    if (event.active && event.x !== undefined && event.y !== undefined) {
+      noteDropPoint(event.x, event.y);
+      return;
+    }
     appDropBatch.noteHover(event.active);
     useUi.getState().setDropHover(event.active);
   } else if (event.type === 'closeRequested') {

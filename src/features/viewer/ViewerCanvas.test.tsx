@@ -693,7 +693,7 @@ describe('jumping to a page (MOTION 4.8)', () => {
       showDocument(BOOK, { viewport: VIEWPORT });
       setup(<ViewerCanvas />);
       withClientHeight();
-      // One page is 1072 px away, within two viewports (1400 px): the spring carries it, the scroll has not arrived yet.
+      // One page is 1072 px away, within two viewports (1400 px): the eased scroll carries it, it has not arrived yet.
       act(() => useViewer.getState().goToPage(1));
       expect(region().scrollTop).toBeLessThan(STRIDE);
       // The user takes over: the animation stops where it is.
