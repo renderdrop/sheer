@@ -207,7 +207,7 @@ engine's file reader returned short reads at 256 KiB block borders (large images
 
 - [x] B1. Remove the "Done" button. Instead a save status next to the file name ("Saved" / dot for unsaved), Ctrl+S
 - [x] B2. Sidebar: visible collapse/expand grip on its edge plus a top-bar button; "View → Sidebar" stays
-- [ ] B3. Mode tabs look lost between top bar and tool row. Designer: tabs and tool row as one continuous bar on a Sand background,
+- [x] B3. Mode tabs look lost between top bar and tool row. Designer: tabs and tool row as one continuous bar on a Sand background,
       tabs as a segmented control or with a clear yellow underline; before/after screenshot
 - [x] B4. Text comment: a click places it and typing starts at once, no double-click; the box grows with the text; mini bar with align
       left/centre/right, font size, border on/off, fill on/off
