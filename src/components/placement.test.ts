@@ -81,3 +81,27 @@ describe('computePlacement', () => {
     ).toBeNull();
   });
 });
+
+describe('coach mark placement', () => {
+  const coach: PlacementInput = { ...base, kind: 'coach', anchor: { left: 400, top: 40, width: 40, height: 30 } };
+  it('starts below the row it must clear and tests the box there', () => {
+    const row = { left: 0, top: 80, width: 1000, height: 30 };
+    const placed = computePlacement({ ...coach, minTop: 120, protectedRects: [row] });
+    expect(placed).toMatchObject({ side: 'bottom', y: 120 });
+  });
+  it('slides along the edge past a control it would cover', () => {
+    const button = { left: 430, top: 100, width: 60, height: 30 };
+    const placed = computePlacement({ ...coach, protectedRects: [button] });
+    expect(placed).not.toBeNull();
+    expect(placed?.x === 330 || placed?.x === 490).toBe(true);
+  });
+  it('waits (null) when nothing is free', () => {
+    const wall = { left: 0, top: 0, width: 1000, height: 700 };
+    expect(computePlacement({ ...coach, protectedRects: [wall] })).toBeNull();
+  });
+  it('does not slide a popover', () => {
+    const button = { left: 430, top: 340, width: 60, height: 30 };
+    const placed = computePlacement({ ...base, protectedRects: [button] });
+    expect(placed?.side).not.toBe('bottom');
+  });
+});

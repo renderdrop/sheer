@@ -238,6 +238,7 @@ function CropRect({
             key={`${handle.x}:${handle.y}`}
             data-annot-handle=""
             data-crop-handle=""
+            data-protect=""
             role="button"
             tabIndex={0}
             aria-label={t(handleLabel(viewHandle(handle, total)))}

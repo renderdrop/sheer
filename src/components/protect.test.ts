@@ -42,3 +42,20 @@ describe('protectedRects', () => {
     expect(protectedRects('menu', plain, document.createElement('div'))).toHaveLength(2);
   });
 });
+
+describe('selection protection', () => {
+  it('protects a selected annotation frame and its handles for a popover, not an unselected frame', () => {
+    const anchor = box(document.createElement('button'), 0, 0);
+    const frame = box(document.createElement('div'), 100, 100);
+    frame.setAttribute('data-annot-frame', '1');
+    frame.setAttribute('aria-pressed', 'true');
+    const handle = box(document.createElement('span'), 90, 90, 8, 8);
+    handle.setAttribute('data-annot-handle', 'nw');
+    const other = box(document.createElement('div'), 300, 100);
+    other.setAttribute('data-annot-frame', '2');
+    other.setAttribute('aria-pressed', 'false');
+    document.body.append(anchor, frame, handle, other);
+    const rects = protectedRects('popover', anchor, document.createElement('div'));
+    expect(rects.map((r) => r.left).sort((a, b) => a - b)).toEqual([0, 90, 100]);
+  });
+});

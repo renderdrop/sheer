@@ -66,8 +66,21 @@ async function selectInk(): Promise<number | null> {
     draft: { kind: 'ink', pageId, color: [15, 15, 15], width: 2, strokes: [{ points, outline: points }] },
   });
   const id = changes.upserted[0]?.id ?? null;
-  if (id !== null) useAnnotations.getState().select(docId, [id]);
-  for (let i = 0; i < 20 && document.querySelector('[data-minibar]') === null; i++) await sleep(100);
+  if (id === null) return null;
+  // The first call can come before the page layer has laid out its frames (a selection made before shows no bar): select again
+  // and scroll the frame in until the bar is on screen.
+  const barShown = (): boolean => {
+    const bar = document.querySelector('[data-minibar]');
+    return bar !== null && bar.getBoundingClientRect().width > 0;
+  };
+  for (let i = 0; i < 40 && !barShown(); i++) {
+    if (i % 8 === 0) {
+      useAnnotations.getState().clearSelection(docId);
+      useAnnotations.getState().select(docId, [id]);
+    }
+    document.querySelector(`[data-annot-frame="${id}"]`)?.scrollIntoView({ block: 'center', inline: 'center' });
+    await sleep(100);
+  }
   return id;
 }
 

@@ -132,6 +132,10 @@ export interface PlacementInput {
   crossOffset?: number;
   /** Rects the surface must not intersect. Empty rects (no area) never collide. */
   protectedRects: readonly Rect[];
+  /** A candidate below the anchor starts no higher than this (the tool row the card must not hide). */
+  minTop?: number;
+  /** Horizontal range (viewport coordinates) the box stays inside, inside the inset; the viewport when left out. */
+  xRange?: { min: number; max: number };
 }
 
 /**
@@ -142,7 +146,9 @@ export interface PlacementInput {
  */
 export function computePlacement(input: PlacementInput): PositionResult | null {
   const { anchor, floating, viewport, offset, margin, crossOffset = 0 } = input;
-  const maxX = viewport.width - margin - floating.width;
+  const rangeMin = Math.max(margin, input.xRange?.min ?? margin);
+  const rangeMax = Math.min(viewport.width - margin, input.xRange?.max ?? viewport.width - margin);
+  const maxX = Math.max(rangeMin, rangeMax - floating.width);
   const maxY = viewport.height - margin - floating.height;
   // Larger than the viewport minus the inset: no candidate can hold it.
   if (maxX < margin || maxY < margin) return null;
@@ -152,8 +158,9 @@ export function computePlacement(input: PlacementInput): PositionResult | null {
     if (isVertical(side)) {
       x = crossStart(align, anchor.left, anchor.width, floating.width) + crossOffset;
       y = side === 'bottom' ? anchor.top + anchor.height + offset : anchor.top - offset - floating.height;
+      if (side === 'bottom' && input.minTop !== undefined) y = Math.max(y, input.minTop);
       if (y < margin - 0.01 || y > maxY + 0.01) continue;
-      x = clamp(x, margin, maxX);
+      x = clamp(x, rangeMin, maxX);
     } else {
       y = crossStart(align, anchor.top, anchor.height, floating.height) + crossOffset;
       x = side === 'right' ? anchor.left + anchor.width + offset : anchor.left - offset - floating.width;
@@ -161,8 +168,19 @@ export function computePlacement(input: PlacementInput): PositionResult | null {
       y = clamp(y, margin, maxY);
     }
     const box: Rect = { left: x, top: y, width: floating.width, height: floating.height };
-    if (input.protectedRects.some((rect) => intersects(box, rect))) continue;
-    return { x, y, side };
+    const hit = input.protectedRects.filter((rect) => intersects(box, rect));
+    if (hit.length === 0) return { x, y, side };
+    // A coach mark may slide along the edge to the nearest free spot beside what it hit (a banner next to the anchor's column).
+    if (input.kind === 'coach' && isVertical(side)) {
+      const spots = hit
+        .flatMap((rect) => [rect.left - floating.width, rect.left + rect.width])
+        .map((left) => clamp(left, rangeMin, maxX))
+        .sort((a, b) => Math.abs(a - x) - Math.abs(b - x));
+      for (const left of spots) {
+        const slid: Rect = { ...box, left };
+        if (!input.protectedRects.some((rect) => intersects(slid, rect))) return { x: left, y, side };
+      }
+    }
   }
   return null;
 }

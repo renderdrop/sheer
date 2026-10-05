@@ -140,6 +140,17 @@ describe('checkLabelWrap (control label wraps)', () => {
     expect(c.checkLabelWrap([wrapped])).toEqual(['button "Diese Seite" label wraps (32.0 > 1.5 x 16.0)']);
   });
 
+  it('measures control labels only, never a paragraph', () => {
+    expect(c.isControlLabel('BUTTON', null)).toBe(true);
+    expect(c.isControlLabel('div', 'radio')).toBe(true);
+    expect(c.isControlLabel('div', 'tab')).toBe(true);
+    expect(c.isControlLabel('li', 'menuitem')).toBe(true);
+    expect(c.isControlLabel('p', null)).toBe(false);
+    expect(c.isControlLabel('span', 'note')).toBe(false);
+    expect(c.LABEL_SELECTOR).not.toContain('t-label');
+    expect(c.LABEL_SELECTOR).not.toMatch(/(^|,)p[,[]/);
+  });
+
   it('ignores a label without a line height', () => {
     expect(c.checkLabelWrap([{ name: 'x', height: 40, lineHeight: 0 }])).toEqual([]);
   });

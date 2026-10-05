@@ -42,7 +42,7 @@ interface Options {
    */
   kind?: FloatingKind;
   /**
-   * Called when no candidate fits (Q8). A popover turns itself into a dialog here. Without it a tooltip and a tip become
+   * Called when no candidate fits (Q8). A popover turns itself into a dialog here. Without it a tooltip, a tip and a coach mark become
    * invisible until they fit again, and every other kind takes the best geometric placement.
    */
   onNoFit?: () => void;
@@ -122,7 +122,20 @@ export function useFloatingPosition({
           crossOffset,
         });
       } else {
+        const slotBox = clampSelector === undefined ? null : document.querySelector<HTMLElement>(clampSelector);
+        const clearEl = clearOf === undefined ? null : document.querySelector<HTMLElement>(clearOf);
+        const clearBottom = clearEl?.getBoundingClientRect().bottom;
         placed = computePlacement({
+          // The slot and the row to clear are part of the placement, so a candidate is tested where it ends up.
+          minTop: clearBottom === undefined ? undefined : clearBottom + gap,
+          xRange:
+            slotBox === null
+              ? undefined
+              : {
+                  min: slotBox.getBoundingClientRect().left + slotBox.clientLeft + (clampInset ?? 0),
+                  max:
+                    slotBox.getBoundingClientRect().left + slotBox.clientLeft + slotBox.clientWidth - (clampInset ?? 0),
+                },
           anchor: anchorBox,
           // The content's own height: the max-height above clamps the box, but a popover that is taller does not fit.
           floating: { width: floatingBox.width, height: Math.max(floatingBox.height, floating.scrollHeight) },
@@ -140,7 +153,7 @@ export function useFloatingPosition({
             onNoFitRef.current();
             return;
           }
-          if (kind === 'tooltip' || kind === 'tip') {
+          if (kind === 'tooltip' || kind === 'tip' || kind === 'coach') {
             // Not shown (Q8): the surface keeps its box but is invisible, and is tried again on every layout change.
             if (written.visibility !== 'hidden') {
               floating.style.visibility = 'hidden';
@@ -215,7 +228,19 @@ export function useFloatingPosition({
     const observer = new ResizeObserver(update);
     observer.observe(floating);
     observer.observe(anchor);
+    // A notice (Q8) may not cover any button: a banner that mounts or finishes its reveal after the first placement moves the
+    // protected rects without any resize, so the DOM and the end of a transition or animation place it again.
+    const notice = kind === 'coach' || kind === 'tip';
+    const mutations = notice ? new MutationObserver(() => schedule()) : null;
+    mutations?.observe(document.body, { childList: true, subtree: true });
+    if (notice) {
+      document.addEventListener('transitionend', schedule, true);
+      document.addEventListener('animationend', schedule, true);
+    }
     return () => {
+      mutations?.disconnect();
+      document.removeEventListener('transitionend', schedule, true);
+      document.removeEventListener('animationend', schedule, true);
       window.removeEventListener('resize', schedule);
       window.removeEventListener('scroll', schedule, true);
       observer.disconnect();

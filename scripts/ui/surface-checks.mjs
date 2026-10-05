@@ -149,6 +149,15 @@ export function checkNotice(notice, protectedRects) {
  * (a Range over its text nodes, no padding), `lineHeight` its computed line height in px.
  * @param {{name:string,height:number,lineHeight:number}[]} labels
  */
+export const LABEL_SELECTOR =
+  'button,[role="button"],[role="radio"],[role="tab"],[role="menuitem"],[role="menuitemradio"],[role="menuitemcheckbox"]';
+
+/** True for the elements whose text is a control label (never a paragraph or other body text). */
+export function isControlLabel(tag, role) {
+  if (tag.toLowerCase() === 'button') return true;
+  return ['button', 'radio', 'tab', 'menuitem', 'menuitemradio', 'menuitemcheckbox'].includes(role ?? '');
+}
+
 export function checkLabelWrap(labels) {
   return labels
     .filter((l) => l.lineHeight > 0 && l.height > 1.5 * l.lineHeight)

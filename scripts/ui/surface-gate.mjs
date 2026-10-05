@@ -5,7 +5,7 @@
 //   scroll   no container with overflow-y auto/scroll and scrollHeight > clientHeight + 1 (lists excepted: role list|listbox|menu|tree|grid or data-scroll="list")
 //   overlap  Q8: a popover/menu may not cover its anchor, the active tool or the focused input (other controls below are fine); no two floating
 //            surfaces intersect; notices may not cover any protected rect; modals cover the inert app by design
-//   wrap     no control label (button, radio, .t-label) is taller than 1.5 lines (the label wraps)
+//   wrap     no control label (button, radio, tab, menu item) is taller than 1.5 lines (the label wraps)
 // Also registered: the ink mini bar, its colour popover and every coach mark step (floating surfaces that are no dialog).
 // Runs once per UI language (en, then de, via the locale store). Disabled triggers are logged SKIP.
 // Surfaces: the dev registry `window.__sheerSurfaces` (src/dev/surfaces.ts: dialogs, sheets) and every popover/menu trigger on screen
@@ -20,6 +20,7 @@ import {
   checkHScroll,
   checkInViewport,
   checkLabelWrap,
+  LABEL_SELECTOR,
   checkNotice,
   checkOverlap,
   checkScroll,
@@ -166,8 +167,8 @@ const PAGE = `(() => {
           field: isField && c.parentElement ? wid(c.parentElement) : undefined,
         };
       });
-      // Control label wraps: the text of a button, radio or .t-label must stay on one line (a Range over its text nodes).
-      const wraps = [...el.querySelectorAll(CONTROLS + ',.t-label')].filter((c) => visible(c) && !['INPUT', 'TEXTAREA', 'SELECT'].includes(c.tagName)).flatMap((c) => {
+      // Control label wraps: the text of a button, radio, tab or menu item (never body text) must stay on one line (a Range over its text nodes).
+      const wraps = [...el.querySelectorAll(${JSON.stringify(LABEL_SELECTOR)})].filter((c) => visible(c)).flatMap((c) => {
         const out = [];
         for (const e of [c, ...c.querySelectorAll('*')]) {
           if (e instanceof SVGElement || !hasText(e, c)) continue;
