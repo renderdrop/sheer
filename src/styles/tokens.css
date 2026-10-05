@@ -497,6 +497,11 @@
   /* POL-4: the chip inside a menu row (a 32 px row, so 24 px high) */
   --sig-thumb-menu-w: 72px;
   --sig-thumb-menu-h: 24px;
+  /* Certificate seal in page points, not screen px (DESIGN 3.8 S1/S3): default and minimum box */
+  --seal-width: 192px;
+  --seal-height: 64px;
+  --seal-min-width: 120px;
+  --seal-min-height: 40px;
   --lens-size: 160px; /* POL-4: magnifier lens diameter (Magnifier.tsx LENS_SIZE) */
   --recover-list-max: 128px; /* recovery banner: three 40 px rows and their 4 px gaps, then it scrolls */
   --lib-list-max: 360px; /* six 56 px rows and their 4 px gaps */

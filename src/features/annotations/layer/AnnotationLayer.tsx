@@ -15,6 +15,7 @@ import { useT } from '../../../i18n';
 import { annotationsOnPage, useAnnotations, type AnnotationsState } from '../../../stores/annotations';
 import { useSettled } from '../../thumbnails/motion';
 import { PlacementLayer } from '../../signatures/place/PlacementLayer';
+import { CertPlacementLayer } from '../../signatures/sign';
 import { fileRotationOf } from '../../viewer/fileRotation';
 import { useEffectiveTool } from '../../viewer/lesen';
 import { normalizeRotation, overlayBox, swapsSides, totalRotation, unrotatedSize } from '../../viewer/transform';
@@ -378,6 +379,12 @@ export const AnnotationLayer = memo(function AnnotationLayer({
           pageBox={{ width: page[0], height: page[1] }}
           transform={{ pxPerPt, rotation: total }}
           grab={grab}
+        />
+        <CertPlacementLayer
+          docId={docId}
+          pageIndex={pageIndex}
+          pageBox={{ width: page[0], height: page[1] }}
+          transform={{ pxPerPt, rotation: total }}
         />
       </div>
     </>

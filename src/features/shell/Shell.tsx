@@ -8,6 +8,8 @@ import { useUi } from '../../stores/ui';
 import { setMenuState } from '../../api/recents';
 import { AboutDialog } from '../about/AboutDialog';
 import { SignatureLibraryDialog } from '../signatures/library';
+import { SignaturesDialog } from '../sigcheck/SignaturesDialog';
+import { SignDialogHost } from '../signatures/sign';
 import { ToolAnnouncer } from '../annotations/layer/ToolAnnouncer';
 import { SettingsPopover } from '../settings/SettingsPopover';
 import { ExportCopyDialog } from '../exportCopy/ExportCopyDialog';
@@ -97,6 +99,8 @@ export function Shell() {
       <SettingsPopover />
       <AboutDialog />
       <SignatureLibraryDialog />
+      <SignaturesDialog />
+      <SignDialogHost />
       {hasDocument ? (
         <EditorLayout
           structure={structure}
