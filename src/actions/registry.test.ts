@@ -17,6 +17,7 @@ const WITH_DOCUMENT: ActionState = {
   canUndo: true,
   canRedo: true,
   hasCitations: true,
+  signed: true,
 };
 
 describe('the registry', () => {
@@ -57,6 +58,7 @@ describe('the registry', () => {
       'redact',
       'protect',
       'document-properties',
+      'signatures',
       'images-to-pdf',
       'export-copy',
       'export-images',
@@ -149,6 +151,7 @@ describe('shortcuts per platform', () => {
     redact: { macos: null, windows: null },
     protect: { macos: null, windows: null },
     'document-properties': { macos: null, windows: null },
+    signatures: { macos: null, windows: null },
     'images-to-pdf': { macos: null, windows: null },
     'export-copy': { macos: null, windows: null },
     'export-images': { macos: '⇧⌘E', windows: 'Ctrl+Shift+E' },

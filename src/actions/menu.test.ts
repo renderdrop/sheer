@@ -225,7 +225,7 @@ describe('the citation commands (DESIGN 3.7 C2)', () => {
   it('Copy and Save Citation List follow Document Properties in File, and need a citation', () => {
     const file = order('file');
     const at = file.indexOf('document-properties');
-    expect(file.slice(at + 1, at + 3)).toEqual(['copy-citation-list', 'save-citation-list']);
+    expect(file.slice(at + 2, at + 4)).toEqual(['copy-citation-list', 'save-citation-list']);
     for (const id of ['copy-citation-list', 'save-citation-list'] as const) {
       expect(getAction(id)?.enabled({ ...NO_DOCUMENT, hasDocument: true })).toBe(false);
       expect(getAction(id)?.enabled({ ...NO_DOCUMENT, hasDocument: true, hasCitations: true })).toBe(true);
@@ -243,5 +243,57 @@ describe('the citation commands (DESIGN 3.7 C2)', () => {
       expect(catalogs.de[key], key).toBeTruthy();
     }
     expect(catalogs.en['menu.edit.cite']).toBe('Cite Selection');
+  });
+});
+
+describe('the signature lock (DESIGN 3.8 S5)', () => {
+  const locked = { ...NO_DOCUMENT, hasDocument: true, signatureLocked: true, canUndo: true, canRedo: true };
+  const open = { ...NO_DOCUMENT, hasDocument: true, canUndo: true, canRedo: true };
+
+  it('disables every editing action and keeps looking, Save As and properties', () => {
+    for (const id of [
+      'save',
+      'undo',
+      'redo',
+      'compress-document',
+      'flatten-form',
+      'protect',
+      'export-copy',
+      'redact',
+      'tool-text',
+      'tool-signature',
+      'tool-pages',
+      'tool-cite',
+      'cite-selection',
+      'delete-selection',
+      'add-comment',
+    ] as const) {
+      expect(getAction(id)?.enabled(open), id + ' open').toBe(true);
+      expect(getAction(id)?.enabled(locked), id + ' locked').toBe(false);
+    }
+    for (const id of [
+      'save-as',
+      'document-properties',
+      'tool-hand',
+      'tool-select',
+      'tool-textSelect',
+      'mode-read',
+      'mode-edit',
+      'zoom-in',
+      'print',
+    ] as const) {
+      expect(getAction(id)?.enabled(locked), id).toBe(true);
+    }
+  });
+
+  it('puts Signatures… after Document Properties, for signed files only, in both catalogs', () => {
+    const file = (menus.find((menu) => menu.id === 'file')?.items ?? []).flatMap((item) =>
+      'action' in item ? [item.action] : [],
+    );
+    expect(file[file.indexOf('document-properties') + 1]).toBe('signatures');
+    expect(getAction('signatures')?.enabled(open)).toBe(false);
+    expect(getAction('signatures')?.enabled({ ...open, signed: true })).toBe(true);
+    expect(catalogs.en['menu.file.signatures']).toBe('Signatures…');
+    expect(catalogs.de['menu.file.signatures']).toBeTruthy();
   });
 });

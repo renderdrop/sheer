@@ -11,6 +11,7 @@ import { useAnnotations } from '../../stores/annotations';
 import { useDocuments } from '../../stores/documents';
 import { pageIdAt, positionOf } from '../../stores/pages';
 import { useUi } from '../../stores/ui';
+import { isSignatureLocked } from '../lock/useSignatureLock';
 import { styleFor } from '../inspector/style';
 import { quadsForOffsets } from '../annotations/create/markup';
 import { peekLayer } from '../textlayer/cache';
@@ -29,7 +30,7 @@ export function isCitation(annotation: Pick<Annotation, 'kind' | 'cite'>): boole
 
 /** The tour's sample (and any document that cannot change) is read-only: nothing is cited or tagged there (AC 22). */
 export function isReadOnlyDocument(docId: number): boolean {
-  return useDocuments.getState().byId[docId]?.kind === 'welcome';
+  return useDocuments.getState().byId[docId]?.kind === 'welcome' || isSignatureLocked(docId);
 }
 
 interface CitationsState {

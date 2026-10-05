@@ -291,6 +291,8 @@ describe('readActionState', () => {
       canCopy: true,
       hasCitations: false,
       readOnly: false,
+      signatureLocked: false,
+      signed: false,
     });
   });
 });

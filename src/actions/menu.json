@@ -111,6 +111,11 @@
           "requiresDocument": true
         },
         {
+          "action": "signatures",
+          "label": "menu.file.signatures",
+          "requiresDocument": true
+        },
+        {
           "action": "copy-citation-list",
           "label": "menu.file.copyCitationList",
           "requiresDocument": true

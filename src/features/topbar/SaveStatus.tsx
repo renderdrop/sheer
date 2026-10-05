@@ -1,4 +1,4 @@
-import { Check, TriangleAlert } from 'lucide-react';
+import { Check, Lock, TriangleAlert } from 'lucide-react';
 import { motion, useReducedMotion } from 'motion/react';
 import { useEffect, useState } from 'react';
 
@@ -12,6 +12,7 @@ import { cx } from '../../components/cx';
 import { errorText, useT } from '../../i18n';
 import { selectActiveId, useDocuments } from '../../stores/documents';
 import { useSettings } from '../../stores/settings';
+import { useSignatureLock } from '../lock/useSignatureLock';
 import { useSave } from '../save/state';
 import { useActiveEdited } from './useEdited';
 
@@ -82,7 +83,7 @@ function DrawnCheck({ fromDot }: { fromDot: boolean }) {
   );
 }
 
-type Status = 'saved' | 'edited' | 'new' | 'saving' | 'failed';
+type Status = 'signed' | 'saved' | 'edited' | 'new' | 'saving' | 'failed';
 
 /**
  * The save status next to the file name (DESIGN 3.5 B1): a Ghost button 28 high. Saved (check, inactive), Edited (Ink dot, click
@@ -99,10 +100,21 @@ export function SaveStatus() {
   const failed = useSave((state) => (docId === null ? null : (state.failed[docId] ?? null)));
   const justSaved = useSave((state) => docId !== null && state.saved === docId);
   const showSaving = useAfter(saving, SAVING_DELAY_MS);
+  const locked = useSignatureLock(docId ?? undefined).locked;
   if (docId === null) return null;
 
-  const status: Status = saving ? 'saving' : failed !== null ? 'failed' : fresh ? 'new' : edited ? 'edited' : 'saved';
-  const inert = status === 'saved' || status === 'saving';
+  const status: Status = locked
+    ? 'signed'
+    : saving
+      ? 'saving'
+      : failed !== null
+        ? 'failed'
+        : fresh
+          ? 'new'
+          : edited
+            ? 'edited'
+            : 'saved';
+  const inert = status === 'saved' || status === 'saving' || status === 'signed';
   const shortcut = shortcutFor('save', platform, t);
   // While a quick save runs the previous state stays on screen: Saving… appears only after the delay.
   const shown: Status = status === 'saving' && !showSaving ? (fresh ? 'new' : 'edited') : status;
@@ -110,9 +122,11 @@ export function SaveStatus() {
   const tip =
     status === 'failed' && failed !== null
       ? { label: errorText(t, failed), note: t('save.retry'), shortcut: shortcut?.label }
-      : status === 'edited' || status === 'new'
-        ? { label: t('save.save'), shortcut: shortcut?.label }
-        : null;
+      : status === 'signed'
+        ? { label: t('cert.locked.tool') }
+        : status === 'edited' || status === 'new'
+          ? { label: t('save.save'), shortcut: shortcut?.label }
+          : null;
 
   const button = (
     <button
@@ -128,7 +142,7 @@ export function SaveStatus() {
         't-caption inline-flex h-save-status shrink-0 items-center gap-1 rounded-sm px-2 transition-colors duration-fast',
         shown === 'failed'
           ? 'text-error-text'
-          : shown === 'saved' || shown === 'saving'
+          : shown === 'saved' || shown === 'saving' || shown === 'signed'
             ? 'text-text-muted'
             : 'text-text',
         inert ? 'cursor-default' : 'cursor-pointer hover:bg-control-hover active:bg-control-pressed',
@@ -136,6 +150,7 @@ export function SaveStatus() {
     >
       {shown === 'saved' &&
         (justSaved ? <DrawnCheck key="drawn" fromDot /> : <Icon icon={Check} size={16} className="text-text-muted" />)}
+      {shown === 'signed' && <Icon icon={Lock} size={16} className="text-text-muted" />}
       {shown === 'failed' && <Icon icon={TriangleAlert} size={16} />}
       {(shown === 'edited' || shown === 'new') && (
         <span

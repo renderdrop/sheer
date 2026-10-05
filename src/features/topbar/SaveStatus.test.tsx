@@ -48,6 +48,17 @@ describe('the save status (DESIGN 3.5 B1)', () => {
     expect(actions.runAction).toHaveBeenCalledWith('save');
   });
 
+  it('Signed: a lock and "Signed", inactive, even when edited (DESIGN 3.8 S5)', async () => {
+    useDocuments.setState((state) => ({ byId: { ...state.byId, 1: { ...state.byId[1]!, signatureLock: 'locked' } } }));
+    edit.edited = true;
+    const { user } = setup(<SaveStatus />);
+    expect(button().dataset.saveStatus).toBe('signed');
+    expect(button().getAttribute('aria-label')).toBe('Signed');
+    expect(button().getAttribute('aria-disabled')).toBe('true');
+    await user.click(button());
+    expect(actions.runAction).not.toHaveBeenCalled();
+  });
+
   it('Not saved yet for a recovered document', () => {
     useDocuments.setState((state) => ({ byId: { ...state.byId, 1: { ...state.byId[1]!, kind: 'recovered' } } }));
     edit.edited = true;

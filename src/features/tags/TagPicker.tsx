@@ -10,6 +10,7 @@ import { useT } from '../../i18n';
 import { useAnnotations } from '../../stores/annotations';
 import { useDocuments } from '../../stores/documents';
 import { useUi } from '../../stores/ui';
+import { useSignatureLock } from '../lock/useSignatureLock';
 import { TagDot } from './palette';
 import { createTag, tagNameProblem, useTags, type TagProblem } from './store';
 import { TagManager } from './TagManager';
@@ -218,7 +219,9 @@ export interface TagPickerButtonProps {
  */
 export function TagPickerButton({ docId, annotIds, size = 'sm' }: TagPickerButtonProps) {
   const t = useT();
-  const readOnly = useDocuments((state) => state.byId[docId]?.kind === 'welcome');
+  const welcome = useDocuments((state) => state.byId[docId]?.kind === 'welcome');
+  const locked = useSignatureLock(docId).locked;
+  const readOnly = welcome || locked;
   const disabled = readOnly || annotIds.length === 0;
   return (
     <Popover
@@ -232,7 +235,7 @@ export function TagPickerButton({ docId, annotIds, size = 'sm' }: TagPickerButto
           size={size}
           icon={Tag}
           label={t('tags.assign')}
-          hint={readOnly ? t('tool.readOnly') : undefined}
+          hint={locked ? t('cert.locked.tool') : readOnly ? t('tool.readOnly') : undefined}
           disabled={disabled}
           focusableWhenDisabled
           tooltipSide="bottom"

@@ -60,6 +60,7 @@ import { copyCitationList, saveCitationList } from '../features/citations/export
 import { createCitationFromSelection } from '../features/citations/store';
 import { useForms } from '../features/forms/store';
 import { useMarginPrefs } from '../features/margin/store';
+import { openSignaturesDialog } from '../features/sigcheck/open';
 import { openSignatureLibrary } from '../features/signatures/library';
 import { restartTour } from '../features/tour/runtime';
 import { resetTips } from '../features/tips/runtime';
@@ -83,7 +84,7 @@ import { MODES, useUi, type LeftPanelTab, type Mode, type ToolId } from '../stor
 import { requestAddComment } from './commentIntent';
 import { runHistoryStep } from './history';
 import { formatBinding, resolveBinding, type Binding, type Shortcuts } from './shortcut';
-import { mayCopy, mayPrint, type ActionState } from './state';
+import { mayCopy, mayEdit, mayPrint, type ActionState } from './state';
 
 /** The action of each tool of the toolbar: it makes the tool the active one. */
 export type ToolActionId = `tool-${ToolId}`;
@@ -131,6 +132,7 @@ export type ActionId =
   | 'redact'
   | 'protect'
   | 'document-properties'
+  | 'signatures'
   | 'images-to-pdf'
   | 'export-copy'
   | 'export-images'
@@ -182,6 +184,9 @@ export interface ActionDef {
 const primary = (key: string): Binding => ({ key, mods: ['primary'] });
 const needsDocument = (state: ActionState): boolean => state.hasDocument;
 
+/** The tools that only look (Lesen mode and the pointer): a signature lock leaves them on (DESIGN 3.8 S5). */
+const VIEW_TOOLS: ReadonlySet<ToolId> = new Set<ToolId>(['select', 'hand', 'textSelect', 'magnifier']);
+
 /** The tools' actions, one per tool of the toolbar. */
 const TOOL_ACTIONS: readonly ActionDef[] = (
   [
@@ -220,7 +225,7 @@ const TOOL_ACTIONS: readonly ActionDef[] = (
   group: 'tools',
   // The tools live in the tool row only (the menus list modes, DESIGN v2 3.2).
   menuBar: false,
-  enabled: needsDocument,
+  enabled: VIEW_TOOLS.has(tool) ? needsDocument : mayEdit,
   // The key makes the tool active and leaves it so; it is not the toolbar's click, which also releases an active tool.
   run: () => {
     const ui = useUi.getState();
@@ -347,7 +352,7 @@ export const ACTIONS: readonly ActionDef[] = [
     shortcut: { default: primary('s') },
     group: 'file',
     menuBar: true,
-    enabled: needsDocument,
+    enabled: mayEdit,
     run: () => saveActive(false),
   },
   {
@@ -376,7 +381,7 @@ export const ACTIONS: readonly ActionDef[] = [
     icon: FileOutput,
     group: 'output',
     menuBar: true,
-    enabled: needsDocument,
+    enabled: mayEdit,
     run: () => useUi.getState().setExportCopyOpen(true),
   },
   {
@@ -406,7 +411,7 @@ export const ACTIONS: readonly ActionDef[] = [
     icon: Combine,
     group: 'file',
     menuBar: false,
-    enabled: needsDocument,
+    enabled: mayEdit,
     run: runMerge,
   },
   {
@@ -415,7 +420,7 @@ export const ACTIONS: readonly ActionDef[] = [
     icon: Scissors,
     group: 'file',
     menuBar: false,
-    enabled: needsDocument,
+    enabled: mayEdit,
     run: runSplit,
   },
   {
@@ -424,7 +429,7 @@ export const ACTIONS: readonly ActionDef[] = [
     icon: FileOutput,
     group: 'file',
     menuBar: false,
-    enabled: needsDocument,
+    enabled: mayEdit,
     run: runExtract,
   },
   {
@@ -433,7 +438,7 @@ export const ACTIONS: readonly ActionDef[] = [
     icon: FileArchive,
     group: 'file',
     menuBar: true,
-    enabled: needsDocument,
+    enabled: mayEdit,
     run: runCompress,
   },
   {
@@ -443,7 +448,7 @@ export const ACTIONS: readonly ActionDef[] = [
     shortcut: { default: primary('z') },
     group: 'edit',
     menuBar: true,
-    enabled: (state) => state.hasDocument && state.canUndo,
+    enabled: (state) => mayEdit(state) && state.canUndo,
     run: () => runHistoryStep('undo'),
   },
   {
@@ -458,7 +463,7 @@ export const ACTIONS: readonly ActionDef[] = [
     },
     group: 'edit',
     menuBar: true,
-    enabled: (state) => state.hasDocument && state.canRedo,
+    enabled: (state) => mayEdit(state) && state.canRedo,
     run: () => runHistoryStep('redo'),
   },
   {
@@ -467,7 +472,7 @@ export const ACTIONS: readonly ActionDef[] = [
     icon: Stamp,
     group: 'edit',
     menuBar: true,
-    enabled: needsDocument,
+    enabled: mayEdit,
     // The confirm dialog (src/features/forms), which runs the flatten job.
     run: runFlatten,
   },
@@ -476,7 +481,7 @@ export const ACTIONS: readonly ActionDef[] = [
     labelKey: 'redact.tool',
     icon: SquareSlash,
     group: 'edit',
-    enabled: needsDocument,
+    enabled: mayEdit,
     // A mode (DESIGN 3.38): the canvas and banner slots of src/features/redact read it.
     run: () => useUi.getState().setRedactMode(true),
   },
@@ -486,7 +491,7 @@ export const ACTIONS: readonly ActionDef[] = [
     icon: Lock,
     group: 'edit',
     menuBar: true,
-    enabled: needsDocument,
+    enabled: mayEdit,
     run: () => useUi.getState().setProtectOpen(true),
   },
   {
@@ -497,6 +502,19 @@ export const ACTIONS: readonly ActionDef[] = [
     menuBar: true,
     enabled: needsDocument,
     run: () => useUi.getState().setPropsOpen(true),
+  },
+  {
+    id: 'signatures',
+    labelKey: 'menu.file.signatures',
+    icon: Signature,
+    group: 'edit',
+    menuBar: true,
+    // Only a signed file has anything to show (DESIGN 3.8 S5).
+    enabled: (state) => state.hasDocument && state.signed === true,
+    run: () => {
+      const docId = useDocuments.getState().activeId;
+      if (docId !== null) openSignaturesDialog(docId);
+    },
   },
   {
     id: 'zoom-in',
@@ -754,7 +772,7 @@ export const ACTIONS: readonly ActionDef[] = [
     shortcut: { default: { key: 'x' } },
     group: 'tools',
     menuBar: false,
-    enabled: needsDocument,
+    enabled: mayEdit,
     // A mode (DESIGN 3.38): the key toggles it like the toolbar item does.
     run: () => useUi.getState().setRedactMode(!useUi.getState().redactMode),
   },
@@ -765,7 +783,7 @@ export const ACTIONS: readonly ActionDef[] = [
     labelKey: 'menu.edit.delete',
     group: 'edit',
     menuBar: true,
-    enabled: needsDocument,
+    enabled: mayEdit,
     // The Delete key itself is the canvas's (it works where the selection is focused); this is the menu's way to the same step.
     run: deleteSelection,
   },
@@ -776,7 +794,7 @@ export const ACTIONS: readonly ActionDef[] = [
     shortcut: { default: { key: 'm', mods: ['primary', 'shift'] } },
     group: 'edit',
     menuBar: true,
-    enabled: needsDocument,
+    enabled: mayEdit,
     // The selection bar of the comments feature answers (`onAddComment`); without a text selection nothing happens.
     run: requestAddComment,
   },
@@ -788,7 +806,7 @@ export const ACTIONS: readonly ActionDef[] = [
     group: 'edit',
     menuBar: true,
     // The menu adds the text selection (as for Add comment); a read-only document cites nothing (AC 22).
-    enabled: (state) => state.hasDocument && state.readOnly !== true,
+    enabled: (state) => mayEdit(state) && state.readOnly !== true,
     run: () => {
       const docId = useDocuments.getState().activeId;
       if (docId !== null) void createCitationFromSelection(docId);

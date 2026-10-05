@@ -1,6 +1,7 @@
 import { DEFAULT_ZOOM, MAX_ZOOM, MIN_ZOOM } from '../lib/zoom';
 import { historyOf, useAnnotations } from '../stores/annotations';
 import { citationCount } from '../features/citations/store';
+import { isSignatureLocked } from '../features/lock/useSignatureLock';
 import { selectActiveDocument, useDocuments } from '../stores/documents';
 import { useView } from '../stores/view';
 
@@ -27,7 +28,14 @@ export interface ActionState {
   hasCitations?: boolean;
   /** The active document cannot be changed (the tour's sample); absent: it can. */
   readOnly?: boolean;
+  /** A certifying signature locks the active document (DESIGN 3.8 S5); absent: not locked. Every editing action reads it. */
+  signatureLocked?: boolean;
+  /** The active document carries signatures (Datei: Signatures…); absent: none. */
+  signed?: boolean;
 }
+
+/** Whether an editing action may run: there is a document and no signature locks it. */
+export const mayEdit = (state: ActionState): boolean => state.hasDocument && state.signatureLocked !== true;
 
 /** Whether the state allows printing (absent: yes). */
 export const mayPrint = (state: ActionState): boolean => state.canPrint !== false;
@@ -60,5 +68,7 @@ export function readActionState(): ActionState {
     canCopy: permissions === null || permissions.includes('copy'),
     hasCitations: citationCount(docId) > 0,
     readOnly: selectActiveDocument(useDocuments.getState())?.kind === 'welcome',
+    signatureLocked: isSignatureLocked(docId),
+    signed: (selectActiveDocument(useDocuments.getState())?.signatureLock ?? 'none') !== 'none',
   };
 }

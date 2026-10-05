@@ -53,6 +53,7 @@ describe('the Windows menu bar (DESIGN 3.56)', () => {
       'Flatten Form…',
       'Protect…',
       'Document Properties…',
+      'Signatures…',
       'Copy Citation List',
       'Save Citation List…',
       'Print…',
