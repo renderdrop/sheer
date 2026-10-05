@@ -1,8 +1,8 @@
 # STATE
-phase: v1.2.0 released — next: Politur v1.3, then v1.3 "Citations" (spec first)
+phase: v1.2.0 released — Politur v1.3 done; next: v1.3 "Citations" spec
 version: 1.2.0 (tag v1.2.0)
-current_item: Politur v1.3 — P13-1 backend/docs/welcome, P13-2 components/tokens, P13-3 home/shell/tour, P13-4 viewer/annotations/print
-last_completed: v1.2.0 — F15 + redesign R0–R7 (tag v1.2.0)
+current_item: v1.3 spec — designer spec (citation annotation, metadata sheet, export formats, tag manager)
+last_completed: Politur v1.3 (446a6d9, 1656ac6, af7091d; reviewer PASS)
 loop_count_this_session: 0
 open_blockers: 2 human-only (B-002, B-005)
 notes: Owner re-check on the Mac after v1.2.0: A10 "Save as PDF" in the print dialog. Screenshot series docs/review/v1.2/ (not tracked), motion recordings docs/review/v1.2/motion/.
