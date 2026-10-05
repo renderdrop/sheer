@@ -187,7 +187,7 @@ mock where no Mac is at hand (ADR-104). After A and B: designer acceptance of th
 - [ ] A5. Comments panel breaks mid-word ("Textkomme/ntar"); cards too narrow
 - [x] A6. Images to PDF: images do not load or only partly. Reproduce with 10 JPGs and fix
 - [x] A7. Note and comment: Enter confirms, Shift+Enter inserts a line break
-- [ ] A8. In a rotated view, signatures and marks are placed rotated with the page. Placement follows the screen orientation (rotate the
+- [x] A8. In a rotated view, signatures and marks are placed rotated with the page. Placement follows the screen orientation (rotate the
       annotation against the view rotation). Plus a rotate handle on placed signatures
 - [x] A9. "Save to library" does not save on Windows or macOS. Check keychain access (Windows Credential Manager, macOS Keychain)
       including the error path; if access fails the app says so instead of silently dropping. Acceptance: save a signature, restart,
