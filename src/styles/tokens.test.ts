@@ -517,6 +517,7 @@ describe('motion (DESIGN 1.2, MOTION 1)', () => {
       '--tooltip-leave': '100ms',
       '--hold-outline': '1000ms',
       '--hold-shape': '500ms',
+      '--motion-morph': '150ms',
     };
     for (const [name, value] of Object.entries(exceptions)) expect(root.get(name), name).toBe(value);
     const times = [...root.entries()].filter(([, value]) => /^\d+(ms|s)$/.test(value)).map(([name]) => name);

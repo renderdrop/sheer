@@ -17,7 +17,7 @@ import {
   X,
   type LucideIcon,
 } from 'lucide-react';
-import { useState, type ReactNode } from 'react';
+import { useId, useState, type ReactNode } from 'react';
 
 import type { Rgb, TextAlign } from '../../api/annotations';
 import {
@@ -30,12 +30,13 @@ import {
   RECENT_IN_ROW,
   Segmented,
   Swatch,
+  Toggle,
   Tooltip,
   toHex,
   type ColourEntry,
 } from '../../components';
 import { cx } from '../../components/cx';
-import { useT, type PlainKey } from '../../i18n';
+import { formatNumber, useLocale, useT, type PlainKey } from '../../i18n';
 import { useRecentColours } from '../../stores/recentColours';
 import { useTools } from '../../stores/tools';
 import {
@@ -392,32 +393,74 @@ export function FontSizeControl({
   );
 }
 
-const LinePreview = ({ points }: { points: number }) => (
-  <svg viewBox="0 0 24 8" aria-hidden="true" focusable="false" className="w-6 shrink-0">
-    <line x1="2" x2="22" y1="4" y2="4" stroke="currentColor" strokeWidth={points} strokeLinecap="round" />
-  </svg>
-);
-
+/**
+ * The line width (DESIGN 3.9 Q3): a segmented control, track 32 high, five segments of a fixed 36 width (numbers only, locale decimal,
+ * tabular, never wrapping), and the unit once after it. A width a file has that is none of the five selects no segment; the tooltip
+ * names it. The segments are stops of the bar's roving focus.
+ */
 export function StrokeControl({
   value,
   disabled,
   onChange,
 }: DisabledProps & { value: Shared<number>; onChange: (pt: number) => void }) {
   const t = useT();
+  const locale = useLocale();
+  const current = value.value;
+  const custom = current !== null && !MINI_STROKES.some((points) => points === current);
+  const track = (
+    <div role="radiogroup" aria-label={t('minibar.stroke')} className="inline-flex h-8 rounded-md bg-subtle p-half">
+      {MINI_STROKES.map((points) => {
+        const checked = current === points;
+        return (
+          <button
+            key={points}
+            {...ITEM}
+            type="button"
+            role="radio"
+            aria-checked={checked}
+            aria-label={t('mini.strokePt', { n: formatNumber(points, locale) })}
+            aria-disabled={disabled ? true : undefined}
+            onClick={() => {
+              if (!disabled && !checked) onChange(points);
+            }}
+            className={cx(
+              'inline-flex h-control-sm w-control-md shrink-0 cursor-pointer items-center justify-center rounded-sm border text-md whitespace-nowrap tabular-nums',
+              'transition-[background-color,color,border-color] duration-fast',
+              'aria-disabled:cursor-not-allowed aria-disabled:opacity-(--opacity-disabled)',
+              checked
+                ? 'border-control-border bg-surface text-text'
+                : 'border-transparent text-text-muted not-aria-disabled:hover:text-text',
+            )}
+          >
+            {formatNumber(points, locale)}
+          </button>
+        );
+      })}
+    </div>
+  );
   return (
-    <Dropdown
-      label={t('minibar.stroke')}
-      disabled={disabled}
-      entries={MINI_STROKES.map((points) => ({
-        id: String(points),
-        label: t('minibar.strokeValue', { n: points }),
-        leading: <LinePreview points={points} />,
-        checked: value.value === points,
-        onSelect: () => onChange(points),
-      }))}
-    >
-      {value.value === null ? MIXED : <LinePreview points={value.value} />}
-    </Dropdown>
+    <div className="flex shrink-0 items-center gap-1">
+      {custom ? <Tooltip label={t('mini.strokePt', { n: formatNumber(current, locale) })}>{track}</Tooltip> : track}
+      <span className="t-caption text-text-muted">{t('mini.strokeUnit')}</span>
+    </div>
+  );
+}
+
+/** "Straighten shapes automatically" (DESIGN 3.9 Q5): the switch of the drawing bar, the one stored choice of the tools store. */
+export function StraightenControl() {
+  const t = useT();
+  const on = useTools((state) => state.straightenShapes);
+  const set = useTools((state) => state.setStraightenShapes);
+  const labelId = useId();
+  return (
+    <Tooltip label={t('draw.straightenHelp')}>
+      <div role="group" aria-labelledby={labelId} className="flex shrink-0 items-center gap-2">
+        <span id={labelId} className="t-label whitespace-nowrap text-text">
+          {t('draw.straighten')}
+        </span>
+        <Toggle {...ITEM} checked={on} onCheckedChange={set} aria-labelledby={labelId} />
+      </div>
+    </Tooltip>
   );
 }
 

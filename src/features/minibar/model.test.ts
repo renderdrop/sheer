@@ -40,7 +40,12 @@ const arrow = (id: number, extra: Record<string, unknown> = {}) =>
 describe('an arrow in the mini bar (DESIGN 3.5 B11)', () => {
   it('has the Ends control, a plain line has not', () => {
     expect(controlsOf([arrow(1)])).toEqual(['colourStroke', 'strokeWidth', 'opacity', 'arrowEnds']);
-    expect(controlsOf([arrow(1, { head: 'none', tail: 'none' })])).toEqual(['colourStroke', 'strokeWidth', 'opacity']);
+    expect(controlsOf([arrow(1, { head: 'none', tail: 'none' })])).toEqual([
+      'colourStroke',
+      'strokeWidth',
+      'opacity',
+      'straighten',
+    ]);
     // Together with ink only the shared controls stay.
     expect(controlsOf([arrow(1), ink(2)])).toEqual(['colourStroke', 'strokeWidth', 'opacity']);
   });
@@ -87,7 +92,7 @@ describe('controlsOf (DESIGN v2 3.3 table)', () => {
     expect(
       controlsOf([make(1, { kind: 'freeText', box: {}, lines: [], fontSize: 12, fill: null, borderWidth: 0 })]),
     ).toEqual(['colourStroke', 'fontSize', 'align', 'textBorder', 'textFill']);
-    expect(controlsOf([ink(1)])).toEqual(['colourStroke', 'strokeWidth', 'opacity']);
+    expect(controlsOf([ink(1)])).toEqual(['colourStroke', 'strokeWidth', 'opacity', 'straighten']);
     expect(controlsOf([rect(1)])).toEqual(['colourStroke', 'strokeWidth', 'opacity', 'fill']);
     expect(controlsOf([make(1, { kind: 'mark', box: {}, glyph: 'check' })])).toEqual(['kindMark']);
     expect(controlsOf([make(1, { kind: 'signature', box: {} })])).toEqual([]);

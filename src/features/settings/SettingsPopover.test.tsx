@@ -87,7 +87,7 @@ describe('the settings panel (DESIGN 3.6)', () => {
   const labels = () =>
     [...popover().querySelectorAll('span.t-label')]
       .map((el) => el.textContent)
-      .filter((text) => text !== 'Recognise shapes when you pause');
+      .filter((text) => text !== 'Straighten shapes automatically');
 
   it('has the groups in order and nothing else', () => {
     setup(<Fixture />);
@@ -230,7 +230,7 @@ describe('the settings popover', () => {
       return document.activeElement;
     };
     expect(await tab()).toBe(within(popover()).getByRole('textbox', { name: 'Author name' }));
-    expect(await tab()).toBe(within(popover()).getByRole('switch', { name: 'Recognise shapes when you pause' }));
+    expect(await tab()).toBe(within(popover()).getByRole('switch', { name: 'Straighten shapes automatically' }));
     expect(await tab()).toBe(within(popover()).getByRole('switch', { name: 'Updates' }));
     expect(await tab()).toBe(within(popover()).getByRole('button', { name: 'Start tour' }));
     expect(await tab()).toBe(within(popover()).getByRole('button', { name: 'Show tips again' }));

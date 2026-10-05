@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { fireEvent, screen, waitFor } from '@testing-library/react';
+import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import * as api from '../../api/annotations';
@@ -242,7 +242,7 @@ describe('controls', () => {
     scene = canvas({ 1: OVER });
     setup(<MiniBarSlot />);
     expect(screen.getAllByRole('radio', { name: /^(Ink|Mint|Sky|Rose|Lavender)$/ })).toHaveLength(5);
-    expect(screen.getByRole('button', { name: 'Line width' })).not.toBeNull();
+    expect(screen.getByRole('radiogroup', { name: 'Line width' })).not.toBeNull();
     expect(screen.getByRole('button', { name: 'Opacity' })).not.toBeNull();
     expect(screen.queryByRole('button', { name: 'Fill' })).toBeNull();
     const buttons = screen.getAllByRole('button').filter((b) => b.closest('[data-minibar]') !== null);
@@ -266,11 +266,12 @@ describe('controls', () => {
     expect(inside.map((b) => b.getAttribute('aria-label'))).toEqual(['Delete']);
   });
 
-  it('shows a dash for mixed values', () => {
+  it('selects no line width segment for mixed values', () => {
     load([ink(1), make(2, 'ink', { strokes: [], width: 4 })], [1, 2]);
     scene = canvas({ 1: OVER, 2: OVER });
     setup(<MiniBarSlot />);
-    expect(screen.getByRole('button', { name: 'Line width' }).textContent).toBe('–');
+    const radios = within(screen.getByRole('radiogroup', { name: 'Line width' })).getAllByRole('radio');
+    expect(radios.map((r) => r.getAttribute('aria-checked'))).toEqual(['false', 'false', 'false', 'false', 'false']);
   });
 
   it('is a toolbar with arrow keys that move between controls and one tab stop', async () => {
@@ -286,6 +287,45 @@ describe('controls', () => {
     expect(document.activeElement).toBe(items[items.length - 1]);
     await user.keyboard('{Home}');
     expect(document.activeElement).toBe(items[0]);
+  });
+});
+
+describe('line width segments (DESIGN 3.9 Q3)', () => {
+  it('are five fixed-width, tabular, non-wrapping segments with the unit once, and check the width', () => {
+    load([ink(1)], [1]);
+    scene = canvas({ 1: OVER });
+    setup(<MiniBarSlot />);
+    const group = screen.getByRole('radiogroup', { name: 'Line width' });
+    const radios = within(group).getAllByRole('radio');
+    expect(radios.map((r) => r.textContent)).toEqual(['0.5', '1', '2', '4', '8']);
+    for (const radio of radios) {
+      expect(radio.className).toContain('w-control-md');
+      expect(radio.className).toContain('whitespace-nowrap');
+      expect(radio.className).toContain('tabular-nums');
+    }
+    expect(radios.map((r) => r.getAttribute('aria-checked'))).toEqual(['false', 'false', 'true', 'false', 'false']);
+    expect(screen.getAllByText('pt')).toHaveLength(1);
+  });
+
+  it('check no segment for a custom width', () => {
+    load([make(1, 'ink', { strokes: [], width: 3 })], [1]);
+    scene = canvas({ 1: OVER });
+    setup(<MiniBarSlot />);
+    const radios = within(screen.getByRole('radiogroup', { name: 'Line width' })).getAllByRole('radio');
+    expect(radios.every((r) => r.getAttribute('aria-checked') === 'false')).toBe(true);
+  });
+});
+
+describe('straighten switch (DESIGN 3.9 Q5)', () => {
+  it('is in the drawing bar, on by default, and toggles the store', async () => {
+    load([ink(1)], [1]);
+    scene = canvas({ 1: OVER });
+    const { user } = setup(<MiniBarSlot />);
+    const toggle = screen.getByRole('switch', { name: 'Straighten shapes automatically' });
+    expect(toggle.getAttribute('aria-checked')).toBe('true');
+    await user.click(toggle);
+    expect(useTools.getState().straightenShapes).toBe(false);
+    expect(toggle.getAttribute('aria-checked')).toBe('false');
   });
 });
 
@@ -310,12 +350,11 @@ describe('changes', () => {
     expect(applyMock.mock.calls[0]?.[1]).toMatchObject({ type: 'batch', commands: [{ id: 1 }, { id: 2 }] });
   });
 
-  it('set the width through the dropdown', async () => {
+  it('set the width through the segments', async () => {
     load([ink(1)], [1]);
     scene = canvas({ 1: OVER });
     const { user } = setup(<MiniBarSlot />);
-    await user.click(screen.getByRole('button', { name: 'Line width' }));
-    await user.click(await screen.findByRole('menuitemcheckbox', { name: '4 pt' }));
+    await user.click(screen.getByRole('radio', { name: '4 pt' }));
     expect(applyMock).toHaveBeenCalledWith(1, { type: 'updateAnnotation', id: 1, patch: { width: 4 } });
     await waitFor(() => expect(useTools.getState().defaults.ink?.width).toBe(4));
   });

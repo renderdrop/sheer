@@ -22,6 +22,7 @@ import {
   MARKUP_KINDS,
   OpacityControl,
   OpenCitationControl,
+  StraightenControl,
   StrokeControl,
   TextFillControl,
 } from './Controls';
@@ -138,6 +139,9 @@ export function MiniBar({ docId, objects, ref, onReturn }: MiniBarProps) {
         break;
       case 'strokeWidth':
         add(control, <StrokeControl value={values.width} disabled={locked} onChange={(width) => change({ width })} />);
+        break;
+      case 'straighten':
+        add(control, <StraightenControl />);
         break;
       case 'opacity':
         add(

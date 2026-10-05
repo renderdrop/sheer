@@ -42,12 +42,16 @@ import {
   HOLD_STILL_PX,
   holdShapeMs,
   morphOf,
+  type Morph,
   recognise,
   snapFor,
   snapTo,
   type Recognised,
   type Snap,
 } from './recognise';
+import { announce } from '../../../components/SuccessPulse';
+import { useT } from '../../../i18n';
+import { MorphStroke } from './MorphStroke';
 import { MAX_INK_STROKES } from '../../../api/annotations';
 import { prefersReducedMotion, tokenMs, tokenNumber } from '../../thumbnails/motion';
 
@@ -159,6 +163,9 @@ function ActiveLayer({
   const nextPreview = useRef<(() => Preview | null) | null>(null);
   const showInkRef = useRef<(current: readonly Sample[]) => void>(() => undefined);
   const [preview, setPreview] = useState<Preview | null>(null);
+  const t = useT();
+  /** The morph of a stroke of this page, while it runs (the store's `morph` is the last one of any page). */
+  const [morphing, setMorphing] = useState<Morph | null>(null);
   const straightenShapes = useTools((state) => state.straightenShapes);
   const chosen = useAnnotationStyle(kind);
   const textDefaults = useTools((state) => state.defaults.freeText);
@@ -277,6 +284,20 @@ function ActiveLayer({
     },
     [docId, page, pageIndex, style],
   );
+
+  const startMorph = useCallback(
+    (samples: readonly Sample[], shape: Recognised) => {
+      const morph = morphOf(samples, shape);
+      useTools.getState().setMorph(morph);
+      setMorphing(morph);
+      announce(t('draw.straightened'));
+    },
+    [t],
+  );
+  const endMorph = useCallback(() => {
+    setMorphing(null);
+    useTools.getState().setMorph(null);
+  }, []);
 
   // Leaving the tool (or the page) with strokes waiting makes them the annotation they were going to be.
   const flushRef = useRef(flushInk);
@@ -529,7 +550,7 @@ function ActiveLayer({
       const point = toPage(event) ?? d.last;
       show(null);
       const resized = snapTo(d.snap.snap, d.snap.at, point);
-      useTools.getState().setMorph(morphOf(d.samples, resized));
+      startMorph(d.samples, resized);
       commitSnap(d.samples, resized);
       return;
     }
@@ -539,7 +560,7 @@ function ActiveLayer({
       if (shape !== null) {
         if (pending.current.length > 0) flushInk();
         show(null);
-        useTools.getState().setMorph(morphOf(d.samples, shape));
+        startMorph(d.samples, shape);
         commitSnap(d.samples, shape);
         return;
       }
@@ -636,6 +657,9 @@ function ActiveLayer({
         style={{ left: box.left, top: box.top, transform: box.transform, transformOrigin: 'center' }}
       >
         {preview === null ? null : <PreviewShape preview={preview} onDryEnd={endDry} />}
+        {morphing === null ? null : (
+          <MorphStroke morph={morphing} color={style.color} width={style.width} onDone={endMorph} />
+        )}
       </svg>
     </div>
   );

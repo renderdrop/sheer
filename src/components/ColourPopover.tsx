@@ -1,12 +1,12 @@
-import { Plus } from 'lucide-react';
+import { Check, Plus } from 'lucide-react';
 import { useId, useState, type KeyboardEvent } from 'react';
 
 import { useT } from '../i18n';
-import { Button } from './Button';
 import { MIN_STROKE_CONTRAST, contrastOnWhite, parseHex, sameColour, toHex, type Rgb3 } from './colour';
 import { FIELD_BASE, FIELD_SIZES } from './controlStyles';
 import { cx } from './cx';
 import { Icon } from './Icon';
+import { IconButton } from './IconButton';
 import { Popover } from './Popover';
 import { itemsOf } from './roving';
 import { Swatch } from './Swatch';
@@ -104,6 +104,9 @@ export function ColourPopover({
   );
 }
 
+/** At most this many recent custom colours follow the palette (DESIGN 3.9 Q4): one more row of six at most. */
+export const RECENT_IN_POPOVER = 6;
+
 function ColourPanel({
   palette,
   recent,
@@ -118,11 +121,10 @@ function ColourPanel({
   const [text, setText] = useState('');
   const [touched, setTouched] = useState(false);
   const parsed = parseHex(text);
-  // Characters that are no hex digits are an error at once; a count that is not 3 or 6 only once the field was left or applied.
-  const trimmed = text.trim();
-  const invalid = trimmed !== '' && parsed === null && (touched || !/^#?[0-9a-f]*$/i.test(trimmed));
+  // An empty or incomplete field is only an error once Enter or leaving the field said it was meant (DESIGN 3.9 Q4).
+  const invalid = touched && text.trim() !== '' && parsed === null;
   const low = stroke && parsed !== null && contrastOnWhite(parsed) < MIN_STROKE_CONTRAST;
-  const shown = recent.slice(0, 8);
+  const shown = recent.slice(0, RECENT_IN_POPOVER);
 
   // One tab stop over the swatches: the checked one, else the first; the arrows move.
   const all = [...palette.map((entry) => entry.rgb), ...shown];
@@ -147,77 +149,79 @@ function ColourPanel({
   };
 
   const swatch = (rgb: Rgb3, index: number, label: string, fillClass?: string, checkClass?: string) => (
-    <Tooltip key={`${index}-${toHex(rgb)}`} label={label}>
-      <Swatch
-        data-colour-swatch=""
-        tabIndex={index === stop ? 0 : -1}
-        label={label}
-        checked={value !== null && sameColour(value, rgb)}
-        fillClass={fillClass}
-        checkClass={checkClass}
-        style={fillClass === undefined ? { backgroundColor: css(rgb) } : undefined}
-        onFocus={() => setStop(index)}
-        onClick={() => onPick(rgb)}
-      />
-    </Tooltip>
+    <div key={`${index}-${toHex(rgb)}`} className="flex size-8 items-center justify-center">
+      <Tooltip label={label}>
+        <Swatch
+          data-colour-swatch=""
+          tabIndex={index === stop ? 0 : -1}
+          label={label}
+          checked={value !== null && sameColour(value, rgb)}
+          fillClass={fillClass}
+          checkClass={checkClass}
+          style={fillClass === undefined ? { backgroundColor: css(rgb) } : undefined}
+          onFocus={() => setStop(index)}
+          onClick={() => onPick(rgb)}
+        />
+      </Tooltip>
+    </div>
   );
 
   return (
     <div className="flex w-(--colour-popover-inner) flex-col gap-3" onKeyDown={onKeyDown}>
-      <div role="radiogroup" aria-label={t('minibar.colour')} className="grid grid-cols-6 justify-items-center gap-2">
+      <div role="radiogroup" aria-label={t('minibar.colour')} className="grid grid-cols-6 justify-items-center">
         {palette.map((entry, index) => swatch(entry.rgb, index, entry.label, entry.fillClass, entry.checkClass))}
+        {shown.map((rgb, index) => swatch(rgb, palette.length + index, `#${toHex(rgb)}`))}
       </div>
-      {shown.length > 0 && (
-        <div className="flex flex-col gap-1">
-          <span className="t-caption text-text-muted">{t('color.recent')}</span>
-          <div role="radiogroup" aria-label={t('color.recent')} className="grid grid-cols-8 justify-items-center gap-1">
-            {shown.map((rgb, index) => swatch(rgb, palette.length + index, `#${toHex(rgb)}`))}
-          </div>
-        </div>
-      )}
       <div className="flex flex-col gap-1">
-        <div className="flex items-center gap-2">
+        <div className="relative w-full">
           <span
             aria-hidden="true"
             data-colour-preview=""
-            className="size-swatch shrink-0 rounded-pill border border-control-border"
+            className="absolute start-2 top-1/2 size-4 -translate-y-1/2 rounded-pill border border-control-border"
             style={{ backgroundColor: parsed === null ? 'transparent' : css(parsed) }}
           />
-          <div className="flex min-w-0 items-center">
-            <span aria-hidden="true" className="pe-1 text-md text-text-muted">
-              #
-            </span>
-            <input
-              id={hexId}
-              value={text}
-              maxLength={8}
-              spellCheck={false}
-              autoComplete="off"
-              aria-label={t('color.hex')}
-              aria-invalid={invalid ? true : undefined}
-              aria-describedby={invalid || low ? noteId : undefined}
-              onChange={(event) => {
-                setText(event.target.value);
-                setTouched(false);
-              }}
-              onBlur={() => setTouched(true)}
-              onKeyDown={(event) => {
-                if (event.key === 'Enter') {
-                  event.preventDefault();
-                  event.stopPropagation();
-                  apply();
-                }
-              }}
-              className={cx(
-                FIELD_BASE.replace('w-field ', ''),
-                FIELD_SIZES.md,
-                'w-(--hex-field-width) min-w-0 px-2! uppercase',
-              )}
-            />
-          </div>
-          <Button variant="primary" disabled={parsed === null} onClick={apply}>
-            {t('color.apply')}
-          </Button>
+          <span aria-hidden="true" className="absolute start-8 top-1/2 -translate-y-1/2 text-md text-text-muted">
+            #
+          </span>
+          <input
+            id={hexId}
+            value={text}
+            spellCheck={false}
+            autoComplete="off"
+            aria-label={t('color.hex')}
+            aria-invalid={invalid ? true : undefined}
+            aria-describedby={invalid || low ? noteId : undefined}
+            onChange={(event) => {
+              // A pasted "#1F9E6A" or " 1f9e6a " is the six digits.
+              setText(event.target.value.replace(/\s+/g, '').replace(/^#+/, '').slice(0, 6));
+              setTouched(false);
+            }}
+            onBlur={() => {
+              setText((old) => old.toUpperCase());
+              setTouched(true);
+            }}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter') {
+                event.preventDefault();
+                event.stopPropagation();
+                apply();
+              }
+            }}
+            className={cx(
+              FIELD_BASE.replace('w-field ', '').replace('px-3', ''),
+              FIELD_SIZES.md,
+              'w-full min-w-0 ps-12 pe-8 uppercase',
+            )}
+          />
+          <IconButton
+            icon={Check}
+            label={t('color.apply')}
+            size="sm"
+            disabled={parsed === null}
+            focusableWhenDisabled
+            onClick={apply}
+            className="absolute end-1 top-1/2 size-6! -translate-y-1/2"
+          />
         </div>
         {(invalid || low) && (
           <p

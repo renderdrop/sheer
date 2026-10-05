@@ -37,7 +37,8 @@ export type ControlId =
   | 'strokeWidth'
   | 'opacity'
   | 'arrowEnds'
-  | 'fill';
+  | 'fill'
+  | 'straighten';
 
 /** The order the controls have in the bar. */
 const ORDER: readonly ControlId[] = [
@@ -49,6 +50,7 @@ const ORDER: readonly ControlId[] = [
   'opacity',
   'arrowEnds',
   'fill',
+  'straighten',
   'fontSize',
   'align',
   'textBorder',
@@ -103,7 +105,7 @@ const CONTROLS: Readonly<Record<BarKind, readonly ControlId[]>> = {
   note: ['colourHighlight', 'comment'],
   text: ['colourStroke', 'fontSize'],
   freeText: ['colourStroke', 'fontSize', 'align', 'textBorder', 'textFill'],
-  stroke: ['colourStroke', 'strokeWidth', 'opacity'],
+  stroke: ['colourStroke', 'strokeWidth', 'opacity', 'straighten'],
   arrow: ['colourStroke', 'strokeWidth', 'opacity', 'arrowEnds'],
   shape: ['colourStroke', 'strokeWidth', 'opacity', 'fill'],
   mark: ['kindMark'],

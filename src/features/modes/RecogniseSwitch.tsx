@@ -17,7 +17,7 @@ export function RecogniseSwitch({ className }: { className?: string }) {
   return (
     <div className={cx('flex items-center justify-between gap-3', className)}>
       <span id={labelId} className="t-label text-text">
-        {t('settings.shapeRecognition')}
+        {t('draw.straighten')}
       </span>
       <Toggle checked={on} onCheckedChange={set} aria-labelledby={labelId} />
     </div>

@@ -453,6 +453,7 @@
   --motion-fast-exit: 80ms;
   --motion-base-exit: 120ms;
   --motion-slow-exit: 140ms;
+  --motion-morph: 150ms; /* F17.5: the raw stroke becomes the fitted shape */
   /* Named exceptions (MOTION 1.3): only these. */
   --motion-check: 240ms; /* spell 6 */
   --motion-scroll-max: 300ms; /* spell 8 */
