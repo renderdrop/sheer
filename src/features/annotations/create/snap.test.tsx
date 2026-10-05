@@ -28,12 +28,12 @@ describe('CreationLayer shape recognition (F15 B11)', () => {
     );
     useAnnotations.setState({ apply } as never);
     useUi.setState({ activeTool: 'draw', toolLocked: false });
-    useTools.setState({ recogniseShapes: true });
+    useTools.setState({ straightenShapes: true });
   });
   afterEach(() => {
     vi.useRealTimers();
     useUi.setState({ activeTool: 'select', toolLocked: false });
-    useTools.setState({ recogniseShapes: true });
+    useTools.setState({ straightenShapes: true });
   });
 
   function surfaceOf() {
@@ -166,7 +166,7 @@ describe('CreationLayer shape recognition (F15 B11)', () => {
   });
 
   it('does nothing when the setting is off', () => {
-    useTools.setState({ recogniseShapes: false });
+    useTools.setState({ straightenShapes: false });
     const surface = surfaceOf();
     draw(surface, circle);
     wait(1500);

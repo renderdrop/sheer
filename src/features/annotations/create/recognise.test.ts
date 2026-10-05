@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import type { Point } from '../../../api/wire';
-import { recognise, resample, snapFor, snapTo } from './recognise';
+import { morphOf, recognise, resample, snapFor, snapTo } from './recognise';
 
 /** A small seeded generator, so the sloppy fixtures are the same on every run. */
 function random(seed: number): () => number {
@@ -359,5 +359,218 @@ describe('snapFor and snapTo', () => {
       kind: 'rect',
       box: { x: 2, y: -2, w: 8, h: 22 },
     });
+  });
+});
+
+describe('recognise: F17.5 sample strokes', () => {
+  const at = (points: Point[], dx: number, dy: number): Point[] => points.map((p) => ({ x: p.x + dx, y: p.y + dy }));
+  const kindOf = (points: Point[]): string | null => {
+    const shape = recognise(points);
+    if (shape === null) return null;
+    if (shape.kind === 'rect') return 'rectangle';
+    return shape.kind === 'ellipse' ? (shape.circle ? 'circle' : 'ellipse') : shape.kind;
+  };
+
+  const positives: [string, string, Point[]][] = [
+    ['circle', 'circle', ellipsePath(150, 150, 50, 50, 0, 2 * Math.PI, 0.02, random(101))],
+    ['circle', 'circle slow sampling', ellipsePath(150, 150, 30, 30, 1, 1 + 2 * Math.PI + 0.2, 0.04, random(102))],
+    ['circle', 'circle big', ellipsePath(400, 300, 140, 140, 2, 2 + 2 * Math.PI, 0.03, random(103))],
+    ['ellipse', 'wide ellipse', ellipsePath(200, 150, 90, 45, 0, 2 * Math.PI, 0.02, random(104))],
+    ['ellipse', 'tall ellipse', ellipsePath(200, 150, 40, 80, 3, 3 + 2 * Math.PI, 0.02, random(105))],
+    ['ellipse', 'ellipse overshoot', ellipsePath(200, 150, 100, 60, 0, 2 * Math.PI + 0.3, 0.03, random(106))],
+    ['rectangle', 'rect clean', along(rectCorners(50, 50, 150, 80), 4, 0.3, random(107))],
+    ['rectangle', 'rect fast sampling', along(rectCorners(50, 50, 150, 80), 25, 1, random(108))],
+    ['rectangle', 'rect tilt 5', at(turn(along(rectCorners(0, 0, 140, 90), 5, 1, random(109)), 5), 150, 40)],
+    ['rectangle', 'rect tilt -9', at(turn(along(rectCorners(0, 0, 140, 90), 5, 1, random(110)), -9), 150, 100)],
+    ['rectangle', 'rect tilt 11', at(turn(along(rectCorners(0, 0, 200, 60), 5, 1, random(111)), 11), 100, 40)],
+    ['rectangle', 'square', along(rectCorners(20, 20, 90, 90), 5, 1, random(112))],
+    [
+      'line',
+      'line horizontal',
+      along(
+        [
+          { x: 10, y: 50 },
+          { x: 210, y: 50 },
+        ],
+        3,
+        1,
+        random(113),
+      ),
+    ],
+    [
+      'line',
+      'line diagonal',
+      along(
+        [
+          { x: 10, y: 10 },
+          { x: 190, y: 160 },
+        ],
+        6,
+        1.5,
+        random(114),
+      ),
+    ],
+    [
+      'line',
+      'line fast',
+      along(
+        [
+          { x: 300, y: 20 },
+          { x: 40, y: 120 },
+        ],
+        40,
+        1,
+        random(115),
+      ),
+    ],
+    [
+      'line',
+      'line vertical',
+      along(
+        [
+          { x: 90, y: 10 },
+          { x: 95, y: 220 },
+        ],
+        5,
+        1,
+        random(116),
+      ),
+    ],
+    [
+      'arrow',
+      'arrow right',
+      [
+        ...along(
+          [
+            { x: 20, y: 100 },
+            { x: 220, y: 100 },
+          ],
+          4,
+          0.6,
+          random(117),
+        ),
+        ...along(
+          [
+            { x: 220, y: 100 },
+            { x: 196, y: 88 },
+            { x: 220, y: 100 },
+            { x: 196, y: 112 },
+          ],
+          4,
+          0.4,
+          random(118),
+        ).slice(1),
+      ],
+    ],
+    [
+      'arrow',
+      'arrow down',
+      [
+        ...along(
+          [
+            { x: 100, y: 20 },
+            { x: 100, y: 200 },
+          ],
+          4,
+          0.6,
+          random(119),
+        ),
+        ...along(
+          [
+            { x: 100, y: 200 },
+            { x: 88, y: 176 },
+            { x: 100, y: 200 },
+            { x: 112, y: 176 },
+          ],
+          4,
+          0.4,
+          random(120),
+        ).slice(1),
+      ],
+    ],
+    [
+      'arrow',
+      'arrow diagonal',
+      (() => {
+        const base = [
+          ...along(
+            [
+              { x: 0, y: 0 },
+              { x: 200, y: 0 },
+            ],
+            4,
+            0.6,
+            random(121),
+          ),
+          ...along(
+            [
+              { x: 200, y: 0 },
+              { x: 176, y: -12 },
+              { x: 200, y: 0 },
+              { x: 176, y: 12 },
+            ],
+            4,
+            0.4,
+            random(122),
+          ).slice(1),
+        ];
+        return at(turn(base, 35), 60, 40);
+      })(),
+    ],
+  ];
+  it.each(positives)('takes a %s: %s', (kind, _name, stroke) => {
+    expect(kindOf(stroke)).toBe(kind);
+  });
+
+  const handwriting: Point[] = Array.from({ length: 160 }, (_, i) => {
+    const t = i / 8;
+    return { x: 10 + i * 1.6 + 8 * Math.cos(t * 2), y: 60 + 14 * Math.sin(t * 2.0) + 6 * Math.sin(t * 5.3) };
+  });
+  const negatives: [string, Point[]][] = [
+    [
+      'scribble',
+      (() => {
+        const r = random(131);
+        return Array.from({ length: 90 }, () => ({ x: r() * 160, y: r() * 120 }));
+      })(),
+    ],
+    [
+      'zigzag',
+      along(
+        [
+          { x: 0, y: 0 },
+          { x: 30, y: 70 },
+          { x: 60, y: 0 },
+          { x: 90, y: 70 },
+          { x: 120, y: 0 },
+        ],
+        4,
+        0.5,
+        random(132),
+      ),
+    ],
+    ['open arc', ellipsePath(100, 100, 60, 60, 0, Math.PI * 1.3, 0.01, random(133))],
+    [
+      'spiral',
+      Array.from({ length: 140 }, (_, i) => ({
+        x: 100 + (6 + i * 0.5) * Math.cos(i / 9),
+        y: 100 + (6 + i * 0.5) * Math.sin(i / 9),
+      })),
+    ],
+    ['handwriting', handwriting],
+    ['rect turned 25', at(turn(along(rectCorners(0, 0, 140, 90), 5, 0.5, random(134)), 25), 200, 100)],
+  ];
+  it.each(negatives)('leaves %s as ink', (_name, stroke) => {
+    expect(recognise(stroke)).toBeNull();
+  });
+
+  it('is deterministic and gives morph data from the resampled stroke to the shape', () => {
+    const stroke = ellipsePath(150, 150, 50, 50, 0, 2 * Math.PI, 0.02, random(101));
+    const shape = recognise(stroke);
+    expect(recognise(stroke)).toEqual(shape);
+    if (shape === null) throw new Error('expected a shape');
+    const morph = morphOf(stroke, shape);
+    expect(morph.from).toHaveLength(64);
+    expect(morph.to).toBe(shape);
   });
 });

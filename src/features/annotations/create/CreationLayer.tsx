@@ -38,7 +38,16 @@ import {
   type Sample,
 } from './ink';
 import { buildTextIndex, quadsForDragIndexed, type TextIndex } from './markup';
-import { HOLD_STILL_PX, holdShapeMs, recognise, snapFor, snapTo, type Recognised, type Snap } from './recognise';
+import {
+  HOLD_STILL_PX,
+  holdShapeMs,
+  morphOf,
+  recognise,
+  snapFor,
+  snapTo,
+  type Recognised,
+  type Snap,
+} from './recognise';
 import { MAX_INK_STROKES } from '../../../api/annotations';
 import { prefersReducedMotion, tokenMs, tokenNumber } from '../../thumbnails/motion';
 
@@ -150,7 +159,7 @@ function ActiveLayer({
   const nextPreview = useRef<(() => Preview | null) | null>(null);
   const showInkRef = useRef<(current: readonly Sample[]) => void>(() => undefined);
   const [preview, setPreview] = useState<Preview | null>(null);
-  const recogniseShapes = useTools((state) => state.recogniseShapes);
+  const straightenShapes = useTools((state) => state.straightenShapes);
   const chosen = useAnnotationStyle(kind);
   const textDefaults = useTools((state) => state.defaults.freeText);
   const style: CreationStyle = useMemo(
@@ -354,7 +363,7 @@ function ActiveLayer({
   const onHold = useCallback(() => {
     holdTimer.current = null;
     const d = drag.current;
-    if (d === null || d.snap !== null || d.noSnap || kind !== 'ink' || !useTools.getState().recogniseShapes) return;
+    if (d === null || d.snap !== null || d.noSnap || kind !== 'ink' || !useTools.getState().straightenShapes) return;
     const shape = recognise(d.samples);
     if (shape === null) return;
     // What was drawn before this stroke is its own annotation: it is not part of the shape.
@@ -375,8 +384,8 @@ function ActiveLayer({
 
   const startHold = useCallback(() => {
     clearHold();
-    if (recogniseShapes) holdTimer.current = setTimeout(onHold, holdShapeMs());
-  }, [clearHold, recogniseShapes, onHold]);
+    if (straightenShapes) holdTimer.current = setTimeout(onHold, holdShapeMs());
+  }, [clearHold, straightenShapes, onHold]);
 
   /** A stroke is over (pointer up, or cancelled): it joins the group, which is committed 1000 ms after its last stroke. */
   const endStroke = useCallback(
@@ -519,10 +528,21 @@ function ActiveLayer({
       // The stroke became a shape: release makes it the real annotation (the stroke is ink first, so one undo gives it back).
       const point = toPage(event) ?? d.last;
       show(null);
-      commitSnap(d.samples, snapTo(d.snap.snap, d.snap.at, point));
+      const resized = snapTo(d.snap.snap, d.snap.at, point);
+      useTools.getState().setMorph(morphOf(d.samples, resized));
+      commitSnap(d.samples, resized);
       return;
     }
     if (kind === 'ink') {
+      // On release a stroke that is clearly a shape is straightened at once (F17.5), unless Esc took the snap back.
+      const shape = d.noSnap || !useTools.getState().straightenShapes ? null : recognise(d.samples);
+      if (shape !== null) {
+        if (pending.current.length > 0) flushInk();
+        show(null);
+        useTools.getState().setMorph(morphOf(d.samples, shape));
+        commitSnap(d.samples, shape);
+        return;
+      }
       endStroke(d.samples, event.timeStamp);
       return;
     }

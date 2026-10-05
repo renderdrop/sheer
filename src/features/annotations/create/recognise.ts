@@ -5,6 +5,11 @@ import type { Point, Rect } from '../../../api/wire';
  * the pen then holds still on. Pure geometry in page space (points). Every error is normalised by the size of the shape, so a small
  * and a large drawing are judged alike; when the stroke fits more than one shape about equally well, or none, the answer is `null`
  * and the stroke stays ink ("reject when unsure").
+ *
+ * Decisions (F17.5, ADR-124): the input is one pen stroke, so an arrow is a shaft with a head hook (arms out and back) at either end.
+ * A rectangle is axis aligned and may be drawn turned by up to 12 degrees (the turn is dropped: the pen holds a straight box).
+ * Circle and ellipse are told apart at 12 % (axes within 12 % of each other = circle). Undo: the stroke is committed as ink first and
+ * the shape replaces it in one batch command, so one undo restores the raw stroke (see CreationLayer.commitSnap).
  */
 
 export type Recognised =
@@ -37,8 +42,8 @@ export const RECOGNISE = {
   /** Every corner of a rectangle has a point within this share of the diagonal. */
   corner: 0.12,
   /** A rectangle may be turned by this much (degrees) and still be taken as axis aligned; the step of the search. */
-  tiltDeg: 10,
-  tiltStepDeg: 2.5,
+  tiltDeg: 12,
+  tiltStepDeg: 3,
   /** Ellipse axes that differ by less than this share are a circle. */
   circle: 0.12,
   /** The hook of an arrow reaches out from the tip by at least and at most this share of the shaft. */
@@ -283,6 +288,16 @@ export function recognise(points: readonly Point[]): Recognised | null {
   if (line !== null) return { kind: 'line', ...line };
   const arrow = arrowFit(s) ?? arrowFit([...s].reverse());
   return arrow === null ? null : { kind: 'arrow', ...arrow };
+}
+
+/** What the renderer needs to morph a stroke into its shape (F17.5): the stroke as 64 equally spaced points, and the shape it becomes. */
+export interface Morph {
+  from: Point[];
+  to: Recognised;
+}
+
+export function morphOf(points: readonly Point[], to: Recognised): Morph {
+  return { from: resample(points), to };
 }
 
 /** The hold time of a snap in ms: `--hold-shape` (500), read from the document, else the spec's value. */

@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 
 import type { LineEnd, Rgb, TextAlign } from '../api/annotations';
+import type { Morph } from '../features/annotations/create/recognise';
 import type { ToolId } from './ui';
 
 /**
@@ -118,8 +119,11 @@ export interface ToolsState {
   /** The last used style per creation kind. */
   defaults: KindDefaults;
   /** Whether Zeichnen turns a rough shape into a real one when the pen pauses (DESIGN 3.5 B11); default on. */
-  recogniseShapes: boolean;
-  setRecogniseShapes: (on: boolean) => void;
+  straightenShapes: boolean;
+  setStraightenShapes: (on: boolean) => void;
+  /** The last stroke straightened into a shape (from/to), for the morph animation; null when none (F17.5). */
+  morph: Morph | null;
+  setMorph: (morph: Morph | null) => void;
   /** Remembers a change as the default of a kind (merged into what the kind has). */
   setDefault: (kind: CreationKind, change: KindDefault) => void;
   setMarkup: (variant: MarkupVariant) => void;
@@ -168,9 +172,13 @@ function loadRecognise(): boolean {
 export const useTools = create<ToolsState>()((set, get) => ({
   ...load(),
   defaults: loadDefaults(),
-  recogniseShapes: loadRecognise(),
-  setRecogniseShapes: (on) => {
-    set({ recogniseShapes: on });
+  straightenShapes: loadRecognise(),
+  morph: null,
+  setMorph: (morph) => {
+    set({ morph });
+  },
+  setStraightenShapes: (on) => {
+    set({ straightenShapes: on });
     try {
       globalThis.localStorage.setItem(RECOGNISE_KEY, on ? '1' : '0');
     } catch {
