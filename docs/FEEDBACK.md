@@ -197,7 +197,11 @@ mock where no Mac is at hand (ADR-104). After A and B: designer acceptance of th
       Acceptance: "Save as PDF" in the Mac print dialog with visible content
 - [x] A11. (found in the acceptance) Saving a document with annotations does nothing while the author name is empty: the author
       prompt (ADR-034) lost its slot in the v1.2 layout, so the save waits forever (ADR-109)
-A acceptance (2026-10-05): installed NSIS build, real OS cursor (`scripts/ui/mouse.ps1`), shots in `review/f15/` (not tracked). A9: libraryentry survives a restart on Windows; macOS via the CI step "Real credential store round trip" (run 37245442441, both OS green).A10: Windows print preview shows the pages; macOS fix (frames outlive `Webview::print()`, ADR-107) covered by CI; the owner's"Save as PDF" in the Mac print dialog is the final check on the next pre-release. A6 had a second cause: the engine's file readerreturned short reads at 256 KiB block borders (large images half grey, ADR-106 addendum).
+A acceptance (2026-10-05): installed NSIS build, real OS cursor (`scripts/ui/mouse.ps1`), shots in `review/f15/` (not tracked).
+A9: the library entry survives a restart on Windows; macOS via the CI step "Real credential store round trip" (run 37245442441,
+both OS green). A10: the Windows print preview shows the pages; the macOS fix (frames outlive `Webview::print()`, ADR-107) is covered
+by CI; the owner's "Save as PDF" in the Mac print dialog is the final check on the next pre-release. A6 had a second cause: the
+engine's file reader returned short reads at 256 KiB block borders (large images half grey, ADR-106 addendum).
 
 ### B — Shell polish (before R5)
 
