@@ -1,9 +1,10 @@
 import { useForms } from '../forms/store';
 import { selectActiveId, useDocuments } from '../../stores/documents';
 import { useUi } from '../../stores/ui';
+import { useSigBannerWanted } from '../sigcheck/hooks';
 
 /** The banner rows, in priority order (DESIGN v2 3.2): at most one is visible, so the canvas is never squeezed. */
-export type BannerKind = 'redact' | 'form' | 'other';
+export type BannerKind = 'redact' | 'signature' | 'form' | 'other';
 
 /** Whether the redact band is wanted: the mode is on in the active document. */
 export function useRedactBandWanted(): boolean {
@@ -19,11 +20,13 @@ export function useFormBannerWanted(): boolean {
   return has && !dismissed;
 }
 
-/** The banner that owns the row now: redact band, then form banner, then the other notices (which queue behind them). */
+/** The banner that owns the row now: redact band, then signature banner, then form banner, then the other notices (which queue behind them). */
 export function useBannerWinner(): BannerKind {
   const redact = useRedactBandWanted();
+  const signature = useSigBannerWanted();
   const form = useFormBannerWanted();
   if (redact) return 'redact';
+  if (signature) return 'signature';
   if (form) return 'form';
   return 'other';
 }

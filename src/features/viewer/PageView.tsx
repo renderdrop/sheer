@@ -16,6 +16,7 @@ import { CropLayer } from '../crop/CropLayer';
 import { FormLayer } from '../forms/FormLayer';
 import { InsertLayer } from '../insert/InsertLayer';
 import { RedactLayer } from '../redact/RedactLayer';
+import { SealLayer } from '../sigcheck/SealLayer';
 import { usePageText } from '../textlayer/cache';
 import type { PageLayerProps } from './pageLayer';
 import { PageOverlay } from '../textlayer/PageOverlay';
@@ -484,6 +485,7 @@ export const PageView = memo(function PageView({
       {/* M5 layers (layer 3, DESIGN 3.36 to 3.38); each renders nothing outside its tool or mode. */}
       <InsertLayer {...layer} />
       <RedactLayer {...layer} />
+      <SealLayer {...layer} />
       <CropLayer {...layer} />
     </div>
   );
