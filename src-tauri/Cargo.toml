@@ -35,6 +35,10 @@ lopdf = { version = "0.45.0", default-features = false }
 image = { version = "0.25", default-features = false, features = ["jpeg", "png"] }
 # Glyph outlines of the bundled signature font (signatures/typed.rs only). MIT OR Apache-2.0, googlefonts/fontations, forbid(unsafe_code).
 skrifa = "0.48"
+# Subsets the bundled substitute fonts for text editing (fontprog/fallback.rs only). MIT OR Apache-2.0, typst/subsetter; the output is re-parsed with skrifa.
+subsetter = { version = "0.2.6", default-features = false }
+# The Adobe glyph list (glyph name to Unicode) for fontprog and text_fonts: the same crate skrifa re-exports, with its `agl` feature on. MIT OR Apache-2.0, googlefonts/fontations; no new crate.
+read-fonts = { version = "0.45", default-features = false, features = ["std", "agl"] }
 flate2 = "1"
 # XMP read of the bibliographic record (pdfwrite/bibliography.rs only): a pull parser, already in the build through plist. MIT, tafia/quick-xml.
 quick-xml = { version = "0.42.0", default-features = false }
