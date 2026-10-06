@@ -944,6 +944,7 @@ fn paragraphs(
     // A one-line paragraph has no edges of its own to tell its alignment: judge it against the text block it sits in
     // (the edges of the multi-line paragraphs of its direction).
     let mut blocks: HashMap<usize, (f64, f64)> = HashMap::new();
+    let mut loose: HashMap<usize, (f64, f64)> = HashMap::new();
     for p in paragraphs.iter().filter(|p| p.lines.len() >= 2) {
         for m in metrics[p.lines.start as usize..p.lines.end as usize]
             .iter()
@@ -953,6 +954,21 @@ fn paragraphs(
             e.0 = e.0.min(m.x0);
             e.1 = e.1.max(m.x1);
         }
+    }
+    // A direction without any multi-line paragraph (an invoice's address block, say) is judged against all its lines.
+    for m in metrics.iter().flatten() {
+        if !blocks.contains_key(&m.cluster) {
+            loose
+                .entry(m.cluster)
+                .and_modify(|e| {
+                    e.0 = e.0.min(m.x0);
+                    e.1 = e.1.max(m.x1);
+                })
+                .or_insert((m.x0, m.x1));
+        }
+    }
+    for (cluster, edges) in loose {
+        blocks.insert(cluster, edges);
     }
     for p in &mut paragraphs {
         if p.lines.len() != 1 || p.align != Align::Left {

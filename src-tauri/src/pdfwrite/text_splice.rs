@@ -1195,10 +1195,25 @@ fn plan_edit(
     let mut extra_prefix: HashMap<usize, String> = HashMap::new();
     let mut extra_suffix: HashMap<usize, String> = HashMap::new();
     let mut leading_shift = 0.0;
+    let mut shift_at: Vec<(usize, f64)> = Vec::new(); // (operator, page units of one em there)
     let mut spread = 0.0;
 
-    if cross && (input.justified || input.align != Align::Left || fit == TextFit::Squeeze) {
+    let aligned = matches!(input.align, Align::Right | Align::Center);
+    // A glyph of a later chain that stays cannot follow the shift of an aligned line.
+    let stranded =
+        (0..glyphs.len()).any(|g| !in_a(g) && !del_set.contains(&g) && at[g].0 > first_pos);
+    if cross && (input.justified || fit == TextFit::Squeeze || (aligned && stranded)) {
         return Err(refused());
+    }
+    if cross && aligned {
+        // The replaced word spreads over several chains (a font without the new characters, one glyph per operator): the whole
+        // replaced stretch counts, measured on the page.
+        let first_start = deleted
+            .iter()
+            .map(|g| proj(glyphs[*g].origin))
+            .fold(f64::MAX, f64::min);
+        let last_end = deleted.iter().map(|g| end_of(*g)).fold(f64::MIN, f64::max);
+        delta = new_adv - (last_end - first_start);
     }
 
     // `squeeze`: Tz down to 85 % around the line.
@@ -1220,8 +1235,25 @@ fn plan_edit(
 
     // The line keeps its anchor when it is right-aligned or centred.
     if matches!(input.align, Align::Right | Align::Center) && delta.abs() > EPS {
-        if (0..glyphs.len()).any(|g| !in_a(g)) {
+        // Chains before the anchor's (a trailing space shown on its own, say) move with it; one after it cannot follow.
+        if stranded {
             return Err(refused());
+        }
+        // The first show operator of every chain of the line gets the shift, in the units of its own first glyph.
+        let mut firsts: BTreeMap<u32, usize> = BTreeMap::new();
+        for g in (0..glyphs.len()).filter(|g| at[*g].0 <= first_pos) {
+            let entry = firsts.entry(chain[at[g].0]).or_insert(g);
+            if at[g] < at[*entry] {
+                *entry = g;
+            }
+        }
+        for g in firsts.into_values() {
+            let pos = at[g].0;
+            let unit = glyphs[g].size_eff * view.state_at(pos).tz / 100.0;
+            if unit <= 0.0 || !unit.is_finite() {
+                return Err(refused());
+            }
+            shift_at.push((pos, unit));
         }
         leading_shift = if input.align == Align::Right {
             -delta
@@ -1363,10 +1395,10 @@ fn plan_edit(
         }
     }
     if leading_shift.abs() > EPS {
-        let first_op = *ops.keys().next().ok_or_else(refused)?;
-        touched.insert(first_op);
-        if let Some(items) = work.get_mut(&first_op) {
-            items.insert(0, Item::kern(-leading_shift * 1000.0 / unit_anchor));
+        for (pos, unit) in &shift_at {
+            touched.insert(*pos);
+            let items = work.get_mut(pos).ok_or_else(refused)?;
+            items.insert(0, Item::kern(-leading_shift * 1000.0 / unit));
         }
     }
 
@@ -1789,9 +1821,33 @@ impl LineSource for DocLines<'_> {
         } else {
             None
         };
+        let glyphs: Vec<_> = line.runs.iter().flat_map(|r| r.glyphs.clone()).collect();
+        // Without PDFium's characters the text of a two-byte font is a placeholder per glyph: the font's own map says the characters.
+        let mut text = line.text.clone();
+        if text.contains('\u{fffd}') {
+            let mut inverse: HashMap<u32, char> = HashMap::new();
+            for (c, code) in &font.to_code {
+                let slot = inverse.entry(*code).or_insert(*c);
+                *slot = (*slot).min(*c);
+            }
+            let mut codes = glyphs.iter().map(|g| g.code);
+            text = text
+                .chars()
+                .map(|c| {
+                    if c == '\u{fffd}' {
+                        codes
+                            .next()
+                            .and_then(|code| inverse.get(&code).copied())
+                            .unwrap_or(c)
+                    } else {
+                        c
+                    }
+                })
+                .collect();
+        }
         Ok(OwnedLine {
-            glyphs: line.runs.iter().flat_map(|r| r.glyphs.clone()).collect(),
-            text: line.text.clone(),
+            glyphs,
+            text,
             font,
             face,
             align,

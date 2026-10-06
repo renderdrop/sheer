@@ -523,3 +523,46 @@ fn a_centred_line_keeps_its_centre() {
     assert_eq!(out, "BT /F1 10 Tf 100 700 Td [500 <48656C6C6F2121>] TJ ET");
     assert!(warnings.is_empty());
 }
+
+#[test]
+fn a_centred_line_with_a_trailing_space_of_its_own_moves_every_chain() {
+    // The space is shown by an operator of its own (Word-style): both chains take the shift, the new text hangs behind the space.
+    let content = "BT /F1 10 Tf 100 700 Td (Hello) Tj ET BT /F1 10 Tf 125 700 Td ( ) Tj ET";
+    let source = Source {
+        align: Align::Center,
+        ..Source::default()
+    };
+    let (out, warnings, _) = run(
+        content,
+        &[edit(0, 0, "Hello 12", TextFit::KeepStart)],
+        source,
+    )
+    .unwrap();
+    // Two glyphs (10 pt) wider: both chains move left by 5 pt.
+    assert_eq!(
+        out,
+        "BT /F1 10 Tf 100 700 Td [500 <48656C6C6F>] TJ ET BT /F1 10 Tf 125 700 Td [500 <203132>] TJ ET"
+    );
+    assert!(warnings.is_empty());
+}
+
+#[test]
+fn a_right_aligned_word_spread_over_chains_is_replaced_and_keeps_its_right_edge() {
+    // Every glyph of the last word has an operator of its own and the new text needs the fallback font.
+    let content = "BT /F1 10 Tf 100 700 Td (ab ) Tj ET BT /F1 10 Tf 115 700 Td (c) Tj ET BT /F1 10 Tf 120 700 Td (d) Tj ET";
+    let source = Source {
+        align: Align::Right,
+        ..Source::default()
+    };
+    let (out, ..) = run(
+        content,
+        &[edit(0, 0, "ab cZZd", TextFit::KeepStart)],
+        source,
+    )
+    .unwrap();
+    // The word is 14 pt wider (4 x 6 pt against 10 pt): every chain that stays moves left by 14 pt, the replaced glyphs are gone.
+    assert_eq!(
+        out,
+        "BT /F1 10 Tf 100 700 Td [1400 <616220>] TJ ET BT /F1 10 Tf 115 700 Td [1400] TJ /SheerFnSansR 10 Tf [<0063005A005A0064>] TJ /F1 10 Tf ET BT /F1 10 Tf 120 700 Td [] TJ ET"
+    );
+}
