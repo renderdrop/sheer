@@ -42,6 +42,7 @@ Erfolgsmaßstab: Ein Nutzer öffnet die App, versteht sie ohne Anleitung, erledi
 11. **Security ist Teil der Definition of Done.** Kein Milestone-Tag ohne bestandenen `security-reviewer`-Durchlauf (Abschnitt 13). Jede PDF-Datei ist feindlicher Input.
 12. **CI vor jedem Push (ADR-120, korrigiert).** Vor jedem Push liest du den letzten abgeschlossenen CI-Lauf auf `main` (`bash scripts/ci-status.sh`, nie warten). Rot und von einem eigenen Commit = erst beheben, dann pushen. Ist der Lauf des letzten eigenen Pushs noch nicht fertig, trotzdem pushen, den Lauf merken (`STATE.md`) und beim nächsten Push zuerst dessen Ergebnis lesen (`bash scripts/ci-status.sh <run-id>`). CI grün ist Teil der Definition of Done jedes Pakets.
 13. **Testdateien und Screenshots (ADR-126).** Test-PDFs stammen ausschließlich aus `review/owner/` oder werden selbst generiert (Skripte im Repo, Ausgabe unter `review/`); andere Ordner des Rechners werden nie durchsucht oder gelesen. Screenshots nur per Fensterabgriff der App (Capture des Sheer-Fensters über sein Handle), nie vom Bildschirm.
+14. **Pfadgrenzen (ADR-127).** Schreib-, Lösch- und Verschiebe-Operationen nur innerhalb des Repo-Ordners und des Claude-Temp-Ordners (`<Temp>/claude/`, Scratchpad und Task-Ausgaben). Lesen außerhalb des Repos ist verboten; Testmaterial liegt in `review/owner/`. Der PreToolUse-Hook `.claude/hooks/guard-paths.sh` (Bash, PowerShell, Write, Edit) blockiert jeden Verstoß mit Exit 2: `rm`, `del`, `Remove-Item`, `mv`, `move`, `rmdir`, `cp`, `sed -i` u. a. auf Pfade außerhalb, Umleitungen `>`/`>>` nach außen, nicht prüfbare Schreibziele (unbekannte Variable) und Lesezugriffe auf Pfade außerhalb. Getestet in `scripts/hooks/guard-paths.test.ts`.
 
 ---
 
@@ -294,7 +295,8 @@ Max 300 words total.
       { "hooks": [ { "type": "command", "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/session-start.sh\"" } ] }
     ],
     "PreToolUse": [
-      { "matcher": "Bash", "hooks": [ { "type": "command", "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/guard-bash.sh\"" } ] }
+      { "matcher": "Bash", "hooks": [ { "type": "command", "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/guard-bash.sh\"" } ] },
+      { "matcher": "Bash|PowerShell|Write|Edit|NotebookEdit", "hooks": [ { "type": "command", "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/guard-paths.sh\"" } ] }
     ],
     "PostToolUse": [
       { "matcher": "Edit|Write", "hooks": [

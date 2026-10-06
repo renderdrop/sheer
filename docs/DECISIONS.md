@@ -2497,3 +2497,29 @@ edited after the `breaksSignature` confirm; ADR-125 §6 refuses every document w
 apply refuse signed/certified and no-edit-permission documents with the same typed error and `params.reason` (`signed` /
 `permission`), the tool shows `cert.locked.tool` / `tool.readOnly`. Editing approval-signed files with the confirm is deferred
 (ROADMAP ticket "Politur v1.5"); it needs a byte-range-aware incremental write that keeps earlier revisions verifiable.
+
+## ADR-127 — Path guard: writes inside the repo and the Claude temp folder only, no reads outside the repo
+
+**Status:** accepted (2026-10-06, owner instruction).
+
+**Context.** ADR-126 forbids looking for test material elsewhere on the owner's machine. A rule in a prompt is not enough: in the
+v1.5.1 session a cleanup step reached into `%APPDATA%` and a tool probe into `C:\Program Files`. The owner wants a hard stop.
+
+**Decision.**
+1. A PreToolUse hook `.claude/hooks/guard-paths.sh` (→ `guard-paths.mjs`, node) runs for Bash, PowerShell, Write, Edit and
+   NotebookEdit. Exit 2 blocks the call; stderr names the path and the reason.
+2. *Writes* (Write/Edit/NotebookEdit targets; `rm`, `del`, `erase`, `rd`, `rmdir`, `Remove-Item`, `mv`, `move`, `Move-Item`, `cp`,
+   `copy`, `Copy-Item`, `ren`, `New-Item`, `Set-Content`, `Out-File`, `tee`, `touch`, `mkdir`, `ln`, `sed -i` …; redirections `>`,
+   `>>`, `&>`) are allowed only inside the repo (`$CLAUDE_PROJECT_DIR`) and the Claude temp folder (`<tmpdir>/claude/`: scratchpad,
+   task output). Relative targets resolve against the cwd, `..` included. A write target that starts with an unknown variable
+   cannot be checked and is blocked.
+3. *Reads*: any path token outside the repo is blocked. Test material comes from `review/owner/` (ADR-126). Exceptions, read-only:
+   the Claude temp folder (our own outputs), `~/.cargo` and `~/.rustup` (the Rust toolchain on PATH, CLAUDE.md), `/dev/*` and `NUL`.
+4. Path tokens are recognised by shape (drive letters, Git Bash `/c/`, `~`, `$HOME`/`$APPDATA`/`$TMP`/`$env:…`/`%…%`, `/tmp`, UNC,
+   `..`); heredoc bodies are text, not paths. Tested in `scripts/hooks/guard-paths.test.ts` (vitest, part of `npm run check`):
+   negatives `rm -rf` outside, `>` outside, Write/`Remove-Item`/`ls`/`mv ..` outside; positives repo, `review/owner/`, temp, heredoc.
+
+**Consequences.** Logs go to the scratchpad, not `$TMP`. Writes to the auto-memory folder (`~/.claude/projects/…/memory`) are
+blocked too; memory updates need the owner to widen the guard. The hook inspects the command line only: a repo script may still
+use `mktemp` or tool caches (npm, cargo) internally — accepted, those are build tools, not file access by the orchestrator. It is a
+tripwire against mistakes, not a sandbox.
