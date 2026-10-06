@@ -66,6 +66,9 @@ pub struct SavePlan {
     pub keep_encryption: bool,
     /// The bibliographic record to write as `/SHR_Bib` after the metadata (ADR-119, package C2); skipped with a pending strip.
     pub bibliography: Option<crate::model::bibliography::BibRecord>,
+    /// The text edits per page (`file_index` = the page's index in the file the save builds on), replayed over its original content as one
+    /// incremental update (ADR-125, `text_save::apply_edits`). Never makes the save Full.
+    pub text_edits: Vec<(u32, Vec<crate::model::text_edit::TextEdit>)>,
 }
 
 impl SavePlan {
@@ -78,6 +81,7 @@ impl SavePlan {
             && self.metadata.is_none()
             && !self.keep_encryption
             && self.bibliography.is_none()
+            && self.text_edits.iter().all(|(_, edits)| edits.is_empty())
     }
 
     /// The save is a whole new file, no update on top of the original (ADR-047): redaction (no earlier revision may survive), a change
@@ -104,6 +108,8 @@ pub fn apply_extras(bytes: Vec<u8>, plan: &SavePlan) -> Result<Vec<u8>, AppError
     if plan.is_empty() {
         return Ok(bytes);
     }
+    // ADR-125: text edits replay over the original streams, so they come before anything that wraps the page's content.
+    let bytes = super::text_save::apply_edits(bytes, &plan.text_edits)?.0;
     // Package A: text boxes and images.
     let bytes = super::content::burn_all(bytes, &plan.content)?;
     // Package C: what still holds content of a redacted page (structure tree, orphan fields, `/ID`); before any encryption.
