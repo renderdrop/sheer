@@ -321,6 +321,15 @@ new engine capability or dependency is needed. Not picked by the loop before v1.
 - [ ] v1.5.1 — Edit existing text line- and paragraph-wise with embedded fonts
 - [ ] v1.5.2 — Otherwise a bundled fallback (Arimo/Tinos/Cousine, ADR-125 §4, changed words only) with a notice; paragraph reflow, never across pages
   - spike carry-overs: stream order ≠ reading order (form footers), glyph-outline check in the font program, right/centre-aligned runs, cumulative decoded-bytes budget across Form XObjects + visited-form cycle check, corpus ≥ 30 files and click-mapping ≥ 90 % gate
+- [ ] Politur v1.5
+  - approval-signed files: edit after the breaksSignature confirm (ADR-125 addendum 3; needs a byte-range-aware write)
+  - std14 widths: test pinning macron/plusminus/mu/periodcentered/divide per face (B2 review)
+  - rewritten content streams are written uncompressed (text_save.rs) → Flate them
+  - walker work budget (MAX_REDACT_WORK) shared with the text-edit walk; neutral limit key for walker ops exhaustion
+  - cooperative cancel inside ops_walk/text_lines after a probe deadline; verify subsetter output re-parse; CIDToGIDMap cap test
+  - re-edit of a line that already holds a fallback word is tooComplex; params.reason vs what on read_only refusals (ARCHITECTURE §13.5)
+  - refusal tooltip keys missing for clip, inForm, actualText, script, notFileSource, unmapped, tooComplex (DESIGN §3.10 E5)
+  - Symbol/ZapfDingbats lines are Missing (no verified widths)
 - [ ] v1.5 acceptance — installed build with the mouse, designer round, tag v1.5.0
 
 ### v1.6 "Smart links"

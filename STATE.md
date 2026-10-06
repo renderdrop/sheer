@@ -1,15 +1,16 @@
 # STATE
 phase: v1.5.1 (session topic "v1.5.1 Text bearbeiten – Zeile bearbeiten", ADR-122)
 version: 1.4.2 (tag v1.4.2)
-current_item: wave 1 running — B1 walker/lines/mapping · B2 fonts/fallback · B3 splice/save · B4 model/commands/refusals (split fix 76dd8b7, seam 9a6a7ff done)
-last_completed: v1.5 spec (ADR-125, ARCHITECTURE §13, DESIGN §3.10) + spike pdfwrite/textedit (not IPC-registered; corpus review/v1.5-spike/, not tracked)
-loop_count_this_session: 1
-open_blockers: 4 (B-002, B-005 human-only; B-006 recovery pre-task denied by classifier; B-007 corpus producers unknown)
+current_item: v1.5.1 wave 1 (backend) DONE and pushed; wave 2 NOT started (owner instruction: stop after wave 1). Next: wave 2 F1 tool+edit box · F2 mini bar/font popover/fallback notice · F3 refusal tooltips/a11y/undo label · F4 gate (corpus ≥ 30, click ≥ 90 %, footer case), then acceptance + v1.5.0-beta.1
+last_completed: split-button fix 76dd8b7; W0 seam 9a6a7ff; wave 1 B2 fd25f86, B1 4c6f2c5, B3 3fdf3d7, B4 a6678f9 (reviews: B1 PASS, B2 PASS, B3 PASS, B4 FIX→fixed; security-reviewer PASS). Hit rate on review/owner/corpus (17 files, 684 pages, 33 222 probes): found 100 %, editable 99.3 %
+loop_count_this_session: 4
+open_blockers: 4 — B-002, B-005 (human-only); OWNER QUESTIONS: B-006 may the recovery pre-task (purge > 30 days, banner summary ≥ 3) be built (classifier denied reading the code)? B-007 which producers are installed on PATH (Word, LaTeX engine, Ghostscript) for the ≥ 30-file corpus? (17 owner PDFs only)
 notes: ADR-120: every loop starts with `bash scripts/ci-status.sh` (last completed run on main, never wait); red = fix first. v1.4 W0 2a1e3f3 (stable RustCrypto line), seam 586feeb. Release v1.3.0 published.
   Owner re-check on the Mac after v1.2.0: A10 "Save as PDF" in the print dialog. Screenshot series docs/review/v1.2/ (not tracked), motion recordings docs/review/v1.2/motion/.
   After v1.2.0: "Politur v1.3" (ROADMAP, carried minors), then the v1.3 "Citations" spec. Never run the dev window while agents run cargo/vitest;
   stop it with taskkill sheer.exe + Stop-Process on tauri.js/vite.js only. Acceptance helpers in the session scratchpad (keys.ps1, wheel.ps1, shotsize.ps1, dnd.ps1 with topmost guard).
 ci_log: (ADR-120 corrected — package commit → CI run; result filled in at the next push)
+  - fd25f86..08d15c1 wave 1 B1–B4 + ADR-125 add. 3 → run #93 (37400184937) pending — read it first next session
   - 76dd8b7 split-button fix + 9a6a7ff W0 seam (+ docs 6d01605, d001edb) → run #92 (37393656808) GREEN
   - eae482b lock choice after completed signing → run #90 (37381290387) red: prettier on SignDialog.tsx → fixed f6a0228
   - f6a0228..5e7331c prettier fix + ADR-125 docs + textedit spike → run #91 (37385569465) GREEN
