@@ -94,7 +94,8 @@ const PAGE = `(() => {
     return el.tagName.toLowerCase() + (el.getAttribute('role') ? '[' + el.getAttribute('role') + ']' : '') + (t ? ' "' + t + '"' : '');
   };
   const area = (e) => { const r = e.getBoundingClientRect(); return r.width * r.height; };
-  const shown = () => [...document.querySelectorAll(SURFACES)].filter(visible);
+  // Tooltips are aria-hidden by design (a live region speaks them), so a [data-surface] tooltip counts when it is on screen.
+  const shown = () => [...document.querySelectorAll(SURFACES)].filter((e) => visible(e) || (e.matches('[data-surface][role="tooltip"]') && getComputedStyle(e).display !== 'none' && e.getBoundingClientRect().width > 0));
   window.__gate = {
     mark() { window.__gateBefore = new Set(shown()); },
     // The outermost new surfaces (a popover's own submenu is part of it).
@@ -312,14 +313,17 @@ const REFUSALS = [
 /** "Edit text" (DESIGN 3.10 E11): the mini bar (with the overflow caption), the Font popover, the fallback notice and every refusal tooltip. */
 async function sweepTextEdit() {
   if (only && !'textedit'.includes(only) && !only.includes('textedit')) return;
+  const stores = (path) => `(await ${store(path)})`;
   const pageRect = () =>
     ev(
       `(() => { const r = document.querySelector('[data-page="1"]')?.getBoundingClientRect(); return r ? { left: r.left, top: r.top, width: r.width, height: r.height } : null; })()`,
     );
   // The line "The quick brown fox..." of text.pdf: 72 pt from the left, baseline 152 pt from the top of a 612 x 792 page.
   const lineAt = async () => {
-    await ev(`document.querySelector('[data-page="1"]')?.scrollIntoView({ block: 'center' })`);
-    await sleep(300);
+    // The recovery banner (records of earlier dev runs) sits above the canvas and can cover the line; the page goes to the top.
+    await ev(`(async()=>{${stores('features/recovery/store.ts')}.useRecovery.getState().hide()})()`);
+    await ev(`document.querySelector('[data-page="1"]')?.scrollIntoView({ block: 'start' })`);
+    await sleep(400);
     const r = await pageRect();
     const k = r.width / 612;
     return {
@@ -328,7 +332,6 @@ async function sweepTextEdit() {
       rect: { x: r.left + 72 * k, y: r.top + 136 * k, w: 258 * k, h: 20 * k },
     };
   };
-  const stores = (path) => `(await ${store(path)})`;
   await ev(`(async()=>{${stores('stores/ui.ts')}.useUi.getState().setMode('edit')})()`);
   await sleep(400);
   const openLine = async () => {
@@ -364,7 +367,18 @@ async function sweepTextEdit() {
     () => undefined,
     '[role="dialog"]',
   );
-  await probe('textedit-notice', openLine, () => undefined, '[data-surface="textedit-notice"]');
+  // text.pdf embeds its fonts, so no substitute is needed there: the notice is set the way the layer sets it.
+  await probe(
+    'textedit-notice',
+    async () => {
+      await openLine();
+      await ev(
+        `(async()=>{${stores('features/textedit/store.ts')}.useTextEdit.getState().set({ notice: { kind: 'missingGlyphs', font: 'MinionPro-Regular', face: 'serif', chars: ['ő','ű','ł','ś','ž','ď','ť'] } })})()`,
+      );
+    },
+    () => undefined,
+    '[data-surface="textedit-notice"]',
+  );
   for (const reason of REFUSALS) {
     await probe(
       `textedit-refusal:${reason}`,

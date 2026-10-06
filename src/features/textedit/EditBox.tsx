@@ -240,6 +240,8 @@ export function EditBox({ session, growth, pageWidth }: EditBoxProps) {
       )}
       <div
         ref={ref}
+        // Popovers, tips and notices never cover the line being edited (DESIGN 3.10 E4, Q8).
+        data-protect=""
         role="textbox"
         aria-label={t('editText.aria.line', { line: line.key.line + 1, page: session.pageNumber })}
         aria-multiline={false}

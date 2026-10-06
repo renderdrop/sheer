@@ -59,11 +59,13 @@ const key = async (k, code, vk) => {
   await send('Input.dispatchKeyEvent', { type: 'keyDown', key: k, code, windowsVirtualKeyCode: vk });
   await send('Input.dispatchKeyEvent', { type: 'keyUp', key: k, code, windowsVirtualKeyCode: vk });
 };
-const drag = async (a, b, steps = 8) => {
+const drag = async (a, b, steps = 8, wave = 0) => {
   await mouse('mouseMoved', a.x, a.y, { button: 'none' });
   await mouse('mousePressed', a.x, a.y);
   for (let i = 1; i <= steps; i++) {
-    await mouse('mouseMoved', a.x + ((b.x - a.x) * i) / steps, a.y + ((b.y - a.y) * i) / steps, { buttons: 1 });
+    // `wave` px of zigzag across the path: a freehand stroke that "straighten shapes" (v1.4.2) does not morph into a line.
+    const off = wave * (i % 2 === 0 ? 1 : -1);
+    await mouse('mouseMoved', a.x + ((b.x - a.x) * i) / steps, a.y + ((b.y - a.y) * i) / steps + off, { buttons: 1 });
     await sleep(25);
   }
   await mouse('mouseReleased', b.x, b.y);
@@ -200,7 +202,7 @@ async function suite(doc) {
   });
   await row(doc, 'Draw (stroke)', async () => {
     await selectTool('draw');
-    await drag(at(0.25, 0.6), at(0.55, 0.68), 14);
+    await drag(at(0.25, 0.6), at(0.55, 0.68), 14, 18);
     await sleep(1300); // INK_JOIN_MS
     return 'ink';
   });
