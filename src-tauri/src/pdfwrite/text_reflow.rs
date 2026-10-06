@@ -860,4 +860,50 @@ mod tests {
             "the last line stays natural: {last:?} vs {edge}"
         );
     }
+
+    #[test]
+    fn the_edited_line_of_a_justified_paragraph_ends_at_the_paragraph_edge() {
+        // Line 0 is stretched wide by TJ kerns (the fill cannot see them); a short word that still fits naturally must take the
+        // old stretch back instead of ending past the edge.
+        let texts = [
+            P[0],
+            "keeps running through the green forest until the evening",
+            "comes and goes.",
+        ];
+        let natural: Vec<f64> = texts
+            .iter()
+            .map(|t| layout(&line(72.0, 700.0, 12.0, t))[0].2 - 72.0)
+            .collect();
+        let edge = natural[1] + 8.0;
+        let mut before = String::new();
+        for (i, t) in texts.iter().enumerate() {
+            let y = 700.0 - 14.0 * i as f64;
+            if i < 2 {
+                let gaps = t.matches(' ').count() as f64;
+                let kern = -((edge - natural[i]) / gaps) * 1000.0 / 12.0;
+                let arr: Vec<String> = t.split(' ').map(|w| format!("({w})")).collect();
+                let tj = arr.join(&format!(" ( ) {kern} "));
+                before.push_str(&format!("BT /F1 12 Tf 72 {y} Td [{tj}] TJ ET\n"));
+            } else {
+                before.push_str(&line(72.0, y, 12.0, t));
+            }
+        }
+        let edge = 72.0 + edge;
+        let old = layout(&before);
+        assert!((old[0].2 - edge).abs() < 0.1, "{old:?}");
+        let new_text = format!("{} go on", P[0]);
+        let (after, _) = reflow_of(&before, P[0], &new_text).unwrap();
+        let now = layout(&after);
+        for l in &now {
+            assert!(
+                l.2 <= edge + 0.1,
+                "beyond the paragraph edge {l:?} > {edge}"
+            );
+        }
+        let (_, inner) = now.split_last().unwrap();
+        for l in inner {
+            assert!((l.2 - edge).abs() < 0.1, "inner line {l:?} not at {edge}");
+        }
+        assert!(now[0].0.trim_end().ends_with("on"), "{now:?}");
+    }
 }

@@ -1376,7 +1376,32 @@ fn plan_edit(
                     .and_then(|c| width_of(font, *c))
                     .filter(|w| *w > 0.0)
                     .unwrap_or(250.0);
-                if per_em <= STRETCH_MAX * space_w && per_em >= -STRETCH_MIN * space_w {
+                // A line stretched before already carries extra gap width; taking that back is no shrink of the natural gap.
+                let was_stretched = {
+                    let natural: f64 = glyphs
+                        .iter()
+                        .map(|g| width_of(font, g.code).unwrap_or(0.0))
+                        .sum::<f64>()
+                        * unit_anchor
+                        / 1000.0;
+                    let first = glyphs
+                        .iter()
+                        .map(|g| proj(g.origin))
+                        .fold(f64::MAX, f64::min);
+                    let mut old_gc = GapCounter::default();
+                    for cell in &cells {
+                        old_gc.next(cell.c);
+                    }
+                    if old_gc.runs > 0 && line_right_old > first {
+                        ((line_right_old - first - natural).max(0.0) / old_gc.runs as f64) * 1000.0
+                            / unit_anchor
+                    } else {
+                        0.0
+                    }
+                };
+                if per_em <= STRETCH_MAX * space_w
+                    && per_em >= -(STRETCH_MIN * space_w + was_stretched)
+                {
                     edge = Some(per_gap);
                     new_gb = region_gb;
                     delta = 0.0;
