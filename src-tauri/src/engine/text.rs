@@ -15,6 +15,7 @@ use super::space::{load_page, page_box};
 use crate::error::{AppError, ErrorCode};
 use crate::limits;
 use crate::model::geometry::{PageBox, Rect};
+use crate::model::text_edit::CharGeom;
 
 /// The text of a page and the boxes of its characters: four numbers (x, y, width, height, in page space) for every UTF-16 code unit of
 /// `text`, so `text[i]` is in the box `boxes[4 * i..4 * i + 4]` however JavaScript counts. A character that is two code units (an
@@ -161,6 +162,47 @@ pub(super) fn read_text(document: &PdfDocument<'_>, index: u32) -> Result<TextPa
         truncated,
         rotation: page_rotation(&page),
     })
+}
+
+/// The characters of page `index` as [`read_text`] reads them, each with its origin (PDFium's, in PDF user space), its effective size and
+/// whether PDFium made it up (a space or line break it inferred): the `utf16` of a character is its index in the text layer's text, so
+/// `CharGeom`s and `TextPage` agree on what a UTF-16 unit is (ARCHITECTURE §13.2). A character whose origin PDFium cannot say is
+/// dropped from the list but still counts in the indices.
+pub(super) fn read_chars(
+    document: &PdfDocument<'_>,
+    index: u32,
+) -> Result<Vec<CharGeom>, AppError> {
+    let page = load_page(document, index)?;
+    let text_page = page
+        .text()
+        .map_err(|error| AppError::logged(ErrorCode::DamagedFile, format!("{error:?}")))?;
+    let characters = text_page.chars();
+    let mut out: Vec<CharGeom> = Vec::new();
+    let mut units = 0usize;
+    for character in text_chars(&characters) {
+        let width = character.c.len_utf16();
+        if units + width > limits::MAX_TEXT_CHARS {
+            break;
+        }
+        let at = u32::try_from(units).unwrap_or(u32::MAX);
+        units += width;
+        let Ok(raw) = characters.get(character.first) else {
+            continue;
+        };
+        let Ok((x, y)) = raw.origin() else { continue };
+        let (x, y) = (x.value, y.value);
+        if !(x.is_finite() && y.is_finite()) {
+            continue;
+        }
+        out.push(CharGeom {
+            utf16: at,
+            unicode: u32::from(character.c),
+            origin: [x, y],
+            size: raw.scaled_font_size().value,
+            generated: raw.is_generated().unwrap_or(false),
+        });
+    }
+    Ok(out)
 }
 
 /// The page's `/Rotate` as 0, 90, 180 or 270; 0 when PDFium cannot say.

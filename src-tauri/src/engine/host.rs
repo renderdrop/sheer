@@ -338,6 +338,14 @@ impl Executor {
                 let items = self.ask(|reply| Job::Outline { id, reply })?;
                 (WireReply::Outline(items), Blob::None)
             }
+            R::PageChars { id, engine_index } => {
+                let chars = self.ask(|reply| Job::PageChars {
+                    id,
+                    engine_index,
+                    reply,
+                })?;
+                (WireReply::PageChars(chars), Blob::None)
+            }
             R::TextLayer { id, page_index } => {
                 let text = self.ask(|reply| Job::TextLayer {
                     id,

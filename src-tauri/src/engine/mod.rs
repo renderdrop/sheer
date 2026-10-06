@@ -210,9 +210,7 @@ pub(crate) enum Job {
         page_index: u32,
         reply: Reply<TextPage>,
     },
-    /// Every character of one page with its origin and size, for text editing (ADR-125, ARCHITECTURE §13.5). W0 seam: answers `not_yet`.
-    #[allow(dead_code)]
-    // W0 seam: `id` and `engine_index` are read once the engine package fills the job in.
+    /// Every character of one page with its origin and size, for text editing (ADR-125, ARCHITECTURE §13.5).
     PageChars {
         id: DocumentId,
         engine_index: u32,
@@ -881,7 +879,7 @@ impl Engine {
         })
     }
 
-    /// The characters of page `engine_index` with their origins (ADR-125 §13.2); cached with the text layer by the caller. W0 seam: `not_yet`.
+    /// The characters of page `engine_index` with their origins (ADR-125 §13.2); cached with the text layer by the caller.
     pub fn page_chars(&self, id: DocumentId, engine_index: u32) -> Result<Vec<CharGeom>, AppError> {
         self.call(limits::TEXT_TIMEOUT, Rank::INTERACTIVE, |reply| {
             Job::PageChars {

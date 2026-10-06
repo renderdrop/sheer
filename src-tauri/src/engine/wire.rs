@@ -361,6 +361,10 @@ pub enum WireRequest {
     Outline {
         id: DocumentId,
     },
+    PageChars {
+        id: DocumentId,
+        engine_index: u32,
+    },
     TextLayer {
         id: DocumentId,
         page_index: u32,
@@ -535,6 +539,7 @@ pub enum WireReply {
     Frame,
     Outline(Vec<OutlineItem>),
     TextLayer(TextPage),
+    PageChars(Vec<crate::model::text_edit::CharGeom>),
     PageLinks(Vec<WireLink>),
     PageLabels(Vec<Option<String>>),
     FirstPageHints(crate::model::bibliography::FirstPageHints),
