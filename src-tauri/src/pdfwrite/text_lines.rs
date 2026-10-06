@@ -944,7 +944,6 @@ fn paragraphs(
     // A one-line paragraph has no edges of its own to tell its alignment: judge it against the text block it sits in
     // (the edges of the multi-line paragraphs of its direction).
     let mut blocks: HashMap<usize, (f64, f64)> = HashMap::new();
-    let mut loose: HashMap<usize, (f64, f64)> = HashMap::new();
     for p in paragraphs.iter().filter(|p| p.lines.len() >= 2) {
         for m in metrics[p.lines.start as usize..p.lines.end as usize]
             .iter()
@@ -956,19 +955,15 @@ fn paragraphs(
         }
     }
     // A direction without any multi-line paragraph (an invoice's address block, say) is judged against all its lines.
+    // That judgement is conservative (`classify_loose`).
+    let mut loose: HashMap<usize, Vec<(f64, f64, f64)>> = HashMap::new();
     for m in metrics.iter().flatten() {
         if !blocks.contains_key(&m.cluster) {
             loose
                 .entry(m.cluster)
-                .and_modify(|e| {
-                    e.0 = e.0.min(m.x0);
-                    e.1 = e.1.max(m.x1);
-                })
-                .or_insert((m.x0, m.x1));
+                .or_default()
+                .push((m.x0, m.x1, m.size));
         }
-    }
-    for (cluster, edges) in loose {
-        blocks.insert(cluster, edges);
     }
     for p in &mut paragraphs {
         if p.lines.len() != 1 || p.align != Align::Left {
@@ -977,6 +972,10 @@ fn paragraphs(
         let Some(m) = metrics[p.lines.start as usize].as_ref() else {
             continue;
         };
+        if let Some(cluster_lines) = loose.get(&m.cluster) {
+            p.align = classify_loose(cluster_lines, (m.x0, m.x1, m.size));
+            continue;
+        }
         let Some(&(left, right)) = blocks.get(&m.cluster) else {
             continue;
         };
@@ -995,6 +994,30 @@ fn paragraphs(
         }
     }
     paragraphs
+}
+
+/// The alignment of a single line in a direction without any multi-line paragraph. `lines` are the `(x0, x1, size)` of every line of the
+/// direction, `line` is one of them. Left unless: at least three lines, the line clearly narrower than their block, the left edges ragged,
+/// and its right edge shared with another line (right) or its centre on the block's centre (centred).
+fn classify_loose(lines: &[(f64, f64, f64)], line: (f64, f64, f64)) -> Align {
+    let (x0, x1, size) = line;
+    if lines.len() < 3 {
+        return Align::Left;
+    }
+    let left = lines.iter().map(|l| l.0).fold(f64::INFINITY, f64::min);
+    let right = lines.iter().map(|l| l.1).fold(f64::NEG_INFINITY, f64::max);
+    let max_x0 = lines.iter().map(|l| l.0).fold(f64::NEG_INFINITY, f64::max);
+    if x0 - left <= size || x1 - x0 > 0.85 * (right - left) || max_x0 - left <= size {
+        return Align::Left;
+    }
+    let shares_right = lines.iter().filter(|l| (l.1 - x1).abs() <= 2.0).count() >= 2;
+    if (x1 - right).abs() <= 2.0 && shares_right {
+        Align::Right
+    } else if ((x0 + x1) - (left + right)).abs() <= 4.0 {
+        Align::Center
+    } else {
+        Align::Left
+    }
 }
 
 /// The mean width of the word gaps of a line (a space glyph's advance plus the extra a `TJ` number leaves), `None` without a gap.
@@ -1122,5 +1145,50 @@ pub fn line_info(lines: &PageLines, line: &Line, rev: u32) -> TextLineInfo {
             subset: line.subset,
         },
         editable: line.editable,
+    }
+}
+
+#[cfg(test)]
+mod loose_tests {
+    use super::{classify_loose, Align};
+
+    const S: f64 = 10.0;
+
+    #[test]
+    fn a_left_address_block_stays_left() {
+        let block = [(96.0, 160.0, S), (96.0, 220.0, S), (96.0, 146.0, S)];
+        for l in block {
+            assert_eq!(classify_loose(&block, l), Align::Left);
+        }
+    }
+
+    #[test]
+    fn an_indented_list_item_that_is_the_widest_stays_left() {
+        let block = [(96.0, 200.0, S), (120.0, 300.0, S), (96.0, 180.0, S)];
+        assert_eq!(classify_loose(&block, block[1]), Align::Left);
+    }
+
+    #[test]
+    fn a_right_aligned_block_is_right() {
+        let block = [
+            (96.0, 164.0, S),
+            (441.0, 502.5, S),
+            (405.0, 502.5, S),
+            (445.0, 502.5, S),
+        ];
+        assert_eq!(classify_loose(&block, block[1]), Align::Right);
+        assert_eq!(classify_loose(&block, block[0]), Align::Left);
+    }
+
+    #[test]
+    fn a_centred_heading_without_paragraphs_is_centred() {
+        let block = [(72.0, 540.0, S), (271.0, 341.0, S), (72.0, 400.0, S)];
+        assert_eq!(classify_loose(&block, block[1]), Align::Center);
+    }
+
+    #[test]
+    fn fewer_than_three_lines_stay_left() {
+        let block = [(72.0, 540.0, S), (271.0, 341.0, S)];
+        assert_eq!(classify_loose(&block, block[1]), Align::Left);
     }
 }

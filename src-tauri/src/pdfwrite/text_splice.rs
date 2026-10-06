@@ -1733,6 +1733,24 @@ fn media_right(doc: &Document, page: ObjectId) -> Option<f64> {
     None
 }
 
+/// Replaces the placeholder characters of `text` by the characters of the glyph at the same index; a text with another count than
+/// the glyphs (a space was inserted between far-apart glyphs) is left as it is.
+fn remap_placeholders(text: &str, codes: &[u32], inverse: &HashMap<u32, char>) -> String {
+    if text.chars().count() != codes.len() {
+        return text.to_owned();
+    }
+    text.chars()
+        .zip(codes)
+        .map(|(c, code)| {
+            if c == '\u{fffd}' {
+                inverse.get(code).copied().unwrap_or(c)
+            } else {
+                c
+            }
+        })
+        .collect()
+}
+
 /// The production [`LineSource`]: the original document with the edits so far written into a working copy, so `text_lines` sees them.
 struct DocLines<'a> {
     src: &'a Document,
@@ -1830,20 +1848,8 @@ impl LineSource for DocLines<'_> {
                 let slot = inverse.entry(*code).or_insert(*c);
                 *slot = (*slot).min(*c);
             }
-            let mut codes = glyphs.iter().map(|g| g.code);
-            text = text
-                .chars()
-                .map(|c| {
-                    if c == '\u{fffd}' {
-                        codes
-                            .next()
-                            .and_then(|code| inverse.get(&code).copied())
-                            .unwrap_or(c)
-                    } else {
-                        c
-                    }
-                })
-                .collect();
+            let codes: Vec<u32> = glyphs.iter().map(|g| g.code).collect();
+            text = remap_placeholders(&text, &codes, &inverse);
         }
         Ok(OwnedLine {
             glyphs,

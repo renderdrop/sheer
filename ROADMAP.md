@@ -322,6 +322,13 @@ new engine capability or dependency is needed. Not picked by the loop before v1.
 - [ ] v1.5.2 — Otherwise a bundled fallback (Arimo/Tinos/Cousine, ADR-125 §4, changed words only) with a notice; paragraph reflow, never across pages
   - spike carry-overs: stream order ≠ reading order (form footers), glyph-outline check in the font program, right/centre-aligned runs, cumulative decoded-bytes budget across Form XObjects + visited-form cycle check, corpus ≥ 30 files and click-mapping ≥ 90 % gate
 - [ ] Politur v1.5
+  - session "Politur v1.5 + v1.5.2" (ADR-129) open items:
+    - acceptance: a changed justified line loses its justification (set ragged in a justified paragraph; ADR-125 §2 word-gap redistribution)
+    - acceptance: paragraph rule / grouping still splits a justified paragraph at a stretched "Ende … des" line (E4 page 1)
+    - welcome document: replacing the line "Diese Datei hat sich selbst geöffnet…" answers tooComplex (preview and apply)
+    - B1 review: TEXT_PREVIEW_TIMEOUT unused; admit() before permission checks; map clear at 256 pages; text_basis/contained duplicated; MAX_RUNNING not in limits.rs
+    - B2 review: one-line alignment uses one text block per page (multi-column pages can misclassify Right); band lookup O(segments×bands); negative tests (list item, indent, two columns)
+    - B3 review: reflow fill O(words²) per line; direct indexing; per-line page re-scan; tests for justified-last-line and empty-line removal
   - approval-signed files: edit after the breaksSignature confirm (ADR-125 addendum 3; needs a byte-range-aware write)
   - std14 widths: test pinning macron/plusminus/mu/periodcentered/divide per face (B2 review)
   - rewritten content streams are written uncompressed (text_save.rs) → Flate them

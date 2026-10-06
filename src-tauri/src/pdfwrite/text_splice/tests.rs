@@ -566,3 +566,18 @@ fn a_right_aligned_word_spread_over_chains_is_replaced_and_keeps_its_right_edge(
         "BT /F1 10 Tf 100 700 Td [1400 <616220>] TJ ET BT /F1 10 Tf 115 700 Td [1400] TJ /SheerFnSansR 10 Tf [<0063005A005A0064>] TJ /F1 10 Tf ET BT /F1 10 Tf 120 700 Td [] TJ ET"
     );
 }
+
+#[test]
+fn placeholders_are_paired_with_the_glyph_at_their_index() {
+    let inverse: HashMap<u32, char> = [(10, 'a'), (11, 'b'), (12, 'c')].into();
+    // A real character in front: the placeholder at index 1 is glyph 1, not the first placeholder's glyph 0.
+    assert_eq!(
+        remap_placeholders("x\u{fffd}\u{fffd}", &[10, 11, 12], &inverse),
+        "xbc"
+    );
+    // Another count (an inserted space): untouched.
+    assert_eq!(
+        remap_placeholders("\u{fffd} \u{fffd}", &[10, 11], &inverse),
+        "\u{fffd} \u{fffd}"
+    );
+}
