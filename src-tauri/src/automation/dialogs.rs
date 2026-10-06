@@ -173,3 +173,24 @@ mod automation {
         Ok(Some(entry.paths.into_iter().map(file_path).collect()))
     }
 }
+
+#[cfg(all(test, not(feature = "automation")))]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn without_the_feature_the_settings_opener_runs_and_reports_true() {
+        let mut ran = false;
+        assert!(open_os_settings(|| {
+            ran = true;
+            Ok(())
+        })
+        .unwrap());
+        assert!(ran);
+    }
+
+    #[test]
+    fn without_the_feature_an_opener_error_is_passed_on() {
+        assert!(open_os_settings(|| Err(AppError::unsupported("x"))).is_err());
+    }
+}

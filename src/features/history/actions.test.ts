@@ -66,6 +66,38 @@ describe('history actions', () => {
     expect(useHistoryStore.getState().byDoc[1]?.back).toHaveLength(1);
   });
 
+  it('sets zoom before the page (scroll) when restoring', () => {
+    const order: string[] = [];
+    const { setZoom, setPage } = useView.getState();
+    useView.setState({
+      setZoom: (...args: Parameters<typeof setZoom>) => (order.push('zoom'), setZoom(...args)),
+      setPage: (...args: Parameters<typeof setPage>) => (order.push('page'), setPage(...args)),
+    });
+    pushView(1);
+    useView.getState().setZoom(1, 2);
+    order.length = 0;
+    back(1);
+    expect(order).toEqual(['zoom', 'page']);
+    useView.setState({ setZoom, setPage });
+  });
+
+  it('drops entries of deleted pages and restores the next live one', () => {
+    useView.getState().setPage(1, 3);
+    pushView(1);
+    useHistoryStore.getState().push(1, { pageId: 99, xPt: 0, yPt: 0, zoom: 2, fit: 'none' }, 600);
+    useView.getState().setPage(1, 5);
+    back(1);
+    expect(useHistoryStore.getState().byDoc[1]?.back.every((entry) => entry.pageId !== 99)).toBe(true);
+    expect(useView.getState().byDoc[1]?.zoom).toBe(1.5);
+  });
+
+  it('does nothing when every saved entry points at a deleted page', () => {
+    useHistoryStore.getState().push(1, { pageId: 99, xPt: 0, yPt: 0, zoom: 2, fit: 'none' }, 600);
+    back(1);
+    expect(useView.getState().byDoc[1]?.zoom).toBe(1.5);
+    expect(useHistoryStore.getState().byDoc[1]?.back ?? []).toHaveLength(0);
+  });
+
   it('restores a fit mode through setFit', () => {
     useView.getState().setFit(1, 'width', 1.2);
     pushView(1);

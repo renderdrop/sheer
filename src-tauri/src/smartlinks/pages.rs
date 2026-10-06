@@ -325,6 +325,44 @@ mod tests {
     }
 
     #[test]
+    fn conflicting_offsets_are_not_guessed() {
+        // Chapters on pages 2..9; footers 1..4 then 1..4 again, so offsets +1 and +5 both have 4 votes.
+        let mut doc = book(
+            &[
+                "Chapter A1 title",
+                "Chapter B1 title",
+                "Chapter C1 title",
+                "Chapter D1 title",
+                "Chapter A2 title",
+                "Chapter B2 title",
+                "Chapter C2 title",
+                "Chapter D2 title",
+            ],
+            false,
+        );
+        for (i, page) in doc.pages.iter_mut().enumerate().skip(2) {
+            let n = if i < 6 { i - 1 } else { i - 5 };
+            page.lines.push(footer(&format!("{n}")));
+        }
+        // Titles that fit neither offset confirm nothing: no mapping at all.
+        let none = vec![
+            entry(1, "Chapter A1 title", "2"),
+            entry(1, "Chapter B2 title", "1"),
+            entry(1, "Chapter C2 title", "9"),
+        ];
+        let map = learn(&doc, &none, &mut Norms::new(&doc));
+        assert_eq!(map.offset(), None);
+        assert_eq!(map.resolve("1"), None);
+        // Only one run's titles match: that offset is the single confirmed one.
+        let first = vec![
+            entry(1, "Chapter A1 title", "1"),
+            entry(1, "Chapter B1 title", "2"),
+            entry(1, "Chapter C1 title", "3"),
+        ];
+        assert_eq!(learn(&doc, &first, &mut Norms::new(&doc)).offset(), Some(1));
+    }
+
+    #[test]
     fn real_labels_are_told_from_the_positions() {
         let plain: Vec<Option<String>> = (1..=3).map(|n| Some(n.to_string())).collect();
         assert!(!has_real_labels(&plain));

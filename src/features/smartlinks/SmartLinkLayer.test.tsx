@@ -217,6 +217,13 @@ describe('the smart link layer', () => {
     },
   );
 
+  it('is hidden while another tool is active (L9)', async () => {
+    useUi.setState({ activeTool: 'editText' });
+    render(<Page />);
+    await act(() => new Promise((done) => setTimeout(done, 30)));
+    expect(screen.queryByRole('list')).toBeNull();
+  });
+
   it('is hidden during a redaction band, and live again for the Hand tool', async () => {
     useUi.setState({ redactMode: true });
     render(<Page />);
