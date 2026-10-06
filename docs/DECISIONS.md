@@ -2491,3 +2491,9 @@ windows, notifications and private content.
 **Consequences.** Corpus gates that need producer variety (Word, LaTeX, Ghostscript) generate their files; if a producer is not
 installed, the gate records the gap instead of borrowing files. Window capture may miss OS-drawn overlays (native dialogs) — those
 are checked by their own window handle or not at all.
+
+**ADR-125 addendum 3 — signed documents (orchestrator, 2026-10-06).** DESIGN §3.10 E5 lets a file with others' approval signatures be
+edited after the `breaksSignature` confirm; ADR-125 §6 refuses every document with a signed field. For v1.5.1 §6 wins: probe and
+apply refuse signed/certified and no-edit-permission documents with the same typed error and `params.reason` (`signed` /
+`permission`), the tool shows `cert.locked.tool` / `tool.readOnly`. Editing approval-signed files with the confirm is deferred
+(ROADMAP ticket "Politur v1.5"); it needs a byte-range-aware incremental write that keeps earlier revisions verifiable.

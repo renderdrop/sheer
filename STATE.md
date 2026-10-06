@@ -10,7 +10,7 @@ notes: ADR-120: every loop starts with `bash scripts/ci-status.sh` (last complet
   After v1.2.0: "Politur v1.3" (ROADMAP, carried minors), then the v1.3 "Citations" spec. Never run the dev window while agents run cargo/vitest;
   stop it with taskkill sheer.exe + Stop-Process on tauri.js/vite.js only. Acceptance helpers in the session scratchpad (keys.ps1, wheel.ps1, shotsize.ps1, dnd.ps1 with topmost guard).
 ci_log: (ADR-120 corrected — package commit → CI run; result filled in at the next push)
-  - 76dd8b7 split-button fix + 9a6a7ff W0 seam (+ docs 6d01605, d001edb) → run #92 (37393656808) pending
+  - 76dd8b7 split-button fix + 9a6a7ff W0 seam (+ docs 6d01605, d001edb) → run #92 (37393656808) GREEN
   - eae482b lock choice after completed signing → run #90 (37381290387) red: prettier on SignDialog.tsx → fixed f6a0228
   - f6a0228..5e7331c prettier fix + ADR-125 docs + textedit spike → run #91 (37385569465) GREEN
   - 9b60ae8..4a70409 F17 wave 1 (spec, F17.9, F17.1, F17.5 logic, F17.10 gate) → run #85 (37356243921) GREEN
