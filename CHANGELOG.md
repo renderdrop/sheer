@@ -6,7 +6,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-v1.6 "Smart links" (ADR-131, ADR-132, DESIGN §3.11).
+## [1.6.0] - 2026-10-07
+
+v1.6 "Smart links" (ADR-131, ADR-132, DESIGN §3.11). Unsigned installers (BLOCKERS B-002).
 
 ### Added
 - Smart links: footnote numbers, table-of-contents lines, references such as "siehe S. 12", "Abb. 3", "Tabelle 2", "Kapitel 4",

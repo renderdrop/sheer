@@ -1,19 +1,20 @@
 # STATE
-phase: v1.6 (session topic "v1.6 Smarte Verknüpfungen"; order: acceptance infrastructure ADR-131 → Politur v1.5.1 → v1.6 spec → v1.6 → release v1.6.0)
-session_plan: I1 automation feature (backend) ‖ I2 acceptance tooling (scripts/ui/accept) ‖ designer spec v1.6 (DESIGN.md) → Politur v1.5.1 (Umbrechen default for multi-line, stop at paragraph edge + correct overflow, focus outline right-aligned, Präambel repro) → v1.6 backend detection wave → frontend overlay wave → acceptance with 3 owner PDFs (footnotes + TOC) in the acceptance build → v1.6.0
-version: 1.5.1 (tag v1.5.1; v1.5.0 and pre-release v1.5.0-beta.1 kept)
-current_item: v1.5.1 released. Next open: "Politur v1.5.1" (ROADMAP, carried majors/minors) or v1.6 spec
-last_completed: v1.5.1 — F1 54bf35a, B1 3f718c6, B2 3ee910b, B3 5b2e905, W (decode + minors) and deflake 0da261f; acceptance fixes b974d69 (stretch give-back), 17b5313 (box width), 20c94c5 (preview region); reviews B1/B2/B3/W PASS; security PASS (lows); designer PASS (2 majors → Politur v1.5.1); tester green + tests; surface gate 993/993, smoke 17/17 (rerun)
-loop_count_this_session: 0 (session "v1.6 Smarte Verknüpfungen" running, STOP removed)
+phase: v1.6 done (session topic "v1.6 Smarte Verknüpfungen", ADR-131, ADR-132)
+version: 1.6.0 (tag v1.6.0; v1.5.1, v1.5.0 kept)
+current_item: v1.6.0 released. Next open: "Politur v1.6" (ROADMAP) or v1.7 spec ("Scan & OCR")
+last_completed: v1.6.0 — infra d0268da/43e0c7c/44b8aa3/3763737 (ADR-131, rule 15); Politur v1.5.1 4b63699/f60d18c/b42f5ad/32988ee; smart links backend 79ef1e5/a794812, frontend a5ad672, designer fixes 125116b, gate fix 3f6cc9f; reviews I1/P-B/S1 PASS, S2+S3 FIX→fixed; security PASS (lows); designer FIX (2 blockers) → fixed; acceptance build: v16-smartlinks all PASS (3 owner PDFs), v151-politur all PASS, real-input smoke PASS (~75 s); surface gate 1028/1028, annot smoke 17/17; tester green
+loop_count_this_session: 0 (session closed: report docs/reports/2026-10-07-v1.6.0-smarte-verknuepfungen.md, STOP set)
 open_blockers: 2 (B-002, B-005, human-only). B-006 and B-007 resolved by the owner (ADR-128). Path guard (ADR-127) allows the project memory folder (ADR-128)
-notes: ADR-120: every loop starts with `bash scripts/ci-status.sh` (last completed run on main, never wait); red = fix first. v1.4 W0 2a1e3f3 (stable RustCrypto line), seam 586feeb. Release v1.3.0 published.
-  Owner re-check on the Mac after v1.2.0: A10 "Save as PDF" in the print dialog. Screenshot series docs/review/v1.2/ (not tracked), motion recordings docs/review/v1.2/motion/.
-  After v1.2.0: "Politur v1.3" (ROADMAP, carried minors), then the v1.3 "Citations" spec. Never run the dev window while agents run cargo/vitest;
-  stop it with taskkill sheer.exe + Stop-Process on tauri.js/vite.js only. Acceptance helpers in the session scratchpad (keys.ps1, wheel.ps1, shotsize.ps1, dnd.ps1 with topmost guard).
+notes: ADR-120: every push starts with `bash scripts/ci-status.sh` (last completed run on main, never wait); red = fix first. Rule 15 / ADR-131: acceptance ONLY via `npm run build:acceptance` + `scripts/ui/accept/*.mjs` (CDP, dialog guard); real input only `smoke-real.mjs` (≤ 5 min, announced). Never launch target/release or anything installed.
+  Split staging across packages can break an intermediate commit (run #108): stage whole files per package when possible.
+  Never run the dev window while agents run cargo/vitest; stop it with taskkill sheer.exe + Stop-Process on tauri.js/vite.js only.
 ci_log: (ADR-120 corrected — package commit → CI run; result filled in at the next push)
-  - d0268da..f60d18c acceptance infra (I1, I2, FX-I) + Politur v1.5.1 (P-F, P-B) → run #108 (37521354920) red: build.rs named smart_links before lib.rs registered it (split staging) → fixed 79ef1e5
-  - 79ef1e5..a794812 smartlinks backend (S1–S3, FX-S) + FX-P → run #109 (37523806276) GREEN
+  - tests + release v1.6.0 → run and release run: read next session
+  - 3f6cc9f..3763737 FX-G + smoke script → run #112 (37536910147) GREEN
+  - 32988ee..125116b FX-PR, docs, FX-D → run #111 (37531795738) GREEN
   - a5ad672 smartlinks frontend (F1, F2) → run #110 (37525121951) GREEN
+  - 79ef1e5..a794812 smartlinks backend (S1–S3, FX-S) + FX-P → run #109 (37523806276) GREEN
+  - d0268da..f60d18c acceptance infra (I1, I2, FX-I) + Politur v1.5.1 (P-F, P-B) → run #108 (37521354920) red: build.rs named smart_links before lib.rs registered it (split staging) → fixed 79ef1e5
   - 9 commits ..v1.5.1 tests + release → run #107 (37494737957) GREEN; release run #15 (37494738010) success (DMG + NSIS)
   - 20c94c5 preview crop fix FX-F2 → run #106 (37490268401) GREEN
   - b974d69..17b5313 acceptance fixes FX-B + FX-F → run #105 (37485534024) GREEN

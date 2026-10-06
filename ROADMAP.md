@@ -349,7 +349,7 @@ new engine capability or dependency is needed. Not picked by the loop before v1.
 - [x] v1.6.1 — Detect footnote numbers and jump (with Back)
 - [x] v1.6.2 — Link tables of contents; references like "see p. 12" and "Fig. 3"
 - [x] v1.6.3 — Literature references "(Müller 2019)" to the bibliography entry; heuristic, with a notice, never destructive
-- [ ] v1.6 acceptance — acceptance build (ADR-131) with three owner PDFs, designer round, tag v1.6.0
+- [x] v1.6 acceptance — acceptance build (ADR-131): Ausformulierung 2.0, Regionales Einzelhandelskonzept, 6 Implementierung DB; designer round (2 blockers fixed), tag v1.6.0
 
 ### v1.7 "Scan & OCR"
 - [ ] v1.7 spec — designer spec + architect ADR (Windows OCR / Apple Vision without unsafe code or via a sidecar)
