@@ -17,7 +17,7 @@ import { openSignatureSheet, useSignatureSheet } from '../features/signatures/cr
 import { openSignatureLibrary, useSignatureLibrary } from '../features/signatures/library/state';
 import { useCertSign } from '../features/signatures/sign/store';
 import { closeSettings, openSettings } from '../features/settings/state';
-import { closeDevPreview, openDevPreview } from '../features/smartlinks/devPreview';
+import { closeDevChooser, closeDevPreview, openDevChooser, openDevPreview } from '../features/smartlinks/devPreview';
 import { selectActiveId, useDocuments } from '../stores/documents';
 import { useUi } from '../stores/ui';
 
@@ -125,7 +125,20 @@ function floatingSurfaces(): DevSurface[] {
     open: () => (openDevPreview(), none()),
     close: closeDevPreview,
   };
-  return [bar, colour, preview, ...steps];
+  const chooser = (id: string, count: number, place: 'top' | 'bottom' | 'end'): DevSurface => ({
+    id,
+    open: () => (openDevChooser(count, place), none()),
+    close: closeDevChooser,
+  });
+  return [
+    bar,
+    colour,
+    preview,
+    chooser('range-chooser-2', 2, 'top'),
+    chooser('range-chooser-20', 20, 'end'),
+    chooser('range-chooser-flip', 20, 'bottom'),
+    ...steps,
+  ];
 }
 
 export function buildSurfaces(): DevSurface[] {

@@ -1,4 +1,5 @@
 import { openLink } from '../../api/links';
+import type { SmartLink } from '../../api/smartLinks';
 import { currentPlatform } from '../../actions/keys';
 import { formatBinding } from '../../actions/shortcut';
 import { announce } from '../../components';
@@ -41,6 +42,14 @@ export function followLink(docId: number, pageId: number, item: PageLink): void 
   } else if (info.target.type === 'url') {
     void openLink(docId, pageId, info.index).catch(() => undefined);
   }
+}
+
+/** Follows one choice of a range run (L14): the same as following a link, with the range run as the origin of the history entry. */
+export function followChoice(docId: number, pageId: number, link: SmartLink, number: number): void {
+  const choice = link.choices?.find((candidate) => candidate.number === number);
+  if (choice === undefined) return;
+  useSmartLinks.getState().markVisited(docId, visitKey(link));
+  jumpTo(docId, choice.target, { pageId, rect: link.rects[0]! });
 }
 
 function say(key: 'smartlinks.announce.on' | 'smartlinks.announce.off'): void {

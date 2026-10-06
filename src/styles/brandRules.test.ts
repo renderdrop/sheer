@@ -32,7 +32,8 @@ const grep =
     ].map((match) => match[0]);
 
 /** Every `box-shadow` that is not a sanctioned token, and every shadow utility that is not one. */
-const SHADOW_OK = /^(var\(--(shadow-standard|shadow-floating|ring-focus)\)|none|inherit|initial|unset)$/;
+const SHADOW_OK =
+  /^(var\(--(shadow-standard|shadow-floating|ring-focus|ring-focus-inset)\)|none|inherit|initial|unset)$/;
 const badShadows = (text: string): string[] => [
   ...[...text.matchAll(/box-shadow\s*:\s*([^;}]+)/g)]
     .filter((match) => !SHADOW_OK.test((match[1] ?? '').trim()))

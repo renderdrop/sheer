@@ -38,7 +38,20 @@ export interface SmartLink {
   marker: string;
   target: SmartTarget;
   preview: string;
+  /** Only on a range run ("[3-5]", DESIGN 3.11 L14): the resolved numbers, ascending, at least two; `target` is the first one's. */
+  choices?: SmartChoice[];
 }
+
+/** One resolved number of a range run: its entry (cut to 120 characters) and where it is. */
+export interface SmartChoice {
+  number: number;
+  preview: string;
+  target: SmartTarget;
+}
+
+/** Most numbers a range run lists (the backend refuses wider ranges) and the longest choice preview in characters. */
+export const MAX_CHOICES = 50;
+export const MAX_CHOICE_PREVIEW_CHARS = 120;
 
 /**
  * The answer of `smart_links`: `rev` is the document revision the links are for (drop them when the revision moves on), `ready` is
@@ -78,7 +91,25 @@ function parseLink(value: unknown): SmartLink | null {
   }
   const target = parseTarget(value.target);
   if (target === null) return null;
-  return { kind: kind as SmartLinkKind, rects: boxes, marker, target, preview };
+  const base = { kind: kind as SmartLinkKind, rects: boxes, marker, target, preview };
+  if (value.choices === undefined || value.choices === null) return base;
+  const choices = parseChoices(value.choices);
+  return choices === null ? null : { ...base, choices };
+}
+
+function parseChoices(value: unknown): SmartChoice[] | null {
+  if (!Array.isArray(value) || value.length < 2 || value.length > MAX_CHOICES) return null;
+  const out: SmartChoice[] = [];
+  let last = 0;
+  for (const raw of value as unknown[]) {
+    if (!isRecord(raw) || !isUint(raw.number) || raw.number <= last) return null;
+    if (typeof raw.preview !== 'string' || raw.preview.length > MAX_CHOICE_PREVIEW_CHARS) return null;
+    const target = parseTarget(raw.target);
+    if (target === null) return null;
+    last = raw.number;
+    out.push({ number: raw.number, preview: raw.preview, target });
+  }
+  return out;
 }
 
 /**

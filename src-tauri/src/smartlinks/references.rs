@@ -682,6 +682,7 @@ pub fn detect(
                                     rect: Some(t.rect),
                                     label: None,
                                 },
+                                choices: Vec::new(),
                                 preview: truncate_preview(&t.text),
                                 score: t.score,
                             });
@@ -707,6 +708,7 @@ pub fn detect(
                                 rect: None,
                                 label: Some(r.first.clone()),
                             },
+                            choices: Vec::new(),
                             preview: String::new(),
                             score: if r.strong { 0.9 } else { 0.8 },
                         });

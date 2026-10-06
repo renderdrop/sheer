@@ -392,6 +392,7 @@ mod tests {
                 rect: None,
                 label: None,
             },
+            choices: Vec::new(),
             preview: String::new(),
             score,
         }

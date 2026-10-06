@@ -321,6 +321,7 @@ pub fn links(
                 rect: Some(rect),
                 label: Some(e.printed.clone()),
             },
+            choices: Vec::new(),
             preview,
             score: SCORE,
         });

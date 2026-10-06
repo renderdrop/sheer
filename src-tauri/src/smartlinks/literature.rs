@@ -1,7 +1,7 @@
 //! `literature` detector (ADR-132, DESIGN §3.11 L1): "(Müller 2019)", "Müller et al. (2019)", "[12]", "[3, 7]" → the entry of the
 //! bibliography section after a heading such as "Literatur" or "References". Pure over [`DocText`]; hand matchers, no regex.
 
-use super::model::{DocText, Kind, Line, PageText, PtRect, SmartLink, Target};
+use super::model::{Choice, DocText, Kind, Line, PageText, PtRect, SmartLink, Target};
 use super::references::{pick, skip_ws, starts_with_ci, truncate_preview, union, LineText};
 
 const HEADINGS: &[&str] = &[
@@ -226,6 +226,8 @@ struct Cit {
 
 enum CKey {
     Num(u32),
+    /// An inclusive numeric range, `lo < hi`, at most [`MAX_RANGE`] numbers.
+    Range(u32, u32),
     Ay {
         surname: String,
         second: Option<String>,
@@ -350,8 +352,75 @@ fn narrative_name(c: &[char], paren: usize) -> Option<(String, Option<String>, u
     Some((w2.to_lowercase(), None, s2))
 }
 
-/// Citations of a line. In a numeric bracket each printed number is its own link: "[3, 7]" links 3 and 7, "[3–5]" links the printed 3 and 5
-/// (the numbers in between are not printed and get no link).
+/// Most numbers one range run may span (DESIGN §3.11 L14, hostile input bound).
+const MAX_RANGE: u32 = 50;
+
+/// `c[from..to]` as a number of 1-3 digits.
+fn small_number(c: &[char], from: usize, to: usize) -> Option<u32> {
+    if from >= to || to - from > 3 || !c[from..to].iter().all(char::is_ascii_digit) {
+        return None;
+    }
+    c[from..to].iter().collect::<String>().parse().ok()
+}
+
+/// The parts of a numeric bracket `c[from..to]` (between "[" and "]"): each comma/semicolon-separated part is its own run, a number or
+/// a range "3–5" / "3-5" / "3—5". `None` if the bracket holds anything else. A range that is reversed, zero-based or wider than
+/// [`MAX_RANGE`] numbers yields no run (the other parts stay).
+fn bracket_parts(c: &[char], from: usize, to: usize) -> Option<Vec<Cit>> {
+    let mut out = Vec::new();
+    let mut seg = from;
+    while seg <= to {
+        let end = (seg..to).find(|&k| matches!(c[k], ',' | ';')).unwrap_or(to);
+        let mut a = seg;
+        let mut b = end;
+        while a < b && c[a].is_whitespace() {
+            a += 1;
+        }
+        while b > a && c[b - 1].is_whitespace() {
+            b -= 1;
+        }
+        if a < b {
+            let dash = (a..b).find(|&k| matches!(c[k], '–' | '-' | '—'));
+            if let Some(d) = dash {
+                let (mut l, mut r) = (d, d + 1);
+                while l > a && c[l - 1].is_whitespace() {
+                    l -= 1;
+                }
+                while r < b && c[r].is_whitespace() {
+                    r += 1;
+                }
+                let lo = small_number(c, a, l)?;
+                let hi = small_number(c, r, b)?;
+                if lo >= 1 && hi >= lo && hi - lo < MAX_RANGE {
+                    out.push(Cit {
+                        key: if hi == lo {
+                            CKey::Num(lo)
+                        } else {
+                            CKey::Range(lo, hi)
+                        },
+                        start: a,
+                        end: b,
+                    });
+                }
+            } else {
+                let n = small_number(c, a, b)?;
+                out.push(Cit {
+                    key: CKey::Num(n),
+                    start: a,
+                    end: b,
+                });
+            }
+        } else if end < to || seg < to {
+            // an empty part ("[3,,5]", "[,]") is no citation list
+            return None;
+        }
+        seg = end + 1;
+    }
+    Some(out)
+}
+
+/// Citations of a line. In a numeric bracket each comma-separated part is its own run: "[3, 7]" links 3 and 7, "[3–5]" is one range
+/// run (a chooser over the resolved numbers), "[3, 5–7]" a plain "3" and a range "5–7".
 fn scan_citations(c: &[char]) -> Vec<Cit> {
     let mut out = Vec::new();
     let mut i = 0;
@@ -360,33 +429,7 @@ fn scan_citations(c: &[char]) -> Vec<Cit> {
             '[' if i == 0 || !c[i - 1].is_alphanumeric() => {
                 if let Some(close) = c.iter().skip(i).take(40).position(|&x| x == ']') {
                     let close = i + close;
-                    let mut nums = Vec::new();
-                    let mut ok = true;
-                    let mut j = i + 1;
-                    while j < close {
-                        if c[j].is_ascii_digit() {
-                            let s = j;
-                            while j < close && c[j].is_ascii_digit() {
-                                j += 1;
-                            }
-                            match c[s..j].iter().collect::<String>().parse::<u32>() {
-                                Ok(n) if j - s <= 3 => nums.push(Cit {
-                                    key: CKey::Num(n),
-                                    start: s,
-                                    end: j,
-                                }),
-                                _ => ok = false,
-                            }
-                        } else if matches!(c[j], ',' | ';' | '–' | '-' | '—')
-                            || c[j].is_whitespace()
-                        {
-                            j += 1;
-                        } else {
-                            ok = false;
-                            break;
-                        }
-                    }
-                    if ok {
+                    if let Some(nums) = bracket_parts(c, i + 1, close) {
                         out.extend(nums);
                     }
                     i = close + 1;
@@ -493,6 +536,10 @@ pub fn detect(doc: &DocText, page: u32, index: &LitIndex) -> Vec<SmartLink> {
         }
         let lt = LineText::new(line);
         for cit in scan_citations(&lt.chars) {
+            if let CKey::Range(lo, hi) = cit.key {
+                out.extend(range_link(entries, &lt, &cit, page, lo, hi));
+                continue;
+            }
             let (cands, scores): (Vec<&Entry>, Vec<f32>) = entries
                 .iter()
                 .filter_map(|e| score(e, &cit.key).map(|s| (e, s)))
@@ -509,12 +556,91 @@ pub fn detect(doc: &DocText, page: u32, index: &LitIndex) -> Vec<SmartLink> {
                     rect: Some(e.rect),
                     label: None,
                 },
+                choices: Vec::new(),
                 preview: truncate_preview(&e.text),
                 score: scores[b],
             });
         }
     }
     out
+}
+
+/// Longest entry preview of one range choice, in characters (DESIGN §3.11 L14).
+const CHOICE_PREVIEW: usize = 120;
+
+fn cut_words(text: &str, max: usize) -> String {
+    let t = text.split_whitespace().collect::<Vec<_>>().join(" ");
+    if t.chars().count() <= max {
+        return t;
+    }
+    let cut: String = t.chars().take(max - 1).collect();
+    let at_space = t.chars().nth(max - 1).is_some_and(char::is_whitespace);
+    let base = if at_space {
+        cut.as_str()
+    } else {
+        cut.rfind(char::is_whitespace)
+            .map_or(cut.as_str(), |p| &cut[..p])
+    };
+    format!("{}…", base.trim_end())
+}
+
+/// The link of a range run: every number of `lo..=hi` is resolved on its own (L2); ≥ 2 resolved → one run with `choices`, exactly 1 →
+/// a plain link to it, none → no link.
+fn range_link(
+    entries: &[Entry],
+    lt: &LineText,
+    cit: &Cit,
+    page: u32,
+    lo: u32,
+    hi: u32,
+) -> Option<SmartLink> {
+    let mut found: Vec<(u32, &Entry, f32)> = Vec::new();
+    for n in lo..=hi {
+        let (cands, scores): (Vec<&Entry>, Vec<f32>) = entries
+            .iter()
+            .filter_map(|e| score(e, &CKey::Num(n)).map(|s| (e, s)))
+            .unzip();
+        if let Some(b) = pick(&scores) {
+            found.push((n, cands[b], scores[b]));
+        }
+    }
+    let rects = vec![lt.rect(cit.start, cit.end)];
+    let marker = lt.string(cit.start, cit.end);
+    let target = |e: &Entry| Target {
+        page: e.page,
+        rect: Some(e.rect),
+        label: None,
+    };
+    match found.as_slice() {
+        [] => None,
+        [(_, e, s)] => Some(SmartLink {
+            kind: Kind::Literature,
+            page,
+            rects,
+            marker,
+            target: target(e),
+            choices: Vec::new(),
+            preview: truncate_preview(&e.text),
+            score: *s,
+        }),
+        [(_, first, _), ..] => Some(SmartLink {
+            kind: Kind::Literature,
+            page,
+            rects,
+            marker,
+            target: target(first),
+            choices: found
+                .iter()
+                .map(|(n, e, _)| Choice {
+                    number: *n,
+                    preview: cut_words(&e.text, CHOICE_PREVIEW),
+                    target: target(e),
+                })
+                .collect(),
+            preview: String::new(),
+            score: found.iter().map(|f| f.2).fold(1.0, f32::min),
+        }),
+    }
 }
 
 fn score(e: &Entry, k: &CKey) -> Option<f32> {
@@ -736,9 +862,72 @@ mod tests {
         ]);
         let l = detect(&d, 0);
         let m: Vec<&str> = l.iter().map(|x| x.marker.as_str()).collect();
-        assert_eq!(m, vec!["12", "3", "7", "3", "5"]);
+        // "[3–5]" is one range run; 4 has no entry, so it lists 3 and 5.
+        assert_eq!(m, vec!["12", "3", "7", "3–5"]);
         assert!(l[0].preview.contains("zwölf") && l[0].preview.contains("zweite Zeile"));
         assert!(l[1].preview.contains("drei"));
+        let nums: Vec<u32> = l[3].choices.iter().map(|c| c.number).collect();
+        assert_eq!(nums, vec![3, 5]);
+        assert!(l[3].choices[1].preview.contains("fünf") && l[3].choices[1].target.page == 1);
+        assert!(l[0].choices.is_empty() && l[3].preview.is_empty());
+    }
+
+    fn range_doc(text: &str, entries: &[u32]) -> DocText {
+        let mut lines = vec![head("Literatur", 80.0)];
+        for (i, n) in entries.iter().enumerate() {
+            let long = "Wort ".repeat(40);
+            lines.push(body(
+                &format!("[{n}] Autor {n}. {long}"),
+                100.0 + 20.0 * i as f32,
+            ));
+        }
+        doc(vec![pg(0, vec![body(text, 100.0)]), pg(1, lines)])
+    }
+
+    #[test]
+    fn range_runs_with_choices() {
+        let d = range_doc("A [3-5] B [3, 5–7] C [8–9]", &[3, 4, 5, 7]);
+        let l = detect(&d, 0);
+        let m: Vec<&str> = l.iter().map(|x| x.marker.as_str()).collect();
+        // [3-5]: 3, 4, 5 → chooser; "3": plain; "5–7": 5, 7 (6 absent) → chooser; "8–9": nothing.
+        assert_eq!(m, vec!["3-5", "3", "5–7"]);
+        let nums = |i: usize| -> Vec<u32> { l[i].choices.iter().map(|c| c.number).collect() };
+        assert_eq!(nums(0), vec![3, 4, 5]);
+        assert!(l[1].choices.is_empty() && !l[1].preview.is_empty());
+        assert_eq!(nums(2), vec![5, 7]);
+        assert!(l[0]
+            .choices
+            .iter()
+            .all(|c| c.preview.chars().count() <= 120));
+        assert!(l[0].choices[0].preview.ends_with('…'));
+        assert_eq!(l[0].rects.len(), 1);
+    }
+
+    #[test]
+    fn range_with_one_resolved_number_is_a_plain_link() {
+        let d = range_doc("Siehe [4–6].", &[4]);
+        let l = detect(&d, 0);
+        assert_eq!(l.len(), 1);
+        assert!(l[0].choices.is_empty() && l[0].preview.starts_with("[4] Autor 4"));
+    }
+
+    #[test]
+    fn hostile_ranges_make_no_link() {
+        let nums: Vec<u32> = (1..=120).collect();
+        let d = range_doc(
+            "[5–3] [0–2] [1–51] [1-1000] [3--5] [3–] [–5] [3,,5] [1–2–3]",
+            &nums,
+        );
+        assert!(detect(&d, 0).is_empty());
+        // exactly 50 numbers is the limit
+        let ok = range_doc("[1–50] [1–51]", &nums);
+        let l = detect(&ok, 0);
+        assert_eq!(l.len(), 1);
+        assert_eq!(l[0].choices.len(), 50);
+        // equal bounds are one number
+        let eq = range_doc("[2–2]", &nums);
+        let l = detect(&eq, 0);
+        assert!(l.len() == 1 && l[0].choices.is_empty());
     }
 
     #[test]

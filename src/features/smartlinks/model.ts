@@ -105,6 +105,11 @@ export function pageLinks(smart: readonly SmartLink[] | null, real: readonly Lin
   return items.sort((a, b) => readingOrder(a.order, b.order));
 }
 
+/** A range run ("[3-5]", L14): it opens a chooser over its resolved numbers instead of following. */
+export function isRange(link: SmartLink): boolean {
+  return link.choices !== undefined && link.choices.length >= 2;
+}
+
 /** What marks a smart link as visited in this tab: its kind, text and where it goes. */
 export function visitKey(link: SmartLink): string {
   const { pageId, rect } = link.target;

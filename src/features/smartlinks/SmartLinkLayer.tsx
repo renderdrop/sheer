@@ -1,3 +1,4 @@
+import { AnimatePresence } from 'motion/react';
 import {
   memo,
   useCallback,
@@ -22,7 +23,7 @@ import { fileRotationOf } from '../viewer/fileRotation';
 import { useEffectiveTool } from '../viewer/lesen';
 import type { PageLayerProps } from '../viewer/pageLayer';
 import { normalizeRotation, overlayBox, swapsSides, totalRotation, unrotatedSize } from '../viewer/transform';
-import { backKeyLabel, followLink, pageNames } from './actions';
+import { backKeyLabel, followChoice, followLink, pageNames } from './actions';
 import { usePageSmartLinks } from './cache';
 import { useTrackSelectionDrag } from './drag';
 import { KEY_MARK, LinkPreview, splitHint } from './LinkPreview';
@@ -30,6 +31,7 @@ import {
   cueRects,
   hostOf,
   isDrag,
+  isRange,
   kindKey,
   linksLive,
   pageLinks,
@@ -40,6 +42,7 @@ import {
   visitKey,
   type PageLink,
 } from './model';
+import { RangeChooser, type ChooserClose, type ChooserRow } from './RangeChooser';
 import { usePageRealLinks } from './realLinks';
 import { smartLinksOn, useSmartLinks } from './store';
 
@@ -100,13 +103,34 @@ function nameOf(t: Translate, docId: number, item: PageLink): string {
     case 'reference':
       return t('smartlinks.aria.reference', { text: link.marker, page });
     case 'literature':
+      if (isRange(link)) return t('smartlinks.aria.range', { range: link.marker, n: link.choices?.length ?? 0 });
       return t('smartlinks.aria.literature', { text: link.marker, page });
   }
+}
+
+/** The rows of a range chooser: number, entry, target page and the option's name (L14). */
+function rowsOf(t: Translate, docId: number, link: SmartLink): ChooserRow[] {
+  return (link.choices ?? []).map((choice) => {
+    const { label } = pageNames(docId, choice.target.pageId);
+    return {
+      number: choice.number,
+      preview: choice.preview,
+      page: t('citation.page', { label }),
+      name: t('smartlinks.aria.rangeEntry', { number: choice.number, page: label }),
+    };
+  });
 }
 
 /** The text a screen reader gets for a link: the same as the preview card (kind, page, body). */
 function previewText(t: Translate, docId: number, item: PageLink & { type: 'smart' }): string {
   const { link } = item;
+  if (isRange(link)) {
+    return [
+      t('smartlinks.detected'),
+      t(kindKey(link.kind)),
+      t('smartlinks.range.count', { n: link.choices?.length ?? 0 }),
+    ].join(' · ');
+  }
   const { label, physical } = targetNames(docId, link);
   const page = pageLine(t, label, physical);
   return [t('smartlinks.detected'), t(kindKey(link.kind)), page, link.preview]
@@ -166,10 +190,23 @@ export const SmartLinkLayer = memo(function SmartLinkLayer({
   const [pressed, setPressed] = useState<string | null>(null);
   const [tabStop, setTabStop] = useState<string | null>(null);
   const [shown, setShown] = useState<Shown | null>(null);
+  // The open range chooser (L14): which link, its run, and what it was opened for. Any change of these closes it (stale = never shown).
+  const [chooser, setChooser] = useState<{ key: string; el: HTMLElement; stamp: string; width: number } | null>(null);
+  const chooserRef = useRef(chooser);
   const itemsRef = useRef(items);
   useEffect(() => {
     itemsRef.current = items;
+    chooserRef.current = chooser;
   });
+  const chooserOpen =
+    chooser !== null &&
+    live &&
+    smartOn &&
+    chooser.stamp === stamp &&
+    chooser.width === boxWidth &&
+    items.some((item) => item.key === chooser.key);
+  // Stale for another tool, revision or zoom: dropped while rendering, so it can never come back when the cause goes away.
+  if (chooser !== null && !chooserOpen) setChooser(null);
 
   const rotation = normalizeRotation(rotationProp);
   const file = fileRotationOf(docId, pageIndex);
@@ -182,7 +219,31 @@ export const SmartLinkLayer = memo(function SmartLinkLayer({
   const follow = useCallback(
     (key: string) => {
       const item = itemsRef.current.find((candidate) => candidate.key === key);
-      if (item !== undefined) followLink(docId, pageIndex, item);
+      if (item === undefined) return;
+      if (item.type === 'smart' && isRange(item.link)) {
+        // A range run opens its chooser (a second press closes it) instead of following.
+        const el = root.current?.querySelector<HTMLElement>(`[data-link-key="${key}"] [data-smartlink-run]`) ?? null;
+        setShown(null);
+        setChooser(chooserRef.current?.key === key || el === null ? null : { key, el, stamp, width: boxWidth });
+        return;
+      }
+      followLink(docId, pageIndex, item);
+    },
+    [docId, pageIndex, stamp, boxWidth],
+  );
+  const closeChooser = useCallback((reason: ChooserClose) => {
+    const key = chooserRef.current?.key;
+    setChooser(null);
+    if (reason !== 'escape' && reason !== 'tab') return;
+    // Esc and Tab return to the run, which is still inside the page's link list.
+    if (key !== undefined)
+      root.current?.querySelector<HTMLElement>(`[data-link-key="${key}"]`)?.focus({ preventScroll: true });
+  }, []);
+  const choose = useCallback(
+    (number: number) => {
+      const item = itemsRef.current.find((candidate) => candidate.key === chooserRef.current?.key);
+      setChooser(null);
+      if (item?.type === 'smart') followChoice(docId, pageIndex, item.link, number);
     },
     [docId, pageIndex],
   );
@@ -230,7 +291,13 @@ export const SmartLinkLayer = memo(function SmartLinkLayer({
       const item = itemsRef.current.find((candidate) => candidate.key === key);
       if (item?.type !== 'smart') return;
       void maybeShowSmartLinksTip();
-      timer = window.setTimeout(() => setShown({ key, el }), tokenMs('--tooltip-delay', PREVIEW_FALLBACK_MS));
+      timer = window.setTimeout(
+        () => {
+          // While its chooser is open the run's preview stays closed (L14).
+          if (chooserRef.current?.key !== key) setShown({ key, el });
+        },
+        tokenMs('--tooltip-delay', PREVIEW_FALLBACK_MS),
+      );
     };
 
     const onMove = (event: PointerEvent) => {
@@ -337,6 +404,7 @@ export const SmartLinkLayer = memo(function SmartLinkLayer({
 
   const backLabel = backKeyLabel(t);
   const shownItem = shown === null ? undefined : items.find((candidate) => candidate.key === shown.key);
+  const chooserItem = chooser === null ? undefined : items.find((candidate) => candidate.key === chooser.key);
 
   if (items.length === 0 || !live) return null;
   const style = { ...box, transformOrigin: 'center', '--page-scale': pxPerPt } as CSSProperties;
@@ -356,7 +424,10 @@ export const SmartLinkLayer = memo(function SmartLinkLayer({
         const outer = unionOf([...runs, ...cuesOfItem(item)]);
         const smartItem = item.type === 'smart' ? item : null;
         const text = smartItem === null ? '' : previewText(t, docId, smartItem);
-        const state = pressed === item.key ? 'active' : hover === item.key ? 'hover' : undefined;
+        const range = smartItem !== null && isRange(smartItem.link);
+        const open = chooserOpen && chooser?.key === item.key;
+        // Open: the active fill is held (L14).
+        const state = pressed === item.key || open ? 'active' : hover === item.key ? 'hover' : undefined;
         const isVisited = smartItem !== null && visited?.includes(visitKey(smartItem.link)) === true;
         const attrs =
           item.type === 'smart'
@@ -366,7 +437,9 @@ export const SmartLinkLayer = memo(function SmartLinkLayer({
           <div key={item.key} role="listitem" style={{ display: 'contents' }}>
             <div
               {...attrs}
-              role="link"
+              role={range ? 'button' : 'link'}
+              aria-haspopup={range ? 'listbox' : undefined}
+              aria-expanded={range ? open : undefined}
               tabIndex={item.key === stop ? 0 : -1}
               data-link-key={item.key}
               data-link-kind={item.type === 'smart' ? item.link.kind : 'real'}
@@ -387,7 +460,8 @@ export const SmartLinkLayer = memo(function SmartLinkLayer({
                   }
                 })();
                 const run = event.currentTarget.querySelector<HTMLElement>('[data-smartlink-run]');
-                if (visible && run !== null) setShown({ key: item.key, el: run });
+                if (visible && run !== null && chooserRef.current?.key !== item.key)
+                  setShown({ key: item.key, el: run });
               }}
               onBlur={() => {
                 if (keyFocused.current === item.key) keyFocused.current = null;
@@ -423,7 +497,19 @@ export const SmartLinkLayer = memo(function SmartLinkLayer({
   return (
     <>
       {list}
-      {shownItem?.type === 'smart' && shown !== null && (
+      <AnimatePresence>
+        {chooserOpen && chooser !== null && chooserItem?.type === 'smart' && (
+          <RangeChooser
+            key={chooser.key}
+            anchor={chooser.el}
+            range={chooserItem.link.marker}
+            rows={rowsOf(t, docId, chooserItem.link)}
+            onChoose={choose}
+            onClose={closeChooser}
+          />
+        )}
+      </AnimatePresence>
+      {shownItem?.type === 'smart' && shown !== null && !chooserOpen && (
         <PreviewFor
           docId={docId}
           item={shownItem}
@@ -454,8 +540,9 @@ function PreviewFor({
 }) {
   const t = useT();
   const { link } = item;
+  const range = isRange(link);
   const { label, physical } = targetNames(docId, link);
-  const hint = splitHint(t('smartlinks.previewHint', { back: KEY_MARK }));
+  const hint = splitHint(t(range ? 'smartlinks.range.hint' : 'smartlinks.previewHint', { back: KEY_MARK }));
   return (
     <LinkPreview
       open
@@ -463,8 +550,8 @@ function PreviewFor({
       anchor={anchor}
       detected={t('smartlinks.detected')}
       kind={t(kindKey(link.kind))}
-      page={pageLine(t, label, physical)}
-      body={link.preview}
+      page={range ? t('smartlinks.range.count', { n: link.choices?.length ?? 0 }) : pageLine(t, label, physical)}
+      body={range ? '' : link.preview}
       hintBefore={hint.before}
       hintKey={backLabel}
       hintAfter={hint.after}

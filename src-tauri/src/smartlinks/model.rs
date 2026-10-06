@@ -67,7 +67,16 @@ pub struct Target {
     pub label: Option<String>,
 }
 
+/// One resolved number of a range run (DESIGN §3.11 L14): its bibliography entry (preview ≤ 120 chars) and where it is.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Choice {
+    pub number: u32,
+    pub preview: String,
+    pub target: Target,
+}
+
 /// One detected link on `page`: the source box(es), its target, the preview text (≤ 280 chars) and the score that admitted it.
+/// A range run has ≥ 2 `choices` (its `target` is the first one's); every other link has none.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct SmartLink {
     pub kind: Kind,
@@ -75,6 +84,7 @@ pub struct SmartLink {
     pub rects: Vec<PtRect>,
     pub marker: String,
     pub target: Target,
+    pub choices: Vec<Choice>,
     pub preview: String,
     pub score: f32,
 }

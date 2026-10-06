@@ -2,7 +2,7 @@
 //!
 //! | Command | Arguments | Returns |
 //! |---|---|---|
-//! | `smart_links` | `docId: number`, `pageId: number` | `{ rev, ready, partial, links }`: `partial` is true when the index hit its time or size limit (pages after the last one read are missing); `rev` is the document revision the answer is for; `ready: false` means the document index is still being built in the background (ask again later, `links` is empty); `links` are `{ kind, rects, marker, target: { pageId, rect? }, preview }`, at most 400, in reading order |
+//! | `smart_links` | `docId: number`, `pageId: number` | `{ rev, ready, partial, links }`: `partial` is true when the index hit its time or size limit (pages after the last one read are missing); `rev` is the document revision the answer is for; `ready: false` means the document index is still being built in the background (ask again later, `links` is empty); `links` are `{ kind, rects, marker, target: { pageId, rect? }, preview, choices? }` (`choices` only on a range run: `[{ number, preview <= 120, target }]`, >= 2, ascending), at most 400, in reading order |
 //!
 //! `kind` is `footnote`, `noteBack`, `contents`, `reference` or `literature`. `rects` are in page points (origin top left, y down, before
 //! `/Rotate`, the text layer's space); a contents link has two: the page number (where the cue is drawn) and the whole line (the hit area).
@@ -25,11 +25,13 @@ use crate::error::{AppError, ErrorCode, UiError};
 use crate::limits;
 use crate::model::geometry::Rect;
 use crate::smartlinks::index::{self, ReadFail, Status};
-use crate::smartlinks::model::{Kind, PtRect, SmartLink};
+use crate::smartlinks::model::{Kind, PtRect, SmartLink, Target};
 use crate::smartlinks::pages::has_real_labels;
 
 /// Longest marker sent, in characters.
 const MARKER_MAX: usize = 120;
+/// Longest entry preview of a range choice, in characters.
+const CHOICE_PREVIEW_MAX: usize = 120;
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -50,6 +52,18 @@ pub struct SmartLinkWire {
     pub marker: String,
     pub target: SmartTarget,
     pub preview: String,
+    /// Only on a range run (>= 2 entries, ascending by number).
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub choices: Vec<SmartChoice>,
+}
+
+/// One resolved number of a range run: `{ number, preview (<= 120 characters), target }`.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SmartChoice {
+    pub number: u32,
+    pub preview: String,
+    pub target: SmartTarget,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -80,24 +94,43 @@ fn pt(r: Rect) -> PtRect {
     }
 }
 
+fn wire_target(t: &Target, order: &[(PageId, u32)]) -> Option<SmartTarget> {
+    let page_id = order.get(usize::try_from(t.page).ok()?)?.0;
+    Some(SmartTarget {
+        page_id,
+        rect: t.rect.map(rect),
+        label: t
+            .label
+            .as_deref()
+            .map(|l| sanitize_text(l, 32))
+            .filter(|l| !l.is_empty()),
+    })
+}
+
 /// The wire form of `link` with the target given as a page id; `None` when the target is not a page of the document now.
+/// A choice whose page is gone is dropped; a range left with fewer than two is no link.
 fn wire(link: &SmartLink, order: &[(PageId, u32)]) -> Option<SmartLinkWire> {
-    let target = order.get(usize::try_from(link.target.page).ok()?)?.0;
+    let choices: Vec<SmartChoice> = link
+        .choices
+        .iter()
+        .filter_map(|c| {
+            Some(SmartChoice {
+                number: c.number,
+                preview: sanitize_text(&c.preview, CHOICE_PREVIEW_MAX),
+                target: wire_target(&c.target, order)?,
+            })
+        })
+        .collect();
+    if !link.choices.is_empty() && choices.len() < 2 {
+        return None;
+    }
     Some(SmartLinkWire {
         kind: link.kind,
         rects: link.rects.iter().copied().map(rect).collect(),
         marker: sanitize_text(&link.marker, MARKER_MAX),
-        target: SmartTarget {
-            page_id: target,
-            rect: link.target.rect.map(rect),
-            label: link
-                .target
-                .label
-                .as_deref()
-                .map(|l| sanitize_text(l, 32))
-                .filter(|l| !l.is_empty()),
-        },
+        target: wire_target(&link.target, order)?,
         preview: sanitize_text(&link.preview, 280),
+        choices,
     })
 }
 
@@ -458,6 +491,7 @@ mod tests {
                 rect: None,
                 label: None,
             },
+            choices: Vec::new(),
             preview: String::new(),
             score: 0.9,
         };

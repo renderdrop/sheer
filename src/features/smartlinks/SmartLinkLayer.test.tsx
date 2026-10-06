@@ -311,3 +311,82 @@ describe('real links (L3)', () => {
     expect(mocks.jumpTo).toHaveBeenCalledWith(1, { pageId: 3 }, { pageId: 0, rect: real[1]!.rect });
   });
 });
+
+describe('a range run (L14)', () => {
+  const range: SmartLink = {
+    kind: 'literature',
+    rects: [{ x: 200, y: 400, w: 30, h: 10 }],
+    marker: '3–5',
+    target: { pageId: 4 },
+    preview: '',
+    choices: [
+      { number: 3, preview: 'Autor A. Titel drei.', target: { pageId: 4, rect: { x: 72, y: 100, w: 300, h: 12 } } },
+      { number: 4, preview: 'Autor B. Titel vier.', target: { pageId: 4, rect: { x: 72, y: 120, w: 300, h: 12 } } },
+      { number: 5, preview: 'Autor C. Titel fünf.', target: { pageId: 5, rect: { x: 72, y: 90, w: 300, h: 12 } } },
+    ],
+  };
+  const name = 'Sources 3–5, detected, 3 entries';
+
+  beforeEach(() => {
+    mocks.getSmartLinks.mockImplementation(() => ready([range]));
+  });
+
+  it('is a button that opens a listbox and says how many entries it has', async () => {
+    render(<Page />);
+    const run = await screen.findByRole('button', { name });
+    expect(run.getAttribute('aria-haspopup')).toBe('listbox');
+    expect(run.getAttribute('aria-expanded')).toBe('false');
+    const described = document.getElementById(run.getAttribute('aria-describedby') ?? '');
+    expect(described?.textContent).toBe('Detected · Source · 3 entries');
+  });
+
+  it('opens on Enter with the first row current; arrows and Enter jump with the run as the origin', async () => {
+    render(<Page />);
+    const run = await screen.findByRole('button', { name });
+    run.focus();
+    fireEvent.keyDown(run, { key: 'Enter' });
+    const list = await screen.findByRole('listbox', { name: 'Sources 3–5' });
+    expect(run.getAttribute('aria-expanded')).toBe('true');
+    expect(run.getAttribute('data-state')).toBe('active');
+    expect(document.activeElement).toBe(list);
+    const options = within(list).getAllByRole('option');
+    expect(options.map((o) => o.getAttribute('aria-label'))).toEqual([
+      'Source 3, page 5',
+      'Source 4, page 5',
+      'Source 5, page 6',
+    ]);
+    expect(list.getAttribute('aria-activedescendant')).toBe(options[0]!.id);
+    fireEvent.keyDown(list, { key: 'ArrowDown' });
+    fireEvent.keyDown(list, { key: 'ArrowDown' });
+    fireEvent.keyDown(list, { key: 'ArrowDown' });
+    expect(list.getAttribute('aria-activedescendant')).toBe(options[2]!.id);
+    fireEvent.keyDown(list, { key: 'Enter' });
+    expect(mocks.jumpTo).toHaveBeenCalledWith(1, range.choices![2]!.target, { pageId: 0, rect: range.rects[0] });
+    await waitFor(() => expect(screen.queryByRole('listbox')).toBeNull());
+  });
+
+  it('Esc closes it and returns focus to the run; a typed digit jumps to that number', async () => {
+    render(<Page />);
+    const run = await screen.findByRole('button', { name });
+    fireEvent.keyDown(run, { key: ' ' });
+    const list = await screen.findByRole('listbox');
+    fireEvent.keyDown(list, { key: '5' });
+    expect(list.getAttribute('aria-activedescendant')).toBe(within(list).getAllByRole('option')[2]!.id);
+    fireEvent.keyDown(document.body, { key: 'Escape' });
+    await waitFor(() => expect(screen.queryByRole('listbox')).toBeNull());
+    expect(document.activeElement).toBe(run);
+    expect(mocks.jumpTo).not.toHaveBeenCalled();
+  });
+
+  it('a click on the run opens it and a click on a row follows that entry', async () => {
+    render(<Page />);
+    await screen.findByRole('button', { name });
+    press('pointerdown', 210, 405);
+    press('pointerup', 210, 405);
+    const list = await screen.findByRole('listbox');
+    expect(mocks.jumpTo).not.toHaveBeenCalled();
+    fireEvent.click(within(list).getAllByRole('option')[1]!);
+    expect(mocks.jumpTo).toHaveBeenCalledWith(1, range.choices![1]!.target, { pageId: 0, rect: range.rects[0] });
+    expect(useSmartLinks.getState().visited[1]).toHaveLength(1);
+  });
+});

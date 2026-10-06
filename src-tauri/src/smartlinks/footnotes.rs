@@ -109,6 +109,7 @@ pub fn detect(doc: &DocText, page: u32, index: &FootnoteIndex) -> Vec<SmartLink>
                     rect: Some(n.rect),
                     label: None,
                 },
+                choices: Vec::new(),
                 preview: preview(&n.text),
                 score,
             });
@@ -171,6 +172,7 @@ pub fn detect(doc: &DocText, page: u32, index: &FootnoteIndex) -> Vec<SmartLink>
                     rect: Some(m.rect),
                     label: None,
                 },
+                choices: Vec::new(),
                 preview: preview(&m.line_text),
                 score,
             });

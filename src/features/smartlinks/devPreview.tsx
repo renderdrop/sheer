@@ -1,8 +1,10 @@
+import { AnimatePresence } from 'motion/react';
 import { createRoot, type Root } from 'react-dom/client';
 
 import { translators } from '../../i18n';
 import { useLocaleStore } from '../../i18n/store';
 import { LinkPreview, KEY_MARK, splitHint } from './LinkPreview';
+import { RangeChooser } from './RangeChooser';
 
 /**
  * Dev only (surface gate, DESIGN 3.11 L13): shows the link preview once, next to a stand-in run, with the longest body Rust sends (280
@@ -50,4 +52,66 @@ export function closeDevPreview(): void {
   host?.remove();
   anchor = null;
   host = null;
+}
+
+/** The longest entry text Rust sends a choice (120 characters), in German as the widest case. */
+const LONGEST_ENTRY =
+  'Müller, A. & Schmidt, B. (2019). Verfügbarkeit und Qualität von Daten in der Praxis der empirischen Forschung. Journal 4, 1–10.';
+
+let chooserHost: HTMLElement | null = null;
+let chooserAnchor: HTMLElement | null = null;
+let chooserRoot: Root | null = null;
+
+/**
+ * Dev only (surface gate, DESIGN 3.11 L13): the range chooser with `count` rows, next to a stand-in run. `place`: `top` (room below),
+ * `bottom` (near the page's bottom edge, so it flips to top-start) or `end` (the list scrolled to its end).
+ */
+export function openDevChooser(count: number, place: 'top' | 'bottom' | 'end'): void {
+  closeDevChooser();
+  const t = translators[useLocaleStore.getState().locale];
+  chooserAnchor = document.createElement('span');
+  chooserAnchor.setAttribute('data-dev-link-run', '');
+  Object.assign(chooserAnchor.style, {
+    position: 'fixed',
+    left: '320px',
+    top: place === 'bottom' ? `${window.innerHeight - 56}px` : '220px',
+    width: '40px',
+    height: '16px',
+  });
+  chooserHost = document.createElement('div');
+  document.body.append(chooserAnchor, chooserHost);
+  const rows = Array.from({ length: count }, (_, i) => ({
+    number: i + 1,
+    preview: LONGEST_ENTRY.slice(0, 120),
+    page: t('citation.page', { label: String(12 + i) }),
+    name: t('smartlinks.aria.rangeEntry', { number: i + 1, page: 12 + i }),
+  }));
+  chooserRoot = createRoot(chooserHost);
+  chooserRoot.render(
+    <AnimatePresence>
+      <RangeChooser
+        key="dev"
+        anchor={chooserAnchor}
+        range={`1–${count}`}
+        rows={rows}
+        onChoose={closeDevChooser}
+        onClose={closeDevChooser}
+      />
+    </AnimatePresence>,
+  );
+  if (place === 'end') {
+    window.setTimeout(() => {
+      const list = document.querySelector<HTMLElement>('[data-surface="range-chooser"] [role="listbox"]');
+      if (list !== null) list.scrollTop = list.scrollHeight;
+    }, 300);
+  }
+}
+
+export function closeDevChooser(): void {
+  chooserRoot?.unmount();
+  chooserRoot = null;
+  chooserAnchor?.remove();
+  chooserHost?.remove();
+  chooserAnchor = null;
+  chooserHost = null;
 }

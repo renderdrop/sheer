@@ -113,3 +113,37 @@ describe('parseSmartLinks', () => {
     expect(result?.links[0]?.target).toEqual({ pageId: 2 });
   });
 });
+
+describe('range choices', () => {
+  const choice = (number: number, over: Record<string, unknown> = {}) => ({
+    number,
+    preview: `Entry ${number}`,
+    target: { pageId: 8 },
+    ...over,
+  });
+  const parse = (choices: unknown) => parseSmartLinks({ rev: 1, ready: true, links: [link({ choices })] });
+
+  it('keeps the choices of a range run', () => {
+    const result = parse([choice(3), choice(5)]);
+    expect(result?.links[0]?.choices?.map((c) => c.number)).toEqual([3, 5]);
+  });
+
+  it('leaves a plain link without choices', () => {
+    expect(parseSmartLinks({ rev: 1, ready: true, links: [link()] })?.links[0]?.choices).toBeUndefined();
+  });
+
+  it('refuses a list that is not at least two ascending entries of the documented shape', () => {
+    const bad = [
+      [],
+      [choice(3)],
+      [choice(5), choice(3)],
+      [choice(3), choice(3)],
+      [choice(0), choice(1)],
+      [choice(3), choice(4, { preview: 'x'.repeat(121) })],
+      [choice(3), choice(4, { target: null })],
+      Array.from({ length: 51 }, (_, i) => choice(i + 1)),
+      'x',
+    ];
+    for (const value of bad) expect(parse(value), JSON.stringify(value)).toBeNull();
+  });
+});

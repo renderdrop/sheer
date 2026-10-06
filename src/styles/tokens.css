@@ -329,6 +329,8 @@
   --on-accent: var(--color-ink);
   /* The focus ring (DESIGN 2.1): a 1px Ink hairline at the edge inside a 2px Solar band. The only third box-shadow. */
   --ring-focus: 0 0 0 1px var(--color-ink), 0 0 0 3px var(--accent);
+  --ring-focus-inset:
+    inset 0 0 0 2px var(--accent), inset 0 0 0 3px var(--color-ink); /* the focus pair inside a row (range chooser) */
   --opacity-disabled: 0.4;
   --scrim: rgba(15, 15, 15, 0.12); /* the modal backdrop, no blur */
   --page-shadow: var(--shadow-floating);
@@ -596,6 +598,7 @@
     --shadow-3: 0 0 transparent;
     --page-shadow: 0 0 transparent;
     --ring-focus: 0 0 transparent;
+    --ring-focus-inset: 0 0 transparent;
     --color-page: Canvas;
     --color-text: CanvasText;
     --color-text-muted: CanvasText;
@@ -987,6 +990,19 @@
 [data-reallink][data-state="hover"] [data-smartlink-run],
 [data-reallink][data-state="active"] [data-smartlink-run] {
   outline: calc(var(--hairline) / var(--page-scale, 1)) solid var(--color-ink);
+}
+
+/* The range chooser's current row (DESIGN 3.11 L14): the focus pair inset 2, Solar band at the edge, Ink hairline inside it. The listbox
+   keeps the focus (aria-activedescendant), so the row cannot use :focus-visible. */
+[data-range-row][data-current] {
+  box-shadow: var(--ring-focus-inset);
+}
+
+@media (forced-colors: active) {
+  [data-range-row][data-current] {
+    outline: var(--focus-width) solid Highlight;
+    outline-offset: calc(-1 * var(--focus-width));
+  }
 }
 
 /* The pointer is over a link: the text under it shows the pointer cursor. */
