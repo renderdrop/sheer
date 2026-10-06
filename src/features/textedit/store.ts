@@ -32,6 +32,14 @@ export interface Refusal {
   via: 'hover' | 'click';
 }
 
+/** The one info notice of E4: which case, the original font's display name, the substitute and the characters set in it. */
+export interface FallbackNotice {
+  kind: 'notEmbedded' | 'missingGlyphs';
+  font: string;
+  face: FallbackFace;
+  chars: readonly string[];
+}
+
 interface TextEditState {
   session: EditSession | null;
   /** The edit box in client pixels (mini bar placement, protected rects of the notice). */
@@ -39,12 +47,14 @@ interface TextEditState {
   /** The paragraph rule in client pixels, if shown. */
   rule: Rect | null;
   refusal: Refusal | null;
+  /** Set by P1 when an edit opens on a non-embedded font or an apply answers `fontFallback`; cleared on cancel, the next open or Hide. */
+  notice: FallbackNotice | null;
   set: (patch: Partial<Omit<TextEditState, 'set' | 'reset'>>) => void;
   patchSession: (patch: Partial<EditSession>) => void;
   reset: () => void;
 }
 
-const FRESH = { session: null, anchor: null, rule: null, refusal: null };
+const FRESH = { session: null, anchor: null, rule: null, refusal: null, notice: null };
 
 export const useTextEdit = create<TextEditState>()((set) => ({
   ...FRESH,
