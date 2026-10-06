@@ -213,6 +213,10 @@ fn stream_bytes(
     match stream.decompressed_content_with_limit(max) {
         Ok(bytes) if bytes.len() <= max => Ok(Some(bytes)),
         Ok(_) => Err(AppError::limit(what, max as u64)),
+        // A deflated stream that inflates past the cap is a limit too, not "no map".
+        Err(lopdf::Error::Decompress(lopdf::DecompressError::MemoryLimitExceeded { .. })) => {
+            Err(AppError::limit(what, max as u64))
+        }
         Err(_) if stream.content.len() > max => Err(AppError::limit(what, max as u64)),
         Err(_) => Ok(None),
     }
@@ -1419,6 +1423,101 @@ mod tests {
             CharStatus::Missing,
             "gid 0 has no outline in the map"
         );
+    }
+
+    /// An Identity-H font whose `/CIDToGIDMap` stream is `map`.
+    fn identity_h_with_map(doc: &mut Document, map: &[u8]) -> ObjectId {
+        let file = stream(doc, Dictionary::new(), ARIMO);
+        let map = stream(doc, Dictionary::new(), map);
+        let mut desc = Dictionary::new();
+        desc.set("FontFile2", Object::Reference(file));
+        let desc = doc.add_object(Object::Dictionary(desc));
+        let mut cid = font_dict("CIDFontType2", "X");
+        cid.set("FontDescriptor", Object::Reference(desc));
+        cid.set("CIDToGIDMap", Object::Reference(map));
+        let cid = doc.add_object(Object::Dictionary(cid));
+        let mut d = font_dict("Type0", "X");
+        d.set("Encoding", name("Identity-H"));
+        d.set(
+            "DescendantFonts",
+            Object::Array(vec![Object::Reference(cid)]),
+        );
+        doc.add_object(Object::Dictionary(d))
+    }
+
+    #[test]
+    fn a_cid_to_gid_map_over_the_cap_is_a_limit_and_one_at_the_cap_is_read() {
+        let mut doc = Document::new();
+        let id = identity_h_with_map(&mut doc, &vec![0u8; CID_TO_GID_MAX_BYTES + 1]);
+        let error = font_map(&doc, id, &HashMap::new()).unwrap_err();
+        assert_eq!(error.code(), ErrorCode::LimitExceeded);
+        let id = identity_h_with_map(&mut doc, &vec![0u8; CID_TO_GID_MAX_BYTES]);
+        assert!(font_map(&doc, id, &HashMap::new()).is_ok());
+        // a deflated stream that grows past the cap is refused as well
+        let mut packed = Stream::new(Dictionary::new(), vec![0u8; CID_TO_GID_MAX_BYTES + 1]);
+        packed.compress().unwrap();
+        assert!(packed.content.len() < CID_TO_GID_MAX_BYTES);
+        let id = identity_h_with_map(&mut doc, &[]);
+        let Ok(Object::Dictionary(font)) = doc.get_object(id).cloned() else {
+            panic!("font");
+        };
+        let cid_ref = font.get(b"DescendantFonts").unwrap().as_array().unwrap()[0]
+            .as_reference()
+            .unwrap();
+        let packed = doc.add_object(Object::Stream(packed));
+        doc.get_dictionary_mut(cid_ref)
+            .unwrap()
+            .set("CIDToGIDMap", Object::Reference(packed));
+        let error = font_map(&doc, id, &HashMap::new()).unwrap_err();
+        assert_eq!(error.code(), ErrorCode::LimitExceeded);
+    }
+
+    #[test]
+    fn standard_14_widths_of_the_latin_1_symbols_match_the_afm_per_face() {
+        // macron, plusminus, mu, periodcentered, divide (WinAnsi 0xAF, 0xB1, 0xB5, 0xB7, 0xF7)
+        let codes = [0xAFu32, 0xB1, 0xB5, 0xB7, 0xF7];
+        let faces: [(&str, [f32; 5]); 9] = [
+            ("Helvetica", [333.0, 584.0, 556.0, 278.0, 584.0]),
+            ("Helvetica-Oblique", [333.0, 584.0, 556.0, 278.0, 584.0]),
+            ("Helvetica-Bold", [333.0, 584.0, 611.0, 278.0, 584.0]),
+            ("Helvetica-BoldOblique", [333.0, 584.0, 611.0, 278.0, 584.0]),
+            ("Times-Roman", [333.0, 564.0, 500.0, 250.0, 564.0]),
+            ("Times-Bold", [333.0, 570.0, 556.0, 250.0, 570.0]),
+            ("Times-Italic", [333.0, 675.0, 500.0, 250.0, 675.0]),
+            ("Times-BoldItalic", [333.0, 570.0, 576.0, 250.0, 570.0]),
+            ("Courier", [600.0; 5]),
+        ];
+        for (face, widths) in faces {
+            let mut doc = Document::new();
+            let mut d = font_dict("Type1", face);
+            d.set("Encoding", name("WinAnsiEncoding"));
+            let id = doc.add_object(Object::Dictionary(d));
+            let m = map_of(&doc, id);
+            for (code, want) in codes.iter().zip(widths) {
+                assert_eq!(m.width(*code), Some(want), "{face} code {code:#x}");
+            }
+        }
+    }
+
+    #[test]
+    fn the_subsetter_output_parses_and_maps_every_character_to_its_glyph() {
+        use skrifa::MetadataProvider;
+        let face = Face {
+            family: FallbackFace::Sans,
+            bold: false,
+            italic: false,
+        };
+        let mut store = FallbackStore::default();
+        store.add(face, "Grüße \u{416}\u{20ac}");
+        let subset = store.subset(face).unwrap();
+        let font = skrifa::FontRef::new(&subset.program).expect("the subset re-parses");
+        assert!(!subset.gids.is_empty());
+        let charmap = font.charmap();
+        for (c, gid) in &subset.gids {
+            if let Some(mapped) = charmap.map(*c) {
+                assert_eq!(mapped.to_u32(), u32::from(*gid), "{c}");
+            }
+        }
     }
 
     #[test]

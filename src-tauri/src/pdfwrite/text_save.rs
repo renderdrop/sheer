@@ -278,7 +278,9 @@ pub fn write_pages(
             [only] if !is_shared(prev, *page, *only) => Some(*only),
             _ => None,
         };
-        let stream = Stream::new(Dictionary::new(), r.content.clone());
+        let mut stream = Stream::new(Dictionary::new(), r.content.clone());
+        // Deflated like the streams of the other writers; a stream that does not shrink stays as it is.
+        stream.compress().map_err(failed)?;
         match reuse {
             Some(id) => doc.new_document.set_object(id, Object::Stream(stream)),
             None => {
@@ -574,7 +576,9 @@ mod tests {
         let (bytes, pages, streams) = doc_with_pages(&["BT /F1 10 Tf (A) Tj ET"]);
         let doc = crate::pdfwrite::load_untrusted(&bytes).unwrap();
         let mut inc = IncrementalDocument::create_from(bytes.clone(), doc);
-        write(&mut inc, pages[0], &rewritten("BT /F1 10 Tf (B) Tj ET")).unwrap();
+        // Long enough for deflate to pay off.
+        let new = format!("BT /F1 10 Tf (B) Tj ET{}", " 0 0 m 10 10 l S".repeat(40));
+        write(&mut inc, pages[0], &rewritten(&new)).unwrap();
         let mut out = Vec::new();
         inc.save_to(&mut out).unwrap();
         assert_eq!(&out[..bytes.len()], &bytes[..], "the original bytes stay");
@@ -584,7 +588,12 @@ mod tests {
         let Ok(Object::Stream(s)) = back.get_object(streams[0]) else {
             panic!("stream");
         };
-        assert_eq!(s.content, b"BT /F1 10 Tf (B) Tj ET");
+        assert_eq!(
+            s.dict.get(b"Filter").unwrap().as_name().unwrap(),
+            b"FlateDecode",
+            "the new content is deflated"
+        );
+        assert_eq!(s.decompressed_content().unwrap(), new.as_bytes());
     }
 
     #[test]
@@ -694,7 +703,7 @@ mod tests {
         let Ok(Object::Stream(s)) = back.get_object(streams[0]) else {
             panic!("stream");
         };
-        let text = String::from_utf8(s.content.clone()).unwrap();
+        let text = String::from_utf8(s.decompressed_content().unwrap()).unwrap();
         assert!(
             text.contains("<48656C6C6F20776172 6C64>".replace(' ', "").as_str()),
             "{text}"

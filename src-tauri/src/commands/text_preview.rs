@@ -17,7 +17,6 @@
 
 use std::collections::HashMap;
 use std::panic::{catch_unwind, AssertUnwindSafe};
-use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{mpsc, Arc, Mutex, PoisonError};
 use std::thread;
 use std::time::Duration;
@@ -98,31 +97,50 @@ impl TextPreview {
     }
 }
 
-/// The newest generation seen per page, so that work for an older one is dropped.
+/// The newest generation seen per page, so that work for an older one is dropped. When full, the page used longest ago is forgotten.
 #[derive(Debug, Default)]
 struct Latest {
-    seen: Mutex<HashMap<(u32, u32), u32>>,
+    seen: Mutex<Seen>,
+}
+
+#[derive(Debug, Default)]
+struct Seen {
+    /// Per page: the newest generation and when the page was last used.
+    pages: HashMap<(u32, u32), (u32, u64)>,
+    tick: u64,
 }
 
 impl Latest {
     /// Notes `generation` for the page; `false` if a newer one was seen before.
     fn admit(&self, key: (u32, u32), generation: u32) -> bool {
-        let mut seen = self.seen.lock().unwrap_or_else(PoisonError::into_inner);
-        if seen.len() >= limits::TEXT_PREVIEW_GENERATIONS && !seen.contains_key(&key) {
-            seen.clear();
+        let mut guard = self.seen.lock().unwrap_or_else(PoisonError::into_inner);
+        let seen = &mut *guard;
+        seen.tick += 1;
+        if seen.pages.len() >= limits::TEXT_PREVIEW_GENERATIONS && !seen.pages.contains_key(&key) {
+            let oldest = seen
+                .pages
+                .iter()
+                .min_by_key(|(_, (_, used))| *used)
+                .map(|(page, _)| *page);
+            if let Some(oldest) = oldest {
+                seen.pages.remove(&oldest);
+            }
         }
-        let newest = seen.entry(key).or_insert(generation);
-        if *newest > generation {
+        let entry = seen.pages.entry(key).or_insert((generation, 0));
+        entry.1 = seen.tick;
+        if entry.0 > generation {
             return false;
         }
-        *newest = generation;
+        entry.0 = generation;
         true
     }
 
     /// Whether no newer generation than `generation` was seen for the page.
     fn is_current(&self, key: (u32, u32), generation: u32) -> bool {
         let seen = self.seen.lock().unwrap_or_else(PoisonError::into_inner);
-        seen.get(&key).is_none_or(|newest| *newest <= generation)
+        seen.pages
+            .get(&key)
+            .is_none_or(|(newest, _)| *newest <= generation)
     }
 }
 
@@ -135,34 +153,65 @@ fn cancelled() -> AppError {
     AppError::new(ErrorCode::Cancelled)
 }
 
-/// Threads of previews that have not ended (a run past its deadline keeps its thread until it finishes).
-static RUNNING: AtomicUsize = AtomicUsize::new(0);
-const MAX_RUNNING: usize = 8;
+/// Previews that have not ended, in all and per document (a run past its deadline keeps its thread until it finishes).
+static RUNNING: Mutex<Running> = Mutex::new(Running {
+    total: 0,
+    per_doc: Vec::new(),
+});
 
-struct Slot;
+struct Running {
+    total: usize,
+    per_doc: Vec<(u32, usize)>,
+}
+
+#[derive(Debug)]
+struct Slot(u32);
 
 impl Slot {
-    fn take() -> Result<Self, AppError> {
-        if RUNNING.fetch_add(1, Ordering::AcqRel) >= MAX_RUNNING {
-            RUNNING.fetch_sub(1, Ordering::AcqRel);
-            return Err(AppError::limit("textPreviews", MAX_RUNNING as u64));
+    fn take(doc: u32) -> Result<Self, AppError> {
+        let mut running = RUNNING.lock().unwrap_or_else(PoisonError::into_inner);
+        let held = running
+            .per_doc
+            .iter()
+            .find(|(id, _)| *id == doc)
+            .map_or(0, |(_, count)| *count);
+        if running.total >= limits::TEXT_PREVIEW_MAX_RUNNING
+            || held >= limits::TEXT_PREVIEW_MAX_PER_DOC
+        {
+            return Err(AppError::limit(
+                "textPreviews",
+                limits::TEXT_PREVIEW_MAX_PER_DOC as u64,
+            ));
         }
-        Ok(Self)
+        running.total += 1;
+        match running.per_doc.iter_mut().find(|(id, _)| *id == doc) {
+            Some((_, count)) => *count += 1,
+            None => running.per_doc.push((doc, 1)),
+        }
+        Ok(Self(doc))
     }
 }
 
 impl Drop for Slot {
     fn drop(&mut self) {
-        RUNNING.fetch_sub(1, Ordering::AcqRel);
+        let mut running = RUNNING.lock().unwrap_or_else(PoisonError::into_inner);
+        running.total = running.total.saturating_sub(1);
+        if let Some(at) = running.per_doc.iter().position(|(id, _)| *id == self.0) {
+            running.per_doc[at].1 = running.per_doc[at].1.saturating_sub(1);
+            if running.per_doc[at].1 == 0 {
+                running.per_doc.swap_remove(at);
+            }
+        }
     }
 }
 
 /// Runs `work` on a thread of its own with the stack lopdf wants: a panic is `internal`, a run past `timeout` is `engine_timeout`.
 fn contained<T: Send + 'static>(
+    doc: u32,
     timeout: Duration,
     work: impl FnOnce() -> Result<T, AppError> + Send + 'static,
 ) -> Result<T, AppError> {
-    let slot = Slot::take()?;
+    let slot = Slot::take(doc)?;
     let (sender, receiver) = mpsc::channel();
     thread::Builder::new()
         .name("sheer-textpreview".into())
@@ -266,10 +315,11 @@ impl AppState {
         }
         let page_key = (id.get(), page.get());
         let generation = request.generation;
+        // Permission, signature and source come first: a refused document is not a stale frame.
+        let basis = self.preview_basis(id, page)?;
         if !latest().admit(page_key, generation) {
             return Err(cancelled());
         }
-        let basis = self.preview_basis(id, page)?;
         if request.key.rev != basis.rev {
             return Err(AppError::invalid("lineKey"));
         }
@@ -296,7 +346,7 @@ impl AppState {
             fit: request.fit,
             scope: request.scope,
         };
-        let made = contained(limits::TEXT_EDIT_REPLAY_TIMEOUT, move || {
+        let made = contained(id.get(), limits::TEXT_PREVIEW_TIMEOUT, move || {
             replay(
                 &current,
                 current_page,
@@ -564,20 +614,24 @@ mod tests {
         for page in 0..limits::TEXT_PREVIEW_GENERATIONS as u32 + 10 {
             assert!(latest.admit((1, page), 1));
         }
-        let held = latest.seen.lock().map(|seen| seen.len()).unwrap_or(0);
+        let held = latest.seen.lock().map(|seen| seen.pages.len()).unwrap_or(0);
         assert!(held <= limits::TEXT_PREVIEW_GENERATIONS);
     }
 
     #[test]
-    fn stale_work_is_cancelled_before_the_document_is_read() {
+    fn a_refused_document_does_not_register_its_generation() {
+        // The document is checked (permission, signature, source, file) before the frame counts as the page's newest.
         let (state, id) = state_with_pages(1, |_| {});
         let page = state.registry.page_id(id, 0).unwrap();
         let key = (id.get(), page.get());
-        assert!(latest().admit(key, 100));
         let error = state
-            .text_edit_preview(id, page, request("x", 99, 2.0))
+            .text_edit_preview(id, page, request("x", 100, 2.0))
             .unwrap_err();
-        assert_eq!(error.code(), ErrorCode::Cancelled);
+        assert_ne!(error.code(), ErrorCode::Cancelled);
+        assert!(
+            latest().is_current(key, 0),
+            "generation 100 was not admitted"
+        );
     }
 
     #[test]
@@ -657,9 +711,38 @@ mod tests {
     #[test]
     fn a_contained_run_turns_a_panic_into_an_error() {
         let panicked: Result<(), AppError> =
-            contained(Duration::from_secs(5), || -> Result<(), AppError> {
+            contained(1, Duration::from_secs(5), || -> Result<(), AppError> {
                 panic!("boom")
             });
         assert_eq!(panicked.unwrap_err().code(), ErrorCode::Internal);
+    }
+
+    #[test]
+    fn the_guard_forgets_the_page_used_longest_ago() {
+        let latest = Latest::default();
+        for page in 0..limits::TEXT_PREVIEW_GENERATIONS as u32 {
+            assert!(latest.admit((1, page), 7));
+        }
+        assert!(latest.admit((1, 0), 7), "page 0 is used again");
+        assert!(latest.admit((2, 0), 1), "a new page evicts one");
+        assert!(!latest.admit((1, 0), 6), "page 0 was kept");
+        assert!(latest.admit((1, 1), 1), "page 1 was the oldest and is gone");
+    }
+
+    #[test]
+    fn a_document_has_its_own_cap_under_the_global_one() {
+        let doc = 4_000_000_001;
+        let mut held = Vec::new();
+        for _ in 0..limits::TEXT_PREVIEW_MAX_PER_DOC {
+            held.push(Slot::take(doc).unwrap());
+        }
+        assert_eq!(
+            Slot::take(doc).unwrap_err().code(),
+            ErrorCode::LimitExceeded
+        );
+        let other = Slot::take(doc + 1).expect("another document is not held up");
+        drop(held);
+        drop(other);
+        assert!(Slot::take(doc).is_ok(), "the slots are given back");
     }
 }

@@ -580,8 +580,9 @@ fn inside(b: &Box4, p: [f64; 2]) -> bool {
     p[0] >= b[0] - SLACK && p[0] <= b[2] + SLACK && p[1] >= b[1] - SLACK && p[1] <= b[3] + SLACK
 }
 
+/// The walk ran out of operators: a neutral key, since redaction and text editing both walk (the redaction's own work budget is `redactPage`).
 fn too_big() -> AppError {
-    AppError::limit("textEdit", limits::MAX_REDACT_OPS as u64)
+    AppError::limit("contentOps", limits::MAX_REDACT_OPS as u64)
 }
 
 fn unreadable() -> AppError {

@@ -794,6 +794,9 @@ pub const TEXT_PREVIEW_MAX_PIXELS: u64 = 8_000_000;
 pub const TEXT_PREVIEW_MAX_SIDE_PX: u32 = 4_096;
 pub const TEXT_PREVIEW_TIMEOUT: Duration = Duration::from_secs(10);
 pub const TEXT_PREVIEW_GENERATIONS: usize = 256;
+/// Previews running at once in all, and for one document (a run past its deadline keeps its thread and its slot until it ends).
+pub const TEXT_PREVIEW_MAX_RUNNING: usize = 8;
+pub const TEXT_PREVIEW_MAX_PER_DOC: usize = 2;
 
 /// `invalid_argument` (`scale`) for a preview scale that is not a number within the bounds.
 pub fn validate_preview_scale(scale: f32) -> Result<f32, AppError> {
