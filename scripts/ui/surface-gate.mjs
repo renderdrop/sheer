@@ -357,6 +357,24 @@ async function sweepTextEdit() {
     () => ev(`document.querySelector('[data-surface="textedit-bar"]') !== null`),
     '[data-surface="textedit-bar"]',
   );
+  // v1.5.2: the widest state of the bar: Umbrechen shown (a line of a paragraph with 2+ lines) together with the overflow caption.
+  await probe(
+    'textedit-bar-reflow',
+    async () => {
+      await openLine();
+      await send('Input.insertText', {
+        text: ' wide wide wide wide wide wide wide wide wide wide wide wide wide wide wide',
+      });
+      let toggle = false;
+      for (let i = 0; i < 10 && !toggle; i++) {
+        toggle = await ev(`!!document.querySelector('[data-surface="textedit-bar"] [role="switch"]')`);
+        if (!toggle) await sleep(150);
+      }
+      if (!toggle) throw new Error('no Umbrechen toggle: the opened line is not in a paragraph of 2+ lines');
+    },
+    () => ev(`document.querySelector('[data-surface="textedit-bar"]') !== null`),
+    '[data-surface="textedit-bar"]',
+  );
   await probe(
     'textedit-font-popover',
     async () => {

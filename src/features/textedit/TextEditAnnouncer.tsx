@@ -22,11 +22,14 @@ export function TextEditAnnouncer() {
 
   useEffect(() => {
     const memory = freshMemory();
-    const snap = (): Snapshot => ({ session: useTextEdit.getState().session, refusal: useTextEdit.getState().refusal });
+    const snap = (): Snapshot => {
+      const state = useTextEdit.getState();
+      return { session: state.session, refusal: state.refusal, reflow: state.reflow };
+    };
     let prev = snap();
     return useTextEdit.subscribe(() => {
       const next = snap();
-      if (next.session === prev.session && next.refusal === prev.refusal) return;
+      if (next.session === prev.session && next.refusal === prev.refusal && next.reflow === prev.reflow) return;
       for (const item of announcementsFor(prev, next, memory)) {
         seq.current += 1;
         const said = { seq: seq.current, item };

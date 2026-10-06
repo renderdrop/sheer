@@ -1490,6 +1490,8 @@
   "editText.announce.committed": "Zeile geändert",
   "editText.announce.cancelled": "Änderung verworfen",
   "editText.announce.fallback": "{n} Zeichen in Ersatzschrift",
+  "editText.announce.reflowOn": "Umbrechen an",
+  "editText.announce.reflowOff": "Umbrechen aus",
   "editText.refuse.ocr": "Dieser Text wurde aus einem Scan erkannt und lässt sich nicht bearbeiten.",
   "editText.refuse.type3": "Dieser Text nutzt eine gezeichnete Schrift und lässt sich nicht bearbeiten.",
   "editText.refuse.outlined": "Dieser Text wurde in Formen umgewandelt und lässt sich nicht bearbeiten.",

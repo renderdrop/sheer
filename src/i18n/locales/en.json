@@ -1490,6 +1490,8 @@
   "editText.announce.committed": "Line changed",
   "editText.announce.cancelled": "Change discarded",
   "editText.announce.fallback": "{n} characters use a substitute font",
+  "editText.announce.reflowOn": "Wrapping in paragraph on",
+  "editText.announce.reflowOff": "Wrapping in paragraph off",
   "editText.refuse.ocr": "This text was recognised from a scan and can't be edited.",
   "editText.refuse.type3": "This text uses a drawn font and can't be edited.",
   "editText.refuse.outlined": "This text was converted to shapes and can't be edited.",

@@ -1,13 +1,14 @@
 import { Check, RotateCcw, TriangleAlert, X } from 'lucide-react';
-import { type KeyboardEvent, type Ref, useLayoutEffect, useRef } from 'react';
+import { type KeyboardEvent, type Ref, useId, useLayoutEffect, useRef } from 'react';
 
-import { Icon, IconButton } from '../../components';
+import { Icon, IconButton, Toggle } from '../../components';
 import { isOwnEvent, itemsOf, rovingTarget } from '../../components/roving';
 import { formatNumber, useLocale, useT } from '../../i18n';
 import { Divider } from '../minibar/Controls';
 import { cancelEdit, commitEdit, retryEdit } from './actions';
 import { FontPopover } from './FontPopover';
-import { useTextEdit } from './store';
+import { paragraphOf, useLines } from './lines';
+import { setReflow, useTextEdit } from './store';
 
 const ITEMS = '[data-mb-item]';
 const SQUARE = 'size-8!';
@@ -20,13 +21,16 @@ export function focusEditBox(): void {
 }
 
 /**
- * The mini bar while a line is edited (DESIGN 3.10 E3, E6): Font, the size read-out, the overflow caption, the busy and error captions
+ * The mini bar while a line is edited (DESIGN 3.10 E3, E6): Font, the size read-out, the Umbrechen toggle (paragraphs of 2+ lines), the overflow caption, the busy and error captions
  * with Retry, Cancel and Commit. A `toolbar` with one tab stop like the properties bar. Placement belongs to `EditBarHost`.
  */
 export function TextEditBar({ ref }: { ref?: Ref<HTMLDivElement> }) {
   const t = useT();
   const locale = useLocale();
   const session = useTextEdit((s) => s.session);
+  const reflow = useTextEdit((s) => s.reflow);
+  const labelId = useId();
+  const lines = useLines(session?.docId ?? 0, session?.pageId ?? 0, session !== null);
   const own = useRef<HTMLDivElement | null>(null);
   const stop = useRef<HTMLElement | null>(null);
 
@@ -43,6 +47,8 @@ export function TextEditBar({ ref }: { ref?: Ref<HTMLDivElement> }) {
   const { status, overflowPt, line } = session;
   const busy = status === 'busy';
   const failed = status === 'error';
+  // Umbrechen only makes sense for a paragraph of two or more lines.
+  const multi = lines !== null && paragraphOf(lines, line).length >= 2;
   const size = Math.round(line.font.size * 10) / 10;
 
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
@@ -89,6 +95,17 @@ export function TextEditBar({ ref }: { ref?: Ref<HTMLDivElement> }) {
       <span className="t-caption px-1 tabular-nums text-text-muted">
         {t('minibar.fontSizeValue', { n: formatNumber(size, locale) })}
       </span>
+      {multi && (
+        <>
+          <Divider />
+          <div role="group" aria-labelledby={labelId} className="flex shrink-0 items-center gap-2 px-1">
+            <span id={labelId} className="t-label whitespace-nowrap text-text">
+              {t('editText.reflow')}
+            </span>
+            <Toggle data-mb-item="" checked={reflow} onCheckedChange={setReflow} aria-labelledby={labelId} />
+          </div>
+        </>
+      )}
       {overflowPt > 0 && !busy && !failed && (
         <>
           <Divider />

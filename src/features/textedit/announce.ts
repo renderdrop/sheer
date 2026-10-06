@@ -13,6 +13,8 @@ export interface Announcement {
 export interface Snapshot {
   session: EditSession | null;
   refusal: Refusal | null;
+  /** Umbrechen; absent counts as unchanged. */
+  reflow?: boolean;
 }
 
 /** Per-session memory: the overflow is announced once, the substitute whenever its character count changes. */
@@ -62,6 +64,15 @@ export function announcementsFor(prev: Snapshot, next: Snapshot, memory: Memory)
     if (after.status === 'error' && (before === null || moved || before.status !== 'error')) {
       out.push({ key: 'editText.error', level: 'assertive' });
     }
+  }
+  if (
+    after !== null &&
+    !moved &&
+    prev.reflow !== undefined &&
+    next.reflow !== undefined &&
+    prev.reflow !== next.reflow
+  ) {
+    out.push({ key: next.reflow ? 'editText.announce.reflowOn' : 'editText.announce.reflowOff', level: 'polite' });
   }
   // Only a click on refused text is said; a hover is the tooltip's business.
   if (next.refusal !== null && next.refusal.via === 'click' && next.refusal !== prev.refusal) {

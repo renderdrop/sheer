@@ -200,6 +200,46 @@ async function suite(doc) {
     if (lines === 0) throw new Error('typed text not committed');
     return 'freeText';
   });
+  // v1.5.2: Edit text with real input on the first line of text.pdf; the edit is undone so that later rows are unaffected.
+  if (doc === 'text.pdf') {
+    let result;
+    try {
+      const lineTexts = () =>
+        ev(
+          `(async()=>{const d=(await ${S.docs}).useDocuments.getState();const r=await (await ${mod('api/textEdit.ts')}).textEditLines(d.activeId,0);return r.lines.map(l=>l.text).join('\\n')})()`,
+        );
+      const before = await lineTexts();
+      await selectTool('editText');
+      await sleep(300);
+      const b = await pageBox();
+      const k = b.width / 612;
+      await click({ x: b.left + 110 * k, y: b.top + 148 * k });
+      let box = false;
+      for (let i = 0; i < 20 && !box; i++) {
+        box = await ev(`!!document.querySelector('[data-testid="textedit-box"]')`);
+        if (!box) await sleep(150);
+      }
+      if (!box) throw new Error('no edit box opened');
+      await send('Input.insertText', { text: 'X' });
+      await key('Enter', 'Enter', 13);
+      let after = before;
+      for (let i = 0; i < 20 && after === before; i++) {
+        await sleep(250);
+        after = await lineTexts();
+      }
+      if (after === before) throw new Error('line text did not change');
+      await ev(
+        `(async()=>{const d=(await ${S.docs}).useDocuments.getState();await (await ${S.ann}).useAnnotations.getState().undo(d.activeId)})()`,
+      );
+      await sleep(500);
+      result = 'PASS';
+    } catch (e) {
+      result = `FAIL (${e.message.split('\n')[0]})`;
+    }
+    await selectTool('select');
+    await key('Escape', 'Escape', 27);
+    rows.push({ doc, tool: 'Edit text (click+type+Enter)', result });
+  }
   await row(doc, 'Draw (stroke)', async () => {
     await selectTool('draw');
     await drag(at(0.25, 0.6), at(0.55, 0.68), 14, 18);

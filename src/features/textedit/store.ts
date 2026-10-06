@@ -60,12 +60,33 @@ interface TextEditState {
 
 const FRESH = { session: null, anchor: null, rule: null, refusal: null, notice: null, noticeAnchor: null };
 
+/** UI storage of the Umbrechen choice (DESIGN 3.10 E2): "1" is on. */
+export const REFLOW_KEY = 'sheer.textedit.reflow';
+
+function loadReflow(): boolean {
+  try {
+    return globalThis.localStorage.getItem(REFLOW_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
 // `reflow` survives `reset` (the last choice is kept, DESIGN 3.10 E2).
 
 export const useTextEdit = create<TextEditState>()((set) => ({
   ...FRESH,
-  reflow: false,
+  reflow: loadReflow(),
   set: (patch) => set(patch),
   patchSession: (patch) => set((s) => (s.session ? { session: { ...s.session, ...patch } } : {})),
   reset: () => set(FRESH),
 }));
+
+/** Sets Umbrechen and remembers it for later edits and sessions. */
+export function setReflow(on: boolean): void {
+  useTextEdit.getState().set({ reflow: on });
+  try {
+    globalThis.localStorage.setItem(REFLOW_KEY, on ? '1' : '0');
+  } catch {
+    // Storage unavailable or full: the choice lasts for the session.
+  }
+}
