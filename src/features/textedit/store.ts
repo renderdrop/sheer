@@ -22,6 +22,8 @@ export interface EditSession {
   overflowPt: number;
   /** The substitute in use for this line, and the distinct characters set in it (E4); null = the original font. */
   fallback: { face: FallbackFace; chars: readonly string[] } | null;
+  /** The last preview request was refused (not cancelled): the box shows the CSS draft and says so (DESIGN 3.10 E6). */
+  previewRefused?: boolean;
 }
 
 /** Why the line under the pointer (or clicked) cannot be edited; `rect` is in client pixels, for the tooltip anchor. */

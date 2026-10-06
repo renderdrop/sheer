@@ -1516,6 +1516,7 @@
   "editText.commit": "Apply (Enter)",
   "editText.busy": "Applying…",
   "editText.error": "Couldn't change the line.",
+  "editText.previewRefused": "No preview for this edit. The line may still apply.",
   "editText.undo": "Edit text",
   "editText.aria.line": "Line {line} on page {page}",
   "editText.announce.start": "Editing. Enter applies, Escape cancels.",

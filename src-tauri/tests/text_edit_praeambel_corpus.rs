@@ -95,6 +95,38 @@ fn praeambel_and_two_font_lines(state: &AppState, id: DocumentId, page: PageId) 
         );
         assert!(overflow.is_ok(), "preview {scope:?}: {overflow:?}");
     }
+    // Paragraph scope on this line either previews, or the lines payload says the paragraph cannot be re-broken (a mate is `No`).
+    let reflowable = lines
+        .iter()
+        .filter(|l| l.paragraph == praeambel.paragraph)
+        .all(|l| !matches!(l.editable, LineEditable::No { .. }));
+    for (generation, variant) in [
+        (110, praeambel.text.replace("Schutz", "umfassenden Schutz")),
+        (111, praeambel.text.replace("Handlungsbedarf ", "")),
+        (
+            112,
+            format!(
+                "{} Gebiete und weitere Worte bis zum Zeilenende",
+                praeambel.text
+            ),
+        ),
+        (113, String::new()),
+    ] {
+        let r = preview(
+            state,
+            id,
+            page,
+            praeambel.key,
+            variant.clone(),
+            TextScope::Paragraph,
+            generation,
+        );
+        println!("variant {variant:?}: {r:?} (reflowable by payload: {reflowable})");
+        assert!(
+            r.is_ok() || !reflowable,
+            "paragraph preview {variant:?}: {r:?}"
+        );
+    }
     // The two lines of the paragraph with a quote in another font cannot be edited: they say so instead of opening a box.
     for needle in ["Gebiete wird durch die Folge", "Zaun) - Vorgarten"] {
         let line = lines
@@ -131,7 +163,16 @@ fn overflow_is_the_distance_past_the_paragraph_edge(
     ends.sort_by(f32::total_cmp);
     let right = ends[ends.len() / 2];
     let text = format!("{} im Freistaat", line.text.trim_end());
-    let overflow = preview(state, id, page, line.key, text.clone(), TextScope::Line, 3).unwrap();
+    let overflow = preview(
+        state,
+        id,
+        page,
+        line.key,
+        text.clone(),
+        TextScope::Line,
+        200,
+    )
+    .unwrap();
     println!("overflow {overflow} pt, edge {right}");
     // The unedited line is already at the edge: the whole of " im Freistaat" runs past it.
     assert!(overflow > 20.0, "caption says {overflow} pt");

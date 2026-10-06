@@ -90,3 +90,18 @@ describe('Umbrechen toggle', () => {
     expect(out).toEqual([{ key: 'editText.announce.reflowOn', level: 'polite' }]);
   });
 });
+
+describe('refused preview', () => {
+  it('says so in the bar instead of staying silent', () => {
+    lines.value = [line(0, 0), line(1, 0)];
+    useTextEdit.getState().patchSession({ previewRefused: true });
+    setup(<TextEditBar />);
+    expect(screen.getByRole('status').textContent).toBe('No preview for this edit. The line may still apply.');
+  });
+
+  it('shows nothing while the preview works', () => {
+    lines.value = [line(0, 0), line(1, 0)];
+    setup(<TextEditBar />);
+    expect(screen.queryByRole('status')).toBeNull();
+  });
+});

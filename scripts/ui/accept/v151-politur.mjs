@@ -131,13 +131,27 @@ await runSession(async ({ input, dialogs, ev, shot }) => {
     await input.hover({ text: PRE });
     await sleep(500);
     await input.click({ text: PRE });
-    await sleep(900);
-    const tip = await ev(`document.querySelector('[data-surface="textedit-refusal"]')?.textContent ?? null`);
+    await input
+      .waitFor(`!!document.querySelector('[data-textedit-box]')`, { timeoutMs: 8000, what: 'edit box' })
+      .catch(() => {});
     const box = await ev(`!!document.querySelector('[data-textedit-box]')`);
     const bar = await ev(`!!document.querySelector('[data-surface="textedit-bar"]')`);
+    const sw = await ev(`(() => { const s = document.querySelector('[data-surface="textedit-bar"] [role="switch"]');
+      return s ? { checked: s.getAttribute('aria-checked'), disabled: s.disabled || s.getAttribute('aria-disabled') === 'true', title: s.title || s.getAttribute('title') } : null; })()`);
+    C('Präambel: edit box and mini bar open', box && bar, `box=${box} bar=${bar}`);
+    await input.press('End');
+    await input.insertText(' x');
+    await sleep(1500);
+    const pic = await ev(`!!document.querySelector('[data-textedit-preview]')`);
+    const err = await ev(
+      `document.querySelector('[data-surface="textedit-bar"] [role="status"], [data-surface="textedit-bar"] [role="alert"]')?.textContent ?? null`,
+    );
     await shot('v151/e4-04-preamble');
-    C('Präambel: refusal tooltip shown', !!tip, tip ?? 'no tooltip');
-    C('Präambel: no edit box, no mini bar', !box && !bar, `box=${box} bar=${bar}`);
+    C(
+      'Präambel: real-font preview arrives after typing (or a refusal state is shown)',
+      pic || !!err,
+      `preview=${pic} caption=${err} switch=${JSON.stringify(sw)}`,
+    );
   }
   await cancelEdit({ input, ev });
   const save = await ev(`document.querySelector('[data-save-status]')?.getAttribute('data-save-status')`);

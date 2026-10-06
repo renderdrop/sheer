@@ -20,7 +20,7 @@ import { boxAnchor, boxWidthStyle, ringSpan } from './model';
 import { editKeyOf } from './keyboard';
 import { distinctChars, EDGE_GAP_PT, familyFor, overflowOf, textSpan, type Growth } from './lines';
 import { bandRows, createPreviewScheduler, inkSpan, previewScale, scaleXFor, type PreviewScheduler } from './preview';
-import { useTextEdit, type EditSession } from './store';
+import { setReflow, useTextEdit, type EditSession } from './store';
 import './textedit.css';
 
 /** One CSS px, in page space (the layer is scaled by `--page-scale`). */
@@ -190,7 +190,7 @@ export function EditBox({ session, growth, pageWidth, paragraph, pxPerPt = 1 }: 
       if (url.current !== null) URL.revokeObjectURL(url.current);
       url.current = next;
       setFrame({ url: next, rect: p.rect, pxPerPt: p.pxPerPt });
-      const patch: Partial<EditSession> = { overflowPt: Math.round(p.overflowPt * 10) / 10 };
+      const patch: Partial<EditSession> = { overflowPt: Math.round(p.overflowPt * 10) / 10, previewRefused: false };
       if (p.fallback !== null) patch.fallback = p.fallback;
       useTextEdit.getState().patchSession(patch);
     };
@@ -212,6 +212,9 @@ export function EditBox({ session, growth, pageWidth, paragraph, pxPerPt = 1 }: 
         url.current = null;
         setFrame(null);
         setInkWidth(null);
+        // A refused preview is said, never silent; a refused paragraph re-break falls back to the line (the effect re-requests it).
+        useTextEdit.getState().patchSession({ previewRefused: true });
+        if (latest.current.reflow) setReflow(false);
       },
     });
     scheduler.current = made;

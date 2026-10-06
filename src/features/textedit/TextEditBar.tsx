@@ -116,6 +116,14 @@ export function TextEditBar({ ref }: { ref?: Ref<HTMLDivElement> }) {
           </span>
         </>
       )}
+      {session.previewRefused === true && !busy && !failed && (
+        <>
+          <Divider />
+          <span role="status" className="t-caption px-1 text-text-muted">
+            {t('editText.previewRefused')}
+          </span>
+        </>
+      )}
       {busy && (
         <>
           <Divider />
