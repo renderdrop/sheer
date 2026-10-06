@@ -3,14 +3,16 @@ phase: v1.5.1 (session topic "v1.5.1 Text bearbeiten – Zeile bearbeiten", ADR-
 version: 1.5.0-beta.1 (tag v1.5.0-beta.1, pre-release)
 current_item: v1.5.1 done as pre-release v1.5.0-beta.1 (ADR-128). Next: v1.5.2 (paragraph reflow, fallback carry-overs) or Politur v1.5 (substitute notice after Apply = major)
 last_completed: v1.5.1 wave 2 — seam 351fea5, P1–P3 13ca75b, P4 266bc35 (review PASS), gate fixes 8a78a0b; corpus gate 32 files 99.8 % found / 90.8 % editable; surface gate 958/958, smoke 16/16; installed-build acceptance (Windows, mouse) no blocker; designer PASS (minors), security-reviewer PASS
-loop_count_this_session: 1
+loop_count_this_session: 1 (session closed: report docs/reports/2026-10-06-v1.5.1-welle2-beta.md, STOP set)
 open_blockers: 2 (B-002, B-005, human-only). B-006 and B-007 resolved by the owner (ADR-128). Path guard (ADR-127) allows the project memory folder (ADR-128)
 notes: ADR-120: every loop starts with `bash scripts/ci-status.sh` (last completed run on main, never wait); red = fix first. v1.4 W0 2a1e3f3 (stable RustCrypto line), seam 586feeb. Release v1.3.0 published.
   Owner re-check on the Mac after v1.2.0: A10 "Save as PDF" in the print dialog. Screenshot series docs/review/v1.2/ (not tracked), motion recordings docs/review/v1.2/motion/.
   After v1.2.0: "Politur v1.3" (ROADMAP, carried minors), then the v1.3 "Citations" spec. Never run the dev window while agents run cargo/vitest;
   stop it with taskkill sheer.exe + Stop-Process on tauri.js/vite.js only. Acceptance helpers in the session scratchpad (keys.ps1, wheel.ps1, shotsize.ps1, dnd.ps1 with topmost guard).
 ci_log: (ADR-120 corrected — package commit → CI run; result filled in at the next push)
-  - 13ca75b wave 2 P1–P3 (textedit frontend) → run #97 (37445931977) pending
+  - 66b8cee release v1.5.0-beta.1 → run #99 (37451474704) GREEN; release run #13 (37451474946) success (DMG + NSIS, pre-release)
+  - 266bc35 + 8a78a0b P4 + gate fixes → run #98 (37450352909) GREEN
+  - 13ca75b wave 2 P1–P3 (textedit frontend) → run #97 (37445931977) GREEN
   - 351fea5..0edc161 seam + ADR-128 + state → run #96 (37443471709) GREEN
   - 55a92e0 / 540ae3c guard-paths → run #94 failure, #95 cancelled; superseded by #96 GREEN
   - 55a92e0 guard-paths hook (ADR-127) → run #94 (37442441626) pending; follow-up fix (sed script ≠ path) pushed after it — read both next session
