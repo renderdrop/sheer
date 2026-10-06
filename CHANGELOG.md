@@ -6,6 +6,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.5.0] - 2026-10-06
+
+v1.5 "Edit text" (ADR-125, ADR-128, ADR-129). Unsigned installers (BLOCKERS B-002).
+
+### Added
+- While you type, the line is drawn in the document's real font (rendered by the app 60 ms after the last key, 100 ms when busy).
+- Umbrechen (wrap in paragraph): when an edited line gets longer or shorter, its words re-flow into the following lines of the same
+  paragraph; at most one line is added and only when there is room; text never moves to another column or page.
+
+### Changed
+- Centred and right-aligned lines keep their alignment when you change them (headings stay centred, address blocks stay right-aligned).
+- The edit box grows with the text; the part past the free width sits on a hatch with a clear marker; characters set in the substitute
+  font are dotted while editing; the mini bar covers less of the page.
+- Recovery banner: "Show all" sits on the summary line.
+
+### Fixed
+- The notice naming the substitute font now also appears after Apply.
+- A draft the app cannot render no longer leaves an outdated preview on screen.
+
 ## [1.5.0-beta.1] - 2026-10-06
 
 Pre-release of v1.5 "Edit text" (ADR-125, ADR-128): line-wise editing of existing text, usable but not final (Politur v1.5 in ROADMAP.md). Unsigned installers (BLOCKERS B-002).

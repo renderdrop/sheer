@@ -319,37 +319,32 @@ new engine capability or dependency is needed. Not picked by the loop before v1.
 ### v1.5 "Edit text"
 - [x] v1.5 spec — designer spec + architect ADR (content-stream text editing with embedded fonts, fallback font matching) (ADR-125, ARCHITECTURE §13, DESIGN §3.10; feasibility spike pdfwrite/textedit, report docs/reports/2026-10-06-v1.5-phase1-text-machbarkeit.md)
 - [x] v1.5.1 — Edit existing text line- and paragraph-wise with embedded fonts (line-wise, pre-release v1.5.0-beta.1, ADR-128; paragraph reflow → v1.5.2)
-- [ ] v1.5.2 — Otherwise a bundled fallback (Arimo/Tinos/Cousine, ADR-125 §4, changed words only) with a notice; paragraph reflow, never across pages
-  - spike carry-overs: stream order ≠ reading order (form footers), glyph-outline check in the font program, right/centre-aligned runs, cumulative decoded-bytes budget across Form XObjects + visited-form cycle check, corpus ≥ 30 files and click-mapping ≥ 90 % gate
-- [ ] Politur v1.5
-  - session "Politur v1.5 + v1.5.2" (ADR-129) open items:
-    - acceptance: a changed justified line loses its justification (set ragged in a justified paragraph; ADR-125 §2 word-gap redistribution)
-    - acceptance: paragraph rule / grouping still splits a justified paragraph at a stretched "Ende … des" line (E4 page 1)
-    - welcome document: replacing the line "Diese Datei hat sich selbst geöffnet…" answers tooComplex (preview and apply)
-    - B1 review: TEXT_PREVIEW_TIMEOUT unused; admit() before permission checks; map clear at 256 pages; text_basis/contained duplicated; MAX_RUNNING not in limits.rs
-    - B2 review: one-line alignment uses one text block per page (multi-column pages can misclassify Right); band lookup O(segments×bands); negative tests (list item, indent, two columns)
-    - B3 review: reflow fill O(words²) per line; direct indexing; per-line page re-scan; tests for justified-last-line and empty-line removal
+- [x] v1.5.2 — Otherwise a bundled fallback (Arimo/Tinos/Cousine, ADR-125 §4, changed words only) with a notice; paragraph reflow, never across pages (ADR-129: scope paragraph re-break inside one paragraph, Umbrechen toggle; live line preview in the real font)
+- [x] Politur v1.5 — owner scope (ADR-129 §2): substitute notice after Apply, growing edit box, centred/right-aligned lines keep their alignment, designer minors of the beta (hatch, marker, dotted substitutes, calmer mini bar, recovery toggle)
+- [x] v1.5 acceptance — installed build with the mouse (E4 Vorgartensatzung, DD1 Handout, Rechnung 2025), one blocker fixed (centred/right lines failed to apply, ccc12ae + 0d6f15c), designer round, tag v1.5.0
+- [ ] Politur v1.5 (Rest) — carried over from v1.5
+  - acceptance (major): the substitute notice stays after Undo and after switching documents (clear it on undo/redo, document switch, tool release)
+  - acceptance: the edit box clips the start of centred/right-aligned lines while typing (the preview grows from the anchor, the box from the start)
+  - acceptance: the notice lists the characters separated by spaces ("- M t"); quote them or use a list format
+  - acceptance: a changed justified line loses its justification (ADR-125 §2 word-gap redistribution)
+  - acceptance: paragraph grouping still splits a justified paragraph at a stretched "Ende … des" line (E4 page 1)
+  - welcome document: replacing the line "Diese Datei hat sich selbst geöffnet…" answers tooComplex (preview and apply)
+  - B1 review: TEXT_PREVIEW_TIMEOUT unused; admit() before permission checks; map clear at 256 pages; text_basis/contained duplicated; MAX_RUNNING not in limits.rs
+  - B2 review: one-line alignment uses one text block per page (multi-column pages); band lookup O(segments×bands); negative tests
+  - B3 review: reflow fill O(words²) per line; direct indexing; per-line page re-scan; tests for justified-last-line and empty-line removal
+  - fix review (minor): ignored corpus tests only; cross-chain delta counts kept glyphs between deleted ones
   - approval-signed files: edit after the breaksSignature confirm (ADR-125 addendum 3; needs a byte-range-aware write)
-  - std14 widths: test pinning macron/plusminus/mu/periodcentered/divide per face (B2 review)
+  - std14 widths: test pinning macron/plusminus/mu/periodcentered/divide per face
   - rewritten content streams are written uncompressed (text_save.rs) → Flate them
   - walker work budget (MAX_REDACT_WORK) shared with the text-edit walk; neutral limit key for walker ops exhaustion
   - cooperative cancel inside ops_walk/text_lines after a probe deadline; verify subsetter output re-parse; CIDToGIDMap cap test
-  - re-edit of a line that already holds a fallback word is tooComplex; params.reason vs what on read_only refusals (ARCHITECTURE §13.5)
-  - refusal tooltip keys missing for clip, inForm, actualText, script, notFileSource, unmapped, tooComplex (DESIGN §3.10 E5)
+  - re-edit of a line that already holds a fallback word is tooComplex; params.reason vs what on read_only refusals
   - Symbol/ZapfDingbats lines are Missing (no verified widths)
-  - v1.5.1 acceptance (installed build, major): the substitute notice (E4) does not appear after Apply — FallbackNotice anchors to the
-    mini bar's Font button, which is gone once the box closes; anchor it to the last edit box rect (store `anchor`) instead
-  - v1.5.1 acceptance (minor): the edit box keeps the original line width while typing (text runs past its outline); E2 growth
-  - live Rust re-render of the draft (E1 last bullet, deferred by ADR-128): the box draws a CSS approximation (upright sans for an italic line)
-  - centred/right-aligned lines keep their start on Apply (keepStart): "Präambel 2026" is no longer centred (v1.5.2 carry-over)
-  - designer (minor): mini bar over page text (move to a calmer spot); overflow part has no 12 % hatch, danger marker hard to tell from
-    the caret; dotted underline for substitute glyphs while editing not visible; paragraph rule covers only 6 of 17 lines of a justified paragraph
-  - P2: Font popover status shows Embedded/Not embedded only (no subset flag from Rust); a notice that does not fit keeps its queue slot
-  - P1: a single-line paragraph's limit ignores the "widest line" cap (grows to the next object or crop − 12 pt)
-  - security (low): autosave purge discards delete errors (`let _ =`); log a count of failed deletes, never paths
-  - recovery banner (review minor): Show all sits beside Discard all / Restore all; check crowding at 960 px
-  - acceptance not done by mouse: refusal tooltips on real refused lines, double-click word selection, Font popover, screen reader (E-AC 7), reduced motion (E-AC 8), macOS
-- [ ] v1.5 acceptance — installed build with the mouse, designer round, tag v1.5.0
+  - P2: a notice that does not fit keeps its queue slot; P1: a single-line paragraph's limit ignores the "widest line" cap
+  - designer v1.5.0 (minor): with Umbrechen on the box runs past the paragraph's right edge; mini bar covers the heading above;
+    the notice after Apply covers neighbouring lines; refusal tooltip 2 px from the hover outline
+  - security v1.5.0 (low): reflow paragraph-extension loop O(lines²·paragraph) (cap or set); preview 8-thread cap is global (per-document cap)
+  - not accepted by mouse: double-click word selection, Font popover, screen reader (E-AC 7), reduced motion (E-AC 8), macOS
 
 ### v1.6 "Smart links"
 - [ ] v1.6 spec — designer spec (detection hints, back navigation)
