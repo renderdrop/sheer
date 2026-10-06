@@ -30,16 +30,57 @@ let code = 0;
 try {
   const input = createInput(session, { guard });
   const dialogs = createDialogs(session, input);
+  const ev = (js) => session.evaluate(js);
+  const SC = `document.querySelector('[data-action-scope="canvas"] > [role="region"]')`;
+  const RUN = '[data-links-list] [data-smartlink][data-link-kind="footnote"] [data-smartlink-run]';
   const run = async () => {
     guard.step('queue open');
-    await dialogs.answerOpen('review/owner/corpus/2025_Rechnung_202500100.pdf');
+    await dialogs.answerOpenMany(['review/owner/corpus/Ausformulierung 2.0.pdf']);
     guard.step('real Ctrl+O');
     os('-ProcId', String(session.pid), '-Action', 'key', '-Keys', '^o');
-    await input.waitForTarget({ selector: 'canvas' }, { timeoutMs: 20000 });
-    guard.step('real click on page area');
-    os('-ProcId', String(session.pid), '-Action', 'click', '-Fx', '0.5', '-Fy', '0.5');
-    await input.sleep(500);
-    console.log('screenshot:', await input.screenshot('accept-smoke-real.png'));
+    await input.waitFor(`document.querySelectorAll('[data-page] img').length > 0`, { timeoutMs: 40000, what: 'page' });
+    guard.step('find a footnote link');
+    for (let i = 0; i < 60 && !(await ev(`!!document.querySelector('${RUN}')`)); i++) {
+      await ev(`${SC}.scrollTop += ${SC}.clientHeight * 0.8`);
+      await input.sleep(400);
+    }
+    await ev(`document.querySelector('${RUN}').scrollIntoView({ block: 'center' })`);
+    await input.sleep(600);
+    const before = await ev(`${SC}.scrollTop`);
+    const at = await ev(`(() => { const r = document.querySelector('${RUN}').getBoundingClientRect();
+      return { x: r.left + r.width / 2, y: r.top + r.height / 2, s: window.devicePixelRatio }; })()`);
+    // Diagnostics: what the page receives from the real click (target, shift state, movement).
+    await ev(`(() => { window.__smokeLog = [];
+      for (const t of ['pointerdown', 'pointerup', 'click']) document.addEventListener(t, (e) => window.__smokeLog.push(
+        [t, e.target?.getAttribute?.('data-smartlink-run') !== null ? 'run' : (e.target?.tagName ?? '?'), e.shiftKey, Math.round(e.clientX), Math.round(e.clientY), e.defaultPrevented]), true);
+      return true; })()`);
+    console.log('target centre (CSS px):', Math.round(at.x), Math.round(at.y));
+    guard.step('real click on the footnote marker');
+    os(
+      '-ProcId',
+      String(session.pid),
+      '-Action',
+      'clickclient',
+      '-Cx',
+      String(at.x),
+      '-Cy',
+      String(at.y),
+      '-Scale',
+      String(at.s),
+    );
+    await input.sleep(1500);
+    console.log('events:', JSON.stringify(await ev('window.__smokeLog')));
+    const after = await ev(`${SC}.scrollTop`);
+    console.log(`jump: scrollTop ${before} -> ${after} ${after !== before ? 'PASS' : 'FAIL'}`);
+    if (after === before) code = 1;
+    console.log('screenshot:', await input.screenshot('v160/smoke-real-jumped.png'));
+    guard.step('real Alt+Left');
+    os('-ProcId', String(session.pid), '-Action', 'key', '-Keys', '%{LEFT}');
+    await input.sleep(1000);
+    const back = await ev(`${SC}.scrollTop`);
+    console.log(`back: scrollTop ${back} (expected ${before}) ${Math.abs(back - before) <= 1 ? 'PASS' : 'FAIL'}`);
+    if (Math.abs(back - before) > 1) code = 1;
+    console.log('screenshot:', await input.screenshot('v160/smoke-real-back.png'));
   };
   await Promise.race([run(), guard.aborted]);
 } catch (e) {
