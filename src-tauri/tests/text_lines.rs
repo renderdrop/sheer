@@ -455,6 +455,79 @@ fn a_stretched_justified_line_with_wide_gaps_stays_in_its_paragraph() {
 }
 
 #[test]
+fn a_strongly_stretched_line_between_two_whole_lines_stays_in_its_paragraph() {
+    // The middle line is two words 78 pt apart (about 28 spaces); its right edge is 2 pt beyond the others (a stretched
+    // trailing space).
+    let content = "BT /F1 10 Tf 100 700 Td (aaaaaaaaaaaaaaaaaaaa) Tj ET \
+                   BT /F1 10 Tf 100 688 Td (aaa) Tj ET \
+                   BT /F1 10 Tf 196.2 688 Td (aaa) Tj ET \
+                   BT /F1 10 Tf 100 676 Td (aaaaaaaaaaaaaaaaaaaa) Tj ET";
+    let (doc, page) = build(content, &[]);
+    let page_lines = doc.lines(page, &[]).unwrap();
+    assert_eq!(page_lines.lines.len(), 3);
+    assert_eq!(page_lines.paragraphs.len(), 1);
+    assert_eq!(page_lines.paragraphs[0].lines, 0..3);
+}
+
+#[test]
+fn a_strongly_stretched_line_needs_whole_lines_on_both_sides_at_a_regular_step() {
+    // Only one whole neighbour: a table row under a heading line, not a justified line.
+    let content = "BT /F1 10 Tf 100 700 Td (aaaaaaaaaaaaaaaaaaaa) Tj ET \
+                   BT /F1 10 Tf 100 688 Td (aaa) Tj ET \
+                   BT /F1 10 Tf 194.5 688 Td (aaa) Tj ET";
+    let (doc, page) = build(content, &[]);
+    assert_eq!(doc.lines(page, &[]).unwrap().lines.len(), 3);
+    // Whole lines on both sides but at an irregular step.
+    let content = "BT /F1 10 Tf 100 700 Td (aaaaaaaaaaaaaaaaaaaa) Tj ET \
+                   BT /F1 10 Tf 100 688 Td (aaa) Tj ET \
+                   BT /F1 10 Tf 194.5 688 Td (aaa) Tj ET \
+                   BT /F1 10 Tf 100 660 Td (aaaaaaaaaaaaaaaaaaaa) Tj ET";
+    let (doc, page) = build(content, &[]);
+    assert_eq!(doc.lines(page, &[]).unwrap().lines.len(), 4);
+}
+
+#[test]
+fn two_columns_and_a_table_row_between_whole_lines_are_never_one_band() {
+    // Whole lines above and below, a row of two cells (edges differ from the whole lines) in between.
+    let content = "BT /F1 10 Tf 100 700 Td (aaaaaaaaaaaaaaaaaaaa) Tj ET \
+                   BT /F1 10 Tf 100 688 Td (aaaaaaaa) Tj ET \
+                   BT /F1 10 Tf 200 688 Td (aaaaaaaa) Tj ET \
+                   BT /F1 10 Tf 100 676 Td (aaaaaaaaaaaaaaaaaaaa) Tj ET";
+    let (doc, page) = build(content, &[]);
+    assert_eq!(doc.lines(page, &[]).unwrap().lines.len(), 4);
+    // Two text columns of three lines each stay six lines.
+    let mut content = String::new();
+    for row in 0..3 {
+        let y = 700 - 12 * row;
+        content.push_str(&format!(
+            "BT /F1 10 Tf 100 {y} Td (aaaaaaaaaa) Tj ET BT /F1 10 Tf 300 {y} Td (aaaaaaaaaa) Tj ET "
+        ));
+    }
+    let (doc, page) = build(&content, &[]);
+    assert_eq!(doc.lines(page, &[]).unwrap().lines.len(), 6);
+}
+
+#[test]
+fn a_one_line_heading_is_judged_against_its_own_column() {
+    // Two columns of two lines (x 100..155.6 and x 300..355.6); a line centred on the right column is centred, not
+    // judged against the span of both columns.
+    let content = "BT /F1 10 Tf 100 700 Td (aaaaaaaaaa) Tj ET BT /F1 10 Tf 100 688 Td (aaaaaaaaaa) Tj ET \
+                   BT /F1 10 Tf 300 600 Td (aaaaaaaaaa) Tj ET BT /F1 10 Tf 300 588 Td (aaaaaaaaaa) Tj ET \
+                   BT /F1 10 Tf 316.7 640 Td (aaaa) Tj ET";
+    let (doc, page) = build(content, &[]);
+    let page_lines = doc.lines(page, &[]).unwrap();
+    let heading = page_lines
+        .lines
+        .iter()
+        .find(|l| l.text == "aaaa")
+        .expect("heading");
+    assert_eq!(
+        page_lines.paragraphs[heading.paragraph as usize].align,
+        Align::Center
+    );
+}
+
+#[test]
 fn table_cells_and_columns_are_not_merged_by_the_justified_rule() {
     let content = "BT /F1 10 Tf 100 700 Td (aaaaaaaa) Tj ET \
                    BT /F1 10 Tf 166.72 700 Td (aaaaaaaa) Tj ET \

@@ -230,6 +230,7 @@ fn join_justified_bands(segments: &mut Vec<(usize, Segment)>, extents: &HashMap<
         .collect();
     // Bands: consecutive segments of one cluster on one baseline.
     let mut bands: Vec<std::ops::Range<usize>> = Vec::new();
+    let mut band_of: Vec<usize> = Vec::with_capacity(info.len());
     let mut at = 0;
     while at < info.len() {
         let mut end = at + 1;
@@ -242,6 +243,7 @@ fn join_justified_bands(segments: &mut Vec<(usize, Segment)>, extents: &HashMap<
                 end += 1;
             }
         }
+        band_of.extend(std::iter::repeat_n(bands.len(), end - at));
         bands.push(at..end);
         at = end;
     }
@@ -265,9 +267,8 @@ fn join_justified_bands(segments: &mut Vec<(usize, Segment)>, extents: &HashMap<
         let moderate = parts
             .windows(2)
             .all(|w| w[1].x0 - w[0].x1 <= STRETCH_IN_SPACES * w[1].space.max(0.1 * size));
-        if !moderate {
-            continue;
-        }
+        // The edges of a justified line agree up to its stretched trailing space.
+        let tolerance = 1.0 + parts[0].space.max(0.1 * size);
         let neighbour = |n: Option<&Seg>| {
             n.is_some_and(|n| {
                 let step = (n.base - parts[0].base).abs();
@@ -275,13 +276,27 @@ fn join_justified_bands(segments: &mut Vec<(usize, Segment)>, extents: &HashMap<
                     && step > 0.2 * size
                     && step <= 1.6 * size.max(n.size)
                     && (n.size - size).abs() <= 0.1 * size.max(n.size)
-                    && (n.x0 - x0).abs() <= 1.0
-                    && (n.x1 - x1).abs() <= 1.0
+                    && (n.x0 - x0).abs() <= tolerance
+                    && (n.x1 - x1).abs() <= tolerance
             })
         };
         let before = single_of(bi.checked_sub(1).and_then(|b| bands.get(b)));
         let after = single_of(bands.get(bi + 1));
-        if neighbour(before) || neighbour(after) {
+        let (near_before, near_after) = (neighbour(before), neighbour(after));
+        // A strongly stretched line (a few words across the whole measure) must sit between two whole lines of the
+        // same edges and a regular line step; a table row or a column pair never does.
+        let join = if moderate {
+            near_before || near_after
+        } else {
+            match (before, after) {
+                (Some(b), Some(a)) if near_before && near_after => {
+                    let (s1, s2) = (parts[0].base - b.base, a.base - parts[0].base);
+                    (s1 - s2).abs() <= 0.15 * s1.abs().max(s2.abs())
+                }
+                _ => false,
+            }
+        };
+        if join {
             for i in band.clone() {
                 joined[i] = true;
             }
@@ -289,8 +304,7 @@ fn join_justified_bands(segments: &mut Vec<(usize, Segment)>, extents: &HashMap<
     }
     let mut out: Vec<(usize, Segment)> = Vec::with_capacity(segments.len());
     for (i, (cluster, seg)) in std::mem::take(segments).into_iter().enumerate() {
-        let continues =
-            i > 0 && joined[i] && bands.iter().any(|b| b.contains(&i) && b.contains(&(i - 1)));
+        let continues = i > 0 && joined[i] && band_of[i] == band_of[i - 1];
         match out.last_mut() {
             Some((_, last)) if continues => last.runs.extend(seg.runs),
             _ => out.push((cluster, seg)),
@@ -851,6 +865,9 @@ fn paragraphs(
         .iter()
         .zip(segments)
         .map(|(line, (cluster, _))| {
+            if line.text.trim().is_empty() {
+                return None; // a blank line separates paragraphs
+            }
             let span = line.span()?;
             let family = line
                 .font_name
@@ -890,7 +907,7 @@ fn paragraphs(
         let right_edges_equal = inner.len() >= 2 && {
             let lo = inner.iter().map(|m| m.x1).fold(f64::INFINITY, f64::min);
             let hi = inner.iter().map(|m| m.x1).fold(f64::NEG_INFINITY, f64::max);
-            hi - lo <= 1.0
+            hi - lo <= 0.3 * inner[0].size
         };
         let gaps: Vec<f64> = inner.iter().filter_map(|m| m.gap).collect();
         let varying = gaps.len() >= 2 && {
@@ -942,17 +959,33 @@ fn paragraphs(
         }
     }
     // A one-line paragraph has no edges of its own to tell its alignment: judge it against the text block it sits in
-    // (the edges of the multi-line paragraphs of its direction).
-    let mut blocks: HashMap<usize, (f64, f64)> = HashMap::new();
+    // (the edges of the multi-line paragraphs of its direction). Blocks that overlap horizontally are one column;
+    // a multi-column page has one block per column.
+    let mut blocks: HashMap<usize, Vec<(f64, f64)>> = HashMap::new();
     for p in paragraphs.iter().filter(|p| p.lines.len() >= 2) {
+        let mut extent: Option<(usize, f64, f64)> = None;
         for m in metrics[p.lines.start as usize..p.lines.end as usize]
             .iter()
             .flatten()
         {
-            let e = blocks.entry(m.cluster).or_insert((m.x0, m.x1));
-            e.0 = e.0.min(m.x0);
-            e.1 = e.1.max(m.x1);
+            let e = extent.get_or_insert((m.cluster, m.x0, m.x1));
+            e.1 = e.1.min(m.x0);
+            e.2 = e.2.max(m.x1);
         }
+        if let Some((cluster, x0, x1)) = extent {
+            blocks.entry(cluster).or_default().push((x0, x1));
+        }
+    }
+    for columns in blocks.values_mut() {
+        columns.sort_by(|a, b| a.0.total_cmp(&b.0));
+        let mut merged: Vec<(f64, f64)> = Vec::with_capacity(columns.len());
+        for &(x0, x1) in columns.iter() {
+            match merged.last_mut() {
+                Some(last) if x0 <= last.1 => last.1 = last.1.max(x1),
+                _ => merged.push((x0, x1)),
+            }
+        }
+        *columns = merged;
     }
     // A direction without any multi-line paragraph (an invoice's address block, say) is judged against all its lines.
     // That judgement is conservative (`classify_loose`).
@@ -976,8 +1009,21 @@ fn paragraphs(
             p.align = classify_loose(cluster_lines, (m.x0, m.x1, m.size));
             continue;
         }
-        let Some(&(left, right)) = blocks.get(&m.cluster) else {
+        let Some(columns) = blocks.get(&m.cluster) else {
             continue;
+        };
+        // The line's own column(s): every one it overlaps, else the nearest.
+        let mut own = columns.iter().filter(|c| c.0 < m.x1 && c.1 > m.x0);
+        let (left, right) = match own.next() {
+            Some(first) => own.fold(*first, |a, c| (a.0.min(c.0), a.1.max(c.1))),
+            None => {
+                let mid = (m.x0 + m.x1) / 2.0;
+                let dist = |c: &(f64, f64)| (mid - (c.0 + c.1) / 2.0).abs();
+                match columns.iter().min_by(|a, b| dist(a).total_cmp(&dist(b))) {
+                    Some(c) => *c,
+                    None => continue,
+                }
+            }
         };
         if m.x0 - left <= m.size {
             continue; // starts at the block's left edge: left
