@@ -204,6 +204,11 @@ export function EditBox({ session, growth, pageWidth, paragraph, pxPerPt = 1 }: 
           scale: previewScale(latest.current.pxPerPt, window.devicePixelRatio || 1),
         }),
       onPreview,
+      onFailure: () => {
+        if (url.current !== null) URL.revokeObjectURL(url.current);
+        url.current = null;
+        setFrame(null);
+      },
     });
     scheduler.current = made;
     return () => {

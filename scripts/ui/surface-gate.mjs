@@ -358,21 +358,47 @@ async function sweepTextEdit() {
     '[data-surface="textedit-bar"]',
   );
   // v1.5.2: the widest state of the bar: Umbrechen shown (a line of a paragraph with 2+ lines) together with the overflow caption.
+  // text.pdf has no paragraph of two lines (30 pt pitch); the welcome document has one on page 1. The line is found through
+  // textEditLines, clicked by its box, and the gate goes back to the document it came from afterwards.
   await probe(
     'textedit-bar-reflow',
     async () => {
-      await openLine();
-      await send('Input.insertText', {
-        text: ' wide wide wide wide wide wide wide wide wide wide wide wide wide wide wide',
-      });
+      const docs = stores('stores/documents.ts');
+      await ev(
+        `(async()=>{window.__gateDoc=${docs}.useDocuments.getState().activeId; await ${stores('features/tour/runtime.ts')}.openWelcome()})()`,
+      );
+      await sleep(2500);
+      await ev(`(async()=>{${stores('stores/ui.ts')}.useUi.getState().setMode('edit')})()`);
+      await sleep(300);
+      // selectTool, not a click: a click on the active tool releases it.
+      await ev(`(async()=>{${stores('stores/ui.ts')}.useUi.getState().selectTool('editText')})()`);
+      await ev(`(async()=>{${stores('features/recovery/store.ts')}.useRecovery.getState().hide()})()`);
+      const box = await ev(
+        `(async()=>{const api=await import('/src/api/textEdit.ts'); const id=${docs}.useDocuments.getState().activeId; const r=await api.textEditLines(id,0); const c={}; r.lines.forEach(l=>c[l.paragraph]=(c[l.paragraph]||0)+1); const m=r.lines.find(l=>c[l.paragraph]>1&&l.editable.type!=='no'); return m?m.box:null})()`,
+      );
+      if (!box) throw new Error('no paragraph of 2+ lines in the welcome document');
+      await ev(`document.querySelector('[data-page="1"]')?.scrollIntoView({ block: 'start' })`);
+      await sleep(400);
+      const r = await pageRect();
+      const k = r.width / 612;
+      const x = r.left + (box.x + Math.min(40, box.w / 2)) * k;
+      const y = r.top + (box.y + box.h / 2) * k;
+      await mouse('mouseMoved', x, y, { button: 'none' });
+      await mouse('mousePressed', x, y);
+      await mouse('mouseReleased', x, y);
       let toggle = false;
-      for (let i = 0; i < 10 && !toggle; i++) {
+      for (let i = 0; i < 15 && !toggle; i++) {
         toggle = await ev(`!!document.querySelector('[data-surface="textedit-bar"] [role="switch"]')`);
         if (!toggle) await sleep(150);
       }
-      if (!toggle) throw new Error('no Umbrechen toggle: the opened line is not in a paragraph of 2+ lines');
+      if (!toggle) throw new Error('no Umbrechen toggle on a line of a 2-line paragraph');
+      await send('Input.insertText', { text: ' wide wide wide wide wide wide wide wide wide wide' });
     },
-    () => ev(`document.querySelector('[data-surface="textedit-bar"]') !== null`),
+    async () => {
+      await escape();
+      await ev(`(async()=>{${stores('stores/documents.ts')}.useDocuments.getState().setActive(window.__gateDoc)})()`);
+      await sleep(800);
+    },
     '[data-surface="textedit-bar"]',
   );
   await probe(

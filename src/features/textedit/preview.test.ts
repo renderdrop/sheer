@@ -102,6 +102,30 @@ describe('createPreviewScheduler', () => {
     await Promise.resolve();
     expect(onPreview).not.toHaveBeenCalled();
   });
+
+  it('reports a refused draft but not a cancelled one', async () => {
+    const onFailure = vi.fn();
+    const refused = createPreviewScheduler({
+      run: () => Promise.reject({ code: 'unsupported_feature' }),
+      onPreview: vi.fn(),
+      onFailure,
+    });
+    refused.schedule();
+    vi.advanceTimersByTime(60);
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(onFailure).toHaveBeenCalledOnce();
+    const cancelled = createPreviewScheduler({
+      run: () => Promise.reject({ code: 'cancelled' }),
+      onPreview: vi.fn(),
+      onFailure,
+    });
+    cancelled.schedule();
+    vi.advanceTimersByTime(60);
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(onFailure).toHaveBeenCalledOnce();
+  });
 });
 
 describe('helpers', () => {

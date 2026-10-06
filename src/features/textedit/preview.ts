@@ -22,6 +22,8 @@ export interface PreviewScheduler {
 export interface SchedulerOptions {
   run: (generation: number) => Promise<TextPreview>;
   onPreview: (preview: TextPreview) => void;
+  /** The newest request failed for another reason than `cancelled` (a refused draft): the shown picture is out of date. */
+  onFailure?: () => void;
   now?: () => number;
 }
 
@@ -49,9 +51,11 @@ export function createPreviewScheduler(options: SchedulerOptions): PreviewSchedu
         done();
         if (!disposed && generation === latest) options.onPreview(preview);
       },
-      () => {
-        // `cancelled` (a newer request exists) and every other failure: the draft stays as it is on screen.
+      (error: unknown) => {
+        // `cancelled` (a newer request exists) is ignored; any other failure of the newest request drops the stale picture.
         done();
+        const code = typeof error === 'object' && error !== null ? (error as { code?: unknown }).code : undefined;
+        if (!disposed && generation === latest && code !== 'cancelled') options.onFailure?.();
       },
     );
   };
