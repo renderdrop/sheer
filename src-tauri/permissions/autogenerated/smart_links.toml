@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-smart-links"
+description = "Enables the smart_links command without any pre-configured scope."
+commands.allow = ["smart_links"]
+
+[[permission]]
+identifier = "deny-smart-links"
+description = "Denies the smart_links command without any pre-configured scope."
+commands.deny = ["smart_links"]

@@ -28,6 +28,7 @@
     "allow-cancel-search",
     "allow-get-page-links",
     "allow-open-link",
+    "allow-smart-links",
     "allow-list-annotations",
     "allow-list-document-annotations",
     "allow-get-annotation-quote",

@@ -380,6 +380,10 @@ pub enum WireRequest {
         id: DocumentId,
         engine_index: u32,
     },
+    SmartText {
+        id: DocumentId,
+        engine_index: u32,
+    },
     ImportAnnotations {
         id: DocumentId,
         page_index: u32,
@@ -543,6 +547,7 @@ pub enum WireReply {
     PageLinks(Vec<WireLink>),
     PageLabels(Vec<Option<String>>),
     FirstPageHints(crate::model::bibliography::FirstPageHints),
+    SmartText(crate::smartlinks::model::PageText),
     Annotations(Vec<Imported>),
     /// `SetAnnotationsHidden`, `SetPageRotations`, `SetCropBox`, `CloseSnapshot`, `TruncatePages`, `Release` without snapshot, `Close`.
     Done,

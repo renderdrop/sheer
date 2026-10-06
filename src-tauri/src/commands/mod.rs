@@ -61,6 +61,7 @@ pub mod search;
 pub mod sig_validate;
 pub mod sign;
 pub mod signatures;
+pub mod smart_links;
 pub mod text;
 pub mod text_edit;
 pub mod text_preview;
@@ -76,9 +77,9 @@ use std::time::Instant;
 use tauri::path::BaseDirectory;
 use tauri::{AppHandle, Manager, State, WebviewWindow};
 use tauri_plugin_dialog::DialogExt;
-use zeroize::Zeroizing;
 
 use crate::automation::dialogs::DialogSeam;
+use zeroize::Zeroizing;
 
 use crate::documents::intake::{self, Admitted};
 use crate::documents::{
@@ -187,6 +188,8 @@ pub struct AppState {
     autosave: Arc<std::sync::OnceLock<Arc<crate::storage::autosave::Autosave>>>,
     /// The early recent previews waiting for their render (see [`PreviewQueue`]).
     previews: Arc<PreviewQueue>,
+    /// The smart-link indexes of the open documents (`smart_links`, ADR-132).
+    smart: Arc<crate::smartlinks::index::Store>,
 }
 
 /// Jobs the preview queue holds at most; more are dropped.
@@ -236,6 +239,7 @@ impl AppState {
             data_dir: None,
             autosave: Arc::new(std::sync::OnceLock::new()),
             previews: Arc::new(PreviewQueue::default()),
+            smart: Arc::new(crate::smartlinks::index::Store::default()),
         }
     }
 
@@ -578,6 +582,8 @@ impl AppState {
         self.searches.cancel_document(id);
         // Its annotations and undo history go with it (a save has to come first; the UI asks before closing a document with changes).
         self.annotations.remove(id);
+        // Its smart-link index (detected links are never kept past the document).
+        self.smart.forget(id);
         // The bytes of the sources it took pages from are not needed any more.
         self.sources.unpin_all(id);
         // Its print sets (rendered pages held in memory) go too.

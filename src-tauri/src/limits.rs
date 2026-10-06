@@ -80,6 +80,22 @@ pub const MAX_DERIVED_LINES_PER_PAGE: usize = 400;
 pub const MAX_DERIVED_LINES: usize = 100_000;
 /// Wall time for deriving an outline; the worker is blocked meanwhile (a heavy page is checked before its text layer is built too).
 pub const DERIVED_OUTLINE_BUDGET: Duration = Duration::from_secs(1);
+/// Smart links (ADR-132, DESIGN §3.11 L10). One page read by `Job::SmartText`: characters, lines, runs of a line and the time it may take
+/// on the worker; what is past a limit is left out.
+pub const MAX_SMART_CHARS_PER_PAGE: usize = 50_000;
+pub const MAX_SMART_LINES_PER_PAGE: usize = 600;
+pub const MAX_SMART_RUNS_PER_LINE: usize = 120;
+/// Longest text of one run, in characters.
+pub const MAX_SMART_RUN_CHARS: usize = 2_000;
+pub const SMART_PAGE_BUDGET: Duration = Duration::from_millis(1_500);
+/// The document index: pages read, characters kept in all, and wall time of the background build; the rest is not indexed.
+pub const MAX_SMART_INDEX_PAGES: u32 = 1_500;
+pub const MAX_SMART_INDEX_CHARS: usize = 4_000_000;
+pub const SMART_INDEX_BUDGET: Duration = Duration::from_secs(40);
+/// Most documents whose smart-link index is kept at once.
+pub const MAX_SMART_DOCS: usize = 16;
+/// Most links one page answers.
+pub const MAX_SMART_LINKS_PER_PAGE: usize = 400;
 /// Most characters of one page's text layer (UTF-16 code units, which is what JavaScript counts). A page with more is cut there and
 /// the layer says so (`truncated`).
 pub const MAX_TEXT_CHARS: usize = 200_000;

@@ -37,6 +37,7 @@ mod redact;
 pub mod remote_file;
 mod search;
 mod sizes;
+mod smart_text;
 mod snapshot;
 mod space;
 mod text;
@@ -65,6 +66,7 @@ use crate::model::geometry::{Quad, Rect};
 use crate::model::page::BoxesRead;
 use crate::model::text_edit::CharGeom;
 use crate::pdfwrite::redact::RasterPage;
+use crate::smartlinks::model::PageText;
 
 use self::guard::Health;
 pub use self::links::{LinkTarget, PageLink};
@@ -227,6 +229,12 @@ pub(crate) enum Job {
         engine_index: u32,
         reply: Reply<FirstPageHints>,
     },
+    /// One page as lines and runs with sizes, baselines and boxes, for smart links (`smart_text`, ADR-132).
+    SmartText {
+        id: DocumentId,
+        engine_index: u32,
+        reply: Reply<PageText>,
+    },
     /// The links of one page (`links`).
     PageLinks {
         id: DocumentId,
@@ -369,6 +377,9 @@ impl Job {
                 let _ = reply.send(Err(error));
             }
             Job::PageLabels { reply, .. } => {
+                let _ = reply.send(Err(error));
+            }
+            Job::SmartText { reply, .. } => {
                 let _ = reply.send(Err(error));
             }
             Job::FirstPageHints { reply, .. } => {
@@ -883,6 +894,18 @@ impl Engine {
     pub fn page_chars(&self, id: DocumentId, engine_index: u32) -> Result<Vec<CharGeom>, AppError> {
         self.call(limits::TEXT_TIMEOUT, Rank::INTERACTIVE, |reply| {
             Job::PageChars {
+                id,
+                engine_index,
+                reply,
+            }
+        })
+    }
+
+    /// Page `engine_index` (file order) as lines and runs for smart links (ADR-132, `smart_text`), at `Background` priority so renders go
+    /// first. `invalid_argument` for a page the document does not have.
+    pub fn smart_text(&self, id: DocumentId, engine_index: u32) -> Result<PageText, AppError> {
+        self.call(limits::TEXT_TIMEOUT, Rank::BACKGROUND, |reply| {
+            Job::SmartText {
                 id,
                 engine_index,
                 reply,

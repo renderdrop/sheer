@@ -367,6 +367,14 @@ impl Executor {
                 let labels = self.ask(|reply| Job::PageLabels { id, reply })?;
                 (WireReply::PageLabels(labels), Blob::None)
             }
+            R::SmartText { id, engine_index } => {
+                let text = self.ask(|reply| Job::SmartText {
+                    id,
+                    engine_index,
+                    reply,
+                })?;
+                (WireReply::SmartText(text), Blob::None)
+            }
             R::FirstPageHints { id, engine_index } => {
                 let hints = self.ask(|reply| Job::FirstPageHints {
                     id,

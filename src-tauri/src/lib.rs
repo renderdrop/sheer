@@ -20,6 +20,7 @@ pub mod platform;
 pub mod print;
 pub mod security;
 pub mod signatures;
+pub mod smartlinks;
 pub mod sources;
 pub mod storage;
 pub mod update;
@@ -157,6 +158,7 @@ pub fn run() -> Result<(), AppError> {
             commands::search::cancel_search,
             commands::links::get_page_links,
             commands::links::open_link,
+            commands::smart_links::smart_links,
             commands::annotations::list_annotations,
             commands::annotations::list_document_annotations,
             commands::annotations::get_annotation_quote,
@@ -206,12 +208,12 @@ pub fn run() -> Result<(), AppError> {
             commands::update::skip_update_version,
             commands::update::updater_configured,
             commands::app::open_default_apps_settings,
-            commands::print::prepare_print,
-            commands::print::get_print_page,
             #[cfg(feature = "automation")]
             automation::commands::automation_queue_dialog,
             #[cfg(feature = "automation")]
             automation::commands::automation_state,
+            commands::print::prepare_print,
+            commands::print::get_print_page,
             commands::print::open_print_dialog,
             commands::print::release_print,
             commands::pages::pick_pdf_sources,

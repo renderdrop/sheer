@@ -13,7 +13,7 @@ use super::sizes::{PageSizes, SizeCache};
 use super::space::page_count;
 use super::{
     encode, export, first_page, import, links, outline, page_labels, pages, redact, search,
-    snapshot, text, Confirm, Job, ReopenSource, Reply,
+    smart_text, snapshot, text, Confirm, Job, ReopenSource, Reply,
 };
 use crate::documents::{DocFlags, DocumentId};
 use crate::error::{AppError, ErrorCode};
@@ -183,6 +183,17 @@ fn serve<'a>(
         }
         Job::PageLabels { id, reply } => {
             let result = read_job(documents, crashed, id, page_labels::read_labels);
+            answer(reply, result, Some(id), documents, crashed);
+        }
+        Job::SmartText {
+            id,
+            engine_index,
+            reply,
+        } => {
+            let result = read_job(documents, crashed, id, |document| {
+                let index = limits::validate_page_index(engine_index, page_count(document)?)?;
+                smart_text::read_page(document, index)
+            });
             answer(reply, result, Some(id), documents, crashed);
         }
         Job::FirstPageHints {

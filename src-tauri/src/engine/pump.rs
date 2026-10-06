@@ -553,6 +553,28 @@ impl Pump {
                 );
                 let _ = reply.send(result);
             }
+            Job::SmartText {
+                id,
+                engine_index,
+                reply,
+            } => {
+                let result = self.on_doc(
+                    id,
+                    WireRequest::SmartText { id, engine_index },
+                    Blob::None,
+                    deadline,
+                    |reply, _| match reply {
+                        // The reply of a child is checked, not trusted.
+                        WireReply::SmartText(page)
+                            if super::smart_text::plausible(&page, engine_index) =>
+                        {
+                            Some(page)
+                        }
+                        _ => None,
+                    },
+                );
+                let _ = reply.send(result);
+            }
             Job::FirstPageHints {
                 id,
                 engine_index,
