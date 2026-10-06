@@ -77,7 +77,7 @@ const escape = async () => {
 /** Runs inside the page. Everything comes back as plain data; the verdicts are the pure functions of surface-checks.mjs. */
 const PAGE = `(() => {
   // The mini bar (toolbar) and the coach mark card (region) are floating surfaces of their own: registry entries open them.
-  const SURFACES = '[role="dialog"],[role="alertdialog"],[role="menu"],[data-minibar],[data-tour-card],[data-surface="textedit-notice"],[data-surface="textedit-refusal"]';
+  const SURFACES = '[role="dialog"],[role="alertdialog"],[role="menu"],[data-minibar],[data-tour-card],[data-surface="textedit-notice"],[data-surface="textedit-refusal"],[data-surface="link-preview"]';
   const LIST = '[role="list"],[role="listbox"],[role="menu"],[role="grid"],[role="tree"],[data-scroll="list"]';
   const hidden = ${isVisuallyHidden.toString()};
   // Visible text of an element: its own text nodes, unless the element or an ancestor up to root is visually hidden (sr-only).

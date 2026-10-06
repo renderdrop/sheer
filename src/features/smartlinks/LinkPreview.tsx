@@ -80,6 +80,7 @@ function Card({
       role="tooltip"
       id={id}
       data-link-preview=""
+      data-surface="link-preview"
       className="pointer-events-none fixed start-0 top-0 z-tooltip"
     >
       <motion.div

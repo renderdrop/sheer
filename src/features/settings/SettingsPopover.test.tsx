@@ -106,7 +106,7 @@ describe('the settings panel (DESIGN 3.6)', () => {
     useSmartLinks.setState({ overrides: { 3: false } });
     const toggle = within(popover()).getByRole('switch', { name: /Smart links.*Detect footnotes/ });
     expect(toggle.getAttribute('aria-checked')).toBe('true');
-    expect(within(popover()).getByText('Shown only in sheer., never written into your PDF.')).not.toBeNull();
+    expect(within(popover()).getByText(/Never written into your PDF./)).not.toBeNull();
     await user.click(toggle);
     expect(toggle.getAttribute('aria-checked')).toBe('false');
     expect(useSmartLinks.getState()).toMatchObject({ enabled: false, overrides: {} });

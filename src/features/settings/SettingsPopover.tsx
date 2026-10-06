@@ -171,21 +171,20 @@ function AuthorRow() {
 function SmartLinksRow() {
   const t = useT();
   const on = useSmartLinks((state) => state.enabled);
+  const labelId = useId();
+  const descId = useId();
   return (
-    <Setting label={t('settings.smartLinks')} hint={t('settings.smartLinks.hint')}>
-      {(labelId) => (
-        <div className="flex items-center justify-between gap-3">
-          <span id={`${labelId}-toggle`} className="t-body text-text">
-            {t('settings.smartLinks.toggle')}
-          </span>
-          <Toggle
-            checked={on}
-            onCheckedChange={setSmartLinksEverywhere}
-            aria-labelledby={`${labelId} ${labelId}-toggle`}
-          />
-        </div>
-      )}
-    </Setting>
+    <div className="flex flex-col gap-1">
+      <div className="flex items-center justify-between gap-3">
+        <span id={labelId} className="t-label text-text">
+          {t('settings.smartLinks')}
+        </span>
+        <Toggle checked={on} onCheckedChange={setSmartLinksEverywhere} aria-labelledby={`${labelId} ${descId}`} />
+      </div>
+      <p id={descId} className="t-caption m-0 text-text-muted">
+        {t('settings.smartLinks.toggle')}. {t('settings.smartLinks.hint')}
+      </p>
+    </div>
   );
 }
 
@@ -228,7 +227,7 @@ function SettingsForm() {
   ): SegmentOption<Value>[] => choices.map((choice) => ({ value: choice.value, label: t(choice.labelKey) }));
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex flex-col gap-3">
       <h2 className="t-title m-0 text-text">{t('settings.title')}</h2>
       <Setting label={t('settings.language')}>
         {(labelId) => (

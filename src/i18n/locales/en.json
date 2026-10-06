@@ -1251,7 +1251,7 @@
   "menu.view.smartLinks": "Smart Links",
   "settings.smartLinks": "Smart links",
   "settings.smartLinks.toggle": "Detect footnotes, contents, references and sources",
-  "settings.smartLinks.hint": "Shown only in sheer., never written into your PDF.",
+  "settings.smartLinks.hint": "Never written into your PDF.",
   "tip.smartlinks": "Links marked Detected are guessed by sheer. and not in the file. Alt+Left goes back.",
   "smartlinks.aria.footnote": "Footnote {marker}, detected, page {page}",
   "smartlinks.aria.noteBack": "Back to footnote {marker} in the text, detected, page {page}",

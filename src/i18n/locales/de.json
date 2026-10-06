@@ -1251,7 +1251,7 @@
   "menu.view.smartLinks": "Smarte Verknüpfungen",
   "settings.smartLinks": "Smarte Verknüpfungen",
   "settings.smartLinks.toggle": "Fußnoten, Inhalt, Verweise und Quellen erkennen",
-  "settings.smartLinks.hint": "Nur in sheer. angezeigt, nie in deine PDF geschrieben.",
+  "settings.smartLinks.hint": "Nie in deine PDF geschrieben.",
   "tip.smartlinks": "Mit Erkannt markierte Links rät sheer.; sie stehen nicht in der Datei. Alt+← führt zurück.",
   "smartlinks.aria.footnote": "Fußnote {marker}, erkannt, Seite {page}",
   "smartlinks.aria.noteBack": "Zurück zu Fußnote {marker} im Text, erkannt, Seite {page}",
