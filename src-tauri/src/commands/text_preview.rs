@@ -708,4 +708,38 @@ mod tests {
         drop(other);
         assert!(Slot::take(doc).is_ok(), "the slots are given back");
     }
+
+    #[test]
+    fn a_run_past_the_timeout_is_an_engine_timeout_and_gives_its_slot_back() {
+        let doc = 4_000_000_101;
+        let slow = contained(doc, Duration::from_millis(5), || {
+            thread::sleep(Duration::from_millis(60));
+            Ok(())
+        });
+        assert_eq!(slow.unwrap_err().code(), ErrorCode::EngineTimeout);
+        let mut freed = false;
+        for _ in 0..100 {
+            let mut held = Vec::new();
+            let all = (0..limits::TEXT_PREVIEW_MAX_PER_DOC).all(|_| match Slot::take(doc) {
+                Ok(slot) => {
+                    held.push(slot);
+                    true
+                }
+                Err(_) => false,
+            });
+            drop(held);
+            if all {
+                freed = true;
+                break;
+            }
+            thread::sleep(Duration::from_millis(20));
+        }
+        assert!(freed, "the slot is released once the thread ends");
+    }
+
+    #[test]
+    fn a_fast_run_returns_its_value_and_its_slot() {
+        let doc = 4_000_000_102;
+        assert_eq!(contained(doc, Duration::from_secs(5), || Ok(7)).unwrap(), 7);
+    }
 }

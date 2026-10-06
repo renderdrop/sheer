@@ -718,3 +718,55 @@ fn a_justified_line_drawn_out_of_reading_order_is_refused() {
     );
     assert!(result.is_err(), "{:?}", result.map(|r| r.0));
 }
+
+#[test]
+fn a_justified_line_with_exactly_one_gap_puts_the_whole_stretch_there() {
+    // "ab cd" is 25 pt wide (72..97); the edit makes it 30 pt; the edge is 108: the one gap takes the 6 pt.
+    let content = "BT /F1 10 Tf 72 700 Td (ab cd) Tj ET";
+    let (out, warnings, _) = run(
+        content,
+        &[edit(0, 0, "ab cdX", TextFit::KeepStart)],
+        justified(108.0),
+    )
+    .unwrap();
+    assert!((right_edge(&out) - 108.0).abs() < 0.5, "{out}");
+    assert!(warnings.is_empty(), "{warnings:?}");
+}
+
+#[test]
+fn a_justified_line_whose_old_kerns_stretch_it_gives_the_stretch_back() {
+    // The gap carries a 10 pt kern (line ends at 107); the edit adds 5 pt of text and the edge stays 107, so the kern shrinks.
+    let content = "BT /F1 10 Tf 72 700 Td [(ab ) -1000 (cd)] TJ ET";
+    assert!((right_edge(content) - 107.0).abs() < 0.01);
+    let (out, warnings, _) = run(
+        content,
+        &[edit(0, 0, "ab cdX", TextFit::KeepStart)],
+        justified(107.0),
+    )
+    .unwrap();
+    assert!((right_edge(&out) - 107.0).abs() < 0.5, "{out}");
+    assert!(warnings.is_empty(), "{warnings:?}");
+}
+
+#[test]
+fn a_justified_line_with_a_nan_or_degenerate_limit_stays_natural() {
+    let content = "BT /F1 10 Tf 72 700 Td (ab cd) Tj ET";
+    let (plain, ..) = run(
+        content,
+        &[edit(0, 0, "ab cdX", TextFit::KeepStart)],
+        Source::default(),
+    )
+    .unwrap();
+    for limit in [f64::NAN, 0.0, -5.0] {
+        let result = run(
+            content,
+            &[edit(0, 0, "ab cdX", TextFit::KeepStart)],
+            justified(limit),
+        );
+        if let Ok((out, ..)) = result {
+            assert!(!out.contains("NaN"), "{out}");
+            assert!(right_edge(&out).is_finite(), "{out}");
+            assert_eq!(out, plain, "limit {limit}");
+        }
+    }
+}

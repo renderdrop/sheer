@@ -1281,3 +1281,141 @@ mod loose_tests {
         assert_eq!(classify_loose(&block, block[1]), Align::Left);
     }
 }
+
+#[cfg(test)]
+mod geometry_tests {
+    use super::{paragraphs, Line, PageLines, Segment};
+    use crate::model::geometry::Rect;
+    use crate::model::text_edit::LineEditable;
+    use crate::pdfwrite::ops_walk::{FontKey, GlyphPos, OpRef, Run};
+    use std::collections::HashMap;
+
+    /// A line of one glyph spanning `x0..x1` on the baseline `y`.
+    fn line(index: u32, text: &str, x0: f64, x1: f64, y: f64) -> Line {
+        let at = OpRef {
+            stream: 0,
+            index: 0,
+        };
+        let glyph = GlyphPos {
+            op: at,
+            byte: 0..1,
+            code: 65,
+            origin: [x0, y],
+            adv: x1 - x0,
+            size_eff: 10.0,
+            dir: [1.0, 0.0],
+        };
+        let run = Run {
+            ops: at..at,
+            font: FontKey {
+                name: b"F1".to_vec(),
+                object: None,
+            },
+            in_form: false,
+            render_mode: 0,
+            rise: 0.0,
+            rise_page: 0.0,
+            clipped: false,
+            glyphs: vec![glyph],
+        };
+        Line {
+            index,
+            runs: vec![run],
+            text: text.to_owned(),
+            bounds: Rect {
+                x: 0.0,
+                y: 0.0,
+                w: 0.0,
+                h: 0.0,
+            },
+            dir: [1.0, 0.0],
+            paragraph: 0,
+            font_name: "Times-Roman".to_owned(),
+            size: 10.0,
+            embedded: false,
+            subset: false,
+            editable: LineEditable::Same,
+        }
+    }
+
+    fn group(mut lines: Vec<Line>) -> Vec<std::ops::Range<u32>> {
+        let segments: Vec<(usize, Segment)> = lines
+            .iter()
+            .map(|_| (0, Segment { runs: Vec::new() }))
+            .collect();
+        paragraphs(&mut lines, &segments, &HashMap::new())
+            .into_iter()
+            .map(|p| p.lines)
+            .collect()
+    }
+
+    #[test]
+    fn evenly_stepped_left_lines_are_one_paragraph() {
+        let lines = vec![
+            line(0, "a", 72.0, 200.0, 700.0),
+            line(1, "b", 72.0, 180.0, 688.0),
+            line(2, "c", 72.0, 150.0, 676.0),
+        ];
+        assert_eq!(group(lines), vec![0..3]);
+    }
+
+    #[test]
+    fn a_blank_line_breaks_a_paragraph() {
+        let lines = vec![
+            line(0, "a", 72.0, 200.0, 700.0),
+            line(1, "  ", 72.0, 100.0, 688.0),
+            line(2, "c", 72.0, 150.0, 676.0),
+        ];
+        let got = group(lines);
+        assert_eq!(got.len(), 3, "the blank line stands alone: {got:?}");
+        assert_eq!(got[0], 0..1);
+        assert_eq!(got[2], 2..3);
+    }
+
+    #[test]
+    fn a_far_step_or_other_size_starts_a_new_paragraph() {
+        let far = vec![
+            line(0, "a", 72.0, 200.0, 700.0),
+            line(1, "b", 72.0, 180.0, 640.0),
+        ];
+        assert_eq!(group(far), vec![0..1, 1..2]);
+        let mut big = vec![
+            line(0, "a", 72.0, 200.0, 700.0),
+            line(1, "b", 72.0, 180.0, 688.0),
+        ];
+        big[1].size = 20.0;
+        assert_eq!(group(big), vec![0..1, 1..2]);
+    }
+
+    fn page(lines: Vec<Line>) -> PageLines {
+        PageLines {
+            lines,
+            paragraphs: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn room_before_is_the_gap_to_the_line_ending_before() {
+        let p = page(vec![
+            line(0, "a", 10.0, 50.0, 700.0),
+            line(1, "b", 80.0, 120.0, 700.0),
+        ]);
+        assert_eq!(p.room_before(1), Some(30.0));
+        assert_eq!(p.room_before(0), None, "nothing precedes the first");
+        assert_eq!(p.room_before(9), None, "no such line");
+    }
+
+    #[test]
+    fn room_before_ignores_other_baselines_and_answers_zero_on_overlap() {
+        let other_row = page(vec![
+            line(0, "a", 10.0, 50.0, 650.0),
+            line(1, "b", 80.0, 120.0, 700.0),
+        ]);
+        assert_eq!(other_row.room_before(1), None);
+        let overlap = page(vec![
+            line(0, "a", 10.0, 90.0, 700.0),
+            line(1, "b", 80.0, 120.0, 700.0),
+        ]);
+        assert_eq!(overlap.room_before(1), Some(0.0));
+    }
+}
