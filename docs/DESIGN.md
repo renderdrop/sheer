@@ -866,6 +866,117 @@ E-AC 6. Each applied line is one Undo step. Undo restores the original exactly.
 E-AC 7. A screen reader announces editing, applied, cancelled and substitute states.
 E-AC 8. With reduced motion, nothing animates except fades. The DOM gate passes in en and de.
 
+### 3.11 v1.6 Smart links
+
+Spec only; detection rules, scoring and IPC are the v1.6 ADR's. **Binding (owner):** every smart link is a guess, drawn as an app overlay, **never written into the PDF**, switchable off, marked "Detected" / "Erkannt". **No new mode, panel tab or grid track**. New surfaces: a page overlay layer (inside the page rect), one tool slot, one top-bar slot, a link preview (tooltip class; joins §3's floating list), one tip. Light only, tokens only, no glass. New tokens: `--smartlink-rest` (1px dashed Text-secondary, dash 3/2, 2 pt below the baseline), `--smartlink-visited` (same, Stone), `--smartlink-hover-fill` (`--surface-pressed`, `mix-blend-mode: multiply`), `--link-preview-max` 320.
+
+**L1 Kinds** (Rust detects; the frontend gets boxes and targets by document ID, never text or paths beyond the preview string).
+
+| Kind | Source run (the link) | Target |
+|---|---|---|
+| Footnote | superscript or smaller raised number/symbol in body text (¹, ³, *, †) | the note starting with the same marker at the bottom of that page (or the next page for a continued note), or the entry in an endnote section ("Notes", "Anmerkungen", "Endnoten") |
+| Note back | the marker in front of a note | the one marker that points to it (only if exactly one does) |
+| Contents | a contents line: title + dot leaders or gap + page number | the page; the hit area is the whole line |
+| Reference | "siehe S. 12", "see p. 12", "pp. 12–14" · "Abb./Abbildung/Fig./Figure 3" · "Tab./Tabelle/Table 2" · "Kapitel/Chapter/Abschnitt/Section 4(.2)" · "§ 5" | the page (first page of a range), or the caption or heading line that starts with the same label |
+| Literature | "(Müller 2019)", "(Müller, 2019, S. 4)", "Müller et al. (2019)", "[12]", "[3, 7]" | the bibliography entry; in "[3, 7]" and "[3–5]" each printed number is its own link |
+
+**Page numbers.** A printed number resolves first to a matching page label (if the file defines labels), else through a printed-to-physical offset learned from page-number runs in headers/footers and confirmed by ≥ 3 contents lines whose title is found on the target page. No confirmed mapping, no link. The preview names both when they differ.
+
+**L2 Confidence.** One fixed threshold, not user-adjustable, no "maybe" state. A link exists only if exactly one target scores above the threshold and the runner-up is clearly below. Ambiguous cases draw nothing (no greyed link): two "Müller 2019" without a/b suffix, "Abb. 3" with two captions, "§ 5 BGB" (a different law), a caption's own label, page numbers beyond the document. False negatives are acceptable; false positives are bugs.
+
+**L3 What wins.** Anything already interactive wins: a candidate whose box intersects a real link rect (`get_page_links`), a form widget or an annotation is dropped. Real links keep the PDF's own appearance; the app adds for them only cursor `pointer`, a hover outline 1px Ink radius 2 and the §2.1 focus pair. They never get the underline, the fill or "Detected".
+
+**L4 Look and states** (on the overlay layer: page bitmap < text layer < smart-link layer < real links < annotations < widgets).
+
+| State | Look |
+|---|---|
+| Default | `--smartlink-rest` under the source run only (contents: under the page number only). No fill, no colour |
+| Hover | underline solid Ink 1px; `--smartlink-hover-fill` on the run box (contents: the whole line), radius 2; cursor `pointer`; preview after 400 ms (L5) |
+| Focus (keyboard) | §2.1 pair, offset 2, on the run box; preview at once |
+| Active (pressed) | fill at full strength, no scale |
+| Visited (this session, this tab) | `--smartlink-visited` instead of rest |
+| Off / hidden | nothing drawn, no hit boxes, no detection running |
+
+Glyphs stay Ink (fill multiplies). Hit boxes are at least 24 × 24 CSS px at every zoom (invisible padding, as E8); the drawn cue stays glyph-sized. A pointer press that moves ≥ 4 px becomes a text selection, so links never block selecting.
+
+**L5 Link preview** (the "Detected" hint lives here, on every link, every time). White, `--border-subtle`, radius md, `--shadow-floating`, padding 12, width 200–`--link-preview-max`, gap 4, `role="tooltip"`, not focusable, not interactive:
+1. Header 20: `wand` 16 Text-secondary + `.t-caption` `smartlinks.detected` · kind (`smartlinks.kind.*`) · target page `citation.page` (with physical page in parentheses when it differs, `smartlinks.physical`).
+2. Body `.t-body` Ink: the note, entry, caption or heading text, cut by Rust to 280 characters at a word boundary + "…" (no CSS clamp, no scroll). Page targets without a heading: no body.
+3. Footer `.t-caption` Text-secondary: `smartlinks.previewHint` with kbd.
+
+Placement Q8 tooltip order, gap 8; protected rects add the source run, the selection and the mini bar. No fit: not shown (the link still works). Timing spell 16. `wand` is the app's one "derived" sign (as B8's outline row).
+
+**One-time tip** (§3.6 rules: once ever, cap 3/session, queue priority 4): tip id `smartlinks`, anchored to the Lesen tool slot (L8), shown after the first hover or focus on a detected link: `tip.smartlinks`.
+
+**L6 Following a link.** Click (or Enter/Space) pushes the current view (L7), then scrolls with spell 8. The target band (target lines' boxes + 2 pt) gets `--smartlink-hover-fill`, pulses 1 → 0.4 → 1 once (2 × `--motion-fast`) and fades out after 1200 ms. Page targets: no band, page top 24 below the canvas top. Focus goes to the target if it is a link (note back), else to the canvas. Zoom never changes. Polite `smartlinks.announce.jump`.
+
+**L7 Back and forward.** History per document tab, session only, dropped on close.
+- **Entry:** page ID + offset in page points + zoom + fit mode, so re-layout and sidebar changes still restore the exact view. Pushed by smart links, real internal links, outline rows and page-field Enter; not by scrolling, search or comment rows. A push within one viewport of the top entry replaces it.
+- **Depth:** 50 back; forward cleared by every new push. Entries of deleted pages drop; reorders keep them (page IDs).
+- **Restore:** zoom and fit mode first, then scroll, both instant (a return must land exactly). The origin run gets a 2px Ink outline for 1 s; focus returns to it if the jump was made by keyboard.
+- **Keys** (document scope; inputs, crop handles, organize grid and contenteditables keep their own Alt+arrows): Back Alt+Left (macOS Cmd+[), forward Alt+Right (Cmd+]); mouse buttons 4/5. Alt+Left never opens the menu row (Alt was combined).
+- **Control:** top bar centre group, after the page field, gap 8: Ghost 28, radius sm, `arrow-left` 16 (never `chevron-left`, which is Home). From 1100 window width it carries a label `.t-caption` `tabular-nums` "p. 4" (`nav.back.label`, the page you return to), fixed width 96; a label that does not fit, and every width below 1100, shows the icon only (no ellipsis, Q6). Tooltip `nav.back` + kbd; empty history: disabled 0.4, tooltip `nav.back.empty`. The slot is always present, so the centre group never shifts. Polite announcement `nav.announce.back`.
+
+**L8 On/off.**
+- **Settings:** new group "Smart links" (`settings.smartLinks`) between Drawing and Updates (the §3.6 group test now asserts seven labels): Toggle `settings.smartLinks.toggle`, default **on**, hint `settings.smartLinks.hint`. UI storage `sheer.smartLinks.enabled`. Changing it applies to every open tab and clears their per-tab overrides. The popover still fits 960 × 640 without scrolling (F-AC 10).
+- **Quick toggle (per document tab, session):** Lesen gains slot 7 **Smarte Links** (`wand`, kind *toggle*, §3.5 toggle style, `aria-pressed`, tooltip `smartlinks.toggleHelp`): Auswahl · Hand · Textauswahl · Lupe · Drehen · Suche · Smarte Links (7 ≤ 8, Q6 measures). Mirrored by Ansicht → "Smart links" (`menu.view.smartLinks`, checkable). Turning it off removes the layer at once and announces `smartlinks.announce.off`; history stays.
+
+**L9 Modes and tools.** Smart and real links are live only while the active tool is Auswahl, Hand (a click without drag follows) or Textauswahl, in any mode except Seiten. Hidden (not drawn, no hit boxes) while another tool is active, during Text bearbeiten, a redaction band, the tour's canvas steps or a selection drag. After a committed text edit, a page change or an undo, that page's links are recomputed for the new revision; stale links are never shown.
+
+**L10 Performance.** Rust detects lazily for pages entering the render window (visible ± 1), at background priority after rendering, cached per page and revision. Target indexes (notes, captions, headings, bibliography, page mapping) build once per revision in the background; a link whose index is not ready is not drawn (no spinner, no wrong pop-in). Budget ≤ 30 ms per page; scrolling never waits. Off = no work.
+
+**L11 Keyboard and screen readers.**
+- Links are **not** separate Tab stops. Each visible page's links (real and smart, reading order) form one `role="list"` per page with one Tab stop, after the page and before the margin column (B9). Inside: Down/Right next, Up/Left previous, Home/End, Enter/Space follow, Esc back to the canvas. Past the last link, the next page's first link takes focus and scrolls into view.
+- Each smart link: `role="link"`, name `smartlinks.aria.*` (kind, marker text, "detected", target page), `aria-describedby` = the preview text; visited adds nothing (visual only). Real links: `link.aria.page` / `link.aria.url`. The list is named `smartlinks.aria.list`.
+- Contrast: rest underline Text-secondary 5.0:1, visited Stone 3.47:1, hover Ink; the state cue is line style plus fill, never colour alone (§2).
+
+**L12 Motion.** Underline rest → hover: `--motion-fast` (out `--motion-fast-exit`). Preview: spell 16. Jump: spell 8. Back/forward: instant. Toggle off: layer fades `--motion-fast-exit`. Reduced motion: no fades on the underline, preview fades only, jumps are instant with the 2px Ink outline for 1 s instead of the band pulse.
+
+**L13 Layout check (Q9, both sizes, en and de).** Registered: the link preview (longest de body), the Back control (labelled, disabled, icon-only), the 7-slot Lesen row, the tip, Settings with the new group.
+
+| Key | en | de |
+|---|---|---|
+| `smartlinks.detected` | Detected | Erkannt |
+| `smartlinks.kind.footnote` / `.noteBack` / `.contents` / `.reference` / `.literature` | Footnote / Back to text / Contents / Reference / Source | Fußnote / Zurück zum Text / Inhalt / Verweis / Quelle |
+| `smartlinks.physical` | (page {n} of the file) | (Seite {n} der Datei) |
+| `smartlinks.previewHint` | Click to jump · {back} returns | Klicken zum Springen · {back} kehrt zurück |
+| `smartlinks.toggle` / `.toggleHelp` | Smart links / Footnotes, contents, references and sources as links. Guessed, never saved in the file. | Smarte Links / Fußnoten, Inhalt, Verweise und Quellen als Links. Geschätzt, nie in der Datei gespeichert. |
+| `menu.view.smartLinks` | Smart links | Smarte Verknüpfungen |
+| `settings.smartLinks` / `.toggle` | Smart links / Detect footnotes, contents, references and sources | Smarte Verknüpfungen / Fußnoten, Inhalt, Verweise und Quellen erkennen |
+| `settings.smartLinks.hint` | Shown only in sheer., never written into your PDF. | Nur in sheer. angezeigt, nie in deine PDF geschrieben. |
+| `tip.smartlinks` | Links marked Detected are guessed by sheer. and not in the file. Alt+Left goes back. | Mit Erkannt markierte Links rät sheer.; sie stehen nicht in der Datei. Alt+← führt zurück. |
+| `smartlinks.aria.footnote` | Footnote {marker}, detected, page {page} | Fußnote {marker}, erkannt, Seite {page} |
+| `smartlinks.aria.noteBack` | Back to footnote {marker} in the text, detected, page {page} | Zurück zu Fußnote {marker} im Text, erkannt, Seite {page} |
+| `smartlinks.aria.contents` | {title}, detected, page {page} | {title}, erkannt, Seite {page} |
+| `smartlinks.aria.reference` | {text}, detected, page {page} | {text}, erkannt, Seite {page} |
+| `smartlinks.aria.literature` | Source {text}, detected, page {page} | Quelle {text}, erkannt, Seite {page} |
+| `smartlinks.aria.list` | Links on page {page} | Links auf Seite {page} |
+| `link.aria.page` / `.url` | Link to page {page} / Link to {host} | Link zu Seite {page} / Link zu {host} |
+| `smartlinks.announce.jump` | Page {page}. {back} goes back. | Seite {page}. {back} führt zurück. |
+| `smartlinks.announce.off` / `.on` | Smart links off / Smart links on | Smarte Links aus / Smarte Links an |
+| `nav.back` / `.forward` | Back to previous view / Forward | Zurück zur vorigen Ansicht / Vorwärts |
+| `nav.back.label` | p. {label} | S. {label} |
+| `nav.back.empty` | Nothing to go back to yet | Noch nichts zum Zurückkehren |
+| `nav.announce.back` | Back to page {page} | Zurück zu Seite {page} |
+
+`{back}` renders the platform key (Alt+← / ⌘[).
+
+**Acceptance (installed release build, mouse unless a key is named).**
+L-AC 1. A footnote marker shows a dashed underline; hovering shows the preview with "Detected", the note text and the page; clicking scrolls to the note with the band pulse.
+L-AC 2. Alt+Left (macOS Cmd+[) and the Back control return to the exact previous scroll position and zoom, also after zooming at the target; Alt+Right goes forward again.
+L-AC 3. Back holds 50 entries; a new jump clears forward; closing the tab drops the history.
+L-AC 4. A contents line with dot leaders jumps to the right page in a file whose printed numbers differ from physical pages; the preview names both.
+L-AC 5. "see p. 12", "Abb. 3", "Tabelle 2", "Kapitel 4" and "§ 5" link to their page, caption or heading; an ambiguous "Abb. 3" (two captions) is not linked.
+L-AC 6. "[12]", "(Müller 2019)" and "Müller et al. (2019)" link to the bibliography entry; two "Müller 2019" entries leave the reference unlinked.
+L-AC 7. A detected candidate under a real link, form field or annotation is not drawn; the real link works as before.
+L-AC 8. Saving and reopening the file (and opening it in another reader) shows no smart link, annotation or change; the save status stays "Saved" after following links.
+L-AC 9. The Lesen toggle turns links off for this tab only; Settings turns them off for all tabs and survives a restart; when off, nothing is drawn.
+L-AC 10. With Hervorheben or Text bearbeiten active, no link is drawn or clickable; dragging from a marker selects text.
+L-AC 11. Tab reaches one link list per page; arrows move, Enter follows; a screen reader reads "Footnote 3, detected, page 12".
+L-AC 12. Scrolling a 500-page file stays smooth; links appear only on rendered pages and never in a wrong place.
+L-AC 13. With reduced motion, jumps are instant with the 1 s Ink outline and only fades remain.
+L-AC 14. The DOM gate passes for every L13 surface in en and de at both sizes; nothing overlaps.
+
 ## 4. Components (R4)
 
 States apply to all: hover ≤ background/border/icon colour change; pressed scale 0.98 at most; focus = `--ring-focus` (keyboard only); disabled = `--opacity-disabled`, no pointer events, tooltip still explains why.
