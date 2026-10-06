@@ -6,6 +6,8 @@ import { cx } from '../../components/cx';
 import { useUi } from '../../stores/ui';
 import { useT } from '../../i18n';
 import { DURATION, spring } from '../../lib/motion';
+import { EditBarHost } from '../textedit/EditBarHost';
+import { useTextEdit } from '../textedit/store';
 import { useMiniBarDock } from './dock';
 import { MiniBar } from './MiniBar';
 import { barKindOf, type MiniObject } from './model';
@@ -315,6 +317,9 @@ function MiniBarHost({ docId, objects }: { docId: number; objects: readonly Mini
 export function MiniBarSlot() {
   const { docId, objects } = useMiniSelection();
   const mode = useUi((s) => s.mode);
+  const editing = useTextEdit((s) => s.session !== null);
+  // An open line edit has its own bar (DESIGN 3.10 E3).
+  if (editing) return <EditBarHost />;
   // Seiten has no canvas selection (leaving it clears it); a stale one shows no bar.
   if (docId === null || objects.length === 0 || mode === 'pages') return null;
   const signature = objects.map((object) => barKindOf(object)).join();

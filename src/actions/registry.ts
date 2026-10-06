@@ -206,6 +206,8 @@ const TOOL_ACTIONS: readonly ActionDef[] = (
     ['textBox', 'e', TextCursor, 'insert.text'],
     ['image', 'i', ImagePlus, 'insert.image'],
     ['crop', 'k', Crop, 'crop.tool'],
+    // v1.5.1 Edit text (DESIGN 3.10 E1): a tool with no letter, released by Esc.
+    ['editText', undefined, TextCursorInput, 'editText.tool'],
     // v1.2 Lesen mode (FEEDBACK F14): no single-letter keys; Z held is the magnifier gesture (DESIGN v2 3.2).
     ['hand', undefined, Hand, 'tools.hand'],
     ['textSelect', undefined, TextSelect, 'tools.textSelect'],

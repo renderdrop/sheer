@@ -77,7 +77,7 @@ const escape = async () => {
 /** Runs inside the page. Everything comes back as plain data; the verdicts are the pure functions of surface-checks.mjs. */
 const PAGE = `(() => {
   // The mini bar (toolbar) and the coach mark card (region) are floating surfaces of their own: registry entries open them.
-  const SURFACES = '[role="dialog"],[role="alertdialog"],[role="menu"],[data-minibar],[data-tour-card]';
+  const SURFACES = '[role="dialog"],[role="alertdialog"],[role="menu"],[data-minibar],[data-tour-card],[data-surface="textedit-notice"],[data-surface="textedit-refusal"]';
   const LIST = '[role="list"],[role="listbox"],[role="menu"],[role="grid"],[role="tree"],[data-scroll="list"]';
   const hidden = ${isVisuallyHidden.toString()};
   // Visible text of an element: its own text nodes, unless the element or an ancestor up to root is visually hidden (sr-only).
@@ -99,7 +99,7 @@ const PAGE = `(() => {
     mark() { window.__gateBefore = new Set(shown()); },
     // The outermost new surfaces (a popover's own submenu is part of it).
     fresh() {
-      const all = shown().filter((e) => !window.__gateBefore.has(e));
+      const all = shown().filter((e) => !window.__gateBefore.has(e) && (!window.__gatePick || e.matches(window.__gatePick)));
       return all.filter((e) => !all.some((o) => o !== e && o.contains(e)));
     },
     measure() {
@@ -111,7 +111,7 @@ const PAGE = `(() => {
       // ADR-124 addendum 1 c: a menu opened from the menu bar (role=menubar) follows the OS menu convention.
       const menubar = el.getAttribute('role') === 'menu' && !!document.querySelector('[role="menubar"] [aria-controls="' + el.id + '"]');
       // A mini bar and a coach mark are floating, not modal; a coach mark is a notice (Q8): it may not touch any protected rect.
-      const kind = el.hasAttribute('data-tour-card') ? 'notice' : el.hasAttribute('data-minibar') ? 'bar' : null;
+      const kind = el.hasAttribute('data-tour-card') || el.getAttribute('data-surface') === 'textedit-notice' ? 'notice' : el.hasAttribute('data-tour-card') ? 'notice' : el.hasAttribute('data-minibar') ? 'bar' : null;
       const onlyBig = (c) => { const r = c.getBoundingClientRect(); return r.width > 2 && r.height > 2; };
       const clipsOf = (c) => {
         const clips = [];
@@ -213,7 +213,7 @@ const PAGE = `(() => {
         protectedRects.push({ name: name(c), rect: R(c.getBoundingClientRect()), role });
       }
       // The selection with its handles (the mini bar may not cover it) and the page content a tour step points at (a card avoids it).
-      for (const c of document.querySelectorAll('[data-annot-frame],[data-annot-handle],[data-protect="notice"]')) {
+      for (const c of document.querySelectorAll('[data-annot-frame],[data-annot-handle],[data-protect="notice"],[data-testid="textedit-box"]')) {
         if (el.contains(c) || !onlyBig(c)) continue;
         protectedRects.push({ name: name(c), rect: R(c.getBoundingClientRect()), role: c.hasAttribute('data-protect') ? 'other' : 'active' });
       }
@@ -248,11 +248,12 @@ const verdict = (id, m) =>
     ],
   });
 
-/** Opens with `open`, waits for the animation, measures, closes. */
-async function probe(id, open, close) {
+/** Opens with `open`, waits for the animation, measures, closes. `pick`: a selector; only a new surface matching it is measured. */
+async function probe(id, open, close, pick = null) {
   if (only && !id.includes(only)) return;
   const tag = `${lang} ${id} @${current.w}x${current.h}`;
   try {
+    await ev(`window.__gatePick = ${JSON.stringify(pick)}`);
     await ev(`window.__gate.mark()`);
     await open();
     let m = null;
@@ -289,6 +290,95 @@ async function sweepRegistry() {
       () => ev(`${one}.close()`),
     );
   }
+}
+
+const REFUSALS = [
+  'signed',
+  'permission',
+  'type3',
+  'invisible',
+  'clip',
+  'vertical',
+  'cmap',
+  'inForm',
+  'actualText',
+  'script',
+  'notFileSource',
+  'unmapped',
+  'tooComplex',
+  'noText',
+];
+
+/** "Edit text" (DESIGN 3.10 E11): the mini bar (with the overflow caption), the Font popover, the fallback notice and every refusal tooltip. */
+async function sweepTextEdit() {
+  if (only && !'textedit'.includes(only) && !only.includes('textedit')) return;
+  const pageRect = () =>
+    ev(
+      `(() => { const r = document.querySelector('[data-page="1"]')?.getBoundingClientRect(); return r ? { left: r.left, top: r.top, width: r.width, height: r.height } : null; })()`,
+    );
+  // The line "The quick brown fox..." of text.pdf: 72 pt from the left, baseline 152 pt from the top of a 612 x 792 page.
+  const lineAt = async () => {
+    await ev(`document.querySelector('[data-page="1"]')?.scrollIntoView({ block: 'center' })`);
+    await sleep(300);
+    const r = await pageRect();
+    const k = r.width / 612;
+    return {
+      x: r.left + 110 * k,
+      y: r.top + 148 * k,
+      rect: { x: r.left + 72 * k, y: r.top + 136 * k, w: 258 * k, h: 20 * k },
+    };
+  };
+  const stores = (path) => `(await ${store(path)})`;
+  await ev(`(async()=>{${stores('stores/ui.ts')}.useUi.getState().setMode('edit')})()`);
+  await sleep(400);
+  const openLine = async () => {
+    await ev(`document.querySelector('[data-testid="tool-editText"]')?.click()`);
+    await sleep(300);
+    const p = await lineAt();
+    await mouse('mouseMoved', p.x, p.y, { button: 'none' });
+    await mouse('mousePressed', p.x, p.y);
+    await mouse('mouseReleased', p.x, p.y);
+    for (let i = 0; i < 20 && !(await ev(`!!document.querySelector('[data-testid="textedit-box"]')`)); i++)
+      await sleep(150);
+    await sleep(300);
+  };
+  await probe(
+    'textedit-bar',
+    async () => {
+      await openLine();
+      // Past the free width: the overflow caption is the widest state of the bar.
+      await send('Input.insertText', {
+        text: ' wide wide wide wide wide wide wide wide wide wide wide wide wide wide wide',
+      });
+    },
+    () => ev(`document.querySelector('[data-surface="textedit-bar"]') !== null`),
+    '[data-surface="textedit-bar"]',
+  );
+  await probe(
+    'textedit-font-popover',
+    async () => {
+      await openLine();
+      await ev(`window.__gate.mark()`);
+      await ev(`document.querySelector('[data-textedit-font]')?.click()`);
+    },
+    () => undefined,
+    '[role="dialog"]',
+  );
+  await probe('textedit-notice', openLine, () => undefined, '[data-surface="textedit-notice"]');
+  for (const reason of REFUSALS) {
+    await probe(
+      `textedit-refusal:${reason}`,
+      async () => {
+        const p = await lineAt();
+        await ev(
+          `(async()=>{${stores('features/textedit/store.ts')}.useTextEdit.getState().set({ refusal: { reason: ${JSON.stringify(reason)}, rect: ${JSON.stringify(p.rect)}, via: 'click' } })})()`,
+        );
+      },
+      () => ev(`(async()=>{${stores('features/textedit/store.ts')}.useTextEdit.getState().set({ refusal: null })})()`),
+      '[data-surface="textedit-refusal"]',
+    );
+  }
+  await ev(`(async()=>{${stores('features/textedit/store.ts')}.useTextEdit.getState().reset()})()`);
 }
 
 async function sweepTriggers(label) {
@@ -397,6 +487,7 @@ try {
       );
       await sleep(500);
       await sweepRegistry();
+      await sweepTextEdit();
       for (const mode of modes) {
         await ev(`(async()=>{(await ${store('stores/ui.ts')}).useUi.getState().setMode(${JSON.stringify(mode)})})()`);
         await sleep(400);

@@ -1045,6 +1045,8 @@
   "recover.restoreAll": "Restore all",
   "recover.discardAll": "Discard all",
   "recover.later": "Decide later",
+  "recover.showAll": "Show all",
+  "recover.hideAll": "Hide",
   "recover.asCopy": "The file changed or is missing; restores as a copy.",
   "recover.copyName": "{name} (recovered)",
   "recover.failed": "Couldn’t restore this document.",
@@ -1494,5 +1496,11 @@
   "editText.refuse.image": "This is part of an image, not text.",
   "editText.refuse.rotated": "Slanted or vertical text can't be edited yet.",
   "editText.refuse.encoding": "The file doesn't say which characters this text is.",
+  "editText.refuse.clip": "This text is cut by a shape and can't be edited yet.",
+  "editText.refuse.inForm": "This text sits inside a nested page element and can't be edited yet.",
+  "editText.refuse.actualText": "The file gives replacement text for this and it can't be edited yet.",
+  "editText.refuse.script": "Text in this writing system can't be edited yet.",
+  "editText.refuse.notFileSource": "This text doesn't come from the file itself and can't be edited.",
+  "editText.refuse.tooComplex": "This line is too complex to edit.",
   "editText.noText": "No editable text on this page."
 }

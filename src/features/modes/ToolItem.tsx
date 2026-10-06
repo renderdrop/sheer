@@ -91,6 +91,7 @@ export function ToolItem({ slot, iconOnly, stop }: ToolItemProps) {
           })}
       type="button"
       data-toolbar-item={slot.id}
+      data-testid={slot.testId}
       data-roving={slot.id}
       data-on={slot.on}
       aria-pressed={slot.kind === 'tool' ? slot.on : undefined}

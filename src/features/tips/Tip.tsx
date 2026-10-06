@@ -95,7 +95,8 @@ function Card({ id, anchor }: { id: TipId; anchor: ResolvedAnchor }) {
   const motionProps = usePopoverMotion();
   const textId = useId();
   const dismiss = useTips((state) => state.dismiss);
-  const text = t(`tip.${id}`, { mod: modifierLabel(platform, 'primary', t) });
+  // Edit text's tip is catalogued with the tool's own keys (`editText.tip`).
+  const text = id === 'editText' ? t('editText.tip') : t(`tip.${id}`, { mod: modifierLabel(platform, 'primary', t) });
   const anchorEl = anchor.element;
 
   useFloatingPosition({

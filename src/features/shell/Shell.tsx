@@ -11,6 +11,8 @@ import { SignatureLibraryDialog } from '../signatures/library';
 import { SignaturesDialog } from '../sigcheck/SignaturesDialog';
 import { SignDialogHost } from '../signatures/sign';
 import { ToolAnnouncer } from '../annotations/layer/ToolAnnouncer';
+import { RefusalTip } from '../textedit/RefusalTip';
+import { TextEditAnnouncer } from '../textedit/TextEditAnnouncer';
 import { SettingsPopover } from '../settings/SettingsPopover';
 import { ExportCopyDialog } from '../exportCopy/ExportCopyDialog';
 import { ExportImagesDialog } from '../exportImages/ExportImagesDialog';
@@ -96,6 +98,8 @@ export function Shell() {
       <ExportCopyDialog />
       {/* Portals, so they take no room in the shell, and in Home as in the editor: the settings popover hangs from the toolbar (it opens from its key), the About dialog is a modal. */}
       <ToolAnnouncer />
+      <TextEditAnnouncer />
+      <RefusalTip />
       <SettingsPopover />
       <AboutDialog />
       <SignatureLibraryDialog />

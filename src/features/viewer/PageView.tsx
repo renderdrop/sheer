@@ -17,6 +17,7 @@ import { FormLayer } from '../forms/FormLayer';
 import { InsertLayer } from '../insert/InsertLayer';
 import { RedactLayer } from '../redact/RedactLayer';
 import { SealLayer } from '../sigcheck/SealLayer';
+import { TextEditLayer } from '../textedit/TextEditLayer';
 import { usePageText } from '../textlayer/cache';
 import type { PageLayerProps } from './pageLayer';
 import { PageOverlay } from '../textlayer/PageOverlay';
@@ -487,6 +488,7 @@ export const PageView = memo(function PageView({
       <RedactLayer {...layer} />
       <SealLayer {...layer} />
       <CropLayer {...layer} />
+      <TextEditLayer {...layer} />
     </div>
   );
 });

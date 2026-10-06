@@ -646,9 +646,9 @@ describe('Bearbeiten', () => {
     act(() => switchMode('edit'));
   });
 
-  it('has Text einfügen, Bild einfügen, Zuschneiden, Schwärzen, Schützen and Metadaten', () => {
+  it('has Text bearbeiten, Text einfügen, Bild einfügen, Zuschneiden, Schwärzen, Schützen and Metadaten', () => {
     setup(<Rows />);
-    expect(slotNames()).toEqual(['Add text', 'Add image', 'Crop', 'Redact', 'Protect', 'Metadata']);
+    expect(slotNames()).toEqual(['Edit text', 'Add text', 'Add image', 'Crop', 'Redact', 'Protect', 'Metadata']);
   });
 
   it('the tools select their tool ids, Schwärzen turns the mode on and stays on', async () => {

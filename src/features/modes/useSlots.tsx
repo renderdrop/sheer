@@ -36,6 +36,7 @@ import {
   Quote,
   Strikethrough,
   TextCursor,
+  TextCursorInput,
   TextSelect,
   Trash2,
   Type,
@@ -484,6 +485,12 @@ const bearbeiten: Maker = (inputs) => {
     run: () => choose(id),
   });
   return [
+    {
+      ...tool('editText', 'editText', t('editText.tool'), TextCursorInput, 'tool-editText', undefined),
+      hint: t('editText.tooltip'),
+      testId: 'tool-editText',
+      disabledReason: inputs.readOnly ? t('tool.readOnly') : undefined,
+    },
     tool('textBox', 'textBox', t('modes.tool.addText'), TextCursor, 'tool-textBox', InsertOptions),
     tool('image', 'image', t('modes.tool.addImage'), ImagePlus, 'tool-image', InsertOptions),
     tool('crop', 'crop', t('modes.tool.crop'), Crop, 'tool-crop', CropOptions),

@@ -1045,6 +1045,8 @@
   "recover.restoreAll": "Alle wiederherstellen",
   "recover.discardAll": "Alle verwerfen",
   "recover.later": "Später entscheiden",
+  "recover.showAll": "Alle anzeigen",
+  "recover.hideAll": "Ausblenden",
   "recover.asCopy": "Die Datei wurde geändert oder fehlt; wird als Kopie wiederhergestellt.",
   "recover.copyName": "{name} (wiederhergestellt)",
   "recover.failed": "Dokument ließ sich nicht wiederherstellen.",
@@ -1494,5 +1496,11 @@
   "editText.refuse.image": "Das ist Teil eines Bildes, kein Text.",
   "editText.refuse.rotated": "Schräger oder senkrechter Text lässt sich noch nicht bearbeiten.",
   "editText.refuse.encoding": "Die Datei gibt nicht an, welche Zeichen dieser Text sind.",
+  "editText.refuse.clip": "Dieser Text wird von einer Form beschnitten und lässt sich noch nicht bearbeiten.",
+  "editText.refuse.inForm": "Dieser Text liegt in einem verschachtelten Seitenelement und lässt sich noch nicht bearbeiten.",
+  "editText.refuse.actualText": "Die Datei gibt dafür Ersatztext an; er lässt sich noch nicht bearbeiten.",
+  "editText.refuse.script": "Text in dieser Schriftart lässt sich noch nicht bearbeiten.",
+  "editText.refuse.notFileSource": "Dieser Text stammt nicht aus der Datei selbst und lässt sich nicht bearbeiten.",
+  "editText.refuse.tooComplex": "Diese Zeile ist zu komplex zum Bearbeiten.",
   "editText.noText": "Kein bearbeitbarer Text auf dieser Seite."
 }

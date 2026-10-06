@@ -84,6 +84,8 @@ export interface SlotDef {
   on: boolean;
   /** Why it cannot be used now (the tooltip says so); it stays focusable. */
   disabledReason?: string;
+  /** A `data-testid` for the main part (smoke tests of tools that name one). */
+  testId?: string;
   /** A tooltip line: the key to hold, a hint. */
   hint?: string;
   /** The registry action whose shortcut the tooltip shows. */

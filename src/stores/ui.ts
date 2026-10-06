@@ -39,6 +39,8 @@ export const TOOLS = [
   'textBox',
   'image',
   'crop',
+  // v1.5.1 Edit text (DESIGN 3.10 E1): edits one existing line in place.
+  'editText',
   // v1.2 Lesen mode (FEEDBACK F14, ADR-102): pan by drag, text-only selection, the magnifier lens.
   'hand',
   'textSelect',
@@ -72,6 +74,7 @@ export function modeOfTool(tool: ToolId): Mode | null {
     case 'textBox':
     case 'image':
     case 'crop':
+    case 'editText':
       return 'edit';
     case 'select':
       return null;

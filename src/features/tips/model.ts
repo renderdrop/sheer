@@ -14,6 +14,7 @@ export const TIP_IDS = [
   'insertText',
   'crop',
   'redact',
+  'editText',
 ] as const;
 export type TipId = (typeof TIP_IDS)[number];
 
@@ -59,6 +60,8 @@ export function tipOfTool(tool: ToolId): TipId | null {
       return 'sign';
     case 'textBox':
       return 'insertText';
+    case 'editText':
+      return 'editText';
     default:
       return null;
   }

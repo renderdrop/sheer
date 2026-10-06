@@ -189,6 +189,7 @@ describe('shortcuts per platform', () => {
     'tool-textBox': { macos: 'E', windows: 'E' },
     'tool-image': { macos: 'I', windows: 'I' },
     'tool-crop': { macos: 'K', windows: 'K' },
+    'tool-editText': { macos: null, windows: null },
     'tool-hand': { macos: null, windows: null },
     'tool-textSelect': { macos: null, windows: null },
     'tool-magnifier': { macos: null, windows: null },
