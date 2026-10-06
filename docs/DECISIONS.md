@@ -2548,3 +2548,22 @@ deferred: the edit box draws the draft over a page-coloured mask in the closest 
 result. (b) The Umbrechen toggle (E2) belongs to v1.5.2 (`scope: paragraph`) and is not shown. Both go to "Politur v1.5" / v1.5.2.
 
 **Consequences.** Fewer review agents per wave; the risk moves to the milestone-end security review and the installed-build round.
+
+## ADR-129 — Live line preview, alignment, paragraph reflow (session "Politur v1.5 + v1.5.2 bis Release v1.5.0")
+
+**Status:** accepted (2026-10-06, owner instruction). Tempo level 3 (ADR-128) applies.
+
+**Decisions (owner).**
+1. *Live rendering while typing* replaces the ADR-128 scope cut (a): Rust renders the edited line in the real font from the draft.
+   The UI asks 60 ms after the last keystroke; under load (a preview still running, or the last one took longer than 60 ms) the delay
+   becomes 100 ms. A preview is never an undo step and never touches `DocState`; a stale answer (older generation) is dropped.
+2. *Polish v1.5*: the substitute notice also appears after Apply (anchored to the last edit box); the edit box grows with the text;
+   centred and right-aligned lines keep their alignment on Apply (the anchor moves, not the start); the designer minors of the beta.
+3. *v1.5.2 reflow* (`scope: paragraph`): words re-break inside one paragraph on its own baselines; at most one line is added, only
+   if the gap below is at least one line pitch; never across columns or pages, never moving other paragraphs.
+4. Release `v1.5.0` after acceptance in the installed build with three owner PDFs (`review/owner/corpus/`); the tag
+   `v1.5.0-beta.1` stays.
+
+**Orchestrator cuts.** Wave A: backend preview command (new module, own IPC → review), backend alignment + paragraph grouping of
+justified text, backend reflow (new `text_reflow.rs`, expanded inside `replay`), frontend polish (notice, growing box, minors). Wave B:
+frontend live preview + alignment-aware box + reflow editing, and the Umbrechen toggle.

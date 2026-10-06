@@ -1,9 +1,9 @@
 # STATE
-phase: v1.5.1 (session topic "v1.5.1 Text bearbeiten – Zeile bearbeiten", ADR-122)
+phase: v1.5 (session topic "Politur v1.5 + v1.5.2 bis Release v1.5.0", ADR-129)
 version: 1.5.0-beta.1 (tag v1.5.0-beta.1, pre-release)
-current_item: v1.5.1 done as pre-release v1.5.0-beta.1 (ADR-128). Next: v1.5.2 (paragraph reflow, fallback carry-overs) or Politur v1.5 (substitute notice after Apply = major)
+current_item: wave A running — B1 preview command (commands/text_preview.rs, api/textPreview.ts) · B2 alignment on apply + justified paragraph grouping + align/subset in TextLineInfo (text_splice positioning, text_lines, model) · B3 reflow scope paragraph (pdfwrite/text_reflow.rs, replay hook) · F1 polish (notice after apply, growing box, designer minors). Then wave B: F2 live preview + aligned box + reflow editing (EditBox/layer), F3 Umbrechen toggle (bar, store, gate). Then acceptance (3 owner PDFs), designer, security, release v1.5.0
 last_completed: v1.5.1 wave 2 — seam 351fea5, P1–P3 13ca75b, P4 266bc35 (review PASS), gate fixes 8a78a0b; corpus gate 32 files 99.8 % found / 90.8 % editable; surface gate 958/958, smoke 16/16; installed-build acceptance (Windows, mouse) no blocker; designer PASS (minors), security-reviewer PASS
-loop_count_this_session: 1 (session closed: report docs/reports/2026-10-06-v1.5.1-welle2-beta.md, STOP set)
+loop_count_this_session: 0
 open_blockers: 2 (B-002, B-005, human-only). B-006 and B-007 resolved by the owner (ADR-128). Path guard (ADR-127) allows the project memory folder (ADR-128)
 notes: ADR-120: every loop starts with `bash scripts/ci-status.sh` (last completed run on main, never wait); red = fix first. v1.4 W0 2a1e3f3 (stable RustCrypto line), seam 586feeb. Release v1.3.0 published.
   Owner re-check on the Mac after v1.2.0: A10 "Save as PDF" in the print dialog. Screenshot series docs/review/v1.2/ (not tracked), motion recordings docs/review/v1.2/motion/.
