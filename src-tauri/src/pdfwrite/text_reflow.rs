@@ -8,7 +8,7 @@
 //!
 //! This module is a child of `text_splice` (`#[path]`), so it uses the splice's private lexer and operand reader.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeSet, HashSet};
 
 use lopdf::{Document, ObjectId};
 
@@ -47,6 +47,8 @@ pub(crate) struct ParaGeom {
     pub indices: Vec<u32>,
     pub lines: Vec<LineGeom>,
     pub align: Align,
+    /// The paragraph is justified: its lines but the last end at the paragraph's right edge (ADR-130).
+    pub justified: bool,
     /// The widest right edge and the smallest left edge of the lines.
     pub right: f64,
     pub left: f64,
@@ -91,6 +93,10 @@ pub(crate) fn geometry(
         geoms.push(geom_of(pl, *i, l)?);
     }
     if para.align == Align::Left {
+        // Each step adds one line, so there are at most as many steps as lines; the set and the running edges keep a step linear.
+        let mut member: HashSet<u32> = indices.iter().copied().collect();
+        let mut left = geoms.iter().map(|g| g.start).fold(f64::MAX, f64::min);
+        let mut right = geoms.iter().map(|g| g.end).fold(f64::MIN, f64::max);
         while indices.len() < pl.lines.len() {
             let (Some(&last_i), Some(last), Some(first)) = (
                 indices.last(),
@@ -99,13 +105,11 @@ pub(crate) fn geometry(
             ) else {
                 break;
             };
-            let left = geoms.iter().map(|g| g.start).fold(f64::MAX, f64::min);
-            let right = geoms.iter().map(|g| g.end).fold(f64::MIN, f64::max);
             let mut next: Option<(u32, LineGeom)> = None;
             for (j, other) in pl.lines.iter().enumerate() {
                 let j = u32::try_from(j).unwrap_or(u32::MAX);
                 let Some(span) = other.span() else { continue };
-                if indices.contains(&j)
+                if member.contains(&j)
                     || !horizontal(other)
                     || span.baseline >= last.baseline - 0.1 * last.size
                     || span.end <= left
@@ -138,21 +142,30 @@ pub(crate) fn geometry(
                 break;
             }
             indices.push(j);
+            member.insert(j);
+            left = left.min(g.start);
+            right = right.max(g.end);
             geoms.push(g);
         }
     }
     let Some(last) = geoms.last().copied() else {
         return Err(refused());
     };
-    let right = geoms.iter().map(|l| l.end).fold(f64::MIN, f64::max);
+    let mut right = geoms.iter().map(|l| l.end).fold(f64::MIN, f64::max);
+    if para.justified && geoms.len() > 1 {
+        // The paragraph's edge is where most of its lines end: one line that overshoots (a stretched line) must not move it.
+        let inner: Vec<f64> = geoms[..geoms.len() - 1].iter().map(|l| l.end).collect();
+        right = typical_edge(&inner).unwrap_or(right);
+    }
     let left = geoms.iter().map(|l| l.start).fold(f64::MAX, f64::min);
     let crop = ops_walk::inherited(doc, page, b"CropBox")
         .or_else(|| ops_walk::inherited(doc, page, b"MediaBox"))
         .and_then(|o| ops_walk::box_of(doc, &o))
         .unwrap_or([0.0, 0.0, 612.0, 792.0]);
+    let member_of_para: HashSet<u32> = indices.iter().copied().collect();
     let mut below: Option<(f64, f64)> = None;
     for (i, other) in pl.lines.iter().enumerate() {
-        if indices.contains(&u32::try_from(i).unwrap_or(u32::MAX)) {
+        if member_of_para.contains(&u32::try_from(i).unwrap_or(u32::MAX)) {
             continue;
         }
         let Some(span) = other.span() else { continue };
@@ -171,11 +184,19 @@ pub(crate) fn geometry(
         indices,
         lines: geoms,
         align: para.align,
+        justified: para.justified,
         right,
         left,
         crop,
         below,
     })
+}
+
+/// The right edge most of the (inner, justified) lines share: their median.
+pub(crate) fn typical_edge(ends: &[f64]) -> Option<f64> {
+    let mut sorted: Vec<f64> = ends.iter().copied().filter(|e| e.is_finite()).collect();
+    sorted.sort_by(f64::total_cmp);
+    sorted.get(sorted.len() / 2).copied()
 }
 
 fn geom_of(pl: &PageLines, index: u32, l: &text_lines::Line) -> Result<LineGeom, AppError> {
@@ -206,8 +227,13 @@ fn avail(geo: &ParaGeom, i: usize) -> f64 {
             let limit = match g.room {
                 Some(room) => right.min(g.end + room - NEXT_GAP),
                 None => right,
-            }
-            .max(g.end);
+            };
+            // A line that already sticks out keeps its width, except in a justified paragraph (its edge is the paragraph's).
+            let limit = if geo.justified && n > 1 {
+                limit
+            } else {
+                limit.max(g.end)
+            };
             (limit - g.start).max(0.0)
         }
     }
@@ -459,27 +485,32 @@ pub(super) fn reflow(
     let o_e = o_end.first().copied().unwrap_or(0);
     let total = words.len();
 
-    // Greedy fill, until the breaks are the original ones again.
+    // Greedy fill, until the breaks are the original ones again. The width of a line is summed word by word (the measure is additive).
     let mut targets: Vec<String> = Vec::with_capacity(old.len());
     let mut p = 0usize;
     let mut synced = false;
-    for k in 0..old.len() {
+    for (k, (line, m)) in old.iter().zip(&measures).enumerate() {
         let width = avail(&geo, e + k);
+        let space_w = m.width(line, " ", fw);
         let mut text = String::new();
-        while p < total {
-            let candidate = if text.is_empty() {
-                words[p].to_owned()
+        let mut text_w = 0.0;
+        while let Some(word) = words.get(p) {
+            let w = m.width(line, word, fw);
+            if text.is_empty() {
+                text_w = w;
             } else {
-                format!("{text} {}", words[p])
-            };
-            if !text.is_empty() && measures[k].width(&old[k], &candidate, fw) > width + SLACK {
-                break;
+                let candidate = text_w + space_w + w;
+                if candidate > width + SLACK {
+                    break;
+                }
+                text.push(' ');
+                text_w = candidate;
             }
-            text = candidate;
+            text.push_str(word);
             p += 1;
         }
         targets.push(text);
-        if p >= e_count && p + o_e - e_count == o_end[k] {
+        if p >= e_count && o_end.get(k) == Some(&(p + o_e - e_count)) {
             synced = true;
             break;
         }
@@ -511,7 +542,10 @@ pub(super) fn reflow(
         .chain((0..targets.len()).rev().filter(|k| targets[*k].is_empty()))
         .collect();
     for k in order {
-        if targets[k] == old[k].text {
+        let (Some(target), Some(before)) = (targets.get(k), old.get(k)) else {
+            continue;
+        };
+        if *target == before.text {
             continue;
         }
         let line = source.line(
@@ -528,11 +562,12 @@ pub(super) fn reflow(
             font: &line.font,
             face: line.face,
             align: line.align,
-            justified: line.justified,
+            // Every re-broken line but the paragraph's last is stretched to the right edge; the last keeps its natural width.
+            justified: geo.justified && (e + k + 1 < n || added.is_some()),
             // The limit the fill used (the line already fits it); an overflow the fill could not avoid is warned of below.
             right_limit: geo.lines.get(e + k).map(|g| g.start + avail(&geo, e + k)),
         };
-        let outcome = edit_line(streams, &input, &targets[k], edit.fit, fw)?;
+        let outcome = edit_line(streams, &input, target, edit.fit, fw)?;
         merge(outcome, warnings, fallback);
     }
 

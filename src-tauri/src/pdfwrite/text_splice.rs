@@ -16,7 +16,7 @@ use lopdf::{Document, Object, ObjectId};
 
 use super::ops_walk::{GlyphPos, OpRef};
 use super::text_fonts::{font_map, FontKind, FontMap, WidthSource};
-use super::text_lines::{self, Align};
+use super::text_lines::{self, Align, PageLines};
 use crate::error::AppError;
 use crate::fontprog::fallback::{pick, Face, FallbackStore};
 use crate::limits;
@@ -951,6 +951,32 @@ struct Cell {
     glyph: Option<usize>,
 }
 
+/// Counts the word gaps of a text as its characters are fed in order: a run of whitespace between two words is one gap; leading and
+/// trailing whitespace are none. `next` answers the number of gaps before the character.
+#[derive(Default)]
+struct GapCounter {
+    runs: usize,
+    seen_word: bool,
+    pending: bool,
+}
+
+impl GapCounter {
+    fn next(&mut self, c: char) -> usize {
+        if c.is_whitespace() {
+            if self.seen_word {
+                self.pending = true;
+            }
+        } else {
+            if self.pending {
+                self.runs += 1;
+                self.pending = false;
+            }
+            self.seen_word = true;
+        }
+        self.runs
+    }
+}
+
 #[derive(Debug, Clone, Copy)]
 enum Ins {
     /// The first deleted glyph: the new text takes its place.
@@ -966,6 +992,9 @@ struct Splice {
 }
 
 const EPS: f64 = 0.05;
+/// A stretched gap grows by at most this many space widths, and a line never needs to shrink its gaps below this share of one (ADR-130).
+const STRETCH_MAX: f64 = 4.0;
+const STRETCH_MIN: f64 = 0.5;
 
 /// Edits one line: replaces the text of `input` by `new_text` in `streams` (the page's content streams, decoded), touching only the show
 /// operators the change needs. `tooComplex` for anything the splice cannot do with certainty.
@@ -1118,6 +1147,7 @@ fn plan_edit(
     };
     let mut new_items: Vec<Item> = Vec::new();
     let mut new_adv = 0.0;
+    let mut new_advs: Vec<f64> = Vec::new(); // per character of the region (empty for a substitute-font run)
     let mut fallback = None;
     if wants_fallback && !region.is_empty() {
         let mut codes = Vec::with_capacity(region.len() * 2);
@@ -1136,7 +1166,9 @@ fn plan_edit(
         for c in region.chars() {
             let code = *font.to_code.get(&c).ok_or_else(refused)?;
             let w = width_of(font, code).ok_or_else(refused)?;
-            new_adv += adv_of(w, width == 1 && code == 32);
+            let adv = adv_of(w, width == 1 && code == 32);
+            new_advs.push(adv);
+            new_adv += adv;
             new_items.push(Item::Glyph(code_bytes(code, width)));
         }
     }
@@ -1197,12 +1229,23 @@ fn plan_edit(
     let mut leading_shift = 0.0;
     let mut shift_at: Vec<(usize, f64)> = Vec::new(); // (operator, page units of one em there)
     let mut spread = 0.0;
+    // The stretch of a justified line: the page units each word gap gets, the gaps before each kept glyph and before each new item.
+    let mut edge: Option<f64> = None;
+    let mut kept_gb: HashMap<usize, usize> = HashMap::new();
+    let mut new_gb: Vec<Option<usize>> = vec![None; new_items.len()];
 
     let aligned = matches!(input.align, Align::Right | Align::Center);
+    // A justified line is stretched back to the paragraph's right edge over all its word gaps (ADR-130), whatever its chains.
+    let stretch_possible =
+        input.justified && !aligned && fit != TextFit::Squeeze && input.right_limit.is_some();
     // A glyph of a later chain that stays cannot follow the shift of an aligned line.
     let stranded =
         (0..glyphs.len()).any(|g| !in_a(g) && !del_set.contains(&g) && at[g].0 > first_pos);
-    if cross && (input.justified || fit == TextFit::Squeeze || (aligned && stranded)) {
+    if cross
+        && (fit == TextFit::Squeeze
+            || (aligned && stranded)
+            || (input.justified && !stretch_possible))
+    {
         return Err(refused());
     }
     if cross && aligned {
@@ -1261,6 +1304,88 @@ fn plan_edit(
             -delta / 2.0
         };
         delta = 0.0;
+    } else if stretch_possible {
+        if let Some(limit) = input.right_limit {
+            let mut gc = GapCounter::default();
+            let mut l_nat = f64::MIN;
+            let shifting_set: HashSet<usize> = shifting.iter().copied().collect();
+            let mut visit = |cell: &Cell, g: usize| {
+                if let Some(gi) = cell.glyph {
+                    kept_gb.insert(gi, g);
+                    if !cell.c.is_whitespace() {
+                        let shift = if shifting_set.contains(&gi) {
+                            delta
+                        } else {
+                            0.0
+                        };
+                        l_nat = l_nat.max(end_of(gi) + shift);
+                    }
+                }
+            };
+            for cell in &cells[..a] {
+                let g = gc.next(cell.c);
+                visit(cell, g);
+            }
+            let mut region_gap = false;
+            let mut region_gb: Vec<Option<usize>> = Vec::new();
+            if fallback.is_some() {
+                let mut first = None;
+                for c in region.chars() {
+                    let g = gc.next(c);
+                    first.get_or_insert(g);
+                    region_gap |= c.is_whitespace();
+                }
+                region_gb.push(first);
+            } else {
+                region_gb.extend(region.chars().map(|c| Some(gc.next(c))));
+            }
+            for cell in &cells[b..] {
+                let g = gc.next(cell.c);
+                visit(cell, g);
+            }
+            let tail_only = cells[b..].iter().all(|c| c.c.is_whitespace());
+            let region_start = match ins {
+                Ins::Replace(g) | Ins::Before(g) => proj(glyphs[g].origin),
+                Ins::After(g) => end_of(g),
+            };
+            if region.chars().any(|c| !c.is_whitespace()) {
+                let trailing: f64 = if tail_only {
+                    new_advs
+                        .iter()
+                        .rev()
+                        .zip(region.chars().rev())
+                        .take_while(|(_, c)| c.is_whitespace())
+                        .map(|(w, _)| *w)
+                        .sum()
+                } else {
+                    0.0
+                };
+                l_nat = l_nat.max(region_start + new_adv - trailing);
+            }
+            if gc.runs > 0
+                && !region_gap
+                && l_nat > f64::MIN / 2.0
+                && unit_anchor > 0.0
+                && unit_anchor.is_finite()
+            {
+                let per_gap = (limit - l_nat) / gc.runs as f64;
+                let per_em = per_gap * 1000.0 / unit_anchor;
+                let space_w = font
+                    .to_code
+                    .get(&' ')
+                    .and_then(|c| width_of(font, *c))
+                    .filter(|w| *w > 0.0)
+                    .unwrap_or(250.0);
+                if per_em <= STRETCH_MAX * space_w && per_em >= -STRETCH_MIN * space_w {
+                    edge = Some(per_gap);
+                    new_gb = region_gb;
+                    delta = 0.0;
+                }
+            }
+        }
+        if edge.is_none() {
+            kept_gb.clear();
+        }
     } else if input.justified && delta.abs() > EPS {
         spread = delta;
         delta = 0.0;
@@ -1268,6 +1393,7 @@ fn plan_edit(
 
     // The items of the operators the edit changes.
     let mut work: BTreeMap<usize, Vec<Item>> = BTreeMap::new();
+    let mut work_gb: BTreeMap<usize, Vec<Option<usize>>> = BTreeMap::new();
     let mut touched: BTreeSet<usize> = BTreeSet::new();
     let glyph_at: HashMap<(usize, usize), usize> =
         at.iter().enumerate().map(|(gi, k)| (*k, gi)).collect();
@@ -1279,6 +1405,7 @@ fn plan_edit(
     };
     for (pos, data) in &ops {
         let mut out: Vec<Item> = Vec::with_capacity(data.items.len() + 2);
+        let mut ogb: Vec<Option<usize>> = Vec::with_capacity(data.items.len() + 2);
         let mut pending = 0.0;
         let mut pending_unit = unit_anchor;
         let in_chain_a = chain[*pos] == chain_a;
@@ -1298,6 +1425,7 @@ fn plan_edit(
                     touched.insert(*pos);
                     if matches!(ins, Ins::Replace(_)) && (*pos, idx) == (first_pos, anchor_item) {
                         out.extend(new_items.iter().cloned());
+                        ogb.extend(new_gb.iter().copied());
                     }
                     if !in_chain_a {
                         if let Some(gi) = glyph_at.get(&(*pos, idx)) {
@@ -1319,25 +1447,79 @@ fn plan_edit(
             }
             if pending > 0.0 {
                 out.push(Item::kern(-pending * 1000.0 / pending_unit));
+                ogb.push(None);
                 pending = 0.0;
             }
             if matches!(ins, Ins::Before(_)) && (*pos, idx) == (first_pos, anchor_item) {
                 touched.insert(*pos);
                 out.extend(new_items.iter().cloned());
+                ogb.extend(new_gb.iter().copied());
             }
             out.push(item.clone());
+            ogb.push(match item {
+                Item::Glyph(_) => glyph_at
+                    .get(&(*pos, idx))
+                    .and_then(|gi| kept_gb.get(gi))
+                    .copied(),
+                _ => None,
+            });
             if matches!(ins, Ins::After(_)) && (*pos, idx) == (first_pos, anchor_item) {
                 touched.insert(*pos);
                 out.extend(new_items.iter().cloned());
+                ogb.extend(new_gb.iter().copied());
             }
         }
         if pending > 0.0 && later_in_chain(*pos) {
             out.push(Item::kern(-pending * 1000.0 / pending_unit));
+            ogb.push(None);
         }
         work.insert(*pos, out);
+        work_gb.insert(*pos, ogb);
     }
 
-    // A justified line spreads the change over its word gaps; an aligned line moves its start.
+    // A stretched line: every word gap grows by the same amount; each chain gets the growth before its first glyph as a leading kern.
+    if let Some(per_gap) = edge {
+        let mut prev: Option<(u32, usize)> = None;
+        let mut inserts: Vec<(usize, usize, f64)> = Vec::new();
+        for (pos, gbs) in &work_gb {
+            for (idx, g) in gbs.iter().enumerate() {
+                let Some(g) = *g else { continue };
+                let gaps = match prev {
+                    Some((c, before)) if c == chain[*pos] => g.saturating_sub(before),
+                    _ => g,
+                };
+                prev = Some((chain[*pos], g));
+                if gaps > 0 && per_gap.abs() > 1e-6 {
+                    inserts.push((*pos, idx, gaps as f64 * per_gap));
+                }
+            }
+        }
+        let mut units: HashMap<usize, f64> = HashMap::new();
+        for (gi, (pos, _)) in at.iter().enumerate() {
+            if let std::collections::hash_map::Entry::Vacant(v) = units.entry(*pos) {
+                v.insert(glyphs[gi].size_eff * view.state_at(*pos).tz / 100.0);
+            }
+        }
+        for (pos, idx, grow) in inserts.into_iter().rev() {
+            let unit = units.get(&pos).copied().unwrap_or(0.0);
+            if unit <= 0.0 || !unit.is_finite() {
+                return Err(refused());
+            }
+            touched.insert(pos);
+            let items = work.get_mut(&pos).ok_or_else(refused)?;
+            let value = -grow * 1000.0 / unit;
+            let merge = idx.checked_sub(1).and_then(|k| match items.get(k) {
+                Some(Item::Kern { value: old, .. }) => Some((k, *old)),
+                _ => None,
+            });
+            match merge {
+                Some((k, old)) => items[k] = Item::kern(old + value),
+                None => items.insert(idx, Item::kern(value)),
+            }
+        }
+    }
+
+    // A justified line without a limit spreads the change over its word gaps (squeeze); an aligned line moves its start.
     if spread.abs() > EPS {
         let mut gaps: Vec<(usize, usize)> = Vec::new();
         let mut last_glyph: Option<(usize, usize)> = None;
@@ -1758,9 +1940,35 @@ struct DocLines<'a> {
     ids: Vec<ObjectId>,
     work: Option<Document>,
     store: &'a FallbackStore,
+    /// The page's lines for the state `key` fingerprints (the streams and the substitute characters): reading several lines of one
+    /// state scans the page once.
+    cache: Option<(u64, PageLines)>,
 }
 
 impl DocLines<'_> {
+    /// Brings the working copy and the line cache to the state of `streams`.
+    fn refresh(
+        &mut self,
+        streams: &[Vec<u8>],
+        fallback: &[(Face, BTreeSet<char>)],
+        rev: u32,
+    ) -> Result<(), AppError> {
+        use std::hash::{Hash, Hasher};
+        let mut hasher = std::collections::hash_map::DefaultHasher::new();
+        (rev > 0).hash(&mut hasher);
+        streams.hash(&mut hasher);
+        format!("{fallback:?}").hash(&mut hasher);
+        let key = hasher.finish();
+        if self.cache.as_ref().is_some_and(|(k, _)| *k == key) {
+            return Ok(());
+        }
+        self.sync(streams, fallback, rev)?;
+        let doc: &Document = self.work.as_ref().unwrap_or(self.src);
+        let lines = text_lines::lines(doc, self.page, &[])?;
+        self.cache = Some((key, lines));
+        Ok(())
+    }
+
     /// Writes the streams of the edits so far into the working copy (`rev` 0 is the original, nothing to write).
     fn sync(
         &mut self,
@@ -1793,10 +2001,10 @@ impl LineSource for DocLines<'_> {
         fallback: &[(Face, BTreeSet<char>)],
         key: LineKey,
     ) -> Result<text_reflow::ParaGeom, AppError> {
-        self.sync(streams, fallback, key.rev)?;
+        self.refresh(streams, fallback, key.rev)?;
         let doc: &Document = self.work.as_ref().unwrap_or(self.src);
-        let lines = text_lines::lines(doc, self.page, &[])?;
-        text_reflow::geometry(doc, self.page, &lines, key.line)
+        let (_, lines) = self.cache.as_ref().ok_or_else(refused)?;
+        text_reflow::geometry(doc, self.page, lines, key.line)
     }
 
     fn line(
@@ -1805,9 +2013,9 @@ impl LineSource for DocLines<'_> {
         fallback: &[(Face, BTreeSet<char>)],
         key: LineKey,
     ) -> Result<OwnedLine, AppError> {
-        self.sync(streams, fallback, key.rev)?;
+        self.refresh(streams, fallback, key.rev)?;
         let doc: &Document = self.work.as_ref().unwrap_or(self.src);
-        let lines = text_lines::lines(doc, self.page, &[])?;
+        let (_, lines) = self.cache.as_ref().ok_or_else(refused)?;
         let index = usize::try_from(key.line).map_err(|_| AppError::invalid("lineKey"))?;
         let line = lines.lines.get(index).ok_or(AppError::invalid("lineKey"))?;
         if let LineEditable::No { reason } = line.editable {
@@ -1829,11 +2037,18 @@ impl LineSource for DocLines<'_> {
         let dir = line.dir;
         let right_limit = if dir[1].abs() < 0.01 && dir[0] > 0.0 {
             match paragraph {
-                Some(p) if p.lines.len() > 1 => lines.lines
-                    [p.lines.start as usize..p.lines.end as usize]
-                    .iter()
-                    .map(|l| f64::from(l.bounds.x + l.bounds.w))
-                    .reduce(f64::max),
+                Some(p) if p.lines.len() > 1 => {
+                    let ends: Vec<f64> = lines.lines[p.lines.start as usize..p.lines.end as usize]
+                        .iter()
+                        .map(|l| f64::from(l.bounds.x + l.bounds.w))
+                        .collect();
+                    if p.justified {
+                        // The edge most inner lines share, not the one a stretched line overshoots to.
+                        text_reflow::typical_edge(&ends[..ends.len() - 1])
+                    } else {
+                        ends.iter().copied().reduce(f64::max)
+                    }
+                }
                 _ => media_right(doc, self.page),
             }
         } else {
@@ -1889,6 +2104,7 @@ pub fn replay(
             ids,
             work: None,
             store: fonts,
+            cache: None,
         };
         let width = |face: Face, c: char| face.advance(c);
         replay_core(

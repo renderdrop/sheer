@@ -581,3 +581,108 @@ fn placeholders_are_paired_with_the_glyph_at_their_index() {
         "\u{fffd} \u{fffd}"
     );
 }
+
+/// The right edge (page x) of the last glyph of the only row of `out`.
+fn right_edge(out: &str) -> f64 {
+    walk(&[out.as_bytes().to_vec()])
+        .iter()
+        .map(|g| g.origin[0] + g.adv)
+        .fold(f64::MIN, f64::max)
+}
+
+fn justified(limit: f64) -> Source {
+    Source {
+        justified: true,
+        right_limit: Some(limit),
+        ..Source::default()
+    }
+}
+
+#[test]
+fn a_changed_justified_line_in_one_tj_ends_at_the_right_edge() {
+    let content = "BT /F1 10 Tf 72 700 Td [(ab cd) -20 (ef gh)] TJ ET";
+    let (out, warnings, _) = run(
+        content,
+        &[edit(0, 0, "ab cdXef gh", TextFit::KeepStart)],
+        justified(140.0),
+    )
+    .unwrap();
+    assert!((right_edge(&out) - 140.0).abs() < 0.5, "{out}");
+    assert!(warnings.is_empty(), "{warnings:?}");
+}
+
+#[test]
+fn a_changed_justified_line_with_a_chain_per_word_ends_at_the_right_edge() {
+    let content = "BT /F1 10 Tf 72 700 Td (ab ) Tj 20 0 Td (cd ) Tj 20 0 Td (ef) Tj ET";
+    assert!((right_edge(content) - 122.0).abs() < 0.01);
+    let (out, warnings, _) = run(
+        content,
+        &[edit(0, 0, "ab cdX ef", TextFit::KeepStart)],
+        justified(130.0),
+    )
+    .unwrap();
+    assert!((right_edge(&out) - 130.0).abs() < 0.5, "{out}");
+    assert!(warnings.is_empty(), "{warnings:?}");
+    // The first word stays where it was.
+    assert!(
+        out.contains("72 700 Td [<616220>] TJ") || out.contains("72 700 Td (ab ) Tj"),
+        "{out}"
+    );
+}
+
+#[test]
+fn a_change_that_would_stretch_the_gaps_too_far_leaves_the_line_ragged() {
+    let content = "BT /F1 10 Tf 72 700 Td [(ab cd) -20 (ef gh)] TJ ET";
+    let text = "ab cdXef gh";
+    let (ragged, warnings, _) = run(
+        content,
+        &[edit(0, 0, text, TextFit::KeepStart)],
+        justified(300.0),
+    )
+    .unwrap();
+    let (plain, ..) = run(
+        content,
+        &[edit(0, 0, text, TextFit::KeepStart)],
+        Source::default(),
+    )
+    .unwrap();
+    assert_eq!(ragged, plain);
+    assert!(warnings.is_empty());
+}
+
+#[test]
+fn the_last_line_of_a_justified_paragraph_and_a_one_word_line_keep_their_natural_width() {
+    let content = "BT /F1 10 Tf 72 700 Td [(ab cd) -20 (ef gh)] TJ ET";
+    let last = Source {
+        justified: false,
+        right_limit: Some(140.0),
+        ..Source::default()
+    };
+    let (out, ..) = run(
+        content,
+        &[edit(0, 0, "ab cdXef gh", TextFit::KeepStart)],
+        last,
+    )
+    .unwrap();
+    assert!((right_edge(&out) - 127.2).abs() < 0.01, "{out}");
+    let one = "BT /F1 10 Tf 72 700 Td (abc) Tj ET";
+    let (out, ..) = run(
+        one,
+        &[edit(0, 0, "abcd", TextFit::KeepStart)],
+        justified(140.0),
+    )
+    .unwrap();
+    assert!((right_edge(&out) - 92.0).abs() < 0.01, "{out}");
+}
+
+#[test]
+fn emptying_a_justified_line_removes_its_glyphs() {
+    let content = "BT /F1 10 Tf 72 700 Td [(ab cd) -20 (ef gh)] TJ ET";
+    let (out, ..) = run(
+        content,
+        &[edit(0, 0, "", TextFit::KeepStart)],
+        justified(140.0),
+    )
+    .unwrap();
+    assert!(out.contains("[] TJ"), "{out}");
+}
