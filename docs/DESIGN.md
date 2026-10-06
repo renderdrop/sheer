@@ -868,7 +868,7 @@ E-AC 8. With reduced motion, nothing animates except fades. The DOM gate passes 
 
 ### 3.11 v1.6 Smart links
 
-Spec only; detection rules, scoring and IPC are the v1.6 ADR's. **Binding (owner):** every smart link is a guess, drawn as an app overlay, **never written into the PDF**, switchable off, marked "Detected" / "Erkannt". **No new mode, panel tab or grid track**. New surfaces: a page overlay layer (inside the page rect), one tool slot, one top-bar slot, a link preview (tooltip class; joins §3's floating list), one tip. Light only, tokens only, no glass. New tokens: `--smartlink-rest` (1px dashed Text-secondary, dash 3/2, 2 pt below the baseline), `--smartlink-visited` (same, Stone), `--smartlink-hover-fill` (`--surface-pressed`, `mix-blend-mode: multiply`), `--link-preview-max` 320.
+Spec only; detection rules, scoring and IPC are the v1.6 ADR's. **Binding (owner):** every smart link is a guess, drawn as an app overlay, **never written into the PDF**, switchable off, marked "Detected" / "Erkannt". **No new mode, panel tab or grid track**. New surfaces: a page overlay layer (inside the page rect), one tool slot, one top-bar slot, a link preview (tooltip class; joins §3's floating list), a range chooser (popover class, L14), one tip. Light only, tokens only, no glass. New tokens: `--smartlink-rest` (1px dashed Text-secondary, dash 3/2, 2 pt below the baseline), `--smartlink-visited` (same, Stone), `--smartlink-hover-fill` (`--surface-pressed`, `mix-blend-mode: multiply`), `--link-preview-max` 320.
 
 **L1 Kinds** (Rust detects; the frontend gets boxes and targets by document ID, never text or paths beyond the preview string).
 
@@ -878,7 +878,7 @@ Spec only; detection rules, scoring and IPC are the v1.6 ADR's. **Binding (owner
 | Note back | the marker in front of a note | the one marker that points to it (only if exactly one does) |
 | Contents | a contents line: title + dot leaders or gap + page number | the page; the hit area is the whole line |
 | Reference | "siehe S. 12", "see p. 12", "pp. 12–14" · "Abb./Abbildung/Fig./Figure 3" · "Tab./Tabelle/Table 2" · "Kapitel/Chapter/Abschnitt/Section 4(.2)" · "§ 5" | the page (first page of a range), or the caption or heading line that starts with the same label |
-| Literature | "(Müller 2019)", "(Müller, 2019, S. 4)", "Müller et al. (2019)", "[12]", "[3, 7]" | the bibliography entry; in "[3, 7]" and "[3–5]" each printed number is its own link |
+| Literature | "(Müller 2019)", "(Müller, 2019, S. 4)", "Müller et al. (2019)", "[12]", "[3, 7]" | the bibliography entry. Each comma-separated part of a bracket is its own run: "[3, 7]" = two links; "[3–5]", "[3-5]" (en dash or hyphen) = one range run whose target is the chooser (L14); "[3, 5–7]" = a plain link "3" + a range run "5–7" |
 
 **Page numbers.** A printed number resolves first to a matching page label (if the file defines labels), else through a printed-to-physical offset learned from page-number runs in headers/footers and confirmed by ≥ 3 contents lines whose title is found on the target page. No confirmed mapping, no link. The preview names both when they differ.
 
@@ -904,6 +904,8 @@ Glyphs stay Ink (fill multiplies). Hit boxes are at least 24 × 24 CSS px at eve
 2. Body `.t-body` Ink: the note, entry, caption or heading text, cut by Rust to 280 characters at a word boundary + "…" (no CSS clamp, no scroll). Page targets without a heading: no body.
 3. Footer `.t-caption` Text-secondary: `smartlinks.previewHint` with kbd.
 
+Range run (L14): header `smartlinks.detected` · `smartlinks.kind.literature` · `smartlinks.range.count` ("Erkannt · Quelle · 3 Einträge"), no target page, no body; footer `smartlinks.range.hint` instead of `previewHint`. Not shown while its chooser is open.
+
 Placement Q8 tooltip order, gap 8; protected rects add the source run, the selection and the mini bar. No fit: not shown (the link still works). Timing spell 16. `wand` is the app's one "derived" sign (as B8's outline row).
 
 **One-time tip** (§3.6 rules: once ever, cap 3/session, queue priority 4): tip id `smartlinks`, anchored to the Lesen tool slot (L8), shown after the first hover or focus on a detected link: `tip.smartlinks`.
@@ -928,11 +930,12 @@ Placement Q8 tooltip order, gap 8; protected rects add the source run, the selec
 **L11 Keyboard and screen readers.**
 - Links are **not** separate Tab stops. Each visible page's links (real and smart, reading order) form one `role="list"` per page with one Tab stop, after the page and before the margin column (B9). Inside: Down/Right next, Up/Left previous, Home/End, Enter/Space follow, Esc back to the canvas. Past the last link, the next page's first link takes focus and scrolls into view.
 - Each smart link: `role="link"`, name `smartlinks.aria.*` (kind, marker text, "detected", target page), `aria-describedby` = the preview text; visited adds nothing (visual only). Real links: `link.aria.page` / `link.aria.url`. The list is named `smartlinks.aria.list`.
+- A range run is `role="button"`, `aria-haspopup="listbox"`, `aria-expanded`, name `smartlinks.aria.range`; Enter/Space opens its chooser (L14) instead of following.
 - Contrast: rest underline Text-secondary 5.0:1, visited Stone 3.47:1, hover Ink; the state cue is line style plus fill, never colour alone (§2).
 
 **L12 Motion.** Underline rest → hover: `--motion-fast` (out `--motion-fast-exit`). Preview: spell 16. Jump: spell 8. Back/forward: instant. Toggle off: layer fades `--motion-fast-exit`. Reduced motion: no fades on the underline, preview fades only, jumps are instant with the 2px Ink outline for 1 s instead of the band pulse.
 
-**L13 Layout check (Q9, both sizes, en and de).** Registered: the link preview (longest de body), the Back control (labelled, disabled, icon-only), the 7-slot Lesen row, the tip, Settings with the new group.
+**L13 Layout check (Q9, both sizes, en and de).** Registered: the link preview (longest de body, and the range variant), the Back control (labelled, disabled, icon-only), the 7-slot Lesen row, the tip, Settings with the new group, the range chooser (L14: 2 rows, and 20 rows scrolled to the end; anchored near the page's bottom edge so it flips to top-start).
 
 | Key | en | de |
 |---|---|---|
@@ -961,6 +964,26 @@ Placement Q8 tooltip order, gap 8; protected rects add the source run, the selec
 
 `{back}` renders the platform key (Alt+← / ⌘[).
 
+**L14 Range chooser** (ADR-133 §2; Q8 popover, joins §3's floating list; light only, no glass).
+- **Resolution.** Rust expands a range part ("3–5", "3-5") and resolves every number on its own by L2. ≥ 2 resolved: one range run (L1) whose chooser lists only the resolved numbers, ascending. Exactly 1: a plain literature link to it, no chooser. 0: no link. Reversed, zero-based or wider than 50 numbers: no link (hostile input bound). `{n}` = resolved count.
+- **Run.** L4 states apply to the printed range part. While open: Active fill held, `aria-expanded="true"`; the hover preview (L5) closes and does not reopen.
+- **Surface.** `--surface-panel`, `--border-subtle`, radius md, `--shadow-floating`, width `--link-preview-max` (320), padding 8. Header 28 (padding-inline 8): `wand` 16 Text-secondary + `.t-caption` `smartlinks.detected` · `smartlinks.range.count`; never scrolls. Below it the list, `role="listbox"`, rows 32, at most 12 visible (max height 384), beyond that the list scrolls (Q7 list; Q9 rule 3 exempt).
+- **Row** (`role="option"`, radius sm, padding-inline 8, gap 8): number `.t-label` Ink `tabular-nums`, right-aligned, column 32 · entry preview `.t-body` Ink, flex 1, one line · target page `.t-caption` Text-secondary `tabular-nums` `citation.page`, right-aligned, intrinsic width. States: hover `--surface-subtle`; current (keyboard) `--surface-subtle` + §2.1 pair inset 2; pressed `--surface-pressed`; no disabled rows (unresolved numbers are absent).
+- **Truncate rule.** Rust sends each entry cut to 120 characters at a word boundary. The frontend fits it to one line by measurement: drop trailing words until text + "…" fits (`scrollWidth ≤ clientWidth`); a single over-long word is cut at the last fitting grapheme + "…". Never CSS `text-overflow` (Q6, Q9 rule 2). Re-measured on font load and language change.
+- **Placement.** Q8 popover order bottom-start → bottom-end → top-start → top-end → right → left, gap 8, inset 8; protected rects: the range run, the selection, the mini bar, the active tool, pressed toggles. No fit: Q7 dialog titled `smartlinks.range.title`. Closes on Esc, outside click, scroll, zoom, tool or mode change, toggle off, revision change; repositions on window resize.
+- **Pointer.** Click on the run opens it with the first row current; click on a row closes it and follows (L6).
+- **Keyboard.** Open (Enter/Space on the run) focuses the listbox, `aria-activedescendant` on the first row. Down/Up (no wrap), Home/End, PageDown/PageUp by 12, typed digits jump to that number. Enter: close, then the L6 jump (L7 pushes the view; origin = the range run, so Back restores focus to it). Esc or Tab/Shift+Tab: close, focus returns to the run (still inside the page's link list).
+- **Screen readers.** Run per L11. Listbox named `smartlinks.aria.rangeList`; each option named `smartlinks.aria.rangeEntry`, `aria-describedby` = the 120-character entry text.
+- **Motion.** Open: opacity 0 → 1 + 4 px translate from the anchor side, `--motion-fast` spring; close `--motion-fast-exit`. Row fill `--motion-fast`. Reduced motion: fades only.
+
+| Key | en | de |
+|---|---|---|
+| `smartlinks.range.count` | {n} entries | {n} Einträge |
+| `smartlinks.range.hint` | Click to choose · {back} returns | Klicken zum Auswählen · {back} kehrt zurück |
+| `smartlinks.range.title` / `smartlinks.aria.rangeList` | Sources {range} | Quellen {range} |
+| `smartlinks.aria.range` | Sources {range}, detected, {n} entries | Quellen {range}, erkannt, {n} Einträge |
+| `smartlinks.aria.rangeEntry` | Source {number}, page {page} | Quelle {number}, Seite {page} |
+
 **Acceptance (installed release build, mouse unless a key is named).**
 L-AC 1. A footnote marker shows a dashed underline; hovering shows the preview with "Detected", the note text and the page; clicking scrolls to the note with the band pulse.
 L-AC 2. Alt+Left (macOS Cmd+[) and the Back control return to the exact previous scroll position and zoom, also after zooming at the target; Alt+Right goes forward again.
@@ -976,6 +999,7 @@ L-AC 11. Tab reaches one link list per page; arrows move, Enter follows; a scree
 L-AC 12. Scrolling a 500-page file stays smooth; links appear only on rendered pages and never in a wrong place.
 L-AC 13. With reduced motion, jumps are instant with the 1 s Ink outline and only fades remain.
 L-AC 14. The DOM gate passes for every L13 surface in en and de at both sizes; nothing overlaps.
+L-AC 15. "[3–5]", "[3-5]" and the "5–7" part of "[3, 5–7]" each show one underline; hover reads "Detected · Source · 3 entries"; click opens the chooser beside the run with one row per resolved number (unresolved absent; one resolved = plain link; none = no link); arrows + Enter jump and Back returns to the run; Esc closes and refocuses the run; 20 entries scroll after 12 rows.
 
 ## 4. Components (R4)
 
