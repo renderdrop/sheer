@@ -206,11 +206,30 @@ describe('the print flow', () => {
     });
     const { user } = renderBoth();
     await user.click(screen.getByRole('button', { name: 'Print…' }));
-    await waitFor(() => expect(print.preparePrint).toHaveBeenCalled());
-    act(() => useUi.getState().setPrintOpen(false));
-    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    // The job starts synchronously on the click; nothing here waits on the clock.
+    expect(print.preparePrint).toHaveBeenCalled();
+    await act(async () => useUi.getState().setPrintOpen(false));
+    expect(screen.queryByRole('dialog')).toBeNull();
     await act(async () => emit(doneEvent(2)));
-    await waitFor(() => expect(print.releasePrint).toHaveBeenCalledWith(9));
+    expect(print.releasePrint).toHaveBeenCalledWith(9);
+    expect(print.getPrintPage).not.toHaveBeenCalled();
+    expect(print.openPrintDialog).not.toHaveBeenCalled();
+  });
+
+  it('drops the set when the dialog unmounts before the job id is known', async () => {
+    let emit: (e: JobEvent) => void = () => undefined;
+    let resolveId: (id: number) => void = () => undefined;
+    print.preparePrint.mockImplementation((_id: number, _o: unknown, onEvent: (e: JobEvent) => void) => {
+      emit = onEvent;
+      return new Promise<number>((resolve) => (resolveId = resolve));
+    });
+    const { user } = renderBoth();
+    await user.click(screen.getByRole('button', { name: 'Print…' }));
+    await act(async () => useUi.getState().setPrintOpen(false));
+    expect(screen.queryByRole('dialog')).toBeNull();
+    await act(async () => emit(doneEvent(2)));
+    await act(async () => resolveId(7));
+    expect(print.releasePrint).toHaveBeenCalledWith(9);
     expect(print.getPrintPage).not.toHaveBeenCalled();
     expect(print.openPrintDialog).not.toHaveBeenCalled();
   });
