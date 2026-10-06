@@ -9,7 +9,7 @@ notes: ADR-120: every push starts with `bash scripts/ci-status.sh` (last complet
   Split staging across packages can break an intermediate commit (run #108): stage whole files per package when possible.
   Never run the dev window while agents run cargo/vitest; stop it with taskkill sheer.exe + Stop-Process on tauri.js/vite.js only.
 ci_log: (ADR-120 corrected — package commit → CI run; result filled in at the next push)
-  - autosave retention test slack → run pending (read next session)
+  - autosave retention test slack → run #114 (37541496411) GREEN
   - tests + release v1.6.0 (41a2c4d) → run #113 (37539156008) red: flaky autosave retention test (whole-second stamps) → fixed next commit; release run #16 (37539156084) success (DMG + NSIS)
   - 3f6cc9f..3763737 FX-G + smoke script → run #112 (37536910147) GREEN
   - 32988ee..125116b FX-PR, docs, FX-D → run #111 (37531795738) GREEN
