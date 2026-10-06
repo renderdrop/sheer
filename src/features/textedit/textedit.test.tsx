@@ -3,6 +3,7 @@ import { screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { resetNotices } from '../../components/notices';
+import { useUi } from '../../stores/ui';
 import { setup } from '../../test/render';
 import { FallbackNotice } from './FallbackNotice';
 import { listChars } from './model';
@@ -36,6 +37,7 @@ function session(patch: Partial<EditSession> = {}): EditSession {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  useUi.setState({ activeTool: 'editText' });
   resetNotices();
   useTextEdit.getState().reset();
 });
@@ -43,9 +45,14 @@ afterEach(() => useTextEdit.getState().reset());
 
 describe('listChars', () => {
   it('lists up to five distinct characters, then the count', () => {
-    expect(listChars(['a', 'b', 'a'])).toBe('a b');
-    expect(listChars(['a', 'b', 'c', 'd', 'e'])).toBe('a b c d e');
-    expect(listChars(['a', 'b', 'c', 'd', 'e', 'f', 'g'])).toBe('a b c d e …+2');
+    expect(listChars(['a', 'b', 'a'])).toBe('“a” and “b”');
+    expect(listChars(['a', 'b', 'c', 'd', 'e'])).toBe('“a”, “b”, “c”, “d”, and “e”');
+    expect(listChars(['a', 'b', 'c', 'd', 'e', 'f', 'g'])).toContain(' …+2');
+  });
+  it('quotes each character and joins them with the locale list format', () => {
+    expect(listChars(['-', 'M', 't'], 'en')).toBe('“-”, “M”, and “t”');
+    expect(listChars(['-', 'M', 't'], 'de')).toBe('„-“, „M“ und „t“');
+    expect(listChars(['é'], 'de')).toBe('„é“');
   });
 });
 
@@ -112,7 +119,7 @@ describe('FallbackNotice', () => {
     );
     const notice = await screen.findByRole('region', { name: /./ });
     expect(notice.getAttribute('data-surface')).toBe('textedit-notice');
-    expect(notice.textContent).toContain('é ü');
+    expect(notice.textContent).toContain('“é” and “ü”');
     expect(notice.textContent).toContain('Tinos');
     await user.click(screen.getByRole('button', { name: 'Dismiss tip' }));
     expect(useTextEdit.getState().notice).toBeNull();

@@ -3,8 +3,8 @@ import type { Rect } from '../../api/wire';
 import { MINIBAR_GAP, MINIBAR_INSET, type Box, type Placement } from '../minibar/placement';
 import type { Align } from './lines';
 
-/** From this share of the bar covering other text, the side is "dense" and the other one wins when it is freer. */
-export const DENSE_SHARE = 0.15;
+/** A bar covering more than this share of other text is "dense": it must not sit there (DESIGN 3.10 E3, designer v1.5.0). */
+export const DENSE_SHARE = 0.02;
 
 const clamp = (value: number, min: number, max: number): number => Math.max(min, Math.min(max, value));
 
@@ -28,14 +28,16 @@ export function coverage(bar: Box, obstacles: readonly Box[]): number {
 
 /**
  * Where the edit bar goes (DESIGN 3.3, 3.10 E3): aligned to the start of the box (or paragraph rule), above it, 8 px away; below it
- * when the text above is dense and the text below is freer, or when above does not fit; docked when neither fits. It never overlaps
- * `selection` (the box and the rule), because it sits a gap away vertically.
+ * when the text above is dense and the text below is clear, or when above does not fit; docked when neither fits or both cover text
+ * (`canDock`; without a dock row the freer side wins). It never overlaps `selection` (the box and the rule), because it sits a gap
+ * away vertically.
  */
 export function placeEditBar(
   selection: Box,
   bar: { width: number; height: number },
   bounds: Box,
   obstacles: readonly Box[],
+  canDock = true,
 ): Placement {
   const minLeft = bounds.left + MINIBAR_INSET;
   const maxLeft = bounds.right - MINIBAR_INSET - bar.width;
@@ -49,6 +51,8 @@ export function placeEditBar(
     const up = coverage(at(above), obstacles);
     if (up <= DENSE_SHARE) return { mode: 'above', left, top: above };
     const down = coverage(at(below), obstacles);
+    if (down <= DENSE_SHARE) return { mode: 'below', left, top: below };
+    if (canDock) return { mode: 'dock' };
     return down < up ? { mode: 'below', left, top: below } : { mode: 'above', left, top: above };
   }
   if (fitsAbove) return { mode: 'above', left, top: above };

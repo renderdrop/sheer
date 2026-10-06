@@ -16,6 +16,7 @@ import {
   takeCaret,
   type Caret,
 } from './actions';
+import { boxAnchor } from './model';
 import { editKeyOf } from './keyboard';
 import { distinctChars, familyFor, overflowOf, textSpan, type Growth } from './lines';
 import { createPreviewScheduler, inkSpan, previewScale, scaleXFor, type PreviewScheduler } from './preview';
@@ -391,12 +392,8 @@ export function EditBox({ session, growth, pageWidth, paragraph, pxPerPt = 1 }: 
   const { box } = line;
   const over = session.overflowPt > 0;
   const span = textSpan(growth, box, measured);
-  const anchorStyle: CSSProperties =
-    growth.align === 'right'
-      ? { left: box.x + box.w, transform: 'translateX(-100%)' }
-      : growth.align === 'center'
-        ? { left: box.x + box.w / 2, transform: 'translateX(-50%)' }
-        : { left: box.x };
+  const pin = boxAnchor(growth.align, box, reflow ? { left: growth.left, right: growth.right } : null);
+  const anchorStyle: CSSProperties = { left: pin.left, ...(pin.transform === '' ? {} : { transform: pin.transform }) };
   const stretch = frame !== null && scaleX !== 1 ? ` scaleX(${scaleX})` : '';
   const masks = reflow && paragraph !== undefined && paragraph.length > 0 ? paragraph : [line.box];
   // Without the highlight API the whole line of a substitute carries the mark.
@@ -469,11 +466,11 @@ export function EditBox({ session, growth, pageWidth, paragraph, pxPerPt = 1 }: 
             ? {}
             : {
                 transform: `${anchorStyle.transform ?? ''}${stretch}`.trim(),
-                transformOrigin:
-                  growth.align === 'right' ? 'right center' : growth.align === 'center' ? 'center' : 'left center',
+                transformOrigin: pin.origin,
               }),
           top: box.y,
           minWidth: box.w,
+          ...(pin.maxWidth === null ? {} : { maxWidth: pin.maxWidth, overflow: 'hidden' }),
           height: box.h,
           lineHeight: `${box.h}px`,
           fontSize: line.font.size,

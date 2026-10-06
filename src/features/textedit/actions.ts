@@ -3,6 +3,7 @@ import { useAnnotations } from '../../stores/annotations';
 import { pageNumberOf } from '../../stores/pages';
 import { jumpToHit } from '../search/jump';
 import { distinctChars, faceOf, knownLines, loadLines, neighbourLine, paragraphNeighbour } from './lines';
+import { unionRect } from './model';
 import { useTextEdit } from './store';
 
 /**
@@ -107,7 +108,9 @@ export async function commitAndClose(): Promise<boolean> {
     const original = new Set(session.line.text);
     const inserted = distinctChars(session.draft).filter((c) => !original.has(c));
     const substitute = session.line.editable.type === 'fallback' ? session.line.editable.face : null;
-    const lastBox = useTextEdit.getState().anchor;
+    // The notice after Apply anchors below the whole paragraph (box and rule), never over its neighbours.
+    const { anchor, rule } = useTextEdit.getState();
+    const lastBox = anchor === null ? null : unionRect(anchor, rule);
     const missing = changes.warnings?.includes('fontFallback') === true && substitute === null && inserted.length > 0;
     // A notice that outlives the box (a substitute font, missing glyphs) keeps the box's last rect as its anchor.
     const kept = substitute !== null ? useTextEdit.getState().notice : null;

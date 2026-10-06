@@ -4,6 +4,7 @@ import { createPortal } from 'react-dom';
 
 import { DISMISS_PRIORITY, registerDismissLayer } from '../../components/dismiss';
 import { tokenMs } from '../../components/glide';
+import { tokenPx } from '../../components/tokens';
 import { useFloatingPosition } from '../../components/useFloatingPosition';
 import { useT } from '../../i18n';
 import { EASE_OUT } from '../../lib/motion';
@@ -58,6 +59,8 @@ function Bubble({ refusal }: { refusal: Refusal }) {
     side: 'top',
     align: 'center',
     kind: 'tooltip',
+    // The hover outline sits 2 pt off the line: the tooltip clears it by a full space token.
+    offset: tokenPx('--space-2', 8),
   });
   const { x, y, w, h } = refusal.rect;
   return (

@@ -8,8 +8,9 @@ import { usePopoverMotion } from '../../components/motion';
 import { useNoticeSlot } from '../../components/notices';
 import { tokenPx } from '../../components/tokens';
 import { useFloatingPosition } from '../../components/useFloatingPosition';
-import { useT } from '../../i18n';
+import { useLocale, useT } from '../../i18n';
 import { FACE_NAME, listChars } from './model';
+import { useNoticeLifetime } from './noticeLifetime';
 import { useTextEdit, type FallbackNotice as NoticeState } from './store';
 
 const CANVAS_SCROLLER = '[data-action-scope="canvas"] > [role="region"]';
@@ -56,8 +57,19 @@ function Guard({ rect }: { rect: { x: number; y: number; w: number; h: number } 
   );
 }
 
-function Card({ notice, button, ghost }: { notice: NoticeState; button: HTMLElement; ghost: boolean }) {
+function Card({
+  notice,
+  button,
+  ghost,
+  onNoFit,
+}: {
+  notice: NoticeState;
+  button: HTMLElement;
+  ghost: boolean;
+  onNoFit: () => void;
+}) {
   const t = useT();
+  const locale = useLocale();
   const positioner = useRef<HTMLDivElement>(null);
   const present = useIsPresent();
   const motionProps = usePopoverMotion();
@@ -65,7 +77,7 @@ function Card({ notice, button, ghost }: { notice: NoticeState; button: HTMLElem
   const text =
     notice.kind === 'notEmbedded'
       ? t('editText.notice.notEmbedded', { font: FACE_NAME[notice.face] })
-      : t('editText.notice.missingGlyphs', { chars: listChars(notice.chars), font: FACE_NAME[notice.face] });
+      : t('editText.notice.missingGlyphs', { chars: listChars(notice.chars, locale), font: FACE_NAME[notice.face] });
 
   useFloatingPosition({
     anchor: button,
@@ -74,6 +86,7 @@ function Card({ notice, button, ghost }: { notice: NoticeState; button: HTMLElem
     side: 'bottom',
     align: 'start',
     kind: 'tip',
+    onNoFit,
     clampTo: { selector: CANVAS_SCROLLER, inset: tokenPx('--space-2', 8) },
   });
 
@@ -124,6 +137,7 @@ function Card({ notice, button, ghost }: { notice: NoticeState; button: HTMLElem
  * Hide, Esc, cancel or the next open (the edit layer clears `notice`). Mounted once, with the tips.
  */
 export function FallbackNotice() {
+  useNoticeLifetime();
   const notice = useTextEdit((s) => s.notice);
   const anchor = useTextEdit((s) => s.anchor);
   const rule = useTextEdit((s) => s.rule);
@@ -133,7 +147,16 @@ export function FallbackNotice() {
   const afterApply = notice !== null && !session && kept !== null;
   const [ghost, setGhost] = useState<HTMLElement | null>(null);
   const target = session ? button : afterApply ? ghost : null;
-  const shown = useNoticeSlot('textedit-notice', 'info', notice !== null && target !== null);
+  // A notice that does not fit gives its queue slot back (others may show) and tries again when the layout changes (Q8).
+  const [failedAt, setFailedAt] = useState<string | null>(null);
+  const layoutKey = `${anchor?.x}:${anchor?.y}:${anchor?.w}:${anchor?.h}:${rule?.x}:${rule?.y}:${rule?.h}:${kept?.x}:${kept?.y}:${kept?.w}:${kept?.h}`;
+  const noFit = failedAt === layoutKey;
+  useEffect(() => {
+    const retry = () => setFailedAt(null);
+    window.addEventListener('resize', retry);
+    return () => window.removeEventListener('resize', retry);
+  }, []);
+  const shown = useNoticeSlot('textedit-notice', 'info', notice !== null && target !== null && !noFit);
   return createPortal(
     <>
       {afterApply && (
@@ -149,7 +172,13 @@ export function FallbackNotice() {
       {shown && <Guard rect={rule} />}
       <AnimatePresence>
         {shown && notice !== null && target !== null && (
-          <Card key={notice.kind} notice={notice} button={target} ghost={!session} />
+          <Card
+            key={notice.kind}
+            notice={notice}
+            button={target}
+            ghost={!session}
+            onNoFit={() => setFailedAt(layoutKey)}
+          />
         )}
       </AnimatePresence>
     </>,

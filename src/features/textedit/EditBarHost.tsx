@@ -70,7 +70,13 @@ export function EditBarHost() {
     const attr = document.querySelector(EDIT_BOX)?.getAttribute('data-align');
     const align: Align = attr === 'right' || attr === 'center' ? attr : 'left';
     const obstacles = open === null ? [] : obstaclesOf(lines, open.line, anchor, align);
-    const next = placeEditBar(box, { width: size.width, height: size.height }, bounds, obstacles);
+    const next = placeEditBar(
+      box,
+      { width: size.width, height: size.height },
+      bounds,
+      obstacles,
+      useMiniBarDock.getState().target !== null,
+    );
     const local: Placement =
       next.mode === 'dock' ? next : { mode: next.mode, left: next.left - wrapBox.left, top: next.top - wrapBox.top };
     setPlacement((old) => (same(old, local) ? old : local));

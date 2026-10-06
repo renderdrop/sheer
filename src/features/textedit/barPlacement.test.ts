@@ -21,9 +21,14 @@ describe('placeEditBar', () => {
     const p = placeEditBar(sel, bar, bounds, dense);
     expect(p).toMatchObject({ mode: 'below', top: 316 + 8 });
   });
-  it('stays above when both sides are equally dense', () => {
+  it('docks when both sides cover text, and stays above without a dock row', () => {
     const both = [{ left: 0, top: 0, right: 800, bottom: 600 }];
-    expect(placeEditBar(sel, bar, bounds, both).mode).toBe('above');
+    expect(placeEditBar(sel, bar, bounds, both).mode).toBe('dock');
+    expect(placeEditBar(sel, bar, bounds, both, false).mode).toBe('above');
+  });
+  it('never covers the line above: a heading 20 px over the box sends the bar below', () => {
+    const heading = [{ left: 280, top: 270, right: 600, bottom: 290 }];
+    expect(placeEditBar(sel, bar, bounds, heading)).toMatchObject({ mode: 'below' });
   });
   it('goes below when above does not fit, docks when nothing fits', () => {
     expect(placeEditBar({ ...sel, top: 20, bottom: 36 }, bar, bounds, []).mode).toBe('below');
