@@ -491,6 +491,7 @@
   --scale-enter: 0.98;
   --scale-lift: 1.02; /* drag preview card */
   --offset-enter: 8px;
+  --offset-settle: 4px; /* a floating card settling from its anchor's side (range chooser) */
   /* R5-C */
   --rotate-delete: 6deg; /* spell 9: the only rotation */
   --marker-rest: 0.45; /* spell 5: dry pulse alpha, rest and peak */
@@ -652,6 +653,7 @@
     --scale-enter: 1;
     --scale-lift: 1;
     --offset-enter: 0px;
+    --offset-settle: 0px;
     --rotate-delete: 0deg;
   }
 

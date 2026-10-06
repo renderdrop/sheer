@@ -1,6 +1,8 @@
 //! `literature` detector (ADR-132, DESIGN §3.11 L1): "(Müller 2019)", "Müller et al. (2019)", "[12]", "[3, 7]" → the entry of the
 //! bibliography section after a heading such as "Literatur" or "References". Pure over [`DocText`]; hand matchers, no regex.
 
+use std::collections::HashMap;
+
 use super::model::{Choice, DocText, Kind, Line, PageText, PtRect, SmartLink, Target};
 use super::references::{pick, skip_ws, starts_with_ci, truncate_preview, union, LineText};
 
@@ -380,7 +382,8 @@ fn bracket_parts(c: &[char], from: usize, to: usize) -> Option<Vec<Cit>> {
             b -= 1;
         }
         if a < b {
-            let dash = (a..b).find(|&k| matches!(c[k], '–' | '-' | '—'));
+            let dash = (a..b)
+                .find(|&k| matches!(c[k], '–' | '-' | '—' | '\u{2212}' | '\u{2011}' | '\u{2012}'));
             if let Some(d) = dash {
                 let (mut l, mut r) = (d, d + 1);
                 while l > a && c[l - 1].is_whitespace() {
@@ -530,6 +533,13 @@ pub fn detect(doc: &DocText, page: u32, index: &LitIndex) -> Vec<SmartLink> {
         return Vec::new();
     }
     let mut out = Vec::new();
+    // number → its entries, built once (a range run looks up each of its numbers)
+    let mut by_number: HashMap<u32, Vec<&Entry>> = HashMap::new();
+    for e in entries {
+        if let Key::Num(n) = e.key {
+            by_number.entry(n).or_default().push(e);
+        }
+    }
     for (li, line) in pt.lines.iter().enumerate() {
         if section.is_some_and(|(hp, hli)| page > hp || (page == hp && li >= hli)) {
             continue;
@@ -537,7 +547,7 @@ pub fn detect(doc: &DocText, page: u32, index: &LitIndex) -> Vec<SmartLink> {
         let lt = LineText::new(line);
         for cit in scan_citations(&lt.chars) {
             if let CKey::Range(lo, hi) = cit.key {
-                out.extend(range_link(entries, &lt, &cit, page, lo, hi));
+                out.extend(range_link(&by_number, &lt, &cit, page, lo, hi));
                 continue;
             }
             let (cands, scores): (Vec<&Entry>, Vec<f32>) = entries
@@ -587,7 +597,7 @@ fn cut_words(text: &str, max: usize) -> String {
 /// The link of a range run: every number of `lo..=hi` is resolved on its own (L2); ≥ 2 resolved → one run with `choices`, exactly 1 →
 /// a plain link to it, none → no link.
 fn range_link(
-    entries: &[Entry],
+    by_number: &HashMap<u32, Vec<&Entry>>,
     lt: &LineText,
     cit: &Cit,
     page: u32,
@@ -596,10 +606,13 @@ fn range_link(
 ) -> Option<SmartLink> {
     let mut found: Vec<(u32, &Entry, f32)> = Vec::new();
     for n in lo..=hi {
-        let (cands, scores): (Vec<&Entry>, Vec<f32>) = entries
+        let Some(cands) = by_number.get(&n) else {
+            continue;
+        };
+        let scores: Vec<f32> = cands
             .iter()
-            .filter_map(|e| score(e, &CKey::Num(n)).map(|s| (e, s)))
-            .unzip();
+            .filter_map(|e| score(e, &CKey::Num(n)))
+            .collect();
         if let Some(b) = pick(&scores) {
             found.push((n, cands[b], scores[b]));
         }
@@ -901,6 +914,16 @@ mod tests {
             .all(|c| c.preview.chars().count() <= 120));
         assert!(l[0].choices[0].preview.ends_with('…'));
         assert_eq!(l[0].rects.len(), 1);
+    }
+
+    #[test]
+    fn range_dash_variants() {
+        for dash in ['\u{2212}', '\u{2011}', '\u{2012}'] {
+            let d = range_doc(&format!("A [3{dash}5]"), &[3, 4, 5]);
+            let l = detect(&d, 0);
+            assert_eq!(l.len(), 1, "{dash:?}");
+            assert_eq!(l[0].choices.len(), 3);
+        }
     }
 
     #[test]

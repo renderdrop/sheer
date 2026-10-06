@@ -13,6 +13,7 @@ import {
 import { createPortal } from 'react-dom';
 
 import { Icon } from '../../components';
+import { tokenPx } from '../../components/tokens';
 import { DISMISS_PRIORITY, registerDismissLayer } from '../../components/dismiss';
 import { useFloatingPosition } from '../../components/useFloatingPosition';
 import { useT } from '../../i18n';
@@ -258,7 +259,7 @@ function FloatingSurface({
     };
   }, [present, anchor]);
 
-  const dy = reduce ? 0 : 4 * from;
+  const dy = reduce ? 0 : tokenPx('--offset-settle', 4) * from;
   return (
     <div
       ref={positioner}

@@ -103,7 +103,7 @@ function parseChoices(value: unknown): SmartChoice[] | null {
   let last = 0;
   for (const raw of value as unknown[]) {
     if (!isRecord(raw) || !isUint(raw.number) || raw.number <= last) return null;
-    if (typeof raw.preview !== 'string' || raw.preview.length > MAX_CHOICE_PREVIEW_CHARS) return null;
+    if (typeof raw.preview !== 'string' || Array.from(raw.preview).length > MAX_CHOICE_PREVIEW_CHARS) return null;
     const target = parseTarget(raw.target);
     if (target === null) return null;
     last = raw.number;

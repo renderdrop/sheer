@@ -32,8 +32,10 @@ export function backKeyLabel(t: Translate): string {
 export function followLink(docId: number, pageId: number, item: PageLink): void {
   if (item.type === 'smart') {
     const { link } = item;
+    const rect = link.rects[0];
+    if (rect === undefined) return;
     useSmartLinks.getState().markVisited(docId, visitKey(link));
-    jumpTo(docId, link.target, { pageId, rect: link.rects[0]! });
+    jumpTo(docId, link.target, { pageId, rect });
     return;
   }
   const { info } = item;
@@ -48,8 +50,10 @@ export function followLink(docId: number, pageId: number, item: PageLink): void 
 export function followChoice(docId: number, pageId: number, link: SmartLink, number: number): void {
   const choice = link.choices?.find((candidate) => candidate.number === number);
   if (choice === undefined) return;
+  const rect = link.rects[0];
+  if (rect === undefined) return;
   useSmartLinks.getState().markVisited(docId, visitKey(link));
-  jumpTo(docId, choice.target, { pageId, rect: link.rects[0]! });
+  jumpTo(docId, choice.target, { pageId, rect });
 }
 
 function say(key: 'smartlinks.announce.on' | 'smartlinks.announce.off'): void {

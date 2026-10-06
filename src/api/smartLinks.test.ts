@@ -132,6 +132,12 @@ describe('range choices', () => {
     expect(parseSmartLinks({ rev: 1, ready: true, links: [link()] })?.links[0]?.choices).toBeUndefined();
   });
 
+  it('counts the preview in code points like the backend (astral characters)', () => {
+    const emoji120 = '\u{1F600}'.repeat(120);
+    expect(parse([choice(3), choice(4, { preview: emoji120 })])).not.toBeNull();
+    expect(parse([choice(3), choice(4, { preview: `${emoji120}x` })])).toBeNull();
+  });
+
   it('refuses a list that is not at least two ascending entries of the documented shape', () => {
     const bad = [
       [],
