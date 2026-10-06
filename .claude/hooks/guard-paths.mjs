@@ -96,7 +96,7 @@ function expand(tok, env, cwd) {
   return { t, unknown };
 }
 
-const PATHLIKE = /^(?:[A-Za-z]:[\\/]|\/[a-zA-Z]\/|\/(?:tmp|usr|etc|home|var|mnt|opt|bin|Users|Volumes|private)(?:\/|$)|~(?:[\\/]|$)|\\\\|\.\.(?:[\\/]|$)|(?:\$env:|%|\$\{?)[A-Za-z_])/i;
+const PATHLIKE = /^(?:[A-Za-z]:[\\/]|\/[a-zA-Z]\/|\/(?:tmp|usr|etc|home|var|mnt|opt|bin|sbin|root|srv|Users|Volumes|private|Library|System|Applications)(?:\/|$)|~(?:[\\/]|$)|\\\\|\.\.(?:[\\/]|$)|(?:\$env:|%|\$\{?)[A-Za-z_])/i;
 
 /** @returns {string | null} the reason to block, or null. */
 export function check(input, env = process.env) {
@@ -130,7 +130,8 @@ export function check(input, env = process.env) {
       if (/^(\/dev\/|nul$|\$null$)/i.test(raw)) continue;
       const write = tok.redirect || (writeSeg && k > at);
       // A relative write target is resolved against the cwd; a `cd` elsewhere is caught by its own path token.
-      if (!PATHLIKE.test(raw) && (!write || raw.startsWith('-'))) continue;
+      // Other `/…` shapes are scripts or patterns (`sed -i '/^x:/a …'`), not paths.
+      if (!PATHLIKE.test(raw) && (!write || raw.startsWith('-') || raw.startsWith('/'))) continue;
       const { t, unknown } = expand(raw, env, cwd);
       if (unknown) {
         if (write) return `cannot verify the write target ${raw} (unknown variable)`;

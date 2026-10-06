@@ -36,6 +36,11 @@ describe('guard-paths hook (ADR-127)', () => {
     expect(run('Bash', { command: 'mv review/a.png ../elsewhere.png' }).status).toBe(2);
   });
 
+  it('treats a sed script as a script, but still checks the file sed edits', () => {
+    expect(run('Bash', { command: "sed -i '/^ci_log:/a \\  - x' STATE.md" }).status).toBe(0);
+    expect(run('Bash', { command: "sed -i 's/a/b/' /Users/someone/notes.txt" }).status).toBe(2);
+  });
+
   it('allows work inside the repo, review/owner, the Claude temp folder and /dev/null', () => {
     expect(
       run('Bash', { command: 'rm -f review/x.png && cat review/owner/corpus/a.pdf > /dev/null 2>&1' }).status,
