@@ -6,6 +6,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+v1.6 "Smart links" (ADR-131, ADR-132, DESIGN §3.11).
+
+### Added
+- Smart links: footnote numbers, table-of-contents lines, references such as "siehe S. 12", "Abb. 3", "Tabelle 2", "Kapitel 4",
+  "§ 5" and literature references such as "(Müller 2019)" or "[12]" become clickable. They are guessed by the app, shown as a quiet
+  dashed underline, marked "Erkannt" in their preview, never written into your PDF, and only drawn when exactly one target fits.
+- Back and forward: every jump (smart link, outline, page field) can be undone with the Back button in the top bar, Alt+← / Alt+→
+  (macOS ⌘[ / ⌘]) or the mouse side buttons; the exact view (page, position, zoom) comes back.
+- Smart links can be switched off for one document (Lesen → Smarte Links, Ansicht menu) or everywhere (Settings).
+- Real links in PDFs show a pointer, a hover outline and keyboard focus; each page's links are one Tab stop with arrow keys.
+
+### Changed
+- Edit text: Umbrechen is on by default for multi-line paragraphs. Without it the line stops at the paragraph edge and the
+  overflow caption shows how far the text runs past it. The focus ring of right-aligned and centred lines grows with the text.
+- Edit text: if a paragraph cannot be re-broken, the edit falls back to the single line and says so.
+
+### Fixed
+- Edit text: lines that mix two fonts are refused when clicked instead of opening an edit that cannot be applied.
+- Edit text: a re-broken line no longer comes out tighter than its natural word spacing.
+- Edit text: previews no longer re-read the whole document on every keystroke.
+
 ## [1.5.1] - 2026-10-06
 
 Patch v1.5.1 "Politur v1.5 (Rest)" (ADR-130). Unsigned installers (BLOCKERS B-002).

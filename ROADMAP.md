@@ -325,31 +325,31 @@ new engine capability or dependency is needed. Not picked by the loop before v1.
 - [x] Politur v1.5 (Rest) → patch v1.5.1 (ADR-130): justified lines stretch to full width (splice + reflow), paragraph grouping across
       stretched lines and blank lines, notice lifetime and quoted list, box/preview anchoring for centred/right lines, welcome-document
       decode, preview caps/LRU/permission order, Flate for rewritten streams, neutral walker limit, test pins; P1 descoped (ADR-130 add. 1)
-- [ ] Politur v1.5.1 — carried over from v1.5.1
-  - designer v1.5.1 (major): with Umbrechen off, an overflowing draft's caption says "1 pt zu breit" while the text runs far past the
-    paragraph edge (limit = crop edge less 12 pt for a single-line edit; hatch only under part of it; 2 px marker hard to see)
-  - designer v1.5.1 (major) / acceptance: the focus outline of a right-aligned/centred box keeps the original line width while the
-    text grows (the live preview itself is correct)
-  - designer v1.5.1 (minor): divider between the overflow caption and Cancel (not in E3)
-  - acceptance: a re-broken edited line may come out compressed below its natural gaps ("1998 im") when it gives back an old stretch
-  - acceptance: E4 page 1 italic Präambel line ("Der derzeit dringendste …"): box opens, no mini bar, no live preview (not reproduced in dev)
-  - acceptance: opening an edit box that docks the mini bar shifts the page by one 40 px row (DESIGN §3.3 by design; the clicked line moves)
+- [x] Acceptance infrastructure (ADR-131, rule 15): automation feature + dialog seam, acceptance build app.sheer.acceptance,
+      CDP acceptance scripts with dialog guard, real-input smoke ≤ 5 min (d0268da, 43e0c7c, 44b8aa3)
+- [x] Politur v1.5.1 (ADR-132): Umbrechen on for multi-line paragraphs; line stops at the paragraph edge with a true overflow;
+      focus ring grows from the anchor; no compressed give-back; second-font lines refuse; refused paragraph preview falls back
+      to line scope with a caption (E4 Präambel); preview reads the crop edge from the loaded page; NaN guards; divider removed
+- [ ] Politur v1.6 — carried over from v1.5.1 and v1.6
   - deferred (ADR-130 §3): approval-signed files (byte-range-aware write); cooperative cancel inside ops_walk/text_lines;
     re-edit of a line that already holds a fallback word; Symbol/ZapfDingbats widths; params.reason vs what on read_only refusals
-  - review minors: decode_plain picks the lowest char when two codes share one; text_basis clones bytes before the refusal check;
-    per_doc Vec scan; cross-chain delta low (splice); interleaved-chain refusal is conservative
-  - security v1.5.1 (low): kern from a NaN grow (add a finiteness check next to unit); devCsp stays dev-only
-  - smoke: first annot-smoke run after launch failed Highlight on text.pdf once (timing), rerun green
-  - tester: storage::autosave a_dead_record_is_purged_only_after_the_retention (autosave.rs:1019) flaked once in 3 runs (timing)
-  - not accepted by mouse: Save after a justified edit, centred line with Umbrechen, double-click word selection, Font popover,
-    screen reader, reduced motion, macOS
+  - text edit: the box shows the CSS fallback until the first keystroke (no preview of the untouched line)
+  - text edit: opening an edit box that docks the mini bar shifts the page by one 40 px row (DESIGN §3.3 by design)
+  - text edit: lines with inline runs in a second font (bold word) stay uneditable (review P-B)
+  - review minors: decode_plain picks the lowest char when two codes share one; per_doc Vec scan; cross-chain delta low;
+    interleaved-chain refusal is conservative
+  - smart links: "[3–5]" links 3 and 5 only; a session-edited page's text is not used for its neighbours' detection;
+    index pages past a limit get no links (partial flag, UI ignores it); real-link page jumps carry no y offset; no fade on toggle-off
+  - smart links: Laura Beck thesis footnotes not linked (markers are real links); Settings fit at 960×640 to re-check with the gate
+  - flaky: first annot-smoke run after launch (Highlight on text.pdf); storage::autosave retention test (timing)
+  - not accepted: macOS; screen reader; reduced motion; Save after a justified edit; double-click word selection; Font popover
 
 ### v1.6 "Smart links"
-- [ ] v1.6 spec — designer spec (detection hints, back navigation)
-- [ ] v1.6.1 — Detect footnote numbers and jump (with Back)
-- [ ] v1.6.2 — Link tables of contents; references like "see p. 12" and "Fig. 3"
-- [ ] v1.6.3 — Literature references "(Müller 2019)" to the bibliography entry; heuristic, with a notice, never destructive
-- [ ] v1.6 acceptance — installed build with the mouse, designer round, tag v1.6.0
+- [x] v1.6 spec — designer spec DESIGN §3.11 (detection hints, back navigation)
+- [x] v1.6.1 — Detect footnote numbers and jump (with Back)
+- [x] v1.6.2 — Link tables of contents; references like "see p. 12" and "Fig. 3"
+- [x] v1.6.3 — Literature references "(Müller 2019)" to the bibliography entry; heuristic, with a notice, never destructive
+- [ ] v1.6 acceptance — acceptance build (ADR-131) with three owner PDFs, designer round, tag v1.6.0
 
 ### v1.7 "Scan & OCR"
 - [ ] v1.7 spec — designer spec + architect ADR (Windows OCR / Apple Vision without unsafe code or via a sidecar)
