@@ -1014,8 +1014,10 @@ mod tests {
         drop(auto);
         let retention = limits::AUTOSAVE_RETENTION;
         assert_eq!(retention.as_secs(), 30 * 86_400);
-        // A second of slack: the record was stamped slightly before `saved`.
-        let kept = Autosave::start_at(dir.path(), saved + retention).unwrap();
+        // A second of slack: the record was stamped slightly before `saved` (and stamps may be truncated to whole seconds),
+        // so exactly `saved + retention` can already be past the limit on a slow runner (CI run #113).
+        let kept =
+            Autosave::start_at(dir.path(), saved + retention - Duration::from_secs(1)).unwrap();
         assert_eq!(kept.list().len(), 1, "at the limit it is still kept");
         drop(kept);
         let late = saved + retention + Duration::from_secs(5);
