@@ -127,6 +127,8 @@ pub struct ChangeSet {
     pub fields: Vec<FieldState>,
     /// What else changed: the UI re-reads `get_metadata` and `get_protection` (ADR-047).
     pub doc: Vec<DocPart>,
+    /// Notes of the change (`textOverflow`, `fontFallback`, ADR-125); empty when there are none.
+    pub warnings: Vec<crate::model::text_edit::ChangeWarning>,
     pub history: HistoryState,
 }
 
@@ -810,6 +812,7 @@ impl DocState {
                 .filter_map(|id| self.form.as_ref().and_then(|form| form.state(*id)))
                 .collect(),
             doc: delta.doc.iter().copied().collect(),
+            warnings: Vec::new(),
             history: self.history.state(),
         }
     }

@@ -85,7 +85,8 @@ fn command_bytes(command: &DocCommand) -> usize {
         DocCommand::RestoreRedaction { slots, entries, .. } => {
             let pages = slots.iter().fold(STEP_OVERHEAD_BYTES, |total, slot| {
                 let raster = match &slot.source {
-                    crate::model::page::PageSource::Redacted { bytes } => bytes.len(),
+                    crate::model::page::PageSource::Redacted { bytes }
+                    | crate::model::page::PageSource::TextEdited { bytes } => bytes.len(),
                     _ => 0,
                 };
                 total.saturating_add(raster)

@@ -23,6 +23,7 @@ use super::page::{NewPage, PageSlot, SourceId};
 use super::page_ops::CropSpec;
 use super::protection;
 use super::redaction::{self, MarkSpec};
+use super::text_edit::{LineKey, TextFit, TextScope};
 use crate::documents::PageId;
 use crate::error::AppError;
 use crate::limits;
@@ -100,6 +101,14 @@ pub enum DocCommand {
     SetMetadata { patch: MetadataPatch },
     /// Stages the removal of all metadata, written by the next (full) save.
     RemoveMetadata,
+    /// Replaces the text of one line of existing page text (ADR-125, ARCHITECTURE §13.5; label `editText.undo`). Not accepted inside a batch.
+    EditTextLine {
+        page_id: PageId,
+        key: LineKey,
+        text: String,
+        fit: TextFit,
+        scope: TextScope,
+    },
     /// Sets the bibliographic record written at the next save (ADR-119; label `bibliography.set`).
     SetBibliography { record: BibRecord },
     /// Puts the given content back into the given ids. The inverse of every command; not accepted from the UI.
@@ -153,6 +162,7 @@ const LABEL_RESTORE_PAGES: &str = "page.restore";
 pub const LABEL_CROP_PAGES: &str = "page.crop";
 pub const LABEL_MARK_REDACTIONS: &str = "redact.mark";
 pub const LABEL_REDACT_APPLY: &str = "redact.apply";
+pub const LABEL_EDIT_TEXT: &str = "editText.undo";
 pub const LABEL_PROTECT_SET: &str = "protect.set";
 pub const LABEL_PROTECT_REMOVE: &str = "protect.remove";
 pub const LABEL_METADATA_SET: &str = "metadata.set";
@@ -187,6 +197,7 @@ impl DocCommand {
             Self::CropPages { .. } => LABEL_CROP_PAGES.to_owned(),
             Self::MarkRedactions { .. } => LABEL_MARK_REDACTIONS.to_owned(),
             Self::RestoreRedaction { .. } => LABEL_REDACT_APPLY.to_owned(),
+            Self::EditTextLine { .. } => LABEL_EDIT_TEXT.to_owned(),
             // `DocState::execute` says `protect.remove` when the ticket is a removal.
             Self::SetProtection { .. } => LABEL_PROTECT_SET.to_owned(),
             Self::SetMetadata { .. } => LABEL_METADATA_SET.to_owned(),
@@ -207,6 +218,7 @@ impl DocCommand {
                 | Self::CropPages { .. }
                 | Self::MarkRedactions { .. }
                 | Self::RestoreRedaction { .. }
+                | Self::EditTextLine { .. }
                 | Self::SetProtection { .. }
                 | Self::SetMetadata { .. }
                 | Self::RemoveMetadata
@@ -305,6 +317,13 @@ impl DocCommand {
             | Self::RestorePages { .. }
             | Self::AddPages { .. }
             | Self::RestoreRedaction { .. } => Ok(()),
+            Self::EditTextLine { text, .. } => {
+                if text.chars().count() > limits::TEXT_EDIT_LINE_CHARS {
+                    Err(AppError::limit("text", limits::TEXT_EDIT_LINE_CHARS as u64))
+                } else {
+                    Ok(())
+                }
+            }
             Self::MarkRedactions { marks } => {
                 if marks.is_empty() {
                     Err(AppError::invalid("marks"))
@@ -460,6 +479,8 @@ impl DocCommand {
             }
             Self::AddPages { at, pages, .. } => state.insert_pages(*at, pages, &mut delta)?,
             Self::CropPages { pages, spec } => state.crop_pages(pages, spec, &mut delta)?,
+            // W0 seam (v1.5.1): the package that fills it in replaces this line.
+            Self::EditTextLine { .. } => return Err(AppError::not_yet()),
             Self::MarkRedactions { marks } => redaction::mark(state, marks, &mut delta)?,
             Self::RestoreRedaction {
                 slots,
@@ -611,6 +632,42 @@ mod tests {
     use crate::model::annotation::{AnnotationBody, Imported, PdfOrigin, Rgb, Sync};
     use crate::model::geometry::Rect;
     use crate::security::secret::Ticket;
+
+    #[test]
+    fn edit_text_line_has_the_wire_shape_of_the_architecture() {
+        let command: DocCommand = serde_json::from_value(json!({
+            "type": "editTextLine", "pageId": 1, "key": {"rev": 2, "line": 5},
+            "text": "Hello", "fit": "keepStart", "scope": "line"
+        }))
+        .unwrap();
+        assert!(matches!(
+            &command,
+            DocCommand::EditTextLine {
+                key: LineKey { rev: 2, line: 5 },
+                fit: TextFit::KeepStart,
+                scope: TextScope::Line,
+                ..
+            }
+        ));
+        assert_eq!(command.label(), "editText.undo");
+        assert!(command.is_page_command());
+        assert!(command.check_shape().is_ok());
+        let long = "a".repeat(limits::TEXT_EDIT_LINE_CHARS + 1);
+        let too_long: DocCommand = serde_json::from_value(json!({
+            "type": "editTextLine", "pageId": 1, "key": {"rev": 0, "line": 0},
+            "text": long, "fit": "squeeze", "scope": "paragraph"
+        }))
+        .unwrap();
+        assert_eq!(
+            too_long.check_shape().unwrap_err().code(),
+            ErrorCode::LimitExceeded
+        );
+        assert!(serde_json::from_value::<DocCommand>(json!({
+            "type": "editTextLine", "pageId": 1, "key": {"rev": 0, "line": 0},
+            "text": "x", "fit": "stretch", "scope": "line"
+        }))
+        .is_err());
+    }
 
     fn stamp(now_ms: u64) -> Stamp {
         Stamp {

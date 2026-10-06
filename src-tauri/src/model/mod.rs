@@ -25,3 +25,4 @@ pub mod reading;
 pub mod redaction;
 pub mod sig_policy;
 pub mod tags;
+pub mod text_edit;

@@ -170,6 +170,10 @@ fn serve<'a>(
             answer(reply, result, Some(id), documents, crashed);
         }
         // The printed labels and the first-page hints (ADR-119).
+        Job::PageChars { reply, .. } => {
+            // W0 seam (v1.5.1): the engine package reads the characters here.
+            let _ = reply.send(Err(AppError::not_yet()));
+        }
         Job::PageLabels { id, reply } => {
             let result = read_job(documents, crashed, id, page_labels::read_labels);
             answer(reply, result, Some(id), documents, crashed);

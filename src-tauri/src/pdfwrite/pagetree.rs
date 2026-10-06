@@ -705,7 +705,7 @@ pub fn rewrite_pages(
             }
             // The one-page PDF of a redacted slot (`redact::raster_page`) is copied in like a page of an import source; the original
             // page is not in the list, so a Full save leaves it out.
-            PageSource::Redacted { bytes } => {
+            PageSource::Redacted { bytes } | PageSource::TextEdited { bytes } => {
                 let src = super::prescan::load_untrusted(bytes)?;
                 let pages: Vec<ObjectId> = src.get_pages().into_values().collect();
                 let id = import_page(

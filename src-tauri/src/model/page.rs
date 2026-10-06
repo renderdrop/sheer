@@ -36,6 +36,9 @@ pub enum PageSource {
     /// A page that true redaction made again without what the marks covered (ADR-055): a one-page PDF made by `pdfwrite::redact_content`, held in
     /// memory until the save. The page keeps its id.
     Redacted { bytes: std::sync::Arc<[u8]> },
+    /// A page whose text was edited (ADR-125): a one-page PDF made by `pdfwrite::text_splice`/`text_save`, held in memory as the preview and
+    /// replayed from `DocState.text_edits` over the original stream. The page keeps its id.
+    TextEdited { bytes: std::sync::Arc<[u8]> },
 }
 
 impl PageSource {
@@ -46,6 +49,7 @@ impl PageSource {
             Self::Blank => "blank",
             Self::Imported { .. } => "imported",
             Self::Redacted { .. } => "redacted",
+            Self::TextEdited { .. } => "textEdited",
         }
     }
 }

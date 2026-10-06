@@ -63,6 +63,7 @@ use crate::model::annotation::Imported;
 use crate::model::bibliography::FirstPageHints;
 use crate::model::geometry::{Quad, Rect};
 use crate::model::page::BoxesRead;
+use crate::model::text_edit::CharGeom;
 use crate::pdfwrite::redact::RasterPage;
 
 use self::guard::Health;
@@ -209,6 +210,14 @@ pub(crate) enum Job {
         page_index: u32,
         reply: Reply<TextPage>,
     },
+    /// Every character of one page with its origin and size, for text editing (ADR-125, ARCHITECTURE §13.5). W0 seam: answers `not_yet`.
+    #[allow(dead_code)]
+    // W0 seam: `id` and `engine_index` are read once the engine package fills the job in.
+    PageChars {
+        id: DocumentId,
+        engine_index: u32,
+        reply: Reply<Vec<CharGeom>>,
+    },
     /// The page labels of every file page, one entry per page (ADR-119; `None` for a page without a label). Package C3 fills it in.
     PageLabels {
         id: DocumentId,
@@ -353,6 +362,9 @@ impl Job {
                 let _ = reply.send(Err(error));
             }
             Job::TextLayer { reply, .. } => {
+                let _ = reply.send(Err(error));
+            }
+            Job::PageChars { reply, .. } => {
                 let _ = reply.send(Err(error));
             }
             Job::PageLinks { reply, .. } => {
@@ -866,6 +878,17 @@ impl Engine {
     pub fn page_labels(&self, id: DocumentId) -> Result<Vec<Option<String>>, AppError> {
         self.call(limits::TEXT_TIMEOUT, Rank::BACKGROUND, |reply| {
             Job::PageLabels { id, reply }
+        })
+    }
+
+    /// The characters of page `engine_index` with their origins (ADR-125 §13.2); cached with the text layer by the caller. W0 seam: `not_yet`.
+    pub fn page_chars(&self, id: DocumentId, engine_index: u32) -> Result<Vec<CharGeom>, AppError> {
+        self.call(limits::TEXT_TIMEOUT, Rank::INTERACTIVE, |reply| {
+            Job::PageChars {
+                id,
+                engine_index,
+                reply,
+            }
         })
     }
 

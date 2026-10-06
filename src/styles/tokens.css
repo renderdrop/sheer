@@ -315,6 +315,10 @@
   --text-secondary: var(--color-text-secondary); /* never on --surface-page-area: 4.38:1 */
   --border-subtle: 1px solid var(--color-border);
   --border-control: 1px solid var(--color-stone);
+  /* Edit existing text (DESIGN 3.10): hover outline of a line (drawn with outline-offset: var(--focus-offset)) and the dotted mark of
+     substitute-font characters (text-underline-offset: var(--focus-offset)). Semantic: a later theme needs no change here. */
+  --edit-hover-outline: var(--hairline) solid var(--color-stone);
+  --fallback-underline: var(--hairline) dotted var(--text-secondary);
   --accent: var(--color-yellow);
   --accent-bright: var(--color-yellow-bright);
   --on-accent: var(--color-ink);

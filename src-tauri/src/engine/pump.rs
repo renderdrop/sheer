@@ -534,6 +534,10 @@ impl Pump {
                 );
                 let _ = reply.send(result);
             }
+            Job::PageChars { reply, .. } => {
+                // W0 seam (v1.5.1): the engine package adds the wire request.
+                let _ = reply.send(Err(AppError::not_yet()));
+            }
             Job::FirstPageHints {
                 id,
                 engine_index,

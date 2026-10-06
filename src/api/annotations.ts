@@ -7,6 +7,7 @@ import type { SignatureRole } from './library';
 import type { MetadataPatch } from './metadata';
 import { parseSlots, type CropPagesCommand, type PageCommand, type PageSlotInfo } from './pages';
 import type { RedactMarkSpec } from './redaction';
+import { parseChangeWarnings, type ChangeWarning, type EditTextLine } from './textEdit';
 import {
   isCoordinate,
   isRecord,
@@ -247,7 +248,9 @@ export type DocCommand =
   | { type: 'setMetadata'; patch: MetadataPatch }
   | { type: 'removeMetadata' }
   /** Sets the bibliographic record written at the next save (ADR-119). */
-  | SetBibliographyCommand;
+  | SetBibliographyCommand
+  /** Replaces the text of one line of existing page text (ADR-125). */
+  | EditTextLine;
 
 /** What else a command changed besides annotations, pages and fields: the UI reads it again with `getMetadata` or `getProtection`. */
 export type DocPart = 'metadata' | 'protection' | 'bibliography';
@@ -277,6 +280,8 @@ export interface ChangeSet {
   content?: readonly ContentAnnotation[];
   /** Metadata or protection changed (ADR-047); the backend always sends the list, a fixture may leave it out. */
   doc?: readonly DocPart[];
+  /** Notes of the change (ADR-125): `textOverflow`, `fontFallback`. Omitted when none. */
+  warnings?: readonly ChangeWarning[];
   history: HistoryState;
 }
 
@@ -645,6 +650,8 @@ export function parseChangeSet(value: unknown): ChangeSet | null {
   };
   if (content.length > 0) changes.content = content;
   if (doc !== undefined) changes.doc = doc as DocPart[];
+  const warnings = parseChangeWarnings(value.warnings);
+  if (warnings.length > 0) changes.warnings = warnings;
   return changes;
 }
 

@@ -660,7 +660,7 @@ impl AppState {
                             }
                         }
                         // The raster page of a redacted slot is what these jobs take: a source of its own after the imported ones.
-                        PageSource::Redacted { bytes } => {
+                        PageSource::Redacted { bytes } | PageSource::TextEdited { bytes } => {
                             let at = imported.len() + rasters.len();
                             rasters.push(Arc::new(SourceBytes {
                                 bytes: bytes.clone(),

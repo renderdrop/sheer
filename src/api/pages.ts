@@ -14,7 +14,7 @@ export const MAX_PAGES = 50_000;
 export const MAX_PAGE_SIDE_PT = 14_400;
 
 /** Where a page's content is from; `redacted` is a page that true redaction replaced by a raster (ADR-047). */
-export type PageOrigin = 'file' | 'blank' | 'imported' | 'redacted';
+export type PageOrigin = 'file' | 'blank' | 'imported' | 'redacted' | 'textEdited';
 
 /** The size of a page's MediaBox in points, before the rotation (ADR-047, crop). */
 export interface PageMedia {
@@ -70,7 +70,7 @@ export type SourceResult =
   | { type: 'failed'; code: ErrorCode; key: string; retryable?: boolean; params?: { what: string; limit?: number } };
 
 const ROTATIONS: ReadonlySet<unknown> = new Set([0, 90, 180, 270]);
-const ORIGINS: ReadonlySet<unknown> = new Set<PageOrigin>(['file', 'blank', 'imported', 'redacted']);
+const ORIGINS: ReadonlySet<unknown> = new Set<PageOrigin>(['file', 'blank', 'imported', 'redacted', 'textEdited']);
 
 function isUint(value: unknown): value is number {
   return typeof value === 'number' && Number.isInteger(value) && value >= 0 && value <= 0xffffffff;

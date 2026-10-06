@@ -763,6 +763,30 @@ pub const IDENTITY_NAME_MAX: usize = 64;
 pub const IDENTITY_ORG_MAX: usize = 64;
 pub const IDENTITY_EMAIL_MAX: usize = 254;
 
+// --- Text editing (v1.5, ADR-125, ARCHITECTURE §13.6) ----------------------------------------------------------------
+
+/// The text of one line (characters), as probed and as typed.
+pub const TEXT_EDIT_LINE_CHARS: usize = 2_000;
+/// Lines `text_edit_lines` names per page.
+pub const TEXT_EDIT_LINES_PER_PAGE: usize = 5_000;
+pub const TEXT_EDITS_PER_DOC: usize = 10_000;
+pub const TEXT_EDITS_PER_PAGE: usize = 500;
+/// An embedded font program (bytes) and the glyphs read from it.
+pub const FONT_PROGRAM_MAX: usize = 32 << 20;
+pub const FONT_GLYPHS_MAX: usize = 65_535;
+/// `ToUnicode`: stream bytes, mappings, the span of one `bfrange`, UTF-16 units of one destination.
+pub const TOUNICODE_MAX_BYTES: usize = 1 << 20;
+pub const TOUNICODE_MAX_MAPPINGS: usize = 100_000;
+pub const TOUNICODE_RANGE_MAX: u32 = 65_536;
+pub const TOUNICODE_DEST_UNITS: usize = 16;
+/// `/Differences` codes, `/W` entries, `/CIDToGIDMap` stream bytes.
+pub const DIFFERENCES_MAX: usize = 256;
+pub const CID_WIDTHS_MAX: usize = 65_536;
+pub const CID_TO_GID_MAX_BYTES: usize = 128 << 10;
+/// Deadlines of a probe and of a replay (the blocking pool; the work is also under `catch_unwind`).
+pub const TEXT_EDIT_PROBE_TIMEOUT: Duration = Duration::from_secs(5);
+pub const TEXT_EDIT_REPLAY_TIMEOUT: Duration = Duration::from_secs(30);
+
 #[cfg(test)]
 mod tests {
     use super::*;

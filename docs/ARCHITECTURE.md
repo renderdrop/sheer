@@ -1124,3 +1124,12 @@ visited sets; the generated subset is re-parsed with `skrifa` before it is writt
 `what: "textEdit"`, `params.reason`), never panics. Signed/certified: checked from `sigread::scan_fields` at probe and at apply.
 Tests: `tests/text_edit.rs` (corpus: same-font edit renders identical outside the line box, extracted text equals the new text,
 undo restores byte-identical stream, refusals per class, hostile fonts fuzz-seeded from `tests/fixtures/hostile/`).
+
+### 13.7 W0 seam as landed (v1.5.1)
+
+All §13.5 signatures exist with `not_yet` bodies: `pdfwrite/{ops_walk,text_lines,text_fonts,text_splice,text_save}.rs`, top-level `fontprog/{mod,glyphs,type1,cmap,fallback}.rs` (a crate module beside `pdfwrite`, engine- and lopdf-free), `model/text_edit.rs`, `commands/text_edit.rs`, `src/api/textEdit.ts`. The spike `pdfwrite/textedit/` is untouched. Deviations and additions:
+- `text_edit_lines` returns `PageTextLines { lines: TextLineInfo[] }` (a struct, so it can grow). `text_lines::probe(lines, chars, unit) -> TextLineInfo` is added (the mapping step of the probe). `font_map(src, font, observed)`, `fontprog::glyphs::read`, `fontprog::cmap::parse`, `fontprog::type1::scan` and `FallbackStore::subset` are the helper signatures of §13.3.
+- `ChangeSet` had no `warnings`; it now has `warnings: Vec<ChangeWarning>` (`textOverflow`, `fontFallback`), empty by default (TS: optional). `PageSource::TextEdited { bytes }` has origin `"textEdited"` (TS `PageOrigin`); until its package lands it is treated like `Redacted` wherever page bytes are read.
+- `DocCommand::EditTextLine` is a page command (never inside a batch); `check_shape` enforces `limits::TEXT_EDIT_LINE_CHARS`; `run` returns `not_yet`. `DocState.text_edits` is not added yet (package B1).
+- `Job::PageChars { id, engine_index }` is in-process only: pump and worker answer `not_yet`, no wire request yet. `CharGeom` lives in `model/text_edit.rs` (engine-free), not `engine/text.rs`.
+- `limits.rs` has the §13.6 constants (`TEXT_EDIT_*`, `FONT_*`, `TOUNICODE_*`, `DIFFERENCES_MAX`, `CID_*`). Commands are in `build.rs` and `capabilities/default.json`. Tokens `--edit-hover-outline` / `--fallback-underline` are shorthand values; their 2 pt offset is `--focus-offset`. i18n keys of the §3.10 table are in en and de.

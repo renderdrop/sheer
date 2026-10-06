@@ -9,6 +9,7 @@ pub mod engine;
 pub mod error;
 pub mod events;
 pub mod export;
+pub mod fontprog;
 pub mod limits;
 pub mod menu;
 pub mod model;
@@ -148,6 +149,8 @@ pub fn run() -> Result<(), AppError> {
             commands::pages::get_pages,
             commands::outline::get_outline,
             commands::text::get_text_layer,
+            commands::text_edit::text_edit_probe,
+            commands::text_edit::text_edit_lines,
             commands::search::search,
             commands::search::cancel_search,
             commands::links::get_page_links,

@@ -414,6 +414,8 @@ fn capabilities_grant_only_the_app_commands_and_the_window_chrome_to_the_main_wi
         "allow-get-pages",
         "allow-get-outline",
         "allow-get-text-layer",
+        "allow-text-edit-probe",
+        "allow-text-edit-lines",
         "allow-search",
         "allow-cancel-search",
         "allow-get-page-links",

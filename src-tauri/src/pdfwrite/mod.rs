@@ -17,6 +17,7 @@ pub mod images_pdf;
 pub mod inspect;
 pub mod lines;
 pub mod metadata;
+pub mod ops_walk;
 pub mod pagetree;
 pub mod prescan;
 pub mod produce;
@@ -29,6 +30,10 @@ pub mod seal;
 pub mod sheer_keys;
 pub mod sign;
 pub mod sigread;
+pub mod text_fonts;
+pub mod text_lines;
+pub mod text_save;
+pub mod text_splice;
 pub mod textedit;
 pub mod unsign;
 

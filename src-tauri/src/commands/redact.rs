@@ -46,7 +46,9 @@ impl AppState {
         let burn = page.burn.clone();
         let source = match &page.source {
             PageSource::Blank => return redact_blank(page.size, page.rotation, burn),
-            PageSource::Redacted { bytes } => PdfSource::parse(bytes.to_vec())?,
+            PageSource::Redacted { bytes } | PageSource::TextEdited { bytes } => {
+                PdfSource::parse(bytes.to_vec())?
+            }
             PageSource::File { .. } => match &parsed.file {
                 Some(source) => source.clone(),
                 None => {

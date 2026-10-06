@@ -15,6 +15,7 @@
 //! | `get_pages` | `docId: number` | `PageSlotInfo[]` in the current order, see [`pages`] |
 //! | `get_outline` | `docId: number` | the bookmarks as a tree, see [`outline`] |
 //! | `get_text_layer` | `docId: number`, `pageId: number` | the text of a page and the box of each character, see [`text`] |
+//! | `text_edit_probe`, `text_edit_lines` | `docId`, `pageId` (+ `unit`) | the editable lines of a page (ADR-125), see [`text_edit`] |
 //! | `search`, `cancel_search` | `docId`, `query: { text, matchCase, wholeWord, maxHits }`, `onEvent: Channel<SearchEvent>`; `searchId` | the id of the search; the hits arrive on the channel, see [`search`] |
 //! | `get_page_links`, `open_link` | `docId`, `pageId` (and `linkIndex`) | the links of a page; opening one asks the user in a native dialog first, see [`links`] |
 //! | `list_annotations`, `list_document_annotations`, `apply_command` (see [`pages`]), `undo`, `redo` | `docId`, and `pageId` or `command` | the annotations of a page; the `ChangeSet` of a command, an undo or a redo, see [`annotations`] |
@@ -60,6 +61,7 @@ pub mod sig_validate;
 pub mod sign;
 pub mod signatures;
 pub mod text;
+pub mod text_edit;
 pub mod thumbnails;
 pub mod unsigned_copy;
 pub mod update;

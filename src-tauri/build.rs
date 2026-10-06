@@ -29,6 +29,8 @@ fn main() {
         "get_pages",
         "get_outline",
         "get_text_layer",
+        "text_edit_probe",
+        "text_edit_lines",
         "search",
         "cancel_search",
         "get_page_links",
