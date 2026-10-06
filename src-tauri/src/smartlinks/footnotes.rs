@@ -2,7 +2,7 @@
 //! to a continued note on the next page, or to an entry of an endnote section; the note's leading marker links back (NoteBack).
 //! Pure over [`DocText`]; notes and markers are indexed once per page (lazily) so a call stays linear in the pages it touches.
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 use super::model::{DocText, Kind, Line, PageText, PtRect, Run, SmartLink, Target};
 
@@ -47,23 +47,50 @@ struct NoteRef {
     idx: usize,
 }
 
+/// The endnote sections of the whole document, built once per revision (ADR-132 §5): the entries, the pages they sit on, and lookups
+/// by marker key and by page.
+#[derive(Debug, Clone, Default)]
+pub struct FootnoteIndex {
+    endnotes: Vec<Note>,
+    endnote_pages: HashSet<usize>,
+    by_key: HashMap<String, Vec<usize>>,
+    by_page: HashMap<usize, Vec<usize>>,
+}
+
+/// Scans the endnote sections of `doc`.
+pub fn build_footnote_index(doc: &DocText) -> FootnoteIndex {
+    let n = doc.pages.len().min(MAX_PAGES);
+    let (endnotes, endnote_pages) = build_endnotes(doc, n);
+    let mut by_key: HashMap<String, Vec<usize>> = HashMap::new();
+    let mut by_page: HashMap<usize, Vec<usize>> = HashMap::new();
+    for (i, e) in endnotes.iter().enumerate() {
+        by_key.entry(e.key.clone()).or_default().push(i);
+        by_page.entry(e.page_idx).or_default().push(i);
+    }
+    FootnoteIndex {
+        endnotes,
+        endnote_pages,
+        by_key,
+        by_page,
+    }
+}
+
 struct Ctx<'a> {
     doc: &'a DocText,
     notes: Vec<Option<Vec<Note>>>,
     markers: Vec<Option<Vec<Marker>>>,
-    endnotes: Vec<Note>,
-    endnote_pages: HashSet<usize>,
+    index: &'a FootnoteIndex,
 }
 
 /// Footnote and NoteBack links of `page` (the `PageText::page` value). Empty when the page was not read or has no body size.
-pub fn detect(doc: &DocText, page: u32) -> Vec<SmartLink> {
+pub fn detect(doc: &DocText, page: u32, index: &FootnoteIndex) -> Vec<SmartLink> {
     let Some(idx) = doc.pages.iter().position(|p| p.page == page) else {
         return Vec::new();
     };
     if doc.pages[idx].body_size <= 0.0 {
         return Vec::new();
     }
-    let mut cx = Ctx::new(doc);
+    let mut cx = Ctx::new(doc, index);
     let mut out = Vec::new();
 
     // Footnote: markers of this page.
@@ -97,13 +124,14 @@ pub fn detect(doc: &DocText, page: u32) -> Vec<SmartLink> {
         idx: i,
     }));
     refs.extend(
-        cx.endnotes
+        index
+            .by_page
+            .get(&idx)
+            .map_or(&[][..], Vec::as_slice)
             .iter()
-            .enumerate()
-            .filter(|(_, n)| n.page_idx == idx)
-            .map(|(i, n)| NoteRef {
+            .map(|&i| NoteRef {
                 endnote: true,
-                page_idx: n.page_idx,
+                page_idx: idx,
                 idx: i,
             }),
     );
@@ -150,21 +178,18 @@ pub fn detect(doc: &DocText, page: u32) -> Vec<SmartLink> {
 }
 
 impl<'a> Ctx<'a> {
-    fn new(doc: &'a DocText) -> Self {
-        let n = doc.pages.len().min(MAX_PAGES);
-        let (endnotes, endnote_pages) = build_endnotes(doc, n);
+    fn new(doc: &'a DocText, index: &'a FootnoteIndex) -> Self {
         Ctx {
             doc,
             notes: vec![None; doc.pages.len()],
             markers: vec![None; doc.pages.len()],
-            endnotes,
-            endnote_pages,
+            index,
         }
     }
 
     fn note(&self, r: NoteRef) -> &Note {
         if r.endnote {
-            &self.endnotes[r.idx]
+            &self.index.endnotes[r.idx]
         } else {
             // Indexed by `resolve`/`detect` after `ensure_notes`.
             &self.notes[r.page_idx]
@@ -177,7 +202,7 @@ impl<'a> Ctx<'a> {
         if i >= self.notes.len() || self.notes[i].is_some() {
             return;
         }
-        let v = if self.endnote_pages.contains(&i) {
+        let v = if self.index.endnote_pages.contains(&i) {
             Vec::new()
         } else {
             page_notes(&self.doc.pages[i], i)
@@ -240,8 +265,9 @@ impl<'a> Ctx<'a> {
             }
         }
         if cands.is_empty() {
-            for (i, n) in self.endnotes.iter().enumerate() {
-                if n.key == m.key && n.page_idx >= s {
+            for &i in self.index.by_key.get(&m.key).map_or(&[][..], Vec::as_slice) {
+                let n = &self.index.endnotes[i];
+                if n.page_idx >= s {
                     cands.push((
                         0.8,
                         NoteRef {
@@ -654,6 +680,44 @@ mod tests {
             page_count: n,
             labels: Vec::new(),
         }
+    }
+
+    fn detect(d: &DocText, page: u32) -> Vec<SmartLink> {
+        super::detect(d, page, &build_footnote_index(d))
+    }
+
+    #[test]
+    fn hostile_input_does_not_panic() {
+        let nan = PtRect {
+            x: f32::NAN,
+            y: -1.0,
+            w: -2.0,
+            h: f32::INFINITY,
+        };
+        let mut odd = run("e\u{301}ÄÖÜ\u{301}¹²", 50.0, 100.0, f32::NAN, f32::NAN);
+        odd.rect = nan;
+        let empty = Line {
+            runs: vec![run("", 0.0, 0.0, BODY, 0.0)],
+            rect: nan,
+        };
+        let none = Line {
+            runs: Vec::new(),
+            rect: nan,
+        };
+        let long = plain(140.0, &format!("1{}", "9".repeat(40)));
+        let d = doc(vec![page(
+            0,
+            vec![
+                line(vec![run("Wort", 50.0, 80.0, BODY, 90.0), odd]),
+                empty,
+                none,
+                long,
+                body_with_marker(100.0, "ÄÖ\u{301}", "12345678901234567890"),
+                note_line(700.0, "12345678901234567890", "Zehn+ Ziffern"),
+                note_line(715.0, "\u{301}¹", "Combining first"),
+            ],
+        )]);
+        assert!(detect(&d, 0).iter().all(|l| l.marker.len() <= 3));
     }
 
     #[test]

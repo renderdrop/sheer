@@ -23,6 +23,7 @@ enum Key {
     },
 }
 
+#[derive(Debug, Clone)]
 struct Entry {
     page: u32,
     rect: PtRect,
@@ -349,6 +350,8 @@ fn narrative_name(c: &[char], paren: usize) -> Option<(String, Option<String>, u
     Some((w2.to_lowercase(), None, s2))
 }
 
+/// Citations of a line. In a numeric bracket each printed number is its own link: "[3, 7]" links 3 and 7, "[3–5]" links the printed 3 and 5
+/// (the numbers in between are not printed and get no link).
 fn scan_citations(c: &[char]) -> Vec<Cit> {
     let mut out = Vec::new();
     let mut i = 0;
@@ -462,11 +465,24 @@ fn surname_matches(entry: &str, cited: &str) -> bool {
     entry == cited || entry.ends_with(&format!(" {cited}"))
 }
 
-pub fn detect(doc: &DocText, page: u32) -> Vec<SmartLink> {
+/// The bibliography of the whole document, built once per revision (ADR-132 §5).
+#[derive(Debug, Clone, Default)]
+pub struct LitIndex {
+    entries: Vec<Entry>,
+    section: Option<(u32, usize)>,
+}
+
+/// Finds the bibliography section of `doc` and its entries.
+pub fn build_lit_index(doc: &DocText) -> LitIndex {
+    let (entries, section) = build_entries(doc);
+    LitIndex { entries, section }
+}
+
+pub fn detect(doc: &DocText, page: u32, index: &LitIndex) -> Vec<SmartLink> {
     let Some(pt) = doc.pages.iter().find(|p| p.page == page) else {
         return Vec::new();
     };
-    let (entries, section) = build_entries(doc);
+    let (entries, section) = (&index.entries, index.section);
     if entries.is_empty() {
         return Vec::new();
     }
@@ -550,6 +566,62 @@ mod tests {
             page_count: n,
             labels: Vec::new(),
         }
+    }
+
+    fn detect(d: &DocText, page: u32) -> Vec<SmartLink> {
+        super::detect(d, page, &build_lit_index(d))
+    }
+
+    #[test]
+    fn hostile_input_does_not_panic_or_link() {
+        use crate::smartlinks::model::Run;
+        let nan = PtRect {
+            x: f32::NAN,
+            y: -3.0,
+            w: -1.0,
+            h: f32::NEG_INFINITY,
+        };
+        let mut bad = body(
+            "Siehe [12345678901] und [1] (Müller 20199) (e\u{301} 2019)",
+            100.0,
+        );
+        bad.rect = nan;
+        bad.runs[0].rect = nan;
+        let mut empty = body("", 120.0);
+        empty.runs = vec![Run {
+            text: String::new(),
+            rect: nan,
+            size: f32::NAN,
+            baseline: f32::NAN,
+            bold: true,
+        }];
+        let mut none = body("x", 140.0);
+        none.runs.clear();
+        let d = doc(vec![
+            pg(
+                0,
+                vec![
+                    bad,
+                    empty,
+                    none,
+                    body("(ÄÖÜ\u{308}, 2019) [1\u{301}] ((((((", 160.0),
+                ],
+            ),
+            pg(
+                1,
+                vec![
+                    head("Literatur", 80.0),
+                    body("[1] Ä\u{301}. Eins.", 120.0),
+                    body("Ö\u{308}, A. (2019). Zwei. 12345678901234567890", 140.0),
+                ],
+            ),
+        ]);
+        let l = detect(&d, 0);
+        // The ten-digit number and the five-digit year are no citations; "[1]" is one.
+        assert!(l
+            .iter()
+            .all(|x| x.marker != "12345678901" && !x.marker.contains("20199")));
+        assert!(detect(&d, 9).is_empty());
     }
 
     fn head(text: &str, y: f32) -> Line {

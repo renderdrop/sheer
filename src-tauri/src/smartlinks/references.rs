@@ -1,9 +1,10 @@
 //! `references` detector (ADR-132, DESIGN §3.11 L1): "siehe S. 12", "pp. 12–14" → page; "Abb. 3", "Tab. 2", "Kapitel 4.2", "§ 5" → the caption
 //! or heading line that starts with the same label. Pure over [`DocText`]; hand matchers, no regex.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use super::model::{DocText, Kind, Line, PageText, PtRect, SmartLink, Target};
+use super::toc::TocEntry;
 
 const PREVIEW_MAX: usize = 280;
 const MIN_SCORE: f32 = 0.75;
@@ -250,6 +251,7 @@ fn looks_like_toc(text: &str) -> bool {
     run >= 3 || (head.last().is_some_and(|x| *x == '…'))
 }
 
+#[derive(Debug, Clone)]
 struct Cand {
     page: u32,
     rect: PtRect,
@@ -258,12 +260,114 @@ struct Cand {
     id: (usize, usize),
 }
 
-type Index = HashMap<(Fam, String), Vec<Cand>>;
+/// The caption and heading targets of the whole document, built once per revision (ADR-132 §5).
+#[derive(Debug, Clone, Default)]
+pub struct RefIndex {
+    map: HashMap<(Fam, String), Vec<Cand>>,
+}
 
-fn build_index(doc: &DocText) -> Index {
-    let mut idx: Index = HashMap::new();
+/// "12.3. Januar" is a date, not a section number.
+fn is_month(word: &str) -> bool {
+    const MONTHS: &[&str] = &[
+        "januar",
+        "jänner",
+        "februar",
+        "märz",
+        "april",
+        "mai",
+        "juni",
+        "juli",
+        "august",
+        "september",
+        "oktober",
+        "november",
+        "dezember",
+        "january",
+        "february",
+        "march",
+        "may",
+        "june",
+        "july",
+        "october",
+        "december",
+    ];
+    let w: String = word
+        .chars()
+        .take_while(|c| c.is_alphabetic())
+        .collect::<String>()
+        .to_lowercase();
+    MONTHS.contains(&w.as_str())
+}
+
+/// The vertical extent of the contents entries of each page: every line inside it is part of the contents (or a list of figures or
+/// tables) and never a target, even without dot leaders or with a wrapped title.
+fn toc_extents(entries: &[TocEntry]) -> HashMap<u32, (f32, f32)> {
+    let mut out: HashMap<u32, (f32, f32)> = HashMap::new();
+    for e in entries {
+        let r = e.line_rect;
+        if !(r.y.is_finite() && r.h.is_finite()) {
+            continue;
+        }
+        let ext = out.entry(e.page).or_insert((r.y, r.y + r.h));
+        ext.0 = ext.0.min(r.y);
+        ext.1 = ext.1.max(r.y + r.h);
+    }
+    out
+}
+
+/// A list of figures or tables without leaders or page numbers: three or more lines in a row that each start with a figure (or table)
+/// label and sit at a line pitch. Real captions are separated by their figures and body text.
+fn caption_list_lines(p: &PageText) -> HashSet<usize> {
+    let mut out = HashSet::new();
+    let mut run: Vec<usize> = Vec::new();
+    let mut last: Option<(usize, Fam, f32, f32)> = None;
+    let mut flush = |run: &mut Vec<usize>| {
+        if run.len() >= 3 {
+            out.extend(run.iter().copied());
+        }
+        run.clear();
+    };
+    for (li, line) in p.lines.iter().enumerate() {
+        let lt = LineText::new(line);
+        let fam = label_at(&lt.chars, skip_ws(&lt.chars, 0))
+            .map(|l| l.fam)
+            .filter(|f| matches!(f, Fam::Fig | Fam::Tab));
+        let fits = match (fam, last) {
+            (Some(f), Some((pl, pf, py, ph))) => {
+                pl + 1 == li && pf == f && (line.rect.y - py).abs() <= 3.0 * ph.max(8.0)
+            }
+            _ => false,
+        };
+        if !fits {
+            flush(&mut run);
+        }
+        match fam {
+            Some(f) => {
+                run.push(li);
+                last = Some((li, f, line.rect.y, line.rect.h));
+            }
+            None => last = None,
+        }
+    }
+    flush(&mut run);
+    out
+}
+
+/// Indexes the captions and headings of `doc`; lines of the contents entries (`toc`) and dot-leader lines are no targets.
+pub fn build_ref_index(doc: &DocText, toc: &[TocEntry]) -> RefIndex {
+    let extents = toc_extents(toc);
+    let mut idx: HashMap<(Fam, String), Vec<Cand>> = HashMap::new();
     for (pi, p) in doc.pages.iter().enumerate() {
+        let ext = extents.get(&p.page).copied();
+        let listed = caption_list_lines(p);
         for (li, line) in p.lines.iter().enumerate() {
+            if listed.contains(&li)
+                || ext.is_some_and(|(lo, hi)| {
+                    line.rect.y >= lo - 1.0 && line.rect.y + line.rect.h <= hi + 1.0
+                })
+            {
+                continue;
+            }
             let lt = LineText::new(line);
             let text = lt.text();
             if text.is_empty() || looks_like_toc(&text) {
@@ -305,14 +409,15 @@ fn build_index(doc: &DocText) -> Index {
                         j += 1;
                     }
                     let k = skip_ws(&lt.chars, j);
-                    if k > j && lt.chars.get(k).is_some_and(|x| x.is_alphabetic()) {
+                    let dated = is_month(&lt.string(k, k + 12));
+                    if k > j && lt.chars.get(k).is_some_and(|x| x.is_alphabetic()) && !dated {
                         push(Fam::Sec, num, 0.85, line.rect, text);
                     }
                 }
             }
         }
     }
-    idx
+    RefIndex { map: idx }
 }
 
 /// A caption may wrap: take up to two tightly following lines that do not start a label themselves.
@@ -368,6 +473,87 @@ struct PageRef {
     strong: bool,
 }
 
+/// Abbreviations that end in a dot without ending a sentence ("Buchst.", "Abschn.").
+const NOT_SENTENCE_END: &[&str] = &[
+    "buchst", "abschn", "absatz", "ziffer", "artikel", "abs", "art", "lit", "ziff", "bzw", "vgl",
+    "ggf", "evtl",
+];
+
+/// The part of the line before `i` that belongs to the same sentence.
+fn sentence_before(c: &[char], i: usize) -> &[char] {
+    let i = i.min(c.len());
+    let mut j = i;
+    while j > 0 {
+        let k = j - 1;
+        let end = match c[k] {
+            '!' | '?' | ';' => true,
+            '.' if c.get(k + 1).is_some_and(|x| x.is_whitespace()) => {
+                let mut s = k;
+                while s > 0 && c[s - 1].is_alphabetic() {
+                    s -= 1;
+                }
+                let word: String = c[s..k].iter().collect::<String>().to_lowercase();
+                let next = skip_ws(c, k + 1);
+                let capital = c.get(next).is_some_and(|x| x.is_uppercase());
+                capital && word.chars().count() >= 3 && !NOT_SENTENCE_END.contains(&word.as_str())
+            }
+            _ => false,
+        };
+        if end {
+            return &c[k + 1..i];
+        }
+        j = k;
+    }
+    &c[..i]
+}
+
+/// A statute citation earlier in the sentence ("§ 6 Abs. 2 S. 3", "Art. 5 S. 2"): there "S." is "Satz", not "Seite".
+fn law_context(c: &[char], i: usize) -> bool {
+    const MARKS: &[&str] = &[
+        "art.", "artikel", "abs.", "absatz", "nr.", "ziff.", "ziffer", "buchst.", "lit.", "satz",
+    ];
+    let seg: String = sentence_before(c, i)
+        .iter()
+        .collect::<String>()
+        .to_lowercase();
+    seg.split_whitespace().any(|tok| {
+        let t = tok.trim_start_matches(['(', ',']);
+        t.starts_with('§') || MARKS.contains(&t)
+    })
+}
+
+fn ends_with_word(before: &str, w: &str) -> bool {
+    before.ends_with(w)
+        && before
+            .chars()
+            .rev()
+            .nth(w.chars().count())
+            .is_none_or(|x| !x.is_alphanumeric())
+}
+
+/// "(Müller, S. 4)", "(ebd., S. 4)": the page belongs to the cited work, not to this document.
+fn after_cited_work(c: &[char], i: usize) -> bool {
+    let mut j = i.min(c.len());
+    while j > 0 && c[j - 1].is_whitespace() {
+        j -= 1;
+    }
+    if j == 0 || c[j - 1] != ',' {
+        return false;
+    }
+    j -= 1;
+    let end = j;
+    while j > 0 && (c[j - 1].is_alphabetic() || matches!(c[j - 1], '.' | '-' | '\'')) {
+        j -= 1;
+    }
+    let tok: String = c[j..end].iter().collect();
+    let lower = tok.to_lowercase();
+    [
+        "ebd.", "ebd", "ebenda", "ibid.", "ibid", "a.a.o.", "ders.", "dies.",
+    ]
+    .contains(&lower.as_str())
+        || (tok.chars().next().is_some_and(char::is_uppercase) && tok.chars().count() >= 2)
+}
+
 const PAGE_KWS: &[&str] = &["pp.", "p.", "s.", "seite", "page"];
 
 fn page_ref_at(c: &[char], i: usize) -> Option<PageRef> {
@@ -378,20 +564,21 @@ fn page_ref_at(c: &[char], i: usize) -> Option<PageRef> {
     let before = before.trim_end();
     let strong = ["siehe", "vgl.", "vgl", "see", "cf.", "cf"]
         .iter()
-        .any(|w| {
-            before.ends_with(w)
-                && before
-                    .chars()
-                    .rev()
-                    .nth(w.chars().count())
-                    .is_none_or(|x| !x.is_alphanumeric())
-        });
+        .any(|w| ends_with_word(before, w));
+    let cue = strong
+        || ["auf", "on", "to"]
+            .iter()
+            .any(|w| ends_with_word(before, w));
     for &kw in PAGE_KWS {
         if !starts_with_ci(c, i, kw) {
             continue;
         }
         let word_kw = !kw.ends_with('.');
-        if word_kw && !(strong || ["auf", "on", "to"].iter().any(|w| before.ends_with(w))) {
+        if word_kw && !cue {
+            continue;
+        }
+        // "S." is also "Satz" ("§ 6 Abs. 2 S. 3"): a link needs a cue (siehe, vgl., see, auf) and no statute citation before it.
+        if kw == "s." && (!cue || law_context(c, i)) {
             continue;
         }
         let j = i + kw.chars().count();
@@ -456,12 +643,16 @@ fn after_citation_year(c: &[char], i: usize) -> bool {
     j >= 4 && c[j - 4..j].iter().all(char::is_ascii_digit)
 }
 
-pub fn detect(doc: &DocText, page: u32, map: &dyn Fn(&str) -> Option<u32>) -> Vec<SmartLink> {
+pub fn detect(
+    doc: &DocText,
+    page: u32,
+    index: &RefIndex,
+    map: &dyn Fn(&str) -> Option<u32>,
+) -> Vec<SmartLink> {
     let Some(pi) = doc.pages.iter().position(|p| p.page == page) else {
         return Vec::new();
     };
     let pt = &doc.pages[pi];
-    let mut index: Option<Index> = None;
     let mut out = Vec::new();
     for (li, line) in pt.lines.iter().enumerate() {
         let lt = LineText::new(line);
@@ -472,10 +663,9 @@ pub fn detect(doc: &DocText, page: u32, map: &dyn Fn(&str) -> Option<u32>) -> Ve
         let mut i = 0;
         while i < c.len() {
             if let Some(l) = label_at(c, i) {
-                let idx = index.get_or_insert_with(|| build_index(doc));
                 let mut skip = l.fam == Fam::Para && law_follows(c, l.end);
                 let key = (l.fam, l.num.clone());
-                let cands = idx.get(&key).map(Vec::as_slice).unwrap_or(&[]);
+                let cands = index.map.get(&key).map(Vec::as_slice).unwrap_or(&[]);
                 let scores: Vec<f32> = cands.iter().map(|x| x.score).collect();
                 if !skip {
                     if let Some(b) = pick(&scores) {
@@ -503,7 +693,7 @@ pub fn detect(doc: &DocText, page: u32, map: &dyn Fn(&str) -> Option<u32>) -> Ve
             if let Some(r) = page_ref_at(c, i) {
                 let marker = lt.string(i, r.end);
                 let own_footer = edge || whole == marker.trim();
-                if !own_footer && !after_citation_year(c, i) {
+                if !own_footer && !after_citation_year(c, i) && !after_cited_work(c, i) {
                     let mapped = map(&r.first).filter(|&p| p < doc.page_count);
                     if let Some(phys) = mapped {
                         out.push(SmartLink {
@@ -581,7 +771,183 @@ mod tests {
     }
 
     fn ident(s: &str) -> Option<u32> {
-        s.parse::<u32>().ok().map(|n| n - 1)
+        s.parse::<u32>().ok().map(|n| n.saturating_sub(1))
+    }
+
+    /// Builds the index like the document build does (contents entries as exclusions), then detects.
+    fn detect(d: &DocText, page: u32, map: &dyn Fn(&str) -> Option<u32>) -> Vec<SmartLink> {
+        let entries: Vec<TocEntry> = d
+            .pages
+            .iter()
+            .flat_map(crate::smartlinks::toc::detect_entries)
+            .collect();
+        super::detect(d, page, &build_ref_index(d, &entries), map)
+    }
+
+    fn markers(d: &DocText) -> Vec<String> {
+        detect(d, 0, &ident).into_iter().map(|l| l.marker).collect()
+    }
+
+    #[test]
+    fn s_as_satz_is_no_page_reference() {
+        for text in [
+            "Nach § 6 Abs. 2 S. 3 gilt das.",
+            "Art. 5 S. 2 regelt es.",
+            "Es gilt § 6 Abs. 2 siehe S. 3 weiter.",
+            "Nr. 4 S. 2 und auf S. 5 sowie.",
+        ] {
+            let d = doc(vec![pg(0, vec![body(text, 100.0)])], 20);
+            assert!(markers(&d).is_empty(), "{text}");
+        }
+        // A bare "S. 3" without a cue is no link; with a cue and no statute it is one; a new sentence resets the statute.
+        let bare = doc(
+            vec![pg(
+                0,
+                vec![body("Das steht auf Seite 3 und S. 4 ist leer.", 100.0)],
+            )],
+            20,
+        );
+        assert_eq!(markers(&bare), vec!["Seite 3"]);
+        let next = doc(
+            vec![pg(
+                0,
+                vec![body("Nach § 6 Abs. 2 gilt das. Siehe S. 3 dazu.", 100.0)],
+            )],
+            20,
+        );
+        assert_eq!(markers(&next), vec!["S. 3"]);
+        let satz = doc(
+            vec![pg(0, vec![body("Siehe § 6 Abs. 2 S. 3 BGB.", 100.0)])],
+            20,
+        );
+        assert!(markers(&satz).is_empty());
+    }
+
+    #[test]
+    fn cited_works_pages_are_no_links() {
+        for text in [
+            "(Müller, S. 4)",
+            "(ebd., S. 4)",
+            "vgl. Müller, S. 4",
+            "siehe ebd., S. 12",
+        ] {
+            let d = doc(vec![pg(0, vec![body(text, 100.0)])], 20);
+            assert!(markers(&d).is_empty(), "{text}");
+        }
+    }
+
+    #[test]
+    fn contents_and_list_lines_are_no_targets() {
+        // "Kapitel 3" and "Abbildung 7" occur in a contents page and a list of figures (with and without leaders); the real heading and
+        // caption are on later pages.
+        let d = doc(
+            vec![
+                pg(0, vec![body("siehe Kapitel 3 und Abbildung 7 dazu", 100.0)]),
+                pg(
+                    1,
+                    vec![
+                        body("Inhalt", 80.0),
+                        body("Kapitel 1 Start ........ 3", 100.0),
+                        body("Kapitel 2 Mitte ........ 4", 120.0),
+                        body("Kapitel 3 Ende ........ 5", 140.0),
+                        body("Abbildung 5 Eins 6", 200.0),
+                        body("Abbildung 6 Zwei 7", 220.0),
+                        body("Abbildung 7 Drei 8", 240.0),
+                    ],
+                ),
+                pg(2, vec![ln("Kapitel 3 Ende", 72.0, 100.0, 14.0, true)]),
+                pg(3, vec![body("Abbildung 7: Drei", 300.0)]),
+            ],
+            4,
+        );
+        let l = detect(&d, 0, &ident);
+        let targets: Vec<(String, u32)> = l
+            .iter()
+            .map(|x| (x.marker.clone(), x.target.page))
+            .collect();
+        assert!(targets.iter().all(|(_, p)| *p >= 2), "{targets:?}");
+        assert!(targets.iter().any(|(m, p)| m == "Kapitel 3" && *p == 2));
+    }
+
+    #[test]
+    fn a_list_of_figures_without_page_numbers_is_no_target() {
+        let d = doc(
+            vec![
+                pg(0, vec![body("siehe Abbildung 2 dazu", 100.0)]),
+                pg(
+                    1,
+                    vec![
+                        body("Abbildung 1: Eins", 100.0),
+                        body("Abbildung 2: Zwei", 116.0),
+                        body("Abbildung 3: Drei", 132.0),
+                    ],
+                ),
+                pg(2, vec![body("Abbildung 2: Zwei", 300.0)]),
+            ],
+            3,
+        );
+        let l = detect(&d, 0, &ident);
+        assert_eq!(l.len(), 1);
+        assert_eq!(l[0].target.page, 2);
+    }
+
+    #[test]
+    fn a_dated_heading_is_no_section() {
+        let d = doc(
+            vec![
+                pg(0, vec![body("siehe Kapitel 12.3", 100.0)]),
+                pg(1, vec![ln("12.3. Januar 2020", 72.0, 100.0, 14.0, true)]),
+            ],
+            2,
+        );
+        assert!(detect(&d, 0, &ident).is_empty());
+    }
+
+    #[test]
+    fn hostile_input_does_not_panic_or_link_wrongly() {
+        use crate::smartlinks::model::Run;
+        let weird = [
+            "siehe S. 99999999999999999999",
+            "siehe S. e\u{301}\u{301}\u{301} 3",
+            "ÄÖÜß Abb. 3 Ä\u{308} S. 4 ÄÖÜ",
+            "§\u{301} 5 BGB Kapitel\u{301} 2",
+            "siehe\u{301} S.\u{301} 4",
+            "İİİ siehe S. 4",
+            "Kapitel 1234567890 und Abb. 12345",
+            "",
+            "   ",
+        ];
+        for t in weird {
+            let d = doc(vec![pg(0, vec![body(t, 100.0)])], 5);
+            for l in detect(&d, 0, &ident) {
+                assert!(l.rects.iter().all(|r| r.x.is_finite() && r.w.is_finite()));
+            }
+        }
+        // NaN / negative boxes and empty runs.
+        let nan = PtRect {
+            x: f32::NAN,
+            y: -5.0,
+            w: -3.0,
+            h: f32::INFINITY,
+        };
+        let mut bad = body("siehe S. 3 und Abb. 1", 100.0);
+        bad.rect = nan;
+        bad.runs[0].rect = nan;
+        bad.runs.push(Run {
+            text: String::new(),
+            rect: nan,
+            size: f32::NAN,
+            baseline: f32::NAN,
+            bold: false,
+        });
+        let mut empty = body("", 120.0);
+        empty.runs.clear();
+        let mut p = pg(0, vec![bad, empty]);
+        p.height = f32::NAN;
+        let d = doc(vec![p, pg(1, vec![body("Abb. 1: x", 100.0)])], 5);
+        let _ = detect(&d, 0, &ident);
+        let _ = detect(&d, 1, &ident);
+        assert!(detect(&d, 7, &ident).is_empty());
     }
 
     #[test]

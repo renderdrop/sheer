@@ -2,7 +2,7 @@
 //!
 //! | Command | Arguments | Returns |
 //! |---|---|---|
-//! | `smart_links` | `docId: number`, `pageId: number` | `{ rev, ready, links }`: `rev` is the document revision the answer is for; `ready: false` means the document index is still being built in the background (ask again later, `links` is empty); `links` are `{ kind, rects, marker, target: { pageId, rect? }, preview }`, at most 400, in reading order |
+//! | `smart_links` | `docId: number`, `pageId: number` | `{ rev, ready, partial, links }`: `partial` is true when the index hit its time or size limit (pages after the last one read are missing); `rev` is the document revision the answer is for; `ready: false` means the document index is still being built in the background (ask again later, `links` is empty); `links` are `{ kind, rects, marker, target: { pageId, rect? }, preview }`, at most 400, in reading order |
 //!
 //! `kind` is `footnote`, `noteBack`, `contents`, `reference` or `literature`. `rects` are in page points (origin top left, y down, before
 //! `/Rotate`, the text layer's space); a contents link has two: the page number (where the cue is drawn) and the whole line (the hit area).
@@ -54,6 +54,8 @@ pub struct SmartLinkWire {
 pub struct SmartLinksInfo {
     pub rev: u64,
     pub ready: bool,
+    /// The index hit its time or size limit: links to or from the missing pages are not found (the frontend may ignore it).
+    pub partial: bool,
     pub links: Vec<SmartLinkWire>,
 }
 
@@ -106,6 +108,7 @@ impl AppState {
         let empty = |ready| SmartLinksInfo {
             rev,
             ready,
+            partial: false,
             links: Vec::new(),
         };
         let index = match self.smart.status(id, rev) {
@@ -117,7 +120,10 @@ impl AppState {
             Status::Ready(index) => index,
         };
         if edited {
-            return Ok(empty(true));
+            return Ok(SmartLinksInfo {
+                partial: index.partial,
+                ..empty(true)
+            });
         }
         let links = match self.smart.cached(id, rev, pos) {
             Some(links) => links,
@@ -134,6 +140,7 @@ impl AppState {
         Ok(SmartLinksInfo {
             rev,
             ready: true,
+            partial: index.partial,
             links: links.iter().filter_map(|l| wire(l, &order)).collect(),
         })
     }
@@ -361,6 +368,7 @@ mod tests {
         assert_eq!(json["links"][1]["kind"], "noteBack");
         assert!(json["links"][0]["target"]["pageId"].is_number());
         assert!(json["ready"].as_bool().unwrap());
+        assert_eq!(json["partial"], false);
         // Another page has none.
         assert!(until_ready(&state, id, 1).links.is_empty());
     }

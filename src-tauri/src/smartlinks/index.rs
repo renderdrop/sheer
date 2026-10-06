@@ -9,11 +9,11 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use std::time::{Duration, Instant};
 
-use super::footnotes;
-use super::literature;
+use super::footnotes::{self, FootnoteIndex};
+use super::literature::{self, LitIndex};
 use super::model::{DocText, Kind, PageText, PtRect, SmartLink};
 use super::pages::{self, PageMap};
-use super::references;
+use super::references::{self, RefIndex};
 use super::toc::{self, Norms};
 use crate::documents::DocumentId;
 use crate::limits;
@@ -29,6 +29,10 @@ pub struct Analysis {
     pub map: PageMap,
     /// Contents links by the page of the contents line.
     pub toc: HashMap<u32, Vec<SmartLink>>,
+    /// The document-wide lookups of the detectors, built once per revision (ADR-132 §5): endnotes, caption and heading targets, bibliography.
+    pub notes: FootnoteIndex,
+    pub refs: RefIndex,
+    pub lit: LitIndex,
 }
 
 /// The pages read of a document and what was learned from them.
@@ -36,6 +40,8 @@ pub struct Analysis {
 pub struct Ready {
     pub doc: DocText,
     pub analysis: Analysis,
+    /// The index hit its time, page, character or run limit: pages after the last one read are missing.
+    pub partial: bool,
 }
 
 /// Runs the document-wide part of detection: contents entries, the page map and the contents links.
@@ -47,7 +53,13 @@ pub fn analyze(doc: &DocText) -> Analysis {
     let mut norms = Norms::new(doc);
     let map = pages::learn(doc, &entries, &mut norms);
     let toc = toc::links(doc, &entries, &map, &mut norms);
-    Analysis { map, toc }
+    Analysis {
+        map,
+        toc,
+        notes: footnotes::build_footnote_index(doc),
+        refs: references::build_ref_index(doc, &entries),
+        lit: literature::build_lit_index(doc),
+    }
 }
 
 fn centre_y(l: &SmartLink) -> f32 {
@@ -74,7 +86,8 @@ fn kind_rank(kind: Kind) -> u8 {
 }
 
 fn sound(link: &SmartLink, page_count: u32) -> bool {
-    let finite = |r: &PtRect| [r.x, r.y, r.w, r.h].iter().all(|n| n.is_finite());
+    let finite =
+        |r: &PtRect| [r.x, r.y, r.w, r.h].iter().all(|n| n.is_finite()) && r.w >= 0.0 && r.h >= 0.0;
     !link.rects.is_empty()
         && link.rects.iter().all(finite)
         && link.target.page < page_count
@@ -90,11 +103,11 @@ pub fn page_links(doc: &DocText, analysis: &Analysis, page: u32) -> Vec<SmartLin
         return Vec::new();
     }
     let mut all: Vec<SmartLink> = analysis.toc.get(&page).cloned().unwrap_or_default();
-    all.extend(footnotes::detect(doc, page));
-    all.extend(references::detect(doc, page, &|printed| {
+    all.extend(footnotes::detect(doc, page, &analysis.notes));
+    all.extend(references::detect(doc, page, &analysis.refs, &|printed| {
         analysis.map.resolve(printed)
     }));
-    all.extend(literature::detect(doc, page));
+    all.extend(literature::detect(doc, page, &analysis.lit));
     all.retain(|l| l.page == page && sound(l, doc.page_count));
     all.sort_by(|a, b| {
         b.score
@@ -211,13 +224,18 @@ pub fn build(
             None => break,
         }
     }
+    let partial = u32::try_from(pages_prefix.len()).map_or(true, |n| n < count);
     let doc = DocText {
         pages: pages_prefix,
         page_count: count,
         labels,
     };
     let analysis = analyze(&doc);
-    Some(Ready { doc, analysis })
+    Some(Ready {
+        doc,
+        analysis,
+        partial,
+    })
 }
 
 #[derive(Debug, Clone)]
@@ -458,6 +476,7 @@ mod tests {
             "the requested page and its neighbours first"
         );
         assert_eq!(ready.doc.pages.len(), 5);
+        assert!(!ready.partial);
         assert_eq!(ready.analysis.map.offset(), Some(1));
         let links = page_links(&ready.doc, &ready.analysis, 1);
         assert_eq!(links.len(), 3);
@@ -527,6 +546,7 @@ mod tests {
         )
         .unwrap();
         assert!(ready.doc.pages.len() < 5);
+        assert!(ready.partial, "a limit was hit: the index is a prefix");
         assert_eq!(ready.doc.page_count, 5);
         assert!(page_links(&ready.doc, &ready.analysis, 3).is_empty());
     }
@@ -542,6 +562,7 @@ mod tests {
         let ready = Ready {
             doc: DocText::default(),
             analysis: Analysis::default(),
+            partial: false,
         };
         store.finish(id(1), g1, Some(ready.clone()));
         assert!(matches!(store.status(id(1), 5), Status::Ready(_)));
