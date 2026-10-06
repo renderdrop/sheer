@@ -51,6 +51,8 @@ interface TextEditState {
   notice: FallbackNotice | null;
   /** Where the edit box was when it closed with a notice still to show (client px): the notice's anchor and protected rect after Apply. */
   noticeAnchor?: Rect | null;
+  /** Umbrechen (DESIGN 3.10 E2, v1.5.2): the next apply uses `scope: paragraph`. Written by the mini bar toggle (F3), read by the box (F2). */
+  reflow: boolean;
   set: (patch: Partial<Omit<TextEditState, 'set' | 'reset'>>) => void;
   patchSession: (patch: Partial<EditSession>) => void;
   reset: () => void;
@@ -58,8 +60,11 @@ interface TextEditState {
 
 const FRESH = { session: null, anchor: null, rule: null, refusal: null, notice: null, noticeAnchor: null };
 
+// `reflow` survives `reset` (the last choice is kept, DESIGN 3.10 E2).
+
 export const useTextEdit = create<TextEditState>()((set) => ({
   ...FRESH,
+  reflow: false,
   set: (patch) => set(patch),
   patchSession: (patch) => set((s) => (s.session ? { session: { ...s.session, ...patch } } : {})),
   reset: () => set(FRESH),
