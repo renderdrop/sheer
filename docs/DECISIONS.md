@@ -2567,3 +2567,32 @@ result. (b) The Umbrechen toggle (E2) belongs to v1.5.2 (`scope: paragraph`) and
 **Orchestrator cuts.** Wave A: backend preview command (new module, own IPC → review), backend alignment + paragraph grouping of
 justified text, backend reflow (new `text_reflow.rs`, expanded inside `replay`), frontend polish (notice, growing box, minors). Wave B:
 frontend live preview + alignment-aware box + reflow editing, and the Umbrechen toggle.
+
+## ADR-130 — Patch v1.5.1 "Politur v1.5 (Rest)": justified lines stretch to full width
+
+**Status:** accepted (2026-10-06, owner instruction, session "Politur v1.5 (Rest) als Patch v1.5.1"). Tempo level 3 (ADR-128).
+
+**Owner decision.** A changed line of a justified paragraph (any line but the paragraph's last) is stretched back to the full
+paragraph width: the difference between its new natural width and the paragraph's right edge is spread evenly over its word gaps,
+whatever the chain structure of the line (one `TJ`, one show operator per word, `Tw`). This replaces the "loses its justification"
+behaviour of v1.5.0 and holds for reflow (`scope: paragraph`) too: every re-broken line except the paragraph's last is stretched,
+the last line keeps its natural width. Paragraph grouping must keep a justified paragraph together across a strongly stretched line
+(E4 page 1, "Ende … des").
+
+**Orchestrator decisions.**
+1. *Limits.* A gap grows to at most 4 × the font's space width beyond its natural width; a line that would need more stays left-aligned
+   (ragged) with the warning it had before. A line with no word gap (one word) stays left-aligned. Gaps never shrink below 0.5 × space.
+2. *Packages (one wave of four).* B1 paragraph grouping of stretched lines + text_lines review lows; B2 splice/reflow stretch +
+   reflow and splice lows; B3 backend lows (preview command, limits, Flate for rewritten streams, walker budget, test pins);
+   F1 frontend (notice lifetime and format, box anchoring for centred/right lines, designer minors).
+3. *Deferred to a later polish ticket:* edits on approval-signed files (byte-range-aware write), cooperative cancel inside the walker,
+   re-edit of a line that already holds a fallback word, Symbol/ZapfDingbats widths. They need new write paths or font data, not polish.
+4. *Release* `v1.5.1` (patch) after an installed-build round on Windows with a justified owner PDF where a changed line re-breaks.
+
+**Consequences.** Justified documents (statutes, reports) keep their look after an edit; the stretch touches only the edited and
+re-broken lines, never other paragraphs.
+
+**ADR-130 addendum 1 (orchestrator, F1).** The P1 minor ("a single-line paragraph's limit ignores the widest-line cap") is
+descoped: a paragraph of one line has no other line to cap against, and capping it at its own width stops every single line from
+growing, which contradicts DESIGN §3.10 E2 (limit = next object on the baseline less 4 pt, or the crop edge less 12 pt). The current
+behaviour stands.

@@ -1,9 +1,9 @@
 # STATE
-phase: v1.5 (session topic "Politur v1.5 + v1.5.2 bis Release v1.5.0", ADR-129)
+phase: v1.5.1 (session topic "Politur v1.5 (Rest) als Patch v1.5.1", ADR-130)
 version: 1.5.0 (tag v1.5.0; pre-release tag v1.5.0-beta.1 kept)
-current_item: v1.5 done — release v1.5.0 (ADR-129). Next open: Politur v1.5 (Rest) or v1.6 spec
+current_item: Politur v1.5 (Rest) → patch v1.5.1. Wave of 4: B1 paragraph grouping of stretched lines (text_lines.rs); B2 justified stretch in splice + reflow (text_splice.rs, text_reflow.rs); B3 backend lows (text_preview, limits, text_save Flate, ops_walk budget, test pins); F1 frontend (notice lifetime/format, box anchoring, designer minors). Then reviews B1–B3, tester, security, installed-build acceptance (justified owner PDF with a real re-break), designer round, tag v1.5.1
 last_completed: v1.5.0 — wave A F1 73b48f0, B2 cdc709a, B3 002c96d, B1 c50af0d; wave B F2 6365fca, F3 7cf28ac, fix 5eb14e6; acceptance blocker ccc12ae + FIX 0d6f15c; reviews B1/B2/B3 PASS, fix FIX→fixed; designer PASS, security-reviewer PASS; surface gate 993/993, smoke 17/17, corpus 99.8 % / 90.8 %
-loop_count_this_session: 1 (session closed: report docs/reports/2026-10-06-v1.5.0-politur-absatzumbruch.md, STOP set)
+loop_count_this_session: 0 (session "Politur v1.5 (Rest)" running, STOP removed)
 open_blockers: 2 (B-002, B-005, human-only). B-006 and B-007 resolved by the owner (ADR-128). Path guard (ADR-127) allows the project memory folder (ADR-128)
 notes: ADR-120: every loop starts with `bash scripts/ci-status.sh` (last completed run on main, never wait); red = fix first. v1.4 W0 2a1e3f3 (stable RustCrypto line), seam 586feeb. Release v1.3.0 published.
   Owner re-check on the Mac after v1.2.0: A10 "Save as PDF" in the print dialog. Screenshot series docs/review/v1.2/ (not tracked), motion recordings docs/review/v1.2/motion/.
