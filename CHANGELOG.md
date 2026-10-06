@@ -6,6 +6,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.5.0-beta.1] - 2026-10-06
+
+Pre-release of v1.5 "Edit text" (ADR-125, ADR-128): line-wise editing of existing text, usable but not final (Politur v1.5 in ROADMAP.md). Unsigned installers (BLOCKERS B-002).
+
+### Added
+- Edit text (Edit mode, first tool): click a line of a PDF's own text and change it in place, in the document's font. Enter applies,
+  Esc cancels, Tab goes to the next line; each applied line is one Undo step. When the file's font lacks a character or is not
+  embedded, the changed words use a bundled substitute (Arimo, Tinos or Cousine). Text that cannot be edited
+  (scans, drawn fonts, slanted text, signed or locked files) explains why on hover.
+
+### Changed
+- Recovery: unsaved changes older than 30 days are discarded automatically, and from three entries the recovery banner shows a
+  summary with "Show all".
+
+### Known issues (beta)
+- The notice that names the substitute font does not appear after Apply yet; while typing, the box shows an approximation of the
+  font, and a centred line keeps its start instead of staying centred.
+
 ### Fixed
 - Split tool buttons (Strikeout, Highlight, Rotate, Signature, mini-bar split toggles): the hover and pressed background stays inside the
   rounded outline, the chevron shares the outline and has its own divider, and nothing changes size on hover. The surface gate checks it.

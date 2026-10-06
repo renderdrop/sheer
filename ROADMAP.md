@@ -318,7 +318,7 @@ new engine capability or dependency is needed. Not picked by the loop before v1.
 
 ### v1.5 "Edit text"
 - [x] v1.5 spec — designer spec + architect ADR (content-stream text editing with embedded fonts, fallback font matching) (ADR-125, ARCHITECTURE §13, DESIGN §3.10; feasibility spike pdfwrite/textedit, report docs/reports/2026-10-06-v1.5-phase1-text-machbarkeit.md)
-- [ ] v1.5.1 — Edit existing text line- and paragraph-wise with embedded fonts
+- [x] v1.5.1 — Edit existing text line- and paragraph-wise with embedded fonts (line-wise, pre-release v1.5.0-beta.1, ADR-128; paragraph reflow → v1.5.2)
 - [ ] v1.5.2 — Otherwise a bundled fallback (Arimo/Tinos/Cousine, ADR-125 §4, changed words only) with a notice; paragraph reflow, never across pages
   - spike carry-overs: stream order ≠ reading order (form footers), glyph-outline check in the font program, right/centre-aligned runs, cumulative decoded-bytes budget across Form XObjects + visited-form cycle check, corpus ≥ 30 files and click-mapping ≥ 90 % gate
 - [ ] Politur v1.5
@@ -330,6 +330,18 @@ new engine capability or dependency is needed. Not picked by the loop before v1.
   - re-edit of a line that already holds a fallback word is tooComplex; params.reason vs what on read_only refusals (ARCHITECTURE §13.5)
   - refusal tooltip keys missing for clip, inForm, actualText, script, notFileSource, unmapped, tooComplex (DESIGN §3.10 E5)
   - Symbol/ZapfDingbats lines are Missing (no verified widths)
+  - v1.5.1 acceptance (installed build, major): the substitute notice (E4) does not appear after Apply — FallbackNotice anchors to the
+    mini bar's Font button, which is gone once the box closes; anchor it to the last edit box rect (store `anchor`) instead
+  - v1.5.1 acceptance (minor): the edit box keeps the original line width while typing (text runs past its outline); E2 growth
+  - live Rust re-render of the draft (E1 last bullet, deferred by ADR-128): the box draws a CSS approximation (upright sans for an italic line)
+  - centred/right-aligned lines keep their start on Apply (keepStart): "Präambel 2026" is no longer centred (v1.5.2 carry-over)
+  - designer (minor): mini bar over page text (move to a calmer spot); overflow part has no 12 % hatch, danger marker hard to tell from
+    the caret; dotted underline for substitute glyphs while editing not visible; paragraph rule covers only 6 of 17 lines of a justified paragraph
+  - P2: Font popover status shows Embedded/Not embedded only (no subset flag from Rust); a notice that does not fit keeps its queue slot
+  - P1: a single-line paragraph's limit ignores the "widest line" cap (grows to the next object or crop − 12 pt)
+  - security (low): autosave purge discards delete errors (`let _ =`); log a count of failed deletes, never paths
+  - recovery banner (review minor): Show all sits beside Discard all / Restore all; check crowding at 960 px
+  - acceptance not done by mouse: refusal tooltips on real refused lines, double-click word selection, Font popover, screen reader (E-AC 7), reduced motion (E-AC 8), macOS
 - [ ] v1.5 acceptance — installed build with the mouse, designer round, tag v1.5.0
 
 ### v1.6 "Smart links"
