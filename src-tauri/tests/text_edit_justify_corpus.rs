@@ -3,6 +3,8 @@
 
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
+mod support;
+
 use std::path::PathBuf;
 use std::time::Duration;
 
@@ -15,11 +17,11 @@ use sheer_lib::model::text_edit::{LineEditable, TextLineInfo};
 fn page_lines(file: &str) -> Option<Vec<TextLineInfo>> {
     let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let library = engine::library_path(&manifest.join("pdfium"));
-    let path = manifest.join("..").join("review/owner/corpus").join(file);
-    if !library.is_file() || !path.is_file() {
-        eprintln!("skipping: PDFium or {file} not found");
+    if !library.is_file() {
+        eprintln!("skipping: PDFium not found");
         return None;
     }
+    let path = support::corpus::file(file)?;
     let state = AppState::new(Engine::start(library));
     let info = loop {
         match state.open_path(path.clone()) {
@@ -39,7 +41,7 @@ fn page_lines(file: &str) -> Option<Vec<TextLineInfo>> {
 #[test]
 #[ignore = "needs the untracked corpus in review/ and the PDFium library"]
 fn e4_justified_paragraph_is_not_split_at_the_stretched_line() {
-    let Some(lines) = page_lines("E4_Vorgartensatzung Stadt Erfurt.pdf") else {
+    let Some(lines) = page_lines("owner-pdf-E4") else {
         return;
     };
     let stretched = lines
@@ -64,14 +66,16 @@ fn e4_justified_paragraph_is_not_split_at_the_stretched_line() {
 fn a_lengthened_justified_line_reflows_and_every_line_but_the_last_ends_at_the_right_edge() {
     use sheer_lib::model::text_edit::{TextEdit, TextFit, TextScope};
 
-    let file = "E4_Vorgartensatzung Stadt Erfurt.pdf";
+    let file = "owner-pdf-E4";
     let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let library = engine::library_path(&manifest.join("pdfium"));
-    let path = manifest.join("..").join("review/owner/corpus").join(file);
-    if !library.is_file() || !path.is_file() {
-        eprintln!("skipping: PDFium or {file} not found");
+    if !library.is_file() {
+        eprintln!("skipping: PDFium not found");
         return;
     }
+    let Some(path) = support::corpus::file(file) else {
+        return;
+    };
     let state = AppState::new(Engine::start(library));
     let info = loop {
         match state.open_path(path.clone()) {
@@ -190,14 +194,16 @@ fn a_lengthened_justified_line_reflows_and_every_line_but_the_last_ends_at_the_r
 fn e4_edit_on_line_three_wraps_the_edited_line_at_the_paragraph_edge() {
     use sheer_lib::model::text_edit::{TextEdit, TextFit, TextScope};
 
-    let file = "E4_Vorgartensatzung Stadt Erfurt.pdf";
+    let file = "owner-pdf-E4";
     let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let library = engine::library_path(&manifest.join("pdfium"));
-    let path = manifest.join("..").join("review/owner/corpus").join(file);
-    if !library.is_file() || !path.is_file() {
-        eprintln!("skipping: PDFium or {file} not found");
+    if !library.is_file() {
+        eprintln!("skipping: PDFium not found");
         return;
     }
+    let Some(path) = support::corpus::file(file) else {
+        return;
+    };
     let state = AppState::new(Engine::start(library));
     let info = loop {
         match state.open_path(path.clone()) {

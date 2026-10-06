@@ -1,9 +1,11 @@
 //! Smart links on the owner's real documents (v1.6, ADR-132): how many links each detector finds, a sample of each kind and anything that
 //! looks wrong. The corpus is not in the repository (`review/owner/corpus/`, ADR-126), so the test is `#[ignore]`d:
-//! `cargo test --test smartlinks_corpus -- --ignored --nocapture`. `SMARTLINKS_FILES="a.pdf;b.pdf"` limits the files. Nothing is asserted
+//! `cargo test --test smartlinks_corpus -- --ignored --nocapture`. `SMARTLINKS_FILES="owner-pdf-E4;corpus-12"` (IDs of review/owner/INDEX.md) limits the files. Nothing is asserted
 //! about counts: the output is read by a person; only "no crash, no error, no timeout" is.
 
 #![allow(clippy::unwrap_used, clippy::expect_used)]
+
+mod support;
 
 use std::collections::BTreeMap;
 use std::path::PathBuf;
@@ -21,17 +23,7 @@ fn files() -> Vec<String> {
     if let Ok(list) = std::env::var("SMARTLINKS_FILES") {
         return list.split(';').map(str::to_owned).collect();
     }
-    let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../review/owner/corpus");
-    let mut names: Vec<String> = std::fs::read_dir(dir)
-        .map(|rd| {
-            rd.filter_map(Result::ok)
-                .map(|e| e.file_name().to_string_lossy().into_owned())
-                .filter(|n| n.to_lowercase().ends_with(".pdf"))
-                .collect()
-        })
-        .unwrap_or_default();
-    names.sort();
-    names
+    support::corpus::all_ids()
 }
 
 fn cut(s: &str, n: usize) -> String {
@@ -66,11 +58,9 @@ fn smart_links_on_the_corpus() {
         .and_then(|s| s.parse().ok());
     let mut summary: Vec<(String, u32, BTreeMap<String, usize>, usize)> = Vec::new();
     for name in files() {
-        let path = manifest.join("../review/owner/corpus").join(&name);
-        if !path.is_file() {
-            eprintln!("== {name}: not found");
+        let Some(path) = support::corpus::file(&name) else {
             continue;
-        }
+        };
         let started = Instant::now();
         let info = match loop {
             match state.open_path(path.clone()) {

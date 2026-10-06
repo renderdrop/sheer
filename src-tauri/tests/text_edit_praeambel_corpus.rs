@@ -4,6 +4,8 @@
 
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
+mod support;
+
 use std::path::PathBuf;
 use std::time::Duration;
 
@@ -15,16 +17,16 @@ use sheer_lib::model::text_edit::{
     LineEditable, LineKey, TextEdit, TextFit, TextLineInfo, TextScope,
 };
 
-const FILE: &str = "E4_Vorgartensatzung Stadt Erfurt.pdf";
+const FILE: &str = "owner-pdf-E4";
 
 fn open() -> Option<(AppState, DocumentId, PageId)> {
     let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let library = engine::library_path(&manifest.join("pdfium"));
-    let path = manifest.join("..").join("review/owner/corpus").join(FILE);
-    if !library.is_file() || !path.is_file() {
-        eprintln!("skipping: PDFium or {FILE} not found");
+    if !library.is_file() {
+        eprintln!("skipping: PDFium not found");
         return None;
     }
+    let path = support::corpus::file(FILE)?;
     let state = AppState::new(Engine::start(library));
     let info = loop {
         match state.open_path(path.clone()) {
@@ -67,7 +69,7 @@ fn preview(
 #[ignore = "needs the untracked corpus in review/ and the PDFium library"]
 fn e4_praeambel_and_overflow_caption() {
     let Some((state, id, page)) = open() else {
-        eprintln!("skipping the Praeambel corpus test: PDFium or {FILE} not found");
+        eprintln!("skipping the Praeambel corpus test");
         return;
     };
     praeambel_and_two_font_lines(&state, id, page);

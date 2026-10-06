@@ -9,6 +9,7 @@
 // Every test crate that includes this module uses some of it.
 #![allow(dead_code)]
 
+pub mod corpus;
 pub mod fixtures;
 pub mod malformed;
 

@@ -171,6 +171,73 @@ fn the_check_script_guard_allows_update_and_rejects_everything_else() {
     assert!(ok, "{out}");
 }
 
+/// Runs `guard_owner_corpus <corpus> <tree>` from `scripts/check.sh`; `None` where there is no bash.
+fn run_owner_guard(corpus: &Path, tree: &Path) -> Option<(bool, String)> {
+    let script = root().join("..").join("scripts").join("check.sh");
+    let script = script.canonicalize().ok()?;
+    let slash = |p: &Path| {
+        p.to_string_lossy()
+            .replace(std::path::MAIN_SEPARATOR, "/")
+            .trim_start_matches("//?/")
+            .to_owned()
+    };
+    let command = format!(
+        "SHEER_CHECK_SOURCE_ONLY=1 source '{}' && guard_owner_corpus '{}' '{}'",
+        slash(&script),
+        slash(corpus),
+        slash(tree)
+    );
+    let output = Command::new(bash()?).args(["-c", &command]).output().ok()?;
+    Some((
+        output.status.success(),
+        String::from_utf8_lossy(&output.stdout).into_owned(),
+    ))
+}
+
+#[test]
+fn the_owner_corpus_guard_fails_on_a_file_name_and_skips_a_missing_folder() {
+    let base = std::env::temp_dir().join(format!("sheer-owner-guard-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&base);
+    let (corpus, tree) = (base.join("corpus"), base.join("tree"));
+    fs::create_dir_all(&corpus).unwrap();
+    fs::create_dir_all(&tree).unwrap();
+    fs::write(corpus.join("Fictional Report 1999.pdf"), b"%PDF").unwrap();
+    fs::write(
+        tree.join("a.md"),
+        "A line about owner-pdf-E4 only.
+",
+    )
+    .unwrap();
+    let Some((ok, out)) = run_owner_guard(&corpus, &tree) else {
+        let _ = fs::remove_dir_all(&base);
+        return; // no bash on this machine
+    };
+    assert!(ok, "IDs only must pass: {out}");
+    for line in [
+        "see Fictional Report 1999.pdf here",
+        "the Fictional Report 1999 says",
+    ] {
+        fs::write(
+            tree.join("b.md"),
+            format!(
+                "{line}
+"
+            ),
+        )
+        .unwrap();
+        let (ok, out) = run_owner_guard(&corpus, &tree).unwrap();
+        assert!(!ok, "{line} must fail");
+        assert!(out.contains("b.md:1"), "{out}");
+        assert!(
+            !out.contains("Fictional"),
+            "the name is never printed: {out}"
+        );
+    }
+    let (ok, _) = run_owner_guard(&base.join("absent"), &tree).unwrap();
+    assert!(ok, "a missing corpus folder is a silent pass");
+    let _ = fs::remove_dir_all(&base);
+}
+
 /// Git Bash on Windows (the `bash` on PATH there can be the WSL launcher, which does not take `C:/` paths); `bash` elsewhere.
 /// `None` when there is none.
 fn bash() -> Option<PathBuf> {

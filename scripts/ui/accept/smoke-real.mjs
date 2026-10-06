@@ -7,6 +7,7 @@ import { launch } from './launch.mjs';
 import { createInput } from './cdp-input.mjs';
 import { createDialogs } from './dialogs.mjs';
 import { startGuard } from './guard.mjs';
+import { corpusFile } from './corpus.mjs';
 
 const CAP_MS = 5 * 60 * 1000;
 const OS = fileURLToPath(new URL('./os-input.ps1', import.meta.url));
@@ -35,7 +36,7 @@ try {
   const RUN = '[data-links-list] [data-smartlink][data-link-kind="footnote"] [data-smartlink-run]';
   const run = async () => {
     guard.step('queue open');
-    await dialogs.answerOpenMany(['review/owner/corpus/Ausformulierung 2.0.pdf']);
+    await dialogs.answerOpenMany([corpusFile('corpus-12')]);
     guard.step('real Ctrl+O');
     os('-ProcId', String(session.pid), '-Action', 'key', '-Keys', '^o');
     await input.waitFor(`document.querySelectorAll('[data-page] img').length > 0`, { timeoutMs: 40000, what: 'page' });

@@ -9,7 +9,7 @@
 # the Windows/macOS CI matrix, ADR-123). Every step prints its duration.
 #
 # Steps: PDFium fetch, version sync, tsc, eslint, prettier, vitest, cargo fmt, clippy -D warnings, cargo test,
-#        cargo deny, cargo audit, npm audit, network-crate guard, updater-scope guard, PDF-library import guard, secret scan, bundle URL guard.
+#        cargo deny, cargo audit, npm audit, network-crate guard, updater-scope guard, PDF-library import guard, secret scan, bundle URL guard, owner-corpus name guard.
 set -uo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -299,6 +299,35 @@ guard_automation() {
   [ "$ok" -eq 1 ]
 }
 
+# ADR-133 / rule 16: no tracked file names a file of the owner corpus (full name or name without extension). Silent pass when the
+# corpus folder is absent (CI). Takes the corpus directory and, for the test, a plain directory to scan instead of the tracked files.
+# Prints file:line only, never the matching text.
+guard_owner_corpus() {
+  local dir="${1:-review/owner/corpus}" tree="${2:-}" pats f n hits rc=0
+  [ -d "$dir" ] || return 0
+  pats="$(mktemp)"
+  for f in "$dir"/*; do
+    [ -f "$f" ] || continue
+    n="$(basename "$f")"
+    printf '%s\n%s\n' "$n" "${n%.*}" >>"$pats"
+  done
+  if [ ! -s "$pats" ]; then
+    rm -f "$pats"
+    return 0
+  fi
+  if [ -n "$tree" ]; then
+    hits="$(grep -rnIF -f "$pats" "$tree" 2>/dev/null)" || rc=$?
+  else
+    hits="$(git grep -nIF -f "$pats" 2>/dev/null)" || rc=$?
+  fi
+  rm -f "$pats"
+  if [ "$rc" -eq 0 ]; then
+    printf '%s\n' "$hits" | sed -E 's/^(.*:[0-9]+):.*/\1/' | sed 's|^|error: owner corpus file name in a tracked file (use its ID, ADR-133): |'
+    return 1
+  fi
+  return 0
+}
+
 # F17.10: the dev-only surface registry (src/dev/surfaces.ts) must not reach a release bundle.
 guard_dist_dev() {
   local dir="${1:-dist}"
@@ -350,6 +379,7 @@ if want web; then
   step "guard: pdf imports" guard_pdf_imports
   step "guard: secrets" guard_secrets
   step "guard: automation" guard_automation
+  step "guard: owner corpus names" guard_owner_corpus
   step "guard: bundle urls" build_and_guard_dist
 fi
 
@@ -361,4 +391,4 @@ fi
 
 echo "check: ${#FAILED[@]} of $TOTAL steps failed: $(printf '%s; ' "${FAILED[@]}" | sed 's/; $//')"
 echo "check: full output in $LOG_DIR"
-exit 1
+    printf '%s\n' "$hits" | sed -E 's/^(.*:[0-9]+):.*/\1/' | sed 's|^|error: owner corpus file name in a tracked file (use its ID, ADR-133): |'

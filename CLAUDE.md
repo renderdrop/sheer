@@ -28,6 +28,7 @@ Work is orchestrated autonomously per `ORCHESTRATOR_PROMPT.md`; resume state liv
 13. Test PDFs only from `review/owner/` or self-generated; never search other folders of the machine. Screenshots only by capturing the app window, never the screen (ADR-126).
 14. Writes, deletes and moves only inside the repo and the Claude temp folder; no reads outside the repo (test material: `review/owner/`). Enforced by the `guard-paths.sh` PreToolUse hook, exit 2 (ADR-127).
 15. Acceptance only through the acceptance build (`npm run build:acceptance`, id `app.sheer.acceptance`, feature `automation`): dialogs answered by the script queue, input via CDP (`scripts/ui/accept/`); real mouse/keyboard only in the final smoke (≤ 5 min, announced before and after); dialog guard aborts with Esc + report. The owner's installation is never touched (ADR-131).
+16. Owner corpus stays private (ADR-133): versioned files, reports and commit messages never name file names, titles, persons or personal data from `review/owner/`; use IDs (`owner-pdf-E4`, `corpus-07`) resolved via the untracked `review/owner/INDEX.md`.
 
 ## Code
 

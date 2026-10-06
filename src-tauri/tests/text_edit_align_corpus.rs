@@ -5,6 +5,8 @@
 
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
+mod support;
+
 use std::path::PathBuf;
 use std::time::Duration;
 
@@ -14,14 +16,17 @@ use sheer_lib::documents::PageId;
 use sheer_lib::engine::{self, Engine};
 use sheer_lib::model::text_edit::{LineAlign, TextEdit, TextFit, TextLineInfo, TextScope};
 
+/// `file` is a corpus ID (`review/owner/INDEX.md`).
 fn run(file: &str, old: &str, new: &str, align: LineAlign) {
     let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let library = engine::library_path(&manifest.join("pdfium"));
-    let path = manifest.join("..").join("review/owner/corpus").join(file);
-    if !library.is_file() || !path.is_file() {
-        eprintln!("skipping: PDFium or {file} not found");
+    if !library.is_file() {
+        eprintln!("skipping: PDFium not found");
         return;
     }
+    let Some(path) = support::corpus::file(file) else {
+        return;
+    };
     let state = AppState::new(Engine::start(library));
     let info = loop {
         match state.open_path(path.clone()) {
@@ -97,7 +102,7 @@ fn run(file: &str, old: &str, new: &str, align: LineAlign) {
 #[ignore = "needs the untracked corpus in review/ and the PDFium library"]
 fn centred_heading_keeps_its_centre() {
     run(
-        "E4_Vorgartensatzung Stadt Erfurt.pdf",
+        "owner-pdf-E4",
         "Präambel",
         "Präambel 2026",
         LineAlign::Center,
@@ -107,10 +112,11 @@ fn centred_heading_keeps_its_centre() {
 #[test]
 #[ignore = "needs the untracked corpus in review/ and the PDFium library"]
 fn right_aligned_line_keeps_its_right_edge() {
-    run(
-        "2025_Rechnung_202500100.pdf",
-        "04129 Leipzig",
-        "04129 Leipzig-Mitte",
-        LineAlign::Right,
-    );
+    let (Some(old), Some(new)) = (
+        support::corpus::probe("corpus-05/address-line"),
+        support::corpus::probe("corpus-05/address-line-full"),
+    ) else {
+        return;
+    };
+    run("corpus-05", &old, &new, LineAlign::Right);
 }

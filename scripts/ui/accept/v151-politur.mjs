@@ -2,9 +2,11 @@
 // Prereq: npm run build:acceptance. Run: node scripts/ui/accept/v151-politur.mjs   (UI language German)
 // Every edit is escaped; nothing is saved (the save status is checked at the end).
 import { createResults, runSession, openAndWait, sleep } from './harness.mjs';
+import { corpusFile, corpusProbe } from './corpus.mjs';
 
-const E4 = 'review/owner/corpus/E4_Vorgartensatzung Stadt Erfurt.pdf';
-const RECHNUNG = 'review/owner/corpus/2025_Rechnung_202500100.pdf';
+const E4 = corpusFile('owner-pdf-E4');
+const INVOICE = corpusFile('corpus-05');
+const ADDRESS = corpusProbe('corpus-05/address-line');
 const q = (s) => JSON.stringify(s);
 
 const results = createResults();
@@ -158,21 +160,21 @@ await runSession(async ({ input, dialogs, ev, shot }) => {
   C('nothing saved ("Gespeichert")', save === 'saved', `data-save-status=${save}`);
 }, results);
 
-// --- Rechnung -------------------------------------------------------------------------------------------------------------
+// --- invoice -------------------------------------------------------------------------------------------------------------
 await runSession(async ({ input, dialogs, ev, shot }) => {
-  const C = (n, ok, d) => check(`Rechnung: ${n}`, ok, d);
-  await openAndWait({ input, dialogs }, RECHNUNG);
+  const C = (n, ok, d) => check(`invoice: ${n}`, ok, d);
+  await openAndWait({ input, dialogs }, INVOICE);
   await enterEditMode({ input, ev });
-  await input.waitForTarget({ text: '04129 Leipzig' }, { timeoutMs: 30000 });
-  await input.click({ text: '04129 Leipzig' });
+  await input.waitForTarget({ text: ADDRESS }, { timeoutMs: 30000 });
+  await input.click({ text: ADDRESS });
   await input
     .waitFor(`!!document.querySelector('[data-textedit-box]')`, { timeoutMs: 8000, what: 'edit box' })
     .catch(() => {});
-  C('"04129 Leipzig" opens the edit box', await ev(`!!document.querySelector('[data-textedit-box]')`), '');
+  C('the address line opens the edit box', await ev(`!!document.querySelector('[data-textedit-box]')`), '');
   await input.press('End');
   await input.insertText('-Mitte');
   await sleep(1200);
-  await shot('v151/rechnung-01-typed');
+  await shot('v151/invoice-01-typed');
   const g = await ev(`(() => {
     const r = (s) => { const e = document.querySelector(s); if (!e) return null; const b = e.getBoundingClientRect(); return { left: b.left, right: b.right }; };
     const img = document.querySelector('[data-textedit-preview]');
@@ -203,7 +205,7 @@ await runSession(async ({ input, dialogs, ev, shot }) => {
   await cancelEdit({ input, ev });
   const save = await ev(`document.querySelector('[data-save-status]')?.getAttribute('data-save-status')`);
   C('nothing saved ("Gespeichert")', save === 'saved', `data-save-status=${save}`);
-  await shot('v151/rechnung-02-escaped');
+  await shot('v151/invoice-02-escaped');
 }, results);
 
 results.table();

@@ -5,6 +5,10 @@ import { launch } from './launch.mjs';
 import { createInput } from './cdp-input.mjs';
 import { createDialogs } from './dialogs.mjs';
 import { startGuard } from './guard.mjs';
+import { corpusFile, corpusProbe } from './corpus.mjs';
+
+const FILE = corpusFile('corpus-05');
+const ADDRESS = corpusProbe('corpus-05/address-line');
 
 const session = await launch();
 const guard = startGuard(session.pid);
@@ -13,12 +17,12 @@ try {
   const input = createInput(session, { guard });
   const dialogs = createDialogs(session, input);
   const run = async () => {
-    await dialogs.openFile('review/owner/corpus/2025_Rechnung_202500100.pdf');
+    await dialogs.openFile(FILE);
     await input.waitForTarget({ selector: '[data-page] img' }, { timeoutMs: 20000 });
     await input.click({ role: 'tab', text: 'Bearbeiten' });
     await input.click({ text: 'Text bearbeiten' });
-    await input.waitForTarget({ text: '04129 Leipzig' }, { timeoutMs: 20000 });
-    await input.click({ text: '04129 Leipzig' });
+    await input.waitForTarget({ text: ADDRESS }, { timeoutMs: 20000 });
+    await input.click({ text: ADDRESS });
     await input.press('End');
     await input.insertText('-Mitte');
     await input.sleep(500);

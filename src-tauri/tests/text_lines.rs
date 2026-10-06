@@ -566,10 +566,11 @@ fn a_one_line_heading_or_date_is_judged_against_its_text_block() {
 #[test]
 #[ignore = "needs the owner's corpus"]
 fn the_corpus_heading_is_centred() {
-    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../review/owner/corpus/E4_Vorgartensatzung Stadt Erfurt.pdf");
+    let Some(path) = support::corpus::file("owner-pdf-E4") else {
+        return;
+    };
     let Ok(bytes) = std::fs::read(&path) else {
-        eprintln!("skipping: corpus file missing");
+        eprintln!("skipping: corpus file unreadable");
         return;
     };
     let doc = PageDoc::load(&bytes).unwrap();

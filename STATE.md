@@ -1,9 +1,9 @@
 # STATE
-phase: v1.6 done (session topic "v1.6 Smarte Verknüpfungen", ADR-131, ADR-132)
+phase: v1.7 phase 1 (session topic "v1.7 Scan & OCR – Phase 1, Machbarkeit"; order: P0 privacy rule 16 + range chooser (ADR-133) → architect ADR OCR → spike (5 scanned owner PDFs, no UI) → report go/no-go; no release)
 version: 1.6.0 (tag v1.6.0; v1.5.1, v1.5.0 kept)
 current_item: v1.6.0 released. Next open: "Politur v1.6" (ROADMAP) or v1.7 spec ("Scan & OCR")
 last_completed: v1.6.0 — infra d0268da/43e0c7c/44b8aa3/3763737 (ADR-131, rule 15); Politur v1.5.1 4b63699/f60d18c/b42f5ad/32988ee; smart links backend 79ef1e5/a794812, frontend a5ad672, designer fixes 125116b, gate fix 3f6cc9f; reviews I1/P-B/S1 PASS, S2+S3 FIX→fixed; security PASS (lows); designer FIX (2 blockers) → fixed; acceptance build: v16-smartlinks all PASS (3 owner PDFs), v151-politur all PASS, real-input smoke PASS (~75 s); surface gate 1028/1028, annot smoke 17/17; tester green
-loop_count_this_session: 0 (session closed: report docs/reports/2026-10-07-v1.6.0-smarte-verknuepfungen.md, STOP set)
+loop_count_this_session: 0 (session "v1.7 phase 1" running, STOP removed)
 open_blockers: 2 (B-002, B-005, human-only). B-006 and B-007 resolved by the owner (ADR-128). Path guard (ADR-127) allows the project memory folder (ADR-128)
 notes: ADR-120: every push starts with `bash scripts/ci-status.sh` (last completed run on main, never wait); red = fix first. Rule 15 / ADR-131: acceptance ONLY via `npm run build:acceptance` + `scripts/ui/accept/*.mjs` (CDP, dialog guard); real input only `smoke-real.mjs` (≤ 5 min, announced). Never launch target/release or anything installed.
   Split staging across packages can break an intermediate commit (run #108): stage whole files per package when possible.

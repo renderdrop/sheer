@@ -321,7 +321,7 @@ new engine capability or dependency is needed. Not picked by the loop before v1.
 - [x] v1.5.1 — Edit existing text line- and paragraph-wise with embedded fonts (line-wise, pre-release v1.5.0-beta.1, ADR-128; paragraph reflow → v1.5.2)
 - [x] v1.5.2 — Otherwise a bundled fallback (Arimo/Tinos/Cousine, ADR-125 §4, changed words only) with a notice; paragraph reflow, never across pages (ADR-129: scope paragraph re-break inside one paragraph, Umbrechen toggle; live line preview in the real font)
 - [x] Politur v1.5 — owner scope (ADR-129 §2): substitute notice after Apply, growing edit box, centred/right-aligned lines keep their alignment, designer minors of the beta (hatch, marker, dotted substitutes, calmer mini bar, recovery toggle)
-- [x] v1.5 acceptance — installed build with the mouse (E4 Vorgartensatzung, DD1 Handout, Rechnung 2025), one blocker fixed (centred/right lines failed to apply, ccc12ae + 0d6f15c), designer round, tag v1.5.0
+- [x] v1.5 acceptance — installed build with the mouse (owner-pdf-E4, owner-pdf-DD1, corpus-05), one blocker fixed (centred/right lines failed to apply, ccc12ae + 0d6f15c), designer round, tag v1.5.0
 - [x] Politur v1.5 (Rest) → patch v1.5.1 (ADR-130): justified lines stretch to full width (splice + reflow), paragraph grouping across
       stretched lines and blank lines, notice lifetime and quoted list, box/preview anchoring for centred/right lines, welcome-document
       decode, preview caps/LRU/permission order, Flate for rewritten streams, neutral walker limit, test pins; P1 descoped (ADR-130 add. 1)
@@ -329,7 +329,7 @@ new engine capability or dependency is needed. Not picked by the loop before v1.
       CDP acceptance scripts with dialog guard, real-input smoke ≤ 5 min (d0268da, 43e0c7c, 44b8aa3)
 - [x] Politur v1.5.1 (ADR-132): Umbrechen on for multi-line paragraphs; line stops at the paragraph edge with a true overflow;
       focus ring grows from the anchor; no compressed give-back; second-font lines refuse; refused paragraph preview falls back
-      to line scope with a caption (E4 Präambel); preview reads the crop edge from the loaded page; NaN guards; divider removed
+      to line scope with a caption (owner-pdf-E4 heading); preview reads the crop edge from the loaded page; NaN guards; divider removed
 - [ ] Politur v1.6 — carried over from v1.5.1 and v1.6
   - deferred (ADR-130 §3): approval-signed files (byte-range-aware write); cooperative cancel inside ops_walk/text_lines;
     re-edit of a line that already holds a fallback word; Symbol/ZapfDingbats widths; params.reason vs what on read_only refusals
@@ -340,7 +340,7 @@ new engine capability or dependency is needed. Not picked by the loop before v1.
     interleaved-chain refusal is conservative
   - smart links: "[3–5]" links 3 and 5 only; a session-edited page's text is not used for its neighbours' detection;
     index pages past a limit get no links (partial flag, UI ignores it); real-link page jumps carry no y offset; no fade on toggle-off
-  - smart links: Laura Beck thesis footnotes not linked (markers are real links); Settings fit at 960×640 to re-check with the gate
+  - smart links: corpus-20 footnotes not linked (markers are real links); Settings fit at 960×640 to re-check with the gate
   - flaky: first annot-smoke run after launch (Highlight on text.pdf); storage::autosave retention test (timing)
   - not accepted: macOS; screen reader; reduced motion; Save after a justified edit; double-click word selection; Font popover
 
@@ -349,7 +349,7 @@ new engine capability or dependency is needed. Not picked by the loop before v1.
 - [x] v1.6.1 — Detect footnote numbers and jump (with Back)
 - [x] v1.6.2 — Link tables of contents; references like "see p. 12" and "Fig. 3"
 - [x] v1.6.3 — Literature references "(Müller 2019)" to the bibliography entry; heuristic, with a notice, never destructive
-- [x] v1.6 acceptance — acceptance build (ADR-131): Ausformulierung 2.0, Regionales Einzelhandelskonzept, 6 Implementierung DB; designer round (2 blockers fixed), tag v1.6.0
+- [x] v1.6 acceptance — acceptance build (ADR-131): corpus-12, corpus-21, corpus-08; designer round (2 blockers fixed), tag v1.6.0
 
 ### v1.7 "Scan & OCR"
 - [ ] v1.7 spec — designer spec + architect ADR (Windows OCR / Apple Vision without unsafe code or via a sidecar)

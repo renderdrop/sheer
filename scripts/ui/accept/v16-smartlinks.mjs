@@ -11,11 +11,12 @@ import {
   sleep,
 } from './harness.mjs';
 import { lumRange, readPng } from './png.mjs';
+import { corpusFile } from './corpus.mjs';
 
 const FILES = [
-  ['ausf', 'review/owner/corpus/Ausformulierung 2.0.pdf'],
-  ['einzel', 'review/owner/corpus/Regionales Einzelhandelskonzept Mittelthüringen 2015.pdf'],
-  ['bim', 'review/owner/corpus/6 Implementierung von BIM bei der DB.pdf'],
+  ['ausf', corpusFile('corpus-12')],
+  ['einzel', corpusFile('corpus-21')],
+  ['bim', corpusFile('corpus-08')],
 ];
 const LINK = '[data-links-list] [data-smartlink]';
 const q = (s) => JSON.stringify(s);

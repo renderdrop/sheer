@@ -2663,3 +2663,17 @@ preview) is reproduced in the acceptance build and fixed or turned into a refusa
 **ADR-131 addendum 1 (security v1.6.0, low).** Queued dialog paths are checked as absolute and counted only; every consuming command
 applies the same canonicalisation and scope checks it applies to a native dialog result, so the queue adds no path the user could
 not have picked. The queue exists only in the acceptance build (feature `automation`); the release workflows never enable it.
+
+## ADR-133 — Owner corpus privacy (rule 16) and range citations with a chooser
+
+**Status:** accepted (2026-10-07, owner instruction, session "v1.7 Scan & OCR – Phase 1, Machbarkeit"; first package).
+
+**Decisions (owner).**
+1. *Rule 16.* Reports and every versioned file never name file names, titles or persons from the owner corpus (`review/owner/`).
+   Owner files are referred to by stable IDs: files with an owner short code keep it as `owner-pdf-<code>` (e.g. `owner-pdf-E4`),
+   all others are `corpus-NN` (two digits, by sorted file name). The only mapping is the untracked `review/owner/INDEX.md`
+   (`review/` is git-ignored). Corpus tests and acceptance scripts resolve IDs (and any probe text that is personal data, such as
+   address lines) through that index at run time; they skip with a clear message when it is missing. Git history is the owner's.
+2. *Range citations.* A numeric range "[3–5]" links every number in the range: one detected link over the printed range whose click
+   opens a small chooser (one row per entry: number + entry preview) to pick the target; a single-target range behaves like a plain
+   link. Designer addendum to DESIGN §3.11 first; the chooser is a registered surface (gate).

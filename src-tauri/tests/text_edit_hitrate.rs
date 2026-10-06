@@ -182,7 +182,7 @@ fn the_mapping_finds_a_line_for_nine_in_ten_clicks() {
     for dir in ["review/owner/corpus", "review/corpus-gen"] {
         files.extend(pdfs_in(&manifest.join("..").join(dir)));
     }
-    // `HITRATE_FILTER=text` limits the run to files whose name contains it.
+    // `HITRATE_FILTER=text` limits the run to files whose path contains it (owner files: the INDEX name).
     if let Ok(filter) = std::env::var("HITRATE_FILTER") {
         files.retain(|p| p.to_string_lossy().contains(&filter));
     }
@@ -194,7 +194,8 @@ fn the_mapping_finds_a_line_for_nine_in_ten_clicks() {
     let mut skipped = 0;
     for path in &files {
         let started = Instant::now();
-        let name = path.file_name().unwrap().to_string_lossy();
+        let name = support::corpus::id_of(path)
+            .unwrap_or_else(|| path.file_name().unwrap().to_string_lossy().into_owned());
         match file_tally(&state, path) {
             Ok(tally) => {
                 println!(
