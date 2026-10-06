@@ -3,13 +3,14 @@ phase: v1.5 (session topic "Politur v1.5 + v1.5.2 bis Release v1.5.0", ADR-129)
 version: 1.5.0 (tag v1.5.0; pre-release tag v1.5.0-beta.1 kept)
 current_item: v1.5 done — release v1.5.0 (ADR-129). Next open: Politur v1.5 (Rest) or v1.6 spec
 last_completed: v1.5.0 — wave A F1 73b48f0, B2 cdc709a, B3 002c96d, B1 c50af0d; wave B F2 6365fca, F3 7cf28ac, fix 5eb14e6; acceptance blocker ccc12ae + FIX 0d6f15c; reviews B1/B2/B3 PASS, fix FIX→fixed; designer PASS, security-reviewer PASS; surface gate 993/993, smoke 17/17, corpus 99.8 % / 90.8 %
-loop_count_this_session: 0
+loop_count_this_session: 1 (session closed: report docs/reports/2026-10-06-v1.5.0-politur-absatzumbruch.md, STOP set)
 open_blockers: 2 (B-002, B-005, human-only). B-006 and B-007 resolved by the owner (ADR-128). Path guard (ADR-127) allows the project memory folder (ADR-128)
 notes: ADR-120: every loop starts with `bash scripts/ci-status.sh` (last completed run on main, never wait); red = fix first. v1.4 W0 2a1e3f3 (stable RustCrypto line), seam 586feeb. Release v1.3.0 published.
   Owner re-check on the Mac after v1.2.0: A10 "Save as PDF" in the print dialog. Screenshot series docs/review/v1.2/ (not tracked), motion recordings docs/review/v1.2/motion/.
   After v1.2.0: "Politur v1.3" (ROADMAP, carried minors), then the v1.3 "Citations" spec. Never run the dev window while agents run cargo/vitest;
   stop it with taskkill sheer.exe + Stop-Process on tauri.js/vite.js only. Acceptance helpers in the session scratchpad (keys.ps1, wheel.ps1, shotsize.ps1, dnd.ps1 with topmost guard).
 ci_log: (ADR-120 corrected — package commit → CI run; result filled in at the next push)
+  - ccc12ae..a9ae592 blocker fix + FIX + release v1.5.0 → run #102 (37470539405) GREEN; release run #14 (37470539395) success (DMG + NSIS)
   - 6365fca..5eb14e6 wave B + preview fix → run #101 (37464077361) GREEN
   - 3dbbf08..c7aba1a wave A (F1, B2, B3, B1, seam) → run #100 (37459843116) GREEN
   - 66b8cee release v1.5.0-beta.1 → run #99 (37451474704) GREEN; release run #13 (37451474946) success (DMG + NSIS, pre-release)
