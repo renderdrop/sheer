@@ -107,8 +107,10 @@ export function check(input, env = process.env) {
     .map((d) => norm(path.join(d, 'claude')));
   const home = env.USERPROFILE ?? env.HOME ?? os.homedir();
   const toolchain = [path.join(home, '.cargo'), path.join(home, '.rustup')].map(norm);
+  // This project's Claude Code auto-memory (~/.claude/projects/<repo path with non-alphanumerics as ->/memory) is readable and writable (owner, ADR-128).
+  const memory = norm(path.join(home, '.claude', 'projects', repo.replace(/[^A-Za-z0-9]/g, '-'), 'memory'));
   const cwd = input.cwd ?? repo;
-  const writable = (p) => inside(p, repo) || temps.some((t) => inside(p, t));
+  const writable = (p) => inside(p, repo) || inside(p, memory) || temps.some((t) => inside(p, t));
   const tool = input.tool_name;
   const ti = input.tool_input ?? {};
 

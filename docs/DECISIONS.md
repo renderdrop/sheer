@@ -2523,3 +2523,28 @@ v1.5.1 session a cleanup step reached into `%APPDATA%` and a tool probe into `C:
 blocked too; memory updates need the owner to widen the guard. The hook inspects the command line only: a repo script may still
 use `mktemp` or tool caches (npm, cargo) internally — accepted, those are build tools, not file access by the orchestrator. It is a
 tripwire against mistakes, not a sandbox.
+
+## ADR-128 — Tempo level 3 for feature milestones; owner answers for v1.5.1 wave 2
+
+**Status:** accepted (2026-10-06, owner instruction, session "v1.5.1 fortsetzen – Welle 2 bis Beta").
+
+**Owner answers.** B-006: build the recovery change (purge after 30 days, banner summary from three entries). B-007: resolved —
+`review/owner/corpus/` holds 32 PDFs; nothing is generated for the corpus gate (the producer-generation clause of ADR-126 is not
+needed for v1.5.1). The auto-memory folder of this project (`~/.claude/projects/<repo slug>/memory`) is readable and writable
+through the path guard (ADR-127 amended; test in `scripts/hooks/guard-paths.test.ts`).
+
+**Decision (tempo level 3; applies to feature milestones, replaces the matching parts of §7.6 and §8.4 of the orchestrator prompt).**
+1. *Code review* (`reviewer`) only for packages that add or change IPC commands or payloads, write, move or delete files, or parse
+   untrusted input (PDF, fonts, images). Every other package is gated by `npm run check` (run by its implementer) alone.
+2. *Security review* only once, at milestone end (no per-package `security-reviewer`). Critical/high still block the tag.
+3. *Designer review* not per wave; one round before the release with four screenshots (light/dark × empty/document, window capture,
+   ADR-126). Only blockers trigger a fix package.
+4. *Acceptance in the installed build*: one round. Only blockers trigger fixes; everything else goes to the "Politur v1.5" ticket.
+5. *Surface gate and window smoke test stay* (they are automatic).
+6. *Pre-release* `v1.5.0-beta.1` as soon as the function is usable, not when it is perfect.
+
+**Scope cuts for the v1.5.1 beta (orchestrator).** (a) The live Rust re-render while typing (DESIGN §3.10 E1, last bullet) is
+deferred: the edit box draws the draft over a page-coloured mask in the closest CSS family of the line's font; Apply renders the real
+result. (b) The Umbrechen toggle (E2) belongs to v1.5.2 (`scope: paragraph`) and is not shown. Both go to "Politur v1.5" / v1.5.2.
+
+**Consequences.** Fewer review agents per wave; the risk moves to the milestone-end security review and the installed-build round.
