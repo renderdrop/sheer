@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-text-edit-preview"
+description = "Enables the text_edit_preview command without any pre-configured scope."
+commands.allow = ["text_edit_preview"]
+
+[[permission]]
+identifier = "deny-text-edit-preview"
+description = "Denies the text_edit_preview command without any pre-configured scope."
+commands.deny = ["text_edit_preview"]

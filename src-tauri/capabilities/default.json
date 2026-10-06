@@ -23,6 +23,7 @@
     "allow-get-text-layer",
     "allow-text-edit-probe",
     "allow-text-edit-lines",
+    "allow-text-edit-preview",
     "allow-search",
     "allow-cancel-search",
     "allow-get-page-links",

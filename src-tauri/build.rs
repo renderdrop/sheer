@@ -31,6 +31,7 @@ fn main() {
         "get_text_layer",
         "text_edit_probe",
         "text_edit_lines",
+        "text_edit_preview",
         "search",
         "cancel_search",
         "get_page_links",

@@ -1090,6 +1090,10 @@ pub enum ProgramKind { TrueType, Cff, OpenTypeCff, Type1 }
 // commands/text_edit.rs (blocking pool, lopdf; DocId only, never a path)
 text_edit_probe(doc_id: DocId, page_id: PageId, unit: u32 /* UTF-16 index into TextLayer.text */) -> TextLineInfo
 text_edit_lines(doc_id: DocId, page_id: PageId) -> PageTextLines          // ≤ 5 000 lines; for keyboard navigation
+// commands/text_preview.rs (ADR-129 §1; never changes DocState, no undo step; a snapshot per frame)
+text_edit_preview(doc_id: DocId, page_id: PageId, key: LineKey, text: string, fit: TextFit, scope: TextScope, generation: u32, scale: f32 /* px per pt, 0.5..8 */)
+  -> binary: u32 LE n, n bytes JSON { generation, rect: Rect /* page space, unrotated */, pxPerPt, overflowPt, fallback: { face, chars[] } | null }, then the PNG of the region
+  // region = line box widened to the free room (scope paragraph: the paragraph box + 1 line); stale generation -> cancelled
 apply_command(doc_id: DocId, command: DocCommand /* + EditTextLine */) -> ChangeSet   // ChangeSet.pages carries the swapped slot
 // engine
 Job::PageChars { engine_index: u32 } -> Vec<CharGeom>                     // Interactive; cached with the text layer

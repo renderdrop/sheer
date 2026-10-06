@@ -414,6 +414,7 @@ fn capabilities_grant_only_the_app_commands_and_the_window_chrome_to_the_main_wi
         "allow-get-pages",
         "allow-get-outline",
         "allow-get-text-layer",
+        "allow-text-edit-preview",
         "allow-text-edit-probe",
         "allow-text-edit-lines",
         "allow-search",
@@ -1224,7 +1225,9 @@ fn call_end(text: &str, open: usize) -> usize {
 fn log_calls_format_no_document_strings() {
     const MACROS: [&str; 5] = ["eprintln!", "eprint!", "println!", "print!", "dbg!"];
     // Arguments that are known not to carry document content.
-    const ALLOWED_ARGS: [&str; 7] = [
+    const ALLOWED_ARGS: [&str; 8] = [
+        // A count (autosave purge: deletes that failed), never a path or document string.
+        "failed",
         "error",
         "reason",
         "error.kind()",

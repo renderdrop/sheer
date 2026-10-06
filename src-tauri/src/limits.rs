@@ -786,6 +786,23 @@ pub const CID_TO_GID_MAX_BYTES: usize = 128 << 10;
 /// Deadlines of a probe and of a replay (the blocking pool; the work is also under `catch_unwind`).
 pub const TEXT_EDIT_PROBE_TIMEOUT: Duration = Duration::from_secs(5);
 pub const TEXT_EDIT_REPLAY_TIMEOUT: Duration = Duration::from_secs(30);
+/// The live preview of an edit (ADR-129): the scale asked for (pixels per point), the pixels of the frame in all and per side, the
+/// deadline of one frame and how many page keys the generation guard remembers.
+pub const TEXT_PREVIEW_MIN_SCALE: f32 = 0.5;
+pub const TEXT_PREVIEW_MAX_SCALE: f32 = 8.0;
+pub const TEXT_PREVIEW_MAX_PIXELS: u64 = 8_000_000;
+pub const TEXT_PREVIEW_MAX_SIDE_PX: u32 = 4_096;
+pub const TEXT_PREVIEW_TIMEOUT: Duration = Duration::from_secs(10);
+pub const TEXT_PREVIEW_GENERATIONS: usize = 256;
+
+/// `invalid_argument` (`scale`) for a preview scale that is not a number within the bounds.
+pub fn validate_preview_scale(scale: f32) -> Result<f32, AppError> {
+    if scale.is_finite() && (TEXT_PREVIEW_MIN_SCALE..=TEXT_PREVIEW_MAX_SCALE).contains(&scale) {
+        Ok(scale)
+    } else {
+        Err(AppError::invalid("scale"))
+    }
+}
 
 #[cfg(test)]
 mod tests {

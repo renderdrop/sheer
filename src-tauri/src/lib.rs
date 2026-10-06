@@ -151,6 +151,7 @@ pub fn run() -> Result<(), AppError> {
             commands::text::get_text_layer,
             commands::text_edit::text_edit_probe,
             commands::text_edit::text_edit_lines,
+            commands::text_preview::text_edit_preview,
             commands::search::search,
             commands::search::cancel_search,
             commands::links::get_page_links,

@@ -297,8 +297,22 @@ pub fn apply_edits(
     original: Vec<u8>,
     edits: &[(u32, Vec<TextEdit>)],
 ) -> Result<(Vec<u8>, Vec<ChangeWarning>), AppError> {
+    let (bytes, warnings, _) = apply_edits_with(original, edits, false)?;
+    Ok((bytes, warnings))
+}
+
+/// The characters a page draws in each substitute face.
+pub type FallbackUse = Vec<(Face, BTreeSet<char>)>;
+
+/// [`apply_edits`], and with `want_fallback` the characters drawn in the substitute faces (read back from the new content, which costs a
+/// second lex: the save does not ask).
+fn apply_edits_with(
+    original: Vec<u8>,
+    edits: &[(u32, Vec<TextEdit>)],
+    want_fallback: bool,
+) -> Result<(Vec<u8>, Vec<ChangeWarning>, FallbackUse), AppError> {
     if edits.iter().all(|(_, list)| list.is_empty()) {
-        return Ok((original, Vec::new()));
+        return Ok((original, Vec::new(), Vec::new()));
     }
     let doc = super::prescan::load_untrusted(&original)?;
     if doc.is_encrypted() {
@@ -308,6 +322,7 @@ pub fn apply_edits(
     let store = FallbackStore::default();
     let mut done: Vec<(ObjectId, Rewritten)> = Vec::new();
     let mut warnings: Vec<ChangeWarning> = Vec::new();
+    let mut used: FallbackUse = Vec::new();
     for (index, list) in edits {
         if list.is_empty() {
             continue;
@@ -325,6 +340,14 @@ pub fn apply_edits(
                 warnings.push(*w);
             }
         }
+        if want_fallback {
+            for (face, chars) in fallback_chars(&r)? {
+                match used.iter_mut().find(|(f, _)| *f == face) {
+                    Some((_, set)) => set.extend(chars),
+                    None => used.push((face, chars)),
+                }
+            }
+        }
         done.push((page, r));
     }
     let mut inc = IncrementalDocument::create_from(original, doc);
@@ -332,7 +355,7 @@ pub fn apply_edits(
     write_pages(&mut inc, &refs)?;
     let mut bytes = Vec::new();
     inc.save_to(&mut bytes).map_err(failed)?;
-    Ok((bytes, warnings))
+    Ok((bytes, warnings, used))
 }
 
 /// The one-page PDF of page `page_index` of `original` with `edits` applied (the preview the engine swaps in, ADR-055's path with
@@ -343,10 +366,38 @@ pub fn preview_page(
     page_index: u32,
     edits: &[TextEdit],
 ) -> Result<(Vec<u8>, Vec<ChangeWarning>), AppError> {
+    let made = preview_page_with(original, page_index, edits, None)?;
+    Ok((made.bytes, made.warnings))
+}
+
+/// A preview page for the live preview (ADR-129 section 1): the page with the edits, optionally cut to a region.
+#[derive(Debug, Clone)]
+pub struct PreviewPage {
+    pub bytes: Vec<u8>,
+    pub warnings: Vec<ChangeWarning>,
+    /// The characters the page's edits draw in the substitute faces.
+    pub fallback: FallbackUse,
+    /// The rotation of the page in degrees (0, 90, 180 or 270).
+    pub rotate: u16,
+    /// Width and height of the page's visible box in points (before the rotation).
+    pub page_size: [f64; 2],
+    /// The clip as cut to the visible box, `[x0, y0, x1, y1]` in the space of the request's.
+    pub clipped: Option<[f64; 4]>,
+}
+
+/// [`preview_page`] for the live preview. With `clip` (`[x0, y0, x1, y1]`, points from the top left of the page's visible box, before the
+/// page's rotation) the page's `CropBox` is cut to that region, so PDFium draws nothing else. The clip is cut to the visible box.
+pub fn preview_page_with(
+    original: &[u8],
+    page_index: u32,
+    edits: &[TextEdit],
+    clip: Option<[f64; 4]>,
+) -> Result<PreviewPage, AppError> {
     let original = original.to_vec();
     let edits = edits.to_vec();
     on_big_stack(move || {
-        let (updated, warnings) = apply_edits(original, &[(page_index, edits)])?;
+        let (updated, warnings, fallback) =
+            apply_edits_with(original, &[(page_index, edits)], true)?;
         let doc = super::prescan::load_untrusted(&updated)?;
         let page = *doc
             .get_pages()
@@ -365,6 +416,44 @@ pub fn preview_page(
             b"Parent",
         ] {
             dict.remove(key);
+        }
+        let rotate = dict
+            .get(b"Rotate")
+            .ok()
+            .and_then(|r| doc.dereference(r).ok())
+            .and_then(|(_, r)| r.as_i64().ok())
+            .map_or(0, |r| {
+                u16::try_from(r.rem_euclid(360) / 90 * 90).unwrap_or(0)
+            });
+        let media = box_of(&doc, dict.get(b"MediaBox").ok()).unwrap_or([0.0, 0.0, 612.0, 792.0]);
+        let crop = box_of(&doc, dict.get(b"CropBox").ok()).map_or(media, |c| {
+            [
+                c[0].max(media[0]),
+                c[1].max(media[1]),
+                c[2].min(media[2]),
+                c[3].min(media[3]),
+            ]
+        });
+        let (left, top) = (crop[0], crop[3]);
+        let page_size = [crop[2] - crop[0], crop[3] - crop[1]];
+        let mut clipped = None;
+        if let Some([x0, y0, x1, y1]) = clip {
+            let cut = [
+                (left + x0).clamp(crop[0], crop[2]),
+                (top - y1).clamp(crop[1], crop[3]),
+                (left + x1).clamp(crop[0], crop[2]),
+                (top - y0).clamp(crop[1], crop[3]),
+            ];
+            if cut[2] - cut[0] < 1.0 || cut[3] - cut[1] < 1.0 {
+                return Err(AppError::invalid("region"));
+            }
+            clipped = Some([cut[0] - left, top - cut[3], cut[2] - left, top - cut[1]]);
+            #[allow(clippy::cast_possible_truncation)]
+            // page coordinates are far below f32's range
+            dict.set(
+                "CropBox",
+                Object::Array(cut.iter().map(|v| Object::Real(*v as f32)).collect()),
+            );
         }
         let mut target = Document::with_version("1.5");
         let mut budget = 0usize;
@@ -385,8 +474,35 @@ pub fn preview_page(
         target.trailer.set("Root", Object::Reference(catalog_id));
         let mut out = Vec::new();
         target.save_to(&mut out).map_err(failed)?;
-        Ok((out, warnings))
+        Ok(PreviewPage {
+            bytes: out,
+            warnings,
+            fallback,
+            rotate,
+            page_size,
+            clipped,
+        })
     })
+}
+
+/// The four numbers of a box entry ordered `[x0, y0, x1, y1]`; `None` for anything else.
+fn box_of(doc: &Document, entry: Option<&Object>) -> Option<[f64; 4]> {
+    let (_, array) = doc.dereference(entry?).ok()?;
+    let items = array.as_array().ok()?;
+    if items.len() != 4 {
+        return None;
+    }
+    let mut v = [0.0f64; 4];
+    for (slot, item) in v.iter_mut().zip(items) {
+        let (_, number) = doc.dereference(item).ok()?;
+        *slot = f64::from(number.as_float().ok()?);
+    }
+    Some([
+        v[0].min(v[2]),
+        v[1].min(v[3]),
+        v[0].max(v[2]),
+        v[1].max(v[3]),
+    ])
 }
 
 #[cfg(test)]
