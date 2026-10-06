@@ -8,7 +8,7 @@ import { useDocuments } from '../../stores/documents';
 import { emitUndoCue } from '../../stores/undoCue';
 import { useUi } from '../../stores/ui';
 import { clearNotice, useNoticeLifetime } from './noticeLifetime';
-import { boxAnchor } from './model';
+import { boxAnchor, boxLeft, boxWidthStyle } from './model';
 import { useTextEdit } from './store';
 
 vi.mock('../../components/useFloatingPosition', () => ({
@@ -79,6 +79,18 @@ describe('box anchor', () => {
     expect(boxAnchor('right', box, win).maxWidth).toBe(90);
     expect(boxAnchor('center', box, win).maxWidth).toBe(2 * Math.min(50, 60));
     expect(boxAnchor('left', box, { left: 100, right: 120 }).maxWidth).toBe(80);
+  });
+  it('width follows the text (max-content), never the room right of the anchor', () => {
+    const pin = boxAnchor('right', box, null);
+    expect(boxWidthStyle(box, pin)).toEqual({ width: 'max-content', minWidth: 80 });
+    expect(boxLeft(pin, 80)).toBe(100);
+    expect(boxLeft(pin, 140)).toBe(40);
+    expect(boxLeft(boxAnchor('center', box, null), 120)).toBe(80);
+    expect(boxLeft(boxAnchor('left', box, null), 120)).toBe(100);
+    expect(boxWidthStyle(box, boxAnchor('left', box, { left: 90, right: 200 }))).toMatchObject({
+      maxWidth: 100,
+      overflow: 'hidden',
+    });
   });
 });
 

@@ -64,6 +64,29 @@ export function boxAnchor(
   };
 }
 
+/**
+ * The box's width rules (page space). The box is absolutely pinned at `left` with a translate, so its shrink-to-fit width would be
+ * capped by the room right of `left` (a right-aligned line: almost none) and the text would scroll inside. `max-content` makes the
+ * width follow the draft; `minWidth` keeps the line's own width; `maxWidth` is the paragraph window's clamp (reflow only).
+ */
+export function boxWidthStyle(
+  box: Rect,
+  pin: BoxAnchor,
+): { width: 'max-content'; minWidth: number; maxWidth?: number; overflow?: 'hidden' } {
+  return {
+    width: 'max-content',
+    minWidth: box.w,
+    ...(pin.maxWidth === null ? {} : { maxWidth: pin.maxWidth, overflow: 'hidden' as const }),
+  };
+}
+
+/** The page-space left edge of a box of `width` pinned by `pin` (what the browser's translate yields). */
+export function boxLeft(pin: BoxAnchor, width: number): number {
+  if (pin.transform === 'translateX(-100%)') return pin.left - width;
+  if (pin.transform === 'translateX(-50%)') return pin.left - width / 2;
+  return pin.left;
+}
+
 /** A client-pixel rect as a box. */
 export const boxOf = (r: Rect): Box => ({ left: r.x, top: r.y, right: r.x + r.w, bottom: r.y + r.h });
 

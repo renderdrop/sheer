@@ -16,7 +16,7 @@ import {
   takeCaret,
   type Caret,
 } from './actions';
-import { boxAnchor } from './model';
+import { boxAnchor, boxWidthStyle } from './model';
 import { editKeyOf } from './keyboard';
 import { distinctChars, familyFor, overflowOf, textSpan, type Growth } from './lines';
 import { createPreviewScheduler, inkSpan, previewScale, scaleXFor, type PreviewScheduler } from './preview';
@@ -469,8 +469,7 @@ export function EditBox({ session, growth, pageWidth, paragraph, pxPerPt = 1 }: 
                 transformOrigin: pin.origin,
               }),
           top: box.y,
-          minWidth: box.w,
-          ...(pin.maxWidth === null ? {} : { maxWidth: pin.maxWidth, overflow: 'hidden' }),
+          ...boxWidthStyle(box, pin),
           height: box.h,
           lineHeight: `${box.h}px`,
           fontSize: line.font.size,

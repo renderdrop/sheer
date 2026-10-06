@@ -143,7 +143,7 @@ export function EditBarHost() {
   const bar = (
     <motion.div
       data-minibar-motion=""
-      initial={{ opacity: 0, y: rise }}
+      initial={floating ? { opacity: 0, y: rise } : false}
       animate={visible ? { opacity: 1, y: 0 } : { opacity: 0, y: rise }}
       transition={spring(DURATION.fast)}
       inert={!visible}
