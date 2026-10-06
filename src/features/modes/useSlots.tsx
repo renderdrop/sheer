@@ -44,6 +44,7 @@ import {
   Undo2,
   X,
   Dot,
+  Wand,
   type LucideIcon,
 } from 'lucide-react';
 import { createElement, useEffect, useMemo, useState } from 'react';
@@ -68,6 +69,8 @@ import { armItem, createAndArm } from '../signatures/place/menu';
 import { canSign, useSigningIdentities } from '../signatures/sign/identities';
 import { useCertSign } from '../signatures/sign/store';
 import { usePlacement, type PlaceItem } from '../signatures/place/store';
+import { toggleSmartLinksForActive } from '../smartlinks/actions';
+import { smartLinksOn, useSmartLinks } from '../smartlinks/store';
 import { CropOptions, InsertOptions, RedactOptions } from './Options';
 import { SignaturePreview } from '../signatures/library/SignaturePreview';
 import type { SlotDef, VariantDef } from './model';
@@ -143,6 +146,8 @@ interface Inputs {
   certActive: boolean;
   /** The document has changes that are not saved: signing needs a saved file. */
   dirty: boolean;
+  /** Smart links are on for this tab (DESIGN 3.11 L8): the state of Lesen's seventh slot. */
+  smartLinks?: boolean;
 }
 
 type Maker = (inputs: Inputs) => SlotDef[];
@@ -214,6 +219,16 @@ const lesen: Maker = (inputs) => {
       on: false,
       actionId: 'find',
       run: () => void runAction('find'),
+    },
+    // Slot 7 (DESIGN 3.11 L8): a toggle for this tab, not a tool; it stays pressed while a tool is chosen.
+    {
+      id: 'smartLinks',
+      label: t('smartlinks.toggle'),
+      icon: Wand,
+      kind: 'toggle',
+      on: inputs.smartLinks ?? true,
+      hint: t('smartlinks.toggleHelp'),
+      run: toggleSmartLinksForActive,
     },
   ];
 };
@@ -552,6 +567,7 @@ export function useModeSlots(mode: Mode): readonly SlotDef[] {
   const certId = useCertSign((state) => state.identityId);
   const certActive = useCertSign((state) => state.active);
   const dirty = useAnnotations((state) => isDirty(state, docId));
+  const smartLinks = useSmartLinks((state) => (docId === null ? state.enabled : smartLinksOn(state, docId)));
   const locked = useSignatureLock(docId ?? undefined).locked;
   return useMemo(() => {
     const slots = MAKERS[mode]({
@@ -572,6 +588,7 @@ export function useModeSlots(mode: Mode): readonly SlotDef[] {
       certId,
       certActive,
       dirty,
+      smartLinks,
     });
     // A certifying signature locks every tool but Lesen (DESIGN 3.8 S5): each slot says why with the same tooltip.
     return locked && mode !== 'read'
@@ -596,6 +613,7 @@ export function useModeSlots(mode: Mode): readonly SlotDef[] {
     certId,
     certActive,
     dirty,
+    smartLinks,
     locked,
   ]);
 }

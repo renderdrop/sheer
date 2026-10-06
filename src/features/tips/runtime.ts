@@ -39,6 +39,14 @@ function stillOn(id: TipId): boolean {
 export async function maybeShowTip(): Promise<void> {
   const id = tipFor(useUi.getState());
   if (id === null) return;
+  await showTipFor(id, () => stillOn(id));
+}
+
+/**
+ * Shows the tip `id` if it may show now (unseen, no tour, nothing else visible, under the session cap). `stillValid` is asked again
+ * after the setting was written: what the tip points at may be gone by then.
+ */
+export async function showTipFor(id: TipId, stillValid: () => boolean): Promise<void> {
   const settings = useSettings.getState();
   const context = {
     loaded: settings.loaded,
@@ -53,15 +61,20 @@ export async function maybeShowTip(): Promise<void> {
   const wait = inputIdleWait();
   if (wait > 0) {
     clearTimeout(retry);
-    retry = setTimeout(() => void maybeShowTip(), wait);
+    retry = setTimeout(() => void showTipFor(id, stillValid), wait);
     return;
   }
   session.add(id);
   await settings.update({ tipsSeen: withSeen(context.seen, id) });
   // The tool may have been released while the write was in flight: then there is nothing to point at.
-  if (stillOn(id) && useTour.getState().docId === null && useTips.getState().current === null) {
+  if (stillValid() && useTour.getState().docId === null && useTips.getState().current === null) {
     useTips.getState().show(id);
   }
+}
+
+/** The Smart links tip (DESIGN 3.11): after the first hover or focus on a detected link; it points at the Lesen tool slot. */
+export function maybeShowSmartLinksTip(): Promise<void> {
+  return showTipFor('smartlinks', () => true);
 }
 
 /** "Show tips again": forgets every tip seen, in the setting and in this session. */

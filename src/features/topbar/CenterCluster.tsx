@@ -9,6 +9,7 @@ import { useSettings } from '../../stores/settings';
 import { useUi } from '../../stores/ui';
 import { useSlots } from '../../stores/pages';
 import { useDocView } from '../../stores/view';
+import { BackControl, pushView } from '../history';
 import { FIND_KEYS_ATTRIBUTE } from '../search/commands';
 import { useActionState } from '../shell/useActionState';
 import { useViewer } from '../viewer/useViewer';
@@ -93,6 +94,7 @@ function PageField() {
         setInvalid(true);
         return;
       }
+      if (docId !== null) pushView(docId);
       goToPage(page);
       reset();
       event.currentTarget.blur();
@@ -138,6 +140,7 @@ export function CenterCluster() {
     <div className="flex items-center gap-2">
       <ZoomMenu />
       <PageField />
+      <BackControl />
     </div>
   );
 }

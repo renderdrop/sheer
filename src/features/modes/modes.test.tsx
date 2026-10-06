@@ -15,6 +15,7 @@ import { styleFor, useStyleStore } from '../inspector/style';
 import { useOrganize } from '../organize/store';
 import { usePages } from '../../stores/pages';
 import { usePlacement } from '../signatures/place/store';
+import { useSmartLinks } from '../smartlinks/store';
 import { ModeRow, ToolRow, switchMode } from '.';
 import { focusToolItem, TOOL_ITEM_WAIT_MS } from './switch';
 import { handleModeKey } from './useModeEffects';
@@ -247,9 +248,9 @@ describe('the keys 1 to 5', () => {
 });
 
 describe('Lesen', () => {
-  it('has Auswahl, Hand, Textauswahl, Lupe, Drehen and Suche in this order, each with icon and label', () => {
+  it('has Auswahl, Hand, Textauswahl, Lupe, Drehen, Suche and Smarte Links in this order, each with icon and label', () => {
     setup(<Rows />);
-    expect(slotNames()).toEqual(['Select', 'Hand', 'Select text', 'Magnifier', 'Rotate', 'Search']);
+    expect(slotNames()).toEqual(['Select', 'Hand', 'Select text', 'Magnifier', 'Rotate', 'Search', 'Smart links']);
     for (const button of within(screen.getByRole('toolbar')).getAllByRole('button')) {
       expect(button.querySelector('svg')).not.toBeNull();
     }
@@ -260,6 +261,22 @@ describe('Lesen', () => {
     expect(item('Select').getAttribute('aria-pressed')).toBe('true');
     expect(item('Hand').getAttribute('aria-pressed')).toBe('false');
     expect(item('Search').hasAttribute('aria-pressed')).toBe(false);
+  });
+
+  it('Smarte Links is a toggle for this tab (aria-pressed, on by default), not a tool', async () => {
+    const { user } = setup(<Rows />);
+    useDocuments.setState({ byId: { 7: { id: 7 } as never }, order: [7], activeId: 7 });
+    useSmartLinks.setState({ enabled: true, overrides: {} });
+    const button = item('Smart links');
+    expect(button.getAttribute('aria-pressed')).toBe('true');
+    expect(button.getAttribute('data-toolbar-item')).toBe('smartLinks');
+    await user.click(button);
+    expect(item('Smart links').getAttribute('aria-pressed')).toBe('false');
+    expect(useSmartLinks.getState().overrides).toEqual({ 7: false });
+    expect(useUi.getState().activeTool).toBe('select');
+    expect(item('Select').getAttribute('aria-pressed')).toBe('true');
+    await user.click(item('Smart links'));
+    expect(useSmartLinks.getState().overrides).toEqual({});
   });
 
   it('Hand, Textauswahl and Lupe select the tool ids hand, textSelect and magnifier', async () => {
@@ -329,8 +346,10 @@ describe('the tool row keys', () => {
     await user.keyboard('{ArrowRight}');
     expect(document.activeElement).toBe(item('Hand'));
     await user.keyboard('{End}');
-    expect(document.activeElement).toBe(item('Search'));
+    expect(document.activeElement).toBe(item('Smart links'));
     await user.keyboard('{ArrowRight}');
+    expect(document.activeElement).toBe(item('Smart links'));
+    await user.keyboard('{ArrowLeft}');
     expect(document.activeElement).toBe(item('Search'));
     await user.keyboard('{ArrowLeft}');
     expect(document.activeElement).toBe(item('Options for Rotate'));
@@ -728,7 +747,7 @@ describe('the overflow', () => {
     widths.client = 2000;
     setup(<Rows />);
     expect(screen.getByRole('toolbar').getAttribute('data-fit')).toBe('1');
-    expect(labelled()).toBe(6);
+    expect(labelled()).toBe(7);
   });
 
   it('step 2: the inactive items become icon-only with their name for assistive technology, the active one keeps its label', () => {

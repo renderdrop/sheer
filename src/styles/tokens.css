@@ -146,6 +146,7 @@
   --spacing-popover-min: var(--popover-min);
   --spacing-popover-max: var(--popover-max);
   --spacing-tooltip-max: var(--tooltip-max);
+  --spacing-link-preview-max: var(--link-preview-max);
   --spacing-splitter: var(--splitter-width);
   /* Layout slots: h-topbar, h-mode-row, h-tool-row, h-minibar, min-h-banner-min, w-caption-button,
      ps-chrome-inset, min-w-canvas-min, max-w-empty-max and h-scrim. */
@@ -319,6 +320,10 @@
      substitute-font characters (text-underline-offset: var(--focus-offset)). Semantic: a later theme needs no change here. */
   --edit-hover-outline: var(--hairline) solid var(--color-stone);
   --fallback-underline: var(--hairline) dotted var(--text-secondary);
+  /* Smart links (DESIGN 3.11 L4): the colour of the dashed 1px cue under a detected link (rest, visited) and the hover fill (multiplies). */
+  --smartlink-rest: var(--text-secondary);
+  --smartlink-visited: var(--color-stone);
+  --smartlink-hover-fill: var(--surface-pressed);
   --accent: var(--color-yellow);
   --accent-bright: var(--color-yellow-bright);
   --on-accent: var(--color-ink);
@@ -396,6 +401,7 @@
   --popover-min: 200px;
   --popover-max: 320px;
   --tooltip-max: 240px;
+  --link-preview-max: 320px; /* the link preview (DESIGN 3.11 L5) */
   /* Page sidebar range, default and collapse threshold (DESIGN 1.3); limits.rs and api/app.ts mirror them. */
   --panel-min: 200px;
   --panel-default: 200px;
@@ -580,6 +586,8 @@
     --surface-page: Canvas;
     --surface-subtle: Canvas;
     --surface-pressed: Canvas;
+    --smartlink-rest: CanvasText;
+    --smartlink-visited: GrayText;
     /* No shadows (DESIGN 1.2): a transparent one keeps box-shadow lists valid. The focus outline stays (transparent = Highlight). */
     --shadow-standard: 0 0 transparent;
     --shadow-floating: 0 0 transparent;
@@ -909,6 +917,88 @@
 @media (forced-colors: active) {
   [data-search-hit="active"] {
     outline-color: CanvasText;
+  }
+}
+
+/* Smart links (DESIGN 3.11 L4). The layer is in page space (scaled by --page-scale); the hit boxes take no pointer (the viewer tests the pointer
+   against them, so a press that moves selects text); the cue, the fill and the focus ring are the run box's. Line style and fill carry the
+   state, never colour alone. */
+[data-smartlink] {
+  position: absolute;
+  outline: none;
+  pointer-events: none;
+}
+
+[data-smartlink-run] {
+  position: absolute;
+  border-radius: calc(var(--form-inset) / var(--page-scale, 1));
+  transition: background-color var(--motion-fast) var(--ease-out);
+}
+
+[data-smartlink-cue] {
+  position: absolute;
+  margin-top: var(--form-inset);
+  border-bottom: calc(var(--hairline) / var(--page-scale, 1)) dashed var(--smartlink-rest);
+  transition: border-color var(--motion-fast) var(--ease-out);
+}
+
+[data-smartlink][data-visited] [data-smartlink-cue] {
+  border-bottom-color: var(--smartlink-visited);
+}
+
+[data-smartlink][data-state="hover"] [data-smartlink-run],
+[data-smartlink][data-state="active"] [data-smartlink-run] {
+  background: var(--smartlink-hover-fill);
+  mix-blend-mode: multiply;
+}
+
+[data-smartlink][data-state="hover"] [data-smartlink-cue],
+[data-smartlink][data-state="active"] [data-smartlink-cue] {
+  border-bottom-style: solid;
+  border-bottom-color: var(--color-ink);
+  transition-duration: var(--motion-fast-exit);
+}
+
+[data-smartlink][data-state="active"] [data-smartlink-run] {
+  background: var(--smartlink-hover-fill);
+}
+
+/* The focus pair (DESIGN 2.1) at offset 2: the Ink hairline on the run, then the Solar band after the gap. */
+[data-smartlink]:focus-visible [data-smartlink-run],
+[data-reallink]:focus-visible [data-smartlink-run] {
+  border: calc(var(--hairline) / var(--page-scale, 1)) solid var(--color-ink);
+  outline: calc(var(--focus-width) / var(--page-scale, 1)) solid var(--color-focus);
+  outline-offset: calc(var(--focus-offset) / var(--page-scale, 1));
+}
+
+/* A real link keeps the PDF's own look: the app adds the hover outline and the focus pair, never the cue or the fill (L3). */
+[data-reallink] {
+  position: absolute;
+  outline: none;
+  pointer-events: none;
+}
+
+[data-reallink][data-state="hover"] [data-smartlink-run],
+[data-reallink][data-state="active"] [data-smartlink-run] {
+  outline: calc(var(--hairline) / var(--page-scale, 1)) solid var(--color-ink);
+}
+
+/* The pointer is over a link: the text under it shows the pointer cursor. */
+[data-page][data-link-hover] [data-text-page],
+[data-page][data-link-hover] [data-text-page] span {
+  cursor: pointer;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-smartlink-cue] {
+    transition: none;
+  }
+}
+
+@media (forced-colors: active) {
+  [data-smartlink][data-state="hover"] [data-smartlink-run] {
+    mix-blend-mode: normal;
+    outline: calc(var(--hairline) / var(--page-scale, 1)) solid Highlight;
   }
 }
 

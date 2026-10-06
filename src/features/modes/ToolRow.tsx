@@ -50,7 +50,7 @@ export const ToolRow = memo(function ToolRow() {
   const [width, setWidth] = useState(0);
   const [stop, setStop] = useState<string | null>(null);
 
-  const activeId = slots.find((slot) => slot.on)?.id ?? null;
+  const activeId = slots.find((slot) => slot.on && slot.kind === 'tool')?.id ?? null;
   const signature = slots.map((slot) => `${slot.id}:${slot.label}:${slot.on ? 1 : 0}`).join('|');
   // A font that loads late changes the widths of the labels: the fit starts over then, too.
   const [fonts, setFonts] = useState(0);
@@ -166,7 +166,12 @@ export const ToolRow = memo(function ToolRow() {
         style={{ opacity: 0 }}
       />
       {visible.map((slot) => (
-        <ToolItem key={slot.id} slot={slot} iconOnly={current.step >= 2 && !slot.on} stop={tabStop} />
+        <ToolItem
+          key={slot.id}
+          slot={slot}
+          iconOnly={current.step >= 2 && !(slot.on && slot.kind === 'tool')}
+          stop={tabStop}
+        />
       ))}
       {gone.length > 0 && (
         <Menu

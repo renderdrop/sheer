@@ -1,11 +1,13 @@
 import { useEffect, useId, useLayoutEffect, useState, type ReactNode } from 'react';
 
-import { Button, Field, Popover } from '../../components';
+import { Button, Field, Popover, Toggle } from '../../components';
 import { AUTHOR_NAME_MAX, isAuthorName } from '../../api/app';
 import { APP_NAME } from '../../config/app';
 import { errorText, useT, type Language, type PlainKey } from '../../i18n';
 import { useSettings } from '../../stores/settings';
 import { RecogniseSwitch } from '../modes/RecogniseSwitch';
+import { setSmartLinksEverywhere } from '../smartlinks/actions';
+import { useSmartLinks } from '../smartlinks/store';
 import { SegmentedControl, type SegmentOption } from './SegmentedControl';
 import { openAbout } from '../about/state';
 import { useUpdate } from '../update/store';
@@ -162,6 +164,31 @@ function AuthorRow() {
   );
 }
 
+/**
+ * The Smart links group (DESIGN 3.11 L8): one switch for every tab, default on, kept in the UI storage. Turning it on or off clears the
+ * tabs' own choices (the Lesen toggle).
+ */
+function SmartLinksRow() {
+  const t = useT();
+  const on = useSmartLinks((state) => state.enabled);
+  return (
+    <Setting label={t('settings.smartLinks')} hint={t('settings.smartLinks.hint')}>
+      {(labelId) => (
+        <div className="flex items-center justify-between gap-3">
+          <span id={`${labelId}-toggle`} className="t-body text-text">
+            {t('settings.smartLinks.toggle')}
+          </span>
+          <Toggle
+            checked={on}
+            onCheckedChange={setSmartLinksEverywhere}
+            aria-labelledby={`${labelId} ${labelId}-toggle`}
+          />
+        </div>
+      )}
+    </Setting>
+  );
+}
+
 /** The About group, after a divider: name and version, and the button that opens the About dialog (it closes this popover). */
 function AboutRow() {
   const t = useT();
@@ -215,6 +242,7 @@ function SettingsForm() {
       </Setting>
       <AuthorRow />
       <Setting label={t('settings.drawing')}>{() => <RecogniseSwitch />}</Setting>
+      <SmartLinksRow />
       {updaterReady && (
         <Setting label={t('settings.updates')} hint={t('settings.updates.hint')}>
           {(labelId) => <UpdateRow labelId={labelId} />}

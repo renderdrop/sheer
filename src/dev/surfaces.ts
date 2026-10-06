@@ -17,6 +17,7 @@ import { openSignatureSheet, useSignatureSheet } from '../features/signatures/cr
 import { openSignatureLibrary, useSignatureLibrary } from '../features/signatures/library/state';
 import { useCertSign } from '../features/signatures/sign/store';
 import { closeSettings, openSettings } from '../features/settings/state';
+import { closeDevPreview, openDevPreview } from '../features/smartlinks/devPreview';
 import { selectActiveId, useDocuments } from '../stores/documents';
 import { useUi } from '../stores/ui';
 
@@ -119,7 +120,12 @@ function floatingSurfaces(): DevSurface[] {
     },
     close: () => useTour.getState().end('closed'),
   }));
-  return [bar, colour, ...steps];
+  const preview: DevSurface = {
+    id: 'link-preview',
+    open: () => (openDevPreview(), none()),
+    close: closeDevPreview,
+  };
+  return [bar, colour, preview, ...steps];
 }
 
 export function buildSurfaces(): DevSurface[] {

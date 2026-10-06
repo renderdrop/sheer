@@ -45,7 +45,7 @@ afterEach(() => {
 
 describe('the seen-state logic', () => {
   it('has a tip for the tools of the spec and for no other tool', () => {
-    expect(TIP_IDS).toHaveLength(12);
+    expect(TIP_IDS).toHaveLength(13);
     expect(tipOfTool('select')).toBeNull();
     expect(tipOfTool('form')).toBeNull();
     expect(tipOfTool('image')).toBeNull();

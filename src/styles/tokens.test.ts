@@ -340,6 +340,25 @@ describe('sizes and the focus ring (DESIGN 1.3, 2)', () => {
   });
 });
 
+describe('smart links (DESIGN 3.11 L4)', () => {
+  it('the cue is Text-secondary at rest and Stone once visited; the hover fill is the pressed surface', () => {
+    expect(norm(root.get('--smartlink-rest') ?? '')).toBe('var(--text-secondary)');
+    expect(norm(root.get('--smartlink-visited') ?? '')).toBe('var(--color-stone)');
+    expect(norm(root.get('--smartlink-hover-fill') ?? '')).toBe('var(--surface-pressed)');
+  });
+
+  it('draws a dashed hairline cue, a multiplied hover fill and no fill for real links', () => {
+    expect(css).toMatch(/\[data-smartlink-cue\]\s*\{[^}]*dashed var\(--smartlink-rest\)/);
+    expect(css).toMatch(
+      /\[data-smartlink\]\[data-visited\] \[data-smartlink-cue\]\s*\{[^}]*var\(--smartlink-visited\)/,
+    );
+    expect(css).toMatch(
+      /\[data-smartlink\]\[data-state="hover"\] \[data-smartlink-run\][^{]*\{[^}]*var\(--smartlink-hover-fill\);[^}]*mix-blend-mode: multiply;/,
+    );
+    expect(css).not.toMatch(/\[data-reallink\][^{]*\{[^}]*smartlink-hover-fill/);
+  });
+});
+
 describe('widths and the left panel (DESIGN 1.3)', () => {
   const widths: Record<string, string> = {
     '--field-width': '56px',
@@ -347,6 +366,7 @@ describe('widths and the left panel (DESIGN 1.3)', () => {
     '--popover-min': '200px',
     '--popover-max': '320px',
     '--tooltip-max': '240px',
+    '--link-preview-max': '320px',
     '--panel-min': '200px',
     '--panel-default': '200px',
     '--panel-max': '320px',
@@ -382,6 +402,7 @@ describe('widths and the left panel (DESIGN 1.3)', () => {
       'popover-min': '--popover-min',
       'popover-max': '--popover-max',
       'tooltip-max': '--tooltip-max',
+      'link-preview-max': '--link-preview-max',
       splitter: '--splitter-width',
       'tab-min': '--tab-min',
       'tab-max': '--tab-max',

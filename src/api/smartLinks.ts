@@ -44,6 +44,8 @@ export interface SmartLink {
 export interface SmartLinksResult {
   rev: number;
   ready: boolean;
+  /** The index hit its time or size limit: pages after the last one read have no links. */
+  partial?: boolean;
   links: SmartLink[];
 }
 
@@ -87,7 +89,7 @@ export function parseSmartLinks(value: unknown): SmartLinksResult | null {
     if (link === null) return null;
     parsed.push(link);
   }
-  return { rev, ready, links: parsed };
+  return { rev, ready, ...(typeof value.partial === 'boolean' ? { partial: value.partial } : {}), links: parsed };
 }
 
 /**

@@ -94,7 +94,7 @@ export function ToolItem({ slot, iconOnly, stop }: ToolItemProps) {
       data-testid={slot.testId}
       data-roving={slot.id}
       data-on={slot.on}
-      aria-pressed={slot.kind === 'tool' ? slot.on : undefined}
+      aria-pressed={slot.kind === 'action' ? undefined : slot.on}
       aria-disabled={off ? true : undefined}
       aria-keyshortcuts={found?.aria}
       aria-label={iconOnly ? slot.label : undefined}

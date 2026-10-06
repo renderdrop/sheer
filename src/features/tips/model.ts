@@ -15,6 +15,7 @@ export const TIP_IDS = [
   'crop',
   'redact',
   'editText',
+  'smartlinks',
 ] as const;
 export type TipId = (typeof TIP_IDS)[number];
 
@@ -30,6 +31,8 @@ export function toolbarItemsOf(id: TipId): readonly string[] {
       return ['textBox'];
     case 'text':
       return ['freeText'];
+    case 'smartlinks':
+      return ['smartLinks'];
     case 'pages':
       return ['organize'];
     case 'highlight':

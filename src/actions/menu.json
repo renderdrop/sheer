@@ -327,6 +327,11 @@
           "label": "menu.view.marginComments"
         },
         {
+          "action": "toggle-smart-links",
+          "label": "menu.view.smartLinks",
+          "requiresDocument": true
+        },
+        {
           "separator": true
         },
         {

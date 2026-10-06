@@ -60,6 +60,7 @@ import { copyCitationList, saveCitationList } from '../features/citations/export
 import { createCitationFromSelection } from '../features/citations/store';
 import { useForms } from '../features/forms/store';
 import { useMarginPrefs } from '../features/margin/store';
+import { toggleSmartLinksForActive } from '../features/smartlinks/actions';
 import { openSignaturesDialog } from '../features/sigcheck/open';
 import { openSignatureLibrary } from '../features/signatures/library';
 import { restartTour } from '../features/tour/runtime';
@@ -113,6 +114,7 @@ export type ActionId =
   | 'scroll-single'
   | 'scroll-spread'
   | 'toggle-margin-comments'
+  | 'toggle-smart-links'
   | 'next-page'
   | 'previous-page'
   | 'go-to-page'
@@ -605,6 +607,15 @@ export const ACTIONS: readonly ActionDef[] = [
     // Not tied to a document: it is a preference (DESIGN 3.5 B9).
     enabled: () => true,
     run: () => useMarginPrefs.getState().setEnabled(!useMarginPrefs.getState().enabled),
+  },
+  {
+    id: 'toggle-smart-links',
+    labelKey: 'menu.view.smartLinks',
+    group: 'view',
+    menuBar: true,
+    // This tab only (DESIGN 3.11 L8); the same switch as Lesen's seventh slot.
+    enabled: needsDocument,
+    run: toggleSmartLinksForActive,
   },
   {
     id: 'next-page',

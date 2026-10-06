@@ -18,6 +18,7 @@ import { Icon } from '../../components/Icon';
 import { tokenPx } from '../../components/tokens';
 import { useT } from '../../i18n';
 import { selectActiveId, useDocuments } from '../../stores/documents';
+import { pushView } from '../history/actions';
 import { subscribeViewRect } from '../viewer/scrollBridge';
 import { useViewer } from '../viewer/useViewer';
 import { readingPosition } from './reading';
@@ -258,6 +259,7 @@ export function OutlineTree({ docId, entry }: { docId: number; entry: Ready }) {
       if (target !== null) {
         state.select(docId, node);
         // Targets are positions here (`retarget`: the page ids of the file mapped to where the pages sit now). Focus stays where it is: in the tree.
+        pushView(docId);
         useViewer.getState().goToPoint(target.pageId, target.y);
       } else if ((index.childCount[node] ?? 0) > 0) {
         state.toggle(docId, node);

@@ -26,6 +26,7 @@ import { RedactApplyDialog } from '../redact/RedactApplyDialog';
 import { AuthorPromptField } from '../author/AuthorPromptField';
 import { UnsavedDialog } from '../save/UnsavedDialog';
 import { TourEffects } from '../tour/TourEffects';
+import { HistoryEffects } from '../history';
 import { ViewerEffects } from '../viewer/useViewer';
 import { ToastLayer } from './Toast';
 import { CaptionBar } from './CaptionBar';
@@ -85,6 +86,7 @@ export function Shell() {
       <ViewerEffects />
       <TourEffects />
       <ActionKeys />
+      <HistoryEffects />
       <PasswordDialog />
       <JobsHost />
       <UnsavedDialog />

@@ -12,6 +12,7 @@ import { SettingsPopover } from './SettingsPopover';
 import { useAboutDialog } from '../about/state';
 import { useUpdate } from '../update/store';
 import { restartTour } from '../tour/runtime';
+import { ENABLED_KEY, useSmartLinks } from '../smartlinks/store';
 import { openSettings, useSettingsPopover } from './state';
 
 vi.mock('../../api/app', async (importOriginal) => ({
@@ -47,6 +48,8 @@ function answerWithPatch() {
 beforeEach(() => {
   useSettings.setState({ ...settingsInitial }, true);
   useSettingsPopover.setState({ open: false });
+  useSmartLinks.setState({ enabled: true, overrides: {}, visited: {} });
+  globalThis.localStorage.removeItem(ENABLED_KEY);
   useUpdate.setState({ check: 'idle', configured: true });
   updateSettingsMock.mockReset();
   answerWithPatch();
@@ -92,16 +95,31 @@ describe('the settings panel (DESIGN 3.6)', () => {
   it('has the groups in order and nothing else', () => {
     setup(<Fixture />);
     act(() => openSettings());
-    expect(labels()).toEqual(['Language', 'Author name', 'Drawing', 'Updates', 'Tour & tips', 'About']);
+    expect(labels()).toEqual(['Language', 'Author name', 'Drawing', 'Smart links', 'Updates', 'Tour & tips', 'About']);
     expect(within(popover()).queryByText('Signatures')).toBeNull();
     expect(within(popover()).queryByRole('button', { name: /default PDF app/ })).toBeNull();
+  });
+
+  it('has a Smart links switch, on by default, that is stored, applies to every tab and clears the tab overrides', async () => {
+    const { user } = setup(<Fixture />);
+    act(() => openSettings());
+    useSmartLinks.setState({ overrides: { 3: false } });
+    const toggle = within(popover()).getByRole('switch', { name: /Smart links.*Detect footnotes/ });
+    expect(toggle.getAttribute('aria-checked')).toBe('true');
+    expect(within(popover()).getByText('Shown only in sheer., never written into your PDF.')).not.toBeNull();
+    await user.click(toggle);
+    expect(toggle.getAttribute('aria-checked')).toBe('false');
+    expect(useSmartLinks.getState()).toMatchObject({ enabled: false, overrides: {} });
+    expect(globalThis.localStorage.getItem(ENABLED_KEY)).toBe('off');
+    await user.click(toggle);
+    expect(globalThis.localStorage.getItem(ENABLED_KEY)).toBe('on');
   });
 
   it('hides the Updates group from the first open until the probe says the updater is configured', async () => {
     useUpdate.setState({ configured: null });
     setup(<Fixture />);
     act(() => openSettings());
-    expect(labels()).toEqual(['Language', 'Author name', 'Drawing', 'Tour & tips', 'About']);
+    expect(labels()).toEqual(['Language', 'Author name', 'Drawing', 'Smart links', 'Tour & tips', 'About']);
     await waitFor(() => expect(labels()).toContain('Updates'));
     expect(within(popover()).getByRole('switch', { name: 'Updates' }).getAttribute('aria-checked')).toBe('false');
   });
@@ -110,7 +128,7 @@ describe('the settings panel (DESIGN 3.6)', () => {
     useUpdate.setState({ check: 'unconfigured', configured: false });
     setup(<Fixture />);
     act(() => openSettings());
-    expect(labels()).toEqual(['Language', 'Author name', 'Drawing', 'Tour & tips', 'About']);
+    expect(labels()).toEqual(['Language', 'Author name', 'Drawing', 'Smart links', 'Tour & tips', 'About']);
     expect(within(popover()).queryByRole('switch', { name: 'Updates' })).toBeNull();
     useUpdate.setState({ check: 'idle' });
   });
@@ -224,13 +242,14 @@ describe('the settings popover', () => {
     expect(updateSettingsMock).toHaveBeenLastCalledWith({ language: 'en' });
     await waitFor(() => expect(checked('Language')).toBe('English'));
     // Tab at the last control wraps to the first: the popover keeps focus inside.
-    // Order: Language, author name, shape switch, Updates, Start tour, Show tips again, Ghost About button (the last), then wrap.
+    // Order: Language, author name, shape switch, Smart links switch, Updates, Start tour, Show tips again, Ghost About button (the last), then wrap.
     const tab = async () => {
       await user.tab();
       return document.activeElement;
     };
     expect(await tab()).toBe(within(popover()).getByRole('textbox', { name: 'Author name' }));
     expect(await tab()).toBe(within(popover()).getByRole('switch', { name: 'Straighten shapes automatically' }));
+    expect(await tab()).toBe(within(popover()).getByRole('switch', { name: /Smart links/ }));
     expect(await tab()).toBe(within(popover()).getByRole('switch', { name: 'Updates' }));
     expect(await tab()).toBe(within(popover()).getByRole('button', { name: 'Start tour' }));
     expect(await tab()).toBe(within(popover()).getByRole('button', { name: 'Show tips again' }));

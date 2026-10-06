@@ -14,9 +14,11 @@ import { pageRevOf, useAnnotations } from '../../stores/annotations';
 import { AnnotationLayer } from '../annotations/layer/AnnotationLayer';
 import { CropLayer } from '../crop/CropLayer';
 import { FormLayer } from '../forms/FormLayer';
+import { JumpMarkLayer } from '../history/JumpMarkLayer';
 import { InsertLayer } from '../insert/InsertLayer';
 import { RedactLayer } from '../redact/RedactLayer';
 import { SealLayer } from '../sigcheck/SealLayer';
+import { SmartLinkLayer } from '../smartlinks/SmartLinkLayer';
 import { TextEditLayer } from '../textedit/TextEditLayer';
 import { usePageText } from '../textlayer/cache';
 import type { PageLayerProps } from './pageLayer';
@@ -461,6 +463,8 @@ export const PageView = memo(function PageView({
         layer={text.layer}
         interactive={interactive}
       />
+      {/* Smart and real links (layer 2, DESIGN 3.11 L4): over the text, under the annotations. */}
+      <SmartLinkLayer {...layer} slotRev={slotRev} />
       <AnnotationLayer
         docId={docId}
         pageIndex={pageId}
@@ -489,6 +493,7 @@ export const PageView = memo(function PageView({
       <SealLayer {...layer} />
       <CropLayer {...layer} />
       <TextEditLayer {...layer} />
+      <JumpMarkLayer {...layer} />
     </div>
   );
 });

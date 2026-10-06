@@ -8,6 +8,7 @@ import type { MenuEntry } from '../../components';
 import { useT } from '../../i18n';
 import { useForms } from '../forms/store';
 import { useMarginPrefs } from '../margin/store';
+import { smartLinksOn, useSmartLinks } from '../smartlinks/store';
 import { useSettings } from '../../stores/settings';
 import { selectActiveId, useDocuments } from '../../stores/documents';
 import { useUi } from '../../stores/ui';
@@ -42,6 +43,7 @@ export function useMenuEntries(menuId: string, afterRun: () => void): readonly M
   const scrollMode = useDocViewValue(docId, (view) => view.scrollMode);
   const formHighlight = useForms((forms) => forms.highlight);
   const marginComments = useMarginPrefs((margin) => margin.enabled);
+  const smartLinks = useSmartLinks((links) => (docId === null ? links.enabled : smartLinksOn(links, docId)));
   // The selection is read when the menu is built: it cannot change while the pointer or the keys are in the menu.
   const selection = hasTextSelection();
 
@@ -62,6 +64,7 @@ export function useMenuEntries(menuId: string, afterRun: () => void): readonly M
           if (id in TAB_OF) return leftTab === TAB_OF[id];
           if (id === 'form-highlight') return formHighlight;
           if (id === 'toggle-margin-comments') return marginComments;
+          if (id === 'toggle-smart-links') return smartLinks;
           return undefined;
         },
         hasTextSelection: selection,
@@ -79,6 +82,7 @@ export function useMenuEntries(menuId: string, afterRun: () => void): readonly M
       leftTab,
       formHighlight,
       marginComments,
+      smartLinks,
       selection,
     ],
   );

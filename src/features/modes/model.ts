@@ -79,7 +79,7 @@ export interface SlotDef {
   id: string;
   label: string;
   icon: LucideIcon;
-  kind: 'tool' | 'action';
+  kind: 'tool' | 'action' | 'toggle';
   /** The tool is the active one. */
   on: boolean;
   /** Why it cannot be used now (the tooltip says so); it stays focusable. */
