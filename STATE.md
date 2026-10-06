@@ -10,7 +10,7 @@ notes: ADR-120: every loop starts with `bash scripts/ci-status.sh` (last complet
   After v1.2.0: "Politur v1.3" (ROADMAP, carried minors), then the v1.3 "Citations" spec. Never run the dev window while agents run cargo/vitest;
   stop it with taskkill sheer.exe + Stop-Process on tauri.js/vite.js only. Acceptance helpers in the session scratchpad (keys.ps1, wheel.ps1, shotsize.ps1, dnd.ps1 with topmost guard).
 ci_log: (ADR-120 corrected — package commit → CI run; result filled in at the next push)
-  - tests + release v1.5.1 → run and release run: read next session (`bash scripts/ci-status.sh`)
+  - 9 commits ..v1.5.1 tests + release → run #107 (37494737957) pending; release run #15 (37494738010)
   - 20c94c5 preview crop fix FX-F2 → run #106 (37490268401) GREEN
   - b974d69..17b5313 acceptance fixes FX-B + FX-F → run #105 (37485534024) GREEN
   - 0da261f..c6a93fc deflake + W fix + changelog → run #104 (37482891749) GREEN
