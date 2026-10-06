@@ -274,6 +274,31 @@ guard_dist_urls() {
   return "$rc"
 }
 
+# ADR-131: the acceptance feature (dialogs answered from a queue) never reaches a release. Not in the default features, not named by a
+# release config, the default capabilities or a workflow, and no workflow or script passes `--features automation` except the
+# acceptance build script. (src-tauri/tests/automation_seam.rs checks the same from the Rust side.)
+guard_automation() {
+  local hits ok=1
+  if grep -qE "^default[[:space:]]*=" src-tauri/Cargo.toml; then
+    echo "error: Cargo.toml defines a default feature set (automation must not be in it)"
+    ok=0
+  fi
+  hits="$(grep -rniE "automation" src-tauri/tauri.conf.json src-tauri/tauri.windows.conf.json src-tauri/tauri.macos.conf.json     src-tauri/capabilities .github/workflows 2>/dev/null)"
+  if [ -n "$hits" ]; then
+    printf "%s
+" "$hits" | sed "s|^|error: automation named in a release path: |"
+    ok=0
+  fi
+  hits="$(grep -rnE -e "--features[ =][^ ]*automation" .github scripts package.json 2>/dev/null |
+    grep -vE "^scripts/(check.sh|build-acceptance.mjs):")"
+  if [ -n "$hits" ]; then
+    printf "%s
+" "$hits" | sed "s|^|error: --features automation outside the acceptance build: |"
+    ok=0
+  fi
+  [ "$ok" -eq 1 ]
+}
+
 # F17.10: the dev-only surface registry (src/dev/surfaces.ts) must not reach a release bundle.
 guard_dist_dev() {
   local dir="${1:-dist}"
@@ -324,6 +349,7 @@ if want web; then
   step "guard: crypto crates" guard_crypto_crates
   step "guard: pdf imports" guard_pdf_imports
   step "guard: secrets" guard_secrets
+  step "guard: automation" guard_automation
   step "guard: bundle urls" build_and_guard_dist
 fi
 

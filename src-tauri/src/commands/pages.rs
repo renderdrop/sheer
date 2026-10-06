@@ -19,6 +19,8 @@ use serde::Serialize;
 use tauri::{State, WebviewWindow};
 use tauri_plugin_dialog::DialogExt;
 
+use crate::automation::dialogs::DialogSeam;
+
 use super::annotations::Revert;
 use super::{blocking, AppState};
 use crate::documents::intake;
@@ -311,9 +313,9 @@ pub async fn pick_pdf_sources(
             .set_parent(&window)
             .add_filter("PDF", &["pdf"]);
         let picked = if multiple {
-            dialog.blocking_pick_files()
+            dialog.seam_pick_files()?
         } else {
-            dialog.blocking_pick_file().map(|file| vec![file])
+            dialog.seam_pick_file()?.map(|file| vec![file])
         };
         let Some(picked) = picked else {
             return Ok(Vec::new());

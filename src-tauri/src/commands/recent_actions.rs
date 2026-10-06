@@ -8,6 +8,7 @@
 //! | `reveal_recent` | `recentId: number` | nothing; unknown id or file gone: `not_found` |
 //! | `locate_recent` | `recentId: number` | `boolean`: the user chose a file and the entry points to it now (false: cancelled, or unknown id) |
 
+use crate::automation::dialogs::DialogSeam;
 use tauri::{State, WebviewWindow};
 use tauri_plugin_dialog::DialogExt;
 
@@ -131,7 +132,7 @@ pub async fn locate_recent(
             .file()
             .set_parent(&window)
             .add_filter("PDF", &["pdf"])
-            .blocking_pick_file();
+            .seam_pick_file()?;
         let Some(picked) = picked else {
             return Ok(false);
         };

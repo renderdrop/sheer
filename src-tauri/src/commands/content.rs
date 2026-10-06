@@ -8,6 +8,7 @@
 //! Text boxes and images are created, updated, moved and deleted with the annotation commands of `commands::pages::apply_command`
 //! (`kind: "textBox"` and `"image"`); they are page content burned in by the next save, never comments. No path crosses IPC.
 
+use crate::automation::dialogs::DialogSeam;
 use tauri::ipc::Response;
 use tauri::{State, WebviewWindow};
 use tauri_plugin_dialog::DialogExt;
@@ -34,7 +35,7 @@ impl AppState {
             .file()
             .set_parent(window)
             .add_filter("Image", &["png", "jpg", "jpeg"])
-            .blocking_pick_file();
+            .seam_pick_file()?;
         let Some(file) = picked else {
             return Ok(None);
         };

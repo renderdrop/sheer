@@ -78,6 +78,8 @@ use tauri::{AppHandle, Manager, State, WebviewWindow};
 use tauri_plugin_dialog::DialogExt;
 use zeroize::Zeroizing;
 
+use crate::automation::dialogs::DialogSeam;
+
 use crate::documents::intake::{self, Admitted};
 use crate::documents::{
     Abandoned, Claim, DocKind, DocumentId, DocumentInfo, Fingerprint, Registry,
@@ -673,9 +675,9 @@ pub async fn open_document_dialog(
         let picked = pick(
             single,
             dialog,
-            |dialog| dialog.blocking_pick_file(),
-            |dialog| dialog.blocking_pick_files(),
-        );
+            |dialog| dialog.seam_pick_file(),
+            |dialog| dialog.seam_pick_files(),
+        )?;
         let Some(picked) = picked else {
             return Ok(Vec::new());
         };
@@ -685,14 +687,14 @@ pub async fn open_document_dialog(
 }
 
 /// The choice of the open dialog: one pick when `single` is `Some(true)`, else any number. `None` is a cancelled dialog.
-fn pick<D, F>(
+fn pick<D, F, E>(
     single: Option<bool>,
     dialog: D,
-    one: impl FnOnce(D) -> Option<F>,
-    many: impl FnOnce(D) -> Option<Vec<F>>,
-) -> Option<Vec<F>> {
+    one: impl FnOnce(D) -> Result<Option<F>, E>,
+    many: impl FnOnce(D) -> Result<Option<Vec<F>>, E>,
+) -> Result<Option<Vec<F>>, E> {
     if single == Some(true) {
-        one(dialog).map(|file| vec![file])
+        one(dialog).map(|file| file.map(|file| vec![file]))
     } else {
         many(dialog)
     }
@@ -1421,18 +1423,28 @@ mod tests {
         let (engine, _) = loading_engine(1);
         let state = AppState::new(engine);
         let file = || tauri_plugin_dialog::FilePath::Path(pdf(&dir, "one.pdf"));
-        let more = || Some(vec![file(), file()]);
-        let picked = pick(Some(true), (), |()| Some(file()), |()| more()).unwrap();
+        let more = || Ok::<_, AppError>(Some(vec![file(), file()]));
+        let picked = pick(Some(true), (), |()| Ok(Some(file())), |()| more())
+            .unwrap()
+            .unwrap();
         assert_eq!(picked.len(), 1);
         assert_eq!(state.open_paths(picked_paths(picked)).len(), 1);
         // Not single: the dialog's list is taken as it is; a cancel is `None` either way.
         assert_eq!(
-            pick(None, (), |()| Some(file()), |()| more())
+            pick(None, (), |()| Ok(Some(file())), |()| more())
+                .unwrap()
                 .unwrap()
                 .len(),
             2
         );
-        assert!(pick(Some(true), (), |()| None::<u8>, |()| Some(vec![1])).is_none());
+        assert!(pick(
+            Some(true),
+            (),
+            |()| Ok(None::<u8>),
+            |()| Ok::<_, AppError>(Some(vec![1]))
+        )
+        .unwrap()
+        .is_none());
     }
 
     #[test]

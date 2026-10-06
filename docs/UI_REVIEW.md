@@ -137,3 +137,29 @@ what the stub cannot (real pages, forms, the signature sheet content; it records
 `CSP_SELFTEST=1` injects a known violation to prove the gate catches it. A milestone tag needs `violations=0` from both runs. DoD step for `--attach`: start `node scripts/ui/dev.mjs`, open a PDF, run the annotation tools, the output dialogs and the signature sheet by hand (or `annot-smoke.mjs`), then run `node scripts/ui/cdp.mjs csp --attach` against that window (the dev CSP stays, the probe logs what the release CSP would block) and read `window.__csp` with `cdp.mjs eval "JSON.stringify(window.__csp)"`; it must be empty.
 Style props set by React and Motion go through the CSSOM and are allowed; inline `style="..."` markup, `<style>` elements and
 `setAttribute('style', ...)` are not: use classes or CSS variables set with `element.style.setProperty`.
+
+## Acceptance build (ADR-131)
+
+Acceptance runs only against the acceptance build, never the dev, release or installed Sheer (rule 15).
+
+```
+npm run build:acceptance                                  # src-tauri/target-acceptance/release/sheer-acceptance.exe
+node scripts/ui/accept/example-edit-text.mjs              # CDP-driven example (v1.5.1 text-edit flow)
+node scripts/ui/accept/smoke-real.mjs                     # the only real OS mouse/keyboard script, 5 min cap
+```
+The build has identifier `app.sheer.acceptance` (own data folder, recent list, single-instance channel) and the Cargo feature `automation`:
+native dialogs are answered from a queue, print writes nothing. An empty queue is an error, never a native dialog.
+
+Toolkit in `scripts/ui/accept/` (Node 22 built-ins only; pure helpers in `pure.mjs`, tests in `scripts/ui/accept.test.ts`):
+- `launch.mjs`: starts the acceptance exe only (path check refuses anything else or an install path), sets
+  `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS=--remote-debugging-port=<p> --remote-debugging-address=127.0.0.1`, waits for CDP, sets a 1280x800
+  viewport. `session.close()` kills only its own process tree by pid.
+- `cdp-input.mjs`: `click/dblclick/hover/drag` by `{selector,text,role,nth}` (scrolled into view, centre from the live rect) or `{x,y}`;
+  `press(key, {ctrl,shift,alt})`, `insertText`, `waitFor`, `waitForTarget`, `screenshot(name)` into `review/`. All via `Input.dispatch*`.
+- `dialogs.mjs`: `answerOpen/answerOpenMany/answerFolder/answerSave/answerMessage/answerPrint`, `cancelNext`, `lastPrint`, `lastError`,
+  `openFile(path)` (queue + Ctrl+O). Calls `automation_queue_dialog` / `automation_state` through `window.__TAURI_INTERNALS__.invoke`.
+- `guard.mjs` + `guard.ps1`: every 250 ms the foreground window and all top-level windows of the acceptance process tree are checked. A
+  foreign foreground window (two snapshots in a row) or an unexpected window (`#32770` or any class outside the app's own) sends Esc to it,
+  aborts the script and prints title, class, pid and the last step. It never clicks. Use `startGuard(pid)` and race `guard.aborted`.
+- `smoke-real.mjs` + `os-input.ps1`: real OS input against the acceptance window only (refuses other processes, needs foreground), hard
+  5-minute cap, start/end banner. Announce it in the chat before and after.

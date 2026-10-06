@@ -11,13 +11,11 @@
 use tauri::WebviewWindow;
 
 use super::PrintRoute;
-use crate::error::{AppError, ErrorCode};
+use crate::error::AppError;
 
 /// Opens the dialog and answers the route taken.
-pub fn open(window: &WebviewWindow) -> Result<PrintRoute, AppError> {
-    window.print().map_err(|error| {
-        AppError::logged(ErrorCode::Internal, error).log();
-        AppError::unsupported("printDialog")
-    })?;
+pub fn open(window: &WebviewWindow, print_id: u32, pages: usize) -> Result<PrintRoute, AppError> {
+    // The seam calls `Webview::print()` (or, in the acceptance build, only records the set).
+    crate::automation::dialogs::print(window, print_id, pages)?;
     Ok(PrintRoute::Webview)
 }

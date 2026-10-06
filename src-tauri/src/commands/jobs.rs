@@ -26,6 +26,7 @@ use std::sync::{Arc, Mutex, OnceLock, PoisonError};
 use std::thread;
 use std::time::{Duration, Instant};
 
+use crate::automation::dialogs::DialogSeam;
 use serde::{Deserialize, Serialize};
 use tauri::ipc::Channel;
 use tauri::{State, WebviewWindow};
@@ -1271,7 +1272,7 @@ fn pick_save_path(window: &WebviewWindow, name: &str) -> Result<Option<PathBuf>,
         .set_parent(window)
         .add_filter("PDF", &["pdf"])
         .set_file_name(name);
-    let Some(chosen) = dialog.blocking_save_file() else {
+    let Some(chosen) = dialog.seam_save_file()? else {
         return Ok(None);
     };
     chosen
@@ -1326,7 +1327,7 @@ pub async fn split_document(
             .dialog()
             .file()
             .set_parent(&window)
-            .blocking_pick_folder()
+            .seam_pick_folder()?
         else {
             return Ok(None);
         };

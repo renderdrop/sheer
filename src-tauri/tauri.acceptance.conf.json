@@ -1,0 +1,23 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Sheer Acceptance",
+  "mainBinaryName": "sheer-acceptance",
+  "identifier": "app.sheer.acceptance",
+  "app": {
+    "security": {
+      "capabilities": [
+        "default",
+        {
+          "identifier": "acceptance-automation",
+          "description": "ADR-131, acceptance build only: the two automation commands for the main window. Lives here, not in capabilities/, so no release build can grant it.",
+          "windows": ["main"],
+          "permissions": ["allow-automation-queue-dialog", "allow-automation-state"]
+        }
+      ]
+    }
+  },
+  "bundle": {
+    "active": false,
+    "createUpdaterArtifacts": false
+  }
+}

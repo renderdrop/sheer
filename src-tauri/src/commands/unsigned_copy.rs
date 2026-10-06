@@ -12,6 +12,7 @@
 
 use std::path::Path;
 
+use crate::automation::dialogs::DialogSeam;
 use tauri::{Manager, State, WebviewWindow};
 use tauri_plugin_dialog::DialogExt;
 
@@ -100,7 +101,7 @@ pub async fn save_unsigned_copy(
         if let Some(folder) = state.source_dir(doc_id) {
             dialog = dialog.set_directory(folder);
         }
-        let Some(chosen) = dialog.blocking_save_file() else {
+        let Some(chosen) = dialog.seam_save_file()? else {
             return Ok(None);
         };
         let path = chosen

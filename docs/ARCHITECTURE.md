@@ -1137,3 +1137,19 @@ All §13.5 signatures exist with `not_yet` bodies: `pdfwrite/{ops_walk,text_line
 - `DocCommand::EditTextLine` is a page command (never inside a batch); `check_shape` enforces `limits::TEXT_EDIT_LINE_CHARS`; `run` returns `not_yet`. `DocState.text_edits` is not added yet (package B1).
 - `Job::PageChars { id, engine_index }` is in-process only: pump and worker answer `not_yet`, no wire request yet. `CharGeom` lives in `model/text_edit.rs` (engine-free), not `engine/text.rs`.
 - `limits.rs` has the §13.6 constants (`TEXT_EDIT_*`, `FONT_*`, `TOUNICODE_*`, `DIFFERENCES_MAX`, `CID_*`). Commands are in `build.rs` and `capabilities/default.json`. Tokens `--edit-hover-outline` / `--fallback-underline` are shorthand values; their 2 pt offset is `--focus-offset`. i18n keys of the §3.10 table are in en and de.
+
+## 14. Acceptance automation (ADR-131; `automation/{mod,dialogs,queue,commands}.rs`)
+
+Cargo feature `automation` (not in `default`, never in `release.yml`/`ci.yml`; `scripts/check.sh` `guard_automation` and `tests/automation_seam.rs` fail otherwise). It exists for the acceptance build only: `npm run build:acceptance` (`tauri build --no-bundle --config src-tauri/tauri.acceptance.conf.json --features automation`, `CARGO_TARGET_DIR=src-tauri/target-acceptance`).
+
+- **Seam.** Every native dialog calls `automation::dialogs`: `.seam_pick_file()?`, `.seam_pick_files()?`, `.seam_pick_folder()?`, `.seam_save_file()?` on a `FileDialogBuilder`, `.seam_show()` on a message builder, and `dialogs::print` for the print dialog (`print/dialog.rs`). Without the feature each calls the native dialog as before. A test fails on any `blocking_pick_*`, `blocking_save_file`, `blocking_show` or `window.print()` outside `src/automation/`.
+- **With the feature** the answer is the head of a FIFO queue. Kind mismatch or empty queue: `internal` error with `params.what = "automationNoAnswer"` (never a native dialog; the entry stays queued). `cancel: true` answers as a dismissed dialog. Paths become `FilePath::Path` and then go through the call site's own checks exactly like dialog paths. Print records `{printId, pages, cancelled}` and opens nothing (a `print` entry at the head is consumed for its `cancel`; without one the print is recorded anyway).
+- **Commands** (compiled and registered only with the feature; permissions `allow-automation-queue-dialog`, `allow-automation-state` come from the inline capability `acceptance-automation` in `tauri.acceptance.conf.json`, main window only; `capabilities/` never names them):
+
+| Command | Arguments | Returns |
+|---|---|---|
+| `automation_queue_dialog` | `entry: { kind: "open"\|"openMany"\|"folder"\|"save"\|"message"\|"print", paths?: string[], button?: string, cancel?: boolean }` | nothing; refused (`invalid_argument` `paths`) for relative paths, a wrong path count (one for open/folder/save, at least one for openMany) or more than 64 queued entries |
+| `automation_state` | none | `{ queueLength, lastPrint: { printId, pages, cancelled } \| null, lastError: { expected, found } \| null }` (`found`: kind at the head, `null` if empty) |
+
+  A message answers "confirm" unless `cancel` is true or `button` is `"cancel"`.
+- **Separate identity.** Identifier `app.sheer.acceptance`: Tauri derives the app-data folder (`app_data_dir`: recents, settings, autosave, signature library, trust store), the Windows single-instance mutex and window class from it, so the acceptance exe never shares them with `app.sheer.desktop`. The keychain service (`storage/keychain.rs`) switches to `app.sheer.acceptance` with the feature. The updater is not configured (`update::configure` returns the context unchanged), so its plugin is not registered.

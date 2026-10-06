@@ -27,6 +27,7 @@ Work is orchestrated autonomously per `ORCHESTRATOR_PROMPT.md`; resume state liv
 12. CI before every push (ADR-120, corrected): read the last completed CI run on main (`bash scripts/ci-status.sh`, never wait); red from an own commit = fix first. If the own last push is still running, push anyway and read that run (`scripts/ci-status.sh <run-id>`) before the next push. Log every package commit with its CI run in STATE.md `ci_log`. Green CI is part of every package's DoD.
 13. Test PDFs only from `review/owner/` or self-generated; never search other folders of the machine. Screenshots only by capturing the app window, never the screen (ADR-126).
 14. Writes, deletes and moves only inside the repo and the Claude temp folder; no reads outside the repo (test material: `review/owner/`). Enforced by the `guard-paths.sh` PreToolUse hook, exit 2 (ADR-127).
+15. Acceptance only through the acceptance build (`npm run build:acceptance`, id `app.sheer.acceptance`, feature `automation`): dialogs answered by the script queue, input via CDP (`scripts/ui/accept/`); real mouse/keyboard only in the final smoke (≤ 5 min, announced before and after); dialog guard aborts with Esc + report. The owner's installation is never touched (ADR-131).
 
 ## Code
 

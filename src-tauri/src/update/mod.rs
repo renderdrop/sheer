@@ -187,6 +187,10 @@ pub fn plugin_config(pubkey: &str) -> serde_json::Value {
 /// Adds the updater's plugin configuration to `context` when the key is real; nothing while it is the placeholder.
 /// Call it on `generate_context!()`.
 pub fn configure(mut context: tauri::Context) -> tauri::Context {
+    // The acceptance build (ADR-131) never updates: without the plugin configuration the updater is not registered.
+    if cfg!(feature = "automation") {
+        return context;
+    }
     if let Ok(key) = configured_key() {
         context
             .config_mut()

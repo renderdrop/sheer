@@ -10,6 +10,7 @@ use std::io::Read;
 use std::path::PathBuf;
 use std::sync::Arc;
 
+use crate::automation::dialogs::DialogSeam;
 use serde::{Deserialize, Serialize};
 use tauri::{Manager, WebviewWindow};
 use tauri_plugin_dialog::DialogExt;
@@ -447,7 +448,7 @@ pub fn start(
                 .file()
                 .set_parent(window)
                 .add_filter("Image", &["png", "jpg", "jpeg"])
-                .blocking_pick_files();
+                .seam_pick_files()?;
             let Some(picked) = picked else {
                 return Ok(None);
             };
@@ -499,7 +500,7 @@ pub fn start(
         .set_parent(window)
         .add_filter("PDF", &["pdf"])
         .set_file_name(&name)
-        .blocking_save_file();
+        .seam_save_file()?;
     let Some(chosen) = chosen else {
         return Ok(None);
     };
@@ -605,7 +606,7 @@ pub fn pick_images(
         .file()
         .set_parent(window)
         .add_filter("Image", &["png", "jpg", "jpeg"])
-        .blocking_pick_files();
+        .seam_pick_files()?;
     let Some(picked) = picked else {
         return Ok(None);
     };

@@ -7,6 +7,7 @@
 //! The UI sends typed blocks, never markup; Rust escapes them for the format (`export::citations`). `ris` and `bib` are made from the
 //! stored bibliographic record and take no blocks. The save dialog is Rust's, the file is written atomically, and no path goes back.
 
+use crate::automation::dialogs::DialogSeam;
 use tauri::{State, WebviewWindow};
 use tauri_plugin_dialog::DialogExt;
 
@@ -63,7 +64,7 @@ impl AppState {
             .set_parent(window)
             .add_filter(format.filter_label(), &[format.extension()])
             .set_file_name(default_file_name(&stem, format, style));
-        let Some(chosen) = dialog.blocking_save_file() else {
+        let Some(chosen) = dialog.seam_save_file()? else {
             return Ok(false);
         };
         let path = chosen

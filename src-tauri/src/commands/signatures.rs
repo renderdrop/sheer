@@ -12,6 +12,7 @@
 //!
 //! No path crosses IPC: the picture is chosen in a dialog opened here, and art reaches the UI as vector paths or as a frame.
 
+use crate::automation::dialogs::DialogSeam;
 use serde::{Deserialize, Serialize};
 use tauri::ipc::Response;
 use tauri::{State, WebviewWindow};
@@ -235,7 +236,7 @@ pub async fn import_signature_image(
             .file()
             .set_parent(&window)
             .add_filter("Image", &["png", "jpg", "jpeg"])
-            .blocking_pick_file();
+            .seam_pick_file()?;
         let Some(file) = picked else {
             return Ok(None);
         };

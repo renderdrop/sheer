@@ -11,7 +11,7 @@ fn main() {
         );
     }
 
-    let manifest = tauri_build::AppManifest::new().commands(&[
+    let mut commands = vec![
         "open_document_dialog",
         "open_welcome_document",
         "unlock_document",
@@ -36,6 +36,7 @@ fn main() {
         "cancel_search",
         "get_page_links",
         "open_link",
+        "smart_links",
         "list_annotations",
         "list_document_annotations",
         "get_annotation_quote",
@@ -121,7 +122,12 @@ fn main() {
         "skip_update_version",
         "updater_configured",
         "open_default_apps_settings",
-    ]);
+    ];
+    // ADR-131: the acceptance build only; the permissions exist only there and only its inline capability grants them.
+    if std::env::var_os("CARGO_FEATURE_AUTOMATION").is_some() {
+        commands.extend(["automation_queue_dialog", "automation_state"]);
+    }
+    let manifest = tauri_build::AppManifest::new().commands(Box::leak(commands.into_boxed_slice()));
     if let Err(error) =
         tauri_build::try_build(tauri_build::Attributes::new().app_manifest(manifest))
     {

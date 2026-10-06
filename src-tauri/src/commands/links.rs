@@ -20,6 +20,7 @@ use tauri::{Manager, State, WebviewWindow};
 use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind};
 
 use super::{blocking, AppState};
+use crate::automation::dialogs::MessageSeam;
 use crate::documents::{DocumentId, PageId};
 use crate::engine::{LinkTarget as EngineTarget, PageLink};
 use crate::error::{AppError, ErrorCode, UiError};
@@ -120,7 +121,12 @@ impl LinkUi for DesktopLinkUi {
                 text("link.confirm.open"),
                 text("link.confirm.cancel"),
             ))
-            .blocking_show()
+            .seam_show()
+            // A dialog that could not be shown is not a yes.
+            .unwrap_or_else(|error| {
+                error.log();
+                false
+            })
     }
 
     fn open(&self, url: &SafeUrl) -> Result<(), AppError> {

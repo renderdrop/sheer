@@ -26,6 +26,7 @@ use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, Mutex, PoisonError};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
+use crate::automation::dialogs::DialogSeam;
 use tauri::{State, WebviewWindow};
 use tauri_plugin_dialog::DialogExt;
 
@@ -376,7 +377,7 @@ pub async fn pick_identity_file(
             .file()
             .set_parent(&window)
             .add_filter("PKCS #12", &["p12", "pfx"])
-            .blocking_pick_file();
+            .seam_pick_file()?;
         let Some(file) = picked else {
             return Ok(None);
         };
@@ -440,7 +441,7 @@ pub async fn export_signing_certificate(
             .set_parent(&window)
             .add_filter("Certificate", &["cer"])
             .set_file_name(format!("{stem}.cer"))
-            .blocking_save_file();
+            .seam_save_file()?;
         let Some(file) = picked else {
             return Ok(false);
         };

@@ -19,6 +19,7 @@ use std::sync::{mpsc, Arc, Mutex, PoisonError};
 use std::thread;
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use crate::automation::dialogs::DialogSeam;
 use serde::{Deserialize, Serialize};
 use tauri::{State, WebviewWindow};
 use tauri_plugin_dialog::DialogExt;
@@ -1037,7 +1038,7 @@ pub async fn save_document_as(
         if let Some(folder) = state.source_dir(doc_id) {
             dialog = dialog.set_directory(folder);
         }
-        let Some(chosen) = dialog.blocking_save_file() else {
+        let Some(chosen) = dialog.seam_save_file()? else {
             return Ok(None);
         };
         let path = chosen

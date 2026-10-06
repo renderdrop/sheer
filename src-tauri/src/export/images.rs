@@ -8,6 +8,7 @@ use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, Mutex, OnceLock, PoisonError};
 use std::time::Instant;
 
+use crate::automation::dialogs::DialogSeam;
 use image::{codecs::jpeg::JpegEncoder, ExtendedColorType};
 use serde::{Deserialize, Serialize};
 use tauri::WebviewWindow;
@@ -556,7 +557,7 @@ pub fn start(
         .dialog()
         .file()
         .set_parent(window)
-        .blocking_pick_folder()
+        .seam_pick_folder()?
     else {
         return Ok(ExportStart::Cancelled);
     };

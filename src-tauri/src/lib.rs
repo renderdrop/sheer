@@ -2,6 +2,7 @@
 //!
 //! All PDF work happens here. The frontend only ever holds document ids, page ids and rendered frames (PNG bytes).
 
+pub mod automation;
 pub mod commands;
 pub mod content;
 pub mod documents;
@@ -207,6 +208,10 @@ pub fn run() -> Result<(), AppError> {
             commands::app::open_default_apps_settings,
             commands::print::prepare_print,
             commands::print::get_print_page,
+            #[cfg(feature = "automation")]
+            automation::commands::automation_queue_dialog,
+            #[cfg(feature = "automation")]
+            automation::commands::automation_state,
             commands::print::open_print_dialog,
             commands::print::release_print,
             commands::pages::pick_pdf_sources,

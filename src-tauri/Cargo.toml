@@ -119,3 +119,8 @@ unsafe_code = "forbid"
 [lints.clippy]
 unwrap_used = "deny"
 expect_used = "deny"
+
+# ADR-131: the acceptance build only (`npm run build:acceptance`). Answers every native dialog from a queue a script fills, so it must never
+# be a default and never reach a release (`tests/automation_seam.rs`, `scripts/check.sh`). No dependency behind it.
+[features]
+automation = []

@@ -193,6 +193,13 @@ impl AppError {
         Self::with_params(ErrorCode::UnsupportedFeature, what, None)
     }
 
+    /// `internal` with `what: "automationNoAnswer"`: a dialog of the acceptance build found no queued answer of its kind (ADR-131). It is
+    /// `internal` so the frontend needs no catalog entry for a code only the acceptance build can produce.
+    #[cfg(feature = "automation")]
+    pub const fn automation_no_answer() -> Self {
+        Self::with_params(ErrorCode::Internal, "automationNoAnswer", None)
+    }
+
     /// `invalid_argument` for `textBox` with the character the font cannot show (ADR-047 §1). An ASCII character is not reported.
     pub fn bad_char(character: char) -> Self {
         let mut error = Self::with_params(ErrorCode::InvalidArgument, "textBox", None);

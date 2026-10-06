@@ -353,8 +353,8 @@ pub fn open_dialog(
     if window.label() != "main" {
         return Err(AppError::invalid("window"));
     }
-    sets().pages(print_id)?;
-    dialog::open(window)
+    let pages = sets().pages(print_id)?;
+    dialog::open(window, print_id, pages)
 }
 
 /// Drops a set; an unknown id is not an error.

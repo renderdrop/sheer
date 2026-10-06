@@ -20,7 +20,12 @@ use std::time::Duration;
 use zeroize::Zeroizing;
 
 /// Service name of the credential (ADR-041 section 7).
-pub const SERVICE: &str = "app.sheer.desktop";
+/// The acceptance build (ADR-131) has its own, so it never reads or writes the keys of the installed app.
+pub const SERVICE: &str = if cfg!(feature = "automation") {
+    "app.sheer.acceptance"
+} else {
+    "app.sheer.desktop"
+};
 /// User name of the credential: the key of the library, version 1.
 pub const USER: &str = "signature-library-key-v1";
 /// User name of the credential that holds the key of the signing identities (ADR-121 section 3): a separate item, so deleting one key

@@ -11,6 +11,7 @@
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
+use crate::automation::dialogs::DialogSeam;
 use tauri::ipc::Channel;
 use tauri::{State, WebviewWindow};
 use tauri_plugin_dialog::DialogExt;
@@ -60,7 +61,7 @@ impl AppState {
         if let Some(folder) = self.source_dir(id) {
             dialog = dialog.set_directory(folder);
         }
-        let Some(chosen) = dialog.blocking_save_file() else {
+        let Some(chosen) = dialog.seam_save_file()? else {
             return Ok(None);
         };
         let path: PathBuf = chosen

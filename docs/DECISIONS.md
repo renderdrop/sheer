@@ -2596,3 +2596,66 @@ re-broken lines, never other paragraphs.
 descoped: a paragraph of one line has no other line to cap against, and capping it at its own width stops every single line from
 growing, which contradicts DESIGN §3.10 E2 (limit = next object on the baseline less 4 pt, or the crop edge less 12 pt). The current
 behaviour stands.
+
+## ADR-131 — Acceptance infrastructure: automation build, CDP input, dialog guard (rule 15)
+
+**Status:** accepted (2026-10-06, owner instruction, session "v1.6 Smarte Verknüpfungen"; first package before everything else).
+
+**Context.** The v1.5.1 acceptance drove the release build with real OS mouse and keyboard. Keys typed while focus was elsewhere
+triggered tool shortcuts (an Insert-image file dialog opened unseen), clicks landed on stale coordinates after DPI changes, and the
+acceptance exe shared identifier, data folder and single-instance channel with the owner's installed Sheer.
+
+**Decisions (owner).**
+1. *Cargo feature `automation`* in `src-tauri`: every native dialog (open, open many, pick folder, save, save as, export, print,
+   message/confirm) goes through one seam (`automation::dialogs`). With the feature, the seam answers from a queue the script fills
+   (`automation_queue_dialog`, an IPC command compiled and registered only with the feature); an empty queue is an error, never a
+   native dialog. Print with the feature writes nothing and reports the print set to the script. Without the feature the seam calls
+   the native dialog exactly as before. The feature is never in `default`, never in the release workflow; `npm run check` fails if a
+   release config, the default features or the release capability set name it.
+2. *Acceptance build*: release profile plus `automation`, identifier `app.sheer.acceptance`, product name "Sheer Acceptance", own
+   binary name and target dir, so its app-data folder, single-instance channel, recent list and autosave are separate and it can
+   never replace or talk to the owner's installed Sheer. Not bundled, never installed, never updated (updater off).
+3. *Acceptance scripts use CDP input* (`Input.dispatchMouseEvent`/`dispatchKeyEvent`/`insertText` against the acceptance build's
+   WebView2, remote debugging on 127.0.0.1 only via `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS` at launch). Real OS mouse and keyboard only
+   in the final smoke test: at most five minutes, announced in the chat before and after.
+4. *Dialog guard*: while a script runs, a watcher checks the foreground window and every top-level window of the acceptance process;
+   a foreign foreground window or an unexpected dialog → Esc to that window, abort the script, error report with window title,
+   class and the last step. No blind clicks.
+5. *Rule 15* in ORCHESTRATOR_PROMPT §2 and CLAUDE.md: acceptance only through the acceptance build; the owner's installation (its
+   program folder, data folder, settings, recent files, running instance) is never touched.
+
+**Packages.** I1 backend (feature, seam at every dialog call site, queue command, acceptance config, guards); I2 tooling
+(`scripts/ui/accept/*`: launcher, CDP input, capture, dialog queue client, guard, real-input smoke ≤ 5 min; docs/UI_REVIEW.md).
+
+## ADR-132 — Politur v1.5.1 decisions and v1.6 "Smart links" detection
+
+**Status:** accepted (2026-10-06, owner instruction, session "v1.6 Smarte Verknüpfungen"). Tempo level 3 (ADR-128); acceptance
+through the acceptance build only (ADR-131).
+
+**Politur v1.5.1 (owner).** (1) "Umbrechen" is **on by default** for every line of a multi-line paragraph (single-line paragraphs have
+no toggle). (2) Without Umbrechen a line stops at the **paragraph's right edge** (its typical inner-line edge; centred/right lines at
+their paragraph edges); the overflow caption and hatch measure against that edge and never let text run past the page edge. Single-
+line paragraphs keep the next-object/crop limit of DESIGN §3.10 E2 but never past the crop edge less 12 pt. (3) The focus outline of a
+right-aligned or centred box grows with the text from its anchor. (4) The E4 page-1 Präambel case (box opens, no mini bar, no
+preview) is reproduced in the acceptance build and fixed or turned into a refusal tooltip.
+
+**v1.6 detection (orchestrator, DESIGN §3.11).**
+1. *Where.* Text facts are read in the engine (PDFium, same bounded reader as `derived_outline.rs`): per page lines → runs with size,
+   baseline, bold, boxes in page points (`smartlinks::model::PageText`), crossing the engine wire like the other read jobs. Detection
+   runs in the app process in `src-tauri/src/smartlinks/` as **pure functions** over `DocText` (unit-testable without PDFium).
+2. *Detectors.* `toc` (title + dot leaders/gap + number at line end, ≥ 3 such lines in a block), `footnotes` (raised run: baseline
+   ≥ 0.25 × body size above the line's baseline or size ≤ 0.8 × body, numeric/symbol marker; note = line in the lower 40 % of the
+   page or an endnote section starting with the same marker, smaller than body), `references` (regex families for page refs and
+   Abb./Fig./Tab./Kapitel/§ labels → page or caption/heading line starting with the label), `literature` (author-year and numeric →
+   bibliography section entries after a heading "Literatur", "Literaturverzeichnis", "Bibliography", "References", "Quellen").
+3. *Scoring.* Each candidate gets a score in [0, 1] from independent cues; it is linked only if exactly one target scores ≥ 0.75 and
+   the runner-up ≤ score − 0.25 (DESIGN L2). Page numbers resolve through page labels first, else a printed→physical offset confirmed
+   by ≥ 3 contents lines whose title text is found on the target page; no confirmed mapping → no link.
+4. *Conflicts.* Candidates intersecting a real link, a form widget or an annotation are dropped in the app process (L3).
+5. *IPC.* `smart_links(doc, page) -> { rev, links: SmartLinkWire[] }` (boxes, kind, marker, target page/rect, preview ≤ 280 chars);
+   the document index (TOC mapping, notes, captions, bibliography) builds lazily in the background once per revision with limits
+   (pages, chars, time) in `limits.rs`; an index not ready → that kind returns nothing yet. Never written into the PDF; no `DocState`
+   change; off = no work.
+6. *Packages.* Wave 1 backend: S1 engine reader + wire + index/cache + command + `toc` + page mapping; S2 `footnotes` (+ note back);
+   S3 `references` + `literature`; Politur P-B and P-F run beside it. Wave 2 frontend: F1 overlay layer, states, preview, keyboard list,
+   toggles/settings, real-link hover (L3/L4/L5/L8/L11); F2 Back/forward history, control, keys, jump band (L6/L7).
