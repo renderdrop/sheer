@@ -131,6 +131,29 @@ impl PageLines {
         }
         room
     }
+
+    /// The mirror of [`Self::room_after`]: the room between the line before on the same baseline and the start of line `index`;
+    /// `None` when nothing precedes it. A line that ends after this one starts answers `Some(0.0)`.
+    pub fn room_before(&self, index: u32) -> Option<f64> {
+        let line = self.lines.get(index as usize)?;
+        let me = line.span()?;
+        let mut room: Option<f64> = None;
+        for (i, other) in self.lines.iter().enumerate() {
+            if i == index as usize || !parallel(line.dir, other.dir) {
+                continue;
+            }
+            let Some(span) = other.span() else { continue };
+            if (span.baseline - me.baseline).abs() > 0.2 * line.size.max(other.size) {
+                continue;
+            }
+            if span.start >= me.end {
+                continue;
+            }
+            let gap = (me.start - span.end).max(0.0);
+            room = Some(room.map_or(gap, |r: f64| r.min(gap)));
+        }
+        room
+    }
 }
 
 fn parallel(a: [f64; 2], b: [f64; 2]) -> bool {

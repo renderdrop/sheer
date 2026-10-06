@@ -19,7 +19,7 @@ import {
 import { boxAnchor, boxWidthStyle } from './model';
 import { editKeyOf } from './keyboard';
 import { distinctChars, familyFor, overflowOf, textSpan, type Growth } from './lines';
-import { createPreviewScheduler, inkSpan, previewScale, scaleXFor, type PreviewScheduler } from './preview';
+import { bandRows, createPreviewScheduler, inkSpan, previewScale, scaleXFor, type PreviewScheduler } from './preview';
 import { useTextEdit, type EditSession } from './store';
 import './textedit.css';
 
@@ -241,7 +241,14 @@ export function EditBox({ session, growth, pageWidth, paragraph, pxPerPt = 1 }: 
       const context = canvas.getContext('2d', { willReadFrequently: true });
       if (context !== null && canvas.width > 0 && canvas.height > 0) {
         context.drawImage(img, 0, 0);
-        const ink = inkSpan(context.getImageData(0, 0, canvas.width, canvas.height).data, canvas.width, canvas.height);
+        const ink = inkSpan(
+          context.getImageData(0, 0, canvas.width, canvas.height).data,
+          canvas.width,
+          canvas.height,
+          latest.current.reflow
+            ? undefined
+            : (bandRows(line.box, frame.rect, frame.pxPerPt, canvas.height) ?? undefined),
+        );
         if (ink !== null) width = (ink.right - ink.left) / frame.pxPerPt;
       }
     } catch {

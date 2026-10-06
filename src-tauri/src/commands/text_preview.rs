@@ -395,6 +395,9 @@ fn region_of(lines: &PageLines, line: &Line, scope: TextScope) -> Region {
     let (mut x1, mut y1) = (f64::from(b.x + b.w), f64::from(b.y + b.h));
     // Nothing follows: the region runs to the page's edge (the preview cuts it to the page).
     x1 += room.unwrap_or(1.0e6);
+    // Right-aligned and centred lines grow to the left: the region runs back to the neighbour before, or the page's edge.
+    let before = lines.room_before(line.index);
+    x0 -= before.unwrap_or(1.0e6);
     if scope == TextScope::Paragraph {
         if let Some(paragraph) = lines.paragraphs.get(line.paragraph as usize) {
             for other in lines
@@ -414,7 +417,13 @@ fn region_of(lines: &PageLines, line: &Line, scope: TextScope) -> Region {
     }
     let pad = (0.2 * f64::from(b.h)).max(2.0);
     Region {
-        clip: [(x0 - 2.0).max(0.0), (y0 - pad).max(0.0), x1 + 2.0, y1 + pad],
+        // A neighbour before the line is not cut into: its glyph edge would read as ink of this line.
+        clip: [
+            (x0 - if before.is_some() { 0.0 } else { 2.0 }).max(0.0),
+            (y0 - pad).max(0.0),
+            x1 + 2.0,
+            y1 + pad,
+        ],
         room,
     }
 }

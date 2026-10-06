@@ -87,15 +87,19 @@ export function inkSpan(
   data: Uint8ClampedArray,
   width: number,
   height: number,
+  /** Only the rows from `top` up to `bottom` count (the line's own band: neighbours' ink in the padding does not). */
+  rows?: { top: number; bottom: number },
 ): { left: number; right: number } | null {
   if (width <= 0 || height <= 0 || data.length < width * height * 4) return null;
+  const y0 = rows === undefined ? 0 : Math.max(0, Math.floor(rows.top));
+  const y1 = rows === undefined ? height : Math.min(height, Math.ceil(rows.bottom));
   const r = data[0] ?? 0;
   const g = data[1] ?? 0;
   const b = data[2] ?? 0;
   let left = -1;
   let right = -1;
   for (let x = 0; x < width; x += 1) {
-    for (let y = 0; y < height; y += 1) {
+    for (let y = y0; y < y1; y += 1) {
       const i = (y * width + x) * 4;
       const d = Math.abs((data[i] ?? 0) - r) + Math.abs((data[i + 1] ?? 0) - g) + Math.abs((data[i + 2] ?? 0) - b);
       if (d > 96) {
@@ -106,6 +110,19 @@ export function inkSpan(
     }
   }
   return left < 0 ? null : { left, right };
+}
+
+/** The pixel rows of a line's own band in a preview picture: its box against the picture's region (same units) and scale. */
+export function bandRows(
+  box: { y: number; h: number },
+  region: { y: number; h: number },
+  pxPerPt: number,
+  height: number,
+): { top: number; bottom: number } | null {
+  if (!(pxPerPt > 0) || !(region.h > 0)) return null;
+  const top = Math.max(0, (box.y - region.y) * pxPerPt);
+  const bottom = Math.min(height, (box.y + box.h - region.y) * pxPerPt);
+  return bottom > top ? { top, bottom } : null;
 }
 
 /** The horizontal scale that puts the CSS text where the picture's glyphs are; 1 when either width is unknown or the two agree. */

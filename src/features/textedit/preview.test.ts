@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { TextPreview } from '../../api/textPreview';
-import { createPreviewScheduler, inkSpan, previewScale, scaleXFor } from './preview';
+import { bandRows, createPreviewScheduler, inkSpan, previewScale, scaleXFor } from './preview';
 
 const preview = (generation: number): TextPreview => ({
   generation,
@@ -147,5 +147,18 @@ describe('helpers', () => {
     expect(scaleXFor(110, 100)).toBeCloseTo(1.1);
     expect(scaleXFor(100.05, 100)).toBe(1);
     expect(scaleXFor(0, 100)).toBe(1);
+  });
+  it('counts ink only in the rows of the line band', () => {
+    const w = 4;
+    const data = new Uint8ClampedArray(w * 3 * 4).fill(255);
+    data.fill(0, 2 * w * 4, 2 * w * 4 + 3);
+    data.fill(0, (1 * w + 2) * 4, (1 * w + 2) * 4 + 3);
+    expect(inkSpan(data, w, 3)).toEqual({ left: 0, right: 3 });
+    expect(inkSpan(data, w, 3, { top: 1, bottom: 2 })).toEqual({ left: 2, right: 3 });
+  });
+  it('finds the band of the line in the picture', () => {
+    expect(bandRows({ y: 12, h: 10 }, { y: 10, h: 14 }, 2, 28)).toEqual({ top: 4, bottom: 24 });
+    expect(bandRows({ y: 0, h: 10 }, { y: 10, h: 14 }, 2, 28)).toBeNull();
+    expect(bandRows({ y: 12, h: 10 }, { y: 10, h: 14 }, 0, 28)).toBeNull();
   });
 });
