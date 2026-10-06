@@ -6,7 +6,7 @@ import type { TextLineInfo } from '../../api/textEdit';
 import { setup } from '../../test/render';
 import { announcementsFor, freshMemory } from './announce';
 import { TextEditBar } from './TextEditBar';
-import { REFLOW_KEY, setReflow, useTextEdit, type EditSession } from './store';
+import { setReflow, useTextEdit, type EditSession } from './store';
 
 vi.mock('./actions', () => ({ commitEdit: vi.fn(), cancelEdit: vi.fn(), retryEdit: vi.fn() }));
 const lines = vi.hoisted(() => ({ value: [] as unknown[] }));
@@ -56,16 +56,28 @@ describe('Umbrechen toggle', () => {
     expect(screen.queryByRole('switch')).toBeNull();
   });
 
-  it('writes the store and is remembered across edits', async () => {
+  it('writes the store for this edit only and persists nothing', async () => {
     lines.value = [line(0, 0), line(1, 0)];
     const { user } = setup(<TextEditBar />);
     await user.click(screen.getByRole('switch'));
     expect(useTextEdit.getState().reflow).toBe(true);
-    expect(localStorage.getItem(REFLOW_KEY)).toBe('1');
-    useTextEdit.getState().reset();
-    expect(useTextEdit.getState().reflow).toBe(true);
+    expect(localStorage.length).toBe(0);
     setReflow(false);
-    expect(localStorage.getItem(REFLOW_KEY)).toBe('0');
+    expect(useTextEdit.getState().reflow).toBe(false);
+    expect(localStorage.length).toBe(0);
+  });
+
+  it('has no divider between the overflow caption and Cancel', () => {
+    lines.value = [line(0, 0)];
+    useTextEdit.setState({ session: { ...session(), overflowPt: 5 } });
+    const { unmount } = setup(<TextEditBar />);
+    const caption = screen.getByText('5 pt too wide');
+    expect(caption.nextElementSibling).toBe(screen.getByRole('button', { name: 'Cancel (Esc)' }).parentElement);
+    unmount();
+    useTextEdit.setState({ session: session() });
+    setup(<TextEditBar />);
+    const cancel = screen.getByRole('button', { name: 'Cancel (Esc)' });
+    expect(cancel.parentElement?.previousElementSibling?.getAttribute('aria-hidden')).toBe('true');
   });
 
   it('is announced politely', () => {

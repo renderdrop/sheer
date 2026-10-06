@@ -16,9 +16,9 @@ import {
   takeCaret,
   type Caret,
 } from './actions';
-import { boxAnchor, boxWidthStyle } from './model';
+import { boxAnchor, boxWidthStyle, ringSpan } from './model';
 import { editKeyOf } from './keyboard';
-import { distinctChars, familyFor, overflowOf, textSpan, type Growth } from './lines';
+import { distinctChars, EDGE_GAP_PT, familyFor, overflowOf, textSpan, type Growth } from './lines';
 import { bandRows, createPreviewScheduler, inkSpan, previewScale, scaleXFor, type PreviewScheduler } from './preview';
 import { useTextEdit, type EditSession } from './store';
 import './textedit.css';
@@ -160,6 +160,8 @@ export function EditBox({ session, growth, pageWidth, paragraph, pxPerPt = 1 }: 
   const reflow = useTextEdit((s) => s.reflow);
   const [frame, setFrame] = useState<Frame | null>(null);
   const [scaleX, setScaleX] = useState(1);
+  /** The preview's ink width in points (the text's real span); null until a frame is measured. */
+  const [inkWidth, setInkWidth] = useState<number | null>(null);
   const imgRef = useRef<HTMLImageElement>(null);
   const latest = useRef({ draft, reflow, pxPerPt });
   const scheduler = useRef<PreviewScheduler | null>(null);
@@ -209,6 +211,7 @@ export function EditBox({ session, growth, pageWidth, paragraph, pxPerPt = 1 }: 
         if (url.current !== null) URL.revokeObjectURL(url.current);
         url.current = null;
         setFrame(null);
+        setInkWidth(null);
       },
     });
     scheduler.current = made;
@@ -255,6 +258,7 @@ export function EditBox({ session, growth, pageWidth, paragraph, pxPerPt = 1 }: 
       width = null;
     }
     const css = textWidthOf(el);
+    setInkWidth(width);
     setScaleX(width === null || css === null ? 1 : scaleXFor(width, css));
   };
 
@@ -398,8 +402,16 @@ export function EditBox({ session, growth, pageWidth, paragraph, pxPerPt = 1 }: 
 
   const { box } = line;
   const over = session.overflowPt > 0;
-  const span = textSpan(growth, box, measured);
-  const pin = boxAnchor(growth.align, box, reflow ? { left: growth.left, right: growth.right } : null);
+  // The text's real width: the preview's ink (without Umbrechen, the picture holds just this line), else the CSS measurement.
+  const textWidth = !reflow && frame !== null && inkWidth !== null ? inkWidth : measured;
+  const span = textSpan(growth, box, textWidth);
+  // The box never runs past the page edge (less the gap); with Umbrechen it also stays inside the paragraph's edges.
+  const limits = reflow
+    ? { left: growth.left, right: growth.right }
+    : { left: EDGE_GAP_PT, right: pageWidth - EDGE_GAP_PT };
+  const pin = boxAnchor(growth.align, box, limits);
+  // The ring grows from the anchor with the text and stops at the paragraph's edges; what is past them is the hatch's.
+  const ring = ringSpan(growth.align, box, textWidth, { left: growth.left, right: growth.right });
   const anchorStyle: CSSProperties = { left: pin.left, ...(pin.transform === '' ? {} : { transform: pin.transform }) };
   const stretch = frame !== null && scaleX !== 1 ? ` scaleX(${scaleX})` : '';
   const masks = reflow && paragraph !== undefined && paragraph.length > 0 ? paragraph : [line.box];
@@ -463,7 +475,7 @@ export function EditBox({ session, growth, pageWidth, paragraph, pxPerPt = 1 }: 
         data-testid="textedit-box"
         data-textedit-box=""
         data-align={growth.align}
-        className={`${frame === null ? 'bg-page' : 'bg-transparent'} selection:bg-(--color-doc-text-select) ${failed ? 'shadow-none' : 'shadow-(--ring-focus)'}`}
+        className={`${frame === null ? 'bg-page' : 'bg-transparent'} selection:bg-(--color-doc-text-select)`}
         onInput={onInput}
         onKeyDown={onKeyDown}
         style={{
@@ -499,6 +511,14 @@ export function EditBox({ session, growth, pageWidth, paragraph, pxPerPt = 1 }: 
             : {}),
         }}
       />
+      {!failed && (
+        <div
+          aria-hidden="true"
+          data-textedit-ring=""
+          className="shadow-(--ring-focus)"
+          style={{ ...CHROME, left: ring.x, top: box.y, width: ring.w, height: box.h }}
+        />
+      )}
       {over && (
         <>
           {span.right > growth.right && (

@@ -87,6 +87,32 @@ export function boxLeft(pin: BoxAnchor, width: number): number {
   return pin.left;
 }
 
+/**
+ * The focus ring's extent (page space): the text's span, grown from the alignment anchor (right-aligned: leftwards, centred: both
+ * ways), never smaller than the line's own box and never wider than the window (paragraph edges, or the page edge less the gap).
+ */
+export function ringSpan(
+  align: 'left' | 'center' | 'right',
+  box: Rect,
+  width: number,
+  window: { left: number; right: number },
+): { x: number; w: number } {
+  const w = Math.max(width, box.w);
+  let left = box.x;
+  let right = box.x + w;
+  if (align === 'right') {
+    right = box.x + box.w;
+    left = right - w;
+  } else if (align === 'center') {
+    const c = box.x + box.w / 2;
+    left = c - w / 2;
+    right = c + w / 2;
+  }
+  left = Math.max(left, Math.min(window.left, box.x));
+  right = Math.min(right, Math.max(window.right, box.x + box.w));
+  return { x: left, w: Math.max(0, right - left) };
+}
+
 /** A client-pixel rect as a box. */
 export const boxOf = (r: Rect): Box => ({ left: r.x, top: r.y, right: r.x + r.w, bottom: r.y + r.h });
 

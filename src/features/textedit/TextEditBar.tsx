@@ -49,6 +49,7 @@ export function TextEditBar({ ref }: { ref?: Ref<HTMLDivElement> }) {
   const failed = status === 'error';
   // Umbrechen only makes sense for a paragraph of two or more lines.
   const multi = lines !== null && paragraphOf(lines, line).length >= 2;
+  const showOverflow = overflowPt > 0 && !busy && !failed;
   const size = Math.round(line.font.size * 10) / 10;
 
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
@@ -106,7 +107,7 @@ export function TextEditBar({ ref }: { ref?: Ref<HTMLDivElement> }) {
           </div>
         </>
       )}
-      {overflowPt > 0 && !busy && !failed && (
+      {showOverflow && (
         <>
           <Divider />
           <span className="t-caption flex items-center gap-1 px-1 tabular-nums text-danger">
@@ -139,7 +140,8 @@ export function TextEditBar({ ref }: { ref?: Ref<HTMLDivElement> }) {
           />
         </>
       )}
-      <Divider />
+      {/* DESIGN E3: the overflow caption sits right before Cancel, no divider between. */}
+      {!showOverflow && <Divider />}
       <IconButton data-mb-item="" icon={X} label={t('editText.cancel')} onClick={cancelEdit} className={SQUARE} />
       <IconButton
         data-mb-item=""

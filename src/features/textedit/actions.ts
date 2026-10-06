@@ -2,7 +2,7 @@ import type { TextLineInfo } from '../../api/textEdit';
 import { useAnnotations } from '../../stores/annotations';
 import { pageNumberOf } from '../../stores/pages';
 import { jumpToHit } from '../search/jump';
-import { distinctChars, faceOf, knownLines, loadLines, neighbourLine, paragraphNeighbour } from './lines';
+import { distinctChars, faceOf, knownLines, loadLines, neighbourLine, paragraphNeighbour, paragraphOf } from './lines';
 import { unionRect } from './model';
 import { useTextEdit } from './store';
 
@@ -64,7 +64,11 @@ export async function openEdit(target: OpenTarget): Promise<boolean> {
   }
   pendingCaret = target.caret ?? 'end';
   const fallback = line.editable.type === 'fallback' ? line.editable.face : null;
+  // Umbrechen defaults on for a line of a multi-line paragraph (ADR-132); the user can switch it off for this edit.
+  const known = knownLines(docId, pageId);
+  const multi = known !== null && paragraphOf(known, line).length > 1;
   useTextEdit.getState().set({
+    reflow: multi,
     refusal: null,
     anchor: null,
     rule: null,

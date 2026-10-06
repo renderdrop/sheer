@@ -148,8 +148,8 @@ describe('stepEdit', () => {
 
 describe('Umbrechen', () => {
   it('applies with scope paragraph when reflow is on', async () => {
-    useTextEdit.getState().set({ reflow: true });
     await openEdit({ docId: 1, pageId: 0, line: line(0, 'one') });
+    useTextEdit.getState().set({ reflow: true });
     useTextEdit.getState().patchSession({ draft: 'one!' });
     await commitEdit();
     expect(apply).toHaveBeenCalledWith(1, expect.objectContaining({ scope: 'paragraph' }));
