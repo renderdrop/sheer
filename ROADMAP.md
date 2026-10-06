@@ -322,29 +322,27 @@ new engine capability or dependency is needed. Not picked by the loop before v1.
 - [x] v1.5.2 — Otherwise a bundled fallback (Arimo/Tinos/Cousine, ADR-125 §4, changed words only) with a notice; paragraph reflow, never across pages (ADR-129: scope paragraph re-break inside one paragraph, Umbrechen toggle; live line preview in the real font)
 - [x] Politur v1.5 — owner scope (ADR-129 §2): substitute notice after Apply, growing edit box, centred/right-aligned lines keep their alignment, designer minors of the beta (hatch, marker, dotted substitutes, calmer mini bar, recovery toggle)
 - [x] v1.5 acceptance — installed build with the mouse (E4 Vorgartensatzung, DD1 Handout, Rechnung 2025), one blocker fixed (centred/right lines failed to apply, ccc12ae + 0d6f15c), designer round, tag v1.5.0
-- [ ] Politur v1.5 (Rest) — carried over from v1.5
-  - acceptance (major): the substitute notice stays after Undo and after switching documents (clear it on undo/redo, document switch, tool release)
-  - acceptance: the edit box clips the start of centred/right-aligned lines while typing (the preview grows from the anchor, the box from the start)
-  - acceptance: the notice lists the characters separated by spaces ("- M t"); quote them or use a list format
-  - acceptance: a changed justified line loses its justification (ADR-125 §2 word-gap redistribution)
-  - acceptance: paragraph grouping still splits a justified paragraph at a stretched "Ende … des" line (E4 page 1)
-  - welcome document: replacing the line "Diese Datei hat sich selbst geöffnet…" answers tooComplex (preview and apply)
-  - B1 review: TEXT_PREVIEW_TIMEOUT unused; admit() before permission checks; map clear at 256 pages; text_basis/contained duplicated; MAX_RUNNING not in limits.rs
-  - B2 review: one-line alignment uses one text block per page (multi-column pages); band lookup O(segments×bands); negative tests
-  - B3 review: reflow fill O(words²) per line; direct indexing; per-line page re-scan; tests for justified-last-line and empty-line removal
-  - fix review (minor): ignored corpus tests only; cross-chain delta counts kept glyphs between deleted ones
-  - approval-signed files: edit after the breaksSignature confirm (ADR-125 addendum 3; needs a byte-range-aware write)
-  - std14 widths: test pinning macron/plusminus/mu/periodcentered/divide per face
-  - rewritten content streams are written uncompressed (text_save.rs) → Flate them
-  - walker work budget (MAX_REDACT_WORK) shared with the text-edit walk; neutral limit key for walker ops exhaustion
-  - cooperative cancel inside ops_walk/text_lines after a probe deadline; verify subsetter output re-parse; CIDToGIDMap cap test
-  - re-edit of a line that already holds a fallback word is tooComplex; params.reason vs what on read_only refusals
-  - Symbol/ZapfDingbats lines are Missing (no verified widths)
-  - P2: a notice that does not fit keeps its queue slot; P1: a single-line paragraph's limit ignores the "widest line" cap
-  - designer v1.5.0 (minor): with Umbrechen on the box runs past the paragraph's right edge; mini bar covers the heading above;
-    the notice after Apply covers neighbouring lines; refusal tooltip 2 px from the hover outline
-  - security v1.5.0 (low): reflow paragraph-extension loop O(lines²·paragraph) (cap or set); preview 8-thread cap is global (per-document cap)
-  - not accepted by mouse: double-click word selection, Font popover, screen reader (E-AC 7), reduced motion (E-AC 8), macOS
+- [x] Politur v1.5 (Rest) → patch v1.5.1 (ADR-130): justified lines stretch to full width (splice + reflow), paragraph grouping across
+      stretched lines and blank lines, notice lifetime and quoted list, box/preview anchoring for centred/right lines, welcome-document
+      decode, preview caps/LRU/permission order, Flate for rewritten streams, neutral walker limit, test pins; P1 descoped (ADR-130 add. 1)
+- [ ] Politur v1.5.1 — carried over from v1.5.1
+  - designer v1.5.1 (major): with Umbrechen off, an overflowing draft's caption says "1 pt zu breit" while the text runs far past the
+    paragraph edge (limit = crop edge less 12 pt for a single-line edit; hatch only under part of it; 2 px marker hard to see)
+  - designer v1.5.1 (major) / acceptance: the focus outline of a right-aligned/centred box keeps the original line width while the
+    text grows (the live preview itself is correct)
+  - designer v1.5.1 (minor): divider between the overflow caption and Cancel (not in E3)
+  - acceptance: a re-broken edited line may come out compressed below its natural gaps ("1998 im") when it gives back an old stretch
+  - acceptance: E4 page 1 italic Präambel line ("Der derzeit dringendste …"): box opens, no mini bar, no live preview (not reproduced in dev)
+  - acceptance: opening an edit box that docks the mini bar shifts the page by one 40 px row (DESIGN §3.3 by design; the clicked line moves)
+  - deferred (ADR-130 §3): approval-signed files (byte-range-aware write); cooperative cancel inside ops_walk/text_lines;
+    re-edit of a line that already holds a fallback word; Symbol/ZapfDingbats widths; params.reason vs what on read_only refusals
+  - review minors: decode_plain picks the lowest char when two codes share one; text_basis clones bytes before the refusal check;
+    per_doc Vec scan; cross-chain delta low (splice); interleaved-chain refusal is conservative
+  - security v1.5.1 (low): kern from a NaN grow (add a finiteness check next to unit); devCsp stays dev-only
+  - smoke: first annot-smoke run after launch failed Highlight on text.pdf once (timing), rerun green
+  - tester: storage::autosave a_dead_record_is_purged_only_after_the_retention (autosave.rs:1019) flaked once in 3 runs (timing)
+  - not accepted by mouse: Save after a justified edit, centred line with Umbrechen, double-click word selection, Font popover,
+    screen reader, reduced motion, macOS
 
 ### v1.6 "Smart links"
 - [ ] v1.6 spec — designer spec (detection hints, back navigation)

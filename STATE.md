@@ -1,16 +1,20 @@
 # STATE
-phase: v1.5.1 (session topic "Politur v1.5 (Rest) als Patch v1.5.1", ADR-130)
-version: 1.5.0 (tag v1.5.0; pre-release tag v1.5.0-beta.1 kept)
-current_item: Politur v1.5 (Rest) → patch v1.5.1. Wave of 4: B1 paragraph grouping of stretched lines (text_lines.rs); B2 justified stretch in splice + reflow (text_splice.rs, text_reflow.rs); B3 backend lows (text_preview, limits, text_save Flate, ops_walk budget, test pins); F1 frontend (notice lifetime/format, box anchoring, designer minors). Then reviews B1–B3, tester, security, installed-build acceptance (justified owner PDF with a real re-break), designer round, tag v1.5.1
-last_completed: v1.5.0 — wave A F1 73b48f0, B2 cdc709a, B3 002c96d, B1 c50af0d; wave B F2 6365fca, F3 7cf28ac, fix 5eb14e6; acceptance blocker ccc12ae + FIX 0d6f15c; reviews B1/B2/B3 PASS, fix FIX→fixed; designer PASS, security-reviewer PASS; surface gate 993/993, smoke 17/17, corpus 99.8 % / 90.8 %
-loop_count_this_session: 0 (session "Politur v1.5 (Rest)" running, STOP removed)
+phase: v1.5.1 done (session topic "Politur v1.5 (Rest) als Patch v1.5.1", ADR-130)
+version: 1.5.1 (tag v1.5.1; v1.5.0 and pre-release v1.5.0-beta.1 kept)
+current_item: v1.5.1 released. Next open: "Politur v1.5.1" (ROADMAP, carried majors/minors) or v1.6 spec
+last_completed: v1.5.1 — F1 54bf35a, B1 3f718c6, B2 3ee910b, B3 5b2e905, W (decode + minors) and deflake 0da261f; acceptance fixes b974d69 (stretch give-back), 17b5313 (box width), 20c94c5 (preview region); reviews B1/B2/B3/W PASS; security PASS (lows); designer PASS (2 majors → Politur v1.5.1); tester green + tests; surface gate 993/993, smoke 17/17 (rerun)
+loop_count_this_session: 0 (session closed: report docs/reports/2026-10-06-v1.5.1-politur-blocksatz.md, STOP set)
 open_blockers: 2 (B-002, B-005, human-only). B-006 and B-007 resolved by the owner (ADR-128). Path guard (ADR-127) allows the project memory folder (ADR-128)
 notes: ADR-120: every loop starts with `bash scripts/ci-status.sh` (last completed run on main, never wait); red = fix first. v1.4 W0 2a1e3f3 (stable RustCrypto line), seam 586feeb. Release v1.3.0 published.
   Owner re-check on the Mac after v1.2.0: A10 "Save as PDF" in the print dialog. Screenshot series docs/review/v1.2/ (not tracked), motion recordings docs/review/v1.2/motion/.
   After v1.2.0: "Politur v1.3" (ROADMAP, carried minors), then the v1.3 "Citations" spec. Never run the dev window while agents run cargo/vitest;
   stop it with taskkill sheer.exe + Stop-Process on tauri.js/vite.js only. Acceptance helpers in the session scratchpad (keys.ps1, wheel.ps1, shotsize.ps1, dnd.ps1 with topmost guard).
 ci_log: (ADR-120 corrected — package commit → CI run; result filled in at the next push)
-  - 54bf35a..fc06762 v1.5.1 wave (F1, B1, B2, B3 + ADR-130) → run #103 (37478918822) red: flaky print.test.tsx unmount test (vitest, web job) → deflake package
+  - tests + release v1.5.1 → run and release run: read next session (`bash scripts/ci-status.sh`)
+  - 20c94c5 preview crop fix FX-F2 → run #106 (37490268401) GREEN
+  - b974d69..17b5313 acceptance fixes FX-B + FX-F → run #105 (37485534024) GREEN
+  - 0da261f..c6a93fc deflake + W fix + changelog → run #104 (37482891749) GREEN
+  - 54bf35a..fc06762 v1.5.1 wave (F1, B1, B2, B3 + ADR-130) → run #103 (37478918822) red: flaky print.test.tsx unmount test (vitest, web job) → fixed 0da261f
   - ccc12ae..a9ae592 blocker fix + FIX + release v1.5.0 → run #102 (37470539405) GREEN; release run #14 (37470539395) success (DMG + NSIS)
   - 6365fca..5eb14e6 wave B + preview fix → run #101 (37464077361) GREEN
   - 3dbbf08..c7aba1a wave A (F1, B2, B3, B1, seam) → run #100 (37459843116) GREEN

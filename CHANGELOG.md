@@ -6,7 +6,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-Patch v1.5.1 "Politur v1.5 (Rest)" (ADR-130).
+## [1.5.1] - 2026-10-06
+
+Patch v1.5.1 "Politur v1.5 (Rest)" (ADR-130). Unsigned installers (BLOCKERS B-002).
 
 ### Changed
 - A changed line of a justified paragraph is stretched back to the full paragraph width: the extra space is spread evenly over its
