@@ -6,6 +6,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+Patch v1.5.1 "Politur v1.5 (Rest)" (ADR-130).
+
+### Changed
+- A changed line of a justified paragraph is stretched back to the full paragraph width: the extra space is spread evenly over its
+  word gaps. With Umbrechen on, every re-broken line except the paragraph's last is justified too.
+- The substitute-font notice quotes the characters it lists ("-", "M" and "t") and sits outside the edited paragraph.
+- The edit box grows from the line's anchor: right-aligned lines grow to the left, centred lines both ways; with Umbrechen on it stops
+  at the paragraph's right edge. The mini bar no longer covers the line above.
+- Rewritten page content is stored compressed; previews are capped per document so one document cannot starve another.
+
+### Fixed
+- A justified paragraph is no longer split in two at a strongly stretched line, so it can be edited and re-broken as one paragraph.
+- The substitute-font notice disappears after Undo/Redo, when you switch documents and when you leave Edit text.
+- Lines with typographic characters such as "…" or "–" in simple fonts (for example in the welcome document) can be edited again.
+
 ## [1.5.0] - 2026-10-06
 
 v1.5 "Edit text" (ADR-125, ADR-128, ADR-129). Unsigned installers (BLOCKERS B-002).

@@ -10,6 +10,7 @@ notes: ADR-120: every loop starts with `bash scripts/ci-status.sh` (last complet
   After v1.2.0: "Politur v1.3" (ROADMAP, carried minors), then the v1.3 "Citations" spec. Never run the dev window while agents run cargo/vitest;
   stop it with taskkill sheer.exe + Stop-Process on tauri.js/vite.js only. Acceptance helpers in the session scratchpad (keys.ps1, wheel.ps1, shotsize.ps1, dnd.ps1 with topmost guard).
 ci_log: (ADR-120 corrected — package commit → CI run; result filled in at the next push)
+  - 54bf35a..fc06762 v1.5.1 wave (F1, B1, B2, B3 + ADR-130) → run #103 (37478918822) red: flaky print.test.tsx unmount test (vitest, web job) → deflake package
   - ccc12ae..a9ae592 blocker fix + FIX + release v1.5.0 → run #102 (37470539405) GREEN; release run #14 (37470539395) success (DMG + NSIS)
   - 6365fca..5eb14e6 wave B + preview fix → run #101 (37464077361) GREEN
   - 3dbbf08..c7aba1a wave A (F1, B2, B3, B1, seam) → run #100 (37459843116) GREEN
