@@ -63,6 +63,18 @@ describe('parsers', () => {
     expect(parseTextLineInfo(lineOf({ key: { rev: -1, line: 0 } }))).toBeNull();
   });
 
+  it('reads align and subset and defaults them for older answers', () => {
+    const plain = parseTextLineInfo(lineOf());
+    expect(plain?.align).toBe('left');
+    expect(plain?.font.subset).toBe(false);
+    const rich = parseTextLineInfo(
+      lineOf({ align: 'right', font: { name: 'A', size: 9, embedded: true, subset: true } }),
+    );
+    expect(rich?.align).toBe('right');
+    expect(rich?.font.subset).toBe(true);
+    expect(parseTextLineInfo(lineOf({ align: 'bogus' }))?.align).toBe('left');
+  });
+
   it('caps the list', () => {
     expect(parsePageTextLines({ lines: new Array(MAX_LINES_PER_PAGE + 1).fill(lineOf()) })).toBeNull();
   });

@@ -438,3 +438,77 @@ fn right_aligned_lines_are_one_paragraph() {
     assert_eq!(page_lines.paragraphs.len(), 1);
     assert_eq!(page_lines.paragraphs[0].align, Align::Right);
 }
+
+#[test]
+fn a_stretched_justified_line_with_wide_gaps_stays_in_its_paragraph() {
+    // Three lines from x = 100 to 211.2; the middle one is two pieces with a gap of about eight spaces.
+    let content = "BT /F1 10 Tf 100 700 Td (aaaaaaaaaaaaaaaaaaaa) Tj ET \
+                   BT /F1 10 Tf 100 688 Td (aaaaaaaa) Tj ET \
+                   BT /F1 10 Tf 166.72 688 Td (aaaaaaaa) Tj ET \
+                   BT /F1 10 Tf 100 676 Td (aaaaaaaaaaaaaaaaaaaa) Tj ET";
+    let (doc, page) = build(content, &[]);
+    let page_lines = doc.lines(page, &[]).unwrap();
+    assert_eq!(page_lines.lines.len(), 3);
+    assert_eq!(page_lines.paragraphs.len(), 1);
+    assert_eq!(page_lines.paragraphs[0].lines, 0..3);
+    assert!(page_lines.lines[1].text.contains("aaaaaaaa"));
+}
+
+#[test]
+fn table_cells_and_columns_are_not_merged_by_the_justified_rule() {
+    let content = "BT /F1 10 Tf 100 700 Td (aaaaaaaa) Tj ET \
+                   BT /F1 10 Tf 166.72 700 Td (aaaaaaaa) Tj ET \
+                   BT /F1 10 Tf 100 688 Td (aaaaaaaa) Tj ET \
+                   BT /F1 10 Tf 166.72 688 Td (aaaaaaaa) Tj ET";
+    let (doc, page) = build(content, &[]);
+    let page_lines = doc.lines(page, &[]).unwrap();
+    assert_eq!(page_lines.lines.len(), 4);
+    // A single wide line above does not make the cells of the next row one line unless the edges match.
+    let content = "BT /F1 10 Tf 100 700 Td (aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa) Tj ET \
+                   BT /F1 10 Tf 100 688 Td (aaaaaaaa) Tj ET \
+                   BT /F1 10 Tf 166.72 688 Td (aaaaaaaa) Tj ET";
+    let (doc, page) = build(content, &[]);
+    assert_eq!(doc.lines(page, &[]).unwrap().lines.len(), 3);
+}
+
+#[test]
+fn a_one_line_heading_or_date_is_judged_against_its_text_block() {
+    // Body lines span x 100 to 211.2; the heading is centred on 155.6, the date ends at 211.2.
+    let content = "BT /F1 10 Tf 144.48 730 Td (aaaa) Tj ET \
+                   BT /F1 10 Tf 100 700 Td (aaaaaaaaaaaaaaaaaaaa) Tj ET \
+                   BT /F1 10 Tf 100 688 Td (aaaaaaaaaaaaaaaaaaaa) Tj ET \
+                   BT /F1 10 Tf 166.72 650 Td (aaaaaaaa) Tj ET \
+                   BT /F1 10 Tf 100 600 Td (aaaaaaaaaaaaaaaaaaaa) Tj ET \
+                   BT /F1 10 Tf 100 588 Td (aaaaaaaaaaaaaaaaaaaa) Tj ET";
+    let (doc, page) = build(content, &[]);
+    let page_lines = doc.lines(page, &[]).unwrap();
+    let aligns: Vec<Align> = page_lines.paragraphs.iter().map(|p| p.align).collect();
+    assert_eq!(
+        aligns,
+        [Align::Center, Align::Left, Align::Right, Align::Left]
+    );
+}
+
+/// The beta's heading "Praeambel" of the owner's corpus file is centred (needs `review/owner/corpus`).
+#[test]
+#[ignore = "needs the owner's corpus"]
+fn the_corpus_heading_is_centred() {
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../review/owner/corpus/E4_Vorgartensatzung Stadt Erfurt.pdf");
+    let Ok(bytes) = std::fs::read(&path) else {
+        eprintln!("skipping: corpus file missing");
+        return;
+    };
+    let doc = PageDoc::load(&bytes).unwrap();
+    let page = doc.pages()[0];
+    let page_lines = doc.lines(page, &[]).unwrap();
+    let line = page_lines
+        .lines
+        .iter()
+        .find(|l| l.text.contains("ambel"))
+        .expect("heading found");
+    assert_eq!(
+        page_lines.paragraphs[line.paragraph as usize].align,
+        Align::Center
+    );
+}

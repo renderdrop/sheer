@@ -95,6 +95,19 @@ pub struct LineFont {
     pub name: String,
     pub size: f32,
     pub embedded: bool,
+    /// The font name carried a subset tag (`ABCDEF+Name`).
+    #[serde(default)]
+    pub subset: bool,
+}
+
+/// How the lines of a paragraph are aligned.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum LineAlign {
+    #[default]
+    Left,
+    Center,
+    Right,
 }
 
 /// What `text_edit_probe` and `text_edit_lines` tell about one line. `text` is at most `limits::TEXT_EDIT_LINE_CHARS` characters.
@@ -109,6 +122,8 @@ pub struct TextLineInfo {
     /// Index of the paragraph the line belongs to (reading order).
     pub paragraph: u32,
     pub justified: bool,
+    #[serde(default)]
+    pub align: LineAlign,
     pub font: LineFont,
     pub editable: LineEditable,
 }
@@ -295,10 +310,12 @@ mod tests {
             },
             paragraph: 1,
             justified: false,
+            align: LineAlign::Center,
             font: LineFont {
                 name: "Arial".into(),
                 size: 11.0,
                 embedded: true,
+                subset: true,
             },
             editable: LineEditable::Fallback {
                 face: FallbackFace::Sans,
@@ -306,6 +323,8 @@ mod tests {
         };
         let json = serde_json::to_value(&info).unwrap();
         assert_eq!(json["box"]["w"], 3.0);
+        assert_eq!(json["align"], "center");
+        assert_eq!(json["font"]["subset"], true);
         assert_eq!(json["editable"]["type"], "fallback");
         assert_eq!(json["editable"]["face"], "sans");
         let no = serde_json::to_value(LineEditable::No {

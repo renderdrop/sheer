@@ -43,6 +43,8 @@ export type FallbackFace = 'sans' | 'serif' | 'mono';
 export type LineEditable =
   { type: 'same' } | { type: 'fallback'; face: FallbackFace } | { type: 'no'; reason: TextEditRefusal };
 
+export type LineAlign = 'left' | 'center' | 'right';
+
 /** One line of text on a page. `text` is the document's: render it as text only. */
 export interface TextLineInfo {
   key: LineKey;
@@ -53,8 +55,10 @@ export interface TextLineInfo {
   /** Index of the paragraph the line belongs to (reading order). */
   paragraph: number;
   justified: boolean;
-  /** `name` is for display: the subset tag is removed. */
-  font: { name: string; size: number; embedded: boolean };
+  /** Alignment of the line's paragraph; absent means left. */
+  align?: LineAlign;
+  /** `name` is for display: the subset tag is removed; `subset` tells it was there. */
+  font: { name: string; size: number; embedded: boolean; subset?: boolean };
   editable: LineEditable;
 }
 
@@ -123,10 +127,20 @@ export function parseTextLineInfo(value: unknown): TextLineInfo | null {
   if (key === null || box === null || editable === null) return null;
   if (typeof text !== 'string' || text.length > MAX_LINE_CHARS || text.length > MAX_TEXT_CHARS) return null;
   if (!isUint(paragraph, MAX_LINES_PER_PAGE) || typeof justified !== 'boolean' || !isRecord(font)) return null;
-  const { name, size, embedded } = font;
+  const { name, size, embedded, subset } = font;
   if (typeof name !== 'string' || name.length > 256 || typeof embedded !== 'boolean') return null;
   if (typeof size !== 'number' || !Number.isFinite(size) || size < 0) return null;
-  return { key, text, box, paragraph, justified, font: { name, size, embedded }, editable };
+  const align: LineAlign = value.align === 'center' || value.align === 'right' ? value.align : 'left';
+  return {
+    key,
+    text,
+    box,
+    paragraph,
+    justified,
+    align,
+    font: { name, size, embedded, subset: subset === true },
+    editable,
+  };
 }
 
 /** Validates the answer of `text_edit_lines`: at most 5 000 lines; `null` if it is not that. */

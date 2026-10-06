@@ -309,6 +309,7 @@ fn take_dead_lock(dir: &Path, now: SystemTime) -> Option<Option<File>> {
 /// Dead sessions: their usable records (newest first, ids not yet set), after the sweep of what is old or corrupt.
 fn scan(root: &Path, own: &Path, now: SystemTime) -> Vec<Dead> {
     let mut found = Vec::new();
+    let mut failed = 0usize;
     let Ok(entries) = fs::read_dir(root) else {
         return found;
     };
@@ -348,19 +349,24 @@ fn scan(root: &Path, own: &Path, now: SystemTime) -> Vec<Dead> {
         // Nothing left to recover: the session directory (its orphans and its lock) goes. The lock is released first, Windows
         // does not delete an open file.
         drop(lock);
-        if kept == 0 {
-            let _ = fs::remove_dir_all(&dir);
+        if kept == 0 && fs::remove_dir_all(&dir).is_err() {
+            failed += 1;
         }
     }
-    sweep_quarantine(root, now);
+    failed += sweep_quarantine(root, now);
+    if failed > 0 {
+        // Only the count: a path names the user's files.
+        eprintln!("sheer: warn: autosave purge could not delete {failed} item(s)");
+    }
     found.sort_by_key(|record| std::cmp::Reverse(record.manifest.saved_at));
     found
 }
 
-/// Quarantined files older than the retention are deleted.
-fn sweep_quarantine(root: &Path, now: SystemTime) {
+/// Quarantined files older than the retention are deleted; the number of deletions that failed.
+fn sweep_quarantine(root: &Path, now: SystemTime) -> usize {
+    let mut failed = 0;
     let Ok(entries) = fs::read_dir(root.join(QUARANTINE_DIR)) else {
-        return;
+        return failed;
     };
     for entry in entries.flatten() {
         let old = fs::symlink_metadata(entry.path())
@@ -369,10 +375,11 @@ fn sweep_quarantine(root: &Path, now: SystemTime) {
             .and_then(|metadata| metadata.modified().ok())
             .and_then(|modified| now.duration_since(modified).ok())
             .is_some_and(|age| age > limits::AUTOSAVE_RETENTION);
-        if old {
-            let _ = fs::remove_file(entry.path());
+        if old && fs::remove_file(entry.path()).is_err() {
+            failed += 1;
         }
     }
+    failed
 }
 
 fn original_state(original: Option<&OriginalRef>) -> OriginalState {

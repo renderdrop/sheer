@@ -505,3 +505,21 @@ fn only_the_stream_with_the_line_changes() {
     assert_eq!(r.streams[0], streams[0]);
     assert_eq!(r.streams[1], b"BT /F1 10 Tf 72 650 Td [<747770>] TJ ET");
 }
+
+#[test]
+fn a_centred_line_keeps_its_centre() {
+    let content = "BT /F1 10 Tf 100 700 Td (Hello) Tj ET";
+    let source = Source {
+        align: Align::Center,
+        ..Source::default()
+    };
+    let (out, warnings, _) = run(
+        content,
+        &[edit(0, 0, "Hello!!", TextFit::KeepStart)],
+        source,
+    )
+    .unwrap();
+    // Two glyphs (10 pt) wider: the start moves left by 5 pt = 500 thousandths of the 10 pt size.
+    assert_eq!(out, "BT /F1 10 Tf 100 700 Td [500 <48656C6C6F2121>] TJ ET");
+    assert!(warnings.is_empty());
+}

@@ -30,8 +30,8 @@ use crate::model::doc_state::ChangeSet;
 use crate::model::page::PageSource;
 use crate::model::protection::Permission;
 use crate::model::text_edit::{
-    self, ChangeWarning, CharGeom, LineEditable, LineFont, LineKey, PageEdits, PageTextLines,
-    Preview, TextEdit, TextEditRefusal, TextLineInfo,
+    self, ChangeWarning, CharGeom, LineEditable, PageEdits, PageTextLines, Preview, TextEdit,
+    TextEditRefusal, TextLineInfo,
 };
 use crate::pdfsig::types::SignatureLock;
 use crate::pdfwrite::text_io::PageDoc;
@@ -333,29 +333,7 @@ impl AppState {
 
 /// The wire shape of `line` in revision `rev`.
 fn line_info(lines: &PageLines, line: &Line, rev: u32) -> TextLineInfo {
-    TextLineInfo {
-        key: LineKey {
-            rev,
-            line: line.index,
-        },
-        text: line
-            .text
-            .chars()
-            .take(limits::TEXT_EDIT_LINE_CHARS)
-            .collect(),
-        bounds: line.bounds,
-        paragraph: line.paragraph,
-        justified: lines
-            .paragraphs
-            .get(line.paragraph as usize)
-            .is_some_and(|paragraph| paragraph.justified),
-        font: LineFont {
-            name: line.font_name.clone(),
-            size: line.size as f32,
-            embedded: line.embedded,
-        },
-        editable: line.editable,
-    }
+    text_lines::line_info(lines, line, rev)
 }
 
 /// The line of a page at a character of its text layer.

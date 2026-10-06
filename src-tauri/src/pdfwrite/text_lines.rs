@@ -20,7 +20,7 @@ use crate::fontprog::fallback;
 use crate::limits;
 use crate::model::geometry::{PageBox, Rect};
 use crate::model::text_edit::{
-    CharGeom, LineEditable, LineFont, LineKey, TextEditRefusal, TextLineInfo,
+    CharGeom, LineAlign, LineEditable, LineFont, LineKey, TextEditRefusal, TextLineInfo,
 };
 
 /// Most glyphs a page may have before it is `limit_exceeded`: the walk keeps every glyph.
@@ -52,6 +52,7 @@ pub struct Line {
     pub font_name: String,
     pub size: f64,
     pub embedded: bool,
+    pub subset: bool,
     pub editable: LineEditable,
 }
 
@@ -198,6 +199,105 @@ struct RunInfo {
     space: f64,
 }
 
+/// A stretched line of justified text can have gaps beyond `GAP_IN_SPACES` and so falls apart. A band of
+/// segments is joined again when its gaps stay moderate and the whole band spans exactly the edges of a
+/// whole single-segment line next to it (columns and table cells never do).
+fn join_justified_bands(segments: &mut Vec<(usize, Segment)>, extents: &HashMap<usize, RunInfo>) {
+    /// The widest gap of a stretched line, in spaces.
+    const STRETCH_IN_SPACES: f64 = 12.0;
+    struct Seg {
+        cluster: usize,
+        base: f64,
+        x0: f64,
+        x1: f64,
+        size: f64,
+        space: f64,
+    }
+    let info: Vec<Option<Seg>> = segments
+        .iter()
+        .map(|(cluster, s)| {
+            let runs: Vec<&RunInfo> = s.runs.iter().filter_map(|id| extents.get(id)).collect();
+            let first = runs.first()?;
+            Some(Seg {
+                cluster: *cluster,
+                base: first.base,
+                x0: runs.iter().map(|r| r.x0).fold(f64::INFINITY, f64::min),
+                x1: runs.iter().map(|r| r.x1).fold(f64::NEG_INFINITY, f64::max),
+                size: first.size,
+                space: first.space,
+            })
+        })
+        .collect();
+    // Bands: consecutive segments of one cluster on one baseline.
+    let mut bands: Vec<std::ops::Range<usize>> = Vec::new();
+    let mut at = 0;
+    while at < info.len() {
+        let mut end = at + 1;
+        if let Some(a) = &info[at] {
+            while end < info.len()
+                && info[end].as_ref().is_some_and(|b| {
+                    b.cluster == a.cluster && (b.base - a.base).abs() <= 0.2 * a.size.min(b.size)
+                })
+            {
+                end += 1;
+            }
+        }
+        bands.push(at..end);
+        at = end;
+    }
+    let single_of = |band: Option<&std::ops::Range<usize>>| -> Option<&Seg> {
+        let band = band?;
+        if band.len() == 1 {
+            info[band.start].as_ref()
+        } else {
+            None
+        }
+    };
+    let mut joined: Vec<bool> = vec![false; segments.len()];
+    for (bi, band) in bands.iter().enumerate() {
+        if band.len() < 2 {
+            continue;
+        }
+        let parts: Option<Vec<&Seg>> = band.clone().map(|i| info[i].as_ref()).collect();
+        let Some(parts) = parts else { continue };
+        let (x0, x1) = (parts[0].x0, parts[parts.len() - 1].x1);
+        let size = parts[0].size;
+        let moderate = parts
+            .windows(2)
+            .all(|w| w[1].x0 - w[0].x1 <= STRETCH_IN_SPACES * w[1].space.max(0.1 * size));
+        if !moderate {
+            continue;
+        }
+        let neighbour = |n: Option<&Seg>| {
+            n.is_some_and(|n| {
+                let step = (n.base - parts[0].base).abs();
+                n.cluster == parts[0].cluster
+                    && step > 0.2 * size
+                    && step <= 1.6 * size.max(n.size)
+                    && (n.size - size).abs() <= 0.1 * size.max(n.size)
+                    && (n.x0 - x0).abs() <= 1.0
+                    && (n.x1 - x1).abs() <= 1.0
+            })
+        };
+        let before = single_of(bi.checked_sub(1).and_then(|b| bands.get(b)));
+        let after = single_of(bands.get(bi + 1));
+        if neighbour(before) || neighbour(after) {
+            for i in band.clone() {
+                joined[i] = true;
+            }
+        }
+    }
+    let mut out: Vec<(usize, Segment)> = Vec::with_capacity(segments.len());
+    for (i, (cluster, seg)) in std::mem::take(segments).into_iter().enumerate() {
+        let continues =
+            i > 0 && joined[i] && bands.iter().any(|b| b.contains(&i) && b.contains(&(i - 1)));
+        match out.last_mut() {
+            Some((_, last)) if continues => last.runs.extend(seg.runs),
+            _ => out.push((cluster, seg)),
+        }
+    }
+    *segments = out;
+}
 /// What is known about a font while the lines are built.
 struct FontInfo {
     font: Option<Font>,
@@ -255,6 +355,7 @@ fn build(
     }
     // 2. Per direction: baselines, then segments along them.
     let mut segments: Vec<(usize, Segment)> = Vec::new();
+    let mut extents: HashMap<usize, RunInfo> = HashMap::new();
     for (cluster, ids) in clusters.iter().enumerate() {
         let dir = runs[ids[0]].glyphs[0].dir;
         let normal = [-dir[1], dir[0]];
@@ -283,6 +384,19 @@ fn build(
             })
             .collect();
         list.sort_by(|a, b| b.base.total_cmp(&a.base));
+        for info in &list {
+            extents.insert(
+                info.id,
+                RunInfo {
+                    id: info.id,
+                    base: info.base,
+                    x0: info.x0,
+                    x1: info.x1,
+                    size: info.size,
+                    space: info.space,
+                },
+            );
+        }
         let at = 0;
         while at < list.len() {
             let reference = list[at].base;
@@ -325,6 +439,7 @@ fn build(
             // `drain` moved the band out, so `at` now points at the next band.
         }
     }
+    join_justified_bands(&mut segments, &extents);
     segments.truncate(limits::TEXT_EDIT_LINES_PER_PAGE);
     // 3. Lines (reading order = segment order).
     let mut slots: Vec<Option<Run>> = runs.into_iter().map(Some).collect();
@@ -347,6 +462,7 @@ fn build(
             font_name: String::new(),
             size: 0.0,
             embedded: false,
+            subset: false,
             editable: LineEditable::Same,
         });
     }
@@ -570,6 +686,7 @@ fn fill(
             .filter(|n| !n.is_empty())
             .unwrap_or_else(|| String::from_utf8_lossy(&key.name).into_owned());
         line.embedded = font.is_some_and(|f| f.embedded);
+        line.subset = font.is_some_and(|f| strip_subset(&f.base_name) != f.base_name);
         line.size = size;
         line.text = text.chars().take(limits::TEXT_EDIT_LINE_CHARS).collect();
         line.bounds = bounds_of(line, fonts, page_box);
@@ -824,6 +941,38 @@ fn paragraphs(
             prev_step = None;
         }
     }
+    // A one-line paragraph has no edges of its own to tell its alignment: judge it against the text block it sits in
+    // (the edges of the multi-line paragraphs of its direction).
+    let mut blocks: HashMap<usize, (f64, f64)> = HashMap::new();
+    for p in paragraphs.iter().filter(|p| p.lines.len() >= 2) {
+        for m in metrics[p.lines.start as usize..p.lines.end as usize]
+            .iter()
+            .flatten()
+        {
+            let e = blocks.entry(m.cluster).or_insert((m.x0, m.x1));
+            e.0 = e.0.min(m.x0);
+            e.1 = e.1.max(m.x1);
+        }
+    }
+    for p in &mut paragraphs {
+        if p.lines.len() != 1 || p.align != Align::Left {
+            continue;
+        }
+        let Some(m) = metrics[p.lines.start as usize].as_ref() else {
+            continue;
+        };
+        let Some(&(left, right)) = blocks.get(&m.cluster) else {
+            continue;
+        };
+        if m.x0 - left <= m.size {
+            continue; // starts at the block's left edge: left
+        }
+        if (m.x1 - right).abs() <= 2.0 {
+            p.align = Align::Right;
+        } else if ((m.x0 + m.x1) - (left + right)).abs() <= 4.0 {
+            p.align = Align::Center;
+        }
+    }
     for (pi, p) in paragraphs.iter().enumerate() {
         for line in &mut lines[p.lines.start as usize..p.lines.end as usize] {
             line.paragraph = u32::try_from(pi).unwrap_or(u32::MAX);
@@ -872,10 +1021,12 @@ pub fn probe(lines: &PageLines, chars: &[CharGeom], unit: u32) -> Result<TextLin
         },
         paragraph: 0,
         justified: false,
+        align: LineAlign::Left,
         font: LineFont {
             name: String::new(),
             size: 0.0,
             embedded: false,
+            subset: false,
         },
         editable: LineEditable::No {
             reason: TextEditRefusal::Unmapped,
@@ -923,22 +1074,37 @@ pub fn probe(lines: &PageLines, chars: &[CharGeom], unit: u32) -> Result<TextLin
         .find(|(li, _)| ch.is_some_and(|ch| lines.lines[*li].text.contains(ch)))
         .unwrap_or(nearest);
     let line = &lines.lines[pick.0];
+    Ok(line_info(lines, line, 0))
+}
+
+/// The wire shape of `line` in revision `rev` (text capped at `limits::TEXT_EDIT_LINE_CHARS`).
+pub fn line_info(lines: &PageLines, line: &Line, rev: u32) -> TextLineInfo {
     let paragraph = lines.paragraphs.get(line.paragraph as usize);
-    Ok(TextLineInfo {
+    TextLineInfo {
         key: LineKey {
-            rev: 0,
+            rev,
             line: line.index,
         },
-        text: line.text.clone(),
+        text: line
+            .text
+            .chars()
+            .take(limits::TEXT_EDIT_LINE_CHARS)
+            .collect(),
         bounds: line.bounds,
         paragraph: line.paragraph,
         justified: paragraph.is_some_and(|p| p.justified),
+        align: match paragraph.map_or(Align::Left, |p| p.align) {
+            Align::Left => LineAlign::Left,
+            Align::Right => LineAlign::Right,
+            Align::Center => LineAlign::Center,
+        },
         #[allow(clippy::cast_possible_truncation)]
         font: LineFont {
             name: line.font_name.clone(),
             size: line.size as f32,
             embedded: line.embedded,
+            subset: line.subset,
         },
         editable: line.editable,
-    })
+    }
 }

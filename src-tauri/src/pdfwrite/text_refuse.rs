@@ -233,6 +233,7 @@ mod tests {
             font_name: "Test".into(),
             size: 12.0,
             embedded: true,
+            subset: false,
             editable: LineEditable::Same,
         }
     }
