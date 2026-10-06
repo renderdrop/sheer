@@ -2,8 +2,17 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { TextLineInfo } from '../../api/textEdit';
 import { useAnnotations } from '../../stores/annotations';
-import { cancelEdit, commitEdit, openEdit, retryEdit, stepEdit, takeCaret } from './actions';
-import { resetLines } from './lines';
+import {
+  canStepParagraph,
+  cancelEdit,
+  commitEdit,
+  openEdit,
+  retryEdit,
+  stepEdit,
+  stepParagraph,
+  takeCaret,
+} from './actions';
+import { loadLines, resetLines } from './lines';
 import { useTextEdit } from './store';
 
 const api = vi.hoisted(() => ({ textEditLines: vi.fn() }));
@@ -134,5 +143,30 @@ describe('stepEdit', () => {
     await openEdit({ docId: 1, pageId: 0, line: line(1, 'two') });
     await stepEdit(-1);
     expect(useTextEdit.getState().session?.line.key.line).toBe(0);
+  });
+});
+
+describe('Umbrechen', () => {
+  it('applies with scope paragraph when reflow is on', async () => {
+    useTextEdit.getState().set({ reflow: true });
+    await openEdit({ docId: 1, pageId: 0, line: line(0, 'one') });
+    useTextEdit.getState().patchSession({ draft: 'one!' });
+    await commitEdit();
+    expect(apply).toHaveBeenCalledWith(1, expect.objectContaining({ scope: 'paragraph' }));
+    useTextEdit.getState().set({ reflow: false });
+  });
+
+  it('Up and Down commit and open the neighbour in the same paragraph', async () => {
+    const lines = [line(0, 'a', { paragraph: 5 }), line(1, 'b', { paragraph: 5 }), line(2, 'c', { paragraph: 6 })];
+    api.textEditLines.mockResolvedValue({ lines });
+    await loadLines(1, 0);
+    await openEdit({ docId: 1, pageId: 0, line: lines[0] as TextLineInfo });
+    expect(canStepParagraph(-1)).toBe(false);
+    expect(canStepParagraph(1)).toBe(true);
+    useTextEdit.getState().patchSession({ draft: 'a!' });
+    expect(await stepParagraph(1)).toBe(true);
+    expect(apply).toHaveBeenCalledOnce();
+    expect(useTextEdit.getState().session?.line.text).toBe('b');
+    expect(canStepParagraph(1)).toBe(false);
   });
 });

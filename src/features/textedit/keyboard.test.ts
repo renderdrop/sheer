@@ -49,3 +49,12 @@ describe('isFocused', () => {
     expect(isFocused(null, 1, 2, { rev: 0, line: 3 })).toBe(false);
   });
 });
+
+describe('editKeyOf with Umbrechen', () => {
+  it('maps Up and Down only when reflow is on and Shift is not held', () => {
+    expect(editKeyOf(key('ArrowUp'))).toBeNull();
+    expect(editKeyOf(key('ArrowUp'), true)).toBe('lineUp');
+    expect(editKeyOf(key('ArrowDown'), true)).toBe('lineDown');
+    expect(editKeyOf(key('ArrowDown', { shiftKey: true }), true)).toBeNull();
+  });
+});

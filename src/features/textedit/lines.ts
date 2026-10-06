@@ -259,3 +259,21 @@ export function faceOf(name: string): FallbackFace {
   const family = familyFor(name);
   return family === 'serif' ? 'serif' : family === 'monospace' ? 'mono' : 'sans';
 }
+
+/** The lines of a page if they are already loaded for the document's current revision (for the keys, which cannot wait). */
+export function knownLines(docId: number, pageId: number): readonly TextLineInfo[] | null {
+  const entry = entries.get(keyOf(docId, pageId));
+  return entry !== undefined && entry.rev === revOf(docId) ? entry.lines : null;
+}
+
+/** The editable line above or below `line` in its own paragraph (DESIGN 3.10 E7), or `null` at the paragraph's edge. */
+export function paragraphNeighbour(
+  lines: readonly TextLineInfo[],
+  line: TextLineInfo,
+  direction: 1 | -1,
+): TextLineInfo | null {
+  const mates = paragraphOf(lines, line);
+  const at = mates.findIndex((m) => m.key.line === line.key.line);
+  const next = at < 0 ? undefined : mates[at + direction];
+  return next !== undefined && isEditable(next) ? next : null;
+}

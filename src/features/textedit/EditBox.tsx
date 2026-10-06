@@ -1,13 +1,24 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState, type CSSProperties, type KeyboardEvent } from 'react';
 
 import { MAX_LINE_CHARS } from '../../api/textEdit';
+import { textEditPreview, type TextPreview } from '../../api/textPreview';
 import type { Rect } from '../../api/wire';
 import { runAction } from '../../actions/dispatch';
 import { useT } from '../../i18n';
 import { subscribeViewRect } from '../viewer/scrollBridge';
-import { cancelEdit, commitAndClose, commitEdit, stepEdit, takeCaret, type Caret } from './actions';
+import {
+  canStepParagraph,
+  cancelEdit,
+  commitAndClose,
+  commitEdit,
+  stepEdit,
+  stepParagraph,
+  takeCaret,
+  type Caret,
+} from './actions';
 import { editKeyOf } from './keyboard';
 import { distinctChars, familyFor, overflowOf, textSpan, type Growth } from './lines';
+import { createPreviewScheduler, inkSpan, previewScale, scaleXFor, type PreviewScheduler } from './preview';
 import { useTextEdit, type EditSession } from './store';
 import './textedit.css';
 
@@ -107,6 +118,27 @@ export interface EditBoxProps {
   growth: Growth;
   /** The unrotated page's width in points, for nothing but the hatch (kept for the page edge). */
   pageWidth: number;
+  /** The boxes of the line's paragraph: what the preview's mask covers with Umbrechen on. Default: the line. */
+  paragraph?: readonly Rect[];
+  /** Screen pixels per point of the page, for the preview's picture scale. */
+  pxPerPt?: number;
+}
+
+interface Frame {
+  url: string;
+  rect: Rect;
+  pxPerPt: number;
+}
+
+/** The width of the text of `el` in layout pixels (without the page's scale and the box's own `scaleX`). */
+function textWidthOf(el: HTMLElement): number | null {
+  if (el.firstChild === null || el.offsetWidth <= 0) return null;
+  const outer = el.getBoundingClientRect();
+  const range = document.createRange();
+  range.selectNodeContents(el);
+  const inner = range.getBoundingClientRect();
+  const k = outer.width / el.offsetWidth;
+  return k > 0 && inner.width > 0 ? inner.width / k : null;
 }
 
 /**
@@ -114,7 +146,7 @@ export interface EditBoxProps {
  * CSS family of the line's font, sized to the line box; Apply renders the real result. In page space (the parent is scaled).
  * Overflow past the limit shows the danger marker and the redaction hatch. The paragraph rule is `aria-hidden`.
  */
-export function EditBox({ session, growth, pageWidth }: EditBoxProps) {
+export function EditBox({ session, growth, pageWidth, paragraph, pxPerPt = 1 }: EditBoxProps) {
   const t = useT();
   const ref = useRef<HTMLDivElement>(null);
   const ruleRef = useRef<HTMLDivElement>(null);
@@ -124,6 +156,14 @@ export function EditBox({ session, growth, pageWidth }: EditBoxProps) {
   const failed = status === 'error';
   const [measured, setMeasured] = useState(line.box.w);
   const family = familyFor(line.font.name);
+  const reflow = useTextEdit((s) => s.reflow);
+  const [frame, setFrame] = useState<Frame | null>(null);
+  const [scaleX, setScaleX] = useState(1);
+  const imgRef = useRef<HTMLImageElement>(null);
+  const latest = useRef({ draft, reflow, pxPerPt });
+  const scheduler = useRef<PreviewScheduler | null>(null);
+  const first = useRef(true);
+  const url = useRef<string | null>(null);
 
   // The text goes in once, by hand: React must not re-render children of a contenteditable the user is changing.
   useLayoutEffect(() => {
@@ -134,6 +174,76 @@ export function EditBox({ session, growth, pageWidth }: EditBoxProps) {
     placeCaret(el, takeCaret());
     // eslint-disable-next-line react-hooks/exhaustive-deps -- the box is keyed by its line: this runs once per line
   }, []);
+
+  useLayoutEffect(() => {
+    latest.current = { draft, reflow, pxPerPt };
+  }, [draft, reflow, pxPerPt]);
+
+  // The live preview (ADR-129 section 1): the backend draws the edited line; the box keeps the real text, transparent over it.
+  useEffect(() => {
+    const onPreview = (p: TextPreview) => {
+      if (typeof URL.createObjectURL !== 'function') return;
+      const next = URL.createObjectURL(new Blob([p.png as BlobPart], { type: 'image/png' }));
+      if (url.current !== null) URL.revokeObjectURL(url.current);
+      url.current = next;
+      setFrame({ url: next, rect: p.rect, pxPerPt: p.pxPerPt });
+      const patch: Partial<EditSession> = { overflowPt: Math.round(p.overflowPt * 10) / 10 };
+      if (p.fallback !== null) patch.fallback = p.fallback;
+      useTextEdit.getState().patchSession(patch);
+    };
+    const made = createPreviewScheduler({
+      run: (generation) =>
+        textEditPreview({
+          docId: session.docId,
+          pageId: session.pageId,
+          key: line.key,
+          text: latest.current.draft,
+          fit: 'keepStart',
+          scope: latest.current.reflow ? 'paragraph' : 'line',
+          generation,
+          scale: previewScale(latest.current.pxPerPt, window.devicePixelRatio || 1),
+        }),
+      onPreview,
+    });
+    scheduler.current = made;
+    return () => {
+      made.dispose();
+      scheduler.current = null;
+      if (url.current !== null) URL.revokeObjectURL(url.current);
+      url.current = null;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- one scheduler per open line (the box is keyed by it)
+  }, []);
+  useEffect(() => {
+    if (first.current) {
+      first.current = false;
+      return;
+    }
+    scheduler.current?.schedule();
+  }, [draft, reflow]);
+
+  // Where the picture's glyphs are: the CSS text is stretched to the same width, so caret and selection land on them.
+  const onFrameLoad = () => {
+    const img = imgRef.current;
+    const el = ref.current;
+    if (img === null || el === null || frame === null) return;
+    let width: number | null = null;
+    try {
+      const canvas = document.createElement('canvas');
+      canvas.width = img.naturalWidth;
+      canvas.height = img.naturalHeight;
+      const context = canvas.getContext('2d', { willReadFrequently: true });
+      if (context !== null && canvas.width > 0 && canvas.height > 0) {
+        context.drawImage(img, 0, 0);
+        const ink = inkSpan(context.getImageData(0, 0, canvas.width, canvas.height).data, canvas.width, canvas.height);
+        if (ink !== null) width = (ink.right - ink.left) / frame.pxPerPt;
+      }
+    } catch {
+      width = null;
+    }
+    const css = textWidthOf(el);
+    setScaleX(width === null || css === null ? 1 : scaleXFor(width, css));
+  };
 
   // After a failed or finished write the text is editable again, and the caret comes back.
   const wasBusy = useRef(false);
@@ -173,9 +283,11 @@ export function EditBox({ session, growth, pageWidth }: EditBoxProps) {
     const next = width > 0 ? width : line.box.w;
 
     setMeasured(next);
+    // A preview's own answer replaces the CSS measurement.
+    if (frame !== null) return;
     const over = Math.round(overflowOf(growth, next) * 10) / 10;
     if (over !== useTextEdit.getState().session?.overflowPt) useTextEdit.getState().patchSession({ overflowPt: over });
-  }, [draft, growth, line.box.w]);
+  }, [draft, growth, line.box.w, frame]);
 
   useLayoutEffect(() => {
     const el = ref.current;
@@ -227,7 +339,16 @@ export function EditBox({ session, growth, pageWidth }: EditBoxProps) {
       event.preventDefault();
       return;
     }
-    switch (editKeyOf(event.nativeEvent)) {
+    switch (editKeyOf(event.nativeEvent, reflow)) {
+      case 'lineUp':
+      case 'lineDown': {
+        const direction = event.key === 'ArrowUp' ? -1 : 1;
+        if (canStepParagraph(direction)) {
+          event.preventDefault();
+          void stepParagraph(direction);
+        }
+        break;
+      }
       case 'commit':
         event.preventDefault();
         void commitEdit();
@@ -271,12 +392,36 @@ export function EditBox({ session, growth, pageWidth }: EditBoxProps) {
       : growth.align === 'center'
         ? { left: box.x + box.w / 2, transform: 'translateX(-50%)' }
         : { left: box.x };
+  const stretch = frame !== null && scaleX !== 1 ? ` scaleX(${scaleX})` : '';
+  const masks = reflow && paragraph !== undefined && paragraph.length > 0 ? paragraph : [line.box];
   // Without the highlight API the whole line of a substitute carries the mark.
   const dotted = (line.editable.type === 'fallback' || session.fallback !== null) && !perChar;
   const rule = growth.rule;
 
   return (
     <>
+      {frame !== null &&
+        masks.map((m) => (
+          <div
+            key={`${m.x}:${m.y}`}
+            aria-hidden="true"
+            data-textedit-mask=""
+            className="bg-page"
+            style={{ ...CHROME, left: m.x, top: m.y, width: m.w, height: m.h }}
+          />
+        ))}
+      {frame !== null && (
+        <img
+          ref={imgRef}
+          src={frame.url}
+          alt=""
+          aria-hidden="true"
+          data-textedit-preview=""
+          draggable={false}
+          onLoad={onFrameLoad}
+          style={{ ...CHROME, left: frame.rect.x, top: frame.rect.y, width: frame.rect.w, height: frame.rect.h }}
+        />
+      )}
       {rule !== null && (
         <div
           ref={ruleRef}
@@ -298,7 +443,7 @@ export function EditBox({ session, growth, pageWidth }: EditBoxProps) {
         data-protect=""
         role="textbox"
         aria-label={t('editText.aria.line', { line: line.key.line + 1, page: session.pageNumber })}
-        aria-multiline={false}
+        aria-multiline={reflow}
         aria-busy={busy || undefined}
         aria-invalid={failed || undefined}
         aria-describedby={hintId}
@@ -309,12 +454,19 @@ export function EditBox({ session, growth, pageWidth }: EditBoxProps) {
         data-testid="textedit-box"
         data-textedit-box=""
         data-align={growth.align}
-        className={`bg-page selection:bg-(--color-doc-text-select) ${failed ? 'shadow-none' : 'shadow-(--ring-focus)'}`}
+        className={`${frame === null ? 'bg-page' : 'bg-transparent'} selection:bg-(--color-doc-text-select) ${failed ? 'shadow-none' : 'shadow-(--ring-focus)'}`}
         onInput={onInput}
         onKeyDown={onKeyDown}
         style={{
           position: 'absolute',
           ...anchorStyle,
+          ...(stretch === ''
+            ? {}
+            : {
+                transform: `${anchorStyle.transform ?? ''}${stretch}`.trim(),
+                transformOrigin:
+                  growth.align === 'right' ? 'right center' : growth.align === 'center' ? 'center' : 'left center',
+              }),
           top: box.y,
           minWidth: box.w,
           height: box.h,
@@ -322,7 +474,7 @@ export function EditBox({ session, growth, pageWidth }: EditBoxProps) {
           fontSize: line.font.size,
           fontFamily: family,
           whiteSpace: 'pre',
-          color: 'var(--color-ink)',
+          color: frame === null ? 'var(--color-ink)' : 'transparent',
           caretColor: busy ? 'transparent' : 'var(--color-ink)',
           // Active: the focus pair; failed: a 2 px danger outline replaces it (DESIGN 3.10 E6).
           outline: failed ? `${px(2)} solid var(--color-danger)` : 'none',

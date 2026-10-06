@@ -29,7 +29,7 @@ import {
 import { cancelEdit, commitEdit, openEdit } from './actions';
 import { EditBox } from './EditBox';
 import { isFocused, useLineFocus, useLineKeys } from './keyboard';
-import { growthOf, hitLine, isEditable, useLines } from './lines';
+import { growthOf, hitLine, isEditable, paragraphOf, useLines } from './lines';
 import { useTextEdit } from './store';
 
 const px = (n: number) => `calc(${n}px / var(--page-scale, 1))`;
@@ -198,6 +198,11 @@ function ReadyLayer({
     [lines, session, page],
   );
 
+  const paragraph = useMemo(
+    () => (session === null || lines === null ? undefined : paragraphOf(lines, session.line).map((l) => l.box)),
+    [lines, session],
+  );
+
   const hovered = hover !== null && !(session !== null && session.line.key.line === hover.key.line) ? hover : null;
   const focused =
     session === null && lines !== null ? (lines.find((l) => isFocused(focus, docId, pageIndex, l.key)) ?? null) : null;
@@ -229,6 +234,8 @@ function ReadyLayer({
             session={session}
             growth={growth}
             pageWidth={page[0]}
+            paragraph={paragraph}
+            pxPerPt={pxPerPt}
           />
         )}
       </div>

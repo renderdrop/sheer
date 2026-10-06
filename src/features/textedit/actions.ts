@@ -2,7 +2,7 @@ import type { TextLineInfo } from '../../api/textEdit';
 import { useAnnotations } from '../../stores/annotations';
 import { pageNumberOf } from '../../stores/pages';
 import { jumpToHit } from '../search/jump';
-import { distinctChars, faceOf, loadLines, neighbourLine } from './lines';
+import { distinctChars, faceOf, knownLines, loadLines, neighbourLine, paragraphNeighbour } from './lines';
 import { useTextEdit } from './store';
 
 /**
@@ -102,7 +102,7 @@ export async function commitAndClose(): Promise<boolean> {
       key: session.line.key,
       text: session.draft,
       fit: 'keepStart',
-      scope: 'line',
+      scope: store.reflow ? 'paragraph' : 'line',
     });
     const original = new Set(session.line.text);
     const inserted = distinctChars(session.draft).filter((c) => !original.has(c));
@@ -164,4 +164,33 @@ export async function stepEdit(direction: 1 | -1): Promise<void> {
   const wanted = target.line.key.line - shift;
   const next = fresh.find((l) => l.key.line === wanted && l.editable.type !== 'no');
   if (next !== undefined) await openEdit({ docId, pageId: target.pageId, line: next, caret: 'end', reveal: true });
+}
+
+/** Whether Up or Down (Umbrechen on) has a line in the paragraph to go to; the key is the caret's when not. */
+export function canStepParagraph(direction: 1 | -1): boolean {
+  const session = useTextEdit.getState().session;
+  if (session === null) return false;
+  const lines = knownLines(session.docId, session.pageId);
+  return lines !== null && paragraphNeighbour(lines, session.line, direction) !== null;
+}
+
+/**
+ * Up and Down with Umbrechen on: commits the open line (the paragraph, one step), then opens the line above or below in the same
+ * paragraph. `false` when there is none or the commit failed.
+ */
+export async function stepParagraph(direction: 1 | -1): Promise<boolean> {
+  const session = useTextEdit.getState().session;
+  if (session === null) return false;
+  const { docId, pageId, line } = session;
+  const before = knownLines(docId, pageId);
+  const target = before === null ? null : paragraphNeighbour(before, line, direction);
+  if (before === null || target === null) return false;
+  if (!(await commitAndClose())) return false;
+  // A reflow can add or remove lines of the paragraph: the lines after it move by the difference, the ones before stay.
+  const fresh = await loadLines(docId, pageId);
+  const shift = direction === 1 ? fresh.length - before.length : 0;
+  const wanted = target.key.line + shift;
+  const next = fresh.find((l) => l.key.line === wanted && l.editable.type !== 'no');
+  if (next === undefined) return false;
+  return openEdit({ docId, pageId, line: next, caret: 'end' });
 }

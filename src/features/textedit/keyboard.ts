@@ -10,7 +10,8 @@ import { openEdit } from './actions';
 import { loadLines, neighbourLine } from './lines';
 
 /** What a key does inside the edit box (DESIGN 3.10 E1, E7). */
-export type EditKey = 'commit' | 'cancel' | 'next' | 'previous' | 'save' | 'undoTyping' | 'ignore';
+export type EditKey =
+  'commit' | 'cancel' | 'next' | 'previous' | 'save' | 'undoTyping' | 'ignore' | 'lineUp' | 'lineDown';
 
 export interface KeyLike {
   key: string;
@@ -26,7 +27,7 @@ export interface KeyLike {
  * The meaning of a key press in the box, `null` for the keys that type or move the caret natively (arrows, Home, End, Ctrl/Cmd+A,
  * word jumps, Shift selection). Composition keys are never ours. Shift+Enter is ignored: no new paragraphs in v1.5.
  */
-export function editKeyOf(e: KeyLike): EditKey | null {
+export function editKeyOf(e: KeyLike, reflow = false): EditKey | null {
   if (e.isComposing === true || e.keyCode === 229) return null;
   const mod = e.ctrlKey || e.metaKey;
   const key = e.key.length === 1 ? e.key.toLowerCase() : e.key;
@@ -39,6 +40,9 @@ export function editKeyOf(e: KeyLike): EditKey | null {
   if (key === 'Enter') return e.shiftKey ? 'ignore' : 'commit';
   if (key === 'Escape') return 'cancel';
   if (key === 'Tab') return e.shiftKey ? 'previous' : 'next';
+  // With Umbrechen on, Up and Down move between the lines of the paragraph (E7); otherwise they are the caret's.
+  if (reflow && !e.shiftKey && key === 'ArrowUp') return 'lineUp';
+  if (reflow && !e.shiftKey && key === 'ArrowDown') return 'lineDown';
   return null;
 }
 
