@@ -118,4 +118,22 @@ describe('FallbackNotice', () => {
     expect(useTextEdit.getState().notice).toBeNull();
     expect(document.querySelector('[data-surface="textedit-notice"]')).toBeNull();
   });
+  it('shows after Apply, anchored to the closed box, and protects that rect', async () => {
+    useTextEdit.setState({
+      session: null,
+      anchor: null,
+      noticeAnchor: { x: 100, y: 200, w: 80, h: 14 },
+      notice: { kind: 'notEmbedded', font: 'Helvetica-Bold', face: 'sans', chars: [] },
+    });
+    const { user } = setup(<FallbackNotice />);
+    const notice = await screen.findByRole('region', { name: /./ });
+    expect(notice.textContent).toContain('Arimo');
+    const guard = document.querySelector<HTMLElement>('[data-protect="notice"]');
+    expect(guard?.style.left).toBe('100px');
+    expect(guard?.style.width).toBe('80px');
+    await user.click(screen.getByRole('button', { name: 'Dismiss tip' }));
+    expect(useTextEdit.getState().notice).toBeNull();
+    expect(useTextEdit.getState().noticeAnchor).toBeNull();
+    expect(document.querySelector('[data-surface="textedit-notice"]')).toBeNull();
+  });
 });

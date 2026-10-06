@@ -67,6 +67,7 @@ export async function openEdit(target: OpenTarget): Promise<boolean> {
     refusal: null,
     anchor: null,
     rule: null,
+    noticeAnchor: null,
     notice: fallback === null ? null : { kind: 'notEmbedded', font: line.font.name, face: fallback, chars: [] },
     session: {
       docId,
@@ -90,7 +91,7 @@ export async function commitAndClose(): Promise<boolean> {
   if (session.status === 'busy') return false;
   if (session.draft === session.line.text) {
     close();
-    store.set({ notice: null });
+    store.set({ notice: null, noticeAnchor: null });
     return true;
   }
   store.patchSession({ status: 'busy' });
@@ -106,17 +107,21 @@ export async function commitAndClose(): Promise<boolean> {
     const original = new Set(session.line.text);
     const inserted = distinctChars(session.draft).filter((c) => !original.has(c));
     const substitute = session.line.editable.type === 'fallback' ? session.line.editable.face : null;
+    const lastBox = useTextEdit.getState().anchor;
+    const missing = changes.warnings?.includes('fontFallback') === true && substitute === null && inserted.length > 0;
+    // A notice that outlives the box (a substitute font, missing glyphs) keeps the box's last rect as its anchor.
+    const kept = substitute !== null ? useTextEdit.getState().notice : null;
     close();
     useTextEdit.getState().set({
-      notice:
-        changes.warnings?.includes('fontFallback') === true && substitute === null && inserted.length > 0
-          ? {
-              kind: 'missingGlyphs',
-              font: session.line.font.name,
-              face: faceOf(session.line.font.name),
-              chars: inserted,
-            }
-          : null,
+      noticeAnchor: missing || kept !== null ? lastBox : null,
+      notice: missing
+        ? {
+            kind: 'missingGlyphs',
+            font: session.line.font.name,
+            face: faceOf(session.line.font.name),
+            chars: inserted,
+          }
+        : kept,
     });
     return true;
   } catch {

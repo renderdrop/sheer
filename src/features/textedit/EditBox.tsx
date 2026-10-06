@@ -9,6 +9,7 @@ import { cancelEdit, commitAndClose, commitEdit, stepEdit, takeCaret, type Caret
 import { editKeyOf } from './keyboard';
 import { distinctChars, familyFor, overflowOf, textSpan, type Growth } from './lines';
 import { useTextEdit, type EditSession } from './store';
+import './textedit.css';
 
 /** One CSS px, in page space (the layer is scaled by `--page-scale`). */
 const px = (n: number) => `calc(${n}px / var(--page-scale, 1))`;
@@ -65,6 +66,42 @@ function placeCaret(el: HTMLElement, caret: Caret): void {
   selection.addRange(range);
 }
 
+const HIGHLIGHT = 'sheer-fallback';
+
+interface HighlightRegistry {
+  set: (name: string, value: unknown) => void;
+  delete: (name: string) => void;
+}
+
+/** The Custom Highlight API, where the webview has it (it underlines single characters of a contenteditable). */
+function highlights(): HighlightRegistry | null {
+  const registry = (globalThis as { CSS?: { highlights?: unknown } }).CSS?.highlights;
+  const ctor = (globalThis as { Highlight?: unknown }).Highlight;
+  return registry != null && typeof ctor === 'function' ? (registry as HighlightRegistry) : null;
+}
+
+/** Marks `chars` of the text node of `el` with the dotted substitute underline; `false` when the API is missing. */
+function markChars(el: HTMLElement, chars: readonly string[]): boolean {
+  const registry = highlights();
+  if (registry === null) return false;
+  const Ctor = (globalThis as unknown as { Highlight: new (...ranges: Range[]) => unknown }).Highlight;
+  const text = el.firstChild;
+  const ranges: Range[] = [];
+  if (text !== null && chars.length > 0) {
+    const set = new Set(chars);
+    const value = text.textContent ?? '';
+    for (let i = 0; i < value.length; i += 1) {
+      if (!set.has(value.charAt(i))) continue;
+      const range = document.createRange();
+      range.setStart(text, i);
+      range.setEnd(text, i + 1);
+      ranges.push(range);
+    }
+  }
+  registry.set(HIGHLIGHT, new Ctor(...ranges));
+  return true;
+}
+
 export interface EditBoxProps {
   session: EditSession;
   growth: Growth;
@@ -111,6 +148,22 @@ export function EditBox({ session, growth, pageWidth }: EditBoxProps) {
       }
     }
   }, [busy]);
+
+  // Substitute glyphs carry the dotted mark while editing, once the characters are known (E4).
+  const markers = session.fallback?.chars;
+  const [perChar, setPerChar] = useState(false);
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (el === null) return;
+    const done = markers !== undefined && markChars(el, markers);
+    setPerChar((old) => (old === done ? old : done));
+  }, [markers, draft]);
+  useEffect(
+    () => () => {
+      highlights()?.delete(HIGHLIGHT);
+    },
+    [],
+  );
 
   // The width of the draft decides the overflow; the box and the rule tell the mini bar where they are on screen.
   useLayoutEffect(() => {
@@ -218,7 +271,8 @@ export function EditBox({ session, growth, pageWidth }: EditBoxProps) {
       : growth.align === 'center'
         ? { left: box.x + box.w / 2, transform: 'translateX(-50%)' }
         : { left: box.x };
-  const dotted = line.editable.type === 'fallback';
+  // Without the highlight API the whole line of a substitute carries the mark.
+  const dotted = (line.editable.type === 'fallback' || session.fallback !== null) && !perChar;
   const rule = growth.rule;
 
   return (
@@ -254,6 +308,7 @@ export function EditBox({ session, growth, pageWidth }: EditBoxProps) {
         tabIndex={0}
         data-testid="textedit-box"
         data-textedit-box=""
+        data-align={growth.align}
         className={`bg-page selection:bg-(--color-doc-text-select) ${failed ? 'shadow-none' : 'shadow-(--ring-focus)'}`}
         onInput={onInput}
         onKeyDown={onKeyDown}
@@ -278,7 +333,8 @@ export function EditBox({ session, growth, pageWidth }: EditBoxProps) {
                 textDecorationLine: 'underline',
                 textDecorationStyle: 'dotted',
                 textDecorationColor: 'var(--text-secondary)',
-                textUnderlineOffset: 2,
+                textDecorationThickness: 'var(--hairline)',
+                textUnderlineOffset: 'var(--focus-offset)',
               }
             : {}),
         }}
@@ -324,8 +380,18 @@ function Hatch({ from, to, box }: { from: number; to: number; box: Rect }) {
   );
 }
 
-/** The 2 px danger marker at the limit. */
+/**
+ * The 2 px danger marker at the limit: the full line height with a small cap at the top and bottom, so it never reads as the caret
+ * (a plain 2 px bar at the text position).
+ */
 function Marker({ at, box }: { at: number; box: Rect }) {
+  const cap: CSSProperties = {
+    ...CHROME,
+    left: px(-3),
+    width: px(8),
+    height: px(2),
+    background: 'var(--color-danger)',
+  };
   return (
     <div
       aria-hidden="true"
@@ -338,6 +404,9 @@ function Marker({ at, box }: { at: number; box: Rect }) {
         height: box.h,
         background: 'var(--color-danger)',
       }}
-    />
+    >
+      <div data-textedit-limit-cap="" style={{ ...cap, top: px(-1) }} />
+      <div data-textedit-limit-cap="" style={{ ...cap, bottom: px(-1) }} />
+    </div>
   );
 }

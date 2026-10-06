@@ -4,8 +4,11 @@ import { createPortal } from 'react-dom';
 
 import { DURATION, spring } from '../../lib/motion';
 import { useMiniBarDock } from '../minibar/dock';
-import { placeBar, unionOf, type Box, type Placement } from '../minibar/placement';
+import { unionOf, type Box, type Placement } from '../minibar/placement';
+import { obstaclesOf, placeEditBar } from './barPlacement';
+import { loadLines, type Align } from './lines';
 import { boxOf } from './model';
+import type { TextLineInfo } from '../../api/textEdit';
 import { focusEditBox, TextEditBar } from './TextEditBar';
 import { useTextEdit } from './store';
 
@@ -30,6 +33,20 @@ export function EditBarHost() {
   const wrapRef = useRef<HTMLDivElement>(null);
   const barRef = useRef<HTMLDivElement>(null);
   const [placement, setPlacement] = useState<Placement | null>(null);
+  // The page's other lines, to put the bar where it covers the least text.
+  const lineKey = useTextEdit((s) => (s.session === null ? null : `${s.session.docId}:${s.session.pageId}`));
+  const [lines, setLines] = useState<readonly TextLineInfo[]>([]);
+  useEffect(() => {
+    const open = useTextEdit.getState().session;
+    if (open === null) return;
+    let current = true;
+    void loadLines(open.docId, open.pageId).then((all) => {
+      if (current) setLines(all);
+    });
+    return () => {
+      current = false;
+    };
+  }, [lineKey]);
   const target = useMiniBarDock((s) => s.target);
   const setDocked = useMiniBarDock((s) => s.setDocked);
 
@@ -49,11 +66,15 @@ export function EditBarHost() {
     const box = unionOf([boxOf(anchor), ...(rule === null ? [] : [boxOf(rule)])]);
     if (box === null) return;
     const size = bar.getBoundingClientRect();
-    const next = placeBar(box, { width: size.width, height: size.height }, bounds);
+    const open = useTextEdit.getState().session;
+    const attr = document.querySelector(EDIT_BOX)?.getAttribute('data-align');
+    const align: Align = attr === 'right' || attr === 'center' ? attr : 'left';
+    const obstacles = open === null ? [] : obstaclesOf(lines, open.line, anchor, align);
+    const next = placeEditBar(box, { width: size.width, height: size.height }, bounds, obstacles);
     const local: Placement =
       next.mode === 'dock' ? next : { mode: next.mode, left: next.left - wrapBox.left, top: next.top - wrapBox.top };
     setPlacement((old) => (same(old, local) ? old : local));
-  }, [anchor, rule]);
+  }, [anchor, rule, lines]);
 
   useLayoutEffect(() => {
     measure();

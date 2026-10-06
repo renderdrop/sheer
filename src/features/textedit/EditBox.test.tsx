@@ -90,6 +90,45 @@ describe('EditBox', () => {
     // jsdom has no layout: the width stays the box's own, so no hatch; the marker needs a measured overflow.
     expect(container.querySelector('[data-textedit-rule]')).toBeNull();
   });
+  it('puts the overflow on the redaction hatch and a capped marker at the limit', () => {
+    const width = vi.spyOn(HTMLElement.prototype, 'offsetWidth', 'get').mockReturnValue(200);
+    const { container } = mount({ overflowPt: 10 });
+    width.mockRestore();
+    const hatch = container.querySelector<HTMLElement>('[data-textedit-hatch]');
+    expect(hatch?.style.background).toBe('var(--color-doc-redact-fill)');
+    const marker = container.querySelector<HTMLElement>('[data-textedit-limit]');
+    expect(marker?.style.height).not.toBe('');
+    expect(marker?.querySelectorAll('[data-textedit-limit-cap]')).toHaveLength(2);
+  });
+  it('keeps the alignment anchor of the line while the text grows', () => {
+    const right = { ...line, align: 'right' } as TextLineInfo;
+    useTextEdit.setState({ session: { ...session, line: right } });
+    render(<EditBox session={{ ...session, line: right }} growth={growthOf([right], right, 200)} pageWidth={200} />);
+    const box = screen.getByTestId('textedit-box');
+    expect(box.getAttribute('data-align')).toBe('right');
+    expect(box.style.transform).toBe('translateX(-100%)');
+    expect(box.style.left).toBe('60px');
+  });
+  it('underlines substitute text with the dotted mark', () => {
+    mount({ fallback: { face: 'serif', chars: ['H', 'e'] } });
+    const box = screen.getByTestId('textedit-box');
+    expect(box.style.textDecorationStyle).toBe('dotted');
+    expect(box.style.textUnderlineOffset).toBe('var(--focus-offset)');
+  });
+  it('marks single characters through the highlight API when there is one', () => {
+    const set = vi.fn();
+    const g = globalThis as unknown as Record<string, unknown>;
+    g.CSS = { highlights: { set, delete: vi.fn() } };
+    g.Highlight = class {};
+    try {
+      mount({ fallback: { face: 'serif', chars: ['H'] } });
+      expect(set).toHaveBeenCalledWith('sheer-fallback', expect.anything());
+      expect(screen.getByTestId('textedit-box').style.textDecorationStyle).toBe('');
+    } finally {
+      delete g.CSS;
+      delete g.Highlight;
+    }
+  });
   it('marks an error with aria-invalid', () => {
     mount({ status: 'error' });
     expect(screen.getByTestId('textedit-box').getAttribute('aria-invalid')).toBe('true');

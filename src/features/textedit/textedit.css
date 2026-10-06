@@ -1,0 +1,7 @@
+/* Substitute-font characters of the open line (DESIGN 3.10 E4): the dotted mark of --fallback-underline, drawn by the highlight. */
+::highlight(sheer-fallback) {
+  text-decoration-line: underline;
+  text-decoration-style: dotted;
+  text-decoration-color: var(--text-secondary);
+  text-underline-offset: var(--focus-offset);
+}

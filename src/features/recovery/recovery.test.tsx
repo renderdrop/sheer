@@ -71,6 +71,17 @@ describe('the recovery banner (DESIGN 3.50)', () => {
     expect(within(region).queryAllByRole('group')).toHaveLength(0);
   });
 
+  it('keeps the toggle on the summary line, away from the bulk actions', async () => {
+    api.listRecoveries.mockResolvedValue([entry(1), entry(2), entry(3)]);
+    setup(<RecoveryBanner />);
+    const region = await screen.findByRole('region');
+    const toggle = within(region).getByRole('button', { name: 'Show all' });
+    const status = within(region).getByRole('status');
+    expect(status.parentElement?.contains(toggle)).toBe(true);
+    const discardAll = within(region).getByRole('button', { name: 'Discard all' });
+    expect(toggle.parentElement?.contains(discardAll)).toBe(false);
+  });
+
   it('shows the rows at two records without a toggle', async () => {
     api.listRecoveries.mockResolvedValue([entry(1), entry(2)]);
     setup(<RecoveryBanner />);

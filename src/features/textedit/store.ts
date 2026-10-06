@@ -49,12 +49,14 @@ interface TextEditState {
   refusal: Refusal | null;
   /** Set by P1 when an edit opens on a non-embedded font or an apply answers `fontFallback`; cleared on cancel, the next open or Hide. */
   notice: FallbackNotice | null;
+  /** Where the edit box was when it closed with a notice still to show (client px): the notice's anchor and protected rect after Apply. */
+  noticeAnchor?: Rect | null;
   set: (patch: Partial<Omit<TextEditState, 'set' | 'reset'>>) => void;
   patchSession: (patch: Partial<EditSession>) => void;
   reset: () => void;
 }
 
-const FRESH = { session: null, anchor: null, rule: null, refusal: null, notice: null };
+const FRESH = { session: null, anchor: null, rule: null, refusal: null, notice: null, noticeAnchor: null };
 
 export const useTextEdit = create<TextEditState>()((set) => ({
   ...FRESH,

@@ -57,6 +57,26 @@ describe('growth', () => {
     const centre = [line(0, [100, 100, 100, 8]), line(1, [130, 112, 40, 8])];
     expect(alignOf(centre, centre[1] as TextLineInfo)).toBe('center');
   });
+  it('spans every line of the paragraph with the rule', () => {
+    const lines = [
+      line(0, [50, 100, 200, 8]),
+      line(1, [50, 112, 190, 8]),
+      line(2, [50, 124, 195, 8]),
+      line(3, [50, 136, 80, 8]),
+      line(4, [50, 170, 100, 8], 1),
+    ];
+    for (const mate of lines.slice(0, 4)) {
+      expect(growthOf(lines, mate, 612).rule).toEqual({ x: 44, y: 100, w: 2, h: 44 });
+    }
+    expect(growthOf(lines, lines[4] as TextLineInfo, 612).rule).toBeNull();
+  });
+  it('lets a stated alignment of the line win', () => {
+    const only = line(0, [100, 100, 100, 8]);
+    const stated = { ...only, align: 'right' } as TextLineInfo;
+    expect(alignOf([stated], stated)).toBe('right');
+    expect(growthOf([stated], stated, 612).align).toBe('right');
+    expect(alignOf([only], only)).toBe('left');
+  });
   it('measures overflow and the span of the text', () => {
     const only = [line(0, [50, 100, 100, 8])];
     const g = growthOf(only, only[0] as TextLineInfo, 200);

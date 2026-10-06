@@ -56,7 +56,7 @@ function Guard({ rect }: { rect: { x: number; y: number; w: number; h: number } 
   );
 }
 
-function Card({ notice, button }: { notice: NoticeState; button: HTMLElement }) {
+function Card({ notice, button, ghost }: { notice: NoticeState; button: HTMLElement; ghost: boolean }) {
   const t = useT();
   const positioner = useRef<HTMLDivElement>(null);
   const present = useIsPresent();
@@ -79,13 +79,14 @@ function Card({ notice, button }: { notice: NoticeState; button: HTMLElement }) 
 
   // The button is described by the notice while it shows.
   useEffect(() => {
+    if (ghost) return;
     button.setAttribute('aria-describedby', textId);
     return () => {
       if (button.getAttribute('aria-describedby') === textId) button.removeAttribute('aria-describedby');
     };
-  }, [button, textId]);
+  }, [button, textId, ghost]);
 
-  const hide = () => useTextEdit.getState().set({ notice: null });
+  const hide = () => useTextEdit.getState().set({ notice: null, noticeAnchor: null });
 
   return (
     <div
@@ -102,7 +103,7 @@ function Card({ notice, button }: { notice: NoticeState; button: HTMLElement }) 
           event.preventDefault();
           event.stopPropagation();
           hide();
-          button.focus({ preventScroll: true });
+          if (!ghost) button.focus({ preventScroll: true });
         }}
         className="bg-panel border border-border-subtle shadow-floating flex w-(--note-width) max-w-full items-center gap-2 rounded-panel p-3 text-md text-text"
       >
@@ -117,23 +118,39 @@ function Card({ notice, button }: { notice: NoticeState; button: HTMLElement }) 
 }
 
 /**
- * The one info notice of a line edit on a substitute font (DESIGN 3.10 E4, notice queue 3.9 Q8 priority 3). Anchored to the bar's
- * Font button; the edit box, the paragraph rule and the whole bar are protected, so it waits (hidden) until it fits. It ends with
- * Hide, Esc, commit or cancel (the edit layer clears `notice`). Mounted once, with the tips.
+ * The one info notice of a line edit on a substitute font (DESIGN 3.10 E4, notice queue 3.9 Q8 priority 3). While the box is open it
+ * is anchored to the bar's Font button; after Apply the bar is gone, so the box's last rect (`noticeAnchor`) is the anchor and the
+ * protected rect. The edit box, the paragraph rule and the whole bar are protected, so it waits (hidden) until it fits. It ends with
+ * Hide, Esc, cancel or the next open (the edit layer clears `notice`). Mounted once, with the tips.
  */
 export function FallbackNotice() {
   const notice = useTextEdit((s) => s.notice);
   const anchor = useTextEdit((s) => s.anchor);
   const rule = useTextEdit((s) => s.rule);
+  const kept = useTextEdit((s) => s.noticeAnchor ?? null);
   const session = useTextEdit((s) => s.session !== null);
   const button = useFontButton(notice !== null && session);
-  const shown = useNoticeSlot('textedit-notice', 'info', notice !== null && session && button !== null);
+  const afterApply = notice !== null && !session && kept !== null;
+  const [ghost, setGhost] = useState<HTMLElement | null>(null);
+  const target = session ? button : afterApply ? ghost : null;
+  const shown = useNoticeSlot('textedit-notice', 'info', notice !== null && target !== null);
   return createPortal(
     <>
-      {shown && <Guard rect={anchor} />}
+      {afterApply && (
+        <div
+          ref={setGhost}
+          aria-hidden="true"
+          data-notice-anchor=""
+          className="pointer-events-none fixed"
+          style={{ left: kept.x, top: kept.y, width: kept.w, height: kept.h }}
+        />
+      )}
+      {shown && <Guard rect={session ? anchor : kept} />}
       {shown && <Guard rect={rule} />}
       <AnimatePresence>
-        {shown && notice !== null && button !== null && <Card key={notice.kind} notice={notice} button={button} />}
+        {shown && notice !== null && target !== null && (
+          <Card key={notice.kind} notice={notice} button={target} ghost={!session} />
+        )}
       </AnimatePresence>
     </>,
     document.body,

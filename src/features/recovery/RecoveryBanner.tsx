@@ -102,21 +102,25 @@ export function RecoveryBanner() {
                   <h2 id={titleId} className="truncate text-md font-semibold">
                     {t('recover.title', { app: APP_NAME })}
                   </h2>
-                  <p role="status" className="truncate text-sm text-text-muted">
-                    {t('recover.body', { count: entries.length })}
-                  </p>
+                  <div className="flex min-w-0 items-center gap-2">
+                    <p role="status" className="min-w-0 truncate text-sm text-text-muted">
+                      {t('recover.body', { count: entries.length })}
+                    </p>
+                    {collapsible && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        data-recovery-toggle=""
+                        className="shrink-0"
+                        aria-expanded={expanded}
+                        aria-controls={listId}
+                        onClick={() => setExpanded((value) => !value)}
+                      >
+                        {t(expanded ? 'recover.hideAll' : 'recover.showAll')}
+                      </Button>
+                    )}
+                  </div>
                 </div>
-                {collapsible && (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    aria-expanded={expanded}
-                    aria-controls={listId}
-                    onClick={() => setExpanded((value) => !value)}
-                  >
-                    {t(expanded ? 'recover.hideAll' : 'recover.showAll')}
-                  </Button>
-                )}
                 {entries.length >= 2 && (
                   <>
                     <Button variant="ghost" size="sm" onClick={discardEverything}>

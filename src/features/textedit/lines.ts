@@ -18,6 +18,8 @@ const HIT_SIDE_PT = 2;
 /** Gap kept to the next object on the baseline, and to the page edge, in points (DESIGN 3.10 E2). */
 export const OBJECT_GAP_PT = 4;
 export const EDGE_GAP_PT = 12;
+/** Distance of the paragraph rule from the paragraph's left edge, in points. */
+export const RULE_OFFSET_PT = 6;
 
 interface Entry {
   rev: number;
@@ -113,6 +115,9 @@ export const paragraphOf = (lines: readonly TextLineInfo[], line: TextLineInfo):
 
 /** The alignment anchor of a line (DESIGN 3.10 E2): left unless its paragraph's lines share a right edge or a centre. */
 export function alignOf(lines: readonly TextLineInfo[], line: TextLineInfo): Align {
+  // The backend may state the alignment itself (an optional field of the line); then it wins.
+  const stated = (line as { align?: unknown }).align;
+  if (stated === 'left' || stated === 'right' || stated === 'center') return stated;
   const mates = paragraphOf(lines, line);
   if (mates.length < 2) return 'left';
   const tol = 2;
@@ -185,7 +190,7 @@ export function growthOf(lines: readonly TextLineInfo[], line: TextLineInfo, pag
     const top = Math.min(...mates.map((m) => m.box.y));
     const bottom = Math.max(...mates.map((m) => m.box.y + m.box.h));
     const x = Math.min(...mates.map((m) => m.box.x));
-    rule = { x: x - 6, y: top, w: 2, h: bottom - top };
+    rule = { x: x - RULE_OFFSET_PT, y: top, w: 2, h: bottom - top };
   }
   return { align, left, right, rule };
 }
