@@ -119,6 +119,16 @@ describe('the smart link layer', () => {
     expect(described?.textContent).toBe('Detected · Footnote · p. 2 · The note text.');
   });
 
+  it('names the printed page first and the file page in parentheses when they differ', async () => {
+    mocks.getSmartLinks.mockImplementation(() =>
+      ready([{ ...contents, target: { pageId: 4, label: '1' }, preview: 'Methods' }]),
+    );
+    render(<Page />);
+    const line = await link('Methods, detected, page 1');
+    const described = document.getElementById(line.getAttribute('aria-describedby') ?? '');
+    expect(described?.textContent).toBe('Detected · Contents · p. 1 (page 5 of the file) · Methods');
+  });
+
   it('draws the cue under the page number only for a contents line', async () => {
     render(<Page />);
     const line = await link(/^Methods/);

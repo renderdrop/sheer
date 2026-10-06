@@ -507,6 +507,7 @@ pub fn detect(doc: &DocText, page: u32, index: &LitIndex) -> Vec<SmartLink> {
                 target: Target {
                     page: e.page,
                     rect: Some(e.rect),
+                    label: None,
                 },
                 preview: truncate_preview(&e.text),
                 score: scores[b],

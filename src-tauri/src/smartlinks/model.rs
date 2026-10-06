@@ -62,6 +62,9 @@ pub enum Kind {
 pub struct Target {
     pub page: u32,
     pub rect: Option<PtRect>,
+    /// The page number as printed on the source ("1", "iv"), when the link names one: contents lines and page references.
+    #[serde(default)]
+    pub label: Option<String>,
 }
 
 /// One detected link on `page`: the source box(es), its target, the preview text (≤ 280 chars) and the score that admitted it.

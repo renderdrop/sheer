@@ -355,6 +355,8 @@ describe('smart links (DESIGN 3.11 L4)', () => {
     expect(css).toMatch(
       /\[data-smartlink\]\[data-state="hover"\] \[data-smartlink-run\][^{]*\{[^}]*var\(--smartlink-hover-fill\);[^}]*mix-blend-mode: multiply;/,
     );
+    // The list is the stacking context, so it is the list that multiplies against the page bitmap (L4).
+    expect(css).toMatch(/\[data-links-list\]\s*\{[^}]*mix-blend-mode: multiply;/);
     expect(css).not.toMatch(/\[data-reallink\][^{]*\{[^}]*smartlink-hover-fill/);
   });
 });

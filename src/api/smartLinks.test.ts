@@ -51,6 +51,23 @@ describe('getSmartLinks', () => {
     expect(Object.keys(result.links[0] as object).sort()).toEqual(['kind', 'marker', 'preview', 'rects', 'target']);
   });
 
+  it('keeps the printed page label of the target and drops an empty or oversized one', async () => {
+    invokeMock.mockResolvedValueOnce({
+      rev: 1,
+      ready: true,
+      links: [link({ target: { pageId: 3, label: '1' } }), link({ target: { pageId: 3, label: '' } })],
+    });
+    const result = await getSmartLinks(0, 0);
+    expect(result.links[0]?.target).toEqual({ pageId: 3, label: '1' });
+    expect(result.links[1]?.target).toEqual({ pageId: 3 });
+    invokeMock.mockResolvedValueOnce({
+      rev: 1,
+      ready: true,
+      links: [link({ target: { pageId: 3, label: 'x'.repeat(33) } })],
+    });
+    await expect(getSmartLinks(0, 0)).rejects.toMatchObject({ code: 'internal' });
+  });
+
   it('turns a malformed answer into an internal error', async () => {
     invokeMock.mockResolvedValueOnce({ rev: 1, ready: true, links: [link({ kind: 'url' })] });
     await expect(getSmartLinks(0, 0)).rejects.toMatchObject({ code: 'internal' });

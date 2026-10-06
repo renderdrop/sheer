@@ -107,6 +107,7 @@ pub fn detect(doc: &DocText, page: u32, index: &FootnoteIndex) -> Vec<SmartLink>
                 target: Target {
                     page: doc.pages[n.page_idx].page,
                     rect: Some(n.rect),
+                    label: None,
                 },
                 preview: preview(&n.text),
                 score,
@@ -168,6 +169,7 @@ pub fn detect(doc: &DocText, page: u32, index: &FootnoteIndex) -> Vec<SmartLink>
                 target: Target {
                     page: doc.pages[s].page,
                     rect: Some(m.rect),
+                    label: None,
                 },
                 preview: preview(&m.line_text),
                 score,

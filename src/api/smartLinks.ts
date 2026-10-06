@@ -12,6 +12,7 @@ export const MAX_SMART_LINKS = 400;
 /** Longest preview text in characters; the marker is cut at 120. */
 export const MAX_PREVIEW_CHARS = 280;
 export const MAX_MARKER_CHARS = 120;
+export const MAX_LABEL_CHARS = 32;
 /** Most boxes of one link (a contents line has two: the number and the whole line). */
 const MAX_RECTS = 8;
 
@@ -22,6 +23,8 @@ const KINDS: readonly unknown[] = ['footnote', 'noteBack', 'contents', 'referenc
 export interface SmartTarget {
   pageId: number;
   rect?: Rect;
+  /** The page number as printed at the source link (a contents line, a page reference), when it names one. */
+  label?: string;
 }
 
 /**
@@ -51,9 +54,13 @@ export interface SmartLinksResult {
 
 function parseTarget(value: unknown): SmartTarget | null {
   if (!isRecord(value) || !isUint(value.pageId)) return null;
-  if (value.rect === undefined || value.rect === null) return { pageId: value.pageId };
+  const { label } = value;
+  if (label !== undefined && label !== null && (typeof label !== 'string' || label.length > MAX_LABEL_CHARS))
+    return null;
+  const named = typeof label === 'string' && label !== '' ? { label } : {};
+  if (value.rect === undefined || value.rect === null) return { pageId: value.pageId, ...named };
   const rect = parseRect(value.rect);
-  return rect === null ? null : { pageId: value.pageId, rect };
+  return rect === null ? null : { pageId: value.pageId, rect, ...named };
 }
 
 function parseLink(value: unknown): SmartLink | null {

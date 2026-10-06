@@ -923,6 +923,12 @@
 /* Smart links (DESIGN 3.11 L4). The layer is in page space (scaled by --page-scale); the hit boxes take no pointer (the viewer tests the pointer
    against them, so a press that moves selects text); the cue, the fill and the focus ring are the run box's. Line style and fill carry the
    state, never colour alone. */
+/* The list is the stacking context (z-index): the multiply of the fill has to happen where the page bitmap is its backdrop, so the list
+   itself blends; run boxes inside it would multiply against nothing and cover the glyphs. */
+[data-links-list] {
+  mix-blend-mode: multiply;
+}
+
 [data-smartlink] {
   position: absolute;
   outline: none;
@@ -996,6 +1002,10 @@
 }
 
 @media (forced-colors: active) {
+  [data-links-list] {
+    mix-blend-mode: normal;
+  }
+
   [data-smartlink][data-state="hover"] [data-smartlink-run] {
     mix-blend-mode: normal;
     outline: calc(var(--hairline) / var(--page-scale, 1)) solid Highlight;

@@ -110,7 +110,7 @@ export function TextEditBar({ ref }: { ref?: Ref<HTMLDivElement> }) {
       {showOverflow && (
         <>
           <Divider />
-          <span className="t-caption flex items-center gap-1 px-1 tabular-nums text-danger">
+          <span className="t-caption flex items-center gap-1 px-1 tabular-nums text-error-text">
             <Icon icon={TriangleAlert} size={16} />
             {t('editText.overflow', { n: formatNumber(Math.ceil(overflowPt), locale) })}
           </span>

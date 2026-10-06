@@ -390,6 +390,7 @@ mod tests {
             target: Target {
                 page: 0,
                 rect: None,
+                label: None,
             },
             preview: String::new(),
             score,

@@ -10,6 +10,7 @@ import {
   type KeyboardEvent,
 } from 'react';
 
+import type { SmartLink } from '../../api/smartLinks';
 import type { Rect } from '../../api/wire';
 import { tokenMs } from '../../components/glide';
 import { useT, type Translate } from '../../i18n';
@@ -73,6 +74,12 @@ function cuesOfItem(item: PageLink): Rect[] {
   return item.type === 'smart' ? cueRects(item.link) : [];
 }
 
+/** The page names of a smart link's target: the number printed at the link (a contents line, a page reference) wins over the file's own label. */
+function targetNames(docId: number, link: SmartLink): { label: string; physical: number } {
+  const names = pageNames(docId, link.target.pageId);
+  return { label: link.target.label ?? names.label, physical: names.physical };
+}
+
 /** The name of a link (L11): a smart link by kind, marker and target page; a real one by its target. */
 function nameOf(t: Translate, docId: number, item: PageLink): string {
   if (item.type === 'real') {
@@ -82,7 +89,7 @@ function nameOf(t: Translate, docId: number, item: PageLink): string {
     return t('link.aria.blocked');
   }
   const { link } = item;
-  const page = pageNames(docId, link.target.pageId).label;
+  const page = targetNames(docId, link).label;
   switch (link.kind) {
     case 'footnote':
       return t('smartlinks.aria.footnote', { marker: link.marker, page });
@@ -100,7 +107,7 @@ function nameOf(t: Translate, docId: number, item: PageLink): string {
 /** The text a screen reader gets for a link: the same as the preview card (kind, page, body). */
 function previewText(t: Translate, docId: number, item: PageLink & { type: 'smart' }): string {
   const { link } = item;
-  const { label, physical } = pageNames(docId, link.target.pageId);
+  const { label, physical } = targetNames(docId, link);
   const page = pageLine(t, label, physical);
   return [t('smartlinks.detected'), t(kindKey(link.kind)), page, link.preview]
     .filter((part) => part !== '')
@@ -447,7 +454,7 @@ function PreviewFor({
 }) {
   const t = useT();
   const { link } = item;
-  const { label, physical } = pageNames(docId, link.target.pageId);
+  const { label, physical } = targetNames(docId, link);
   const hint = splitHint(t('smartlinks.previewHint', { back: KEY_MARK }));
   return (
     <LinkPreview

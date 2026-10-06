@@ -10,6 +10,7 @@ import {
   openAndWait,
   sleep,
 } from './harness.mjs';
+import { lumRange, readPng } from './png.mjs';
 
 const FILES = [
   ['ausf', 'review/owner/corpus/Ausformulierung 2.0.pdf'],
@@ -109,9 +110,34 @@ for (const [tag, file] of FILES) {
         /Erkannt/.test(preview) && preview.includes(kindWord) && /S\./.test(preview),
         preview.slice(0, 160),
       );
-      await shot(`v160/${tag}-${kind}-01-hover`);
+      await sleep(400); // the fill's transition has ended
+      const hoverShot = await shot(`v160/${tag}-${kind}-01-hover`);
+      // L4: the hover fill multiplies, so glyph pixels under it stay dark (an opaque fill makes the run a flat grey band)
+      const box =
+        await ev(`(() => { const r = document.querySelector(${q(run)}).getBoundingClientRect(); const d = devicePixelRatio;
+        return { left: r.left * d, top: r.top * d, right: r.right * d, bottom: r.bottom * d }; })()`);
+      const range = lumRange(readPng(hoverShot), box);
+      C(
+        `${K}: hovered glyph pixels stay dark under the fill`,
+        range.min < 140 && range.max > range.min + 60,
+        `luminance min ${range.min.toFixed(0)} max ${range.max.toFixed(0)}`,
+      );
       // target page from the preview: the physical page when the label differs
       const head = await ev(`document.querySelector('[data-link-preview] .t-caption')?.textContent ?? ''`);
+      if (kind === 'contents') {
+        // the printed page first, the file's page in parentheses when they differ (DESIGN 3.11 "Page numbers")
+        C(
+          `${K}: preview names the printed page`,
+          /S\. \S+/.test(head) && !/S\. (\d+) \(Seite \1 der Datei\)/.test(head),
+          head,
+        );
+        if (tag === 'einzel')
+          C(
+            `${K}: preview reads "S. 1" and "Seite 13 der Datei"`,
+            /S\. 1 /.test(head) && /Seite 13 der Datei/.test(head),
+            head,
+          );
+      }
       const m = head.match(/\(Seite (\d+) der Datei\)/) ?? head.match(/S\.\s*(\d+)/);
       const target = m ? Number(m[1]) : null;
       // click -> target reached, band

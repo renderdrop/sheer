@@ -319,6 +319,7 @@ pub fn links(
             target: Target {
                 page: target,
                 rect: Some(rect),
+                label: Some(e.printed.clone()),
             },
             preview,
             score: SCORE,
@@ -527,6 +528,12 @@ pub(crate) mod tests {
         assert_eq!(l[0].target.rect.unwrap().y, 60.0);
         assert_eq!(l[0].preview, "1 Introduction");
         assert_eq!(l[0].rects.len(), 2);
+        assert_eq!(
+            l[0].target.label.as_deref(),
+            Some("1"),
+            "the printed number travels with the link"
+        );
+        assert_eq!(l[1].target.label.as_deref(), Some("2"));
         assert_eq!(l[1].target.page, 3);
     }
 

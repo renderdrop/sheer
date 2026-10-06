@@ -680,6 +680,7 @@ pub fn detect(
                                 target: Target {
                                     page: t.page,
                                     rect: Some(t.rect),
+                                    label: None,
                                 },
                                 preview: truncate_preview(&t.text),
                                 score: t.score,
@@ -704,6 +705,7 @@ pub fn detect(
                             target: Target {
                                 page: phys,
                                 rect: None,
+                                label: Some(r.first.clone()),
                             },
                             preview: String::new(),
                             score: if r.strong { 0.9 } else { 0.8 },

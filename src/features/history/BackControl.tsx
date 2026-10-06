@@ -65,11 +65,12 @@ export function BackControl() {
         keyShortcuts={shortcut.aria}
         disabled={!canBack || docId === null}
         focusableWhenDisabled
+        className="w-full justify-start"
         data-toolbar-item="history-back"
         onClick={() => docId !== null && back(docId)}
       >
         {shown && (
-          <span ref={text} className="t-caption tabular-nums whitespace-nowrap">
+          <span ref={text} className="t-caption ms-1 tabular-nums whitespace-nowrap">
             {label}
           </span>
         )}

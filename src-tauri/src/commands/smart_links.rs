@@ -37,6 +37,9 @@ pub struct SmartTarget {
     pub page_id: PageId,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub rect: Option<Rect>,
+    /// The page number as printed at the source link (contents line, page reference), when it names one.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub label: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -87,6 +90,12 @@ fn wire(link: &SmartLink, order: &[(PageId, u32)]) -> Option<SmartLinkWire> {
         target: SmartTarget {
             page_id: target,
             rect: link.target.rect.map(rect),
+            label: link
+                .target
+                .label
+                .as_deref()
+                .map(|l| sanitize_text(l, 32))
+                .filter(|l| !l.is_empty()),
         },
         preview: sanitize_text(&link.preview, 280),
     })
@@ -447,6 +456,7 @@ mod tests {
             target: crate::smartlinks::model::Target {
                 page: 7,
                 rect: None,
+                label: None,
             },
             preview: String::new(),
             score: 0.9,
@@ -456,6 +466,13 @@ mod tests {
         ok.target.page = 0;
         let w = wire(&ok, &[(PageId::new(9), 0)]).unwrap();
         assert_eq!(w.target.page_id, PageId::new(9));
+        assert_eq!(w.target.label, None);
+        let mut printed = ok.clone();
+        printed.target.label = Some("1\u{202e}".into());
+        let w = wire(&printed, &[(PageId::new(9), 0)]).unwrap();
+        assert_eq!(w.target.label.as_deref(), Some("1"));
+        let json = serde_json::to_value(&w).unwrap();
+        assert_eq!(json["target"]["label"], "1");
         assert!(!w.marker.contains('\u{202e}'), "bidi controls are stripped");
     }
 }
