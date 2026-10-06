@@ -999,6 +999,24 @@ mod tests {
     }
 
     #[test]
+    fn a_dead_record_is_purged_only_after_the_retention() {
+        let dir = TempDir::new();
+        let auto = Autosave::start(dir.path()).unwrap();
+        auto.write(&snapshot(id(1), b"%PDF-1.4")).unwrap();
+        let saved = SystemTime::now();
+        drop(auto);
+        let retention = limits::AUTOSAVE_RETENTION;
+        assert_eq!(retention.as_secs(), 30 * 86_400);
+        // A second of slack: the record was stamped slightly before `saved`.
+        let kept = Autosave::start_at(dir.path(), saved + retention).unwrap();
+        assert_eq!(kept.list().len(), 1, "at the limit it is still kept");
+        drop(kept);
+        let late = saved + retention + Duration::from_secs(5);
+        let purged = Autosave::start_at(dir.path(), late).unwrap();
+        assert!(purged.list().is_empty());
+    }
+
+    #[test]
     fn original_states_follow_the_file() {
         let dir = TempDir::new();
         let file = dir.path().join("o.pdf");

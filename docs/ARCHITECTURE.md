@@ -662,7 +662,7 @@ type AutosaveStatus = 'on' | 'offEncrypted' | 'offTooLarge' | 'clean';   // Docu
 - *Settings.* `updates: 'off' | 'on'` (default `'off'`), `skippedVersion: string | null`, `lastUpdateCheck` (Rust-only, not sent).
 - *Limits* (`limits.rs`): `ENGINE_HANDSHAKE_TIMEOUT` 5 s; `ENGINE_RESTART_BUDGET` 5 per `ENGINE_RESTART_WINDOW` 10 min; `MAX_FRAME_BYTES` 80 MiB (a render reply's blob cap); `ENGINE_LOG_LINE_MAX` 4 KiB; `UPDATE_VERSION_MAX_CHARS` 32; `ENGINE_STRIKES` 2; `WIRE_HEADER_MAX`
   16 MiB; `READ_AT_MAX` 1 MiB; remote block cache 64 × 256 KiB per document; `AUTOSAVE_DEBOUNCE` 30 s, `AUTOSAVE_MAX_INTERVAL` 120 s,
-  `AUTOSAVE_DOC_MAX` 512 MiB, `AUTOSAVE_STORE_MAX` 2 GiB, `AUTOSAVE_RETENTION` 14 days; `UPDATE_CHECK_INTERVAL` 24 h; update package
+  `AUTOSAVE_DOC_MAX` 512 MiB, `AUTOSAVE_STORE_MAX` 2 GiB, `AUTOSAVE_RETENTION` 30 days; `UPDATE_CHECK_INTERVAL` 24 h; update package
   ≤ 256 MiB, notes ≤ 4 KiB.
 - *Errors.* New `what`: `engine` (`engine_crashed` after quarantine), `autosave` (`io_*` while writing: logged, never a banner), `recovery`
   (`not_found`), `update` (`unsupported_feature` placeholder key, `damaged_file` bad signature, `internal` for any network or
@@ -967,7 +967,7 @@ impl Autosave {
     pub fn status(&self, doc: &DocumentEntry) -> AutosaveStatus;
     pub fn write(&self, state: &AppState, id: DocumentId) -> Result<(), AppError>; // snapshot::current → write_atomic <n>.pdf + <n>.json
     pub fn forget(&self, id: DocumentId);                                    // save success, close
-    pub fn scan(app_data: &Path) -> Result<Vec<Recovery>, AppError>;         // dead sessions only; purges > 14 days and > 2 GiB
+    pub fn scan(app_data: &Path) -> Result<Vec<Recovery>, AppError>;         // dead sessions only; purges > 30 days and > 2 GiB
 }
 ```
 

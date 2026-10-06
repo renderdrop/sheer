@@ -55,6 +55,30 @@ describe('the recovery banner (DESIGN 3.50)', () => {
     expect(document.activeElement).toBe(document.body);
   });
 
+  it('collapses the rows at three records behind a toggle (B-006)', async () => {
+    api.listRecoveries.mockResolvedValue([entry(1), entry(2), entry(3)]);
+    const { user } = setup(<RecoveryBanner />);
+    const region = await screen.findByRole('region');
+    expect(within(region).queryAllByRole('group')).toHaveLength(0);
+    expect(within(region).getByRole('status').textContent).toContain('3 documents');
+    const toggle = within(region).getByRole('button', { name: 'Show all' });
+    expect(toggle.getAttribute('aria-expanded')).toBe('false');
+    await user.click(toggle);
+    expect(within(region).getAllByRole('group')).toHaveLength(3);
+    const hide = within(region).getByRole('button', { name: 'Hide' });
+    expect(hide.getAttribute('aria-expanded')).toBe('true');
+    await user.click(hide);
+    expect(within(region).queryAllByRole('group')).toHaveLength(0);
+  });
+
+  it('shows the rows at two records without a toggle', async () => {
+    api.listRecoveries.mockResolvedValue([entry(1), entry(2)]);
+    setup(<RecoveryBanner />);
+    const region = await screen.findByRole('region');
+    expect(within(region).getAllByRole('group')).toHaveLength(2);
+    expect(within(region).queryByRole('button', { name: 'Show all' })).toBeNull();
+  });
+
   it('stays out when there is nothing to restore', async () => {
     api.listRecoveries.mockResolvedValue([]);
     setup(<RecoveryBanner />);

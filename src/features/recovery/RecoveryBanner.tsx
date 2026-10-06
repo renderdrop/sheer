@@ -1,6 +1,6 @@
 import { CircleAlert, LifeBuoy, LoaderCircle, X } from 'lucide-react';
 import { AnimatePresence, motion } from 'motion/react';
-import { useEffect, useId } from 'react';
+import { useEffect, useId, useState } from 'react';
 
 import type { RecoveryEntry } from '../../api/recovery';
 import { Button, IconButton } from '../../components';
@@ -13,6 +13,9 @@ import { useUi } from '../../stores/ui';
 import { middleTruncate } from '../tabs/TabStrip';
 import { discardEverything, discardOne, loadRecoveries, restoreAll, restoreOne } from './actions';
 import { useRecovery } from './store';
+
+/** From this many records on, the row list is collapsed behind a "Show all" toggle (B-006). */
+const COLLAPSE_AT = 3;
 
 function metaOf(entry: RecoveryEntry, locale: Locale, t: Translate): string {
   if (entry.original !== 'unchanged') return t('recover.asCopy');
@@ -74,6 +77,10 @@ export function RecoveryBanner() {
   const hidden = useRecovery((state) => state.hidden);
   const errorShown = useUi((state) => state.banner !== null);
   const titleId = useId();
+  const listId = useId();
+  const [expanded, setExpanded] = useState(false);
+  const collapsible = entries.length >= COLLAPSE_AT;
+  const listShown = !collapsible || expanded;
   useEffect(() => {
     void loadRecoveries();
   }, []);
@@ -99,6 +106,17 @@ export function RecoveryBanner() {
                     {t('recover.body', { count: entries.length })}
                   </p>
                 </div>
+                {collapsible && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    aria-expanded={expanded}
+                    aria-controls={listId}
+                    onClick={() => setExpanded((value) => !value)}
+                  >
+                    {t(expanded ? 'recover.hideAll' : 'recover.showAll')}
+                  </Button>
+                )}
                 {entries.length >= 2 && (
                   <>
                     <Button variant="ghost" size="sm" onClick={discardEverything}>
@@ -116,14 +134,17 @@ export function RecoveryBanner() {
                   onClick={() => useRecovery.getState().hide()}
                 />
               </div>
-              <ul
-                aria-label={t('recover.rows')}
-                className={cx('mt-2 flex max-h-recover-list flex-col gap-1 overflow-y-auto', 'list-none p-0')}
-              >
-                {entries.map((entry) => (
-                  <Row key={entry.id} entry={entry} />
-                ))}
-              </ul>
+              {listShown && (
+                <ul
+                  id={listId}
+                  aria-label={t('recover.rows')}
+                  className={cx('mt-2 flex max-h-recover-list flex-col gap-1 overflow-y-auto', 'list-none p-0')}
+                >
+                  {entries.map((entry) => (
+                    <Row key={entry.id} entry={entry} />
+                  ))}
+                </ul>
+              )}
             </section>
           </div>
         </motion.div>

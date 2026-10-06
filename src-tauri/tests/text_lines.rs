@@ -286,6 +286,50 @@ fn lines_follow_the_geometry_not_the_order_of_the_stream() {
 }
 
 #[test]
+fn a_footer_drawn_first_does_not_disturb_paragraphs_probe_or_order() {
+    // Form footer and page number come first in the stream, then the body bottom-up, one line drawn right to left.
+    let footer_first = "BT /F1 8 Tf 500 40 Td (Page 1) Tj ET BT /F1 8 Tf 72 40 Td (Form 08/2020) Tj ET \
+                        BT /F1 10 Tf 12 TL 72 600 Td (first line) Tj T* (second line) Tj T* (third line) Tj ET \
+                        BT /F1 16 Tf 72 700 Td (Heading) Tj ET";
+    let natural = "BT /F1 16 Tf 72 700 Td (Heading) Tj ET \
+                   BT /F1 10 Tf 12 TL 72 600 Td (first line) Tj T* (second line) Tj T* (third line) Tj ET \
+                   BT /F1 8 Tf 72 40 Td (Form 08/2020) Tj ET BT /F1 8 Tf 500 40 Td (Page 1) Tj ET";
+    let (doc, page) = build(footer_first, &[]);
+    let chars = chars_of(&doc, page, true);
+    let a = doc.lines(page, &chars).unwrap();
+    let (doc2, page2) = build(natural, &[]);
+    let b = doc2.lines(page2, &chars_of(&doc2, page2, true)).unwrap();
+    let texts = |p: &text_lines::PageLines| -> Vec<String> {
+        p.lines.iter().map(|l| l.text.clone()).collect()
+    };
+    assert_eq!(
+        texts(&a),
+        [
+            "Heading",
+            "first line",
+            "second line",
+            "third line",
+            "Form 08/2020",
+            "Page 1"
+        ]
+    );
+    assert_eq!(texts(&a), texts(&b));
+    let paragraph_of =
+        |p: &text_lines::PageLines| -> Vec<u32> { p.lines.iter().map(|l| l.paragraph).collect() };
+    assert_eq!(paragraph_of(&a), paragraph_of(&b));
+    assert_eq!(a.paragraphs.len(), 4);
+    assert_eq!(a.paragraphs[1].lines, 1..4);
+    // A click in the footer reaches the footer line, not a body line.
+    let footer_unit = chars
+        .iter()
+        .find(|c| c.origin[1] < 60.0 && c.origin[0] < 100.0)
+        .map(|c| c.utf16)
+        .unwrap();
+    let info = text_lines::probe(&a, &chars, footer_unit).unwrap();
+    assert_eq!(info.key.line, 4);
+}
+
+#[test]
 fn a_superscript_stays_on_its_line_and_text_in_other_sizes_does_not_merge_away() {
     let content = "BT /F1 10 Tf 72 700 Td (E=mc) Tj /F1 6 Tf 4 Ts (2) Tj ET";
     let (doc, page) = build(content, &[]);

@@ -165,12 +165,18 @@ fn the_startup_sweeps_the_stale_temp_files_of_a_dead_session_and_keeps_fresh_one
 fn records_older_than_the_retention_are_swept_and_fresh_ones_kept() {
     let scratch = Scratch::new("retention");
     let root = scratch.app_data().join("autosave");
-    let fifteen_days = 15 * 24 * 60 * 60;
+    let day = 24 * 60 * 60;
     put_record(
         &root.join("old"),
         1,
-        &manifest(now_secs() - fifteen_days, "old.pdf"),
+        &manifest(now_secs() - 31 * day, "old.pdf"),
         Some(b"%PDF-1.4 old"),
+    );
+    put_record(
+        &root.join("recent"),
+        3,
+        &manifest(now_secs() - 29 * day, "recent.pdf"),
+        Some(b"%PDF-1.4 recent"),
     );
     put_record(
         &root.join("fresh"),
@@ -180,7 +186,7 @@ fn records_older_than_the_retention_are_swept_and_fresh_ones_kept() {
     );
     let auto = Autosave::start(&scratch.app_data()).unwrap();
     let names: Vec<String> = auto.list().into_iter().map(|v| v.display_name).collect();
-    assert_eq!(names, ["fresh.pdf"]);
+    assert_eq!(names, ["fresh.pdf", "recent.pdf"]);
     assert!(!root.join("old").exists(), "an emptied dead session goes");
     assert!(root.join("fresh").join("2.pdf").is_file());
 }

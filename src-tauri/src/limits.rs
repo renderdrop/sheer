@@ -648,7 +648,7 @@ pub const AUTOSAVE_DOC_MAX: u64 = 512 * 1024 * 1024;
 /// Largest total of the autosave store; the oldest session is purged beyond it.
 pub const AUTOSAVE_STORE_MAX: u64 = 2 * 1024 * 1024 * 1024;
 /// Age after which a dead session's records are purged at startup.
-pub const AUTOSAVE_RETENTION: Duration = Duration::from_secs(14 * 24 * 60 * 60);
+pub const AUTOSAVE_RETENTION: Duration = Duration::from_secs(30 * 24 * 60 * 60);
 /// Time between automatic update checks while the setting is on.
 pub const UPDATE_CHECK_INTERVAL: Duration = Duration::from_secs(24 * 60 * 60);
 /// Largest update package that is downloaded.
@@ -1160,7 +1160,7 @@ mod tests {
             (30, 120)
         );
         assert_eq!((AUTOSAVE_DOC_MAX, AUTOSAVE_STORE_MAX), (512 << 20, 2 << 30));
-        assert_eq!(AUTOSAVE_RETENTION.as_secs(), 14 * 86_400);
+        assert_eq!(AUTOSAVE_RETENTION.as_secs(), 30 * 86_400);
         assert_eq!(UPDATE_CHECK_INTERVAL.as_secs(), 86_400);
         assert_eq!((UPDATE_PACKAGE_MAX, UPDATE_NOTES_MAX), (256 << 20, 4096));
         // A full-size render must fit a frame, and a read block must fit one `ReadAt`.
