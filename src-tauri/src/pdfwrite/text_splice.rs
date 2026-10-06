@@ -1480,10 +1480,16 @@ fn plan_edit(
     // A stretched line: every word gap grows by the same amount; each chain gets the growth before its first glyph as a leading kern.
     if let Some(per_gap) = edge {
         let mut prev: Option<(u32, usize)> = None;
+        let mut last_gap = 0usize;
         let mut inserts: Vec<(usize, usize, f64)> = Vec::new();
         for (pos, gbs) in &work_gb {
             for (idx, g) in gbs.iter().enumerate() {
                 let Some(g) = *g else { continue };
+                // Gap indices must grow in stream order: a line drawn out of reading order cannot be stretched by kerns.
+                if g < last_gap {
+                    return Err(refused());
+                }
+                last_gap = g;
                 let gaps = match prev {
                     Some((c, before)) if c == chain[*pos] => g.saturating_sub(before),
                     _ => g,

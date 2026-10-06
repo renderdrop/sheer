@@ -317,6 +317,8 @@ struct FontInfo {
     font: Option<Font>,
     /// Width of a space in em (a guess for composite fonts).
     space_em: f64,
+    /// Code to character by the font's own encoding (lowest character per code); empty when the font has no map.
+    inverse: HashMap<u32, char>,
 }
 
 fn font_info(src: &Document, page: ObjectId, key: &FontKey) -> FontInfo {
@@ -333,7 +335,21 @@ fn font_info(src: &Document, page: ObjectId, key: &FontKey) -> FontInfo {
         .map(|f| f.width_of(32))
         .filter(|w| *w > 0.0)
         .unwrap_or(0.25);
-    FontInfo { font, space_em }
+    let mut inverse: HashMap<u32, char> = HashMap::new();
+    if let Some(map) = key
+        .object
+        .and_then(|id| font_map(src, id, &HashMap::new()).ok())
+    {
+        for (c, code) in &map.to_code {
+            let slot = inverse.entry(*code).or_insert(*c);
+            *slot = (*slot).min(*c);
+        }
+    }
+    FontInfo {
+        font,
+        space_em,
+        inverse,
+    }
 }
 
 #[allow(clippy::too_many_lines)]
@@ -734,13 +750,13 @@ fn strip_subset(name: &str) -> String {
     }
 }
 
-/// The text of a line without PDFium's characters: single-byte codes as Latin-1, a space where the glyphs are far apart.
+/// The text of a line without PDFium's characters: codes through the font's own encoding (single-byte codes without one as Latin-1), a space where the glyphs are far apart.
 fn decode_plain(line: &Line, fonts: &HashMap<FontKey, FontInfo>) -> String {
     let mut out = String::new();
     let mut prev_end: Option<f64> = None;
     for run in &line.runs {
-        let two = fonts
-            .get(&run.font)
+        let info = fonts.get(&run.font);
+        let two = info
             .and_then(|i| i.font.as_ref())
             .is_some_and(|f| f.two_byte);
         for g in &run.glyphs {
@@ -749,7 +765,11 @@ fn decode_plain(line: &Line, fonts: &HashMap<FontKey, FontInfo>) -> String {
                 out.push(' ');
             }
             prev_end = Some(at + g.adv);
-            if two {
+            let mapped = info.and_then(|i| i.inverse.get(&g.code)).copied();
+            if let Some(c) = mapped {
+                out.push(c);
+            } else if two || (0x80..0xA0).contains(&g.code) {
+                // No character known: a placeholder (never a C1 control).
                 out.push('\u{fffd}');
             } else {
                 out.push(char::from_u32(g.code).unwrap_or('\u{fffd}'));

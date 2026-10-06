@@ -816,4 +816,48 @@ mod tests {
         assert!(in_left.iter().all(|l| l.2 < 320.0), "{in_left:?}");
         assert!(after.ends_with(&right) || after.contains(&right), "{after}");
     }
+
+    /// A justified paragraph of `texts` (a `Tw` per line makes every line but the last end at the same edge); the edge.
+    fn justified_paragraph(texts: &[&str]) -> (String, f64) {
+        let natural: Vec<f64> = texts
+            .iter()
+            .map(|t| layout(&line(72.0, 700.0, 12.0, t))[0].2 - 72.0)
+            .collect();
+        let inner = texts.len() - 1;
+        let edge = natural[..inner].iter().copied().fold(0.0, f64::max) + 8.0;
+        let mut out = String::new();
+        for (i, t) in texts.iter().enumerate() {
+            let tw = if i < inner {
+                (edge - natural[i]) / t.matches(' ').count() as f64
+            } else {
+                0.0
+            };
+            let y = 700.0 - 14.0 * i as f64;
+            out.push_str(&format!("BT /F1 12 Tf {tw} Tw 72 {y} Td ({t}) Tj ET\n"));
+        }
+        (out, 72.0 + edge)
+    }
+
+    #[test]
+    fn re_broken_inner_lines_of_a_justified_paragraph_stretch_and_the_last_stays_natural() {
+        let (before, edge) = justified_paragraph(&P);
+        let old = layout(&before);
+        assert_eq!(old.len(), 3, "{old:?}");
+        assert!((old[0].2 - edge).abs() < 0.1 && (old[1].2 - edge).abs() < 0.1);
+        let new_text = format!("{} then also a good deal", P[0]);
+        let (after, _) = reflow_of(&before, P[0], &new_text).unwrap();
+        let now = layout(&after);
+        assert!(now.len() >= 3, "{now:?}");
+        let (last, inner) = now.split_last().unwrap();
+        for l in inner {
+            assert!(
+                (l.2 - edge).abs() < 1.0,
+                "inner line {l:?} misses the edge {edge}"
+            );
+        }
+        assert!(
+            last.2 < edge - 4.0,
+            "the last line stays natural: {last:?} vs {edge}"
+        );
+    }
 }

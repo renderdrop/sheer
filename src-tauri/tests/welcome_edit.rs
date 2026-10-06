@@ -3,8 +3,7 @@
 //! (the welcome document's ellipsis 0x85 and en dash 0x96) come out as C1 controls (U+0085 is even white space), so `text_splice::plan_edit`
 //! finds no character of the font's `to_code` for the glyph and refuses. Lines without such a code are replaced fine.
 //!
-//! The regression tests are `#[ignore]`d until `decode_plain` (or `DocLines::line`) decodes through the font's own map, as it already
-//! does for two-byte fonts (`remap_placeholders`). Run them with `cargo test --test welcome_edit -- --ignored`.
+//! Fixed: `decode_plain` decodes through the font's own map (as `remap_placeholders` does for two-byte fonts) and never to a C1 control.
 
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
@@ -61,7 +60,6 @@ fn lines_of_the_welcome_document_without_c1_codes_are_replaced() {
 }
 
 #[test]
-#[ignore = "B3 root cause: text_lines::decode_plain reads WinAnsi 0x80-0x9F as Latin-1 C1 controls"]
 fn the_self_opened_line_of_the_german_welcome_document_can_be_replaced() {
     let bytes = welcome("welcome-de.pdf");
     assert_eq!(replace(&bytes, 4, "Ein anderer Text"), Ok(()));
@@ -69,7 +67,6 @@ fn the_self_opened_line_of_the_german_welcome_document_can_be_replaced() {
 }
 
 #[test]
-#[ignore = "B3 root cause: text_lines::decode_plain reads WinAnsi 0x80-0x9F as Latin-1 C1 controls"]
 fn a_line_with_an_ellipsis_or_an_en_dash_code_can_be_replaced() {
     for show in [r"(ab\205 cd)", r"(ab\226 cd)"] {
         let bytes = tiny(&format!("BT /F1 12 Tf 72 700 Td {show} Tj ET"));

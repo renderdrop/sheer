@@ -89,19 +89,19 @@ fn contained<T: Send + 'static>(
 }
 
 /// What the lines of a page are read from: the original page, or the preview of the page's edits.
-struct Basis {
+pub(super) struct Basis {
     /// The PDF the lines come from and the index of the page in it.
-    current: Vec<u8>,
-    current_page: u32,
+    pub(super) current: Vec<u8>,
+    pub(super) current_page: u32,
     /// The page's index in the file the document was opened from, and whether `current` is that file (no edit yet).
-    file_index: u32,
-    from_file: bool,
+    pub(super) file_index: u32,
+    pub(super) from_file: bool,
     /// The page's edits so far; the next edit has `LineKey.rev` of their count.
-    edits: Vec<TextEdit>,
-    rev: u32,
-    engine_index: u32,
+    pub(super) edits: Vec<TextEdit>,
+    pub(super) rev: u32,
+    pub(super) engine_index: u32,
     /// A reason that applies to the whole document (`permission`, `signed`, `notFileSource`).
-    refusal: Option<TextEditRefusal>,
+    pub(super) refusal: Option<TextEditRefusal>,
 }
 
 impl Basis {
@@ -129,7 +129,7 @@ impl Basis {
 }
 
 impl AppState {
-    fn text_basis(&self, id: DocumentId, page: PageId) -> Result<Basis, AppError> {
+    pub(super) fn text_basis(&self, id: DocumentId, page: PageId) -> Result<Basis, AppError> {
         let engine_index = self.registry.page_index(id, page)?;
         let (source, kept): (PageSource, Option<PageEdits>) = self.model(id, |state| {
             let slot = state.slot(page).ok_or(AppError::invalid("page"))?;

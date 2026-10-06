@@ -34,7 +34,8 @@ fn font_map_for_tests() -> FontMap {
 /// Glyph positions of a content made of `BT`, `Td`, `TL`, `T*`, `Tj`, `TJ`, `'`: 10 pt, 5 pt per glyph.
 fn walk(streams: &[Vec<u8>]) -> Vec<GlyphPos> {
     let mut out = Vec::new();
-    let (mut lx, mut ly, mut x, mut y, mut tl) = (0.0f64, 0.0f64, 0.0f64, 0.0f64, 0.0f64);
+    let (mut lx, mut ly, mut x, mut y, mut tl, mut tw) =
+        (0.0f64, 0.0f64, 0.0f64, 0.0f64, 0.0f64, 0.0f64);
     for (si, s) in streams.iter().enumerate() {
         let lexed = lex_full(s).unwrap();
         for (i, tok) in lexed.toks.iter().enumerate() {
@@ -51,6 +52,7 @@ fn walk(streams: &[Vec<u8>]) -> Vec<GlyphPos> {
                     (x, y) = (lx, ly);
                 }
                 b"TL" => tl = num(&ops[0]),
+                b"Tw" => tw = num(&ops[0]),
                 b"T*" => {
                     ly -= tl;
                     (x, y) = (lx, ly);
@@ -87,12 +89,12 @@ fn walk(streams: &[Vec<u8>]) -> Vec<GlyphPos> {
                                     byte: n..n + 1,
                                     code: u32::from(code),
                                     origin: [x, y],
-                                    adv: 5.0,
+                                    adv: 5.0 + if code == 32 { tw } else { 0.0 },
                                     size_eff: 10.0,
                                     dir: [1.0, 0.0],
                                 });
                                 n += 1;
-                                x += 5.0;
+                                x += 5.0 + if code == 32 { tw } else { 0.0 };
                             }
                             Err(k) => x -= k / 1000.0 * 10.0,
                         }
@@ -647,7 +649,9 @@ fn a_change_that_would_stretch_the_gaps_too_far_leaves_the_line_ragged() {
     )
     .unwrap();
     assert_eq!(ragged, plain);
-    assert!(warnings.is_empty());
+    // "The warning it had before" (ADR-130) is the keepStart collision warning only: it is raised when the grown line runs into the
+    // next object, and nothing follows this line, so there is no warning here. The line stays ragged without a stretch-specific one.
+    assert!(warnings.is_empty(), "{warnings:?}");
 }
 
 #[test]
@@ -685,4 +689,32 @@ fn emptying_a_justified_line_removes_its_glyphs() {
     )
     .unwrap();
     assert!(out.contains("[] TJ"), "{out}");
+}
+
+#[test]
+fn a_changed_justified_line_with_word_spacing_ends_at_the_right_edge() {
+    // `Tw` widens each space by 3 pt: "ab cd ef" is 46 pt wide, the edit makes it 51 pt, the edge is 130.
+    let content = "BT /F1 10 Tf 3 Tw 72 700 Td (ab cd ef) Tj ET";
+    assert!((right_edge(content) - 118.0).abs() < 0.01);
+    let (out, warnings, _) = run(
+        content,
+        &[edit(0, 0, "ab cdX ef", TextFit::KeepStart)],
+        justified(130.0),
+    )
+    .unwrap();
+    assert!((right_edge(&out) - 130.0).abs() < 0.5, "{out}");
+    assert!(warnings.is_empty(), "{warnings:?}");
+}
+
+#[test]
+fn a_justified_line_drawn_out_of_reading_order_is_refused() {
+    // The second word is drawn first (chains A, B in the stream, B, A on the page): the gap count would be wrong, so the
+    // splice must not produce a line that misses the edge silently.
+    let content = "BT /F1 10 Tf 112 700 Td (ef gh) Tj -40 0 Td (ab cd) Tj ET";
+    let result = run(
+        content,
+        &[edit(0, 0, "ab cdXef gh", TextFit::KeepStart)],
+        justified(150.0),
+    );
+    assert!(result.is_err(), "{:?}", result.map(|r| r.0));
 }

@@ -25,6 +25,7 @@ use serde::Serialize;
 use tauri::ipc::Response;
 use tauri::State;
 
+use super::text_edit::Basis;
 use super::{blocking, AppState};
 use crate::documents::{DocumentId, PageId};
 use crate::error::{AppError, ErrorCode, UiError};
@@ -32,12 +33,9 @@ use crate::export::images::{encode, ImageFormat};
 use crate::export::snapshot::{open_bytes, SnapshotGuard};
 use crate::limits;
 use crate::model::geometry::Rect;
-use crate::model::page::PageSource;
-use crate::model::protection::Permission;
 use crate::model::text_edit::{
-    FallbackFace, LineEditable, LineKey, PageEdits, TextEdit, TextEditRefusal, TextFit, TextScope,
+    FallbackFace, LineEditable, LineKey, TextEdit, TextEditRefusal, TextFit, TextScope,
 };
-use crate::pdfsig::types::SignatureLock;
 use crate::pdfwrite::text_io::PageDoc;
 use crate::pdfwrite::text_lines::{Line, PageLines};
 use crate::pdfwrite::text_refuse;
@@ -175,9 +173,13 @@ impl Slot {
             .iter()
             .find(|(id, _)| *id == doc)
             .map_or(0, |(_, count)| *count);
-        if running.total >= limits::TEXT_PREVIEW_MAX_RUNNING
-            || held >= limits::TEXT_PREVIEW_MAX_PER_DOC
-        {
+        if running.total >= limits::TEXT_PREVIEW_MAX_RUNNING {
+            return Err(AppError::limit(
+                "textPreviews",
+                limits::TEXT_PREVIEW_MAX_RUNNING as u64,
+            ));
+        }
+        if held >= limits::TEXT_PREVIEW_MAX_PER_DOC {
             return Err(AppError::limit(
                 "textPreviews",
                 limits::TEXT_PREVIEW_MAX_PER_DOC as u64,
@@ -232,17 +234,6 @@ fn contained<T: Send + 'static>(
         .map_err(|_| AppError::logged(ErrorCode::EngineTimeout, "text preview took too long"))?
 }
 
-/// What the page's edits so far and its source are.
-struct Basis {
-    current: Vec<u8>,
-    current_page: u32,
-    file_index: u32,
-    from_file: bool,
-    edits: Vec<TextEdit>,
-    rev: u32,
-    engine_index: u32,
-}
-
 /// The region of a line (page space, `[x0, y0, x1, y1]`, the right edge open to the page's edge when nothing follows) and the room it
 /// has after it.
 struct Region {
@@ -258,47 +249,6 @@ struct Made {
 }
 
 impl AppState {
-    fn preview_basis(&self, id: DocumentId, page: PageId) -> Result<Basis, AppError> {
-        let engine_index = self.registry.page_index(id, page)?;
-        let (source, kept): (PageSource, Option<PageEdits>) = self.model(id, |state| {
-            let slot = state.slot(page).ok_or(AppError::invalid("page"))?;
-            Ok((slot.source.clone(), state.text_edits(page).cloned()))
-        })?;
-        let info = self.info(id).ok_or(AppError::not_found("document"))?;
-        if matches!(info.flags.permissions, Some(allowed) if !allowed.contains(Permission::Edit)) {
-            return Err(AppError::read_only("permission"));
-        }
-        if info.signature_lock != SignatureLock::None {
-            return Err(AppError::read_only("signed"));
-        }
-        let edits = kept
-            .as_ref()
-            .map(|kept| kept.edits.clone())
-            .unwrap_or_default();
-        let rev = u32::try_from(edits.len()).unwrap_or(u32::MAX);
-        let (current, current_page, file_index, from_file) = match source {
-            PageSource::File { index } => (self.plain_original(id)?, index, index, true),
-            PageSource::TextEdited { bytes } => {
-                let file_index = kept.map(|kept| kept.file_index).ok_or_else(|| {
-                    AppError::logged(ErrorCode::Internal, "an edited page has no edits")
-                })?;
-                (bytes.to_vec(), 0, file_index, false)
-            }
-            PageSource::Redacted { .. } | PageSource::Blank | PageSource::Imported { .. } => {
-                return Err(TextEditRefusal::NotFileSource.error())
-            }
-        };
-        Ok(Basis {
-            current,
-            current_page,
-            file_index,
-            from_file,
-            edits,
-            rev,
-            engine_index,
-        })
-    }
-
     /// The preview of line `request.key` of `page` with the draft `request.text` (see the module documentation). Changes nothing.
     pub fn text_edit_preview(
         &self,
@@ -316,7 +266,11 @@ impl AppState {
         let page_key = (id.get(), page.get());
         let generation = request.generation;
         // Permission, signature and source come first: a refused document is not a stale frame.
-        let basis = self.preview_basis(id, page)?;
+        let basis = self.text_basis(id, page)?;
+        // A redacted page carries a refusal of its own in the probe; a preview has nothing to show for it.
+        if let Some(refusal) = basis.refusal {
+            return Err(refusal.error());
+        }
         if !latest().admit(page_key, generation) {
             return Err(cancelled());
         }

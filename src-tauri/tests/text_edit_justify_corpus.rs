@@ -36,35 +36,6 @@ fn page_lines(file: &str) -> Option<Vec<TextLineInfo>> {
     )
 }
 
-fn paragraph_count(lines: &[TextLineInfo]) -> usize {
-    let mut ids: Vec<u32> = lines.iter().map(|l| l.paragraph).collect();
-    ids.sort_unstable();
-    ids.dedup();
-    ids.len()
-}
-
-#[test]
-#[ignore = "needs the untracked corpus in review/ and the PDFium library"]
-fn dump_paragraph_counts() {
-    // One file per process (PDFium binds once): CORPUS_FILE=... cargo test ... dump_paragraph_counts
-    for file in std::env::var("CORPUS_FILE").iter() {
-        let Some(lines) = page_lines(file) else {
-            continue;
-        };
-        let justified: std::collections::HashSet<u32> = lines
-            .iter()
-            .filter(|l| l.justified)
-            .map(|l| l.paragraph)
-            .collect();
-        println!(
-            "{file}: {} lines, {} paragraphs, {} justified",
-            lines.len(),
-            paragraph_count(&lines),
-            justified.len()
-        );
-    }
-}
-
 #[test]
 #[ignore = "needs the untracked corpus in review/ and the PDFium library"]
 fn e4_justified_paragraph_is_not_split_at_the_stretched_line() {
