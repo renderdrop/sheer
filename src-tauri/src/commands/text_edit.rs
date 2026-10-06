@@ -130,12 +130,8 @@ impl Basis {
 
 impl AppState {
     pub(super) fn text_basis(&self, id: DocumentId, page: PageId) -> Result<Basis, AppError> {
-        let engine_index = self.registry.page_index(id, page)?;
-        let (source, kept): (PageSource, Option<PageEdits>) = self.model(id, |state| {
-            let slot = state.slot(page).ok_or(AppError::invalid("page"))?;
-            Ok((slot.source.clone(), state.text_edits(page).cloned()))
-        })?;
         let info = self.info(id).ok_or(AppError::not_found("document"))?;
+        let engine_index = self.registry.page_index(id, page)?;
         // Document level refusals are errors at probe and apply alike (ADR-125 §6): `read_only` with `what` `permission` or `signed`.
         if matches!(info.flags.permissions, Some(allowed) if !allowed.contains(Permission::Edit)) {
             return Err(AppError::read_only("permission"));
@@ -143,6 +139,10 @@ impl AppState {
         if info.signature_lock != SignatureLock::None {
             return Err(AppError::read_only("signed"));
         }
+        let (source, kept): (PageSource, Option<PageEdits>) = self.model(id, |state| {
+            let slot = state.slot(page).ok_or(AppError::invalid("page"))?;
+            Ok((slot.source.clone(), state.text_edits(page).cloned()))
+        })?;
         let mut refusal = None;
         let edits = kept
             .as_ref()

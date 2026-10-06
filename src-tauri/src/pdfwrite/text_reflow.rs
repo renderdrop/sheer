@@ -13,21 +13,17 @@ use std::collections::{BTreeSet, HashSet};
 use lopdf::{Document, ObjectId};
 
 use super::super::ops_walk;
-use super::super::text_lines::{self, Align, PageLines};
+use super::super::text_lines::{self, typical_edge, Align, PageLines, CROP_MARGIN, NEXT_GAP};
 use super::{
     char_ok, code_bytes, edit_line, fmt_num, is_show, parse_show, refused, width_of, FallbackWidth,
     FontKind, Item, LineInput, LineSource, Outcome, OwnedLine, View,
 };
-use crate::error::AppError;
+use crate::error::{AppError, ErrorCode};
 use crate::fontprog::fallback::Face;
 use crate::model::text_edit::{ChangeWarning, LineKey, TextEdit};
 
 /// A line may be this much (points) wider than its limit before a word moves down (float noise; below the splice's own `EPS`).
 const SLACK: f64 = 0.02;
-/// Distance kept to the next object on the baseline.
-const NEXT_GAP: f64 = 4.0;
-/// Distance kept to the edge of the crop box.
-const CROP_MARGIN: f64 = 12.0;
 
 /// Where one line of the paragraph is (page space, along its direction `[1, 0]`).
 #[derive(Debug, Clone, Copy)]
@@ -190,13 +186,6 @@ pub(crate) fn geometry(
         crop,
         below,
     })
-}
-
-/// The right edge most of the (inner, justified) lines share: their median.
-pub(crate) fn typical_edge(ends: &[f64]) -> Option<f64> {
-    let mut sorted: Vec<f64> = ends.iter().copied().filter(|e| e.is_finite()).collect();
-    sorted.sort_by(f64::total_cmp);
-    sorted.get(sorted.len() / 2).copied()
 }
 
 fn geom_of(pl: &PageLines, index: u32, l: &text_lines::Line) -> Result<LineGeom, AppError> {
@@ -444,8 +433,8 @@ pub(super) fn reflow(
     warnings: &mut Vec<ChangeWarning>,
     fw: FallbackWidth<'_>,
 ) -> Result<(), AppError> {
-    let geo = source.paragraph(streams, fallback, edit.key)?;
-    let n = geo.lines.len();
+    let mut geo = source.paragraph(streams, fallback, edit.key)?;
+    let mut n = geo.lines.len();
     let e = geo
         .indices
         .iter()
@@ -456,16 +445,34 @@ pub(super) fn reflow(
     let mut old: Vec<OwnedLine> = Vec::with_capacity(n - e);
     let mut measures: Vec<Measure> = Vec::with_capacity(n - e);
     for i in e..n {
-        let line = source.line(
-            streams,
-            fallback,
-            LineKey {
-                rev: edit.key.rev,
-                line: at(&geo, i)?,
-            },
-        )?;
-        measures.push(Measure::of(streams, &line)?);
-        old.push(line);
+        let read = source
+            .line(
+                streams,
+                fallback,
+                LineKey {
+                    rev: edit.key.rev,
+                    line: at(&geo, i)?,
+                },
+            )
+            .and_then(|line| Ok((Measure::of(streams, &line)?, line)));
+        match read {
+            Ok((measure, line)) => {
+                measures.push(measure);
+                old.push(line);
+            }
+            // A line further down that cannot be rewritten (a quote in another font, say) is a wall: the words that reach it stay on
+            // the line above (`textOverflow` when they do not fit there) and nothing is added below.
+            Err(error) if i > e && error.code() == ErrorCode::UnsupportedFeature => {
+                if let Some(wall) = geo.lines.get(i) {
+                    geo.below = Some((wall.baseline, wall.size));
+                }
+                geo.lines.truncate(i);
+                geo.indices.truncate(i);
+                n = i;
+                break;
+            }
+            Err(error) => return Err(error),
+        }
     }
 
     // The words: the edited line's new ones, then the original ones of the lines after it.

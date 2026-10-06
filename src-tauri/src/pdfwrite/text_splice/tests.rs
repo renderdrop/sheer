@@ -770,3 +770,41 @@ fn a_justified_line_with_a_nan_or_degenerate_limit_stays_natural() {
         }
     }
 }
+
+#[test]
+fn a_re_broken_line_never_gets_a_gap_below_its_natural_width_when_the_natural_line_fits() {
+    // "aa bb cc " carries 4 pt of old stretch per gap (ends at 125); "dd" joins it (natural width 127 pt, the edge is 130). A uniform
+    // take-back would squeeze the new gap below the 5 pt of a space: every gap must stay at or above it, and the line ends at the edge.
+    let content = "BT /F1 10 Tf 72 700 Td [(aa ) -400 (bb ) -400 (cc )] TJ ET";
+    assert!((right_edge(content) - 125.0).abs() < 0.01);
+    let (out, warnings, _) = run(
+        content,
+        &[edit(0, 0, "aa bb cc dd", TextFit::KeepStart)],
+        justified(130.0),
+    )
+    .unwrap();
+    assert!((right_edge(&out) - 130.0).abs() < 0.5, "{out}");
+    assert!(warnings.is_empty(), "{warnings:?}");
+    let glyphs = walk(&[out.as_bytes().to_vec()]);
+    let letters: Vec<&GlyphPos> = glyphs.iter().filter(|g| g.code != 32).collect();
+    for pair in letters.windows(2) {
+        let gap = pair[1].origin[0] - (pair[0].origin[0] + pair[0].adv);
+        assert!(
+            gap < 0.01 || gap >= 5.0 - 0.01,
+            "gap {gap} below a space: {out}"
+        );
+    }
+}
+
+#[test]
+fn a_line_that_does_not_fit_naturally_still_shrinks_its_gaps() {
+    // Natural width 127 pt against an edge of 125: the gaps give back more than their old stretch (the true shrink case).
+    let content = "BT /F1 10 Tf 72 700 Td [(aa ) -400 (bb ) -400 (cc )] TJ ET";
+    let (out, ..) = run(
+        content,
+        &[edit(0, 0, "aa bb cc dd", TextFit::KeepStart)],
+        justified(125.0),
+    )
+    .unwrap();
+    assert!((right_edge(&out) - 125.0).abs() < 0.5, "{out}");
+}

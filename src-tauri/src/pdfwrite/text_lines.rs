@@ -107,7 +107,58 @@ impl Line {
     }
 }
 
+/// Distance kept to the crop box's right edge and to a next object on the baseline (points).
+pub const CROP_MARGIN: f64 = 12.0;
+pub const NEXT_GAP: f64 = 4.0;
+
+/// The right edge most of the (inner) lines share: their median.
+pub fn typical_edge(ends: &[f64]) -> Option<f64> {
+    let mut sorted: Vec<f64> = ends.iter().copied().filter(|e| e.is_finite()).collect();
+    sorted.sort_by(f64::total_cmp);
+    sorted.get(sorted.len() / 2).copied()
+}
+
 impl PageLines {
+    /// Where line `index` may end when it is edited without a re-break (page space along its direction; `crop_right` is the right edge
+    /// of the crop box in the same space). A line of a multi-line paragraph stops at the paragraph's edge (the typical end of its inner
+    /// lines; right-aligned and centred lines: the widest end); a single line stops at the next object on its baseline, never past
+    /// `crop_right` less [`CROP_MARGIN`]. `None` for text that is not horizontal left-to-right.
+    pub fn right_limit(&self, index: u32, crop_right: f64) -> Option<f64> {
+        let line = self.lines.get(index as usize)?;
+        if line.dir[1].abs() > 0.01 || line.dir[0] <= 0.0 {
+            return None;
+        }
+        let me = line.span()?;
+        let hard = crop_right - CROP_MARGIN;
+        let paragraph = self.paragraphs.get(line.paragraph as usize);
+        let ends: Vec<f64> = paragraph
+            .filter(|p| p.lines.len() > 1)
+            .map(|p| {
+                self.lines
+                    .get(p.lines.start as usize..p.lines.end as usize)
+                    .unwrap_or_default()
+                    .iter()
+                    .filter_map(|l| l.span().map(|s| s.end))
+                    .collect()
+            })
+            .unwrap_or_default();
+        let edge = if ends.len() > 1 {
+            let aligned =
+                paragraph.is_some_and(|p| matches!(p.align, Align::Right | Align::Center));
+            if aligned {
+                ends.iter().copied().fold(f64::MIN, f64::max)
+            } else {
+                typical_edge(&ends[..ends.len() - 1])?
+            }
+        } else {
+            match self.room_after(index) {
+                Some(room) => me.end.max(me.end + room - NEXT_GAP),
+                None => hard,
+            }
+        };
+        Some(edge.min(hard))
+    }
+
     /// The room between the end of line `index` and the start of the next line on the same baseline (same direction, baseline within a
     /// fifth of the size), by geometry and not by content order: `None` when nothing follows. A line that starts before this one ends
     /// is not "next" (it overlaps), it answers `Some(0.0)`.
@@ -788,6 +839,8 @@ fn decode_plain(line: &Line, fonts: &HashMap<FontKey, FontInfo>) -> String {
                 out.push(' ');
             }
             prev_end = Some(at + g.adv);
+            // `inverse` keeps the lowest character of a code several characters map to (the font map is a HashMap: the pick must not
+            // depend on its iteration order).
             let mapped = info.and_then(|i| i.inverse.get(&g.code)).copied();
             if let Some(c) = mapped {
                 out.push(c);
@@ -813,6 +866,13 @@ fn editable_of(
     maps: &mut HashMap<usize, Option<FontMap>>,
 ) -> LineEditable {
     let main = main_run(line);
+    // The splice edits one font per line (`DocLines::line`): a line with a quote or a symbol in another font, or whose font is no
+    // object, would open a box that has no preview and no edit, so it says why not up front.
+    if main.font.object.is_none() || line.runs.iter().any(|run| run.font != main.font) {
+        return LineEditable::No {
+            reason: TextEditRefusal::TooComplex,
+        };
+    }
     let info = fonts.get(&main.font).and_then(|i| i.font.as_ref());
     let face = || {
         let (flags, weight, name) = info.map_or((0, 400, String::new()), |f| {
@@ -1417,5 +1477,69 @@ mod geometry_tests {
             line(1, "b", 80.0, 120.0, 700.0),
         ]);
         assert_eq!(overlap.room_before(1), Some(0.0));
+    }
+
+    fn paragraph_of(lines: Vec<Line>, align: super::Align) -> PageLines {
+        let n = u32::try_from(lines.len()).unwrap();
+        PageLines {
+            lines,
+            paragraphs: vec![super::Paragraph {
+                lines: 0..n,
+                align,
+                justified: false,
+            }],
+        }
+    }
+
+    #[test]
+    fn a_line_of_a_multi_line_paragraph_stops_at_the_typical_inner_edge() {
+        let p = paragraph_of(
+            vec![
+                line(0, "a", 72.0, 300.0, 700.0),
+                line(1, "b", 72.0, 302.0, 688.0),
+                line(2, "c", 72.0, 250.0, 676.0),
+                line(3, "d", 72.0, 120.0, 664.0),
+            ],
+            super::Align::Left,
+        );
+        for i in 0..4 {
+            assert_eq!(p.right_limit(i, 612.0), Some(300.0), "line {i}");
+        }
+    }
+
+    #[test]
+    fn a_right_aligned_paragraph_stops_at_its_widest_end_and_the_crop_edge_caps_it() {
+        let p = paragraph_of(
+            vec![
+                line(0, "a", 72.0, 300.0, 700.0),
+                line(1, "b", 100.0, 300.0, 688.0),
+            ],
+            super::Align::Right,
+        );
+        assert_eq!(p.right_limit(1, 612.0), Some(300.0));
+        assert_eq!(p.right_limit(1, 250.0), Some(238.0));
+    }
+
+    #[test]
+    fn a_single_line_stops_at_the_next_object_but_never_past_the_crop_edge_less_12_pt() {
+        let alone = page(vec![line(0, "a", 72.0, 300.0, 700.0)]);
+        assert_eq!(alone.right_limit(0, 612.0), Some(600.0));
+        let next = page(vec![
+            line(0, "a", 72.0, 300.0, 700.0),
+            line(1, "b", 340.0, 500.0, 700.0),
+        ]);
+        assert_eq!(next.right_limit(0, 612.0), Some(336.0));
+        // A neighbour closer than the gap does not push the limit below the line's own end.
+        let tight = page(vec![
+            line(0, "a", 72.0, 300.0, 700.0),
+            line(1, "b", 302.0, 500.0, 700.0),
+        ]);
+        assert_eq!(tight.right_limit(0, 612.0), Some(300.0));
+        let rotated = {
+            let mut p = page(vec![line(0, "a", 72.0, 300.0, 700.0)]);
+            p.lines[0].dir = [0.0, 1.0];
+            p
+        };
+        assert_eq!(rotated.right_limit(0, 612.0), None);
     }
 }

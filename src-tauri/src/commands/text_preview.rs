@@ -8,7 +8,7 @@
 //! region (the line box widened to the free room after it, for scope `paragraph` the paragraph's box and one more line), and PDFium draws
 //! that one-page snapshot. Nothing of `DocState` or of the engine's document changes and there is no undo step: a snapshot is opened and
 //! closed for each frame. `rect` is the region in page space (points from the top left of the page's visible box, before the page's
-//! rotation) and the picture is not rotated either. `overflowPt` is how far the new text reaches past the free room (0 if it fits),
+//! rotation) and the picture is not rotated either. `overflowPt` is how far the new text runs past the line's limit (the paragraph's right edge for a line of a multi-line paragraph, else the next object or the crop edge less 12 pt; 0 if it fits),
 //! `fallback` says in which substitute face (and for which characters of the draft) the text is drawn, or is `null`.
 //!
 //! Work for a page is dropped (`cancelled`, which the UI ignores) when a newer `generation` for the same document and page has been seen,
@@ -37,9 +37,10 @@ use crate::model::text_edit::{
     FallbackFace, LineEditable, LineKey, TextEdit, TextEditRefusal, TextFit, TextScope,
 };
 use crate::pdfwrite::text_io::PageDoc;
-use crate::pdfwrite::text_lines::{Line, PageLines};
+use crate::pdfwrite::text_lines::{self, Align, Line, PageLines};
 use crate::pdfwrite::text_refuse;
 use crate::pdfwrite::text_save::{self, FallbackUse, PreviewPage};
+use crate::pdfwrite::text_splice;
 
 /// What the UI asks of one preview.
 #[derive(Debug, Clone)]
@@ -234,11 +235,9 @@ fn contained<T: Send + 'static>(
         .map_err(|_| AppError::logged(ErrorCode::EngineTimeout, "text preview took too long"))?
 }
 
-/// The region of a line (page space, `[x0, y0, x1, y1]`, the right edge open to the page's edge when nothing follows) and the room it
-/// has after it.
+/// The region of a line (page space, `[x0, y0, x1, y1]`, the right edge open to the page's edge when nothing follows).
 struct Region {
     clip: [f64; 4],
-    room: Option<f64>,
 }
 
 /// What the replay thread found.
@@ -424,7 +423,6 @@ fn region_of(lines: &PageLines, line: &Line, scope: TextScope) -> Region {
             x1 + 2.0,
             y1 + pad,
         ],
-        room,
     }
 }
 
@@ -435,19 +433,64 @@ fn dot(a: [f64; 2], b: [f64; 2]) -> f64 {
 fn same_direction(a: [f64; 2], b: [f64; 2]) -> bool {
     dot(a, b) > 0.0 && (a[0] * b[1] - a[1] * b[0]).abs() < 0.02
 }
+/// The right limit of `line` and, for a right-aligned or centred line of a multi-line paragraph, the paragraph's left edge.
+/// With a re-break (`Paragraph`) a ragged paragraph wraps at its widest line, so that is where it overflows.
+fn limits_of(
+    lines: &PageLines,
+    line: &Line,
+    scope: TextScope,
+    crop_right: f64,
+) -> (Option<f64>, Option<f64>) {
+    let mut limit = lines.right_limit(line.index, crop_right);
+    let paragraph = lines
+        .paragraphs
+        .get(line.paragraph as usize)
+        .filter(|p| p.lines.len() > 1);
+    let spans: Vec<_> = paragraph
+        .and_then(|p| {
+            lines
+                .lines
+                .get(p.lines.start as usize..p.lines.end as usize)
+        })
+        .unwrap_or_default()
+        .iter()
+        .filter_map(Line::span)
+        .collect();
+    if scope == TextScope::Paragraph {
+        let widest = spans.iter().map(|s| s.end).fold(f64::MIN, f64::max);
+        limit = limit.map(|l| l.max(widest.min(crop_right - text_lines::CROP_MARGIN)));
+    }
+    let aligned = paragraph.is_some_and(|p| matches!(p.align, Align::Right | Align::Center));
+    let left = aligned
+        .then(|| spans.iter().map(|s| s.start).fold(f64::MAX, f64::min))
+        .filter(|l| l.is_finite() && *l < f64::MAX);
+    (limit, left)
+}
 
-/// How far the edited line ends past the room it had: the end of the line in the replayed page that sits where the old one started,
-/// against the end of the old line and the room after it. Page space is not needed: both are read in the page's user space.
-fn overflow_of(old: &Line, room: Option<f64>, page_width: f64, replayed: &PageLines) -> f64 {
+/// How far the edited line runs past its limit (`PageLines::right_limit`; for right-aligned and centred lines also the paragraph's
+/// left edge): the end of the line in the replayed page that sits where the old one started. Page space is not needed: both are read
+/// in the page's user space. 0 when the draft fits or the line has no limit (rotated text).
+fn overflow_of(
+    old: &Line,
+    limit: Option<f64>,
+    left_edge: Option<f64>,
+    replayed: &PageLines,
+) -> f64 {
     let Some(was) = old.span() else { return 0.0 };
+    let aligned = left_edge.is_some();
     let now = replayed
         .lines
         .iter()
         .filter(|line| same_direction(line.dir, old.dir))
         .filter_map(|line| line.span())
         .filter(|span| {
-            (span.baseline - was.baseline).abs() <= 0.2 * old.size
-                && (span.start - was.start).abs() <= old.size.max(1.0)
+            let row = (span.baseline - was.baseline).abs() <= 0.2 * old.size;
+            // A right-aligned or centred line moves its start with the text: it is the one that still overlaps the old one.
+            row && if aligned {
+                span.end >= was.start && span.start <= was.end
+            } else {
+                (span.start - was.start).abs() <= old.size.max(1.0)
+            }
         })
         .min_by(|a, b| {
             (a.start - was.start)
@@ -455,9 +498,9 @@ fn overflow_of(old: &Line, room: Option<f64>, page_width: f64, replayed: &PageLi
                 .total_cmp(&(b.start - was.start).abs())
         });
     let Some(now) = now else { return 0.0 };
-    let allowed =
-        room.unwrap_or_else(|| (page_width - f64::from(old.bounds.x + old.bounds.w)).max(0.0));
-    ((now.end - was.end) - allowed).max(0.0)
+    let right = limit.map_or(0.0, |l| now.end - l);
+    let left = left_edge.map_or(0.0, |l| l - now.start);
+    right.max(left).max(0.0)
 }
 
 /// The thread's work: find the line, make the region and the replayed page, measure the overflow.
@@ -484,6 +527,7 @@ fn replay(
         return Err(reason.error());
     }
     let unchanged = line.text == draft.text;
+    let draft_scope = draft.scope;
     let region = region_of(&lines, line, draft.scope);
     let mut all = stored;
     if !unchanged {
@@ -500,7 +544,9 @@ fn replay(
     } else {
         let replayed_doc = PageDoc::load(&page.bytes)?;
         let replayed = replayed_doc.lines(replayed_doc.page(0)?, &[])?;
-        overflow_of(line, region.room, page.page_size[0], &replayed)
+        let crop_right = text_splice::page_crop_right(current, current_page)?;
+        let (limit, left_edge) = limits_of(&lines, line, draft_scope, crop_right);
+        overflow_of(line, limit, left_edge, &replayed)
     };
     Ok(Made {
         page,

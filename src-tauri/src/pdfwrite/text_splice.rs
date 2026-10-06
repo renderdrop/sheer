@@ -1231,6 +1231,9 @@ fn plan_edit(
     let mut spread = 0.0;
     // The stretch of a justified line: the page units each word gap gets, the gaps before each kept glyph and before each new item.
     let mut edge: Option<f64> = None;
+    // Gaps (their ordinals) that already carry the old stretch, and how much of it each gives back (page units).
+    let mut give: HashSet<usize> = HashSet::new();
+    let mut give_pt = 0.0_f64;
     let mut kept_gb: HashMap<usize, usize> = HashMap::new();
     let mut new_gb: Vec<Option<usize>> = vec![None; new_items.len()];
 
@@ -1322,9 +1325,15 @@ fn plan_edit(
                     }
                 }
             };
+            let mut interior: HashSet<usize> = HashSet::new();
+            let mut last_g = 0usize;
             for cell in &cells[..a] {
                 let g = gc.next(cell.c);
                 visit(cell, g);
+                if g > last_g {
+                    interior.insert(g);
+                    last_g = g;
+                }
             }
             let mut region_gap = false;
             let mut region_gb: Vec<Option<usize>> = Vec::new();
@@ -1339,9 +1348,19 @@ fn plan_edit(
             } else {
                 region_gb.extend(region.chars().map(|c| Some(gc.next(c))));
             }
+            last_g = gc.runs;
+            let mut tail_word = false;
             for cell in &cells[b..] {
                 let g = gc.next(cell.c);
                 visit(cell, g);
+                if g > last_g {
+                    // A gap between two words of the kept tail carries the old stretch; one next to the edit does not.
+                    if tail_word {
+                        interior.insert(g);
+                    }
+                    last_g = g;
+                }
+                tail_word |= !cell.c.is_whitespace();
             }
             let tail_only = cells[b..].iter().all(|c| c.c.is_whitespace());
             let region_start = match ins {
@@ -1377,7 +1396,7 @@ fn plan_edit(
                     .filter(|w| *w > 0.0)
                     .unwrap_or(250.0);
                 // A line stretched before already carries extra gap width; taking that back is no shrink of the natural gap.
-                let was_stretched = {
+                let (was_stretched, was_pt) = {
                     let natural: f64 = glyphs
                         .iter()
                         .map(|g| width_of(font, g.code).unwrap_or(0.0))
@@ -1393,13 +1412,27 @@ fn plan_edit(
                         old_gc.next(cell.c);
                     }
                     if old_gc.runs > 0 && line_right_old > first {
-                        ((line_right_old - first - natural).max(0.0) / old_gc.runs as f64) * 1000.0
-                            / unit_anchor
+                        let pt = (line_right_old - first - natural).max(0.0) / old_gc.runs as f64;
+                        (pt * 1000.0 / unit_anchor, pt)
                     } else {
-                        0.0
+                        (0.0, 0.0)
                     }
                 };
-                if per_em <= STRETCH_MAX * space_w
+                // The kept gaps hold the old stretch and the gaps of the new text hold none: when the natural line fits, every gap ends
+                // at the same width above natural (never below it); only a line that needs more than that shrinks (the uniform case).
+                let kept_extra = was_pt * interior.len() as f64;
+                let even = (limit - l_nat + kept_extra) / gc.runs as f64;
+                if was_pt > 0.0
+                    && per_gap < 0.0
+                    && even >= 0.0
+                    && even * 1000.0 / unit_anchor <= STRETCH_MAX * space_w
+                {
+                    edge = Some(even);
+                    give = interior;
+                    give_pt = was_pt;
+                    new_gb = region_gb;
+                    delta = 0.0;
+                } else if per_em <= STRETCH_MAX * space_w
                     && per_em >= -(STRETCH_MIN * space_w + was_stretched)
                 {
                     edge = Some(per_gap);
@@ -1520,8 +1553,11 @@ fn plan_edit(
                     _ => g,
                 };
                 prev = Some((chain[*pos], g));
-                if gaps > 0 && per_gap.abs() > 1e-6 {
-                    inserts.push((*pos, idx, gaps as f64 * per_gap));
+                let from = g - gaps;
+                let given = give.iter().filter(|k| **k > from && **k <= g).count();
+                let grow = gaps as f64 * per_gap - given as f64 * give_pt;
+                if gaps > 0 && grow.abs() > 1e-6 {
+                    inserts.push((*pos, idx, grow));
                 }
             }
         }
@@ -1533,7 +1569,7 @@ fn plan_edit(
         }
         for (pos, idx, grow) in inserts.into_iter().rev() {
             let unit = units.get(&pos).copied().unwrap_or(0.0);
-            if unit <= 0.0 || !unit.is_finite() {
+            if unit <= 0.0 || !unit.is_finite() || !grow.is_finite() {
                 return Err(refused());
             }
             touched.insert(pos);
@@ -1927,23 +1963,23 @@ fn face_of(doc: &Document, font: ObjectId) -> Face {
     pick(flags, weight, &name)
 }
 
-fn media_right(doc: &Document, page: ObjectId) -> Option<f64> {
-    let mut id = page;
-    for _ in 0..limits::MAX_PARENT_CHAIN {
-        let dict = doc.get_dictionary(id).ok()?;
-        if let Ok(obj) = dict.get(b"MediaBox") {
-            let arr = resolve(doc, obj)?.as_array().ok()?;
-            let n = |i: usize| {
-                arr.get(i)
-                    .and_then(|o| resolve(doc, o))
-                    .and_then(|o| o.as_float().ok())
-            };
-            let (x0, x1) = (n(0)?, n(2)?);
-            return Some(f64::from(x0.max(x1)));
-        }
-        id = dict.get(b"Parent").ok()?.as_reference().ok()?;
-    }
-    None
+/// The right edge of the page's crop box (the media box without one) in user space.
+fn crop_right(doc: &Document, page: ObjectId) -> Option<f64> {
+    super::ops_walk::inherited(doc, page, b"CropBox")
+        .or_else(|| super::ops_walk::inherited(doc, page, b"MediaBox"))
+        .and_then(|o| super::ops_walk::box_of(doc, &o))
+        .map(|b| b[2])
+}
+
+/// The right edge of the crop box of page `index` of `bytes` (612 when the page names no box).
+pub fn page_crop_right(bytes: &[u8], index: u32) -> Result<f64, AppError> {
+    let doc = super::load_untrusted(bytes)?;
+    let page = doc
+        .get_pages()
+        .into_values()
+        .nth(usize::try_from(index).map_err(|_| AppError::invalid("page"))?)
+        .ok_or(AppError::invalid("page"))?;
+    Ok(crop_right(&doc, page).unwrap_or(612.0))
 }
 
 /// Replaces the placeholder characters of `text` by the characters of the glyph at the same index; a text with another count than
@@ -2065,26 +2101,7 @@ impl LineSource for DocLines<'_> {
             .find(|p| p.lines.contains(&key.line));
         let justified = paragraph.is_some_and(|p| p.justified && key.line + 1 < p.lines.end);
         let align = paragraph.map_or(Align::Left, |p| p.align);
-        let dir = line.dir;
-        let right_limit = if dir[1].abs() < 0.01 && dir[0] > 0.0 {
-            match paragraph {
-                Some(p) if p.lines.len() > 1 => {
-                    let ends: Vec<f64> = lines.lines[p.lines.start as usize..p.lines.end as usize]
-                        .iter()
-                        .map(|l| f64::from(l.bounds.x + l.bounds.w))
-                        .collect();
-                    if p.justified {
-                        // The edge most inner lines share, not the one a stretched line overshoots to.
-                        text_reflow::typical_edge(&ends[..ends.len() - 1])
-                    } else {
-                        ends.iter().copied().reduce(f64::max)
-                    }
-                }
-                _ => media_right(doc, self.page),
-            }
-        } else {
-            None
-        };
+        let right_limit = lines.right_limit(key.line, crop_right(doc, self.page).unwrap_or(612.0));
         let glyphs: Vec<_> = line.runs.iter().flat_map(|r| r.glyphs.clone()).collect();
         // Without PDFium's characters the text of a two-byte font is a placeholder per glyph: the font's own map says the characters.
         let mut text = line.text.clone();

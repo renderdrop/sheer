@@ -9,7 +9,7 @@ use std::time::Duration;
 use sheer_lib::commands::AppState;
 use sheer_lib::documents::PageId;
 use sheer_lib::engine::{self, Engine};
-use sheer_lib::model::text_edit::TextLineInfo;
+use sheer_lib::model::text_edit::{LineEditable, TextLineInfo};
 
 /// The text lines of page 1 of a corpus file, or `None` when the corpus or PDFium is missing.
 fn page_lines(file: &str) -> Option<Vec<TextLineInfo>> {
@@ -96,6 +96,13 @@ fn a_lengthened_justified_line_reflows_and_every_line_but_the_last_ends_at_the_r
             .filter(|l| l.paragraph == first.paragraph)
             .collect();
         if para.len() < 3 || para[0].key != first.key {
+            continue;
+        }
+        // A paragraph with a line that cannot be edited (a quote in another font) re-breaks only up to that line: not the subject.
+        if para
+            .iter()
+            .any(|l| matches!(l.editable, LineEditable::No { .. }))
+        {
             continue;
         }
         for l in &para {
