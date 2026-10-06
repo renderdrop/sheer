@@ -25,6 +25,9 @@ use crate::model::text_edit::{
     TextScope,
 };
 
+#[path = "text_reflow.rs"]
+mod text_reflow;
+
 /// One operator with the byte range of its operands in the stream. An operator without operands has the empty range at its own start; an
 /// inline image (`BI`) is one operator whose range is its dictionary. The operator's index in the vector is its `OpRef::index`.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -1451,6 +1454,16 @@ pub(crate) trait LineSource {
         fallback: &[(Face, BTreeSet<char>)],
         key: LineKey,
     ) -> Result<OwnedLine, AppError>;
+
+    /// The geometry of the paragraph that holds line `key.line` (for the re-break of a paragraph edit, [`text_reflow`]).
+    fn paragraph(
+        &mut self,
+        _streams: &[Vec<u8>],
+        _fallback: &[(Face, BTreeSet<char>)],
+        _key: LineKey,
+    ) -> Result<text_reflow::ParaGeom, AppError> {
+        Err(refused())
+    }
 }
 
 /// The result of a replay over decoded streams.
@@ -1487,8 +1500,16 @@ pub(crate) fn replay_core(
         if usize::try_from(edit.key.rev) != Ok(k) {
             return Err(AppError::invalid("lineKey"));
         }
-        if edit.scope != TextScope::Line {
-            return Err(refused());
+        if edit.scope == TextScope::Paragraph {
+            text_reflow::reflow(
+                &mut streams,
+                edit,
+                source,
+                &mut fallback,
+                &mut warnings,
+                fallback_width,
+            )?;
+            continue;
         }
         let line = source.line(&streams, &fallback, edit.key)?;
         let input = LineInput {
@@ -1689,14 +1710,15 @@ struct DocLines<'a> {
     store: &'a FallbackStore,
 }
 
-impl LineSource for DocLines<'_> {
-    fn line(
+impl DocLines<'_> {
+    /// Writes the streams of the edits so far into the working copy (`rev` 0 is the original, nothing to write).
+    fn sync(
         &mut self,
         streams: &[Vec<u8>],
         fallback: &[(Face, BTreeSet<char>)],
-        key: LineKey,
-    ) -> Result<OwnedLine, AppError> {
-        if key.rev > 0 {
+        rev: u32,
+    ) -> Result<(), AppError> {
+        if rev > 0 {
             let mut work = self.work.take().unwrap_or_else(|| self.src.clone());
             for (id, bytes) in self.ids.iter().zip(streams) {
                 if let Some(Object::Stream(stream)) = work.objects.get_mut(id) {
@@ -1710,6 +1732,30 @@ impl LineSource for DocLines<'_> {
             }
             self.work = Some(work);
         }
+        Ok(())
+    }
+}
+
+impl LineSource for DocLines<'_> {
+    fn paragraph(
+        &mut self,
+        streams: &[Vec<u8>],
+        fallback: &[(Face, BTreeSet<char>)],
+        key: LineKey,
+    ) -> Result<text_reflow::ParaGeom, AppError> {
+        self.sync(streams, fallback, key.rev)?;
+        let doc: &Document = self.work.as_ref().unwrap_or(self.src);
+        let lines = text_lines::lines(doc, self.page, &[])?;
+        text_reflow::geometry(doc, self.page, &lines, key.line)
+    }
+
+    fn line(
+        &mut self,
+        streams: &[Vec<u8>],
+        fallback: &[(Face, BTreeSet<char>)],
+        key: LineKey,
+    ) -> Result<OwnedLine, AppError> {
+        self.sync(streams, fallback, key.rev)?;
         let doc: &Document = self.work.as_ref().unwrap_or(self.src);
         let lines = text_lines::lines(doc, self.page, &[])?;
         let index = usize::try_from(key.line).map_err(|_| AppError::invalid("lineKey"))?;
