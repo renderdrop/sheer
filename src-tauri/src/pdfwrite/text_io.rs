@@ -49,6 +49,11 @@ impl PageDoc {
         Ok(text_refuse::document_refusal(&self.doc)?.is_some())
     }
 
+    /// The right edge of the crop box of `page` (612 when it names no usable box), read from the already parsed document.
+    pub fn crop_right(&self, page: PageRef) -> f64 {
+        super::text_splice::crop_right(&self.doc, page.0).unwrap_or(612.0)
+    }
+
     /// The operator walk of `page`.
     pub fn walk(
         &self,

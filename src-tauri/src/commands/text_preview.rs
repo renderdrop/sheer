@@ -40,7 +40,6 @@ use crate::pdfwrite::text_io::PageDoc;
 use crate::pdfwrite::text_lines::{self, Align, Line, PageLines};
 use crate::pdfwrite::text_refuse;
 use crate::pdfwrite::text_save::{self, FallbackUse, PreviewPage};
-use crate::pdfwrite::text_splice;
 
 /// What the UI asks of one preview.
 #[derive(Debug, Clone)]
@@ -544,7 +543,7 @@ fn replay(
     } else {
         let replayed_doc = PageDoc::load(&page.bytes)?;
         let replayed = replayed_doc.lines(replayed_doc.page(0)?, &[])?;
-        let crop_right = text_splice::page_crop_right(current, current_page)?;
+        let crop_right = doc.crop_right(doc.page(current_page)?);
         let (limit, left_edge) = limits_of(&lines, line, draft_scope, crop_right);
         overflow_of(line, limit, left_edge, &replayed)
     };

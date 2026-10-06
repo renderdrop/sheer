@@ -808,3 +808,25 @@ fn a_line_that_does_not_fit_naturally_still_shrinks_its_gaps() {
     .unwrap();
     assert!((right_edge(&out) - 125.0).abs() < 0.5, "{out}");
 }
+
+fn doc_with_crop(right: lopdf::Object) -> (Document, ObjectId) {
+    use lopdf::{dictionary, Object};
+    let mut doc = Document::with_version("1.5");
+    let page = doc.add_object(dictionary! {
+        "Type" => "Page",
+        "MediaBox" => vec![Object::Integer(0), Object::Integer(0), Object::Integer(600), Object::Integer(800)],
+        "CropBox" => vec![Object::Integer(0), Object::Integer(0), right, Object::Integer(800)],
+    });
+    (doc, page)
+}
+
+#[test]
+fn crop_right_reads_the_edge_and_refuses_a_non_finite_one() {
+    let (doc, page) = doc_with_crop(lopdf::Object::Integer(500));
+    assert_eq!(crop_right(&doc, page), Some(500.0));
+    for bad in [f32::NAN, f32::INFINITY, f32::NEG_INFINITY] {
+        let (doc, page) = doc_with_crop(lopdf::Object::Real(bad));
+        let got = crop_right(&doc, page);
+        assert!(got.is_none_or(f64::is_finite), "{bad} gave {got:?}");
+    }
+}

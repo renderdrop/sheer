@@ -67,6 +67,7 @@ fn preview(
 #[ignore = "needs the untracked corpus in review/ and the PDFium library"]
 fn e4_praeambel_and_overflow_caption() {
     let Some((state, id, page)) = open() else {
+        eprintln!("skipping the Praeambel corpus test: PDFium or {FILE} not found");
         return;
     };
     praeambel_and_two_font_lines(&state, id, page);

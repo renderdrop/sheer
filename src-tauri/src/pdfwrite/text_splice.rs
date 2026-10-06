@@ -1964,22 +1964,13 @@ fn face_of(doc: &Document, font: ObjectId) -> Face {
 }
 
 /// The right edge of the page's crop box (the media box without one) in user space.
-fn crop_right(doc: &Document, page: ObjectId) -> Option<f64> {
+/// A non-finite edge is no edge (`None`).
+pub(super) fn crop_right(doc: &Document, page: ObjectId) -> Option<f64> {
     super::ops_walk::inherited(doc, page, b"CropBox")
         .or_else(|| super::ops_walk::inherited(doc, page, b"MediaBox"))
         .and_then(|o| super::ops_walk::box_of(doc, &o))
         .map(|b| b[2])
-}
-
-/// The right edge of the crop box of page `index` of `bytes` (612 when the page names no box).
-pub fn page_crop_right(bytes: &[u8], index: u32) -> Result<f64, AppError> {
-    let doc = super::load_untrusted(bytes)?;
-    let page = doc
-        .get_pages()
-        .into_values()
-        .nth(usize::try_from(index).map_err(|_| AppError::invalid("page"))?)
-        .ok_or(AppError::invalid("page"))?;
-    Ok(crop_right(&doc, page).unwrap_or(612.0))
+        .filter(|r| r.is_finite())
 }
 
 /// Replaces the placeholder characters of `text` by the characters of the glyph at the same index; a text with another count than
