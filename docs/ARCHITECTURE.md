@@ -1154,3 +1154,56 @@ Cargo feature `automation` (not in `default`, never in `release.yml`/`ci.yml`; `
 
   A message answers "confirm" unless `cancel` is true or `button` is `"cancel"`.
 - **Separate identity.** Identifier `app.sheer.acceptance`: Tauri derives the app-data folder (`app_data_dir`: recents, settings, autosave, signature library, trust store), the Windows single-instance mutex and window class from it, so the acceptance exe never shares them with `app.sheer.desktop`. The keychain service (`storage/keychain.rs`) switches to `app.sheer.acceptance` with the feature. The updater is not configured (`update::configure` returns the context unchanged), so its plugin is not registered.
+
+## 15. OCR text layer (v1.7, ADR-134; phase 1 = Windows spike, no UI)
+
+```
+ocr/mod.rs          OcrService: job queue, pipeline (engine RenderForOcr → backend → layer), cancel, progress pushes
+ocr/backend.rs      enum OcrBackend { WindowsChild, VisionSidecar, None }; capabilities(); spawn/kill/restart (budget 5 / 10 min)
+ocr/child.rs        ocr_child_main() -> Option<i32>  // main.rs: argv[1] == "--sheer-ocr-child" && env SHEER_OCR_CHILD == "1"
+ocr/win.rs          #[cfg(windows)] recognize(&Gray8, &LangTag) -> Result<RawOcr, OcrError>  // windows 0.62 safe projections only
+ocr/wire.rs         u32 LE len + JSON header + blob; OcrRequest / OcrReply; caps and validation of replies
+ocr/limits.rs       MAX_SIDE_PX 8000, MAX_PIXELS 40_000_000, MAX_WORDS 20_000, MAX_WORD_CHARS 128, MAX_REPLY 8 MiB, PAGE_TIMEOUT 30 s
+ocr/geometry.rs     pixel boxes → page user space (inverse display matrix incl. /Rotate), line grouping, sanitizing (NFC, controls)
+ocr/textlayer.rs    OcrPageLayer → TextLayer / search hits for unsaved layers (same shapes as the engine's)
+pdfwrite/ocr_font.rs   glyphless TrueType (generated) + Type0/CIDFontType2/ToUnicode objects
+pdfwrite/ocr_layer.rs  layer content stream (3 Tr, per-word Tm/Tz/Tj, explicit gap spaces), /Contents wrap, /SheerOcr key
+sidecar/ocr-macos/     Swift package `sheer-ocr` (VNRecognizeTextRequest), same wire; bundled as externalBin
+```
+
+```rust
+pub struct OcrWord { pub text: String, pub rect: [f32; 4] }        // page user space, x0 y0 x1 y1
+pub struct OcrLine { pub words: Vec<OcrWord> }
+pub struct OcrPageLayer { pub lang: LangTag, pub backend: BackendKind, pub angle_deg: f32, pub dpi: f32, pub lines: Vec<OcrLine> }
+pub enum PageOcrClass { Scan, HasTextLayer, SheerLayer, Text, Empty }
+
+// engine/wire.rs additions (child replies reuse Raster)
+WireRequest::OcrProbe { id: DocumentId, pages: Vec<u32> }                       // → OcrProbe(Vec<PageOcrClass>)
+WireRequest::RenderForOcr { id: DocumentId, engine_index: u32, dpi: f32, max_side: u32 } // → Raster { width, height, gray }
+
+// model
+DocCommand::ApplyOcr { layers: Vec<(PageId, Arc<OcrPageLayer>)> }               // one undo step; DocState.ocr_layers
+pub fn write_ocr_layers(doc: &mut lopdf::Document, layers: &[(ObjectId, &OcrPageLayer)]) -> Result<(), PdfWriteError>; // save path only
+```
+
+| Command | Arguments | Returns |
+|---|---|---|
+| `ocr_capabilities` | none | `{ backend: "windows"\|"vision"\|"none", languages: { tag: "de-DE"\|"en-US", available: boolean }[], maxImageDimension: number \| null }` |
+| `ocr_classify_pages` | `doc, pages?: number[]` | `{ page: number, class: PageOcrClass }[]` |
+| `ocr_start` | `doc, pages: PageSelection, lang: string, redo: boolean` | `{ job: OcrJobId, langUsed: string, notice: "languageFallback" \| null }`; refused `read_only` (signed/certified), `permission_denied`, `unsupported_feature` (`ocrUnavailable`) |
+| `ocr_cancel` | `job` | nothing; finished pages stay applied |
+
+Pushes: `ocrProgress { doc, job, done, total, failed }`, `ocrFinished { doc, job, applied, skipped, failed }` (no paths, no text).
+
+TS (`src/api/ocr.ts`):
+
+```ts
+export interface OcrLanguage { tag: 'de-DE' | 'en-US'; available: boolean }
+export interface OcrCapabilities { backend: 'windows' | 'vision' | 'none'; languages: OcrLanguage[]; maxImageDimension: number | null }
+export type PageOcrClass = 'scan' | 'hasTextLayer' | 'sheerLayer' | 'text' | 'empty'
+```
+
+- **Isolation.** Windows OCR runs only in the `--sheer-ocr-child` process of our own exe; macOS in the `sheer-ocr` sidecar. Both get
+  gray8 bitmaps and a language tag, never PDF bytes or paths. CI grep: `windows::Media` only in `ocr/win.rs`; `pdfium_render` still
+  only in `engine/`.
+- **Save.** Incremental: `[q, original…, Q, layer]` per page, page-local `/Resources`, one font set per document.

@@ -2677,3 +2677,104 @@ not have picked. The queue exists only in the acceptance build (feature `automat
 2. *Range citations.* A numeric range "[3–5]" links every number in the range: one detected link over the printed range whose click
    opens a small chooser (one row per entry: number + entry preview) to pick the target; a single-target range behaves like a plain
    link. Designer addendum to DESIGN §3.11 first; the chooser is a registered surface (gate).
+
+## ADR-134 — v1.7 Scan & OCR: OS OCR integration and the invisible text layer
+
+**Status:** proposed (2026-10-07, session "v1.7 Scan & OCR – Phase 1, Machbarkeit"). Phase 1 = Windows spike, no UI. Design in
+ARCHITECTURE.md §15. Corpus files are named by ID only (rule 16, ADR-133).
+
+**Context.** Scans and photographed pages carry no text: no search, copy, highlight or smart links. Owner scope: an invisible text layer,
+de/en, from the OS OCR (Windows.Media.Ocr, Apple Vision), with **no `unsafe` in our crate** (`[lints.rust] unsafe_code = "forbid"`
+stays) or via a sidecar. Constraints: permissive deps, offline, PDFium only in `engine/`, all writing in `pdfwrite/` (lopdf),
+incremental save, undo as `DocCommand`, every PDF hostile. Dev machine fact (WinRT query): `AvailableRecognizerLanguages` = `de-DE`
+only, `MaxImageDimension` = 10000; English needs the OS capability `Language.OCR~~~en-US~0.0.1.0`.
+
+**Options.**
+(a) *`windows` crate in-process.* `windows` 0.62 (MIT OR Apache-2.0, already in `Cargo.lock` via Tauri) projects WinRT as safe
+methods: `DataWriter::new()?.WriteBytes(&px)?; DetachBuffer()?` → `SoftwareBitmap::CreateCopyFromBuffer(&buf, Gray8, w, h)?` →
+`OcrEngine::TryCreateFromLanguage(&Language::CreateLanguage(h!("de-DE"))?)?.RecognizeAsync(&bmp)?.get()?`; lines → words →
+`Text()`, `BoundingRect()`. No `RoInitialize` call is needed: windows-rs activation falls back to an implicit MTA
+(`CoIncrementMTAUsage`) internally. So no `unsafe` at our call sites. Risk: OCR runs native code on attacker-shaped pixels inside the app.
+(b) *`objc2-vision` in-process (macOS).* Most generated Vision/Foundation methods are `unsafe fn` (block callbacks, `NSArray` casts,
+`boundingBoxForRange`). Violates the rule; rejected.
+(c) *Sidecar per platform.* Windows: a Rust OCR child; macOS: a Swift CLI. stdin/stdout framing, killable, crash-isolated like the
+engine child.
+(d) *Hybrid.* **Chosen:** Windows = (a)'s safe API **inside a second child process of our own exe** (`--sheer-ocr-child`, same pattern
+as `engine_child_main`), macOS = Swift sidecar `sheer-ocr` (Tauri `bundle.externalBin`). One wire protocol, one parent module.
+Why not plain (a): a WinRT/driver crash or hang would take the window with it; the child costs ~150 lines and is killable on timeout.
+Why not a separate Windows exe: one more binary to sign and bundle for no isolation gain.
+
+**Decisions.**
+1. *Backends.* `ocr::backend::OcrBackend` = `WindowsChild` | `VisionSidecar` | `None`. The parent never links Vision; the Windows OCR
+   code (`ocr/win.rs`, `#[cfg(windows)]`) only runs in the child. Cargo: `[target.'cfg(windows)'.dependencies] windows = { version =
+   "0.62", features = ["Media_Ocr", "Graphics_Imaging", "Storage_Streams", "Globalization", "Foundation_Collections"] }` (same
+   version as Tauri's, no duplicate). macOS: `sidecar/ocr-macos/` Swift package (Swift toolchain/runtime Apache-2.0 with runtime
+   exception; the runtime ships with macOS, nothing bundled), `VNRecognizeTextRequest` `.accurate`, `usesLanguageCorrection = true`,
+   word boxes via `boundingBox(for:)` per whitespace token.
+2. *Wire* (`ocr/wire.rs`, both directions): `u32` LE header length + JSON header, then a raw blob. Request
+   `{ v:1, id, w, h, stride, format:"gray8", lang:["de-DE"] }` + `w*h` bytes; reply `{ id, ok, angle, lines:[{ words:[{ t, x, y, w, h }]
+   }] }` in pixel space (Vision's normalized bottom-left boxes converted in Swift). Child exits on stdin EOF.
+3. *Languages.* `ocr_capabilities` lists de-DE and en-US with `available` from `AvailableRecognizerLanguages` (Windows) or
+   `supportedRecognitionLanguages()` (macOS 11+, both built in). Windows recognizes one language per engine, Vision takes a list.
+   Rules: (i) the requested language is used if available; (ii) if not, the other available Latin-script language runs **with a
+   visible notice** in the OCR sheet ("English recognition isn't installed on this computer; German is used — some words may be
+   wrong") and the layer records the language actually used; (iii) none available → the OCR command is disabled with a tooltip and a
+   button "Open language settings" (`ms-settings:regionlanguage`, an OS URI, no network by us). Sheer never downloads or installs
+   language packs. Default language: the document's `/Lang` if de/en, else the UI language. Phase 1 runs **de only**; en quality is
+   measured later (owner installs the pack, or on macOS) and is not a phase-1 gate.
+4. *Rendering.* New engine job `RenderForOcr { id, engine_index, dpi, max_side }` → existing `Raster { width, height, gray }` reply;
+   annotations off, page **as displayed** (with `/Rotate`) so sideways scans read upright. Default 300 dpi; if the single page image's
+   effective resolution is lower, render at that (min 200 dpi). Longest side ≤ 8000 px (below Windows' 10000; Vision has no hard
+   limit); a page that would need < 150 dpi to fit is refused in v1.7.1 (`page_too_large`; tiling later). Pipelined: the engine renders
+   page n+1 while the child recognizes n; at most two bitmaps in flight.
+5. *Which pages.* Engine job `OcrProbe { id, pages }` → `PageOcrClass`: `Scan` (< 16 non-blank chars and image objects cover ≥ 60 %
+   of the crop box), `HasTextLayer` (text exists but all of it is `Tr 3`/`7`, foreign OCR), `SheerLayer` (our key, item 7), `Text`,
+   `Empty`. Default run: `Scan` pages only; "Redo" replaces `SheerLayer` pages; `HasTextLayer` and `Text` are never touched.
+6. *Text layer.* Font: own minimal glyphless TrueType (`pdfwrite/ocr_font.rs`, generated by code, unitsPerEm 1000, one empty glyph,
+   advance 500, ascent 800 / descent −200) as Type0 `/Identity-H`, `CIDFontType2`, `DW 500`, Flate `CIDToGIDMap` mapping every CID
+   to glyph 1, `ToUnicode` one `bfrange <0000><FFFF><0000>`; codes are the UTF-16BE units of the text (BMP; other code points →
+   U+FFFD, logged). Own code, no license entry; Tesseract's GlyphLessFont (Apache-2.0) is the known-good reference if PDFium disagrees.
+   Per line: `BT 3 Tr /SheerOcr0 s Tf`, size `s` = line height, baseline = line bottom + 0.2 s (so PDFium's char box = OCR box); per
+   word `a b c d e f Tm`, `Tz` = 100 · word width / (0.5 s · chars), hex `Tj`; each gap gets an explicit space glyph spanning it (real
+   spaces in copy text, no reliance on generated ones). Rotation (`/Rotate`, OCR angle) goes into `Tm`; boxes map back from pixel to
+   user space through the inverse display matrix.
+7. *Where and how it is written.* `pdfwrite/ocr_layer.rs`: original `/Contents` wrapped as `[q-stream, original…, Q-stream,
+   layer-stream]` (an unbalanced `q` or `cm` in the original cannot move the layer); page-local `/Resources` copy if inherited or
+   shared (as ADR-125 §7); one font object set per document; page key `/SheerOcr << /V 1 /S <layer ref> /Lang (de-DE) >>`
+   (`sheer_keys.rs`) for redo. Saved as an incremental update only.
+8. *Model.* `DocCommand::ApplyOcr { layers: Vec<(PageId, Arc<OcrPageLayer>)> }` = one undo step per run; cancel keeps finished pages.
+   `DocState.ocr_layers`. Until save, `text_layer`/`search` for those pages are answered in the app process from the layer
+   (`ocr/textlayer.rs`, same shapes), so search, copy, highlight and smart links work immediately; after save the engine reads the
+   real layer. Refused like ADR-125 §6: signed/certified documents (ADR-121 lock), no `modify` permission. Text editing keeps refusing
+   `Tr 3` (ADR-125); v1.7.2 may convert a layer into editable text. Redaction must remove OCR words under a box, pending or saved
+   (test added to the redaction suite).
+9. *Security* (SECURITY.md). The OCR child/sidecar receives **only bitmaps** (gray8, bounded: side ≤ 8000, ≤ 40 M px, stride checked)
+   and a language tag from an allowlist; never bytes of the PDF, never paths. Replies are untrusted: header ≤ 8 MiB, ≤ 20 000
+   words/page, ≤ 128 chars/word, control chars stripped, NFC, boxes clamped to the image, non-finite numbers refused. 30 s per page,
+   then kill + restart (budget as engine: 5 per 10 min). Sidecar path resolved by Tauri from the bundle only. No network.
+10. *Build/CI.* Windows: nothing new to bundle. macOS: CI job builds `sheer-ocr` universal (`swiftc` arm64 + x86_64, `lipo`) into
+    `src-tauri/binaries/sheer-ocr-universal-apple-darwin`; ad-hoc signed until B-002. Signing and notarization of the sidecar
+    (hardened runtime, same identity as the app) ride on **B-002** (the brief named B-005; B-005 is the updater key, which only affects
+    delivering the sidecar via updates). OCR tests needing a recognizer are `#[ignore]` unless `SHEER_OCR=1`; protocol, layer writer
+    and mapping tests are pure and always run.
+11. *Performance targets* (dev machine, 300 dpi A4): p50 ≤ 1.5 s, p95 ≤ 3 s per page end to end; OCR child RSS ≤ 300 MB;
+    500-page document runs in the background, cancellable, progress push per page, UI stays at 60 fps.
+
+**Phase 1 (spike, Windows, de, no UI).** `src-tauri/examples/ocr_spike.rs` resolves 5 scanned owner PDFs by ID through
+`review/owner/INDEX.md`, runs probe → render → child OCR → layer → incremental save to the Claude temp folder, re-opens with PDFium and
+writes a JSON metrics file. Exit criteria (all must hold; report by ID only):
+1. Build, clippy `-D warnings` and `cargo deny` green with `windows` features added; `unsafe_code = "forbid"` untouched.
+2. OCR quality: word accuracy ≥ 95 % on a hand-checked 200-word sample per file.
+3. Search: ≥ 95 % of 20 probe words per file found by the engine's `SearchPage` on the saved file; copying a line through
+   `TextLayer` equals the OCR line text (whitespace-normalized) on ≥ 95 % of lines; no doubled spaces.
+4. Selection: each edge of PDFium's char-box union per word within **1.5 pt** of the OCR box for ≥ 95 % of words, including one
+   `/Rotate 90` page (synthetic if the corpus has none).
+5. Incremental and invisible: original bytes are a prefix of the saved file; the page renders pixel-identical at 150 dpi.
+6. Timing: targets of item 11 met; probe classifies all 5 files' pages correctly (`Scan`).
+7. Robustness: killing the child mid-page fails that page only and restarts; a malformed header is refused.
+Failing 2 → raise dpi/try Bgra8 and re-measure once; failing 3/4 → change the layer geometry, not the backend; failing 1 → stop and
+ask the owner (a separate crate allowing audited `unsafe` would need a rule change).
+
+**Consequences.** Windows gains one direct dep (`windows`, MIT OR Apache-2.0, logged in `docs/LICENSES.md`), macOS a Swift sidecar to
+build and sign; English OCR on Windows depends on an OS pack the user installs, which the UI says plainly. Scans become searchable
+without changing their look; saves stay incremental.
