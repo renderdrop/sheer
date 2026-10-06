@@ -1,7 +1,7 @@
 # STATE
 phase: v1.5.1 (session topic "v1.5.1 Text bearbeiten – Zeile bearbeiten", ADR-122)
 version: 1.4.2 (tag v1.4.2)
-current_item: pre-fix split buttons (owner) + W0 seam running; then wave 1 backend B1 walker/lines/mapping · B2 fonts/fallback · B3 splice/save · B4 model/commands/refusals; wave 2 F1 tool+edit box · F2 mini bar/popover/notice · F3 refusals/a11y/undo · F4 gate (corpus ≥30, click ≥90 %, footer case); release v1.5.0-beta.1
+current_item: wave 1 running — B1 walker/lines/mapping · B2 fonts/fallback · B3 splice/save · B4 model/commands/refusals (split fix 76dd8b7, seam 9a6a7ff done)
 last_completed: v1.5 spec (ADR-125, ARCHITECTURE §13, DESIGN §3.10) + spike pdfwrite/textedit (not IPC-registered; corpus review/v1.5-spike/, not tracked)
 loop_count_this_session: 1
 open_blockers: 4 (B-002, B-005 human-only; B-006 recovery pre-task denied by classifier; B-007 corpus producers unknown)
@@ -10,7 +10,7 @@ notes: ADR-120: every loop starts with `bash scripts/ci-status.sh` (last complet
   After v1.2.0: "Politur v1.3" (ROADMAP, carried minors), then the v1.3 "Citations" spec. Never run the dev window while agents run cargo/vitest;
   stop it with taskkill sheer.exe + Stop-Process on tauri.js/vite.js only. Acceptance helpers in the session scratchpad (keys.ps1, wheel.ps1, shotsize.ps1, dnd.ps1 with topmost guard).
 ci_log: (ADR-120 corrected — package commit → CI run; result filled in at the next push)
-  - 6d01605 docs ADR-126 + ADR-125 accepted → not pushed yet (docs only)
+  - 76dd8b7 split-button fix + 9a6a7ff W0 seam (+ docs 6d01605, d001edb) → run #92 (37393656808) pending
   - eae482b lock choice after completed signing → run #90 (37381290387) red: prettier on SignDialog.tsx → fixed f6a0228
   - f6a0228..5e7331c prettier fix + ADR-125 docs + textedit spike → run #91 (37385569465) GREEN
   - 9b60ae8..4a70409 F17 wave 1 (spec, F17.9, F17.1, F17.5 logic, F17.10 gate) → run #85 (37356243921) GREEN
