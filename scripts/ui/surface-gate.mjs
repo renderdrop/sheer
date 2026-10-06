@@ -6,6 +6,7 @@
 //   overlap  Q8: a popover/menu may not cover its anchor, the active tool or the focused input (other controls below are fine); no two floating
 //            surfaces intersect; notices may not cover any protected rect; modals cover the inert app by design
 //   wrap     no control label (button, radio, tab, menu item) is taller than 1.5 lines (the label wraps)
+//   split    every split button ([data-split]) in hover and pressed: all its parts stay inside its own box (0.5 px) and the box keeps its size
 // Also registered: the ink mini bar, its colour popover and every coach mark step (floating surfaces that are no dialog).
 // Runs once per UI language (en, then de, via the locale store). Disabled triggers are logged SKIP.
 // Surfaces: the dev registry `window.__sheerSurfaces` (src/dev/surfaces.ts: dialogs, sheets) and every popover/menu trigger on screen
@@ -24,6 +25,7 @@ import {
   checkNotice,
   checkOverlap,
   checkScroll,
+  checkSplitButtons,
   isVisuallyHidden,
   rowsFor,
 } from './surface-checks.mjs';
@@ -306,6 +308,51 @@ async function sweepTriggers(label) {
   }
 }
 
+const mouse = (type, x, y, extra = {}) =>
+  send('Input.dispatchMouseEvent', { type, x, y, button: 'left', clickCount: 1, ...extra });
+
+/** Split buttons: hover and press each part for real (CDP mouse), compare the box and every descendant box with the button's own. */
+async function sweepSplit(label) {
+  const count = await ev(`document.querySelectorAll('[data-split]').length`);
+  const read = (i) =>
+    ev(`(() => {
+      const el = document.querySelectorAll('[data-split]')[${i}];
+      const R = (r) => ({ left: r.left, top: r.top, right: r.right, bottom: r.bottom });
+      const name = (e) => (e.getAttribute('aria-label') || e.textContent || e.tagName).trim().replace(/\s+/g, ' ').slice(0, 24);
+      return { name: 'split ' + (el.getAttribute('data-split') || name(el)), rect: R(el.getBoundingClientRect()),
+        // Only what paints: a box with area that is not visually hidden (sr-only labels, empty anchors) and not a tooltip layer.
+        parts: [...el.querySelectorAll('*')].filter((e) => {
+          const r = e.getBoundingClientRect(), s = getComputedStyle(e);
+          if (r.width <= 1 || r.height <= 1 || s.visibility === 'hidden' || s.display === 'none' || +s.opacity === 0) return false;
+          if (s.clip !== 'auto' || (s.clipPath !== 'none' && s.clipPath !== '')) return false;
+          return e.closest('[role="tooltip"]') === null;
+        }).map((e) => ({ name: e.tagName.toLowerCase() + ' "' + name(e) + '"', rect: R(e.getBoundingClientRect()) })),
+        centres: [...el.querySelectorAll('button')].map((b) => { const r = b.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; }) };
+    })()`);
+  const tag = `${lang} split:${label} @${current.w}x${current.h}`;
+  const buttons = [];
+  for (let i = 0; i < count; i++) {
+    const rest = await read(i);
+    if (rest === null || rest.rect.right <= rest.rect.left) continue;
+    const entry = { name: rest.name, rest: rest.rect, states: [] };
+    for (const c of rest.centres) {
+      await mouse('mouseMoved', c.x, c.y, { button: 'none' });
+      await sleep(250);
+      let m = await read(i);
+      entry.states.push({ state: 'hover', rect: m.rect, painted: m.parts });
+      await mouse('mousePressed', c.x, c.y);
+      await sleep(250);
+      m = await read(i);
+      entry.states.push({ state: 'pressed', rect: m.rect, painted: m.parts });
+      // Release away from the button, so no click fires.
+      await mouse('mouseMoved', 2, 2, { button: 'none' });
+      await mouse('mouseReleased', 2, 2);
+    }
+    buttons.push(entry);
+  }
+  if (count > 0) rows.push(...rowsFor(tag, { split: checkSplitButtons(buttons) }));
+}
+
 const store = (path) => `import('/src/${path}')`;
 async function openFixture() {
   const active = () =>
@@ -353,6 +400,7 @@ try {
       for (const mode of modes) {
         await ev(`(async()=>{(await ${store('stores/ui.ts')}).useUi.getState().setMode(${JSON.stringify(mode)})})()`);
         await sleep(400);
+        await sweepSplit(mode);
         await sweepTriggers(mode);
       }
     }

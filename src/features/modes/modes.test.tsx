@@ -296,6 +296,21 @@ describe('Lesen', () => {
     ).toEqual(['Rotate right', 'Rotate left', 'Reset rotation']);
   });
 
+  it('a split item is one clipped contour: square parts, a divider on the chevron, no scale on press', () => {
+    setup(<Rows />);
+    const chevron = item('Options for Rotate');
+    const outer = chevron.closest('[data-split]');
+    expect(outer).not.toBeNull();
+    expect(outer?.className).toContain('overflow-hidden');
+    expect(outer?.className).toContain('rounded-md');
+    expect(outer?.querySelectorAll('button')).toHaveLength(2);
+    expect(chevron.className).toContain('border-s');
+    expect(chevron.className).not.toMatch(/rounded/);
+    const main = outer?.querySelector('[data-toolbar-item]');
+    expect(main?.className).toContain('rounded-none!');
+    expect(main?.className).toContain('active:scale-100!');
+  });
+
   it('Suche runs the find action: the Search tab opens', async () => {
     const { user } = setup(<Rows />);
     await user.click(item('Search'));

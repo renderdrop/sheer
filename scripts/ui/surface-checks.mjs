@@ -172,3 +172,35 @@ export function rowsFor(id, results) {
     result: v.length === 0 ? 'PASS' : `FAIL ${v.slice(0, 3).join('; ')}${v.length > 3 ? ` (+${v.length - 3})` : ''}`,
   }));
 }
+
+/**
+ * Split buttons (a main part and a chevron part in one outer contour, `[data-split]`): in the hover and the pressed state every painted
+ * descendant (a box with a background, border or shadow, and the children) must lie inside the button's own box, and the box must not
+ * change size between rest and that state. Slack 0.5 px.
+ * @param {{name:string,rest:{left:number,top:number,right:number,bottom:number},states:{state:string,rect:object,painted:{name:string,rect:object}[]}[]}[]} buttons
+ */
+export function checkSplitButtons(buttons) {
+  const tol = 0.5;
+  const out = [];
+  for (const b of buttons) {
+    const w = b.rest.right - b.rest.left;
+    const h = b.rest.bottom - b.rest.top;
+    for (const s of b.states) {
+      const sw = s.rect.right - s.rect.left;
+      const sh = s.rect.bottom - s.rect.top;
+      if (Math.abs(sw - w) > tol || Math.abs(sh - h) > tol)
+        out.push(
+          `${b.name} changes size on ${s.state} (${w.toFixed(1)}x${h.toFixed(1)} to ${sw.toFixed(1)}x${sh.toFixed(1)})`,
+        );
+      for (const p of s.painted)
+        if (
+          p.rect.left < s.rect.left - tol ||
+          p.rect.top < s.rect.top - tol ||
+          p.rect.right > s.rect.right + tol ||
+          p.rect.bottom > s.rect.bottom + tol
+        )
+          out.push(`${b.name} on ${s.state}: ${p.name} spills past the outline`);
+    }
+  }
+  return out;
+}

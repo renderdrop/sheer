@@ -18,9 +18,12 @@ const MAIN =
   'not-aria-disabled:hover:bg-panel not-aria-disabled:not-data-[on=true]:active:bg-pressed not-aria-disabled:active:scale-(--scale-press) ' +
   'data-[on=true]:font-semibold data-[on=true]:text-ink not-aria-disabled:data-[on=true]:hover:bg-accent-hover not-aria-disabled:data-[on=true]:active:bg-accent-hover';
 
+/** The main part of a split item: square (the outer contour rounds it) and never scaled, so nothing spills past the contour. */
+const SPLIT_PART = 'rounded-none! not-aria-disabled:active:scale-100!';
+
 /** The chevron part of a split item: 20 wide, its own tab stop. */
 const CHEVRON =
-  'flex h-control-md w-icon-20 shrink-0 cursor-pointer items-center justify-center rounded-e-md text-text transition-colors duration-fast ' +
+  'flex h-control-md w-icon-20 shrink-0 cursor-pointer items-center justify-center border-s border-border-subtle text-text transition-colors duration-fast ' +
   'aria-disabled:cursor-not-allowed aria-disabled:opacity-(--opacity-disabled) ' +
   'not-aria-disabled:hover:bg-panel not-aria-disabled:aria-expanded:bg-panel not-aria-disabled:active:bg-pressed ' +
   'group-data-[on=true]:text-ink group-data-[on=true]:not-aria-disabled:hover:bg-accent-hover group-data-[on=true]:not-aria-disabled:aria-expanded:bg-accent-hover ' +
@@ -104,7 +107,7 @@ export function ToolItem({ slot, iconOnly, stop }: ToolItemProps) {
         slot.run();
         if (pop !== undefined) pop.onClick(event);
       }}
-      className={cx(MAIN, iconOnly ? 'w-control-md justify-center' : 'px-3', split ? 'rounded-e-none' : ACTIVE)}
+      className={cx(MAIN, iconOnly ? 'w-control-md justify-center' : 'px-3', split ? SPLIT_PART : ACTIVE)}
     >
       <Icon icon={slot.icon} size={18} />
       {!iconOnly && <span data-label="">{slot.label}</span>}
@@ -163,7 +166,11 @@ export function ToolItem({ slot, iconOnly, stop }: ToolItemProps) {
   );
 
   return (
-    <div data-split={slot.id} data-on={slot.on} className={cx('group flex shrink-0 rounded-md', ACTIVE)}>
+    <div
+      data-split={slot.id}
+      data-on={slot.on}
+      className={cx('group flex shrink-0 rounded-md overflow-hidden', ACTIVE)}
+    >
       {tipped}
       {slot.colour === undefined ? (
         <Menu label={optionsLabel} disabled={off} entries={(slot.variants ?? []).map(asEntry)} trigger={trigger} />

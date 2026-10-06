@@ -622,7 +622,7 @@ function SplitToggle({
   children: ReactNode;
 }) {
   return (
-    <div role="group" aria-label={label} className="flex items-center">
+    <div role="group" aria-label={label} data-split="" className="flex items-center">
       <IconButton
         {...ITEM}
         icon={icon}
@@ -632,7 +632,7 @@ function SplitToggle({
         disabled={disabled}
         focusableWhenDisabled
         onClick={onToggle}
-        className={cx(SQUARE, mixed && 'opacity-60')}
+        className={cx(SQUARE, 'rounded-none!', mixed && 'opacity-60')}
       />
       <Popover
         label={menuLabel}
@@ -646,7 +646,7 @@ function SplitToggle({
             iconSize={16}
             disabled={disabled}
             focusableWhenDisabled
-            className="size-8! w-6!"
+            className="size-8! w-6! rounded-none! border-s border-border-subtle"
           />
         )}
       >

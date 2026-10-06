@@ -6,6 +6,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- Split tool buttons (Strikeout, Highlight, Rotate, Signature, mini-bar split toggles): the hover and pressed background stays inside the
+  rounded outline, the chevron shares the outline and has its own divider, and nothing changes size on hover. The surface gate checks it.
+
 ## [1.4.2] - 2026-10-05
 
 Patch "F17 — UI quality after the owner test" (docs/FEEDBACK.md F17, ADR-124, DESIGN §3.9).

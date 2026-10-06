@@ -155,3 +155,30 @@ describe('checkLabelWrap (control label wraps)', () => {
     expect(c.checkLabelWrap([{ name: 'x', height: 40, lineHeight: 0 }])).toEqual([]);
   });
 });
+
+describe('split button check', () => {
+  const rest = r(10, 10, 110, 46);
+  const ok = {
+    state: 'hover',
+    rect: r(10, 10, 110, 46),
+    painted: [
+      { name: 'main', rect: r(10, 10, 90, 46) },
+      { name: 'chevron', rect: r(90, 10, 110, 46) },
+    ],
+  };
+  it('passes a button whose painted parts stay inside and whose size is constant', () => {
+    expect(c.checkSplitButtons([{ name: 'Strike', rest, states: [ok] }])).toEqual([]);
+  });
+  it('flags a part that spills past the outline and a size change', () => {
+    const spill = { ...ok, painted: [{ name: 'chevron', rect: r(90, 10, 112, 46) }] };
+    expect(c.checkSplitButtons([{ name: 'Strike', rest, states: [spill] }])).toEqual([
+      'Strike on hover: chevron spills past the outline',
+    ]);
+    const grown = { state: 'pressed', rect: r(10, 10, 112, 46), painted: [] };
+    expect(c.checkSplitButtons([{ name: 'Strike', rest, states: [grown] }])[0]).toMatch(/changes size on pressed/);
+  });
+  it('allows half a pixel of slack', () => {
+    const near = { ...ok, painted: [{ name: 'main', rect: r(9.6, 10, 90, 46) }] };
+    expect(c.checkSplitButtons([{ name: 'x', rest, states: [near] }])).toEqual([]);
+  });
+});

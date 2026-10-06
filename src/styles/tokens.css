@@ -744,6 +744,24 @@
   box-shadow: var(--ring-focus);
 }
 
+/*
+ * Split button (DESIGN 4): main part and chevron part share ONE outer contour. The outer element ([data-split]) carries the radius and
+ * clips (overflow hidden), so the hover, pressed and open backgrounds of the parts end at the contour. The parts are square, their
+ * hover never changes size, padding, border or transform, and the chevron has its own 1px divider (set by the component). A box-shadow
+ * ring on a part would be clipped, so the ring is drawn on the outer element while a part has keyboard focus.
+ */
+[data-split] {
+  overflow: hidden;
+  border-radius: var(--radius-md);
+}
+[data-split] :focus-visible {
+  box-shadow: none;
+}
+[data-split]:has(:focus-visible) {
+  outline: var(--focus-width) solid transparent;
+  box-shadow: var(--ring-focus);
+}
+
 /* Scroll-edge scrim (DESIGN 2): the strip under the toolbar edge of the canvas that hides page content scrolled behind it. */
 @utility canvas-scrim {
   height: var(--scrim-height);
