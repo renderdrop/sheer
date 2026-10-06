@@ -83,6 +83,8 @@ pub enum PrintRoute {
     System,
     /// The webview's own print preview (still local).
     Webview,
+    /// Acceptance build only (ADR-131): the set was recorded, nothing was printed and no `afterprint` will come.
+    Recorded,
 }
 
 /// The sets held by the app.

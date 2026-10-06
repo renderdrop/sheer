@@ -148,7 +148,9 @@ node scripts/ui/accept/example-edit-text.mjs              # CDP-driven example (
 node scripts/ui/accept/smoke-real.mjs                     # the only real OS mouse/keyboard script, 5 min cap
 ```
 The build has identifier `app.sheer.acceptance` (own data folder, recent list, single-instance channel) and the Cargo feature `automation`:
-native dialogs are answered from a queue, print writes nothing. An empty queue is an error, never a native dialog.
+native dialogs are answered from a queue, print writes nothing. An empty queue is an error (`automationNoAnswer`), never a native dialog. This holds for print too: queue a `print` entry
+(`answerPrint`) before printing. A recorded print answers route `recorded`, so the print flow ends at once (no `afterprint` is awaited).
+`open_default_apps_settings` opens no OS window in this build.
 
 Toolkit in `scripts/ui/accept/` (Node 22 built-ins only; pure helpers in `pure.mjs`, tests in `scripts/ui/accept.test.ts`):
 - `launch.mjs`: starts the acceptance exe only (path check refuses anything else or an install path), sets

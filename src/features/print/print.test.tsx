@@ -118,6 +118,14 @@ describe('the print flow', () => {
     expect(usePrintSurface.getState().frames).toEqual([]);
   });
 
+  it('drops the frames at once when the backend only recorded the print (acceptance build)', async () => {
+    print.openPrintDialog.mockResolvedValue('recorded');
+    await stageFrames([{ url: 'blob:test/recorded', width: 100, height: 140 }]);
+    await handOver(9);
+    expect(usePrintSurface.getState().frames).toEqual([]);
+    expect(revoked).toEqual(['blob:test/recorded']);
+  });
+
   it('drops frames that nobody printed after the linger time', async () => {
     print.openPrintDialog.mockResolvedValue('webview');
     await stageFrames([{ url: 'blob:test/linger', width: 100, height: 140 }]);

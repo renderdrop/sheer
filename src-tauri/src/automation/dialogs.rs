@@ -69,26 +69,39 @@ pub fn message<R: Runtime>(builder: MessageDialogBuilder<R>) -> Result<bool, App
 }
 
 /// Opens the print dialog of the webview for the set `print_id` of `pages` pages. With the feature nothing is opened and nothing is
-/// printed: the set is recorded for `automation_state`.
+/// printed: the set is recorded for `automation_state` (a `print` entry must be queued) and the answer is `true` ("recorded"), so the
+/// frontend does not wait for an `afterprint` that never comes. Without the feature the answer is `false`.
 pub fn print<R: Runtime>(
     window: &WebviewWindow<R>,
     print_id: u32,
     pages: usize,
-) -> Result<(), AppError> {
+) -> Result<bool, AppError> {
     #[cfg(feature = "automation")]
     {
         let _ = window;
-        super::queue::global().record_print(print_id, pages);
-        Ok(())
+        super::queue::global().record_print(print_id, pages)?;
+        Ok(true)
     }
     #[cfg(not(feature = "automation"))]
     {
         let _ = (print_id, pages);
-        window.print().map_err(|error| {
+        window.print().map(|()| false).map_err(|error| {
             AppError::logged(crate::error::ErrorCode::Internal, error).log();
             AppError::unsupported("printDialog")
         })
     }
+}
+
+/// Opens the default-apps page of the OS through `open`. With the feature nothing is opened (`Ok(false)`, "recorded"); otherwise
+/// `Ok(true)` after `open` ran.
+pub fn open_os_settings<F: FnOnce() -> Result<(), AppError>>(open: F) -> Result<bool, AppError> {
+    #[cfg(feature = "automation")]
+    {
+        drop(open);
+        Ok(false)
+    }
+    #[cfg(not(feature = "automation"))]
+    open().map(|()| true)
 }
 
 /// The call sites chain the seam onto the builder where they chained `blocking_*` before: `.seam_pick_file()?` for `.blocking_pick_file()`.

@@ -119,14 +119,14 @@ fn every_native_dialog_goes_through_the_seam() {
             if code.starts_with("//") {
                 continue;
             }
+            // Any `blocking_pick_*`, `blocking_save_file`, `blocking_show` (with or without a leading dot, also at the start of a
+            // continuation line of a multi-line chain) and any `.print()` / `window.print()`.
             for forbidden in [
-                ".blocking_pick_file",
-                ".blocking_pick_files",
-                ".blocking_pick_folder",
-                ".blocking_save_file",
-                ".blocking_show(",
-                ".window.print()",
+                "blocking_pick_",
+                "blocking_save_",
+                "blocking_show",
                 "window.print()",
+                ".print()",
             ] {
                 assert!(
                     !line.contains(forbidden),
@@ -137,4 +137,13 @@ fn every_native_dialog_goes_through_the_seam() {
             }
         }
     }
+}
+
+#[test]
+fn a_build_without_the_feature_deletes_stale_automation_permissions() {
+    let build = read("build.rs");
+    assert!(build.contains("remove_stale_automation_permissions"));
+    assert!(build.contains("starts_with(\"automation_\")"));
+    // The cleanup runs in the branch of the feature being off.
+    assert!(build.contains("} else {\n        remove_stale_automation_permissions();"));
 }

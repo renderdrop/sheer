@@ -18,7 +18,7 @@ export interface PrintOptions {
 }
 
 /** Which route opened the dialog: the OS dialog, or the webview's own print preview (still local). */
-export type PrintRoute = 'system' | 'webview';
+export type PrintRoute = 'system' | 'webview' | 'recorded';
 
 /** One page of a print set: SHR1 header (format 3 = JPEG), then the JPEG. */
 export interface PrintFrame {
@@ -71,7 +71,7 @@ export async function getPrintPage(printId: number, index: number): Promise<Prin
 /** Opens the print dialog for a complete set; resolves when Rust has handed it over. */
 export async function openPrintDialog(printId: number): Promise<PrintRoute> {
   const route = await call<unknown>('open_print_dialog', { printId });
-  if (route !== 'system' && route !== 'webview') throw toAppError(null);
+  if (route !== 'system' && route !== 'webview' && route !== 'recorded') throw toAppError(null);
   return route;
 }
 

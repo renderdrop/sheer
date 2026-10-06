@@ -16,6 +16,8 @@ use crate::error::AppError;
 /// Opens the dialog and answers the route taken.
 pub fn open(window: &WebviewWindow, print_id: u32, pages: usize) -> Result<PrintRoute, AppError> {
     // The seam calls `Webview::print()` (or, in the acceptance build, only records the set).
-    crate::automation::dialogs::print(window, print_id, pages)?;
+    if crate::automation::dialogs::print(window, print_id, pages)? {
+        return Ok(PrintRoute::Recorded);
+    }
     Ok(PrintRoute::Webview)
 }

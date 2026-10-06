@@ -132,20 +132,16 @@ impl Queue {
         Err(AppError::automation_no_answer())
     }
 
-    /// A print: the set is recorded and never printed. A `print` entry at the head is consumed (its `cancel` is recorded); without one
-    /// the print is recorded all the same, so a script need not queue what changes nothing.
-    pub fn record_print(&mut self, print_id: u32, pages: usize) {
-        let cancelled = match self.entries.front() {
-            Some(entry) if entry.kind == DialogKind::Print => {
-                self.entries.pop_front().is_some_and(|entry| entry.cancel)
-            }
-            _ => false,
-        };
+    /// A print: the set is recorded and never printed. Needs a `print` entry at the head like every other kind (its `cancel` is
+    /// recorded); an empty queue is `automationNoAnswer`.
+    pub fn record_print(&mut self, print_id: u32, pages: usize) -> Result<(), AppError> {
+        let entry = self.take(DialogKind::Print)?;
         self.last_print = Some(LastPrint {
             print_id,
             pages,
-            cancelled,
+            cancelled: entry.cancel,
         });
+        Ok(())
     }
 
     pub fn state(&self) -> AutomationState {
@@ -181,8 +177,8 @@ impl Global {
         lock().take(kind)
     }
 
-    pub fn record_print(&self, print_id: u32, pages: usize) {
-        lock().record_print(print_id, pages);
+    pub fn record_print(&self, print_id: u32, pages: usize) -> Result<(), AppError> {
+        lock().record_print(print_id, pages)
     }
 
     pub fn state(&self) -> AutomationState {
@@ -300,9 +296,13 @@ mod tests {
     }
 
     #[test]
-    fn a_print_is_recorded_with_or_without_an_entry() {
+    fn a_print_needs_a_print_entry() {
         let mut queue = Queue::default();
-        queue.record_print(7, 3);
+        assert!(queue.record_print(6, 1).is_err());
+        assert_eq!(queue.state().last_print, None);
+        assert!(queue.state().last_error.is_some());
+        queue.push(entry(DialogKind::Print, &[])).unwrap();
+        queue.record_print(7, 3).unwrap();
         assert_eq!(
             queue.state().last_print,
             Some(LastPrint {
@@ -314,7 +314,7 @@ mod tests {
         let mut cancel = entry(DialogKind::Print, &[]);
         cancel.cancel = true;
         queue.push(cancel).unwrap();
-        queue.record_print(8, 5);
+        queue.record_print(8, 5).unwrap();
         let state = queue.state();
         assert_eq!(state.queue_length, 0);
         assert_eq!(
@@ -325,7 +325,7 @@ mod tests {
         queue
             .push(entry(DialogKind::Open, &[abs("a.pdf")]))
             .unwrap();
-        queue.record_print(9, 1);
+        assert!(queue.record_print(9, 1).is_err());
         assert_eq!(queue.state().queue_length, 1);
     }
 

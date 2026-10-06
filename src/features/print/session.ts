@@ -111,8 +111,8 @@ export async function handOver(printId: number): Promise<void> {
   usePrintSurface.setState({ printing: true });
   let opened = false;
   try {
-    await openPrintDialog(printId);
-    opened = true;
+    // `recorded` (acceptance build): nothing was printed and no `afterprint` comes, so the surface is dropped at once.
+    opened = (await openPrintDialog(printId)) !== 'recorded';
   } catch (caught) {
     useUi.getState().showBanner(toAppError(caught));
   } finally {

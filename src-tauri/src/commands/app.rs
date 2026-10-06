@@ -83,7 +83,11 @@ pub async fn update_settings(
 /// Stub (package B4 / frontend F4): `not_yet`.
 #[tauri::command]
 pub async fn open_default_apps_settings(_app: AppHandle) -> Result<(), UiError> {
-    blocking(|| Err::<(), _>(AppError::not_yet())).await
+    // ADR-131: the seam opens no OS window in the acceptance build (the call is only answered).
+    blocking(|| {
+        crate::automation::dialogs::open_os_settings(|| Err(AppError::not_yet())).map(|_| ())
+    })
+    .await
 }
 
 /// Starts sending the commands chosen in the macOS menu bar to `on_action`, each as the bare id of the item (`open`,

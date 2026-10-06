@@ -232,6 +232,8 @@ describe('print', () => {
     await expect(openPrintDialog(4)).resolves.toBe('system');
     invokeMock.mockResolvedValueOnce('webview');
     await expect(openPrintDialog(4)).resolves.toBe('webview');
+    invokeMock.mockResolvedValueOnce('recorded');
+    await expect(openPrintDialog(4)).resolves.toBe('recorded');
     invokeMock.mockResolvedValueOnce('shell');
     await expect(openPrintDialog(4)).rejects.toEqual(INTERNAL);
     expect(invokeMock).toHaveBeenCalledWith('open_print_dialog', { printId: 4 });
