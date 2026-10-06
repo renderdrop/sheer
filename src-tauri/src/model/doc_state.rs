@@ -175,6 +175,8 @@ pub struct DocState {
     /// The pages (ids) read from the file whose Sheer keys could not be read (an encrypted file, a read that failed): their annotations
     /// keep the `/SHR_Cite` and `/SHR_Tags` the file has when they are saved (ADR-119).
     keys_unread: HashSet<u32>,
+    /// The text edits of each page (by page id), replayed over the file page (ADR-125, ARCHITECTURE §13.4).
+    pub(super) text_edits: HashMap<u32, super::text_edit::PageEdits>,
 }
 
 /// Bytes of the strings an imported annotation brings.
@@ -241,6 +243,7 @@ impl DocState {
             page_labels: None,
             bibliography: super::bibliography::BibliographyState::default(),
             keys_unread: HashSet::new(),
+            text_edits: HashMap::new(),
         }
     }
 
@@ -340,6 +343,8 @@ impl DocState {
             slot.saved_rotation = slot.rotation;
             slot.saved_crop = slot.crop;
         }
+        // The edited pages are written into the file: they are file pages now, with nothing left to replay.
+        self.text_edits.clear();
         self.file_pages = self.page_count();
         // The positions in the file moved with the write (deleted and rewritten annotations): what was Hidden in the old file is not
         // known by position any more.

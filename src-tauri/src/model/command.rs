@@ -23,7 +23,7 @@ use super::page::{NewPage, PageSlot, SourceId};
 use super::page_ops::CropSpec;
 use super::protection;
 use super::redaction::{self, MarkSpec};
-use super::text_edit::{LineKey, TextFit, TextScope};
+use super::text_edit::{self, LineKey, PageEdits, TextFit, TextScope};
 use crate::documents::PageId;
 use crate::error::AppError;
 use crate::limits;
@@ -122,6 +122,14 @@ pub enum DocCommand {
         entries: Vec<Slot>,
         strip: Option<bool>,
     },
+    /// Puts a page slot and the text edits of that page in place (ADR-125). Internal: what a text edit makes of its preview (`text_edit::plan`),
+    /// and its own inverse (`None` edits: the page has none).
+    #[serde(skip_deserializing)]
+    RestoreTextEdit {
+        page_id: PageId,
+        slot: PageSlot,
+        edits: Option<PageEdits>,
+    },
     /// Sets the rotation of pages. Internal: the inverse of a rotation.
     #[serde(skip_deserializing)]
     SetRotations { rotations: Vec<(PageId, u16)> },
@@ -198,6 +206,7 @@ impl DocCommand {
             Self::MarkRedactions { .. } => LABEL_MARK_REDACTIONS.to_owned(),
             Self::RestoreRedaction { .. } => LABEL_REDACT_APPLY.to_owned(),
             Self::EditTextLine { .. } => LABEL_EDIT_TEXT.to_owned(),
+            Self::RestoreTextEdit { .. } => LABEL_EDIT_TEXT.to_owned(),
             // `DocState::execute` says `protect.remove` when the ticket is a removal.
             Self::SetProtection { .. } => LABEL_PROTECT_SET.to_owned(),
             Self::SetMetadata { .. } => LABEL_METADATA_SET.to_owned(),
@@ -215,6 +224,7 @@ impl DocCommand {
         matches!(
             self,
             Self::RotatePages { .. }
+                | Self::RestoreTextEdit { .. }
                 | Self::CropPages { .. }
                 | Self::MarkRedactions { .. }
                 | Self::RestoreRedaction { .. }
@@ -316,7 +326,8 @@ impl DocCommand {
             | Self::RemovePages { .. }
             | Self::RestorePages { .. }
             | Self::AddPages { .. }
-            | Self::RestoreRedaction { .. } => Ok(()),
+            | Self::RestoreRedaction { .. }
+            | Self::RestoreTextEdit { .. } => Ok(()),
             Self::EditTextLine { text, .. } => {
                 if text.chars().count() > limits::TEXT_EDIT_LINE_CHARS {
                     Err(AppError::limit("text", limits::TEXT_EDIT_LINE_CHARS as u64))
@@ -479,8 +490,13 @@ impl DocCommand {
             }
             Self::AddPages { at, pages, .. } => state.insert_pages(*at, pages, &mut delta)?,
             Self::CropPages { pages, spec } => state.crop_pages(pages, spec, &mut delta)?,
-            // W0 seam (v1.5.1): the package that fills it in replaces this line.
-            Self::EditTextLine { .. } => return Err(AppError::not_yet()),
+            // The preview of the edit is made first (`commands::text_edit`), which then runs `RestoreTextEdit`; the model alone cannot.
+            Self::EditTextLine { .. } => return Err(AppError::invalid("command")),
+            Self::RestoreTextEdit {
+                page_id,
+                slot,
+                edits,
+            } => text_edit::restore(state, *page_id, slot, edits.as_ref(), &mut delta)?,
             Self::MarkRedactions { marks } => redaction::mark(state, marks, &mut delta)?,
             Self::RestoreRedaction {
                 slots,

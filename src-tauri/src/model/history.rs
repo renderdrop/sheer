@@ -99,6 +99,23 @@ fn command_bytes(command: &DocCommand) -> usize {
                 total.saturating_add(counter.0.saturating_add(STEP_OVERHEAD_BYTES))
             })
         }
+        // The preview page of a text edit (the bytes of the one-page PDF) and the edits kept with it.
+        DocCommand::RestoreTextEdit { slot, edits, .. } => {
+            let preview = match &slot.source {
+                crate::model::page::PageSource::Redacted { bytes }
+                | crate::model::page::PageSource::TextEdited { bytes } => bytes.len(),
+                _ => 0,
+            };
+            let text = edits.as_ref().map_or(0, |kept| {
+                kept.edits
+                    .iter()
+                    .map(|edit| edit.text.len().saturating_add(32))
+                    .sum()
+            });
+            STEP_OVERHEAD_BYTES
+                .saturating_add(preview)
+                .saturating_add(text)
+        }
         DocCommand::ReorderPages { order } => {
             STEP_OVERHEAD_BYTES.saturating_add(order.len().saturating_mul(4))
         }

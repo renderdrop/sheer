@@ -31,6 +31,7 @@ use crate::model::doc_state::ChangeSet;
 use crate::model::page::{NewPage, PageSlotInfo, PageSource, SourceId};
 use crate::model::protection::Permission;
 use crate::model::sig_policy;
+use crate::model::text_edit::TextEdit;
 use crate::pdfsig::types::SignatureLock;
 use crate::pdfwrite::pagetree;
 
@@ -167,6 +168,22 @@ impl AppState {
                 };
                 self.execute_or_take_back(id, add, range)
             }
+            DocCommand::EditTextLine {
+                page_id,
+                key,
+                text,
+                fit,
+                scope,
+            } => self.edit_text_line(
+                id,
+                page_id,
+                TextEdit {
+                    key,
+                    text,
+                    fit,
+                    scope,
+                },
+            ),
             other => self.execute(id, other),
         }
     }

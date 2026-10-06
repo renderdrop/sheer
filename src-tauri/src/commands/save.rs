@@ -234,6 +234,21 @@ pub(super) fn save_plan_of(state: &DocState, pages: &PagePlan, keep_encryption: 
         } else {
             state.bibliography.pending.clone()
         },
+        // The edits of each edited page by its position in the file the save builds (the page tree is written first, so positions are
+        // the new order), replayed over the original content by `text_save::apply_edits` (ADR-125).
+        text_edits: pages
+            .pages
+            .iter()
+            .enumerate()
+            .filter_map(|(position, page)| {
+                // A page that was edited and then redacted or replaced no longer replays its edits.
+                if !matches!(page.source, crate::model::page::PageSource::File { .. }) {
+                    return None;
+                }
+                let kept = state.text_edits(page.id)?;
+                Some((u32::try_from(position).ok()?, kept.edits.clone()))
+            })
+            .collect(),
     }
 }
 

@@ -79,7 +79,7 @@ impl AppState {
 
     /// The file the document was opened from as it is on disk, as a plain file (a protected one is decrypted with the session's
     /// password). A file that changed since it was opened is `needs_confirmation`: its pages are not the ones the engine shows.
-    fn plain_original(&self, id: DocumentId) -> Result<Vec<u8>, AppError> {
+    pub(super) fn plain_original(&self, id: DocumentId) -> Result<Vec<u8>, AppError> {
         let info = self.info(id).ok_or(AppError::not_found("document"))?;
         let path = self
             .registry

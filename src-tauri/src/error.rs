@@ -118,6 +118,9 @@ pub struct UiParams {
     /// The 1-based page position an export refused (`exportPixels`, ADR-049 §2): a number, never text.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub page: Option<u32>,
+    /// Why text editing refused (`unsupported_feature` `textEdit`, ADR-125): a fixed word of `TextEditRefusal`, never request data.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reason: Option<&'static str>,
 }
 
 /// The only error type that crosses the IPC boundary. Serializes to
@@ -213,6 +216,29 @@ impl AppError {
         Self::with_params(ErrorCode::UnsupportedFeature, "notYet", None)
     }
 
+    /// `unsupported_feature` `textEdit` with `params.reason` (ADR-125): the line or the document cannot be edited for that reason.
+    pub const fn text_edit_refused(reason: &'static str) -> Self {
+        Self {
+            code: ErrorCode::UnsupportedFeature,
+            params: Some(UiParams {
+                what: "textEdit",
+                limit: None,
+                character: None,
+                page: None,
+                reason: Some(reason),
+            }),
+            detail: None,
+        }
+    }
+
+    /// The `params.reason` of a text-edit refusal.
+    pub const fn reason(&self) -> Option<&'static str> {
+        match &self.params {
+            Some(params) => params.reason,
+            None => None,
+        }
+    }
+
     /// `read_only` for the reason called `what` (`"permission"`: the file's permissions forbid the change, ADR-047 §4).
     pub const fn read_only(what: &'static str) -> Self {
         Self::with_params(ErrorCode::ReadOnly, what, None)
@@ -231,6 +257,7 @@ impl AppError {
                 limit,
                 character: None,
                 page: None,
+                reason: None,
             }),
             detail: None,
         }

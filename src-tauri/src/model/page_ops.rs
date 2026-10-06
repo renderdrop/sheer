@@ -232,14 +232,23 @@ impl DocState {
 
     /// What a save has to write for the pages.
     pub fn page_plan(&self) -> PagePlan {
+        // An edited page is its file page for the save: the edits replay over the original content (ADR-125), the preview is not written.
+        let source_of = |slot: &PageSlot| match (&slot.source, self.text_edits.get(&slot.id.get()))
+        {
+            (PageSource::TextEdited { .. }, Some(kept)) => PageSource::File {
+                index: kept.file_index,
+            },
+            (other, _) => other.clone(),
+        };
         let in_place = |(position, slot): (usize, &PageSlot)| {
             u32::try_from(position)
-                .is_ok_and(|position| slot.source == PageSource::File { index: position })
+                .is_ok_and(|position| source_of(slot) == PageSource::File { index: position })
         };
         let structure_changed = self.pages.len() != usize::try_from(self.file_pages).unwrap_or(0)
             || !self.pages.iter().enumerate().all(in_place);
         let rotation_changed = self.pages.iter().any(|slot| {
-            matches!(slot.source, PageSource::File { .. }) && slot.rotation != slot.saved_rotation
+            matches!(source_of(slot), PageSource::File { .. })
+                && slot.rotation != slot.saved_rotation
         });
         let crop_changed = self.pages.iter().any(|slot| slot.crop != slot.saved_crop);
         let redacted = self
@@ -252,7 +261,7 @@ impl DocState {
                 .iter()
                 .map(|slot| PlanPage {
                     id: slot.id,
-                    source: slot.source.clone(),
+                    source: source_of(slot),
                     engine_index: slot.engine_index,
                     rotation: slot.rotation,
                     saved_rotation: slot.saved_rotation,
