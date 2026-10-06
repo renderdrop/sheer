@@ -14,7 +14,7 @@ try {
   const dialogs = createDialogs(session, input);
   const run = async () => {
     await dialogs.openFile('review/owner/corpus/2025_Rechnung_202500100.pdf');
-    await input.waitForTarget({ selector: 'canvas' }, { timeoutMs: 20000 });
+    await input.waitForTarget({ selector: '[data-page] img' }, { timeoutMs: 20000 });
     await input.click({ role: 'tab', text: 'Bearbeiten' });
     await input.click({ text: 'Text bearbeiten' });
     await input.waitForTarget({ text: '04129 Leipzig' }, { timeoutMs: 20000 });

@@ -2659,3 +2659,7 @@ preview) is reproduced in the acceptance build and fixed or turned into a refusa
 6. *Packages.* Wave 1 backend: S1 engine reader + wire + index/cache + command + `toc` + page mapping; S2 `footnotes` (+ note back);
    S3 `references` + `literature`; Politur P-B and P-F run beside it. Wave 2 frontend: F1 overlay layer, states, preview, keyboard list,
    toggles/settings, real-link hover (L3/L4/L5/L8/L11); F2 Back/forward history, control, keys, jump band (L6/L7).
+
+**ADR-131 addendum 1 (security v1.6.0, low).** Queued dialog paths are checked as absolute and counted only; every consuming command
+applies the same canonicalisation and scope checks it applies to a native dialog result, so the queue adds no path the user could
+not have picked. The queue exists only in the acceptance build (feature `automation`); the release workflows never enable it.

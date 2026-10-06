@@ -20,9 +20,9 @@ export function createDialogs(session, input) {
     state: () => call(session, 'automation_state'),
     lastPrint: async () => (await call(session, 'automation_state')).lastPrint,
     lastError: async () => (await call(session, 'automation_state')).lastError,
-    /** Queue an Open answer and trigger Open with the app shortcut (Ctrl+O). */
+    /** Queue an Open answer (the app's Open dialog allows several files: kind openMany) and trigger Open with Ctrl+O. */
     async openFile(path) {
-      await queue({ kind: 'open', paths: [resolve(path)] });
+      await queue({ kind: 'openMany', paths: [resolve(path)] });
       await input.press('o', { ctrl: true });
     },
   };
