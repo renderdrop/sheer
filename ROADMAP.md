@@ -375,10 +375,10 @@ new engine capability or dependency is needed. Not picked by the loop before v1.
 - [x] v1.7 acceptance — security-reviewer, tag v1.7.0 (security PASS 4 low; designer PASS; v17-ocr 50/54 + 42/42; CI #125 green)
 
 ### v1.8 "Context help" (ADR-135 §4: on by default, one tip per situation, switch in Settings)
-- [ ] v1.8 spec — designer spec (tip slots, clip format, frequency rules)
-- [ ] v1.8.1 — Short tips with 3-second clips at the right moments (first highlight, first form, first signature, Pages mode),
-      recorded from the app, at most one per situation, can be switched off
-- [ ] v1.8 acceptance — installed build with the mouse, designer round, tag v1.8.0
+- [x] v1.8 spec — designer spec (tip slots, clip format, frequency rules) (DESIGN §3.13, 880ca14)
+- [x] v1.8.1 — Short tips with 3-second clips at the right moments (first highlight, first form, first signature, Pages mode),
+      recorded from the app, at most one per situation, can be switched off (c6dd923, 88f2128, 806528f, fixes dec9d33..c773d12)
+- [x] v1.8 acceptance — installed build with the mouse, designer round, tag v1.8.0 (acceptance build: v18-tips 45/45, v17-ocr 50/50 incl. owner-scan-S7 28/30; gate 1208/1208; smoke 17/17; real-input PASS; security PASS; designer FIX → blocker fixed)
 
 ### v1.9 "Backlog" (ADR-135 §5)
 - [ ] v1.9 spec — designer spec (stamp picker, header/footer sheet, comment export, citation style)

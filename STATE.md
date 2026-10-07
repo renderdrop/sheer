@@ -1,15 +1,19 @@
 # STATE
-phase: session "v1.8 Context help" (ADR-138) — wave 1 running
-version: 1.7.0 (tag v1.7.0, latest stable)
-current_item: v1.8 → v1.8.0. Wave 1: designer spec §3.13; OCR-S7 (v17-ocr owner phase, S7 only); SET (tipsEnabled setting, backend+api); REC (scripts/ui/apng.mjs, accept/clip.mjs). Then: TIPS frontend + clip recording, OCR S7 acceptance, gate/smoke, designer, security, release
-last_completed: v1.7.0 — macOS Vision sidecar b3e05e5 (+tests b9b0d63, eb02a82~2), polish PB 19e3a19, PF+FX-RO 3f87e96, ACL b372a72, sec low c4006f7, FX-D; acceptance v17-ocr 50/54 (4 = owner photo scan recognition limit) + rerun 42/42; security PASS (4 low); designer PASS (1 major fixed); gate 1173/1180 + coach rerun 78/78; annot smoke 17/17; real-input smoke PASS; macOS CI Vision 5/5
-loop_count_this_session: 0 (session closed, STOP set); report docs/reports/2026-10-07-v1.7.0-ocr-macos-politur.md
+phase: session "v1.8 Context help" (ADR-138) closed: v1.8.0 released
+version: 1.8.0 (tag v1.8.0, latest stable)
+current_item: none — next session: owner decides (proposal: v1.9 backlog). Open owner items: B-008 Mac check (OCR + tips), clip tips for existing users (new ids?)
+last_completed: v1.8.0 — spec 880ca14, tipsEnabled c6dd923, APNG/recorder 71e1a4f, clips 88f2128/c773d12, tips 806528f + fixes dec9d33/bf5726e/2b2b910, gate harness 658d558, OCR S7 acceptance c8c7855 (28/30); reports docs/reports/2026-10-07-v1.8.0-kontexthilfe.md
+loop_count_this_session: 0 (session closed, STOP set)
 open_blockers: 2 (B-002, B-005, human-only). B-006 and B-007 resolved by the owner (ADR-128). Path guard (ADR-127) allows the project memory folder (ADR-128)
-notes: ADR-120: every push starts with `bash scripts/ci-status.sh` (last completed run on main, never wait); red = fix first. Rule 15 / ADR-131: acceptance ONLY via `npm run build:acceptance` + `scripts/ui/accept/*.mjs` (CDP, dialog guard); real input only `smoke-real.mjs` (≤ 5 min, announced). Never launch target/release or anything installed.
+notes: Surface gate must run before annot-smoke on a fresh dev window (smoke leaves annotations that break overlap checks).
+  ADR-120: every push starts with `bash scripts/ci-status.sh` (last completed run on main, never wait); red = fix first. Rule 15 / ADR-131: acceptance ONLY via `npm run build:acceptance` + `scripts/ui/accept/*.mjs` (CDP, dialog guard); real input only `smoke-real.mjs` (≤ 5 min, announced). Never launch target/release or anything installed.
   Split staging across packages can break an intermediate commit (run #108): stage whole files per package when possible.
   Never run the dev window while agents run cargo/vitest; stop it by killing only processes whose path is target\debug\sheer.exe (never `taskkill /IM sheer.exe`, which would hit an installed instance) + Stop-Process on tauri.js/vite.js.
   Rule 17 / ADR-136 (resources and pace): ≤ 2 cargo agents at once (frontend up to 4); agents run `npm run check:fast` and `npm run cargo -- …`; the full `npm run check` once before each commit (orchestrator); `npm run target:budget` (cargo sweep, target ≤ 60 GB) instead of cargo clean; sccache in .tools/ (`npm run tools:install`); wait for agents by notification/run_in_background, no foreground sleep > 2 min; `npm run accept:clean` after every acceptance; guard-resources blocks builds under 8 GB RAM / 40 GB disk.
 ci_log: (ADR-120 corrected — package commit → CI run; result filled in at the next push)
+  - c8c7855..658d558 OCR S7, tips fixes, settings fit, gate harness → run #129 (37652497354) GREEN, run #130 (37658721738) GREEN
+  - fdbae51 token heights → run #128 (37647490676) GREEN
+  - e7c7016..86d7c20 ADR-138, DESIGN §3.13, tipsEnabled, APNG/clip recorder, OCR-S7 script → run #127 (37643142340) GREEN
   - e3eac8e release v1.7.0 → run #126 (37635908414) GREEN; release run #18 (37635909346) success (universal DMG with sheer-ocr x86_64+arm64, NSIS; stable)
   - b9b0d63..eb02a82 MAC2 tests, sec low, FX-ACC, Vision SIGSEGV fix, FX-D, docs → run #125 (37633889225) GREEN (macOS Vision 5/5)
   - c4006f7..d67f8e9 → run #124 (37631704251) red: Vision tests bound PDFium in parallel (SIGSEGV, macOS) → fixed in #125

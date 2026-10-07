@@ -6,6 +6,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.8.0] - 2026-10-07
+
+v1.8 "Context help" (ADR-138, DESIGN §3.13). Unsigned installers (BLOCKERS B-002).
+
+### Added
+- Short tips with a 3-second clip at four moments: the first highlight, the first document with form fields, the first signature
+  and the first switch into Pages mode. Each tip shows once, never more than once per situation in a session, never over a field
+  or the thing you are working on. The clips are part of the app (recorded from Sheer itself), nothing is loaded from outside.
+- Settings → Tour & tips: a switch turns tips off entirely; "Show tips again" brings back the ones you have seen.
+- With reduced motion the tip shows a still picture instead of the clip; a Replay button plays it again.
+
+### Changed
+- The signature and Pages tips have new, shorter texts.
+- Tips stay below the banner row and do not cover page cards in Pages mode.
+
 ## [1.7.0] - 2026-10-07
 
 v1.7 "Scan & OCR" complete on Windows and macOS (ADR-134, ADR-137, DESIGN §3.12). Unsigned installers (BLOCKERS B-002).
