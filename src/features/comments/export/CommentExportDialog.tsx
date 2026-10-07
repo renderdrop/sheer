@@ -198,7 +198,7 @@ function ExportModal({ request }: { request: CommentExportDialogState }) {
                       onChange={() => set({ include: { ...draft.include, [key]: !draft.include[key] } })}
                     />
                     <Icon icon={info.icon} size={16} className="text-text-muted" />
-                    <span className="min-w-0 truncate">{t(info.key)}</span>
+                    <span className="min-w-0 break-words">{t(info.key)}</span>
                   </label>
                 );
               })}
@@ -282,7 +282,13 @@ function ExportModal({ request }: { request: CommentExportDialogState }) {
           </Row>
         </div>
         <p aria-live="polite" data-export="count" className="t-caption m-0 text-text-muted tabular-nums">
-          {ready === null ? '' : (noText ?? t('commentExport.count', { count: count.items, pages: count.pages }))}
+          {ready === null
+            ? ''
+            : (noText ??
+              t('commentExport.count', {
+                items: t('commentExport.items', { count: count.items }),
+                pages: t('commentExport.pagesCount', { count: count.pages }),
+              }))}
         </p>
         {run.error !== null && (
           <p role="alert" data-export="failed" className="t-caption m-0 text-error-text">

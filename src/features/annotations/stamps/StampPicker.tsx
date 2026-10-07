@@ -18,6 +18,7 @@ import {
   defaultSize,
   faceOf,
   gridTarget,
+  tileGeometry,
   type Preset,
   type RecentText,
   type StampChoice,
@@ -26,14 +27,17 @@ import {
 import { useStamp } from './store';
 
 const SWATCH = 'size-4 shrink-0 rounded-pill border border-border-subtle';
+/** The own-text field fills the picker's width (the Field default is the 56 px number slot). */
+export const OWN_FIELD_CLASS = 'w-full!';
 const LABEL = 't-caption text-text-muted';
 
 /** A stamp drawn small, in its own aspect (the tiles of the picker). */
 export function MiniStamp({ face, tone }: { face: StampFace; tone: StampTone }) {
-  const { w, h } = defaultSize(face);
+  const tile = tileGeometry(face);
+  const { w, h } = tile ?? defaultSize(face);
   return (
     <svg aria-hidden="true" viewBox={`0 0 ${w} ${h}`} className="max-h-full max-w-full" width="100%" height="100%">
-      <StampArt w={w} h={h} text={face.text} date={face.date} tone={tone} />
+      <StampArt w={w} h={h} text={face.text} date={face.date} tone={tone} layout={tile?.layout} />
     </svg>
   );
 }
@@ -157,7 +161,7 @@ export function StampPickerBody({ close }: StampPickerBodyProps) {
                 data-stamp-tile={preset}
                 onClick={(event) => finish({ stamp: preset }, event.detail === 0)}
                 className={cx(
-                  'flex h-(--stamp-tile-height) w-(--stamp-tile-width) cursor-pointer items-center justify-center rounded-md border bg-surface p-2',
+                  'flex h-(--stamp-tile-height) w-(--stamp-tile-width) cursor-pointer items-center justify-center rounded-md border bg-surface p-1',
                   'transition-colors duration-fast hover:bg-subtle',
                   checked ? 'border-text' : 'border-border-subtle',
                 )}
@@ -176,6 +180,7 @@ export function StampPickerBody({ close }: StampPickerBodyProps) {
         <Field
           id={labelIds.own}
           value={text}
+          className={OWN_FIELD_CLASS}
           maxLength={OWN_TEXT_MAX}
           placeholder={t('stamp.ownPlaceholder')}
           onChange={(event) => setText(event.target.value)}

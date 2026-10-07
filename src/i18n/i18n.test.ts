@@ -365,3 +365,22 @@ describe('interpolation with missing parameters', () => {
     }
   });
 });
+
+describe('copy details of the v1.9 round', () => {
+  it('pluralises the comment export count and never doubles the period after the app name', () => {
+    for (const [tr, expected] of [
+      [t, '1 item on 1 page'],
+      [de, '1 Eintrag auf 1 Seite'],
+    ] as const) {
+      expect(
+        tr('commentExport.count', {
+          items: tr('commentExport.items', { count: 1 }),
+          pages: tr('commentExport.pagesCount', { count: 1 }),
+        }),
+      ).toBe(expected);
+      expect(tr('commentExport.pagesCount', { count: 3 })).toMatch(/3 (pages|Seiten)/);
+      expect(tr('hf.existing', { app: 'sheer.' })).not.toContain('..');
+      expect(tr('hf.existing', { app: 'sheer.' })).not.toMatch(/sheer\.\./);
+    }
+  });
+});

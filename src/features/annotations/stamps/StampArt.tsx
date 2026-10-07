@@ -1,5 +1,5 @@
 import type { StampTone } from '../../../api/annotations';
-import { STAMP_BORDER_PT, STAMP_RADIUS_PT, textLayout } from './model';
+import { STAMP_BORDER_PT, STAMP_RADIUS_PT, boldWidth, textLayout, type TextLayout } from './model';
 
 export interface StampArtProps {
   /** The stamp's size in page points. */
@@ -8,6 +8,8 @@ export interface StampArtProps {
   text: string;
   date: string | null;
   tone: StampTone;
+  /** A fixed text layout (the picker's tiles, which keep the type legible) instead of the fit into the box. */
+  layout?: TextLayout;
 }
 
 /**
@@ -15,8 +17,8 @@ export interface StampArtProps {
  * rectangle in Ink, filled Solar for the Solar tone, the text in bold sans centred, the date in regular below it. The colours are the
  * document's own (annotation colours are content), so they come from the document tokens, not the interface's.
  */
-export function StampArt({ w, h, text, date, tone }: StampArtProps) {
-  const layout = textLayout(text, date, w, h);
+export function StampArt({ w, h, text, date, tone, layout: fixed }: StampArtProps) {
+  const layout = fixed ?? textLayout(text, date, w, h);
   const half = STAMP_BORDER_PT / 2;
   return (
     <g data-stamp-art="" data-tone={tone}>
@@ -37,6 +39,8 @@ export function StampArt({ w, h, text, date, tone }: StampArtProps) {
         fontFamily="Helvetica, Arial, sans-serif"
         fontWeight={700}
         fontSize={layout.size}
+        textLength={boldWidth(text, layout.size)}
+        lengthAdjust="spacingAndGlyphs"
         fill="var(--color-doc-ink)"
       >
         {text}

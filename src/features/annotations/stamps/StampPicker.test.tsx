@@ -3,8 +3,8 @@ import { cleanup, fireEvent, render, screen, within } from '@testing-library/rea
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { useLocaleStore } from '../../../i18n/store';
-import { StampPickerBody } from './StampPicker';
-import { FIRST_CHOICE } from './model';
+import { OWN_FIELD_CLASS, StampPickerBody } from './StampPicker';
+import { FIRST_CHOICE, tileGeometry } from './model';
 import { useStamp } from './store';
 
 const close = vi.fn();
@@ -119,5 +119,20 @@ describe('the stamp picker', () => {
   it('names the surface for the gate', () => {
     const { container } = render(<StampPickerBody close={close} />);
     expect(container.querySelector('[data-surface="stamp-picker"]')).not.toBeNull();
+  });
+});
+
+describe('the stamp picker layout', () => {
+  it('gives the own-text field the full width and a visible placeholder', () => {
+    render(<StampPickerBody close={close} />);
+    const field = screen.getByPlaceholderText('z. B. Bezahlt');
+    expect(field.className).toContain(OWN_FIELD_CLASS);
+    expect(OWN_FIELD_CLASS).toBe('w-full!');
+  });
+
+  it('keeps the date of a tile at a legible size', () => {
+    const tile = tileGeometry({ text: 'ERHALTEN', date: '07.10.2026' });
+    expect(tile?.layout.dateSize).toBeGreaterThanOrEqual(10);
+    expect(tileGeometry({ text: 'ENTWURF', date: null })).toBeNull();
   });
 });

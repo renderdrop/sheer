@@ -43,13 +43,19 @@ const BOLD_WIDTHS = [
   280, 389, 584,
 ] as const;
 
-/** The width of `text` in Helvetica-Bold at `size` points. A character the table does not hold counts as 556 (an accented letter). */
+/** The width of one character in 1/1000 em: an accented letter has the width of its base letter (as in the AFM), ß is 611. */
+function boldUnits(char: string): number {
+  const code = char.codePointAt(0) ?? 0;
+  if (code >= 0x20 && code <= 0x7e) return BOLD_WIDTHS[code - 0x20] ?? 556;
+  if (code === 0xdf) return 611;
+  const base = char.normalize('NFD').codePointAt(0) ?? 0;
+  return base >= 0x41 && base <= 0x7a ? (BOLD_WIDTHS[base - 0x20] ?? 556) : 556;
+}
+
+/** The width of `text` in Helvetica-Bold at `size` points. A character the table does not hold counts as 556. */
 export function boldWidth(text: string, size: number): number {
   let units = 0;
-  for (const char of text) {
-    const code = char.codePointAt(0) ?? 0;
-    units += code >= 0x20 && code <= 0x7e ? (BOLD_WIDTHS[code - 0x20] ?? 556) : 556;
-  }
+  for (const char of text) units += boldUnits(char);
   return (units * size) / 1000;
 }
 
@@ -145,6 +151,15 @@ export function defaultSize(face: Pick<StampFace, 'text' | 'date'>): { w: number
   };
 }
 
+/** The picker tile's dated stamp: a compact box (40 high) whose label is 12 pt and date 10 pt, so the date stays legible at tile size. */
+export function tileGeometry(
+  face: Pick<StampFace, 'text' | 'date'>,
+): { w: number; h: number; layout: TextLayout } | null {
+  if (face.date === null) return null;
+  const w = Math.max(60, Math.max(boldWidth(face.text, 12), textWidth(face.date, 10)) + 2 * STAMP_PAD_X_PT);
+  return { w, h: 40, layout: { size: 12, baseline: 17, dateSize: 10, dateBaseline: 31 } };
+}
+
 const clamp = (value: number, low: number, high: number): number => Math.min(Math.max(value, low), high);
 
 /** A box of `w` by `h` with its top left at (`x`, `y`) moved to lie inside the page (a box larger than the page is shrunk to it). */
@@ -207,13 +222,16 @@ export function fittedFont(text: string, date: string | null, w: number, h: numb
   return clamp(Math.min(byHeight, byWidth), 6, 72);
 }
 
+/** The font sizes and the baselines from the top (y down) of a stamp's text. */
+export interface TextLayout {
+  size: number;
+  baseline: number;
+  dateSize: number;
+  dateBaseline: number;
+}
+
 /** The layout of a stamp's text in a box `w` by `h`: the font sizes and the baselines from the top (y down), as the appearance has them. */
-export function textLayout(
-  text: string,
-  date: string | null,
-  w: number,
-  h: number,
-): { size: number; baseline: number; dateSize: number; dateBaseline: number } {
+export function textLayout(text: string, date: string | null, w: number, h: number): TextLayout {
   const CAP = 0.718;
   const size = fittedFont(text, date, w, h);
   if (date === null) return { size, baseline: h / 2 + (size * CAP) / 2, dateSize: 0, dateBaseline: 0 };

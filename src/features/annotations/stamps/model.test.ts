@@ -169,3 +169,10 @@ describe('the text fit', () => {
     expect(l.dateSize).toBeCloseTo(l.size * 0.6, 5);
   });
 });
+
+describe('the width of accented text', () => {
+  it('counts an accented letter as its base letter and sharp s as 611', () => {
+    expect(boldWidth('ÄÖÜ', 1000)).toBe(722 + 778 + 722);
+    expect(boldWidth('ß', 1000)).toBe(611);
+  });
+});
