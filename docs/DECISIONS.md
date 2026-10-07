@@ -2852,3 +2852,22 @@ full and the session died with three agents mid-package).
 
 **Consequences.** Builds take longer on a cold machine (six jobs) but two agents can no longer starve the machine; the disk cannot fill up
 silently; a quick agent loop stays under a minute. Dev-window kills target only `target\debug\sheer.exe` (never `/IM sheer.exe`).
+
+## ADR-137 — Session "v1.7 part 2": macOS Vision sidecar, polish v1.7, release v1.7.0
+
+**Status:** accepted (2026-10-07, owner instruction; topic "v1.7 Teil 2 – macOS-Texterkennung und Politur v1.7").
+
+**Decisions (owner).**
+1. *Windows acceptance repeated with real material.* The English OCR pack is now installed on the dev machine and the owner put real
+   photographed scan pages into `review/owner/` (IDs `owner-scan-S1`…`S6`, mapping and per-scan probe words only in the untracked
+   `review/owner/INDEX.md`, ADR-133). The acceptance build repeats `v17-ocr` with them (image-only PDFs generated from the photos under
+   `review/generated/`, never committed), adds an English recognition run (UI language en), and triggers the missing-language notice
+   (ADR-134 §3 ii) through an acceptance-only mask: with the Cargo feature `automation`, the environment variable
+   `SHEER_AUTOMATION_OCR_LANGS` (comma-separated tags) limits which languages count as available. Release builds ignore it.
+2. *macOS (part 2).* Swift sidecar `sheer-ocr` with Apple Vision as ADR-134 §1–2/§10, languages de/en, same UI as Windows (the
+   dialog's language-settings button stays Windows-only; Vision ships both languages). Verified only by CI tests on macOS (Swift unit
+   tests plus a Rust round trip through the built sidecar); the report states that the human Mac acceptance is pending (B-001).
+3. *Polish v1.7 (owner focus).* OCR dialog page scope with a visible selection (round marks, group label, never colour alone), a
+   full-width progress bar with done/total, and a test that every command in the invoke handler is declared in `build.rs` and granted
+   in `capabilities/default.json`. Other v1.7 minors are done where cheap; the rest moves to the v2.1 backlog.
+4. *Release.* v1.7.0 (stable) with a German report once CI on `main` is green on both platforms.

@@ -1,9 +1,9 @@
 # STATE
-phase: session "Endspurt v2.0" closed after part 1 (owner, ADR-135 add. 2): v1.7.0-beta.1 released (Windows OCR); STOP set
+phase: session "v1.7 part 2 + Politur v1.7" (ADR-137) — wave 1 running
 version: 1.7.0-beta.1 (tag v1.7.0-beta.1, pre-release; v1.6.0 latest stable)
-current_item: none — next session: owner decides (proposal: Politur v1.7 + v1.7 part 2 macOS sidecar). Open owner items: English OCR pack, real scans, Mac check (B-001)
+current_item: v1.7 part 2 + Politur v1.7 → v1.7.0. Wave 1: MAC (backend-implementer: Swift sidecar sidecar/ocr-macos, ocr/backend.rs, tauri.macos.conf.json, ci.yml, release.yml, lang mask), PB (backend-implementer: ocr/service.rs except the ChildClient::new line, commands/ocr*, pdfwrite/ocr_probe.rs, examples/make_scan_fixtures.rs --owner), PF (implementer: src/features/ocr/*, i18n, CitationBubble test), AT (implementer: scripts/acl.test.ts, scripts/ui/accept/v17-ocr.mjs + launch.mjs env). Then full check, commits, acceptance, security, designer, release
 last_completed: v1.7.0-beta.1 (814b76f) — Windows OCR: B2 990d0f3, W0 6ec72b8, B3 3f19a63, F1 422b48b, B1 928f1ee, FX-B3 993537b, FX-F1 a834dbe, ACL 9797fb1, FX-GRAY/FX-SEC ff464f7, acceptance v17-ocr 30/30 (30dcc6d); reviews PASS; security pass 2 FAIL→fixed; designer PASS; gate 1208/1208; smoke 17/17; real-input smoke PASS; report docs/reports/2026-10-07-v1.7.0-beta.1-ocr-windows.md
-loop_count_this_session: 0 (session closed, STOP set)
+loop_count_this_session: 0
 open_blockers: 2 (B-002, B-005, human-only). B-006 and B-007 resolved by the owner (ADR-128). Path guard (ADR-127) allows the project memory folder (ADR-128)
 notes: ADR-120: every push starts with `bash scripts/ci-status.sh` (last completed run on main, never wait); red = fix first. Rule 15 / ADR-131: acceptance ONLY via `npm run build:acceptance` + `scripts/ui/accept/*.mjs` (CDP, dialog guard); real input only `smoke-real.mjs` (≤ 5 min, announced). Never launch target/release or anything installed.
   Split staging across packages can break an intermediate commit (run #108): stage whole files per package when possible.
