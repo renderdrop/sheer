@@ -21,7 +21,7 @@ import { DISMISS_PRIORITY, registerDismissLayer } from './dismiss';
 import { Icon } from './Icon';
 import { PRESS_MOTION } from './controlStyles';
 import { usePopoverMotion } from './motion';
-import { ownedBy, PopoverScope } from './popoverScope';
+import { layerFor, ownedBy, PopoverScope } from './popoverScope';
 import { MENU_WIDTHS, Popover, type PopoverProps } from './Popover';
 import type { Side } from './position';
 import { isOwnEvent, itemsOf, rovingTarget } from './roving';
@@ -379,6 +379,7 @@ function SubmenuSurface({
   const present = useIsPresent();
   const motionProps = usePopoverMotion();
   const owner = useContext(PopoverScope);
+  const layer = useMemo(() => layerFor(anchor), [anchor]);
   // Beside the item, away from the end of the text: on the left in a right-to-left language. It overlaps the panel of its
   // parent (offset 0), so the pointer has no gap to cross, and its first item lines up with the parent item (the padding of
   // the panel, `--space-2`, is taken off).
@@ -427,8 +428,9 @@ function SubmenuSurface({
     <div
       ref={positioner}
       {...ownedBy(owner)}
+      data-modal-popover={layer['data-modal-popover']}
       onPointerEnter={onPointerEnter}
-      className={`fixed start-0 top-0 z-popover flex flex-col ${present ? '' : 'pointer-events-none'}`}
+      className={`fixed start-0 top-0 ${layer.className} flex flex-col ${present ? '' : 'pointer-events-none'}`}
     >
       <motion.div
         {...motionProps}

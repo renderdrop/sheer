@@ -426,9 +426,27 @@ const session = async (ctx) => {
       await open(WORK('stamps.pdf'));
       await sleep(1500);
       await openComments();
-      const cards = await ev(
-        `[...document.querySelectorAll('article[data-key]')].map((e) => e.textContent.replace(/\s+/g, ' ').trim().slice(0, 60))`,
-      );
+      // The comments list is virtualized: scroll it from top to bottom and collect the cards by key.
+      const seen = new Map();
+      const collect = async () => {
+        const got = await ev(
+          `[...document.querySelectorAll('article[data-key]')].map((e) => [e.getAttribute('data-key'), e.textContent.replace(/\\s+/g, ' ').trim().slice(0, 60)])`,
+        );
+        for (const [k, v] of got) seen.set(k, v);
+      };
+      const scrollList = (to) =>
+        ev(`(() => { let e = document.querySelector('article[data-key]'); while (e && e.scrollHeight <= e.clientHeight + 1) e = e.parentElement;
+          if (!e) return false; e.scrollTop = ${to}; return e.scrollHeight; })()`);
+      await scrollList(0);
+      await sleep(400);
+      await collect();
+      for (let top = 200; top < 4000; top += 200) {
+        if (!(await scrollList(top))) break;
+        await sleep(250);
+        await collect();
+      }
+      await scrollList(0);
+      const cards = [...seen.values()];
       C(
         'ST-AC: reopened file lists the 7 stamps in the comments panel (excerpt = text)',
         cards.length === 7 &&
@@ -641,7 +659,13 @@ const session = async (ctx) => {
       await input.click({ selector: '[data-hf-slot="headerCenter"]' });
       await input.waitFor(`!!document.querySelector('[role="menu"]')`, { timeoutMs: 4000, what: 'kind menu' });
       await sleep(250);
-      await input.click({ selector: '[role="menu"] [role^="menuitem"]', text: 'Text' });
+      // Menus anchored inside a modal render at --z-modal-popover (FX-Z), so a real click reaches the items.
+      const textItem = `[...document.querySelectorAll('[role="menu"] [role^="menuitem"]')].find((e) => e.textContent === 'Text')`;
+      const reachable = await ev(
+        `(() => { const i = ${textItem}; const r = i.getBoundingClientRect(); const h = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2); return h === i || i.contains(h); })()`,
+      );
+      C('HF-AC 2: the slot menu inside the dialog is clickable (menu above the modal)', reachable, '');
+      await input.click({ selector: '[role="menu"] [data-id="text"]' });
       await sleep(400);
       await input.click({ selector: '[data-hf="text"]' });
       await input.insertText(CENTRE);
@@ -791,9 +815,13 @@ const session = async (ctx) => {
       });
       await sleep(500);
       const remembered = await ev(
-        `[...document.querySelectorAll('[data-surface="comment-export"] [role="radio"]')].find((e) => e.getAttribute('aria-checked') === 'true')?.textContent.trim() ?? ''`,
+        `[...document.querySelectorAll('[data-surface="comment-export"] [role="radio"]')].filter((e) => /Markdown|PDF/.test(e.textContent)).map((e) => e.textContent.trim() + '=' + e.getAttribute('aria-checked')).join(' ')`,
       );
-      C('CE-AC 11: the dialog remembers the last format (Markdown)', remembered.includes('Markdown'), remembered);
+      C(
+        'CE-AC 11: the dialog remembers the last format (Markdown)',
+        /Markdown=true/.test(remembered) && !/PDF[^=]*=true/.test(remembered),
+        remembered,
+      );
       await input.click({ selector: '[data-surface="comment-export"] [role="radio"]', text: 'PDF-Zusammenfassung' });
       await sleep(300);
       await dialogs.answerSave(PDF);
@@ -859,6 +887,11 @@ const session = async (ctx) => {
           await input.insertText(value);
           return true;
         };
+        // Publisher and place exist only for some types: choose "book" first (a native select, set the React-compatible way).
+        await ev(`(() => { const s = document.querySelector('${D} select[id$="-kind"]'); if (!s) return;
+          Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value').set.call(s, 'book');
+          s.dispatchEvent(new Event('change', { bubbles: true })); })()`);
+        await sleep(500);
         const filled = {};
         filled.title = await fill(`${D} input[id$="-title"]`, src.title);
         filled.year = await fill(`${D} input[id$="-year"]`, src.year);
@@ -964,7 +997,9 @@ const session = async (ctx) => {
       );
       const listA = join(OUT, `cites-list-a-${RUN}.md`);
       const mdA = await exportList(listA);
-      const notes = [...mdA.matchAll(/^\[\^(\d+)\]: (.+)$/gm)].map((m) => ({ n: Number(m[1]), text: m[2] }));
+      // Markdown-unescape: emphasis marks (the italic title) and backslash escapes are dropped before comparing.
+      const unmd = (t) => t.replace(/\\(.)/g, '$1').replace(/\*/g, '');
+      const notes = [...mdA.matchAll(/^\[\^(\d+)\]: (.+)$/gm)].map((m) => ({ n: Number(m[1]), text: unmd(m[2]) }));
       C(
         'DZ-AC 5: two footnotes exist, numbered 1 and 2',
         notes.length === 2 && notes[0].n === 1 && notes[1].n === 2,
@@ -972,9 +1007,7 @@ const session = async (ctx) => {
       );
       C(
         'DZ-AC 5: note 1 is the full reference',
-        (notes[0]?.text ?? '').includes('Müller, Hans: Digitale Lesekultur') &&
-          notes[0].text.includes('Beispielverlag') &&
-          notes[0].text.includes('Berlin'),
+        notes[0]?.text === 'Müller, Hans: Digitale Lesekultur. Eine Einführung. Berlin: Beispielverlag, 2021, S. 1.',
         notes[0]?.text ?? '',
       );
       C(
@@ -1014,7 +1047,7 @@ const session = async (ctx) => {
       await cite('quick');
       const listB = join(OUT, `cites-list-b-${RUN}.md`);
       const mdB = await exportList(listB);
-      const notesB = [...mdB.matchAll(/^\[\^(\d+)\]: (.+)$/gm)].map((m) => m[2]);
+      const notesB = [...mdB.matchAll(/^\[\^(\d+)\]: (.+)$/gm)].map((m) => unmd(m[2]));
       C(
         'DZ-AC 5: the second source has one full note and its own bibliography entry',
         notesB.length === 1 &&

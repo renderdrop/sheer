@@ -5,6 +5,7 @@ import {
   useEffect,
   useId,
   useLayoutEffect,
+  useMemo,
   useRef,
   useState,
   type KeyboardEvent,
@@ -20,7 +21,7 @@ import { DISMISS_PRIORITY, registerDismissLayer } from './dismiss';
 import { cycleTab, TAB_STOPS } from './focusTrap';
 import { useControllableState } from './hooks';
 import { usePopoverMotion } from './motion';
-import { isInsideOwned, ownedBy, PopoverScope } from './popoverScope';
+import { isInsideOwned, layerFor, ownedBy, PopoverScope } from './popoverScope';
 import type { Align, Side } from './position';
 import { isOwnEvent, itemsOf } from './roving';
 import { useFloatingPosition } from './useFloatingPosition';
@@ -274,6 +275,7 @@ function FloatingSurface({
   const surface = useRef<HTMLDivElement>(null);
   const present = useIsPresent();
   const motionProps = usePopoverMotion();
+  const layer = useMemo(() => layerFor(anchor), [anchor]);
   useFloatingPosition({
     anchor,
     floatingRef: positioner,
@@ -332,7 +334,8 @@ function FloatingSurface({
     <div
       ref={positioner}
       {...ownedBy(parent)}
-      className={`fixed start-0 top-0 z-popover flex flex-col ${present ? '' : 'pointer-events-none'}`}
+      data-modal-popover={layer['data-modal-popover']}
+      className={`fixed start-0 top-0 ${layer.className} flex flex-col ${present ? '' : 'pointer-events-none'}`}
     >
       <motion.div
         {...motionProps}

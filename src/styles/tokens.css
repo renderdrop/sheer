@@ -553,6 +553,7 @@
   --z-popover: 100;
   --z-toast: 200;
   --z-modal: 300;
+  --z-modal-popover: 350; /* a menu or popover whose anchor is inside an open modal (DESIGN 3.9 Q8) */
   --z-tooltip: 400;
   --z-drag: 500;
   /* Home measures (DESIGN v2 3.1, Politur v1.3) */
@@ -842,6 +843,10 @@
 
 @utility z-modal {
   z-index: var(--z-modal);
+}
+
+@utility z-modal-popover {
+  z-index: var(--z-modal-popover);
 }
 
 @utility z-tooltip {

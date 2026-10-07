@@ -639,3 +639,26 @@ describe('Menu submenus (DESIGN 3.5): edge cases of the hover', () => {
     expect(error).not.toHaveBeenCalled();
   });
 });
+
+describe('Menu inside a modal (DESIGN 3.9 Q8)', () => {
+  it('renders in the layer above the modal and an item click fires', async () => {
+    const onSelect = vi.fn();
+    const { user, getByRole } = setup(
+      <div role="dialog" aria-modal="true" aria-label="Dialog" className="z-modal">
+        <Demo onSelect={onSelect} />
+      </div>,
+    );
+    await user.click(getByRole('button', { name: 'Menu' }));
+    const menu = getByRole('menu', { name: 'Actions' });
+    expect(menu.parentElement?.className).toContain('z-modal-popover');
+    expect(menu.parentElement?.className).not.toMatch(/\bz-popover\b/);
+    await user.click(getByRole('menuitem', { name: 'Open' }));
+    expect(onSelect).toHaveBeenCalledWith('open');
+  });
+
+  it('keeps z-popover outside a modal', async () => {
+    const { user, getByRole } = setup(<Demo />);
+    await user.click(getByRole('button', { name: 'Menu' }));
+    expect(getByRole('menu', { name: 'Actions' }).parentElement?.className).toContain('z-popover');
+  });
+});

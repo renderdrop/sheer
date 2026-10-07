@@ -19,3 +19,12 @@ export function isInsideOwned(target: Node, owner: string): boolean {
   const element = target instanceof Element ? target : target.parentElement;
   return element?.closest(`[${OWNER_ATTRIBUTE}]`)?.getAttribute(OWNER_ATTRIBUTE) === owner;
 }
+
+/**
+ * The z-index class of a floating surface (DESIGN 3.9 Q8): `z-popover`, but `z-modal-popover` (above the modal) when its
+ * anchor sits inside an open modal or inside another surface that was lifted that way. Outside modals nothing changes.
+ */
+export function layerFor(anchor: Element | null): { className: string; 'data-modal-popover'?: '' } {
+  const lifted = anchor?.closest('[aria-modal="true"], [data-modal-popover]') != null;
+  return lifted ? { className: 'z-modal-popover', 'data-modal-popover': '' } : { className: 'z-popover' };
+}

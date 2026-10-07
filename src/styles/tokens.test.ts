@@ -675,6 +675,7 @@ describe('elevation (DESIGN 1.7)', () => {
     popover: '100',
     toast: '200',
     modal: '300',
+    'modal-popover': '350',
     tooltip: '400',
     drag: '500',
   };
