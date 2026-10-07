@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-ocr-open-language-settings"
+description = "Enables the ocr_open_language_settings command without any pre-configured scope."
+commands.allow = ["ocr_open_language_settings"]
+
+[[permission]]
+identifier = "deny-ocr-open-language-settings"
+description = "Denies the ocr_open_language_settings command without any pre-configured scope."
+commands.deny = ["ocr_open_language_settings"]

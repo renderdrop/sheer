@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-ocr-classify-pages"
+description = "Enables the ocr_classify_pages command without any pre-configured scope."
+commands.allow = ["ocr_classify_pages"]
+
+[[permission]]
+identifier = "deny-ocr-classify-pages"
+description = "Denies the ocr_classify_pages command without any pre-configured scope."
+commands.deny = ["ocr_classify_pages"]

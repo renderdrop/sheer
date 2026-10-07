@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-ocr-start"
+description = "Enables the ocr_start command without any pre-configured scope."
+commands.allow = ["ocr_start"]
+
+[[permission]]
+identifier = "deny-ocr-start"
+description = "Denies the ocr_start command without any pre-configured scope."
+commands.deny = ["ocr_start"]

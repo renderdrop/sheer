@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-ocr-capabilities"
+description = "Enables the ocr_capabilities command without any pre-configured scope."
+commands.allow = ["ocr_capabilities"]
+
+[[permission]]
+identifier = "deny-ocr-capabilities"
+description = "Denies the ocr_capabilities command without any pre-configured scope."
+commands.deny = ["ocr_capabilities"]
