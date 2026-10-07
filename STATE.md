@@ -11,7 +11,7 @@ notes: ADR-120: every push starts with `bash scripts/ci-status.sh` (last complet
 ci_log: (ADR-120 corrected — package commit → CI run; result filled in at the next push)
   - 85d161d..53d15a4 design L14 + privacy P0 (ADR-133) → run #115 (37545449136) GREEN
   - 6399a4c..e610716 ADR-134 + range chooser R → run #116 (37547381423) GREEN
-  - f704a6e..report FX-R + OCR spike + docs → run: read next session
+  - f704a6e..report FX-R + OCR spike + docs → run #117 (37551440497) GREEN
   - autosave retention test slack → run #114 (37541496411) GREEN
   - tests + release v1.6.0 (41a2c4d) → run #113 (37539156008) red: flaky autosave retention test (whole-second stamps) → fixed next commit; release run #16 (37539156084) success (DMG + NSIS)
   - 3f6cc9f..3763737 FX-G + smoke script → run #112 (37536910147) GREEN
