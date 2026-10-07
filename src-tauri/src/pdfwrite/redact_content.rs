@@ -1912,4 +1912,52 @@ mod tests {
         );
         assert!(out.contains("006B"), "the word elsewhere stays: {out}");
     }
+
+    /// Redaction and a Full save (compaction) of a page with an OCR layer: the redacted word is nowhere in the file, the other stays.
+    #[test]
+    fn a_redacted_ocr_page_stays_clean_through_the_full_save() {
+        use crate::ocr::{OcrLine, OcrPageLayer, OcrWord};
+        let word = |text: &str, y0: f32| OcrWord {
+            text: text.into(),
+            rect: [50.0, y0, 110.0, y0 + 12.0],
+        };
+        let layer = OcrPageLayer {
+            lang: "en-US".into(),
+            lines: vec![
+                OcrLine {
+                    words: vec![word("secret", 50.0)],
+                },
+                OcrLine {
+                    words: vec![word("keep", 100.0)],
+                },
+            ],
+            ..OcrPageLayer::default()
+        };
+        let (mut doc, _) = page_doc("");
+        let mut plain = Vec::new();
+        doc.save_to(&mut plain).unwrap();
+        let saved = crate::pdfwrite::ocr_layer::apply_ocr_layers(
+            plain,
+            &std::collections::BTreeMap::from([(0u32, layer)]),
+            false,
+        )
+        .unwrap();
+        let src = crate::pdfwrite::prescan::load_untrusted(&saved).unwrap();
+        let page = *src.get_pages().values().next().unwrap();
+        let redacted = redacted_page(
+            &src,
+            page,
+            [0.0, 0.0, 200.0, 200.0],
+            0,
+            &[rect(40.0, 45.0, 80.0, 22.0)],
+        )
+        .unwrap();
+        let full = crate::pdfwrite::pagetree::compact(redacted, &[]).unwrap();
+        let out = content_of(&full).to_uppercase();
+        assert!(!out.contains("00730065006300720065"), "{out}");
+        assert!(!out.contains("00630072"), "{out}");
+        assert!(out.contains("006B00650065"), "the other word stays: {out}");
+        // The old unredacted content stream is not a leftover object of the file.
+        assert!(!String::from_utf8_lossy(&full).contains("secret"));
+    }
 }

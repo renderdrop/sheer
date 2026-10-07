@@ -349,6 +349,45 @@ fn content_refs(doc: &Document, page: &Dictionary) -> Vec<Object> {
     }
 }
 
+/// Whether `item` is a stream with exactly `body` as its content.
+fn is_stream_of(doc: &Document, item: &Object, body: &[u8]) -> bool {
+    let Object::Reference(id) = item else {
+        return false;
+    };
+    doc.get_object(*id)
+        .ok()
+        .and_then(|o| o.as_stream().ok())
+        .is_some_and(|s| s.content == body)
+}
+
+/// `refs` (the contents of `page`) without the layer of an earlier run: the stream `/SheerOcr /S` names, and the `q` and `Q` streams
+/// that wrapped the original around it, so a redone page has one layer and not two (ADR-134 item 7). A page without our key, or whose
+/// contents are not the shape we wrote, is returned as it is.
+fn without_old_layer(doc: &Document, page: &Dictionary, mut refs: Vec<Object>) -> Vec<Object> {
+    let old = page
+        .get(b"SheerOcr")
+        .ok()
+        .and_then(|o| doc.dereference(o).ok())
+        .and_then(|(_, o)| o.as_dict().ok())
+        .and_then(|d| d.get(b"S").ok())
+        .and_then(|o| o.as_reference().ok());
+    let Some(old) = old else {
+        return refs;
+    };
+    if refs.last() != Some(&Object::Reference(old)) {
+        return refs;
+    }
+    refs.pop();
+    if refs.len() >= 2
+        && is_stream_of(doc, &refs[0], b"q\n")
+        && is_stream_of(doc, &refs[refs.len() - 1], b"Q\n")
+    {
+        refs.pop();
+        refs.remove(0);
+    }
+    refs
+}
+
 /// A page-local copy of the resources with the OCR font added (the inherited or shared dictionary stays as it is).
 fn resources_with_font(doc: &Document, page: ObjectId, font: ObjectId) -> Dictionary {
     let mut resources = inherited(doc, page, b"Resources")
@@ -395,7 +434,7 @@ pub fn write_ocr_layers(
             .clone();
         let geom = page_geom(prev, *page);
         let mut contents = vec![Object::Reference(open)];
-        contents.extend(content_refs(prev, &dict));
+        contents.extend(without_old_layer(prev, &dict, content_refs(prev, &dict)));
         contents.push(Object::Reference(close));
         let resources = resources_with_font(prev, *page, font);
         let stream = layer_stream(&geom, layer);
@@ -608,6 +647,51 @@ mod tests {
         let saved = apply_ocr_layers(original.clone(), &layers, false).unwrap();
         assert_eq!(&saved[..original.len()], &original[..]);
         assert!(!String::from_utf8_lossy(&saved).contains("SheerOcr"));
+    }
+
+    fn one_word(text: &str) -> BTreeMap<u32, OcrPageLayer> {
+        BTreeMap::from([(
+            0u32,
+            OcrPageLayer {
+                lang: "en-US".into(),
+                lines: vec![OcrLine {
+                    words: vec![OcrWord {
+                        text: text.into(),
+                        rect: [10.0, 10.0, 60.0, 22.0],
+                    }],
+                }],
+                ..OcrPageLayer::default()
+            },
+        )])
+    }
+
+    fn page_content(bytes: &[u8]) -> (String, usize) {
+        let doc = crate::pdfwrite::prescan::load_untrusted(bytes).unwrap();
+        let page = *doc.get_pages().values().next().unwrap();
+        let parts = content_refs(&doc, doc.get_dictionary(page).unwrap()).len();
+        (
+            String::from_utf8_lossy(&doc.get_page_content(page)).to_uppercase(),
+            parts,
+        )
+    }
+
+    #[test]
+    fn a_redone_page_has_one_layer_not_two() {
+        let first = apply_ocr_layers(small_pdf(), &one_word("old"), false).unwrap();
+        let (text, parts) = page_content(&first);
+        assert!(text.contains("<006F006C0064>"));
+        assert_eq!(parts, 4, "q, original, Q, layer");
+        let second = apply_ocr_layers(first.clone(), &one_word("new"), false).unwrap();
+        assert!(second.starts_with(&first), "still an incremental update");
+        let (text, parts) = page_content(&second);
+        assert!(
+            !text.contains("006F006C0064"),
+            "the old words are gone: {text}"
+        );
+        assert_eq!(text.matches("<006E00650077>").count(), 1, "{text}");
+        assert_eq!(parts, 4, "no wrap on wrap");
+        let third = apply_ocr_layers(second, &one_word("new"), false).unwrap();
+        assert_eq!(page_content(&third).0.matches("<006E00650077>").count(), 1);
     }
 
     #[test]

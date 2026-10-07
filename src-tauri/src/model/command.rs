@@ -526,13 +526,7 @@ impl DocCommand {
                 slot,
                 edits,
             } => text_edit::restore(state, *page_id, slot, edits.as_ref(), &mut delta)?,
-            Self::ApplyOcr { layers } => {
-                let layers: Vec<_> = layers
-                    .iter()
-                    .map(|(page, layer)| (*page, Some(Arc::clone(layer))))
-                    .collect();
-                super::ocr_layers::restore(state, &layers, &mut delta)?
-            }
+            Self::ApplyOcr { layers } => super::ocr_layers::apply(state, layers, &mut delta)?,
             Self::RestoreOcr { layers } => super::ocr_layers::restore(state, layers, &mut delta)?,
             Self::MarkRedactions { marks } => redaction::mark(state, marks, &mut delta)?,
             Self::RestoreRedaction {

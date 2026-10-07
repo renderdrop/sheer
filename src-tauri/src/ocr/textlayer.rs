@@ -31,13 +31,74 @@ impl Shape {
         }
     }
 
-    /// A box of the displayed page `[x0, y0, x1, y1]` as `[x0, y0, x1, y1]` in page space.
+    /// A box of the layer `[x0, y0, x1, y1]` in page space. A stored layer is already in page space (see [`canonical`]), so this only
+    /// puts the corners in order; the shape's rotation does not matter to it.
     fn to_page(self, r: [f32; 4]) -> [f32; 4] {
+        [
+            r[0].min(r[2]),
+            r[1].min(r[3]),
+            r[0].max(r[2]),
+            r[1].max(r[3]),
+        ]
+    }
+
+    /// A box of the displayed page (after `/Rotate`) as a box in page space.
+    fn display_to_page(self, r: [f32; 4]) -> [f32; 4] {
         let geom = self.geom();
         let a = geom.display_to_page(r[0], r[1]);
         let b = geom.display_to_page(r[2], r[3]);
         [a.0.min(b.0), a.1.min(b.1), a.0.max(b.0), a.1.max(b.1)]
     }
+
+    /// A box in page space as a box of the displayed page (the inverse of [`Shape::display_to_page`]).
+    fn page_to_display(self, r: [f32; 4]) -> [f32; 4] {
+        let [w, h] = self.size;
+        let map = |px: f32, py: f32| match self.rotation % 360 {
+            90 => (h - py, px),
+            180 => (w - px, h - py),
+            270 => (py, w - px),
+            _ => (px, py),
+        };
+        let a = map(r[0], r[1]);
+        let b = map(r[2], r[3]);
+        [a.0.min(b.0), a.1.min(b.1), a.0.max(b.0), a.1.max(b.1)]
+    }
+}
+
+fn map_rects(layer: &OcrPageLayer, f: impl Fn([f32; 4]) -> [f32; 4]) -> OcrPageLayer {
+    OcrPageLayer {
+        lines: layer
+            .lines
+            .iter()
+            .map(|line| OcrLine {
+                words: line
+                    .words
+                    .iter()
+                    .map(|w| OcrWord {
+                        text: w.text.clone(),
+                        rect: if valid(&w.rect) { f(w.rect) } else { w.rect },
+                    })
+                    .collect(),
+            })
+            .collect(),
+        ..layer.clone()
+    }
+}
+
+/// A fresh layer (boxes of the displayed page, as the recognizer made them) in the form the model keeps it: in page space, so that a
+/// later rotation of the page does not move it (ADR-134 item 8).
+pub fn canonical(layer: &OcrPageLayer, shape: Shape) -> OcrPageLayer {
+    map_rects(layer, |r| shape.display_to_page(r))
+}
+
+/// A kept layer as boxes of the displayed page with the rotation `shape` has now: what the writer takes (`pdfwrite::ocr_layer`).
+pub fn displayed(layer: &OcrPageLayer, shape: Shape) -> OcrPageLayer {
+    map_rects(layer, |r| shape.page_to_display(r))
+}
+
+/// A kept layer moved by (`dx`, `dy`) points: the page's crop moved its origin.
+pub fn shifted(layer: &OcrPageLayer, dx: f32, dy: f32) -> OcrPageLayer {
+    map_rects(layer, |r| [r[0] + dx, r[1] + dy, r[2] + dx, r[3] + dy])
 }
 
 /// A hundredth of a point, like every box the engine sends.
@@ -370,7 +431,7 @@ mod tests {
             }],
             ..OcrPageLayer::default()
         };
-        let page = text_page(&layer, shape);
+        let page = text_page(&canonical(&layer, shape), shape);
         assert_eq!(page.rotation, 90);
         let r = &page.boxes[0..4];
         // PageGeom: display (dx, dy) -> user (x0 + dy, y0 + dx) -> page (dy, h - dx).
@@ -510,13 +571,49 @@ mod tests {
             w: 2.0,
             h: 2.0,
         }];
-        assert!(without_covered(&layer, shape, &hit).is_some());
+        assert!(without_covered(&canonical(&layer, shape), shape, &hit).is_some());
         let miss = [Rect {
             x: 2.0,
             y: 10.0,
             w: 2.0,
             h: 2.0,
         }];
-        assert!(without_covered(&layer, shape, &miss).is_none());
+        assert!(without_covered(&canonical(&layer, shape), shape, &miss).is_none());
+    }
+
+    #[test]
+    fn a_kept_layer_does_not_move_when_the_page_is_rotated_later() {
+        let layer = layer();
+        let at_zero = Shape {
+            size: [200.0, 300.0],
+            rotation: 0,
+        };
+        let kept = canonical(&layer, at_zero);
+        // The text boxes are the same whatever the page's rotation is now; only the reported rotation differs.
+        let turned = Shape {
+            size: [200.0, 300.0],
+            rotation: 90,
+        };
+        let (a, b) = (text_page(&kept, at_zero), text_page(&kept, turned));
+        assert_eq!(a.boxes, b.boxes);
+        assert_eq!(b.rotation, 90);
+        // The writer gets it in the displayed space of the rotation the page has when it is saved, and that maps back.
+        for rotation in [0, 90, 180, 270] {
+            let shape = Shape {
+                size: [200.0, 300.0],
+                rotation,
+            };
+            let shown = displayed(&kept, shape);
+            assert_eq!(canonical(&shown, shape), kept, "{rotation}");
+        }
+        // A layer recognized on a page shown at 90 is the same layer in page space as the one recognized upright.
+        let side = displayed(&kept, turned);
+        assert_eq!(canonical(&side, turned), kept);
+    }
+
+    #[test]
+    fn a_crop_shifts_the_kept_layer() {
+        let moved = shifted(&layer(), 5.0, -3.0);
+        assert_eq!(moved.lines[0].words[0].rect, [15.0, 7.0, 65.0, 19.0]);
     }
 }

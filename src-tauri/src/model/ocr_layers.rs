@@ -7,6 +7,7 @@ use super::command::DocCommand;
 use super::doc_state::{Delta, DocPart, DocState};
 use crate::documents::PageId;
 use crate::error::AppError;
+use crate::ocr::textlayer::{canonical, Shape};
 use crate::ocr::OcrPageLayer;
 
 /// Runs `DocCommand::ApplyOcr` and `RestoreOcr`: sets the layer of each page (`None`: removes it). Every page must exist, or nothing
@@ -25,6 +26,25 @@ pub(crate) fn restore(
     Ok(DocCommand::RestoreOcr {
         layers: swap(state, layers, delta),
     })
+}
+
+/// Runs `DocCommand::ApplyOcr`: the recognizer's boxes are of the page as it is shown now; the model keeps them in page space (before the
+/// rotation), so that rotating the page later does not move them (`textlayer::canonical`).
+pub(crate) fn apply(
+    state: &mut DocState,
+    layers: &[(PageId, Arc<OcrPageLayer>)],
+    delta: &mut Delta,
+) -> Result<DocCommand, AppError> {
+    let mut kept = Vec::with_capacity(layers.len());
+    for (page, layer) in layers {
+        let slot = state.slot(*page).ok_or_else(|| AppError::invalid("page"))?;
+        let shape = Shape {
+            size: slot.size,
+            rotation: slot.rotation,
+        };
+        kept.push((*page, Some(Arc::new(canonical(layer, shape)))));
+    }
+    restore(state, &kept, delta)
 }
 
 /// Sets the layer of each page (`None`: removes it) and returns what was there before, in the order that undoes it. The pages are not
@@ -136,5 +156,48 @@ mod tests {
         // The history is dropped with the save: nothing can bring the pending layer back over the file's real one.
         let _ = state.undo(&stamp());
         assert!(state.ocr_layers.is_empty());
+    }
+
+    #[test]
+    fn rotating_or_cropping_the_page_after_ocr_does_not_shift_the_layer() {
+        let mut state = DocState::new(1);
+        let page = PageId::new(0);
+        state
+            .execute(
+                DocCommand::ApplyOcr {
+                    layers: vec![(page, layer("x"))],
+                },
+                &stamp(),
+            )
+            .unwrap();
+        let before = state.ocr_layers[&page.get()].lines[0].words[0].rect;
+        state
+            .execute(
+                DocCommand::SetRotations {
+                    rotations: vec![(page, 90)],
+                },
+                &stamp(),
+            )
+            .unwrap();
+        assert_eq!(state.ocr_layers[&page.get()].lines[0].words[0].rect, before);
+        // Page space is what a text layer reports: the same boxes before and after.
+        let slot = state.slot(page).unwrap();
+        let shape = Shape {
+            size: slot.size,
+            rotation: slot.rotation,
+        };
+        let text = crate::ocr::textlayer::text_page(&state.ocr_layers[&page.get()], shape);
+        assert_eq!(text.rotation, 90);
+        assert_eq!(text.boxes[0..4], [0.0, 0.0, 10.0, 10.0]);
+        // A layer made on the page while it is turned is kept in page space.
+        let turned = DocCommand::ApplyOcr {
+            layers: vec![(page, layer("y"))],
+        };
+        state.execute(turned, &stamp()).unwrap();
+        let rect = state.ocr_layers[&page.get()].lines[0].words[0].rect;
+        assert_ne!(
+            rect, before,
+            "displayed (0,0)-(10,10) at 90 is not page (0,0)"
+        );
     }
 }

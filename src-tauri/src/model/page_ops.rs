@@ -399,6 +399,14 @@ impl DocState {
         }
 
         self.set_slots(moved, delta);
+        // The OCR layers are in page space like the annotations: they move with the origin (the inverse crop moves them back).
+        for (id, &(dx, dy)) in &shifts {
+            if let Some(layer) = self.ocr_layers.get(id) {
+                let layer = crate::ocr::textlayer::shifted(layer, dx, dy);
+                self.ocr_layers.insert(*id, std::sync::Arc::new(layer));
+                delta.doc.insert(super::doc_state::DocPart::Ocr);
+            }
+        }
         let mut before = Vec::with_capacity(steps.len());
         for (position, crop) in steps {
             let slot = &mut self.pages[position];

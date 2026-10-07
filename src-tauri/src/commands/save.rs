@@ -257,7 +257,16 @@ pub(super) fn save_plan_of(state: &DocState, pages: &PagePlan, keep_encryption: 
             .enumerate()
             .filter_map(|(position, page)| {
                 let layer = state.ocr_layers.get(&page.id.get())?;
-                Some((u32::try_from(position).ok()?, Arc::clone(layer)))
+                // The model keeps the layer in page space; the writer wants the boxes of the page as it is shown in the saved file.
+                let slot = state.slot(page.id)?;
+                let shape = crate::ocr::textlayer::Shape {
+                    size: slot.size,
+                    rotation: slot.rotation,
+                };
+                Some((
+                    u32::try_from(position).ok()?,
+                    Arc::new(crate::ocr::textlayer::displayed(layer, shape)),
+                ))
             })
             .collect(),
     }
