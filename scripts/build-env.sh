@@ -6,6 +6,9 @@
 # - Local only (not in CI): this shell and everything it starts run at below-normal priority, and rustc goes through the repo-local
 #   sccache in .tools/ when it is installed (`npm run tools:install`), with its cache in .tools/sccache (20 GB cap).
 
+# A failing stage must never be hidden by a pipe (ADR-139); every caller already runs with pipefail.
+set -o pipefail
+
 export PATH="$HOME/.cargo/bin:$PATH"
 export CARGO_BUILD_JOBS="${CARGO_BUILD_JOBS:-6}"
 

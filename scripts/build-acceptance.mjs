@@ -5,6 +5,7 @@
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { buildEnv } from './build-env.mjs';
+import { exitCodeOf } from './exit-code.mjs';
 
 // Rule 17: trim the build folders to their budget first (cargo-sweep, keeps them warm).
 spawnSync(process.execPath, [fileURLToPath(new URL('./target-budget.mjs', import.meta.url))], { stdio: 'inherit' });
@@ -23,4 +24,4 @@ const args = [
   'automation',
 ];
 const run = spawnSync('npx', args, { stdio: 'inherit', env, shell: process.platform === 'win32' });
-process.exit(run.status ?? 1);
+process.exit(exitCodeOf(run));

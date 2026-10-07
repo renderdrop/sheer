@@ -6,6 +6,7 @@ import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { buildEnv } from './build-env.mjs';
+import { exitCodeOf } from './exit-code.mjs';
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
 const sweep = ['cargo-sweep.exe', 'cargo-sweep']
@@ -29,8 +30,8 @@ for (const { dir, max } of budgets) {
   const run = spawnSync(sweep, ['sweep', '--maxsize', max, project], { env, encoding: 'utf8' });
   const out = `${run.stdout ?? ''}${run.stderr ?? ''}`.trim().split('\n').slice(-2).join(' | ');
   console.log(
-    `target budget: ${dir.slice(ROOT.length)} ≤ ${max}: ${run.status === 0 ? 'ok' : 'failed'}${out ? ` (${out})` : ''}`,
+    `target budget: ${dir.slice(ROOT.length)} ≤ ${max}: ${exitCodeOf(run) === 0 ? 'ok' : 'failed'}${out ? ` (${out})` : ''}`,
   );
-  if (run.status !== 0) rc = 1;
+  if (exitCodeOf(run) !== 0) rc = 1;
 }
 process.exit(rc);

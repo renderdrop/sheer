@@ -4,7 +4,7 @@
 #   scripts/ci-status.sh <run-id>   one remembered run (the own last push, from STATE.md `ci_log`): green, red or still running
 # Exit 0 = green, 1 = red (failed jobs and steps are listed), 2 = unknown (gh missing, offline, no run), 3 = still running,
 # 4 = superseded (a cancelled pending run; the newer run covers its commit).
-set -u
+set -uo pipefail
 
 if ! command -v gh >/dev/null 2>&1; then
   echo "ci: unknown (gh not installed)"
