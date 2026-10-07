@@ -1,6 +1,6 @@
 // Short UI clips as APNG from the acceptance build's own web view (ADR-138 section 3, rules 13 and 15): timed CDP
 // Page.captureScreenshot with `clip`, never the screen. Node 22 built-ins only.
-// recordClip(session, { rect, seconds, fps, scale, out, script, stillOut }) -> { frames, bytes }
+// recordClip(session, { rect, seconds, fps, scale, out, script, stillOut, plays (0 = loop forever, 1 = play once) }) -> { frames, bytes }
 // Demo: node scripts/ui/accept/clip.mjs --demo   (writes review/v180/demo.png)
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
@@ -22,7 +22,10 @@ export function pickFrames(stamps, fps, seconds) {
   return out;
 }
 
-export async function recordClip(session, { rect, seconds = 3, fps = 10, scale = 2, out, script, stillOut } = {}) {
+export async function recordClip(
+  session,
+  { rect, seconds = 3, fps = 10, scale = 2, out, script, stillOut, plays = 0 } = {},
+) {
   if (!rect || !out) throw new Error('recordClip needs rect and out');
   const clip = { x: rect.x, y: rect.y, width: rect.width, height: rect.height, scale };
   const shots = [];
@@ -50,7 +53,7 @@ export async function recordClip(session, { rect, seconds = 3, fps = 10, scale =
   if (!done || !shots.length) throw new Error('no frames captured');
   const decoded = shots.map((b) => decodePngRgba(b));
   const frames = pickFrames(stamps, fps, seconds).map((i) => ({ ...decoded[i], delayMs: 1000 / fps }));
-  const { buffer } = encodeApng(frames);
+  const { buffer } = encodeApng(frames, { loops: plays });
   mkdirSync(dirname(resolve(out)), { recursive: true });
   writeFileSync(out, buffer);
   if (stillOut) {
