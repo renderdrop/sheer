@@ -104,7 +104,7 @@ function HelpRow() {
           <Button variant="secondary" size="sm" aria-describedby={labelId} onClick={() => void restartTour()}>
             {running ? t('settings.tour.restart') : t('settings.tour.start')}
           </Button>
-          <div className="flex h-9 items-center gap-2">
+          <div className="flex h-[var(--control-md)] items-center gap-2">
             <Toggle
               checked={tipsOn}
               onCheckedChange={(checked) => void update({ tipsEnabled: checked })}

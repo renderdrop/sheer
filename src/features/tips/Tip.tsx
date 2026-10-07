@@ -299,7 +299,7 @@ function Card({ id, anchor, clip }: { id: TipId; anchor: ResolvedAnchor; clip: C
                 />
               )}
             </div>
-            <div className="mt-2 flex h-7 items-center gap-2">
+            <div className="mt-2 flex h-[var(--control-sm)] items-center gap-2">
               <Icon icon={Lightbulb} size={16} className="text-text" />
               <span id={titleId} className="t-label min-w-0 flex-1 truncate font-medium text-text">
                 {title}
