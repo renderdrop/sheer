@@ -50,3 +50,9 @@ export function corpusProbe(key) {
   if (text === undefined) skip(`probe ${key} is not listed in review/owner/INDEX.md`);
   return text;
 }
+
+/** Like `corpusProbe`, but returns null instead of skipping the script (for per-item skips). */
+export function tryCorpusProbe(key) {
+  const index = loadIndex();
+  return index?.get(key) ?? null;
+}

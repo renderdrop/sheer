@@ -55,7 +55,7 @@ async function connect(port) {
 }
 
 /**
- * launch({ exe, port, viewport: {w, h}, timeoutMs }) -> session
+ * launch({ exe, port, viewport: {w, h}, timeoutMs, env }) -> session
  * session: { pid, port, vp, send, evaluate, on, close() }. close() kills only the spawned process tree (by pid, never by name).
  */
 export async function launch({
@@ -63,6 +63,7 @@ export async function launch({
   port = 9400 + Math.floor(Math.random() * 400),
   viewport = { w: 1280, h: 800 },
   timeoutMs = 30000,
+  env = {},
 } = {}) {
   if (!isAcceptanceExe(exe))
     throw new Error(`refusing to launch ${exe}: only target-acceptance/**/sheer-acceptance.exe is allowed (rule 15)`);
@@ -73,6 +74,7 @@ export async function launch({
   const child = spawn(exe, [], {
     env: {
       ...process.env,
+      ...env,
       WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS: `--remote-debugging-port=${port} --remote-debugging-address=127.0.0.1`,
     },
     stdio: 'ignore',
