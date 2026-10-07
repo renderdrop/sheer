@@ -1,4 +1,5 @@
 import type {
+  StampTone,
   Annotation,
   AnnotationDraft,
   AnnotationPatch,
@@ -13,12 +14,15 @@ import { LABEL_CHANGE, shared, widthOf, type Shared } from '../inspector/propert
 import { sameRgb, HIGHLIGHT_OPACITY } from '../inspector/palette';
 import type { AnnotationStyle } from '../inspector/style';
 
+/** The undo label of a change to stamps (a catalog key). */
+const LABEL_STAMP_EDIT = 'stamp.undo.edit';
+
 /** Anything the mini bar can be about: an annotation of the model, a text box, an image or a redaction mark. */
 export type MiniObject = Annotation | ContentAnnotation;
 
 /** The groups of selection that have the same controls (DESIGN v2 3.3 table). */
 export type BarKind =
-  'markup' | 'citation' | 'note' | 'text' | 'freeText' | 'stroke' | 'arrow' | 'shape' | 'mark' | 'plain';
+  'markup' | 'citation' | 'note' | 'text' | 'freeText' | 'stroke' | 'arrow' | 'shape' | 'mark' | 'stamp' | 'plain';
 
 /** The controls of the bar; Löschen is always last and not listed. */
 export type ControlId =
@@ -38,7 +42,10 @@ export type ControlId =
   | 'opacity'
   | 'arrowEnds'
   | 'fill'
-  | 'straighten';
+  | 'straighten'
+  /** A stamp's colour (Solar or Ink) and its Change… button, which opens the picker (DESIGN 3.14 ST5). */
+  | 'stampTone'
+  | 'stampChange';
 
 /** The order the controls have in the bar. */
 const ORDER: readonly ControlId[] = [
@@ -46,6 +53,8 @@ const ORDER: readonly ControlId[] = [
   'colourStroke',
   'kindMarkup',
   'kindMark',
+  'stampTone',
+  'stampChange',
   'strokeWidth',
   'opacity',
   'arrowEnds',
@@ -89,6 +98,8 @@ export function barKindOf(object: MiniObject): BarKind | null {
       return 'shape';
     case 'mark':
       return 'mark';
+    case 'stamp':
+      return 'stamp';
     case 'signature':
     case 'image':
     case 'redactMark':
@@ -109,6 +120,7 @@ const CONTROLS: Readonly<Record<BarKind, readonly ControlId[]>> = {
   arrow: ['colourStroke', 'strokeWidth', 'opacity', 'arrowEnds'],
   shape: ['colourStroke', 'strokeWidth', 'opacity', 'fill'],
   mark: ['kindMark'],
+  stamp: ['stampTone', 'stampChange'],
   plain: [],
 };
 
@@ -119,7 +131,11 @@ export function controlsOf(objects: readonly MiniObject[]): readonly ControlId[]
   const lists = kinds.map((kind) => (kind === null ? [] : CONTROLS[kind]));
   return ORDER.filter(
     (control) =>
-      ((control !== 'comment' && control !== 'openCitation' && control !== 'copyCitation') || objects.length === 1) &&
+      ((control !== 'comment' &&
+        control !== 'openCitation' &&
+        control !== 'copyCitation' &&
+        control !== 'stampChange') ||
+        objects.length === 1) &&
       lists.every((list) => list.includes(control)),
   );
 }
@@ -140,6 +156,8 @@ export interface MiniValues {
   kind: Shared<string>;
   /** An arrow's heads: at its end only, or at both ends (DESIGN 3.5 B11). */
   ends: Shared<ArrowEnds>;
+  /** A stamp's colour. */
+  tone: Shared<StampTone>;
 }
 
 export type ArrowEnds = 'end' | 'both';
@@ -170,6 +188,7 @@ export function valuesOf(objects: readonly MiniObject[]): MiniValues {
       objects.flatMap((o) => (o.kind === 'freeText' ? [o.borderColor ?? o.color] : [])),
       sameRgb,
     ),
+    tone: shared(objects.flatMap((o): StampTone[] => (o.kind === 'stamp' ? [o.tone] : []))),
     kind: shared(objects.map((o) => (o.kind === 'mark' ? o.glyph : o.kind))),
     ends: shared(
       objects.flatMap((o): ArrowEnds[] =>
@@ -188,6 +207,8 @@ export type MiniChange = Partial<AnnotationStyle> & {
   borderColor?: Rgb;
   /** An arrow's heads (DESIGN 3.5 B11). */
   ends?: ArrowEnds;
+  /** A stamp's colour. */
+  stampTone?: StampTone;
 };
 
 /** The font sizes of the bar's dropdown (DESIGN v2 3.3: 8 to 72 pt). */
@@ -202,6 +223,11 @@ export function patchOf(object: MiniObject, change: MiniChange): AnnotationPatch
   const kind = barKindOf(object);
   const patch: { -readonly [K in keyof AnnotationPatch]: AnnotationPatch[K] } = {};
   if (kind === null || kind === 'mark' || kind === 'plain') return patch;
+  // A stamp's colour is its tone (the annotation colour follows it in the backend); nothing else of the bar applies.
+  if (kind === 'stamp') {
+    if (change.stampTone !== undefined) patch.stampTone = change.stampTone;
+    return patch;
+  }
   const text = kind === 'text' || kind === 'freeText';
   if (change.color !== undefined) patch.color = change.color;
   const drawn = kind === 'stroke' || kind === 'arrow' || kind === 'shape';
@@ -232,6 +258,8 @@ export function changeCommand(objects: readonly MiniObject[], change: MiniChange
   });
   const [only, ...more] = commands;
   if (only === undefined) return null;
+  // Stamps have their own undo label (DESIGN 3.14 ST8).
+  if (objects.every((object) => object.kind === 'stamp')) return { type: 'batch', label: LABEL_STAMP_EDIT, commands };
   return more.length === 0 ? only : { type: 'batch', label: LABEL_CHANGE, commands };
 }
 

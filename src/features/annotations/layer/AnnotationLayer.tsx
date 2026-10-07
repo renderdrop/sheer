@@ -20,6 +20,7 @@ import { fileRotationOf } from '../../viewer/fileRotation';
 import { useEffectiveTool } from '../../viewer/lesen';
 import { normalizeRotation, overlayBox, swapsSides, totalRotation, unrotatedSize } from '../../viewer/transform';
 import { CreationLayer } from '../create';
+import { StampLayer } from '../stamps/StampLayer';
 import { FreeTextEditor } from '../note/FreeTextEditor';
 import { NotePopover } from '../note/NotePopover';
 import {
@@ -101,12 +102,14 @@ const Frame = memo(function Frame({ a, view, selected, hovered, withHandles, pag
   const type = t(`annot.type.${a.kind}`);
   const text = a.contents.trim().slice(0, NAME_TEXT_CHARS);
   const name =
-    a.author !== null
-      ? t(text === '' ? 'annot.name' : 'annot.nameText', { type, author: a.author, n: pageNumber, text })
-      : t(text === '' ? 'annot.nameNoAuthor' : 'annot.nameNoAuthorText', { type, n: pageNumber, text });
+    a.kind === 'stamp'
+      ? t('stamp.aria', { text: a.contents.trim() === '' ? a.text : a.contents.trim(), page: pageNumber })
+      : a.author !== null
+        ? t(text === '' ? 'annot.name' : 'annot.nameText', { type, author: a.author, n: pageNumber, text })
+        : t(text === '' ? 'annot.nameNoAuthor' : 'annot.nameNoAuthorText', { type, n: pageNumber, text });
   // A signature or mark that is turned has its frame on the box before the turn, turned by CSS about its centre (ADR-105).
   const turn = angleOf(view);
-  const rect = view.kind === 'signature' || view.kind === 'mark' ? view.box : view.rect;
+  const rect = view.kind === 'signature' || view.kind === 'mark' || view.kind === 'stamp' ? view.box : view.rect;
   const handles: readonly HandleId[] = selected && withHandles ? handlesOf(view) : [];
   return (
     <div
@@ -354,6 +357,13 @@ export const AnnotationLayer = memo(function AnnotationLayer({
             if (created.kind === 'freeText' || created.kind === 'note')
               setEditing({ id: created.id, kind: created.kind, fresh: true });
           }}
+        />
+        <StampLayer
+          docId={docId}
+          pageIndex={pageIndex}
+          pageBox={{ width: page[0], height: page[1] }}
+          transform={{ pxPerPt, rotation: total }}
+          grab={grab}
         />
         {editedText?.kind === 'freeText' && (
           // The group is in page space and scaled as a whole, so the editor works at scale 1; it takes the pointer itself.

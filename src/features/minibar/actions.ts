@@ -6,6 +6,7 @@ import { translators } from '../../i18n';
 import { useLocaleStore } from '../../i18n/store';
 import { useAnnotations } from '../../stores/annotations';
 import { useTools } from '../../stores/tools';
+import { useStamp } from '../annotations/stamps/store';
 import { useUi } from '../../stores/ui';
 import { jumpTo } from '../comments/actions';
 import { useInsert } from '../insert/store';
@@ -44,6 +45,8 @@ export async function applyChange(docId: number, objects: readonly MiniObject[],
     const kind = creationKindOf(object);
     const style = defaultOf(object, change);
     if (kind !== null && style !== null) useStyleStore.getState().set(kind, style);
+    if (object.kind === 'stamp' && change.stampTone !== undefined)
+      useStamp.getState().choose({ tone: change.stampTone });
     const text = textDefaultOf(object, change);
     if (text !== null) useTools.getState().setDefault('freeText', text);
     if (object.kind === 'textBox' && style !== null) {
@@ -71,7 +74,14 @@ export async function changeKind(docId: number, objects: readonly MiniObject[], 
 export async function deleteSelection(docId: number, objects: readonly MiniObject[]): Promise<void> {
   const ids = objects.filter((object) => !object.locked).map((object) => object.id);
   if (ids.length === 0) return;
-  const changes = await run(docId, { type: 'deleteAnnotations', ids });
+  // Stamps have their own undo label (DESIGN 3.14 ST8).
+  const stamps = objects.every((object) => object.kind === 'stamp');
+  const changes = await run(
+    docId,
+    stamps
+      ? { type: 'batch', label: 'stamp.undo.delete', commands: [{ type: 'deleteAnnotations', ids }] }
+      : { type: 'deleteAnnotations', ids },
+  );
   if (changes === null) return;
   useAnnotations.getState().clearSelection(docId);
   useInsert.getState().select(docId, null);
@@ -84,7 +94,11 @@ export async function deleteSelection(docId: number, objects: readonly MiniObjec
       : first.kind === 'textBox' || first.kind === 'image' || first.kind === 'redactMark'
         ? t(`minibar.type.${first.kind}`)
         : t(`annot.type.${first.kind}`);
-  const message = ids.length === 1 ? t('annot.deleted', { type }) : t('insert.deletedMany', { n: ids.length });
+  const message = stamps
+    ? t('stamp.announce.deleted')
+    : ids.length === 1
+      ? t('annot.deleted', { type })
+      : t('insert.deletedMany', { n: ids.length });
   announce(message);
   useUi.getState().showToast({ message, action: { label: t('action.undo'), run: () => runHistoryStep('undo') } });
 }

@@ -24,6 +24,7 @@ const KIND_KEYS: Readonly<Record<AnnotationKind, PlainKey>> = {
   line: 'annot.type.line',
   signature: 'annot.type.signature',
   mark: 'annot.type.mark',
+  stamp: 'annot.type.stamp',
   opaque: 'annot.type.opaque',
 };
 

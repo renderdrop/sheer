@@ -3,6 +3,7 @@ import { memo } from 'react';
 import type { Annotation, LineEnd } from '../../../api/annotations';
 import type { Point, Rect } from '../../../api/wire';
 import { rgbToCss } from '../../inspector/palette';
+import { StampArt } from '../stamps/StampArt';
 import { MarkShape, SignatureShape } from '../../signatures/place/SignatureShape';
 import { quadBox } from '../../viewer/transform';
 import { FREE_TEXT_PAD, textWidth } from '../create/freeTextLayout';
@@ -86,6 +87,12 @@ export const Shape = memo(function Shape({ a, docId }: { a: Annotation; docId?: 
       return docId === undefined ? null : <SignatureShape a={a} docId={docId} />;
     case 'mark':
       return <MarkShape a={a} />;
+    case 'stamp':
+      return (
+        <g transform={`translate(${a.box.x} ${a.box.y})`} opacity={a.opacity}>
+          <StampArt w={a.box.w} h={a.box.h} text={a.text} date={a.date} tone={a.tone} />
+        </g>
+      );
     case 'highlight':
       return (
         <>

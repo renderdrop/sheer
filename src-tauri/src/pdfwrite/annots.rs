@@ -369,6 +369,12 @@ pub fn annotation_dict(
             // The colour only matters to vector art; `/C` keeps it for the reader that looks at the annotation, not the picture.
             dict.set("C", color(annotation.color));
         }
+        AnnotationBody::Stamp { stamp, .. } => {
+            dict.set("Subtype", name("Stamp"));
+            // Never absent: an absent name means Draft to a viewer that draws no appearances.
+            dict.set("Name", name(stamp.pdf_name()));
+            dict.set("C", color(annotation.color));
+        }
         // Content objects and redaction marks are never annotations of the file (ADR-047): a save burns or drops them.
         AnnotationBody::Opaque { .. }
         | AnnotationBody::TextBox { .. }
@@ -435,6 +441,9 @@ pub fn new_name(annotation: &Annotation) -> String {
         }
         AnnotationBody::Mark { glyph, .. } => {
             format!("sheer-mark-{}-{}", marks::word(*glyph), random_name())
+        }
+        AnnotationBody::Stamp { stamp, .. } => {
+            format!("sheer-stamp-{}-{}", stamp.word(), random_name())
         }
         _ => random_name(),
     }
@@ -638,6 +647,18 @@ pub fn write_appearance(
 ) -> Option<ObjectId> {
     if annotation.state.is_some() {
         return None;
+    }
+    if let AnnotationBody::Stamp {
+        bounds,
+        text,
+        date,
+        tone,
+        ..
+    } = &annotation.body
+    {
+        let [x0, y0, x1, y1] = m.rect(*bounds);
+        let stream = super::stamp_ap::stream(text, date.as_deref(), *tone, x1 - x0, y1 - y0);
+        return Some(doc.add_object(stream));
     }
     let AnnotationBody::Signature { art: reference, .. } = &annotation.body else {
         let stream = build_stream(annotation, m)?;

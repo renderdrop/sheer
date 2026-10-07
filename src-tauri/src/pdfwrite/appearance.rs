@@ -661,6 +661,8 @@ pub fn build_with(
         AnnotationBody::Opaque { .. }
         | AnnotationBody::TextBox { .. }
         | AnnotationBody::Image { .. }
+        // A stamp has its own appearance (`stamp_ap`, written by `annots::write_appearance`).
+        | AnnotationBody::Stamp { .. }
         | AnnotationBody::RedactMark { .. } => return None,
     }
     c.push_str("Q\n");

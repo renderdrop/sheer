@@ -303,3 +303,51 @@ describe('list_document_annotations', () => {
     }
   });
 });
+
+describe('stamps (ADR-139)', () => {
+  const STAMP = { kind: 'stamp', box: RECT, stamp: 'received', text: 'RECEIVED', date: '07.10.2026', tone: 'solar' };
+
+  it('reads a stamp with its text, date and tone and a missing date as null', () => {
+    const wire = common(STAMP);
+    expect(parseAnnotation(wire)).toStrictEqual(wire);
+    const undated: Record<string, unknown> = { ...STAMP };
+    delete undated.date;
+    expect(parseAnnotation(common(undated))).toMatchObject({ date: null });
+  });
+
+  it.each([
+    ['an unknown stamp kind', { ...STAMP, stamp: 'urgent' }],
+    ['an unknown tone', { ...STAMP, tone: 'rose' }],
+    ['a text that is not a string', { ...STAMP, text: 4 }],
+    ['an absurdly long text', { ...STAMP, text: 'x'.repeat(500) }],
+    ['a box that is not a rect', { ...STAMP, box: 3 }],
+  ])('rejects %s', (_name, body) => {
+    expect(parseAnnotation(common(body))).toBeNull();
+  });
+
+  it('sends a stamp draft and a stamp patch as they are', async () => {
+    invokeMock.mockResolvedValue({ rev: 1, upserted: [], removed: [], history: HISTORY });
+    const create: DocCommand = {
+      type: 'createAnnotation',
+      draft: {
+        pageId: 0,
+        color: [255, 248, 77],
+        kind: 'stamp',
+        box: { x: 5, y: 5, w: 0, h: 0 },
+        stamp: 'custom',
+        text: 'Gepr\u00fcft',
+        tone: 'ink',
+      },
+    };
+    await applyCommand(1, create);
+    const update: DocCommand = {
+      type: 'updateAnnotation',
+      id: 3,
+      patch: { stampText: 'OK', stampDate: null, stampTone: 'solar' },
+      coalesce: 'stamp:3',
+    };
+    await applyCommand(1, update);
+    expect(invokeMock).toHaveBeenNthCalledWith(1, 'apply_command', expect.objectContaining({ command: create }));
+    expect(invokeMock).toHaveBeenNthCalledWith(2, 'apply_command', expect.objectContaining({ command: update }));
+  });
+});

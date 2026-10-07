@@ -13,6 +13,7 @@ import {
   Shapes,
   Signature,
   Square,
+  Sticker,
   StickyNote,
   Strikethrough,
   Type,
@@ -43,6 +44,7 @@ const KIND: Record<AnnotationKind, TypeInfo> = {
   line: { key: 'annot.type.line', icon: Minus },
   signature: { key: 'annot.type.signature', icon: Signature },
   mark: { key: 'annot.type.mark', icon: Check },
+  stamp: { key: 'annot.type.stamp', icon: Sticker },
   opaque: { key: 'annot.type.opaque', icon: StickyNote },
 };
 

@@ -82,6 +82,7 @@ fn kind_of(body: &AnnotationBody) -> &'static str {
         AnnotationBody::Line { .. } => "line",
         AnnotationBody::Signature { .. } => "signature",
         AnnotationBody::Mark { .. } => "mark",
+        AnnotationBody::Stamp { .. } => "stamp",
         AnnotationBody::TextBox { .. } => "textBox",
         AnnotationBody::Image { .. } => "image",
         AnnotationBody::RedactMark { .. } => "redactMark",
@@ -184,6 +185,7 @@ impl AnnotationSummary {
 fn detail_of(body: &AnnotationBody) -> Option<&'static str> {
     use crate::model::annotation::{MarkGlyph, SignatureRole};
     match body {
+        AnnotationBody::Stamp { stamp, .. } => Some(stamp.word()),
         AnnotationBody::Mark { glyph, .. } => Some(match glyph {
             MarkGlyph::Check => "check",
             MarkGlyph::Cross => "cross",

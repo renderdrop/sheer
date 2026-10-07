@@ -11,6 +11,8 @@ import { ColourRow as Swatches } from '../minibar/Controls';
 export interface ColourRowProps {
   /** The annotation kinds the row sets (Formen sets all four shapes); the first one shows the current colour. */
   kinds: readonly CreationKind[];
+  /** The row's name; "Colour" when absent. */
+  label?: string;
 }
 
 /**
@@ -18,7 +20,7 @@ export interface ColourRowProps {
  * colours and "More colours" (the mini bar's control, the same recent list), the colour a new annotation of it gets (last used wins,
  * DESIGN 3.3). A radio group: the arrows choose.
  */
-export function ColourRow({ kinds }: ColourRowProps) {
+export function ColourRow({ kinds, label }: ColourRowProps) {
   const t = useT();
   const labelId = useId();
   const first = kinds[0] ?? 'ink';
@@ -45,7 +47,7 @@ export function ColourRow({ kinds }: ColourRowProps) {
   return (
     <div className="flex flex-col gap-2 p-2">
       <span id={labelId} className="t-caption text-text-muted">
-        {t('modes.colour')}
+        {label ?? t('modes.colour')}
       </span>
       <div role="radiogroup" aria-labelledby={labelId} onKeyDown={onKeyDown} className="flex items-center">
         <Swatches

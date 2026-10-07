@@ -15,6 +15,7 @@ use crate::error::AppError;
 use crate::limits;
 use crate::model::annotation::{Annotation, AnnotationBody};
 use crate::model::quote::{self, Cite};
+use crate::model::stamp::{StampTone, DATE_MAX};
 
 use super::annots::text_string;
 use super::forms::decode_text;
@@ -24,6 +25,14 @@ use super::forms::decode_text;
 pub struct SheerKeys {
     pub cite: Option<Cite>,
     pub tags: Vec<String>,
+    pub stamp: Option<StampKeys>,
+}
+
+/// `/SHR_Stamp << /V 1 /K /kind /Tone /Solar /D (date) >>` of a stamp of ours (ARCHITECTURE §16.1): what PDFium does not report.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct StampKeys {
+    pub date: Option<String>,
+    pub tone: Option<StampTone>,
 }
 
 /// Most bytes of a string that is decoded: the longest wanted text in UTF-16 (two bytes a unit, supplementary characters four) with its
@@ -74,6 +83,28 @@ fn read_cite(doc: &Document, dict: &Dictionary) -> Option<Cite> {
         .and_then(|group| string_of(doc, group, 8))
         .filter(|group| quote::is_group_id(group));
     Some(Cite { quote, group })
+}
+
+/// `/SHR_Stamp` of `dict` if it is a well-formed record of version 1: the date (at most [`DATE_MAX`] characters) and the tone.
+fn read_stamp(doc: &Document, dict: &Dictionary) -> Option<StampKeys> {
+    let Object::Dictionary(record) = resolve(doc, dict.get(b"SHR_Stamp").ok()?)? else {
+        return None;
+    };
+    match resolve(doc, record.get(b"V").ok()?)? {
+        Object::Integer(1) => {}
+        _ => return None,
+    }
+    let tone = match record.get(b"Tone").ok().and_then(|t| resolve(doc, t)) {
+        Some(Object::Name(name)) => StampTone::from_word(&String::from_utf8_lossy(name)),
+        _ => None,
+    };
+    let date = record
+        .get(b"D")
+        .ok()
+        .and_then(|d| string_of(doc, d, DATE_MAX))
+        .map(|d| crate::model::stamp::clean(&d))
+        .filter(|d| !d.is_empty());
+    Some(StampKeys { date, tone })
 }
 
 /// `/SHR_Tags` of `dict`: the names that are texts of a valid length, at most [`limits::TAGS_PER_ANNOT`], without repeats.
@@ -141,6 +172,7 @@ fn read_one(doc: &Document, page_id: ObjectId) -> HashMap<u32, SheerKeys> {
         }
         let is_highlight =
             matches!(dict.get(b"Subtype"), Ok(Object::Name(name)) if name == b"Highlight");
+        let is_stamp = matches!(dict.get(b"Subtype"), Ok(Object::Name(name)) if name == b"Stamp");
         let found = SheerKeys {
             cite: if is_highlight {
                 read_cite(doc, dict)
@@ -148,8 +180,13 @@ fn read_one(doc: &Document, page_id: ObjectId) -> HashMap<u32, SheerKeys> {
                 None
             },
             tags: read_tags(doc, dict),
+            stamp: if is_stamp {
+                read_stamp(doc, dict)
+            } else {
+                None
+            },
         };
-        if found.cite.is_some() || !found.tags.is_empty() {
+        if found.cite.is_some() || !found.tags.is_empty() || found.stamp.is_some() {
             keys.insert(position, found);
         }
         position = position.saturating_add(1);
@@ -164,6 +201,20 @@ pub fn write(dict: &mut Dictionary, annotation: &Annotation, keys_known: bool) {
     if keys_known {
         dict.remove(b"SHR_Cite");
         dict.remove(b"SHR_Tags");
+        dict.remove(b"SHR_Stamp");
+    }
+    if let AnnotationBody::Stamp {
+        stamp, date, tone, ..
+    } = &annotation.body
+    {
+        let mut record = Dictionary::new();
+        record.set("V", Object::Integer(1));
+        record.set("K", Object::Name(stamp.word().as_bytes().to_vec()));
+        record.set("Tone", Object::Name(tone.word().as_bytes().to_vec()));
+        if let Some(date) = date {
+            record.set("D", text_string(date));
+        }
+        dict.set("SHR_Stamp", Object::Dictionary(record));
     }
     if let (Some(cite), AnnotationBody::Highlight { .. }) = (&annotation.cite, &annotation.body) {
         let mut record = Dictionary::new();
@@ -255,13 +306,15 @@ mod tests {
                     group: Some("0a1b2c3d".into())
                 }),
                 tags: vec!["Method".into(), "Idea".into()],
+                stamp: None,
             })
         );
         assert_eq!(
             keys.get(&1),
             Some(&SheerKeys {
                 cite: None,
-                tags: vec!["x".into()]
+                tags: vec!["x".into()],
+                stamp: None,
             }),
             "a cite on another kind is not read"
         );
@@ -381,5 +434,43 @@ mod tests {
         let read = read_pages(&bytes, &[0, 5]).unwrap();
         assert_eq!(read[&0][&0].tags, ["x"]);
         assert!(!read.contains_key(&5));
+    }
+
+    #[test]
+    fn a_stamp_record_is_read_and_a_hostile_one_is_ignored() {
+        let record = |v: Object, tone: Object, d: Option<Object>| {
+            let mut dict =
+                dictionary! {"V" => v, "K" => Object::Name(b"custom".to_vec()), "Tone" => tone};
+            if let Some(d) = d {
+                dict.set("D", d);
+            }
+            Object::Dictionary(dict)
+        };
+        let bytes = file(vec![
+            dictionary! {"Subtype" => "Stamp", "SHR_Stamp" => record(1.into(), Object::Name(b"Ink".to_vec()), Some(s("07.10.2026")))},
+            dictionary! {"Subtype" => "Stamp", "SHR_Stamp" => record(2.into(), Object::Name(b"Ink".to_vec()), None)},
+            dictionary! {"Subtype" => "Stamp", "SHR_Stamp" => record(1.into(), Object::Name(b"Rose".to_vec()), Some(s("\u{7}")))},
+            dictionary! {"Subtype" => "Stamp", "SHR_Stamp" => s("no")},
+            dictionary! {"Subtype" => "Square", "SHR_Stamp" => record(1.into(), Object::Name(b"Ink".to_vec()), None)},
+        ]);
+        let keys = read_page(&bytes, 0).unwrap();
+        assert_eq!(
+            keys[&0].stamp,
+            Some(StampKeys {
+                date: Some("07.10.2026".into()),
+                tone: Some(StampTone::Ink)
+            })
+        );
+        assert_eq!(keys.get(&1), None, "an unknown version");
+        assert_eq!(
+            keys[&2].stamp,
+            Some(StampKeys {
+                date: None,
+                tone: None
+            }),
+            "an unknown tone and an empty date are left out"
+        );
+        assert_eq!(keys.get(&3), None);
+        assert_eq!(keys.get(&4), None, "only a stamp has the record");
     }
 }

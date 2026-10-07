@@ -137,7 +137,22 @@ export function ToolItem({ slot, iconOnly, stop }: ToolItemProps) {
       </Popover>
     );
   }
-  const tipped = tip(mainButton());
+  // A slot with a picker (Stempel) hangs it on the main part: the slot opens it (it is controlled), a click never toggles it.
+  const { picker } = slot;
+  const tipped =
+    picker === undefined ? (
+      tip(mainButton())
+    ) : (
+      <Popover
+        label={picker.label}
+        disabled={off}
+        open={picker.open}
+        onOpenChange={picker.setOpen}
+        trigger={(props) => tip(mainButton({ ...props, onClick: () => undefined }))}
+      >
+        {({ close }) => <picker.Body close={close} />}
+      </Popover>
+    );
   if (!split) return tipped;
 
   const optionsLabel = t('modes.options', { tool: slot.label });
@@ -199,7 +214,7 @@ export function ToolItem({ slot, iconOnly, stop }: ToolItemProps) {
                   ))}
                 </div>
               )}
-              <ColourRow kinds={slot.colour?.kinds ?? []} />
+              <ColourRow kinds={slot.colour?.kinds ?? []} label={slot.colour?.label} />
               {slot.recogniseSwitch === true && <RecogniseSwitch className="border-t border-border-subtle p-2" />}
             </div>
           )}

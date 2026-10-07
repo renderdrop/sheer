@@ -13,6 +13,9 @@ export type HandleId = 'n' | 's' | 'e' | 'w' | 'ne' | 'nw' | 'se' | 'sw' | 'from
 
 /** The smallest a resized annotation gets, in points. */
 export const MIN_SIZE_PT = 4;
+/** The smallest a stamp gets (the backend refuses less, `model/stamp.rs`). */
+export const STAMP_MIN_W_PT = 24;
+export const STAMP_MIN_H_PT = 12;
 /** How far above the top edge of a signature the rotate handle sits, in points (ADR-105); `--annot-rotate-offset` in tokens.css (test). */
 export const ROTATE_OFFSET_PT = 18;
 /** Shift snaps the rotation to multiples of this, in degrees. */
@@ -81,7 +84,9 @@ export function handlesOf(a: Annotation): readonly HandleId[] {
       return BOX_HANDLES;
     case 'line':
       return ['from', 'to'];
+    // A stamp keeps its proportions (DESIGN 3.14 ST5): only its corners show, like ink.
     case 'ink':
+    case 'stamp':
       return CORNER_HANDLES;
     // A turned one cannot be resized (its corners would have to follow the turn): turn it back first.
     case 'signature':
@@ -141,6 +146,7 @@ export function hitsAnnotation(a: Annotation, p: Point, slop: number): boolean {
       return inside({ x: a.box.x - slop, y: a.box.y - slop, w: a.box.w + 2 * slop, h: a.box.h + 2 * slop }, local);
     }
     case 'freeText':
+    case 'stamp':
       return inside({ x: a.box.x - slop, y: a.box.y - slop, w: a.box.w + 2 * slop, h: a.box.h + 2 * slop }, p);
     case 'note':
       return inside({ x: a.rect.x - slop, y: a.rect.y - slop, w: a.rect.w + 2 * slop, h: a.rect.h + 2 * slop }, p);
@@ -244,6 +250,7 @@ export function translated(a: Annotation, dx: number, dy: number): Annotation {
     case 'ellipse':
     case 'signature':
     case 'mark':
+    case 'stamp':
       return { ...a, rect, box: shiftRect(a.box, dx, dy) };
     case 'ink':
       return { ...a, rect, strokes: a.strokes.map((s) => shiftStroke(s, dx, dy)) };
@@ -366,10 +373,13 @@ export function resized(
     case 'ellipse':
     case 'freeText':
     case 'signature':
-    case 'mark': {
-      // A signature or mark keeps its proportions whatever the modifier says (DESIGN 3.34): only its corners show.
-      const lock = keepAspect || a.kind === 'signature' || a.kind === 'mark';
+    case 'mark':
+    case 'stamp': {
+      // A signature, mark or stamp keeps its proportions whatever the modifier says (DESIGN 3.34, 3.14): only its corners show.
+      const lock = keepAspect || a.kind === 'signature' || a.kind === 'mark' || a.kind === 'stamp';
       const box = resizeRect(a.box, handle, dx, dy, lock, page);
+      // The backend refuses a stamp smaller than this: the preview stops where the file would.
+      if (a.kind === 'stamp' && (box.w < STAMP_MIN_W_PT || box.h < STAMP_MIN_H_PT)) return a;
       // The bounding box keeps its margin around the box (the stroke, the backend's padding).
       const rect = {
         x: box.x - (a.box.x - a.rect.x),
@@ -401,6 +411,7 @@ export function patchOf(draft: Annotation): AnnotationPatch {
     case 'freeText':
     case 'signature':
     case 'mark':
+    case 'stamp':
       return { box: draft.box };
     case 'line':
       return { from: draft.from, to: draft.to };

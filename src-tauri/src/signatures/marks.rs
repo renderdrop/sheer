@@ -68,6 +68,8 @@ pub enum Named {
     Signature,
     Initials,
     Mark(MarkGlyph),
+    /// `sheer-stamp-<kind>-<hex>` (ARCHITECTURE §16.1).
+    Stamp(crate::model::stamp::StampKind),
 }
 
 fn is_token(text: &str) -> bool {
@@ -151,6 +153,11 @@ pub fn parse_name(name: &str) -> Option<Named> {
     }
     if let Some(rest) = name.strip_prefix("sheer-ini-") {
         return is_token(rest).then_some(Named::Initials);
+    }
+    if let Some(rest) = name.strip_prefix("sheer-stamp-") {
+        let (kind, token) = rest.split_once('-')?;
+        return is_token(token)
+            .then(|| crate::model::stamp::StampKind::from_word(kind).map(Named::Stamp))?;
     }
     let rest = name.strip_prefix("sheer-mark-")?;
     let (glyph, token) = rest.split_once('-')?;

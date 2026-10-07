@@ -20,8 +20,9 @@ import {
 } from 'lucide-react';
 import { useId, useState, type ReactNode } from 'react';
 
-import type { Rgb, TextAlign } from '../../api/annotations';
+import type { Rgb, StampTone, TextAlign } from '../../api/annotations';
 import {
+  Button,
   ColourPopover,
   Field,
   Icon,
@@ -40,6 +41,8 @@ import { cx } from '../../components/cx';
 import { formatNumber, useLocale, useT, type PlainKey } from '../../i18n';
 import { useRecentColours } from '../../stores/recentColours';
 import { useTools } from '../../stores/tools';
+import { StampPickerBody } from '../annotations/stamps/StampPicker';
+import { useStamp } from '../annotations/stamps/store';
 import {
   BORDER_WIDTHS,
   FIRST_BORDER_COLOUR,
@@ -234,6 +237,67 @@ export function KindControl({
         );
       })}
     </div>
+  );
+}
+
+/** A stamp's colour (DESIGN 3.14 ST5): Solar or Ink, two swatches. A radio group like the other colour rows. */
+export function StampToneControl({
+  value,
+  disabled,
+  onChange,
+}: DisabledProps & { value: Shared<StampTone>; onChange: (tone: StampTone) => void }) {
+  const t = useT();
+  const tones: readonly { tone: StampTone; label: string; fill: string; check: string }[] = [
+    { tone: 'solar', label: t('stamp.colour.solar'), fill: 'bg-hl-solar', check: 'text-ink' },
+    { tone: 'ink', label: t('stamp.colour.ink'), fill: 'bg-stroke-ink', check: 'text-page' },
+  ];
+  return (
+    <div role="radiogroup" aria-label={t('minibar.colour')} className="flex items-center">
+      {tones.map((entry) => (
+        <Tooltip key={entry.tone} label={entry.label}>
+          <Swatch
+            {...ITEM}
+            label={entry.label}
+            checked={value.value === entry.tone}
+            fillClass={entry.fill}
+            checkClass={entry.check}
+            aria-disabled={disabled ? true : undefined}
+            onClick={() => {
+              if (!disabled) onChange(entry.tone);
+            }}
+            className="mx-1 before:absolute before:-inset-1 before:content-['']"
+          />
+        </Tooltip>
+      ))}
+    </div>
+  );
+}
+
+/** "Change…" (DESIGN 3.14 ST5): opens the stamp picker anchored to the bar; a choice replaces the text, keeping centre and height. */
+export function StampChangeControl({ id, tone, disabled }: DisabledProps & { id: number; tone: StampTone }) {
+  const t = useT();
+  const open = useStamp((state) => state.pickerOpen && state.changing === id);
+  return (
+    <Popover
+      label={t('stamp.change')}
+      open={open}
+      disabled={disabled === true}
+      onOpenChange={(next) => {
+        const stamp = useStamp.getState();
+        if (next) {
+          stamp.choose({ tone });
+          stamp.setChanging(id);
+        }
+        stamp.setPicker(next);
+      }}
+      trigger={(props) => (
+        <Button {...props} {...ITEM} variant="ghost" disabled={disabled === true} focusableWhenDisabled>
+          {t('stamp.change')}
+        </Button>
+      )}
+    >
+      {({ close }) => <StampPickerBody close={close} />}
+    </Popover>
   );
 }
 

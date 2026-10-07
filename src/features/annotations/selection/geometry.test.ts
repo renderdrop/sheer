@@ -187,6 +187,29 @@ describe('resized', () => {
     expect(resized(signature, 'n', 0, 5, false, PAGE)).toBeNull();
   });
 
+  it('keeps a stamp at its aspect with four corner handles, moves it, hits it and stops at the smallest size', () => {
+    const box = { x: 100, y: 100, w: 120, h: 40 };
+    const stamp = {
+      ...base,
+      rect: box,
+      kind: 'stamp',
+      box,
+      stamp: 'draft',
+      text: 'DRAFT',
+      date: null,
+      tone: 'solar',
+    } as Annotation;
+    expect(handlesOf(stamp)).toEqual(['nw', 'ne', 'se', 'sw']);
+    const r = resized(stamp, 'se', 60, 1, false, PAGE) as Extract<Annotation, { kind: 'stamp' }>;
+    expect(r.box.w / r.box.h).toBeCloseTo(3);
+    expect(patchOf(r)).toEqual({ box: r.box });
+    expect((translated(stamp, 5, 7) as Extract<Annotation, { kind: 'stamp' }>).box).toMatchObject({ x: 105, y: 107 });
+    expect(hitsAnnotation(stamp, { x: 150, y: 120 }, 0)).toBe(true);
+    expect(hitsAnnotation(stamp, { x: 50, y: 120 }, 0)).toBe(false);
+    // Smaller than the backend accepts: the preview stays as it was.
+    expect(resized(stamp, 'se', -110, -30, false, PAGE)).toBe(stamp);
+  });
+
   it('refuses a handle the annotation does not have', () => {
     expect(resized(note(), 'se', 1, 1, false, PAGE)).toBeNull();
     expect(resized(line(), 'se', 1, 1, false, PAGE)).toBeNull();

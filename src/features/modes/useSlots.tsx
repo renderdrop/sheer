@@ -13,6 +13,7 @@ import {
   Highlighter,
   ImagePlus,
   Info,
+  PanelTop,
   LayoutGrid,
   Lock,
   StickyNote,
@@ -33,6 +34,7 @@ import {
   Square,
   SquareSlash,
   Stamp,
+  Sticker,
   Quote,
   Strikethrough,
   TextCursor,
@@ -48,12 +50,13 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 import { createElement, useEffect, useMemo, useState } from 'react';
-import { create } from 'zustand';
 
 import { runAction } from '../../actions/dispatch';
+import { headerFooterReason } from '../../actions/state';
+import { useActionState } from '../shell/useActionState';
 import type { ActionId } from '../../actions/registry';
 import { listSignatures, type LibraryItem, type SignatureRole } from '../../api/library';
-import { useT, type Translate } from '../../i18n';
+import { useT, type PlainKey, type Translate } from '../../i18n';
 import type { SigningIdentityInfo, StoreStatus } from '../../api/signing';
 import { isDirty, useAnnotations } from '../../stores/annotations';
 import { selectActiveId, useDocuments } from '../../stores/documents';
@@ -71,18 +74,12 @@ import { useCertSign } from '../signatures/sign/store';
 import { usePlacement, type PlaceItem } from '../signatures/place/store';
 import { toggleSmartLinksForActive } from '../smartlinks/actions';
 import { smartLinksOn, useSmartLinks } from '../smartlinks/store';
+import { StampPickerBody } from '../annotations/stamps/StampPicker';
+import { armStamp, useStamp } from '../annotations/stamps/store';
+import { useLastVariant } from './lastVariant';
 import { CropOptions, InsertOptions, RedactOptions } from './Options';
 import { SignaturePreview } from '../signatures/library/SignaturePreview';
 import type { SlotDef, VariantDef } from './model';
-
-/** The variant each split slot last ran (its main part shows and repeats it); the order of the variants decides the first. */
-const useLastVariant = create<{
-  last: Readonly<Record<string, string>>;
-  remember: (slot: string, id: string) => void;
-}>()((set) => ({
-  last: {},
-  remember: (slot, id) => set((state) => (state.last[slot] === id ? state : { last: { ...state.last, [slot]: id } })),
-}));
 
 /** The saved signatures and initials, read once when `enabled` first holds (Ausfüllen & Signieren is on). */
 function useLibraryItems(enabled: boolean): readonly LibraryItem[] {
@@ -148,6 +145,10 @@ interface Inputs {
   dirty: boolean;
   /** Smart links are on for this tab (DESIGN 3.11 L8): the state of Lesen's seventh slot. */
   smartLinks?: boolean;
+  /** The stamp picker is open under the Notiz/Stempel slot (DESIGN 3.14 ST2). */
+  stampPicker?: boolean;
+  /** Why Kopf- und Fußzeile cannot open (a catalog key, DESIGN 3.15 HF6); absent: it can. */
+  headerFooterReason?: PlainKey | null;
 }
 
 type Maker = (inputs: Inputs) => SlotDef[];
@@ -290,7 +291,7 @@ const kommentieren: Maker = (inputs) => {
       colour: { kinds: ['citation'] },
       run: () => choose('cite'),
     },
-    plain('note', 'note', t('modes.tool.note'), StickyNote, 'tool-note'),
+    noteOrStamp(inputs),
     plain('text', 'freeText', t('modes.tool.freeText'), MessageSquareText, 'tool-text'),
     { ...plain('draw', 'draw', t('modes.tool.draw'), PenLine, 'tool-draw'), recogniseSwitch: true },
     {
@@ -306,6 +307,51 @@ const kommentieren: Maker = (inputs) => {
     },
   ];
 };
+
+/**
+ * Slot 5 of Kommentieren (DESIGN 3.14 ST1): a split Notiz [Notiz / Stempel]. Its main part shows the icon and the label of the variant
+ * used last, so a stamp user sees "Stempel". The chevron menu ends with the note colour row (stamps have none); the stamp picker hangs
+ * on the main part and opens every time the Stempel variant is armed.
+ */
+function noteOrStamp(inputs: Inputs): SlotDef {
+  const { t, activeTool, readOnly, last, stampPicker } = inputs;
+  const variants: VariantDef[] = [
+    { id: 'note', label: t('modes.tool.note'), icon: StickyNote, on: activeTool === 'note', run: () => choose('note') },
+    { id: 'stamp', label: t('stamp.tool'), icon: Sticker, on: activeTool === 'stamp', run: armStamp },
+  ];
+  const [note, stamp] = variants as [VariantDef, VariantDef];
+  const current = activeTool === 'stamp' ? stamp : (variants.find((variant) => variant.id === last.note) ?? note);
+  const stamping = current.id === 'stamp';
+  const wrapped = variants.map((variant) => ({
+    ...variant,
+    run: () => {
+      remember('note', variant.id);
+      variant.run();
+    },
+  }));
+  return {
+    id: 'note',
+    label: current.label,
+    icon: current.icon ?? StickyNote,
+    kind: 'tool',
+    on: activeTool === 'note' || activeTool === 'stamp',
+    actionId: stamping ? undefined : 'tool-note',
+    hint: stamping ? t('stamp.tooltip') : undefined,
+    disabledReason: stamping && readOnly ? t('tool.readOnly') : undefined,
+    variants: wrapped,
+    colour: { kinds: ['note'], label: t('stamp.noteColour') },
+    picker: {
+      open: stampPicker === true && activeTool === 'stamp',
+      setOpen: (open) => useStamp.getState().setPicker(open),
+      label: t('stamp.tool'),
+      Body: StampPickerBody,
+    },
+    run: () => {
+      remember('note', current.id);
+      current.run();
+    },
+  };
+}
 
 const ausfuellen: Maker = (inputs) => {
   const { t, armed, library } = inputs;
@@ -538,6 +584,16 @@ const bearbeiten: Maker = (inputs) => {
       on: false,
       run: () => void runAction('document-properties'),
     },
+    {
+      id: 'headerFooter',
+      label: t('modes.tool.headerFooter'),
+      icon: PanelTop,
+      kind: 'action',
+      on: false,
+      // HF6: signed, locked, no permission or a text recognition run; the command is disabled with the reason as its tooltip.
+      disabledReason: inputs.headerFooterReason ? t(inputs.headerFooterReason) : undefined,
+      run: () => void runAction('header-footer'),
+    },
   ];
 };
 
@@ -562,6 +618,7 @@ export function useModeSlots(mode: Mode): readonly SlotDef[] {
   const selectedPages = useOrganize((state) => selectionOf(state, docId).selected.length);
   const pageCount = usePageSlots(docId).length;
   const last = useLastVariant((state) => state.last);
+  const stampPicker = useStamp((state) => state.pickerOpen && state.changing === null);
   const library = useLibraryItems(mode === 'fill');
   const { status: certStatus, items: identities } = useSigningIdentities(mode === 'fill');
   const certId = useCertSign((state) => state.identityId);
@@ -569,6 +626,7 @@ export function useModeSlots(mode: Mode): readonly SlotDef[] {
   const dirty = useAnnotations((state) => isDirty(state, docId));
   const smartLinks = useSmartLinks((state) => (docId === null ? state.enabled : smartLinksOn(state, docId)));
   const locked = useSignatureLock(docId ?? undefined).locked;
+  const hfReason = headerFooterReason(useActionState());
   return useMemo(() => {
     const slots = MAKERS[mode]({
       t,
@@ -589,6 +647,8 @@ export function useModeSlots(mode: Mode): readonly SlotDef[] {
       certActive,
       dirty,
       smartLinks,
+      stampPicker,
+      headerFooterReason: hfReason,
     });
     // A certifying signature locks every tool but Lesen (DESIGN 3.8 S5): each slot says why with the same tooltip.
     return locked && mode !== 'read'
@@ -614,7 +674,9 @@ export function useModeSlots(mode: Mode): readonly SlotDef[] {
     certActive,
     dirty,
     smartLinks,
+    stampPicker,
     locked,
+    hfReason,
   ]);
 }
 

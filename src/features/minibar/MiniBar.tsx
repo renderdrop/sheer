@@ -22,6 +22,8 @@ import {
   MARKUP_KINDS,
   OpacityControl,
   OpenCitationControl,
+  StampChangeControl,
+  StampToneControl,
   StraightenControl,
   StrokeControl,
   TextFillControl,
@@ -237,6 +239,16 @@ export function MiniBar({ docId, objects, ref, onReturn }: MiniBarProps) {
             <TagPickerButton docId={docId} annotIds={objects.map((object) => object.id)} size="sm" />
           </span>,
         );
+        break;
+      case 'stampTone':
+        add(
+          control,
+          <StampToneControl value={values.tone} disabled={locked} onChange={(stampTone) => change({ stampTone })} />,
+        );
+        break;
+      case 'stampChange':
+        if (only?.kind === 'stamp')
+          add(control, <StampChangeControl id={only.id} tone={only.tone} disabled={locked} />);
         break;
       case 'comment':
         add(

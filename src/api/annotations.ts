@@ -1,6 +1,7 @@
 import { call } from './call';
 import { parseCite, parseTagNames, type Cite } from './cite';
 import type { SetBibliographyCommand } from './citations';
+import type { SetHeaderFooterCommand } from './headerFooter';
 import { toAppError } from './errors';
 import { parseFieldStates, type FieldState, type SetFieldValueCommand } from './forms';
 import type { SignatureRole } from './library';
@@ -51,6 +52,20 @@ export type Rgb = readonly [number, number, number];
 export type LineEnd = 'none' | 'openArrow' | 'closedArrow';
 export type NoteIcon = 'comment' | 'note' | 'help';
 export type MarkGlyph = 'check' | 'cross' | 'dot';
+
+/** The stamps the picker offers (`custom` is the user's own text) and the two colours of a stamp (ARCHITECTURE 16.1). */
+export type StampKind = 'draft' | 'approved' | 'confidential' | 'received' | 'custom';
+export type StampTone = 'solar' | 'ink';
+/** Longest stamp text and date, in characters (the backend refuses more). */
+export const MAX_STAMP_TEXT_CHARS = 64;
+export const MAX_STAMP_DATE_CHARS = 32;
+const STAMP_KINDS: ReadonlySet<string> = new Set<StampKind>([
+  'draft',
+  'approved',
+  'confidential',
+  'received',
+  'custom',
+]);
 /** The faces of a text box: Helvetica, Times-Roman and Courier, WinAnsi characters only (ADR-047). */
 export type StdFont = 'sans' | 'serif' | 'mono';
 export type TextAlign = 'left' | 'center' | 'right';
@@ -123,6 +138,11 @@ export type AnnotationBody =
   | { kind: 'signature'; box: Rect; role: SignatureRole; art: SignatureArtRef; angle?: number }
   /** A check, a cross or a dot of Fill & Sign, drawn in the annotation's colour. */
   | { kind: 'mark'; box: Rect; glyph: MarkGlyph; angle?: number }
+  /**
+   * A stamp (ADR-139): a `/Stamp` with its own appearance. `text` is the visible label, localized by the UI; `date` an optional second
+   * line, formatted by the UI. The colour of the annotation is always the tone's.
+   */
+  | { kind: 'stamp'; box: Rect; stamp: StampKind; text: string; date: string | null; tone: StampTone }
   /** An annotation of a kind the app does not edit: shown and selectable, never changed. */
   | { kind: 'opaque'; subtype: string };
 
@@ -156,7 +176,9 @@ export type ContentKind = ContentBody['kind'];
 
 /** The kinds the user can create (everything but `opaque`). */
 export type DraftBody =
-  | Exclude<AnnotationBody, { kind: 'opaque' } | { kind: 'signature' }>
+  | Exclude<AnnotationBody, { kind: 'opaque' } | { kind: 'signature' } | { kind: 'stamp' }>
+  /** A new stamp; a box of size 0 by 0 gets the natural size at its position. `date` is required for `received`. */
+  | { kind: 'stamp'; box: Rect; stamp: StampKind; text: string; date?: string | null; tone: StampTone }
   /** A new signature always brings its own art; art that is "in the file" only comes from a reload. */
   | {
       kind: 'signature';
@@ -226,6 +248,10 @@ export interface AnnotationPatch {
   tags?: readonly string[];
   /** Replaces the quote of a citation (1 to 2 000 characters; ADR-119). A patch for another kind is refused. */
   quote?: string;
+  /** The text, the date line and the tone of a stamp. Coalesce key `stamp` while typing. */
+  stampText?: string;
+  stampDate?: string | null;
+  stampTone?: StampTone;
 }
 
 /**
@@ -249,11 +275,13 @@ export type DocCommand =
   | { type: 'removeMetadata' }
   /** Sets the bibliographic record written at the next save (ADR-119). */
   | SetBibliographyCommand
+  /** Stages the headers and footers the next save writes, or their removal (ADR-139). */
+  | SetHeaderFooterCommand
   /** Replaces the text of one line of existing page text (ADR-125). */
   | EditTextLine;
 
 /** What else a command changed besides annotations, pages and fields: the UI reads it again with `getMetadata` or `getProtection`. */
-export type DocPart = 'metadata' | 'protection' | 'bibliography' | 'ocr';
+export type DocPart = 'metadata' | 'protection' | 'bibliography' | 'ocr' | 'headerFooter';
 
 /** What the UI needs for its Undo and Redo commands. */
 export interface HistoryState {
@@ -359,7 +387,13 @@ function parseSignatureArt(value: unknown): SignatureArtRef | null {
 const STD_FONTS: ReadonlySet<unknown> = new Set<StdFont>(['sans', 'serif', 'mono']);
 const TEXT_ALIGNS: ReadonlySet<unknown> = new Set<TextAlign>(['left', 'center', 'right']);
 const REDACT_SOURCES: ReadonlySet<unknown> = new Set<RedactSource>(['text', 'area']);
-const DOC_PARTS: ReadonlySet<unknown> = new Set<DocPart>(['metadata', 'protection', 'bibliography', 'ocr']);
+const DOC_PARTS: ReadonlySet<unknown> = new Set<DocPart>([
+  'metadata',
+  'protection',
+  'bibliography',
+  'ocr',
+  'headerFooter',
+]);
 const CONTENT_KINDS: ReadonlySet<unknown> = new Set<ContentKind>(['textBox', 'image', 'redactMark']);
 
 function parseContentBody(value: Record<string, unknown>): ContentBody | null {
@@ -484,6 +518,21 @@ function parseBody(value: Record<string, unknown>): AnnotationBody | null {
       const box = parseRect(value.box);
       return box !== null && (value.glyph === 'check' || value.glyph === 'cross' || value.glyph === 'dot')
         ? { kind, box, glyph: value.glyph, ...parseAngle(value.angle) }
+        : null;
+    }
+    case 'stamp': {
+      const box = parseRect(value.box);
+      const { stamp, text, date, tone } = value;
+      return box !== null &&
+        typeof stamp === 'string' &&
+        STAMP_KINDS.has(stamp) &&
+        typeof text === 'string' &&
+        text.length <= 2 * MAX_STAMP_TEXT_CHARS &&
+        (date === null ||
+          date === undefined ||
+          (typeof date === 'string' && date.length <= 2 * MAX_STAMP_DATE_CHARS)) &&
+        (tone === 'solar' || tone === 'ink')
+        ? { kind, box, stamp: stamp as StampKind, text, date: date ?? null, tone }
         : null;
     }
     case 'opaque':
@@ -721,7 +770,7 @@ export interface AnnotationSummary {
   inReplyTo: number | null;
   /** Review replies only. */
   state?: ReviewState;
-  /** A mark's glyph (`check`, `cross`, `dot`), a signature's role (`signature`, `initials`), `arrow` for a line with an end. */
+  /** A mark's glyph (`check`, `cross`, `dot`), a stamp's kind, a signature's role (`signature`, `initials`), `arrow` for a line with an end. */
   detail?: string;
   /** The tag names (ADR-119); absent when none. */
   tags?: readonly string[];
@@ -741,6 +790,7 @@ const KINDS: readonly string[] = [
   'line',
   'signature',
   'mark',
+  'stamp',
   'opaque',
 ] satisfies AnnotationKind[];
 

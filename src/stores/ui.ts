@@ -29,6 +29,8 @@ export const TOOLS = [
   // v1.3 Citations (DESIGN 3.7 C2): drag across text to make a citation.
   'cite',
   'note',
+  // v1.9 Stamps (DESIGN 3.14): the Stempel variant of the Notiz slot.
+  'stamp',
   'text',
   'draw',
   'shapes',
@@ -62,6 +64,7 @@ export function modeOfTool(tool: ToolId): Mode | null {
     case 'highlight':
     case 'cite':
     case 'note':
+    case 'stamp':
     case 'text':
     case 'draw':
     case 'shapes':

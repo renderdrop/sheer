@@ -218,6 +218,35 @@ fn turned_box(rect: Rect, turn: Turn) -> Option<(Rect, f32)> {
     .then_some((bounds, angle))
 }
 
+/// The body and colour of a stamp of ours read from the file: `None` if the name is not a stamp name, the box is too small, or the text
+/// (the annotation's `/Contents`) does not pass the checks. The date comes later from `/SHR_Stamp` (`DocState::apply_sheer_keys`).
+fn imported_stamp(
+    named: Option<Named>,
+    contents: &str,
+    rect: Rect,
+    paint: Option<Rgb>,
+) -> Option<(AnnotationBody, Rgb)> {
+    let Some(Named::Stamp(kind)) = named else {
+        return None;
+    };
+    let mut text = contents.to_owned();
+    crate::model::stamp::check_texts(&mut text, &mut None).ok()?;
+    if rect.w < crate::model::stamp::MIN_W_PT || rect.h < crate::model::stamp::MIN_H_PT {
+        return None;
+    }
+    let tone = crate::model::stamp::tone_near(paint.unwrap_or(BLACK));
+    Some((
+        AnnotationBody::Stamp {
+            bounds: rect,
+            stamp: kind,
+            text,
+            date: None,
+            tone,
+        },
+        crate::model::stamp::tone_rgb(tone),
+    ))
+}
+
 /// What the `/NM` of a stamp says about it, if it is one of ours.
 fn stamp_kind(annotation: &PdfPageAnnotation<'_>) -> Option<Named> {
     parse_name(&annotation.name()?)
@@ -325,10 +354,23 @@ fn read_one(
             },
             stroke.unwrap_or(BLACK),
         ),
+        // A stamp of ours with a text the model accepts (`sheer-stamp-<kind>-`, ARCHITECTURE §16.1); one that fails the checks stays opaque.
+        PdfPageAnnotationType::Stamp
+            if imported_stamp(stamp_kind(annotation), &contents, rect, fill.or(stroke))
+                .is_some() =>
+        {
+            imported_stamp(stamp_kind(annotation), &contents, rect, fill.or(stroke)).unwrap_or((
+                AnnotationBody::Opaque {
+                    subtype: String::new(),
+                },
+                BLACK,
+            ))
+        }
         // Our own stamps (`sheer-sig-`, `sheer-ini-`, `sheer-mark-<glyph>-`, ADR-041 §5) come back as signatures and marks, so they can
         // be moved and scaled; any other stamp stays opaque. A stamp too small for the model to hold stays opaque too.
         PdfPageAnnotationType::Stamp
             if stamp_kind(annotation).is_some()
+                && !matches!(stamp_kind(annotation), Some(Named::Stamp(_)))
                 && rect.w >= MIN_SIGNATURE_SIDE_PT
                 && rect.h >= MIN_SIGNATURE_SIDE_PT =>
         {

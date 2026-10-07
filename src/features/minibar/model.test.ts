@@ -182,3 +182,43 @@ describe('a citation in the mini bar (DESIGN 3.7 C4)', () => {
     });
   });
 });
+
+describe('a stamp in the mini bar (DESIGN 3.14 ST5)', () => {
+  const stamp = (id: number, extra: Record<string, unknown> = {}) =>
+    make(id, {
+      kind: 'stamp',
+      box: { x: 0, y: 0, w: 96, h: 40 },
+      stamp: 'draft',
+      text: 'DRAFT',
+      date: null,
+      tone: 'solar',
+      ...extra,
+    });
+
+  it('has the colour and Change…, then Löschen', () => {
+    expect(controlsOf([stamp(1)])).toEqual(['stampTone', 'stampChange']);
+  });
+
+  it('keeps Change… for one stamp: several share the colour only', () => {
+    expect(controlsOf([stamp(1), stamp(2)])).toEqual(['stampTone']);
+    expect(controlsOf([stamp(1), ink(2)])).toEqual([]);
+  });
+
+  it('shows the tone, or mixed', () => {
+    expect(valuesOf([stamp(1), stamp(2)]).tone).toEqual({ value: 'solar', mixed: false });
+    expect(valuesOf([stamp(1), stamp(2, { tone: 'ink' })]).tone.mixed).toBe(true);
+  });
+
+  it('changes the tone as one step with the stamp label, and nothing else of the bar', () => {
+    expect(changeCommand([stamp(1)], { stampTone: 'ink' })).toEqual({
+      type: 'batch',
+      label: 'stamp.undo.edit',
+      commands: [{ type: 'updateAnnotation', id: 1, patch: { stampTone: 'ink' } }],
+    });
+    expect(changeCommand([stamp(1)], { color: [1, 2, 3], width: 4 })).toBeNull();
+  });
+
+  it('leaves a locked stamp alone', () => {
+    expect(changeCommand([stamp(1, { locked: true })], { stampTone: 'ink' })).toBeNull();
+  });
+});

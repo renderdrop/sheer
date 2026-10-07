@@ -2,6 +2,7 @@ import type { LucideIcon } from 'lucide-react';
 import type { ComponentType, ReactNode } from 'react';
 
 import type { ActionId } from '../../actions/registry';
+import type { PopoverCloseReason } from '../../components';
 import type { PlainKey } from '../../i18n';
 import type { CreationKind } from '../../stores/tools';
 import { MODES, type Mode } from '../../stores/ui';
@@ -68,6 +69,17 @@ export interface VariantDef {
 /** Which annotation kinds a colour tool's swatch row sets: one for most, the four shapes for Formen. */
 export interface ColourDef {
   kinds: readonly CreationKind[];
+  /** The row's own name where it differs from "Colour" (the note colour in the Notiz/Stempel split). */
+  label?: string;
+}
+
+/** A popover that hangs on a slot's main part and is opened by the slot itself (the stamp picker, DESIGN 3.14 ST2). */
+export interface PickerDef {
+  open: boolean;
+  setOpen: (open: boolean) => void;
+  /** The popover's accessible name (and its title as a dialog). */
+  label: string;
+  Body: ComponentType<{ close: (reason?: PopoverCloseReason) => void }>;
 }
 
 /**
@@ -92,6 +104,7 @@ export interface SlotDef {
   actionId?: ActionId;
   variants?: readonly VariantDef[];
   colour?: ColourDef;
+  picker?: PickerDef;
   /** The chevron menu ends with the shape recognition switch (Zeichnen, DESIGN 3.5 B11). */
   recogniseSwitch?: boolean;
   /** The tool's own options (Zuschneiden, the insert tools, Schwärzen): the chevron part opens them while the tool is on. */

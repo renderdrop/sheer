@@ -9,6 +9,7 @@ use serde::{Deserialize, Deserializer, Serialize};
 
 use super::geometry::{Point, Quad, Rect};
 use super::ids::{AnnotId, AssetId};
+use super::stamp::{StampKind, StampTone};
 use crate::documents::PageId;
 use crate::error::AppError;
 use crate::limits;
@@ -267,6 +268,17 @@ pub enum AnnotationBody {
         #[serde(default)]
         angle: f32,
     },
+    /// A stamp (ADR-139, ARCHITECTURE §16.1): a `/Stamp` named `sheer-stamp-<kind>-`. `text` is the visible label (localized by the UI),
+    /// `date` an optional second line; the annotation's colour is always the tone's and its contents the text.
+    Stamp {
+        #[serde(rename = "box")]
+        bounds: Rect,
+        stamp: StampKind,
+        text: String,
+        #[serde(default)]
+        date: Option<String>,
+        tone: StampTone,
+    },
     /// A text box (ADR-047 §1): page content, not a comment. Edited like an annotation until a save burns it into the page. `lines`
     /// is Rust's layout of `text` in the box (read-only for the UI); the box grows in height to fit it. The colour is the text's.
     TextBox {
@@ -432,6 +444,11 @@ pub struct AnnotationPatch {
     pub tags: Option<Vec<String>>,
     /// Replaces the quote of a citation, 1..=`CITE_QUOTE_MAX` characters (ADR-119); `invalid_argument` (`patch`) on anything else.
     pub quote: Option<String>,
+    /// The text, the date line and the tone of a stamp (ARCHITECTURE §16.1; coalesce key `stamp` for typing).
+    pub stamp_text: Option<String>,
+    #[serde(default, deserialize_with = "nullable")]
+    pub stamp_date: Option<Option<String>>,
+    pub stamp_tone: Option<StampTone>,
 }
 
 /// Where an annotation sits in the PDF it was imported from. Rust only; the UI never sees it.
@@ -719,6 +736,13 @@ impl AnnotationBody {
                 check_stamp_angle(*angle)?;
                 Ok(rotated_bounds(*bounds, *angle))
             }
+            Self::Stamp { bounds, .. } => {
+                check_rect(*bounds, "box")?;
+                if bounds.w < super::stamp::MIN_W_PT || bounds.h < super::stamp::MIN_H_PT {
+                    return Err(AppError::invalid("box"));
+                }
+                Ok(*bounds)
+            }
             Self::TextBox {
                 bounds,
                 text,
@@ -779,6 +803,7 @@ impl AnnotationBody {
             | Self::Ellipse { bounds, .. }
             | Self::Signature { bounds, .. }
             | Self::Mark { bounds, .. }
+            | Self::Stamp { bounds, .. }
             | Self::TextBox { bounds, .. }
             | Self::Image { bounds, .. } => {
                 bounds.x += dx;
@@ -825,6 +850,20 @@ impl Annotation {
             return Err(AppError::invalid("inReplyTo"));
         }
         self.check_citation()?;
+        // A stamp: clean text, a box with its natural size when the draft has none; the colour is the tone's, the contents the text.
+        if let AnnotationBody::Stamp {
+            bounds,
+            text,
+            date,
+            tone,
+            ..
+        } = &mut self.body
+        {
+            super::stamp::check_texts(text, date)?;
+            super::stamp::size_box(bounds, text, date.as_deref())?;
+            self.color = super::stamp::tone_rgb(*tone);
+            self.contents.clone_from(text);
+        }
         if let AnnotationBody::Signature { angle, .. } | AnnotationBody::Mark { angle, .. } =
             &mut self.body
         {
@@ -891,6 +930,9 @@ impl Annotation {
         {
             return Err(AppError::invalid("state"));
         }
+        if let AnnotationBody::Stamp { stamp, date, .. } = &draft.body {
+            super::stamp::require_date(*stamp, date)?;
+        }
         annotation.normalize()?;
         Ok(annotation)
     }
@@ -940,6 +982,29 @@ impl Annotation {
                     .filter(|group| super::quote::is_group_id(group)),
             })
             .filter(|cite| super::quote::check_quote(&cite.quote).is_ok());
+    }
+
+    /// Gives a stamp just read from the file the date and tone its `/SHR_Stamp` says (the file is hostile: the date is cleaned and
+    /// checked, a date that does not pass is left out). Nothing happens to any other kind.
+    pub fn apply_stamp_keys(&mut self, date: Option<&str>, tone: Option<StampTone>) {
+        let AnnotationBody::Stamp {
+            text,
+            date: slot,
+            tone: slot_tone,
+            ..
+        } = &mut self.body
+        else {
+            return;
+        };
+        if let Some(tone) = tone {
+            *slot_tone = tone;
+            self.color = super::stamp::tone_rgb(tone);
+        }
+        let mut candidate = date.map(str::to_owned);
+        let mut label = text.clone();
+        if super::stamp::check_texts(&mut label, &mut candidate).is_ok() {
+            *slot = candidate;
+        }
     }
 
     /// Whether the user may change or delete it.
@@ -1001,6 +1066,9 @@ impl Annotation {
             font,
             align,
             angle,
+            stamp_text,
+            stamp_date,
+            stamp_tone,
             ..
         } = patch;
         // Every geometry field of the patch must be one the kind has; `take` marks the ones used, and what is left over is wrong.
@@ -1025,6 +1093,9 @@ impl Annotation {
             font.is_some(),
             align.is_some(),
             angle.is_some(),
+            stamp_text.is_some(),
+            stamp_date.is_some(),
+            stamp_tone.is_some(),
         ]
         .iter()
         .filter(|present| **present)
@@ -1121,6 +1192,18 @@ impl Annotation {
             AnnotationBody::Image { bounds: b, .. } => {
                 set(b, bounds, &mut used);
             }
+            AnnotationBody::Stamp {
+                bounds: b,
+                text: t,
+                date: d,
+                tone: tn,
+                ..
+            } => {
+                set(b, bounds, &mut used);
+                set(t, stamp_text, &mut used);
+                set(d, stamp_date, &mut used);
+                set(tn, stamp_tone, &mut used);
+            }
             AnnotationBody::TextBox {
                 bounds: b,
                 text: t,
@@ -1140,6 +1223,11 @@ impl Annotation {
         }
         if left != 0 {
             return Err(wrong());
+        }
+        if let AnnotationBody::Stamp { stamp, date, .. } = &next.body {
+            if patch.stamp_date.is_some() {
+                super::stamp::require_date(*stamp, date)?;
+            }
         }
         next.modified = Some(now.to_owned());
         if next.sync == Sync::Clean {
@@ -1942,5 +2030,101 @@ mod tests {
         opaque.tags.clear();
         opaque.apply_file_keys(Some(&cite), &["t".to_owned()]);
         assert!(opaque.cite.is_none() && opaque.tags.is_empty());
+    }
+
+    fn stamp_draft(text: &str, date: Option<&str>, kind: StampKind) -> AnnotationDraft {
+        serde_json::from_value(serde_json::json!({
+            "pageId": 0, "kind": "stamp", "color": [9, 9, 9], "stamp": kind,
+            "box": {"x": 10.0, "y": 10.0, "w": 0.0, "h": 0.0},
+            "text": text, "date": date, "tone": "solar"
+        }))
+        .unwrap()
+    }
+
+    #[test]
+    fn a_stamp_gets_its_size_colour_and_contents_from_rust() {
+        let stamp = Annotation::from_draft(
+            AnnotId::new(1),
+            &stamp_draft("DRAFT", None, StampKind::Draft),
+            "t",
+        )
+        .unwrap();
+        assert_eq!(stamp.color, super::super::stamp::tone_rgb(StampTone::Solar));
+        assert_eq!(stamp.contents, "DRAFT");
+        assert!(stamp.rect.w > 60.0 && stamp.rect.h > 30.0);
+        assert_eq!((stamp.rect.x, stamp.rect.y), (10.0, 10.0));
+        let wire = serde_json::to_value(&stamp).unwrap();
+        assert_eq!(
+            (wire["kind"].as_str(), wire["stamp"].as_str()),
+            (Some("stamp"), Some("draft"))
+        );
+    }
+
+    #[test]
+    fn a_stamp_draft_with_hostile_text_is_stripped_or_refused() {
+        let id = AnnotId::new(1);
+        let clean =
+            Annotation::from_draft(id, &stamp_draft("A\u{7}B\n", None, StampKind::Custom), "t")
+                .unwrap();
+        assert_eq!(clean.contents, "AB");
+        for (text, date, kind) in [
+            ("", None, StampKind::Custom),
+            ("\u{4e2d}", None, StampKind::Custom),
+            ("RECEIVED", None, StampKind::Received),
+        ] {
+            assert!(Annotation::from_draft(id, &stamp_draft(text, date, kind), "t").is_err());
+        }
+        let long = "x".repeat(65);
+        assert!(
+            Annotation::from_draft(id, &stamp_draft(&long, None, StampKind::Custom), "t").is_err()
+        );
+    }
+
+    #[test]
+    fn a_stamp_patch_changes_text_date_and_tone_and_other_fields_are_refused() {
+        let id = AnnotId::new(1);
+        let stamp =
+            Annotation::from_draft(id, &stamp_draft("OK", None, StampKind::Custom), "t").unwrap();
+        let patch: AnnotationPatch = serde_json::from_value(
+            serde_json::json!({"stampText": "Fertig", "stampDate": "07.10.2026", "stampTone": "ink"}),
+        )
+        .unwrap();
+        let next = stamp.patched(&patch, "t2").unwrap();
+        assert_eq!(next.contents, "Fertig");
+        assert_eq!(next.color, super::super::stamp::tone_rgb(StampTone::Ink));
+        assert!(
+            matches!(&next.body, AnnotationBody::Stamp { date: Some(d), .. } if d == "07.10.2026")
+        );
+        let wrong: AnnotationPatch =
+            serde_json::from_value(serde_json::json!({"stampText": "x", "icon": "note"})).unwrap();
+        assert!(stamp.patched(&wrong, "t2").is_err());
+        // A stamp patch on a note is refused as well.
+        let mut note = stamp.clone();
+        note.body = AnnotationBody::Note {
+            at: pt(1.0, 1.0),
+            icon: NoteIcon::Note,
+        };
+        assert!(note.patched(&patch, "t2").is_err());
+    }
+
+    #[test]
+    fn what_the_file_says_about_a_stamp_is_applied_with_bounds() {
+        let mut stamp = Annotation::from_draft(
+            AnnotId::new(1),
+            &stamp_draft("RECEIVED", Some("x"), StampKind::Received),
+            "t",
+        )
+        .unwrap();
+        stamp.apply_stamp_keys(Some("07.10.2026"), Some(StampTone::Ink));
+        assert!(matches!(
+            &stamp.body,
+            AnnotationBody::Stamp { date: Some(d), tone: StampTone::Ink, .. } if d == "07.10.2026"
+        ));
+        assert_eq!(stamp.color, super::super::stamp::INK_RGB);
+        stamp.apply_stamp_keys(Some("\u{4e2d}"), None);
+        assert!(
+            matches!(&stamp.body, AnnotationBody::Stamp { date: Some(d), .. } if d == "07.10.2026"),
+            "a bad date is left out"
+        );
     }
 }

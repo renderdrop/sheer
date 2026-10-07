@@ -1,4 +1,4 @@
-import type { KeyboardEvent } from 'react';
+import type { KeyboardEvent, ReactNode } from 'react';
 
 import { cx } from './cx';
 import { isOwnEvent, itemsOf, rovingTarget } from './roving';
@@ -6,6 +6,8 @@ import { isOwnEvent, itemsOf, rovingTarget } from './roving';
 export interface SegmentedOption<Value extends string> {
   value: Value;
   label: string;
+  /** A decorative element before the label (a colour swatch). */
+  leading?: ReactNode;
   disabled?: boolean;
 }
 
@@ -77,13 +79,14 @@ export function Segmented<Value extends string>({
               if (!off && !checked) onValueChange(option.value);
             }}
             className={cx(
-              'inline-flex h-control-sm min-w-fit flex-auto shrink-0 cursor-pointer whitespace-nowrap items-center justify-center rounded-sm border px-3 text-md',
+              'inline-flex h-control-sm min-w-fit flex-auto shrink-0 cursor-pointer items-center justify-center gap-2 whitespace-nowrap rounded-sm border px-3 text-md',
               'transition-[background-color,color,border-color] duration-fast aria-disabled:cursor-not-allowed',
               checked
                 ? 'border-control-border bg-surface font-medium text-text'
                 : 'border-transparent font-normal text-text-muted not-aria-disabled:hover:text-text',
             )}
           >
+            {option.leading}
             {option.label}
           </button>
         );
