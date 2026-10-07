@@ -663,7 +663,7 @@ export function parseChangeSet(value: unknown): ChangeSet | null {
   if (
     !(
       doc === undefined ||
-      (Array.isArray(doc) && doc.length <= 3 && (doc as unknown[]).every((part) => DOC_PARTS.has(part)))
+      (Array.isArray(doc) && doc.length <= DOC_PARTS.size && (doc as unknown[]).every((part) => DOC_PARTS.has(part)))
     ) ||
     !isUint(rev, Number.MAX_SAFE_INTEGER) ||
     history === null ||

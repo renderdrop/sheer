@@ -151,6 +151,11 @@ describe('parseChangeSet', () => {
     ...extra,
   });
 
+  it('reads a save result that names four document parts (FX-SAVE: the limit was 3)', () => {
+    const doc = ['headerFooter', 'bibliography', 'metadata', 'protection'];
+    expect(parseChangeSet(wire({ doc }))?.doc).toEqual(doc);
+  });
+
   it('reads the revision, the delta and the history', () => {
     expect(parseChangeSet(wire())).toStrictEqual(wire());
     const slot = { id: 3, width: 612, height: 792, rotation: 90, rev: 1, label: null, origin: 'file' };
