@@ -793,6 +793,43 @@ mod tests {
     }
 
     #[test]
+    fn a_photo_sized_scan_on_a_non_a4_page_is_found_by_the_pending_layer_search() {
+        use crate::engine::SearchSpec;
+        use crate::ocr::textlayer::{canonical, search_page, Shape};
+        // A 2362 x 3337 px photo shown on a 708 x 1000 pt page (240 dpi); the word sits in the lower right quarter.
+        let mut layer = OcrPageLayer {
+            lines: vec![OcrLine {
+                words: vec![OcrWord {
+                    text: "Produktivitaet".into(),
+                    rect: [1800.0, 2500.0, 2300.0, 2600.0],
+                }],
+            }],
+            ..OcrPageLayer::default()
+        };
+        let bitmap = Bitmap {
+            gray: Vec::new(),
+            width: 2362,
+            height: 3337,
+        };
+        let shown = [708.0, 1000.0];
+        scale_to_points(&mut layer, shown, &bitmap);
+        let [x0, y0, x1, y1] = layer.lines[0].words[0].rect;
+        assert!(x0 > 500.0 && x1 < 708.0 && y0 > 700.0 && y1 < 1000.0);
+        assert!((layer.dpi - 240.0).abs() < 1.0);
+        let shape = Shape {
+            size: shown,
+            rotation: 0,
+        };
+        let spec = SearchSpec {
+            text: "produktivit".into(),
+            match_case: false,
+            whole_word: false,
+        };
+        let hits = search_page(&canonical(&layer, shape), shape, &spec, 5);
+        assert_eq!(hits.len(), 1);
+    }
+
+    #[test]
     fn a_failed_page_does_not_stop_the_run() {
         let (in_flight, peak) = (AtomicUsize::new(0), AtomicUsize::new(0));
         let script = vec![

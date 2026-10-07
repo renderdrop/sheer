@@ -563,11 +563,12 @@ const makeSession =
         const pick = scopes.find((x) => /^Alle Seiten/.test(x)) ?? scopes.find((x) => /^Gescannte Seiten/.test(x));
         if (pick) await input.click({ selector: '[data-ocr="scope"] label', text: pick.split(' (')[0] });
         const info = await dialogInfo();
-        const scanCount = Number(
-          /^Gescannte Seiten \((\d+)\)/.exec(scopes.find((x) => /^Gescannte/.test(x)) ?? '')?.[1] ?? NaN,
-        );
         await startRun();
         const run = await finishRun(900000);
+        // "Alle Seiten" carries no count in its label: the pages recognized come from the finishing toast.
+        const scanCount = Number(
+          run.toasts.map((t) => /Text auf (\d+) Seiten erkannt/.exec(t)?.[1]).find(Boolean) ?? NaN,
+        );
         const ms = Date.now() - t0;
         C(
           `${id}: run finished`,
@@ -581,7 +582,7 @@ const makeSession =
         // Search per word; the hit rows carry "Seite N, ..." in their aria-label (rows are virtualized, the visible ones are read).
         const pagesOf = () =>
           ev(
-            `[...document.querySelectorAll('[data-search-list] [data-hit]')].map((e) => /^Seite (\d+),/.exec(e.getAttribute('aria-label') ?? '')?.[1]).filter(Boolean).map(Number)`,
+            `[...document.querySelectorAll('[data-search-list] [data-hit]')].map((e) => /^Seite ([0-9]+)(?:,|$)/.exec(e.getAttribute('aria-label') ?? '')?.[1]).filter(Boolean).map(Number)`,
           );
         const dump = [`run ${ms} ms, scope ${info?.scope}`];
         let total = 0;

@@ -74,7 +74,12 @@ fn corpus_file(id: &str) -> Option<PathBuf> {
         return p.is_file().then_some(p);
     }
     let name = index_rows().into_iter().find(|(k, _)| k == id)?.1;
-    let path = repo().join("review/owner/corpus").join(name);
+    let base = if id.starts_with("owner-scan-") {
+        "review/owner"
+    } else {
+        "review/owner/corpus"
+    };
+    let path = repo().join(base).join(name);
     path.is_file().then_some(path)
 }
 
@@ -1000,6 +1005,7 @@ fn main() {
         Some("probe") => cmd_probe(&ctx),
         Some("run") => cmd_run(&ctx, &args[1..]),
         Some("robust") => cmd_robust(&ctx, &args[1..]),
+        Some("scan") => cmd_scan(&ctx, &args[1..]),
         Some("dump") => cmd_dump(&ctx, &args[1..]),
         Some("synth") => args[1..].iter().try_for_each(|id| make_synth(&ctx, id, 8)),
         _ => Err("usage: ocr_spike probe | run [pages] [ids...] | robust [id]".into()),
@@ -1075,5 +1081,116 @@ fn cmd_dump(ctx: &Ctx, args: &[String]) -> R<()> {
             b[3]
         );
     }
+    Ok(())
+}
+
+/// `scan <id>`: the service path (cover, `render_dpi`, `render_for_ocr`, recognizer, layer) on every page; prints counts only.
+fn cmd_scan(ctx: &Ctx, args: &[String]) -> R<()> {
+    let id = args.first().ok_or("id")?;
+    let path = corpus_file(id).ok_or("not found")?;
+    let original = std::fs::read(&path).map_err(s)?;
+    let lop = ProbeDoc::load(&original).map_err(s)?;
+    let (doc, count) = ctx.open(&path)?;
+    let mut client = ChildClient::new(std::env::current_exe().map_err(s)?);
+    let mut layers: BTreeMap<u32, OcrPageLayer> = BTreeMap::new();
+    for i in 0..count {
+        let geom = lop.geom(i).ok_or("page")?;
+        let cover = lop.cover(i);
+        let dpi = limits::render_dpi(cover.eff_dpi);
+        let raster = ctx
+            .engine
+            .render_for_ocr(EngineDocRef::Live(doc), i, dpi, limits::MAX_SIDE_PX)
+            .map_err(s)?;
+        let gray = gray_of(raster.pixels);
+        let n = gray.len().max(1) as f64;
+        let mean = gray.iter().map(|&v| f64::from(v)).sum::<f64>() / n;
+        let var = gray
+            .iter()
+            .map(|&v| (f64::from(v) - mean).powi(2))
+            .sum::<f64>()
+            / n;
+        let r = Rendered {
+            w: raster.width,
+            h: raster.height,
+            gray,
+            dpi,
+        };
+        let layer = client
+            .recognize(&r.gray, r.w, r.h, "de-DE", limits::PAGE_TIMEOUT)
+            .map_err(|e| e.to_string())?;
+        let words = layer.lines.iter().map(|l| l.words.len()).sum::<usize>();
+        let (dw, dh) = geom.display_size();
+        let pts = to_points(&layer, &geom, &r);
+        let inside = pts
+            .lines
+            .iter()
+            .flat_map(|l| &l.words)
+            .filter(|w| {
+                w.rect[0] >= 0.0
+                    && w.rect[1] >= 0.0
+                    && w.rect[2] <= dw + 1.0
+                    && w.rect[3] <= dh + 1.0
+            })
+            .count();
+        println!(
+            "p{} cover {:.2} effdpi {:.0} dpi {:.0} px {}x{} gray mean {:.0} sd {:.0} page {:.0}x{:.0}pt rot {} words {} inside {} lines {} angle {:.1}",
+            i + 1, cover.fraction, cover.eff_dpi, dpi, r.w, r.h, mean, var.sqrt(), dw, dh, geom.rotate, words, inside, layer.lines.len(), layer.angle_deg
+        );
+        let shape = sheer_lib::ocr::textlayer::Shape {
+            size: [dw, dh],
+            rotation: geom.rotate,
+        };
+        let canon = sheer_lib::ocr::textlayer::canonical(&pts, shape);
+        let key = format!("{id}/p{}", i + 1);
+        let probes: Vec<String> = index_rows()
+            .into_iter()
+            .find(|(k, _)| *k == key)
+            .map(|(_, v)| v.split(';').map(|w| w.trim().to_owned()).collect())
+            .unwrap_or_default();
+        let found = probes
+            .iter()
+            .filter(|w| {
+                let spec = SearchSpec {
+                    text: (*w).clone(),
+                    match_case: false,
+                    whole_word: false,
+                };
+                !sheer_lib::ocr::textlayer::search_page(&canon, shape, &spec, 5).is_empty()
+            })
+            .count();
+        println!("p{} pending-layer search {}/{}", i + 1, found, probes.len());
+        layers.insert(i, pts);
+    }
+    let saved = apply_ocr_layers(original, &layers, true).map_err(s)?;
+    let out = out_dir().join("tmp").join("scan-ocr.pdf");
+    std::fs::write(&out, &saved).map_err(s)?;
+    let (sid, _) = ctx.open(&out)?;
+    let mut hits = Vec::new();
+    for i in 0..count {
+        let key = format!("{id}/p{}", i + 1);
+        let words: Vec<String> = index_rows()
+            .into_iter()
+            .find(|(k, _)| *k == key)
+            .map(|(_, v)| v.split(';').map(|w| w.trim().to_owned()).collect())
+            .unwrap_or_default();
+        let mut k = 0;
+        for w in &words {
+            let spec = Arc::new(SearchSpec {
+                text: w.clone(),
+                match_case: false,
+                whole_word: false,
+            });
+            if ctx
+                .engine
+                .search_page(sid, i, spec, 5)
+                .map(|h| !h.is_empty())
+                .unwrap_or(false)
+            {
+                k += 1;
+            }
+        }
+        hits.push(format!("p{} {}/{}", i + 1, k, words.len()));
+    }
+    println!("search hits: {}", hits.join(", "));
     Ok(())
 }
