@@ -10,9 +10,10 @@ mod support;
 use std::collections::BTreeMap;
 use std::fs::File;
 use std::path::PathBuf;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex, MutexGuard, OnceLock};
 
 use sheer_lib::documents::Registry;
+
 use sheer_lib::engine::{self, Engine, SearchSpec};
 use sheer_lib::export::snapshot::EngineDocRef;
 use sheer_lib::ocr::backend::{self, BackendKind, ChildClient, OcrError};
@@ -33,11 +34,19 @@ fn sidecar() -> Option<PathBuf> {
     ))
 }
 
-fn start_engine() -> Engine {
-    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("pdfium");
-    let library = engine::library_path(&root);
-    assert!(library.is_file(), "PDFium is not fetched");
-    Engine::start(library)
+/// PDFium is not thread-safe and the test harness runs tests in parallel: one engine for the whole file, and one test at a time
+/// holds it (two engines binding the library at once crashed the process with SIGSEGV on macOS CI).
+fn start_engine() -> (MutexGuard<'static, ()>, &'static Engine) {
+    static SERIAL: Mutex<()> = Mutex::new(());
+    static ENGINE: OnceLock<Engine> = OnceLock::new();
+    let serial = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
+    let engine = ENGINE.get_or_init(|| {
+        let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("pdfium");
+        let library = engine::library_path(&root);
+        assert!(library.is_file(), "PDFium is not fetched");
+        Engine::start(library)
+    });
+    (serial, engine)
 }
 
 fn text_pdf(lines: &[&str]) -> Vec<u8> {
@@ -82,9 +91,9 @@ fn normalized(word: &str) -> String {
 #[test]
 fn vision_reads_a_generated_page_through_the_sidecar() {
     let Some(sidecar) = sidecar() else { return };
-    let engine = start_engine();
+    let (_serial, engine) = start_engine();
     let pdf = text_pdf(&["The quick brown fox jumps", "over the lazy dog today"]);
-    let (gray, w, h) = render_gray(&engine, &pdf);
+    let (gray, w, h) = render_gray(engine, &pdf);
 
     let mut client = ChildClient::new(sidecar);
     let layer = client
@@ -113,14 +122,14 @@ fn vision_reads_a_generated_page_through_the_sidecar() {
 #[test]
 fn vision_reads_german_umlauts_and_sharp_s() {
     let Some(sidecar) = sidecar() else { return };
-    let engine = start_engine();
+    let (_serial, engine) = start_engine();
     let expected = ["Größe", "Prüfung", "Straße", "Änderung", "Übung", "schön"];
     let pdf = text_pdf(&[
         "Größe und Prüfung",
         "Straße und Änderung",
         "Übung ist schön",
     ]);
-    let (gray, w, h) = render_gray(&engine, &pdf);
+    let (gray, w, h) = render_gray(engine, &pdf);
     let mut client = ChildClient::new(sidecar);
     let layer = client
         .recognize(&gray, w, h, "de-DE", limits::PAGE_TIMEOUT)
@@ -162,9 +171,9 @@ fn vision_capabilities_offer_both_languages_and_refuse_others() {
 #[test]
 fn vision_layer_is_saved_incrementally_and_found_by_search() {
     let Some(sidecar) = sidecar() else { return };
-    let engine = start_engine();
+    let (_serial, engine) = start_engine();
     let original = text_pdf(&["The quick brown fox jumps", "over the lazy dog today"]);
-    let (gray, w, h) = render_gray(&engine, &original);
+    let (gray, w, h) = render_gray(engine, &original);
     let mut client = ChildClient::new(sidecar);
     let layer = client
         .recognize(&gray, w, h, "en-US", limits::PAGE_TIMEOUT)
@@ -233,9 +242,9 @@ fn vision_layer_is_saved_incrementally_and_found_by_search() {
 #[test]
 fn vision_killed_sidecar_fails_only_that_page_and_restarts() {
     let Some(sidecar) = sidecar() else { return };
-    let engine = start_engine();
+    let (_serial, engine) = start_engine();
     let pdf = text_pdf(&["The quick brown fox jumps", "over the lazy dog today"]);
-    let (gray, w, h) = render_gray(&engine, &pdf);
+    let (gray, w, h) = render_gray(engine, &pdf);
     let mut client = ChildClient::new(sidecar);
     client
         .recognize(&gray, w, h, "en-US", limits::PAGE_TIMEOUT)
