@@ -1524,6 +1524,7 @@
   "editText.error": "Zeile konnte nicht geändert werden.",
   "editText.previewRefused": "Keine Vorschau für diese Änderung. Die Zeile lässt sich eventuell trotzdem übernehmen.",
   "editText.undo": "Text bearbeiten",
+  "ocr.apply": "Text erkennen",
   "editText.aria.line": "Zeile {line} auf Seite {page}",
   "editText.announce.start": "Bearbeiten. Enter übernimmt, Escape bricht ab.",
   "editText.announce.committed": "Zeile geändert",

@@ -5,6 +5,7 @@
 pub mod backend;
 pub mod child;
 pub mod limits;
+pub mod service;
 #[cfg(windows)]
 pub mod win;
 pub mod wire;
@@ -50,10 +51,26 @@ pub struct OcrPageLayer {
 
 /// The class of a page for OCR (ADR-134 item 5). Phase 1 tells `Scan`, `Text` and `Empty` apart.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
 pub enum PageOcrClass {
     Scan,
     HasTextLayer,
     SheerLayer,
     Text,
     Empty,
+}
+
+/// A running OCR job, by the number the backend gave. Serialized as a plain number.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+#[serde(transparent)]
+pub struct OcrJobId(u32);
+
+impl OcrJobId {
+    pub const fn new(value: u32) -> Self {
+        Self(value)
+    }
+
+    pub const fn get(self) -> u32 {
+        self.0
+    }
 }

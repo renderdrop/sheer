@@ -377,7 +377,7 @@ pub(super) enum Revert {
 
 impl AppState {
     /// Runs `f` on the model of document `id`, which is made from the pages the engine read if it has none yet.
-    pub(super) fn model<T>(
+    pub(crate) fn model<T>(
         &self,
         id: DocumentId,
         f: impl FnOnce(&mut DocState) -> Result<T, AppError>,

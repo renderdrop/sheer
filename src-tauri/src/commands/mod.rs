@@ -48,6 +48,7 @@ pub mod jobs;
 pub mod library;
 pub mod links;
 pub mod metadata;
+pub mod ocr;
 pub mod outline;
 pub mod pages;
 pub mod print;

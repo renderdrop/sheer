@@ -16,6 +16,7 @@ pub mod geometry;
 pub mod history;
 pub mod ids;
 pub mod metadata;
+pub mod ocr_layers;
 pub mod page;
 pub mod page_ops;
 pub mod protection;

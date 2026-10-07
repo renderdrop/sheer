@@ -74,6 +74,22 @@ pub enum AppEvent {
     UpdateAvailable {
         info: crate::update::UpdateInfo,
     },
+    /// An OCR job finished a page (ADR-134). Counts only; no text, no path.
+    OcrProgress {
+        doc: DocumentId,
+        job: crate::ocr::OcrJobId,
+        done: u32,
+        total: u32,
+        failed: u32,
+    },
+    /// An OCR job ended (also when cancelled).
+    OcrFinished {
+        doc: DocumentId,
+        job: crate::ocr::OcrJobId,
+        applied: u32,
+        skipped: u32,
+        failed: u32,
+    },
 }
 
 impl AppEvent {
@@ -108,7 +124,11 @@ impl AppEvent {
     fn is_open_result(&self) -> bool {
         !matches!(
             self,
-            Self::DropHover { .. } | Self::CloseRequested | Self::ImagesDropped { .. }
+            Self::DropHover { .. }
+                | Self::CloseRequested
+                | Self::ImagesDropped { .. }
+                | Self::OcrProgress { .. }
+                | Self::OcrFinished { .. }
         )
     }
 }
@@ -277,6 +297,35 @@ mod tests {
             serde_json::json!({"type": "imagesDropped", "batch": 2, "count": 3, "skipped": 1})
         );
         assert!(!AppEvent::images_dropped(1, 1, 0).is_open_result());
+    }
+
+    #[test]
+    fn ocr_pushes_are_counts_only_and_are_never_kept_for_later() {
+        let registry = Registry::new();
+        let doc = registry.register("a.pdf".into()).unwrap();
+        let job = crate::ocr::OcrJobId::new(7);
+        let progress = AppEvent::OcrProgress {
+            doc,
+            job,
+            done: 1,
+            total: 4,
+            failed: 0,
+        };
+        let finished = AppEvent::OcrFinished {
+            doc,
+            job,
+            applied: 3,
+            skipped: 1,
+            failed: 0,
+        };
+        let value = json(&progress);
+        assert_eq!(value["type"], "ocrProgress");
+        assert_eq!(value["job"], 7);
+        assert_eq!(value["total"], 4);
+        let value = json(&finished);
+        assert_eq!(value["type"], "ocrFinished");
+        assert_eq!(value["applied"], 3);
+        assert!(!progress.is_open_result() && !finished.is_open_result());
     }
 
     #[test]

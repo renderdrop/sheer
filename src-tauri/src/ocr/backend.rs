@@ -192,3 +192,117 @@ impl Drop for ChildClient {
 pub const fn page_timeout() -> Duration {
     limits::PAGE_TIMEOUT
 }
+
+/// Which recognizer this build and computer has (ARCHITECTURE section 15). Wire values are lowercase.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum BackendKind {
+    Windows,
+    Vision,
+    None,
+}
+
+/// One language the UI may offer, and whether the recognizer has it on this computer.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+pub struct OcrLanguage {
+    pub tag: &'static str,
+    pub available: bool,
+}
+
+/// The answer of `ocr_capabilities`.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Capabilities {
+    pub backend: BackendKind,
+    pub languages: Vec<OcrLanguage>,
+    pub max_image_dimension: Option<u32>,
+}
+
+impl Capabilities {
+    /// No recognizer: every language unavailable.
+    pub fn none() -> Self {
+        Self {
+            backend: BackendKind::None,
+            languages: limits::LANGUAGES
+                .iter()
+                .map(|tag| OcrLanguage {
+                    tag,
+                    available: false,
+                })
+                .collect(),
+            max_image_dimension: None,
+        }
+    }
+
+    /// Whether `tag` is a language the recognizer has.
+    pub fn has(&self, tag: &str) -> bool {
+        self.languages
+            .iter()
+            .any(|language| language.available && language.tag == tag)
+    }
+}
+
+/// How long a probe result is trusted (a user may install a language pack while the app runs).
+const CAPS_TTL: Duration = Duration::from_secs(30);
+
+/// What the recognizer can do here. On Windows each language is asked of the OCR child with a blank bitmap (the parent never touches
+/// the OS recognizer, ADR-134 item 1); the answer is kept for [`CAPS_TTL`]. Blocking (spawns a child); call it on the blocking pool.
+pub fn capabilities() -> Capabilities {
+    static CACHE: std::sync::Mutex<Option<(std::time::Instant, Capabilities)>> =
+        std::sync::Mutex::new(None);
+    let mut cache = CACHE.lock().unwrap_or_else(|e| e.into_inner());
+    if let Some((at, caps)) = cache.as_ref() {
+        if at.elapsed() < CAPS_TTL {
+            return caps.clone();
+        }
+    }
+    let caps = probe_capabilities();
+    *cache = Some((std::time::Instant::now(), caps.clone()));
+    caps
+}
+
+#[cfg(windows)]
+fn probe_capabilities() -> Capabilities {
+    let Ok(exe) = std::env::current_exe() else {
+        return Capabilities::none();
+    };
+    let mut client = ChildClient::new(exe);
+    let blank = vec![255u8; 64 * 64];
+    let languages = limits::LANGUAGES
+        .iter()
+        .map(|tag| OcrLanguage {
+            tag,
+            available: client
+                .recognize(&blank, 64, 64, tag, page_timeout())
+                .is_ok(),
+        })
+        .collect();
+    Capabilities {
+        backend: BackendKind::Windows,
+        languages,
+        max_image_dimension: Some(limits::MAX_SIDE_PX),
+    }
+}
+
+#[cfg(not(windows))]
+fn probe_capabilities() -> Capabilities {
+    Capabilities::none()
+}
+
+#[cfg(test)]
+mod capability_tests {
+    use super::*;
+
+    #[test]
+    fn none_has_no_language_and_serializes_in_wire_shape() {
+        let caps = Capabilities::none();
+        assert!(!caps.has("de-DE"));
+        let json = serde_json::to_value(&caps).unwrap();
+        assert_eq!(json["backend"], "none");
+        assert_eq!(json["maxImageDimension"], serde_json::Value::Null);
+        assert_eq!(
+            json["languages"][0],
+            serde_json::json!({"tag": "de-DE", "available": false})
+        );
+    }
+}

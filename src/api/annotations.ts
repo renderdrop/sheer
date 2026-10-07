@@ -253,7 +253,7 @@ export type DocCommand =
   | EditTextLine;
 
 /** What else a command changed besides annotations, pages and fields: the UI reads it again with `getMetadata` or `getProtection`. */
-export type DocPart = 'metadata' | 'protection' | 'bibliography';
+export type DocPart = 'metadata' | 'protection' | 'bibliography' | 'ocr';
 
 /** What the UI needs for its Undo and Redo commands. */
 export interface HistoryState {
@@ -359,7 +359,7 @@ function parseSignatureArt(value: unknown): SignatureArtRef | null {
 const STD_FONTS: ReadonlySet<unknown> = new Set<StdFont>(['sans', 'serif', 'mono']);
 const TEXT_ALIGNS: ReadonlySet<unknown> = new Set<TextAlign>(['left', 'center', 'right']);
 const REDACT_SOURCES: ReadonlySet<unknown> = new Set<RedactSource>(['text', 'area']);
-const DOC_PARTS: ReadonlySet<unknown> = new Set<DocPart>(['metadata', 'protection', 'bibliography']);
+const DOC_PARTS: ReadonlySet<unknown> = new Set<DocPart>(['metadata', 'protection', 'bibliography', 'ocr']);
 const CONTENT_KINDS: ReadonlySet<unknown> = new Set<ContentKind>(['textBox', 'image', 'redactMark']);
 
 function parseContentBody(value: Record<string, unknown>): ContentBody | null {

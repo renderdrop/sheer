@@ -219,7 +219,7 @@ guard_pdf_imports() {
   hits="$(
     grep -rnE --include='*.rs' --exclude-dir=target --exclude-dir=gen \
       '(^|[^A-Za-z0-9_])(pdfium_render|lopdf)([^A-Za-z0-9_]|$)' src-tauri 2>/dev/null |
-      grep -vE '^src-tauri/src/(engine|pdfwrite)/' |
+      grep -vE '^src-tauri/(src/(engine|pdfwrite)/|examples/)' |
       grep -vE '^[^:]+:[0-9]+:[[:space:]]*//'
   )"
   if [ -n "$hits" ]; then

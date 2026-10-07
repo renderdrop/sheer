@@ -56,6 +56,16 @@ impl std::io::Write for Counter {
 /// A fixed cost for what a step is besides the annotations in it.
 const STEP_OVERHEAD_BYTES: usize = 128;
 
+/// A rough 64 bytes per recognized word.
+fn ocr_bytes(layer: &crate::ocr::OcrPageLayer) -> usize {
+    layer
+        .lines
+        .iter()
+        .map(|line| line.words.len())
+        .sum::<usize>()
+        .saturating_mul(64)
+}
+
 /// The bytes a step holds, estimated as the length of the annotations in its slots as JSON.
 fn command_bytes(command: &DocCommand) -> usize {
     match command {
@@ -116,6 +126,16 @@ fn command_bytes(command: &DocCommand) -> usize {
                 .saturating_add(preview)
                 .saturating_add(text)
         }
+        DocCommand::ApplyOcr { layers } => layers
+            .iter()
+            .fold(STEP_OVERHEAD_BYTES, |total, (_, layer)| {
+                total.saturating_add(ocr_bytes(layer))
+            }),
+        DocCommand::RestoreOcr { layers } => layers
+            .iter()
+            .fold(STEP_OVERHEAD_BYTES, |total, (_, layer)| {
+                total.saturating_add(layer.as_deref().map_or(0, ocr_bytes))
+            }),
         DocCommand::ReorderPages { order } => {
             STEP_OVERHEAD_BYTES.saturating_add(order.len().saturating_mul(4))
         }

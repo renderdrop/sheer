@@ -8,6 +8,7 @@
 //! A `Batch` is one undo step made of several commands, run in order; if one fails the ones before it are rolled back.
 
 use std::collections::BTreeSet;
+use std::sync::Arc;
 
 use serde::Deserialize;
 
@@ -27,6 +28,7 @@ use super::text_edit::{self, LineKey, PageEdits, TextFit, TextScope};
 use crate::documents::PageId;
 use crate::error::AppError;
 use crate::limits;
+use crate::ocr::OcrPageLayer;
 use crate::security::secret::Ticket;
 
 #[derive(Debug, Clone, Deserialize)]
@@ -130,6 +132,17 @@ pub enum DocCommand {
         slot: PageSlot,
         edits: Option<PageEdits>,
     },
+    /// Puts recognized text layers on pages (ADR-134; label `ocr.apply`): one undo step, replacing a page's earlier layer. Internal: what the
+    /// OCR job makes of its result. The layers are written into the file at the next save only.
+    #[serde(skip_deserializing)]
+    ApplyOcr {
+        layers: Vec<(PageId, Arc<OcrPageLayer>)>,
+    },
+    /// Puts the OCR layers of pages as they were (`None`: the page has none). Internal: the inverse of `ApplyOcr`, and its own inverse.
+    #[serde(skip_deserializing)]
+    RestoreOcr {
+        layers: Vec<(PageId, Option<Arc<OcrPageLayer>>)>,
+    },
     /// Sets the rotation of pages. Internal: the inverse of a rotation.
     #[serde(skip_deserializing)]
     SetRotations { rotations: Vec<(PageId, u16)> },
@@ -176,6 +189,7 @@ pub const LABEL_PROTECT_REMOVE: &str = "protect.remove";
 pub const LABEL_METADATA_SET: &str = "metadata.set";
 pub const LABEL_METADATA_REMOVE: &str = "metadata.remove";
 pub const LABEL_BIBLIOGRAPHY_SET: &str = "bibliography.set";
+pub const LABEL_OCR_APPLY: &str = "ocr.apply";
 
 fn is_key(text: &str) -> bool {
     !text.is_empty()
@@ -207,6 +221,7 @@ impl DocCommand {
             Self::RestoreRedaction { .. } => LABEL_REDACT_APPLY.to_owned(),
             Self::EditTextLine { .. } => LABEL_EDIT_TEXT.to_owned(),
             Self::RestoreTextEdit { .. } => LABEL_EDIT_TEXT.to_owned(),
+            Self::ApplyOcr { .. } | Self::RestoreOcr { .. } => LABEL_OCR_APPLY.to_owned(),
             // `DocState::execute` says `protect.remove` when the ticket is a removal.
             Self::SetProtection { .. } => LABEL_PROTECT_SET.to_owned(),
             Self::SetMetadata { .. } => LABEL_METADATA_SET.to_owned(),
@@ -225,6 +240,8 @@ impl DocCommand {
             self,
             Self::RotatePages { .. }
                 | Self::RestoreTextEdit { .. }
+                | Self::ApplyOcr { .. }
+                | Self::RestoreOcr { .. }
                 | Self::CropPages { .. }
                 | Self::MarkRedactions { .. }
                 | Self::RestoreRedaction { .. }
@@ -327,7 +344,17 @@ impl DocCommand {
             | Self::RestorePages { .. }
             | Self::AddPages { .. }
             | Self::RestoreRedaction { .. }
-            | Self::RestoreTextEdit { .. } => Ok(()),
+            | Self::RestoreTextEdit { .. }
+            | Self::RestoreOcr { .. } => Ok(()),
+            Self::ApplyOcr { layers } => {
+                if layers.is_empty() {
+                    Err(AppError::invalid("pages"))
+                } else if layers.len() > limits::MAX_PAGES as usize {
+                    Err(AppError::limit("pages", u64::from(limits::MAX_PAGES)))
+                } else {
+                    Ok(())
+                }
+            }
             Self::EditTextLine { text, .. } => {
                 if text.chars().count() > limits::TEXT_EDIT_LINE_CHARS {
                     Err(AppError::limit("text", limits::TEXT_EDIT_LINE_CHARS as u64))
@@ -497,6 +524,14 @@ impl DocCommand {
                 slot,
                 edits,
             } => text_edit::restore(state, *page_id, slot, edits.as_ref(), &mut delta)?,
+            Self::ApplyOcr { layers } => {
+                let layers: Vec<_> = layers
+                    .iter()
+                    .map(|(page, layer)| (*page, Some(Arc::clone(layer))))
+                    .collect();
+                super::ocr_layers::restore(state, &layers, &mut delta)?
+            }
+            Self::RestoreOcr { layers } => super::ocr_layers::restore(state, layers, &mut delta)?,
             Self::MarkRedactions { marks } => redaction::mark(state, marks, &mut delta)?,
             Self::RestoreRedaction {
                 slots,

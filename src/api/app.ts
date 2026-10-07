@@ -5,6 +5,7 @@ import { call } from './call';
 import { parseTagDefs, type TagDef } from './cite';
 import { parseOpenOutcome, type OpenOutcome } from './documents';
 import { toAppError } from './errors';
+import { parseOcrEvent, type OcrEvent } from './ocr';
 import { parseUpdateInfo, type UpdateInfo } from './update';
 
 /** Wire names of the backend's `Platform` (src-tauri/src/platform/mod.rs). */
@@ -265,6 +266,8 @@ export type AppEvent =
   | { type: 'engineRestarted'; lost: number[] }
   /** The automatic update check found a newer version (ADR-053 section 3). */
   | { type: 'updateAvailable'; info: UpdateInfo }
+  /** Text recognition made progress or ended (ADR-134); see `ocr.ts`. */
+  | OcrEvent
   | OpenOutcome;
 
 /** A pushed event from a channel message; `null` if the message is not one. */
@@ -289,6 +292,7 @@ export function parseAppEvent(message: unknown): AppEvent | null {
     const info = parseUpdateInfo((message as { info?: unknown }).info);
     return info === null ? null : { type, info };
   }
+  if (type === 'ocrProgress' || type === 'ocrFinished') return parseOcrEvent(message);
   if (type === 'closeRequested') return { type };
   if (type === 'dropHover') {
     if (typeof active !== 'boolean') return null;

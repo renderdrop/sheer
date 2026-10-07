@@ -49,6 +49,8 @@ pub enum DocPart {
     Protection,
     /// The bibliographic record (ADR-119): the UI re-reads `get_bibliography`.
     Bibliography,
+    /// The OCR text layers of pages (ADR-134).
+    Ocr,
 }
 
 /// An annotation in the state, with what only Rust knows about it.
@@ -177,6 +179,8 @@ pub struct DocState {
     keys_unread: HashSet<u32>,
     /// The text edits of each page (by page id), replayed over the file page (ADR-125, ARCHITECTURE §13.4).
     pub(super) text_edits: HashMap<u32, super::text_edit::PageEdits>,
+    /// The OCR text layer of each page (by page id) that the session made and the file does not have yet (ADR-134); written at save.
+    pub ocr_layers: std::collections::BTreeMap<u32, std::sync::Arc<crate::ocr::OcrPageLayer>>,
 }
 
 /// Bytes of the strings an imported annotation brings.
@@ -244,6 +248,7 @@ impl DocState {
             bibliography: super::bibliography::BibliographyState::default(),
             keys_unread: HashSet::new(),
             text_edits: HashMap::new(),
+            ocr_layers: std::collections::BTreeMap::new(),
         }
     }
 

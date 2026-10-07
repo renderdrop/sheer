@@ -1524,6 +1524,7 @@
   "editText.error": "Couldn't change the line.",
   "editText.previewRefused": "No preview for this edit. The line may still apply.",
   "editText.undo": "Edit text",
+  "ocr.apply": "Recognize text",
   "editText.aria.line": "Line {line} on page {page}",
   "editText.announce.start": "Editing. Enter applies, Escape cancels.",
   "editText.announce.committed": "Line changed",
