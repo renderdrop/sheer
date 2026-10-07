@@ -386,7 +386,7 @@ new engine capability or dependency is needed. Not picked by the loop before v1.
 - [x] v1.9.2 — Headers and footers (default: page number + date) (0b4c56b)
 - [x] v1.9.3 — Comment export as a PDF summary and as Markdown (a42fb23, save fix b0066da)
 - [x] v1.9.4 — Fifth citation style "Deutsche Zitierweise" (full footnote first, short reference after) (6b67fb6)
-- [ ] v1.9 acceptance — acceptance build, security-reviewer, designer round, tag v1.9.0
+- [x] v1.9 acceptance — acceptance build, security-reviewer, designer round, tag v1.9.0 (v19 63/63, tips 45/45, OCR 38/38; gate 1318/1318; smoke 17/17; real-input PASS; security PASS; designer PASS)
 
 ### v2.0-rc.1 (ADR-135 §6)
 - [ ] v2.0 polish — every open Politur ticket (v1.6, backlog, v1.7–v1.9 minors)
