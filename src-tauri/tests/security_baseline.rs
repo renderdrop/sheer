@@ -974,10 +974,20 @@ fn panics_unwind_so_the_engine_guard_works() {
         "catch_unwind needs unwinding (P5)"
     );
     assert!(section(&manifest, "profile.release").contains(&"panic = \"unwind\"".to_owned()));
-    assert!(
-        !root().join(".cargo/config.toml").exists(),
-        "check it for panic=abort"
-    );
+    // Rule 17 / ADR-136: the cargo config may only cap the build jobs; no rustflags, profiles or panic strategy.
+    if let Ok(config) = std::fs::read_to_string(root().join(".cargo/config.toml")) {
+        let settings: Vec<&str> = config
+            .lines()
+            .map(str::trim)
+            .filter(|line| !line.is_empty() && !line.starts_with('#'))
+            .collect();
+        assert!(
+            settings
+                .iter()
+                .all(|line| *line == "[build]" || line.starts_with("jobs =")),
+            "src-tauri/.cargo/config.toml may only set [build] jobs (check it for panic=abort): {settings:?}"
+        );
+    }
 }
 
 #[test]

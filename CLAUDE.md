@@ -6,9 +6,10 @@ Work is orchestrated autonomously per `ORCHESTRATOR_PROMPT.md`; resume state liv
 
 ## Commands
 
-- `npm run check` — typecheck, lint, vitest, clippy -D warnings, cargo test, cargo deny, npm audit
+- `npm run check` — typecheck, lint, vitest, clippy -D warnings, cargo test, cargo deny, npm audit (orchestrator, once before each commit)
+- `npm run check:fast` — only what changed, < 60 s (agents while working)
+- `npm run cargo -- <args>` — cargo in `src-tauri/` with six jobs, low priority, sccache (instead of a bare `cargo`)
 - `npm run tauri dev` — run the app
-- `cargo test` (in `src-tauri/`) — Rust tests only
 - Rust lives in `~/.cargo/bin` (may not be on PATH); scripts prepend it.
 
 ## Rules (short)
@@ -29,6 +30,7 @@ Work is orchestrated autonomously per `ORCHESTRATOR_PROMPT.md`; resume state liv
 14. Writes, deletes and moves only inside the repo and the Claude temp folder; no reads outside the repo (test material: `review/owner/`). Enforced by the `guard-paths.sh` PreToolUse hook, exit 2 (ADR-127).
 15. Acceptance only through the acceptance build (`npm run build:acceptance`, id `app.sheer.acceptance`, feature `automation`): dialogs answered by the script queue, input via CDP (`scripts/ui/accept/`); real mouse/keyboard only in the final smoke (≤ 5 min, announced before and after); dialog guard aborts with Esc + report. The owner's installation is never touched (ADR-131).
 16. Owner corpus stays private (ADR-133): versioned files, reports and commit messages never name file names, titles, persons or personal data from `review/owner/`; use IDs (`owner-pdf-E4`, `corpus-07`) resolved via the untracked `review/owner/INDEX.md`.
+17. Resources and pace (ADR-136): at most two agents with cargo at once (frontend agents up to four); six rustc jobs, builds at low priority; `guard-resources.sh` blocks builds under 8 GB free RAM or 40 GB free disk; `target/` ≤ 60 GB via `npm run target:budget` (cargo sweep, not clean); sccache in `.tools/`; agents run `check:fast`, the full check runs once before each commit; wait for agents by notification, never a foreground sleep > 2 min; `npm run accept:clean` after every acceptance; at session start commit or discard what `git status` shows.
 
 ## Code
 

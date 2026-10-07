@@ -1,0 +1,5 @@
+# Rule 17 / ADR-136: at most six parallel rustc jobs per cargo run, so two agents building at once leave the machine usable.
+# Cargo reads this file only when it runs inside src-tauri/; the repo scripts (scripts/build-env.sh, scripts/build-env.mjs) set
+# CARGO_BUILD_JOBS=6 for runs from the repo root.
+[build]
+jobs = 6

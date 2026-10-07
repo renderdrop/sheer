@@ -4,10 +4,15 @@
 // both Windows and macOS without a dependency.
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { buildEnv } from './build-env.mjs';
+
+// Rule 17: trim the build folders to their budget first (cargo-sweep, keeps them warm).
+spawnSync(process.execPath, [fileURLToPath(new URL('./target-budget.mjs', import.meta.url))], { stdio: 'inherit' });
 
 // Absolute: cargo runs inside src-tauri, where a relative path would land in src-tauri/src-tauri.
 const target = fileURLToPath(new URL('../src-tauri/target-acceptance', import.meta.url));
-const env = { ...process.env, CARGO_TARGET_DIR: target };
+// Six jobs, below-normal priority, sccache (rule 17, ADR-136).
+const env = { ...buildEnv(), CARGO_TARGET_DIR: target };
 const args = [
   'tauri',
   'build',

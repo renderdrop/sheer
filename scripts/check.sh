@@ -15,12 +15,14 @@ set -uo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
-# Rust lives in ~/.cargo/bin, which is not always on PATH (Windows shells, fresh CI images).
-export PATH="$HOME/.cargo/bin:$PATH"
+# Rust on PATH, six rustc jobs, and locally below-normal priority + sccache (rule 17, ADR-136).
+# shellcheck source=scripts/build-env.sh
+source "$ROOT/scripts/build-env.sh"
 export NO_COLOR=1 FORCE_COLOR=0 CARGO_TERM_COLOR=never CARGO_TERM_PROGRESS_WHEN=never
 
 MANIFEST="src-tauri/Cargo.toml"
-LOG_DIR="$(mktemp -d)"
+# Locally the logs go to the Claude temp folder, the only place outside the repo an agent may read (rule 14).
+if [ -z "${CI:-}" ] && [ -d "${TMP:-}/claude" ]; then LOG_DIR="$(mktemp -d "$TMP/claude/check.XXXXXX")"; else LOG_DIR="$(mktemp -d)"; fi
 FAILED=()
 TOTAL=0
 PART="${SHEER_CHECK_PART:-all}"
@@ -351,6 +353,8 @@ if [ "${SHEER_CHECK_SOURCE_ONLY:-}" = 1 ]; then return 0 2>/dev/null || exit 0; 
 # PDFium must be unpacked before any cargo step that builds: tauri-build checks the bundled resources. The script is a no-op
 # when the pinned build is already there.
 if want rust; then step "fetch-pdfium" bash scripts/fetch-pdfium.sh; fi
+# Rule 17: keep the build folders inside their budget before building (local only; a no-op without cargo-sweep in .tools/).
+if want rust && [ -z "${CI:-}" ]; then step "target budget" node scripts/target-budget.mjs; fi
 if want web; then step "version sync" bash scripts/bump-version.sh --check; fi
 
 if want web; then

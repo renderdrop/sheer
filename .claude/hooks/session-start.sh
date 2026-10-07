@@ -16,6 +16,11 @@ if [ -f "$ROOT/STATE.md" ]; then
     echo "=== open FEEDBACK items (before the roadmap) ==="; grep -m5 -E '^- \[ \]' "$ROOT/docs/FEEDBACK.md"
   fi
   echo "=== next open ROADMAP items ==="; grep -m5 -E '^- \[ \]' "$ROOT/ROADMAP.md" 2>/dev/null || true
+  # Rule 17 / ADR-136 (9): leftovers of an earlier session are committed (finished package) or discarded before new work.
+  DIRTY=$(git -C "$ROOT" status --short 2>/dev/null | head -n 30)
+  if [ -n "$DIRTY" ]; then
+    echo "=== git status: uncommitted leftovers — commit or discard them before new work (rule 17) ==="; echo "$DIRTY"
+  fi
 else
   echo "No STATE.md found: this is a fresh repo. Execute Phase 0 (Bootstrap)."
 fi

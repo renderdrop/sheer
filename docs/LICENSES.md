@@ -75,6 +75,8 @@ Run on developer machines and in CI only. Not part of the app and not linked int
 | actions/cache | GitHub Action | v6.1.0 | MIT | CI: cargo registry and `target/` cache. Pinned by commit SHA. |
 | actions/upload-artifact | GitHub Action | v7.0.1 | MIT | CI: unsigned debug bundles. Pinned by commit SHA. |
 | taiki-e/install-action | GitHub Action | v2.87.22 | Apache-2.0 OR MIT | CI: prebuilt, checksum-verified cargo-deny and cargo-audit. Pinned by commit SHA. |
+| sccache | cargo tool (local only) | 0.18.0 (`--no-default-features`: local disk cache only, no remote backends) | Apache-2.0 | Rule 17 / ADR-136: compiler cache for local builds, installed into the git-ignored `.tools/` by `npm run tools:install`; not used in CI. |
+| cargo-sweep | cargo tool (local only) | 0.8.0 | MIT | Rule 17 / ADR-136: `npm run target:budget` trims `src-tauri/target` to 60 GB (oldest artifacts first) instead of `cargo clean`; in `.tools/`, not used in CI. |
 
 Dependabot (`.github/dependabot.yml`) bumps these weekly together with the npm and cargo dependencies.
 

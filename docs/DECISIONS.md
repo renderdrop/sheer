@@ -2812,3 +2812,43 @@ during a run. Banner priority: redact > signature > OCR progress > form > OCR of
 **Addendum 2 (owner, 2026-10-07, mid-session).** The chain ends after part 1: v1.7 part 1 closes with the pre-release v1.7.0-beta.1
 and its report, then STOP. Parts 2–5 (macOS sidecar, v1.8, v1.9, v2.0-rc.1) are not started in this session; their ROADMAP items stay
 open for later sessions.
+
+## ADR-136 — Resource protection and pace (rule 17)
+
+**Status:** accepted (2026-10-07, owner instruction after session "Endspurt v2.0"; there `src-tauri/target` grew to 228 GB, the disk ran
+full and the session died with three agents mid-package).
+
+**Decisions (owner).**
+1. *Jobs and parallelism.* `src-tauri/.cargo/config.toml` sets `build.jobs = 6`; the repo scripts set `CARGO_BUILD_JOBS=6` too, because
+   cargo reads that file only when it runs inside `src-tauri/`. At most **two agents with cargo** run at the same time; frontend-only
+   agents up to four. This replaces "always four implementers in parallel" (ADR-030) where packages need cargo.
+2. *Resource guard.* PreToolUse hook `.claude/hooks/guard-resources.sh` (Bash, PowerShell) blocks build and test commands (cargo
+   build/test/clippy/run/check/bench/doc/install, `npm run check|check:fast|build|build:acceptance|tauri|test|fixtures:scans|bench|dev`,
+   vitest, the dev window) while less than **8 GB RAM** or **40 GB disk** is free; `cargo clean`/`cargo sweep`, `npm run accept:clean`
+   and everything else stay allowed. A failed measurement never blocks. Tested in `scripts/hooks/guard-resources.test.ts`.
+3. *Low priority.* `scripts/build-env.sh` / `scripts/build-env.mjs` (sourced by `npm run check`, `check:fast`, `cargo`, `build:acceptance`,
+   the dev window) lower the process to below-normal priority locally; on Windows cargo, rustc and node inherit the class (macOS/Linux:
+   `renice 10`). CI is untouched.
+4. *Size budget.* `npm run target:budget` trims `src-tauri/target` to **60 GB** and `src-tauri/target-acceptance` to 15 GB with
+   `cargo sweep --maxsize` (oldest artifacts first) instead of `cargo clean`, so builds stay warm. It runs at the start of every local
+   `npm run check` and `npm run build:acceptance`.
+5. *sccache.* Repo-local in `.tools/` (git-ignored; rule 14: nothing outside the repo), installed by `npm run tools:install`
+   (`cargo install --locked --root .tools`, sccache 0.18.0 without default features = local disk cache only, cargo-sweep 0.8.0;
+   both in LICENSES.md as local build tools). The build-env scripts set `RUSTC_WRAPPER` and `SCCACHE_DIR=.tools/sccache` (20 GB cap)
+   when it is installed; CI does not use it. Measured limits: hits need the same absolute target path (rebuilds after a sweep or
+   clean, branch switches); the workspace crate in incremental debug builds is not cacheable, so the gain is in dependencies and
+   release/acceptance builds.
+6. *Two-stage check.* `npm run check:fast [-- <base>]` (`scripts/check-fast.sh`, reuses `check.sh` functions): only what changed
+   against HEAD — tsc, eslint/prettier on changed files, `vitest related`, and for Rust fmt, clippy and `cargo test` filtered to the
+   changed modules; plus the cheap guards. Measured 27 s with a Rust change on a warm build. Agents run only this; the full
+   `npm run check` runs once before every commit, by the orchestrator. Agents use `npm run cargo -- <args>` instead of a bare `cargo`.
+7. *Event-driven waiting.* The orchestrator waits for agents through their notifications or a `run_in_background` command, never with a
+   foreground sleep over 2 minutes; `guard-bash.sh` blocks a foreground `sleep N` or a `seq 1 N`/`{1..N}` loop around `sleep S`
+   with N × S > 120 s.
+8. *Recordings.* After every acceptance (once the designer round has read them) `npm run accept:clean` deletes screenshots and
+   recordings under `review/` except `review/owner/`; PDFs and logs stay.
+9. *Session start.* `session-start.sh` prints `git status --short` when the tree is dirty; leftovers are committed (finished package)
+   or discarded file by file before new work.
+
+**Consequences.** Builds take longer on a cold machine (six jobs) but two agents can no longer starve the machine; the disk cannot fill up
+silently; a quick agent loop stays under a minute. Dev-window kills target only `target\debug\sheer.exe` (never `/IM sheer.exe`).
