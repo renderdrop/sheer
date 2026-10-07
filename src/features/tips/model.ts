@@ -1,17 +1,19 @@
 import { TIPS_SEEN_MAX } from '../../api/app';
 import type { ToolId } from '../../stores/ui';
 
-/** The tools that have a first-use tip (DESIGN 3.47), by the id stored in the setting `tipsSeen`. */
+/** The tools that have a first-use tip (DESIGN 3.47), by the id stored in the setting `tipsSeen`.
+ * The four clip tips have their own ids (ADR-139); the v1.7 text-tip ids `highlight`, `sign`, `pages`, `form` stay in old
+ * settings and are ignored. */
 export const TIP_IDS = [
-  'highlight',
+  'highlightClip',
   'cite',
   'note',
   'text',
   'draw',
   'shapes',
-  'sign',
-  'pages',
-  'form',
+  'signClip',
+  'pagesClip',
+  'formClip',
   'insertText',
   'crop',
   'redact',
@@ -21,7 +23,7 @@ export const TIP_IDS = [
 export type TipId = (typeof TIP_IDS)[number];
 
 /** The four situations that show a clip with the text (DESIGN 3.13 C1); every other tip is text only. */
-export const CLIP_TIPS = ['highlight', 'form', 'sign', 'pages'] as const satisfies readonly TipId[];
+export const CLIP_TIPS = ['highlightClip', 'formClip', 'signClip', 'pagesClip'] as const satisfies readonly TipId[];
 export type ClipTipId = (typeof CLIP_TIPS)[number];
 
 export function isClipTip(id: TipId): id is ClipTipId {
@@ -34,7 +36,7 @@ export const MAX_TIPS_PER_SESSION = 3;
 /** The tool-row items a tip may point at, best first: the slot ids of the F15 tool row (they differ from the tip ids). */
 export function toolbarItemsOf(id: TipId): readonly string[] {
   switch (id) {
-    case 'sign':
+    case 'signClip':
       return ['signature'];
     case 'insertText':
       return ['textBox'];
@@ -42,9 +44,9 @@ export function toolbarItemsOf(id: TipId): readonly string[] {
       return ['freeText'];
     case 'smartlinks':
       return ['smartLinks'];
-    case 'pages':
+    case 'pagesClip':
       return ['organize'];
-    case 'highlight':
+    case 'highlightClip':
       return ['highlight', 'underline', 'strikeout'];
     default:
       return [id];
@@ -60,16 +62,18 @@ export function toolbarItemOf(id: TipId): string {
 export function tipOfTool(tool: ToolId): TipId | null {
   switch (tool) {
     case 'highlight':
+      return 'highlightClip';
+    case 'pages':
+      return 'pagesClip';
     case 'cite':
     case 'note':
     case 'text':
     case 'draw':
     case 'shapes':
-    case 'pages':
     case 'crop':
       return tool;
     case 'signature':
-      return 'sign';
+      return 'signClip';
     case 'textBox':
       return 'insertText';
     case 'editText':

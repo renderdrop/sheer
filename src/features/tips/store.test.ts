@@ -4,7 +4,7 @@ import type { TipId } from './model';
 import { useTips } from './store';
 
 const A = 'draw' as TipId;
-const B = 'highlight' as TipId;
+const B = 'highlightClip' as TipId;
 
 beforeEach(() => useTips.getState().resetSession());
 

@@ -49,14 +49,14 @@ describe('the seen-state logic', () => {
     expect(tipOfTool('select')).toBeNull();
     expect(tipOfTool('form')).toBeNull();
     expect(tipOfTool('image')).toBeNull();
-    expect(tipOfTool('signature')).toBe('sign');
+    expect(tipOfTool('signature')).toBe('signClip');
     expect(tipOfTool('textBox')).toBe('insertText');
     expect(tipFor({ activeTool: 'select', redactMode: true })).toBe('redact');
     expect(tipFor({ activeTool: 'crop', redactMode: false })).toBe('crop');
-    expect(toolbarItemOf('sign')).toBe('signature');
+    expect(toolbarItemOf('signClip')).toBe('signature');
     expect(toolbarItemOf('draw')).toBe('draw');
     expect(toolbarItemOf('text')).toBe('freeText');
-    expect(toolbarItemOf('pages')).toBe('organize');
+    expect(toolbarItemOf('pagesClip')).toBe('organize');
   });
 
   it('shows an unseen tip once settings are known, with no tour and no other tip', () => {
@@ -142,7 +142,7 @@ describe('when a tip shows', () => {
     await waitFor(() => expect(useTips.getState().current).toBe('note'));
     act(() => useUi.setState({ activeTool: 'highlight' }));
     expect(useTips.getState().current).toBeNull();
-    await waitFor(() => expect(useTips.getState().current).toBe('highlight'));
+    await waitFor(() => expect(useTips.getState().current).toBe('highlightClip'));
     act(() => useTour.getState().start(1));
     expect(useTips.getState().current).toBeNull();
     unbind();
@@ -187,7 +187,7 @@ describe('the session cap', () => {
     for (const tool of ['highlight', 'note', 'text'] as const) {
       useUi.setState({ activeTool: tool });
       await maybeShowTip();
-      expect(useTips.getState().current).toBe(tool);
+      expect(useTips.getState().current).toBe(tool === 'highlight' ? 'highlightClip' : tool);
       useTips.getState().dismiss();
     }
     useUi.setState({ activeTool: 'draw' });
@@ -208,7 +208,7 @@ describe('the session cap', () => {
       await maybeShowTip();
       expect(useTips.getState().current).toBeNull();
     }
-    expect(useSettings.getState().tipsSeen).toEqual(['highlight', 'note', 'text']);
+    expect(useSettings.getState().tipsSeen).toEqual(['highlightClip', 'note', 'text']);
   });
 
   it('stays quiet while a tour is paused or running, and keeps the cap untouched', async () => {

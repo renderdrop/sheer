@@ -2,7 +2,7 @@
 // (rules 13 and 15): CDP Page.captureScreenshot of the web view, never the screen; self-made documents only (welcome sample copy,
 // tests/fixtures/form-clip.pdf). One launch per clip, so every clip starts from the same clean state.
 // Prereq: npm run build:acceptance; node scripts/fixtures/form-clip.mjs. Run: node scripts/ui/accept/record-tips.mjs
-// Env: TIPS_ONLY=highlight,pages to record a subset. Output: src/assets/tips/{id}.png (APNG, 640x400 or 480x300 at scale 4/3 = 640x400)
+// Env: TIPS_ONLY=highlight,pages to record a subset. Output: src/assets/tips/{id}Clip.png (ids highlight,form,sign,pages) (APNG, 640x400 or 480x300 at scale 4/3 = 640x400)
 // and {id}-poster.png. The web view has no OS pointer, so none is in the frames (no cursor artefact by construction).
 import { copyFileSync, existsSync, mkdirSync, statSync } from 'node:fs';
 import { resolve } from 'node:path';
@@ -35,7 +35,7 @@ async function prepare(ctx, path) {
     welcomeTour: 'shown',
     authorPrompt: 'done',
     pageSidebarCollapsed: true,
-    tipsSeen: ['highlight', 'form', 'sign', 'pages', 'note', 'text', 'draw', 'shapes'],
+    tipsSeen: ['highlightClip', 'formClip', 'signClip', 'pagesClip', 'note', 'text', 'draw', 'shapes'],
   };
   const call = (p) =>
     ev(
@@ -114,14 +114,14 @@ async function record(ctx, id, rect, scale, script, extra = {}) {
     seconds: SECONDS,
     fps: FPS,
     scale,
-    out: resolve(OUT, `${id}.png`),
-    stillOut: resolve(OUT, `${id}-poster.png`),
+    out: resolve(OUT, `${id}Clip.png`),
+    stillOut: resolve(OUT, `${id}Clip-poster.png`),
     plays: 1,
     script,
     ...extra,
   });
   await assertClean(ctx, `after ${id}`);
-  const poster = statSync(resolve(OUT, `${id}-poster.png`)).size;
+  const poster = statSync(resolve(OUT, `${id}Clip-poster.png`)).size;
   const ok = res.bytes <= 600 * 1024 && poster <= 120 * 1024;
   results.check(
     `${id} clip`,

@@ -45,14 +45,14 @@ function formDocument(): number | null {
 
 /** Whether the situation of the tip is still there (the tool is on, the mode, the tab). */
 function stillOn(id: TipId): boolean {
-  if (id === 'form') return formDoc === null ? formDocument() !== null : formDocument() === formDoc;
+  if (id === 'formClip') return formDoc === null ? formDocument() !== null : formDocument() === formDoc;
   return tipFor(useUi.getState()) === id;
 }
 
 /** The situations that are on now, most specific first: the active tool's tip, then the form's. */
 function situations(): TipId[] {
   const tool = tipFor(useUi.getState());
-  return [...(tool === null ? [] : [tool]), ...(formDocument() === null ? [] : (['form'] as const))];
+  return [...(tool === null ? [] : [tool]), ...(formDocument() === null ? [] : (['formClip'] as const))];
 }
 
 function overlayOpen(): boolean {
@@ -80,8 +80,8 @@ export async function maybeShowTip(): Promise<void> {
   const context = contextNow();
   const id = situations().find((candidate) => mayShow(candidate, context));
   if (id === undefined) return;
-  const doc = id === 'form' ? formDocument() : null;
-  await showTipFor(id, () => (id === 'form' ? formDocument() === doc : stillOn(id)), doc);
+  const doc = id === 'formClip' ? formDocument() : null;
+  await showTipFor(id, () => (id === 'formClip' ? formDocument() === doc : stillOn(id)), doc);
 }
 
 /**
@@ -153,7 +153,7 @@ export function bindTips(): () => void {
   });
   const stopForms = useForms.subscribe((state, previous) => {
     const current = useTips.getState().current;
-    if (current === 'form' && formDoc !== null) {
+    if (current === 'formClip' && formDoc !== null) {
       // The first value committed in the form ends the form tip (C1): the store's fields change identity then.
       if (state.byDoc[formDoc]?.fields !== previous.byDoc[formDoc]?.fields) useTips.getState().dismiss();
       return;

@@ -3,7 +3,7 @@
 // Prereq: npm run build:acceptance; node scripts/fixtures/form-clip.mjs. Run: node scripts/ui/accept/v18-tips.mjs
 // One launch. Cases 1-4 run in German and once more in English; 5-8 in German. Before every case `tipsSeen` is reset to [] and
 // `tipsEnabled` to true (update_settings + reload, which also clears the per-session set of the tip runtime).
-// Screenshots (light, German): review/v180/shots/tip-{highlight,form,sign,pages}.png.
+// Screenshots (light, German): review/v180/shots/tip-{highlightClip,formClip,signClip,pagesClip}.png.
 import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { createResults, runSession, openAndWait, sleep, SCROLLER } from './harness.mjs';
@@ -222,11 +222,11 @@ const session = async (ctx) => {
     await open(TEXT);
     await mode('comment');
     await tool('highlight');
-    await waitTip('highlight');
+    await waitTip('highlightClip');
     const m = await measure();
     C(
       `${tag} 1 highlight: clip tip shows (img src ends with the clip, alt set)`,
-      clipSrc(m, 'highlight', false) && m.alt.length > 0,
+      clipSrc(m, 'highlightClip', false) && m.alt.length > 0,
       `${m?.src}; alt "${m?.alt}"`,
     );
     C(
@@ -234,8 +234,8 @@ const session = async (ctx) => {
       m.hasAnchor && m.over.length === 0,
       `anchor ${m.hasAnchor}; over: ${m.over.join(',') || '-'}`,
     );
-    if (shot) await input.screenshot(`${SHOTS}/tip-highlight`);
-    C(`${tag} 1 highlight: tipsSeen holds the id`, (await seen()).includes('highlight'), (await seen()).join(','));
+    if (shot) await input.screenshot(`${SHOTS}/tip-highlightClip`);
+    C(`${tag} 1 highlight: tipsSeen holds the id`, (await seen()).includes('highlightClip'), (await seen()).join(','));
     await dismiss();
     C(`${tag} 1 highlight: dismiss removes the tip`, !(await anyTip()), '');
     // same session: release and select again, then a neighbour tool and back
@@ -254,21 +254,21 @@ const session = async (ctx) => {
   async function caseForm(tag, { shot = false } = {}) {
     await fresh();
     await open(FORM);
-    await waitTip('form', 12000);
+    await waitTip('formClip', 12000);
     const m = await measure();
-    C(`${tag} 2 form: tip shows with its clip`, clipSrc(m, 'form', false) && m.alt.length > 0, `${m?.src}`);
+    C(`${tag} 2 form: tip shows with its clip`, clipSrc(m, 'formClip', false) && m.alt.length > 0, `${m?.src}`);
     C(
       `${tag} 2 form: card never covers a field (nor the anchor)`,
       m.over.length === 0,
       `anchor ${m.hasAnchor}; over: ${m.over.join(',') || '-'}`,
     );
-    if (shot) await input.screenshot(`${SHOTS}/tip-form`);
+    if (shot) await input.screenshot(`${SHOTS}/tip-formClip`);
     // commit a field value: click into the first field, type, Tab (blur commits)
     await input.click({ selector: `${SCROLLER} input`, nth: 0 });
     await input.insertText('Alex Example');
     await input.press('Tab');
     await input
-      .waitFor(`!document.querySelector('[data-surface="tip"][data-tip-id="form"]')`, {
+      .waitFor(`!document.querySelector('[data-surface="tip"][data-tip-id="formClip"]')`, {
         timeoutMs: 6000,
         what: 'form tip gone after the commit',
       })
@@ -301,22 +301,22 @@ const session = async (ctx) => {
       );
       await sleep(1500);
     }
-    await waitTip('sign', 12000);
+    await waitTip('signClip', 12000);
     const m = await measure();
-    C(`${tag} 3 sign: sign tip shows with its clip`, clipSrc(m, 'sign', false) && m.alt.length > 0, `${m?.src}`);
+    C(`${tag} 3 sign: sign tip shows with its clip`, clipSrc(m, 'signClip', false) && m.alt.length > 0, `${m?.src}`);
     C(`${tag} 3 sign: card avoids inputs and the anchor`, m.over.length === 0, `over: ${m.over.join(',') || '-'}`);
-    if (shot) await input.screenshot(`${SHOTS}/tip-sign`);
+    if (shot) await input.screenshot(`${SHOTS}/tip-signClip`);
   }
 
   async function casePages(tag, { shot = false } = {}) {
     await fresh();
     await open(TEXT);
     await mode('pages');
-    await waitTip('pages');
+    await waitTip('pagesClip');
     const m = await measure();
-    C(`${tag} 4 pages: pages tip shows with its clip`, clipSrc(m, 'pages', false) && m.alt.length > 0, `${m?.src}`);
+    C(`${tag} 4 pages: pages tip shows with its clip`, clipSrc(m, 'pagesClip', false) && m.alt.length > 0, `${m?.src}`);
     C(`${tag} 4 pages: card avoids inputs and the anchor`, m.over.length === 0, `over: ${m.over.join(',') || '-'}`);
-    if (shot) await input.screenshot(`${SHOTS}/tip-pages`);
+    if (shot) await input.screenshot(`${SHOTS}/tip-pagesClip`);
     await mode('read');
     await input
       .waitFor(`!document.querySelector('[data-surface="tip"]')`, { timeoutMs: 4000, what: 'pages tip gone' })
@@ -337,11 +337,11 @@ const session = async (ctx) => {
     await fresh();
     await open(TEXT);
     await mode('pages');
-    await waitTip('pages');
+    await waitTip('pagesClip');
     await dismiss();
     C(
       'de 5 once: tipsSeen contains pages after the dismiss',
-      (await seen()).includes('pages'),
+      (await seen()).includes('pagesClip'),
       (await seen()).join(','),
     );
     await mode('read');
@@ -396,12 +396,12 @@ const session = async (ctx) => {
     C('de 6 on: the toggle turns tips on again', await setTipsSwitch(true), '');
     await closeSettings();
     await mode('pages');
-    await waitTip('pages').then(
+    await waitTip('pagesClip').then(
       () => C('de 6 on: unseen tips resume (pages tip shows)', true),
       (e) => C('de 6 on: unseen tips resume (pages tip shows)', false, e.message),
     );
     await dismiss();
-    C('de 6 on: tipsSeen now holds pages', (await seen()).includes('pages'), (await seen()).join(','));
+    C('de 6 on: tipsSeen now holds pages', (await seen()).includes('pagesClip'), (await seen()).join(','));
     await openSettings();
     await input.click({ text: T.reset, selector: 'button' });
     await sleep(800);
@@ -417,9 +417,9 @@ const session = async (ctx) => {
       await open(TEXT);
       await mode('comment');
       await tool('highlight');
-      await waitTip('highlight');
+      await waitTip('highlightClip');
       const m = await measure();
-      C('de 7 reduced motion: the tip shows the poster', clipSrc(m, 'highlight', true), `${m?.src}`);
+      C('de 7 reduced motion: the tip shows the poster', clipSrc(m, 'highlightClip', true), `${m?.src}`);
       C('de 7 reduced motion: no Replay button (only Hide)', m.buttons === 1, `${m.buttons} buttons`);
     } finally {
       await s.send('Emulation.setEmulatedMedia', { features: [] });
@@ -447,10 +447,10 @@ const session = async (ctx) => {
       await open(TEXT);
       await mode('comment');
       await tool('highlight');
-      await waitTip('highlight');
+      await waitTip('highlightClip');
       await check('highlight', await measure());
       await mode('pages');
-      await waitTip('pages', 15000).catch(() => {});
+      await waitTip('pagesClip', 15000).catch(() => {});
       await check('pages', await measure());
       await fresh();
       await open(TEXT);
@@ -459,11 +459,11 @@ const session = async (ctx) => {
         await sheet.click();
         await sleep(2000);
       }
-      await waitTip('sign', 15000).catch(() => {});
+      await waitTip('signClip', 15000).catch(() => {});
       await check('sign', await measure());
       await fresh();
       await open(FORM);
-      await waitTip('form', 15000).catch(() => {});
+      await waitTip('formClip', 15000).catch(() => {});
       await check('form', await measure());
     } finally {
       await s.send('Emulation.setDeviceMetricsOverride', {

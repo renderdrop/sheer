@@ -48,7 +48,7 @@ function resolveTipAnchor(id: TipId): ResolvedAnchor | null {
     if (band !== null) return { element: band, spec: { selector: REDACT_BAND, side: 'bottom', align: 'center' } };
   }
   // The form tip points at the banner's first-field link, else at the Fill & Sign segment.
-  if (id === 'form') {
+  if (id === 'formClip') {
     const link = document.querySelector<HTMLElement>(FORM_LINK);
     if (link !== null) return { element: link, spec: { selector: FORM_LINK, side: 'bottom', align: 'start' } };
     const segment = document.querySelector<HTMLElement>(FILL_SEGMENT);
@@ -84,7 +84,7 @@ function useAnchor(id: TipId): ResolvedAnchor | null {
       }
     });
     // The banner comes and goes in the document, the tool row's items inside the toolbar.
-    const root = id === 'form' ? document.body : document.querySelector('[role="toolbar"]');
+    const root = id === 'formClip' ? document.body : document.querySelector('[role="toolbar"]');
     if (root !== null) observer.observe(root, { childList: true, subtree: true });
     return () => {
       window.removeEventListener('resize', find);
@@ -363,7 +363,7 @@ function useClipReady(id: TipId | null, clip: Clip | null, reduce: boolean): Dec
 }
 
 function TipBody({ id }: { id: TipId | null }) {
-  const anchor = useAnchor(id ?? 'highlight');
+  const anchor = useAnchor(id ?? 'highlightClip');
   const reduce = useReducedMotion() === true;
   const clip = id !== null && isClipTip(id) ? clipOf(id) : null;
   const decode = useClipReady(id, clip, reduce);

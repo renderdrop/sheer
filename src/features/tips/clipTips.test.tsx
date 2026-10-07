@@ -104,8 +104,8 @@ describe('the form tip situation', () => {
   it('shows for a document with a fillable field that becomes the active tab, once', async () => {
     const unbind = bindTips();
     act(() => openForm(1, [FIELD]));
-    await waitFor(() => expect(useTips.getState().current).toBe('form'));
-    expect(useSettings.getState().tipsSeen).toEqual(['form']);
+    await waitFor(() => expect(useTips.getState().current).toBe('formClip'));
+    expect(useSettings.getState().tipsSeen).toEqual(['formClip']);
     act(() => useTips.getState().dismiss());
     act(() => useDocuments.setState({ activeId: 2 }));
     act(() => useDocuments.setState({ activeId: 1 }));
@@ -127,26 +127,26 @@ describe('the form tip situation', () => {
     expect(updateSettingsMock).not.toHaveBeenCalled();
     // Leaving Seiten brings the situation back.
     act(() => useUi.setState({ mode: 'read' }));
-    await waitFor(() => expect(useTips.getState().current).toBe('form'));
+    await waitFor(() => expect(useTips.getState().current).toBe('formClip'));
     unbind();
   });
 
   it('goes with the tab, with Seiten and with the first committed value', async () => {
     const unbind = bindTips();
     act(() => openForm(1, [FIELD]));
-    await waitFor(() => expect(useTips.getState().current).toBe('form'));
+    await waitFor(() => expect(useTips.getState().current).toBe('formClip'));
     act(() => useDocuments.setState({ activeId: 2 }));
     expect(useTips.getState().current).toBeNull();
     resetSession();
     useSettings.setState({ tipsSeen: [] });
     act(() => openForm(1, [FIELD]));
-    await waitFor(() => expect(useTips.getState().current).toBe('form'));
+    await waitFor(() => expect(useTips.getState().current).toBe('formClip'));
     act(() => useUi.setState({ mode: 'pages' }));
     expect(useTips.getState().current).toBeNull();
     resetSession();
     useSettings.setState({ tipsSeen: [] });
     act(() => useUi.setState({ mode: 'read' }));
-    await waitFor(() => expect(useTips.getState().current).toBe('form'));
+    await waitFor(() => expect(useTips.getState().current).toBe('formClip'));
     act(() => useForms.setState({ byDoc: { 1: { status: 'ready', fields: [{ ...FIELD }], hasScripts: false } } }));
     expect(useTips.getState().current).toBeNull();
     unbind();
@@ -155,7 +155,7 @@ describe('the form tip situation', () => {
   it('points at the Fill & Sign segment when the banner is absent, and at the banner link when it is there', async () => {
     const { rerender } = setup(<Fixture />);
     act(() => openForm(1, [FIELD]));
-    act(() => useTips.getState().show('form'));
+    act(() => useTips.getState().show('formClip'));
     const card = await screen.findByRole('region', { name: 'This document is a form' });
     const segment = screen.getByRole('button', { name: 'Fill and sign' });
     expect(segment.getAttribute('aria-describedby')).toBe(card.querySelector('p')?.id);
@@ -192,7 +192,7 @@ describe('tips switched off and the queue', () => {
     ).toBe(false);
     const unbind = bindTips();
     act(() => useSettings.setState({ tipsEnabled: true }));
-    await waitFor(() => expect(useTips.getState().current).toBe('highlight'));
+    await waitFor(() => expect(useTips.getState().current).toBe('highlightClip'));
     act(() => useSettings.setState({ tipsEnabled: false }));
     expect(useTips.getState().current).toBeNull();
     unbind();
@@ -213,7 +213,7 @@ describe('tips switched off and the queue', () => {
     useNotices.getState().request({ id: 'toast', kind: 'info' });
     act(() => useUi.setState({ activeTool: 'highlight' }));
     act(() => useNotices.getState().release('toast'));
-    await waitFor(() => expect(useTips.getState().current).toBe('highlight'));
+    await waitFor(() => expect(useTips.getState().current).toBe('highlightClip'));
     unbind();
   });
 
@@ -227,7 +227,7 @@ describe('tips switched off and the queue', () => {
     expect(useTips.getState().current).toBeNull();
     expect(updateSettingsMock).not.toHaveBeenCalled();
     act(() => dialog.remove());
-    await waitFor(() => expect(useTips.getState().current).toBe('sign'));
+    await waitFor(() => expect(useTips.getState().current).toBe('signClip'));
     unbind();
   });
 
@@ -240,17 +240,17 @@ describe('tips switched off and the queue', () => {
     useUi.setState({ activeTool: 'signature' });
     await maybeShowTip();
     expect(useTips.getState().current).toBeNull();
-    expect(useSettings.getState().tipsSeen).not.toContain('sign');
+    expect(useSettings.getState().tipsSeen).not.toContain('signClip');
   });
 });
 
 describe('the clip card', () => {
   it('is a region named by its title with the clip, text, Replay and Hide; replay re-keys the image', async () => {
     const { user } = setup(<Fixture />);
-    act(() => useTips.getState().show('highlight'));
+    act(() => useTips.getState().show('highlightClip'));
     const card = await screen.findByRole('region', { name: 'Highlight text' });
     expect(card.getAttribute('data-surface')).toBe('tip');
-    expect(card.getAttribute('data-tip-id')).toBe('highlight');
+    expect(card.getAttribute('data-tip-id')).toBe('highlightClip');
     expect(card.textContent).toContain('Drag across text.');
     expect(document.activeElement).toBe(document.body);
     const first = await screen.findByRole('img', {
@@ -268,7 +268,7 @@ describe('the clip card', () => {
   it('with reduced motion shows the poster and has no Replay', async () => {
     reduceMotion = true;
     setup(<Fixture />);
-    act(() => useTips.getState().show('highlight'));
+    act(() => useTips.getState().show('highlightClip'));
     const image = await screen.findByRole('img');
     expect(image.getAttribute('src')).toBe('/poster.png');
     expect(screen.queryByRole('button', { name: 'Play again' })).toBeNull();
@@ -276,7 +276,7 @@ describe('the clip card', () => {
 
   it('falls back to the poster when the animation fails to load', async () => {
     setup(<Fixture />);
-    act(() => useTips.getState().show('highlight'));
+    act(() => useTips.getState().show('highlightClip'));
     const image = await screen.findByRole('img');
     act(() => {
       image.dispatchEvent(new Event('error'));
@@ -287,7 +287,7 @@ describe('the clip card', () => {
   it('is the text-only card with the same body and no title when the clip is missing', async () => {
     vi.mocked(clipOf).mockReturnValue(null);
     setup(<Fixture />);
-    act(() => useTips.getState().show('highlight'));
+    act(() => useTips.getState().show('highlightClip'));
     const card = await screen.findByRole('region', { name: 'Tip' });
     expect(card.textContent).toContain('Drag across text.');
     expect(card.textContent).not.toContain('Highlight text');
@@ -296,7 +296,9 @@ describe('the clip card', () => {
   });
 
   it('has a clip only for the four situations', async () => {
-    expect(isClipTip('sign') && isClipTip('pages') && isClipTip('form') && isClipTip('highlight')).toBe(true);
+    expect(isClipTip('signClip') && isClipTip('pagesClip') && isClipTip('formClip') && isClipTip('highlightClip')).toBe(
+      true,
+    );
     expect(isClipTip('draw')).toBe(false);
     setup(<Fixture />);
     act(() => useTips.getState().show('draw'));
