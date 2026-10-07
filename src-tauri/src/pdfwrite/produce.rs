@@ -57,6 +57,12 @@ pub enum Warning {
     DpiLowered,
     /// Images → PDF left out an image that could not be used (ADR-049 §3).
     ImagesSkipped,
+    /// Comment export: the file forbids copying text, so no quote was read or written (ADR-139).
+    QuotesOmitted,
+    /// Comment export: a character the bundled font lacks was drawn as "?" (ADR-139).
+    GlyphsReplaced,
+    /// Comment export: nothing matched the filter, so no file was written (ADR-139).
+    NothingToExport,
 }
 
 /// How a job is told to stop and how it reports. `check` is called between objects, pages and images.

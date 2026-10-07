@@ -16,6 +16,8 @@ import { TextEditAnnouncer } from '../textedit/TextEditAnnouncer';
 import { SettingsPopover } from '../settings/SettingsPopover';
 import { ExportCopyDialog } from '../exportCopy/ExportCopyDialog';
 import { ExportImagesDialog } from '../exportImages/ExportImagesDialog';
+import { CommentExportDialog } from '../comments/export/CommentExportDialog';
+import { HeaderFooterDialog } from '../headerFooter/HeaderFooterDialog';
 import { OcrDialog } from '../ocr/OcrDialog';
 import { ImagesToPdfDialog } from '../imagesToPdf/ImagesToPdfDialog';
 import { PrintDialog } from '../print/PrintDialog';
@@ -97,6 +99,8 @@ export function Shell() {
       <RedactApplyDialog />
       <ExportImagesDialog />
       <OcrDialog />
+      <HeaderFooterDialog />
+      <CommentExportDialog />
       <ImagesToPdfDialog />
       <PrintDialog />
       <ExportCopyDialog />

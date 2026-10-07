@@ -126,6 +126,11 @@
           "requiresDocument": true
         },
         {
+          "action": "export-comments",
+          "label": "menu.file.exportComments",
+          "requiresDocument": true
+        },
+        {
           "separator": true
         },
         {
@@ -212,6 +217,11 @@
           "action": "cite-selection",
           "label": "menu.edit.cite",
           "accelerator": "CmdOrCtrl+Shift+C",
+          "requiresDocument": true
+        },
+        {
+          "action": "place-stamp",
+          "label": "menu.edit.stamp",
           "requiresDocument": true
         },
         {
@@ -446,6 +456,11 @@
         {
           "action": "recognize-text",
           "label": "menu.tools.recognizeText",
+          "requiresDocument": true
+        },
+        {
+          "action": "header-footer",
+          "label": "menu.tools.headerFooter",
           "requiresDocument": true
         }
       ]

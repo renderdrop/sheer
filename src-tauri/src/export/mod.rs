@@ -3,6 +3,7 @@
 //! current state that every output starts from. The commands live in `commands/{export_images,images_pdf,export_pdf,print}.rs`.
 
 pub mod citations;
+pub mod comments;
 pub mod from_images;
 pub mod images;
 pub mod names;

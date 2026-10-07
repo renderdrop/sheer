@@ -209,6 +209,24 @@ impl AppError {
         error
     }
 
+    /// `invalid_argument` for `stamp` with the character WinAnsi has no glyph for (ARCHITECTURE §16.1). An ASCII character is not reported.
+    pub fn bad_stamp_char(character: char) -> Self {
+        let mut error = Self::with_params(ErrorCode::InvalidArgument, "stamp", None);
+        if let Some(params) = &mut error.params {
+            params.character = (!character.is_ascii()).then_some(character);
+        }
+        error
+    }
+
+    /// `invalid_argument` for `what` with the character a text field refused (headers and footers); like [`AppError::bad_char`].
+    pub fn bad_char_for(what: &'static str, character: char) -> Self {
+        let mut error = Self::with_params(ErrorCode::InvalidArgument, what, None);
+        if let Some(params) = &mut error.params {
+            params.character = (!character.is_ascii()).then_some(character);
+        }
+        error
+    }
+
     /// `limit_exceeded` `exportPixels`: page `page` (1-based) stays over the bitmap limits even at the lowest dpi (ADR-049 §2).
     pub fn export_pixels(page: u32) -> Self {
         let mut error = Self::with_params(ErrorCode::LimitExceeded, "exportPixels", None);

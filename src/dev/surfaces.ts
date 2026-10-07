@@ -3,6 +3,8 @@
 // Every entry opens one dialog or sheet through its store or action, never through new behaviour. Popovers that hang on a trigger
 // button (`aria-haspopup`) are found by the gate itself.
 import { openAbout, useAboutDialog } from '../features/about/state';
+import { commentExportSurfaces } from './commentExportSurfaces';
+import { headerFooterSurfaces } from './headerFooterSurfaces';
 import { ocrSurfaces } from './ocrSurfaces';
 import { useAnnotations } from '../stores/annotations';
 import { pageIdAt } from '../stores/pages';
@@ -21,6 +23,7 @@ import { useCertSign } from '../features/signatures/sign/store';
 import { closeSettings, openSettings } from '../features/settings/state';
 import { closeDevChooser, closeDevPreview, openDevChooser, openDevPreview } from '../features/smartlinks/devPreview';
 import { selectActiveId, useDocuments } from '../stores/documents';
+import { armStamp, useStamp } from '../features/annotations/stamps/store';
 import { useUi } from '../stores/ui';
 
 export interface DevSurface {
@@ -93,6 +96,39 @@ async function removeInk(id: number | null): Promise<void> {
   if (id !== null) await useAnnotations.getState().apply(docId, { type: 'deleteAnnotations', ids: [id] });
 }
 
+/** A stamp on the open document, selected in Kommentieren, so its mini bar shows. Returns its id. */
+async function selectStamp(): Promise<number | null> {
+  const docId = activeId();
+  ui().setMode('comment');
+  const pageId = pageIdAt(docId, 0);
+  if (pageId === null) return null;
+  const changes = await useAnnotations.getState().apply(docId, {
+    type: 'createAnnotation',
+    draft: {
+      kind: 'stamp',
+      pageId,
+      color: [255, 248, 77],
+      box: { x: 100, y: 300, w: 140, h: 40 },
+      stamp: 'draft',
+      text: 'DRAFT',
+      tone: 'solar',
+    },
+  });
+  const id = changes.upserted[0]?.id ?? null;
+  if (id === null) return null;
+  for (let i = 0; i < 40; i++) {
+    if (i % 8 === 0) {
+      useAnnotations.getState().clearSelection(docId);
+      useAnnotations.getState().select(docId, [id]);
+    }
+    document.querySelector(`[data-annot-frame="${id}"]`)?.scrollIntoView({ block: 'center', inline: 'center' });
+    const bar = document.querySelector('[data-minibar]');
+    if (bar !== null && bar.getBoundingClientRect().width > 0) break;
+    await sleep(100);
+  }
+  return id;
+}
+
 /** The ink mini bar (create, select) and its colour popover, and each coach mark step: floating surfaces that are no dialog. */
 function floatingSurfaces(): DevSurface[] {
   let ink: number | null = null;
@@ -112,6 +148,33 @@ function floatingSurfaces(): DevSurface[] {
       document.querySelector<HTMLElement>('[data-minibar] [data-colour-more]')?.click();
     },
     close: () => removeInk(ink),
+  };
+  // The stamp picker under the Notiz/Stempel slot, without and with a recent own text, and the stamp's mini bar (DESIGN 3.14 ST-AC 9).
+  const picker = (id: string, recent: boolean): DevSurface => {
+    let before = useStamp.getState().recent;
+    return {
+      id,
+      open: () => {
+        before = useStamp.getState().recent;
+        useStamp.setState({ recent: recent ? [{ text: 'Bezahlt', date: true }] : [] });
+        ui().setMode('comment');
+        armStamp();
+        return none();
+      },
+      close: () => {
+        useStamp.getState().setPicker(false);
+        useStamp.setState({ recent: before });
+        ui().releaseTool();
+      },
+    };
+  };
+  let stamp: number | null = null;
+  const stampBar: DevSurface = {
+    id: 'minibar-stamp',
+    open: async () => {
+      stamp = await selectStamp();
+    },
+    close: () => removeInk(stamp),
   };
   // The tour runs on the welcome document, as in the product: a clean page, so no leftover annotation of an earlier dev session
   // (each is a protected button for notices) leaves the card no room. The tab that was in front comes back on close.
@@ -148,6 +211,9 @@ function floatingSurfaces(): DevSurface[] {
   return [
     bar,
     colour,
+    stampBar,
+    picker('stamp-picker', false),
+    picker('stamp-picker-recent', true),
     preview,
     chooser('range-chooser-2', 2, 'top'),
     chooser('range-chooser-20', 20, 'end'),
@@ -160,6 +226,8 @@ export function buildSurfaces(): DevSurface[] {
   return [
     ...floatingSurfaces(),
     ...ocrSurfaces(),
+    ...headerFooterSurfaces(),
+    ...commentExportSurfaces(),
     { id: 'settings', open: () => (openSettings(), none()), close: closeSettings },
     {
       id: 'about',

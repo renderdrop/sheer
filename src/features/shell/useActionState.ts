@@ -1,6 +1,9 @@
 import { useMemo } from 'react';
 
 import type { ActionState } from '../../actions/state';
+import { exportableCount } from '../comments/export/model';
+import { useComments } from '../comments/store';
+import { useCommentsData } from '../comments/useCommentsData';
 import { useCitations } from '../citations/store';
 import { useOcr } from '../ocr/store';
 import { MAX_ZOOM, MIN_ZOOM } from '../../lib/zoom';
@@ -27,12 +30,19 @@ export function useActionState(): ActionState {
   const hasDocument = docId !== null;
   // The list is read for the menu's Copy and Save Citation List, and kept live by the change sets.
   const hasCitations = useCitations(docId).length > 0;
+  // The comment list is kept live for File: Export comments (DESIGN 3.16 E1); until it is read the command stays on.
+  useCommentsData(docId, false);
+  const hasExportableComments = useComments((state) => {
+    const entry = docId === null ? undefined : state.byDoc[docId];
+    return entry?.status === 'ready' ? exportableCount(entry.summaries) > 0 : true;
+  });
   const readOnly = useDocuments((state) => (docId === null ? false : state.byId[docId]?.kind === 'welcome'));
   // The same lock as `readActionState` (DESIGN 3.8 S5), so the in-window menu and the shortcuts agree.
   const lock = useDocuments((state) => (docId === null ? 'none' : (state.byId[docId]?.signatureLock ?? 'none')));
   const signatureLocked = lock === 'locked';
   const signed = lock !== 'none';
   const canEdit = permissions === null || permissions.includes('edit');
+  const signedFile = useDocuments((state) => (docId === null ? false : state.byId[docId]?.flags?.signed === true));
   const ocrUnavailable = useOcr((state) => state.capabilities?.backend === 'none');
   const ocrBusy = useOcr((state) => docId !== null && state.runs[docId] !== undefined);
   return useMemo(
@@ -45,12 +55,14 @@ export function useActionState(): ActionState {
       canPrint,
       canCopy,
       hasCitations,
+      hasExportableComments,
       readOnly,
       signatureLocked,
       signed,
       canEdit,
       ocrUnavailable,
       ocrBusy,
+      signedFile,
     }),
     [
       hasDocument,
@@ -61,12 +73,14 @@ export function useActionState(): ActionState {
       canPrint,
       canCopy,
       hasCitations,
+      hasExportableComments,
       readOnly,
       signatureLocked,
       signed,
       canEdit,
       ocrUnavailable,
       ocrBusy,
+      signedFile,
     ],
   );
 }

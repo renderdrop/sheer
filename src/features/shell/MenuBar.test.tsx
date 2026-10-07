@@ -56,6 +56,7 @@ describe('the Windows menu bar (DESIGN 3.56)', () => {
       'Signatures…',
       'Copy Citation List',
       'Save Citation List…',
+      'Export Comments…',
       'Print…',
       'Close Document',
       'Settings…',
@@ -76,6 +77,7 @@ describe('the Windows menu bar (DESIGN 3.56)', () => {
       'Highlight Form Fields',
       'Manage Signatures…',
       'Recognize Text…',
+      'Headers & Footers…',
     ]);
     const radios = within(menu).getAllByRole('menuitemradio');
     expect(radios.map((radio) => radio.getAttribute('aria-checked'))).toEqual([

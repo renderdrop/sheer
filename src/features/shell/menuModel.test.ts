@@ -82,6 +82,7 @@ describe('the Windows menus built from menu.json', () => {
       'Signatures…',
       'Copy Citation List',
       'Save Citation List…',
+      'Export Comments…',
       '-',
       'Print…',
       'Close Document',
@@ -120,6 +121,7 @@ describe('the Windows menus built from menu.json', () => {
       'Manage Signatures…',
       '-',
       'Recognize Text…',
+      'Headers & Footers…',
     ]);
     const modes = entries.slice(0, 5).flatMap((entry) => (entry.type === 'separator' ? [] : [entry]));
     expect(modes.map((entry) => entry.shortcut)).toEqual(['1', '2', '3', '4', '5']);

@@ -47,6 +47,7 @@ describe('the catalogs', () => {
 
   // Messages that are a word and two numbers, the same in both languages (DESIGN 3.14 `tour.pill`, 3.31 `compress.estimate`).
   const SAME_IN_BOTH = new Set([
+    'hf.page.nSlashTotal',
     'tour.pill',
     'tour.count',
     'compress.estimate',

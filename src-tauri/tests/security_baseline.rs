@@ -413,6 +413,10 @@ fn capabilities_grant_only_the_app_commands_and_the_window_chrome_to_the_main_wi
         "allow-render-page",
         "allow-set-viewport",
         "allow-get-pages",
+        // v1.9 (ADR-139): headers/footers and comment export.
+        "allow-get-header-footer",
+        "allow-resolve-header-footer",
+        "allow-export-comments",
         "allow-get-outline",
         "allow-get-text-layer",
         "allow-text-edit-preview",

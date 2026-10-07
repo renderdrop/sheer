@@ -8,6 +8,7 @@ import {
   Crop,
   Hand,
   ScanSearch,
+  PanelTop,
   ScanText,
   TextSelect,
   Stamp,
@@ -56,6 +57,7 @@ import {
 
 import type { Platform } from '../api/app';
 import { closeWindow } from '../api/window';
+import { armStamp } from '../features/annotations/stamps/store';
 import { runFlatten } from '../features/forms/actions';
 import { copyCitationList, saveCitationList } from '../features/citations/exportActions';
 import { createCitationFromSelection } from '../features/citations/store';
@@ -63,6 +65,8 @@ import { useForms } from '../features/forms/store';
 import { useMarginPrefs } from '../features/margin/store';
 import { toggleSmartLinksForActive } from '../features/smartlinks/actions';
 import { openSignaturesDialog } from '../features/sigcheck/open';
+import { openCommentExport } from '../features/comments/export/runtime';
+import { openHeaderFooterDialog } from '../features/headerFooter/runtime';
 import { openOcrDialog } from '../features/ocr/runtime';
 import { openSignatureLibrary } from '../features/signatures/library';
 import { restartTour } from '../features/tour/runtime';
@@ -87,7 +91,7 @@ import { MODES, useUi, type LeftPanelTab, type Mode, type ToolId } from '../stor
 import { requestAddComment } from './commentIntent';
 import { runHistoryStep } from './history';
 import { formatBinding, resolveBinding, type Binding, type Shortcuts } from './shortcut';
-import { mayCopy, mayEdit, mayPrint, mayRecognize, type ActionState } from './state';
+import { mayCopy, mayEdit, mayHeaderFooter, mayPrint, mayRecognize, type ActionState } from './state';
 
 /** The action of each tool of the toolbar: it makes the tool the active one. */
 export type ToolActionId = `tool-${ToolId}`;
@@ -146,8 +150,10 @@ export type ActionId =
   | 'delete-selection'
   | 'add-comment'
   | 'cite-selection'
+  | 'place-stamp'
   | 'copy-citation-list'
   | 'save-citation-list'
+  | 'export-comments'
   | 'sidebar-tab-pages'
   | 'sidebar-tab-outline'
   | 'sidebar-tab-comments'
@@ -156,6 +162,7 @@ export type ActionId =
   | 'form-highlight'
   | 'manage-signatures'
   | 'recognize-text'
+  | 'header-footer'
   | 'welcome-tour'
   | 'reset-tips'
   | ModeActionId
@@ -200,6 +207,8 @@ const TOOL_ACTIONS: readonly ActionDef[] = (
     // v1.3 Citations (DESIGN 3.7 C2): Q is free; Primary+Shift+C is the Cite Selection action.
     ['cite', 'q', Quote, 'citation.cite'],
     ['note', 'c', MessageSquare, 'toolbar.tool.comment'],
+    // v1.9 Stamps (DESIGN 3.14): the Stempel variant of the Notiz slot, no letter.
+    ['stamp', undefined, Stamp, 'stamp.tool'],
     ['text', 't', Type, 'toolbar.tool.text'],
     ['draw', 'd', PenLine, 'toolbar.tool.draw'],
     ['shapes', 'r', Square, 'toolbar.tool.shapes'],
@@ -238,6 +247,10 @@ const TOOL_ACTIONS: readonly ActionDef[] = (
     const ui = useUi.getState();
     // The Sign key goes to the Signatur item of Ausfüllen & Signieren (DESIGN v2 3.2): Enter there places the signature, the chevron
     // opens the saved ones. The mode row mounts the item once the mode is on, hence the frame.
+    if (tool === 'stamp') {
+      armStamp();
+      return;
+    }
     if (tool === 'signature') {
       ui.setMode('fill');
       requestAnimationFrame(() =>
@@ -829,6 +842,16 @@ export const ACTIONS: readonly ActionDef[] = [
     },
   },
   {
+    id: 'place-stamp',
+    labelKey: 'menu.edit.stamp',
+    icon: Stamp,
+    group: 'edit',
+    menuBar: true,
+    // Switches to Kommentieren, arms the Stempel tool and opens the picker (DESIGN 3.14 ST1). Not on a read-only document.
+    enabled: (state) => mayEdit(state) && state.readOnly !== true,
+    run: armStamp,
+  },
+  {
     id: 'copy-citation-list',
     labelKey: 'menu.file.copyCitationList',
     group: 'file',
@@ -849,6 +872,15 @@ export const ACTIONS: readonly ActionDef[] = [
       const docId = useDocuments.getState().activeId;
       if (docId !== null) void saveCitationList(docId);
     },
+  },
+  {
+    id: 'export-comments',
+    labelKey: 'menu.file.exportComments',
+    group: 'file',
+    menuBar: true,
+    // DESIGN 3.16 E1: off without an annotation to export (unknown until the tab's list is read: then it opens and says so).
+    enabled: (state) => state.hasDocument && state.hasExportableComments !== false,
+    run: () => openCommentExport(),
   },
   {
     id: 'form-highlight',
@@ -876,6 +908,16 @@ export const ACTIONS: readonly ActionDef[] = [
     // DESIGN 3.12 O4: disabled without a recognizer, on a locked, read-only or no-modify document and during a run.
     enabled: mayRecognize,
     run: openOcrDialog,
+  },
+  {
+    id: 'header-footer',
+    labelKey: 'hf.command',
+    icon: PanelTop,
+    group: 'app',
+    menuBar: true,
+    // DESIGN 3.15 HF6: disabled on a signed, locked, read-only or no-modify document and during a text recognition run.
+    enabled: mayHeaderFooter,
+    run: () => void openHeaderFooterDialog(),
   },
   {
     id: 'welcome-tour',

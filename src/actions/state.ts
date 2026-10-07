@@ -2,6 +2,8 @@ import { DEFAULT_ZOOM, MAX_ZOOM, MIN_ZOOM } from '../lib/zoom';
 import { historyOf, useAnnotations } from '../stores/annotations';
 import { citationCount } from '../features/citations/store';
 import { isSignatureLocked } from '../features/lock/useSignatureLock';
+import { exportableCount } from '../features/comments/export/model';
+import { useComments } from '../features/comments/store';
 import { useOcr } from '../features/ocr/store';
 import { selectActiveDocument, useDocuments } from '../stores/documents';
 import { useView } from '../stores/view';
@@ -27,6 +29,8 @@ export interface ActionState {
   canCopy?: boolean;
   /** The active document has citations (File: Copy and Save Citation List; absent: none). */
   hasCitations?: boolean;
+  /** The active document has an annotation the comment export could take (DESIGN 3.16 E1); absent: not known yet, the command stays on. */
+  hasExportableComments?: boolean;
   /** The active document cannot be changed (the tour's sample); absent: it can. */
   readOnly?: boolean;
   /** A certifying signature locks the active document (DESIGN 3.8 S5); absent: not locked. Every editing action reads it. */
@@ -39,6 +43,8 @@ export interface ActionState {
   ocrUnavailable?: boolean;
   /** A text recognition run goes on in the active tab: Save, closing and page structure wait (DESIGN 3.12 O3). */
   ocrBusy?: boolean;
+  /** The file has a signature field that is signed, whatever it allows (headers and footers would break it; DESIGN 3.15 HF6). */
+  signedFile?: boolean;
 }
 
 /** Whether an editing action may run: there is a document and no signature locks it. */
@@ -52,10 +58,36 @@ export const mayRecognize = (state: ActionState): boolean =>
   state.ocrUnavailable !== true &&
   state.ocrBusy !== true;
 
+/** Whether Headers and footers may open (DESIGN 3.15 HF6): editable, nothing signed, no run of text recognition in this tab. */
+export const mayHeaderFooter = (state: ActionState): boolean =>
+  mayEdit(state) &&
+  state.readOnly !== true &&
+  state.canEdit !== false &&
+  state.signedFile !== true &&
+  state.ocrBusy !== true;
+
+/** Why Headers and footers is disabled, as a catalog key (HF6: signed, locked, no permission, OCR running); `null` when it may open. */
+export function headerFooterReason(
+  state: ActionState,
+): 'cert.locked.tool' | 'hf.signed' | 'tool.readOnly' | 'ocr.busy' | null {
+  if (!state.hasDocument) return null;
+  if (state.signatureLocked === true) return 'cert.locked.tool';
+  if (state.signedFile === true) return 'hf.signed';
+  if (state.readOnly === true || state.canEdit === false) return 'tool.readOnly';
+  if (state.ocrBusy === true) return 'ocr.busy';
+  return null;
+}
+
 /** Whether the state allows printing (absent: yes). */
 export const mayPrint = (state: ActionState): boolean => state.canPrint !== false;
 /** Whether the state allows exporting content as images (absent: yes). */
 export const mayCopy = (state: ActionState): boolean => state.canCopy !== false;
+
+/** Whether the tab's comment list holds something to export; `undefined` while the list is not read yet. */
+function exportableIn(docId: number): boolean | undefined {
+  const entry = useComments.getState().byDoc[docId];
+  return entry?.status === 'ready' ? exportableCount(entry.summaries) > 0 : undefined;
+}
 
 /** The state before a document is open. */
 export const NO_DOCUMENT: Readonly<ActionState> = {
@@ -82,11 +114,13 @@ export function readActionState(): ActionState {
     canPrint: permissions === null || permissions.includes('print'),
     canCopy: permissions === null || permissions.includes('copy'),
     hasCitations: citationCount(docId) > 0,
+    hasExportableComments: exportableIn(docId),
     readOnly: selectActiveDocument(useDocuments.getState())?.kind === 'welcome',
     signatureLocked: isSignatureLocked(docId),
     signed: (selectActiveDocument(useDocuments.getState())?.signatureLock ?? 'none') !== 'none',
     canEdit: permissions === null || permissions.includes('edit'),
     ocrUnavailable: useOcr.getState().capabilities?.backend === 'none',
     ocrBusy: useOcr.getState().runs[docId] !== undefined,
+    signedFile: selectActiveDocument(useDocuments.getState())?.flags?.signed === true,
   };
 }

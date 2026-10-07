@@ -34,7 +34,10 @@ export type JobWarning =
   | 'unsavedEditsDropped'
   | 'hiddenDataKept'
   | 'dpiLowered'
-  | 'imagesSkipped';
+  | 'imagesSkipped'
+  | 'quotesOmitted'
+  | 'glyphsReplaced'
+  | 'nothingToExport';
 
 /** The print set a finished `prepare_print` made (ADR-049): `printId` for `get_print_page`, `pages` frames. */
 export interface PrintDone {
@@ -70,6 +73,9 @@ const WARNINGS: readonly string[] = [
   'hiddenDataKept',
   'dpiLowered',
   'imagesSkipped',
+  'quotesOmitted',
+  'glyphsReplaced',
+  'nothingToExport',
 ];
 const count = (value: unknown): value is number =>
   typeof value === 'number' && Number.isFinite(value) && value >= 0 && value <= Number.MAX_SAFE_INTEGER;

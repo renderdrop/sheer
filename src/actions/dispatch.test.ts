@@ -293,6 +293,7 @@ describe('readActionState', () => {
       readOnly: false,
       signatureLocked: false,
       signed: false,
+      signedFile: false,
       canEdit: true,
       ocrUnavailable: false,
       ocrBusy: false,

@@ -87,6 +87,17 @@
   --color-doc-redact-fill: rgba(200, 50, 31, 0.12);
   --handle-size: 8px;
   --annot-rotate-offset: 18px; /* page points (the layer is scaled): ROTATE_OFFSET_PT in annotations/selection/geometry.ts */
+  /* Stamps (DESIGN 3.14): sizes in page points (the layer is scaled), mirrored by annotations/stamps/model.ts (test). The border is the
+     backend appearance stream's 1.5 pt, so the preview and the saved stamp match. The tile is the picker's predefined stamp button. */
+  --stamp-height: 40px;
+  --stamp-height-dated: 56px;
+  --stamp-min-width: 96px;
+  --stamp-pad-x: 12px;
+  --stamp-border: 1.5px;
+  --stamp-radius: 4px;
+  --stamp-tracking: 0.06em;
+  --stamp-tile-width: 140px;
+  --stamp-tile-height: 48px;
 
   /* Shadows (DESIGN 1.2): two only. The numbered names are aliases of the old scale. */
   --shadow-standard: 0 2px 12px rgba(0, 0, 0, 0.04);
@@ -449,7 +460,12 @@
   --tab-max: 200px;
   --dialog-width: 400px; /* the password prompt */
   --sheet-width: 560px; /* the merge sheet */
+  --comment-export-label: 120px; /* the label column of the comment export form (DESIGN 3.16 E2) */
   --sheet-width-wide: 696px; /* the signature sheet: the 600 px pad plus the 24 px padding on both sides */
+  --hf-column: 408px; /* header/footer dialog: controls column (DESIGN §3.15) */
+  --hf-options-h: 52px; /* header/footer dialog: fixed-height slot options row */
+  --hf-preview-w: 216px; /* header/footer dialog: preview box width */
+  --hf-preview-h: 306px; /* header/footer dialog: preview box height, page aspect ratio */
   --sig-pad-width: 600px; /* signature creation (ADR-051) */
   --sig-pad-width-initials: 200px;
   --sig-pad-height: 200px; /* every panel of the sheet fills this slot */

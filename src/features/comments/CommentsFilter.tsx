@@ -1,4 +1,4 @@
-import { ArrowDownUp, ListFilter } from 'lucide-react';
+import { ArrowDownUp, FileDown, ListFilter } from 'lucide-react';
 import { useMemo, useState, type ReactNode } from 'react';
 
 import { Button, Checkbox, Field, IconButton, Menu, Popover, Radio, Segmented, type MenuEntry } from '../../components';
@@ -22,6 +22,8 @@ import {
   type Status,
   type TypeGroup,
 } from './model';
+import { exportableCount } from './export/model';
+import { openCommentExport } from './export/runtime';
 import { DEFAULT_VIEW, useComments } from './store';
 import { groupInfo } from './typeInfo';
 
@@ -74,6 +76,7 @@ export function CommentsFilter({ docId, summaries }: { docId: number; summaries:
   const tags = useTags();
   const counts = useMemo(() => tagCounts(summaries), [summaries]);
   const [managing, setManaging] = useState(false);
+  const exportable = useMemo(() => exportableCount(summaries) > 0, [summaries]);
   const chosenTags = view.filter.tags ?? [];
   const { filter } = view;
   const set = (next: Partial<Filter>) => useComments.getState().setFilter(docId, { ...filter, ...next });
@@ -283,6 +286,16 @@ export function CommentsFilter({ docId, summaries }: { docId: number; summaries:
         trigger={(trigger) => (
           <IconButton {...trigger} size="sm" icon={ArrowDownUp} label={t('comments.sortMenu')} tooltipSide="bottom" />
         )}
+      />
+      <IconButton
+        size="sm"
+        icon={FileDown}
+        label={exportable ? t('commentExport.button') : t('commentExport.none')}
+        tooltipSide="bottom"
+        disabled={!exportable}
+        focusableWhenDisabled
+        data-comments="export"
+        onClick={() => openCommentExport(docId)}
       />
     </div>
   );

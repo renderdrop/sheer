@@ -187,7 +187,7 @@ describe('comments filter', () => {
     expect(button.compareDocumentPosition(empty) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
-  it('puts the Reference button between Filter and sort', async () => {
+  it('puts the Reference button between Filter and sort, and Export last', async () => {
     await shown();
     const row = screen.getByRole('button', { name: /^Filter/u }).parentElement as HTMLElement;
     const names = within(row)
@@ -195,6 +195,7 @@ describe('comments filter', () => {
       .map((b) => b.getAttribute('aria-label') ?? b.textContent);
     expect(names[0]).toMatch(/^Filter/u);
     expect(names[1]).toBe('Reference and citation list');
-    expect(names).toHaveLength(3);
+    expect(names[3]).toBe('Export comments…');
+    expect(names).toHaveLength(4);
   });
 });

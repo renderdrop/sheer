@@ -694,6 +694,8 @@ pub const BIB_AUTHORS_MAX: usize = 32;
 pub const BIB_PERSON_MAX: usize = 256;
 /// Longest text field of a bibliographic record, in characters (title, container, publisher, ...).
 pub const BIB_FIELD_MAX: usize = 1_000;
+/// Longest short title of a record (`/SHR_Bib /ST`), in characters.
+pub const BIB_SHORT_TITLE_MAX: usize = 256;
 /// Longest year field ("2020a", "n.d.").
 pub const BIB_YEAR_MAX: usize = 16;
 /// Longest DOI.
@@ -724,6 +726,19 @@ pub const CITATION_EXPORT_BLOCKS_MAX: usize = 20_000;
 pub const STYLED_RUNS_MAX: usize = 64;
 /// Longest run of a styled block in characters.
 pub const STYLED_RUN_CHARS_MAX: usize = 4_000;
+
+// --- Comment export (ADR-139, ARCHITECTURE section 16.3) --------------------------------------------------------
+
+/// Most items one comment export takes.
+pub const COMMENT_EXPORT_ITEMS_MAX: usize = 20_000;
+/// Longest comment text of one item in the export, in characters (cut with an ellipsis).
+pub const COMMENT_EXPORT_TEXT_MAX: usize = 8_000;
+/// Largest Markdown export, in bytes.
+pub const COMMENT_EXPORT_MD_MAX: usize = 16 * 1024 * 1024;
+/// Most pages of the PDF summary.
+pub const COMMENT_EXPORT_PDF_PAGES_MAX: usize = 2_000;
+/// Largest PDF summary, in bytes.
+pub const COMMENT_EXPORT_PDF_MAX: usize = 64 * 1024 * 1024;
 
 // --- Certificate signatures (ADR-121) ---------------------------------------------------------------------------
 
