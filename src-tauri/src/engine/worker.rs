@@ -310,6 +310,22 @@ fn serve<'a>(
             };
             answer(reply, result, live, documents, crashed);
         }
+        Job::RenderForOcr {
+            doc,
+            engine_index,
+            dpi,
+            max_side,
+            reply,
+        } => {
+            let result = guarded(|| {
+                export::render_gray(documents, snapshots, doc, engine_index, dpi, max_side)
+            });
+            let live = match doc {
+                EngineDocRef::Live(id) => Some(id),
+                EngineDocRef::Snapshot(_) => None,
+            };
+            answer(reply, result, live, documents, crashed);
+        }
         Job::AppendBlankPage { id, size, reply } => {
             let result = if crashed.contains(&id) {
                 Err(AppError::new(ErrorCode::EngineCrashed))

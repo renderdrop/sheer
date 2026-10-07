@@ -1,12 +1,14 @@
-//! The OCR job (ADR-134, ARCHITECTURE section 15): a registry of the running job and a minimal sequential pipeline (render a page, ask
-//! the recognizer, scale the words to points), then one `DocCommand::ApplyOcr` for everything that worked. A later package replaces the
-//! inside of [`run_job`]; its signature, the events it sends and the registry are the seam.
+//! The OCR job (ADR-134, ARCHITECTURE section 15): a registry of the running job, the page classifier and the pipeline. The engine renders
+//! page n+1 while the recognizer works on page n (at most two bitmaps in flight); a page that fails is counted and does not stop the
+//! job; everything that worked is applied as one `DocCommand::ApplyOcr` (also after a cancel), then `ocrFinished` goes out.
 
-use std::collections::{BTreeSet, HashMap};
+use std::collections::{BTreeSet, HashMap, VecDeque};
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
+use std::sync::mpsc;
 use std::sync::{Arc, Mutex, MutexGuard, OnceLock, PoisonError};
+use std::time::Instant;
 
-use super::backend::{self, Capabilities, ChildClient};
+use super::backend::{Capabilities, ChildClient, Recognizer};
 use super::{limits, OcrJobId, OcrPageLayer, PageOcrClass};
 use crate::commands::AppState;
 use crate::documents::{DocumentId, PageId};
@@ -14,16 +16,12 @@ use crate::error::{AppError, ErrorCode};
 use crate::events::{AppEvent, AppEvents};
 use crate::export::snapshot::{EngineDocRef, SnapshotGuard};
 use crate::model::command::DocCommand;
-use crate::pdfwrite::ocr_probe::ProbeDoc;
+use crate::pdfwrite::ocr_probe::{ProbeDoc, TextFacts};
 use crate::pdfwrite::pagetree::on_big_stack;
 use crate::pdfwrite::redact::RasterPixels;
 
 /// The most OCR jobs that run at once (the recognizer child is one process, pages go one after the other).
 pub const MAX_JOBS: usize = 1;
-/// The resolution pages are rendered at for recognition.
-const TARGET_DPI: f32 = 300.0;
-/// A page whose images cover at least this share of its box is a scan (phase 2 replaces this with the engine's probe).
-const SCAN_COVER: f32 = 0.5;
 
 /// The language the job uses: `requested` when the recognizer has it, else another available one with `true` (a fallback). `None` when
 /// no language is available.
@@ -84,32 +82,232 @@ pub fn cancel(id: OcrJobId) {
 
 // --- Classification --------------------------------------------------------------------------------------------------
 
-/// The class of the pages at `indices` of the PDF `bytes` (index in that file); a page in `layered` (a layer of this session) is a
-/// `SheerLayer`. Phase 0 heuristic: images over half the page are a `Scan`, anything else is `Text`; the engine's probe replaces it.
+/// The class of a page (ADR-134 item 5). `layered`: the page has a layer of this session.
+pub fn class_of(facts: TextFacts, cover_fraction: f32, layered: bool) -> PageOcrClass {
+    if layered || facts.sheer_key {
+        PageOcrClass::SheerLayer
+    } else if facts.visible >= limits::SCAN_MAX_CHARS {
+        PageOcrClass::Text
+    } else if facts.invisible > 0 {
+        PageOcrClass::HasTextLayer
+    } else if cover_fraction >= limits::SCAN_COVER {
+        PageOcrClass::Scan
+    } else if facts.visible > 0 {
+        PageOcrClass::Text
+    } else {
+        PageOcrClass::Empty
+    }
+}
+
+/// A page's class and the effective resolution of its main image (0 when unknown).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct PageProbe {
+    pub page: PageId,
+    pub class: PageOcrClass,
+    pub image_dpi: f32,
+}
+
+/// Probes the pages at `pages` (page id, index in the file of `bytes`); a page in `layered` (a layer of this session, by page id) is a
+/// `SheerLayer`.
+pub fn probe(
+    bytes: &[u8],
+    pages: &[(PageId, u32)],
+    layered: &BTreeSet<u32>,
+) -> Result<Vec<PageProbe>, AppError> {
+    let doc = ProbeDoc::load(bytes)?;
+    Ok(pages
+        .iter()
+        .map(|(page, index)| {
+            let in_session = layered.contains(&page.get());
+            let Some(facts) = doc.text_facts(*index) else {
+                let class = if in_session {
+                    PageOcrClass::SheerLayer
+                } else {
+                    PageOcrClass::Empty
+                };
+                return PageProbe {
+                    page: *page,
+                    class,
+                    image_dpi: 0.0,
+                };
+            };
+            let cover = doc.cover(*index);
+            PageProbe {
+                page: *page,
+                class: class_of(facts, cover.fraction, in_session),
+                image_dpi: cover.eff_dpi,
+            }
+        })
+        .collect())
+}
+
+/// [`probe`] without the resolutions.
 pub fn classify(
     bytes: &[u8],
     pages: &[(PageId, u32)],
     layered: &BTreeSet<u32>,
 ) -> Result<Vec<(PageId, PageOcrClass)>, AppError> {
-    let doc = ProbeDoc::load(bytes)?;
-    Ok(pages
-        .iter()
-        .map(|(page, index)| {
-            let class = if layered.contains(&page.get()) {
-                PageOcrClass::SheerLayer
-            } else if *index < doc.page_count() && doc.cover(*index).fraction >= SCAN_COVER {
-                PageOcrClass::Scan
-            } else {
-                PageOcrClass::Text
-            };
-            (*page, class)
-        })
+    Ok(probe(bytes, pages, layered)?
+        .into_iter()
+        .map(|p| (p.page, p.class))
         .collect())
 }
 
-/// What `run_job` does with a page of `class`: scans always, a page with a layer of the session only for a redo.
+/// What `run_job` does with a page of `class`: scans always, a page with a layer of ours only for a redo. A page with somebody else's
+/// text layer or with real text is never touched.
 pub fn wants(class: PageOcrClass, redo: bool) -> bool {
     matches!(class, PageOcrClass::Scan) || (redo && matches!(class, PageOcrClass::SheerLayer))
+}
+
+// --- The pipeline ----------------------------------------------------------------------------------------------------------
+
+/// One page to recognize.
+#[derive(Debug, Clone)]
+pub struct Task {
+    pub id: PageId,
+    /// Position in the current order (the index in a snapshot).
+    pub position: u32,
+    /// Index in the engine's live copy.
+    pub engine_index: u32,
+    /// Size in points as displayed (after the rotation).
+    pub shown: [f32; 2],
+    /// The resolution to ask for.
+    pub dpi: f32,
+}
+
+/// A rendered page on its way to the recognizer.
+#[derive(Debug, Clone)]
+pub struct Bitmap {
+    pub gray: Vec<u8>,
+    pub width: u32,
+    pub height: u32,
+}
+
+/// At most [`limits::RESTART_BUDGET`] child restarts per [`limits::RESTART_WINDOW`]; the next one ends the job.
+#[derive(Debug, Default)]
+pub struct RestartBudget {
+    stamps: VecDeque<Instant>,
+}
+
+impl RestartBudget {
+    /// Notes a restart at `now`; `false` when that is one too many.
+    pub fn note(&mut self, now: Instant) -> bool {
+        while self
+            .stamps
+            .front()
+            .is_some_and(|at| now.saturating_duration_since(*at) >= limits::RESTART_WINDOW)
+        {
+            self.stamps.pop_front();
+        }
+        self.stamps.push_back(now);
+        self.stamps.len() <= limits::RESTART_BUDGET
+    }
+}
+
+/// What a pipeline run produced.
+#[derive(Debug, Default)]
+pub struct PipelineResult {
+    pub layers: Vec<(PageId, OcrPageLayer)>,
+    /// Pages that failed (render, recognizer, or not tried after the restart budget ran out).
+    pub failed: u32,
+    /// Pages that were tried (done or failed); the rest were cancelled.
+    pub handled: u32,
+}
+
+fn count(n: usize) -> u32 {
+    u32::try_from(n).unwrap_or(u32::MAX)
+}
+
+/// Scales the pixel boxes of `layer` to the points of the displayed page and notes the dpi actually used.
+fn scale_to_points(layer: &mut OcrPageLayer, shown: [f32; 2], bitmap: &Bitmap) {
+    let [w, h] = shown;
+    let (sx, sy) = (
+        w / bitmap.width.max(1) as f32,
+        h / bitmap.height.max(1) as f32,
+    );
+    for word in layer
+        .lines
+        .iter_mut()
+        .flat_map(|line| line.words.iter_mut())
+    {
+        let [x0, y0, x1, y1] = word.rect;
+        word.rect = [x0 * sx, y0 * sy, x1 * sx, y1 * sy];
+    }
+    layer.dpi = if w > 0.0 {
+        bitmap.width as f32 / w * 72.0
+    } else {
+        0.0
+    };
+}
+
+/// Renders (on a thread of its own) page n+1 while `recognizer` works on page n: the hand-over is a rendezvous, so at most two bitmaps
+/// exist. `progress(done, total, failed)` goes out after every page. A set `cancel` stops after the page in hand; a recognizer that
+/// had to be restarted too often (`budget`) ends the run and the pages not tried count as failed.
+pub fn run_pipeline(
+    tasks: &[Task],
+    render: &(dyn Fn(&Task) -> Result<Bitmap, AppError> + Sync),
+    recognizer: &mut dyn Recognizer,
+    lang: &str,
+    cancel: &AtomicBool,
+    budget: &mut RestartBudget,
+    mut progress: impl FnMut(u32, u32, u32),
+) -> PipelineResult {
+    let total = count(tasks.len());
+    let mut result = PipelineResult::default();
+    let mut exhausted = false;
+    std::thread::scope(|scope| {
+        let (tx, rx) = mpsc::sync_channel::<(usize, Result<Bitmap, AppError>)>(0);
+        scope.spawn(move || {
+            for (index, task) in tasks.iter().enumerate() {
+                if cancel.load(Ordering::Acquire) {
+                    return;
+                }
+                let rendered = render(task);
+                // The consumer is gone (cancel, budget): stop.
+                if tx.send((index, rendered)).is_err() {
+                    return;
+                }
+            }
+        });
+        while let Ok((index, rendered)) = rx.recv() {
+            if cancel.load(Ordering::Acquire) {
+                break;
+            }
+            let Some(task) = tasks.get(index) else {
+                break;
+            };
+            let outcome = rendered.and_then(|bitmap| {
+                recognizer
+                    .recognize_page(&bitmap.gray, bitmap.width, bitmap.height, lang)
+                    .map(|layer| (layer, bitmap))
+                    .map_err(|error| {
+                        if error.restarts_child() && !budget.note(Instant::now()) {
+                            exhausted = true;
+                        }
+                        AppError::logged(ErrorCode::Internal, error)
+                    })
+            });
+            match outcome {
+                Ok((mut layer, bitmap)) => {
+                    scale_to_points(&mut layer, task.shown, &bitmap);
+                    result.layers.push((task.id, layer));
+                }
+                Err(_) => result.failed += 1,
+            }
+            result.handled += 1;
+            progress(result.handled, total, result.failed);
+            if exhausted {
+                break;
+            }
+        }
+        // `rx` drops here, before the scope joins: a renderer blocked in `send` ends.
+    });
+    if exhausted {
+        let rest = total.saturating_sub(result.handled);
+        result.failed += rest;
+        result.handled = total;
+    }
+    result
 }
 
 // --- The job -----------------------------------------------------------------------------------------------------------
@@ -132,21 +330,9 @@ pub struct Outcome {
     pub failed: u32,
 }
 
-struct PageFacts {
-    id: PageId,
-    position: u32,
-    engine_index: u32,
-    /// Size in points as displayed (after the rotation).
-    shown: [f32; 2],
-}
-
-fn count(n: usize) -> u32 {
-    u32::try_from(n).unwrap_or(u32::MAX)
-}
-
-/// Runs the job on the calling thread (blocking; give it a thread of its own): classifies the pages, recognizes the wanted ones in turn
-/// (`ocrProgress` after each), applies the layers that worked as one undo step and sends `ocrFinished`. A set `cancel` ends it after the
-/// page in hand. A page that fails counts as failed and does not stop the job; a job that cannot start counts all its pages as failed.
+/// Runs the job on the calling thread (blocking; give it a thread of its own): classifies the pages, recognizes the wanted ones
+/// (`ocrProgress` after each), applies the layers that worked as one undo step and sends `ocrFinished`. A page that fails counts as
+/// failed and does not stop the job; a job that cannot start counts all its pages as failed; after a cancel the finished pages stay.
 pub fn run_job(app: &AppState, events: &AppEvents, spec: &JobSpec, cancel: &AtomicBool) -> Outcome {
     let total = count(spec.pages.len());
     let mut outcome = Outcome::default();
@@ -181,9 +367,9 @@ fn recognize_all(
     cancel: &AtomicBool,
     outcome: &mut Outcome,
 ) -> Result<Vec<(PageId, Arc<OcrPageLayer>)>, AppError> {
-    let wanted: Vec<PageId> = spec.pages.clone();
     let (facts, layered) = app.model(spec.doc, |state| {
-        let facts = wanted
+        let facts = spec
+            .pages
             .iter()
             .filter_map(|id| {
                 let slot = state.slot(*id)?;
@@ -193,11 +379,12 @@ fn recognize_all(
                 } else {
                     [w, h]
                 };
-                Some(PageFacts {
+                Some(Task {
                     id: *id,
                     position: state.position(*id)?,
                     engine_index: slot.engine_index,
                     shown,
+                    dpi: limits::TARGET_DPI,
                 })
             })
             .collect::<Vec<_>>();
@@ -207,69 +394,66 @@ fn recognize_all(
         ))
     })?;
     let bytes = app.snapshot_bytes(spec.doc)?;
-    let probe: Vec<(PageId, u32)> = facts.iter().map(|f| (f.id, f.position)).collect();
-    let classes = on_big_stack(move || classify(&bytes, &probe, &layered))?;
-    let take: Vec<&PageFacts> = facts
-        .iter()
-        .filter(|f| {
-            classes
-                .iter()
-                .any(|(id, class)| *id == f.id && wants(*class, spec.redo))
+    let asked: Vec<(PageId, u32)> = facts.iter().map(|t| (t.id, t.position)).collect();
+    let probes = on_big_stack(move || probe(&bytes, &asked, &layered))?;
+    let redo = spec.redo;
+    let tasks: Vec<Task> = facts
+        .into_iter()
+        .filter_map(|mut task| {
+            let probed = probes.iter().find(|p| p.page == task.id)?;
+            wants(probed.class, redo).then(|| {
+                task.dpi = limits::render_dpi(probed.image_dpi);
+                task
+            })
         })
         .collect();
-    outcome.skipped = count(spec.pages.len() - take.len());
-    let total = count(take.len());
+    outcome.skipped = count(spec.pages.len() - tasks.len());
+    let total = count(tasks.len());
+    if tasks.is_empty() {
+        return Ok(Vec::new());
+    }
     let snapshot = SnapshotGuard::current(app, spec.doc)?;
+    let doc = snapshot.snapshot().engine;
     let mut client = ChildClient::new(
         std::env::current_exe().map_err(|e| AppError::logged(ErrorCode::Internal, e))?,
     );
-    let mut layers = Vec::new();
-    let mut failed = 0u32;
-    for (done, page) in take.iter().enumerate() {
-        if cancel.load(Ordering::Acquire) {
-            break;
-        }
-        match recognize_page(
-            app,
-            snapshot.snapshot().engine,
-            page,
-            &spec.lang,
-            &mut client,
-        ) {
-            Ok(layer) => layers.push((page.id, Arc::new(layer))),
-            Err(_) => failed += 1,
-        }
-        events.publish(AppEvent::OcrProgress {
-            doc: spec.doc,
-            job: spec.job,
-            done: count(done + 1),
-            total,
-            failed,
-        });
-    }
-    outcome.failed = failed;
-    Ok(layers)
+    let render = |task: &Task| render_task(app, doc, task);
+    let result = run_pipeline(
+        &tasks,
+        &render,
+        &mut client,
+        &spec.lang,
+        cancel,
+        &mut RestartBudget::default(),
+        |done, total, failed| {
+            events.publish(AppEvent::OcrProgress {
+                doc: spec.doc,
+                job: spec.job,
+                done,
+                total,
+                failed,
+            });
+        },
+    );
+    outcome.failed = result.failed;
+    // Pages a cancel kept from being tried are skipped.
+    outcome.skipped += total.saturating_sub(result.handled);
+    Ok(result
+        .layers
+        .into_iter()
+        .map(|(id, layer)| (id, Arc::new(layer)))
+        .collect())
 }
 
-fn recognize_page(
-    app: &AppState,
-    doc: EngineDocRef,
-    page: &PageFacts,
-    lang: &str,
-    client: &mut ChildClient,
-) -> Result<OcrPageLayer, AppError> {
-    let [w, h] = page.shown;
-    let side = w.max(h).max(1.0);
-    let by_side = limits::MAX_SIDE_PX as f32 * 72.0 / side;
-    let by_pixels = (limits::MAX_PIXELS as f32 / (w.max(1.0) * h.max(1.0))).sqrt() * 72.0;
-    let dpi = TARGET_DPI.min(by_side * 0.98).min(by_pixels * 0.98);
+/// Renders one page through the engine as gray8.
+fn render_task(app: &AppState, doc: EngineDocRef, task: &Task) -> Result<Bitmap, AppError> {
     let engine_index = match doc {
-        EngineDocRef::Live(_) => page.engine_index,
-        EngineDocRef::Snapshot(_) => page.position,
+        EngineDocRef::Live(_) => task.engine_index,
+        EngineDocRef::Snapshot(_) => task.position,
     };
     let raster = app
         .engine()
-        .render_export(doc, engine_index, dpi, false, 0)?;
+        .render_for_ocr(doc, engine_index, task.dpi, limits::MAX_SIDE_PX)?;
     let gray = match raster.pixels {
         RasterPixels::Gray8(gray) => gray,
         RasterPixels::Rgb8(rgb) => rgb
@@ -281,37 +465,21 @@ fn recognize_page(
             })
             .collect(),
     };
-    let mut layer = client
-        .recognize(
-            &gray,
-            raster.width,
-            raster.height,
-            lang,
-            backend::page_timeout(),
-        )
-        .map_err(|e| AppError::logged(ErrorCode::Internal, e))?;
-    // Pixels to points of the displayed page.
-    let (sx, sy) = (
-        w / raster.width.max(1) as f32,
-        h / raster.height.max(1) as f32,
-    );
-    for word in layer
-        .lines
-        .iter_mut()
-        .flat_map(|line| line.words.iter_mut())
-    {
-        let [x0, y0, x1, y1] = word.rect;
-        word.rect = [x0 * sx, y0 * sy, x1 * sx, y1 * sy];
-    }
-    layer.dpi = dpi;
-    Ok(layer)
+    Ok(Bitmap {
+        gray,
+        width: raster.width,
+        height: raster.height,
+    })
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ocr::backend::{BackendKind, OcrLanguage};
+    use crate::ocr::backend::{BackendKind, OcrError, OcrLanguage};
+    use crate::ocr::{OcrLine, OcrWord};
     use crate::pdfwrite::ocr_probe::{image_only_pdf, ScanPage};
+    use std::sync::atomic::AtomicUsize;
+    use std::time::Duration;
 
     fn caps(de: bool, en: bool) -> Capabilities {
         Capabilities {
@@ -377,13 +545,285 @@ mod tests {
         let (a, b) = (PageId::new(0), PageId::new(1));
         let mut layered = BTreeSet::new();
         let got = classify(&bytes, &[(a, 0), (b, 5)], &layered).unwrap();
-        assert_eq!(got, vec![(a, PageOcrClass::Scan), (b, PageOcrClass::Text)]);
+        assert_eq!(got, vec![(a, PageOcrClass::Scan), (b, PageOcrClass::Empty)]);
         layered.insert(0);
         let got = classify(&bytes, &[(a, 0)], &layered).unwrap();
         assert_eq!(got, vec![(a, PageOcrClass::SheerLayer)]);
-        assert!(wants(PageOcrClass::Scan, false));
-        assert!(!wants(PageOcrClass::SheerLayer, false));
-        assert!(wants(PageOcrClass::SheerLayer, true));
-        assert!(!wants(PageOcrClass::Text, true));
+    }
+
+    #[test]
+    fn the_class_rules() {
+        let f = |visible, invisible, sheer_key| TextFacts {
+            visible,
+            invisible,
+            sheer_key,
+        };
+        use PageOcrClass::*;
+        assert_eq!(class_of(f(0, 0, false), 0.9, false), Scan);
+        assert_eq!(class_of(f(5, 0, false), 0.9, false), Scan);
+        assert_eq!(class_of(f(0, 0, false), 0.59, false), Empty);
+        assert_eq!(class_of(f(3, 0, false), 0.1, false), Text);
+        assert_eq!(class_of(f(500, 0, false), 0.9, false), Text);
+        assert_eq!(class_of(f(0, 300, false), 0.9, false), HasTextLayer);
+        assert_eq!(class_of(f(0, 300, true), 0.9, false), SheerLayer);
+        assert_eq!(class_of(f(0, 0, false), 0.9, true), SheerLayer);
+        assert_eq!(class_of(f(30, 0, true), 0.0, false), SheerLayer);
+    }
+
+    #[test]
+    fn redo_replaces_our_layers_and_never_touches_text_or_foreign_layers() {
+        use PageOcrClass::*;
+        for redo in [false, true] {
+            assert!(wants(Scan, redo));
+            assert!(!wants(Text, redo));
+            assert!(!wants(HasTextLayer, redo));
+            assert!(!wants(Empty, redo));
+        }
+        assert!(!wants(SheerLayer, false));
+        assert!(wants(SheerLayer, true));
+    }
+
+    #[test]
+    fn the_restart_budget_is_five_per_ten_minutes() {
+        let mut budget = RestartBudget::default();
+        let t0 = Instant::now();
+        for i in 0..5 {
+            assert!(budget.note(t0 + Duration::from_secs(i)), "restart {i}");
+        }
+        assert!(!budget.note(t0 + Duration::from_secs(5)));
+        // Ten minutes after the first ones, room again.
+        let mut budget = RestartBudget::default();
+        for i in 0..5 {
+            assert!(budget.note(t0 + Duration::from_secs(i)));
+        }
+        assert!(budget.note(t0 + limits::RESTART_WINDOW + Duration::from_secs(10)));
+    }
+
+    // --- pipeline with fakes ---
+
+    fn tasks(n: u32) -> Vec<Task> {
+        (0..n)
+            .map(|i| Task {
+                id: PageId::new(i),
+                position: i,
+                engine_index: i,
+                shown: [100.0, 200.0],
+                dpi: 72.0,
+            })
+            .collect()
+    }
+
+    fn one_word() -> OcrPageLayer {
+        OcrPageLayer {
+            lines: vec![OcrLine {
+                words: vec![OcrWord {
+                    text: "a".into(),
+                    rect: [10.0, 20.0, 30.0, 40.0],
+                }],
+            }],
+            ..OcrPageLayer::default()
+        }
+    }
+
+    /// Answers per page `i` by script; records the order and the peak of bitmaps in flight.
+    struct Fake<'a> {
+        script: Vec<Result<OcrPageLayer, OcrError>>,
+        seen: Vec<u32>,
+        in_flight: &'a AtomicUsize,
+        cancel_after: Option<(usize, &'a AtomicBool)>,
+        delay: Duration,
+    }
+
+    impl Recognizer for Fake<'_> {
+        fn recognize_page(
+            &mut self,
+            pixels: &[u8],
+            _w: u32,
+            _h: u32,
+            _lang: &str,
+        ) -> Result<OcrPageLayer, OcrError> {
+            std::thread::sleep(self.delay);
+            // The bitmap's first byte carries the page number.
+            self.seen.push(u32::from(pixels[0]));
+            let k = self.seen.len() - 1;
+            self.in_flight.fetch_sub(1, Ordering::SeqCst);
+            if let Some((n, flag)) = self.cancel_after {
+                if k + 1 == n {
+                    flag.store(true, Ordering::Release);
+                }
+            }
+            self.script
+                .get(k)
+                .cloned()
+                .unwrap_or_else(|| Ok(one_word()))
+        }
+    }
+
+    fn fake<'a>(
+        in_flight: &'a AtomicUsize,
+        _peak: &'a AtomicUsize,
+        script: Vec<Result<OcrPageLayer, OcrError>>,
+    ) -> Fake<'a> {
+        Fake {
+            script,
+            seen: Vec::new(),
+            in_flight,
+            cancel_after: None,
+            delay: Duration::from_millis(5),
+        }
+    }
+
+    fn renderer<'a>(
+        in_flight: &'a AtomicUsize,
+        peak: &'a AtomicUsize,
+    ) -> impl Fn(&Task) -> Result<Bitmap, AppError> + Sync + 'a {
+        move |task| {
+            let now = in_flight.fetch_add(1, Ordering::SeqCst) + 1;
+            peak.fetch_max(now, Ordering::SeqCst);
+            Ok(Bitmap {
+                gray: vec![task.id.get() as u8; 100 * 200],
+                width: 100,
+                height: 200,
+            })
+        }
+    }
+
+    #[test]
+    fn pages_come_in_order_with_at_most_two_bitmaps_in_flight_and_progress_per_page() {
+        let (in_flight, peak) = (AtomicUsize::new(0), AtomicUsize::new(0));
+        let mut rec = fake(&in_flight, &peak, vec![]);
+        let render = renderer(&in_flight, &peak);
+        let cancel = AtomicBool::new(false);
+        let mut seen_progress = Vec::new();
+        let result = run_pipeline(
+            &tasks(6),
+            &render,
+            &mut rec,
+            "de-DE",
+            &cancel,
+            &mut RestartBudget::default(),
+            |done, total, failed| seen_progress.push((done, total, failed)),
+        );
+        assert_eq!(rec.seen, vec![0, 1, 2, 3, 4, 5]);
+        assert!(peak.load(Ordering::SeqCst) <= 2, "{peak:?}");
+        assert_eq!(result.layers.len(), 6);
+        assert_eq!((result.failed, result.handled), (0, 6));
+        assert_eq!(
+            seen_progress,
+            (1..=6).map(|d| (d, 6, 0)).collect::<Vec<_>>()
+        );
+        // Boxes are scaled from pixels (100 x 200) to points (100 x 200 at 72 dpi): one to one; a half-size page halves them.
+        let mut half = tasks(1);
+        half[0].shown = [50.0, 100.0];
+        let mut rec = fake(&in_flight, &peak, vec![]);
+        let result = run_pipeline(
+            &half,
+            &render,
+            &mut rec,
+            "de-DE",
+            &cancel,
+            &mut RestartBudget::default(),
+            |_, _, _| {},
+        );
+        assert_eq!(
+            result.layers[0].1.lines[0].words[0].rect,
+            [5.0, 10.0, 15.0, 20.0]
+        );
+        assert!((result.layers[0].1.dpi - 144.0).abs() < 0.01);
+    }
+
+    #[test]
+    fn a_failed_page_does_not_stop_the_run() {
+        let (in_flight, peak) = (AtomicUsize::new(0), AtomicUsize::new(0));
+        let script = vec![
+            Ok(one_word()),
+            Err(OcrError::Timeout),
+            Err(OcrError::Failed("x".into())),
+            Ok(one_word()),
+        ];
+        let mut rec = fake(&in_flight, &peak, script);
+        let render = renderer(&in_flight, &peak);
+        let result = run_pipeline(
+            &tasks(4),
+            &render,
+            &mut rec,
+            "de-DE",
+            &AtomicBool::new(false),
+            &mut RestartBudget::default(),
+            |_, _, _| {},
+        );
+        assert_eq!(result.failed, 2);
+        assert_eq!(result.handled, 4);
+        let ids: Vec<u32> = result.layers.iter().map(|(id, _)| id.get()).collect();
+        assert_eq!(ids, vec![0, 3]);
+    }
+
+    #[test]
+    fn a_render_error_fails_that_page_only() {
+        let (in_flight, peak) = (AtomicUsize::new(0), AtomicUsize::new(0));
+        let mut rec = fake(&in_flight, &peak, vec![]);
+        let inner = renderer(&in_flight, &peak);
+        let render = move |task: &Task| {
+            if task.id.get() == 1 {
+                Err(AppError::limit("page_too_large", 8000))
+            } else {
+                inner(task)
+            }
+        };
+        let result = run_pipeline(
+            &tasks(3),
+            &render,
+            &mut rec,
+            "de-DE",
+            &AtomicBool::new(false),
+            &mut RestartBudget::default(),
+            |_, _, _| {},
+        );
+        assert_eq!(
+            (result.failed, result.handled, result.layers.len()),
+            (1, 3, 2)
+        );
+    }
+
+    #[test]
+    fn too_many_restarts_end_the_run_and_the_rest_counts_as_failed() {
+        let (in_flight, peak) = (AtomicUsize::new(0), AtomicUsize::new(0));
+        let script = (0..10).map(|_| Err(OcrError::Timeout)).collect();
+        let mut rec = fake(&in_flight, &peak, script);
+        let render = renderer(&in_flight, &peak);
+        let result = run_pipeline(
+            &tasks(10),
+            &render,
+            &mut rec,
+            "de-DE",
+            &AtomicBool::new(false),
+            &mut RestartBudget::default(),
+            |_, _, _| {},
+        );
+        // Five restarts are allowed, the sixth failure stops the job.
+        assert_eq!(rec.seen.len(), 6);
+        assert_eq!((result.failed, result.handled), (10, 10));
+        assert!(result.layers.is_empty());
+    }
+
+    #[test]
+    fn a_cancel_keeps_the_finished_pages() {
+        let (in_flight, peak) = (AtomicUsize::new(0), AtomicUsize::new(0));
+        let cancel = AtomicBool::new(false);
+        let mut rec = fake(&in_flight, &peak, vec![]);
+        rec.cancel_after = Some((3, &cancel));
+        let render = renderer(&in_flight, &peak);
+        let result = run_pipeline(
+            &tasks(8),
+            &render,
+            &mut rec,
+            "de-DE",
+            &cancel,
+            &mut RestartBudget::default(),
+            |_, _, _| {},
+        );
+        assert_eq!(result.layers.len(), 3);
+        assert_eq!(result.handled, 3);
+        assert_eq!(result.failed, 0);
     }
 }

@@ -169,6 +169,7 @@ pub fn run() -> Result<(), AppError> {
             commands::ocr::ocr_classify_pages,
             commands::ocr::ocr_start,
             commands::ocr::ocr_cancel,
+            commands::ocr::ocr_open_language_settings,
             commands::annotations::list_annotations,
             commands::annotations::list_document_annotations,
             commands::annotations::get_annotation_quote,

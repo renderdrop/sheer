@@ -751,6 +751,25 @@ impl Pump {
                 );
                 let _ = reply.send(result);
             }
+            Job::RenderForOcr {
+                doc,
+                engine_index,
+                dpi,
+                max_side,
+                reply,
+            } => {
+                let result = self.render_export(
+                    doc,
+                    WireRequest::RenderForOcr {
+                        doc,
+                        engine_index,
+                        dpi,
+                        max_side,
+                    },
+                    deadline,
+                );
+                let _ = reply.send(result);
+            }
             Job::AppendBlankPage { id, size, reply } => {
                 let wire = WireRequest::AppendBlankPage { id, size };
                 let result = self.on_doc(id, wire, Blob::None, deadline, |reply, _| match reply {

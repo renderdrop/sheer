@@ -250,6 +250,7 @@ pub fn reply_blob_cap(request: &WireRequest) -> usize {
         WireRequest::Render { .. } => limits::MAX_FRAME_BYTES,
         WireRequest::RenderForRedaction { .. } => bytes_of(limits::MAX_REDACT_PIXELS, 3),
         WireRequest::RenderExport { .. } => bytes_of(limits::MAX_EXPORT_PIXELS, 3),
+        WireRequest::RenderForOcr { .. } => bytes_of(crate::ocr::limits::MAX_PIXELS, 1),
         WireRequest::Release { snapshot: true, .. } => {
             usize::try_from(limits::MAX_SNAPSHOT_BYTES).unwrap_or(usize::MAX)
         }
@@ -427,6 +428,12 @@ pub enum WireRequest {
         dpi: f32,
         annotations: bool,
         rotate_quarter: u8,
+    },
+    RenderForOcr {
+        doc: EngineDocRef,
+        engine_index: u32,
+        dpi: f32,
+        max_side: u32,
     },
     AppendBlankPage {
         id: DocumentId,
@@ -765,6 +772,12 @@ mod tests {
                 id,
                 hide: vec![(0, 1)],
                 show: vec![],
+            },
+            WireRequest::RenderForOcr {
+                doc: EngineDocRef::Snapshot(SnapshotId::fresh()),
+                engine_index: 2,
+                dpi: 300.0,
+                max_side: 8000,
             },
             WireRequest::RenderExport {
                 doc: EngineDocRef::Snapshot(SnapshotId::fresh()),

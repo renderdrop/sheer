@@ -1192,6 +1192,7 @@ pub fn write_ocr_layers(doc: &mut lopdf::Document, layers: &[(ObjectId, &OcrPage
 | `ocr_classify_pages` | `docId, pages?: PageId[]` (page ids) | `{ page: number, class: PageOcrClass }[]` |
 | `ocr_start` | `docId, pages: PageSelection, lang: "de-DE"|"en-US", redo: boolean` | `{ job: OcrJobId, langUsed: string, notice: "languageFallback" \| null }`; refused `read_only` (signed/certified), `read_only` (`permission`), `invalid_argument` (`lang`, `pageSelection`), `limit_exceeded` (`ocrJobs`, one job at a time), `unsupported_feature` (`ocrUnavailable`) |
 | `ocr_cancel` | `job` | nothing; finished pages stay applied |
+| `ocr_open_language_settings` | none | nothing; opens the fixed OS URI `ms-settings:regionlanguage` by starting `explorer.exe` with it (no plugin) (Windows only, `unsupported_feature` elsewhere); TS `openLanguageSettings()` |
 
 Pushes: `ocrProgress { doc, job, done, total, failed }`, `ocrFinished { doc, job, applied, skipped, failed }` (no paths, no text).
 They are `AppEvent`s on the `subscribeApp` channel (`events.rs`); TS: `parseOcrEvent`, `handleOcrEvent(event, { onProgress, onFinished })` in `src/api/ocr.ts`. Arguments are `docId` like every command. `ocr_start` runs `ocr::service::run_job` (sequential, one job at a time, `ocr_cancel` sets its flag) and ends with one `DocCommand::ApplyOcr` (internal, label `ocr.apply`; `DocPart::Ocr` in the change set; `DocState.ocr_layers`).

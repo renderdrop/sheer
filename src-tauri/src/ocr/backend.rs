@@ -188,6 +188,38 @@ impl Drop for ChildClient {
     }
 }
 
+/// Something that recognizes one gray8 bitmap (the child; a fake in the pipeline tests).
+pub trait Recognizer {
+    /// Recognizes `pixels` (`w * h` bytes). An error other than [`OcrError::Failed`] means the recognizer was killed and restarts with
+    /// the next page.
+    fn recognize_page(
+        &mut self,
+        pixels: &[u8],
+        w: u32,
+        h: u32,
+        lang: &str,
+    ) -> Result<OcrPageLayer, OcrError>;
+}
+
+impl Recognizer for ChildClient {
+    fn recognize_page(
+        &mut self,
+        pixels: &[u8],
+        w: u32,
+        h: u32,
+        lang: &str,
+    ) -> Result<OcrPageLayer, OcrError> {
+        self.recognize(pixels, w, h, lang, page_timeout())
+    }
+}
+
+impl OcrError {
+    /// Whether this error cost a child process (kill and restart); a refusal in a healthy child does not.
+    pub fn restarts_child(&self) -> bool {
+        !matches!(self, OcrError::Failed(_))
+    }
+}
+
 /// The page timeout of the app.
 pub const fn page_timeout() -> Duration {
     limits::PAGE_TIMEOUT

@@ -165,3 +165,8 @@ export async function ocrStart(
 export async function ocrCancel(job: number): Promise<void> {
   await call<void>('ocr_cancel', { job });
 }
+
+/** Opens the system's language settings (Windows; the target is fixed in the backend). Refused elsewhere (`unsupported_feature`). */
+export async function openLanguageSettings(): Promise<void> {
+  await call<void>('ocr_open_language_settings');
+}

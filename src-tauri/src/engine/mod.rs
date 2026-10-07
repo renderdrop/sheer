@@ -301,6 +301,15 @@ pub(crate) enum Job {
         rotate_quarter: u8,
         reply: Reply<RasterPage>,
     },
+    /// A page drawn for text recognition (ADR-134 item 4): Gray8 on white, annotations off, as displayed, at `dpi` lowered to keep the
+    /// longest side within `max_side` pixels; refused (`limit_exceeded`, `page_too_large`) when that needs less than the minimum dpi.
+    RenderForOcr {
+        doc: EngineDocRef,
+        engine_index: u32,
+        dpi: f32,
+        max_side: u32,
+        reply: Reply<RasterPage>,
+    },
     /// Adds an empty page of `size` points to the end of PDFium's copy (`pages`).
     AppendBlankPage {
         id: DocumentId,
@@ -410,6 +419,9 @@ impl Job {
                 let _ = reply.send(Err(error));
             }
             Job::RenderExport { reply, .. } => {
+                let _ = reply.send(Err(error));
+            }
+            Job::RenderForOcr { reply, .. } => {
                 let _ = reply.send(Err(error));
             }
             Job::AppendBlankPage { reply, .. } => {
@@ -1099,6 +1111,25 @@ impl Engine {
                 dpi,
                 annotations,
                 rotate_quarter,
+                reply,
+            }
+        })
+    }
+
+    /// Draws one page of `doc` for text recognition (ADR-134 item 4, `Background` priority): Gray8, annotations off, as displayed.
+    pub fn render_for_ocr(
+        &self,
+        doc: EngineDocRef,
+        engine_index: u32,
+        dpi: f32,
+        max_side: u32,
+    ) -> Result<RasterPage, AppError> {
+        self.call(limits::EXPORT_RENDER_TIMEOUT, Rank::BACKGROUND, |reply| {
+            Job::RenderForOcr {
+                doc,
+                engine_index,
+                dpi,
+                max_side,
                 reply,
             }
         })

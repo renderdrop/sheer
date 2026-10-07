@@ -478,6 +478,22 @@ impl Executor {
                 })?;
                 raster(page)
             }
+            R::RenderForOcr {
+                doc,
+                engine_index,
+                dpi,
+                max_side,
+            } => {
+                let doc = self.snapshot_ref(doc)?;
+                let page = self.ask(|reply| Job::RenderForOcr {
+                    doc,
+                    engine_index,
+                    dpi,
+                    max_side,
+                    reply,
+                })?;
+                raster(page)
+            }
             R::AppendBlankPage { id, size } => {
                 let appended = self.ask(|reply| Job::AppendBlankPage { id, size, reply })?;
                 (WireReply::Appended(vec![appended]), Blob::None)

@@ -56,6 +56,12 @@ impl ProbeDoc {
         self.pages.len() as u32
     }
 
+    /// What the text scan finds on page `index` (file order, from 0); `None` for a page the file does not have.
+    pub fn text_facts(&self, index: u32) -> Option<TextFacts> {
+        let id = *self.pages.get(&index.checked_add(1)?)?;
+        Some(page_text_facts(&self.doc, id))
+    }
+
     /// The crop box and rotation of page `index` (file order, from 0).
     pub fn geom(&self, index: u32) -> Option<PageGeom> {
         let id = *self.pages.get(&index.checked_add(1)?)?;
@@ -467,5 +473,137 @@ mod tests {
             gray: vec![0; 3],
         };
         assert!(image_only_pdf(&[page]).is_err());
+    }
+}
+
+/// The most decompressed bytes of a page's content the text scan reads.
+const MAX_TEXT_CONTENT: usize = 64 * 1024 * 1024;
+
+/// What the text scan of a page's content found.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct TextFacts {
+    /// Non-blank bytes shown in a visible render mode.
+    pub visible: usize,
+    /// Non-blank bytes shown with `Tr` 3 (invisible) or 7 (invisible, clip): somebody else's OCR layer.
+    pub invisible: usize,
+    /// The page carries our `/SheerOcr` key (a layer of an earlier session, saved).
+    pub sheer_key: bool,
+}
+
+/// The string bytes a text operator shows, `None` for operators that show nothing.
+fn shown_bytes(operator: &str, operands: &[Object]) -> usize {
+    let blank = |s: &[u8]| s.iter().filter(|b| **b > 0x20).count();
+    match operator {
+        "Tj" | "'" | "\"" => match operands.last() {
+            Some(Object::String(s, _)) => blank(s),
+            _ => 0,
+        },
+        "TJ" => match operands.first() {
+            Some(Object::Array(items)) => items
+                .iter()
+                .map(|o| match o {
+                    Object::String(s, _) => blank(s),
+                    _ => 0,
+                })
+                .sum(),
+            _ => 0,
+        },
+        _ => 0,
+    }
+}
+
+/// Scans a page's own content (forms are not entered) for shown text by render mode.
+fn page_text_facts(doc: &Document, page: ObjectId) -> TextFacts {
+    let mut facts = TextFacts {
+        sheer_key: doc
+            .get_dictionary(page)
+            .is_ok_and(|d| d.get(b"SheerOcr").is_ok()),
+        ..TextFacts::default()
+    };
+    let Ok(bytes) = doc.get_page_content_with_limit(page, MAX_TEXT_CONTENT) else {
+        return facts;
+    };
+    let Ok(content) = lopdf::content::Content::decode(&bytes) else {
+        return facts;
+    };
+    // Tr belongs to the graphics state: q saves it, Q restores it.
+    let mut mode: i64 = 0;
+    let mut stack: Vec<i64> = Vec::new();
+    for op in &content.operations {
+        match op.operator.as_str() {
+            "q" => stack.push(mode),
+            "Q" => mode = stack.pop().unwrap_or(mode),
+            "Tr" => {
+                if let Some(Ok(m)) = op.operands.first().map(Object::as_i64) {
+                    mode = m;
+                }
+            }
+            other => {
+                let n = shown_bytes(other, &op.operands);
+                if n > 0 {
+                    if matches!(mode, 3 | 7) {
+                        facts.invisible += n;
+                    } else {
+                        facts.visible += n;
+                    }
+                }
+            }
+        }
+    }
+    facts
+}
+
+#[cfg(test)]
+mod text_tests {
+    use super::*;
+
+    #[test]
+    fn text_is_counted_by_render_mode_with_q_restoring_it() {
+        use lopdf::content::Operation;
+        use lopdf::dictionary;
+        let ops = vec![
+            Operation::new("BT", vec![]),
+            Operation::new("Tj", vec![Object::string_literal("abc de")]),
+            Operation::new("q", vec![]),
+            Operation::new("Tr", vec![3.into()]),
+            Operation::new("Tj", vec![Object::string_literal("hidden")]),
+            Operation::new("Q", vec![]),
+            Operation::new("Tj", vec![Object::string_literal("xy")]),
+            Operation::new("Tr", vec![7.into()]),
+            Operation::new(
+                "TJ",
+                vec![Object::Array(vec![
+                    Object::string_literal("ab"),
+                    Object::Integer(-20),
+                    Object::string_literal("c"),
+                ])],
+            ),
+            Operation::new("ET", vec![]),
+        ];
+        let mut doc = Document::with_version("1.5");
+        let content = lopdf::content::Content { operations: ops };
+        let stream = lopdf::Stream::new(lopdf::Dictionary::new(), content.encode().unwrap());
+        let cid = doc.add_object(stream);
+        let pages = doc.new_object_id();
+        let page = doc.add_object(dictionary! {
+            "Type" => "Page", "Parent" => pages, "Contents" => cid,
+            "MediaBox" => vec![0.into(), 0.into(), 100.into(), 100.into()],
+        });
+        doc.objects.insert(
+            pages,
+            Object::Dictionary(dictionary! {
+                "Type" => "Pages", "Kids" => vec![page.into()], "Count" => 1,
+            }),
+        );
+        let facts = page_text_facts(&doc, page);
+        // "abcde" + "xy" visible (the Tr 3 is undone by Q); "hidden" + "abc" invisible.
+        assert_eq!(
+            facts,
+            TextFacts {
+                visible: 7,
+                invisible: 9,
+                sheer_key: false
+            }
+        );
     }
 }

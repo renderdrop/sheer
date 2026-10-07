@@ -6,6 +6,7 @@
 //! | `ocr_classify_pages` | `docId`, `pages?: PageId[]` (default all) | `{ page: PageId, class }[]`, class `scan`, `hasTextLayer`, `sheerLayer`, `text` or `empty` |
 //! | `ocr_start` | `docId`, `pages: PageSelection`, `lang`, `redo` | `{ job, langUsed, notice: "languageFallback" \| null }`; the job pushes `ocrProgress` and `ocrFinished` (`events.rs`) |
 //! | `ocr_cancel` | `job` | nothing; pages that are done stay applied; an unknown or finished job is not an error |
+//! | `ocr_open_language_settings` | none | nothing; opens the fixed URI `ms-settings:regionlanguage` (Windows), `unsupported_feature` elsewhere |
 //!
 //! `ocr_start` is refused like a text edit: `read_only` (`signed`, `permission`), `unsupported_feature` (`ocrUnavailable`) when the
 //! computer has no OCR language, `invalid_argument` (`lang`, `pageSelection`), `limit_exceeded` (`ocrJobs`) while a job runs. Nothing
@@ -241,6 +242,26 @@ pub async fn ocr_start(
 pub async fn ocr_cancel(job: OcrJobId) -> Result<(), UiError> {
     service::cancel(job);
     Ok(())
+}
+
+/// The one URI `ocr_open_language_settings` opens; the frontend gives no argument.
+const LANGUAGE_SETTINGS_URI: &str = "ms-settings:regionlanguage";
+
+/// Opens the OS language settings (Windows), so the user can install an OCR language pack. Sheer installs nothing itself.
+#[tauri::command]
+pub async fn ocr_open_language_settings() -> Result<(), UiError> {
+    blocking(|| {
+        if !cfg!(windows) {
+            return Err(AppError::unsupported("languageSettings"));
+        }
+        // A fixed program with a fixed argument; the frontend gives nothing. (The opener plugin is reserved for links, security baseline.)
+        std::process::Command::new("explorer.exe")
+            .arg(LANGUAGE_SETTINGS_URI)
+            .spawn()
+            .map(drop)
+            .map_err(|error| AppError::logged(ErrorCode::Internal, error))
+    })
+    .await
 }
 
 #[cfg(test)]
