@@ -1134,7 +1134,7 @@ No "Don't show tips" link: four clip tips, each once, plus Hide is enough; the s
 - Never during a running or paused tour or with a coach mark, menu, dialog or popover open; one notice at a time (Q8); an overlay opening later dismisses it (all as built). A queued tip whose context is gone (C1) is dropped unseen.
 - `tipsEnabled` false (C5) blocks everything before any write.
 
-**C5 Setting `tipsEnabled`** (settings store, boolean, default true; unknown/missing → true). Group "Tour & tips" (§3.6 group 5), rows gap 8: (1) Secondary "Restart tour"/"Start tour" (as built); (2) **Toggle** (§4, 36 × 20) + 8 + label `.t-body` `settings.tips.enabled`, row 36, label is the toggle's accessible name (`role="switch"`, `aria-checked`); (3) Ghost "Show tips again"; hint `.t-caption` below (live).
+**C5 Setting `tipsEnabled`** (settings store, boolean, default true; unknown/missing → true). Group "Tour & tips" (§3.6 group 5), one wrapping row (gap 12 / 4, items centred; ADR-124 fit at 960×640, about 72 px less than three stacked rows): (1) Secondary "Restart tour"/"Start tour" (as built); (2) **Toggle** (§4, 36 × 20) + 8 + label `.t-body` `settings.tips.enabled`, row 36, label is the toggle's accessible name (`role="switch"`, `aria-checked`); (3) Ghost "Show tips again"; hint `.t-caption` below (live).
 - *Off:* no tip of any kind shows or queues; a visible tip leaves at once; `tipsSeen` is not written. Tour, coach marks, banners, toasts and the edit-text fallback notice are unaffected. "Show tips again" disabled (0.4, `aria-disabled`, tooltip and hint `settings.tips.offHint`).
 - *On again:* remaining unseen tips resume. Still six groups (§3.6 test unchanged).
 

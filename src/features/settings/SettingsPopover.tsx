@@ -100,7 +100,7 @@ function HelpRow() {
   return (
     <Setting label={t('settings.tour')} hint={hint} live>
       {(labelId) => (
-        <div className="flex flex-col items-start gap-2">
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
           <Button variant="secondary" size="sm" aria-describedby={labelId} onClick={() => void restartTour()}>
             {running ? t('settings.tour.restart') : t('settings.tour.start')}
           </Button>
