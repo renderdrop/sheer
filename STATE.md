@@ -3,13 +3,14 @@ phase: session "v1.7 part 2 + Politur v1.7" (ADR-137) closed: v1.7.0 released
 version: 1.7.0 (tag v1.7.0, latest stable)
 current_item: none — next session: owner decides (proposal: v1.8 context help). Open owner items: B-008 Mac OCR check, full-resolution scan photos
 last_completed: v1.7.0 — macOS Vision sidecar b3e05e5 (+tests b9b0d63, eb02a82~2), polish PB 19e3a19, PF+FX-RO 3f87e96, ACL b372a72, sec low c4006f7, FX-D; acceptance v17-ocr 50/54 (4 = owner photo scan recognition limit) + rerun 42/42; security PASS (4 low); designer PASS (1 major fixed); gate 1173/1180 + coach rerun 78/78; annot smoke 17/17; real-input smoke PASS; macOS CI Vision 5/5
-loop_count_this_session: 0
+loop_count_this_session: 0 (session closed, STOP set); report docs/reports/2026-10-07-v1.7.0-ocr-macos-politur.md
 open_blockers: 2 (B-002, B-005, human-only). B-006 and B-007 resolved by the owner (ADR-128). Path guard (ADR-127) allows the project memory folder (ADR-128)
 notes: ADR-120: every push starts with `bash scripts/ci-status.sh` (last completed run on main, never wait); red = fix first. Rule 15 / ADR-131: acceptance ONLY via `npm run build:acceptance` + `scripts/ui/accept/*.mjs` (CDP, dialog guard); real input only `smoke-real.mjs` (≤ 5 min, announced). Never launch target/release or anything installed.
   Split staging across packages can break an intermediate commit (run #108): stage whole files per package when possible.
   Never run the dev window while agents run cargo/vitest; stop it by killing only processes whose path is target\debug\sheer.exe (never `taskkill /IM sheer.exe`, which would hit an installed instance) + Stop-Process on tauri.js/vite.js.
   Rule 17 / ADR-136 (resources and pace): ≤ 2 cargo agents at once (frontend up to 4); agents run `npm run check:fast` and `npm run cargo -- …`; the full `npm run check` once before each commit (orchestrator); `npm run target:budget` (cargo sweep, target ≤ 60 GB) instead of cargo clean; sccache in .tools/ (`npm run tools:install`); wait for agents by notification/run_in_background, no foreground sleep > 2 min; `npm run accept:clean` after every acceptance; guard-resources blocks builds under 8 GB RAM / 40 GB disk.
 ci_log: (ADR-120 corrected — package commit → CI run; result filled in at the next push)
+  - e3eac8e release v1.7.0 → run #126 (37635908414) GREEN; release run #18 (37635909346) success (universal DMG with sheer-ocr x86_64+arm64, NSIS; stable)
   - b9b0d63..eb02a82 MAC2 tests, sec low, FX-ACC, Vision SIGSEGV fix, FX-D, docs → run #125 (37633889225) GREEN (macOS Vision 5/5)
   - c4006f7..d67f8e9 → run #124 (37631704251) red: Vision tests bound PDFium in parallel (SIGSEGV, macOS) → fixed in #125
   - c0418a5..b372a72 ADR-137, MAC sidecar, PB, PF+FX-RO, AT → run #123 (37628875101) GREEN after rerun (Windows fuzz wedge EngineTimeout flake)
