@@ -142,7 +142,7 @@ export function StampPickerBody({ close }: StampPickerBodyProps) {
           role="radiogroup"
           aria-labelledby={labelIds.predefined}
           onKeyDown={onTileKey}
-          className="grid grid-cols-[repeat(2,var(--stamp-tile-width))] gap-2"
+          className="grid grid-cols-2 gap-2"
         >
           {PRESETS.map((preset, index) => {
             const face = faceFor({ stamp: preset });
@@ -161,7 +161,7 @@ export function StampPickerBody({ close }: StampPickerBodyProps) {
                 data-stamp-tile={preset}
                 onClick={(event) => finish({ stamp: preset }, event.detail === 0)}
                 className={cx(
-                  'flex h-(--stamp-tile-height) w-(--stamp-tile-width) cursor-pointer items-center justify-center rounded-md border bg-surface p-1',
+                  'flex h-(--stamp-tile-height) w-full min-w-0 cursor-pointer items-center justify-center rounded-md border bg-surface p-1',
                   'transition-colors duration-fast hover:bg-subtle',
                   checked ? 'border-text' : 'border-border-subtle',
                 )}

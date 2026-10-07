@@ -112,7 +112,7 @@ describe('the dialog', () => {
     useHeaderFooter.getState().openDialog({ docId: 1, info: info({ spec, fileLayers: 5 }), preselect: null });
     const { user } = setup(<HeaderFooterDialog />);
     expect(await screen.findByText(/Applying replaces them/)).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Header, Centre' }).textContent).toBe('Draft');
+    expect(screen.getByRole('button', { name: 'Header, Centre' }).textContent).toBe('Text');
     await user.click(screen.getByRole('button', { name: 'Remove' }));
     await waitFor(() => expect(applyCommand).toHaveBeenCalledTimes(1));
     expect(applyCommand.mock.calls[0]?.[1]).toEqual({ type: 'setHeaderFooter', spec: null });

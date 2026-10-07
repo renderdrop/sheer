@@ -109,7 +109,7 @@ function Dialog({ request }: { request: HfDialogState }) {
 
   const trigger = (slot: HfSlot) => {
     const slotDraft = draft.slots[slot];
-    const shown = slotDraft.kind === 'text' && slotDraft.text !== '' ? slotDraft.text : kindLabel(slotDraft.kind);
+    const shown = kindLabel(slotDraft.kind);
     return (
       <Menu
         key={slot}
