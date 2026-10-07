@@ -255,7 +255,7 @@ pub async fn ocr_open_language_settings() -> Result<(), UiError> {
             return Err(AppError::unsupported("languageSettings"));
         }
         // A fixed program with a fixed argument; the frontend gives nothing. (The opener plugin is reserved for links, security baseline.)
-        std::process::Command::new("explorer.exe")
+        std::process::Command::new(explorer_path())
             .arg(LANGUAGE_SETTINGS_URI)
             .spawn()
             .map(drop)
@@ -264,10 +264,28 @@ pub async fn ocr_open_language_settings() -> Result<(), UiError> {
     .await
 }
 
+/// `%SystemRoot%\explorer.exe` (absolute, so a PATH entry cannot hijack it); `C:\Windows` when the variable is unset or relative.
+fn explorer_path() -> std::path::PathBuf {
+    let root = std::env::var_os("SystemRoot")
+        .map(std::path::PathBuf::from)
+        .filter(|root| root.is_absolute())
+        .unwrap_or_else(|| std::path::PathBuf::from(r"C:\Windows"));
+    root.join("explorer.exe")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::ocr::backend::{BackendKind, OcrLanguage};
+
+    #[test]
+    fn language_settings_use_an_absolute_explorer_and_a_fixed_uri() {
+        assert!(explorer_path().ends_with("explorer.exe"));
+        if cfg!(windows) {
+            assert!(explorer_path().is_absolute());
+        }
+        assert_eq!(LANGUAGE_SETTINGS_URI, "ms-settings:regionlanguage");
+    }
 
     fn ids(n: u32) -> Vec<PageId> {
         (0..n).map(PageId::new).collect()
