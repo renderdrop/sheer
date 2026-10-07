@@ -1860,4 +1860,56 @@ mod tests {
         let content = content_of(&bytes);
         assert!(content.contains("1 0 0 1 -50 -50 cm"), "{content}");
     }
+
+    /// A saved OCR layer (ADR-134) is page content like any other: the words under a mark go from it, the others stay.
+    #[test]
+    fn a_saved_ocr_layer_loses_the_words_under_a_mark_and_keeps_the_rest() {
+        use crate::ocr::{OcrLine, OcrPageLayer, OcrWord};
+        let word = |text: &str, x0: f32, y0: f32, x1: f32, y1: f32| OcrWord {
+            text: text.into(),
+            rect: [x0, y0, x1, y1],
+        };
+        let layer = OcrPageLayer {
+            lang: "en-US".into(),
+            angle_deg: 0.0,
+            dpi: 300.0,
+            lines: vec![
+                OcrLine {
+                    words: vec![word("secret", 50.0, 50.0, 110.0, 62.0)],
+                },
+                OcrLine {
+                    words: vec![word("keep", 50.0, 100.0, 90.0, 112.0)],
+                },
+            ],
+        };
+        let (mut doc, _) = page_doc("");
+        let mut plain = Vec::new();
+        doc.save_to(&mut plain).unwrap();
+        let saved = crate::pdfwrite::ocr_layer::apply_ocr_layers(
+            plain,
+            &std::collections::BTreeMap::from([(0u32, layer)]),
+            false,
+        )
+        .unwrap();
+        let src = crate::pdfwrite::prescan::load_untrusted(&saved).unwrap();
+        let page = *src.get_pages().values().next().unwrap();
+        let before = content_of(&saved).to_uppercase();
+        assert!(before.contains("0073006500630072") && before.contains("006B0065"));
+        // The mark is over the middle of "secret" (page space, y down).
+        let bytes = redacted_page(
+            &src,
+            page,
+            [0.0, 0.0, 200.0, 200.0],
+            0,
+            &[rect(60.0, 48.0, 30.0, 16.0)],
+        )
+        .unwrap();
+        let out = content_of(&bytes).to_uppercase();
+        assert!(!out.contains("00730065006300720065"), "{out}");
+        assert!(
+            !out.contains("00630072"),
+            "the glyphs under the mark are gone: {out}"
+        );
+        assert!(out.contains("006B"), "the word elsewhere stays: {out}");
+    }
 }

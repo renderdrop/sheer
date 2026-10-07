@@ -305,6 +305,16 @@ impl AnnotationStore {
         f(models.docs.entry(id).or_insert_with(init))
     }
 
+    /// Runs `f` on the model of document `id` if it has one (none is made); `None` for a document without a model, a closed one, or when
+    /// `f` has no answer. For readers that must not read the file just to find out that nothing was changed.
+    pub(super) fn peek<T>(
+        &self,
+        id: DocumentId,
+        f: impl FnOnce(&DocState) -> Option<T>,
+    ) -> Option<T> {
+        self.lock().docs.get(&id).and_then(f)
+    }
+
     /// Forgets the model of a document that is closed, and refuses it from now on.
     pub fn remove(&self, id: DocumentId) {
         let mut models = self.lock();

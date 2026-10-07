@@ -6,6 +6,7 @@ pub mod backend;
 pub mod child;
 pub mod limits;
 pub mod service;
+pub mod textlayer;
 #[cfg(windows)]
 pub mod win;
 pub mod wire;

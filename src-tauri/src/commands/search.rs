@@ -27,6 +27,8 @@ use std::time::Instant;
 use tauri::ipc::Channel;
 use tauri::State;
 
+use super::annotations::AnnotationStore;
+use super::text::pending_layer;
 use super::{blocking, AppState};
 use crate::documents::{DocumentId, Registry};
 use crate::engine::{Engine, SearchSpec};
@@ -34,6 +36,7 @@ use crate::error::{AppError, ErrorCode, UiError};
 use crate::limits;
 use crate::model::geometry::Quad;
 use crate::model::reading::{SearchEvent, SearchQuery};
+use crate::ocr::textlayer;
 
 /// The searches that run, by id. Managed through [`AppState`].
 #[derive(Debug, Default)]
@@ -157,6 +160,8 @@ enum PageFailure {
 pub(super) struct SearchRun<'a> {
     pub engine: &'a Engine,
     pub registry: &'a Registry,
+    /// The models, for the OCR layers that are not in the file yet.
+    pub models: &'a AnnotationStore,
     pub id: DocumentId,
     pub spec: &'a Arc<SearchSpec>,
     pub max_hits: u32,
@@ -218,7 +223,17 @@ impl SearchRun<'_> {
             }
             // One more than may still be sent: whether it is there tells that the search stopped with more to find.
             let remaining = (self.max_hits - sent_hits) as usize;
-            let hits = match self.page(index, remaining + 1) {
+            // A page with an OCR layer that is not in the file yet is searched in the layer (ADR-134 item 8).
+            let searched = match pending_layer(self.models, self.id, page_id) {
+                Some((layer, shape)) => Ok(textlayer::search_page(
+                    &layer,
+                    shape,
+                    self.spec,
+                    remaining + 1,
+                )),
+                None => self.page(index, remaining + 1),
+            };
+            let hits = match searched {
                 Ok(hits) => hits,
                 Err(PageFailure::Skip) => Vec::new(),
                 Err(PageFailure::Stop) => return,
@@ -289,11 +304,13 @@ impl AppState {
             whole_word: query.whole_word,
         });
         let (engine, registry) = (self.engine.clone(), Arc::clone(&self.registry));
+        let models = Arc::clone(&self.annotations);
         // Fire and forget: the search ends itself (over, cancelled, or the webview gone), and its ticket with it.
         drop(tauri::async_runtime::spawn_blocking(move || {
             SearchRun {
                 engine: &engine,
                 registry: &registry,
+                models: &models,
                 id: doc_id,
                 spec: &spec,
                 max_hits,
@@ -403,6 +420,7 @@ mod tests {
         SearchRun {
             engine: &state.engine,
             registry: &state.registry,
+            models: &state.annotations,
             id,
             spec: &spec,
             max_hits,
@@ -530,6 +548,7 @@ mod tests {
         SearchRun {
             engine: &state.engine,
             registry: &state.registry,
+            models: &state.annotations,
             id,
             spec: &spec,
             max_hits: 10,
@@ -835,5 +854,56 @@ mod tests {
         })
         .unwrap();
         assert_eq!(message["pageId"], 4);
+    }
+
+    #[test]
+    fn a_page_with_a_pending_ocr_layer_is_searched_in_the_layer_and_undo_gives_the_engine_the_page_back(
+    ) {
+        use crate::model::command::DocCommand;
+        use crate::ocr::{OcrLine, OcrPageLayer, OcrWord};
+        let asked = Arc::default();
+        let (state, id) = state_with_script(3, script_of(vec![0, 0, 0], Arc::clone(&asked)));
+        let layer = Arc::new(OcrPageLayer {
+            lang: "en-US".into(),
+            angle_deg: 0.0,
+            dpi: 300.0,
+            lines: vec![OcrLine {
+                words: vec![OcrWord {
+                    text: "Needle".into(),
+                    rect: [10.0, 10.0, 70.0, 22.0],
+                }],
+            }],
+        });
+        state
+            .apply_command(
+                id,
+                DocCommand::ApplyOcr {
+                    layers: vec![(PageId::new(1), layer)],
+                },
+            )
+            .unwrap();
+        let events = run(&state, id, 3, 100, |_, _| true);
+        assert_eq!(hit_counts(&events), [(1, 1)], "the hit is the layer's");
+        let pages: Vec<u32> = asked
+            .lock()
+            .unwrap()
+            .iter()
+            .map(|(page, _)| *page)
+            .collect();
+        assert_eq!(
+            pages,
+            [0, 2],
+            "the engine is not asked for the layered page"
+        );
+
+        // Undo: the layer is gone at once, the engine is asked for the page again.
+        state.undo(id).unwrap();
+        asked.lock().unwrap().clear();
+        let events = run(&state, id, 3, 100, |_, _| true);
+        assert!(hit_counts(&events).is_empty());
+        assert_eq!(asked.lock().unwrap().len(), 3);
+        // Redo: found again.
+        state.redo(id).unwrap();
+        assert_eq!(hit_counts(&run(&state, id, 3, 100, |_, _| true)), [(1, 1)]);
     }
 }

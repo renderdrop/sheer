@@ -350,6 +350,11 @@ impl DocState {
         }
         // The edited pages are written into the file: they are file pages now, with nothing left to replay.
         self.text_edits.clear();
+        // The OCR layers are in the file now (ADR-134): the engine reads the real ones, nothing is pending.
+        if !self.ocr_layers.is_empty() {
+            self.ocr_layers.clear();
+            delta.doc.insert(DocPart::Ocr);
+        }
         self.file_pages = self.page_count();
         // The positions in the file moved with the write (deleted and rewritten annotations): what was Hidden in the old file is not
         // known by position any more.

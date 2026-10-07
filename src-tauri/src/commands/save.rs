@@ -250,6 +250,16 @@ pub(super) fn save_plan_of(state: &DocState, pages: &PagePlan, keep_encryption: 
                 Some((u32::try_from(position).ok()?, kept.edits.clone()))
             })
             .collect(),
+        // The OCR layers by position in the file the save builds (ADR-134); a page that is gone from the list takes its layer with it.
+        ocr: pages
+            .pages
+            .iter()
+            .enumerate()
+            .filter_map(|(position, page)| {
+                let layer = state.ocr_layers.get(&page.id.get())?;
+                Some((u32::try_from(position).ok()?, Arc::clone(layer)))
+            })
+            .collect(),
     }
 }
 
@@ -1141,6 +1151,49 @@ mod tests {
             std::thread::sleep(std::time::Duration::from_millis(10));
         }
         assert!(free, "the slot is given back when the thread ends");
+    }
+
+    #[test]
+    fn the_save_plan_carries_the_pending_ocr_layers_by_position_in_the_file() {
+        use crate::model::command::DocCommand;
+        use crate::ocr::{OcrLine, OcrPageLayer, OcrWord};
+        let mut state = DocState::new(3);
+        let layer = Arc::new(OcrPageLayer {
+            lang: "en-US".into(),
+            angle_deg: 0.0,
+            dpi: 300.0,
+            lines: vec![OcrLine {
+                words: vec![OcrWord {
+                    text: "w".into(),
+                    rect: [0.0, 0.0, 5.0, 5.0],
+                }],
+            }],
+        });
+        let stamp = crate::model::doc_state::Stamp {
+            now_ms: 0,
+            modified: "t".into(),
+        };
+        // Pages 0 and 2 are scanned; the first page is then deleted, so page 2 is the file's page 1.
+        let apply = DocCommand::ApplyOcr {
+            layers: vec![(PageId::new(0), layer.clone()), (PageId::new(2), layer)],
+        };
+        state.execute(apply, &stamp).unwrap();
+        let before = save_plan_of(&state, &state.page_plan(), false);
+        assert_eq!(
+            before.ocr.iter().map(|(i, _)| *i).collect::<Vec<_>>(),
+            [0, 2]
+        );
+        state
+            .execute(
+                DocCommand::DeletePages {
+                    pages: vec![PageId::new(0)],
+                },
+                &stamp,
+            )
+            .unwrap();
+        let after = save_plan_of(&state, &state.page_plan(), false);
+        assert_eq!(after.ocr.iter().map(|(i, _)| *i).collect::<Vec<_>>(), [1]);
+        assert!(!after.is_empty());
     }
 }
 

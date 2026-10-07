@@ -69,6 +69,9 @@ pub struct SavePlan {
     /// The text edits per page (`file_index` = the page's index in the file the save builds on), replayed over its original content as one
     /// incremental update (ADR-125, `text_save::apply_edits`). Never makes the save Full.
     pub text_edits: Vec<(u32, Vec<crate::model::text_edit::TextEdit>)>,
+    /// The OCR layers to write (ADR-134), by the page's index in the file the save builds; one incremental update with one font set
+    /// (`ocr_layer::apply_ocr_layers`). Never makes the save Full.
+    pub ocr: Vec<(u32, Arc<crate::ocr::OcrPageLayer>)>,
 }
 
 impl SavePlan {
@@ -82,6 +85,7 @@ impl SavePlan {
             && !self.keep_encryption
             && self.bibliography.is_none()
             && self.text_edits.iter().all(|(_, edits)| edits.is_empty())
+            && self.ocr.is_empty()
     }
 
     /// The save is a whole new file, no update on top of the original (ADR-047): redaction (no earlier revision may survive), a change
@@ -110,6 +114,17 @@ pub fn apply_extras(bytes: Vec<u8>, plan: &SavePlan) -> Result<Vec<u8>, AppError
     }
     // ADR-125: text edits replay over the original streams, so they come before anything that wraps the page's content.
     let bytes = super::text_save::apply_edits(bytes, &plan.text_edits)?.0;
+    // ADR-134: the OCR layers wrap the page's content as it is now (after the edits, before the burned objects), invisible.
+    let bytes = if plan.ocr.is_empty() {
+        bytes
+    } else {
+        let layers: BTreeMap<u32, crate::ocr::OcrPageLayer> = plan
+            .ocr
+            .iter()
+            .map(|(index, layer)| (*index, (**layer).clone()))
+            .collect();
+        super::ocr_layer::apply_ocr_layers(bytes, &layers, false)?
+    };
     // Package A: text boxes and images.
     let bytes = super::content::burn_all(bytes, &plan.content)?;
     // Package C: what still holds content of a redacted page (structure tree, orphan fields, `/ID`); before any encryption.
@@ -652,5 +667,44 @@ mod tests {
         .unwrap();
         let out = apply_extras(bytes, &plan).unwrap();
         assert!(validate(&out, pages).is_ok());
+    }
+
+    #[test]
+    fn a_plan_with_ocr_layers_is_work_and_appends_them_incrementally() {
+        use crate::ocr::{OcrLine, OcrPageLayer, OcrWord};
+        let layer = Arc::new(OcrPageLayer {
+            lang: "en-US".into(),
+            angle_deg: 0.0,
+            dpi: 300.0,
+            lines: vec![OcrLine {
+                words: vec![OcrWord {
+                    text: "scan".into(),
+                    rect: [10.0, 10.0, 60.0, 22.0],
+                }],
+            }],
+        });
+        let plan = SavePlan {
+            ocr: vec![(0, layer)],
+            ..SavePlan::default()
+        };
+        assert!(!plan.is_empty());
+        assert!(!plan.requires_full(), "a layer is an incremental update");
+        let bytes = std::fs::read(
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../tests/fixtures/minimal.pdf"),
+        )
+        .unwrap();
+        let out = apply_extras(bytes.clone(), &plan).unwrap();
+        assert!(out.starts_with(&bytes), "the original bytes stay a prefix");
+        let doc = crate::pdfwrite::prescan::load_untrusted(&out).unwrap();
+        let page = *doc.get_pages().values().next().unwrap();
+        let dict = doc.get_dictionary(page).unwrap();
+        assert!(dict.get(b"SheerOcr").is_ok(), "the page carries the key");
+        assert!(validate(&out, u32::try_from(doc.get_pages().len()).unwrap()).is_ok());
+        // A page the file does not have is refused, not skipped.
+        let beyond = SavePlan {
+            ocr: vec![(9, plan.ocr[0].1.clone())],
+            ..SavePlan::default()
+        };
+        assert!(apply_extras(bytes, &beyond).is_err());
     }
 }

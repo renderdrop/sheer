@@ -123,6 +123,8 @@ pub enum DocCommand {
         slots: Vec<PageSlot>,
         entries: Vec<Slot>,
         strip: Option<bool>,
+        /// The OCR layers of the redacted pages without the words under the marks (ADR-134 item 8); `None`: the page has none.
+        ocr: Vec<(PageId, Option<Arc<OcrPageLayer>>)>,
     },
     /// Puts a page slot and the text edits of that page in place (ADR-125). Internal: what a text edit makes of its preview (`text_edit::plan`),
     /// and its own inverse (`None` edits: the page has none).
@@ -537,7 +539,8 @@ impl DocCommand {
                 slots,
                 entries,
                 strip,
-            } => redaction::restore(state, slots, entries, *strip, &mut delta)?,
+                ocr,
+            } => redaction::restore(state, slots, entries, *strip, ocr, &mut delta)?,
             Self::SetProtection { ticket } => {
                 protection::run_set_protection(state, *ticket, &mut delta)?
             }

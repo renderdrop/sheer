@@ -19,6 +19,8 @@ use super::page::{PageSlot, PageSource};
 use crate::documents::PageId;
 use crate::error::AppError;
 use crate::limits;
+use crate::ocr::textlayer::{without_covered, Shape};
+use crate::ocr::OcrPageLayer;
 
 /// The marks of one page in a [`DocCommand::MarkRedactions`] (search hits become these).
 #[derive(Debug, Clone, PartialEq, Deserialize)]
@@ -168,6 +170,20 @@ fn quad_rect(quad: &Quad) -> Rect {
     }
 }
 
+/// The rectangles to fill on a page: one per quad of every live mark on it (page space).
+fn burn_of(state: &DocState, page: PageId) -> Vec<Rect> {
+    state
+        .entries
+        .values()
+        .filter(|entry| !entry.tombstone && entry.annotation.page_id == page)
+        .filter_map(|entry| match &entry.annotation.body {
+            AnnotationBody::RedactMark { quads, .. } => Some(quads.iter().map(quad_rect)),
+            _ => None,
+        })
+        .flatten()
+        .collect()
+}
+
 /// The pages `apply_redactions` works on: `pages` (each must be a page of the document, once) or, with `None`, every page, in the order
 /// of the document, that has at least one live mark; a listed page without a mark is left out. Nothing to do is `invalid_argument`
 /// (`redaction`), more than 5 000 pages is `limit_exceeded`.
@@ -183,16 +199,7 @@ pub fn snapshot(state: &DocState, pages: Option<&[PageId]>) -> Result<Vec<PageWo
     let wanted = |page: PageId| pages.is_none_or(|list| list.contains(&page));
     let mut work = Vec::new();
     for slot in state.pages().iter().filter(|slot| wanted(slot.id)) {
-        let burn: Vec<Rect> = state
-            .entries
-            .values()
-            .filter(|entry| !entry.tombstone && entry.annotation.page_id == slot.id)
-            .filter_map(|entry| match &entry.annotation.body {
-                AnnotationBody::RedactMark { quads, .. } => Some(quads.iter().map(quad_rect)),
-                _ => None,
-            })
-            .flatten()
-            .collect();
+        let burn = burn_of(state, slot.id);
         if burn.is_empty() {
             continue;
         }
@@ -238,6 +245,7 @@ pub fn plan(
 ) -> Result<(DocCommand, bool), AppError> {
     let mut slots = Vec::with_capacity(rasters.len());
     let mut pages = BTreeSet::new();
+    let mut ocr: Vec<(PageId, Option<Arc<OcrPageLayer>>)> = Vec::new();
     for raster in rasters {
         let slot = state
             .slot(raster.page_id)
@@ -245,6 +253,20 @@ pub fn plan(
             .ok_or(AppError::invalid("redaction"))?;
         if !pages.insert(raster.page_id.get()) {
             return Err(AppError::invalid("redaction"));
+        }
+        // The words of a pending OCR layer under a mark go with it (ADR-134 item 8); a saved layer is in the page's content, which the
+        // job has already redacted.
+        if let Some(layer) = state.ocr_layers.get(&raster.page_id.get()) {
+            let shape = Shape {
+                size: slot.size,
+                rotation: slot.rotation,
+            };
+            if let Some(kept) = without_covered(layer, shape, &burn_of(state, raster.page_id)) {
+                ocr.push((
+                    raster.page_id,
+                    (!kept.lines.is_empty()).then(|| Arc::new(kept)),
+                ));
+            }
         }
         slots.push(PageSlot {
             source: PageSource::Redacted {
@@ -277,6 +299,7 @@ pub fn plan(
             slots,
             entries,
             strip: remove_metadata.then_some(true),
+            ocr,
         },
         dropped,
     ))
@@ -290,6 +313,7 @@ pub(crate) fn restore(
     slots: &[PageSlot],
     entries: &[Slot],
     strip: Option<bool>,
+    ocr: &[(PageId, Option<Arc<OcrPageLayer>>)],
     delta: &mut Delta,
 ) -> Result<DocCommand, AppError> {
     let mut seen = HashSet::new();
@@ -297,6 +321,9 @@ pub(crate) fn restore(
         if state.slot(slot.id).is_none() || !seen.insert(slot.id.get()) {
             return Err(AppError::invalid("page"));
         }
+    }
+    if ocr.iter().any(|(page, _)| state.slot(*page).is_none()) {
+        return Err(AppError::invalid("page"));
     }
     let mut before = Vec::with_capacity(slots.len());
     for slot in slots {
@@ -322,10 +349,16 @@ pub(crate) fn restore(
         delta.doc.insert(DocPart::Metadata);
         old
     });
+    let inverse_ocr = if ocr.is_empty() {
+        Vec::new()
+    } else {
+        super::ocr_layers::swap(state, ocr, delta)
+    };
     Ok(DocCommand::RestoreRedaction {
         slots: before,
         entries: inverse_entries,
         strip: inverse_strip,
+        ocr: inverse_ocr,
     })
 }
 
@@ -603,5 +636,79 @@ mod tests {
         state.execute(mark_cmd(0, 2), &stamp()).unwrap();
         let (_, dropped) = plan(&state, &[raster(&state, 0, 1)], false).unwrap();
         assert!(!dropped);
+    }
+
+    fn ocr_layer(words: &[(&str, [f32; 4])]) -> Arc<OcrPageLayer> {
+        use crate::ocr::{OcrLine, OcrWord};
+        Arc::new(OcrPageLayer {
+            lang: "en-US".into(),
+            angle_deg: 0.0,
+            dpi: 300.0,
+            lines: words
+                .iter()
+                .map(|(text, rect)| OcrLine {
+                    words: vec![OcrWord {
+                        text: (*text).into(),
+                        rect: *rect,
+                    }],
+                })
+                .collect(),
+        })
+    }
+
+    fn words_of(state: &DocState) -> Vec<String> {
+        state
+            .ocr_layers
+            .get(&0)
+            .map(|layer| {
+                layer
+                    .lines
+                    .iter()
+                    .flat_map(|l| l.words.iter().map(|w| w.text.clone()))
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
+
+    #[test]
+    fn a_pending_ocr_layer_loses_the_words_under_a_mark_and_undo_brings_them_back() {
+        let mut state = DocState::new(1);
+        let layer = ocr_layer(&[
+            ("gone", [2.0, 3.0, 10.0, 8.0]),
+            ("stay", [100.0, 100.0, 140.0, 112.0]),
+        ]);
+        let apply = DocCommand::ApplyOcr {
+            layers: vec![(PageId::new(0), layer)],
+        };
+        state.execute(apply, &stamp()).unwrap();
+        // The mark is at x 1..11, y 2..9 (page space).
+        state.execute(mark_cmd(0, 1), &stamp()).unwrap();
+        let (command, _) = plan(&state, &[raster(&state, 0, 1)], false).unwrap();
+        state.execute(command, &stamp()).unwrap();
+        assert_eq!(words_of(&state), ["stay"]);
+        state.undo(&stamp()).unwrap();
+        assert_eq!(words_of(&state), ["gone", "stay"]);
+        state.redo(&stamp()).unwrap();
+        assert_eq!(words_of(&state), ["stay"]);
+    }
+
+    #[test]
+    fn a_layer_with_every_word_under_the_marks_is_removed_and_one_elsewhere_is_untouched() {
+        let mut state = DocState::new(2);
+        let only = ocr_layer(&[("gone", [2.0, 3.0, 10.0, 8.0])]);
+        let apart = ocr_layer(&[("far", [100.0, 100.0, 140.0, 112.0])]);
+        let apply = DocCommand::ApplyOcr {
+            layers: vec![(PageId::new(0), only), (PageId::new(1), apart)],
+        };
+        state.execute(apply, &stamp()).unwrap();
+        state.execute(mark_cmd(0, 1), &stamp()).unwrap();
+        state.execute(mark_cmd(1, 1), &stamp()).unwrap();
+        let rasters = [raster(&state, 0, 2), raster(&state, 1, 3)];
+        let (command, _) = plan(&state, &rasters, false).unwrap();
+        state.execute(command, &stamp()).unwrap();
+        assert!(!state.ocr_layers.contains_key(&0));
+        assert!(state.ocr_layers.contains_key(&1));
+        state.undo(&stamp()).unwrap();
+        assert!(state.ocr_layers.contains_key(&0));
     }
 }

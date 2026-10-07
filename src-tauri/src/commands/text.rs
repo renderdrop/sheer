@@ -7,19 +7,57 @@
 //! The engine reads the page at `Interactive` priority, after the pages on screen and before anything that is not asked for
 //! (ADR-002 §2). The layer is a lookup of what the page says: it is not kept (the UI's `textCache` is).
 
+use std::sync::Arc;
+
 use tauri::State;
 
+use super::annotations::AnnotationStore;
 use super::{blocking, AppState};
 use crate::documents::{DocumentId, PageId};
 use crate::error::{AppError, ErrorCode, UiError};
 use crate::limits;
 use crate::model::reading::TextLayer;
+use crate::ocr::textlayer::{self, Shape};
+use crate::ocr::OcrPageLayer;
+
+/// [`AppState::pending_ocr`] for a reader that holds the models only (the search thread).
+pub(super) fn pending_layer(
+    models: &AnnotationStore,
+    id: DocumentId,
+    page: PageId,
+) -> Option<(Arc<OcrPageLayer>, Shape)> {
+    models.peek(id, |state| {
+        let layer = state.ocr_layers.get(&page.get())?;
+        let slot = state.slot(page)?;
+        Some((
+            Arc::clone(layer),
+            Shape {
+                size: slot.size,
+                rotation: slot.rotation,
+            },
+        ))
+    })
+}
 
 impl AppState {
+    /// The OCR layer of `page` that is not in the file yet, and where the page is (ADR-134 item 8). Nothing for a page without one, or a
+    /// document that has no model yet (no model, no OCR run).
+    pub(super) fn pending_ocr(
+        &self,
+        id: DocumentId,
+        page: PageId,
+    ) -> Option<(Arc<OcrPageLayer>, Shape)> {
+        pending_layer(&self.annotations, id, page)
+    }
+
     /// The text layer of a page of an open document. `invalid_argument` (`page`) for a page the document does not have.
     pub fn text_layer(&self, id: DocumentId, page: PageId) -> Result<TextLayer, AppError> {
         let page_index = self.registry.page_index(id, page)?;
-        let layer = self.engine.text_layer(id, page_index)?;
+        let layer = match self.pending_ocr(id, page) {
+            // Until the save the file has no text on this page: the layer answers (the engine's own answer would be empty).
+            Some((ocr, shape)) => textlayer::text_page(&ocr, shape),
+            None => self.engine.text_layer(id, page_index)?,
+        };
         // What the UI is promised, checked on what is sent: within the limit, and a box for every code unit.
         let units = layer.text.encode_utf16().count();
         if units > limits::MAX_TEXT_CHARS || layer.boxes.len() != 4 * units {
@@ -154,5 +192,51 @@ mod tests {
         let at_limit = page(&"x".repeat(limits::MAX_TEXT_CHARS), true);
         let (state, id, _) = state_with_text(at_limit);
         assert!(state.text_layer(id, PageId::new(0)).is_ok());
+    }
+
+    #[test]
+    fn a_pending_ocr_layer_answers_instead_of_the_engine_until_undo_takes_it_away() {
+        use crate::model::command::DocCommand;
+        use crate::ocr::{OcrLine, OcrWord};
+        let (state, id, asked) = state_with_text(page("engine text", false));
+        let layer = Arc::new(OcrPageLayer {
+            lang: "en-US".into(),
+            angle_deg: 0.0,
+            dpi: 300.0,
+            lines: vec![OcrLine {
+                words: vec![OcrWord {
+                    text: "scanned".into(),
+                    rect: [10.0, 10.0, 80.0, 22.0],
+                }],
+            }],
+        });
+        state
+            .apply_command(
+                id,
+                DocCommand::ApplyOcr {
+                    layers: vec![(PageId::new(1), layer)],
+                },
+            )
+            .unwrap();
+        let ocr = state.text_layer(id, PageId::new(1)).unwrap();
+        assert_eq!(ocr.text, "scanned");
+        assert_eq!(ocr.boxes.len(), 28);
+        assert!(asked.lock().unwrap().is_empty(), "the engine is not asked");
+        // Another page is the engine's.
+        assert_eq!(
+            state.text_layer(id, PageId::new(0)).unwrap().text,
+            "engine text"
+        );
+        // Undo shows the engine's text at once; redo the layer again.
+        state.undo(id).unwrap();
+        assert_eq!(
+            state.text_layer(id, PageId::new(1)).unwrap().text,
+            "engine text"
+        );
+        state.redo(id).unwrap();
+        assert_eq!(
+            state.text_layer(id, PageId::new(1)).unwrap().text,
+            "scanned"
+        );
     }
 }

@@ -264,10 +264,13 @@ impl AppState {
             first,
             std::time::Instant::now() + limits::SMART_INDEX_BUDGET,
             |pos| {
-                let engine = order
+                let &(page, engine) = order
                     .get(usize::try_from(pos).map_err(|_| ReadFail::Abort)?)
-                    .ok_or(ReadFail::Abort)?
-                    .1;
+                    .ok_or(ReadFail::Abort)?;
+                // A page with an OCR layer that is not in the file yet is read from the layer (ADR-134 item 8).
+                if let Some((layer, shape)) = self.pending_ocr(id, page) {
+                    return Ok(crate::ocr::textlayer::page_text(&layer, shape, engine));
+                }
                 match self.engine.smart_text(id, engine) {
                     Ok(page) => Ok(page),
                     Err(e) => Err(match e.code() {

@@ -22,6 +22,18 @@ pub(crate) fn restore(
     {
         return Err(AppError::invalid("page"));
     }
+    Ok(DocCommand::RestoreOcr {
+        layers: swap(state, layers, delta),
+    })
+}
+
+/// Sets the layer of each page (`None`: removes it) and returns what was there before, in the order that undoes it. The pages are not
+/// checked: the caller did.
+pub(crate) fn swap(
+    state: &mut DocState,
+    layers: &[(PageId, Option<Arc<OcrPageLayer>>)],
+    delta: &mut Delta,
+) -> Vec<(PageId, Option<Arc<OcrPageLayer>>)> {
     let mut before = Vec::with_capacity(layers.len());
     for (page, layer) in layers {
         let previous = match layer {
@@ -33,7 +45,7 @@ pub(crate) fn restore(
     // The inverse undoes in reverse, so a page named twice ends where it started.
     before.reverse();
     delta.doc.insert(DocPart::Ocr);
-    Ok(DocCommand::RestoreOcr { layers: before })
+    before
 }
 
 #[cfg(test)]
@@ -109,5 +121,20 @@ mod tests {
         };
         assert!(check(SignatureLock::AnnotateFillAndSign, &command).is_err());
         assert!(check(SignatureLock::None, &command).is_ok());
+    }
+
+    #[test]
+    fn a_save_writes_the_layers_into_the_file_and_nothing_stays_pending() {
+        let mut state = DocState::new(2);
+        let command = DocCommand::ApplyOcr {
+            layers: vec![(PageId::new(1), layer("x"))],
+        };
+        state.execute(command, &stamp()).unwrap();
+        let changes = state.finish_save(&std::collections::HashMap::new());
+        assert!(state.ocr_layers.is_empty());
+        assert!(changes.doc.contains(&DocPart::Ocr));
+        // The history is dropped with the save: nothing can bring the pending layer back over the file's real one.
+        let _ = state.undo(&stamp());
+        assert!(state.ocr_layers.is_empty());
     }
 }
