@@ -2684,4 +2684,83 @@ mod tests {
             thread::sleep(Duration::from_millis(2));
         }
     }
+
+    /// A page of `w` x `h` points holding a gray image, black on the left half and white on the right.
+    fn half_black_pdf(w: f32, h: f32) -> Vec<u8> {
+        use crate::pdfwrite::ocr_probe::{image_only_pdf, ScanPage};
+        let (pw, ph) = (w as u32 * 2, h as u32 * 2);
+        let gray = (0..ph)
+            .flat_map(|_| (0..pw).map(|x| if x < pw / 2 { 0u8 } else { 255 }))
+            .collect();
+        image_only_pdf(&[ScanPage {
+            size_pt: [w, h],
+            px: [pw, ph],
+            gray,
+        }])
+        .unwrap()
+    }
+
+    #[test]
+    fn render_for_ocr_returns_tightly_packed_gray_rows_of_an_odd_width() {
+        let Some(engine) = shared_engine() else {
+            return;
+        };
+        // 37 pt at 150 dpi is 77 px: a width PDFium pads its rows for.
+        let id = engine
+            .open_snapshot(half_black_pdf(37.0, 40.0).into())
+            .unwrap();
+        let page = engine
+            .render_for_ocr(EngineDocRef::Snapshot(id), 0, 150.0, 8000)
+            .unwrap();
+        let crate::pdfwrite::redact::RasterPixels::Gray8(gray) = &page.pixels else {
+            panic!("not gray");
+        };
+        assert_eq!(page.width, 77);
+        assert_eq!(gray.len(), (page.width * page.height) as usize);
+        assert!(page.height > 0);
+        engine.close_snapshot(id).unwrap();
+    }
+
+    #[test]
+    fn render_for_ocr_draws_the_page_content_into_the_gray_rows() {
+        let Some(engine) = shared_engine() else {
+            return;
+        };
+        let id = engine
+            .open_snapshot(half_black_pdf(37.0, 40.0).into())
+            .unwrap();
+        let page = engine
+            .render_for_ocr(EngineDocRef::Snapshot(id), 0, 150.0, 8000)
+            .unwrap();
+        let crate::pdfwrite::redact::RasterPixels::Gray8(gray) = &page.pixels else {
+            panic!("not gray");
+        };
+        let row = |y: u32| &gray[(y * page.width) as usize..((y + 1) * page.width) as usize];
+        for y in [1, page.height / 2, page.height - 2] {
+            assert!(row(y)[3] < 40, "left is dark");
+            assert!(row(y)[page.width as usize - 4] > 215, "right is white");
+        }
+        engine.close_snapshot(id).unwrap();
+    }
+
+    #[test]
+    fn render_for_ocr_refuses_a_missing_page_and_an_unreadable_size() {
+        let Some(engine) = shared_engine() else {
+            return;
+        };
+        let id = engine
+            .open_snapshot(half_black_pdf(37.0, 40.0).into())
+            .unwrap();
+        let doc = EngineDocRef::Snapshot(id);
+        assert!(engine.render_for_ocr(doc, 5, 150.0, 8000).is_err());
+        engine.close_snapshot(id).unwrap();
+        // 60 inches would need less than the minimum dpi within 8000 px.
+        let wide = engine
+            .open_snapshot(half_black_pdf(4320.0, 20.0).into())
+            .unwrap();
+        assert!(engine
+            .render_for_ocr(EngineDocRef::Snapshot(wide), 0, 300.0, 8000)
+            .is_err());
+        engine.close_snapshot(wide).unwrap();
+    }
 }

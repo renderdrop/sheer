@@ -374,7 +374,13 @@ fn without_old_layer(doc: &Document, page: &Dictionary, mut refs: Vec<Object>) -
     let Some(old) = old else {
         return refs;
     };
-    if refs.last() != Some(&Object::Reference(old)) {
+    // Only a stream of our own shape is taken out: a hostile key must not make the writer drop real page content.
+    let ours = doc
+        .get_object(old)
+        .ok()
+        .and_then(|o| o.as_stream().ok())
+        .is_some_and(|s| s.content.starts_with(b"q\nBT\n3 Tr\n"));
+    if !ours || refs.last() != Some(&Object::Reference(old)) {
         return refs;
     }
     refs.pop();

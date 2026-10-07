@@ -1440,6 +1440,8 @@ pub fn redacted_page(
         b"B",
         b"Parent",
         b"LastModified",
+        // Our OCR key points at the old, unredacted layer stream: it must not carry that stream into the copy (ADR-134).
+        b"SheerOcr",
     ] {
         dict.remove(key);
     }
@@ -1953,11 +1955,83 @@ mod tests {
         )
         .unwrap();
         let full = crate::pdfwrite::pagetree::compact(redacted, &[]).unwrap();
-        let out = content_of(&full).to_uppercase();
-        assert!(!out.contains("00730065006300720065"), "{out}");
-        assert!(!out.contains("00630072"), "{out}");
-        assert!(out.contains("006B00650065"), "the other word stays: {out}");
-        // The old unredacted content stream is not a leftover object of the file.
-        assert!(!String::from_utf8_lossy(&full).contains("secret"));
+        assert_clean(&full);
+        // The incremental path: a pending layer is cut in the model before it is written, so the word is not written at all.
+        let kept = crate::ocr::textlayer::without_covered(
+            &layer_of(&[("secret", 50.0), ("keep", 100.0)]),
+            crate::ocr::textlayer::Shape {
+                size: [200.0, 200.0],
+                rotation: 0,
+            },
+            &[rect(40.0, 45.0, 80.0, 22.0)],
+        )
+        .unwrap();
+        let written = crate::pdfwrite::ocr_layer::apply_ocr_layers(
+            plain_pdf(),
+            &std::collections::BTreeMap::from([(0u32, kept)]),
+            false,
+        )
+        .unwrap();
+        assert_clean(&written);
+    }
+
+    fn layer_of(words: &[(&str, f32)]) -> crate::ocr::OcrPageLayer {
+        use crate::ocr::{OcrLine, OcrWord};
+        crate::ocr::OcrPageLayer {
+            lang: "en-US".into(),
+            lines: words
+                .iter()
+                .map(|(text, y0)| OcrLine {
+                    words: vec![OcrWord {
+                        text: (*text).into(),
+                        rect: [50.0, *y0, 110.0, *y0 + 12.0],
+                    }],
+                })
+                .collect(),
+            ..crate::ocr::OcrPageLayer::default()
+        }
+    }
+
+    fn plain_pdf() -> Vec<u8> {
+        let (mut doc, _) = page_doc("");
+        let mut plain = Vec::new();
+        doc.save_to(&mut plain).unwrap();
+        plain
+    }
+
+    /// No decoded stream of `bytes` has a glyph of "secret" in a hex string, "keep" is still there, and (with PDFium) the page's text is
+    /// "keep" only.
+    fn assert_clean(bytes: &[u8]) {
+        let doc = crate::pdfwrite::prescan::load_untrusted(bytes).unwrap();
+        let mut keep = false;
+        for object in doc.objects.values() {
+            let Object::Stream(stream) = object else {
+                continue;
+            };
+            let data = stream
+                .decompressed_content()
+                .unwrap_or_else(|_| stream.content.clone());
+            let text = String::from_utf8_lossy(&data).to_uppercase();
+            for glyph in ["0073", "0063", "0072", "0074"] {
+                assert!(
+                    !text.contains(&format!("{glyph}00")) && !text.contains(&format!("<{glyph}")),
+                    "a glyph of the redacted word is in a stream: {text}"
+                );
+            }
+            keep |= text.contains("006B");
+        }
+        assert!(keep, "the other word stays");
+        let library = crate::engine::library_path(
+            &std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("pdfium"),
+        );
+        let Ok(binding) = pdfium_render::prelude::Pdfium::bind_to_library(library) else {
+            return;
+        };
+        let pdfium = pdfium_render::prelude::Pdfium::new(binding);
+        let loaded = pdfium.load_pdf_from_byte_slice(bytes, None).unwrap();
+        let page = loaded.pages().get(0).unwrap();
+        let text = page.text().unwrap().all();
+        assert!(!text.contains("secret") && !text.contains("ecre"), "{text}");
+        assert!(text.contains("keep"), "{text}");
     }
 }

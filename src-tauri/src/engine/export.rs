@@ -132,12 +132,14 @@ pub(super) fn render_gray<'a>(
     };
     let to_i32 = |value: u32| i32::try_from(value).map_err(|_| internal("bitmap size"));
     let (width, height) = (to_i32(w)?, to_i32(h)?);
+    // PDFium's Gray bitmap draws nothing reliably: draw BGR (as the export does) and reduce to gray here.
     let config = PdfRenderConfig::new()
         .set_target_size(width, height)
-        .set_format(PdfBitmapFormat::Gray)
+        .set_format(PdfBitmapFormat::BGR)
+        .set_reverse_byte_order(true)
         .render_annotations(false)
         .render_form_data(false);
-    let mut bitmap = PdfBitmap::empty(width, height, PdfBitmapFormat::Gray).map_err(internal)?;
+    let mut bitmap = PdfBitmap::empty(width, height, PdfBitmapFormat::BGR).map_err(internal)?;
     page.render_into_bitmap_with_config(&mut bitmap, &config)
         .map_err(internal)?;
     if (bitmap.width(), bitmap.height()) != (width, height) {
@@ -145,13 +147,15 @@ pub(super) fn render_gray<'a>(
     }
     let raw = bitmap.as_raw_bytes();
     let stride = raw.len() / h as usize;
-    let row_bytes = w as usize;
+    let row_bytes = w as usize * 3;
     if stride < row_bytes {
         return Err(internal("the bitmap rows are too short"));
     }
-    let mut gray = Vec::with_capacity(row_bytes * h as usize);
+    let mut gray = Vec::with_capacity(w as usize * h as usize);
     for row in raw.chunks_exact(stride).take(h as usize) {
-        gray.extend_from_slice(&row[..row_bytes]);
+        gray.extend(row[..row_bytes].as_chunks::<3>().0.iter().map(|p| {
+            ((u32::from(p[0]) * 77 + u32::from(p[1]) * 150 + u32::from(p[2]) * 29) >> 8) as u8
+        }));
     }
     Ok(RasterPage {
         pixels: RasterPixels::Gray8(gray),

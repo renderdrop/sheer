@@ -9,7 +9,9 @@ use super::ocr_layer::{page_geom, PageGeom};
 use crate::error::{AppError, ErrorCode};
 
 /// The most decompressed bytes of a page's content the probe reads.
-const MAX_CONTENT: usize = 256 * 1024 * 1024;
+const MAX_CONTENT: usize = 32 * 1024 * 1024;
+/// Most operations of page and form content the cover walk looks at in all.
+const MAX_OPS: usize = 2_000_000;
 /// How deep Form XObjects are followed, and how many forms one page may enter (a form can draw itself many times).
 const MAX_FORM_DEPTH: u32 = 4;
 const MAX_FORMS: u32 = 256;
@@ -113,7 +115,8 @@ impl ProbeDoc {
             covered: 0.0,
             best_dpi: 0.0,
             best_area: 0.0,
-            budget: MAX_CONTENT,
+            budget: MAX_CONTENT.saturating_sub(bytes.len()),
+            ops: MAX_OPS,
             forms: MAX_FORMS,
         };
         self.walk(
@@ -150,6 +153,10 @@ impl ProbeDoc {
         let mut ctm = start;
         let mut stack: Vec<Matrix> = Vec::new();
         for op in &content.operations {
+            if acc.ops == 0 {
+                return;
+            }
+            acc.ops -= 1;
             match op.operator.as_str() {
                 "q" => stack.push(ctm),
                 "Q" => ctm = stack.pop().unwrap_or(ctm),
@@ -253,6 +260,8 @@ struct Cover {
     best_area: f32,
     /// Decompressed bytes of forms still allowed.
     budget: usize,
+    /// Operations still allowed over page and forms together.
+    ops: usize,
     /// Forms still allowed to be entered.
     forms: u32,
 }
@@ -465,6 +474,112 @@ mod tests {
         assert!((cover.eff_dpi - 300.0).abs() < 1.0, "{cover:?}");
     }
 
+    /// A one-page file whose page draws form `Fm0`, built by `forms`.
+    fn hostile(media: Vec<Object>, forms: impl FnOnce(&mut Document) -> ObjectId) -> Vec<u8> {
+        let mut doc = Document::with_version("1.7");
+        let tree = doc.new_object_id();
+        let form = forms(&mut doc);
+        let content = doc.add_object(Stream::new(
+            Dictionary::new(),
+            b"q /Fm0 Do Q
+"
+            .to_vec(),
+        ));
+        let page = doc.add_object(dictionary! {
+            "Type" => "Page", "Parent" => tree, "MediaBox" => media,
+            "Resources" => dictionary! { "XObject" => dictionary! { "Fm0" => form } },
+            "Contents" => content,
+        });
+        doc.set_object(
+            tree,
+            dictionary! { "Type" => "Pages", "Kids" => vec![page.into()], "Count" => 1 },
+        );
+        let catalog = doc.add_object(dictionary! { "Type" => "Catalog", "Pages" => tree });
+        doc.trailer.set("Root", catalog);
+        let mut bytes = Vec::new();
+        doc.save_to(&mut bytes).unwrap();
+        bytes
+    }
+
+    fn box_of(w: i64, h: i64) -> Vec<Object> {
+        vec![0.into(), 0.into(), w.into(), h.into()]
+    }
+
+    fn finite(c: ImageCover) -> bool {
+        c.fraction.is_finite() && c.eff_dpi.is_finite() && (0.0..=1.0).contains(&c.fraction)
+    }
+
+    #[test]
+    fn a_non_finite_form_matrix_does_not_panic_or_poison_the_cover() {
+        for bad in [
+            Object::Real(f32::NAN),
+            Object::Real(f32::INFINITY),
+            Object::Real(1e38),
+        ] {
+            let bytes = hostile(box_of(72, 96), |doc| {
+                let image = doc.add_object(Stream::new(
+                    dictionary! { "Type" => "XObject", "Subtype" => "Image", "Width" => 10, "Height" => 10,
+                        "ColorSpace" => "DeviceGray", "BitsPerComponent" => 8 },
+                    vec![0; 100],
+                ));
+                doc.add_object(Stream::new(
+                    dictionary! { "Type" => "XObject", "Subtype" => "Form", "BBox" => box_of(1, 1),
+                        "Matrix" => vec![bad.clone(), 0.into(), 0.into(), bad.clone(), 0.into(), 0.into()],
+                        "Resources" => dictionary! { "XObject" => dictionary! { "Im0" => image } } },
+                    b"/Im0 Do
+".to_vec(),
+                ))
+            });
+            if let Ok(doc) = ProbeDoc::load(&bytes) {
+                assert!(finite(doc.cover(0)), "{:?}", doc.cover(0));
+            }
+        }
+    }
+
+    #[test]
+    fn a_huge_media_box_stays_bounded() {
+        let bytes = hostile(box_of(1_000_000_000, 1_000_000_000), |doc| {
+            doc.add_object(Stream::new(
+                dictionary! { "Type" => "XObject", "Subtype" => "Form", "BBox" => box_of(1, 1) },
+                b"
+"
+                .to_vec(),
+            ))
+        });
+        if let Ok(doc) = ProbeDoc::load(&bytes) {
+            assert!(finite(doc.cover(0)));
+            let _ = doc.geom(0);
+        }
+    }
+
+    #[test]
+    fn deeply_nested_forms_are_cut_off_without_a_panic() {
+        let bytes = hostile(box_of(72, 96), |doc| {
+            let mut next: Option<ObjectId> = None;
+            for _ in 0..500 {
+                let mut d = dictionary! { "Type" => "XObject", "Subtype" => "Form", "BBox" => box_of(1, 1) };
+                let body = match next {
+                    Some(n) => {
+                        d.set(
+                            "Resources",
+                            dictionary! { "XObject" => dictionary! { "Fm0" => n } },
+                        );
+                        b"/Fm0 Do
+"
+                        .to_vec()
+                    }
+                    None => b"
+"
+                    .to_vec(),
+                };
+                next = Some(doc.add_object(Stream::new(d, body)));
+            }
+            next.unwrap()
+        });
+        let doc = ProbeDoc::load(&bytes).unwrap();
+        assert!(finite(doc.cover(0)));
+    }
+
     #[test]
     fn a_bitmap_of_the_wrong_size_is_refused() {
         let page = ScanPage {
@@ -477,7 +592,7 @@ mod tests {
 }
 
 /// The most decompressed bytes of a page's content the text scan reads.
-const MAX_TEXT_CONTENT: usize = 64 * 1024 * 1024;
+const MAX_TEXT_CONTENT: usize = 32 * 1024 * 1024;
 
 /// What the text scan of a page's content found.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
