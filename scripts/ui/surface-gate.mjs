@@ -281,6 +281,8 @@ async function probe(id, open, close, pick = null) {
 }
 
 async function sweepRegistry() {
+  // The recovery banner (records of earlier dev runs) is a row of buttons above the canvas: protected for notices, it leaves a coach mark no room.
+  await ev(`(async()=>{(await ${store('features/recovery/store.ts')}).useRecovery.getState().hide()})()`);
   const list = await ev(`(window.__sheerSurfaces ?? []).map((s) => s.id)`);
   if (list.length === 0)
     rows.push({ surface: 'registry', check: 'present', result: 'FAIL window.__sheerSurfaces is empty (dev build?)' });

@@ -6,6 +6,7 @@ import { openAbout, useAboutDialog } from '../features/about/state';
 import { ocrSurfaces } from './ocrSurfaces';
 import { useAnnotations } from '../stores/annotations';
 import { pageIdAt } from '../stores/pages';
+import { openWelcome } from '../features/tour/runtime';
 import { SHIPPED_STEPS } from '../features/tour/steps';
 import { useTour } from '../features/tour/store';
 import { useForms } from '../features/forms/store';
@@ -112,14 +113,27 @@ function floatingSurfaces(): DevSurface[] {
     },
     close: () => removeInk(ink),
   };
+  // The tour runs on the welcome document, as in the product: a clean page, so no leftover annotation of an earlier dev session
+  // (each is a protected button for notices) leaves the card no room. The tab that was in front comes back on close.
+  let before: number | null = null;
   const steps = SHIPPED_STEPS.map((_, index): DevSurface => ({
     id: `coach-step-${index + 1}`,
-    open: () => {
-      useTour.getState().start(activeId());
+    open: async () => {
+      before = activeId();
+      const welcome = () => Object.values(useDocuments.getState().byId).find((info) => info.kind === 'welcome')?.id;
+      if (welcome() === undefined) {
+        await openWelcome();
+        await sleep(200);
+      }
+      const docId = welcome() ?? activeId();
+      useDocuments.getState().setActive(docId);
+      useTour.getState().start(docId);
       useTour.setState({ index });
-      return none();
     },
-    close: () => useTour.getState().end('closed'),
+    close: () => {
+      useTour.getState().end('closed');
+      if (before !== null) useDocuments.getState().setActive(before);
+    },
   }));
   const preview: DevSurface = {
     id: 'link-preview',
