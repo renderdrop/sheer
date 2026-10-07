@@ -515,8 +515,14 @@ mod tests {
         assert_eq!(keychain.forget().unwrap_err(), KeyError::Unavailable);
         // Once it ended, the store is used again.
         release.store(true, Ordering::Release);
-        std::thread::sleep(Duration::from_millis(150));
-        assert_eq!(keychain.existing_key().unwrap(), None);
+        // The released thread needs a scheduler slot to end; on a loaded CI runner that took over 150 ms (run #133), so poll.
+        let until = std::time::Instant::now() + Duration::from_secs(5);
+        let mut answer = keychain.existing_key();
+        while answer == Err(KeyError::Unavailable) && std::time::Instant::now() < until {
+            std::thread::sleep(Duration::from_millis(20));
+            answer = keychain.existing_key();
+        }
+        assert_eq!(answer.unwrap(), None);
     }
 
     #[test]
