@@ -176,7 +176,7 @@ const CLIPS = {
     const y = page.y + 269;
     const from = { x: page.x + 62, y };
     const to = { x: page.x + 337, y };
-    const rect = { x: page.x + 40, y: y - 70, width: 320, height: 200 };
+    const rect = { x: page.x + 40, y: y - 150, width: 320, height: 200 };
     await input.hover({ x: from.x - 30, y: from.y + 40 });
     await record(ctx, 'highlight', rect, 2, async () => {
       const tl = timeline(ctx);
@@ -256,10 +256,10 @@ const CLIPS = {
     const page2 = await rectOf(ev, '[data-page="4"] img');
     const f = { x: page2.x + 64, y: page2.y + 330, width: 384, height: 128 };
     const center = { x: f.x + f.width / 2, y: f.y + f.height / 2 };
-    const rect = { x: center.x - 240, y: center.y - 150, width: 480, height: 300 };
+    const rect = { x: center.x - 210, y: center.y - 150, width: 420, height: 262.5 };
     const place = { x: f.x + 130, y: f.y + 70 };
     const empty = { x: page2.x - 100, y: f.y + 20 }; // the grey gutter beside the page: deselects without placing a second signature
-    await record(ctx, 'sign', rect, 4 / 3, async () => {
+    await record(ctx, 'sign', rect, 640 / 420, async () => {
       const tl = timeline(ctx);
       await tl.at(0);
       const ghost = { x: f.x - 70, y: place.y };
@@ -311,10 +311,10 @@ const CLIPS = {
     const card = async (i) => rectOf(ev, `[role="option"][data-index="${i}"]`);
     const c0 = await card(0);
     const c2 = await card(2);
-    const rect = { x: Math.max(0, c0.x - 30), y: Math.max(0, c0.y - 30), width: 480, height: 300 };
+    const rect = { x: Math.max(0, c0.x - 16), y: Math.max(0, c0.y - 16), width: 360, height: 225 };
     const grab = { x: c2.x + c2.width / 2, y: c2.y + c2.height / 2 };
     const drop = { x: c0.x + 6, y: c0.y + c0.height / 2 };
-    await record(ctx, 'pages', rect, 4 / 3, async () => {
+    await record(ctx, 'pages', rect, 640 / 360, async () => {
       const tl = timeline(ctx);
       await tl.at(0);
       await tl.mouse('mouseMoved', { x: grab.x + 20, y: grab.y + 20 });
@@ -324,9 +324,10 @@ const CLIPS = {
       await tl.release(drop);
     });
     const order = await ev(
-      `[...document.querySelectorAll('[role="option"][data-index] img')].slice(0, 3).map((i) => i.alt || i.getAttribute('aria-label') || '').join('|')`,
+      `[...document.querySelectorAll('[role="option"][data-index]')].map((i) => i.dataset.pageId + ':' + i.textContent.trim()).join('|')`,
     );
     console.log(`pages: order after drop: ${order}`);
+    results.check('pages reordered 3,1,2', order.startsWith('2:'), order);
     await input.press('z', { ctrl: true });
     await sleep(500);
   },
