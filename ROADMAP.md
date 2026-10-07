@@ -338,7 +338,7 @@ new engine capability or dependency is needed. Not picked by the loop before v1.
   - text edit: lines with inline runs in a second font (bold word) stay uneditable (review P-B)
   - review minors: decode_plain picks the lowest char when two codes share one; per_doc Vec scan; cross-chain delta low;
     interleaved-chain refusal is conservative
-  - smart links: "[3–5]" links 3 and 5 only; a session-edited page's text is not used for its neighbours' detection;
+  - smart links: a session-edited page's text is not used for its neighbours' detection;
     index pages past a limit get no links (partial flag, UI ignores it); real-link page jumps carry no y offset; no fade on toggle-off
   - smart links: corpus-20 footnotes not linked (markers are real links); Settings fit at 960×640 to re-check with the gate
   - flaky: first annot-smoke run after launch (Highlight on text.pdf); storage::autosave retention test (timing)
@@ -350,9 +350,13 @@ new engine capability or dependency is needed. Not picked by the loop before v1.
 - [x] v1.6.2 — Link tables of contents; references like "see p. 12" and "Fig. 3"
 - [x] v1.6.3 — Literature references "(Müller 2019)" to the bibliography entry; heuristic, with a notice, never destructive
 - [x] v1.6 acceptance — acceptance build (ADR-131): corpus-12, corpus-21, corpus-08; designer round (2 blockers fixed), tag v1.6.0
+- [x] v1.6.4 — Range citations "[3–5]" link every number through a chooser (ADR-133, DESIGN §3.11 L14; e610716, f704a6e; acceptance build 11/11 with a generated PDF); unreleased
 
 ### v1.7 "Scan & OCR"
-- [ ] v1.7 spec — designer spec + architect ADR (Windows OCR / Apple Vision without unsafe code or via a sidecar)
+- [x] v1.7 architect ADR — ADR-134 (proposed): Windows OCR via the windows crate in a child mode of the app, Swift sidecar on macOS
+- [x] v1.7 phase 1 — Windows spike, no UI (f3c4c1b): 6 of 7 exit criteria met; exact-line copy fails (PDFium merges OCR lines); corpus holds only 2 real scan pages
+- [ ] v1.7 spec — designer spec (OCR action, progress, language notice, redo, re-check of accuracy on real scans)
+- [ ] v1.7 phase-2 prerequisites — real scanned test PDFs from the owner (rule 13); English OCR pack on the dev machine; line structure so copy keeps OCR lines; huge MediaBox guard in ocr_layer (security low); render/OCR pipelining; tilt; NFC; form-XObject scans in the probe
 - [ ] v1.7.1 — Invisible text layer for photos and scans (searchable, copyable, highlightable), de/en, OS OCR preferred
 - [ ] v1.7.2 — Option: take text over as editable paragraphs (no formatting claim)
 - [ ] v1.7 acceptance — security-reviewer, installed build with the mouse, designer round, tag v1.7.0

@@ -6,6 +6,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Smart links: a citation range such as "[3–5]" now reaches every number in it; clicking it opens a small chooser with one row
+  per entry (ADR-133).
+
 ## [1.6.0] - 2026-10-07
 
 v1.6 "Smart links" (ADR-131, ADR-132, DESIGN §3.11). Unsigned installers (BLOCKERS B-002).
