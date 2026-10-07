@@ -24,24 +24,30 @@ function useOcrEffects(docId: number | null): void {
   }, [docId, slots]);
 }
 
-/** The 2 px determinate bar on the inner bottom edge of the banner (O3): Ink on the pressed surface, `role="progressbar"`. */
+/** The determinate bar (O3, O6): a full-width track on the pressed surface with an Ink fill, `role="progressbar"`; done/total sits next to it. */
 function Bar({ done, total, text }: { done: number; total: number; text: string }) {
   const ratio = total > 0 ? Math.min(1, Math.max(0, done / total)) : 0;
   return (
-    <div
-      role="progressbar"
-      data-ocr="bar"
-      aria-label={text}
-      aria-valuemin={0}
-      aria-valuemax={total}
-      aria-valuenow={Math.min(done, total)}
-      aria-valuetext={text}
-      className="pointer-events-none absolute inset-x-3 bottom-0 h-[calc(var(--space-1)/2)] overflow-hidden rounded-pill bg-pressed"
-    >
+    <div className="flex min-w-0 flex-auto items-center gap-2" data-ocr="bar-row">
       <div
-        className="h-full bg-text transition-[width] duration-base ease-out motion-reduce:transition-none"
-        style={{ width: `${Math.round(ratio * 100)}%` }}
-      />
+        role="progressbar"
+        data-ocr="bar"
+        aria-label={text}
+        aria-valuemin={0}
+        aria-valuemax={total}
+        aria-valuenow={Math.min(done, total)}
+        aria-valuetext={text}
+        className="h-1 min-w-0 flex-auto overflow-hidden rounded-pill bg-pressed"
+      >
+        <div
+          data-ocr="bar-fill"
+          className="h-full bg-text transition-[width] duration-base ease-out motion-reduce:transition-none"
+          style={{ width: `${Math.round(ratio * 100)}%` }}
+        />
+      </div>
+      <span className="shrink-0 tabular-nums text-text-muted" data-ocr="count">
+        {Math.min(done, total)}/{total}
+      </span>
     </div>
   );
 }
@@ -66,9 +72,10 @@ function Progress({ docId }: { docId: number }) {
       <span className="shrink-0 text-text">
         <Icon icon={ScanText} />
       </span>
-      <span className="min-w-0 flex-auto tabular-nums" data-ocr="label">
+      <span className="min-w-0 shrink-0 tabular-nums" data-ocr="label">
         {text}
       </span>
+      <Bar done={run.done} total={run.total} text={text} />
       <Button
         variant="ghost"
         size="sm"
@@ -79,7 +86,6 @@ function Progress({ docId }: { docId: number }) {
       >
         {t('ocr.stop')}
       </Button>
-      <Bar done={run.done} total={run.total} text={text} />
     </div>
   );
 }

@@ -117,6 +117,12 @@ describe('ocr events', () => {
     expect(parseOcrEvent(null)).toBeNull();
   });
 
+  it('reads the optional refused field strictly', () => {
+    expect(parseOcrEvent({ ...FINISHED, refused: 'readOnly' })).toEqual({ ...FINISHED, refused: 'readOnly' });
+    expect(parseOcrEvent({ ...FINISHED, refused: 'other' })).toEqual(FINISHED);
+    expect(parseOcrEvent({ ...FINISHED, refused: 1 })).toEqual(FINISHED);
+  });
+
   it('comes through the app event parser', () => {
     expect(parseAppEvent(PROGRESS)).toEqual(PROGRESS);
     expect(parseAppEvent(FINISHED)).toEqual(FINISHED);

@@ -57,6 +57,8 @@ export interface OcrFinished {
   applied: number;
   skipped: number;
   failed: number;
+  /** Present when the document became signed or read-only during the run; its unfinished pages count as skipped. */
+  refused?: 'readOnly';
 }
 
 export type OcrEvent = OcrProgress | OcrFinished;
@@ -115,7 +117,9 @@ export function parseOcrEvent(message: unknown): OcrEvent | null {
   }
   if (type === 'ocrFinished') {
     const { applied, skipped, failed } = message;
-    return isUint(applied) && isUint(skipped) && isUint(failed) ? { type, doc, job, applied, skipped, failed } : null;
+    if (!isUint(applied) || !isUint(skipped) || !isUint(failed)) return null;
+    const base: OcrFinished = { type, doc, job, applied, skipped, failed };
+    return message.refused === 'readOnly' ? { ...base, refused: 'readOnly' } : base;
   }
   return null;
 }

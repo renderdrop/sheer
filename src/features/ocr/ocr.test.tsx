@@ -198,6 +198,9 @@ describe('the banner', () => {
     act(() => onOcrProgress({ type: 'ocrProgress', doc: 1, job: 7, done: 1, total: 3, failed: 0 }));
     expect(shown()?.textContent).toContain('Recognizing page 2 of 3');
     expect(screen.getByRole('progressbar').getAttribute('aria-valuenow')).toBe('1');
+    expect(screen.getByRole('progressbar').getAttribute('aria-valuetext')).toBe('Recognizing page 2 of 3');
+    expect(document.querySelector('[data-ocr="count"]')?.textContent).toBe('1/3');
+    expect(document.querySelector<HTMLElement>('[data-ocr="bar-fill"]')?.style.width).toBe('33%');
     await user.click(screen.getByRole('button', { name: 'Stop' }));
     expect(api.ocrCancel).toHaveBeenCalledWith(7);
     expect(shown()?.textContent).toContain('Stopping…');
@@ -216,12 +219,28 @@ describe('the dialog', () => {
   it('defaults to scanned pages and starts with the scan page ids', async () => {
     seed(caps(true, true), classes('text', 'scan', 'scan'));
     const { user } = await open();
-    expect(screen.getByRole('radio', { name: 'Scanned pages (2)' }).getAttribute('aria-checked')).toBe('true');
+    expect((screen.getByRole('radio', { name: 'Scanned pages (2)' }) as HTMLInputElement).checked).toBe(true);
     expect(screen.queryByRole('radio', { name: /Selected pages/ })).toBeNull();
     await user.click(screen.getByRole('button', { name: 'Recognize 2 pages' }));
     expect(api.ocrStart).toHaveBeenCalledWith(1, { type: 'pages', pages: [11, 12] }, 'en-US', false);
     expect(useOcr.getState().dialog).toBeNull();
     expect(isOcrBusy(1)).toBe(true);
+  });
+
+  it('labels the scope group and marks the selection without colour', async () => {
+    seed(caps(true, true), classes('text', 'scan', 'scan'));
+    const { user } = await open();
+    const group = screen.getByRole('radiogroup', { name: 'Pages' });
+    expect(group).not.toBeNull();
+    const radios = screen.getAllByRole('radio') as HTMLInputElement[];
+    expect(radios.map((radio) => radio.checked)).toEqual([true, false, false]);
+    expect(group.querySelector('[data-checked]')?.getAttribute('data-scope')).toBe('scan');
+    radios[0]?.focus();
+    await user.keyboard('{ArrowDown}');
+    const after = screen.getAllByRole('radio') as HTMLInputElement[];
+    expect(after.map((radio) => radio.checked)).toEqual([false, true, false]);
+    expect(document.activeElement).toBe(after[1]);
+    expect(group.querySelector('[data-checked]')?.getAttribute('data-scope')).toBe('current');
   });
 
   it('preselects the selected pages from Pages mode', async () => {
@@ -231,7 +250,7 @@ describe('the dialog', () => {
     act(() => openOcrDialog());
     setup(<OcrDialog />);
     await screen.findByRole('dialog');
-    expect(screen.getByRole('radio', { name: 'Selected pages (2)' }).getAttribute('aria-checked')).toBe('true');
+    expect((screen.getByRole('radio', { name: 'Selected pages (2)' }) as HTMLInputElement).checked).toBe(true);
   });
 
   it('with no scan pages shows the reason and disables Start', async () => {
@@ -290,7 +309,15 @@ describe('the dialog', () => {
     seed(caps(false, false, 'vision'), classes('scan'));
     await open();
     expect(screen.queryByRole('button', { name: 'Open language settings' })).toBeNull();
-    expect(document.querySelector('[data-ocr="settings-hint"]')).not.toBeNull();
+    expect(document.querySelector('[data-ocr="settings-hint"]')?.textContent).toContain('System Settings');
+    expect(document.querySelector('[data-ocr="settings-hint"]')?.textContent).not.toContain('Windows');
+  });
+
+  it('on the Vision backend the fallback notice shows like anywhere', async () => {
+    seed(caps(true, false, 'vision'), classes('scan'));
+    await open();
+    expect(document.querySelector('[data-ocr="language-fallback"]')).not.toBeNull();
+    expect(screen.queryByRole('button', { name: 'Open language settings' })).toBeNull();
   });
 
   it('Cancel closes without starting', async () => {
@@ -360,6 +387,16 @@ describe('the result toasts', () => {
     run();
     finish(0, 0);
     expect(useAnnotations.getState().byDoc[1]?.history.canUndo).not.toBe(true);
+  });
+
+  it('shows the read-only notice, not the failure toast, when the document got locked', () => {
+    run();
+    act(() =>
+      onOcrFinished({ type: 'ocrFinished', doc: 1, job: 7, applied: 1, skipped: 2, failed: 0, refused: 'readOnly' }),
+    );
+    expect(useUi.getState().toast?.message).toBe('Signed and locked. Make an editable copy to change it.');
+    expect(useUi.getState().toast?.tone).not.toBe('error');
+    expect(isOcrBusy(1)).toBe(false);
   });
 
   it('names the failures', () => {

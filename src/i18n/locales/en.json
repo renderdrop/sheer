@@ -1566,6 +1566,7 @@
   "ocr.lang.fallback": "{wanted} recognition isn't installed on this computer; {used} is used — some words may be wrong.",
   "ocr.lang.none": "No recognition language is installed on this computer.",
   "ocr.lang.settingsHint": "Add a language in Windows Settings under Time & language > Language & region.",
+  "ocr.lang.settingsHintMac": "Add a language in System Settings under General > Language & Region.",
   "ocr.lang.settings": "Open language settings",
   "ocr.start.one": "Recognize {count} page",
   "ocr.start.other": "Recognize {count} pages",

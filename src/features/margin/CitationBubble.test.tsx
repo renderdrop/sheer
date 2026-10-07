@@ -178,10 +178,11 @@ describe('the citation bubble', () => {
 
   it('collapses to a quote marker that opens the bubble', async () => {
     const { user } = column('compact', [cite(1)]);
+    // Wait for the marker (layout effects settle first) instead of reading it at once.
+    const marker = await screen.findByRole('button', { name: 'Citation, page xii' });
     expect(screen.queryByRole('article')).toBeNull();
-    const marker = screen.getByRole('button', { name: 'Citation, page xii' });
     expect(marker.querySelector('svg')).not.toBeNull();
     await user.click(marker);
-    expect(screen.getByRole('article', { name: 'Citation, page xii' })).toBeTruthy();
+    expect(await screen.findByRole('article', { name: 'Citation, page xii' })).toBeTruthy();
   });
 });

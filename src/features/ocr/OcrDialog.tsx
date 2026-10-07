@@ -2,7 +2,7 @@ import { Info, ScanText, TriangleAlert } from 'lucide-react';
 import { AnimatePresence } from 'motion/react';
 import { useEffect, useId, useState, type FormEvent, type KeyboardEvent } from 'react';
 
-import { Button, Checkbox, Icon, Tooltip } from '../../components';
+import { Button, Checkbox, Icon, Radio, Tooltip } from '../../components';
 import { APP_NAME } from '../../config/app';
 import { useLocale, useT } from '../../i18n';
 import { useDocuments } from '../../stores/documents';
@@ -10,7 +10,6 @@ import { pageIdAt } from '../../stores/pages';
 import { useView } from '../../stores/view';
 import { openLanguageSettings, type PageClass } from '../../api/ocr';
 import { Modal, ModalHeader } from '../jobs/Modal';
-import { RadioGroup } from '../jobs/RadioGroup';
 import { focusCanvas } from '../modes/switch';
 import { selectionOf, useOrganize } from '../organize/store';
 import { countScope, languageState, runCount, scopeIds, selectionFor, wantedLanguage, type Scope } from './model';
@@ -67,7 +66,7 @@ function OcrModal({ request }: { request: OcrDialogState }) {
 
   // Enter on a radio (a button) would press it; here it starts, like in a form (O5).
   const onKeyDown = (event: KeyboardEvent<HTMLFormElement>) => {
-    if (event.key === 'Enter' && (event.target as HTMLElement).getAttribute('role') === 'radio') {
+    if (event.key === 'Enter' && (event.target as HTMLInputElement).type === 'radio') {
       event.preventDefault();
       go();
     }
@@ -96,17 +95,36 @@ function OcrModal({ request }: { request: OcrDialogState }) {
       >
         <ModalHeader id={`${id}-title`} icon={<Icon icon={ScanText} />} title={t('ocr.title')} />
         <div className="flex flex-col gap-1">
-          <div data-ocr="scope" className="tabular-nums">
-            <RadioGroup
-              label={t('ocr.scope')}
-              look="plain"
-              orientation="vertical"
-              value={scope}
-              onChange={setScope}
-              options={options.map((option) => ({ value: option.value, label: option.label, content: option.label }))}
-            />
+          <span id={`${id}-scope`} className="t-label text-text-muted" data-ocr="scope-label">
+            {t('ocr.scope')}
+          </span>
+          <div
+            role="radiogroup"
+            aria-labelledby={`${id}-scope`}
+            aria-describedby={`${id}-scope-hint`}
+            data-ocr="scope"
+            className="flex flex-col tabular-nums"
+          >
+            {options.map((option) => (
+              <label
+                key={option.value}
+                data-scope={option.value}
+                data-checked={scope === option.value || undefined}
+                className="flex min-h-control-md cursor-pointer items-center gap-2 rounded-button px-2 hover:bg-subtle has-focus-visible:outline-2 has-focus-visible:outline-offset-0 has-focus-visible:outline-focus"
+              >
+                <Radio
+                  name={`${id}-scope-group`}
+                  value={option.value}
+                  checked={scope === option.value}
+                  onChange={() => setScope(option.value)}
+                />
+                {option.label}
+              </label>
+            ))}
           </div>
-          <p className="t-caption m-0 text-text-muted">{t('ocr.scope.hint')}</p>
+          <p id={`${id}-scope-hint`} className="t-caption m-0 text-text-muted">
+            {t('ocr.scope.hint')}
+          </p>
         </div>
         {showRedo && (
           <label className="flex min-h-control-md cursor-pointer items-center gap-2 tabular-nums" data-ocr="redo">
@@ -163,7 +181,7 @@ function OcrModal({ request }: { request: OcrDialogState }) {
                 </div>
               ) : (
                 <p className="t-caption m-0 text-text-muted" data-ocr="settings-hint">
-                  {t('ocr.lang.settingsHint')}
+                  {t(capabilities?.backend === 'vision' ? 'ocr.lang.settingsHintMac' : 'ocr.lang.settingsHint')}
                 </p>
               )}
             </div>

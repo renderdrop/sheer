@@ -116,6 +116,12 @@ export function onOcrFinished(event: OcrFinished): void {
   useOcr.getState().setRun(event.doc, null);
   void refreshClasses(event.doc);
   if (event.applied > 0) noteOcrApplied(event.doc);
+  if (event.refused === 'readOnly') {
+    const message = t('cert.locked.tool');
+    useUi.getState().showToast({ message });
+    announce(message);
+    return;
+  }
   if (event.applied === 0 && event.failed > 0) {
     failedToast();
     return;

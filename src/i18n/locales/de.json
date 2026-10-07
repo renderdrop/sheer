@@ -1566,6 +1566,7 @@
   "ocr.lang.fallback": "Die Erkennung für {wanted} ist auf diesem Computer nicht installiert; {used} wird verwendet – einige Wörter können falsch sein.",
   "ocr.lang.none": "Auf diesem Computer ist keine Erkennungssprache installiert.",
   "ocr.lang.settingsHint": "Füge in den Windows-Einstellungen unter Zeit & Sprache > Sprache & Region eine Sprache hinzu.",
+  "ocr.lang.settingsHintMac": "Füge in den Systemeinstellungen unter Allgemein > Sprache & Region eine Sprache hinzu.",
   "ocr.lang.settings": "Spracheinstellungen öffnen",
   "ocr.start.one": "{count} Seite erkennen",
   "ocr.start.other": "{count} Seiten erkennen",
