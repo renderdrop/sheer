@@ -1,5 +1,5 @@
 # STATE
-phase: session "v1.9 Backlog" (ADR-139) — B1 stamps + B2 headers backend done (uncommitted, reviews), B3 export backend, F1 stamps UI, F2 headers UI running
+phase: session "v1.9 Backlog" (ADR-139) — all four features committed (6b67fb6 citations, debc3f1 stamps, 0b4c56b header-footer, a42fb23 comment export); acceptance AT19 running; security PASS
 version: 1.8.0 (tag v1.8.0, latest stable)
 current_item: v1.9 → v1.9.0. Done: P0a tip ids 8df4c63, P0b pipefail f5e0975, specs 8c698c8. Running: B1 stamps backend, B2 headers/footers backend, F4 Deutsche Zitierweise (TS). Next: B3 comment export backend (+ citation Rust bits), then frontend wave (stamps UI, headers UI, export UI), acceptance, release
 last_completed: v1.8.0 — spec 880ca14, tipsEnabled c6dd923, APNG/recorder 71e1a4f, clips 88f2128/c773d12, tips 806528f + fixes dec9d33/bf5726e/2b2b910, gate harness 658d558, OCR S7 acceptance c8c7855 (28/30); reports docs/reports/2026-10-07-v1.8.0-kontexthilfe.md
@@ -11,6 +11,7 @@ notes: Surface gate must run before annot-smoke on a fresh dev window (smoke lea
   Never run the dev window while agents run cargo/vitest; stop it by killing only processes whose path is target\debug\sheer.exe (never `taskkill /IM sheer.exe`, which would hit an installed instance) + Stop-Process on tauri.js/vite.js.
   Rule 17 / ADR-136 (resources and pace): ≤ 2 cargo agents at once (frontend up to 4); agents run `npm run check:fast` and `npm run cargo -- …`; the full `npm run check` once before each commit (orchestrator); `npm run target:budget` (cargo sweep, target ≤ 60 GB) instead of cargo clean; sccache in .tools/ (`npm run tools:install`); wait for agents by notification/run_in_background, no foreground sleep > 2 min; `npm run accept:clean` after every acceptance; guard-resources blocks builds under 8 GB RAM / 40 GB disk.
 ci_log: (ADR-120 corrected — package commit → CI run; result filled in at the next push)
+  - f5e0975..18c9cdc pipefail, tip ids, specs, citations, stamps, header-footer, comment export → run #133 (37692123673) pending
   - 783617c..8c698c8 report v1.8, pipefail checks, new tip ids, v1.9 specs → run #132 (37683297296) GREEN
   - 48aac44 release v1.8.0 → run #131 (37660293846) GREEN; release run #19 (37660293422) success (universal DMG, NSIS; stable)
   - c8c7855..658d558 OCR S7, tips fixes, settings fit, gate harness → run #129 (37652497354) GREEN, run #130 (37658721738) GREEN

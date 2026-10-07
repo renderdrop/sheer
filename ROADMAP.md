@@ -381,11 +381,11 @@ new engine capability or dependency is needed. Not picked by the loop before v1.
 - [x] v1.8 acceptance — installed build with the mouse, designer round, tag v1.8.0 (acceptance build: v18-tips 45/45, v17-ocr 50/50 incl. owner-scan-S7 28/30; gate 1208/1208; smoke 17/17; real-input PASS; security PASS; designer FIX → blocker fixed)
 
 ### v1.9 "Backlog" (ADR-135 §5)
-- [ ] v1.9 spec — designer spec (stamp picker, header/footer sheet, comment export, citation style)
-- [ ] v1.9.1 — Stamps: predefined set + own text, Solar Yellow and Ink
-- [ ] v1.9.2 — Headers and footers (default: page number + date)
-- [ ] v1.9.3 — Comment export as a PDF summary and as Markdown
-- [ ] v1.9.4 — Fifth citation style "Deutsche Zitierweise" (full footnote first, short reference after)
+- [x] v1.9 spec — designer spec (stamp picker, header/footer sheet, comment export, citation style) (DESIGN §3.14–§3.17, ARCHITECTURE §16, 8c698c8)
+- [x] v1.9.1 — Stamps: predefined set + own text, Solar Yellow and Ink (debc3f1)
+- [x] v1.9.2 — Headers and footers (default: page number + date) (0b4c56b)
+- [x] v1.9.3 — Comment export as a PDF summary and as Markdown (a42fb23, save fix b0066da)
+- [x] v1.9.4 — Fifth citation style "Deutsche Zitierweise" (full footnote first, short reference after) (6b67fb6)
 - [ ] v1.9 acceptance — acceptance build, security-reviewer, designer round, tag v1.9.0
 
 ### v2.0-rc.1 (ADR-135 §6)
@@ -412,6 +412,11 @@ new engine capability or dependency is needed. Not picked by the loop before v1.
 ## Politur backlog (minors not tied to a milestone)
 
 - [ ] Politur backlog — picked between feature milestones when a wave has a free slot
+  - (v1.9 stamps) import parses each stamp twice; text read from /Contents not the AP; three width helpers to merge; Solar/Ink RGB not tied to tokens by a test; Change… not clamped to the page; no upright stamps on rotated pages; --stamp-border 1.5 vs spec 2; --stamp-tracking unused
+  - (v1.9 headers/footers) file-layer page indices may go stale after save/reorder; covers() parses ranges more leniently than check(); left/centre/right runs can overlap on narrow pages; burn_all + header layer on one page lacks an integration test; {file} uses the source name on Save As
+  - (v1.9 comment export) Comment-on-text and Note share one filter bucket; per-pair to_lowercase on tags; dialog open/cancel not tested
+  - (v1.9 designer minors) selected stamp shows no corner handles (ST5); hf-overlay acceptance shot does not show header/footer area; PDF summary meta lines without the 10 pt type icon (E5); citation list buttons touch and clip
+  - (v1.9 security low) pipefail guard does not cover npm run cargo -- test; forged sheer-stamp NM with oversized rect test
   - (v1.7.0) owner photo scans owner-scan-S1..S6: 20/36 probe words (low-resolution phone captures; recognition limit, ADR-137 addendum); OCR angle from Vision always 0 (no deskew); sidecar Swift toolchain not pinned; Swift/Rust limit constants duplicated without a cross test; updater key env scoped to the whole build step; first-launch annot/coach gate ordering flake; flaky print.test.tsx unmount test (again under load) and fuzz wedge recovery tests on Windows CI (EngineTimeout, green on rerun)
   - (v1.7 carried) disabled-reason tooltips on menu items; Done has no gate during a run; undo-history OCR size estimate; classify O(n·m); finish_save after signing clears pending OCR layers; trailing hyphen U+2010; document tabs truncate at 960; refused ocr_start still uses the generic failure toast
   - (owner 2026-10-05) „Deutsche Zitierweise (Fußnoten-Stil)" as a fifth citation style — specify only after owner feedback

@@ -6,6 +6,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.9.0] - 2026-10-08
+
+v1.9 "Backlog" (ADR-139, DESIGN §3.14–§3.17). Unsigned installers (BLOCKERS B-002).
+
+### Added
+- Stamps (Kommentieren → Notiz slot, or Bearbeiten → Stempel…): Draft, Approved, Confidential, Received with today's date, or your
+  own text; in Solar yellow or Ink. They are real PDF stamp annotations, so other viewers show them too.
+- Headers and footers (Bearbeiten, or Werkzeuge → Kopf- und Fußzeile…): text, page number, date or file name in six positions, with
+  font size, margin and a page range. The default is the page number at the bottom right and the date at the bottom left. One Undo
+  removes them; Sheer-added headers can be edited or removed later.
+- Export comments (Comments panel or Datei → Kommentare exportieren…): comments, notes, citations and highlights with page number and
+  quoted text as a PDF summary or as Markdown. Signatures are never included.
+- Fifth citation style "Deutsche Zitierweise": the first citation of a source is a footnote with the full reference, later ones a
+  short reference, plus a bibliography.
+
+### Changed
+- The clip tips have new ids, so people who saw the older text tips see the clip version once.
+
+### Fixed
+- Check scripts can no longer hide a failing step behind a pipe (pipefail everywhere, guarded by a hook).
+
 ## [1.8.0] - 2026-10-07
 
 v1.8 "Context help" (ADR-138, DESIGN §3.13). Unsigned installers (BLOCKERS B-002).
