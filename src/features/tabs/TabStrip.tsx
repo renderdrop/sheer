@@ -10,6 +10,7 @@ import { isOwnEvent, itemsOf, rovingTarget } from '../../components/roving';
 import { useT } from '../../i18n';
 import { isDirty, useAnnotations } from '../../stores/annotations';
 import { useDocuments } from '../../stores/documents';
+import { useOcr } from '../ocr/store';
 import { closeTab, cycleTab } from './nav';
 
 /** Names longer than this are cut in the middle, so both the start and the extension stay readable. */
@@ -69,6 +70,7 @@ export function TabStrip() {
   const byId = useDocuments((state) => state.byId);
   const activeId = useDocuments((state) => state.activeId);
   const annotationsByDoc = useAnnotations((state) => state.byDoc);
+  const ocrRuns = useOcr((state) => state.runs);
   const strip = useRef<HTMLDivElement>(null);
   const overflowing = useOverflow(strip, order.length);
   useTabCycleKeys();
@@ -186,6 +188,8 @@ export function TabStrip() {
                 // A tablist owns only tabs (ARIA); keyboard users close with Delete or Primary+W, so the pointer x is hidden from AT.
                 aria-hidden="true"
                 tabIndex={-1}
+                // A text recognition run writes into the tab: it closes after the run (DESIGN 3.12 O3; `closeTab` says why).
+                disabled={ocrRuns[id] !== undefined}
                 className={cx(
                   'opacity-0 group-focus-within/tab:opacity-100 group-hover/tab:opacity-100',
                   selected && 'opacity-100',

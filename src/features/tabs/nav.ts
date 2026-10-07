@@ -1,3 +1,7 @@
+import { translators } from '../../i18n';
+import { useLocaleStore } from '../../i18n/store';
+import { useUi } from '../../stores/ui';
+import { isOcrBusy } from '../ocr/store';
 import { needsSavePrompt } from '../save/commands';
 import { useSave } from '../save/state';
 import { useDocuments } from '../../stores/documents';
@@ -30,6 +34,11 @@ export function forceCloseTab(id: number): void {
  * dialog (`features/save/UnsavedDialog`), which closes it with `forceCloseTab` when the user chooses to; any other closes now.
  */
 export function closeTab(id: number): void {
+  // A run writes into the tab: it cannot close before it ends (DESIGN 3.12 O3).
+  if (isOcrBusy(id)) {
+    useUi.getState().showToast({ message: translators[useLocaleStore.getState().locale]('ocr.busy'), tone: 'alert' });
+    return;
+  }
   if (needsSavePrompt(id)) {
     useSave.getState().setPrompt(id);
     return;

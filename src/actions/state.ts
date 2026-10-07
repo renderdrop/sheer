@@ -2,6 +2,7 @@ import { DEFAULT_ZOOM, MAX_ZOOM, MIN_ZOOM } from '../lib/zoom';
 import { historyOf, useAnnotations } from '../stores/annotations';
 import { citationCount } from '../features/citations/store';
 import { isSignatureLocked } from '../features/lock/useSignatureLock';
+import { useOcr } from '../features/ocr/store';
 import { selectActiveDocument, useDocuments } from '../stores/documents';
 import { useView } from '../stores/view';
 
@@ -32,10 +33,24 @@ export interface ActionState {
   signatureLocked?: boolean;
   /** The active document carries signatures (Datei: Signatures…); absent: none. */
   signed?: boolean;
+  /** The document's permissions allow changing it (absent: yes); Recognize text needs it (DESIGN 3.12 O4). */
+  canEdit?: boolean;
+  /** The recognizer reports no backend on this computer (absent: usable, or not known yet). */
+  ocrUnavailable?: boolean;
+  /** A text recognition run goes on in the active tab: Save, closing and page structure wait (DESIGN 3.12 O3). */
+  ocrBusy?: boolean;
 }
 
 /** Whether an editing action may run: there is a document and no signature locks it. */
 export const mayEdit = (state: ActionState): boolean => state.hasDocument && state.signatureLocked !== true;
+
+/** Whether Recognize text may run now (DESIGN 3.12 O4): editable, not locked, a recognizer exists, no run in this tab. */
+export const mayRecognize = (state: ActionState): boolean =>
+  mayEdit(state) &&
+  state.readOnly !== true &&
+  state.canEdit !== false &&
+  state.ocrUnavailable !== true &&
+  state.ocrBusy !== true;
 
 /** Whether the state allows printing (absent: yes). */
 export const mayPrint = (state: ActionState): boolean => state.canPrint !== false;
@@ -70,5 +85,8 @@ export function readActionState(): ActionState {
     readOnly: selectActiveDocument(useDocuments.getState())?.kind === 'welcome',
     signatureLocked: isSignatureLocked(docId),
     signed: (selectActiveDocument(useDocuments.getState())?.signatureLock ?? 'none') !== 'none',
+    canEdit: permissions === null || permissions.includes('edit'),
+    ocrUnavailable: useOcr.getState().capabilities?.backend === 'none',
+    ocrBusy: useOcr.getState().runs[docId] !== undefined,
   };
 }

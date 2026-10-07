@@ -6,6 +6,7 @@ import { useDocuments } from '../../stores/documents';
 import { useSettings } from '../../stores/settings';
 import { useUi } from '../../stores/ui';
 import { askAuthorName } from '../author/state';
+import { isOcrBusy } from '../ocr/store';
 import { useSave } from './state';
 
 /** Whether closing the tab of `docId` has to ask first: it has changes that are not saved, and it is not the welcome document. */
@@ -68,6 +69,8 @@ async function askAuthorOnce(docId: number): Promise<void> {
 export async function saveNow(docId: number, as = false): Promise<boolean> {
   const save = useSave.getState();
   if (save.saving[docId] === true) return false;
+  // The text recognition of this tab writes into the document: saving waits for it (DESIGN 3.12 O3).
+  if (isOcrBusy(docId)) return false;
   save.setSaving(docId, true);
   save.setFailed(docId, null);
   try {

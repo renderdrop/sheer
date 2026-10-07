@@ -4,6 +4,7 @@ import { translators } from '../../i18n';
 import { useLocaleStore } from '../../i18n/store';
 import { useDocuments } from '../../stores/documents';
 import { isSignatureLocked } from '../lock/useSignatureLock';
+import { isOcrBusy, useOcrBusy } from '../ocr/store';
 import { useUi } from '../../stores/ui';
 import { isNoopMove, keyboardMove, toIndexFor } from './grid';
 import {
@@ -26,15 +27,20 @@ export function targetsOf(docId: number): number[] {
   return slots.filter((slot) => live.has(slot.id)).map((slot) => slot.id);
 }
 
-/** The tour's sample and a document locked by a certifying signature are read-only: the page commands do nothing there. */
+/**
+ * The tour's sample, a document locked by a certifying signature and a tab that a text recognition run writes into (DESIGN 3.12 O3)
+ * are read-only: the page commands do nothing there.
+ */
 export function isReadOnly(docId: number): boolean {
-  return useDocuments.getState().byId[docId]?.kind === 'welcome' || isSignatureLocked(docId);
+  return useDocuments.getState().byId[docId]?.kind === 'welcome' || isSignatureLocked(docId) || isOcrBusy(docId);
 }
 
-/** `isReadOnly`, followed: the grid draws again when a signature locks the document. */
+/** `isReadOnly`, followed: the grid draws again when a signature locks the document or a run starts or ends. */
 export function useIsReadOnly(docId: number): boolean {
-  return useDocuments(
-    (state) => state.byId[docId]?.kind === 'welcome' || state.byId[docId]?.signatureLock === 'locked',
+  const busy = useOcrBusy(docId);
+  return (
+    useDocuments((state) => state.byId[docId]?.kind === 'welcome' || state.byId[docId]?.signatureLock === 'locked') ||
+    busy
   );
 }
 

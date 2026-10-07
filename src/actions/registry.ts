@@ -8,6 +8,7 @@ import {
   Crop,
   Hand,
   ScanSearch,
+  ScanText,
   TextSelect,
   Stamp,
   FileArchive,
@@ -62,6 +63,7 @@ import { useForms } from '../features/forms/store';
 import { useMarginPrefs } from '../features/margin/store';
 import { toggleSmartLinksForActive } from '../features/smartlinks/actions';
 import { openSignaturesDialog } from '../features/sigcheck/open';
+import { openOcrDialog } from '../features/ocr/runtime';
 import { openSignatureLibrary } from '../features/signatures/library';
 import { restartTour } from '../features/tour/runtime';
 import { resetTips } from '../features/tips/runtime';
@@ -85,7 +87,7 @@ import { MODES, useUi, type LeftPanelTab, type Mode, type ToolId } from '../stor
 import { requestAddComment } from './commentIntent';
 import { runHistoryStep } from './history';
 import { formatBinding, resolveBinding, type Binding, type Shortcuts } from './shortcut';
-import { mayCopy, mayEdit, mayPrint, type ActionState } from './state';
+import { mayCopy, mayEdit, mayPrint, mayRecognize, type ActionState } from './state';
 
 /** The action of each tool of the toolbar: it makes the tool the active one. */
 export type ToolActionId = `tool-${ToolId}`;
@@ -153,6 +155,7 @@ export type ActionId =
   | 'tool-redact'
   | 'form-highlight'
   | 'manage-signatures'
+  | 'recognize-text'
   | 'welcome-tour'
   | 'reset-tips'
   | ModeActionId
@@ -343,7 +346,7 @@ export const ACTIONS: readonly ActionDef[] = [
     shortcut: { default: primary('w') },
     group: 'file',
     menuBar: true,
-    enabled: needsDocument,
+    enabled: (state) => state.hasDocument && state.ocrBusy !== true,
     run: () => {
       const id = useDocuments.getState().activeId;
       if (id !== null) closeTab(id);
@@ -356,7 +359,7 @@ export const ACTIONS: readonly ActionDef[] = [
     shortcut: { default: primary('s') },
     group: 'file',
     menuBar: true,
-    enabled: mayEdit,
+    enabled: (state) => mayEdit(state) && state.ocrBusy !== true,
     run: () => saveActive(false),
   },
   {
@@ -366,7 +369,7 @@ export const ACTIONS: readonly ActionDef[] = [
     shortcut: { default: { key: 's', mods: ['primary', 'shift'] } },
     group: 'file',
     menuBar: true,
-    enabled: needsDocument,
+    enabled: (state) => state.hasDocument && state.ocrBusy !== true,
     run: () => saveActive(true),
   },
   // The output group (DESIGN 3.41): after Save As, divider above and below; each opens a dialog (src/features/{imagesToPdf,exportCopy,exportImages,print}).
@@ -863,6 +866,16 @@ export const ACTIONS: readonly ActionDef[] = [
     menuBar: true,
     enabled: () => true,
     run: openSignatureLibrary,
+  },
+  {
+    id: 'recognize-text',
+    labelKey: 'ocr.command',
+    icon: ScanText,
+    group: 'app',
+    menuBar: true,
+    // DESIGN 3.12 O4: disabled without a recognizer, on a locked, read-only or no-modify document and during a run.
+    enabled: mayRecognize,
+    run: openOcrDialog,
   },
   {
     id: 'welcome-tour',

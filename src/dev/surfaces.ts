@@ -3,6 +3,7 @@
 // Every entry opens one dialog or sheet through its store or action, never through new behaviour. Popovers that hang on a trigger
 // button (`aria-haspopup`) are found by the gate itself.
 import { openAbout, useAboutDialog } from '../features/about/state';
+import { ocrSurfaces } from './ocrSurfaces';
 import { useAnnotations } from '../stores/annotations';
 import { pageIdAt } from '../stores/pages';
 import { SHIPPED_STEPS } from '../features/tour/steps';
@@ -144,6 +145,7 @@ function floatingSurfaces(): DevSurface[] {
 export function buildSurfaces(): DevSurface[] {
   return [
     ...floatingSurfaces(),
+    ...ocrSurfaces(),
     { id: 'settings', open: () => (openSettings(), none()), close: closeSettings },
     {
       id: 'about',

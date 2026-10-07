@@ -75,6 +75,7 @@ describe('the Windows menu bar (DESIGN 3.56)', () => {
       'Edit',
       'Highlight Form Fields',
       'Manage Signatures…',
+      'Recognize Text…',
     ]);
     const radios = within(menu).getAllByRole('menuitemradio');
     expect(radios.map((radio) => radio.getAttribute('aria-checked'))).toEqual([

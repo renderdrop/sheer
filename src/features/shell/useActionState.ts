@@ -2,6 +2,7 @@ import { useMemo } from 'react';
 
 import type { ActionState } from '../../actions/state';
 import { useCitations } from '../citations/store';
+import { useOcr } from '../ocr/store';
 import { MAX_ZOOM, MIN_ZOOM } from '../../lib/zoom';
 import { historyOf, useAnnotations } from '../../stores/annotations';
 import { selectActiveId, useDocuments } from '../../stores/documents';
@@ -31,6 +32,9 @@ export function useActionState(): ActionState {
   const lock = useDocuments((state) => (docId === null ? 'none' : (state.byId[docId]?.signatureLock ?? 'none')));
   const signatureLocked = lock === 'locked';
   const signed = lock !== 'none';
+  const canEdit = permissions === null || permissions.includes('edit');
+  const ocrUnavailable = useOcr((state) => state.capabilities?.backend === 'none');
+  const ocrBusy = useOcr((state) => docId !== null && state.runs[docId] !== undefined);
   return useMemo(
     () => ({
       hasDocument,
@@ -44,6 +48,9 @@ export function useActionState(): ActionState {
       readOnly,
       signatureLocked,
       signed,
+      canEdit,
+      ocrUnavailable,
+      ocrBusy,
     }),
     [
       hasDocument,
@@ -57,6 +64,9 @@ export function useActionState(): ActionState {
       readOnly,
       signatureLocked,
       signed,
+      canEdit,
+      ocrUnavailable,
+      ocrBusy,
     ],
   );
 }

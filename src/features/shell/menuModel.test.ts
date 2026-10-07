@@ -118,6 +118,8 @@ describe('the Windows menus built from menu.json', () => {
       '-',
       'Highlight Form Fields',
       'Manage Signatures…',
+      '-',
+      'Recognize Text…',
     ]);
     const modes = entries.slice(0, 5).flatMap((entry) => (entry.type === 'separator' ? [] : [entry]));
     expect(modes.map((entry) => entry.shortcut)).toEqual(['1', '2', '3', '4', '5']);

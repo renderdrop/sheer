@@ -16,6 +16,7 @@ import { TextEditAnnouncer } from '../textedit/TextEditAnnouncer';
 import { SettingsPopover } from '../settings/SettingsPopover';
 import { ExportCopyDialog } from '../exportCopy/ExportCopyDialog';
 import { ExportImagesDialog } from '../exportImages/ExportImagesDialog';
+import { OcrDialog } from '../ocr/OcrDialog';
 import { ImagesToPdfDialog } from '../imagesToPdf/ImagesToPdfDialog';
 import { PrintDialog } from '../print/PrintDialog';
 import { JobsHost } from '../jobs/JobsHost';
@@ -95,6 +96,7 @@ export function Shell() {
       <PropertiesDialog />
       <RedactApplyDialog />
       <ExportImagesDialog />
+      <OcrDialog />
       <ImagesToPdfDialog />
       <PrintDialog />
       <ExportCopyDialog />

@@ -439,6 +439,14 @@
         {
           "action": "manage-signatures",
           "label": "menu.tools.manageSignatures"
+        },
+        {
+          "separator": true
+        },
+        {
+          "action": "recognize-text",
+          "label": "menu.tools.recognizeText",
+          "requiresDocument": true
         }
       ]
     },

@@ -9,6 +9,7 @@ import { UpdateBannerRow } from '../update/UpdateBanner';
 import { MiniBarDock } from '../minibar/MiniBarDock';
 import { FormHost } from '../forms/FormHost';
 import { SigBanner } from '../sigcheck/SigBanner';
+import { OcrBanner } from '../ocr/OcrBanner';
 import { useBannerWinner, type BannerKind } from './bannerPriority';
 import { BannerRow, XfaBannerRow } from './Banner';
 
@@ -49,6 +50,7 @@ export function BannerSlot() {
     <div data-region="banner" data-slot="banner" className="flex min-w-0 flex-col">
       <RedactBanner />
       <SigBanner />
+      <OcrBanner />
       <FormHost />
       {/* The other notices queue behind the redact band and the form banner; they stay mounted, so nothing is lost. At most two show. */}
       <div

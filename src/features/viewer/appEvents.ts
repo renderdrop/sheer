@@ -1,5 +1,7 @@
 import { subscribeApp, type AppEvent } from '../../api/app';
 import type { DocumentInfo } from '../../api/documents';
+import { handleOcrEvent } from '../../api/ocr';
+import { onOcrFinished, onOcrProgress } from '../ocr/runtime';
 import { handleImagesDropped } from '../imagesToPdf/imagesDropped';
 import { announceEngineRestart } from '../recovery/engineRestart';
 import { appDropBatch } from '../jobs/dropBatch';
@@ -29,8 +31,7 @@ export function handleAppEvent(event: AppEvent): void {
   } else if (event.type === 'engineRestarted') {
     announceEngineRestart(event.lost);
   } else if (event.type === 'ocrProgress' || event.type === 'ocrFinished') {
-    // Shown by the OCR panel (v1.7); nothing listens yet.
-    return;
+    handleOcrEvent(event, { onProgress: onOcrProgress, onFinished: onOcrFinished });
   } else if (event.type === 'imagesDropped') {
     // The Create PDF from images offer for the dropped batch (DESIGN 3.43, U2).
     handleImagesDropped(event);

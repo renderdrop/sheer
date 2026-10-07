@@ -77,7 +77,7 @@ const escape = async () => {
 /** Runs inside the page. Everything comes back as plain data; the verdicts are the pure functions of surface-checks.mjs. */
 const PAGE = `(() => {
   // The mini bar (toolbar) and the coach mark card (region) are floating surfaces of their own: registry entries open them.
-  const SURFACES = '[role="dialog"],[role="alertdialog"],[role="menu"],[data-minibar],[data-tour-card],[data-surface="textedit-notice"],[data-surface="textedit-refusal"],[data-surface="link-preview"],[data-surface="range-chooser"]';
+  const SURFACES = '[role="dialog"],[role="alertdialog"],[role="menu"],[data-minibar],[data-tour-card],[data-surface="textedit-notice"],[data-surface="textedit-refusal"],[data-surface="link-preview"],[data-surface="range-chooser"],[data-surface="ocr-banner"],[data-toast]';
   const LIST = '[role="list"],[role="listbox"],[role="menu"],[role="grid"],[role="tree"],[data-scroll="list"]';
   const hidden = ${isVisuallyHidden.toString()};
   // Visible text of an element: its own text nodes, unless the element or an ancestor up to root is visually hidden (sr-only).
@@ -112,7 +112,8 @@ const PAGE = `(() => {
       // ADR-124 addendum 1 c: a menu opened from the menu bar (role=menubar) follows the OS menu convention.
       const menubar = el.getAttribute('role') === 'menu' && !!document.querySelector('[role="menubar"] [aria-controls="' + el.id + '"]');
       // A mini bar and a coach mark are floating, not modal; a coach mark is a notice (Q8): it may not touch any protected rect.
-      const kind = el.hasAttribute('data-tour-card') || el.getAttribute('data-surface') === 'textedit-notice' ? 'notice' : el.hasAttribute('data-tour-card') ? 'notice' : el.hasAttribute('data-minibar') ? 'bar' : null;
+      // v1.7: the OCR banner and the toasts (DESIGN 3.12 O8) are notices too: the banner never covers a page, the toast never covers Stop.
+      const kind = el.hasAttribute('data-tour-card') || el.hasAttribute('data-toast') || ['textedit-notice', 'ocr-banner'].includes(el.getAttribute('data-surface')) ? 'notice' : el.hasAttribute('data-tour-card') ? 'notice' : el.hasAttribute('data-minibar') ? 'bar' : null;
       const onlyBig = (c) => { const r = c.getBoundingClientRect(); return r.width > 2 && r.height > 2; };
       const clipsOf = (c) => {
         const clips = [];

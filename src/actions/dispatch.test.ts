@@ -293,6 +293,9 @@ describe('readActionState', () => {
       readOnly: false,
       signatureLocked: false,
       signed: false,
+      canEdit: true,
+      ocrUnavailable: false,
+      ocrBusy: false,
     });
   });
 });
