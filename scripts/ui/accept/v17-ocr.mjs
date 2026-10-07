@@ -464,9 +464,19 @@ await runSession(async ({ input, dialogs, ev, shot }) => {
       C('owner-pdf-F2: no scanned pages offered (nothing to recognize)', true, 'skipped run');
       return;
     }
-    const before = await ev(
-      `[...document.querySelectorAll('[data-text-length]')].reduce((n, e) => n + Number(e.dataset.textLength), 0)`,
-    );
+    // Page classes by page index of the newest open document (F2 was opened last). The viewer mounts only the visible pages, so the
+    // text layer of the DOM cannot tell whether the recognized page got its layer; the classes can.
+    const classes = async () => {
+      let found = null;
+      for (let id = 0; id < 40; id++) {
+        const r = await ev(
+          `window.__TAURI_INTERNALS__.invoke('ocr_classify_pages', { docId: ${id} }).then((x) => x.map((e) => e.class), () => null)`,
+        );
+        if (r) found = r;
+      }
+      return found ?? [];
+    };
+    const before = await classes();
     const info = await recognize();
     const run = await finishRun();
     C(
@@ -474,14 +484,16 @@ await runSession(async ({ input, dialogs, ev, shot }) => {
       run.toasts.some((t) => /erkannt|Gestoppt/.test(t)),
       run.toasts.join(' | ').slice(0, 120),
     );
-    const sum = () =>
-      ev(`[...document.querySelectorAll('[data-text-length]')].reduce((n, e) => n + Number(e.dataset.textLength), 0)`);
-    let after = await sum();
-    for (let i = 0; i < 30 && after <= before; i++) (await sleep(300), (after = await sum()));
+    const scans = before.flatMap((k, i) => (k === 'scan' ? [i] : []));
+    let after = await classes();
+    for (let i = 0; i < 30 && scans.some((n) => after[n] !== 'sheerLayer'); i++)
+      (await sleep(300), (after = await classes()));
     C(
-      'owner-pdf-F2: recognized text appears in the text layer',
-      after > before,
-      `text length ${before} -> ${after}; language ${info?.language}`,
+      'owner-pdf-F2: scan pages become sheerLayer, all other pages unchanged',
+      scans.length > 0 &&
+        scans.every((n) => after[n] === 'sheerLayer') &&
+        after.every((k, i) => scans.includes(i) || k === before[i]),
+      `scan pages ${scans.join(',')} of ${before.length}; language ${info?.language}`,
     );
   });
 
