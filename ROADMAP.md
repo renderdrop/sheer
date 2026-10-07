@@ -359,7 +359,7 @@ new engine capability or dependency is needed. Not picked by the loop before v1.
 - [x] v1.7 phase-2 prerequisites (owner items waived by ADR-135 §2: generated scans + owner-pdf-F2; English pack still missing) — real scanned test PDFs from the owner (rule 13); English OCR pack on the dev machine; line structure so copy keeps OCR lines; huge MediaBox guard in ocr_layer (security low); render/OCR pipelining; tilt; NFC; form-XObject scans in the probe
 - [x] v1.7.1 — Invisible text layer for photos and scans (searchable, copyable, highlightable), de/en, OS OCR preferred (Windows: B2 990d0f3, W0 6ec72b8, B3 3f19a63, F1 422b48b, B1 928f1ee, fixes 993537b..ff464f7; macOS → part 2)
 - [~] v1.7.2 — Option: take text over as editable paragraphs (no formatting claim) → v2.1 backlog (ADR-135 §1)
-- [ ] Politur v1.7 — reviewer/designer minors of v1.7
+- [x] Politur v1.7 — reviewer/designer minors of v1.7 (ADR-137: PB 19e3a19, PF+FX-RO 3f87e96, ACL test b372a72, form matrix c4006f7, FX-D; rest → Politur backlog)
   - (W0 review) ocr_start: a document signed mid-job loses recognized pages with a generic failure count, not a read_only notice; no unit test for signed/permission refusal and the ocrJobs limit; classify page lookup O(n·m); undo-history OCR size estimated at 64 B/word
   - (B3 review) finish_save after signing clears pending OCR layers (confirm signing requires a clean doc); without_covered runs under the model lock
   - (F1) no disabled-reason tooltips on menu items; Done (Fertig) has no gate during a run (no matching UI)
@@ -371,7 +371,7 @@ new engine capability or dependency is needed. Not picked by the loop before v1.
   - (designer v1.7, minor) Cancel is Ghost not Secondary; dialog title icon not in O2; document tabs truncate at 960
   - (B2 review) form /Matrix finiteness not checked in ocr_probe enter_form (final CTM is); one cover() may decompress up to 256 MB; trailing hyphen written as U+2010 (search "Bei-" misses; trade-off); PDFium line test passes silently without the library
 - [x] v1.7 part 1 acceptance — acceptance build (rule 15), security-reviewer, designer round, pre-release v1.7.0-beta.1 (v17-ocr 30/30 incl. owner-pdf-F2; security pass 2 FAIL → fixed ff464f7; tester green; designer PASS; gate 1208/1208; annot smoke 17/17; real-input smoke PASS)
-- [ ] v1.7 part 2 — macOS Swift sidecar sheer-ocr (Apple Vision), CI-built and CI-tested only; human Mac check pending (B-001)
+- [x] v1.7 part 2 — macOS Swift sidecar sheer-ocr (Apple Vision), CI-built and CI-tested only; human Mac check pending (B-001) (b3e05e5, tests b9b0d63; macOS CI: swift test 15/15, Vision round trip)
 - [ ] v1.7 acceptance — security-reviewer, tag v1.7.0
 
 ### v1.8 "Context help" (ADR-135 §4: on by default, one tip per situation, switch in Settings)
@@ -412,6 +412,8 @@ new engine capability or dependency is needed. Not picked by the loop before v1.
 ## Politur backlog (minors not tied to a milestone)
 
 - [ ] Politur backlog — picked between feature milestones when a wave has a free slot
+  - (v1.7.0) owner photo scans owner-scan-S1..S6: 20/36 probe words (low-resolution phone captures; recognition limit, ADR-137 addendum); OCR angle from Vision always 0 (no deskew); sidecar Swift toolchain not pinned; Swift/Rust limit constants duplicated without a cross test; updater key env scoped to the whole build step; first-launch annot/coach gate ordering flake; flaky print.test.tsx unmount test (again under load) and fuzz wedge recovery tests on Windows CI (EngineTimeout, green on rerun)
+  - (v1.7 carried) disabled-reason tooltips on menu items; Done has no gate during a run; undo-history OCR size estimate; classify O(n·m); finish_save after signing clears pending OCR layers; trailing hyphen U+2010; document tabs truncate at 960; refused ocr_start still uses the generic failure toast
   - (owner 2026-10-05) „Deutsche Zitierweise (Fußnoten-Stil)" as a fifth citation style — specify only after owner feedback
   - (v1.4.1) inspector refit for a fresh annotation not re-checked by mouse (tests cover the refit path); citation bubble focus shows the leader line but not the outline pair
   - (v1.4.1) save dialogs without a document (jobs, citation export, certificate export) still open in the last-used folder

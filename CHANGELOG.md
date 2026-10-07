@@ -6,6 +6,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.7.0] - 2026-10-07
+
+v1.7 "Scan & OCR" complete on Windows and macOS (ADR-134, ADR-137, DESIGN §3.12). Unsigned installers (BLOCKERS B-002).
+
+### Added
+- macOS: Recognize text uses Apple's Vision text recognition through a small helper inside the app (German and English built in,
+  nothing leaves the computer). Same dialog, banner and progress as on Windows. Tested by automated checks on macOS; a hands-on
+  check on a Mac is still pending.
+
+### Changed
+- The page choice in the Recognize text dialog is a labelled group with round marks, so the selected option is visible without
+  relying on colour.
+- Progress runs as a full-width bar with "done / total" next to it; screen readers hear the start and the result, not every page.
+- If a document becomes signed or read-only while recognition runs, Sheer keeps the finished pages and says why it stopped.
+- "Open language settings" (Windows) starts Explorer from the Windows folder only.
+
+### Fixed
+- Search results say "1 result on 1 page" instead of "1 results on 1 pages".
+- Hardened scan detection against malformed or oversized form objects in hostile PDFs.
+
 ## [1.7.0-beta.1] - 2026-10-07
 
 v1.7 part 1 "Scan & OCR" for Windows (ADR-134, ADR-135, DESIGN §3.12). Pre-release; unsigned installers (BLOCKERS B-002).
