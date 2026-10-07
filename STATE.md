@@ -1,9 +1,9 @@
 # STATE
-phase: session "v1.8 Context help" (ADR-138) closed: v1.8.0 released
+phase: session "v1.9 Backlog" (ADR-139) — wave 0 + specs running
 version: 1.8.0 (tag v1.8.0, latest stable)
-current_item: none — next session: owner decides (proposal: v1.9 backlog). Open owner items: B-008 Mac check (OCR + tips), clip tips for existing users (new ids?)
+current_item: v1.9 → v1.9.0. Wave 0: P0a new clip tip ids, P0b pipe-safe checks; specs: designer §3.14/§3.15 (stamps, headers), designer docs/design-v19-export-citation.md (→ §3.16/§3.17), architect ARCHITECTURE §16. Then backend wave (stamps, headers, export), frontend wave, citation style, acceptance, release
 last_completed: v1.8.0 — spec 880ca14, tipsEnabled c6dd923, APNG/recorder 71e1a4f, clips 88f2128/c773d12, tips 806528f + fixes dec9d33/bf5726e/2b2b910, gate harness 658d558, OCR S7 acceptance c8c7855 (28/30); reports docs/reports/2026-10-07-v1.8.0-kontexthilfe.md
-loop_count_this_session: 0 (session closed, STOP set)
+loop_count_this_session: 0
 open_blockers: 2 (B-002, B-005, human-only). B-006 and B-007 resolved by the owner (ADR-128). Path guard (ADR-127) allows the project memory folder (ADR-128)
 notes: Surface gate must run before annot-smoke on a fresh dev window (smoke leaves annotations that break overlap checks).
   ADR-120: every push starts with `bash scripts/ci-status.sh` (last completed run on main, never wait); red = fix first. Rule 15 / ADR-131: acceptance ONLY via `npm run build:acceptance` + `scripts/ui/accept/*.mjs` (CDP, dialog guard); real input only `smoke-real.mjs` (≤ 5 min, announced). Never launch target/release or anything installed.

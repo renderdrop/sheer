@@ -2902,3 +2902,46 @@ as a known limit of Windows.Media.Ocr on such input.
    shows the clip's last frame as a still. Clips live in `src/assets/tips/`, served from the bundle (`img-src 'self'`), no external
    source.
 4. *Release.* v1.8.0 with a German report once CI on `main` is green.
+
+## ADR-139 — Session "v1.9 Backlog": new tip ids, pipe-safe checks, four backlog features
+
+**Status:** accepted (2026-10-07, owner instruction; topic "v1.9 Backlog"). Tempo level 3 (ADR-128).
+
+**Decisions (owner, plus defaults recorded so no question is needed).**
+1. *Tip ids.* The four clip tips get new ids so users who saw the v1.7 text tips see the clip version once: `highlightClip`,
+   `formClip`, `signClip`, `pagesClip` (assets renamed accordingly). The old ids stay valid in `tipsSeen` (ignored), so nothing breaks.
+2. *Pipe-safe checks.* In v1.8 a failing `npm run check` was hidden by `| tail` and a commit went through. Every check script
+   (`scripts/check.sh`, `check-fast.sh`, the other shell scripts the checks call) runs with `set -o pipefail` (and `-e` where the script
+   style allows); Node scripts that spawn checks propagate the child's exit code. A test proves a failing step inside a pipeline fails
+   the script. The orchestrator's own commands never pipe a check into `tail`/`grep` without `set -o pipefail`; `guard-bash.sh` blocks
+   `npm run check`/`check:fast` piped into another command unless the command line sets `pipefail`.
+3. *Backlog features (ADR-135 §5), designer spec per feature first:*
+   (1) **Stamps**: predefined Draft, Approved, Confidential, Received (with the date) plus own text; colours Solar Yellow and Ink; a real
+   PDF annotation (`/Stamp` with our own appearance stream) so other viewers show it. (2) **Headers and footers**: text, page number,
+   date, file name; left/centre/right; page range; default page number right and date left; written into the page content as an
+   incremental, undoable change. (3) **Comment export**: all comments, citations and highlights (with page number and quoted text) as a
+   PDF summary and as Markdown, saved through a dialog. (4) **Fifth citation style "Deutsche Zitierweise"**: footnote with the full
+   reference at the first occurrence of a source, short reference afterwards, plus a bibliography; faculty-specific variants are later
+   polish.
+4. *Release.* v1.9.0 with a German report once CI on `main` is green.
+
+**Addendum A (backend design, 2026-10-07; ARCHITECTURE §16).** Decisions the ADR left open:
+- A1 *Stamps* are a typed `AnnotationBody::Stamp` (field `stamp`, since `kind` is the serde tag), recognised on reopen by
+  `/NM (sheer-stamp-…)` plus `/SHR_Stamp`; text and date arrive localized from the UI and are stored as given; Helvetica-Bold/Helvetica,
+  WinAnsi, not embedded; `/Name` is always written (`/Received`, `/Custom` for the non-standard ones). Existing annotation commands only.
+- A2 *Headers/footers* are one `DocCommand::SetHeaderFooter { spec | null }`, written at save as a marked `/Artifact /Pagination` stream
+  with page key `/SHR_HF` and the spec in the catalog; Helvetica WinAnsi; placed upright against the CropBox. OCR and header layers share
+  one wrapper (`pdfwrite/page_layer.rs`). Refused on signed/certified documents and without `edit` permission. The old file header is
+  hidden in the engine copy while an edit is pending (spike-gated; fallback: shown until save).
+- A3 *Comment export* is Rust-only (gather, Markdown, PDF via lopdf + bundled Arimo subsets); no new dependency, `pdf-writer` not added.
+- A4 *Deutsche Zitierweise* is TS formatting (`germanFootnotes`); Rust adds the style name and `BibRecord.short_title` (`/SHR_Bib /ST`).
+  "Ebd." is off by default (later faculty variant).
+- Consequences: three new `what` values (`stamp`, `headerFooter`, `commentExport`); four IPC changes (§16.5); stamps from older Sheer
+  versions are unaffected; a v1.8 build shows v1.9 stamps through their appearance (opaque) and headers as page content.
+
+**Addendum B (designers, DESIGN §3.14–§3.17).** Stamps join the Notiz slot of Kommentieren as a split variant (the row holds 8 tools;
+the slot shows the last-used variant's label) plus Bearbeiten → "Stamp…"; icon `sticker`. Headers and footers take Bearbeiten slot 8
+plus a Werkzeuge menu item; each of the six slots holds exactly one item (none, text, page number, date, file name), no combined
+tokens. Comment export opens from a button in the Comments panel's filter row and File → Export comments…; signatures are never
+exported. Deutsche Zitierweise (`germanNotes`) writes no "ebd.": it goes silently wrong once footnotes are copied between other
+sources, so every repeat is a short reference.

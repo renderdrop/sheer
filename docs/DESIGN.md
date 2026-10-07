@@ -1099,12 +1099,12 @@ A delta on §3.6 Tips (v1.1 §3.47 rules stay) and §3.9 Q8. Four situations get
 
 | Id | Trigger | Anchor (Q8, side bottom) | Goes when |
 |---|---|---|---|
-| `highlight` | Highlight (or Underline/Strikethrough) becomes the active tool (as built) | pressed tool item, else ⋯ (as built) | tool released |
-| `form` (new) | A document with ≥ 1 fillable AcroForm field (not read-only; XFA-only excluded) becomes the **active tab** (open or tab switch), after its first page renders, mode ≠ Seiten | the form banner's "first field" link (`[data-banner="form"] button`), align start; banner absent (dismissed or lost the slot) → Fill & Sign segment `[data-tour-anchor="mode-fill"]`, centred | tab change, Seiten entered, first field value committed, dismiss |
-| `sign` | Signature tool armed for placing (as built; while the signature sheet is open the tip waits, dialog rule) | `signature` tool item | tool released |
-| `pages` | Entering Seiten (its idle tool `pages` turns active, as built) | `organize` item (as built) | mode left |
+| `highlightClip` | Highlight (or Underline/Strikethrough) becomes the active tool (as built) | pressed tool item, else ⋯ (as built) | tool released |
+| `formClip` (new) | A document with ≥ 1 fillable AcroForm field (not read-only; XFA-only excluded) becomes the **active tab** (open or tab switch), after its first page renders, mode ≠ Seiten | the form banner's "first field" link (`[data-banner="form"] button`), align start; banner absent (dismissed or lost the slot) → Fill & Sign segment `[data-tour-anchor="mode-fill"]`, centred | tab change, Seiten entered, first field value committed, dismiss |
+| `signClip` | Signature tool armed for placing (as built; while the signature sheet is open the tip waits, dialog rule) | `signature` tool item | tool released |
+| `pagesClip` | Entering Seiten (its idle tool `pages` turns active, as built) | `organize` item (as built) | mode left |
 
-*Form on open, not on first field focus:* tips wait while an input has focus (Q8, 2 s), so a focus trigger would arrive after the user found the fields. Ids `highlight`, `sign`, `pages` are kept: users who saw the v1.7 text tip see the clip only after "Show tips again" (accepted).
+*Form on open, not on first field focus:* tips wait while an input has focus (Q8, 2 s), so a focus trigger would arrive after the user found the fields. The clip tips have their own ids (`highlightClip`, `formClip`, `signClip`, `pagesClip`, ADR-139): users who saw the v1.7 text tips (`highlight`, `sign`, `pages`) or the v1.8 `form` tip see each clip once; the old ids stay in `tipsSeen` and are ignored.
 
 **C2 Placement.** Candidates in order: (1) anchor side per Q8 (flip, shift, collision test; gap 8; clamped inside the canvas scroller, inset 8); (2) dock bottom-end of the canvas, inset 16 (§3.6); (3) the **text-only card** (§3.6, 280) at (1) then (2); (4) wait in the queue. Protected rects (Q8): all inputs including form fields on the page, the anchor, the selection with handles, the mini bar, toolbar items. Re-placed on resize, mini bar appearance and banner change.
 
@@ -1149,18 +1149,18 @@ No "Don't show tips" link: four clip tips, each once, plus Hide is enough; the s
 
 | Key | en | de |
 |---|---|---|
-| `tip.highlight.title` | Highlight text | Text hervorheben |
-| `tip.highlight` | unchanged (§3.6) | unchanged |
-| `tip.highlight.clip` | Animation: the pointer drags across a sentence and it turns highlighted. | Animation: Der Zeiger zieht über einen Satz, der Satz wird hervorgehoben. |
-| `tip.form.title` | This document is a form | Dieses Dokument ist ein Formular |
-| `tip.form` | Click a field and type. Tab moves to the next field. | Feld anklicken und tippen. Tab springt zum nächsten Feld. |
-| `tip.form.clip` | Animation: a name is typed into a field, then Tab moves to the next field. | Animation: Ein Name wird in ein Feld getippt, Tab springt ins nächste Feld. |
-| `tip.sign.title` | Place your signature | Signatur platzieren |
-| `tip.sign` | Click where it belongs and drag a corner to resize. Saved signatures stay encrypted on this device. | Klicken, wo sie hinsoll; an einer Ecke ziehen ändert die Größe. Signaturen bleiben verschlüsselt auf diesem Gerät. |
-| `tip.sign.clip` | Animation: a signature is placed in a frame and made larger. | Animation: Eine Signatur wird in einen Rahmen gesetzt und vergrößert. |
-| `tip.pages.title` | Reorder pages | Seiten ordnen |
-| `tip.pages` | Drag a page to move it. Shift or {mod} selects several pages. | Seite ziehen, um sie zu verschieben. Umschalt oder {mod} wählt mehrere Seiten. |
-| `tip.pages.clip` | Animation: the third page is dragged in front of the first. | Animation: Die dritte Seite wird vor die erste gezogen. |
+| `tip.highlightClip.title` | Highlight text | Text hervorheben |
+| `tip.highlightClip` | unchanged (§3.6) | unchanged |
+| `tip.highlightClip.clip` | Animation: the pointer drags across a sentence and it turns highlighted. | Animation: Der Zeiger zieht über einen Satz, der Satz wird hervorgehoben. |
+| `tip.formClip.title` | This document is a form | Dieses Dokument ist ein Formular |
+| `tip.formClip` | Click a field and type. Tab moves to the next field. | Feld anklicken und tippen. Tab springt zum nächsten Feld. |
+| `tip.formClip.clip` | Animation: a name is typed into a field, then Tab moves to the next field. | Animation: Ein Name wird in ein Feld getippt, Tab springt ins nächste Feld. |
+| `tip.signClip.title` | Place your signature | Signatur platzieren |
+| `tip.signClip` | Click where it belongs and drag a corner to resize. Saved signatures stay encrypted on this device. | Klicken, wo sie hinsoll; an einer Ecke ziehen ändert die Größe. Signaturen bleiben verschlüsselt auf diesem Gerät. |
+| `tip.signClip.clip` | Animation: a signature is placed in a frame and made larger. | Animation: Eine Signatur wird in einen Rahmen gesetzt und vergrößert. |
+| `tip.pagesClip.title` | Reorder pages | Seiten ordnen |
+| `tip.pagesClip` | Drag a page to move it. Shift or {mod} selects several pages. | Seite ziehen, um sie zu verschieben. Umschalt oder {mod} wählt mehrere Seiten. |
+| `tip.pagesClip.clip` | Animation: the third page is dragged in front of the first. | Animation: Die dritte Seite wird vor die erste gezogen. |
 | `tip.replay` | Play again | Erneut abspielen |
 | `settings.tips.enabled` | Show tips | Tipps anzeigen |
 | `settings.tips.offHint` | Tips are off. The tour still works. | Tipps sind aus. Die Tour funktioniert weiterhin. |
@@ -1182,6 +1182,289 @@ CT-AC 9. Reduced motion: poster, no Replay, fade only.
 CT-AC 10. Screen reader: region named by the title, body announced once, anchor described, `alt` read; focus never moves on show; Tab: Replay, Hide; Esc dismisses.
 CT-AC 11. Each clip 640 × 400, ≤ 3.0 s, ≤ 12 fps, `num_plays` 1, ≤ 600 KB, from the bundle.
 CT-AC 12. The C8 gate passes; no tip intersects an input, its anchor, the selection or the mini bar.
+
+### 3.14 v1.9 Stamps (ADR-139 §3.1)
+
+Spec only; the annotation writer is ADR-139's. A stamp is a real `/Stamp` annotation with our own appearance stream. **No new mode, panel tab, grid track or tool slot** (Kommentieren has 8, §3.7). Light only, tokens only, no glass ("Iris" = Solar, §3.10). Surfaces: a split variant, the stamp picker (popover), the mini bar, one Bearbeiten menu item. New tokens (PDF points at default size, scaled with the stamp): `--stamp-height` 40pt, `--stamp-height-dated` 56pt, `--stamp-min-width` 96pt, `--stamp-pad-x` 12pt, `--stamp-border` 2pt, `--stamp-radius` 4pt, `--stamp-tracking` 0.06em.
+
+**ST1 Entry.** Slot 5 becomes a split item **Notiz° [Notiz / Stempel]**. Exception to the §3.2 family label: the main part shows the last used variant's icon **and label** (`sticky-note` "Notiz" or `sticker` "Stempel"), so a stamp user sees "Stempel". Chevron menu: Notiz, Stempel, divider, the note swatch row (labelled `stamp.noteColour`; stamps never use it). `stamp` stays the certificate icon (§3.8 L2). Second entry: Bearbeiten menu → `stamp.menu` ("Stamp…"), switches to Kommentieren, arms the tool, opens the picker. No tool letter.
+
+**ST2 Picker** (`data-surface="stamp-picker"`, §4 Popover 320, padding 16, gap 12, Q8 bottom-start under the slot; Q7 dialog fallback). Opens every time the Stempel variant is armed; preselects the current stamp. Rows:
+1. **Colour:** Segmented full width (288), two segments 142: 16 swatch + `stamp.colour.solar` / `stamp.colour.ink`. Default last used (first run Solar).
+2. **Predefined:** label `stamp.predefined`; 2 × 2 grid of tiles 140 × 48, gap 8, `role="radiogroup"`. Tile: White, `--border-subtle`, radius md; centred a live mini stamp (ST4 look, 13/600 type) in the chosen colour. Selected: 1px Ink border + `aria-checked`. Order: Draft, Approved, Confidential, Received (two lines: label + today's date).
+3. **Own text:** label `stamp.own`; Input 32, max 32 characters, placeholder `stamp.ownPlaceholder`; 8 below Checkbox `stamp.addDate` (own text only; default off, last used). Enter chooses it.
+4. **Recent** (only when ≥ 1): label `stamp.recent`; listbox, up to 3 rows 32 (`.t-body`, dated rows show a `calendar` 16 suffix), most recent first, deduplicated (exact text + date flag). Stored in the `tools` store (UI storage, this device), written on placing.
+
+Height ≤ 424, so it fits below the tool row at 960 × 640 on Windows. Choosing a tile, a recent row or Enter in the field closes the picker and arms placement; a click on a page while the picker is open closes it and places the selected stamp.
+
+**ST3 Placing.** Armed: cursor crosshair; a ghost (ST4 look, 50 % opacity, no shadow) follows the pointer centred on it.
+- **Click:** places at default size (height `--stamp-height` or `--stamp-height-dated`; width = text + 2 × `--stamp-pad-x`, min `--stamp-min-width`), centred on the click, clamped inside the crop box.
+- **Drag:** draws a box; the stamp fills it with its aspect kept (the box's smaller fit wins), min height 20pt.
+- After placing the tool returns to Auswahl, the new stamp is selected (handles + mini bar). Placing again = the main part once more (picker opens on the last choice).
+- **Keyboard:** after choosing in the picker, focus goes to the canvas; the ghost appears in the centre of the visible page; arrows move it 8 px (Shift 1 px); Enter places; Esc cancels.
+
+**ST4 Look in the PDF** (appearance stream, no rotation, `/Rotate` of the page respected so it reads upright).
+- Rounded rectangle, border `--stamp-border` Ink, radius `--stamp-radius`. **Solar:** fill #FFF84D (`--hl-solar`, 100 %), text Ink. **Ink:** no fill, text Ink. Solar text is never used (§2: 1.12:1).
+- Text: bold sans (weight 700; the font is the ADR's, embedded subset when outside WinAnsi), centred, tracking `--stamp-tracking`. Predefined labels **uppercase** in the UI language at placing time ("ENTWURF", "APPROVED"); own text as typed. Size: one line 18pt at default; dated: label 16pt + date 11pt regular, 4pt gap.
+- Date: the day of placing, `Intl.DateTimeFormat(uiLocale, { dateStyle: "medium" })`: de "07.10.2026", en "Oct 7, 2026". Fixed text, never updated.
+- `/Name`: `/Draft`, `/Approved`, `/Confidential`, `/SheerReceived`, `/SheerCustom`; `/Contents` = the visible text in one line ("Received 07.10.2026") so other viewers and screen readers read it.
+
+**ST5 Selected stamp.** §3.3 placement and handles: four corner handles (aspect locked), body drag moves (clamped to the page). Arrows move 1pt, Shift 10pt. Mini bar row **Stamp:** colour swatches Solar · Ink (24 in 32) · divider · Ghost 32 `stamp.change` (opens the picker anchored to the mini bar; a choice replaces the text, keeping centre and height) · Löschen. Delete/Backspace deletes. Comments tab: type icon `sticker`, excerpt = `/Contents`.
+
+**ST6 States.** Tool and picker controls follow §4. Disabled: certified lock `cert.locked.tool`; no annotate permission `tool.readOnly` (as other Kommentieren tools); approval-signed files as other annotations. Hover on a placed stamp: cursor move; focus: §2.1 ring around the box.
+
+**ST7 Accessibility.** Picker: Tab order colour → tiles (arrows within, Space/Enter chooses) → field → checkbox → recent (arrows, Enter). Esc closes, focus to the slot. Placed stamp: `aria-label` `stamp.aria` ("Stamp: {text}, page {page}"). Polite announcements: `stamp.announce.armed`, `stamp.announce.placed`, `stamp.announce.deleted`. Colour is never the only cue (text carries meaning).
+
+**ST8 Undo.** One step each for place, move, resize, colour, text change, delete (labels `stamp.undo.*`; spell 7).
+
+**ST9 Motion.** Picker per §4 popover; ghost follows unanimated; placing = the annotation's existing appear fade `--motion-fast`; reduced motion: no fade.
+
+| Key | en | de |
+|---|---|---|
+| `stamp.tool` / `.tooltip` | Stamp / Put a stamp on the page | Stempel / Stempel auf die Seite setzen |
+| `stamp.menu` | Stamp… | Stempel… |
+| `stamp.noteColour` | Note colour | Notizfarbe |
+| `stamp.colour.solar` / `.ink` | Yellow / Black | Gelb / Schwarz |
+| `stamp.predefined` / `.own` / `.recent` | Stamps / Own text / Recent | Stempel / Eigener Text / Zuletzt |
+| `stamp.draft` / `.approved` | Draft / Approved | Entwurf / Genehmigt |
+| `stamp.confidential` / `.received` | Confidential / Received | Vertraulich / Erhalten |
+| `stamp.ownPlaceholder` | e.g. Paid | z. B. Bezahlt |
+| `stamp.addDate` | Add today's date | Heutiges Datum hinzufügen |
+| `stamp.change` | Change… | Ändern… |
+| `stamp.aria` | Stamp: {text}, page {page} | Stempel: {text}, Seite {page} |
+| `stamp.announce.armed` | Stamp {text} ready. Click a page, or use arrow keys and Enter. | Stempel {text} bereit. Seite anklicken oder Pfeiltasten und Enter. |
+| `stamp.announce.placed` / `.deleted` | Stamp placed on page {page} / Stamp deleted | Stempel auf Seite {page} gesetzt / Stempel gelöscht |
+| `stamp.undo.add` / `.edit` / `.delete` | Add stamp / Change stamp / Delete stamp | Stempel setzen / Stempel ändern / Stempel löschen |
+
+**Acceptance (acceptance build, CDP; self-made documents).**
+ST-AC 1. Kommentieren still shows 8 slots; choosing Stempel in the Notiz split labels the slot "Stempel" and opens the picker without overlap at 960 × 640 (en, de).
+ST-AC 2. de UI: tiles read ENTWURF, GENEHMIGT, VERTRAULICH, ERHALTEN + "07.10.2026"-style date; en shows "Oct 7, 2026".
+ST-AC 3. A click places a stamp of default size centred on the point; a drag sizes it with the aspect kept.
+ST-AC 4. Own text "Bezahlt" with date places a two-line stamp and appears first in Recent; a fourth text drops the oldest.
+ST-AC 5. Mini bar: colour switch, Change…, Löschen work; corner drag resizes proportionally; each is one Undo step.
+ST-AC 6. Saved file opened in a second PDF viewer shows the same stamp (appearance stream) and its `/Contents`.
+ST-AC 7. Keyboard only: picker → Enter → arrows → Enter places; screen reader hears armed and placed.
+ST-AC 8. Certified file: Stempel disabled with `cert.locked.tool`.
+ST-AC 9. Surface gate passes for `stamp-picker` (with and without Recent) and the stamp mini bar.
+
+### 3.15 v1.9 Headers and footers (ADR-139 §3.2)
+
+Spec only; content-stream writing is ADR-139's (incremental, undoable). **No new mode, panel tab or grid track.** Surfaces: Bearbeiten slot 8, one Werkzeuge item, one dialog. Light only, tokens only, no new tokens.
+
+**HF1 Entry.** Bearbeiten gains slot 8 **Kopf- und Fußzeile…** (`panel-bottom`, kind *action*): Text bearbeiten · Text einfügen · Bild einfügen · Zuschneiden · Schwärzen · Schützen… · Metadaten… · Kopf- und Fußzeile… (8; Q6 step 2 at 960). Werkzeuge → `hf.command` after "Text erkennen…". In Seiten with cards selected, the range preselects first–last selected page.
+
+**HF2 Dialog** (`data-surface="hf-dialog"`, §4 Dialog, width `--sheet-width-wide` 696, title `hf.title`, sizes to content, never scrolls; about 530 high). Body: two columns, controls 408 | gap 24 | preview 216.
+
+*Controls* (rows gap 16):
+1. **Slots:** caption row `hf.left` · `hf.centre` · `hf.right` over three columns 130, gap 8. Group label `hf.header`, three dropdown triggers 32 (padding-x 8); group label `hf.footer`, three more. Each slot is one of **Keine · Text · Seitenzahl · Datum · Dateiname** (simple chooser; no tokens, no mixing in one slot). Each trigger `aria-label` "{row}, {column}". The last focused trigger is the **current slot** (1px Ink border, `aria-current`).
+2. **Current slot options** (fixed 52 high, label `hf.slotOptions` "{row}, {column}"): Text → Input 32 (max 80 chars); Seitenzahl → dropdown `hf.page.n` / `.pageN` / `.pageNofTotal` (default) / `.nSlashTotal`; Datum → `.t-caption` sample in the ST4 date format (date of applying, fixed); Dateiname → caption: file name without extension (resolved by Rust); Keine → caption `hf.none.hint`.
+3. **Size and margin:** Segmented `hf.size` 8 · 9 · 10 · 11 · 12 (36 each, Q3 style, "pt"), default 10; Segmented `hf.margin` 18 · 24 · 36 ("pt", distance from the crop-box edge to the text box), default 24.
+4. **Pages:** Segmented `hf.range.all` · `hf.range.some`; "Pages" shows From and To Inputs 64 (`tabular-nums`) inline. Invalid range: danger border + caption `hf.range.invalid`, Apply disabled. No odd/even. `{n}`/`{total}` are physical page numbers and count.
+
+*Preview* (right): box 216 × 306, Sand, radius md; the page White, contained, 1px `--border-subtle`, rendered by Rust with the draft (`hf_preview`, debounced 120 ms, latest answer only; the previous image stays meanwhile). Shows the first page of the range; caption `hf.previewPage`. `aria-hidden`; the controls carry the meaning.
+
+*Footer:* left Ghost `hf.remove` (only when Sheer headers exist); right Secondary `hf.cancel`, Primary `hf.apply`.
+
+**HF3 Defaults.** First open: footer left Datum, footer right Seitenzahl "Page {n} of {total}", rest Keine; 10 pt; 24 pt; all pages; current slot footer right. Text: Helvetica regular (embedded bundled font when outside WinAnsi, ADR), Ink, never Solar. Placement follows the page's `/Rotate` so text reads upright.
+
+**HF4 Editing and removing.** Only headers added by Sheer are recognised: each is written as marked content `/Artifact <</Type /Pagination /Subtype /Header|/Footer /SheerHF true>>`, and the settings are stored under the private catalog key `/SheerHF` (ADR decides the encoding). Opening the dialog on such a file loads those settings and shows caption `hf.existing` under the title; Apply replaces them on all pages; Remove deletes them. Other headers in the file are never touched or detected.
+
+**HF5 Apply and undo.** Apply closes the dialog, writes all pages as **one undo step** (`hf.undo` / `hf.undoRemove`), toast `hf.done` (priority 3). Busy > `--saving-delay`: Apply shows the §4 busy state, the dialog stays. Failure: error toast `hf.failed`, nothing written.
+
+**HF6 Refusal.** Command and slot disabled (0.4, tooltip): any signature field signed → `hf.signed`; certified lock → `cert.locked.tool`; no modify permission → `tool.readOnly`; OCR running → `ocr.busy`.
+
+**HF7 Keyboard and screen reader.** Focus starts on the footer-right trigger. Tab: triggers in reading order (header L/C/R, footer L/C/R) → options → size → margin → range → Remove → Cancel → Apply. Dropdowns per §4 (Enter/Space/Down open). Enter in an input applies when valid; Esc cancels; focus returns to the invoker. Polite `hf.done`; failure assertive.
+
+**HF8 Motion.** Dialog per §4; preview image swaps without animation; reduced motion unchanged.
+
+| Key | en | de |
+|---|---|---|
+| `hf.command` / `hf.title` | Headers and footers… / Headers and footers | Kopf- und Fußzeile… / Kopf- und Fußzeile |
+| `hf.header` / `hf.footer` | Header / Footer | Kopfzeile / Fußzeile |
+| `hf.left` / `.centre` / `.right` | Left / Centre / Right | Links / Mitte / Rechts |
+| `hf.kind.none` / `.text` / `.page` / `.date` / `.file` | None / Text / Page number / Date / File name | Keine / Text / Seitenzahl / Datum / Dateiname |
+| `hf.slotOptions` | {row}, {column} | {row}, {column} |
+| `hf.page.n` / `.pageN` | 3 / Page 3 | 3 / Seite 3 |
+| `hf.page.pageNofTotal` / `.nSlashTotal` | Page {n} of {total} / {n} / {total} | Seite {n} von {total} / {n} / {total} |
+| `hf.none.hint` | This position stays empty. | Diese Stelle bleibt leer. |
+| `hf.size` / `hf.margin` | Font size / Margin | Schriftgröße / Rand |
+| `hf.range.all` / `.some` | All pages / Pages | Alle Seiten / Seiten |
+| `hf.range.from` / `.to` | From / To | Von / Bis |
+| `hf.range.invalid` | Enter pages from 1 to {total}. | Seiten von 1 bis {total} eingeben. |
+| `hf.previewPage` | Preview: page {n} | Vorschau: Seite {n} |
+| `hf.existing` | Headers and footers from {app} are on this file. Applying replaces them. | Diese Datei hat Kopf- und Fußzeilen von {app}. Übernehmen ersetzt sie. |
+| `hf.remove` / `hf.cancel` / `hf.apply` | Remove / Cancel / Apply | Entfernen / Abbrechen / Übernehmen |
+| `hf.done` | Headers and footers added to {n} pages | Kopf- und Fußzeilen auf {n} Seiten eingefügt |
+| `hf.removed` | Headers and footers removed | Kopf- und Fußzeilen entfernt |
+| `hf.failed` | Headers and footers couldn't be added. | Kopf- und Fußzeilen konnten nicht eingefügt werden. |
+| `hf.signed` | This file is signed. Headers and footers would break the signature. | Diese Datei ist signiert. Kopf- und Fußzeilen würden die Signatur ungültig machen. |
+| `hf.undo` / `.undoRemove` | Headers and footers / Remove headers and footers | Kopf- und Fußzeile / Kopf- und Fußzeile entfernen |
+
+**Acceptance (acceptance build, CDP; self-made documents).**
+HF-AC 1. Bearbeiten shows 8 slots with Kopf- und Fußzeile… last; Werkzeuge holds the item.
+HF-AC 2. First open: footer left Date, footer right "Page 1 of N" in the preview; the dialog fits 960 × 640 without scrolling (en, de).
+HF-AC 3. Changing a slot, size or margin updates the preview within 300 ms.
+HF-AC 4. Range 2–3 on a 5-page file writes only pages 2–3; numbers read "Page 2 of 5".
+HF-AC 5. Apply is one Undo step; Undo restores every page exactly.
+HF-AC 6. Reopening loads the saved settings with `hf.existing`; Apply replaces without duplicates; Remove deletes them as one step.
+HF-AC 7. Saved file: text is in the page content (search and a second viewer show it), tagged as pagination artifact.
+HF-AC 8. Signed file: command disabled with `hf.signed`; certified: `cert.locked.tool`.
+HF-AC 9. Invalid range: danger caption, Apply disabled. Keyboard only completes the dialog.
+HF-AC 10. Surface gate passes for `hf-dialog` (default, text slot, existing, invalid range).
+
+### 3.16 v1.9 Comment export (ADR-139 §3 (3))
+
+**E1 Entry points.**
+- **Comments tab, B10 filter row:** Filter (flex-1) · Reference 28 · sort 28 · **Export** icon button 28 `file-down`, tooltip `commentExport.button`. A direct button, not a ⋯ menu: the menu would hold one item. Width at the 200 minimum: 72 + 3 × 28 + 3 × 4 + 16 = 184.
+- **Datei → "Export Comments…"** (`menu.file.exportComments`) after "Save Citation List…", `requiresDocument`.
+- No exportable item in the document: both disabled, tooltip `commentExport.none`.
+
+**E2 Dialog** (`data-surface="comment-export"`). §4 Dialog, width `--sheet-width` 560, title `.t-h3` `commentExport.title`, padding 24, rows gap 16, sizes to content (Q7, never scrolls). Two-column form: label `.t-label` column 120, control column flex-1, gap 16. Rows top to bottom:
+1. **Include**, checkbox grid with 2 columns of 3 rows (32 each, B10 icon 16 + label): Comment on text (`message-square-quote`) · Note (`sticky-note`) · Highlight (`highlighter`, also underline and strikethrough) · Citation (`quote`) · Drawing (`pen-line`) · Shape (`shapes`). Signatures and form content are never exported.
+2. **Author**: dropdown 36 with a checkbox menu (B10 authors + "No author"). Label "All authors" or "{n} authors". Hidden with one author.
+3. **Tags**: the same dropdown pattern (dot + name), "All tags". Hidden without tags.
+4. **Pages**: Segmented 32 All / Current / From–to. From–to shows two 48 fields in the same row.
+5. **Status**: Segmented 32 All / Open / Resolved.
+6. **Format**: Segmented 32 `commentExport.format.pdf` / `.md`. The last choice is stored in **`sheer.commentExport.format`** (first run PDF).
+7. **Count**: `.t-caption` Text-secondary `commentExport.count` (`tabular-nums`, `aria-live="polite"`) updates live.
+8. **Footer**: Secondary Cancel · Primary `commentExport.export`.
+
+**Prefill:** opened from the Comments tab, the dialog takes the panel's current filter; from Datei, it takes the same filter. Changes in the dialog never change the panel. Drawings and shapes are on by default, one line each (decision: reviews depend on marks, and a line costs little). The de height is about 552, within 608.
+
+**Sort:** page order only, with no control. Items go by page, then top-to-bottom and left-to-right by anchor. Replies go oldest first. A citation group across pages is one item on its first page with the joined locator ("S. 12–13").
+
+**E3 Save and progress.** Export opens the native save dialog with the default name "{file name} – comments" / "– Kommentare", the format's filter only (.pdf or .md), and the last folder the OS remembers. If the save dialog is cancelled, the export dialog stays as it was.
+- Rust collects the annotations and writes the file atomically (the frontend sends the filter, format, language and the formatted citation lines from `format/` only, never bytes or paths). Text is hostile: control characters become spaces, and caps follow `limits` (the quote cap is that of `QUOTE_SHOWN_MAX`).
+- **Progress:** if the job runs more than `--saving-delay`, the footer row is replaced by the O3 pattern: `.t-label` `commentExport.progress` (`tabular-nums`) · a 4 px determinate track on `--surface-pressed` with an Ink fill · Ghost 32 `commentExport.stop`. Form controls are disabled while it runs. Stop or Esc cancels, and nothing is written. The bar has `role="progressbar"`, with no per-item announcements.
+- **Success:** the dialog closes, focus returns to the invoker, and toast `commentExport.saved`. **Failure:** the dialog stays, a danger caption `commentExport.failed` appears above the footer, and Primary reads "Try again".
+- A file that forbids copying text: quotes are left out, items keep their type, author and comment, and the success toast is `reference.quotesLeftOut`. A certified or read-only document still exports (it is a read action, §3.8).
+
+**E4 Empty states.** If the filter matches nothing, the count line reads `commentExport.nothing` and Export is disabled with a `focusableWhenDisabled` tooltip of the same text. If no type is checked, the same message appears.
+
+**E5 PDF summary.** Rust builds it with A4 pages (595 × 842 pt) and margins 56 pt (text width 483). The font is Inter (bundled, embedded subset). Glyphs Inter lacks use the §3.10 bundled substitute and never fail. Colours are Ink, Text-secondary and a Stone rule. `/Title` is "{title}: Comments", `/Lang` is the UI language, and all text is real, selectable text.
+- **First page head:** `commentExport.pdf.title` 20/28 SemiBold, then the document name (the Reference title, else the file name) 12/16, then 9/12 Text-secondary `commentExport.pdf.meta` ("Exported 7 Oct 2026 · 23 items · Filter: Notes, Highlights"; the filter part only when filtered). Then a 0.5 pt Stone rule with 16 below.
+- **Page heading:** `commentExport.pdf.page` ("Seite 12" / "Page 12"), 13/16 SemiBold, 24 above and 8 below. If the page label differs from the number: "Seite xii (14)". A heading is never the last line on a sheet.
+- **Item** (gap 12, the first 3 lines kept together):
+  1. Meta line 9/12: a Lucide icon 10 pt as vector (ISC), then the type label Medium Ink (subtype: Highlight / Underline / Strikethrough / Note / Text comment / Citation / Drawing / Rectangle…), then " · author · date" in Text-secondary (locale short date and time). Markup also gets an 8 pt swatch of its colour (decorative).
+  2. **Quote block** (markup, citations, comment on text): a 2 pt Stone rule on the left, inset 10, 10/14 Ink in locale quotation marks, the full text.
+  3. Citation: the line in the current style (§3.17 for the Deutsche Zitierweise) 9/12 Text-secondary.
+  4. Comment text 10/14 Ink, paragraphs kept.
+  5. Replies indented 16, each a meta line (author · date) and text 10/14.
+  Drawings and shapes are line 1 plus 4 and 5 when present.
+- **Running foot** on every sheet, 8/12 Text-secondary, centred 24 above the bottom edge: "{document name} · Comments · {n} / {total}".
+
+**E6 Markdown.** UTF-8, LF line endings. Text is escaped (`\` before `` \ ` * _ [ ] < > # | ``; a leading "-", "+" or "1." is escaped too). Labels follow the UI language. The exact template:
+
+```
+# {commentExport.pdf.title}: {document name}
+
+{commentExport.pdf.meta}
+
+## {commentExport.pdf.page}
+
+### {type label} · {author} · {date}
+
+> {quoted text, every line prefixed "> "}
+
+{citation line}
+
+{comment text}
+
+- **{reply author}** · {date}: {reply text}
+```
+
+Leave out empty parts and the blank line that goes with them. A drawing or shape is just its `###` line. "No author" becomes `commentExport.noAuthor`.
+
+**E7 Keyboard and accessibility.** Focus trap. Initial focus goes to the first Include checkbox. The order is the visual order. Enter on a focused button activates it. Esc closes, or cancels a running export. Each checkbox grid is a `group` with the row label. The count is polite.
+
+**Motion.** Dialog open and close as §4. The progress fill animates its width in `--motion-fast`. With reduced motion there is no width transition.
+
+**Acceptance.**
+CE-AC 1. The Comments filter row shows Export after sort, and Datei shows Export Comments…. Both are disabled in a document without annotations.
+CE-AC 2. The dialog opens with the panel's current filter. Changing it leaves the panel unchanged.
+CE-AC 3. The count updates live. No match disables Export with the empty text.
+CE-AC 4. Export opens the native save dialog filtered to .pdf or .md with the default name. Cancelling returns to the dialog.
+CE-AC 5. The PDF has the title head, "Seite n" headings in page order, quote blocks with the marked text, citation lines, comments and indented replies, A4, with selectable text.
+CE-AC 6. The Markdown matches E6 and renders correctly in a Markdown viewer. Text such as `*`, `#` and `<script>` in comments shows literally.
+CE-AC 7. Drawings and shapes appear as one line each and can be excluded.
+CE-AC 8. A document with ≥ 500 items shows progress. Stop writes nothing.
+CE-AC 9. A write-protected folder shows the failure caption and Try again.
+CE-AC 10. A copy-protected file exports without quotes and shows the toast.
+CE-AC 11. The format choice survives a restart.
+CE-AC 12. The Q9 gate passes at 960 × 640 in en and de, including the progress state.
+
+### 3.17 v1.9 Deutsche Zitierweise (ADR-139 §3 (4))
+
+**Z1 Today and the addition.** Sheer has one reference per document. The four styles (`format/`) render the reference, the short citation and the citation list as `StyledBlock`s, and Rust writes those as .txt, .html and .md. The smallest addition is a fifth style id **`germanNotes`** (`file_label` "Deutsche Zitierweise"). For its footnotes, a block gains an optional kind (`heading`, or `note` with number n) and a run an optional note reference n. Rust renders these per format (Z4). No new surface.
+
+**Z2 Picker.** In C7, the dropdown gains a fifth item after DIN ISO 690: `reference.germanNotes`. When it is selected, a `.t-caption` Text-secondary `reference.germanNotes.hint` appears below the dropdown (the popover grows, Q7). The preview shows the bibliography entry. Storage key `sheer.citations.style`, value `germanNotes`.
+
+**Z3 What it produces.** "First" is per output: the first entry in page order of a list or comment export.
+- **Full note** (first): the bibliography entry plus the locator, ending with a full stop.
+- **Short note** (afterwards): "Family, Kurztitel, S. x." for one author, "Müller/Schmidt" for two, "Müller u. a." / "Müller et al." for three or more. With no author, Kurztitel alone. **Kurztitel** is the title up to its first ":", ".", "?", "!" or " – ", cut to 4 words.
+- **"ebd." is not offered** (decision). Users paste single citations between their own sources, and there "ebd." turns wrong silently. It goes on the later faculty-variant list.
+- **Bubble, card, mini bar:** the short note without the final stop. **Copy citation** (single): quote + line break + the full note, because the paste target may be its first mention.
+- **Bibliography:** one entry, the reference without a locator. Author: "Family, Given" joined with "/", and more than 3 authors becomes the first author + "u. a.".
+- Terms follow the UI language like the other styles: S./p., Aufl./ed., H./no., hier/here, o. J./n.d., o. O./n.p. (book, chapter, report, thesis only), Zugriff am/accessed, In:/In:.
+
+**Examples** (record: Müller, Hans; Schmidt, Eva for the article; locator 12, then 14).
+
+| Type | de: full note / short note | en: full note / short note |
+|---|---|---|
+| Book | Müller, Hans: Digitale Lesekultur. Eine Einführung. 2. Aufl. Berlin: Beispielverlag, 2021, S. 12. / Müller, Digitale Lesekultur, S. 14. | Müller, Hans: Digitale Lesekultur. Eine Einführung. 2nd ed. Berlin: Beispielverlag, 2021, p. 12. / Müller, Digitale Lesekultur, p. 14. |
+| Article | Müller, Hans/Schmidt, Eva: Lesen am Bildschirm. In: Zeitschrift für Medien 12 (2021), H. 3, S. 45–67, hier S. 12. / Müller/Schmidt, Lesen am Bildschirm, S. 14. | … In: Zeitschrift für Medien 12 (2021), no. 3, pp. 45–67, here p. 12. / Müller/Schmidt, Lesen am Bildschirm, p. 14. |
+| Web page | Müller, Hans: Leitfaden PDF. In: Beispiel-Portal, 2023, S. 12. URL: https://example.org/pdf (Zugriff am 05.10.2026). / Müller, Leitfaden PDF, S. 14. | … In: Beispiel-Portal, 2023, p. 12. URL: https://example.org/pdf (accessed 5 October 2026). / Müller, Leitfaden PDF, p. 14. |
+
+Chapter: "…: Kapitel. In: Buchtitel. Aufl. Ort: Verlag, Jahr, S. a–b, hier S. x." Report and thesis: "…: Titel. Ort: Institution, Jahr, S. x."
+
+**Z4 Citation list** (Copy list, Save list…, Datei commands). Order: entries in page order, each the quote followed by its note mark; then the heading `reference.notes` with the notes; then the heading `reference.bibliography` with the entry. If an entry has no quote (copy-protected file), the mark stands alone.
+
+| Format | Mark | Notes | Headings |
+|---|---|---|---|
+| .txt | superscript digits „…“¹ | "¹ Müller, Hans: …" one per line | plain line |
+| .html | `<sup><a href="#fn1" id="fnref1">1</a></sup>` | `<ol class="notes">` with `<li id="fn1">` + back link ↩ | `<h2>` |
+| .md | `[^1]` | `[^1]: …` | `## ` |
+
+The clipboard gets the .txt form. Italics as the other styles (title of a book or journal). Comment export (§3.16) puts the full note on the first citation and the short note after it, with no marks.
+
+**Accessibility.** In HTML, marks get `aria-label` `reference.noteAria`. Headings are real headings.
+
+**Acceptance.**
+DZ-AC 1. The style dropdown lists five styles, the fifth being Deutsche Zitierweise, with the hint caption. The choice persists.
+DZ-AC 2. The preview shows the bibliography entry for a book, an article and a web page as in Z3, in de and en UI.
+DZ-AC 3. Bubbles and cards show "Müller, Kurztitel, S. 12" with no parentheses.
+DZ-AC 4. Copy citation gives the quote plus the full note.
+DZ-AC 5. With three citations, the list has marks 1–3, note 1 full, notes 2–3 short, then the bibliography. .txt, .html and .md render as Z4, and the HTML links work both ways.
+DZ-AC 6. A citation group gives one note with "S. 12–13".
+DZ-AC 7. Missing author, year or place give the Kurztitel, "o. J." and "o. O.". Nothing crashes on an empty record.
+DZ-AC 8. RIS/BibTeX are unchanged. The other four styles' outputs are byte-identical to v1.8.
+DZ-AC 9. The comment export with this style shows the full note first, then short notes.
+
+### i18n (en / de)
+
+| Key | en | de |
+|---|---|---|
+| `commentExport.button` / `menu.file.exportComments` | Export comments… / Export Comments… | Kommentare exportieren… / Kommentare exportieren… |
+| `commentExport.title` | Export comments | Kommentare exportieren |
+| `commentExport.include` / `.author` / `.tags` / `.pages` / `.status` / `.formatLabel` | Include / Author / Tags / Pages / Status / Format | Aufnehmen / Person / Tags / Seiten / Status / Format |
+| `commentExport.allAuthors` / `.authors` / `.allTags` | All authors / {n} authors / All tags | Alle Personen / {n} Personen / Alle Tags |
+| `commentExport.format.pdf` / `.md` | PDF summary / Markdown | PDF-Zusammenfassung / Markdown |
+| `commentExport.count` | {count} items on {pages} pages | {count} Einträge auf {pages} Seiten |
+| `commentExport.nothing` | Nothing to export with these settings. | Mit diesen Einstellungen gibt es nichts zu exportieren. |
+| `commentExport.none` | No comments to export | Keine Kommentare zum Exportieren |
+| `commentExport.export` / `.stop` | Export… / Stop | Exportieren… / Stoppen |
+| `commentExport.progress` | Exporting {done} of {total} | Exportiere {done} von {total} |
+| `commentExport.saved` / `.failed` | Comments exported / The comments could not be exported. | Kommentare exportiert / Die Kommentare konnten nicht exportiert werden. |
+| `commentExport.fileName` | {name} – comments | {name} – Kommentare |
+| `commentExport.pdf.title` / `.page` / `.pageLabel` | Comments / Page {n} / Page {label} ({n}) | Kommentare / Seite {n} / Seite {label} ({n}) |
+| `commentExport.pdf.meta` / `.filtered` | Exported {date} · {count} items / · Filter: {types} | Exportiert am {date} · {count} Einträge / · Filter: {types} |
+| `commentExport.pdf.foot` | {name} · Comments · {n} / {total} | {name} · Kommentare · {n} / {total} |
+| `commentExport.type.underline` / `.strike` / `.textComment` | Underline / Strikethrough / Text comment | Unterstreichung / Durchstreichung / Textkommentar |
+| `commentExport.noAuthor` | No author | Ohne Person |
+| `reference.germanNotes` | Deutsche Zitierweise (footnotes) | Deutsche Zitierweise (Fußnoten) |
+| `reference.germanNotes.hint` | Full reference in the first footnote, short after that. | Erste Fußnote mit Vollbeleg, danach Kurzbeleg. |
+| `reference.notes` / `.bibliography` | Notes / Bibliography | Fußnoten / Literaturverzeichnis |
+| `reference.noteAria` | Footnote {n} | Fußnote {n} |
 
 ## 4. Components (R4)
 

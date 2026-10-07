@@ -1222,3 +1222,175 @@ export type PageOcrClass = 'scan' | 'hasTextLayer' | 'sheerLayer' | 'text' | 'em
 - **Acceptance mask.** With the Cargo feature `automation`, `SHEER_AUTOMATION_OCR_LANGS` (comma list) only removes languages from
   `capabilities()` (`backend::mask_languages`); release builds do not compile it.
 - **Save.** Incremental: `[q, original…, Q, layer]` per page, page-local `/Resources`, one font set per document.
+
+## 16. v1.9 backlog (ADR-139 §3; addenda in ADR-139 "Addendum A")
+
+Backend and IPC only; the surfaces are DESIGN §3.14/§3.15 and `docs/design-v19-export-citation.md`. No new crate: lopdf, `content::std14`
+and `fontprog::fallback` (Arimo, Apache-2.0) cover every writer. New `what` values, each with `error.<code>.<what>` in en and de:
+`stamp` (params `{ char }`), `headerFooter` (params `{ char }`), `commentExport`.
+
+### 16.1 Stamps (`model/{annotation,stamp}.rs`, `pdfwrite/{annots,stamp_ap,sheer_keys}.rs`, `engine/import.rs`)
+
+```rust
+pub enum StampKind { Draft, Approved, Confidential, Received, Custom }      // serde camelCase
+pub enum StampTone { Solar, Ink }
+// AnnotationBody gains (the field is `stamp`, not `kind`: `kind` is the serde tag of the body)
+Stamp { #[serde(rename = "box")] bounds: Rect, stamp: StampKind, text: String, date: Option<String>, tone: StampTone },
+// AnnotationPatch gains: stamp_text: Option<String>, stamp_date: Option<Option<String>>, stamp_tone: Option<StampTone>
+pub const fn tone_rgb(tone: StampTone) -> Rgb;                // model/stamp.rs; the annotation's colour is always this
+pub fn stamp_ap::build(text: &str, date: Option<&str>, tone: Rgb, w: f32, h: f32) -> Vec<u8>;   // content of the Form XObject
+```
+
+```ts
+type StampKind = 'draft' | 'approved' | 'confidential' | 'received' | 'custom';
+type StampTone = 'solar' | 'ink';
+// AnnotationBody gains:
+//   | { kind: 'stamp'; box: Rect; stamp: StampKind; text: string; date: string | null; tone: StampTone }
+// AnnotationSummary: kind 'stamp', contents = text, detail = the StampKind
+```
+
+- *Text.* The UI sends the label localized (`stamp.preset.*`) and the date formatted (`i18n/format.ts`); Rust stores both as given.
+  `text` 1..=64 chars, `date` ≤ 32, both WinAnsi (else `invalid_argument` `stamp` `{ char }`); `received` needs a date; `tone_rgb`
+  mirrors `tokens.css` (a unit test compares). A draft colour is ignored.
+- *Box.* A zero-size draft box gets the natural size at 18 pt (Helvetica-Bold widths from `std14`, 8 pt padding) at the click; after
+  that the box is the user's and the text is fitted: one line, size = min(fit height, fit width), 6..=72 pt. Box ≥ 24 × 12 pt.
+- *Write* (`annots::annotation_dict`): `/Subtype /Stamp`, `/Rect`, `/C` = tone, `/F 4` (print), `/Contents` = text (other viewers list
+  it), `/NM (sheer-stamp-<kind>-<random>)`, `/Name` = `/Draft`, `/Approved`, `/Confidential` (standard names), `/Received`, `/Custom`
+  (never absent: absent means Draft in a viewer without appearances), `/SHR_Stamp << /V 1 /K /<kind> /Tone /<tone> /D (date) >>`, and
+  `/AP /N` = a Form XObject from `stamp_ap::build`: 1.5 pt rounded rectangle (r 4 pt) in the tone, Helvetica-Bold text centred, Helvetica
+  date line below it, page-local `/Resources /Font` with two standard Type1 fonts, `/Encoding /WinAnsiEncoding` (no embedding;
+  ä ö ü ß € are in WinAnsi).
+- *Round trip.* `engine::import::stamp_kind` gains `Named::Stamp(kind)` for the `sheer-stamp-` prefix: body `Stamp` with `text` =
+  `/Contents`, tone = the nearer of the two `tone_rgb` to `/C`, `date: None`; `sheer_keys::read_page` gains `stamp: Option<StampKeys>`
+  and the merge sets `date` and `tone` from `/SHR_Stamp /V 1`. A prefixed stamp whose contents fail validation stays `opaque`. Any
+  other stamp stays `opaque` as today.
+- *Undo.* Only the existing commands: `CreateAnnotation`, `UpdateAnnotation` (coalesce `stamp:<id>` for typing), `MoveAnnotations`,
+  `DeleteAnnotations`; labels `annotation.*`. `sig_policy` treats a stamp like every markup annotation. Per-page and per-document
+  annotation limits count stamps.
+
+### 16.2 Headers and footers (`model/{header_footer,command,doc_state}.rs`, `pdfwrite/{page_layer,header_footer}.rs`, `commands/header_footer.rs`, `engine/pagination.rs`)
+
+```rust
+pub struct HfSpec {
+    pub slots: HfSlots,          // header_left, header_center, header_right, footer_left, footer_center, footer_right: String (≤ 256, "" = none)
+    pub pages: HfPages,          // All | Ranges { text } ("1-3, 5, 8-", positions in the order at save time; model::ranges)
+    pub font_size: f32,          // 6..=24, default 9
+    pub margin: f32,             // 12..=72 pt from the shown edge, default 28
+    pub color: Rgb,              // default Ink
+    pub date: String,            // {date}, formatted by the UI when the dialog applies (≤ 32, WinAnsi)
+}
+pub struct HeaderFooterState { file: Option<HfSpec>, file_layers: u32, pending: Option<Option<HfSpec>> }   // DocState.header_footer
+DocCommand::SetHeaderFooter { spec: Option<HfSpec> }        // None = remove; one undo step, labels `headerFooter.set` | `headerFooter.remove`;
+                                                            // inverse = the previous `pending`; ChangeSet.doc gains "headerFooter"
+pub fn header_footer::resolve(spec: &HfSpec, geom: PageGeom, position: u32, total: u32, file: &str) -> Vec<PlacedRun>;   // pure, model-side
+pub struct PlacedRun { text: String, origin: Point /* page space, baseline */, angle: u16 /* displayed upright */, size: f32, width: f32 }
+pub fn header_footer::write(inc: &mut IncrementalDocument, pages: &[(ObjectId, Vec<PlacedRun>)], strip: &[ObjectId], spec: Option<&HfSpec>) -> Result<(), AppError>;
+```
+
+Tokens `{page}` (position + 1), `{total}` (page count), `{date}` (the spec's), `{file}` (display name without `.pdf`, at save time);
+`{{`/`}}` escape braces; any other `{…}` is literal. Defaults for a new spec: `footer_right "{page}"`, `footer_left "{date}"`.
+
+- *Write.* `SavePlan.header_footer: Option<HfWrite { spec: Option<HfSpec>, pages: Vec<(u32, Vec<PlacedRun>)> }>` (file index), applied in
+  `apply_extras` after the OCR layers and before the burned content; always incremental. Per page one stream
+  `q /Artifact << /Type /Pagination /SHR_HF true >> BDC BT … ET EMC Q`, text matrix from `PageGeom::axes` and `display_to_user` (so the
+  text is upright as shown on a `/Rotate`d page, placed against the **CropBox**, a pending crop included because the page tree is
+  written first), page-local `/Resources` with `/SHR_HF0` = Helvetica Type1 `/WinAnsiEncoding`, and the page key
+  `/SHR_HF << /V 1 /S <stream ref> >>`. The spec itself goes into the catalog as `/SHR_HF << /V 1 /Spec (<JSON, ≤ 16 KiB>) >>` so it can be
+  edited after reopening.
+- *One wrapper for all our layers.* `ocr_layer::without_old_layer` moves to `pdfwrite/page_layer.rs`: `strip_own(doc, page, refs)` takes
+  out every ref named by `/SheerOcr /S` or `/SHR_HF /S` (only streams of our own shape, wherever they are) and our one `q`/`Q` pair, then
+  each writer appends `[q, original…, Q, ocr?, hf?]`. Re-applying or removing a header never duplicates or loses an OCR layer and vice
+  versa. `ops_walk` (text edits, ADR-125) skips those streams, so a header is never an editable line.
+- *Remove.* `spec: None` strips the page streams and keys of every page and the catalog key; pages outside a new range lose an old layer.
+- *Read.* `get_header_footer` reads the catalog key and counts the page keys once (blocking pool, `load_untrusted`, 30 s); a damaged or
+  oversized spec is `None` with `file_layers` still counted, so remove always works.
+- *Font.* Helvetica, WinAnsi, not embedded. Literal slot text outside WinAnsi is `invalid_argument` `headerFooter` `{ char }`; `{file}`
+  replaces such characters with `?` (the preview shows it).
+- *Before save.* The overlay draws `resolve_header_footer` runs (the save's own function, so preview = file). While a change is
+  pending over existing file layers, `Job::SetPaginationHidden { engine_index, hidden }` (Control) gives the PDFium page objects inside
+  our `/Artifact … /SHR_HF` mark a zero matrix in the engine copy, re-applied on every page reload, undone by `hidden: false`; PDFium never
+  saves. Spike gate (both platforms): if pdfium-render's bindings cannot read the marks, pages with an old layer show it until save and
+  the overlay skips them.
+- *Refusals.* Signed or certified documents: `read_only` (`signed`), as `ocr_start`; no `edit` permission: `read_only` (`permission`);
+  the welcome document applies and is saved through Save As. Redacted pages rebuild their content and lose the key: their header is
+  then page content (accepted).
+
+### 16.3 Comment export (`export/comments.rs`, `pdfwrite/summary.rs`, `commands/comment_export.rs`)
+
+```rust
+export_comments(doc_id: DocId, opts: CommentExportOptions, on_event: Channel<JobEvent>) -> Option<JobId>   // None = dialog cancelled
+pub struct CommentItem { page_pos: u32, locator: String, kind: ItemKind /* comment|highlight|underline|strikeout|citation|stamp|shape|ink */,
+                         color: Rgb, author: String, modified: Option<String>, quote: Option<String>, contents: String, tags: Vec<String>,
+                         state: Option<ReviewState>, replies: Vec<CommentItem> /* one level */ }
+pub fn export::comments::gather(state: &DocState, pages: &[PageId], include: &Include, quotes: &dyn Fn(PageId, &[Quad]) -> Option<String>) -> Vec<CommentItem>;
+pub fn export::comments::to_markdown(items: &[CommentItem], head: &Head, t: &Catalog) -> String;
+pub fn pdfwrite::summary::build(items: &[CommentItem], head: &Head, paper: Paper, t: &Catalog) -> Result<Vec<u8>, AppError>;
+```
+
+```ts
+interface CommentExportOptions {
+  format: 'pdf' | 'markdown';
+  include: ('comments' | 'highlights' | 'citations' | 'stamps' | 'shapes')[];   // ≥ 1
+  pages: PageSelection;                                                         // src/api/pageSelection.ts
+  lang: 'en' | 'de';
+}
+function exportComments(docId: DocId, opts: CommentExportOptions, onEvent: (e: JobEvent) => void): Promise<JobId | null>;  // src/api/commentExport.ts
+// JobEvent: progress.phase 'read' | 'write'; done.outputs 0 | 1; done.warnings gains 'quotesOmitted' | 'glyphsReplaced' | 'nothingToExport'
+```
+
+- *Gather* (all in Rust, the UI sends no text): the model's annotations of the selected pages, unread pages read at `Background`
+  (as `list_document_annotations`); citations use their stored quote; highlight, underline and strikeout get `model::quote` over the page
+  text (≤ 2 000 chars, the citation cap). Without the `copy` permission no quote is read (`quotesOmitted`). Order: page, then top-to-bottom;
+  replies under their parent. Locator = page label or position + 1, as `list_citations`. Text boxes, images and redaction marks never.
+- *Flow.* Validate → Rust save dialog (`<stem> - comments.pdf|.md` via `export::names`; a target equal to the open document's path is
+  `invalid_argument` `exportTarget`) → job → `write_atomic`. Nothing selected after gathering: no file, `nothingToExport`. Cancel writes nothing.
+- *Markdown.* `# <name>`, `## Page <locator>`, per item a line (kind, author, date), the quote as `>` block, comment, tags; all text
+  through `export::citations::escape_markdown`.
+- *PDF.* lopdf, not pdf-writer (not in the tree): `pdfwrite::summary` builds a new document like `images_pdf::build`; paper from
+  `platform::paper_default`, 56 pt margins, Arimo Regular/Bold/Italic subsets (`fontprog::fallback::FallbackStore`, Type0/Identity-H
+  writer of `text_fonts.rs`; missing glyphs → `?`, `glyphsReplaced`), breaks by `Face::advance`, quote italic with a bar in the item's
+  colour, `/Producer` only, new `/ID`. Labels from the compiled-in UI catalogs (`export.comments.*`, as `link.confirm.*`).
+- *Limits* (`limits.rs`): `COMMENT_EXPORT_ITEMS_MAX` 20 000, comment text in the export ≤ 8 000 chars per item (cut with `…`),
+  `COMMENT_EXPORT_MD_MAX` 16 MiB, `COMMENT_EXPORT_PDF_PAGES_MAX` 2 000 and 64 MiB; over any of them → `limit_exceeded` `commentExport`
+  before the file is written. One export per document at a time.
+
+### 16.4 Deutsche Zitierweise (`src/features/citations/format/german.ts`; Rust only names and stores)
+
+Formatting stays where every style lives: the pure TS formatters of `src/features/citations/format/` (golden tests). A Sheer citation
+list has exactly one source, the document's `BibRecord`; "first occurrence" is therefore the first entry of the list (or the user's
+choice for a single copied citation).
+
+```ts
+type CitationStyle = 'apa7' | 'mla9' | 'chicago17AuthorDate' | 'dinIso690' | 'germanFootnotes';
+type Occurrence = 'first' | 'subsequent';
+function formatFootnote(r: BibRecord, locator: string, occurrence: Occurrence, lang: Lang): StyledBlock;
+//   first:      "Müller, Anna: Titel. Untertitel, 2. Aufl., Berlin: Verlag 2021, S. 12."
+//   subsequent: "Müller, Kurztitel, S. 14."  (short title = record.shortTitle, else the title up to the first ':' / '.' / ' – ', ≤ 5 words)
+// formatCitationList(..., 'germanFootnotes', ..): numbered footnotes ("1 …", "2 …") per group, first full, later short, then a
+//   "Literaturverzeichnis"/"Bibliography" heading block and the full reference; formatInText = formatFootnote(.., 'subsequent', ..);
+//   formatShortCitation = the short form
+```
+
+- *Data.* `BibRecord` gains `short_title: Option<String>` (≤ 256; `/SHR_Bib` key `/ST`, absent = `None`, so older files and older Sheer
+  versions read it); `BibField` gains `shortTitle` (source `user` only); `SetBibliography` carries it like any field.
+- *Rust.* `export::citations::CitationStyle` gains `GermanFootnotes` (wire `germanFootnotes`, file label "Deutsche Zitierweise");
+  `save_citation_list` writes the blocks unchanged. No new command.
+- *"Ebd."* Not used by default (many faculties discourage it, and every later footnote of a one-source list would be "Ebd."); it is a
+  later faculty variant.
+
+### 16.5 IPC surface
+
+| Command | Arguments | Returns |
+|---|---|---|
+| `apply_command` | `createAnnotation` with a `stamp` body; `updateAnnotation` with `stampText`/`stampDate`/`stampTone`; `setHeaderFooter { spec: HfSpec \| null }` | `ChangeSet` |
+| `get_header_footer` | `docId` | `HeaderFooterInfo { spec: HfSpec \| null /* current, pending included */; defaults: HfSpec; pending: boolean; fileLayers: number; refusal: 'signed' \| 'permission' \| null }` |
+| `resolve_header_footer` | `docId, spec: HfSpec \| null /* null = current */, pages: PageId[] /* ≤ 64 */` | `{ pageId: PageId; runs: PlacedRun[] }[]` (dialog preview and overlay) |
+| `export_comments` | `docId, opts: CommentExportOptions, onEvent` | `JobId \| null` |
+| `save_citation_list` | style gains `germanFootnotes` | unchanged |
+
+TS wrappers: `src/api/stamps.ts` (body builders, `parseStamp`), `src/api/headerFooter.ts` (`getHeaderFooter`, `resolveHeaderFooter`,
+`setHeaderFooter`), `src/api/commentExport.ts`; each parses its answer and treats a wrong shape as `internal`. `HfSpec` in TS is the
+camelCase twin (`slots: Record<'headerLeft' | 'headerCenter' | 'headerRight' | 'footerLeft' | 'footerCenter' | 'footerRight', string>`).
+
+*Tests.* `tests/{stamps,header_footer,comment_export}.rs`: reopen round trip, rotated/cropped pages, one layer beside OCR after
+re-apply, hostile `/SHR_HF` never drops content, incremental prefix intact, quotes omitted without `copy`; golden tests for `germanFootnotes`.
