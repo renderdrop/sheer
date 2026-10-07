@@ -90,7 +90,7 @@ type Field = (
     usize,
 );
 
-const TEXT_FIELDS: [Field; 12] = [
+const TEXT_FIELDS: [Field; 13] = [
     ("T", |r| &mut r.title, limits::BIB_FIELD_MAX),
     ("Y", |r| &mut r.year, limits::BIB_YEAR_MAX),
     ("C", |r| &mut r.container_title, limits::BIB_FIELD_MAX),
@@ -103,6 +103,7 @@ const TEXT_FIELDS: [Field; 12] = [
     ("DOI", |r| &mut r.doi, limits::BIB_DOI_MAX),
     ("URL", |r| &mut r.url, limits::BIB_URL_MAX),
     ("Acc", |r| &mut r.accessed, limits::BIB_YEAR_MAX),
+    ("ST", |r| &mut r.short_title, limits::BIB_SHORT_TITLE_MAX),
 ];
 
 /// Drops what a hostile or foreign file put in a field that must have a shape.
@@ -837,6 +838,38 @@ mod tests {
         assert_eq!(
             split_authors(&many.join("; ")).len(),
             limits::BIB_AUTHORS_MAX
+        );
+    }
+
+    #[test]
+    fn the_short_title_is_stored_as_st_and_older_files_read_without_it() {
+        let read_back = |dict: Dictionary| {
+            let mut doc = Document::with_version("1.7");
+            let mut info = Dictionary::new();
+            info.set("SHR_Bib", Object::Dictionary(dict));
+            let id = doc.add_object(Object::Dictionary(info));
+            doc.trailer.set("Info", Object::Reference(id));
+            read(&doc).unwrap().record.unwrap()
+        };
+        let record = BibRecord {
+            title: Some("T".into()),
+            short_title: Some("Kurz".into()),
+            ..BibRecord::default()
+        };
+        assert!(user_dictionary(&record).has(b"ST"));
+        assert_eq!(read_back(user_dictionary(&record)), record);
+        let plain = BibRecord {
+            short_title: None,
+            ..record.clone()
+        };
+        assert!(!user_dictionary(&plain).has(b"ST"));
+        assert_eq!(read_back(user_dictionary(&plain)).short_title, None);
+        // A hostile value is capped like any field.
+        let mut hostile = user_dictionary(&plain);
+        hostile.set("ST", text_string(&"x".repeat(5_000)));
+        assert_eq!(
+            read_back(hostile).short_title.unwrap().chars().count(),
+            limits::BIB_SHORT_TITLE_MAX
         );
     }
 

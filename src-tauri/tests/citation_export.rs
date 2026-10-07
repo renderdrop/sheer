@@ -56,8 +56,11 @@ fn block(runs: &[(&str, bool)]) -> StyledBlock {
             .map(|(text, italic)| Run {
                 text: (*text).to_owned(),
                 italic: *italic,
+                note: None,
             })
             .collect(),
+        kind: None,
+        note: None,
     }
 }
 

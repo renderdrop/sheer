@@ -59,6 +59,8 @@ export type BibTextField = (typeof BIB_TEXT_FIELDS)[number];
 export type BibRecord = {
   kind: BibKind;
   authors: Person[];
+  /** The short title of the Deutsche Zitierweise (ARCHITECTURE 16.4, `/SHR_Bib /ST`); absent = derived from the title. */
+  shortTitle?: string | null;
 } & Record<BibTextField, string | null>;
 
 /** Every field of a record that `BibliographyInfo.sources` names. */
@@ -138,6 +140,8 @@ export function parseBibRecord(value: unknown): BibRecord | null {
   const record = emptyBibRecord();
   record.kind = parsedKind;
   record.authors = parsedAuthors;
+  const short = value.shortTitle;
+  if (typeof short === 'string' && short.length <= 2 * 256) record.shortTitle = short;
   for (const field of BIB_TEXT_FIELDS) {
     const text = value[field];
     if (text === undefined || text === null) continue;
@@ -227,7 +231,7 @@ export function parseCitationList(value: unknown): CitationInfo[] | null {
   return list;
 }
 
-export const CITATION_STYLES = ['apa7', 'mla9', 'chicago17AuthorDate', 'dinIso690'] as const;
+export const CITATION_STYLES = ['apa7', 'mla9', 'chicago17AuthorDate', 'dinIso690', 'germanNotes'] as const;
 export type CitationStyle = (typeof CITATION_STYLES)[number];
 
 /** `txt`, `html` and `md` are written from the blocks; `ris` and `bib` from the stored record (the blocks must then be empty). */
@@ -238,11 +242,16 @@ export type CitationFileFormat = (typeof CITATION_FILE_FORMATS)[number];
 export interface Run {
   text: string;
   italic: boolean;
+  /** A footnote mark (`text` is its superscript digits); Rust writes it per file format (DESIGN 3.17 Z4). */
+  note?: number;
 }
 
 /** One paragraph of formatted text (at most 64 runs of at most 4 000 characters). Plain text: Rust escapes it for the file format. */
 export interface StyledBlock {
   runs: readonly Run[];
+  /** `heading` is a section heading; `note` is footnote `note` (the number is not part of the runs). Absent: a paragraph. */
+  kind?: 'heading' | 'note';
+  note?: number;
 }
 
 /** Whether `blocks` are within what `save_citation_list` takes; the backend checks again. */

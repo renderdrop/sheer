@@ -24,6 +24,7 @@ const STYLE_KEYS: Record<CitationStyle, PlainKey> = {
   mla9: 'reference.style.mla',
   chicago17AuthorDate: 'reference.style.chicago',
   dinIso690: 'reference.style.din',
+  germanNotes: 'reference.germanNotes',
 };
 
 const FORMAT_KEYS: Record<CitationFileFormat, PlainKey> = {
@@ -129,6 +130,7 @@ function ReferenceBody({
             </Button>
           )}
         />
+        {style === 'germanNotes' && <p className="t-caption m-0 text-text-muted">{t('reference.germanNotes.hint')}</p>}
       </div>
 
       <div className="flex flex-col gap-1">

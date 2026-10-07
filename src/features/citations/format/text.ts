@@ -102,7 +102,7 @@ export function fitRuns(runs: readonly Run[], runMax = 4_000, runsMax = 64): Run
       let cut = Math.min(rest.length, runMax);
       const code = rest.charCodeAt(cut - 1);
       if (cut < rest.length && code >= 0xd800 && code <= 0xdbff) cut -= 1;
-      out.push({ text: rest.slice(0, cut), italic: run.italic });
+      out.push({ text: rest.slice(0, cut), italic: run.italic, ...(run.note === undefined ? {} : { note: run.note }) });
       rest = rest.slice(cut);
     }
   }

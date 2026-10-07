@@ -10,7 +10,7 @@ import { useLocaleStore } from '../../i18n/store';
 import { useDocuments } from '../../stores/documents';
 import { useUi } from '../../stores/ui';
 import { fetchBibliography } from './bibliography';
-import { blocksToHtml, blocksToPlainText, formatCitationList, formatReference } from './format';
+import { blocksToHtml, blocksToPlainText, formatCitationCopy, formatCitationList, formatReference } from './format';
 import { getCitationFormat, getCitationStyle } from './style';
 
 /** Copy and save actions of the reference and the citation list (DESIGN 3.7 C3, C4, C7, Datei menu). Each reports through one toast. */
@@ -84,7 +84,7 @@ export async function copyCitation(docId: number, annotId: number): Promise<void
     const one = citations.find((c) => c.id === annotId);
     if (one === undefined) return;
     // One citation of a group copies its own page, not the joined locator.
-    const blocks = formatCitationList(record, [{ ...one, group: null }], style, lang()).slice(1);
+    const blocks = formatCitationCopy(record, one, style, lang());
     const t = tr();
     await copyBlocks(blocks, quotesLeftOut ? t('reference.quotesLeftOut') : t('citation.copied'), () => {
       void copyCitation(docId, annotId);

@@ -23,6 +23,9 @@ pub enum CitationStyle {
     Mla9,
     Chicago17AuthorDate,
     DinIso690,
+    /// Deutsche Zitierweise: footnotes with the full reference first and short ones after (ARCHITECTURE 16.4).
+    #[serde(rename = "germanNotes")]
+    GermanFootnotes,
 }
 
 impl CitationStyle {
@@ -33,6 +36,7 @@ impl CitationStyle {
             Self::Mla9 => "MLA 9",
             Self::Chicago17AuthorDate => "Chicago 17",
             Self::DinIso690 => "DIN ISO 690",
+            Self::GermanFootnotes => "Deutsche Zitierweise",
         }
     }
 }
@@ -84,6 +88,19 @@ pub struct Run {
     pub text: String,
     #[serde(default)]
     pub italic: bool,
+    /// A footnote mark: `text` is its superscript digits, which each file format replaces by its own mark.
+    #[serde(default)]
+    pub note: Option<u32>,
+}
+
+/// What a block is when it is not a paragraph.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum BlockKind {
+    /// A section heading.
+    Heading,
+    /// Footnote `StyledBlock.note` (the number is not part of the runs).
+    Note,
 }
 
 /// A paragraph of formatted text: at most `limits::STYLED_RUNS_MAX` runs of at most `STYLED_RUN_CHARS_MAX` characters. Never markup.
@@ -91,6 +108,20 @@ pub struct Run {
 #[serde(rename_all = "camelCase")]
 pub struct StyledBlock {
     pub runs: Vec<Run>,
+    #[serde(default)]
+    pub kind: Option<BlockKind>,
+    #[serde(default)]
+    pub note: Option<u32>,
+}
+
+impl StyledBlock {
+    /// The number of a footnote block (`None` for every other block).
+    fn footnote(&self) -> Option<u32> {
+        match self.kind {
+            Some(BlockKind::Note) => self.note,
+            _ => None,
+        }
+    }
 }
 
 // --- Checks ------------------------------------------------------------------------------------------------------------
@@ -105,7 +136,18 @@ pub fn check_blocks(blocks: &[StyledBlock]) -> Result<(), AppError> {
         ));
     }
     let mut bytes = 0usize;
+    let note_max = limits::CITATION_EXPORT_BLOCKS_MAX as u32;
     for block in blocks {
+        // A footnote block has its number, and no number is beyond the number of blocks a list can have.
+        if (block.kind == Some(BlockKind::Note) && block.note.is_none())
+            || block.note.is_some_and(|n| n == 0 || n > note_max)
+            || block
+                .runs
+                .iter()
+                .any(|run| run.note.is_some_and(|n| n == 0 || n > note_max))
+        {
+            return Err(AppError::invalid("blocks"));
+        }
         if block.runs.len() > limits::STYLED_RUNS_MAX {
             return Err(AppError::limit("runs", limits::STYLED_RUNS_MAX as u64));
         }
@@ -149,13 +191,47 @@ fn plain(text: &str) -> String {
 
 /// Plain text: the blocks as paragraphs separated by a blank line; italics are not marked.
 pub fn to_text(blocks: &[StyledBlock]) -> String {
-    let paragraphs: Vec<String> = blocks
-        .iter()
-        .map(|block| block.runs.iter().map(|run| plain(&run.text)).collect())
-        .collect();
-    let mut out = paragraphs.join("\n\n");
+    let mut out = String::new();
+    let mut previous_note = false;
+    for (index, block) in blocks.iter().enumerate() {
+        let text: String = block.runs.iter().map(|run| plain(&run.text)).collect();
+        let note = block.footnote();
+        if index > 0 {
+            // Footnotes follow each other line by line; everything else is a paragraph.
+            out.push_str(if note.is_some() && previous_note {
+                "\n"
+            } else {
+                "\n\n"
+            });
+        }
+        if let Some(n) = note {
+            out.push_str(&superscript(n));
+            out.push(' ');
+        }
+        out.push_str(&text);
+        previous_note = note.is_some();
+    }
     out.push('\n');
     out
+}
+
+/// 12 becomes "¹²".
+pub fn superscript(n: u32) -> String {
+    n.to_string()
+        .chars()
+        .map(|digit| match digit {
+            '0' => '\u{2070}',
+            '1' => '\u{00B9}',
+            '2' => '\u{00B2}',
+            '3' => '\u{00B3}',
+            '4' => '\u{2074}',
+            '5' => '\u{2075}',
+            '6' => '\u{2076}',
+            '7' => '\u{2077}',
+            '8' => '\u{2078}',
+            _ => '\u{2079}',
+        })
+        .collect()
 }
 
 /// HTML text: `& < > " '` become entities, controls become spaces.
@@ -175,7 +251,8 @@ pub fn escape_html(text: &str) -> String {
     out
 }
 
-/// A complete HTML document: one `<p>` per block, italic runs in `<i>`. It holds no script, style or link, and a CSP that forbids all.
+/// A complete HTML document: one `<p>` per block (a heading `<h2>`, the footnotes one `<ol class="notes">`), italic runs in `<i>`.
+/// It holds no script, style or external link (only the anchors between a footnote mark and its note), and a CSP that forbids all.
 pub fn to_html(blocks: &[StyledBlock]) -> String {
     to_html_in(blocks, None)
 }
@@ -196,10 +273,33 @@ pub fn to_html_in(blocks: &[StyledBlock], lang: Option<&str>) -> String {
          <meta http-equiv=\"Content-Security-Policy\" content=\"default-src 'none'\">\n\
          <title>{title}</title>\n</head>\n<body>\n"
     );
+    let de = code == "de";
+    let mut in_notes = false;
     for block in blocks {
-        out.push_str("<p>");
+        let note = block.footnote();
+        if in_notes && note.is_none() {
+            out.push_str("</ol>\n");
+            in_notes = false;
+        }
+        match (block.kind, note) {
+            (_, Some(n)) => {
+                if !in_notes {
+                    let _ = writeln!(out, "<ol class=\"notes\" start=\"{n}\">");
+                    in_notes = true;
+                }
+                let _ = write!(out, "<li id=\"fn{n}\">");
+            }
+            (Some(BlockKind::Heading), None) => out.push_str("<h2>"),
+            _ => out.push_str("<p>"),
+        }
         for run in &block.runs {
-            if run.italic && !run.text.is_empty() {
+            if let Some(n) = run.note {
+                let label = if de { "Fu\u{00DF}note" } else { "Footnote" };
+                let _ = write!(
+                    out,
+                    "<sup><a href=\"#fn{n}\" id=\"fnref{n}\" aria-label=\"{label} {n}\">{n}</a></sup>"
+                );
+            } else if run.italic && !run.text.is_empty() {
                 out.push_str("<i>");
                 out.push_str(&escape_html(&run.text));
                 out.push_str("</i>");
@@ -207,7 +307,24 @@ pub fn to_html_in(blocks: &[StyledBlock], lang: Option<&str>) -> String {
                 out.push_str(&escape_html(&run.text));
             }
         }
-        out.push_str("</p>\n");
+        if let Some(n) = note {
+            let back = if de {
+                "Zur\u{00FC}ck zum Text"
+            } else {
+                "Back to text"
+            };
+            let _ = writeln!(
+                out,
+                " <a href=\"#fnref{n}\" aria-label=\"{back}\">\u{21A9}</a></li>"
+            );
+        } else if block.kind == Some(BlockKind::Heading) {
+            out.push_str("</h2>\n");
+        } else {
+            out.push_str("</p>\n");
+        }
+    }
+    if in_notes {
+        out.push_str("</ol>\n");
     }
     out.push_str("</body>\n</html>\n");
     out
@@ -244,7 +361,7 @@ pub fn escape_markdown(text: &str) -> String {
 }
 
 /// The start of a block, where `+`, `-`, `=` and `12.` or `12)` would begin a list item or a heading.
-fn escape_block_start(escaped: String) -> String {
+pub(crate) fn escape_block_start(escaped: String) -> String {
     let trimmed = escaped.trim_start();
     let lead = escaped.len() - trimmed.len();
     let digits = trimmed.chars().take_while(char::is_ascii_digit).count();
@@ -271,6 +388,10 @@ pub fn to_markdown(blocks: &[StyledBlock]) -> String {
     for block in blocks {
         let mut line = String::new();
         for run in &block.runs {
+            if let Some(n) = run.note {
+                let _ = write!(line, "[^{n}]");
+                continue;
+            }
             let escaped = escape_markdown(&run.text);
             let core = escaped.trim();
             if run.italic && !core.is_empty() {
@@ -286,7 +407,12 @@ pub fn to_markdown(blocks: &[StyledBlock]) -> String {
             }
         }
         // Two spaces at the end of a line are a hard break in Markdown.
-        paragraphs.push(escape_block_start(line.trim_end().to_owned()));
+        let line = line.trim_end().to_owned();
+        paragraphs.push(match (block.kind, block.footnote()) {
+            (_, Some(n)) => format!("[^{n}]: {line}"),
+            (Some(BlockKind::Heading), None) => format!("## {line}"),
+            _ => escape_block_start(line),
+        });
     }
     let mut out = paragraphs.join("\n\n");
     out.push('\n');
@@ -642,6 +768,11 @@ pub fn default_file_name(stem: &str, format: CitationFileFormat, style: Citation
 /// The path the list is written to, judged like a Save As target (SECURITY I3): plain spelling, an existing folder (resolved), the
 /// extension of the format (added if the dialog left it out), and what is there already, if anything, a regular file that is not a link.
 pub fn admit_target(path: &Path, format: CitationFileFormat) -> Result<PathBuf, AppError> {
+    admit_target_ext(path, format.extension())
+}
+
+/// [`admit_target`] for any extension (the comment export writes .pdf and .md).
+pub fn admit_target_ext(path: &Path, extension: &str) -> Result<PathBuf, AppError> {
     if !crate::documents::intake::spelling_is_plain(path) {
         return Err(AppError::invalid("path"));
     }
@@ -657,10 +788,10 @@ pub fn admit_target(path: &Path, format: CitationFileFormat) -> Result<PathBuf, 
     let mut file_name = OsString::from(name);
     let has_extension = Path::new(name)
         .extension()
-        .is_some_and(|extension| extension.eq_ignore_ascii_case(format.extension()));
+        .is_some_and(|found| found.eq_ignore_ascii_case(extension));
     if !has_extension {
         file_name.push(".");
-        file_name.push(format.extension());
+        file_name.push(extension);
     }
     let target = folder.join(file_name);
     match std::fs::symlink_metadata(&target) {
@@ -722,8 +853,11 @@ mod tests {
                 .map(|(text, italic)| Run {
                     text: (*text).to_owned(),
                     italic: *italic,
+                    note: None,
                 })
                 .collect(),
+            kind: None,
+            note: None,
         }
     }
 
@@ -894,7 +1028,10 @@ mod tests {
             runs: vec![Run {
                 text,
                 italic: false,
+                note: None,
             }],
+            kind: None,
+            note: None,
         };
         let too_many = vec![run("a".to_owned()); limits::CITATION_EXPORT_BLOCKS_MAX + 1];
         assert!(check_blocks(&too_many).is_err());
@@ -905,10 +1042,13 @@ mod tests {
             runs: vec![
                 Run {
                     text: String::new(),
-                    italic: false
+                    italic: false,
+                    note: None
                 };
                 limits::STYLED_RUNS_MAX + 1
             ],
+            kind: None,
+            note: None,
         };
         assert!(check_blocks(&[runs]).is_err());
         // Together over 4 MiB, each block within its own caps.
@@ -944,5 +1084,119 @@ mod tests {
             default_file_name("paper", CitationFileFormat::Bib, CitationStyle::DinIso690),
             "paper - reference.bib"
         );
+    }
+
+    // --- Deutsche Zitierweise (golden) -----------------------------------------------------------------------------------
+
+    fn german_list() -> Vec<StyledBlock> {
+        let run = |text: &str, italic: bool, note: Option<u32>| Run {
+            text: text.to_owned(),
+            italic,
+            note,
+        };
+        let para = |runs: Vec<Run>| StyledBlock {
+            runs,
+            kind: None,
+            note: None,
+        };
+        let heading = |text: &str| StyledBlock {
+            runs: vec![run(text, false, None)],
+            kind: Some(BlockKind::Heading),
+            note: None,
+        };
+        let note = |n: u32, runs: Vec<Run>| StyledBlock {
+            runs,
+            kind: Some(BlockKind::Note),
+            note: Some(n),
+        };
+        vec![
+            para(vec![
+                run("\u{201E}Eins <b>\u{201C}", false, None),
+                run("\u{00B9}", false, Some(1)),
+            ]),
+            para(vec![
+                run("\u{201E}Zwei\u{201C}", false, None),
+                run("\u{00B2}", false, Some(2)),
+            ]),
+            heading("Fu\u{00DF}noten"),
+            note(
+                1,
+                vec![
+                    run("M\u{00FC}ller: ", false, None),
+                    run("Titel", true, None),
+                    run(". S. 12.", false, None),
+                ],
+            ),
+            note(2, vec![run("M\u{00FC}ller, Titel, S. 14.", false, None)]),
+            heading("Literaturverzeichnis"),
+            para(vec![run("M\u{00FC}ller: Titel.", false, None)]),
+        ]
+    }
+
+    #[test]
+    fn german_notes_golden_txt() {
+        assert_eq!(
+            to_text(&german_list()),
+            "\u{201E}Eins <b>\u{201C}\u{00B9}\n\n\u{201E}Zwei\u{201C}\u{00B2}\n\nFu\u{00DF}noten\n\n\
+             \u{00B9} M\u{00FC}ller: Titel. S. 12.\n\u{00B2} M\u{00FC}ller, Titel, S. 14.\n\nLiteraturverzeichnis\n\nM\u{00FC}ller: Titel.\n"
+        );
+    }
+
+    #[test]
+    fn german_notes_golden_md() {
+        assert_eq!(
+            to_markdown(&german_list()),
+            "\u{201E}Eins \\<b\\>\u{201C}[^1]\n\n\u{201E}Zwei\u{201C}[^2]\n\n## Fu\u{00DF}noten\n\n\
+             [^1]: M\u{00FC}ller: *Titel*. S. 12.\n\n[^2]: M\u{00FC}ller, Titel, S. 14.\n\n## Literaturverzeichnis\n\nM\u{00FC}ller: Titel.\n"
+        );
+    }
+
+    #[test]
+    fn german_notes_golden_html() {
+        let html = to_html_in(&german_list(), Some("de"));
+        assert!(html.contains(
+            "<p>\u{201E}Eins &lt;b&gt;\u{201C}<sup><a href=\"#fn1\" id=\"fnref1\" aria-label=\"Fu\u{00DF}note 1\">1</a></sup></p>\n"
+        ));
+        assert!(html.contains(
+            "<h2>Fu\u{00DF}noten</h2>\n<ol class=\"notes\" start=\"1\">\n<li id=\"fn1\">M\u{00FC}ller: <i>Titel</i>. S. 12. \
+             <a href=\"#fnref1\" aria-label=\"Zur\u{00FC}ck zum Text\">\u{21A9}</a></li>\n<li id=\"fn2\">"
+        ));
+        assert_eq!(html.matches("<ol ").count(), 1);
+        assert!(
+            html.contains("</ol>\n<h2>Literaturverzeichnis</h2>\n<p>M\u{00FC}ller: Titel.</p>\n")
+        );
+        let en = to_html_in(&german_list(), Some("en"));
+        assert!(
+            en.contains("aria-label=\"Footnote 2\"") && en.contains("aria-label=\"Back to text\"")
+        );
+        assert!(!html.contains("<script"));
+    }
+
+    #[test]
+    fn german_notes_wire_and_checks() {
+        let style: CitationStyle = serde_json::from_str("\"germanNotes\"").unwrap();
+        assert_eq!(style, CitationStyle::GermanFootnotes);
+        assert_eq!(style.file_label(), "Deutsche Zitierweise");
+        let blocks: Vec<StyledBlock> = serde_json::from_str(
+            "[{\"kind\":\"note\",\"note\":2,\"runs\":[{\"text\":\"a\",\"italic\":false}]},\
+             {\"runs\":[{\"text\":\"b\",\"italic\":false,\"note\":3}]}]",
+        )
+        .unwrap();
+        assert!(check_blocks(&blocks).is_ok());
+        // The old shape (no kind, no note) still reads.
+        let old: Vec<StyledBlock> =
+            serde_json::from_str("[{\"runs\":[{\"text\":\"a\"}]}]").unwrap();
+        assert!(old[0].kind.is_none() && old[0].runs[0].note.is_none());
+        // A note block with no number, and numbers out of range, are refused.
+        let mut bad = blocks.clone();
+        bad[0].note = None;
+        assert!(check_blocks(&bad).is_err());
+        let mut zero = blocks.clone();
+        zero[1].runs[0].note = Some(0);
+        assert!(check_blocks(&zero).is_err());
+        let mut huge = blocks;
+        huge[0].note = Some(u32::MAX);
+        assert!(check_blocks(&huge).is_err());
+        assert_eq!(superscript(120), "\u{00B9}\u{00B2}\u{2070}");
     }
 }

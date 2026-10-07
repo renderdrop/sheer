@@ -8,6 +8,7 @@ import {
 import { apa } from './apa';
 import { chicago } from './chicago';
 import { din } from './din';
+import { germanCopy, germanList, germanReference, shortNote, superscript } from './german';
 import { mla } from './mla';
 import type { StyleImpl } from './shared';
 import { clean, fitRuns, quote, type Lang } from './text';
@@ -20,6 +21,7 @@ const STYLES: Record<CitationStyle, StyleImpl> = {
   mla9: mla,
   chicago17AuthorDate: chicago,
   dinIso690: din,
+  germanNotes: { reference: germanReference, short: shortNote },
 };
 
 /** The most characters of a quote in a list entry (a run holds 4 000, the marks and the citation come on top). */
@@ -95,10 +97,20 @@ export function formatCitationList(
     if (text !== '') entry.quotes.push(text);
     entry.locators.push(clean(citation.locator));
   }
+  const shownOf = (entry: Entry): string => {
+    const joined = entry.quotes.join(' … ');
+    return joined.length > QUOTE_SHOWN_MAX ? `${joined.slice(0, QUOTE_SHOWN_MAX - 1)}…` : joined;
+  };
+  if (style === 'germanNotes') {
+    return germanList(
+      record,
+      entries.map((entry) => ({ quote: shownOf(entry), locator: joinLocators(entry.locators) })),
+      lang,
+    );
+  }
   const blocks: StyledBlock[] = [formatReference(record, style, lang)];
   for (const entry of entries) {
-    const joined = entry.quotes.join(' … ');
-    const shown = joined.length > QUOTE_SHOWN_MAX ? `${joined.slice(0, QUOTE_SHOWN_MAX - 1)}…` : joined;
+    const shown = shownOf(entry);
     const short = formatShortCitation(record, joinLocators(entry.locators), style, lang);
     blocks.push({
       runs: fitRuns(
@@ -114,9 +126,32 @@ export function formatCitationList(
   return blocks;
 }
 
-/** The blocks as text, one paragraph each, separated by a blank line. */
+/**
+ * Copy citation: the quote and its note. The author-year styles give the quote with the short citation; the Deutsche Zitierweise
+ * gives the quote, a line break and the full note, because the paste target may be its first mention (DZ-AC 4).
+ */
+export function formatCitationCopy(
+  record: BibRecord,
+  citation: CitationInfo,
+  style: CitationStyle,
+  lang: Lang,
+): StyledBlock[] {
+  if (style !== 'germanNotes') return formatCitationList(record, [{ ...citation, group: null }], style, lang).slice(1);
+  const text = clean(citation.quote);
+  const shown = text.length > QUOTE_SHOWN_MAX ? `${text.slice(0, QUOTE_SHOWN_MAX - 1)}…` : text;
+  return germanCopy(record, { quote: shown, locator: clean(citation.locator) }, lang);
+}
+
+/** The blocks as text: one paragraph each, separated by a blank line; footnotes ("¹ …") follow each other line by line. */
 export function blocksToPlainText(blocks: readonly StyledBlock[]): string {
-  return blocks.map((block) => block.runs.map((run) => run.text).join('')).join('\n\n');
+  let out = '';
+  blocks.forEach((block, index) => {
+    const text = block.runs.map((run) => run.text).join('');
+    const line = block.kind === 'note' && block.note !== undefined ? `${superscript(block.note)} ${text}` : text;
+    const prev = blocks[index - 1];
+    out += index === 0 ? line : `${block.kind === 'note' && prev?.kind === 'note' ? '\n' : '\n\n'}${line}`;
+  });
+  return out;
 }
 
 const ESCAPES: Record<string, string> = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
@@ -127,9 +162,11 @@ export function blocksToHtml(blocks: readonly StyledBlock[]): string {
   return blocks
     .map((block) => {
       const inner = block.runs
-        .map((run) => (run.italic ? `<i>${escapeHtml(run.text)}</i>` : escapeHtml(run.text)))
+        .map((run) => (run.italic ? `<i>${escapeHtml(run.text)}</i>` : escapeHtml(run.text).replace(/\n/gu, '<br>')))
         .join('');
-      return `<p>${inner}</p>`;
+      if (block.kind === 'heading') return `<h2>${inner}</h2>`;
+      const label = block.kind === 'note' && block.note !== undefined ? `<sup>${block.note}</sup> ` : '';
+      return `<p>${label}${inner}</p>`;
     })
     .join('\n');
 }

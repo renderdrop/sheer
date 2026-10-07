@@ -73,6 +73,10 @@ pub struct BibRecord {
     /// `YYYY-MM-DD`.
     #[serde(default)]
     pub accessed: Option<String>,
+    /// The short title of the Deutsche Zitierweise (`/SHR_Bib /ST`, at most `limits::BIB_SHORT_TITLE_MAX` characters); `None` = derived
+    /// from the title by the formatter. The user's record only: XMP and Info never have one.
+    #[serde(default)]
+    pub short_title: Option<String>,
 }
 
 /// A field of a record, for `BibliographyInfo.sources`.
@@ -93,6 +97,7 @@ pub enum BibField {
     Doi,
     Url,
     Accessed,
+    ShortTitle,
 }
 
 /// Where the value of a field comes from, strongest first: the user's record, XMP, Info, the first-page heuristic.
@@ -293,6 +298,7 @@ impl BibRecord {
         check_text(&self.doi, limits::BIB_DOI_MAX)?;
         check_text(&self.url, limits::BIB_URL_MAX)?;
         check_text(&self.accessed, limits::BIB_YEAR_MAX)?;
+        check_text(&self.short_title, limits::BIB_SHORT_TITLE_MAX)?;
         let filled = |text: &Option<String>| -> Option<String> {
             text.as_deref()
                 .map(str::trim)
@@ -342,6 +348,7 @@ impl BibRecord {
             doi: tidy(&self.doi),
             url: tidy(&self.url),
             accessed: tidy(&self.accessed),
+            short_title: tidy(&self.short_title),
         }
     }
 }
@@ -444,6 +451,15 @@ pub fn merge(
         (Vec::new(), BibSource::None)
     };
     sources.insert(BibField::Authors, author_source);
+    let short_title = u.short_title.clone().filter(|text| !text.is_empty());
+    sources.insert(
+        BibField::ShortTitle,
+        if short_title.is_some() {
+            BibSource::User
+        } else {
+            BibSource::None
+        },
+    );
     sources.insert(
         BibField::Kind,
         if user.is_some() {
@@ -467,6 +483,7 @@ pub fn merge(
         doi,
         url,
         accessed,
+        short_title,
     };
     (record, sources)
 }
@@ -506,6 +523,43 @@ mod tests {
         assert_eq!(record.title.as_deref(), Some("T"));
         let web: BibKind = serde_json::from_value(json!("webPage")).unwrap();
         assert_eq!(web, BibKind::WebPage);
+    }
+
+    #[test]
+    fn the_short_title_is_checked_trimmed_and_comes_from_the_user_record_only() {
+        let long = BibRecord {
+            short_title: Some("x".repeat(limits::BIB_SHORT_TITLE_MAX + 1)),
+            ..BibRecord::default()
+        };
+        assert!(long.check().is_err());
+        let spaced = BibRecord {
+            short_title: Some("  Kurz  ".into()),
+            ..BibRecord::default()
+        };
+        assert!(spaced.check().is_ok());
+        assert_eq!(spaced.normalized().short_title.as_deref(), Some("Kurz"));
+        let xmp = BibRecord {
+            short_title: Some("not from xmp".into()),
+            ..BibRecord::default()
+        };
+        let (merged, sources) = merge(
+            Some(&spaced.normalized()),
+            &xmp,
+            &BibRecord::default(),
+            None,
+        );
+        assert_eq!(merged.short_title.as_deref(), Some("Kurz"));
+        assert_eq!(sources[&BibField::ShortTitle], BibSource::User);
+        let (merged, sources) = merge(None, &xmp, &BibRecord::default(), None);
+        assert_eq!(merged.short_title, None);
+        assert_eq!(sources[&BibField::ShortTitle], BibSource::None);
+        // The wire name is camelCase; an older record has none.
+        let wire: BibRecord = serde_json::from_value(json!({"shortTitle": "S"})).unwrap();
+        assert_eq!(wire.short_title.as_deref(), Some("S"));
+        assert_eq!(
+            serde_json::to_value(BibField::ShortTitle).unwrap(),
+            json!("shortTitle")
+        );
     }
 
     #[test]

@@ -92,4 +92,28 @@ export const GOLDEN: Record<string, string> = {
     'MÜLLER, Anna Maria, 2018. *A study of quotations*. Thesis. Leipzig: Universität Leipzig. Available from: https://example.org/thesis',
   'dinIso690 thesis de':
     'MÜLLER, Anna Maria, 2018. *A study of quotations*. Abschlussarbeit. Leipzig: Universität Leipzig. Verfügbar unter: https://example.org/thesis',
+  'germanNotes book en':
+    'Müller, Anna Maria/Schmidt, Peter: *Citing well*. 2nd ed. Berlin: Iris Press, 2021. DOI: 10.1000/book.1',
+  'germanNotes book de':
+    'Müller, Anna Maria/Schmidt, Peter: *Citing well*. 2. Aufl. Berlin: Iris Press, 2021. DOI: 10.1000/book.1',
+  'germanNotes article en':
+    'Müller, Anna Maria: On quotations. In: *Journal of Sources* 12 (2020), no. 3, pp. 101–118. DOI: 10.1000/art.2',
+  'germanNotes article de':
+    'Müller, Anna Maria: On quotations. In: *Journal of Sources* 12 (2020), H. 3, S. 101–118. DOI: 10.1000/art.2',
+  'germanNotes chapter en':
+    'Müller, Anna Maria/Schmidt, Peter/Weber, Jean-Paul: Quoting in chapters. In: *The Handbook of Sources*. 3rd ed. Hamburg: Iris Press, 2019, pp. 45–67.',
+  'germanNotes chapter de':
+    'Müller, Anna Maria/Schmidt, Peter/Weber, Jean-Paul: Quoting in chapters. In: *The Handbook of Sources*. 3. Aufl. Hamburg: Iris Press, 2019, S. 45–67.',
+  'germanNotes report en':
+    'Statistisches Amt: *Annual report*. Wiesbaden: Statistisches Amt, 2022. URL: https://example.org/report.pdf',
+  'germanNotes report de':
+    'Statistisches Amt: *Annual report*. Wiesbaden: Statistisches Amt, 2022. URL: https://example.org/report.pdf',
+  'germanNotes webPage en':
+    'Schmidt, Peter: How to cite a page. In: Example Site, 2023. URL: https://example.org/cite (accessed 3 May 2024).',
+  'germanNotes webPage de':
+    'Schmidt, Peter: How to cite a page. In: Example Site, 2023. URL: https://example.org/cite (Zugriff am 03.05.2024).',
+  'germanNotes thesis en':
+    'Müller, Anna Maria: *A study of quotations*. Leipzig: Universität Leipzig, 2018. URL: https://example.org/thesis',
+  'germanNotes thesis de':
+    'Müller, Anna Maria: *A study of quotations*. Leipzig: Universität Leipzig, 2018. URL: https://example.org/thesis',
 };
