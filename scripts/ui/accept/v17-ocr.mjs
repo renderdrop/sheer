@@ -2,7 +2,7 @@
 // `npm run fixtures:scans`) and one owner file by ID (owner-pdf-F2, ADR-133; resolved via review/owner/INDEX.md, never named here).
 // Prereq: npm run build:acceptance. Run: node scripts/ui/accept/v17-ocr.mjs   (UI language German, recognition de-DE)
 // Not covered here: certified / read-only documents (O-AC 12), mocked capabilities (O-AC 6, 13), keyboard-only and reduced motion.
-import { copyFileSync, existsSync, mkdirSync, readFileSync, statSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, statSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { createResults, runSession, openAndWait, sleep } from './harness.mjs';
 import { parseIndex } from './corpus.mjs';
@@ -27,6 +27,7 @@ for (const name of Object.keys(EXPECTED)) {
 }
 mkdirSync(OUT, { recursive: true });
 // A second copy of s2 for the cancel run (the first one is recognized completely in the same session).
+rmSync(join(OUT, 's1-ocr.pdf'), { force: true });
 const S2_CANCEL = join(OUT, 's2-cancel.pdf');
 copyFileSync(join(SCANS, 's2-multi-en.pdf'), S2_CANCEL);
 
@@ -220,9 +221,20 @@ await runSession(async ({ input, dialogs, ev, shot }) => {
 
   async function openScan(name, path) {
     await resetLog();
-    await openAndWait({ input, dialogs }, path);
-    await sleep(600);
-    void name;
+    // Through the menu: Ctrl+O is swallowed while the search field has the focus (ADR-131: no real input, CDP only).
+    await input.press('Escape');
+    if (await exists('[data-page]')) {
+      await dialogs.answerOpenMany([path]);
+      await menu('Datei', 'Öffnen…');
+    } else await dialogs.openFile(path);
+    const stem = path
+      .split(/[\\/]/)
+      .pop()
+      .replace(/\.pdf$/i, '');
+    await input
+      .waitFor(`document.body.innerText.includes(${q(stem)})`, { timeoutMs: 20000, what: `tab ${name}` })
+      .catch(() => {});
+    await sleep(1500);
   }
   const offerText = () => text('[data-surface="ocr-banner"][data-variant="offer"]');
   const waitOffer = () =>
@@ -305,10 +317,8 @@ await runSession(async ({ input, dialogs, ev, shot }) => {
     // save through the dialog queue, reopen, search again
     const out = join(OUT, 's1-ocr.pdf');
     await dialogs.answerSave(out);
-    await input.press('s', { ctrl: true, shift: true });
-    await input
-      .waitFor(() => existsSync(out) && statSync(out).size > 0, { timeoutMs: 20000, what: 'saved file' })
-      .catch(() => {});
+    await menu('Datei', 'Speichern unter…');
+    for (let i = 0; i < 80 && !(existsSync(out) && statSync(out).size > 0); i++) await sleep(250);
     await sleep(1000);
     C('s1: Save wrote review/v170/out/s1-ocr.pdf', existsSync(out) && statSync(out).size > 0, '');
     await dialogs.openFile(out);
@@ -332,9 +342,14 @@ await runSession(async ({ input, dialogs, ev, shot }) => {
     await openScan('s2', join(SCANS, 's2-multi-en.pdf'));
     await waitOffer();
     const banner = await offerText();
-    C('s2: banner reads "3 Seiten sind Bilder"', banner.includes('3 Seiten sind Bilder'), banner.slice(0, 80));
+    // DESIGN O1: the page variant shows while the current page (page 1) is a scan; the count shows in the dialog scope.
+    C(
+      's2: banner offers OCR for the scanned current page',
+      banner.includes('Diese Seite ist ein Bild'),
+      banner.slice(0, 80),
+    );
     const info = await recognize();
-    await sleep(0);
+    C('s2: dialog scope counts 3 scanned pages', info?.scope === 'Gescannte Seiten (3)', `${info?.scope}`);
     if (info?.fallback) console.log(`NOTE s2: fallback notice shown: ${info.fallback}`);
     const run = await finishRun();
     C(
@@ -360,13 +375,19 @@ await runSession(async ({ input, dialogs, ev, shot }) => {
     // cancel mid-run on the second copy
     await openScan('s2c', S2_CANCEL);
     await waitOffer();
+    // Page recognition takes well under a second, a CDP poll would miss the window: an in-page observer presses Stop (a DOM click on
+    // the real button, the same handler) as soon as page 2 is shown.
+    await ev(`(() => {
+      const mo = new MutationObserver(() => {
+        const label = document.querySelector('[data-ocr="label"]')?.textContent ?? '';
+        if (/Seite 2 von 3/.test(label)) {
+          document.querySelector('[data-ocr="stop"]')?.click();
+          mo.disconnect();
+        }
+      });
+      mo.observe(document.body, { subtree: true, childList: true, characterData: true });
+    })()`);
     await recognize();
-    await input.waitFor(`window.__ocr.labels.some((l) => /Seite [23] von 3/.test(l))`, {
-      timeoutMs: 120000,
-      intervalMs: 40,
-      what: 'page 2 running',
-    });
-    await input.click({ selector: '[data-ocr="stop"]' });
     const stopped = await finishRun();
     const t = stopped.toasts.find((x) => x.startsWith('Gestoppt')) ?? '';
     const m = /Text auf (\d+) von (\d+) Seiten/.exec(t);
@@ -453,10 +474,10 @@ await runSession(async ({ input, dialogs, ev, shot }) => {
       run.toasts.some((t) => /erkannt|Gestoppt/.test(t)),
       run.toasts.join(' | ').slice(0, 120),
     );
-    await sleep(800);
-    const after = await ev(
-      `[...document.querySelectorAll('[data-text-length]')].reduce((n, e) => n + Number(e.dataset.textLength), 0)`,
-    );
+    const sum = () =>
+      ev(`[...document.querySelectorAll('[data-text-length]')].reduce((n, e) => n + Number(e.dataset.textLength), 0)`);
+    let after = await sum();
+    for (let i = 0; i < 30 && after <= before; i++) (await sleep(300), (after = await sum()));
     C(
       'owner-pdf-F2: recognized text appears in the text layer',
       after > before,

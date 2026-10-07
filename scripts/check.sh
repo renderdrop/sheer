@@ -391,4 +391,4 @@ fi
 
 echo "check: ${#FAILED[@]} of $TOTAL steps failed: $(printf '%s; ' "${FAILED[@]}" | sed 's/; $//')"
 echo "check: full output in $LOG_DIR"
-    printf '%s\n' "$hits" | sed -E 's/^(.*:[0-9]+):.*/\1/' | sed 's|^|error: owner corpus file name in a tracked file (use its ID, ADR-133): |'
+exit 1
