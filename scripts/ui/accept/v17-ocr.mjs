@@ -1,7 +1,7 @@
 // Acceptance v1.7 "Scan & OCR" (DESIGN 3.12 O-AC 1/3/7/8/9/11/14, ADR-134/135) on the generated scans (review/generated/scans, from
 // `npm run fixtures:scans`) and one owner file by ID (owner-pdf-F2, ADR-133; resolved via review/owner/INDEX.md, never named here).
 // Prereq: npm run build:acceptance. Run: node scripts/ui/accept/v17-ocr.mjs   (UI language German, recognition de-DE)
-// Phases (one script, one acceptance launch each): main (generated scans, de), owner (owner-scan-S1..S6, de), en (English UI + scan),
+// Phases (one script, one acceptance launch each): main (generated scans, de), owner (owner-scan-S7, de), en (English UI + scan),
 // langs-de / langs-none (env SHEER_AUTOMATION_OCR_LANGS masks the installed languages, ADR-137 item 1). Env: V17_PHASES=main,owner,... to select.
 // Not covered here: certified / read-only documents (O-AC 12), mocked capabilities (O-AC 6, 13), keyboard-only and reduced motion.
 import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
@@ -27,7 +27,6 @@ for (const name of Object.keys(EXPECTED)) {
     process.exit(0);
   }
 }
-const OWNER_SCANS = resolve(ROOT, 'review/generated/owner-scans');
 const PHASES = (process.env.V17_PHASES ?? 'main,owner,en,langs-de,langs-none').split(',');
 mkdirSync(OUT, { recursive: true });
 // A second copy of s2 for the cancel run (the first one is recognized completely in the same session).
@@ -533,46 +532,88 @@ const makeSession =
       });
     }
 
-    // ---- owner scans (ADR-137 item 1a, ADR-133: counts by ID only) ------------------------------------------------------------
+    // ---- owner scan S7 (ADR-138 §1, ADR-133: IDs and counts only; names, probes and text never printed or committed) -------------
     if (phase === 'owner') {
-      for (let n = 1; n <= 6; n++) {
-        const id = `owner-scan-S${n}`;
-        await section(id, async () => {
-          const file = join(OWNER_SCANS, `${id}.pdf`);
-          const raw = tryCorpusProbe(`${id}/probes`);
-          if (!existsSync(file))
-            return console.log(`${id}: skipped, generated file missing (npm run fixtures:owner-scans)`);
-          if (raw === null) return console.log(`${id}: skipped, no probes in the index`);
-          const words = raw
-            .split(';')
-            .map((w) => w.trim())
-            .filter(Boolean);
-          await openScan(id, file);
-          await waitOffer();
-          await recognize();
-          const run = await finishRun(240000);
-          // Diagnosis (untracked review/v170/): the recognized text of the laid-out layers and which probes the search found.
-          const layerText = await ev(
-            `[...document.querySelectorAll('[data-text-page]')].map((l) => [...l.querySelectorAll('[data-run-start]')].map((s) => s.textContent).join('')).join(String.fromCharCode(10) + '----' + String.fromCharCode(10))`,
+      const id = 'owner-scan-S7';
+      await section(id, async () => {
+        const index = resolve(ROOT, 'review/owner/INDEX.md');
+        if (!existsSync(index)) return console.log(`${id}: skipped, review/owner/INDEX.md is missing`);
+        const rel = parseIndex(readFileSync(index, 'utf8')).get(id);
+        if (!rel) return console.log(`${id}: skipped, not listed in the index`);
+        const file = resolve(ROOT, 'review/owner', rel);
+        if (!existsSync(file)) return console.log(`${id}: skipped, file not found`);
+        const probes = [];
+        for (let n = 1; n <= 6; n++) {
+          const raw = tryCorpusProbe(`${id}/p${n}`);
+          if (raw === null) return console.log(`${id}: skipped, probe key p${n} missing in the index`);
+          probes.push(
+            raw
+              .split(';')
+              .map((w) => w.trim())
+              .filter(Boolean),
           );
-          let hit = 0;
-          const got = [];
-          for (const w of words) {
+        }
+        await openScan(id, file);
+        await waitOffer();
+        const t0 = Date.now();
+        await openDialog();
+        const scopes = await ev(
+          `[...document.querySelectorAll('[data-surface="ocr-dialog"] [data-ocr="scope"] label')].map((l) => l.textContent.replace(/\s+/g, ' ').trim())`,
+        );
+        const pick = scopes.find((x) => /^Alle Seiten/.test(x)) ?? scopes.find((x) => /^Gescannte Seiten/.test(x));
+        if (pick) await input.click({ selector: '[data-ocr="scope"] label', text: pick.split(' (')[0] });
+        const info = await dialogInfo();
+        const scanCount = Number(
+          /^Gescannte Seiten \((\d+)\)/.exec(scopes.find((x) => /^Gescannte/.test(x)) ?? '')?.[1] ?? NaN,
+        );
+        await startRun();
+        const run = await finishRun(900000);
+        const ms = Date.now() - t0;
+        C(
+          `${id}: run finished`,
+          run.toasts.some((t) => /erkannt|Gestoppt/.test(t)),
+          '',
+        );
+        C(`${id}: every page is a scan (>= 6 scanned pages)`, scanCount >= 6, `scanned pages: ${scanCount}`);
+        console.log(
+          `${id}: run ${Math.round(ms / 1000)} s${scanCount > 0 ? `, ${Math.round(ms / scanCount / 1000)} s per page` : ''}`,
+        );
+        // Search per word; the hit rows carry "Seite N, ..." in their aria-label (rows are virtualized, the visible ones are read).
+        const pagesOf = () =>
+          ev(
+            `[...document.querySelectorAll('[data-search-list] [data-hit]')].map((e) => /^Seite (\d+),/.exec(e.getAttribute('aria-label') ?? '')?.[1]).filter(Boolean).map(Number)`,
+          );
+        const dump = [`run ${ms} ms, scope ${info?.scope}`];
+        let total = 0;
+        let count = 0;
+        for (let n = 1; n <= 6; n++) {
+          let k = 0;
+          const lines = [];
+          for (const w of probes[n - 1]) {
             const f = await find(w);
-            if (f) hit++;
-            got.push(`${f ? 'FOUND ' : 'MISS  '}${w}`);
+            let ok = false;
+            let pages = [];
+            if (f) {
+              await sleep(400);
+              pages = [...new Set(await pagesOf())];
+              ok = pages.includes(n);
+            }
+            if (ok) k++;
+            lines.push(`${ok ? 'FOUND ' : 'MISS  '}${w} (hit pages: ${pages.join(',') || '-'})`);
           }
-          mkdirSync(resolve(ROOT, 'review/v170'), { recursive: true });
-          writeFileSync(resolve(ROOT, `review/v170/${id}-words.txt`), `${got.join('\n')}\n=====\n${layerText}\n`);
-          C(
-            `${id}: run finished`,
-            run.toasts.some((t) => /erkannt|Gestoppt/.test(t)),
-            '',
-          );
-          C(`${id}: >= 5 of 6 probe words found`, words.length >= 6 && hit >= 5, `${hit}/${words.length}`);
-          await shot(`${SHOTS}/owner-${id}`);
-        });
-      }
+          total += k;
+          count += probes[n - 1].length;
+          dump.push(`--- p${n}: ${k}/${probes[n - 1].length}`, ...lines);
+          C(`${id}/p${n}: ${k}/${probes[n - 1].length}`, k >= 4, '');
+        }
+        console.log(`${id}: total ${total}/${count}`);
+        const layers = await ev(
+          `[...document.querySelectorAll('[data-text-page]')].map((l) => 'page-id ' + l.getAttribute('data-text-page') + ': ' + [...l.querySelectorAll('[data-run-start]')].map((s) => s.textContent).join(' ')).join(String.fromCharCode(10))`,
+        );
+        mkdirSync(resolve(ROOT, 'review/v180'), { recursive: true });
+        writeFileSync(resolve(ROOT, 'review/v180/owner-scan-S7-words.txt'), `${dump.join('\n')}\n=====\n${layers}\n`);
+        await shot(`${SHOTS}/owner-${id}`);
+      });
     }
 
     // ---- English UI, English scan (ADR-137 item 1b) -----------------------------------------------------------------------------
