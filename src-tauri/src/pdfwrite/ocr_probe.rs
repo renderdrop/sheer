@@ -247,21 +247,17 @@ impl ProbeDoc {
         self.walk(&bytes, xobjects, mul(matrix, ctm), depth + 1, acc);
     }
 
-    /// The form's `/Matrix` (identity when missing or malformed); `None` when a value is not finite.
+    /// The form's `/Matrix` (identity when missing); `None` when it is malformed (not six numbers) or a value is not finite.
     fn form_matrix(doc: &Document, form: &Stream) -> Option<Matrix> {
-        let matrix = form
-            .dict
-            .get(b"Matrix")
-            .ok()
-            .and_then(|o| doc.dereference(o).ok())
-            .and_then(|(_, o)| o.as_array().ok())
-            .map(|a| {
-                a.iter()
-                    .filter_map(|o| doc.dereference(o).ok().and_then(|(_, o)| o.as_float().ok()))
-                    .collect::<Vec<f32>>()
-            })
-            .and_then(|v| <[f32; 6]>::try_from(v).ok())
-            .unwrap_or([1.0, 0.0, 0.0, 1.0, 0.0, 0.0]);
+        let Ok(raw) = form.dict.get(b"Matrix") else {
+            return Some([1.0, 0.0, 0.0, 1.0, 0.0, 0.0]);
+        };
+        let array = doc.dereference(raw).ok()?.1.as_array().ok()?;
+        let values = array
+            .iter()
+            .map(|o| doc.dereference(o).ok().and_then(|(_, o)| o.as_float().ok()))
+            .collect::<Option<Vec<f32>>>()?;
+        let matrix = <[f32; 6]>::try_from(values).ok()?;
         matrix.iter().all(|v| v.is_finite()).then_some(matrix)
     }
 }
@@ -562,13 +558,14 @@ mod tests {
         let row = |a: f32| vec![a.into(), 0.into(), 0.into(), 1.into(), 0.into(), 0.into()];
         assert!(ProbeDoc::form_matrix(&doc, &form(row(2.0))).is_some());
         for bad in [f32::NAN, f32::INFINITY, f32::NEG_INFINITY] {
-            let bad_row = row(bad).into_iter().map(|o| match o {
-                Object::Real(v) => Object::Real(v),
-                other => other,
-            });
-            assert!(ProbeDoc::form_matrix(&doc, &form(bad_row.collect())).is_none());
+            assert!(ProbeDoc::form_matrix(&doc, &form(row(bad))).is_none());
         }
-        // Missing or malformed: the identity.
+        // Malformed (too few numbers, a non-number): refused like a non-finite one.
+        assert!(ProbeDoc::form_matrix(&doc, &form(row(1.0)[..5].to_vec())).is_none());
+        let mut named = row(1.0);
+        named[4] = Object::Name(b"X".to_vec());
+        assert!(ProbeDoc::form_matrix(&doc, &form(named)).is_none());
+        // Missing: the identity.
         let none = Stream::new(dictionary! { "Subtype" => "Form" }, Vec::new());
         assert_eq!(
             ProbeDoc::form_matrix(&doc, &none),
