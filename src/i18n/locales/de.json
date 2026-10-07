@@ -553,7 +553,7 @@
   "tip.text": "Klicken und tippen. Das Feld wächst mit; Umschalt+Enter fügt eine Zeile ein.",
   "tip.draw": "Kreise, Rechtecke, Linien und Pfeile werden beim Loslassen begradigt. Strg+Z holt den Strich zurück.",
   "tip.shapes": "Umschalt hält die Proportionen. Weitere Formen im Pfeilmenü.",
-  "tip.sign": "Dort klicken, wo sie hingehört, und an einer Ecke die Größe ändern. Gespeicherte Signaturen bleiben verschlüsselt auf diesem Gerät.",
+  "tip.sign": "Klicken, wo sie hinsoll; an einer Ecke ziehen ändert die Größe. Signaturen bleiben verschlüsselt auf diesem Gerät.",
   "tip.pages": "Seite ziehen, um sie zu verschieben. Umschalt oder {mod} wählt mehrere Seiten.",
   "tip.highlight.title": "Text hervorheben",
   "tip.highlight.clip": "Animation: Der Zeiger zieht über einen Satz, der Satz wird hervorgehoben.",

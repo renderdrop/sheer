@@ -1,6 +1,6 @@
 import { useEffect, useId, useLayoutEffect, useState, type ReactNode } from 'react';
 
-import { Button, Field, Popover, Toggle } from '../../components';
+import { Button, Field, Popover, Toggle, Tooltip } from '../../components';
 import { AUTHOR_NAME_MAX, isAuthorName } from '../../api/app';
 import { APP_NAME } from '../../config/app';
 import { errorText, useT, type Language, type PlainKey } from '../../i18n';
@@ -110,24 +110,26 @@ function HelpRow() {
               onCheckedChange={(checked) => void update({ tipsEnabled: checked })}
               aria-labelledby={switchId}
             />
-            <span id={switchId} className="t-body text-text">
+            <span id={switchId} className="t-body text-text" onClick={() => void update({ tipsEnabled: !tipsOn })}>
               {t('settings.tips.enabled')}
             </span>
           </div>
-          <Button
-            variant="ghost"
-            size="sm"
-            aria-describedby={labelId}
-            disabled={empty}
-            focusableWhenDisabled
-            onClick={() => {
-              if (empty) return;
-              setDone(true);
-              void resetTips();
-            }}
-          >
-            {t('settings.tips.reset')}
-          </Button>
+          <Tooltip label={t('settings.tips.reset')} note={t('settings.tips.offHint')} side="right" disabled={tipsOn}>
+            <Button
+              variant="ghost"
+              size="sm"
+              aria-describedby={labelId}
+              disabled={empty}
+              focusableWhenDisabled
+              onClick={() => {
+                if (empty) return;
+                setDone(true);
+                void resetTips();
+              }}
+            >
+              {t('settings.tips.reset')}
+            </Button>
+          </Tooltip>
         </div>
       )}
     </Setting>

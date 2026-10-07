@@ -6,7 +6,7 @@ import { openWelcomeDocument, type DocumentInfo } from '../../api/documents';
 import { EMPTY_HISTORY, useAnnotations } from '../../stores/annotations';
 import { useDocuments } from '../../stores/documents';
 import { useView } from '../../stores/view';
-import { setup } from '../../test/render';
+import { openTooltip, setup } from '../../test/render';
 import { useSettings } from '../../stores/settings';
 import { useTour } from '../tour/store';
 import { SettingsPopover } from './SettingsPopover';
@@ -145,6 +145,26 @@ describe('the Show tips switch (DESIGN 3.13 C5)', () => {
     expect(toggle.getAttribute('aria-checked')).toBe('true');
     await user.click(toggle);
     expect(update).toHaveBeenCalledWith({ tipsEnabled: false });
+  });
+
+  it('clicking the label toggles the switch', async () => {
+    const update = vi.fn(() => Promise.resolve());
+    useSettings.setState({ ...settingsInitial, update, tipsSeen: ['draw'] }, true);
+    const { user } = setup(<Fixture />);
+    act(() => openSettings());
+    await user.click(screen.getByText('Show tips'));
+    expect(update).toHaveBeenCalledWith({ tipsEnabled: false });
+  });
+
+  it('off: hovering "Show tips again" shows the off hint as tooltip', async () => {
+    useSettings.setState(
+      { ...settingsInitial, update: vi.fn(() => Promise.resolve()), tipsSeen: ['draw'], tipsEnabled: false },
+      true,
+    );
+    const { user } = setup(<Fixture />);
+    act(() => openSettings());
+    await user.hover(screen.getByRole('button', { name: 'Show tips again' }));
+    await waitFor(() => expect(openTooltip()?.textContent).toContain('Tips are off'));
   });
 
   it('off: "Show tips again" is aria-disabled and the hint says why; the tour button still works', async () => {

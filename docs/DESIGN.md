@@ -1156,7 +1156,7 @@ No "Don't show tips" link: four clip tips, each once, plus Hide is enough; the s
 | `tip.form` | Click a field and type. Tab moves to the next field. | Feld anklicken und tippen. Tab springt zum nächsten Feld. |
 | `tip.form.clip` | Animation: a name is typed into a field, then Tab moves to the next field. | Animation: Ein Name wird in ein Feld getippt, Tab springt ins nächste Feld. |
 | `tip.sign.title` | Place your signature | Signatur platzieren |
-| `tip.sign` | Click where it belongs and drag a corner to resize. Saved signatures stay encrypted on this device. | Dort klicken, wo sie hingehört, und an einer Ecke die Größe ändern. Gespeicherte Signaturen bleiben verschlüsselt auf diesem Gerät. |
+| `tip.sign` | Click where it belongs and drag a corner to resize. Saved signatures stay encrypted on this device. | Klicken, wo sie hinsoll; an einer Ecke ziehen ändert die Größe. Signaturen bleiben verschlüsselt auf diesem Gerät. |
 | `tip.sign.clip` | Animation: a signature is placed in a frame and made larger. | Animation: Eine Signatur wird in einen Rahmen gesetzt und vergrößert. |
 | `tip.pages.title` | Reorder pages | Seiten ordnen |
 | `tip.pages` | Drag a page to move it. Shift or {mod} selects several pages. | Seite ziehen, um sie zu verschieben. Umschalt oder {mod} wählt mehrere Seiten. |
