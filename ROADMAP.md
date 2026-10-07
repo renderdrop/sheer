@@ -372,7 +372,7 @@ new engine capability or dependency is needed. Not picked by the loop before v1.
   - (B2 review) form /Matrix finiteness not checked in ocr_probe enter_form (final CTM is); one cover() may decompress up to 256 MB; trailing hyphen written as U+2010 (search "Bei-" misses; trade-off); PDFium line test passes silently without the library
 - [x] v1.7 part 1 acceptance — acceptance build (rule 15), security-reviewer, designer round, pre-release v1.7.0-beta.1 (v17-ocr 30/30 incl. owner-pdf-F2; security pass 2 FAIL → fixed ff464f7; tester green; designer PASS; gate 1208/1208; annot smoke 17/17; real-input smoke PASS)
 - [x] v1.7 part 2 — macOS Swift sidecar sheer-ocr (Apple Vision), CI-built and CI-tested only; human Mac check pending (B-001) (b3e05e5, tests b9b0d63; macOS CI: swift test 15/15, Vision round trip)
-- [ ] v1.7 acceptance — security-reviewer, tag v1.7.0
+- [x] v1.7 acceptance — security-reviewer, tag v1.7.0 (security PASS 4 low; designer PASS; v17-ocr 50/54 + 42/42; CI #125 green)
 
 ### v1.8 "Context help" (ADR-135 §4: on by default, one tip per situation, switch in Settings)
 - [ ] v1.8 spec — designer spec (tip slots, clip format, frequency rules)
