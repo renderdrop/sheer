@@ -252,6 +252,7 @@ describe('the settings popover', () => {
     expect(await tab()).toBe(within(popover()).getByRole('switch', { name: /Smart links/ }));
     expect(await tab()).toBe(within(popover()).getByRole('switch', { name: 'Updates' }));
     expect(await tab()).toBe(within(popover()).getByRole('button', { name: 'Start tour' }));
+    expect(await tab()).toBe(within(popover()).getByRole('switch', { name: 'Show tips' }));
     expect(await tab()).toBe(within(popover()).getByRole('button', { name: 'Show tips again' }));
     expect(await tab()).toBe(within(popover()).getByRole('button', { name: 'About sheer.' }));
     expect(await tab()).toBe(choose('Language', 'English'));

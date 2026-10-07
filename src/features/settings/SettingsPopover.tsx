@@ -90,15 +90,30 @@ function HelpRow() {
   const t = useT();
   const running = useTour((state) => state.docId !== null);
   const seen = useSettings((state) => state.tipsSeen?.length ?? 0);
+  const tipsOn = useSettings((state) => state.tipsEnabled !== false);
+  const update = useSettings((state) => state.update);
   const [done, setDone] = useState(false);
-  const empty = seen === 0;
+  const switchId = useId();
+  // Nothing to bring back while no tip was seen or while tips are off (DESIGN 3.13 C5).
+  const empty = seen === 0 || !tipsOn;
+  const hint = !tipsOn ? t('settings.tips.offHint') : done ? t('settings.tips.resetDone') : t('settings.tour.hint');
   return (
-    <Setting label={t('settings.tour')} hint={done ? t('settings.tips.resetDone') : t('settings.tour.hint')} live>
+    <Setting label={t('settings.tour')} hint={hint} live>
       {(labelId) => (
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-col items-start gap-2">
           <Button variant="secondary" size="sm" aria-describedby={labelId} onClick={() => void restartTour()}>
             {running ? t('settings.tour.restart') : t('settings.tour.start')}
           </Button>
+          <div className="flex h-9 items-center gap-2">
+            <Toggle
+              checked={tipsOn}
+              onCheckedChange={(checked) => void update({ tipsEnabled: checked })}
+              aria-labelledby={switchId}
+            />
+            <span id={switchId} className="t-body text-text">
+              {t('settings.tips.enabled')}
+            </span>
+          </div>
           <Button
             variant="ghost"
             size="sm"

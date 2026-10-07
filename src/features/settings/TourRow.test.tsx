@@ -131,3 +131,33 @@ describe('the Show tips again button', () => {
     expect(screen.getByText('Tips will show again.').getAttribute('aria-live')).toBe('polite');
   });
 });
+
+describe('the Show tips switch (DESIGN 3.13 C5)', () => {
+  const settingsInitial = useSettings.getState();
+  afterEach(() => useSettings.setState({ ...settingsInitial }, true));
+
+  it('is on by default, named by its label, and writes tipsEnabled', async () => {
+    const update = vi.fn(() => Promise.resolve());
+    useSettings.setState({ ...settingsInitial, update, tipsSeen: ['draw'] }, true);
+    const { user } = setup(<Fixture />);
+    act(() => openSettings());
+    const toggle = screen.getByRole('switch', { name: 'Show tips' });
+    expect(toggle.getAttribute('aria-checked')).toBe('true');
+    await user.click(toggle);
+    expect(update).toHaveBeenCalledWith({ tipsEnabled: false });
+  });
+
+  it('off: "Show tips again" is aria-disabled and the hint says why; the tour button still works', async () => {
+    const update = vi.fn(() => Promise.resolve());
+    useSettings.setState({ ...settingsInitial, update, tipsSeen: ['draw'], tipsEnabled: false }, true);
+    const { user } = setup(<Fixture />);
+    act(() => openSettings());
+    expect(screen.getByRole('switch', { name: 'Show tips' }).getAttribute('aria-checked')).toBe('false');
+    const button = screen.getByRole('button', { name: 'Show tips again' });
+    expect(button.getAttribute('aria-disabled')).toBe('true');
+    await user.click(button);
+    expect(update).not.toHaveBeenCalled();
+    expect(screen.getByText('Tips are off. The tour still works.').getAttribute('aria-live')).toBe('polite');
+    expect(screen.getByRole('button', { name: /tour/i }).getAttribute('aria-disabled')).not.toBe('true');
+  });
+});

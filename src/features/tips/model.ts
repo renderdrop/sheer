@@ -11,6 +11,7 @@ export const TIP_IDS = [
   'shapes',
   'sign',
   'pages',
+  'form',
   'insertText',
   'crop',
   'redact',
@@ -18,6 +19,14 @@ export const TIP_IDS = [
   'smartlinks',
 ] as const;
 export type TipId = (typeof TIP_IDS)[number];
+
+/** The four situations that show a clip with the text (DESIGN 3.13 C1); every other tip is text only. */
+export const CLIP_TIPS = ['highlight', 'form', 'sign', 'pages'] as const satisfies readonly TipId[];
+export type ClipTipId = (typeof CLIP_TIPS)[number];
+
+export function isClipTip(id: TipId): id is ClipTipId {
+  return (CLIP_TIPS as readonly string[]).includes(id);
+}
 
 /** At most this many tips show in one session (DESIGN 3.6); "Show tips again" does not lift it. */
 export const MAX_TIPS_PER_SESSION = 3;
@@ -86,12 +95,15 @@ export interface TipContext {
   tipVisible: boolean;
   /** Tips shown so far in this session. */
   shownCount?: number;
+  /** The `tipsEnabled` setting (DESIGN 3.13 C5); missing means on. */
+  enabled?: boolean;
 }
 
 /** Whether the tip may show now: unseen, no tour, nothing else visible (DESIGN 3.47 Trigger). */
 export function mayShow(id: TipId, context: TipContext): boolean {
   return (
     context.loaded &&
+    context.enabled !== false &&
     !context.tourRunning &&
     !context.tipVisible &&
     (context.shownCount ?? 0) < MAX_TIPS_PER_SESSION &&

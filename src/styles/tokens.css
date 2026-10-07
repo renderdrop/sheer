@@ -143,6 +143,9 @@
   /* Inspector swatches and the note popover: size-swatch, w-note. */
   --spacing-swatch: var(--swatch-size);
   --spacing-note: var(--note-width);
+  --spacing-tip-card-clip: var(--tip-card-clip-width);
+  --spacing-tip-clip-w: var(--tip-clip-width);
+  --spacing-tip-clip-h: var(--tip-clip-height);
   --spacing-popover-min: var(--popover-min);
   --spacing-popover-max: var(--popover-max);
   --spacing-tooltip-max: var(--tooltip-max);
@@ -400,6 +403,9 @@
   --swatch-size: 24px;
   --note-icon: 24px;
   --note-width: 280px;
+  --tip-card-clip-width: 344px; /* the clip tip card (DESIGN 3.13 C3): the clip plus 2 x 12 padding */
+  --tip-clip-width: 320px; /* the clip box, 16:10 */
+  --tip-clip-height: 200px;
   --popover-min: 200px;
   --popover-max: 320px;
   --tooltip-max: 240px;
