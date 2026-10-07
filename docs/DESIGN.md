@@ -1091,6 +1091,98 @@ O-AC 14. Save and reopen: pages look pixel-identical, search still hits, the off
 O-AC 15. Keyboard only: banner action → arrows → Enter starts; Esc in the dialog cancels; focus returns to the invoker.
 O-AC 16. Reduced motion: only fades; the O8 gate passes for every registered surface; nothing overlaps.
 
+### 3.13 v1.8 Context help (ADR-138)
+
+A delta on §3.6 Tips (v1.1 §3.47 rules stay) and §3.9 Q8. Four situations get a **clip tip** (text + 3 s APNG); every other tip stays text-only and unchanged (`note`, `text`, `draw`, `shapes`, `cite`, `insertText`, `crop`, `redact`, `editText`, `smartlinks`). Light only, tokens only, no new grid track, mode or panel; the tip is a floating notice (Q8 queue, priority 4). Surface `data-surface="tip"`, `data-tip-id`.
+
+**C1 Situations.**
+
+| Id | Trigger | Anchor (Q8, side bottom) | Goes when |
+|---|---|---|---|
+| `highlight` | Highlight (or Underline/Strikethrough) becomes the active tool (as built) | pressed tool item, else ⋯ (as built) | tool released |
+| `form` (new) | A document with ≥ 1 fillable AcroForm field (not read-only; XFA-only excluded) becomes the **active tab** (open or tab switch), after its first page renders, mode ≠ Seiten | the form banner's "first field" link (`[data-banner="form"] button`), align start; banner absent (dismissed or lost the slot) → Fill & Sign segment `[data-tour-anchor="mode-fill"]`, centred | tab change, Seiten entered, first field value committed, dismiss |
+| `sign` | Signature tool armed for placing (as built; while the signature sheet is open the tip waits, dialog rule) | `signature` tool item | tool released |
+| `pages` | Entering Seiten (its idle tool `pages` turns active, as built) | `organize` item (as built) | mode left |
+
+*Form on open, not on first field focus:* tips wait while an input has focus (Q8, 2 s), so a focus trigger would arrive after the user found the fields. Ids `highlight`, `sign`, `pages` are kept: users who saw the v1.7 text tip see the clip only after "Show tips again" (accepted).
+
+**C2 Placement.** Candidates in order: (1) anchor side per Q8 (flip, shift, collision test; gap 8; clamped inside the canvas scroller, inset 8); (2) dock bottom-end of the canvas, inset 16 (§3.6); (3) the **text-only card** (§3.6, 280) at (1) then (2); (4) wait in the queue. Protected rects (Q8): all inputs including form fields on the page, the anchor, the selection with handles, the mini bar, toolbar items. Re-placed on resize, mini bar appearance and banner change.
+
+**C3 Anatomy.** Card White, `--border-subtle`, `--radius-lg`, `--shadow-floating`, width **`--tip-card-clip-width` 344** (max: canvas − 16), padding 12, column:
+1. **Clip** `--tip-clip-width` 320 × `--tip-clip-height` 200 (16:10), `--radius-md`, 1px `--border-subtle`, Sand background; `<img>` `object-fit: cover`, `alt` = `tip.{id}.clip`. Fixed box: never resizes.
+2. **Header row 28**, 8 below: `lightbulb` 16 Ink, gap 8, title `.t-label` Ink 500 (one line; flexes); right, gap 4: icon button 28 `rotate-ccw` (`tip.replay`), icon button 28 `x` (`tip.dismiss`).
+3. **Body** `.t-body` Ink, 4 below, ≤ 2 short sentences, max 3 lines at 320 in de (texts written to fit). Height ≤ 324.
+
+No "Don't show tips" link: four clip tips, each once, plus Hide is enough; the switch lives in Settings (C5). No arrow, no timeout.
+
+**Clip asset.** `src/assets/tips/{id}.png` (an APNG; the `.png` extension keeps the bundler and the asset protocol on `image/png`) + `{id}-poster.png` (the last frame), 640 × 400 px (2×), ≤ 12 fps, 3.0 s, **`num_plays` 1** (stays on the last frame; ≤ 5 s so no pause control is needed, WCAG 2.2.2), ≤ 600 KB; poster ≤ 120 KB.
+
+**States.**
+- *Loading:* the card enters after `img.decode()` resolves or 400 ms pass; then the fixed box shows Sand and the image fades in `--motion-fast` (no layout shift).
+- *Playing:* starts when the enter motion ends; Replay (always enabled) restarts it (re-keyed `src`). *Ended:* last frame stays.
+- *Error* (missing or undecodable before showing): text-only card (§3.6), same body, no title. After showing: swap to the poster.
+- *Reduced motion:* poster, no autoplay, no Replay; card fades `--motion-fast`.
+
+**Keyboard and screen reader.** Never takes focus on show. `role="region"` `aria-labelledby` the title; the anchor's `aria-describedby` = body; title + body announced once politely (`tip.announce`, as built). Tab order: Replay, Hide; Esc dismisses, focus to the canvas (as built). The img carries `alt`, not a Tab stop.
+
+**Motion.** As §3.6 (opacity + `--scale-enter`, `--motion-slow`; exit `--motion-slow-exit`).
+
+**C4 Frequency.**
+- Once ever per situation: the id is written to `tipsSeen` before showing (as built); "Show tips again" clears it.
+- At most once per situation per session (runtime session set, as built), even after "Show tips again".
+- Clip tips count toward the 3-per-session cap; a tip blocked by the cap is **not** marked seen and shows in a later session.
+- Never during a running or paused tour or with a coach mark, menu, dialog or popover open; one notice at a time (Q8); an overlay opening later dismisses it (all as built). A queued tip whose context is gone (C1) is dropped unseen.
+- `tipsEnabled` false (C5) blocks everything before any write.
+
+**C5 Setting `tipsEnabled`** (settings store, boolean, default true; unknown/missing → true). Group "Tour & tips" (§3.6 group 5), rows gap 8: (1) Secondary "Restart tour"/"Start tour" (as built); (2) **Toggle** (§4, 36 × 20) + 8 + label `.t-body` `settings.tips.enabled`, row 36, label is the toggle's accessible name (`role="switch"`, `aria-checked`); (3) Ghost "Show tips again"; hint `.t-caption` below (live).
+- *Off:* no tip of any kind shows or queues; a visible tip leaves at once; `tipsSeen` is not written. Tour, coach marks, banners, toasts and the edit-text fallback notice are unaffected. "Show tips again" disabled (0.4, `aria-disabled`, tooltip and hint `settings.tips.offHint`).
+- *On again:* remaining unseen tips resume. Still six groups (§3.6 test unchanged).
+
+**C6 Storyboards.** Script `scripts/ui/accept/v18-clips.mjs`, acceptance build 1280 × 800, light, en, `tipsEnabled` off, no tour, sidebar closed, zoom 100 %. CDP `Page.captureScreenshot` with `clip` = region (CSS px, from the named element's rect) and `scale` giving 640 × 400; 12 fps into `scripts/ui/apng.mjs`. The webview has no OS pointer: the recorder composites a self-drawn pointer (`mouse-pointer-2` 20, Ink, White outline) at the CDP input position, a 24 Stone ring for 150 ms per press, and a §4 kbd chip bottom-right for 0.5 s per key. Self-made documents only (rule 16). Times in s.
+
+1. **highlight**: welcome document p. 1, Comment, Highlight on; region 320 × 200 (scale 2) on the tour's highlight sentence. 0–0.4 pointer at sentence start (start frame: plain text); 0.4–1.8 drag to its end; 1.8–2.2 release, highlight appears; 2.2–3.0 pointer moves 40 off and rests. End: highlighted sentence.
+2. **form**: new generated fixture `tests/fixtures/form-clip.pdf` (text fields "Name", "City", one checkbox), Lesen; region 320 × 200 (scale 2) over both fields. 0–0.5 click "Name"; 0.5–1.4 type "Alex Example"; 1.4–1.7 Tab; 1.7–2.5 type "Berlin"; 2.5–3.0 hold. End: both filled.
+3. **sign**: welcome document, signature-frame page, Fill & Sign, typed signature "A. Example" saved beforehand, tool armed; region 480 × 300 (scale 4/3) around the frame. 0–0.3 ghost left of the frame; 0.3–1.2 move in; 1.2 click places; 1.3–2.3 drag bottom-right handle 32 out; 2.3–2.6 click empty area; 2.6–3.0 hold. End: signature, no handles.
+4. **pages**: welcome document, Seiten, ≥ 4 cards; region 480 × 300 (scale 4/3) over cards 1–3. 0–0.4 pointer on card 3; 0.4–1.8 drag before card 1 (indicator); 1.8–2.2 drop, reflow; 2.2–3.0 hold; Undo after recording. End: order 3, 1, 2.
+
+**C7 Strings** (`{mod}` as built).
+
+| Key | en | de |
+|---|---|---|
+| `tip.highlight.title` | Highlight text | Text hervorheben |
+| `tip.highlight` | unchanged (§3.6) | unchanged |
+| `tip.highlight.clip` | Animation: the pointer drags across a sentence and it turns highlighted. | Animation: Der Zeiger zieht über einen Satz, der Satz wird hervorgehoben. |
+| `tip.form.title` | This document is a form | Dieses Dokument ist ein Formular |
+| `tip.form` | Click a field and type. Tab moves to the next field. | Feld anklicken und tippen. Tab springt zum nächsten Feld. |
+| `tip.form.clip` | Animation: a name is typed into a field, then Tab moves to the next field. | Animation: Ein Name wird in ein Feld getippt, Tab springt ins nächste Feld. |
+| `tip.sign.title` | Place your signature | Signatur platzieren |
+| `tip.sign` | Click where it belongs and drag a corner to resize. Saved signatures stay encrypted on this device. | Dort klicken, wo sie hingehört, und an einer Ecke die Größe ändern. Gespeicherte Signaturen bleiben verschlüsselt auf diesem Gerät. |
+| `tip.sign.clip` | Animation: a signature is placed in a frame and made larger. | Animation: Eine Signatur wird in einen Rahmen gesetzt und vergrößert. |
+| `tip.pages.title` | Reorder pages | Seiten ordnen |
+| `tip.pages` | Drag a page to move it. Shift or {mod} selects several pages. | Seite ziehen, um sie zu verschieben. Umschalt oder {mod} wählt mehrere Seiten. |
+| `tip.pages.clip` | Animation: the third page is dragged in front of the first. | Animation: Die dritte Seite wird vor die erste gezogen. |
+| `tip.replay` | Play again | Erneut abspielen |
+| `settings.tips.enabled` | Show tips | Tipps anzeigen |
+| `settings.tips.offHint` | Tips are off. The tour still works. | Tipps sind aus. Die Tour funktioniert weiterhin. |
+
+Tokens added: `--tip-card-clip-width` 344, `--tip-clip-width` 320, `--tip-clip-height` 200.
+
+**C8 Surface gate (Q9, 960 × 640 and 1280 × 800, en and de, light).** Registered: `tip` for each of the four ids (playing, ended), loading box, error → text-only, reduced motion; text-only fallback via C2 (3); Settings panel with `tipsEnabled` on and off. At 960 × 640 each clip tip must place with its clip in the C6 setup (form via the dock, C2 (2)).
+
+**Acceptance (acceptance build, CDP; self-made documents only).**
+CT-AC 1. Fresh profile: Highlight shows the clip tip below the tool; it plays once, stops on the last frame; Replay replays.
+CT-AC 2. Opening or switching to `form-clip.pdf` shows the form tip (banner link or docked), never over a field; committing a field value removes it; a document without fields never triggers it.
+CT-AC 3. The sign tip shows only after the signature sheet closes; entering Seiten shows the pages tip, leaving removes it.
+CT-AC 4. Once each: retrigger or restart shows nothing; after "Show tips again" it shows in the next session, never twice in one.
+CT-AC 5. After three tips in a session a fourth situation shows nothing and is still unseen next session.
+CT-AC 6. No tip during a running or paused tour or with a menu, dialog or popover open; one notice at a time.
+CT-AC 7. `tipsEnabled` off: no tip of any kind, `tipsSeen` unchanged, "Show tips again" disabled with the hint, tour works. On again: unseen tips resume.
+CT-AC 8. Missing clip (test build): text-only card; card rect constant from first paint.
+CT-AC 9. Reduced motion: poster, no Replay, fade only.
+CT-AC 10. Screen reader: region named by the title, body announced once, anchor described, `alt` read; focus never moves on show; Tab: Replay, Hide; Esc dismisses.
+CT-AC 11. Each clip 640 × 400, ≤ 3.0 s, ≤ 12 fps, `num_plays` 1, ≤ 600 KB, from the bundle.
+CT-AC 12. The C8 gate passes; no tip intersects an input, its anchor, the selection or the mini bar.
+
 ## 4. Components (R4)
 
 States apply to all: hover ≤ background/border/icon colour change; pressed scale 0.98 at most; focus = `--ring-focus` (keyboard only); disabled = `--opacity-disabled`, no pointer events, tooltip still explains why.
