@@ -4,6 +4,7 @@
 use std::io::{Read, Write};
 
 use serde::{Deserialize, Serialize};
+use unicode_normalization::UnicodeNormalization;
 
 use super::limits;
 use super::{OcrLine, OcrPageLayer, OcrWord};
@@ -172,6 +173,12 @@ pub fn read_reply(input: &mut impl Read) -> Result<OcrReply, WireError> {
     serde_json::from_slice(&json).map_err(|_| WireError::Header)
 }
 
+/// Format characters that show nothing and change how text behaves (zero-width marks, bidi overrides, the byte order mark, the
+/// soft hyphen).
+fn is_invisible_format(c: char) -> bool {
+    matches!(c as u32, 0xAD | 0x200B..=0x200F | 0x202A..=0x202E | 0x2060..=0x2069 | 0xFEFF)
+}
+
 /// Turns an untrusted reply for a `w` x `h` bitmap into a page layer in pixels (the caller scales to points): at most
 /// `MAX_WORDS` words, `MAX_WORD_CHARS` characters each, controls stripped, boxes clamped to the image, non-finite numbers refused,
 /// words that are empty after cleaning dropped.
@@ -183,7 +190,7 @@ pub fn sanitize(reply: &OcrReply, w: u32, h: u32) -> Result<OcrPageLayer, WireEr
     if words > limits::MAX_WORDS {
         return Err(WireError::Invalid("word count"));
     }
-    if !reply.angle.is_finite() {
+    if !reply.angle.is_finite() || reply.angle.abs() > 360.0 {
         return Err(WireError::Invalid("angle"));
     }
     let (wf, hf) = (w as f32, h as f32);
@@ -203,7 +210,8 @@ pub fn sanitize(reply: &OcrReply, w: u32, h: u32) -> Result<OcrPageLayer, WireEr
             let text: String = word
                 .t
                 .chars()
-                .filter(|c| !c.is_control() && !c.is_whitespace())
+                .filter(|c| !c.is_control() && !c.is_whitespace() && !is_invisible_format(*c))
+                .nfc() // "u" + combining diaeresis becomes the one code point the font maps
                 .collect();
             let x0 = word.x.clamp(0.0, wf);
             let y0 = word.y.clamp(0.0, hf);
@@ -352,6 +360,20 @@ mod tests {
         assert_eq!(words[0].text, "Hallo");
         assert_eq!(words[0].rect, [0.0, 10.0, 45.0, 22.0]);
         assert_eq!(words[1].rect, [90.0, 90.0, 100.0, 100.0]);
+    }
+
+    #[test]
+    fn reply_text_is_nfc_and_free_of_invisible_format_characters() {
+        let reply = OcrReply {
+            id: 1,
+            ok: true,
+            lines: vec![RawLine {
+                words: vec![word("Mu\u{308}ller\u{200B}\u{202E}", 0.0, 0.0, 9.0, 9.0)],
+            }],
+            ..OcrReply::default()
+        };
+        let page = sanitize(&reply, 10, 10).unwrap();
+        assert_eq!(page.lines[0].words[0].text, "M\u{FC}ller");
     }
 
     #[test]

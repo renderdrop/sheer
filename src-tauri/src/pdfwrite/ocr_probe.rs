@@ -10,6 +10,9 @@ use crate::error::{AppError, ErrorCode};
 
 /// The most decompressed bytes of a page's content the probe reads.
 const MAX_CONTENT: usize = 256 * 1024 * 1024;
+/// How deep Form XObjects are followed, and how many forms one page may enter (a form can draw itself many times).
+const MAX_FORM_DEPTH: u32 = 4;
+const MAX_FORMS: u32 = 256;
 
 /// How much of a page's box image XObjects cover, and the effective resolution of the largest one.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -59,8 +62,9 @@ impl ProbeDoc {
         Some(page_geom(&self.doc, id))
     }
 
-    /// Image XObjects under the page's CTM (bounding boxes, summed, clipped to the box). Form XObjects and inline images are not
-    /// followed: a scan wrapped in a form reads as no cover (phase 2 does this in the engine's probe).
+    /// Image XObjects under the page's CTM (bounding boxes, summed, clipped to the box), also those inside Form XObjects (a scan that a
+    /// scanner or a PDF printer wraps in a form), followed to a depth of [`MAX_FORM_DEPTH`] with a bounded number of forms and
+    /// decompressed bytes. Inline images are not followed.
     pub fn cover(&self, index: u32) -> ImageCover {
         let none = ImageCover {
             fraction: 0.0,
@@ -77,9 +81,6 @@ impl ProbeDoc {
         };
         let doc = &self.doc;
         let Ok(bytes) = doc.get_page_content_with_limit(page, MAX_CONTENT) else {
-            return none;
-        };
-        let Ok(content) = lopdf::content::Content::decode(&bytes) else {
             return none;
         };
         let Ok((resources, ids)) = doc.get_page_resources(page) else {
@@ -100,11 +101,48 @@ impl ProbeDoc {
         let Some(xobjects) = xobjects else {
             return none;
         };
-        let mut ctm: Matrix = [1.0, 0.0, 0.0, 1.0, 0.0, 0.0];
-        let mut stack: Vec<Matrix> = Vec::new();
         let crop = geom.crop;
+        let mut acc = Cover {
+            crop,
+            covered: 0.0,
+            best_dpi: 0.0,
+            best_area: 0.0,
+            budget: MAX_CONTENT,
+            forms: MAX_FORMS,
+        };
+        self.walk(
+            &bytes,
+            &xobjects,
+            [1.0, 0.0, 0.0, 1.0, 0.0, 0.0],
+            0,
+            &mut acc,
+        );
         let area = (crop[2] - crop[0]) * (crop[3] - crop[1]);
-        let (mut covered, mut best_dpi, mut best_area) = (0.0f32, 0.0f32, 0.0f32);
+        ImageCover {
+            fraction: if area > 0.0 {
+                (acc.covered / area).min(1.0)
+            } else {
+                0.0
+            },
+            eff_dpi: acc.best_dpi,
+        }
+    }
+
+    /// The `Do` operators of `bytes` under `start`, images added to `acc`, forms entered with their own matrix and resources.
+    fn walk(
+        &self,
+        bytes: &[u8],
+        xobjects: &Dictionary,
+        start: Matrix,
+        depth: u32,
+        acc: &mut Cover,
+    ) {
+        let doc = &self.doc;
+        let Ok(content) = lopdf::content::Content::decode(bytes) else {
+            return;
+        };
+        let mut ctm = start;
+        let mut stack: Vec<Matrix> = Vec::new();
         for op in &content.operations {
             match op.operator.as_str() {
                 "q" => stack.push(ctm),
@@ -123,63 +161,121 @@ impl ProbeDoc {
                     let Some(Object::Name(name)) = op.operands.first() else {
                         continue;
                     };
-                    let Some(Ok((_, Object::Stream(image)))) =
+                    let Some(Ok((_, Object::Stream(xobject)))) =
                         xobjects.get(name).ok().map(|o| doc.dereference(o))
                     else {
                         continue;
                     };
-                    if image
+                    let subtype = xobject
                         .dict
                         .get(b"Subtype")
                         .ok()
-                        .and_then(|o| o.as_name().ok())
-                        != Some(b"Image".as_slice())
-                    {
+                        .and_then(|o| o.as_name().ok());
+                    if subtype == Some(b"Form".as_slice()) {
+                        self.enter_form(xobject, xobjects, ctm, depth, acc);
+                        continue;
+                    }
+                    if subtype != Some(b"Image".as_slice()) {
                         continue;
                     }
                     let px = |key: &[u8]| {
-                        image
+                        xobject
                             .dict
                             .get(key)
                             .ok()
                             .and_then(|o| o.as_float().ok())
                             .unwrap_or(0.0)
                     };
-                    let (iw, ih) = (px(b"Width"), px(b"Height"));
-                    let corners = [(0.0, 0.0), (1.0, 0.0), (0.0, 1.0), (1.0, 1.0)].map(
-                        |(x, y): (f32, f32)| {
-                            (
-                                x * ctm[0] + y * ctm[2] + ctm[4],
-                                x * ctm[1] + y * ctm[3] + ctm[5],
-                            )
-                        },
-                    );
-                    let lo =
-                        |f: fn(&(f32, f32)) -> f32| corners.iter().map(f).fold(f32::MAX, f32::min);
-                    let hi =
-                        |f: fn(&(f32, f32)) -> f32| corners.iter().map(f).fold(f32::MIN, f32::max);
-                    let (x0, x1) = (lo(|c| c.0).max(crop[0]), hi(|c| c.0).min(crop[2]));
-                    let (y0, y1) = (lo(|c| c.1).max(crop[1]), hi(|c| c.1).min(crop[3]));
-                    if x1 > x0 && y1 > y0 {
-                        let a = (x1 - x0) * (y1 - y0);
-                        covered += a;
-                        let full = (ctm[0] * ctm[3] - ctm[1] * ctm[2]).abs();
-                        if a > best_area && full > 1.0 {
-                            best_area = a;
-                            best_dpi = 72.0 * (iw * ih / full).sqrt();
-                        }
-                    }
+                    acc.add_image(ctm, px(b"Width"), px(b"Height"));
                 }
                 _ => {}
             }
         }
-        ImageCover {
-            fraction: if area > 0.0 {
-                (covered / area).min(1.0)
-            } else {
-                0.0
-            },
-            eff_dpi: best_dpi,
+    }
+
+    fn enter_form(
+        &self,
+        form: &Stream,
+        outer: &Dictionary,
+        ctm: Matrix,
+        depth: u32,
+        acc: &mut Cover,
+    ) {
+        if depth >= MAX_FORM_DEPTH || acc.forms == 0 {
+            return;
+        }
+        acc.forms -= 1;
+        let doc = &self.doc;
+        let Ok(bytes) = form.decompressed_content_with_limit(acc.budget) else {
+            return;
+        };
+        acc.budget = acc.budget.saturating_sub(bytes.len());
+        let matrix = form
+            .dict
+            .get(b"Matrix")
+            .ok()
+            .and_then(|o| doc.dereference(o).ok())
+            .and_then(|(_, o)| o.as_array().ok())
+            .map(|a| {
+                a.iter()
+                    .filter_map(|o| doc.dereference(o).ok().and_then(|(_, o)| o.as_float().ok()))
+                    .collect::<Vec<f32>>()
+            })
+            .and_then(|v| <[f32; 6]>::try_from(v).ok())
+            .unwrap_or([1.0, 0.0, 0.0, 1.0, 0.0, 0.0]);
+        // the form's own resources, else the ones it is drawn from
+        let own = form
+            .dict
+            .get(b"Resources")
+            .ok()
+            .and_then(|o| doc.dereference(o).ok())
+            .and_then(|(_, o)| o.as_dict().ok())
+            .and_then(|r| r.get(b"XObject").ok())
+            .and_then(|o| doc.dereference(o).ok())
+            .and_then(|(_, o)| o.as_dict().ok())
+            .cloned();
+        let xobjects = own.as_ref().unwrap_or(outer);
+        self.walk(&bytes, xobjects, mul(matrix, ctm), depth + 1, acc);
+    }
+}
+
+/// The running sums of a cover walk.
+struct Cover {
+    crop: [f32; 4],
+    covered: f32,
+    best_dpi: f32,
+    best_area: f32,
+    /// Decompressed bytes of forms still allowed.
+    budget: usize,
+    /// Forms still allowed to be entered.
+    forms: u32,
+}
+
+impl Cover {
+    /// An `iw` x `ih` pixel image drawn on the unit square under `ctm`.
+    fn add_image(&mut self, ctm: Matrix, iw: f32, ih: f32) {
+        if !ctm.iter().all(|v| v.is_finite()) {
+            return;
+        }
+        let crop = self.crop;
+        let corners = [(0.0, 0.0), (1.0, 0.0), (0.0, 1.0), (1.0, 1.0)].map(|(x, y): (f32, f32)| {
+            (
+                x * ctm[0] + y * ctm[2] + ctm[4],
+                x * ctm[1] + y * ctm[3] + ctm[5],
+            )
+        });
+        let lo = |f: fn(&(f32, f32)) -> f32| corners.iter().map(f).fold(f32::MAX, f32::min);
+        let hi = |f: fn(&(f32, f32)) -> f32| corners.iter().map(f).fold(f32::MIN, f32::max);
+        let (x0, x1) = (lo(|c| c.0).max(crop[0]), hi(|c| c.0).min(crop[2]));
+        let (y0, y1) = (lo(|c| c.1).max(crop[1]), hi(|c| c.1).min(crop[3]));
+        if x1 > x0 && y1 > y0 {
+            let a = (x1 - x0) * (y1 - y0);
+            self.covered += a;
+            let full = (ctm[0] * ctm[3] - ctm[1] * ctm[2]).abs();
+            if a > self.best_area && full > 1.0 {
+                self.best_area = a;
+                self.best_dpi = 72.0 * (iw * ih / full).sqrt();
+            }
         }
     }
 }
@@ -321,6 +417,46 @@ mod tests {
         assert_eq!(geom.display_size(), (72.0, 96.0));
         // the image still covers the page
         assert!(doc.cover(0).fraction > 0.99);
+    }
+
+    #[test]
+    fn a_scan_inside_a_form_xobject_counts() {
+        let mut doc = Document::with_version("1.7");
+        let tree = doc.new_object_id();
+        let image = doc.add_object(Stream::new(
+            dictionary! {
+                "Type" => "XObject", "Subtype" => "Image", "Width" => 300, "Height" => 400,
+                "ColorSpace" => "DeviceGray", "BitsPerComponent" => 8,
+            },
+            vec![255; 300 * 400],
+        ));
+        // the form maps the unit square to 72 x 96 pt through its own matrix
+        let form = doc.add_object(Stream::new(
+            dictionary! {
+                "Type" => "XObject", "Subtype" => "Form", "BBox" => vec![0.into(), 0.into(), 1.into(), 1.into()],
+                "Matrix" => vec![72.into(), 0.into(), 0.into(), 96.into(), 0.into(), 0.into()],
+                "Resources" => dictionary! { "XObject" => dictionary! { "Im0" => image } },
+            },
+            b"/Im0 Do\n".to_vec(),
+        ));
+        let content = doc.add_object(Stream::new(Dictionary::new(), b"q /Fm0 Do Q\n".to_vec()));
+        let page = doc.add_object(dictionary! {
+            "Type" => "Page", "Parent" => tree,
+            "MediaBox" => vec![0.into(), 0.into(), 72.into(), 96.into()],
+            "Resources" => dictionary! { "XObject" => dictionary! { "Fm0" => form } },
+            "Contents" => content,
+        });
+        doc.set_object(
+            tree,
+            dictionary! { "Type" => "Pages", "Kids" => vec![page.into()], "Count" => 1 },
+        );
+        let catalog = doc.add_object(dictionary! { "Type" => "Catalog", "Pages" => tree });
+        doc.trailer.set("Root", catalog);
+        let mut bytes = Vec::new();
+        doc.save_to(&mut bytes).unwrap();
+        let cover = ProbeDoc::load(&bytes).unwrap().cover(0);
+        assert!(cover.fraction > 0.99, "{cover:?}");
+        assert!((cover.eff_dpi - 300.0).abs() < 1.0, "{cover:?}");
     }
 
     #[test]

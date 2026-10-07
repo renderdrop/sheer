@@ -9,7 +9,7 @@ use lopdf::{dictionary, Dictionary, Document, IncrementalDocument, Object, Objec
 
 use super::ocr_font;
 use crate::error::{AppError, ErrorCode};
-use crate::ocr::OcrPageLayer;
+use crate::ocr::{OcrPageLayer, OcrWord};
 
 /// The resource name of the font on a page.
 pub const FONT_NAME: &str = "SheerOcr0";
@@ -17,6 +17,9 @@ pub const FONT_NAME: &str = "SheerOcr0";
 const MIN_SIZE: f32 = 0.5;
 /// The narrowest a gap space is made (points), so its `Tz` stays above zero.
 const MIN_GAP: f32 = 0.1;
+/// The largest coordinate or side of a page box (points); PDF viewers stop at 14 400, a box beyond this is hostile or broken and is
+/// read as absent (the page then falls back to Letter).
+const MAX_COORD: f32 = 200_000.0;
 
 /// Where a page is in user space: its crop box `[x0, y0, x1, y1]` and its `/Rotate` (0, 90, 180, 270).
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -100,10 +103,40 @@ pub fn horizontal_scale(width: f32, size: f32, chars: usize) -> f32 {
     100.0 * width / (0.5 * size * chars.max(1) as f32)
 }
 
+/// The tilt of the recognized text (the recognizer's `TextAngle`, clockwise on the displayed page), as the factors the text matrix and
+/// the baseline need. The image is not deskewed; the boxes are the axis-aligned boxes of tilted words.
+#[derive(Debug, Clone, Copy)]
+struct Tilt {
+    sin: f32,
+    cos: f32,
+    tan: f32,
+}
+
+/// The largest tilt that is written; a larger reported angle is a misread page and is not used.
+const MAX_TILT_DEG: f32 = 15.0;
+
+impl Tilt {
+    fn new(degrees: f32) -> Self {
+        let d = if degrees.is_finite() && degrees.abs() <= MAX_TILT_DEG {
+            degrees
+        } else {
+            0.0
+        };
+        let r = d.to_radians();
+        Self {
+            sin: r.sin(),
+            cos: r.cos(),
+            tan: r.tan(),
+        }
+    }
+}
+
 /// One `Tf`, `Tz`, `Tm`, `Tj` group: `text` at the displayed position (`dx`, `baseline_dy`), `size` high, `width` wide.
+#[allow(clippy::too_many_arguments)]
 fn show(
     out: &mut String,
     geom: &PageGeom,
+    tilt: Tilt,
     text: &str,
     dx: f32,
     baseline_dy: f32,
@@ -113,22 +146,31 @@ fn show(
     let chars = text.chars().count();
     let (e, f) = geom.display_to_user(dx, baseline_dy);
     let (x, up) = geom.axes();
+    // the displayed x axis turned clockwise by the tilt (y points down on the display, so "up" gets the minus)
+    let tx = [
+        tilt.cos * x[0] - tilt.sin * up[0],
+        tilt.cos * x[1] - tilt.sin * up[1],
+    ];
+    let tu = [
+        tilt.sin * x[0] + tilt.cos * up[0],
+        tilt.sin * x[1] + tilt.cos * up[1],
+    ];
     out.push_str(&format!(
         "/{FONT_NAME} {} Tf {} Tz {} {} {} {} {} {} Tm {} Tj\n",
         num(size),
         num(horizontal_scale(width, size, chars)),
-        num(x[0]),
-        num(x[1]),
-        num(up[0]),
-        num(up[1]),
+        num(tx[0]),
+        num(tx[1]),
+        num(tu[0]),
+        num(tu[1]),
         num(e),
         num(f),
         hex_codes(text)
     ));
 }
 
-/// A word shorter than this share of its line's median height (a hyphen, a dot, a quote) takes the line's size and baseline: with a
-/// size and baseline of its own, PDFium sees the line jump and breaks it there (measured on the corpus).
+/// A word shorter than this share of its line's median height (a hyphen, a dot, a quote) takes the line's size: with a size of its
+/// own, PDFium sees the line jump and breaks it there (measured on the corpus).
 const SHORT_WORD: f32 = 0.5;
 
 fn median(mut values: Vec<f32>) -> f32 {
@@ -136,48 +178,95 @@ fn median(mut values: Vec<f32>) -> f32 {
     values.get(values.len() / 2).copied().unwrap_or(0.0)
 }
 
-/// The content of the layer for one page: every word, a space between the words of a line. A word is sized to its own box (so the
-/// selection of the word is its box) unless it is much shorter than the line (see [`SHORT_WORD`]); the spaces use the line's size.
+/// The text of the last word of a line. PDFium reads a hyphen-minus (or soft hyphen) after a letter at the end of a line as a
+/// hyphenation: it drops the hyphen and joins the line with the next one (a trailing space does not help, it looks past spaces). The
+/// typographic hyphen U+2010 is not read that way, so it takes the place of the hyphen-minus there.
+fn line_end_text(text: &str) -> String {
+    match text.strip_suffix(['-', '\u{00AD}']) {
+        Some(stem) => format!("{stem}\u{2010}"),
+        None => text.to_owned(),
+    }
+}
+
+/// The content of the layer for one page. Every line is a text object of its own (`BT` ... `ET`) in reading order, all its words on
+/// one baseline (tilted by the recognizer's angle), a space between two words. A word is sized to its own box (so the selection of
+/// the word is its box) unless it is much shorter than the line (see [`SHORT_WORD`]); the spaces use the line's size. A hyphen-minus
+/// at the end of a line is written as U+2010 (see [`line_end_text`]), so that PDFium keeps the line break.
 pub fn layer_stream(geom: &PageGeom, layer: &OcrPageLayer) -> Vec<u8> {
-    let mut out = String::from("q\nBT\n3 Tr\n");
+    let tilt = Tilt::new(layer.angle_deg);
+    let mut out = String::from("q\n");
     for line in &layer.lines {
-        let line_size = median(
-            line.words
+        let words: Vec<&OcrWord> = line
+            .words
+            .iter()
+            .filter(|w| w.rect.iter().all(|v| v.is_finite()))
+            .collect();
+        let (Some(first), Some(last)) = (words.first(), words.last()) else {
+            continue;
+        };
+        // the height of a tilted word without what the tilt adds to its box
+        let height_of = |w: &OcrWord| {
+            (w.rect[3] - w.rect[1] - (w.rect[2] - w.rect[0]) * tilt.tan.abs()).max(MIN_SIZE)
+        };
+        let line_size = median(words.iter().map(|w| height_of(w)).collect());
+        let x_first = first.rect[0];
+        // the baseline of the line where its first word starts: each word's baseline at its centre, carried back along the tilt
+        let intercept = median(
+            words
                 .iter()
-                .map(|w| (w.rect[3] - w.rect[1]).max(MIN_SIZE))
+                .map(|w| {
+                    let centre = (w.rect[0] + w.rect[2]) / 2.0;
+                    (w.rect[1] + w.rect[3]) / 2.0 + 0.3 * height_of(w)
+                        - (centre - x_first) * tilt.tan
+                })
                 .collect(),
         );
-        let line_bottom = median(line.words.iter().map(|w| w.rect[3]).collect());
-        let line_baseline = line_bottom - 0.2 * line_size;
+        let baseline_at = |x: f32| intercept + (x - x_first) * tilt.tan;
+        out.push_str("BT\n3 Tr\n");
         let mut right: Option<f32> = None; // right edge of the word before
-        for word in &line.words {
-            let [x0, y0, x1, y1] = word.rect;
-            let height = (y1 - y0).max(MIN_SIZE);
-            let (size, baseline) = if height >= SHORT_WORD * line_size {
-                (height, y1 - 0.2 * height)
+        for word in &words {
+            let [x0, _, x1, _] = word.rect;
+            let height = height_of(word);
+            let size = if height >= SHORT_WORD * line_size {
+                height
             } else {
-                (line_size, line_baseline)
+                line_size
             };
             if let Some(right) = right {
                 let gap = (x0 - right).max(MIN_GAP);
-                show(&mut out, geom, " ", right, line_baseline, line_size, gap);
+                show(
+                    &mut out,
+                    geom,
+                    tilt,
+                    " ",
+                    right,
+                    baseline_at(right),
+                    line_size,
+                    gap,
+                );
             }
+            let is_last = std::ptr::eq(*word, *last);
             show(
                 &mut out,
                 geom,
-                &word.text,
+                tilt,
+                &if is_last {
+                    line_end_text(&word.text)
+                } else {
+                    word.text.clone()
+                },
                 x0,
-                baseline,
+                baseline_at(x0),
                 size,
                 (x1 - x0).max(MIN_GAP),
             );
             right = Some(x1);
         }
+        out.push_str("ET\n");
     }
-    out.push_str("ET\nQ\n");
+    out.push_str("Q\n");
     out.into_bytes()
 }
-
 // --- Document writing ---------------------------------------------------------------------------------------------
 
 fn damaged(what: &str) -> AppError {
@@ -204,7 +293,7 @@ fn read_box(doc: &Document, object: &Object) -> Option<[f32; 4]> {
     let mut v = [0.0f32; 4];
     for (slot, item) in v.iter_mut().zip(array) {
         let n = doc.dereference(item).ok()?.1.as_float().ok()?;
-        if !n.is_finite() {
+        if !n.is_finite() || n.abs() > MAX_COORD {
             return None;
         }
         *slot = n;
@@ -215,7 +304,8 @@ fn read_box(doc: &Document, object: &Object) -> Option<[f32; 4]> {
         v[0].max(v[2]),
         v[1].max(v[3]),
     ];
-    (r[2] > r[0] && r[3] > r[1]).then_some(r)
+    (r[2] > r[0] && r[3] > r[1] && r[2] - r[0] <= MAX_COORD && r[3] - r[1] <= MAX_COORD)
+        .then_some(r)
 }
 
 /// The crop box inside the media box and the `/Rotate` of `page`.
@@ -524,5 +614,146 @@ mod tests {
     fn a_page_index_the_file_lacks_is_refused() {
         let layers = BTreeMap::from([(5u32, OcrPageLayer::default())]);
         assert!(apply_ocr_layers(small_pdf(), &layers, false).is_err());
+    }
+}
+#[cfg(test)]
+mod line_tests {
+    use super::*;
+    use crate::ocr::OcrLine;
+    use pdfium_render::prelude::*;
+    use std::path::PathBuf;
+
+    fn w(text: &str, x0: f32, y0: f32, x1: f32, y1: f32) -> OcrWord {
+        OcrWord {
+            text: text.into(),
+            rect: [x0, y0, x1, y1],
+        }
+    }
+
+    fn line(words: Vec<OcrWord>) -> OcrLine {
+        OcrLine { words }
+    }
+
+    fn pdf_with(layer: OcrPageLayer) -> Vec<u8> {
+        // a Letter-sized empty page
+        let mut doc = Document::with_version("1.5");
+        let pages = doc.new_object_id();
+        let content = doc.add_object(Stream::new(Dictionary::new(), Vec::new()));
+        let page = doc.add_object(dictionary! {
+            "Type" => "Page", "Parent" => pages,
+            "MediaBox" => vec![0.into(), 0.into(), 612.into(), 792.into()],
+            "Contents" => content,
+        });
+        doc.set_object(
+            pages,
+            dictionary! { "Type" => "Pages", "Kids" => vec![page.into()], "Count" => 1 },
+        );
+        let catalog = doc.add_object(dictionary! { "Type" => "Catalog", "Pages" => pages });
+        doc.trailer.set("Root", catalog);
+        let mut out = Vec::new();
+        doc.save_to(&mut out).unwrap();
+        apply_ocr_layers(out, &BTreeMap::from([(0u32, layer)]), false).unwrap()
+    }
+
+    fn pdfium_text(bytes: &[u8]) -> Option<String> {
+        let library =
+            crate::engine::library_path(&PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("pdfium"));
+        let pdfium = Pdfium::new(Pdfium::bind_to_library(library).ok()?);
+        let doc = pdfium.load_pdf_from_byte_slice(bytes, None).ok()?;
+        let page = doc.pages().get(0).ok()?;
+        let text = page.text().ok()?.all();
+        Some(text)
+    }
+
+    fn lines_of(text: &str) -> Vec<String> {
+        text.split(['\r', '\n'])
+            .map(str::trim)
+            .filter(|l| !l.is_empty())
+            .map(str::to_owned)
+            .collect()
+    }
+
+    #[test]
+    fn pdfium_extracts_every_ocr_line_as_a_line() {
+        let layer = OcrPageLayer {
+            lang: "de-DE".into(),
+            lines: vec![
+                // a heading: number and title in different sizes
+                line(vec![
+                    w("1.", 72.0, 70.0, 90.0, 94.0),
+                    w("Einleitung", 100.0, 72.0, 200.0, 92.0),
+                ]),
+                // body lines, the first ends in a hyphenation
+                line(vec![
+                    w("Dies", 72.0, 110.0, 100.0, 122.0),
+                    w("ist", 106.0, 110.0, 122.0, 122.0),
+                    w("ein", 128.0, 110.0, 150.0, 122.0),
+                    w("Bei-", 156.0, 110.0, 190.0, 122.0),
+                ]),
+                line(vec![
+                    w("spiel", 72.0, 126.0, 110.0, 138.0),
+                    w("mit", 116.0, 126.0, 140.0, 138.0),
+                    w("Text.", 146.0, 126.0, 190.0, 138.0),
+                ]),
+            ],
+            ..OcrPageLayer::default()
+        };
+        let bytes = pdf_with(layer);
+        let Some(text) = pdfium_text(&bytes) else {
+            eprintln!("PDFium library not available, skipping");
+            return;
+        };
+        assert_eq!(
+            lines_of(&text),
+            vec![
+                "1. Einleitung",
+                "Dies ist ein Bei\u{2010}",
+                "spiel mit Text."
+            ],
+            "{text:?}"
+        );
+    }
+
+    #[test]
+    fn a_tilted_page_gets_a_tilted_text_matrix_and_a_straight_one_is_unchanged() {
+        let g = PageGeom {
+            crop: [0.0, 0.0, 612.0, 792.0],
+            rotate: 0,
+        };
+        let mut layer = OcrPageLayer {
+            angle_deg: 3.0,
+            lines: vec![line(vec![w("ab", 100.0, 100.0, 200.0, 120.0)])],
+            ..OcrPageLayer::default()
+        };
+        let tilted = String::from_utf8(layer_stream(&g, &layer)).unwrap();
+        assert!(tilted.contains(" 0.999 -0.052 0.052 0.999 "), "{tilted}");
+        layer.angle_deg = 40.0; // beyond the limit: not used
+        let straight = String::from_utf8(layer_stream(&g, &layer)).unwrap();
+        assert!(straight.contains(" 1 0 0 1 "), "{straight}");
+        layer.angle_deg = f32::NAN;
+        assert!(String::from_utf8(layer_stream(&g, &layer))
+            .unwrap()
+            .contains(" 1 0 0 1 "));
+    }
+
+    #[test]
+    fn absurd_or_non_finite_boxes_fall_back_to_letter() {
+        let mut doc = Document::with_version("1.5");
+        let page = doc.add_object(dictionary! {
+            "Type" => "Page",
+            "MediaBox" => vec![0.into(), 0.into(), Object::Real(1.0e12), 792.into()],
+        });
+        assert_eq!(page_geom(&doc, page).crop, [0.0, 0.0, 612.0, 792.0]);
+        let nan = doc.add_object(dictionary! {
+            "Type" => "Page",
+            "MediaBox" => vec![0.into(), 0.into(), Object::Real(f32::NAN), 792.into()],
+        });
+        assert_eq!(page_geom(&doc, nan).crop, [0.0, 0.0, 612.0, 792.0]);
+        let layer = OcrPageLayer {
+            lines: vec![line(vec![w("x", f32::NAN, 0.0, 5.0, 5.0)])],
+            ..OcrPageLayer::default()
+        };
+        let g = page_geom(&doc, page);
+        assert_eq!(layer_stream(&g, &layer), b"q\nQ\n".to_vec());
     }
 }

@@ -305,3 +305,7 @@ Pure-Rust RustCrypto on the stable line (ADR-121 addendum); named in `src-tauri/
   - The advance widths of Arimo and Tinos (metric-compatible with Helvetica/Arial and Times) are also the source of the standard-14 tables in `content/std14.rs` (five codes set to the AFM values).
 - `subsetter` 0.2.6 (MIT OR Apache-2.0, typst/subsetter), `default-features = false` (no `skrifa`, `write-fonts`, `kurbo`): subsets the substitute faces; only new crate (its one dependency `rustc-hash` was already in the build). Output is re-parsed with `skrifa` before it is written.
 - `read-fonts` 0.45 (MIT OR Apache-2.0, googlefonts/fontations), direct now with feature `agl` (the Adobe glyph list, glyph name to Unicode); already in the build through `skrifa` at the same version, no new crate.
+
+## v1.7 package B2 (OCR layer quality)
+
+- `unicode-normalization` 0.1.25 (MIT OR Apache-2.0): direct dependency now (already in the build through `stringprep`), NFC of the reply text of the OCR child in `ocr/wire.rs`.
