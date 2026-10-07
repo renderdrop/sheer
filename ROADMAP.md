@@ -355,11 +355,22 @@ new engine capability or dependency is needed. Not picked by the loop before v1.
 ### v1.7 "Scan & OCR"
 - [x] v1.7 architect ADR — ADR-134 (accepted 2026-10-07, ADR-135): Windows OCR via the windows crate in a child mode of the app, Swift sidecar on macOS
 - [x] v1.7 phase 1 — Windows spike, no UI (f3c4c1b): 6 of 7 exit criteria met; exact-line copy fails (PDFium merges OCR lines); corpus holds only 2 real scan pages
-- [ ] v1.7 spec — designer spec (OCR action, progress, language notice, redo, re-check of accuracy on real scans)
-- [ ] v1.7 phase-2 prerequisites — real scanned test PDFs from the owner (rule 13); English OCR pack on the dev machine; line structure so copy keeps OCR lines; huge MediaBox guard in ocr_layer (security low); render/OCR pipelining; tilt; NFC; form-XObject scans in the probe
-- [ ] v1.7.1 — Invisible text layer for photos and scans (searchable, copyable, highlightable), de/en, OS OCR preferred
+- [x] v1.7 spec — designer spec (OCR action, progress, language notice, redo, re-check of accuracy on real scans) (DESIGN §3.12, 570293f)
+- [x] v1.7 phase-2 prerequisites (owner items waived by ADR-135 §2: generated scans + owner-pdf-F2; English pack still missing) — real scanned test PDFs from the owner (rule 13); English OCR pack on the dev machine; line structure so copy keeps OCR lines; huge MediaBox guard in ocr_layer (security low); render/OCR pipelining; tilt; NFC; form-XObject scans in the probe
+- [x] v1.7.1 — Invisible text layer for photos and scans (searchable, copyable, highlightable), de/en, OS OCR preferred (Windows: B2 990d0f3, W0 6ec72b8, B3 3f19a63, F1 422b48b, B1 928f1ee, fixes 993537b..ff464f7; macOS → part 2)
 - [~] v1.7.2 — Option: take text over as editable paragraphs (no formatting claim) → v2.1 backlog (ADR-135 §1)
-- [ ] v1.7 part 1 acceptance — acceptance build (rule 15), security-reviewer, designer round, pre-release v1.7.0-beta.1
+- [ ] Politur v1.7 — reviewer/designer minors of v1.7
+  - (W0 review) ocr_start: a document signed mid-job loses recognized pages with a generic failure count, not a read_only notice; no unit test for signed/permission refusal and the ocrJobs limit; classify page lookup O(n·m); undo-history OCR size estimated at 64 B/word
+  - (B3 review) finish_save after signing clears pending OCR layers (confirm signing requires a clean doc); without_covered runs under the model lock
+  - (F1) no disabled-reason tooltips on menu items; Done (Fertig) has no gate during a run (no matching UI)
+  - (B1 review) ocr_open_language_settings untested; explorer.exe via PATH (use %SystemRoot%); render_gray untested against a real PDFium page
+  - (security v1.7 p1, low) devCsp must never reach release builds (confirm in the bundle guard); OCR child exe always from current_exe (confirmed by design, add a test)
+  - (acceptance) add a test that every command in the invoke handler is declared in build.rs and granted in capabilities/default.json (OCR commands shipped without ACL entries; only the acceptance run caught it)
+  - (tester) flaky: CitationBubble.test.tsx "collapses to a quote marker that opens the bubble"
+  - (designer v1.7, major) OCR dialog scope radios have no round marks and no group label (state by colour only, O6); progress bar width/track in the banner (check done/total and full-width track)
+  - (designer v1.7, minor) Cancel is Ghost not Secondary; dialog title icon not in O2; document tabs truncate at 960
+  - (B2 review) form /Matrix finiteness not checked in ocr_probe enter_form (final CTM is); one cover() may decompress up to 256 MB; trailing hyphen written as U+2010 (search "Bei-" misses; trade-off); PDFium line test passes silently without the library
+- [x] v1.7 part 1 acceptance — acceptance build (rule 15), security-reviewer, designer round, pre-release v1.7.0-beta.1 (v17-ocr 30/30 incl. owner-pdf-F2; security pass 2 FAIL → fixed ff464f7; tester green; designer PASS; gate 1208/1208; annot smoke 17/17; real-input smoke PASS)
 - [ ] v1.7 part 2 — macOS Swift sidecar sheer-ocr (Apple Vision), CI-built and CI-tested only; human Mac check pending (B-001)
 - [ ] v1.7 acceptance — security-reviewer, tag v1.7.0
 

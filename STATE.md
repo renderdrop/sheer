@@ -1,14 +1,18 @@
 # STATE
-phase: session "Endspurt v2.0" (ADR-135): chain v1.7 p1 → v1.7 p2 → v1.8 → v1.9 → v2.0-rc.1; now part 1 (v1.7 Windows OCR → v1.7.0-beta.1)
-version: 1.6.0 (tag v1.6.0; v1.5.1, v1.5.0 kept)
-current_item: v1.7 part 1 — wave 0/1 running: designer §3.12 spec, W0 OCR seam (model ApplyOcr, commands/ocr.rs, ocr/service.rs, src/api/ocr.ts), B2 layer quality (ocr_layer/ocr_probe/wire/win), T-SCAN fixtures (examples/make_scan_fixtures.rs). Next: B1 pipeline, B3 textlayer+save+redaction, F1 UI, acceptance v17-ocr.mjs
+phase: session "Endspurt v2.0" (ADR-135, add. 2: owner ended the chain after part 1) — v1.7 part 1 (Windows OCR → v1.7.0-beta.1), then report + STOP
+version: 1.7.0-beta.1 (tag v1.7.0-beta.1, pre-release; v1.6.0 latest stable)
+current_item: v1.7 part 1 — all packages + fixes committed; security pass 1 PASS, pass 2 FAIL (redaction leak) → fixed ff464f7; tester green. Acceptance run 2: 13/21 → FX-ACC running (save-as in script, s5 classify). Next: designer round (4 shots + OCR surfaces), CHANGELOG, bump 1.7.0-beta.1, tag, report, STOP (owner ended the chain)
 last_completed: v1.6.0 — infra d0268da/43e0c7c/44b8aa3/3763737 (ADR-131, rule 15); Politur v1.5.1 4b63699/f60d18c/b42f5ad/32988ee; smart links backend 79ef1e5/a794812, frontend a5ad672, designer fixes 125116b, gate fix 3f6cc9f; reviews I1/P-B/S1 PASS, S2+S3 FIX→fixed; security PASS (lows); designer FIX (2 blockers) → fixed; acceptance build: v16-smartlinks all PASS (3 owner PDFs), v151-politur all PASS, real-input smoke PASS (~75 s); surface gate 1028/1028, annot smoke 17/17; tester green
 loop_count_this_session: 0 (session "Endspurt v2.0" started 2026-10-07; STOP removed)
 open_blockers: 2 (B-002, B-005, human-only). B-006 and B-007 resolved by the owner (ADR-128). Path guard (ADR-127) allows the project memory folder (ADR-128)
 notes: ADR-120: every push starts with `bash scripts/ci-status.sh` (last completed run on main, never wait); red = fix first. Rule 15 / ADR-131: acceptance ONLY via `npm run build:acceptance` + `scripts/ui/accept/*.mjs` (CDP, dialog guard); real input only `smoke-real.mjs` (≤ 5 min, announced). Never launch target/release or anything installed.
   Split staging across packages can break an intermediate commit (run #108): stage whole files per package when possible.
-  Never run the dev window while agents run cargo/vitest; stop it with taskkill sheer.exe + Stop-Process on tauri.js/vite.js only.
+  Never run the dev window while agents run cargo/vitest; stop it by killing only processes whose path is target\debug\sheer.exe (never `taskkill /IM sheer.exe`, which would hit an installed instance) + Stop-Process on tauri.js/vite.js.
+  src-tauri/target reached 228 GB in this session (disk full, session died): check `du -sh src-tauri/target` before waves; cargo clean above ~60 GB.
 ci_log: (ADR-120 corrected — package commit → CI run; result filled in at the next push)
+  - a834dbe..6f8a67c FX-F1, explorer path, ACL fix, FX-GRAY/FX-SEC/tester, permissions → run #120 (37598730231) GREEN
+  - 9b1004b..993537b B3, F1, acceptance script, B1, FX-B3 → run #119 (37593740231) GREEN
+  - 570293f..6ec72b8 ADR-135 + DESIGN §3.12 + T-SCAN + B2 + W0 → run #118 (37556063073) GREEN
   - 85d161d..53d15a4 design L14 + privacy P0 (ADR-133) → run #115 (37545449136) GREEN
   - 6399a4c..e610716 ADR-134 + range chooser R → run #116 (37547381423) GREEN
   - f704a6e..report FX-R + OCR spike + docs → run #117 (37551440497) GREEN

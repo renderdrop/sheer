@@ -6,7 +6,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.7.0-beta.1] - 2026-10-07
+
+v1.7 part 1 "Scan & OCR" for Windows (ADR-134, ADR-135, DESIGN §3.12). Pre-release; unsigned installers (BLOCKERS B-002).
+
 ### Added
+- Recognize text (Werkzeuge → Text erkennen…): scanned and photographed pages get an invisible text layer, so they can be searched,
+  copied, highlighted and used by smart links. The page looks exactly as before. Uses the text recognition built into Windows;
+  nothing leaves the computer.
+- A banner offers recognition when the open document has image-only pages; a dialog chooses the pages (scanned pages, all, current
+  or selected), shows the language (it follows the app language) and can redo pages recognized before.
+- Progress in the banner with Stop; finished pages are kept when you stop. One Undo step removes a whole run.
+- If the needed recognition language is not installed, Sheer says so, uses the other installed language and offers to open the
+  Windows language settings. Sheer never downloads language packs.
+- Saving adds the text layer as an incremental update; redaction removes recognized words under the box as well.
+- macOS: not yet (the Apple Vision helper follows in a later release).
 - Smart links: a citation range such as "[3–5]" now reaches every number in it; clicking it opens a small chooser with one row
   per entry (ADR-133).
 

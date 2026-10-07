@@ -2808,3 +2808,7 @@ human can solve (then `STATE.md` holds the exact question). Tempo level 3 (ADR-1
 when scan pages are found; Pages mode only preselects "Selected pages" (its tool row is full). The command stays enabled when no
 language is installed so the dialog can show "Open language settings". Save, Done, tab close and page-structure changes are disabled
 during a run. Banner priority: redact > signature > OCR progress > form > OCR offer.
+
+**Addendum 2 (owner, 2026-10-07, mid-session).** The chain ends after part 1: v1.7 part 1 closes with the pre-release v1.7.0-beta.1
+and its report, then STOP. Parts 2–5 (macOS sidecar, v1.8, v1.9, v2.0-rc.1) are not started in this session; their ROADMAP items stay
+open for later sessions.
