@@ -10,6 +10,15 @@ fn main() {
         std::env::args_os(),
         std::env::var_os(wire::CHILD_ENV).as_deref(),
     );
+    // The OCR child (ADR-134) is the same executable with its own flag and variable.
+    if sheer_lib::ocr::child_mode_requested(
+        std::env::args_os(),
+        std::env::var_os(sheer_lib::ocr::CHILD_ENV).as_deref(),
+    ) {
+        if let Some(code) = sheer_lib::ocr_child_main() {
+            std::process::exit(code);
+        }
+    }
     if child {
         if let Some(code) = sheer_lib::engine_child_main() {
             std::process::exit(code);

@@ -4526,6 +4526,7 @@ dependencies = [
  "tauri-plugin-opener",
  "tauri-plugin-single-instance",
  "tauri-plugin-updater",
+ "windows",
  "windows-native-keyring-store",
  "x509-cert",
  "zeroize",

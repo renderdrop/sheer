@@ -78,6 +78,9 @@ same-file = "1.0.6"
 # Credential Manager store for keyring-core (MIT OR Apache-2.0); holds the signature library key (storage/keychain.rs).
 windows-native-keyring-store = "1.1"
 tauri-plugin-single-instance = "2.5.2"
+# Windows OCR (ADR-134, ocr/win.rs only, and only in the OCR child process): the safe WinRT projections of Media.Ocr and the bitmap types
+# it takes; no unsafe at our call sites. MIT OR Apache-2.0; the same version Tauri already builds (no duplicate).
+windows = { version = "0.62", default-features = false, features = ["Media_Ocr", "Graphics_Imaging", "Storage_Streams", "Globalization", "Foundation_Collections"] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 # Keychain store for keyring-core (MIT OR Apache-2.0); holds the signature library key (storage/keychain.rs).

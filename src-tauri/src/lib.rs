@@ -14,6 +14,7 @@ pub mod fontprog;
 pub mod limits;
 pub mod menu;
 pub mod model;
+pub mod ocr;
 pub mod pdfsig;
 pub mod pdfwrite;
 pub mod platform;
@@ -41,6 +42,11 @@ use crate::storage::settings::{self, SettingsStore};
 /// when it did (the child loop of `engine::host`, which ends when the parent closes the pipe).
 pub fn engine_child_main() -> Option<i32> {
     Some(engine::host::child_main())
+}
+
+/// Runs the OCR child loop (ADR-134) when this process was started as one (`main` checks the flag and the variable first).
+pub fn ocr_child_main() -> Option<i32> {
+    Some(ocr::child::child_main())
 }
 
 /// Builds and runs the app. Returns when the last window is closed. A startup failure comes back as an [`AppError`]
