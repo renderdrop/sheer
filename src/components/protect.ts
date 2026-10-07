@@ -8,11 +8,11 @@ import type { FloatingKind, Rect } from './position';
  *   so a popover from the mini bar leaves the live colour visible.
  * - `data-protect="notice"`: protected for notices only (tips and coach marks).
  * - the focused element when it is an input, textarea, select or contenteditable.
- * - for notices also every visible input, textarea, select, contenteditable, button, `[role=button]` and toolbar item.
+ * - for notices also every visible input, textarea, select, contenteditable, button, `[role=button]`, toolbar item and page card (Pages).
  * The anchor is added by the caller. Elements inside the floating surface, inside the anchor or around it are skipped.
  */
 const TEXT_FIELDS = 'input, textarea, select, [contenteditable=""], [contenteditable="true"]';
-const NOTICE_TARGETS = `${TEXT_FIELDS}, button, [role="button"], [data-toolbar-item]`;
+const NOTICE_TARGETS = `${TEXT_FIELDS}, button, [role="button"], [data-toolbar-item], [data-organize] [role="option"]`;
 
 function rectOf(element: Element): Rect | null {
   const box = element.getBoundingClientRect();

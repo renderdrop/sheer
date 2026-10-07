@@ -19,10 +19,13 @@ import { isClipTip, toolbarItemsOf, type ClipTipId, type TipId } from './model';
 import { useTips } from './store';
 
 /** The canvas's scroller: the slot the tip stays inside (the coach mark's, DESIGN 3.47 "Slot and layer"). */
-const CANVAS_SCROLLER = '[data-action-scope="canvas"] > [role="region"]';
+const CANVAS_SCROLLER = '[data-action-scope="canvas"] > [role="region"], [data-organize]';
 
 /** The red redact band in the banner slot. */
 const REDACT_BAND = '[data-banner="redact"]';
+
+/** The banner row above the canvas: the anchored card sits below it, never over a banner (DESIGN 3.13 C2). */
+const BANNER_SLOT = '[data-region="banner"]';
 
 /** The form banner's "first field" link, and the Fill & Sign segment the form tip falls back to (DESIGN 3.13 C1). */
 const FORM_LINK = '[data-banner="form"] button';
@@ -227,6 +230,7 @@ function Card({ id, anchor, clip }: { id: TipId; anchor: ResolvedAnchor; clip: C
     align: anchor.spec.align as Align,
     kind: 'tip',
     clampTo: { selector: CANVAS_SCROLLER, inset: tokenPx('--space-2', 8) },
+    clearOf: BANNER_SLOT,
     onNoFit: next,
   });
   useDock(positioner, present && docked, next, stage);
