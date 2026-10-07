@@ -326,7 +326,7 @@ fn tags_present<'de, D: Deserializer<'de>>(
 }
 
 /// Every persisted setting. Add a field here, to [`SettingsPatch`] and to `src/api/app.ts` together.
-#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Settings {
     pub language: Language,
@@ -339,8 +339,28 @@ pub struct Settings {
     pub tips_seen: TipsSeen,
     /// The page sidebar is collapsed (DESIGN v2 3.2).
     pub page_sidebar_collapsed: bool,
+    /// First-use tips are shown at all (ADR-138); default true.
+    pub tips_enabled: bool,
     /// The tag definitions (ADR-119), shared by all documents. Validated by [`validate_tags`] (patch) and `stored_tags` (file).
     pub tags: Vec<TagDef>,
+}
+
+impl Default for Settings {
+    fn default() -> Self {
+        Self {
+            language: Language::default(),
+            left_panel_width: PanelWidth::default(),
+            welcome_tour: WelcomeTour::default(),
+            author_name: AuthorName::default(),
+            author_prompt: AuthorPrompt::default(),
+            updates: UpdatesMode::default(),
+            skipped_version: SkippedVersion::default(),
+            tips_seen: TipsSeen::default(),
+            page_sidebar_collapsed: false,
+            tips_enabled: true,
+            tags: Vec::new(),
+        }
+    }
 }
 
 impl Settings {
@@ -387,6 +407,10 @@ impl Settings {
                 .get("pageSidebarCollapsed")
                 .and_then(Value::as_bool)
                 .unwrap_or_default(),
+            tips_enabled: map
+                .get("tipsEnabled")
+                .and_then(Value::as_bool)
+                .unwrap_or(true),
             tags: map.get("tags").map(stored_tags).unwrap_or_default(),
         }
     }
@@ -405,6 +429,7 @@ impl Settings {
             page_sidebar_collapsed: patch
                 .page_sidebar_collapsed
                 .unwrap_or(self.page_sidebar_collapsed),
+            tips_enabled: patch.tips_enabled.unwrap_or(self.tips_enabled),
             tags: patch.tags.unwrap_or(self.tags),
         }
     }
@@ -433,6 +458,8 @@ pub struct SettingsPatch {
     pub tips_seen: Option<TipsSeen>,
     #[serde(default, deserialize_with = "present")]
     pub page_sidebar_collapsed: Option<bool>,
+    #[serde(default, deserialize_with = "present")]
+    pub tips_enabled: Option<bool>,
     /// Replaces the tag list (ADR-119).
     #[serde(default, deserialize_with = "tags_present")]
     pub tags: Option<Vec<TagDef>>,
@@ -628,7 +655,7 @@ mod tests {
     fn settings_serialize_with_lowercase_enum_values() {
         assert_eq!(
             serde_json::to_value(Settings::default()).unwrap(),
-            json!({ "language": "system", "leftPanelWidth": 200, "welcomeTour": "pending", "authorName": "", "authorPrompt": "pending", "updates": "off", "skippedVersion": null, "tipsSeen": [], "pageSidebarCollapsed": false, "tags": [] })
+            json!({ "language": "system", "leftPanelWidth": 200, "welcomeTour": "pending", "authorName": "", "authorPrompt": "pending", "updates": "off", "skippedVersion": null, "tipsSeen": [], "pageSidebarCollapsed": false, "tipsEnabled": true, "tags": [] })
         );
         let settings = Settings {
             language: Language::De,
@@ -640,11 +667,12 @@ mod tests {
             skipped_version: SkippedVersion::new("1.2.3-rc.1").unwrap(),
             tips_seen: TipsSeen::new(&["textBox".to_owned()]).unwrap(),
             page_sidebar_collapsed: true,
+            tips_enabled: false,
             tags: Vec::new(),
         };
         assert_eq!(
             serde_json::to_value(settings).unwrap(),
-            json!({ "language": "de", "leftPanelWidth": 320, "welcomeTour": "shown", "authorName": "Ada Lovelace", "authorPrompt": "done", "updates": "on", "skippedVersion": "1.2.3-rc.1", "tipsSeen": ["textBox"], "pageSidebarCollapsed": true, "tags": [] })
+            json!({ "language": "de", "leftPanelWidth": 320, "welcomeTour": "shown", "authorName": "Ada Lovelace", "authorPrompt": "done", "updates": "on", "skippedVersion": "1.2.3-rc.1", "tipsSeen": ["textBox"], "pageSidebarCollapsed": true, "tipsEnabled": false, "tags": [] })
         );
     }
 
@@ -815,9 +843,22 @@ mod tests {
                 skipped_version: None,
                 tips_seen: None,
                 page_sidebar_collapsed: None,
+                tips_enabled: None,
                 tags: None,
             }
         );
+    }
+
+    #[test]
+    fn tips_are_enabled_by_default_and_the_flag_must_be_a_boolean() {
+        assert!(Settings::default().tips_enabled);
+        assert!(Settings::from_stored(br#"{"language":"de"}"#).tips_enabled);
+        assert!(Settings::from_stored(br#"{"tipsEnabled":"no"}"#).tips_enabled);
+        assert!(!Settings::from_stored(br#"{"tipsEnabled":false}"#).tips_enabled);
+        assert!(patch(json!({ "tipsEnabled": null })).is_err());
+        assert!(patch(json!({ "tipsEnabled": 0 })).is_err());
+        let off = Settings::default().apply(patch(json!({ "tipsEnabled": false })).unwrap());
+        assert!(!off.tips_enabled);
     }
 
     #[test]
@@ -1314,6 +1355,7 @@ mod tests {
                 skipped_version: SkippedVersion::default(),
                 tips_seen: TipsSeen::default(),
                 page_sidebar_collapsed: false,
+                tips_enabled: true,
                 tags: Vec::new(),
             }
         );
@@ -1324,7 +1366,7 @@ mod tests {
             serde_json::from_slice(&fs::read(dir.path().join(FILE_NAME)).unwrap()).unwrap();
         assert_eq!(
             stored,
-            json!({ "language": "de", "leftPanelWidth": 280, "welcomeTour": "pending", "authorName": "", "authorPrompt": "pending", "updates": "off", "skippedVersion": null, "tipsSeen": [], "pageSidebarCollapsed": false, "tags": [] })
+            json!({ "language": "de", "leftPanelWidth": 280, "welcomeTour": "pending", "authorName": "", "authorPrompt": "pending", "updates": "off", "skippedVersion": null, "tipsSeen": [], "pageSidebarCollapsed": false, "tipsEnabled": true, "tags": [] })
         );
     }
 
@@ -1514,7 +1556,7 @@ mod tests {
         let stored: Value = serde_json::from_slice(&bytes).unwrap();
         assert_eq!(
             stored,
-            json!({ "language": "system", "leftPanelWidth": 200, "welcomeTour": "pending", "authorName": "", "authorPrompt": "pending", "updates": "on", "skippedVersion": null, "tipsSeen": [], "pageSidebarCollapsed": false, "tags": [] })
+            json!({ "language": "system", "leftPanelWidth": 200, "welcomeTour": "pending", "authorName": "", "authorPrompt": "pending", "updates": "on", "skippedVersion": null, "tipsSeen": [], "pageSidebarCollapsed": false, "tipsEnabled": true, "tags": [] })
         );
     }
 

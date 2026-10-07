@@ -16,6 +16,7 @@ import {
   parseBootstrap,
   parseMenuMessage,
   parseSettings,
+  type SettingsPatch,
   subscribeApp,
   subscribeMenu,
   updateSettings,
@@ -58,6 +59,21 @@ describe('parseSettings', () => {
       authorPrompt: 'pending',
     };
     expect(parseSettings({ ...settings, glass: 'solid', theme: 'dark' })).toEqual(settings);
+  });
+
+  it('keeps tipsEnabled only when it is a boolean', () => {
+    const settings = {
+      language: 'system',
+      leftPanelWidth: 248,
+      welcomeTour: 'pending',
+      authorName: '',
+      authorPrompt: 'pending',
+    };
+    expect(parseSettings({ ...settings, tipsEnabled: false })).toEqual({ ...settings, tipsEnabled: false });
+    expect(parseSettings({ ...settings, tipsEnabled: true })).toEqual({ ...settings, tipsEnabled: true });
+    expect(parseSettings({ ...settings, tipsEnabled: 'no' })).toEqual(settings);
+    const patch: SettingsPatch = { tipsEnabled: false };
+    expect(patch.tipsEnabled).toBe(false);
   });
 
   it('accepts the whole range of the left panel width and nothing outside it', () => {

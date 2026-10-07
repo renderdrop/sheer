@@ -119,8 +119,8 @@ All commands are `async` and return `Result<T, UiError>`. Bounds come from `limi
 ```rust
 // app
 app_ready() -> AppBootstrap                          // platform, paper, version
-get_settings() -> Settings                           // { language: "system" | "en" | "de", leftPanelWidth: 192..=400 }
-update_settings(patch: SettingsPatch) -> Settings    // patch { language?, leftPanelWidth? }; unknown key, enum value or width outside the range → invalid_argument (what: "settings")
+get_settings() -> Settings                           // { language: "system" | "en" | "de", leftPanelWidth: 192..=400, …, pageSidebarCollapsed, tipsEnabled: boolean (default true), tags }
+update_settings(patch: SettingsPatch) -> Settings    // patch { language?, leftPanelWidth?, …, tipsEnabled? }; unknown key, enum value or width outside the range → invalid_argument (what: "settings")
 subscribe_menu(on_action: Channel<String>, system_language: Option<String>) -> ()
                                                      // each command chosen in the macOS menu bar, as the bare id of the item (kebab-case, `menu::spec::ACTION_IDS` only: system items and any other id are dropped in Rust); one receiver, a new call replaces it; system_language = navigator.language, for the menu's labels while language is "system" (a malformed tag counts as unknown); a no-op listener on Windows, which has no menu bar
 subscribe_app(on_event: Channel<AppEvent>) -> ()

@@ -49,6 +49,8 @@ export interface Settings {
   skippedVersion?: string | null;
   /** The page sidebar is collapsed (DESIGN v2 3.2). Absent until the backend knows the field; absent means open. */
   pageSidebarCollapsed?: boolean;
+  /** First-use tips are shown at all (ADR-138). Absent until the backend knows the field; absent means on. */
+  tipsEnabled?: boolean;
   /** The tag definitions, shared by all documents (ADR-119; at most `TAGS_MAX`). Absent until the backend knows the field. */
   tags?: readonly TagDef[];
 }
@@ -136,6 +138,7 @@ export function parseSettings(value: unknown): Settings | null {
     updates,
     skippedVersion,
     pageSidebarCollapsed,
+    tipsEnabled,
     tags,
   } = value as {
     language?: unknown;
@@ -147,6 +150,7 @@ export function parseSettings(value: unknown): Settings | null {
     updates?: unknown;
     skippedVersion?: unknown;
     pageSidebarCollapsed?: unknown;
+    tipsEnabled?: unknown;
     tags?: unknown;
   };
   const parsedTags = parseTagDefs(tags);
@@ -180,6 +184,7 @@ export function parseSettings(value: unknown): Settings | null {
     ...(parsedUpdates === null ? {} : { updates: parsedUpdates }),
     ...(parsedSkipped === undefined ? {} : { skippedVersion: parsedSkipped }),
     ...(typeof pageSidebarCollapsed === 'boolean' ? { pageSidebarCollapsed } : {}),
+    ...(typeof tipsEnabled === 'boolean' ? { tipsEnabled } : {}),
     ...(parsedTags === null ? {} : { tags: parsedTags }),
   };
 }

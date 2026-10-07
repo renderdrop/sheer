@@ -3,8 +3,8 @@
 //! | Command | Arguments | Returns |
 //! |---|---|---|
 //! | `app_ready` | none | `AppBootstrap { platform, paper, version, authorSuggestion }` |
-//! | `get_settings` | none | `Settings { language, leftPanelWidth, welcomeTour, authorName, authorPrompt, updates, skippedVersion, tipsSeen, pageSidebarCollapsed, tags }` |
-//! | `update_settings` | `patch: { language?, leftPanelWidth?, welcomeTour?, authorName?, authorPrompt?, updates?, skippedVersion?, tipsSeen?, pageSidebarCollapsed?, tags? }` | the settings after the update; a bad `tags` list is `invalid_argument` (`what: "tags"`) |
+//! | `get_settings` | none | `Settings { language, leftPanelWidth, welcomeTour, authorName, authorPrompt, updates, skippedVersion, tipsSeen, pageSidebarCollapsed, tipsEnabled, tags }` |
+//! | `update_settings` | `patch: { language?, leftPanelWidth?, welcomeTour?, authorName?, authorPrompt?, updates?, skippedVersion?, tipsSeen?, pageSidebarCollapsed?, tipsEnabled?, tags? }` | the settings after the update; a bad `tags` list is `invalid_argument` (`what: "tags"`) |
 //! | `subscribe_menu` | `onAction: Channel<string>`, `systemLanguage?: string` | nothing; the channel then carries the id of each command chosen in the macOS menu bar |
 //! | `subscribe_app` | `onEvent: Channel<AppEvent>` | nothing; the channel then carries the backend's pushes (`dropHover`, `opened`, `openFailed`, see `events::AppEvent`), first those that waited for it |
 //! | `open_default_apps_settings` | none | nothing (Windows: opens the default-apps page; macOS: `unsupported_feature`); stub until M7 package B4 |
