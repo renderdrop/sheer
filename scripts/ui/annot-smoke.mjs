@@ -104,9 +104,12 @@ const textSpot = () =>
     if(!el)return null;const r=el.getBoundingClientRect();return {l:r.left,t:r.top,r:r.right,b:r.bottom}})()`);
 
 const rows = [];
+/** Runs before each row: the suite re-measures the page there. */
+let beforeRow = async () => {};
 async function row(doc, tool, run) {
   let result;
   try {
+    await beforeRow();
     const before = await kinds();
     const expected = await run();
     await sleep(900); // the ink group commits 1000 ms after its last stroke: callers wait for it themselves
@@ -152,9 +155,14 @@ async function clearAnnotations() {
 
 async function suite(doc) {
   await clearAnnotations();
-  const box = await pageBox();
+  let box = await pageBox();
   // Fractions of the part of the page that is on screen: CDP mouse events outside the viewport hit nothing.
-  const visible = Math.min(box.height, (await ev('window.innerHeight')) - box.top - 24);
+  let visible = Math.min(box.height, (await ev('window.innerHeight')) - box.top - 24);
+  // A note with text opens the comment margin, which narrows the canvas and re-fits the zoom (DESIGN 3.5 B9): measure again per row.
+  beforeRow = async () => {
+    box = await pageBox();
+    visible = Math.min(box.height, (await ev('window.innerHeight')) - box.top - 24);
+  };
   const at = (fx, fy) => ({ x: box.left + box.width * fx, y: box.top + visible * fy });
 
   await row(doc, 'Highlight (text)', async () => {
