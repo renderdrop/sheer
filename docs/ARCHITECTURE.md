@@ -1168,7 +1168,7 @@ ocr/geometry.rs     pixel boxes → page user space (inverse display matrix incl
 ocr/textlayer.rs    OcrPageLayer → TextLayer / search hits for unsaved layers (same shapes as the engine's)
 pdfwrite/ocr_font.rs   glyphless TrueType (generated) + Type0/CIDFontType2/ToUnicode objects
 pdfwrite/ocr_layer.rs  layer content stream (3 Tr, per-word Tm/Tz/Tj, explicit gap spaces), /Contents wrap, /SheerOcr key
-sidecar/ocr-macos/     Swift package `sheer-ocr` (VNRecognizeTextRequest), same wire; bundled as externalBin
+sidecar/ocr-macos/     Swift package `sheer-ocr` (library OcrCore: Wire, Geometry, VisionRecognizer + XCTest; executable sheer-ocr), same wire; bundled as externalBin
 ```
 
 ```rust
@@ -1208,4 +1208,17 @@ export type PageOcrClass = 'scan' | 'hasTextLayer' | 'sheerLayer' | 'text' | 'em
 - **Isolation.** Windows OCR runs only in the `--sheer-ocr-child` process of our own exe; macOS in the `sheer-ocr` sidecar. Both get
   gray8 bitmaps and a language tag, never PDF bytes or paths. CI grep: `windows::Media` only in `ocr/win.rs`; `pdfium_render` still
   only in `engine/`.
+- **macOS sidecar (ADR-137).** `backend::recognizer_exe()`: Windows = `current_exe()` (child mode), macOS = `sheer-ocr` next to the main
+  binary (`Contents/MacOS`, Tauri `bundle.externalBin: ["binaries/sheer-ocr"]` in `tauri.macos.conf.json`), overridable by
+  `SHEER_OCR_SIDECAR` in debug builds only (tests, CI); elsewhere `None` (`unsupported_feature` `ocrUnavailable`). `probe_capabilities`
+  asks each language with a blank 64x64 bitmap through the same `ChildClient` (backend `vision`); the sidecar answers
+  `language_unavailable` when `supportedRecognitionLanguages()` lacks the tag. Swift: `VNRecognizeTextRequest` `.accurate`,
+  language correction on, `recognitionLanguages = [tag]`, gray8 → `CGImage` (stride), one box per whitespace token via
+  `boundingBox(for:)`, normalized bottom-left → pixel top-left (`Geometry.pixelBox`), limits mirrored from `limits.rs`, exit on EOF
+  (code 2 after a broken message, as the Rust child). Build: `scripts/build-sidecar-macos.sh` (universal, ad-hoc signed, copies to
+  `src-tauri/binaries/sheer-ocr-<triple>`; needed before any cargo build on macOS because tauri-build checks the file). CI (macOS):
+  build, `swift test`, then `tests/ocr_vision.rs` with `SHEER_OCR=1` (PDFium renders a generated page, Vision reads it); release.yml builds
+  the sidecar before `tauri build`.
+- **Acceptance mask.** With the Cargo feature `automation`, `SHEER_AUTOMATION_OCR_LANGS` (comma list) only removes languages from
+  `capabilities()` (`backend::mask_languages`); release builds do not compile it.
 - **Save.** Incremental: `[q, original…, Q, layer]` per page, page-local `/Resources`, one font set per document.

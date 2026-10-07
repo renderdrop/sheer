@@ -122,6 +122,16 @@ jobs:
         if: env.FULL_RUN == 'true'
         run: npm ci --prefer-offline --no-audit --no-fund
 
+      # ADR-137: the OCR sidecar (Swift, Apple Vision) is a Tauri externalBin on macOS, so tauri-build needs it before any cargo
+      # build. Universal (arm64 + x86_64), ad-hoc signed; then its Swift unit tests.
+      - name: Build the OCR sidecar (macOS)
+        if: runner.os == 'macOS'
+        run: bash scripts/build-sidecar-macos.sh
+
+      - name: Swift tests of the OCR sidecar (macOS)
+        if: runner.os == 'macOS'
+        run: swift test --package-path sidecar/ocr-macos
+
       # Pinned release, SHA256-verified (scripts/fetch-pdfium.sh). Never downloaded at runtime.
       - name: Check (Rust part - PDFium fetch, fmt, clippy, test)
         run: SHEER_CHECK_PART=rust bash scripts/check.sh
@@ -132,6 +142,17 @@ jobs:
         if: ${{ !cancelled() }}
         working-directory: src-tauri
         run: cargo test --lib -- --ignored platform_store_round_trip real_keychain_library_survives_a_restart
+
+      # ADR-137: PDFium draws a generated text page, the real sidecar (Apple Vision) reads it; expected words found, boxes inside the
+      # image. The override variable is honoured in debug builds only. PDFium was fetched by the check step above.
+      - name: OCR round trip through the sidecar (macOS)
+        if: runner.os == 'macOS' && !cancelled()
+        working-directory: src-tauri
+        env:
+          SHEER_OCR: '1'
+        run: |
+          export SHEER_OCR_SIDECAR="$GITHUB_WORKSPACE/src-tauri/binaries/sheer-ocr-universal-apple-darwin"
+          cargo test --test ocr_vision -- --nocapture
 
       - name: Build debug bundles (unsigned)
         if: env.FULL_RUN == 'true'

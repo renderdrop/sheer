@@ -2,7 +2,7 @@
 //! [`limits::PAGE_TIMEOUT`] for the answer, and kills the child when it is late or broken. The next page starts a new child.
 
 use std::io::BufWriter;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::{Child, ChildStdin, Command, Stdio};
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError};
 use std::time::Duration;
@@ -293,9 +293,80 @@ pub fn capabilities() -> Capabilities {
     caps
 }
 
-#[cfg(windows)]
-fn probe_capabilities() -> Capabilities {
-    let Ok(exe) = std::env::current_exe() else {
+/// The file name of the macOS sidecar (Tauri `externalBin` puts it next to the main binary, without the target suffix).
+pub const SIDECAR_NAME: &str = "sheer-ocr";
+
+/// The sidecar that sits next to `exe` (the main binary inside `Contents/MacOS`).
+pub fn sidecar_next_to(exe: &Path) -> Option<PathBuf> {
+    Some(exe.parent()?.join(SIDECAR_NAME))
+}
+
+/// Pure choice of the recognizer executable. `override_path` (from `SHEER_OCR_SIDECAR`) counts only when `allow_override`.
+fn pick_exe(
+    macos: bool,
+    current: Option<PathBuf>,
+    override_path: Option<std::ffi::OsString>,
+    allow_override: bool,
+) -> Option<PathBuf> {
+    if !macos {
+        return current;
+    }
+    if allow_override {
+        if let Some(path) = override_path.filter(|p| !p.is_empty()) {
+            return Some(PathBuf::from(path));
+        }
+    }
+    sidecar_next_to(&current?)
+}
+
+/// The executable that runs OCR for this build: Windows = our own exe (child mode); macOS = the `sheer-ocr` sidecar next to the main
+/// binary, overridable by `SHEER_OCR_SIDECAR` in debug builds only (tests, CI); elsewhere `None`.
+pub fn recognizer_exe() -> Option<PathBuf> {
+    let macos = cfg!(target_os = "macos");
+    if !macos && !cfg!(windows) {
+        return None;
+    }
+    pick_exe(
+        macos,
+        std::env::current_exe().ok(),
+        std::env::var_os("SHEER_OCR_SIDECAR"),
+        cfg!(debug_assertions),
+    )
+}
+
+/// Acceptance-only mask (ADR-137 item 1): keeps only the languages named in the comma list `mask` as available. `None` = no mask.
+#[cfg_attr(not(feature = "automation"), allow(dead_code))]
+fn mask_languages(languages: Vec<OcrLanguage>, mask: Option<&str>) -> Vec<OcrLanguage> {
+    let Some(mask) = mask else {
+        return languages;
+    };
+    let allowed: Vec<&str> = mask.split(',').map(str::trim).collect();
+    languages
+        .into_iter()
+        .map(|language| OcrLanguage {
+            available: language.available && allowed.contains(&language.tag),
+            ..language
+        })
+        .collect()
+}
+
+#[cfg(feature = "automation")]
+fn apply_automation_mask(mut caps: Capabilities) -> Capabilities {
+    let mask = std::env::var("SHEER_AUTOMATION_OCR_LANGS").ok();
+    caps.languages = mask_languages(caps.languages, mask.as_deref());
+    caps
+}
+
+#[cfg(not(feature = "automation"))]
+#[cfg_attr(not(any(windows, target_os = "macos")), allow(dead_code))]
+fn apply_automation_mask(caps: Capabilities) -> Capabilities {
+    caps
+}
+
+/// Asks the child (Windows) or sidecar (macOS) for each language with a blank bitmap; the parent never touches the OS recognizer.
+#[cfg(any(windows, target_os = "macos"))]
+fn probe_with_child(backend: BackendKind) -> Capabilities {
+    let Some(exe) = recognizer_exe() else {
         return Capabilities::none();
     };
     let mut client = ChildClient::new(exe);
@@ -310,13 +381,23 @@ fn probe_capabilities() -> Capabilities {
         })
         .collect();
     Capabilities {
-        backend: BackendKind::Windows,
+        backend,
         languages,
         max_image_dimension: Some(limits::MAX_SIDE_PX),
     }
 }
 
-#[cfg(not(windows))]
+#[cfg(windows)]
+fn probe_capabilities() -> Capabilities {
+    apply_automation_mask(probe_with_child(BackendKind::Windows))
+}
+
+#[cfg(target_os = "macos")]
+fn probe_capabilities() -> Capabilities {
+    apply_automation_mask(probe_with_child(BackendKind::Vision))
+}
+
+#[cfg(not(any(windows, target_os = "macos")))]
 fn probe_capabilities() -> Capabilities {
     Capabilities::none()
 }
@@ -336,5 +417,64 @@ mod capability_tests {
             json["languages"][0],
             serde_json::json!({"tag": "de-DE", "available": false})
         );
+    }
+}
+
+#[cfg(test)]
+mod platform_pick_tests {
+    use super::*;
+
+    fn langs(de: bool, en: bool) -> Vec<OcrLanguage> {
+        vec![
+            OcrLanguage {
+                tag: "de-DE",
+                available: de,
+            },
+            OcrLanguage {
+                tag: "en-US",
+                available: en,
+            },
+        ]
+    }
+
+    #[test]
+    fn the_language_mask_only_removes_languages() {
+        assert_eq!(mask_languages(langs(true, true), None), langs(true, true));
+        assert_eq!(
+            mask_languages(langs(true, true), Some("de-DE")),
+            langs(true, false)
+        );
+        assert_eq!(
+            mask_languages(langs(true, true), Some(" en-US , xx")),
+            langs(false, true)
+        );
+        assert_eq!(
+            mask_languages(langs(true, true), Some("")),
+            langs(false, false)
+        );
+        // A mask never adds a language the recognizer lacks.
+        assert_eq!(
+            mask_languages(langs(true, false), Some("de-DE,en-US")),
+            langs(true, false)
+        );
+    }
+
+    #[test]
+    fn the_recognizer_exe_is_the_own_exe_on_windows_and_the_sidecar_on_macos() {
+        let exe = PathBuf::from("/app/Contents/MacOS/sheer");
+        let sidecar = Some(PathBuf::from("/app/Contents/MacOS/sheer-ocr"));
+        assert_eq!(
+            pick_exe(false, Some(exe.clone()), None, true),
+            Some(exe.clone())
+        );
+        assert_eq!(pick_exe(true, Some(exe.clone()), None, false), sidecar);
+        let over = Some(std::ffi::OsString::from("/tmp/x/sheer-ocr"));
+        assert_eq!(
+            pick_exe(true, Some(exe.clone()), over.clone(), true),
+            Some(PathBuf::from("/tmp/x/sheer-ocr"))
+        );
+        // Release builds ignore the override.
+        assert_eq!(pick_exe(true, Some(exe), over, false), sidecar);
+        assert_eq!(pick_exe(true, None, None, false), None);
     }
 }

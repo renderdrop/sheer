@@ -21,6 +21,7 @@
     ]
   },
   "bundle": {
+    "externalBin": ["binaries/sheer-ocr"],
     "macOS": {
       "dmg": {
         "background": "installer/dmg-background.png",

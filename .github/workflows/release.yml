@@ -97,6 +97,12 @@ jobs:
       - name: Fetch PDFium
         run: bash scripts/fetch-pdfium.sh "${{ matrix.pdfium }}"
 
+      # ADR-137: the OCR sidecar (universal, ad-hoc signed) must exist as src-tauri/binaries/sheer-ocr-<triple> before tauri build
+      # (Tauri externalBin, tauri.macos.conf.json); Tauri signs it with the app's identity when one is configured.
+      - name: Build the OCR sidecar
+        if: runner.os == 'macOS'
+        run: bash scripts/build-sidecar-macos.sh
+
       # Updater artifacts (the macOS .app.tar.gz, the NSIS .sig) only when the repository secret TAURI_SIGNING_PRIVATE_KEY exists
       # (ADR-053 section 3). The expression below yields only "true" or "false": the secret itself is never echoed or logged.
       # Without it the release is as before: unsigned installers, no latest.json. The alternative is `scripts/sign-update.sh` locally.

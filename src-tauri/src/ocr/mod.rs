@@ -1,5 +1,5 @@
-//! Scan and OCR (ADR-134, ARCHITECTURE section 15; phase 1 = the Windows spike). The OS recognizer runs in a child process of our own
-//! executable that is handed gray bitmaps and a language tag over a length-prefixed pipe and nothing else: never bytes of the PDF,
+//! Scan and OCR (ADR-134, ADR-137, ARCHITECTURE section 15). The OS recognizer runs in a child process of our own (Windows) or in the
+//! `sheer-ocr` Swift sidecar (macOS, `backend::recognizer_exe`); it is handed gray bitmaps and a language tag over a length-prefixed pipe and nothing else: never bytes of the PDF,
 //! never a path. Everything it answers is untrusted and bounded (`wire`, `limits`).
 
 pub mod backend;
