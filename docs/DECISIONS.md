@@ -2945,3 +2945,8 @@ plus a Werkzeuge menu item; each of the six slots holds exactly one item (none, 
 tokens. Comment export opens from a button in the Comments panel's filter row and File → Export comments…; signatures are never
 exported. Deutsche Zitierweise (`germanNotes`) writes no "ebd.": it goes silently wrong once footnotes are copied between other
 sources, so every repeat is a short reference.
+
+**Addendum C (B2 spike, 2026-10-07).** Hiding an existing Sheer header/footer layer while an edit is pending (ARCHITECTURE §16.2) needs
+marked-content control that pdfium-render 0.9.4 does not expose publicly; the spike failed. Fallback as documented: the resolved state
+carries `underFileLayer` per page, and the preview/overlay skips pages that still show the file's old layer until the next save
+rewrites it. No pagination-hiding command is built.

@@ -1239,6 +1239,7 @@ Stamp { #[serde(rename = "box")] bounds: Rect, stamp: StampKind, text: String, d
 // AnnotationPatch gains: stamp_text: Option<String>, stamp_date: Option<Option<String>>, stamp_tone: Option<StampTone>
 pub const fn tone_rgb(tone: StampTone) -> Rgb;                // model/stamp.rs; the annotation's colour is always this
 pub fn stamp_ap::build(text: &str, date: Option<&str>, tone: Rgb, w: f32, h: f32) -> Vec<u8>;   // content of the Form XObject
+pub fn stamp_ap::stream(text: &str, date: Option<&str>, tone: StampTone, w: f32, h: f32) -> lopdf::Stream;   // the Form XObject (BBox [0 0 w h], fonts FB/FR)
 ```
 
 ```ts
@@ -1250,7 +1251,7 @@ type StampTone = 'solar' | 'ink';
 ```
 
 - *Text.* The UI sends the label localized (`stamp.preset.*`) and the date formatted (`i18n/format.ts`); Rust stores both as given.
-  `text` 1..=64 chars, `date` ≤ 32, both WinAnsi (else `invalid_argument` `stamp` `{ char }`); `received` needs a date; `tone_rgb`
+  `text` 1..=64 chars, `date` ≤ 32, both WinAnsi (else `invalid_argument` `stamp` `{ char }`); `received` needs a date when created or when its date is cleared (a reopened one without a readable `/SHR_Stamp` keeps `date: null`); control characters are stripped, not refused; `tone_rgb`
   mirrors `tokens.css` (a unit test compares). A draft colour is ignored.
 - *Box.* A zero-size draft box gets the natural size at 18 pt (Helvetica-Bold widths from `std14`, 8 pt padding) at the click; after
   that the box is the user's and the text is fitted: one line, size = min(fit height, fit width), 6..=72 pt. Box ≥ 24 × 12 pt.
@@ -1264,7 +1265,7 @@ type StampTone = 'solar' | 'ink';
   `/Contents`, tone = the nearer of the two `tone_rgb` to `/C`, `date: None`; `sheer_keys::read_page` gains `stamp: Option<StampKeys>`
   and the merge sets `date` and `tone` from `/SHR_Stamp /V 1`. A prefixed stamp whose contents fail validation stays `opaque`. Any
   other stamp stays `opaque` as today.
-- *Undo.* Only the existing commands: `CreateAnnotation`, `UpdateAnnotation` (coalesce `stamp:<id>` for typing), `MoveAnnotations`,
+- *Undo.* Only the existing commands: `CreateAnnotation`, `UpdateAnnotation` (coalesce key `stamp`, per annotation, for typing), `MoveAnnotations`,
   `DeleteAnnotations`; labels `annotation.*`. `sig_policy` treats a stamp like every markup annotation. Per-page and per-document
   annotation limits count stamps.
 
@@ -1281,7 +1282,8 @@ pub struct HfSpec {
 }
 pub struct HeaderFooterState { file: Option<HfSpec>, file_layers: u32, pending: Option<Option<HfSpec>> }   // DocState.header_footer
 DocCommand::SetHeaderFooter { spec: Option<HfSpec> }        // None = remove; one undo step, labels `headerFooter.set` | `headerFooter.remove`;
-                                                            // inverse = the previous `pending`; ChangeSet.doc gains "headerFooter"
+                                                            // inverse = DocCommand::RestoreHeaderFooter { pending } (internal, its own inverse);
+                                                            // ChangeSet.doc gains "headerFooter"; needs get_header_footer first (else invalid_argument)
 pub fn header_footer::resolve(spec: &HfSpec, geom: PageGeom, position: u32, total: u32, file: &str) -> Vec<PlacedRun>;   // pure, model-side
 pub struct PlacedRun { text: String, origin: Point /* page space, baseline */, angle: u16 /* displayed upright */, size: f32, width: f32 }
 pub fn header_footer::write(inc: &mut IncrementalDocument, pages: &[(ObjectId, Vec<PlacedRun>)], strip: &[ObjectId], spec: Option<&HfSpec>) -> Result<(), AppError>;
@@ -1310,7 +1312,10 @@ Tokens `{page}` (position + 1), `{total}` (page count), `{date}` (the spec's), `
   pending over existing file layers, `Job::SetPaginationHidden { engine_index, hidden }` (Control) gives the PDFium page objects inside
   our `/Artifact … /SHR_HF` mark a zero matrix in the engine copy, re-applied on every page reload, undone by `hidden: false`; PDFium never
   saves. Spike gate (both platforms): if pdfium-render's bindings cannot read the marks, pages with an old layer show it until save and
-  the overlay skips them.
+  the overlay skips them. **Spike result (v1.9, pdfium-render 0.9.4): failed.** The crate has no public API for content marks (the page
+  object handle and the raw bindings accessor are crate-private), so the fallback is in force and `Job::SetPaginationHidden` is not
+  built: `resolve_header_footer` answers `underFileLayer` per page (the engine copy still shows the file's layer, which the save
+  replaces) and the overlay skips those pages. Revisit if the crate exposes `FPDFPageObj_GetMark`.
 - *Refusals.* Signed or certified documents: `read_only` (`signed`), as `ocr_start`; no `edit` permission: `read_only` (`permission`);
   the welcome document applies and is saved through Save As. Redacted pages rebuild their content and lose the key: their header is
   then page content (accepted).
@@ -1353,6 +1358,13 @@ function exportComments(docId: DocId, opts: CommentExportOptions, onEvent: (e: J
 - *Limits* (`limits.rs`): `COMMENT_EXPORT_ITEMS_MAX` 20 000, comment text in the export ≤ 8 000 chars per item (cut with `…`),
   `COMMENT_EXPORT_MD_MAX` 16 MiB, `COMMENT_EXPORT_PDF_PAGES_MAX` 2 000 and 64 MiB; over any of them → `limit_exceeded` `commentExport`
   before the file is written. One export per document at a time.
+- *As built (B3).* `CommentExportOptions` also takes `authors?` (`""` = no author), `tags?` (ignoring case, `""` = untagged), `status?`
+  (`all|open|resolved`, Completed = resolved) and `citationLines?: {id, text}[]` (the citation line in the current style, formatted by
+  `format/`; `id` is any annotation of the citation or its group); `include` also knows `drawings` (freehand); `lang` is `en|de`.
+  `format` is `pdf|markdown`. `gather` takes `PageInput`s (the annotations of a page read out of the model) instead of `&DocState`, so
+  no engine call runs under the model lock. Markup with a comment counts as `comments`; markup without one needs `highlights`.
+  `JobWarning` gains `quotesOmitted | glyphsReplaced | nothingToExport`. Faces: Arimo Regular/Bold (no italic); Lucide icons are not drawn.
+  Labels: `annot.type.*`, `comments.group.citation` and `commentExport.*`, with built-in fallbacks for the latter until the catalogs have them.
 
 ### 16.4 Deutsche Zitierweise (`src/features/citations/format/german.ts`; Rust only names and stores)
 
@@ -1361,19 +1373,19 @@ list has exactly one source, the document's `BibRecord`; "first occurrence" is t
 choice for a single copied citation).
 
 ```ts
-type CitationStyle = 'apa7' | 'mla9' | 'chicago17AuthorDate' | 'dinIso690' | 'germanFootnotes';
+type CitationStyle = 'apa7' | 'mla9' | 'chicago17AuthorDate' | 'dinIso690' | 'germanNotes';
 type Occurrence = 'first' | 'subsequent';
 function formatFootnote(r: BibRecord, locator: string, occurrence: Occurrence, lang: Lang): StyledBlock;
 //   first:      "Müller, Anna: Titel. Untertitel, 2. Aufl., Berlin: Verlag 2021, S. 12."
 //   subsequent: "Müller, Kurztitel, S. 14."  (short title = record.shortTitle, else the title up to the first ':' / '.' / ' – ', ≤ 5 words)
-// formatCitationList(..., 'germanFootnotes', ..): numbered footnotes ("1 …", "2 …") per group, first full, later short, then a
+// formatCitationList(..., 'germanNotes', ..): numbered footnotes ("1 …", "2 …") per group, first full, later short, then a
 //   "Literaturverzeichnis"/"Bibliography" heading block and the full reference; formatInText = formatFootnote(.., 'subsequent', ..);
 //   formatShortCitation = the short form
 ```
 
 - *Data.* `BibRecord` gains `short_title: Option<String>` (≤ 256; `/SHR_Bib` key `/ST`, absent = `None`, so older files and older Sheer
   versions read it); `BibField` gains `shortTitle` (source `user` only); `SetBibliography` carries it like any field.
-- *Rust.* `export::citations::CitationStyle` gains `GermanFootnotes` (wire `germanFootnotes`, file label "Deutsche Zitierweise");
+- *Rust.* `export::citations::CitationStyle` gains `GermanFootnotes` (wire `germanNotes`, file label "Deutsche Zitierweise");
   `save_citation_list` writes the blocks unchanged. No new command.
 - *"Ebd."* Not used by default (many faculties discourage it, and every later footnote of a one-source list would be "Ebd."); it is a
   later faculty variant.
@@ -1384,13 +1396,13 @@ function formatFootnote(r: BibRecord, locator: string, occurrence: Occurrence, l
 |---|---|---|
 | `apply_command` | `createAnnotation` with a `stamp` body; `updateAnnotation` with `stampText`/`stampDate`/`stampTone`; `setHeaderFooter { spec: HfSpec \| null }` | `ChangeSet` |
 | `get_header_footer` | `docId` | `HeaderFooterInfo { spec: HfSpec \| null /* current, pending included */; defaults: HfSpec; pending: boolean; fileLayers: number; refusal: 'signed' \| 'permission' \| null }` |
-| `resolve_header_footer` | `docId, spec: HfSpec \| null /* null = current */, pages: PageId[] /* ≤ 64 */` | `{ pageId: PageId; runs: PlacedRun[] }[]` (dialog preview and overlay) |
+| `resolve_header_footer` | `docId, spec: HfSpec \| null /* null = current */, pages: PageId[] /* ≤ 64 */` | `{ pageId: PageId; runs: PlacedRun[]; underFileLayer: boolean /* the engine copy still shows the file's layer: the overlay skips the page */ }[]` (dialog preview and overlay) |
 | `export_comments` | `docId, opts: CommentExportOptions, onEvent` | `JobId \| null` |
-| `save_citation_list` | style gains `germanFootnotes` | unchanged |
+| `save_citation_list` | style gains `germanNotes` | unchanged |
 
 TS wrappers: `src/api/stamps.ts` (body builders, `parseStamp`), `src/api/headerFooter.ts` (`getHeaderFooter`, `resolveHeaderFooter`,
 `setHeaderFooter`), `src/api/commentExport.ts`; each parses its answer and treats a wrong shape as `internal`. `HfSpec` in TS is the
 camelCase twin (`slots: Record<'headerLeft' | 'headerCenter' | 'headerRight' | 'footerLeft' | 'footerCenter' | 'footerRight', string>`).
 
 *Tests.* `tests/{stamps,header_footer,comment_export}.rs`: reopen round trip, rotated/cropped pages, one layer beside OCR after
-re-apply, hostile `/SHR_HF` never drops content, incremental prefix intact, quotes omitted without `copy`; golden tests for `germanFootnotes`.
+re-apply, hostile `/SHR_HF` never drops content, incremental prefix intact, quotes omitted without `copy`; golden tests for `germanNotes`.
