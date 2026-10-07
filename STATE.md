@@ -11,6 +11,7 @@ notes: Surface gate must run before annot-smoke on a fresh dev window (smoke lea
   Never run the dev window while agents run cargo/vitest; stop it by killing only processes whose path is target\debug\sheer.exe (never `taskkill /IM sheer.exe`, which would hit an installed instance) + Stop-Process on tauri.js/vite.js.
   Rule 17 / ADR-136 (resources and pace): ≤ 2 cargo agents at once (frontend up to 4); agents run `npm run check:fast` and `npm run cargo -- …`; the full `npm run check` once before each commit (orchestrator); `npm run target:budget` (cargo sweep, target ≤ 60 GB) instead of cargo clean; sccache in .tools/ (`npm run tools:install`); wait for agents by notification/run_in_background, no foreground sleep > 2 min; `npm run accept:clean` after every acceptance; guard-resources blocks builds under 8 GB RAM / 40 GB disk.
 ci_log: (ADR-120 corrected — package commit → CI run; result filled in at the next push)
+  - 48aac44 release v1.8.0 → run #131 (37660293846) GREEN; release run #19 (37660293422) success (universal DMG, NSIS; stable)
   - c8c7855..658d558 OCR S7, tips fixes, settings fit, gate harness → run #129 (37652497354) GREEN, run #130 (37658721738) GREEN
   - fdbae51 token heights → run #128 (37647490676) GREEN
   - e7c7016..86d7c20 ADR-138, DESIGN §3.13, tipsEnabled, APNG/clip recorder, OCR-S7 script → run #127 (37643142340) GREEN
