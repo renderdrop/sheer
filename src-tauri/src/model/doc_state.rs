@@ -51,6 +51,8 @@ pub enum DocPart {
     Bibliography,
     /// The OCR text layers of pages (ADR-134).
     Ocr,
+    /// The headers and footers (ADR-139): the UI re-reads `get_header_footer`.
+    HeaderFooter,
 }
 
 /// An annotation in the state, with what only Rust knows about it.
@@ -181,6 +183,8 @@ pub struct DocState {
     pub(super) text_edits: HashMap<u32, super::text_edit::PageEdits>,
     /// The OCR text layer of each page (by page id) that the session made and the file does not have yet (ADR-134); written at save.
     pub ocr_layers: std::collections::BTreeMap<u32, std::sync::Arc<crate::ocr::OcrPageLayer>>,
+    /// The headers and footers of the file and the staged change (ADR-139).
+    pub header_footer: super::header_footer::HeaderFooterState,
 }
 
 /// Bytes of the strings an imported annotation brings.
@@ -249,6 +253,7 @@ impl DocState {
             keys_unread: HashSet::new(),
             text_edits: HashMap::new(),
             ocr_layers: std::collections::BTreeMap::new(),
+            header_footer: super::header_footer::HeaderFooterState::default(),
         }
     }
 
@@ -397,6 +402,9 @@ impl DocState {
         self.bibliography = super::bibliography::BibliographyState::default();
         // The labels were keyed by the old file's page indices (and a failed read was cached): the engine is asked again.
         self.page_labels = None;
+        // A staged header or footer is in the file now: it is read again.
+        self.header_footer = super::header_footer::HeaderFooterState::default();
+        delta.doc.insert(DocPart::HeaderFooter);
         delta.doc.insert(DocPart::Bibliography);
         delta.doc.insert(DocPart::Metadata);
         delta.doc.insert(DocPart::Protection);
@@ -784,6 +792,11 @@ impl DocState {
                 entry
                     .annotation
                     .apply_file_keys(found.cite.as_ref(), &found.tags);
+                if let Some(stamp) = &found.stamp {
+                    entry
+                        .annotation
+                        .apply_stamp_keys(stamp.date.as_deref(), stamp.tone);
+                }
             }
         }
     }

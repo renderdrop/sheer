@@ -72,6 +72,9 @@ pub struct SavePlan {
     /// The OCR layers to write (ADR-134), by the page's index in the file the save builds; one incremental update with one font set
     /// (`ocr_layer::apply_ocr_layers`). Never makes the save Full.
     pub ocr: Vec<(u32, Arc<crate::ocr::OcrPageLayer>)>,
+    /// The staged headers and footers (ADR-139): the spec and the resolved runs by the page's position in the file the save builds; one
+    /// incremental update after the OCR layers (`header_footer::apply`). Never makes the save Full.
+    pub header_footer: Option<crate::model::header_footer::HfWrite>,
 }
 
 impl SavePlan {
@@ -86,6 +89,7 @@ impl SavePlan {
             && self.bibliography.is_none()
             && self.text_edits.iter().all(|(_, edits)| edits.is_empty())
             && self.ocr.is_empty()
+            && self.header_footer.is_none()
     }
 
     /// The save is a whole new file, no update on top of the original (ADR-047): redaction (no earlier revision may survive), a change
@@ -124,6 +128,11 @@ pub fn apply_extras(bytes: Vec<u8>, plan: &SavePlan) -> Result<Vec<u8>, AppError
             .map(|(index, layer)| (*index, (**layer).clone()))
             .collect();
         super::ocr_layer::apply_ocr_layers(bytes, &layers, false)?
+    };
+    // ADR-139: the headers and footers go on top of the OCR layers, before the burned objects.
+    let bytes = match &plan.header_footer {
+        Some(write) => super::header_footer::apply(bytes, write)?,
+        None => bytes,
     };
     // Package A: text boxes and images.
     let bytes = super::content::burn_all(bytes, &plan.content)?;

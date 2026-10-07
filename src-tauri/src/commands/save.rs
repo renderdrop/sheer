@@ -269,6 +269,8 @@ pub(super) fn save_plan_of(state: &DocState, pages: &PagePlan, keep_encryption: 
                 ))
             })
             .collect(),
+        // Set by `AppState::stage`, which knows the file's name.
+        header_footer: None,
     }
 }
 
@@ -581,6 +583,8 @@ impl AppState {
     /// What the file has to become, from the model: the pages in their order (ADR-036 §5), the annotations on them, the extras, the form
     /// fields that changed and whether the form is a hybrid one.
     fn stage(&self, id: DocumentId) -> Result<Staged, AppError> {
+        // `{file}` of the headers is the name of the file the document was opened from.
+        let file = self.header_file_name(id);
         self.model(id, |state| {
             let pages = state.page_plan();
             let position: std::collections::HashMap<u32, u32> = pages
@@ -612,7 +616,8 @@ impl AppState {
             let strip_xfa = state
                 .form()
                 .is_some_and(|form| form.xfa() == crate::model::form::Xfa::Hybrid);
-            let extras = save_plan_of(state, &pages, false);
+            let mut extras = save_plan_of(state, &pages, false);
+            extras.header_footer = crate::model::header_footer::plan(state, &pages, &file);
             Ok((pages, plan, extras, form, strip_xfa))
         })
     }

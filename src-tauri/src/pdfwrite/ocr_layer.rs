@@ -5,9 +5,11 @@
 
 use std::collections::BTreeMap;
 
-use lopdf::{dictionary, Dictionary, Document, IncrementalDocument, Object, ObjectId, Stream};
+use lopdf::{dictionary, Dictionary, IncrementalDocument, Object, ObjectId};
 
 use super::ocr_font;
+use super::page_layer::{self, num, Wrap};
+pub use super::page_layer::{page_geom, PageGeom};
 use crate::error::{AppError, ErrorCode};
 use crate::ocr::{OcrPageLayer, OcrWord};
 
@@ -17,74 +19,6 @@ pub const FONT_NAME: &str = "SheerOcr0";
 const MIN_SIZE: f32 = 0.5;
 /// The narrowest a gap space is made (points), so its `Tz` stays above zero.
 const MIN_GAP: f32 = 0.1;
-/// The largest coordinate or side of a page box (points); PDF viewers stop at 14 400, a box beyond this is hostile or broken and is
-/// read as absent (the page then falls back to Letter).
-const MAX_COORD: f32 = 200_000.0;
-
-/// Where a page is in user space: its crop box `[x0, y0, x1, y1]` and its `/Rotate` (0, 90, 180, 270).
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub struct PageGeom {
-    pub crop: [f32; 4],
-    pub rotate: u16,
-}
-
-impl PageGeom {
-    /// The size of the unrotated page (the crop box).
-    pub fn size(&self) -> (f32, f32) {
-        (self.crop[2] - self.crop[0], self.crop[3] - self.crop[1])
-    }
-
-    /// The size of the page as it is shown.
-    pub fn display_size(&self) -> (f32, f32) {
-        let (w, h) = self.size();
-        if self.rotate % 180 == 90 {
-            (h, w)
-        } else {
-            (w, h)
-        }
-    }
-
-    /// A point of the displayed page (points from the top left, y down) in user space.
-    pub fn display_to_user(&self, dx: f32, dy: f32) -> (f32, f32) {
-        let (w, h) = self.size();
-        let [x0, y0, ..] = self.crop;
-        match self.rotate % 360 {
-            90 => (x0 + dy, y0 + dx),
-            180 => (x0 + w - dx, y0 + dy),
-            270 => (x0 + w - dy, y0 + h - dx),
-            _ => (x0 + dx, y0 + h - dy),
-        }
-    }
-
-    /// A point of the displayed page in the page space of the engine (ADR-003: top left of the unrotated crop box, y down).
-    pub fn display_to_page(&self, dx: f32, dy: f32) -> (f32, f32) {
-        let (ux, uy) = self.display_to_user(dx, dy);
-        (ux - self.crop[0], self.crop[3] - uy)
-    }
-
-    /// The directions of the displayed x axis and of "up" in user space; they make the rows of the text matrix.
-    pub fn axes(&self) -> ([f32; 2], [f32; 2]) {
-        match self.rotate % 360 {
-            90 => ([0.0, 1.0], [-1.0, 0.0]),
-            180 => ([-1.0, 0.0], [0.0, -1.0]),
-            270 => ([0.0, -1.0], [1.0, 0.0]),
-            _ => ([1.0, 0.0], [0.0, 1.0]),
-        }
-    }
-}
-
-fn num(v: f32) -> String {
-    if !v.is_finite() {
-        return "0".into();
-    }
-    let s = format!("{v:.3}");
-    let s = s.trim_end_matches('0').trim_end_matches('.');
-    if s.is_empty() || s == "-" || s == "-0" {
-        "0".into()
-    } else {
-        s.to_owned()
-    }
-}
 
 /// UTF-16BE hex of `text`; a code point outside the BMP is U+FFFD (ADR-134 item 6).
 pub fn hex_codes(text: &str) -> String {
@@ -273,145 +207,6 @@ fn damaged(what: &str) -> AppError {
     AppError::logged(ErrorCode::DamagedFile, format!("ocr layer: {what}"))
 }
 
-fn inherited<'a>(doc: &'a Document, page: ObjectId, key: &[u8]) -> Option<&'a Object> {
-    let mut id = page;
-    for _ in 0..64 {
-        let dict = doc.get_dictionary(id).ok()?;
-        if let Ok(value) = dict.get(key) {
-            return doc.dereference(value).ok().map(|(_, v)| v);
-        }
-        id = dict.get(b"Parent").ok()?.as_reference().ok()?;
-    }
-    None
-}
-
-fn read_box(doc: &Document, object: &Object) -> Option<[f32; 4]> {
-    let array = object.as_array().ok()?;
-    if array.len() != 4 {
-        return None;
-    }
-    let mut v = [0.0f32; 4];
-    for (slot, item) in v.iter_mut().zip(array) {
-        let n = doc.dereference(item).ok()?.1.as_float().ok()?;
-        if !n.is_finite() || n.abs() > MAX_COORD {
-            return None;
-        }
-        *slot = n;
-    }
-    let r = [
-        v[0].min(v[2]),
-        v[1].min(v[3]),
-        v[0].max(v[2]),
-        v[1].max(v[3]),
-    ];
-    (r[2] > r[0] && r[3] > r[1] && r[2] - r[0] <= MAX_COORD && r[3] - r[1] <= MAX_COORD)
-        .then_some(r)
-}
-
-/// The crop box inside the media box and the `/Rotate` of `page`.
-pub fn page_geom(doc: &Document, page: ObjectId) -> PageGeom {
-    let media = inherited(doc, page, b"MediaBox")
-        .and_then(|o| read_box(doc, o))
-        .unwrap_or([0.0, 0.0, 612.0, 792.0]);
-    let crop = inherited(doc, page, b"CropBox")
-        .and_then(|o| read_box(doc, o))
-        .map(|c| {
-            [
-                c[0].max(media[0]),
-                c[1].max(media[1]),
-                c[2].min(media[2]),
-                c[3].min(media[3]),
-            ]
-        })
-        .filter(|c| c[2] > c[0] && c[3] > c[1])
-        .unwrap_or(media);
-    let rotate = inherited(doc, page, b"Rotate")
-        .and_then(|o| o.as_i64().ok())
-        .map_or(0, |r| r.rem_euclid(360) as u16);
-    PageGeom {
-        crop,
-        rotate: rotate - rotate % 90,
-    }
-}
-
-/// The page's `/Contents` as a list of references.
-fn content_refs(doc: &Document, page: &Dictionary) -> Vec<Object> {
-    let Ok(contents) = page.get(b"Contents") else {
-        return Vec::new();
-    };
-    match contents {
-        Object::Reference(id) => match doc.get_object(*id) {
-            Ok(Object::Array(items)) => items.clone(),
-            _ => vec![Object::Reference(*id)],
-        },
-        Object::Array(items) => items.clone(),
-        _ => Vec::new(),
-    }
-}
-
-/// Whether `item` is a stream with exactly `body` as its content.
-fn is_stream_of(doc: &Document, item: &Object, body: &[u8]) -> bool {
-    let Object::Reference(id) = item else {
-        return false;
-    };
-    doc.get_object(*id)
-        .ok()
-        .and_then(|o| o.as_stream().ok())
-        .is_some_and(|s| s.content == body)
-}
-
-/// `refs` (the contents of `page`) without the layer of an earlier run: the stream `/SheerOcr /S` names, and the `q` and `Q` streams
-/// that wrapped the original around it, so a redone page has one layer and not two (ADR-134 item 7). A page without our key, or whose
-/// contents are not the shape we wrote, is returned as it is.
-fn without_old_layer(doc: &Document, page: &Dictionary, mut refs: Vec<Object>) -> Vec<Object> {
-    let old = page
-        .get(b"SheerOcr")
-        .ok()
-        .and_then(|o| doc.dereference(o).ok())
-        .and_then(|(_, o)| o.as_dict().ok())
-        .and_then(|d| d.get(b"S").ok())
-        .and_then(|o| o.as_reference().ok());
-    let Some(old) = old else {
-        return refs;
-    };
-    // Only a stream of our own shape is taken out: a hostile key must not make the writer drop real page content.
-    let ours = doc
-        .get_object(old)
-        .ok()
-        .and_then(|o| o.as_stream().ok())
-        .is_some_and(|s| s.content.starts_with(b"q\nBT\n3 Tr\n"));
-    if !ours || refs.last() != Some(&Object::Reference(old)) {
-        return refs;
-    }
-    refs.pop();
-    if refs.len() >= 2
-        && is_stream_of(doc, &refs[0], b"q\n")
-        && is_stream_of(doc, &refs[refs.len() - 1], b"Q\n")
-    {
-        refs.pop();
-        refs.remove(0);
-    }
-    refs
-}
-
-/// A page-local copy of the resources with the OCR font added (the inherited or shared dictionary stays as it is).
-fn resources_with_font(doc: &Document, page: ObjectId, font: ObjectId) -> Dictionary {
-    let mut resources = inherited(doc, page, b"Resources")
-        .and_then(|o| o.as_dict().ok())
-        .cloned()
-        .unwrap_or_default();
-    let mut fonts = resources
-        .get(b"Font")
-        .ok()
-        .and_then(|o| doc.dereference(o).ok())
-        .and_then(|(_, o)| o.as_dict().ok())
-        .cloned()
-        .unwrap_or_default();
-    fonts.set(FONT_NAME, Object::Reference(font));
-    resources.set("Font", Object::Dictionary(fonts));
-    resources
-}
-
 /// Writes `layers` (page object, layer) into `inc`: one font set, and per page the wrapped contents, the page-local resources and the
 /// `/SheerOcr` key. Pages without a word are left alone.
 pub fn write_ocr_layers(
@@ -423,12 +218,7 @@ pub fn write_ocr_layers(
         return Ok(());
     }
     let font = ocr_font::add_font(&mut inc.new_document, boxed)?;
-    let open = inc
-        .new_document
-        .add_object(Stream::new(Dictionary::new(), b"q\n".to_vec()));
-    let close = inc
-        .new_document
-        .add_object(Stream::new(Dictionary::new(), b"Q\n".to_vec()));
+    let wrap = Wrap::add(inc);
     for (page, layer) in layers {
         if layer.lines.is_empty() {
             continue;
@@ -439,16 +229,17 @@ pub fn write_ocr_layers(
             .map_err(|_| damaged("page"))?
             .clone();
         let geom = page_geom(prev, *page);
-        let mut contents = vec![Object::Reference(open)];
-        contents.extend(without_old_layer(prev, &dict, content_refs(prev, &dict)));
-        contents.push(Object::Reference(close));
-        let resources = resources_with_font(prev, *page, font);
+        // The header layer of an earlier run stays; an earlier OCR layer is replaced.
+        let old = page_layer::split(prev, &dict);
+        let resources = page_layer::resources_with_font(prev, *page, FONT_NAME, font);
         let stream = layer_stream(&geom, layer);
         let stream = inc
             .new_document
-            .add_object(Stream::new(Dictionary::new(), stream));
-        contents.push(Object::Reference(stream));
-        dict.set("Contents", Object::Array(contents));
+            .add_object(lopdf::Stream::new(Dictionary::new(), stream));
+        dict.set(
+            "Contents",
+            Object::Array(page_layer::assemble(old.base, wrap, Some(stream), old.hf)),
+        );
         dict.set("Resources", Object::Dictionary(resources));
         dict.set(
             "SheerOcr",
@@ -495,6 +286,8 @@ pub fn apply_ocr_layers(
 mod tests {
     use super::*;
     use crate::ocr::{OcrLine, OcrWord};
+    use crate::pdfwrite::page_layer::content_refs;
+    use lopdf::{Document, Stream};
 
     fn geom(rotate: u16) -> PageGeom {
         PageGeom {
@@ -710,6 +503,7 @@ mod tests {
 mod line_tests {
     use super::*;
     use crate::ocr::OcrLine;
+    use lopdf::{Document, Stream};
     use pdfium_render::prelude::*;
     use std::path::PathBuf;
 

@@ -14,6 +14,7 @@ import { pageRevOf, useAnnotations } from '../../stores/annotations';
 import { AnnotationLayer } from '../annotations/layer/AnnotationLayer';
 import { CropLayer } from '../crop/CropLayer';
 import { FormLayer } from '../forms/FormLayer';
+import { HeaderFooterOverlay } from '../headerFooter/HeaderFooterOverlay';
 import { JumpMarkLayer } from '../history/JumpMarkLayer';
 import { InsertLayer } from '../insert/InsertLayer';
 import { RedactLayer } from '../redact/RedactLayer';
@@ -464,6 +465,7 @@ export const PageView = memo(function PageView({
         interactive={interactive}
       />
       {/* Smart and real links (layer 2, DESIGN 3.11 L4): over the text, under the annotations. */}
+      <HeaderFooterOverlay {...layer} />
       <SmartLinkLayer {...layer} slotRev={slotRev} />
       <AnnotationLayer
         docId={docId}

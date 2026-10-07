@@ -18,6 +18,7 @@ use super::annotation::{
 use super::bibliography::BibRecord;
 use super::doc_state::{Delta, DocState, Entry, Slot, Stamp};
 use super::form::{FieldId, FieldUndo, FieldValue};
+use super::header_footer::HfSpec;
 use super::ids::AnnotId;
 use super::metadata::{self, MetadataPatch};
 use super::page::{NewPage, PageSlot, SourceId};
@@ -113,6 +114,11 @@ pub enum DocCommand {
     },
     /// Sets the bibliographic record written at the next save (ADR-119; label `bibliography.set`).
     SetBibliography { record: BibRecord },
+    /// Stages the headers and footers the next save writes, or their removal (`None`); one undo step (ADR-139, ARCHITECTURE 16.2).
+    SetHeaderFooter { spec: Option<HfSpec> },
+    /// Puts the staged header/footer state back (`None`: nothing staged). Internal: the inverse of `SetHeaderFooter`, and its own inverse.
+    #[serde(skip_deserializing)]
+    RestoreHeaderFooter { pending: Option<Option<HfSpec>> },
     /// Puts the given content back into the given ids. The inverse of every command; not accepted from the UI.
     #[serde(skip_deserializing)]
     Restore { slots: Vec<Slot> },
@@ -192,6 +198,8 @@ pub const LABEL_METADATA_SET: &str = "metadata.set";
 pub const LABEL_METADATA_REMOVE: &str = "metadata.remove";
 pub const LABEL_BIBLIOGRAPHY_SET: &str = "bibliography.set";
 pub const LABEL_OCR_APPLY: &str = "ocr.apply";
+pub const LABEL_HEADER_FOOTER_SET: &str = "headerFooter.set";
+pub const LABEL_HEADER_FOOTER_REMOVE: &str = "headerFooter.remove";
 
 fn is_key(text: &str) -> bool {
     !text.is_empty()
@@ -229,6 +237,13 @@ impl DocCommand {
             Self::SetMetadata { .. } => LABEL_METADATA_SET.to_owned(),
             Self::RemoveMetadata => LABEL_METADATA_REMOVE.to_owned(),
             Self::SetBibliography { .. } => LABEL_BIBLIOGRAPHY_SET.to_owned(),
+            Self::SetHeaderFooter { spec: None }
+            | Self::RestoreHeaderFooter {
+                pending: Some(None),
+            } => LABEL_HEADER_FOOTER_REMOVE.to_owned(),
+            Self::SetHeaderFooter { .. } | Self::RestoreHeaderFooter { .. } => {
+                LABEL_HEADER_FOOTER_SET.to_owned()
+            }
             Self::SetRotations { .. }
             | Self::ReorderPages { .. }
             | Self::RemovePages { .. }
@@ -252,6 +267,8 @@ impl DocCommand {
                 | Self::SetMetadata { .. }
                 | Self::RemoveMetadata
                 | Self::SetBibliography { .. }
+                | Self::SetHeaderFooter { .. }
+                | Self::RestoreHeaderFooter { .. }
                 | Self::DeletePages { .. }
                 | Self::MovePages { .. }
                 | Self::InsertBlankPage { .. }
@@ -347,7 +364,9 @@ impl DocCommand {
             | Self::AddPages { .. }
             | Self::RestoreRedaction { .. }
             | Self::RestoreTextEdit { .. }
-            | Self::RestoreOcr { .. } => Ok(()),
+            | Self::RestoreOcr { .. }
+            | Self::RestoreHeaderFooter { .. } => Ok(()),
+            Self::SetHeaderFooter { spec } => spec.as_ref().map_or(Ok(()), |spec| spec.check(None)),
             Self::ApplyOcr { layers } => {
                 if layers.is_empty() {
                     Err(AppError::invalid("pages"))
@@ -542,6 +561,12 @@ impl DocCommand {
             Self::RemoveMetadata => metadata::remove(state, &mut delta)?,
             Self::SetBibliography { record } => {
                 super::bibliography::set(state, record, &mut delta)?
+            }
+            Self::SetHeaderFooter { spec } => {
+                super::header_footer::set(state, spec.as_ref(), &mut delta)?
+            }
+            Self::RestoreHeaderFooter { pending } => {
+                super::header_footer::restore(state, pending, &mut delta)
             }
             // The engine makes the pages first (`commands::pages`); the model alone cannot.
             Self::InsertBlankPage { .. } | Self::InsertPages { .. } => {

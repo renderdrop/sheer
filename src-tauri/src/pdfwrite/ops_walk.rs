@@ -772,7 +772,12 @@ pub fn walk(
     match dict.get(b"Contents").ok().and_then(|c| resolve(src, c)) {
         Some(Object::Stream(stream)) => streams.push(stream),
         Some(Object::Array(items)) => {
+            // Our own header layer is not page text anyone edits (ADR-139): it is skipped; it is the last stream, so no index moves.
+            let header = super::page_layer::own_header_layer(src, dict);
             for item in items.iter().take(100_000) {
+                if header.is_some() && item.as_reference().ok() == header {
+                    continue;
+                }
                 if let Some(Object::Stream(stream)) = resolve(src, item) {
                     streams.push(stream);
                 }
