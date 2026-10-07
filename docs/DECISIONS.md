@@ -2871,3 +2871,10 @@ silently; a quick agent loop stays under a minute. Dev-window kills target only 
    full-width progress bar with done/total, and a test that every command in the invoke handler is declared in `build.rs` and granted
    in `capabilities/default.json`. Other v1.7 minors are done where cheap; the rest moves to the v2.1 backlog.
 4. *Release.* v1.7.0 (stable) with a German report once CI on `main` is green on both platforms.
+
+**Addendum (FX-ACC, owner photo scans).** Probe words found per scan, owner-scan-S1..S6 (6 probes each): at 200 dpi (the
+image-following minimum) 5, 3, 4, 6, 2, 0 = 20 of 36. Of the misses, almost all were not recognized (no near match in the
+recognized text; the search itself was fine: no hyphenation, umlaut or line-split cause). Trial: render pages whose image is
+below 150 dpi at 300 dpi: 4, 4, 5, 4, 1, 1 = 19 of 36, no gain, so it was reverted (`render_dpi` unchanged). The ≥ 5 of 6 target
+for these low-resolution phone photos (~530-690 px for an A4 width) is not reachable by rendering size; the acceptance records it
+as a known limit of Windows.Media.Ocr on such input.

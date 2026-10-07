@@ -4,7 +4,7 @@
 // Phases (one script, one acceptance launch each): main (generated scans, de), owner (owner-scan-S1..S6, de), en (English UI + scan),
 // langs-de / langs-none (env SHEER_AUTOMATION_OCR_LANGS masks the installed languages, ADR-137 item 1). Env: V17_PHASES=main,owner,... to select.
 // Not covered here: certified / read-only documents (O-AC 12), mocked capabilities (O-AC 6, 13), keyboard-only and reduced motion.
-import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, statSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { createResults, runSession, openAndWait, sleep } from './harness.mjs';
 import { parseIndex, tryCorpusProbe } from './corpus.mjs';
@@ -81,13 +81,17 @@ const makeSession =
             open: 'Öffnen…',
             none: (w) => `Keine Treffer für „${w}“`,
           }
-        : { tools: 'Tools', ocr: 'Recognize text…', file: 'File', open: 'Open…', none: (w) => `No results for "${w}"` };
+        : { tools: 'Tools', ocr: 'Recognize Text…', file: 'File', open: 'Open…', none: (w) => `No results for "${w}"` };
     // The acceptance build has its own settings: set the UI language explicitly (the other phases may have changed it).
     await ev(`window.__TAURI_INTERNALS__.invoke('update_settings', { patch: { language: ${q(uiLang)} } })`);
-    await input.waitFor(
-      `[...document.querySelectorAll('[role="menubar"] [role="menuitem"]')].some((e) => e.textContent.trim() === ${q(T.tools)})`,
-      { timeoutMs: 8000, what: 'UI language applied' },
-    );
+    // The settings store reads the language once at start: reload the page so the new language applies.
+    await ev('location.reload()').catch(() => {});
+    await sleep(1500);
+    // The menu bar exists only with a document open; the start screen sets <html lang> from the settings.
+    await input.waitFor(`document.documentElement.lang === ${q(uiLang)}`, {
+      timeoutMs: 20000,
+      what: 'UI language applied',
+    });
 
     // In-page recorder: progress labels, bar values, toast texts (the toast lives only a few seconds).
     await ev(`(() => {
@@ -141,8 +145,7 @@ const makeSession =
       ev(`(() => {
       const d = document.querySelector('[data-surface="ocr-dialog"]');
       if (!d) return null;
-      const radios = [...d.querySelectorAll('[data-ocr="scope"] [role="radio"]')];
-      const on = radios.find((r) => r.getAttribute('aria-checked') === 'true');
+      const on = d.querySelector('[data-ocr="scope"] label[data-checked]');
       const start = d.querySelector('[data-ocr="start"]');
       return {
         language: d.dataset.language,
@@ -175,7 +178,7 @@ const makeSession =
     }
     async function recognize(scopeText) {
       await openDialog();
-      if (scopeText) await input.click({ selector: '[data-ocr="scope"] [role="radio"]', text: scopeText });
+      if (scopeText) await input.click({ selector: '[data-ocr="scope"] label', text: scopeText });
       const info = await dialogInfo();
       await startRun();
       return info;
@@ -548,8 +551,19 @@ const makeSession =
           await waitOffer();
           await recognize();
           const run = await finishRun(240000);
+          // Diagnosis (untracked review/v170/): the recognized text of the laid-out layers and which probes the search found.
+          const layerText = await ev(
+            `[...document.querySelectorAll('[data-text-page]')].map((l) => [...l.querySelectorAll('[data-run-start]')].map((s) => s.textContent).join('')).join(String.fromCharCode(10) + '----' + String.fromCharCode(10))`,
+          );
           let hit = 0;
-          for (const w of words) if (await find(w)) hit++;
+          const got = [];
+          for (const w of words) {
+            const f = await find(w);
+            if (f) hit++;
+            got.push(`${f ? 'FOUND ' : 'MISS  '}${w}`);
+          }
+          mkdirSync(resolve(ROOT, 'review/v170'), { recursive: true });
+          writeFileSync(resolve(ROOT, `review/v170/${id}-words.txt`), `${got.join('\n')}\n=====\n${layerText}\n`);
           C(
             `${id}: run finished`,
             run.toasts.some((t) => /erkannt|Gestoppt/.test(t)),
