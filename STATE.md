@@ -1,9 +1,9 @@
 # STATE
-phase: v1.7 phase 1 done (session topic "v1.7 Scan & OCR – Phase 1, Machbarkeit", ADR-133, ADR-134); no release
+phase: session "Endspurt v2.0" (ADR-135): chain v1.7 p1 → v1.7 p2 → v1.8 → v1.9 → v2.0-rc.1; now part 1 (v1.7 Windows OCR → v1.7.0-beta.1)
 version: 1.6.0 (tag v1.6.0; v1.5.1, v1.5.0 kept)
-current_item: v1.7 phase 1 done (go for Windows with conditions). Next: owner decisions (real scans, en OCR pack, ADR-134 accept) → v1.7 designer spec + phase 2, or Politur v1.6
+current_item: v1.7 part 1 — wave 0/1 running: designer §3.12 spec, W0 OCR seam (model ApplyOcr, commands/ocr.rs, ocr/service.rs, src/api/ocr.ts), B2 layer quality (ocr_layer/ocr_probe/wire/win), T-SCAN fixtures (examples/make_scan_fixtures.rs). Next: B1 pipeline, B3 textlayer+save+redaction, F1 UI, acceptance v17-ocr.mjs
 last_completed: v1.6.0 — infra d0268da/43e0c7c/44b8aa3/3763737 (ADR-131, rule 15); Politur v1.5.1 4b63699/f60d18c/b42f5ad/32988ee; smart links backend 79ef1e5/a794812, frontend a5ad672, designer fixes 125116b, gate fix 3f6cc9f; reviews I1/P-B/S1 PASS, S2+S3 FIX→fixed; security PASS (lows); designer FIX (2 blockers) → fixed; acceptance build: v16-smartlinks all PASS (3 owner PDFs), v151-politur all PASS, real-input smoke PASS (~75 s); surface gate 1028/1028, annot smoke 17/17; tester green
-loop_count_this_session: 0 (session closed: report docs/reports/2026-10-07-v1.7-phase1-ocr-machbarkeit.md, STOP set)
+loop_count_this_session: 0 (session "Endspurt v2.0" started 2026-10-07; STOP removed)
 open_blockers: 2 (B-002, B-005, human-only). B-006 and B-007 resolved by the owner (ADR-128). Path guard (ADR-127) allows the project memory folder (ADR-128)
 notes: ADR-120: every push starts with `bash scripts/ci-status.sh` (last completed run on main, never wait); red = fix first. Rule 15 / ADR-131: acceptance ONLY via `npm run build:acceptance` + `scripts/ui/accept/*.mjs` (CDP, dialog guard); real input only `smoke-real.mjs` (≤ 5 min, announced). Never launch target/release or anything installed.
   Split staging across packages can break an intermediate commit (run #108): stage whole files per package when possible.

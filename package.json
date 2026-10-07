@@ -27,6 +27,7 @@
     "check": "bash scripts/check.sh",
     "bump-version": "bash scripts/bump-version.sh",
     "fetch-pdfium": "bash scripts/fetch-pdfium.sh",
+    "fixtures:scans": "cargo run --release --manifest-path src-tauri/Cargo.toml --example make_scan_fixtures",
     "build:acceptance": "node scripts/build-acceptance.mjs",
     "bench": "cargo test --release --manifest-path src-tauri/Cargo.toml --test perf_open -- --ignored --nocapture",
     "gen-installer-art": "node scripts/gen-installer-art.mjs",

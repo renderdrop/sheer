@@ -1001,6 +1001,96 @@ L-AC 13. With reduced motion, jumps are instant with the 1 s Ink outline and onl
 L-AC 14. The DOM gate passes for every L13 surface in en and de at both sizes; nothing overlaps.
 L-AC 15. "[3–5]", "[3-5]" and the "5–7" part of "[3, 5–7]" each show one underline; hover reads "Detected · Source · 3 entries"; click opens the chooser beside the run with one row per resolved number (unresolved absent; one resolved = plain link; none = no link); arrows + Enter jump and Back returns to the run; Esc closes and refocuses the run; 20 entries scroll after 12 rows.
 
+### 3.12 v1.7 Scan & OCR (ADR-134, ADR-135)
+
+Spec only; pipeline, layer and IPC are ADR-134's and ARCHITECTURE §15's. **No new mode, panel tab, grid track or tool slot** (Seiten has 8). New surfaces: OCR banner (banner slot, §3.2), OCR dialog, one Werkzeuge item, OCR toasts (§3.9 queue). Light only, tokens only, no glass ("Iris" = Solar, §3.10), no new tokens. Scripts address surfaces by `data-surface`.
+
+**O1 Entry.** One command, **Text erkennen…** (`ocr.command`), in Werkzeuge after "Signaturen verwalten" (separator before; macOS native menu matches). It opens the dialog (O2). Two ways lead to it, nothing else:
+- **Offer banner** (`data-surface="ocr-banner"`, variant `offer`): `ocr_classify_pages` runs in the background after the first render and each revision. Shown when the backend is not `none`, ≥ 1 page is `scan`, the document is not locked (O4) and not dismissed in this tab. §4 Banner: Sand, `scan-text` 16, `.t-label` `ocr.banner.page` (current page is a scan) else `ocr.banner.pages`; right: Ghost 28 `ocr.banner.action`, close 28 (`ocr.banner.dismiss`, tab session).
+- **Seiten mode:** with cards selected, the command preselects scope "Selected pages".
+- **Slot priority** (single 40 row): redact band > signature banner > OCR progress > form banner > OCR offer.
+
+**O2 Dialog** (`data-surface="ocr-dialog"`). §4 Dialog, width `--dialog-width-md` (480), title `.t-h3` `ocr.title`, rows gap 16, sizes to content (Q7, never scrolls).
+1. **Scope:** radiogroup `ocr.scope`: `ocr.scope.scan` (default when n ≥ 1) · `ocr.scope.current` · `ocr.scope.selected` (only with selected cards; then default) · `ocr.scope.all`. Counts `tabular-nums`. Caption `ocr.scope.hint` below. Within any scope only `scan` pages run (plus `sheerLayer` with Redo); `text`, `hasTextLayer`, `empty` are never touched (ADR-134 §5).
+2. **Redo:** checkbox `ocr.redo` with count, shown only when the scope holds `sheerLayer` pages; default off.
+3. **Language:** label `ocr.lang`, value `.t-body` = UI language (de → German/de-DE, en → English/en-US; ADR-135 §2), read-only, from `ocr_capabilities`:
+   - available: value only;
+   - fallback (other language available): `info` 16 + `.t-caption` `ocr.lang.fallback` (ADR-134 §3 ii);
+   - none available (Windows): `triangle-alert` 16 + `.t-caption` `ocr.lang.none`, then Secondary 32 `ocr.lang.settings` opening `ms-settings:regionlanguage`. The command stays enabled here so the button has a home (reading of ADR-134 §3 iii).
+4. **Footer:** Secondary `ocr.cancel`, Primary `ocr.start` ("Recognize {n} pages"). Disabled (0.4, tooltip) when n = 0 (`ocr.nothing`, also as caption above the footer) or no language.
+
+**O3 Progress and result.** Start calls `ocr_start`; the dialog closes, focus returns to the invoker (banner action, else the canvas).
+- **Progress banner** (variant `progress`, replaces the offer): Sand, `scan-text` 16, `.t-label` `ocr.progress` (page = done + 1, `tabular-nums`), right Ghost 28 `ocr.stop`. A 2px determinate bar on the banner's inner bottom edge (Ink on `--surface-pressed`), width = done/total from `ocrProgress`. Stop calls `ocr_cancel`; the label becomes `ocr.stopping`, Stop disabled.
+- **During a run** reading, search, annotating and zoom stay live; Save, Fertig, closing the tab and page structure changes are disabled (`ocr.busy`). Recognized pages are searchable at once (ADR-134 §8).
+- **`ocrFinished`:** banner leaves. Toast (priority 3): `ocr.done`; with `failed` > 0 `ocr.donePartial`; after Stop `ocr.stopped`. All applied pages are one undo step (`ocr.undo`). `applied` = 0 and `failed` > 0, or a refused `ocr_start`: error toast `triangle-alert` `ocr.failed` + Ghost `ocr.retry` (reopens the dialog). `page_too_large` counts as failed.
+
+**O4 States.**
+
+| Case | Command | Banner |
+|---|---|---|
+| backend `none` | disabled 0.4, reason `ocr.unavailable` | none |
+| signed/certified (ADR-121 lock) | disabled, `cert.locked.tool` | none |
+| no `modify` permission | disabled, `tool.readOnly` | none |
+| no scan pages | enabled; scan scope shows 0, Start disabled (`ocr.nothing`) | none |
+| no language | enabled; O2 row 3 none state | offer shown |
+| job running in this tab | disabled, `ocr.busy` | progress |
+
+**O5 Keyboard.** Dialog: focus on the checked radio, arrows within the group; Tab order scope → Redo → settings → Cancel → Start; Enter starts when enabled; Esc cancels. Banner controls are Tab stops before the first page; Esc never stops a run.
+
+**O6 Accessibility.** Banner `role="status"`, offer announced once per open. Bar `role="progressbar"` (`aria-valuenow` done, `aria-valuemax` total, `aria-valuetext` `ocr.progress`). Polite `ocr.announce.start` and result; failure assertive; no per-page announcements. Language captions are the row's `aria-describedby`. Bar Ink on `--surface-pressed` ≥ 3:1; state is never colour alone.
+
+**O7 Motion.** Banner: opacity in `--motion-base` (out `--motion-base-exit`), slot height instant. Bar width `--motion-base` `--ease-out` per push. Dialog and toasts as §4. Reduced motion: fades only, bar jumps.
+
+| Key | en | de |
+|---|---|---|
+| `ocr.command` / `ocr.title` | Recognize text… / Recognize text | Text erkennen… / Text erkennen |
+| `ocr.banner.page` | This page is an image. Recognize text? | Diese Seite ist ein Bild. Text erkennen? |
+| `ocr.banner.pages` | {n} pages are images. Recognize text? | {n} Seiten sind Bilder. Text erkennen? |
+| `ocr.banner.action` / `.dismiss` | Recognize text… / Hide | Text erkennen… / Ausblenden |
+| `ocr.scope` | Pages | Seiten |
+| `ocr.scope.scan` / `.current` / `.selected` / `.all` | Scanned pages ({n}) / This page / Selected pages ({n}) / All pages | Gescannte Seiten ({n}) / Diese Seite / Ausgewählte Seiten ({n}) / Alle Seiten |
+| `ocr.scope.hint` | Pages that already have text are skipped. | Seiten mit Text werden übersprungen. |
+| `ocr.redo` | Recognize again pages done by {app} ({n}) | Von {app} erkannte Seiten neu erkennen ({n}) |
+| `ocr.lang` | Language | Sprache |
+| `ocr.lang.fallback` | {wanted} recognition isn't installed on this computer; {used} is used — some words may be wrong. | Die Erkennung für {wanted} ist auf diesem Computer nicht installiert; {used} wird verwendet – einige Wörter können falsch sein. |
+| `ocr.lang.none` | No recognition language is installed on this computer. | Auf diesem Computer ist keine Erkennungssprache installiert. |
+| `ocr.lang.settings` | Open language settings | Spracheinstellungen öffnen |
+| `ocr.start` | Recognize {n} pages | {n} Seiten erkennen |
+| `ocr.nothing` | No scanned pages to recognize here. | Hier gibt es keine gescannten Seiten. |
+| `ocr.progress` | Recognizing page {page} of {total} | Erkenne Seite {page} von {total} |
+| `ocr.stop` / `ocr.stopping` | Stop / Stopping… | Stoppen / Wird gestoppt… |
+| `ocr.cancel` / `ocr.retry` | Cancel / Try again | Abbrechen / Erneut versuchen |
+| `ocr.busy` | Wait until text recognition finishes. | Warte, bis die Texterkennung fertig ist. |
+| `ocr.done` | Text recognized on {applied} pages | Text auf {applied} Seiten erkannt |
+| `ocr.donePartial` | Text recognized on {applied} pages; {failed} failed | Text auf {applied} Seiten erkannt; {failed} fehlgeschlagen |
+| `ocr.stopped` | Stopped. Text recognized on {applied} of {total} pages | Gestoppt. Text auf {applied} von {total} Seiten erkannt |
+| `ocr.failed` | Text couldn't be recognized. | Text konnte nicht erkannt werden. |
+| `ocr.unavailable` | Text recognition isn't available on this computer. | Texterkennung ist auf diesem Computer nicht verfügbar. |
+| `ocr.undo` | Recognize text | Text erkennen |
+| `ocr.announce.start` | Recognizing text on {total} pages | Erkenne Text auf {total} Seiten |
+
+`{wanted}`/`{used}` are language names in the UI language; `{app}` = `APP_NAME`.
+
+**O8 Surface gate (Q9, 960 × 640 and 1280 × 800, en and de).** Registered: `ocr-banner` (offer page/pages; progress at 0 %, mid, stopping), `ocr-dialog` (default; selected scope; Redo row; fallback; none state with settings button; n = 0), Werkzeuge menu with the item enabled and disabled, toasts `ocr.done`, `ocr.donePartial`, `ocr.stopped`, `ocr.failed`. The banner never covers a page; the toast never covers the banner's Stop.
+
+**Acceptance (acceptance build, CDP; fixtures = generated image-only PDFs under `review/` and owner-pdf-F2).**
+O-AC 1. A 3-page image-only PDF shows the offer "3 pages are images"; a mixed file on its scan page reads "This page is an image".
+O-AC 2. A text-only PDF shows no banner; the dialog shows 0, Start disabled with `ocr.nothing`.
+O-AC 3. Werkzeuge → Text erkennen… and the banner action open the same dialog; scope defaults to Scanned pages.
+O-AC 4. In Seiten with 2 cards selected, the scope defaults to "Selected pages (2)".
+O-AC 5. UI de: language row reads German; UI en without en-US: fallback caption names English and German.
+O-AC 6. With no language available (mocked capabilities), the settings button shows and Start is disabled.
+O-AC 7. Start closes the dialog; the banner reads "Recognizing page 1 of 3", bar and `aria-valuenow` advance per `ocrProgress`.
+O-AC 8. After finish: toast "Text recognized on 3 pages"; search finds a known word on page 2 before saving; one Undo removes all three layers.
+O-AC 9. Stop during page 2: toast `ocr.stopped` with applied < total; recognized pages stay searchable.
+O-AC 10. During a run Save, Fertig and Löschen are disabled with `ocr.busy`; zoom and search work.
+O-AC 11. Redo row appears only after a first run; unchecked, a second run skips those pages.
+O-AC 12. A certified file and a no-modify file: command disabled with the matching tooltip, no banner.
+O-AC 13. Backend `none` (mocked): command disabled with `ocr.unavailable`; no banner.
+O-AC 14. Save and reopen: pages look pixel-identical, search still hits, the offer banner is gone.
+O-AC 15. Keyboard only: banner action → arrows → Enter starts; Esc in the dialog cancels; focus returns to the invoker.
+O-AC 16. Reduced motion: only fades; the O8 gate passes for every registered surface; nothing overlaps.
+
 ## 4. Components (R4)
 
 States apply to all: hover ≤ background/border/icon colour change; pressed scale 0.98 at most; focus = `--ring-focus` (keyboard only); disabled = `--opacity-disabled`, no pointer events, tooltip still explains why.

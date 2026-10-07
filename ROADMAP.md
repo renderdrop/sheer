@@ -353,19 +353,40 @@ new engine capability or dependency is needed. Not picked by the loop before v1.
 - [x] v1.6.4 — Range citations "[3–5]" link every number through a chooser (ADR-133, DESIGN §3.11 L14; e610716, f704a6e; acceptance build 11/11 with a generated PDF); unreleased
 
 ### v1.7 "Scan & OCR"
-- [x] v1.7 architect ADR — ADR-134 (proposed): Windows OCR via the windows crate in a child mode of the app, Swift sidecar on macOS
+- [x] v1.7 architect ADR — ADR-134 (accepted 2026-10-07, ADR-135): Windows OCR via the windows crate in a child mode of the app, Swift sidecar on macOS
 - [x] v1.7 phase 1 — Windows spike, no UI (f3c4c1b): 6 of 7 exit criteria met; exact-line copy fails (PDFium merges OCR lines); corpus holds only 2 real scan pages
 - [ ] v1.7 spec — designer spec (OCR action, progress, language notice, redo, re-check of accuracy on real scans)
 - [ ] v1.7 phase-2 prerequisites — real scanned test PDFs from the owner (rule 13); English OCR pack on the dev machine; line structure so copy keeps OCR lines; huge MediaBox guard in ocr_layer (security low); render/OCR pipelining; tilt; NFC; form-XObject scans in the probe
 - [ ] v1.7.1 — Invisible text layer for photos and scans (searchable, copyable, highlightable), de/en, OS OCR preferred
-- [ ] v1.7.2 — Option: take text over as editable paragraphs (no formatting claim)
-- [ ] v1.7 acceptance — security-reviewer, installed build with the mouse, designer round, tag v1.7.0
+- [~] v1.7.2 — Option: take text over as editable paragraphs (no formatting claim) → v2.1 backlog (ADR-135 §1)
+- [ ] v1.7 part 1 acceptance — acceptance build (rule 15), security-reviewer, designer round, pre-release v1.7.0-beta.1
+- [ ] v1.7 part 2 — macOS Swift sidecar sheer-ocr (Apple Vision), CI-built and CI-tested only; human Mac check pending (B-001)
+- [ ] v1.7 acceptance — security-reviewer, tag v1.7.0
 
-### v1.8 "Context help"
+### v1.8 "Context help" (ADR-135 §4: on by default, one tip per situation, switch in Settings)
 - [ ] v1.8 spec — designer spec (tip slots, clip format, frequency rules)
 - [ ] v1.8.1 — Short tips with 3-second clips at the right moments (first highlight, first form, first signature, Pages mode),
       recorded from the app, at most one per situation, can be switched off
 - [ ] v1.8 acceptance — installed build with the mouse, designer round, tag v1.8.0
+
+### v1.9 "Backlog" (ADR-135 §5)
+- [ ] v1.9 spec — designer spec (stamp picker, header/footer sheet, comment export, citation style)
+- [ ] v1.9.1 — Stamps: predefined set + own text, Solar Yellow and Ink
+- [ ] v1.9.2 — Headers and footers (default: page number + date)
+- [ ] v1.9.3 — Comment export as a PDF summary and as Markdown
+- [ ] v1.9.4 — Fifth citation style "Deutsche Zitierweise" (full footnote first, short reference after)
+- [ ] v1.9 acceptance — acceptance build, security-reviewer, designer round, tag v1.9.0
+
+### v2.0-rc.1 (ADR-135 §6)
+- [ ] v2.0 polish — every open Politur ticket (v1.6, backlog, v1.7–v1.9 minors)
+- [ ] v2.0 security — final security audit with the fuzz corpus
+- [ ] v2.0 performance — budget re-measured (500-page open < 1 s, scroll p95)
+- [ ] v2.0 accessibility — screen-reader pass (Narrator), keyboard-only pass
+- [ ] v2.0 owner decisions — collect open owner decisions from every report since v1.5 into the final report
+- [ ] v2.0-rc.1 — pre-release
+
+## v2.1 backlog (Should features moved by ADR-135 §1)
+- v1.7.2 OCR text as editable paragraphs; skew correction (image deskew)
 
 ## Politur v1.4.1 (session "Politur v1.2–v1.4 + CI runtime", ADR-123)
 
