@@ -2878,3 +2878,27 @@ recognized text; the search itself was fine: no hyphenation, umlaut or line-spli
 below 150 dpi at 300 dpi: 4, 4, 5, 4, 1, 1 = 19 of 36, no gain, so it was reverted (`render_dpi` unchanged). The ≥ 5 of 6 target
 for these low-resolution phone photos (~530-690 px for an A4 width) is not reachable by rendering size; the acceptance records it
 as a known limit of Windows.Media.Ocr on such input.
+
+## ADR-138 — Session "v1.8 Context help": OCR acceptance with owner-scan-S7, tip clips
+
+**Status:** accepted (2026-10-07, owner instruction; topic "v1.8 Kontexthilfe").
+
+**Decisions (owner, plus defaults recorded so no question is needed).**
+1. *OCR acceptance, real scans.* The owner supplied one multi-page PDF of photographed pages in original resolution (`owner-scan-S7`,
+   six pages, about 2100–2360 px wide). The OCR acceptance is repeated **only** with it: every page is recognized, five probe words
+   per page (chosen from the image, kept only in the untracked `review/owner/INDEX.md`, keys `owner-scan-S7/p1`…`p6`) are searched,
+   and the hit rate per page goes into the report. The screen captures S1–S6 are retired from the acceptance (ADR-137 addendum stays
+   as history).
+2. *Context help (FEEDBACK F15 C, ROADMAP v1.8).* Short tips with a **3-second clip** at four situations: first highlight, first form
+   (a document with fillable fields), first signature, first switch into Pages mode. At most one tip per situation and session; each
+   situation's tip shows once (recorded in `tipsSeen`, "Show tips again" re-arms it). Tips are on by default and can be switched off
+   in Settings (new setting `tipsEnabled`, default true, beside the existing "Show tips again"). Placement through the existing
+   positioning engine (DESIGN §3.9 Q8): a tip never covers an input, its anchor, the selection or the mini bar. Designer spec first,
+   texts en/de.
+3. *Clips.* Recorded from the acceptance build (rule 15) by capturing the app's own web view through CDP (no screen capture, rule 13),
+   only with self-made documents (tests/fixtures, the welcome document; never owner material, rule 16). Bundled as **APNG** written by
+   our own small encoder (`scripts/ui/apng.mjs`, node:zlib only, no new dependency); WebP was the alternative but needs a native
+   encoder dependency. Budget: ≤ 3 s, ≤ 12 fps, ≤ 360 CSS px wide at 2× density, ≤ 600 KB per clip. With reduced motion the tip
+   shows the clip's last frame as a still. Clips live in `src/assets/tips/`, served from the bundle (`img-src 'self'`), no external
+   source.
+4. *Release.* v1.8.0 with a German report once CI on `main` is green.

@@ -1,7 +1,7 @@
 # STATE
-phase: session "v1.7 part 2 + Politur v1.7" (ADR-137) closed: v1.7.0 released
+phase: session "v1.8 Context help" (ADR-138) — wave 1 running
 version: 1.7.0 (tag v1.7.0, latest stable)
-current_item: none — next session: owner decides (proposal: v1.8 context help). Open owner items: B-008 Mac OCR check, full-resolution scan photos
+current_item: v1.8 → v1.8.0. Wave 1: designer spec §3.13; OCR-S7 (v17-ocr owner phase, S7 only); SET (tipsEnabled setting, backend+api); REC (scripts/ui/apng.mjs, accept/clip.mjs). Then: TIPS frontend + clip recording, OCR S7 acceptance, gate/smoke, designer, security, release
 last_completed: v1.7.0 — macOS Vision sidecar b3e05e5 (+tests b9b0d63, eb02a82~2), polish PB 19e3a19, PF+FX-RO 3f87e96, ACL b372a72, sec low c4006f7, FX-D; acceptance v17-ocr 50/54 (4 = owner photo scan recognition limit) + rerun 42/42; security PASS (4 low); designer PASS (1 major fixed); gate 1173/1180 + coach rerun 78/78; annot smoke 17/17; real-input smoke PASS; macOS CI Vision 5/5
 loop_count_this_session: 0 (session closed, STOP set); report docs/reports/2026-10-07-v1.7.0-ocr-macos-politur.md
 open_blockers: 2 (B-002, B-005, human-only). B-006 and B-007 resolved by the owner (ADR-128). Path guard (ADR-127) allows the project memory folder (ADR-128)
