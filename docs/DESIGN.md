@@ -1020,7 +1020,7 @@ Spec only; pipeline, layer and IPC are ADR-134's and ARCHITECTURE §15's. **No n
 4. **Footer:** Secondary `ocr.cancel`, Primary `ocr.start` ("Recognize {n} pages"). Disabled (0.4, tooltip) when n = 0 (`ocr.nothing`, also as caption above the footer) or no language.
 
 **O3 Progress and result.** Start calls `ocr_start`; the dialog closes, focus returns to the invoker (banner action, else the canvas).
-- **Progress banner** (variant `progress`, replaces the offer): Sand, `scan-text` 16, `.t-label` `ocr.progress` (page = done + 1, `tabular-nums`), right Ghost 28 `ocr.stop`. A 2px determinate bar on the banner's inner bottom edge (Ink on `--surface-pressed`), width = done/total from `ocrProgress`. Stop calls `ocr_cancel`; the label becomes `ocr.stopping`, Stop disabled.
+- **Progress banner** (variant `progress`, replaces the offer): Sand, `scan-text` 16, `.t-label` `ocr.progress` (page = done + 1, `tabular-nums`), right Ghost 28 `ocr.stop`. Between label and Stop a full-width determinate 4 px track on `--surface-pressed` with an Ink fill (width = done/total from `ocrProgress`), `done/total` tabular next to it (ADR-137). Stop calls `ocr_cancel`; the label becomes `ocr.stopping`, Stop disabled.
 - **During a run** reading, search, annotating and zoom stay live; Save, Fertig, closing the tab and page structure changes are disabled (`ocr.busy`). Recognized pages are searchable at once (ADR-134 §8).
 - **`ocrFinished`:** banner leaves. Toast (priority 3): `ocr.done`; with `failed` > 0 `ocr.donePartial`; after Stop `ocr.stopped`. All applied pages are one undo step (`ocr.undo`). `applied` = 0 and `failed` > 0, or a refused `ocr_start`: error toast `triangle-alert` `ocr.failed` + Ghost `ocr.retry` (reopens the dialog). `page_too_large` counts as failed.
 
@@ -1037,7 +1037,7 @@ Spec only; pipeline, layer and IPC are ADR-134's and ARCHITECTURE §15's. **No n
 
 **O5 Keyboard.** Dialog: focus on the checked radio, arrows within the group; Tab order scope → Redo → settings → Cancel → Start; Enter starts when enabled; Esc cancels. Banner controls are Tab stops before the first page; Esc never stops a run.
 
-**O6 Accessibility.** Banner `role="status"`, offer announced once per open. Bar `role="progressbar"` (`aria-valuenow` done, `aria-valuemax` total, `aria-valuetext` `ocr.progress`). Polite `ocr.announce.start` and result; failure assertive; no per-page announcements. Language captions are the row's `aria-describedby`. Bar Ink on `--surface-pressed` ≥ 3:1; state is never colour alone.
+**O6 Accessibility.** The offer banner is `role="status"` (announced once per open); the progress banner is not a live region and its per-page label is `aria-live="off"`. Bar `role="progressbar"` (`aria-valuenow` done, `aria-valuemax` total, `aria-valuetext` `ocr.progress`). Polite `ocr.announce.start` and result; failure assertive; no per-page announcements. Language captions are the row's `aria-describedby`. Bar Ink on `--surface-pressed` ≥ 3:1; state is never colour alone.
 
 **O7 Motion.** Banner: opacity in `--motion-base` (out `--motion-base-exit`), slot height instant. Bar width `--motion-base` `--ease-out` per push. Dialog and toasts as §4. Reduced motion: fades only, bar jumps.
 

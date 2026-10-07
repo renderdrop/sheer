@@ -18,6 +18,18 @@ import { useOcr, type OcrDialogState } from './store';
 
 const NO_CLASSES: readonly PageClass[] = [];
 
+/** A language tag: contextual alternates and tabular figures off, so the hyphen of `en-US` keeps its normal spacing. */
+function LangTag({ tag }: { tag: string }) {
+  return (
+    <span
+      data-ocr="language-tag"
+      className="[font-feature-settings:'calt'_0,'cv11','ss01'] [font-variant-numeric:normal]"
+    >
+      {tag}
+    </span>
+  );
+}
+
 function OcrModal({ request }: { request: OcrDialogState }) {
   const t = useT();
   const locale = useLocale();
@@ -141,7 +153,9 @@ function OcrModal({ request }: { request: OcrDialogState }) {
         >
           <span className="t-label text-text-muted">{t('ocr.lang')}</span>
           <span className="t-body" data-ocr="language-value">
-            {t('ocr.lang.value', { name: t(`ocr.lang.name.${wanted}`), tag: wanted })}
+            {t('ocr.lang.value', { name: t(`ocr.lang.name.${wanted}`), tag: '\u0000' })
+              .split('\u0000')
+              .flatMap((part, index) => (index === 0 ? [part] : [<LangTag key="tag" tag={wanted} />, part]))}
           </span>
           {language.kind === 'fallback' && (
             <p
@@ -168,7 +182,7 @@ function OcrModal({ request }: { request: OcrDialogState }) {
               </p>
               {/* Windows: the backend opens its fixed settings page. Elsewhere (or if that fails) the way is said in words. */}
               {capabilities?.backend === 'windows' && !settingsFailed ? (
-                <div>
+                <div className="ps-5">
                   <Button
                     variant="secondary"
                     data-ocr="settings"

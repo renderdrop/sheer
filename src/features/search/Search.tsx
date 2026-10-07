@@ -349,7 +349,11 @@ function statusText(t: ReturnType<typeof useT>, entry: SearchEntry): string {
     return t('search.progress', { i: entry.progress.done, n: entry.progress.total });
   }
   if (entry.hits.length === 0) return '';
-  return t(entry.truncated ? 'search.countCapped' : 'search.count', { n: entry.hits.length, p: entry.pageCount });
+  const count = entry.hits.length;
+  return t('search.count', {
+    hits: entry.truncated ? t('search.hitsCapped', { count }) : t('search.hits', { count }),
+    pages: t('search.pages', { count: entry.pageCount }),
+  });
 }
 
 function SearchView({ docId }: { docId: number }) {

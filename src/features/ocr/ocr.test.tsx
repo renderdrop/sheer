@@ -199,6 +199,10 @@ describe('the banner', () => {
     expect(shown()?.textContent).toContain('Recognizing page 2 of 3');
     expect(screen.getByRole('progressbar').getAttribute('aria-valuenow')).toBe('1');
     expect(screen.getByRole('progressbar').getAttribute('aria-valuetext')).toBe('Recognizing page 2 of 3');
+    // No per-page announcements (O6): nothing in the banner is a live region that changes with the page.
+    expect(shown()?.closest('[role="status"], [aria-live="polite"], [aria-live="assertive"]')).toBeNull();
+    expect(shown()?.querySelector('[role="status"], [aria-live="polite"], [aria-live="assertive"]')).toBeNull();
+    expect(document.querySelector('[data-ocr="label"]')?.getAttribute('aria-live')).toBe('off');
     expect(document.querySelector('[data-ocr="count"]')?.textContent).toBe('1/3');
     expect(document.querySelector<HTMLElement>('[data-ocr="bar-fill"]')?.style.width).toBe('33%');
     await user.click(screen.getByRole('button', { name: 'Stop' }));

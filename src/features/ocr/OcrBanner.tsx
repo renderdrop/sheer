@@ -62,17 +62,11 @@ function Progress({ docId }: { docId: number }) {
     ? t('ocr.stopping')
     : t('ocr.progress', { page: Math.min(run.done + 1, Math.max(run.total, 1)), total: run.total });
   return (
-    <div
-      role="status"
-      data-surface="ocr-banner"
-      data-variant="progress"
-      data-stopping={run.stopping || undefined}
-      className={BOX}
-    >
+    <div data-surface="ocr-banner" data-variant="progress" data-stopping={run.stopping || undefined} className={BOX}>
       <span className="shrink-0 text-text">
         <Icon icon={ScanText} />
       </span>
-      <span className="min-w-0 shrink-0 tabular-nums" data-ocr="label">
+      <span className="min-w-0 shrink-0 tabular-nums" data-ocr="label" aria-live="off">
         {text}
       </span>
       <Bar done={run.done} total={run.total} text={text} />

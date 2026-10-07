@@ -205,6 +205,15 @@ describe('plurals', () => {
     expect(catalogs.en['component.splitterValue.other']).toBe('{count} pixels');
   });
 
+  it('pluralizes the search result count and its page count', () => {
+    const line = (tr: typeof t, n: number, p: number) =>
+      tr('search.count', { hits: tr('search.hits', { count: n }), pages: tr('search.pages', { count: p }) });
+    expect(line(t, 1, 1)).toBe('1 result on 1 page');
+    expect(line(t, 3, 2)).toBe('3 results on 2 pages');
+    expect(line(de, 1, 1)).toBe('1 Treffer auf 1 Seite');
+    expect(line(de, 3, 2)).toBe('3 Treffer auf 2 Seiten');
+  });
+
   it('writes the count in the language of the locale', () => {
     expect(t('component.splitterValue', { count: 1234 })).toBe('1,234 pixels');
     expect(de('component.splitterValue', { count: 1234 })).toBe('1.234 Pixel');
