@@ -266,6 +266,11 @@ guard_dist_urls() {
     echo "error: no bundle at $dir"
     return 1
   fi
+  # The dev CSP (tauri.conf.json devCsp) names the Vite dev server; nothing of it may be in a release bundle (ws:// is not caught below).
+  if grep -rqE --binary-files=without-match 'localhost:1420' "$dir"; then
+    echo "error: dev server address (localhost:1420) in the bundle ($dir)"
+    rc=1
+  fi
   hosts="$(grep -rhoE --binary-files=without-match 'https?://[A-Za-z0-9.-]+' "$dir" | sed -E 's#^https?://##' | sort -u)"
   for host in $hosts; do
     if ! printf '%s' "$host" | grep -qE "$DIST_URL_ALLOWED"; then

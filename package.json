@@ -33,6 +33,7 @@
     "bump-version": "bash scripts/bump-version.sh",
     "fetch-pdfium": "bash scripts/fetch-pdfium.sh",
     "fixtures:scans": "bash scripts/cargo.sh run --release --example make_scan_fixtures",
+    "fixtures:owner-scans": "bash scripts/cargo.sh run --release --example make_scan_fixtures -- --owner",
     "build:acceptance": "node scripts/build-acceptance.mjs",
     "bench": "bash scripts/cargo.sh test --release --test perf_open -- --ignored --nocapture",
     "gen-installer-art": "node scripts/gen-installer-art.mjs",

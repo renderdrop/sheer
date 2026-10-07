@@ -89,6 +89,9 @@ pub enum AppEvent {
         applied: u32,
         skipped: u32,
         failed: u32,
+        /// `"readOnly"` when the document became signed or read-only during the job and its layers were refused.
+        #[serde(skip_serializing_if = "Option::is_none")]
+        refused: Option<&'static str>,
     },
 }
 
@@ -317,6 +320,7 @@ mod tests {
             applied: 3,
             skipped: 1,
             failed: 0,
+            refused: None,
         };
         let value = json(&progress);
         assert_eq!(value["type"], "ocrProgress");

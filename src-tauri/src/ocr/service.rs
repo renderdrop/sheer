@@ -328,6 +328,21 @@ pub struct Outcome {
     pub applied: u32,
     pub skipped: u32,
     pub failed: u32,
+    /// `Some("readOnly")`: the document became signed or read-only while the job ran; its layers were refused, not failed.
+    pub refused: Option<&'static str>,
+}
+
+/// Books the result of applying `n` layers: applied, refused (a document that went read-only mid-job; the pages count as skipped)
+/// or failed.
+fn book_apply(result: Result<(), AppError>, n: u32, outcome: &mut Outcome) {
+    match result {
+        Ok(()) => outcome.applied = n,
+        Err(error) if error.code() == ErrorCode::ReadOnly => {
+            outcome.refused = Some("readOnly");
+            outcome.skipped += n;
+        }
+        Err(_) => outcome.failed += n,
+    }
 }
 
 /// Runs the job on the calling thread (blocking; give it a thread of its own): classifies the pages, recognizes the wanted ones
@@ -345,10 +360,10 @@ pub fn run_job(app: &AppState, events: &AppEvents, spec: &JobSpec, cancel: &Atom
     };
     if !layers.is_empty() {
         let n = count(layers.len());
-        match app.apply_command(spec.doc, DocCommand::ApplyOcr { layers }) {
-            Ok(_) => outcome.applied = n,
-            Err(_) => outcome.failed += n,
-        }
+        let applied = app
+            .apply_command(spec.doc, DocCommand::ApplyOcr { layers })
+            .map(drop);
+        book_apply(applied, n, &mut outcome);
     }
     events.publish(AppEvent::OcrFinished {
         doc: spec.doc,
@@ -356,6 +371,7 @@ pub fn run_job(app: &AppState, events: &AppEvents, spec: &JobSpec, cancel: &Atom
         applied: outcome.applied,
         skipped: outcome.skipped,
         failed: outcome.failed,
+        refused: outcome.refused,
     });
     outcome
 }
@@ -415,7 +431,7 @@ fn recognize_all(
     let snapshot = SnapshotGuard::current(app, spec.doc)?;
     let doc = snapshot.snapshot().engine;
     let mut client = ChildClient::new(
-        std::env::current_exe().map_err(|e| AppError::logged(ErrorCode::Internal, e))?,
+        crate::ocr::backend::recognizer_exe().ok_or(AppError::unsupported("ocrUnavailable"))?,
     );
     let render = |task: &Task| render_task(app, doc, task);
     let result = run_pipeline(
@@ -581,6 +597,50 @@ mod tests {
         }
         assert!(!wants(SheerLayer, false));
         assert!(wants(SheerLayer, true));
+    }
+
+    #[test]
+    fn the_ocr_child_is_always_the_apps_own_exe() {
+        // Production code of this module and of the commands: the only program a `ChildClient` gets is `current_exe()`; no path comes
+        // from a job spec, an argument or the environment.
+        for (name, source) in [
+            ("service", include_str!("service.rs")),
+            ("commands", include_str!("../commands/ocr.rs")),
+        ] {
+            let production = source.split("#[cfg(test)]").next().unwrap_or(source);
+            for call in production.match_indices("ChildClient::new(") {
+                let after = &production[call.0..];
+                let args = after.split(");").next().unwrap_or(after);
+                let own = args.contains("current_exe()") || args.contains("recognizer_exe()");
+                assert!(own, "{name}: {args}");
+            }
+            assert!(!production.contains("PathBuf::from(\""), "{name}");
+        }
+        if cfg!(windows) {
+            // On Windows the recognizer is the app's own exe in child mode.
+            let exe = std::env::current_exe().unwrap();
+            assert!(exe.is_absolute());
+            if let Some(chosen) = super::super::backend::recognizer_exe() {
+                assert_eq!(chosen, exe);
+            }
+        }
+    }
+
+    #[test]
+    fn a_document_that_went_read_only_mid_job_is_refused_not_failed() {
+        let mut outcome = Outcome::default();
+        book_apply(Err(AppError::read_only("signed")), 4, &mut outcome);
+        assert_eq!(outcome.refused, Some("readOnly"));
+        assert_eq!(
+            (outcome.applied, outcome.skipped, outcome.failed),
+            (0, 4, 0)
+        );
+        let mut outcome = Outcome::default();
+        book_apply(Err(AppError::new(ErrorCode::Internal)), 4, &mut outcome);
+        assert_eq!((outcome.refused, outcome.failed), (None, 4));
+        let mut outcome = Outcome::default();
+        book_apply(Ok(()), 4, &mut outcome);
+        assert_eq!((outcome.refused, outcome.applied), (None, 4));
     }
 
     #[test]

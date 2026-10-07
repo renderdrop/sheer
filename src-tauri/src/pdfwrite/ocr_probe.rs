@@ -15,6 +15,10 @@ const MAX_OPS: usize = 2_000_000;
 /// How deep Form XObjects are followed, and how many forms one page may enter (a form can draw itself many times).
 const MAX_FORM_DEPTH: u32 = 4;
 const MAX_FORMS: u32 = 256;
+/// The most bytes all forms of one `cover()` may decompress together (a tenth of what a page's own content may). The walk only looks
+/// for `q`, `Q`, `cm` and `Do`; a real scan wrapper is a few hundred bytes, so 8 MiB leaves a wide margin and a decompression bomb
+/// spread over many forms cannot cost more than this (the page content itself is capped by [`MAX_CONTENT`]).
+const MAX_FORM_BYTES: usize = 8 * 1024 * 1024;
 
 /// How much of a page's box image XObjects cover, and the effective resolution of the largest one.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -115,7 +119,7 @@ impl ProbeDoc {
             covered: 0.0,
             best_dpi: 0.0,
             best_area: 0.0,
-            budget: MAX_CONTENT.saturating_sub(bytes.len()),
+            budget: MAX_CONTENT.saturating_sub(bytes.len()).min(MAX_FORM_BYTES),
             ops: MAX_OPS,
             forms: MAX_FORMS,
         };
@@ -223,19 +227,11 @@ impl ProbeDoc {
             return;
         };
         acc.budget = acc.budget.saturating_sub(bytes.len());
-        let matrix = form
-            .dict
-            .get(b"Matrix")
-            .ok()
-            .and_then(|o| doc.dereference(o).ok())
-            .and_then(|(_, o)| o.as_array().ok())
-            .map(|a| {
-                a.iter()
-                    .filter_map(|o| doc.dereference(o).ok().and_then(|(_, o)| o.as_float().ok()))
-                    .collect::<Vec<f32>>()
-            })
-            .and_then(|v| <[f32; 6]>::try_from(v).ok())
-            .unwrap_or([1.0, 0.0, 0.0, 1.0, 0.0, 0.0]);
+        let matrix = Self::form_matrix(doc, form);
+        let Some(matrix) = matrix else {
+            // A non-finite /Matrix would poison the CTM of everything inside: refuse the form.
+            return;
+        };
         // the form's own resources, else the ones it is drawn from
         let own = form
             .dict
@@ -249,6 +245,24 @@ impl ProbeDoc {
             .cloned();
         let xobjects = own.as_ref().unwrap_or(outer);
         self.walk(&bytes, xobjects, mul(matrix, ctm), depth + 1, acc);
+    }
+
+    /// The form's `/Matrix` (identity when missing or malformed); `None` when a value is not finite.
+    fn form_matrix(doc: &Document, form: &Stream) -> Option<Matrix> {
+        let matrix = form
+            .dict
+            .get(b"Matrix")
+            .ok()
+            .and_then(|o| doc.dereference(o).ok())
+            .and_then(|(_, o)| o.as_array().ok())
+            .map(|a| {
+                a.iter()
+                    .filter_map(|o| doc.dereference(o).ok().and_then(|(_, o)| o.as_float().ok()))
+                    .collect::<Vec<f32>>()
+            })
+            .and_then(|v| <[f32; 6]>::try_from(v).ok())
+            .unwrap_or([1.0, 0.0, 0.0, 1.0, 0.0, 0.0]);
+        matrix.iter().all(|v| v.is_finite()).then_some(matrix)
     }
 }
 
@@ -534,6 +548,56 @@ mod tests {
                 assert!(finite(doc.cover(0)), "{:?}", doc.cover(0));
             }
         }
+    }
+
+    #[test]
+    fn a_form_matrix_must_be_finite() {
+        let form = |matrix: Vec<Object>| {
+            Stream::new(
+                dictionary! { "Subtype" => "Form", "Matrix" => matrix },
+                Vec::new(),
+            )
+        };
+        let doc = Document::with_version("1.7");
+        let row = |a: f32| vec![a.into(), 0.into(), 0.into(), 1.into(), 0.into(), 0.into()];
+        assert!(ProbeDoc::form_matrix(&doc, &form(row(2.0))).is_some());
+        for bad in [f32::NAN, f32::INFINITY, f32::NEG_INFINITY] {
+            let bad_row = row(bad).into_iter().map(|o| match o {
+                Object::Real(v) => Object::Real(v),
+                other => other,
+            });
+            assert!(ProbeDoc::form_matrix(&doc, &form(bad_row.collect())).is_none());
+        }
+        // Missing or malformed: the identity.
+        let none = Stream::new(dictionary! { "Subtype" => "Form" }, Vec::new());
+        assert_eq!(
+            ProbeDoc::form_matrix(&doc, &none),
+            Some([1.0, 0.0, 0.0, 1.0, 0.0, 0.0])
+        );
+    }
+
+    #[test]
+    fn forms_may_decompress_only_a_little_per_cover() {
+        let bytes = hostile(box_of(72, 96), |doc| {
+            let image = doc.add_object(Stream::new(
+                dictionary! { "Type" => "XObject", "Subtype" => "Image", "Width" => 10, "Height" => 10,
+                    "ColorSpace" => "DeviceGray", "BitsPerComponent" => 8 },
+                vec![0; 100],
+            ));
+            // The draw comes first, then more padding than the form budget allows: compressed it is tiny.
+            let mut content = b"72 0 0 96 0 0 cm /Im0 Do\n".to_vec();
+            content.resize(MAX_FORM_BYTES + 1024, b' ');
+            let mut form = Stream::new(
+                dictionary! { "Type" => "XObject", "Subtype" => "Form", "BBox" => box_of(1, 1),
+                "Resources" => dictionary! { "XObject" => dictionary! { "Im0" => image } } },
+                content,
+            );
+            form.compress().unwrap();
+            assert!(form.content.len() < 64 * 1024);
+            doc.add_object(form)
+        });
+        let cover = ProbeDoc::load(&bytes).unwrap().cover(0);
+        assert_eq!(cover.fraction, 0.0, "{cover:?}");
     }
 
     #[test]

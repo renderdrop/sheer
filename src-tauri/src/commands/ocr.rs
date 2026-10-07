@@ -197,6 +197,7 @@ impl AppState {
                         applied: 0,
                         skipped: 0,
                         failed: u32::try_from(spec.pages.len()).unwrap_or(u32::MAX),
+                        refused: None,
                     });
                 }
             })
@@ -255,8 +256,9 @@ pub async fn ocr_open_language_settings() -> Result<(), UiError> {
             return Err(AppError::unsupported("languageSettings"));
         }
         // A fixed program with a fixed argument; the frontend gives nothing. (The opener plugin is reserved for links, security baseline.)
-        std::process::Command::new(explorer_path())
-            .arg(LANGUAGE_SETTINGS_URI)
+        let (program, argument) = language_settings_command(std::env::var_os("SystemRoot"));
+        std::process::Command::new(program)
+            .arg(argument)
             .spawn()
             .map(drop)
             .map_err(|error| AppError::logged(ErrorCode::Internal, error))
@@ -265,12 +267,19 @@ pub async fn ocr_open_language_settings() -> Result<(), UiError> {
 }
 
 /// `%SystemRoot%\explorer.exe` (absolute, so a PATH entry cannot hijack it); `C:\Windows` when the variable is unset or relative.
-fn explorer_path() -> std::path::PathBuf {
-    let root = std::env::var_os("SystemRoot")
+fn explorer_path(system_root: Option<std::ffi::OsString>) -> std::path::PathBuf {
+    let root = system_root
         .map(std::path::PathBuf::from)
         .filter(|root| root.is_absolute())
         .unwrap_or_else(|| std::path::PathBuf::from(r"C:\Windows"));
     root.join("explorer.exe")
+}
+
+/// The program and the one argument of `ocr_open_language_settings`, from the value of `%SystemRoot%`. Pure; nothing comes from the UI.
+fn language_settings_command(
+    system_root: Option<std::ffi::OsString>,
+) -> (std::path::PathBuf, &'static str) {
+    (explorer_path(system_root), LANGUAGE_SETTINGS_URI)
 }
 
 #[cfg(test)]
@@ -280,11 +289,56 @@ mod tests {
 
     #[test]
     fn language_settings_use_an_absolute_explorer_and_a_fixed_uri() {
-        assert!(explorer_path().ends_with("explorer.exe"));
+        let (program, argument) = language_settings_command(None);
+        assert!(program.ends_with("explorer.exe"));
+        assert_eq!(argument, "ms-settings:regionlanguage");
         if cfg!(windows) {
-            assert!(explorer_path().is_absolute());
+            assert!(program.is_absolute());
+            let set = |root: &str| explorer_path(Some(root.into()));
+            assert_eq!(
+                set(r"D:\Win"),
+                std::path::PathBuf::from(r"D:\Win\explorer.exe")
+            );
+            // A relative or empty %SystemRoot% (a hijack through the environment) falls back to C:\Windows.
+            let fallback = std::path::PathBuf::from(r"C:\Windows\explorer.exe");
+            assert_eq!(set(r"evil"), fallback);
+            assert_eq!(set(""), fallback);
+            assert_eq!(explorer_path(None), fallback);
         }
-        assert_eq!(LANGUAGE_SETTINGS_URI, "ms-settings:regionlanguage");
+    }
+
+    #[test]
+    fn a_signed_or_restricted_document_refuses_ocr_before_anything_runs() {
+        use crate::commands::testutil::state_with_pages;
+        use crate::documents::DocFlags;
+        use crate::model::protection::{Permission, PermissionSet};
+        use crate::pdfsig::types::SignatureLock;
+        let refuse = |state: &AppState, doc| {
+            state
+                .ocr_start(
+                    Arc::new(AppEvents::default()),
+                    doc,
+                    &PageSelection::All,
+                    "en-US",
+                    false,
+                )
+                .unwrap_err()
+        };
+        let (state, doc) = state_with_pages(2, |_| {});
+        state
+            .registry
+            .set_signature_lock(doc, SignatureLock::Locked);
+        let error = refuse(&state, doc);
+        assert_eq!(error.code(), ErrorCode::ReadOnly);
+        let (state, doc) = state_with_pages(2, |_| {});
+        let flags = DocFlags {
+            permissions: Some(PermissionSet::from_list(&[Permission::Print])),
+            ..DocFlags::default()
+        };
+        state.registry.set_flags(doc, flags).unwrap();
+        assert_eq!(refuse(&state, doc).code(), ErrorCode::ReadOnly);
+        // Nothing was registered as a running job by the refusals.
+        assert!(service::begin().is_ok());
     }
 
     fn ids(n: u32) -> Vec<PageId> {

@@ -4,6 +4,9 @@
 //! ```text
 //! cargo run --release --example make_scan_fixtures     (npm run fixtures:scans)
 //! ```
+//! `--owner` (npm run fixtures:owner-scans): image-only PDFs of the owner scans `owner-scan-S1`..`S6` (IDs from the untracked
+//! `review/owner/INDEX.md`, table "Scans") into `review/generated/owner-scans/<ID>.pdf`; prints IDs only (ADR-133).
+//!
 //! A text PDF (Helvetica) is built with lopdf, rendered by the engine to gray at 250 dpi and wrapped as an image-only PDF.
 
 use std::fs::File;
@@ -223,6 +226,9 @@ fn main() {
 }
 
 fn run() -> R<()> {
+    if std::env::args().any(|a| a == "--owner") {
+        return run_owner();
+    }
     let dir = out_dir();
     let tmp = dir.join("tmp");
     std::fs::create_dir_all(&tmp).map_err(s)?;
@@ -296,4 +302,162 @@ fn run() -> R<()> {
         println!("{}", entry.path().display());
     }
     Ok(())
+}
+
+// --- Owner scans (ADR-137, ADR-133: IDs only, never file names) -------------------------------------------------------------
+
+const OWNER_IDS: [&str; 6] = [
+    "owner-scan-S1",
+    "owner-scan-S2",
+    "owner-scan-S3",
+    "owner-scan-S4",
+    "owner-scan-S5",
+    "owner-scan-S6",
+];
+/// Most pixels one owner image may have (a huge PNG is skipped, not decoded).
+const OWNER_MAX_PIXELS: u64 = 80_000_000;
+
+fn owner_dir() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("..")
+        .join("review")
+        .join("owner")
+}
+
+/// The `(ID, relative path)` rows of the "Scans" table of the index text. Pure.
+fn parse_scan_table(index: &str) -> Vec<(String, String)> {
+    let mut rows = Vec::new();
+    let mut in_scans = false;
+    for line in index.lines() {
+        if let Some(heading) = line.strip_prefix("## ") {
+            in_scans = heading.trim_start().starts_with("Scans");
+            continue;
+        }
+        if !in_scans {
+            continue;
+        }
+        let cells: Vec<&str> = line
+            .trim()
+            .trim_matches('|')
+            .split('|')
+            .map(str::trim)
+            .collect();
+        if let [id, path] = cells[..] {
+            if OWNER_IDS.contains(&id) && !path.is_empty() {
+                rows.push((id.to_owned(), path.to_owned()));
+            }
+        }
+    }
+    rows
+}
+
+/// A relative path that stays below `review/owner/`.
+fn safe_relative(path: &str) -> bool {
+    let p = std::path::Path::new(path);
+    p.is_relative()
+        && p.components()
+            .all(|c| matches!(c, std::path::Component::Normal(_)))
+}
+
+/// Decodes a PNG to 8-bit gray (alpha dropped, colour by luma).
+fn decode_png_gray(path: &std::path::Path) -> R<(u32, u32, Vec<u8>)> {
+    let file = File::open(path).map_err(s)?;
+    let mut decoder = png::Decoder::new(std::io::BufReader::new(file));
+    decoder.set_transformations(png::Transformations::EXPAND | png::Transformations::STRIP_16);
+    let mut reader = decoder.read_info().map_err(s)?;
+    let (w, h) = (reader.info().width, reader.info().height);
+    if u64::from(w) * u64::from(h) > OWNER_MAX_PIXELS || w == 0 || h == 0 {
+        return Err("image size".into());
+    }
+    let mut buf = vec![0; reader.output_buffer_size().ok_or("image size")?];
+    let frame = reader.next_frame(&mut buf).map_err(s)?;
+    let data = &buf[..frame.buffer_size()];
+    let luma = |p: &[u8]| {
+        ((299 * u32::from(p[0]) + 587 * u32::from(p[1]) + 114 * u32::from(p[2])) / 1000) as u8
+    };
+    let gray: Vec<u8> = match frame.color_type {
+        png::ColorType::Grayscale => data.to_vec(),
+        png::ColorType::GrayscaleAlpha => data.as_chunks::<2>().0.iter().map(|p| p[0]).collect(),
+        png::ColorType::Rgb => data.as_chunks::<3>().0.iter().map(|p| luma(p)).collect(),
+        png::ColorType::Rgba => data.as_chunks::<4>().0.iter().map(|p| luma(p)).collect(),
+        png::ColorType::Indexed => return Err("indexed".into()),
+    };
+    if gray.len() as u64 != u64::from(w) * u64::from(h) {
+        return Err("image size".into());
+    }
+    Ok((w, h, gray))
+}
+
+/// `--owner`: one image-only PDF per owner scan ID, below `review/generated/owner-scans/`. Missing index or file: skipped, exit 0.
+fn run_owner() -> R<()> {
+    let root = owner_dir();
+    let Ok(index) = std::fs::read_to_string(root.join("INDEX.md")) else {
+        println!("owner scans: no review/owner/INDEX.md, skipped");
+        return Ok(());
+    };
+    let rows = parse_scan_table(&index);
+    let out = out_dir().join("..").join("owner-scans");
+    std::fs::create_dir_all(&out).map_err(s)?;
+    for id in OWNER_IDS {
+        let Some((_, rel)) = rows.iter().find(|(row, _)| row == id) else {
+            println!("{id}: not in the index, skipped");
+            continue;
+        };
+        if !safe_relative(rel) {
+            println!("{id}: path not allowed, skipped");
+            continue;
+        }
+        let source = root.join(rel);
+        if !source.is_file() {
+            println!("{id}: file missing, skipped");
+            continue;
+        }
+        let made = decode_png_gray(&source).and_then(|(w, h, gray)| {
+            // A4 width; the height follows the picture so nothing is cropped or stretched.
+            let height = (PAGE[0] * h as f32 / w as f32).clamp(100.0, 5000.0);
+            let page = ScanPage {
+                size_pt: [PAGE[0], height],
+                px: [w, h],
+                gray,
+            };
+            image_only_pdf(&[page]).map_err(s)
+        });
+        match made {
+            Ok(bytes) => {
+                std::fs::write(out.join(format!("{id}.pdf")), bytes).map_err(s)?;
+                println!("{id}: written");
+            }
+            Err(_) => println!("{id}: not readable, skipped"),
+        }
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_scans_table_is_read_by_id_and_other_tables_are_ignored() {
+        let index = "## Other\n\n| owner-scan-S1 | no.png |\n\n## Scans (x)\n\n| ID | File |\n| --- | --- |\n| owner-scan-S1 | a/b.png |\n| owner-scan-S2 | c.png |\n| other-id | d.png |\n\n## Next\n\n| owner-scan-S3 | e.png |\n";
+        assert_eq!(
+            parse_scan_table(index),
+            vec![
+                ("owner-scan-S1".to_owned(), "a/b.png".to_owned()),
+                ("owner-scan-S2".to_owned(), "c.png".to_owned())
+            ]
+        );
+    }
+
+    #[test]
+    fn only_paths_below_the_owner_folder_are_used() {
+        assert!(safe_relative("a/b.png"));
+        assert!(!safe_relative("../x.png"));
+        assert!(!safe_relative("a/../../x.png"));
+        assert!(!safe_relative(if cfg!(windows) {
+            r"C:\x.png"
+        } else {
+            "/x.png"
+        }));
+    }
 }
