@@ -114,6 +114,23 @@ export function loadLayer(docId: number, page: number): Promise<TextLayer | null
   return request;
 }
 
+/**
+ * Forgets the text of every page of a document (its layers, failures and requests in flight), so the next read asks Rust again: the
+ * text changed under the cache (a recognized layer was applied or taken back). Pages on screen are told and read again.
+ */
+export function dropDocumentText(docId: number): void {
+  const mine = (key: string) => key.startsWith(`${docId}:`);
+  inflight.forEach((_, key) => {
+    if (mine(key)) inflight.delete(key);
+  });
+  for (const key of [...failed]) if (mine(key)) failed.delete(key);
+  const keys = new Set([...layers.keys(), ...listeners.keys()].filter(mine));
+  for (const key of keys) {
+    drop(key);
+    notify(key);
+  }
+}
+
 /** Forgets everything (tests). */
 export function clearTextCache(): void {
   layers.clear();

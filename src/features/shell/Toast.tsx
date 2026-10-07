@@ -72,9 +72,15 @@ export function ToastLayer() {
   const shown = useNoticeSlot(`toast-${toast?.id ?? 0}`, toast?.tone === 'error' ? 'error' : 'info', toast !== null);
   return (
     <div className="pointer-events-none fixed inset-x-0 bottom-(--space-6) z-toast flex justify-center">
+      {/* An error is said at once (assertive, role alert); anything else politely. */}
       <div role="status" className="sr-only">
-        {toast?.message}
+        {toast?.tone === 'error' ? null : toast?.message}
       </div>
+      {toast?.tone === 'error' && (
+        <div role="alert" className="sr-only">
+          {toast.message}
+        </div>
+      )}
       {/* "wait": a toast that replaces another does not sit beside the one still fading out (a doubled copy in the flex row). */}
       <AnimatePresence initial={false} mode="wait">
         {toast !== null && shown && <ToastView key={toast.id} toast={toast} />}

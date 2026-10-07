@@ -7,12 +7,15 @@ import { mayRecognize, type ActionState } from '../../actions/state';
 import type { DocumentInfo } from '../../api/documents';
 import type { OcrCapabilities, PageClass, PageOcrClass } from '../../api/ocr';
 import type { PageSlotInfo } from '../../api/pages';
+import { onChangeSet, useAnnotations } from '../../stores/annotations';
 import { useDocuments } from '../../stores/documents';
 import { resetDocuments } from '../../stores/documents.testutil';
 import { usePages } from '../../stores/pages';
 import { useUi } from '../../stores/ui';
 import { setup } from '../../test/render';
 import { useOrganize } from '../organize/store';
+import { useSearch } from '../search/store';
+import { dropDocumentText } from '../textlayer/cache';
 import { OcrBanner } from './OcrBanner';
 import { OcrDialog } from './OcrDialog';
 import { countScope, languageState, offerWanted, runCount, selectionFor, wantedLanguage } from './model';
@@ -24,8 +27,14 @@ const api = vi.hoisted(() => ({
   ocrClassifyPages: vi.fn(),
   ocrStart: vi.fn(),
   ocrCancel: vi.fn(),
+  openLanguageSettings: vi.fn(),
 }));
 vi.mock('../../api/ocr', async (importOriginal) => ({ ...(await importOriginal<object>()), ...api }));
+
+vi.mock('../textlayer/cache', async (importOriginal) => ({
+  ...(await importOriginal<object>()),
+  dropDocumentText: vi.fn(),
+}));
 
 MotionGlobalConfig.skipAnimations = true;
 
@@ -64,6 +73,7 @@ beforeEach(() => {
   api.ocrCancel.mockResolvedValue(undefined);
   useOcr.setState({ capabilities: null, classes: {}, runs: {}, dismissed: {}, dialog: null });
   useOrganize.setState({ byDoc: {} });
+  useAnnotations.getState().remove(1);
   useUi.setState({ toast: null, activeTool: 'select' });
 });
 
@@ -263,8 +273,24 @@ describe('the dialog', () => {
     expect(document.querySelector('[data-ocr="language-none"]')?.textContent).toContain(
       'No recognition language is installed on this computer.',
     );
-    expect(document.querySelector('[data-ocr="settings-hint"]')).not.toBeNull();
+    expect(document.querySelector('[data-ocr="settings-hint"]')).toBeNull();
     expect(document.querySelector('[data-ocr="start"]')?.getAttribute('aria-disabled')).toBe('true');
+  });
+
+  it('on Windows the settings button opens the language settings; if that fails the words stay', async () => {
+    seed(caps(false, false), classes('scan'));
+    api.openLanguageSettings.mockRejectedValue(new Error('no'));
+    const { user } = await open();
+    await user.click(screen.getByRole('button', { name: 'Open language settings' }));
+    expect(api.openLanguageSettings).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(document.querySelector('[data-ocr="settings-hint"]')).not.toBeNull());
+  });
+
+  it('on another backend only the instruction text shows', async () => {
+    seed(caps(false, false, 'vision'), classes('scan'));
+    await open();
+    expect(screen.queryByRole('button', { name: 'Open language settings' })).toBeNull();
+    expect(document.querySelector('[data-ocr="settings-hint"]')).not.toBeNull();
   });
 
   it('Cancel closes without starting', async () => {
@@ -300,6 +326,40 @@ describe('the result toasts', () => {
     finish(3, 0);
     expect(useUi.getState().toast?.message).toBe('Text recognized on 3 pages');
     expect(isOcrBusy(1)).toBe(false);
+  });
+
+  it('records the step: Undo is there, the document is dirty, text views read again', () => {
+    useAnnotations.getState().applyChanges(1, {
+      rev: 4,
+      upserted: [],
+      removed: [],
+      pages: null,
+      history: { canUndo: false, canRedo: true, undoLabel: null, redoLabel: 'x', dirty: false },
+    });
+    const search = vi.spyOn(useSearch.getState(), 'retry').mockImplementation(() => undefined);
+    const heard: (readonly string[] | undefined)[] = [];
+    const off = onChangeSet((_doc, changes) => heard.push(changes?.doc));
+    run();
+    finish(2, 0);
+    off();
+    const doc = useAnnotations.getState().byDoc[1];
+    expect(doc?.rev).toBe(5);
+    expect(doc?.history).toMatchObject({ canUndo: true, canRedo: false, dirty: true, undoLabel: 'ocr.undo' });
+    expect(heard).toEqual([['ocr']]);
+    expect(search).toHaveBeenCalledWith(1);
+  });
+
+  it('forgets the text layers of the document when the ocr part changes', () => {
+    vi.mocked(dropDocumentText).mockClear();
+    run();
+    finish(1, 0);
+    expect(dropDocumentText).toHaveBeenCalledWith(1);
+  });
+
+  it('does not touch the history when nothing was applied', () => {
+    run();
+    finish(0, 0);
+    expect(useAnnotations.getState().byDoc[1]?.history.canUndo).not.toBe(true);
   });
 
   it('names the failures', () => {

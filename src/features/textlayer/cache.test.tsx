@@ -5,7 +5,15 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useDocuments } from '../../stores/documents';
 import { resetDocuments } from '../../stores/documents.testutil';
 import { fileRotationOf, hasFileRotation } from '../viewer/fileRotation';
-import { CACHE_BUDGET_UNITS, MAX_FAILED_PAGES, clearTextCache, loadLayer, peekLayer, usePageText } from './cache';
+import {
+  CACHE_BUDGET_UNITS,
+  MAX_FAILED_PAGES,
+  clearTextCache,
+  dropDocumentText,
+  loadLayer,
+  peekLayer,
+  usePageText,
+} from './cache';
 
 const textApi = vi.hoisted(() => ({ getTextLayer: vi.fn() }));
 vi.mock('../../api/text', () => textApi);
@@ -33,6 +41,18 @@ describe('the text layer cache', () => {
     expect(textApi.getTextLayer).toHaveBeenCalledTimes(1);
     expect(peekLayer(1, 2)).toBe(a);
     expect(peekLayer(1, 3)).toBeUndefined();
+  });
+
+  it('forgets the text of one document, failures included, so the next read asks again', async () => {
+    useDocuments.getState().add({ id: 2, pageCount: 1, displayName: 'b.pdf' });
+    await loadLayer(1, 0);
+    await loadLayer(2, 0);
+    textApi.getTextLayer.mockRejectedValueOnce(new Error('no'));
+    await loadLayer(1, 1);
+    dropDocumentText(1);
+    expect(peekLayer(1, 0)).toBeUndefined();
+    expect(peekLayer(2, 0)).toBeDefined();
+    expect(await loadLayer(1, 1)).not.toBeNull();
   });
 
   it('a page that cannot be read is null, and not an error', async () => {

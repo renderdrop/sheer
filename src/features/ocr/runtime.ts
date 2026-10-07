@@ -14,6 +14,9 @@ import { useLocaleStore } from '../../i18n/store';
 import { selectActiveId, useDocuments } from '../../stores/documents';
 import { useUi } from '../../stores/ui';
 import { selectionOf, useOrganize } from '../organize/store';
+import { onChangeSet, useAnnotations } from '../../stores/annotations';
+import { useSearch } from '../search/store';
+import { dropDocumentText } from '../textlayer/cache';
 import { useOcr, type OcrRun } from './store';
 
 const translate = () => translators[useLocaleStore.getState().locale];
@@ -80,7 +83,6 @@ export async function startOcr(
     return true;
   } catch {
     useOcr.getState().setRun(docId, null);
-    announce(translate()('ocr.failed'));
     failedToast();
     return false;
   }
@@ -113,8 +115,8 @@ export function onOcrFinished(event: OcrFinished): void {
   const total = Math.max(run.total, event.applied + event.failed);
   useOcr.getState().setRun(event.doc, null);
   void refreshClasses(event.doc);
+  if (event.applied > 0) noteOcrApplied(event.doc);
   if (event.applied === 0 && event.failed > 0) {
-    announce(t('ocr.failed'));
     failedToast();
     return;
   }
@@ -129,3 +131,27 @@ export function onOcrFinished(event: OcrFinished): void {
   useUi.getState().showToast({ message });
   announce(message);
 }
+
+/**
+ * The backend applies a run's layers as one undo step but sends no change set with `ocrFinished`. The window records that step the
+ * way a change set would: the revision grows, Undo is there, the document is dirty, and the listeners hear a change of the `ocr` part.
+ */
+export function noteOcrApplied(docId: number): void {
+  const rev = (useAnnotations.getState().byDoc[docId]?.rev ?? 0) + 1;
+  useAnnotations.getState().applyChanges(docId, {
+    rev,
+    upserted: [],
+    removed: [],
+    pages: null,
+    doc: ['ocr'],
+    history: { canUndo: true, canRedo: false, undoLabel: 'ocr.undo', redoLabel: null, dirty: true },
+  });
+}
+
+// Whatever changes the recognized text (a run, its undo, its redo) makes the views that hold text read it again: the text layers of the
+// pages and the search results (smart links follow the revision, which every change set moves).
+onChangeSet((docId, changes) => {
+  if (changes === null || changes.doc?.includes('ocr') !== true) return;
+  dropDocumentText(docId);
+  useSearch.getState().retry(docId);
+});

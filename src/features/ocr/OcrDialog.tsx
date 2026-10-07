@@ -8,7 +8,7 @@ import { useLocale, useT } from '../../i18n';
 import { useDocuments } from '../../stores/documents';
 import { pageIdAt } from '../../stores/pages';
 import { useView } from '../../stores/view';
-import type { PageClass } from '../../api/ocr';
+import { openLanguageSettings, type PageClass } from '../../api/ocr';
 import { Modal, ModalHeader } from '../jobs/Modal';
 import { RadioGroup } from '../jobs/RadioGroup';
 import { focusCanvas } from '../modes/switch';
@@ -34,6 +34,7 @@ function OcrModal({ request }: { request: OcrDialogState }) {
   const [scope, setScope] = useState<Scope>(request.preselectSelected && hasSelection ? 'selected' : 'scan');
   const [redo, setRedo] = useState(false);
   const [starting, setStarting] = useState(false);
+  const [settingsFailed, setSettingsFailed] = useState(false);
 
   useEffect(() => {
     void ensureCapabilities();
@@ -147,10 +148,24 @@ function OcrModal({ request }: { request: OcrDialogState }) {
                 </span>
                 {t('ocr.lang.none')}
               </p>
-              {/* The window has no way to open the system settings (no opener permission, SECURITY T3): the way is said in words. */}
-              <p className="t-caption m-0 text-text-muted" data-ocr="settings-hint">
-                {t('ocr.lang.settingsHint')}
-              </p>
+              {/* Windows: the backend opens its fixed settings page. Elsewhere (or if that fails) the way is said in words. */}
+              {capabilities?.backend === 'windows' && !settingsFailed ? (
+                <div>
+                  <Button
+                    variant="secondary"
+                    data-ocr="settings"
+                    onClick={() => {
+                      openLanguageSettings().catch(() => setSettingsFailed(true));
+                    }}
+                  >
+                    {t('ocr.lang.settings')}
+                  </Button>
+                </div>
+              ) : (
+                <p className="t-caption m-0 text-text-muted" data-ocr="settings-hint">
+                  {t('ocr.lang.settingsHint')}
+                </p>
+              )}
             </div>
           )}
         </div>

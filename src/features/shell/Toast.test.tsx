@@ -16,6 +16,16 @@ afterEach(() => {
 });
 
 describe('the toast (DESIGN 3.12)', () => {
+  it('says an error assertively (role alert) and anything else politely', () => {
+    setup(<ToastLayer />);
+    act(() => useUi.getState().showToast({ message: 'Broke', tone: 'error' }));
+    expect(screen.getByRole('alert').textContent).toBe('Broke');
+    expect(screen.getByRole('status').textContent).toBe('');
+    act(() => useUi.getState().showToast({ message: 'Fine' }));
+    expect(screen.queryByRole('alert')).toBeNull();
+    expect(screen.getByRole('status').textContent).toBe('Fine');
+  });
+
   it('is a status that never takes focus, and goes after 4 s', async () => {
     setup(<ToastLayer />, { advanceTimers: (ms) => void vi.advanceTimersByTime(ms) });
     act(() => useUi.getState().showToast({ message: 'Saved' }));
