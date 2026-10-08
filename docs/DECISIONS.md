@@ -2950,3 +2950,38 @@ sources, so every repeat is a short reference.
 marked-content control that pdfium-render 0.9.4 does not expose publicly; the spike failed. Fallback as documented: the resolved state
 carries `underFileLayer` per page, and the preview/overlay skips pages that still show the file's old layer until the next save
 rewrites it. No pagination-hiding command is built.
+
+## ADR-140 — Session "v2.0-rc.1": polish sweep, final audits, release candidate
+
+**Status:** accepted (2026-10-08, owner instruction; topic "v2.0-rc.1"). Tempo level 3 (ADR-128), rules 13–17 unchanged.
+
+**Owner decisions.**
+1. *Several sources per document: no.* A document keeps exactly one bibliographic record. The idea becomes the ticket
+   "Projektweite Zitatsammlung" (a project-wide citation collection across documents) in the v2.1 backlog.
+2. *Faculty-specific citation variants stay open* (owner question carried into the final report).
+
+**Scope (owner) and defaults recorded so no question is needed.**
+1. *Polish.* Every open item of "Politur v1.6" and the "Politur backlog" is either fixed, or closed with a one-line reason
+   (works as specified, history that is not rewritten, known engine limit), or — when it is a feature, not polish — moved to the
+   v2.1 backlog: byte-range-aware writes on approval-signed files, editing lines with inline runs in a second font, skew correction.
+2. *Security.* One full `security-reviewer` audit over the whole app (not a diff), explicitly including the updater path
+   (`src-tauri/src/update`, `release.yml`, `latest.json`, minisign) and both OCR helpers (Windows child mode, macOS Swift sidecar
+   `sheer-ocr`), plus the fuzz-corpus test in release mode. Gate: zero critical and zero high; mediums are fixed in this session
+   where cheap, lows go to the v2.1 polish list.
+3. *Performance budget* (re-measured in the acceptance build, release profile, Windows 11 dev machine, generated documents only):
+   500-page text PDF opens to the first rendered page in < 1 s; scroll, zoom and panel switches p95 frame ≤ 20 ms and avg ≥ 58 fps
+   (ADR-053 §4); OCR of a generated 10-page image-only PDF ≤ 2 s per page on average; text edit keystroke → line preview p95
+   ≤ 150 ms and Apply ≤ 500 ms. A miss is a deviation that is fixed in this session or, if the cause is the engine or the OS,
+   recorded with the measurement.
+4. *Accessibility.* The screen-reader pass reads what Narrator reads: the Chromium accessibility tree that WebView2 exposes through
+   UI Automation, fetched over CDP (`Accessibility.getFullAXTree`) in all five modes (read, comment, fill, pages, edit) and every
+   dialog. Gate: every focusable node has a role and an accessible name, toggles expose pressed/checked/expanded, dialogs are modal
+   and named, toasts sit in live regions. Plus axe-core (full rule set incl. color-contrast) injected over CDP on every screen in
+   light and dark, and a keyboard-only pass (Tab reaches every control, focus visible, Esc closes, focus returns). Listening with
+   the real Narrator voice cannot be verified by the orchestrator (no audio, rule 15 limits real input) and goes on the human list.
+5. *Owner decisions.* Every "Entscheidungen für den Owner" item from the reports since v1.5 is collected, cross-checked against the
+   ADRs that answered it later, and the still-open ones are listed in the final report together with the list of what only a human
+   can do before v2.0.0. The report keeps the 400-word body and carries both lists as appendices.
+6. *Acceptance.* All acceptance scripts (v151-politur, v16-smartlinks, v16-range, v17-ocr, v18-tips, v19-backlog, the new v20 perf
+   and a11y scripts), surface gate, annot smoke, real-input smoke, one designer round. Pre-release `v2.0.0-rc.1` once CI on `main`
+   is green.
