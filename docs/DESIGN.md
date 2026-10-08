@@ -1480,6 +1480,107 @@ DZ-AC 9. The comment export with this style shows the full note first, then shor
 | `reference.notes` / `.bibliography` | Notes / Bibliography | Fußnoten / Literaturverzeichnis |
 | `reference.noteAria` | Footnote {n} | Fußnote {n} |
 
+### 3.18 v2.0.0-rc.3 editor and home layout (F19.16, F19.17, ADR-143)
+
+Sources: `docs/brand/editor-rc3.png` (2× of 1440 × 900; px below = image px ÷ 2) and `docs/brand/home-rc3.png` (measured 1:1 at 1536 wide; nav 230 confirms). Overrides §3.1, §3.2 grid/top bar/mode row/tool row and §3.5 B1–B3 placement where they differ; behaviour not named here stays. Samples use neutral names ("Report.pdf").
+
+**E1 Editor grid** (rows): **menu 28** (Windows only) | **tab strip 42** | gutter 12 | **mode card 104** | gutter 12 | **body 1fr** | **status bar 30**. Body columns: **left panel 220** (200–480) | splitter 8 | **canvas minmax(360, 1fr)** | **inspector 300** (0 when closed). Chrome rows and gutters `--surface-panel`; borders 1px `--color-border` under menu and tab strip, right of the left panel, left of the inspector, above the status bar. 1440 × 900 Windows: body 672. 960 × 640: body 412 (Windows) / 440 (macOS); canvas with inspector open 960 − 528 = 432 ≥ 360.
+
+**E2 Menu bar 28.** As §3.2 menu row, items 24 high, padding-x 8 from x 8, `.t-label` 400. Caption buttons 46 × 28 (Home too). DEVIATION: 28 instead of Windows' customary 32 caption height — F19.16 fixes 28.
+
+**E3 Tab strip 42** (`TabStrip`, replaces `TopBar`). Left: macOS inset 80; Back icon button 36 (`chevron-left`) at x 4, gap 4. Tabs: height 36, bottom-aligned, top radius `--radius-sm`, gap 2, width clamp(`--doc-tab-min` 120, available ÷ min(n, 5), `--doc-tab-max` 240), padding-x 12, 14/20 (`.t-body`), middle truncation as built.
+- Inactive: Sand, Text-secondary 400. Hover: Ink, close shows. Active: White, Ink 500, 2px Solar underline, close always shown, `aria-selected`. Unsaved: 6px Ink dot + 8 gap before the name. Close: icon button 20, `x` 14, 8 from the right; middle-click closes.
+- ≥ 6 tabs: tabs keep width, the strip scrolls; 32-wide arrow slots (`chevron-left` after Back, `chevron-right` before the cluster) appear, disabled at the ends; click scrolls one tab (200 ms, reduced motion instant). 24 px empty drag space always before the cluster.
+- Right cluster: 1px full-height divider, padding-x 8: Undo · Redo · History (`history`, opens the F19.23 panel in the inspector slot) icon buttons 32 / icon 18, gap 2; divider 1 × 20 margin-x 8; Search 32; padding-right 12. Disabled 0.4.
+- Leave the top row: zoom + page field (→ E7), save status (→ E7), sidebar toggle (splitter grip, View menu and Ctrl+Alt+1 keep it), tour pill (→ Hilfe "Take the tour").
+- Keyboard: `role="tablist"` `tabs.label`; roving Left/Right/Home/End, Enter activates, Delete closes; Ctrl+Tab / Ctrl+Shift+Tab cycle; Ctrl+W closes. Arrows `tabindex=-1` (roving scrolls the tab into view).
+
+**E4 Mode card** (`ModeRow` + `ToolRow` in one card). Inset 12 left/right, White header, `--border-subtle`, radius md (10), no shadow, height 104 = header 32 + tool area 72.
+- **Header 32**, padding-x 4, 1px border at its bottom. Mode tabs = file-tab registers: height 32, padding-x 16, no gap, 14/20. Inactive: transparent, Text-secondary 400; hover Ink. Active: Sand, Ink 500, 1px border left/top/right, top radius `--radius-sm`, `margin-bottom: -1px` so it merges into the Sand area. Key chip (`--kbd-compact` 16 high, min 16, padding-x 4, radius sm, 11/16 500 tabular, White + border, Text-secondary) 8 after the label: always on the active tab, on others at hover/focus. Roles, keys 1–5, default Lesen as §3.2.
+- **Tool area 72**: Sand, padding 8 12, items gap 4. Item `--tool-item-height` 56, radius `--tool-item-radius` 8, padding 8 10 6, icon 18 · gap 6 · label 13/18 (`.t-label`) centred, one line. No group captions, no inline hints: hints become the tooltip (label, key, hint). Separator: 1 × 32 `--color-border`, margin-x 8, `role="separator"`.
+- States: hover White; pressed `--surface-pressed` + 0.98; active tool Solar + Ink 600 + `aria-pressed` + `--tool-active-edge` (DEVIATION: template shows no hairline; Solar vs Sand is 1.02:1, WCAG 1.4.11 needs the edge); toggle on White + Stone border + Ink 600; disabled 0.4, tooltip says why; focus `--ring-focus`.
+- Split items: main part + 16-wide chevron part (`chevron-down` 12) at the right, full height, own hover; Alt+Down opens.
+- Slots ≤ 9 (Bearbeiten has 9; amends §3.2's 8). Overflow: icon-only when window < 1100 or the labelled row does not fit (ResizeObserver): items 44 × 44 vertically centred, separators 1 × 24, card height unchanged; then "Mehr" ⋯ as §3.2.
+
+| Mode | Groups (· item, \| separator) |
+|---|---|
+| Lesen | Auswahl · Hand · Textauswahl \| Lupe · Drehen [r/l/reset] \| Suche · Smart Links |
+| Kommentieren | Hervorheben · Unterstreichen · Durchstreichen · Zitieren \| Notiz · Textkommentar \| Zeichnen · Formen [▭ ◯ ／ ↗] |
+| Ausfüllen & Signieren | Text · Häkchen · Kreuz · Punkt · Datum \| Signatur · Initialen \| Zertifikat |
+| Seiten | Ordnen \| Drehen · Löschen · Einfügen \| Extrahieren · Teilen · Zusammenführen \| Komprimieren |
+| Bearbeiten | Text bearbeiten (`type`) · Text einfügen (`plus`) · Bild (`image`) \| Zuschneiden (`crop`) · Kopf-/Fußzeile (`rows-2`) · Stempel (`circle-plus`) \| Schwärzen (`square-slash`) · Schützen (`lock`) · Metadaten (`align-left`) |
+
+Stempel moves from the Kommentieren Notiz split to its own Bearbeiten slot (template); Notiz becomes a plain colour tool. Kopf-/Fußzeile becomes a tool (opens the inspector).
+
+**E5 Inspector 300** (`src/features/inspector/`, reuses `Sections`, `RadioRow`). Only for tools with settings; replaces their popover/dialog: **Zuschneiden** (`CropOptions`), **Kopf-/Fußzeile** (§3.15 dialog), **Stempel** (§3.14 picker), **Text erkennen** (§3.12 O2 dialog; opened by Werkzeuge and the OCR banner, no slot), **Quellenangabe** (§3.7 C5 Reference tab; Document properties keeps General). History (E3) uses the slot without footer. Others keep their popovers.
+- White, column right of the canvas. **Header 48**: padding-x 16, tool icon 18 + 12 + title `.t-title`, close icon button 28 (`x` 16) right; border bottom. No subtitle, no explanatory text.
+- **Body** scrolls, padding 24 16: section caption `.t-section` (11/16 500 uppercase +0.08em Text-secondary), 8, field label `.t-caption`, 4, input 36 (§4); rows gap 12, sections gap 24. Two-up fields: 2 × 130, gap 8. DEVIATION: the template's right column runs past the window edge; two equal columns keep it inside 300.
+- **Footer 72**: padding 16, Secondary "Zurücksetzen" + Primary "Anwenden", each 40 (large), equal width, gap 8, border-top only when the body overflows. Apply disabled until valid and changed; Reset disabled when nothing differs. Stempel has no footer (placing is the action); OCR's Primary reads "Erkennen" and closes the inspector on start.
+- Crop: Ränder (Oben · Unten / Links · Rechts, mm) · Seiten segmented Diese / Alle / Bereich (+ range field when Bereich). Canvas handles stay live, fields and handles sync.
+- Keyboard: `<aside aria-labelledby>`; opening focuses the first field; Enter in a field = Apply; Esc or close discards unapplied changes, releases the tool, focuses its tool item. Mode switch closes it. F6 includes it.
+- Motion: content fades + 8 px slide from right, `--motion-base`; exit fade `--motion-base-exit`; column itself snaps (no width tween, avoids canvas reflow per frame). Reduced motion: fade only.
+
+**E6 Left panel 220** (`--panel-default` 220). Canvas, border right. Tab row 40, padding-x 8: four icon buttons 32 / icon 18, gap 4; active Ink + 2px Solar underline (§2.8). Thumbnails, grip and B2 collapse unchanged.
+
+**E7 Status bar 30.** White, border top, padding-x 16 / 8. Left: SaveStatus (B1 states unchanged; height 24, check 16 + `.t-label` 400 Text-secondary). Right, gap 4: prev 24 (`chevron-left` 16) · page field 40 × 24 · "/ n" Text-secondary · next 24 · divider 1 × 16 margin-x 12 · zoom out 24 (`minus`) · zoom field 52 × 24 ("100 %", accepts typed %) · zoom in 24 (`plus`) · 8 · Ghost "Seitenbreite" · Ghost "Ganze Seite" (24 high, padding-x 8; active fit = Sand + Ink 500 + `aria-pressed`). Fields: White, `--border-subtle`, radius sm, 13 tabular, centred; Enter commits, Esc reverts. Seiten mode: zoom disabled, page field follows the focused card. `role="toolbar"` `status.label`.
+
+**H1 Home grid**: **nav 230** | **main 1fr**, both Canvas, 1px border between. No Sand hero card any more; no menu row; top 40 of main is the drag region (caption buttons 46 × 28 at its right).
+
+**H2 Nav.** Wordmark `APP_NAME` Ink, height 32, at x 40, top 80. Rows from top 144: x 20, width 190, height `--home-nav-row-height` 44, gap 4, radius md, padding-x 24, icon 20 + 20 + `.t-nav` (15/20 400): Start (`house`), Zuletzt (`clock`), Markiert (`star`), Werkzeuge (`wrench`). Active Sand + Ink 500 + `aria-current`. Hover Sand. Settings: x 36, bottom 48, height 40, padding-x 12, `--border-subtle`, radius md, `settings` 20. Keyboard: list, Up/Down roving, Enter.
+
+**H3 Glow** `--glow-home` (Home only, the main column's top-right, `pointer-events:none`, behind content; drifts per MOTION, static with reduced motion). Text over it stays Ink.
+
+**H4 Main stack** (padding-x 48, 32 below 1200 wide; content max 1216). Two tiers:
+
+| Item | Tier A (height ≥ 1000, no Open row) | Tier B (otherwise) |
+|---|---|---|
+| padding-top | 96 | 40 |
+| greeting row (+ plus button right) | 28 | 44 |
+| gap · title | 12 · `.t-hero` 96/76 × 2 = 152 | 4 · `.t-hero-compact` 56/52 × 2 = 104 |
+| gap · search | 36 · 48 | 24 · 48 |
+| gap · each section (heading 28 + 12/16 + content) | 28 | 24 |
+| card / tool tile | 264 / 88 | 184 (136 with Open row) / 72 |
+| padding-bottom | 56 | 16 |
+
+- **Greeting** 20/28 400 Text-secondary: 05:00–11:59 morning, 12:00–17:59 day, else evening; "{greeting}, {name}." with the Settings author name, else "{greeting}."; re-evaluated each minute.
+- **Title** `home.hero.title`, Ink 500, −0.05em. Hidden in tier B when the Open row shows and window height < 900. DEVIATION: arithmetic below; title + two card rows + tools cannot fit 800.
+- **Plus** 44 round, Ink fill, `plus` 20 White, right 48, top 40 (tier A 80); hover `--shadow-standard`, pressed 0.98; `aria-label` `home.hero.label`; opens.
+- **Search** full content width, 48, radius md, White, §2.9 edge, `search` 20 at 16, placeholder `home.search.placeholder`, no key chip ("/" still focuses).
+- **Section heading** `.t-h3`; "Alle anzeigen" Ghost + `chevron-right` 16 right, Text-secondary.
+- **Card** (Open and Recent): grid 5 columns, gap 20 (as many as fit at min 148; at 960 four). White, `--border-subtle`, radius md, padding 16 (12 compact). Thumbnail box: width 100 %, height 172 / 124 / 76, Sand, page image contained top-aligned (cropped top in short). 12 / 8 gap, name 15/20 400 one line ellipsis; ⋯ icon button 28 right-aligned below the name (tier A) or inline right (compact). Hover Sand; focus ring; pressed 0.98; missing file opacity 0.6. Starred: `--card-starred` fill + star 20 top-right inset 16, `--star-fill` with 1.25 Ink edge (DEVIATION: §4 forbids yellow icons; owner text requires it; the Ink edge gives 3:1). Open card: unsaved dot before the name; ⋯ = Switch, Close tab. Open row appears above Recent only with ≥ 1 document open.
+- **Tool tiles**: 4 columns, gap 16 (2 columns below 1100 wide). White, border, radius md, height 88/72, padding-x 24, icon 24 (amends §4) + 36 + title 15/20 500 over subtitle 14/20 Text-secondary. Hover Sand. Merge `combine` · Split `scissors` (DEVIATION: template's share icon means network sharing, rule 4) · Compress `file-archive` · Fill form `square-pen` · Sign `pen-tool` · Redact `eraser` · Images to PDF `image` · More tools `ellipsis` (opens Werkzeuge view). Roving grid, arrows move.
+- **Proof 1280 × 800, tier B**: without Open 40+44+4+104+24+48+24+(28+12+184)+24+(28+12+72+12+72)+16 = 748 ≤ 800. With Open (title hidden) 40+44+24+48+24+176+24+176+24+196+16 = 792 ≤ 800.
+
+**Dark mode.** Sheer is light-only (ADR-100; `tokens.css`); no dark values ship. All new surfaces use role tokens only, so a later theme maps them by role. Forced colors: card/tabs/inspector borders `CanvasText`, active tab underline and active tool `Highlight`/`HighlightText`, star `CanvasText`, glow hidden.
+
+**New and changed tokens.** `--menubar-height` 28 · `--caption-button-height` 28 · `--tabstrip-height` 42 · `--doc-tab-height` 36 · `--doc-tab-min` 120 · `--doc-tab-max` 240 (replace `--tab-min/max`) · `--chrome-gutter` 12 · `--mode-card-height` 104 · `--mode-tab-height` 32 · `--tool-area-height` 72 · `--tool-item-height` 56 · `--tool-item-radius` 8 · `--kbd-compact` 16 · `--inspector-width` 300 · `--inspector-header-height` 48 · `--inspector-footer-height` 72 · `--statusbar-height` 30 · `--status-control-height` 24 · `--sidebar-tab-row-height` 40 · `--panel-default` 220 · `--home-nav-width` 230 · `--home-nav-row-height` 44 · `--home-plus` 44 · `--home-search-height` 48 · `--home-card-height` 264 / `-compact` 184 / `-short` 136 · `--home-thumb-height` 172 / 124 / 76 · `--home-tool-tile-height` 88 / `-compact` 72 · `--card-starred` rgba(255, 248, 77, 0.22) · `--star-fill` var(--accent) · `--glow-home` radial-gradient(ellipse 38% 45% at 72% 4%, rgba(255, 248, 77, 0.95), transparent 70%), radial-gradient(ellipse 36% 50% at 92% 24%, rgba(255, 65, 3, 0.28), transparent 72%). Type: `.t-hero` 96/76 500 −0.05em · `.t-hero-compact` 56/52 500 −0.04em · `.t-nav` 15/20 400 · `.t-section` 11/16 500 uppercase +0.08em. Removed: `--topbar-height`, `--mode-row-height`, `--tool-row-height`, `--home-hero-*`, `--home-actions-clear`.
+
+**i18n** (en / de; new or changed)
+
+| Key | en | de |
+|---|---|---|
+| `tabs.label` / `.scrollLeft` / `.scrollRight` | Open documents / Scroll tabs left / Scroll tabs right | Geöffnete Dokumente / Tabs nach links / Tabs nach rechts |
+| `topbar.history` | History | Verlauf |
+| `status.label` / `.prev` / `.next` / `.page` | Status bar / Previous page / Next page / Page | Statusleiste / Vorherige Seite / Nächste Seite / Seite |
+| `status.zoomIn` / `.zoomOut` / `.zoom` | Zoom in / Zoom out / Zoom | Vergrößern / Verkleinern / Zoom |
+| `status.fitWidth` / `.fitPage` | Page width / Whole page | Seitenbreite / Ganze Seite |
+| `inspector.close` / `.reset` / `.apply` | Close / Reset / Apply | Schließen / Zurücksetzen / Anwenden |
+| `crop.margins` / `.top` / `.bottom` / `.left` / `.right` | Margins / Top / Bottom / Left / Right | Ränder / Oben / Unten / Links / Rechts |
+| `crop.pages` / `.this` / `.all` / `.range` | Pages / This / All / Range | Seiten / Diese / Alle / Bereich |
+| `ocr.inspector.start` | Recognize | Erkennen |
+| `modes.tool.addImage` / `.headerFooter` / `.properties` / `.protect` | Image / Header/footer / Metadata / Protect | Bild / Kopf-/Fußzeile / Metadaten / Schützen |
+| `home.greeting.morning` / `.day` / `.evening` | Good morning / Good afternoon / Good evening | Guten Morgen / Guten Tag / Guten Abend |
+| `home.greeting.named` / `.plain` | {greeting}, {name}. / {greeting}. | {greeting}, {name}. / {greeting}. |
+| `home.search.placeholder` | Search documents… | Dokumente durchsuchen … |
+| `home.recent.title` / `home.open.title` / `home.tools.title` | Recently opened / Open / PDF tools | Zuletzt geöffnet / Geöffnet / PDF-Werkzeuge |
+| `home.nav.home` / `home.starred.badge` | Start / Starred | Start / Markiert |
+| `home.open.switch` / `.close` | Switch to / Close tab | Wechseln / Tab schließen |
+| `home.tile.merge` / `.split` / `.compress` / `.fill` | Combine several PDFs / Extract pages / Make the PDF smaller / Fields, text and marks | Mehrere PDFs verbinden / Seiten extrahieren / PDF verkleinern / Felder, Text und Zeichen |
+| `home.tile.sign` / `.redact` / `.images` / `.more` | Signature or certificate / Remove confidential content / Convert PNG and JPEG / Show all functions | Unterschrift oder Zertifikat / Vertrauliche Inhalte entfernen / PNG und JPEG umwandeln / Alle Funktionen anzeigen |
+| `home.tool.more` | More tools | Mehr Werkzeuge |
+
+**Acceptance (screens at 1440 × 900, 1280 × 800, 960 × 640).** Rows measure 28/42/12/104/12/…/30; card inset 12; tools 56; inspector 300 only for the five tools; Home 1280 × 800 has no vertical scrollbar with and without the Open row; no two surfaces overlap.
+
 ## 4. Components (R4)
 
 States apply to all: hover ≤ background/border/icon colour change; pressed scale 0.98 at most; focus = `--ring-focus` (keyboard only); disabled = `--opacity-disabled`, no pointer events, tooltip still explains why.

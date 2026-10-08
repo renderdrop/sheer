@@ -3045,7 +3045,11 @@ Redact is on opens and closes the options (slot flag `optionsWhenOn`, `src/featu
 - Order: F19.16/F19.17 (editor + home, one designer spec) → F19.19 palettes → F19.20–F19.23 in parallel (backend waves first, ADR-038).
 - "Bestehendes Gelb" in the default palette = Solar `#FFF84D` (DESIGN §1.4). Highlights keep their 45 % opacity and multiply blend;
   stroke tools keep full opacity; the Solar stroke rule (fills only) is replaced by the palette rule: every palette colour is valid
-  for every tool, the tool's own transparency applies.
+  for every tool, the tool's own transparency applies. Ink (#0F0F0F) is not a palette colour but stays as the fixed neutral
+  default of the stroke tools (pen, shapes, lines, text colour), shown as one neutral swatch before the five; signature ink keeps its
+  own two-colour choice (a signature is not an annotation tool). Tags (mirrored in Rust, identify a category, not a look) keep
+  their fixed five colours and stamps their tone; only the pickers of annotation tools follow the active set. Stored values never
+  change.
 - Footnote coverage gate (F19.20): the three owner PDFs with the most footnote markers (ground truth counted by hand once and kept
   in the untracked `review/owner/footnotes-truth.json`, IDs only); coverage = linked markers / true markers ≥ 90 % each.
 - Source detection hit rate (F19.21) is measured against a hand-made truth file in `review/owner/` (untracked), reported per field.
