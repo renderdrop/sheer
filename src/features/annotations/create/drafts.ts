@@ -1,7 +1,7 @@
 import type { AnnotationDraft, LineEnd, Rgb, Stroke, TextAlign } from '../../../api/annotations';
 import type { Point, Quad } from '../../../api/wire';
 import type { CreationKind } from '../../../stores/tools';
-import { DEFAULT_COLOURS, HIGHLIGHT_OPACITY } from '../../inspector/palette';
+import { defaultColours, HIGHLIGHT_OPACITY } from '../../inspector/palette';
 import { boxFromPoints, boxInPage, clampToPage, constrainSquare, snapAngle } from './geometry';
 import { FREE_TEXT_MIN_WIDTH, boxHeight, startX } from './freeTextLayout';
 import { strokeOutline, toPoints, type Sample } from './ink';
@@ -10,10 +10,10 @@ import type { Recognised } from './recognise';
 /** The annotation drafts a creation makes (one `createAnnotation` command each), and the style they start from. */
 
 /** The default colours of DESIGN v2 1.4: Solar for highlights and notes (a fill), Ink for everything drawn. */
-export const PALETTE = {
-  solar: DEFAULT_COLOURS.highlight,
-  ink: DEFAULT_COLOURS.ink,
-} as const satisfies Record<string, Rgb>;
+const palette = (): { readonly solar: Rgb; readonly ink: Rgb } => {
+  const colours = defaultColours();
+  return { solar: colours.highlight, ink: colours.ink };
+};
 
 export interface CreationStyle {
   color: Rgb;
@@ -35,7 +35,7 @@ export interface CreationStyle {
 /** What a new annotation of a kind looks like until the inspector says otherwise. */
 export function defaultStyle(kind: CreationKind): CreationStyle {
   const base: CreationStyle = {
-    color: PALETTE.ink,
+    color: palette().ink,
     opacity: 1,
     width: 2,
     fill: null,
@@ -45,17 +45,17 @@ export function defaultStyle(kind: CreationKind): CreationStyle {
     bothEnds: false,
     align: 'left',
     borderWidth: 0,
-    borderColor: PALETTE.ink,
+    borderColor: palette().ink,
   };
   switch (kind) {
     case 'highlight':
-      return { ...base, color: PALETTE.solar, opacity: HIGHLIGHT_OPACITY };
+      return { ...base, color: palette().solar, opacity: HIGHLIGHT_OPACITY };
     case 'note':
-      return { ...base, color: PALETTE.solar };
+      return { ...base, color: palette().solar };
     case 'freeText':
-      return { ...base, color: PALETTE.ink, width: 0 };
+      return { ...base, color: palette().ink, width: 0 };
     case 'ink':
-      return { ...base, color: PALETTE.ink };
+      return { ...base, color: palette().ink };
     default:
       return base;
   }

@@ -5,7 +5,7 @@ import type { LineEnd, Rgb } from '../../api/annotations';
 import { creationKind, useTools, type CreationKind } from '../../stores/tools';
 import { useUi } from '../../stores/ui';
 import { readRecent } from '../../stores/recentColours';
-import { DEFAULT_COLOURS, HIGHLIGHT_OPACITY, migrateColour, paletteNameOf, sameRgb } from './palette';
+import { defaultColours, HIGHLIGHT_OPACITY, migrateColour, paletteNameOf, sameRgb } from './palette';
 
 /**
  * The style a new annotation gets (DESIGN 3.24): what the inspector's tool options edit while no annotation is selected. One style per
@@ -32,20 +32,23 @@ export const OPACITY_RANGE = { min: 0.1, max: 1, step: 0.05 } as const;
 
 const BASE = { opacity: 1, width: 2, fontSize: 12, head: 'none', bothEnds: false } as const;
 
-/** The defaults of every kind a tool creates. */
-export const DEFAULT_STYLES: Readonly<Record<CreationKind, AnnotationStyle>> = {
-  highlight: { ...BASE, opacity: HIGHLIGHT_OPACITY, color: DEFAULT_COLOURS.highlight },
-  citation: { ...BASE, opacity: HIGHLIGHT_OPACITY, color: DEFAULT_COLOURS.citation },
-  underline: { ...BASE, color: DEFAULT_COLOURS.underline },
-  strikeout: { ...BASE, color: DEFAULT_COLOURS.strikeout },
-  note: { ...BASE, color: DEFAULT_COLOURS.note },
-  freeText: { ...BASE, color: DEFAULT_COLOURS.freeText },
-  ink: { ...BASE, color: DEFAULT_COLOURS.ink },
-  rect: { ...BASE, color: DEFAULT_COLOURS.shape },
-  ellipse: { ...BASE, color: DEFAULT_COLOURS.shape },
-  line: { ...BASE, color: DEFAULT_COLOURS.shape },
-  arrow: { ...BASE, color: DEFAULT_COLOURS.shape, head: 'openArrow' },
-};
+/** The defaults of every kind a tool creates; the colours come from the active palette set (F19.19). */
+export function defaultStyles(): Readonly<Record<CreationKind, AnnotationStyle>> {
+  const c = defaultColours();
+  return {
+    highlight: { ...BASE, opacity: HIGHLIGHT_OPACITY, color: c.highlight },
+    citation: { ...BASE, opacity: HIGHLIGHT_OPACITY, color: c.citation },
+    underline: { ...BASE, color: c.underline },
+    strikeout: { ...BASE, color: c.strikeout },
+    note: { ...BASE, color: c.note },
+    freeText: { ...BASE, color: c.freeText },
+    ink: { ...BASE, color: c.ink },
+    rect: { ...BASE, color: c.shape },
+    ellipse: { ...BASE, color: c.shape },
+    line: { ...BASE, color: c.shape },
+    arrow: { ...BASE, color: c.shape, head: 'openArrow' },
+  };
+}
 
 export interface StyleStoreState {
   /** What the user changed, per kind; a kind that is not here has its default. */
@@ -74,8 +77,9 @@ export function loadStoredColours(
   }
   if (typeof parsed !== 'object' || parsed === null) return {};
   const out: Partial<Record<CreationKind, Partial<AnnotationStyle>>> = {};
-  for (const kind of Object.keys(DEFAULT_STYLES) as CreationKind[]) {
-    const fallback = DEFAULT_STYLES[kind].color;
+  const defaults = defaultStyles();
+  for (const kind of Object.keys(defaults) as CreationKind[]) {
+    const fallback = defaults[kind].color;
     const stored = (parsed as Record<string, unknown>)[kind];
     let color = migrateColour(stored, paletteNameOf(kind), fallback);
     // A colour the user applied in "More colours" is kept (DESIGN 3.5 B5) as long as it is in the recent list.
@@ -102,7 +106,7 @@ function initialOverrides(): StyleStoreState['overrides'] {
   const colours = readColours();
   const out: Partial<Record<CreationKind, Partial<AnnotationStyle>>> = {};
   const stored = useTools.getState().defaults;
-  for (const kind of Object.keys(DEFAULT_STYLES) as CreationKind[]) {
+  for (const kind of Object.keys(defaultStyles()) as CreationKind[]) {
     const { opacity, width, fontSize, head, bothEnds } = stored[kind] ?? {};
     const rest: Partial<AnnotationStyle> = {
       ...(opacity === undefined ? {} : { opacity }),
@@ -150,7 +154,7 @@ export function styleFor(
   kind: CreationKind,
   overrides: StyleStoreState['overrides'] = useStyleStore.getState().overrides,
 ): AnnotationStyle {
-  return { ...DEFAULT_STYLES[kind], ...overrides[kind] };
+  return { ...defaultStyles()[kind], ...overrides[kind] };
 }
 
 /**

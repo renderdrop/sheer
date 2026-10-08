@@ -43,13 +43,9 @@ import { useRecentColours } from '../../stores/recentColours';
 import { useTools } from '../../stores/tools';
 import { StampPickerBody } from '../annotations/stamps/StampPicker';
 import { useStamp } from '../annotations/stamps/store';
-import {
-  BORDER_WIDTHS,
-  FIRST_BORDER_COLOUR,
-  FIRST_BORDER_PT,
-  FIRST_FILL_COLOUR,
-} from '../annotations/create/textStyle';
-import { HIGHLIGHT_PALETTE, isCustomColour, PALETTES, rgbToCss, sameRgb, type PaletteName } from '../inspector/palette';
+import { BORDER_WIDTHS, firstBorderColour, FIRST_BORDER_PT, firstFillColour } from '../annotations/create/textStyle';
+import { isCustomColour, rgbToCss, sameRgb, usePalettes, type PaletteName } from '../inspector/palette';
+import { PaletteChooser } from '../inspector/PaletteChooser';
 import type { Shared } from '../inspector/properties';
 import { MINI_FONT_SIZES, MINI_FONT_SIZE_RANGE, MINI_OPACITIES, MINI_STROKES, type ArrowEnds } from './model';
 
@@ -93,6 +89,7 @@ export function ColourRow({
   fixed?: boolean;
 }) {
   const t = useT();
+  const palettes = usePalettes();
   const recent = useRecentColours((state) => state.colours);
   const item = roving ? ITEM : {};
   const custom = value.value !== null && isCustomColour(value.value, palette) ? value.value : null;
@@ -105,7 +102,7 @@ export function ColourRow({
         ...(custom === null ? [] : [custom]),
         ...recent.filter((rgb) => isCustomColour(rgb, palette) && (custom === null || !sameRgb(rgb, custom))),
       ].slice(0, RECENT_IN_ROW);
-  const entries: ColourEntry[] = PALETTES[palette].map((entry) => ({
+  const entries: ColourEntry[] = palettes[palette].map((entry) => ({
     id: entry.id,
     rgb: entry.rgb,
     label: t(entry.nameKey),
@@ -114,13 +111,14 @@ export function ColourRow({
   }));
   return (
     <>
-      {PALETTES[palette].map((entry) => (
+      {palettes[palette].map((entry) => (
         <Tooltip key={entry.id} label={t(entry.nameKey)}>
           <Swatch
             {...item}
             label={t(entry.nameKey)}
             checked={value.value !== null && sameRgb(value.value, entry.rgb)}
             fillClass={entry.bg}
+            style={entry.bg === undefined ? { backgroundColor: rgbToCss(entry.rgb) } : undefined}
             checkClass={entry.check}
             aria-disabled={disabled ? true : undefined}
             onClick={() => pick(entry.rgb)}
@@ -159,6 +157,9 @@ export function ColourRow({
           pick(rgb);
         }}
       />
+      {palette !== 'signature' && (
+        <PaletteChooser disabled={disabled} triggerAttrs={roving ? { 'data-mb-item': '' } : undefined} />
+      )}
     </>
   );
 }
@@ -604,6 +605,7 @@ export function FillControl({
   onChange,
 }: DisabledProps & { value: Shared<Rgb | null>; onChange: (fill: Rgb | null) => void }) {
   const t = useT();
+  const highlight = usePalettes().highlight;
   const current = value.value;
   const entries = [
     {
@@ -612,17 +614,21 @@ export function FillControl({
       checked: !value.mixed && current === null,
       onSelect: () => onChange(null),
     },
-    ...HIGHLIGHT_PALETTE.map((entry) => ({
+    ...highlight.map((entry) => ({
       id: entry.id,
       label: t(entry.nameKey),
       leading: (
-        <span aria-hidden="true" className={cx('block size-4 rounded-pill border border-control-border', entry.bg)} />
+        <span
+          aria-hidden="true"
+          className="block size-4 rounded-pill border border-control-border"
+          style={{ backgroundColor: rgbToCss(entry.rgb) }}
+        />
       ),
       checked: current !== null && sameRgb(current, entry.rgb),
       onSelect: () => onChange(entry.rgb),
     })),
   ];
-  const entry = current === null ? undefined : HIGHLIGHT_PALETTE.find((e) => sameRgb(e.rgb, current));
+  const entry = current === null ? undefined : highlight.find((e) => sameRgb(e.rgb, current));
   return (
     <Dropdown label={t('minibar.fill')} disabled={disabled} entries={entries}>
       {value.mixed ? (
@@ -632,8 +638,8 @@ export function FillControl({
       ) : (
         <span
           aria-hidden="true"
-          className={cx('block size-4 rounded-pill border border-control-border', entry?.bg)}
-          style={entry === undefined ? { backgroundColor: rgbToCss(current) } : undefined}
+          className="block size-4 rounded-pill border border-control-border"
+          style={{ backgroundColor: rgbToCss(entry?.rgb ?? current) }}
         />
       )}
     </Dropdown>
@@ -738,7 +744,7 @@ export function BorderControl({
   const width = value.width.value;
   const on = width !== null && width > 0;
   const lastWidth = last?.borderWidth ?? FIRST_BORDER_PT;
-  const lastColour = last?.borderColor ?? FIRST_BORDER_COLOUR;
+  const lastColour = last?.borderColor ?? firstBorderColour();
   // A choice in the menu also switches the border on, at the last width.
   const wake = on ? {} : { borderWidth: lastWidth };
   return (
@@ -793,7 +799,7 @@ export function TextFillControl({
       pressed={on}
       mixed={value.mixed}
       disabled={disabled}
-      onToggle={() => onChange(on ? null : (last?.fillColor ?? FIRST_FILL_COLOUR))}
+      onToggle={() => onChange(on ? null : (last?.fillColor ?? firstFillColour()))}
     >
       <div role="group" aria-label={t('minibar.fillColour')} className="flex flex-wrap items-center">
         <ColourRow

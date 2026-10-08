@@ -144,7 +144,7 @@ describe('rendering', () => {
       box(1, 10, 10, 'new', {
         kind: 'highlight',
         quads: [quad],
-        color: [220, 207, 255],
+        color: [0, 245, 255],
         cite: { quote: 'q' },
       } as unknown as Partial<Annotation>),
       box(2, 60, 10, 'new', { kind: 'highlight', quads: [quad] } as unknown as Partial<Annotation>),
@@ -153,7 +153,7 @@ describe('rendering', () => {
     const rules = container.querySelectorAll('[data-annot-blend] [data-cite-rule]');
     expect(rules).toHaveLength(1);
     expect(rules[0]?.getAttribute('stroke-width')).toBe('1');
-    expect(rules[0]?.getAttribute('stroke')).toBe(rgbToCss([146, 120, 230]));
+    expect(rules[0]?.getAttribute('stroke')).toBe(rgbToCss([0, 245, 255]));
     expect(rules[0]?.querySelector('line')?.getAttribute('y1')).toBe('19.5');
   });
 

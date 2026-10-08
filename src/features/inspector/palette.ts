@@ -1,89 +1,161 @@
+import { create } from 'zustand';
+
 import type { Annotation, Rgb } from '../../api/annotations';
 
 /**
- * The annotation palettes (DESIGN v2 1.4, 2.7): document content, the same in both themes because annotation colours sit on a white
- * page. Highlights use the five `--hl-*` tints, strokes (pen, shapes, text colour) Ink and the four `--stroke-*` colours, and Solar
- * only ever as a fill. `rgb` is what the model stores; `bg` and `check` are static class names (Tailwind must see them whole) of the
- * tokens, which hold the same values.
+ * The annotation palettes (DESIGN v2 1.4, 2.7; F19.19, ADR-143): document content, the same in both themes because annotation colours
+ * sit on a white page. A palette SET is five colours; highlight, stroke and fill pickers all read the active set (strokes add the
+ * neutral Ink before the five). Swatches are painted inline from `rgb`: no class per colour. The ONLY colour literals of the pickers
+ * live in this file (`paletteSource.test.ts` scans for them).
  */
 export type PaletteName = 'highlight' | 'stroke' | 'fill' | 'signature';
 
 export interface PaletteColour {
-  id: 'solar' | 'mint' | 'sky' | 'rose' | 'lavender' | 'ink' | 'solarFill' | 'signatureInk';
+  id: string;
   rgb: Rgb;
-  bg: string;
+  /** A static token class that paints the swatch (only the signature inks); otherwise the swatch is painted from `rgb`. */
+  bg?: string;
   /** The check mark: white on the dark swatches, ink on the light ones. */
   check: string;
   nameKey:
-    | 'colour.solar'
-    | 'colour.mint'
-    | 'colour.sky'
-    | 'colour.rose'
-    | 'colour.lavender'
+    | 'colour.slot1'
+    | 'colour.slot2'
+    | 'colour.slot3'
+    | 'colour.slot4'
+    | 'colour.slot5'
     | 'colour.ink'
-    | 'colour.solarFill'
     | 'colour.signatureInk';
 }
 
 const WHITE = 'text-page';
 const INK = 'text-ink';
 
-export const HIGHLIGHT_PALETTE: readonly PaletteColour[] = [
-  { id: 'solar', rgb: [255, 248, 77], bg: 'bg-hl-solar', check: INK, nameKey: 'colour.solar' },
-  { id: 'mint', rgb: [125, 235, 181], bg: 'bg-hl-mint', check: INK, nameKey: 'colour.mint' },
-  { id: 'sky', rgb: [163, 222, 255], bg: 'bg-hl-sky', check: INK, nameKey: 'colour.sky' },
-  { id: 'rose', rgb: [255, 199, 215], bg: 'bg-hl-rose', check: INK, nameKey: 'colour.rose' },
-  { id: 'lavender', rgb: [220, 207, 255], bg: 'bg-hl-lavender', check: INK, nameKey: 'colour.lavender' },
-];
+export const INK_RGB: Rgb = [15, 15, 15];
 
-export const STROKE_PALETTE: readonly PaletteColour[] = [
-  { id: 'ink', rgb: [15, 15, 15], bg: 'bg-stroke-ink', check: WHITE, nameKey: 'colour.ink' },
-  { id: 'mint', rgb: [31, 158, 106], bg: 'bg-stroke-mint', check: WHITE, nameKey: 'colour.mint' },
-  { id: 'sky', rgb: [61, 143, 209], bg: 'bg-stroke-sky', check: WHITE, nameKey: 'colour.sky' },
-  { id: 'rose', rgb: [225, 92, 134], bg: 'bg-stroke-rose', check: WHITE, nameKey: 'colour.rose' },
-  { id: 'lavender', rgb: [146, 120, 230], bg: 'bg-stroke-lavender', check: WHITE, nameKey: 'colour.lavender' },
-];
+/**
+ * The five colours of each set as RGB (the source of truth; the first set is the default). Owner hex (F19.19):
+ * iris   EF35F2 00F5FF 6EF230 FFF84D FF4103
+ * earth  093699 B7CF4F 2A5239 DAD1CA C54712
+ * berry  A61B4E D92567 F2509C D4D93D D6CECE
+ * study  174FBF A7D5F2 1B4427 B0BF3F F2EDD5
+ */
+export const PALETTE_RGB = {
+  iris: [
+    [239, 53, 242],
+    [0, 245, 255],
+    [110, 242, 48],
+    [255, 248, 77],
+    [255, 65, 3],
+  ],
+  earth: [
+    [9, 54, 153],
+    [183, 207, 79],
+    [42, 82, 57],
+    [218, 209, 202],
+    [197, 71, 18],
+  ],
+  berry: [
+    [166, 27, 78],
+    [217, 37, 103],
+    [242, 80, 156],
+    [212, 217, 61],
+    [214, 206, 206],
+  ],
+  study: [
+    [23, 79, 191],
+    [167, 213, 242],
+    [27, 68, 39],
+    [176, 191, 63],
+    [242, 237, 213],
+  ],
+} as const satisfies Readonly<Record<string, readonly Rgb[]>>;
 
-/** Solar is a fill only: it is not a stroke colour, and the picker says so in its name. */
-export const SOLAR_FILL: PaletteColour = {
-  id: 'solarFill',
-  rgb: [255, 248, 77],
-  bg: 'bg-stroke-solar',
-  check: INK,
-  nameKey: 'colour.solarFill',
-};
+export type PaletteSetName = keyof typeof PALETTE_RGB;
+export const PALETTE_SET_NAMES = Object.keys(PALETTE_RGB) as readonly PaletteSetName[];
+export const DEFAULT_PALETTE_SET: PaletteSetName = 'iris';
 
-/** What a fill (a note) offers: Solar, then the strokes. */
-export const FILL_PALETTE: readonly PaletteColour[] = [SOLAR_FILL, ...STROKE_PALETTE];
+const SLOTS = ['colour.slot1', 'colour.slot2', 'colour.slot3', 'colour.slot4', 'colour.slot5'] as const;
 
-/** The ink of a signature: Ink or the one blue of the interface, `--ink-signature`. */
+const luma = ([r, g, b]: Rgb): number => (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
+
+const INK_COLOUR: PaletteColour = { id: 'ink', rgb: INK_RGB, bg: 'bg-stroke-ink', check: WHITE, nameKey: 'colour.ink' };
+
+/** The ink of a signature: Ink or the one blue of the interface, `--ink-signature`. It does not follow the set (ADR-143). */
 export const SIGNATURE_PALETTE: readonly PaletteColour[] = [
-  { id: 'ink', rgb: [15, 15, 15], bg: 'bg-stroke-ink', check: WHITE, nameKey: 'colour.ink' },
+  INK_COLOUR,
   { id: 'signatureInk', rgb: [31, 58, 147], bg: 'bg-ink-signature', check: WHITE, nameKey: 'colour.signatureInk' },
 ];
 
 export type PaletteSet = Readonly<Record<PaletteName, readonly PaletteColour[]>>;
 
-/**
- * The named palette sets (F19.14, ADR-141): the ONE place that owns every colour the pickers, the inspector, the tags, the stamps and
- * the defaults offer. Switching the palette as a set (the owner's "toggleable palette", spec pending) means adding a set here and
- * changing `ACTIVE_PALETTE_SET`; no surface keeps a palette of its own. The default set is `iris`.
- */
-export const PALETTE_SETS = {
-  iris: {
-    highlight: HIGHLIGHT_PALETTE,
-    stroke: STROKE_PALETTE,
-    fill: FILL_PALETTE,
-    signature: SIGNATURE_PALETTE,
+function buildSet(colours: readonly (readonly [number, number, number])[]): PaletteSet {
+  const five: PaletteColour[] = colours.map(([r, g, b], index) => {
+    const rgb: Rgb = [r, g, b];
+    return { id: `c${index + 1}`, rgb, check: luma(rgb) > 0.4 ? INK : WHITE, nameKey: SLOTS[index] ?? 'colour.slot1' };
+  });
+  return { highlight: five, stroke: [INK_COLOUR, ...five], fill: five, signature: SIGNATURE_PALETTE };
+}
+
+/** The named palette sets: the ONE place that owns every colour the pickers, the inspector and the defaults offer. */
+export const PALETTE_SETS: Readonly<Record<PaletteSetName, PaletteSet>> = {
+  iris: buildSet(PALETTE_RGB.iris),
+  earth: buildSet(PALETTE_RGB.earth),
+  berry: buildSet(PALETTE_RGB.berry),
+  study: buildSet(PALETTE_RGB.study),
+};
+
+/** Tags and stamps keep fixed colours that do not follow the set (ADR-143): the Iris v1 tints, as token classes. */
+export const TAG_SWATCHES = [
+  { rgb: [255, 248, 77], bg: 'bg-hl-solar', nameKey: 'colour.solar' },
+  { rgb: [125, 235, 181], bg: 'bg-hl-mint', nameKey: 'colour.mint' },
+  { rgb: [163, 222, 255], bg: 'bg-hl-sky', nameKey: 'colour.sky' },
+  { rgb: [255, 199, 215], bg: 'bg-hl-rose', nameKey: 'colour.rose' },
+  { rgb: [220, 207, 255], bg: 'bg-hl-lavender', nameKey: 'colour.lavender' },
+] as const satisfies readonly {
+  rgb: Rgb;
+  bg: string;
+  nameKey: 'colour.solar' | 'colour.mint' | 'colour.sky' | 'colour.rose' | 'colour.lavender';
+}[];
+
+/** The fixed Solar of the stamp tones. */
+export const STAMP_SOLAR: Rgb = [255, 248, 77];
+
+export const PALETTE_SET_KEY = 'sheer.paletteSet';
+
+function readSet(): PaletteSetName {
+  try {
+    const raw = globalThis.localStorage?.getItem(PALETTE_SET_KEY) ?? '';
+    return PALETTE_SET_NAMES.find((name) => name === raw) ?? DEFAULT_PALETTE_SET;
+  } catch {
+    return DEFAULT_PALETTE_SET;
+  }
+}
+
+export interface PaletteStoreState {
+  /** The active set, app-wide (not per document). Switching never recolours an annotation. */
+  set: PaletteSetName;
+  choose: (name: PaletteSetName) => void;
+}
+
+export const usePaletteSet = create<PaletteStoreState>()((set) => ({
+  set: readSet(),
+  choose: (name) => {
+    try {
+      globalThis.localStorage?.setItem(PALETTE_SET_KEY, name);
+    } catch {
+      // Storage may be unavailable; the choice then lasts for the session.
+    }
+    set({ set: name });
   },
-} as const satisfies Readonly<Record<string, PaletteSet>>;
+}));
 
-export type PaletteSetName = keyof typeof PALETTE_SETS;
+/** The palettes every surface reads: the active set (outside React). */
+export const activePalettes = (): PaletteSet => PALETTE_SETS[usePaletteSet.getState().set];
 
-export const ACTIVE_PALETTE_SET: PaletteSetName = 'iris';
-
-/** The palettes every surface reads: the active set. */
-export const PALETTES: PaletteSet = PALETTE_SETS[ACTIVE_PALETTE_SET];
+/** The active palettes, and a re-render when the set changes. */
+export function usePalettes(): PaletteSet {
+  return PALETTE_SETS[usePaletteSet((state) => state.set)];
+}
 
 /** The kinds of annotation that have the highlight palette. */
 export const paletteNameOf = (kind: string): PaletteName =>
@@ -95,20 +167,27 @@ export const paletteNameOf = (kind: string): PaletteName =>
         ? 'signature'
         : 'stroke';
 
-const first = (palette: readonly PaletteColour[]): Rgb => palette[0]?.rgb ?? [15, 15, 15];
+/** The position of Solar in every set: the default of highlights and notes. */
+export const SOLAR_INDEX = 3;
+/** The default of a citation: colour 5 (the Lavender of Iris v1 is in no set). */
+export const CITATION_INDEX = 4;
 
-/** The defaults: Highlight Solar, everything drawn Ink, Note Solar (a fill). */
-export const DEFAULT_COLOURS = {
-  highlight: first(HIGHLIGHT_PALETTE),
-  /** A citation starts Lavender (`--citation-default`, DESIGN 3.7 C1), so it differs from a plain highlight at first sight. */
-  citation: HIGHLIGHT_PALETTE[4]?.rgb ?? first(HIGHLIGHT_PALETTE),
-  underline: first(STROKE_PALETTE),
-  strikeout: first(STROKE_PALETTE),
-  note: first(FILL_PALETTE),
-  freeText: first(STROKE_PALETTE),
-  ink: first(STROKE_PALETTE),
-  shape: first(STROKE_PALETTE),
-} as const;
+const pick = (palette: readonly PaletteColour[], index: number): Rgb => palette[index]?.rgb ?? INK_RGB;
+
+/** The defaults, from the active set: Highlight and Note at the Solar position, everything drawn Ink. */
+export function defaultColours() {
+  const { highlight, fill } = activePalettes();
+  return {
+    highlight: pick(highlight, SOLAR_INDEX),
+    citation: pick(highlight, CITATION_INDEX),
+    underline: INK_RGB,
+    strikeout: INK_RGB,
+    note: pick(fill, SOLAR_INDEX),
+    freeText: INK_RGB,
+    ink: INK_RGB,
+    shape: INK_RGB,
+  } as const;
+}
 
 /** The alpha written into a highlight. It is the value of the `--hl-opacity` token (a test keeps the two equal): annotation data cannot read CSS. */
 export const HIGHLIGHT_OPACITY = 0.45;
@@ -117,25 +196,26 @@ export function sameRgb(a: Rgb, b: Rgb): boolean {
   return a[0] === b[0] && a[1] === b[1] && a[2] === b[2];
 }
 
-/** The entry of `rgb` in a palette. */
+/** The entry of `rgb` in a palette of the active set. */
 export function paletteEntry(
   rgb: Rgb,
   palette: PaletteName | readonly PaletteName[] = 'stroke',
 ): PaletteColour | undefined {
   const names = typeof palette === 'string' ? [palette] : palette;
+  const set = activePalettes();
   for (const name of names) {
-    const found = PALETTES[name].find((colour) => sameRgb(colour.rgb, rgb));
+    const found = set[name].find((colour) => sameRgb(colour.rgb, rgb));
     if (found !== undefined) return found;
   }
   return undefined;
 }
 
-/** A stored colour that is not in the palette of its kind (a colour of an old file): it gets the extra "Custom" swatch. */
+/** A stored colour that is not in the palette of its kind (a colour of another set or an old file): it gets the extra "Custom" swatch. */
 export function isCustomColour(rgb: Rgb, palette: PaletteName): boolean {
   return paletteEntry(rgb, palette) === undefined;
 }
 
-/** A persisted last-used colour that is no longer in the palette of its kind (the Okabe-Ito of v1.1) becomes the default. */
+/** A persisted last-used colour that is no longer in the palette of its kind becomes the default. */
 export function migrateColour(value: unknown, palette: PaletteName, fallback: Rgb): Rgb {
   if (!Array.isArray(value) || value.length !== 3 || !value.every((n) => Number.isInteger(n) && n >= 0 && n <= 255)) {
     return fallback;

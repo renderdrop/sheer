@@ -2,10 +2,10 @@ import type { Rgb } from '../../api/annotations';
 import { TAG_PALETTE } from '../../api/cite';
 import { cx } from '../../components/cx';
 import type { PlainKey } from '../../i18n';
-import { PALETTES } from '../inspector/palette';
+import { TAG_SWATCHES } from '../inspector/palette';
 
-/** The five colours a tag may have (DESIGN 3.7 C6): the highlight swatches, with their fill classes and names. */
-export const TAG_COLOURS: readonly { fill: string; name: PlainKey }[] = PALETTES.highlight.map((colour) => ({
+/** The five colours a tag may have (DESIGN 3.7 C6): the fixed Iris v1 tints (they do not follow the palette set), with their fill classes and names. */
+export const TAG_COLOURS: readonly { fill: string; name: PlainKey }[] = TAG_SWATCHES.map((colour) => ({
   fill: colour.bg,
   name: colour.nameKey,
 }));

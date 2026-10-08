@@ -87,12 +87,12 @@ describe('the drafts of a selection', () => {
     expect(selectionCitationDrafts(1)).toEqual([]);
   });
 
-  it('are one per page, in the colour of the next citation (Lavender first)', () => {
+  it('are one per page, in the colour of the next citation (colour 5 first)', () => {
     select();
     const drafts = selectionCitationDrafts(1);
     expect(drafts.map((draft) => draft.pageId)).toEqual([7, 8]);
     expect(drafts[0]?.quads).toEqual([QUAD]);
-    expect(drafts[0]?.color).toEqual([220, 207, 255]);
+    expect(drafts[0]?.color).toEqual([255, 65, 3]);
     // The first page runs from the start of the selection to the end of its text, the last from 0 to the end.
     expect(quadsFor.mock.calls.map(([, from, to]) => [from, to])).toEqual([
       [3, 40],

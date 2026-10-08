@@ -5,7 +5,7 @@ import type { LineEnd, Rgb } from '../../api/annotations';
 import { Field, IconButton, Menu, Slider } from '../../components';
 import { cx } from '../../components/cx';
 import { useT } from '../../i18n';
-import { isCustomColour, PALETTES, rgbToCss, type PaletteName } from './palette';
+import { isCustomColour, rgbToCss, usePalettes, type PaletteName } from './palette';
 import { RadioRow, type RadioOption } from './RadioRow';
 import type { Shared } from './properties';
 import { FONT_SIZE_RANGE, FONT_SIZES, OPACITY_RANGE, STROKE_PRESETS, type AnnotationStyle } from './style';
@@ -66,12 +66,15 @@ export function ColourSection({
   palette?: PaletteName;
 }) {
   const t = useT();
+  const palettes = usePalettes();
   const current = colour.value === null ? null : colour.value.join(',');
   const choose = (value: string) => {
     const [r, g, b] = value.split(',').map(Number);
     if (r !== undefined && g !== undefined && b !== undefined) void onChange({ color: [r, g, b] });
   };
-  const options = PALETTES[palette].map((entry) => swatchOption(entry.rgb, t(entry.nameKey), entry.bg, entry.check));
+  const options = palettes[palette].map((entry) =>
+    swatchOption(entry.rgb, t(entry.nameKey), entry.bg ?? null, entry.check),
+  );
   // A stored colour outside the palette (an old file) shows as one extra "Custom" swatch, so the state is never invisible.
   if (colour.value !== null && isCustomColour(colour.value, palette)) {
     options.push(

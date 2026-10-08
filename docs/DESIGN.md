@@ -127,31 +127,32 @@ Tailwind names stay where listed, so markup changes only where the row says "ren
 
 ### 1.4 Highlight and ink palette (document content)
 
-Highlights: fill at 45 % opacity, `mix-blend-mode: multiply`. The four alternatives share CIE L\* 85.5 ± 0.5; Solar (L\* 95.5) is the mandated default.
+Highlights: fill at 45 % opacity, `mix-blend-mode: multiply`; strokes and fills at full opacity. One palette SET is five colours; the highlight, stroke and fill pickers all show the active set, strokes add the neutral Ink (#0F0F0F, the fixed default of every stroke tool) before the five. Colour 4 is the "Solar position": the default of highlights and notes. A citation starts with colour 5. Swatches are painted inline from the set values (no class per colour); their accessible names are "Colour 1" to "Colour 5".
 
-| Name | Highlight | Stroke (pen, shapes, text colour; L\* 57.5 ± 0.5, ≥ 3.3:1 on white) |
-|---|---|---|
-| Solar (default highlight) | #FFF84D | #FFF84D (fills only; the picker labels it "Solar, fill") |
-| Mint | #7DEBB5 | #1F9E6A |
-| Sky | #A3DEFF | #3D8FD1 |
-| Rose | #FFC7D7 | #E15C86 |
-| Lavender | #DCCFFF | #9278E6 |
-| Ink (default stroke) | — | #0F0F0F |
+| Set (chooser name) | Colour 1 | 2 | 3 | 4 (Solar position) | 5 |
+|---|---|---|---|---|---|
+| Default (Palette 1) | #EF35F2 | #00F5FF | #6EF230 | #FFF84D | #FF4103 |
+| Earth (Palette 2) | #093699 | #B7CF4F | #2A5239 | #DAD1CA | #C54712 |
+| Berry (Palette 3) | #A61B4E | #D92567 | #F2509C | #D4D93D | #D6CECE |
+| Study (Palette 4) | #174FBF | #A7D5F2 | #1B4427 | #B0BF3F | #F2EDD5 |
 
-Tokens: `--hl-*`, `--stroke-*`. Annotations from older files keep their stored colour; the picker then shows it as an extra "Custom" swatch. Signature ink: Ink or `--ink-signature` #1F3A93 (the only blue).
+Fixed, not part of a set (ADR-143): Ink, tag colours and stamp tones (the Iris v1 tints `--hl-*`, tokens), and the signature inks (Ink or `--ink-signature` #1F3A93, the only blue). Annotations keep their stored colour when the set changes; a colour that is not in the active set shows as the extra "Custom" swatch.
 
-**Palette audit and single source (F19.14, ADR-141).** All colour lists live in `src/features/inspector/palette.ts` as named sets (`PALETTE_SETS`, active set `ACTIVE_PALETTE_SET` = `iris`; each set holds `highlight`, `stroke`, `fill`, `signature`). The one picker is `components/ColourPopover` (palette grid, custom hex, recent). A "toggleable palette" (owner spec pending) is a second entry in `PALETTE_SETS`; no surface may hold colour literals (`paletteSource.test.ts` scans for them).
+**Palette chooser (F19.19).** Beside "More colours" a small palette icon button (Lucide `palette`) opens a popover with one row of five swatches per set, without names or hex (accessible names "Palette 1" to "Palette 4"); the current set carries a check and `aria-checked`; a click replaces the five colours at once and closes. The choice is app-wide (localStorage `sheer.paletteSet`, wrapped in try/catch), not per document, and never recolours an annotation; only the defaults of new annotations follow it.
+
+**Single source (F19.14, ADR-141; F19.19).** All colour lists live in `src/features/inspector/palette.ts` (`PALETTE_SETS`, store `usePaletteSet`, `usePalettes()` / `activePalettes()`, `defaultColours()`). The one picker is `components/ColourPopover` (palette grid, custom hex, recent). Only that file may hold colour literals (`paletteSource.test.ts` scans for them).
 
 | Surface | Palette source | Picker | State |
 |---|---|---|---|
-| Mini bar (`minibar/model.ts`, `Controls.tsx`) | `PALETTES[kind]` | ColourPopover | unified |
-| Tool row colour row (`modes/ColourRow.tsx`) | `paletteNameOf(kind)` | ColourPopover | unified |
-| Inspector (`inspector/*`) | `PALETTES` | ColourPopover | unified |
-| Signature sheet (`SignatureSheet.tsx`) | `SIGNATURE_PALETTE` (Ink, `--ink-signature`) via radio | two-swatch radio by design | unified (source) |
+| Mini bar (`minibar/Controls.tsx`) | `usePalettes()[kind]` | ColourPopover + PaletteChooser | unified |
+| Tool row colour row (`modes/ColourRow.tsx`) | same row component | ColourPopover + PaletteChooser | unified |
+| Inspector (`inspector/*`) | `usePalettes()` | radio row | unified |
+| Signature sheet (`SignatureSheet.tsx`) | `SIGNATURE_PALETTE` (fixed) | two-swatch radio by design | fixed |
 | Text boxes (`insert/TextEditor.tsx`, `note/FreeTextEditor.tsx`) | no palette of their own; render the object's colour | mini bar | unified |
-| Tags (`tags/palette.tsx`, `api/cite.ts TAG_PALETTE`) | derived from `PALETTES.highlight`; `TAG_PALETTE` mirrors Rust and is asserted equal | tag menu (fixed five) | unified (was a copy) |
-| Stamps (`stamps/actions.ts TONE_RGB`) | derived from highlight[0] / stroke[0] (was literals) | tone menu | unified (was a copy) |
-| Comment export | uses `TagDot` (tags source) | none | unified |
+| Tags (`tags/palette.tsx`, `api/cite.ts TAG_PALETTE`) | `TAG_SWATCHES` (fixed; `TAG_PALETTE` mirrors Rust) | tag menu (fixed five) | fixed |
+| Stamps (`stamps/actions.ts TONE_RGB`) | `STAMP_SOLAR`, `INK_RGB` (fixed) | tone menu | fixed |
+| Defaults of new annotations (`inspector/style.ts`, `create/drafts.ts`, `create/textStyle.ts`) | `defaultColours()` of the active set | none | unified |
+| Comment export | uses `TagDot` (tags source) | none | fixed |
 
 ### 1.5 Type (Inter variable, `font-feature-settings: "cv11","ss01"`; numerals that change use `tabular-nums`)
 

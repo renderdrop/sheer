@@ -18,7 +18,7 @@ import {
   setBibliography,
 } from './citations';
 import { toAppError } from './errors';
-import { HIGHLIGHT_PALETTE } from '../features/inspector/palette';
+import { TAG_SWATCHES } from '../features/inspector/palette';
 
 vi.mock('@tauri-apps/api/core', () => ({ invoke: vi.fn(), Channel: class {} }));
 
@@ -54,8 +54,8 @@ const HIGHLIGHT = {
 };
 
 describe('the tag palette', () => {
-  it('is the highlight palette of the inspector', () => {
-    expect(TAG_PALETTE).toEqual(HIGHLIGHT_PALETTE.map((swatch) => swatch.rgb));
+  it('is the fixed set of tag swatches', () => {
+    expect(TAG_PALETTE).toEqual(TAG_SWATCHES.map((swatch) => swatch.rgb));
   });
 });
 

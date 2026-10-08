@@ -457,10 +457,10 @@ describe('Kommentieren', () => {
     const group = await screen.findByRole('radiogroup', { name: 'Colour' });
     const swatches = within(group).getAllByRole('radio');
     expect(swatches).toHaveLength(5);
-    expect(swatches[0]?.getAttribute('aria-checked')).toBe('true');
-    await user.click(within(group).getByRole('radio', { name: 'Sky' }));
-    expect(styleFor('highlight').color).toEqual([163, 222, 255]);
-    expect(within(group).getByRole('radio', { name: 'Sky' }).getAttribute('aria-checked')).toBe('true');
+    expect(swatches[3]?.getAttribute('aria-checked')).toBe('true');
+    await user.click(within(group).getByRole('radio', { name: 'Colour 3' }));
+    expect(styleFor('highlight').color).toEqual([110, 242, 48]);
+    expect(within(group).getByRole('radio', { name: 'Colour 3' }).getAttribute('aria-checked')).toBe('true');
   });
 
   it('the swatch row has More colours: a hex colour is applied, joins the recent ones and shows as a swatch (DESIGN 3.5 B5)', async () => {
@@ -486,7 +486,7 @@ describe('Kommentieren', () => {
     await user.click(item('Options for Draw'));
     const group = await screen.findByRole('radiogroup', { name: 'Colour' });
     // Draw has the stroke palette: the recent colour is not in it, so it is a swatch after the five.
-    expect(within(group).getAllByRole('radio')).toHaveLength(6);
+    expect(within(group).getAllByRole('radio')).toHaveLength(7);
     await user.click(within(group).getByRole('radio', { name: '#0A141E' }));
     expect(styleFor('ink').color).toEqual([10, 20, 30]);
   });

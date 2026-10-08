@@ -9,7 +9,7 @@ import { useDocuments } from '../../stores/documents';
 import { useTools } from '../../stores/tools';
 import { useUi } from '../../stores/ui';
 import { setup } from '../../test/render';
-import { DEFAULT_STYLES, useStyleStore } from '../inspector/style';
+import { defaultStyles, useStyleStore } from '../inspector/style';
 import { useMiniBarDock } from './dock';
 import { MiniBarDock } from './MiniBarDock';
 import { MiniBarSlot } from './MiniBarSlot';
@@ -241,7 +241,7 @@ describe('controls', () => {
     load([ink(1)], [1]);
     scene = canvas({ 1: OVER });
     setup(<MiniBarSlot />);
-    expect(screen.getAllByRole('radio', { name: /^(Ink|Mint|Sky|Rose|Lavender)$/ })).toHaveLength(5);
+    expect(screen.getAllByRole('radio', { name: /^(Ink|Colour [1-5])$/ })).toHaveLength(6);
     expect(screen.getByRole('radiogroup', { name: 'Line width' })).not.toBeNull();
     expect(screen.getByRole('button', { name: 'Opacity' })).not.toBeNull();
     expect(screen.queryByRole('button', { name: 'Fill' })).toBeNull();
@@ -254,7 +254,7 @@ describe('controls', () => {
     scene = canvas({ 1: OVER });
     setup(<MiniBarSlot />);
     expect(screen.getByRole('radiogroup', { name: 'Markup kind' })).not.toBeNull();
-    expect(screen.getByRole('radio', { name: 'Solar' }).getAttribute('aria-checked')).toBe('true');
+    expect(screen.getByRole('radio', { name: 'Colour 4' }).getAttribute('aria-checked')).toBe('true');
     expect(screen.getByRole('button', { name: 'Comment' })).not.toBeNull();
   });
 
@@ -352,18 +352,18 @@ describe('changes', () => {
     load([ink(1)], [1]);
     scene = canvas({ 1: OVER });
     const { user } = setup(<MiniBarSlot />);
-    await user.click(screen.getByRole('radio', { name: 'Rose' }));
+    await user.click(screen.getByRole('radio', { name: 'Colour 2' }));
     expect(applyMock).toHaveBeenCalledTimes(1);
-    expect(applyMock).toHaveBeenCalledWith(1, { type: 'updateAnnotation', id: 1, patch: { color: [225, 92, 134] } });
-    await waitFor(() => expect(useTools.getState().defaults.ink?.color).toEqual([225, 92, 134]));
-    expect(useStyleStore.getState().overrides.ink?.color).toEqual([225, 92, 134]);
+    expect(applyMock).toHaveBeenCalledWith(1, { type: 'updateAnnotation', id: 1, patch: { color: [0, 245, 255] } });
+    await waitFor(() => expect(useTools.getState().defaults.ink?.color).toEqual([0, 245, 255]));
+    expect(useStyleStore.getState().overrides.ink?.color).toEqual([0, 245, 255]);
   });
 
   it('are one undo step for several objects (one batch)', async () => {
     load([ink(1), ink(2)], [1, 2]);
     scene = canvas({ 1: OVER, 2: OVER });
     const { user } = setup(<MiniBarSlot />);
-    await user.click(screen.getByRole('radio', { name: 'Sky' }));
+    await user.click(screen.getByRole('radio', { name: 'Colour 3' }));
     expect(applyMock).toHaveBeenCalledTimes(1);
     expect(applyMock.mock.calls[0]?.[1]).toMatchObject({ type: 'batch', commands: [{ id: 1 }, { id: 2 }] });
   });
@@ -405,10 +405,10 @@ describe('defaults for the next annotation', () => {
 
 function useAnnotationDefaults(): boolean {
   return (
-    DEFAULT_STYLES.highlight.color.join() === '255,248,77' &&
-    DEFAULT_STYLES.ink.color.join() === '15,15,15' &&
-    DEFAULT_STYLES.ink.width === 2 &&
-    DEFAULT_STYLES.freeText.fontSize === 12
+    defaultStyles().highlight.color.join() === '255,248,77' &&
+    defaultStyles().ink.color.join() === '15,15,15' &&
+    defaultStyles().ink.width === 2 &&
+    defaultStyles().freeText.fontSize === 12
   );
 }
 

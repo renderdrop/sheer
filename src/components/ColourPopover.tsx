@@ -17,7 +17,7 @@ export interface ColourEntry {
   id: string;
   rgb: Rgb3;
   label: string;
-  fillClass: string;
+  fillClass?: string;
   checkClass?: string;
 }
 

@@ -2,16 +2,14 @@ import { describe, expect, it } from 'vitest';
 
 import type { Annotation } from '../../api/annotations';
 import {
-  DEFAULT_COLOURS,
-  FILL_PALETTE,
+  defaultColours,
   HIGHLIGHT_OPACITY,
-  HIGHLIGHT_PALETTE,
+  PALETTE_SETS,
   isCustomColour,
   migrateColour,
   paletteEntry,
   recentColours,
   SIGNATURE_PALETTE,
-  STROKE_PALETTE,
 } from './palette';
 import {
   commandFor,
@@ -21,7 +19,7 @@ import {
   shared,
   valuesOfSelection,
 } from './properties';
-import { DEFAULT_STYLES, loadStoredColours, styleFor } from './style';
+import { defaultStyles, loadStoredColours, styleFor } from './style';
 
 function make(id: number, extra: Record<string, unknown>): Annotation {
   return {
@@ -59,11 +57,12 @@ const line = (id: number, extra: Record<string, unknown> = {}) =>
   make(id, { kind: 'line', from: { x: 0, y: 0 }, to: { x: 1, y: 1 }, width: 2, head: 'none', tail: 'none', ...extra });
 
 describe('the palette', () => {
-  it('has five highlight tints with Solar first, and Ink plus four strokes', () => {
-    expect(HIGHLIGHT_PALETTE.map((c) => c.id)).toEqual(['solar', 'mint', 'sky', 'rose', 'lavender']);
-    expect(STROKE_PALETTE.map((c) => c.id)).toEqual(['ink', 'mint', 'sky', 'rose', 'lavender']);
-    expect(FILL_PALETTE[0]?.nameKey).toBe('colour.solarFill');
-    expect(STROKE_PALETTE.some((c) => c.id === 'solarFill')).toBe(false);
+  it('has five colours in every set, and Ink before them for strokes', () => {
+    const iris = PALETTE_SETS.iris;
+    expect(iris.highlight.map((c) => c.id)).toEqual(['c1', 'c2', 'c3', 'c4', 'c5']);
+    expect(iris.fill.map((c) => c.rgb)).toEqual(iris.highlight.map((c) => c.rgb));
+    expect(iris.stroke.map((c) => c.id)).toEqual(['ink', 'c1', 'c2', 'c3', 'c4', 'c5']);
+    expect(iris.highlight[0]?.rgb).toEqual([239, 53, 242]);
     expect(SIGNATURE_PALETTE.map((c) => c.rgb)).toEqual([
       [15, 15, 15],
       [31, 58, 147],
@@ -71,27 +70,27 @@ describe('the palette', () => {
   });
 
   it('defaults to Solar for highlights and notes and Ink for what is drawn', () => {
-    expect(DEFAULT_COLOURS.highlight).toEqual([255, 248, 77]);
-    expect(DEFAULT_COLOURS.ink).toEqual([15, 15, 15]);
-    expect(DEFAULT_COLOURS.shape).toEqual([15, 15, 15]);
-    expect(DEFAULT_STYLES.highlight.opacity).toBe(HIGHLIGHT_OPACITY);
+    expect(defaultColours().highlight).toEqual([255, 248, 77]);
+    expect(defaultColours().ink).toEqual([15, 15, 15]);
+    expect(defaultColours().shape).toEqual([15, 15, 15]);
+    expect(defaultStyles().highlight.opacity).toBe(HIGHLIGHT_OPACITY);
     expect(HIGHLIGHT_OPACITY).toBe(0.45);
   });
 
   it('finds palette entries per palette and flags other colours as custom', () => {
-    expect(paletteEntry([61, 143, 209])?.id).toBe('sky');
-    expect(paletteEntry([163, 222, 255], 'highlight')?.id).toBe('sky');
+    expect(paletteEntry([0, 245, 255])?.id).toBe('c2');
+    expect(paletteEntry([0, 245, 255], 'highlight')?.id).toBe('c2');
     expect(isCustomColour([0, 114, 178], 'stroke')).toBe(true);
     expect(isCustomColour([15, 15, 15], 'stroke')).toBe(false);
   });
 
   it('migrates a stored colour that is no longer in the palette to the default', () => {
-    const solar = DEFAULT_COLOURS.highlight;
+    const solar = defaultColours().highlight;
     expect(migrateColour([240, 228, 66], 'highlight', solar)).toBe(solar);
     expect(migrateColour('x', 'highlight', solar)).toBe(solar);
-    expect(migrateColour([125, 235, 181], 'highlight', solar)).toEqual([125, 235, 181]);
-    expect(loadStoredColours(JSON.stringify({ highlight: [240, 228, 66], ink: [31, 158, 106] }))).toEqual({
-      ink: { color: [31, 158, 106] },
+    expect(migrateColour([0, 245, 255], 'highlight', solar)).toEqual([0, 245, 255]);
+    expect(loadStoredColours(JSON.stringify({ highlight: [240, 228, 66], ink: [0, 245, 255] }))).toEqual({
+      ink: { color: [0, 245, 255] },
     });
     expect(loadStoredColours('not json')).toEqual({});
   });
@@ -184,11 +183,11 @@ describe('commandFor', () => {
 
 describe('default styles', () => {
   it('follow DESIGN 3.24', () => {
-    expect(DEFAULT_STYLES.highlight.color).toEqual([255, 248, 77]);
-    expect(DEFAULT_STYLES.underline.color).toEqual([15, 15, 15]);
-    expect(DEFAULT_STYLES.freeText.color).toEqual([15, 15, 15]);
-    expect(DEFAULT_STYLES.ink.color).toEqual([15, 15, 15]);
-    expect(DEFAULT_STYLES.arrow.head).toBe('openArrow');
+    expect(defaultStyles().highlight.color).toEqual([255, 248, 77]);
+    expect(defaultStyles().underline.color).toEqual([15, 15, 15]);
+    expect(defaultStyles().freeText.color).toEqual([15, 15, 15]);
+    expect(defaultStyles().ink.color).toEqual([15, 15, 15]);
+    expect(defaultStyles().arrow.head).toBe('openArrow');
     expect(styleFor('rect', { rect: { width: 8 } }).width).toBe(8);
   });
 });
