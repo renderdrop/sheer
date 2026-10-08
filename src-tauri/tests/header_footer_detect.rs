@@ -6,6 +6,7 @@
 mod support;
 
 use std::path::PathBuf;
+use std::sync::OnceLock;
 
 use sheer_lib::commands::hf_detect::{DetectedEdge, DetectedKind, DetectedSlot};
 use sheer_lib::commands::AppState;
@@ -33,15 +34,26 @@ fn pdf(count: u32) -> Vec<u8> {
     builder.finish(1)
 }
 
+/// One engine per test binary: parallel tests that each bind PDFium crash on macOS (CI #124, #144).
+fn state() -> Option<&'static AppState> {
+    static STATE: OnceLock<Option<AppState>> = OnceLock::new();
+    STATE
+        .get_or_init(|| {
+            let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("pdfium");
+            let library = engine::library_path(&root);
+            library
+                .is_file()
+                .then(|| AppState::new(Engine::start(library)))
+        })
+        .as_ref()
+}
+
 #[test]
 fn a_running_header_and_page_numbers_are_detected() {
-    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("pdfium");
-    let library = engine::library_path(&root);
-    if !library.is_file() {
-        eprintln!("skipping: {} not found", library.display());
+    let Some(state) = state() else {
+        eprintln!("skipping: PDFium not fetched");
         return;
-    }
-    let state = AppState::new(Engine::start(library));
+    };
     let dir = std::env::temp_dir().join(format!("sheer-hf-detect-{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
     let path = dir.join("running.pdf");
@@ -99,13 +111,10 @@ fn tinted() -> Vec<u8> {
 #[test]
 fn the_page_colour_under_a_box_is_sampled_from_a_small_render() {
     use sheer_lib::commands::hf_detect::sample_fill;
-    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("pdfium");
-    let library = engine::library_path(&root);
-    if !library.is_file() {
-        eprintln!("skipping: {} not found", library.display());
+    let Some(state) = state() else {
+        eprintln!("skipping: PDFium not fetched");
         return;
-    }
-    let state = AppState::new(Engine::start(library));
+    };
     let dir = std::env::temp_dir().join(format!("sheer-hf-fill-{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
     let path = dir.join("tinted.pdf");
@@ -134,13 +143,10 @@ fn the_page_colour_under_a_box_is_sampled_from_a_small_render() {
 #[test]
 fn the_colour_is_found_under_the_box_on_a_turned_page() {
     use sheer_lib::commands::hf_detect::sample_fill;
-    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("pdfium");
-    let library = engine::library_path(&root);
-    if !library.is_file() {
-        eprintln!("skipping: {} not found", library.display());
+    let Some(state) = state() else {
+        eprintln!("skipping: PDFium not fetched");
         return;
-    }
-    let state = AppState::new(Engine::start(library));
+    };
     let dir = std::env::temp_dir().join(format!("sheer-hf-fill90-{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
     let path = dir.join("turned.pdf");
