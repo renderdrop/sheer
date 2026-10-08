@@ -14,7 +14,8 @@ const TOOLS = TOOL_IDS.flatMap((id) => HUB_CARDS.filter((card) => card.id === id
 
 /**
  * The Werkzeuge rows (DESIGN v2 3.1): 56 high, icon 20, the name in `.t-label` over its description in `.t-caption`, a chevron at
- * the end; three columns from 1200 wide (F19.6). Hover Sand. No cards, no dividers. A row runs the hub card: the file dialog, then the editor in the
+ * the end; three columns from 1200 wide (F19.6). The description wraps instead of being cut (FX-6): the label line and two caption
+ * lines (18 + 2 x 16) still fit the 56 row, which grows only should a translation ever need a third line. Hover Sand. No cards, no dividers. A row runs the hub card: the file dialog, then the editor in the
  * matching mode. While one runs (or a document is being opened) the others are `aria-disabled`; arrows move through the rows.
  */
 export function ToolRows() {
@@ -41,12 +42,12 @@ export function ToolRows() {
             onClick={() => {
               if (!locked) void runHubCard(card.id);
             }}
-            className="group/tool flex h-(--home-row-height) w-full cursor-pointer items-center gap-3 rounded-md px-3 text-start transition-colors [transition-duration:var(--motion-fast)] not-aria-disabled:hover:bg-subtle not-aria-disabled:active:bg-pressed aria-disabled:cursor-not-allowed aria-disabled:opacity-(--opacity-disabled)"
+            className="group/tool flex min-h-(--home-row-height) w-full cursor-pointer items-center gap-3 rounded-md px-3 text-start transition-colors [transition-duration:var(--motion-fast)] not-aria-disabled:hover:bg-subtle not-aria-disabled:active:bg-pressed aria-disabled:cursor-not-allowed aria-disabled:opacity-(--opacity-disabled)"
           >
             <Icon icon={card.icon} size={20} />
             <span className="flex min-w-0 flex-1 flex-col">
               <span className="t-label truncate">{t(card.titleKey)}</span>
-              <span className="t-caption truncate">{t(card.hintKey)}</span>
+              <span className="t-caption">{t(card.hintKey)}</span>
             </span>
             <Icon icon={ChevronRight} size={16} className="text-text-muted" />
           </button>

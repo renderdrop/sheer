@@ -277,11 +277,8 @@ function Dialog({ request }: { request: HfDialogState }) {
                 />
                 {t('hf.background')}
               </label>
-              <span
-                id={`${id}-background-hint`}
-                className="t-caption min-w-0 truncate text-text-muted"
-                title={t('hf.backgroundHint')}
-              >
+              {/* The hint wraps beside the label (two caption lines at most at 960 x 640); a cut text counts as overflow (FX-6). */}
+              <span id={`${id}-background-hint`} className="t-caption min-w-0 flex-1 text-text-muted">
                 {t('hf.backgroundHint')}
               </span>
             </div>

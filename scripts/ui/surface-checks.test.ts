@@ -213,6 +213,20 @@ describe('hover geometry check (F19.2)', () => {
     expect(c.checkHoverGeometry([tabItem])).toEqual([]);
     expect(c.checkHoverGeometry([{ ...tabItem, container: r(0, 0, 100, 40) }])[0]).toMatch(/outside its toolbar/);
   });
+  it('a scrolling tab strip reaches to its integer client width, no further (FX-6)', () => {
+    // 960 x 640: the strip is 193.625 wide, clientWidth 194; scrolled to the end, the last tab ends at 282.
+    const tab = r(154, 45.5, 282, 73.5);
+    const strip = r(88, 45.5, 281.625, 73.5);
+    const last = {
+      name: 'tab',
+      box: tab,
+      container: strip,
+      hover: { box: tab, paints: [{ name: 'tab background', rect: tab }] },
+    };
+    expect(c.checkHoverGeometry([last])[0]).toMatch(/outside its toolbar/);
+    expect(c.checkHoverGeometry([{ ...last, scrollClientWidth: 194 }])).toEqual([]);
+    expect(c.checkHoverGeometry([{ ...last, scrollClientWidth: 193 }])[0]).toMatch(/outside its toolbar/);
+  });
   it('flags a hover box that grew and a button outside its toolbar', () => {
     expect(c.checkHoverGeometry([item([], r(10, 10, 48, 46))])[0]).toMatch(/hover box differs/);
     expect(c.checkHoverGeometry([{ ...item([]), container: r(0, 0, 40, 56) }])[0]).toMatch(/outside its toolbar/);

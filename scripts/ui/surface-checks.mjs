@@ -209,8 +209,11 @@ export function checkSplitButtons(buttons) {
  * Hover geometry of toolbar and mode buttons (F19.2): the hover background must be exactly the button's geometry. For each button the
  * boxes that paint in the hover state (the button itself, its ::before / ::after, the outer box-shadow spread, descendants with a
  * background) must lie inside the button's own rest border box AND inside its toolbar container, with 0 px tolerance (`EPS` only
- * absorbs float noise from the layout engine). Any violation is a blocker.
- * @param {{name:string,box:object,container:object,hover:{box:object,paints:{name:string,rect:object}[]}}[]} items
+ * absorbs float noise from the layout engine). Any violation is a blocker. A container that scrolls sideways (the document tab strip
+ * past its minimum tab width) scrolls in whole pixels over its integer `clientWidth` while its box may end on a fraction: scrolled
+ * fully to the end, its last tab ends up to 1 px past the fractional edge, clipped by the strip (FX-6). Such a container
+ * (`scrollClientWidth` set) reaches to `left + clientWidth`.
+ * @param {{name:string,box:object,container:object,scrollClientWidth?:number,hover:{box:object,paints:{name:string,rect:object}[]}}[]} items
  */
 export const HOVER_EPS = 0.01;
 export function checkHoverGeometry(items) {
@@ -220,7 +223,17 @@ export function checkHoverGeometry(items) {
     r.top >= outer.top - HOVER_EPS &&
     r.right <= outer.right + HOVER_EPS &&
     r.bottom <= outer.bottom + HOVER_EPS;
-  for (const it of items) {
+  for (const raw of items) {
+    const it =
+      raw.scrollClientWidth === undefined
+        ? raw
+        : {
+            ...raw,
+            container: {
+              ...raw.container,
+              right: Math.max(raw.container.right, raw.container.left + raw.scrollClientWidth),
+            },
+          };
     if (!inside(it.hover.box, it.box)) out.push(`${it.name}: hover box differs from the button's own box`);
     if (!inside(it.box, it.container)) out.push(`${it.name}: lies outside its toolbar`);
     for (const p of it.hover.paints) {

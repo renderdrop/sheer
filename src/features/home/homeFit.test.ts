@@ -47,6 +47,10 @@ describe('Home fits the window with open tabs and many recents (F19.6)', () => {
     expect(bottom).toBeLessThanOrEqual(800 - 16);
   });
 
+  it('fits a tool name over a two-line description in the 56 row, so wrapping keeps the rows at 56 (FX-6)', () => {
+    expect(num('type-label-line') + 2 * num('type-caption-line')).toBeLessThanOrEqual(num('home-row-height'));
+  });
+
   it('fits 1280 x 800 without open tabs too', () => {
     expect(toolsBottom(1280, { openTabs: false }).bottom).toBeLessThanOrEqual(800 - 16);
   });

@@ -522,6 +522,15 @@ async function sweepHover(label) {
       const name = (e) => (e.getAttribute('data-toolbar-item') || e.getAttribute('aria-label') || e.textContent || e.tagName).trim().replace(/\\s+/g, ' ').slice(0, 24);
       // A document tab is the wrapper that owns the hover background (tab button + close x are one visual tab): measure that.
       const own = el.getAttribute('role') === 'tab' ? el.closest('[role="presentation"]') || el : el;
+      const box = own.closest('[role="toolbar"],[role="tablist"],[data-slot="mode-row"],[data-slot="tool-row"]');
+      // A scrolling strip (the document tabs past their minimum width, FX-6) clips the tabs scrolled out of it: a user scrolls a tab
+      // into view before hovering it, so the gate does too (only the strip's own scrollLeft moves) instead of measuring a clipped tab.
+      if (box && box.scrollWidth > box.clientWidth + 1) {
+        const o = own.getBoundingClientRect(), v = box.getBoundingClientRect();
+        // scrollLeft is whole pixels while the strip's edges are not: round up, or the tab keeps a 0.25 px sliver past the edge.
+        if (o.right > v.right) box.scrollLeft += Math.ceil(o.right - v.right);
+        else if (o.left < v.left) box.scrollLeft -= Math.ceil(v.left - o.left);
+      }
       const r = own.getBoundingClientRect();
       const paints = [];
       const cs = getComputedStyle(own);
@@ -546,9 +555,9 @@ async function sweepHover(label) {
         if (dr.width <= 0 || dr.height <= 0 || s.backgroundColor === 'rgba(0, 0, 0, 0)') continue;
         paints.push({ name: d.tagName.toLowerCase() + ' background', rect: R(dr) });
       }
-      const box = own.closest('[role="toolbar"],[role="tablist"],[data-slot="mode-row"],[data-slot="tool-row"]');
+      const scrolls = !!box && box.scrollWidth > box.clientWidth + 1;
       return { name: name(el), box: R(r), container: R((box || el.parentElement).getBoundingClientRect()),
-        centre: { x: r.left + r.width / 2, y: r.top + r.height / 2 }, paints };
+        scrollClientWidth: scrolls ? box.clientWidth : undefined, centre: { x: r.left + r.width / 2, y: r.top + r.height / 2 }, paints };
     })()`);
   const items = [];
   for (let i = 0; i < count; i++) {
@@ -562,6 +571,7 @@ async function sweepHover(label) {
       name: rest.name,
       box: rest.box,
       container: rest.container,
+      scrollClientWidth: rest.scrollClientWidth,
       hover: { box: hovered.box, paints: [...hovered.paints, { name: 'button', rect: hovered.box }] },
     });
   }
