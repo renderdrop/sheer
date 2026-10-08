@@ -1,7 +1,7 @@
 ---
 name: reviewer
 description: Reviews one work package diff against acceptance criteria, architecture and design rules, once per package. Read-only. Returns PASS or FIX with a short list.
-model: sonnet
+model: claude-sonnet-5-5
 effort: medium
 maxTurns: 30
 tools: Read, Bash, Glob, Grep

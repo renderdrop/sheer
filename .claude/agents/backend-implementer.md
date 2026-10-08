@@ -1,7 +1,7 @@
 ---
 name: backend-implementer
-description: Implements one Rust (Tauri) backend work package — engine, model, IPC commands, pdfwrite — with tests. First wave of every milestone from M4 (ADR-038).
-model: sonnet
+description: Implements one Rust (Tauri) backend work package — engine, model, IPC commands, pdfwrite — with tests. First wave of every milestone from M4 (ADR-038). Default model Sonnet 5.5; Opus 5.5 for content streams, signatures, OCR and text editing (ADR-142).
+model: claude-sonnet-5-5
 effort: medium
 maxTurns: 160
 tools: Read, Write, Edit, Bash, Glob, Grep

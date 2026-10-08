@@ -140,7 +140,7 @@ Abweichung erlaubt, wenn der Spike in Phase 2 scheitert oder die Lizenzprüfung 
 
 ## 6. Subagents — Dateien exakt so anlegen
 
-Modellpolitik: **Nur du läufst auf Opus 5.5 (high).** Architektur und Design-System bekommen Opus 5.5 auf `medium`, weil Fehler dort teuer nachwirken. Alles andere läuft auf Sonnet. Codebase-Erkundung läuft auf Haiku. Hinweis: `effort` in der Frontmatter gilt laut Doku, war in Einzelfällen bei Hintergrund-Subagents unzuverlässig — der verlässliche Kostenhebel ist `model` + `maxTurns`.
+Modellpolitik (ADR-142): **Opus 5.5** für dich, `architect`, `designer`-Specs, `security-reviewer`-Audits, Rust-Pakete an Content-Streams, Signatur, OCR und Textbearbeitung sowie jede zweite Fix-Runde nach einem gescheiterten Fix. **Sonnet 5.5** für Standard-Implementierung in Frontend und Backend, Reviews, Abnahmeskripte, Tests. **Haiku 5.5** für mechanische Aufgaben (Formatierung, Übersetzungsstrings, Umbenennungen, Log-Auswertung: Agent `mechanic`) und `Explore`. Du entscheidest pro Paket und nennst die Wahl im Brief (Agent-Parameter `model`). Die Frontmatter-Blöcke unten zeigen die ursprüngliche Form; maßgeblich sind die Dateien in `.claude/agents/`.
 
 Jeder Subagent-Brief, den du schreibst, hat **max. 200 Wörter** (Paket-Brief im Feature-Loop: max. 300): Ziel, betroffene Dateien (Pfade, nicht Inhalte), Akzeptanzkriterien, Verbote. Jeder Subagent endet mit einem **Report ≤ 150 Wörter**: Was gemacht, welche Dateien, Tests grün/rot, offene Punkte. Keine Diffs im Report.
 

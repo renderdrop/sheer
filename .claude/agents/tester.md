@@ -1,7 +1,7 @@
 ---
 name: tester
 description: Runs the quick check over the milestone's changes, writes missing tests for the milestone's features, reports failures precisely. Use once at milestone end, after all packages are committed.
-model: sonnet
+model: claude-sonnet-5-5
 effort: low
 maxTurns: 40
 tools: Read, Write, Edit, Bash, Glob, Grep

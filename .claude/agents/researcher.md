@@ -1,7 +1,7 @@
 ---
 name: researcher
 description: Web research on PDF tools, features, UX patterns, libraries and licenses. Writes structured markdown into docs/research/.
-model: sonnet
+model: claude-sonnet-5-5
 effort: medium
 maxTurns: 40
 tools: WebSearch, WebFetch, Read, Write, Glob, Grep

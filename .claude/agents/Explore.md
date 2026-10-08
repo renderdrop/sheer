@@ -1,7 +1,7 @@
 ---
 name: Explore
 description: Fast read-only codebase lookup. Use for "where is X", "how does Y work", file/symbol search.
-model: haiku
+model: claude-haiku-5-5
 effort: low
 maxTurns: 15
 disallowedTools: Write, Edit, Bash

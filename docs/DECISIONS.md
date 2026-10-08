@@ -3007,3 +3007,18 @@ regular Sheer comments (editable, in the panel and the margin), to prove interop
   specification is applied when it arrives (open owner decision in the report).
 - Item 9 references an image ("Bild 4") that was not attached; implemented from the text: one continuous bar per line, same
   look as the highlight preview.
+
+## ADR-142 — Model policy per package
+
+**Status:** accepted (2026-10-08, owner instruction). Replaces the model policy of §6 of the orchestrator prompt.
+
+**Decision.**
+- **Opus 5.5:** `architect`, `designer` (specs), `security-reviewer` (audits); Rust packages that touch content streams,
+  signatures, OCR or text editing (`backend-implementer`/`implementer` with `model: opus` named in the brief); and every
+  second fix round after a failed fix.
+- **Sonnet 5.5:** standard implementation in frontend and backend (`implementer`, `backend-implementer` default), `reviewer`,
+  acceptance scripts, `tester`, `researcher`.
+- **Haiku 5.5:** mechanical tasks — formatting, translation strings, renames, log evaluation (new agent `mechanic`) — and
+  `Explore`.
+- The orchestrator decides per package and names the choice (model + reason in a few words) in the brief; the agent
+  definitions in `.claude/agents/` carry the defaults (`claude-opus-5-5`, `claude-sonnet-5-5`, `claude-haiku-5-5`).

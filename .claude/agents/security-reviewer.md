@@ -1,7 +1,7 @@
 ---
 name: security-reviewer
 description: Security audit of a milestone against docs/SECURITY.md. Read-only. Run before every milestone tag and after any change to Tauri config, capabilities, IPC commands, file handling or PDF parsing.
-model: sonnet
+model: claude-opus-5-5
 effort: medium
 maxTurns: 35
 tools: Read, Bash, Glob, Grep

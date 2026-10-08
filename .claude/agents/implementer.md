@@ -1,7 +1,7 @@
 ---
 name: implementer
-description: Implements one work package (3-5 roadmap items) or one fix in React/TypeScript and/or Rust (Tauri), with unit tests. Default worker for all coding tasks.
-model: sonnet
+description: Implements one work package (3-5 roadmap items) or one fix in React/TypeScript and/or Rust (Tauri), with unit tests. Default worker for all coding tasks. Default model Sonnet 5.5; the orchestrator names Opus 5.5 or Haiku 5.5 in the brief when the package calls for it (ADR-142).
+model: claude-sonnet-5-5
 effort: medium
 maxTurns: 100
 tools: Read, Write, Edit, Bash, Glob, Grep
