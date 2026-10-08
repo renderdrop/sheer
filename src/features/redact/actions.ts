@@ -58,11 +58,9 @@ function marksCount(docId: number): number {
   return Object.keys(useRedact.getState().marks[docId] ?? {}).length;
 }
 
-/** Marks a rectangle of a page (page space) and selects the new mark. */
+/** Marks a rectangle of a page (page space). Placing is instant and shows nothing more: the mark is not selected (F19.8). */
 export async function markArea(docId: number, pageId: number, box: Box): Promise<void> {
-  const changes = await addMarks(docId, [{ pageId, quads: [boxToQuad(box)], source: 'area' }]);
-  const created = changes?.content?.find((item) => item.kind === 'redactMark');
-  if (created !== undefined) useRedact.getState().select(docId, created.id);
+  await addMarks(docId, [{ pageId, quads: [boxToQuad(box)], source: 'area' }]);
 }
 
 /** Turns the hits of the active search into marks, all as one undo step, and opens the mode. */

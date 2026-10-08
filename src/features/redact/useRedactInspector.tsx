@@ -23,7 +23,7 @@ function Empty() {
   );
 }
 
-/** The list, the metadata option and the fixed footer (clear, apply) of the redact mode. */
+/** The list, the metadata option and the fixed footer (clear; Apply lives in the band only) of the redact mode. */
 function RedactBody({ docId }: { docId: number }) {
   const t = useT();
   const marks = useRedact((state) => marksOf(state, docId));
@@ -51,18 +51,6 @@ function RedactBody({ docId }: { docId: number }) {
         >
           {t('redact.clear')}
         </Button>
-        <span className="flex-auto" />
-        <Button
-          variant="primary"
-          size="sm"
-          disabled={count === 0}
-          focusableWhenDisabled
-          onClick={() => {
-            if (count > 0) useRedact.getState().setApplyOpen(true);
-          }}
-        >
-          {t('redact.apply')}
-        </Button>
       </div>
     </div>
   );
@@ -70,7 +58,7 @@ function RedactBody({ docId }: { docId: number }) {
 
 /**
  * Inspector content of the redact mode (DESIGN 3.38): the header counts the marks, the body lists them for review, the checkbox
- * decides about the metadata, and the footer clears or opens the apply dialog (`aria-disabled` without marks).
+ * decides about the metadata, and the footer clears the marks.
  * `null` while the mode is off, so the standard inspector shows.
  */
 export function useRedactInspector(): { title: string; body: ReactNode; footer?: ReactNode } | null {

@@ -149,10 +149,7 @@ describe('the inspector', () => {
     expect(screen.getByText('standard')).toBeTruthy();
     act(() => useUi.getState().setRedactMode(true));
     expect(screen.getByText('No marks')).toBeTruthy();
-    const apply = screen.getByRole('button', { name: 'Apply…' });
-    expect(apply.getAttribute('aria-disabled')).toBe('true');
-    fireEvent.click(apply);
-    expect(useRedact.getState().applyOpen).toBe(false);
+    expect(screen.queryByRole('button', { name: 'Apply…' })).toBeNull();
   });
 
   it('lists the marks by page; a click goes to the mark and selects it', async () => {
@@ -197,7 +194,7 @@ describe('the inspector', () => {
     expect(annotations.applyCommand).toHaveBeenCalledWith(DOC, { type: 'deleteAnnotations', ids: [1, 2] });
   });
 
-  it('opens the apply dialog with marks, and keeps the metadata choice', () => {
+  it('keeps the metadata choice and has no Apply of its own', () => {
     seed(mark(1, 0));
     act(() => useUi.getState().setRedactMode(true));
     render(<Inspector />);
@@ -205,8 +202,7 @@ describe('the inspector', () => {
     expect(box.checked).toBe(true);
     fireEvent.click(box);
     expect(useRedact.getState().removeMetadata).toBe(false);
-    fireEvent.click(screen.getByRole('button', { name: 'Apply…' }));
-    expect(useRedact.getState().applyOpen).toBe(true);
+    expect(screen.queryByRole('button', { name: 'Apply…' })).toBeNull();
   });
 });
 
@@ -415,10 +411,44 @@ describe('the page layer', () => {
     expect(api.markRedactions.mock.calls[0]?.[1]).toEqual([
       { pageId: 0, quads: [quad4(50, 50, 40, 30)], source: 'area' },
     ]);
-    expect(useRedact.getState().selected[DOC]).toBe(5);
+    expect(useRedact.getState().selected[DOC] ?? null).toBeNull();
     pointer(page, 'pointerdown', 10, 10);
     pointer(page, 'pointerup', 11, 11);
     expect(api.markRedactions).toHaveBeenCalledTimes(1);
+  });
+
+  it('places several marks without any dialog; Apply opens exactly one', async () => {
+    act(() => useUi.getState().setRedactMode(true));
+    api.markRedactions.mockImplementation((_d: number, specs: unknown[]) =>
+      Promise.resolve(changes([mark(10 + api.markRedactions.mock.calls.length, 0)], [], specs.length)),
+    );
+    const { page } = mountPage();
+    for (const y of [10, 40, 70]) {
+      pointer(page, 'pointerdown', 20, y);
+      pointer(page, 'pointerup', 80, y + 15);
+    }
+    await waitFor(() => expect(api.markRedactions).toHaveBeenCalledTimes(3));
+    expect(useRedact.getState().applyOpen).toBe(false);
+    expect(screen.queryByRole('dialog')).toBeNull();
+    render(<RedactBanner />);
+    fireEvent.click(screen.getByRole('button', { name: 'Apply' }));
+    expect(useRedact.getState().applyOpen).toBe(true);
+    render(<RedactApplyDialog />);
+    expect(await screen.findAllByRole('dialog')).toHaveLength(1);
+  });
+
+  it('with the Select tool outside the mode a click selects a mark, Delete removes it and a change set restores it', async () => {
+    seed(mark(1, 0));
+    annotations.applyCommand.mockResolvedValue(changes([], [1], 5));
+    mountPage();
+    const button = screen.getByRole('button', { name: /Area/ });
+    fireEvent.pointerDown(button, { button: 0, pointerId: 1 });
+    expect(useRedact.getState().selected[DOC]).toBe(1);
+    fireEvent.keyDown(button, { key: 'Delete' });
+    await waitFor(() => expect(useRedact.getState().marks[DOC]).toEqual({}));
+    expect(annotations.applyCommand).toHaveBeenCalledWith(DOC, { type: 'deleteAnnotations', ids: [1] });
+    act(() => useAnnotations.getState().applyChanges(DOC, changes([mark(1, 0)], [], 6)));
+    expect(Object.keys(useRedact.getState().marks[DOC] ?? {})).toEqual(['1']);
   });
 
   it('takes no pointer input outside the mode', () => {

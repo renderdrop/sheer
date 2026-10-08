@@ -51,7 +51,7 @@ const boxOfMark = (mark: RedactMark): Box => quadBox(mark.quads.flat());
  * The redaction marks of one page, in page space (canvas layer 3, DESIGN 3.38), and while the mode is on the pointer work of the
  * page: a drag on the page outside the text draws an area mark (at least 4 pt), a drag over the text selects it and the host marks
  * the selection when the pointer is released. A selected area mark moves (drag, arrows) and resizes by its 8 handles; a text mark
- * is a box only. Delete removes the selected mark. Marks are drawn when the mode is off too, but then take no input.
+ * is a box only. Delete removes the selected mark. Marks are drawn when the mode is off too; with the Select tool they can be clicked, moved and deleted then as well (F19.8).
  */
 export const RedactLayer: FC<PageLayerProps> = memo(function RedactLayer({
   docId,
@@ -66,6 +66,8 @@ export const RedactLayer: FC<PageLayerProps> = memo(function RedactLayer({
   const t = useT();
   const root = useRef<HTMLDivElement | null>(null);
   const modeOn = useUi((state) => state.redactMode && state.activeTool === 'select');
+  // Marks can be clicked, moved and deleted with the Select tool, in the redact mode or not (F19.8).
+  const selectOn = useUi((state) => state.activeTool === 'select');
   const activeDocument = useDocuments(selectActiveId) === docId;
   const byId = useRedact((state) => state.marks[docId]);
   const selectedId = useRedact((state) => state.selected[docId] ?? null);
@@ -166,7 +168,7 @@ export const RedactLayer: FC<PageLayerProps> = memo(function RedactLayer({
       setDraft(null);
     };
     // `toPage` only reads refs.
-  }, [active, docId, pageIndex]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [active, docId, pageIndex]);
 
   // The root stays mounted (it finds the page element); it is empty when there is nothing to draw.
   if (!ready || !activeDocument || (marks.length === 0 && draft === null)) return <div ref={root} hidden />;
@@ -182,6 +184,8 @@ export const RedactLayer: FC<PageLayerProps> = memo(function RedactLayer({
     if (event.button !== 0) return;
     event.stopPropagation();
     useRedact.getState().select(docId, mark.id);
+    // A prevented pointer-down may not focus; Delete needs the focus on the mark.
+    event.currentTarget.focus();
     const start = toPage(event.clientX, event.clientY);
     if (mark.source !== 'area' || start === null) return;
     event.preventDefault();
@@ -258,7 +262,7 @@ export const RedactLayer: FC<PageLayerProps> = memo(function RedactLayer({
           return (
             <div
               key={mark.id}
-              className={modeOn ? 'pointer-events-auto absolute' : 'absolute'}
+              className={selectOn ? 'pointer-events-auto absolute' : 'absolute'}
               style={{ left: b.x, top: b.y, width: b.w, height: b.h }}
             >
               <div
@@ -266,8 +270,8 @@ export const RedactLayer: FC<PageLayerProps> = memo(function RedactLayer({
                 aria-roledescription={t('redact.mark')}
                 aria-label={label(mark)}
                 aria-pressed={selected}
-                tabIndex={modeOn && selected ? 0 : -1}
-                inert={modeOn ? undefined : true}
+                tabIndex={selectOn && selected ? 0 : -1}
+                inert={selectOn ? undefined : true}
                 className="absolute inset-0 touch-none"
                 onPointerDown={(event) => begin(event, mark, null)}
                 onPointerMove={track}
@@ -298,7 +302,7 @@ export const RedactLayer: FC<PageLayerProps> = memo(function RedactLayer({
                   })
                 )}
               </div>
-              {modeOn &&
+              {selectOn &&
                 selected &&
                 area &&
                 HANDLES.map((handle) => (
