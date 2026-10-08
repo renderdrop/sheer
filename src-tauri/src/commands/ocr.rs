@@ -61,9 +61,11 @@ fn select_pages(all: &[PageId], selection: &PageSelection) -> Result<Vec<PageId>
             if pages.len() > limits::MAX_EXPORT_PAGES {
                 return Err(too_many());
             }
+            let index: std::collections::HashMap<PageId, usize> =
+                all.iter().enumerate().map(|(i, id)| (*id, i)).collect();
             pages
                 .iter()
-                .map(|id| all.iter().position(|known| known == id).ok_or_else(invalid))
+                .map(|id| index.get(id).copied().ok_or_else(invalid))
                 .collect::<Result<_, _>>()?
         }
         PageSelection::Ranges { text } => {
@@ -134,15 +136,11 @@ impl AppState {
                 if wanted.len() > limits::MAX_PAGES as usize {
                     return Err(AppError::limit("pages", u64::from(limits::MAX_PAGES)));
                 }
+                let by_id: std::collections::HashMap<PageId, (PageId, u32)> =
+                    facts.iter().map(|fact| (fact.0, *fact)).collect();
                 wanted
                     .iter()
-                    .map(|id| {
-                        facts
-                            .iter()
-                            .find(|(known, _)| known == id)
-                            .copied()
-                            .ok_or(AppError::invalid("page"))
-                    })
+                    .map(|id| by_id.get(id).copied().ok_or(AppError::invalid("page")))
                     .collect::<Result<_, _>>()?
             }
         };
@@ -339,6 +337,22 @@ mod tests {
         assert_eq!(refuse(&state, doc).code(), ErrorCode::ReadOnly);
         // Nothing was registered as a running job by the refusals.
         assert!(service::begin().is_ok());
+    }
+
+    #[test]
+    fn a_pending_ocr_layer_makes_the_document_unsaved_so_signing_cannot_clear_it() {
+        use crate::commands::testutil::state_with_pages;
+        use crate::model::command::DocCommand;
+        use crate::ocr::OcrPageLayer;
+        let (state, doc) = state_with_pages(1, |_| {});
+        assert!(!state.has_unsaved_changes(doc));
+        let page = state.page_ids(doc).unwrap()[0];
+        let layers = vec![(page, Arc::new(OcrPageLayer::default()))];
+        state
+            .apply_command(doc, DocCommand::ApplyOcr { layers })
+            .unwrap();
+        // `check_signable` refuses an unsaved document, and `finish_save` (which clears pending layers) only runs after a save.
+        assert!(state.has_unsaved_changes(doc));
     }
 
     fn ids(n: u32) -> Vec<PageId> {

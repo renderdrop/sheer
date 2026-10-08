@@ -51,6 +51,7 @@ describe('guard-bash hook, check pipes', () => {
       'npm run check 2>&1 | tail -2',
       'npm run check:fast | grep FAIL',
       'bash scripts/check.sh | tail',
+      'npm run cargo -- test --lib 2>&1 | tail -5',
     ]) {
       const r = guard(c);
       expect(r.status, c).toBe(2);
@@ -63,6 +64,8 @@ describe('guard-bash hook, check pipes', () => {
       'set -o pipefail; npm run check 2>&1 | tail -2',
       'npm run check > review/check.log 2>&1',
       'npm run check || echo failed',
+      'set -o pipefail; npm run cargo -- test --lib 2>&1 | tail -5',
+      'npm run cargo -- test --lib > review/t.log 2>&1',
       'ls | head',
       // A pipe in another segment of the same line does not touch the check's exit code.
       'git status --short | wc -l; npm run check > review/check.log 2>&1; tail -1 review/check.log',

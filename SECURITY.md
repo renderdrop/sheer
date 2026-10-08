@@ -2,7 +2,7 @@
 
 ## Status
 
-Sheer is **pre-release software** (versions 0.x). Builds are unsigned and not meant for productive use. Security fixes go into the
+Sheer is **pre-release software** until v2.0.0. Builds are unsigned (see the README); use them at your own risk. Security fixes go into the
 latest version only.
 
 ## Reporting a vulnerability

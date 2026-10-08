@@ -94,7 +94,9 @@ step() {
   local name="$1"
   shift
   TOTAL=$((TOTAL + 1))
-  local log="$LOG_DIR/$TOTAL-${name//[^A-Za-z0-9]/-}.log" started="$SECONDS" secs
+  # The slug is capped: check:fast names steps after every changed module, which can exceed the file-name limit.
+  local slug="${name//[^A-Za-z0-9]/-}"
+  local log="$LOG_DIR/$TOTAL-${slug:0:60}.log" started="$SECONDS" secs
   if "$@" >"$log" 2>&1; then
     printf 'ok    %s  %ss\n' "$name" "$((SECONDS - started))"
     return 0
@@ -338,7 +340,7 @@ guard_owner_corpus() {
 # F17.10: the dev-only surface registry (src/dev/surfaces.ts) must not reach a release bundle.
 guard_dist_dev() {
   local dir="${1:-dist}"
-  if grep -rl --binary-files=without-match '__sheerSurfaces' "$dir" >/dev/null 2>&1; then
+  if grep -rlE --binary-files=without-match '__sheerSurfaces|sheer-dev-surfaces-registry' "$dir" >/dev/null 2>&1; then
     echo "error: the dev surface registry is in the bundle ($dir)"
     return 1
   fi

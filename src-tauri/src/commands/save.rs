@@ -582,9 +582,12 @@ impl AppState {
 
     /// What the file has to become, from the model: the pages in their order (ADR-036 §5), the annotations on them, the extras, the form
     /// fields that changed and whether the form is a hybrid one.
-    fn stage(&self, id: DocumentId) -> Result<Staged, AppError> {
-        // `{file}` of the headers is the name of the file the document was opened from.
-        let file = self.header_file_name(id);
+    fn stage(&self, id: DocumentId, target: Option<&Path>) -> Result<Staged, AppError> {
+        // `{file}` of the headers is the name of the file being written: the target of a Save As, else the file the document was opened from.
+        let file = match target {
+            Some(path) => super::header_footer::target_stem(path),
+            None => self.header_file_name(id),
+        };
         self.model(id, |state| {
             let pages = state.page_plan();
             let position: std::collections::HashMap<u32, u32> = pages
@@ -631,7 +634,7 @@ impl AppState {
             .registry
             .path(id)
             .ok_or(AppError::not_found("document"))?;
-        let (pages, plan, mut extras, form, strip_xfa) = self.stage(id)?;
+        let (pages, plan, mut extras, form, strip_xfa) = self.stage(id, None)?;
         // A plain file: the build decrypts an encrypted original the way it does for a staged removal, so that is how the snapshot asks
         // for it. A staged protection is not part of what the user sees.
         extras.protection = info.flags.encrypted.then_some(PendingProtection::Remove);
@@ -692,7 +695,7 @@ impl AppState {
             }
         }
 
-        let (pages, plan, extras, form, strip_xfa) = self.stage(id)?;
+        let (pages, plan, extras, form, strip_xfa) = self.stage(id, target.as_deref())?;
         let expected =
             u32::try_from(pages.pages.len()).map_err(|_| AppError::new(ErrorCode::Internal))?;
         let page_changes = pages.changed();

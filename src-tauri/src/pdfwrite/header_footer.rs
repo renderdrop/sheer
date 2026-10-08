@@ -512,6 +512,54 @@ mod tests {
         assert_eq!(count.0, 0, "the header is not an editable line");
     }
 
+    /// A burned text box on page 0 (`content::burn_all`), as a save plan holds it.
+    fn burned_box() -> (crate::documents::PageId, Vec<crate::content::ContentObject>) {
+        let draft: crate::model::annotation::AnnotationDraft =
+            serde_json::from_value(serde_json::json!({
+                "pageId": 1, "color": [0, 0, 0], "kind": "textBox",
+                "box": {"x": 50.0, "y": 300.0, "w": 200.0, "h": 40.0},
+                "text": "Burned body", "font": "sans", "fontSize": 12.0, "align": "left",
+            }))
+            .unwrap();
+        let annotation = crate::model::annotation::Annotation::from_draft(
+            crate::model::ids::AnnotId::new(1),
+            &draft,
+            "2026-10-08T00:00:00Z",
+        )
+        .unwrap();
+        (
+            crate::documents::PageId::new(1),
+            vec![crate::content::ContentObject {
+                annotation,
+                index: 0,
+                image: None,
+            }],
+        )
+    }
+
+    #[test]
+    fn a_burned_object_and_a_header_layer_share_a_page_in_the_save_order() {
+        // The order of `apply_extras`: the header layer first, then the burned objects on top.
+        let with_header =
+            apply(letter(), &write_of(&spec("Kopf", HfPages::All), geom0(), 3)).unwrap();
+        let burned =
+            crate::pdfwrite::content::burn_all(with_header.clone(), &[burned_box()]).unwrap();
+        assert!(burned.starts_with(&with_header), "still incremental");
+        let (text, parts) = page_content(&burned, 0);
+        assert_eq!(parts, 6, "[q, q, original, Q, hf, burned]");
+        let header_at = text.find(&hex("Kopf")).expect("header kept");
+        let body_at = text.find("(BURNED BODY)").expect("burned text drawn");
+        assert!(header_at < body_at, "burned objects come after the layer");
+        assert_eq!(text.matches("/ARTIFACT").count(), 1);
+        // the other pages keep just the header
+        let (other, parts) = page_content(&burned, 1);
+        assert_eq!(parts, 4);
+        assert!(other.contains(&hex("Kopf")) && !other.contains("BURNED"));
+        // the layers are still found,
+        let doc = crate::pdfwrite::prescan::load_untrusted(&burned).unwrap();
+        assert_eq!(read(&doc).layers, 3);
+    }
+
     #[test]
     fn rotation_and_crop_set_the_text_matrix() {
         for (rotate, matrix) in [
@@ -536,12 +584,9 @@ mod render_tests {
     use super::*;
     use crate::model::header_footer::{self, HfPages, HfSlots};
     use pdfium_render::prelude::*;
-    use std::path::PathBuf;
 
-    fn pdfium() -> Option<Pdfium> {
-        let library =
-            crate::engine::library_path(&PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("pdfium"));
-        Some(Pdfium::new(Pdfium::bind_to_library(library).ok()?))
+    fn pdfium() -> Option<crate::engine::test_support::Bound> {
+        crate::engine::test_support::bind()
     }
 
     /// A one-page file with the given media box, crop and rotation.

@@ -92,6 +92,31 @@ impl Default for Budget {
     }
 }
 
+thread_local! {
+    /// The time after which a walk on this thread stops (cooperative cancel of a contained run, see [`set_deadline`]).
+    static DEADLINE: std::cell::Cell<Option<std::time::Instant>> = const { std::cell::Cell::new(None) };
+}
+
+/// Sets (or clears) the deadline of the walks on the current thread: past it a walk ends with `engine_timeout`, so a run whose
+/// caller has given up does not go on burning a core.
+pub fn set_deadline(at: Option<std::time::Instant>) {
+    DEADLINE.with(|d| d.set(at));
+}
+
+/// `engine_timeout` when the deadline of this thread has passed.
+pub fn check_deadline() -> Result<(), AppError> {
+    match DEADLINE.with(std::cell::Cell::get) {
+        Some(at) if std::time::Instant::now() >= at => Err(AppError::logged(
+            crate::error::ErrorCode::EngineTimeout,
+            "the content walk passed its deadline",
+        )),
+        _ => Ok(()),
+    }
+}
+
+/// How many operators pass between two looks at the clock.
+const DEADLINE_EVERY: usize = 512;
+
 /// What the walk hands over, in drawing order.
 pub trait WalkSink {
     /// A finished run.
@@ -835,6 +860,9 @@ impl Walker<'_> {
     ) -> Result<(), AppError> {
         for (i, op) in ops.iter().enumerate() {
             self.budget.ops = self.budget.ops.checked_sub(1).ok_or_else(too_big)?;
+            if i % DEADLINE_EVERY == 0 {
+                check_deadline()?;
+            }
             let at = OpRef {
                 stream,
                 index: u32::try_from(i).unwrap_or(u32::MAX),
@@ -1233,5 +1261,50 @@ fn decode_error(error: &lopdf::Error) -> AppError {
     match error {
         lopdf::Error::Decompress(lopdf::DecompressError::MemoryLimitExceeded { .. }) => too_big(),
         _ => unreadable(),
+    }
+}
+
+#[cfg(test)]
+mod deadline_tests {
+    #![allow(clippy::unwrap_used, clippy::expect_used)]
+
+    use super::*;
+    use crate::error::ErrorCode;
+    use lopdf::{dictionary, Stream};
+    use std::time::{Duration, Instant};
+
+    struct Nothing;
+    impl WalkSink for Nothing {
+        fn run(&mut self, _run: Run) -> Result<(), AppError> {
+            Ok(())
+        }
+    }
+
+    fn page_with(content: &str) -> (Document, ObjectId) {
+        let mut doc = Document::with_version("1.7");
+        let stream = doc.add_object(Stream::new(dictionary! {}, content.as_bytes().to_vec()));
+        let page = doc.add_object(dictionary! {
+            "Type" => "Page",
+            "MediaBox" => vec![0.into(), 0.into(), 200.into(), 200.into()],
+            "Contents" => stream,
+        });
+        (doc, page)
+    }
+
+    #[test]
+    fn a_walk_past_the_deadline_of_its_thread_ends_with_engine_timeout() {
+        let content = "q Q ".repeat(2000);
+        let (doc, page) = page_with(&content);
+        // No deadline: the walk finishes.
+        set_deadline(None);
+        walk(&doc, page, &mut Budget::new(), &mut Nothing).unwrap();
+        // A deadline in the past: it stops, and the deadline is per thread.
+        set_deadline(Some(Instant::now() - Duration::from_secs(1)));
+        let error = walk(&doc, page, &mut Budget::new(), &mut Nothing).unwrap_err();
+        assert_eq!(error.code(), ErrorCode::EngineTimeout);
+        set_deadline(None);
+        let other =
+            std::thread::spawn(move || walk(&doc, page, &mut Budget::new(), &mut Nothing).is_ok());
+        assert!(other.join().unwrap());
     }
 }

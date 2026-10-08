@@ -219,7 +219,8 @@ fn turned_box(rect: Rect, turn: Turn) -> Option<(Rect, f32)> {
 }
 
 /// The body and colour of a stamp of ours read from the file: `None` if the name is not a stamp name, the box is too small, or the text
-/// (the annotation's `/Contents`) does not pass the checks. The date comes later from `/SHR_Stamp` (`DocState::apply_sheer_keys`).
+/// (the annotation's `/Contents`) does not pass the checks. The text comes from `/Contents`, not from the appearance stream: the appearance is
+/// our own output but stays unparsed, so a hostile content stream never reaches the model (decided; the two agree for every stamp we write). The date comes later from `/SHR_Stamp` (`DocState::apply_sheer_keys`).
 fn imported_stamp(
     named: Option<Named>,
     contents: &str,
@@ -231,7 +232,14 @@ fn imported_stamp(
     };
     let mut text = contents.to_owned();
     crate::model::stamp::check_texts(&mut text, &mut None).ok()?;
-    if rect.w < crate::model::stamp::MIN_W_PT || rect.h < crate::model::stamp::MIN_H_PT {
+    // A forged `/Rect` of absurd size stays opaque: no stamp is larger than a page can be.
+    let side = limits::MAX_PAGE_SIDE_PT;
+    if !(rect.w.is_finite() && rect.h.is_finite())
+        || rect.w < crate::model::stamp::MIN_W_PT
+        || rect.h < crate::model::stamp::MIN_H_PT
+        || rect.w > side
+        || rect.h > side
+    {
         return None;
     }
     let tone = crate::model::stamp::tone_near(paint.unwrap_or(BLACK));
@@ -283,6 +291,12 @@ fn read_one(
         .map(|text| clean(&text, limits::MAX_ANNOT_CONTENTS_CHARS))
         .unwrap_or_default();
 
+    // Parsed once: the match guard only tests it, the arm takes it.
+    let mut own_stamp = if kind == PdfPageAnnotationType::Stamp {
+        imported_stamp(stamp_kind(annotation), &contents, rect, fill.or(stroke))
+    } else {
+        None
+    };
     let (body, color) = match kind {
         PdfPageAnnotationType::Highlight => (
             AnnotationBody::Highlight {
@@ -355,17 +369,12 @@ fn read_one(
             stroke.unwrap_or(BLACK),
         ),
         // A stamp of ours with a text the model accepts (`sheer-stamp-<kind>-`, ARCHITECTURE §16.1); one that fails the checks stays opaque.
-        PdfPageAnnotationType::Stamp
-            if imported_stamp(stamp_kind(annotation), &contents, rect, fill.or(stroke))
-                .is_some() =>
-        {
-            imported_stamp(stamp_kind(annotation), &contents, rect, fill.or(stroke)).unwrap_or((
-                AnnotationBody::Opaque {
-                    subtype: String::new(),
-                },
-                BLACK,
-            ))
-        }
+        PdfPageAnnotationType::Stamp if own_stamp.is_some() => own_stamp.take().unwrap_or((
+            AnnotationBody::Opaque {
+                subtype: String::new(),
+            },
+            BLACK,
+        )),
         // Our own stamps (`sheer-sig-`, `sheer-ini-`, `sheer-mark-<glyph>-`, ADR-041 §5) come back as signatures and marks, so they can
         // be moved and scaled; any other stamp stays opaque. A stamp too small for the model to hold stays opaque too.
         PdfPageAnnotationType::Stamp
@@ -485,7 +494,26 @@ pub(super) fn set_hidden(
 
 #[cfg(test)]
 mod tests {
-    use super::clean;
+    use super::*;
+
+    fn rect(w: f32, h: f32) -> Rect {
+        Rect {
+            x: 0.0,
+            y: 0.0,
+            w,
+            h,
+        }
+    }
+
+    #[test]
+    fn a_forged_stamp_with_an_oversized_or_tiny_rect_stays_opaque() {
+        let named = Some(Named::Stamp(crate::model::stamp::StampKind::Draft));
+        assert!(imported_stamp(named, "DRAFT", rect(100.0, 34.0), None).is_some());
+        assert!(imported_stamp(named, "DRAFT", rect(1.0e9, 34.0), None).is_none());
+        assert!(imported_stamp(named, "DRAFT", rect(100.0, f32::INFINITY), None).is_none());
+        assert!(imported_stamp(named, "DRAFT", rect(100.0, f32::NAN), None).is_none());
+        assert!(imported_stamp(named, "DRAFT", rect(100.0, 1.0), None).is_none());
+    }
 
     #[test]
     fn imported_text_loses_control_and_format_characters() {

@@ -104,6 +104,19 @@ pub fn open_os_settings<F: FnOnce() -> Result<(), AppError>>(open: F) -> Result<
     open().map(|()| true)
 }
 
+/// A save dialog that has no document to take its folder from starts in the user's documents folder, not wherever the last dialog
+/// left the OS. Without a documents folder the builder is returned as it is.
+pub fn in_documents_folder<R: Runtime>(
+    builder: FileDialogBuilder<R>,
+    window: &WebviewWindow<R>,
+) -> FileDialogBuilder<R> {
+    use tauri::Manager;
+    match window.path().document_dir() {
+        Ok(folder) => builder.set_directory(folder),
+        Err(_) => builder,
+    }
+}
+
 /// The call sites chain the seam onto the builder where they chained `blocking_*` before: `.seam_pick_file()?` for `.blocking_pick_file()`.
 /// `tests/automation_seam.rs` fails when a `blocking_*` dialog call appears outside this module.
 pub trait DialogSeam: Sized {

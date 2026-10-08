@@ -12,7 +12,7 @@ esac
 # ADR-139 (P0b): `npm run check` / `check:fast` piped into another command (| tail, | grep) reports the exit code of the last stage, so a
 # failing check looks green. Redirect to a file instead, or set pipefail in the same command line.
 # Only a pipe in the check's own pipeline segment counts (up to the next ; && || or newline); a pipe elsewhere on the line is fine.
-if printf '%s' "$CMD" | grep -qE '(npm run (--silent )?check(:fast)?|scripts/check(-fast)?\.sh)([^;&|]|&[^&|])*\|([^|]|$)' \
+if printf '%s' "$CMD" | grep -qE '(npm run (--silent )?(check(:fast)?|cargo -- test)|scripts/check(-fast)?\.sh)([^;&|]|&[^&|])*\|([^|]|$)' \
   && ! printf '%s' "$CMD" | grep -q 'pipefail'; then
   deny "check piped into another command hides its exit code (ADR-139): put 'set -o pipefail;' in front, or redirect to a file (npm run check > review/check.log 2>&1)"
 fi

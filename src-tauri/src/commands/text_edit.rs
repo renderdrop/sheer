@@ -16,7 +16,7 @@ use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{mpsc, Arc};
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use tauri::State;
 
@@ -34,6 +34,7 @@ use crate::model::text_edit::{
     TextEditRefusal, TextLineInfo,
 };
 use crate::pdfsig::types::SignatureLock;
+use crate::pdfwrite::ops_walk;
 use crate::pdfwrite::text_io::PageDoc;
 use crate::pdfwrite::text_lines::{self, Line, PageLines};
 use crate::pdfwrite::{text_refuse, text_save};
@@ -74,6 +75,8 @@ fn contained<T: Send + 'static>(
         .stack_size(limits::SAVE_STACK_BYTES)
         .spawn(move || {
             let _slot = slot;
+            // Cooperative cancel: the content walks of this thread stop once the caller has given up.
+            ops_walk::set_deadline(Some(Instant::now() + timeout));
             let result = catch_unwind(AssertUnwindSafe(work)).unwrap_or_else(|_| {
                 Err(AppError::logged(
                     ErrorCode::Internal,

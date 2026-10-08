@@ -213,22 +213,10 @@ impl HfSpec {
         if page > total {
             return false;
         }
-        text.split(',').any(|token| {
-            let token = token.trim();
-            let number = |part: &str| part.trim().parse::<u32>().ok();
-            match token.split_once('-') {
-                None => number(token) == Some(page),
-                Some((first, last)) => {
-                    let from = number(first).unwrap_or(1);
-                    let to = if last.trim().is_empty() {
-                        total
-                    } else {
-                        number(last).unwrap_or(0)
-                    };
-                    from <= page && page <= to.min(total)
-                }
-            }
-        })
+        // The grammar is the one `check` enforces (`ranges::parse_ranges`); only the page count is not: a range past the end (pages were
+        // deleted since the dialog) is clamped, and a text the grammar refuses covers nothing.
+        super::ranges::parse_ranges(text, u32::MAX)
+            .is_ok_and(|ranges| ranges.iter().any(|&(from, to)| from <= page && page <= to))
     }
 }
 
@@ -295,43 +283,123 @@ pub fn resolve(
         (&spec.slots.footer_right, Edge::Bottom, Side::Right),
     ];
     let file = winansi_only(file);
+    // The text of each slot, then the three of one edge fitted to each other (narrow pages).
+    let texts: Vec<String> = slots
+        .iter()
+        .map(|(template, ..)| {
+            let text: String = segments(template)
+                .into_iter()
+                .map(|seg| match seg {
+                    Seg::Lit(text) => text,
+                    Seg::Page => (position + 1).to_string(),
+                    Seg::Total => total.to_string(),
+                    Seg::Date => spec.date.clone(),
+                    Seg::File => file.clone(),
+                })
+                .collect();
+            text.trim().to_owned()
+        })
+        .collect();
     let mut runs = Vec::new();
-    for (template, edge, side) in slots {
-        let text: String = segments(template)
-            .into_iter()
-            .map(|seg| match seg {
-                Seg::Lit(text) => text,
-                Seg::Page => (position + 1).to_string(),
-                Seg::Total => total.to_string(),
-                Seg::Date => spec.date.clone(),
-                Seg::File => file.clone(),
-            })
-            .collect();
-        let text = text.trim().to_owned();
-        if text.is_empty() {
-            continue;
-        }
-        let width = std14::text_width(StdFont::Sans, &text, size);
-        let dx = match side {
-            Side::Left => spec.margin,
-            Side::Center => (w - width) / 2.0,
-            Side::Right => w - spec.margin - width,
-        }
-        .max(0.0);
-        let dy = match edge {
-            Edge::Top => spec.margin + ASCENT * size,
-            Edge::Bottom => h - spec.margin - DESCENT * size,
-        };
-        let (x, y) = geom.display_to_page(dx, dy);
-        runs.push(PlacedRun {
-            text,
-            origin: Point { x, y },
-            angle: geom.rotate % 360,
+    for (edge_slots, edge_texts) in slots.chunks(3).zip(texts.chunks(3)) {
+        let fitted = fit_edge(
+            [
+                edge_texts[0].clone(),
+                edge_texts[1].clone(),
+                edge_texts[2].clone(),
+            ],
+            w,
+            spec.margin,
             size,
-            width,
-        });
+        );
+        for ((_, edge, side), text) in edge_slots.iter().zip(fitted) {
+            if text.is_empty() {
+                continue;
+            }
+            let width = std14::text_width(StdFont::Sans, &text, size);
+            let dx = match side {
+                Side::Left => spec.margin,
+                Side::Center => (w - width) / 2.0,
+                Side::Right => w - spec.margin - width,
+            }
+            .max(0.0);
+            let dy = match edge {
+                Edge::Top => spec.margin + ASCENT * size,
+                Edge::Bottom => h - spec.margin - DESCENT * size,
+            };
+            let (x, y) = geom.display_to_page(dx, dy);
+            runs.push(PlacedRun {
+                text,
+                origin: Point { x, y },
+                angle: geom.rotate % 360,
+                size,
+                width,
+            });
+        }
     }
     runs
+}
+
+/// `text` cut from the end, with an ellipsis, until it is at most `limit` points wide; empty if not even the ellipsis fits.
+fn fit_text(text: &str, limit: f32, size: f32) -> String {
+    let width = |t: &str| std14::text_width(StdFont::Sans, t, size);
+    if text.is_empty() || width(text) <= limit {
+        return text.to_owned();
+    }
+    let mut chars: Vec<char> = text.chars().collect();
+    while chars.pop().is_some() {
+        let mut cut: String = chars.iter().collect();
+        cut = cut.trim_end().to_owned();
+        cut.push('\u{2026}');
+        if width(&cut) <= limit {
+            return cut;
+        }
+    }
+    String::new()
+}
+
+/// The left, centre and right text of one edge on a page `w` wide, so that they cannot overlap or leave the margins: when left and right
+/// together are too wide, the shorter one keeps its text and the longer is cut (both when both are long, half each); the centre then
+/// gets what is left around the middle of the page. A gap of one em stays between neighbours. Deterministic, no reflow.
+fn fit_edge(
+    [mut left, mut centre, mut right]: [String; 3],
+    w: f32,
+    margin: f32,
+    size: f32,
+) -> [String; 3] {
+    let width = |t: &str| std14::text_width(StdFont::Sans, t, size);
+    let avail = (w - 2.0 * margin).max(0.0);
+    let gap = size;
+    let (wl, wr) = (width(&left), width(&right));
+    let both = !left.is_empty() && !right.is_empty();
+    let g = if both { gap } else { 0.0 };
+    if wl + wr + g > avail {
+        let half = ((avail - g) / 2.0).max(0.0);
+        let (limit_left, limit_right) = if !both {
+            (avail, avail)
+        } else if wl <= half {
+            (wl, avail - g - wl)
+        } else if wr <= half {
+            (avail - g - wr, wr)
+        } else {
+            (half, half)
+        };
+        left = fit_text(&left, limit_left, size);
+        right = fit_text(&right, limit_right, size);
+    }
+    let left_end = if left.is_empty() {
+        margin
+    } else {
+        margin + width(&left) + gap
+    };
+    let right_start = if right.is_empty() {
+        w - margin
+    } else {
+        w - margin - width(&right) - gap
+    };
+    let room = (w / 2.0 - left_end).min(right_start - w / 2.0).max(0.0);
+    centre = fit_text(&centre, 2.0 * room, size);
+    [left, centre, right]
 }
 
 /// What the session has: the spec of the file, how many pages carry a layer of ours, and the staged change.
@@ -513,6 +581,56 @@ mod tests {
         // after pages were deleted
         assert!(resolve(&s, geom(0), 2, 7, "f").is_empty());
         assert!(s.covers(1, 2) && !s.covers(3, 3));
+        // the grammar of `check`: what it refuses covers nothing (no lenient reading of "1-x", "0", "3-1" or "")
+        for bad in ["1-x", "0", "3-1", "", "1,,2", "-3", "1 2"] {
+            s.pages = HfPages::Ranges { text: bad.into() };
+            assert!(s.check(Some(7)).is_err(), "{bad}");
+            assert!(!(0..7).any(|p| s.covers(p, 7)), "{bad}");
+        }
+    }
+
+    #[test]
+    fn three_long_runs_on_a_narrow_page_are_cut_and_never_overlap() {
+        let mut s = spec();
+        s.slots = HfSlots {
+            header_left: "Quarterly report of the northern region".into(),
+            header_center: "Confidential draft for review".into(),
+            header_right: "Page {page} of {total} in this long file".into(),
+            footer_left: "Short".into(),
+            footer_center: "A centre text that is much too wide".into(),
+            footer_right: "R".into(),
+        };
+        // 200 pt wide, 28 pt margins: 144 pt for the three.
+        let runs = resolve(&s, geom(0), 0, 12, "f");
+        let (top, bottom): (Vec<_>, Vec<_>) = runs.iter().partition(|r| r.origin.y < 150.0);
+        for edge in [top, bottom] {
+            let mut spans: Vec<(f32, f32)> = edge
+                .iter()
+                .map(|r| (r.origin.x, r.origin.x + r.width))
+                .collect();
+            spans.sort_by(|a, b| a.0.total_cmp(&b.0));
+            assert!(!spans.is_empty());
+            assert!(spans.first().is_some_and(|s| s.0 >= 28.0 - 0.01));
+            assert!(spans.last().is_some_and(|s| s.1 <= 172.0 + 0.01));
+            for pair in spans.windows(2) {
+                assert!(pair[1].0 - pair[0].1 >= s.font_size - 0.01, "{spans:?}");
+            }
+        }
+        assert!(runs.iter().any(|r| r.text.ends_with('\u{2026}')));
+        // untouched when it fits
+        let wide = resolve(
+            &s,
+            PageGeom {
+                crop: [0.0, 0.0, 2000.0, 300.0],
+                rotate: 0,
+            },
+            0,
+            12,
+            "f",
+        );
+        assert!(wide.iter().all(|r| !r.text.contains('\u{2026}')));
+        // deterministic
+        assert_eq!(runs, resolve(&s, geom(0), 0, 12, "f"));
     }
 
     #[test]

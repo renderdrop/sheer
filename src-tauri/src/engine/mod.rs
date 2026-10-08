@@ -45,6 +45,49 @@ pub mod transport;
 pub mod wire;
 mod worker;
 
+/// Test-only: one process-wide lock for every test that binds PDFium on its own, shared with the engine tests' reader/writer lock.
+#[cfg(test)]
+pub mod test_support {
+    use std::sync::{PoisonError, RwLock, RwLockWriteGuard};
+
+    pub(super) fn lock() -> &'static RwLock<()> {
+        static LOCK: RwLock<()> = RwLock::new(());
+        &LOCK
+    }
+
+    /// Exclusive: no other direct bind and no test on the shared engine runs until the guard drops. Hold it for the whole life of the
+    /// `Pdfium` instance (dropping a direct binding may tear the library down under the shared worker). Poison-tolerant.
+    pub fn pdfium_bind_lock() -> RwLockWriteGuard<'static, ()> {
+        lock().write().unwrap_or_else(PoisonError::into_inner)
+    }
+
+    /// A `Pdfium` bound under [`pdfium_bind_lock`]; the instance drops before the guard. `None` when the library is not there.
+    pub struct Bound {
+        pdfium: pdfium_render::prelude::Pdfium,
+        _guard: RwLockWriteGuard<'static, ()>,
+    }
+
+    impl std::ops::Deref for Bound {
+        type Target = pdfium_render::prelude::Pdfium;
+        fn deref(&self) -> &Self::Target {
+            &self.pdfium
+        }
+    }
+
+    pub fn bind() -> Option<Bound> {
+        use pdfium_render::prelude::Pdfium;
+        let guard = pdfium_bind_lock();
+        let library = super::library_path(
+            &std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("pdfium"),
+        );
+        let pdfium = Pdfium::new(Pdfium::bind_to_library(library).ok()?);
+        Some(Bound {
+            pdfium,
+            _guard: guard,
+        })
+    }
+}
+
 use std::collections::HashSet;
 use std::fs::File;
 use std::path::{Path, PathBuf};
@@ -1288,7 +1331,13 @@ mod tests {
                 if library.is_file() {
                     Some(Engine::start(library))
                 } else {
-                    eprintln!("skipping engine test: {} not found", library.display());
+                    // A failure in CI (the CI job fetches the pinned PDFium first); loud locally.
+                    assert!(
+                        std::env::var_os("CI").is_none(),
+                        "PDFium library missing in CI: {}",
+                        library.display()
+                    );
+                    eprintln!("SKIPPED engine test: {} not found", library.display());
                     None
                 }
             })
@@ -1296,8 +1345,7 @@ mod tests {
     }
 
     fn engine_lock() -> &'static std::sync::RwLock<()> {
-        static LOCK: std::sync::RwLock<()> = std::sync::RwLock::new(());
-        &LOCK
+        super::test_support::lock()
     }
 
     /// What this test thread holds of the shared engine until it ends.

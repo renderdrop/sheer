@@ -1091,6 +1091,8 @@ pub enum ProgramKind { TrueType, Cff, OpenTypeCff, Type1 }
 // commands/text_edit.rs (blocking pool, lopdf; DocId only, never a path)
 text_edit_probe(doc_id: DocId, page_id: PageId, unit: u32 /* UTF-16 index into TextLayer.text */) -> TextLineInfo
 text_edit_lines(doc_id: DocId, page_id: PageId) -> PageTextLines          // ≤ 5 000 lines; for keyboard navigation
+// cooperative cancel (v2.0-rc.1): a contained text-edit run sets a per-thread deadline (= its timeout); `ops_walk::walk` and the line collector check it every 512 operators / run and end with `engine_timeout`, so a run whose caller gave up stops instead of burning a core
+// error shapes: a signed/read-only document is `read_only` with `params.what` `signed`|`permission`; a line that cannot be edited is `unsupported_feature` with `what: "textEdit"` and `params.reason` (same at probe and apply)
 // commands/text_preview.rs (ADR-129 §1; never changes DocState, no undo step; a snapshot per frame)
 text_edit_preview(doc_id: DocId, page_id: PageId, key: LineKey, text: string, fit: TextFit, scope: TextScope, generation: u32, scale: f32 /* px per pt, 0.5..8 */)
   -> binary: u32 LE n, n bytes JSON { generation, rect: Rect /* page space, unrotated */, pxPerPt, overflowPt, fallback: { face, chars[] } | null }, then the PNG of the region

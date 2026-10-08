@@ -124,6 +124,12 @@ jobs:
 
       # ADR-137: the OCR sidecar (Swift, Apple Vision) is a Tauri externalBin on macOS, so tauri-build needs it before any cargo
       # build. Universal (arm64 + x86_64), ad-hoc signed; then its Swift unit tests.
+      # The Swift toolchain is the one of the runner image (macos-latest); pinning needs a named Xcode that exists on the image, which
+      # only a human can check. The version is logged here so a toolchain change shows up next to a sidecar failure.
+      - name: Log the Swift toolchain (macOS)
+        if: runner.os == 'macOS'
+        run: swift --version && xcode-select -p
+
       - name: Build the OCR sidecar (macOS)
         if: runner.os == 'macOS'
         run: bash scripts/build-sidecar-macos.sh

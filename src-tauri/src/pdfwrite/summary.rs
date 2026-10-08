@@ -13,7 +13,8 @@ use super::seal::{INK, STONE, TEXT_SECONDARY};
 use super::text_fonts::add_fallback_font;
 use crate::error::{AppError, ErrorCode};
 use crate::export::comments::{
-    author_label, format_date, meta_line, page_heading, type_label, CommentItem, Head, Labels,
+    author_label, format_date, meta_line, page_heading, type_label, CommentItem, Head, ItemKind,
+    Labels,
 };
 use crate::fontprog::fallback::{Face, FallbackStore};
 use crate::limits;
@@ -32,6 +33,8 @@ const INSET: f32 = 10.0;
 const REPLY_INDENT: f32 = 16.0;
 /// Most lines of the document name in the head.
 const NAME_LINES_MAX: usize = 3;
+/// Side of the type icon.
+const ICON_PT: f32 = 10.0;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 enum Style {
@@ -69,6 +72,8 @@ struct Line {
     indent: f32,
     /// A rule of a quote block, left of the text, in this colour.
     bar: Option<Rgb8>,
+    /// The 10 pt vector icon of the item's type, before the swatch and the text (DESIGN 3.16 E5).
+    icon: Option<ItemKind>,
     /// A swatch of the item's colour before the text.
     swatch: Option<Rgb8>,
     /// A thin rule across the text width (the head).
@@ -93,6 +98,8 @@ enum Op {
         h: f32,
         color: Rgb8,
     },
+    /// The type icon in a 10 pt box whose bottom left is `x`, `y`.
+    Icon { kind: ItemKind, x: f32, y: f32 },
 }
 
 /// The finished summary.
@@ -285,6 +292,14 @@ impl Layout {
             });
         }
         let mut x = x0;
+        if let Some(kind) = line.icon {
+            self.pages[page].push(Op::Icon {
+                kind,
+                x,
+                y: self.height - baseline - 1.0,
+            });
+            x += ICON_PT + 4.0;
+        }
         if let Some(color) = line.swatch {
             self.pages[page].push(Op::Rect {
                 x,
@@ -381,9 +396,12 @@ impl Layout {
         rest: &str,
         indent: f32,
         gap: f32,
+        icon: Option<ItemKind>,
         swatch: Option<Rgb8>,
     ) -> Line {
-        let max = self.text_width() - indent - if swatch.is_some() { 12.0 } else { 0.0 };
+        let reserved = if icon.is_some() { ICON_PT + 4.0 } else { 0.0 }
+            + if swatch.is_some() { 12.0 } else { 0.0 };
+        let max = self.text_width() - indent - reserved;
         let bold = self.metrics.prepare(Style::Bold, bold);
         let bold = self.metrics.fit(Style::Bold, 9.0, &bold, max);
         let used = self.metrics.width(Style::Bold, 9.0, &bold);
@@ -395,6 +413,7 @@ impl Layout {
             gap,
             leading: 12.0,
             indent,
+            icon,
             swatch,
             segs: vec![
                 Seg {
@@ -436,7 +455,14 @@ fn item_lines(layout: &mut Layout, item: &CommentItem, labels: Labels, gap: f32)
         rest.push_str(&date);
     }
     let swatch = item.kind.is_markup().then_some(item.color.0);
-    let mut lines = vec![layout.meta(&type_label(item, labels), &rest, 0.0, gap, swatch)];
+    let mut lines = vec![layout.meta(
+        &type_label(item, labels),
+        &rest,
+        0.0,
+        gap,
+        Some(item.kind),
+        swatch,
+    )];
     if let Some(quote) = &item.quote {
         lines.extend(layout.text_lines(
             &quotation(quote, locale),
@@ -482,7 +508,7 @@ fn item_lines(layout: &mut Layout, item: &CommentItem, labels: Labels, gap: f32)
     for reply in &item.replies {
         let author = author_label(&reply.author, labels);
         let rest = date(reply).map_or_else(String::new, |d| format!(" \u{00B7} {d}"));
-        lines.push(layout.meta(&author, &rest, REPLY_INDENT, 6.0, None));
+        lines.push(layout.meta(&author, &rest, REPLY_INDENT, 6.0, None, None));
         lines.extend(layout.text_lines(
             &reply.contents,
             Style::Regular,
@@ -558,6 +584,49 @@ fn page_dimensions(paper: Paper) -> (f32, f32) {
         Paper::A4 => (595.0, 842.0),
         Paper::Letter => (612.0, 792.0),
     }
+}
+
+/// The stroke paths of the icon of `kind` in a 10 pt box at (`x`, `y`), in Ink: a line drawing of 0.9 pt with round ends, in the manner of
+/// the Lucide set (own simplified shapes, no third-party paths). Decorative: the type is also written out.
+fn icon_ops(kind: ItemKind, x: f32, y: f32) -> String {
+    let path = match kind {
+        ItemKind::Comment => "1 9 m 9 9 l 9 3 l 4.5 3 l 2 0.8 l 2 3 l 1 3 h 3 6.5 m 7 6.5 l",
+        ItemKind::Highlight => "2 2.5 m 7 8.5 l 1 1 m 9 1 l",
+        ItemKind::Underline => "2.5 9 m 2.5 4.5 l 3.5 3 l 6.5 3 l 7.5 4.5 l 7.5 9 l 1 1 m 9 1 l",
+        ItemKind::Strikeout => "1 5 m 9 5 l 3 8.5 m 7 8.5 l 3 1.5 m 7 1.5 l",
+        ItemKind::Citation => "1.5 4 m 4 4 l 4 8 l 1.5 8 l h 6 4 m 8.5 4 l 8.5 8 l 6 8 l h 1.5 2 m 4 4 l 6 2 m 8.5 4 l",
+        ItemKind::Stamp => "1 2.5 m 9 2.5 l 9 7.5 l 1 7.5 l h 3 5 m 7 5 l",
+        ItemKind::Shape => "1 1 m 6 1 l 6 6 l 1 6 l h 5 4 m 9 4 l 7 9 l h",
+        ItemKind::Ink => "1 3 m 2.5 9 4 9 5 5 c 6 1 7.5 1 9 7 c",
+    };
+    let mut out = format!("q 0.9 w 1 J 1 j {} RG\n", stroke_color(INK));
+    let mut numbers = path.split_whitespace().peekable();
+    while let Some(token) = numbers.next() {
+        match token.parse::<f32>() {
+            Ok(value) => {
+                // Numbers come in pairs; the box is placed by the first of each pair being x.
+                let Some(next) = numbers.next().and_then(|t| t.parse::<f32>().ok()) else {
+                    continue;
+                };
+                out.push_str(&format!("{:.2} {:.2} ", x + value, y + next));
+            }
+            Err(_) => {
+                out.push_str(token);
+                out.push('\n');
+            }
+        }
+    }
+    out.push_str(
+        "S
+Q
+",
+    );
+    out
+}
+
+fn stroke_color(rgb: Rgb8) -> String {
+    let [r, g, b] = rgb.map(|c| f32::from(c) / 255.0);
+    format!("{r:.3} {g:.3} {b:.3}")
 }
 
 fn color_op(out: &mut String, rgb: Rgb8) {
@@ -713,6 +782,9 @@ fn write_document(
                 Op::Rect { x, y, w, h, color } => {
                     color_op(&mut content, *color);
                     content.push_str(&format!("{x:.2} {y:.2} {w:.2} {h:.2} re f\n"));
+                }
+                Op::Icon { kind, x, y } => {
+                    content.push_str(&icon_ops(*kind, *x, *y));
                 }
                 Op::Text {
                     style,
@@ -995,5 +1067,42 @@ third line",
         )
         .unwrap_err();
         assert_eq!(error.code(), ErrorCode::Cancelled);
+    }
+}
+
+#[cfg(test)]
+mod icon_tests {
+    use super::*;
+
+    const KINDS: [ItemKind; 8] = [
+        ItemKind::Comment,
+        ItemKind::Highlight,
+        ItemKind::Underline,
+        ItemKind::Strikeout,
+        ItemKind::Citation,
+        ItemKind::Stamp,
+        ItemKind::Shape,
+        ItemKind::Ink,
+    ];
+
+    #[test]
+    fn every_type_has_a_vector_icon_inside_its_10_pt_box() {
+        for kind in KINDS {
+            let ops = icon_ops(kind, 100.0, 200.0);
+            assert!(ops.starts_with("q ") && ops.ends_with("S\nQ\n"), "{kind:?}");
+            let path = ops.split_once("RG\n").map(|(_, path)| path).unwrap_or("");
+            let numbers: Vec<f32> = path
+                .split_whitespace()
+                .filter_map(|t| t.parse::<f32>().ok())
+                .collect();
+            assert!(
+                numbers.len() >= 6 && numbers.len().is_multiple_of(2),
+                "{kind:?}"
+            );
+            for pair in numbers.chunks(2) {
+                assert!((100.0..=110.0).contains(&pair[0]), "{kind:?} x {}", pair[0]);
+                assert!((200.0..=210.0).contains(&pair[1]), "{kind:?} y {}", pair[1]);
+            }
+        }
     }
 }

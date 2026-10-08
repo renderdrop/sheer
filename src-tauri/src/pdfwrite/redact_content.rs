@@ -2021,13 +2021,9 @@ mod tests {
             keep |= text.contains("006B");
         }
         assert!(keep, "the other word stays");
-        let library = crate::engine::library_path(
-            &std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("pdfium"),
-        );
-        let Ok(binding) = pdfium_render::prelude::Pdfium::bind_to_library(library) else {
+        let Some(pdfium) = crate::engine::test_support::bind() else {
             return;
         };
-        let pdfium = pdfium_render::prelude::Pdfium::new(binding);
         let loaded = pdfium.load_pdf_from_byte_slice(bytes, None).unwrap();
         let page = loaded.pages().get(0).unwrap();
         let text = page.text().unwrap().all();

@@ -154,8 +154,7 @@ fn corpus() {
     );
     let out_dir = repo_root().join("review/v1.5-spike/out");
     std::fs::create_dir_all(&out_dir).unwrap();
-    let library = engine::library_path(&PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("pdfium"));
-    let pdfium = Pdfium::new(Pdfium::bind_to_library(library).expect("PDFium library"));
+    let pdfium = engine::test_support::bind().expect("PDFium library");
 
     let mut files: Vec<PathBuf> = std::fs::read_dir(&corpus)
         .expect("corpus directory")

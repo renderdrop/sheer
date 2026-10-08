@@ -176,26 +176,24 @@ pub fn require_date(kind: StampKind, date: &Option<String>) -> Result<(), AppErr
     Ok(())
 }
 
-fn width_of(text: &str, size: f32) -> f32 {
+/// The width of `text` in `font` at `size` points (WinAnsi; a character without a glyph counts as a space).
+pub fn text_width(font: Std14, text: &str, size: f32) -> f32 {
     text.chars()
         .map(|c| {
             let code = std14::winansi(c).unwrap_or(b' ');
-            f32::from(std14::std14_width(Std14::HelveticaBold, code).unwrap_or(556))
+            f32::from(std14::std14_width(font, code).unwrap_or(556))
         })
         .sum::<f32>()
         * size
         / 1000.0
 }
 
+fn width_of(text: &str, size: f32) -> f32 {
+    text_width(Std14::HelveticaBold, text, size)
+}
+
 fn width_regular(text: &str, size: f32) -> f32 {
-    text.chars()
-        .map(|c| {
-            let code = std14::winansi(c).unwrap_or(b' ');
-            f32::from(std14::std14_width(Std14::Helvetica, code).unwrap_or(556))
-        })
-        .sum::<f32>()
-        * size
-        / 1000.0
+    text_width(Std14::Helvetica, text, size)
 }
 
 /// The size of a stamp at its natural size (text at [`NATURAL_FONT_PT`], padded), in points.
@@ -256,6 +254,28 @@ mod tests {
         assert_eq!(tone_rgb(StampTone::Ink), Rgb([15, 15, 15]));
         assert_eq!(tone_near(Rgb([250, 240, 90])), StampTone::Solar);
         assert_eq!(tone_near(Rgb([0, 0, 0])), StampTone::Ink);
+    }
+
+    /// The Rust constants are the tokens (a hex value of `src/styles/tokens.css` read at build time), so a token change breaks this test.
+    #[test]
+    fn the_tone_colours_equal_the_css_tokens() {
+        let css = include_str!("../../../src/styles/tokens.css");
+        let token = |name: &str| -> Rgb {
+            let rest = css
+                .lines()
+                .find_map(|l| l.trim().strip_prefix(name)?.trim_start().strip_prefix(':'))
+                .expect("token present");
+            let hex = rest
+                .split_whitespace()
+                .next()
+                .unwrap()
+                .trim_end_matches(';')
+                .trim_start_matches('#');
+            let v = |i: usize| u8::from_str_radix(&hex[i..i + 2], 16).unwrap();
+            Rgb([v(0), v(2), v(4)])
+        };
+        assert_eq!(SOLAR_RGB, token("--hl-solar"));
+        assert_eq!(INK_RGB, token("--color-ink"));
     }
 
     #[test]

@@ -16,11 +16,28 @@ const DEFAULT_BOX: [f32; 4] = [0.0, 0.0, 612.0, 792.0];
 pub struct Mapper {
     left: f32,
     top: f32,
+    /// The page's `/Rotate` (0, 90, 180, 270): what an appearance that stays upright turns against.
+    rotation: u16,
 }
 
 impl Mapper {
     pub const fn new(left: f32, top: f32) -> Self {
-        Self { left, top }
+        Self {
+            left,
+            top,
+            rotation: 0,
+        }
+    }
+
+    /// This mapper for a page shown turned by `rotation` degrees.
+    pub const fn with_rotation(mut self, rotation: u16) -> Self {
+        self.rotation = rotation;
+        self
+    }
+
+    /// The page's `/Rotate`.
+    pub const fn rotation(self) -> u16 {
+        self.rotation
     }
 
     /// The user space position of a point of the page.
@@ -104,7 +121,25 @@ pub fn page_mapper(doc: &Document, page: ObjectId) -> Mapper {
             }
         })
         .unwrap_or(media);
-    Mapper::new(bounds[0], bounds[3])
+    Mapper::new(bounds[0], bounds[3]).with_rotation(page_rotation(doc, page))
+}
+
+/// The page's `/Rotate`, own or inherited, as 0, 90, 180 or 270.
+fn page_rotation(doc: &Document, page: ObjectId) -> u16 {
+    inherited(doc, page, b"Rotate")
+        // Some producers write /Rotate as a real (90.0); anything non-finite counts as 0.
+        .and_then(|value| {
+            value.as_i64().ok().or_else(|| {
+                value
+                    .as_float()
+                    .ok()
+                    .filter(|f| f.is_finite() && f.abs() < 1.0e6)
+                    .map(|f| f.round() as i64)
+            })
+        })
+        .map_or(0, |value| {
+            u16::try_from(value.rem_euclid(360) / 90 * 90).unwrap_or(0)
+        })
 }
 
 #[cfg(test)]
@@ -124,5 +159,20 @@ mod tests {
             h: 12.0,
         });
         assert_eq!(r, [100.0, 700.0, 150.0, 712.0]);
+    }
+    #[test]
+    fn a_real_rotate_counts_and_a_broken_one_is_zero() {
+        let rotation = |value: Object| {
+            let mut doc = Document::with_version("1.5");
+            let mut page = Dictionary::new();
+            page.set("Rotate", value);
+            let id = doc.add_object(page);
+            page_rotation(&doc, id)
+        };
+        assert_eq!(rotation(Object::Real(90.0)), 90);
+        assert_eq!(rotation(Object::Real(-90.0)), 270);
+        assert_eq!(rotation(Object::Integer(450)), 90);
+        assert_eq!(rotation(Object::Real(f32::NAN)), 0);
+        assert_eq!(rotation(Object::Real(f32::INFINITY)), 0);
     }
 }

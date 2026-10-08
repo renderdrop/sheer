@@ -45,6 +45,37 @@ pub fn render_dpi(image_dpi: f32) -> f32 {
 mod tests {
     use super::*;
 
+    /// The value of `public static let <name> = <int>` in the Swift source (digit separators allowed).
+    fn swift_int(source: &str, name: &str) -> u64 {
+        let marker = format!("static let {name} =");
+        let line = source
+            .lines()
+            .find(|line| line.contains(&marker))
+            .unwrap_or_else(|| panic!("{name} not in Wire.swift"));
+        let value = line.split('=').nth(1).unwrap_or("").trim().replace('_', "");
+        value.parse().unwrap_or_else(|_| panic!("{name}: {value}"))
+    }
+
+    #[test]
+    fn the_swift_sidecar_limits_equal_these_constants() {
+        let swift = include_str!("../../../sidecar/ocr-macos/Sources/OcrCore/Wire.swift");
+        assert_eq!(swift_int(swift, "maxSidePx"), u64::from(MAX_SIDE_PX));
+        assert_eq!(swift_int(swift, "maxPixels"), MAX_PIXELS);
+        assert_eq!(
+            swift_int(swift, "maxRequestHeader"),
+            MAX_REQUEST_HEADER as u64
+        );
+        assert_eq!(swift_int(swift, "maxWordChars"), MAX_WORD_CHARS as u64);
+        let languages = swift
+            .lines()
+            .find(|line| line.contains("static let languages"))
+            .unwrap_or("");
+        for tag in LANGUAGES {
+            assert!(languages.contains(&format!("\"{tag}\"")), "{tag}");
+        }
+        assert_eq!(languages.matches('"').count(), LANGUAGES.len() * 2);
+    }
+
     #[test]
     fn the_render_dpi_follows_the_image_between_200_and_300() {
         assert_eq!(render_dpi(0.0), 300.0);

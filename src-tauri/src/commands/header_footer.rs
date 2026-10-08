@@ -121,6 +121,11 @@ pub(super) fn file_stem(name: &str) -> String {
     }
 }
 
+/// The name `{file}` takes in a file written to `path` (Save As: the target, not the file the document was opened from).
+pub(super) fn target_stem(path: &std::path::Path) -> String {
+    file_stem(&display_name(path))
+}
+
 impl AppState {
     /// The name `{file}` takes for document `id`.
     pub(super) fn header_file_name(&self, id: DocumentId) -> String {
@@ -254,6 +259,7 @@ mod tests {
         assert_eq!(file_stem("Bericht.PDF"), "Bericht");
         assert_eq!(file_stem("a.pdf.txt"), "a.pdf.txt");
         assert_eq!(file_stem("Bericht"), "Bericht");
+        assert_eq!(target_stem(std::path::Path::new("dir/Neu.pdf")), "Neu");
     }
 
     #[test]

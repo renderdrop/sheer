@@ -35,6 +35,7 @@ export interface DevSurface {
 declare global {
   interface Window {
     __sheerSurfaces?: DevSurface[];
+    __sheerDevMark?: string;
   }
 }
 
@@ -313,4 +314,10 @@ export function buildSurfaces(): DevSurface[] {
   ];
 }
 
-if (import.meta.env.DEV) window.__sheerSurfaces = buildSurfaces();
+/** Second marker for the release-bundle guard (scripts/check.sh), next to the global above. */
+export const DEV_MARK = 'sheer-dev-surfaces-registry-v1';
+
+if (import.meta.env.DEV) {
+  window.__sheerSurfaces = buildSurfaces();
+  window.__sheerDevMark = DEV_MARK;
+}

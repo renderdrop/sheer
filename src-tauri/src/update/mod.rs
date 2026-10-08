@@ -241,6 +241,11 @@ pub async fn check<R: Runtime>(
         state.set_found(None);
         return Ok(None);
     };
+    // Defence in depth: the plugin compares too, but a manifest that names the same or an older version (a downgrade) is never offered.
+    if !is_newer(&update.current_version, &update.version) {
+        state.set_found(None);
+        return Ok(None);
+    }
     if SkippedVersion::new(&update.version).is_none() {
         state.set_found(None);
         return Err(AppError::logged(
@@ -262,6 +267,31 @@ pub async fn check<R: Runtime>(
     };
     state.set_found(Some(update));
     Ok(Some(info))
+}
+
+/// `x.y.z` with an optional `-pre` / `+build` tail as (numbers, is a release, tail).
+fn version_key(version: &str) -> Option<([u64; 3], bool, &str)> {
+    let core_end = version.find(['-', '+']).unwrap_or(version.len());
+    let mut numbers = [0u64; 3];
+    let mut parts = version[..core_end].split('.');
+    for slot in &mut numbers {
+        *slot = parts.next()?.parse().ok()?;
+    }
+    if parts.next().is_some() {
+        return None;
+    }
+    let tail = &version[core_end..];
+    Some((numbers, !tail.starts_with('-'), tail))
+}
+
+/// `true` only when `offered` is strictly newer than `current`; a version that does not parse is never newer.
+pub fn is_newer(current: &str, offered: &str) -> bool {
+    match (version_key(current), version_key(offered)) {
+        // Two prereleases of one version: the plugin orders them; here only an identical string is refused.
+        (Some((c, false, c_pre)), Some((o, false, o_pre))) if c == o => c_pre != o_pre,
+        (Some(current), Some(offered)) => (offered.0, offered.1) > (current.0, current.1),
+        _ => false,
+    }
 }
 
 enum Step {
@@ -583,6 +613,23 @@ mod tests {
         state.discard();
         assert!(!state.has_package());
         assert!(state.found().is_none());
+    }
+
+    #[test]
+    fn only_a_strictly_newer_version_is_offered() {
+        assert!(is_newer("1.9.0", "2.0.0-rc.1"));
+        assert!(is_newer("1.9.0", "1.9.1"));
+        assert!(is_newer("2.0.0-rc.1", "2.0.0-rc.2"));
+        assert!(!is_newer("2.0.0-rc.1", "2.0.0-rc.1"));
+        assert!(is_newer("1.9.9", "1.10.0"));
+        assert!(is_newer("2.0.0-rc.1", "2.0.0"));
+        assert!(!is_newer("1.9.0", "1.9.0"));
+        assert!(!is_newer("1.9.0", "1.8.9"));
+        assert!(!is_newer("2.0.0", "2.0.0-rc.1"));
+        assert!(!is_newer("1.9.0", "1.9.0+build5"));
+        assert!(!is_newer("1.9.0", "garbage"));
+        assert!(!is_newer("1.9.0", "1.9"));
+        assert!(!is_newer("1.9.0", "1.9.0.1"));
     }
 
     #[test]

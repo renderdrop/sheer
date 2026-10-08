@@ -56,14 +56,16 @@ impl std::io::Write for Counter {
 /// A fixed cost for what a step is besides the annotations in it.
 const STEP_OVERHEAD_BYTES: usize = 128;
 
-/// A rough 64 bytes per recognized word.
+/// Per recognized word: the struct (a `String` header and a four-float rect) plus the heap bytes of its text; per line, the vector.
 fn ocr_bytes(layer: &crate::ocr::OcrPageLayer) -> usize {
-    layer
-        .lines
-        .iter()
-        .map(|line| line.words.len())
-        .sum::<usize>()
-        .saturating_mul(64)
+    const WORD: usize = std::mem::size_of::<crate::ocr::OcrWord>();
+    const LINE: usize = std::mem::size_of::<crate::ocr::OcrLine>();
+    layer.lines.iter().fold(0usize, |total, line| {
+        let words = line.words.iter().fold(0usize, |sum, word| {
+            sum.saturating_add(WORD + word.text.len())
+        });
+        total.saturating_add(LINE).saturating_add(words)
+    })
 }
 
 /// The bytes a step holds, estimated as the length of the annotations in its slots as JSON.
@@ -301,6 +303,26 @@ mod tests {
 
     fn key(id: u32, name: &str) -> Option<(AnnotId, String)> {
         Some((AnnotId::new(id), name.to_owned()))
+    }
+
+    #[test]
+    fn the_ocr_size_estimate_counts_the_text_of_the_words() {
+        use crate::ocr::{OcrLine, OcrPageLayer, OcrWord};
+        let layer = |text: &str| OcrPageLayer {
+            lines: vec![OcrLine {
+                words: vec![
+                    OcrWord {
+                        text: text.into(),
+                        rect: [0.0; 4],
+                    };
+                    10
+                ],
+            }],
+            ..OcrPageLayer::default()
+        };
+        let (short, long) = (ocr_bytes(&layer("a")), ocr_bytes(&layer(&"a".repeat(100))));
+        assert_eq!(long - short, 10 * 99);
+        assert!(short >= 10 * (std::mem::size_of::<[f32; 4]>() + 1));
     }
 
     #[test]

@@ -114,7 +114,9 @@ fn median(mut values: Vec<f32>) -> f32 {
 
 /// The text of the last word of a line. PDFium reads a hyphen-minus (or soft hyphen) after a letter at the end of a line as a
 /// hyphenation: it drops the hyphen and joins the line with the next one (a trailing space does not help, it looks past spaces). The
-/// typographic hyphen U+2010 is not read that way, so it takes the place of the hyphen-minus there.
+/// typographic hyphen U+2010 is not read that way, so it takes the place of the hyphen-minus there. Decision: kept. The trade-off is
+/// that a search for "Bei-" does not match the U+2010 (the stem "Bei" does, and so does the joined word in the next line's text); a
+/// layer that joins lines wrongly is the worse failure for copy and highlight.
 fn line_end_text(text: &str) -> String {
     match text.strip_suffix(['-', '\u{00AD}']) {
         Some(stem) => format!("{stem}\u{2010}"),
@@ -504,8 +506,6 @@ mod line_tests {
     use super::*;
     use crate::ocr::OcrLine;
     use lopdf::{Document, Stream};
-    use pdfium_render::prelude::*;
-    use std::path::PathBuf;
 
     fn w(text: &str, x0: f32, y0: f32, x1: f32, y1: f32) -> OcrWord {
         OcrWord {
@@ -540,9 +540,7 @@ mod line_tests {
     }
 
     fn pdfium_text(bytes: &[u8]) -> Option<String> {
-        let library =
-            crate::engine::library_path(&PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("pdfium"));
-        let pdfium = Pdfium::new(Pdfium::bind_to_library(library).ok()?);
+        let pdfium = crate::engine::test_support::bind()?;
         let doc = pdfium.load_pdf_from_byte_slice(bytes, None).ok()?;
         let page = doc.pages().get(0).ok()?;
         let text = page.text().ok()?.all();
@@ -584,7 +582,12 @@ mod line_tests {
         };
         let bytes = pdf_with(layer);
         let Some(text) = pdfium_text(&bytes) else {
-            eprintln!("PDFium library not available, skipping");
+            // Loud locally, a failure in CI (the CI job fetches the pinned PDFium first).
+            assert!(
+                std::env::var_os("CI").is_none(),
+                "PDFium library missing in CI"
+            );
+            eprintln!("SKIPPED (PDFium library not available): the hyphen line test did not run");
             return;
         };
         assert_eq!(

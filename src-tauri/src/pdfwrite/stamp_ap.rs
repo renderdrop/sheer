@@ -6,11 +6,11 @@ use std::fmt::Write as _;
 
 use lopdf::{Dictionary, Object, Stream};
 
-use super::appearance::num;
+use super::appearance::{num, turn_matrix};
 use crate::content::std14::{self, Std14};
 use crate::model::annotation::Rgb;
 use crate::model::stamp::{
-    fitted_font, tone_rgb, StampTone, DATE_SCALE, INK_RGB, LINE_GAP, SOLAR_RGB,
+    fitted_font, text_width, tone_rgb, StampTone, DATE_SCALE, INK_RGB, LINE_GAP, SOLAR_RGB,
 };
 
 /// The names of the two fonts in the form's resources.
@@ -37,17 +37,6 @@ fn hex_string(text: &str) -> String {
     }
     out.push('>');
     out
-}
-
-fn width(font: Std14, text: &str, size: f32) -> f32 {
-    text.chars()
-        .map(|c| {
-            let code = std14::winansi(c).unwrap_or(b' ');
-            f32::from(std14::std14_width(font, code).unwrap_or(556))
-        })
-        .sum::<f32>()
-        * size
-        / 1000.0
 }
 
 fn rounded_rect(out: &mut String, x: f32, y: f32, w: f32, h: f32, r: f32) {
@@ -144,7 +133,7 @@ pub fn build(text: &str, date: Option<&str>, tone: Rgb, w: f32, h: f32) -> Vec<u
         }
         None => (h / 2.0 - size * CAP / 2.0, None),
     };
-    let x = (w - width(Std14::HelveticaBold, text, size)) / 2.0;
+    let x = (w - text_width(Std14::HelveticaBold, text, size)) / 2.0;
     let _ = writeln!(
         c,
         "BT\n/{BOLD_NAME} {} Tf\n{} {} Td\n{} Tj\nET",
@@ -154,7 +143,7 @@ pub fn build(text: &str, date: Option<&str>, tone: Rgb, w: f32, h: f32) -> Vec<u
         hex_string(text)
     );
     if let Some((date, date_size, baseline)) = date_line {
-        let x = (w - width(Std14::Helvetica, date, date_size)) / 2.0;
+        let x = (w - text_width(Std14::Helvetica, date, date_size)) / 2.0;
         let _ = writeln!(
             c,
             "BT\n/{REGULAR_NAME} {} Tf\n{} {} Td\n{} Tj\nET",
@@ -169,7 +158,17 @@ pub fn build(text: &str, date: Option<&str>, tone: Rgb, w: f32, h: f32) -> Vec<u
 }
 
 /// The Form XObject of a stamp: `/BBox [0 0 w h]`, the two standard fonts as page-local resources.
-pub fn stream(text: &str, date: Option<&str>, tone: StampTone, w: f32, h: f32) -> Stream {
+/// `rotation` is the page's `/Rotate`: the stamp stays upright on a turned page, so the form is drawn for the displayed box (sides swapped for a
+/// quarter turn) and its `/Matrix` turns it back against the page; the annotation `/Rect` (`w` by `h` in user space) is where it lands.
+pub fn stream(
+    text: &str,
+    date: Option<&str>,
+    tone: StampTone,
+    w: f32,
+    h: f32,
+    rotation: u16,
+) -> Stream {
+    let (w, h) = if rotation % 180 == 90 { (h, w) } else { (w, h) };
     let rgb = tone_rgb(tone);
     let name = |text: &str| Object::Name(text.as_bytes().to_vec());
     let font = |base: &str| {
@@ -198,6 +197,12 @@ pub fn stream(text: &str, date: Option<&str>, tone: StampTone, w: f32, h: f32) -
         ]),
     );
     dict.set("Resources", Object::Dictionary(resources));
+    if let Some(matrix) = turn_matrix([0.0, 0.0, w, h], -f32::from(rotation % 360)) {
+        dict.set(
+            "Matrix",
+            Object::Array(matrix.iter().map(|v| Object::Real(*v)).collect()),
+        );
+    }
     Stream::new(dict, build(text, date, rgb, w, h))
 }
 
@@ -232,9 +237,39 @@ mod tests {
         assert!(content.contains("/FR "));
     }
 
+    fn matrix(stream: &Stream) -> Option<[f32; 6]> {
+        let values: Vec<f32> = stream
+            .dict
+            .get(b"Matrix")
+            .ok()?
+            .as_array()
+            .ok()?
+            .iter()
+            .filter_map(|v| v.as_float().ok())
+            .collect();
+        values.try_into().ok()
+    }
+
+    #[test]
+    fn a_stamp_on_a_turned_page_is_turned_back_and_drawn_for_the_displayed_box() {
+        assert!(matrix(&stream("OK", None, StampTone::Ink, 80.0, 30.0, 0)).is_none());
+        let upright = stream("OK", None, StampTone::Ink, 80.0, 30.0, 90);
+        // The user space box is 80 by 30; shown on a page turned by 90 it is 30 by 80, so the form is drawn 30 by 80.
+        let bbox = upright.dict.get(b"BBox").unwrap().as_array().unwrap();
+        assert!((bbox[2].as_float().unwrap() - 30.0).abs() < 1e-3);
+        assert!((bbox[3].as_float().unwrap() - 80.0).abs() < 1e-3);
+        // The same quarter turn back as a file signature on a page turned by 90 (angle -90).
+        let [a, b, c, d, ..] = matrix(&upright).unwrap();
+        assert!(
+            a.abs() < 1e-5 && (b - 1.0).abs() < 1e-5 && (c + 1.0).abs() < 1e-5 && d.abs() < 1e-5
+        );
+        let half = matrix(&stream("OK", None, StampTone::Ink, 80.0, 30.0, 180)).unwrap();
+        assert!((half[0] + 1.0).abs() < 1e-5 && (half[3] + 1.0).abs() < 1e-5);
+    }
+
     #[test]
     fn the_form_has_the_two_fonts_and_a_bbox() {
-        let stream = stream("OK", None, StampTone::Solar, 60.0, 30.0);
+        let stream = stream("OK", None, StampTone::Solar, 60.0, 30.0, 0);
         let resources = stream.dict.get(b"Resources").unwrap().as_dict().unwrap();
         let fonts = resources.get(b"Font").unwrap().as_dict().unwrap();
         assert!(fonts.has(b"FB") && fonts.has(b"FR"));

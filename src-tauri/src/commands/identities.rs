@@ -372,12 +372,12 @@ pub async fn pick_identity_file(
 ) -> Result<Option<IdentityImportTicket>, UiError> {
     let identities = Arc::clone(state.inner());
     blocking(move || {
-        let picked = window
-            .dialog()
-            .file()
-            .set_parent(&window)
-            .add_filter("PKCS #12", &["p12", "pfx"])
-            .seam_pick_file()?;
+        let picked = crate::automation::dialogs::in_documents_folder(
+            window.dialog().file().set_parent(&window),
+            &window,
+        )
+        .add_filter("PKCS #12", &["p12", "pfx"])
+        .seam_pick_file()?;
         let Some(file) = picked else {
             return Ok(None);
         };

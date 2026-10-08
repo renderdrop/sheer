@@ -522,6 +522,14 @@ fn status_matches(status: StatusFilter, state: Option<ReviewState>) -> bool {
     }
 }
 
+/// The wanted tags in lower case, once per export (`""` stays: it stands for "no tag").
+fn lowered(wanted: &Option<Vec<String>>) -> Option<Vec<String>> {
+    wanted
+        .as_ref()
+        .map(|tags| tags.iter().map(|tag| tag.to_lowercase()).collect())
+}
+
+/// Whether an item with `tags` passes the tag filter; `wanted` comes from [`lowered`], each tag of the item is lowered once.
 fn tags_match(wanted: &Option<Vec<String>>, tags: &[String]) -> bool {
     let Some(wanted) = wanted else {
         return true;
@@ -530,9 +538,8 @@ fn tags_match(wanted: &Option<Vec<String>>, tags: &[String]) -> bool {
         return wanted.iter().any(String::is_empty);
     }
     tags.iter().any(|tag| {
-        wanted
-            .iter()
-            .any(|want| !want.is_empty() && want.to_lowercase() == tag.to_lowercase())
+        let tag = tag.to_lowercase();
+        wanted.iter().any(|want| !want.is_empty() && *want == tag)
     })
 }
 
@@ -600,6 +607,7 @@ pub fn gather(
     quotes: &mut dyn FnMut(PageId, &[Quad]) -> Option<String>,
 ) -> Result<Gathered, AppError> {
     let mut out = Gathered::default();
+    let wanted_tags = lowered(&filter.tags);
     let mut count = 0usize;
     for page in pages {
         let mut order: Vec<&Annotation> = page
@@ -639,7 +647,7 @@ pub fn gather(
                     continue;
                 }
             }
-            if !tags_match(&filter.tags, &item.tags) || !status_matches(filter.status, state) {
+            if !tags_match(&wanted_tags, &item.tags) || !status_matches(filter.status, state) {
                 continue;
             }
             item.state = state;

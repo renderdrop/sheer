@@ -494,13 +494,13 @@ pub fn start(
         }
     };
     let name = format!("{}.pdf", crate::commands::jobs::file_stem(&stem));
-    let chosen = window
-        .dialog()
-        .file()
-        .set_parent(window)
-        .add_filter("PDF", &["pdf"])
-        .set_file_name(&name)
-        .seam_save_file()?;
+    let chosen = crate::automation::dialogs::in_documents_folder(
+        window.dialog().file().set_parent(window),
+        window,
+    )
+    .add_filter("PDF", &["pdf"])
+    .set_file_name(&name)
+    .seam_save_file()?;
     let Some(chosen) = chosen else {
         return Ok(None);
     };

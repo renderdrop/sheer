@@ -8,6 +8,12 @@
 pub const SUPERSAMPLE_MAX_SIDE_PX: u32 = 320;
 /// How many times larger than its target a small render is drawn.
 pub const SUPERSAMPLE_FACTOR: u32 = 3;
+// The supersampled bitmap stays inside the render limits (checked at compile time).
+const _: () = assert!(
+    SUPERSAMPLE_MAX_SIDE_PX * SUPERSAMPLE_FACTOR <= crate::limits::MAX_RENDER_SIDE_PX
+        && (SUPERSAMPLE_MAX_SIDE_PX as u64 * SUPERSAMPLE_FACTOR as u64).pow(2)
+            <= crate::limits::MAX_RENDER_PIXELS
+);
 
 /// For each destination index, the first source index and the weights of the source pixels it covers (they sum to 1).
 fn contributions(src: usize, dst: usize) -> Vec<(usize, Vec<f32>)> {

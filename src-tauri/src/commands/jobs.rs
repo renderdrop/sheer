@@ -1266,12 +1266,12 @@ fn read_phase<T>(ctx: &JobCtx, read: impl FnOnce() -> Result<T, AppError>) -> Re
 
 /// The Save As dialog of Rust, for a file called `name`; `None` if the user cancelled.
 fn pick_save_path(window: &WebviewWindow, name: &str) -> Result<Option<PathBuf>, AppError> {
-    let dialog = window
-        .dialog()
-        .file()
-        .set_parent(window)
-        .add_filter("PDF", &["pdf"])
-        .set_file_name(name);
+    let dialog = crate::automation::dialogs::in_documents_folder(
+        window.dialog().file().set_parent(window),
+        window,
+    )
+    .add_filter("PDF", &["pdf"])
+    .set_file_name(name);
     let Some(chosen) = dialog.seam_save_file()? else {
         return Ok(None);
     };

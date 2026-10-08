@@ -224,6 +224,7 @@ struct Collect {
 
 impl WalkSink for Collect {
     fn run(&mut self, run: Run) -> Result<(), AppError> {
+        ops_walk::check_deadline()?;
         self.glyphs += run.glyphs.len();
         if self.glyphs > MAX_GLYPHS {
             return Err(AppError::limit("textEditGlyphs", MAX_GLYPHS as u64));

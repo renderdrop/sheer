@@ -209,21 +209,44 @@ impl PreviewQueue {
     /// Queues the preview of `id`; dropped when the queue is full or the worker could not start.
     fn submit(&self, state: AppState, id: DocumentId) {
         let sender = self.sender.get_or_init(|| {
-            let (tx, rx) = std::sync::mpsc::sync_channel::<(AppState, DocumentId)>(PREVIEW_QUEUE);
-            std::thread::Builder::new()
-                .name("recent-preview".into())
-                .spawn(move || {
-                    for (state, id) in rx {
-                        state.cache_thumbnail(id);
-                    }
-                })
-                .ok()
-                .map(|_| tx)
+            start_worker(
+                |(state, id): (AppState, DocumentId)| state.cache_thumbnail(id),
+                |body| {
+                    std::thread::Builder::new()
+                        .name("recent-preview".into())
+                        .spawn(body)
+                        .map(drop)
+                },
+            )
         });
         if let Some(sender) = sender {
             let _ = sender.try_send((state, id));
         }
     }
+}
+
+/// Starts the worker thread that runs `handle` on each job, with `spawn` as the way to start a thread. A failed start is tried once
+/// more (a passing resource shortage); then there is no worker and the jobs are dropped.
+fn start_worker<T: Send + 'static>(
+    handle: impl Fn(T) + Send + Sync + 'static,
+    spawn: impl Fn(Box<dyn FnOnce() + Send>) -> std::io::Result<()>,
+) -> Option<std::sync::mpsc::SyncSender<T>> {
+    let (tx, rx) = std::sync::mpsc::sync_channel::<T>(PREVIEW_QUEUE);
+    let shared = Arc::new((Mutex::new(rx), handle));
+    for _attempt in 0..2 {
+        let shared = Arc::clone(&shared);
+        let body: Box<dyn FnOnce() + Send> = Box::new(move || {
+            let (rx, handle) = &*shared;
+            let rx = rx.lock().unwrap_or_else(PoisonError::into_inner);
+            for job in rx.iter() {
+                handle(job);
+            }
+        });
+        if spawn(body).is_ok() {
+            return Some(tx);
+        }
+    }
+    None
 }
 
 impl AppState {
@@ -1466,6 +1489,48 @@ mod tests {
                 serde_json::from_value::<DocumentId>(1.into()).unwrap(),
             );
         }
+    }
+
+    #[test]
+    fn the_preview_worker_start_is_retried_once_and_a_full_queue_drops_exactly_the_surplus() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        // Fails once, then starts: there is a worker.
+        let attempts = AtomicUsize::new(0);
+        let spawn = |body: Box<dyn FnOnce() + Send>| {
+            if attempts.fetch_add(1, Ordering::SeqCst) == 0 {
+                Err(std::io::Error::other("no thread"))
+            } else {
+                std::thread::spawn(body);
+                Ok(())
+            }
+        };
+        let gate = Arc::new(std::sync::Barrier::new(2));
+        let seen = Arc::new(AtomicUsize::new(0));
+        let (g, s) = (Arc::clone(&gate), Arc::clone(&seen));
+        let tx = start_worker(
+            move |_job: u32| {
+                if s.fetch_add(1, Ordering::SeqCst) == 0 {
+                    g.wait();
+                }
+            },
+            spawn,
+        )
+        .expect("second attempt starts the worker");
+        assert_eq!(attempts.load(Ordering::SeqCst), 2);
+        // The worker takes job 0 and blocks on the barrier; exactly PREVIEW_QUEUE more fit, the rest is dropped.
+        tx.send(0).unwrap();
+        while seen.load(Ordering::SeqCst) == 0 {
+            std::thread::yield_now();
+        }
+        let accepted = (1..=PREVIEW_QUEUE as u32 * 3)
+            .filter(|job| tx.try_send(*job).is_ok())
+            .count();
+        assert_eq!(accepted, PREVIEW_QUEUE);
+        gate.wait();
+        drop(tx);
+        // Fails twice: no worker.
+        let never = |_body: Box<dyn FnOnce() + Send>| Err(std::io::Error::other("no thread"));
+        assert!(start_worker(|_: u32| {}, never).is_none());
     }
 
     #[test]

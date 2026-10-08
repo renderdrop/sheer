@@ -1010,17 +1010,18 @@ mod tests {
         let dir = TempDir::new();
         let auto = Autosave::start(dir.path()).unwrap();
         auto.write(&snapshot(id(1), b"%PDF-1.4")).unwrap();
-        let saved = SystemTime::now();
         drop(auto);
         let retention = limits::AUTOSAVE_RETENTION;
         assert_eq!(retention.as_secs(), 30 * 86_400);
-        // A second of slack: the record was stamped slightly before `saved` (and stamps may be truncated to whole seconds),
-        // so exactly `saved + retention` can already be past the limit on a slow runner (CI run #113).
-        let kept =
-            Autosave::start_at(dir.path(), saved + retention - Duration::from_secs(1)).unwrap();
+        // The clock is the record's own stamp, read back from it, so no wall-clock slack is needed (CI run #113): age 0 now, then
+        // exactly the retention (kept, the limit is "older than"), then one second more (purged).
+        let first = Autosave::start_at(dir.path(), SystemTime::now()).unwrap();
+        let stamp = SystemTime::UNIX_EPOCH + Duration::from_secs(first.list()[0].saved_at);
+        drop(first);
+        let kept = Autosave::start_at(dir.path(), stamp + retention).unwrap();
         assert_eq!(kept.list().len(), 1, "at the limit it is still kept");
         drop(kept);
-        let late = saved + retention + Duration::from_secs(5);
+        let late = stamp + retention + Duration::from_secs(1);
         let purged = Autosave::start_at(dir.path(), late).unwrap();
         assert!(purged.list().is_empty());
     }

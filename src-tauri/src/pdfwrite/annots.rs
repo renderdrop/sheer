@@ -657,7 +657,8 @@ pub fn write_appearance(
     } = &annotation.body
     {
         let [x0, y0, x1, y1] = m.rect(*bounds);
-        let stream = super::stamp_ap::stream(text, date.as_deref(), *tone, x1 - x0, y1 - y0);
+        let stream =
+            super::stamp_ap::stream(text, date.as_deref(), *tone, x1 - x0, y1 - y0, m.rotation());
         return Some(doc.add_object(stream));
     }
     let AnnotationBody::Signature { art: reference, .. } = &annotation.body else {

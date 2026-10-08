@@ -638,7 +638,15 @@ fn render(document: &PdfDocument<'_>, key: RenderKey) -> Result<Vec<u8>, AppErro
     drop(bitmap);
     drop(page);
 
-    let stride = raw.len() / draw_h as usize;
+    // The rows of the bitmap buffer: PDFium may pad them, so the stride is the buffer over the rows, and it must divide evenly and
+    // hold a full row of pixels.
+    let stride = raw.len() / (draw_h as usize).max(1);
+    if stride * draw_h as usize != raw.len() || stride < draw_w as usize * 3 {
+        return Err(AppError::logged(
+            ErrorCode::Internal,
+            format!("bitmap buffer of {} bytes for {draw_w}x{draw_h}", raw.len()),
+        ));
+    }
     if supersample {
         let small = downscale::box_downscale(
             &raw,

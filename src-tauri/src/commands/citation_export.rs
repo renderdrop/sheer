@@ -58,12 +58,12 @@ impl AppState {
         lang: Option<&str>,
     ) -> Result<bool, AppError> {
         let (stem, record) = self.check_citation_list(id, format, blocks, lang)?;
-        let dialog = window
-            .dialog()
-            .file()
-            .set_parent(window)
-            .add_filter(format.filter_label(), &[format.extension()])
-            .set_file_name(default_file_name(&stem, format, style));
+        let dialog = crate::automation::dialogs::in_documents_folder(
+            window.dialog().file().set_parent(window),
+            window,
+        )
+        .add_filter(format.filter_label(), &[format.extension()])
+        .set_file_name(default_file_name(&stem, format, style));
         let Some(chosen) = dialog.seam_save_file()? else {
             return Ok(false);
         };

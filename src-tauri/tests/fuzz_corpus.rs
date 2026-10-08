@@ -232,7 +232,17 @@ fn wedge_then_recovery(name: &'static str, bytes: Vec<u8>) {
     let good = fixtures::outline();
     // One file per test: the wedge tests run in parallel in one process, and a shared temp name collided on Windows
     // while the other test's engine still held the file open.
-    let after = exercise(&state, &format!("after-{name}"), &good);
+    // The caller gives up at the same moment as the engine does, so the restart may still be under way (and on Windows a loaded
+    // runner makes that slow): the good file must open within a window, the first clean answer ends it. A bounded wait, not a
+    // weaker assertion: if the engine never recovers, the last errors fail the test.
+    let until = std::time::Instant::now() + Duration::from_secs(30);
+    let mut attempt = 0;
+    let mut after = exercise(&state, &format!("after-{name}-0"), &good);
+    while !after.is_empty() && std::time::Instant::now() < until {
+        std::thread::sleep(Duration::from_millis(250));
+        attempt += 1;
+        after = exercise(&state, &format!("after-{name}-{attempt}"), &good);
+    }
     assert!(
         after.is_empty(),
         "the engine did not recover after {name}: {after:?}"

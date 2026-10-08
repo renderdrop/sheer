@@ -413,10 +413,12 @@ fn recognize_all(
     let asked: Vec<(PageId, u32)> = facts.iter().map(|t| (t.id, t.position)).collect();
     let probes = on_big_stack(move || probe(&bytes, &asked, &layered))?;
     let redo = spec.redo;
+    // By page id once, not a scan of all probes per task.
+    let probes: HashMap<PageId, PageProbe> = probes.into_iter().map(|p| (p.page, p)).collect();
     let tasks: Vec<Task> = facts
         .into_iter()
         .filter_map(|mut task| {
-            let probed = probes.iter().find(|p| p.page == task.id)?;
+            let probed = probes.get(&task.id)?;
             wants(probed.class, redo).then(|| {
                 task.dpi = limits::render_dpi(probed.image_dpi);
                 task
