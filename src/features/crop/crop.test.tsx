@@ -325,6 +325,32 @@ describe('the layer', () => {
     await vi.waitFor(() => expect(useUi.getState().activeTool).toBe('select'));
   });
 
+  it('draws a new rectangle by a drag on the page while nothing is chosen, and moves a custom one', () => {
+    const { container } = setup(<CropLayer {...props} />);
+    act(() => useUi.getState().selectTool('crop'));
+    const rect = container.querySelector<HTMLElement>('[data-crop-rect]');
+    if (rect === null) throw new Error('no rect');
+    const at = (clientX: number, clientY: number) => ({ clientX, clientY, pointerId: 1, button: 0, bubbles: true });
+    act(() => {
+      rect.dispatchEvent(new PointerEvent('pointerdown', at(100, 100)));
+      rect.dispatchEvent(new PointerEvent('pointermove', at(300, 400)));
+      rect.dispatchEvent(new PointerEvent('pointerup', at(300, 400)));
+    });
+    const before = useCrop.getState().margins;
+    expect(before).not.toBeNull();
+    expect(before?.left).toBeGreaterThan(50);
+    expect(before?.right).toBeGreaterThan(50);
+    // Now the rectangle is custom: a drag inside moves it (the size stays).
+    act(() => {
+      rect.dispatchEvent(new PointerEvent('pointerdown', at(200, 200)));
+      rect.dispatchEvent(new PointerEvent('pointermove', at(210, 200)));
+      rect.dispatchEvent(new PointerEvent('pointerup', at(210, 200)));
+    });
+    const after = useCrop.getState().margins;
+    expect((after?.left ?? 0) - (before?.left ?? 0)).toBeCloseTo(10, 0);
+    expect((after?.right ?? 0) - (before?.right ?? 0)).toBeCloseTo(-10, 0);
+  });
+
   it('Cancel on the canvas sends nothing and leaves no crop surface behind', async () => {
     const { user, container, rerender } = setup(<CropLayer {...props} />);
     act(() => useUi.getState().selectTool('crop'));

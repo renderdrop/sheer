@@ -202,6 +202,8 @@ function CropRect({
   };
 
   const box = boxOf(margins, frame);
+  // While nothing is chosen the rectangle is the whole page: a drag then draws a new one instead of moving it.
+  const isFullPage = margins.top === 0 && margins.right === 0 && margins.bottom === 0 && margins.left === 0;
   const layout = overlayBox(boxWidth, boxHeight, page, pxPerPt, total);
   const style = { ...layout, transformOrigin: 'center', '--page-scale': pxPerPt } as CSSProperties;
   const [w, h] = page;
@@ -240,7 +242,7 @@ function CropRect({
           data-crop-rect=""
           className="pointer-events-auto absolute cursor-move touch-none"
           style={{ ...rectStyle(box.x, box.y, box.w, box.h) }}
-          onPointerDown={(event) => begin(event, MOVE)}
+          onPointerDown={(event) => begin(event, isFullPage ? null : MOVE)}
           onPointerMove={move}
           onPointerUp={end}
           onPointerCancel={end}

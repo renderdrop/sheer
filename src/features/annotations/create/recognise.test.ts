@@ -86,6 +86,25 @@ describe('resample', () => {
   });
 });
 
+describe('recognise: arcs of an ellipse (F19.13)', () => {
+  const arc = (share: number, rx: number, ry: number, wobble: number, seed: number): Point[] =>
+    ellipsePath(300, 250, rx, ry, 0.7, 0.7 + 2 * Math.PI * share, wobble, random(seed));
+  it.each([0.8, 0.83, 0.85, 0.95])('takes %s of a circle as an ellipse', (share) => {
+    expect(recognise(arc(share, 60, 60, 0, 3))?.kind).toBe('ellipse');
+  });
+  it.each([0.8, 0.83, 0.85, 0.95])('takes %s of an ellipse (2:1) as an ellipse', (share) => {
+    expect(recognise(arc(share, 100, 50, 0, 4))?.kind).toBe('ellipse');
+  });
+  it('takes a jittery 82 % circle and ellipse', () => {
+    expect(recognise(arc(0.82, 60, 60, 0.03, 5))?.kind).toBe('ellipse');
+    expect(recognise(arc(0.82, 100, 50, 0.03, 6))?.kind).toBe('ellipse');
+  });
+  it('leaves 78 % and a 60 % "C" as ink', () => {
+    expect(recognise(arc(0.78, 60, 60, 0, 3))).toBeNull();
+    expect(recognise(arc(0.6, 60, 60, 0, 3))).toBeNull();
+  });
+});
+
 describe('recognise: shapes', () => {
   it('takes a clean circle for a circle', () => {
     const shape = recognise(ellipsePath(200, 200, 60, 60, 0, 2 * Math.PI, 0, random(1)));

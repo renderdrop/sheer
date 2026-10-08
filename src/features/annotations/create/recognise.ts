@@ -56,7 +56,7 @@ export const RECOGNISE = {
   /** The path of the hook is at most this many times how far it reaches. */
   hookPath: 4.5,
   /** An open stroke is an ellipse when it runs round at least this share of the full turn (F19.13). */
-  openCoverage: 0.8,
+  openCoverage: 0.79,
   /** A separate arrowhead stroke meets the shaft's end within this share of the shaft. */
   headMeet: 0.12,
 } as const;
@@ -354,7 +354,10 @@ export function recognise(points: readonly Point[]): Recognised | null {
   const first = s[0];
   const last = s[s.length - 1];
   if (first === undefined || last === undefined) return null;
-  if (dist(first, last) <= RECOGNISE.closedGap * length) return closedFit(s);
+  if (dist(first, last) <= RECOGNISE.closedGap * length) {
+    // A nearly closed arc (80 to 90 % of a turn) falls short of the winding of a closed shape: try it as an open ellipse.
+    return closedFit(s) ?? openEllipseFit(s);
+  }
   const line = lineFit(s);
   if (line !== null) return { kind: 'line', ...line };
   const arrow = arrowFit(s) ?? arrowFit([...s].reverse());
