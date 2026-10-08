@@ -175,7 +175,7 @@ describe('in the window', () => {
     act(() => handleAppEvent(opened(REPORT)));
     expect(screen.getByRole('region', { name: 'Document' })).not.toBeNull();
     // One document: its name is in the top bar (the tabs show from two on).
-    expect(document.querySelector('[data-slot="topbar"]')?.textContent).toContain('Report.pdf');
+    expect(document.querySelector('[data-slot="tabstrip"]')?.textContent).toContain('Report.pdf');
   });
 });
 

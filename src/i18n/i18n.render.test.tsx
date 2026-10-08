@@ -126,7 +126,7 @@ describe('the language setting', () => {
     expect(open().getAttribute('aria-keyshortcuts')).toBe('Meta+O');
   });
 
-  it('the mode row, the tool row and the page sidebar chevron follow the language', async () => {
+  it('the mode row and the tool row follow the language', async () => {
     const { user } = setup(<Shell />);
     await user.click(screen.getByRole('button', { name: /^(Or open|Open)$/ }));
     await screen.findByRole('img', { name: /^Page 1 of/ });
@@ -135,13 +135,12 @@ describe('the language setting', () => {
     expect(
       within(modes)
         .getAllByRole('tab')
-        .map((tab) => tab.textContent),
+        .map((tab) => tab.textContent?.replace(/\d$/, '')),
     ).toEqual(['Lesen', 'Kommentieren', 'Ausfüllen & Signieren', 'Seiten', 'Bearbeiten']);
     const tools = screen.getByRole('toolbar', { name: 'Lesen' });
     for (const name of ['Auswahl', 'Hand', 'Textauswahl', 'Lupe', 'Drehen', 'Suche']) {
       expect(within(tools).getByRole('button', { name }), name).not.toBeNull();
     }
-    expect(screen.getByRole('button', { name: 'Seitenleiste ausblenden' })).not.toBeNull();
   });
 
   it('with a document open the panels, canvas and top bar are German, and plurals follow the language', async () => {
@@ -149,7 +148,7 @@ describe('the language setting', () => {
     await user.click(screen.getByRole('button', { name: /^(Or open|Open)$/ }));
     await screen.findByRole('img', { name: /^Page 1 of/ });
     const separator = screen.getByRole('separator', { name: 'Resize left panel' });
-    expect(separator.getAttribute('aria-valuetext')).toBe('200 pixels');
+    expect(separator.getAttribute('aria-valuetext')).toBe('220 pixels');
 
     chooseLanguage('de');
     expect(screen.getByRole('img', { name: 'Seite 1 von 120' })).not.toBeNull();
@@ -157,16 +156,16 @@ describe('the language setting', () => {
     expect(screen.getByRole('separator', { name: 'Breite der Seitenleiste ändern' })).not.toBeNull();
     expect(
       screen.getByRole('separator', { name: 'Breite der Seitenleiste ändern' }).getAttribute('aria-valuetext'),
-    ).toBe('200 Pixel');
+    ).toBe('220 Pixel');
     expect(screen.getByRole('region', { name: 'Dokument' })).not.toBeNull();
     // Seiten is a mode tab and a sidebar tab.
     expect(screen.getAllByRole('tab', { name: 'Seiten' })).toHaveLength(2);
     for (const tab of ['Gliederung', 'Kommentare', 'Suche']) {
       expect(screen.getByRole('tab', { name: tab }), tab).not.toBeNull();
     }
-    const topbar = within(document.querySelector<HTMLElement>('[data-slot="topbar"]') as HTMLElement);
+    const topbar = within(document.querySelector<HTMLElement>('[data-slot="statusbar"]') as HTMLElement);
     expect(topbar.getByRole('textbox', { name: 'Zu Seite springen' })).not.toBeNull();
-    expect(topbar.getByRole('button', { name: `100${NBSP}% · Zoomstufe` })).not.toBeNull();
+    expect(topbar.getByRole('textbox', { name: 'Zoom' })).toHaveProperty('value', `100${NBSP}%`);
     expect(topbar.getByRole('button', { name: 'Gespeichert' })).not.toBeNull();
     expect(topbar.queryByRole('button', { name: 'Fertig' })).toBeNull();
   });
@@ -180,7 +179,7 @@ describe('the language setting', () => {
     chooseLanguage('de');
     expect(screen.getByRole('img', { name: 'Seite 1 von 12.000' })).not.toBeNull();
     const field = screen.getByRole('textbox', { name: 'Zu Seite springen' });
-    expect(field.parentElement?.textContent).toBe('/ 12.000');
+    expect(field.nextElementSibling?.textContent).toBe('/ 12.000');
   });
 
   it('an error in the banner is translated, and so is its dismiss button', () => {

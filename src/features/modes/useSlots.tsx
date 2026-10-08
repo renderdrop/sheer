@@ -11,9 +11,10 @@ import {
   FileUp,
   Hand,
   Highlighter,
-  ImagePlus,
-  Info,
-  PanelTop,
+  Image,
+  CirclePlus,
+  Rows2,
+  AlignLeft,
   LayoutGrid,
   Lock,
   StickyNote,
@@ -34,11 +35,8 @@ import {
   Square,
   SquareSlash,
   Stamp,
-  Sticker,
   Quote,
   Strikethrough,
-  TextCursor,
-  TextCursorInput,
   TextSelect,
   Trash2,
   Type,
@@ -74,12 +72,12 @@ import { useCertSign } from '../signatures/sign/store';
 import { usePlacement, type PlaceItem } from '../signatures/place/store';
 import { toggleSmartLinksForActive } from '../smartlinks/actions';
 import { smartLinksOn, useSmartLinks } from '../smartlinks/store';
-import { StampPickerBody } from '../annotations/stamps/StampPicker';
-import { armStamp, useStamp } from '../annotations/stamps/store';
+import { armStamp } from '../annotations/stamps/store';
+import { useToolInspector, type ToolInspectorId } from '../inspector/toolInspector';
 import { useLastVariant } from './lastVariant';
-import { CropOptions, InsertOptions, RedactOptions } from './Options';
+import { InsertOptions, RedactOptions } from './Options';
 import { SignaturePreview } from '../signatures/library/SignaturePreview';
-import type { SlotDef, VariantDef } from './model';
+import { grouped, type SlotDef, type VariantDef } from './model';
 
 /** The saved signatures and initials, read once when `enabled` first holds (Ausfüllen & Signieren is on). */
 function useLibraryItems(enabled: boolean): readonly LibraryItem[] {
@@ -145,8 +143,6 @@ interface Inputs {
   dirty: boolean;
   /** Smart links are on for this tab (DESIGN 3.11 L8): the state of Lesen's seventh slot. */
   smartLinks?: boolean;
-  /** The stamp picker is open under the Notiz/Stempel slot (DESIGN 3.14 ST2). */
-  stampPicker?: boolean;
   /** Why Kopf- und Fußzeile cannot open (a catalog key, DESIGN 3.15 HF6); absent: it can. */
   headerFooterReason?: PlainKey | null;
 }
@@ -198,40 +194,46 @@ const lesen: Maker = (inputs) => {
     run: () => choose(id),
     ...extra,
   });
-  return [
-    tool('select', t('modes.tool.select'), MousePointer2, {
-      actionId: 'tool-select',
-      run: () => useUi.getState().releaseTool(),
-    }),
-    tool('hand', t('modes.tool.hand'), Hand),
-    tool('textSelect', t('modes.tool.textSelect'), TextSelect),
-    tool('magnifier', t('modes.tool.magnifier'), ScanSearch, { hint: t('modes.tool.magnifierHint') }),
-    family(
-      inputs,
-      { id: 'rotate', kind: 'action', on: false, actionId: 'rotate-view-right' },
-      t('modes.tool.rotate'),
-      rotate,
-    ),
-    {
-      id: 'search',
-      label: t('modes.tool.search'),
-      icon: Search,
-      kind: 'action',
-      on: false,
-      actionId: 'find',
-      run: () => void runAction('find'),
-    },
-    // Slot 7 (DESIGN 3.11 L8): a toggle for this tab, not a tool; it stays pressed while a tool is chosen.
-    {
-      id: 'smartLinks',
-      label: t('smartlinks.toggle'),
-      icon: Wand,
-      kind: 'toggle',
-      on: inputs.smartLinks ?? true,
-      hint: t('smartlinks.toggleHelp'),
-      run: toggleSmartLinksForActive,
-    },
-  ];
+  return grouped(
+    [
+      tool('select', t('modes.tool.select'), MousePointer2, {
+        actionId: 'tool-select',
+        run: () => useUi.getState().releaseTool(),
+      }),
+      tool('hand', t('modes.tool.hand'), Hand),
+      tool('textSelect', t('modes.tool.textSelect'), TextSelect),
+    ],
+    [
+      tool('magnifier', t('modes.tool.magnifier'), ScanSearch, { hint: t('modes.tool.magnifierHint') }),
+      family(
+        inputs,
+        { id: 'rotate', kind: 'action', on: false, actionId: 'rotate-view-right' },
+        t('modes.tool.rotate'),
+        rotate,
+      ),
+    ],
+    [
+      {
+        id: 'search',
+        label: t('modes.tool.search'),
+        icon: Search,
+        kind: 'action',
+        on: false,
+        actionId: 'find',
+        run: () => void runAction('find'),
+      },
+      // A toggle for this tab (DESIGN 3.11 L8), not a tool; it stays pressed while a tool is chosen.
+      {
+        id: 'smartLinks',
+        label: t('smartlinks.toggle'),
+        icon: Wand,
+        kind: 'toggle',
+        on: inputs.smartLinks ?? true,
+        hint: t('smartlinks.toggleHelp'),
+        run: toggleSmartLinksForActive,
+      },
+    ],
+  );
 };
 
 const kommentieren: Maker = (inputs) => {
@@ -275,83 +277,44 @@ const kommentieren: Maker = (inputs) => {
     },
   ];
   const shapeIcon = shapeVariants.find((variant) => variant.on)?.icon ?? Shapes;
-  return [
-    markupSlot('highlight', t('modes.tool.highlight'), Highlighter),
-    markupSlot('underline', t('modes.tool.underline'), Underline),
-    markupSlot('strikeout', t('modes.tool.strike'), Strikethrough),
-    // Slot 4 (DESIGN 3.7 C2): a colour tool (swatch row in the chevron menu), key Q. Not on a read-only document (AC 22).
-    {
-      id: 'cite',
-      label: t('citation.cite'),
-      icon: Quote,
-      kind: 'tool',
-      on: activeTool === 'cite',
-      actionId: 'tool-cite',
-      disabledReason: readOnly ? t('tool.readOnly') : undefined,
-      colour: { kinds: ['citation'] },
-      run: () => choose('cite'),
-    },
-    noteOrStamp(inputs),
-    plain('text', 'freeText', t('modes.tool.freeText'), MessageSquareText, 'tool-text'),
-    { ...plain('draw', 'draw', t('modes.tool.draw'), PenLine, 'tool-draw'), recogniseSwitch: true },
-    {
-      id: 'shapes',
-      label: t('modes.tool.shapes'),
-      icon: shapeIcon,
-      kind: 'tool',
-      on: activeTool === 'shapes',
-      actionId: 'tool-shapes',
-      variants: shapeVariants,
-      colour: { kinds: ['rect', 'ellipse', 'line', 'arrow'] },
-      run: () => choose('shapes'),
-    },
-  ];
+  return grouped(
+    [
+      markupSlot('highlight', t('modes.tool.highlight'), Highlighter),
+      markupSlot('underline', t('modes.tool.underline'), Underline),
+      markupSlot('strikeout', t('modes.tool.strike'), Strikethrough),
+      // A colour tool (swatch row in the chevron menu), key Q (DESIGN 3.7 C2). Not on a read-only document (AC 22).
+      {
+        id: 'cite',
+        label: t('citation.cite'),
+        icon: Quote,
+        kind: 'tool',
+        on: activeTool === 'cite',
+        actionId: 'tool-cite',
+        disabledReason: readOnly ? t('tool.readOnly') : undefined,
+        colour: { kinds: ['citation'] },
+        run: () => choose('cite'),
+      },
+    ],
+    [
+      plain('note', 'note', t('modes.tool.note'), StickyNote, 'tool-note'),
+      plain('text', 'freeText', t('modes.tool.freeText'), MessageSquareText, 'tool-text'),
+    ],
+    [
+      { ...plain('draw', 'draw', t('modes.tool.draw'), PenLine, 'tool-draw'), recogniseSwitch: true },
+      {
+        id: 'shapes',
+        label: t('modes.tool.shapes'),
+        icon: shapeIcon,
+        kind: 'tool',
+        on: activeTool === 'shapes',
+        actionId: 'tool-shapes',
+        variants: shapeVariants,
+        colour: { kinds: ['rect', 'ellipse', 'line', 'arrow'] },
+        run: () => choose('shapes'),
+      },
+    ],
+  );
 };
-
-/**
- * Slot 5 of Kommentieren (DESIGN 3.14 ST1): a split Notiz [Notiz / Stempel]. Its main part shows the icon and the label of the variant
- * used last, so a stamp user sees "Stempel". The chevron menu ends with the note colour row (stamps have none); the stamp picker hangs
- * on the main part and opens every time the Stempel variant is armed.
- */
-function noteOrStamp(inputs: Inputs): SlotDef {
-  const { t, activeTool, readOnly, last, stampPicker } = inputs;
-  const variants: VariantDef[] = [
-    { id: 'note', label: t('modes.tool.note'), icon: StickyNote, on: activeTool === 'note', run: () => choose('note') },
-    { id: 'stamp', label: t('stamp.tool'), icon: Sticker, on: activeTool === 'stamp', run: armStamp },
-  ];
-  const [note, stamp] = variants as [VariantDef, VariantDef];
-  const current = activeTool === 'stamp' ? stamp : (variants.find((variant) => variant.id === last.note) ?? note);
-  const stamping = current.id === 'stamp';
-  const wrapped = variants.map((variant) => ({
-    ...variant,
-    run: () => {
-      remember('note', variant.id);
-      variant.run();
-    },
-  }));
-  return {
-    id: 'note',
-    label: current.label,
-    icon: current.icon ?? StickyNote,
-    kind: 'tool',
-    on: activeTool === 'note' || activeTool === 'stamp',
-    actionId: stamping ? undefined : 'tool-note',
-    hint: stamping ? t('stamp.tooltip') : undefined,
-    disabledReason: stamping && readOnly ? t('tool.readOnly') : undefined,
-    variants: wrapped,
-    colour: { kinds: ['note'], label: t('stamp.noteColour') },
-    picker: {
-      open: stampPicker === true && activeTool === 'stamp',
-      setOpen: (open) => useStamp.getState().setPicker(open),
-      label: t('stamp.tool'),
-      Body: StampPickerBody,
-    },
-    run: () => {
-      remember('note', current.id);
-      current.run();
-    },
-  };
-}
 
 const ausfuellen: Maker = (inputs) => {
   const { t, armed, library } = inputs;
@@ -393,16 +356,20 @@ const ausfuellen: Maker = (inputs) => {
           : armItem({ type: 'signature', role, ref: { type: 'library', id: first.id }, aspect: first.aspect }),
     };
   };
-  return [
-    item('text', t('modes.tool.text'), Type, { type: 'text' }, armed?.type === 'text'),
-    mark('check', t('modes.tool.check'), Check),
-    mark('cross', t('modes.tool.cross'), X),
-    mark('dot', t('modes.tool.dot'), Dot),
-    item('date', t('modes.tool.date'), Calendar, { type: 'date' }, armed?.type === 'date'),
-    roleSlot('signature', Signature, t('modes.tool.signature'), t('modes.tool.newSignature')),
-    roleSlot('initials', FileSignature, t('modes.tool.initials'), t('modes.tool.newInitials')),
-    zertifikat(inputs),
-  ];
+  return grouped(
+    [
+      item('text', t('modes.tool.text'), Type, { type: 'text' }, armed?.type === 'text'),
+      mark('check', t('modes.tool.check'), Check),
+      mark('cross', t('modes.tool.cross'), X),
+      mark('dot', t('modes.tool.dot'), Dot),
+      item('date', t('modes.tool.date'), Calendar, { type: 'date' }, armed?.type === 'date'),
+    ],
+    [
+      roleSlot('signature', Signature, t('modes.tool.signature'), t('modes.tool.newSignature')),
+      roleSlot('initials', FileSignature, t('modes.tool.initials'), t('modes.tool.newInitials')),
+    ],
+    [zertifikat(inputs)],
+  );
 };
 
 /**
@@ -490,44 +457,50 @@ const seiten: Maker = (inputs) => {
     disabledReason,
     run,
   });
-  return [
-    {
-      id: 'organize',
-      label: t('modes.tool.organize'),
-      icon: LayoutGrid,
-      kind: 'tool',
-      on: activeTool === 'pages',
-      actionId: 'tool-pages',
-      run: () => choose('pages'),
-    },
-    family(
-      inputs,
-      { id: 'rotatePages', kind: 'action', on: false, disabledReason: reason },
-      t('modes.tool.rotate'),
-      rotate,
-    ),
-    action(
-      'delete',
-      t('modes.tool.delete'),
-      Trash2,
-      () => docId !== null && void deletePages(docId),
-      reason ?? (selectedPages >= pageCount ? t('modes.lastPage') : undefined),
-    ),
-    family(
-      inputs,
-      { id: 'insert', kind: 'action', on: false, disabledReason: readOnly ? t('modes.readOnly') : undefined },
-      t('modes.tool.insert'),
-      insert,
-    ),
-    action('extract', t('modes.tool.extract'), FileOutput, runExtract, readOnly ? undefined : noPages),
-    action('split', t('modes.tool.split'), Scissors, runSplit),
-    action('merge', t('modes.tool.merge'), Combine, runMerge),
-    action('compress', t('modes.tool.compress'), FileArchive, runCompress),
-  ];
+  return grouped(
+    [
+      {
+        id: 'organize',
+        label: t('modes.tool.organize'),
+        icon: LayoutGrid,
+        kind: 'tool',
+        on: activeTool === 'pages',
+        actionId: 'tool-pages',
+        run: () => choose('pages'),
+      },
+    ],
+    [
+      family(
+        inputs,
+        { id: 'rotatePages', kind: 'action', on: false, disabledReason: reason },
+        t('modes.tool.rotate'),
+        rotate,
+      ),
+      action(
+        'delete',
+        t('modes.tool.delete'),
+        Trash2,
+        () => docId !== null && void deletePages(docId),
+        reason ?? (selectedPages >= pageCount ? t('modes.lastPage') : undefined),
+      ),
+      family(
+        inputs,
+        { id: 'insert', kind: 'action', on: false, disabledReason: readOnly ? t('modes.readOnly') : undefined },
+        t('modes.tool.insert'),
+        insert,
+      ),
+    ],
+    [
+      action('extract', t('modes.tool.extract'), FileOutput, runExtract, readOnly ? undefined : noPages),
+      action('split', t('modes.tool.split'), Scissors, runSplit),
+      action('merge', t('modes.tool.merge'), Combine, runMerge),
+    ],
+    [action('compress', t('modes.tool.compress'), FileArchive, runCompress)],
+  );
 };
 
 const bearbeiten: Maker = (inputs) => {
-  const { t, activeTool, redactMode } = inputs;
+  const { t, activeTool, redactMode, readOnly } = inputs;
   const tool = (
     id: ToolId,
     slot: string,
@@ -545,58 +518,84 @@ const bearbeiten: Maker = (inputs) => {
     actionId,
     run: () => choose(id),
   });
-  return [
-    {
-      ...tool('editText', 'editText', t('editText.tool'), TextCursorInput, 'tool-editText', undefined),
-      hint: t('editText.tooltip'),
-      testId: 'tool-editText',
-      disabledReason: inputs.readOnly ? t('tool.readOnly') : undefined,
-    },
-    tool('textBox', 'textBox', t('modes.tool.addText'), TextCursor, 'tool-textBox', InsertOptions),
-    tool('image', 'image', t('modes.tool.addImage'), ImagePlus, 'tool-image', InsertOptions),
-    tool('crop', 'crop', t('modes.tool.crop'), Crop, 'tool-crop', CropOptions),
-    {
-      id: 'redact',
-      label: t('modes.tool.redact'),
-      icon: SquareSlash,
-      kind: 'tool',
-      on: redactMode,
-      actionId: 'tool-redact',
-      Options: RedactOptions,
-      // Entering the mode shows the band only; the marks list opens with a click on the item while the mode is on (F19.8).
-      optionsWhenOn: true,
-      // The mode stays on until Anwenden or Abbrechen (the band) or Esc: the item never toggles it off.
-      run: () => {
-        if (!useUi.getState().redactMode) runAction('tool-redact');
+  // Tools with settings (DESIGN 3.18 E5) open the inspector column instead of a popover or dialog.
+  const withInspector = (id: ToolInspectorId, run: () => void) => () => {
+    run();
+    useToolInspector.getState().openToolInspector(id);
+  };
+  const stamp: SlotDef = {
+    id: 'stamp',
+    label: t('stamp.tool'),
+    icon: CirclePlus,
+    kind: 'tool',
+    on: activeTool === 'stamp',
+    hint: t('stamp.tooltip'),
+    disabledReason: readOnly ? t('tool.readOnly') : undefined,
+    run: withInspector('stamp', armStamp),
+  };
+  const crop: SlotDef = {
+    ...tool('crop', 'crop', t('modes.tool.crop'), Crop, 'tool-crop', undefined),
+    run: withInspector('crop', () => choose('crop')),
+  };
+  return grouped(
+    [
+      {
+        ...tool('editText', 'editText', t('editText.tool'), Type, 'tool-editText', undefined),
+        hint: t('editText.tooltip'),
+        testId: 'tool-editText',
+        disabledReason: readOnly ? t('tool.readOnly') : undefined,
       },
-    },
-    {
-      id: 'protect',
-      label: t('modes.tool.protect'),
-      icon: Lock,
-      kind: 'action',
-      on: false,
-      run: () => void runAction('protect'),
-    },
-    {
-      id: 'properties',
-      label: t('modes.tool.properties'),
-      icon: Info,
-      kind: 'action',
-      on: false,
-      run: () => void runAction('document-properties'),
-    },
-    {
-      id: 'headerFooter',
-      label: t('modes.tool.headerFooter'),
-      icon: PanelTop,
-      kind: 'action',
-      on: false,
-      // HF6: signed, locked, no permission or a text recognition run; the command is disabled with the reason as its tooltip.
-      disabledReason: inputs.headerFooterReason ? t(inputs.headerFooterReason) : undefined,
-      run: () => void runAction('header-footer'),
-    },
-  ];
+      tool('textBox', 'textBox', t('modes.tool.addText'), Plus, 'tool-textBox', InsertOptions),
+      tool('image', 'image', t('modes.tool.addImage'), Image, 'tool-image', InsertOptions),
+    ],
+    [
+      crop,
+      {
+        id: 'headerFooter',
+        label: t('modes.tool.headerFooter'),
+        icon: Rows2,
+        kind: 'action',
+        on: false,
+        // HF6: signed, locked, no permission or a text recognition run; the item is disabled with the reason as its tooltip.
+        disabledReason: inputs.headerFooterReason ? t(inputs.headerFooterReason) : undefined,
+        run: () => useToolInspector.getState().openToolInspector('headerFooter'),
+      },
+      stamp,
+    ],
+    [
+      {
+        id: 'redact',
+        label: t('modes.tool.redact'),
+        icon: SquareSlash,
+        kind: 'tool',
+        on: redactMode,
+        actionId: 'tool-redact',
+        Options: RedactOptions,
+        // Entering the mode shows the band only; the marks list opens with a click on the item while the mode is on (F19.8).
+        optionsWhenOn: true,
+        // The mode stays on until Anwenden or Abbrechen (the band) or Esc: the item never toggles it off.
+        run: () => {
+          if (!useUi.getState().redactMode) runAction('tool-redact');
+        },
+      },
+      {
+        id: 'protect',
+        label: t('modes.tool.protect'),
+        icon: Lock,
+        kind: 'action',
+        on: false,
+        run: () => void runAction('protect'),
+      },
+      {
+        id: 'properties',
+        label: t('modes.tool.properties'),
+        icon: AlignLeft,
+        kind: 'action',
+        on: false,
+        run: () => void runAction('document-properties'),
+      },
+    ],
+  );
 };
 
 const MAKERS: Readonly<Record<Mode, Maker>> = {
@@ -620,7 +619,6 @@ export function useModeSlots(mode: Mode): readonly SlotDef[] {
   const selectedPages = useOrganize((state) => selectionOf(state, docId).selected.length);
   const pageCount = usePageSlots(docId).length;
   const last = useLastVariant((state) => state.last);
-  const stampPicker = useStamp((state) => state.pickerOpen && state.changing === null);
   const library = useLibraryItems(mode === 'fill');
   const { status: certStatus, items: identities } = useSigningIdentities(mode === 'fill');
   const certId = useCertSign((state) => state.identityId);
@@ -649,7 +647,6 @@ export function useModeSlots(mode: Mode): readonly SlotDef[] {
       certActive,
       dirty,
       smartLinks,
-      stampPicker,
       headerFooterReason: hfReason,
     });
     // A certifying signature locks every tool but Lesen (DESIGN 3.8 S5): each slot says why with the same tooltip.
@@ -676,7 +673,6 @@ export function useModeSlots(mode: Mode): readonly SlotDef[] {
     certActive,
     dirty,
     smartLinks,
-    stampPicker,
     locked,
     hfReason,
   ]);

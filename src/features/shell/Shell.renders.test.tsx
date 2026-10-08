@@ -123,17 +123,16 @@ afterEach(() => {
 /** The tool row (a toolbar named by the mode). */
 const toolRegion = () => document.querySelector<HTMLElement>('[data-slot="tool-row"]') as HTMLElement;
 const tool = (name: string) => within(toolRegion()).getByRole('button', { name });
-const collapseLeft = () => screen.getByRole('button', { name: 'Hide sidebar' });
+const collapseLeft = () => screen.getByRole('separator', { name: 'Resize left panel' });
 const pressF4 = () => fireEvent.keyDown(window, { key: 'F4' });
 const counts = () => ({ ...renders });
 /** The top bar holds zoom and page (v1.2). */
-const topbar = () => within(document.querySelector<HTMLElement>('[data-slot="topbar"]') as HTMLElement);
+const topbar = () => within(document.querySelector<HTMLElement>('[data-slot="statusbar"]') as HTMLElement);
 const statusButton = (name: string | RegExp) => topbar().getByRole('button', { name });
 const pageField = () => topbar().getByRole('textbox', { name: 'Go to page' }) as HTMLInputElement;
-const pageTextNow = () => `${pageField().value} ${pageField().parentElement?.textContent ?? ''}`;
+const pageTextNow = () => `${pageField().value} ${pageField().nextElementSibling?.textContent ?? ''}`;
 const zoomItem = async (user: ReturnType<typeof setup>['user'], name: string) => {
-  await user.click(statusButton(/Zoom level/));
-  await user.click(within(screen.getByRole('menu')).getByRole('menuitem', { name: new RegExp(name) }));
+  await user.click(statusButton(name));
 };
 
 /** Opens a document and waits until its first page is shown and the viewer is idle, so the counts start from rest. */
@@ -190,7 +189,7 @@ describe('what changes often does not render the shell, the tool sidebar or the 
     await openAndSettle(user);
     const before = counts();
     const readout = () => statusZoom();
-    const statusZoom = () => statusButton(/Zoom level/).textContent;
+    const statusZoom = () => (topbar().getByRole('textbox', { name: 'Zoom' }) as HTMLInputElement).value;
 
     fireEvent.keyDown(window, { key: '+', ctrlKey: true });
     expect(readout()).toBe(`108${NBSP}%`);
@@ -210,27 +209,12 @@ describe('what changes often does not render the shell, the tool sidebar or the 
     expect(counts()).toEqual(before);
   });
 
-  it('the zoom menu has the scroll mode checked', async () => {
-    const { user } = setup(<Shell />);
-    await openAndSettle(user);
-    await user.click(statusButton(/Zoom level/));
-    const menu = screen.getByRole('menu', { name: 'Zoom' });
-    const checked = within(menu).getAllByRole('menuitemcheckbox', { checked: true });
-    expect(checked.map((item) => item.textContent)).toEqual(['Continuous scrolling']);
-  });
-
   it('the zoom limits render the top bar and never the shell, the tool sidebar or the left panel', async () => {
     const { user } = setup(<Shell />);
     await openAndSettle(user);
     const before = counts();
     act(() => useView.getState().setZoom(REPORT.id, MAX_ZOOM));
-    await user.click(statusButton(/Zoom level/));
-    expect(
-      within(screen.getByRole('menu'))
-        .getByRole('menuitem', { name: /Zoom in/ })
-        .getAttribute('aria-disabled'),
-    ).toBe('true');
-    await user.keyboard('{Escape}');
+    expect(statusButton('Zoom in').getAttribute('aria-disabled')).toBe('true');
     // The limit is a flag of the action state, which the tool sidebar follows too; the shell and the page sidebar do not.
     expect(renders.shell).toBe(before.shell);
     expect(renders.leftPanel).toBe(before.leftPanel);

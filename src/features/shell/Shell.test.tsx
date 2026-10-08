@@ -72,25 +72,24 @@ const layout = (container: HTMLElement) =>
   (container.querySelector('[data-slot="home"]') === null ? undefined : 'empty');
 const tool = (name: string) => within(toolRegion()).getByRole('button', { name });
 /** The page sidebar's collapse chevron; F4 is the way back (the command map, ARCHITECTURE 12). */
-const collapseLeft = () => screen.getByRole('button', { name: 'Hide sidebar' });
+const collapseLeft = () => screen.getByRole('separator', { name: 'Resize left panel' });
 const pressF4 = (shiftKey = false) => fireEvent.keyDown(window, { key: 'F4', shiftKey });
 /** The top bar: zoom and page live there since v1.2 (no status bar). */
-const topbarElement = () => document.querySelector<HTMLElement>('[data-slot="topbar"]') as HTMLElement;
+const topbarElement = () => document.querySelector<HTMLElement>('[data-slot="statusbar"]') as HTMLElement;
 const status = () => within(topbarElement());
 const pageField = () => status().getByRole('textbox', { name: 'Go to page' }) as HTMLInputElement;
 /** "3 / 12": the field's value and the total beside it. */
-const pageTextNow = () => `${pageField().value} ${pageField().parentElement?.textContent ?? ''}`;
+const pageTextNow = () => `${pageField().value} ${pageField().nextElementSibling?.textContent ?? ''}`;
 /** The left of the top bar: the file name, or with two or more documents the tabs; it has the name of every open document. */
-const tabs = () => topbarElement();
+const tabs = () => document.querySelector<HTMLElement>('[data-slot="tabstrip"]') as HTMLElement;
 const toolPressed = (name: string) => tool(name).getAttribute('aria-pressed');
 /** Switches the mode with its tab. */
 const inMode = async (user: ReturnType<typeof setup>['user'], name: string) =>
   user.click(screen.getByRole('tab', { name }));
-const readout = () => status().getByRole('button', { name: /Zoom level/ });
-/** Opens the zoom menu and chooses an item by its name. */
+const readout = () => status().getByRole('textbox', { name: 'Zoom' }) as HTMLInputElement;
+/** Clicks a button of the status bar by its name. */
 const zoomItem = async (user: ReturnType<typeof setup>['user'], name: string) => {
-  await user.click(readout());
-  await user.click(within(screen.getByRole('menu')).getByRole('menuitem', { name: new RegExp(name) }));
+  await user.click(status().getByRole('button', { name }));
 };
 /** The Windows platform. */
 const windows = () => useSettings.setState({ platform: 'windows' });
@@ -156,7 +155,7 @@ describe('Shell with a document', () => {
     expect(screen.getByRole('region', { name: 'Document' })).not.toBeNull();
     expect(tabs().textContent).toContain('Quarterly report.pdf');
     expect(pageTextNow()).toBe('1 / 120');
-    expect(readout().textContent).toBe(`100${NBSP}%`);
+    expect(readout().value).toBe(`100${NBSP}%`);
   });
 
   it('the tools are enabled and Select is the active one', async () => {
@@ -207,22 +206,22 @@ describe('Shell with a document', () => {
       const { user } = setup(<Shell />);
       await openDocument(user);
       fireEvent.keyDown(window, { key: '+', ctrlKey: true });
-      expect(readout().textContent).toBe(`108${NBSP}%`);
+      expect(readout().value).toBe(`108${NBSP}%`);
       fireEvent.keyDown(window, { key: '-', ctrlKey: true });
       fireEvent.keyDown(window, { key: '-', ctrlKey: true });
-      expect(readout().textContent).toBe(`90${NBSP}%`);
+      expect(readout().value).toBe(`90${NBSP}%`);
       fireEvent.keyDown(window, { key: '1', ctrlKey: true });
-      expect(readout().textContent).toBe(`100${NBSP}%`);
+      expect(readout().value).toBe(`100${NBSP}%`);
     });
 
-    it('the zoom menu changes it too', async () => {
+    it('the zoom buttons change it too', async () => {
       const { user } = setup(<Shell />);
       await openDocument(user);
       await zoomItem(user, 'Zoom in');
-      expect(readout().textContent).toBe(`108${NBSP}%`);
+      expect(readout().value).toBe(`108${NBSP}%`);
       await zoomItem(user, 'Zoom out');
-      expect(readout().textContent).toBe(`100${NBSP}%`);
-      await zoomItem(user, 'Fit width');
+      expect(readout().value).toBe(`100${NBSP}%`);
+      await zoomItem(user, 'Page width');
       expect(useView.getState().byDoc[1]?.zoom).not.toBe(1);
     });
 
@@ -292,11 +291,11 @@ describe('Shell with a document', () => {
       // jsdom has no layout: the canvas reports its size here, as the ResizeObserver does in the app. The rendered page is 612 x 792 pt.
       act(() => useViewer.getState().setViewport({ width: 816 + 16, height: 528 }));
       fireEvent.keyDown(window, { key: '2', code: 'Digit2', ctrlKey: true });
-      expect(readout().textContent).toBe(`100${NBSP}%`);
+      expect(readout().value).toBe(`100${NBSP}%`);
       fireEvent.keyDown(window, { key: '0', code: 'Digit0', ctrlKey: true });
-      expect(readout().textContent).toBe(`50${NBSP}%`);
+      expect(readout().value).toBe(`50${NBSP}%`);
       fireEvent.keyDown(window, { key: '1', code: 'Digit1', ctrlKey: true });
-      expect(readout().textContent).toBe(`100${NBSP}%`);
+      expect(readout().value).toBe(`100${NBSP}%`);
     });
 
     it('a tool letter selects the tool only while the canvas has the focus', async () => {
@@ -329,15 +328,15 @@ describe('Shell with a document', () => {
       fireEvent.keyDown(field, { key: '+', ctrlKey: true });
       fireEvent.keyDown(field, { key: 'w', ctrlKey: true });
       expect(toolPressed('Select')).toBe('true');
-      expect(readout().textContent).toBe(`100${NBSP}%`);
+      expect(readout().value).toBe(`100${NBSP}%`);
       expect(activeDocument()).not.toBeNull();
     });
 
     it('the top bar buttons show their keys in their tooltips', async () => {
       const { user } = setup(<Shell />);
       await openDocument(user);
-      expect(status().getByRole('button', { name: 'Undo' }).getAttribute('aria-keyshortcuts')).toBe('Control+Z');
-      expect(status().getByRole('button', { name: 'Find' }).getAttribute('aria-keyshortcuts')).toBe('Control+F');
+      expect(within(tabs()).getByRole('button', { name: 'Undo' }).getAttribute('aria-keyshortcuts')).toBe('Control+Z');
+      expect(within(tabs()).getByRole('button', { name: 'Find' }).getAttribute('aria-keyshortcuts')).toBe('Control+F');
     });
   });
 
@@ -418,14 +417,16 @@ describe('Shell with a document', () => {
       expect(screen.getByRole('toolbar', { name: 'Read' })).not.toBeNull();
       const columns = container.querySelector<HTMLElement>('[data-layout]')?.style.gridTemplateColumns ?? '';
       expect(columns).not.toContain('tool-');
-      expect(columns.split(' ').length).toBeLessThanOrEqual(4);
+      expect(columns.split(' ').length).toBeLessThanOrEqual(5);
     });
 
-    it('the editor rows are top bar, mode row, tool row and body (no menu row off Windows)', async () => {
+    it('the editor rows are tab strip, gutter, mode card, gutter, body and status bar (no menu row off Windows)', async () => {
       const { container, user } = setup(<Shell />);
       await openDocument(user);
       const rows = container.querySelector<HTMLElement>('[data-slot="editor"]')?.style.gridTemplateRows;
-      expect(rows).toBe('var(--topbar-height) var(--mode-row-height) var(--tool-row-height) minmax(0, 1fr)');
+      expect(rows).toBe(
+        'var(--tabstrip-height) var(--chrome-gutter) var(--mode-card-height) var(--chrome-gutter) minmax(0, 1fr) var(--statusbar-height)',
+      );
     });
 
     it('the grid follows the layout: its columns carry the panel width', async () => {
@@ -463,15 +464,17 @@ describe('Shell with a document', () => {
     });
 
     it('Esc closes an open menu first and leaves the tool alone', async () => {
+      windows();
       const { user } = setup(<Shell />);
       await openDocument(user);
       await inMode(user, 'Comment');
       await user.click(tool('Highlight'));
-      await user.click(readout());
+      await user.click(screen.getByRole('menuitem', { name: 'File' }));
       expect(screen.getByRole('menu')).not.toBeNull();
       await user.keyboard('{Escape}');
       expect(screen.queryByRole('menu')).toBeNull();
       expect(useUi.getState().activeTool).toBe('highlight');
+      (document.activeElement as HTMLElement).blur();
       await user.keyboard('{Escape}');
       expect(useUi.getState().activeTool).toBe('select');
     });
@@ -525,18 +528,18 @@ describe('the window chrome (DESIGN 2.2)', () => {
     );
   });
 
-  it('the Home strip, the menu row and the top bar are drag regions; the caption buttons sit in the strip and in the menu row (46 x 32), not in the top bar', async () => {
+  it('the Home strip, the menu row and the top bar are drag regions; the caption buttons sit in the strip and in the menu row (46 x 28), not in the tab strip', async () => {
     useSettings.setState({ platform: 'windows' });
     const { container, user } = setup(<Shell />);
     const strip = container.querySelectorAll('[data-tauri-drag-region]');
     expect(strip).toHaveLength(1);
-    expect(strip[0]?.className).toContain('h-topbar');
+    expect(strip[0]?.className).toContain('h-10');
     await openDocument(user);
     const regions = [...container.querySelectorAll('[data-tauri-drag-region]')];
     expect(regions[0]?.className).toContain('h-menubar');
     expect(within(regions[0] as HTMLElement).getByRole('group', { name: 'Window controls' })).not.toBeNull();
     expect(within(regions[0] as HTMLElement).getByRole('menubar')).not.toBeNull();
-    expect(regions[1]?.className).toContain('h-topbar');
+    expect(regions[1]?.className).toContain('h-tabstrip');
     expect(within(regions[1] as HTMLElement).queryByRole('group', { name: 'Window controls' })).toBeNull();
   });
 
@@ -660,7 +663,7 @@ describe('Shell with a document: edge cases', () => {
     expect(await screen.findByText('This document has no pages.')).not.toBeNull();
     expect(layout(container)).toBe('document');
     expect(pageField().disabled).toBe(true);
-    expect(readout().textContent).toBe(`100${NBSP}%`);
+    expect(readout().value).toBe(`100${NBSP}%`);
     expect(tabs().textContent).toContain('Empty.pdf');
     await act(async () => {
       await new Promise((resolve) => setTimeout(resolve, 150));

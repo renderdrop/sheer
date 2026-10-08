@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { emptyBibRecord } from '../../api/citations';
 import { useUi } from '../../stores/ui';
+import { useReferenceInspector } from '../properties/openReference';
 import { setup } from '../../test/render';
 import { invalidateBibliography } from './bibliography';
 import { ReferenceButton } from './ReferencePopover';
@@ -124,7 +125,7 @@ describe('ReferenceButton', () => {
   it('opens Document properties by default', async () => {
     const { user } = await open();
     await user.click(screen.getByRole('button', { name: 'Edit reference…' }));
-    expect(useUi.getState().propsOpen).toBe(true);
+    expect(useReferenceInspector.getState().docId).toBe(1);
   });
 
   it('Esc closes the popover and returns focus to the button', async () => {

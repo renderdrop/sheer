@@ -36,9 +36,9 @@ export function formatAge(lastOpened: number, nowSeconds: number, locale: Locale
 }
 
 /** Home's Recent section shows this many rows of cards; the rest is behind "Show all". */
-export const HOME_RECENT_ROWS = 2;
+export const HOME_RECENT_ROWS = 1;
 
-/** The cards shown for `columns` columns: two full rows, or all of them once expanded. */
+/** The cards shown for `columns` columns: one row of `columns` cards, or all of them once expanded. */
 export function visibleRecents<T>(entries: readonly T[], columns: number, expanded: boolean): readonly T[] {
   return expanded ? entries : entries.slice(0, Math.max(1, columns) * HOME_RECENT_ROWS);
 }

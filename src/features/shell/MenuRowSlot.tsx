@@ -5,8 +5,8 @@ import { useWindowState } from './hooks';
 import { MenuBar } from './MenuBar';
 
 /**
- * The Windows menu row above the top bar (DESIGN v2 3.2, ADR-102): 32 high, the menus from `menu.json` at the left (from x 8) and the
- * caption buttons, 46 x 32, flush right (hidden in full screen). Empty space drags the window. Other platforms have no such row (macOS
+ * The Windows menu row above the top bar (DESIGN v2 3.2, ADR-102): 28 high, the menus from `menu.json` at the left (from x 8) and the
+ * caption buttons, 46 x 28, flush right (hidden in full screen). Empty space drags the window. Other platforms have no such row (macOS
  * has its native bar), so it renders nothing there and the grid does not reserve a track for it.
  */
 export function MenuRowSlot() {

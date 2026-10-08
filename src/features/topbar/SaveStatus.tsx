@@ -86,10 +86,9 @@ function DrawnCheck({ fromDot }: { fromDot: boolean }) {
 type Status = 'signed' | 'saved' | 'edited' | 'new' | 'saving' | 'failed';
 
 /**
- * The save status next to the file name (DESIGN 3.5 B1): a Ghost button 28 high. Saved (check, inactive), Edited (Ink dot, click
+ * The save status at the left of the status bar (DESIGN 3.18 E7, states of 3.5 B1): a Ghost button 24 high. Saved (check, inactive), Edited (Ink dot, click
  * saves), Not saved yet (a document without a file: click is Save As), Saving… (after 200 ms), Not saved (failed, click retries,
- * the tooltip says why). Below 1100 px of window width the label hides and only the glyph stays; the text stays for assistive technology.
- */
+ * the tooltip says why). */
 export function SaveStatus() {
   const t = useT();
   const platform = useSettings((state) => state.platform) ?? currentPlatform();
@@ -139,7 +138,7 @@ export function SaveStatus() {
         if (!inert) void runAction('save');
       }}
       className={cx(
-        't-caption inline-flex h-save-status shrink-0 items-center gap-1 rounded-sm px-2 transition-colors duration-fast',
+        't-label inline-flex h-status-control shrink-0 items-center gap-1 rounded-sm px-2 font-normal transition-colors duration-fast',
         shown === 'failed'
           ? 'text-error-text'
           : shown === 'saved' || shown === 'saving' || shown === 'signed'
@@ -166,19 +165,16 @@ export function SaveStatus() {
           data-saved-text=""
           initial={{ opacity: 0 }}
           animate={{ opacity: 1, transition: SPRING.fast }}
-          className="max-save-label:sr-only"
         >
           {shownLabel}
         </motion.span>
       ) : (
-        <span aria-hidden="true" className="max-save-label:sr-only">
-          {shownLabel}
-        </span>
+        <span aria-hidden="true">{shownLabel}</span>
       )}
     </button>
   );
   return (
-    <span className="ms-1 flex shrink-0 items-center">
+    <span className="flex shrink-0 items-center">
       <span role="status" className="sr-only">
         {shownLabel}
       </span>

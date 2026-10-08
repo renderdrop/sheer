@@ -11,17 +11,17 @@ import { usePages } from '../../stores/pages';
 import { useUi } from '../../stores/ui';
 import { useView } from '../../stores/view';
 import { setup } from '../../test/render';
+import { ToolInspector } from '../inspector/ToolInspectorPanel';
+import { useToolInspector } from '../inspector/toolInspector';
 import { setFileRotation } from '../viewer/fileRotation';
 import { fitsAll, sizesDiffer, targetPages } from './actions';
 import { CropLayer } from './CropLayer';
 import { installCropMode } from './mode';
 import { keyOf, useCrop } from './store';
-import { useCropInspector } from './useCropInspector';
 
-/** The crop options as the tool row's popover shows them (the sidebar that hosted them is gone, ADR-102). */
+/** The inspector column as the shell mounts it (DESIGN 3.18 E5). */
 function Inspector() {
-  const own = useCropInspector();
-  return <div>{own?.body}</div>;
+  return <ToolInspector />;
 }
 
 vi.mock('../../api/annotations', async (importOriginal) => ({
@@ -79,6 +79,7 @@ beforeEach(() => {
   useDocuments.setState({ ...documentsInitial }, true);
   useAnnotations.setState({ ...annotationsInitial }, true);
   useCrop.getState().clear();
+  useToolInspector.setState({ open: null });
   applyMock.mockReset();
   applyMock.mockResolvedValue(changes);
   load();
@@ -127,29 +128,38 @@ describe('the inspector', () => {
   it('shows nothing of the crop outside the mode', () => {
     setup(<Inspector />);
     expect(screen.queryByRole('button', { name: 'Apply' })).toBeNull();
+    expect(screen.queryByRole('complementary')).toBeNull();
   });
 
-  it('is compact (DESIGN Q7): four fields in one row in the order Left, Top, Right, Bottom, a segmented page choice, no scroll', () => {
+  it('is the form of DESIGN 3.18 E5: header with close, two-up margins, segmented pages, Reset and Apply', () => {
     const { container } = setup(<Inspector />);
     act(() => useUi.getState().selectTool('crop'));
+    expect(useToolInspector.getState().open).toBe('crop');
+    expect(screen.getByRole('complementary', { name: 'Crop pages' })).not.toBeNull();
     const row = container.querySelector('[data-crop-fields]');
-    expect(row?.className).toContain('grid-cols-4');
+    expect(row?.className).toContain('grid-cols-2');
     expect(Array.from(row?.querySelectorAll('label') ?? []).map((label) => label.textContent)).toEqual([
-      'Left',
       'Top',
-      'Right',
       'Bottom',
+      'Left',
+      'Right',
     ]);
-    expect(screen.getByRole('radiogroup', { name: 'Apply to' })).not.toBeNull();
-    expect(screen.getAllByRole('radio').map((radio) => radio.textContent)).toEqual(['This page', 'All pages', 'Range']);
-    expect(container.innerHTML).not.toMatch(/overflow-(y-)?(auto|scroll)/);
-    for (const name of ['Reset', 'Cancel', 'Apply']) expect(screen.getByRole('button', { name })).not.toBeNull();
+    expect(screen.getByRole('radiogroup', { name: 'Pages' })).not.toBeNull();
+    expect(screen.getAllByRole('radio').map((radio) => radio.textContent)).toEqual(['This', 'All', 'Range']);
+    for (const name of ['Close', 'Reset', 'Apply']) expect(screen.getByRole('button', { name })).not.toBeNull();
+    expect(screen.queryByRole('button', { name: 'Cancel' })).toBeNull();
   });
 
-  it('applies the margins to the current page as one command and ends the mode', async () => {
+  it('takes focus to the first field when it opens', () => {
+    setup(<Inspector />);
+    act(() => useUi.getState().selectTool('crop'));
+    expect(document.activeElement).toBe(screen.getByLabelText('Top'));
+  });
+
+  it('applies only a changed rectangle, as one command, and ends the mode', async () => {
     const { user } = setup(<Inspector />);
     act(() => useUi.getState().selectTool('crop'));
-    expect(screen.getByRole('button', { name: 'Apply' })).not.toBeNull();
+    expect(screen.getByRole('button', { name: 'Apply' }).getAttribute('aria-disabled')).toBe('true');
     const top = screen.getByLabelText('Top');
     await user.clear(top);
     await user.type(top, '1{Enter}');
@@ -161,12 +171,24 @@ describe('the inspector', () => {
       spec: { type: 'margins', top: 72, right: 0, bottom: 0, left: 0 },
     });
     await vi.waitFor(() => expect(useUi.getState().activeTool).toBe('select'));
+    expect(useToolInspector.getState().open).toBeNull();
+  });
+
+  it('Enter in a field applies: the first Enter takes the typed value, the next one applies', async () => {
+    const { user } = setup(<Inspector />);
+    act(() => useUi.getState().selectTool('crop'));
+    const top = screen.getByLabelText('Top');
+    await user.clear(top);
+    await user.type(top, '1{Enter}');
+    expect(applyMock).not.toHaveBeenCalled();
+    await user.keyboard('{Enter}');
+    expect(applyMock).toHaveBeenCalledTimes(1);
   });
 
   it('applies to all pages and to a range, and checks the range', async () => {
     const { user } = setup(<Inspector />);
     act(() => useUi.getState().selectTool('crop'));
-    await user.click(screen.getByRole('radio', { name: 'All pages' }));
+    await user.click(screen.getByRole('radio', { name: 'All' }));
     await user.click(screen.getByRole('button', { name: 'Apply' }));
     expect(applyMock.mock.calls[0]?.[1]).toMatchObject({ pages: [0, 1, 2, 3] });
 
@@ -197,7 +219,7 @@ describe('the inspector', () => {
     expect(useCrop.getState().margins).toBeNull();
   });
 
-  it('clears a stale error when the rectangle changes otherwise', async () => {
+  it('clears a stale error when the rectangle changes otherwise (a handle drag)', async () => {
     const { user } = setup(<Inspector />);
     act(() => useUi.getState().selectTool('crop'));
     const left = screen.getByLabelText('Left');
@@ -207,6 +229,13 @@ describe('the inspector', () => {
     act(() => useCrop.getState().setMargins(keyOf(1, 0), { top: 5, right: 0, bottom: 0, left: 0 }));
     expect(left.getAttribute('aria-invalid')).toBeNull();
     expect(screen.queryByText('The area must be at least 1 inch on each side.')).toBeNull();
+  });
+
+  it('shows what the handles set', () => {
+    setup(<Inspector />);
+    act(() => useUi.getState().selectTool('crop'));
+    act(() => useCrop.getState().setMargins(keyOf(1, 0), { top: 72, right: 0, bottom: 0, left: 0 }));
+    expect((screen.getByLabelText('Top') as HTMLInputElement).value).not.toBe('0');
   });
 
   it('maps the Top field to the page side that is on top when the page is turned', async () => {
@@ -219,35 +248,48 @@ describe('the inspector', () => {
     expect(useCrop.getState().margins).toEqual({ top: 0, right: 0, bottom: 0, left: 72 });
   });
 
-  it('resets the chosen pages to the MediaBox and says Reset only where there is a crop', async () => {
-    load([slot(0, { crop: { top: 10, right: 10, bottom: 10, left: 10 } }), slot(1)]);
+  it('Reset is off until something differs, then takes the rectangle and the pages back', async () => {
     const { user } = setup(<Inspector />);
     act(() => useUi.getState().selectTool('crop'));
+    expect(screen.getByRole('button', { name: 'Reset' }).getAttribute('aria-disabled')).toBe('true');
+    await user.click(screen.getByRole('radio', { name: 'All' }));
+    act(() => useCrop.getState().setMargins(keyOf(1, 0), { top: 5, right: 0, bottom: 0, left: 0 }));
     await user.click(screen.getByRole('button', { name: 'Reset' }));
-    expect(applyMock).toHaveBeenCalledWith(1, { type: 'cropPages', pages: [0], spec: { type: 'reset' } });
+    expect(useCrop.getState().margins).toBeNull();
+    expect(useCrop.getState().scope).toBe('current');
+    expect(applyMock).not.toHaveBeenCalled();
+    expect(useUi.getState().activeTool).toBe('crop');
   });
 
   it('keeps the mode and shows the error when the backend refuses', async () => {
     applyMock.mockRejectedValue({ code: 'invalid_argument', key: 'error.invalidArgument', retryable: false });
     const { user } = setup(<Inspector />);
     act(() => useUi.getState().selectTool('crop'));
+    await user.click(screen.getByRole('radio', { name: 'All' }));
     await user.click(screen.getByRole('button', { name: 'Apply' }));
     expect(useUi.getState().activeTool).toBe('crop');
     expect(useUi.getState().banner).not.toBeNull();
   });
 
-  it('cancels without sending anything', async () => {
+  it('Close and Esc discard: nothing is sent, the tool is released', async () => {
     const { user } = setup(<Inspector />);
     act(() => useUi.getState().selectTool('crop'));
-    await user.click(screen.getByRole('button', { name: 'Cancel' }));
+    await user.click(screen.getByRole('button', { name: 'Close' }));
+    expect(useUi.getState().activeTool).toBe('select');
+    expect(useToolInspector.getState().open).toBeNull();
+    act(() => useUi.getState().selectTool('crop'));
+    await user.keyboard('{Escape}');
     expect(useUi.getState().activeTool).toBe('select');
     expect(applyMock).not.toHaveBeenCalled();
   });
 
-  it('says that cropping hides content', () => {
+  it('opens the form from the inspector store alone and closes with a mode switch', () => {
     setup(<Inspector />);
-    act(() => useUi.getState().selectTool('crop'));
-    expect(screen.getByText(/hides content but keeps it/)).not.toBeNull();
+    act(() => useToolInspector.getState().openToolInspector('crop'));
+    expect(useUi.getState().activeTool).toBe('crop');
+    act(() => useUi.getState().setMode('read'));
+    expect(useToolInspector.getState().open).toBeNull();
+    expect(useUi.getState().activeTool).toBe('select');
   });
 });
 

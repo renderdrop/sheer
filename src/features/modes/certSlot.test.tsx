@@ -136,6 +136,7 @@ describe('the Zertifikat slot (DESIGN 3.8 S1)', () => {
 
 describe('the fit at 960 x 640', () => {
   it('keeps the eight tools of Ausfüllen & Signieren icon-only at step 2, without Mehr', () => {
+    window.innerWidth = 1440; // wide: the fit is measured, not forced by the window
     const scroll = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'scrollWidth');
     const client = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'clientWidth');
     Object.defineProperty(HTMLElement.prototype, 'scrollWidth', {

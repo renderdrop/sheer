@@ -1,20 +1,43 @@
+import { ChevronLeft } from 'lucide-react';
+
+import { runAction } from '../../actions/dispatch';
+import { currentPlatform } from '../../actions/keys';
+import { actionOf, actionShortcut } from '../../actions/registry';
+import { IconButton } from '../../components';
 import { cx } from '../../components/cx';
 import { useT } from '../../i18n';
-import { WindowHeading } from './WindowHeading';
-import { CenterCluster } from './CenterCluster';
-import { LeftCluster } from './LeftCluster';
+import { useSettings } from '../../stores/settings';
+import { TabStrip } from '../tabs/TabStrip';
 import { LiveRegions } from './LiveRegions';
 import { RightCluster } from './RightCluster';
+import { WindowHeading } from './WindowHeading';
 
 export interface TopBarProps {
   /** macOS, not in full screen: the traffic lights float over the start of the bar. */
   trafficLightInset: boolean;
 }
 
+/** Back to Home: 36, at x 4 (macOS: after the 80 inset), gap 4 to the tabs. */
+function BackButton() {
+  const t = useT();
+  const platform = useSettings((state) => state.platform) ?? currentPlatform();
+  const home = actionOf('view-home');
+  const shortcut = actionShortcut(home, platform, t);
+  return (
+    <IconButton
+      icon={ChevronLeft}
+      label={t(home.labelKey)}
+      shortcut={shortcut?.label}
+      keyShortcuts={shortcut?.aria}
+      className="me-1 self-center"
+      onClick={() => void runAction('view-home')}
+    />
+  );
+}
+
 /**
- * The editor's top bar (DESIGN v2 3.2): 56 high, White, 1 px border below, grid `1fr auto 1fr`. Left: Back, the file name or the
- * tabs. Centre: zoom dropdown and page field. Right: Undo, Redo, Search, the tour pill, Fertig (the caption buttons are in the menu row).
- * Empty space is the drag region (Tauri's `data-tauri-drag-region`; buttons and fields are not).
+ * The editor's tab strip row (DESIGN 3.18 E3): 42 high, White, 1 px border below. Back, the document tabs (bottom-aligned, scrolling
+ * from six), 24 px of drag space and the right cluster. Empty space is the drag region (Tauri's `data-tauri-drag-region`; buttons are not).
  */
 export function TopBar({ trafficLightInset }: TopBarProps) {
   const t = useT();
@@ -22,16 +45,17 @@ export function TopBar({ trafficLightInset }: TopBarProps) {
     <div
       role="region"
       aria-label={t('topbar.region')}
-      data-slot="topbar"
+      data-slot="tabstrip"
       data-tauri-drag-region="deep"
       className={cx(
-        'bg-panel grid h-topbar min-w-0 grid-cols-[1fr_auto_1fr] items-center border-b border-border-subtle',
-        trafficLightInset ? 'ps-chrome-inset' : 'ps-2',
+        'bg-panel flex h-tabstrip min-w-0 items-end border-b border-border-subtle',
+        trafficLightInset ? 'ps-chrome-inset' : 'ps-1',
       )}
     >
       <WindowHeading />
-      <LeftCluster />
-      <CenterCluster />
+      <BackButton />
+      <TabStrip />
+      <span aria-hidden="true" className="w-6 shrink-0 self-stretch" />
       <RightCluster />
       <LiveRegions />
     </div>

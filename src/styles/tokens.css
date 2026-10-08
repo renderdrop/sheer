@@ -161,11 +161,26 @@
   --spacing-tooltip-max: var(--tooltip-max);
   --spacing-link-preview-max: var(--link-preview-max);
   --spacing-splitter: var(--splitter-width);
-  /* Layout slots: h-topbar, h-mode-row, h-tool-row, h-minibar, min-h-banner-min, w-caption-button,
+  /* Layout slots: h-tabstrip, h-minibar, min-h-banner-min, w-caption-button,
      ps-chrome-inset, min-w-canvas-min, max-w-empty-max and h-scrim. */
-  --spacing-topbar: var(--topbar-height);
   --spacing-menubar: var(--menubar-height);
-  --spacing-mode-row: var(--mode-row-height);
+  --spacing-caption-height: var(--caption-button-height);
+  --spacing-tabstrip: var(--tabstrip-height);
+  --spacing-doc-tab: var(--doc-tab-height);
+  --spacing-doc-tab-min: var(--doc-tab-min);
+  --spacing-doc-tab-max: var(--doc-tab-max);
+  --spacing-gutter: var(--chrome-gutter);
+  --spacing-mode-card: var(--mode-card-height);
+  --spacing-mode-tab: var(--mode-tab-height);
+  --spacing-tool-area: var(--tool-area-height);
+  --spacing-tool-item: var(--tool-item-height);
+  --spacing-kbd: var(--kbd-compact);
+  --spacing-inspector: var(--inspector-width);
+  --spacing-inspector-header: var(--inspector-header-height);
+  --spacing-inspector-footer: var(--inspector-footer-height);
+  --spacing-statusbar: var(--statusbar-height);
+  --spacing-status-control: var(--status-control-height);
+  --spacing-sidebar-tab-row: var(--sidebar-tab-row-height);
   /* F15 B1-B3 (DESIGN 3.5): the segmented mode tabs, the active tool's hairline on Sand, the save status and the sidebar grip. */
   --segment-height: 28px;
   --spacing-segment: var(--segment-height);
@@ -178,7 +193,6 @@
   --spacing-save-status: var(--save-status-height);
   --grip-thickness: 4px;
   --spacing-grip: var(--grip-thickness);
-  --spacing-tool-row: var(--tool-row-height);
   --spacing-minibar: var(--minibar-height);
   --spacing-banner-min: var(--banner-min-height);
   --spacing-search-row: var(--search-row-height);
@@ -193,9 +207,7 @@
   --spacing-empty-max: var(--empty-max-width);
   --spacing-scrim: var(--scrim-height);
   --spacing-pill: var(--pill-height);
-  /* Tabs and the modal dialogs: min-w-tab-min, max-w-tab-max, w-dialog. */
-  --spacing-tab-min: var(--tab-min);
-  --spacing-tab-max: var(--tab-max);
+  /* The modal dialogs: w-dialog. */
   --spacing-dialog: var(--dialog-width);
   /* The new-file jobs: w-sheet (merge), w-dialog-md (split, compress). */
   --spacing-sheet: var(--sheet-width);
@@ -422,7 +434,7 @@
   --link-preview-max: 320px; /* the link preview (DESIGN 3.11 L5) */
   /* Page sidebar range, default and collapse threshold (DESIGN 1.3); limits.rs and api/app.ts mirror them. */
   --panel-min: 200px;
-  --panel-default: 200px;
+  --panel-default: 220px;
   --panel-max: 480px;
   --panel-collapse-below: 144px;
   --splitter-width: 8px;
@@ -440,13 +452,59 @@
 
   /* Layout slots (DESIGN 1.3, 3). The widths are mirrored as numbers in components/tokens.ts (LAYOUT) for the collapse rules,
      and a test fails on drift. */
-  --topbar-height: 56px;
-  --menubar-height: 32px; /* the Windows menu row and the caption buttons (DESIGN v2 3.2) */
-  --mode-row-height: 40px; /* the mode tabs (DESIGN v2 3.2, ADR-102) */
-  --tool-row-height: 48px; /* the tool row under them */
+  --menubar-height: 28px; /* the Windows menu row (DESIGN 3.18 E2) */
   --minibar-height: 40px; /* the properties mini bar (DESIGN v2 3.3) */
   --banner-min-height: 40px;
   --caption-button-width: 46px;
+  --caption-button-height: 28px;
+  /* v2.0.0-rc.3 editor grid (DESIGN 3.18 E1): menu | tab strip | gutter | mode card | gutter | body | status bar. */
+  --tabstrip-height: 42px;
+  --doc-tab-height: 36px;
+  --doc-tab-min: 120px;
+  --doc-tab-max: 240px;
+  --tab-gap: calc(var(--space-1) / 2); /* 2 between tabs */
+  --tabs-n: 1; /* tabs that share the strip: min(open documents, 5); the strip sets it */
+  --chrome-gutter: 12px;
+  --mode-card-height: 104px;
+  --mode-tab-height: 32px;
+  --tool-area-height: 72px;
+  --tool-item-height: 56px;
+  --tool-item-radius: 8px;
+  --kbd-compact: 16px;
+  --inspector-width: 300px;
+  --inspector-header-height: 48px;
+  --inspector-footer-height: 72px;
+  --statusbar-height: 30px;
+  --status-control-height: 24px;
+  --sidebar-tab-row-height: 40px;
+  --home-card-height-compact: 184px;
+  --home-card-height-short: 136px;
+  --home-thumb-height: 172px;
+  --home-thumb-height-compact: 124px;
+  --home-thumb-height-short: 76px;
+  --home-tool-tile-height: 88px;
+  --home-tool-tile-height-compact: 72px;
+  --card-starred: rgba(255, 248, 77, 0.22);
+  --star-fill: var(--accent);
+  --glow-home:
+    radial-gradient(ellipse 38% 45% at 72% 4%, rgba(255, 248, 77, 0.95), transparent 70%),
+    radial-gradient(ellipse 36% 50% at 92% 24%, rgba(255, 65, 3, 0.28), transparent 72%);
+  --type-hero-size: 96px;
+  --type-hero-line: 76px;
+  --type-hero-weight: 500;
+  --type-hero-tracking: -0.05em;
+  --type-hero-compact-size: 56px;
+  --type-hero-compact-line: 52px;
+  --type-hero-compact-weight: 500;
+  --type-hero-compact-tracking: -0.04em;
+  --type-nav-size: 15px;
+  --type-nav-line: 20px;
+  --type-nav-weight: 400;
+  --type-nav-tracking: 0em;
+  --type-section-size: 11px;
+  --type-section-line: 16px;
+  --type-section-weight: 500;
+  --type-section-tracking: 0.08em;
   --chrome-inset-mac: 80px; /* leading inset of the top bar for the macOS traffic lights; 8 in full screen */
   --free-text-line-height: 1.2; /* the line height of a free text, in times its font size: the editor matches the written file */
   --canvas-min: 360px;
@@ -455,8 +513,6 @@
   --scrollbar-size: 8px;
   --scrollbar-inset: 2px;
   --empty-max-width: 560px; /* the empty state's column */
-  --tab-min: 128px;
-  --tab-max: 200px;
   --dialog-width: 400px; /* the password prompt */
   --sheet-width: 560px; /* the merge sheet */
   --comment-export-label: 120px; /* the label column of the comment export form (DESIGN 3.16 E2) */
@@ -556,22 +612,20 @@
   --z-tooltip: 400;
   --z-drag: 500;
   /* Home measures (DESIGN v2 3.1, Politur v1.3) */
-  --home-nav-width: 200px;
-  --home-content-max: 1120px;
-  --home-hero-min: 280px;
-  --home-hero-compact: 72px; /* the hero once files are listed: one row (the 48 plus, 12 padding), so the tools stay in view at 1280 x 800 */
+  --home-nav-width: 230px;
+  --home-content-max: 1216px;
   --home-main-top: 24px; /* the main column's top padding: the 56 strip above already gives air (F19.6) */
   --home-tool-columns-wide: 3; /* tool rows per line from 1200 wide: the eight tools in three lines (F19.6) */
   --home-open-height: 48px; /* an open-tab card: one compact row */
   --home-search-max: 480px;
-  --home-card-height: 76px;
+  --home-card-height: 264px;
   --home-tile-width: 40px;
   --home-tile-height: 52px;
   --home-row-height: 56px;
-  --home-plus: 48px;
-  --home-nav-row-height: 48px;
-  --home-actions-clear: 72px;
-  --home-card-min: 208px;
+  --home-plus: 44px;
+  --home-search-height: 48px;
+  --home-nav-row-height: 44px;
+  --home-card-min: 148px;
 }
 
 /* legacy aliases — removed in R7 (ADR-100) */
@@ -803,6 +857,15 @@
 [data-split]:has(:focus-visible) {
   outline: var(--focus-width) solid transparent;
   box-shadow: var(--ring-focus);
+}
+
+/* A document tab: width clamp(120, available / min(n, 5), 240) (DESIGN 3.18 E3). */
+@utility w-doc-tab-fit {
+  width: clamp(
+    var(--doc-tab-min),
+    calc((100% - (var(--tabs-n) - 1) * var(--tab-gap)) / var(--tabs-n)),
+    var(--doc-tab-max)
+  );
 }
 
 /* Scroll-edge scrim (DESIGN 2): the strip under the toolbar edge of the canvas that hides page content scrolled behind it. */

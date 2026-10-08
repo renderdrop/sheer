@@ -370,22 +370,27 @@ describe('widths and the left panel (DESIGN 1.3)', () => {
     '--tooltip-max': '240px',
     '--link-preview-max': '320px',
     '--panel-min': '200px',
-    '--panel-default': '200px',
+    '--panel-default': '220px',
     '--panel-max': '480px',
     '--panel-collapse-below': '144px',
     '--splitter-width': '8px',
     '--outline-indent': '16px',
     '--outline-indent-max': '64px',
-    '--tab-min': '128px',
-    '--tab-max': '200px',
+    '--doc-tab-min': '120px',
+    '--doc-tab-max': '240px',
     '--dialog-width': '400px',
     '--toast-height': '40px',
     '--toast-min': '240px',
     '--toast-max': '400px',
-    '--topbar-height': '56px',
-    '--menubar-height': '32px',
-    '--mode-row-height': '40px',
-    '--tool-row-height': '48px',
+    '--menubar-height': '28px',
+    '--tabstrip-height': '42px',
+    '--doc-tab-height': '36px',
+    '--chrome-gutter': '12px',
+    '--mode-card-height': '104px',
+    '--statusbar-height': '30px',
+    '--status-control-height': '24px',
+    '--inspector-width': '300px',
+    '--sidebar-tab-row-height': '40px',
     '--minibar-height': '40px',
     '--canvas-min': '360px',
     '--empty-max-width': '560px',
@@ -406,16 +411,16 @@ describe('widths and the left panel (DESIGN 1.3)', () => {
       'tooltip-max': '--tooltip-max',
       'link-preview-max': '--link-preview-max',
       splitter: '--splitter-width',
-      'tab-min': '--tab-min',
-      'tab-max': '--tab-max',
+      'doc-tab-min': '--doc-tab-min',
+      'doc-tab-max': '--doc-tab-max',
       dialog: '--dialog-width',
       toast: '--toast-height',
       'toast-min': '--toast-min',
       'toast-max': '--toast-max',
-      topbar: '--topbar-height',
+      tabstrip: '--tabstrip-height',
       menubar: '--menubar-height',
-      'mode-row': '--mode-row-height',
-      'tool-row': '--tool-row-height',
+      statusbar: '--statusbar-height',
+      inspector: '--inspector-width',
       minibar: '--minibar-height',
       'canvas-min': '--canvas-min',
       'empty-max': '--empty-max-width',
@@ -438,10 +443,12 @@ describe('widths and the left panel (DESIGN 1.3)', () => {
     expect(`${LAYOUT.splitter}px`).toBe(root.get('--splitter-width'));
     expect(`${LAYOUT.canvasMin}px`).toBe(root.get('--canvas-min'));
     expect(`${LAYOUT.menubar}px`).toBe(root.get('--menubar-height'));
-    expect(`${LAYOUT.modeRow}px`).toBe(root.get('--mode-row-height'));
-    expect(`${LAYOUT.toolRow}px`).toBe(root.get('--tool-row-height'));
+    expect(`${LAYOUT.modeCard}px`).toBe(root.get('--mode-card-height'));
+    expect(`${LAYOUT.gutter}px`).toBe(root.get('--chrome-gutter'));
+    expect(`${LAYOUT.statusbar}px`).toBe(root.get('--statusbar-height'));
+    expect(`${LAYOUT.inspector}px`).toBe(root.get('--inspector-width'));
     expect(`${LAYOUT.minibar}px`).toBe(root.get('--minibar-height'));
-    expect(`${LAYOUT.topbar}px`).toBe(root.get('--topbar-height'));
+    expect(`${LAYOUT.tabstrip}px`).toBe(root.get('--tabstrip-height'));
   });
 
   it('the panel range is ordered: collapse threshold below the minimum, minimum not above the default, default below the maximum', () => {
@@ -738,6 +745,14 @@ describe('Tailwind theme', () => {
       '--form-text',
       '--canvas-extra-scroll',
       '--cite-fill',
+      // Set per size class on `.home` (home.css) from the home tokens.
+      ...['pad-top', 'pad-x', 'pad-bottom', 'greeting-row', 'plus-top', 'title-gap', 'title-size', 'title-line'].map(
+        (n) => `--${n}`,
+      ),
+      ...['title-weight', 'title-tracking', 'search-gap', 'head-gap', 'section-gap', 'card-h', 'card-pad'].map(
+        (n) => `--${n}`,
+      ),
+      ...['name-gap', 'thumb-h', 'tile-h'].map((n) => `--${n}`),
     ]);
     const unknown = [...used].filter(
       (name) => !defined.has(name) && !local.has(name) && !/^--(tw|logo-ground)-/.test(name),

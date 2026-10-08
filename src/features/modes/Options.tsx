@@ -1,15 +1,11 @@
-import { useCropInspector } from '../crop/useCropInspector';
 import { useInsertInspector } from '../insert/useInsertInspector';
 import { useRedactInspector } from '../redact/useRedactInspector';
 
 /**
- * The options of the Bearbeiten tools that have a panel of their own (DESIGN 3.36 to 3.38). The sidebar that hosted them is gone
- * (ADR-102), so the slot's chevron part opens them in a popover while the tool is active. Each is the content its module made for
- * the sidebar, unchanged; it is `null` while the tool or mode is not on.
+ * The options of the Bearbeiten tools that keep a popover (DESIGN 3.36, 3.38). Zuschneiden, Kopf-/Fußzeile and Stempel have no
+ * popover any more: their settings are in the tool inspector (DESIGN 3.18 E5, `src/features/inspector/ToolInspector.tsx`). Each is the
+ * content its module made, unchanged; it is `null` while the tool or mode is not on.
  */
-export function CropOptions() {
-  return <div className="w-(--options-inner-max)">{useCropInspector()?.body}</div>;
-}
 
 export function InsertOptions() {
   return (

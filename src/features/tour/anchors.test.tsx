@@ -7,6 +7,8 @@ import { resetDocuments } from '../../stores/documents.testutil';
 import { useUi } from '../../stores/ui';
 import { setup } from '../../test/render';
 import { ModeRow, ToolRow } from '../modes';
+import { LeftPanelSplitter } from '../shell/MainGrid';
+import { StatusBar } from '../statusbar/StatusBar';
 import { TopBar } from '../topbar/TopBar';
 import { useView } from '../../stores/view';
 import { ANCHORS, modeOfAnchor, resolveAnchor } from './anchors';
@@ -74,6 +76,8 @@ describe('tour anchors and modes', () => {
       <>
         <TopBar trafficLightInset={false} />
         <ModeRow />
+        <StatusBar />
+        <LeftPanelSplitter controls="left-panel" collapsed={false} />
       </>,
     );
     const names = new Set<string>(['mode-comment', 'mode-fill']);

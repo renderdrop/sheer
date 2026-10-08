@@ -1,17 +1,19 @@
 import { useMemo, type CSSProperties, type ReactNode } from 'react';
 
 import type { Platform } from '../../api/app';
-import { useT } from '../../i18n';
 import { WorkSurface } from '../../components';
 import { PANEL } from '../../components/tokens';
 import { shellTracks, type ShellStructure } from '../../lib/layout';
 import { MiniBarSlot } from '../minibar/MiniBarSlot';
-import { ModeRow, ToolRow } from '../modes';
+import { ToolInspector } from '../inspector/ToolInspectorPanel';
+import { ModeCard } from '../modes/ModeCard';
 import { CanvasSlot } from '../organize/CanvasSlot';
 import { BannerSlot } from './BannerSlot';
 import { MenuRowSlot } from './MenuRowSlot';
 import { LeftPanelSlot } from './LeftPanel';
+import { InspectorSlot } from './InspectorSlot';
 import { LeftPanelSplitter, MainGrid } from './MainGrid';
+import { StatusBar } from '../statusbar/StatusBar';
 import { TopBarSlot } from './TopBarSlot';
 import { LEFT_PANEL_ID } from './ids';
 
@@ -23,14 +25,19 @@ export interface EditorLayoutProps {
   captionControls?: ReactNode;
 }
 
+/** A 12 px band of chrome between the tab strip, the mode card and the body (`--surface-panel`). */
+function Gutter() {
+  return <div aria-hidden="true" data-slot="gutter" className="bg-panel" />;
+}
+
 /**
- * The editor (DESIGN v2 3.2, ADR-102), a `WorkSurface` around everything. Rows: menu row 32 (Windows only) | top bar 56 | mode row 40 |
- * tool row 48 | body. The body's columns are the page sidebar (200 to 320) | splitter 8 | canvas column (banner slot rows, then the
- * canvas, with the mini bar as an overlay child). There is no right column and no rail. Each slot is filled by its own component, so
- * later packages replace one file each. The rows come from `shellTracks` (src/lib/layout.ts), one child per track, in order.
+ * The editor (DESIGN 3.18 E1), a `WorkSurface` around everything. Rows: menu row 28 (Windows only) | tab strip 42 | gutter 12 | mode card
+ * 104 | gutter 12 | body | status bar 30. The body's columns are the left panel (220) | splitter 8 | canvas column (banner slot rows,
+ * then the canvas, with the mini bar as an overlay child) | inspector (300, or 0). Each slot is filled by its own component. The rows come
+ * from `shellTracks` (src/lib/layout.ts), one child per track, in order. The mode card slot is inset 12 on both sides; the card inside
+ * it is the mode package's.
  */
 export function EditorLayout({ structure, platform, trafficLightInset }: EditorLayoutProps) {
-  const t = useT();
   const leftPanelId = LEFT_PANEL_ID;
   // Where each slot sits depends on the structure alone, not on the panel's width. Each placement is its own memo on its column, so the
   // memoized panels get the same style object and skip a render when the structure changes around them.
@@ -38,6 +45,7 @@ export function EditorLayout({ structure, platform, trafficLightInset }: EditorL
   const left = useMemo<CSSProperties>(() => ({ gridColumn: column.left }), [column.left]);
   const splitter = useMemo<CSSProperties>(() => ({ gridColumn: column.splitter }), [column.splitter]);
   const canvas = useMemo<CSSProperties>(() => ({ gridColumn: column.canvas }), [column.canvas]);
+  const inspector = useMemo<CSSProperties>(() => ({ gridColumn: column.inspector }), [column.inspector]);
 
   return (
     <WorkSurface data-slot="editor" style={{ gridTemplateRows: rows }} className="grid min-h-0 flex-auto">
@@ -48,11 +56,11 @@ export function EditorLayout({ structure, platform, trafficLightInset }: EditorL
         leftPanelVisible={!structure.leftCollapsed}
         trafficLightInset={trafficLightInset}
       />
-      {/* `contents`: the two rows stay grid items of the editor, and the landmark names them for screen readers. */}
-      <div role="region" aria-label={t('modes.region')} className="contents">
-        <ModeRow />
-        <ToolRow />
+      <Gutter />
+      <div data-slot="mode-card-row" className="bg-panel flex min-h-0 min-w-0 flex-col">
+        <ModeCard />
       </div>
+      <Gutter />
       <MainGrid structure={structure}>
         <LeftPanelSlot present={!structure.leftCollapsed} id={leftPanelId} style={left} />
         <LeftPanelSplitter controls={leftPanelId} collapsed={structure.leftCollapsed} style={splitter} />
@@ -64,7 +72,11 @@ export function EditorLayout({ structure, platform, trafficLightInset }: EditorL
           <CanvasSlot />
           <MiniBarSlot />
         </div>
+        <InspectorSlot open={structure.inspector} style={inspector}>
+          <ToolInspector />
+        </InspectorSlot>
       </MainGrid>
+      <StatusBar />
     </WorkSurface>
   );
 }

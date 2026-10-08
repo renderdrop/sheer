@@ -5,6 +5,7 @@ import { chromeFor, detectPlatform } from '../../lib/platform';
 import { useDocuments } from '../../stores/documents';
 import { useSettings } from '../../stores/settings';
 import { useUi } from '../../stores/ui';
+import { useToolInspector } from '../inspector/toolInspector';
 
 /** The structure of the shell as the stores and the window say it now (see `shellStructure`, src/lib/layout.ts). */
 export function readShellStructure(): ShellStructure {
@@ -20,6 +21,8 @@ export function readShellStructure(): ShellStructure {
     panelCollapsed: ui.leftPanelCollapsed || ui.activeTool === 'pages',
     // Windows draws its own menu row; macOS has the native bar (DESIGN v2 3.2).
     menuRow: chromeFor(useSettings.getState().platform ?? detectPlatform()).caption,
+    // The inspector column (300) is there while a tool inspector or the history list is open (DESIGN 3.18 E1, E5).
+    inspectorOpen: useToolInspector.getState().open !== null,
   });
 }
 
@@ -28,16 +31,20 @@ function subscribe(notify: () => void): () => void {
   const stopUi = useUi.subscribe(notify);
   const stopDocuments = useDocuments.subscribe(notify);
   const stopSettings = useSettings.subscribe(notify);
+  const stopInspector = useToolInspector.subscribe(notify);
   return () => {
     window.removeEventListener('resize', notify);
     stopUi();
     stopDocuments();
     stopSettings();
+    stopInspector();
   };
 }
 
 function sameStructure(a: ShellStructure, b: ShellStructure): boolean {
-  return a.mode === b.mode && a.leftCollapsed === b.leftCollapsed && a.menuRow === b.menuRow;
+  return (
+    a.mode === b.mode && a.leftCollapsed === b.leftCollapsed && a.menuRow === b.menuRow && a.inspector === b.inspector
+  );
 }
 
 /**

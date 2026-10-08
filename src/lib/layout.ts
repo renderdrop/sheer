@@ -3,9 +3,9 @@
  * (window width, the user's panel choices, whether the editor is showing, whether the platform has a menu row) and gets back the
  * track lists for `grid-template-columns` and `grid-template-rows`.
  *
- * Rows of the editor: `menu 32 (Windows only) | top bar 56 | mode row 40 | tool row 48 | body`. macOS has the native menu bar, so
- * its list has no menu track. Columns of the body: `page sidebar 200-320 | splitter 8 | canvas minmax(360, 1fr)`. There is no
- * right column and no rail: the properties are the mini bar, an overlay of the canvas column.
+ * Rows of the editor (DESIGN 3.18 E1): `menu 28 (Windows only) | tab strip 42 | gutter 12 | mode card 104 | gutter 12 | body | status bar 30`.
+ * macOS has the native menu bar, so its list has no menu track. Columns of the body: `left panel 220 (200-480) | splitter 8 |
+ * canvas minmax(360, 1fr) | inspector 300 (0 when closed)`. The properties of a selection are the mini bar, an overlay of the canvas.
  * - Collapsed page sidebar: its track goes (size 0, still in the list, so the list has the same tracks in the same places
  *   whether the panel is there or not: the browser can animate the change and no slot moves to another column). The
  *   splitter stays as the leading handle. The sidebar collapses by itself below 860 px or when the canvas would get too narrow.
@@ -16,10 +16,10 @@ import { LAYOUT, PANEL } from '../components/tokens';
 /** Narrowest the page sidebar is while it shows the Comments tab: a card needs room for its type, author and text (FEEDBACK F15 A5, ADR-106). */
 export const COMMENTS_PANEL_MIN = 280;
 
-export type SlotName = 'left' | 'splitter' | 'canvas';
+export type SlotName = 'left' | 'splitter' | 'canvas' | 'inspector';
 
 /** The rows of the editor, top to bottom. `menu` exists on Windows only. */
-export type RowName = 'menu' | 'topbar' | 'mode' | 'tool' | 'body';
+export type RowName = 'menu' | 'tabs' | 'gutter-top' | 'mode' | 'gutter-mode' | 'body' | 'status';
 
 export interface LayoutInput {
   /** The editor shows (a document is open and the view is not Home). */
@@ -34,6 +34,8 @@ export interface LayoutInput {
   menuRow?: boolean;
   /** The sidebar tab that shows; the Comments tab is at least `COMMENTS_PANEL_MIN` wide. */
   leftTab?: string;
+  /** The inspector column is open (a tool inspector shows): it takes `--inspector-width`, else nothing. Default: no. */
+  inspectorOpen?: boolean;
 }
 
 export interface Track {
@@ -59,6 +61,8 @@ export interface ShellStructure {
   leftCollapsed: boolean;
   /** The editor has the menu row above the top bar (Windows). */
   menuRow: boolean;
+  /** The inspector column (300) is open. */
+  inspector: boolean;
 }
 
 /** The grid of a structure: the tracks for a page sidebar of the given width, and where each slot sits. */
@@ -89,6 +93,7 @@ const EMPTY_STRUCTURE: ShellStructure = {
   mode: 'empty',
   leftCollapsed: true,
   menuRow: false,
+  inspector: false,
 };
 
 /** The width the sidebar takes for `tab`: the chosen width, widened for the Comments tab. */
@@ -112,12 +117,14 @@ export function shellStructure(input: LayoutInput): ShellStructure {
   if (!input.hasDocument) return EMPTY_STRUCTURE;
   const panelWidth = panelWidthFor(input.panelWidth, input.leftTab);
   const width = widthOf(input);
-  const canvasWithLeft = width - panelWidth - LAYOUT.splitter;
+  const inspector = input.inspectorOpen === true;
+  const canvasWithLeft = width - panelWidth - LAYOUT.splitter - (inspector ? LAYOUT.inspector : 0);
   const collapsedByLayout = width < LAYOUT.leftCollapseBelow || canvasWithLeft < LAYOUT.canvasMin;
   return {
     mode: 'document',
     leftCollapsed: input.panelCollapsed || collapsedByLayout,
     menuRow: input.menuRow === true,
+    inspector,
   };
 }
 
@@ -126,10 +133,12 @@ function rowTracksOf(structure: ShellStructure): RowTrack[] {
   if (structure.mode === 'empty') return [{ row: 'body', size: 'minmax(0, 1fr)' }];
   return [
     ...(structure.menuRow ? [{ row: 'menu', size: 'var(--menubar-height)' } as const] : []),
-    { row: 'topbar', size: 'var(--topbar-height)' },
-    { row: 'mode', size: 'var(--mode-row-height)' },
-    { row: 'tool', size: 'var(--tool-row-height)' },
+    { row: 'tabs', size: 'var(--tabstrip-height)' },
+    { row: 'gutter-top', size: 'var(--chrome-gutter)' },
+    { row: 'mode', size: 'var(--mode-card-height)' },
+    { row: 'gutter-mode', size: 'var(--chrome-gutter)' },
     { row: 'body', size: 'minmax(0, 1fr)' },
+    { row: 'status', size: 'var(--statusbar-height)' },
   ];
 }
 
@@ -144,6 +153,7 @@ export function shellTracks(structure: ShellStructure, panelWidth: number, leftT
           { slot: 'left', size: structure.leftCollapsed ? NO_ROOM : `${width}px` },
           { slot: 'splitter', size: 'var(--splitter-width)' },
           { slot: 'canvas', size: 'minmax(var(--canvas-min), 1fr)' },
+          { slot: 'inspector', size: structure.inspector ? 'var(--inspector-width)' : NO_ROOM },
         ];
   const column: Partial<Record<SlotName, number>> = {};
   tracks.forEach((track, index) => {
@@ -172,12 +182,14 @@ export function computeShellLayout(input: LayoutInput): ShellLayout {
   const tracks = shellTracks(structure, input.panelWidth, input.leftTab);
   if (structure.mode === 'empty') return { ...structure, ...tracks, canvasWidth: Math.max(0, width) };
   const left = structure.leftCollapsed ? 0 : tracks.panelWidth;
-  return { ...structure, ...tracks, canvasWidth: width - left - LAYOUT.splitter };
+  const inspector = structure.inspector ? LAYOUT.inspector : 0;
+  return { ...structure, ...tracks, canvasWidth: width - left - LAYOUT.splitter - inspector };
 }
 
 /** The height of the body (the canvas column) in a window of `windowHeight`: what is left under the header rows. */
 export function bodyHeight(structure: ShellStructure, windowHeight: number): number {
   if (structure.mode === 'empty') return windowHeight;
-  const header = LAYOUT.topbar + LAYOUT.modeRow + LAYOUT.toolRow + (structure.menuRow ? LAYOUT.menubar : 0);
+  const header =
+    LAYOUT.tabstrip + 2 * LAYOUT.gutter + LAYOUT.modeCard + LAYOUT.statusbar + (structure.menuRow ? LAYOUT.menubar : 0);
   return windowHeight - header;
 }

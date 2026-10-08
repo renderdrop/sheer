@@ -18,7 +18,7 @@ interface CaptionButtonProps {
 }
 
 /**
- * One of the three caption buttons: 46 wide and as high as the row that holds them (32, `--menubar-height`), glyph 16. Not a tab stop (a native caption has none; the
+ * One of the three caption buttons: 46 wide and as high as the row that holds them (28, `--menubar-height`), glyph 16. Not a tab stop (a native caption has none; the
  * keyboard has Alt+F4 and the system's window keys). The click never rejects: outside Tauri there is no window and nothing happens.
  */
 function CaptionButton({ label, icon, onClick, danger = false }: CaptionButtonProps) {
@@ -48,7 +48,7 @@ export interface CaptionBarProps {
 
 /**
  * The Windows caption controls (DESIGN v2 3.2): minimize, maximize or restore, and close, flush right in the menu row of the editor and in the
- * 56 strip of Home (in a 32 high box). The window has no native decorations (`decorations: false`); the strip around them is the drag region
+ * top strip of Home (in a 28 high box). The window has no native decorations (`decorations: false`); the strip around them is the drag region
  * (drag, and a double click maximizes, handled by Tauri's `data-tauri-drag-region` script, which needs `core:window:allow-start-dragging`
  * and `-internal-toggle-maximize`). The menu row (`MenuRowSlot`) holds them in the editor.
  */

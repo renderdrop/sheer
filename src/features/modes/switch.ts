@@ -1,7 +1,12 @@
 import { useUi, type Mode } from '../../stores/ui';
+import { useToolInspector } from '../inspector/toolInspector';
 
-/** Switches the mode (DESIGN v2 3.2): the tool becomes Auswahl, in Seiten the page grid. The same mode again does nothing. */
+/**
+ * Switches the mode (DESIGN v2 3.2): the tool becomes Auswahl, in Seiten the page grid. The same mode again does nothing. A switch
+ * closes the tool inspector (DESIGN 3.18 E5).
+ */
 export function switchMode(mode: Mode): void {
+  if (useUi.getState().mode !== mode) useToolInspector.getState().closeToolInspector();
   useUi.getState().setMode(mode);
 }
 

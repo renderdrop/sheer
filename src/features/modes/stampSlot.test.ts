@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 
 import { translators } from '../../i18n';
 import { useUi } from '../../stores/ui';
+import { useToolInspector } from '../inspector/toolInspector';
 import { useStamp } from '../annotations/stamps/store';
 import { slotsFor } from './useSlots';
 import { useLastVariant } from './lastVariant';
@@ -29,62 +30,54 @@ const inputs = (over: Partial<Inputs> = {}, lang: 'en' | 'de' = 'en'): Inputs =>
   ...over,
 });
 
-const noteSlot = (over: Partial<Inputs> = {}, lang: 'en' | 'de' = 'en') => {
-  const slot = slotsFor('comment', inputs(over, lang)).find((s) => s.id === 'note');
-  if (slot === undefined) throw new Error('no note slot');
-  return slot;
+const slot = (mode: 'comment' | 'edit', id: string, over: Partial<Inputs> = {}, lang: 'en' | 'de' = 'en') => {
+  const found = slotsFor(mode, inputs(over, lang)).find((s) => s.id === id);
+  if (found === undefined) throw new Error(`no ${id} slot`);
+  return found;
 };
 
 beforeEach(() => {
   useUi.setState({ activeTool: 'select', toolLocked: false });
   useStamp.setState({ pickerOpen: false, changing: null, keyboard: false });
   useLastVariant.setState({ last: {} });
+  useToolInspector.setState({ open: null });
 });
 
-describe('the Notiz / Stempel split (DESIGN 3.14 ST1)', () => {
-  it('keeps Kommentieren at eight slots, Notiz in the fifth place', () => {
-    const slots = slotsFor('comment', inputs());
-    expect(slots).toHaveLength(8);
-    expect(slots[4]?.id).toBe('note');
+describe('Notiz and Stempel (DESIGN 3.18 E4)', () => {
+  it('Kommentieren has eight slots; Notiz is a plain colour tool without variants', () => {
+    expect(slotsFor('comment', inputs())).toHaveLength(8);
+    const note = slot('comment', 'note');
+    expect(note.label).toBe('Note');
+    expect(note.variants).toBeUndefined();
+    expect(note.colour?.kinds).toEqual(['note']);
   });
 
-  it('shows Notiz first and offers Notiz and Stempel in the menu', () => {
-    const slot = noteSlot();
-    expect(slot.label).toBe('Note');
-    expect(slot.variants?.map((v) => v.label)).toEqual(['Note', 'Stamp']);
-    expect(slot.colour?.kinds).toEqual(['note']);
-    expect(slot.colour?.label).toBe('Note colour');
+  it('Stempel is its own Bearbeiten slot, in German too, and a group of its own with Zuschneiden and Kopf-/Fußzeile', () => {
+    const slots = slotsFor('edit', inputs());
+    expect(slots).toHaveLength(9);
+    expect(slots.map((s) => s.id).slice(3, 6)).toEqual(['crop', 'headerFooter', 'stamp']);
+    expect(slots[3]?.separatorBefore).toBe(true);
+    expect(slots[6]?.separatorBefore).toBe(true);
+    expect(slot('edit', 'stamp').label).toBe('Stamp');
+    expect(slot('edit', 'stamp', {}, 'de').label).toBe('Stempel');
   });
 
-  it('shows the label of the variant used last, in German too', () => {
-    expect(noteSlot({ last: { note: 'stamp' } }).label).toBe('Stamp');
-    expect(noteSlot({ last: { note: 'stamp' } }, 'de').label).toBe('Stempel');
-    expect(noteSlot({ activeTool: 'stamp' }).label).toBe('Stamp');
-  });
-
-  it('choosing Stempel arms the tool, opens the picker and is remembered', () => {
-    const slot = noteSlot();
-    slot.variants?.find((v) => v.id === 'stamp')?.run();
+  it('choosing Stempel arms the tool and opens the inspector', () => {
+    slot('edit', 'stamp').run();
     expect(useUi.getState().activeTool).toBe('stamp');
-    expect(useStamp.getState().pickerOpen).toBe(true);
-    expect(useLastVariant.getState().last.note).toBe('stamp');
+    expect(useToolInspector.getState().open).toBe('stamp');
   });
 
-  it('the main part repeats the last variant', () => {
-    noteSlot({ last: { note: 'stamp' } }).run();
-    expect(useUi.getState().activeTool).toBe('stamp');
-    expect(useStamp.getState().pickerOpen).toBe(true);
+  it('Stempel is on while the tool is active; a read-only document disables it with the usual reason', () => {
+    expect(slot('edit', 'stamp', { activeTool: 'stamp' }).on).toBe(true);
+    expect(slot('edit', 'stamp').disabledReason).toBeUndefined();
+    expect(slot('edit', 'stamp', { readOnly: true }).disabledReason).toBe(translators.en('tool.readOnly'));
   });
 
-  it('is on for either tool and hangs the picker on the main part while it is open', () => {
-    expect(noteSlot({ activeTool: 'note' }).on).toBe(true);
-    expect(noteSlot({ activeTool: 'stamp', stampPicker: true }).picker?.open).toBe(true);
-    expect(noteSlot({ activeTool: 'stamp', stampPicker: false }).picker?.open).toBe(false);
-    expect(noteSlot({ activeTool: 'select', stampPicker: true }).picker?.open).toBe(false);
-  });
-
-  it('a read-only document disables only the Stempel variant, with the usual reason', () => {
-    expect(noteSlot({ readOnly: true }).disabledReason).toBeUndefined();
-    expect(noteSlot({ readOnly: true, last: { note: 'stamp' } }).disabledReason).toBe(translators.en('tool.readOnly'));
+  it('Zuschneiden and Kopf-/Fußzeile open their inspector pages', () => {
+    slot('edit', 'crop').run();
+    expect(useToolInspector.getState().open).toBe('crop');
+    slot('edit', 'headerFooter').run();
+    expect(useToolInspector.getState().open).toBe('headerFooter');
   });
 });

@@ -11,19 +11,23 @@ import { ColourRow } from './ColourRow';
 import { RecogniseSwitch } from './RecogniseSwitch';
 import type { SlotDef, VariantDef } from './model';
 
-/** The main part of an item (DESIGN v2 3.2): 36 high, radius md, icon 18 + 6 + label; the active tool is Solar with Ink 600 (2.3). */
+/**
+ * The main part of an item (DESIGN 3.18 E4): 56 high, radius `--tool-item-radius`, padding 8 10 6, icon 18 over the label (13/18),
+ * centred, one line; the active tool is Solar with Ink 600 and the edge.
+ */
 const MAIN =
-  'flex h-control-md shrink-0 cursor-pointer items-center gap-2 whitespace-nowrap rounded-md t-label font-medium text-text ' +
+  'flex h-tool-item shrink-0 cursor-pointer flex-col items-center justify-center gap-[calc(var(--space-1)+var(--spacing-half))] ' +
+  'whitespace-nowrap rounded-(--tool-item-radius) pt-2 pb-[calc(var(--space-1)+var(--spacing-half))] t-label font-medium text-text ' +
   'transition-colors duration-fast aria-disabled:cursor-not-allowed aria-disabled:opacity-(--opacity-disabled) ' +
   'not-aria-disabled:hover:bg-panel not-aria-disabled:not-data-[on=true]:active:bg-pressed not-aria-disabled:active:scale-(--scale-press) ' +
   'data-[on=true]:font-semibold data-[on=true]:text-ink not-aria-disabled:data-[on=true]:hover:bg-accent-hover not-aria-disabled:data-[on=true]:active:bg-accent-hover';
 
 /** The main part of a split item: rounded only on its outer side, so its hover fill is exactly its own box (F19.2); the chevron mirrors it; and never scaled, so nothing spills past the contour. */
-const SPLIT_PART = 'rounded-s-md! rounded-e-none! not-aria-disabled:active:scale-100!';
+const SPLIT_PART = 'rounded-s-(--tool-item-radius)! rounded-e-none! not-aria-disabled:active:scale-100!';
 
-/** The chevron part of a split item: 20 wide, its own tab stop. */
+/** The chevron part of a split item: 16 wide, full height, its own tab stop. */
 const CHEVRON =
-  'flex h-control-md w-icon-20 shrink-0 cursor-pointer items-center justify-center rounded-e-md border-s border-border-subtle text-text transition-colors duration-fast ' +
+  'flex w-icon-16 shrink-0 cursor-pointer items-center justify-center rounded-e-(--tool-item-radius) border-s border-border-subtle text-text transition-colors duration-fast ' +
   'aria-disabled:cursor-not-allowed aria-disabled:opacity-(--opacity-disabled) ' +
   'not-aria-disabled:hover:bg-panel not-aria-disabled:aria-expanded:bg-panel not-aria-disabled:active:bg-pressed ' +
   'group-data-[on=true]:text-ink group-data-[on=true]:not-aria-disabled:hover:bg-accent-hover group-data-[on=true]:not-aria-disabled:aria-expanded:bg-accent-hover ' +
@@ -32,13 +36,16 @@ const CHEVRON =
 /** The one active-tool rule of all five modes (DESIGN Q2): Solar fill, Ink label and the hairline; a split item wears it as a whole. */
 const ACTIVE = 'data-[on=true]:bg-accent data-[on=true]:shadow-(--tool-active-edge)';
 
+/** Icon only: 44 x 44 (space 10 + 4), vertically centred in the 72 high area. */
+const ICON_ONLY = 'size-[calc(var(--space-10)+var(--space-1))] p-0';
+
 const VARIANT =
   'flex h-(--space-8) w-full cursor-pointer items-center gap-2 rounded-sm px-2 text-start text-md text-text ' +
   'hover:bg-subtle aria-disabled:cursor-not-allowed aria-disabled:opacity-(--opacity-disabled) aria-checked:font-semibold';
 
 export interface ToolItemProps {
   slot: SlotDef;
-  /** Step 2 of the overflow: icon only, 36 x 36, the label in the tooltip. */
+  /** Step 2 of the overflow, or a window under 1100: icon only, 44 x 44, the label in the tooltip. */
   iconOnly: boolean;
   /** The roving key that is the row's one tab stop. */
   stop: string;
@@ -119,7 +126,11 @@ export function ToolItem({ slot, iconOnly, stop }: ToolItemProps) {
         slot.run();
         if (pop !== undefined && opens) pop.onClick(event);
       }}
-      className={cx(MAIN, iconOnly ? 'w-control-md justify-center' : 'px-3', split ? SPLIT_PART : ACTIVE)}
+      className={cx(
+        MAIN,
+        iconOnly ? ICON_ONLY : 'px-[calc(var(--space-2)+var(--spacing-half))]',
+        split ? SPLIT_PART : ACTIVE,
+      )}
     >
       <Icon icon={slot.icon} size={18} />
       {!iconOnly && <span data-label="">{slot.label}</span>}
@@ -154,23 +165,7 @@ export function ToolItem({ slot, iconOnly, stop }: ToolItemProps) {
       </Popover>
     );
   }
-  // A slot with a picker (Stempel) hangs it on the main part: the slot opens it (it is controlled), a click never toggles it.
-  const { picker } = slot;
-  const tipped =
-    picker === undefined ? (
-      tip(mainButton())
-    ) : (
-      <Popover
-        label={picker.label}
-        modal
-        disabled={off}
-        open={picker.open}
-        onOpenChange={picker.setOpen}
-        trigger={(props) => tip(mainButton({ ...props, onClick: () => undefined }))}
-      >
-        {({ close }) => <picker.Body close={close} />}
-      </Popover>
-    );
+  const tipped = tip(mainButton());
   if (!split) return tipped;
 
   const optionsLabel = t('modes.options', { tool: slot.label });
@@ -195,7 +190,7 @@ export function ToolItem({ slot, iconOnly, stop }: ToolItemProps) {
       }}
       className={CHEVRON}
     >
-      <Icon icon={ChevronDown} />
+      <Icon icon={ChevronDown} className="size-3!" />
     </button>
   );
 
@@ -203,7 +198,7 @@ export function ToolItem({ slot, iconOnly, stop }: ToolItemProps) {
     <div
       data-split={slot.id}
       data-on={slot.on}
-      className={cx('group flex shrink-0 rounded-md overflow-hidden', ACTIVE)}
+      className={cx('group flex shrink-0 overflow-hidden rounded-(--tool-item-radius)', ACTIVE)}
     >
       {tipped}
       {slot.colour === undefined ? (

@@ -8,10 +8,10 @@ import { resetDocuments } from '../../stores/documents.testutil';
 import { useTools } from '../../stores/tools';
 import { MODES, useUi } from '../../stores/ui';
 import { setup } from '../../test/render';
-import { ModeRow, ToolRow, switchMode } from '.';
+import { ToolRow } from '.';
 
 /**
- * Spells 1 and 21: the shared pill glides by FLIP. jsdom has no layout and no Web Animations, so both are stood in for:
+ * Spell 1: the shared pill glides by FLIP (the mode tabs are file-tab registers since DESIGN 3.18 and no longer glide). jsdom has no layout and no Web Animations, so both are stood in for:
  * rects follow the order of the items, and `animate` records what it was asked to do.
  */
 interface Recorded {
@@ -77,49 +77,8 @@ afterEach(() => {
   useAnnotations.setState(useAnnotations.getInitialState(), true);
 });
 
-const modePill = () => document.querySelector<HTMLElement>('[data-glide-pill="mode"]');
 const toolPill = () => document.querySelector<HTMLElement>('[data-glide-pill="tool"]');
 const translateOf = (el: HTMLElement | null) => el?.style.translate ?? '';
-
-describe('mode segment (MOTION spell 21)', () => {
-  it('shows the pill at the selected tab at once on mount, without a glide', () => {
-    setup(<ModeRow />);
-    expect(modePill()?.style.opacity).toBe('1');
-    expect(recorded).toHaveLength(0);
-  });
-
-  it('glides to the new tab by transform only, over --motion-fast', () => {
-    setup(<ModeRow />);
-    act(() => switchMode('comment'));
-    expect(translateOf(modePill())).toBe('100px 0px');
-    expect(recorded).toHaveLength(1);
-    expect(recorded[0]?.duration).toBe(120);
-    expect(recorded[0]?.keyframes).toEqual([
-      { transform: 'translate(-100px, 0px) scale(1, 1)' },
-      { transform: 'none' },
-    ]);
-    expect(Object.keys(recorded[0]?.keyframes[0] ?? {})).toEqual(['transform']);
-  });
-
-  it('retargets in mid-glide: the running animation is cancelled and a new one starts from the drawn box', () => {
-    setup(<ModeRow />);
-    act(() => switchMode('comment'));
-    const first = recorded[0];
-    act(() => switchMode('edit'));
-    expect(first?.cancel).toHaveBeenCalled();
-    expect(recorded).toHaveLength(2);
-    expect(translateOf(modePill())).toBe('400px 0px');
-    expect(live).toHaveLength(1);
-  });
-
-  it('reduced motion: the pill is at the new tab at once, nothing animates', () => {
-    reduced = true;
-    setup(<ModeRow />);
-    act(() => switchMode('comment'));
-    expect(translateOf(modePill())).toBe('100px 0px');
-    expect(recorded).toHaveLength(0);
-  });
-});
 
 describe('tool pill (MOTION spell 1)', () => {
   const openTools = () => {

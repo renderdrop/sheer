@@ -171,7 +171,7 @@ export async function restartTour(): Promise<void> {
   closeSettings();
   // The popover closes with focus on the Datei menu title (Windows) or the top bar's first control, where the settings live (DESIGN 3.14).
   document
-    .querySelector<HTMLElement>('[data-menubar-item], [data-slot="topbar"] button')
+    .querySelector<HTMLElement>('[data-menubar-item], [data-slot="tabstrip"] button')
     ?.focus({ preventScroll: true });
   useTour.getState().end('restart');
   // Never closes anything: the welcome document opens in a new tab beside the open ones, so unsaved work stays (F11-7). A welcome

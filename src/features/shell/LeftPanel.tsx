@@ -55,12 +55,12 @@ export const LeftPanel = memo(function LeftPanel({ id }: LeftPanelProps) {
         data-region="left"
         id={id}
         aria-label={t('leftPanel.label')}
-        className="bg-app flex min-h-0 flex-col overflow-hidden"
+        className="bg-app flex min-h-0 flex-col overflow-hidden border-e border-border-subtle"
       >
-        <div className="flex h-12 shrink-0 items-center gap-1 px-2">
-          <TabList label={t('leftPanel.views')} className="h-control-md w-auto gap-1">
+        <div className="flex h-sidebar-tab-row shrink-0 items-center gap-1 px-2">
+          <TabList label={t('leftPanel.views')} className="h-8 w-auto gap-1">
             {LEFT_PANEL_TABS.map((value) => (
-              <div key={value} className="flex h-control-md w-control-md">
+              <div key={value} className="flex size-8">
                 <Tab value={value} label={t(TABS[value].label)} icon={TABS[value].icon} />
               </div>
             ))}

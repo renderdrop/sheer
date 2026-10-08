@@ -27,8 +27,8 @@ function openCardMenu(from: HTMLElement): void {
 }
 
 /**
- * A document card (DESIGN v2 3.1): White, subtle border, radius md, 76 high; thumbnail tile, name and relative time. Hover or focus
- * inside turns it Sand and shows the star and the menu; a marked card shows its filled star always. The card is one roving item:
+ * A document card (DESIGN 3.18 H4): White, subtle border, radius md; thumbnail box, name and the ⋯ menu. Hover or focus
+ * inside turns it Sand and shows the star; a marked card is tinted `--card-starred` with its filled star always. The card is one roving item:
  * Enter opens, Delete takes it off the list, the Menu key or Shift+F10 opens its menu.
  */
 export function RecentCard({
@@ -82,13 +82,18 @@ export function RecentCard({
     }
   };
 
-  // The actions show on hover and focus inside, while the menu is open, and always for the star of a marked card.
+  // The star shows on hover and focus inside (and while the menu is open); a marked card shows its filled star always.
   const reveal = 'group-hover/card:opacity-100 group-focus-within/card:opacity-100 has-aria-expanded:opacity-100';
 
   return (
     <li
       data-recent-card=""
-      className="group/card relative h-(--home-card-height) rounded-md border border-border-subtle bg-surface transition-colors [transition-duration:var(--motion-fast)] hover:bg-subtle focus-within:bg-subtle"
+      data-starred={entry.starred || undefined}
+      className={cx(
+        'home-card group/card relative rounded-md border border-border-subtle transition-colors [transition-duration:var(--motion-fast)] focus-within:bg-subtle hover:bg-subtle',
+        entry.starred ? 'bg-(--card-starred)' : 'bg-surface',
+        entry.missing && 'opacity-60',
+      )}
     >
       <button
         type="button"
@@ -104,47 +109,46 @@ export function RecentCard({
         }}
         onKeyDown={onKeyDown}
         className={cx(
-          'flex size-full min-w-0 cursor-pointer items-center gap-3 rounded-md p-3 text-start',
-          'group-hover/card:pe-(--home-actions-clear) group-focus-within/card:pe-(--home-actions-clear)',
+          'home-card-body flex size-full min-w-0 cursor-pointer flex-col rounded-md text-start',
           entry.missing && 'cursor-not-allowed',
         )}
       >
         <RecentThumb id={entry.id} missing={entry.missing} />
-        <span className="flex min-w-0 flex-1 flex-col">
-          <span className="t-label truncate">{name}</span>
-          <span className="t-caption truncate">{age}</span>
-        </span>
+        <span className="home-card-name t-nav min-w-0 truncate">{name}</span>
       </button>
-      <div className="absolute inset-y-1 end-2 flex flex-col items-center justify-between">
-        <span className={cx('transition-opacity', entry.starred ? 'opacity-100' : `opacity-0 ${reveal}`)}>
-          <IconButton
-            size="sm"
-            label={entry.starred ? t('home.menu.unstar') : t('home.menu.star')}
-            pressed={entry.starred}
-            tabIndex={-1}
-            onClick={() => onToggleStar(entry)}
-          >
-            <Icon icon={Star} size={16} className={cx('text-text', entry.starred && 'fill-hl-solar')} />
-          </IconButton>
-        </span>
-        <span className={cx('opacity-0 transition-opacity', reveal)}>
-          <Menu
-            label={t('home.menu.label', { name })}
-            align="end"
-            entries={entries}
-            trigger={(props) => (
-              <IconButton
-                {...props}
-                data-card-menu=""
-                size="sm"
-                icon={Ellipsis}
-                label={t('home.menu.label', { name })}
-                tabIndex={-1}
-              />
-            )}
-          />
-        </span>
-      </div>
+      <span
+        className={cx(
+          'home-card-star absolute transition-opacity',
+          entry.starred ? 'opacity-100' : `opacity-0 ${reveal}`,
+        )}
+      >
+        <IconButton
+          size="sm"
+          label={entry.starred ? t('home.menu.unstar') : t('home.menu.star')}
+          pressed={entry.starred}
+          tabIndex={-1}
+          onClick={() => onToggleStar(entry)}
+        >
+          <Icon icon={Star} size={20} className={cx('text-ink', entry.starred && 'fill-(--star-fill)')} />
+        </IconButton>
+      </span>
+      <span className="home-card-menu absolute">
+        <Menu
+          label={t('home.menu.label', { name })}
+          align="end"
+          entries={entries}
+          trigger={(props) => (
+            <IconButton
+              {...props}
+              data-card-menu=""
+              size="sm"
+              icon={Ellipsis}
+              label={t('home.menu.label', { name })}
+              tabIndex={-1}
+            />
+          )}
+        />
+      </span>
     </li>
   );
 }

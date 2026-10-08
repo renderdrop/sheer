@@ -655,7 +655,7 @@ mod tests {
     fn settings_serialize_with_lowercase_enum_values() {
         assert_eq!(
             serde_json::to_value(Settings::default()).unwrap(),
-            json!({ "language": "system", "leftPanelWidth": 200, "welcomeTour": "pending", "authorName": "", "authorPrompt": "pending", "updates": "off", "skippedVersion": null, "tipsSeen": [], "pageSidebarCollapsed": false, "tipsEnabled": true, "tags": [] })
+            json!({ "language": "system", "leftPanelWidth": 220, "welcomeTour": "pending", "authorName": "", "authorPrompt": "pending", "updates": "off", "skippedVersion": null, "tipsSeen": [], "pageSidebarCollapsed": false, "tipsEnabled": true, "tags": [] })
         );
         let settings = Settings {
             language: Language::De,
@@ -1296,14 +1296,14 @@ mod tests {
             (r#"{"leftPanelWidth":320}"#, 320),
             (r#"{"leftPanelWidth":480}"#, 480),
             // Out of range, wrong type or missing: the default, never a clamped guess.
-            (r#"{"leftPanelWidth":199}"#, 200),
-            (r#"{"leftPanelWidth":481}"#, 200),
-            (r#"{"leftPanelWidth":-1}"#, 200),
-            (r#"{"leftPanelWidth":300.5}"#, 200),
-            (r#"{"leftPanelWidth":"300"}"#, 200),
-            (r#"{"leftPanelWidth":null}"#, 200),
-            (r#"{"left_panel_width":300}"#, 200),
-            (r#"{}"#, 200),
+            (r#"{"leftPanelWidth":199}"#, 220),
+            (r#"{"leftPanelWidth":481}"#, 220),
+            (r#"{"leftPanelWidth":-1}"#, 220),
+            (r#"{"leftPanelWidth":300.5}"#, 220),
+            (r#"{"leftPanelWidth":"300"}"#, 220),
+            (r#"{"leftPanelWidth":null}"#, 220),
+            (r#"{"left_panel_width":300}"#, 220),
+            (r#"{}"#, 220),
         ] {
             let dir = TempDir::new();
             fs::write(dir.path().join(FILE_NAME), contents).unwrap();
@@ -1557,7 +1557,7 @@ mod tests {
         let stored: Value = serde_json::from_slice(&bytes).unwrap();
         assert_eq!(
             stored,
-            json!({ "language": "system", "leftPanelWidth": 200, "welcomeTour": "pending", "authorName": "", "authorPrompt": "pending", "updates": "on", "skippedVersion": null, "tipsSeen": [], "pageSidebarCollapsed": false, "tipsEnabled": true, "tags": [] })
+            json!({ "language": "system", "leftPanelWidth": 220, "welcomeTour": "pending", "authorName": "", "authorPrompt": "pending", "updates": "on", "skippedVersion": null, "tipsSeen": [], "pageSidebarCollapsed": false, "tipsEnabled": true, "tags": [] })
         );
     }
 

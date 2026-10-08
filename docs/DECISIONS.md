@@ -3060,3 +3060,8 @@ Redact is on opens and closes the options (slot flag `optionsWhenOn`, `src/featu
 - History panel (F19.23) uses the existing undo stack: jumping to a state = repeated undo/redo; deleting an annotation from the
   list is a new undoable command; text edits stay linear (no jump past them out of order).
 - Result: pre-release `v2.0.0-rc.3`, report in `docs/reports/`.
+
+**ADR-143 addendum (owner items 8–11 → F19.24–F19.27, same session).** Added mid-session; they run in the parallel wave
+with F19.20–F19.23. F19.24 (c) refers to an image that was not attached; implemented from the text. F19.26 reverses the F19.13
+behaviour for the Draw tool: shape recognition (straightening) moves to "Shapes" only — a freehand stroke in Draw is never
+replaced by a geometric shape; the freehand arrow and freehand shape are new ink variants (smoothed path + computed arrowhead).

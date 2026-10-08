@@ -1,55 +1,55 @@
 // @vitest-environment jsdom
-import { act, fireEvent, screen, within } from '@testing-library/react';
+import { within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { useDocuments } from '../../stores/documents';
-import { usePages } from '../../stores/pages';
 import { resetDocuments } from '../../stores/documents.testutil';
 import { useUi } from '../../stores/ui';
 import { useView } from '../../stores/view';
 import { setup } from '../../test/render';
-import { useGoToPage } from './goToState';
+import { useToolInspector } from '../inspector/toolInspector';
 import { TopBar } from './TopBar';
 
-const save = vi.hoisted(() => ({ saveNow: vi.fn(), saveActive: vi.fn() }));
-vi.mock('../save/commands', () => save);
-const goToPage = vi.hoisted(() => vi.fn());
+vi.mock('../save/commands', () => ({ saveNow: vi.fn(), saveActive: vi.fn(), needsSavePrompt: () => false }));
 vi.mock('../viewer/useViewer', () => ({
-  useViewer: Object.assign((select: (state: unknown) => unknown) => select({ goToPage, rendering: false }), {
-    getState: () => ({ goToPage, rendering: false }),
+  useViewer: Object.assign((select: (state: unknown) => unknown) => select({ rendering: false }), {
+    getState: () => ({ rendering: false }),
   }),
 }));
 
-const doc = (id: number, name: string, pageCount = 12) => ({ id, pageCount, displayName: name });
-const bar = () => within(document.querySelector<HTMLElement>('[data-slot="topbar"]') as HTMLElement);
+const bar = () => within(document.querySelector<HTMLElement>('[data-slot="tabstrip"]') as HTMLElement);
 
 function open(...names: string[]): void {
-  const base = useDocuments.getState().order.length;
   names.forEach((name, index) => {
-    useDocuments.getState().add(doc(base + index + 1, name));
-    useView.getState().open(base + index + 1, 12);
+    useDocuments.getState().add({ id: index + 1, pageCount: 12, displayName: name });
+    useView.getState().open(index + 1, 12);
   });
 }
 
 beforeEach(() => {
   resetDocuments();
   useView.setState({ byDoc: {} });
-  usePages.setState({ slotsByDoc: {} });
+  useToolInspector.setState({ open: null });
   useUi.getState().setView('editor');
-  save.saveNow.mockReset().mockResolvedValue(true);
-  goToPage.mockReset();
 });
 
-describe('the top bar', () => {
-  it('shows the file name with the tour anchors, and tabs from two documents on', () => {
+describe('the tab strip row (DESIGN 3.18 E3)', () => {
+  it('shows the document as a tab even with one document, with the tour anchor on the name', () => {
     open('Report.pdf');
     setup(<TopBar trafficLightInset={false} />);
-    expect(bar().getByText('Report.pdf').getAttribute('data-tour-anchor')).toBe('topbar-file-name');
-    expect(bar().queryByRole('tablist')).toBeNull();
-    expect(document.querySelector('[data-tour-anchor="topbar-page-field"]')).not.toBeNull();
-    expect(document.querySelector('[data-toolbar-item="zoom-in"]')).not.toBeNull();
-    act(() => open('Other.pdf'));
     expect(bar().getByRole('tablist', { name: 'Open documents' })).not.toBeNull();
+    expect(bar().getByText('Report.pdf').getAttribute('data-tour-anchor')).toBe('topbar-file-name');
+  });
+
+  it('is 42 high and a drag region; macOS insets it for the traffic lights', () => {
+    open('Report.pdf');
+    const { unmount } = setup(<TopBar trafficLightInset={false} />);
+    const row = document.querySelector('[data-slot="tabstrip"]');
+    expect(row?.className).toContain('h-tabstrip');
+    expect(row?.getAttribute('data-tauri-drag-region')).toBe('deep');
+    unmount();
+    setup(<TopBar trafficLightInset />);
+    expect(document.querySelector('[data-slot="tabstrip"]')?.className).toContain('ps-chrome-inset');
   });
 
   it('the Back chevron shows Home', async () => {
@@ -59,65 +59,27 @@ describe('the top bar', () => {
     expect(useUi.getState().view).toBe('home');
   });
 
-  it('a double click on the name is Save As', () => {
+  it('has Undo, Redo, History and Search on the right, and nothing of the old top row', () => {
     open('Report.pdf');
     setup(<TopBar trafficLightInset={false} />);
-    fireEvent.doubleClick(bar().getByText('Report.pdf'));
-    expect(save.saveActive).toHaveBeenCalledWith(true);
-  });
-
-  it('shows the page label with its position built from one string, "(n / N)", when the file has labels', () => {
-    open('Report.pdf');
-    const slots = Array.from({ length: 12 }, (_, id) => ({
-      id,
-      width: 612,
-      height: 792,
-      rotation: 0 as const,
-      rev: 0,
-      label: id === 0 ? 'i' : String(id),
-      origin: 'file' as const,
-    }));
-    act(() => usePages.setState({ slotsByDoc: { 1: slots } }));
-    setup(<TopBar trafficLightInset={false} />);
-    const field = bar().getByRole('textbox', { name: 'Go to page' }) as HTMLInputElement;
-    expect(field.value).toBe('i');
-    expect(field.parentElement?.textContent).toBe('(1 / 12)');
-  });
-
-  it('the page field goes to the typed page, refuses a wrong one, and the go-to-page action focuses it', async () => {
-    open('Report.pdf');
-    const { user } = setup(<TopBar trafficLightInset={false} />);
-    const field = bar().getByRole('textbox', { name: 'Go to page' }) as HTMLInputElement;
-    expect(field.value).toBe('1');
-    expect(field.parentElement?.textContent).toBe('/ 12');
-    await user.click(field);
-    await user.keyboard('{Control>}a{/Control}13{Enter}');
-    expect(goToPage).not.toHaveBeenCalled();
-    expect(field.getAttribute('aria-invalid')).toBe('true');
-    await user.keyboard('{Control>}a{/Control}5{Enter}');
-    expect(goToPage).toHaveBeenCalledWith(4);
-    field.blur();
-    act(() => useGoToPage.getState().setOpen(true));
-    expect(document.activeElement).toBe(field);
-    expect(useGoToPage.getState().open).toBe(false);
-  });
-
-  it('has Undo, Redo and Search on the right, and no Done, Export, More or caption buttons', () => {
-    open('Report.pdf');
-    setup(<TopBar trafficLightInset={false} />);
-    for (const name of ['Undo', 'Redo'])
+    for (const name of ['Undo', 'Redo', 'History'])
       expect(bar().getByRole('button', { name: new RegExp(name) }), name).not.toBeNull();
     expect(bar().getByRole('button', { name: /Search|Find/ })).not.toBeNull();
-    for (const name of ['Export', 'More', 'Close', 'Minimize', 'Done'])
+    for (const name of ['Export', 'More', 'Close', 'Minimize', 'Done', 'Hide sidebar', 'Show sidebar'])
       expect(bar().queryByRole('button', { name }), name).toBeNull();
+    expect(bar().queryByRole('textbox')).toBeNull();
+    expect(document.querySelector('[data-save-status]')).toBeNull();
   });
 
-  it('the zoom menu holds the scroll modes and the rotation', async () => {
+  it('History toggles the inspector slot and shows pressed while it is open', async () => {
     open('Report.pdf');
     const { user } = setup(<TopBar trafficLightInset={false} />);
-    await user.click(bar().getByRole('button', { name: /Zoom level/ }));
-    const zoom = within(screen.getByRole('menu', { name: 'Zoom' }));
-    expect(zoom.getByText('Scrolling')).not.toBeNull();
-    expect(zoom.getByText('Rotate view')).not.toBeNull();
+    const history = bar().getByRole('button', { name: 'History' });
+    expect(history.getAttribute('aria-pressed')).toBe('false');
+    await user.click(history);
+    expect(useToolInspector.getState().open).toBe('history');
+    expect(bar().getByRole('button', { name: 'History' }).getAttribute('aria-pressed')).toBe('true');
+    await user.click(bar().getByRole('button', { name: 'History' }));
+    expect(useToolInspector.getState().open).toBeNull();
   });
 });

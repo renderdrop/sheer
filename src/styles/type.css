@@ -64,6 +64,37 @@
   text-transform: uppercase;
 }
 
+/* v2.0.0-rc.3 (DESIGN 3.18). */
+.t-hero {
+  font-size: var(--type-hero-size);
+  line-height: var(--type-hero-line);
+  font-weight: var(--type-hero-weight);
+  letter-spacing: var(--type-hero-tracking);
+}
+
+.t-hero-compact {
+  font-size: var(--type-hero-compact-size);
+  line-height: var(--type-hero-compact-line);
+  font-weight: var(--type-hero-compact-weight);
+  letter-spacing: var(--type-hero-compact-tracking);
+}
+
+.t-nav {
+  font-size: var(--type-nav-size);
+  line-height: var(--type-nav-line);
+  font-weight: var(--type-nav-weight);
+  letter-spacing: var(--type-nav-tracking);
+}
+
+.t-section {
+  font-size: var(--type-section-size);
+  line-height: var(--type-section-line);
+  font-weight: var(--type-section-weight);
+  letter-spacing: var(--type-section-tracking);
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+
 /* Numerals that change (counters, zoom, page numbers). */
 .tabular-nums {
   font-variant-numeric: tabular-nums;

@@ -17,7 +17,7 @@ import { useOrganize } from '../organize/store';
 import { useSearch } from '../search/store';
 import { dropDocumentText } from '../textlayer/cache';
 import { OcrBanner } from './OcrBanner';
-import { OcrDialog } from './OcrDialog';
+import { OcrPanel } from './OcrPanel';
 import { countScope, languageState, offerWanted, runCount, selectionFor, wantedLanguage } from './model';
 import { onOcrFinished, onOcrProgress, openOcrDialog, startOcr } from './runtime';
 import { isOcrBusy, useOcr } from './store';
@@ -212,11 +212,11 @@ describe('the banner', () => {
   });
 });
 
-describe('the dialog', () => {
+describe('the inspector form', () => {
   const open = async (preselect = false) => {
-    const view = setup(<OcrDialog />);
+    const view = setup(<OcrPanel />);
     act(() => useOcr.getState().openDialog({ docId: 1, preselectSelected: preselect }));
-    await screen.findByRole('dialog');
+    await screen.findByRole('complementary');
     return view;
   };
 
@@ -225,7 +225,7 @@ describe('the dialog', () => {
     const { user } = await open();
     expect((screen.getByRole('radio', { name: 'Scanned pages (2)' }) as HTMLInputElement).checked).toBe(true);
     expect(screen.queryByRole('radio', { name: /Selected pages/ })).toBeNull();
-    await user.click(screen.getByRole('button', { name: 'Recognize 2 pages' }));
+    await user.click(screen.getByRole('button', { name: 'Recognize' }));
     expect(api.ocrStart).toHaveBeenCalledWith(1, { type: 'pages', pages: [11, 12] }, 'en-US', false);
     expect(useOcr.getState().dialog).toBeNull();
     expect(isOcrBusy(1)).toBe(true);
@@ -252,8 +252,8 @@ describe('the dialog', () => {
     useOrganize.getState().setSelection(1, { selected: [10, 11] });
     useUi.setState({ activeTool: 'pages' });
     act(() => openOcrDialog());
-    setup(<OcrDialog />);
-    await screen.findByRole('dialog');
+    setup(<OcrPanel />);
+    await screen.findByRole('complementary');
     expect((screen.getByRole('radio', { name: 'Selected pages (2)' }) as HTMLInputElement).checked).toBe(true);
   });
 
@@ -264,14 +264,14 @@ describe('the dialog', () => {
     expect(document.querySelector('[data-ocr="nothing"]')?.textContent).toContain(
       'No scanned pages to recognize here.',
     );
-    expect(document.querySelector('[data-ocr="start"]')?.getAttribute('aria-disabled')).toBe('true');
+    expect(document.querySelector('[data-inspector="apply"]')?.getAttribute('aria-disabled')).toBe('true');
   });
 
   it('shows the Redo row only with layers of this session, and Redo adds them', async () => {
     seed(caps(true, true), classes('sheerLayer', 'scan', 'text'));
     const { user } = await open();
     await user.click(screen.getByRole('checkbox'));
-    await user.click(screen.getByRole('button', { name: 'Recognize 2 pages' }));
+    await user.click(screen.getByRole('button', { name: 'Recognize' }));
     expect(api.ocrStart).toHaveBeenCalledWith(1, { type: 'pages', pages: [10, 11] }, 'en-US', true);
   });
 
@@ -287,7 +287,7 @@ describe('the dialog', () => {
     expect(document.querySelector('[data-ocr="language-fallback"]')?.textContent).toContain(
       "English recognition isn't installed on this computer; German is used",
     );
-    expect(document.querySelector('[data-ocr="start"]')?.hasAttribute('aria-disabled')).toBe(false);
+    expect(document.querySelector('[data-inspector="apply"]')?.hasAttribute('aria-disabled')).toBe(false);
   });
 
   it('with no language says so, gives the settings path in words and disables Start', async () => {
@@ -297,7 +297,7 @@ describe('the dialog', () => {
       'No recognition language is installed on this computer.',
     );
     expect(document.querySelector('[data-ocr="settings-hint"]')).toBeNull();
-    expect(document.querySelector('[data-ocr="start"]')?.getAttribute('aria-disabled')).toBe('true');
+    expect(document.querySelector('[data-inspector="apply"]')?.getAttribute('aria-disabled')).toBe('true');
   });
 
   it('on Windows the settings button opens the language settings; if that fails the words stay', async () => {
@@ -324,19 +324,39 @@ describe('the dialog', () => {
     expect(screen.queryByRole('button', { name: 'Open language settings' })).toBeNull();
   });
 
-  it('Cancel closes without starting', async () => {
+  it('Close and Esc close without starting', async () => {
     seed(caps(true, true), classes('scan'));
     const { user } = await open();
-    await user.click(screen.getByRole('button', { name: 'Cancel' }));
-    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    await user.click(screen.getByRole('button', { name: 'Close' }));
+    await waitFor(() => expect(screen.queryByRole('complementary')).toBeNull());
     expect(api.ocrStart).not.toHaveBeenCalled();
+    act(() => useOcr.getState().openDialog({ docId: 1, preselectSelected: false }));
+    await screen.findByRole('complementary');
+    await user.keyboard('{Escape}');
+    expect(useOcr.getState().dialog).toBeNull();
+    expect(api.ocrStart).not.toHaveBeenCalled();
+  });
+
+  it('Enter on a scope starts, Reset brings the scope back, and the first scope takes focus', async () => {
+    seed(caps(true, true), classes('text', 'scan', 'scan'));
+    const { user } = await open();
+    const radios = screen.getAllByRole('radio') as HTMLInputElement[];
+    expect(document.activeElement).toBe(radios[0]);
+    expect(screen.getByRole('button', { name: 'Reset' }).getAttribute('aria-disabled')).toBe('true');
+    await user.keyboard('{ArrowDown}');
+    await user.click(screen.getByRole('button', { name: 'Reset' }));
+    expect((screen.getByRole('radio', { name: 'Scanned pages (2)' }) as HTMLInputElement).checked).toBe(true);
+    screen.getByRole('radio', { name: 'Scanned pages (2)' }).focus();
+    await user.keyboard('{Enter}');
+    expect(api.ocrStart).toHaveBeenCalledTimes(1);
+    expect(useOcr.getState().dialog).toBeNull();
   });
 
   it('a refused start ends the busy state and shows the error toast with Try again', async () => {
     seed(caps(true, true), classes('scan'));
     api.ocrStart.mockRejectedValue(new Error('refused'));
     const { user } = await open();
-    await user.click(screen.getByRole('button', { name: 'Recognize 1 page' }));
+    await user.click(screen.getByRole('button', { name: 'Recognize' }));
     await waitFor(() => expect(useUi.getState().toast?.message).toBe("Text couldn't be recognized."));
     expect(useUi.getState().toast?.tone).toBe('error');
     expect(isOcrBusy(1)).toBe(false);

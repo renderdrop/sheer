@@ -2,6 +2,7 @@
 import { screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { useSettings } from '../../stores/settings';
 import { useSettingsPopover } from '../settings/state';
 import { useDocuments } from '../../stores/documents';
 import { useUi } from '../../stores/ui';
@@ -151,23 +152,48 @@ describe('Home', () => {
   it('Settings opens the settings popover; arrows move between the nav rows', async () => {
     const { user } = setup(<Home platform="windows" />);
     await screen.findByRole('button', { name: /^Alpha\.pdf/ });
-    screen.getByRole('button', { name: 'Home' }).focus();
+    screen.getByRole('button', { name: 'Start' }).focus();
     await user.keyboard('{ArrowDown}');
     expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Recent' }));
     await user.click(screen.getByRole('button', { name: 'Settings' }));
     expect(useSettingsPopover.getState().open).toBe(true);
   });
 
-  it('caps Recent at two rows and expands under Show all', async () => {
+  it('shows one row of five recent cards; Show all leads to the Recent view', async () => {
     api.listRecents.mockResolvedValue(Array.from({ length: 13 }, (_, i) => entry(i + 1, `File ${i + 1}.pdf`)));
     const { user } = setup(<Home platform="macos" />);
     await screen.findByRole('button', { name: /^File 1\.pdf/ });
-    // Without layout (jsdom) four columns are assumed: two rows are eight cards.
-    expect(screen.getAllByRole('button', { name: /^File \d+\.pdf/ })).toHaveLength(8);
+    // Without layout (jsdom) five columns are assumed: one row is five cards.
+    expect(screen.getAllByRole('button', { name: /^File \d+\.pdf/ })).toHaveLength(5);
     await user.click(screen.getByRole('button', { name: 'Show all' }));
+    expect(screen.getByRole('heading', { level: 1, name: 'Recent' })).toBeTruthy();
     expect(screen.getAllByRole('button', { name: /^File \d+\.pdf/ })).toHaveLength(13);
-    await user.click(screen.getByRole('button', { name: 'Show less' }));
-    expect(screen.getAllByRole('button', { name: /^File \d+\.pdf/ })).toHaveLength(8);
+  });
+
+  it('greets by time of day, with the author name when the settings have one', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date(2026, 0, 1, 9, 0));
+    try {
+      useSettings.setState({ authorName: 'Ada' });
+      const { unmount } = setup(<Home platform="windows" />);
+      expect(await screen.findByText('Good morning, Ada.')).toBeTruthy();
+      unmount();
+      useSettings.setState({ authorName: '' });
+      setup(<Home platform="windows" />);
+      expect(await screen.findByText('Good morning.')).toBeTruthy();
+    } finally {
+      vi.useRealTimers();
+      useSettings.setState({ authorName: '' });
+    }
+  });
+
+  it('has no key chip in the search, shows the eight tiles and More tools leads to the tools view', async () => {
+    const { user, container } = setup(<Home platform="windows" />);
+    await screen.findByRole('button', { name: /^Alpha.pdf/ });
+    expect(container.querySelector('[data-home-hero] kbd')).toBeNull();
+    expect(container.querySelectorAll('[data-home-tools] li')).toHaveLength(8);
+    await user.click(screen.getByRole('button', { name: /More tools/ }));
+    expect(screen.getByRole('heading', { level: 1, name: 'Tools' })).toBeTruthy();
   });
 
   it('offers no Show all when the recents fit in two rows', async () => {
@@ -190,7 +216,10 @@ describe('Home', () => {
     });
     const heading = await screen.findByRole('heading', { name: 'Open' });
     const list = within(heading.closest('section') as HTMLElement);
-    expect(list.getAllByRole('button').map((b) => b.getAttribute('aria-label'))).toEqual(['Alpha.pdf', 'Gamma.pdf']);
+    expect(
+      list.getAllByRole('button', { name: /^(Alpha|Gamma).pdf$/ }).map((b) => b.getAttribute('aria-label')),
+    ).toEqual(['Alpha.pdf', 'Gamma.pdf']);
+    expect(list.getAllByRole('button', { name: /^Actions for/ })).toHaveLength(2);
     // Alpha is open: it is not listed again under Recent.
     expect(screen.getAllByRole('button', { name: /^Alpha\.pdf/ })).toHaveLength(1);
     await user.click(list.getByRole('button', { name: 'Alpha.pdf' }));
@@ -213,11 +242,11 @@ describe('Home', () => {
 });
 
 describe('the Recent window', () => {
-  it('takes two rows of the column count and drops open files', () => {
+  it('takes one row of the column count and drops open files', () => {
     const list = Array.from({ length: 10 }, (_, i) => entry(i, `F${i}`));
-    expect(visibleRecents(list, 3, false)).toHaveLength(6);
+    expect(visibleRecents(list, 3, false)).toHaveLength(3);
     expect(visibleRecents(list, 3, true)).toHaveLength(10);
-    expect(visibleRecents(list, 0, false)).toHaveLength(2);
+    expect(visibleRecents(list, 0, false)).toHaveLength(1);
     expect(withoutOpen(list, ['F1', 'F2']).map((e) => e.id)).not.toContain(1);
   });
 });
@@ -233,6 +262,6 @@ describe('Home empty state', () => {
     expect(area?.className).toContain('flex-1');
     expect(area?.className).toContain('p-8');
     expect(container.querySelector('[data-home-nav] svg')?.parentElement?.className).toContain('text-ink');
-    expect(screen.getByRole('button', { name: 'Home' }).className).toContain('text-ink');
+    expect(screen.getByRole('button', { name: 'Start' }).className).toContain('text-ink');
   });
 });

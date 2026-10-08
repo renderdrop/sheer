@@ -22,7 +22,7 @@ export const ANCHORS: Readonly<Record<string, AnchorSpec>> = {
   'tool-highlight': { selector: '[data-toolbar-item="highlight"]', side: 'bottom', align: 'center', mode: 'comment' },
   'tool-note': { selector: '[data-toolbar-item="note"]', side: 'bottom', align: 'center', mode: 'comment' },
   'tool-signature': { selector: '[data-toolbar-item="signature"]', side: 'bottom', align: 'center', mode: 'fill' },
-  'sidebar-toggle': { selector: '[data-sidebar-toggle]', side: 'bottom', align: 'start' },
+  'sidebar-toggle': { selector: '[data-sidebar-toggle]', side: 'right', align: 'center' },
   'thumbnails-tab': { selector: '[role="tab"][data-value="thumbnails"]', side: 'bottom', align: 'start' },
 };
 

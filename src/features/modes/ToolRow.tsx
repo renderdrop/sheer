@@ -1,5 +1,14 @@
 import { Ellipsis } from 'lucide-react';
-import { memo, useEffect, useLayoutEffect, useRef, useState, type FocusEvent, type KeyboardEvent } from 'react';
+import {
+  Fragment,
+  memo,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type FocusEvent,
+  type KeyboardEvent,
+} from 'react';
 
 import { Icon, Menu, Tooltip, type MenuEntry } from '../../components';
 import { cx } from '../../components/cx';
@@ -7,14 +16,14 @@ import { useGlidePill } from '../../components/glide';
 import { isOwnEvent, itemsOf, rovingTarget } from '../../components/roving';
 import { useT } from '../../i18n';
 import { useUi } from '../../stores/ui';
-import { FIT_START, fitOnResize, hiddenIds, MODE_LABEL, tighter, type Fit, type SlotDef } from './model';
+import { COMPACT_BELOW, FIT_START, fitOnResize, hiddenIds, MODE_LABEL, tighter, type Fit, type SlotDef } from './model';
 import { TOOL_ROW_ID } from './ModeRow';
 import { focusCanvas } from './switch';
 import { asEntry, ToolItem } from './ToolItem';
 import { useModeSlots } from './useSlots';
 
 const MORE =
-  'flex h-control-md w-control-md shrink-0 cursor-pointer items-center justify-center rounded-md text-text transition-colors duration-fast ' +
+  'flex size-[calc(var(--space-10)+var(--space-1))] shrink-0 cursor-pointer items-center justify-center rounded-(--tool-item-radius) text-text transition-colors duration-fast ' +
   'not-aria-disabled:hover:bg-panel not-aria-disabled:aria-expanded:bg-panel';
 
 /** What "Mehr" lists for the items that left the row: an item, or a submenu for a split one. */
@@ -35,12 +44,24 @@ function moreEntries(slots: readonly SlotDef[]): MenuEntry[] {
   });
 }
 
+/** A thin group separator (DESIGN 3.18 E4): 1 x 32, 1 x 24 when the items are icon-only; margin-x 8. */
+function Separator({ compact }: { compact: boolean }) {
+  return (
+    <div
+      role="separator"
+      aria-orientation="vertical"
+      data-separator=""
+      className={cx('mx-2 w-px shrink-0 bg-border', compact ? 'h-6' : 'h-8')}
+    />
+  );
+}
+
 /**
- * The tool row (DESIGN v2 3.2, ADR-102, FEEDBACK F14): the tools of the mode, at most eight, in a toolbar of one tab stop (Left,
- * Right, Home, End; Enter and Space; Esc releases to Auswahl and focuses the canvas). The row never wraps or scrolls: when it would
- * overflow it gives up, in this order, 1. nothing, 2. the labels of the inactive items, 3. items from the right (never the
- * active tool) into "Mehr". The fit is measured after each render and starts over when the width or the slots change, so
- * it is settled before the next paint.
+ * The tool area of the mode card (DESIGN 3.18 E4, ADR-102): the tools of the mode, at most nine, in groups, in a toolbar of one tab
+ * stop (Left, Right, Home, End; Enter and Space; Esc releases to Auswahl and focuses the canvas). The row never wraps or scrolls:
+ * a window under 1100 wide shows icons only; when the row would overflow it gives up, in this order, 1. nothing, 2. the labels of
+ * all items (44 x 44), 3. items from the right (never the active tool) into "Mehr". The fit is measured after each render and
+ * starts over when the width or the slots change, so it is settled before the next paint.
  */
 export const ToolRow = memo(function ToolRow() {
   const t = useT();
@@ -49,6 +70,7 @@ export const ToolRow = memo(function ToolRow() {
   const row = useRef<HTMLDivElement>(null);
   const [width, setWidth] = useState(0);
   const [stop, setStop] = useState<string | null>(null);
+  const [narrow, setNarrow] = useState(() => typeof window !== 'undefined' && window.innerWidth < COMPACT_BELOW);
 
   const activeId = slots.find((slot) => slot.on && slot.kind === 'tool')?.id ?? null;
   const signature = slots.map((slot) => `${slot.id}:${slot.label}:${slot.on ? 1 : 0}`).join('|');
@@ -84,6 +106,12 @@ export const ToolRow = memo(function ToolRow() {
   }, []);
 
   useEffect(() => {
+    const check = () => setNarrow(window.innerWidth < COMPACT_BELOW);
+    window.addEventListener('resize', check);
+    return () => window.removeEventListener('resize', check);
+  }, []);
+
+  useEffect(() => {
     const set = typeof document === 'undefined' ? undefined : (document.fonts as FontFaceSet | undefined);
     if (set === undefined) return;
     const again = () => setFonts((n) => n + 1);
@@ -113,6 +141,7 @@ export const ToolRow = memo(function ToolRow() {
         )
       : new Set<string>();
   const visible = slots.filter((slot) => !left.has(slot.id));
+  const icons = narrow || current.step >= 2;
   const gone = slots.filter((slot) => left.has(slot.id));
 
   const keys = visible.flatMap((slot) =>
@@ -154,24 +183,20 @@ export const ToolRow = memo(function ToolRow() {
       data-fit={current.step}
       onKeyDown={onKeyDown}
       onFocus={onFocus}
-      className={cx(
-        'bg-subtle relative isolate flex h-tool-row min-w-0 items-center gap-1 overflow-hidden border-b border-border-subtle px-4',
-      )}
+      className={cx('bg-subtle relative isolate flex h-tool-area min-w-0 items-center gap-1 overflow-hidden px-3 py-2')}
     >
       <span
         ref={pill}
         aria-hidden="true"
         data-glide-pill="tool"
-        className="pointer-events-none absolute start-0 top-0 -z-10 rounded-md bg-accent shadow-(--tool-active-edge)"
+        className="pointer-events-none absolute start-0 top-0 -z-10 rounded-(--tool-item-radius) bg-accent shadow-(--tool-active-edge)"
         style={{ opacity: 0 }}
       />
-      {visible.map((slot) => (
-        <ToolItem
-          key={slot.id}
-          slot={slot}
-          iconOnly={current.step >= 2 && !(slot.on && slot.kind === 'tool')}
-          stop={tabStop}
-        />
+      {visible.map((slot, index) => (
+        <Fragment key={slot.id}>
+          {slot.separatorBefore === true && index > 0 && <Separator compact={icons} />}
+          <ToolItem slot={slot} iconOnly={icons} stop={tabStop} />
+        </Fragment>
       ))}
       {gone.length > 0 && (
         <Menu

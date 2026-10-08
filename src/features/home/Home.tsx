@@ -1,3 +1,4 @@
+import { ChevronRight } from 'lucide-react';
 import { AnimatePresence } from 'motion/react';
 import { useEffect, useId, useMemo, useRef, useState, type ReactNode, type RefObject } from 'react';
 
@@ -5,14 +6,17 @@ import { runAction } from '../../actions/dispatch';
 import { shortcutFor } from '../../actions/registry';
 import type { Platform } from '../../api/app';
 import type { RecentEntry } from '../../api/recents';
-import { Button, SolarGlow } from '../../components';
+import { Button, Icon, SolarGlow } from '../../components';
+import { watchAmbient } from '../../components/ambient';
 import { cx } from '../../components/cx';
 import { useT } from '../../i18n';
 import { useDocuments } from '../../stores/documents';
 import { useUi } from '../../stores/ui';
+import { closeTab } from '../tabs/nav';
 import { useViewer } from '../viewer/useViewer';
 import { DropOverlay, useHomeDrop } from './DropOverlay';
 import { Hero, useSearchShortcut } from './Hero';
+import { cardSize, homeTier, titleHidden as isTitleHidden } from './homeLayout';
 import { HomeNav, type HomeSection } from './HomeNav';
 import { OpenCard } from './OpenCard';
 import { RecentCard } from './RecentCard';
@@ -30,6 +34,20 @@ interface CardsProps {
 }
 
 /** Columns the grid lays out now, read from the computed template; `fallback` where there is no layout (tests, first paint). */
+/** One row of up to five cards (DESIGN 3.18 H4). */
+const MAX_RECENT_COLUMNS = 5;
+
+/** The window's inner size, kept current on resize (the layout tier depends on the height). */
+function useWindowHeight(): number {
+  const [height, setHeight] = useState(() => window.innerHeight);
+  useEffect(() => {
+    const onResize = () => setHeight(window.innerHeight);
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
+  return height;
+}
+
 function useColumns(ref: RefObject<HTMLElement | null>, fallback: number, active: boolean): number {
   const [columns, setColumns] = useState(fallback);
   useEffect(() => {
@@ -66,6 +84,7 @@ function OpenGrid({ tabs, label }: { tabs: readonly { id: number; name: string }
           name={tab.name}
           tabIndex={roving.tabIndexOf(`open-${tab.id}`)}
           onSwitch={switchTo}
+          onClose={closeTab}
         />
       ))}
     </ul>
@@ -97,8 +116,8 @@ function CardGrid({ entries, recents, platform, label, gridRef }: CardsProps) {
 /** A heading row: the title and, at the end, an optional action. */
 function SectionHead({ id, children, action }: { id: string; children: string; action?: ReactNode }) {
   return (
-    <div className="flex items-center justify-between gap-4">
-      <h2 id={id} className="t-title m-0">
+    <div className="home-section-head flex items-center justify-between gap-4">
+      <h2 id={id} className="t-h3 m-0">
         {children}
       </h2>
       {action}
@@ -151,7 +170,6 @@ export function Home({ platform }: HomeProps) {
   const [query, setQuery] = useState('');
   const searchRef = useRef<HTMLInputElement>(null);
   const ids = { open: useId(), recent: useId(), tools: useId(), view: useId() };
-  const [expanded, setExpanded] = useState(false);
   const gridRef = useRef<HTMLUListElement>(null);
   const order = useDocuments((state) => state.order);
   const byId = useDocuments((state) => state.byId);
@@ -177,17 +195,22 @@ export function Home({ platform }: HomeProps) {
     const needle = query.trim().toLocaleLowerCase();
     return needle === '' ? openTabs : openTabs.filter((tab) => tab.name.toLocaleLowerCase().includes(needle));
   }, [openTabs, query]);
-  const columns = useColumns(gridRef, 4, section === 'home' && matches.length > 0);
+  const columns = useColumns(gridRef, MAX_RECENT_COLUMNS, section === 'home' && matches.length > 0);
   const starred = useMemo(() => recents.entries.filter((entry) => entry.starred), [recents.entries]);
   const open = () => void runAction('open');
+  const height = useWindowHeight();
+  const openRow = section === 'home' && openShown.length > 0;
+  const tier = homeTier(height, openTabs.length > 0);
+  const hideTitle = isTitleHidden(tier, openTabs.length > 0, height);
+  useEffect(() => watchAmbient(), []);
 
   let body;
   if (showEmpty) {
     body = <EmptyHome opening={opening} platform={platform} onOpen={open} />;
   } else if (section === 'home') {
-    const shown = visibleRecents(matches, columns, expanded);
+    const shown = visibleRecents(matches, Math.min(columns, MAX_RECENT_COLUMNS), false);
     const first = openShown.length > 0 ? undefined : shown[0];
-    const hasMore = matches.length > columns * 2;
+    const hasMore = matches.length > shown.length;
     body = (
       <>
         <Hero
@@ -198,27 +221,28 @@ export function Home({ platform }: HomeProps) {
           platform={platform}
           onOpen={open}
           onOpenFirst={first === undefined ? undefined : () => recents.open(first, null)}
-          compact={!empty}
+          titleHidden={hideTitle}
         />
         {openShown.length > 0 && (
-          <section aria-labelledby={ids.open} className="mt-4 flex flex-col gap-2">
-            <SectionHead id={ids.open}>{t('home.openTabs')}</SectionHead>
+          <section aria-labelledby={ids.open} className="home-section">
+            <SectionHead id={ids.open}>{t('home.open.title')}</SectionHead>
             <OpenGrid tabs={openShown} label={t('home.openList')} />
           </section>
         )}
         {recents.loaded && (
-          <section aria-labelledby={ids.recent} className="mt-4 flex flex-col gap-2">
+          <section aria-labelledby={ids.recent} className="home-section">
             <SectionHead
               id={ids.recent}
               action={
                 hasMore && (
-                  <Button variant="ghost" size="sm" aria-expanded={expanded} onClick={() => setExpanded((was) => !was)}>
-                    {expanded ? t('home.showLess') : t('home.showAll')}
+                  <Button variant="ghost" size="sm" className="text-text-muted" onClick={() => setSection('recent')}>
+                    {t('home.showAll')}
+                    <Icon icon={ChevronRight} size={16} />
                   </Button>
                 )
               }
             >
-              {t('home.nav.recent')}
+              {t('home.recent.title')}
             </SectionHead>
             {shown.length > 0 ? (
               <CardGrid
@@ -233,9 +257,9 @@ export function Home({ platform }: HomeProps) {
             )}
           </section>
         )}
-        <section aria-labelledby={ids.tools} className="mt-4 flex flex-col gap-3">
-          <SectionHead id={ids.tools}>{t('home.nav.tools')}</SectionHead>
-          <ToolRows />
+        <section aria-labelledby={ids.tools} className="home-section">
+          <SectionHead id={ids.tools}>{t('home.tools.title')}</SectionHead>
+          <ToolRows onMore={() => setSection('tools')} />
         </section>
       </>
     );
@@ -251,7 +275,7 @@ export function Home({ platform }: HomeProps) {
               : t('home.nav.recent')}
         </h1>
         {section === 'tools' ? (
-          <ToolRows />
+          <ToolRows all />
         ) : list.length > 0 ? (
           <CardGrid entries={list} recents={recents} platform={platform} label={t('home.recentList')} />
         ) : (
@@ -266,11 +290,18 @@ export function Home({ platform }: HomeProps) {
   return (
     <div data-home-body="" className="relative flex min-h-0 flex-auto">
       <HomeNav section={section} onSection={setSection} />
-      <main className="relative min-w-0 flex-auto overflow-auto rounded-ss-xl bg-surface home-main">
+      <main
+        data-home-main=""
+        data-tier={tier}
+        data-card={cardSize(tier, openTabs.length > 0)}
+        data-open-row={openRow || undefined}
+        className="home-main relative min-w-0 flex-auto overflow-x-hidden overflow-y-auto bg-app"
+      >
+        {!showEmpty && <div aria-hidden="true" data-glow="home" data-home-glow="" className="home-glow" />}
         <div
           className={cx(
-            'mx-auto flex min-h-full flex-col transition-opacity [transition-duration:var(--motion-base)]',
-            showEmpty ? 'w-full' : 'max-w-(--home-content-max)',
+            'relative mx-auto flex min-h-full flex-col transition-opacity [transition-duration:var(--motion-base)]',
+            showEmpty ? 'w-full' : 'home-content',
             drop.shown ? 'opacity-0' : 'opacity-100',
           )}
           inert={drop.shown || undefined}

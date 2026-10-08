@@ -1,7 +1,9 @@
-import { FileText } from 'lucide-react';
+import { ArrowRightLeft, Ellipsis, X } from 'lucide-react';
 
-import { Icon } from '../../components';
+import { IconButton, Menu, type MenuEntry } from '../../components';
 import { useT } from '../../i18n';
+import { isDirty, useAnnotations } from '../../stores/annotations';
+import { RecentThumb } from './RecentThumb';
 import { ROVING_ATTR } from './roving';
 
 export interface OpenCardProps {
@@ -10,19 +12,25 @@ export interface OpenCardProps {
   name: string;
   tabIndex: 0 | -1;
   onSwitch: (id: number) => void;
+  onClose: (id: number) => void;
 }
 
 /**
- * A card of the "Open" section: the same form as a recent card (tile, name), for a tab that is open now. Click or Enter switches to
- * that tab. No star: a file that is open is not yet a recent-list entry to mark, and the card has no menu (the tab has its own).
+ * A card of the "Open" row (DESIGN 3.18 H4): the same form as a recent card (thumbnail box, name, the ⋯ menu), for a tab that is open now.
+ * Click or Enter switches to that tab; an unsaved document shows its Ink dot before the name. The menu offers Switch and Close tab.
  */
-export function OpenCard({ id, name, tabIndex, onSwitch }: OpenCardProps) {
+export function OpenCard({ id, name, tabIndex, onSwitch, onClose }: OpenCardProps) {
   const t = useT();
   const label = name === '' ? t('status.untitled') : name;
+  const dirty = useAnnotations((state) => isDirty(state, id));
+  const entries: MenuEntry[] = [
+    { id: 'switch', label: t('home.open.switch'), icon: ArrowRightLeft, onSelect: () => onSwitch(id) },
+    { id: 'close', label: t('home.open.close'), icon: X, onSelect: () => onClose(id) },
+  ];
   return (
     <li
       data-open-card=""
-      className="relative h-(--home-open-height) rounded-md border border-border-subtle bg-surface transition-colors [transition-duration:var(--motion-fast)] hover:bg-subtle focus-within:bg-subtle"
+      className="home-card group/card relative rounded-md border border-border-subtle bg-surface transition-colors [transition-duration:var(--motion-fast)] focus-within:bg-subtle hover:bg-subtle"
     >
       <button
         type="button"
@@ -30,13 +38,32 @@ export function OpenCard({ id, name, tabIndex, onSwitch }: OpenCardProps) {
         tabIndex={tabIndex}
         aria-label={label}
         onClick={() => onSwitch(id)}
-        className="flex size-full min-w-0 cursor-pointer items-center gap-3 rounded-md px-3 text-start"
+        className="home-card-body flex size-full min-w-0 cursor-pointer flex-col rounded-md text-start"
       >
-        <Icon icon={FileText} size={18} className="shrink-0 text-text-muted" />
-        <span className="flex min-w-0 flex-1 flex-col">
-          <span className="t-label truncate">{label}</span>
+        <RecentThumb id={null} />
+        <span className="home-card-name t-nav flex min-w-0 items-center gap-2">
+          {dirty && (
+            <span aria-hidden="true" data-unsaved="" className="home-unsaved-dot shrink-0 rounded-pill bg-ink" />
+          )}
+          <span className="truncate">{label}</span>
         </span>
       </button>
+      <span className="home-card-menu absolute">
+        <Menu
+          label={t('home.menu.label', { name: label })}
+          align="end"
+          entries={entries}
+          trigger={(props) => (
+            <IconButton
+              {...props}
+              size="sm"
+              icon={Ellipsis}
+              label={t('home.menu.label', { name: label })}
+              tabIndex={-1}
+            />
+          )}
+        />
+      </span>
     </li>
   );
 }

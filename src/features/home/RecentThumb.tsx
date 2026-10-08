@@ -2,19 +2,19 @@ import { FileText, FileX } from 'lucide-react';
 import { useEffect, useState } from 'react';
 
 import { getRecentThumbnail } from '../../api/recents';
-import { Icon, SolarGlow } from '../../components';
+import { Icon } from '../../components';
 import { cx } from '../../components/cx';
 
 /**
- * The thumbnail tile of a card (DESIGN v2 3.1): 40 x 52, radius sm, border, a small `card` glow clipped in its corner and the
- * file icon until the first-page preview has loaded; a file that is gone, one with a password or any failure keeps the icon.
- * Nothing but the id goes to the backend.
+ * The thumbnail box of a card (DESIGN 3.18 H4): the card's width, 172 / 124 / 76 high by tier, Sand, radius sm; the first-page preview
+ * contained and top-aligned (cropped at the bottom in the short tier), the file icon until it has loaded. A file that is gone, one with a
+ * password or any failure keeps the icon. `id` is `null` for an open document (no recent entry, no preview). Nothing but the id goes to the backend.
  */
-export function RecentThumb({ id, missing }: { id: number; missing: boolean }) {
+export function RecentThumb({ id, missing = false }: { id: number | null; missing?: boolean }) {
   const [url, setUrl] = useState<string | null>(null);
   const [loaded, setLoaded] = useState(false);
   useEffect(() => {
-    if (missing) return;
+    if (missing || id === null) return;
     let alive = true;
     let made: string | null = null;
     getRecentThumbnail(id).then(
@@ -33,12 +33,9 @@ export function RecentThumb({ id, missing }: { id: number; missing: boolean }) {
   return (
     <span
       data-recent-tile=""
-      className="relative flex h-(--home-tile-height) w-(--home-tile-width) shrink-0 items-center justify-center overflow-hidden rounded-sm border border-border-subtle bg-surface text-text-muted"
+      className="home-thumb relative flex w-full items-center justify-center overflow-hidden rounded-sm bg-subtle text-text-muted"
     >
-      <SolarGlow variant="card" />
-      <span className="relative">
-        <Icon icon={missing ? FileX : FileText} size={18} />
-      </span>
+      <Icon icon={missing ? FileX : FileText} size={20} />
       {url !== null && (
         <img
           src={url}
@@ -47,7 +44,7 @@ export function RecentThumb({ id, missing }: { id: number; missing: boolean }) {
           draggable={false}
           onLoad={() => setLoaded(true)}
           className={cx(
-            'absolute inset-0 size-full bg-surface object-contain transition-opacity duration-base',
+            'absolute inset-0 size-full bg-subtle object-contain object-top transition-opacity duration-base',
             loaded ? 'opacity-100' : 'opacity-0',
           )}
         />

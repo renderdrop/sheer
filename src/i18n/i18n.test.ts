@@ -379,8 +379,6 @@ describe('copy details of the v1.9 round', () => {
         }),
       ).toBe(expected);
       expect(tr('commentExport.pagesCount', { count: 3 })).toMatch(/3 (pages|Seiten)/);
-      expect(tr('hf.existing', { app: 'sheer.' })).not.toContain('..');
-      expect(tr('hf.existing', { app: 'sheer.' })).not.toMatch(/sheer\.\./);
     }
   });
 });

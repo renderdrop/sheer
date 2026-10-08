@@ -11,7 +11,7 @@ import { resetDocuments } from '../../stores/documents.testutil';
 import { usePages } from '../../stores/pages';
 import { useUi } from '../../stores/ui';
 import { setup } from '../../test/render';
-import { HeaderFooterDialog } from './HeaderFooterDialog';
+import { HeaderFooterPanel } from './HeaderFooterPanel';
 import { openHeaderFooterDialog } from './runtime';
 import { useHeaderFooter } from './store';
 
@@ -75,13 +75,13 @@ beforeEach(() => {
   useUi.setState({ toast: null });
 });
 
-describe('the dialog', () => {
-  it('opens on the footer-right trigger with the defaults and applies them as one command', async () => {
+describe('the inspector form', () => {
+  it('opens on the first trigger with the defaults and applies them as one command', async () => {
     useHeaderFooter.getState().openDialog({ docId: 1, info: info(), preselect: null });
-    const { user } = setup(<HeaderFooterDialog />);
+    const { user } = setup(<HeaderFooterPanel />);
     const right = await screen.findByRole('button', { name: 'Footer, Right' });
-    await waitFor(() => expect(document.activeElement).toBe(right));
-    expect(right.getAttribute('aria-current')).toBe('true');
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Header, Left' })));
+    expect(screen.getByRole('complementary', { name: 'Headers and footers' })).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Footer, Left' }).textContent).toBe('Date');
     expect(right.textContent).toBe('Page number');
     expect(screen.queryByRole('button', { name: 'Remove' })).toBeNull();
@@ -99,7 +99,7 @@ describe('the dialog', () => {
 
   it('disables Apply with a danger caption for an invalid range', async () => {
     useHeaderFooter.getState().openDialog({ docId: 1, info: info(), preselect: { first: 2, last: 3 } });
-    const { user } = setup(<HeaderFooterDialog />);
+    const { user } = setup(<HeaderFooterPanel />);
     const from = await screen.findByRole('textbox', { name: 'From' });
     expect((from as HTMLInputElement).value).toBe('2');
     expect((screen.getByRole('textbox', { name: 'To' }) as HTMLInputElement).value).toBe('3');
@@ -112,8 +112,9 @@ describe('the dialog', () => {
   it("loads the file's settings, says so, and Remove stages null", async () => {
     const spec: HfSpec = { ...DEFAULTS, slots: { ...DEFAULTS.slots, headerCenter: 'Draft' }, fontSize: 11 };
     useHeaderFooter.getState().openDialog({ docId: 1, info: info({ spec, fileLayers: 5 }), preselect: null });
-    const { user } = setup(<HeaderFooterDialog />);
-    expect(await screen.findByText(/Applying replaces them/)).toBeTruthy();
+    const { user } = setup(<HeaderFooterPanel />);
+    expect(await screen.findByRole('button', { name: 'Remove' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Apply' }).getAttribute('aria-disabled')).toBe('true');
     expect(screen.getByRole('button', { name: 'Header, Centre' }).textContent).toBe('Text');
     await user.click(screen.getByRole('button', { name: 'Remove' }));
     await waitFor(() => expect(applyCommand).toHaveBeenCalledTimes(1));
@@ -138,7 +139,7 @@ describe('existing headers and footers', () => {
     api.detectHeaderFooter.mockResolvedValue({ items: [footerNumber], sampled: 5, pageCount: 5 });
     api.resolveHeaderFooter.mockResolvedValue([{ pageId: 10, runs: [run], underFileLayer: false }]);
     useHeaderFooter.getState().openDialog({ docId: 1, info: info(), preselect: null });
-    const { user } = setup(<HeaderFooterDialog />);
+    const { user } = setup(<HeaderFooterPanel />);
     expect(await screen.findByText(/Already on the pages: Footer, Right: “Page 1 of 9”/)).toBeTruthy();
     await waitFor(() =>
       expect(screen.getByRole('alert').textContent).toMatch(/^Overlaps existing text: Footer, Right/),
@@ -157,7 +158,7 @@ describe('existing headers and footers', () => {
   it('shows no warning when nothing overlaps or the look failed', async () => {
     api.detectHeaderFooter.mockRejectedValue(new Error('no'));
     useHeaderFooter.getState().openDialog({ docId: 1, info: info(), preselect: null });
-    setup(<HeaderFooterDialog />);
+    setup(<HeaderFooterPanel />);
     await screen.findByRole('button', { name: 'Apply' });
     expect(document.querySelector('[data-hf="detected"]')).toBeNull();
   });

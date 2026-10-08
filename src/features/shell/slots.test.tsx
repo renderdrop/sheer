@@ -63,7 +63,7 @@ describe('the view', () => {
 });
 
 describe('HomeSlot', () => {
-  it('is a brand surface with a 56 drag strip holding the caption controls', () => {
+  it('is a brand surface with a 40 drag strip holding the caption controls', () => {
     const { container } = setup(
       <HomeSlot
         platform="windows"
@@ -73,7 +73,7 @@ describe('HomeSlot', () => {
     );
     expect(container.querySelector('[data-surface="brand"]')).not.toBeNull();
     const strip = container.querySelector('[data-slot="home-strip"]');
-    expect(strip?.className).toContain('h-topbar');
+    expect(strip?.className).toContain('h-10');
     expect(strip?.getAttribute('data-tauri-drag-region')).toBe('deep');
     expect(within(strip as HTMLElement).getByRole('group', { name: 'Window controls' })).not.toBeNull();
   });

@@ -1,40 +1,233 @@
-/* Home layout classes; its measures (--home-*) are tokens (P13-3). */
+/*
+ * Home layout (DESIGN 3.18 H1-H4). Two tiers on `.home-main`: A (window height >= 1000, no document open) is airy, B is tight.
+ * Every measure is a token or a sum of space tokens. `data-card` picks the card size, `data-open-row` marks the "Open" row.
+ */
 
-/* The card grid: as many columns of at least 208 as fit, gap 16. */
-.home-card-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(var(--home-card-min), 1fr));
-  gap: var(--space-4);
-}
-
-/* Main padding 32 (48 from 1440 wide); the top only 24, the 56 strip above is air already (F19.6). */
+/* Tier B (default). */
 .home-main {
-  padding: var(--home-main-top) var(--space-8) var(--space-8);
-}
-@media (min-width: 1440px) {
-  .home-main {
-    padding: var(--home-main-top) var(--space-12) var(--space-12);
-  }
-}
+  --pad-top: var(--space-10);
+  --pad-bottom: var(--space-4);
+  --pad-x: var(--space-8);
+  --greeting-row: var(--home-plus);
+  --title-gap: var(--space-1);
+  --search-gap: var(--space-6);
+  --section-gap: var(--space-6);
+  --head-gap: var(--space-3);
+  --tile-h: var(--home-tool-tile-height-compact);
+  --plus-top: var(--space-10);
+  --card-h: var(--home-card-height-compact);
+  --card-pad: var(--space-3);
+  --name-gap: var(--space-2);
+  --thumb-h: var(--home-thumb-height-compact);
+  --title-size: var(--type-hero-compact-size);
+  --title-line: var(--type-hero-compact-line);
+  --title-weight: var(--type-hero-compact-weight);
+  --title-tracking: var(--type-hero-compact-tracking);
 
-/* The tool rows: one column, three from 1200 wide (the eight tools in three lines, F19.6), gap 16. */
-.home-tool-rows {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  column-gap: var(--space-4);
+  padding: var(--pad-top) var(--pad-x) var(--pad-bottom);
+  border-inline-start: 1px solid var(--color-border);
 }
 @media (min-width: 1200px) {
-  .home-tool-rows {
-    grid-template-columns: repeat(var(--home-tool-columns-wide), minmax(0, 1fr));
+  .home-main {
+    --pad-x: var(--space-12);
   }
 }
 
-/* The "Open" section: one row of compact cards that scrolls sideways past four tabs (F19.6). */
-.home-open-row {
-  display: flex;
-  gap: var(--space-4);
-  overflow-x: auto;
+.home-main[data-tier="a"] {
+  --pad-top: var(--space-24);
+  --pad-bottom: calc(var(--space-12) + var(--space-2));
+  --greeting-row: var(--control-sm);
+  --title-gap: var(--space-3);
+  --search-gap: calc(var(--space-8) + var(--space-1));
+  --section-gap: calc(var(--space-6) + var(--space-1));
+  --head-gap: var(--space-4);
+  --tile-h: var(--home-tool-tile-height);
+  --plus-top: var(--space-20);
+  --title-size: var(--type-hero-size);
+  --title-line: var(--type-hero-line);
+  --title-weight: var(--type-hero-weight);
+  --title-tracking: var(--type-hero-tracking);
 }
-.home-open-row > li {
-  flex: 0 0 var(--home-card-min);
+.home-main[data-card="full"] {
+  --card-h: var(--home-card-height);
+  --card-pad: var(--space-4);
+  --name-gap: var(--space-3);
+  --thumb-h: var(--home-thumb-height);
+}
+.home-main[data-card="short"] {
+  --card-h: var(--home-card-height-short);
+  --thumb-h: var(--home-thumb-height-short);
+}
+
+.home-content {
+  max-width: var(--home-content-max);
+  width: 100%;
+}
+
+/* The glow of the main column's top right: behind the content, never in the way, static with reduced motion (tokens.css). */
+.home-glow {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background: var(--glow-home);
+}
+
+/* Greeting row with the round plus at its end; the title and the search follow. */
+.home-hero {
+  display: flex;
+  flex-direction: column;
+}
+.home-greeting {
+  min-height: var(--greeting-row);
+  display: flex;
+  align-items: center;
+  font-size: var(--type-h3-size);
+  line-height: var(--type-h3-line);
+  font-weight: 400;
+}
+.home-plus {
+  position: absolute;
+  inset-inline-end: 0;
+  top: calc(var(--plus-top) - var(--pad-top));
+  z-index: 1;
+}
+.home-title {
+  margin-top: var(--title-gap);
+  font-size: var(--title-size);
+  line-height: var(--title-line);
+  font-weight: var(--title-weight);
+  letter-spacing: var(--title-tracking);
+}
+.home-search {
+  margin-top: var(--search-gap);
+  height: var(--home-search-height);
+}
+
+/* Sections: heading row (28), gap, content. */
+.home-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--head-gap);
+  margin-top: var(--section-gap);
+}
+.home-section-head {
+  min-height: var(--control-sm);
+}
+
+/* Cards: as many columns as fit at the minimum width, five at most. */
+.home-card-grid {
+  display: grid;
+  grid-template-columns: repeat(
+    auto-fill,
+    minmax(max(var(--home-card-min), calc((100% - 4 * var(--space-5)) / 5)), 1fr)
+  );
+  gap: var(--space-5);
+}
+/* The "Open" row: one row of the same cards, scrolling sideways past five tabs. */
+.home-open-row {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: max(var(--home-card-min), calc((100% - 4 * var(--space-5)) / 5));
+  gap: var(--space-5);
+  overflow-x: auto;
+  /* Room for the focus ring, taken back with the margin so the row keeps its height. */
+  padding-block: var(--space-1);
+  margin-block: calc(-1 * var(--space-1));
+}
+
+.home-card {
+  height: var(--card-h);
+  list-style: none;
+}
+.home-card-body {
+  padding: var(--card-pad);
+  gap: var(--name-gap);
+}
+.home-thumb {
+  height: var(--thumb-h);
+}
+.home-card-name {
+  display: flex;
+  align-items: center;
+  min-height: var(--control-sm);
+  padding-inline-end: calc(var(--control-sm) + var(--space-2));
+  font-size: var(--type-nav-size);
+  line-height: var(--type-nav-line);
+  font-weight: var(--type-nav-weight);
+}
+.home-main[data-card="full"] .home-card-name {
+  min-height: 0;
+  padding-inline-end: 0;
+}
+.home-card-star {
+  top: calc(var(--card-pad) + var(--space-1));
+  inset-inline-end: calc(var(--card-pad) + var(--space-1));
+}
+.home-card-menu {
+  bottom: var(--card-pad);
+  inset-inline-end: var(--card-pad);
+}
+.home-unsaved-dot {
+  width: calc(var(--space-1) + var(--space-1) / 2);
+  height: calc(var(--space-1) + var(--space-1) / 2);
+}
+
+/* Tool tiles: four columns, two below 1100 wide. */
+.home-tool-rows {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  /* Rows 12 apart (the proof of H4 sums with 12), columns 16. */
+  gap: var(--space-3) var(--space-4);
+}
+@media (min-width: 1100px) {
+  .home-tool-rows {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+.home-tool-rows > li {
+  height: var(--tile-h);
+}
+.home-tile {
+  padding-inline: var(--space-6);
+  gap: calc(var(--space-8) + var(--space-1));
+}
+.home-tile-title {
+  font-size: var(--type-nav-size);
+  line-height: var(--type-nav-line);
+  font-weight: 500;
+}
+.home-tile-sub {
+  font-size: var(--type-body-size);
+  line-height: var(--type-body-line);
+}
+
+/* Nav: word mark at x 40, top 80; rows from top 144; Settings at x 36, bottom 48. */
+.home-nav {
+  padding-bottom: var(--space-12);
+}
+.home-wordmark {
+  margin-top: var(--space-20);
+  margin-inline-start: var(--space-10);
+  height: calc(var(--space-8));
+}
+.home-nav-rows {
+  margin-top: var(--space-8);
+  padding-inline: var(--space-5);
+}
+.home-settings {
+  padding-inline-start: calc(var(--space-8) + var(--space-1));
+}
+
+@media (forced-colors: active) {
+  .home-glow {
+    display: none;
+  }
+  .home-card,
+  .home-tile {
+    border-color: CanvasText;
+  }
+  .home-card-star svg {
+    color: CanvasText;
+  }
 }

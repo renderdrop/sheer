@@ -16,7 +16,7 @@ export function tokenPx(name: string, fallback: number): number {
  * it needs numbers; these mirror `--panel-*` and the spacing tokens of tokens.css, and tokens.test.ts fails when they
  * drift apart.
  */
-export const PANEL = { min: 200, default: 200, max: 480, collapseBelow: 144, step: 8, largeStep: 40 } as const;
+export const PANEL = { min: 200, default: 220, max: 480, collapseBelow: 144, step: 8, largeStep: 40 } as const;
 
 /** Gap between an anchor and a tooltip or popover, and margin kept to the window edge (DESIGN 3.4, 3.5: 8 px). */
 export function overlayOffset(): number {
@@ -25,18 +25,20 @@ export function overlayOffset(): number {
 
 /**
  * Sizes of the layout grid in px (DESIGN v2 3.2, ADR-102) for the collapse rules and the body height, which are arithmetic in
- * JavaScript (src/lib/layout.ts). They mirror `--splitter-width`, `--canvas-min`, `--menubar-height`, `--topbar-height`,
- * `--mode-row-height`, `--tool-row-height` and `--minibar-height` of tokens.css, and tokens.test.ts fails when they drift apart.
+ * JavaScript (src/lib/layout.ts). They mirror `--splitter-width`, `--canvas-min`, `--menubar-height`, `--tabstrip-height`,
+ * `--chrome-gutter`, `--mode-card-height`, `--statusbar-height`, `--inspector-width` and `--minibar-height` of tokens.css, and tokens.test.ts fails when they drift apart.
  * `leftCollapseBelow` (the page sidebar collapses) is a breakpoint of the spec with no CSS counterpart; `minWindow*` is the
  * smallest window, and `tauri.conf.json` has the minimum (tested).
  */
 export const LAYOUT = {
   splitter: 8,
   canvasMin: 360,
-  menubar: 32,
-  topbar: 56,
-  modeRow: 40,
-  toolRow: 48,
+  menubar: 28,
+  tabstrip: 42,
+  gutter: 12,
+  modeCard: 104,
+  statusbar: 30,
+  inspector: 300,
   minibar: 40,
   leftCollapseBelow: 860,
   minWindowWidth: 960,

@@ -2,7 +2,6 @@ import type { LucideIcon } from 'lucide-react';
 import type { ComponentType, ReactNode } from 'react';
 
 import type { ActionId } from '../../actions/registry';
-import type { PopoverCloseReason } from '../../components';
 import type { PlainKey } from '../../i18n';
 import type { CreationKind } from '../../stores/tools';
 import { MODES, type Mode } from '../../stores/ui';
@@ -73,15 +72,6 @@ export interface ColourDef {
   label?: string;
 }
 
-/** A popover that hangs on a slot's main part and is opened by the slot itself (the stamp picker, DESIGN 3.14 ST2). */
-export interface PickerDef {
-  open: boolean;
-  setOpen: (open: boolean) => void;
-  /** The popover's accessible name (and its title as a dialog). */
-  label: string;
-  Body: ComponentType<{ close: (reason?: PopoverCloseReason) => void }>;
-}
-
 /**
  * One slot of the tool row. `tool` stays active until Esc or Auswahl (ADR-056); `action` runs once and is never active.
  * The main part runs `run`; a slot with `variants` and/or `colour` also has the 20-wide chevron part.
@@ -104,7 +94,6 @@ export interface SlotDef {
   actionId?: ActionId;
   variants?: readonly VariantDef[];
   colour?: ColourDef;
-  picker?: PickerDef;
   /** The chevron menu ends with the shape recognition switch (Zeichnen, DESIGN 3.5 B11). */
   recogniseSwitch?: boolean;
   /** The tool's own options (Zuschneiden, the insert tools, Schwärzen): the chevron part opens them while the tool is on. */
@@ -114,10 +103,22 @@ export interface SlotDef {
    * takes the focus and covers the top of the page, where the first marks are drawn.
    */
   optionsWhenOn?: boolean;
+  /** A thin separator stands before this slot (the mode table of DESIGN 3.18 E4 groups the slots). */
+  separatorBefore?: boolean;
   run: () => void;
 }
 
-/** The three steps of the overflow (DESIGN v2 3.2): all labels, the inactive items icon-only, items leaving into "Mehr". */
+/** Window width below which the card shows icons only (DESIGN 3.18 E4). */
+export const COMPACT_BELOW = 1100;
+
+/** Groups of slots as one list: the first slot of every group after the first gets a separator before it. */
+export function grouped(...groups: readonly (readonly SlotDef[])[]): SlotDef[] {
+  return groups.flatMap((group, index) =>
+    group.map((slot, at) => (index > 0 && at === 0 ? { ...slot, separatorBefore: true } : slot)),
+  );
+}
+
+/** The three steps of the overflow (DESIGN 3.18 E4): all labels, every item icon-only (44 x 44), items leaving into "Mehr". */
 export type FitStep = 1 | 2 | 3;
 
 export interface Fit {

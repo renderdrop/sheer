@@ -30,18 +30,36 @@ describe('the editor columns of DESIGN v2 3.2', () => {
     const wide = layout();
     expect(wide.mode).toBe('document');
     expect(wide.tracks).toEqual([
-      { slot: 'left', size: '200px' },
+      { slot: 'left', size: '220px' },
       { slot: 'splitter', size: 'var(--splitter-width)' },
       { slot: 'canvas', size: 'minmax(var(--canvas-min), 1fr)' },
+      { slot: 'inspector', size: 'var(--spacing-0)' },
     ]);
-    expect(wide.columns).toBe('200px var(--splitter-width) minmax(var(--canvas-min), 1fr)');
-    expect(wide.column).toEqual({ left: 1, splitter: 2, canvas: 3 });
+    expect(wide.columns).toBe('220px var(--splitter-width) minmax(var(--canvas-min), 1fr) var(--spacing-0)');
+    expect(wide.column).toEqual({ left: 1, splitter: 2, canvas: 3, inspector: 4 });
+  });
+
+  it('the inspector column is 300 when open and takes its width from the canvas', () => {
+    const open = layout({ inspectorOpen: true });
+    expect(open.inspector).toBe(true);
+    expect(open.tracks[3]).toEqual({ slot: 'inspector', size: 'var(--inspector-width)' });
+    expect(open.canvasWidth).toBe(layout().canvasWidth - 300);
+    // 960 - 220 - 8 - 300 = 432 fits at the minimum window
+    const small = layout({ inspectorOpen: true, windowWidth: 960 });
+    expect(small.leftCollapsed).toBe(false);
+    expect(small.canvasWidth).toBe(432);
+  });
+
+  it('the left panel gives way when the open inspector would squeeze the canvas below 360', () => {
+    expect(shellStructure({ ...base, windowWidth: 960, panelWidth: 480, inspectorOpen: true }).leftCollapsed).toBe(
+      true,
+    );
   });
 
   it('the canvas width is what is left of the window after the other tracks, at every width', () => {
-    // 1280 - 200 - 8
-    expect(layout().canvasWidth).toBe(1072);
-    expect(layout({ windowWidth: 1000 }).canvasWidth).toBe(792);
+    // 1280 - 220 - 8
+    expect(layout().canvasWidth).toBe(1052);
+    expect(layout({ windowWidth: 1000 }).canvasWidth).toBe(772);
     // A collapsed page sidebar: 1280 - 8
     expect(layout({ panelCollapsed: true }).canvasWidth).toBe(1272);
   });
@@ -58,27 +76,37 @@ describe('the editor columns of DESIGN v2 3.2', () => {
   });
 });
 
-describe('the editor rows of DESIGN v2 3.2', () => {
-  it('Windows: menu 32 | top bar 56 | mode 40 | tool 48 | body', () => {
+describe('the editor rows of DESIGN 3.18 E1', () => {
+  it('Windows: menu 28 | tabs 42 | gutter 12 | mode card 104 | gutter 12 | body | status 30', () => {
     const windows = layout({ menuRow: true });
     expect(windows.menuRow).toBe(true);
-    expect(windows.rowTracks.map((track) => track.row)).toEqual(['menu', 'topbar', 'mode', 'tool', 'body']);
+    expect(windows.rowTracks.map((track) => track.row)).toEqual([
+      'menu',
+      'tabs',
+      'gutter-top',
+      'mode',
+      'gutter-mode',
+      'body',
+      'status',
+    ]);
     expect(windows.rows).toBe(
-      'var(--menubar-height) var(--topbar-height) var(--mode-row-height) var(--tool-row-height) minmax(0, 1fr)',
+      'var(--menubar-height) var(--tabstrip-height) var(--chrome-gutter) var(--mode-card-height) var(--chrome-gutter) minmax(0, 1fr) var(--statusbar-height)',
     );
-    expect(windows.row).toEqual({ menu: 1, topbar: 2, mode: 3, tool: 4, body: 5 });
+    expect(windows.row).toEqual({ menu: 1, tabs: 2, 'gutter-top': 3, mode: 4, 'gutter-mode': 5, body: 6, status: 7 });
   });
 
   it('macOS has no menu row: the native bar', () => {
     const mac = layout();
     expect(mac.menuRow).toBe(false);
-    expect(mac.rows).toBe('var(--topbar-height) var(--mode-row-height) var(--tool-row-height) minmax(0, 1fr)');
-    expect(mac.row).toEqual({ topbar: 1, mode: 2, tool: 3, body: 4 });
+    expect(mac.rows).toBe(
+      'var(--tabstrip-height) var(--chrome-gutter) var(--mode-card-height) var(--chrome-gutter) minmax(0, 1fr) var(--statusbar-height)',
+    );
+    expect(mac.row).toEqual({ tabs: 1, 'gutter-top': 2, mode: 3, 'gutter-mode': 4, body: 5, status: 6 });
   });
 
-  it('the body at 960 x 640 is 464 on Windows and 496 on macOS', () => {
-    expect(bodyHeight(shellStructure({ ...base, menuRow: true }), LAYOUT.minWindowHeight)).toBe(464);
-    expect(bodyHeight(shellStructure(base), LAYOUT.minWindowHeight)).toBe(496);
+  it('the body at 960 x 640 is 412 on Windows and 440 on macOS', () => {
+    expect(bodyHeight(shellStructure({ ...base, menuRow: true }), LAYOUT.minWindowHeight)).toBe(412);
+    expect(bodyHeight(shellStructure(base), LAYOUT.minWindowHeight)).toBe(440);
     expect(bodyHeight(shellStructure({ ...base, hasDocument: false }), 640)).toBe(640);
   });
 });
@@ -125,10 +153,12 @@ describe('the page sidebar', () => {
 });
 
 describe('the window minimum', () => {
-  it('the spec numbers: 960 x 640, page sidebar collapse below 860, rows 32, 56, 40, 48', () => {
+  it('the spec numbers: 960 x 640, page sidebar collapse below 860, rows 28, 42, 12, 104, 30', () => {
     expect(LAYOUT.minWindowWidth).toBe(960);
     expect(LAYOUT.minWindowHeight).toBe(640);
-    expect([LAYOUT.menubar, LAYOUT.topbar, LAYOUT.modeRow, LAYOUT.toolRow]).toEqual([32, 56, 40, 48]);
+    expect([LAYOUT.menubar, LAYOUT.tabstrip, LAYOUT.gutter, LAYOUT.modeCard, LAYOUT.statusbar]).toEqual([
+      28, 42, 12, 104, 30,
+    ]);
     expect(LAYOUT.leftCollapseBelow).toBe(860);
     expect(LAYOUT.leftCollapseBelow).toBeLessThan(LAYOUT.minWindowWidth);
   });

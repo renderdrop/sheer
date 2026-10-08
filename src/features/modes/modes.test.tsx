@@ -16,7 +16,8 @@ import { useOrganize } from '../organize/store';
 import { usePages } from '../../stores/pages';
 import { usePlacement } from '../signatures/place/store';
 import { useSmartLinks } from '../smartlinks/store';
-import { ModeRow, ToolRow, switchMode } from '.';
+import { ModeCard, ModeRow, ToolRow, switchMode } from '.';
+import { useToolInspector } from '../inspector/toolInspector';
 import { focusToolItem, TOOL_ITEM_WAIT_MS } from './switch';
 import { handleModeKey } from './useModeEffects';
 
@@ -43,6 +44,9 @@ function openDocument(id = 1, kind?: 'welcome') {
 }
 
 beforeEach(() => {
+  // Wide enough for the labelled tool area (DESIGN 3.18 E4: icon-only below 1100).
+  window.innerWidth = 1440;
+  useToolInspector.setState({ open: null });
   useUi.setState({ ...uiInitial }, true);
   useTools.setState({ ...toolsInitial }, true);
   useAnnotations.setState({ ...annotationsInitial }, true);
@@ -79,12 +83,13 @@ describe('the mode row (DESIGN v2 3.2)', () => {
   it('is a tablist "Mode" with the five modes in order and Lesen selected by default', () => {
     setup(<Rows />);
     expect(screen.getByRole('tablist', { name: 'Mode' })).not.toBeNull();
+    // Each tab ends in its key chip (1 to 5).
     expect(screen.getAllByRole('tab').map((entry) => entry.textContent)).toEqual([
-      'Read',
-      'Comment',
-      'Fill & Sign',
-      'Pages',
-      'Edit',
+      'Read1',
+      'Comment2',
+      'Fill & Sign3',
+      'Pages4',
+      'Edit5',
     ]);
     expect(tab('Read').getAttribute('aria-selected')).toBe('true');
     expect(screen.getAllByRole('tab', { selected: true })).toHaveLength(1);
@@ -319,12 +324,12 @@ describe('Lesen', () => {
     const outer = chevron.closest('[data-split]');
     expect(outer).not.toBeNull();
     expect(outer?.className).toContain('overflow-hidden');
-    expect(outer?.className).toContain('rounded-md');
+    expect(outer?.className).toContain('rounded-(--tool-item-radius)');
     expect(outer?.querySelectorAll('button')).toHaveLength(2);
     expect(chevron.className).toContain('border-s');
-    expect(chevron.className).toContain('rounded-e-md');
+    expect(chevron.className).toContain('rounded-e-(--tool-item-radius)');
     const main = outer?.querySelector('[data-toolbar-item]');
-    expect(main?.className).toContain('rounded-s-md!');
+    expect(main?.className).toContain('rounded-s-(--tool-item-radius)!');
     expect(main?.className).toContain('active:scale-100!');
   });
 
@@ -665,17 +670,18 @@ describe('Bearbeiten', () => {
     act(() => switchMode('edit'));
   });
 
-  it('has Text bearbeiten, Text einfügen, Bild einfügen, Zuschneiden, Schwärzen, Schützen, Metadaten and Kopf- und Fußzeile', () => {
+  it('has the nine slots of the mode table, Stempel and Kopf-/Fußzeile among them', () => {
     setup(<Rows />);
     expect(slotNames()).toEqual([
       'Edit text',
       'Add text',
-      'Add image',
+      'Image',
       'Crop',
+      'Header/footer',
+      'Stamp',
       'Redact',
       'Protect',
       'Metadata',
-      'Header & footer',
     ]);
   });
 
@@ -683,7 +689,7 @@ describe('Bearbeiten', () => {
     const { user } = setup(<Rows />);
     await user.click(item('Add text'));
     expect(useUi.getState().activeTool).toBe('textBox');
-    await user.click(item('Add image'));
+    await user.click(item('Image'));
     expect(useUi.getState().activeTool).toBe('image');
     await user.click(item('Crop'));
     expect(useUi.getState().activeTool).toBe('crop');
@@ -695,24 +701,30 @@ describe('Bearbeiten', () => {
     expect(useUi.getState().redactMode).toBe(true);
   });
 
-  it('the Crop options popover closes with the tool: Cancel leaves no empty panel behind', async () => {
+  it('Zuschneiden, Kopf-/Fußzeile and Stempel open the tool inspector, not a popover', async () => {
     const { user } = setup(<Rows />);
     await user.click(item('Crop'));
-    const panel = () => screen.queryByRole('dialog', { name: /Crop/ });
-    expect(panel()).not.toBeNull();
-    await user.click(screen.getByRole('button', { name: 'Cancel' }));
-    expect(useUi.getState().activeTool).toBe('select');
-    expect(panel()).toBeNull();
+    expect(useUi.getState().activeTool).toBe('crop');
+    expect(useToolInspector.getState().open).toBe('crop');
     expect(screen.queryByRole('dialog')).toBeNull();
+    await user.click(item('Header/footer'));
+    expect(useToolInspector.getState().open).toBe('headerFooter');
+    await user.click(item('Stamp'));
+    expect(useUi.getState().activeTool).toBe('stamp');
+    expect(useToolInspector.getState().open).toBe('stamp');
+    expect(screen.queryByRole('dialog')).toBeNull();
+  });
+
+  it('a mode switch closes the tool inspector', async () => {
+    const { user } = setup(<Rows />);
+    await user.click(item('Crop'));
+    expect(useToolInspector.getState().open).toBe('crop');
+    await user.click(tab('Read'));
+    expect(useToolInspector.getState().open).toBeNull();
   });
 
   it('Schwärzen opens no options over the page when it turns on; a click while it is on opens them (F19.8)', async () => {
     const { user } = setup(<Rows />);
-    // After a crop, as in the acceptance order: the crop options open and close with the tool.
-    await user.click(item('Crop'));
-    expect(screen.queryByRole('dialog', { name: /Crop/ })).not.toBeNull();
-    await user.click(screen.getByRole('button', { name: 'Cancel' }));
-    expect(screen.queryByRole('dialog')).toBeNull();
     await user.click(item('Redact'));
     expect(useUi.getState().redactMode).toBe(true);
     // The popover would take the focus and cover the top of the page, where the marks are drawn by dragging.
@@ -757,6 +769,7 @@ describe('the overflow', () => {
         if (this.getAttribute('role') !== 'toolbar') return 0;
         let total = 0;
         for (const child of Array.from(this.children)) {
+          if (child.hasAttribute('data-separator')) continue;
           total += child.querySelector('[data-label]') === null ? 36 : 120;
         }
         return total;
@@ -789,12 +802,11 @@ describe('the overflow', () => {
     expect(labelled()).toBe(7);
   });
 
-  it('step 2: the inactive items become icon-only with their name for assistive technology, the active one keeps its label', () => {
+  it('step 2: every item becomes icon-only with its name for assistive technology', () => {
     widths.client = 6 * 120 - 1;
     setup(<Rows />);
     expect(screen.getByRole('toolbar').getAttribute('data-fit')).toBe('2');
-    expect(labelled()).toBe(1);
-    expect(item('Select').querySelector('[data-label]')).not.toBeNull();
+    expect(labelled()).toBe(0);
     expect(item('Hand').getAttribute('aria-label')).toBe('Hand');
     expect(screen.queryByRole('button', { name: 'More' })).toBeNull();
   });
@@ -829,10 +841,18 @@ describe('the overflow', () => {
   });
 
   it('the active tool never leaves, even when it is the last item', () => {
-    widths.client = 120 + 36 * 2;
+    widths.client = 36 * 3;
     act(() => useUi.getState().selectTool('textSelect'));
     setup(<Rows />);
-    expect(item('Select text').querySelector('[data-label]')).not.toBeNull();
+    expect(item('Select text').getAttribute('aria-pressed')).toBe('true');
+  });
+
+  it('a window under 1100 wide shows icons only, whatever the room', () => {
+    window.innerWidth = 1000;
+    widths.client = 2000;
+    setup(<Rows />);
+    expect(labelled()).toBe(0);
+    expect(item('Hand').getAttribute('aria-label')).toBe('Hand');
   });
 
   it('starts over when the room grows (the width is read again)', () => {
@@ -891,19 +911,90 @@ describe('the active tool and the labels (DESIGN Q2, Q6)', () => {
   });
 });
 
-describe('the segmented mode tabs (DESIGN 3.5 B3)', () => {
-  it('the selected segment is White with a Stone border and Ink 500, the others are not; the bar is Sand', () => {
+describe('the mode card (DESIGN 3.18 E4)', () => {
+  it('the active tab is a Sand register with a border, the others are transparent; the header is White, the tool area Sand', () => {
     const { container } = setup(<Rows />);
-    // The White fill and the Stone border are the shared glide pill (spell 21), not the segment.
-    const pill = container.querySelector('[data-glide-pill="mode"]');
-    expect(pill?.className).toContain('bg-panel');
-    expect(pill?.className).toContain('border-control-border');
-    expect(tab('Read').className).toContain('aria-selected:font-medium');
+    expect(container.querySelector('[data-glide-pill="mode"]')).toBeNull();
+    expect(tab('Read').className).toContain('aria-selected:bg-subtle');
+    expect(tab('Read').className).toContain('aria-selected:border-border-subtle');
+    expect(tab('Read').className).toContain('-mb-px');
     expect(tab('Read').getAttribute('aria-selected')).toBe('true');
     expect(tab('Edit').getAttribute('aria-selected')).toBe('false');
-    expect(container.querySelector('[data-slot="mode-row"]')?.className).toContain('bg-subtle');
+    expect(container.querySelector('[data-slot="mode-row"]')?.className).toContain('bg-panel');
     expect(container.querySelector('[data-slot="tool-row"]')?.className).toContain('bg-subtle');
     expect(tab('Read').getAttribute('aria-controls')).toBe('mode-tool-row');
+  });
+
+  it('every tab has a key chip 1 to 5 (shown on the active one, at hover and focus on the others)', () => {
+    setup(<Rows />);
+    const chips = screen.getAllByRole('tab').map((entry) => entry.querySelector('[data-key-chip]'));
+    expect(chips.map((chip) => chip?.textContent)).toEqual(['1', '2', '3', '4', '5']);
+    expect(chips[0]?.className).toContain('group-aria-selected:inline-flex');
+    expect(chips[1]?.className).toContain('group-hover:inline-flex');
+    expect(chips[1]?.className).toContain('group-focus-visible:inline-flex');
+  });
+
+  it('is one card of header 32 + tool area 72 = 104', () => {
+    const { container } = setup(<ModeCard />);
+    const card = container.querySelector('[data-slot="mode-card"]');
+    expect(card?.className).toContain('h-mode-card');
+    expect(card?.className).toContain('border-border-subtle');
+    expect(container.querySelector('[data-slot="mode-row"]')?.className).toContain('h-mode-tab');
+    expect(container.querySelector('[data-slot="tool-row"]')?.className).toContain('h-tool-area');
+    expect(item('Select').className).toContain('h-tool-item');
+    expect(screen.getByRole('region', { name: 'Modes and tools' })).not.toBeNull();
+  });
+
+  const groups = () =>
+    Array.from(screen.getByRole('toolbar').querySelectorAll('[data-separator], [data-toolbar-item]')).reduce<
+      string[][]
+    >(
+      (out, node) => {
+        if (node.hasAttribute('data-separator')) out.push([]);
+        else out[out.length - 1]?.push(node.getAttribute('data-toolbar-item') ?? '');
+        return out;
+      },
+      [[]],
+    );
+
+  it('the thin separators follow the mode table', () => {
+    const table: Record<'read' | 'comment' | 'fill' | 'pages' | 'edit', string[][]> = {
+      read: [
+        ['select', 'hand', 'textSelect'],
+        ['magnifier', 'rotate'],
+        ['search', 'smartLinks'],
+      ],
+      comment: [
+        ['highlight', 'underline', 'strikeout', 'cite'],
+        ['note', 'freeText'],
+        ['draw', 'shapes'],
+      ],
+      fill: [['text', 'check', 'cross', 'dot', 'date'], ['signature', 'initials'], ['certificate']],
+      pages: [['organize'], ['rotatePages', 'delete', 'insert'], ['extract', 'split', 'merge'], ['compress']],
+      edit: [
+        ['editText', 'textBox', 'image'],
+        ['crop', 'headerFooter', 'stamp'],
+        ['redact', 'protect', 'properties'],
+      ],
+    };
+    for (const [mode, expected] of Object.entries(table)) {
+      act(() => switchMode(mode as keyof typeof table));
+      const { unmount } = setup(<Rows />);
+      expect(groups(), mode).toEqual(expected);
+      for (const separator of screen.getAllByRole('separator')) {
+        expect(separator.getAttribute('aria-orientation')).toBe('vertical');
+      }
+      unmount();
+    }
+  });
+
+  it('has no group captions and no inline hints: the toolbar holds the labels only, hints are in the tooltip', async () => {
+    const { user } = setup(<Rows />);
+    const labels = Array.from(screen.getByRole('toolbar').querySelectorAll('[data-label]')).map((l) => l.textContent);
+    expect(screen.getByRole('toolbar').textContent).toBe(labels.join(''));
+    expect(screen.queryByText(/Or hold Z/)).toBeNull();
+    await user.hover(item('Magnifier'));
+    expect(await screen.findByText(/Or hold Z/)).not.toBeNull();
   });
 });
 

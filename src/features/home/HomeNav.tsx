@@ -1,6 +1,6 @@
 import { Clock, Home, Settings, Star, Wrench, type LucideIcon } from 'lucide-react';
 
-import { Icon } from '../../components';
+import { Icon, Tooltip } from '../../components';
 import { Wordmark } from '../../components/Wordmark';
 import { cx } from '../../components/cx';
 import { useT, type PlainKey } from '../../i18n';
@@ -17,12 +17,12 @@ const ROWS: readonly { id: HomeSection; icon: LucideIcon; labelKey: PlainKey }[]
 ];
 
 const ROW =
-  't-label flex h-control-md w-full cursor-pointer items-center gap-3 rounded-md px-3 text-start transition-colors [transition-duration:var(--motion-fast)] not-aria-[current=page]:hover:bg-subtle active:bg-pressed';
+  't-nav flex h-(--home-nav-row-height) w-full cursor-pointer items-center gap-5 rounded-md px-6 text-start transition-colors [transition-duration:var(--motion-fast)] hover:bg-subtle active:bg-pressed';
 
 /**
- * The navigation of Home (DESIGN v2 3.1): Canvas, 200 wide; the word mark in a 48 row, then the rows Home, Zuletzt, Markiert and
- * Werkzeuge (the active one `bg-subtle` with Ink 600, and only that one: a hover tint on it would leave two Sand rows), and the Settings row at the bottom, 16 from its end. No Shared, no Trash (ADR-100).
- * The four rows are one tab stop; arrows move between them.
+ * The navigation of Home (DESIGN 3.18 H2): Canvas, 230 wide; the word mark 32 high at x 40, top 80; the rows Start, Zuletzt, Markiert and
+ * Werkzeuge from top 144 (44 high, gap 4, the active one Sand with Ink 500 and `aria-current`), and the Settings button at the bottom
+ * (x 36, bottom 48, 40 high, bordered). No Shared, no Trash (ADR-100). The four rows are one tab stop; arrows move between them.
  */
 export function HomeNav({ section, onSection }: { section: HomeSection; onSection: (section: HomeSection) => void }) {
   const t = useT();
@@ -34,12 +34,12 @@ export function HomeNav({ section, onSection }: { section: HomeSection; onSectio
     <nav
       aria-label={t('home.nav.label')}
       data-home-nav=""
-      className="flex w-(--home-nav-width) shrink-0 flex-col bg-app pb-4"
+      className="home-nav flex w-(--home-nav-width) shrink-0 flex-col bg-app"
     >
-      <div className="flex h-(--home-nav-row-height) items-center px-5 text-ink">
-        <Wordmark className="h-6" />
+      <div className="home-wordmark text-ink">
+        <Wordmark className="h-full w-auto" />
       </div>
-      <div {...roving.groupProps} className="mt-4 flex flex-col gap-1 px-3">
+      <div {...roving.groupProps} className="home-nav-rows flex flex-col gap-1">
         {ROWS.map((row) => {
           const active = row.id === section;
           return (
@@ -50,19 +50,26 @@ export function HomeNav({ section, onSection }: { section: HomeSection; onSectio
               tabIndex={roving.tabIndexOf(row.id)}
               aria-current={active ? 'page' : undefined}
               onClick={() => onSection(row.id)}
-              className={cx(ROW, active && 'bg-subtle font-semibold text-ink')}
+              className={cx(ROW, active && 'bg-subtle font-medium text-ink')}
             >
-              <Icon icon={row.icon} size={18} />
+              <Icon icon={row.icon} size={20} />
               {t(row.labelKey)}
             </button>
           );
         })}
       </div>
-      <div className="mt-auto px-3">
-        <button type="button" data-home-settings="" onClick={openSettings} className={ROW}>
-          <Icon icon={Settings} size={18} />
-          {t('home.nav.settings')}
-        </button>
+      <div className="home-settings mt-auto">
+        <Tooltip label={t('home.nav.settings')} side="right">
+          <button
+            type="button"
+            data-home-settings=""
+            aria-label={t('home.nav.settings')}
+            onClick={openSettings}
+            className="flex h-control-lg items-center justify-center rounded-md border border-border-subtle px-3 text-ink transition-colors [transition-duration:var(--motion-fast)] hover:bg-subtle active:bg-pressed"
+          >
+            <Icon icon={Settings} size={20} />
+          </button>
+        </Tooltip>
       </div>
     </nav>
   );

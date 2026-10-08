@@ -3,8 +3,9 @@ phase: session "v2.0.0-rc.3 — F19 part 2" (ADR-143, tempo level 4, model polic
 version: 2.0.0-rc.2 (tag v2.0.0-rc.2, pre-release; latest stable v1.9.0)
 current_item: F19.16/F19.17 designer spec (DESIGN §3.18) → wave L (layout) → F19.19 palettes → wave S (F19.20–F19.23)
 packages:
-  spec: designer §3.18 editor + home (Opus)
-  (waves cut after the spec)
+  spec: designer §3.18 editor + home (Opus) — done 14ef62b
+  wave L (frontend, Sonnet): L1 shell/tabs/topbar/status bar + tokens.css · L2 modes card · L3 tool inspector (+ modes/Options.tsx) · L4 home
+  next: wave P F19.19 palettes · wave S F19.20–F19.23 (backend first)
 last_completed: v2.0.0-rc.2 — report docs/reports/2026-10-08-v2.0.0-rc.2-f19-teil1.md
 loop_count_this_session: 0
 open_blockers: 3 (B-002, B-005, B-008, human-only)
@@ -15,6 +16,7 @@ notes: Surface gate must run before annot-smoke on a fresh dev window (smoke lea
   Rule 17 / ADR-136: ≤ 2 cargo agents; check:fast for agents, full check once before each commit.
   ADR-142: model per package named in the brief (Opus: audits, engine-critical Rust, 2nd fix round; Haiku: mechanic). Briefs that start a dev/acceptance window must say: stop it only by process path (incident 2026-10-08: an agent killed sheer.exe by name).
 ci_log: (ADR-120 corrected — package commit → CI run; result filled in at the next push)
+  - f129d9e ADR-143 docs → run #148 (37847725845) GREEN; 14ef62b §3.18 spec + toolInspector store → run #149 (37848828284) GREEN
   - f5c05f0..1c03543 ADR-141/142, F19 part 1 (A–H) → run #144 (37811172571) red: macOS crash, header_footer_detect bound PDFium per test in parallel → fixed d6df5b6
   - d6df5b6 shared engine in header_footer_detect → run #145 (37813850885) GREEN
   - e1704fc..750cba2 acceptance fixes FX-1..FX-4, v20rc2 script → run #146 (37820420946) GREEN
