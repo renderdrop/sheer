@@ -695,6 +695,17 @@ describe('Bearbeiten', () => {
     expect(useUi.getState().redactMode).toBe(true);
   });
 
+  it('the Crop options popover closes with the tool: Cancel leaves no empty panel behind', async () => {
+    const { user } = setup(<Rows />);
+    await user.click(item('Crop'));
+    const panel = () => screen.queryByRole('dialog', { name: /Crop/ });
+    expect(panel()).not.toBeNull();
+    await user.click(screen.getByRole('button', { name: 'Cancel' }));
+    expect(useUi.getState().activeTool).toBe('select');
+    expect(panel()).toBeNull();
+    expect(screen.queryByRole('dialog')).toBeNull();
+  });
+
   it('Schützen and Metadaten open their dialogs', async () => {
     const { user } = setup(<Rows />);
     await user.click(item('Protect'));

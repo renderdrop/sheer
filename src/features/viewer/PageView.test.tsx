@@ -15,7 +15,7 @@ import { clearRenderFailure } from './renderFailure';
 import { publishViewRect } from './scrollBridge';
 
 const MIB = 1024 * 1024;
-const frame = (width = 100, height = 100): RenderFrame => ({ data: new Uint8Array([1, 2, 3]), width, height });
+const frame = (width = 102, height = 132): RenderFrame => ({ data: new Uint8Array([1, 2, 3]), width, height });
 
 interface Pending {
   request: RenderRequest;
@@ -410,6 +410,24 @@ describe('a failure', () => {
       await Promise.resolve();
     });
     expect(cache.has(imageKey({ docId: 1, page: 4, rev: 0, slotRev: 1, bucket: 2 }))).toBe(true);
+  });
+
+  it('never stretches the stand-in of an older revision into a box of another shape (a crop)', async () => {
+    const { scheduler, cache } = fixture();
+    put(cache, 2);
+    // Same shape as the old image (102 x 132): it stands in while the new revision renders.
+    const { unmount } = setup(view(scheduler, { slotRev: 1 }));
+    await act(async () => {
+      vi.advanceTimersByTime(BUCKET_SETTLE_MS);
+    });
+    expect(images()).toHaveLength(1);
+    unmount();
+    // A cropped page is landscape now: the portrait image is not drawn at all.
+    setup(view(scheduler, { slotRev: 1, width: 1056, height: 816, widthPt: 792, heightPt: 612 }));
+    await act(async () => {
+      vi.advanceTimersByTime(BUCKET_SETTLE_MS);
+    });
+    expect(images()).toHaveLength(0);
   });
 
   it('stops asking after a few withdrawn answers', async () => {

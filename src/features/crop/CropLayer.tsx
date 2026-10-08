@@ -1,7 +1,9 @@
 import { memo, useRef, type CSSProperties, type KeyboardEvent, type PointerEvent } from 'react';
 
 import type { PageCrop, PageSlotInfo } from '../../api/pages';
+import { Button } from '../../components';
 import { useT } from '../../i18n';
+import { readSlots } from '../../stores/pages';
 import { useUi } from '../../stores/ui';
 import { fileRotationOf } from '../viewer/fileRotation';
 import type { PageLayerProps } from '../viewer/pageLayer';
@@ -13,7 +15,7 @@ import {
   unrotatedSize,
   viewToPage,
 } from '../viewer/transform';
-import { applyCrop } from './actions';
+import { applyCrop, cancelCrop, fitsAll, targetPages } from './actions';
 import {
   HANDLES,
   MOVE,
@@ -107,6 +109,7 @@ function CropRect({
 }: PageLayerProps & { slot: PageSlotInfo; number: number; frame: CropFrame; margins: PageCrop }) {
   const t = useT();
   const outer = useRef<HTMLDivElement>(null);
+  const rectEl = useRef<HTMLDivElement>(null);
   const gesture = useRef<Gesture | null>(null);
 
   const view = normalizeRotation(rotationProp);
@@ -116,6 +119,12 @@ function CropRect({
   const shownWidthPt = swapsSides(view) ? heightPt : widthPt;
   const pxPerPt = shownWidthPt > 0 ? boxWidth / shownWidthPt : 1;
   const key = keyOf(docId, pageIndex);
+  // The bar offers Apply once the user has drawn or changed a rectangle on this page.
+  const drafted = useCrop((state) => state.key === key && state.margins !== null);
+  const scope = useCrop((state) => state.scope);
+  const range = useCrop((state) => state.range);
+  const pages = targetPages(readSlots(docId), slot, scope, range);
+  const canApply = pages !== null && fitsAll(margins, pages);
   const snap = SNAP_PX / pxPerPt;
 
   const set = (next: PageCrop) => useCrop.getState().setMargins(key, next);
@@ -151,8 +160,11 @@ function CropRect({
 
   const end = (event: PointerEvent<HTMLElement>) => {
     if (gesture.current?.pointerId !== event.pointerId) return;
+    const drew = gesture.current.handle === null && gesture.current.moved;
     gesture.current = null;
     event.currentTarget.releasePointerCapture?.(event.pointerId);
+    // After drawing, the rectangle has the focus, so Enter applies.
+    if (drew) rectEl.current?.focus({ preventScroll: true });
   };
 
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
@@ -224,6 +236,7 @@ function CropRect({
           role="group"
           tabIndex={0}
           aria-label={t('crop.rectLabel', { n: number })}
+          ref={rectEl}
           data-crop-rect=""
           className="pointer-events-auto absolute cursor-move touch-none"
           style={{ ...rectStyle(box.x, box.y, box.w, box.h) }}
@@ -255,6 +268,27 @@ function CropRect({
           />
         ))}
       </div>
+      {drafted && (
+        <div
+          role="group"
+          aria-label={t('crop.bar')}
+          data-crop-bar=""
+          className="bg-panel border border-border-subtle shadow-floating pointer-events-auto absolute bottom-3 start-1/2 flex -translate-x-1/2 items-center gap-2 rounded-panel p-2 rtl:translate-x-1/2"
+        >
+          <Button size="sm" onClick={cancelCrop}>
+            {t('crop.cancel')}
+          </Button>
+          <Button
+            size="sm"
+            variant="primary"
+            disabled={!canApply}
+            focusableWhenDisabled
+            onClick={() => void applyCrop(docId, slot, margins)}
+          >
+            {t('crop.apply')}
+          </Button>
+        </div>
+      )}
     </div>
   );
 }

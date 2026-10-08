@@ -439,3 +439,78 @@ fn form_widgets_shift_with_the_crop_and_back_on_undo() {
         .unwrap();
     assert_eq!(widget_rect(state, late), (x0 - 50.0, y0 - 30.0));
 }
+
+/// The bytes of the content streams of page `index` of a file, and its Resources entry, as the file has them.
+fn page_content(bytes: &[u8], index: usize) -> (Vec<u8>, String) {
+    let parsed = sheer_lib::pdfwrite::produce::load(bytes).unwrap();
+    let dict = parsed.doc.get_dictionary(parsed.pages[index]).unwrap();
+    let contents = dict.get(b"Contents").unwrap();
+    // One stream, or an array of them.
+    let ids: Vec<_> = match contents.as_array() {
+        Ok(items) => items.iter().filter_map(|o| o.as_reference().ok()).collect(),
+        Err(_) => contents.as_reference().into_iter().collect(),
+    };
+    let mut out = Vec::new();
+    for id in ids {
+        let stream = parsed.doc.get_object(id).unwrap().as_stream().unwrap();
+        out.extend_from_slice(
+            &stream
+                .decompressed_content()
+                .unwrap_or_else(|_| stream.content.clone()),
+        );
+    }
+    let resources = format!("{:?}", dict.get(b"Resources").unwrap());
+    (out, resources)
+}
+
+/// Regression F19.7: a crop only writes the CropBox. The content stream, the resources and the MediaBox of the page are the ones of the
+/// source, the page is not rasterised, and the text of the visible area reads the same after the save and a reopen.
+#[test]
+fn a_crop_changes_only_the_cropbox_and_the_text_stays() {
+    let Some(state) = state() else { return };
+    let scratch = Scratch::new("textstays");
+    let source = support::fixtures::text();
+    let id = open(state, &scratch, "t.pdf", &source);
+    let before = state.text_layer(id, PageId::new(0)).unwrap();
+    assert!(before.text.contains("quick brown fox"));
+
+    // Margins that keep the text lines.
+    state
+        .apply_command(id, margins(0, 60.0, 40.0, 200.0, 40.0))
+        .unwrap();
+    state.save_in_place(id, SaveAck::default()).unwrap();
+    let bytes = std::fs::read(scratch.file("t.pdf")).unwrap();
+
+    assert_eq!(
+        page_content(&bytes, 0),
+        page_content(&source, 0),
+        "content and resources are untouched"
+    );
+    assert_eq!(page_content(&bytes, 1), page_content(&source, 1));
+    assert_eq!(
+        page_box(&bytes, 0, b"MediaBox"),
+        Some(vec![0.0, 0.0, 612.0, 792.0])
+    );
+    assert_eq!(
+        page_box(&bytes, 0, b"CropBox"),
+        Some(vec![40.0, 200.0, 572.0, 732.0])
+    );
+    assert_eq!(
+        page_box(&bytes, 1, b"CropBox"),
+        None,
+        "other pages get no box"
+    );
+
+    std::fs::copy(scratch.file("t.pdf"), scratch.file("u.pdf")).unwrap();
+    let again = state
+        .open_path(scratch.file("u.pdf"))
+        .unwrap()
+        .expect("loaded")
+        .id;
+    let after = state.text_layer(again, PageId::new(0)).unwrap();
+    assert_eq!(
+        after.text, before.text,
+        "the text of the visible area is extracted unchanged"
+    );
+    assert_eq!(after.boxes.len(), before.boxes.len());
+}

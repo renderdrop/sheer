@@ -2,6 +2,7 @@ import { useCallback, useEffect, useSyncExternalStore } from 'react';
 
 import { getTextLayer, type TextLayer } from '../../api/text';
 import { useDocuments } from '../../stores/documents';
+import { usePages } from '../../stores/pages';
 import { forgetFileRotations, setFileRotation } from '../viewer/fileRotation';
 
 /**
@@ -53,6 +54,21 @@ function watchDocuments(): void {
       if (state.byId[docId] === undefined) {
         forgetFileRotations(docId);
         knownDocs.delete(docId);
+      }
+    }
+  });
+  // A page whose revision changed (a crop, its undo, a rotation) has other page-space boxes: its layer is read again.
+  usePages.subscribe((state, previous) => {
+    for (const [key, slots] of Object.entries(state.slotsByDoc)) {
+      const docId = Number(key);
+      const before = new Map((previous.slotsByDoc[docId] ?? []).map((slot) => [slot.id, slot.rev]));
+      for (const slot of slots) {
+        const old = before.get(slot.id);
+        if (old === undefined || old === slot.rev) continue;
+        const pageKey = keyOf(docId, slot.id);
+        inflight.delete(pageKey);
+        failed.delete(pageKey);
+        drop(pageKey);
       }
     }
   });

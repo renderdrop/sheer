@@ -307,4 +307,43 @@ describe('the layer', () => {
     expect(rect?.style.width).toBe('600px');
     expect(rect?.style.height).toBe('800px');
   });
+
+  it('offers Apply and Cancel on the canvas once a rectangle is drawn, and Apply sends it in one click', async () => {
+    const { user, container } = setup(<CropLayer {...props} />);
+    act(() => useUi.getState().selectTool('crop'));
+    expect(container.querySelector('[data-crop-bar]')).toBeNull();
+    act(() => useCrop.getState().setMargins(keyOf(1, 0), { top: 100, right: 0, bottom: 0, left: 50 }));
+    const bar = container.querySelector('[data-crop-bar]');
+    expect(bar).not.toBeNull();
+    await user.click(screen.getByRole('button', { name: 'Apply' }));
+    expect(applyMock).toHaveBeenCalledTimes(1);
+    expect(applyMock).toHaveBeenCalledWith(1, {
+      type: 'cropPages',
+      pages: [0],
+      spec: { type: 'margins', top: 100, right: 0, bottom: 0, left: 50 },
+    });
+    await vi.waitFor(() => expect(useUi.getState().activeTool).toBe('select'));
+  });
+
+  it('Cancel on the canvas sends nothing and leaves no crop surface behind', async () => {
+    const { user, container, rerender } = setup(<CropLayer {...props} />);
+    act(() => useUi.getState().selectTool('crop'));
+    act(() => useCrop.getState().setMargins(keyOf(1, 0), { top: 100, right: 0, bottom: 0, left: 50 }));
+    await user.click(screen.getByRole('button', { name: 'Cancel' }));
+    expect(applyMock).not.toHaveBeenCalled();
+    expect(useUi.getState().activeTool).toBe('select');
+    rerender(<CropLayer {...props} />);
+    for (const hook of ['crop-layer', 'crop-bar', 'crop-rect', 'crop-handle', 'crop-shade']) {
+      expect(container.querySelector(`[data-${hook}]`)).toBeNull();
+    }
+    expect(useCrop.getState().margins).toBeNull();
+  });
+
+  it('disables Apply while the margins leave less than the minimum', () => {
+    const { container } = setup(<CropLayer {...props} />);
+    act(() => useUi.getState().selectTool('crop'));
+    act(() => useCrop.getState().setMargins(keyOf(1, 0), { top: 0, right: 0, bottom: 0, left: 590 }));
+    expect(container.querySelector('[data-crop-bar]')).not.toBeNull();
+    expect(screen.getByRole('button', { name: 'Apply' }).getAttribute('aria-disabled')).toBe('true');
+  });
 });

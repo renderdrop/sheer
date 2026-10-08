@@ -3,6 +3,7 @@ import { act, renderHook, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { useDocuments } from '../../stores/documents';
+import { usePages } from '../../stores/pages';
 import { resetDocuments } from '../../stores/documents.testutil';
 import { fileRotationOf, hasFileRotation } from '../viewer/fileRotation';
 import {
@@ -53,6 +54,28 @@ describe('the text layer cache', () => {
     expect(peekLayer(1, 0)).toBeUndefined();
     expect(peekLayer(2, 0)).toBeDefined();
     expect(await loadLayer(1, 1)).not.toBeNull();
+  });
+
+  it('reads a page again after its revision changed (a crop moves the origin of the boxes)', async () => {
+    const slot = (rev: number) => ({
+      id: 0,
+      width: 600,
+      height: 800,
+      rotation: 0 as const,
+      rev,
+      label: null,
+      origin: 'file' as const,
+      media: { width: 600, height: 800 },
+      crop: null,
+    });
+    usePages.getState().setSlots(1, [slot(0)]);
+    const first = await loadLayer(1, 0);
+    usePages.getState().setSlots(1, [slot(0)]);
+    expect(peekLayer(1, 0)).toBe(first);
+    usePages.getState().setSlots(1, [slot(1)]);
+    expect(peekLayer(1, 0)).toBeUndefined();
+    expect(await loadLayer(1, 0)).not.toBe(first);
+    expect(textApi.getTextLayer).toHaveBeenCalledTimes(2);
   });
 
   it('a page that cannot be read is null, and not an error', async () => {

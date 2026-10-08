@@ -43,6 +43,11 @@ export const BUCKET_SETTLE_MS = 80;
 export const RENDER_RETRIES = 5;
 export const RENDER_RETRY_MS = 200;
 
+/** Whether an image has the aspect ratio of the box it would be drawn into (within the tolerance of a rounded size). */
+function sameShape(entry: { width: number; height: number }, aspect: number): boolean {
+  return !(aspect > 0) || Math.abs(entry.width / entry.height / aspect - 1) <= 0.02;
+}
+
 /** How many earlier revisions of a page are looked at for a stand-in while the image of the new one is on its way. */
 const STAND_IN_REVS = 8;
 
@@ -250,11 +255,13 @@ export const PageView = memo(function PageView({
   // An annotation of the file that was changed makes the page's pixels stale: the images of the new revision are asked for, and the
   // old ones stand in until they arrive.
   const rev = useAnnotations((state) => pageRevOf(state, docId, pageId));
+  const aspect = swapsSides(rotation) ? height / width : width / height;
   const standInFor = (bucket: number, except?: string): CacheEntry | undefined => {
     for (let q = slotRev; q >= Math.max(0, slotRev - STAND_IN_REVS); q -= 1) {
       for (let r = rev; r >= Math.max(0, rev - STAND_IN_REVS); r -= 1) {
         const found = cache.best(docId, pageId, r, bucket, except, q);
-        if (found !== undefined) return found;
+        // An image of another shape (before a crop or a rotation) would be stretched into this box: it does not stand in.
+        if (found !== undefined && sameShape(found, aspect)) return found;
       }
     }
     return undefined;
@@ -328,7 +335,8 @@ export const PageView = memo(function PageView({
     let hasSomething = false;
     for (let q = slotRev; q >= Math.max(0, slotRev - STAND_IN_REVS) && !hasSomething; q -= 1) {
       for (let r = rev; r >= Math.max(0, rev - STAND_IN_REVS) && !hasSomething; r -= 1) {
-        hasSomething = cache.best(docId, pageId, r, wholeBucket, undefined, q) !== undefined;
+        const found = cache.best(docId, pageId, r, wholeBucket, undefined, q);
+        hasSomething = found !== undefined && sameShape(found, aspect);
       }
     }
     const timer = hasSomething ? window.setTimeout(() => ask(missing, 0), BUCKET_SETTLE_MS) : undefined;
@@ -338,7 +346,7 @@ export const PageView = memo(function PageView({
       window.clearTimeout(timer);
       for (const pending of timers) window.clearTimeout(pending);
     };
-  }, [scheduler, cache, docId, pageId, rev, slotRev, wholeBucket, tiledBucket, tiles, priority, cacheVersion]);
+  }, [scheduler, cache, docId, pageId, rev, slotRev, aspect, wholeBucket, tiledBucket, tiles, priority, cacheVersion]);
 
   // A stand-in is under the image that arrives: that one fades fast; over the bare placeholder it fades at base.
   const image = (

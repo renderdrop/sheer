@@ -1,8 +1,8 @@
 import { ChevronDown } from 'lucide-react';
-import { useRef, type KeyboardEvent, type ReactElement } from 'react';
+import { useEffect, useRef, type KeyboardEvent, type ReactElement } from 'react';
 
 import { shortcutFor } from '../../actions/registry';
-import { Icon, Menu, Popover, Tooltip, type MenuEntry } from '../../components';
+import { Icon, Menu, Popover, Tooltip, type MenuEntry, type PopoverApi } from '../../components';
 import { cx } from '../../components/cx';
 import { useT } from '../../i18n';
 import { detectPlatform } from '../../lib/platform';
@@ -58,6 +58,14 @@ export const asEntry = (variant: VariantDef): MenuEntry => ({
   ...(variant.disabled === true ? { disabled: true } : {}),
   onSelect: variant.run,
 });
+
+/** Closes the popover it is in as soon as the tool is off: Apply, Cancel and Esc end the tool, and its options must not stay as an empty panel. */
+function CloseWhenOff({ on, close }: { on: boolean; close: PopoverApi['close'] }) {
+  useEffect(() => {
+    if (!on) close('programmatic');
+  }, [on, close]);
+  return null;
+}
 
 /** One slot of the tool row: a tool, or an action; with variants and colours, a split item with a chevron part. */
 export function ToolItem({ slot, iconOnly, stop }: ToolItemProps) {
@@ -127,13 +135,19 @@ export function ToolItem({ slot, iconOnly, stop }: ToolItemProps) {
     </Tooltip>
   );
   if (optionsOnly && slot.Options !== undefined) {
+    const Options = slot.Options;
     return (
       <Popover
         label={t('modes.options', { tool: slot.label })}
         disabled={off}
         trigger={(props) => tip(mainButton(props))}
       >
-        <slot.Options />
+        {({ close }) => (
+          <>
+            <CloseWhenOff on={slot.on} close={close} />
+            <Options />
+          </>
+        )}
       </Popover>
     );
   }
