@@ -322,9 +322,9 @@ describe('Lesen', () => {
     expect(outer?.className).toContain('rounded-md');
     expect(outer?.querySelectorAll('button')).toHaveLength(2);
     expect(chevron.className).toContain('border-s');
-    expect(chevron.className).not.toMatch(/rounded/);
+    expect(chevron.className).toContain('rounded-e-md');
     const main = outer?.querySelector('[data-toolbar-item]');
-    expect(main?.className).toContain('rounded-none!');
+    expect(main?.className).toContain('rounded-s-md!');
     expect(main?.className).toContain('active:scale-100!');
   });
 

@@ -44,6 +44,7 @@ import {
   morphOf,
   type Morph,
   recognise,
+  recogniseArrowStrokes,
   snapFor,
   snapTo,
   type Recognised,
@@ -562,6 +563,23 @@ function ActiveLayer({
         show(null);
         startMorph(d.samples, shape);
         commitSnap(d.samples, shape);
+        return;
+      }
+      // A shaft drawn a moment ago and now a separate arrowhead stroke: together they are one arrow (F19.13).
+      const shaft = pending.current.length === 1 ? pending.current[0] : undefined;
+      const arrow =
+        shaft === undefined || d.noSnap || !useTools.getState().straightenShapes
+          ? null
+          : recogniseArrowStrokes(shaft, smoothStroke(d.samples));
+      if (arrow !== null) {
+        if (timer.current !== null) clearTimeout(timer.current);
+        timer.current = null;
+        pending.current = [];
+        finished.current = [];
+        lastInkEnd.current = null;
+        show(null);
+        announce(t('draw.straightened'));
+        commit(recognisedDraft(arrow, pageIndex, page, style));
         return;
       }
       endStroke(d.samples, event.timeStamp);

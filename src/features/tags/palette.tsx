@@ -2,15 +2,13 @@ import type { Rgb } from '../../api/annotations';
 import { TAG_PALETTE } from '../../api/cite';
 import { cx } from '../../components/cx';
 import type { PlainKey } from '../../i18n';
+import { PALETTES } from '../inspector/palette';
 
 /** The five colours a tag may have (DESIGN 3.7 C6): the highlight swatches, with their fill classes and names. */
-export const TAG_COLOURS: readonly { fill: string; name: PlainKey }[] = [
-  { fill: 'bg-hl-solar', name: 'colour.solar' },
-  { fill: 'bg-hl-mint', name: 'colour.mint' },
-  { fill: 'bg-hl-sky', name: 'colour.sky' },
-  { fill: 'bg-hl-rose', name: 'colour.rose' },
-  { fill: 'bg-hl-lavender', name: 'colour.lavender' },
-];
+export const TAG_COLOURS: readonly { fill: string; name: PlainKey }[] = PALETTES.highlight.map((colour) => ({
+  fill: colour.bg,
+  name: colour.nameKey,
+}));
 
 /** The index of `color` in the palette, or -1 (an unknown colour reads as neutral). */
 export function paletteIndex(color: Rgb | null): number {

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import type { Point } from '../../../api/wire';
-import { morphOf, recognise, resample, snapFor, snapTo } from './recognise';
+import { morphOf, recognise, recogniseArrowStrokes, resample, snapFor, snapTo } from './recognise';
 
 /** A small seeded generator, so the sloppy fixtures are the same on every run. */
 function random(seed: number): () => number {
@@ -645,5 +645,98 @@ describe('recognise: F17 acceptance, direction and tilt', () => {
 
   it('does not take a rectangle turned by 35 degrees for an axis-aligned rectangle', () => {
     expect(recognise(along(tilted(35), 5, 0.6, random(208)))?.kind).not.toBe('rect');
+  });
+});
+
+describe('recognise: F19.13 open ellipses and two-stroke arrows', () => {
+  it.each([0.8, 0.85, 0.9])('takes an open circle covering %f of the circumference for a circle', (share) => {
+    const shape = recognise(ellipsePath(200, 200, 60, 60, 0.7, 0.7 + 2 * Math.PI * share, 0.015, random(301)));
+    expect(shape?.kind).toBe('ellipse');
+    if (shape?.kind === 'ellipse') {
+      expect(shape.circle).toBe(true);
+      expect(shape.box.w).toBeGreaterThan(105);
+      expect(shape.box.w).toBeLessThan(135);
+      expect(shape.box.x + shape.box.w / 2).toBeCloseTo(200, -1);
+    }
+  });
+
+  it('takes an open wide ellipse at 82 % for an ellipse that is not a circle', () => {
+    const shape = recognise(ellipsePath(300, 200, 100, 50, 2, 2 + 2 * Math.PI * 0.82, 0.015, random(302)));
+    expect(shape?.kind).toBe('ellipse');
+    if (shape?.kind === 'ellipse') expect(shape.circle).toBe(false);
+  });
+
+  it('leaves arcs of 60 and 70 percent as ink', () => {
+    expect(recognise(ellipsePath(100, 100, 60, 60, 0, 2 * Math.PI * 0.6, 0.01, random(303)))).toBeNull();
+    expect(recognise(ellipsePath(100, 100, 60, 60, 0, 2 * Math.PI * 0.7, 0.01, random(304)))).toBeNull();
+  });
+
+  it('still takes a rectangle and a line as before', () => {
+    expect(recognise(along(rectCorners(50, 50, 150, 80), 4, 0.3, random(305)))?.kind).toBe('rect');
+    expect(
+      recognise(
+        along(
+          [
+            { x: 0, y: 0 },
+            { x: 200, y: 20 },
+          ],
+          4,
+          0.5,
+          random(306),
+        ),
+      )?.kind,
+    ).toBe('line');
+  });
+
+  const shaft = along(
+    [
+      { x: 20, y: 100 },
+      { x: 220, y: 100 },
+    ],
+    4,
+    0.5,
+    random(310),
+  );
+  const chevron = (tipX: number, dir: number): Point[] =>
+    along(
+      [
+        { x: tipX - dir * 24, y: 88 },
+        { x: tipX, y: 100 },
+        { x: tipX - dir * 24, y: 112 },
+      ],
+      3,
+      0.3,
+      random(311),
+    );
+
+  it('takes a shaft plus a separate chevron for an arrow with its tip at the chevron', () => {
+    const arrow = recogniseArrowStrokes(shaft, chevron(220, 1));
+    expect(arrow?.kind).toBe('arrow');
+    if (arrow?.kind === 'arrow') {
+      expect(arrow.to.x).toBeCloseTo(220, -1);
+      expect(arrow.from.x).toBeCloseTo(20, -1);
+    }
+    const left = recogniseArrowStrokes(shaft, chevron(20, -1));
+    expect(left?.kind === 'arrow' && left.to.x < 40).toBe(true);
+  });
+
+  it('does not join a chevron that sits in the middle of the shaft, or a head that is not a chevron', () => {
+    expect(recogniseArrowStrokes(shaft, chevron(120, 1))).toBeNull();
+    expect(
+      recogniseArrowStrokes(
+        shaft,
+        along(
+          [
+            { x: 196, y: 90 },
+            { x: 220, y: 110 },
+          ],
+          3,
+          0.2,
+          random(312),
+        ),
+      ),
+    ).toBeNull();
+    // Arms that open the wrong way (pointing away from the shaft).
+    expect(recogniseArrowStrokes(shaft, chevron(220, -1))).toBeNull();
   });
 });

@@ -18,12 +18,12 @@ const MAIN =
   'not-aria-disabled:hover:bg-panel not-aria-disabled:not-data-[on=true]:active:bg-pressed not-aria-disabled:active:scale-(--scale-press) ' +
   'data-[on=true]:font-semibold data-[on=true]:text-ink not-aria-disabled:data-[on=true]:hover:bg-accent-hover not-aria-disabled:data-[on=true]:active:bg-accent-hover';
 
-/** The main part of a split item: square (the outer contour rounds it) and never scaled, so nothing spills past the contour. */
-const SPLIT_PART = 'rounded-none! not-aria-disabled:active:scale-100!';
+/** The main part of a split item: rounded only on its outer side, so its hover fill is exactly its own box (F19.2); the chevron mirrors it; and never scaled, so nothing spills past the contour. */
+const SPLIT_PART = 'rounded-s-md! rounded-e-none! not-aria-disabled:active:scale-100!';
 
 /** The chevron part of a split item: 20 wide, its own tab stop. */
 const CHEVRON =
-  'flex h-control-md w-icon-20 shrink-0 cursor-pointer items-center justify-center border-s border-border-subtle text-text transition-colors duration-fast ' +
+  'flex h-control-md w-icon-20 shrink-0 cursor-pointer items-center justify-center rounded-e-md border-s border-border-subtle text-text transition-colors duration-fast ' +
   'aria-disabled:cursor-not-allowed aria-disabled:opacity-(--opacity-disabled) ' +
   'not-aria-disabled:hover:bg-panel not-aria-disabled:aria-expanded:bg-panel not-aria-disabled:active:bg-pressed ' +
   'group-data-[on=true]:text-ink group-data-[on=true]:not-aria-disabled:hover:bg-accent-hover group-data-[on=true]:not-aria-disabled:aria-expanded:bg-accent-hover ' +

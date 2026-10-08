@@ -140,6 +140,19 @@ Highlights: fill at 45 % opacity, `mix-blend-mode: multiply`. The four alternati
 
 Tokens: `--hl-*`, `--stroke-*`. Annotations from older files keep their stored colour; the picker then shows it as an extra "Custom" swatch. Signature ink: Ink or `--ink-signature` #1F3A93 (the only blue).
 
+**Palette audit and single source (F19.14, ADR-141).** All colour lists live in `src/features/inspector/palette.ts` as named sets (`PALETTE_SETS`, active set `ACTIVE_PALETTE_SET` = `iris`; each set holds `highlight`, `stroke`, `fill`, `signature`). The one picker is `components/ColourPopover` (palette grid, custom hex, recent). A "toggleable palette" (owner spec pending) is a second entry in `PALETTE_SETS`; no surface may hold colour literals (`paletteSource.test.ts` scans for them).
+
+| Surface | Palette source | Picker | State |
+|---|---|---|---|
+| Mini bar (`minibar/model.ts`, `Controls.tsx`) | `PALETTES[kind]` | ColourPopover | unified |
+| Tool row colour row (`modes/ColourRow.tsx`) | `paletteNameOf(kind)` | ColourPopover | unified |
+| Inspector (`inspector/*`) | `PALETTES` | ColourPopover | unified |
+| Signature sheet (`SignatureSheet.tsx`) | `SIGNATURE_PALETTE` (Ink, `--ink-signature`) via radio | two-swatch radio by design | unified (source) |
+| Text boxes (`insert/TextEditor.tsx`, `note/FreeTextEditor.tsx`) | no palette of their own; render the object's colour | mini bar | unified |
+| Tags (`tags/palette.tsx`, `api/cite.ts TAG_PALETTE`) | derived from `PALETTES.highlight`; `TAG_PALETTE` mirrors Rust and is asserted equal | tag menu (fixed five) | unified (was a copy) |
+| Stamps (`stamps/actions.ts TONE_RGB`) | derived from highlight[0] / stroke[0] (was literals) | tone menu | unified (was a copy) |
+| Comment export | uses `TagDot` (tags source) | none | unified |
+
 ### 1.5 Type (Inter variable, `font-feature-settings: "cv11","ss01"`; numerals that change use `tabular-nums`)
 
 | Class | Size/line | Weight | Tracking |

@@ -7,6 +7,8 @@
 //            surfaces intersect; notices may not cover any protected rect; modals cover the inert app by design
 //   wrap     no control label (button, radio, tab, menu item) is taller than 1.5 lines (the label wraps)
 //   split    every split button ([data-split]) in hover and pressed: all its parts stay inside its own box (0.5 px) and the box keeps its size
+//   hover    every toolbar and mode button hovered over CDP: its hover paints (box, ::before/::after, shadow spread, backgrounds) lie inside
+//            the button box and its toolbar, 0 px tolerance (F19.2)
 // Also registered: the ink mini bar, its colour popover and every coach mark step (floating surfaces that are no dialog).
 // Runs once per UI language (en, then de, via the locale store). Disabled triggers are logged SKIP.
 // Surfaces: the dev registry `window.__sheerSurfaces` (src/dev/surfaces.ts: dialogs, sheets) and every popover/menu trigger on screen
@@ -19,6 +21,7 @@ import {
   checkControlOverlap,
   checkDescendants,
   checkHScroll,
+  checkHoverGeometry,
   checkInViewport,
   checkLabelWrap,
   LABEL_SELECTOR,
@@ -504,6 +507,66 @@ async function sweepSplit(label) {
   if (count > 0) rows.push(...rowsFor(tag, { split: checkSplitButtons(buttons) }));
 }
 
+const BUTTONS_SEL =
+  '[role="toolbar"] button, [data-toolbar-item], [role="tablist"] [role="tab"], [data-slot="mode-row"] button';
+
+/** F19.2: every toolbar and mode button hovered over CDP; what paints in hover must equal the button's box (0 px tolerance). */
+async function sweepHover(label) {
+  const count = await ev(`document.querySelectorAll(${JSON.stringify(BUTTONS_SEL)}).length`);
+  const read = (i) =>
+    ev(`(() => {
+      const el = document.querySelectorAll(${JSON.stringify(BUTTONS_SEL)})[${i}];
+      if (!el || el.getAttribute('aria-disabled') === 'true' || el.disabled) return null;
+      const R = (r) => ({ left: r.left, top: r.top, right: r.right, bottom: r.bottom });
+      const px = (v) => (Number.isFinite(parseFloat(v)) ? parseFloat(v) : 0);
+      const name = (e) => (e.getAttribute('data-toolbar-item') || e.getAttribute('aria-label') || e.textContent || e.tagName).trim().replace(/\\s+/g, ' ').slice(0, 24);
+      const r = el.getBoundingClientRect();
+      const paints = [];
+      const cs = getComputedStyle(el);
+      // Outer box-shadow spread: grows the painted box by the spread (and the offset) on each side.
+      for (const part of cs.boxShadow.split(/,(?![^(]*\\))/)) {
+        if (!part.trim() || part.trim() === 'none' || /inset/.test(part)) continue;
+        const nums = (part.match(/-?[\\d.]+px/g) || []).map(px);
+        const [dx = 0, dy = 0, , spread = 0] = nums;
+        paints.push({ name: 'box-shadow spread', rect: { left: r.left + dx - spread, top: r.top + dy - spread, right: r.right + dx + spread, bottom: r.bottom + dy + spread } });
+      }
+      for (const pseudo of ['::before', '::after']) {
+        const s = getComputedStyle(el, pseudo);
+        if (s.content === 'none' || s.display === 'none') continue;
+        if (s.position === 'absolute' || s.position === 'fixed') {
+          const left = r.left + px(cs.borderLeftWidth) + px(s.left), top = r.top + px(cs.borderTopWidth) + px(s.top);
+          paints.push({ name: pseudo, rect: { left, top, right: left + px(s.width), bottom: top + px(s.height) } });
+        }
+      }
+      for (const d of el.querySelectorAll('*')) {
+        const s = getComputedStyle(d), dr = d.getBoundingClientRect();
+        if (dr.width <= 0 || dr.height <= 0 || s.backgroundColor === 'rgba(0, 0, 0, 0)') continue;
+        paints.push({ name: d.tagName.toLowerCase() + ' background', rect: R(dr) });
+      }
+      const box = el.closest('[role="toolbar"],[role="tablist"],[data-slot="mode-row"],[data-slot="tool-row"]');
+      return { name: name(el), box: R(r), container: R((box || el.parentElement).getBoundingClientRect()),
+        centre: { x: r.left + r.width / 2, y: r.top + r.height / 2 }, paints };
+    })()`);
+  const items = [];
+  for (let i = 0; i < count; i++) {
+    const rest = await read(i);
+    if (rest === null || rest.box.right <= rest.box.left) continue;
+    await mouse('mouseMoved', rest.centre.x, rest.centre.y, { button: 'none' });
+    await sleep(250);
+    const hovered = await read(i);
+    if (hovered === null) continue;
+    items.push({
+      name: rest.name,
+      box: rest.box,
+      container: rest.container,
+      hover: { box: hovered.box, paints: [...hovered.paints, { name: 'button', rect: hovered.box }] },
+    });
+  }
+  await mouse('mouseMoved', 2, 2, { button: 'none' });
+  if (items.length > 0)
+    rows.push(...rowsFor(`${lang} hover:${label} @${current.w}x${current.h}`, { hover: checkHoverGeometry(items) }));
+}
+
 const store = (path) => `import('/src/${path}')`;
 async function openFixture() {
   const active = () =>
@@ -553,6 +616,7 @@ try {
         await ev(`(async()=>{(await ${store('stores/ui.ts')}).useUi.getState().setMode(${JSON.stringify(mode)})})()`);
         await sleep(400);
         await sweepSplit(mode);
+        await sweepHover(mode);
         await sweepTriggers(mode);
       }
     }

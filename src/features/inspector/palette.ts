@@ -62,12 +62,28 @@ export const SIGNATURE_PALETTE: readonly PaletteColour[] = [
   { id: 'signatureInk', rgb: [31, 58, 147], bg: 'bg-ink-signature', check: WHITE, nameKey: 'colour.signatureInk' },
 ];
 
-export const PALETTES: Readonly<Record<PaletteName, readonly PaletteColour[]>> = {
-  highlight: HIGHLIGHT_PALETTE,
-  stroke: STROKE_PALETTE,
-  fill: FILL_PALETTE,
-  signature: SIGNATURE_PALETTE,
-};
+export type PaletteSet = Readonly<Record<PaletteName, readonly PaletteColour[]>>;
+
+/**
+ * The named palette sets (F19.14, ADR-141): the ONE place that owns every colour the pickers, the inspector, the tags, the stamps and
+ * the defaults offer. Switching the palette as a set (the owner's "toggleable palette", spec pending) means adding a set here and
+ * changing `ACTIVE_PALETTE_SET`; no surface keeps a palette of its own. The default set is `iris`.
+ */
+export const PALETTE_SETS = {
+  iris: {
+    highlight: HIGHLIGHT_PALETTE,
+    stroke: STROKE_PALETTE,
+    fill: FILL_PALETTE,
+    signature: SIGNATURE_PALETTE,
+  },
+} as const satisfies Readonly<Record<string, PaletteSet>>;
+
+export type PaletteSetName = keyof typeof PALETTE_SETS;
+
+export const ACTIVE_PALETTE_SET: PaletteSetName = 'iris';
+
+/** The palettes every surface reads: the active set. */
+export const PALETTES: PaletteSet = PALETTE_SETS[ACTIVE_PALETTE_SET];
 
 /** The kinds of annotation that have the highlight palette. */
 export const paletteNameOf = (kind: string): PaletteName =>

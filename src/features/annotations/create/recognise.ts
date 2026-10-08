@@ -55,6 +55,10 @@ export const RECOGNISE = {
   tipReach: 0.04,
   /** The path of the hook is at most this many times how far it reaches. */
   hookPath: 4.5,
+  /** An open stroke is an ellipse when it runs round at least this share of the full turn (F19.13). */
+  openCoverage: 0.8,
+  /** A separate arrowhead stroke meets the shaft's end within this share of the shaft. */
+  headMeet: 0.12,
 } as const;
 
 const dist = (a: Point, b: Point): number => Math.hypot(a.x - b.x, a.y - b.y);
@@ -257,6 +261,73 @@ function closedFit(s: readonly Point[]): Recognised | null {
   return null;
 }
 
+/** Solves the n x n system `m x = v` (Gaussian elimination, partial pivoting); `null` when it is singular. */
+function solve(m: number[][], v: number[]): number[] | null {
+  const n = v.length;
+  const a = m.map((row, i) => [...row, v[i] ?? 0]);
+  for (let c = 0; c < n; c += 1) {
+    let pivot = c;
+    for (let r = c + 1; r < n; r += 1) if (Math.abs(a[r]?.[c] ?? 0) > Math.abs(a[pivot]?.[c] ?? 0)) pivot = r;
+    const prow = a[pivot];
+    const crow = a[c];
+    if (prow === undefined || crow === undefined || Math.abs(prow[c] ?? 0) < 1e-12) return null;
+    a[pivot] = crow;
+    a[c] = prow;
+    for (let r = c + 1; r < n; r += 1) {
+      const row = a[r];
+      if (row === undefined) return null;
+      const f = (row[c] ?? 0) / (prow[c] ?? 1);
+      for (let k = c; k <= n; k += 1) row[k] = (row[k] ?? 0) - f * (prow[k] ?? 0);
+    }
+  }
+  const x: number[] = Array.from({ length: n }, () => 0);
+  for (let r = n - 1; r >= 0; r -= 1) {
+    const row = a[r];
+    if (row === undefined) return null;
+    let sum = row[n] ?? 0;
+    for (let k = r + 1; k < n; k += 1) sum -= (row[k] ?? 0) * (x[k] ?? 0);
+    x[r] = sum / (row[r] ?? 1);
+  }
+  return x;
+}
+
+/**
+ * An open stroke that runs round most of an axis-aligned ellipse (F19.13): the ellipse is least-squares fitted to the points (so a
+ * gap in the stroke does not shrink the box), and it counts when the stroke covers at least `openCoverage` of the circumference.
+ */
+function openEllipseFit(s: readonly Point[]): Recognised | null {
+  const b0 = boundsOf(s);
+  const ox = (b0.minX + b0.maxX) / 2;
+  const oy = (b0.minY + b0.maxY) / 2;
+  const sc = Math.max(b0.maxX - b0.minX, b0.maxY - b0.minY);
+  if (Math.min(b0.maxX - b0.minX, b0.maxY - b0.minY) < RECOGNISE.minSidePt || sc === 0) return null;
+  // A x^2 + B y^2 + C x + D y = 1 in normalised coordinates.
+  const rows = s.map((p) => {
+    const x = (p.x - ox) / sc;
+    const y = (p.y - oy) / sc;
+    return [x * x, y * y, x, y];
+  });
+  const m = [0, 1, 2, 3].map((i) => [0, 1, 2, 3].map((j) => rows.reduce((t, r) => t + (r[i] ?? 0) * (r[j] ?? 0), 0)));
+  const v = [0, 1, 2, 3].map((i) => rows.reduce((t, r) => t + (r[i] ?? 0), 0));
+  const [A, B, C, D] = solve(m, v) ?? [];
+  if (A === undefined || B === undefined || C === undefined || D === undefined || A <= 0 || B <= 0) return null;
+  const k = 1 + (C * C) / (4 * A) + (D * D) / (4 * B);
+  const rx = Math.sqrt(k / A) * sc;
+  const ry = Math.sqrt(k / B) * sc;
+  const centre = { x: ox + (-C / (2 * A)) * sc, y: oy + (-D / (2 * B)) * sc };
+  if (!Number.isFinite(rx + ry + centre.x + centre.y) || rx > 2 * (b0.maxX - b0.minX) || ry > 2 * (b0.maxY - b0.minY)) {
+    return null;
+  }
+  const unit = s.map((p) => ({ x: (p.x - centre.x) / rx, y: (p.y - centre.y) / ry }));
+  if (turns(unit, { x: 0, y: 0 }) < RECOGNISE.openCoverage) return null;
+  const bounds: Bounds = { minX: centre.x - rx, maxX: centre.x + rx, minY: centre.y - ry, maxY: centre.y + ry };
+  const error = ellipseError(s, bounds);
+  if (error > RECOGNISE.fit) return null;
+  const rect = rectFit(s);
+  if (rect !== null && rect.cornersOk && rect.error <= RECOGNISE.winRatio * error) return null;
+  return ellipseShape(bounds);
+}
+
 function ellipseShape(b: Bounds): Recognised {
   const w = b.maxX - b.minX;
   const h = b.maxY - b.minY;
@@ -287,7 +358,51 @@ export function recognise(points: readonly Point[]): Recognised | null {
   const line = lineFit(s);
   if (line !== null) return { kind: 'line', ...line };
   const arrow = arrowFit(s) ?? arrowFit([...s].reverse());
-  return arrow === null ? null : { kind: 'arrow', ...arrow };
+  if (arrow !== null) return { kind: 'arrow', ...arrow };
+  return openEllipseFit(s);
+}
+
+/**
+ * An arrow drawn as two strokes (F19.13): a straight shaft, then a separate arrowhead, a chevron (two arms meeting in a vertex)
+ * whose vertex lies at one end of the shaft. That end is the tip. `null` when the pair is not clearly that.
+ */
+export function recogniseArrowStrokes(shaftStroke: readonly Point[], headStroke: readonly Point[]): Recognised | null {
+  if (shaftStroke.length < RECOGNISE.minPoints || headStroke.length < 3) return null;
+  const shaft = recognise(shaftStroke);
+  if (shaft?.kind !== 'line') return null;
+  const len = dist(shaft.from, shaft.to);
+  const head = resample(headStroke, 32);
+  const a = head[0];
+  const z = head[head.length - 1];
+  if (a === undefined || z === undefined) return null;
+  // The vertex is the head point farthest from the chord between the arm ends.
+  let vertex = a;
+  let far = -1;
+  for (const p of head) {
+    const d = lineDistance(p, a, z);
+    if (d > far) {
+      far = d;
+      vertex = p;
+    }
+  }
+  const reachA = dist(a, vertex);
+  const reachZ = dist(z, vertex);
+  if ([reachA, reachZ].some((r) => r < RECOGNISE.hookMin * len || r > RECOGNISE.hookMax * len)) return null;
+  if (pathLength(head) > 1.4 * (reachA + reachZ)) return null;
+  for (const [tip, other] of [
+    [shaft.to, shaft.from],
+    [shaft.from, shaft.to],
+  ] as const) {
+    if (dist(vertex, tip) > RECOGNISE.headMeet * len) continue;
+    const ux = (tip.x - other.x) / len;
+    const uy = (tip.y - other.y) / len;
+    const behind = (p: Point): number => (tip.x - p.x) * ux + (tip.y - p.y) * uy;
+    const side = (p: Point): number => (p.x - tip.x) * -uy + (p.y - tip.y) * ux;
+    // Both arms lead back along the shaft, one to each side of it.
+    if (behind(a) <= 0 || behind(z) <= 0 || side(a) * side(z) >= 0) continue;
+    return { kind: 'arrow', from: other, to: tip };
+  }
+  return null;
 }
 
 /** What the renderer needs to morph a stroke into its shape (F17.5): the stroke as 64 equally spaced points, and the shape it becomes. */

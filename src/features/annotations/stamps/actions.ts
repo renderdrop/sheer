@@ -6,12 +6,16 @@ import { useLocaleStore } from '../../../i18n/store';
 import { useAnnotations } from '../../../stores/annotations';
 import { useSettings } from '../../../stores/settings';
 import { useUi } from '../../../stores/ui';
+import { HIGHLIGHT_PALETTE, STROKE_PALETTE } from '../../inspector/palette';
 import { reportRefusal } from '../create/refusal';
 import { defaultSize, type StampFace } from './model';
 import { useStamp } from './store';
 
 /** The annotation colour of a tone: always the tone's (the backend ignores a draft colour and mirrors these from `tokens.css`). */
-export const TONE_RGB: Readonly<Record<StampTone, Rgb>> = { solar: [255, 248, 77], ink: [15, 15, 15] };
+export const TONE_RGB: Readonly<Record<StampTone, Rgb>> = {
+  solar: HIGHLIGHT_PALETTE[0]?.rgb ?? [255, 248, 77],
+  ink: STROKE_PALETTE[0]?.rgb ?? [15, 15, 15],
+};
 
 const t = (...args: Parameters<(typeof translators)['en']>) => translators[useLocaleStore.getState().locale](...args);
 

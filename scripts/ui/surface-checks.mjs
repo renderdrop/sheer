@@ -204,3 +204,29 @@ export function checkSplitButtons(buttons) {
   }
   return out;
 }
+
+/**
+ * Hover geometry of toolbar and mode buttons (F19.2): the hover background must be exactly the button's geometry. For each button the
+ * boxes that paint in the hover state (the button itself, its ::before / ::after, the outer box-shadow spread, descendants with a
+ * background) must lie inside the button's own rest border box AND inside its toolbar container, with 0 px tolerance (`EPS` only
+ * absorbs float noise from the layout engine). Any violation is a blocker.
+ * @param {{name:string,box:object,container:object,hover:{box:object,paints:{name:string,rect:object}[]}}[]} items
+ */
+export const HOVER_EPS = 0.01;
+export function checkHoverGeometry(items) {
+  const out = [];
+  const inside = (r, outer) =>
+    r.left >= outer.left - HOVER_EPS &&
+    r.top >= outer.top - HOVER_EPS &&
+    r.right <= outer.right + HOVER_EPS &&
+    r.bottom <= outer.bottom + HOVER_EPS;
+  for (const it of items) {
+    if (!inside(it.hover.box, it.box)) out.push(`${it.name}: hover box differs from the button's own box`);
+    if (!inside(it.box, it.container)) out.push(`${it.name}: lies outside its toolbar`);
+    for (const p of it.hover.paints) {
+      if (!inside(p.rect, it.box)) out.push(`${it.name}: hover ${p.name} spills past the button`);
+      else if (!inside(p.rect, it.container)) out.push(`${it.name}: hover ${p.name} spills past the toolbar`);
+    }
+  }
+  return out;
+}

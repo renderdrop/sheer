@@ -182,3 +182,27 @@ describe('split button check', () => {
     expect(c.checkSplitButtons([{ name: 'x', rest, states: [near] }])).toEqual([]);
   });
 });
+
+describe('hover geometry check (F19.2)', () => {
+  const box = r(10, 10, 46, 46);
+  const container = r(0, 0, 200, 56);
+  const item = (paints: { name: string; rect: ReturnType<typeof r> }[], hover = box) => ({
+    name: 'Highlight',
+    box,
+    container,
+    hover: { box: hover, paints },
+  });
+  it('passes paints that equal the button box', () => {
+    expect(c.checkHoverGeometry([item([{ name: 'button', rect: box }])])).toEqual([]);
+  });
+  it('allows no slack: a 0.5 px pseudo element or shadow spread fails', () => {
+    expect(c.checkHoverGeometry([item([{ name: '::before', rect: r(9.5, 10, 46, 46) }])])).toEqual([
+      'Highlight: hover ::before spills past the button',
+    ]);
+    expect(c.checkHoverGeometry([item([{ name: 'box-shadow spread', rect: r(9, 9, 47, 47) }])]).length).toBe(1);
+  });
+  it('flags a hover box that grew and a button outside its toolbar', () => {
+    expect(c.checkHoverGeometry([item([], r(10, 10, 48, 46))])[0]).toMatch(/hover box differs/);
+    expect(c.checkHoverGeometry([{ ...item([]), container: r(0, 0, 40, 56) }])[0]).toMatch(/outside its toolbar/);
+  });
+});
