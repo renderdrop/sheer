@@ -283,4 +283,5 @@ Owner test of v1.4.1. Acceptance only in the installed build (not the dev window
 - [x] F19.12 Header/footer: detect existing ones (text objects in the margin), report overlap, new ones with an optional background box in page colour.
 - [x] F19.13 Freehand arrow recognised as a shape; shape recognition more tolerant — open circles and ellipses from 80 % of the circumference.
 - [~] F19.14 Toggleable annotation palettes per owner specification (spec text pending, ADR-141); first audit which tools have their own palettes and unify. Done so far (86b8395): audit table in DESIGN §1.4, one palette source with switchable sets (PALETTE_SETS). Waiting for the owner spec text.
+- Acceptance (2026-10-08, acceptance build v2.0.0-rc.2, Windows 11, CDP): v20rc2 54/54, surface gate 2656/2656 (960×640 + 1280×800, en+de), annot-smoke 17/17, real-input smoke PASS; macOS via CI only.
 - [x] F19.15 Focus ring in dialogs moves when scrolling and covers fields (document properties) — fix.

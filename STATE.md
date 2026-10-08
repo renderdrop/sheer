@@ -1,22 +1,24 @@
 # STATE
-phase: session "v2.0.0-rc.2 — F19 part 1" (ADR-141, tempo level 4)
-version: 2.0.0-rc.1 (tag v2.0.0-rc.1, pre-release; latest stable v1.9.0)
-current_item: F19 part 1 (docs/FEEDBACK.md F19.1–F19.15)
+phase: session "v2.0.0-rc.2 — F19 part 1" (ADR-141, tempo level 4) closed: v2.0.0-rc.2 pre-released
+version: 2.0.0-rc.2 (tag v2.0.0-rc.2, pre-release; latest stable v1.9.0)
+current_item: none — next session: owner decides (proposal: F19 part 2 starting with the palette spec F19.14, then v2.0.0 final)
 packages:
   wave 1: A F19.1 foreign comments (backend, cargo) · B F19.7 crop (cargo) · C F19.3/.4/.15 sidebar, last tab, focus ring · D F19.5/.6 home
   wave 2: E F19.12 header/footer (cargo) · F F19.2/.13/.14 tool hover, shapes, palettes · G F19.9/.10/.11 selection bar, bubbles, panel quote · H F19.8 redact
-last_completed: F19 part 1 packages A–H committed (d3edaea..1c03543); F19.14 waits for the owner palette spec
-loop_count_this_session: 0
+last_completed: v2.0.0-rc.2 — F19.1–F19.15 except F19.14 (palette spec pending); report docs/reports/2026-10-08-v2.0.0-rc.2-f19-teil1.md
+loop_count_this_session: 3 (session closed, STOP set)
 open_blockers: 3 (B-002, B-005, B-008, human-only)
 notes: Surface gate must run before annot-smoke on a fresh dev window (smoke leaves annotations that break overlap checks).
   ADR-120: every push starts with `bash scripts/ci-status.sh`; red = fix first. Rule 15 / ADR-131: acceptance ONLY via `npm run build:acceptance` + `scripts/ui/accept/*.mjs`; real input only `smoke-real.mjs` (≤ 5 min, announced).
   Split staging across packages can break an intermediate commit (run #108): stage whole files per package when possible.
   Never run the dev window while agents run cargo/vitest; stop it by killing only target\debug\sheer.exe processes.
   Rule 17 / ADR-136: ≤ 2 cargo agents; check:fast for agents, full check once before each commit.
+  ADR-142: model per package named in the brief (Opus: audits, engine-critical Rust, 2nd fix round; Haiku: mechanic). Briefs that start a dev/acceptance window must say: stop it only by process path (incident 2026-10-08: an agent killed sheer.exe by name).
 ci_log: (ADR-120 corrected — package commit → CI run; result filled in at the next push)
   - f5c05f0..1c03543 ADR-141/142, F19 part 1 (A–H) → run #144 (37811172571) red: macOS crash, header_footer_detect bound PDFium per test in parallel → fixed d6df5b6
   - d6df5b6 shared engine in header_footer_detect → run #145 (37813850885) GREEN
   - e1704fc..750cba2 acceptance fixes FX-1..FX-4, v20rc2 script → run #146 (37820420946) GREEN
+  - 6bfaf19..release v2.0.0-rc.2 (FX-5/6, gate fixes, release) → run pending, see next session
   - f162738..273b81d ADR-140, v2.0 polish backend/ui, v20 scripts → run #139 (37709850350) red: ocr_layer line test CI-loud, bind() failed while the engine held PDFium → fixed 3186d17
   - 3186d17..7a2a611 PDFium test bind reuse, v20 script fixes → run #140 (37713489154) GREEN
   - 2789536 a11y fixes (81 → 0) → run #141 (37718283927) GREEN

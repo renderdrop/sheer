@@ -6,6 +6,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.0.0-rc.2] - 2026-10-08
+
+Release candidate 2: beta feedback F19 part 1 — comments from other editors, home, crop, redaction, selection, margin bubbles, headers and footers, shapes.
+
 ### Added
 - Comments made in Acrobat, Foxit, Okular and other editors appear as regular comments: notes, text boxes, highlights, ink and lines can be edited and replied to; rich text, all date formats and reply threads are read.
 - Home shows the open files above the recent ones; recent files fill two rows with the rest under "Show all".
@@ -23,6 +27,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 - A cropped page no longer shows a stretched, blurry image of the uncropped page while it re-renders.
 - Hover on split tool buttons no longer spills over their frame.
+- Turning Redact on no longer opens its options over the page, which caught the next marks.
 - The focus ring in scrolled dialogs no longer floats over other fields.
 
 ## [2.0.0-rc.1] - 2026-10-08
