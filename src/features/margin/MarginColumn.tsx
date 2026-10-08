@@ -24,15 +24,7 @@ import { Bubble, Marker, type BubbleProps } from './Bubble';
 import { CitationBubble } from './CitationBubble';
 import { onCitationFocus, useCitations } from '../citations/store';
 import { newRestackState, restack } from './restack';
-import {
-  anchorOf,
-  clampColumnX,
-  columnX,
-  marginMetrics,
-  placeBubbles,
-  visibleBubbles,
-  type MarginMode,
-} from './layout';
+import { anchorOf, columnX, marginMetrics, placeBubbles, visibleBubbles, type MarginMode } from './layout';
 
 /** A bubble before it is measured. */
 const ESTIMATE_PX = 120;
@@ -182,10 +174,8 @@ export function MarginColumn({ docId, layout, threads, mode, drawnSizes, rotatio
     [items, heights, compact, metrics.stack, pinned],
   );
 
-  // A page wider than the canvas (zoom 160 %) has its column right of the page, beyond the viewport: it is kept inside what the
-  // viewport shows, over the page's edge, rather than reached only by scrolling (DESIGN 3.5 B9).
-  const columnWidth = compact ? metrics.compact : metrics.width;
-  const xOf = (item: Item) => clampColumnX(item.x, view, columnWidth);
+  // The column always sits right of its own page, never over it (F19.10); a wide page is scrolled to it.
+  const xOf = (item: Item) => item.x;
   const slotWidth = layout.width + metrics.gap + (compact ? metrics.compact : metrics.width);
   const overscan = Math.max(0, view.bottom - view.top);
   const shown = useMemo(() => {

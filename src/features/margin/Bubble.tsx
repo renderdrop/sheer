@@ -216,10 +216,10 @@ export const Bubble = memo(
           'transition-shadow duration-fast motion-reduce:transition-none',
           resolved
             ? 'border border-border-subtle bg-(--note-bubble-resolved) opacity-60'
-            : 'border border-(--note-bubble-edge) bg-(--note-bubble)',
+            : 'border border-(--note-bubble-edge) bg-(--note-bubble) bg-(image:--note-bubble-glow)',
           selected ? 'shadow-floating ring-1 ring-text' : 'shadow-standard',
           hovered && !selected && 'shadow-floating',
-          'forced-colors:border forced-colors:bg-[Canvas] forced-colors:text-[CanvasText]',
+          'forced-colors:border forced-colors:bg-none forced-colors:bg-[Canvas] forced-colors:text-[CanvasText]',
         )}
       >
         <header className="flex min-h-6 items-start gap-2">

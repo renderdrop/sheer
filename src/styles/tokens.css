@@ -914,7 +914,8 @@
 /* Text layer and search hits (DESIGN 3.16, 3.17). The page's overlay is scaled by --page-scale (px per point), so a px size is divided by it. */
 [data-text-layer] ::selection,
 [data-text-layer]::selection {
-  background: var(--color-doc-text-select);
+  /* One continuous bar per line is drawn by the overlay (F19.9); the browser's glyph boxes stay clear. */
+  background: transparent;
   color: transparent;
 }
 
@@ -1371,6 +1372,11 @@
     --color-surface
   ); /* POL-4: White paper; the Solar edge below carries the note colour (DESIGN 3.5, §26) */
   --note-bubble-edge: var(--accent);
+  --note-bubble-glow: radial-gradient(
+    circle at 95% 100%,
+    color-mix(in srgb, var(--hl-solar) 28%, transparent),
+    transparent 65%
+  ); /* F19.10: the home card's Solar glow, quiet, static, on the bubble's own paper */
   --note-bubble-resolved: var(--color-surface);
 }
 

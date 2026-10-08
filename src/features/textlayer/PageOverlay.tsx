@@ -1,4 +1,4 @@
-import { memo, useMemo, type CSSProperties } from 'react';
+import { memo, useEffect, useMemo, useState, type CSSProperties } from 'react';
 
 import type { TextLayer } from '../../api/text';
 import { SearchHits } from '../search/SearchHits';
@@ -7,7 +7,10 @@ import { normalizeRotation, overlayBox, swapsSides, totalRotation, unrotatedSize
 import { letterSpacingFor } from './fit';
 import { measureTextWidth } from './measure';
 import { runsOf, type Run } from './runs';
-import { LAYER_ATTRIBUTE } from './selection';
+import type { Rect } from '../../api/wire';
+import { positionOf } from '../../stores/pages';
+import { LAYER_ATTRIBUTE, resolveBoundary, type TextPoint } from './selection';
+import { selectionBars } from './selectionBars';
 
 export interface PageOverlayProps {
   docId: number;
@@ -80,6 +83,74 @@ const TextRuns = memo(function TextRuns({
   );
 });
 
+/** The part of a page's text a selection covers, as offsets; `null` when it does not reach the page. */
+export function coveredRange(
+  start: TextPoint,
+  end: TextPoint,
+  page: number,
+  length: number,
+  position: (id: number) => number | null,
+): [number, number] | null {
+  const here = position(page);
+  const a = position(start.page);
+  const b = position(end.page);
+  if (here === null || a === null || b === null) return null;
+  const [lo, hi] = a < b || (a === b && start.index <= end.index) ? [start, end] : [end, start];
+  const loPos = Math.min(a, b);
+  const hiPos = Math.max(a, b);
+  if (here < loPos || here > hiPos) return null;
+  return [here === loPos ? lo.index : 0, here === hiPos ? hi.index : length];
+}
+
+/** The selected part of this page's text as bars, one per line (F19.9); follows the browser's selection. */
+function useSelectionBars(docId: number, page: number, layer: TextLayer | null): Rect[] {
+  const [bars, setBars] = useState<Rect[]>([]);
+  useEffect(() => {
+    if (layer === null) return;
+    const clear = () => setBars((old) => (old.length === 0 ? old : []));
+    const update = () => {
+      const selection = window.getSelection();
+      if (selection === null || selection.rangeCount === 0 || selection.isCollapsed) return clear();
+      const range = selection.getRangeAt(0);
+      const a = resolveBoundary(range.startContainer, range.startOffset);
+      const b = resolveBoundary(range.endContainer, range.endOffset);
+      if (a === null || b === null) return clear();
+      const covered = coveredRange(a, b, page, layer.text.length, (id) => positionOf(docId, id));
+      if (covered === null) return clear();
+      setBars(selectionBars(layer, covered[0], covered[1]));
+    };
+    update();
+    document.addEventListener('selectionchange', update);
+    return () => document.removeEventListener('selectionchange', update);
+  }, [docId, page, layer]);
+  return bars;
+}
+
+function SelectionBars({ docId, page, layer }: { docId: number; page: number; layer: TextLayer }) {
+  const bars = useSelectionBars(docId, page, layer);
+  if (bars.length === 0) return null;
+  return (
+    <svg
+      data-selection-bars=""
+      aria-hidden="true"
+      className="absolute inset-0 overflow-visible"
+      width="100%"
+      height="100%"
+    >
+      {bars.map((bar) => (
+        <rect
+          key={`${bar.x}:${bar.y}`}
+          x={bar.x}
+          y={bar.y}
+          width={bar.w}
+          height={bar.h}
+          fill="var(--color-doc-text-select)"
+        />
+      ))}
+    </svg>
+  );
+}
+
 /**
  * Everything over a page's bitmap that lives in page space (canvas layer 2, DESIGN 3.17): the search hits and the text. The wrapper
  * is the unrotated page, `widthPt x heightPt` px in size, scaled to the zoom and turned by the file's and the view's rotation about
@@ -118,6 +189,7 @@ export const PageOverlay = memo(function PageOverlay({
     >
       {/* The hits wait for the page's own rotation, which arrives with its text: placed before that they would be off by it. */}
       {(layer !== null || hasFileRotation(docId, pageIndex)) && <SearchHits docId={docId} pageIndex={pageIndex} />}
+      {layer !== null && <SelectionBars docId={docId} page={pageIndex} layer={layer} />}
       {layer !== null && <TextRuns page={pageIndex} layer={layer} interactive={interactive} />}
     </div>
   );

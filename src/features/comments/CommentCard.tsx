@@ -148,6 +148,9 @@ export interface CommentCardProps {
   citation?: CitationInfo;
 }
 
+/** The colour of an annotation as the RGB channels of `data-cite-fill`. */
+const fillOf = (color: readonly number[]): CSSProperties => ({ '--cite-fill': color.join(' ') }) as CSSProperties;
+
 /** One comment card (DESIGN 3.59): type, quote, text, author and time, status, replies, and for the selected one the reply footer. */
 export const CommentCard = memo(function CommentCard({
   docId,
@@ -275,6 +278,7 @@ export const CommentCard = memo(function CommentCard({
   // A text that fits the two clamped lines is the header alone; a longer one also shows whole below it.
   const longText = root.kind !== 'freeText' && (isCite || text.includes('\n') || text.length > 80);
   const quoteBelow = !isCite && text.trim() !== '' && quoted !== null;
+  const tintHeader = highlight && !isCite && text.trim() === '' && quoted !== null;
   const showReply = showReplyField;
   const describedBy =
     [quoteBelow ? `${ids}-q` : null, text !== '' && longText ? `${ids}-b` : null]
@@ -319,11 +323,11 @@ export const CommentCard = memo(function CommentCard({
         >
           {lead !== '' && <span className="sr-only">{t(info.key)}: </span>}
           <span
-            className={cx(highlight && !isCite && text.trim() === '' && quoted !== null && 'bg-hl-excerpt')}
-            // The citation's own colour at --hl-opacity behind its quote (DESIGN 3.7 C8): a colour of the document, handed to the
-            // `data-cite-fill` rule of tokens.css as RGB channels.
-            data-cite-fill={isCite ? '' : undefined}
-            style={isCite ? ({ '--cite-fill': root.color.join(' ') } as CSSProperties) : undefined}
+            className={cx(tintHeader && 'box-decoration-clone')}
+            // The quote's own span, and only it, is tinted in the annotation's colour at --hl-opacity (F19.11; a citation's quote
+            // likewise, DESIGN 3.7 C8): a colour of the document, handed to the `data-cite-fill` rule of tokens.css as RGB channels.
+            data-cite-fill={isCite || tintHeader ? '' : undefined}
+            style={isCite || tintHeader ? fillOf(root.color) : undefined}
           >
             {excerpt}
           </span>
@@ -383,14 +387,15 @@ export const CommentCard = memo(function CommentCard({
       {!collapsed && (
         <>
           {quoteBelow && !isEditing && (
-            <p
-              id={`${ids}-q`}
-              className={cx(
-                't-caption m-0 line-clamp-2 text-text [overflow-wrap:break-word]',
-                highlight && 'bg-hl-excerpt',
-              )}
-            >
-              {quoted}
+            <p id={`${ids}-q`} className="t-caption m-0 line-clamp-2 text-text [overflow-wrap:break-word]">
+              <span
+                className="box-decoration-clone"
+                data-quote-mark=""
+                data-cite-fill={highlight ? '' : undefined}
+                style={highlight ? fillOf(root.color) : undefined}
+              >
+                {quoted}
+              </span>
             </p>
           )}
           {isEditing ? (

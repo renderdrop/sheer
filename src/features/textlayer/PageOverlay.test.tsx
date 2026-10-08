@@ -6,7 +6,7 @@ import type { TextLayer } from '../../api/text';
 import type { Quad } from '../../api/wire';
 import { useSearch, type Hit } from '../search/store';
 import { forgetFileRotations, setFileRotation } from '../viewer/fileRotation';
-import { PageOverlay, type PageOverlayProps } from './PageOverlay';
+import { PageOverlay, coveredRange, type PageOverlayProps } from './PageOverlay';
 
 const TEXT = 'Hello world';
 function layer(): TextLayer {
@@ -41,6 +41,17 @@ beforeEach(() => {
 afterEach(() => {
   useSearch.setState({ byDoc: {}, focusRequest: 0 });
   forgetFileRotations(1);
+});
+
+describe('coveredRange', () => {
+  const id = (n: number) => n;
+  it('covers the part inside one page and whole middle pages', () => {
+    expect(coveredRange({ page: 1, index: 3 }, { page: 1, index: 8 }, 1, 20, id)).toEqual([3, 8]);
+    expect(coveredRange({ page: 1, index: 3 }, { page: 3, index: 5 }, 2, 20, id)).toEqual([0, 20]);
+    expect(coveredRange({ page: 1, index: 3 }, { page: 3, index: 5 }, 1, 20, id)).toEqual([3, 20]);
+    expect(coveredRange({ page: 3, index: 5 }, { page: 1, index: 3 }, 3, 20, id)).toEqual([0, 5]);
+    expect(coveredRange({ page: 1, index: 3 }, { page: 2, index: 5 }, 4, 20, id)).toBeNull();
+  });
 });
 
 const wrapper = (container: HTMLElement) => container.firstElementChild as HTMLElement;

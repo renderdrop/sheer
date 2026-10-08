@@ -53,13 +53,12 @@ export function marginSlot(
   canvasWidth: number,
   enabled: boolean,
   metrics: MarginMetrics = marginMetrics(),
-  pageWidth?: number,
 ): MarginSlot {
   if (!enabled) return { mode: 'off', reserve: 0, column: 0 };
   const full = metrics.gap + metrics.width;
-  // Too little room for a page, or no room beside the page (at the zoom it has) for the whole column: markers, never a clipped bubble.
-  const crowded = pageWidth !== undefined && canvasWidth - pageWidth < full - 1;
-  if (canvasWidth - full < metrics.freeMin || crowded) {
+  // Only a canvas too small for a page beside the column has markers. A page that is wide at its zoom does not: the column stays
+  // beside it in the slot that is reserved (F19.10), reached by scrolling, never over the page.
+  if (canvasWidth - full < metrics.freeMin) {
     return { mode: 'compact', reserve: metrics.gap + metrics.compact, column: metrics.compact };
   }
   return { mode: 'full', reserve: full, column: metrics.width };

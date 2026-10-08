@@ -141,6 +141,18 @@ describe('Comments cards', () => {
     expect(await screen.findByText('“quoted words”')).toBeTruthy();
   });
 
+  it('tints only the quote span, never the block (F19.11)', async () => {
+    getAnnotationQuote.mockResolvedValue('quoted words');
+    await shown([summary(3, { kind: 'highlight', contents: 'my remark' })]);
+    const quote = (await screen.findByText('“quoted words”')) as HTMLElement;
+    expect(quote.dataset.citeFill).toBeDefined();
+    expect(quote.style.getPropertyValue('--cite-fill')).not.toBe('');
+    const block = quote.closest('p') as HTMLElement;
+    expect(block.className).not.toContain('bg-hl-excerpt');
+    expect(block.dataset.citeFill).toBeUndefined();
+    expect(block.textContent).toBe('“quoted words”');
+  });
+
   it('labels marks, signatures and comments by their type', async () => {
     await shown([
       summary(1, { kind: 'mark', detail: 'cross', contents: '' }),

@@ -93,9 +93,18 @@ describe('bubble header', () => {
 });
 
 describe('marginSlot beside a wide page', () => {
-  it('is compact when the whole column would not fit beside the page at its zoom', () => {
-    expect(marginSlot(940, true, MARGIN_FALLBACK, 816).mode).toBe('compact');
-    expect(marginSlot(940, true, MARGIN_FALLBACK, 684).mode).toBe('full');
+  it('keeps the full column whatever the page width: the slot is reserved beside the page (F19.10)', () => {
+    expect(marginSlot(940, true, MARGIN_FALLBACK).mode).toBe('full');
+    expect(marginSlot(1400, true, MARGIN_FALLBACK).reserve).toBe(256);
+  });
+});
+
+describe('bubble look (F19.10)', () => {
+  it('has the quiet Solar glow as a token the bubble uses', async () => {
+    const { readFileSync } = await import('node:fs');
+    const css = readFileSync('src/styles/tokens.css', 'utf8');
+    expect(css).toContain('--note-bubble-glow: radial-gradient(');
+    expect(readFileSync('src/features/margin/Bubble.tsx', 'utf8')).toContain('bg-(image:--note-bubble-glow)');
   });
 });
 
