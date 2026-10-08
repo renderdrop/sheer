@@ -269,18 +269,18 @@ Owner test of v1.4.1. Acceptance only in the installed build (not the dev window
 
 ## F19 — Beta feedback, part 1: bugs and UX (owner, 2026-10-08, v2.0.0-rc.2; ADR-141)
 
-- [ ] F19.1 Comments made in Acrobat or other PDF editors/viewers are read and adopted as regular Sheer comments (editable, panel, margin). (Replaces the dropped "Acrobat comments do not open" report: damaged file.)
-- [ ] F19.2 Hover on tool buttons spills over the frame (highlight button): hover area exactly equals the button geometry; the surface gate checks hover bounds strictly.
-- [ ] F19.3 Left sidebar resizable to the right up to 480 px; width remembered.
-- [ ] F19.4 The last tab can be closed → home.
-- [ ] F19.5 Favourite star: top right inside the card (not over the title), filled Solar Yellow instead of black.
-- [ ] F19.6 Home: section "Open" with the open tabs as cards above "Recent"; "Recent" two rows, rest under "Show all", so the tools are visible without scrolling.
-- [ ] F19.7 Crop: "Apply" directly from the tool (no second click); no empty popup after "Cancel"; cropping only sets the CropBox and never changes content (text stayed unreadable after cropping); regression test.
-- [ ] F19.8 Redact: confirmation only on Apply, not on every mark; marked areas can be clicked and deleted in the Select tool.
-- [ ] F19.9 Text selection: one continuous bar per line instead of glyph boxes, same look as the highlight preview.
-- [ ] F19.10 Comment bubbles always in the margin column next to the page, whatever the page format; bubbles with the agreed gradient (subtle Solar glow as on home).
-- [ ] F19.11 Comments panel: only the quoted text is tinted, not the whole block.
-- [ ] F19.12 Header/footer: detect existing ones (text objects in the margin), report overlap, new ones with an optional background box in page colour.
-- [ ] F19.13 Freehand arrow recognised as a shape; shape recognition more tolerant — open circles and ellipses from 80 % of the circumference.
-- [ ] F19.14 Toggleable annotation palettes per owner specification (spec text pending, ADR-141); first audit which tools have their own palettes and unify.
-- [ ] F19.15 Focus ring in dialogs moves when scrolling and covers fields (document properties) — fix.
+- [x] F19.1 Comments made in Acrobat or other PDF editors/viewers are read and adopted as regular Sheer comments (editable, panel, margin). (Replaces the dropped "Acrobat comments do not open" report: damaged file.)
+- [x] F19.2 Hover on tool buttons spills over the frame (highlight button): hover area exactly equals the button geometry; the surface gate checks hover bounds strictly.
+- [x] F19.3 Left sidebar resizable to the right up to 480 px; width remembered.
+- [x] F19.4 The last tab can be closed → home.
+- [x] F19.5 Favourite star: top right inside the card (not over the title), filled Solar Yellow instead of black.
+- [x] F19.6 Home: section "Open" with the open tabs as cards above "Recent"; "Recent" two rows, rest under "Show all", so the tools are visible without scrolling.
+- [x] F19.7 Crop: "Apply" directly from the tool (no second click); no empty popup after "Cancel"; cropping only sets the CropBox and never changes content (text stayed unreadable after cropping); regression test.
+- [x] F19.8 Redact: confirmation only on Apply, not on every mark; marked areas can be clicked and deleted in the Select tool.
+- [x] F19.9 Text selection: one continuous bar per line instead of glyph boxes, same look as the highlight preview.
+- [x] F19.10 Comment bubbles always in the margin column next to the page, whatever the page format; bubbles with the agreed gradient (subtle Solar glow as on home).
+- [x] F19.11 Comments panel: only the quoted text is tinted, not the whole block.
+- [x] F19.12 Header/footer: detect existing ones (text objects in the margin), report overlap, new ones with an optional background box in page colour.
+- [x] F19.13 Freehand arrow recognised as a shape; shape recognition more tolerant — open circles and ellipses from 80 % of the circumference.
+- [~] F19.14 Toggleable annotation palettes per owner specification (spec text pending, ADR-141); first audit which tools have their own palettes and unify. Done so far (86b8395): audit table in DESIGN §1.4, one palette source with switchable sets (PALETTE_SETS). Waiting for the owner spec text.
+- [x] F19.15 Focus ring in dialogs moves when scrolling and covers fields (document properties) — fix.

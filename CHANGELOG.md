@@ -6,6 +6,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Comments made in Acrobat, Foxit, Okular and other editors appear as regular comments: notes, text boxes, highlights, ink and lines can be edited and replied to; rich text, all date formats and reply threads are read.
+- Home shows the open files above the recent ones; recent files fill two rows with the rest under "Show all".
+- Header and footer: existing ones in the page margins are detected, overlaps are flagged, and a new header or footer can cover what is underneath with a box in the page colour.
+- Shape recognition turns a drawn arrow into an arrow and accepts open circles and ellipses.
+
+### Changed
+- The page sidebar can be dragged up to 480 px; its width is remembered.
+- The last open document can be closed, which returns to Home.
+- The favourite star sits in the card's top-right corner, filled in Solar yellow.
+- Crop applies straight from the tool; redaction asks for confirmation only when applied, and marks can be selected and deleted.
+- Text selection is drawn as one bar per line, like the highlight preview; comment bubbles always sit in the margin with a quiet Solar glow; the comments panel tints only the quoted text.
+- Annotation colours come from one palette source shared by all tools.
+
+### Fixed
+- A cropped page no longer shows a stretched, blurry image of the uncropped page while it re-renders.
+- Hover on split tool buttons no longer spills over their frame.
+- The focus ring in scrolled dialogs no longer floats over other fields.
+
 ## [2.0.0-rc.1] - 2026-10-08
 
 Release candidate for 2.0: every open polish ticket since 1.5, a final security audit, the performance budget re-measured and a screen-reader and keyboard pass.
