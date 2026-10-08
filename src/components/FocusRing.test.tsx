@@ -125,6 +125,34 @@ describe('FocusRing (MOTION spell 18)', () => {
     expect(Object.keys(recorded[0]?.keyframes[0] ?? {})).toEqual(['transform']);
   });
 
+  it('follows a scroll ancestor at once and is clipped by it, hidden once the target is scrolled out', async () => {
+    render(
+      <>
+        <FocusRing />
+        <div role="dialog" data-box="0,100,200,100" style={{ overflowY: 'auto' }}>
+          <button type="button" data-box="10,150,60,30">
+            field
+          </button>
+        </div>
+      </>,
+    );
+    await focus('field');
+    expect(ring()?.style.opacity).toBe('1');
+    expect(ring()?.style.clipPath).toBe('inset(-8px -8px -8px -8px)');
+    const field = document.querySelector<HTMLElement>('button');
+    const dialog = document.querySelector<HTMLElement>('[role="dialog"]');
+    if (field === null || dialog === null) throw new Error('missing');
+    // Scrolled up by 40 px: the field is cut by the dialog's top edge, the ring follows in the same event.
+    field.dataset.box = '10,80,60,30';
+    act(() => void dialog.dispatchEvent(new Event('scroll')));
+    expect(ring()?.style.translate).toBe('10px 80px');
+    expect(ring()?.style.clipPath).toBe('inset(20px -8px -8px -8px)');
+    // Scrolled wholly out: no ring over the neighbours.
+    field.dataset.box = '10,20,60,30';
+    act(() => void dialog.dispatchEvent(new Event('scroll')));
+    expect(ring()?.style.opacity).toBe('0');
+  });
+
   it('retargets in mid-glide: the running glide is cancelled', async () => {
     render(<Page />);
     await focus('a');

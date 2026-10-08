@@ -92,7 +92,7 @@ describe('parseSettings', () => {
     }
     for (const bad of [
       199,
-      321,
+      481,
       0,
       -248,
       248.5,

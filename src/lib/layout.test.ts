@@ -93,13 +93,13 @@ describe('the page sidebar', () => {
     expect(collapsed.column).toEqual(open.column);
   });
 
-  it('is clamped to 200..320, and a bad width gives the default', () => {
+  it('is clamped to 200..480, and a bad width gives the default', () => {
     expect(clampPanelWidth(10)).toBe(200);
-    expect(clampPanelWidth(9000)).toBe(320);
+    expect(clampPanelWidth(9000)).toBe(480);
     expect(clampPanelWidth(250.4)).toBe(250);
     expect(clampPanelWidth(Number.NaN)).toBe(PANEL.default);
     expect(clampPanelWidth(Number.POSITIVE_INFINITY)).toBe(PANEL.default);
-    expect(layout({ panelWidth: 9000 }).tracks[0]?.size).toBe('320px');
+    expect(layout({ panelWidth: 9000 }).tracks[0]?.size).toBe('480px');
   });
 
   it('collapses by itself below 860 px (exact), and comes back when the window grows', () => {

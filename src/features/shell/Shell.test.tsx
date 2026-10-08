@@ -720,7 +720,7 @@ describe('Shell with a document: edge cases', () => {
       useUi.setState({ leftPanelWidth: 9000 });
       const { user } = setup(<Shell />);
       await openDocument(user);
-      expect(screen.getByRole('separator', { name: 'Resize left panel' }).getAttribute('aria-valuenow')).toBe('320');
+      expect(screen.getByRole('separator', { name: 'Resize left panel' }).getAttribute('aria-valuenow')).toBe('480');
     });
 
     it('collapsing and restoring the panel does not forget the width', async () => {

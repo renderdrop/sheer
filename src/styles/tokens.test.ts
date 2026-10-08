@@ -371,7 +371,7 @@ describe('widths and the left panel (DESIGN 1.3)', () => {
     '--link-preview-max': '320px',
     '--panel-min': '200px',
     '--panel-default': '200px',
-    '--panel-max': '320px',
+    '--panel-max': '480px',
     '--panel-collapse-below': '144px',
     '--splitter-width': '8px',
     '--outline-indent': '16px',

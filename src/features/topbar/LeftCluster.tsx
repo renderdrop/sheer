@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { ChevronLeft, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
+import { ChevronLeft, PanelLeftClose, PanelLeftOpen, X } from 'lucide-react';
 
 import { runAction } from '../../actions/dispatch';
 import { currentPlatform } from '../../actions/keys';
@@ -11,6 +11,7 @@ import { useUi } from '../../stores/ui';
 import { useSettings } from '../../stores/settings';
 import { LEFT_PANEL_ID } from '../shell/ids';
 import { readShellStructure } from '../shell/useShellStructure';
+import { closeTab } from '../tabs/nav';
 import { TabStrip } from '../tabs/TabStrip';
 import { SaveStatus } from './SaveStatus';
 
@@ -18,6 +19,7 @@ import { SaveStatus } from './SaveStatus';
 function FileTitle() {
   const t = useT();
   const name = useDocuments((state) => selectActiveDocument(state)?.displayName ?? null);
+  const id = useDocuments((state) => state.activeId);
   if (name === null) return null;
   const shown = name === '' ? t('status.untitled') : name;
   return (
@@ -28,6 +30,9 @@ function FileTitle() {
       <span data-tour-anchor="topbar-file-name" className="t-label min-w-0 truncate" title={shown}>
         {shown}
       </span>
+      {id !== null && (
+        <IconButton size="sm" icon={X} label={t('tabs.close', { name: shown })} onClick={() => closeTab(id)} />
+      )}
     </div>
   );
 }

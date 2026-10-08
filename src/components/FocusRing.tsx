@@ -11,6 +11,33 @@ const NO_RING = '[tabindex="-1"], [data-annot-frame], [data-crop-rect], [data-fo
 /** What counts as one container: moving between two of them is a jump. */
 const CONTAINER = '[role="toolbar"], [role="tablist"], [role="listbox"], [role="menu"], [role="dialog"], [data-region]';
 
+/** Room kept around the target for the ring's own shadow where no scroll ancestor cuts it. */
+const RING_ROOM = 8;
+
+/**
+ * The `clip-path` that cuts the ring where a scrolling (or otherwise clipping) ancestor cuts its target, or `hidden` when
+ * the target is wholly outside that ancestor's box.
+ */
+function clipOf(target: Element, box: DOMRect): string | 'hidden' {
+  let top = -RING_ROOM;
+  let right = -RING_ROOM;
+  let bottom = -RING_ROOM;
+  let left = -RING_ROOM;
+  for (let parent = target.parentElement; parent !== null && parent !== document.body; parent = parent.parentElement) {
+    const style = getComputedStyle(parent);
+    if (style.overflowX === 'visible' && style.overflowY === 'visible') continue;
+    const view = parent.getBoundingClientRect();
+    if (view.right <= box.left || view.left >= box.right || view.bottom <= box.top || view.top >= box.bottom) {
+      return 'hidden';
+    }
+    top = Math.max(top, view.top - box.top);
+    left = Math.max(left, view.left - box.left);
+    right = Math.max(right, box.right - view.right);
+    bottom = Math.max(bottom, box.bottom - view.bottom);
+  }
+  return `inset(${top}px ${right}px ${bottom}px ${left}px)`;
+}
+
 const containerOf = (element: Element): Element => element.closest(CONTAINER) ?? document.body;
 
 /**
@@ -58,6 +85,13 @@ export function FocusRing() {
         return;
       }
       const to = { left: rect.left, top: rect.top, width: rect.width, height: rect.height };
+      // A target scrolled out of a scroll ancestor (a dialog's body) must not leave the ring floating over other fields.
+      const clip = clipOf(target, rect);
+      if (clip === 'hidden') {
+        element.style.opacity = '0';
+        return;
+      }
+      element.style.clipPath = clip;
       own(target);
       element.style.borderRadius = getComputedStyle(target).borderRadius;
       const from = animate ? drawnBox(element) : null;
@@ -111,12 +145,10 @@ export function FocusRing() {
     // The pointer ends keyboard modality: a click on the focused control must not keep the ring.
     const onPointerDown = () => hide();
 
+    // Synchronously: the scroll event comes before paint, so the ring never lags a frame behind its target.
     const reposition = () => {
       if (target === null || frame !== 0) return;
-      frame = requestAnimationFrame(() => {
-        frame = 0;
-        place(false, target);
-      });
+      place(false, target);
     };
 
     document.addEventListener('focusin', onFocusIn, true);

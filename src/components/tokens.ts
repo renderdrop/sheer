@@ -16,7 +16,7 @@ export function tokenPx(name: string, fallback: number): number {
  * it needs numbers; these mirror `--panel-*` and the spacing tokens of tokens.css, and tokens.test.ts fails when they
  * drift apart.
  */
-export const PANEL = { min: 200, default: 200, max: 320, collapseBelow: 144, step: 8, largeStep: 40 } as const;
+export const PANEL = { min: 200, default: 200, max: 480, collapseBelow: 144, step: 8, largeStep: 40 } as const;
 
 /** Gap between an anchor and a tooltip or popover, and margin kept to the window edge (DESIGN 3.4, 3.5: 8 px). */
 export function overlayOffset(): number {
