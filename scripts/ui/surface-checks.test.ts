@@ -201,6 +201,18 @@ describe('hover geometry check (F19.2)', () => {
     ]);
     expect(c.checkHoverGeometry([item([{ name: 'box-shadow spread', rect: r(9, 9, 47, 47) }])]).length).toBe(1);
   });
+  it('a document tab is measured as its wrapper inside the tablist, not against the toolbar', () => {
+    const tab = r(4, 6, 140, 34);
+    const tablist = r(0, 4, 400, 36);
+    const tabItem = {
+      name: 'tab',
+      box: tab,
+      container: tablist,
+      hover: { box: tab, paints: [{ name: 'tab background', rect: tab }] },
+    };
+    expect(c.checkHoverGeometry([tabItem])).toEqual([]);
+    expect(c.checkHoverGeometry([{ ...tabItem, container: r(0, 0, 100, 40) }])[0]).toMatch(/outside its toolbar/);
+  });
   it('flags a hover box that grew and a button outside its toolbar', () => {
     expect(c.checkHoverGeometry([item([], r(10, 10, 48, 46))])[0]).toMatch(/hover box differs/);
     expect(c.checkHoverGeometry([{ ...item([]), container: r(0, 0, 40, 56) }])[0]).toMatch(/outside its toolbar/);

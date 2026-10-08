@@ -267,8 +267,8 @@ function Dialog({ request }: { request: HfDialogState }) {
                 onValueChange={(value) => patch({ margin: Number(value) })}
               />
             </div>
-            <div className="flex flex-col gap-1" data-hf="background">
-              <label className="t-body flex cursor-pointer items-center gap-2">
+            <div className="flex min-w-0 items-center gap-2" data-hf="background">
+              <label className="t-body flex shrink-0 cursor-pointer items-center gap-2">
                 <Checkbox
                   checked={draft.background}
                   aria-describedby={`${id}-background-hint`}
@@ -277,13 +277,22 @@ function Dialog({ request }: { request: HfDialogState }) {
                 />
                 {t('hf.background')}
               </label>
-              <span id={`${id}-background-hint`} className="t-caption text-text-muted">
+              <span
+                id={`${id}-background-hint`}
+                className="t-caption min-w-0 truncate text-text-muted"
+                title={t('hf.backgroundHint')}
+              >
                 {t('hf.backgroundHint')}
               </span>
             </div>
             {detected.length > 0 && (
               <div className="flex flex-col gap-1" data-hf="detected">
-                <p className="t-caption m-0 text-text-muted">{t('hf.detected', { items: describe(detected) })}</p>
+                <p
+                  className="t-caption m-0 truncate text-text-muted"
+                  title={t('hf.detected', { items: describe(detected) })}
+                >
+                  {t('hf.detected', { items: describe(detected) })}
+                </p>
                 {overlapping.length > 0 && (
                   <p
                     role={draft.background ? undefined : 'alert'}

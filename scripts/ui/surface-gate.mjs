@@ -520,9 +520,11 @@ async function sweepHover(label) {
       const R = (r) => ({ left: r.left, top: r.top, right: r.right, bottom: r.bottom });
       const px = (v) => (Number.isFinite(parseFloat(v)) ? parseFloat(v) : 0);
       const name = (e) => (e.getAttribute('data-toolbar-item') || e.getAttribute('aria-label') || e.textContent || e.tagName).trim().replace(/\\s+/g, ' ').slice(0, 24);
-      const r = el.getBoundingClientRect();
+      // A document tab is the wrapper that owns the hover background (tab button + close x are one visual tab): measure that.
+      const own = el.getAttribute('role') === 'tab' ? el.closest('[role="presentation"]') || el : el;
+      const r = own.getBoundingClientRect();
       const paints = [];
-      const cs = getComputedStyle(el);
+      const cs = getComputedStyle(own);
       // Outer box-shadow spread: grows the painted box by the spread (and the offset) on each side.
       for (const part of cs.boxShadow.split(/,(?![^(]*\\))/)) {
         if (!part.trim() || part.trim() === 'none' || /inset/.test(part)) continue;
@@ -531,19 +533,20 @@ async function sweepHover(label) {
         paints.push({ name: 'box-shadow spread', rect: { left: r.left + dx - spread, top: r.top + dy - spread, right: r.right + dx + spread, bottom: r.bottom + dy + spread } });
       }
       for (const pseudo of ['::before', '::after']) {
-        const s = getComputedStyle(el, pseudo);
+        const s = getComputedStyle(own, pseudo);
         if (s.content === 'none' || s.display === 'none') continue;
         if (s.position === 'absolute' || s.position === 'fixed') {
           const left = r.left + px(cs.borderLeftWidth) + px(s.left), top = r.top + px(cs.borderTopWidth) + px(s.top);
           paints.push({ name: pseudo, rect: { left, top, right: left + px(s.width), bottom: top + px(s.height) } });
         }
       }
-      for (const d of el.querySelectorAll('*')) {
+      if (own !== el && cs.backgroundColor !== 'rgba(0, 0, 0, 0)') paints.push({ name: 'tab background', rect: R(r) });
+      for (const d of own.querySelectorAll('*')) {
         const s = getComputedStyle(d), dr = d.getBoundingClientRect();
         if (dr.width <= 0 || dr.height <= 0 || s.backgroundColor === 'rgba(0, 0, 0, 0)') continue;
         paints.push({ name: d.tagName.toLowerCase() + ' background', rect: R(dr) });
       }
-      const box = el.closest('[role="toolbar"],[role="tablist"],[data-slot="mode-row"],[data-slot="tool-row"]');
+      const box = own.closest('[role="toolbar"],[role="tablist"],[data-slot="mode-row"],[data-slot="tool-row"]');
       return { name: name(el), box: R(r), container: R((box || el.parentElement).getBoundingClientRect()),
         centre: { x: r.left + r.width / 2, y: r.top + r.height / 2 }, paints };
     })()`);
