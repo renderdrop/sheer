@@ -206,8 +206,10 @@ export function hasFocusIndicator(s) {
  * was reached (arrow keys move inside it); otherwise it is unreachable.
  */
 export function unreachable(controls) {
-  const reachedComposites = new Set(controls.filter((c) => c.seen && c.composite).map((c) => c.composite));
-  return controls.filter((c) => !c.seen && !(c.composite && reachedComposites.has(c.composite))).map((c) => c.name);
+  const reachedComposites = new Set(controls.filter((c) => c.seen && c.composite !== null).map((c) => c.composite));
+  return controls
+    .filter((c) => !c.seen && !(c.composite !== null && reachedComposites.has(c.composite)))
+    .map((c) => c.name);
 }
 
 /** axe-core result -> compact violations (`violations` only; `incomplete` is counted, never failed). */

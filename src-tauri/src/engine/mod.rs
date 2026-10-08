@@ -74,13 +74,30 @@ pub mod test_support {
         }
     }
 
+    /// `None` only when the library file is not there and not in CI (a loud skip); in CI a missing file panics, and a library that is
+    /// there but does not bind always panics with the error text.
     pub fn bind() -> Option<Bound> {
-        use pdfium_render::prelude::Pdfium;
+        use pdfium_render::prelude::{Pdfium, PdfiumError};
         let guard = pdfium_bind_lock();
         let library = super::library_path(
             &std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("pdfium"),
         );
-        let pdfium = Pdfium::new(Pdfium::bind_to_library(library).ok()?);
+        if !library.is_file() {
+            assert!(
+                std::env::var_os("CI").is_none(),
+                "PDFium library missing in CI: {}",
+                library.display()
+            );
+            eprintln!("SKIPPED (PDFium library not found: {})", library.display());
+            return None;
+        }
+        // pdfium-render allows one binding per process: when the shared engine's worker (which lives as long as the test binary) or an
+        // earlier test holds it, the new `Pdfium` reuses it (`Pdfium::default` does exactly that for this error).
+        let pdfium = match Pdfium::bind_to_library(&library) {
+            Ok(bindings) => Pdfium::new(bindings),
+            Err(PdfiumError::PdfiumLibraryBindingsAlreadyInitialized) => Pdfium::default(),
+            Err(error) => panic!("PDFium does not bind: {error:?}"),
+        };
         Some(Bound {
             pdfium,
             _guard: guard,

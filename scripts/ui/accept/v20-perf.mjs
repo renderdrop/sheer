@@ -121,6 +121,8 @@ const session = async (ctx) => {
 
   /** Opens `path`; returns the ms from the Open request to a decoded first page image. */
   async function openTimed(path) {
+    await input.press('Escape').catch(() => {});
+    await ev('document.activeElement && document.activeElement.blur()'); // Ctrl+O is swallowed while a text field has the focus
     await input.sleep(800);
     await dialogs.queue({ kind: 'openMany', paths: [resolve(path)] });
     const t0 = Date.now();
@@ -251,6 +253,16 @@ const session = async (ctx) => {
       await sleep(300);
       const t0 = Date.now();
       await input.click({ selector: '[data-ocr="start"]' });
+      await sleep(1500);
+      if (process.env.V20_DEBUG)
+        console.log(
+          'ocr debug',
+          JSON.stringify(
+            await ev(
+              `({ o: window.__ocr, dlg: !!document.querySelector('[data-surface="ocr-dialog"]'), banner: [...document.querySelectorAll('[data-surface="ocr-banner"]')].map((e) => e.textContent), toasts: [...document.querySelectorAll('[data-toast]')].map((e) => e.textContent) })`,
+            ),
+          ),
+        );
       await input.waitFor(
         `window.__ocr.progress && !document.querySelector('[data-variant="progress"]') && window.__ocr.toasts.length > 0`,
         {
@@ -290,13 +302,13 @@ const session = async (ctx) => {
   if (PHASES.includes('textedit')) {
     await section('textedit', async () => {
       if ((await openTimed(EDIT_PDF)) === null) throw new Error('text.pdf did not open');
-      await input.click({ selector: '[role="tab"]', text: 'Bearbeiten' });
+      await input.click({ role: 'tab', text: 'Bearbeiten' });
+      await sleep(400);
       await input.click({ text: 'Text bearbeiten' });
       await sleep(600);
-      // The first line of text.pdf: 72 pt from the left, baseline 152 pt below the top of a 612 x 792 page.
-      await ev(`document.querySelector('[data-page="1"]')?.scrollIntoView({ block: 'start' })`);
-      await sleep(400);
-      await input.click({ selector: '[data-page="1"]' }, { offset: { fx: (72 + 60) / 612, fy: 146 / 792 } });
+      const LINE = 'The quick brown fox';
+      await input.waitForTarget({ text: LINE }, { timeoutMs: 30000 });
+      await input.click({ text: LINE });
       await input.waitFor(`!!document.querySelector('[data-textedit-box]')`, { timeoutMs: 8000, what: 'edit box' });
       await sleep(800); // first preview of the untouched line
       // page side: keystroke time (beforeinput) and the preview frame's load; Enter time and the box going away

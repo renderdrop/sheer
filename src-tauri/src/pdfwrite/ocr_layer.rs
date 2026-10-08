@@ -582,13 +582,7 @@ mod line_tests {
         };
         let bytes = pdf_with(layer);
         let Some(text) = pdfium_text(&bytes) else {
-            // Loud locally, a failure in CI (the CI job fetches the pinned PDFium first).
-            assert!(
-                std::env::var_os("CI").is_none(),
-                "PDFium library missing in CI"
-            );
-            eprintln!("SKIPPED (PDFium library not available): the hyphen line test did not run");
-            return;
+            return; // library file absent locally: bind() said so loudly (and panics in CI)
         };
         assert_eq!(
             lines_of(&text),

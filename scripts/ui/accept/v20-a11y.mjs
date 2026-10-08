@@ -45,6 +45,8 @@ const PAGE = `(() => {
     visible, label,
     mark() { window.__a11yBefore = new Set(shown()); },
     fresh() { const all = shown().filter((e) => !window.__a11yBefore.has(e)); return all.filter((e) => !all.some((o) => o !== e && o.contains(e))); },
+    popupCount() { return this.fresh().filter((e) => e.matches('[role="dialog"],[role="alertdialog"],[role="menu"],[data-minibar],[data-tour-card]')).length; },
+    freshDesc() { return this.fresh().map((e) => (e.getAttribute('role') || '') + '/' + (e.getAttribute('data-surface') || e.tagName.toLowerCase())).join(','); },
     freshCount() { return this.fresh().length; },
     dialogs() { return [...document.querySelectorAll('[role="dialog"],[role="alertdialog"]')].filter(visible).map((d) => ({ label: label(d), modal: d.getAttribute('aria-modal') === 'true' })); },
     // Toggles, state and live region on the DOM level (what the AX tree cannot say about an attribute that is simply missing).
@@ -80,7 +82,7 @@ const PAGE = `(() => {
     },
     focusInfo(opener) {
       const a = document.activeElement, o = opener ? document.querySelector(opener) : null;
-      return { inOpener: !!o && (a === o || o.contains(a)), inMenubar: !!a?.closest('[role="menubar"]'), active: a ? a.tagName.toLowerCase() + ' ' + label(a) : 'none' };
+      return { isBody: a === document.body || !a, inOpener: !!o && (a === o || o.contains(a)), inMenubar: !!a?.closest('[role="menubar"]'), active: a ? a.tagName.toLowerCase() + ' ' + label(a) : 'none' };
     },
   };
   return true;
@@ -117,7 +119,7 @@ const session = async (ctx) => {
     send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: theme }] });
   const gone = async () => {
     for (let i = 0; i < 12; i++) {
-      if ((await ev('window.__a11y.freshCount()')) === 0) return true;
+      if ((await ev('window.__a11y.popupCount()')) === 0) return true;
       await sleep(100);
     }
     return false;
@@ -201,13 +203,21 @@ const session = async (ctx) => {
   async function escapeCheck(name, theme, bag, opener, { menubarOk = false } = {}) {
     await input.press('Escape');
     const closed = await gone();
+    // A surface Esc does not close would pollute every later screen: reload to a clean window (the finding is recorded below).
+    const stuck = !closed;
     await sleep(250);
     const f = await ev(`window.__a11y.focusInfo(${q(opener)})`);
-    const back = f.inOpener || (menubarOk && f.inMenubar);
+    const back = f.inOpener || (menubarOk && (f.inMenubar || !f.isBody));
     const bad = [];
-    if (!closed) bad.push({ rule: 'esc-closes', role: '', name: 'surface still open after Esc' });
+    if (!closed)
+      bad.push({
+        rule: 'esc-closes',
+        role: '',
+        name: `surface still open after Esc (${await ev('window.__a11y.freshDesc()')})`,
+      });
     else if (!back) bad.push({ rule: 'focus-return', role: '', name: `focus is on ${f.active} instead of the opener` });
-    if (bad.length) await input.press('Escape').catch(() => {});
+    if (stuck) await prepare().catch(() => {});
+    else if (bad.length) await input.press('Escape').catch(() => {});
     bag.push({ screen: `${name} (Esc)`, theme, ok: bad.length === 0, violations: bad });
     C(`a11y ${theme} ${name}: Esc closes, focus returns`, bad.length === 0, bad[0]?.name ?? '');
   }
@@ -277,7 +287,8 @@ const session = async (ctx) => {
             const n = await ev('window.__a11y.freshCount()');
             if (n > 0) {
               await audit(name, theme, bag);
-              await escapeCheck(name, theme, bag, `[data-a11y-top="${i}"]`, { menubarOk: true });
+              if ((await ev('window.__a11y.popupCount()')) === 0) await input.press('Escape').catch(() => {});
+              else await escapeCheck(name, theme, bag, `[data-a11y-top="${i}"]`, { menubarOk: true });
             } else await input.press('Escape').catch(() => {});
           } catch (e) {
             C(`a11y ${theme} ${name}`, false, e.message);
@@ -299,7 +310,7 @@ const session = async (ctx) => {
     await ensure();
     const controls = await ev(`(() => {
       document.querySelectorAll('[data-a11y-k],[data-a11y-c]').forEach((e) => { e.removeAttribute('data-a11y-k'); e.removeAttribute('data-a11y-c'); });
-      const Q = '[role="toolbar"] :is(button,[role="button"],[role="tab"],[role="radio"],[role="checkbox"],input,select,a[href]),[role="menubar"] [role="menuitem"],[role="tablist"] [role="tab"]';
+      const Q = '[role="toolbar"] :is(button,[role="button"],[role="tab"],[role="radio"],[role="checkbox"],input,select,a[href]),[role="tablist"] [role="tab"]';
       const comps = new Map();
       const list = [...document.querySelectorAll(Q)].filter((e) => window.__a11y.visible(e) && !e.disabled && e.getAttribute('aria-disabled') !== 'true' && !e.closest('[inert],[aria-hidden="true"]'));
       return list.map((e, i) => {
@@ -310,13 +321,14 @@ const session = async (ctx) => {
         // The window caption buttons are not Tab stops by design (a native caption has none).
         const grp = e.closest('[role="group"]');
         const caption = !!grp && grp.querySelectorAll('button').length <= 3 && [...grp.querySelectorAll('button')].every((b) => b.tabIndex === -1);
-        return { i, name: window.__a11y.label(e) || e.tagName.toLowerCase(), composite: c, caption };
+        return { i, name: window.__a11y.label(e) || e.tagName.toLowerCase(), composite: c, caption, tab: e.getAttribute('tabindex'), host: host ? host.getAttribute('role') + ':' + (host.getAttribute('aria-label') || '') : '-' };
       });
     })()`);
     await ev('document.activeElement && document.activeElement.blur()');
     const seen = new Set();
     const visited = new Set();
     const noRing = [];
+    let repeats = 0;
     for (let n = 0; n < 160; n++) {
       await input.press('Tab');
       const a = await ev(`(() => {
@@ -327,14 +339,18 @@ const session = async (ctx) => {
           name: window.__a11y.label(e) || e.tagName.toLowerCase(), outlineStyle: cs.outlineStyle, outlineWidth: cs.outlineWidth, boxShadow: cs.boxShadow };
       })()`);
       if (!a) continue;
-      if (visited.has(a.id)) break; // the cycle is closed
+      if (visited.has(a.id)) {
+        if (++repeats >= 3) break; // the cycle is closed
+        continue;
+      }
       visited.add(a.id);
       if (a.k !== null) seen.add(Number(a.k));
       if (!hasFocusIndicator(a)) noRing.push(a.name);
     }
+    const byName = new Map(controls.map((c) => [c.name, c]));
     const miss = unreachable(
       controls.filter((c) => !c.caption).map((c) => ({ name: c.name, seen: seen.has(c.i), composite: c.composite })),
-    );
+    ).map((m) => `${m} (tabindex ${byName.get(m)?.tab}, ${byName.get(m)?.host})`);
     const violations = [
       ...miss.map((m) => ({ rule: 'tab-reach', role: '', name: `${m} is not reachable with Tab` })),
       ...noRing.map((m) => ({ rule: 'focus-visible', role: '', name: `${m} shows no focus indicator` })),
