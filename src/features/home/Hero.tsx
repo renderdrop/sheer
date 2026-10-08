@@ -37,7 +37,7 @@ export interface HeroProps {
   onOpen: () => void;
   /** Enter in the search opens the first hit. */
   onOpenFirst?: () => void;
-  /** Files are listed below: a lower hero with less padding, so the tools stay in view. */
+  /** Files are listed below: one row (search and the plus; the claim for screen readers only), so the tools stay in view. */
   compact?: boolean;
 }
 
@@ -63,13 +63,17 @@ export function Hero({
       aria-label={t('home.hero.label')}
       data-home-hero=""
       className={cx(
-        'relative flex flex-col justify-center gap-6 overflow-hidden rounded-xl bg-subtle',
-        compact ? 'min-h-(--home-hero-compact) p-6' : 'min-h-(--home-hero-min) p-10',
+        'relative flex overflow-hidden rounded-xl bg-subtle',
+        compact
+          ? 'min-h-(--home-hero-compact) flex-row items-center gap-4 p-4'
+          : 'min-h-(--home-hero-min) flex-col justify-center gap-6 p-10',
       )}
     >
       <SolarGlow variant="hero" />
-      <h1 className="t-display relative m-0 whitespace-pre-line text-text">{t('home.hero.title')}</h1>
-      <div className="relative w-full max-w-(--home-search-max)">
+      <h1 className={cx('t-display relative m-0 whitespace-pre-line text-text', compact && 'sr-only')}>
+        {t('home.hero.title')}
+      </h1>
+      <div className="relative w-full max-w-(--home-search-max) flex-1">
         <Icon
           icon={Search}
           size={18}
@@ -87,7 +91,9 @@ export function Hero({
               onQuery('');
             } else if (event.key === 'ArrowDown') {
               // Down leads to the first hit.
-              const first = document.querySelector<HTMLElement>('[data-home-body] .home-card-grid [data-roving-id]');
+              const first = document.querySelector<HTMLElement>(
+                '[data-home-body] :is(.home-open-row, .home-card-grid) [data-roving-id]',
+              );
               if (first !== null) {
                 event.preventDefault();
                 first.focus();
@@ -119,7 +125,10 @@ export function Hero({
           onClick={() => {
             if (!opening) onOpen();
           }}
-          className="absolute end-6 top-6 flex size-(--home-plus) cursor-pointer items-center justify-center rounded-pill bg-accent text-on-accent transition-colors [transition-duration:var(--motion-fast)] not-aria-disabled:hover:bg-accent-hover not-aria-disabled:active:scale-(--scale-press) aria-disabled:cursor-not-allowed aria-disabled:opacity-(--opacity-disabled)"
+          className={cx(
+            compact ? 'relative ms-auto' : 'absolute end-6 top-6',
+            'flex size-(--home-plus) shrink-0 cursor-pointer items-center justify-center rounded-pill bg-accent text-on-accent transition-colors [transition-duration:var(--motion-fast)] not-aria-disabled:hover:bg-accent-hover not-aria-disabled:active:scale-(--scale-press) aria-disabled:cursor-not-allowed aria-disabled:opacity-(--opacity-disabled)',
+          )}
         >
           <Icon icon={Plus} size={20} />
         </button>

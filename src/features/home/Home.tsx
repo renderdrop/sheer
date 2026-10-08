@@ -58,7 +58,7 @@ function OpenGrid({ tabs, label }: { tabs: readonly { id: number; name: string }
     useUi.getState().setView('editor');
   };
   return (
-    <ul {...roving.groupProps} aria-label={label} className="home-card-grid m-0 list-none p-0">
+    <ul {...roving.groupProps} aria-label={label} className="home-open-row m-0 list-none p-0">
       {tabs.map((tab) => (
         <OpenCard
           key={tab.id}
@@ -201,13 +201,13 @@ export function Home({ platform }: HomeProps) {
           compact={!empty}
         />
         {openShown.length > 0 && (
-          <section aria-labelledby={ids.open} className="mt-6 flex flex-col gap-3">
+          <section aria-labelledby={ids.open} className="mt-4 flex flex-col gap-2">
             <SectionHead id={ids.open}>{t('home.openTabs')}</SectionHead>
             <OpenGrid tabs={openShown} label={t('home.openList')} />
           </section>
         )}
         {recents.loaded && (
-          <section aria-labelledby={ids.recent} className="mt-6 flex flex-col gap-3">
+          <section aria-labelledby={ids.recent} className="mt-4 flex flex-col gap-2">
             <SectionHead
               id={ids.recent}
               action={
@@ -233,7 +233,7 @@ export function Home({ platform }: HomeProps) {
             )}
           </section>
         )}
-        <section aria-labelledby={ids.tools} className="mt-6 flex flex-col gap-4">
+        <section aria-labelledby={ids.tools} className="mt-4 flex flex-col gap-3">
           <SectionHead id={ids.tools}>{t('home.nav.tools')}</SectionHead>
           <ToolRows />
         </section>

@@ -28,3 +28,13 @@
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
+
+/* The "Open" section: one row of compact cards that scrolls sideways past four tabs (F19.6). */
+.home-open-row {
+  display: flex;
+  gap: var(--space-4);
+  overflow-x: auto;
+}
+.home-open-row > li {
+  flex: 0 0 var(--home-card-min);
+}

@@ -559,7 +559,8 @@
   --home-nav-width: 200px;
   --home-content-max: 1120px;
   --home-hero-min: 280px;
-  --home-hero-compact: 168px; /* the hero once files are listed, so the tools stay in view at 1280 x 800 */
+  --home-hero-compact: 80px; /* the hero once files are listed: one row, so the tools stay in view at 1280 x 800 */
+  --home-open-height: 48px; /* an open-tab card: one compact row */
   --home-search-max: 480px;
   --home-card-height: 76px;
   --home-tile-width: 40px;
