@@ -145,7 +145,9 @@ export function TabStrip() {
               initial={{ opacity: 0 }}
               animate={{ opacity: 1, transition: SPRING.fast }}
               className={cx(
-                'group/tab relative flex h-control-sm min-w-tab-min max-w-tab-max flex-1 items-center rounded-sm ps-2 pe-1',
+                'group/tab relative flex h-control-sm min-w-tab-min max-w-tab-max items-center rounded-sm ps-2 pe-1',
+                // The active tab keeps its width (up to the maximum) so its name stays readable; the others give way and the strip scrolls.
+                selected ? 'flex-none' : 'flex-1',
                 selected ? 'text-text' : 'text-text-muted hover:bg-subtle hover:text-text',
               )}
               onAuxClick={(event: MouseEvent) => {

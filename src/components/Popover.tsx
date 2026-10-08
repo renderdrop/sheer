@@ -68,6 +68,9 @@ export interface PopoverProps {
 
 type FocusRequest = 'first' | 'last' | 'auto';
 
+/** The banner slot at the top of the canvas column (DESIGN v2 3.2). */
+const BANNER_SLOT = '[data-region="banner"]';
+
 /** The one open popover (DESIGN 3.5: one open at a time). Opening another closes it without moving focus. */
 const openPopovers = new Map<string, { parent: string | null; close: (reason: PopoverCloseReason) => void }>();
 
@@ -283,6 +286,8 @@ function FloatingSurface({
     side,
     align,
     kind: role === 'menu' ? 'menu' : 'popover',
+    // A popover from the tool row never covers a banner (nothing overlaps): it sits below the banner slot or becomes a dialog.
+    clearOf: role === 'menu' ? undefined : BANNER_SLOT,
     onNoFit,
   });
 

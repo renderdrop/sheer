@@ -46,6 +46,11 @@ export interface MenuItemSpec {
   /** Stays focusable (`aria-disabled`, DESIGN 3.0) but does nothing. */
   disabled?: boolean;
   /**
+   * Why the item is disabled (menus cannot show tooltips): shown as the muted second line in place of `caption` and set as the
+   * `aria-description`. Ignored while the item is enabled.
+   */
+  reason?: string;
+  /**
    * Makes the item open a submenu with these entries (DESIGN 3.5) instead of running a command: it shows a chevron instead of
    * a shortcut, `aria-haspopup` and `aria-expanded`, and opens on Right, Enter, Space, a click or after a short hover. A
    * submenu may have submenus. Such an item has no `onSelect`: there is nothing to run.
@@ -83,6 +88,9 @@ const ITEM =
   'not-aria-disabled:hover:bg-subtle not-aria-disabled:focus-visible:bg-subtle not-aria-disabled:active:bg-pressed not-aria-disabled:active:scale-(--scale-press) ' +
   'not-aria-disabled:aria-expanded:bg-subtle';
 const ITEM_TALL = ITEM.replace('h-(--space-8)', 'h-(--space-12)');
+/** A disabled item that says why: the reason line stays legible, so only the icon and the label dim. */
+const ITEM_REASON = ITEM_TALL.replace(' aria-disabled:opacity-(--opacity-disabled) ', ' ');
+const DIM = 'opacity-(--opacity-disabled)';
 
 /** The submenu that is open in a list: which item opened it, and how often focus was asked to go into it. */
 interface OpenSubmenu {
@@ -261,6 +269,8 @@ export function MenuList({ entries, onActivate, onTab, onBack }: MenuListProps) 
             );
           }
           const hasSubmenu = entry.submenu !== undefined;
+          const reason = entry.disabled === true ? entry.reason : undefined;
+          const caption = reason ?? entry.caption;
           const onClick = (event: MouseEvent<HTMLButtonElement>) => {
             if (entry.disabled === true) {
               event.preventDefault();
@@ -282,6 +292,7 @@ export function MenuList({ entries, onActivate, onTab, onBack }: MenuListProps) 
               }
               aria-checked={entry.checked}
               aria-disabled={entry.disabled === true ? true : undefined}
+              aria-description={reason}
               aria-haspopup={hasSubmenu ? 'menu' : undefined}
               aria-expanded={hasSubmenu ? shown?.id === entry.id : undefined}
               aria-controls={hasSubmenu && shown?.id === entry.id ? `${baseId}${entry.id}` : undefined}
@@ -291,24 +302,27 @@ export function MenuList({ entries, onActivate, onTab, onBack }: MenuListProps) 
               onClick={onClick}
               onPointerEnter={(event) => onItemEnter(event, entry)}
               onPointerLeave={(event) => onItemLeave(event, entry)}
-              className={`${entry.caption === undefined ? ITEM : ITEM_TALL} text-text`}
+              className={`${reason !== undefined ? ITEM_REASON : caption === undefined ? ITEM : ITEM_TALL} text-text`}
             >
-              {reserveIcon &&
-                (entry.checked === true ? (
-                  <Icon icon={Check} />
-                ) : entry.leading !== undefined ? (
-                  entry.leading
-                ) : entry.icon !== undefined ? (
-                  <Icon icon={entry.icon} />
-                ) : (
-                  <span aria-hidden="true" className="size-icon-16 shrink-0" />
-                ))}
-              {entry.caption === undefined ? (
+              {reserveIcon && (
+                <span className={`flex shrink-0 ${reason === undefined ? '' : DIM}`}>
+                  {entry.checked === true ? (
+                    <Icon icon={Check} />
+                  ) : entry.leading !== undefined ? (
+                    entry.leading
+                  ) : entry.icon !== undefined ? (
+                    <Icon icon={entry.icon} />
+                  ) : (
+                    <span aria-hidden="true" className="size-icon-16 shrink-0" />
+                  )}
+                </span>
+              )}
+              {caption === undefined ? (
                 <span className="flex-auto truncate">{entry.label}</span>
               ) : (
                 <span className="flex min-w-0 flex-auto flex-col">
-                  <span className="t-label truncate">{entry.label}</span>
-                  <span className="t-caption truncate text-text-muted">{entry.caption}</span>
+                  <span className={`t-label truncate ${reason === undefined ? '' : DIM}`}>{entry.label}</span>
+                  <span className="t-caption truncate text-text-muted">{caption}</span>
                 </span>
               )}
               {hasSubmenu ? (

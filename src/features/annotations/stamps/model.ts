@@ -19,7 +19,6 @@ export const STAMP_MIN_WIDTH_PT = 96;
 export const STAMP_PAD_X_PT = 12;
 export const STAMP_BORDER_PT = 1.5;
 export const STAMP_RADIUS_PT = 4;
-export const STAMP_TRACKING_EM = 0.06;
 /** A dragged stamp is at least this high. */
 export const STAMP_MIN_DRAG_HEIGHT_PT = 20;
 /** The text of one line at the default size; with a date line the label is 16 pt and the date 11 pt. */

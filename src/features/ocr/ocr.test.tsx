@@ -19,7 +19,7 @@ import { dropDocumentText } from '../textlayer/cache';
 import { OcrBanner } from './OcrBanner';
 import { OcrDialog } from './OcrDialog';
 import { countScope, languageState, offerWanted, runCount, selectionFor, wantedLanguage } from './model';
-import { onOcrFinished, onOcrProgress, openOcrDialog } from './runtime';
+import { onOcrFinished, onOcrProgress, openOcrDialog, startOcr } from './runtime';
 import { isOcrBusy, useOcr } from './store';
 
 const api = vi.hoisted(() => ({
@@ -342,6 +342,18 @@ describe('the dialog', () => {
     expect(isOcrBusy(1)).toBe(false);
     act(() => useUi.getState().toast?.action?.run());
     expect(useOcr.getState().dialog).not.toBeNull();
+  });
+});
+
+describe('a refused start names the reason', () => {
+  it.each([
+    ['read_only', "This document can't be edited."],
+    ['unsupported_feature', "Text recognition isn't available on this computer."],
+  ])('%s', async (code, message) => {
+    api.ocrStart.mockRejectedValue({ code, retryable: false });
+    await startOcr(1, { type: 'pages', pages: [10] }, 'en-US', false, 1);
+    expect(useUi.getState().toast?.message).toBe(message);
+    expect(isOcrBusy(1)).toBe(false);
   });
 });
 

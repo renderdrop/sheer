@@ -266,6 +266,28 @@ describe('selection', () => {
     expect(container.querySelectorAll('[data-annot-handle]')).toHaveLength(0);
   });
 
+  it('shows the four corner handles for a selected stamp (DESIGN 3.14 ST5)', () => {
+    const b = { x: 10, y: 10, w: 60, h: 24 };
+    seed([
+      {
+        ...box(1, 10, 10),
+        rect: b,
+        box: b,
+        kind: 'stamp',
+        stamp: 'draft',
+        text: 'DRAFT',
+        date: null,
+        tone: 'solar',
+      } as Annotation,
+    ]);
+    const { container } = render(<AnnotationLayer {...props()} />);
+    act(() => useAnnotations.getState().select(1, [1]));
+    const handles = [...container.querySelectorAll('[data-annot-handle]')].map((h) =>
+      h.getAttribute('data-annot-handle'),
+    );
+    expect(handles.sort()).toEqual(['ne', 'nw', 'se', 'sw']);
+  });
+
   it('shows no handles for a locked annotation', () => {
     seed([box(1, 10, 10, 'new', { locked: true })]);
     const { container } = render(<AnnotationLayer {...props()} />);

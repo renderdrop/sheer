@@ -135,6 +135,26 @@ describe('contrast of the colour tokens (DESIGN v2 section 2)', () => {
     expect(ratio).toBeCloseTo(4.38, 1);
     expect(ratio).toBeLessThan(TEXT_MIN);
   });
+
+  // Disabled controls dim to --opacity-disabled (DESIGN 4); an enabled icon (Ink) must stay clearly apart from a disabled one.
+  it('a disabled toolbar icon is told apart from an enabled one by at least 3:1 on every toolbar surface', () => {
+    const opacity = Number(declarations.get('--opacity-disabled'));
+    expect(opacity).toBeGreaterThan(0);
+    expect(opacity).toBeLessThanOrEqual(0.5);
+    const mix = (fg: string, bg: string): string =>
+      '#' +
+      [1, 3, 5]
+        .map((o) =>
+          Math.round(parseInt(fg.slice(o, o + 2), 16) * opacity + parseInt(bg.slice(o, o + 2), 16) * (1 - opacity)),
+        )
+        .map((v) => v.toString(16).padStart(2, '0'))
+        .join('');
+    const ink = resolveToken('--text-primary');
+    for (const surface of ['--surface-panel', '--surface-canvas', '--surface-subtle']) {
+      const bg = resolveToken(surface);
+      expect(contrastRatio(ink, mix(ink, bg))).toBeGreaterThanOrEqual(UI_MIN);
+    }
+  });
 });
 
 function sourceFiles(dir: string): string[] {

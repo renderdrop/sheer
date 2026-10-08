@@ -2,8 +2,8 @@ import type { FloatingKind, Rect } from './position';
 
 /**
  * Protected elements (DESIGN 3.9 Q8). A floating surface may not cover them. They are found, never registered:
- * - `data-protect` on any element (the active tool, the selection handles) and every pressed toggle button (the active tool, a shown
- *   panel): protected for every kind.
+ * - `data-protect` on any element (the active tool, the selection handles) and every pressed toggle button (`button[aria-pressed]` or
+ *   a pressed `[data-toolbar-item]`: the active tool, a shown panel): protected for every kind.
  * - the selected annotation frames and their handles (`data-annot-frame` pressed, `data-annot-handle`): protected for every kind,
  *   so a popover from the mini bar leaves the live colour visible.
  * - `data-protect="notice"`: protected for notices only (tips and coach marks).

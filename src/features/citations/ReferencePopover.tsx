@@ -178,9 +178,9 @@ function ReferenceBody({
           )}
         </div>
         {empty && <p className="t-caption m-0 text-text-muted">{t('reference.empty')}</p>}
-        <div className="flex items-center gap-2">
+        <div data-reference="list-actions" className="flex flex-wrap items-center gap-2">
           <Button
-            className="min-w-0 flex-1"
+            className="flex-auto whitespace-nowrap"
             disabled={empty || unknown}
             focusableWhenDisabled
             title={emptyTip}
@@ -191,7 +191,7 @@ function ReferenceBody({
             {t('reference.copyList')}
           </Button>
           <Button
-            className="min-w-0 flex-1"
+            className="flex-auto whitespace-nowrap"
             disabled={(empty && format !== 'ris' && format !== 'bib') || unknown}
             focusableWhenDisabled
             title={emptyTip}

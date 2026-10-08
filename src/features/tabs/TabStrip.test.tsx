@@ -69,6 +69,16 @@ describe('the tab strip', () => {
     expect(tabs.map((tab) => tab.tabIndex)).toEqual([-1, 0]);
   });
 
+  it('the active tab does not shrink; the others do, so its name stays readable at 960 px', () => {
+    open('a.pdf', 'b.pdf', 'c.pdf');
+    setup(<TabStrip />);
+    const wrap = (name: string) => screen.getByRole('tab', { name }).parentElement?.parentElement;
+    const active = wrap('c.pdf');
+    expect(active?.className).toContain('flex-none');
+    expect(wrap('a.pdf')?.className).not.toContain('flex-none');
+    expect(wrap('a.pdf')?.className).toContain('flex-1');
+  });
+
   it('a click selects, and the close button is out of the tab order and closes that tab only', () => {
     open('A.pdf', 'B.pdf');
     setup(<TabStrip />);

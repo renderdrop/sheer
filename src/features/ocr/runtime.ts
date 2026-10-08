@@ -1,4 +1,5 @@
 import { announce } from '../../components/SuccessPulse';
+import { toAppError } from '../../api/errors';
 import {
   ocrCancel,
   ocrCapabilities,
@@ -63,6 +64,27 @@ function failedToast(): void {
   });
 }
 
+/** A refused `ocr_start` says why when the reason is known (read-only, signed, no language); anything else is the generic failure. */
+function refusedToast(docId: number, error: unknown): void {
+  const t = translate();
+  const { code } = toAppError(error);
+  const key =
+    code === 'read_only'
+      ? useDocuments.getState().byId[docId]?.signatureLock === 'locked'
+        ? 'cert.locked.tool'
+        : 'tool.readOnly'
+      : code === 'unsupported_feature'
+        ? 'ocr.unavailable'
+        : null;
+  if (key === null) {
+    failedToast();
+    return;
+  }
+  const message = t(key);
+  useUi.getState().showToast({ message, tone: 'error' });
+  announce(message);
+}
+
 /**
  * Starts a run. The tab is busy from this call on (`expected` pages; `ocrProgress` corrects it). A refused start ends the busy state
  * again and shows the error toast. Resolves to whether the start was accepted.
@@ -81,9 +103,9 @@ export async function startOcr(
     useOcr.getState().patchRun(docId, { job: started.job });
     announce(translate()('ocr.announce.start', { count: expected }));
     return true;
-  } catch {
+  } catch (error) {
     useOcr.getState().setRun(docId, null);
-    failedToast();
+    refusedToast(docId, error);
     return false;
   }
 }

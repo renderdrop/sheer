@@ -93,6 +93,18 @@ describe('ReferenceButton', () => {
     expect(screen.getByRole('button', { name: 'Save list…' }).getAttribute('aria-disabled')).toBe('true');
   });
 
+  it('lets the list buttons wrap instead of touching or clipping in a narrow panel', async () => {
+    await open();
+    const row = document.querySelector('[data-reference="list-actions"]') as HTMLElement;
+    expect(row.className).toContain('flex-wrap');
+    expect(row.className).toContain('gap-2');
+    for (const name of ['Copy list', 'Save list…']) {
+      const cls = screen.getByRole('button', { name }).className;
+      expect(cls).toContain('whitespace-nowrap');
+      expect(cls).not.toContain('min-w-0');
+    }
+  });
+
   it('saves the list through the native dialog', async () => {
     const { user } = await open();
     await waitFor(() => expect(screen.getByText('2 citations')).toBeTruthy());

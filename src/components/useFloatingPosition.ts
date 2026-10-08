@@ -48,6 +48,45 @@ interface Options {
   onNoFit?: () => void;
 }
 
+/** Attributes that move or show/hide a protected element without adding a node (a banner opening, a pressed tool). */
+const LAYOUT_ATTRIBUTES = [
+  'class',
+  'style',
+  'hidden',
+  'open',
+  'aria-pressed',
+  'aria-expanded',
+  'data-state',
+  'data-protect',
+];
+/** The page canvas: many nodes change there while scrolling and none is a banner. */
+const CANVAS_SCROLLER = '[data-action-scope="canvas"] > [role="region"]';
+/** At most this many records are inspected per batch; a bigger burst counts as relevant (one placement per frame anyway). */
+const MAX_RECORDS = 50;
+
+/** Whether a batch of DOM changes can move a protected element: not when every change is inside the canvas. */
+export function relevant(records: readonly Pick<MutationRecord, 'target'>[]): boolean {
+  if (records.length > MAX_RECORDS) return true;
+  return records.some((record) => {
+    const target = record.target;
+    const element = target instanceof Element ? target : target.parentElement;
+    return element === null || element.closest(CANVAS_SCROLLER) === null;
+  });
+}
+
+/**
+ * The box a floating surface keeps its gap from. A control inside the mini bar stands for the bar's height: the 8 px gap is
+ * measured from the bar's edge, not from the control inside its padding (DESIGN v2 3.3).
+ */
+export function anchorRect(anchor: Element): DOMRect {
+  const box = anchor.getBoundingClientRect();
+  const bar = anchor.closest('[data-minibar]');
+  if (bar === null || bar === anchor) return box;
+  const outer = bar.getBoundingClientRect();
+  if (outer.height <= 0) return box;
+  return new DOMRect(box.left, outer.top, box.width, outer.height);
+}
+
 /**
  * Places a `position: fixed` element next to its anchor (see `computePosition`) before the browser paints, and keeps it
  * there on resize, scroll and when its own size changes. The position is written to the element's style directly, so
@@ -94,7 +133,7 @@ export function useFloatingPosition({
         width: document.documentElement.clientWidth || window.innerWidth,
         height: window.innerHeight,
       };
-      const anchorBox = anchor.getBoundingClientRect();
+      const anchorBox = anchorRect(anchor);
       // DESIGN 3.5: max height is the window minus the margin on both sides; the popover scrolls inside. A menu is a list that
       // scrolls (Q7) and never covers its anchor, so it is also held to the room on the roomier side of the anchor.
       let room = viewport.height - 2 * gap;
@@ -231,8 +270,15 @@ export function useFloatingPosition({
     // A notice (Q8) may not cover any button: a banner that mounts or finishes its reveal after the first placement moves the
     // protected rects without any resize, so the DOM and the end of a transition or animation place it again.
     const notice = kind === 'coach' || kind === 'tip';
-    const mutations = notice ? new MutationObserver(() => schedule()) : null;
-    mutations?.observe(document.body, { childList: true, subtree: true });
+    const mutations = notice
+      ? new MutationObserver((records) => relevant(records.filter((r) => !floating.contains(r.target))) && schedule())
+      : null;
+    mutations?.observe(document.body, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      attributeFilter: LAYOUT_ATTRIBUTES,
+    });
     if (notice) {
       document.addEventListener('transitionend', schedule, true);
       document.addEventListener('animationend', schedule, true);

@@ -58,7 +58,13 @@ function Row({ entry }: { entry: RecoveryEntry }) {
         <Button variant="ghost" size="sm" disabled={busy} onClick={() => discardOne(entry.id)}>
           {t('recover.discard')}
         </Button>
-        <Button size="sm" disabled={busy} onClick={() => void restoreOne(entry)} icon={busy ? LoaderCircle : undefined}>
+        <Button
+          variant="primary"
+          size="sm"
+          disabled={busy}
+          onClick={() => void restoreOne(entry)}
+          icon={busy ? LoaderCircle : undefined}
+        >
           {t('recover.restore')}
         </Button>
       </div>

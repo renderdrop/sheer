@@ -1,4 +1,4 @@
-import { AnimatePresence } from 'motion/react';
+import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import {
   memo,
   useCallback,
@@ -14,6 +14,7 @@ import {
 import type { SmartLink } from '../../api/smartLinks';
 import type { Rect } from '../../api/wire';
 import { tokenMs } from '../../components/glide';
+import { TWEEN } from '../../components/motion';
 import { useT, type Translate } from '../../i18n';
 import { pageRevOf, useAnnotations } from '../../stores/annotations';
 import { useUi } from '../../stores/ui';
@@ -183,7 +184,18 @@ export const SmartLinkLayer = memo(function SmartLinkLayer({
   // What the tool and the moment allow decides what is asked for; links of another stamp are never shown.
   const smart = usePageSmartLinks(docId, pageIndex, stamp, ready && live && smartOn);
   const real = usePageRealLinks(docId, pageIndex, stamp, ready && live);
-  const items = useMemo(() => pageLinks(smart, real), [smart, real]);
+  // Turning smart links off fades the last detected ones out (DESIGN 3.11 L4 "Off": nothing drawn after it); reduced motion: at once.
+  const reduceMotion = useReducedMotion() === true;
+  const [track, setTrack] = useState<{ on: boolean; last: readonly SmartLink[] }>({ on: smartOn, last: smart ?? [] });
+  const [leaving, setLeaving] = useState<readonly SmartLink[] | null>(null);
+  const nextLast = smartOn && smart !== null ? smart : track.last;
+  if (track.on !== smartOn || track.last !== nextLast) {
+    setTrack({ on: smartOn, last: nextLast });
+    if (track.on && !smartOn && !reduceMotion && track.last.length > 0) setLeaving(track.last);
+  }
+  if (leaving !== null && (smartOn || reduceMotion)) setLeaving(null);
+  const fading = leaving !== null;
+  const items = useMemo(() => pageLinks(leaving ?? smart, real), [leaving, smart, real]);
 
   const keyFocused = useRef<string | null>(null);
   const [hover, setHover] = useState<string | null>(null);
@@ -410,7 +422,7 @@ export const SmartLinkLayer = memo(function SmartLinkLayer({
   const style = { ...box, transformOrigin: 'center', '--page-scale': pxPerPt } as CSSProperties;
   const stop = tabStop !== null && items.some((item) => item.key === tabStop) ? tabStop : items[0]?.key;
   const list = (
-    <div
+    <motion.div
       ref={root}
       role="list"
       aria-label={t('smartlinks.aria.list', { page: pageNames(docId, pageIndex).label })}
@@ -418,6 +430,15 @@ export const SmartLinkLayer = memo(function SmartLinkLayer({
       data-links-page={pageIndex}
       className="pointer-events-none absolute z-canvas-text"
       style={style}
+      aria-hidden={fading ? true : undefined}
+      inert={fading ? true : undefined}
+      data-fading={fading ? '' : undefined}
+      initial={false}
+      animate={{ opacity: fading ? 0 : 1 }}
+      transition={TWEEN.base}
+      onAnimationComplete={() => {
+        if (fading) setLeaving(null);
+      }}
     >
       {items.map((item, index) => {
         const runs = runsOfItem(item);
@@ -492,7 +513,7 @@ export const SmartLinkLayer = memo(function SmartLinkLayer({
           </div>
         );
       })}
-    </div>
+    </motion.div>
   );
   return (
     <>

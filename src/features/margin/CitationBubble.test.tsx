@@ -1,4 +1,6 @@
 // @vitest-environment jsdom
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { act, screen, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -167,6 +169,16 @@ describe('the citation bubble', () => {
     first.focus();
     await user.keyboard('{ArrowDown}');
     expect(document.activeElement).toBe(second);
+  });
+
+  it('draws the Ink and Solar focus pair from tokens.css, not a one-colour outline', () => {
+    column('full', [cite(1)]);
+    const [bubble] = screen.getAllByRole('article') as [HTMLElement];
+    expect(bubble.className).not.toContain('outline-focus');
+    const css = readFileSync(join(process.cwd(), 'src', 'styles', 'tokens.css'), 'utf8');
+    expect(css).toMatch(
+      /\[data-citation\]:focus-visible:not\(\[data-focus-owned\]\) \{[^}]*box-shadow: var\(--ring-focus\)/,
+    );
   });
 
   it('focuses the bubble when the mini bar asks to open the citation', () => {

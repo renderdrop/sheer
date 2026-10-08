@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { fireEvent, render, screen } from '@testing-library/react';
+import { act } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { TextLineInfo } from '../../api/textEdit';
@@ -15,6 +16,11 @@ const actions = vi.hoisted(() => ({
   takeCaret: () => 'end' as const,
 }));
 vi.mock('./actions', () => actions);
+const preview = vi.hoisted(() => ({ textEditPreview: vi.fn() }));
+vi.mock('../../api/textPreview', async (original) => ({
+  ...(await original<typeof import('../../api/textPreview')>()),
+  ...preview,
+}));
 
 const line: TextLineInfo = {
   key: { rev: 0, line: 1 },
@@ -44,10 +50,26 @@ function mount(patch: Partial<EditSession> = {}) {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  preview.textEditPreview.mockReturnValue(new Promise(() => undefined));
   useTextEdit.getState().reset();
 });
 
 describe('EditBox', () => {
+  it('requests the preview of the untouched line on open, so it renders in the real font', async () => {
+    vi.useFakeTimers();
+    try {
+      preview.textEditPreview.mockReturnValue(new Promise(() => undefined));
+      mount();
+      expect(preview.textEditPreview).not.toHaveBeenCalled();
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(500);
+      });
+      expect(preview.textEditPreview).toHaveBeenCalledTimes(1);
+      expect(preview.textEditPreview).toHaveBeenCalledWith(expect.objectContaining({ text: 'Hello', key: line.key }));
+    } finally {
+      vi.useRealTimers();
+    }
+  });
   it('is a labelled textbox with the line text', () => {
     mount();
     const box = screen.getByTestId('textedit-box');

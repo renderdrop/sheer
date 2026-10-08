@@ -55,6 +55,16 @@ describe('the recovery banner (DESIGN 3.50)', () => {
     expect(document.activeElement).toBe(document.body);
   });
 
+  it('gives every row, the first included, a hover fill on the row and on Restore (designer minor 5)', async () => {
+    api.listRecoveries.mockResolvedValue([entry(1), entry(2)]);
+    setup(<RecoveryBanner />);
+    const region = await screen.findByRole('region');
+    for (const row of within(region).getAllByRole('group')) {
+      expect(row.className).toContain('hover:bg-subtle');
+      expect(within(row).getByRole('button', { name: 'Restore' }).className).toContain('hover:bg-accent-hover');
+    }
+  });
+
   it('collapses the rows at three records behind a toggle (B-006)', async () => {
     api.listRecoveries.mockResolvedValue([entry(1), entry(2), entry(3)]);
     const { user } = setup(<RecoveryBanner />);

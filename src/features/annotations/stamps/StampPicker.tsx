@@ -8,6 +8,7 @@ import { isOwnEvent, itemsOf, rovingTarget } from '../../../components/roving';
 import { useLocale, useT } from '../../../i18n';
 import { useAnnotations } from '../../../stores/annotations';
 import { selectActiveId, useDocuments } from '../../../stores/documents';
+import { readSlots } from '../../../stores/pages';
 import { focusCanvas } from '../../modes/switch';
 import { replaceStamp } from './actions';
 import { StampArt } from './StampArt';
@@ -78,7 +79,8 @@ export function StampPickerBody({ close }: StampPickerBodyProps) {
     if (target !== null) {
       const docId = selectActiveId(useDocuments.getState());
       const old = docId === null ? undefined : findStamp(docId, target);
-      if (docId !== null && old !== undefined) void replaceStamp(docId, old, face, next.tone, null);
+      if (docId !== null && old !== undefined)
+        void replaceStamp(docId, old, face, next.tone, pageSpace(docId, old.pageId));
       return;
     }
     useStamp.getState().setKeyboard(viaKey);
@@ -256,6 +258,12 @@ function RecentRow({
       {item.date && <Icon icon={Calendar} />}
     </div>
   );
+}
+
+/** The size of a page in page space (before its `/Rotate`), where the stamp boxes are; `null` when the page is not known. */
+function pageSpace(docId: number, pageId: number): readonly [number, number] | null {
+  const slot = readSlots(docId).find((candidate) => candidate.id === pageId);
+  return slot === undefined ? null : [slot.width, slot.height];
 }
 
 /** The stamp `id` of the document's replica, when it has one. */

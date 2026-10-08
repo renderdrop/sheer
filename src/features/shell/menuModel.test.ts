@@ -65,6 +65,28 @@ describe('the Windows menus built from menu.json', () => {
     expect(find(context({ hasTextSelection: true }))).toBe(false);
   });
 
+  it('say why a disabled item is disabled, and only then', () => {
+    const reason = (id: string, state: Partial<MenuContext['state']>) => {
+      const menu = id === 'save' ? 'file' : 'tools';
+      const entry = buildMenuEntries(menu, context({ state: { ...NO_DOCUMENT, hasDocument: true, ...state } })).find(
+        (candidate) => candidate.id === id,
+      );
+      return entry?.type === 'separator' ? undefined : entry?.reason;
+    };
+    expect(reason('recognize-text', { ocrBusy: true })).toBe('Wait until text recognition finishes.');
+    expect(reason('recognize-text', { canEdit: false })).toBe("This document can't be edited.");
+    expect(reason('recognize-text', { ocrUnavailable: true })).toBe(
+      "Text recognition isn't available on this computer.",
+    );
+    expect(reason('recognize-text', { signatureLocked: true, ocrBusy: true })).toBe(
+      'Signed and locked. Make an editable copy to change it.',
+    );
+    expect(reason('header-footer', { signedFile: true })).toContain('signed');
+    expect(reason('save', { ocrBusy: true })).toBe('Wait until text recognition finishes.');
+    expect(reason('recognize-text', {})).toBeUndefined();
+    expect(reason('save', {})).toBeUndefined();
+  });
+
   it('has the File menu of the design: the commands outside the modes, Close, Settings and Exit last', () => {
     expect(labels('file')).toEqual([
       'Open…',

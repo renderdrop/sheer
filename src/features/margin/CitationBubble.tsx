@@ -131,7 +131,6 @@ export const CitationBubble = memo(
         onPointerLeave={() => useCommentHover.getState().hover(null)}
         className={cx(
           'box-border flex w-full cursor-pointer flex-col gap-2 rounded-lg rounded-tl-sm border border-border-subtle bg-surface p-3 text-text',
-          'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus',
           'transition-shadow duration-fast motion-reduce:transition-none',
           selected ? 'shadow-floating ring-1 ring-text' : 'shadow-standard',
           hovered && !selected && 'shadow-floating',

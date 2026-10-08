@@ -662,3 +662,24 @@ describe('Menu inside a modal (DESIGN 3.9 Q8)', () => {
     expect(getByRole('menu', { name: 'Actions' }).parentElement?.className).toContain('z-popover');
   });
 });
+
+describe('Menu disabled reason', () => {
+  const list: MenuEntry[] = [
+    { id: 'a', label: 'Recognize', disabled: true, reason: 'Wait until it finishes.', onSelect: noop },
+    { id: 'b', label: 'Save', reason: 'Never shown while enabled', onSelect: noop },
+  ];
+
+  it('shows the reason as a second line and as the description of a disabled item only', async () => {
+    const { user, getByRole } = setup(
+      <Menu label="Menu" entries={list} trigger={(trigger) => <button {...trigger}>Open</button>} />,
+    );
+    await user.click(getByRole('button', { name: 'Open' }));
+    const disabled = getByRole('menuitem', { name: /Recognize/ });
+    expect(disabled.getAttribute('aria-disabled')).toBe('true');
+    expect(disabled.getAttribute('aria-description')).toBe('Wait until it finishes.');
+    expect(disabled.textContent).toContain('Wait until it finishes.');
+    const enabled = getByRole('menuitem', { name: 'Save' });
+    expect(enabled.hasAttribute('aria-description')).toBe(false);
+    expect(enabled.textContent).toBe('Save');
+  });
+});

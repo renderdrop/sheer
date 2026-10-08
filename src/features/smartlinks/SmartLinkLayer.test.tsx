@@ -18,6 +18,11 @@ const mocks = vi.hoisted(() => ({
   openLink: vi.fn(),
   jumpTo: vi.fn(),
   tip: vi.fn(),
+  reduce: { value: false },
+}));
+vi.mock('motion/react', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('motion/react')>()),
+  useReducedMotion: () => mocks.reduce.value,
 }));
 vi.mock('../../api/smartLinks', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../api/smartLinks')>()),
@@ -100,6 +105,7 @@ beforeEach(() => {
   mocks.openLink.mockReset().mockResolvedValue(undefined);
   mocks.jumpTo.mockReset();
   mocks.tip.mockReset();
+  mocks.reduce.value = false;
   stubLayout();
 });
 
@@ -243,6 +249,25 @@ describe('the smart link layer', () => {
     expect(mocks.getSmartLinks.mock.calls.length).toBe(calls);
     act(() => useSmartLinks.getState().setForDoc(1, true));
     expect(await link(/^Footnote/)).not.toBeNull();
+  });
+
+  it('fades the detected links out when smart links are turned off (hidden from assistive technology at once), and is gone after it', async () => {
+    render(<Page />);
+    await link(/^Footnote/);
+    act(() => useSmartLinks.getState().setForDoc(1, false));
+    const list = document.querySelector('[data-links-list]') as HTMLElement;
+    expect(list.hasAttribute('data-fading')).toBe(true);
+    expect(list.getAttribute('aria-hidden')).toBe('true');
+    expect(screen.queryByRole('link')).toBeNull();
+    await waitFor(() => expect(document.querySelector('[data-links-list]')).toBeNull());
+  });
+
+  it('with reduced motion the links are gone at once, without a fade', async () => {
+    mocks.reduce.value = true;
+    render(<Page />);
+    await link(/^Footnote/);
+    act(() => useSmartLinks.getState().setForDoc(1, false));
+    expect(document.querySelector('[data-links-list]')).toBeNull();
   });
 
   it('never draws links of an older revision: a change to the document hides them until the new ones arrive', async () => {

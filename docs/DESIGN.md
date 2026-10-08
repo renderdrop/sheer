@@ -1186,7 +1186,7 @@ CT-AC 12. The C8 gate passes; no tip intersects an input, its anchor, the select
 
 ### 3.14 v1.9 Stamps (ADR-139 §3.1)
 
-Spec only; the annotation writer is ADR-139's. A stamp is a real `/Stamp` annotation with our own appearance stream. **No new mode, panel tab, grid track or tool slot** (Kommentieren has 8, §3.7). Light only, tokens only, no glass ("Iris" = Solar, §3.10). Surfaces: a split variant, the stamp picker (popover), the mini bar, one Bearbeiten menu item. New tokens (PDF points at default size, scaled with the stamp): `--stamp-height` 40pt, `--stamp-height-dated` 56pt, `--stamp-min-width` 96pt, `--stamp-pad-x` 12pt, `--stamp-border` 2pt, `--stamp-radius` 4pt, `--stamp-tracking` 0.06em.
+Spec only; the annotation writer is ADR-139's. A stamp is a real `/Stamp` annotation with our own appearance stream. **No new mode, panel tab, grid track or tool slot** (Kommentieren has 8, §3.7). Light only, tokens only, no glass ("Iris" = Solar, §3.10). Surfaces: a split variant, the stamp picker (popover), the mini bar, one Bearbeiten menu item. New tokens (PDF points at default size, scaled with the stamp): `--stamp-height` 40pt, `--stamp-height-dated` 56pt, `--stamp-min-width` 96pt, `--stamp-pad-x` 12pt, `--stamp-border` 1.5pt (the appearance stream's; the preview matches the saved stamp), `--stamp-radius` 4pt. The text is not letter-spaced.
 
 **ST1 Entry.** Slot 5 becomes a split item **Notiz° [Notiz / Stempel]**. Exception to the §3.2 family label: the main part shows the last used variant's icon **and label** (`sticky-note` "Notiz" or `sticker` "Stempel"), so a stamp user sees "Stempel". Chevron menu: Notiz, Stempel, divider, the note swatch row (labelled `stamp.noteColour`; stamps never use it). `stamp` stays the certificate icon (§3.8 L2). Second entry: Bearbeiten menu → `stamp.menu` ("Stamp…"), switches to Kommentieren, arms the tool, opens the picker. No tool letter.
 
@@ -1206,7 +1206,7 @@ Height ≤ 424, so it fits below the tool row at 960 × 640 on Windows. Choosing
 
 **ST4 Look in the PDF** (appearance stream, no rotation, `/Rotate` of the page respected so it reads upright).
 - Rounded rectangle, border `--stamp-border` Ink, radius `--stamp-radius`. **Solar:** fill #FFF84D (`--hl-solar`, 100 %), text Ink. **Ink:** no fill, text Ink. Solar text is never used (§2: 1.12:1).
-- Text: bold sans (weight 700; the font is the ADR's, embedded subset when outside WinAnsi), centred, tracking `--stamp-tracking`. Predefined labels **uppercase** in the UI language at placing time ("ENTWURF", "APPROVED"); own text as typed. Size: one line 18pt at default; dated: label 16pt + date 11pt regular, 4pt gap.
+- Text: bold sans (weight 700; the font is the ADR's, embedded subset when outside WinAnsi), centred, no letter-spacing. Predefined labels **uppercase** in the UI language at placing time ("ENTWURF", "APPROVED"); own text as typed. Size: one line 18pt at default; dated: label 16pt + date 11pt regular, 4pt gap.
 - Date: the day of placing, `Intl.DateTimeFormat(uiLocale, { dateStyle: "medium" })`: de "07.10.2026", en "Oct 7, 2026". Fixed text, never updated.
 - `/Name`: `/Draft`, `/Approved`, `/Confidential`, `/SheerReceived`, `/SheerCustom`; `/Contents` = the visible text in one line ("Received 07.10.2026") so other viewers and screen readers read it.
 

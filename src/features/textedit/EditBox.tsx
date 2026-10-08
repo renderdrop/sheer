@@ -165,7 +165,6 @@ export function EditBox({ session, growth, pageWidth, paragraph, pxPerPt = 1 }: 
   const imgRef = useRef<HTMLImageElement>(null);
   const latest = useRef({ draft, reflow, pxPerPt });
   const scheduler = useRef<PreviewScheduler | null>(null);
-  const first = useRef(true);
   const url = useRef<string | null>(null);
 
   // The text goes in once, by hand: React must not re-render children of a contenteditable the user is changing.
@@ -226,11 +225,8 @@ export function EditBox({ session, growth, pageWidth, paragraph, pxPerPt = 1 }: 
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- one scheduler per open line (the box is keyed by it)
   }, []);
+  // Also once on open: the untouched line renders in its real font at once instead of the CSS fallback until the first keystroke.
   useEffect(() => {
-    if (first.current) {
-      first.current = false;
-      return;
-    }
     scheduler.current?.schedule();
   }, [draft, reflow]);
 

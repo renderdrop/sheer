@@ -1,7 +1,7 @@
 import type { Platform } from '../api/app';
 import type { MenuEntry } from '../components';
 import { APP_NAME } from '../config/app';
-import { isPlainKey, type Translate } from '../i18n';
+import { isPlainKey, type PlainKey, type Translate } from '../i18n';
 import layoutJson from './menu.json';
 import { MODES } from '../stores/ui';
 import { actionShortcut, getAction, type ActionDef } from './registry';
@@ -104,6 +104,34 @@ function isEnabled(action: ActionDef, context: MenuContext): boolean {
   return (action.id !== 'add-comment' && action.id !== 'cite-selection') || context.hasTextSelection;
 }
 
+/**
+ * Why a disabled action cannot run, as a catalog key: the first blocker of the state whose removal would enable it (a signature
+ * lock, a signed file, a read-only document, a running text recognition, no recognizer, permissions). `null` when it is enabled,
+ * there is no document, or the cause is none of these (zoom at its limit, nothing to undo): those need no explanation.
+ */
+export function disabledReasonKey(action: ActionDef, context: MenuContext): PlainKey | null {
+  const { state } = context;
+  if (!state.hasDocument || isEnabled(action, context)) return null;
+  const blockers: [PlainKey, boolean, Partial<ActionState>][] = [
+    ['cert.locked.tool', state.signatureLocked === true, { signatureLocked: false }],
+    ['hf.signed', state.signedFile === true, { signedFile: false }],
+    ['tool.readOnly', state.readOnly === true || state.canEdit === false, { readOnly: false, canEdit: true }],
+    ['ocr.busy', state.ocrBusy === true, { ocrBusy: false }],
+    ['ocr.unavailable', state.ocrUnavailable === true, { ocrUnavailable: false }],
+    ['output.notAllowed', state.canPrint === false || state.canCopy === false, { canPrint: true, canCopy: true }],
+  ];
+  // Lift the blockers one by one; the first one that was really there is the reason once the action runs again.
+  let lifted = state;
+  let first: PlainKey | null = null;
+  for (const [key, present, patch] of blockers) {
+    if (!present) continue;
+    first ??= key;
+    lifted = { ...lifted, ...patch };
+    if (action.enabled(lifted)) return first;
+  }
+  return null;
+}
+
 /** Drops a separator that starts or ends the list or follows another one. */
 function tidy(entries: readonly MenuEntry[]): MenuEntry[] {
   const out: MenuEntry[] = [];
@@ -127,6 +155,11 @@ function recentEntries(context: MenuContext, clearLabel: string | undefined): Me
     entries.push({ id: 'recent:clear', label: text(context.t, clearLabel), onSelect: clear });
   }
   return entries;
+}
+
+function reasonText(action: ActionDef, context: MenuContext): string | undefined {
+  const key = disabledReasonKey(action, context);
+  return key === null ? undefined : context.t(key);
 }
 
 /** The entries of one menu of the layout for the Windows bar. */
@@ -166,6 +199,7 @@ export function buildMenuEntries(menuId: string, context: MenuContext): MenuEntr
       checked: radio ? context.checked(action.id) === true : context.checked(action.id),
       radio: radio || undefined,
       disabled: !isEnabled(action, context),
+      reason: reasonText(action, context),
       onSelect: () => context.run(action.id),
     });
   });

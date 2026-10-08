@@ -40,6 +40,32 @@ describe('Popover (dialog)', () => {
     expect(document.activeElement).toBe(getByRole('textbox', { name: 'Value' }));
   });
 
+  it('sits below the banner slot instead of covering a banner', async () => {
+    const rect = (left: number, top: number, width: number, height: number): DOMRect =>
+      new DOMRect(left, top, width, height);
+    const spy = vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (
+      this: HTMLElement,
+    ) {
+      if (this.dataset.region === 'banner') return rect(0, 48, 600, 200);
+      if (this.tagName === 'BUTTON' && this.textContent === 'Open') return rect(10, 10, 80, 30);
+      return rect(0, 0, 100, 60);
+    });
+    try {
+      const { user, getByRole, getByTestId } = setup(
+        <>
+          <div data-region="banner" data-testid="banner" />
+          <Demo />
+        </>,
+      );
+      await user.click(getByRole('button', { name: 'Open' }));
+      const positioner = document.querySelector<HTMLElement>('[data-side]');
+      expect(getByTestId('banner')).toBeTruthy();
+      expect(Number.parseFloat(positioner?.style.top ?? '0')).toBeGreaterThanOrEqual(48 + 200);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
   it('closes on Esc and returns focus to the trigger', async () => {
     const { user, getByRole, queryByRole } = setup(<Demo />);
     const trigger = getByRole('button', { name: 'Open' });

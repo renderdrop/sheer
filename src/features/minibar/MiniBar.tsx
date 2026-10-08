@@ -85,10 +85,12 @@ export function MiniBar({ docId, objects, ref, onReturn }: MiniBarProps) {
     for (const item of items) item.tabIndex = item === active ? 0 : -1;
   });
 
+  // The fit is measured after every render (the controls change the full width); the listeners are attached once.
+  const fitRef = useRef<() => void>(() => undefined);
   useLayoutEffect(() => {
     const root = own.current;
     if (root === null) return;
-    const fit = () => {
+    fitRef.current = () => {
       // The bar is clamped to the canvas column, which is narrower than the window beside the side panel.
       const canvas = document.querySelector(CANVAS)?.getBoundingClientRect().width;
       const available =
@@ -98,7 +100,10 @@ export function MiniBar({ docId, objects, ref, onReturn }: MiniBarProps) {
         if (root.scrollWidth > available + 1) setCompact(true);
       } else if (available >= fullWidth.current + 8) setCompact(false);
     };
-    fit();
+    fitRef.current();
+  });
+  useLayoutEffect(() => {
+    const fit = () => fitRef.current();
     window.addEventListener('resize', fit);
     const canvas = document.querySelector(CANVAS);
     const observer = typeof ResizeObserver === 'function' && canvas !== null ? new ResizeObserver(fit) : null;
@@ -107,7 +112,7 @@ export function MiniBar({ docId, objects, ref, onReturn }: MiniBarProps) {
       window.removeEventListener('resize', fit);
       observer?.disconnect();
     };
-  });
+  }, []);
 
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     const root = event.currentTarget;

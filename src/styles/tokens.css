@@ -95,7 +95,6 @@
   --stamp-pad-x: 12px;
   --stamp-border: 1.5px;
   --stamp-radius: 4px;
-  --stamp-tracking: 0.06em;
   --stamp-tile-width: 140px;
   --stamp-tile-height: 48px;
 
@@ -1608,4 +1607,11 @@
   border: none;
   box-shadow: var(--ring-focus);
   opacity: 1;
+}
+
+/* A citation bubble takes programmatic focus (tabindex -1) and shows the same Ink + Solar pair as the leader line's keyboard focus; the
+   overlay draws it when the bubble is its target (data-focus-owned). Not in a layer, so shadow utilities cannot hide it. */
+[data-citation]:focus-visible:not([data-focus-owned]) {
+  outline: var(--focus-width) solid transparent;
+  box-shadow: var(--ring-focus);
 }
