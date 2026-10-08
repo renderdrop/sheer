@@ -68,6 +68,7 @@ pub mod signatures;
 pub mod smart_links;
 pub mod text;
 pub mod text_edit;
+pub mod text_pdf;
 pub mod text_preview;
 pub mod thumbnails;
 pub mod unsigned_copy;

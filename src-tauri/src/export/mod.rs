@@ -8,3 +8,4 @@ pub mod from_images;
 pub mod images;
 pub mod names;
 pub mod snapshot;
+pub mod text_flow;

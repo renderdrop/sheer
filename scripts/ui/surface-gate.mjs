@@ -7,6 +7,8 @@
 //            surfaces intersect; notices may not cover any protected rect; modals cover the inert app by design
 //   wrap     no control label (button, radio, tab, menu item) is taller than 1.5 lines (the label wraps)
 //   split    every split button ([data-split]) in hover and pressed: all its parts stay inside its own box (0.5 px) and the box keeps its size
+//   contour  every split tool, main and chevron part, in inactive / inactive+hover / active / active+hover: one outer contour,
+//            hover changes only the background of the hovered half (F19.27)
 //   hover    every toolbar and mode button hovered over CDP: its hover paints (box, ::before/::after, shadow spread, backgrounds) lie inside
 //            the button box and its toolbar, 0 px tolerance (F19.2)
 // Also registered: the ink mini bar, its colour popover and every coach mark step (floating surfaces that are no dialog).
@@ -29,6 +31,7 @@ import {
   checkOverlap,
   checkScroll,
   checkSplitButtons,
+  checkSplitContour,
   isVisuallyHidden,
   rowsFor,
 } from './surface-checks.mjs';
@@ -515,6 +518,66 @@ async function sweepSplit(label) {
   if (count > 0) rows.push(...rowsFor(tag, { split: checkSplitButtons(buttons) }));
 }
 
+/** F19.27: every split tool in inactive, inactive+hover, active and active+hover, read for the main and the chevron part. */
+async function sweepSplitContour(label) {
+  const count = await ev(`document.querySelectorAll('[data-split]').length`);
+  const read = (i, p) =>
+    ev(`(() => {
+      const el = document.querySelectorAll('[data-split]')[${i}];
+      const part = [...el.querySelectorAll('button')][${p}];
+      if (!part) return null;
+      const R = (r) => ({ left: r.left, top: r.top, right: r.right, bottom: r.bottom });
+      const box = (e) => { const s = getComputedStyle(e); return { rect: R(e.getBoundingClientRect()),
+        border: [s.borderTopWidth, s.borderRightWidth, s.borderBottomWidth, s.borderLeftWidth, s.borderTopStyle, s.borderLeftStyle, s.borderLeftColor].join(' '),
+        outline: s.outlineStyle === 'none' || s.outlineWidth === '0px' ? 'none' : s.outlineWidth + ' ' + s.outlineStyle + ' ' + s.outlineColor,
+        boxShadow: s.boxShadow !== 'none' ? s.boxShadow : getComputedStyle(e, '::after').boxShadow, background: s.backgroundColor }; };
+      const r = part.getBoundingClientRect();
+      return { name: el.getAttribute('data-split'), on: el.getAttribute('data-on') === 'true',
+        c: { x: r.left + r.width / 2, y: r.top + r.height / 2 }, outer: box(el), part: box(part) };
+    })()`);
+  const click = async (c) => {
+    await mouse('mouseMoved', c.x, c.y, { button: 'none' });
+    await mouse('mousePressed', c.x, c.y);
+    await mouse('mouseReleased', c.x, c.y);
+    await sleep(300);
+  };
+  const items = [];
+  for (let i = 0; i < count; i++) {
+    const first = await read(i, 0);
+    if (first === null || first.on || first.outer.rect.right <= first.outer.rect.left) continue;
+    if (
+      await ev(`document.querySelectorAll('[data-split]')[${i}].querySelector('button[aria-disabled="true"]') !== null`)
+    )
+      continue;
+    const parts = ['main', 'chevron'];
+    const rec = parts.map((part) => ({ name: first.name, part, states: {} }));
+    const take = async (stateName, hover) => {
+      for (const [p, rowRec] of rec.entries()) {
+        const at = await read(i, p);
+        if (at === null) continue;
+        await mouse('mouseMoved', hover ? at.c.x : 2, hover ? at.c.y : 2, { button: 'none' });
+        await sleep(250);
+        const x = await read(i, p);
+        rowRec.states[stateName] = { outer: x.outer, part: x.part };
+      }
+    };
+    await take('inactive', false);
+    await take('inactive+hover', true);
+    // Turn the tool on with a real click on the main part, close what it opened, move away and read again.
+    await click(first.c);
+    await ev(`document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))`);
+    if (await ev(`document.querySelectorAll('[data-split]')[${i}].getAttribute('data-on') !== 'true'`)) continue;
+    await take('active', false);
+    await take('active+hover', true);
+    await click(first.c);
+    await mouse('mouseMoved', 2, 2, { button: 'none' });
+    items.push(...rec);
+  }
+  if (items.length > 0) {
+    rows.push(...rowsFor(`${lang} contour:${label} @${current.w}x${current.h}`, { contour: checkSplitContour(items) }));
+  }
+}
+
 const BUTTONS_SEL =
   '[role="toolbar"] button, [data-toolbar-item], [role="tablist"] [role="tab"], [data-slot="mode-row"] button';
 
@@ -649,6 +712,7 @@ try {
         await ev(`(async()=>{(await ${store('stores/ui.ts')}).useUi.getState().setMode(${JSON.stringify(mode)})})()`);
         await sleep(400);
         await sweepSplit(mode);
+        await sweepSplitContour(mode);
         await sweepHover(mode);
         await sweepTriggers(mode);
       }

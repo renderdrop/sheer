@@ -67,7 +67,7 @@ import { toggleSmartLinksForActive } from '../features/smartlinks/actions';
 import { openSignaturesDialog } from '../features/sigcheck/open';
 import { openCommentExport } from '../features/comments/export/runtime';
 import { openHeaderFooterDialog } from '../features/headerFooter/runtime';
-import { openOcrDialog } from '../features/ocr/runtime';
+import { openOcrDialog, openTextPdf } from '../features/ocr/runtime';
 import { openSignatureLibrary } from '../features/signatures/library';
 import { restartTour } from '../features/tour/runtime';
 import { resetTips } from '../features/tips/runtime';
@@ -91,7 +91,7 @@ import { MODES, useUi, type LeftPanelTab, type Mode, type ToolId } from '../stor
 import { requestAddComment } from './commentIntent';
 import { runHistoryStep } from './history';
 import { formatBinding, resolveBinding, type Binding, type Shortcuts } from './shortcut';
-import { mayCopy, mayEdit, mayHeaderFooter, mayPrint, mayRecognize, type ActionState } from './state';
+import { mayCopy, mayEdit, mayHeaderFooter, mayPrint, mayRecognize, maySaveTextPdf, type ActionState } from './state';
 
 /** The action of each tool of the toolbar: it makes the tool the active one. */
 export type ToolActionId = `tool-${ToolId}`;
@@ -162,6 +162,7 @@ export type ActionId =
   | 'form-highlight'
   | 'manage-signatures'
   | 'recognize-text'
+  | 'save-text-pdf'
   | 'header-footer'
   | 'welcome-tour'
   | 'reset-tips'
@@ -908,6 +909,15 @@ export const ACTIONS: readonly ActionDef[] = [
     // DESIGN 3.12 O4: disabled without a recognizer, on a locked, read-only or no-modify document and during a run.
     enabled: mayRecognize,
     run: openOcrDialog,
+  },
+  {
+    id: 'save-text-pdf',
+    labelKey: 'ocr.textPdf.command',
+    group: 'app',
+    menuBar: true,
+    // F19.22: on once the tab has recognized text and the file allows copying.
+    enabled: maySaveTextPdf,
+    run: openTextPdf,
   },
   {
     id: 'header-footer',

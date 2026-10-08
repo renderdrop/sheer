@@ -217,7 +217,7 @@ impl AppState {
     }
 
     /// Starts the background build of the index of `id` for `generation`, around position `first`.
-    fn start_smart_build(
+    pub(super) fn start_smart_build(
         &self,
         id: DocumentId,
         generation: u64,

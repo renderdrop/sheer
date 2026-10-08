@@ -10,11 +10,15 @@
 use tauri::State;
 
 use super::{blocking, AppState};
-use crate::documents::{sanitize_text, DocumentId};
+use std::collections::HashSet;
+
+use crate::documents::{sanitize_text, DocumentId, PageId};
 use crate::engine::OutlineItem;
 use crate::error::{AppError, UiError};
 use crate::limits;
 use crate::model::reading::{OutlineNode, PageTarget};
+use crate::smartlinks::index::Status;
+use crate::smartlinks::outline as smart_outline;
 
 impl AppState {
     /// The outline of an open document, in document order. Empty if it has none. `not_found` for a document that is not open.
@@ -23,7 +27,70 @@ impl AppState {
         self.registry.page_count(id)?;
         let items = self.engine.outline(id)?;
         let mut budget = limits::MAX_OUTLINE_NODES;
-        Ok(self.outline_level(id, &items, 1, &mut budget))
+        let nodes = self.outline_level(id, &items, 1, &mut budget);
+        Ok(self.merge_smart_outline(id, nodes))
+    }
+
+    /// The outline merged with what the text analysis found (F19.20): the bookmarks of the file stay first and unchanged; the table of
+    /// contents entries they lack follow. A file without bookmarks gets the contents entries and detected headings in document order,
+    /// as a tree. Uses the smart-link index when it is built (a file without bookmarks starts its build); until then, or when the
+    /// analysis finds nothing, `nodes` is returned as it is.
+    fn merge_smart_outline(&self, id: DocumentId, nodes: Vec<OutlineNode>) -> Vec<OutlineNode> {
+        let bookmarks = nodes.first().is_some_and(|node| !node.derived);
+        let Ok(rev) = self.model(id, |state| Ok(state.rev())) else {
+            return nodes;
+        };
+        let Ok(order) = self.registry.page_order(id) else {
+            return nodes;
+        };
+        let ready = if bookmarks {
+            self.smart.peek(id, rev)
+        } else {
+            match self.smart.status(id, rev) {
+                Status::Ready(ready) => Some(ready),
+                Status::Start(generation) => {
+                    self.start_smart_build(id, generation, order.clone(), 0);
+                    None
+                }
+                Status::Building => None,
+            }
+        };
+        let Some(ready) = ready else {
+            return nodes;
+        };
+        let page_id = |position: u32| {
+            usize::try_from(position)
+                .ok()
+                .and_then(|p| order.get(p))
+                .map(|&(page, _)| page)
+        };
+        if bookmarks {
+            let mut have = HashSet::new();
+            collect_bookmarks(&nodes, &order, &mut have);
+            let extra = smart_outline::without(smart_outline::toc_entries(&ready.analysis), &have);
+            let mut nodes = nodes;
+            let mut budget = limits::MAX_OUTLINE_NODES.saturating_sub(count_nodes(&nodes));
+            for entry in extra {
+                if budget == 0 {
+                    break;
+                }
+                budget -= 1;
+                if let Some(page) = page_id(entry.page) {
+                    nodes.push(entry_node(&entry, page, Vec::new()));
+                }
+            }
+            return nodes;
+        }
+        let entries = smart_outline::outline(&ready.doc, &ready.analysis);
+        if entries.is_empty() {
+            return nodes;
+        }
+        let tree = entry_tree(&entries, &page_id);
+        if tree.is_empty() {
+            nodes
+        } else {
+            tree
+        }
     }
 
     /// The nodes of one level and their children, as far as `budget` nodes and `MAX_OUTLINE_DEPTH` levels allow.
@@ -58,6 +125,85 @@ impl AppState {
         }
         nodes
     }
+}
+
+fn count_nodes(nodes: &[OutlineNode]) -> usize {
+    nodes.iter().map(|n| 1 + count_nodes(&n.children)).sum()
+}
+
+/// The (position, normalised title) of every bookmark with a target, to tell which detected entries the file already has.
+fn collect_bookmarks(
+    nodes: &[OutlineNode],
+    order: &[(PageId, u32)],
+    out: &mut HashSet<(u32, String)>,
+) {
+    for node in nodes {
+        if let Some(target) = &node.target {
+            let position = order
+                .iter()
+                .position(|&(page, _)| page == target.page_id)
+                .and_then(|p| u32::try_from(p).ok());
+            if let Some(position) = position {
+                out.insert((position, smart_outline::normalize(&node.title)));
+            }
+        }
+        collect_bookmarks(&node.children, order, out);
+    }
+}
+
+fn entry_node(
+    entry: &smart_outline::Entry,
+    page: PageId,
+    children: Vec<OutlineNode>,
+) -> OutlineNode {
+    OutlineNode {
+        title: sanitize_text(&entry.title, limits::MAX_OUTLINE_TITLE_CHARS),
+        target: Some(PageTarget {
+            page_id: page,
+            y: entry.y,
+        }),
+        children,
+        derived: true,
+    }
+}
+
+/// The entries (document order, with levels) as a tree: an entry is a child of the nearest earlier entry of a lower level; a jump of
+/// more than one level counts as one. Entries whose page is gone are left out.
+fn entry_tree(
+    entries: &[smart_outline::Entry],
+    page_id: &dyn Fn(u32) -> Option<PageId>,
+) -> Vec<OutlineNode> {
+    // (level, node) stack; finished nodes are attached to their parent when the stack unwinds.
+    let mut roots: Vec<OutlineNode> = Vec::new();
+    let mut stack: Vec<(u8, OutlineNode)> = Vec::new();
+    let attach = |roots: &mut Vec<OutlineNode>,
+                  stack: &mut Vec<(u8, OutlineNode)>,
+                  node: OutlineNode| match stack.last_mut() {
+        Some((_, parent)) => parent.children.push(node),
+        None => roots.push(node),
+    };
+    for entry in entries {
+        let Some(page) = page_id(entry.page) else {
+            continue;
+        };
+        let level = entry
+            .level
+            .clamp(1, u8::try_from(limits::MAX_OUTLINE_DEPTH).unwrap_or(32));
+        while let Some(&(top, _)) = stack.last() {
+            if top >= level {
+                if let Some((_, done)) = stack.pop() {
+                    attach(&mut roots, &mut stack, done);
+                }
+            } else {
+                break;
+            }
+        }
+        stack.push((level, entry_node(entry, page, Vec::new())));
+    }
+    while let Some((_, done)) = stack.pop() {
+        attach(&mut roots, &mut stack, done);
+    }
+    roots
 }
 
 /// The outline of a document: titles as text only (they come from the file), where each goes, and its children.
@@ -109,6 +255,46 @@ mod tests {
             .map(|node| 1 + depth(&node.children))
             .max()
             .unwrap_or(0)
+    }
+
+    fn entry(page: u32, level: u8, title: &str) -> smart_outline::Entry {
+        smart_outline::Entry {
+            page,
+            y: 10.0,
+            title: title.to_owned(),
+            level,
+        }
+    }
+
+    #[test]
+    fn detected_entries_become_a_tree_by_level_and_skip_pages_that_are_gone() {
+        let entries = vec![
+            entry(0, 1, "A"),
+            entry(0, 2, "A.1"),
+            entry(1, 3, "A.1.a"),
+            entry(1, 2, "A.2"),
+            entry(2, 1, "B"),
+            entry(9, 1, "Gone"),
+        ];
+        let page = |p: u32| (p < 3).then(|| PageId::new(p));
+        let tree = entry_tree(&entries, &page);
+        assert_eq!(tree.len(), 2);
+        assert_eq!(tree[0].title, "A");
+        assert_eq!(tree[0].children.len(), 2);
+        assert_eq!(tree[0].children[0].children[0].title, "A.1.a");
+        assert_eq!(tree[1].title, "B");
+        assert!(tree.iter().all(|n| n.derived));
+        assert_eq!(count_nodes(&tree), 5);
+    }
+
+    #[test]
+    fn a_file_with_bookmarks_keeps_them_and_a_file_with_nothing_built_yet_gets_the_engine_outline()
+    {
+        // No index is built in the test state: bookmarks come back untouched, and so does an empty outline.
+        let (state, id) = state_with_outline(2, vec![item("Chapter 1", Some(0), vec![])]);
+        let outline = state.outline(id).unwrap();
+        assert_eq!(outline.len(), 1);
+        assert!(!outline[0].derived);
     }
 
     #[test]

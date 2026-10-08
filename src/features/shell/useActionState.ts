@@ -5,6 +5,7 @@ import { exportableCount } from '../comments/export/model';
 import { useComments } from '../comments/store';
 import { useCommentsData } from '../comments/useCommentsData';
 import { useCitations } from '../citations/store';
+import { hasRecognizedText } from '../ocr/model';
 import { useOcr } from '../ocr/store';
 import { MAX_ZOOM, MIN_ZOOM } from '../../lib/zoom';
 import { historyOf, useAnnotations } from '../../stores/annotations';
@@ -45,6 +46,7 @@ export function useActionState(): ActionState {
   const signedFile = useDocuments((state) => (docId === null ? false : state.byId[docId]?.flags?.signed === true));
   const ocrUnavailable = useOcr((state) => state.capabilities?.backend === 'none');
   const ocrBusy = useOcr((state) => docId !== null && state.runs[docId] !== undefined);
+  const hasOcrText = useOcr((state) => docId !== null && hasRecognizedText(state.classes[docId] ?? []));
   return useMemo(
     () => ({
       hasDocument,
@@ -63,6 +65,7 @@ export function useActionState(): ActionState {
       ocrUnavailable,
       ocrBusy,
       signedFile,
+      hasOcrText,
     }),
     [
       hasDocument,
@@ -81,6 +84,7 @@ export function useActionState(): ActionState {
       ocrUnavailable,
       ocrBusy,
       signedFile,
+      hasOcrText,
     ],
   );
 }

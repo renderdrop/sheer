@@ -4,6 +4,7 @@
 pub mod footnotes;
 pub mod index;
 pub mod model;
+pub mod outline;
 pub mod pages;
 pub mod toc;
 

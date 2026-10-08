@@ -459,6 +459,11 @@
           "requiresDocument": true
         },
         {
+          "action": "save-text-pdf",
+          "label": "menu.tools.saveTextPdf",
+          "requiresDocument": true
+        },
+        {
           "action": "header-footer",
           "label": "menu.tools.headerFooter",
           "requiresDocument": true

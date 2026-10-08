@@ -16,11 +16,14 @@ import { useAnnotations } from '../../stores/annotations';
 import { pageNumberOf, positionOf } from '../../stores/pages';
 import { jumpToAnnotation } from '../viewer/jump';
 import type { Thread } from '../comments/model';
+import { useComments } from '../comments/store';
 import { useCommentHover } from '../comments/useCommentsData';
 import { readViewRect, subscribeViewRect } from '../viewer/scrollBridge';
 import type { PageLayout } from '../viewer/layout';
 import type { Rotation } from '../viewer/transform';
 import { Bubble, Marker, type BubbleProps } from './Bubble';
+import { MarkOutline } from './MarkOutline';
+import { marginShowsEdits } from './store';
 import { CitationBubble } from './CitationBubble';
 import { onCitationFocus, useCitations } from '../citations/store';
 import { newRestackState, restack } from './restack';
@@ -29,6 +32,9 @@ import { anchorOf, columnX, marginMetrics, placeBubbles, visibleBubbles, type Ma
 /** A bubble before it is measured. */
 const ESTIMATE_PX = 120;
 const CLOCK_MS = 60_000;
+
+const reducedMotion = (): boolean =>
+  typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 /** A thread's bubble: a citation has its own (DESIGN 3.7 C3), everything else is a comment bubble. */
 function Shown(props: BubbleProps) {
@@ -157,10 +163,15 @@ export function MarginColumn({ docId, layout, threads, mode, drawnSizes, rotatio
     );
   }, [selectedFirst, threads]);
   const hovered = useCommentHover((state) => state.hovered);
+  // The comment that was just made is written in its bubble (F19.24): it is always mounted, and in the compact column open.
+  const writingId = useComments((state) => {
+    const edit = state.editing[docId];
+    return edit?.fresh === true && marginShowsEdits() ? edit.id : null;
+  });
 
   const compact = mode === 'compact';
   const sizes = items.map((item) => (compact ? metrics.marker : (heights.get(item.id) ?? ESTIMATE_PX)));
-  const pinnedId = focusId ?? selectedRoot ?? openId;
+  const pinnedId = writingId ?? focusId ?? selectedRoot ?? openId;
   const pinned = pinnedId === null ? null : items.findIndex((item) => item.id === pinnedId);
   const tops = useMemo(
     () =>
@@ -180,13 +191,13 @@ export function MarginColumn({ docId, layout, threads, mode, drawnSizes, rotatio
   const overscan = Math.max(0, view.bottom - view.top);
   const shown = useMemo(() => {
     const set = new Set(visibleBubbles(tops, sizes, view.top - overscan, view.bottom + overscan));
-    for (const id of [focusId, selectedRoot, openId]) {
+    for (const id of [writingId, focusId, selectedRoot, openId]) {
       const i = id === null ? -1 : items.findIndex((item) => item.id === id);
       if (i >= 0) set.add(i);
     }
     return [...set].sort((a, b) => a - b);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tops, view.top, view.bottom, focusId, selectedRoot, openId, items]);
+  }, [tops, view.top, view.bottom, writingId, focusId, selectedRoot, openId, items]);
 
   // The roving tab stop: the focused bubble, else the selected one, else the first.
   const tabId = focusId ?? selectedRoot ?? items[0]?.id ?? null;
@@ -265,12 +276,19 @@ export function MarginColumn({ docId, layout, threads, mode, drawnSizes, rotatio
     event.preventDefault();
   };
 
-  // The leader line (hover or focus only, and only when the bubble is off its anchor).
-  const leaderFor = hovered ?? focusId;
-  const leaderIndex = leaderFor === null ? -1 : items.findIndex((item) => item.id === leaderFor);
-  const leaderItem = leaderIndex >= 0 ? (items[leaderIndex] as Item) : null;
-  const leaderTop = leaderIndex >= 0 ? (tops[leaderIndex] as number) : 0;
-  const showLeader = leaderItem !== null && Math.abs(leaderTop - leaderItem.anchor) > metrics.stack && !compact;
+  // No connector line (F19.24): hovering a bubble pulses its mark once; the bubble being written or focused keeps a frame around it.
+  const [pulse, setPulse] = useState<{ id: number; key: number } | null>(null);
+  const pulseKey = useRef(0);
+  useEffect(() => {
+    if (hovered === null || !liveIds.has(hovered)) return;
+    pulseKey.current += 1;
+    setPulse({ id: hovered, key: pulseKey.current });
+    // `liveIds` is derived from `items`; a pulse starts with the hover only.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hovered]);
+  const endPulse = useCallback(() => setPulse(null), []);
+  const frameId = writingId ?? focusId;
+  const outline = frameId !== null && liveIds.has(frameId) ? frameId : null;
 
   return (
     <div
@@ -286,21 +304,16 @@ export function MarginColumn({ docId, layout, threads, mode, drawnSizes, rotatio
       className="pointer-events-none absolute top-0 z-canvas-annotations"
       style={{ left: 0, width: slotWidth, height: layout.height }}
     >
-      {showLeader && leaderItem !== null && (
-        <svg
-          aria-hidden="true"
-          className="pointer-events-none absolute overflow-visible"
-          style={{ left: xOf(leaderItem), top: 0, width: 1, height: 1 }}
-        >
-          <line
-            x1={0}
-            y1={leaderTop + metrics.stack}
-            x2={leaderItem.right - xOf(leaderItem)}
-            y2={leaderItem.anchor}
-            className="stroke-control-border"
-            strokeWidth={1}
-          />
-        </svg>
+      {outline !== null && <MarkOutline origin={rootRef} annotId={outline} mode="frame" />}
+      {pulse !== null && (
+        <MarkOutline
+          key={pulse.key}
+          origin={rootRef}
+          annotId={pulse.id}
+          mode="pulse"
+          reduced={reducedMotion()}
+          onDone={endPulse}
+        />
       )}
       {shown.map((i) => {
         const item = items[i] as Item;
@@ -308,7 +321,7 @@ export function MarginColumn({ docId, layout, threads, mode, drawnSizes, rotatio
         const selected = selectedRoot === item.id;
         const name = item.thread.root.author ?? t('margin.noAuthor');
         if (compact) {
-          const open = openId === item.id;
+          const open = openId === item.id || writingId === item.id;
           return (
             <div
               key={item.id}

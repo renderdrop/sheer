@@ -10,11 +10,13 @@ import { useAnnotations } from '../../stores/annotations';
 import { pageNumberOf } from '../../stores/pages';
 import { isConfirmKey } from '../annotations/note/confirmKey';
 import { useAutosize } from '../annotations/note/useAutosize';
-import { deleteThread, postReply, run, setReviewState } from '../comments/actions';
+import { deleteThread, discardNew, postReply, run, setReviewState } from '../comments/actions';
+import { useComments } from '../comments/store';
 import { parseDate, type Thread } from '../comments/model';
 import { typeOf } from '../comments/typeInfo';
 import { useCommentHover } from '../comments/useCommentsData';
 import { bubbleDate, initialOf } from './layout';
+import { marginShowsEdits } from './store';
 
 /** The body shows this many lines, then "More". */
 export const BODY_LINES = 6;
@@ -135,8 +137,13 @@ export const Bubble = memo(
     const page = pageNumberOf(docId, root.pageId);
     const hovered = useCommentHover((state) => state.hovered === root.id);
 
-    // Editing the text in place.
-    const [editing, setEditing] = useState(false);
+    // Editing the text in place. A comment that was just made ("Comment") is written here at once: the store says which one.
+    const [localEditing, setLocalEditing] = useState(false);
+    const fresh = useComments((state) => {
+      const edit = state.editing[docId];
+      return edit?.id === root.id && edit.fresh && marginShowsEdits();
+    });
+    const editing = localEditing || fresh;
     const [draft, setDraft] = useState(text);
     const editRef = useRef<HTMLTextAreaElement | null>(null);
     useAutosize(editRef, draft);
@@ -147,11 +154,21 @@ export const Bubble = memo(
       element?.setSelectionRange(element.value.length, element.value.length);
     }, [editing]);
     const canEdit = full !== undefined && !full.locked;
+    const endEdit = () => {
+      setLocalEditing(false);
+      if (fresh) useComments.getState().stopEdit(docId);
+    };
     const commit = () => {
-      setEditing(false);
       const next = draft.trim();
+      // A new comment stays open until it has text (Esc discards it).
+      if (fresh && next === '') return;
+      endEdit();
       if (next !== '' && next !== text)
         void run(docId, { type: 'updateAnnotation', id: root.id, patch: { contents: next } });
+    };
+    const cancel = () => {
+      endEdit();
+      if (fresh) void discardNew(docId, root.id);
     };
 
     // The reply field.
@@ -250,7 +267,7 @@ export const Bubble = memo(
                 disabled: !canEdit,
                 onSelect: () => {
                   setDraft(text);
-                  setEditing(true);
+                  setLocalEditing(true);
                 },
               },
               {
@@ -285,7 +302,7 @@ export const Bubble = memo(
               } else if (event.key === 'Escape') {
                 event.preventDefault();
                 event.stopPropagation();
-                setEditing(false);
+                cancel();
               }
             }}
           />

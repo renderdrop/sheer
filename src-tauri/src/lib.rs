@@ -213,6 +213,7 @@ pub fn run() -> Result<(), AppError> {
             commands::images_pdf::get_image_batch_preview,
             commands::export_pdf::export_pdf,
             commands::comment_export::export_comments,
+            commands::text_pdf::export_text_pdf,
             commands::recovery::list_recoveries,
             commands::recovery::restore_recovery,
             commands::recovery::discard_recovery,

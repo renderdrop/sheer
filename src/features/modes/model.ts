@@ -94,8 +94,6 @@ export interface SlotDef {
   actionId?: ActionId;
   variants?: readonly VariantDef[];
   colour?: ColourDef;
-  /** The chevron menu ends with the shape recognition switch (Zeichnen, DESIGN 3.5 B11). */
-  recogniseSwitch?: boolean;
   /** The tool's own options (Zuschneiden, the insert tools, Schwärzen): the chevron part opens them while the tool is on. */
   Options?: ComponentType;
   /**

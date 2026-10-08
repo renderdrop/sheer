@@ -165,37 +165,52 @@ impl Face {
 
     /// Whether the face has a glyph for `c` (cmap, gid ≠ 0; a blank character such as a space needs no outline).
     pub fn has_char(self, c: char) -> bool {
-        FontRef::new(self.data())
-            .ok()
-            .and_then(|f| f.charmap().map(c))
-            .is_some_and(|g| g.to_u32() != 0)
+        has_char_in(self.data(), c)
     }
 
     /// The advance width of `c` in 1/1000 em.
     pub fn advance(self, c: char) -> Option<f32> {
-        let font = FontRef::new(self.data()).ok()?;
-        let gid = font.charmap().map(c)?;
-        let upem = f32::from(font.head().ok()?.units_per_em());
-        let w = font
-            .glyph_metrics(Size::unscaled(), LocationRef::default())
-            .advance_width(gid)?;
-        Some(w * 1000.0 / upem)
+        advance_in(self.data(), c)
     }
 
     /// Descriptor numbers in 1/1000 em: `[xmin, ymin, xmax, ymax]`, ascent, descent, cap height, italic angle.
     pub fn descriptor(self) -> Option<Descriptor> {
-        let font = FontRef::new(self.data()).ok()?;
-        let m = font.metrics(Size::unscaled(), LocationRef::default());
-        let k = 1000.0 / f32::from(m.units_per_em.max(1));
-        let b = m.bounds?;
-        Some(Descriptor {
-            bbox: [b.x_min * k, b.y_min * k, b.x_max * k, b.y_max * k],
-            ascent: m.ascent * k,
-            descent: m.descent * k,
-            cap_height: m.cap_height.map_or(m.ascent * k * 0.7, |c| c * k),
-            italic_angle: m.italic_angle,
-        })
+        descriptor_of(self.data())
     }
+}
+
+/// Whether the TrueType font `data` has a glyph for `c` (cmap, gid ≠ 0).
+pub fn has_char_in(data: &[u8], c: char) -> bool {
+    FontRef::new(data)
+        .ok()
+        .and_then(|f| f.charmap().map(c))
+        .is_some_and(|g| g.to_u32() != 0)
+}
+
+/// The advance width of `c` in the TrueType font `data`, in 1/1000 em.
+pub fn advance_in(data: &[u8], c: char) -> Option<f32> {
+    let font = FontRef::new(data).ok()?;
+    let gid = font.charmap().map(c)?;
+    let upem = f32::from(font.head().ok()?.units_per_em().max(1));
+    let w = font
+        .glyph_metrics(Size::unscaled(), LocationRef::default())
+        .advance_width(gid)?;
+    Some(w * 1000.0 / upem)
+}
+
+/// The `/FontDescriptor` numbers of the TrueType font `data`, in 1/1000 em.
+pub fn descriptor_of(data: &[u8]) -> Option<Descriptor> {
+    let font = FontRef::new(data).ok()?;
+    let m = font.metrics(Size::unscaled(), LocationRef::default());
+    let k = 1000.0 / f32::from(m.units_per_em.max(1));
+    let b = m.bounds?;
+    Some(Descriptor {
+        bbox: [b.x_min * k, b.y_min * k, b.x_max * k, b.y_max * k],
+        ascent: m.ascent * k,
+        descent: m.descent * k,
+        cap_height: m.cap_height.map_or(m.ascent * k * 0.7, |c| c * k),
+        italic_angle: m.italic_angle,
+    })
 }
 
 /// The numbers of a `/FontDescriptor` of a bundled face.
@@ -252,80 +267,84 @@ impl FallbackStore {
     /// Builds the subset of `face`, re-parses it with `skrifa` before it is returned. `invalid_argument` for a character the face
     /// does not have.
     pub fn subset(&self, face: Face) -> Result<Subset, AppError> {
-        let data = face.data();
-        let font = FontRef::new(data).map_err(|_| AppError::invalid("fontProgram"))?;
-        let upem = f32::from(
-            font.head()
-                .map_err(|_| AppError::invalid("fontProgram"))?
-                .units_per_em()
-                .max(1),
-        );
         let empty = BTreeSet::new();
-        let chars = self.chars.get(&face).unwrap_or(&empty);
-        if chars.len() >= FONT_GLYPHS_MAX {
-            return Err(AppError::limit("fontGlyphs", FONT_GLYPHS_MAX as u64));
-        }
-        let charmap = font.charmap();
-        let metrics = font.glyph_metrics(Size::unscaled(), LocationRef::default());
-        let mut remapper = GlyphRemapper::new();
-        remapper.remap(0);
-        let mut old: Vec<(char, u16)> = Vec::with_capacity(chars.len());
-        for &c in chars {
-            let gid = charmap
-                .map(c)
-                .filter(|g| g.to_u32() != 0)
-                .and_then(|g| u16::try_from(g.to_u32()).ok())
-                .ok_or(AppError::invalid("textEdit"))?;
-            old.push((c, gid));
-        }
-        let mut gids = Vec::with_capacity(old.len());
-        let mut widths = Vec::with_capacity(old.len());
-        for (c, gid) in &old {
-            let new = remapper.remap(*gid);
-            gids.push((*c, new));
-            let w = metrics
-                .advance_width(GlyphId::new(u32::from(*gid)))
-                .unwrap_or(0.0)
-                * 1000.0
-                / upem;
-            widths.push((new, w));
-        }
-        let program =
-            subsetter::subset(data, 0, &remapper).map_err(|_| AppError::invalid("fontProgram"))?;
-        // The subset is read back before it is written into a PDF: at least the mapped glyphs (composites add components) and one outline per drawn character.
-        let check = FontRef::new(&program).map_err(|_| AppError::invalid("fontProgram"))?;
-        let count = check
-            .maxp()
+        subset_font(face.data(), self.chars.get(&face).unwrap_or(&empty))
+    }
+}
+
+/// The subset of the bundled TrueType font `data` with `chars`, re-parsed with `skrifa` before it is returned. `invalid_argument` for a
+/// character the font does not have.
+pub fn subset_font(data: &[u8], chars: &BTreeSet<char>) -> Result<Subset, AppError> {
+    let font = FontRef::new(data).map_err(|_| AppError::invalid("fontProgram"))?;
+    let upem = f32::from(
+        font.head()
             .map_err(|_| AppError::invalid("fontProgram"))?
-            .num_glyphs();
-        if u32::from(count) < u32::from(remapper.num_gids()) {
+            .units_per_em()
+            .max(1),
+    );
+    if chars.len() >= FONT_GLYPHS_MAX {
+        return Err(AppError::limit("fontGlyphs", FONT_GLYPHS_MAX as u64));
+    }
+    let charmap = font.charmap();
+    let metrics = font.glyph_metrics(Size::unscaled(), LocationRef::default());
+    let mut remapper = GlyphRemapper::new();
+    remapper.remap(0);
+    let mut old: Vec<(char, u16)> = Vec::with_capacity(chars.len());
+    for &c in chars {
+        let gid = charmap
+            .map(c)
+            .filter(|g| g.to_u32() != 0)
+            .and_then(|g| u16::try_from(g.to_u32()).ok())
+            .ok_or(AppError::invalid("textEdit"))?;
+        old.push((c, gid));
+    }
+    let mut gids = Vec::with_capacity(old.len());
+    let mut widths = Vec::with_capacity(old.len());
+    for (c, gid) in &old {
+        let new = remapper.remap(*gid);
+        gids.push((*c, new));
+        let w = metrics
+            .advance_width(GlyphId::new(u32::from(*gid)))
+            .unwrap_or(0.0)
+            * 1000.0
+            / upem;
+        widths.push((new, w));
+    }
+    let program =
+        subsetter::subset(data, 0, &remapper).map_err(|_| AppError::invalid("fontProgram"))?;
+    // The subset is read back before it is written into a PDF: at least the mapped glyphs (composites add components) and one outline per drawn character.
+    let check = FontRef::new(&program).map_err(|_| AppError::invalid("fontProgram"))?;
+    let count = check
+        .maxp()
+        .map_err(|_| AppError::invalid("fontProgram"))?
+        .num_glyphs();
+    if u32::from(count) < u32::from(remapper.num_gids()) {
+        return Err(AppError::invalid("fontProgram"));
+    }
+    let outlines = check.outline_glyphs();
+    for (c, new) in &gids {
+        if is_blank(*c) {
+            continue;
+        }
+        let mut pen = Strokes::default();
+        let ok = outlines
+            .get(GlyphId::new(u32::from(*new)))
+            .is_some_and(|o| {
+                o.draw(
+                    DrawSettings::unhinted(Size::unscaled(), LocationRef::default()),
+                    &mut pen,
+                )
+                .is_ok()
+            });
+        if !ok || pen.0 == 0 {
             return Err(AppError::invalid("fontProgram"));
         }
-        let outlines = check.outline_glyphs();
-        for (c, new) in &gids {
-            if is_blank(*c) {
-                continue;
-            }
-            let mut pen = Strokes::default();
-            let ok = outlines
-                .get(GlyphId::new(u32::from(*new)))
-                .is_some_and(|o| {
-                    o.draw(
-                        DrawSettings::unhinted(Size::unscaled(), LocationRef::default()),
-                        &mut pen,
-                    )
-                    .is_ok()
-                });
-            if !ok || pen.0 == 0 {
-                return Err(AppError::invalid("fontProgram"));
-            }
-        }
-        Ok(Subset {
-            program,
-            gids,
-            widths,
-        })
     }
+    Ok(Subset {
+        program,
+        gids,
+        widths,
+    })
 }
 
 #[cfg(test)]

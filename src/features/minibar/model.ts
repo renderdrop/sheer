@@ -42,7 +42,6 @@ export type ControlId =
   | 'opacity'
   | 'arrowEnds'
   | 'fill'
-  | 'straighten'
   /** A stamp's colour (Solar or Ink) and its Change… button, which opens the picker (DESIGN 3.14 ST5). */
   | 'stampTone'
   | 'stampChange';
@@ -59,7 +58,6 @@ const ORDER: readonly ControlId[] = [
   'opacity',
   'arrowEnds',
   'fill',
-  'straighten',
   'fontSize',
   'align',
   'textBorder',
@@ -116,7 +114,7 @@ const CONTROLS: Readonly<Record<BarKind, readonly ControlId[]>> = {
   note: ['colourHighlight', 'comment'],
   text: ['colourStroke', 'fontSize'],
   freeText: ['colourStroke', 'fontSize', 'align', 'textBorder', 'textFill'],
-  stroke: ['colourStroke', 'strokeWidth', 'opacity', 'straighten'],
+  stroke: ['colourStroke', 'strokeWidth', 'opacity'],
   arrow: ['colourStroke', 'strokeWidth', 'opacity', 'arrowEnds'],
   shape: ['colourStroke', 'strokeWidth', 'opacity', 'fill'],
   mark: ['kindMark'],

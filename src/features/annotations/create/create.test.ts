@@ -1,16 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { MAX_ANNOT_QUADS } from '../../../api/annotations';
-import {
-  defaultStyle,
-  freeTextDraft,
-  inkDraft,
-  markupDraft,
-  noteDraft,
-  recognisedDraft,
-  shapeDraft,
-  shapeEnd,
-} from './drafts';
+import { defaultStyle, freeTextDraft, inkDraft, markupDraft, noteDraft, shapeDraft, shapeEnd } from './drafts';
 import { boxFromPoints, boxInPage, clampToPage, constrainSquare, isDrag, snapAngle } from './geometry';
 import {
   INK_JOIN_MS,
@@ -185,37 +176,6 @@ describe('drafts', () => {
     expect(shapeDraft('line', 0, { x: 0, y: 0 }, { x: 40, y: 0 }, PAGE, both)).toMatchObject({
       head: 'none',
       tail: 'none',
-    });
-  });
-  it('a recognised shape is a real shape in the stroke colour and width, never filled', () => {
-    const inked = {
-      ...style,
-      color: [225, 92, 134] as [number, number, number],
-      width: 4,
-      fill: [1, 2, 3] as [number, number, number],
-    };
-    expect(recognisedDraft({ kind: 'rect', box: { x: 10, y: 20, w: 100, h: 50 } }, 2, PAGE, inked)).toMatchObject({
-      kind: 'rect',
-      pageId: 2,
-      box: { x: 10, y: 20, w: 100, h: 50 },
-      width: 4,
-      color: [225, 92, 134],
-      fill: null,
-    });
-    expect(
-      recognisedDraft({ kind: 'ellipse', box: { x: 0, y: 0, w: 30, h: 30 }, circle: true }, 0, PAGE, inked),
-    ).toMatchObject({ kind: 'ellipse', box: { w: 30, h: 30 } });
-    expect(recognisedDraft({ kind: 'arrow', from: { x: 0, y: 0 }, to: { x: 80, y: 0 } }, 0, PAGE, inked)).toMatchObject(
-      {
-        kind: 'line',
-        head: 'openArrow',
-        tail: 'none',
-        to: { x: 80, y: 0 },
-      },
-    );
-    expect(recognisedDraft({ kind: 'line', from: { x: 0, y: 0 }, to: { x: 80, y: 0 } }, 0, PAGE, inked)).toMatchObject({
-      kind: 'line',
-      head: 'none',
     });
   });
   it('places a note on the page and a free text box with empty text', () => {

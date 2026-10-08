@@ -14,11 +14,10 @@ import {
   Strikethrough,
   Trash2,
   Underline,
-  WandSparkles,
   X,
   type LucideIcon,
 } from 'lucide-react';
-import { useId, useState, type ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 
 import type { Rgb, StampTone, TextAlign } from '../../api/annotations';
 import {
@@ -32,7 +31,6 @@ import {
   RECENT_IN_ROW,
   Segmented,
   Swatch,
-  Toggle,
   Tooltip,
   toHex,
   type ColourEntry,
@@ -510,39 +508,6 @@ export function StrokeControl({
       {custom ? <Tooltip label={t('mini.strokePt', { n: formatNumber(current, locale) })}>{track}</Tooltip> : track}
       <span className="t-caption text-text-muted">{t('mini.strokeUnit')}</span>
     </div>
-  );
-}
-
-/** "Straighten shapes automatically" (DESIGN 3.9 Q5): the switch of the drawing bar, the one stored choice of the tools store. */
-export function StraightenControl({ compact = false }: { compact?: boolean }) {
-  const t = useT();
-  const on = useTools((state) => state.straightenShapes);
-  const set = useTools((state) => state.setStraightenShapes);
-  const labelId = useId();
-  // Too narrow for the label (DESIGN 3.3 / Q9 no truncation): the switch becomes an icon toggle; name and help stay in the tooltip.
-  if (compact) {
-    return (
-      <IconButton
-        {...ITEM}
-        icon={WandSparkles}
-        variant="toggle"
-        pressed={on}
-        label={t('draw.straighten')}
-        hint={t('draw.straightenHelp')}
-        onClick={() => set(!on)}
-        className={SQUARE}
-      />
-    );
-  }
-  return (
-    <Tooltip label={t('draw.straightenHelp')}>
-      <div role="group" aria-labelledby={labelId} className="flex shrink-0 items-center gap-2">
-        <span id={labelId} className="t-label whitespace-nowrap text-text">
-          {t('draw.straighten')}
-        </span>
-        <Toggle {...ITEM} checked={on} onCheckedChange={set} aria-labelledby={labelId} />
-      </div>
-    </Tooltip>
   );
 }
 

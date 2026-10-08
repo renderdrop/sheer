@@ -1,9 +1,9 @@
 // @vitest-environment jsdom
-import { act, render, screen, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor, within } from '@testing-library/react';
 import { MotionGlobalConfig } from 'motion/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { mayRecognize, type ActionState } from '../../actions/state';
+import { mayRecognize, maySaveTextPdf, type ActionState } from '../../actions/state';
 import type { DocumentInfo } from '../../api/documents';
 import type { OcrCapabilities, PageClass, PageOcrClass } from '../../api/ocr';
 import type { PageSlotInfo } from '../../api/pages';
@@ -18,8 +18,16 @@ import { useSearch } from '../search/store';
 import { dropDocumentText } from '../textlayer/cache';
 import { OcrBanner } from './OcrBanner';
 import { OcrPanel } from './OcrPanel';
-import { countScope, languageState, offerWanted, runCount, selectionFor, wantedLanguage } from './model';
-import { onOcrFinished, onOcrProgress, openOcrDialog, startOcr } from './runtime';
+import {
+  countScope,
+  hasRecognizedText,
+  languageState,
+  offerWanted,
+  runCount,
+  selectionFor,
+  wantedLanguage,
+} from './model';
+import { onOcrFinished, onOcrProgress, openOcrDialog, openTextPdf, startOcr } from './runtime';
 import { isOcrBusy, useOcr } from './store';
 
 const api = vi.hoisted(() => ({
@@ -30,6 +38,9 @@ const api = vi.hoisted(() => ({
   openLanguageSettings: vi.fn(),
 }));
 vi.mock('../../api/ocr', async (importOriginal) => ({ ...(await importOriginal<object>()), ...api }));
+
+const textPdf = vi.hoisted(() => ({ exportTextPdf: vi.fn() }));
+vi.mock('../../api/textPdf', () => textPdf);
 
 vi.mock('../textlayer/cache', async (importOriginal) => ({
   ...(await importOriginal<object>()),
@@ -129,6 +140,11 @@ describe('the model', () => {
     expect(mayRecognize({ ...ok, readOnly: true })).toBe(false);
     expect(mayRecognize({ ...ok, ocrBusy: true })).toBe(false);
     expect(mayRecognize({ ...ok, hasDocument: false })).toBe(false);
+    // Save as text PDF (F19.22): recognized text and the copy permission; a read-only or locked file may still be read out.
+    expect(maySaveTextPdf(ok)).toBe(false);
+    expect(maySaveTextPdf({ ...ok, hasOcrText: true })).toBe(true);
+    expect(maySaveTextPdf({ ...ok, hasOcrText: true, readOnly: true, signatureLocked: true })).toBe(true);
+    expect(maySaveTextPdf({ ...ok, hasOcrText: true, canCopy: false })).toBe(false);
   });
 });
 
@@ -270,9 +286,41 @@ describe('the inspector form', () => {
   it('shows the Redo row only with layers of this session, and Redo adds them', async () => {
     seed(caps(true, true), classes('sheerLayer', 'scan', 'text'));
     const { user } = await open();
-    await user.click(screen.getByRole('checkbox'));
+    await user.click(within(document.querySelector('[data-ocr="redo"]') as HTMLElement).getByRole('checkbox'));
     await user.click(screen.getByRole('button', { name: 'Recognize' }));
     expect(api.ocrStart).toHaveBeenCalledWith(1, { type: 'pages', pages: [10, 11] }, 'en-US', true);
+  });
+
+  it('offers Save as text PDF only with recognized text and sends the chosen font and images', async () => {
+    seed(caps(true, true), classes('sheerLayer', 'scan'));
+    textPdf.exportTextPdf.mockResolvedValue(null);
+    const { user } = await open();
+    const section = document.querySelector('[data-ocr="text-pdf"]') as HTMLElement;
+    expect(section).not.toBeNull();
+    expect((within(section).getByRole('radio', { name: 'Inter (sans serif)' }) as HTMLInputElement).checked).toBe(true);
+    await user.click(within(section).getByRole('radio', { name: 'Tinos (serif)' }));
+    await user.click(within(section).getByRole('checkbox', { name: 'Keep the original page images' }));
+    await user.click(screen.getByRole('button', { name: 'Save as text PDF…' }));
+    expect(textPdf.exportTextPdf).toHaveBeenCalledWith(
+      1,
+      { font: 'tinos', keepImages: true, lang: 'en' },
+      expect.any(Function),
+    );
+    // The panel stays open: recognition was not started.
+    expect(api.ocrStart).not.toHaveBeenCalled();
+  });
+
+  it('has no text PDF section without recognized text, and the menu command opens the panel on it', async () => {
+    seed(caps(true, true), classes('scan', 'text'));
+    await open();
+    expect(document.querySelector('[data-ocr="text-pdf"]')).toBeNull();
+    expect(hasRecognizedText(classes('scan', 'text'))).toBe(false);
+    expect(hasRecognizedText(classes('scan', 'hasTextLayer'))).toBe(true);
+    act(() => useOcr.getState().setClasses(1, classes('sheerLayer')));
+    act(() => useDocuments.getState().setActive(1));
+    act(() => openTextPdf());
+    expect(useOcr.getState().dialog).toEqual({ docId: 1, preselectSelected: false, textPdf: true });
+    await waitFor(() => expect(document.activeElement?.getAttribute('data-ocr')).toBe('text-pdf-save'));
   });
 
   it('has no Redo row without layers', async () => {

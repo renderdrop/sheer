@@ -959,6 +959,23 @@
   opacity: var(--pulse-opacity);
 }
 
+/* The mark of a hovered margin bubble pulses once (F19.24): 400 ms from the motion tokens. Reduced motion has no animation (the reset
+   above), so the outline simply stays for 600 ms (MarkOutline). */
+@keyframes mark-pulse {
+  0%,
+  100% {
+    opacity: 0;
+  }
+
+  40% {
+    opacity: 1;
+  }
+}
+
+[data-mark-outline][data-mode="pulse"] {
+  animation: mark-pulse calc(var(--motion-check) + var(--motion-base)) var(--ease-out);
+}
+
 @utility pulse-target {
   position: relative;
 
@@ -1450,32 +1467,6 @@
 :root {
   --hex-field-width: calc(7ch + 2 * var(--space-2)); /* six digits in tabular numerals plus the field padding (B5) */
   --colour-popover-inner: calc(240px - 2 * var(--space-4)); /* inside the popover's padding */
-}
-
-/* F15 B11 (--hold-shape is with the other holds above) */
-/* Spell 20: the stroke fades out while the recognised shape fades in at the same place. */
-@keyframes shape-snap-in {
-  from {
-    opacity: 0;
-  }
-  to {
-    opacity: 1;
-  }
-}
-[data-snap-out] {
-  opacity: 0;
-  transition: opacity var(--motion-fast) var(--ease-out);
-}
-[data-snap-in] {
-  animation: shape-snap-in var(--motion-fast) var(--ease-out);
-}
-@media (prefers-reduced-motion: reduce) {
-  [data-snap-out] {
-    transition: none;
-  }
-  [data-snap-in] {
-    animation: none;
-  }
 }
 
 /* R5-D: spells 4, 10, 11 (drop glow, splash, ambient drift). Loops run on the glow's own layer and pause with the window. */

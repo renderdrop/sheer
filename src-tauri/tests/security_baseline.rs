@@ -419,6 +419,8 @@ fn capabilities_grant_only_the_app_commands_and_the_window_chrome_to_the_main_wi
         // v2.0.0-rc.2 (F19.12): detect existing headers and footers.
         "allow-detect-header-footer",
         "allow-export-comments",
+        // v2.0.0-rc.3 (F19.22): save the recognized text as a text PDF.
+        "allow-export-text-pdf",
         "allow-get-outline",
         "allow-get-text-layer",
         "allow-text-edit-preview",

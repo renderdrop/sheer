@@ -1,5 +1,7 @@
 import { create } from 'zustand';
 
+import { useUi } from '../../stores/ui';
+
 const KEY = 'margin.comments';
 
 function read(): boolean {
@@ -22,3 +24,8 @@ export const useMarginPrefs = create<{ enabled: boolean; setEnabled: (on: boolea
     set({ enabled });
   },
 }));
+
+/** Whether the margin column is where a new comment is written (F19.24): it is on and the mode has one (not Seiten). */
+export function marginShowsEdits(): boolean {
+  return useMarginPrefs.getState().enabled && useUi.getState().mode !== 'pages';
+}

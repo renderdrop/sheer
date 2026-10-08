@@ -8,8 +8,7 @@ use super::model::{DocText, Kind, Line, PageText, PtRect, Run, SmartLink, Target
 
 /// Preview budget in chars including the ellipsis (wire limit 280).
 const PREVIEW_MAX: usize = 280;
-/// Endnote scan limits: pages per call and text per entry.
-const MAX_PAGES: usize = 5000;
+/// Endnote scan limits: text per entry and entries.
 const MAX_NOTE_CHARS: usize = 2000;
 const MAX_ENDNOTES: usize = 5000;
 /// A marker is raised when its baseline is this far (in body sizes) above the line baseline, or it is this small.
@@ -51,6 +50,8 @@ struct NoteRef {
 /// by marker key and by page.
 #[derive(Debug, Clone, Default)]
 pub struct FootnoteIndex {
+    /// The body size of the document (median of the pages), used where a page's own is dragged down by tables.
+    body: f32,
     endnotes: Vec<Note>,
     endnote_pages: HashSet<usize>,
     by_key: HashMap<String, Vec<usize>>,
@@ -59,8 +60,9 @@ pub struct FootnoteIndex {
 
 /// Scans the endnote sections of `doc`.
 pub fn build_footnote_index(doc: &DocText) -> FootnoteIndex {
-    let n = doc.pages.len().min(MAX_PAGES);
-    let (endnotes, endnote_pages) = build_endnotes(doc, n);
+    let n = doc.pages.len();
+    let body = doc_body(doc);
+    let (endnotes, endnote_pages) = build_endnotes(doc, n, body);
     let mut by_key: HashMap<String, Vec<usize>> = HashMap::new();
     let mut by_page: HashMap<usize, Vec<usize>> = HashMap::new();
     for (i, e) in endnotes.iter().enumerate() {
@@ -68,6 +70,7 @@ pub fn build_footnote_index(doc: &DocText) -> FootnoteIndex {
         by_page.entry(e.page_idx).or_default().push(i);
     }
     FootnoteIndex {
+        body,
         endnotes,
         endnote_pages,
         by_key,
@@ -209,7 +212,11 @@ impl<'a> Ctx<'a> {
         let v = if self.index.endnote_pages.contains(&i) {
             Vec::new()
         } else {
-            page_notes(&self.doc.pages[i], i)
+            page_notes(
+                &self.doc.pages[i],
+                i,
+                eff_body(self.doc.pages[i].body_size, self.index.body),
+            )
         };
         self.notes[i] = Some(v);
     }
@@ -218,7 +225,10 @@ impl<'a> Ctx<'a> {
         if i >= self.markers.len() || self.markers[i].is_some() {
             return;
         }
-        self.markers[i] = Some(page_markers(&self.doc.pages[i]));
+        self.markers[i] = Some(page_markers(
+            &self.doc.pages[i],
+            eff_body(self.doc.pages[i].body_size, self.index.body),
+        ));
     }
 
     /// The single note a marker on page `s` points to, with its score (ADR-132 §3), or `None`.
@@ -292,6 +302,27 @@ impl<'a> Ctx<'a> {
 
 // ---- text helpers ----
 
+/// The median of the body sizes of the pages that have one.
+fn doc_body(doc: &DocText) -> f32 {
+    let mut sizes: Vec<f32> = doc
+        .pages
+        .iter()
+        .map(|p| p.body_size)
+        .filter(|s| s.is_finite() && *s > 0.0)
+        .collect();
+    sizes.sort_by(f32::total_cmp);
+    sizes.get(sizes.len() / 2).copied().unwrap_or(0.0)
+}
+
+/// A page whose own body size is far below the document's (a page of tables) uses the document's.
+fn eff_body(page: f32, doc: f32) -> f32 {
+    if doc > 0.0 && page < 0.9 * doc {
+        doc
+    } else {
+        page
+    }
+}
+
 fn sup_digit(c: char) -> Option<char> {
     Some(match c {
         '⁰' => '0',
@@ -312,11 +343,30 @@ fn valid_number(s: &str) -> bool {
     !s.is_empty() && s.len() <= 3 && !s.starts_with('0') && s.bytes().all(|b| b.is_ascii_digit())
 }
 
-/// A whole string that is a marker: 1–999, superscript digits, `*`, `†`, `‡`. Returns the normalised key.
+/// The digits of a whole `[12]` or `(12)`.
+fn bracketed(t: &str) -> Option<&str> {
+    let inner = t
+        .strip_prefix('[')
+        .and_then(|x| x.strip_suffix(']'))
+        .or_else(|| t.strip_prefix('(').and_then(|x| x.strip_suffix(')')))?;
+    Some(inner.trim())
+}
+
+/// A marker that marks itself without being raised: a symbol or a bracketed number.
+fn is_self_marking(s: &str) -> bool {
+    let t = s.trim();
+    matches!(t, "*" | "**" | "***" | "†" | "‡") || bracketed(t).is_some_and(valid_number)
+}
+
+/// A whole string that is a marker: 1–999, superscript digits, bracketed `[12]` / `(12)`, `*`, `**`, `***`, `†`, `‡`.
+/// Returns the normalised key.
 fn parse_marker(s: &str) -> Option<String> {
     let t = s.trim();
-    if matches!(t, "*" | "†" | "‡") {
+    if matches!(t, "*" | "**" | "***" | "†" | "‡") {
         return Some(t.to_string());
+    }
+    if let Some(inner) = bracketed(t) {
+        return valid_number(inner).then(|| inner.to_string());
     }
     if valid_number(t) {
         return Some(t.to_string());
@@ -330,9 +380,31 @@ fn is_sup_only(s: &str) -> bool {
     !t.is_empty() && t.chars().all(|c| sup_digit(c).is_some())
 }
 
-/// Splits `word¹` into (char count of the prefix, key) when the text ends in superscript digits and has a non-empty prefix.
+/// Splits `word¹`, `word*`, `word†`, `word[12]` or `word(12)` into (char count of the prefix, key) when the text ends in such a marker
+/// that is attached to a non-empty prefix (no space between).
 fn trailing_sup(text: &str) -> Option<(usize, String)> {
     let chars: Vec<char> = text.chars().collect();
+    let symbols = chars
+        .iter()
+        .rev()
+        .take_while(|c| matches!(c, '*' | '†' | '‡'))
+        .count();
+    if (1..=3).contains(&symbols) && symbols < chars.len() {
+        let pre = chars.len() - symbols;
+        let tail: String = chars[pre..].iter().collect();
+        let same = tail.chars().all(|c| c == chars[pre]);
+        let attached = chars.get(pre - 1).is_some_and(|c| !c.is_whitespace());
+        if same && attached && (tail.starts_with('*') || symbols == 1) {
+            return Some((pre, tail));
+        }
+    }
+    if let Some(open) = chars.iter().rposition(|c| matches!(c, '[' | '(')) {
+        let tail: String = chars[open..].iter().collect();
+        let attached = open > 0 && !chars[open - 1].is_whitespace();
+        if attached && is_self_marking(&tail) {
+            return parse_marker(&tail).map(|k| (open, k));
+        }
+    }
     let tail = chars
         .iter()
         .rev()
@@ -414,34 +486,104 @@ fn frac_rect(r: PtRect, from: usize, to: usize, total: usize) -> PtRect {
 
 // ---- markers ----
 
-fn page_markers(p: &PageText) -> Vec<Marker> {
-    let body = p.body_size;
+fn page_markers(p: &PageText, body: f32) -> Vec<Marker> {
     let mut out = Vec::new();
-    for line in &p.lines {
-        let base = line
+    for (li, line) in p.lines.iter().enumerate() {
+        let own = line
             .runs
             .iter()
             .filter(|r| r.size > SMALL_FRAC * body)
             .map(|r| r.baseline)
             .fold(f32::NEG_INFINITY, f32::max);
+        // A marker alone on its line sits at the end of the body line before it (PDFium broke the line) or at the start of the one after
+        // it; it takes that line's baseline. Lines that start a note are not markers.
+        let mut after_text = false;
+        let base = if own.is_finite() || line.runs.len() != 1 || note_at(p, li, body).is_some() {
+            own
+        } else {
+            let near = |o: &Line| (o.rect.y - line.rect.y).abs() <= body;
+            let body_run = |o: &Line, last: bool| {
+                let mut it = o.runs.iter().filter(|r| r.size >= NOTE_FRAC * body);
+                if last { it.next_back() } else { it.next() }.map(|r| r.baseline)
+            };
+            let before = li
+                .checked_sub(1)
+                .and_then(|k| p.lines.get(k))
+                .filter(|o| near(o))
+                .and_then(|o| body_run(o, true));
+            match before {
+                Some(b) => {
+                    after_text = true;
+                    b
+                }
+                None => p
+                    .lines
+                    .get(li + 1)
+                    .filter(|o| near(o))
+                    .and_then(|o| body_run(o, false))
+                    .unwrap_or(own),
+            }
+        };
         if !base.is_finite() {
             continue;
         }
         let mut text: Option<String> = None;
         for (ri, run) in line.runs.iter().enumerate() {
-            if ri == 0 {
-                continue; // line-start numbers are list numbers or page numbers
-            }
+            // A year or a number of three digits or more before a raised marker is fine ("2025¹¹"); a short number is an exponent.
             let prev_ok = |tail: &str| {
+                let digits = tail.chars().rev().take_while(char::is_ascii_digit).count();
+                let before = tail.chars().rev().nth(digits);
+                if digits >= 3 {
+                    return !before.is_some_and(|c| {
+                        matches!(c, '^' | '+' | '-' | '=' | '/' | '(' | '·' | '.' | ',')
+                    });
+                }
                 !tail.chars().last().is_some_and(|c| {
                     c.is_ascii_digit() || matches!(c, '^' | '+' | '-' | '=' | '/' | '(' | '·')
                 })
             };
+            let raised = |r: &Run| {
+                is_sup_only(&r.text)
+                    || r.size <= SMALL_FRAC * body
+                    || base - r.baseline >= RAISE_FRAC * body
+            };
+            if ri == 0 {
+                // Line-start numbers are list numbers or page numbers. A raised small marker that is followed by punctuation is the end
+                // of the previous line's sentence that PDFium put first ("¹. Dies ...").
+                let next_punct = line
+                    .runs
+                    .get(1)
+                    .or_else(|| p.lines.get(li + 1).and_then(|n| n.runs.first()))
+                    .is_some_and(|n| n.text.starts_with(['.', ',', ';', ':', ')']));
+                let strong =
+                    run.size <= SMALL_FRAC * body && base - run.baseline >= RAISE_FRAC * body;
+                if let (true, true, Some(key)) =
+                    (next_punct || after_text, strong, parse_marker(&run.text))
+                {
+                    if !is_self_marking(&run.text) {
+                        let lt = text.get_or_insert_with(|| run_text(line)).clone();
+                        out.push(Marker {
+                            key,
+                            rect: run.rect,
+                            line_text: lt,
+                        });
+                    }
+                }
+                // A marker attached to the end of the first run ("Claim[7]") is still found below.
+                if parse_marker(&run.text).is_some() || trailing_sup(&run.text).is_none() {
+                    continue;
+                }
+            }
             let found = if let Some(key) = parse_marker(&run.text) {
-                let raised = is_sup_only(&run.text)
-                    || run.size <= SMALL_FRAC * body
-                    || base - run.baseline >= RAISE_FRAC * body;
-                (raised && prev_ok(&line.runs[ri - 1].text)).then_some((key, run.rect))
+                let ok = if is_self_marking(&run.text) {
+                    !line.runs[ri - 1].text.ends_with(char::is_whitespace)
+                } else {
+                    // A table cell (" 96") starts with a space, a marker run never does.
+                    raised(run)
+                        && (is_sup_only(&run.text) || !run.text.starts_with(char::is_whitespace))
+                        && prev_ok(&line.runs[ri - 1].text)
+                };
+                ok.then_some((key, run.rect))
             } else if let Some((pre, key)) = trailing_sup(&run.text) {
                 let prefix: String = run.text.chars().take(pre).collect();
                 let total = run.text.chars().count();
@@ -471,6 +613,20 @@ fn note_start(line: &Line, body: f32, need_small: bool) -> Option<(String, PtRec
     if need_small && first.size >= NOTE_FRAC * body {
         return None;
     }
+    // A small marker followed by body-size text is a raised mark at the start of a body line, not a note.
+    if need_small
+        && line
+            .runs
+            .iter()
+            .filter(|r| !r.text.trim().is_empty())
+            .nth(1)
+            .is_some_and(|r| {
+                r.size >= NOTE_FRAC * body
+                    && r.text.trim_start().starts_with(['.', ',', ';', ':', ')'])
+            })
+    {
+        return None;
+    }
     let skip = first.text.chars().take_while(|c| c.is_whitespace()).count();
     let t: String = first.text.chars().skip(skip).collect();
     let total = first.text.chars().count();
@@ -493,8 +649,24 @@ fn note_start(line: &Line, body: f32, need_small: bool) -> Option<(String, PtRec
             return None;
         }
         (k, n)
+    } else if chars.first().is_some_and(|c| matches!(c, '[' | '(')) {
+        let close = if chars[0] == '[' { ']' } else { ')' };
+        let n = chars
+            .iter()
+            .skip(1)
+            .take_while(|c| c.is_ascii_digit())
+            .count();
+        let k: String = chars.iter().skip(1).take(n).collect();
+        if n == 0 || chars.get(n + 1) != Some(&close) || !valid_number(&k) {
+            return None;
+        }
+        (k, n + 2)
     } else if chars.first().is_some_and(|c| matches!(c, '*' | '†' | '‡')) {
-        (chars[0].to_string(), 1)
+        let n = chars.iter().take_while(|c| **c == chars[0]).count();
+        if n > 3 || (n > 1 && chars[0] != '*') {
+            return None;
+        }
+        (chars[..n].iter().collect(), n)
     } else {
         return None;
     };
@@ -522,24 +694,43 @@ fn note_start(line: &Line, body: f32, need_small: bool) -> Option<(String, PtRec
     (!rest.is_empty()).then_some((key, rect, rest))
 }
 
+/// A note that starts at line `i`: its marker, text start, box and the number of lines the start takes (2 when a marker alone on its line
+/// has its text on the next line at the same height, where PDFium split them).
+fn note_at(p: &PageText, i: usize, body: f32) -> Option<((String, PtRect, String), PtRect, usize)> {
+    let line = p.lines.get(i)?;
+    if let Some(s) = note_start(line, body, true) {
+        return Some((s, line.rect, 1));
+    }
+    let n = p.lines.get(i + 1)?;
+    if line.runs.len() != 1
+        || n.runs.is_empty()
+        || (n.rect.y - line.rect.y).abs() > body
+        || n.rect.x < line.rect.x
+    {
+        return None;
+    }
+    let mut runs = line.runs.clone();
+    runs.extend(n.runs.iter().cloned());
+    let rect = union(line.rect, n.rect);
+    let merged = Line { runs, rect };
+    note_start(&merged, body, true).map(|s| (s, rect, 2))
+}
+
 /// All small-text notes of a page (any position; callers filter by region): marker line plus continuation lines.
-fn page_notes(p: &PageText, page_idx: usize) -> Vec<Note> {
-    let body = p.body_size;
+fn page_notes(p: &PageText, page_idx: usize, body: f32) -> Vec<Note> {
     let mut out: Vec<Note> = Vec::new();
     let mut i = 0;
     while i < p.lines.len() {
-        let line = &p.lines[i];
-        let Some((key, marker_rect, mut text)) = note_start(line, body, true) else {
+        let Some(((key, marker_rect, mut text), mut rect, taken)) = note_at(p, i, body) else {
             i += 1;
             continue;
         };
-        let size = line.runs.first().map_or(body, |r| r.size);
-        let mut rect = line.rect;
-        let mut j = i + 1;
+        let size = p.lines[i].runs.first().map_or(body, |r| r.size);
+        let mut j = i + taken;
         while j < p.lines.len() {
             let l = &p.lines[j];
             let small = l.runs.first().is_some_and(|r| r.size < NOTE_FRAC * body);
-            if !small || note_start(l, body, true).is_some() || l.rect.y < rect.y {
+            if !small || note_at(p, j, body).is_some() || l.rect.y < rect.y {
                 break;
             }
             text.push(' ');
@@ -559,9 +750,8 @@ fn page_notes(p: &PageText, page_idx: usize) -> Vec<Note> {
     }
     out
 }
-
 /// Entries of endnote sections ("Anmerkungen", "Endnoten", "Notes" heading), and the pages they sit on.
-fn build_endnotes(doc: &DocText, n: usize) -> (Vec<Note>, HashSet<usize>) {
+fn build_endnotes(doc: &DocText, n: usize, doc_body: f32) -> (Vec<Note>, HashSet<usize>) {
     let mut entries: Vec<Note> = Vec::new();
     let mut pages: HashSet<usize> = HashSet::new();
     let heading_at = |p: &PageText| {
@@ -585,7 +775,9 @@ fn build_endnotes(doc: &DocText, n: usize) -> (Vec<Note>, HashSet<usize>) {
             if entries.len() >= MAX_ENDNOTES {
                 break;
             }
-            if let Some((key, marker_rect, text)) = note_start(l, p.body_size, false) {
+            if let Some((key, marker_rect, text)) =
+                note_start(l, eff_body(p.body_size, doc_body), false)
+            {
                 entries.push(Note {
                     key,
                     marker_rect,
@@ -769,6 +961,66 @@ mod tests {
     }
 
     #[test]
+    fn bracketed_asterisk_and_year_markers() {
+        let bracket = line(vec![
+            run("Claim[7]", 50.0, 100.0, BODY, 110.0),
+            run(" goes on.", 110.0, 100.0, BODY, 110.0),
+        ]);
+        let bracket_run = body_with_marker(120.0, "Spaced", "[8]");
+        let stars = body_with_marker(140.0, "Stars", "**");
+        let star = line(vec![
+            run("One", 50.0, 160.0, BODY, 170.0),
+            run("*", 70.0, 160.0, BODY, 170.0),
+            run(" end", 80.0, 160.0, BODY, 170.0),
+        ]);
+        let year = line(vec![
+            run("Law of 2025", 50.0, 180.0, BODY, 190.0),
+            run("9", 120.0, 180.0, 7.0, 184.0),
+            run(" and", 130.0, 180.0, BODY, 190.0),
+        ]);
+        let d = doc(vec![page(
+            0,
+            vec![
+                bracket,
+                bracket_run,
+                stars,
+                star,
+                year,
+                note_line(600.0, "[7]", "Seven."),
+                note_line(615.0, "(8)", "Eight."),
+                note_line(630.0, "**", "Two stars."),
+                note_line(645.0, "*", "One star."),
+                note_line(660.0, "9", "Nine."),
+            ],
+        )]);
+        let keys: Vec<String> = detect(&d, 0)
+            .into_iter()
+            .filter(|l| l.kind == Kind::Footnote)
+            .map(|l| l.marker)
+            .collect();
+        assert_eq!(keys, vec!["7", "8", "**", "*", "9"]);
+    }
+
+    #[test]
+    fn marker_alone_on_its_note_line_and_at_line_start() {
+        // The marker leads the line (PDFium put the raised mark of the previous line first) and is followed by punctuation.
+        let lead = line(vec![
+            run("1", 50.0, 100.0, 7.0, 105.0),
+            run(". Next sentence", 56.0, 100.0, BODY, 110.0),
+        ]);
+        let split_marker = line(vec![run("1", 50.0, 700.0, 7.0, 706.0)]);
+        let split_text = line(vec![run(" Source text.", 58.0, 702.0, 9.0, 710.0)]);
+        let d = doc(vec![page(0, vec![lead, split_marker, split_text])]);
+        let links = detect(&d, 0);
+        assert!(
+            links
+                .iter()
+                .any(|l| l.kind == Kind::Footnote && l.marker == "1"),
+            "{links:?}"
+        );
+    }
+
+    #[test]
     fn continued_note_on_next_page() {
         let d = doc(vec![
             page(0, vec![body_with_marker(100.0, "Late claim", "3")]),
@@ -852,10 +1104,6 @@ mod tests {
             run("a^", 50.0, 120.0, BODY, 130.0),
             run("2", 62.0, 120.0, 7.0, 124.0),
         ]);
-        let year = line(vec![
-            run("In 1999", 50.0, 140.0, BODY, 150.0),
-            run("1", 100.0, 140.0, 7.0, 144.0),
-        ]);
         let list = line(vec![
             run("1", 50.0, 160.0, 7.0, 164.0),
             run(" item", 60.0, 160.0, BODY, 170.0),
@@ -866,7 +1114,6 @@ mod tests {
             vec![
                 exp,
                 caret,
-                year,
                 list,
                 pageno,
                 note_line(700.0, "1", "A"),

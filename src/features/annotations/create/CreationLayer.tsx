@@ -4,6 +4,7 @@ import type { Annotation, AnnotationDraft, LineEnd, Rgb } from '../../../api/ann
 import type { Point, Quad, Rect } from '../../../api/wire';
 import { useAnnotations } from '../../../stores/annotations';
 import { useSettings } from '../../../stores/settings';
+import { applyDrawVariant } from './drawVariants';
 import { creationKind, useTools, type CreationKind } from '../../../stores/tools';
 import { useUi } from '../../../stores/ui';
 import { rgbToCss } from '../../inspector/palette';
@@ -19,7 +20,6 @@ import {
   inkDraft,
   markupDraft,
   noteDraft,
-  recognisedDraft,
   shapeDraft,
   shapeEnd,
   type CreationStyle,
@@ -38,21 +38,6 @@ import {
   type Sample,
 } from './ink';
 import { buildTextIndex, quadsForDragIndexed, type TextIndex } from './markup';
-import {
-  HOLD_STILL_PX,
-  holdShapeMs,
-  morphOf,
-  type Morph,
-  recognise,
-  recogniseArrowStrokes,
-  snapFor,
-  snapTo,
-  type Recognised,
-  type Snap,
-} from './recognise';
-import { announce } from '../../../components/SuccessPulse';
-import { useT } from '../../../i18n';
-import { MorphStroke } from './MorphStroke';
 import { MAX_INK_STROKES } from '../../../api/annotations';
 import { prefersReducedMotion, tokenMs, tokenNumber } from '../../thumbnails/motion';
 
@@ -82,14 +67,12 @@ type Preview =
     }
   | { type: 'box'; shape: 'rect' | 'ellipse' | 'freeText'; box: Rect; color: Rgb; width: number }
   | { type: 'line'; from: Point; to: Point; head: LineEnd; tail: LineEnd; color: Rgb; width: number }
-  /** `snap`: the shape the stroke was recognised as; the stroke fades out and the shape fades in (MOTION spell 20). */
   | {
       type: 'ink';
       finished: readonly string[];
       current: readonly Sample[];
       width: number;
       color: Rgb;
-      snap?: Extract<Preview, { type: 'box' | 'line' }>;
     };
 
 interface Drag {
@@ -101,11 +84,6 @@ interface Drag {
   samples: Sample[];
   /** The text of the page, indexed once for a markup drag. */
   index: TextIndex | null;
-  /** Ink: where the pointer is held still from (client px) and, once the stroke was recognised, the shape it became (B11). */
-  hold: { x: number; y: number };
-  snap: { snap: Snap; at: Point } | null;
-  /** Esc took the snap back: this stroke stays ink. */
-  noSnap: boolean;
 }
 
 const cssOf = rgbToCss;
@@ -120,6 +98,9 @@ const UNDERLINE_INSET_PT = 0.5;
 const MARKUP_LINE_PT = 1;
 /** The free text box outline in the preview is this thick, in points. */
 const BOX_OUTLINE_PT = 1;
+
+/** Strokes one drawn stroke can add besides itself (the two wings of a free arrow's head). */
+const ARROWHEAD_STROKES = 2;
 
 /** The draft with the current author name (ADR-034); an empty name adds none, so no /T is written. */
 function withAuthor(draft: AnnotationDraft): AnnotationDraft {
@@ -156,18 +137,12 @@ function ActiveLayer({
   const finished = useRef<readonly string[]>([]);
   const lastInkEnd = useRef<number | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  /** The pen held still on a stroke: after the hold time it may snap to a shape (DESIGN 3.5 B11). */
-  const holdTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const frame = useRef<number | null>(null);
   /** Spell 5: how long the dried strip stays under the real highlight. */
   const dryTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const nextPreview = useRef<(() => Preview | null) | null>(null);
   const showInkRef = useRef<(current: readonly Sample[]) => void>(() => undefined);
   const [preview, setPreview] = useState<Preview | null>(null);
-  const t = useT();
-  /** The morph of a stroke of this page, while it runs (the store's `morph` is the last one of any page). */
-  const [morphing, setMorphing] = useState<Morph | null>(null);
-  const straightenShapes = useTools((state) => state.straightenShapes);
   const chosen = useAnnotationStyle(kind);
   const textDefaults = useTools((state) => state.defaults.freeText);
   const style: CreationStyle = useMemo(
@@ -250,56 +225,6 @@ function ActiveLayer({
     commit(inkDraft(pageIndex, strokes, style));
   }, [commit, pageIndex, style, show]);
 
-  /**
-   * A stroke that snapped to a shape: first the stroke as ink, then one command that swaps it for the shape. Undo of that command gives
-   * the stroke back (DESIGN 3.5 B11). If the ink is refused or comes back without an id, the shape alone is made.
-   */
-  const commitSnap = useCallback(
-    (samples: readonly Sample[], shape: Recognised) => {
-      const snapped = withAuthor(recognisedDraft(shape, pageIndex, page, style));
-      const ink = inkDraft(pageIndex, [smoothStroke(samples)], style);
-      const state = useAnnotations.getState();
-      const shapeOnly = () => state.apply(docId, { type: 'createAnnotation', draft: snapped }).catch(reportRefusal);
-      if (ink === null) {
-        void shapeOnly();
-        return;
-      }
-      state
-        .apply(docId, { type: 'createAnnotation', draft: withAuthor(ink) })
-        .then((changes) => {
-          const id = changes.upserted[0]?.id;
-          if (id === undefined) return shapeOnly();
-          return useAnnotations
-            .getState()
-            .apply(docId, {
-              type: 'batch',
-              label: 'annotation.create',
-              commands: [
-                { type: 'deleteAnnotations', ids: [id] },
-                { type: 'createAnnotation', draft: snapped },
-              ],
-            })
-            .catch(reportRefusal);
-        })
-        .catch(reportRefusal);
-    },
-    [docId, page, pageIndex, style],
-  );
-
-  const startMorph = useCallback(
-    (samples: readonly Sample[], shape: Recognised) => {
-      const morph = morphOf(samples, shape);
-      useTools.getState().setMorph(morph);
-      setMorphing(morph);
-      announce(t('draw.straightened'));
-    },
-    [t],
-  );
-  const endMorph = useCallback(() => {
-    setMorphing(null);
-    useTools.getState().setMorph(null);
-  }, []);
-
   // Leaving the tool (or the page) with strokes waiting makes them the annotation they were going to be.
   const flushRef = useRef(flushInk);
   useEffect(() => {
@@ -308,7 +233,6 @@ function ActiveLayer({
   useEffect(
     () => () => {
       if (frame.current !== null) cancelAnimationFrame(frame.current);
-      if (holdTimer.current !== null) clearTimeout(holdTimer.current);
       if (dryTimer.current !== null) clearTimeout(dryTimer.current);
       if (pending.current.length > 0) flushRef.current();
     },
@@ -322,8 +246,6 @@ function ActiveLayer({
 
   const cancel = useCallback(() => {
     drag.current = null;
-    if (holdTimer.current !== null) clearTimeout(holdTimer.current);
-    holdTimer.current = null;
     if (timer.current !== null) clearTimeout(timer.current);
     timer.current = null;
     pending.current = [];
@@ -338,16 +260,8 @@ function ActiveLayer({
       if (event.key !== 'Escape' || (drag.current === null && pending.current.length === 0)) return;
       event.preventDefault();
       event.stopPropagation();
-      // A snapped stroke goes back to being the stroke it was (and does not snap again); anything else is dropped.
-      const d = drag.current;
-      if (d !== null && d.snap !== null) {
-        d.snap = null;
-        d.noSnap = true;
-        if (holdTimer.current !== null) clearTimeout(holdTimer.current);
-        holdTimer.current = null;
-        showInkRef.current(d.samples);
-        return;
-      }
+      event.preventDefault();
+      event.stopPropagation();
       cancel();
     };
     window.addEventListener('keydown', onKey, true);
@@ -376,48 +290,17 @@ function ActiveLayer({
     showInkRef.current = showInk;
   });
 
-  const clearHold = useCallback(() => {
-    if (holdTimer.current !== null) clearTimeout(holdTimer.current);
-    holdTimer.current = null;
-  }, []);
-
-  /** The pen has been held still for the hold time: a stroke that is clearly a shape becomes it, as a preview until release. */
-  const onHold = useCallback(() => {
-    holdTimer.current = null;
-    const d = drag.current;
-    if (d === null || d.snap !== null || d.noSnap || kind !== 'ink' || !useTools.getState().straightenShapes) return;
-    const shape = recognise(d.samples);
-    if (shape === null) return;
-    // What was drawn before this stroke is its own annotation: it is not part of the shape.
-    if (pending.current.length > 0) flushInk();
-    const snap = snapFor(shape, d.last);
-    d.snap = { snap, at: d.last };
-    const draft = recognisedDraft(snap.shape, pageIndex, page, style);
-    const snapped = previewOfDraft(draft, style);
-    show({
-      type: 'ink',
-      finished: [],
-      current: d.samples.slice(),
-      width: style.width,
-      color: style.color,
-      ...(snapped === null ? {} : { snap: snapped }),
-    });
-  }, [kind, flushInk, pageIndex, page, style, show]);
-
-  const startHold = useCallback(() => {
-    clearHold();
-    if (straightenShapes) holdTimer.current = setTimeout(onHold, holdShapeMs());
-  }, [clearHold, straightenShapes, onHold]);
-
   /** A stroke is over (pointer up, or cancelled): it joins the group, which is committed 1000 ms after its last stroke. */
   const endStroke = useCallback(
     (samples: readonly Sample[], at: number) => {
       if (timer.current !== null) clearTimeout(timer.current);
       timer.current = null;
       if (samples.length > 0) {
-        const stroke = smoothStroke(samples);
-        pending.current.push(stroke);
-        finished.current = [...finished.current, polygonPoints(strokeOutline(stroke, style.width))];
+        const variant = useTools.getState().draw;
+        for (const stroke of applyDrawVariant(variant, smoothStroke(samples), style.width)) {
+          pending.current.push(stroke);
+          finished.current = [...finished.current, polygonPoints(strokeOutline(stroke, style.width))];
+        }
         lastInkEnd.current = at;
       }
       if (pending.current.length > 0) {
@@ -466,7 +349,7 @@ function ActiveLayer({
       const joins = joinsGroup(lastInkEnd.current, event.timeStamp);
       if (
         pending.current.length > 0 &&
-        (!joins || total >= MAX_ANNOTATION_POINTS || pending.current.length >= MAX_INK_STROKES)
+        (!joins || total >= MAX_ANNOTATION_POINTS || pending.current.length >= MAX_INK_STROKES - ARROWHEAD_STROKES)
       ) {
         flushInk();
       }
@@ -479,39 +362,15 @@ function ActiveLayer({
       moved: false,
       samples,
       index: layer === undefined ? null : buildTextIndex(layer),
-      hold: { x: event.clientX, y: event.clientY },
-      snap: null,
-      noSnap: false,
     };
     if (kind === 'ink') {
       showInk(samples);
-      startHold();
     }
   };
 
   const onPointerMove = (event: ReactPointerEvent<HTMLDivElement>) => {
     const d = drag.current;
     if (d === null || d.pointerId !== event.pointerId) return;
-    if (kind === 'ink' && d.snap !== null) {
-      // After the snap the pointer resizes the shape: its end point, or the corner that is nearest it.
-      const point = toPage(event);
-      if (point === null) return;
-      d.last = point;
-      const { snap, at } = d.snap;
-      const shape = snapTo(snap, at, point);
-      schedule(() => {
-        const snapped = previewOfDraft(recognisedDraft(shape, pageIndex, page, style), style);
-        return {
-          type: 'ink',
-          finished: [],
-          current: d.samples.slice(),
-          width: style.width,
-          color: style.color,
-          ...(snapped === null ? {} : { snap: snapped }),
-        };
-      });
-      return;
-    }
     if (kind === 'ink') {
       const native = event.nativeEvent;
       const events = typeof native.getCoalescedEvents === 'function' ? native.getCoalescedEvents() : [];
@@ -523,11 +382,6 @@ function ActiveLayer({
       const last = d.samples[d.samples.length - 1];
       if (last !== undefined) d.last = last;
       showInk(d.samples);
-      // Held still: within a few px of where it came to rest. Moving farther starts the hold again.
-      if (Math.hypot(event.clientX - d.hold.x, event.clientY - d.hold.y) > HOLD_STILL_PX) {
-        d.hold = { x: event.clientX, y: event.clientY };
-        startHold();
-      }
       return;
     }
     const point = toPage(event);
@@ -545,43 +399,7 @@ function ActiveLayer({
     if (d === null || d.pointerId !== event.pointerId) return;
     drag.current = null;
     releaseCapture(event.pointerId);
-    clearHold();
-    if (kind === 'ink' && d.snap !== null) {
-      // The stroke became a shape: release makes it the real annotation (the stroke is ink first, so one undo gives it back).
-      const point = toPage(event) ?? d.last;
-      show(null);
-      const resized = snapTo(d.snap.snap, d.snap.at, point);
-      startMorph(d.samples, resized);
-      commitSnap(d.samples, resized);
-      return;
-    }
     if (kind === 'ink') {
-      // On release a stroke that is clearly a shape is straightened at once (F17.5), unless Esc took the snap back.
-      const shape = d.noSnap || !useTools.getState().straightenShapes ? null : recognise(d.samples);
-      if (shape !== null) {
-        if (pending.current.length > 0) flushInk();
-        show(null);
-        startMorph(d.samples, shape);
-        commitSnap(d.samples, shape);
-        return;
-      }
-      // A shaft drawn a moment ago and now a separate arrowhead stroke: together they are one arrow (F19.13).
-      const shaft = pending.current.length === 1 ? pending.current[0] : undefined;
-      const arrow =
-        shaft === undefined || d.noSnap || !useTools.getState().straightenShapes
-          ? null
-          : recogniseArrowStrokes(shaft, smoothStroke(d.samples));
-      if (arrow !== null) {
-        if (timer.current !== null) clearTimeout(timer.current);
-        timer.current = null;
-        pending.current = [];
-        finished.current = [];
-        lastInkEnd.current = null;
-        show(null);
-        announce(t('draw.straightened'));
-        commit(recognisedDraft(arrow, pageIndex, page, style));
-        return;
-      }
       endStroke(d.samples, event.timeStamp);
       return;
     }
@@ -648,9 +466,7 @@ function ActiveLayer({
     if (d === null || d.pointerId !== event.pointerId) return;
     drag.current = null;
     releaseCapture(event.pointerId);
-    clearHold();
-    if (kind === 'ink' && d.snap !== null) show(null);
-    else if (kind === 'ink') endStroke(d.samples.length > 1 ? d.samples : [], event.timeStamp);
+    if (kind === 'ink') endStroke(d.samples.length > 1 ? d.samples : [], event.timeStamp);
     else show(null);
   };
   const box = overlayBox(viewW * transform.pxPerPt, viewH * transform.pxPerPt, page, transform.pxPerPt, rotation);
@@ -675,9 +491,6 @@ function ActiveLayer({
         style={{ left: box.left, top: box.top, transform: box.transform, transformOrigin: 'center' }}
       >
         {preview === null ? null : <PreviewShape preview={preview} onDryEnd={endDry} />}
-        {morphing === null ? null : (
-          <MorphStroke morph={morphing} color={style.color} width={style.width} onDone={endMorph} />
-        )}
       </svg>
     </div>
   );
@@ -841,17 +654,9 @@ function PreviewShape({ preview, onDryEnd }: { preview: Preview; onDryEnd?: () =
               <polygon key={i} points={points} />
             ))}
             {preview.current.length > 0 ? (
-              <polygon
-                data-snap-out={preview.snap === undefined ? undefined : ''}
-                points={polygonPoints(strokeOutline(preview.current, preview.width))}
-              />
+              <polygon points={polygonPoints(strokeOutline(preview.current, preview.width))} />
             ) : null}
           </g>
-          {preview.snap === undefined ? null : (
-            <g data-snap-in="">
-              <PreviewShape preview={preview.snap} />
-            </g>
-          )}
         </g>
       );
     default:

@@ -84,3 +84,8 @@ export function offerWanted(input: {
 }): boolean {
   return !input.backendNone && input.scanPages > 0 && !input.locked && !input.dismissed && !input.readOnly;
 }
+
+/** Whether the tab has recognized text to save as a text PDF (F19.22): a page with a layer of ours or another recognizer's. */
+export function hasRecognizedText(classes: readonly PageClass[]): boolean {
+  return classes.some((entry) => entry.class === 'sheerLayer' || entry.class === 'hasTextLayer');
+}

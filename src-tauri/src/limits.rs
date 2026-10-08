@@ -88,8 +88,8 @@ pub const MAX_SMART_RUNS_PER_LINE: usize = 120;
 /// Longest text of one run, in characters.
 pub const MAX_SMART_RUN_CHARS: usize = 2_000;
 pub const SMART_PAGE_BUDGET: Duration = Duration::from_millis(1_500);
-/// The document index: pages read, characters kept in all, and wall time of the background build; the rest is not indexed.
-pub const MAX_SMART_INDEX_PAGES: u32 = 1_500;
+/// The document index: pages read (every page the engine opens, F19.20), characters kept in all, and wall time of the background build; the rest is not indexed.
+pub const MAX_SMART_INDEX_PAGES: u32 = MAX_PAGES;
 pub const MAX_SMART_INDEX_CHARS: usize = 4_000_000;
 pub const SMART_INDEX_BUDGET: Duration = Duration::from_secs(40);
 /// Most documents whose smart-link index is kept at once.
@@ -739,6 +739,14 @@ pub const COMMENT_EXPORT_MD_MAX: usize = 16 * 1024 * 1024;
 pub const COMMENT_EXPORT_PDF_PAGES_MAX: usize = 2_000;
 /// Largest PDF summary, in bytes.
 pub const COMMENT_EXPORT_PDF_MAX: usize = 64 * 1024 * 1024;
+
+/// "Save as text PDF" (F19.22, ADR-143): most sheets of the new document, most characters of recognized text it takes (the rest is
+/// left out and reported), the largest file, and the resolution and JPEG quality of a kept page image.
+pub const TEXT_PDF_PAGES_MAX: usize = 20_000;
+pub const TEXT_PDF_CHARS_MAX: usize = 20_000_000;
+pub const TEXT_PDF_MAX: usize = 768 * 1024 * 1024;
+pub const TEXT_PDF_IMAGE_DPI: f32 = 150.0;
+pub const TEXT_PDF_IMAGE_QUALITY: u8 = 80;
 
 // --- Certificate signatures (ADR-121) ---------------------------------------------------------------------------
 

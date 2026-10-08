@@ -17,6 +17,8 @@ export interface OcrRun {
 export interface OcrDialogState {
   docId: number;
   preselectSelected: boolean;
+  /** Opened by "Save as text PDF…" (F19.22): the panel puts the focus on that section. */
+  textPdf?: boolean;
 }
 
 interface OcrState {

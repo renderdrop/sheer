@@ -77,6 +77,7 @@ describe('the Windows menu bar (DESIGN 3.56)', () => {
       'Highlight Form Fields',
       'Manage Signatures…',
       'Recognize Text…',
+      'Save As Text PDF…',
       'Headers & Footers…',
     ]);
     const radios = within(menu).getAllByRole('menuitemradio');

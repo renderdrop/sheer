@@ -5,7 +5,6 @@ import { defaultColours, HIGHLIGHT_OPACITY } from '../../inspector/palette';
 import { boxFromPoints, boxInPage, clampToPage, constrainSquare, snapAngle } from './geometry';
 import { FREE_TEXT_MIN_WIDTH, boxHeight, startX } from './freeTextLayout';
 import { strokeOutline, toPoints, type Sample } from './ink';
-import type { Recognised } from './recognise';
 
 /** The annotation drafts a creation makes (one `createAnnotation` command each), and the style they start from. */
 
@@ -194,29 +193,4 @@ export function inkDraft(
     .map((samples) => ({ points: toPoints(samples), outline: strokeOutline(samples, style.width) }));
   if (made.length === 0) return null;
   return { kind: 'ink', pageId, strokes: made, width: style.width, color: style.color, opacity: style.opacity };
-}
-
-/** What a recognised shape is as a draft: a real shape annotation in the stroke's colour and width, never filled (DESIGN 3.5 B11). */
-export function recognisedDraft(
-  shape: Recognised,
-  pageId: number,
-  page: readonly [number, number],
-  style: CreationStyle,
-): AnnotationDraft {
-  const plain: CreationStyle = { ...style, fill: null, dashed: false, head: 'none', bothEnds: false };
-  switch (shape.kind) {
-    case 'line':
-      return shapeDraft('line', pageId, shape.from, shape.to, page, plain);
-    case 'arrow':
-      return shapeDraft('arrow', pageId, shape.from, shape.to, page, { ...plain, head: 'openArrow' });
-    default:
-      return shapeDraft(
-        shape.kind,
-        pageId,
-        { x: shape.box.x, y: shape.box.y },
-        { x: shape.box.x + shape.box.w, y: shape.box.y + shape.box.h },
-        page,
-        plain,
-      );
-  }
 }

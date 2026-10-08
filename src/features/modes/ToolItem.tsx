@@ -8,7 +8,6 @@ import { useT } from '../../i18n';
 import { detectPlatform } from '../../lib/platform';
 import { useSettings } from '../../stores/settings';
 import { ColourRow } from './ColourRow';
-import { RecogniseSwitch } from './RecogniseSwitch';
 import type { SlotDef, VariantDef } from './model';
 
 /**
@@ -23,10 +22,10 @@ const MAIN =
   'data-[on=true]:font-semibold data-[on=true]:text-ink not-aria-disabled:data-[on=true]:hover:bg-accent-hover not-aria-disabled:data-[on=true]:active:bg-accent-hover';
 
 /** The main part of a split item: rounded only on its outer side, so its hover fill is exactly its own box (F19.2); the chevron mirrors it; and never scaled, so nothing spills past the contour. */
-const SPLIT_PART = 'rounded-s-(--tool-item-radius)! rounded-e-none! not-aria-disabled:active:scale-100!';
+export const SPLIT_PART = 'rounded-s-(--tool-item-radius)! rounded-e-none! not-aria-disabled:active:scale-100!';
 
 /** The chevron part of a split item: 16 wide, full height, its own tab stop. */
-const CHEVRON =
+export const CHEVRON =
   'flex w-icon-16 shrink-0 cursor-pointer items-center justify-center rounded-e-(--tool-item-radius) border-s border-border-subtle text-text transition-colors duration-fast ' +
   'aria-disabled:cursor-not-allowed aria-disabled:opacity-(--opacity-disabled) ' +
   'not-aria-disabled:hover:bg-panel not-aria-disabled:aria-expanded:bg-panel not-aria-disabled:active:bg-pressed ' +
@@ -35,6 +34,15 @@ const CHEVRON =
 
 /** The one active-tool rule of all five modes (DESIGN Q2): Solar fill, Ink label and the hairline; a split item wears it as a whole. */
 const ACTIVE = 'data-[on=true]:bg-accent data-[on=true]:shadow-(--tool-active-edge)';
+
+/**
+ * A split item wears the active rule once, on its outer contour (F19.27): the hairline is the ::after of the wrapper, painted above both
+ * halves, so a hover fill of one half can never cover or change it. Neither half has a border, outline or shadow of its own.
+ */
+export const SPLIT_OUTER =
+  'group relative flex shrink-0 overflow-hidden rounded-(--tool-item-radius) data-[on=true]:bg-accent ' +
+  'data-[on=true]:after:pointer-events-none data-[on=true]:after:absolute data-[on=true]:after:inset-0 ' +
+  'data-[on=true]:after:rounded-(--tool-item-radius) data-[on=true]:after:shadow-(--tool-active-edge)';
 
 /** Icon only: 44 x 44 (space 10 + 4), vertically centred in the 72 high area. */
 const ICON_ONLY = 'size-[calc(var(--space-10)+var(--space-1))] p-0';
@@ -195,11 +203,7 @@ export function ToolItem({ slot, iconOnly, stop }: ToolItemProps) {
   );
 
   return (
-    <div
-      data-split={slot.id}
-      data-on={slot.on}
-      className={cx('group flex shrink-0 overflow-hidden rounded-(--tool-item-radius)', ACTIVE)}
-    >
+    <div data-split={slot.id} data-on={slot.on} className={SPLIT_OUTER}>
       {tipped}
       {slot.colour === undefined ? (
         <Menu label={optionsLabel} disabled={off} entries={(slot.variants ?? []).map(asEntry)} trigger={trigger} />
@@ -228,7 +232,6 @@ export function ToolItem({ slot, iconOnly, stop }: ToolItemProps) {
                 </div>
               )}
               <ColourRow kinds={slot.colour?.kinds ?? []} label={slot.colour?.label} />
-              {slot.recogniseSwitch === true && <RecogniseSwitch className="border-t border-border-subtle p-2" />}
             </div>
           )}
         </Popover>

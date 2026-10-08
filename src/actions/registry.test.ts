@@ -18,6 +18,7 @@ const WITH_DOCUMENT: ActionState = {
   canRedo: true,
   hasCitations: true,
   signed: true,
+  hasOcrText: true,
 };
 
 describe('the registry', () => {
@@ -85,6 +86,7 @@ describe('the registry', () => {
       'form-highlight',
       'manage-signatures',
       'recognize-text',
+      'save-text-pdf',
       'header-footer',
       'welcome-tour',
       'reset-tips',
@@ -192,6 +194,7 @@ describe('shortcuts per platform', () => {
     'form-highlight': { macos: null, windows: null },
     'manage-signatures': { macos: null, windows: null },
     'recognize-text': { macos: null, windows: null },
+    'save-text-pdf': { macos: null, windows: null },
     'header-footer': { macos: null, windows: null },
     'welcome-tour': { macos: null, windows: null },
     'reset-tips': { macos: null, windows: null },

@@ -330,6 +330,21 @@ describe('the layer', () => {
     expect(applyMock).toHaveBeenCalledWith(1, expect.objectContaining({ pages: [0] }));
   });
 
+  it('Enter on a focused handle applies and Esc cancels, without a second click or a popup', async () => {
+    const { user } = setup(<CropLayer {...props} />);
+    act(() => useUi.getState().selectTool('crop'));
+    screen.getByRole('button', { name: 'Right edge' }).focus();
+    await user.keyboard('{Enter}');
+    expect(applyMock).toHaveBeenCalledWith(1, expect.objectContaining({ pages: [0] }));
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(screen.queryByRole('alertdialog')).toBeNull();
+    act(() => useUi.getState().selectTool('crop'));
+    screen.getByRole('group', { name: 'Crop area, page 1' }).focus();
+    await user.keyboard('{Escape}');
+    expect(useUi.getState().activeTool).toBe('select');
+    expect(useCrop.getState().margins).toBeNull();
+  });
+
   it('resizes with the arrow keys on a focused handle, by its screen position', async () => {
     const { user } = setup(<CropLayer {...props} />);
     act(() => useUi.getState().selectTool('crop'));

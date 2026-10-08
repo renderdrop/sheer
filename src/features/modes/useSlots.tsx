@@ -25,6 +25,8 @@ import {
   Plus,
   Settings2,
   PenLine,
+  Spline,
+  Lasso,
   RotateCcw,
   RotateCw,
   ScanSearch,
@@ -58,7 +60,7 @@ import { useT, type PlainKey, type Translate } from '../../i18n';
 import type { SigningIdentityInfo, StoreStatus } from '../../api/signing';
 import { isDirty, useAnnotations } from '../../stores/annotations';
 import { selectActiveId, useDocuments } from '../../stores/documents';
-import { useTools, type MarkupVariant, type ShapeVariant } from '../../stores/tools';
+import { useTools, type DrawVariant, type MarkupVariant, type ShapeVariant } from '../../stores/tools';
 import { useUi, type Mode, type ToolId } from '../../stores/ui';
 import { deletePages, insertBlank, insertFromFile, rotatePages } from '../organize/commands';
 import { useSlots as usePageSlots } from '../organize/source';
@@ -110,6 +112,11 @@ function chooseMarkup(variant: MarkupVariant): void {
   choose('highlight');
 }
 
+function chooseDraw(variant: DrawVariant): void {
+  useTools.getState().setDraw(variant);
+  choose('draw');
+}
+
 function chooseShape(variant: ShapeVariant): void {
   useTools.getState().setShapes(variant);
   choose('shapes');
@@ -127,6 +134,7 @@ interface Inputs {
   redactMode: boolean;
   markup: MarkupVariant;
   shapes: ShapeVariant;
+  draw?: DrawVariant;
   armed: PlaceItem | null;
   docId: number | null;
   readOnly: boolean;
@@ -238,6 +246,7 @@ const lesen: Maker = (inputs) => {
 
 const kommentieren: Maker = (inputs) => {
   const { t, activeTool, markup, shapes, readOnly } = inputs;
+  const draw = inputs.draw ?? 'free';
   const markupSlot = (variant: MarkupVariant, label: string, icon: LucideIcon): SlotDef => ({
     id: variant === 'strikeout' ? 'strikeout' : variant,
     label,
@@ -276,6 +285,24 @@ const kommentieren: Maker = (inputs) => {
       run: () => chooseShape('arrow'),
     },
   ];
+  const drawVariants: VariantDef[] = [
+    { id: 'free', label: t('modes.tool.drawFree'), icon: PenLine, on: draw === 'free', run: () => chooseDraw('free') },
+    {
+      id: 'arrow',
+      label: t('modes.tool.drawArrow'),
+      icon: Spline,
+      on: draw === 'arrow',
+      run: () => chooseDraw('arrow'),
+    },
+    {
+      id: 'shape',
+      label: t('modes.tool.drawShape'),
+      icon: Lasso,
+      on: draw === 'shape',
+      run: () => chooseDraw('shape'),
+    },
+  ];
+  const drawIcon = drawVariants.find((variant) => variant.on)?.icon ?? PenLine;
   const shapeIcon = shapeVariants.find((variant) => variant.on)?.icon ?? Shapes;
   return grouped(
     [
@@ -300,7 +327,7 @@ const kommentieren: Maker = (inputs) => {
       plain('text', 'freeText', t('modes.tool.freeText'), MessageSquareText, 'tool-text'),
     ],
     [
-      { ...plain('draw', 'draw', t('modes.tool.draw'), PenLine, 'tool-draw'), recogniseSwitch: true },
+      { ...plain('draw', 'draw', t('modes.tool.draw'), drawIcon, 'tool-draw'), variants: drawVariants },
       {
         id: 'shapes',
         label: t('modes.tool.shapes'),
@@ -613,6 +640,7 @@ export function useModeSlots(mode: Mode): readonly SlotDef[] {
   const redactMode = useUi((state) => state.redactMode);
   const markup = useTools((state) => state.markup);
   const shapes = useTools((state) => state.shapes);
+  const draw = useTools((state) => state.draw);
   const armed = usePlacement((state) => state.item);
   const docId = useDocuments(selectActiveId);
   const readOnly = useDocuments((state) => (docId === null ? false : state.byId[docId]?.kind === 'welcome'));
@@ -634,6 +662,7 @@ export function useModeSlots(mode: Mode): readonly SlotDef[] {
       redactMode,
       markup,
       shapes,
+      draw,
       armed,
       docId,
       readOnly,
@@ -660,6 +689,7 @@ export function useModeSlots(mode: Mode): readonly SlotDef[] {
     redactMode,
     markup,
     shapes,
+    draw,
     armed,
     docId,
     readOnly,

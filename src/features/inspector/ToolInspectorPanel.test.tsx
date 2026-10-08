@@ -91,10 +91,10 @@ describe('the tool inspector', () => {
     expect(useUi.getState().activeTool).toBe('select');
   });
 
-  it('history is an extension point: it opens the column but renders nothing yet', () => {
+  it('history opens the column with the change list', () => {
     setup(<Fixture />);
     act(() => useToolInspector.getState().openToolInspector('history'));
-    expect(screen.queryByRole('complementary')).toBeNull();
-    expect(screen.getByTestId('column').getAttribute('data-open')).toBe('false');
+    expect(screen.queryByRole('complementary')).not.toBeNull();
+    expect(screen.getByTestId('column').getAttribute('data-open')).toBe('true');
   });
 });

@@ -4,6 +4,7 @@ import { citationCount } from '../features/citations/store';
 import { isSignatureLocked } from '../features/lock/useSignatureLock';
 import { exportableCount } from '../features/comments/export/model';
 import { useComments } from '../features/comments/store';
+import { hasRecognizedText } from '../features/ocr/model';
 import { useOcr } from '../features/ocr/store';
 import { selectActiveDocument, useDocuments } from '../stores/documents';
 import { useView } from '../stores/view';
@@ -45,6 +46,8 @@ export interface ActionState {
   ocrBusy?: boolean;
   /** The file has a signature field that is signed, whatever it allows (headers and footers would break it; DESIGN 3.15 HF6). */
   signedFile?: boolean;
+  /** The active tab has recognized text (a page with an OCR layer; F19.22); absent: none or not known yet. */
+  hasOcrText?: boolean;
 }
 
 /** Whether an editing action may run: there is a document and no signature locks it. */
@@ -77,6 +80,10 @@ export function headerFooterReason(
   if (state.ocrBusy === true) return 'ocr.busy';
   return null;
 }
+
+/** Whether Save as text PDF may open (F19.22): recognized text, and the file allows copying. */
+export const maySaveTextPdf = (state: ActionState): boolean =>
+  state.hasDocument && state.hasOcrText === true && state.canCopy !== false;
 
 /** Whether the state allows printing (absent: yes). */
 export const mayPrint = (state: ActionState): boolean => state.canPrint !== false;
@@ -122,5 +129,6 @@ export function readActionState(): ActionState {
     ocrUnavailable: useOcr.getState().capabilities?.backend === 'none',
     ocrBusy: useOcr.getState().runs[docId] !== undefined,
     signedFile: selectActiveDocument(useDocuments.getState())?.flags?.signed === true,
+    hasOcrText: hasRecognizedText(useOcr.getState().classes[docId] ?? []),
   };
 }

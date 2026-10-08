@@ -41,6 +41,7 @@ pub mod summary;
 pub mod text_fonts;
 pub mod text_io;
 pub mod text_lines;
+pub mod text_pdf;
 pub mod text_refuse;
 pub mod text_save;
 pub mod text_splice;

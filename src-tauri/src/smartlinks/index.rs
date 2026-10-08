@@ -310,6 +310,18 @@ impl Store {
         }
     }
 
+    /// The finished index of `id` at revision `rev`, if there is one; starts nothing and changes nothing.
+    pub fn peek(&self, id: DocumentId, rev: u64) -> Option<Arc<Ready>> {
+        match self.lock().get(&id) {
+            Some(Slot {
+                rev: r,
+                phase: Phase::Ready(ready),
+                ..
+            }) if *r == rev => Some(Arc::clone(ready)),
+            _ => None,
+        }
+    }
+
     /// Whether the build started for `generation` of `id` is still wanted (the revision did not change, the slot was not evicted).
     pub fn wanted(&self, id: DocumentId, generation: u64) -> bool {
         self.lock()
@@ -403,12 +415,14 @@ mod tests {
         assert_eq!(read_order(6, 3), [2, 3, 4, 0, 1, 5]);
         assert_eq!(read_order(6, 0), [0, 1, 2, 3, 4, 5]);
         assert_eq!(read_order(3, 2), [1, 2, 0]);
-        assert_eq!(read_order(0, 0), Vec::<u32>::new());
+        // Every page of the document is read (F19.20): the order is complete, only the character and time limits cut it short.
+        assert_eq!(read_order(5_000, 4_000).len(), 5_000);
+        assert_eq!(read_order(5_000, 4_000)[1], 4_000);
         assert_eq!(
-            read_order(5_000, 4_000).len(),
+            read_order(limits::MAX_SMART_INDEX_PAGES + 7, 0).len(),
             limits::MAX_SMART_INDEX_PAGES as usize
         );
-        assert!(!read_order(5_000, 4_000).contains(&4_000));
+        assert_eq!(read_order(0, 0), Vec::<u32>::new());
     }
 
     #[test]

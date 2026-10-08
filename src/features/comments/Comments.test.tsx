@@ -11,6 +11,7 @@ import { resetViewer, showDocument } from '../viewer/viewer.testutil';
 import { Comments, LOADING_SHOWN_AFTER_MS } from './Comments';
 import { NO_FILTER } from './model';
 import { useComments } from './store';
+import { useMarginPrefs } from '../margin/store';
 import { clearQuotes } from './useQuote';
 
 const listDocumentAnnotations = vi.hoisted(() => vi.fn());
@@ -51,6 +52,8 @@ const LIST = [
 ];
 
 beforeEach(() => {
+  // These cards are the place a new comment is written when the margin is off (with it on, its bubble is: F19.24).
+  useMarginPrefs.setState({ enabled: false });
   vi.stubGlobal('ResizeObserver', FakeResizeObserver);
   Object.defineProperty(HTMLElement.prototype, 'clientHeight', { configurable: true, get: () => 400 });
   listDocumentAnnotations.mockReset();

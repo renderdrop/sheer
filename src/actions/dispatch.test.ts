@@ -297,6 +297,7 @@ describe('readActionState', () => {
       canEdit: true,
       ocrUnavailable: false,
       ocrBusy: false,
+      hasOcrText: false,
     });
   });
 });

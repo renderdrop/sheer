@@ -232,3 +232,56 @@ describe('hover geometry check (F19.2)', () => {
     expect(c.checkHoverGeometry([{ ...item([]), container: r(0, 0, 40, 56) }])[0]).toMatch(/outside its toolbar/);
   });
 });
+
+describe('split contour check (F19.27)', () => {
+  const edge = '0 0 0 1px rgb(0, 0, 0)';
+  const state = (active: boolean, hover: boolean, over: Record<string, unknown> = {}) => ({
+    outer: { rect: r(10, 10, 110, 66), border: '0px none', outline: 'none', boxShadow: active ? edge : 'none' },
+    part: {
+      rect: r(10, 10, 90, 66),
+      border: '0px none',
+      outline: 'none',
+      boxShadow: 'none',
+      background: hover ? 'grey' : 'transparent',
+      ...over,
+    },
+  });
+  const states = () => ({
+    inactive: state(false, false),
+    'inactive+hover': state(false, true),
+    active: state(true, false),
+    'active+hover': state(true, true),
+  });
+  const run = (s: Record<string, unknown>) => c.checkSplitContour([{ name: 'Draw', part: 'main', states: s }]);
+
+  it('passes when only the background changes on hover and the edge is on the outer box', () => {
+    expect(run(states())).toEqual([]);
+  });
+  it('flags a second contour on a part', () => {
+    const s = { ...states(), 'active+hover': state(true, true, { boxShadow: edge }) };
+    expect(run(s)[0]).toMatch(/part draws its own box-shadow on active\+hover/);
+    const o = { ...states(), 'inactive+hover': state(false, true, { outline: '1px solid red' }) };
+    expect(run(o)[0]).toMatch(/part draws its own outline/);
+  });
+  it('flags a border or bounds change by hover', () => {
+    const b = { ...states(), 'inactive+hover': state(false, true, { border: '1px solid red' }) };
+    expect(run(b)).toEqual(['Draw main: part border changes on inactive+hover']);
+    const g = states();
+    g.active.outer.rect = r(10, 10, 112, 66);
+    expect(run(g)[0]).toMatch(/outer contour bounds change on active/);
+  });
+  it('flags hover changing the outer shadow and a missing active edge', () => {
+    const h = states();
+    h['active+hover'].outer.boxShadow = 'none';
+    expect(run(h)).toContain('Draw main: hover changes the outer box-shadow of the active tool');
+    const n = states();
+    n.active.outer.boxShadow = 'none';
+    n['active+hover'].outer.boxShadow = 'none';
+    expect(run(n)).toEqual(['Draw main: the active tool has no contour on the outer box']);
+  });
+  it('flags a state that was not read', () => {
+    const s: Record<string, unknown> = states();
+    delete s.active;
+    expect(run(s)).toEqual(['Draw main: state active was not read']);
+  });
+});

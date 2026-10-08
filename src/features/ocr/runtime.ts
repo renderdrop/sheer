@@ -51,6 +51,13 @@ export function openOcrDialog(): void {
   useOcr.getState().openDialog({ docId, preselectSelected: selected });
 }
 
+/** Opens the panel for the active tab with the focus on "Save as text PDF" (F19.22; Tools menu). */
+export function openTextPdf(): void {
+  const docId = selectActiveId(useDocuments.getState());
+  if (docId === null) return;
+  useOcr.getState().openDialog({ docId, preselectSelected: false, textPdf: true });
+}
+
 export function closeOcrDialog(): void {
   useOcr.getState().openDialog(null);
 }

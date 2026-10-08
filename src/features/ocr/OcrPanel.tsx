@@ -11,9 +11,19 @@ import { openLanguageSettings, type PageClass } from '../../api/ocr';
 import { InspectorFrame, InspectorSection, InspectorSections, type InspectorFooter } from '../inspector/InspectorFrame';
 import { focusCanvas } from '../modes/switch';
 import { selectionOf, useOrganize } from '../organize/store';
-import { countScope, languageState, runCount, scopeIds, selectionFor, wantedLanguage, type Scope } from './model';
+import {
+  countScope,
+  hasRecognizedText,
+  languageState,
+  runCount,
+  scopeIds,
+  selectionFor,
+  wantedLanguage,
+  type Scope,
+} from './model';
 import { closeOcrDialog, ensureCapabilities, startOcr } from './runtime';
 import { useOcr, type OcrDialogState } from './store';
+import { TextPdfSection } from './TextPdfSection';
 
 const NO_CLASSES: readonly PageClass[] = [];
 
@@ -191,6 +201,7 @@ function Panel({ request }: { request: OcrDialogState }) {
               </p>
             )}
           </InspectorSection>
+          {hasRecognizedText(classes) && <TextPdfSection docId={docId} focus={request.textPdf === true} />}
         </InspectorSections>
       </div>
     </InspectorFrame>

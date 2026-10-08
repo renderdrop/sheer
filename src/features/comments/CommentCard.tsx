@@ -29,6 +29,7 @@ import { firstLine, type Status, type Thread } from './model';
 import { useComments } from './store';
 import { pageLabelOf } from './pageLabel';
 import { relativeTime } from './time';
+import { marginShowsEdits } from '../margin/store';
 import { useCommentHover } from './useCommentsData';
 import { isTextMarkup, typeOf } from './typeInfo';
 import { useQuote } from './useQuote';
@@ -167,7 +168,9 @@ export const CommentCard = memo(function CommentCard({
   const full: Annotation | undefined = useAnnotations((state) => state.byDoc[docId]?.byId[root.id]);
   const hovered = useCommentHover((state) => state.hovered === root.id);
   const editing = useComments((state) => state.editing[docId]);
-  const isEditing = editing?.id === root.id;
+  // A new comment is written in the margin bubble when the margin is on (F19.24); the card then stays a card.
+  const marginWrites = editing?.fresh === true && marginShowsEdits();
+  const isEditing = editing?.id === root.id && !marginWrites;
   // A card that goes away under the pointer never gets its pointer leave: it must not stay the hovered comment.
   useEffect(
     () => () => {

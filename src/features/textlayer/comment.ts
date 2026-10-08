@@ -8,6 +8,7 @@ import { useComments } from '../comments/store';
 import { defaultStyle, markupDraft } from '../annotations/create/drafts';
 import { quadsForOffsets } from '../annotations/create/markup';
 import { styleFor } from '../inspector/style';
+import { marginShowsEdits } from '../margin/store';
 import { peekLayer } from './cache';
 import { resolveBoundary } from './selection';
 
@@ -68,10 +69,13 @@ export async function addCommentFromSelection(docId: number): Promise<number | n
     const changes = await useAnnotations.getState().apply(docId, command);
     const created = changes.upserted.find((annotation) => annotation.pageId === first.pageId);
     if (created === undefined) return null;
-    // User-initiated: the panel opens on Comments (it slides), and the new card is the one being written.
-    const ui = useUi.getState();
-    ui.setLeftPanelCollapsed(false);
-    ui.setLeftPanelTab('comments');
+    // With the margin on, the bubble there is the one being written (focus in its field, F19.24); else the Comments panel opens
+    // (it slides) and the new card is.
+    if (!marginShowsEdits()) {
+      const ui = useUi.getState();
+      ui.setLeftPanelCollapsed(false);
+      ui.setLeftPanelTab('comments');
+    }
     useComments.getState().startEdit(docId, created.id, true);
     window.getSelection()?.removeAllRanges();
     useAnnotations.getState().select(docId, [created.id]);

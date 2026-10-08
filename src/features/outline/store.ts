@@ -42,12 +42,41 @@ export interface OutlineState {
 
 let nextToken = 1;
 
+/** A derived outline is asked again once after this long (the whole-document analysis is built in the background). */
+const DERIVED_REFRESH_MS = 6000;
+
 export const useOutline = create<OutlineState>()((set, get) => {
   const patchReady = (docId: number, change: (entry: Extract<OutlineEntry, { status: 'ready' }>) => OutlineEntry) =>
     set((state) => {
       const entry = state.byDoc[docId];
       return entry?.status === 'ready' ? { byDoc: { ...state.byDoc, [docId]: change(entry) } } : state;
     });
+
+  /**
+   * An outline made from headings is asked once more a little later: the text analysis of the whole document (contents entries and
+   * headings merged, F19.20) is built in the background and the first answer may be the quick one. Only a changed tree replaces it.
+   */
+  const refreshDerived = (docId: number, token: number) => {
+    setTimeout(() => {
+      if (get().byDoc[docId]?.token !== token) return;
+      getOutline(docId).then(
+        (nodes) => {
+          const entry = get().byDoc[docId];
+          if (entry?.status !== 'ready' || entry.token !== token) return;
+          if (JSON.stringify(nodes) === JSON.stringify(entry.nodes)) return;
+          const index = buildIndex(retarget(nodes, positionsOf(readSlots(docId))));
+          const expanded = initialExpansion(index, currentNode(index, readingPosition(docId)));
+          set((state) => ({
+            byDoc: {
+              ...state.byDoc,
+              [docId]: { ...entry, nodes, derived: nodes[0]?.derived === true, index, expanded, selected: -1 },
+            },
+          }));
+        },
+        () => undefined,
+      );
+    }, DERIVED_REFRESH_MS);
+  };
 
   const fetch = (docId: number) => {
     const token = nextToken++;
@@ -72,6 +101,7 @@ export const useOutline = create<OutlineState>()((set, get) => {
             },
           },
         }));
+        if (nodes[0]?.derived === true) refreshDerived(docId, token);
       },
       (caught: unknown) => {
         if (get().byDoc[docId]?.token !== token) return;

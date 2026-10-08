@@ -1225,6 +1225,35 @@ export type PageOcrClass = 'scan' | 'hasTextLayer' | 'sheerLayer' | 'text' | 'em
   `capabilities()` (`backend::mask_languages`); release builds do not compile it.
 - **Save.** Incremental: `[q, original…, Q, layer]` per page, page-local `/Resources`, one font set per document.
 
+### 15.6 Save as text PDF (F19.22, ADR-143)
+
+```
+export/text_flow.rs     SourcePage { lines: SourceLine { text, size, rect, bold } } → Flow { pages: Vec<Vec<Block { kind, text }>>, truncated }
+                        body size = size most characters have; heading ≥ 1.2 × body (≤ 200 chars), sizes clustered into H1..H3 (0.9);
+                        small ≤ 0.85 × body; paragraph breaks: gap > usual + 0.5 size, indent > 1.2 size, short line ending a sentence,
+                        jump back up; hyphen joins; lone page numbers on the first/last line dropped; TEXT_PDF_CHARS_MAX
+pdfwrite/text_pdf.rs    build(TextPdfInput { sections, font: Inter|Tinos, keep_images, title, lang, producer }) → TextPdf { bytes, pages, glyphs_replaced }
+                        A4, margins 64/72 pt, greedy wrap with the face's advance widths, Regular + Bold subsets (Type0/Identity-H,
+                        ToUnicode via text_fonts::add_embedded_font), headings keep two lines of what follows; TEXT_PDF_PAGES_MAX, TEXT_PDF_MAX
+commands/text_pdf.rs    export_text_pdf: lines per page from the session's OCR layer (displayed space) or engine smart_text (the file's
+                        text, e.g. a saved layer); flow; kept pictures rendered from the snapshot at TEXT_PDF_IMAGE_DPI as JPEG; save dialog;
+                        storage::atomic::write_atomic (temp + rename)
+```
+
+| Command | Arguments | Returns |
+|---|---|---|
+| `export_text_pdf` | `docId, opts: { font: 'inter' \| 'tinos'; keepImages: boolean; lang: 'en' \| 'de' } /* deny_unknown_fields */, onEvent: Channel<JobEvent>` | `JobId \| null` (dialog cancelled). Phases `read`, `render` (kept pictures), `write`; `done.outputs` 1, or 0 with `nothingToExport`; warning `glyphsReplaced`. Refused: `read_only` (`permission`, no copy right), `invalid_argument` (`lang`, `exportTarget`: the document itself or another open one), `limit_exceeded` (`textPdf`: one export per document at a time, sheets or bytes; `pages`) |
+
+- **Keep original image.** Each source page's text starts on a new sheet and the page follows as a picture on a sheet of its own size
+  (interleaved, so text and original sit side by side in a two-page view); without the option the text of all pages flows on and a
+  paragraph over a page break is joined.
+- **Fonts.** Inter 4.1 Regular/Bold static TTFs (OFL-1.1, `resources/fonts/Inter-*.ttf`, compiled in) or Tinos (bundled); a character
+  the face lacks becomes `?` (`glyphsReplaced`). No network, no system fonts.
+- **Not done.** No columns, tables, lists or images of figures are reconstructed; rotated pages read from the file (not from a session
+  layer) are flowed in unrotated page space.
+- TS: `src/api/textPdf.ts` (`exportTextPdf`); UI: the "Text PDF" section of the text recognition panel (`features/ocr/TextPdfSection.tsx`,
+  shown when a page is `sheerLayer` or `hasTextLayer`) and Tools ▸ Save As Text PDF… (`save-text-pdf`, opens the panel on that section).
+
 ## 16. v1.9 backlog (ADR-139 §3; addenda in ADR-139 "Addendum A")
 
 Backend and IPC only; the surfaces are DESIGN §3.14/§3.15 and `docs/design-v19-export-citation.md`. No new crate: lopdf, `content::std14`

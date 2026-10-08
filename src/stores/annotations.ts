@@ -95,6 +95,23 @@ export function onChangeSet(listener: ChangeListener): () => void {
   return () => changeListeners.delete(listener);
 }
 
+/** A step of a document's history as the store ran it: the session list of the history panel (F19.23) follows these. */
+export type HistoryEvent =
+  | { type: 'apply'; command: DocCommand; changes: ChangeSet }
+  | { type: 'undo' | 'redo'; changes: ChangeSet; moved: boolean };
+
+const historyListeners = new Set<(docId: number, event: HistoryEvent) => void>();
+
+/** Subscribes to the history steps run through this store; returns the unsubscribe function. */
+export function onHistoryEvent(listener: (docId: number, event: HistoryEvent) => void): () => void {
+  historyListeners.add(listener);
+  return () => historyListeners.delete(listener);
+}
+
+function emitHistory(docId: number, event: HistoryEvent): void {
+  for (const listener of historyListeners) listener(docId, event);
+}
+
 /** The page loads in flight, by document and page, so that two callers share one request. */
 const loading = new Map<string, Promise<void>>();
 
@@ -159,20 +176,25 @@ export const useAnnotations = create<AnnotationsState>()((set, get) => ({
   apply: async (docId, command) => {
     const changes = await applyCommand(docId, command);
     get().applyChanges(docId, changes);
+    emitHistory(docId, { type: 'apply', command, changes });
     return changes;
   },
 
   undo: async (docId) => {
+    const moved = get().byDoc[docId]?.history.canUndo ?? false;
     const changes = await undoStep(docId);
     emitUndoCue(docId, 'undo', changes);
     get().applyChanges(docId, changes);
+    emitHistory(docId, { type: 'undo', changes, moved });
     return changes;
   },
 
   redo: async (docId) => {
+    const moved = get().byDoc[docId]?.history.canRedo ?? false;
     const changes = await redoStep(docId);
     emitUndoCue(docId, 'redo', changes);
     get().applyChanges(docId, changes);
+    emitHistory(docId, { type: 'redo', changes, moved });
     return changes;
   },
 

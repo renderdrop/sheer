@@ -316,37 +316,6 @@ describe('line width segments (DESIGN 3.9 Q3)', () => {
   });
 });
 
-describe('straighten switch (DESIGN 3.9 Q5)', () => {
-  it('is in the drawing bar, on by default, and toggles the store', async () => {
-    load([ink(1)], [1]);
-    scene = canvas({ 1: OVER });
-    const { user } = setup(<MiniBarSlot />);
-    const toggle = screen.getByRole('switch', { name: 'Straighten shapes automatically' });
-    expect(toggle.getAttribute('aria-checked')).toBe('true');
-    await user.click(toggle);
-    expect(useTools.getState().straightenShapes).toBe(false);
-    expect(toggle.getAttribute('aria-checked')).toBe('false');
-  });
-
-  it('collapses to a named icon toggle when the bar is wider than the window minus 16 (no truncation)', async () => {
-    load([ink(1)], [1]);
-    scene = canvas({ 1: OVER });
-    const width = vi.spyOn(HTMLElement.prototype, 'scrollWidth', 'get').mockReturnValue(1200);
-    const inner = vi.spyOn(window, 'innerWidth', 'get').mockReturnValue(960);
-    try {
-      const { user } = setup(<MiniBarSlot />);
-      expect(screen.queryByRole('switch')).toBeNull();
-      const toggle = screen.getByRole('button', { name: 'Straighten shapes automatically' });
-      expect(toggle.getAttribute('aria-pressed')).toBe('true');
-      await user.click(toggle);
-      expect(useTools.getState().straightenShapes).toBe(false);
-    } finally {
-      width.mockRestore();
-      inner.mockRestore();
-    }
-  });
-});
-
 describe('changes', () => {
   it('apply as one command and become the default of the kind', async () => {
     load([ink(1)], [1]);
@@ -556,71 +525,5 @@ describe('the citation row (DESIGN 3.7 C4)', () => {
     setup(<MiniBarSlot />);
     expect(screen.queryByRole('button', { name: 'Open citation' })).toBeNull();
     expect(screen.getByRole('button', { name: 'Comment' })).not.toBeNull();
-  });
-});
-
-describe('straighten switch width edges (compact switch)', () => {
-  /** The bar's natural width and the window width; returns the undo. */
-  function widths(bar: number, win: number, canvasWidth?: number) {
-    const spies: { mockRestore: () => void }[] = [
-      vi.spyOn(HTMLElement.prototype, 'scrollWidth', 'get').mockReturnValue(bar),
-      vi.spyOn(window, 'innerWidth', 'get').mockReturnValue(win),
-    ];
-    if (canvasWidth !== undefined) {
-      spies.push(
-        vi.spyOn(Element.prototype, 'getBoundingClientRect').mockImplementation(function (this: Element) {
-          const region = this.matches('[data-action-scope="canvas"] > [role="region"]');
-          return rectOf({ left: 0, top: 100, width: region ? canvasWidth : 0, height: region ? 600 : 0 });
-        }),
-      );
-    }
-    return () => spies.forEach((spy) => spy.mockRestore());
-  }
-  const NAME = 'Straighten shapes automatically';
-
-  it('keeps the labelled switch when the bar fits the window minus 16', () => {
-    load([ink(1)], [1]);
-    scene = canvas({ 1: OVER });
-    const restore = widths(900, 960);
-    try {
-      setup(<MiniBarSlot />);
-      expect(screen.getByRole('switch', { name: NAME })).not.toBeNull();
-    } finally {
-      restore();
-    }
-  });
-
-  it('switches at the edge: 944 wide fits in 960 minus 16, 946 does not', () => {
-    load([ink(1)], [1]);
-    scene = canvas({ 1: OVER });
-    let restore = widths(944, 960);
-    try {
-      const view = setup(<MiniBarSlot />);
-      expect(screen.queryByRole('switch')).not.toBeNull();
-      view.unmount();
-    } finally {
-      restore();
-    }
-    restore = widths(946, 960);
-    try {
-      setup(<MiniBarSlot />);
-      expect(screen.queryByRole('switch')).toBeNull();
-      expect(screen.getByRole('button', { name: NAME })).not.toBeNull();
-    } finally {
-      restore();
-    }
-  });
-
-  it('goes compact when the canvas column is narrower than the window', () => {
-    load([ink(1)], [1]);
-    scene = canvas({ 1: OVER });
-    const restore = widths(700, 1400, 600);
-    try {
-      setup(<MiniBarSlot />);
-      expect(screen.queryByRole('switch')).toBeNull();
-      expect(screen.getByRole('button', { name: NAME })).not.toBeNull();
-    } finally {
-      restore();
-    }
   });
 });

@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 
 import type { LineEnd, Rgb, TextAlign } from '../api/annotations';
-import type { Morph } from '../features/annotations/create/recognise';
+import { DRAW_VARIANTS, type DrawVariant } from '../features/annotations/create/drawVariants';
 import type { ToolId } from './ui';
 
 /**
@@ -12,6 +12,7 @@ import type { ToolId } from './ui';
  */
 export const MARKUP_VARIANTS = ['highlight', 'underline', 'strikeout'] as const;
 export const SHAPE_VARIANTS = ['rect', 'ellipse', 'line', 'arrow'] as const;
+export type { DrawVariant };
 export type MarkupVariant = (typeof MARKUP_VARIANTS)[number];
 export type ShapeVariant = (typeof SHAPE_VARIANTS)[number];
 
@@ -116,40 +117,41 @@ export type KindDefaults = Readonly<Partial<Record<CreationKind, KindDefault>>>;
 export interface ToolsState {
   markup: MarkupVariant;
   shapes: ShapeVariant;
+  /** Draw: free hand, free arrow or free shape (F19.26). */
+  draw: DrawVariant;
   /** The last used style per creation kind. */
   defaults: KindDefaults;
-  /** Whether Zeichnen turns a rough shape into a real one when the pen pauses (DESIGN 3.5 B11); default on. */
-  straightenShapes: boolean;
-  setStraightenShapes: (on: boolean) => void;
-  /** The last stroke straightened into a shape (from/to), for the morph animation; null when none (F17.5). */
-  morph: Morph | null;
-  setMorph: (morph: Morph | null) => void;
   /** Remembers a change as the default of a kind (merged into what the kind has). */
   setDefault: (kind: CreationKind, change: KindDefault) => void;
   setMarkup: (variant: MarkupVariant) => void;
   setShapes: (variant: ShapeVariant) => void;
+  setDraw: (variant: DrawVariant) => void;
   /** The key of the tool again while it is active: the next variant of its family. */
   cycle: (family: ToolFamily) => void;
 }
 
-function load(): Pick<ToolsState, 'markup' | 'shapes'> {
-  const fallback = { markup: MARKUP_VARIANTS[0], shapes: SHAPE_VARIANTS[0] };
+function load(): Pick<ToolsState, 'markup' | 'shapes' | 'draw'> {
+  const fallback = { markup: MARKUP_VARIANTS[0], shapes: SHAPE_VARIANTS[0], draw: DRAW_VARIANTS[0] };
   try {
     const raw: unknown = JSON.parse(globalThis.localStorage.getItem(STORAGE_KEY) ?? 'null');
     if (typeof raw !== 'object' || raw === null) return fallback;
-    const { markup, shapes } = raw as Record<string, unknown>;
+    const { markup, shapes, draw } = raw as Record<string, unknown>;
     return {
       markup: MARKUP_VARIANTS.find((v) => v === markup) ?? fallback.markup,
       shapes: SHAPE_VARIANTS.find((v) => v === shapes) ?? fallback.shapes,
+      draw: DRAW_VARIANTS.find((v) => v === draw) ?? fallback.draw,
     };
   } catch {
     return fallback;
   }
 }
 
-function save(state: Pick<ToolsState, 'markup' | 'shapes'>): void {
+function save(state: Pick<ToolsState, 'markup' | 'shapes' | 'draw'>): void {
   try {
-    globalThis.localStorage.setItem(STORAGE_KEY, JSON.stringify({ markup: state.markup, shapes: state.shapes }));
+    globalThis.localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({ markup: state.markup, shapes: state.shapes, draw: state.draw }),
+    );
   } catch {
     // Storage unavailable or full: the choice lasts for the session.
   }
@@ -158,33 +160,9 @@ function save(state: Pick<ToolsState, 'markup' | 'shapes'>): void {
 const next = <T extends string>(all: readonly T[], current: T): T =>
   all[(all.indexOf(current) + 1) % all.length] ?? current;
 
-/** UI storage of the shape recognition switch (DESIGN 3.5 B11): "0" is off, anything else on. */
-export const RECOGNISE_KEY = 'sheer.tools.shapeRecognition';
-
-function loadRecognise(): boolean {
-  try {
-    return globalThis.localStorage.getItem(RECOGNISE_KEY) !== '0';
-  } catch {
-    return true;
-  }
-}
-
 export const useTools = create<ToolsState>()((set, get) => ({
   ...load(),
   defaults: loadDefaults(),
-  straightenShapes: loadRecognise(),
-  morph: null,
-  setMorph: (morph) => {
-    set({ morph });
-  },
-  setStraightenShapes: (on) => {
-    set({ straightenShapes: on });
-    try {
-      globalThis.localStorage.setItem(RECOGNISE_KEY, on ? '1' : '0');
-    } catch {
-      // Storage unavailable or full: the choice lasts for the session.
-    }
-  },
   setDefault: (kind, change) => {
     const defaults = { ...get().defaults, [kind]: { ...get().defaults[kind], ...change } };
     set({ defaults });
@@ -196,6 +174,10 @@ export const useTools = create<ToolsState>()((set, get) => ({
   },
   setShapes: (shapes) => {
     set({ shapes });
+    save(get());
+  },
+  setDraw: (draw) => {
+    set({ draw });
     save(get());
   },
   cycle: (family) => {

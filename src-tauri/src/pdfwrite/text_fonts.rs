@@ -1029,10 +1029,10 @@ fn flate(mut dict: Dictionary, bytes: &[u8]) -> Result<Stream, AppError> {
     Ok(Stream::new(dict, packed))
 }
 
-/// Six capital letters derived from the face and the glyph set: the subset tag of the `BaseFont`.
-fn subset_tag(face: Face, subset: &Subset) -> String {
+/// Six capital letters derived from the base font name and the glyph set: the subset tag of the `BaseFont`.
+fn subset_tag_of(base_font: &str, subset: &Subset) -> String {
     let mut h: u64 = 0xCBF2_9CE4_8422_2325;
-    for b in face.base_font().bytes().chain(
+    for b in base_font.bytes().chain(
         subset
             .gids
             .iter()
@@ -1094,9 +1094,21 @@ pub fn add_fallback_font(
     face: Face,
     subset: &Subset,
 ) -> Result<ObjectId, AppError> {
-    let tag = subset_tag(face, subset);
-    let base = format!("{tag}+{}", face.base_font());
     let numbers = face.descriptor().ok_or(AppError::invalid("fontProgram"))?;
+    add_embedded_font(doc, face.base_font(), face.bold, numbers, subset)
+}
+
+/// A subset of a bundled TrueType font (`base_font` without a tag, its descriptor numbers) as a Type0/Identity-H font with a
+/// `ToUnicode` map: what [`add_fallback_font`] writes, for any bundled face (also the text PDF export's Inter, ADR-143).
+pub fn add_embedded_font(
+    doc: &mut Document,
+    base_font: &str,
+    bold: bool,
+    numbers: crate::fontprog::fallback::Descriptor,
+    subset: &Subset,
+) -> Result<ObjectId, AppError> {
+    let tag = subset_tag_of(base_font, subset);
+    let base = format!("{tag}+{base_font}");
 
     let mut file_dict = Dictionary::new();
     file_dict.set("Length1", Object::Integer(subset.program.len() as i64));
@@ -1114,7 +1126,7 @@ pub fn add_fallback_font(
     descriptor.set("Ascent", real(numbers.ascent.round()));
     descriptor.set("Descent", real(numbers.descent.round()));
     descriptor.set("CapHeight", real(numbers.cap_height.round()));
-    descriptor.set("StemV", Object::Integer(if face.bold { 140 } else { 80 }));
+    descriptor.set("StemV", Object::Integer(if bold { 140 } else { 80 }));
     descriptor.set("FontFile2", Object::Reference(file));
     let descriptor = doc.add_object(Object::Dictionary(descriptor));
 
@@ -1644,7 +1656,7 @@ mod tests {
         assert_eq!(fallback_codes(&subset, "Welt").unwrap().len(), 8);
         assert_eq!(fallback_codes(&subset, "Q").unwrap_err(), 'Q');
         // saved and reloaded as a PDF file the object graph is still readable
-        let tag = subset_tag(face, &subset);
+        let tag = subset_tag_of(face.base_font(), &subset);
         assert_eq!(tag.len(), 6);
         assert!(tag.bytes().all(|b| b.is_ascii_uppercase()));
     }

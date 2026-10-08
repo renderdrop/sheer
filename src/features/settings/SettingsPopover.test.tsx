@@ -87,15 +87,12 @@ const checked = (name: string) =>
 const choose = (name: string, option: string) => within(group(name)).getByRole('radio', { name: option });
 
 describe('the settings panel (DESIGN 3.6)', () => {
-  const labels = () =>
-    [...popover().querySelectorAll('span.t-label')]
-      .map((el) => el.textContent)
-      .filter((text) => text !== 'Straighten shapes automatically');
+  const labels = () => [...popover().querySelectorAll('span.t-label')].map((el) => el.textContent);
 
   it('has the groups in order and nothing else', () => {
     setup(<Fixture />);
     act(() => openSettings());
-    expect(labels()).toEqual(['Language', 'Author name', 'Drawing', 'Smart links', 'Updates', 'Tour & tips', 'About']);
+    expect(labels()).toEqual(['Language', 'Author name', 'Smart links', 'Updates', 'Tour & tips', 'About']);
     expect(within(popover()).queryByText('Signatures')).toBeNull();
     expect(within(popover()).queryByRole('button', { name: /default PDF app/ })).toBeNull();
   });
@@ -119,7 +116,7 @@ describe('the settings panel (DESIGN 3.6)', () => {
     useUpdate.setState({ configured: null });
     setup(<Fixture />);
     act(() => openSettings());
-    expect(labels()).toEqual(['Language', 'Author name', 'Drawing', 'Smart links', 'Tour & tips', 'About']);
+    expect(labels()).toEqual(['Language', 'Author name', 'Smart links', 'Tour & tips', 'About']);
     await waitFor(() => expect(labels()).toContain('Updates'));
     expect(within(popover()).getByRole('switch', { name: 'Updates' }).getAttribute('aria-checked')).toBe('false');
   });
@@ -128,7 +125,7 @@ describe('the settings panel (DESIGN 3.6)', () => {
     useUpdate.setState({ check: 'unconfigured', configured: false });
     setup(<Fixture />);
     act(() => openSettings());
-    expect(labels()).toEqual(['Language', 'Author name', 'Drawing', 'Smart links', 'Tour & tips', 'About']);
+    expect(labels()).toEqual(['Language', 'Author name', 'Smart links', 'Tour & tips', 'About']);
     expect(within(popover()).queryByRole('switch', { name: 'Updates' })).toBeNull();
     useUpdate.setState({ check: 'idle' });
   });
@@ -242,13 +239,12 @@ describe('the settings popover', () => {
     expect(updateSettingsMock).toHaveBeenLastCalledWith({ language: 'en' });
     await waitFor(() => expect(checked('Language')).toBe('English'));
     // Tab at the last control wraps to the first: the popover keeps focus inside.
-    // Order: Language, author name, shape switch, Smart links switch, Updates, Start tour, Show tips again, Ghost About button (the last), then wrap.
+    // Order: Language, author name, Smart links switch, Updates, Start tour, Show tips again, Ghost About button (the last), then wrap.
     const tab = async () => {
       await user.tab();
       return document.activeElement;
     };
     expect(await tab()).toBe(within(popover()).getByRole('textbox', { name: 'Author name' }));
-    expect(await tab()).toBe(within(popover()).getByRole('switch', { name: 'Straighten shapes automatically' }));
     expect(await tab()).toBe(within(popover()).getByRole('switch', { name: /Smart links/ }));
     expect(await tab()).toBe(within(popover()).getByRole('switch', { name: 'Updates' }));
     expect(await tab()).toBe(within(popover()).getByRole('button', { name: 'Start tour' }));

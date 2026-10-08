@@ -515,19 +515,13 @@ describe('Kommentieren', () => {
     expect(useUi.getState().activeTool).toBe('shapes');
   });
 
-  it('Zeichnen has the shape recognition switch at the bottom of its menu, on by default, and it is the stored setting', async () => {
+  it('Zeichnen is a split item with Freihand, Freihand-Pfeil and Freihand-Form, and no straightening switch (F19.26)', async () => {
     const { user } = setup(<Rows />);
     await user.click(item('Options for Draw'));
-    const toggle = await screen.findByRole('switch', { name: 'Straighten shapes automatically' });
-    expect(toggle.getAttribute('aria-checked')).toBe('true');
-    await user.click(toggle);
-    expect(useTools.getState().straightenShapes).toBe(false);
-    expect(globalThis.localStorage.getItem('sheer.tools.shapeRecognition')).toBe('0');
-    expect(screen.getByRole('switch', { name: 'Straighten shapes automatically' }).getAttribute('aria-checked')).toBe(
-      'false',
-    );
-    await user.click(screen.getByRole('switch', { name: 'Straighten shapes automatically' }));
-    expect(useTools.getState().straightenShapes).toBe(true);
+    expect(screen.queryByRole('switch', { name: 'Straighten shapes automatically' })).toBeNull();
+    await user.click(await screen.findByRole('radio', { name: 'Freehand arrow' }));
+    expect(useTools.getState().draw).toBe('arrow');
+    expect(useUi.getState().activeTool).toBe('draw');
   });
 
   it('Formen is a split item with the four shapes and the colour row in one popover', async () => {

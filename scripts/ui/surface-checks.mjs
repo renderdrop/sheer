@@ -243,3 +243,58 @@ export function checkHoverGeometry(items) {
   }
   return out;
 }
+
+/** The four states a split button is read in (F19.27). */
+export const SPLIT_STATES = ['inactive', 'inactive+hover', 'active', 'active+hover'];
+
+const same = (a, b, tol = 0.5) =>
+  Math.abs(a.left - b.left) <= tol &&
+  Math.abs(a.top - b.top) <= tol &&
+  Math.abs(a.right - b.right) <= tol &&
+  Math.abs(a.bottom - b.bottom) <= tol;
+const none = (v) => v === undefined || v === '' || v === 'none' || /^0(px)?$/.test(v) || /^none\b/.test(v);
+
+/**
+ * Split button contour (F19.27, DESIGN §3.18 E4): one outer contour around main part and chevron part. For every split tool and
+ * each part (`main`, `chevron`) in all four states (inactive, inactive+hover, active, active+hover):
+ *  - the outer box (rect, border, outline) is identical in all four, and its box-shadow is identical with and without hover (the
+ *    active edge is drawn once, on the outer box, and only by the active state);
+ *  - the part has no outline and no box-shadow of its own, its rect and border (the hairline divider) never change, and it lies
+ *    inside the outer box: hover changes the background only.
+ * A state is `{outer:{rect,border,outline,boxShadow}, part:{rect,border,outline,boxShadow,background}}` (computed-style strings).
+ * @param {{name:string,part:'main'|'chevron',states:Record<string,object>}[]} items
+ */
+export function checkSplitContour(items) {
+  const out = [];
+  for (const it of items) {
+    const who = `${it.name} ${it.part}`;
+    const get = (s) => it.states[s];
+    const missing = SPLIT_STATES.filter((s) => get(s) === undefined);
+    if (missing.length > 0) {
+      out.push(`${who}: state ${missing.join(', ')} was not read`);
+      continue;
+    }
+    const base = get('inactive');
+    for (const s of SPLIT_STATES) {
+      const x = get(s);
+      if (!same(x.outer.rect, base.outer.rect)) out.push(`${who}: outer contour bounds change on ${s}`);
+      if (x.outer.border !== base.outer.border) out.push(`${who}: outer border changes on ${s}`);
+      if (!none(x.outer.outline) || x.outer.outline !== base.outer.outline)
+        out.push(`${who}: outer outline appears on ${s}`);
+      if (!same(x.part.rect, base.part.rect)) out.push(`${who}: part box changes on ${s}`);
+      if (x.part.border !== base.part.border) out.push(`${who}: part border changes on ${s}`);
+      if (!none(x.part.outline)) out.push(`${who}: part draws its own outline on ${s}`);
+      if (!none(x.part.boxShadow)) out.push(`${who}: part draws its own box-shadow on ${s}`);
+      const r = x.part.rect;
+      const o = x.outer.rect;
+      if (r.left < o.left - 0.5 || r.top < o.top - 0.5 || r.right > o.right + 0.5 || r.bottom > o.bottom + 0.5)
+        out.push(`${who}: part lies outside the outer contour on ${s}`);
+    }
+    if (get('inactive+hover').outer.boxShadow !== base.outer.boxShadow)
+      out.push(`${who}: hover changes the outer box-shadow of the inactive tool`);
+    if (get('active+hover').outer.boxShadow !== get('active').outer.boxShadow)
+      out.push(`${who}: hover changes the outer box-shadow of the active tool`);
+    if (none(get('active').outer.boxShadow)) out.push(`${who}: the active tool has no contour on the outer box`);
+  }
+  return out;
+}

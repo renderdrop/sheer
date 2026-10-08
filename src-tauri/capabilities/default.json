@@ -109,6 +109,7 @@
     "allow-get-image-batch-preview",
     "allow-export-pdf",
     "allow-export-comments",
+    "allow-export-text-pdf",
     "allow-prepare-print",
     "allow-get-print-page",
     "allow-open-print-dialog",

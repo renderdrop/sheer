@@ -4,6 +4,7 @@ import type { ComponentType } from 'react';
 import { StampPanel } from '../annotations/stamps/StampPanel';
 import { CropPanel } from '../crop/CropPanel';
 import { HeaderFooterPanel } from '../headerFooter/HeaderFooterPanel';
+import { HistoryPanel } from '../historyList/HistoryPanel';
 import { OcrPanel } from '../ocr/OcrPanel';
 import { ReferencePanel } from '../properties/ReferencePanel';
 import { installToolInspectorBindings } from './bindings';
@@ -19,7 +20,7 @@ const PANELS: Readonly<Record<ToolInspectorId, ComponentType | null>> = {
   stamp: StampPanel,
   ocr: OcrPanel,
   reference: ReferencePanel,
-  history: null,
+  history: HistoryPanel,
 };
 
 // The tool stores drive the column; this is wired once when the shell loads the component.

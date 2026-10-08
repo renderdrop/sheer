@@ -132,6 +132,7 @@ fn main() {
         "get_image_batch_preview",
         "export_pdf",
         "export_comments",
+        "export_text_pdf",
         "prepare_print",
         "get_print_page",
         "open_print_dialog",

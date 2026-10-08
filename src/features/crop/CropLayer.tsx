@@ -160,21 +160,31 @@ function CropRect({
 
   const end = (event: PointerEvent<HTMLElement>) => {
     if (gesture.current?.pointerId !== event.pointerId) return;
-    const drew = gesture.current.handle === null && gesture.current.moved;
+    const fromHandle = gesture.current.handle !== null && gesture.current.handle !== MOVE;
     gesture.current = null;
     event.currentTarget.releasePointerCapture?.(event.pointerId);
-    // After drawing, the rectangle has the focus, so Enter applies.
-    if (drew) rectEl.current?.focus({ preventScroll: true });
+    // After drawing, moving or a click on the page, the rectangle has the focus, so Enter applies and Esc cancels.
+    if (!fromHandle) rectEl.current?.focus({ preventScroll: true });
   };
 
-  const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
-    if (event.target !== event.currentTarget || event.ctrlKey || event.metaKey) return;
+  /** Enter applies and Esc cancels from the rectangle and its handles (F19.25); the bar's buttons keep their own Enter. */
+  const onLayerKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    if (event.ctrlKey || event.metaKey || event.altKey || event.defaultPrevented) return;
+    const target = event.target as HTMLElement;
+    if (target.closest('[data-crop-bar]') !== null) return;
     if (event.key === 'Enter') {
       event.preventDefault();
       event.stopPropagation();
       void applyCrop(docId, slot, margins);
-      return;
+    } else if (event.key === 'Escape') {
+      event.preventDefault();
+      event.stopPropagation();
+      cancelCrop();
     }
+  };
+
+  const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    if (event.target !== event.currentTarget || event.ctrlKey || event.metaKey) return;
     const arrow = ARROWS[event.key];
     if (arrow === undefined) return;
     event.preventDefault();
@@ -216,7 +226,12 @@ function CropRect({
   });
 
   return (
-    <div ref={outer} data-crop-layer="" className="pointer-events-none absolute inset-0 z-canvas-annotations">
+    <div
+      ref={outer}
+      data-crop-layer=""
+      className="pointer-events-none absolute inset-0 z-canvas-annotations"
+      onKeyDown={onLayerKeyDown}
+    >
       <div className="absolute" style={style}>
         <div
           data-crop-catcher=""

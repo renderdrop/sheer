@@ -5,7 +5,6 @@ import { AUTHOR_NAME_MAX, isAuthorName } from '../../api/app';
 import { APP_NAME } from '../../config/app';
 import { errorText, useT, type Language, type PlainKey } from '../../i18n';
 import { useSettings } from '../../stores/settings';
-import { RecogniseSwitch } from '../modes/RecogniseSwitch';
 import { setSmartLinksEverywhere } from '../smartlinks/actions';
 import { useSmartLinks } from '../smartlinks/store';
 import { SegmentedControl, type SegmentOption } from './SegmentedControl';
@@ -257,7 +256,6 @@ function SettingsForm() {
         )}
       </Setting>
       <AuthorRow />
-      <Setting label={t('settings.drawing')}>{() => <RecogniseSwitch />}</Setting>
       <SmartLinksRow />
       {updaterReady && (
         <Setting label={t('settings.updates')} hint={t('settings.updates.hint')}>
