@@ -3022,3 +3022,7 @@ regular Sheer comments (editable, in the panel and the margin), to prove interop
   `Explore`.
 - The orchestrator decides per package and names the choice (model + reason in a few words) in the brief; the agent
   definitions in `.claude/agents/` carry the defaults (`claude-opus-5-5`, `claude-sonnet-5-5`, `claude-haiku-5-5`).
+
+**ADR-141 addendum (F19.8, FX-5).** Turning Redact on no longer opens its options popover (a `role=dialog` surface over the
+top of the page that took focus and caught the next drags — the "dialog on every mark" of the owner report). A click while
+Redact is on opens and closes the options (slot flag `optionsWhenOn`, `src/features/modes`).

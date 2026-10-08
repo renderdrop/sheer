@@ -109,6 +109,11 @@ export interface SlotDef {
   recogniseSwitch?: boolean;
   /** The tool's own options (Zuschneiden, the insert tools, Schwärzen): the chevron part opens them while the tool is on. */
   Options?: ComponentType;
+  /**
+   * The click that turns the tool on does not open its options; a click while it is on does (Schwärzen, F19.8): the options popover
+   * takes the focus and covers the top of the page, where the first marks are drawn.
+   */
+  optionsWhenOn?: boolean;
   run: () => void;
 }
 

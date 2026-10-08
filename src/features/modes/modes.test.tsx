@@ -706,6 +706,25 @@ describe('Bearbeiten', () => {
     expect(screen.queryByRole('dialog')).toBeNull();
   });
 
+  it('Schwärzen opens no options over the page when it turns on; a click while it is on opens them (F19.8)', async () => {
+    const { user } = setup(<Rows />);
+    // After a crop, as in the acceptance order: the crop options open and close with the tool.
+    await user.click(item('Crop'));
+    expect(screen.queryByRole('dialog', { name: /Crop/ })).not.toBeNull();
+    await user.click(screen.getByRole('button', { name: 'Cancel' }));
+    expect(screen.queryByRole('dialog')).toBeNull();
+    await user.click(item('Redact'));
+    expect(useUi.getState().redactMode).toBe(true);
+    // The popover would take the focus and cover the top of the page, where the marks are drawn by dragging.
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(item('Redact').getAttribute('aria-expanded')).toBe('false');
+    await user.click(item('Redact'));
+    expect(screen.queryByRole('dialog', { name: /Redact/ })).not.toBeNull();
+    expect(useUi.getState().redactMode).toBe(true);
+    await user.click(item('Redact'));
+    expect(screen.queryByRole('dialog', { name: /Redact/ })).toBeNull();
+  });
+
   it('Schützen and Metadaten open their dialogs', async () => {
     const { user } = setup(<Rows />);
     await user.click(item('Protect'));

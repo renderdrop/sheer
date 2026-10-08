@@ -563,6 +563,8 @@ const bearbeiten: Maker = (inputs) => {
       on: redactMode,
       actionId: 'tool-redact',
       Options: RedactOptions,
+      // Entering the mode shows the band only; the marks list opens with a click on the item while the mode is on (F19.8).
+      optionsWhenOn: true,
       // The mode stays on until Anwenden or Abbrechen (the band) or Esc: the item never toggles it off.
       run: () => {
         if (!useUi.getState().redactMode) runAction('tool-redact');

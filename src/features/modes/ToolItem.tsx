@@ -113,8 +113,10 @@ export function ToolItem({ slot, iconOnly, stop }: ToolItemProps) {
       }}
       onClick={(event) => {
         if (off) return;
+        // `slot.on` is the state before this click.
+        const opens = slot.optionsWhenOn !== true || slot.on;
         slot.run();
-        if (pop !== undefined) pop.onClick(event);
+        if (pop !== undefined && opens) pop.onClick(event);
       }}
       className={cx(MAIN, iconOnly ? 'w-control-md justify-center' : 'px-3', split ? SPLIT_PART : ACTIVE)}
     >
